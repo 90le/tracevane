@@ -18,6 +18,8 @@ coverage/
 graphify-out/
 *.log
 *.pid
+__pycache__/
+*.pyc
 
 # Local planning notes
 findings.md
