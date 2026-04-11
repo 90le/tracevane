@@ -162,6 +162,7 @@
 - `ChannelAccountDetailPage` 只显示凭据状态摘要和“打开凭据抽屉”入口，不再内嵌 credential input。
 - 账号详情保存使用 `buildAccountDetailFieldPayload` 排除 credential fields，避免把凭据值通过详情页保存或写空。
 - 凭据读写继续由 `ChannelCredentialDrawer` 统一承接。
+- 账号详情页已拆成 `账号身份 / 凭据摘要 / 基础行为 / Schema 字段 / 高级 JSON`；基础行为明确说明留空会继承 provider 默认值，并补齐账号级 `domain / responsePrefix / configWrites / healthMonitor`。
 
 ### CH-3A. Account ID / 显示名边界
 

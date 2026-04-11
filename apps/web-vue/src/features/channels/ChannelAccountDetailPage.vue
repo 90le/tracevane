@@ -5,23 +5,30 @@
         <div>
           <p class="eyebrow">{{ channel.type }} · {{ account.id }}</p>
           <h3>{{ text('账号详情', 'Account detail') }}</h3>
-          <p>{{ text('这里保留 schema 驱动字段和高级 JSON。保存入口固定在底部，不再重复出现在顶部。', 'This page keeps schema-driven fields and advanced JSON. Saving stays pinned at the bottom instead of repeating at the top.') }}</p>
+          <p>{{ text('这里维护账号级覆盖值；留空或继承时会继续使用 provider 默认配置。保存入口固定在底部。', 'Use this page for account-level overrides. Empty or inherited values keep using provider defaults. Saving stays pinned at the bottom.') }}</p>
         </div>
       </div>
 
-      <div class="form-grid">
-        <div class="form-field">
-          <label class="form-label">{{ text('账号 ID', 'Account ID') }}</label>
-          <input v-model="draft.id" class="form-input" disabled />
+      <section class="channels-account-detail-section channels-account-detail-section--identity">
+        <div class="channels-account-detail-section__head">
+          <strong>{{ text('账号身份', 'Account identity') }}</strong>
+          <span>{{ text('Account ID 是配置键和日志排查入口，不能在这里改名。', 'Account ID is the config key and troubleshooting handle, so it cannot be renamed here.') }}</span>
         </div>
-        <label class="toggle-card form-field-full">
-          <input v-model="draft.enabled" class="form-checkbox" type="checkbox" />
-          <div>
-            <strong>{{ text('账号启用状态', 'Account enabled') }}</strong>
-            <span>{{ text('这里是完整账号编辑入口，配置会显式保存。', 'This is the full account editor and changes are saved explicitly.') }}</span>
+
+        <div class="form-grid">
+          <div class="form-field">
+            <label class="form-label">{{ text('账号 ID', 'Account ID') }}</label>
+            <input v-model="draft.id" class="form-input" disabled />
           </div>
-        </label>
-      </div>
+          <label class="toggle-card form-field-full">
+            <input v-model="draft.enabled" class="form-checkbox" type="checkbox" />
+            <div>
+              <strong>{{ text('账号启用状态', 'Account enabled') }}</strong>
+              <span>{{ text('这里是完整账号编辑入口，配置会显式保存。', 'This is the full account editor and changes are saved explicitly.') }}</span>
+            </div>
+          </label>
+        </div>
+      </section>
 
       <details class="config-collapsible" open>
         <summary>{{ text('凭据', 'Credentials') }}</summary>
@@ -42,46 +49,72 @@
 
       <details class="config-collapsible" open>
         <summary>{{ text('基础行为', 'Core behavior') }}</summary>
-        <div class="form-grid">
-          <div class="form-field">
-            <label class="form-label">{{ text('私聊策略', 'DM policy') }}</label>
-            <GlassSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+        <section class="channels-account-detail-section">
+          <div class="channels-account-detail-section__head">
+            <strong>{{ text('账号覆盖默认值', 'Account overrides') }}</strong>
+            <span>{{ text('这些字段只影响当前账号；留空表示继续继承 provider 设置。', 'These fields only affect this account. Leave them empty to inherit provider settings.') }}</span>
           </div>
-          <div class="form-field">
-            <label class="form-label">{{ text('群组策略', 'Group policy') }}</label>
-            <GlassSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label">{{ text('私聊策略', 'DM policy') }}</label>
+              <GlassSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('群组策略', 'Group policy') }}</label>
+              <GlassSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('上下文可见性', 'Context visibility') }}</label>
+              <GlassSelect v-model="draft.contextVisibility" :options="contextVisibilityOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('流式响应', 'Streaming') }}</label>
+              <GlassSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('连接模式', 'Connection mode') }}</label>
+              <GlassSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('渲染模式', 'Render mode') }}</label>
+              <GlassSelect v-model="draft.renderMode" :options="renderModeOptions" :placeholder="text('未指定', 'Unset')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('代理地址', 'Proxy URL') }}</label>
+              <input v-model="draft.proxy" class="form-input" :placeholder="text('留空继承 provider 代理', 'Leave empty to inherit provider proxy')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('域名', 'Domain') }}</label>
+              <input v-model="draft.domain" class="form-input" :placeholder="text('留空继承 provider 域名', 'Leave empty to inherit provider domain')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('回复前缀', 'Response prefix') }}</label>
+              <input v-model="draft.responsePrefix" class="form-input" :placeholder="text('留空继承 provider 回复前缀', 'Leave empty to inherit provider response prefix')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('配置写入', 'Config writes') }}</label>
+              <GlassSelect v-model="draft.configWritesMode" :options="booleanInheritOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">{{ text('健康监控', 'Health monitor') }}</label>
+              <GlassSelect v-model="draft.healthMonitorMode" :options="booleanInheritOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            </div>
           </div>
-          <div class="form-field">
-            <label class="form-label">{{ text('上下文可见性', 'Context visibility') }}</label>
-            <GlassSelect v-model="draft.contextVisibility" :options="contextVisibilityOptions" :placeholder="text('继承默认值', 'Inherit default')" />
-          </div>
-          <div class="form-field">
-            <label class="form-label">{{ text('流式响应', 'Streaming') }}</label>
-            <GlassSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" />
-          </div>
-          <div class="form-field">
-            <label class="form-label">{{ text('连接模式', 'Connection mode') }}</label>
-            <GlassSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" />
-          </div>
-          <div class="form-field">
-            <label class="form-label">{{ text('渲染模式', 'Render mode') }}</label>
-            <GlassSelect v-model="draft.renderMode" :options="renderModeOptions" :placeholder="text('未指定', 'Unset')" />
-          </div>
-          <div class="form-field form-field-full">
-            <label class="form-label">{{ text('代理地址', 'Proxy URL') }}</label>
-            <input v-model="draft.proxy" class="form-input" />
-          </div>
-        </div>
+        </section>
       </details>
 
       <details v-if="groupedAccountFields.length" class="config-collapsible" open>
         <summary>{{ text('Schema 字段', 'Schema fields') }}</summary>
-        <div class="form-grid">
-          <template v-for="fieldGroup in groupedAccountFields" :key="fieldGroup.id">
-            <div class="form-field form-field-full">
+        <div class="channels-account-schema-groups">
+          <section v-for="fieldGroup in groupedAccountFields" :key="fieldGroup.id" class="channels-account-detail-section">
+            <div class="channels-account-detail-section__head">
               <strong>{{ accountFieldGroupLabel(fieldGroup.id) }}</strong>
+              <span>{{ text('来自 provider schema 的账号级字段，按用途分组展示。', 'Account-level fields from the provider schema, grouped by purpose.') }}</span>
             </div>
-            <template v-for="accountField in fieldGroup.fields" :key="accountField.key">
+
+            <div class="form-grid">
+              <template v-for="accountField in fieldGroup.fields" :key="accountField.key">
               <div v-if="accountField.input === 'boolean'" class="form-field">
                 <label class="form-label">{{ accountField.label }}</label>
                 <GlassSelect v-model="draft.fieldValues[accountField.key]" :options="booleanInheritOptions" :placeholder="text('继承默认值', 'Inherit default')" />
@@ -116,8 +149,9 @@
                 />
                 <span v-if="accountField.helpText" class="field-hint">{{ accountField.helpText }}</span>
               </div>
-            </template>
-          </template>
+              </template>
+            </div>
+          </section>
         </div>
       </details>
 
@@ -351,6 +385,41 @@ async function save(): Promise<void> {
 </script>
 
 <style scoped>
+.channels-account-detail-section,
+.channels-account-schema-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.channels-account-detail-section {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
+}
+
+.channels-account-detail-section--identity {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--sky) 8%, transparent), transparent 58%),
+    color-mix(in srgb, var(--shell-panel-fill) 88%, transparent);
+}
+
+.channels-account-detail-section__head {
+  display: grid;
+  gap: 4px;
+}
+
+.channels-account-detail-section__head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.channels-account-detail-section__head span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .account-credential-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;

@@ -25,6 +25,9 @@ test('channel field descriptors expose metadata for select inputs and helper cop
 
 test('channel account detail page keeps grouped dynamic field rendering instead of flattening the schema', () => {
   assert.match(channelAccountDetailPage, /v-for="fieldGroup in groupedAccountFields"/);
+  assert.match(channelAccountDetailPage, /v-for="accountField in fieldGroup\.fields"/);
+  assert.match(channelAccountDetailPage, /channels-account-detail-section/);
+  assert.match(channelAccountDetailPage, /channels-account-schema-groups/);
   assert.match(channelAccountDetailPage, /accountFieldGroupLabel\(fieldGroup\.id\)/);
   assert.match(channelAccountDetailPage, /function accountFieldGroupLabel\(groupId: ChannelFieldGroupId \| ''\): string/);
   assert.match(channelAccountDetailPage, /field\.group \|\| ''/);
@@ -32,6 +35,15 @@ test('channel account detail page keeps grouped dynamic field rendering instead 
   assert.match(channelAccountDetailPage, /accountFieldOptions\(field: ChannelFieldDescriptor\): GlassSelectOption\[\]/);
   assert.match(channelAccountDetailPage, /accountFieldInputType\(field: ChannelFieldDescriptor\): 'text' \| 'url'/);
   assert.doesNotMatch(channelAccountDetailPage, /v-for="field in selectedCatalog\.accountFields"/);
+});
+
+test('channel account detail page explains account overrides inherit provider defaults', () => {
+  assert.match(channelAccountDetailPage, /账号覆盖默认值|Account overrides/);
+  assert.match(channelAccountDetailPage, /留空表示继续继承 provider 设置|Leave them empty to inherit provider settings/);
+  assert.match(channelAccountDetailPage, /configWritesMode/);
+  assert.match(channelAccountDetailPage, /healthMonitorMode/);
+  assert.match(channelAccountDetailPage, /domain/);
+  assert.match(channelAccountDetailPage, /responsePrefix/);
 });
 
 test('channel account detail page keeps credentials out of the account save form', () => {
