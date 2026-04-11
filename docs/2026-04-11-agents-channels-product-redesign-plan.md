@@ -79,6 +79,7 @@
 - 顶部 stage actions 已先从 5 个任务卡压到 4 个，移除了重复的 `新建账号`。
 - `新建账号` 入口统一放在账号索引区，和账号列表、默认账号/命名账号分组保持同一语义层级。
 - Provider 快改区只保留启用状态、默认账号和删除 provider，复杂配置继续进入 Settings。
+- Provider Settings 已拆成 `常用默认值 / Thread 绑定运行态 / 高级 JSON`；常用区补齐 `domain / responsePrefix / configWrites / healthMonitor`，Thread 区补齐 `spawnSubagentSessions / spawnAcpSessions`。
 
 涉及文件：
 

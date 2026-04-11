@@ -17,6 +17,7 @@ const bindingsPage = read('apps/web-vue/src/features/channels/ChannelBindingsPag
 
 test('channels deep pages use single-task heads and avoid page-level header rows', () => {
   assert.match(providerSettingsPage, /channels-stage-task-head/);
+  assert.match(providerSettingsPage, /channels-provider-settings-section/);
   assert.match(accountDetailPage, /channels-stage-task-head/);
   assert.match(accessControlPage, /channels-stage-task-head/);
   assert.match(pairingPage, /channels-stage-task-head/);
@@ -29,6 +30,17 @@ test('channels deep pages use single-task heads and avoid page-level header rows
   assert.doesNotMatch(accessControlPage, /page-header-row/);
   assert.doesNotMatch(pairingPage, /page-header-row/);
   assert.doesNotMatch(bindingsPage, /page-header-row/);
+});
+
+test('provider settings exposes provider defaults and thread binding runtime fields', () => {
+  assert.match(providerSettingsPage, /configWritesMode/);
+  assert.match(providerSettingsPage, /healthMonitorMode/);
+  assert.match(providerSettingsPage, /fromBooleanSelectValue\(draft\.configWritesMode\)/);
+  assert.match(providerSettingsPage, /fromBooleanSelectValue\(draft\.healthMonitorMode\)/);
+  assert.match(providerSettingsPage, /draft\.threadBindings\.spawnSubagentSessions/);
+  assert.match(providerSettingsPage, /draft\.threadBindings\.spawnAcpSessions/);
+  assert.match(providerSettingsPage, /domain/);
+  assert.match(providerSettingsPage, /responsePrefix/);
 });
 
 test('deep-edit pages still guard against accidental navigation with unsaved changes where edits are stateful', () => {
