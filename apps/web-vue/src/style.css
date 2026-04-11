@@ -3466,6 +3466,62 @@ html[data-theme="light"] .nav-link.router-link-active {
   min-width: 0;
 }
 
+.channels-binding-editor {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--sky) 8%, transparent), transparent 58%),
+    color-mix(in srgb, var(--shell-panel-fill) 92%, transparent);
+}
+
+.channels-binding-editor__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.channels-binding-editor__summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  background: color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.channels-binding-editor-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+.channels-binding-editor-section__head {
+  display: grid;
+  gap: 4px;
+}
+
+.channels-binding-editor-section__head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.channels-binding-editor-section__head span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.channels-binding-editor-section__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .channel-rail-list {
   display: grid;
   gap: 10px;
@@ -3950,6 +4006,10 @@ html[data-theme="light"] .nav-link.router-link-active {
 
   .channels-stage-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .channels-binding-editor-section__grid {
+    grid-template-columns: 1fr;
   }
 
 }

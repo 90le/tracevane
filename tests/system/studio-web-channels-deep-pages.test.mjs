@@ -21,6 +21,8 @@ test('channels deep pages use single-task heads and avoid page-level header rows
   assert.match(accessControlPage, /channels-stage-task-head/);
   assert.match(pairingPage, /channels-stage-task-head/);
   assert.match(bindingsPage, /channels-stage-task-head/);
+  assert.match(bindingsPage, /channels-binding-editor/);
+  assert.match(bindingsPage, /channels-binding-editor-section/);
 
   assert.doesNotMatch(providerSettingsPage, /page-header-row/);
   assert.doesNotMatch(accountDetailPage, /page-header-row/);

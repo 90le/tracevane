@@ -98,6 +98,11 @@ test('bindings page can preserve account context when opened from an account car
   assert.match(channelBindingsPage, /route\.query\.accountId/);
   assert.match(channelBindingsPage, /route\.query\.intent/);
   assert.match(channelBindingsPage, /draft\.accountId = focusedAccountId/);
+  assert.match(channelBindingsPage, /bindingTaskTitle/);
+  assert.match(channelBindingsPage, /为账号 .* 新增绑定|Create binding for account/);
+  assert.match(channelBindingsPage, /channels-binding-editor/);
+  assert.match(channelBindingsPage, /channels-binding-editor-section/);
+  assert.match(channelBindingsPage, /editingBindingId === binding\.id/);
 });
 
 test('bindings page keeps roles and acp fields round-trippable during edit/save', () => {
