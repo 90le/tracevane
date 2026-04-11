@@ -14,34 +14,50 @@
         <span class="capability-chip">{{ text('群组策略', 'Group policy') }} · {{ account.groupPolicy || text('未指定', 'Unset') }}</span>
       </div>
 
-      <div class="form-grid">
-        <div class="form-field form-field-full">
-          <label class="form-label">{{ text('私聊白名单', 'DM allowlist') }}</label>
-          <div class="tag-grid">
+      <div class="channels-access-grid">
+        <section class="channels-access-card">
+          <div class="channels-access-card__head">
+            <strong>{{ text('私聊白名单', 'DM allowlist') }}</strong>
+            <span>{{ text('允许这些用户或私聊来源触发当前账号。', 'Allow these users or direct-message sources to trigger this account.') }}</span>
+          </div>
+
+          <div v-if="draft.allowFrom.length" class="tag-grid">
             <span v-for="value in draft.allowFrom" :key="value" class="tag-chip">
               {{ value }}
               <button type="button" class="danger-link" @click="removeEntry('allow', value)">×</button>
             </span>
           </div>
+          <div v-else class="empty-inline">
+            {{ text('当前没有私聊白名单。', 'No DM allowlist entries yet.') }}
+          </div>
+
           <div class="inline-entry-row">
             <input v-model="allowEntry" class="form-input" :placeholder="text('输入用户平台 ID', 'Enter peer id')" @keyup.enter="appendEntry('allow')" />
             <button type="button" class="secondary-button compact-button" @click="appendEntry('allow')">{{ text('添加', 'Add') }}</button>
           </div>
-        </div>
+        </section>
 
-        <div class="form-field form-field-full">
-          <label class="form-label">{{ text('群组白名单', 'Group allowlist') }}</label>
-          <div class="tag-grid">
+        <section class="channels-access-card">
+          <div class="channels-access-card__head">
+            <strong>{{ text('群组白名单', 'Group allowlist') }}</strong>
+            <span>{{ text('允许这些群组、频道或发送者入口触发当前账号。', 'Allow these groups, channels, or sender entrypoints to trigger this account.') }}</span>
+          </div>
+
+          <div v-if="draft.groupAllowFrom.length" class="tag-grid">
             <span v-for="value in draft.groupAllowFrom" :key="value" class="tag-chip">
               {{ value }}
               <button type="button" class="danger-link" @click="removeEntry('group', value)">×</button>
             </span>
           </div>
+          <div v-else class="empty-inline">
+            {{ text('当前没有群组白名单。', 'No group allowlist entries yet.') }}
+          </div>
+
           <div class="inline-entry-row">
             <input v-model="groupEntry" class="form-input" :placeholder="text('输入群组 / 发送者 ID', 'Enter group or sender id')" @keyup.enter="appendEntry('group')" />
             <button type="button" class="secondary-button compact-button" @click="appendEntry('group')">{{ text('添加', 'Add') }}</button>
           </div>
-        </div>
+        </section>
       </div>
     </article>
 
@@ -170,6 +186,39 @@ async function save(): Promise<void> {
 </script>
 
 <style scoped>
+.channels-access-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.channels-access-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
+}
+
+.channels-access-card__head {
+  display: grid;
+  gap: 4px;
+}
+
+.channels-access-card__head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.channels-access-card__head span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .channels-save-bar {
   position: sticky;
   bottom: 16px;
@@ -210,6 +259,10 @@ async function save(): Promise<void> {
 }
 
 @media (max-width: 920px) {
+  .channels-access-grid {
+    grid-template-columns: 1fr;
+  }
+
   .channels-save-bar {
     flex-direction: column;
     align-items: stretch;

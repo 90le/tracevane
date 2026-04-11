@@ -162,6 +162,7 @@
 - `ChannelAccountDetailPage` 只显示凭据状态摘要和“打开凭据抽屉”入口，不再内嵌 credential input。
 - 账号详情保存使用 `buildAccountDetailFieldPayload` 排除 credential fields，避免把凭据值通过详情页保存或写空。
 - 凭据读写继续由 `ChannelCredentialDrawer` 统一承接。
+- 凭据抽屉 body 已改为顶部自然排列，`频道 / 账户 / 已配置 / 总字段` 收成紧凑 context panel，避免浅色模式下大块卡片被拉伸。
 - 账号详情页已拆成 `账号身份 / 凭据摘要 / 基础行为 / Schema 字段 / 高级 JSON`；基础行为明确说明留空会继承 provider 默认值，并补齐账号级 `domain / responsePrefix / configWrites / healthMonitor`。
 
 ### CH-3A. Account ID / 显示名边界
@@ -213,6 +214,8 @@
 - 新增/编辑绑定已拆成 `基础路由 / 命中条件 / ACP 路由` 三段。
 - 账号聚焦进入时标题直接显示“为账号 xxx 新增绑定”，不再只显示泛化的“新增绑定”。
 - 列表中当前编辑的 binding 会高亮，避免用户不知道正在修改哪一条。
+- Access 页已拆成 `私聊白名单 / 群组白名单` 两张任务卡，并补齐空列表提示。
+- Pairing 页已拆成 `状态摘要 / 手动批准 / 待审批请求` 三块，并补齐不支持配对与无待审批请求的空态。
 
 ## 阶段 2：Agents 配置体验收口
 

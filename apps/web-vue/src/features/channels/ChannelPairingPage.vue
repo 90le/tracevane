@@ -15,42 +15,66 @@
         </div>
       </div>
 
-      <div class="inline-entry-row">
-        <input v-model="manualCode" class="form-input" :placeholder="text('手动输入配对码', 'Enter pairing code manually')" />
-        <button type="button" class="primary-button compact-button" :disabled="!manualCode.trim() || approving" @click="approve(manualCode.trim())">
-          {{ approving ? text('审批中...', 'Approving...') : text('批准', 'Approve') }}
-        </button>
+      <div v-if="pairing" class="channels-pairing-summary">
+        <span>{{ pairing.supported ? text('支持配对', 'Pairing supported') : text('不支持配对', 'Pairing unsupported') }}</span>
+        <span>{{ text('来源', 'Source') }} · {{ pairing.source }}</span>
+        <span>{{ text('待处理', 'Pending') }} {{ pairing.requests.length }}</span>
+        <span v-if="pairing.error">{{ text('错误', 'Error') }} · {{ pairing.error }}</span>
       </div>
 
-      <div v-if="pairing?.requests.length" class="binding-table">
-        <div class="binding-table-head">
-          <span>{{ text('配对码', 'Code') }}</span>
-          <span>{{ text('请求者', 'Requester') }}</span>
-          <span>{{ text('时间', 'Created') }}</span>
-          <span></span>
+      <section class="channels-pairing-card">
+        <div class="channels-pairing-card__head">
+          <strong>{{ text('手动批准', 'Manual approval') }}</strong>
+          <span>{{ text('如果用户提供了配对码，可以直接在这里批准。', 'If a user provides a pairing code, approve it directly here.') }}</span>
         </div>
 
-        <div v-for="request in pairing.requests" :key="request.code" class="binding-table-row">
-          <div class="binding-table-cell">
-            <strong>{{ request.code }}</strong>
+        <div class="inline-entry-row">
+          <input v-model="manualCode" class="form-input" :placeholder="text('手动输入配对码', 'Enter pairing code manually')" />
+          <button type="button" class="primary-button compact-button" :disabled="!manualCode.trim() || approving || pairing?.supported === false" @click="approve(manualCode.trim())">
+            {{ approving ? text('审批中...', 'Approving...') : text('批准', 'Approve') }}
+          </button>
+        </div>
+      </section>
+
+      <section class="channels-pairing-card">
+        <div class="channels-pairing-card__head">
+          <strong>{{ text('待审批请求', 'Pending requests') }}</strong>
+          <span>{{ text('来自设备或账号的 pairing 请求会集中显示在这里。', 'Pairing requests from devices or accounts are listed here.') }}</span>
+        </div>
+
+        <div v-if="pairing?.requests.length" class="binding-table">
+          <div class="binding-table-head">
+            <span>{{ text('配对码', 'Code') }}</span>
+            <span>{{ text('请求者', 'Requester') }}</span>
+            <span>{{ text('时间', 'Created') }}</span>
+            <span></span>
           </div>
-          <div class="binding-table-cell">
-            <strong>{{ request.requester || request.peerId || '—' }}</strong>
-            <p>{{ request.note || '—' }}</p>
-          </div>
-          <div class="binding-table-cell">
-            <strong>{{ formatDate(request.createdAt) }}</strong>
-          </div>
-          <div class="binding-table-actions">
-            <button type="button" class="primary-button compact-button" :disabled="approving" @click="approve(request.code)">
-              {{ text('批准', 'Approve') }}
-            </button>
+
+          <div v-for="request in pairing.requests" :key="request.code" class="binding-table-row">
+            <div class="binding-table-cell">
+              <strong>{{ request.code }}</strong>
+            </div>
+            <div class="binding-table-cell">
+              <strong>{{ request.requester || request.peerId || '—' }}</strong>
+              <p>{{ request.note || '—' }}</p>
+            </div>
+            <div class="binding-table-cell">
+              <strong>{{ formatDate(request.createdAt) }}</strong>
+            </div>
+            <div class="binding-table-actions">
+              <button type="button" class="primary-button compact-button" :disabled="approving" @click="approve(request.code)">
+                {{ text('批准', 'Approve') }}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-      <div v-else class="empty-inline">
-        {{ text('当前没有待审批配对请求。', 'There are no pending pairing requests right now.') }}
-      </div>
+        <div v-else-if="pairing?.supported === false" class="empty-inline">
+          {{ text('当前频道或账号不支持配对审批。', 'This provider or account does not support pairing approval.') }}
+        </div>
+        <div v-else class="empty-inline">
+          {{ text('当前没有待审批配对请求。', 'There are no pending pairing requests right now.') }}
+        </div>
+      </section>
     </article>
   </section>
 </template>
@@ -119,3 +143,48 @@ watch(
   { immediate: true },
 );
 </script>
+
+<style scoped>
+.channels-pairing-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.channels-pairing-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.channels-pairing-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
+}
+
+.channels-pairing-card__head {
+  display: grid;
+  gap: 4px;
+}
+
+.channels-pairing-card__head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.channels-pairing-card__head span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+</style>

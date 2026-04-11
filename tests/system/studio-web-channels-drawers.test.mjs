@@ -52,7 +52,9 @@ test('credential drawer stays credential-only instead of mixing in deep account 
   assert.match(credentialDrawer, /credential-field-grid/);
   assert.match(credentialDrawer, /credential-field-grid--compact/);
   assert.match(credentialDrawer, /credential-field-card/);
+  assert.match(credentialDrawer, /credential-drawer__context-panel/);
   assert.match(credentialDrawer, /credential-drawer__account-context/);
+  assert.match(credentialDrawer, /align-content:\s*start/);
   assert.match(credentialDrawer, /channelLabel/);
   assert.match(credentialDrawer, /shell-stage-fill-strong/);
   assert.match(credentialDrawer, /html\[data-theme="light"\]\s+\.channels-drawer/);

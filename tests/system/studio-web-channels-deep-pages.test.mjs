@@ -21,7 +21,9 @@ test('channels deep pages use single-task heads and avoid page-level header rows
   assert.match(accountDetailPage, /channels-stage-task-head/);
   assert.match(accountDetailPage, /channels-account-detail-section/);
   assert.match(accessControlPage, /channels-stage-task-head/);
+  assert.match(accessControlPage, /channels-access-card/);
   assert.match(pairingPage, /channels-stage-task-head/);
+  assert.match(pairingPage, /channels-pairing-card/);
   assert.match(bindingsPage, /channels-stage-task-head/);
   assert.match(bindingsPage, /channels-binding-editor/);
   assert.match(bindingsPage, /channels-binding-editor-section/);
@@ -31,6 +33,16 @@ test('channels deep pages use single-task heads and avoid page-level header rows
   assert.doesNotMatch(accessControlPage, /page-header-row/);
   assert.doesNotMatch(pairingPage, /page-header-row/);
   assert.doesNotMatch(bindingsPage, /page-header-row/);
+});
+
+test('access and pairing pages expose task cards and useful empty states', () => {
+  assert.match(accessControlPage, /channels-access-grid/);
+  assert.match(accessControlPage, /当前没有私聊白名单|No DM allowlist entries yet/);
+  assert.match(accessControlPage, /当前没有群组白名单|No group allowlist entries yet/);
+  assert.match(pairingPage, /channels-pairing-summary/);
+  assert.match(pairingPage, /channels-pairing-card/);
+  assert.match(pairingPage, /不支持配对|Pairing unsupported/);
+  assert.match(pairingPage, /当前频道或账号不支持配对审批|does not support pairing approval/);
 });
 
 test('provider settings exposes provider defaults and thread binding runtime fields', () => {

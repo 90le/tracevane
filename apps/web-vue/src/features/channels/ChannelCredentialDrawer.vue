@@ -15,20 +15,22 @@
           </header>
 
           <div class="channels-drawer__body credential-drawer__body">
-            <div class="credential-drawer__account-context">
-              <span>
-                <strong>{{ text('频道', 'Provider') }}</strong>
-                {{ channelLabel || text('未选择频道', 'No provider selected') }}
-              </span>
-              <span>
-                <strong>{{ text('账户', 'Account') }}</strong>
-                {{ accountId || text('未选择账号', 'No account selected') }}
-              </span>
-            </div>
+            <div class="credential-drawer__context-panel">
+              <div class="credential-drawer__account-context">
+                <span>
+                  <strong>{{ text('频道', 'Provider') }}</strong>
+                  {{ channelLabel || text('未选择频道', 'No provider selected') }}
+                </span>
+                <span>
+                  <strong>{{ text('账户', 'Account') }}</strong>
+                  {{ accountId || text('未选择账号', 'No account selected') }}
+                </span>
+              </div>
 
-            <div class="channels-credential-summary">
-              <span>{{ text('已配置', 'Configured') }} {{ configuredCount }}</span>
-              <span>{{ text('总字段', 'Total fields') }} {{ catalog?.credentialFields.length || 0 }}</span>
+              <div class="channels-credential-summary">
+                <span>{{ text('已配置', 'Configured') }} {{ configuredCount }}</span>
+                <span>{{ text('总字段', 'Total fields') }} {{ catalog?.credentialFields.length || 0 }}</span>
+              </div>
             </div>
 
             <div
@@ -203,6 +205,7 @@ function emitSave(): void {
 .channels-drawer__body {
   overflow: auto;
   display: grid;
+  align-content: start;
   gap: 16px;
   min-height: 0;
   padding-right: 4px;
@@ -223,24 +226,30 @@ function emitSave(): void {
   min-height: 40px;
 }
 
-.channels-credential-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.credential-drawer__context-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--sky) 8%, transparent), transparent 58%),
+    color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
 }
 
 .credential-drawer__account-context {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .credential-drawer__account-context span {
   display: grid;
   min-width: 0;
-  gap: 5px;
-  padding: 12px;
-  border-radius: 14px;
+  gap: 4px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
   background: color-mix(in srgb, var(--surface) 84%, transparent);
   color: var(--text);
@@ -249,17 +258,24 @@ function emitSave(): void {
 
 .credential-drawer__account-context strong {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.channels-credential-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .channels-credential-summary span {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 10px;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 90%, transparent);
   color: var(--text-soft);
@@ -269,7 +285,7 @@ function emitSave(): void {
 .credential-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .credential-field-grid--compact {
@@ -279,8 +295,8 @@ function emitSave(): void {
 
 .credential-field-card {
   min-width: 0;
-  padding: 12px;
-  border-radius: 14px;
+  padding: 11px;
+  border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
   background: color-mix(in srgb, var(--surface) 84%, transparent);
 }
@@ -330,6 +346,13 @@ html[data-theme="light"] .channels-credential-summary span {
   border-color: rgba(19, 32, 49, 0.12);
 }
 
+html[data-theme="light"] .credential-drawer__context-panel {
+  background:
+    linear-gradient(135deg, rgba(79, 132, 248, 0.08), transparent 58%),
+    rgba(246, 250, 255, 0.9);
+  border-color: rgba(19, 32, 49, 0.1);
+}
+
 html[data-theme="light"] .credential-drawer__account-context span,
 html[data-theme="light"] .credential-field-card {
   background: rgba(255, 255, 255, 0.84);
@@ -364,6 +387,10 @@ html[data-theme="light"] .channels-drawer .form-input {
   }
 
   .credential-drawer__account-context {
+    grid-template-columns: 1fr;
+  }
+
+  .channels-credential-summary {
     grid-template-columns: 1fr;
   }
 
