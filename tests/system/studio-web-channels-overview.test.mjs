@@ -73,9 +73,12 @@ test('workspace layout owns quick overlays instead of pushing them into the over
 
 test('account cards are concise index cards instead of inline form editors', () => {
   assert.match(channelAccountCard, /channel-account-card/);
+  assert.match(channelAccountCard, /channel-account-card__task-group/);
+  assert.match(channelAccountCard, /channel-account-card__manage-actions/);
   assert.match(channelAccountCard, /Credentials|凭据/);
   assert.match(channelAccountCard, /Access|权限/);
   assert.match(channelAccountCard, /Pairing|配对/);
+  assert.doesNotMatch(channelAccountCard, /channel-account-card__secondary-actions/);
   assert.doesNotMatch(channelAccountCard, /form-input/);
   assert.doesNotMatch(channelAccountCard, /form-textarea/);
 });

@@ -25,24 +25,31 @@
 
     <footer class="channel-account-card__actions">
       <button type="button" class="ghost-action ghost-action-primary" @click="$emit('edit')">{{ text('账号详情', 'Account') }}</button>
-      <div class="channel-account-card__secondary-actions">
-        <button type="button" class="ghost-action" @click="$emit('credentials')">{{ text('凭据', 'Credentials') }}</button>
-        <button type="button" class="ghost-action" @click="$emit('access')">{{ text('权限', 'Access') }}</button>
-        <button type="button" class="ghost-action" @click="$emit('pairing')">{{ text('配对', 'Pairing') }}</button>
-        <button type="button" class="ghost-action" @click="$emit('bindings')">{{ text('绑定', 'Bindings') }}</button>
+
+      <section class="channel-account-card__task-group" :aria-label="text('配置任务', 'Configuration tasks')">
+        <span class="channel-account-card__task-label">{{ text('配置任务', 'Tasks') }}</span>
+        <div class="channel-account-card__task-actions">
+          <button type="button" class="ghost-action" @click="$emit('credentials')">{{ text(`凭据 ${configuredCredentialCount}`, `Credentials ${configuredCredentialCount}`) }}</button>
+          <button type="button" class="ghost-action" @click="$emit('access')">{{ text(`权限 ${account.allowFromCount + account.groupAllowFromCount}`, `Access ${account.allowFromCount + account.groupAllowFromCount}`) }}</button>
+          <button type="button" class="ghost-action" @click="$emit('pairing')">{{ text(`配对 ${account.pairingPendingCount}`, `Pairing ${account.pairingPendingCount}`) }}</button>
+          <button type="button" class="ghost-action" @click="$emit('bindings')">{{ text(`绑定 ${bindingCount}`, `Bindings ${bindingCount}`) }}</button>
+        </div>
+      </section>
+
+      <div class="channel-account-card__manage-actions">
+        <button type="button" class="ghost-action ghost-action-danger" :disabled="busy" @click="$emit('toggle-enabled')">
+          {{ busy ? text('处理中...', 'Working...') : account.enabled ? text('禁用', 'Disable') : text('启用', 'Enable') }}
+        </button>
+        <button
+          v-if="account.kind !== 'default'"
+          type="button"
+          class="ghost-action ghost-action-delete"
+          :disabled="busy"
+          @click="$emit('delete')"
+        >
+          {{ text('删除', 'Delete') }}
+        </button>
       </div>
-      <button type="button" class="ghost-action ghost-action-danger" :disabled="busy" @click="$emit('toggle-enabled')">
-        {{ busy ? text('处理中...', 'Working...') : account.enabled ? text('禁用', 'Disable') : text('启用', 'Enable') }}
-      </button>
-      <button
-        v-if="account.kind !== 'default'"
-        type="button"
-        class="ghost-action ghost-action-delete"
-        :disabled="busy"
-        @click="$emit('delete')"
-      >
-        {{ text('删除', 'Delete') }}
-      </button>
     </footer>
   </article>
 </template>
@@ -119,14 +126,39 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
 }
 
 .channel-account-card__actions {
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.75fr) minmax(0, 1.45fr) auto;
+  align-items: stretch;
 }
 
-.channel-account-card__secondary-actions {
-  display: flex;
-  flex: 1 1 360px;
-  flex-wrap: wrap;
-  gap: 8px;
+.channel-account-card__task-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
+  background: color-mix(in srgb, var(--shell-panel-fill) 78%, transparent);
+}
+
+.channel-account-card__task-label {
+  color: var(--muted-soft);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.channel-account-card__task-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.channel-account-card__manage-actions {
+  display: grid;
+  align-content: start;
+  gap: 6px;
 }
 
 .channel-account-card__facts span,
@@ -169,14 +201,12 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
 }
 
 .ghost-action-primary {
-  flex: 1 1 220px;
   background: color-mix(in srgb, var(--sky) 10%, var(--surface));
   border-color: color-mix(in srgb, var(--sky) 26%, var(--line));
   font-weight: 700;
 }
 
 .ghost-action-danger {
-  margin-left: auto;
   color: #b45309;
   border-color: color-mix(in srgb, #f59e0b 24%, var(--line));
 }
@@ -184,5 +214,21 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
 .ghost-action-delete {
   color: #ef4444;
   border-color: color-mix(in srgb, #ef4444 28%, var(--line));
+}
+
+@media (max-width: 1100px) {
+  .channel-account-card__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .channel-account-card__manage-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .channel-account-card__task-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

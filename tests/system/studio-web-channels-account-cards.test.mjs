@@ -14,6 +14,9 @@ const channelAccountIndex = read('apps/web-vue/src/features/channels/ChannelAcco
 
 test('channel account card stays an index card with concise facts and routed task actions', () => {
   assert.match(channelAccountCard, /channel-account-card__summary/);
+  assert.match(channelAccountCard, /channel-account-card__task-group/);
+  assert.match(channelAccountCard, /channel-account-card__task-actions/);
+  assert.match(channelAccountCard, /channel-account-card__manage-actions/);
   assert.match(channelAccountCard, /open-account|edit/);
   assert.match(channelAccountCard, /credentials/);
   assert.match(channelAccountCard, /access/);
@@ -22,6 +25,7 @@ test('channel account card stays an index card with concise facts and routed tas
   assert.match(channelAccountCard, /account\.kind !== 'default'/);
   assert.match(channelAccountCard, /ghost-action-delete/);
   assert.match(channelAccountCard, /\(event: 'delete'\): void/);
+  assert.doesNotMatch(channelAccountCard, /channel-account-card__secondary-actions/);
 
   assert.doesNotMatch(channelAccountCard, /form-input/);
   assert.doesNotMatch(channelAccountCard, /form-textarea/);
