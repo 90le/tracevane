@@ -11,9 +11,6 @@
         </div>
 
         <div class="channel-provider-overview__quick-actions">
-          <button type="button" class="primary-button compact-button" :disabled="quickEditBusy" @click="$emit('open-create-account')">
-            {{ text('新建账号', 'Create account') }}
-          </button>
           <button type="button" class="secondary-button compact-button channel-danger-button" :disabled="quickEditBusy" @click="$emit('delete-channel')">
             {{ text('删除频道', 'Delete provider') }}
           </button>

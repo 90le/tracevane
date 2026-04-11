@@ -12,6 +12,7 @@ function read(filePath) {
 const channelsWorkspaceLayout = read('apps/web-vue/src/features/channels/ChannelsWorkspaceLayout.vue');
 const channelsControlPage = read('apps/web-vue/src/features/channels/ChannelsControlPage.vue');
 const providerOverview = read('apps/web-vue/src/features/channels/ChannelProviderOverview.vue');
+const accountIndex = read('apps/web-vue/src/features/channels/ChannelAccountIndex.vue');
 
 test('channels workspace keeps a persistent stage header with top tabs and account subtabs', () => {
   assert.match(channelsWorkspaceLayout, /channels-stage-header/);
@@ -22,9 +23,12 @@ test('channels workspace keeps a persistent stage header with top tabs and accou
   assert.match(channelsWorkspaceLayout, /channels-subtabs/);
   assert.match(channelsWorkspaceLayout, /openAccountStageTab/);
   assert.match(channelsWorkspaceLayout, /channels-stage-actions/);
-  assert.match(channelsWorkspaceLayout, /Create account|新建账号/);
   assert.match(channelsWorkspaceLayout, /Binding rules|绑定规则/);
+  assert.match(channelsWorkspaceLayout, /Provider settings|Provider 设置/);
+  assert.match(channelsWorkspaceLayout, /Default account access|默认账号权限/);
   assert.match(channelsWorkspaceLayout, /channels-stage-task-card/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /先创建账号，再从账号卡进入凭据和策略。|Create an account first/);
+  assert.match(accountIndex, /Create account|新建账号/);
   assert.doesNotMatch(channelsWorkspaceLayout, /label: text\('账号', 'Accounts'\)/);
   assert.match(channelsWorkspaceLayout, /:channel-label="workspace\.selectedChannel\.value \? workspace\.channelLabel/);
   assert.doesNotMatch(channelsWorkspaceLayout, /Quick configure provider|快捷配置频道/);
@@ -39,6 +43,7 @@ test('channels overview is a thin provider-first surface with summary, quick edi
   assert.match(providerOverview, /update-provider-enabled/);
   assert.match(providerOverview, /update-provider-default-account/);
   assert.match(providerOverview, /open-create-account/);
+  assert.doesNotMatch(providerOverview, /<button type="button" class="primary-button compact-button"[^>]*open-create-account/);
   assert.doesNotMatch(providerOverview, /channels-stage-actions/);
   assert.doesNotMatch(providerOverview, /频道主页/);
   assert.doesNotMatch(providerOverview, /landing surface/i);

@@ -3,8 +3,8 @@
     <header class="channel-account-index__head">
       <div>
         <p class="eyebrow">{{ text('ACCOUNTS', 'ACCOUNTS') }}</p>
-        <h3>{{ text('账号索引', 'Account Index') }}</h3>
-        <p class="panel-muted">{{ text('先看状态，再决定是否进入深度编辑。', 'Scan state first, then decide whether deep editing is needed.') }}</p>
+        <h3>{{ text('账号', 'Accounts') }}</h3>
+        <p class="panel-muted">{{ text('这里创建账号，并从账号卡进入凭据、权限、配对和绑定。', 'Create accounts here, then open credentials, access, pairing, and bindings from each account card.') }}</p>
       </div>
       <button type="button" class="primary-button compact-button" @click="$emit('create-account')">
         {{ text('新建账号', 'Create account') }}

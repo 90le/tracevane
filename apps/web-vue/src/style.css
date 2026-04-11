@@ -3322,15 +3322,15 @@ html[data-theme="light"] .nav-link.router-link-active {
 
 .channels-stage-actions {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .channels-stage-task-card {
   display: grid;
   gap: 5px;
-  min-height: 82px;
-  padding: 12px;
+  min-height: 64px;
+  padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 90%, transparent);
@@ -3361,7 +3361,7 @@ html[data-theme="light"] .nav-link.router-link-active {
 
 .channels-stage-task-card span {
   color: var(--text);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
 }
 

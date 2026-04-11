@@ -13,6 +13,7 @@ const channelsControlPage = read('apps/web-vue/src/features/channels/ChannelsCon
 const channelsWorkspaceLayout = read('apps/web-vue/src/features/channels/ChannelsWorkspaceLayout.vue');
 const channelProviderOverview = read('apps/web-vue/src/features/channels/ChannelProviderOverview.vue');
 const channelAccountCard = read('apps/web-vue/src/features/channels/ChannelAccountCard.vue');
+const channelAccountIndex = read('apps/web-vue/src/features/channels/ChannelAccountIndex.vue');
 const channelIssueList = read('apps/web-vue/src/features/channels/ChannelIssueList.vue');
 const channelSummaryStrip = read('apps/web-vue/src/features/channels/ChannelSummaryStrip.vue');
 const channelBindingsPage = read('apps/web-vue/src/features/channels/ChannelBindingsPage.vue');
@@ -54,8 +55,12 @@ test('provider overview composes summary and index surfaces while stage actions 
   assert.match(channelsControlPage, /function openBindingsPage/);
   assert.match(channelsControlPage, /intent:\s*'create'/);
   assert.doesNotMatch(channelProviderOverview, /channels-stage-actions/);
-  assert.match(channelsWorkspaceLayout, /Create account|新建账号/);
   assert.match(channelsWorkspaceLayout, /Binding rules|绑定规则/);
+  assert.match(channelsWorkspaceLayout, /Provider settings|Provider 设置/);
+  assert.match(channelsWorkspaceLayout, /Default account access|默认账号权限/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /先创建账号，再从账号卡进入凭据和策略。|Create an account first/);
+  assert.match(channelAccountIndex, /Create account|新建账号/);
+  assert.match(channelAccountIndex, /这里创建账号，并从账号卡进入凭据、权限、配对和绑定。|Create accounts here/);
   assert.match(channelsWorkspaceLayout, /channels-stage-actions/);
   assert.doesNotMatch(channelsWorkspaceLayout, /Quick configure provider|快捷配置频道/);
 });

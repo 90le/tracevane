@@ -147,11 +147,7 @@
           </nav>
 
           <div v-if="activeTopTab === 'overview'" class="channels-stage-actions">
-            <button type="button" class="channels-stage-task-card primary" @click="workspace.openOverlay('new-account')">
-              <span>{{ text('新建账号', 'Create account') }}</span>
-              <strong>{{ text('先创建账号，再从账号卡进入凭据和策略。', 'Create an account first, then open credentials and policies from the account card.') }}</strong>
-            </button>
-            <button type="button" class="channels-stage-task-card" @click="openStageTab('settings')">
+            <button type="button" class="channels-stage-task-card primary" @click="openStageTab('settings')">
               <span>{{ text('Provider 设置', 'Provider settings') }}</span>
               <strong>{{ text('编辑 provider 默认值和高级 JSON。', 'Edit provider defaults and advanced JSON.') }}</strong>
             </button>

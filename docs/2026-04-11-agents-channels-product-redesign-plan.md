@@ -74,6 +74,12 @@
 - Provider 概览保留 `summary / issues / quick edit / account index`，不再同时在 header 再铺 5 个入口。
 - `默认账号权限 / 待配对` 这类快捷入口移动到默认账号卡或 issue list，而不是顶层所有 provider 都显示。
 
+当前实现：
+
+- 顶部 stage actions 已先从 5 个任务卡压到 4 个，移除了重复的 `新建账号`。
+- `新建账号` 入口统一放在账号索引区，和账号列表、默认账号/命名账号分组保持同一语义层级。
+- Provider 快改区只保留启用状态、默认账号和删除 provider，复杂配置继续进入 Settings。
+
 涉及文件：
 
 - `ChannelsWorkspaceLayout.vue`
