@@ -1,0 +1,66 @@
+{
+  "name": "@binbin/studio",
+  "version": "0.1.21",
+  "description": "OpenClaw Studio - Management Console Recovery",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "openclaw": {
+    "id": "studio",
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "minHostVersion": ">=2026.4.8"
+    },
+    "kind": "ui",
+    "installDependencies": true
+  },
+  "workspaces": [
+    "apps/api",
+    "apps/web-vue"
+  ],
+  "scripts": {
+    "build:api": "tsc -p tsconfig.json",
+    "build": "npm run build:web && tsc -p tsconfig.json",
+    "build:web": "npm run build --workspace=apps/web-vue",
+    "dev:api": "npm run build:api && node scripts/start-standalone-api.mjs",
+    "dev:fresh": "bash scripts/dev-fresh.sh",
+    "dev:restart": "bash scripts/restart-dev.sh",
+    "dev:web": "npm run dev --workspace=apps/web-vue",
+    "smoke:chat:browser": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/browser.acceptance.py",
+    "smoke:chat:gateway": "python tests/chat/gateway.acceptance.py",
+    "smoke:chat:fresh-tool": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/fresh-tool.acceptance.py",
+    "smoke:chat:im": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/chat-im.acceptance.py",
+    "smoke:chat:surface": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/surface.acceptance.py",
+    "test:chat": "npm run build:api && node --test tests/chat/*.test.mjs && npm run test:chat:web",
+    "test:system": "npm run build:api && node --test tests/system/*.test.mjs",
+    "test:chat:web": "cd /home/binbin/.openclaw/extensions/openclaw-studio && npx tsx --test tests/chat/markdown-rendering.test.ts tests/chat/chat-runtime-view-model.test.ts tests/chat/chat-slash-commands.test.ts",
+    "test:chat:integration": "npm run build:api && OPENCLAW_STUDIO_ENABLE_REAL_CHAT_INTEGRATION=1 OPENCLAW_STUDIO_TEST_OPENCLAW_ROOT=/home/binbin/.openclaw node --test tests/chat/api.integration.test.mjs tests/chat/transport.integration.test.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:api": "tsc -p tsconfig.json --noEmit",
+    "typecheck:web": "npm run typecheck --workspace=apps/web-vue",
+    "install:all": "npm install && npm install --workspace=apps/web-vue"
+  },
+  "author": "binbin",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build and generated output
+dist/
+**/dist/
+build/
+**/build/
+out/
+coverage/
+*.tsbuildinfo
+
+# Local runtime and cache state
+.tmp/
+.omc/
+.cache/
+graphify-out/
+*.log
+*.pid
+
+# Local planning notes
+findings.md
+progress.md
+task_plan.md
+
+# Environment overrides
+.env
+.env.*
+!.env.example
+
+# Release packaging output
+release/
+*.tgz
+*.tar.gz
+*.zip

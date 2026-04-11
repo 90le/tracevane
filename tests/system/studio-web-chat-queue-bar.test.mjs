@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const rootDir = '/home/binbin/.openclaw/extensions/openclaw-studio';
+const queuedMessageRail = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/QueuedMessageRail.vue'),
+  'utf8',
+);
+const chatShellPage = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatShellPage.vue'),
+  'utf8',
+);
+const conversationPane = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ConversationPane.vue'),
+  'utf8',
+);
+
+function assertInOrder(source, parts) {
+  let cursor = 0;
+  for (const part of parts) {
+    const index = source.indexOf(part, cursor);
+    assert.notEqual(index, -1, `Missing sequence part: ${part}`);
+    cursor = index + part.length;
+  }
+}
+
+test('chat shell owns queue expansion state and clears it on empty queues and session changes', () => {
+  assertInOrder(chatShellPage, [
+    'const mobileSessionDrawerOpen = ref(false);',
+    'const queueRailExpanded = ref(false);',
+    'const mobileQueueSheetOpen = ref(false);',
+  ]);
+  assert.match(chatShellPage, /function applyQueueState\(sessionKey: string, items: ChatQueuedMessageItem\[\]\): void \{[\s\S]*if \(sessionKey === selectedSessionKey\.value && items\.length === 0\) \{[\s\S]*queueRailExpanded\.value = false;[\s\S]*mobileQueueSheetOpen\.value = false;[\s\S]*\}/);
+  assert.match(chatShellPage, /watch\(selectedSessionKey, async \(sessionKey, previousKey\) => \{[\s\S]*composerDocument\.value = createEmptyComposerDocument\(\);[\s\S]*composerAttachments\.value = \[\];[\s\S]*queueRailExpanded\.value = false;[\s\S]*mobileQueueSheetOpen\.value = false;/);
+});
+
+test('conversation pane keeps inline rail ownership separate from the mobile sheet path', () => {
+  assert.match(conversationPane, /<QueuedMessageRail[\s\S]*:summary-expanded="queueRailExpanded"[\s\S]*@update:summary-expanded="\$emit\('update:queue-rail-expanded', \$event\)"[\s\S]*@open-sheet="openQueueSheet"/);
+  assert.match(conversationPane, /<DialogRoot[\s\S]*:open="Boolean\(selectedSession && isCompactViewport && mobileQueueSheetOpen && queuedItems\.length\)"[\s\S]*@update:open="handleQueueSheetOpenChange"/);
+  assert.match(conversationPane, /class="chat-conversation-pane__queue-sheet"/);
+  assert.match(conversationPane, /<QueuedMessageRail[\s\S]*:presentation-mode="'sheet'"/);
+});
+
+test('queued message rail hides empty queues and switches to a dedicated sheet presentation mode', () => {
+  assert.match(queuedMessageRail, /<section v-if="items\.length" class="chat-queue-rail"/);
+  assert.match(queuedMessageRail, /presentationMode\?: 'rail' \| 'sheet';/);
+  assert.match(queuedMessageRail, /v-if="presentationMode === 'rail'"/);
+  assert.match(queuedMessageRail, /v-if="summaryExpanded \|\| presentationMode === 'sheet'"/);
+});

@@ -1,0 +1,5322 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import type http from 'node:http';
+import type { Duplex } from 'node:stream';
+import { WebSocket, WebSocketServer } from 'ws';
+import type { StudioServerConfig } from '../../../../types/api.js';
+import type {
+  ChatAbortResponse,
+  ChatGatewayAckResponse,
+  ChatGatewayAttachPayload,
+  ChatGatewayAttachResponse,
+  ChatGatewayDetachPayload,
+  ChatGatewayHeartbeatPayload,
+  ChatAssignSessionsToFolderRequest,
+  ChatAssignSessionsToFolderResponse,
+  ChatCreateOrganizerFolderRequest,
+  ChatCreateOrganizerFolderResponse,
+  ChatCreateSessionRequest,
+  ChatCreateSessionResponse,
+  ChatDeleteSessionResponse,
+  ChatDeleteOrganizerFolderResponse,
+  ChatDiagnostics,
+  ChatFileUploadRequest,
+  ChatFileUploadResponse,
+  ChatHistoryCursor,
+  ChatHistoryDatesPayload,
+  ChatHistoryPayload,
+  ChatHistorySearchContentFilter,
+  ChatHistorySearchMatch,
+  ChatHistorySearchRoleFilter,
+  ChatHistorySearchPayload,
+  ChatMessageItem,
+  ChatMessageToolCallItem,
+  ChatObservabilityState,
+  ChatOrganizerPayload,
+  ChatPatchQueueEntryRequest,
+  ChatPatchOrganizerFolderRequest,
+  ChatPatchOrganizerFolderResponse,
+  ChatPatchSessionRequest,
+  ChatPatchSessionResponse,
+  ChatPatchSessionControlsRequest,
+  ChatQueuePayload,
+  ChatQueuedMessageItem,
+  ChatResourceItem,
+  ChatRunProjection,
+  ChatRunOverlay,
+  ChatResetResponse,
+  ChatRuntimeState,
+  ChatSendAck,
+  ChatSendFileRef,
+  ChatSendStatus,
+  ChatSendRequest,
+  ChatSessionControlState,
+  ChatSessionControlsPayload,
+  ChatSessionFolder,
+  ChatSessionKind,
+  ChatSessionOrganizerState,
+  ChatSessionRow,
+  ChatProtocolMode,
+  ChatSessionsPayload,
+  ChatStreamEvent,
+  ChatToolCard,
+} from '../../../../types/chat.js';
+import type { SystemService } from '../system/service.js';
+import { readJsonFile, writeJsonFile } from '../../core/state.js';
+import { CHAT_API_PATHS, CHAT_PROTOCOL_MODE_DEFAULT, CHAT_SEND_STATUS_MAP } from './contract.js';
+import {
+  CHAT_POLICY_DEFAULTS,
+  buildChatSessionPermissions,
+  classifyChatSessionKind,
+} from './session-policy.js';
+import {
+  isStudioChatWsPath,
+  resolveStudioChatCorsOrigin,
+  sendSseEvent,
+  startSse,
+} from '../../core/http.js';
+import {
+  appendTimelineItem,
+  cloneObservabilityState,
+  createEmptyObservabilityState,
+  deriveObservabilityFromHistory,
+  normalizeUsageSummary,
+  upsertToolCard,
+} from './observability.js';
+import {
+  buildSessionPresentation,
+  buildDefaultSessionLabel,
+  buildRuntimeState,
+  buildStudioManagedRowFromRegistry,
+  buildStudioManagedSessionRow,
+  deriveAgentIdFromSessionKey,
+  mapLocalSessionRow,
+  readStudioChatRegistry,
+  resolveAgentSessionsStorePath,
+  resolveAvailableAgentIds,
+  StudioSessionRegistryEntry,
+  LocalSessionRecord,
+  writeStudioChatRegistry,
+} from './session-model.js';
+import {
+  extractTranscriptRecord,
+  extractTranscriptToolName,
+  extractMessageText,
+  isAssistantNoReplyMessage,
+  isAssistantStudioDeliveryToolUseEnvelope,
+  mapCanonicalEntriesFromParsedEntries,
+  mapMessagesFromParsedEntries,
+  mapTranscriptCanonicalEntry,
+  mapTranscriptMessage,
+  readTranscriptCanonicalEntries,
+  readTranscriptMessages,
+  type TranscriptMappingOptions,
+  type TranscriptCanonicalEntry,
+  type TranscriptOverrideResult,
+} from './transcript.js';
+import {
+  createStudioChatMediaBridge,
+  type ResolvedChatMedia,
+  safeStatSync,
+} from './media-bridge.js';
+import { createStudioChatMessageShadowStore } from './message-shadow-store.js';
+import {
+  cloneChatMessageToolCallItem,
+  cloneChatRunProjection,
+  createStudioChatRunProjectionStore,
+  isRunProjectionTerminal,
+  type StudioAssistantRunShadow,
+} from './run-projection-store.js';
+import { mapGatewayAgentEventPayload } from './agent-event-mapper.js';
+import {
+  LruMap,
+  normalizeDate,
+  normalizeString,
+  summarizeUnknown,
+} from './shared.js';
+import { createStudioChatHistoryIndexStore } from './history-index.js';
+import {
+  listRunOverlaysForHistorySnapshot,
+  supplementHistoryWithRunState as supplementHistoryWithRunStateSnapshot,
+} from './history-snapshot.js';
+import { mergeCanonicalMessageLedger, normalizeMessageLedger } from '../../../../lib/chat-runtime-state.js';
+import {
+  assignSessionsToFolderInOrganizer,
+  createEmptyChatSessionOrganizerState,
+  createFolderInOrganizer,
+  deleteFolderFromOrganizer,
+  normalizeChatSessionOrganizerState,
+  patchFolderInOrganizer,
+  removeSessionsFromOrganizer,
+} from '../../../../lib/chat-session-organizer.js';
+import {
+  buildComposerMessageBlocks,
+  extractComposerPlainText,
+  normalizeComposerDocument,
+  serializeComposerDocumentToMarkdown,
+} from '../../../../lib/composer-model.js';
+import {
+  buildGatewayConnectRequest,
+  loadGatewayAuthContext,
+} from './gateway-auth.js';
+import { requestGateway } from './gateway-request.js';
+import {
+  createSessionGatewayBridge,
+  rejectBridgePending,
+  requestViaBridge,
+  type SessionGatewayBridge,
+} from './session-bridge-manager.js';
+import {
+  ChatServiceError,
+  buildChatError,
+  isChatServiceError,
+  mapGatewayContractError,
+} from './errors.js';
+import { createStudioChatOrganizerStore } from './organizer-store.js';
+import { createStudioChatDurableMirrorStore } from './durable-mirror-store.js';
+import { applyDerivedAutoLabelToSessionRow } from '../../../../lib/chat-session-auto-title.js';
+import { maybeAutoApproveStudioHelperPairing } from '../system/device-trust.js';
+import {
+  clearStudioChatSessionHostManagementExecEnabled,
+  setStudioChatSessionHostManagementExecEnabled,
+} from '../../../../lib/studio-chat-management-policy.js';
+
+interface StudioManagedSessionState {
+  row: ChatSessionRow;
+  messages: ChatMessageItem[];
+  diagnosticsNotes: string[];
+  observability: ChatObservabilityState;
+  pendingQueue: ChatQueuedMessageItem[];
+  controls: ChatSessionControlState;
+  materialized?: boolean;
+  resetPending?: boolean;
+  clearedAt?: string | null;
+}
+
+interface ChatSubscriber {
+  socket: WebSocket;
+  sessionKey: string;
+  closeBridge: () => void;
+}
+
+interface ChatGatewaySubscriber {
+  connId: string;
+  emit: (event: ChatStreamEvent) => boolean;
+  lastLeaseAt: number;
+}
+
+interface ChatGatewayRuntime {
+  connId: string;
+  emit: (event: ChatStreamEvent) => boolean;
+}
+
+type ChatCanonicalSourceSelection =
+  | {
+    kind: 'local_transcript';
+    agentId: string;
+    record: LocalSessionRecord | null;
+    sessionFile: string;
+    sourceMtimeMs: number | null;
+    priorSessionFiles: string[];
+  }
+  | {
+    kind: 'official_canonical_stream';
+    agentId: string;
+    record: LocalSessionRecord | null;
+    sessionFile: null;
+    sourceMtimeMs: null;
+    priorSessionFiles: string[];
+  };
+
+interface ChatCanonicalEntry {
+  message: ChatMessageItem;
+  messageId: string;
+  messageSeq: number;
+  identityKey: string;
+}
+
+interface ChatCanonicalState {
+  sessionKey: string;
+  version: string;
+  source: 'local_transcript' | 'history_sse' | 'history_rpc' | 'studio_mirror';
+  entries: ChatCanonicalEntry[];
+}
+
+interface OfficialCanonicalStreamState {
+  sessionKey: string;
+  controller: AbortController | null;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
+  resyncPromise: Promise<void> | null;
+  active: boolean;
+}
+
+function formatGatewayFileRef(relativePath: string): string {
+  return /\s/.test(relativePath) ? `@"${relativePath}"` : `@${relativePath}`;
+}
+
+const CHAT_GATEWAY_LEASE_MS = 35_000;
+const CHAT_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
+
+function compileGatewayMessageText(text: string, fileRefs: ChatSendFileRef[]): string {
+  const refs = fileRefs.map((item) => formatGatewayFileRef(item.relativePath));
+  if (!refs.length) {
+    return text;
+  }
+  if (!text) {
+    return refs.join(' ');
+  }
+  return `${refs.join(' ')}\n---\n${text}`;
+}
+
+function mergeResources(
+  ...groups: Array<ChatResourceItem[] | undefined>
+): ChatResourceItem[] | undefined {
+  const merged: ChatResourceItem[] = [];
+  const seen = new Set<string>();
+
+  for (const group of groups) {
+    for (const item of group || []) {
+      const key = `${item.kind}:${item.url}:${item.downloadUrl}:${item.id}:${item.relativePath || item.fileName}:${item.source}:${item.status}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      merged.push(item);
+    }
+  }
+
+  return merged.length ? merged : undefined;
+}
+
+function cloneChatMessageItem<T extends ChatMessageItem | null | undefined>(value: T): T {
+  if (!value) {
+    return value;
+  }
+  return {
+    ...value,
+    toolCalls: value.toolCalls?.map(cloneChatMessageToolCallItem),
+    blocks: value.blocks?.map((item) => ({ ...item })),
+    processBlocks: value.processBlocks?.map((item) => ({ ...item })),
+    resources: value.resources?.map((item) => ({ ...item })),
+    media: value.media?.map((item) => ({ ...item })),
+  } as T;
+}
+
+function createDefaultSessionControls(): ChatSessionControlState {
+  return {
+    allowHostManagementExec: false,
+    updatedAt: null,
+  };
+}
+
+function cloneChatQueuedMessageItem<T extends ChatQueuedMessageItem | null | undefined>(value: T): T {
+  if (!value) {
+    return value;
+  }
+  return {
+    ...value,
+    composerDocument: value.composerDocument?.map((node) => ({ ...node })),
+    fileRefs: value.fileRefs?.map((item) => ({ ...item })),
+    attachments: value.attachments?.map((item) => ({ ...item })),
+  } as T;
+}
+
+function cloneChatQueuedMessageList(items: ChatQueuedMessageItem[] | undefined): ChatQueuedMessageItem[] {
+  return (items || []).map((item) => cloneChatQueuedMessageItem(item)!);
+}
+
+function cloneSessionControls(value: ChatSessionControlState | null | undefined): ChatSessionControlState {
+  return {
+    allowHostManagementExec: value?.allowHostManagementExec === true,
+    updatedAt: normalizeDate(value?.updatedAt) || null,
+  };
+}
+
+function cloneToolCalls(toolCalls: ChatMessageToolCallItem[] | undefined): ChatMessageToolCallItem[] | undefined {
+  return toolCalls?.map(cloneChatMessageToolCallItem);
+}
+
+function sortToolCalls(toolCalls: ChatMessageToolCallItem[]): ChatMessageToolCallItem[] {
+  return toolCalls.slice().sort((left, right) => {
+    const leftTs = Date.parse(left.startedAt || left.updatedAt || '') || 0;
+    const rightTs = Date.parse(right.startedAt || right.updatedAt || '') || 0;
+    if (leftTs !== rightTs) {
+      return leftTs - rightTs;
+    }
+    return left.toolCallId.localeCompare(right.toolCallId);
+  });
+}
+
+function toolStatusRank(status: ChatMessageToolCallItem['status'] | ChatToolCard['status'] | null | undefined): number {
+  if (status === 'error') return 3;
+  if (status === 'completed') return 2;
+  return 1;
+}
+
+function pickMonotonicToolStatus<T extends ChatMessageToolCallItem['status'] | ChatToolCard['status']>(
+  current: T | null | undefined,
+  next: T | null | undefined,
+): T {
+  return (toolStatusRank(next) >= toolStatusRank(current) ? next : current || next || 'running') as T;
+}
+
+function pickPreferredToolPreview(current: string | null | undefined, next: string | null | undefined): string | null {
+  const normalizedCurrent = normalizeString(current) || null;
+  const normalizedNext = normalizeString(next) || null;
+  if (!normalizedCurrent) {
+    return normalizedNext;
+  }
+  if (!normalizedNext) {
+    return normalizedCurrent;
+  }
+  if (normalizedNext.length > normalizedCurrent.length + 12) {
+    return normalizedNext;
+  }
+  if (normalizedCurrent.length > normalizedNext.length + 12) {
+    return normalizedCurrent;
+  }
+  return normalizedNext.length >= normalizedCurrent.length ? normalizedNext : normalizedCurrent;
+}
+
+function projectionLifecycleRank(value: ChatRunProjection['lifecycle'] | null | undefined): number {
+  if (value === 'error') return 5;
+  if (value === 'completed') return 4;
+  if (value === 'aborted') return 3;
+  if (value === 'running') return 2;
+  if (value === 'queued') return 1;
+  return 0;
+}
+
+function pickProjectionLifecycle(
+  current: ChatRunProjection['lifecycle'] | null | undefined,
+  next: ChatRunProjection['lifecycle'] | null | undefined,
+): ChatRunProjection['lifecycle'] {
+  if (!next) {
+    return current || 'queued';
+  }
+  return projectionLifecycleRank(next) >= projectionLifecycleRank(current) ? next : (current || next);
+}
+
+function mergeToolCallItem(
+  previous: ChatMessageToolCallItem | ChatToolCard,
+  next: ChatMessageToolCallItem | ChatToolCard,
+): ChatMessageToolCallItem {
+  const mergedStatus = pickMonotonicToolStatus(previous.status, next.status);
+  const nextResultPreview = normalizeString(next.resultPreview) || null;
+  const previousResultPreview = normalizeString(previous.resultPreview) || null;
+  return {
+    ...previous,
+    ...next,
+    toolCallId: previous.toolCallId || next.toolCallId,
+    runId: previous.runId || next.runId,
+    name: previous.name || next.name,
+    status: mergedStatus,
+    startedAt: previous.startedAt || next.startedAt,
+    updatedAt: normalizeDate(next.updatedAt) || normalizeDate(previous.updatedAt) || null,
+    argsPreview: pickPreferredToolPreview(previous.argsPreview, next.argsPreview),
+    resultPreview: (
+      toolStatusRank(next.status) > toolStatusRank(previous.status) && nextResultPreview
+        ? nextResultPreview
+        : pickPreferredToolPreview(previousResultPreview, nextResultPreview)
+    ),
+    isError: previous.isError || next.isError || mergedStatus === 'error',
+    artifacts: next.artifacts?.length ? next.artifacts.map((item) => ({ ...item })) : previous.artifacts?.map((item) => ({ ...item })),
+  };
+}
+
+function mergeToolCallLists(
+  current: ChatMessageToolCallItem[] | undefined,
+  incoming: ChatMessageToolCallItem[] | undefined,
+): ChatMessageToolCallItem[] | undefined {
+  if (!current?.length && !incoming?.length) {
+    return undefined;
+  }
+  const merged = new Map<string, ChatMessageToolCallItem>();
+  for (const item of current || []) {
+    merged.set(item.toolCallId, cloneChatMessageToolCallItem(item));
+  }
+  for (const item of incoming || []) {
+    const previous = merged.get(item.toolCallId);
+    merged.set(item.toolCallId, previous ? mergeToolCallItem(previous, item) : cloneChatMessageToolCallItem(item));
+  }
+  return sortToolCalls([...merged.values()]);
+}
+
+function enrichMessagesWithToolCards(
+  messages: ChatMessageItem[],
+  toolCards: ChatToolCard[] | undefined,
+): ChatMessageItem[] {
+  if (!toolCards?.length) {
+    return messages;
+  }
+  const byId = new Map(toolCards.map((item) => [item.toolCallId, item]));
+  return messages.map((message) => {
+    if (!message.toolCalls?.length) {
+      return message;
+    }
+    const nextToolCalls = message.toolCalls.map((toolCall) => {
+      const card = byId.get(toolCall.toolCallId);
+      return card ? mergeToolCallItem(toolCall, card) : toolCall;
+    });
+    return {
+      ...message,
+      toolCalls: nextToolCalls,
+    };
+  });
+}
+
+function enrichOverlaysWithToolCards(
+  overlays: ChatRunOverlay[],
+  toolCards: ChatToolCard[] | undefined,
+): ChatRunOverlay[] {
+  if (!toolCards?.length) {
+    return overlays;
+  }
+  const byId = new Map(toolCards.map((item) => [item.toolCallId, item]));
+  return overlays.map((overlay) => ({
+    ...overlay,
+    toolCalls: overlay.toolCalls.map((toolCall) => {
+      const card = byId.get(toolCall.toolCallId);
+      return card ? mergeToolCallItem(toolCall, card) : toolCall;
+    }),
+  }));
+}
+
+function encodeHistoryCursor(cursor: ChatHistoryCursor): string {
+  return Buffer.from(JSON.stringify(cursor), 'utf-8').toString('base64url');
+}
+
+function normalizeHistorySearchRoleFilter(value: unknown): ChatHistorySearchRoleFilter {
+  return value === 'user' || value === 'assistant' || value === 'tool'
+    ? value
+    : 'all';
+}
+
+function normalizeHistorySearchContentFilter(value: unknown): ChatHistorySearchContentFilter {
+  return value === 'text' || value === 'resource' || value === 'code'
+    ? value
+    : 'all';
+}
+
+function decodeHistoryCursor(value: string | null | undefined): ChatHistoryCursor | null {
+  const normalized = normalizeString(value);
+  if (!normalized) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(normalized, 'base64url').toString('utf-8')) as ChatHistoryCursor;
+    if (!parsed || typeof parsed !== 'object' || !Number.isInteger(parsed.anchorIndex)) {
+      return null;
+    }
+    const roleFilter = normalizeHistorySearchRoleFilter((parsed as { roleFilter?: unknown }).roleFilter);
+    const contentFilter = normalizeHistorySearchContentFilter((parsed as { contentFilter?: unknown }).contentFilter);
+    return {
+      source: parsed.source === 'history_search' ? 'history_search' : 'history_window',
+      anchorIndex: Math.max(0, parsed.anchorIndex),
+      anchorMessageId: normalizeString(parsed.anchorMessageId) || null,
+      anchorCreatedAt: normalizeDate(parsed.anchorCreatedAt) || null,
+      day: normalizeString(parsed.day) || null,
+      query: normalizeString(parsed.query) || null,
+      roleFilter: parsed.source === 'history_search' ? roleFilter : null,
+      contentFilter: parsed.source === 'history_search' ? contentFilter : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function upsertProjectionToolCallItem(
+  toolCalls: ChatMessageToolCallItem[] | undefined,
+  nextTool: ChatMessageToolCallItem,
+): ChatMessageToolCallItem[] {
+  const current = toolCalls?.map(cloneChatMessageToolCallItem) || [];
+  const index = current.findIndex((item) => item.toolCallId === nextTool.toolCallId);
+  if (index >= 0) {
+    const previous = current[index]!;
+    current[index] = mergeToolCallItem(previous, nextTool);
+  } else {
+    current.push(cloneChatMessageToolCallItem(nextTool));
+  }
+  return sortToolCalls(current);
+}
+
+function overlayHasVisibleContent(overlay: ChatRunOverlay | null | undefined): boolean {
+  if (!overlay) {
+    return false;
+  }
+  return Boolean(overlay.previewText.trim() || overlay.toolCalls.length);
+}
+
+function isCanonicalToolStepAssistantMessage(message: ChatMessageItem): boolean {
+  if (message.role !== 'assistant' || !message.toolCalls?.length) {
+    return false;
+  }
+  if (normalizeString(message.stopReason).toLowerCase() === 'tooluse') {
+    return true;
+  }
+  return !normalizeString(message.text);
+}
+
+function filterRedundantTerminalOverlays(
+  messages: ChatMessageItem[],
+  overlays: ChatRunOverlay[],
+): ChatRunOverlay[] {
+  const canonicalToolStepToolCallIds = new Set(
+    messages
+      .filter((message) => isCanonicalToolStepAssistantMessage(message))
+      .flatMap((message) => (message.toolCalls || []).map((toolCall) => normalizeString(toolCall.toolCallId)))
+      .filter(Boolean),
+  );
+  if (!canonicalToolStepToolCallIds.size) {
+    return overlays;
+  }
+  return overlays.filter((overlay) => {
+    if (overlay.lifecycle === 'running' || overlay.lifecycle === 'queued') {
+      return true;
+    }
+    if (!overlay.toolCalls.length) {
+      return true;
+    }
+    return overlay.toolCalls.some((toolCall) => !canonicalToolStepToolCallIds.has(normalizeString(toolCall.toolCallId)));
+  });
+}
+
+function mergeHistoryAssistantMessage(
+  current: ChatMessageItem,
+  supplement: {
+    runId: string | null;
+    toolCalls?: ChatMessageToolCallItem[] | undefined;
+  },
+): ChatMessageItem {
+  return {
+    ...current,
+    runId: current.runId || supplement.runId,
+    toolCalls: mergeToolCallLists(current.toolCalls, supplement.toolCalls),
+  };
+}
+
+function deriveLastMessagePreview(message: ChatMessageItem | undefined, fallback: string | null): string | null {
+  if (!message) {
+    return fallback;
+  }
+  return message.text.slice(0, 160)
+    || message.resources?.[0]?.fileName
+    || message.toolCalls?.[message.toolCalls.length - 1]?.name
+    || fallback;
+}
+
+function isGatewayHistoryStaleAfterLocalReset(
+  inMemory: StudioManagedSessionState | null,
+  gatewayMessages: ChatMessageItem[],
+): boolean {
+  if (!inMemory || inMemory.messages.length > 0 || !gatewayMessages.length) {
+    return false;
+  }
+
+  const resetAt = Date.parse(inMemory.clearedAt || '') || 0;
+  if (!resetAt) {
+    return false;
+  }
+
+  return gatewayMessages.every((message) => (Date.parse(message.createdAt || '') || 0) < resetAt);
+}
+
+function isGatewayHistoryBehindInMemory(
+  inMemory: StudioManagedSessionState | null,
+  gatewayMessages: ChatMessageItem[],
+): boolean {
+  if (!inMemory) {
+    return false;
+  }
+  const currentHistory = normalizeMessageLedger(inMemory.messages.slice());
+  if (!currentHistory.length) {
+    return false;
+  }
+  if (!gatewayMessages.length) {
+    return true;
+  }
+  if (gatewayMessages.length < currentHistory.length) {
+    return true;
+  }
+  const gatewayLastTs = Date.parse(gatewayMessages[gatewayMessages.length - 1]?.createdAt || '') || 0;
+  const inMemoryLastTs = Date.parse(currentHistory[currentHistory.length - 1]?.createdAt || '') || 0;
+  if (inMemoryLastTs && gatewayLastTs + 2_000 < inMemoryLastTs) {
+    return true;
+  }
+  return false;
+}
+
+
+function createBaseDiagnostics(config: StudioServerConfig, gatewayReachable: boolean, notes: string[]): ChatDiagnostics {
+  return {
+    gatewayReachable,
+    gatewayWsUrl: config.gatewayWsUrl,
+    transport: 'studio_bff',
+    authMode: 'studio_backend_token',
+    rawGatewayFramesExposed: false,
+    rawGatewayMethodsExposed: false,
+    sameOriginRequired: CHAT_POLICY_DEFAULTS.defaultSameOriginRequired,
+    historyTruncated: false,
+    truncationMode: 'none',
+    notes,
+  };
+}
+
+export interface ChatSlashGatewayRequest {
+  method: string;
+  params?: Record<string, unknown> | null;
+}
+
+export interface ChatService {
+  getHealth(): Promise<ChatDiagnostics>;
+  getOrganizer(): Promise<ChatOrganizerPayload>;
+  createFolder(payload: ChatCreateOrganizerFolderRequest): Promise<ChatCreateOrganizerFolderResponse>;
+  patchFolder(folderId: string, payload: ChatPatchOrganizerFolderRequest): Promise<ChatPatchOrganizerFolderResponse>;
+  deleteFolder(folderId: string): Promise<ChatDeleteOrganizerFolderResponse>;
+  assignSessionsToFolder(payload: ChatAssignSessionsToFolderRequest): Promise<ChatAssignSessionsToFolderResponse>;
+  listSessions(agentId: string): Promise<ChatSessionsPayload>;
+  getHistory(
+    sessionKey: string,
+    options?: {
+      before?: string | null;
+      after?: string | null;
+      anchor?: string | null;
+      limit?: number;
+      day?: string | null;
+    },
+  ): Promise<ChatHistoryPayload>;
+  searchHistory(
+    sessionKey: string,
+    options: {
+      query: string;
+      role?: ChatHistorySearchRoleFilter | null;
+      content?: ChatHistorySearchContentFilter | null;
+      day?: string | null;
+      before?: string | null;
+      after?: string | null;
+      limit?: number;
+    },
+  ): Promise<ChatHistorySearchPayload>;
+  getHistoryDates(sessionKey: string): Promise<ChatHistoryDatesPayload>;
+  createSession(agentId: string, payload: ChatCreateSessionRequest): Promise<ChatCreateSessionResponse>;
+  patchSession(sessionKey: string, payload: ChatPatchSessionRequest): Promise<ChatPatchSessionResponse>;
+  getQueue(sessionKey: string): Promise<ChatQueuePayload>;
+  enqueue(sessionKey: string, payload: ChatSendRequest): Promise<ChatQueuePayload>;
+  patchQueueEntry(sessionKey: string, entryId: string, payload: ChatPatchQueueEntryRequest): Promise<ChatQueuePayload>;
+  deleteQueueEntry(sessionKey: string, entryId: string): Promise<ChatQueuePayload>;
+  getControls(sessionKey: string): Promise<ChatSessionControlsPayload>;
+  patchControls(sessionKey: string, payload: ChatPatchSessionControlsRequest): Promise<ChatSessionControlsPayload>;
+  requestSlashGateway(sessionKey: string, payload: ChatSlashGatewayRequest): Promise<unknown>;
+  send(sessionKey: string, payload: ChatSendRequest): Promise<ChatSendAck>;
+  resolveMedia(sessionKey: string, mediaId: string): Promise<ResolvedChatMedia>;
+  deleteSession(sessionKey: string): Promise<ChatDeleteSessionResponse>;
+  abort(sessionKey: string): Promise<ChatAbortResponse>;
+  reset(sessionKey: string): Promise<ChatResetResponse>;
+  uploadFile(sessionKey: string, payload: ChatFileUploadRequest): Promise<ChatFileUploadResponse>;
+  attachGatewayClient(
+    payload: ChatGatewayAttachPayload,
+    runtime: ChatGatewayRuntime,
+  ): Promise<ChatGatewayAttachResponse>;
+  heartbeatGatewayClient(
+    payload: ChatGatewayHeartbeatPayload,
+    runtime: Pick<ChatGatewayRuntime, 'connId'>,
+  ): ChatGatewayAckResponse;
+  detachGatewayClient(
+    payload: ChatGatewayDetachPayload,
+    runtime: Pick<ChatGatewayRuntime, 'connId'>,
+  ): ChatGatewayAckResponse;
+  openEventStream(sessionKey: string, req: http.IncomingMessage, res: http.ServerResponse): Promise<void>;
+  handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
+  dispose(): void;
+}
+
+export interface CreateChatServiceOptions {
+  config: StudioServerConfig;
+  system: SystemService;
+}
+
+export function createChatService(options: CreateChatServiceOptions): ChatService {
+  const mediaBridge = createStudioChatMediaBridge(options.config);
+  const shadowStore = createStudioChatMessageShadowStore(options.config);
+  const runShadowStore = createStudioChatRunProjectionStore(options.config);
+  const durableMirrorStore = createStudioChatDurableMirrorStore(options.config);
+  const historyIndexStore = createStudioChatHistoryIndexStore(options.config);
+  const organizerStore = createStudioChatOrganizerStore(options.config);
+  const studioSessions = new LruMap<string, StudioManagedSessionState>(200);
+  const canonicalStates = new LruMap<string, ChatCanonicalState>(150);
+  const officialCanonicalStreams = new Map<string, OfficialCanonicalStreamState>();
+  const runProjections = new LruMap<string, Map<string, ChatRunProjection>>(200);
+  const frontendSubscribers = new Map<string, Set<WebSocket>>();
+  const frontendSseSubscribers = new Map<string, Set<http.ServerResponse>>();
+  const gatewaySubscribers = new Map<string, Map<string, ChatGatewaySubscriber>>();
+  const sessionBridges = new Map<string, SessionGatewayBridge>();
+  const queueFlushSessions = new Set<string>();
+  const streamSnapshots = new Map<string, string>();
+  const suppressedGatewayRunIds = new Map<string, Set<string>>();
+  let projectionSequence = 0;
+  const wss = new WebSocketServer({ noServer: true });
+  const gatewaySweepTimer = setInterval(() => {
+    const now = Date.now();
+    for (const sessionKey of Array.from(gatewaySubscribers.keys())) {
+      pruneExpiredGatewaySubscribers(sessionKey, now);
+    }
+  }, CHAT_GATEWAY_SWEEP_INTERVAL_MS);
+  gatewaySweepTimer.unref?.();
+
+  async function isGatewayConnected(): Promise<boolean> {
+    try {
+      const health = await options.system.getHealth();
+      return health.gatewayConnected === true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function buildHealth(notes: string[] = []): Promise<ChatDiagnostics> {
+    return createBaseDiagnostics(options.config, await isGatewayConnected(), notes);
+  }
+
+  function getChatProtocolMode(): ChatProtocolMode {
+    return CHAT_PROTOCOL_MODE_DEFAULT;
+  }
+
+  function selectCanonicalSource(sessionKey: string): ChatCanonicalSourceSelection {
+    const localSource = resolveLocalSessionSource(sessionKey);
+    if (localSource.sessionFile) {
+      return {
+        kind: 'local_transcript',
+        agentId: localSource.agentId,
+        record: localSource.record,
+        sessionFile: localSource.sessionFile,
+        sourceMtimeMs: localSource.sourceMtimeMs,
+        priorSessionFiles: localSource.priorSessionFiles,
+      };
+    }
+    return {
+      kind: 'official_canonical_stream',
+      agentId: localSource.agentId,
+      record: localSource.record,
+      sessionFile: null,
+      sourceMtimeMs: null,
+      priorSessionFiles: localSource.priorSessionFiles,
+    };
+  }
+
+  function mergeCanonicalHistoryWithLocalOptimism(
+    current: ChatMessageItem[] | undefined,
+    canonical: ChatMessageItem[],
+  ): ChatMessageItem[] {
+    return mergeCanonicalMessageLedger(current || [], canonical, 'replace', {
+      preserveLocalMessages: true,
+    });
+  }
+
+  function shouldEmitLegacyProtocol(): boolean {
+    const mode = getChatProtocolMode();
+    return mode === 'legacy' || mode === 'dual_write';
+  }
+
+  function shouldEmitCanonicalProtocol(): boolean {
+    const mode = getChatProtocolMode();
+    return mode === 'dual_write' || mode === 'canonical_v1';
+  }
+
+  function buildCanonicalEntryFromMapped(
+    mapped: TranscriptCanonicalEntry,
+  ): ChatCanonicalEntry {
+    return {
+      message: cloneChatMessageItem(mapped.message)!,
+      messageId: mapped.messageId,
+      messageSeq: mapped.messageSeq,
+      identityKey: mapped.identityKey,
+    };
+  }
+
+  function buildCanonicalEntryFromRaw(
+    raw: Record<string, unknown>,
+    index: number,
+    options: TranscriptMappingOptions = {},
+    overrides: Partial<Pick<ChatCanonicalEntry, 'messageId' | 'messageSeq'>> = {},
+  ): ChatCanonicalEntry | null {
+    const mapped = mapTranscriptCanonicalEntry(raw, index, options);
+    if (!mapped) {
+      return null;
+    }
+    const messageSeq = overrides.messageSeq && overrides.messageSeq > 0
+      ? overrides.messageSeq
+      : mapped.messageSeq;
+    const messageId = normalizeString(overrides.messageId, mapped.messageId);
+    return {
+      message: cloneChatMessageItem(mapped.message)!,
+      messageId,
+      messageSeq,
+      identityKey: `${messageSeq}|${mapped.identityKey}`,
+    };
+  }
+
+  function buildCanonicalEntriesFromMessages(messages: ChatMessageItem[]): ChatCanonicalEntry[] {
+    return messages.map((message, index) => ({
+      message: cloneChatMessageItem(message)!,
+      messageId: message.id,
+      messageSeq: index + 1,
+      identityKey: [
+        String(index + 1),
+        message.role,
+        normalizeString(message.text).replace(/\s+/g, ' '),
+        (message.toolCalls || []).map((item) => item.toolCallId).filter(Boolean).sort().join(','),
+      ].join('|'),
+    }));
+  }
+
+  function buildCanonicalEntriesSignature(entries: ChatCanonicalEntry[]): string {
+    return entries
+      .map((entry) => `${entry.messageSeq}:${entry.identityKey}:${entry.messageId}`)
+      .join('\n');
+  }
+
+  function entriesShareStablePrefix(
+    previous: ChatCanonicalEntry[],
+    next: ChatCanonicalEntry[],
+  ): boolean {
+    if (next.length < previous.length) {
+      return false;
+    }
+    for (let index = 0; index < previous.length; index += 1) {
+      if (previous[index]?.identityKey !== next[index]?.identityKey) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function nextCanonicalVersion(sessionKey: string, source: ChatCanonicalState['source']): string {
+    const previous = canonicalStates.get(sessionKey);
+    const revision = previous && previous.source === source
+      ? (Number(previous.version.split(':').pop()) || 0) + 1
+      : 1;
+    return `${source}:${revision}`;
+  }
+
+  function resolveCanonicalRuntime(sessionKey: string): ChatRuntimeState {
+    return getStudioSession(sessionKey)?.row.runtime
+      || buildRuntimeState(false, Boolean(getStudioSession(sessionKey)?.row.permissions.writable));
+  }
+
+  function emitCanonicalSnapshot(
+    sessionKey: string,
+    source: ChatCanonicalState['source'],
+    entries: ChatCanonicalEntry[],
+    version: string,
+    overlays: ChatRunOverlay[],
+  ): void {
+    canonicalStates.set(sessionKey, {
+      sessionKey,
+      version,
+      source,
+      entries: entries.map((entry) => ({
+        ...entry,
+        message: cloneChatMessageItem(entry.message)!,
+      })),
+    });
+    if (!shouldEmitCanonicalProtocol()) {
+      return;
+    }
+    broadcastToSession(sessionKey, {
+      kind: 'canonical.snapshot',
+      sessionKey,
+      emittedAt: new Date().toISOString(),
+      version,
+      messages: entries.map((entry) => cloneChatMessageItem(entry.message)!),
+      overlays: overlays.map((overlay) => ({
+        ...overlay,
+        toolCalls: overlay.toolCalls.map((item) => cloneChatMessageToolCallItem(item)),
+      })),
+      runtime: resolveCanonicalRuntime(sessionKey),
+      source,
+    });
+  }
+
+  function emitCanonicalMessages(
+    sessionKey: string,
+    source: 'local_transcript' | 'history_sse',
+    entries: ChatCanonicalEntry[],
+    version: string,
+  ): void {
+    const current = canonicalStates.get(sessionKey);
+    canonicalStates.set(sessionKey, {
+      sessionKey,
+      version,
+      source,
+      entries: [
+        ...(current?.entries || []),
+        ...entries.map((entry) => ({
+          ...entry,
+          message: cloneChatMessageItem(entry.message)!,
+        })),
+      ],
+    });
+    if (!shouldEmitCanonicalProtocol()) {
+      return;
+    }
+    for (const entry of entries) {
+      broadcastToSession(sessionKey, {
+        kind: 'canonical.message',
+        sessionKey,
+        emittedAt: new Date().toISOString(),
+        message: cloneChatMessageItem(entry.message)!,
+        messageId: entry.messageId,
+        messageSeq: entry.messageSeq,
+        version,
+        source,
+      });
+    }
+  }
+
+  function broadcastRuntimeUpdate(
+    sessionKey: string,
+    runId: string | null,
+    runtime: ChatRuntimeState,
+    emittedAt = new Date().toISOString(),
+  ): void {
+    broadcastToSession(sessionKey, {
+      kind: 'runtime',
+      sessionKey,
+      runId,
+      emittedAt,
+      runtime,
+    });
+    if (shouldEmitCanonicalProtocol()) {
+      broadcastToSession(sessionKey, {
+        kind: 'runtime.state',
+        sessionKey,
+        runId,
+        emittedAt,
+        runtime,
+      });
+    }
+  }
+
+  async function buildQueuePayload(sessionKey: string): Promise<ChatQueuePayload> {
+    const session = await requireSession(sessionKey);
+    requireFrontendVisible(session);
+    const state = ensureStudioSessionState(session);
+    return {
+      checkedAt: new Date().toISOString(),
+      session: state.row,
+      items: cloneChatQueuedMessageList(state.pendingQueue),
+    };
+  }
+
+  async function buildSessionControlsPayload(sessionKey: string): Promise<ChatSessionControlsPayload> {
+    const session = await requireSession(sessionKey);
+    requireFrontendVisible(session);
+    const state = ensureStudioSessionState(session);
+    return {
+      checkedAt: new Date().toISOString(),
+      session: state.row,
+      controls: cloneSessionControls(state.controls),
+    };
+  }
+
+  function broadcastQueueState(sessionKey: string, emittedAt = new Date().toISOString()): void {
+    const current = getStudioSession(sessionKey);
+    if (!current) {
+      return;
+    }
+    broadcastToSession(sessionKey, {
+      kind: 'queue.state',
+      sessionKey,
+      emittedAt,
+      items: cloneChatQueuedMessageList(current.pendingQueue),
+    });
+  }
+
+  function broadcastSessionControls(sessionKey: string, emittedAt = new Date().toISOString()): void {
+    const current = getStudioSession(sessionKey);
+    if (!current) {
+      return;
+    }
+    broadcastToSession(sessionKey, {
+      kind: 'session.controls',
+      sessionKey,
+      emittedAt,
+      controls: cloneSessionControls(current.controls),
+    });
+  }
+
+  function readOrganizerState(): ChatSessionOrganizerState {
+    return organizerStore.read();
+  }
+
+  function writeOrganizerState(organizer: ChatSessionOrganizerState): ChatSessionOrganizerState {
+    return organizerStore.write(organizer);
+  }
+
+  function buildOrganizerPayload(organizer: ChatSessionOrganizerState): ChatOrganizerPayload {
+    return {
+      checkedAt: new Date().toISOString(),
+      organizer: normalizeChatSessionOrganizerState(organizer),
+    };
+  }
+
+  function findOrganizerFolder(organizer: ChatSessionOrganizerState, folderId: string): ChatSessionFolder | null {
+    return organizer.folders.find((folder) => folder.id === folderId) || null;
+  }
+
+  function overrideTranscriptMessage(
+    sessionKey: string,
+    raw: Record<string, unknown>,
+    fallbackText: string,
+    index: number,
+  ): TranscriptOverrideResult {
+    const record = extractTranscriptRecord(raw);
+    const role = normalizeString(record.role || raw.role).toLowerCase();
+    if (role === 'user') {
+      const restored = shadowStore.restoreUserMessageShadow(sessionKey, raw, fallbackText);
+      if (!restored) {
+        return null;
+      }
+      const restoredResources = restored.fileRefs?.length
+        ? mediaBridge.buildSendResources(sessionKey, restored.fileRefs, undefined)
+        : restored.resources;
+      return {
+        kind: 'replace',
+        message: {
+          id: normalizeString(raw.id || record.id, `history-${index}`),
+          role: 'user',
+          text: restored.text,
+          createdAt: normalizeDate(raw.timestamp || raw.createdAt || raw.updatedAt || record.timestamp || record.createdAt || record.updatedAt)
+            || restored.createdAt,
+          source: 'history',
+          runId: normalizeString(raw.runId || record.runId || restored.runId || restored.requestId) || null,
+          truncated: false,
+          omitted: false,
+          aborted: false,
+          stopReason: normalizeString(raw.stopReason || record.stopReason) || null,
+          blocks: restored.blocks,
+          resources: mergeResources(restoredResources, restored.resources),
+        },
+      };
+    }
+    if (role === 'assistant' && isAssistantStudioDeliveryToolUseEnvelope(raw)) {
+      return { kind: 'skip' };
+    }
+    if (role === 'assistant' && isAssistantNoReplyMessage(raw)) {
+      return { kind: 'skip' };
+    }
+    if (role === 'assistant') {
+      const message = mediaBridge.buildAssistantMarkdownMessage(sessionKey, fallbackText, {
+        id: normalizeString(raw.id || record.id, `history-${index}`),
+        createdAt: normalizeDate(raw.timestamp || raw.createdAt || raw.updatedAt || record.timestamp || record.createdAt || record.updatedAt),
+        source: 'history',
+        runId: normalizeString(raw.runId || record.runId) || null,
+        stopReason: normalizeString(raw.stopReason || record.stopReason) || null,
+      });
+      if (message) {
+        return {
+          kind: 'replace',
+          message,
+        };
+      }
+    }
+    const delivery = mediaBridge.extractStudioDelivery(raw) || mediaBridge.extractStudioDelivery(fallbackText);
+    if (role !== 'assistant' && delivery) {
+      const message = mediaBridge.buildAssistantMessageFromStudioDelivery(sessionKey, delivery, {
+        id: normalizeString(raw.id || record.id, `studio-delivery-${index}`),
+        createdAt: normalizeDate(raw.timestamp || raw.createdAt || raw.updatedAt || record.timestamp || record.createdAt || record.updatedAt),
+        source: 'history',
+        runId: normalizeString(raw.runId || record.runId) || null,
+      });
+      if (!message) {
+        return { kind: 'skip' };
+      }
+      return {
+        kind: 'replace',
+        message,
+      };
+    }
+    if (role === 'toolresult' && extractTranscriptToolName(raw) === 'studio_delivery') {
+      return { kind: 'skip' };
+    }
+    return null;
+  }
+
+  function buildAssistantStreamPreviewMessage(
+    sessionKey: string,
+    text: string,
+    meta: {
+      id: string;
+      createdAt: string | null;
+      source: ChatMessageItem['source'];
+      runId: string | null;
+    },
+    rawMessage: Record<string, unknown> | null = null,
+  ): ChatMessageItem | null {
+    const mapped = rawMessage
+      ? mapTranscriptMessage(rawMessage, 0, {
+        sessionKey,
+        collectMessageResources: mediaBridge.collectMessageResources,
+        overrideMessage: overrideTranscriptMessage,
+      })
+      : null;
+    const markdownMessage = mediaBridge.buildAssistantMarkdownMessage(sessionKey, text, meta);
+    if (markdownMessage) {
+      return markdownMessage;
+    }
+    const normalizedText = String(text || '');
+    if (mapped && mapped.role === 'assistant') {
+      return {
+        ...mapped,
+        id: meta.id || mapped.id,
+        text: normalizedText || mapped.text || '',
+        createdAt: meta.createdAt || mapped.createdAt,
+        source: meta.source,
+        runId: meta.runId || mapped.runId,
+      };
+    }
+    if (!normalizedText.trim()) {
+      return null;
+    }
+    return {
+      id: meta.id,
+      role: 'assistant',
+      text: normalizedText,
+      createdAt: meta.createdAt,
+      source: meta.source,
+      runId: meta.runId,
+      truncated: false,
+      omitted: false,
+      aborted: false,
+      stopReason: null,
+    };
+  }
+
+  // Registry in-memory cache — avoids repeated readFileSync on every get/save.
+  // Writes remain synchronous for durability.
+  let registryCache: Record<string, StudioSessionRegistryEntry> | null = null;
+
+  function ensureRegistryLoaded(): Record<string, StudioSessionRegistryEntry> {
+    if (!registryCache) {
+      registryCache = readStudioChatRegistry(options.config);
+    }
+    return registryCache;
+  }
+
+  function getRegistryEntry(sessionKey: string): StudioSessionRegistryEntry | null {
+    const registry = ensureRegistryLoaded();
+    return registry[sessionKey] || null;
+  }
+
+  function saveRegistryEntry(entry: StudioSessionRegistryEntry): void {
+    const registry = ensureRegistryLoaded();
+    registry[entry.key] = entry;
+    writeStudioChatRegistry(options.config, registry);
+  }
+
+  function deleteRegistryEntry(sessionKey: string): void {
+    const registry = ensureRegistryLoaded();
+    if (!registry[sessionKey]) return;
+    delete registry[sessionKey];
+    writeStudioChatRegistry(options.config, registry);
+  }
+
+  function buildRegistryEntryFromRow(
+    row: ChatSessionRow,
+    current: StudioSessionRegistryEntry | null = getRegistryEntry(row.key),
+  ): StudioSessionRegistryEntry {
+    const now = normalizeDate(row.updatedAt) || new Date().toISOString();
+    const nextSessionId = normalizeString(row.sessionId, normalizeString(current?.sessionId) || '') || null;
+    // Detect session ID change and track the prior ID for history recovery
+    const priorSessionIds = current?.priorSessionIds?.slice() || [];
+    const prevSessionId = normalizeString(current?.sessionId) || null;
+    if (prevSessionId && nextSessionId && prevSessionId !== nextSessionId && !priorSessionIds.includes(prevSessionId)) {
+      priorSessionIds.push(prevSessionId);
+    }
+    return {
+      key: row.key,
+      agentId: row.agentId,
+      sessionId: nextSessionId,
+      label: normalizeString(row.label, normalizeString(current?.label, buildDefaultSessionLabel(row.agentId))),
+      customLabel: normalizeString(row.presentation.customLabel) || null,
+      autoLabel: normalizeString(row.presentation.autoLabel) || null,
+      archivedAt: normalizeDate(row.presentation.archivedAt) || null,
+      createdAt: current?.createdAt || now,
+      updatedAt: now,
+      priorSessionIds: priorSessionIds.length > 0 ? priorSessionIds : undefined,
+    };
+  }
+
+  function removeLocalSessionRecord(sessionKey: string): void {
+    const agentId = deriveAgentIdFromSessionKey(sessionKey);
+    const storePath = resolveAgentSessionsStorePath(options.config, agentId);
+    const store = readJsonFile<Record<string, LocalSessionRecord>>(storePath, {});
+    const record = store[sessionKey];
+    if (!record) {
+      return;
+    }
+    const sessionFile = normalizeString(record.sessionFile) || null;
+    if (sessionFile) {
+      try {
+        fs.rmSync(sessionFile, { force: true });
+      } catch {}
+    }
+    delete store[sessionKey];
+    writeJsonFile(storePath, store);
+  }
+
+  function clearStreamSnapshotsForSession(sessionKey: string): void {
+    const liveRunIds = listRunProjections(sessionKey).map((projection) => projection.runId);
+    for (const runId of liveRunIds) {
+      streamSnapshots.delete(runId);
+    }
+    const inMemory = getStudioSession(sessionKey);
+    for (const message of inMemory?.messages || []) {
+      if (message.runId) {
+        streamSnapshots.delete(message.runId);
+      }
+    }
+  }
+
+  function suppressGatewayRunId(sessionKey: string, runId: string | null | undefined): void {
+    const normalizedRunId = normalizeString(runId);
+    if (!normalizedRunId) {
+      return;
+    }
+    const current = suppressedGatewayRunIds.get(sessionKey) || new Set<string>();
+    current.add(normalizedRunId);
+    suppressedGatewayRunIds.set(sessionKey, current);
+    streamSnapshots.delete(normalizedRunId);
+  }
+
+  function unsuppressGatewayRunId(sessionKey: string, runId: string | null | undefined): void {
+    const normalizedRunId = normalizeString(runId);
+    if (!normalizedRunId) {
+      return;
+    }
+    const current = suppressedGatewayRunIds.get(sessionKey);
+    if (!current) {
+      return;
+    }
+    current.delete(normalizedRunId);
+    if (current.size === 0) {
+      suppressedGatewayRunIds.delete(sessionKey);
+    }
+  }
+
+  function isSuppressedGatewayRunId(sessionKey: string, runId: string | null | undefined): boolean {
+    const normalizedRunId = normalizeString(runId);
+    if (!normalizedRunId) {
+      return false;
+    }
+    return suppressedGatewayRunIds.get(sessionKey)?.has(normalizedRunId) === true;
+  }
+
+  function clearSessionCaches(sessionKey: string): void {
+    clearStreamSnapshotsForSession(sessionKey);
+    shadowStore.clearSession(sessionKey);
+    runShadowStore.clearSession(sessionKey);
+    durableMirrorStore.clearSession(sessionKey);
+    historyIndexStore.clearSession(sessionKey);
+    clearRunProjections(sessionKey);
+    writeOrganizerState(removeSessionsFromOrganizer(readOrganizerState(), [sessionKey]));
+    deleteRegistryEntry(sessionKey);
+    studioSessions.delete(sessionKey);
+    clearStudioChatSessionHostManagementExecEnabled(sessionKey);
+    canonicalStates.delete(sessionKey);
+    suppressedGatewayRunIds.delete(sessionKey);
+    disposeOfficialCanonicalStream(sessionKey);
+    disposeSessionBridge(sessionKey);
+  }
+
+  async function isStudioSessionMaterialized(session: ChatSessionRow): Promise<boolean> {
+    const localSource = resolveLocalSessionSource(session.key);
+    if (localSource.record || localSource.sessionFile) {
+      return true;
+    }
+    const inMemory = getStudioSession(session.key);
+    if (typeof inMemory?.materialized === 'boolean') {
+      return inMemory.materialized;
+    }
+    try {
+      const payload = await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {
+        agentId: session.agentId,
+        limit: 200,
+        includeDerivedTitles: false,
+        includeLastMessage: false,
+      });
+      const rows = Array.isArray(payload.sessions) ? payload.sessions : [];
+      return rows.some((row) => normalizeString((row as Record<string, unknown>)?.key) === session.key);
+    } catch {
+      return false;
+    }
+  }
+
+  function getStudioSession(sessionKey: string): StudioManagedSessionState | null {
+    return studioSessions.get(sessionKey) || null;
+  }
+
+  function syncSessionControlState(state: StudioManagedSessionState): void {
+    setStudioChatSessionHostManagementExecEnabled(
+      state.row.key,
+      state.controls.allowHostManagementExec === true,
+    );
+  }
+
+  function setStudioSession(state: StudioManagedSessionState): void {
+    state.pendingQueue = cloneChatQueuedMessageList(state.pendingQueue);
+    state.controls = cloneSessionControls(state.controls);
+    syncSessionControlState(state);
+    studioSessions.set(state.row.key, state);
+  }
+
+  function ensureStudioSessionState(
+    session: ChatSessionRow,
+    overrides: Partial<StudioManagedSessionState> = {},
+  ): StudioManagedSessionState {
+    const existing = getStudioSession(session.key);
+    if (existing) {
+      return existing;
+    }
+    const state: StudioManagedSessionState = {
+      row: session,
+      messages: [],
+      diagnosticsNotes: [],
+      observability: createEmptyObservabilityState(),
+      pendingQueue: [],
+      controls: createDefaultSessionControls(),
+      materialized: false,
+      resetPending: false,
+      clearedAt: null,
+      ...overrides,
+    };
+    setStudioSession(state);
+    return state;
+  }
+
+  function refreshStudioAutoLabel(state: StudioManagedSessionState): boolean {
+    const nextRow = applyDerivedAutoLabelToSessionRow(state.row, state.messages);
+    if (nextRow === state.row) {
+      return false;
+    }
+    state.row = nextRow;
+    return true;
+  }
+
+  function clearStudioAutoLabel(row: ChatSessionRow): ChatSessionRow {
+    if (row.kind !== 'studio_managed' || !normalizeString(row.presentation.autoLabel)) {
+      return row;
+    }
+    return {
+      ...row,
+      presentation: {
+        ...row.presentation,
+        autoLabel: null,
+      },
+    };
+  }
+
+  function getRunProjectionMap(sessionKey: string, create = false): Map<string, ChatRunProjection> | null {
+    const current = runProjections.get(sessionKey);
+    if (current || !create) {
+      return current || null;
+    }
+    const created = new Map<string, ChatRunProjection>();
+    runProjections.set(sessionKey, created);
+    return created;
+  }
+
+  function getRunProjection(sessionKey: string, runId: string | null | undefined): ChatRunProjection | null {
+    const normalizedRunId = normalizeString(runId);
+    if (!normalizedRunId) {
+      return null;
+    }
+    return getRunProjectionMap(sessionKey)?.get(normalizedRunId) || null;
+  }
+
+  function listRunProjections(sessionKey: string): ChatRunProjection[] {
+    return [...(getRunProjectionMap(sessionKey)?.values() || [])]
+      .map(cloneChatRunProjection)
+      .sort((left, right) => left.sequence - right.sequence || (left.startedAt || '').localeCompare(right.startedAt || ''));
+  }
+
+  function touchRunProjection(projection: ChatRunProjection, emittedAt: string): ChatRunProjection {
+    projection.updatedAt = emittedAt;
+    projection.sequence = ++projectionSequence;
+    return projection;
+  }
+
+  function ensureRunProjection(
+    sessionKey: string,
+    runId: string,
+    emittedAt: string,
+    overrides: Partial<Pick<ChatRunProjection, 'lifecycle'>> = {},
+  ): ChatRunProjection {
+    const projectionMap = getRunProjectionMap(sessionKey, true)!;
+    const current = projectionMap.get(runId);
+    if (current) {
+      const next = cloneChatRunProjection(current);
+      if (overrides.lifecycle) {
+        next.lifecycle = pickProjectionLifecycle(next.lifecycle, overrides.lifecycle);
+      }
+      touchRunProjection(next, emittedAt);
+      projectionMap.set(runId, next);
+      return next;
+    }
+
+    const created: ChatRunProjection = {
+      sessionKey,
+      runId,
+      startedAt: emittedAt,
+      updatedAt: emittedAt,
+      lifecycle: overrides.lifecycle || 'running',
+      previewText: '',
+      toolCalls: [],
+      finalMessageId: null,
+      finalCreatedAt: null,
+      firstAssistantSeenAt: null,
+      firstToolStartedAt: null,
+      sequence: ++projectionSequence,
+    };
+    projectionMap.set(runId, created);
+    return cloneChatRunProjection(created);
+  }
+
+  function saveRunProjection(sessionKey: string, projection: ChatRunProjection): void {
+    const projectionMap = getRunProjectionMap(sessionKey, true)!;
+    projectionMap.set(projection.runId, cloneChatRunProjection(projection));
+  }
+
+  function clearRunProjections(sessionKey: string): void {
+    runProjections.delete(sessionKey);
+  }
+
+  function buildRunOverlay(
+    sessionKey: string,
+    projection: Pick<
+      ChatRunProjection,
+      | 'runId'
+      | 'startedAt'
+      | 'updatedAt'
+      | 'lifecycle'
+      | 'previewText'
+      | 'toolCalls'
+      | 'finalMessageId'
+      | 'finalCreatedAt'
+      | 'firstAssistantSeenAt'
+      | 'firstToolStartedAt'
+      | 'sequence'
+    >,
+  ): ChatRunOverlay {
+    const toolCalls = mediaBridge.rehydrateToolCalls(sessionKey, projection.toolCalls) || cloneToolCalls(projection.toolCalls) || [];
+    return {
+      runId: projection.runId,
+      startedAt: projection.startedAt,
+      updatedAt: projection.updatedAt,
+      lifecycle: projection.lifecycle,
+      previewText: projection.previewText || '',
+      toolCalls,
+      finalMessageId: projection.finalMessageId || null,
+      finalCreatedAt: projection.finalCreatedAt || null,
+      firstAssistantSeenAt: projection.firstAssistantSeenAt || null,
+      firstToolStartedAt: projection.firstToolStartedAt || null,
+      sequence: projection.sequence || 0,
+    };
+  }
+
+  function buildRunOverlayEvent(
+    sessionKey: string,
+    projection: ChatRunProjection,
+    emittedAt: string,
+    terminal: boolean,
+  ): ChatStreamEvent | null {
+    const overlay = buildRunOverlay(sessionKey, projection);
+    if (!overlayHasVisibleContent(overlay)) {
+      return null;
+    }
+    return {
+      kind: 'run_overlay',
+      sessionKey,
+      runId: projection.runId,
+      emittedAt,
+      overlay,
+      terminal,
+    };
+  }
+
+  function persistProjectionIfTerminal(projection: ChatRunProjection): void {
+    if (!isRunProjectionTerminal(projection.lifecycle)) {
+      return;
+    }
+    runShadowStore.saveRunProjectionShadow(projection);
+  }
+
+  function supplementHistoryWithRunState(sessionKey: string, messages: ChatMessageItem[]): ChatMessageItem[] {
+    const liveProjections = listRunProjections(sessionKey);
+    const liveRunIds = new Set(liveProjections.map((projection) => projection.runId));
+    return supplementHistoryWithRunStateSnapshot({
+      sessionKey,
+      messages: messages.map((message) => cloneChatMessageItem(message)!),
+      liveRunIds,
+      liveSupplements: liveProjections.map((projection) => ({
+        runId: projection.runId,
+        finalMessageId: projection.finalMessageId || null,
+        finalCreatedAt: projection.finalCreatedAt || null,
+        toolCalls: mediaBridge.rehydrateToolCalls(sessionKey, projection.toolCalls),
+      })),
+      shadowSupplements: runShadowStore.listRunProjectionShadows(sessionKey),
+      rehydrateToolCalls: (targetSessionKey, toolCalls) => mediaBridge.rehydrateToolCalls(targetSessionKey, toolCalls),
+      mergeHistoryAssistantMessage,
+    });
+  }
+
+  function listRunOverlaysForSession(sessionKey: string): ChatRunOverlay[] {
+    const liveProjections = listRunProjections(sessionKey);
+    return listRunOverlaysForHistorySnapshot({
+      sessionKey,
+      liveProjections,
+      shadowProjections: runShadowStore.listRunProjectionShadows(sessionKey),
+      buildLiveOverlay: (projection) => buildRunOverlay(sessionKey, projection),
+      buildShadowOverlay: (shadow) => buildRunOverlay(sessionKey, {
+        runId: shadow.runId,
+        startedAt: shadow.finalCreatedAt || shadow.savedAt,
+        updatedAt: shadow.savedAt,
+        lifecycle: shadow.lifecycle,
+        previewText: shadow.lastAssistantText || '',
+        toolCalls: shadow.toolCalls,
+        finalMessageId: shadow.finalMessageId || null,
+        finalCreatedAt: shadow.finalCreatedAt || null,
+        firstAssistantSeenAt: shadow.finalCreatedAt || null,
+        firstToolStartedAt: shadow.toolCalls[0]?.startedAt || null,
+        sequence: Date.parse(shadow.savedAt || '') || 0,
+      }),
+    });
+  }
+
+  function countGatewaySubscribers(sessionKey: string): number {
+    return gatewaySubscribers.get(sessionKey)?.size || 0;
+  }
+
+  function countRealtimeSubscribers(sessionKey: string): number {
+    return (frontendSubscribers.get(sessionKey)?.size || 0)
+      + (frontendSseSubscribers.get(sessionKey)?.size || 0)
+      + countGatewaySubscribers(sessionKey);
+  }
+
+  function syncBridgeSubscriberCount(sessionKey: string): void {
+    const bridge = sessionBridges.get(sessionKey);
+    if (!bridge) {
+      return;
+    }
+    bridge.subscribers = countRealtimeSubscribers(sessionKey);
+  }
+
+  function emitGatewayEvent(subscriber: ChatGatewaySubscriber, event: ChatStreamEvent): boolean {
+    try {
+      return subscriber.emit(event);
+    } catch {
+      return false;
+    }
+  }
+
+  function pruneExpiredGatewaySubscribers(sessionKey: string, now = Date.now()): void {
+    const subscribers = gatewaySubscribers.get(sessionKey);
+    if (!subscribers?.size) {
+      if (subscribers && subscribers.size === 0) {
+        gatewaySubscribers.delete(sessionKey);
+      }
+      syncBridgeSubscriberCount(sessionKey);
+      return;
+    }
+    for (const [connId, subscriber] of Array.from(subscribers.entries())) {
+      if (now - subscriber.lastLeaseAt <= CHAT_GATEWAY_LEASE_MS) {
+        continue;
+      }
+      subscribers.delete(connId);
+    }
+    if (subscribers.size === 0) {
+      gatewaySubscribers.delete(sessionKey);
+    }
+    syncBridgeSubscriberCount(sessionKey);
+    if (!countRealtimeSubscribers(sessionKey)) {
+      disposeOfficialCanonicalStream(sessionKey);
+      maybeDisposeSessionBridge(sessionKey);
+    }
+  }
+
+  function broadcastGatewaySubscribers(sessionKey: string, event: ChatStreamEvent): void {
+    pruneExpiredGatewaySubscribers(sessionKey);
+    const subscribers = gatewaySubscribers.get(sessionKey);
+    if (!subscribers?.size) {
+      return;
+    }
+    for (const [connId, subscriber] of Array.from(subscribers.entries())) {
+      if (emitGatewayEvent(subscriber, event)) {
+        continue;
+      }
+      subscribers.delete(connId);
+    }
+    if (subscribers.size === 0) {
+      gatewaySubscribers.delete(sessionKey);
+    }
+    syncBridgeSubscriberCount(sessionKey);
+    if (!countRealtimeSubscribers(sessionKey)) {
+      disposeOfficialCanonicalStream(sessionKey);
+      maybeDisposeSessionBridge(sessionKey);
+    }
+  }
+
+  function detachGatewayConnId(connId: string, targetSessionKey?: string | null): string | null {
+    const normalizedSessionKey = normalizeString(targetSessionKey) || null;
+    let detachedSessionKey: string | null = null;
+    for (const [sessionKey, subscribers] of Array.from(gatewaySubscribers.entries())) {
+      if (normalizedSessionKey && sessionKey !== normalizedSessionKey) {
+        continue;
+      }
+      if (!subscribers.delete(connId)) {
+        continue;
+      }
+      detachedSessionKey = sessionKey;
+      if (subscribers.size === 0) {
+        gatewaySubscribers.delete(sessionKey);
+      }
+      syncBridgeSubscriberCount(sessionKey);
+      if (!countRealtimeSubscribers(sessionKey)) {
+        disposeOfficialCanonicalStream(sessionKey);
+        maybeDisposeSessionBridge(sessionKey);
+      }
+    }
+    return detachedSessionKey;
+  }
+
+  function touchGatewaySubscriber(sessionKey: string, connId: string): boolean {
+    pruneExpiredGatewaySubscribers(sessionKey);
+    const subscriber = gatewaySubscribers.get(sessionKey)?.get(connId);
+    if (!subscriber) {
+      return false;
+    }
+    subscriber.lastLeaseAt = Date.now();
+    return true;
+  }
+
+  function requireGatewaySubscriber(sessionKey: string, connId: string): void {
+    if (touchGatewaySubscriber(sessionKey, connId)) {
+      return;
+    }
+    throw new Error('chat_gateway_client_not_attached');
+  }
+
+  function registerGatewaySubscriber(sessionKey: string, runtime: ChatGatewayRuntime): void {
+    detachGatewayConnId(runtime.connId);
+    const subscribers = gatewaySubscribers.get(sessionKey) || new Map<string, ChatGatewaySubscriber>();
+    subscribers.set(runtime.connId, {
+      connId: runtime.connId,
+      emit: runtime.emit,
+      lastLeaseAt: Date.now(),
+    });
+    gatewaySubscribers.set(sessionKey, subscribers);
+    syncBridgeSubscriberCount(sessionKey);
+  }
+
+  function registerFrontendSseSubscriber(sessionKey: string, res: http.ServerResponse): void {
+    const subscribers = frontendSseSubscribers.get(sessionKey) || new Set<http.ServerResponse>();
+    subscribers.add(res);
+    frontendSseSubscribers.set(sessionKey, subscribers);
+    syncBridgeSubscriberCount(sessionKey);
+  }
+
+  function unregisterFrontendSseSubscriber(sessionKey: string, res: http.ServerResponse): void {
+    const subscribers = frontendSseSubscribers.get(sessionKey);
+    if (!subscribers) {
+      return;
+    }
+    subscribers.delete(res);
+    if (subscribers.size === 0) {
+      frontendSseSubscribers.delete(sessionKey);
+    }
+    syncBridgeSubscriberCount(sessionKey);
+  }
+
+  function broadcastToSession(sessionKey: string, event: ChatStreamEvent): void {
+    const targets = frontendSubscribers.get(sessionKey);
+    if (targets?.size) {
+      const payload = JSON.stringify(event);
+      for (const socket of Array.from(targets)) {
+        if (socket.readyState !== WebSocket.OPEN) {
+          targets.delete(socket);
+          continue;
+        }
+        socket.send(payload);
+      }
+
+      if (targets.size === 0) {
+        frontendSubscribers.delete(sessionKey);
+        syncBridgeSubscriberCount(sessionKey);
+      }
+    }
+    const sseTargets = frontendSseSubscribers.get(sessionKey);
+    if (sseTargets?.size) {
+      for (const res of Array.from(sseTargets)) {
+        if (res.writableEnded || res.destroyed) {
+          sseTargets.delete(res);
+          continue;
+        }
+        sendSseEvent(res, 'chat-stream', event);
+      }
+      if (sseTargets.size === 0) {
+        frontendSseSubscribers.delete(sessionKey);
+        syncBridgeSubscriberCount(sessionKey);
+      }
+    }
+    broadcastGatewaySubscribers(sessionKey, event);
+  }
+
+  function updateRuntimeCache(sessionKey: string, nextRuntime: ChatRuntimeState): void {
+    const current = getStudioSession(sessionKey);
+    if (!current) return;
+    setStudioSession({
+      ...current,
+      row: {
+        ...current.row,
+        runtime: nextRuntime,
+      },
+    });
+  }
+
+  function updateObservabilityCache(
+    sessionKey: string,
+    updater: (current: ChatObservabilityState) => ChatObservabilityState
+  ): ChatObservabilityState | null {
+    const current = getStudioSession(sessionKey);
+    if (!current) return null;
+    const nextObservability = updater(cloneObservabilityState(current.observability));
+    setStudioSession({
+      ...current,
+      observability: nextObservability,
+    });
+    return nextObservability;
+  }
+
+  function appendStudioMessage(sessionKey: string, message: ChatMessageItem): void {
+    const current = getStudioSession(sessionKey);
+    if (!current) return;
+    current.messages = normalizeMessageLedger([...current.messages, message]);
+    const lastMessage = current.messages[current.messages.length - 1];
+    const lastMessagePreview = deriveLastMessagePreview(lastMessage, current.row.lastMessagePreview);
+    current.row = {
+      ...current.row,
+      updatedAt: lastMessage?.createdAt || message.createdAt || current.row.updatedAt,
+      lastMessagePreview,
+    };
+    refreshStudioAutoLabel(current);
+    setStudioSession(current);
+    saveRegistryEntry(buildRegistryEntryFromRow(current.row));
+  }
+
+  function upsertStudioMessage(sessionKey: string, message: ChatMessageItem): void {
+    const current = getStudioSession(sessionKey);
+    if (!current) return;
+    const index = current.messages.findIndex((entry) => entry.id === message.id);
+    if (index >= 0) {
+      current.messages[index] = message;
+    } else {
+      current.messages.push(message);
+    }
+    current.messages = normalizeMessageLedger(current.messages);
+    const lastMessage = current.messages[current.messages.length - 1];
+    const lastMessagePreview = deriveLastMessagePreview(lastMessage, current.row.lastMessagePreview);
+    current.row = {
+      ...current.row,
+      updatedAt: lastMessage?.createdAt || message.createdAt || current.row.updatedAt,
+      lastMessagePreview,
+    };
+    refreshStudioAutoLabel(current);
+    setStudioSession(current);
+    saveRegistryEntry(buildRegistryEntryFromRow(current.row));
+  }
+
+  function mapGatewaySessionRow(
+    agentId: string,
+    row: Record<string, unknown>,
+    gatewayConnected: boolean
+  ): ChatSessionRow {
+    const key = normalizeString(row.key);
+    const registryEntry = getRegistryEntry(key);
+    const kind = classifyChatSessionKind({
+      sessionKey: key,
+      originProvider: normalizeString((row.origin as Record<string, unknown> | undefined)?.provider),
+      lastChannel: normalizeString(row.lastChannel || row.channel),
+      lastTo: normalizeString(row.lastTo),
+    });
+    const fallbackLabel = kind === 'observed_external'
+      ? normalizeString(row.derivedTitle, key)
+      : buildDefaultSessionLabel(agentId);
+    const permissions = buildChatSessionPermissions(kind);
+    const cachedRuntime = getStudioSession(key)?.row.runtime;
+
+    return {
+      key,
+      agentId,
+      sessionId: normalizeString(row.sessionId, normalizeString(registryEntry?.sessionId) || '') || null,
+      kind,
+      label: kind === 'studio_managed'
+        ? normalizeString(registryEntry?.customLabel, normalizeString(registryEntry?.label, normalizeString(row.label, fallbackLabel)))
+        : normalizeString(row.label, fallbackLabel),
+      derivedTitle: kind === 'studio_managed' ? null : normalizeString(row.derivedTitle) || null,
+      lastMessagePreview: normalizeString(row.lastMessagePreview) || null,
+      updatedAt: normalizeDate(row.updatedAt),
+      presentation: kind === 'studio_managed' ? buildSessionPresentation(registryEntry) : buildSessionPresentation(),
+      source: {
+        source: kind === 'studio_managed' ? 'studio' : kind === 'system_internal' ? 'system' : 'external',
+        channel: normalizeString(row.channel || row.lastChannel) || null,
+        surface: normalizeString((row.origin as Record<string, unknown> | undefined)?.surface || row.channel) || null,
+        originLabel: normalizeString((row.origin as Record<string, unknown> | undefined)?.label || row.displayName) || null,
+      },
+      deliveryContext: {
+        channel: normalizeString((row.deliveryContext as Record<string, unknown> | undefined)?.channel || row.lastChannel) || null,
+        accountId: normalizeString((row.deliveryContext as Record<string, unknown> | undefined)?.accountId || row.lastAccountId) || null,
+        to: normalizeString((row.deliveryContext as Record<string, unknown> | undefined)?.to || row.lastTo) || null,
+        threadId: normalizeString((row.deliveryContext as Record<string, unknown> | undefined)?.threadId) || null,
+      },
+      permissions,
+      runtime: cachedRuntime || buildRuntimeState(gatewayConnected, permissions.writable, {
+        state: 'unknown',
+      }),
+    };
+  }
+
+  async function requireSession(sessionKey: string): Promise<ChatSessionRow> {
+    const inMemory = getStudioSession(sessionKey);
+    if (inMemory) return inMemory.row;
+
+    const registryEntry = getRegistryEntry(sessionKey);
+    if (registryEntry) {
+      return buildStudioManagedRowFromRegistry(registryEntry, await isGatewayConnected());
+    }
+
+    const agentId = deriveAgentIdFromSessionKey(sessionKey);
+    const store = readJsonFile<Record<string, LocalSessionRecord>>(resolveAgentSessionsStorePath(options.config, agentId), {});
+    const record = store[sessionKey];
+    if (record) {
+      const mapped = mapLocalSessionRow(agentId, sessionKey, record, await isGatewayConnected(), registryEntry);
+      if (mapped.kind === 'studio_managed' && !registryEntry) {
+        saveRegistryEntry(buildRegistryEntryFromRow(mapped));
+      }
+      return mapped;
+    }
+
+    throw new ChatServiceError(404, buildChatError('session_not_found', `Session '${sessionKey}' not found`));
+  }
+
+  function requireFrontendVisible(session: ChatSessionRow): void {
+    if (session.permissions.visibleInFrontend) {
+      return;
+    }
+    throw new ChatServiceError(403, buildChatError('auth_failure', `Session '${session.key}' is not accessible from Studio chat`));
+  }
+
+  function requireWritable(session: ChatSessionRow, action: 'send' | 'abort' | 'reset' | 'delete' | 'inject'): void {
+    const allowMap = {
+      send: session.permissions.canSend,
+      abort: session.permissions.canAbort,
+      reset: session.permissions.canReset,
+      delete: session.permissions.canDelete,
+      inject: session.permissions.canInject,
+    } as const;
+
+    if (allowMap[action]) return;
+    throw new ChatServiceError(403, buildChatError('session_not_writable', `Session '${session.key}' is not writable`));
+  }
+
+  function normalizeSlashGatewayParams(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+    return { ...(value as Record<string, unknown>) };
+  }
+
+  function resolveSlashGatewayTargetKey(
+    currentSession: ChatSessionRow,
+    params: Record<string, unknown>,
+  ): string {
+    const targetKey = normalizeString(params.key || params.sessionKey || currentSession.key, currentSession.key);
+    if (deriveAgentIdFromSessionKey(targetKey) !== currentSession.agentId) {
+      throw new ChatServiceError(
+        400,
+        buildChatError('invalid_request', `Slash command target '${targetKey}' is outside the current agent scope`),
+      );
+    }
+    return targetKey;
+  }
+
+  function currentStudioHistory(state: StudioManagedSessionState): ChatMessageItem[] {
+    return normalizeMessageLedger(supplementHistoryWithRunState(state.row.key, state.messages.slice()));
+  }
+
+  function isLocalTranscriptBehindInMemory(
+    inMemory: StudioManagedSessionState | null,
+    transcriptMessages: ChatMessageItem[],
+  ): boolean {
+    if (!inMemory) {
+      return false;
+    }
+    const currentHistory = currentStudioHistory(inMemory);
+    if (!currentHistory.length) {
+      return false;
+    }
+    if (transcriptMessages.length < currentHistory.length) {
+      return true;
+    }
+    const transcriptLastTs = Date.parse(transcriptMessages[transcriptMessages.length - 1]?.createdAt || '') || 0;
+    const inMemoryLastTs = Date.parse(currentHistory[currentHistory.length - 1]?.createdAt || '') || 0;
+    if (inMemoryLastTs && transcriptLastTs + 2_000 < inMemoryLastTs) {
+      return true;
+    }
+    return false;
+  }
+
+  function normalizeHistoryLimit(value: number | null | undefined, fallback = 50): number {
+    const numeric = Number.isFinite(value) ? Math.trunc(Number(value)) : fallback;
+    return Math.min(100, Math.max(1, numeric || fallback));
+  }
+
+  function resolveLocalSessionSource(sessionKey: string): {
+    agentId: string;
+    record: LocalSessionRecord | null;
+    sessionFile: string | null;
+    sourceMtimeMs: number | null;
+    priorSessionFiles: string[];
+  } {
+    const agentId = deriveAgentIdFromSessionKey(sessionKey);
+    const store = readJsonFile<Record<string, LocalSessionRecord>>(resolveAgentSessionsStorePath(options.config, agentId), {});
+    const record = store[sessionKey] || null;
+    const sessionFile = normalizeString(record?.sessionFile) || null;
+    const sourceMtimeMs = (() => {
+      if (!sessionFile) {
+        return null;
+      }
+      try {
+        return fs.statSync(sessionFile).mtimeMs;
+      } catch {
+        return null;
+      }
+    })();
+
+    // Detect gateway session resets by comparing the per-agent sessionId
+    // with the Studio registry's sessionId. When they differ, the gateway
+    // re-materialized the session and renamed the old JSONL to .reset.*.
+    const priorSessionFiles: string[] = [];
+    if (sessionFile && record?.sessionId) {
+      const registryEntry = getRegistryEntry(sessionKey);
+      if (registryEntry) {
+        const registrySessionId = normalizeString(registryEntry.sessionId) || null;
+        const currentSessionId = normalizeString(record.sessionId) || null;
+        if (registrySessionId && currentSessionId && registrySessionId !== currentSessionId) {
+          // Session was reset — track the old sessionId
+          const priorIds = [...(registryEntry.priorSessionIds || [])];
+          if (!priorIds.includes(registrySessionId)) {
+            priorIds.push(registrySessionId);
+          }
+          saveRegistryEntry({
+            ...registryEntry,
+            sessionId: currentSessionId,
+            priorSessionIds: priorIds,
+          });
+        }
+
+        // Resolve .reset.* backup files for all known prior session IDs
+        const allPriorIds = getRegistryEntry(sessionKey)?.priorSessionIds || [];
+        if (allPriorIds.length > 0) {
+          const sessionsDir = path.dirname(sessionFile);
+          for (const priorId of allPriorIds) {
+            try {
+              const candidates = fs.readdirSync(sessionsDir)
+                .filter((name) => name.startsWith(`${priorId}.jsonl.reset.`))
+                .sort()
+                .reverse(); // newest reset first (but we want chronological, so reverse later)
+              for (const candidate of candidates) {
+                const fullPath = path.join(sessionsDir, candidate);
+                priorSessionFiles.push(fullPath);
+              }
+            } catch {}
+          }
+          // Sort prior files chronologically (oldest first) by the reset timestamp in filename
+          priorSessionFiles.sort();
+        }
+      }
+    }
+
+    return {
+      agentId,
+      record,
+      sessionFile,
+      sourceMtimeMs,
+      priorSessionFiles,
+    };
+  }
+
+  function readTranscriptRawEntries(sessionFile: string): Record<string, unknown>[] {
+    try {
+      return fs.readFileSync(sessionFile, 'utf-8')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .flatMap((line) => {
+          try {
+            const parsed = JSON.parse(line) as Record<string, unknown>;
+            return parsed && typeof parsed === 'object' ? [parsed] : [];
+          } catch {
+            return [];
+          }
+        });
+    } catch {
+      return [];
+    }
+  }
+
+  interface TranscriptStatCacheEntry {
+    ino: number;
+    size: number;
+    mtimeMs: number;
+    entries: Record<string, unknown>[];
+  }
+
+  const transcriptStatCache = new LruMap<string, TranscriptStatCacheEntry>(200);
+
+  interface TranscriptToolCardsCacheEntry {
+    ino: number;
+    size: number;
+    mtimeMs: number;
+    toolCards: ChatToolCard[];
+  }
+
+  const transcriptToolCardsCache = new LruMap<string, TranscriptToolCardsCacheEntry>(200);
+
+  function readTranscriptEntriesIncremental(sessionFile: string): Record<string, unknown>[] {
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(sessionFile);
+    } catch {
+      return [];
+    }
+
+    const cached = transcriptStatCache.get(sessionFile);
+
+    if (cached && cached.ino === stat.ino && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) {
+      return cached.entries;
+    }
+
+    const entries = readTranscriptRawEntries(sessionFile);
+    transcriptStatCache.set(sessionFile, {
+      ino: stat.ino,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      entries,
+    });
+    return entries;
+  }
+
+  /**
+   * Returns transcript-derived tool cards with stat-based caching.
+   * Re-derives only when the transcript file actually changes on disk;
+   * subsequent calls with the same file state return the cached result.
+   */
+  function deriveTranscriptToolCardsCached(
+    sessionFile: string,
+    sessionKey: string,
+  ): ChatToolCard[] {
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(sessionFile);
+    } catch {
+      return [];
+    }
+    const cached = transcriptToolCardsCache.get(sessionFile);
+    if (cached && cached.ino === stat.ino && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) {
+      return cached.toolCards;
+    }
+    const rawMessages = readTranscriptEntriesIncremental(sessionFile);
+    if (!rawMessages.length) {
+      return [];
+    }
+    const derivedObs = deriveObservabilityFromHistory(rawMessages, {
+      sessionKey,
+      collectToolArtifacts: mediaBridge.collectToolArtifacts,
+      toolCardLimit: Number.POSITIVE_INFINITY,
+    });
+    transcriptToolCardsCache.set(sessionFile, {
+      ino: stat.ino,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      toolCards: derivedObs.toolCards,
+    });
+    return derivedObs.toolCards;
+  }
+
+  async function loadHistorySnapshot(sessionKey: string): Promise<{
+    checkedAt: string;
+    session: ChatSessionRow;
+    messages: ChatMessageItem[];
+    canonicalEntries: ChatCanonicalEntry[];
+    canonicalSource: ChatCanonicalState['source'];
+    overlays: ChatRunOverlay[];
+    runtime: ChatRuntimeState;
+    diagnostics: ChatDiagnostics;
+    observability: ChatObservabilityState;
+    sourceSessionFile: string | null;
+    sourceMtimeMs: number | null;
+  }> {
+    let session = await requireSession(sessionKey);
+    const diagnostics = await buildHealth([]);
+    let messages: ChatMessageItem[] = [];
+    let canonicalEntries: ChatCanonicalEntry[] = [];
+    let canonicalSource: ChatCanonicalState['source'] = 'history_rpc';
+    let historyToolCards: ChatToolCard[] = [];
+    let sourceSessionFile: string | null = null;
+    let sourceMtimeMs: number | null = null;
+    const inMemory = getStudioSession(sessionKey);
+    const observability = inMemory ? cloneObservabilityState(inMemory.observability) : createEmptyObservabilityState();
+
+    if (inMemory?.resetPending) {
+      diagnostics.notes.push('Studio reset is still being finalized by the backend adapter; returning cleared in-memory history.');
+      return {
+        checkedAt: new Date().toISOString(),
+        session: inMemory.row,
+        messages: [],
+        canonicalEntries: [],
+        canonicalSource: 'history_rpc',
+        overlays: [],
+        runtime: inMemory.row.runtime,
+        diagnostics,
+        observability,
+        sourceSessionFile: null,
+        sourceMtimeMs: null,
+      };
+    }
+
+    const sourceSelection = selectCanonicalSource(sessionKey);
+    sourceSessionFile = sourceSelection.sessionFile;
+    sourceMtimeMs = sourceSelection.sourceMtimeMs;
+
+    if (sourceSelection.kind === 'local_transcript') {
+      // Load entries from prior (reset backup) session files first, then current
+      const priorRawEntries: Record<string, unknown>[] = [];
+      for (const priorFile of sourceSelection.priorSessionFiles) {
+        const entries = readTranscriptRawEntries(priorFile);
+        priorRawEntries.push(...entries);
+      }
+      const currentRawEntries = readTranscriptEntriesIncremental(sourceSelection.sessionFile);
+      const transcriptRawMessages = priorRawEntries.length > 0
+        ? [...priorRawEntries, ...currentRawEntries]
+        : currentRawEntries;
+      const mappingOptions: TranscriptMappingOptions = {
+        sessionKey,
+        collectMessageResources: mediaBridge.collectMessageResources,
+        overrideMessage: overrideTranscriptMessage,
+      };
+      canonicalEntries = mapCanonicalEntriesFromParsedEntries(transcriptRawMessages, mappingOptions)
+        .map(buildCanonicalEntryFromMapped);
+      canonicalSource = 'local_transcript';
+      const transcriptMessages = mapMessagesFromParsedEntries(transcriptRawMessages, mappingOptions);
+      messages = mergeCanonicalHistoryWithLocalOptimism(inMemory?.messages, transcriptMessages);
+      const derivedObservability = deriveObservabilityFromHistory(transcriptRawMessages, {
+        sessionKey,
+        collectToolArtifacts: mediaBridge.collectToolArtifacts,
+        toolCardLimit: Number.POSITIVE_INFINITY,
+      });
+      historyToolCards = derivedObservability.toolCards;
+      if (derivedObservability.usage) {
+        observability.usage = derivedObservability.usage;
+      }
+      if (historyToolCards.length > 0) {
+        const mergedToolCards = new Map<string, ChatToolCard>();
+        for (const item of observability.toolCards) {
+          mergedToolCards.set(item.toolCallId, item);
+        }
+        for (const item of historyToolCards.slice(0, 12)) {
+          const current = mergedToolCards.get(item.toolCallId);
+          mergedToolCards.set(item.toolCallId, current ? mergeToolCallItem(current, item) : item);
+        }
+        observability.toolCards = [...mergedToolCards.values()]
+          .sort((left, right) => (right.updatedAt || right.startedAt || '').localeCompare(left.updatedAt || left.startedAt || ''))
+          .slice(0, 12);
+      }
+      if (derivedObservability.timeline.length > 0) {
+        const seenTimelineIds = new Set(observability.timeline.map((item) => item.id));
+        observability.timeline = [
+          ...derivedObservability.timeline.filter((item) => !seenTimelineIds.has(item.id)),
+          ...observability.timeline,
+        ].slice(-40);
+      }
+      diagnostics.notes.push('History is sourced from local transcript canonical authority and paged by the Studio BFF.');
+    } else {
+      try {
+        const payload = await requestGateway<Record<string, unknown>>(options.config, 'chat.history', {
+          sessionKey,
+          limit: 200,
+        });
+        const gatewayRawMessages = Array.isArray(payload.messages)
+          ? payload.messages.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') as Record<string, unknown>[]
+          : [];
+        const gatewayCanonicalEntries = gatewayRawMessages.length
+          ? gatewayRawMessages.flatMap((item, index) => {
+            const mapped = buildCanonicalEntryFromRaw(item, index, {
+              sessionKey,
+              collectMessageResources: mediaBridge.collectMessageResources,
+              overrideMessage: overrideTranscriptMessage,
+            });
+            return mapped ? [mapped] : [];
+          })
+          : [];
+        const gatewayMessages = gatewayCanonicalEntries.map((entry) => cloneChatMessageItem(entry.message)!);
+        const mirrorSnapshot = durableMirrorStore.readSession(sessionKey);
+        const derivedObservability = deriveObservabilityFromHistory(gatewayRawMessages, {
+          sessionKey,
+          collectToolArtifacts: mediaBridge.collectToolArtifacts,
+          toolCardLimit: Number.POSITIVE_INFINITY,
+        });
+        historyToolCards = derivedObservability.toolCards;
+        if (derivedObservability.usage) observability.usage = derivedObservability.usage;
+        if (historyToolCards.length > 0) {
+          const mergedToolCards = new Map<string, ChatToolCard>();
+          for (const item of observability.toolCards) {
+            mergedToolCards.set(item.toolCallId, item);
+          }
+          for (const item of historyToolCards.slice(0, 12)) {
+            const current = mergedToolCards.get(item.toolCallId);
+            mergedToolCards.set(item.toolCallId, current ? mergeToolCallItem(current, item) : item);
+          }
+          observability.toolCards = [...mergedToolCards.values()]
+            .sort((left, right) => (right.updatedAt || right.startedAt || '').localeCompare(left.updatedAt || left.startedAt || ''))
+            .slice(0, 12);
+        }
+        if (derivedObservability.timeline.length > 0) {
+          const seenTimelineIds = new Set(observability.timeline.map((item) => item.id));
+          observability.timeline = [
+            ...derivedObservability.timeline.filter((item) => !seenTimelineIds.has(item.id)),
+            ...observability.timeline,
+          ].slice(-40);
+        }
+        if (
+          mirrorSnapshot
+          && (
+            gatewayMessages.length < mirrorSnapshot.messages.length
+            || buildCanonicalEntriesSignature(gatewayCanonicalEntries) === ''
+          )
+        ) {
+          canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
+          canonicalSource = 'studio_mirror';
+          messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
+          diagnostics.notes.push(`Gateway chat.history shrank behind Studio durable mirror (${mirrorSnapshot.backend}); keeping protected canonical history.`);
+        } else if (
+          inMemory
+          && isGatewayHistoryBehindInMemory(inMemory, gatewayMessages)
+        ) {
+          messages = mergeCanonicalHistoryWithLocalOptimism(currentStudioHistory(inMemory), gatewayMessages);
+          canonicalEntries = gatewayCanonicalEntries;
+          canonicalSource = 'history_rpc';
+          diagnostics.notes.push('Gateway chat.history is temporarily behind the Studio in-memory session state; preserving local confirmed messages until history catches up.');
+        } else if (
+          inMemory
+          && isGatewayHistoryStaleAfterLocalReset(inMemory, gatewayMessages)
+        ) {
+          messages = currentStudioHistory(inMemory);
+          canonicalEntries = buildCanonicalEntriesFromMessages(messages.filter((message) => message.source !== 'inject'));
+          canonicalSource = 'history_rpc';
+          diagnostics.notes.push('Gateway chat.history is behind the in-memory Studio session state after reset; returning in-memory fallback.');
+        } else {
+          messages = gatewayMessages;
+          canonicalEntries = gatewayCanonicalEntries;
+          canonicalSource = 'history_rpc';
+          durableMirrorStore.replaceSnapshot({
+            sessionKey,
+            version: nextCanonicalVersion(sessionKey, 'history_rpc'),
+            source: 'history_rpc',
+            messages: gatewayMessages,
+            baseMessageSeq: gatewayCanonicalEntries[gatewayCanonicalEntries.length - 1]?.messageSeq || gatewayMessages.length,
+            savedAt: new Date().toISOString(),
+          });
+          diagnostics.notes.push(`History is sourced from Gateway chat.history and mirrored to Studio durable store (${durableMirrorStore.backend}).`);
+        }
+      } catch (error) {
+        const mirrorSnapshot = durableMirrorStore.readSession(sessionKey);
+        if (mirrorSnapshot) {
+          messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
+          canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
+          canonicalSource = 'studio_mirror';
+          diagnostics.notes.push(`Gateway chat.history unavailable; using Studio durable mirror (${mirrorSnapshot.backend}) (${error instanceof Error ? error.message : String(error)}).`);
+        } else if (inMemory) {
+          messages = currentStudioHistory(inMemory);
+          canonicalEntries = buildCanonicalEntriesFromMessages(messages.filter((message) => message.source !== 'inject'));
+          canonicalSource = 'history_rpc';
+          diagnostics.notes.push(`Gateway chat.history unavailable; using Studio in-memory history fallback (${error instanceof Error ? error.message : String(error)}).`);
+        } else {
+          messages = [];
+          canonicalEntries = [];
+          canonicalSource = 'history_rpc';
+          diagnostics.notes.push(`Gateway chat.history unavailable and no transcript file is present (${error instanceof Error ? error.message : String(error)}).`);
+        }
+      }
+    }
+
+    if (sourceSelection.kind !== 'local_transcript') {
+      messages = supplementHistoryWithRunState(sessionKey, messages);
+    }
+    messages = normalizeMessageLedger(messages);
+    const toolCardsForHistory = historyToolCards.length ? historyToolCards : observability.toolCards;
+    messages = enrichMessagesWithToolCards(messages, toolCardsForHistory);
+    const overlays = filterRedundantTerminalOverlays(
+      messages,
+      enrichOverlaysWithToolCards(listRunOverlaysForSession(sessionKey), toolCardsForHistory),
+    );
+    const nextSession = applyDerivedAutoLabelToSessionRow(inMemory?.row || session, messages);
+    const autoLabelChanged = nextSession !== (inMemory?.row || session);
+    session = nextSession;
+
+    if (
+      messages.length
+      && (
+        !inMemory
+        || messages.length > inMemory.messages.length
+        || autoLabelChanged
+      )
+    ) {
+      setStudioSession({
+        row: session,
+        messages: messages.map((message) => cloneChatMessageItem(message)!),
+        diagnosticsNotes: inMemory?.diagnosticsNotes || [],
+        observability,
+        pendingQueue: inMemory?.pendingQueue || [],
+        controls: inMemory?.controls || createDefaultSessionControls(),
+        materialized: inMemory?.materialized,
+        resetPending: inMemory?.resetPending,
+        clearedAt: inMemory?.clearedAt || null,
+      });
+    } else if (autoLabelChanged && inMemory) {
+      inMemory.row = session;
+      setStudioSession(inMemory);
+    }
+
+    if (autoLabelChanged && session.kind === 'studio_managed') {
+      saveRegistryEntry(buildRegistryEntryFromRow(session));
+    }
+    diagnostics.historyTruncated = messages.some((message) => message.truncated || message.omitted);
+    diagnostics.truncationMode = messages.some((message) => message.omitted)
+      ? 'omitted_placeholder'
+      : diagnostics.historyTruncated
+        ? 'tail_marked'
+        : 'none';
+
+    return {
+      checkedAt: new Date().toISOString(),
+      session,
+      messages,
+      canonicalEntries,
+      canonicalSource,
+      overlays,
+      runtime: session.runtime,
+      diagnostics,
+      observability,
+      sourceSessionFile,
+      sourceMtimeMs,
+    };
+  }
+
+  function applyCanonicalStateUpdate(params: {
+    sessionKey: string;
+    source: ChatCanonicalState['source'];
+    entries: ChatCanonicalEntry[];
+    overlays: ChatRunOverlay[];
+    forceSnapshot?: boolean;
+    allowAppend?: boolean;
+  }): void {
+    const current = canonicalStates.get(params.sessionKey);
+    if (
+      !params.forceSnapshot
+      && params.allowAppend
+      && current
+      && current.source === params.source
+      && current.entries.length < params.entries.length
+      && entriesShareStablePrefix(current.entries, params.entries)
+    ) {
+      emitCanonicalMessages(
+        params.sessionKey,
+        params.source === 'local_transcript' || params.source === 'history_sse'
+          ? params.source
+          : 'history_sse',
+        params.entries.slice(current.entries.length),
+        current.version,
+      );
+      return;
+    }
+
+    const nextVersion = (
+      current
+      && !params.forceSnapshot
+      && current.source === params.source
+      && buildCanonicalEntriesSignature(current.entries) === buildCanonicalEntriesSignature(params.entries)
+    )
+      ? current.version
+      : nextCanonicalVersion(params.sessionKey, params.source);
+
+    emitCanonicalSnapshot(params.sessionKey, params.source, params.entries, nextVersion, params.overlays);
+  }
+
+  async function buildCanonicalSnapshotEvent(
+    sessionKey: string,
+  ): Promise<Extract<ChatStreamEvent, { kind: 'canonical.snapshot' }> | null> {
+    const current = canonicalStates.get(sessionKey);
+    let version = current?.version || null;
+    let source = current?.source || null;
+    let entries = current?.entries.map((entry) => ({
+      ...entry,
+      message: cloneChatMessageItem(entry.message)!,
+    })) || [];
+    let overlays = listRunOverlaysForSession(sessionKey);
+    let runtime = resolveCanonicalRuntime(sessionKey);
+
+    if (!current) {
+      if (selectCanonicalSource(sessionKey).kind === 'official_canonical_stream') {
+        try {
+          await resyncOfficialCanonicalHistory(sessionKey, 'bootstrap');
+        } catch {}
+        const refreshed = canonicalStates.get(sessionKey);
+        if (refreshed) {
+          version = refreshed.version;
+          source = refreshed.source;
+          entries = refreshed.entries.map((entry) => ({
+            ...entry,
+            message: cloneChatMessageItem(entry.message)!,
+          }));
+        }
+      }
+      if (!version || !source) {
+        const snapshot = await loadHistorySnapshot(sessionKey);
+        entries = snapshot.canonicalEntries.length
+          ? snapshot.canonicalEntries
+          : buildCanonicalEntriesFromMessages(snapshot.messages.filter((message) => message.source !== 'inject'));
+        version = nextCanonicalVersion(sessionKey, snapshot.canonicalSource);
+        source = snapshot.canonicalSource;
+        overlays = snapshot.overlays;
+        runtime = snapshot.runtime;
+        canonicalStates.set(sessionKey, {
+          sessionKey,
+          version,
+          source,
+          entries: entries.map((entry) => ({
+            ...entry,
+            message: cloneChatMessageItem(entry.message)!,
+          })),
+        });
+      }
+    }
+    if (!shouldEmitCanonicalProtocol()) {
+      return null;
+    }
+    let snapshotMessages = entries.map((entry) => cloneChatMessageItem(entry.message)!);
+    let snapshotOverlays = overlays.map((overlay) => ({
+      ...overlay,
+      toolCalls: overlay.toolCalls.map((item) => cloneChatMessageToolCallItem(item)),
+    }));
+    // Collect enrichment tool cards from ALL available sources.
+    // The canonical cache may hold stale 'running' statuses from streaming events
+    // that were cached before tool results arrived (e.g. page refresh mid-stream).
+    // We merge three sources (most complete first):
+    //   1. Transcript-derived tool cards — parsed from the raw JSONL with no count limit,
+    //      each toolresult record yields a terminal status (completed/error).
+    //   2. Overlay tool calls — from run projections/shadows (may be empty after cleanup).
+    //   3. observability.toolCards — the runtime in-memory cache, capped at 12.
+    const enrichmentMap = new Map<string, ChatToolCard>();
+    // Source 1: Derive terminal statuses from the raw transcript (stat-cached, cheap).
+    const bootstrapSourceSelection = selectCanonicalSource(sessionKey);
+    if (bootstrapSourceSelection.kind === 'local_transcript') {
+      for (const tc of deriveTranscriptToolCardsCached(bootstrapSourceSelection.sessionFile, sessionKey)) {
+        if (tc.toolCallId) {
+          enrichmentMap.set(tc.toolCallId, tc);
+        }
+      }
+    }
+    // Source 2: Overlay tool calls from run projections/shadows.
+    for (const overlay of snapshotOverlays) {
+      for (const tc of overlay.toolCalls) {
+        if (tc.toolCallId) {
+          const existing = enrichmentMap.get(tc.toolCallId);
+          enrichmentMap.set(tc.toolCallId, existing ? mergeToolCallItem(existing, tc) : tc);
+        }
+      }
+    }
+    // Source 3: Runtime in-memory tool cards (may have richer artifacts data).
+    const sessionData = getStudioSession(sessionKey);
+    const snapshotToolCards = sessionData?.observability?.toolCards;
+    if (snapshotToolCards?.length) {
+      for (const tc of snapshotToolCards) {
+        if (tc.toolCallId) {
+          const existing = enrichmentMap.get(tc.toolCallId);
+          enrichmentMap.set(tc.toolCallId, existing ? mergeToolCallItem(existing, tc) : tc);
+        }
+      }
+    }
+    const allSnapshotToolCards = [...enrichmentMap.values()];
+    if (allSnapshotToolCards.length) {
+      snapshotMessages = enrichMessagesWithToolCards(snapshotMessages, allSnapshotToolCards);
+      snapshotOverlays = filterRedundantTerminalOverlays(
+        snapshotMessages,
+        enrichOverlaysWithToolCards(snapshotOverlays, allSnapshotToolCards),
+      );
+    }
+    const payload: ChatStreamEvent = {
+      kind: 'canonical.snapshot',
+      sessionKey,
+      emittedAt: new Date().toISOString(),
+      version: version || nextCanonicalVersion(sessionKey, 'history_rpc'),
+      messages: snapshotMessages,
+      overlays: snapshotOverlays,
+      runtime,
+      source: source || 'history_rpc',
+    };
+    return payload;
+  }
+
+  async function bootstrapCanonicalSnapshotForSession(
+    sessionKey: string,
+    socket?: WebSocket,
+  ): Promise<void> {
+    const payload = await buildCanonicalSnapshotEvent(sessionKey);
+    if (!payload) {
+      return;
+    }
+    if (socket) {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(payload));
+      }
+      return;
+    }
+    broadcastToSession(sessionKey, payload);
+  }
+
+  async function emitBootstrapEventsToSse(
+    sessionKey: string,
+    res: http.ServerResponse,
+  ): Promise<void> {
+    const session = sessionKey ? getStudioSession(sessionKey)?.row : null;
+    const runtime = session?.runtime || buildRuntimeState(await isGatewayConnected(), Boolean(session?.permissions.writable));
+    sendSseEvent(res, 'chat-stream', {
+      kind: 'runtime',
+      sessionKey,
+      runId: null,
+      emittedAt: new Date().toISOString(),
+      runtime,
+    } satisfies ChatStreamEvent);
+    const queueState = getStudioSession(sessionKey)?.pendingQueue || [];
+    sendSseEvent(res, 'chat-stream', {
+      kind: 'queue.state',
+      sessionKey,
+      emittedAt: new Date().toISOString(),
+      items: cloneChatQueuedMessageList(queueState),
+    } satisfies ChatStreamEvent);
+    const controls = getStudioSession(sessionKey)?.controls || createDefaultSessionControls();
+    sendSseEvent(res, 'chat-stream', {
+      kind: 'session.controls',
+      sessionKey,
+      emittedAt: new Date().toISOString(),
+      controls: cloneSessionControls(controls),
+    } satisfies ChatStreamEvent);
+    for (const overlay of listRunOverlaysForSession(sessionKey)) {
+      sendSseEvent(res, 'chat-stream', {
+        kind: 'run_overlay',
+        sessionKey,
+        runId: overlay.runId,
+        emittedAt: overlay.updatedAt || new Date().toISOString(),
+        overlay,
+        terminal: isRunProjectionTerminal(overlay.lifecycle),
+      } satisfies ChatStreamEvent);
+    }
+    const snapshot = await buildCanonicalSnapshotEvent(sessionKey);
+    if (snapshot) {
+      sendSseEvent(res, 'chat-stream', snapshot);
+    }
+  }
+
+  async function buildGatewayAttachEvents(sessionKey: string): Promise<ChatStreamEvent[]> {
+    const session = getStudioSession(sessionKey)?.row || await requireSession(sessionKey);
+    const runtime = getStudioSession(sessionKey)?.row.runtime
+      || session.runtime
+      || buildRuntimeState(await isGatewayConnected(), Boolean(session.permissions.writable));
+    const emittedAt = new Date().toISOString();
+    const events: ChatStreamEvent[] = [{
+      kind: 'runtime',
+      sessionKey,
+      runId: null,
+      emittedAt,
+      runtime,
+    }, {
+      kind: 'queue.state',
+      sessionKey,
+      emittedAt,
+      items: cloneChatQueuedMessageList(getStudioSession(sessionKey)?.pendingQueue || []),
+    }, {
+      kind: 'session.controls',
+      sessionKey,
+      emittedAt,
+      controls: cloneSessionControls(getStudioSession(sessionKey)?.controls || createDefaultSessionControls()),
+    }];
+
+    if (shouldEmitCanonicalProtocol()) {
+      events.push({
+        kind: 'runtime.state',
+        sessionKey,
+        runId: null,
+        emittedAt,
+        runtime,
+      });
+    }
+
+    for (const overlay of listRunOverlaysForSession(sessionKey)) {
+      events.push({
+        kind: 'run_overlay',
+        sessionKey,
+        runId: overlay.runId,
+        emittedAt: overlay.updatedAt || emittedAt,
+        overlay,
+        terminal: isRunProjectionTerminal(overlay.lifecycle),
+      });
+    }
+
+    const snapshotEvent = await buildCanonicalSnapshotEvent(sessionKey);
+    if (snapshotEvent) {
+      events.push(snapshotEvent);
+    }
+    return events;
+  }
+
+  async function syncLocalTranscriptCanonicalSource(sessionKey: string): Promise<void> {
+    const selection = selectCanonicalSource(sessionKey);
+    if (selection.kind !== 'local_transcript') {
+      return;
+    }
+    const snapshot = await loadHistorySnapshot(sessionKey);
+    const entries = snapshot.canonicalEntries.length
+      ? snapshot.canonicalEntries
+      : readTranscriptCanonicalEntries(selection.sessionFile, {
+        sessionKey,
+        collectMessageResources: mediaBridge.collectMessageResources,
+        overrideMessage: overrideTranscriptMessage,
+      }).map(buildCanonicalEntryFromMapped);
+    applyCanonicalStateUpdate({
+      sessionKey,
+      source: 'local_transcript',
+      entries,
+      overlays: snapshot.overlays,
+      allowAppend: true,
+    });
+  }
+
+  function paginateMessageList(
+    messages: ChatMessageItem[],
+    options: {
+      before?: string | null;
+      after?: string | null;
+      anchor?: string | null;
+      limit?: number;
+      day?: string | null;
+      source: ChatHistoryCursor['source'];
+      query?: string | null;
+      roleFilter?: ChatHistorySearchRoleFilter | null;
+      contentFilter?: ChatHistorySearchContentFilter | null;
+    },
+  ): {
+    messages: ChatMessageItem[];
+    pageInfo: ChatHistoryPayload['pageInfo'];
+    day: string | null;
+  } {
+    const day = normalizeString(options.day) || null;
+    const filtered = day
+      ? messages.filter((message) => (normalizeDate(message.createdAt) || '').slice(0, 10) === day)
+      : messages.slice();
+    const limit = normalizeHistoryLimit(options.limit, 50);
+    const queryNormalized = normalizeString(options.query) || null;
+    const roleFilter = options.source === 'history_search'
+      ? normalizeHistorySearchRoleFilter(options.roleFilter)
+      : null;
+    const contentFilter = options.source === 'history_search'
+      ? normalizeHistorySearchContentFilter(options.contentFilter)
+      : null;
+
+    const cursorMatchesContext = (cursor: ChatHistoryCursor | null): boolean => {
+      if (!cursor) return false;
+      return cursor.source === options.source
+        && (cursor.day || null) === day
+        && (cursor.query || null) === queryNormalized
+        && (cursor.roleFilter || null) === roleFilter
+        && (cursor.contentFilter || null) === contentFilter;
+    };
+
+    let start: number;
+    let end: number;
+
+    const anchorId = normalizeString(options.anchor) || null;
+    if (anchorId) {
+      // Anchor mode: center a window around the message with the given ID
+      const anchorIdx = filtered.findIndex((m) => m.id === anchorId);
+      if (anchorIdx === -1) {
+        // Anchor message not found — fall back to tail
+        end = filtered.length;
+        start = Math.max(0, end - limit);
+      } else {
+        const before = Math.floor(limit / 2);
+        const after = Math.ceil(limit / 2);
+        start = Math.max(0, anchorIdx - before);
+        end = Math.min(filtered.length, anchorIdx + after + 1);
+        // Redistribute if clamped at boundaries
+        if (start === 0) {
+          end = Math.min(filtered.length, start + limit + 1);
+        } else if (end === filtered.length) {
+          start = Math.max(0, end - limit - 1);
+        }
+      }
+    } else {
+      const afterCursor = decodeHistoryCursor(options.after);
+      if (afterCursor && cursorMatchesContext(afterCursor)) {
+        // After mode: load messages forward from cursor position
+        const startInclusive = Math.min(filtered.length, afterCursor.anchorIndex);
+        start = startInclusive;
+        end = Math.min(filtered.length, start + limit);
+      } else {
+        const beforeCursor = decodeHistoryCursor(options.before);
+        if (beforeCursor && cursorMatchesContext(beforeCursor)) {
+          // Before mode (existing behavior): load messages before cursor position
+          end = Math.min(filtered.length, beforeCursor.anchorIndex);
+          start = Math.max(0, end - limit);
+        } else {
+          // Default: load the last N messages
+          end = filtered.length;
+          start = Math.max(0, end - limit);
+        }
+      }
+    }
+
+    const pageMessages = filtered.slice(start, end);
+
+    const beforeCursorValue = start > 0
+      ? encodeHistoryCursor({
+        source: options.source,
+        anchorIndex: start,
+        anchorMessageId: filtered[start]?.id || null,
+        anchorCreatedAt: filtered[start]?.createdAt || null,
+        day,
+        query: queryNormalized,
+        roleFilter,
+        contentFilter,
+      })
+      : null;
+
+    const afterCursorValue = end < filtered.length
+      ? encodeHistoryCursor({
+        source: options.source,
+        anchorIndex: end,
+        anchorMessageId: filtered[end]?.id || null,
+        anchorCreatedAt: filtered[end]?.createdAt || null,
+        day,
+        query: queryNormalized,
+        roleFilter,
+        contentFilter,
+      })
+      : null;
+
+    return {
+      messages: pageMessages,
+      pageInfo: {
+        hasMoreBefore: start > 0,
+        beforeCursor: beforeCursorValue,
+        hasMoreAfter: end < filtered.length,
+        afterCursor: afterCursorValue,
+      },
+      day,
+    };
+  }
+
+  function filterOverlaysForMessageWindow(
+    overlays: ChatRunOverlay[],
+    messages: ChatMessageItem[],
+  ): ChatRunOverlay[] {
+    if (!overlays.length || !messages.length) {
+      return [];
+    }
+    const runIds = new Set(
+      messages
+        .map((message) => normalizeString(message.runId))
+        .filter(Boolean),
+    );
+    const toolCallIds = new Set(
+      messages.flatMap((message) => (message.toolCalls || []).map((toolCall) => normalizeString(toolCall.toolCallId))).filter(Boolean),
+    );
+    return overlays.filter((overlay) => (
+      runIds.has(normalizeString(overlay.runId))
+      || overlay.toolCalls.some((toolCall) => toolCallIds.has(normalizeString(toolCall.toolCallId)))
+    ));
+  }
+
+  function buildGatewayRuntime(sessionKey: string, writable: boolean, overrides: Partial<ChatRuntimeState> = {}): ChatRuntimeState {
+    const current = getStudioSession(sessionKey)?.row.runtime;
+    return {
+      gatewayConnected: true,
+      sessionWritable: writable,
+      activeRunId: current?.activeRunId || null,
+      state: current?.state || 'idle',
+      lastEventAt: current?.lastEventAt || null,
+      lastAckAt: current?.lastAckAt || null,
+      lastErrorCode: current?.lastErrorCode || null,
+      lastErrorMessage: current?.lastErrorMessage || null,
+      ...overrides,
+    };
+  }
+
+  function buildRuntimeForTerminalChatEvent(params: {
+    sessionKey: string;
+    runId: string;
+    writable: boolean;
+    emittedAt: string;
+    overrides: Partial<ChatRuntimeState>;
+  }): ChatRuntimeState {
+    const current = getStudioSession(params.sessionKey)?.row.runtime || null;
+    const currentActiveRunId = normalizeString(current?.activeRunId) || null;
+    if (currentActiveRunId && currentActiveRunId !== params.runId) {
+      return {
+        gatewayConnected: true,
+        sessionWritable: params.writable,
+        activeRunId: currentActiveRunId,
+        state: current?.state === 'streaming' ? 'streaming' : 'running',
+        lastEventAt: params.emittedAt,
+        lastAckAt: current?.lastAckAt || null,
+        lastErrorCode: current?.lastErrorCode || null,
+        lastErrorMessage: current?.lastErrorMessage || null,
+      };
+    }
+    return buildGatewayRuntime(params.sessionKey, params.writable, params.overrides);
+  }
+
+  function buildQueuedMessageItem(
+    sessionKey: string,
+    payload: ChatSendRequest,
+    createdAt = new Date().toISOString(),
+  ): ChatQueuedMessageItem {
+    const fileRefs = mediaBridge.normalizeSendFileRefs(payload.fileRefs);
+    const attachments = mediaBridge.normalizeSendAttachments(payload.attachments);
+    const composerDocument = normalizeComposerDocument(payload.composerDocument);
+    const composerText = composerDocument.length
+      ? serializeComposerDocumentToMarkdown(composerDocument, fileRefs)
+      : '';
+    const text = normalizeString(composerText) || normalizeString(payload.text);
+    if (!text && fileRefs.length === 0 && attachments.length === 0) {
+      throw new ChatServiceError(400, buildChatError('invalid_request', 'Message text or attachment is required'));
+    }
+    const previewText = extractComposerPlainText(composerDocument).trim()
+      || text
+      || fileRefs[0]?.fileName
+      || attachments[0]?.fileName
+      || '';
+    return {
+      id: `queue-${crypto.randomUUID()}`,
+      sessionKey,
+      clientRequestId: normalizeString(payload.clientRequestId) || null,
+      deliveryRequestId: normalizeString(payload.clientRequestId, `studio-${crypto.randomUUID()}`),
+      text,
+      previewText,
+      composerDocument: composerDocument.length ? composerDocument : undefined,
+      fileRefs: fileRefs.length ? fileRefs : undefined,
+      attachments: attachments.length ? attachments : undefined,
+      createdAt,
+      updatedAt: createdAt,
+      status: 'queued',
+      blockedReason: null,
+    };
+  }
+
+  async function flushQueueIfIdle(sessionKey: string): Promise<void> {
+    if (queueFlushSessions.has(sessionKey)) {
+      return;
+    }
+    queueFlushSessions.add(sessionKey);
+    try {
+      while (true) {
+        const current = getStudioSession(sessionKey);
+        if (!current || current.row.runtime.activeRunId || current.pendingQueue.length === 0) {
+          return;
+        }
+        const [nextEntry, ...rest] = current.pendingQueue;
+        if (!nextEntry) {
+          return;
+        }
+
+        current.pendingQueue = rest;
+        setStudioSession(current);
+        broadcastQueueState(sessionKey);
+
+        try {
+          await performDirectSend(sessionKey, {
+            text: nextEntry.text,
+            clientRequestId: nextEntry.deliveryRequestId,
+            composerDocument: nextEntry.composerDocument,
+            fileRefs: nextEntry.fileRefs,
+            attachments: nextEntry.attachments,
+          }, {
+            publishCanonicalUserMessageImmediately: true,
+          });
+        } catch (error) {
+          const latest = getStudioSession(sessionKey);
+          if (latest) {
+            const blockedEntry: ChatQueuedMessageItem = {
+              ...cloneChatQueuedMessageItem(nextEntry)!,
+              status: 'blocked',
+              blockedReason: error instanceof Error ? error.message : 'Queue flush failed',
+              updatedAt: new Date().toISOString(),
+            };
+            latest.pendingQueue = [blockedEntry, ...latest.pendingQueue];
+            setStudioSession(latest);
+            broadcastQueueState(sessionKey);
+          }
+          return;
+        }
+
+        const latest = getStudioSession(sessionKey);
+        if (latest?.row.runtime.activeRunId) {
+          return;
+        }
+      }
+    } finally {
+      queueFlushSessions.delete(sessionKey);
+    }
+  }
+
+  function mapGatewayChatEvent(sessionKey: string, payload: Record<string, unknown>): ChatStreamEvent[] {
+    const state = normalizeString(payload.state);
+    const runId = normalizeString(payload.runId) || null;
+    const emittedAt = new Date().toISOString();
+    const writable = buildChatSessionPermissions('studio_managed').writable;
+    const protocolMode = getChatProtocolMode();
+    const canonicalSource = selectCanonicalSource(sessionKey);
+    const allowLegacyCanonicalWrite = protocolMode === 'legacy' && canonicalSource.kind !== 'local_transcript';
+
+    if (!runId) return [];
+    if (isSuppressedGatewayRunId(sessionKey, runId)) {
+      streamSnapshots.delete(runId);
+      return [];
+    }
+
+    if (state === 'delta') {
+      const rawText = extractMessageText((payload.message as Record<string, unknown>) || {});
+      const previous = streamSnapshots.get(runId) || '';
+      const accumulatedText = rawText;
+      const textDelta = accumulatedText.startsWith(previous)
+        ? accumulatedText.slice(previous.length)
+        : accumulatedText;
+      streamSnapshots.set(runId, accumulatedText);
+      const previewMessage = buildAssistantStreamPreviewMessage(sessionKey, accumulatedText, {
+        id: `stream-${runId}`,
+        createdAt: emittedAt,
+        source: 'stream',
+        runId,
+      }, (payload.message as Record<string, unknown>) || null);
+      const runtime = buildGatewayRuntime(sessionKey, writable, {
+        activeRunId: runId,
+        state: 'streaming',
+        lastEventAt: emittedAt,
+      });
+      updateRuntimeCache(sessionKey, runtime);
+      const projection = ensureRunProjection(sessionKey, runId, emittedAt, { lifecycle: 'running' });
+      projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'running');
+      projection.previewText = accumulatedText || projection.previewText;
+      if (accumulatedText && !projection.firstAssistantSeenAt) {
+        projection.firstAssistantSeenAt = emittedAt;
+      }
+      saveRunProjection(sessionKey, projection);
+
+      const events: ChatStreamEvent[] = [];
+      if (shouldEmitLegacyProtocol()) {
+        const overlayEvent = buildRunOverlayEvent(sessionKey, projection, emittedAt, false);
+        if (overlayEvent) {
+          events.push(overlayEvent);
+        }
+        events.push({
+          kind: 'delta',
+          sessionKey,
+          runId,
+          emittedAt,
+          textDelta,
+          accumulatedText,
+          message: previewMessage,
+        });
+      }
+      if (shouldEmitCanonicalProtocol()) {
+        events.push({
+          kind: 'temporary.assistant',
+          sessionKey,
+          runId,
+          emittedAt,
+          textDelta,
+          accumulatedText,
+        });
+        events.push({
+          kind: 'runtime.state',
+          sessionKey,
+          runId,
+          emittedAt,
+          runtime,
+        });
+      }
+      return events;
+    }
+
+    if (state === 'final') {
+      const rawFinalMessage = (payload.message as Record<string, unknown>) || {};
+      const skippedStudioEnvelope = isAssistantStudioDeliveryToolUseEnvelope(rawFinalMessage);
+      const skippedNoReply = isAssistantNoReplyMessage(rawFinalMessage);
+      const message = mapTranscriptMessage(rawFinalMessage, 0, {
+        sessionKey,
+        collectMessageResources: mediaBridge.collectMessageResources,
+        overrideMessage: overrideTranscriptMessage,
+      });
+      const usage = normalizeUsageSummary(payload.usage);
+      const projection = ensureRunProjection(sessionKey, runId, emittedAt, { lifecycle: 'completed' });
+      projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'completed');
+      const runtime = skippedStudioEnvelope
+        ? buildGatewayRuntime(sessionKey, writable, {
+          activeRunId: runId,
+          state: 'running',
+          lastEventAt: emittedAt,
+        })
+        : buildRuntimeForTerminalChatEvent({
+          sessionKey,
+          runId,
+          writable,
+          emittedAt,
+          overrides: {
+            activeRunId: null,
+            state: 'completed',
+            lastEventAt: emittedAt,
+          },
+        });
+      updateRuntimeCache(sessionKey, runtime);
+      if (!runtime.activeRunId) {
+        void flushQueueIfIdle(sessionKey);
+      }
+      updateObservabilityCache(sessionKey, (current) => {
+        let next = cloneObservabilityState(current);
+        if (usage) {
+          next.usage = usage;
+          next = appendTimelineItem(next, {
+            id: `usage-${runId}`,
+            kind: 'usage',
+            runId,
+            toolCallId: null,
+            emittedAt,
+            title: `Usage · ${usage.totalTokens} tokens`,
+            detail: `in ${usage.inputTokens} / out ${usage.outputTokens}`,
+            level: 'info',
+          }, `usage-${runId}`);
+        }
+        return next;
+      });
+      streamSnapshots.delete(runId);
+      if (message) {
+        projection.previewText = message.text || projection.previewText;
+        projection.finalMessageId = message.id;
+        projection.finalCreatedAt = message.createdAt || emittedAt;
+        if (message.text && !projection.firstAssistantSeenAt) {
+          projection.firstAssistantSeenAt = message.createdAt || emittedAt;
+        }
+      }
+      saveRunProjection(sessionKey, projection);
+      persistProjectionIfTerminal(projection);
+      if (canonicalSource.kind === 'local_transcript') {
+        void syncLocalTranscriptCanonicalSource(sessionKey);
+      }
+
+      const events: ChatStreamEvent[] = [];
+      if (shouldEmitLegacyProtocol()) {
+        const overlayEvent = buildRunOverlayEvent(sessionKey, projection, emittedAt, true);
+        if (overlayEvent) {
+          events.push(overlayEvent);
+        }
+      }
+      if (message && shouldEmitLegacyProtocol()) {
+        const canonicalMessage = {
+          ...message,
+          source: 'stream',
+          runId,
+        } satisfies ChatMessageItem;
+        if (allowLegacyCanonicalWrite) {
+          upsertStudioMessage(sessionKey, canonicalMessage);
+        }
+        events.push({
+          kind: 'final',
+          sessionKey,
+          runId,
+          emittedAt,
+          message: canonicalMessage,
+          runtime,
+          usage,
+        });
+      } else if (shouldEmitLegacyProtocol() && !(skippedStudioEnvelope && !skippedNoReply)) {
+        events.push({
+          kind: 'runtime',
+          sessionKey,
+          runId,
+          emittedAt,
+          runtime,
+        });
+      }
+      if (shouldEmitCanonicalProtocol()) {
+        events.push({
+          kind: 'runtime.state',
+          sessionKey,
+          runId,
+          emittedAt,
+          runtime,
+        });
+      }
+      return events;
+    }
+
+    if (state === 'aborted') {
+      const partialRaw = payload.message && typeof payload.message === 'object'
+        ? payload.message as Record<string, unknown>
+        : { text: typeof payload.message === 'string' ? payload.message : '', role: 'assistant' };
+      const partialMapped = mapTranscriptMessage({
+        ...partialRaw,
+        role: 'assistant',
+        state: 'aborted',
+        stopReason: normalizeString(payload.stopReason) || null,
+        timestamp: emittedAt,
+      }, 0, {
+        sessionKey,
+        collectMessageResources: mediaBridge.collectMessageResources,
+        overrideMessage: overrideTranscriptMessage,
+      });
+      const partialMessage = partialMapped && (partialMapped.text || partialMapped.resources?.length)
+        ? {
+          ...partialMapped,
+          id: `aborted-${runId}`,
+          source: 'stream',
+          runId,
+          createdAt: emittedAt,
+          aborted: true,
+          stopReason: normalizeString(payload.stopReason) || null,
+        } satisfies ChatMessageItem
+        : null;
+      const runtime = buildRuntimeForTerminalChatEvent({
+        sessionKey,
+        runId,
+        writable,
+        emittedAt,
+        overrides: {
+          activeRunId: null,
+          state: 'aborted',
+          lastEventAt: emittedAt,
+        },
+      });
+      updateRuntimeCache(sessionKey, runtime);
+      void flushQueueIfIdle(sessionKey);
+      const projection = ensureRunProjection(sessionKey, runId, emittedAt, { lifecycle: 'aborted' });
+      projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'aborted');
+      if (partialMessage) {
+        projection.previewText = partialMessage.text || projection.previewText;
+        projection.finalMessageId = partialMessage.id;
+        projection.finalCreatedAt = partialMessage.createdAt || emittedAt;
+        if (partialMessage.text && !projection.firstAssistantSeenAt) {
+          projection.firstAssistantSeenAt = partialMessage.createdAt || emittedAt;
+        }
+        if (allowLegacyCanonicalWrite) {
+          upsertStudioMessage(sessionKey, partialMessage);
+        }
+      }
+      saveRunProjection(sessionKey, projection);
+      persistProjectionIfTerminal(projection);
+      streamSnapshots.delete(runId);
+      if (canonicalSource.kind === 'local_transcript') {
+        void syncLocalTranscriptCanonicalSource(sessionKey);
+      }
+      const events: ChatStreamEvent[] = [];
+      if (shouldEmitLegacyProtocol()) {
+        const overlayEvent = buildRunOverlayEvent(sessionKey, projection, emittedAt, true);
+        if (overlayEvent) {
+          events.push(overlayEvent);
+        }
+        events.push({
+          kind: 'aborted',
+          sessionKey,
+          runId,
+          emittedAt,
+          stopReason: normalizeString(payload.stopReason) || null,
+          partialMessage,
+          runtime,
+        });
+      }
+      if (shouldEmitCanonicalProtocol()) {
+        events.push({
+          kind: 'runtime.state',
+          sessionKey,
+          runId,
+          emittedAt,
+          runtime,
+        });
+      }
+      return events;
+    }
+
+    if (state === 'error') {
+      const error = buildChatError(
+        'internal_error',
+        normalizeString(payload.errorMessage, 'Gateway chat error'),
+        'gateway',
+        false
+      );
+      const runtime = buildRuntimeForTerminalChatEvent({
+        sessionKey,
+        runId,
+        writable,
+        emittedAt,
+        overrides: {
+          activeRunId: null,
+          state: 'error',
+          lastEventAt: emittedAt,
+          lastErrorCode: error.code,
+          lastErrorMessage: error.message,
+        },
+      });
+      updateRuntimeCache(sessionKey, runtime);
+      void flushQueueIfIdle(sessionKey);
+      const projection = getRunProjection(sessionKey, runId);
+      if (projection) {
+        projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'error');
+        saveRunProjection(sessionKey, projection);
+        persistProjectionIfTerminal(projection);
+      }
+      streamSnapshots.delete(runId);
+      const events: ChatStreamEvent[] = [];
+      if (projection && shouldEmitLegacyProtocol()) {
+        const overlayEvent = buildRunOverlayEvent(sessionKey, projection, emittedAt, true);
+        if (overlayEvent) {
+          events.push(overlayEvent);
+        }
+      }
+      if (shouldEmitLegacyProtocol()) {
+        events.push({
+          kind: 'error',
+          sessionKey,
+          runId,
+          emittedAt,
+          error,
+          runtime,
+        });
+      }
+      if (shouldEmitCanonicalProtocol()) {
+        events.push({
+          kind: 'runtime.state',
+          sessionKey,
+          runId,
+          emittedAt,
+          runtime,
+        });
+      }
+      return events;
+    }
+
+    return [];
+  }
+
+  function mapGatewayChatSideResultEvent(sessionKey: string, payload: Record<string, unknown>): ChatStreamEvent[] {
+    const runId = normalizeString(payload.runId);
+    const sideKind = normalizeString(payload.kind).toLowerCase();
+    const question = normalizeString(payload.question);
+    const text = normalizeString(payload.text);
+    const emittedAt = normalizeDate(payload.ts) || new Date().toISOString();
+    if (!runId || sideKind !== 'btw' || !question || !text) {
+      return [];
+    }
+    return [{
+      kind: 'side_result',
+      sessionKey,
+      runId,
+      emittedAt,
+      result: {
+        kind: 'btw',
+        question,
+        text,
+        isError: payload.isError === true,
+      },
+    }];
+  }
+
+  function maybeBuildAssistantDeliveryMessage(
+    sessionKey: string,
+    payload: Record<string, unknown>,
+    mapped: Extract<ChatStreamEvent, { kind: 'agent_tool_result' }>,
+  ): ChatMessageItem | null {
+    if (mapped.partial || mapped.tool.name !== 'studio_delivery') {
+      return null;
+    }
+    const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : null;
+    if (!data) {
+      return null;
+    }
+    const resultSource = data.result ?? data.output ?? data.text ?? data.partialResult ?? data.error ?? data.details ?? null;
+    const delivery = mediaBridge.extractStudioDelivery(resultSource) || mediaBridge.extractStudioDelivery(data);
+    if (!delivery) {
+      return null;
+    }
+    const message = mediaBridge.buildAssistantMessageFromStudioDelivery(sessionKey, delivery, {
+      id: `studio-delivery-${mapped.tool.toolCallId}`,
+      createdAt: mapped.emittedAt,
+      source: 'stream',
+      runId: mapped.runId,
+    });
+    if (!message) {
+      return null;
+    }
+    return message;
+  }
+
+  function mapGatewayAgentEvents(sessionKey: string, payload: Record<string, unknown>): ChatStreamEvent[] {
+    const previousToolCard = (() => {
+      const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : null;
+      const toolCallId = normalizeString(data?.toolCallId);
+      if (!toolCallId) return null;
+      return getStudioSession(sessionKey)?.observability.toolCards.find((entry) => entry.toolCallId === toolCallId) || null;
+    })();
+    const mapped = mapGatewayAgentEventPayload({
+      sessionKey,
+      payload,
+      previousToolCard,
+      collectToolArtifacts: mediaBridge.collectToolArtifacts,
+    });
+    if (!mapped) return [];
+
+    if (mapped.kind === 'agent_lifecycle') {
+      updateObservabilityCache(sessionKey, (current) => appendTimelineItem({
+        ...cloneObservabilityState(current),
+        lifecycle: mapped.lifecycle,
+      }, {
+        id: `lifecycle-${mapped.runId || 'none'}-${mapped.lifecycle.phase}-${mapped.emittedAt}`,
+        kind: 'lifecycle',
+        runId: mapped.runId,
+        toolCallId: null,
+        emittedAt: mapped.emittedAt,
+        title: `Lifecycle · ${mapped.lifecycle.phase}`,
+        detail: mapped.lifecycle.errorMessage,
+        level: mapped.lifecycle.phase === 'error' ? 'error' : mapped.lifecycle.phase === 'end' ? 'success' : 'info',
+      }));
+      if (mapped.runId) {
+        const nextLifecycle = mapped.lifecycle.phase === 'start'
+          ? 'running'
+          : mapped.lifecycle.phase === 'end'
+            ? 'completed'
+            : 'error';
+        const projection = ensureRunProjection(sessionKey, mapped.runId, mapped.emittedAt, { lifecycle: nextLifecycle });
+        projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, nextLifecycle);
+        saveRunProjection(sessionKey, projection);
+        persistProjectionIfTerminal(projection);
+        const overlayEvent = buildRunOverlayEvent(sessionKey, projection, mapped.emittedAt, isRunProjectionTerminal(projection.lifecycle));
+        return overlayEvent ? [mapped, overlayEvent] : [mapped];
+      }
+      return [mapped];
+    }
+
+    if (mapped.kind === 'agent_assistant') {
+      updateObservabilityCache(sessionKey, (current) => appendTimelineItem(current, {
+        id: `assistant-${mapped.runId}`,
+        kind: 'assistant',
+        runId: mapped.runId,
+        toolCallId: null,
+        emittedAt: mapped.emittedAt,
+        title: 'Assistant stream',
+        detail: mapped.textPreview,
+        level: 'info',
+      }, `assistant-${mapped.runId}`));
+      const projection = ensureRunProjection(sessionKey, mapped.runId, mapped.emittedAt, { lifecycle: 'running' });
+      projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'running');
+      projection.previewText = mapped.text || projection.previewText;
+      if (mapped.text && !projection.firstAssistantSeenAt) {
+        projection.firstAssistantSeenAt = mapped.emittedAt;
+      }
+      saveRunProjection(sessionKey, projection);
+      const overlayEvent = buildRunOverlayEvent(sessionKey, projection, mapped.emittedAt, false);
+      return overlayEvent ? [mapped, overlayEvent] : [mapped];
+    }
+
+    if (mapped.kind === 'agent_tool_call' || mapped.kind === 'agent_tool_result') {
+      updateObservabilityCache(sessionKey, (current) => {
+        let next = upsertToolCard(current, mapped.tool);
+        const shouldAppendTimeline = mapped.kind === 'agent_tool_call' || !mapped.partial;
+        if (shouldAppendTimeline) {
+          next = appendTimelineItem(next, {
+            id: mapped.kind === 'agent_tool_call'
+              ? `start-${mapped.tool.toolCallId}-${mapped.emittedAt}`
+              : `result-${mapped.tool.toolCallId}-${mapped.emittedAt}`,
+            kind: mapped.kind === 'agent_tool_call' ? 'tool_call' : 'tool_result',
+            runId: mapped.runId,
+            toolCallId: mapped.tool.toolCallId,
+            emittedAt: mapped.emittedAt,
+            title: mapped.kind === 'agent_tool_call'
+              ? `Tool start · ${mapped.tool.name}`
+              : `Tool result · ${mapped.tool.name}`,
+            detail: mapped.kind === 'agent_tool_call' ? mapped.tool.argsPreview : mapped.tool.resultPreview,
+            level: mapped.tool.isError ? 'error' : mapped.kind === 'agent_tool_result' ? 'success' : 'info',
+          });
+        }
+        return next;
+      });
+      if (mapped.runId) {
+        const projection = ensureRunProjection(sessionKey, mapped.runId, mapped.emittedAt, { lifecycle: 'running' });
+        projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'running');
+        projection.toolCalls = upsertProjectionToolCallItem(projection.toolCalls, mapped.tool);
+        if (!projection.firstToolStartedAt) {
+          projection.firstToolStartedAt = mapped.tool.startedAt || mapped.emittedAt;
+        }
+        if (mapped.kind === 'agent_tool_result') {
+          const deliveryMessage = maybeBuildAssistantDeliveryMessage(sessionKey, payload, mapped);
+          if (deliveryMessage) {
+            projection.previewText = deliveryMessage.text || projection.previewText;
+          }
+        }
+        saveRunProjection(sessionKey, projection);
+        persistProjectionIfTerminal(projection);
+        const events: ChatStreamEvent[] = [mapped];
+        if (shouldEmitCanonicalProtocol()) {
+          events.push({
+            kind: 'temporary.tool',
+            sessionKey,
+            runId: mapped.runId,
+            emittedAt: mapped.emittedAt,
+            partial: mapped.kind === 'agent_tool_result' ? mapped.partial : false,
+            tool: mapped.tool,
+            source: 'agent.tool',
+          });
+        }
+        if (shouldEmitLegacyProtocol()) {
+          const overlayEvent = buildRunOverlayEvent(sessionKey, projection, mapped.emittedAt, isRunProjectionTerminal(projection.lifecycle));
+          if (overlayEvent) {
+            events.push(overlayEvent);
+          }
+        }
+        return events;
+      }
+      const events: ChatStreamEvent[] = [mapped];
+      if (shouldEmitCanonicalProtocol()) {
+        events.push({
+          kind: 'temporary.tool',
+          sessionKey,
+          runId: mapped.runId,
+          emittedAt: mapped.emittedAt,
+          partial: mapped.kind === 'agent_tool_result' ? mapped.partial : false,
+          tool: mapped.tool,
+          source: 'agent.tool',
+        });
+      }
+      return events;
+    }
+
+    return [mapped];
+  }
+
+  function hasFrontendSubscribers(sessionKey: string): boolean {
+    return countRealtimeSubscribers(sessionKey) > 0;
+  }
+
+  function buildGatewayHistoryFollowUrl(sessionKey: string): URL {
+    const url = new URL(options.config.gatewayWsUrl);
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+    url.pathname = `/sessions/${encodeURIComponent(sessionKey)}/history`;
+    url.search = '';
+    return url;
+  }
+
+  async function fetchOfficialCanonicalHistoryEntries(sessionKey: string): Promise<ChatCanonicalEntry[]> {
+    const auth = loadGatewayAuthContext(options.config);
+    const response = await fetch(buildGatewayHistoryFollowUrl(sessionKey), {
+      headers: {
+        Authorization: `Bearer ${auth.gatewayToken}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`history fetch failed with ${response.status}`);
+    }
+    const payload = await response.json() as Record<string, unknown>;
+    const messages = Array.isArray(payload.messages)
+      ? payload.messages.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      : [];
+    return messages.flatMap((item, index) => {
+      const mapped = buildCanonicalEntryFromRaw(item, index, {
+        sessionKey,
+        collectMessageResources: mediaBridge.collectMessageResources,
+        overrideMessage: overrideTranscriptMessage,
+      });
+      return mapped ? [mapped] : [];
+    });
+  }
+
+  function isUnexpectedHistorySseMessageSeq(
+    current: ChatCanonicalState | null | undefined,
+    nextEntry: ChatCanonicalEntry,
+  ): boolean {
+    if (!current || current.source !== 'history_sse') {
+      return true;
+    }
+    const previousSeq = current.entries[current.entries.length - 1]?.messageSeq || 0;
+    return nextEntry.messageSeq !== previousSeq + 1;
+  }
+
+  async function resyncOfficialCanonicalHistory(
+    sessionKey: string,
+    reason: 'bootstrap' | 'seq_gap' | 'seq_rollback' | 'unexpected_message',
+  ): Promise<void> {
+    const stream = officialCanonicalStreams.get(sessionKey);
+    if (stream?.resyncPromise) {
+      await stream.resyncPromise;
+      return;
+    }
+    const task = (async () => {
+      const entries = await fetchOfficialCanonicalHistoryEntries(sessionKey);
+      const current = canonicalStates.get(sessionKey);
+      const signature = buildCanonicalEntriesSignature(entries);
+      const version = (
+        current
+        && current.source === 'history_sse'
+        && buildCanonicalEntriesSignature(current.entries) === signature
+      )
+        ? current.version
+        : nextCanonicalVersion(sessionKey, 'history_sse');
+      durableMirrorStore.replaceSnapshot({
+        sessionKey,
+        version,
+        source: 'history_sse',
+        messages: entries.map((entry) => cloneChatMessageItem(entry.message)!),
+        baseMessageSeq: entries[entries.length - 1]?.messageSeq || 0,
+        savedAt: new Date().toISOString(),
+      });
+      emitCanonicalSnapshot(sessionKey, 'history_sse', entries, version, listRunOverlaysForSession(sessionKey));
+    })();
+    if (stream) {
+      const trackedTask = task.finally(() => {
+        if (stream.resyncPromise === trackedTask) {
+          stream.resyncPromise = null;
+        }
+      });
+      stream.resyncPromise = trackedTask;
+      await trackedTask;
+      return;
+    }
+    await task;
+  }
+
+  function shouldKeepOfficialCanonicalStream(sessionKey: string): boolean {
+    return hasFrontendSubscribers(sessionKey);
+  }
+
+  function disposeOfficialCanonicalStream(sessionKey: string): void {
+    const current = officialCanonicalStreams.get(sessionKey);
+    if (!current) {
+      return;
+    }
+    current.active = false;
+    if (current.reconnectTimer) {
+      clearTimeout(current.reconnectTimer);
+      current.reconnectTimer = null;
+    }
+    current.controller?.abort();
+    current.resyncPromise = null;
+    current.controller = null;
+    officialCanonicalStreams.delete(sessionKey);
+  }
+
+  function scheduleOfficialCanonicalStreamReconnect(state: OfficialCanonicalStreamState): void {
+    if (state.reconnectTimer || !state.active || !shouldKeepOfficialCanonicalStream(state.sessionKey)) {
+      return;
+    }
+    state.reconnectTimer = setTimeout(() => {
+      state.reconnectTimer = null;
+      if (!state.active || !shouldKeepOfficialCanonicalStream(state.sessionKey)) {
+        return;
+      }
+      void connectOfficialCanonicalStream(state);
+    }, 1000);
+  }
+
+  function parseSseFrames(buffer: string): {
+    rest: string;
+    frames: Array<{ event: string; data: string }>;
+  } {
+    const frames: Array<{ event: string; data: string }> = [];
+    let cursor = buffer;
+    while (true) {
+      const boundary = cursor.indexOf('\n\n');
+      if (boundary < 0) {
+        break;
+      }
+      const rawFrame = cursor.slice(0, boundary);
+      cursor = cursor.slice(boundary + 2);
+      if (!rawFrame.trim()) {
+        continue;
+      }
+      let event = 'message';
+      const dataLines: string[] = [];
+      for (const line of rawFrame.split('\n')) {
+        if (line.startsWith('event:')) {
+          event = line.slice('event:'.length).trim() || event;
+          continue;
+        }
+        if (line.startsWith('data:')) {
+          dataLines.push(line.slice('data:'.length).trim());
+        }
+      }
+      frames.push({
+        event,
+        data: dataLines.join('\n'),
+      });
+    }
+    return {
+      rest: cursor,
+      frames,
+    };
+  }
+
+  function handleOfficialCanonicalHistoryEvent(
+    sessionKey: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ): void {
+    if (event === 'history') {
+      const messages = Array.isArray(payload.messages)
+        ? payload.messages.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+        : [];
+      const entries = messages.flatMap((item, index) => {
+        const mapped = buildCanonicalEntryFromRaw(item, index, {
+          sessionKey,
+          collectMessageResources: mediaBridge.collectMessageResources,
+          overrideMessage: overrideTranscriptMessage,
+        });
+        return mapped ? [mapped] : [];
+      });
+      const current = canonicalStates.get(sessionKey);
+      const nextSignature = buildCanonicalEntriesSignature(entries);
+      const version = (
+        current
+        && current.source === 'history_sse'
+        && buildCanonicalEntriesSignature(current.entries) === nextSignature
+      )
+        ? current.version
+        : nextCanonicalVersion(sessionKey, 'history_sse');
+      durableMirrorStore.replaceSnapshot({
+        sessionKey,
+        version,
+        source: 'history_sse',
+        messages: entries.map((entry) => cloneChatMessageItem(entry.message)!),
+        baseMessageSeq: entries[entries.length - 1]?.messageSeq || 0,
+        savedAt: new Date().toISOString(),
+      });
+      emitCanonicalSnapshot(sessionKey, 'history_sse', entries, version, listRunOverlaysForSession(sessionKey));
+      return;
+    }
+
+    if (event === 'message' && payload.message && typeof payload.message === 'object') {
+      const entry = buildCanonicalEntryFromRaw(payload.message as Record<string, unknown>, 0, {
+        sessionKey,
+        collectMessageResources: mediaBridge.collectMessageResources,
+        overrideMessage: overrideTranscriptMessage,
+      }, {
+        messageId: normalizeString(payload.messageId) || undefined,
+        messageSeq: Number(payload.messageSeq) || undefined,
+      });
+      if (!entry) {
+        return;
+      }
+      const current = canonicalStates.get(sessionKey);
+      if (!current || current.source !== 'history_sse') {
+        void resyncOfficialCanonicalHistory(sessionKey, 'bootstrap').catch(() => {});
+        return;
+      }
+      const previousSeq = current.entries[current.entries.length - 1]?.messageSeq || 0;
+      if (entry.messageSeq <= previousSeq) {
+        void resyncOfficialCanonicalHistory(sessionKey, 'seq_rollback').catch(() => {});
+        return;
+      }
+      if (isUnexpectedHistorySseMessageSeq(current, entry)) {
+        void resyncOfficialCanonicalHistory(sessionKey, 'seq_gap').catch(() => {});
+        return;
+      }
+      durableMirrorStore.appendMessage({
+        sessionKey,
+        version: current.version,
+        source: 'history_sse',
+        messageSeq: entry.messageSeq,
+        savedAt: new Date().toISOString(),
+        message: entry.message,
+      });
+      emitCanonicalMessages(sessionKey, 'history_sse', [entry], current.version);
+    }
+  }
+
+  async function connectOfficialCanonicalStream(state: OfficialCanonicalStreamState): Promise<void> {
+    state.controller?.abort();
+    const controller = new AbortController();
+    state.controller = controller;
+
+    try {
+      const auth = loadGatewayAuthContext(options.config);
+      const response = await fetch(buildGatewayHistoryFollowUrl(state.sessionKey), {
+        headers: {
+          Authorization: `Bearer ${auth.gatewayToken}`,
+          Accept: 'text/event-stream',
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`history SSE failed with ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (state.active && shouldKeepOfficialCanonicalStream(state.sessionKey)) {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          break;
+        }
+        buffer += decoder.decode(chunk.value, { stream: true });
+        const parsed = parseSseFrames(buffer);
+        buffer = parsed.rest;
+        for (const frame of parsed.frames) {
+          if (!frame.data) {
+            continue;
+          }
+          try {
+            handleOfficialCanonicalHistoryEvent(state.sessionKey, frame.event, JSON.parse(frame.data) as Record<string, unknown>);
+          } catch {}
+        }
+      }
+    } catch (error) {
+      if (!controller.signal.aborted && state.active) {
+        scheduleOfficialCanonicalStreamReconnect(state);
+      }
+      return;
+    }
+
+    if (state.active && shouldKeepOfficialCanonicalStream(state.sessionKey)) {
+      scheduleOfficialCanonicalStreamReconnect(state);
+    }
+  }
+
+  function ensureOfficialCanonicalStream(sessionKey: string): void {
+    if (selectCanonicalSource(sessionKey).kind === 'local_transcript') {
+      disposeOfficialCanonicalStream(sessionKey);
+      return;
+    }
+    const existing = officialCanonicalStreams.get(sessionKey);
+    if (existing) {
+      existing.active = true;
+      return;
+    }
+    const state: OfficialCanonicalStreamState = {
+      sessionKey,
+      controller: null,
+      reconnectTimer: null,
+      resyncPromise: null,
+      active: true,
+    };
+    officialCanonicalStreams.set(sessionKey, state);
+    void connectOfficialCanonicalStream(state);
+  }
+
+  function shouldKeepBridgeAlive(sessionKey: string): boolean {
+    const bridge = sessionBridges.get(sessionKey);
+    if (!bridge) return false;
+    if (bridge.subscribers > 0) return true;
+    return Boolean(getStudioSession(sessionKey)?.row.runtime.activeRunId);
+  }
+
+  function disposeSessionBridge(sessionKey: string): void {
+    const bridge = sessionBridges.get(sessionKey);
+    if (!bridge) return;
+    bridge.manualClose = true;
+    if (bridge.reconnectTimer) {
+      clearTimeout(bridge.reconnectTimer);
+      bridge.reconnectTimer = null;
+    }
+    rejectBridgePending(bridge, new Error(`Gateway bridge for ${sessionKey} disposed.`));
+    try { bridge.ws?.close(); } catch {}
+    bridge.ws = null;
+    bridge.readyPromise = null;
+    bridge.resolveReady = null;
+    bridge.rejectReady = null;
+    bridge.connectRequestId = null;
+    sessionBridges.delete(sessionKey);
+  }
+
+  function maybeDisposeSessionBridge(sessionKey: string): void {
+    if (shouldKeepBridgeAlive(sessionKey)) return;
+    disposeSessionBridge(sessionKey);
+  }
+
+  function scheduleBridgeReconnect(bridge: SessionGatewayBridge): void {
+    if (bridge.reconnectTimer || bridge.manualClose) return;
+    if (!shouldKeepBridgeAlive(bridge.sessionKey)) {
+      maybeDisposeSessionBridge(bridge.sessionKey);
+      return;
+    }
+    bridge.reconnectTimer = setTimeout(() => {
+      bridge.reconnectTimer = null;
+      void connectSessionBridge(bridge).catch(() => {
+        scheduleBridgeReconnect(bridge);
+      });
+    }, 1000);
+  }
+
+  async function connectSessionBridge(bridge: SessionGatewayBridge): Promise<void> {
+    if (bridge.readyPromise) return await bridge.readyPromise;
+
+    const auth = loadGatewayAuthContext(options.config);
+    const role = 'operator';
+    const scopes = auth.scopes;
+    bridge.manualClose = false;
+    bridge.readyPromise = new Promise<void>((resolve, reject) => {
+      bridge.resolveReady = resolve;
+      bridge.rejectReady = reject;
+    });
+    bridge.connectRequestId = `connect-${crypto.randomUUID()}`;
+    const ws = new WebSocket(options.config.gatewayWsUrl);
+    bridge.ws = ws;
+
+    const resolveReady = (): void => {
+      bridge.resolveReady?.();
+      bridge.resolveReady = null;
+      bridge.rejectReady = null;
+      bridge.pendingSignatureRetry = false;
+      bridge.signatureRetryBudgetUsed = false;
+      bridge.pendingPairingRetry = false;
+      bridge.pairingRetryBudgetUsed = false;
+      const session = getStudioSession(bridge.sessionKey)?.row;
+      const runtime = session?.runtime || buildRuntimeState(true, false);
+      updateRuntimeCache(bridge.sessionKey, {
+        ...runtime,
+        gatewayConnected: true,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      });
+      broadcastRuntimeUpdate(
+        bridge.sessionKey,
+        runtime.activeRunId,
+        {
+          ...runtime,
+          gatewayConnected: true,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+        },
+      );
+      void requestViaBridge<Record<string, unknown>>(bridge, 'sessions.subscribe', {}).catch(() => {});
+      if (selectCanonicalSource(bridge.sessionKey).kind === 'official_canonical_stream') {
+        void requestViaBridge<Record<string, unknown>>(bridge, 'sessions.messages.subscribe', { key: bridge.sessionKey }).catch(() => {});
+      }
+    };
+
+    const failReady = (error: unknown): void => {
+      if (bridge.readyPromise) {
+        bridge.rejectReady?.(error);
+        bridge.readyPromise = null;
+        bridge.resolveReady = null;
+        bridge.rejectReady = null;
+      }
+    };
+
+    ws.on('message', (raw) => {
+      let frame: Record<string, any>;
+      try {
+        frame = JSON.parse(String(raw));
+      } catch {
+        return;
+      }
+
+      if (frame.type === 'event' && frame.event === 'connect.challenge') {
+        ws.send(JSON.stringify(buildGatewayConnectRequest({
+          auth,
+          connectRequestId: bridge.connectRequestId!,
+          nonce: normalizeString(frame.payload?.nonce),
+          role,
+          scopes,
+          signatureVersion: bridge.signatureVersion,
+        })));
+        return;
+      }
+
+      if (frame.type === 'res' && frame.id === bridge.connectRequestId) {
+        if (!frame.ok) {
+          const connectErrorCode = normalizeString(frame.error?.details?.code || frame.error?.code).toUpperCase();
+          bridge.pendingSignatureRetry = false;
+          bridge.pendingPairingRetry = false;
+          if (connectErrorCode === 'DEVICE_AUTH_SIGNATURE_INVALID' && !bridge.signatureRetryBudgetUsed) {
+            bridge.signatureVersion = bridge.signatureVersion === 'v2' ? 'v3' : 'v2';
+            bridge.pendingSignatureRetry = true;
+            bridge.signatureRetryBudgetUsed = true;
+          } else if (connectErrorCode === 'PAIRING_REQUIRED' && !bridge.pairingRetryBudgetUsed) {
+            bridge.pairingRetryBudgetUsed = true;
+            void maybeAutoApproveStudioHelperPairing(options.config)
+              .then((approved) => {
+                bridge.pendingPairingRetry = approved;
+                const error = new ChatServiceError(502, mapGatewayContractError(
+                  new Error(normalizeString(frame.error?.message, 'Gateway connect failed')),
+                  'Gateway connect failed'
+                ));
+                failReady(error);
+                try { ws.close(); } catch {}
+              })
+              .catch(() => {
+                const error = new ChatServiceError(502, mapGatewayContractError(
+                  new Error(normalizeString(frame.error?.message, 'Gateway connect failed')),
+                  'Gateway connect failed'
+                ));
+                failReady(error);
+                try { ws.close(); } catch {}
+              });
+            return;
+          }
+          const error = new ChatServiceError(502, mapGatewayContractError(
+            new Error(normalizeString(frame.error?.message, 'Gateway connect failed')),
+            'Gateway connect failed'
+          ));
+          failReady(error);
+          try { ws.close(); } catch {}
+          return;
+        }
+        resolveReady();
+        return;
+      }
+
+      if (frame.type === 'res' && typeof frame.id === 'string') {
+        const pending = bridge.pending.get(frame.id);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        bridge.pending.delete(frame.id);
+        if (!frame.ok) {
+          pending.reject(new ChatServiceError(400, mapGatewayContractError(
+            new Error(normalizeString(frame.error?.message, 'Gateway request failed')),
+            'Gateway request failed'
+          )));
+          return;
+        }
+        pending.resolve(frame.payload);
+        return;
+      }
+
+      if (frame.type === 'event' && frame.event === 'chat') {
+        const payload = frame.payload as Record<string, unknown>;
+        if (normalizeString(payload?.sessionKey) !== bridge.sessionKey) return;
+        const mappedEvents = mapGatewayChatEvent(bridge.sessionKey, payload);
+        for (const mapped of mappedEvents) {
+          broadcastToSession(bridge.sessionKey, mapped);
+        }
+        if (
+          mappedEvents.some((mapped) => mapped.kind === 'final' || mapped.kind === 'aborted' || mapped.kind === 'error')
+          && !shouldKeepBridgeAlive(bridge.sessionKey)
+        ) {
+          maybeDisposeSessionBridge(bridge.sessionKey);
+        }
+        return;
+      }
+
+      if (frame.type === 'event' && frame.event === 'chat.side_result') {
+        const payload = frame.payload as Record<string, unknown>;
+        if (normalizeString(payload?.sessionKey) !== bridge.sessionKey) return;
+        const mappedEvents = mapGatewayChatSideResultEvent(bridge.sessionKey, payload);
+        for (const mapped of mappedEvents) {
+          broadcastToSession(bridge.sessionKey, mapped);
+        }
+        return;
+      }
+
+      if (frame.type === 'event' && frame.event === 'agent') {
+        const payload = frame.payload as Record<string, unknown>;
+        if (normalizeString(payload?.sessionKey) !== bridge.sessionKey) return;
+        const mappedEvents = mapGatewayAgentEvents(bridge.sessionKey, payload);
+        for (const mapped of mappedEvents) {
+          broadcastToSession(bridge.sessionKey, mapped);
+        }
+        return;
+      }
+
+      if (frame.type === 'event' && frame.event === 'sessions.changed') {
+        const payload = frame.payload as Record<string, unknown>;
+        if (normalizeString(payload?.sessionKey) !== bridge.sessionKey) return;
+        const reason = normalizeString(payload.reason).toLowerCase();
+        if (reason !== 'reset' && reason !== 'delete') {
+          return;
+        }
+        const now = new Date().toISOString();
+        const current = getStudioSession(bridge.sessionKey);
+        if (current) {
+          current.messages = [];
+          current.resetPending = false;
+          current.clearedAt = now;
+          current.observability = createEmptyObservabilityState();
+          current.row = {
+            ...clearStudioAutoLabel(current.row),
+            updatedAt: now,
+            lastMessagePreview: null,
+            runtime: {
+              ...current.row.runtime,
+              activeRunId: null,
+              state: 'idle',
+              lastEventAt: now,
+            },
+          };
+          setStudioSession(current);
+          saveRegistryEntry(buildRegistryEntryFromRow(current.row));
+        }
+        historyIndexStore.clearSession(bridge.sessionKey);
+        clearRunProjections(bridge.sessionKey);
+        shadowStore.clearSession(bridge.sessionKey);
+        runShadowStore.clearSession(bridge.sessionKey);
+        durableMirrorStore.clearSession(bridge.sessionKey);
+        canonicalStates.delete(bridge.sessionKey);
+        if (shouldEmitCanonicalProtocol()) {
+          broadcastToSession(bridge.sessionKey, {
+            kind: 'canonical.snapshot',
+            sessionKey: bridge.sessionKey,
+            emittedAt: new Date().toISOString(),
+            version: nextCanonicalVersion(bridge.sessionKey, 'history_sse'),
+            messages: [],
+            overlays: [],
+            runtime: resolveCanonicalRuntime(bridge.sessionKey),
+            source: 'history_sse',
+          });
+        }
+      }
+
+      if (frame.type === 'event' && frame.event === 'session.message') {
+        const payload = frame.payload as Record<string, unknown>;
+        if (normalizeString(payload?.sessionKey) !== bridge.sessionKey) return;
+        handleOfficialCanonicalHistoryEvent(bridge.sessionKey, 'message', payload);
+        return;
+      }
+    });
+
+    const handleDisconnect = (source: 'close' | 'error'): void => {
+      const error = new ChatServiceError(502, buildChatError(
+        'gateway_down',
+        source === 'close' ? 'Gateway bridge disconnected.' : 'Gateway bridge errored.',
+        'gateway',
+        true
+      ));
+      rejectBridgePending(bridge, error);
+      if (bridge.readyPromise) failReady(error);
+      bridge.readyPromise = null;
+      bridge.ws = null;
+      bridge.connectRequestId = null;
+      const runtime = buildRuntimeState(false, Boolean(getStudioSession(bridge.sessionKey)?.row.permissions.writable), {
+        state: getStudioSession(bridge.sessionKey)?.row.runtime.state || 'idle',
+        lastErrorCode: 'gateway_down',
+        lastErrorMessage: 'Gateway bridge disconnected.',
+      });
+      updateRuntimeCache(bridge.sessionKey, runtime);
+      broadcastRuntimeUpdate(bridge.sessionKey, runtime.activeRunId, runtime);
+      const signatureRetryExhausted = bridge.signatureRetryBudgetUsed && !bridge.pendingSignatureRetry;
+      const pairingRetryExhausted = bridge.pairingRetryBudgetUsed && !bridge.pendingPairingRetry;
+      if (!bridge.manualClose && !signatureRetryExhausted && !pairingRetryExhausted) scheduleBridgeReconnect(bridge);
+      else maybeDisposeSessionBridge(bridge.sessionKey);
+    };
+
+    ws.on('close', () => handleDisconnect('close'));
+    ws.on('error', () => handleDisconnect('error'));
+
+    return await bridge.readyPromise;
+  }
+
+  async function ensureSessionBridge(sessionKey: string): Promise<SessionGatewayBridge> {
+    const existing = sessionBridges.get(sessionKey);
+    if (existing) {
+      await connectSessionBridge(existing);
+      return existing;
+    }
+    const bridge = createSessionGatewayBridge(sessionKey);
+    sessionBridges.set(sessionKey, bridge);
+    try {
+      await connectSessionBridge(bridge);
+      return bridge;
+    } catch (error) {
+      sessionBridges.delete(sessionKey);
+      throw error;
+    }
+  }
+
+  async function requestViaSessionBridge<T>(
+    sessionKey: string,
+    method: string,
+    params: Record<string, unknown>
+  ): Promise<T> {
+    const bridge = await ensureSessionBridge(sessionKey);
+    return await requestViaBridge<T>(bridge, method, params);
+  }
+
+  wss.on('connection', (ws, req) => {
+    const url = new URL(req.url || CHAT_API_PATHS.stream, `http://${req.headers.host || '127.0.0.1'}`);
+    const sessionKey = url.searchParams.get('sessionKey') || '';
+    const subscribers = frontendSubscribers.get(sessionKey) || new Set<WebSocket>();
+    subscribers.add(ws);
+    frontendSubscribers.set(sessionKey, subscribers);
+    const existingBridge = sessionBridges.get(sessionKey) || createSessionGatewayBridge(sessionKey);
+    sessionBridges.set(sessionKey, existingBridge);
+    syncBridgeSubscriberCount(sessionKey);
+    void ensureSessionBridge(sessionKey).catch(() => {
+      // Runtime downgrade will be broadcast by the bridge connect/disconnect handlers.
+    });
+    ensureOfficialCanonicalStream(sessionKey);
+
+    void (async () => {
+      const session = sessionKey ? getStudioSession(sessionKey)?.row : null;
+      const runtime = session?.runtime || buildRuntimeState(await isGatewayConnected(), Boolean(session?.permissions.writable));
+      const runtimeEvent: ChatStreamEvent = {
+        kind: 'runtime',
+        sessionKey,
+        runId: null,
+        emittedAt: new Date().toISOString(),
+        runtime,
+      };
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(runtimeEvent));
+        ws.send(JSON.stringify({
+          kind: 'queue.state',
+          sessionKey,
+          emittedAt: runtimeEvent.emittedAt,
+          items: cloneChatQueuedMessageList(getStudioSession(sessionKey)?.pendingQueue || []),
+        } satisfies ChatStreamEvent));
+        ws.send(JSON.stringify({
+          kind: 'session.controls',
+          sessionKey,
+          emittedAt: runtimeEvent.emittedAt,
+          controls: cloneSessionControls(getStudioSession(sessionKey)?.controls || createDefaultSessionControls()),
+        } satisfies ChatStreamEvent));
+        if (shouldEmitCanonicalProtocol()) {
+          ws.send(JSON.stringify({
+            kind: 'runtime.state',
+            sessionKey,
+            runId: null,
+            emittedAt: runtimeEvent.emittedAt,
+            runtime,
+          } satisfies ChatStreamEvent));
+        }
+        for (const overlay of listRunOverlaysForSession(sessionKey)) {
+          const overlayEvent: ChatStreamEvent = {
+            kind: 'run_overlay',
+            sessionKey,
+            runId: overlay.runId,
+            emittedAt: overlay.updatedAt || runtimeEvent.emittedAt,
+            overlay,
+            terminal: isRunProjectionTerminal(overlay.lifecycle),
+          };
+          ws.send(JSON.stringify(overlayEvent));
+        }
+        if (shouldEmitCanonicalProtocol()) {
+          await bootstrapCanonicalSnapshotForSession(sessionKey, ws);
+        }
+      }
+    })();
+
+    ws.on('close', () => {
+      const targets = frontendSubscribers.get(sessionKey);
+      if (targets) {
+        targets.delete(ws);
+        if (targets.size === 0) frontendSubscribers.delete(sessionKey);
+      }
+      const bridge = sessionBridges.get(sessionKey);
+      if (bridge) {
+        syncBridgeSubscriberCount(sessionKey);
+      }
+      if (!shouldKeepOfficialCanonicalStream(sessionKey)) {
+        disposeOfficialCanonicalStream(sessionKey);
+      }
+      maybeDisposeSessionBridge(sessionKey);
+    });
+  });
+
+  function broadcastImmediateCanonicalUserMessage(
+    sessionKey: string,
+    message: ChatMessageItem,
+    messageSeq: number,
+  ): void {
+    if (!shouldEmitCanonicalProtocol()) {
+      return;
+    }
+    const currentVersion = canonicalStates.get(sessionKey)?.version;
+    broadcastToSession(sessionKey, {
+      kind: 'canonical.message',
+      sessionKey,
+      emittedAt: new Date().toISOString(),
+      message: cloneChatMessageItem(message)!,
+      messageId: message.id,
+      messageSeq,
+      version: currentVersion || nextCanonicalVersion(sessionKey, 'studio_mirror'),
+      source: 'studio_bff',
+    });
+  }
+
+  async function performDirectSend(
+    sessionKey: string,
+    payload: ChatSendRequest,
+    options: {
+      publishCanonicalUserMessageImmediately?: boolean;
+    } = {},
+  ): Promise<ChatSendAck> {
+    const session = await requireSession(sessionKey);
+    requireWritable(session, 'send');
+
+    const now = new Date().toISOString();
+    const requestId = normalizeString(payload.clientRequestId, `studio-${crypto.randomUUID()}`);
+    const fileRefs = mediaBridge.normalizeSendFileRefs(payload.fileRefs);
+    const attachments = mediaBridge.normalizeSendAttachments(payload.attachments);
+    const composerDocument = normalizeComposerDocument(payload.composerDocument);
+    const composerText = composerDocument.length
+      ? serializeComposerDocumentToMarkdown(composerDocument, fileRefs)
+      : '';
+    const normalizedText = normalizeString(composerText) || normalizeString(payload.text);
+    const composerBlocks = composerDocument.length
+      ? buildComposerMessageBlocks(composerDocument, fileRefs)
+      : [];
+    if (!normalizedText && fileRefs.length === 0 && attachments.length === 0) {
+      throw new ChatServiceError(400, buildChatError('invalid_request', 'Message text or attachment is required'));
+    }
+    const transportText = compileGatewayMessageText(normalizedText, fileRefs);
+    const sendResources = mediaBridge.buildSendResources(sessionKey, fileRefs, attachments);
+    const inMemory = ensureStudioSessionState(session, {
+      row: session,
+      diagnosticsNotes: [],
+      materialized: false,
+      clearedAt: null,
+    });
+    const raw = await requestViaSessionBridge<Record<string, unknown>>(sessionKey, 'chat.send', {
+      sessionKey,
+      message: transportText,
+      thinking: normalizeString(payload.thinking || undefined),
+      deliver: CHAT_POLICY_DEFAULTS.defaultDeliver,
+      idempotencyKey: requestId,
+      attachments,
+    });
+    const rawStatus = normalizeString(raw.status, 'started');
+    const status = (CHAT_SEND_STATUS_MAP as Record<string, ChatSendStatus>)[rawStatus] || 'started';
+    const ackRunId = normalizeString(raw.runId, requestId);
+    unsuppressGatewayRunId(sessionKey, ackRunId);
+    const runtime = buildGatewayRuntime(sessionKey, true, {
+      activeRunId: status === 'duplicate_completed' ? null : ackRunId,
+      state: status === 'duplicate_completed' ? 'completed' : 'running',
+      lastAckAt: now,
+      lastEventAt: now,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    });
+    const projection = ensureRunProjection(sessionKey, ackRunId, now, {
+      lifecycle: status === 'duplicate_completed' ? 'completed' : 'queued',
+    });
+    projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, status === 'duplicate_completed' ? 'completed' : 'queued');
+    projection.updatedAt = now;
+    saveRunProjection(sessionKey, projection);
+    persistProjectionIfTerminal(projection);
+
+    shadowStore.saveUserMessageShadow({
+      sessionKey,
+      requestId,
+      runId: ackRunId,
+      transportText,
+      text: normalizedText,
+      blocks: composerBlocks.length ? composerBlocks : undefined,
+      fileRefs: fileRefs.length ? fileRefs : undefined,
+      resources: sendResources.length ? sendResources : undefined,
+      createdAt: now,
+    });
+
+    const previewText = extractComposerPlainText(composerDocument).trim() || normalizedText;
+    inMemory.messages = normalizeMessageLedger([...inMemory.messages, {
+      id: `msg-${crypto.randomUUID()}`,
+      role: 'user',
+      text: normalizedText,
+      createdAt: now,
+      source: 'inject',
+      runId: ackRunId,
+      truncated: false,
+      omitted: false,
+      aborted: false,
+      stopReason: null,
+      blocks: composerBlocks.length ? composerBlocks : undefined,
+      resources: sendResources.length ? sendResources : undefined,
+    }]);
+    const lastMessagePreview = previewText.slice(0, 160)
+      || sendResources[0]?.fileName
+      || null;
+    inMemory.row = {
+      ...inMemory.row,
+      updatedAt: now,
+      lastMessagePreview,
+      runtime,
+    };
+    inMemory.materialized = true;
+    inMemory.clearedAt = null;
+    refreshStudioAutoLabel(inMemory);
+    setStudioSession(inMemory);
+    saveRegistryEntry(buildRegistryEntryFromRow(inMemory.row));
+    durableMirrorStore.replaceSnapshot({
+      sessionKey,
+      version: nextCanonicalVersion(sessionKey, 'studio_mirror'),
+      source: 'studio_mirror',
+      messages: currentStudioHistory(inMemory),
+      baseMessageSeq: inMemory.messages.length,
+      savedAt: now,
+    });
+    if (options.publishCanonicalUserMessageImmediately) {
+      const currentMessages = currentStudioHistory(inMemory);
+      const latestUserMessage = currentMessages[currentMessages.length - 1] || null;
+      if (latestUserMessage?.role === 'user') {
+        broadcastImmediateCanonicalUserMessage(inMemory.row.key, latestUserMessage, currentMessages.length);
+      }
+    }
+
+    const ackEvent: ChatStreamEvent = {
+      kind: 'ack',
+      sessionKey: inMemory.row.key,
+      runId: ackRunId,
+      requestId,
+      emittedAt: now,
+      status,
+      runtime,
+    };
+    broadcastToSession(inMemory.row.key, ackEvent);
+    broadcastRuntimeUpdate(inMemory.row.key, ackEvent.runId, runtime, now);
+    if (selectCanonicalSource(sessionKey).kind === 'local_transcript') {
+      setTimeout(() => {
+        void syncLocalTranscriptCanonicalSource(sessionKey);
+      }, 80);
+    }
+
+    return {
+      accepted: true,
+      sessionKey: inMemory.row.key,
+      sessionId: inMemory.row.sessionId,
+      requestId,
+      runId: ackRunId,
+      status,
+      runtime,
+    };
+  }
+
+  return {
+    async getHealth(): Promise<ChatDiagnostics> {
+      return buildHealth([
+        'Studio backend typed adapter contract is active.',
+        'Gateway adapter is wired for studio-managed send / abort / reset / ws stream.',
+        'Observed external history still falls back to local transcript parsing when gateway history is unavailable.',
+      ]);
+    },
+
+    async getOrganizer(): Promise<ChatOrganizerPayload> {
+      return buildOrganizerPayload(readOrganizerState());
+    },
+
+    async createFolder(payload: ChatCreateOrganizerFolderRequest): Promise<ChatCreateOrganizerFolderResponse> {
+      const title = normalizeString(payload.title);
+      if (!title) {
+        throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder title must be a non-empty string'));
+      }
+      const parentId = normalizeString(payload.parentId) || null;
+      const currentOrganizer = readOrganizerState();
+      if (parentId && !findOrganizerFolder(currentOrganizer, parentId)) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', `Folder '${parentId}' not found`));
+      }
+      const created = createFolderInOrganizer(currentOrganizer, title, parentId);
+      const organizer = writeOrganizerState(created.organizer);
+      const folder = findOrganizerFolder(organizer, created.folder.id);
+      if (!folder) {
+        throw new ChatServiceError(500, buildChatError('internal_error', 'Folder creation failed'));
+      }
+      return {
+        ok: true,
+        folder,
+        ...buildOrganizerPayload(organizer),
+      };
+    },
+
+    async patchFolder(folderId: string, payload: ChatPatchOrganizerFolderRequest): Promise<ChatPatchOrganizerFolderResponse> {
+      const organizer = readOrganizerState();
+      const existingFolder = findOrganizerFolder(organizer, folderId);
+      if (!existingFolder) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', `Folder '${folderId}' not found`));
+      }
+      if (
+        !Object.prototype.hasOwnProperty.call(payload, 'title')
+        && !Object.prototype.hasOwnProperty.call(payload, 'collapsed')
+        && !Object.prototype.hasOwnProperty.call(payload, 'move')
+      ) {
+        throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder patch requires title, collapsed, or move'));
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'title') && !normalizeString(payload.title)) {
+        throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder title must be a non-empty string'));
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'move')) {
+        const move = normalizeString(payload.move);
+        if (move && !['up', 'down', 'top'].includes(move)) {
+          throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder move must be up, down, or top'));
+        }
+      }
+      const patched = patchFolderInOrganizer(organizer, folderId, payload);
+      if (!patched.folder) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', `Folder '${folderId}' not found`));
+      }
+      const saved = writeOrganizerState(patched.organizer);
+      return {
+        ok: true,
+        folder: patched.folder,
+        ...buildOrganizerPayload(saved),
+      };
+    },
+
+    async deleteFolder(folderId: string): Promise<ChatDeleteOrganizerFolderResponse> {
+      const organizer = readOrganizerState();
+      const existingFolder = findOrganizerFolder(organizer, folderId);
+      if (!existingFolder) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', `Folder '${folderId}' not found`));
+      }
+      const saved = writeOrganizerState(deleteFolderFromOrganizer(organizer, folderId));
+      return {
+        ok: true,
+        folderId,
+        ...buildOrganizerPayload(saved),
+      };
+    },
+
+    async assignSessionsToFolder(payload: ChatAssignSessionsToFolderRequest): Promise<ChatAssignSessionsToFolderResponse> {
+      const sessionKeys = [...new Set(payload.sessionKeys.map((sessionKey) => normalizeString(sessionKey)).filter(Boolean))];
+      if (!sessionKeys.length) {
+        throw new ChatServiceError(400, buildChatError('invalid_request', 'At least one session key is required'));
+      }
+      const folderId = normalizeString(payload.folderId) || null;
+      const organizer = readOrganizerState();
+      if (folderId && !findOrganizerFolder(organizer, folderId)) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', `Folder '${folderId}' not found`));
+      }
+      for (const sessionKey of sessionKeys) {
+        const session = await requireSession(sessionKey);
+        requireFrontendVisible(session);
+        if (session.kind !== 'studio_managed' || !session.permissions.writable) {
+          throw new ChatServiceError(403, buildChatError('session_not_writable', `Session '${sessionKey}' cannot be organized`));
+        }
+      }
+      const saved = writeOrganizerState(assignSessionsToFolderInOrganizer(organizer, sessionKeys, folderId));
+      return {
+        ok: true,
+        sessionKeys,
+        folderId,
+        ...buildOrganizerPayload(saved),
+      };
+    },
+
+    async listSessions(agentId: string): Promise<ChatSessionsPayload> {
+      const gatewayConnected = await isGatewayConnected();
+      const diagnostics = createBaseDiagnostics(options.config, gatewayConnected, []);
+
+      const rows: ChatSessionRow[] = [];
+      const seenKeys = new Set<string>();
+
+      try {
+        const payload = await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {
+          agentId,
+          limit: 200,
+          includeDerivedTitles: true,
+          includeLastMessage: true,
+        });
+        const gatewayRows = Array.isArray(payload.sessions) ? payload.sessions : [];
+        for (const row of gatewayRows) {
+          if (!row || typeof row !== 'object') continue;
+          const mapped = mapGatewaySessionRow(agentId, row as Record<string, unknown>, gatewayConnected);
+          const registryEntry = getRegistryEntry(mapped.key);
+          if (
+            mapped.kind === 'studio_managed'
+          ) {
+            if (!registryEntry) {
+              saveRegistryEntry(buildRegistryEntryFromRow(mapped));
+            } else if (normalizeString(mapped.sessionId) !== normalizeString(registryEntry.sessionId)) {
+              saveRegistryEntry(buildRegistryEntryFromRow({
+                ...mapped,
+                updatedAt: mapped.updatedAt || registryEntry.updatedAt,
+              }, registryEntry));
+            }
+          }
+          if (mapped.permissions.visibleInFrontend) {
+            rows.push(mapped);
+            seenKeys.add(mapped.key);
+          }
+        }
+        diagnostics.notes.push('Session list is sourced from Gateway sessions.list and merged with Studio draft registry.');
+      } catch (error) {
+        diagnostics.notes.push(`Gateway sessions.list unavailable; falling back to local session store (${error instanceof Error ? error.message : String(error)}).`);
+      }
+
+      const store = readJsonFile<Record<string, LocalSessionRecord>>(resolveAgentSessionsStorePath(options.config, agentId), {});
+      for (const [key, record] of Object.entries(store)) {
+        if (seenKeys.has(key)) continue;
+        const row = mapLocalSessionRow(agentId, key, record, gatewayConnected, getRegistryEntry(key));
+        if (row.permissions.visibleInFrontend) {
+          rows.push(row);
+          seenKeys.add(key);
+        }
+      }
+
+      const registry = ensureRegistryLoaded();
+      for (const entry of Object.values(registry)) {
+        if (entry.agentId !== agentId || seenKeys.has(entry.key)) continue;
+        const inMemory = getStudioSession(entry.key);
+        const row = inMemory?.row || buildStudioManagedRowFromRegistry(entry, gatewayConnected);
+        if (row.permissions.visibleInFrontend) rows.push(row);
+      }
+
+      rows.sort((left, right) => (right.updatedAt || '').localeCompare(left.updatedAt || ''));
+
+      return {
+        checkedAt: new Date().toISOString(),
+        agentId,
+        sessions: rows,
+        diagnostics,
+      };
+    },
+
+    async getHistory(
+      sessionKey: string,
+      options: {
+        before?: string | null;
+        after?: string | null;
+        anchor?: string | null;
+        limit?: number;
+        day?: string | null;
+      } = {},
+    ): Promise<ChatHistoryPayload> {
+      const snapshot = await loadHistorySnapshot(sessionKey);
+      historyIndexStore.ensureIndex({
+        sessionKey,
+        messages: snapshot.messages,
+        sourceSessionFile: snapshot.sourceSessionFile,
+        sourceMtimeMs: snapshot.sourceMtimeMs,
+      });
+      const page = paginateMessageList(snapshot.messages, {
+        before: options.before,
+        after: options.after,
+        anchor: options.anchor,
+        limit: options.limit,
+        day: options.day,
+        source: 'history_window',
+      });
+      const pageOverlays = filterOverlaysForMessageWindow(snapshot.overlays, page.messages);
+      // Include orphan overlays (tool-only runs with no corresponding message in the full list)
+      const allRunIds = new Set(
+        snapshot.messages
+          .map((m) => normalizeString(m.runId))
+          .filter(Boolean),
+      );
+      const pageRunIds = new Set(pageOverlays.map((o) => normalizeString(o.runId)).filter(Boolean));
+      for (const overlay of snapshot.overlays) {
+        const rid = normalizeString(overlay.runId);
+        if (rid && !allRunIds.has(rid) && !pageRunIds.has(rid)) {
+          pageOverlays.push(overlay);
+        }
+      }
+      return {
+        checkedAt: snapshot.checkedAt,
+        session: snapshot.session,
+        messages: page.messages,
+        overlays: pageOverlays,
+        runtime: snapshot.runtime,
+        diagnostics: snapshot.diagnostics,
+        observability: snapshot.observability,
+        pageInfo: page.pageInfo,
+        day: page.day,
+      };
+    },
+
+    async searchHistory(
+      sessionKey: string,
+      options: {
+        query: string;
+        role?: ChatHistorySearchRoleFilter | null;
+        content?: ChatHistorySearchContentFilter | null;
+        day?: string | null;
+        before?: string | null;
+        after?: string | null;
+        limit?: number;
+      },
+    ): Promise<ChatHistorySearchPayload> {
+      const snapshot = await loadHistorySnapshot(sessionKey);
+      const query = normalizeString(options.query);
+      const roleFilter = normalizeHistorySearchRoleFilter(options.role);
+      const contentFilter = normalizeHistorySearchContentFilter(options.content);
+      const index = historyIndexStore.ensureIndex({
+        sessionKey,
+        messages: snapshot.messages,
+        sourceSessionFile: snapshot.sourceSessionFile,
+        sourceMtimeMs: snapshot.sourceMtimeMs,
+      });
+      const positions = historyIndexStore.searchPositions(index, query, {
+        roleFilter,
+        contentFilter,
+      });
+      const matchedMessages = positions.map((position) => snapshot.messages[position]!).filter(Boolean);
+      const itemByMessageId = new Map(index.items.map((item) => [item.id, item]));
+      const page = paginateMessageList(matchedMessages, {
+        before: options.before,
+        after: options.after,
+        day: options.day,
+        limit: options.limit,
+        source: 'history_search',
+        query,
+        roleFilter,
+        contentFilter,
+      });
+      const matches: ChatHistorySearchMatch[] = page.messages.map((message) => {
+        const item = itemByMessageId.get(message.id);
+        return {
+          messageId: message.id,
+          role: message.role,
+          createdAt: message.createdAt || item?.createdAt || null,
+          day: item?.dayKey || (normalizeDate(message.createdAt) || '').slice(0, 10) || null,
+          snippet: item?.snippetText || item?.previewText || message.text.slice(0, 280),
+        };
+      });
+      return {
+        checkedAt: snapshot.checkedAt,
+        session: snapshot.session,
+        query,
+        roleFilter,
+        contentFilter,
+        day: page.day,
+        matches,
+        messages: page.messages,
+        overlays: filterOverlaysForMessageWindow(snapshot.overlays, page.messages),
+        runtime: snapshot.runtime,
+        diagnostics: snapshot.diagnostics,
+        pageInfo: page.pageInfo,
+      };
+    },
+
+    async getHistoryDates(sessionKey: string): Promise<ChatHistoryDatesPayload> {
+      const snapshot = await loadHistorySnapshot(sessionKey);
+      const index = historyIndexStore.ensureIndex({
+        sessionKey,
+        messages: snapshot.messages,
+        sourceSessionFile: snapshot.sourceSessionFile,
+        sourceMtimeMs: snapshot.sourceMtimeMs,
+      });
+      return {
+        checkedAt: snapshot.checkedAt,
+        session: snapshot.session,
+        diagnostics: snapshot.diagnostics,
+        days: historyIndexStore.buildDateBuckets(index),
+      };
+    },
+
+    async createSession(agentId: string, payload: ChatCreateSessionRequest): Promise<ChatCreateSessionResponse> {
+      const availableAgents = resolveAvailableAgentIds(options.config);
+      if (!availableAgents.includes(agentId)) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', `Agent '${agentId}' not found`));
+      }
+
+      const row = buildStudioManagedSessionRow(
+        agentId,
+        normalizeString(payload.label, buildDefaultSessionLabel(agentId)),
+        await isGatewayConnected()
+      );
+
+      setStudioSession({
+        row,
+        messages: [],
+        diagnosticsNotes: ['Session created by Studio shell registry. Gateway session is materialized on first send.'],
+        observability: createEmptyObservabilityState(),
+        pendingQueue: [],
+        controls: createDefaultSessionControls(),
+        materialized: false,
+        resetPending: false,
+        clearedAt: null,
+      });
+      saveRegistryEntry(buildRegistryEntryFromRow(row));
+
+      return {
+        ok: true,
+        session: row,
+        runtime: row.runtime,
+      };
+    },
+
+    async patchSession(sessionKey: string, payload: ChatPatchSessionRequest): Promise<ChatPatchSessionResponse> {
+      const session = await requireSession(sessionKey);
+      requireFrontendVisible(session);
+      if (session.kind !== 'studio_managed' || !session.permissions.writable) {
+        throw new ChatServiceError(403, buildChatError('session_not_writable', `Session '${session.key}' is not writable`));
+      }
+
+      const hasLabel = Object.prototype.hasOwnProperty.call(payload, 'label');
+      const hasArchived = Object.prototype.hasOwnProperty.call(payload, 'archived');
+      if (!hasLabel && !hasArchived) {
+        throw new ChatServiceError(400, buildChatError('invalid_request', 'Session metadata patch requires label or archived'));
+      }
+
+      const now = new Date().toISOString();
+      let nextLabel = session.label;
+      let nextCustomLabel = session.presentation.customLabel;
+      if (hasLabel) {
+        const normalizedLabel = normalizeString(payload.label);
+        if (!normalizedLabel) {
+          throw new ChatServiceError(400, buildChatError('invalid_request', 'Session label must be a non-empty string'));
+        }
+        nextLabel = normalizedLabel;
+        nextCustomLabel = normalizedLabel;
+      }
+
+      let nextArchivedAt = session.presentation.archivedAt;
+      if (hasArchived) {
+        if (typeof payload.archived !== 'boolean') {
+          throw new ChatServiceError(400, buildChatError('invalid_request', 'Session archived must be a boolean'));
+        }
+        nextArchivedAt = payload.archived ? now : null;
+      }
+
+      const nextSession: ChatSessionRow = {
+        ...session,
+        label: nextLabel,
+        updatedAt: now,
+        presentation: {
+          archived: Boolean(nextArchivedAt),
+          archivedAt: nextArchivedAt,
+          customLabel: nextCustomLabel,
+          autoLabel: session.presentation.autoLabel ?? null,
+        },
+      };
+
+      const inMemory = getStudioSession(sessionKey);
+      if (inMemory) {
+        inMemory.row = nextSession;
+        setStudioSession(inMemory);
+      }
+      saveRegistryEntry(buildRegistryEntryFromRow(nextSession));
+
+      return {
+        ok: true,
+        session: nextSession,
+      };
+    },
+
+    async getQueue(sessionKey: string): Promise<ChatQueuePayload> {
+      return await buildQueuePayload(sessionKey);
+    },
+
+    async enqueue(sessionKey: string, payload: ChatSendRequest): Promise<ChatQueuePayload> {
+      const session = await requireSession(sessionKey);
+      requireWritable(session, 'send');
+      const state = ensureStudioSessionState(session);
+      state.pendingQueue = [
+        ...state.pendingQueue,
+        buildQueuedMessageItem(sessionKey, payload),
+      ];
+      setStudioSession(state);
+      broadcastQueueState(sessionKey);
+      return await buildQueuePayload(sessionKey);
+    },
+
+    async patchQueueEntry(
+      sessionKey: string,
+      entryId: string,
+      payload: ChatPatchQueueEntryRequest,
+    ): Promise<ChatQueuePayload> {
+      const session = await requireSession(sessionKey);
+      requireWritable(session, 'send');
+      const normalizedEntryId = normalizeString(entryId);
+      if (!normalizedEntryId) {
+        throw new ChatServiceError(400, buildChatError('invalid_request', 'Queue entry id is required'));
+      }
+      const state = ensureStudioSessionState(session);
+      const index = state.pendingQueue.findIndex((item) => item.id === normalizedEntryId);
+      if (index === -1) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', `Queue entry '${normalizedEntryId}' not found`));
+      }
+      const current = state.pendingQueue[index]!;
+      const hasTextOverride = Object.prototype.hasOwnProperty.call(payload, 'text');
+      const hasComposerOverride = Object.prototype.hasOwnProperty.call(payload, 'composerDocument');
+      const next = buildQueuedMessageItem(sessionKey, {
+        text: hasTextOverride ? (payload.text || '') : current.text,
+        clientRequestId: payload.clientRequestId || current.clientRequestId || undefined,
+        composerDocument: hasComposerOverride
+          ? payload.composerDocument
+          : (hasTextOverride ? undefined : current.composerDocument),
+        fileRefs: payload.fileRefs ?? current.fileRefs,
+        attachments: payload.attachments ?? current.attachments,
+      }, current.createdAt);
+      next.id = current.id;
+      next.createdAt = current.createdAt;
+      next.updatedAt = new Date().toISOString();
+      state.pendingQueue = [
+        ...state.pendingQueue.slice(0, index),
+        next,
+        ...state.pendingQueue.slice(index + 1),
+      ];
+      setStudioSession(state);
+      broadcastQueueState(sessionKey);
+      return await buildQueuePayload(sessionKey);
+    },
+
+    async deleteQueueEntry(sessionKey: string, entryId: string): Promise<ChatQueuePayload> {
+      const session = await requireSession(sessionKey);
+      requireWritable(session, 'send');
+      const normalizedEntryId = normalizeString(entryId);
+      const state = ensureStudioSessionState(session);
+      state.pendingQueue = state.pendingQueue.filter((item) => item.id !== normalizedEntryId);
+      setStudioSession(state);
+      broadcastQueueState(sessionKey);
+      return await buildQueuePayload(sessionKey);
+    },
+
+    async getControls(sessionKey: string): Promise<ChatSessionControlsPayload> {
+      return await buildSessionControlsPayload(sessionKey);
+    },
+
+    async patchControls(
+      sessionKey: string,
+      payload: ChatPatchSessionControlsRequest,
+    ): Promise<ChatSessionControlsPayload> {
+      const session = await requireSession(sessionKey);
+      requireFrontendVisible(session);
+      const state = ensureStudioSessionState(session);
+      state.controls = {
+        allowHostManagementExec: payload.allowHostManagementExec === true,
+        updatedAt: new Date().toISOString(),
+      };
+      setStudioSession(state);
+      broadcastSessionControls(sessionKey);
+      return await buildSessionControlsPayload(sessionKey);
+    },
+
+    async requestSlashGateway(sessionKey: string, payload: ChatSlashGatewayRequest): Promise<unknown> {
+      const session = await requireSession(sessionKey);
+      requireFrontendVisible(session);
+
+      const method = normalizeString(payload?.method).toLowerCase();
+      const params = normalizeSlashGatewayParams(payload?.params);
+
+      switch (method) {
+        case 'models.list':
+          return await requestGateway<Record<string, unknown>>(options.config, 'models.list', {});
+        case 'skills.status':
+          return await requestGateway<Record<string, unknown>>(options.config, 'skills.status', {
+            agentId: normalizeString(params.agentId),
+          });
+        case 'agents.list':
+          return await requestGateway<Record<string, unknown>>(options.config, 'agents.list', {});
+        case 'sessions.list':
+          return await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {});
+        case 'config.get':
+          return await requestGateway<Record<string, unknown>>(options.config, 'config.get', {});
+        case 'config.schema.lookup':
+          return await requestGateway<Record<string, unknown>>(options.config, 'config.schema.lookup', {
+            path: normalizeString(params.path),
+          });
+        case 'exec.approvals.get':
+          return await requestGateway<Record<string, unknown>>(options.config, 'exec.approvals.get', {});
+        case 'exec.approvals.set':
+          return await requestGateway<Record<string, unknown>>(options.config, 'exec.approvals.set', {
+            baseHash: normalizeString(params.baseHash),
+            file: params.file,
+          });
+        case 'exec.approvals.node.get':
+          return await requestGateway<Record<string, unknown>>(options.config, 'exec.approvals.node.get', {
+            nodeId: normalizeString(params.nodeId),
+          });
+        case 'exec.approvals.node.set':
+          return await requestGateway<Record<string, unknown>>(options.config, 'exec.approvals.node.set', {
+            nodeId: normalizeString(params.nodeId),
+            baseHash: normalizeString(params.baseHash),
+            file: params.file,
+          });
+        case 'tools.effective':
+          return await requestGateway<Record<string, unknown>>(options.config, 'tools.effective', {
+            sessionKey,
+          });
+        case 'sessions.compact':
+          requireWritable(session, 'send');
+          return await requestGateway<Record<string, unknown>>(options.config, 'sessions.compact', {
+            key: sessionKey,
+          });
+        case 'sessions.patch': {
+          requireWritable(session, 'send');
+          return await requestGateway<Record<string, unknown>>(options.config, 'sessions.patch', {
+            ...params,
+            key: sessionKey,
+          });
+        }
+        case 'sessions.steer': {
+          requireWritable(session, 'send');
+          const targetKey = resolveSlashGatewayTargetKey(session, params);
+          return await requestGateway<Record<string, unknown>>(options.config, 'sessions.steer', {
+            ...params,
+            key: targetKey,
+          });
+        }
+        case 'chat.abort': {
+          requireWritable(session, 'abort');
+          const targetKey = resolveSlashGatewayTargetKey(session, params);
+          return await requestGateway<Record<string, unknown>>(options.config, 'chat.abort', {
+            sessionKey: targetKey,
+          });
+        }
+        case 'chat.send': {
+          requireWritable(session, 'send');
+          const targetKey = resolveSlashGatewayTargetKey(session, params);
+          return await requestGateway<Record<string, unknown>>(options.config, 'chat.send', {
+            ...params,
+            sessionKey: targetKey,
+          });
+        }
+        default:
+          throw new ChatServiceError(
+            400,
+            buildChatError('invalid_request', `Unsupported Studio slash gateway method '${method || '<empty>'}'`),
+          );
+      }
+    },
+
+    async send(sessionKey: string, payload: ChatSendRequest): Promise<ChatSendAck> {
+      return await performDirectSend(sessionKey, payload);
+    },
+
+    async resolveMedia(sessionKey: string, mediaId: string): Promise<ResolvedChatMedia> {
+      const session = await requireSession(sessionKey);
+      requireFrontendVisible(session);
+
+      const resolved = mediaBridge.resolveMedia(sessionKey, mediaId);
+      if (!resolved) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', 'Media resource not found'));
+      }
+
+      return resolved;
+    },
+
+    async deleteSession(sessionKey: string): Promise<ChatDeleteSessionResponse> {
+      const session = await requireSession(sessionKey);
+      requireFrontendVisible(session);
+      requireWritable(session, 'delete');
+      if (session.kind !== 'studio_managed') {
+        throw new ChatServiceError(403, buildChatError('session_not_writable', `Session '${session.key}' is not writable`));
+      }
+
+      const materialized = await isStudioSessionMaterialized(session);
+      if (materialized) {
+        await requestGateway(options.config, 'sessions.delete', {
+          key: session.key,
+          deleteTranscript: true,
+          emitLifecycleHooks: false,
+        });
+      }
+
+      removeLocalSessionRecord(session.key);
+      clearSessionCaches(session.key);
+
+      return {
+        ok: true,
+        sessionKey: session.key,
+      };
+    },
+
+    async abort(sessionKey: string): Promise<ChatAbortResponse> {
+      const session = await requireSession(sessionKey);
+      requireWritable(session, 'abort');
+
+      const inMemory = getStudioSession(sessionKey);
+      if (!inMemory) {
+        throw new ChatServiceError(403, buildChatError('session_not_writable', 'Only studio-managed sessions can be aborted in the current backend gate'));
+      }
+
+      const raw = await requestViaSessionBridge<Record<string, unknown>>(sessionKey, 'chat.abort', {
+        sessionKey,
+      });
+      const runIds = Array.isArray(raw.runIds) ? raw.runIds.map((item: unknown) => String(item)) : [];
+      const localActiveRunId = inMemory.row.runtime.activeRunId || session.runtime.activeRunId || null;
+      const hadActiveRun = runIds.length > 0 || raw.aborted === true || Boolean(localActiveRunId);
+      const abortRunId = runIds[0] || localActiveRunId;
+      inMemory.row = {
+        ...inMemory.row,
+        runtime: buildGatewayRuntime(sessionKey, true, {
+          activeRunId: null,
+          state: hadActiveRun ? 'aborted' : 'idle',
+          lastEventAt: new Date().toISOString(),
+          lastErrorCode: hadActiveRun ? null : 'no_active_run',
+          lastErrorMessage: hadActiveRun ? null : 'No active run to abort.',
+        }),
+      };
+      setStudioSession(inMemory);
+      broadcastRuntimeUpdate(sessionKey, abortRunId, inMemory.row.runtime);
+      if (hadActiveRun) {
+        void flushQueueIfIdle(sessionKey);
+      }
+
+      return {
+        ok: true,
+        sessionKey: inMemory.row.key,
+        hadActiveRun,
+        aborted: hadActiveRun,
+        runIds,
+        runtime: inMemory.row.runtime,
+      };
+    },
+
+    async reset(sessionKey: string): Promise<ChatResetResponse> {
+      const session = await requireSession(sessionKey);
+      requireWritable(session, 'reset');
+
+      const inMemory = getStudioSession(sessionKey);
+      if (!inMemory) {
+        throw new ChatServiceError(403, buildChatError('session_not_writable', 'Only studio-managed sessions can be reset in the current backend gate'));
+      }
+
+      const runtimeBeforeReset = {
+        ...inMemory.row.runtime,
+      };
+      const activeRunIdBeforeReset = normalizeString(runtimeBeforeReset.activeRunId || session.runtime.activeRunId) || null;
+      suppressGatewayRunId(sessionKey, activeRunIdBeforeReset);
+
+      inMemory.messages = [];
+      inMemory.resetPending = true;
+      inMemory.clearedAt = new Date().toISOString();
+      inMemory.observability = createEmptyObservabilityState();
+      inMemory.pendingQueue = [];
+      shadowStore.clearSession(sessionKey);
+      runShadowStore.clearSession(sessionKey);
+      durableMirrorStore.clearSession(sessionKey);
+      historyIndexStore.clearSession(sessionKey);
+      clearRunProjections(sessionKey);
+      canonicalStates.delete(sessionKey);
+      inMemory.row = {
+        ...clearStudioAutoLabel(inMemory.row),
+        updatedAt: new Date().toISOString(),
+        lastMessagePreview: null,
+        runtime: buildGatewayRuntime(sessionKey, true, {
+          activeRunId: null,
+          state: 'idle',
+          lastEventAt: null,
+          lastAckAt: null,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+        }),
+      };
+      setStudioSession(inMemory);
+      broadcastQueueState(sessionKey);
+      saveRegistryEntry({
+        ...buildRegistryEntryFromRow(inMemory.row),
+        createdAt: getRegistryEntry(inMemory.row.key)?.createdAt || inMemory.row.updatedAt || new Date().toISOString(),
+      });
+      broadcastRuntimeUpdate(sessionKey, null, inMemory.row.runtime);
+
+      const shouldAttemptAbort = Boolean(
+        activeRunIdBeforeReset
+        || runtimeBeforeReset.state === 'running'
+        || runtimeBeforeReset.state === 'streaming'
+        || session.runtime.state === 'running'
+        || session.runtime.state === 'streaming'
+      );
+      if (shouldAttemptAbort) {
+        try {
+          await requestViaSessionBridge<Record<string, unknown>>(sessionKey, 'chat.abort', {
+            sessionKey,
+          });
+        } catch (error) {
+          const code = mapGatewayContractError(error, 'chat.abort failed before sessions.reset').code;
+          if (code !== 'no_active_run' && code !== 'session_not_found' && code !== 'gateway_down') {
+            inMemory.resetPending = false;
+            setStudioSession(inMemory);
+            throw error;
+          }
+        }
+      }
+
+      try {
+        await requestGateway(options.config, 'sessions.reset', {
+          key: sessionKey,
+          reason: 'reset',
+        }, {
+          // Gateway reset can spend up to 15s waiting for run cleanup before responding.
+          timeoutMs: 30_000,
+        });
+      } catch (error) {
+        if (mapGatewayContractError(error, 'sessions.reset failed').code !== 'session_not_found') {
+          inMemory.resetPending = false;
+          setStudioSession(inMemory);
+          throw error;
+        }
+      }
+
+      inMemory.resetPending = false;
+      setStudioSession(inMemory);
+
+      return {
+        ok: true,
+        session: inMemory.row,
+        runtime: inMemory.row.runtime,
+      };
+    },
+
+    async uploadFile(sessionKey: string, payload: ChatFileUploadRequest): Promise<ChatFileUploadResponse> {
+      const session = await requireSession(sessionKey);
+      requireWritable(session, 'send');
+
+      const { relativePath, absolutePath } = mediaBridge.saveFileToWorkspace(
+        sessionKey,
+        payload.fileName,
+        payload.content
+      );
+
+      const stat = safeStatSync(absolutePath);
+      if (!stat) {
+        throw new ChatServiceError(500, buildChatError('internal_error', 'Failed to save file'));
+      }
+
+      return {
+        ok: true,
+        relativePath,
+        absolutePath,
+        fileName: payload.fileName,
+        size: stat.size,
+      };
+    },
+
+    async attachGatewayClient(
+      payload: ChatGatewayAttachPayload,
+      runtime: ChatGatewayRuntime,
+    ): Promise<ChatGatewayAttachResponse> {
+      const sessionKey = normalizeString(payload.sessionKey);
+      if (!sessionKey) {
+        throw new Error('sessionKey is required');
+      }
+      const session = await requireSession(sessionKey);
+      requireFrontendVisible(session);
+      registerGatewaySubscriber(sessionKey, runtime);
+      ensureOfficialCanonicalStream(sessionKey);
+      void ensureSessionBridge(sessionKey).catch(() => {
+        // Runtime downgrade will be broadcast by the bridge connect/disconnect handlers.
+      });
+      return {
+        sessionKey,
+        leaseTtlMs: CHAT_GATEWAY_LEASE_MS,
+        events: await buildGatewayAttachEvents(sessionKey),
+      };
+    },
+
+    heartbeatGatewayClient(
+      payload: ChatGatewayHeartbeatPayload,
+      runtime: Pick<ChatGatewayRuntime, 'connId'>,
+    ): ChatGatewayAckResponse {
+      const sessionKey = normalizeString(payload.sessionKey);
+      if (!sessionKey) {
+        throw new Error('sessionKey is required');
+      }
+      requireGatewaySubscriber(sessionKey, runtime.connId);
+      return {
+        ok: true,
+        sessionKey,
+      };
+    },
+
+    detachGatewayClient(
+      payload: ChatGatewayDetachPayload,
+      runtime: Pick<ChatGatewayRuntime, 'connId'>,
+    ): ChatGatewayAckResponse {
+      const sessionKey = normalizeString(payload.sessionKey) || detachGatewayConnId(runtime.connId) || '';
+      if (payload.sessionKey) {
+        detachGatewayConnId(runtime.connId, sessionKey);
+      }
+      return {
+        ok: true,
+        sessionKey,
+      };
+    },
+
+    async openEventStream(
+      sessionKey: string,
+      req: http.IncomingMessage,
+      res: http.ServerResponse,
+    ): Promise<void> {
+      const normalizedSessionKey = normalizeString(sessionKey);
+      if (!normalizedSessionKey) {
+        throw new Error('sessionKey is required');
+      }
+      const session = await requireSession(normalizedSessionKey);
+      requireFrontendVisible(session);
+
+      startSse(res);
+      registerFrontendSseSubscriber(normalizedSessionKey, res);
+      ensureOfficialCanonicalStream(normalizedSessionKey);
+      void ensureSessionBridge(normalizedSessionKey).catch(() => {
+        // Runtime downgrade will be broadcast by the bridge connect/disconnect handlers.
+      });
+      sendSseEvent(res, 'ready', {
+        ok: true,
+        sessionKey: normalizedSessionKey,
+        connectedAt: new Date().toISOString(),
+      });
+      await emitBootstrapEventsToSse(normalizedSessionKey, res);
+
+      const heartbeat = setInterval(() => {
+        if (res.writableEnded || res.destroyed) {
+          clearInterval(heartbeat);
+          return;
+        }
+        res.write(': ping\n\n');
+      }, 15_000);
+      heartbeat.unref?.();
+
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        unregisterFrontendSseSubscriber(normalizedSessionKey, res);
+        if (!shouldKeepOfficialCanonicalStream(normalizedSessionKey)) {
+          disposeOfficialCanonicalStream(normalizedSessionKey);
+        }
+        maybeDisposeSessionBridge(normalizedSessionKey);
+      };
+      req.on('close', cleanup);
+      req.on('aborted', cleanup);
+      res.on('close', cleanup);
+    },
+
+    handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean {
+      const url = new URL(req.url || CHAT_API_PATHS.stream, `http://${req.headers.host || '127.0.0.1'}`);
+      if (!isStudioChatWsPath(url.pathname)) return false;
+      const sessionKey = normalizeString(url.searchParams.get('sessionKey'));
+      if (!sessionKey) {
+        try { socket.destroy(); } catch {}
+        return true;
+      }
+
+      if (req.headers.origin && !resolveStudioChatCorsOrigin(req)) {
+        try { socket.destroy(); } catch {}
+        return true;
+      }
+
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req);
+      });
+      return true;
+    },
+
+    dispose(): void {
+      clearInterval(gatewaySweepTimer);
+      gatewaySubscribers.clear();
+      for (const subscribers of frontendSseSubscribers.values()) {
+        for (const res of subscribers) {
+          try { res.end(); } catch {}
+        }
+      }
+      frontendSseSubscribers.clear();
+      for (const sessionKey of Array.from(officialCanonicalStreams.keys())) {
+        disposeOfficialCanonicalStream(sessionKey);
+      }
+      for (const sessionKey of Array.from(sessionBridges.keys())) {
+        disposeSessionBridge(sessionKey);
+      }
+      try { wss.close(); } catch {}
+    },
+  };
+}

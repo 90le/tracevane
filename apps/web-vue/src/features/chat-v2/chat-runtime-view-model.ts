@@ -1,0 +1,247 @@
+import { computed, type ComputedRef, type Ref } from 'vue';
+import { buildChatRenderableTimeline } from '../../../../../lib/chat-run-overlay';
+import {
+  buildTimelineVersion,
+  coalesceAssistantDeliveryMessages,
+} from '../../../../../lib/chat-runtime-state';
+import { resolveObservedSessionsForRail, sortChatSessionsByUpdatedAt } from '../../../../../lib/chat-session-catalog';
+import type { AgentSummary } from '../../../../../types/agents';
+import type {
+  ChatDiagnostics,
+  ChatHistoryPayload,
+  ChatMessageItem,
+  ChatObservabilityState,
+  ChatRunOverlay,
+  ChatRuntimeState,
+  ChatSessionRow,
+} from '../../../../../types/chat';
+import { isChatRealtimeEnabled } from '../../shared/runtime-config';
+import { deriveAgentIdFromChatSessionKey } from '../chat/session-ref';
+import { deriveChatSessionTitle } from './display-adapter';
+
+type ReadonlyRef<T> = Ref<T> | ComputedRef<T>;
+type TextFn = (chinese: string, english: string) => string;
+
+function runtimeTimestamp(runtime: ChatRuntimeState | null | undefined): number {
+  if (!runtime) {
+    return 0;
+  }
+  return Math.max(
+    Date.parse(runtime.lastEventAt || '') || 0,
+    Date.parse(runtime.lastAckAt || '') || 0,
+  );
+}
+
+function isRuntimeActive(runtime: ChatRuntimeState | null | undefined): boolean {
+  if (!runtime) {
+    return false;
+  }
+  return Boolean(runtime.activeRunId) || runtime.state === 'running' || runtime.state === 'streaming';
+}
+
+function pickPreferredRuntime(
+  historyRuntime: ChatRuntimeState | null | undefined,
+  sessionRuntime: ChatRuntimeState | null | undefined,
+): ChatRuntimeState | null {
+  if (!historyRuntime && !sessionRuntime) {
+    return null;
+  }
+  if (!historyRuntime) {
+    return sessionRuntime || null;
+  }
+  if (!sessionRuntime) {
+    return historyRuntime;
+  }
+
+  const historyActive = isRuntimeActive(historyRuntime);
+  const sessionActive = isRuntimeActive(sessionRuntime);
+  if (historyActive !== sessionActive) {
+    return sessionActive ? sessionRuntime : historyRuntime;
+  }
+
+  const historyTs = runtimeTimestamp(historyRuntime);
+  const sessionTs = runtimeTimestamp(sessionRuntime);
+  if (historyTs !== sessionTs) {
+    return sessionTs > historyTs ? sessionRuntime : historyRuntime;
+  }
+
+  return sessionRuntime;
+}
+
+function sortSessions(left: ChatSessionRow, right: ChatSessionRow): number {
+  return sortChatSessionsByUpdatedAt(left, right);
+}
+
+function sortArchivedSessions(left: ChatSessionRow, right: ChatSessionRow): number {
+  const leftTs = Date.parse(left.presentation.archivedAt || left.updatedAt || '') || 0;
+  const rightTs = Date.parse(right.presentation.archivedAt || right.updatedAt || '') || 0;
+  return rightTs - leftTs;
+}
+
+export function useChatRuntimeViewModel(params: {
+  shellMode: ReadonlyRef<'chat' | 'inspect'>;
+  sessionRows: ReadonlyRef<ChatSessionRow[]>;
+  selectedSessionKey: ReadonlyRef<string>;
+  historyPayload: ReadonlyRef<ChatHistoryPayload | null>;
+  renderMessages: ReadonlyRef<ChatMessageItem[]>;
+  renderOverlays: ReadonlyRef<ChatRunOverlay[]>;
+  routeSessionKey: ReadonlyRef<string | null>;
+  agentRows: ReadonlyRef<AgentSummary[]>;
+  chatHealth: ReadonlyRef<ChatDiagnostics | null>;
+  wsConnected: ReadonlyRef<boolean>;
+  text: TextFn;
+}) {
+  const inspectPinned = computed(() => params.shellMode.value === 'inspect');
+  const selectedSession = computed(() => {
+    const fromRows = params.sessionRows.value.find((row) => row.key === params.selectedSessionKey.value) || null;
+    if (fromRows) {
+      return fromRows;
+    }
+    if (params.historyPayload.value?.session.key === params.selectedSessionKey.value) {
+      return params.historyPayload.value.session;
+    }
+    return null;
+  });
+  const studioManagedSessions = computed(() => params.sessionRows.value
+    .filter((row) => row.permissions.visibleInFrontend && row.kind === 'studio_managed')
+    .sort(sortSessions));
+  const activeStudioManagedSessions = computed(() => studioManagedSessions.value
+    .filter((row) => !row.presentation.archived));
+  const archivedStudioManagedSessions = computed(() => studioManagedSessions.value
+    .filter((row) => row.presentation.archived)
+    .sort(sortArchivedSessions));
+  const observedSessions = computed(() => resolveObservedSessionsForRail(
+    params.sessionRows.value
+      .filter((row) => row.permissions.visibleInFrontend && row.kind !== 'studio_managed')
+      .sort(sortSessions),
+    inspectPinned.value,
+  ));
+
+  const activeRuntime = computed<ChatRuntimeState | null>(() => pickPreferredRuntime(
+    params.historyPayload.value?.runtime,
+    selectedSession.value?.runtime,
+  ));
+  const activeDiagnostics = computed<ChatDiagnostics | null>(() => (
+    params.historyPayload.value?.diagnostics || params.chatHealth.value || null
+  ));
+  const activeObservability = computed<ChatObservabilityState>(() => (
+    params.historyPayload.value?.observability || {
+      lifecycle: null,
+      toolCards: [],
+      usage: null,
+      timeline: [],
+    }
+  ));
+  const selectedAgentId = computed(() => (
+    selectedSession.value?.agentId
+    || (params.routeSessionKey.value ? deriveAgentIdFromChatSessionKey(params.routeSessionKey.value) : null)
+  ));
+  const selectedAgent = computed(() => (
+    params.agentRows.value.find((agent) => agent.id === selectedAgentId.value) || null
+  ));
+  const agentName = computed(() => (
+    selectedAgent.value?.name
+    || selectedAgent.value?.identity.name
+    || selectedAgentId.value
+    || params.text('助手', 'Assistant')
+  ));
+  const agentAvatar = computed(() => selectedAgent.value?.identity.avatar || '');
+  const agentEmoji = computed(() => selectedAgent.value?.identity.emoji || '');
+  const agentInitial = computed(() => (
+    (agentName.value || 'A').trim().charAt(0).toUpperCase() || 'A'
+  ));
+  const effectiveOverlays = computed(() => params.renderOverlays.value);
+  const conversationTitle = computed(() => {
+    if (!selectedSession.value) {
+      return params.text('开始聊天', 'Start chatting');
+    }
+    return deriveChatSessionTitle(selectedSession.value, agentName.value);
+  });
+  const conversationSubtitle = computed(() => {
+    if (!selectedSession.value) {
+      return params.text(
+        '左侧始终保留你的会话列表；点击“新建会话”后再选择 Agent。',
+        'Your chat list always stays on the left; choose an agent only when you start a new chat.',
+      );
+    }
+    if (selectedSession.value.permissions.writable) {
+      return params.text(`正在和 ${agentName.value} 对话`, `Chatting with ${agentName.value}`);
+    }
+    return params.text(`只读观察 · ${agentName.value}`, `Read-only · ${agentName.value}`);
+  });
+  const gatewayWarning = computed(() => {
+    if (!isChatRealtimeEnabled() && selectedSession.value?.permissions.writable) {
+      return params.text(
+        '当前部署模式已挂到 Gateway，但聊天实时链路还未启用。历史和 HTTP 操作可用，实时消息流暂不可用。',
+        'This deployment is mounted behind the Gateway, but chat realtime is not enabled yet. History and HTTP actions still work, but the live stream is unavailable.',
+      );
+    }
+    if (activeDiagnostics.value?.gatewayReachable === false) {
+      return params.text(
+        '当前 Gateway 不可达，历史仍可读，但新的会话操作可能失败。',
+        'The Gateway is unreachable. History remains readable, but new session actions may fail.',
+      );
+    }
+    if (!params.wsConnected.value && selectedSession.value?.permissions.writable) {
+      return params.text(
+        '实时连接正在恢复，消息和工具过程可能短暂延迟。',
+        'Realtime connection is recovering. Messages and tool progress may briefly lag.',
+      );
+    }
+    return '';
+  });
+  const accessError = computed(() => {
+    if (!selectedSession.value) return '';
+    if (!inspectPinned.value && selectedSession.value.kind !== 'studio_managed') {
+      return params.text(
+        'observed_external / system_internal 不应直接进入开放聊天面，请切换到调试模式查看。',
+        'observed_external / system_internal should stay outside the public chat surface. Switch to inspect mode to view them.',
+      );
+    }
+    return '';
+  });
+  const displayMessages = computed(() => {
+    const source = [...params.renderMessages.value];
+    return coalesceAssistantDeliveryMessages(
+      source.filter((message) => message.role !== 'tool'),
+    );
+  });
+  const renderTimelineItems = computed(() => buildChatRenderableTimeline({
+    messages: displayMessages.value,
+    overlays: effectiveOverlays.value,
+  }));
+  const overlayToolCallIds = computed(() => renderTimelineItems.value
+    .flatMap((item) => (
+      item.type === 'run_overlay'
+        ? item.overlay.toolCalls.map((toolCall) => toolCall.toolCallId).filter(Boolean)
+        : []
+    )));
+  const timelineVersion = computed(() => buildTimelineVersion(renderTimelineItems.value));
+
+  return {
+    inspectPinned,
+    selectedSession,
+    studioManagedSessions,
+    activeStudioManagedSessions,
+    archivedStudioManagedSessions,
+    observedSessions,
+    activeRuntime,
+    activeDiagnostics,
+    activeObservability,
+    selectedAgentId,
+    selectedAgent,
+    agentName,
+    agentAvatar,
+    agentEmoji,
+    agentInitial,
+    effectiveOverlays,
+    overlayToolCallIds,
+    conversationTitle,
+    conversationSubtitle,
+    gatewayWarning,
+    accessError,
+    displayMessages,
+    renderTimelineItems,
+    timelineVersion,
+  };
+}

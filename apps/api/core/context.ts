@@ -1,0 +1,30 @@
+import type http from 'node:http';
+import type { LoggerLike, StudioServerConfig } from '../../../types/api.js';
+import type { AgentsService } from '../modules/agents/service.js';
+import type { ChatService } from '../modules/chat/service.js';
+import type { ChannelsService } from '../modules/channels/service.js';
+import type { ConfigService } from '../modules/config/service.js';
+import type { CronService } from '../modules/cron/service.js';
+import type { DashboardService } from '../modules/dashboard/service.js';
+import type { SkillsService } from '../modules/skills/service.js';
+import type { SystemService } from '../modules/system/service.js';
+import type { TerminalService } from '../modules/terminal/service.js';
+
+export interface StudioServices {
+  agents: AgentsService;
+  chat: ChatService;
+  channels: ChannelsService;
+  config: ConfigService;
+  cron: CronService;
+  dashboard: DashboardService;
+  skills: SkillsService;
+  system: SystemService;
+  terminal: TerminalService;
+}
+
+export interface StudioApiContext {
+  config: StudioServerConfig;
+  logger: LoggerLike;
+  sseClients: Set<http.ServerResponse>;
+  services: StudioServices;
+}

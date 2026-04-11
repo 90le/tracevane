@@ -1,0 +1,61 @@
+{
+  "id": "studio",
+  "name": "OpenClaw Studio",
+  "description": "OpenClaw Studio 管理控制台扩展，当前阶段聚焦配置、技能、终端、频道、定时任务和 Agent 管理。",
+  "version": "0.1.21",
+  "homepage": "https://github.com/binbin/openclaw-studio",
+  "skills": [
+    "./skills"
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiPort": {
+        "type": "number",
+        "default": 3760,
+        "description": "Studio API 服务端口"
+      },
+      "autoStart": {
+        "type": "boolean",
+        "default": true,
+        "description": "是否自动启动 Studio API 服务"
+      },
+      "transport": {
+        "type": "object",
+        "description": "Studio 暴露模式配置。默认同时保留 standalone 和 gateway 单口入口；只有显式关闭时才禁用对应入口。",
+        "properties": {
+          "standalone": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "是否启用 3760 独立 HTTP/WS 暴露"
+              },
+              "port": {
+                "type": "number",
+                "default": 3760,
+                "description": "standalone 模式使用的 Studio 端口"
+              }
+            }
+          },
+          "gateway": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "是否启用 OpenClaw Gateway 单端口模式；默认开启，显式设为 false 才禁用"
+              },
+              "basePath": {
+                "type": "string",
+                "default": "/studio",
+                "description": "gateway 模式下的 Studio 基础路径"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

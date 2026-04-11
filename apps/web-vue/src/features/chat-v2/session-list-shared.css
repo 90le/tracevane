@@ -1,0 +1,157 @@
+.chat-shell-link-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in srgb, var(--chat-hover) 64%, transparent 36%);
+  color: var(--chat-text-soft);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.chat-shell-link-button:hover {
+  color: var(--chat-text);
+  background: color-mix(in srgb, var(--chat-hover) 82%, transparent 18%);
+  transform: translateY(-1px);
+}
+
+.chat-shell-session-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 2px;
+  color: var(--chat-text-soft);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chat-shell-session-divider strong {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--chat-text-soft);
+}
+
+.chat-shell-session-divider::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: linear-gradient(90deg, var(--chat-line), transparent);
+}
+
+.chat-shell-session-scope-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 18px 8px;
+  flex-wrap: wrap;
+}
+
+.chat-shell-session-scope-tab {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--chat-line);
+  background: color-mix(in srgb, var(--chat-sidebar-row) 72%, transparent 28%);
+  color: var(--chat-text-soft);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.chat-shell-session-scope-tab:hover {
+  color: var(--chat-text);
+  transform: translateY(-1px);
+}
+
+.chat-shell-session-scope-tab.active {
+  background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-sidebar-row) 86%);
+  border-color: color-mix(in srgb, var(--chat-accent) 42%, var(--chat-line) 58%);
+  color: var(--chat-text);
+}
+
+@media (max-width: 1040px) {
+  .chat-shell-session-scope-tabs {
+    padding-inline: 16px;
+  }
+
+  .chat-shell-session-scope-tab {
+    min-height: 32px;
+  }
+}
+
+.chat-shell-session-field {
+  width: 100%;
+  height: 38px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--chat-line) 88%, transparent);
+  background: color-mix(in srgb, var(--chat-modal-row) 86%, transparent 14%);
+  color: var(--chat-text);
+  padding: 0 12px;
+  font: inherit;
+}
+
+.chat-shell-folder-rename-form {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-shell-folder-rename-form--header {
+  min-width: min(100%, 360px);
+}
+
+.chat-shell-folder-rename-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chat-shell-session-more {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid color-mix(in srgb, var(--chat-line) 84%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chat-popover-bg) 88%, transparent 12%);
+  color: var(--chat-text-soft);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.chat-shell-session-more:hover,
+.chat-shell-session-more.active {
+  background: var(--chat-hover);
+  border-color: var(--chat-line);
+  color: var(--chat-text);
+  transform: translateY(-50%) scale(1.03);
+}
+
+.chat-shell-session-show-more {
+  min-height: 36px;
+  margin: 6px 8px 0;
+  border: 1px solid color-mix(in srgb, var(--chat-line) 88%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chat-sidebar-row) 92%, transparent 8%);
+  color: var(--chat-text-soft);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.chat-shell-session-show-more:hover {
+  background: var(--chat-sidebar-row-hover);
+  color: var(--chat-text);
+  transform: translateY(-1px);
+}

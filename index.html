@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenClaw Studio · 安装指南</title>
+<style>
+  :root{
+    --bg1:#0d1b2a;
+    --bg2:#1b263b;
+    --bg3:#415a77;
+    --mint:#7fffd4;
+    --peach:#ffd6a5;
+    --text:#f4f7fb;
+    --muted:#a8b8cc;
+    --card:rgba(255,255,255,.10);
+    --line:rgba(255,255,255,.18);
+    --shadow:0 20px 60px rgba(0,0,0,.35);
+    --rx:0deg;
+    --ry:0deg;
+    --mx:50%;
+    --my:50%;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Trebuchet MS","Avenir Next","PingFang SC","Microsoft YaHei",sans-serif;
+    color:var(--text);
+    background:
+      radial-gradient(1200px 800px at 20% 20%, #4cc9f0 0%, transparent 45%),
+      radial-gradient(1000px 700px at 80% 10%, #f72585 0%, transparent 42%),
+      linear-gradient(135deg,var(--bg1),var(--bg2),var(--bg3));
+    background-size:140% 140%;
+    background-attachment:fixed;
+    animation:bgShift 14s ease-in-out infinite alternate;
+    min-height:100vh;
+    padding:0;
+  }
+
+  /* ---- Hero ---- */
+  .hero{
+    position:relative;
+    min-height:100vh;
+    display:grid;
+    place-items:center;
+    padding:32px 24px;
+    isolation:isolate;
+    overflow:hidden;
+  }
+
+  .hill{
+    position:absolute;
+    bottom:-18vmin;
+    width:70vmax;
+    aspect-ratio:2.6/1;
+    border-radius:100% 100% 0 0;
+    filter:blur(1px);
+    z-index:-1;
+    animation:float 8s ease-in-out infinite;
+  }
+  .hill.h1{left:-8vmax;background:linear-gradient(180deg,#3a5a40,#2d6a4f);opacity:.85}
+  .hill.h2{right:-12vmax;width:74vmax;background:linear-gradient(180deg,#52796f,#354f52);animation-delay:-3s;opacity:.78}
+
+  .hero-card{
+    width:min(780px,92vw);
+    border:1px solid var(--line);
+    background:
+      radial-gradient(450px 240px at var(--mx) var(--my), rgba(255,255,255,.22), transparent 60%),
+      var(--card);
+    backdrop-filter:blur(14px);
+    border-radius:24px;
+    box-shadow:var(--shadow);
+    padding:40px 44px;
+    transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
+    transition:transform .25s ease, box-shadow .25s ease;
+  }
+
+  .hero-top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+  .tag{
+    padding:6px 14px;
+    border-radius:999px;
+    background:rgba(127,255,212,.14);
+    border:1px solid rgba(127,255,212,.45);
+    font-size:.82rem;
+    letter-spacing:.08em;
+  }
+  .tag-beta{
+    padding:4px 10px;
+    border-radius:999px;
+    background:rgba(255,214,165,.16);
+    border:1px solid rgba(255,214,165,.4);
+    font-size:.72rem;
+    color:var(--peach);
+    letter-spacing:.06em;
+  }
+  .dot{
+    width:10px;height:10px;border-radius:50%;
+    background:var(--mint);
+    box-shadow:0 0 0 0 rgba(127,255,212,.6);
+    animation:pulse 1.8s infinite;
+  }
+
+  .hero h1{
+    margin:20px 0 16px;
+    font-size:clamp(2rem,5vw,3rem);
+    line-height:1.1;
+    letter-spacing:.02em;
+  }
+  .grad{
+    background:linear-gradient(90deg,var(--peach),#f8f9fa,var(--mint));
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+
+  .hero-desc{
+    color:var(--muted);
+    font-size:1.02rem;
+    line-height:1.85;
+    max-width:60ch;
+  }
+  .hero-desc + .hero-desc{margin-top:12px}
+
+  .typing{
+    margin-top:16px;
+    min-height:1.7em;
+    color:#e9f8ff;
+    font-weight:600;
+    letter-spacing:.03em;
+  }
+  .typing::after{
+    content:"";
+    display:inline-block;
+    width:1px;height:1em;
+    margin-left:6px;
+    background:#fff;
+    vertical-align:-2px;
+    animation:blink 1s steps(1) infinite;
+  }
+
+  .features{
+    margin-top:22px;
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
+    gap:10px;
+  }
+  .feat{
+    padding:10px 14px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    background:rgba(255,255,255,.06);
+    font-size:.88rem;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    transition:background .2s;
+  }
+  .feat:hover{background:rgba(255,255,255,.12)}
+  .feat-icon{font-size:1.1rem;flex-shrink:0}
+
+  .hero-actions{
+    margin-top:26px;
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  .btn{
+    border:none;
+    cursor:pointer;
+    border-radius:12px;
+    padding:11px 20px;
+    font-weight:700;
+    font-size:.92rem;
+    transition:.2s ease;
+  }
+  .btn.primary{
+    color:#0b1b1f;
+    background:linear-gradient(135deg,var(--mint),#bde0fe);
+  }
+  .btn.ghost{
+    color:var(--text);
+    background:transparent;
+    border:1px solid var(--line);
+  }
+  .btn:hover{transform:translateY(-2px);filter:brightness(1.05)}
+
+  /* ---- Prompt Section ---- */
+  .prompt-section{
+    padding:56px 24px 72px;
+    display:flex;
+    flex-direction:column;
+    gap:28px;
+    align-items:center;
+  }
+  .prompt-section h2{
+    font-size:1.6rem;
+    text-align:center;
+    margin-bottom:4px;
+  }
+  .prompt-section .section-desc{
+    color:var(--muted);
+    text-align:center;
+    max-width:60ch;
+    font-size:.95rem;
+    line-height:1.6;
+  }
+
+  /* ---- Mode Alert ---- */
+  .mode-alert{
+    width:min(880px,94vw);
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+  }
+  .mode-alert-item{
+    padding:16px 20px;
+    border-radius:16px;
+    text-align:center;
+    font-size:.95rem;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    transition:transform .2s, box-shadow .2s;
+  }
+  .mode-alert-item:hover{
+    transform:translateY(-2px);
+    box-shadow:0 8px 24px rgba(0,0,0,.2);
+  }
+  .mode-alert-normal{
+    background:rgba(127,255,212,.16);
+    border:2px solid rgba(127,255,212,.55);
+    color:#7fffd4;
+  }
+  .mode-alert-normal strong{color:#b2ffe8}
+  .mode-alert-corp{
+    background:rgba(100,181,246,.16);
+    border:2px solid rgba(100,181,246,.55);
+    color:#90caf9;
+  }
+  .mode-alert-corp strong{color:#bbdefb}
+  .mode-alert-icon{font-size:1.4rem}
+
+  .prompt-card{
+    width:min(880px,94vw);
+    border:1px solid var(--line);
+    background:var(--card);
+    backdrop-filter:blur(12px);
+    border-radius:20px;
+    box-shadow:0 12px 40px rgba(0,0,0,.25);
+    overflow:hidden;
+  }
+  .prompt-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:18px 24px;
+    border-bottom:1px solid var(--line);
+  }
+  .prompt-header h3{
+    font-size:1.05rem;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .badge{
+    display:inline-block;
+    padding:3px 12px;
+    border-radius:12px;
+    font-size:.75rem;
+    font-weight:700;
+    letter-spacing:.04em;
+  }
+  .badge-standalone{background:rgba(127,255,212,.18);color:#7fffd4;border:1px solid rgba(127,255,212,.35)}
+  .badge-gateway{background:rgba(100,181,246,.18);color:#90caf9;border:1px solid rgba(100,181,246,.35)}
+
+  .copy-btn{
+    padding:9px 22px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:rgba(255,255,255,.10);
+    color:var(--text);
+    font-size:.88rem;
+    font-weight:600;
+    cursor:pointer;
+    transition:all .2s;
+  }
+  .copy-btn:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.3)}
+  .copy-btn:active{transform:scale(.96)}
+  .copy-btn.copied{background:rgba(127,255,212,.2);border-color:rgba(127,255,212,.5);color:var(--mint)}
+
+  .prompt-body{
+    padding:20px 24px;
+    max-height:480px;
+    overflow-y:auto;
+  }
+  .prompt-body pre{
+    font-family:"Cascadia Code","Fira Code","JetBrains Mono","PingFang SC","Microsoft YaHei",monospace;
+    font-size:.84rem;
+    line-height:1.65;
+    white-space:pre-wrap;
+    word-break:break-word;
+    color:var(--muted);
+    margin:0;
+  }
+
+  .prompt-body::-webkit-scrollbar{width:6px}
+  .prompt-body::-webkit-scrollbar-track{background:transparent}
+  .prompt-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+
+  /* ---- Footer ---- */
+  .footer{
+    padding:40px 24px 36px;
+    border-top:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:16px;
+  }
+  .footer-card{
+    width:min(880px,92vw);
+    border:1px solid var(--line);
+    background:var(--card);
+    backdrop-filter:blur(10px);
+    border-radius:16px;
+    padding:24px 28px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:20px;
+  }
+  .footer-block h4{
+    font-size:.92rem;
+    margin-bottom:8px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .footer-block p{
+    color:var(--muted);
+    font-size:.88rem;
+    line-height:1.6;
+  }
+  .footer-bottom{
+    color:rgba(255,255,255,.3);
+    font-size:.78rem;
+    text-align:center;
+  }
+
+  /* ---- Responsive ---- */
+  @media(max-width:640px){
+    .hero-card{padding:26px 22px;border-radius:18px}
+    .hero h1{font-size:1.7rem}
+    .hero-desc{font-size:.94rem}
+    .features{grid-template-columns:repeat(2,1fr);gap:8px}
+    .feat{padding:8px 10px;font-size:.82rem}
+    .prompt-header{padding:14px 16px;flex-direction:column;gap:12px;align-items:flex-start}
+    .prompt-body{padding:14px 16px}
+    .prompt-body pre{font-size:.8rem}
+    .hero-actions{flex-direction:column}
+    .hero-actions .btn{width:100%;text-align:center}
+    .footer-card{grid-template-columns:1fr;gap:16px}
+    .mode-alert{grid-template-columns:1fr}
+  }
+
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none !important;transition:none !important}
+  }
+
+  @keyframes bgShift{to{background-position:100% 0}}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+  @keyframes pulse{70%{box-shadow:0 0 0 10px rgba(127,255,212,0)}100%{box-shadow:0 0 0 0 rgba(127,255,212,0)}}
+  @keyframes blink{50%{opacity:0}}
+  @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
+</style>
+</head>
+<body>
+
+<!-- ===== Hero ===== -->
+<main class="hero">
+  <div class="hill h1"></div>
+  <div class="hill h2"></div>
+
+  <section class="hero-card" id="heroCard">
+    <div class="hero-top">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="tag">OPENCLAW STUDIO</span>
+        <span class="tag-beta">CLOSED BETA</span>
+      </div>
+      <span class="dot" aria-label="就绪"></span>
+    </div>
+
+    <h1>OpenClaw <span class="grad">Studio · 小丘</span></h1>
+    <p class="hero-desc">
+      OpenClaw Studio 是一个业余项目，是 OpenClaw 的 Web 管理控制台。把命令行的全部能力搬进浏览器——实时对话、Agent 管理、频道配置，一个页面全搞定。
+    </p>
+    <p class="hero-desc">
+      以原生插件运行，支持独立端口或挂载到 Gateway。Vue 3 前端 + 模块化后端，流式输出、历史恢复、工具调用可视化开箱即用。
+    </p>
+    <div class="typing" id="typing"></div>
+
+    <div class="features">
+      <div class="feat"><span class="feat-icon">🔌</span> Agent 管理</div>
+      <div class="feat"><span class="feat-icon">💬</span> 流式对话</div>
+      <div class="feat"><span class="feat-icon">📡</span> 频道路由</div>
+      <div class="feat"><span class="feat-icon">⏰</span> 定时任务</div>
+      <div class="feat"><span class="feat-icon">🖥️</span> Web 终端</div>
+      <div class="feat"><span class="feat-icon">📊</span> 系统监控</div>
+      <div class="feat"><span class="feat-icon">🛠️</span> 技能管理</div>
+      <div class="feat"><span class="feat-icon">⚙️</span> 全局配置</div>
+    </div>
+
+    <div class="hero-actions">
+      <button class="btn primary" onclick="document.getElementById('prompts').scrollIntoView({behavior:'smooth'})">选择安装模式</button>
+      <button class="btn ghost" onclick="document.getElementById('footer').scrollIntoView({behavior:'smooth'})">关于作者</button>
+    </div>
+  </section>
+</main>
+
+<!-- ===== Prompts ===== -->
+<section class="prompt-section" id="prompts">
+  <h2>安装指南</h2>
+  <p class="section-desc">现在统一提供网站一键安装脚本。为了避免 AI/安全策略拦截，这里不再使用在线脚本直通执行，而是先下载到本地、可选检查内容，再本地运行。请选择非单口或单口模式后再安装。</p>
+
+  <div class="mode-alert">
+    <div class="mode-alert-item mode-alert-normal">
+      <span class="mode-alert-icon">👤</span>
+      <span>模式一：<strong>非单口</strong><br><p style="color: var(--muted);font-size: 12px;">本地访问，或可以直接开放 3760 端口的机器</p></span>
+    </div>
+    <div class="mode-alert-item mode-alert-corp">
+      <span class="mode-alert-icon">🏢</span>
+      <span>模式二：<strong>单口</strong><br><p style="color: var(--muted);font-size: 12px;">外网只能开放 OpenClaw 一个端口，Studio 挂载到 /studio</p></span>
+    </div>
+  </div>
+
+  <!-- Standalone -->
+  <div class="prompt-card">
+    <div class="prompt-header">
+      <h3>模式一：独立端口 <span class="badge badge-standalone">STANDALONE</span></h3>
+      <button class="copy-btn" onclick="copyPrompt('prompt1',this)">复制 Prompt</button>
+    </div>
+    <div class="prompt-body">
+      <pre id="prompt1">请在我的 OpenClaw 环境里安装 OpenClaw Studio，使用非单口模式（standalone，独立端口 3760）。
+
+请按下面步骤执行，不要使用在线脚本直通执行：
+
+1. 先下载 https://studio.90le.cn/install-openclaw-studio.sh 到本地当前目录
+2. 可选执行：sed -n '1,160p' ./install-openclaw-studio.sh
+3. 执行：chmod +x ./install-openclaw-studio.sh
+4. 执行：./install-openclaw-studio.sh --mode standalone
+
+脚本会自动完成这些事情：
+1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
+2. 下载并解压 openclaw-studio-{{STUDIO_VERSION}}.tar.gz
+3. 自动修正发布包入口元数据，确保宿主能正确加载 studio 插件
+4. 安装依赖并重建 node-pty
+5. 写入 plugins.entries.studio / plugins.load.paths / transport 配置
+6. 执行 openclaw gateway install --force 与重启
+7. 对 http://127.0.0.1:3760/api/system/health 做健康检查
+
+执行完成后，请把以下结果告诉我：
+- OpenClaw 版本
+- 配置文件路径
+- 安装目录
+- 访问地址
+- 健康检查结果</pre>
+    </div>
+  </div>
+
+  <!-- Gateway -->
+  <div class="prompt-card">
+    <div class="prompt-header">
+      <h3>模式二：单口模式 <span class="badge badge-gateway">GATEWAY /STUDIO</span></h3>
+      <button class="copy-btn" onclick="copyPrompt('prompt2',this)">复制 Prompt</button>
+    </div>
+    <div class="prompt-body">
+      <pre id="prompt2">请在我的 OpenClaw 环境里安装 OpenClaw Studio，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /studio）。
+
+请按下面步骤执行，不要使用在线脚本直通执行：
+
+1. 先下载 https://studio.90le.cn/install-openclaw-studio.sh 到本地当前目录
+2. 可选执行：sed -n '1,160p' ./install-openclaw-studio.sh
+3. 执行：chmod +x ./install-openclaw-studio.sh
+4. 执行：./install-openclaw-studio.sh --mode gateway
+
+脚本会自动完成这些事情：
+1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
+2. 下载并解压 openclaw-studio-{{STUDIO_VERSION}}.tar.gz
+3. 自动修正发布包入口元数据，确保宿主能正确加载 studio 插件
+4. 安装依赖并重建 node-pty
+5. 写入 plugins.entries.studio / plugins.load.paths / gateway transport 配置
+6. 补齐 gateway.bind / gateway.auth.token / gateway.controlUi.allowedOrigins 等最低可用配置
+7. 执行 openclaw gateway install --force 与重启
+8. 对 http://127.0.0.1:&lt;gateway_port&gt;/studio/api/system/health 做健康检查
+
+执行完成后，请把以下结果告诉我：
+- OpenClaw 版本
+- 配置文件路径
+- 安装目录
+- Gateway 端口
+- 访问地址
+- 健康检查结果</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Footer ===== -->
+<footer class="footer" id="footer">
+  <div class="footer-card">
+    <div class="footer-block" style="grid-column:1/-1;display:flex;flex-direction:column;gap:20px;">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--mint),var(--peach));display:grid;place-items:center;font-size:1.4rem;flex-shrink:0;">🏔️</div>
+        <div>
+          <div style="font-size:1.05rem;font-weight:700;">丘彬彬</div>
+          <div style="color:var(--muted);font-size:.88rem;margin-top:2px;">业余爱好者，以兴趣驱动项目开发，不拘泥于技术细节，乐于分享心得，喜欢与积极向上的伙伴为伴。</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:24px;padding-top:4px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1.1rem;">💬</span>
+          <div>
+            <div style="font-size:.78rem;color:var(--muted);">TEL</div>
+            <div style="font-size:.95rem;letter-spacing:.02em;">17606600435</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1.1rem;">📋</span>
+          <div>
+            <div style="font-size:.78rem;color:var(--muted);">状态</div>
+            <div style="font-size:.95rem;">内测阶段 · 后续开源</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1.1rem;">🐛</span>
+          <div>
+            <div style="font-size:.78rem;color:var(--muted);">问题反馈</div>
+            <div style="font-size:.95rem;">安装遇到问题&BUG请联系作者</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="footer-bottom">OpenClaw Studio · CLOSED BETA · Made with ❤️ by 丘彬彬</p>
+</footer>
+
+<script>
+const STUDIO_VERSION = "0.1.21";
+const OPENCLAW_MIN_VERSION = "2026.4.8";
+
+function applyReleasePlaceholders(version, minVersion) {
+  document.querySelectorAll("pre").forEach(pre => {
+    pre.textContent = pre.textContent
+      .replace(/\{\{STUDIO_VERSION\}\}/g, version)
+      .replace(/\{\{OPENCLAW_MIN_VERSION\}\}/g, minVersion);
+  });
+}
+
+async function loadReleaseMetadata() {
+  try {
+    const response = await fetch("./version.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("version.json unavailable");
+    const payload = await response.json();
+    const version = typeof payload.latestVersion === "string" && payload.latestVersion.trim()
+      ? payload.latestVersion.trim()
+      : STUDIO_VERSION;
+    const minVersion = typeof payload.minOpenClawVersion === "string" && payload.minOpenClawVersion.trim()
+      ? payload.minOpenClawVersion.trim()
+      : OPENCLAW_MIN_VERSION;
+    applyReleasePlaceholders(version, minVersion);
+    return;
+  } catch {
+    applyReleasePlaceholders(STUDIO_VERSION, OPENCLAW_MIN_VERSION);
+  }
+}
+
+void loadReleaseMetadata();
+
+// Typing animation
+const lines=[
+  "命令行的全部能力，搬进浏览器。",
+  "单口 / 非单口，两种模式统一一键安装。",
+  "复制命令或 Prompt，三分钟完成部署。"
+];
+const typingEl=document.getElementById("typing");
+let li=0,lj=0,deleting=false;
+function typeLoop(){
+  const t=lines[li];
+  typingEl.textContent=t.slice(0,lj);
+  if(!deleting){lj++;if(lj>t.length){deleting=true;return setTimeout(typeLoop,1400)}}
+  else{lj--;if(lj<0){deleting=false;li=(li+1)%lines.length;lj=0}}
+  setTimeout(typeLoop,deleting?40:75);
+}
+typeLoop();
+
+// 3D tilt on hero card
+const heroCard=document.getElementById("heroCard");
+window.addEventListener("pointermove",e=>{
+  const r=heroCard.getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width;
+  const y=(e.clientY-r.top)/r.height;
+  if(x<0||x>1||y<0||y>1)return;
+  heroCard.style.setProperty("--rx",(0.5-y)*8+"deg");
+  heroCard.style.setProperty("--ry",(x-0.5)*10+"deg");
+  heroCard.style.setProperty("--mx",x*100+"%");
+  heroCard.style.setProperty("--my",y*100+"%");
+});
+window.addEventListener("pointerleave",()=>{
+  heroCard.style.setProperty("--rx","0deg");
+  heroCard.style.setProperty("--ry","0deg");
+  heroCard.style.setProperty("--mx","50%");
+  heroCard.style.setProperty("--my","50%");
+});
+
+// Copy
+function copyPrompt(id,btn){
+  const text=document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    btn.textContent="已复制 ✓";
+    btn.classList.add("copied");
+    setTimeout(()=>{btn.textContent="复制 Prompt";btn.classList.remove("copied")},2200);
+  });
+}
+</script>
+</body>
+</html>
