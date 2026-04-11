@@ -25,20 +25,18 @@
 
       <details class="config-collapsible" open>
         <summary>{{ text('凭据', 'Credentials') }}</summary>
-        <div class="form-grid">
-          <div
-            v-for="credentialField in catalog.credentialFields"
-            :key="credentialField.key"
-            class="form-field"
-          >
-            <label class="form-label">{{ credentialField.label }}</label>
-            <input
-              v-model="draft.credentialValues[credentialField.key]"
-              class="form-input"
-              :type="credentialField.secret ? 'password' : 'text'"
-              :placeholder="credentialField.placeholder || text(`填写 ${credentialField.label}`, `Enter ${credentialField.label}`)"
-            />
+        <div class="account-credential-summary">
+          <div>
+            <strong>{{ text('凭据由抽屉统一配置', 'Credentials are configured in the drawer') }}</strong>
+            <p>{{ text('账号详情页只显示凭据状态，避免同一批密钥在两个表单里保存。', 'Account detail only shows credential state so the same secrets are not saved from two competing forms.') }}</p>
           </div>
+          <div class="account-credential-summary__stats">
+            <span>{{ text('已配置', 'Configured') }} {{ configuredCredentialCount }}</span>
+            <span>{{ text('总字段', 'Total fields') }} {{ credentialFieldCount }}</span>
+          </div>
+          <button type="button" class="secondary-button compact-button" @click="openCredentialDrawer">
+            {{ text('打开凭据抽屉', 'Open credentials drawer') }}
+          </button>
         </div>
       </details>
 
@@ -167,7 +165,7 @@ import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import type { ChannelFieldDescriptor, ChannelFieldGroupId } from '../../../../../types/channels';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
-import { fetchChannelAccountCredentials, updateChannelAccount } from './api';
+import { updateChannelAccount } from './api';
 import {
   assignAccountDraft,
   buildBooleanInheritOptions,
@@ -223,7 +221,6 @@ function captureDraftSnapshot(): string {
     guildsJson: draft.guildsJson,
     execApprovalsJson: draft.execApprovalsJson,
     fieldValues: draft.fieldValues,
-    credentialValues: draft.credentialValues,
   });
 }
 
@@ -233,24 +230,6 @@ watch(
     if (!nextAccount || !nextCatalog) return;
     assignAccountDraft(draft, nextAccount, nextCatalog);
     lastSavedSnapshot.value = captureDraftSnapshot();
-  },
-  { immediate: true },
-);
-
-watch(
-  () => [channel.value?.type, account.value?.id] as const,
-  async ([channelType, accountId]) => {
-    if (!channelType || !accountId) return;
-    try {
-      const payload = await fetchChannelAccountCredentials(channelType, accountId);
-      draft.credentialValues = {
-        ...draft.credentialValues,
-        ...payload.values,
-      };
-      lastSavedSnapshot.value = captureDraftSnapshot();
-    } catch (error) {
-      workspace.setErrorMessage(error instanceof Error ? error.message : text('未知错误', 'Unknown error'));
-    }
   },
   { immediate: true },
 );
@@ -282,6 +261,8 @@ const streamingOptions = computed(() => buildStreamingOptions(text));
 const connectionModeOptions = computed(() => buildConnectionModeOptions(text));
 const renderModeOptions = computed(() => buildRenderModeOptions(text));
 const booleanInheritOptions = computed(() => buildBooleanInheritOptions(text));
+const configuredCredentialCount = computed(() => account.value?.credentialStates.filter((credential) => credential.configured).length || 0);
+const credentialFieldCount = computed(() => catalog.value?.credentialFields.length || 0);
 const hasUnsavedChanges = computed(() => captureDraftSnapshot() !== lastSavedSnapshot.value);
 const saveStateTitle = computed(() => {
   if (saving.value) return text('保存中', 'Saving');
@@ -290,10 +271,10 @@ const saveStateTitle = computed(() => {
 });
 const saveStateCopy = computed(() => {
   if (saving.value) {
-    return text('账号配置和凭据正在写入配置文件。', 'Account settings and credentials are being written to config files.');
+    return text('账号配置正在写入配置文件。凭据请通过凭据抽屉保存。', 'Account settings are being written to config files. Save credentials from the credential drawer.');
   }
   if (hasUnsavedChanges.value) {
-    return text('账号字段和凭据改动会持续显示在底部保存栏。', 'Account field and credential changes stay visible in the pinned save bar.');
+    return text('账号字段改动会持续显示在底部保存栏；凭据不在本页保存。', 'Account field changes stay visible in the pinned save bar; credentials are not saved from this page.');
   }
   return text('当前草稿和已保存账号配置一致。', 'The current draft matches the saved account configuration.');
 });
@@ -321,6 +302,19 @@ function accountFieldGroupLabel(groupId: ChannelFieldGroupId | ''): string {
   return accountFieldGroupLabelForText(groupId, text);
 }
 
+function buildAccountDetailFieldPayload(): Record<string, unknown> {
+  const values = buildDynamicFieldPayload(draft, catalog.value);
+  for (const field of catalog.value?.credentialFields || []) {
+    delete values[field.key];
+  }
+  return values;
+}
+
+async function openCredentialDrawer(): Promise<void> {
+  if (!account.value) return;
+  await workspace.openOverlay('credentials', account.value.id);
+}
+
 async function save(): Promise<void> {
   if (!channel.value || !account.value || !catalog.value) return;
   workspace.clearMessages();
@@ -329,7 +323,7 @@ async function save(): Promise<void> {
     const response = await updateChannelAccount(channel.value.type, account.value.id, {
       id: draft.id,
       enabled: draft.enabled,
-      fieldValues: buildDynamicFieldPayload(draft, catalog.value),
+      fieldValues: buildAccountDetailFieldPayload(),
       dmPolicy: draft.dmPolicy || null,
       groupPolicy: draft.groupPolicy || null,
       contextVisibility: draft.contextVisibility || null,
@@ -357,6 +351,49 @@ async function save(): Promise<void> {
 </script>
 
 <style scoped>
+.account-credential-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
+}
+
+.account-credential-summary strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.account-credential-summary p {
+  margin: 5px 0 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.account-credential-summary__stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.account-credential-summary__stats span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--text-soft);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .channels-save-bar {
   position: sticky;
   bottom: 16px;
@@ -397,6 +434,14 @@ async function save(): Promise<void> {
 }
 
 @media (max-width: 920px) {
+  .account-credential-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .account-credential-summary__stats {
+    justify-content: flex-start;
+  }
+
   .channels-save-bar {
     flex-direction: column;
     align-items: stretch;

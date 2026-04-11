@@ -12,6 +12,7 @@ function read(filePath) {
 const quickConfigDrawer = read('apps/web-vue/src/features/channels/ChannelQuickConfigDrawer.vue');
 const accountCreateDrawer = read('apps/web-vue/src/features/channels/ChannelAccountCreateDrawer.vue');
 const credentialDrawer = read('apps/web-vue/src/features/channels/ChannelCredentialDrawer.vue');
+const accountDetailPage = read('apps/web-vue/src/features/channels/ChannelAccountDetailPage.vue');
 
 test('provider quick config drawer only exposes common provider defaults', () => {
   assert.match(quickConfigDrawer, /default account/i);
@@ -61,4 +62,15 @@ test('credential drawer stays credential-only instead of mixing in deep account 
   assert.doesNotMatch(credentialDrawer, /group policy/i);
   assert.doesNotMatch(credentialDrawer, /render mode/i);
   assert.doesNotMatch(credentialDrawer, /groupedAccountFields/);
+});
+
+test('account detail delegates credential editing to the credential drawer', () => {
+  assert.match(accountDetailPage, /account-credential-summary/);
+  assert.match(accountDetailPage, /openCredentialDrawer/);
+  assert.match(accountDetailPage, /workspace\.openOverlay\('credentials', account\.value\.id\)/);
+  assert.match(accountDetailPage, /buildAccountDetailFieldPayload/);
+  assert.match(accountDetailPage, /delete values\[field\.key\]/);
+  assert.doesNotMatch(accountDetailPage, /fetchChannelAccountCredentials/);
+  assert.doesNotMatch(accountDetailPage, /v-model="draft\.credentialValues\[credentialField\.key\]"/);
+  assert.doesNotMatch(accountDetailPage, /credentialValues: draft\.credentialValues/);
 });

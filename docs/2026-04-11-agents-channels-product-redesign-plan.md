@@ -156,6 +156,12 @@
 - 保存成功消息能明确说明写入的是账号凭据。
 - 详情页和抽屉不会出现两套互相竞争的凭据表单。
 
+当前实现：
+
+- `ChannelAccountDetailPage` 只显示凭据状态摘要和“打开凭据抽屉”入口，不再内嵌 credential input。
+- 账号详情保存使用 `buildAccountDetailFieldPayload` 排除 credential fields，避免把凭据值通过详情页保存或写空。
+- 凭据读写继续由 `ChannelCredentialDrawer` 统一承接。
+
 ### CH-3A. Account ID / 显示名边界
 
 当前结论：

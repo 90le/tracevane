@@ -33,3 +33,12 @@ test('channel account detail page keeps grouped dynamic field rendering instead 
   assert.match(channelAccountDetailPage, /accountFieldInputType\(field: ChannelFieldDescriptor\): 'text' \| 'url'/);
   assert.doesNotMatch(channelAccountDetailPage, /v-for="field in selectedCatalog\.accountFields"/);
 });
+
+test('channel account detail page keeps credentials out of the account save form', () => {
+  assert.match(channelAccountDetailPage, /account-credential-summary/);
+  assert.match(channelAccountDetailPage, /打开凭据抽屉|Open credentials drawer/);
+  assert.match(channelAccountDetailPage, /buildAccountDetailFieldPayload/);
+  assert.match(channelAccountDetailPage, /delete values\[field\.key\]/);
+  assert.doesNotMatch(channelAccountDetailPage, /fetchChannelAccountCredentials/);
+  assert.doesNotMatch(channelAccountDetailPage, /credentialValues: draft\.credentialValues/);
+});
