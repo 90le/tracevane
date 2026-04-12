@@ -44,7 +44,7 @@
       :archive-view-open="viewModel.archiveViewOpen.value"
       :all-visible-sessions-selected="selection.allVisibleSessionsSelected.value"
       :has-batch-destination-target="actions.hasBatchDestinationTarget.value"
-      :selected-sessions-have-folder-membership="selection.selectedSessionsHaveFolderMembership.value"
+      :selected-sessions-have-folder-membership="selection.organizerFolderSummary.value.hasFolderMembership"
       @toggle-select-all-visible="selection.toggleSelectAllVisible"
       @open-batch-folder-picker="actions.openBatchFolderPicker"
       @remove-from-folder="actions.emitAssignSessions(selection.selectedManageableSessionKeys.value, null)"

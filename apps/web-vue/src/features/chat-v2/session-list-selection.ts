@@ -1,11 +1,11 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 import {
-  deriveSessionSelectionState,
   pruneSelectedSessionKeys,
   toggleSelectAllVisibleSessionKeys,
   toggleSessionSelectionKeys,
 } from '../../../../../lib/chat-session-list-state';
 import type { ChatSessionOrganizerState, ChatSessionRow } from '../../../../../types/chat';
+import { buildSessionListSelectionSummary } from './chat-session-list-selection';
 
 type ReadonlyRef<T> = Ref<T> | ComputedRef<T>;
 
@@ -19,7 +19,7 @@ export function useSessionListSelection(params: {
   const selectionMode = ref(false);
   const selectedSessionKeys = ref<string[]>([]);
   const selectedSet = computed(() => new Set(selectedSessionKeys.value));
-  const selectionState = computed(() => deriveSessionSelectionState({
+  const selectionSummary = computed(() => buildSessionListSelectionSummary({
     selectedKeys: selectedSessionKeys.value,
     visibleSessions: [
       ...params.visibleActiveSessions.value,
@@ -29,12 +29,10 @@ export function useSessionListSelection(params: {
     organizer: params.organizer.value,
     canManageSession: params.canManageSession,
   }));
-  const manageableVisibleSessionKeys = computed(() => selectionState.value.manageableVisibleSessionKeys);
-  const selectedManageableSessionKeys = computed(() => selectionState.value.selectedManageableSessionKeys);
-  const allVisibleSessionsSelected = computed(() => selectionState.value.allVisibleSessionsSelected);
-  const selectedSessionsHaveFolderMembership = computed(() => (
-    selectionState.value.selectedSessionsHaveFolderMembership
-  ));
+  const manageableVisibleSessionKeys = computed(() => selectionSummary.value.manageableVisibleSessionKeys);
+  const selectedManageableSessionKeys = computed(() => selectionSummary.value.selectedManageableSessionKeys);
+  const allVisibleSessionsSelected = computed(() => selectionSummary.value.allVisibleSessionsSelected);
+  const organizerFolderSummary = computed(() => selectionSummary.value.organizerFolderSummary);
 
   function clearSelection(): void {
     selectedSessionKeys.value = [];
@@ -77,7 +75,7 @@ export function useSessionListSelection(params: {
     manageableVisibleSessionKeys,
     selectedManageableSessionKeys,
     allVisibleSessionsSelected,
-    selectedSessionsHaveFolderMembership,
+    organizerFolderSummary,
     clearSelection,
     setSelectionMode,
     toggleSelectionMode,

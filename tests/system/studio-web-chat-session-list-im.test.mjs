@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import 'tsx/esm';
 import { computed, ref } from 'vue';
 
-const rootDir = '/home/binbin/.openclaw/extensions/openclaw-studio';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, '../..');
 const sessionListPanel = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionListPanel.vue'),
   'utf8',
