@@ -5,8 +5,8 @@
 <script setup lang="ts">
 import { SkillsControlPage } from '../features/skills';
 import { useLocalePreference } from '../shared/locale';
-import { buildSkillsOverviewRecipe } from '../features/skills/skills-overview-recipe';
+import { buildDefaultSkillsOverviewRecipe } from '../features/skills/skills-overview-recipe';
 
 const { text } = useLocalePreference();
-const overviewRecipe = buildSkillsOverviewRecipe(text);
+const overviewRecipe = buildDefaultSkillsOverviewRecipe(text);
 </script>
