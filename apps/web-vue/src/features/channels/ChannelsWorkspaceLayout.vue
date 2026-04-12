@@ -108,27 +108,13 @@
               <span class="channels-stage-icon" aria-hidden="true">{{ workspace.channelIcon(workspace.selectedChannel.value.type) }}</span>
               <div>
                 <p class="eyebrow">{{ selectedAccount ? `${workspace.selectedChannel.value.type} · ${selectedAccount.id}` : workspace.selectedChannel.value.type }}</p>
-                <h3 class="channels-stage-title">{{ workspace.channelLabel(workspace.selectedChannel.value.type) }}</h3>
-                <p class="panel-muted">
-                  {{
-                    selectedAccount
-                      ? text(
-                          `${selectedAccountKindLabel}。账号配置只影响当前账号，不影响其它账号。`,
-                          `${selectedAccountKindLabel}. Account settings only affect this account, not the other accounts.`
-                        )
-                      : text('当前 provider 的概览、设置和绑定会在这里切换；账号配置请从下方账号索引进入。', 'This stage switches between provider overview, settings, and bindings. Open account settings from the account index below.')
-                  }}
-                </p>
+                <h3 class="channels-stage-title">{{ stageHeadline || workspace.channelLabel(workspace.selectedChannel.value.type) }}</h3>
+                <p class="panel-muted">{{ stageCopy }}</p>
               </div>
             </div>
 
             <div class="channels-stage-badges">
-              <span class="channels-stage-badge">{{ workspace.selectedChannel.value.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled') }}</span>
-              <span class="channels-stage-badge">{{ text(`${workspace.selectedChannel.value.accountCount} 个账号`, `${workspace.selectedChannel.value.accountCount} accounts`) }}</span>
-              <span class="channels-stage-badge">{{ text(`${workspace.selectedChannel.value.bindingCount} 条绑定`, `${workspace.selectedChannel.value.bindingCount} bindings`) }}</span>
-              <span v-if="workspace.selectedChannel.value.defaultAccount" class="channels-stage-badge">
-                {{ text(`默认账号 ${workspace.selectedChannel.value.defaultAccount}`, `Default ${workspace.selectedChannel.value.defaultAccount}`) }}
-              </span>
+              <span v-for="badge in stageBadges" :key="badge" class="channels-stage-badge">{{ badge }}</span>
             </div>
           </div>
 
@@ -221,6 +207,12 @@
 import { computed, reactive, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { ChannelAccountInput } from '../../../../../types/channels';
+import type { ChannelsOverviewRecipe } from './channels-overview-recipe';
+import {
+  buildChannelsOverviewRecipe,
+  buildChannelWorkspaceSummary,
+  buildChannelAccountWorkspaceSummary,
+} from './channels-overview-recipe';
 import StatusPill from '../../components/StatusPill.vue';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
@@ -244,6 +236,10 @@ import {
 import { provideChannelsWorkspace } from './workspace';
 
 defineOptions({ name: 'ChannelsWorkspaceLayout' });
+
+const props = defineProps<{
+  overviewRecipe?: ChannelsOverviewRecipe;
+}>();
 
 const workspace = provideChannelsWorkspace();
 const route = useRoute();
@@ -304,11 +300,30 @@ const accountTabs = computed(() => [
   { id: 'pairing' as const, label: text('配对审批', 'Pairing') },
 ]);
 
-const selectedAccountKindLabel = computed(() => {
-  if (!selectedAccount.value) return '';
-  return selectedAccount.value.kind === 'default'
-    ? text('当前是默认账号', 'This is the default account')
-    : text('当前是命名账号', 'This is a named account');
+const overviewRecipe = computed(() => props.overviewRecipe || buildChannelsOverviewRecipe(text));
+
+const workspaceSummary = computed(() => {
+  if (!workspace.selectedChannel.value) return null;
+  return buildChannelWorkspaceSummary(overviewRecipe.value, workspace.selectedChannel.value);
+});
+
+const accountWorkspaceSummary = computed(() => {
+  if (!selectedAccount.value) return null;
+  return buildChannelAccountWorkspaceSummary(overviewRecipe.value, selectedAccount.value);
+});
+
+const stageHeadline = computed(() => {
+  if (!workspaceSummary.value) return '';
+  return workspaceSummary.value.headline;
+});
+const stageCopy = computed(() => {
+  if (selectedAccount.value) return accountWorkspaceSummary.value?.copy || '';
+  if (!workspaceSummary.value) return '';
+  return workspaceSummary.value.copy;
+});
+const stageBadges = computed(() => {
+  if (!workspaceSummary.value) return [];
+  return workspaceSummary.value.badges;
 });
 
 const accountCreateSeed = computed<ChannelAccountInput | null>(() => {
