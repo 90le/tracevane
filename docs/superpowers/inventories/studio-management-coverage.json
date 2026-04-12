@@ -62,7 +62,8 @@
       "matchedFiles": [
         "tests/system/studio-web-config-advanced-sheet.test.mjs",
         "tests/system/studio-web-config-gateway-patch.test.mjs",
-        "tests/system/studio-web-config-workbench.test.mjs"
+        "tests/system/studio-web-config-workbench.test.mjs",
+        "tests/system/studio-web-config-workspace-recipe.test.mjs"
       ]
     },
     {
@@ -73,7 +74,8 @@
         "tests/system/studio-web-agents-quick-config.test.mjs",
         "tests/system/studio-web-agents-routes.test.mjs",
         "tests/system/studio-web-agents-selection-tray.test.mjs",
-        "tests/system/studio-web-agents-workbench.test.mjs"
+        "tests/system/studio-web-agents-workbench.test.mjs",
+        "tests/system/studio-web-agents-workspace-recipe.test.mjs"
       ]
     },
     {
@@ -85,6 +87,7 @@
         "tests/system/studio-web-channels-drawers.test.mjs",
         "tests/system/studio-web-channels-overview.test.mjs",
         "tests/system/studio-web-channels-routes.test.mjs",
+        "tests/system/studio-web-channels-workspace-recipe.test.mjs",
         "tests/system/studio-web-channels-workspace.test.mjs"
       ]
     },
@@ -97,7 +100,8 @@
       "domainId": "cron",
       "testPattern": "studio-web-cron-*.test.mjs",
       "matchedFiles": [
-        "tests/system/studio-web-cron-tabs-primitives.test.mjs"
+        "tests/system/studio-web-cron-tabs-primitives.test.mjs",
+        "tests/system/studio-web-cron-workspace-recipe.test.mjs"
       ]
     }
   ]
