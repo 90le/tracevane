@@ -110,12 +110,12 @@ test("buildAgentRosterSummary keeps default rail isolated and sorts recent activ
   );
 });
 
-test("workspace helper lives only in the web layer", () => {
+test("workspace helper keeps only roster logic in the web layer", () => {
   assert.match(
     workspaceSummarySource,
     /export function buildAgentRosterSummary\(/,
   );
-  assert.match(
+  assert.doesNotMatch(
     workspaceSummarySource,
     /export function buildAgentWorkspaceSummary\(/,
   );

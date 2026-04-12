@@ -6,16 +6,6 @@ export interface AgentRosterSummary {
   regularRailAgents: AgentsSummaryPayload["agents"];
 }
 
-export interface AgentWorkspaceSummary {
-  selectedAgentId: string;
-  hasSelection: boolean;
-  stageCounts: {
-    bindings: number;
-    docs: number;
-    sessions: number;
-  };
-}
-
 function parseLastActiveAt(value: string | null | undefined): number {
   if (!value) return 0;
   const parsed = Date.parse(value);
@@ -43,25 +33,5 @@ export function buildAgentRosterSummary(input: {
     order,
     defaultRailAgents,
     regularRailAgents,
-  };
-}
-
-export function buildAgentWorkspaceSummary(input: {
-  selectedAgentId?: string | null;
-  detail?: {
-    bindings?: Array<unknown>;
-    docs?: Array<unknown>;
-    recentSessions?: Array<unknown>;
-  } | null;
-}): AgentWorkspaceSummary {
-  const selectedAgentId = String(input.selectedAgentId || "").trim();
-  return {
-    selectedAgentId,
-    hasSelection: Boolean(selectedAgentId),
-    stageCounts: {
-      bindings: input.detail?.bindings?.length || 0,
-      docs: input.detail?.docs?.length || 0,
-      sessions: input.detail?.recentSessions?.length || 0,
-    },
   };
 }

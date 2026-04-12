@@ -4,6 +4,7 @@ import type {
   AgentBindingMutationResponse,
   AgentCreatePayload,
   AgentDeletePayload,
+  AgentDetailPayload,
   AgentDocName,
   AgentDocumentPayload,
   AgentDocumentSavePayload,
