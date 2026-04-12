@@ -1,17 +1,26 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const rootDir = '/home/binbin/.openclaw/extensions/openclaw-studio';
-const manifestPath = path.join(rootDir, 'apps/web-vue/src/features/shell/route-manifest.ts');
-const navPath = path.join(rootDir, 'apps/web-vue/src/features/shell/use-shell-navigation.ts');
-const routerPath = path.join(rootDir, 'apps/web-vue/src/router.ts');
-const appPath = path.join(rootDir, 'apps/web-vue/src/App.vue');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, "..", "..");
+const manifestPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/shell/route-manifest.ts",
+);
+const navPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/shell/use-shell-navigation.ts",
+);
+const routerPath = path.join(rootDir, "apps/web-vue/src/router.ts");
+const appPath = path.join(rootDir, "apps/web-vue/src/App.vue");
 
-test('shell route manifest defines grouped current routes and future placeholders', () => {
+test("shell route manifest defines grouped current routes and future placeholders", () => {
   assert.equal(fs.existsSync(manifestPath), true);
-  const manifest = fs.readFileSync(manifestPath, 'utf8');
+  const manifest = fs.readFileSync(manifestPath, "utf8");
   assert.match(manifest, /key:\s*'overview'/);
   assert.match(manifest, /key:\s*'operations'/);
   assert.match(manifest, /key:\s*'management'/);
@@ -23,10 +32,10 @@ test('shell route manifest defines grouped current routes and future placeholder
   assert.match(manifest, /future:\s*true/);
 });
 
-test('router and app consume shell route metadata instead of local mock navigation', () => {
+test("router and app consume shell route metadata instead of local mock navigation", () => {
   assert.equal(fs.existsSync(navPath), true);
-  const router = fs.readFileSync(routerPath, 'utf8');
-  const app = fs.readFileSync(appPath, 'utf8');
+  const router = fs.readFileSync(routerPath, "utf8");
+  const app = fs.readFileSync(appPath, "utf8");
   assert.match(router, /from '\.\/features\/shell\/route-manifest'/);
   assert.match(router, /shellRoutes/);
   assert.match(app, /from '\.\/features\/shell\/use-shell-navigation'/);
