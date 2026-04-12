@@ -108,13 +108,13 @@
               <span class="channels-stage-icon" aria-hidden="true">{{ workspace.channelIcon(workspace.selectedChannel.value.type) }}</span>
               <div>
                 <p class="eyebrow">{{ selectedAccount ? `${workspace.selectedChannel.value.type} · ${selectedAccount.id}` : workspace.selectedChannel.value.type }}</p>
-                <h3 class="channels-stage-title">{{ stageHeadline || workspace.channelLabel(workspace.selectedChannel.value.type) }}</h3>
-                <p class="panel-muted">{{ stageCopy }}</p>
+                <h3 class="channels-stage-title">{{ stageSummary.headline || workspace.channelLabel(workspace.selectedChannel.value.type) }}</h3>
+                <p class="panel-muted">{{ stageSummary.copy }}</p>
               </div>
             </div>
 
             <div class="channels-stage-badges">
-              <span v-for="badge in stageBadges" :key="badge" class="channels-stage-badge">{{ badge }}</span>
+              <span v-for="badge in stageSummary.badges" :key="badge" class="channels-stage-badge">{{ badge }}</span>
             </div>
           </div>
 
@@ -208,11 +208,8 @@ import { computed, reactive, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { ChannelAccountInput } from '../../../../../types/channels';
 import type { ChannelsOverviewRecipe } from './channels-overview-recipe';
-import {
-  buildChannelsOverviewRecipe,
-  buildChannelWorkspaceSummary,
-  buildChannelAccountWorkspaceSummary,
-} from './channels-overview-recipe';
+import { buildChannelsOverviewRecipe } from './channels-overview-recipe';
+import { buildChannelStageSummary } from './channel-workspace-summary';
 import StatusPill from '../../components/StatusPill.vue';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
@@ -302,29 +299,12 @@ const accountTabs = computed(() => [
 
 const overviewRecipe = computed(() => props.overviewRecipe || buildChannelsOverviewRecipe(text));
 
-const workspaceSummary = computed(() => {
-  if (!workspace.selectedChannel.value) return null;
-  return buildChannelWorkspaceSummary(overviewRecipe.value, workspace.selectedChannel.value);
-});
-
-const accountWorkspaceSummary = computed(() => {
-  if (!selectedAccount.value) return null;
-  return buildChannelAccountWorkspaceSummary(overviewRecipe.value, selectedAccount.value);
-});
-
-const stageHeadline = computed(() => {
-  if (!workspaceSummary.value) return '';
-  return workspaceSummary.value.headline;
-});
-const stageCopy = computed(() => {
-  if (selectedAccount.value) return accountWorkspaceSummary.value?.copy || '';
-  if (!workspaceSummary.value) return '';
-  return workspaceSummary.value.copy;
-});
-const stageBadges = computed(() => {
-  if (!workspaceSummary.value) return [];
-  return workspaceSummary.value.badges;
-});
+const stageSummary = computed(() => buildChannelStageSummary({
+  recipe: overviewRecipe.value,
+  channel: workspace.selectedChannel.value,
+  account: selectedAccount.value,
+  fallbackHeadline: workspace.selectedChannel.value ? workspace.channelLabel(workspace.selectedChannel.value.type) : '',
+}));
 
 const accountCreateSeed = computed<ChannelAccountInput | null>(() => {
   const channel = workspace.selectedChannel.value;

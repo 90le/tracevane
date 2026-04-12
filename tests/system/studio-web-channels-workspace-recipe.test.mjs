@@ -22,6 +22,11 @@ const overviewRecipe = fs.readFileSync(
   'utf8',
 );
 
+const workspaceSummary = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/channels/channel-workspace-summary.ts'),
+  'utf8',
+);
+
 const channelsApi = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/channels/api.ts'),
   'utf8',
@@ -47,19 +52,20 @@ test('channels view wires through workspace overview recipe seam', () => {
   );
 });
 
-test('channels workspace layout consumes provider-plus-account workspace summaries from recipe', () => {
+test('channels workspace layout consumes a single stage summary selector seam', () => {
   assert.match(
     workspaceLayout,
-    /from\s+'\.\/channels-overview-recipe'/,
+    /import\s+\{\s*buildChannelStageSummary\s*\}\s+from\s+'\.\/channel-workspace-summary'/,
   );
-  assert.match(workspaceLayout, /buildChannelWorkspaceSummary/);
-  assert.match(workspaceLayout, /buildChannelAccountWorkspaceSummary/);
-  assert.match(workspaceLayout, /const\s+workspaceSummary\s*=\s*computed\(/);
-  assert.match(workspaceLayout, /const\s+accountWorkspaceSummary\s*=\s*computed\(/);
-  assert.match(workspaceLayout, /workspaceSummary\.value\.headline/);
-  assert.match(workspaceLayout, /workspaceSummary\.value\.copy/);
-  assert.match(workspaceLayout, /workspaceSummary\.value\.badges/);
-  assert.match(workspaceLayout, /accountWorkspaceSummary\.value\?\.copy/);
+  assert.match(
+    workspaceLayout,
+    /const\s+stageSummary\s*=\s*computed\(\(\)\s*=>\s*buildChannelStageSummary\(/,
+  );
+  assert.match(workspaceLayout, /stageSummary\.headline/);
+  assert.match(workspaceLayout, /stageSummary\.copy/);
+  assert.match(workspaceLayout, /stageSummary\.badges/);
+  assert.doesNotMatch(workspaceLayout, /const\s+workspaceSummary\s*=\s*computed\(/);
+  assert.doesNotMatch(workspaceLayout, /const\s+accountWorkspaceSummary\s*=\s*computed\(/);
 });
 
 test('channels overview recipe exports provider and account summary builders', () => {
@@ -70,11 +76,21 @@ test('channels overview recipe exports provider and account summary builders', (
   assert.match(overviewRecipe, /export function buildChannelAccountWorkspaceSummary\(/);
 });
 
-test('channels api continues to expose summary fetch for recipe hydration', () => {
-  assert.match(channelsApi, /export function fetchChannelsSummary\(/);
+test('channels workspace summary helper centralizes provider and account summary selection', () => {
+  assert.match(workspaceSummary, /export interface ChannelStageSummary/);
+  assert.match(workspaceSummary, /export function buildChannelStageSummary\(/);
+  assert.match(workspaceSummary, /fallbackHeadline\?: string/);
+  assert.match(workspaceSummary, /buildChannelWorkspaceSummary\(/);
+  assert.match(workspaceSummary, /buildChannelAccountWorkspaceSummary\(/);
 });
 
-test('channels service exports provider and account workspace seam builders', () => {
-  assert.match(channelsService, /export function buildChannelWorkspaceSummary\(/);
-  assert.match(channelsService, /export function buildChannelAccountWorkspaceSummary\(/);
+test('channels api continues to expose summary fetch for recipe hydration', () => {
+  assert.match(channelsApi, /export function fetchChannelsSummary\(/);
+  assert.doesNotMatch(channelsApi, /buildChannelWorkspaceSummary/);
+  assert.doesNotMatch(channelsApi, /buildChannelAccountWorkspaceSummary/);
+});
+
+test('channels service no longer exports duplicate workspace seam builders', () => {
+  assert.doesNotMatch(channelsService, /export function buildChannelWorkspaceSummary\(/);
+  assert.doesNotMatch(channelsService, /export function buildChannelAccountWorkspaceSummary\(/);
 });

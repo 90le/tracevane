@@ -689,31 +689,6 @@ function mapAccountSummary(
   };
 }
 
-export function buildChannelWorkspaceSummary(channel: ChannelSummary): {
-  enabled: boolean;
-  accountCount: number;
-  bindingCount: number;
-  defaultAccount: string | null;
-} {
-  return {
-    enabled: channel.enabled,
-    accountCount: channel.accountCount,
-    bindingCount: channel.bindingCount,
-    defaultAccount: channel.defaultAccount,
-  };
-}
-
-export function buildChannelAccountWorkspaceSummary(account: ChannelAccountSummary): {
-  id: string;
-  kind: ChannelAccountSummary['kind'];
-  enabled: boolean;
-} {
-  return {
-    id: account.id,
-    kind: account.kind,
-    enabled: account.enabled,
-  };
-}
 
 function mapBinding(rawBinding: Record<string, any>): ChannelBindingSummary | null {
   const match = rawBinding.match && typeof rawBinding.match === 'object' ? rawBinding.match as Record<string, any> : {};

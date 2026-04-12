@@ -13,11 +13,6 @@ import type {
   ChannelsMutationResponse,
   ChannelsSummaryPayload,
 } from '../../../../../types/channels';
-export {
-  buildChannelWorkspaceSummary,
-  buildChannelAccountWorkspaceSummary,
-} from './channels-overview-recipe';
-
 function jsonRequest<T>(input: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
   return requestJson<T>(input, {
     method,
