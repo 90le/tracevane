@@ -10,6 +10,8 @@ import {
   applyChatSessionTemporaryAssistantEvent,
   applyChatSessionTemporaryToolEvent,
   applyChatSessionToolEvent,
+  buildChatOverlaySummary,
+  buildChatRuntimeSummary,
   buildChatSessionRuntimeRenderModel,
   clearChatSessionTransientRun,
   createEmptyChatSessionRuntimeMachineState,
@@ -893,4 +895,99 @@ test('anchorChatSessionCanonicalMessageLedger merges overlays into process ledge
   const render = buildChatSessionRuntimeRenderModel(state);
   assert.equal(render.overlays.length, 1);
   assert.equal(render.overlays[0]?.runId, 'anchor-overlay-run');
+});
+
+
+test('buildChatRuntimeSummary prefers live runtime and returns expected conversation/gateway fields', () => {
+  const summary = buildChatRuntimeSummary({
+    historyRuntime: {
+      gatewayConnected: true,
+      sessionWritable: true,
+      activeRunId: null,
+      state: 'completed',
+      lastEventAt: '2026-04-09T16:00:05.000Z',
+      lastAckAt: '2026-04-09T16:00:05.000Z',
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    },
+    sessionRuntime: {
+      gatewayConnected: true,
+      sessionWritable: true,
+      activeRunId: 'run-live',
+      state: 'running',
+      lastEventAt: '2026-04-09T16:00:10.000Z',
+      lastAckAt: '2026-04-09T16:00:09.000Z',
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    },
+    selectedSession: {
+      key: 'agent:main:webchat:direct:studio-test',
+      agentId: 'main',
+      sessionId: 'session-1',
+      kind: 'studio_managed',
+      label: 'Studio chat · main',
+      derivedTitle: null,
+      lastMessagePreview: null,
+      updatedAt: '2026-04-09T16:00:10.000Z',
+      runtime: null,
+      source: { type: 'studio', path: null, mtimeMs: null },
+      deliveryContext: {
+        mode: 'direct',
+        address: null,
+        peerLabel: null,
+        channel: null,
+        accountId: null,
+      },
+      permissions: {
+        visibleInFrontend: true,
+        writable: true,
+        canSend: true,
+        canAbort: true,
+        canReset: true,
+        canDelete: true,
+        canArchive: true,
+        canRename: true,
+      },
+      presentation: {
+        archived: false,
+        archivedAt: null,
+        customLabel: null,
+      },
+    },
+    selectedSessionTitle: 'Main Chat',
+    agentName: 'Main',
+    chatRealtimeEnabled: true,
+    gatewayReachable: true,
+    wsConnected: true,
+    text: (zh) => zh,
+  });
+
+  assert.equal(summary.activeRuntime?.activeRunId, 'run-live');
+  assert.equal(summary.conversationTitle, 'Main Chat');
+  assert.equal(summary.conversationSubtitle, '正在和 Main 对话');
+  assert.equal(summary.gatewayWarning, '');
+});
+
+test('buildChatOverlaySummary returns overlays and flattened tool call ids', () => {
+  const overlays = [
+    createOverlay({ runId: 'run-x' }),
+    createOverlay({
+      runId: 'run-y',
+      toolCalls: [{
+        toolCallId: 'tool-y-1',
+        runId: 'run-y',
+        name: 'exec',
+        status: 'running',
+        startedAt: '2026-03-24T20:31:00.000Z',
+        updatedAt: '2026-03-24T20:31:00.000Z',
+        argsPreview: '{}',
+        resultPreview: null,
+        isError: false,
+      }],
+    }),
+  ];
+
+  const summary = buildChatOverlaySummary({ overlays });
+  assert.equal(summary.overlays, overlays);
+  assert.deepEqual(summary.overlayToolCallIds, ['tool-1', 'tool-y-1']);
 });

@@ -1,4 +1,9 @@
-import type { ChatMessageItem, ChatRunOverlay } from '../../../../../types/chat.js';
+import type {
+  ChatMessageItem,
+  ChatRunOverlay,
+  ChatRuntimeState,
+  ChatSessionRow,
+} from '../../../../../types/chat.js';
 import {
   areChatMessagesEquivalent,
   buildRunOverlayRecord,
@@ -49,6 +54,126 @@ export interface ChatSessionRuntimeMachineState {
 export interface ChatSessionRuntimeRenderModel {
   messages: ChatMessageItem[];
   overlays: ChatRunOverlay[];
+}
+
+export interface ChatRuntimeSummary {
+  activeRuntime: ChatRuntimeState | null;
+  conversationTitle: string;
+  conversationSubtitle: string;
+  gatewayWarning: string;
+}
+
+export interface ChatOverlaySummary {
+  overlays: ChatRunOverlay[];
+  overlayToolCallIds: string[];
+}
+
+function runtimeTimestamp(runtime: ChatRuntimeState | null | undefined): number {
+  if (!runtime) {
+    return 0;
+  }
+  return Math.max(
+    Date.parse(runtime.lastEventAt || '') || 0,
+    Date.parse(runtime.lastAckAt || '') || 0,
+  );
+}
+
+function isRuntimeActive(runtime: ChatRuntimeState | null | undefined): boolean {
+  if (!runtime) {
+    return false;
+  }
+  return Boolean(runtime.activeRunId) || runtime.state === 'running' || runtime.state === 'streaming';
+}
+
+function pickPreferredRuntime(
+  historyRuntime: ChatRuntimeState | null | undefined,
+  sessionRuntime: ChatRuntimeState | null | undefined,
+): ChatRuntimeState | null {
+  if (!historyRuntime && !sessionRuntime) {
+    return null;
+  }
+  if (!historyRuntime) {
+    return sessionRuntime || null;
+  }
+  if (!sessionRuntime) {
+    return historyRuntime;
+  }
+
+  const historyActive = isRuntimeActive(historyRuntime);
+  const sessionActive = isRuntimeActive(sessionRuntime);
+  if (historyActive !== sessionActive) {
+    return sessionActive ? sessionRuntime : historyRuntime;
+  }
+
+  const historyTs = runtimeTimestamp(historyRuntime);
+  const sessionTs = runtimeTimestamp(sessionRuntime);
+  if (historyTs !== sessionTs) {
+    return sessionTs > historyTs ? sessionRuntime : historyRuntime;
+  }
+
+  return sessionRuntime;
+}
+
+export function buildChatRuntimeSummary(params: {
+  historyRuntime: ChatRuntimeState | null | undefined;
+  sessionRuntime: ChatRuntimeState | null | undefined;
+  selectedSession: ChatSessionRow | null;
+  selectedSessionTitle: string;
+  agentName: string;
+  chatRealtimeEnabled: boolean;
+  gatewayReachable: boolean | null | undefined;
+  wsConnected: boolean;
+  text: (chinese: string, english: string) => string;
+}): ChatRuntimeSummary {
+  const activeRuntime = pickPreferredRuntime(params.historyRuntime, params.sessionRuntime);
+  const conversationTitle = params.selectedSession
+    ? params.selectedSessionTitle
+    : params.text('开始聊天', 'Start chatting');
+  const conversationSubtitle = !params.selectedSession
+    ? params.text(
+      '左侧始终保留你的会话列表；点击“新建会话”后再选择 Agent。',
+      'Your chat list always stays on the left; choose an agent only when you start a new chat.',
+    )
+    : params.selectedSession.permissions.writable
+      ? params.text(`正在和 ${params.agentName} 对话`, `Chatting with ${params.agentName}`)
+      : params.text(`只读观察 · ${params.agentName}`, `Read-only · ${params.agentName}`);
+
+  let gatewayWarning = '';
+  if (!params.chatRealtimeEnabled && params.selectedSession?.permissions.writable) {
+    gatewayWarning = params.text(
+      '当前部署模式已挂到 Gateway，但聊天实时链路还未启用。历史和 HTTP 操作可用，实时消息流暂不可用。',
+      'This deployment is mounted behind the Gateway, but chat realtime is not enabled yet. History and HTTP actions still work, but the live stream is unavailable.',
+    );
+  } else if (params.gatewayReachable === false) {
+    gatewayWarning = params.text(
+      '当前 Gateway 不可达，历史仍可读，但新的会话操作可能失败。',
+      'The Gateway is unreachable. History remains readable, but new session actions may fail.',
+    );
+  } else if (!params.wsConnected && params.selectedSession?.permissions.writable) {
+    gatewayWarning = params.text(
+      '实时连接正在恢复，消息和工具过程可能短暂延迟。',
+      'Realtime connection is recovering. Messages and tool progress may briefly lag.',
+    );
+  }
+
+  return {
+    activeRuntime,
+    conversationTitle,
+    conversationSubtitle,
+    gatewayWarning,
+  };
+}
+
+export function buildChatOverlaySummary(params: {
+  overlays: ChatRunOverlay[];
+}): ChatOverlaySummary {
+  return {
+    overlays: params.overlays,
+    overlayToolCallIds: params.overlays
+      .flatMap((overlay) => (
+        overlay.toolCalls.map((toolCall) => toolCall.toolCallId).filter(Boolean)
+      )),
+  };
 }
 
 function cloneTransientRunState(
