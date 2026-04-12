@@ -4,11 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import {
-  buildAgentRosterSummary,
-  buildAgentWorkspaceSummary,
-  createAgentsService,
-} from "../../dist/apps/api/modules/agents/service.js";
+import { createAgentsService } from "../../dist/apps/api/modules/agents/service.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-agents-service-"));
@@ -57,60 +53,6 @@ function seedAgent(root, agentId, identityMarkdown) {
   );
   return workspace;
 }
-
-test("buildAgentRosterSummary marks default rail and keeps descending activity order", () => {
-  const summary = buildAgentRosterSummary({
-    agents: [
-      {
-        id: "writer",
-        isDefault: false,
-        lastActiveAt: "2026-04-09T10:00:00.000Z",
-      },
-      {
-        id: "main",
-        isDefault: true,
-        lastActiveAt: "2026-04-11T10:00:00.000Z",
-      },
-      {
-        id: "ops",
-        isDefault: false,
-        lastActiveAt: "2026-04-10T10:00:00.000Z",
-      },
-    ],
-    defaultAgentId: "main",
-  });
-
-  assert.deepEqual(
-    summary.defaultRailAgents.map((agent) => agent.id),
-    ["main"],
-  );
-  assert.deepEqual(
-    summary.regularRailAgents.map((agent) => agent.id),
-    ["ops", "writer"],
-  );
-  assert.deepEqual(summary.order.map((agent) => agent.id), [
-    "main",
-    "ops",
-    "writer",
-  ]);
-});
-
-test("buildAgentWorkspaceSummary returns selected context and stage counts", () => {
-  const summary = buildAgentWorkspaceSummary({
-    selectedAgentId: "main",
-    detail: {
-      bindings: [{ id: "b1" }, { id: "b2" }],
-      docs: [{ name: "IDENTITY.md" }],
-      recentSessions: [{ id: "s1" }, { id: "s2" }, { id: "s3" }],
-    },
-  });
-
-  assert.equal(summary.selectedAgentId, "main");
-  assert.equal(summary.hasSelection, true);
-  assert.equal(summary.stageCounts.bindings, 2);
-  assert.equal(summary.stageCounts.docs, 1);
-  assert.equal(summary.stageCounts.sessions, 3);
-});
 
 test("agent detail exposes advanced 4.8 fields and raw config snapshot", () => {
   const root = makeTempRoot();
@@ -532,7 +474,9 @@ test("agent bindings expose stable ids and preserve team and role match facets",
     roles: ["ops"],
   });
 
-  const nextConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
   assert.equal(nextConfig.bindings[0].match.teamId, "team-2");
   assert.deepEqual(nextConfig.bindings[0].match.roles, ["ops"]);
 });
@@ -583,7 +527,9 @@ test("agent createBinding keeps channel-compatible raw bindings for standard rou
   assert.equal(response.detail.bindings.length, 1);
   assert.notEqual(response.detail.bindings[0].id, "0");
 
-  const nextConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
   assert.equal(nextConfig.bindings[0].type, undefined);
   assert.deepEqual(nextConfig.bindings[0].match.roles, ["support"]);
 });

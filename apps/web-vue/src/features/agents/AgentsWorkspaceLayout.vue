@@ -365,11 +365,10 @@ import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createAgent, fetchAgentDetail, fetchAgentsSummary, updateAgent } from './api';
+import { buildAgentRosterSummary } from './agent-workspace-summary';
 import AgentQuickConfigDialog from './AgentQuickConfigDialog.vue';
 import AgentRailItem from './AgentRailItem.vue';
 import { fetchConfigSummary } from '../config/api';
-import { buildAgentsOverviewRecipe } from './agents-overview-recipe';
-import type { AgentsOverviewRecipe } from './agents-overview-recipe';
 
 interface NoticeMessage {
   kind: 'success' | 'error';
@@ -388,12 +387,6 @@ function normalizeToolsProfile(value: string | null | undefined, fallback: ToolP
 }
 
 defineOptions({ name: 'AgentsWorkspaceLayout' });
-
-const props = defineProps<{
-  overviewRecipe?: AgentsOverviewRecipe;
-}>();
-
-const recipe = computed(() => props.overviewRecipe ?? buildAgentsOverviewRecipe());
 
 const router = useRouter();
 const route = useRoute();
@@ -501,16 +494,9 @@ const filteredAgents = computed(() => {
 });
 
 const rosterSummary = computed(() =>
-  recipe.value.buildAgentRosterSummary({
+  buildAgentRosterSummary({
     agents: filteredAgents.value,
     defaultAgentId: summary.value?.defaultAgentId,
-  }),
-);
-
-const workspaceSummary = computed(() =>
-  recipe.value.buildAgentWorkspaceSummary({
-    selectedAgentId: routeAgentId.value,
-    detail: detail.value,
   }),
 );
 

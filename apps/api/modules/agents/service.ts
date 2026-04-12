@@ -169,11 +169,7 @@ function normalizeOptionalString(value: unknown): string {
 function normalizeStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(
-    new Set(
-      value
-        .map((item) => normalizeOptionalString(item))
-        .filter(Boolean),
-    ),
+    new Set(value.map((item) => normalizeOptionalString(item)).filter(Boolean)),
   );
 }
 
@@ -828,48 +824,46 @@ function buildBindings(
       ({ binding }: { binding: Record<string, any> }) =>
         normalizeString(binding.agentId) === agentId,
     )
-    .map(
-      ({ binding }: { binding: Record<string, any> }) => {
-        const channel = normalizeOptionalString(binding.match?.channel);
-        const accountId = normalizeOptionalString(binding.match?.accountId);
-        const peerKind = normalizeOptionalString(binding.match?.peer?.kind);
-        const peerId = normalizeOptionalString(binding.match?.peer?.id);
-        const guildId = normalizeOptionalString(binding.match?.guildId);
-        const teamId = normalizeOptionalString(binding.match?.teamId);
-        const roles = normalizeStringList(binding.match?.roles);
-        const type = binding.type === "acp" ? "acp" : "route";
-        const descriptionParts = [
-          channel || "default",
-          accountId ? `account=${accountId}` : "",
-          peerKind && peerId ? `${peerKind}:${peerId}` : "",
-          guildId ? `guild=${guildId}` : "",
-          teamId ? `team=${teamId}` : "",
-          roles.length ? `roles=${roles.join(",")}` : "",
-        ].filter(Boolean);
+    .map(({ binding }: { binding: Record<string, any> }) => {
+      const channel = normalizeOptionalString(binding.match?.channel);
+      const accountId = normalizeOptionalString(binding.match?.accountId);
+      const peerKind = normalizeOptionalString(binding.match?.peer?.kind);
+      const peerId = normalizeOptionalString(binding.match?.peer?.id);
+      const guildId = normalizeOptionalString(binding.match?.guildId);
+      const teamId = normalizeOptionalString(binding.match?.teamId);
+      const roles = normalizeStringList(binding.match?.roles);
+      const type = binding.type === "acp" ? "acp" : "route";
+      const descriptionParts = [
+        channel || "default",
+        accountId ? `account=${accountId}` : "",
+        peerKind && peerId ? `${peerKind}:${peerId}` : "",
+        guildId ? `guild=${guildId}` : "",
+        teamId ? `team=${teamId}` : "",
+        roles.length ? `roles=${roles.join(",")}` : "",
+      ].filter(Boolean);
 
-        return {
-          id: buildAgentBindingId(binding),
-          ref: [channel, accountId, peerKind, peerId, guildId, teamId]
-            .concat(roles)
-            .filter(Boolean)
-            .join(":"),
-          type,
-          channel,
-          accountId,
-          peerKind,
-          peerId,
-          guildId,
-          teamId,
-          roles,
-          description: descriptionParts.join(" · ") || "default route",
-          comment: normalizeOptionalString(binding.comment),
-          backend: normalizeOptionalString(binding.acp?.backend),
-          mode: normalizeOptionalString(binding.acp?.mode),
-          cwd: normalizeOptionalString(binding.acp?.cwd),
-          label: normalizeOptionalString(binding.acp?.label),
-        };
-      },
-    );
+      return {
+        id: buildAgentBindingId(binding),
+        ref: [channel, accountId, peerKind, peerId, guildId, teamId]
+          .concat(roles)
+          .filter(Boolean)
+          .join(":"),
+        type,
+        channel,
+        accountId,
+        peerKind,
+        peerId,
+        guildId,
+        teamId,
+        roles,
+        description: descriptionParts.join(" · ") || "default route",
+        comment: normalizeOptionalString(binding.comment),
+        backend: normalizeOptionalString(binding.acp?.backend),
+        mode: normalizeOptionalString(binding.acp?.mode),
+        cwd: normalizeOptionalString(binding.acp?.cwd),
+        label: normalizeOptionalString(binding.acp?.label),
+      };
+    });
 }
 
 function buildSessionRecord(
@@ -914,56 +908,6 @@ function buildRecentSessions(agentRoot: string): AgentSessionSummary[] {
       (right.updatedAt || "").localeCompare(left.updatedAt || ""),
     )
     .slice(0, 20);
-}
-
-export function buildAgentRosterSummary(input: {
-  agents: AgentSummary[];
-  defaultAgentId?: string | null;
-}): {
-  order: AgentSummary[];
-  defaultRailAgents: AgentSummary[];
-  regularRailAgents: AgentSummary[];
-} {
-  const order = [...(input.agents || [])].sort((left, right) => {
-    const leftTime = left.lastActiveAt ? Date.parse(left.lastActiveAt) : 0;
-    const rightTime = right.lastActiveAt ? Date.parse(right.lastActiveAt) : 0;
-    return rightTime - leftTime;
-  });
-  const defaultRailAgents = order.filter(
-    (agent) => agent.isDefault || (input.defaultAgentId && agent.id === input.defaultAgentId),
-  );
-  const regularRailAgents = order.filter(
-    (agent) => !defaultRailAgents.some((item) => item.id === agent.id),
-  );
-  return {
-    order,
-    defaultRailAgents,
-    regularRailAgents,
-  };
-}
-
-export function buildAgentWorkspaceSummary(input: {
-  selectedAgentId?: string | null;
-  detail?: Pick<AgentDetailPayload, "bindings" | "docs" | "recentSessions"> | null;
-}): {
-  selectedAgentId: string;
-  hasSelection: boolean;
-  stageCounts: {
-    bindings: number;
-    docs: number;
-    sessions: number;
-  };
-} {
-  const selectedAgentId = normalizeString(input.selectedAgentId);
-  return {
-    selectedAgentId,
-    hasSelection: Boolean(selectedAgentId),
-    stageCounts: {
-      bindings: input.detail?.bindings?.length || 0,
-      docs: input.detail?.docs?.length || 0,
-      sessions: input.detail?.recentSessions?.length || 0,
-    },
-  };
 }
 
 function mapAgentSummary(

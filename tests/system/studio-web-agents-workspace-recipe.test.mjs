@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import ts from "typescript";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(testDir, "../..");
@@ -13,14 +15,18 @@ const agentsView = fs.readFileSync(
 );
 
 const workspaceLayout = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue"),
+  path.join(
+    rootDir,
+    "apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue",
+  ),
   "utf8",
 );
 
-const recipeFilePath = path.join(
+const workspaceSummaryPath = path.join(
   rootDir,
-  "apps/web-vue/src/features/agents/agents-overview-recipe.ts",
+  "apps/web-vue/src/features/agents/agent-workspace-summary.ts",
 );
+const workspaceSummarySource = fs.readFileSync(workspaceSummaryPath, "utf8");
 
 const agentsApi = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/agents/api.ts"),
@@ -32,36 +38,98 @@ const agentsService = fs.readFileSync(
   "utf8",
 );
 
-test("agents view wires the roster-plus-stage recipe seam into workspace layout", () => {
-  assert.match(
-    agentsView,
-    /import\s+\{\s*buildAgentsOverviewRecipe\s*\}\s+from\s+'\.\.\/features\/agents\/agents-overview-recipe'/,
+async function importTranspiledWorkspaceSummary() {
+  const source = fs.readFileSync(workspaceSummaryPath, "utf8");
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: workspaceSummaryPath,
+  }).outputText;
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agents-summary-test-"),
   );
-  assert.match(agentsView, /const\s+overviewRecipe\s*=\s*buildAgentsOverviewRecipe\(/);
+  const tempFile = path.join(tempDir, "agent-workspace-summary.mjs");
+  fs.writeFileSync(tempFile, transpiled, "utf8");
+  return import(pathToFileURL(tempFile).href);
+}
+
+test("agents view keeps workspace layout wiring minimal", () => {
+  assert.match(agentsView, /<AgentsWorkspaceLayout\s*\/>/);
+  assert.doesNotMatch(agentsView, /overview-recipe/);
+  assert.doesNotMatch(agentsView, /buildAgentsOverviewRecipe/);
+});
+
+test("agents workspace layout computes roster groups directly from local helpers", () => {
   assert.match(
-    agentsView,
-    /<AgentsWorkspaceLayout\s+:overview-recipe="overviewRecipe"\s*\/>/,
+    workspaceLayout,
+    /buildAgentRosterSummary\s*\}\s+from\s+'\.\/agent-workspace-summary'/,
+  );
+  assert.match(workspaceLayout, /const\s+rosterSummary\s*=\s*computed\(/);
+  assert.match(workspaceLayout, /buildAgentRosterSummary\(\{/);
+  assert.doesNotMatch(workspaceLayout, /overviewRecipe\?:/);
+  assert.doesNotMatch(workspaceLayout, /buildAgentsOverviewRecipe/);
+  assert.doesNotMatch(workspaceLayout, /workspaceSummary/);
+});
+
+test("buildAgentRosterSummary keeps default rail isolated and sorts recent activity first", async () => {
+  const { buildAgentRosterSummary } = await importTranspiledWorkspaceSummary();
+  const summary = buildAgentRosterSummary({
+    agents: [
+      {
+        id: "writer",
+        isDefault: false,
+        lastActiveAt: "2026-04-09T10:00:00.000Z",
+      },
+      {
+        id: "main",
+        isDefault: true,
+        lastActiveAt: "2026-04-11T10:00:00.000Z",
+      },
+      {
+        id: "ops",
+        isDefault: false,
+        lastActiveAt: "2026-04-10T10:00:00.000Z",
+      },
+    ],
+    defaultAgentId: "main",
+  });
+
+  assert.deepEqual(
+    summary.defaultRailAgents.map((agent) => agent.id),
+    ["main"],
+  );
+  assert.deepEqual(
+    summary.regularRailAgents.map((agent) => agent.id),
+    ["ops", "writer"],
+  );
+  assert.deepEqual(
+    summary.order.map((agent) => agent.id),
+    ["main", "ops", "writer"],
   );
 });
 
-test("agents overview recipe exports roster and workspace summary builders", () => {
-  const recipe = fs.readFileSync(recipeFilePath, "utf8");
-  assert.match(recipe, /export interface AgentsOverviewRecipe/);
-  assert.match(recipe, /buildAgentRosterSummary/);
-  assert.match(recipe, /buildAgentWorkspaceSummary/);
-  assert.match(recipe, /export function buildAgentsOverviewRecipe\(/);
-});
-
-test("agents workspace layout consumes injected overview recipe", () => {
-  assert.match(workspaceLayout, /overviewRecipe\?:\s*AgentsOverviewRecipe/);
-  assert.match(workspaceLayout, /const\s+recipe\s*=\s*computed\(\(\)\s*=>\s*props\.overviewRecipe\s*\?\?\s*buildAgentsOverviewRecipe\(\)\)/);
-  assert.match(workspaceLayout, /recipe\.value\.buildAgentRosterSummary\(/);
-  assert.match(workspaceLayout, /recipe\.value\.buildAgentWorkspaceSummary\(/);
-});
-
-test("agents api and service expose workspace-summary helpers", () => {
-  assert.match(agentsApi, /buildAgentRosterSummary/);
-  assert.match(agentsApi, /buildAgentWorkspaceSummary/);
-  assert.match(agentsService, /export function buildAgentRosterSummary\(/);
-  assert.match(agentsService, /export function buildAgentWorkspaceSummary\(/);
+test("workspace helper lives only in the web layer", () => {
+  assert.match(
+    workspaceSummarySource,
+    /export function buildAgentRosterSummary\(/,
+  );
+  assert.match(
+    workspaceSummarySource,
+    /export function buildAgentWorkspaceSummary\(/,
+  );
+  assert.doesNotMatch(agentsApi, /export function buildAgentRosterSummary\(/);
+  assert.doesNotMatch(
+    agentsApi,
+    /export function buildAgentWorkspaceSummary\(/,
+  );
+  assert.doesNotMatch(
+    agentsService,
+    /export function buildAgentRosterSummary\(/,
+  );
+  assert.doesNotMatch(
+    agentsService,
+    /export function buildAgentWorkspaceSummary\(/,
+  );
 });
