@@ -2,8 +2,8 @@
   <section class="page-shell agents-workspace-shell">
     <header class="page-header-row agents-workspace-head">
       <div>
-        <p class="eyebrow">Agents</p>
-        <h2 class="page-title">{{ text('Agent 工作台', 'Agents Workspace') }}</h2>
+        <p class="eyebrow">{{ managementEntry?.label || 'Agents' }}</p>
+        <h2 class="page-title">{{ text(`${managementEntry?.label || 'Agent'} 工作台`, `${managementEntry?.label || 'Agents'} Workspace`) }}</h2>
         <p class="page-copy">
           {{ text('左侧持续保留 Agent rail，右侧切换概览、文档、绑定、会话和高级配置，避免页面跳转后丢失上下文。', 'Keep the agent rail persistent on the left while the right stage switches between overview, docs, bindings, sessions, and advanced settings.') }}
         </p>
@@ -360,6 +360,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { AgentCreatePayload, AgentDetailPayload, AgentsSummaryPayload } from '../../../../../types/agents';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
+import type { ManagementDomainDefinition } from '../management/management-domain-manifest';
 import AgentAvatarContent from '../../shared/components/AgentAvatarContent.vue';
 import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
@@ -388,9 +389,14 @@ function normalizeToolsProfile(value: string | null | undefined, fallback: ToolP
 
 defineOptions({ name: 'AgentsWorkspaceLayout' });
 
+const props = defineProps<{
+  managementEntry?: ManagementDomainDefinition;
+}>();
+
 const router = useRouter();
 const route = useRoute();
 const { text } = useLocalePreference();
+const managementEntry = computed(() => props.managementEntry);
 
 const summary = ref<AgentsSummaryPayload | null>(null);
 const configSummary = ref<ConfigSummaryPayload | null>(null);

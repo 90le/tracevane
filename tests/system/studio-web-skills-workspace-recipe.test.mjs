@@ -42,8 +42,11 @@ test("skills view wires through overview recipe seam", () => {
   );
   assert.match(
     skillsView,
-    /const\s+overviewRecipe\s*=\s*buildDefaultSkillsOverviewRecipe\(/,
+    /import\s+\{\s*getManagementDomainEntry\s*\}\s+from\s+'\.\.\/features\/management\/management-domain-manifest'/,
   );
+  assert.match(skillsView, /getManagementDomainEntry\('skills'\)/);
+  assert.match(skillsView, /buildDefaultSkillsOverviewRecipe\(text\)/);
+  assert.match(skillsView, /pageEyebrow:\s*entry\.label/);
   assert.match(
     skillsView,
     /<SkillsControlPage\s+:overview-recipe="overviewRecipe"\s*\/>/,

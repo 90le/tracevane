@@ -56,13 +56,13 @@ test("studio management coverage script loads manifest exports instead of scanni
   );
 });
 
-test("studio management coverage baseline keeps skills visible even without matched system tests", () => {
+test("studio management coverage baseline includes the skills workspace recipe regression", () => {
   const parsed = runCoverageScript();
   const skills = parsed.tests.find((entry) => entry.domainId === "skills");
 
   assert.deepEqual(skills, {
     domainId: "skills",
-    testPattern: "studio-web-*-skills*.test.mjs",
-    matchedFiles: [],
+    testPattern: "studio-web-skills-*.test.mjs",
+    matchedFiles: ["tests/system/studio-web-skills-workspace-recipe.test.mjs"],
   });
 });

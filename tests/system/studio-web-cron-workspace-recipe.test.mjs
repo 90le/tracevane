@@ -39,8 +39,11 @@ test("cron view wires through overview recipe seam", () => {
   );
   assert.match(
     cronView,
-    /const\s+overviewRecipe\s*=\s*buildDefaultCronOverviewRecipe\(/,
+    /import\s+\{\s*getManagementDomainEntry\s*\}\s+from\s+'\.\.\/features\/management\/management-domain-manifest'/,
   );
+  assert.match(cronView, /getManagementDomainEntry\('cron'\)/);
+  assert.match(cronView, /buildDefaultCronOverviewRecipe\(text\)/);
+  assert.match(cronView, /pageEyebrow:\s*entry\.label/);
   assert.match(
     cronView,
     /<CronControlPage\s+:overview-recipe="overviewRecipe"\s*\/>/,

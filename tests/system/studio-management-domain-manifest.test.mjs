@@ -39,6 +39,36 @@ test("management domain manifest exports a machine readable coverage seed", () =
   assert.match(manifestSource, /testPattern/);
 });
 
+test("all five management views consume the shared manifest in runtime wiring", () => {
+  const views = [
+    ["ConfigView.vue", "config"],
+    ["AgentsView.vue", "agents"],
+    ["ChannelsView.vue", "channels"],
+    ["SkillsView.vue", "skills"],
+    ["CronView.vue", "cron"],
+  ];
+
+  for (const [file, domainId] of views) {
+    const source = fs.readFileSync(
+      path.join(root, "apps", "web-vue", "src", "views", file),
+      "utf8",
+    );
+    assert.match(source, /getManagementDomainEntry/);
+    assert.match(
+      source,
+      new RegExp(`getManagementDomainEntry\\(['\"]${domainId}['\"]\\)`),
+    );
+    assert.match(source, /managementEntry/);
+  }
+});
+
+test("skills coverage seed points at concrete skills workspace tests", () => {
+  assert.match(
+    manifestSource,
+    /id:\s*["']skills["'][\s\S]*testPattern:\s*["']studio-web-skills-\*\.test\.mjs["']/,
+  );
+});
+
 test("package json declares studio management coverage script", () => {
   assert.equal(
     typeof packageJson.scripts?.["studio:management-coverage"],

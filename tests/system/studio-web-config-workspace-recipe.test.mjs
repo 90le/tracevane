@@ -44,16 +44,19 @@ test("config view routes through a shell-era workspace recipe seam", () => {
   );
   assert.match(
     configView,
+    /import\s+\{\s*getManagementDomainEntry\s*\}\s+from\s+'\.\.\/features\/management\/management-domain-manifest'/,
+  );
+  assert.match(
+    configView,
     /<ConfigEditorPage\s+:workspace-sections="workspaceSections"\s+:overview-recipe="overviewRecipe"\s*\/>/,
   );
+  assert.match(configView, /getManagementDomainEntry\('config'\)/);
   assert.match(
     configView,
-    /const workspaceSections\s*=\s*buildConfigWorkspaceSections\(/,
+    /const workspaceSections\s*=\s*computed\(\(\)\s*=>\s*buildConfigWorkspaceSections\(/,
   );
-  assert.match(
-    configView,
-    /const overviewRecipe\s*=\s*buildConfigOverviewRecipe\(/,
-  );
+  assert.match(configView, /buildConfigOverviewRecipe\(text\)/);
+  assert.match(configView, /sidebarTitle:\s*text\(`/);
 });
 
 test("workspace section builder exports the single config tab source", () => {

@@ -54,7 +54,7 @@ export const MANAGEMENT_DOMAIN_MANIFEST: ReadonlyArray<ManagementDomainDefinitio
       routePath: "/skills",
       webView: "SkillsView.vue",
       apiModule: "skills",
-      testPattern: "studio-web-*-skills*.test.mjs",
+      testPattern: "studio-web-skills-*.test.mjs",
     },
     {
       id: "cron",
@@ -77,3 +77,17 @@ export const MANAGEMENT_DOMAIN_COVERAGE_SEED: ReadonlyArray<ManagementDomainCove
     apiModuleDir: `apps/api/modules/${domain.apiModule}`,
     testPattern: domain.testPattern,
   }));
+
+export function getManagementDomainEntry(
+  domainId: ManagementDomainId,
+): ManagementDomainDefinition {
+  const entry = MANAGEMENT_DOMAIN_MANIFEST.find(
+    (domain) => domain.id === domainId,
+  );
+
+  if (!entry) {
+    throw new Error(`Unknown management domain: ${domainId}`);
+  }
+
+  return entry;
+}

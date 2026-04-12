@@ -93,8 +93,10 @@
     },
     {
       "domainId": "skills",
-      "testPattern": "studio-web-*-skills*.test.mjs",
-      "matchedFiles": []
+      "testPattern": "studio-web-skills-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-skills-workspace-recipe.test.mjs"
+      ]
     },
     {
       "domainId": "cron",

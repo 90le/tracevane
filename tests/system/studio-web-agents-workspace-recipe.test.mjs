@@ -55,8 +55,16 @@ async function importTranspiledWorkspaceSummary() {
   return import(pathToFileURL(tempFile).href);
 }
 
-test("agents view keeps workspace layout wiring minimal", () => {
-  assert.match(agentsView, /<AgentsWorkspaceLayout\s*\/>/);
+test("agents view keeps workspace layout wiring minimal while consuming management manifest", () => {
+  assert.match(
+    agentsView,
+    /import\s+\{\s*getManagementDomainEntry\s*\}\s+from\s+'\.\.\/features\/management\/management-domain-manifest'/,
+  );
+  assert.match(agentsView, /getManagementDomainEntry\('agents'\)/);
+  assert.match(
+    agentsView,
+    /<AgentsWorkspaceLayout\s+:management-entry="managementEntry"\s*\/>/,
+  );
   assert.doesNotMatch(agentsView, /overview-recipe/);
   assert.doesNotMatch(agentsView, /buildAgentsOverviewRecipe/);
 });
