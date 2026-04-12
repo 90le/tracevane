@@ -1,7 +1,7 @@
 <template>
-  <TerminalConsolePage />
+  <TerminalWorkspacePage />
 </template>
 
 <script setup lang="ts">
-import { TerminalConsolePage } from '../features/terminal';
+import { TerminalWorkspacePage } from '../features/terminal';
 </script>
