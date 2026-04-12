@@ -1,65 +1,91 @@
-export type ChatRuntimeDomainId = "chat" | "sessions";
+export type ChatRuntimeSectionKey =
+  | "shell"
+  | "sessions"
+  | "history"
+  | "inspector";
 
-export interface ChatRuntimeDomainDefinition {
-  id: ChatRuntimeDomainId;
+export interface ChatRuntimeSectionEntry {
+  key: ChatRuntimeSectionKey;
   label: string;
   routePath: string;
-  webEntry: string;
-  apiModule: string;
+  runtimeSurface: string;
+  frontendFile: string;
+  backendFile: string;
   testPattern: string;
 }
 
-export interface ChatRuntimeDomainCoverageSeed {
-  domainId: ChatRuntimeDomainId;
+export interface ChatRuntimeCoverageSeed {
+  section: ChatRuntimeSectionKey;
   routePath: string;
-  webEntryFile: string;
-  apiModuleDir: string;
+  runtimeSurface: string;
+  frontendFile: string;
+  backendFile: string;
   testPattern: string;
 }
 
-export const CHAT_RUNTIME_DOMAIN_MANIFEST: ReadonlyArray<ChatRuntimeDomainDefinition> =
+export const CHAT_RUNTIME_DOMAIN_MANIFEST: ReadonlyArray<ChatRuntimeSectionEntry> =
   [
     {
-      id: "chat",
-      label: "会话运行",
+      key: "shell",
+      label: "聊天壳层",
       routePath: "/chat",
-      webEntry: "ChatView.vue",
-      apiModule: "chat",
+      runtimeSurface: "chat-shell",
+      frontendFile: "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
+      backendFile: "apps/api/modules/chat/routes.ts",
       testPattern: "chat-runtime-*.test.mjs",
     },
     {
-      id: "sessions",
+      key: "sessions",
       label: "会话目录",
       routePath: "/chat/s/:sessionRef",
-      webEntry: "chat-v2/SessionListPanel.vue",
-      apiModule: "chat",
+      runtimeSurface: "session-list",
+      frontendFile: "apps/web-vue/src/features/chat-v2/SessionListPanel.vue",
+      backendFile: "apps/api/modules/chat/service.ts",
       testPattern: "chat-session-*.test.mjs",
+    },
+    {
+      key: "history",
+      label: "历史恢复",
+      routePath: "/chat/history/:sessionRef",
+      runtimeSurface: "history-recovery",
+      frontendFile:
+        "apps/web-vue/src/features/chat-v2/chat-runtime-recovery.ts",
+      backendFile: "apps/api/modules/chat/history-snapshot.ts",
+      testPattern: "history-*.test.mjs",
+    },
+    {
+      key: "inspector",
+      label: "检查面板",
+      routePath: "/chat/workbench",
+      runtimeSurface: "inspector-panel",
+      frontendFile: "apps/web-vue/src/features/chat-v2/InspectorPanel.vue",
+      backendFile: "apps/api/modules/chat/transcript.ts",
+      testPattern: "chat-tool-*.test.mjs",
     },
   ];
 
-export const CHAT_RUNTIME_DOMAIN_IDS: ReadonlyArray<ChatRuntimeDomainId> =
-  CHAT_RUNTIME_DOMAIN_MANIFEST.map((domain) => domain.id);
+export const CHAT_RUNTIME_SECTION_KEYS: ReadonlyArray<ChatRuntimeSectionKey> =
+  CHAT_RUNTIME_DOMAIN_MANIFEST.map((section) => section.key);
 
-export const CHAT_RUNTIME_DOMAIN_COVERAGE_SEED: ReadonlyArray<ChatRuntimeDomainCoverageSeed> =
-  CHAT_RUNTIME_DOMAIN_MANIFEST.map((domain) => ({
-    domainId: domain.id,
-    routePath: domain.routePath,
-    webEntryFile: domain.webEntry.includes("/")
-      ? `apps/web-vue/src/features/${domain.webEntry}`
-      : `apps/web-vue/src/views/${domain.webEntry}`,
-    apiModuleDir: `apps/api/modules/${domain.apiModule}`,
-    testPattern: domain.testPattern,
+export const CHAT_RUNTIME_COVERAGE_SEED: ReadonlyArray<ChatRuntimeCoverageSeed> =
+  CHAT_RUNTIME_DOMAIN_MANIFEST.map((section) => ({
+    section: section.key,
+    routePath: section.routePath,
+    runtimeSurface: section.runtimeSurface,
+    frontendFile: section.frontendFile,
+    backendFile: section.backendFile,
+    testPattern: section.testPattern,
   }));
 
 export function getChatRuntimeDomainEntry(
-  domainId: ChatRuntimeDomainId,
-): ChatRuntimeDomainDefinition {
+  sectionKey: ChatRuntimeSectionKey,
+): ChatRuntimeSectionEntry {
   const entry = CHAT_RUNTIME_DOMAIN_MANIFEST.find(
-    (domain) => domain.id === domainId,
+    (section) => section.key === sectionKey,
   );
 
   if (!entry) {
-    throw new Error(`Unknown chat runtime domain: ${domainId}`);
+    throw new Error(`Unknown chat runtime section: ${sectionKey}`);
   }
 
   return entry;

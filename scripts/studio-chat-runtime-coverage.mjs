@@ -42,11 +42,11 @@ async function loadChatRuntimeCoverageSeed() {
   });
   const manifestModuleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(transpiledManifest.outputText)}`;
   const manifestModule = await import(manifestModuleUrl);
-  const coverageSeed = manifestModule.CHAT_RUNTIME_DOMAIN_COVERAGE_SEED;
+  const coverageSeed = manifestModule.CHAT_RUNTIME_COVERAGE_SEED;
 
   if (!Array.isArray(coverageSeed)) {
     throw new Error(
-      "CHAT_RUNTIME_DOMAIN_COVERAGE_SEED export is missing or invalid in chat runtime manifest",
+      "CHAT_RUNTIME_COVERAGE_SEED export is missing or invalid in chat runtime manifest",
     );
   }
 
@@ -62,23 +62,18 @@ function collectMatchedFiles(testPattern) {
     .map((file) => `tests/chat/${file}`);
 }
 
+function uniqueSorted(values) {
+  return [...new Set(values)].sort();
+}
+
 const coverageSeed = await loadChatRuntimeCoverageSeed();
 const output = {
-  domains: coverageSeed.map((entry) => entry.domainId),
-  webEntries: coverageSeed.map((entry) => ({
-    domainId: entry.domainId,
-    routePath: entry.routePath,
-    file: entry.webEntryFile,
-  })),
-  apiModules: coverageSeed.map((entry) => ({
-    domainId: entry.domainId,
-    dir: entry.apiModuleDir,
-  })),
-  tests: coverageSeed.map((entry) => ({
-    domainId: entry.domainId,
-    testPattern: entry.testPattern,
-    matchedFiles: collectMatchedFiles(entry.testPattern),
-  })),
+  sections: coverageSeed.map((entry) => entry.section),
+  frontendFiles: uniqueSorted(coverageSeed.map((entry) => entry.frontendFile)),
+  backendFiles: uniqueSorted(coverageSeed.map((entry) => entry.backendFile)),
+  tests: uniqueSorted(
+    coverageSeed.flatMap((entry) => collectMatchedFiles(entry.testPattern)),
+  ),
 };
 
 fs.mkdirSync(path.dirname(outputFile), { recursive: true });

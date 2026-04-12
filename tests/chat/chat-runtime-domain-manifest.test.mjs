@@ -43,24 +43,25 @@ function runCoverageScript() {
   return JSON.parse(stdout);
 }
 
-test("chat runtime manifest covers chat and sessions domains", () => {
-  assert.match(manifestSource, /id:\s*["']chat["']/);
-  assert.match(manifestSource, /id:\s*["']sessions["']/);
-  assert.match(manifestSource, /routePath:\s*["']\/chat["']/);
-  assert.match(
-    manifestSource,
-    /testPattern:\s*["']chat-runtime-\*\.test\.mjs["']/,
-  );
-  assert.match(
-    manifestSource,
-    /testPattern:\s*["']chat-session-\*\.test\.mjs["']/,
-  );
+test("chat runtime manifest covers shell sessions history inspector sections", () => {
+  assert.match(manifestSource, /key:\s*["']shell["']/);
+  assert.match(manifestSource, /key:\s*["']sessions["']/);
+  assert.match(manifestSource, /key:\s*["']history["']/);
+  assert.match(manifestSource, /key:\s*["']inspector["']/);
+  assert.match(manifestSource, /runtimeSurface:\s*["']chat-shell["']/);
+  assert.match(manifestSource, /runtimeSurface:\s*["']session-list["']/);
+  assert.match(manifestSource, /runtimeSurface:\s*["']history-recovery["']/);
+  assert.match(manifestSource, /runtimeSurface:\s*["']inspector-panel["']/);
 });
 
-test("chat runtime manifest exports a machine readable coverage seed", () => {
-  assert.match(manifestSource, /CHAT_RUNTIME_DOMAIN_COVERAGE_SEED/);
-  assert.match(manifestSource, /webEntryFile/);
-  assert.match(manifestSource, /apiModuleDir/);
+test("chat runtime manifest exports section-level coverage seed", () => {
+  assert.match(manifestSource, /ChatRuntimeSectionKey/);
+  assert.match(manifestSource, /ChatRuntimeSectionEntry/);
+  assert.match(manifestSource, /CHAT_RUNTIME_DOMAIN_MANIFEST/);
+  assert.match(manifestSource, /CHAT_RUNTIME_COVERAGE_SEED/);
+  assert.match(manifestSource, /runtimeSurface/);
+  assert.match(manifestSource, /frontendFile/);
+  assert.match(manifestSource, /backendFile/);
   assert.match(manifestSource, /testPattern/);
 });
 
@@ -81,4 +82,14 @@ test("chat runtime coverage script matches committed baseline inventory", () => 
   const baseline = JSON.parse(fs.readFileSync(baselineFile, "utf8"));
 
   assert.deepEqual(parsed, baseline);
+  assert.ok(parsed.sections.includes("shell"));
+  assert.ok(
+    parsed.frontendFiles.includes(
+      "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
+    ),
+  );
+  assert.ok(parsed.backendFiles.includes("apps/api/modules/chat/service.ts"));
+  assert.ok(
+    parsed.tests.includes("tests/chat/chat-session-runtime-machine.test.mjs"),
+  );
 });
