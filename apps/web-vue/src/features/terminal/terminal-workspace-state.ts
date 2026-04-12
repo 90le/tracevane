@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, type ComputedRef, type Ref } from "vue";
 import {
   createTerminalSessionRegistry,
   sortTerminalSessionsByUpdatedAtDesc,
@@ -7,13 +7,11 @@ import {
 } from "./terminal-session-registry";
 
 export interface TerminalWorkspaceState {
-  sessions: ReturnType<
-    typeof computed<Record<string, TerminalSessionDescriptor>>
-  >;
-  tabs: ReturnType<typeof computed<TerminalSessionDescriptor[]>>;
-  tabOrder: ReturnType<typeof ref<string[]>>;
-  activeSessionId: ReturnType<typeof ref<string | null>>;
-  recoverableSessions: ReturnType<typeof computed<TerminalSessionDescriptor[]>>;
+  sessions: ComputedRef<Record<string, TerminalSessionDescriptor>>;
+  tabs: ComputedRef<TerminalSessionDescriptor[]>;
+  tabOrder: Ref<string[]>;
+  activeSessionId: Ref<string | null>;
+  recoverableSessions: ComputedRef<TerminalSessionDescriptor[]>;
   registerSession(session: TerminalSessionDescriptor): void;
   hydrateSessions(sessions: TerminalSessionDescriptor[]): void;
   setActiveSession(sessionId: string | null): void;
