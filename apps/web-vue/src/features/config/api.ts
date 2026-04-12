@@ -1,45 +1,46 @@
-import { requestJson } from '../../shared/api';
-import type { ChannelsSummaryPayload } from '../../../../../types/channels';
-import type { ConfigChannelSecretPayload, ConfigProviderSecretPayload, ConfigSaveResponse, ConfigSummaryPayload, ConfigUpdatePayload } from '../../../../../types/config';
-
-export interface ConfigWorkspaceOverviewSummary {
-  defaultModel: string;
-  imageModel: string;
-  providerCount: number;
-  checkedAt: string;
-}
-
-export function buildConfigWorkspaceOverviewSummary(summary: ConfigSummaryPayload): ConfigWorkspaceOverviewSummary {
-  return {
-    defaultModel: summary.defaults.model || '',
-    imageModel: summary.defaults.imageModel || '',
-    providerCount: summary.providers.length,
-    checkedAt: summary.checkedAt || '',
-  };
-}
+import { requestJson } from "../../shared/api";
+import type { ChannelsSummaryPayload } from "../../../../../types/channels";
+import type {
+  ConfigChannelSecretPayload,
+  ConfigProviderSecretPayload,
+  ConfigSaveResponse,
+  ConfigSummaryPayload,
+  ConfigUpdatePayload,
+} from "../../../../../types/config";
 
 export function fetchConfigSummary(): Promise<ConfigSummaryPayload> {
-  return requestJson<ConfigSummaryPayload>('/api/config');
+  return requestJson<ConfigSummaryPayload>("/api/config");
 }
 
 export function fetchConfigChannelSummary(): Promise<ChannelsSummaryPayload> {
-  return requestJson<ChannelsSummaryPayload>('/api/channels');
+  return requestJson<ChannelsSummaryPayload>("/api/channels");
 }
 
-export function saveConfig(payload: ConfigUpdatePayload): Promise<ConfigSaveResponse> {
-  return requestJson<ConfigSaveResponse>('/api/config', {
-    method: 'PUT',
+export function saveConfig(
+  payload: ConfigUpdatePayload,
+): Promise<ConfigSaveResponse> {
+  return requestJson<ConfigSaveResponse>("/api/config", {
+    method: "PUT",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
   });
 }
 
-export function fetchProviderSecret(providerId: string): Promise<ConfigProviderSecretPayload> {
-  return requestJson<ConfigProviderSecretPayload>(`/api/config/providers/${encodeURIComponent(providerId)}/secret`);
+export function fetchProviderSecret(
+  providerId: string,
+): Promise<ConfigProviderSecretPayload> {
+  return requestJson<ConfigProviderSecretPayload>(
+    `/api/config/providers/${encodeURIComponent(providerId)}/secret`,
+  );
 }
 
-export function fetchChannelSecret(channelId: string, accountId: string): Promise<ConfigChannelSecretPayload> {
-  return requestJson<ConfigChannelSecretPayload>(`/api/config/channel-secret/${encodeURIComponent(channelId)}/${encodeURIComponent(accountId)}`);
+export function fetchChannelSecret(
+  channelId: string,
+  accountId: string,
+): Promise<ConfigChannelSecretPayload> {
+  return requestJson<ConfigChannelSecretPayload>(
+    `/api/config/channel-secret/${encodeURIComponent(channelId)}/${encodeURIComponent(accountId)}`,
+  );
 }

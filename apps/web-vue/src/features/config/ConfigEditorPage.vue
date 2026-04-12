@@ -1747,8 +1747,8 @@ import BrowserConfigTab from './BrowserConfigTab.vue';
 import ConfigDomainAdvancedSheet from './ConfigDomainAdvancedSheet.vue';
 import { createUuid } from '../../shared/uuid';
 import { pageMastheadReveal, pageSurfaceReveal } from '../../shared/motion';
-import { buildConfigSidebarSummary, type ConfigOverviewRecipe } from './config-overview-recipe';
-import type { ConfigTabId, ConfigWorkspaceSection } from './config-workspace-sections';
+import { buildConfigOverviewRecipe, buildConfigOverviewSignals, buildConfigSidebarSummary, type ConfigOverviewRecipe } from './config-overview-recipe';
+import { CONFIG_TAB_IDS, DEFAULT_CONFIG_WORKSPACE_SECTIONS, buildConfigWorkspaceSections, type ConfigTabId, type ConfigWorkspaceSection } from './config-workspace-sections';
 import type {
   ConfigProviderInput,
   ConfigProviderSummary,
@@ -1949,8 +1949,7 @@ interface ConfigFormState {
 
 function normalizeConfigTabId(value: unknown): ConfigTabId {
   const tab = typeof value === 'string' ? value.trim() : '';
-  const allowed: ConfigTabId[] = ['model', 'security', 'session', 'session-policy', 'providers', 'gateway', 'acp', 'commands-hooks', 'appearance', 'logging', 'browser'];
-  return (allowed as string[]).includes(tab) ? tab as ConfigTabId : 'model';
+  return CONFIG_TAB_IDS.includes(tab as ConfigTabId) ? tab as ConfigTabId : CONFIG_TAB_IDS[0];
 }
 
 const props = withDefaults(defineProps<{
@@ -1969,19 +1968,7 @@ const loggingTabRef = ref<InstanceType<typeof LoggingConfigTab> | null>(null);
 const browserTabRef = ref<InstanceType<typeof BrowserConfigTab> | null>(null);
 const acpTabRef = ref<InstanceType<typeof AcpConfigTab> | null>(null);
 const { locale, setLocale, text } = useLocalePreference();
-const tabs = computed(() => props.workspaceSections?.length ? props.workspaceSections : [
-  { id: 'model' as const, icon: '🧠', label: text('模型与 Agent', 'Models & Agents'), copy: text('主模型、回退链和默认执行参数', 'Primary models, fallback chains, and execution defaults') },
-  { id: 'security' as const, icon: '🛡️', label: text('沙盒与安全', 'Sandbox & Security'), copy: text('Sandbox、工具权限和执行策略', 'Sandbox, tool permissions, and exec strategy') },
-  { id: 'session' as const, icon: '💬', label: text('会话与行为', 'Sessions & Messaging'), copy: text('私聊隔离、确认反应和配置摘要', 'DM isolation, ack reactions, and summaries') },
-  { id: 'session-policy' as const, icon: '🔄', label: text('会话策略', 'Session Policy'), copy: text('重置策略、按类型覆盖、DM 作用域和线程绑定', 'Reset strategy, per-type overrides, DM scope, and thread bindings') },
-  { id: 'providers' as const, icon: '🏗️', label: text('模型供应商', 'Model Providers'), copy: text('供应商注册表和模型矩阵', 'Provider registry and model matrix') },
-  { id: 'gateway' as const, icon: '🌐', label: text('网关设置', 'Gateway'), copy: text('端口、认证、速率限制和 Tailscale', 'Port, auth, rate limiting, and Tailscale') },
-  { id: 'acp' as const, icon: '🔗', label: text('ACP', 'ACP'), copy: text('外部编码会话入口与允许执行器', 'External coding-session entry and allowed harnesses') },
-  { id: 'commands-hooks' as const, icon: '⚡', label: text('命令与钩子', 'Commands & Hooks'), copy: text('原生命令、技能开关和内部钩子', 'Native commands, skill toggles, and internal hooks') },
-  { id: 'appearance' as const, icon: '🎨', label: text('界面主题', 'Appearance'), copy: text('浅色、深色和跟随系统', 'Light, dark, and follow system') },
-  { id: 'logging' as const, icon: '📝', label: text('日志设置', 'Logging'), copy: text('日志级别、文件和数据脱敏', 'Log levels, file, and data redaction') },
-  { id: 'browser' as const, icon: '🌐', label: text('浏览器', 'Browser'), copy: text('Chrome 路径、无头模式和沙盒配置', 'Chrome path, headless mode, and sandbox config') },
-]);
+const tabs = computed(() => props.workspaceSections?.length ? props.workspaceSections : DEFAULT_CONFIG_WORKSPACE_SECTIONS);
 const activeTabMeta = computed(() => tabs.value.find((tab) => tab.id === activeTab.value) || tabs.value[0]);
 const activeAdvancedSheetMeta = computed(() => {
   if (activeTab.value !== 'model') return null;
@@ -2459,46 +2446,15 @@ function formatConfigCheckedAt(value: string): string {
   return formatter.format(date);
 }
 
-const configOverviewSignals = computed(() => {
-  const recipeSignals = props.overviewRecipe?.signals;
-  if (!recipeSignals?.length) {
-    return [
-      {
-        label: text('默认模型', 'Default model'),
-        value: form.defaults.model || '--',
-        note: text('主文本路由的当前目标', 'Current primary target for text routes'),
-      },
-      {
-        label: text('图片模型', 'Image model'),
-        value: form.defaults.imageModel || '--',
-        note: text('image / pdf 默认走这条链路', 'image / pdf flows default to this route'),
-      },
-      {
-        label: text('供应商', 'Providers'),
-        value: String(form.providers.length),
-        note: text('当前已录入的模型供应商数量', 'Number of configured model providers'),
-      },
-      {
-        label: text('同步时间', 'Synced'),
-        value: loadedSummary.value ? formatConfigCheckedAt(loadedSummary.value.checkedAt) : '--',
-        note: text('最后一次读取配置摘要的时间', 'Last refresh time for the config summary'),
-      },
-    ];
-  }
-
-  return recipeSignals.map((signal) => {
-    let value = '--';
-    if (signal.key === 'defaultModel') value = form.defaults.model || '--';
-    else if (signal.key === 'imageModel') value = form.defaults.imageModel || '--';
-    else if (signal.key === 'providers') value = String(form.providers.length);
-    else if (signal.key === 'syncedAt') value = loadedSummary.value ? formatConfigCheckedAt(loadedSummary.value.checkedAt) : '--';
-    return {
-      label: signal.label,
-      note: signal.note,
-      value,
-    };
-  });
-});
+const configOverviewSignals = computed(() => buildConfigOverviewSignals(
+  props.overviewRecipe || buildConfigOverviewRecipe(text),
+  {
+    defaultModel: form.defaults.model,
+    imageModel: form.defaults.imageModel,
+    providerCount: form.providers.length,
+    checkedAtLabel: loadedSummary.value ? formatConfigCheckedAt(loadedSummary.value.checkedAt) : '--',
+  },
+));
 
 const configSidebarSummary = computed(() => buildConfigSidebarSummary(text, {
   title: props.overviewRecipe?.sidebarTitle || text('先定配置域，再改参数', 'Set the domain first, then change the parameters'),
