@@ -368,6 +368,8 @@ import { createAgent, fetchAgentDetail, fetchAgentsSummary, updateAgent } from '
 import AgentQuickConfigDialog from './AgentQuickConfigDialog.vue';
 import AgentRailItem from './AgentRailItem.vue';
 import { fetchConfigSummary } from '../config/api';
+import { buildAgentsOverviewRecipe } from './agents-overview-recipe';
+import type { AgentsOverviewRecipe } from './agents-overview-recipe';
 
 interface NoticeMessage {
   kind: 'success' | 'error';
@@ -386,6 +388,12 @@ function normalizeToolsProfile(value: string | null | undefined, fallback: ToolP
 }
 
 defineOptions({ name: 'AgentsWorkspaceLayout' });
+
+const props = defineProps<{
+  overviewRecipe?: AgentsOverviewRecipe;
+}>();
+
+const recipe = computed(() => props.overviewRecipe ?? buildAgentsOverviewRecipe());
 
 const router = useRouter();
 const route = useRoute();
@@ -492,8 +500,22 @@ const filteredAgents = computed(() => {
   return items;
 });
 
-const defaultRailAgents = computed(() => filteredAgents.value.filter((agent) => agent.isDefault));
-const regularRailAgents = computed(() => filteredAgents.value.filter((agent) => !agent.isDefault));
+const rosterSummary = computed(() =>
+  recipe.value.buildAgentRosterSummary({
+    agents: filteredAgents.value,
+    defaultAgentId: summary.value?.defaultAgentId,
+  }),
+);
+
+const workspaceSummary = computed(() =>
+  recipe.value.buildAgentWorkspaceSummary({
+    selectedAgentId: routeAgentId.value,
+    detail: detail.value,
+  }),
+);
+
+const defaultRailAgents = computed(() => rosterSummary.value.defaultRailAgents);
+const regularRailAgents = computed(() => rosterSummary.value.regularRailAgents);
 
 const modelOptions = computed(() => {
   const options = [{ value: '', label: text('跟随系统默认', 'Inherit system default') }];

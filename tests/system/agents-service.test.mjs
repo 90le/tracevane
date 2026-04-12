@@ -4,7 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { createAgentsService } from "../../dist/apps/api/modules/agents/service.js";
+import {
+  buildAgentRosterSummary,
+  buildAgentWorkspaceSummary,
+  createAgentsService,
+} from "../../dist/apps/api/modules/agents/service.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-agents-service-"));
@@ -53,6 +57,60 @@ function seedAgent(root, agentId, identityMarkdown) {
   );
   return workspace;
 }
+
+test("buildAgentRosterSummary marks default rail and keeps descending activity order", () => {
+  const summary = buildAgentRosterSummary({
+    agents: [
+      {
+        id: "writer",
+        isDefault: false,
+        lastActiveAt: "2026-04-09T10:00:00.000Z",
+      },
+      {
+        id: "main",
+        isDefault: true,
+        lastActiveAt: "2026-04-11T10:00:00.000Z",
+      },
+      {
+        id: "ops",
+        isDefault: false,
+        lastActiveAt: "2026-04-10T10:00:00.000Z",
+      },
+    ],
+    defaultAgentId: "main",
+  });
+
+  assert.deepEqual(
+    summary.defaultRailAgents.map((agent) => agent.id),
+    ["main"],
+  );
+  assert.deepEqual(
+    summary.regularRailAgents.map((agent) => agent.id),
+    ["ops", "writer"],
+  );
+  assert.deepEqual(summary.order.map((agent) => agent.id), [
+    "main",
+    "ops",
+    "writer",
+  ]);
+});
+
+test("buildAgentWorkspaceSummary returns selected context and stage counts", () => {
+  const summary = buildAgentWorkspaceSummary({
+    selectedAgentId: "main",
+    detail: {
+      bindings: [{ id: "b1" }, { id: "b2" }],
+      docs: [{ name: "IDENTITY.md" }],
+      recentSessions: [{ id: "s1" }, { id: "s2" }, { id: "s3" }],
+    },
+  });
+
+  assert.equal(summary.selectedAgentId, "main");
+  assert.equal(summary.hasSelection, true);
+  assert.equal(summary.stageCounts.bindings, 2);
+  assert.equal(summary.stageCounts.docs, 1);
+  assert.equal(summary.stageCounts.sessions, 3);
+});
 
 test("agent detail exposes advanced 4.8 fields and raw config snapshot", () => {
   const root = makeTempRoot();

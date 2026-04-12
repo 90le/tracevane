@@ -916,6 +916,56 @@ function buildRecentSessions(agentRoot: string): AgentSessionSummary[] {
     .slice(0, 20);
 }
 
+export function buildAgentRosterSummary(input: {
+  agents: AgentSummary[];
+  defaultAgentId?: string | null;
+}): {
+  order: AgentSummary[];
+  defaultRailAgents: AgentSummary[];
+  regularRailAgents: AgentSummary[];
+} {
+  const order = [...(input.agents || [])].sort((left, right) => {
+    const leftTime = left.lastActiveAt ? Date.parse(left.lastActiveAt) : 0;
+    const rightTime = right.lastActiveAt ? Date.parse(right.lastActiveAt) : 0;
+    return rightTime - leftTime;
+  });
+  const defaultRailAgents = order.filter(
+    (agent) => agent.isDefault || (input.defaultAgentId && agent.id === input.defaultAgentId),
+  );
+  const regularRailAgents = order.filter(
+    (agent) => !defaultRailAgents.some((item) => item.id === agent.id),
+  );
+  return {
+    order,
+    defaultRailAgents,
+    regularRailAgents,
+  };
+}
+
+export function buildAgentWorkspaceSummary(input: {
+  selectedAgentId?: string | null;
+  detail?: Pick<AgentDetailPayload, "bindings" | "docs" | "recentSessions"> | null;
+}): {
+  selectedAgentId: string;
+  hasSelection: boolean;
+  stageCounts: {
+    bindings: number;
+    docs: number;
+    sessions: number;
+  };
+} {
+  const selectedAgentId = normalizeString(input.selectedAgentId);
+  return {
+    selectedAgentId,
+    hasSelection: Boolean(selectedAgentId),
+    stageCounts: {
+      bindings: input.detail?.bindings?.length || 0,
+      docs: input.detail?.docs?.length || 0,
+      sessions: input.detail?.recentSessions?.length || 0,
+    },
+  };
+}
+
 function mapAgentSummary(
   config: StudioServerConfig,
   openclawConfig: Record<string, any>,
