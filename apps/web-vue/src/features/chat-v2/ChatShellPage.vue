@@ -33,9 +33,9 @@
       <main class="chat-shell-main">
         <ConversationPane
           :selected-session="selectedSession"
-          :title="conversationTitle"
-          :subtitle="conversationSubtitle"
-          :agent-name="agentName"
+          :title="stageHeader.title"
+          :subtitle="stageHeader.subtitle"
+          :agent-name="stageHeader.agentName"
           :agent-avatar="agentAvatar"
           :agent-emoji="agentEmoji"
           :agent-initial="agentInitial"
@@ -51,8 +51,8 @@
           :history-loading-after="historyLoadingAfter"
           :viewing-historical-position="viewingHistoricalPosition"
           :history-error-message="historyErrorMessage"
-          :access-error="accessError"
-          :gateway-warning="gatewayWarning"
+          :access-error="overviewWarnings.accessError"
+          :gateway-warning="overviewWarnings.gatewayWarning"
           :slash-feedback="selectedSlashFeedback"
           :composer-document="composerDocument"
           :composer-attachments="composerAttachments"
@@ -76,8 +76,8 @@
           :session-host-management-exec-enabled="selectedSessionControls.allowHostManagementExec"
           :can-toggle-host-management-exec="canToggleHostManagementExec"
           :host-management-exec-toggle-busy="hostManagementExecToggleBusy"
-          :record-browser-open="recordBrowserOpen"
-          :record-browser-has-active-filters="recordBrowserHasActiveFilters"
+          :record-browser-open="overviewQuickActions.recordBrowserOpen"
+          :record-browser-has-active-filters="overviewQuickActions.recordBrowserHasActiveFilters"
           :queue-mutating-entry-id="queueMutatingEntryId"
           @update:composer-document="composerDocument = $event"
           @send="sendMessage($event)"
@@ -106,10 +106,10 @@
           @dismiss-slash-feedback="dismissSelectedSlashFeedback"
         />
         <ChatRecordBrowserPanel
-          :open="recordBrowserOpen"
+          :open="overviewQuickActions.recordBrowserOpen"
           :theme="resolvedTheme"
-          :session-title="conversationTitle"
-          :session-subtitle="conversationSubtitle"
+          :session-title="stageHeader.title"
+          :session-subtitle="stageHeader.subtitle"
           :query="recordBrowserQuery"
           :role-filter="recordBrowserRoleFilter"
           :content-filter="recordBrowserContentFilter"
@@ -117,7 +117,7 @@
           :selected-day="recordBrowserSelectedDay"
           :loading="recordBrowserLoading"
           :error-message="recordBrowserErrorMessage"
-          :has-active-filters="recordBrowserHasActiveFilters"
+          :has-active-filters="overviewQuickActions.recordBrowserHasActiveFilters"
           :match-count="recordBrowserMatchCount"
           :visible-matches="recordBrowserVisibleMatches"
           :grouped-visible-matches="recordBrowserGroupedVisibleMatches"
@@ -206,11 +206,11 @@
           <InspectorPanel
             :tab="inspectorTab"
             :session="selectedSession"
-            :agent-name="agentName"
+            :agent-name="stageHeader.agentName"
             :runtime="activeRuntime"
             :diagnostics="activeDiagnostics"
             :observability="activeObservability"
-            :warning-message="gatewayWarning || accessError || activeRuntime?.lastErrorMessage || ''"
+            :warning-message="overviewWarnings.inspectorWarningMessage"
             @close="closeInspectorDrawer"
             @update:tab="inspectorTab = $event"
           />
@@ -236,9 +236,9 @@
 
     <SlashStatusDialog
       :open="slashStatusOpen"
-      :title="conversationTitle"
+      :title="stageHeader.title"
       :session-key="selectedSession?.key || ''"
-      :agent-name="agentName"
+      :agent-name="stageHeader.agentName"
       :agent-id="selectedSession?.agentId || ''"
       :writable="Boolean(selectedSession?.permissions.writable)"
       :runtime="activeRuntime"
@@ -249,8 +249,8 @@
       :viewing-historical-position="viewingHistoricalPosition"
       :has-more-before="historyPageInfo.hasMoreBefore"
       :has-more-after="historyPageInfo.hasMoreAfter"
-      :gateway-warning="gatewayWarning"
-      :access-error="accessError"
+      :gateway-warning="overviewWarnings.gatewayWarning"
+      :access-error="overviewWarnings.accessError"
       @close="closeSlashStatusDialog"
     />
 
@@ -499,6 +499,8 @@ import {
   useChatRecordBrowserState,
 } from './chat-record-browser-state';
 import { useChatRuntimeViewModel } from './chat-runtime-view-model';
+import { buildChatShellQuickActions, buildChatShellWarnings } from './chat-shell-overview-recipe';
+import { buildChatHistoryStateSummary, buildChatStageHeader } from './chat-stage-selectors';
 import {
   CHAT_PROCESS_VISIBILITY_DEFAULTS,
   CHAT_PROCESS_VISIBILITY_STORAGE_KEYS,
@@ -719,6 +721,31 @@ const gatewayWarning = runtimeView.gatewayWarning;
 const accessError = runtimeView.accessError;
 const renderTimelineItems = runtimeView.renderTimelineItems;
 const timelineVersion = runtimeView.timelineVersion;
+const viewingHistoricalPosition = computed(() => historyPageInfo.value.hasMoreAfter);
+const stageHeader = computed(() => buildChatStageHeader({
+  conversationTitle: conversationTitle.value,
+  conversationSubtitle: conversationSubtitle.value,
+  agentName: agentName.value,
+}));
+const overviewWarnings = computed(() => buildChatShellWarnings({
+  gatewayWarning: gatewayWarning.value,
+  accessError: accessError.value,
+  runtimeLastErrorMessage: activeRuntime.value?.lastErrorMessage || '',
+}));
+const overviewQuickActions = computed(() => buildChatShellQuickActions({
+  selectedSessionKey: selectedSessionKey.value,
+  recordBrowserOpen: recordBrowserOpen.value,
+  recordBrowserHasActiveFilters: recordBrowserHasActiveFilters.value,
+  historyMode: historyMode.value,
+  inspectPinned: inspectPinned.value,
+}));
+const historyStateSummary = computed(() => buildChatHistoryStateSummary({
+  historyMode: historyMode.value,
+  selectedSessionKey: selectedSessionKey.value,
+  selectedSession: selectedSession.value,
+  activeRunId: activeRuntime.value?.activeRunId || null,
+  viewingHistoricalPosition: viewingHistoricalPosition.value,
+}));
 const activeToast = computed<NoticeMessage | null>(() => {
   if (errorMessage.value) {
     return {
@@ -1610,7 +1637,7 @@ function clearConversationState(): void {
 }
 
 function primeConversationStateFromSnapshot(sessionKey: string): boolean {
-  if (!sessionKey || historyMode.value !== 'history') {
+  if (!sessionKey || historyStateSummary.value.historyMode !== 'history') {
     return false;
   }
   const snapshot = readChatRuntimeSnapshot(sessionKey);
@@ -2723,7 +2750,7 @@ function applyHistoryPagePayload(payload: ChatHistoryPayload, mode: 'replace' | 
     }
   } else {
     runtimeMachineState.value = replaceChatSessionCanonicalMessageLedger(runtimeMachineState.value, payload.messages, {
-      preserveLocalMessages: historyMode.value === 'history',
+      preserveLocalMessages: historyStateSummary.value.historyMode === 'history',
     });
   }
   runtimeMachineState.value = replaceChatSessionProcessLedger(runtimeMachineState.value, payload.overlays);
@@ -3099,13 +3126,11 @@ async function jumpToLive(): Promise<void> {
   }
 }
 
-const viewingHistoricalPosition = computed(() => historyPageInfo.value.hasMoreAfter);
-
 function toggleRecordBrowser(): void {
-  if (!selectedSession.value) {
+  if (!overviewQuickActions.value.canToggleRecordBrowser) {
     return;
   }
-  recordBrowserOpen.value = !recordBrowserOpen.value;
+  recordBrowserOpen.value = !overviewQuickActions.value.recordBrowserOpen;
 }
 
 function closeRecordBrowser(): void {
