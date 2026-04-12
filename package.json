@@ -48,7 +48,8 @@
     "typecheck:api": "tsc -p tsconfig.json --noEmit",
     "typecheck:web": "npm run typecheck --workspace=apps/web-vue",
     "install:all": "npm install && npm install --workspace=apps/web-vue",
-    "studio:management-coverage": "node scripts/studio-management-coverage.mjs"
+    "studio:management-coverage": "node scripts/studio-management-coverage.mjs",
+    "studio:inventory": "node scripts/studio-domain-inventory.mjs"
   },
   "author": "binbin",
   "license": "MIT",
