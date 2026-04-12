@@ -55,6 +55,27 @@ test("terminal workspace tracks tabs active session and recoverable sessions", (
   );
 });
 
+test("terminal workspace recomputes recoverable sessions after register", () => {
+  const workspace = workspaceStateModule.createTerminalWorkspaceState();
+
+  assert.deepEqual(workspace.recoverableSessions.value, []);
+
+  workspace.registerSession({
+    sessionId: "term-reactive",
+    title: "Reactive Session",
+    status: "running",
+    source: "manual",
+    canResume: true,
+    controlState: "controller",
+    updatedAt: "2026-04-13T10:03:00.000Z",
+  });
+
+  assert.deepEqual(
+    workspace.recoverableSessions.value.map((item) => item.sessionId),
+    ["term-reactive"],
+  );
+});
+
 test("terminal route sync exports bind function", () => {
   assert.equal(typeof routeSyncModule.bindTerminalRouteSync, "function");
 });

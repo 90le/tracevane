@@ -1,3 +1,5 @@
+import { reactive } from "vue";
+
 export type TerminalSessionStatus =
   | "running"
   | "detached"
@@ -33,15 +35,13 @@ export interface TerminalSessionRegistry {
   upsertSession(session: TerminalSessionDescriptor): void;
   removeSession(sessionId: string): void;
   getSession(sessionId: string): TerminalSessionDescriptor | null;
-  listSessions(): TerminalSessionDescriptor[];
-  listRecoverableSessions(): TerminalSessionDescriptor[];
 }
 
 function normalizeSessionId(sessionId: string): string {
   return String(sessionId || "").trim();
 }
 
-function sortByUpdatedAtDesc(
+export function sortTerminalSessionsByUpdatedAtDesc(
   left: TerminalSessionDescriptor,
   right: TerminalSessionDescriptor,
 ): number {
@@ -66,7 +66,7 @@ function sortByUpdatedAtDesc(
 export function createTerminalSessionRegistry(
   initialSessions: TerminalSessionDescriptor[] = [],
 ): TerminalSessionRegistry {
-  const sessionsById: Record<string, TerminalSessionDescriptor> = {};
+  const sessionsById = reactive<Record<string, TerminalSessionDescriptor>>({});
 
   const registry: TerminalSessionRegistry = {
     sessionsById,
@@ -87,14 +87,6 @@ export function createTerminalSessionRegistry(
       const normalized = normalizeSessionId(sessionId);
       if (!normalized) return null;
       return sessionsById[normalized] || null;
-    },
-    listSessions() {
-      return Object.values(sessionsById);
-    },
-    listRecoverableSessions() {
-      return Object.values(sessionsById)
-        .filter((session) => session.canResume)
-        .sort(sortByUpdatedAtDesc);
     },
   };
 
@@ -143,7 +135,10 @@ export function persistTerminalSessionRegistryToStorage(
 ): void {
   if (!storage) return;
   try {
-    storage.setItem(storageKey, JSON.stringify(registry.listSessions()));
+    storage.setItem(
+      storageKey,
+      JSON.stringify(Object.values(registry.sessionsById)),
+    );
   } catch {
     // ignore storage write failures
   }

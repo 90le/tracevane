@@ -1,6 +1,7 @@
 import { computed, ref } from "vue";
 import {
   createTerminalSessionRegistry,
+  sortTerminalSessionsByUpdatedAtDesc,
   type TerminalSessionDescriptor,
   type TerminalSessionRegistry,
 } from "./terminal-session-registry";
@@ -36,16 +37,20 @@ export function createTerminalWorkspaceState(
 
   const sessions = computed(() => registry.sessionsById);
 
-  const tabs = computed(() =>
-    tabOrder.value
+  const tabs = computed(() => {
+    void Object.keys(registry.sessionsById).length;
+
+    return tabOrder.value
       .map((sessionId) => registry.getSession(sessionId))
       .filter((session): session is TerminalSessionDescriptor =>
         Boolean(session),
-      ),
-  );
+      );
+  });
 
   const recoverableSessions = computed(() =>
-    registry.listRecoverableSessions(),
+    Object.values(registry.sessionsById)
+      .filter((session) => session.canResume)
+      .sort(sortTerminalSessionsByUpdatedAtDesc),
   );
 
   function ensureTab(sessionId: string): void {
