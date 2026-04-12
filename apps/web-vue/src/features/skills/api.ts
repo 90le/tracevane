@@ -22,6 +22,10 @@ export function fetchSkillsSummary(refresh = false): Promise<SkillsSummaryPayloa
   return requestJson<SkillsSummaryPayload>(`/api/skills${search}`);
 }
 
+export function fetchSkillsOverview(refresh = false): Promise<SkillsSummaryPayload> {
+  return fetchSkillsSummary(refresh);
+}
+
 export function toggleSkill(payload: SkillTogglePayload): Promise<SkillTogglePayload> {
   return requestJson<SkillTogglePayload>(`/api/skills/${encodeURIComponent(payload.slug)}/toggle`, {
     method: 'POST',

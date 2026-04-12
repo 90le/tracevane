@@ -21,6 +21,10 @@ export function fetchCronSummary(): Promise<CronSummaryPayload> {
   return requestJson<CronSummaryPayload>('/api/cron');
 }
 
+export function fetchCronOverview(): Promise<CronSummaryPayload> {
+  return fetchCronSummary();
+}
+
 export function fetchCronDetail(jobId: string): Promise<CronDetailPayload> {
   return requestJson<CronDetailPayload>(`/api/cron/${encodeURIComponent(jobId)}`);
 }

@@ -908,6 +908,7 @@ async function downloadAndInstallSkill(params: {
 }
 
 export interface SkillsService {
+  getOverview(options?: { refresh?: boolean }): Promise<SkillsSummaryPayload>;
   getSummary(options?: { refresh?: boolean }): Promise<SkillsSummaryPayload>;
   toggleSkill(payload: SkillTogglePayload): Promise<SkillTogglePayload>;
   getSkillConfig(slug: string): Promise<SkillConfigPayload>;
@@ -1263,6 +1264,10 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
   }
 
   return {
+    async getOverview(options = {}): Promise<SkillsSummaryPayload> {
+      return loadSummary(Boolean(options.refresh));
+    },
+
     async getSummary(options = {}): Promise<SkillsSummaryPayload> {
       return loadSummary(Boolean(options.refresh));
     },

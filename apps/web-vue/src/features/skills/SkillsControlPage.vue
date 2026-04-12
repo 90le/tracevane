@@ -2,16 +2,9 @@
   <section class="page-shell skills-page">
     <header class="page-header-row">
       <div>
-        <p class="eyebrow">Skills</p>
-        <h2 class="page-title">{{ text('技能管理', 'Skills') }}</h2>
-        <p class="page-copy">
-          {{
-            text(
-              '把技能列表、配置、风险预检和安装动作拆成清晰的上下工作区：先在上面找技能，再在下面处理详情。',
-              'Split skills into a clearer stacked workspace: find items in the upper board, then work on details below.'
-            )
-          }}
-        </p>
+        <p class="eyebrow">{{ pageEyebrow }}</p>
+        <h2 class="page-title">{{ pageTitle }}</h2>
+        <p class="page-copy">{{ pageCopy }}</p>
       </div>
 
       <div class="page-actions">
@@ -74,12 +67,12 @@
       <section class="skills-board">
         <div class="skills-board-head">
           <div>
-            <h3>{{ text('本地技能索引', 'Local skill index') }}</h3>
+            <h3>{{ installedHeadline }}</h3>
             <p>
               {{
                 summary
                   ? text(`当前共 ${summary.counts.total} 个技能，其中 ${summary.counts.ready} 个可直接使用。`, `There are ${summary.counts.total} skills, with ${summary.counts.ready} currently ready.`)
-                  : text('优先读取本地技能状态，不预加载市场，减少首屏等待。', 'Load local skill status first and keep marketplace loading lazy.')
+                  : installedCopy
               }}
             </p>
           </div>
@@ -510,8 +503,8 @@
       <section class="skills-board">
         <div class="skills-board-head">
           <div>
-            <h3>{{ text('市场检索', 'Marketplace search') }}</h3>
-            <p>{{ text('源切换、搜索、排序和分类都收在同一行工具栏里，不再单独占一列。', 'Source switching, search, sort, and category filtering now live in one toolbar instead of a dedicated column.') }}</p>
+            <h3>{{ marketplaceHeadline }}</h3>
+            <p>{{ marketplaceCopy }}</p>
           </div>
 
           <div class="skills-inline-stats" v-if="marketplace">
@@ -929,8 +922,8 @@
       <section class="skills-board">
         <div class="skills-board-head">
           <div>
-            <h3>{{ text('插件管理', 'Plugin Settings') }}</h3>
-            <p>{{ text('在这里管理插件白名单、加载路径和已注册插件的启用状态与额外配置。', 'Manage plugin allowlist, load paths, and registered plugin settings here.') }}</p>
+            <h3>{{ pluginsHeadline }}</h3>
+            <p>{{ pluginsCopy }}</p>
           </div>
 
           <div class="skills-inline-stats">
@@ -1121,6 +1114,7 @@ import {
 import { fetchConfigSummary } from '../config/api';
 import { requestJson } from '../../shared/api';
 import { copyTextToClipboard } from '../../shared/clipboard';
+import type { SkillsOverviewRecipe } from './skills-overview-recipe';
 
 type PageMode = 'installed' | 'marketplace' | 'plugins';
 type InstalledFilter = 'all' | 'ready' | 'needs-setup' | 'disabled' | 'workspace' | 'managed' | 'bundled';
@@ -1164,7 +1158,46 @@ interface ConfirmDialogState {
   confirmLabel: string;
 }
 
+const props = defineProps<{
+  overviewRecipe?: SkillsOverviewRecipe;
+}>();
+
 const { text } = useLocalePreference();
+
+const DEFAULT_SKILLS_OVERVIEW_RECIPE: SkillsOverviewRecipe = {
+  pageEyebrow: 'Skills',
+  pageTitle: text('技能管理', 'Skills'),
+  pageCopy: text(
+    '把技能列表、配置、风险预检和安装动作拆成清晰的上下工作区：先在上面找技能，再在下面处理详情。',
+    'Split skills into a clearer stacked workspace: find items in the upper board, then work on details below.',
+  ),
+  installedHeadline: text('本地技能索引', 'Local skill index'),
+  installedCopy: text(
+    '优先读取本地技能状态，不预加载市场，减少首屏等待。',
+    'Load local skill status first and keep marketplace loading lazy.',
+  ),
+  marketplaceHeadline: text('市场检索', 'Marketplace search'),
+  marketplaceCopy: text(
+    '源切换、搜索、排序和分类都收在同一行工具栏里，不再单独占一列。',
+    'Source switching, search, sort, and category filtering now live in one toolbar instead of a dedicated column.',
+  ),
+  pluginsHeadline: text('插件管理', 'Plugin Settings'),
+  pluginsCopy: text(
+    '在这里管理插件白名单、加载路径和已注册插件的启用状态与额外配置。',
+    'Manage plugin allowlist, load paths, and registered plugin settings here.',
+  ),
+};
+
+const overviewRecipe = computed(() => props.overviewRecipe ?? DEFAULT_SKILLS_OVERVIEW_RECIPE);
+const pageEyebrow = computed(() => overviewRecipe.value.pageEyebrow);
+const pageTitle = computed(() => overviewRecipe.value.pageTitle);
+const pageCopy = computed(() => overviewRecipe.value.pageCopy);
+const installedHeadline = computed(() => overviewRecipe.value.installedHeadline);
+const installedCopy = computed(() => overviewRecipe.value.installedCopy);
+const marketplaceHeadline = computed(() => overviewRecipe.value.marketplaceHeadline);
+const marketplaceCopy = computed(() => overviewRecipe.value.marketplaceCopy);
+const pluginsHeadline = computed(() => overviewRecipe.value.pluginsHeadline);
+const pluginsCopy = computed(() => overviewRecipe.value.pluginsCopy);
 
 const mode = ref<PageMode>('installed');
 const summary = ref<SkillsSummaryPayload | null>(null);

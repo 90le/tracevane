@@ -745,6 +745,7 @@ async function runCronJobByCli(jobId: string): Promise<{ success: boolean; outpu
 }
 
 export interface CronService {
+  getOverview(): CronSummaryPayload;
   getSummary(): CronSummaryPayload;
   getDetail(jobId: string): CronDetailPayload | null;
   createJob(input: CronJobInput): CronMutationResponse;
@@ -756,6 +757,10 @@ export interface CronService {
 
 export function createCronService(config: StudioServerConfig): CronService {
   return {
+    getOverview(): CronSummaryPayload {
+      return buildSummary(config);
+    },
+
     getSummary(): CronSummaryPayload {
       return buildSummary(config);
     },

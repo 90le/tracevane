@@ -2,16 +2,9 @@
   <section class="page-shell cron-page">
     <header class="page-header-row">
       <div>
-        <p class="eyebrow">Cron</p>
-        <h2 class="page-title">{{ text('定时任务', 'Cron Jobs') }}</h2>
-        <p class="page-copy">
-          {{
-            text(
-              '重新改成“左侧任务列表 + 右侧工作区”的布局。列表只负责选择任务，右侧统一处理计划、投递、运行和历史，不再堆很多卡片。',
-              'The page has been reworked into a “job list on the left + workspace on the right” layout. The list only selects the job while the right side manages scheduling, delivery, runs, and history without a card wall.'
-            )
-          }}
-        </p>
+        <p class="eyebrow">{{ pageEyebrow }}</p>
+        <h2 class="page-title">{{ pageTitle }}</h2>
+        <p class="page-copy">{{ pageCopy }}</p>
       </div>
 
       <div class="page-actions">
@@ -35,12 +28,12 @@
           <div class="cron-sidebar-head">
             <div>
               <p class="eyebrow">{{ text('SCHEDULER', 'SCHEDULER') }}</p>
-              <h3 class="cron-sidebar-title">{{ text('任务列表', 'Job List') }}</h3>
+              <h3 class="cron-sidebar-title">{{ jobListTitle }}</h3>
               <p class="panel-muted">
                 {{
                   summary
                     ? text(`当前 ${summary.count} 个任务，启用 ${summary.enabledCount} 个。`, `${summary.count} jobs configured, ${summary.enabledCount} enabled.`)
-                    : text('先从这里选择一个任务。', 'Select a job here first.')
+                    : jobListEmptyCopy
                 }}
               </p>
             </div>
@@ -839,6 +832,7 @@ import {
   toggleCronJob,
   updateCronJob,
 } from './api';
+import type { CronOverviewRecipe } from './cron-overview-recipe';
 
 type CronTab = 'overview' | 'config' | 'runs';
 
@@ -888,7 +882,34 @@ interface CronFormState {
   deleteAfterRun: boolean;
 }
 
+const props = defineProps<{
+  overviewRecipe?: CronOverviewRecipe;
+}>();
+
 const { text } = useLocalePreference();
+
+const DEFAULT_CRON_OVERVIEW_RECIPE: CronOverviewRecipe = {
+  pageEyebrow: 'Cron',
+  pageTitle: text('定时任务', 'Cron Jobs'),
+  pageCopy: text(
+    '重新改成“左侧任务列表 + 右侧工作区”的布局。列表只负责选择任务，右侧统一处理计划、投递、运行和历史，不再堆很多卡片。',
+    'The page has been reworked into a “job list on the left + workspace on the right” layout. The list only selects the job while the right side manages scheduling, delivery, runs, and history without a card wall.',
+  ),
+  jobListTitle: text('任务列表', 'Job List'),
+  jobListEmptyCopy: text('先从这里选择一个任务。', 'Select a job here first.'),
+  workspaceTabs: {
+    overview: text('概览', 'Overview'),
+    config: text('配置', 'Configuration'),
+    runs: text('运行记录', 'Runs'),
+  },
+};
+
+const overviewRecipe = computed(() => props.overviewRecipe ?? DEFAULT_CRON_OVERVIEW_RECIPE);
+const pageEyebrow = computed(() => overviewRecipe.value.pageEyebrow);
+const pageTitle = computed(() => overviewRecipe.value.pageTitle);
+const pageCopy = computed(() => overviewRecipe.value.pageCopy);
+const jobListTitle = computed(() => overviewRecipe.value.jobListTitle);
+const jobListEmptyCopy = computed(() => overviewRecipe.value.jobListEmptyCopy);
 
 const summary = ref<CronSummaryPayload | null>(null);
 const detail = ref<CronDetailPayload | null>(null);
@@ -962,9 +983,9 @@ const filterOptions = computed(() => [
 ]);
 
 const workspaceTabs = computed(() => [
-  { id: 'overview' as const, icon: '◉', label: text('概览', 'Overview') },
-  { id: 'config' as const, icon: '⚙', label: text('配置', 'Configuration') },
-  { id: 'runs' as const, icon: '↺', label: text('运行记录', 'Runs') },
+  { id: 'overview' as const, icon: '◉', label: overviewRecipe.value.workspaceTabs.overview },
+  { id: 'config' as const, icon: '⚙', label: overviewRecipe.value.workspaceTabs.config },
+  { id: 'runs' as const, icon: '↺', label: overviewRecipe.value.workspaceTabs.runs },
 ]);
 
 const scheduleKindOptions = computed(() => [
