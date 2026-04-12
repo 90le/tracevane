@@ -184,6 +184,7 @@ import { useLocalePreference } from '../shared/locale';
 import { fetchDashboardSummary, subscribeDashboardSummary } from '../features/dashboard/api';
 import type { DashboardDomainSummary, DashboardSummaryPayload } from '../../../../types/dashboard';
 import { pageMastheadReveal, pageSurfaceReveal } from '../shared/motion';
+import { buildDashboardOverviewSignals, buildDashboardQuickActions } from '../features/dashboard/overview-recipe';
 
 type DashboardChipTone = 'ready' | 'accent' | 'danger' | 'neutral';
 type DashboardDomainTone = 'ready' | 'partial' | 'planned';
@@ -365,44 +366,7 @@ const dashboardMetrics = computed(() => {
   ];
 });
 
-const dashboardQuickActions = computed(() => ([
-  {
-    to: '/chat',
-    eyebrow: 'Chat',
-    label: text('进入私聊入口', 'Open chat entry'),
-    copy: text('继续最近会话或打开新的 operator 私聊。', 'Resume recent sessions or open a new operator chat.'),
-  },
-  {
-    to: '/agents',
-    eyebrow: 'Agents',
-    label: text('查看 Agent roster', 'Inspect agent roster'),
-    copy: text('检查 Agent 配置、工作区和运行态。', 'Review agent configuration, workspaces, and live state.'),
-  },
-  {
-    to: '/config',
-    eyebrow: 'Config',
-    label: text('调整系统默认值', 'Adjust system defaults'),
-    copy: text('编辑模型、sandbox 和工具默认配置。', 'Edit model, sandbox, and tool defaults.'),
-  },
-  {
-    to: '/cron',
-    eyebrow: 'Cron',
-    label: text('检查自动化任务', 'Review cron jobs'),
-    copy: text('查看 schedule、delivery target 和执行入口。', 'Check schedules, delivery targets, and execution entry points.'),
-  },
-  {
-    to: '/dreaming',
-    eyebrow: 'Dreaming',
-    label: text('打开梦境工作台', 'Open dreaming workbench'),
-    copy: text('检查 memory slot、Dreaming 开关和 Dream Diary。', 'Inspect memory slot selection, the dreaming toggle, and the Dream Diary.'),
-  },
-  {
-    to: '/system',
-    eyebrow: 'System',
-    label: text('打开系统诊断', 'Open diagnostics'),
-    copy: text('查看健康状态、bootstrap 和设备信任。', 'Inspect health, bootstrap state, and device trust.'),
-  },
-]));
+const dashboardQuickActions = computed(() => buildDashboardQuickActions(text));
 
 const dashboardDomainCards = computed(() => {
   const payload = summary.value;
@@ -430,39 +394,11 @@ const dashboardDomainCards = computed(() => {
   }));
 });
 
-const dashboardSystemSignals = computed(() => {
-  const payload = summary.value;
-  if (!payload) {
-    return [
-      { label: text('CLI coverage', 'CLI coverage'), value: '--', detail: text('等待数据', 'Waiting for data') },
-      { label: text('Server uptime', 'Server uptime'), value: '--', detail: text('等待数据', 'Waiting for data') },
-      { label: text('Pending fixes', 'Pending fixes'), value: '--', detail: text('等待数据', 'Waiting for data') },
-      { label: text('Pending pairing', 'Pending pairing'), value: '--', detail: text('等待数据', 'Waiting for data') },
-    ];
-  }
-  return [
-    {
-      label: text('CLI coverage', 'CLI coverage'),
-      value: `${payload.runtime.installedCliCount}/${payload.runtime.expectedCliCount}`,
-      detail: text('运行时 CLI 已安装 / 预期数量', 'Installed / expected runtime CLIs'),
-    },
-    {
-      label: text('Server uptime', 'Server uptime'),
-      value: formatUptime(payload.server.uptime),
-      detail: `Node ${payload.server.nodeVersion}`,
-    },
-    {
-      label: text('Pending fixes', 'Pending fixes'),
-      value: String(payload.bootstrap.fixable),
-      detail: text('bootstrap 阶段可自动修复的问题数量', 'Fixable issues reported by bootstrap'),
-    },
-    {
-      label: text('Pending pairing', 'Pending pairing'),
-      value: String(payload.deviceTrust.pendingRequests),
-      detail: text('等待审批的本地设备配对请求', 'Device trust requests awaiting approval'),
-    },
-  ];
-});
+const dashboardSystemSignals = computed(() => buildDashboardOverviewSignals({
+  payload: summary.value,
+  text,
+  formatUptime,
+}));
 
 const parallelTracks = computed(() => {
   const payload = summary.value;
@@ -762,8 +698,8 @@ onBeforeUnmount(() => {
 .dashboard-command-link:hover,
 .dashboard-domain-row:hover {
   transform: translateY(-1px);
-  border-color: rgba(127, 255, 212, 0.2);
-  background: var(--shell-panel-fill-strong);
+  border-color: var(--dashboard-command-link-hover-border);
+  background: var(--dashboard-command-link-hover-fill);
 }
 
 .dashboard-command-link__copy,
