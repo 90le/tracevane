@@ -46,7 +46,7 @@ export const CHAT_RUNTIME_DOMAIN_MANIFEST: ReadonlyArray<ChatRuntimeSectionEntry
     {
       key: "history",
       label: "历史恢复",
-      routePath: "/chat/history/:sessionRef",
+      routePath: "/chat/s/:sessionRef",
       runtimeSurface: "history-recovery",
       frontendFile:
         "apps/web-vue/src/features/chat-v2/chat-runtime-recovery.ts",

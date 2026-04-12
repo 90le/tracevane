@@ -43,6 +43,14 @@ function runCoverageScript() {
   return JSON.parse(stdout);
 }
 
+function assertRepoPathExists(relativePath) {
+  assert.ok(relativePath, "expected relative path");
+  assert.ok(
+    fs.existsSync(path.join(root, relativePath)),
+    `expected path to exist: ${relativePath}`,
+  );
+}
+
 test("chat runtime manifest covers shell sessions history inspector sections", () => {
   assert.match(manifestSource, /key:\s*["']shell["']/);
   assert.match(manifestSource, /key:\s*["']sessions["']/);
@@ -52,6 +60,9 @@ test("chat runtime manifest covers shell sessions history inspector sections", (
   assert.match(manifestSource, /runtimeSurface:\s*["']session-list["']/);
   assert.match(manifestSource, /runtimeSurface:\s*["']history-recovery["']/);
   assert.match(manifestSource, /runtimeSurface:\s*["']inspector-panel["']/);
+  assert.match(manifestSource, /routePath:\s*["']\/chat["']/);
+  assert.match(manifestSource, /routePath:\s*["']\/chat\/s\/:sessionRef["']/);
+  assert.doesNotMatch(manifestSource, /\/chat\/history\/:sessionRef/);
 });
 
 test("chat runtime manifest exports section-level coverage seed", () => {
@@ -92,4 +103,18 @@ test("chat runtime coverage script matches committed baseline inventory", () => 
   assert.ok(
     parsed.tests.includes("tests/chat/chat-session-runtime-machine.test.mjs"),
   );
+
+  for (const relativePath of parsed.frontendFiles) {
+    assertRepoPathExists(relativePath);
+  }
+
+  for (const relativePath of parsed.backendFiles) {
+    assertRepoPathExists(relativePath);
+  }
+
+  assert.ok(Array.isArray(parsed.tests));
+  assert.ok(parsed.tests.length > 0);
+  for (const relativePath of parsed.tests) {
+    assertRepoPathExists(relativePath);
+  }
 });
