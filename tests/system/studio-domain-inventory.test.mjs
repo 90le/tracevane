@@ -1,29 +1,71 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const outputPath = path.join(rootDir, 'docs/superpowers/inventories/studio-domain-inventory.json');
+const rootDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
+const outputPath = path.join(
+  rootDir,
+  "docs/superpowers/inventories/studio-domain-inventory.json",
+);
 
-test('studio inventory script writes a machine-readable baseline for routes, api modules, and test surfaces', () => {
-  const result = spawnSync('node', ['scripts/studio-domain-inventory.mjs'], {
+function runInventoryScript() {
+  return spawnSync("node", ["scripts/studio-domain-inventory.mjs"], {
     cwd: rootDir,
-    encoding: 'utf8',
+    encoding: "utf8",
   });
+}
+
+test("studio inventory script writes a machine-readable baseline for routes, api modules, and test surfaces", () => {
+  const result = runInventoryScript();
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.existsSync(outputPath), true);
 
-  const payload = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+  const payload = JSON.parse(fs.readFileSync(outputPath, "utf8"));
+  assert.equal(typeof payload.generatedAt, "string");
   assert.ok(Array.isArray(payload.webRoutes));
   assert.ok(Array.isArray(payload.apiModules));
   assert.ok(Array.isArray(payload.webFeatures));
   assert.ok(Array.isArray(payload.testSuites));
-  assert.ok(payload.webRoutes.includes('/dashboard'));
-  assert.ok(payload.apiModules.includes('config'));
-  assert.ok(payload.webFeatures.includes('chat-v2'));
-  assert.ok(payload.testSuites.includes('tests/system/config-service.test.mjs'));
+  assert.ok(payload.webRoutes.includes("/dashboard"));
+  assert.ok(payload.apiModules.includes("config"));
+  assert.ok(payload.webFeatures.includes("chat-v2"));
+  assert.ok(
+    payload.testSuites.includes("tests/system/config-service.test.mjs"),
+  );
+});
+
+test("studio inventory script keeps the baseline file stable when structure does not change", () => {
+  const firstResult = runInventoryScript();
+  assert.equal(firstResult.status, 0, firstResult.stderr);
+
+  const before = fs.readFileSync(outputPath, "utf8");
+  const firstPayload = JSON.parse(before);
+
+  const secondResult = runInventoryScript();
+  assert.equal(secondResult.status, 0, secondResult.stderr);
+
+  const after = fs.readFileSync(outputPath, "utf8");
+  const secondPayload = JSON.parse(after);
+
+  assert.equal(after, before);
+  assert.equal(secondPayload.generatedAt, firstPayload.generatedAt);
+});
+
+test("studio inventory script resolves route imports without a hardcoded route-manifest path", () => {
+  const scriptSource = fs.readFileSync(
+    path.join(rootDir, "scripts/studio-domain-inventory.mjs"),
+    "utf8",
+  );
+
+  assert.match(scriptSource, /function\s+extractRoutesBindingName/);
+  assert.match(scriptSource, /routes\\s\*:\\s\*\(\[A-Za-z_\$\]\[\\w\$\]\*\)/);
+  assert.doesNotMatch(scriptSource, /features\/shell\/route-manifest/);
 });
