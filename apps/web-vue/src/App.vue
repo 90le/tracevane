@@ -111,7 +111,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTrigger, TooltipProvider } from 'reka-ui';
 import { RouterView, useRoute } from 'vue-router';
 import StudioSidebarRail from './components/StudioSidebarRail.vue';
-import { useUiContent } from './data/mock';
+import { useShellNavigation } from './features/shell/use-shell-navigation';
 import { useLocalePreference, type Locale } from './shared/locale';
 import { useThemePreference, type ThemeMode } from './shared/theme';
 import {
@@ -142,7 +142,7 @@ const ambientStyles = [
   ref<Record<string, string>>({}),
 ];
 const { locale, setLocale, text } = useLocalePreference();
-const { navGroups } = useUiContent();
+const { navGroups } = useShellNavigation();
 const isChatSurface = computed(() => route.path === '/chat' || route.path.startsWith('/chat/'));
 const { themeMode, setThemeMode } = useThemePreference();
 const themeOptions: Array<{ value: ThemeMode; icon: string; label: string; shortLabel: string }> = [
