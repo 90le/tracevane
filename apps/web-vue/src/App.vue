@@ -93,24 +93,31 @@
       </aside>
 
       <main class="main-content shell-main" :class="{ 'chat-surface-route': isChatSurface, 'shell-main-chat': isChatSurface }">
-        <RouterView v-slot="{ Component }">
-          <section
-            class="shell-route-stage"
-            :class="{ 'shell-route-stage-chat': isChatSurface }"
-          >
-            <component :is="Component" />
+        <div class="shell-layout" :class="{ 'shell-layout-chat': isChatSurface }">
+          <section class="shell-main-stage" :class="{ 'shell-main-stage-chat': isChatSurface }">
+            <RouterView v-slot="{ Component }">
+              <section
+                class="shell-route-stage"
+                :class="{ 'shell-route-stage-chat': isChatSurface }"
+              >
+                <component :is="Component" />
+              </section>
+            </RouterView>
           </section>
-        </RouterView>
+          <StudioContextPanel v-if="!isChatSurface && !isMobile" class="shell-context-panel" />
+        </div>
       </main>
     </div>
   </TooltipProvider>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTrigger, TooltipProvider } from 'reka-ui';
 import { RouterView, useRoute } from 'vue-router';
+import StudioContextPanel from './components/StudioContextPanel.vue';
 import StudioSidebarRail from './components/StudioSidebarRail.vue';
+import { useShellChrome } from './features/shell/use-shell-chrome';
 import { useShellNavigation } from './features/shell/use-shell-navigation';
 import { useLocalePreference, type Locale } from './shared/locale';
 import { useThemePreference, type ThemeMode } from './shared/theme';
@@ -128,10 +135,13 @@ const route = useRoute();
 const buildVersion = typeof import.meta.env.STUDIO_APP_VERSION === 'string'
   ? import.meta.env.STUDIO_APP_VERSION
   : '';
-const SIDEBAR_COLLAPSED_STORAGE_KEY = 'openclaw-studio.sidebar-collapsed';
-const sidebarCollapsed = ref(false);
-const isMobile = ref(false);
-const mobileSidebarOpen = ref(false);
+const {
+  sidebarCollapsed,
+  isMobile,
+  mobileSidebarOpen,
+  toggleSidebar,
+  handleSidebarNavigate,
+} = useShellChrome();
 const studioRelease = ref<SystemStudioReleasePayload | null>(null);
 const studioUpgradeStatus = ref<SystemStudioUpgradeStatusPayload | null>(null);
 const studioUpgradeBusy = ref(false);
@@ -337,39 +347,7 @@ async function handleStudioUpgradeAction(): Promise<void> {
   }
 }
 
-function updateViewportState() {
-  if (typeof window === 'undefined') return;
-  const mobile = window.innerWidth <= 920;
-  isMobile.value = mobile;
-  if (!mobile) mobileSidebarOpen.value = false;
-}
-
-function syncSidebarPreference() {
-  if (typeof window === 'undefined') return;
-  const saved = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
-  sidebarCollapsed.value = saved === 'true';
-}
-
-function persistSidebarPreference(value: boolean) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(value));
-}
-
-function toggleSidebar() {
-  if (isMobile.value) {
-    mobileSidebarOpen.value = !mobileSidebarOpen.value;
-    return;
-  }
-  sidebarCollapsed.value = !sidebarCollapsed.value;
-}
-
-function handleSidebarNavigate() {
-  if (isMobile.value) mobileSidebarOpen.value = false;
-}
-
 onMounted(() => {
-  updateViewportState();
-  syncSidebarPreference();
   void refreshStudioReleaseState();
   void refreshStudioUpgradeState();
   if (typeof window !== 'undefined') {
@@ -380,14 +358,6 @@ onMounted(() => {
       void refreshStudioUpgradeState();
     }, 6_000);
   }
-  if (typeof window !== 'undefined') {
-    window.addEventListener('resize', updateViewportState, { passive: true });
-  }
-});
-
-watch(sidebarCollapsed, (value) => {
-  if (isMobile.value) return;
-  persistSidebarPreference(value);
 });
 
 onUnmounted(() => {
@@ -398,9 +368,6 @@ onUnmounted(() => {
   if (upgradePollTimer !== null) {
     window.clearInterval(upgradePollTimer);
     upgradePollTimer = null;
-  }
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('resize', updateViewportState);
   }
 });
 </script>
