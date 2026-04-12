@@ -20,6 +20,7 @@
   "tests": [
     "tests/chat/chat-runtime-domain-manifest.test.mjs",
     "tests/chat/chat-runtime-state.test.mjs",
+    "tests/chat/chat-runtime-summary.test.mjs",
     "tests/chat/chat-session-auto-title.test.mjs",
     "tests/chat/chat-session-catalog.test.mjs",
     "tests/chat/chat-session-list-state.test.mjs",
