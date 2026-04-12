@@ -40,10 +40,9 @@ export const TERMINAL_WORKSPACE_MANIFEST: ReadonlyArray<TerminalWorkspaceSection
       label: "标签页",
       routePath: "/terminal",
       workspaceSurface: "terminal-tabs",
-      frontendFile:
-        "apps/web-vue/src/features/terminal/TerminalWorkspaceTabs.vue",
+      frontendFile: "apps/web-vue/src/features/terminal/TerminalTabRail.vue",
       backendFile: "apps/api/modules/terminal/routes.ts",
-      testFile: "tests/terminal/terminal-workspace-tabs.test.mjs",
+      testFile: "tests/terminal/terminal-session-selectors.test.mjs",
     },
     {
       key: "actions",
@@ -51,9 +50,9 @@ export const TERMINAL_WORKSPACE_MANIFEST: ReadonlyArray<TerminalWorkspaceSection
       routePath: "/terminal",
       workspaceSurface: "terminal-actions",
       frontendFile:
-        "apps/web-vue/src/features/terminal/TerminalWorkspaceActions.vue",
+        "apps/web-vue/src/features/terminal/TerminalActionPanel.vue",
       backendFile: "apps/api/modules/terminal/service.ts",
-      testFile: "tests/terminal/terminal-workspace-actions.test.mjs",
+      testFile: "tests/terminal/terminal-action-catalog.test.mjs",
     },
     {
       key: "recent",
@@ -61,9 +60,9 @@ export const TERMINAL_WORKSPACE_MANIFEST: ReadonlyArray<TerminalWorkspaceSection
       routePath: "/terminal",
       workspaceSurface: "terminal-recent",
       frontendFile:
-        "apps/web-vue/src/features/terminal/TerminalWorkspaceRecentList.vue",
+        "apps/web-vue/src/features/terminal/TerminalRecentSessionRail.vue",
       backendFile: "apps/api/modules/terminal/service.ts",
-      testFile: "tests/terminal/terminal-workspace-recent.test.mjs",
+      testFile: "tests/terminal/terminal-workspace-state.test.mjs",
     },
   ];
 

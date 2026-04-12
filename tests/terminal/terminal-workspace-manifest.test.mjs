@@ -79,6 +79,27 @@ test("terminal workspace coverage script matches committed baseline inventory", 
     parsed.backendFiles.includes("apps/api/modules/terminal/service.ts"),
   );
   assert.ok(
+    parsed.frontendFiles.includes(
+      "apps/web-vue/src/features/terminal/TerminalTabRail.vue",
+    ),
+  );
+  assert.ok(
+    parsed.frontendFiles.includes(
+      "apps/web-vue/src/features/terminal/TerminalActionPanel.vue",
+    ),
+  );
+  assert.ok(
+    parsed.frontendFiles.includes(
+      "apps/web-vue/src/features/terminal/TerminalRecentSessionRail.vue",
+    ),
+  );
+  assert.ok(
     parsed.tests.includes("tests/terminal/terminal-workspace-state.test.mjs"),
+  );
+  assert.ok(
+    parsed.tests.includes("tests/terminal/terminal-session-selectors.test.mjs"),
+  );
+  assert.ok(
+    parsed.tests.includes("tests/terminal/terminal-action-catalog.test.mjs"),
   );
 });

@@ -6,19 +6,18 @@
     "recent"
   ],
   "frontendFiles": [
-    "apps/web-vue/src/features/terminal/TerminalWorkspaceActions.vue",
-    "apps/web-vue/src/features/terminal/TerminalWorkspacePage.vue",
-    "apps/web-vue/src/features/terminal/TerminalWorkspaceRecentList.vue",
-    "apps/web-vue/src/features/terminal/TerminalWorkspaceTabs.vue"
+    "apps/web-vue/src/features/terminal/TerminalActionPanel.vue",
+    "apps/web-vue/src/features/terminal/TerminalRecentSessionRail.vue",
+    "apps/web-vue/src/features/terminal/TerminalTabRail.vue",
+    "apps/web-vue/src/features/terminal/TerminalWorkspacePage.vue"
   ],
   "backendFiles": [
     "apps/api/modules/terminal/routes.ts",
     "apps/api/modules/terminal/service.ts"
   ],
   "tests": [
-    "tests/terminal/terminal-workspace-actions.test.mjs",
-    "tests/terminal/terminal-workspace-recent.test.mjs",
-    "tests/terminal/terminal-workspace-state.test.mjs",
-    "tests/terminal/terminal-workspace-tabs.test.mjs"
+    "tests/terminal/terminal-action-catalog.test.mjs",
+    "tests/terminal/terminal-session-selectors.test.mjs",
+    "tests/terminal/terminal-workspace-state.test.mjs"
   ]
 }
