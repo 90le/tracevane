@@ -1,0 +1,50 @@
+{
+  "domains": [
+    "chat",
+    "sessions"
+  ],
+  "webEntries": [
+    {
+      "domainId": "chat",
+      "routePath": "/chat",
+      "file": "apps/web-vue/src/views/ChatView.vue"
+    },
+    {
+      "domainId": "sessions",
+      "routePath": "/chat/s/:sessionRef",
+      "file": "apps/web-vue/src/features/chat-v2/SessionListPanel.vue"
+    }
+  ],
+  "apiModules": [
+    {
+      "domainId": "chat",
+      "dir": "apps/api/modules/chat"
+    },
+    {
+      "domainId": "sessions",
+      "dir": "apps/api/modules/chat"
+    }
+  ],
+  "tests": [
+    {
+      "domainId": "chat",
+      "testPattern": "chat-runtime-*.test.mjs",
+      "matchedFiles": [
+        "tests/chat/chat-runtime-domain-manifest.test.mjs",
+        "tests/chat/chat-runtime-state.test.mjs"
+      ]
+    },
+    {
+      "domainId": "sessions",
+      "testPattern": "chat-session-*.test.mjs",
+      "matchedFiles": [
+        "tests/chat/chat-session-auto-title.test.mjs",
+        "tests/chat/chat-session-catalog.test.mjs",
+        "tests/chat/chat-session-list-state.test.mjs",
+        "tests/chat/chat-session-organizer.test.mjs",
+        "tests/chat/chat-session-runtime-machine.test.mjs",
+        "tests/chat/chat-session-scroll-state.test.mjs"
+      ]
+    }
+  ]
+}

@@ -49,6 +49,7 @@
     "typecheck:web": "npm run typecheck --workspace=apps/web-vue",
     "install:all": "npm install && npm install --workspace=apps/web-vue",
     "studio:management-coverage": "node scripts/studio-management-coverage.mjs",
+    "studio:chat-runtime-coverage": "node scripts/studio-chat-runtime-coverage.mjs",
     "studio:inventory": "node scripts/studio-domain-inventory.mjs"
   },
   "author": "binbin",
