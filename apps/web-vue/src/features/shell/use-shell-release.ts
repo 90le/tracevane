@@ -8,7 +8,7 @@ import { useLocalePreference } from "../../shared/locale";
 import type {
   SystemStudioReleasePayload,
   SystemStudioUpgradeStatusPayload,
-} from "../../../../types/system";
+} from "../../../../../types/system";
 
 export function useShellRelease(buildVersion: string) {
   const { text } = useLocalePreference();

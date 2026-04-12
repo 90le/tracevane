@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-12T04:38:44.218Z",
+  "generatedAt": "2026-04-12T05:48:37.928Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -149,6 +149,7 @@
     "tests/system/studio-web-cron-tabs-primitives.test.mjs",
     "tests/system/studio-web-dark-foundation.test.mjs",
     "tests/system/studio-web-dashboard-recipe.test.mjs",
+    "tests/system/studio-web-dashboard-shell-overview.test.mjs",
     "tests/system/studio-web-dreaming-rem-harness-primitives.test.mjs",
     "tests/system/studio-web-page-chrome-density.test.mjs",
     "tests/system/studio-web-premium-motion-foundation.test.mjs",
