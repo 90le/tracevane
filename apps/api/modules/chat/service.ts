@@ -180,6 +180,11 @@ import {
   clearStudioChatSessionHostManagementExecEnabled,
   setStudioChatSessionHostManagementExecEnabled,
 } from '../../../../lib/studio-chat-management-policy.js';
+import {
+  buildChatDiagnosticsSummary,
+  buildChatSessionRuntimeSummary,
+} from './runtime-summary.js';
+import { buildHistorySearchSummary } from './history-search-summary.js';
 
 interface StudioManagedSessionState {
   row: ChatSessionRow;
@@ -4620,13 +4625,29 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           pageOverlays.push(overlay);
         }
       }
+      const runtimeSummary = buildChatSessionRuntimeSummary(snapshot.runtime);
+      const diagnosticsSummary = buildChatDiagnosticsSummary(snapshot.diagnostics);
       return {
         checkedAt: snapshot.checkedAt,
         session: snapshot.session,
         messages: page.messages,
         overlays: pageOverlays,
-        runtime: snapshot.runtime,
-        diagnostics: snapshot.diagnostics,
+        runtime: {
+          ...snapshot.runtime,
+          state: runtimeSummary.state,
+          activeRunId: runtimeSummary.activeRunId,
+          gatewayConnected: runtimeSummary.gatewayConnected,
+          sessionWritable: runtimeSummary.sessionWritable,
+          lastEventAt: runtimeSummary.lastEventAt,
+          lastAckAt: runtimeSummary.lastAckAt,
+          lastErrorCode: runtimeSummary.lastErrorCode,
+        },
+        diagnostics: {
+          ...snapshot.diagnostics,
+          gatewayReachable: diagnosticsSummary.gatewayReachable,
+          historyTruncated: diagnosticsSummary.historyTruncated,
+          truncationMode: diagnosticsSummary.truncationMode,
+        },
         observability: snapshot.observability,
         pageInfo: page.pageInfo,
         day: page.day,
@@ -4681,18 +4702,45 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           snippet: item?.snippetText || item?.previewText || message.text.slice(0, 280),
         };
       });
+      const runtimeSummary = buildChatSessionRuntimeSummary(snapshot.runtime);
+      const diagnosticsSummary = buildChatDiagnosticsSummary(snapshot.diagnostics);
+      const searchSummary = buildHistorySearchSummary({
+        query,
+        day: page.day,
+        roleFilter,
+        contentFilter,
+        matches,
+      });
       return {
         checkedAt: snapshot.checkedAt,
         session: snapshot.session,
-        query,
+        query: searchSummary.query,
         roleFilter,
         contentFilter,
-        day: page.day,
+        day: searchSummary.day,
         matches,
         messages: page.messages,
         overlays: filterOverlaysForMessageWindow(snapshot.overlays, page.messages),
-        runtime: snapshot.runtime,
-        diagnostics: snapshot.diagnostics,
+        runtime: {
+          ...snapshot.runtime,
+          state: runtimeSummary.state,
+          activeRunId: runtimeSummary.activeRunId,
+          gatewayConnected: runtimeSummary.gatewayConnected,
+          sessionWritable: runtimeSummary.sessionWritable,
+          lastEventAt: runtimeSummary.lastEventAt,
+          lastAckAt: runtimeSummary.lastAckAt,
+          lastErrorCode: runtimeSummary.lastErrorCode,
+        },
+        diagnostics: {
+          ...snapshot.diagnostics,
+          gatewayReachable: diagnosticsSummary.gatewayReachable,
+          historyTruncated: diagnosticsSummary.historyTruncated,
+          truncationMode: diagnosticsSummary.truncationMode,
+          notes: [
+            ...snapshot.diagnostics.notes,
+            `History search summary: ${searchSummary.totalMatches} matches across ${searchSummary.days.length} day(s).`,
+          ],
+        },
         pageInfo: page.pageInfo,
       };
     },

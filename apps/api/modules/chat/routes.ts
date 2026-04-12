@@ -18,6 +18,11 @@ import type {
 import type { ChatSlashGatewayRequest } from './service.js';
 import { isChatServiceError } from './errors.js';
 import { buildContentDisposition } from './media-bridge.js';
+import {
+  buildChatDiagnosticsSummary,
+  buildChatSessionRuntimeSummary,
+} from './runtime-summary.js';
+import { buildHistorySearchSummary } from './history-search-summary.js';
 
 function sendChatError(res: Parameters<typeof sendJson>[0], error: unknown): void {
   if (isChatServiceError(error)) {
@@ -105,13 +110,34 @@ export function registerChatRoutes(router: StudioRouter, ctx: StudioApiContext):
   router.get('/api/chat/sessions/:sessionKey/history', async (req, res, routeCtx, params) => {
     try {
       const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
-      sendJson(res, 200, await routeCtx.services.chat.getHistory(params.sessionKey, {
+      const payload = await routeCtx.services.chat.getHistory(params.sessionKey, {
         before: url.searchParams.get('before'),
         after: url.searchParams.get('after'),
         anchor: url.searchParams.get('anchor'),
         day: url.searchParams.get('day'),
         limit: readLimit(req, 50),
-      }));
+      });
+      const runtimeSummary = buildChatSessionRuntimeSummary(payload.runtime);
+      const diagnosticsSummary = buildChatDiagnosticsSummary(payload.diagnostics);
+      sendJson(res, 200, {
+        ...payload,
+        runtime: {
+          ...payload.runtime,
+          state: runtimeSummary.state,
+          activeRunId: runtimeSummary.activeRunId,
+          gatewayConnected: runtimeSummary.gatewayConnected,
+          sessionWritable: runtimeSummary.sessionWritable,
+          lastEventAt: runtimeSummary.lastEventAt,
+          lastAckAt: runtimeSummary.lastAckAt,
+          lastErrorCode: runtimeSummary.lastErrorCode,
+        },
+        diagnostics: {
+          ...payload.diagnostics,
+          gatewayReachable: diagnosticsSummary.gatewayReachable,
+          historyTruncated: diagnosticsSummary.historyTruncated,
+          truncationMode: diagnosticsSummary.truncationMode,
+        },
+      });
     } catch (error) {
       sendChatError(res, error);
     }
@@ -130,7 +156,7 @@ export function registerChatRoutes(router: StudioRouter, ctx: StudioApiContext):
       const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
       const role = (url.searchParams.get('role') || 'all') as ChatHistorySearchRoleFilter;
       const content = (url.searchParams.get('content') || 'all') as ChatHistorySearchContentFilter;
-      sendJson(res, 200, await routeCtx.services.chat.searchHistory(params.sessionKey, {
+      const payload = await routeCtx.services.chat.searchHistory(params.sessionKey, {
         query: url.searchParams.get('q') || '',
         role,
         content,
@@ -138,7 +164,43 @@ export function registerChatRoutes(router: StudioRouter, ctx: StudioApiContext):
         before: url.searchParams.get('before'),
         after: url.searchParams.get('after'),
         limit: readLimit(req, 50),
-      }));
+      });
+      const runtimeSummary = buildChatSessionRuntimeSummary(payload.runtime);
+      const diagnosticsSummary = buildChatDiagnosticsSummary(payload.diagnostics);
+      const searchSummary = buildHistorySearchSummary({
+        query: payload.query,
+        day: payload.day,
+        roleFilter: payload.roleFilter,
+        contentFilter: payload.contentFilter,
+        matches: payload.matches,
+      });
+      sendJson(res, 200, {
+        ...payload,
+        query: searchSummary.query,
+        day: searchSummary.day,
+        roleFilter: searchSummary.roleFilter,
+        contentFilter: searchSummary.contentFilter,
+        runtime: {
+          ...payload.runtime,
+          state: runtimeSummary.state,
+          activeRunId: runtimeSummary.activeRunId,
+          gatewayConnected: runtimeSummary.gatewayConnected,
+          sessionWritable: runtimeSummary.sessionWritable,
+          lastEventAt: runtimeSummary.lastEventAt,
+          lastAckAt: runtimeSummary.lastAckAt,
+          lastErrorCode: runtimeSummary.lastErrorCode,
+        },
+        diagnostics: {
+          ...payload.diagnostics,
+          gatewayReachable: diagnosticsSummary.gatewayReachable,
+          historyTruncated: diagnosticsSummary.historyTruncated,
+          truncationMode: diagnosticsSummary.truncationMode,
+          notes: [
+            ...payload.diagnostics.notes,
+            `History search summary: ${searchSummary.totalMatches} matches across ${searchSummary.days.length} day(s).`,
+          ],
+        },
+      });
     } catch (error) {
       sendChatError(res, error);
     }
