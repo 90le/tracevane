@@ -71,6 +71,8 @@ interface TerminalSession {
   lastRows: number;
   shell: string;
   cwd: string;
+  source: "manual";
+  lastActivityAt: string;
 }
 
 interface TerminalCliSpec {
@@ -398,6 +400,10 @@ export function createTerminalService(
     session.cleanupTimer = null;
   }
 
+  function markSessionActivity(session: TerminalSession): void {
+    session.lastActivityAt = new Date().toISOString();
+  }
+
   function emitGatewayEvent(
     subscriber: TerminalGatewaySubscriber,
     event: TerminalGatewayEvent,
@@ -456,6 +462,7 @@ export function createTerminalService(
       if (!session.gatewaySubscribers.delete(connId)) {
         continue;
       }
+      markSessionActivity(session);
       if (getActiveClientCount(session) === 0) {
         scheduleCleanup(session);
       }
@@ -490,6 +497,7 @@ export function createTerminalService(
   ): void {
     clearCleanupTimer(session);
     detachGatewayConnId(runtime.connId);
+    markSessionActivity(session);
     session.gatewaySubscribers.set(runtime.connId, {
       connId: runtime.connId,
       emit: runtime.emit,
@@ -593,6 +601,7 @@ export function createTerminalService(
 
   function broadcastChunk(session: TerminalSession, data: string): void {
     if (!data) return;
+    markSessionActivity(session);
     const chunk = { seq: ++session.outputSeq, data };
     session.backlog.push(chunk);
     session.bufferSize += data.length;
@@ -642,6 +651,7 @@ export function createTerminalService(
 
     const shell = process.env.SHELL || "/bin/bash";
     const cwd = options.config.openclawRoot || process.cwd();
+    const lastActivityAt = new Date().toISOString();
     const term = pty.spawn(shell, [], {
       name: "xterm-256color",
       cols: 120,
@@ -665,6 +675,8 @@ export function createTerminalService(
       lastRows: 30,
       shell,
       cwd,
+      source: "manual",
+      lastActivityAt,
     };
 
     term.onData((data) => {
@@ -687,6 +699,7 @@ export function createTerminalService(
       }
       session.clients.clear();
       session.gatewaySubscribers.clear();
+      markSessionActivity(session);
       clearCleanupTimer(session);
       sessions.delete(session.id);
       session.closed = true;
@@ -724,6 +737,7 @@ export function createTerminalService(
     ws._terminalSessionId = session.id;
     ws._terminalSession = session;
     ws._lastAliveAt = Date.now();
+    markSessionActivity(session);
 
     const attachEvents = buildAttachEvents(session, {
       lastSeq: params.get("lastSeq"),
@@ -1195,13 +1209,15 @@ export function createTerminalService(
       .map((session) => {
         const firstGatewayConnId =
           Array.from(session.gatewaySubscribers.keys())[0] || null;
+        const hasActiveAttach = getActiveClientCount(session) > 0;
         return buildTerminalSessionSummary({
           sid: session.id,
           title: `Terminal ${session.id}`,
-          status: "running",
-          source: "manual",
+          status: hasActiveAttach ? "running" : "detached",
+          source: session.source,
           attachedClientId: firstGatewayConnId,
           observerCount: session.gatewaySubscribers.size,
+          updatedAt: session.lastActivityAt,
         });
       })
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
@@ -1242,6 +1258,7 @@ export function createTerminalService(
 
       ws.on("message", (message: WebSocket.RawData) => {
         ws._lastAliveAt = Date.now();
+        markSessionActivity(session);
         const payload = message.toString();
 
         if (payload.startsWith("{")) {
@@ -1273,6 +1290,7 @@ export function createTerminalService(
         const bound = ws._terminalSession;
         if (!bound) return;
         bound.clients.delete(ws);
+        markSessionActivity(bound);
         ws._terminalSession = null;
         ws._terminalSessionId = null;
         if (getActiveClientCount(bound) === 0) scheduleCleanup(bound);
@@ -1386,6 +1404,7 @@ export function createTerminalService(
     ): TerminalGatewayAckResponse {
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
+      markSessionActivity(session);
       session.term.write(String(payload.data || ""));
       return createGatewayAck(session);
     },
@@ -1396,6 +1415,7 @@ export function createTerminalService(
     ): TerminalGatewayAckResponse {
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
+      markSessionActivity(session);
       session.lastCols = Math.max(1, Number(payload.cols || 0));
       session.lastRows = Math.max(1, Number(payload.rows || 0));
       session.term.resize(session.lastCols, session.lastRows);
@@ -1408,6 +1428,7 @@ export function createTerminalService(
     ): TerminalGatewayAckResponse {
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
+      markSessionActivity(session);
       return createGatewayAck(session);
     },
 
