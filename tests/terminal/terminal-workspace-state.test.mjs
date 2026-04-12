@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { nextTick } from "vue";
 import "tsx/esm";
 
 const workspaceStateModule =
@@ -78,4 +79,38 @@ test("terminal workspace recomputes recoverable sessions after register", () => 
 
 test("terminal route sync exports bind function", () => {
   assert.equal(typeof routeSyncModule.bindTerminalRouteSync, "function");
+});
+
+test("terminal route sync keeps active session and tabs aligned", async () => {
+  const workspace = workspaceStateModule.createTerminalWorkspaceState();
+  const route = {
+    params: {
+      sessionId: "term-route-1",
+    },
+  };
+  const routerCalls = [];
+  const router = {
+    replace(path) {
+      routerCalls.push(path);
+      return Promise.resolve();
+    },
+  };
+
+  routeSyncModule.bindTerminalRouteSync({
+    activeSessionId: workspace.activeSessionId,
+    setActiveSession: workspace.setActiveSession,
+    registerSession: workspace.registerSession,
+    route,
+    router,
+  });
+
+  await nextTick();
+
+  assert.equal(workspace.activeSessionId.value, "term-route-1");
+  assert.deepEqual(workspace.tabOrder.value, ["term-route-1"]);
+  assert.deepEqual(
+    workspace.tabs.value.map((item) => item.sessionId),
+    ["term-route-1"],
+  );
+  assert.equal(routerCalls.length, 0);
 });

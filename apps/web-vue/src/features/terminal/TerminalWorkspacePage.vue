@@ -39,6 +39,8 @@ const actionLayers = buildTerminalActionLayers();
 
 bindTerminalRouteSync({
   activeSessionId: workspace.activeSessionId,
+  setActiveSession: workspace.setActiveSession,
+  registerSession: workspace.registerSession,
   route,
   router,
 });

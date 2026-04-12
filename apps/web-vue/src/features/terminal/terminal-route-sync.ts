@@ -1,8 +1,11 @@
 import { watch, type Ref } from "vue";
 import type { RouteLocationNormalizedLoaded, Router } from "vue-router";
+import type { TerminalSessionDescriptor } from "./terminal-session-registry";
 
 export interface TerminalRouteSyncOptions {
   activeSessionId: Ref<string | null>;
+  setActiveSession(sessionId: string | null): void;
+  registerSession(session: TerminalSessionDescriptor): void;
   router: Router;
   route: RouteLocationNormalizedLoaded;
 }
@@ -18,7 +21,17 @@ export function bindTerminalRouteSync(options: TerminalRouteSyncOptions): void {
       const normalized = normalizeSessionId(sessionId);
       if (!normalized) return;
       if (options.activeSessionId.value === normalized) return;
-      options.activeSessionId.value = normalized;
+
+      options.registerSession({
+        sessionId: normalized,
+        title: normalized,
+        status: "detached",
+        source: "linked_context",
+        canResume: true,
+        controlState: "observer",
+        updatedAt: new Date().toISOString(),
+      });
+      options.setActiveSession(normalized);
     },
     { immediate: true },
   );
