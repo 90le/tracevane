@@ -1,6 +1,12 @@
-export type TerminalBinaryId = 'claude' | 'codex' | 'opencode' | 'clawhub' | 'skillhub' | 'bash';
-export type TerminalInstallRequestId = TerminalBinaryId | 'all' | 'all-missing';
-export type TerminalLaunchCli = 'claude' | 'codex' | 'opencode' | 'bash';
+export type TerminalBinaryId =
+  | "claude"
+  | "codex"
+  | "opencode"
+  | "clawhub"
+  | "skillhub"
+  | "bash";
+export type TerminalInstallRequestId = TerminalBinaryId | "all" | "all-missing";
+export type TerminalLaunchCli = "claude" | "codex" | "opencode" | "bash";
 
 export interface TerminalBinaryStatus {
   id: TerminalBinaryId;
@@ -11,7 +17,7 @@ export interface TerminalBinaryStatus {
   version: string | null;
   packageName: string | null;
   installSupported: boolean;
-  category: 'agent' | 'marketplace' | 'shell';
+  category: "agent" | "marketplace" | "shell";
 }
 
 export interface TerminalInstallTarget {
@@ -19,7 +25,7 @@ export interface TerminalInstallTarget {
   label: string;
   packageName: string | null;
   installHint: string;
-  category: 'agent' | 'marketplace' | 'shell';
+  category: "agent" | "marketplace" | "shell";
 }
 
 export interface TerminalRuntimeConfig {
@@ -88,6 +94,53 @@ export interface TerminalInstallResponse {
   status: TerminalStatusPayload;
 }
 
+export type TerminalSessionStatus =
+  | "running"
+  | "detached"
+  | "completed"
+  | "failed"
+  | "lost";
+
+export type TerminalSessionSource =
+  | "manual"
+  | "system_action"
+  | "linked_context";
+
+export type TerminalSessionControlState = "controller" | "observer";
+
+export interface TerminalSessionDescriptor {
+  sessionId: string;
+  title: string;
+  status: TerminalSessionStatus;
+  source: TerminalSessionSource;
+  canResume: boolean;
+  controlState: TerminalSessionControlState;
+  observerCount: number;
+  updatedAt: string;
+}
+
+export interface TerminalSessionSummaryResponse {
+  sessions: TerminalSessionDescriptor[];
+}
+
+export interface TerminalActionDescriptor {
+  key: string;
+  labelZh: string;
+  labelEn: string;
+  command: string;
+}
+
+export interface TerminalActionGroup {
+  key: "builtin" | "scripts";
+  titleZh: string;
+  titleEn: string;
+  items: TerminalActionDescriptor[];
+}
+
+export interface TerminalActionCatalogResponse {
+  groups: TerminalActionGroup[];
+}
+
 export interface TerminalLaunchPayload {
   cli: TerminalLaunchCli;
   model?: string;
@@ -110,7 +163,7 @@ export interface TerminalEndResponse {
 }
 
 export interface TerminalInstallStreamEvent {
-  type: 'start' | 'attempt' | 'result' | 'done' | 'error';
+  type: "start" | "attempt" | "result" | "done" | "error";
   message?: string;
   cli?: string;
   stage?: string;
@@ -148,34 +201,34 @@ export interface TerminalGatewayDetachPayload {
 }
 
 export interface TerminalGatewaySessionEvent {
-  type: 'session';
+  type: "session";
   sid: string;
   instanceId: string;
   outputSeq: number;
 }
 
 export interface TerminalGatewayResetEvent {
-  type: 'reset';
+  type: "reset";
   sid: string;
   instanceId: string;
-  reason: 'session_recreated';
+  reason: "session_recreated";
 }
 
 export interface TerminalGatewayOutputEvent {
-  type: 'output';
+  type: "output";
   sid: string;
   seq: number;
   data: string;
 }
 
 export interface TerminalGatewayClosedEvent {
-  type: 'closed';
+  type: "closed";
   sid: string;
-  reason: 'session_ended' | 'session_exited';
+  reason: "session_ended" | "session_exited";
 }
 
 export interface TerminalGatewayErrorEvent {
-  type: 'error';
+  type: "error";
   sid: string;
   message: string;
 }
@@ -198,12 +251,12 @@ export interface TerminalGatewayAckResponse {
   sid: string;
 }
 
-export const STUDIO_TERMINAL_GATEWAY_EVENT = 'studio.terminal';
+export const STUDIO_TERMINAL_GATEWAY_EVENT = "studio.terminal";
 
 export const STUDIO_TERMINAL_GATEWAY_METHODS = {
-  attach: 'studio.terminal.attach',
-  input: 'studio.terminal.input',
-  resize: 'studio.terminal.resize',
-  heartbeat: 'studio.terminal.heartbeat',
-  detach: 'studio.terminal.detach',
+  attach: "studio.terminal.attach",
+  input: "studio.terminal.input",
+  resize: "studio.terminal.resize",
+  heartbeat: "studio.terminal.heartbeat",
+  detach: "studio.terminal.detach",
 } as const;

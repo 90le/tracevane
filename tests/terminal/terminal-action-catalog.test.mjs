@@ -2,16 +2,28 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import "tsx/esm";
 
-const catalog =
-  await import("../../apps/web-vue/src/features/terminal/terminal-action-catalog.ts");
+const actionCatalog =
+  await import("../../apps/api/modules/terminal/action-catalog.ts");
 
-test("buildTerminalActionLayers separates builtin and script layers", () => {
-  const layers = catalog.buildTerminalActionLayers();
+test("terminal action catalog exposes builtin and script action groups", () => {
+  const payload = actionCatalog.buildTerminalActionCatalog();
 
   assert.deepEqual(
-    layers.map((layer) => layer.key),
+    payload.groups.map((group) => group.key),
     ["builtin", "scripts"],
   );
-  assert.ok(layers[0]?.items.length);
-  assert.ok(layers[1]?.items.length);
+  assert.ok(payload.groups[0]?.items.length);
+  assert.ok(payload.groups[1]?.items.length);
+});
+
+test("terminal action catalog includes executable command fields", () => {
+  const payload = actionCatalog.buildTerminalActionCatalog();
+
+  const commands = payload.groups.flatMap((group) =>
+    group.items.map((item) => item.command),
+  );
+
+  assert.ok(
+    commands.every((command) => typeof command === "string" && command),
+  );
 });

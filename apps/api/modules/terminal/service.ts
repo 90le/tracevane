@@ -1,13 +1,16 @@
-import { createRequire } from 'node:module';
-import { exec, execFile } from 'node:child_process';
-import crypto from 'node:crypto';
-import { promisify } from 'node:util';
-import type http from 'node:http';
-import type { Duplex } from 'node:stream';
-import { WebSocket, WebSocketServer } from 'ws';
-import type { StudioServerConfig } from '../../../../types/api.js';
-import type { SkillsService } from '../skills/service.js';
+import { createRequire } from "node:module";
+import { exec, execFile } from "node:child_process";
+import crypto from "node:crypto";
+import { promisify } from "node:util";
+import type http from "node:http";
+import type { Duplex } from "node:stream";
+import { WebSocket, WebSocketServer } from "ws";
+import type { StudioServerConfig } from "../../../../types/api.js";
+import type { SkillsService } from "../skills/service.js";
+import { buildTerminalActionCatalog } from "./action-catalog.js";
+import { buildTerminalSessionSummary } from "./session-summary.js";
 import type {
+  TerminalActionCatalogResponse,
   TerminalBinaryId,
   TerminalBinaryStatus,
   TerminalEndPayload,
@@ -30,15 +33,16 @@ import type {
   TerminalLaunchPayload,
   TerminalLaunchResponse,
   TerminalInstallStreamEvent,
+  TerminalSessionSummaryResponse,
   TerminalStatusPayload,
-} from '../../../../types/terminal.js';
+} from "../../../../types/terminal.js";
 
 const require = createRequire(import.meta.url);
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
-type PtyModule = typeof import('@homebridge/node-pty-prebuilt-multiarch');
-type PtyInstance = ReturnType<PtyModule['spawn']>;
+type PtyModule = typeof import("@homebridge/node-pty-prebuilt-multiarch");
+type PtyInstance = ReturnType<PtyModule["spawn"]>;
 
 interface TerminalSocket extends WebSocket {
   _terminalSessionId?: string | null;
@@ -74,8 +78,8 @@ interface TerminalCliSpec {
   label: string;
   binary: string;
   packageName: string | null;
-  category: 'agent' | 'marketplace' | 'shell';
-  installMode: 'package-manager' | 'script' | 'none';
+  category: "agent" | "marketplace" | "shell";
+  installMode: "package-manager" | "script" | "none";
   installCommand?: string;
   verifyArgs?: string[];
 }
@@ -101,91 +105,120 @@ const WS_IDLE_TIMEOUT = 90_000;
 
 const TERMINAL_CLI_SPECS: Record<TerminalBinaryId, TerminalCliSpec> = {
   claude: {
-    id: 'claude',
-    label: 'Claude CLI',
-    binary: 'claude',
-    packageName: '@anthropic-ai/claude-code',
-    category: 'agent',
-    installMode: 'package-manager',
+    id: "claude",
+    label: "Claude CLI",
+    binary: "claude",
+    packageName: "@anthropic-ai/claude-code",
+    category: "agent",
+    installMode: "package-manager",
   },
   codex: {
-    id: 'codex',
-    label: 'Codex CLI',
-    binary: 'codex',
-    packageName: '@openai/codex',
-    category: 'agent',
-    installMode: 'package-manager',
+    id: "codex",
+    label: "Codex CLI",
+    binary: "codex",
+    packageName: "@openai/codex",
+    category: "agent",
+    installMode: "package-manager",
   },
   opencode: {
-    id: 'opencode',
-    label: 'OpenCode CLI',
-    binary: 'opencode',
-    packageName: 'opencode-ai',
-    category: 'agent',
-    installMode: 'package-manager',
+    id: "opencode",
+    label: "OpenCode CLI",
+    binary: "opencode",
+    packageName: "opencode-ai",
+    category: "agent",
+    installMode: "package-manager",
   },
   clawhub: {
-    id: 'clawhub',
-    label: 'ClawHub CLI',
-    binary: 'clawhub',
-    packageName: 'clawhub',
-    category: 'marketplace',
-    installMode: 'package-manager',
-    verifyArgs: ['--cli-version'],
+    id: "clawhub",
+    label: "ClawHub CLI",
+    binary: "clawhub",
+    packageName: "clawhub",
+    category: "marketplace",
+    installMode: "package-manager",
+    verifyArgs: ["--cli-version"],
   },
   skillhub: {
-    id: 'skillhub',
-    label: 'SkillHub CLI',
-    binary: 'skillhub',
+    id: "skillhub",
+    label: "SkillHub CLI",
+    binary: "skillhub",
     packageName: null,
-    category: 'marketplace',
-    installMode: 'script',
-    installCommand: 'curl -fsSL https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/install.sh | bash -s -- --cli-only',
-    verifyArgs: ['--help'],
+    category: "marketplace",
+    installMode: "script",
+    installCommand:
+      "curl -fsSL https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/install.sh | bash -s -- --cli-only",
+    verifyArgs: ["--help"],
   },
   bash: {
-    id: 'bash',
-    label: 'Bash',
-    binary: 'bash',
+    id: "bash",
+    label: "Bash",
+    binary: "bash",
     packageName: null,
-    category: 'shell',
-    installMode: 'none',
-    verifyArgs: ['--version'],
+    category: "shell",
+    installMode: "none",
+    verifyArgs: ["--version"],
   },
 };
 
 const TERMINAL_PACKAGE_MANAGERS: TerminalPackageManager[] = [
-  { id: 'npm', checkCommand: 'command -v npm', installCommand: (pkg) => `npm install -g ${pkg}` },
-  { id: 'pnpm', checkCommand: 'command -v pnpm', installCommand: (pkg) => `pnpm add -g ${pkg}` },
-  { id: 'yarn', checkCommand: 'command -v yarn', installCommand: (pkg) => `yarn global add ${pkg}` },
-  { id: 'bun', checkCommand: 'command -v bun', installCommand: (pkg) => `bun add -g ${pkg}` },
+  {
+    id: "npm",
+    checkCommand: "command -v npm",
+    installCommand: (pkg) => `npm install -g ${pkg}`,
+  },
+  {
+    id: "pnpm",
+    checkCommand: "command -v pnpm",
+    installCommand: (pkg) => `pnpm add -g ${pkg}`,
+  },
+  {
+    id: "yarn",
+    checkCommand: "command -v yarn",
+    installCommand: (pkg) => `yarn global add ${pkg}`,
+  },
+  {
+    id: "bun",
+    checkCommand: "command -v bun",
+    installCommand: (pkg) => `bun add -g ${pkg}`,
+  },
 ];
 
 function shellQuote(raw: string): string {
-  return `"${String(raw || '').replace(/(["\\$`])/g, '\\$1')}"`;
+  return `"${String(raw || "").replace(/(["\\$`])/g, "\\$1")}"`;
 }
 
 function truncateLog(text: string, maxLength = 16_000): string {
-  const normalized = String(text || '').trim();
-  if (!normalized) return '';
+  const normalized = String(text || "").trim();
+  if (!normalized) return "";
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength)}\n...[truncated]`;
 }
 
 function isWindowsMountedPath(binPath: string): boolean {
-  const normalized = String(binPath || '').trim().toLowerCase();
-  return normalized.startsWith('/mnt/c/') || normalized.startsWith('/mnt/d/');
+  const normalized = String(binPath || "")
+    .trim()
+    .toLowerCase();
+  return normalized.startsWith("/mnt/c/") || normalized.startsWith("/mnt/d/");
 }
 
 function normalizeSessionId(value: string | null | undefined): string {
-  if (value !== null && value !== undefined && typeof value !== 'string' && typeof value !== 'number') {
+  if (
+    value !== null &&
+    value !== undefined &&
+    typeof value !== "string" &&
+    typeof value !== "number"
+  ) {
     return crypto.randomUUID();
   }
-  const raw = String(value || '').trim();
-  if (!raw || raw === '[object Object]' || raw === 'objectObject' || raw.toLowerCase() === 'objectobject') {
+  const raw = String(value || "").trim();
+  if (
+    !raw ||
+    raw === "[object Object]" ||
+    raw === "objectObject" ||
+    raw.toLowerCase() === "objectobject"
+  ) {
     return crypto.randomUUID();
   }
-  const normalized = raw.replace(/[^a-zA-Z0-9:_-]/g, '').slice(0, 128);
+  const normalized = raw.replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 128);
   return normalized || crypto.randomUUID();
 }
 
@@ -197,13 +230,16 @@ function normalizeOutputSeq(value: string | number | null | undefined): number {
 
 function createOptionalPty(): PtyModule | null {
   try {
-    return require('@homebridge/node-pty-prebuilt-multiarch') as PtyModule;
+    return require("@homebridge/node-pty-prebuilt-multiarch") as PtyModule;
   } catch {
     return null;
   }
 }
 
-async function runCommand(command: string, timeoutMs = 15_000): Promise<{
+async function runCommand(
+  command: string,
+  timeoutMs = 15_000,
+): Promise<{
   success: boolean;
   output: string;
   stderr: string;
@@ -216,17 +252,21 @@ async function runCommand(command: string, timeoutMs = 15_000): Promise<{
     });
     return {
       success: true,
-      output: String(stdout || '').trim(),
-      stderr: String(stderr || '').trim(),
-      error: '',
+      output: String(stdout || "").trim(),
+      stderr: String(stderr || "").trim(),
+      error: "",
     };
   } catch (error) {
-    const target = error as { stdout?: string; stderr?: string; message?: string };
+    const target = error as {
+      stdout?: string;
+      stderr?: string;
+      message?: string;
+    };
     return {
       success: false,
-      output: String(target.stdout || '').trim(),
-      stderr: String(target.stderr || '').trim(),
-      error: String(target.message || 'command_failed'),
+      output: String(target.stdout || "").trim(),
+      stderr: String(target.stderr || "").trim(),
+      error: String(target.message || "command_failed"),
     };
   }
 }
@@ -234,12 +274,18 @@ async function runCommand(command: string, timeoutMs = 15_000): Promise<{
 function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv {
   const env = { ...process.env };
   try {
-    const raw = require('node:fs').readFileSync(config.openclawConfigFile, 'utf-8');
+    const raw = require("node:fs").readFileSync(
+      config.openclawConfigFile,
+      "utf-8",
+    );
     const parsed = JSON.parse(raw) as Record<string, any>;
     const providers = parsed?.models?.providers || {};
-    for (const provider of Object.values(providers) as Array<Record<string, any>>) {
-      if (!provider?.apiKey || String(provider.apiKey).startsWith('${')) continue;
-      if (provider.api === 'anthropic-messages' && !env.ANTHROPIC_API_KEY) {
+    for (const provider of Object.values(providers) as Array<
+      Record<string, any>
+    >) {
+      if (!provider?.apiKey || String(provider.apiKey).startsWith("${"))
+        continue;
+      if (provider.api === "anthropic-messages" && !env.ANTHROPIC_API_KEY) {
         env.ANTHROPIC_API_KEY = provider.apiKey;
       } else if (!env.OPENAI_API_KEY) {
         env.OPENAI_API_KEY = provider.apiKey;
@@ -259,39 +305,49 @@ function summarizeAttempts(attempts: TerminalInstallAttemptLog[]): string {
     if (item.stderr) lines.push(item.stderr);
     if (item.error) lines.push(`ERROR: ${item.error}`);
   }
-  return truncateLog(lines.join('\n\n'));
+  return truncateLog(lines.join("\n\n"));
 }
 
 export interface TerminalService {
   getStatus(): Promise<TerminalStatusPayload>;
-  installCli(target: TerminalInstallRequestId): Promise<TerminalInstallResponse>;
+  listWorkspaceSessions(): Promise<TerminalSessionSummaryResponse>;
+  listWorkspaceActions(): Promise<TerminalActionCatalogResponse>;
+  installCli(
+    target: TerminalInstallRequestId,
+  ): Promise<TerminalInstallResponse>;
   streamInstallCli(
     target: TerminalInstallRequestId,
-    emit: (event: TerminalInstallStreamEvent) => void | Promise<void>
+    emit: (event: TerminalInstallStreamEvent) => void | Promise<void>,
   ): Promise<TerminalInstallResponse>;
-  getLaunchCommand(payload: TerminalLaunchPayload): Promise<TerminalLaunchResponse>;
+  getLaunchCommand(
+    payload: TerminalLaunchPayload,
+  ): Promise<TerminalLaunchResponse>;
   endSession(payload: TerminalEndPayload): Promise<TerminalEndResponse>;
   attachGatewayClient(
     payload: TerminalGatewayAttachPayload,
-    runtime: TerminalGatewayRuntime
+    runtime: TerminalGatewayRuntime,
   ): TerminalGatewayAttachResponse;
   sendGatewayInput(
     payload: TerminalGatewayInputPayload,
-    runtime: Pick<TerminalGatewayRuntime, 'connId'>
+    runtime: Pick<TerminalGatewayRuntime, "connId">,
   ): TerminalGatewayAckResponse;
   resizeGatewayClient(
     payload: TerminalGatewayResizePayload,
-    runtime: Pick<TerminalGatewayRuntime, 'connId'>
+    runtime: Pick<TerminalGatewayRuntime, "connId">,
   ): TerminalGatewayAckResponse;
   heartbeatGatewayClient(
     payload: TerminalGatewayHeartbeatPayload,
-    runtime: Pick<TerminalGatewayRuntime, 'connId'>
+    runtime: Pick<TerminalGatewayRuntime, "connId">,
   ): TerminalGatewayAckResponse;
   detachGatewayClient(
     payload: TerminalGatewayDetachPayload,
-    runtime: Pick<TerminalGatewayRuntime, 'connId'>
+    runtime: Pick<TerminalGatewayRuntime, "connId">,
   ): TerminalGatewayAckResponse;
-  handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
+  handleUpgrade(
+    req: http.IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ): boolean;
   dispose(): void;
 }
 
@@ -300,7 +356,9 @@ export interface CreateTerminalServiceOptions {
   skills: SkillsService;
 }
 
-export function createTerminalService(options: CreateTerminalServiceOptions): TerminalService {
+export function createTerminalService(
+  options: CreateTerminalServiceOptions,
+): TerminalService {
   const pty = createOptionalPty();
   const wss = new WebSocketServer({ noServer: true });
   const sessions = new Map<string, TerminalSession>();
@@ -310,10 +368,14 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     wss.clients.forEach((socket: WebSocket) => {
       const ws = socket as TerminalSocket;
       if (now - Number(ws._lastAliveAt || now) > WS_IDLE_TIMEOUT) {
-        try { ws.terminate(); } catch {}
+        try {
+          ws.terminate();
+        } catch {}
         return;
       }
-      try { ws.ping(); } catch {}
+      try {
+        ws.ping();
+      } catch {}
     });
   }, WS_PING_INTERVAL);
   pingTimer.unref?.();
@@ -336,7 +398,10 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     session.cleanupTimer = null;
   }
 
-  function emitGatewayEvent(subscriber: TerminalGatewaySubscriber, event: TerminalGatewayEvent): boolean {
+  function emitGatewayEvent(
+    subscriber: TerminalGatewaySubscriber,
+    event: TerminalGatewayEvent,
+  ): boolean {
     try {
       return subscriber.emit(event);
     } catch {
@@ -344,8 +409,13 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     }
   }
 
-  function pruneExpiredGatewaySubscribers(session: TerminalSession, now = Date.now()): void {
-    for (const [connId, subscriber] of Array.from(session.gatewaySubscribers.entries())) {
+  function pruneExpiredGatewaySubscribers(
+    session: TerminalSession,
+    now = Date.now(),
+  ): void {
+    for (const [connId, subscriber] of Array.from(
+      session.gatewaySubscribers.entries(),
+    )) {
       if (now - subscriber.lastLeaseAt <= TERMINAL_GATEWAY_LEASE_MS) {
         continue;
       }
@@ -356,9 +426,14 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     }
   }
 
-  function broadcastGatewayEvent(session: TerminalSession, event: TerminalGatewayEvent): void {
+  function broadcastGatewayEvent(
+    session: TerminalSession,
+    event: TerminalGatewayEvent,
+  ): void {
     pruneExpiredGatewaySubscribers(session);
-    for (const [connId, subscriber] of Array.from(session.gatewaySubscribers.entries())) {
+    for (const [connId, subscriber] of Array.from(
+      session.gatewaySubscribers.entries(),
+    )) {
       if (emitGatewayEvent(subscriber, event)) {
         continue;
       }
@@ -369,8 +444,11 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     }
   }
 
-  function detachGatewayConnId(connId: string, sessionId?: string | null): void {
-    const targetSessionId = String(sessionId || '').trim();
+  function detachGatewayConnId(
+    connId: string,
+    sessionId?: string | null,
+  ): void {
+    const targetSessionId = String(sessionId || "").trim();
     for (const session of sessions.values()) {
       if (targetSessionId && session.id !== targetSessionId) {
         continue;
@@ -384,7 +462,10 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     }
   }
 
-  function touchGatewaySubscriber(session: TerminalSession, connId: string): boolean {
+  function touchGatewaySubscriber(
+    session: TerminalSession,
+    connId: string,
+  ): boolean {
     const subscriber = session.gatewaySubscribers.get(connId);
     if (!subscriber) {
       return false;
@@ -393,14 +474,20 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     return true;
   }
 
-  function requireGatewaySubscriber(session: TerminalSession, connId: string): void {
+  function requireGatewaySubscriber(
+    session: TerminalSession,
+    connId: string,
+  ): void {
     if (touchGatewaySubscriber(session, connId)) {
       return;
     }
-    throw new Error('terminal_gateway_client_not_attached');
+    throw new Error("terminal_gateway_client_not_attached");
   }
 
-  function registerGatewaySubscriber(session: TerminalSession, runtime: TerminalGatewayRuntime): void {
+  function registerGatewaySubscriber(
+    session: TerminalSession,
+    runtime: TerminalGatewayRuntime,
+  ): void {
     clearCleanupTimer(session);
     detachGatewayConnId(runtime.connId);
     session.gatewaySubscribers.set(runtime.connId, {
@@ -410,9 +497,12 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     });
   }
 
-  function buildOutputEvent(session: TerminalSession, chunk: { seq: number; data: string }): TerminalGatewayOutputEvent {
+  function buildOutputEvent(
+    session: TerminalSession,
+    chunk: { seq: number; data: string },
+  ): TerminalGatewayOutputEvent {
     return {
-      type: 'output',
+      type: "output",
       sid: session.id,
       seq: chunk.seq,
       data: chunk.data,
@@ -424,24 +514,28 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     params: {
       lastSeq?: string | number | null;
       instanceId?: string | null;
-    }
+    },
   ): TerminalGatewayEvent[] {
     const lastSeq = normalizeOutputSeq(params.lastSeq);
-    const instanceId = String(params.instanceId || '').trim();
-    const requiresReset = lastSeq > session.outputSeq || (instanceId && instanceId !== session.instanceId);
-    const events: TerminalGatewayEvent[] = [{
-      type: 'session',
-      sid: session.id,
-      instanceId: session.instanceId,
-      outputSeq: session.outputSeq,
-    }];
+    const instanceId = String(params.instanceId || "").trim();
+    const requiresReset =
+      lastSeq > session.outputSeq ||
+      (instanceId && instanceId !== session.instanceId);
+    const events: TerminalGatewayEvent[] = [
+      {
+        type: "session",
+        sid: session.id,
+        instanceId: session.instanceId,
+        outputSeq: session.outputSeq,
+      },
+    ];
 
     if (requiresReset) {
       events.push({
-        type: 'reset',
+        type: "reset",
         sid: session.id,
         instanceId: session.instanceId,
-        reason: 'session_recreated',
+        reason: "session_recreated",
       });
     }
 
@@ -460,16 +554,20 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     sessions.delete(sessionId);
     session.closed = true;
     broadcastGatewayEvent(session, {
-      type: 'closed',
+      type: "closed",
       sid: session.id,
-      reason: 'session_ended',
+      reason: "session_ended",
     });
     for (const client of Array.from(session.clients)) {
-      try { client.close(); } catch {}
+      try {
+        client.close();
+      } catch {}
     }
     session.clients.clear();
     session.gatewaySubscribers.clear();
-    try { session.term.kill(); } catch {}
+    try {
+      session.term.kill();
+    } catch {}
   }
 
   function scheduleCleanup(session: TerminalSession): void {
@@ -499,7 +597,10 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     session.backlog.push(chunk);
     session.bufferSize += data.length;
 
-    while (session.bufferSize > TERMINAL_BUFFER_LIMIT && session.backlog.length > 1) {
+    while (
+      session.bufferSize > TERMINAL_BUFFER_LIMIT &&
+      session.backlog.length > 1
+    ) {
       const dropped = session.backlog.shift();
       session.bufferSize -= dropped?.data?.length || 0;
     }
@@ -509,7 +610,9 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
         session.clients.delete(client);
         continue;
       }
-      if (!sendEvent(client, { type: 'output', seq: chunk.seq, data: chunk.data })) {
+      if (
+        !sendEvent(client, { type: "output", seq: chunk.seq, data: chunk.data })
+      ) {
         session.clients.delete(client);
       }
     }
@@ -517,7 +620,11 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     broadcastGatewayEvent(session, buildOutputEvent(session, chunk));
   }
 
-  function replayBacklog(session: TerminalSession, ws: TerminalSocket, lastSeq = 0): boolean {
+  function replayBacklog(
+    session: TerminalSession,
+    ws: TerminalSocket,
+    lastSeq = 0,
+  ): boolean {
     for (const event of buildAttachEvents(session, { lastSeq })) {
       if (!sendEvent(ws, event)) {
         return false;
@@ -528,13 +635,15 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
 
   function createSession(sessionId: string): TerminalSession {
     if (!pty) {
-      throw new Error('node-pty is not available; terminal sessions are disabled');
+      throw new Error(
+        "node-pty is not available; terminal sessions are disabled",
+      );
     }
 
-    const shell = process.env.SHELL || '/bin/bash';
+    const shell = process.env.SHELL || "/bin/bash";
     const cwd = options.config.openclawRoot || process.cwd();
     const term = pty.spawn(shell, [], {
-      name: 'xterm-256color',
+      name: "xterm-256color",
       cols: 120,
       rows: 30,
       cwd,
@@ -566,13 +675,15 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
       const alreadyClosed = session.closed;
       if (!alreadyClosed) {
         broadcastGatewayEvent(session, {
-          type: 'closed',
+          type: "closed",
           sid: session.id,
-          reason: 'session_exited',
+          reason: "session_exited",
         });
       }
       for (const client of Array.from(session.clients)) {
-        try { client.close(); } catch {}
+        try {
+          client.close();
+        } catch {}
       }
       session.clients.clear();
       session.gatewaySubscribers.clear();
@@ -595,12 +706,18 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     return createSession(sessionId);
   }
 
-  function attachSocket(session: TerminalSession, ws: TerminalSocket, params: URLSearchParams): boolean {
+  function attachSocket(
+    session: TerminalSession,
+    ws: TerminalSocket,
+    params: URLSearchParams,
+  ): boolean {
     clearCleanupTimer(session);
 
     for (const client of Array.from(session.clients)) {
       if (client === ws) continue;
-      try { client.close(1012, 'terminal_replaced'); } catch {}
+      try {
+        client.close(1012, "terminal_replaced");
+      } catch {}
     }
     session.clients.clear();
 
@@ -609,8 +726,8 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     ws._lastAliveAt = Date.now();
 
     const attachEvents = buildAttachEvents(session, {
-      lastSeq: params.get('lastSeq'),
-      instanceId: params.get('instanceId'),
+      lastSeq: params.get("lastSeq"),
+      instanceId: params.get("instanceId"),
     });
     for (const event of attachEvents) {
       if (!sendEvent(ws, event)) {
@@ -622,43 +739,50 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     return true;
   }
 
-  function requireActiveSession(rawSessionId: string | null | undefined): TerminalSession {
-    const sessionId = String(rawSessionId || '').trim();
+  function requireActiveSession(
+    rawSessionId: string | null | undefined,
+  ): TerminalSession {
+    const sessionId = String(rawSessionId || "").trim();
     if (!sessionId) {
-      throw new Error('sid is required');
+      throw new Error("sid is required");
     }
     const session = sessions.get(sessionId);
     if (!session || session.closed) {
-      throw new Error('terminal_session_not_found');
+      throw new Error("terminal_session_not_found");
     }
     clearCleanupTimer(session);
     return session;
   }
 
-  function createGatewayAck(session: TerminalSession): TerminalGatewayAckResponse {
+  function createGatewayAck(
+    session: TerminalSession,
+  ): TerminalGatewayAckResponse {
     return {
       ok: true,
       sid: session.id,
     };
   }
 
-  async function checkBinary(spec: TerminalCliSpec): Promise<TerminalBinaryStatus> {
+  async function checkBinary(
+    spec: TerminalCliSpec,
+  ): Promise<TerminalBinaryStatus> {
     const [whichResult, commandVResult] = await Promise.all([
       runCommand(`which -a ${spec.binary}`),
       runCommand(`command -v ${spec.binary}`),
     ]);
 
     const candidates: string[] = [];
-    for (const line of String(whichResult.output || '').split('\n')) {
+    for (const line of String(whichResult.output || "").split("\n")) {
       const value = line.trim();
       if (value && !candidates.includes(value)) candidates.push(value);
     }
-    for (const line of String(commandVResult.output || '').split('\n')) {
+    for (const line of String(commandVResult.output || "").split("\n")) {
       const value = line.trim();
       if (value && !candidates.includes(value)) candidates.push(value);
     }
 
-    const binaryPath = candidates.find((item) => !isWindowsMountedPath(item)) || '';
+    const binaryPath =
+      candidates.find((item) => !isWindowsMountedPath(item)) || "";
     if (!binaryPath) {
       return {
         id: spec.id,
@@ -668,22 +792,24 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
         path: null,
         version: null,
         packageName: spec.packageName,
-        installSupported: spec.installMode !== 'none',
+        installSupported: spec.installMode !== "none",
         category: spec.category,
       };
     }
 
-    const verifyArgs = spec.verifyArgs || ['--version'];
+    const verifyArgs = spec.verifyArgs || ["--version"];
     const verifyResult = await execFileAsync(binaryPath, verifyArgs, {
       timeout: 10_000,
       maxBuffer: 4 * 1024 * 1024,
-    }).then((result) => ({
-      success: true,
-      output: `${result.stdout}${result.stderr}`.trim(),
-    })).catch(() => ({
-      success: false,
-      output: '',
-    }));
+    })
+      .then((result) => ({
+        success: true,
+        output: `${result.stdout}${result.stderr}`.trim(),
+      }))
+      .catch(() => ({
+        success: false,
+        output: "",
+      }));
 
     return {
       id: spec.id,
@@ -691,9 +817,11 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
       binary: spec.binary,
       installed: verifyResult.success,
       path: verifyResult.success ? binaryPath : null,
-      version: verifyResult.success ? truncateLog(verifyResult.output, 300) : null,
+      version: verifyResult.success
+        ? truncateLog(verifyResult.output, 300)
+        : null,
       packageName: spec.packageName,
-      installSupported: spec.installMode !== 'none',
+      installSupported: spec.installMode !== "none",
       category: spec.category,
     };
   }
@@ -701,7 +829,9 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
   async function detectPackageManager(): Promise<TerminalPackageManager | null> {
     for (const manager of TERMINAL_PACKAGE_MANAGERS) {
       const result = await runCommand(manager.checkCommand);
-      const firstPath = String(result.output || '').split('\n')[0].trim();
+      const firstPath = String(result.output || "")
+        .split("\n")[0]
+        .trim();
       if (result.success && firstPath && !isWindowsMountedPath(firstPath)) {
         return manager;
       }
@@ -711,13 +841,13 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
 
   async function installSingleTarget(
     targetId: TerminalBinaryId,
-    emit?: (event: TerminalInstallStreamEvent) => void | Promise<void>
+    emit?: (event: TerminalInstallStreamEvent) => void | Promise<void>,
   ): Promise<TerminalInstallResult> {
     const spec = TERMINAL_CLI_SPECS[targetId];
     const before = await checkBinary(spec);
     if (before.installed) {
       await emit?.({
-        type: 'result',
+        type: "result",
         cli: targetId,
         success: true,
         message: `${spec.label} already installed`,
@@ -731,25 +861,28 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
         packageManager: null,
         path: before.path,
         command: null,
-        output: '',
-        stderr: '',
-        error: '',
+        output: "",
+        stderr: "",
+        error: "",
         attempts: [],
       };
     }
 
     const attempts: TerminalInstallAttemptLog[] = [];
-    if (spec.installMode === 'script' && spec.installCommand) {
+    if (spec.installMode === "script" && spec.installCommand) {
       await emit?.({
-        type: 'attempt',
+        type: "attempt",
         cli: targetId,
-        stage: 'script',
+        stage: "script",
         command: spec.installCommand,
         message: `Running install script for ${spec.label}`,
       });
-      const installResult = await runCommand(spec.installCommand, TERMINAL_INSTALL_TIMEOUT_MS);
+      const installResult = await runCommand(
+        spec.installCommand,
+        TERMINAL_INSTALL_TIMEOUT_MS,
+      );
       attempts.push({
-        stage: 'script',
+        stage: "script",
         command: spec.installCommand,
         success: installResult.success,
         output: truncateLog(installResult.output, 8000),
@@ -759,13 +892,15 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
 
       const after = await checkBinary(spec);
       await emit?.({
-        type: 'result',
+        type: "result",
         cli: targetId,
         success: after.installed,
         output: truncateLog(installResult.output, 8000),
         stderr: truncateLog(installResult.stderr, 8000),
-        error: after.installed ? '' : 'install_failed',
-        message: after.installed ? `${spec.label} installed` : `${spec.label} install failed`,
+        error: after.installed ? "" : "install_failed",
+        message: after.installed
+          ? `${spec.label} installed`
+          : `${spec.label} install failed`,
       });
       return {
         cli: targetId,
@@ -773,12 +908,12 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
         success: after.installed,
         alreadyInstalled: false,
         packageName: spec.packageName,
-        packageManager: 'script',
+        packageManager: "script",
         path: after.path,
         command: spec.installCommand,
         output: summarizeAttempts(attempts),
-        stderr: '',
-        error: after.installed ? '' : 'install_failed',
+        stderr: "",
+        error: after.installed ? "" : "install_failed",
         attempts,
       };
     }
@@ -794,29 +929,33 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
         packageManager: null,
         path: null,
         command: null,
-        output: '',
-        stderr: '',
-        error: 'no_package_manager',
+        output: "",
+        stderr: "",
+        error: "no_package_manager",
         attempts,
       };
     }
 
-    const commands = manager.id === 'npm'
-      ? [
-          manager.installCommand(spec.packageName),
-          `${manager.installCommand(spec.packageName)} --include=optional --no-audit --no-fund`,
-        ]
-      : [manager.installCommand(spec.packageName)];
+    const commands =
+      manager.id === "npm"
+        ? [
+            manager.installCommand(spec.packageName),
+            `${manager.installCommand(spec.packageName)} --include=optional --no-audit --no-fund`,
+          ]
+        : [manager.installCommand(spec.packageName)];
 
     for (const command of commands) {
       await emit?.({
-        type: 'attempt',
+        type: "attempt",
         cli: targetId,
         stage: `install-${attempts.length + 1}`,
         command,
         message: `Running ${spec.label} install attempt ${attempts.length + 1}`,
       });
-      const installResult = await runCommand(command, TERMINAL_INSTALL_TIMEOUT_MS);
+      const installResult = await runCommand(
+        command,
+        TERMINAL_INSTALL_TIMEOUT_MS,
+      );
       attempts.push({
         stage: `install-${attempts.length + 1}`,
         command,
@@ -829,7 +968,7 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
       const after = await checkBinary(spec);
       if (after.installed) {
         await emit?.({
-          type: 'result',
+          type: "result",
           cli: targetId,
           success: true,
           output: truncateLog(installResult.output, 8000),
@@ -846,18 +985,18 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
           path: after.path,
           command,
           output: summarizeAttempts(attempts),
-          stderr: '',
-          error: '',
+          stderr: "",
+          error: "",
           attempts,
         };
       }
     }
 
     await emit?.({
-      type: 'result',
+      type: "result",
       cli: targetId,
       success: false,
-      error: 'install_failed',
+      error: "install_failed",
       message: `${spec.label} install failed`,
     });
     return {
@@ -870,28 +1009,31 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
       path: null,
       command: commands.at(-1) || null,
       output: summarizeAttempts(attempts),
-      stderr: '',
-      error: 'install_failed',
+      stderr: "",
+      error: "install_failed",
       attempts,
     };
   }
 
   async function runInstallWorkflow(
     target: TerminalInstallRequestId,
-    emit?: (event: TerminalInstallStreamEvent) => void | Promise<void>
+    emit?: (event: TerminalInstallStreamEvent) => void | Promise<void>,
   ): Promise<TerminalInstallResponse> {
     const allTargets = Object.values(TERMINAL_CLI_SPECS)
-      .filter((spec) => spec.installMode !== 'none')
+      .filter((spec) => spec.installMode !== "none")
       .map((spec) => spec.id);
     const statusBefore = await buildStatusPayload();
-    const selectedTargets = target === 'all'
-      ? allTargets
-      : target === 'all-missing'
-        ? statusBefore.binaries.filter((item) => !item.installed && item.installSupported).map((item) => item.id)
-        : [target];
+    const selectedTargets =
+      target === "all"
+        ? allTargets
+        : target === "all-missing"
+          ? statusBefore.binaries
+              .filter((item) => !item.installed && item.installSupported)
+              .map((item) => item.id)
+          : [target];
 
     await emit?.({
-      type: 'start',
+      type: "start",
       message: `Starting install workflow for ${target}`,
     });
 
@@ -901,12 +1043,12 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
         requested: target,
         installedNow: [],
         failed: [],
-        message: 'All requested CLIs are already installed',
+        message: "All requested CLIs are already installed",
         results: [],
         status: statusBefore,
       };
       await emit?.({
-        type: 'done',
+        type: "done",
         message: response.message,
         response,
       });
@@ -923,16 +1065,27 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
     const response: TerminalInstallResponse = {
       success: failed.length === 0,
       requested: target,
-      installedNow: results.filter((item) => item.success && !item.alreadyInstalled).map((item) => item.label),
-      failed: failed.map((item) => ({ cli: item.cli, error: item.error || 'install_failed' })),
-      message: failed.length === 0
-        ? `Installed: ${results.filter((item) => item.success && !item.alreadyInstalled).map((item) => item.label).join(', ') || 'no changes'}`
-        : `Install failed for: ${failed.map((item) => item.label).join(', ')}`,
+      installedNow: results
+        .filter((item) => item.success && !item.alreadyInstalled)
+        .map((item) => item.label),
+      failed: failed.map((item) => ({
+        cli: item.cli,
+        error: item.error || "install_failed",
+      })),
+      message:
+        failed.length === 0
+          ? `Installed: ${
+              results
+                .filter((item) => item.success && !item.alreadyInstalled)
+                .map((item) => item.label)
+                .join(", ") || "no changes"
+            }`
+          : `Install failed for: ${failed.map((item) => item.label).join(", ")}`,
       results,
       status: statusAfter,
     };
     await emit?.({
-      type: 'done',
+      type: "done",
       message: response.message,
       response,
     });
@@ -941,8 +1094,12 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
 
   async function buildSkillsDependencySummary() {
     const summary = await options.skills.getSummary();
-    const needsSetupSkills = summary.skills.filter((skill) => skill.status === 'needs-setup');
-    const blockedSkills = summary.skills.filter((skill) => skill.status === 'blocked');
+    const needsSetupSkills = summary.skills.filter(
+      (skill) => skill.status === "needs-setup",
+    );
+    const blockedSkills = summary.skills.filter(
+      (skill) => skill.status === "blocked",
+    );
     const missingBinaries = new Map<string, string[]>();
 
     for (const skill of needsSetupSkills) {
@@ -968,25 +1125,36 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
   }
 
   async function buildStatusPayload(): Promise<TerminalStatusPayload> {
-    const binaries = await Promise.all(Object.values(TERMINAL_CLI_SPECS).map((spec) => checkBinary(spec)));
+    const binaries = await Promise.all(
+      Object.values(TERMINAL_CLI_SPECS).map((spec) => checkBinary(spec)),
+    );
     const skills = await buildSkillsDependencySummary();
     let modelConfig: Record<string, any> = {};
     try {
-      if (require('node:fs').existsSync(options.config.openclawConfigFile)) {
-        modelConfig = JSON.parse(require('node:fs').readFileSync(options.config.openclawConfigFile, 'utf-8'));
+      if (require("node:fs").existsSync(options.config.openclawConfigFile)) {
+        modelConfig = JSON.parse(
+          require("node:fs").readFileSync(
+            options.config.openclawConfigFile,
+            "utf-8",
+          ),
+        );
       }
     } catch {
       modelConfig = {};
     }
-    const model = modelConfig?.agents?.defaults?.model?.primary || '';
-    let provider = '';
-    if (typeof model === 'string' && model.includes('/')) {
-      provider = model.split('/')[0];
+    const model = modelConfig?.agents?.defaults?.model?.primary || "";
+    let provider = "";
+    if (typeof model === "string" && model.includes("/")) {
+      provider = model.split("/")[0];
     }
     const providers = modelConfig?.models?.providers || {};
     if (!provider) {
-      for (const [providerId, providerConfig] of Object.entries(providers) as Array<[string, Record<string, any>]>) {
-        const models = Array.isArray(providerConfig.models) ? providerConfig.models.map((item: any) => item.id || item) : [];
+      for (const [providerId, providerConfig] of Object.entries(
+        providers,
+      ) as Array<[string, Record<string, any>]>) {
+        const models = Array.isArray(providerConfig.models)
+          ? providerConfig.models.map((item: any) => item.id || item)
+          : [];
         if (models.includes(model)) {
           provider = providerId;
           break;
@@ -1004,57 +1172,93 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
         provider,
       },
       installTargets: Object.values(TERMINAL_CLI_SPECS)
-        .filter((spec) => spec.installMode !== 'none')
-        .map((spec): TerminalInstallTarget => ({
-          id: spec.id,
-          label: spec.label,
-          packageName: spec.packageName,
-          installHint: spec.installMode === 'script'
-            ? (spec.installCommand || '')
-            : `${TERMINAL_PACKAGE_MANAGERS[0].installCommand(spec.packageName || '')}`,
-          category: spec.category,
-        })),
+        .filter((spec) => spec.installMode !== "none")
+        .map(
+          (spec): TerminalInstallTarget => ({
+            id: spec.id,
+            label: spec.label,
+            packageName: spec.packageName,
+            installHint:
+              spec.installMode === "script"
+                ? spec.installCommand || ""
+                : `${TERMINAL_PACKAGE_MANAGERS[0].installCommand(spec.packageName || "")}`,
+            category: spec.category,
+          }),
+        ),
       skills,
     };
   }
 
-  wss.on('connection', (socket: WebSocket, req: http.IncomingMessage) => {
+  function buildSessionSummaryPayload(): TerminalSessionSummaryResponse {
+    const summaries = Array.from(sessions.values())
+      .filter((session) => !session.closed)
+      .map((session) => {
+        const firstGatewayConnId =
+          Array.from(session.gatewaySubscribers.keys())[0] || null;
+        return buildTerminalSessionSummary({
+          sid: session.id,
+          title: `Terminal ${session.id}`,
+          status: "running",
+          source: "manual",
+          attachedClientId: firstGatewayConnId,
+          observerCount: session.gatewaySubscribers.size,
+        });
+      })
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+
+    return {
+      sessions: summaries,
+    };
+  }
+
+  wss.on("connection", (socket: WebSocket, req: http.IncomingMessage) => {
     const ws = socket as TerminalSocket;
     ws._lastAliveAt = Date.now();
 
     if (!pty) {
-      sendEvent(ws, { type: 'error', message: 'node-pty is not available; terminal is disabled' });
-      try { ws.close(); } catch {}
+      sendEvent(ws, {
+        type: "error",
+        message: "node-pty is not available; terminal is disabled",
+      });
+      try {
+        ws.close();
+      } catch {}
       return;
     }
 
     try {
-      const url = new URL(req.url || '/', 'http://127.0.0.1');
-      const session = getOrCreateSession(url.searchParams.get('sid'));
+      const url = new URL(req.url || "/", "http://127.0.0.1");
+      const session = getOrCreateSession(url.searchParams.get("sid"));
       if (!attachSocket(session, ws, url.searchParams)) {
-        try { ws.close(); } catch {}
+        try {
+          ws.close();
+        } catch {}
         return;
       }
 
-      ws.on('pong', () => {
+      ws.on("pong", () => {
         ws._lastAliveAt = Date.now();
       });
 
-      ws.on('message', (message: WebSocket.RawData) => {
+      ws.on("message", (message: WebSocket.RawData) => {
         ws._lastAliveAt = Date.now();
         const payload = message.toString();
 
-        if (payload.startsWith('{')) {
+        if (payload.startsWith("{")) {
           try {
-            const data = JSON.parse(payload) as { type?: string; cols?: number; rows?: number };
-            if (data.type === 'resize' && data.cols && data.rows) {
+            const data = JSON.parse(payload) as {
+              type?: string;
+              cols?: number;
+              rows?: number;
+            };
+            if (data.type === "resize" && data.cols && data.rows) {
               session.lastCols = Math.max(1, data.cols);
               session.lastRows = Math.max(1, data.rows);
               session.term.resize(session.lastCols, session.lastRows);
               return;
             }
-            if (data.type === 'ping') {
-              sendEvent(ws, { type: 'pong' });
+            if (data.type === "ping") {
+              sendEvent(ws, { type: "pong" });
               return;
             }
           } catch {
@@ -1065,7 +1269,7 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
         session.term.write(payload);
       });
 
-      ws.on('close', () => {
+      ws.on("close", () => {
         const bound = ws._terminalSession;
         if (!bound) return;
         bound.clients.delete(ws);
@@ -1074,8 +1278,14 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
         if (getActiveClientCount(bound) === 0) scheduleCleanup(bound);
       });
     } catch (error) {
-      sendEvent(ws, { type: 'error', message: error instanceof Error ? error.message : 'terminal_init_failed' });
-      try { ws.close(); } catch {}
+      sendEvent(ws, {
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "terminal_init_failed",
+      });
+      try {
+        ws.close();
+      } catch {}
     }
   });
 
@@ -1084,37 +1294,49 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
       return buildStatusPayload();
     },
 
-    async installCli(target: TerminalInstallRequestId): Promise<TerminalInstallResponse> {
+    async listWorkspaceSessions(): Promise<TerminalSessionSummaryResponse> {
+      return buildSessionSummaryPayload();
+    },
+
+    async listWorkspaceActions(): Promise<TerminalActionCatalogResponse> {
+      return buildTerminalActionCatalog();
+    },
+
+    async installCli(
+      target: TerminalInstallRequestId,
+    ): Promise<TerminalInstallResponse> {
       return runInstallWorkflow(target);
     },
 
     async streamInstallCli(
       target: TerminalInstallRequestId,
-      emit: (event: TerminalInstallStreamEvent) => void | Promise<void>
+      emit: (event: TerminalInstallStreamEvent) => void | Promise<void>,
     ): Promise<TerminalInstallResponse> {
       return runInstallWorkflow(target, emit);
     },
 
-    async getLaunchCommand(payload: TerminalLaunchPayload): Promise<TerminalLaunchResponse> {
+    async getLaunchCommand(
+      payload: TerminalLaunchPayload,
+    ): Promise<TerminalLaunchResponse> {
       const status = await buildStatusPayload();
-      const selectedModel = payload.model || status.config.model || '';
-      let command = '';
-      let label = '';
+      const selectedModel = payload.model || status.config.model || "";
+      let command = "";
+      let label = "";
 
-      if (payload.cli === 'claude') {
-        command = 'claude --dangerously-skip-permissions';
+      if (payload.cli === "claude") {
+        command = "claude --dangerously-skip-permissions";
         if (selectedModel) command += ` --model ${selectedModel}`;
-        label = 'Claude CLI';
-      } else if (payload.cli === 'codex') {
-        command = 'codex --full-auto';
+        label = "Claude CLI";
+      } else if (payload.cli === "codex") {
+        command = "codex --full-auto";
         if (selectedModel) command += ` --model ${selectedModel}`;
-        label = 'Codex CLI';
-      } else if (payload.cli === 'opencode') {
-        command = 'opencode';
-        label = 'OpenCode CLI';
+        label = "Codex CLI";
+      } else if (payload.cli === "opencode") {
+        command = "opencode";
+        label = "OpenCode CLI";
       } else {
-        command = 'bash';
-        label = 'Bash';
+        command = "bash";
+        label = "Bash";
       }
 
       return {
@@ -1124,10 +1346,12 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
       };
     },
 
-    async endSession(payload: TerminalEndPayload): Promise<TerminalEndResponse> {
-      const sid = String(payload.sid || '').trim();
+    async endSession(
+      payload: TerminalEndPayload,
+    ): Promise<TerminalEndResponse> {
+      const sid = String(payload.sid || "").trim();
       if (!sid) {
-        throw new Error('sid is required');
+        throw new Error("sid is required");
       }
       const existed = sessions.has(sid);
       destroySession(sid);
@@ -1140,10 +1364,12 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
 
     attachGatewayClient(
       payload: TerminalGatewayAttachPayload,
-      runtime: TerminalGatewayRuntime
+      runtime: TerminalGatewayRuntime,
     ): TerminalGatewayAttachResponse {
       if (!pty) {
-        throw new Error('node-pty is not available; terminal sessions are disabled');
+        throw new Error(
+          "node-pty is not available; terminal sessions are disabled",
+        );
       }
       const session = getOrCreateSession(payload.sid || null);
       registerGatewaySubscriber(session, runtime);
@@ -1156,17 +1382,17 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
 
     sendGatewayInput(
       payload: TerminalGatewayInputPayload,
-      runtime: Pick<TerminalGatewayRuntime, 'connId'>
+      runtime: Pick<TerminalGatewayRuntime, "connId">,
     ): TerminalGatewayAckResponse {
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
-      session.term.write(String(payload.data || ''));
+      session.term.write(String(payload.data || ""));
       return createGatewayAck(session);
     },
 
     resizeGatewayClient(
       payload: TerminalGatewayResizePayload,
-      runtime: Pick<TerminalGatewayRuntime, 'connId'>
+      runtime: Pick<TerminalGatewayRuntime, "connId">,
     ): TerminalGatewayAckResponse {
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
@@ -1178,7 +1404,7 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
 
     heartbeatGatewayClient(
       payload: TerminalGatewayHeartbeatPayload,
-      runtime: Pick<TerminalGatewayRuntime, 'connId'>
+      runtime: Pick<TerminalGatewayRuntime, "connId">,
     ): TerminalGatewayAckResponse {
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
@@ -1187,21 +1413,28 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
 
     detachGatewayClient(
       payload: TerminalGatewayDetachPayload,
-      runtime: Pick<TerminalGatewayRuntime, 'connId'>
+      runtime: Pick<TerminalGatewayRuntime, "connId">,
     ): TerminalGatewayAckResponse {
-      const targetSessionId = String(payload.sid || '').trim();
+      const targetSessionId = String(payload.sid || "").trim();
       detachGatewayConnId(runtime.connId, targetSessionId || null);
       return {
         ok: true,
-        sid: targetSessionId || '',
+        sid: targetSessionId || "",
       };
     },
 
-    handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean {
-      const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
-      if (url.pathname !== '/ws/terminal') return false;
+    handleUpgrade(
+      req: http.IncomingMessage,
+      socket: Duplex,
+      head: Buffer,
+    ): boolean {
+      const url = new URL(
+        req.url || "/",
+        `http://${req.headers.host || "127.0.0.1"}`,
+      );
+      if (url.pathname !== "/ws/terminal") return false;
       wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
-        wss.emit('connection', ws, req);
+        wss.emit("connection", ws, req);
       });
       return true;
     },
@@ -1212,7 +1445,9 @@ export function createTerminalService(options: CreateTerminalServiceOptions): Te
       for (const sessionId of Array.from(sessions.keys())) {
         destroySession(sessionId);
       }
-      try { wss.close(); } catch {}
+      try {
+        wss.close();
+      } catch {}
     },
   };
 }
