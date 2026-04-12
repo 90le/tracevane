@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifestFile = path.join(
@@ -23,60 +24,26 @@ function globPatternToRegExp(pattern) {
   return new RegExp(`^${escaped}$`);
 }
 
-function parseCoverageSeed(source) {
-  const match = source.match(
-    /export const MANAGEMENT_DOMAIN_COVERAGE_SEED:[\s\S]*?=\s*MANAGEMENT_DOMAIN_MANIFEST\.map\(\(domain\) => \(\{([\s\S]*?)\}\)\);/,
-  );
+async function loadManagementCoverageSeed() {
+  const manifestModuleSource = fs.readFileSync(manifestFile, "utf8");
+  const transpiledManifest = ts.transpileModule(manifestModuleSource, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: manifestFile,
+  });
+  const manifestModuleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(transpiledManifest.outputText)}`;
+  const manifestModule = await import(manifestModuleUrl);
+  const coverageSeed = manifestModule.MANAGEMENT_DOMAIN_COVERAGE_SEED;
 
-  if (!match) {
+  if (!Array.isArray(coverageSeed)) {
     throw new Error(
-      "Unable to locate MANAGEMENT_DOMAIN_COVERAGE_SEED in management manifest",
+      "MANAGEMENT_DOMAIN_COVERAGE_SEED export is missing or invalid in management manifest",
     );
   }
 
-  if (!source.includes("routePath: domain.routePath")) {
-    throw new Error(
-      "Coverage seed no longer derives routePath from MANAGEMENT_DOMAIN_MANIFEST",
-    );
-  }
-
-  if (
-    !source.includes("webViewFile: `apps/web-vue/src/views/${domain.webView}`")
-  ) {
-    throw new Error(
-      "Coverage seed no longer derives webViewFile from MANAGEMENT_DOMAIN_MANIFEST",
-    );
-  }
-
-  if (
-    !source.includes("apiModuleDir: `apps/api/modules/${domain.apiModule}`")
-  ) {
-    throw new Error(
-      "Coverage seed no longer derives apiModuleDir from MANAGEMENT_DOMAIN_MANIFEST",
-    );
-  }
-
-  if (!source.includes("testPattern: domain.testPattern")) {
-    throw new Error(
-      "Coverage seed no longer derives testPattern from MANAGEMENT_DOMAIN_MANIFEST",
-    );
-  }
-
-  const objectMatches = [
-    ...source.matchAll(
-      /\{\s*id:\s*['"]([^'"]+)['"],[\s\S]*?routePath:\s*['"]([^'"]+)['"],[\s\S]*?webView:\s*['"]([^'"]+)['"],[\s\S]*?apiModule:\s*['"]([^'"]+)['"],[\s\S]*?testPattern:\s*['"]([^'"]+)['"][\s\S]*?\}/g,
-    ),
-  ];
-
-  return objectMatches.map(
-    ([, domainId, routePath, webView, apiModule, testPattern]) => ({
-      domainId,
-      routePath,
-      webViewFile: `apps/web-vue/src/views/${webView}`,
-      apiModuleDir: `apps/api/modules/${apiModule}`,
-      testPattern,
-    }),
-  );
+  return coverageSeed;
 }
 
 function collectMatchedFiles(testPattern) {
@@ -88,8 +55,7 @@ function collectMatchedFiles(testPattern) {
     .map((file) => `tests/system/${file}`);
 }
 
-const manifestSource = fs.readFileSync(manifestFile, "utf8");
-const coverageSeed = parseCoverageSeed(manifestSource);
+const coverageSeed = await loadManagementCoverageSeed();
 const output = {
   domains: coverageSeed.map((entry) => entry.domainId),
   webViews: coverageSeed.map((entry) => ({

@@ -16,6 +16,12 @@ const baselineFile = path.join(
   "inventories",
   "studio-management-coverage.json",
 );
+const coverageScriptFile = path.join(
+  root,
+  "scripts",
+  "studio-management-coverage.mjs",
+);
+const coverageScriptSource = fs.readFileSync(coverageScriptFile, "utf8");
 
 function runCoverageScript() {
   const stdout = execFileSync(
@@ -35,6 +41,19 @@ test("studio management coverage script matches the committed baseline inventory
   const baseline = JSON.parse(fs.readFileSync(baselineFile, "utf8"));
 
   assert.deepEqual(parsed, baseline);
+});
+
+test("studio management coverage script loads manifest exports instead of scanning ts source text", () => {
+  assert.match(coverageScriptSource, /MANAGEMENT_DOMAIN_COVERAGE_SEED/);
+  assert.match(coverageScriptSource, /transpileModule/);
+  assert.doesNotMatch(coverageScriptSource, /manifestSource\.includes\(/);
+  assert.doesNotMatch(coverageScriptSource, /source\.includes\(/);
+  assert.doesNotMatch(coverageScriptSource, /manifestSource\.matchAll\(/);
+  assert.doesNotMatch(coverageScriptSource, /source\.matchAll\(/);
+  assert.doesNotMatch(
+    coverageScriptSource,
+    /match\(\s*\/export const MANAGEMENT_DOMAIN_COVERAGE_SEED/,
+  );
 });
 
 test("studio management coverage baseline keeps skills visible even without matched system tests", () => {
