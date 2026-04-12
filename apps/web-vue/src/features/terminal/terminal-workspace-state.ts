@@ -15,6 +15,7 @@ export interface TerminalWorkspaceState {
   activeSessionId: ReturnType<typeof ref<string | null>>;
   recoverableSessions: ReturnType<typeof computed<TerminalSessionDescriptor[]>>;
   registerSession(session: TerminalSessionDescriptor): void;
+  hydrateSessions(sessions: TerminalSessionDescriptor[]): void;
   setActiveSession(sessionId: string | null): void;
   closeTab(sessionId: string): void;
 }
@@ -75,6 +76,32 @@ export function createTerminalWorkspaceState(
     }
   }
 
+  function hydrateSessions(summaries: TerminalSessionDescriptor[]): void {
+    for (const summary of summaries) {
+      const sessionId = normalizeSessionId(summary.sessionId);
+      if (!sessionId) continue;
+      registry.upsertSession({
+        ...summary,
+        sessionId,
+      });
+    }
+
+    const orderedIds = summaries
+      .map((summary) => normalizeSessionId(summary.sessionId))
+      .filter((sessionId) => Boolean(registry.getSession(sessionId)));
+
+    tabOrder.value = orderedIds;
+
+    const currentActive = normalizeSessionId(activeSessionId.value || "");
+    if (currentActive && registry.getSession(currentActive)) {
+      ensureTab(currentActive);
+      activeSessionId.value = currentActive;
+      return;
+    }
+
+    activeSessionId.value = tabOrder.value[0] || null;
+  }
+
   function setActiveSession(sessionId: string | null): void {
     const normalized = normalizeSessionId(sessionId || "");
     if (!normalized) {
@@ -113,6 +140,7 @@ export function createTerminalWorkspaceState(
     activeSessionId,
     recoverableSessions,
     registerSession,
+    hydrateSessions,
     setActiveSession,
     closeTab,
   };

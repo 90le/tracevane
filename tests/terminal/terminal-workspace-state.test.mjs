@@ -77,6 +77,41 @@ test("terminal workspace recomputes recoverable sessions after register", () => 
   );
 });
 
+test("terminal workspace can hydrate tabs from backend session summaries", () => {
+  const workspace = workspaceStateModule.createTerminalWorkspaceState();
+
+  workspace.hydrateSessions([
+    {
+      sessionId: "term-backend-2",
+      title: "Backend B",
+      status: "running",
+      source: "system_action",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:05:00.000Z",
+    },
+    {
+      sessionId: "term-backend-1",
+      title: "Backend A",
+      status: "detached",
+      source: "manual",
+      canResume: true,
+      controlState: "observer",
+      updatedAt: "2026-04-13T10:04:00.000Z",
+    },
+  ]);
+
+  assert.deepEqual(workspace.tabOrder.value, [
+    "term-backend-2",
+    "term-backend-1",
+  ]);
+  assert.equal(workspace.activeSessionId.value, "term-backend-2");
+  assert.deepEqual(
+    workspace.recoverableSessions.value.map((item) => item.sessionId),
+    ["term-backend-2", "term-backend-1"],
+  );
+});
+
 test("terminal route sync exports bind function", () => {
   assert.equal(typeof routeSyncModule.bindTerminalRouteSync, "function");
 });
