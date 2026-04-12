@@ -2,6 +2,22 @@ import { requestJson } from '../../shared/api';
 import type { ChannelsSummaryPayload } from '../../../../../types/channels';
 import type { ConfigChannelSecretPayload, ConfigProviderSecretPayload, ConfigSaveResponse, ConfigSummaryPayload, ConfigUpdatePayload } from '../../../../../types/config';
 
+export interface ConfigWorkspaceOverviewSummary {
+  defaultModel: string;
+  imageModel: string;
+  providerCount: number;
+  checkedAt: string;
+}
+
+export function buildConfigWorkspaceOverviewSummary(summary: ConfigSummaryPayload): ConfigWorkspaceOverviewSummary {
+  return {
+    defaultModel: summary.defaults.model || '',
+    imageModel: summary.defaults.imageModel || '',
+    providerCount: summary.providers.length,
+    checkedAt: summary.checkedAt || '',
+  };
+}
+
 export function fetchConfigSummary(): Promise<ConfigSummaryPayload> {
   return requestJson<ConfigSummaryPayload>('/api/config');
 }

@@ -1747,14 +1747,14 @@ import BrowserConfigTab from './BrowserConfigTab.vue';
 import ConfigDomainAdvancedSheet from './ConfigDomainAdvancedSheet.vue';
 import { createUuid } from '../../shared/uuid';
 import { pageMastheadReveal, pageSurfaceReveal } from '../../shared/motion';
+import { buildConfigSidebarSummary, type ConfigOverviewRecipe } from './config-overview-recipe';
+import type { ConfigTabId, ConfigWorkspaceSection } from './config-workspace-sections';
 import type {
   ConfigProviderInput,
   ConfigProviderSummary,
   ConfigSummaryPayload,
   ConfigUpdatePayload,
 } from '../../../../../types/config';
-
-type ConfigTabId = 'model' | 'security' | 'session' | 'session-policy' | 'providers' | 'gateway' | 'acp' | 'commands-hooks' | 'appearance' | 'logging' | 'browser';
 
 interface ChoiceOption {
   value: string;
@@ -1953,6 +1953,14 @@ function normalizeConfigTabId(value: unknown): ConfigTabId {
   return (allowed as string[]).includes(tab) ? tab as ConfigTabId : 'model';
 }
 
+const props = withDefaults(defineProps<{
+  workspaceSections?: ConfigWorkspaceSection[];
+  overviewRecipe?: ConfigOverviewRecipe;
+}>(), {
+  workspaceSections: () => [],
+  overviewRecipe: undefined,
+});
+
 const route = useRoute();
 const activeTab = ref<ConfigTabId>(normalizeConfigTabId(route.query.tab));
 const advancedSheetOpen = ref(false);
@@ -1961,7 +1969,7 @@ const loggingTabRef = ref<InstanceType<typeof LoggingConfigTab> | null>(null);
 const browserTabRef = ref<InstanceType<typeof BrowserConfigTab> | null>(null);
 const acpTabRef = ref<InstanceType<typeof AcpConfigTab> | null>(null);
 const { locale, setLocale, text } = useLocalePreference();
-const tabs = computed(() => [
+const tabs = computed(() => props.workspaceSections?.length ? props.workspaceSections : [
   { id: 'model' as const, icon: '🧠', label: text('模型与 Agent', 'Models & Agents'), copy: text('主模型、回退链和默认执行参数', 'Primary models, fallback chains, and execution defaults') },
   { id: 'security' as const, icon: '🛡️', label: text('沙盒与安全', 'Sandbox & Security'), copy: text('Sandbox、工具权限和执行策略', 'Sandbox, tool permissions, and exec strategy') },
   { id: 'session' as const, icon: '💬', label: text('会话与行为', 'Sessions & Messaging'), copy: text('私聊隔离、确认反应和配置摘要', 'DM isolation, ack reactions, and summaries') },
@@ -2451,35 +2459,51 @@ function formatConfigCheckedAt(value: string): string {
   return formatter.format(date);
 }
 
-const configOverviewSignals = computed(() => [
-  {
-    label: text('默认模型', 'Default model'),
-    value: form.defaults.model || '--',
-    note: text('主文本路由的当前目标', 'Current primary target for text routes'),
-  },
-  {
-    label: text('图片模型', 'Image model'),
-    value: form.defaults.imageModel || '--',
-    note: text('image / pdf 默认走这条链路', 'image / pdf flows default to this route'),
-  },
-  {
-    label: text('供应商', 'Providers'),
-    value: String(form.providers.length),
-    note: text('当前已录入的模型供应商数量', 'Number of configured model providers'),
-  },
-  {
-    label: text('同步时间', 'Synced'),
-    value: loadedSummary.value ? formatConfigCheckedAt(loadedSummary.value.checkedAt) : '--',
-    note: text('最后一次读取配置摘要的时间', 'Last refresh time for the config summary'),
-  },
-]);
+const configOverviewSignals = computed(() => {
+  const recipeSignals = props.overviewRecipe?.signals;
+  if (!recipeSignals?.length) {
+    return [
+      {
+        label: text('默认模型', 'Default model'),
+        value: form.defaults.model || '--',
+        note: text('主文本路由的当前目标', 'Current primary target for text routes'),
+      },
+      {
+        label: text('图片模型', 'Image model'),
+        value: form.defaults.imageModel || '--',
+        note: text('image / pdf 默认走这条链路', 'image / pdf flows default to this route'),
+      },
+      {
+        label: text('供应商', 'Providers'),
+        value: String(form.providers.length),
+        note: text('当前已录入的模型供应商数量', 'Number of configured model providers'),
+      },
+      {
+        label: text('同步时间', 'Synced'),
+        value: loadedSummary.value ? formatConfigCheckedAt(loadedSummary.value.checkedAt) : '--',
+        note: text('最后一次读取配置摘要的时间', 'Last refresh time for the config summary'),
+      },
+    ];
+  }
 
-const configSidebarSummary = computed(() => ({
-  title: text('先定配置域，再改参数', 'Set the domain first, then change the parameters'),
-  copy: text(
-    `当前域：${activeTabMeta.value.label}。${activeTabMeta.value.copy}。先看右侧事实卡，再进入下面的分段工作台。`,
-    `Current domain: ${activeTabMeta.value.label}. ${activeTabMeta.value.copy}. Read the fact rail first, then move through the segmented workbench below.`,
-  ),
+  return recipeSignals.map((signal) => {
+    let value = '--';
+    if (signal.key === 'defaultModel') value = form.defaults.model || '--';
+    else if (signal.key === 'imageModel') value = form.defaults.imageModel || '--';
+    else if (signal.key === 'providers') value = String(form.providers.length);
+    else if (signal.key === 'syncedAt') value = loadedSummary.value ? formatConfigCheckedAt(loadedSummary.value.checkedAt) : '--';
+    return {
+      label: signal.label,
+      note: signal.note,
+      value,
+    };
+  });
+});
+
+const configSidebarSummary = computed(() => buildConfigSidebarSummary(text, {
+  title: props.overviewRecipe?.sidebarTitle || text('先定配置域，再改参数', 'Set the domain first, then change the parameters'),
+  activeLabel: activeTabMeta.value.label,
+  activeCopy: activeTabMeta.value.copy,
 }));
 
 const activeTabFacts = computed(() => {

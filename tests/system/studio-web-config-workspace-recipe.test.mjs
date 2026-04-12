@@ -1,0 +1,58 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(testDir, '../..');
+
+const configView = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/views/ConfigView.vue'),
+  'utf8',
+);
+
+const configEditorPage = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/config/ConfigEditorPage.vue'),
+  'utf8',
+);
+
+const workspaceSections = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/config/config-workspace-sections.ts'),
+  'utf8',
+);
+
+const overviewRecipe = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/config/config-overview-recipe.ts'),
+  'utf8',
+);
+
+test('config view routes through a shell-era workspace recipe seam', () => {
+  assert.match(configView, /import\s+\{\s*buildConfigWorkspaceSections\s*\}\s+from\s+'\.\.\/features\/config\/config-workspace-sections'/);
+  assert.match(configView, /import\s+\{\s*buildConfigOverviewRecipe\s*\}\s+from\s+'\.\.\/features\/config\/config-overview-recipe'/);
+  assert.match(configView, /<ConfigEditorPage\s+:workspace-sections="workspaceSections"\s+:overview-recipe="overviewRecipe"\s*\/>/);
+  assert.match(configView, /const workspaceSections\s*=\s*buildConfigWorkspaceSections\(/);
+  assert.match(configView, /const overviewRecipe\s*=\s*buildConfigOverviewRecipe\(/);
+});
+
+test('workspace section builder defines shell-era tab ordering and copy', () => {
+  assert.match(workspaceSections, /export interface ConfigWorkspaceSection/);
+  assert.match(workspaceSections, /export function buildConfigWorkspaceSections\(/);
+  assert.match(workspaceSections, /id:\s*'model'/);
+  assert.match(workspaceSections, /id:\s*'security'/);
+  assert.match(workspaceSections, /id:\s*'session'/);
+  assert.match(workspaceSections, /id:\s*'providers'/);
+});
+
+test('overview recipe builder defines workspace overview signals and sidebar summary', () => {
+  assert.match(overviewRecipe, /export interface ConfigOverviewSignal/);
+  assert.match(overviewRecipe, /export function buildConfigOverviewRecipe\(/);
+  assert.match(overviewRecipe, /export function buildConfigSidebarSummary\(/);
+});
+
+test('config editor page consumes workspace and recipe seams', () => {
+  assert.match(configEditorPage, /workspaceSections\?:\s*ConfigWorkspaceSection\[]/);
+  assert.match(configEditorPage, /overviewRecipe\?:\s*ConfigOverviewRecipe/);
+  assert.match(configEditorPage, /const tabs\s*=\s*computed\(\(\)\s*=>\s*props\.workspaceSections\?\.length\s*\?\s*props\.workspaceSections/);
+  assert.match(configEditorPage, /buildConfigSidebarSummary\(/);
+});

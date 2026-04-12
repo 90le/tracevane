@@ -4,7 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { createConfigService } from '../../dist/apps/api/modules/config/service.js';
+import {
+  buildConfigCoverageSummary,
+  buildConfigOverviewSummary,
+  createConfigService,
+} from '../../dist/apps/api/modules/config/service.js';
 import {
   getStudioChatGlobalHostManagementExecEnabled,
   resetStudioChatManagementPolicyState,
@@ -60,6 +64,39 @@ function buildPayload(summary) {
     })),
   };
 }
+
+test('config summary builders expose shell-era overview and coverage counters', () => {
+  const overview = buildConfigOverviewSummary({
+    defaults: {
+      model: 'openai/gpt-5.4',
+      imageModel: 'openai/gpt-5.4-mini',
+    },
+    providers: [{ id: 'openai' }, { id: 'anthropic' }],
+    checkedAt: '2026-04-11T12:00:00.000Z',
+  });
+  assert.deepEqual(overview, {
+    defaultModel: 'openai/gpt-5.4',
+    imageModel: 'openai/gpt-5.4-mini',
+    providerCount: 2,
+    checkedAt: '2026-04-11T12:00:00.000Z',
+  });
+
+  const coverage = buildConfigCoverageSummary({
+    tabs: [
+      { id: 'model' },
+      { id: 'security' },
+      { id: 'session' },
+      { id: 'providers' },
+    ],
+    activeTab: 'providers',
+    advancedSheetEnabled: true,
+  });
+  assert.deepEqual(coverage, {
+    sectionCount: 4,
+    activeTab: 'providers',
+    advancedSheetEnabled: true,
+  });
+});
 
 test('config summary reads canonical plugin load paths and legacy browser SSRF alias', () => {
   const root = makeTempRoot();

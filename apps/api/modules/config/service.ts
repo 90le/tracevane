@@ -24,6 +24,44 @@ const DEFAULT_PROVIDER_BASE_URL_BY_API: Record<string, string> = {
   'azure-openai': 'https://example.openai.azure.com',
 };
 
+export interface ConfigOverviewSummary {
+  defaultModel: string;
+  imageModel: string;
+  providerCount: number;
+  checkedAt: string;
+}
+
+export function buildConfigOverviewSummary(summary: {
+  defaults?: { model?: string; imageModel?: string };
+  providers?: Array<{ id?: string }>;
+  checkedAt?: string;
+}): ConfigOverviewSummary {
+  return {
+    defaultModel: normalizeString(summary.defaults?.model),
+    imageModel: normalizeString(summary.defaults?.imageModel),
+    providerCount: Array.isArray(summary.providers) ? summary.providers.length : 0,
+    checkedAt: normalizeString(summary.checkedAt),
+  };
+}
+
+export interface ConfigCoverageSummary {
+  sectionCount: number;
+  activeTab: string;
+  advancedSheetEnabled: boolean;
+}
+
+export function buildConfigCoverageSummary(params: {
+  tabs?: Array<{ id?: string }>;
+  activeTab?: string;
+  advancedSheetEnabled?: boolean;
+}): ConfigCoverageSummary {
+  return {
+    sectionCount: Array.isArray(params.tabs) ? params.tabs.length : 0,
+    activeTab: normalizeString(params.activeTab),
+    advancedSheetEnabled: params.advancedSheetEnabled === true,
+  };
+}
+
 function normalizeString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value.trim() : fallback;
 }
