@@ -1,40 +1,65 @@
 <template>
   <section class="terminal-workspace-shell" data-testid="terminal-workspace-shell">
-    <TerminalConsolePage :key="sessionRouteKey" />
+    <TerminalTabRail
+      :tabs="workspace.tabs.value"
+      :active-session-id="workspace.activeSessionId.value"
+      @select="workspace.setActiveSession"
+      @close="workspace.closeTab"
+      @create="createSession"
+    />
+
+    <main class="terminal-workspace-main">
+      <TerminalSessionPane :active-session-id="workspace.activeSessionId.value" />
+      <TerminalActionPanel :action-layers="actionLayers" @trigger="handleActionTrigger" />
+      <TerminalRecentSessionRail
+        :sessions="workspace.recoverableSessions.value"
+        :active-session-id="workspace.activeSessionId.value"
+        @select="workspace.setActiveSession"
+      />
+    </main>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
-import { useRoute } from 'vue-router';
-import TerminalConsolePage from './TerminalConsolePage.vue';
+import { useRoute, useRouter } from 'vue-router';
+import TerminalActionPanel from './TerminalActionPanel.vue';
+import TerminalRecentSessionRail from './TerminalRecentSessionRail.vue';
+import TerminalSessionPane from './TerminalSessionPane.vue';
+import TerminalTabRail from './TerminalTabRail.vue';
+import { buildTerminalActionLayers } from './terminal-action-catalog';
+import { bindTerminalRouteSync } from './terminal-route-sync';
+import { createTerminalWorkspaceState } from './terminal-workspace-state';
 import './terminal-workspace.css';
 
 const route = useRoute();
+const router = useRouter();
 
-const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
+const workspace = createTerminalWorkspaceState();
+const actionLayers = buildTerminalActionLayers();
 
-const sessionRouteKey = computed(() => {
-  const sessionId = typeof route.params.sessionId === 'string'
-    ? route.params.sessionId.trim()
-    : '';
-  return sessionId ? `terminal-session:${sessionId}` : 'terminal-session:default';
+bindTerminalRouteSync({
+  activeSessionId: workspace.activeSessionId,
+  route,
+  router,
 });
 
-watch(
-  () => route.params.sessionId,
-  (sessionId) => {
-    if (typeof window === 'undefined') return;
-    if (typeof sessionId !== 'string') return;
-    const normalizedSessionId = sessionId.trim();
-    if (!normalizedSessionId) return;
+function createSession(): void {
+  const sessionId = globalThis.crypto?.randomUUID?.() || `term-${Date.now().toString(36)}`;
+  workspace.registerSession({
+    sessionId,
+    title: '新终端会话',
+    status: 'running',
+    source: 'manual',
+    canResume: true,
+    controlState: 'controller',
+    updatedAt: new Date().toISOString(),
+  });
+  workspace.setActiveSession(sessionId);
+}
 
-    try {
-      sessionStorage.setItem(TERMINAL_SESSION_STORAGE_KEY, normalizedSessionId);
-    } catch {
-      // ignore storage errors
-    }
-  },
-  { immediate: true },
-);
+function handleActionTrigger(_actionKey: string): void {
+  if (!workspace.activeSessionId.value) {
+    createSession();
+  }
+}
 </script>

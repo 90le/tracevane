@@ -1,4 +1,103 @@
 .terminal-workspace-shell {
   display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 12px;
   min-height: 100%;
+}
+
+.terminal-workspace-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px 260px;
+  gap: 12px;
+  min-height: 0;
+}
+
+.terminal-tab-rail {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.terminal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-color, #d9d9df);
+  border-radius: 10px;
+  background: var(--panel-bg, #ffffff);
+}
+
+.terminal-tab.active {
+  border-color: var(--accent-color, #7c5cff);
+}
+
+.terminal-tab-select,
+.terminal-tab-close,
+.terminal-action-item,
+.terminal-recent-item {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.terminal-tab-select {
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.terminal-tab-close {
+  padding: 6px 8px;
+}
+
+.terminal-tab-title,
+.terminal-recent-title {
+  display: block;
+  font-weight: 600;
+}
+
+.terminal-tab-status,
+.terminal-recent-meta {
+  display: block;
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.terminal-tab-add {
+  padding: 8px 12px;
+}
+
+.terminal-session-pane {
+  min-width: 0;
+}
+
+.terminal-action-panel,
+.terminal-recent-rail {
+  border: 1px solid var(--border-color, #d9d9df);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--panel-bg, #ffffff);
+}
+
+.terminal-action-layer + .terminal-action-layer {
+  margin-top: 12px;
+}
+
+.terminal-action-panel ul,
+.terminal-recent-rail ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.terminal-action-item,
+.terminal-recent-item {
+  width: 100%;
+  padding: 8px;
+  text-align: left;
+  border-radius: 8px;
+}
+
+.terminal-recent-item.active {
+  background: rgba(124, 92, 255, 0.12);
 }

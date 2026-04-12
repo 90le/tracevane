@@ -34,20 +34,29 @@ test("terminal view mounts workspace page instead of console placeholder", () =>
   assert.doesNotMatch(terminalView, /<TerminalConsolePage\s*\/>/);
 });
 
-test("terminal workspace page wraps console page and imports workspace css", () => {
+test("terminal workspace page composes workspace shell sections and binds state modules", () => {
   assert.equal(fs.existsSync(workspacePagePath), true);
   assert.equal(fs.existsSync(workspaceCssPath), true);
 
   assert.match(workspacePage, /<section class="terminal-workspace-shell"/);
+  assert.match(workspacePage, /<TerminalTabRail/);
+  assert.match(workspacePage, /<TerminalSessionPane/);
+  assert.match(workspacePage, /<TerminalActionPanel/);
+  assert.match(workspacePage, /<TerminalRecentSessionRail/);
+
   assert.match(
     workspacePage,
-    /<TerminalConsolePage\s*:key="sessionRouteKey"\s*\/>/,
+    /import \{ createTerminalWorkspaceState \} from '\.\/terminal-workspace-state'/,
   );
   assert.match(
     workspacePage,
-    /import TerminalConsolePage from '\.\/TerminalConsolePage\.vue'/,
+    /import \{ buildTerminalActionLayers \} from '\.\/terminal-action-catalog'/,
   );
-  assert.match(workspacePage, /import '\.\/terminal-workspace\.css'/);
+  assert.match(
+    workspacePage,
+    /import \{ bindTerminalRouteSync \} from '\.\/terminal-route-sync'/,
+  );
 
   assert.match(workspaceCss, /\.terminal-workspace-shell\s*\{/);
+  assert.match(workspaceCss, /\.terminal-workspace-main\s*\{/);
 });
