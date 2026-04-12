@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "shell",
+    "tabs",
+    "actions",
+    "recent"
+  ],
+  "frontendFiles": [
+    "apps/web-vue/src/features/terminal/TerminalWorkspaceActions.vue",
+    "apps/web-vue/src/features/terminal/TerminalWorkspacePage.vue",
+    "apps/web-vue/src/features/terminal/TerminalWorkspaceRecentList.vue",
+    "apps/web-vue/src/features/terminal/TerminalWorkspaceTabs.vue"
+  ],
+  "backendFiles": [
+    "apps/api/modules/terminal/routes.ts",
+    "apps/api/modules/terminal/service.ts"
+  ],
+  "tests": [
+    "tests/terminal/terminal-workspace-actions.test.mjs",
+    "tests/terminal/terminal-workspace-recent.test.mjs",
+    "tests/terminal/terminal-workspace-state.test.mjs",
+    "tests/terminal/terminal-workspace-tabs.test.mjs"
+  ]
+}
