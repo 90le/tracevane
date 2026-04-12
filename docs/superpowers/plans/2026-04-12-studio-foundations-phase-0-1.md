@@ -871,9 +871,6 @@ git commit -m "总览：接入壳层配方"
 - Verify: `scripts/studio-domain-inventory.mjs`
 - Verify: `apps/web-vue/src/views/DashboardView.vue`
 
-- [ ] **Step 1: Write the verification checklist into the plan footer**
-
-```md
 ## Foundation exit criteria
 
 - Shell navigation comes from one route manifest source.
@@ -891,35 +888,3 @@ git commit -m "总览：接入壳层配方"
 2. Runtime domain redesign plan (`Chat / Sessions`)
 3. System domain redesign plan (`System / Terminal`)
 4. Room / Workflow detailed co-design plan with user sync first
-```
-
-- [ ] **Step 2: Run the full foundation verification gate**
-
-Run: `node --test tests/system/studio-web-shell-route-manifest.test.mjs tests/system/studio-web-shell-chrome-layout.test.mjs tests/system/studio-domain-inventory.test.mjs tests/system/studio-web-dashboard-shell-overview.test.mjs tests/system/studio-web-sidebar-primitives.test.mjs tests/system/studio-web-dashboard-recipe.test.mjs tests/system/studio-web-page-chrome-density.test.mjs && npm run typecheck:web && npm run studio:inventory`
-Expected: PASS. All targeted shell / dashboard / inventory regressions pass, TypeScript stays green, and the inventory file is freshly regenerated.
-
-- [ ] **Step 3: Fix only the seam that failed and keep the diff local**
-
-Apply one of these exact fix paths before re-running the gate:
-
-- Navigation / route failure → edit only `apps/web-vue/src/features/shell/route-manifest.ts`, `apps/web-vue/src/features/shell/use-shell-navigation.ts`, or `apps/web-vue/src/router.ts`
-- Shell layout failure → edit only `apps/web-vue/src/features/shell/use-shell-chrome.ts`, `apps/web-vue/src/components/StudioContextPanel.vue`, `apps/web-vue/src/App.vue`, or `apps/web-vue/src/style.css`
-- Inventory failure → edit only `scripts/studio-domain-inventory.mjs`, `package.json`, or `docs/superpowers/inventories/studio-domain-inventory.json`
-- Dashboard overview failure → edit only `apps/web-vue/src/features/dashboard/overview-recipe.ts`, `apps/web-vue/src/views/DashboardView.vue`, or `apps/web-vue/src/style.css`
-
-Then stage only the corrected files for that seam before the next gate run.
-
-- [ ] **Step 4: Re-run the full foundation verification gate**
-
-Run: `node --test tests/system/studio-web-shell-route-manifest.test.mjs tests/system/studio-web-shell-chrome-layout.test.mjs tests/system/studio-domain-inventory.test.mjs tests/system/studio-web-dashboard-shell-overview.test.mjs tests/system/studio-web-sidebar-primitives.test.mjs tests/system/studio-web-dashboard-recipe.test.mjs tests/system/studio-web-page-chrome-density.test.mjs && npm run typecheck:web && npm run studio:inventory`
-Expected: PASS end-to-end.
-
-- [ ] **Step 5: Commit the gate result and plan split note**
-
-```bash
-git add \
-  docs/superpowers/plans/2026-04-12-studio-foundations-phase-0-1.md \
-  docs/superpowers/inventories/studio-domain-inventory.json
-
-git commit -m "计划：完成基础阶段收口"
-```
