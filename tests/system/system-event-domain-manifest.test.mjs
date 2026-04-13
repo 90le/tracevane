@@ -63,8 +63,8 @@ test("package scripts include studio system event coverage command", () => {
 });
 
 test("system event coverage baseline matches generated inventory", () => {
-  const payload = runCoverageScript();
   const baseline = JSON.parse(fs.readFileSync(baselineFile, "utf8"));
+  const payload = runCoverageScript();
 
   assert.deepEqual(payload, baseline);
   assert.ok(payload.sections.includes("summary"));
