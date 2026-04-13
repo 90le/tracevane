@@ -267,3 +267,21 @@ export interface SystemStudioUpgradeResponse {
   ok: boolean;
   status: SystemStudioUpgradeStatusPayload;
 }
+
+export interface SystemRuntimeSummaryPayload {
+  checkedAt: string;
+  gatewayConnected: boolean;
+  bootstrapPendingCount: number;
+  updateLatestVersion: string;
+  updateAvailable: boolean;
+  studioUpgradeRunning: boolean;
+  helperRepairPending: boolean;
+  level: 'ok' | 'warn';
+}
+
+export interface SystemTerminalActionSuggestion {
+  key: string;
+  title: string;
+  routePath: string;
+  commandHint: string;
+}

@@ -1,48 +1,48 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import 'tsx/esm';
 
-const testDir = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(testDir, "../..");
-const runtimeViewModelPath = path.join(
-  rootDir,
-  "apps/web-vue/src/features/system/system-runtime-view-model.ts",
-);
-const eventSummaryPath = path.join(
-  rootDir,
-  "apps/web-vue/src/features/system/system-event-summary.ts",
-);
-const systemPagePath = path.join(
-  rootDir,
-  "apps/web-vue/src/features/system/SystemControlPage.vue",
-);
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const runtimeSummaryPath = path.join(rootDir, 'apps/api/modules/system/runtime-summary.ts');
+const servicePath = path.join(rootDir, 'apps/api/modules/system/service.ts');
+const routesPath = path.join(rootDir, 'apps/api/modules/system/routes.ts');
+const runtimeSummaryModuleUrl = `${pathToFileURL(runtimeSummaryPath).href}?t=${Date.now()}`;
 
-test("system runtime seams export required builders", () => {
-  const runtimeViewModelSource = fs.readFileSync(runtimeViewModelPath, "utf8");
-  const eventSummarySource = fs.readFileSync(eventSummaryPath, "utf8");
+test('buildSystemRuntimeSummary derives control center summary fields', async () => {
+  const runtimeSummary = await import(runtimeSummaryModuleUrl);
+  const summary = runtimeSummary.buildSystemRuntimeSummary({
+    checkedAt: '2026-04-13T00:00:00.000Z',
+    gatewayConnected: true,
+    bootstrapPendingCount: 2,
+    updateLatestVersion: '0.2.0',
+    updateAvailable: true,
+    studioUpgradeRunning: false,
+    helperRepairPending: false,
+  });
 
-  assert.match(
-    runtimeViewModelSource,
-    /export function buildSystemRuntimeViewModel\(/,
-  );
-  assert.match(eventSummarySource, /export function buildSystemEventSummary\(/);
-  assert.match(eventSummarySource, /studioRelease\?\.latestVersion/);
-  assert.match(
-    eventSummarySource,
-    /diagnostics\?\.status\.updateLatestVersion/,
-  );
-  assert.match(eventSummarySource, /text\("未知", "Unknown"\)/);
+  assert.deepEqual(summary, {
+    checkedAt: '2026-04-13T00:00:00.000Z',
+    gatewayConnected: true,
+    bootstrapPendingCount: 2,
+    updateLatestVersion: '0.2.0',
+    updateAvailable: true,
+    studioUpgradeRunning: false,
+    helperRepairPending: false,
+    level: 'warn',
+  });
 });
 
-test("SystemControlPage consumes runtime view model and event summary seams", () => {
-  const pageSource = fs.readFileSync(systemPagePath, "utf8");
+test('system service and routes consume runtime summary helper seam', () => {
+  const serviceSource = fs.readFileSync(servicePath, 'utf8');
+  const routesSource = fs.readFileSync(routesPath, 'utf8');
 
-  assert.match(pageSource, /from '\.\/system-runtime-view-model'/);
-  assert.match(pageSource, /from '\.\/system-event-summary'/);
-  assert.match(pageSource, /buildSystemRuntimeViewModel\(/);
-  assert.match(pageSource, /buildSystemEventSummary\(/);
-  assert.match(pageSource, /runtimeViewModel\.value\.studioUpgradeStatusLabel/);
-  assert.match(pageSource, /runtimeViewModel\.value\.studioUpgradeActionLabel/);
+  assert.match(serviceSource, /from '\.\/runtime-summary\.js'/);
+  assert.match(serviceSource, /buildSystemRuntimeSummary\(/);
+  assert.match(serviceSource, /getRuntimeSummary\(\): Promise<SystemRuntimeSummaryPayload>/);
+
+  assert.match(routesSource, /\/api\/system\/runtime-summary/);
+  assert.match(routesSource, /getRuntimeSummary\(\)/);
 });

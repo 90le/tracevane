@@ -74,6 +74,14 @@ export function registerSystemRoutes(router: StudioRouter, ctx: StudioApiContext
     sendJson(res, 200, await routeCtx.services.system.getStudioUpgradeStatus());
   });
 
+  router.get('/api/system/runtime-summary', async (_req, res, routeCtx) => {
+    sendJson(res, 200, await routeCtx.services.system.getRuntimeSummary());
+  });
+
+  router.get('/api/system/terminal-handoff', async (_req, res, routeCtx) => {
+    sendJson(res, 200, await routeCtx.services.system.getTerminalActionSuggestions());
+  });
+
   router.post('/api/system/studio-upgrade', async (req, res, routeCtx) => {
     const payload = await parseJsonBody<SystemStudioUpgradeRequest>(req);
     sendJson(res, 200, await routeCtx.services.system.startStudioUpgrade(payload || {}));

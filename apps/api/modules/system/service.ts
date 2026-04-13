@@ -35,6 +35,8 @@ import type {
   SystemStudioUpgradeResponse,
   SystemStudioUpgradeStatusPayload,
   SystemStatusSummary,
+  SystemRuntimeSummaryPayload,
+  SystemTerminalActionSuggestion,
 } from '../../../../types/system.js';
 import {
   applyDreamingMemoryCompatibility,
@@ -63,6 +65,8 @@ import {
   repairStudioHelperDeviceTrust,
   syncStudioHelperTokenCacheIfNeeded,
 } from './device-trust.js';
+import { buildSystemRuntimeSummary } from './runtime-summary.js';
+import { buildSystemTerminalActionSuggestions } from './terminal-handoff.js';
 
 const execFileAsync = promisify(execFile);
 const COMMAND_CACHE_MS = 15_000;
@@ -571,6 +575,8 @@ export interface SystemService {
   getStudioRelease(): Promise<SystemStudioReleasePayload>;
   getStudioUpgradeStatus(): Promise<SystemStudioUpgradeStatusPayload>;
   startStudioUpgrade(payload: SystemStudioUpgradeRequest): Promise<SystemStudioUpgradeResponse>;
+  getRuntimeSummary(): Promise<SystemRuntimeSummaryPayload>;
+  getTerminalActionSuggestions(): Promise<SystemTerminalActionSuggestion[]>;
   getDeviceTrust(): Promise<SystemDeviceTrustPayload>;
   approveDeviceTrust(payload: SystemDeviceTrustApproveRequest): Promise<SystemDeviceTrustApproveResponse>;
   repairDeviceTrustHelper(): Promise<SystemDeviceTrustRepairResponse>;
@@ -969,6 +975,37 @@ export function createSystemService(
 
     async startStudioUpgrade(payload: SystemStudioUpgradeRequest): Promise<SystemStudioUpgradeResponse> {
       return runStudioUpgrade(payload);
+    },
+
+    async getRuntimeSummary(): Promise<SystemRuntimeSummaryPayload> {
+      const checkedAt = new Date().toISOString();
+      const [health, diagnostics, release, upgradeStatus, deviceTrust] = await Promise.all([
+        this.getHealth(),
+        this.getDiagnostics(),
+        this.getStudioRelease(),
+        this.getStudioUpgradeStatus(),
+        this.getDeviceTrust(),
+      ]);
+      return buildSystemRuntimeSummary({
+        checkedAt,
+        gatewayConnected: health.gatewayConnected,
+        bootstrapPendingCount: diagnostics.status.bootstrapPendingCount,
+        updateLatestVersion: release.latestVersion || diagnostics.status.updateLatestVersion,
+        updateAvailable: release.updateAvailable,
+        studioUpgradeRunning: upgradeStatus.running,
+        helperRepairPending: deviceTrust.helper.metadataRepairPending,
+      });
+    },
+
+    async getTerminalActionSuggestions(): Promise<SystemTerminalActionSuggestion[]> {
+      const [bootstrap, deviceTrust] = await Promise.all([
+        this.getBootstrap(),
+        this.getDeviceTrust(),
+      ]);
+      return buildSystemTerminalActionSuggestions({
+        bootstrapRepairNeeded: !bootstrap.ready,
+        helperPendingRepair: deviceTrust.helper.metadataRepairPending || deviceTrust.helper.pendingRepair,
+      });
     },
 
     async getDeviceTrust(): Promise<SystemDeviceTrustPayload> {
