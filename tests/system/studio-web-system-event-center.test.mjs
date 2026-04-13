@@ -67,6 +67,27 @@ test("system event center page composes summary, filter, timeline, and detail sh
   assert.match(page, /system-events\.css/);
 });
 
+test("system event center page hydrates store from /api/system/events on mounted", () => {
+  const page = fs.readFileSync(eventCenterPagePath, "utf8");
+
+  assert.match(page, /import \{[^}]*onMounted[^}]*\} from 'vue'/);
+  assert.match(
+    page,
+    /import \{\s*fetchSystemEventCenterSnapshot\s*\} from '\.\/api'/,
+  );
+  assert.match(
+    page,
+    /import \{\s*useSystemEventStore\s*\} from '\.\/system-event-store'/,
+  );
+  assert.match(page, /const\s+store\s*=\s*useSystemEventStore\(\)/);
+  assert.match(page, /onMounted\(async\s*\(\)\s*=>\s*\{/);
+  assert.match(
+    page,
+    /const\s+snapshot\s*=\s*await\s+fetchSystemEventCenterSnapshot\(\)/,
+  );
+  assert.match(page, /store\.hydrate\(snapshot\)/);
+});
+
 test("system event center feature files exist", () => {
   assert.equal(fs.existsSync(summaryBarPath), true);
   assert.equal(fs.existsSync(filterBarPath), true);

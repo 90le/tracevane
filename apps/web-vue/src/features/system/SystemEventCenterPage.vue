@@ -22,8 +22,8 @@
     <section class="system-event-workbench">
       <SystemEventTimeline
         :groups="timelineGroups"
-        :active-event-id="activeEventId"
-        @select="activeEventId = $event"
+        :active-event-id="store.selectedEventId.value"
+        @select="store.selectedEventId.value = $event"
       />
       <SystemEventDetailPanel :event-item="selectedEvent" />
     </section>
@@ -31,9 +31,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
+import { fetchSystemEventCenterSnapshot } from './api';
 import { buildSystemEventTimeline } from './system-event-timeline';
+import { useSystemEventStore } from './system-event-store';
 import type { SystemEventItem } from './system-event-types';
 import SystemEventDetailPanel from './SystemEventDetailPanel.vue';
 import SystemEventFilterBar from './SystemEventFilterBar.vue';
@@ -42,46 +44,13 @@ import SystemEventTimeline from './SystemEventTimeline.vue';
 import './system-events.css';
 
 const { text } = useLocalePreference();
-
-const rawEvents = ref<SystemEventItem[]>([
-  {
-    id: 'event-diagnostic-1',
-    kind: 'diagnostic_issue',
-    category: 'alerts',
-    severity: 'error',
-    occurredAt: '2026-04-13T10:10:00.000Z',
-    title: text('Gateway RPC 探测失败', 'Gateway RPC probe failed'),
-    summary: text('最近一次探测超时，建议检查 gateway service 与端口占用。', 'Latest probe timed out. Check gateway service and port usage.'),
-    sourceModule: 'system.gateway',
-  },
-  {
-    id: 'event-release-1',
-    kind: 'release_update_available',
-    category: 'operations',
-    severity: 'info',
-    occurredAt: '2026-04-13T09:40:00.000Z',
-    title: text('检测到 Studio 新版本', 'New Studio version detected'),
-    summary: text('存在可升级版本，等待维护窗口执行。', 'An update is available and waiting for maintenance window.'),
-    sourceModule: 'system.release',
-  },
-  {
-    id: 'event-trust-1',
-    kind: 'device_trust_pending',
-    category: 'recovery',
-    severity: 'warning',
-    occurredAt: '2026-04-12T18:20:00.000Z',
-    title: text('Helper 设备信任待批准', 'Helper device trust pending'),
-    summary: text('检测到待批准请求，可能影响自动修复流程。', 'Pending trust approval may block automated repair.'),
-    sourceModule: 'system.device-trust',
-  },
-]);
+const store = useSystemEventStore();
 
 const severityFilter = ref<string>('all');
 const categoryFilter = ref<string>('all');
-const activeEventId = ref<string>('event-diagnostic-1');
 
 const filteredEvents = computed(() =>
-  rawEvents.value.filter((event) => {
+  store.events.value.filter((event) => {
     const severityMatched =
       severityFilter.value === 'all' || event.severity === severityFilter.value;
     const categoryMatched =
@@ -96,11 +65,11 @@ watch(
   filteredEvents,
   (events) => {
     if (!events.length) {
-      activeEventId.value = '';
+      store.selectedEventId.value = '';
       return;
     }
-    if (!events.some((event) => event.id === activeEventId.value)) {
-      activeEventId.value = events[0].id;
+    if (!events.some((event) => event.id === store.selectedEventId.value)) {
+      store.selectedEventId.value = events[0].id;
     }
   },
   { immediate: true },
@@ -110,7 +79,10 @@ const selectedEvent = computed<SystemEventItem | null>(() => {
   if (!filteredEvents.value.length) {
     return null;
   }
-  return filteredEvents.value.find((event) => event.id === activeEventId.value) || null;
+  return (
+    filteredEvents.value.find((event) => event.id === store.selectedEventId.value) ||
+    null
+  );
 });
 
 const summaryItems = computed(() => {
@@ -126,5 +98,10 @@ const summaryItems = computed(() => {
     { label: text('警告', 'Warnings'), value: String(warnings) },
     { label: text('今日新增', 'Today'), value: String(today) },
   ];
+});
+
+onMounted(async () => {
+  const snapshot = await fetchSystemEventCenterSnapshot();
+  store.hydrate(snapshot);
 });
 </script>
