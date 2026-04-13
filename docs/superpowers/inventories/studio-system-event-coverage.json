@@ -1,7 +1,9 @@
 {
-  "domains": [
-    "event-center",
-    "audit-timeline"
+  "sections": [
+    "summary",
+    "filters",
+    "timeline",
+    "detail"
   ],
   "frontendFiles": [
     "apps/web-vue/src/features/system/SystemControlPage.vue"
@@ -12,23 +14,20 @@
   ],
   "tests": [
     {
-      "domainId": "event-center",
-      "testPattern": "studio-web-system-*.test.mjs",
-      "matchedFiles": [
-        "tests/system/studio-web-system-runtime-shell.test.mjs"
-      ]
+      "sectionKey": "summary",
+      "testFile": "tests/system/system-event-domain-manifest.test.mjs"
     },
     {
-      "domainId": "audit-timeline",
-      "testPattern": "system-*.test.mjs",
-      "matchedFiles": [
-        "tests/system/system-event-domain-manifest.test.mjs",
-        "tests/system/system-overview-recipe.test.mjs",
-        "tests/system/system-runtime-domain-manifest.test.mjs",
-        "tests/system/system-runtime-summary.test.mjs",
-        "tests/system/system-stage-selectors.test.mjs",
-        "tests/system/system-terminal-handoff.test.mjs"
-      ]
+      "sectionKey": "filters",
+      "testFile": "tests/system/system-event-domain-manifest.test.mjs"
+    },
+    {
+      "sectionKey": "timeline",
+      "testFile": "tests/system/system-event-domain-manifest.test.mjs"
+    },
+    {
+      "sectionKey": "detail",
+      "testFile": "tests/system/system-event-domain-manifest.test.mjs"
     }
   ]
 }

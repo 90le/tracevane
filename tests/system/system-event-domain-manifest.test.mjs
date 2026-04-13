@@ -43,12 +43,15 @@ function runCoverageScript() {
   return JSON.parse(stdout);
 }
 
-test("system event manifest covers event center and audit timeline domains", () => {
+test("system event manifest covers required sections", () => {
   const source = fs.readFileSync(manifestFile, "utf8");
 
-  assert.match(source, /"event-center"/);
-  assert.match(source, /"audit-timeline"/);
-  assert.match(source, /runtimeSurface/);
+  assert.match(source, /"summary"/);
+  assert.match(source, /"filters"/);
+  assert.match(source, /"timeline"/);
+  assert.match(source, /"detail"/);
+  assert.match(source, /routePath:\s*"\/system\/events"/);
+  assert.match(source, /eventSurface/);
   assert.match(source, /SYSTEM_EVENT_COVERAGE_SEED/);
 });
 
@@ -64,8 +67,10 @@ test("system event coverage baseline matches generated inventory", () => {
   const baseline = JSON.parse(fs.readFileSync(baselineFile, "utf8"));
 
   assert.deepEqual(payload, baseline);
-  assert.ok(payload.domains.includes("event-center"));
-  assert.ok(payload.domains.includes("audit-timeline"));
+  assert.ok(payload.sections.includes("summary"));
+  assert.ok(payload.sections.includes("filters"));
+  assert.ok(payload.sections.includes("timeline"));
+  assert.ok(payload.sections.includes("detail"));
   assert.ok(
     payload.frontendFiles.includes(
       "apps/web-vue/src/features/system/SystemControlPage.vue",
@@ -75,9 +80,12 @@ test("system event coverage baseline matches generated inventory", () => {
     payload.backendFiles.includes("apps/api/modules/system/service.ts"),
   );
 
-  const eventCenterTests = payload.tests.find(
-    (entry) => entry.domainId === "event-center",
+  const timelineTests = payload.tests.find(
+    (entry) => entry.sectionKey === "timeline",
   );
-  assert.ok(eventCenterTests);
-  assert.ok(eventCenterTests.matchedFiles.length > 0);
+  assert.ok(timelineTests);
+  assert.equal(
+    timelineTests.testFile,
+    "tests/system/system-event-domain-manifest.test.mjs",
+  );
 });

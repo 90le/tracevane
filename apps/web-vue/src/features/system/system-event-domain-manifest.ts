@@ -1,65 +1,87 @@
-export type SystemEventDomainId = "event-center" | "audit-timeline";
+export type SystemEventSectionKey =
+  | "summary"
+  | "filters"
+  | "timeline"
+  | "detail";
 
-export interface SystemEventDomainEntry {
-  id: SystemEventDomainId;
+export interface SystemEventSectionEntry {
+  key: SystemEventSectionKey;
   label: string;
   routePath: string;
-  runtimeSurface: string;
+  eventSurface: string;
   frontendFile: string;
   backendFile: string;
-  testPattern: string;
+  testFile: string;
 }
 
 export interface SystemEventCoverageSeed {
-  domainId: SystemEventDomainId;
+  sectionKey: SystemEventSectionKey;
   routePath: string;
-  runtimeSurface: string;
+  eventSurface: string;
   frontendFile: string;
   backendFile: string;
-  testPattern: string;
+  testFile: string;
 }
 
-export const SYSTEM_EVENT_DOMAIN_MANIFEST: ReadonlyArray<SystemEventDomainEntry> =
+export const SYSTEM_EVENT_DOMAIN_MANIFEST: ReadonlyArray<SystemEventSectionEntry> =
   [
     {
-      id: "event-center",
-      label: "事件中心",
-      routePath: "/system",
-      runtimeSurface: "system-event-center",
+      key: "summary",
+      label: "事件总览",
+      routePath: "/system/events",
+      eventSurface: "system-event-summary",
       frontendFile: "apps/web-vue/src/features/system/SystemControlPage.vue",
       backendFile: "apps/api/modules/system/service.ts",
-      testPattern: "studio-web-system-*.test.mjs",
+      testFile: "tests/system/system-event-domain-manifest.test.mjs",
     },
     {
-      id: "audit-timeline",
-      label: "审计时间线",
-      routePath: "/system",
-      runtimeSurface: "system-audit-timeline",
+      key: "filters",
+      label: "筛选器",
+      routePath: "/system/events",
+      eventSurface: "system-event-filters",
       frontendFile: "apps/web-vue/src/features/system/SystemControlPage.vue",
       backendFile: "apps/api/modules/system/routes.ts",
-      testPattern: "system-*.test.mjs",
+      testFile: "tests/system/system-event-domain-manifest.test.mjs",
+    },
+    {
+      key: "timeline",
+      label: "事件时间线",
+      routePath: "/system/events",
+      eventSurface: "system-event-timeline",
+      frontendFile: "apps/web-vue/src/features/system/SystemControlPage.vue",
+      backendFile: "apps/api/modules/system/routes.ts",
+      testFile: "tests/system/system-event-domain-manifest.test.mjs",
+    },
+    {
+      key: "detail",
+      label: "事件详情",
+      routePath: "/system/events",
+      eventSurface: "system-event-detail",
+      frontendFile: "apps/web-vue/src/features/system/SystemControlPage.vue",
+      backendFile: "apps/api/modules/system/service.ts",
+      testFile: "tests/system/system-event-domain-manifest.test.mjs",
     },
   ];
 
 export const SYSTEM_EVENT_COVERAGE_SEED: ReadonlyArray<SystemEventCoverageSeed> =
-  SYSTEM_EVENT_DOMAIN_MANIFEST.map((domain) => ({
-    domainId: domain.id,
-    routePath: domain.routePath,
-    runtimeSurface: domain.runtimeSurface,
-    frontendFile: domain.frontendFile,
-    backendFile: domain.backendFile,
-    testPattern: domain.testPattern,
+  SYSTEM_EVENT_DOMAIN_MANIFEST.map((section) => ({
+    sectionKey: section.key,
+    routePath: section.routePath,
+    eventSurface: section.eventSurface,
+    frontendFile: section.frontendFile,
+    backendFile: section.backendFile,
+    testFile: section.testFile,
   }));
 
 export function getSystemEventDomainEntry(
-  domainId: SystemEventDomainId,
-): SystemEventDomainEntry {
+  sectionKey: SystemEventSectionKey,
+): SystemEventSectionEntry {
   const entry = SYSTEM_EVENT_DOMAIN_MANIFEST.find(
-    (domain) => domain.id === domainId,
+    (section) => section.key === sectionKey,
   );
 
   if (!entry) {
-    throw new Error(`Unknown system event domain: ${domainId}`);
+    throw new Error(`Unknown system event section: ${sectionKey}`);
   }
 
   return entry;

@@ -13,7 +13,6 @@ const manifestFile = path.join(
   "system",
   "system-event-domain-manifest.ts",
 );
-const testsDir = path.join(root, "tests", "system");
 const outputFile = path.join(
   root,
   "docs",
@@ -22,26 +21,8 @@ const outputFile = path.join(
   "studio-system-event-coverage.json",
 );
 
-function escapeRegExp(value) {
-  return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
-}
-
-function globPatternToRegExp(pattern) {
-  const escaped = escapeRegExp(pattern).replace(/\*/g, "[^/]*");
-  return new RegExp(`^${escaped}$`);
-}
-
 function uniqueSorted(values) {
   return [...new Set(values)].sort();
-}
-
-function collectMatchedFiles(testPattern) {
-  const matcher = globPatternToRegExp(testPattern);
-  return fs
-    .readdirSync(testsDir)
-    .filter((file) => matcher.test(file))
-    .sort()
-    .map((file) => `tests/system/${file}`);
 }
 
 async function loadSystemEventCoverageSeed() {
@@ -68,13 +49,12 @@ async function loadSystemEventCoverageSeed() {
 
 const coverageSeed = await loadSystemEventCoverageSeed();
 const output = {
-  domains: coverageSeed.map((entry) => entry.domainId),
+  sections: coverageSeed.map((entry) => entry.sectionKey),
   frontendFiles: uniqueSorted(coverageSeed.map((entry) => entry.frontendFile)),
   backendFiles: uniqueSorted(coverageSeed.map((entry) => entry.backendFile)),
   tests: coverageSeed.map((entry) => ({
-    domainId: entry.domainId,
-    testPattern: entry.testPattern,
-    matchedFiles: collectMatchedFiles(entry.testPattern),
+    sectionKey: entry.sectionKey,
+    testFile: entry.testFile,
   })),
 };
 
