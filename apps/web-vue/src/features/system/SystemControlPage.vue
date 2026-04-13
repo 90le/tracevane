@@ -15,8 +15,8 @@
       </div>
 
       <div class="page-actions">
-        <button type="button" class="secondary-button" :disabled="loading" @click="refreshAll">
-          {{ loading ? text('刷新中...', 'Refreshing...') : text('刷新诊断', 'Refresh Diagnostics') }}
+        <button type="button" class="secondary-button" :disabled="controlActionSummary.refreshing" @click="refreshAll">
+          {{ controlActionSummary.refreshLabel }}
         </button>
       </div>
     </header>
@@ -32,79 +32,30 @@
 
     <section class="system-workbench">
       <aside class="system-sidebar">
-        <article class="panel-card system-sidebar-panel">
-          <div class="system-sidebar-head">
-            <div>
-              <p class="eyebrow">{{ text('HEALTH', 'HEALTH') }}</p>
-              <h3 class="system-sidebar-title">{{ text('当前状态', 'Current Status') }}</h3>
-              <p class="panel-muted">{{ text('优先看 Gateway、systemd、Node、内存和诊断摘要。', 'Start with Gateway, systemd, Node, memory, and the current diagnostic summary.') }}</p>
-            </div>
-          </div>
-
-          <div v-if="health" class="system-status-stack">
-            <div class="system-status-row">
-              <StatusPill :label="health.gatewayConnected ? text('Gateway 在线', 'Gateway Online') : text('Gateway 离线', 'Gateway Offline')" :tone="health.gatewayConnected ? 'sage' : 'accent'" />
-              <span class="system-chip">{{ health.serviceState }} / {{ health.serviceSubState }}</span>
-            </div>
-            <div class="system-status-row">
-              <span class="system-chip">Node {{ health.nodeVersion }}</span>
-              <span class="system-chip">{{ health.platform }} / {{ health.arch }}</span>
-            </div>
-            <div class="system-status-row">
-              <span class="system-chip">{{ health.hostname }}</span>
-              <span class="system-chip">{{ text('连接', 'SSE') }} {{ health.sseConnections }}</span>
-            </div>
-          </div>
-
-          <div v-if="diagnostics" class="system-sidebar-summary">
-            <div class="system-summary-item">
-              <span>{{ text('安全审计', 'Security Audit') }}</span>
-              <strong>{{ diagnostics.status.securityCritical }} critical / {{ diagnostics.status.securityWarn }} warn</strong>
-            </div>
-            <div class="system-summary-item">
-              <span>{{ text('Agent / 会话', 'Agents / Sessions') }}</span>
-              <strong>{{ diagnostics.status.agentCount }} / {{ diagnostics.status.sessionCount }}</strong>
-            </div>
-            <div class="system-summary-item">
-              <span>{{ text('更新版本', 'Latest Version') }}</span>
-              <strong>{{ studioRelease.latestVersion || diagnostics.status.updateLatestVersion || text('未知', 'Unknown') }}</strong>
-            </div>
-          </div>
-
-          <div class="system-quick-links">
-            <button type="button" class="secondary-button compact-button" @click="router.push('/terminal')">
-              {{ text('去终端', 'Open Terminal') }}
-            </button>
-            <button type="button" class="secondary-button compact-button" @click="router.push('/cron')">
-              {{ text('去定时任务', 'Open Cron') }}
-            </button>
-          </div>
-        </article>
+        <SystemSectionRail
+          :title="text('HEALTH', 'HEALTH')"
+          :subtitle="text('当前状态', 'Current Status')"
+          :copy="text('优先看 Gateway、systemd、Node、内存和诊断摘要。', 'Start with Gateway, systemd, Node, memory, and the current diagnostic summary.')"
+          :health-summary="healthSummary"
+          :event-summary-items="eventSummaryItems"
+          :quick-actions="quickActions"
+          @navigate="router.push($event)"
+        />
       </aside>
 
       <section class="system-stage">
         <article class="panel-card system-stage-header">
           <div class="system-stage-head">
             <div>
-              <p class="eyebrow">{{ diagnostics?.config.pluginId || 'studio' }}</p>
-              <h3 class="system-stage-title">{{ text('系统工作区', 'System Workspace') }}</h3>
-              <p class="panel-muted">
-                {{ text('右侧不再是文案占位，而是直接查看运行态、Gateway 和 doctor 输出。', 'The right side is no longer placeholder copy; it now shows live runtime, Gateway, and doctor output directly.') }}
-              </p>
+              <p class="eyebrow">{{ stageHeader.eyebrow }}</p>
+              <h3 class="system-stage-title">{{ stageHeader.title }}</h3>
+              <p class="panel-muted">{{ stageHeader.copy }}</p>
             </div>
 
-            <div class="system-stage-facts" v-if="health">
-              <div class="system-stage-fact">
-                <span>PID</span>
-                <strong>{{ health.pid }}</strong>
-              </div>
-              <div class="system-stage-fact">
-                <span>{{ text('Gateway 端口', 'Gateway Port') }}</span>
-                <strong>{{ health.gatewayPort }}</strong>
-              </div>
-              <div class="system-stage-fact">
-                <span>{{ text('内存占用', 'Memory Free') }}</span>
-                <strong>{{ formatBytes(health.freeMemoryBytes) }}</strong>
+            <div class="system-stage-facts">
+              <div v-for="fact in stageHeader.facts" :key="fact.label" class="system-stage-fact">
+                <span>{{ fact.label }}</span>
+                <strong>{{ fact.value }}</strong>
               </div>
             </div>
           </div>
@@ -124,79 +75,15 @@
           </nav>
         </article>
 
-        <article v-if="activeTab === 'overview'" class="panel-card system-stage-panel">
-          <section class="system-section">
-            <div class="system-section-head">
-              <div>
-                <h3>{{ text('快速健康', 'Quick Health') }}</h3>
-                <p>{{ text('这是最轻量的一层健康摘要，不依赖重型 CLI 诊断。', 'This is the lightest health summary layer and does not depend on heavyweight CLI diagnostics.') }}</p>
-              </div>
-            </div>
-
-            <div v-if="health" class="system-overview-grid">
-              <div class="system-overview-item">
-                <span>{{ text('Gateway', 'Gateway') }}</span>
-                <strong>{{ health.gatewayConnected ? text('在线', 'Online') : text('离线', 'Offline') }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>systemd</span>
-                <strong>{{ health.serviceState }} / {{ health.serviceSubState }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('主机', 'Host') }}</span>
-                <strong>{{ health.hostname }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('Uptime', 'Uptime') }}</span>
-                <strong>{{ formatUptime(health.uptime) }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('CPU', 'CPU') }}</span>
-                <strong>{{ health.cpus }} cores</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('Load', 'Load') }}</span>
-                <strong>{{ formatLoad(health.loadavg) }}</strong>
-              </div>
-            </div>
-          </section>
-
-          <section class="system-section">
-            <div class="system-section-head">
-              <div>
-                <h3>{{ text('运行摘要', 'Runtime Summary') }}</h3>
-                <p>{{ text('这些值直接来自 `openclaw status --json` 与本地状态文件聚合。', 'These values come from `openclaw status --json` and local state file aggregation.') }}</p>
-              </div>
-            </div>
-
-            <div v-if="diagnostics" class="system-overview-grid">
-              <div class="system-overview-item">
-                <span>{{ text('默认 Agent', 'Default Agent') }}</span>
-                <strong>{{ diagnostics.status.agentsDefaultId || text('未知', 'Unknown') }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('Agent 数量', 'Agent Count') }}</span>
-                <strong>{{ diagnostics.status.agentCount }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('会话数', 'Sessions') }}</span>
-                <strong>{{ diagnostics.status.sessionCount }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('Bootstrap 待处理', 'Bootstrap Pending') }}</span>
-                <strong>{{ diagnostics.status.bootstrapPendingCount }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('安全审计', 'Security Audit') }}</span>
-                <strong>{{ diagnostics.status.securityCritical }} / {{ diagnostics.status.securityWarn }} / {{ diagnostics.status.securityInfo }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('更新通道', 'Updates') }}</span>
-                <strong>{{ diagnostics.status.updateLatestVersion || text('未知', 'Unknown') }}</strong>
-              </div>
-            </div>
-          </section>
-        </article>
+        <SystemOverviewPanel
+          v-if="activeTab === 'overview'"
+          :health-title="text('快速健康', 'Quick Health')"
+          :health-copy="text('这是最轻量的一层健康摘要，不依赖重型 CLI 诊断。', 'This is the lightest health summary layer and does not depend on heavyweight CLI diagnostics.')"
+          :runtime-title="text('运行摘要', 'Runtime Summary')"
+          :runtime-copy="text('这些值直接来自 `openclaw status --json` 与本地状态文件聚合。', 'These values come from `openclaw status --json` and local state file aggregation.')"
+          :health-cards="overviewCards.healthCards"
+          :runtime-cards="overviewCards.runtimeCards"
+        />
 
         <article v-else-if="activeTab === 'release'" class="panel-card system-stage-panel">
           <section class="system-section">
@@ -611,6 +498,18 @@ import {
   repairSystemDeviceTrustHelper,
   startStudioUpgrade,
 } from './api';
+import SystemOverviewPanel from './SystemOverviewPanel.vue';
+import SystemSectionRail from './SystemSectionRail.vue';
+import {
+  buildSystemEventSummaryItems,
+  buildSystemOverviewCards,
+  buildSystemQuickActions,
+} from './system-overview-recipe';
+import {
+  buildSystemControlActionSummary,
+  buildSystemHealthSummary,
+  buildSystemStageHeader,
+} from './system-stage-selectors';
 
 type SystemTab = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics';
 
@@ -664,6 +563,40 @@ const tabs = computed(() => [
   { id: 'gateway' as const, icon: '⛭', label: text('Gateway', 'Gateway') },
   { id: 'diagnostics' as const, icon: '⌘', label: text('诊断输出', 'Diagnostics') },
 ]);
+
+const controlActionSummary = computed(() => buildSystemControlActionSummary({
+  loading: loading.value,
+  diagnosticsLoading: diagnosticsLoading.value,
+  text,
+}));
+
+const healthSummary = computed(() => buildSystemHealthSummary({
+  health: health.value,
+  text,
+}));
+
+const stageHeader = computed(() => buildSystemStageHeader({
+  pluginId: diagnostics.value?.config.pluginId || 'studio',
+  health: health.value,
+  text,
+  formatBytes,
+}));
+
+const quickActions = computed(() => buildSystemQuickActions(text));
+
+const eventSummaryItems = computed(() => buildSystemEventSummaryItems({
+  diagnostics: diagnostics.value,
+  studioRelease: studioRelease.value,
+  text,
+}));
+
+const overviewCards = computed(() => buildSystemOverviewCards({
+  health: health.value,
+  diagnostics: diagnostics.value,
+  text,
+  formatUptime,
+  formatLoad,
+}));
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
