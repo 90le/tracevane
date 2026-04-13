@@ -68,7 +68,7 @@ function buildEvent(
     };
   }
 
-  const kind = ok ? "repair_succeeded" : "helper_repair_failed";
+  const kind = ok ? "helper_repair_succeeded" : "helper_repair_failed";
   return {
     id: createEventId(kind, occurredAt),
     kind,

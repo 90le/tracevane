@@ -53,7 +53,8 @@ export function buildSystemEventSummaryCards(
     (event) =>
       event.category === "recovery" ||
       event.severity === "success" ||
-      event.kind === "repair_succeeded",
+      event.kind === "repair_succeeded" ||
+      event.kind === "helper_repair_succeeded",
   );
 
   return {

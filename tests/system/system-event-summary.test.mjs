@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildSystemEventSummaryCards } from "../../dist/apps/api/modules/system/event-summary.js";
+import { buildSystemActionEvents } from "../../dist/apps/api/modules/system/event-normalizer.js";
 
 function makeEvent(overrides = {}) {
   return {
@@ -60,4 +61,16 @@ test("buildSystemEventSummaryCards sorts most recent events first", () => {
     cards.recentFailures.items.map((item) => item.id),
     ["new-failure", "old-failure"],
   );
+});
+
+test("buildSystemActionEvents keeps helper repair success distinct", () => {
+  const [event] = buildSystemActionEvents({
+    action: "helper-repair",
+    ok: true,
+    occurredAt: "2026-04-13T10:00:00.000Z",
+  });
+
+  assert.equal(event.kind, "helper_repair_succeeded");
+  assert.equal(event.status, "succeeded");
+  assert.equal(event.severity, "success");
 });
