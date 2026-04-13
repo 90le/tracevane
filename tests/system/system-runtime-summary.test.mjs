@@ -28,6 +28,12 @@ test("system runtime seams export required builders", () => {
     /export function buildSystemRuntimeViewModel\(/,
   );
   assert.match(eventSummarySource, /export function buildSystemEventSummary\(/);
+  assert.match(eventSummarySource, /studioRelease\?\.latestVersion/);
+  assert.match(
+    eventSummarySource,
+    /diagnostics\?\.status\.updateLatestVersion/,
+  );
+  assert.match(eventSummarySource, /text\("未知", "Unknown"\)/);
 });
 
 test("SystemControlPage consumes runtime view model and event summary seams", () => {

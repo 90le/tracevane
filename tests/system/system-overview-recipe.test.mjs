@@ -16,7 +16,10 @@ const recipeSource = fs.readFileSync(recipePath, "utf8");
 test("system overview recipe exports required builders", () => {
   assert.match(recipeSource, /export function buildSystemOverviewCards\(/);
   assert.match(recipeSource, /export function buildSystemQuickActions\(/);
-  assert.match(recipeSource, /export function buildSystemEventSummaryItems\(/);
+  assert.doesNotMatch(
+    recipeSource,
+    /export function buildSystemEventSummaryItems\(/,
+  );
 });
 
 test("system overview recipe defines overview card and quick action seams", () => {

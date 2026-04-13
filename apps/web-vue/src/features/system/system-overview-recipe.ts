@@ -1,7 +1,6 @@
 import type {
   SystemDiagnosticsPayload,
   SystemHealthPayload,
-  SystemStudioReleasePayload,
 } from "../../../../../types/system";
 
 type SystemText = (zh: string, en: string) => string;
@@ -15,11 +14,6 @@ export interface SystemOverviewCard {
 export interface SystemQuickAction {
   to: "/terminal" | "/cron";
   label: string;
-}
-
-export interface SystemEventSummaryItem {
-  label: string;
-  value: string;
 }
 
 export function buildSystemOverviewCards(params: {
@@ -111,32 +105,6 @@ export function buildSystemQuickActions(text: SystemText): SystemQuickAction[] {
     {
       to: "/cron",
       label: text("去定时任务", "Open Cron"),
-    },
-  ];
-}
-
-export function buildSystemEventSummaryItems(params: {
-  diagnostics: SystemDiagnosticsPayload | null;
-  studioRelease: SystemStudioReleasePayload | null;
-  text: SystemText;
-}): SystemEventSummaryItem[] {
-  const { diagnostics, studioRelease, text } = params;
-
-  return [
-    {
-      label: text("安全审计", "Security Audit"),
-      value: `${diagnostics?.status.securityCritical || 0} critical / ${diagnostics?.status.securityWarn || 0} warn`,
-    },
-    {
-      label: text("Agent / 会话", "Agents / Sessions"),
-      value: `${diagnostics?.status.agentCount || 0} / ${diagnostics?.status.sessionCount || 0}`,
-    },
-    {
-      label: text("更新版本", "Latest Version"),
-      value:
-        studioRelease?.latestVersion ||
-        diagnostics?.status.updateLatestVersion ||
-        text("未知", "Unknown"),
     },
   ];
 }

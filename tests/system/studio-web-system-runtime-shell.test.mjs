@@ -50,9 +50,14 @@ test("system control page consumes extracted recipe and selectors", () => {
     systemControlPage,
     /import \{[\s\S]*buildSystemStageHeader[\s\S]*\} from '\.\/system-stage-selectors'/,
   );
+  assert.match(
+    systemControlPage,
+    /import \{ buildSystemEventSummary \} from '\.\/system-event-summary'/,
+  );
   assert.match(systemControlPage, /buildSystemOverviewCards\(/);
   assert.match(systemControlPage, /buildSystemQuickActions\(/);
-  assert.match(systemControlPage, /buildSystemEventSummaryItems\(/);
+  assert.match(systemControlPage, /buildSystemEventSummary\(/);
+  assert.doesNotMatch(systemControlPage, /buildSystemEventSummaryItems\(/);
   assert.match(systemControlPage, /buildSystemStageHeader\(/);
   assert.match(systemControlPage, /buildSystemHealthSummary\(/);
   assert.match(systemControlPage, /buildSystemControlActionSummary\(/);
