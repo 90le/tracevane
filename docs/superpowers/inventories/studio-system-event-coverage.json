@@ -1,0 +1,34 @@
+{
+  "domains": [
+    "event-center",
+    "audit-timeline"
+  ],
+  "frontendFiles": [
+    "apps/web-vue/src/features/system/SystemControlPage.vue"
+  ],
+  "backendFiles": [
+    "apps/api/modules/system/routes.ts",
+    "apps/api/modules/system/service.ts"
+  ],
+  "tests": [
+    {
+      "domainId": "event-center",
+      "testPattern": "studio-web-system-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-system-runtime-shell.test.mjs"
+      ]
+    },
+    {
+      "domainId": "audit-timeline",
+      "testPattern": "system-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/system-event-domain-manifest.test.mjs",
+        "tests/system/system-overview-recipe.test.mjs",
+        "tests/system/system-runtime-domain-manifest.test.mjs",
+        "tests/system/system-runtime-summary.test.mjs",
+        "tests/system/system-stage-selectors.test.mjs",
+        "tests/system/system-terminal-handoff.test.mjs"
+      ]
+    }
+  ]
+}
