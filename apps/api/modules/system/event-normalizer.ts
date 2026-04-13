@@ -1,3 +1,9 @@
+import type {
+  SystemBootstrapPayload,
+  SystemDiagnosticsPayload,
+  SystemDeviceTrustPayload,
+  SystemStudioReleasePayload,
+} from "../../../../types/system.js";
 import type { SystemEventRecord } from "./event-types.js";
 
 export type SystemActionEventKind =
@@ -86,4 +92,92 @@ export function buildSystemActionEvents(
 ): SystemEventRecord[] {
   const occurredAt = input.occurredAt || new Date().toISOString();
   return [buildEvent(input.action, input.ok, occurredAt)];
+}
+
+function makeSnapshotEventId(prefix: string, occurredAt: string): string {
+  return `${prefix}-${occurredAt}`;
+}
+
+export function buildSystemSnapshotDerivedEvents(params: {
+  diagnostics: Pick<
+    SystemDiagnosticsPayload,
+    "checkedAt" | "gateway" | "status"
+  > | null;
+  bootstrap: Pick<SystemBootstrapPayload, "checkedAt" | "ready"> | null;
+  deviceTrust: Pick<SystemDeviceTrustPayload, "checkedAt" | "pending"> | null;
+  studioRelease: Pick<
+    SystemStudioReleasePayload,
+    "checkedAt" | "currentVersion" | "latestVersion" | "updateAvailable"
+  > | null;
+  health?: Pick<SystemDiagnosticsPayload, "checkedAt"> | null;
+}): SystemEventRecord[] {
+  const { diagnostics, bootstrap, deviceTrust, studioRelease } = params;
+  const events: SystemEventRecord[] = [];
+
+  if (diagnostics?.gateway?.rpcOk === false) {
+    const occurredAt = diagnostics.checkedAt || new Date().toISOString();
+    events.push({
+      id: makeSnapshotEventId("diagnostic-gateway-rpc", occurredAt),
+      kind: "diagnostic_issue",
+      category: "alerts",
+      severity: "error",
+      occurredAt,
+      title: "Gateway RPC 不可用",
+      summary: "system diagnostics 显示 gateway rpc 不可用",
+      status: "failed",
+      sourceModule: "diagnostics",
+    });
+  }
+
+  const bootstrapPending =
+    Number(diagnostics?.status?.bootstrapPendingCount || 0) > 0;
+  if (bootstrap?.ready === false || bootstrapPending) {
+    const occurredAt =
+      bootstrap?.checkedAt ||
+      diagnostics?.checkedAt ||
+      new Date().toISOString();
+    events.push({
+      id: makeSnapshotEventId("diagnostic-bootstrap", occurredAt),
+      kind: "diagnostic_issue",
+      category: "alerts",
+      severity: "warning",
+      occurredAt,
+      title: "Bootstrap 待处理",
+      summary: "bootstrap 未 ready 或存在 pending 项",
+      status: "pending",
+      sourceModule: "bootstrap",
+    });
+  }
+
+  if (Array.isArray(deviceTrust?.pending) && deviceTrust.pending.length > 0) {
+    const occurredAt = deviceTrust?.checkedAt || new Date().toISOString();
+    events.push({
+      id: makeSnapshotEventId("device-trust-pending", occurredAt),
+      kind: "device_trust_pending",
+      category: "audit",
+      severity: "warning",
+      occurredAt,
+      title: "设备信任待审批",
+      summary: `存在 ${deviceTrust.pending.length} 条待审批请求`,
+      status: "pending",
+      sourceModule: "device-trust",
+    });
+  }
+
+  if (studioRelease?.updateAvailable) {
+    const occurredAt = studioRelease.checkedAt || new Date().toISOString();
+    events.push({
+      id: makeSnapshotEventId("release-update", occurredAt),
+      kind: "release_update_available",
+      category: "operations",
+      severity: "info",
+      occurredAt,
+      title: "发现可用更新",
+      summary: `${studioRelease.currentVersion} -> ${studioRelease.latestVersion || "unknown"}`,
+      status: "pending",
+      sourceModule: "studio-release",
+    });
+  }
+
+  return events;
 }

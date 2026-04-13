@@ -5,29 +5,39 @@
     "timeline",
     "detail"
   ],
+  "eventSurfaces": [
+    "system-event-detail",
+    "system-event-filters",
+    "system-event-summary",
+    "system-event-timeline"
+  ],
   "frontendFiles": [
-    "apps/web-vue/src/features/system/SystemControlPage.vue"
+    "apps/web-vue/src/features/system/SystemEventDetailPanel.vue",
+    "apps/web-vue/src/features/system/SystemEventFilterBar.vue",
+    "apps/web-vue/src/features/system/system-event-selectors.ts",
+    "apps/web-vue/src/features/system/system-event-timeline.ts"
   ],
   "backendFiles": [
+    "apps/api/modules/system/event-normalizer.ts",
     "apps/api/modules/system/routes.ts",
     "apps/api/modules/system/service.ts"
   ],
   "tests": [
     {
       "sectionKey": "summary",
-      "testFile": "tests/system/system-event-domain-manifest.test.mjs"
+      "testFile": "tests/system/system-event-selectors.test.mjs"
     },
     {
       "sectionKey": "filters",
-      "testFile": "tests/system/system-event-domain-manifest.test.mjs"
+      "testFile": "tests/system/studio-web-system-event-center.test.mjs"
     },
     {
       "sectionKey": "timeline",
-      "testFile": "tests/system/system-event-domain-manifest.test.mjs"
+      "testFile": "tests/system/system-event-timeline.test.mjs"
     },
     {
       "sectionKey": "detail",
-      "testFile": "tests/system/system-event-domain-manifest.test.mjs"
+      "testFile": "tests/system/studio-web-system-event-center.test.mjs"
     }
   ]
 }

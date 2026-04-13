@@ -10,6 +10,7 @@ import type {
   SystemDeviceTrustSettingsPatchRequest,
   SystemDeviceTrustSettingsPatchResponse,
   SystemEventRecord,
+  SystemEventSummaryPayload,
   SystemHealthPayload,
   SystemStudioReleasePayload,
   SystemStudioUpgradeRequest,
@@ -108,4 +109,8 @@ export function patchSystemDeviceTrustSettings(
 
 export function fetchSystemEventCenterSnapshot(): Promise<SystemEventRecord[]> {
   return requestJson<SystemEventRecord[]>("/api/system/events");
+}
+
+export function fetchSystemEventCenterSummary(): Promise<SystemEventSummaryPayload> {
+  return requestJson<SystemEventSummaryPayload>("/api/system/events/summary");
 }

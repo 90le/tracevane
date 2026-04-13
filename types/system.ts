@@ -303,6 +303,7 @@ export interface SystemEventRecord {
   title: string;
   summary: string;
   status: string;
+  sourceModule?: string;
 }
 
 export interface SystemEventSummaryCard {

@@ -17,9 +17,14 @@ const actionsModulePath = path.join(
   rootDir,
   "apps/web-vue/src/features/system/system-event-actions.ts",
 );
+const selectorsModulePath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/system/system-event-selectors.ts",
+);
 
 const storeModuleUrl = `${pathToFileURL(storeModulePath).href}?t=${Date.now()}`;
 const actionsModuleUrl = `${pathToFileURL(actionsModulePath).href}?t=${Date.now()}`;
+const selectorsModuleUrl = `${pathToFileURL(selectorsModulePath).href}?t=${Date.now()}`;
 
 function createEvent(id, occurredAt, overrides = {}) {
   return {
@@ -79,22 +84,67 @@ test("system event store keeps selected event when hydrate contains selected id"
   assert.equal(store.selectedEvent.value?.id, "other");
 });
 
-test("system event actions export minimal next-step descriptor structure", async () => {
+test("system event selectors build summary items from backend summary payload", async () => {
+  const { buildSystemEventSummaryItems } = await import(selectorsModuleUrl);
+
+  const text = (zh, _en) => zh;
+  const items = buildSystemEventSummaryItems({
+    summary: {
+      recentFailures: { count: 2, items: [] },
+      pendingAuditItems: { count: 3, items: [] },
+      recentRecoveries: { count: 1, items: [] },
+    },
+    filteredEvents: [
+      createEvent("e1", "2026-04-13T10:00:00.000Z"),
+      createEvent("e2", "2026-04-13T09:00:00.000Z"),
+    ],
+    text,
+    summaryCards: [
+      { key: "current", label: "当前事件" },
+      { key: "failures", label: "最近失败" },
+      { key: "pending", label: "待处理审计" },
+      { key: "recoveries", label: "最近恢复" },
+    ],
+  });
+
+  assert.deepEqual(items, [
+    { label: "当前事件", value: "2" },
+    { label: "最近失败", value: "2" },
+    { label: "待处理审计", value: "3" },
+    { label: "最近恢复", value: "1" },
+  ]);
+});
+
+test("system event actions export next-step descriptors by event kind", async () => {
   const { buildSystemEventNextStepActions } = await import(actionsModuleUrl);
 
-  const actions = buildSystemEventNextStepActions(
-    createEvent("e1", "2026-04-13T10:00:00.000Z", {
+  const releaseActions = buildSystemEventNextStepActions(
+    createEvent("release", "2026-04-13T10:00:00.000Z", {
+      kind: "release_update_available",
+      category: "operations",
+      severity: "info",
+    }),
+  );
+  assert.ok(
+    releaseActions.some((action) => action.intent === "open-system-section"),
+  );
+
+  const trustActions = buildSystemEventNextStepActions(
+    createEvent("trust", "2026-04-13T10:00:00.000Z", {
       kind: "device_trust_pending",
       category: "recovery",
       severity: "warning",
     }),
   );
+  assert.ok(trustActions.some((action) => action.intent === "open-terminal"));
 
-  assert.ok(Array.isArray(actions));
-  assert.ok(actions.length > 0);
-  const first = actions[0];
-  assert.equal(typeof first.id, "string");
-  assert.equal(typeof first.label, "string");
-  assert.ok(first.label.length > 0);
-  assert.equal(typeof first.intent, "string");
+  const issueActions = buildSystemEventNextStepActions(
+    createEvent("issue", "2026-04-13T10:00:00.000Z", {
+      kind: "diagnostic_issue",
+      category: "alerts",
+      severity: "error",
+    }),
+  );
+  assert.ok(issueActions.some((action) => action.intent === "refresh"));
+  assert.ok(issueActions.some((action) => action.intent === "inspect"));
 });

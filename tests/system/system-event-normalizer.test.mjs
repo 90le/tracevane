@@ -10,14 +10,14 @@ const rootDir = path.resolve(
 );
 const modulePath = path.join(
   rootDir,
-  "apps/web-vue/src/features/system/system-event-normalizer.ts",
+  "apps/api/modules/system/event-normalizer.ts",
 );
 const moduleUrl = `${pathToFileURL(modulePath).href}?t=${Date.now()}`;
 
-test("buildSystemDerivedEvents derives required system events", async () => {
-  const { buildSystemDerivedEvents } = await import(moduleUrl);
+test("buildSystemSnapshotDerivedEvents derives required system events", async () => {
+  const { buildSystemSnapshotDerivedEvents } = await import(moduleUrl);
 
-  const events = buildSystemDerivedEvents({
+  const events = buildSystemSnapshotDerivedEvents({
     diagnostics: {
       checkedAt: "2026-04-13T08:00:00.000Z",
       gateway: { rpcOk: false },
@@ -46,14 +46,13 @@ test("buildSystemDerivedEvents derives required system events", async () => {
 
   const gatewayIssue = events.find(
     (event) =>
-      event.kind === "diagnostic_issue" && event.sourceModule === "gateway",
+      event.kind === "diagnostic_issue" &&
+      event.sourceModule === "diagnostics" &&
+      event.severity === "error",
   );
   assert.ok(gatewayIssue);
   assert.equal(gatewayIssue.category, "alerts");
-  assert.equal(gatewayIssue.severity, "error");
-  assert.ok(gatewayIssue.id.length > 0);
-  assert.ok(gatewayIssue.occurredAt.length > 0);
-  assert.ok(gatewayIssue.title.length > 0);
+  assert.equal(gatewayIssue.status, "failed");
 
   const bootstrapIssue = events.find(
     (event) =>
@@ -65,7 +64,7 @@ test("buildSystemDerivedEvents derives required system events", async () => {
     (event) => event.kind === "device_trust_pending",
   );
   assert.ok(trustPending);
-  assert.equal(trustPending.category, "recovery");
+  assert.equal(trustPending.category, "audit");
   assert.equal(trustPending.severity, "warning");
 
   const releaseEvent = events.find(
@@ -76,10 +75,10 @@ test("buildSystemDerivedEvents derives required system events", async () => {
   assert.equal(releaseEvent.severity, "info");
 });
 
-test("buildSystemDerivedEvents treats bootstrap pending count as diagnostic issue", async () => {
-  const { buildSystemDerivedEvents } = await import(moduleUrl);
+test("buildSystemSnapshotDerivedEvents treats bootstrap pending count as diagnostic issue", async () => {
+  const { buildSystemSnapshotDerivedEvents } = await import(moduleUrl);
 
-  const events = buildSystemDerivedEvents({
+  const events = buildSystemSnapshotDerivedEvents({
     diagnostics: {
       checkedAt: "2026-04-13T09:00:00.000Z",
       gateway: { rpcOk: true },
@@ -106,4 +105,5 @@ test("buildSystemDerivedEvents treats bootstrap pending count as diagnostic issu
       event.kind === "diagnostic_issue" && event.sourceModule === "bootstrap",
   );
   assert.ok(bootstrapIssue);
+  assert.equal(bootstrapIssue.status, "pending");
 });

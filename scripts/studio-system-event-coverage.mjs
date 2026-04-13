@@ -50,6 +50,7 @@ async function loadSystemEventCoverageSeed() {
 const coverageSeed = await loadSystemEventCoverageSeed();
 const output = {
   sections: coverageSeed.map((entry) => entry.sectionKey),
+  eventSurfaces: uniqueSorted(coverageSeed.map((entry) => entry.eventSurface)),
   frontendFiles: uniqueSorted(coverageSeed.map((entry) => entry.frontendFile)),
   backendFiles: uniqueSorted(coverageSeed.map((entry) => entry.backendFile)),
   tests: coverageSeed.map((entry) => ({

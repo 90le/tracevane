@@ -3,9 +3,9 @@
     <header class="page-header-row">
       <div>
         <p class="eyebrow">System</p>
-        <h2 class="page-title">{{ text('系统事件中心', 'System Event Center') }}</h2>
+        <h2 class="page-title">{{ recipe.pageTitle }}</h2>
         <p class="page-copy">
-          {{ text('Phase 1 提供事件中心壳层：总览、筛选、时间线与详情。', 'Phase 1 delivers the event center shell: summary, filters, timeline, and details.') }}
+          {{ recipe.pageCopy }}
         </p>
       </div>
     </header>
@@ -32,8 +32,18 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import type { SystemEventSummaryPayload } from '../../../../../types/system';
 import { useLocalePreference } from '../../shared/locale';
-import { fetchSystemEventCenterSnapshot } from './api';
+import {
+  fetchSystemEventCenterSnapshot,
+  fetchSystemEventCenterSummary,
+} from './api';
+import {
+  buildDefaultSystemEventCenterRecipe,
+} from './system-event-center-recipe';
+import {
+  buildSystemEventSummaryItems,
+} from './system-event-selectors';
 import { buildSystemEventTimeline } from './system-event-timeline';
 import { useSystemEventStore } from './system-event-store';
 import type { SystemEventItem } from './system-event-types';
@@ -45,6 +55,8 @@ import './system-events.css';
 
 const { text } = useLocalePreference();
 const store = useSystemEventStore();
+const recipe = computed(() => buildDefaultSystemEventCenterRecipe(text));
+const backendSummary = ref<SystemEventSummaryPayload | null>(null);
 
 const severityFilter = ref<string>('all');
 const categoryFilter = ref<string>('all');
@@ -85,23 +97,19 @@ const selectedEvent = computed<SystemEventItem | null>(() => {
   );
 });
 
-const summaryItems = computed(() => {
-  const total = filteredEvents.value.length;
-  const errors = filteredEvents.value.filter((event) => event.severity === 'error').length;
-  const warnings = filteredEvents.value.filter((event) => event.severity === 'warning').length;
-  const todayKey = new Date().toISOString().slice(0, 10);
-  const today = filteredEvents.value.filter((event) => event.occurredAt.slice(0, 10) === todayKey).length;
-
-  return [
-    { label: text('当前事件', 'Current Events'), value: String(total) },
-    { label: text('错误', 'Errors'), value: String(errors) },
-    { label: text('警告', 'Warnings'), value: String(warnings) },
-    { label: text('今日新增', 'Today'), value: String(today) },
-  ];
-});
+const summaryItems = computed(() => buildSystemEventSummaryItems({
+  summary: backendSummary.value,
+  filteredEvents: filteredEvents.value,
+  summaryCards: recipe.value.summaryCards,
+  text,
+}));
 
 onMounted(async () => {
-  const snapshot = await fetchSystemEventCenterSnapshot();
+  const [snapshot, summary] = await Promise.all([
+    fetchSystemEventCenterSnapshot(),
+    fetchSystemEventCenterSummary(),
+  ]);
   store.hydrate(snapshot);
+  backendSummary.value = summary;
 });
 </script>

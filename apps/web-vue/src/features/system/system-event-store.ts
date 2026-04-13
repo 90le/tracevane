@@ -27,7 +27,7 @@ function toSystemEventItem(record: SystemEventRecord): SystemEventItem {
     occurredAt: record.occurredAt,
     title: record.title,
     summary: record.summary,
-    sourceModule: record.status,
+    sourceModule: record.sourceModule || "system",
   };
 }
 

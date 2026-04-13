@@ -67,25 +67,28 @@ test("system event center page composes summary, filter, timeline, and detail sh
   assert.match(page, /system-events\.css/);
 });
 
-test("system event center page hydrates store from /api/system/events on mounted", () => {
+test("system event center page hydrates store and summary from backend endpoints", () => {
   const page = fs.readFileSync(eventCenterPagePath, "utf8");
 
   assert.match(page, /import \{[^}]*onMounted[^}]*\} from 'vue'/);
+  assert.match(page, /fetchSystemEventCenterSnapshot/);
+  assert.match(page, /fetchSystemEventCenterSummary/);
   assert.match(
     page,
-    /import \{\s*fetchSystemEventCenterSnapshot\s*\} from '\.\/api'/,
+    /import \{\s*buildSystemEventSummaryItems[^}]*\} from '\.\/system-event-selectors'/,
   );
+  assert.match(page, /buildDefaultSystemEventCenterRecipe/);
   assert.match(
     page,
-    /import \{\s*useSystemEventStore\s*\} from '\.\/system-event-store'/,
+    /const\s+\[\s*snapshot\s*,\s*summary\s*\]\s*=\s*await\s+Promise\.all\(/,
   );
-  assert.match(page, /const\s+store\s*=\s*useSystemEventStore\(\)/);
-  assert.match(page, /onMounted\(async\s*\(\)\s*=>\s*\{/);
-  assert.match(
-    page,
-    /const\s+snapshot\s*=\s*await\s+fetchSystemEventCenterSnapshot\(\)/,
-  );
+  assert.match(page, /fetchSystemEventCenterSnapshot\(\)/);
+  assert.match(page, /fetchSystemEventCenterSummary\(\)/);
   assert.match(page, /store\.hydrate\(snapshot\)/);
+  assert.match(
+    page,
+    /summaryItems\s*=\s*computed\(\(\)\s*=>\s*buildSystemEventSummaryItems\(/,
+  );
 });
 
 test("system event center feature files exist", () => {
