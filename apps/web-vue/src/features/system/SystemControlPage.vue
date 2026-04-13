@@ -312,11 +312,15 @@
                 />
               </div>
             </div>
+          </section>
+        </article>
 
+        <article v-else-if="activeTab === 'environment'" class="panel-card system-stage-panel">
+          <section class="system-section">
             <div v-if="diagnostics" class="system-section-head system-section-head-tight">
               <div>
-                <h3>{{ text('设备信任', 'Device Trust') }}</h3>
-                <p>{{ text('Studio helper 的 operator pairing、自愈开关，以及待批准的浏览器/设备请求。', 'Studio helper operator pairing, self-heal toggle, and pending browser/device approvals.') }}</p>
+                <h3>{{ text('设备信任与环境', 'Device Trust and Environment') }}</h3>
+                <p>{{ text('把 helper trust、待批准请求与当前环境状态独立成显式分区，避免继续挤在 bootstrap 面板里。', 'Expose helper trust, pending approvals, and current environment state as a dedicated seam instead of keeping them inside bootstrap.') }}</p>
               </div>
               <div class="system-inline-actions">
                 <button
@@ -385,6 +389,22 @@
                 <span>{{ text('Metadata Repair', 'Metadata Repair') }}</span>
                 <strong>{{ diagnostics.deviceTrust.helper.metadataRepairPending ? text('待修复', 'Pending') : text('正常', 'Healthy') }}</strong>
               </div>
+              <div class="system-overview-item">
+                <span>{{ text('Node', 'Node') }}</span>
+                <strong>{{ diagnostics.runtime.nodeVersion }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('平台', 'Platform') }}</span>
+                <strong>{{ diagnostics.runtime.platform }} / {{ diagnostics.runtime.arch }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('主机名', 'Hostname') }}</span>
+                <strong>{{ diagnostics.runtime.hostname }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('工作目录', 'Working Directory') }}</span>
+                <strong>{{ diagnostics.runtime.cwd || '-' }}</strong>
+              </div>
             </div>
 
             <div v-if="diagnostics.deviceTrust.notes.length" class="system-callout">
@@ -446,7 +466,7 @@
           </section>
         </article>
 
-        <article v-else class="panel-card system-stage-panel">
+        <article v-else-if="activeTab === 'diagnostics'" class="panel-card system-stage-panel">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -523,7 +543,7 @@ import {
   buildSystemStageHeader,
 } from './system-stage-selectors';
 
-type SystemTab = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics';
+type SystemTab = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics' | 'environment';
 
 interface NoticeLike {
   kind: 'success' | 'error';
@@ -570,6 +590,7 @@ const tabs = computed(() => [
   { id: 'overview' as const, icon: '◉', label: text('概览', 'Overview') },
   { id: 'release' as const, icon: '⭮', label: text('升级', 'Release') },
   { id: 'gateway' as const, icon: '⛭', label: text('Gateway', 'Gateway') },
+  { id: 'environment' as const, icon: '⌂', label: text('环境', 'Environment') },
   { id: 'diagnostics' as const, icon: '⌘', label: text('诊断输出', 'Diagnostics') },
 ]);
 

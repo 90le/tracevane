@@ -63,6 +63,26 @@ test("system control page consumes extracted recipe and selectors", () => {
   assert.match(systemControlPage, /buildSystemControlActionSummary\(/);
 });
 
+test("system control page exposes six explicit system seams including environment", () => {
+  assert.match(
+    systemControlPage,
+    /type SystemTab = 'overview' \| 'bootstrap' \| 'release' \| 'gateway' \| 'diagnostics' \| 'environment'/,
+  );
+  assert.match(
+    systemControlPage,
+    /\{ id: 'environment' as const, icon: '⌂', label: text\('环境', 'Environment'\) \}/,
+  );
+  assert.match(systemControlPage, /v-else-if="activeTab === 'environment'"/);
+  assert.match(
+    systemControlPage,
+    /text\('设备信任与环境', 'Device Trust and Environment'\)/,
+  );
+  assert.doesNotMatch(
+    systemControlPage,
+    /activeTab === 'bootstrap'[\s\S]*text\('设备信任', 'Device Trust'\)/,
+  );
+});
+
 test("new system shell components keep dedicated template seams", () => {
   assert.match(overviewPanel, /<section class="system-section">/);
   assert.match(overviewPanel, /v-for="card in healthCards"/);
