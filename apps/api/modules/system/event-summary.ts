@@ -1,4 +1,5 @@
 import type { SystemEventRecord } from "./event-types.js";
+import { mergeSystemEventHistory } from "./event-reader.js";
 
 export interface SystemEventSummaryCard {
   count: number;
@@ -35,6 +36,13 @@ function buildCard(
   };
 }
 
+export interface BuildSystemEventSummaryFromHistoryInput {
+  persistedEvents: SystemEventRecord[];
+  liveSnapshotEvents: SystemEventRecord[];
+  limit?: number;
+  maxItems?: number;
+}
+
 export function buildSystemEventSummaryCards(
   events: SystemEventRecord[],
   options: { maxItems?: number } = {},
@@ -62,4 +70,15 @@ export function buildSystemEventSummaryCards(
     pendingAuditItems: buildCard(pendingAuditItems, maxItems),
     recentRecoveries: buildCard(recentRecoveries, maxItems),
   };
+}
+
+export function buildSystemEventSummaryCardsFromHistory(
+  input: BuildSystemEventSummaryFromHistoryInput,
+): SystemEventSummaryCards {
+  const merged = mergeSystemEventHistory({
+    persistedEvents: input.persistedEvents,
+    liveSnapshotEvents: input.liveSnapshotEvents,
+    limit: input.limit,
+  });
+  return buildSystemEventSummaryCards(merged, { maxItems: input.maxItems });
 }

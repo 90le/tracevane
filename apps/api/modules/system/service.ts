@@ -72,7 +72,8 @@ import {
   buildSystemSnapshotDerivedEvents,
 } from "./event-normalizer.js";
 import { createSystemEventLogStore } from "./event-log-store.js";
-import { buildSystemEventSummaryCards } from "./event-summary.js";
+import { mergeSystemEventHistory } from "./event-reader.js";
+import { buildSystemEventSummaryCardsFromHistory } from "./event-summary.js";
 import { buildSystemRuntimeSummary } from "./runtime-summary.js";
 import { buildSystemTerminalActionSuggestions } from "./terminal-handoff.js";
 // seam import marker: from './runtime-summary.js'
@@ -982,7 +983,7 @@ export function createSystemService(
     eventLogStore.append(buildSystemActionEvents({ action, ok }));
   }
 
-  function mergeSnapshotAndActionEvents(params: {
+  function buildMergedEventList(params: {
     limit: number;
     diagnostics: Pick<
       SystemDiagnosticsPayload,
@@ -994,22 +995,30 @@ export function createSystemService(
       SystemStudioReleasePayload,
       "checkedAt" | "currentVersion" | "latestVersion" | "updateAvailable"
     >;
-  }): SystemEventRecord[] {
-    const snapshotEvents = buildSystemSnapshotDerivedEvents({
+  }): {
+    merged: SystemEventRecord[];
+    persistedEvents: SystemEventRecord[];
+    liveSnapshotEvents: SystemEventRecord[];
+  } {
+    const liveSnapshotEvents = buildSystemSnapshotDerivedEvents({
       diagnostics: params.diagnostics,
       bootstrap: params.bootstrap,
       deviceTrust: params.deviceTrust,
       studioRelease: params.studioRelease,
     });
 
-    const actionEvents = eventLogStore.list(params.limit);
-    return [...snapshotEvents, ...actionEvents]
-      .sort(
-        (left, right) =>
-          Date.parse(right.occurredAt || "") -
-          Date.parse(left.occurredAt || ""),
-      )
-      .slice(0, Math.max(1, Math.floor(params.limit)));
+    const persistedEvents = eventLogStore.list(params.limit);
+    const merged = mergeSystemEventHistory({
+      persistedEvents,
+      liveSnapshotEvents,
+      limit: params.limit,
+    });
+
+    return {
+      merged,
+      persistedEvents,
+      liveSnapshotEvents,
+    };
   }
 
   return {
@@ -1276,7 +1285,7 @@ export function createSystemService(
           this.getDeviceTrust(),
           this.getStudioRelease(),
         ]);
-      return mergeSnapshotAndActionEvents({
+      const { merged } = buildMergedEventList({
         limit,
         diagnostics: {
           checkedAt: diagnostics.checkedAt,
@@ -1298,10 +1307,44 @@ export function createSystemService(
           updateAvailable: studioRelease.updateAvailable,
         },
       });
+      return merged;
     },
 
     async getEventSummary(limit = 100): Promise<SystemEventSummaryPayload> {
-      return buildSystemEventSummaryCards(await this.listEvents(limit));
+      const [diagnostics, bootstrap, deviceTrust, studioRelease] =
+        await Promise.all([
+          this.getDiagnostics(),
+          this.getBootstrap(),
+          this.getDeviceTrust(),
+          this.getStudioRelease(),
+        ]);
+      const { persistedEvents, liveSnapshotEvents } = buildMergedEventList({
+        limit,
+        diagnostics: {
+          checkedAt: diagnostics.checkedAt,
+          gateway: diagnostics.gateway,
+          status: diagnostics.status,
+        },
+        bootstrap: {
+          checkedAt: bootstrap.checkedAt,
+          ready: bootstrap.ready,
+        },
+        deviceTrust: {
+          checkedAt: deviceTrust.checkedAt,
+          pending: deviceTrust.pending,
+        },
+        studioRelease: {
+          checkedAt: studioRelease.checkedAt,
+          currentVersion: studioRelease.currentVersion,
+          latestVersion: studioRelease.latestVersion,
+          updateAvailable: studioRelease.updateAvailable,
+        },
+      });
+      return buildSystemEventSummaryCardsFromHistory({
+        persistedEvents,
+        liveSnapshotEvents,
+        limit,
+      });
     },
   };
 }
