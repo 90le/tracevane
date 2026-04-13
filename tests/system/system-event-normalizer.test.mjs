@@ -111,3 +111,47 @@ test("buildSystemSnapshotDerivedEvents treats bootstrap pending count as diagnos
   assert.ok(bootstrapIssue);
   assert.equal(bootstrapIssue.status, "pending");
 });
+
+test("buildSystemSnapshotDerivedEvents emits resolved recovery events for healthy snapshots", async () => {
+  const { buildSystemSnapshotDerivedEvents } = await import(moduleUrl);
+
+  const events = buildSystemSnapshotDerivedEvents({
+    diagnostics: {
+      checkedAt: "2026-04-13T10:00:00.000Z",
+      gateway: { rpcOk: true },
+      status: { bootstrapPendingCount: 0 },
+    },
+    bootstrap: {
+      checkedAt: "2026-04-13T10:01:00.000Z",
+      ready: true,
+    },
+    deviceTrust: {
+      checkedAt: "2026-04-13T10:02:00.000Z",
+      pending: [],
+    },
+    studioRelease: {
+      checkedAt: "2026-04-13T10:03:00.000Z",
+      currentVersion: "0.1.21",
+      latestVersion: null,
+      updateAvailable: false,
+    },
+  });
+
+  const resolvedGateway = events.find(
+    (event) => event.dedupeKey === "diagnostics:gateway-rpc",
+  );
+  const resolvedBootstrap = events.find(
+    (event) => event.dedupeKey === "bootstrap:pending",
+  );
+  const resolvedTrust = events.find(
+    (event) => event.dedupeKey === "device-trust:pending",
+  );
+  const resolvedRelease = events.find(
+    (event) => event.dedupeKey === "release:update-available",
+  );
+
+  assert.equal(resolvedGateway?.status, "resolved");
+  assert.equal(resolvedBootstrap?.status, "resolved");
+  assert.equal(resolvedTrust?.status, "resolved");
+  assert.equal(resolvedRelease?.status, "resolved");
+});

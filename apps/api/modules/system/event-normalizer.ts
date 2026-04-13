@@ -168,16 +168,16 @@ export function buildSystemSnapshotDerivedEvents(params: {
   const { diagnostics, bootstrap, deviceTrust, studioRelease } = params;
   const events: SystemEventRecord[] = [];
 
+  const gatewayOccurredAt = diagnostics?.checkedAt || new Date().toISOString();
   if (diagnostics?.gateway?.rpcOk === false) {
-    const occurredAt = diagnostics.checkedAt || new Date().toISOString();
     events.push(
       toPersistedRecord(
         {
-          id: makeSnapshotEventId("diagnostic-gateway-rpc", occurredAt),
+          id: makeSnapshotEventId("diagnostic-gateway-rpc", gatewayOccurredAt),
           kind: "diagnostic_issue",
           category: "alerts",
           severity: "error",
-          occurredAt,
+          occurredAt: gatewayOccurredAt,
           title: "Gateway RPC 不可用",
           summary: "system diagnostics 显示 gateway rpc 不可用",
           status: "failed",
@@ -191,23 +191,43 @@ export function buildSystemSnapshotDerivedEvents(params: {
         },
       ),
     );
+  } else if (diagnostics?.gateway?.rpcOk === true) {
+    events.push(
+      toPersistedRecord(
+        {
+          id: makeSnapshotEventId("diagnostic-gateway-rpc", gatewayOccurredAt),
+          kind: "diagnostic_issue",
+          category: "recovery",
+          severity: "success",
+          occurredAt: gatewayOccurredAt,
+          title: "Gateway RPC 已恢复",
+          summary: "system diagnostics 显示 gateway rpc 正常",
+          status: "resolved",
+          sourceModule: "diagnostics",
+        },
+        {
+          dedupeKey: "diagnostics:gateway-rpc",
+          sourceEntity: "system:diagnostics",
+          action: "snapshot",
+          details: { rpcOk: true },
+        },
+      ),
+    );
   }
 
   const bootstrapPending =
     Number(diagnostics?.status?.bootstrapPendingCount || 0) > 0;
+  const bootstrapOccurredAt =
+    bootstrap?.checkedAt || diagnostics?.checkedAt || new Date().toISOString();
   if (bootstrap?.ready === false || bootstrapPending) {
-    const occurredAt =
-      bootstrap?.checkedAt ||
-      diagnostics?.checkedAt ||
-      new Date().toISOString();
     events.push(
       toPersistedRecord(
         {
-          id: makeSnapshotEventId("diagnostic-bootstrap", occurredAt),
+          id: makeSnapshotEventId("diagnostic-bootstrap", bootstrapOccurredAt),
           kind: "diagnostic_issue",
           category: "alerts",
           severity: "warning",
-          occurredAt,
+          occurredAt: bootstrapOccurredAt,
           title: "Bootstrap 待处理",
           summary: "bootstrap 未 ready 或存在 pending 项",
           status: "pending",
@@ -224,18 +244,43 @@ export function buildSystemSnapshotDerivedEvents(params: {
         },
       ),
     );
-  }
-
-  if (Array.isArray(deviceTrust?.pending) && deviceTrust.pending.length > 0) {
-    const occurredAt = deviceTrust?.checkedAt || new Date().toISOString();
+  } else if (bootstrap) {
     events.push(
       toPersistedRecord(
         {
-          id: makeSnapshotEventId("device-trust-pending", occurredAt),
+          id: makeSnapshotEventId("diagnostic-bootstrap", bootstrapOccurredAt),
+          kind: "diagnostic_issue",
+          category: "recovery",
+          severity: "success",
+          occurredAt: bootstrapOccurredAt,
+          title: "Bootstrap 已恢复",
+          summary: "bootstrap 当前 ready，且无 pending 项",
+          status: "resolved",
+          sourceModule: "bootstrap",
+        },
+        {
+          dedupeKey: "bootstrap:pending",
+          sourceEntity: "system:bootstrap",
+          action: "snapshot",
+          details: {
+            ready: bootstrap.ready,
+            bootstrapPendingCount: diagnostics?.status?.bootstrapPendingCount,
+          },
+        },
+      ),
+    );
+  }
+
+  const trustOccurredAt = deviceTrust?.checkedAt || new Date().toISOString();
+  if (Array.isArray(deviceTrust?.pending) && deviceTrust.pending.length > 0) {
+    events.push(
+      toPersistedRecord(
+        {
+          id: makeSnapshotEventId("device-trust-pending", trustOccurredAt),
           kind: "device_trust_pending",
           category: "audit",
           severity: "warning",
-          occurredAt,
+          occurredAt: trustOccurredAt,
           title: "设备信任待审批",
           summary: `存在 ${deviceTrust.pending.length} 条待审批请求`,
           status: "pending",
@@ -249,21 +294,69 @@ export function buildSystemSnapshotDerivedEvents(params: {
         },
       ),
     );
-  }
-
-  if (studioRelease?.updateAvailable) {
-    const occurredAt = studioRelease.checkedAt || new Date().toISOString();
+  } else if (deviceTrust) {
     events.push(
       toPersistedRecord(
         {
-          id: makeSnapshotEventId("release-update", occurredAt),
+          id: makeSnapshotEventId("device-trust-pending", trustOccurredAt),
+          kind: "device_trust_pending",
+          category: "recovery",
+          severity: "success",
+          occurredAt: trustOccurredAt,
+          title: "设备信任已恢复",
+          summary: "当前没有待审批设备信任请求",
+          status: "resolved",
+          sourceModule: "device-trust",
+        },
+        {
+          dedupeKey: "device-trust:pending",
+          sourceEntity: "system:device-trust",
+          action: "snapshot",
+          details: { pendingCount: 0 },
+        },
+      ),
+    );
+  }
+
+  const releaseOccurredAt =
+    studioRelease?.checkedAt || new Date().toISOString();
+  if (studioRelease?.updateAvailable) {
+    events.push(
+      toPersistedRecord(
+        {
+          id: makeSnapshotEventId("release-update", releaseOccurredAt),
           kind: "release_update_available",
           category: "operations",
           severity: "info",
-          occurredAt,
+          occurredAt: releaseOccurredAt,
           title: "发现可用更新",
           summary: `${studioRelease.currentVersion} -> ${studioRelease.latestVersion || "unknown"}`,
           status: "pending",
+          sourceModule: "studio-release",
+        },
+        {
+          dedupeKey: "release:update-available",
+          sourceEntity: "system:studio-release",
+          action: "snapshot",
+          details: {
+            currentVersion: studioRelease.currentVersion,
+            latestVersion: studioRelease.latestVersion,
+          },
+        },
+      ),
+    );
+  } else if (studioRelease) {
+    events.push(
+      toPersistedRecord(
+        {
+          id: makeSnapshotEventId("release-update", releaseOccurredAt),
+          kind: "release_update_available",
+          category: "recovery",
+          severity: "success",
+          occurredAt: releaseOccurredAt,
+          title: "更新提示已恢复",
+          summary: "当前没有待安装的新版本提示",
+          status: "resolved",
           sourceModule: "studio-release",
         },
         {

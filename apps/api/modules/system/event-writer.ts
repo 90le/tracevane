@@ -81,18 +81,20 @@ export function createSystemEventWriter(
         return;
       }
 
+      const nextDedupeState: DedupeState = { ...dedupeState };
       const changedEvents: SystemPersistedEventRecord[] = [];
       for (const event of events) {
         if (!event?.dedupeKey) {
           continue;
         }
 
-        const previousStatus = dedupeState[event.dedupeKey];
+        const previousStatus = nextDedupeState[event.dedupeKey];
         if (previousStatus === event.status) {
           continue;
         }
 
         changedEvents.push(event);
+        nextDedupeState[event.dedupeKey] = event.status;
       }
 
       if (changedEvents.length === 0) {
@@ -100,9 +102,7 @@ export function createSystemEventWriter(
       }
 
       store.append(changedEvents);
-      for (const event of changedEvents) {
-        dedupeState[event.dedupeKey] = event.status;
-      }
+      dedupeState = nextDedupeState;
       persistDedupeState();
     },
 
