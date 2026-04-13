@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const rootDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -20,6 +20,7 @@ const systemControlPagePath = path.join(
   rootDir,
   "apps/web-vue/src/features/system/SystemControlPage.vue",
 );
+const handoffModuleUrl = `${pathToFileURL(handoffPath).href}?t=${Date.now()}`;
 
 test("system terminal handoff seam exposes buildSystemTerminalHandoff", () => {
   const handoffSource = fs.readFileSync(handoffPath, "utf8");
@@ -29,6 +30,18 @@ test("system terminal handoff seam exposes buildSystemTerminalHandoff", () => {
     handoffSource,
     /to:\s*`\/terminal\/\$\{encodeURIComponent\(sessionId\)\}`/,
   );
+});
+
+test("system terminal handoff ignores non-string createSessionId results", async () => {
+  const { buildSystemTerminalHandoff } = await import(handoffModuleUrl);
+
+  assert.doesNotThrow(() => {
+    const handoff = buildSystemTerminalHandoff({
+      createSessionId: () => null,
+    });
+    assert.match(handoff.to, /^\/terminal\/.+/);
+    assert.ok(handoff.sessionId.length > 0);
+  });
 });
 
 test("system control page consumes terminal handoff seam via panel", () => {

@@ -15,8 +15,11 @@ export function buildSystemTerminalHandoff(
 ): SystemTerminalHandoff {
   const requestedSessionId =
     typeof options.sessionId === "string" ? options.sessionId.trim() : "";
+  const createdSessionId = options.createSessionId?.();
   const fallbackSessionId =
-    options.createSessionId?.().trim() || createRuntimeSessionId();
+    typeof createdSessionId === "string" && createdSessionId.trim()
+      ? createdSessionId.trim()
+      : createRuntimeSessionId();
   const sessionId = requestedSessionId || fallbackSessionId;
 
   return {
