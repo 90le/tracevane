@@ -146,5 +146,8 @@ test("system event actions export next-step descriptors by event kind", async ()
     }),
   );
   assert.ok(issueActions.some((action) => action.intent === "refresh"));
-  assert.ok(issueActions.some((action) => action.intent === "inspect"));
+  assert.equal(
+    issueActions.some((action) => action.intent === "open-terminal"),
+    false,
+  );
 });

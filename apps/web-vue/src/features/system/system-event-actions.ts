@@ -6,7 +6,6 @@ export interface SystemEventActionDescriptor {
   intent:
     | "navigate"
     | "command"
-    | "inspect"
     | "refresh"
     | "open-terminal"
     | "open-system-section";
@@ -19,13 +18,7 @@ export function buildSystemEventNextStepActions(
     return [];
   }
 
-  const actions: SystemEventActionDescriptor[] = [
-    {
-      id: `inspect-${event.id}`,
-      label: "查看详情",
-      intent: "inspect",
-    },
-  ];
+  const actions: SystemEventActionDescriptor[] = [];
 
   if (event.kind === "diagnostic_issue") {
     actions.push({
