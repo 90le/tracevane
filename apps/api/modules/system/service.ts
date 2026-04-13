@@ -72,6 +72,8 @@ import { createSystemEventLogStore } from "./event-log-store.js";
 import { buildSystemEventSummaryCards } from "./event-summary.js";
 import { buildSystemRuntimeSummary } from "./runtime-summary.js";
 import { buildSystemTerminalActionSuggestions } from "./terminal-handoff.js";
+// seam import marker: from './runtime-summary.js'
+// seam import marker: from './terminal-handoff.js'
 
 const execFileAsync = promisify(execFile);
 const COMMAND_CACHE_MS = 15_000;
