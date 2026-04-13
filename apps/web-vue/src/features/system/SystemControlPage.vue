@@ -501,10 +501,11 @@ import {
 import SystemOverviewPanel from './SystemOverviewPanel.vue';
 import SystemSectionRail from './SystemSectionRail.vue';
 import {
-  buildSystemEventSummaryItems,
   buildSystemOverviewCards,
   buildSystemQuickActions,
 } from './system-overview-recipe';
+import { buildSystemRuntimeViewModel } from './system-runtime-view-model';
+import { buildSystemEventSummary } from './system-event-summary';
 import {
   buildSystemControlActionSummary,
   buildSystemHealthSummary,
@@ -541,20 +542,17 @@ const releaseCheckRunning = ref(false);
 const releaseUpgradeRunning = ref(false);
 
 const releaseBusy = computed(() => releaseCheckRunning.value || releaseUpgradeRunning.value);
-const studioUpgradeStatusLabel = computed(() => {
-  if (studioUpgrade.value.running) return text('升级中', 'Running');
-  if (studioUpgrade.value.status === 'failed') return text('失败', 'Failed');
-  if (studioUpgrade.value.status === 'succeeded') return text('已完成', 'Completed');
-  if (studioRelease.value.updateAvailable) return text('可升级', 'Update available');
-  return text('已最新', 'Up to date');
-});
-const studioUpgradeActionLabel = computed(() => {
-  if (releaseUpgradeRunning.value) return text('处理中...', 'Working...');
-  if (studioUpgrade.value.running) return text('刷新状态', 'Refresh status');
-  if (studioUpgrade.value.status === 'failed') return text('重试升级', 'Retry upgrade');
-  if (studioRelease.value.updateAvailable) return text('一键升级', 'Upgrade now');
-  return text('刷新状态', 'Refresh status');
-});
+
+const runtimeViewModel = computed(() => buildSystemRuntimeViewModel({
+  studioRelease: studioRelease.value,
+  studioUpgrade: studioUpgrade.value,
+  releaseUpgradeRunning: releaseUpgradeRunning.value,
+  text,
+}));
+
+const studioUpgradeStatusLabel = computed(() => runtimeViewModel.value.studioUpgradeStatusLabel);
+
+const studioUpgradeActionLabel = computed(() => runtimeViewModel.value.studioUpgradeActionLabel);
 
 const tabs = computed(() => [
   { id: 'bootstrap' as const, icon: '⚑', label: text('引导', 'Bootstrap') },
@@ -584,7 +582,7 @@ const stageHeader = computed(() => buildSystemStageHeader({
 
 const quickActions = computed(() => buildSystemQuickActions(text));
 
-const eventSummaryItems = computed(() => buildSystemEventSummaryItems({
+const eventSummaryItems = computed(() => buildSystemEventSummary({
   diagnostics: diagnostics.value,
   studioRelease: studioRelease.value,
   text,
