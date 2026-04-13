@@ -1,6 +1,6 @@
 export interface SystemHealthPayload {
   checkedAt: string;
-  gateway: 'online' | 'offline';
+  gateway: "online" | "offline";
   gatewayConnected: boolean;
   pid: number;
   version: string;
@@ -142,7 +142,7 @@ export interface SystemDeviceTrustSettingsPatchResponse {
   settings: SystemDeviceTrustSettings;
 }
 
-export type SystemBootstrapLevel = 'ok' | 'warn' | 'error';
+export type SystemBootstrapLevel = "ok" | "warn" | "error";
 
 export interface SystemBootstrapCheck {
   id: string;
@@ -243,10 +243,10 @@ export interface SystemStudioReleasePayload {
 
 export interface SystemStudioUpgradeStatusPayload {
   checkedAt: string;
-  status: 'idle' | 'running' | 'succeeded' | 'failed';
+  status: "idle" | "running" | "succeeded" | "failed";
   running: boolean;
   pid: number | null;
-  mode: 'standalone' | 'gateway' | null;
+  mode: "standalone" | "gateway" | null;
   targetVersion: string | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -255,7 +255,7 @@ export interface SystemStudioUpgradeStatusPayload {
 }
 
 export interface SystemStudioUpgradeRequest {
-  mode?: 'standalone' | 'gateway';
+  mode?: "standalone" | "gateway";
   version?: string;
   siteBase?: string;
   apiPort?: number;
@@ -276,7 +276,7 @@ export interface SystemRuntimeSummaryPayload {
   updateAvailable: boolean;
   studioUpgradeRunning: boolean;
   helperRepairPending: boolean;
-  level: 'ok' | 'warn';
+  level: "ok" | "warn";
 }
 
 export interface SystemTerminalActionSuggestion {
@@ -284,4 +284,34 @@ export interface SystemTerminalActionSuggestion {
   title: string;
   routePath: string;
   commandHint: string;
+}
+
+export type SystemEventSeverity = "info" | "warning" | "error" | "success";
+
+export type SystemEventCategory =
+  | "operations"
+  | "audit"
+  | "recovery"
+  | "alerts";
+
+export interface SystemEventRecord {
+  id: string;
+  kind: string;
+  category: SystemEventCategory;
+  severity: SystemEventSeverity;
+  occurredAt: string;
+  title: string;
+  summary: string;
+  status: string;
+}
+
+export interface SystemEventSummaryCard {
+  count: number;
+  items: SystemEventRecord[];
+}
+
+export interface SystemEventSummaryPayload {
+  recentFailures: SystemEventSummaryCard;
+  pendingAuditItems: SystemEventSummaryCard;
+  recentRecoveries: SystemEventSummaryCard;
 }
