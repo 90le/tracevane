@@ -306,6 +306,14 @@ export interface SystemEventRecord {
   sourceModule?: string;
 }
 
+export interface SystemPersistedEventRecord extends SystemEventRecord {
+  dedupeKey: string;
+  persistedAt: string;
+  sourceEntity: string;
+  details: Record<string, unknown>;
+  action: string;
+}
+
 export interface SystemEventSummaryCard {
   count: number;
   items: SystemEventRecord[];
