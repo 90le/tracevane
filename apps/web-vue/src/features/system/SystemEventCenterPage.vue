@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
 import { buildSystemEventTimeline } from './system-event-timeline';
 import type { SystemEventItem } from './system-event-types';
@@ -92,19 +92,33 @@ const filteredEvents = computed(() =>
 
 const timelineGroups = computed(() => buildSystemEventTimeline(filteredEvents.value));
 
+watch(
+  filteredEvents,
+  (events) => {
+    if (!events.length) {
+      activeEventId.value = '';
+      return;
+    }
+    if (!events.some((event) => event.id === activeEventId.value)) {
+      activeEventId.value = events[0].id;
+    }
+  },
+  { immediate: true },
+);
+
 const selectedEvent = computed<SystemEventItem | null>(() => {
   if (!filteredEvents.value.length) {
     return null;
   }
-  const matched = filteredEvents.value.find((event) => event.id === activeEventId.value);
-  return matched || filteredEvents.value[0];
+  return filteredEvents.value.find((event) => event.id === activeEventId.value) || null;
 });
 
 const summaryItems = computed(() => {
   const total = filteredEvents.value.length;
   const errors = filteredEvents.value.filter((event) => event.severity === 'error').length;
   const warnings = filteredEvents.value.filter((event) => event.severity === 'warning').length;
-  const today = filteredEvents.value.filter((event) => event.occurredAt.startsWith('2026-04-13')).length;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const today = filteredEvents.value.filter((event) => event.occurredAt.slice(0, 10) === todayKey).length;
 
   return [
     { label: text('当前事件', 'Current Events'), value: String(total) },
