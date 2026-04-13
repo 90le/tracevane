@@ -31,9 +31,9 @@ export const SYSTEM_EVENT_DOMAIN_MANIFEST: ReadonlyArray<SystemEventSectionEntry
       routePath: "/system/events",
       eventSurface: "system-event-summary",
       frontendFile:
-        "apps/web-vue/src/features/system/system-event-selectors.ts",
-      backendFile: "apps/api/modules/system/service.ts",
-      testFile: "tests/system/system-event-selectors.test.mjs",
+        "apps/web-vue/src/features/system/SystemEventSummaryBar.vue",
+      backendFile: "apps/api/modules/system/event-summary.ts",
+      testFile: "tests/system/system-event-center-recipe.test.mjs",
     },
     {
       key: "filters",
@@ -49,7 +49,7 @@ export const SYSTEM_EVENT_DOMAIN_MANIFEST: ReadonlyArray<SystemEventSectionEntry
       label: "事件时间线",
       routePath: "/system/events",
       eventSurface: "system-event-timeline",
-      frontendFile: "apps/web-vue/src/features/system/system-event-timeline.ts",
+      frontendFile: "apps/web-vue/src/features/system/SystemEventTimeline.vue",
       backendFile: "apps/api/modules/system/event-normalizer.ts",
       testFile: "tests/system/system-event-timeline.test.mjs",
     },
@@ -60,7 +60,7 @@ export const SYSTEM_EVENT_DOMAIN_MANIFEST: ReadonlyArray<SystemEventSectionEntry
       eventSurface: "system-event-detail",
       frontendFile:
         "apps/web-vue/src/features/system/SystemEventDetailPanel.vue",
-      backendFile: "apps/api/modules/system/event-normalizer.ts",
+      backendFile: "apps/api/modules/system/service.ts",
       testFile: "tests/system/studio-web-system-event-center.test.mjs",
     },
   ];

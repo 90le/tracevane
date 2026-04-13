@@ -65,6 +65,8 @@ test("system event center page composes summary, filter, timeline, and detail sh
   assert.match(page, /<SystemEventTimeline/);
   assert.match(page, /<SystemEventDetailPanel/);
   assert.match(page, /system-events\.css/);
+  assert.match(page, /buildSystemEventNextStepActions/);
+  assert.match(page, /:actions="nextStepActions"/);
 });
 
 test("system event center page hydrates store and summary from backend endpoints", () => {

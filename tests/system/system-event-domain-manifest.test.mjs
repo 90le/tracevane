@@ -73,21 +73,24 @@ test("system event coverage baseline matches generated inventory", () => {
   assert.ok(payload.sections.includes("detail"));
   assert.ok(
     payload.frontendFiles.includes(
-      "apps/web-vue/src/features/system/system-event-selectors.ts",
+      "apps/web-vue/src/features/system/SystemEventSummaryBar.vue",
     ),
   );
   assert.ok(
     payload.frontendFiles.includes(
-      "apps/web-vue/src/features/system/system-event-timeline.ts",
+      "apps/web-vue/src/features/system/SystemEventTimeline.vue",
     ),
+  );
+  assert.ok(
+    payload.frontendFiles.includes(
+      "apps/web-vue/src/features/system/SystemEventDetailPanel.vue",
+    ),
+  );
+  assert.ok(
+    payload.backendFiles.includes("apps/api/modules/system/event-summary.ts"),
   );
   assert.ok(
     payload.backendFiles.includes("apps/api/modules/system/service.ts"),
-  );
-  assert.ok(
-    payload.backendFiles.includes(
-      "apps/api/modules/system/event-normalizer.ts",
-    ),
   );
 
   const summaryTests = payload.tests.find(
@@ -96,7 +99,7 @@ test("system event coverage baseline matches generated inventory", () => {
   assert.ok(summaryTests);
   assert.equal(
     summaryTests.testFile,
-    "tests/system/system-event-selectors.test.mjs",
+    "tests/system/system-event-center-recipe.test.mjs",
   );
 
   const timelineTests = payload.tests.find(

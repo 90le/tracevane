@@ -25,7 +25,10 @@
         :active-event-id="store.selectedEventId.value"
         @select="store.selectedEventId.value = $event"
       />
-      <SystemEventDetailPanel :event-item="selectedEvent" />
+      <SystemEventDetailPanel
+        :event-item="selectedEvent"
+        :actions="nextStepActions"
+      />
     </section>
   </section>
 </template>
@@ -44,6 +47,7 @@ import {
 import {
   buildSystemEventSummaryItems,
 } from './system-event-selectors';
+import { buildSystemEventNextStepActions } from './system-event-actions';
 import { buildSystemEventTimeline } from './system-event-timeline';
 import { useSystemEventStore } from './system-event-store';
 import type { SystemEventItem } from './system-event-types';
@@ -103,6 +107,10 @@ const summaryItems = computed(() => buildSystemEventSummaryItems({
   summaryCards: recipe.value.summaryCards,
   text,
 }));
+
+const nextStepActions = computed(() =>
+  buildSystemEventNextStepActions(selectedEvent.value),
+);
 
 onMounted(async () => {
   const [snapshot, summary] = await Promise.all([

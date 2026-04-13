@@ -24,6 +24,16 @@
           <p>{{ eventItem.summary || '-' }}</p>
         </div>
       </div>
+      <div class="system-event-detail-actions">
+        <button
+          v-for="action in actions"
+          :key="action.id"
+          type="button"
+          class="secondary-button compact-button"
+        >
+          {{ action.label }}
+        </button>
+      </div>
     </template>
     <p v-else class="panel-muted">{{ text('暂无事件详情', 'No event details') }}</p>
   </aside>
@@ -31,10 +41,12 @@
 
 <script setup lang="ts">
 import { useLocalePreference } from '../../shared/locale';
+import type { SystemEventActionDescriptor } from './system-event-actions';
 import type { SystemEventItem } from './system-event-types';
 
 defineProps<{
   eventItem: SystemEventItem | null;
+  actions: SystemEventActionDescriptor[];
 }>();
 
 const { text } = useLocalePreference();

@@ -9,7 +9,15 @@ export type SystemEventCategory =
 export type SystemEventKind =
   | "diagnostic_issue"
   | "device_trust_pending"
-  | "release_update_available";
+  | "device_trust_approved"
+  | "device_trust_approve_failed"
+  | "release_update_available"
+  | "repair_succeeded"
+  | "repair_failed"
+  | "upgrade_started"
+  | "upgrade_failed"
+  | "helper_repair_succeeded"
+  | "helper_repair_failed";
 
 export interface SystemEventItem {
   id: string;
