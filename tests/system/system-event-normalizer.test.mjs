@@ -53,6 +53,10 @@ test("buildSystemSnapshotDerivedEvents derives required system events", async ()
   assert.ok(gatewayIssue);
   assert.equal(gatewayIssue.category, "alerts");
   assert.equal(gatewayIssue.status, "failed");
+  assert.equal(gatewayIssue.dedupeKey, "diagnostics:gateway-rpc");
+  assert.equal(gatewayIssue.sourceEntity, "system:diagnostics");
+  assert.equal(gatewayIssue.action, "snapshot");
+  assert.equal(typeof gatewayIssue.persistedAt, "string");
 
   const bootstrapIssue = events.find(
     (event) =>
