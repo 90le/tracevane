@@ -84,6 +84,32 @@ test("system event store keeps selected event when hydrate contains selected id"
   assert.equal(store.selectedEvent.value?.id, "other");
 });
 
+test("system event store maps persisted payload sourceEntity and never maps status into sourceModule", async () => {
+  const { useSystemEventStore } = await import(storeModuleUrl);
+
+  const store = useSystemEventStore();
+  store.hydrate([
+    {
+      id: "persisted-1",
+      kind: "device_trust_pending",
+      category: "audit",
+      severity: "warning",
+      occurredAt: "2026-04-13T08:00:00.000Z",
+      title: "设备信任待审批",
+      summary: "存在 1 条待审批请求",
+      status: "pending",
+      sourceEntity: "system:device-trust",
+      dedupeKey: "device-trust:pending",
+      persistedAt: "2026-04-13T08:00:01.000Z",
+      details: { pendingCount: 1 },
+      action: "snapshot",
+    },
+  ]);
+
+  assert.equal(store.events.value[0].sourceModule, "device-trust");
+  assert.notEqual(store.events.value[0].sourceModule, "pending");
+});
+
 test("system event selectors build summary items from backend summary payload", async () => {
   const { buildSystemEventSummaryItems } = await import(selectorsModuleUrl);
 
@@ -149,5 +175,16 @@ test("system event actions export next-step descriptors by event kind", async ()
   assert.equal(
     issueActions.some((action) => action.intent === "open-terminal"),
     false,
+  );
+
+  const approveFailedActions = buildSystemEventNextStepActions(
+    createEvent("approve-failed", "2026-04-13T10:00:00.000Z", {
+      kind: "device_trust_approve_failed",
+      category: "operations",
+      severity: "error",
+    }),
+  );
+  assert.ok(
+    approveFailedActions.some((action) => action.intent === "open-terminal"),
   );
 });

@@ -1,7 +1,10 @@
 import { computed, ref } from "vue";
-import type { SystemEventRecord } from "../../../../../types/system";
 import { buildSystemEventTimeline } from "./system-event-timeline";
-import type { SystemEventItem } from "./system-event-types";
+import type {
+  PersistedSystemEventPayload,
+  SystemEventItem,
+  SystemEventKind,
+} from "./system-event-types";
 
 const events = ref<SystemEventItem[]>([]);
 const selectedEventId = ref<string>("");
@@ -17,8 +20,42 @@ const selectedEvent = computed<SystemEventItem | null>(() => {
   );
 });
 
-function toSystemEventItem(record: SystemEventRecord): SystemEventItem {
-  const kind = (record.kind || "diagnostic_issue") as SystemEventItem["kind"];
+const allowedKinds = new Set<SystemEventKind>([
+  "diagnostic_issue",
+  "device_trust_pending",
+  "release_update_available",
+  "repair_succeeded",
+  "repair_failed",
+  "upgrade_started",
+  "upgrade_failed",
+  "device_trust_approved",
+  "device_trust_approve_failed",
+  "helper_repair_succeeded",
+  "helper_repair_failed",
+]);
+
+function deriveSourceModule(record: PersistedSystemEventPayload): string {
+  if (typeof record.sourceModule === "string" && record.sourceModule.trim()) {
+    return record.sourceModule;
+  }
+
+  if (typeof record.sourceEntity === "string") {
+    const [, module] = record.sourceEntity.split(":");
+    if (module && module.trim()) {
+      return module;
+    }
+  }
+
+  return "system";
+}
+
+function toSystemEventItem(
+  record: PersistedSystemEventPayload,
+): SystemEventItem {
+  const kind = allowedKinds.has(record.kind as SystemEventKind)
+    ? (record.kind as SystemEventKind)
+    : "diagnostic_issue";
+
   return {
     id: record.id,
     kind,
@@ -27,11 +64,11 @@ function toSystemEventItem(record: SystemEventRecord): SystemEventItem {
     occurredAt: record.occurredAt,
     title: record.title,
     summary: record.summary,
-    sourceModule: record.sourceModule || "system",
+    sourceModule: deriveSourceModule(record),
   };
 }
 
-function hydrate(nextEvents: SystemEventRecord[]): void {
+function hydrate(nextEvents: PersistedSystemEventPayload[]): void {
   events.value = (nextEvents || []).map(toSystemEventItem);
 
   if (!events.value.length) {

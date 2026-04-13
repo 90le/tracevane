@@ -7,6 +7,10 @@ export interface SystemEventSummaryItem {
   value: string;
 }
 
+function readSummaryCount(value: number | undefined): string {
+  return String(value ?? 0);
+}
+
 export function buildSystemEventSummaryItems(params: {
   summary: SystemEventSummaryPayload | null;
   filteredEvents: SystemEventItem[];
@@ -34,20 +38,20 @@ export function buildSystemEventSummaryItems(params: {
     if (card.key === "failures") {
       return {
         label: card.label,
-        value: String(summary?.recentFailures.count || 0),
+        value: readSummaryCount(summary?.recentFailures?.count),
       };
     }
 
     if (card.key === "pending") {
       return {
         label: card.label,
-        value: String(summary?.pendingAuditItems.count || 0),
+        value: readSummaryCount(summary?.pendingAuditItems?.count),
       };
     }
 
     return {
       label: card.label,
-      value: String(summary?.recentRecoveries.count || 0),
+      value: readSummaryCount(summary?.recentRecoveries?.count),
     };
   });
 }

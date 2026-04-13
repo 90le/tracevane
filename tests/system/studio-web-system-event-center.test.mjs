@@ -31,6 +31,7 @@ const cssPath = path.join(
   rootDir,
   "apps/web-vue/src/features/system/system-events.css",
 );
+const apiPath = path.join(rootDir, "apps/web-vue/src/features/system/api.ts");
 const routeManifestPath = path.join(
   rootDir,
   "apps/web-vue/src/features/shell/route-manifest.ts",
@@ -75,10 +76,19 @@ test("system event center page composes summary, filter, timeline, and detail sh
 
 test("system event center page hydrates store and summary from backend endpoints", () => {
   const page = fs.readFileSync(eventCenterPagePath, "utf8");
+  const api = fs.readFileSync(apiPath, "utf8");
 
   assert.match(page, /import \{[^}]*onMounted[^}]*\} from 'vue'/);
   assert.match(page, /fetchSystemEventCenterSnapshot/);
   assert.match(page, /fetchSystemEventCenterSummary/);
+  assert.match(
+    api,
+    /fetchSystemEventCenterSnapshot\(\): Promise<[\s\S]*PersistedSystemEventPayload\[\][\s\S]*>/,
+  );
+  assert.match(
+    api,
+    /fetchSystemEventCenterSummary\(\): Promise<SystemEventSummaryPayload>/,
+  );
   assert.match(
     page,
     /import \{\s*buildSystemEventSummaryItems[^}]*\} from '\.\/system-event-selectors'/,

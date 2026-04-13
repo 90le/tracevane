@@ -9,7 +9,6 @@ import type {
   SystemDeviceTrustRepairResponse,
   SystemDeviceTrustSettingsPatchRequest,
   SystemDeviceTrustSettingsPatchResponse,
-  SystemEventRecord,
   SystemEventSummaryPayload,
   SystemHealthPayload,
   SystemStudioReleasePayload,
@@ -17,6 +16,7 @@ import type {
   SystemStudioUpgradeResponse,
   SystemStudioUpgradeStatusPayload,
 } from "../../../../../types/system";
+import type { PersistedSystemEventPayload } from "./system-event-types";
 
 export function fetchSystemHealth(): Promise<SystemHealthPayload> {
   return requestJson<SystemHealthPayload>("/api/system/health");
@@ -107,8 +107,10 @@ export function patchSystemDeviceTrustSettings(
   );
 }
 
-export function fetchSystemEventCenterSnapshot(): Promise<SystemEventRecord[]> {
-  return requestJson<SystemEventRecord[]>("/api/system/events");
+export function fetchSystemEventCenterSnapshot(): Promise<
+  PersistedSystemEventPayload[]
+> {
+  return requestJson<PersistedSystemEventPayload[]>("/api/system/events");
 }
 
 export function fetchSystemEventCenterSummary(): Promise<SystemEventSummaryPayload> {

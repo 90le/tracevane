@@ -29,7 +29,11 @@ export function buildSystemEventNextStepActions(
     return actions;
   }
 
-  if (event.kind === "device_trust_pending") {
+  if (
+    event.kind === "device_trust_pending" ||
+    event.kind === "device_trust_approve_failed" ||
+    event.kind === "helper_repair_failed"
+  ) {
     actions.push({
       id: `terminal-${event.id}`,
       label: "去终端处理",
