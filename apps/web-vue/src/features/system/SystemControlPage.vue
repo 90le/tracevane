@@ -39,7 +39,16 @@
           :health-summary="healthSummary"
           :event-summary-items="eventSummaryItems"
           :quick-actions="quickActions"
-          @navigate="router.push($event)"
+          @navigate="handleSystemNavigate"
+        />
+
+        <SystemActionHandoffPanel
+          :title="text('终端联动', 'Terminal Handoff')"
+          :copy="text('系统侧动作交给终端会话执行，确保跳转指向稳定 session 路由。', 'System actions can continue in Terminal with a stable session route handoff.')"
+          :action-label="text('进入终端会话', 'Open terminal session')"
+          :route-label="text('路由', 'Route')"
+          :route-target="terminalHandoff.to"
+          @handoff="openTerminalHandoff"
         />
       </aside>
 
@@ -498,12 +507,14 @@ import {
   repairSystemDeviceTrustHelper,
   startStudioUpgrade,
 } from './api';
+import SystemActionHandoffPanel from './SystemActionHandoffPanel.vue';
 import SystemOverviewPanel from './SystemOverviewPanel.vue';
 import SystemSectionRail from './SystemSectionRail.vue';
 import {
   buildSystemOverviewCards,
   buildSystemQuickActions,
 } from './system-overview-recipe';
+import { buildSystemTerminalHandoff } from './system-terminal-handoff';
 import { buildSystemRuntimeViewModel } from './system-runtime-view-model';
 import { buildSystemEventSummary } from './system-event-summary';
 import {
@@ -582,6 +593,8 @@ const stageHeader = computed(() => buildSystemStageHeader({
 
 const quickActions = computed(() => buildSystemQuickActions(text));
 
+const terminalHandoff = computed(() => buildSystemTerminalHandoff());
+
 const eventSummaryItems = computed(() => buildSystemEventSummary({
   diagnostics: diagnostics.value,
   studioRelease: studioRelease.value,
@@ -595,6 +608,18 @@ const overviewCards = computed(() => buildSystemOverviewCards({
   formatUptime,
   formatLoad,
 }));
+
+function openTerminalHandoff(): void {
+  router.push(terminalHandoff.value.to);
+}
+
+function handleSystemNavigate(to: '/terminal' | '/cron'): void {
+  if (to === '/terminal') {
+    openTerminalHandoff();
+    return;
+  }
+  router.push(to);
+}
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
