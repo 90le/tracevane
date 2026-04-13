@@ -15,6 +15,9 @@
       </div>
 
       <div class="page-actions">
+        <button type="button" class="secondary-button" @click="router.push('/system/events')">
+          {{ text('进入事件中心', 'Open event center') }}
+        </button>
         <button type="button" class="secondary-button" :disabled="controlActionSummary.refreshing" @click="refreshAll">
           {{ controlActionSummary.refreshLabel }}
         </button>

@@ -25,6 +25,8 @@ const ChannelAccessControlPage = () =>
   import("../channels/ChannelAccessControlPage.vue");
 const ChannelPairingPage = () => import("../channels/ChannelPairingPage.vue");
 const ChannelBindingsPage = () => import("../channels/ChannelBindingsPage.vue");
+const SystemEventCenterPage = () =>
+  import("../system/SystemEventCenterPage.vue");
 
 export type ShellNavItem = {
   key: string;
@@ -230,5 +232,6 @@ export const shellRoutes: RouteRecordRaw[] = [
   { path: "/terminal", component: TerminalView },
   { path: "/terminal/:sessionId", component: TerminalView },
   { path: "/config", component: ConfigView },
+  { path: "/system/events", component: SystemEventCenterPage },
   { path: "/system", component: SystemView },
 ];
