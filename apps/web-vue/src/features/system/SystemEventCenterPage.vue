@@ -28,6 +28,7 @@
       <SystemEventDetailPanel
         :event-item="selectedEvent"
         :actions="nextStepActions"
+        @trigger-action="handleNextStepAction"
       />
     </section>
   </section>
@@ -35,6 +36,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import type { SystemEventSummaryPayload } from '../../../../../types/system';
 import { useLocalePreference } from '../../shared/locale';
 import {
@@ -57,6 +59,7 @@ import SystemEventSummaryBar from './SystemEventSummaryBar.vue';
 import SystemEventTimeline from './SystemEventTimeline.vue';
 import './system-events.css';
 
+const router = useRouter();
 const { text } = useLocalePreference();
 const store = useSystemEventStore();
 const recipe = computed(() => buildDefaultSystemEventCenterRecipe(text));
@@ -112,12 +115,32 @@ const nextStepActions = computed(() =>
   buildSystemEventNextStepActions(selectedEvent.value),
 );
 
-onMounted(async () => {
+async function hydrateEventCenter(): Promise<void> {
   const [snapshot, summary] = await Promise.all([
     fetchSystemEventCenterSnapshot(),
     fetchSystemEventCenterSummary(),
   ]);
   store.hydrate(snapshot);
   backendSummary.value = summary;
+}
+
+async function handleNextStepAction(intent: string): Promise<void> {
+  if (intent === 'refresh') {
+    await hydrateEventCenter();
+    return;
+  }
+
+  if (intent === 'open-terminal') {
+    await router.push('/terminal');
+    return;
+  }
+
+  if (intent === 'open-system-section') {
+    await router.push('/system');
+  }
+}
+
+onMounted(async () => {
+  await hydrateEventCenter();
 });
 </script>

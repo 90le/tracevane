@@ -30,6 +30,7 @@
           :key="action.id"
           type="button"
           class="secondary-button compact-button"
+          @click="emit('trigger-action', action.intent)"
         >
           {{ action.label }}
         </button>
@@ -47,6 +48,10 @@ import type { SystemEventItem } from './system-event-types';
 defineProps<{
   eventItem: SystemEventItem | null;
   actions: SystemEventActionDescriptor[];
+}>();
+
+const emit = defineEmits<{
+  'trigger-action': [intent: SystemEventActionDescriptor['intent']];
 }>();
 
 const { text } = useLocalePreference();
