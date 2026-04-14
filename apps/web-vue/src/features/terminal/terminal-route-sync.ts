@@ -1,11 +1,15 @@
 import { watch, type Ref } from "vue";
 import type { RouteLocationNormalizedLoaded, Router } from "vue-router";
+import { fetchPersistedTerminalSessionDescriptor } from "./api";
 import type { TerminalSessionDescriptor } from "./terminal-session-registry";
 
 export interface TerminalRouteSyncOptions {
   activeSessionId: Ref<string | null>;
   setActiveSession(sessionId: string | null): void;
   registerSession(session: TerminalSessionDescriptor): void;
+  resolveSessionDescriptor?: (
+    sessionId: string,
+  ) => Promise<TerminalSessionDescriptor | null>;
   router: Router;
   route: RouteLocationNormalizedLoaded;
 }
@@ -32,6 +36,28 @@ export function bindTerminalRouteSync(options: TerminalRouteSyncOptions): void {
         updatedAt: new Date().toISOString(),
       });
       options.setActiveSession(normalized);
+
+      const resolver =
+        options.resolveSessionDescriptor ||
+        (async (sessionId: string) => {
+          try {
+            return await fetchPersistedTerminalSessionDescriptor(sessionId);
+          } catch {
+            return null;
+          }
+        });
+
+      void resolver(normalized)
+        .then((descriptor) => {
+          if (!descriptor) return;
+          options.registerSession({
+            ...descriptor,
+            sessionId: normalized,
+          });
+        })
+        .catch(() => {
+          // keep fallback shell when descriptor fetch fails
+        });
     },
     { immediate: true },
   );

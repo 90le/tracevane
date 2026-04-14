@@ -1,9 +1,12 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
 import {
   createTerminalSessionRegistry,
+  loadTerminalSessionRegistryFromStorage,
+  persistTerminalSessionRegistryToStorage,
   sortTerminalSessionsByUpdatedAtDesc,
   type TerminalSessionDescriptor,
   type TerminalSessionRegistry,
+  type TerminalSessionStorageLike,
 } from "./terminal-session-registry";
 
 export interface TerminalWorkspaceState {
@@ -14,6 +17,7 @@ export interface TerminalWorkspaceState {
   recoverableSessions: ComputedRef<TerminalSessionDescriptor[]>;
   registerSession(session: TerminalSessionDescriptor): void;
   hydrateSessions(sessions: TerminalSessionDescriptor[]): void;
+  persistSessions(): void;
   setActiveSession(sessionId: string | null): void;
   closeTab(sessionId: string): void;
 }
@@ -25,10 +29,18 @@ function normalizeSessionId(sessionId: string | null | undefined): string {
 export function createTerminalWorkspaceState(
   options: {
     registry?: TerminalSessionRegistry;
+    storage?: TerminalSessionStorageLike | null;
+    storageKey?: string;
     initialActiveSessionId?: string | null;
   } = {},
 ): TerminalWorkspaceState {
-  const registry = options.registry || createTerminalSessionRegistry();
+  const storageKey =
+    options.storageKey || "openclaw-studio.terminal.descriptors";
+  const storage =
+    options.storage === undefined ? globalThis.localStorage : options.storage;
+  const registry =
+    options.registry ||
+    loadTerminalSessionRegistryFromStorage(storage, storageKey);
   const tabOrder = ref<string[]>([]);
   const activeSessionId = ref<string | null>(
     normalizeSessionId(options.initialActiveSessionId || "") || null,
@@ -48,7 +60,12 @@ export function createTerminalWorkspaceState(
 
   const recoverableSessions = computed(() =>
     Object.values(registry.sessionsById)
-      .filter((session) => session.canResume)
+      .filter(
+        (session) =>
+          session.canResume ||
+          (Boolean(session.recentOutputSummary?.sample) &&
+            (session.status === "completed" || session.status === "failed")),
+      )
       .sort(sortTerminalSessionsByUpdatedAtDesc),
   );
 
@@ -56,6 +73,10 @@ export function createTerminalWorkspaceState(
     if (!tabOrder.value.includes(sessionId)) {
       tabOrder.value = [...tabOrder.value, sessionId];
     }
+  }
+
+  function persistSessions(): void {
+    persistTerminalSessionRegistryToStorage(registry, storage, storageKey);
   }
 
   function registerSession(session: TerminalSessionDescriptor): void {
@@ -72,6 +93,8 @@ export function createTerminalWorkspaceState(
     if (!activeSessionId.value) {
       activeSessionId.value = sessionId;
     }
+
+    persistSessions();
   }
 
   function hydrateSessions(summaries: TerminalSessionDescriptor[]): void {
@@ -98,6 +121,7 @@ export function createTerminalWorkspaceState(
     }
 
     activeSessionId.value = tabOrder.value[0] || null;
+    persistSessions();
   }
 
   function setActiveSession(sessionId: string | null): void {
@@ -121,14 +145,19 @@ export function createTerminalWorkspaceState(
 
     tabOrder.value = tabOrder.value.filter((tabId) => tabId !== normalized);
 
-    if (activeSessionId.value !== normalized) return;
+    if (activeSessionId.value !== normalized) {
+      persistSessions();
+      return;
+    }
 
     if (!tabOrder.value.length) {
       activeSessionId.value = null;
+      persistSessions();
       return;
     }
 
     activeSessionId.value = tabOrder.value[tabOrder.value.length - 1] || null;
+    persistSessions();
   }
 
   return {
@@ -139,6 +168,7 @@ export function createTerminalWorkspaceState(
     recoverableSessions,
     registerSession,
     hydrateSessions,
+    persistSessions,
     setActiveSession,
     closeTab,
   };

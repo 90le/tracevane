@@ -36,3 +36,14 @@ test("buildTerminalTakeoverSummary indicates takeover when observer", () => {
   assert.equal(summary.canTakeover, true);
   assert.equal(summary.labelZh, "请求接管");
 });
+
+test("buildTerminalSessionStatusSummary marks completed session as ended", () => {
+  const summary = selectors.buildTerminalSessionStatusSummary({
+    status: "completed",
+    controlState: "observer",
+    canResume: false,
+  });
+
+  assert.equal(summary.tone, "muted");
+  assert.equal(summary.labelZh, "已结束");
+});

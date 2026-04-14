@@ -112,6 +112,89 @@ test("terminal workspace can hydrate tabs from backend session summaries", () =>
   );
 });
 
+test("terminal workspace restores recoverable sessions from persisted descriptors", () => {
+  const memoryStorage = {
+    records: new Map(),
+    getItem(key) {
+      return this.records.has(key) ? this.records.get(key) : null;
+    },
+    setItem(key, value) {
+      this.records.set(key, value);
+    },
+    removeItem(key) {
+      this.records.delete(key);
+    },
+  };
+
+  memoryStorage.setItem(
+    "terminal.descriptors.test",
+    JSON.stringify([
+      {
+        sessionId: "term-persisted-recent",
+        title: "Persisted recent",
+        status: "failed",
+        source: "linked_context",
+        canResume: false,
+        controlState: "observer",
+        updatedAt: "2026-04-13T10:08:00.000Z",
+        handoffContext: {
+          fromClientId: "console-a",
+          toClientId: "console-b",
+          reason: "host_switched",
+          handoffAt: "2026-04-13T10:07:58.000Z",
+        },
+        recentOutputSummary: {
+          sample: "deploy failed",
+          byteLength: 13,
+          truncated: false,
+          capturedAt: "2026-04-13T10:07:59.000Z",
+        },
+      },
+    ]),
+  );
+
+  const workspace = workspaceStateModule.createTerminalWorkspaceState({
+    storage: memoryStorage,
+    storageKey: "terminal.descriptors.test",
+  });
+
+  assert.deepEqual(
+    workspace.recoverableSessions.value.map((item) => item.sessionId),
+    ["term-persisted-recent"],
+  );
+  assert.equal(
+    workspace.recoverableSessions.value[0]?.handoffContext?.reason,
+    "host_switched",
+  );
+});
+
+test("terminal workspace includes persisted completed session in recent list when output summary exists", () => {
+  const workspace = workspaceStateModule.createTerminalWorkspaceState();
+
+  workspace.hydrateSessions([
+    {
+      sessionId: "term-completed-persisted",
+      title: "Persisted completed",
+      status: "completed",
+      source: "linked_context",
+      canResume: false,
+      controlState: "observer",
+      updatedAt: "2026-04-13T10:06:00.000Z",
+      recentOutputSummary: {
+        sample: "task finished",
+        byteLength: 13,
+        truncated: false,
+        capturedAt: "2026-04-13T10:05:59.000Z",
+      },
+    },
+  ]);
+
+  assert.deepEqual(
+    workspace.recoverableSessions.value.map((item) => item.sessionId),
+    ["term-completed-persisted"],
+  );
+});
+
 test("terminal route sync exports bind function", () => {
   assert.equal(typeof routeSyncModule.bindTerminalRouteSync, "function");
 });
@@ -148,4 +231,65 @@ test("terminal route sync keeps active session and tabs aligned", async () => {
     ["term-route-1"],
   );
   assert.equal(routerCalls.length, 0);
+});
+
+test("terminal route sync recovers persisted descriptor metadata by route session id", async () => {
+  const workspace = workspaceStateModule.createTerminalWorkspaceState();
+  const route = {
+    params: {
+      sessionId: "term-persisted-1",
+    },
+  };
+  const router = {
+    replace() {
+      return Promise.resolve();
+    },
+  };
+
+  routeSyncModule.bindTerminalRouteSync({
+    activeSessionId: workspace.activeSessionId,
+    setActiveSession: workspace.setActiveSession,
+    registerSession: workspace.registerSession,
+    route,
+    router,
+    resolveSessionDescriptor: async (sessionId) => ({
+      sessionId,
+      title: "Recovered persisted session",
+      status: "completed",
+      source: "linked_context",
+      canResume: false,
+      controlState: "observer",
+      updatedAt: "2026-04-13T11:11:00.000Z",
+      handoffContext: {
+        fromClientId: "console-a",
+        toClientId: "console-b",
+        reason: "network_reconnect",
+        handoffAt: "2026-04-13T11:10:00.000Z",
+      },
+      recentOutputSummary: {
+        sample: "npm run build failed",
+        byteLength: 20,
+        truncated: false,
+        capturedAt: "2026-04-13T11:10:30.000Z",
+      },
+    }),
+  });
+
+  await nextTick();
+  await Promise.resolve();
+
+  assert.equal(workspace.activeSessionId.value, "term-persisted-1");
+  assert.deepEqual(workspace.tabOrder.value, ["term-persisted-1"]);
+  assert.equal(
+    workspace.sessions.value["term-persisted-1"]?.title,
+    "Recovered persisted session",
+  );
+  assert.equal(
+    workspace.sessions.value["term-persisted-1"]?.handoffContext?.reason,
+    "network_reconnect",
+  );
+  assert.equal(
+    workspace.sessions.value["term-persisted-1"]?.recentOutputSummary?.sample,
+    "npm run build failed",
+  );
 });

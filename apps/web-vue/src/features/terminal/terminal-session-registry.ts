@@ -14,6 +14,20 @@ export type TerminalSessionSource =
 
 export type TerminalSessionControlState = "controller" | "observer";
 
+export interface TerminalSessionHandoffContext {
+  fromClientId: string | null;
+  toClientId: string | null;
+  reason: string | null;
+  handoffAt: string;
+}
+
+export interface TerminalRecentOutputSummary {
+  sample: string;
+  byteLength: number;
+  truncated: boolean;
+  capturedAt: string;
+}
+
 export interface TerminalSessionDescriptor {
   sessionId: string;
   title: string;
@@ -22,6 +36,8 @@ export interface TerminalSessionDescriptor {
   canResume: boolean;
   controlState: TerminalSessionControlState;
   updatedAt: string;
+  handoffContext?: TerminalSessionHandoffContext | null;
+  recentOutputSummary?: TerminalRecentOutputSummary | null;
 }
 
 export interface TerminalSessionStorageLike {
@@ -39,6 +55,23 @@ export interface TerminalSessionRegistry {
 
 function normalizeSessionId(sessionId: string): string {
   return String(sessionId || "").trim();
+}
+
+function normalizeSessionDescriptor(
+  session: TerminalSessionDescriptor,
+): TerminalSessionDescriptor {
+  const sessionId = normalizeSessionId(session.sessionId);
+  return {
+    sessionId,
+    title: String(session.title || sessionId).trim() || sessionId,
+    status: session.status || "detached",
+    source: session.source || "manual",
+    canResume: Boolean(session.canResume),
+    controlState: session.controlState || "observer",
+    updatedAt: String(session.updatedAt || new Date().toISOString()),
+    handoffContext: session.handoffContext || null,
+    recentOutputSummary: session.recentOutputSummary || null,
+  };
 }
 
 export function sortTerminalSessionsByUpdatedAtDesc(
@@ -73,10 +106,10 @@ export function createTerminalSessionRegistry(
     upsertSession(session) {
       const sessionId = normalizeSessionId(session.sessionId);
       if (!sessionId) return;
-      sessionsById[sessionId] = {
+      sessionsById[sessionId] = normalizeSessionDescriptor({
         ...session,
         sessionId,
-      };
+      });
     },
     removeSession(sessionId) {
       const normalized = normalizeSessionId(sessionId);

@@ -19,6 +19,18 @@
             ·
             {{ buildTerminalTakeoverSummary({ controlState: session.controlState }).labelZh }}
           </span>
+          <span
+            v-if="session.handoffContext?.reason"
+            class="terminal-recent-extra"
+          >
+            交接：{{ session.handoffContext.reason }}
+          </span>
+          <span
+            v-if="session.recentOutputSummary?.sample"
+            class="terminal-recent-extra"
+          >
+            {{ session.status === 'completed' ? '最近输出（已完成）' : (session.status === 'failed' ? '最近输出（失败）' : '最近输出') }}
+          </span>
         </button>
       </li>
     </ul>

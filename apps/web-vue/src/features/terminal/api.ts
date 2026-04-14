@@ -11,6 +11,7 @@ import type {
   TerminalSessionSummaryResponse,
   TerminalStatusPayload,
 } from "../../../../../types/terminal";
+import type { TerminalSessionDescriptor } from "./terminal-session-registry";
 
 export function fetchTerminalStatus(): Promise<TerminalStatusPayload> {
   return requestJson<TerminalStatusPayload>("/api/terminal/status");
@@ -18,6 +19,20 @@ export function fetchTerminalStatus(): Promise<TerminalStatusPayload> {
 
 export function fetchTerminalSessions(): Promise<TerminalSessionSummaryResponse> {
   return requestJson<TerminalSessionSummaryResponse>("/api/terminal/sessions");
+}
+
+export function fetchPersistedTerminalSessions(): Promise<TerminalSessionSummaryResponse> {
+  return requestJson<TerminalSessionSummaryResponse>(
+    "/api/terminal/persisted-sessions",
+  );
+}
+
+export function fetchPersistedTerminalSessionDescriptor(
+  sessionId: string,
+): Promise<TerminalSessionDescriptor> {
+  return requestJson<TerminalSessionDescriptor>(
+    `/api/terminal/sessions/${encodeURIComponent(sessionId.trim())}`,
+  );
 }
 
 export function fetchTerminalActions(): Promise<TerminalActionCatalogResponse> {
