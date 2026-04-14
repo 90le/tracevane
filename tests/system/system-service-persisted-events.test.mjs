@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createSystemService } from "../../dist/apps/api/modules/system/service.js";
+import { createConfigService } from "../../dist/apps/api/modules/config/service.js";
 
 function createTempRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-system-service-"));
@@ -45,4 +46,72 @@ test("system service persists action events into the system state directory", as
   assert.equal(fs.existsSync(jsonlPath), true);
   const lines = fs.readFileSync(jsonlPath, "utf8").trim().split("\n");
   assert.ok(lines.length > 0);
+});
+
+test("config write success persists config_change event into system-events.jsonl", () => {
+  const root = createTempRoot();
+  fs.mkdirSync(path.join(root, "studio"), { recursive: true });
+  const config = createConfig(root);
+  fs.writeFileSync(
+    config.openclawConfigFile,
+    `${JSON.stringify(
+      {
+        gateway: {
+          controlUi: {
+            basePath: "/studio",
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(root, "studio", "device-trust.json"),
+    `${JSON.stringify({ autoApproveLocalHelper: true }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  const payload = {
+    defaults: summary.defaults,
+    compaction: summary.compaction,
+    sandbox: summary.sandbox,
+    tools: summary.tools,
+    execApprovals: {
+      defaults: summary.execApprovals.defaults,
+      agents: summary.execApprovals.agents,
+    },
+    session: summary.session,
+    messages: summary.messages,
+    providers: summary.providers.map((provider) => ({
+      id: provider.id,
+      api: provider.api,
+      baseUrl: provider.baseUrl,
+      models: provider.models,
+    })),
+    gateway: {
+      controlUi: {
+        basePath: "/studio-v2",
+      },
+    },
+  };
+
+  service.saveConfig(payload);
+
+  const jsonlPath = path.join(root, "system", "system-events.jsonl");
+  assert.equal(fs.existsSync(jsonlPath), true);
+  const rows = fs
+    .readFileSync(jsonlPath, "utf8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+
+  const configChangeEvent = rows.find((row) => row.kind === "config_change");
+  assert.ok(configChangeEvent);
+  assert.equal(configChangeEvent.category, "audit");
+  assert.equal(configChangeEvent.sourceModule, "config");
 });

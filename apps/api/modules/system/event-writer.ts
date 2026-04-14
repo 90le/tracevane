@@ -12,6 +12,7 @@ export interface CreateSystemEventWriterInput {
 export interface SystemEventWriter {
   persistActionEvent(event: SystemPersistedEventRecord): void;
   persistStateChanges(events: SystemPersistedEventRecord[]): void;
+  persistConfigAuditEvents(events: SystemPersistedEventRecord[]): void;
   listPersistedEvents(limit?: number): SystemPersistedEventRecord[];
 }
 
@@ -119,6 +120,13 @@ export function createSystemEventWriter(
       store.append(changedEvents);
       dedupeState = nextDedupeState;
       persistDedupeState();
+    },
+
+    persistConfigAuditEvents(events: SystemPersistedEventRecord[]): void {
+      if (!Array.isArray(events) || events.length === 0) {
+        return;
+      }
+      store.append(events);
     },
 
     listPersistedEvents(limit = 100): SystemPersistedEventRecord[] {

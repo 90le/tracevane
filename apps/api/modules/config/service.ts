@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import type {
   ConfigProviderInput,
   ConfigProviderModelSummary,
@@ -17,6 +18,9 @@ import {
   readOpenClawConfig,
   writeJsonFile,
 } from "../../core/state.js";
+import { diffConfigAuditChanges } from "./config-audit-diff.js";
+import { buildConfigAuditEvents } from "./config-audit-events.js";
+import { createSystemEventWriter } from "../system/event-writer.js";
 
 const NON_DOCKER_SANDBOX_BACKENDS = new Set(["ssh", "openshell"]);
 
@@ -1119,6 +1123,31 @@ function buildLoggingSummary(
     consoleLevel: normalizeString(logging.consoleLevel) || undefined,
     consoleStyle: normalizeString(logging.consoleStyle) || undefined,
     redactSensitive: normalizeString(logging.redactSensitive) || undefined,
+  };
+}
+
+function buildConfigAuditSnapshot(
+  config: StudioServerConfig,
+  openclawConfig: Record<string, any>,
+): Record<string, unknown> {
+  const deviceTrust = readJsonFile<Record<string, unknown>>(
+    path.join(config.openclawRoot, "studio", "device-trust.json"),
+    {},
+  );
+  const resolvedBasePath = normalizeString(
+    openclawConfig.gateway?.controlUi?.basePath,
+    config.transport.gateway.basePath || "/studio",
+  );
+
+  return {
+    transport: {
+      gateway: {
+        basePath: resolvedBasePath,
+      },
+    },
+    deviceTrust: {
+      autoApproveLocalHelper: deviceTrust.autoApproveLocalHelper !== false,
+    },
   };
 }
 
@@ -2266,6 +2295,12 @@ function normalizeApprovalAllowlistEntry(
 
 export function createConfigService(config: StudioServerConfig): ConfigService {
   syncStudioManagementPolicyFromConfig(readOpenClawConfig(config));
+  const systemEventWriter = createSystemEventWriter({
+    stateDir: path.join(config.openclawRoot, "system"),
+    maxRecords: 500,
+    maxAgeDays: 7,
+  });
+
   return {
     getSummary(): ConfigSummaryPayload {
       const openclawConfig = readOpenClawConfig(config);
@@ -2314,10 +2349,12 @@ export function createConfigService(config: StudioServerConfig): ConfigService {
     },
 
     saveConfig(payload: ConfigUpdatePayload): ConfigSaveResponse {
-      const openclawConfig = applyConfigUpdate(
-        readOpenClawConfig(config),
-        payload,
+      const beforeConfig = readOpenClawConfig(config);
+      const beforeAuditSnapshot = buildConfigAuditSnapshot(
+        config,
+        beforeConfig,
       );
+      const openclawConfig = applyConfigUpdate(beforeConfig, payload);
       writeJsonFile(config.openclawConfigFile, openclawConfig);
       syncStudioManagementPolicyFromConfig(openclawConfig);
 
@@ -2393,6 +2430,17 @@ export function createConfigService(config: StudioServerConfig): ConfigService {
       }
 
       writeJsonFile(approvalsFile, approvals);
+
+      const afterAuditSnapshot = buildConfigAuditSnapshot(
+        config,
+        openclawConfig,
+      );
+      const auditChanges = diffConfigAuditChanges({
+        before: beforeAuditSnapshot,
+        after: afterAuditSnapshot,
+      });
+      const auditEvents = buildConfigAuditEvents({ changes: auditChanges });
+      systemEventWriter.persistConfigAuditEvents(auditEvents as any);
 
       return {
         success: true,
