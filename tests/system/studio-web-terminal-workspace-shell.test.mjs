@@ -76,6 +76,19 @@ test("terminal routes expose minimal recovery endpoints for persisted sessions",
   );
 });
 
+test("terminal session pane consumes recent output summary tail text", () => {
+  const panePath = path.join(
+    rootDir,
+    "apps/web-vue/src/features/terminal/TerminalSessionPane.vue",
+  );
+  const pane = fs.readFileSync(panePath, "utf8");
+
+  assert.match(pane, /recentOutputSummary\?\.tailText/);
+  assert.match(pane, /recentOutputSummary\.lastError/);
+  assert.match(pane, /recentOutputSummary\.lastCommandHint/);
+  assert.match(pane, /recentOutputSummary\.exitSummary/);
+});
+
 test("terminal workspace page composes workspace shell sections and binds state modules", () => {
   assert.equal(fs.existsSync(workspacePagePath), true);
   assert.equal(fs.existsSync(workspaceCssPath), true);

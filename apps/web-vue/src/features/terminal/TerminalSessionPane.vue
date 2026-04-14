@@ -71,7 +71,7 @@ watch(
 );
 
 const recentOutputSummaryLabel = computed(() => {
-  if (!activeSession.value?.recentOutputSummary?.sample) return null;
+  if (!activeSession.value?.recentOutputSummary?.tailText) return null;
   if (activeSession.value.status === 'completed') return '最近输出（已完成）';
   if (activeSession.value.status === 'failed') return '最近输出（失败）';
   return '最近输出';
