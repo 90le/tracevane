@@ -10,6 +10,8 @@ const sessionSummary =
 const terminalService =
   await import("../../apps/api/modules/terminal/service.ts");
 const terminalTypes = await import("../../types/terminal.ts");
+const terminalSessionSummary =
+  await import("../../apps/api/modules/terminal/terminal-session-summary.ts");
 
 test("terminal session summary exposes recoverable status and controller metadata", () => {
   const summary = sessionSummary.buildTerminalSessionSummary({
@@ -130,4 +132,47 @@ test("terminal service session summaries derive detached status from real activi
     service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
+});
+
+test("recent output summary 提取 tailText/lastError/lastCommandHint/exitSummary/updatedAt", () => {
+  const summary = terminalSessionSummary.buildTerminalRecentOutputSummary([
+    {
+      type: "output",
+      detail: {
+        data: "$ npm test\n",
+      },
+      timestamp: "2026-04-14T00:00:00.000Z",
+    },
+    {
+      type: "error",
+      detail: {
+        message: "command failed",
+      },
+      timestamp: "2026-04-14T00:00:01.000Z",
+    },
+    {
+      type: "exit",
+      detail: {
+        code: 1,
+        signal: null,
+      },
+      timestamp: "2026-04-14T00:00:02.000Z",
+    },
+  ]);
+
+  assert.equal(summary.tailText, "$ npm test\n");
+  assert.equal(summary.lastError, "command failed");
+  assert.equal(summary.lastCommandHint, "npm test");
+  assert.equal(summary.exitSummary, "exit code 1");
+  assert.equal(summary.updatedAt, "2026-04-14T00:00:02.000Z");
+});
+
+test("recent output summary 无事件时返回空摘要并使用当前时间", () => {
+  const summary = terminalSessionSummary.buildTerminalRecentOutputSummary([]);
+
+  assert.equal(summary.tailText, "");
+  assert.equal(summary.lastError, null);
+  assert.equal(summary.lastCommandHint, null);
+  assert.equal(summary.exitSummary, null);
+  assert.match(summary.updatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
 });
