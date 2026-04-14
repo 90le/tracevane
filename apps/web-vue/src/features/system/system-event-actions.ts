@@ -8,7 +8,9 @@ export interface SystemEventActionDescriptor {
     | "command"
     | "refresh"
     | "open-terminal"
-    | "open-system-section";
+    | "open-system-section"
+    | "open-config"
+    | "open-config-section";
 }
 
 export function buildSystemEventNextStepActions(
@@ -38,6 +40,20 @@ export function buildSystemEventNextStepActions(
       id: `terminal-${event.id}`,
       label: "去终端处理",
       intent: "open-terminal",
+    });
+    return actions;
+  }
+
+  if (event.kind === "config_change") {
+    actions.push({
+      id: `config-${event.id}`,
+      label: "打开配置",
+      intent: "open-config",
+    });
+    actions.push({
+      id: `config-section-${event.id}`,
+      label: "定位配置项",
+      intent: "open-config-section",
     });
     return actions;
   }

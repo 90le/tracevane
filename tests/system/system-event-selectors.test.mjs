@@ -110,6 +110,37 @@ test("system event store maps persisted payload sourceEntity and never maps stat
   assert.notEqual(store.events.value[0].sourceModule, "pending");
 });
 
+test("system event store keeps config_change kind and details for detail panel rendering", async () => {
+  const { useSystemEventStore } = await import(storeModuleUrl);
+
+  const store = useSystemEventStore();
+  store.hydrate([
+    {
+      id: "config-1",
+      kind: "config_change",
+      category: "audit",
+      severity: "info",
+      occurredAt: "2026-04-13T08:00:00.000Z",
+      title: "配置已更新",
+      summary: "transport.gateway.basePath 已变更",
+      status: "ok",
+      sourceEntity: "config:transport.gateway.basePath",
+      details: {
+        path: "transport.gateway.basePath",
+        before: "/api/gateway",
+        after: "/api/gateway/v2",
+      },
+    },
+  ]);
+
+  assert.equal(store.events.value[0].kind, "config_change");
+  assert.deepEqual(store.events.value[0].details, {
+    path: "transport.gateway.basePath",
+    before: "/api/gateway",
+    after: "/api/gateway/v2",
+  });
+});
+
 test("system event selectors build summary items from backend summary payload", async () => {
   const { buildSystemEventSummaryItems } = await import(selectorsModuleUrl);
 
@@ -186,5 +217,22 @@ test("system event actions export next-step descriptors by event kind", async ()
   );
   assert.ok(
     approveFailedActions.some((action) => action.intent === "open-terminal"),
+  );
+
+  const configActions = buildSystemEventNextStepActions(
+    createEvent("config", "2026-04-13T10:00:00.000Z", {
+      kind: "config_change",
+      category: "audit",
+      severity: "info",
+      details: {
+        path: "transport.gateway.basePath",
+        before: "/api/gateway",
+        after: "/api/gateway/v2",
+      },
+    }),
+  );
+  assert.ok(configActions.some((action) => action.intent === "open-config"));
+  assert.ok(
+    configActions.some((action) => action.intent === "open-config-section"),
   );
 });

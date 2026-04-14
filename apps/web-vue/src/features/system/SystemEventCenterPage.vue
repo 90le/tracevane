@@ -137,6 +137,21 @@ async function handleNextStepAction(intent: string): Promise<void> {
 
   if (intent === 'open-system-section') {
     await router.push('/system');
+    return;
+  }
+
+  if (intent === 'open-config') {
+    await router.push('/config');
+    return;
+  }
+
+  if (intent === 'open-config-section') {
+    const configPath = selectedEvent.value?.details?.path;
+    if (typeof configPath === 'string' && configPath.trim()) {
+      await router.push(`/config?section=${encodeURIComponent(configPath)}`);
+      return;
+    }
+    await router.push('/config');
   }
 }
 

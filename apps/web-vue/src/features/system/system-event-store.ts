@@ -32,6 +32,7 @@ const allowedKinds = new Set<SystemEventKind>([
   "device_trust_approve_failed",
   "helper_repair_succeeded",
   "helper_repair_failed",
+  "config_change",
 ]);
 
 function deriveSourceModule(record: PersistedSystemEventPayload): string {
@@ -65,6 +66,7 @@ function toSystemEventItem(
     title: record.title,
     summary: record.summary,
     sourceModule: deriveSourceModule(record),
+    details: record.details,
   };
 }
 

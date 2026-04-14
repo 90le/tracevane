@@ -19,7 +19,8 @@ export type SystemEventKind =
   | "device_trust_approved"
   | "device_trust_approve_failed"
   | "helper_repair_succeeded"
-  | "helper_repair_failed";
+  | "helper_repair_failed"
+  | "config_change";
 
 export interface PersistedSystemEventPayload extends SystemEventRecord {
   dedupeKey?: string;
@@ -38,6 +39,7 @@ export interface SystemEventItem {
   title: string;
   summary?: string;
   sourceModule?: string;
+  details?: PersistedSystemEventPayload["details"];
 }
 
 export interface SystemEventTimelineGroup {

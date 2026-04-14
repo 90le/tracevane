@@ -72,6 +72,9 @@ test("system event center page composes summary, filter, timeline, and detail sh
   assert.match(page, /async function handleNextStepAction/);
   assert.match(page, /router\.push\('\/terminal'\)/);
   assert.match(page, /router\.push\('\/system'\)/);
+  assert.match(page, /intent === 'open-config'/);
+  assert.match(page, /intent === 'open-config-section'/);
+  assert.match(page, /router\.push\('\/config'\)/);
 });
 
 test("system event center page hydrates store and summary from backend endpoints", () => {
@@ -113,6 +116,16 @@ test("system event center feature files exist", () => {
   assert.equal(fs.existsSync(timelinePath), true);
   assert.equal(fs.existsSync(detailPanelPath), true);
   assert.equal(fs.existsSync(cssPath), true);
+});
+
+test("system event detail panel renders config change fields", () => {
+  const panel = fs.readFileSync(detailPanelPath, "utf8");
+  assert.match(panel, /text\('配置路径', 'Config Path'\)/);
+  assert.match(panel, /text\('变更前', 'Before'\)/);
+  assert.match(panel, /text\('变更后', 'After'\)/);
+  assert.match(panel, /eventItem\.details\?\.path/);
+  assert.match(panel, /eventItem\.details\?\.before/);
+  assert.match(panel, /eventItem\.details\?\.after/);
 });
 
 test("route manifest exposes /system/events shell route", () => {

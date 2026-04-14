@@ -23,6 +23,20 @@
           <span>{{ text('摘要', 'Summary') }}</span>
           <p>{{ eventItem.summary || '-' }}</p>
         </div>
+        <template v-if="eventItem.kind === 'config_change'">
+          <div class="system-event-detail-row">
+            <span>{{ text('配置路径', 'Config Path') }}</span>
+            <strong>{{ stringifyConfigValue(eventItem.details?.path) }}</strong>
+          </div>
+          <div class="system-event-detail-row">
+            <span>{{ text('变更前', 'Before') }}</span>
+            <strong>{{ stringifyConfigValue(eventItem.details?.before) }}</strong>
+          </div>
+          <div class="system-event-detail-row">
+            <span>{{ text('变更后', 'After') }}</span>
+            <strong>{{ stringifyConfigValue(eventItem.details?.after) }}</strong>
+          </div>
+        </template>
       </div>
       <div class="system-event-detail-actions">
         <button
@@ -55,4 +69,21 @@ const emit = defineEmits<{
 }>();
 
 const { text } = useLocalePreference();
+
+function stringifyConfigValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "-";
+  }
+}
 </script>
