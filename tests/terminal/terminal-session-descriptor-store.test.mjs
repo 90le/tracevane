@@ -150,3 +150,57 @@ test("会裁剪旧 completed 会话但保留 running/detached", async () => {
   assert.equal(store.get("still-running")?.status, "running");
   assert.equal(store.get("still-detached")?.status, "detached");
 });
+
+test("初始化时重复 sessionId 会保留 updatedAt 最新的记录", async () => {
+  const stateDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "terminal-desc-store-"),
+  );
+  const stateFilePath = path.join(stateDir, "terminal-sessions.json");
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(
+    stateFilePath,
+    `${JSON.stringify(
+      {
+        items: [
+          makeDescriptor({
+            sessionId: "dup",
+            updatedAt: "2026-04-14T10:00:01.000Z",
+            title: "old",
+          }),
+          makeDescriptor({
+            sessionId: "dup",
+            updatedAt: "2026-04-14T10:00:02.000Z",
+            title: "new",
+          }),
+        ],
+        updatedAt: "2026-04-14T10:00:02.000Z",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  const moduleUrl = `${pathToFileURL(storeModulePath).href}?t=${Date.now()}`;
+  const { createTerminalSessionDescriptorStore } = await import(moduleUrl);
+  const store = createTerminalSessionDescriptorStore({ stateDir });
+
+  assert.equal(store.listRecent().length, 1);
+  assert.equal(store.get("dup")?.title, "new");
+});
+
+test("初始化时坏 JSON 不会被立即覆盖为空状态", async () => {
+  const stateDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "terminal-desc-store-"),
+  );
+  const stateFilePath = path.join(stateDir, "terminal-sessions.json");
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(stateFilePath, "{bad-json", "utf8");
+
+  const original = fs.readFileSync(stateFilePath, "utf8");
+  const moduleUrl = `${pathToFileURL(storeModulePath).href}?t=${Date.now()}`;
+  const { createTerminalSessionDescriptorStore } = await import(moduleUrl);
+  createTerminalSessionDescriptorStore({ stateDir });
+
+  assert.equal(fs.readFileSync(stateFilePath, "utf8"), original);
+});

@@ -84,23 +84,29 @@ function stateFilePath(stateDir: string): string {
   return path.join(stateDir, "terminal-sessions.json");
 }
 
-function readExisting(filePath: string): TerminalSessionDescriptor[] {
+function readExisting(filePath: string): {
+  items: TerminalSessionDescriptor[];
+  readable: boolean;
+} {
   if (!fs.existsSync(filePath)) {
-    return [];
+    return { items: [], readable: true };
   }
   try {
     const parsed = JSON.parse(
       fs.readFileSync(filePath, "utf8"),
     ) as Partial<PersistedDescriptorState>;
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.items)) {
-      return [];
+      return { items: [], readable: false };
     }
-    return parsed.items
-      .filter((item) => item && typeof item === "object")
-      .map((item) => normalizeDescriptor(item as TerminalSessionDescriptor))
-      .filter((item) => item.sessionId);
+    return {
+      readable: true,
+      items: parsed.items
+        .filter((item) => item && typeof item === "object")
+        .map((item) => normalizeDescriptor(item as TerminalSessionDescriptor))
+        .filter((item) => item.sessionId),
+    };
   } catch {
-    return [];
+    return { items: [], readable: false };
   }
 }
 
@@ -123,14 +129,28 @@ export function createTerminalSessionDescriptorStore(
 
   fs.mkdirSync(options.stateDir, { recursive: true });
 
+  const initial = readExisting(filePath);
+  const deduped = new Map<string, TerminalSessionDescriptor>();
+  for (const descriptor of initial.items) {
+    const previous = deduped.get(descriptor.sessionId);
+    if (
+      !previous ||
+      toTimestamp(descriptor.updatedAt) >= toTimestamp(previous.updatedAt)
+    ) {
+      deduped.set(descriptor.sessionId, descriptor);
+    }
+  }
+
   const records = new Map<string, TerminalSessionDescriptor>();
   for (const descriptor of applyRetention(
-    readExisting(filePath),
+    Array.from(deduped.values()),
     maxCompleted,
   )) {
     records.set(descriptor.sessionId, descriptor);
   }
-  writeState(filePath, sortRecent(Array.from(records.values())));
+  if (initial.readable) {
+    writeState(filePath, sortRecent(Array.from(records.values())));
+  }
 
   function flush(): void {
     const retained = applyRetention(Array.from(records.values()), maxCompleted);
