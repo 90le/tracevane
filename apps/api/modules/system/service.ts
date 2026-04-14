@@ -71,9 +71,9 @@ import {
   buildSystemActionEvents,
   buildSystemSnapshotDerivedEvents,
 } from "./event-normalizer.js";
-import { createSystemEventLogStore } from "./event-log-store.js";
 import { mergeSystemEventHistory } from "./event-reader.js";
 import { buildSystemEventSummaryCardsFromHistory } from "./event-summary.js";
+import { createSystemEventWriter } from "./event-writer.js";
 import { buildSystemRuntimeSummary } from "./runtime-summary.js";
 import { buildSystemTerminalActionSuggestions } from "./terminal-handoff.js";
 // seam import marker: from './runtime-summary.js'
@@ -743,7 +743,11 @@ export function createSystemService(
     }
   });
   const commandCache = new Map<string, CachedCommandResult>();
-  const eventLogStore = createSystemEventLogStore();
+  const systemEventWriter = createSystemEventWriter({
+    stateDir: path.join(config.openclawRoot, "system"),
+    maxRecords: 500,
+    maxAgeDays: 7,
+  });
 
   async function runCachedCommand(
     cacheKey: string,
@@ -980,7 +984,8 @@ export function createSystemService(
     action: Parameters<typeof buildSystemActionEvents>[0]["action"],
     ok: boolean,
   ): void {
-    eventLogStore.append(buildSystemActionEvents({ action, ok }));
+    const [event] = buildSystemActionEvents({ action, ok });
+    systemEventWriter.persistActionEvent(event as any);
   }
 
   function buildMergedEventList(params: {
@@ -1007,7 +1012,8 @@ export function createSystemService(
       studioRelease: params.studioRelease,
     });
 
-    const persistedEvents = eventLogStore.list(params.limit);
+    systemEventWriter.persistStateChanges(liveSnapshotEvents as any);
+    const persistedEvents = systemEventWriter.listPersistedEvents(params.limit);
     const merged = mergeSystemEventHistory({
       persistedEvents,
       liveSnapshotEvents,

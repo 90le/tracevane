@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import path from "node:path";
 import { createSystemEventLogStore } from "./event-log-store.js";
 import type { SystemPersistedEventRecord } from "./event-types.js";
+import { resolveSystemEventStorePaths } from "./event-store-paths.js";
 
 export interface CreateSystemEventWriterInput {
   stateDir?: string;
@@ -15,8 +15,6 @@ export interface SystemEventWriter {
   listPersistedEvents(limit?: number): SystemPersistedEventRecord[];
 }
 
-const DEDUPE_STATE_FILE = "system-events.dedupe-state.json";
-
 type DedupeState = Record<string, string>;
 
 function safeParseDedupeState(content: string): DedupeState {
@@ -29,8 +27,14 @@ function safeParseDedupeState(content: string): DedupeState {
     if (!parsed || typeof parsed !== "object") {
       return {};
     }
+    const state =
+      "dedupeState" in parsed &&
+      parsed.dedupeState &&
+      typeof parsed.dedupeState === "object"
+        ? parsed.dedupeState
+        : parsed;
     const output: DedupeState = {};
-    for (const [key, value] of Object.entries(parsed)) {
+    for (const [key, value] of Object.entries(state)) {
       if (typeof value === "string") {
         output[key] = value;
       }
@@ -47,10 +51,11 @@ export function createSystemEventWriter(
   const store = createSystemEventLogStore({
     stateDir: input.stateDir,
     maxRecords: input.maxRecords,
+    maxAgeDays: input.maxAgeDays,
   });
 
   const dedupeStatePath = input.stateDir
-    ? path.join(input.stateDir, DEDUPE_STATE_FILE)
+    ? resolveSystemEventStorePaths({ stateDir: input.stateDir }).eventStatePath
     : null;
 
   let dedupeState: DedupeState = {};
@@ -64,9 +69,19 @@ export function createSystemEventWriter(
     if (!dedupeStatePath) {
       return;
     }
+    const previousState = fs.existsSync(dedupeStatePath)
+      ? JSON.parse(fs.readFileSync(dedupeStatePath, "utf8"))
+      : {};
     fs.writeFileSync(
       dedupeStatePath,
-      `${JSON.stringify(dedupeState, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          ...previousState,
+          dedupeState,
+        },
+        null,
+        2,
+      )}\n`,
       "utf8",
     );
   }

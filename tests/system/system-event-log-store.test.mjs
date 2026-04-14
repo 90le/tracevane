@@ -90,6 +90,32 @@ test("retention 限制有效", async () => {
   assert.equal(lines.length, 2);
 });
 
+test("maxAgeDays 会裁剪过期历史并在重启后保留最近记录", async () => {
+  const { createSystemEventLogStore } = await import(storeModuleUrl);
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "event-log-store-"));
+
+  const oldOccurredAt = new Date(
+    Date.now() - 10 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const freshOccurredAt = new Date().toISOString();
+  fs.writeFileSync(
+    path.join(stateDir, "system-events.jsonl"),
+    `${JSON.stringify(makeEvent("old", oldOccurredAt))}\n${JSON.stringify(makeEvent("fresh", freshOccurredAt))}\n`,
+    "utf8",
+  );
+
+  const store = createSystemEventLogStore({
+    stateDir,
+    maxRecords: 5,
+    maxAgeDays: 7,
+  });
+
+  assert.deepEqual(
+    store.list(10).map((event) => event.id),
+    ["fresh"],
+  );
+});
+
 test("corrupted tail line 安全忽略", async () => {
   const { createSystemEventLogStore } = await import(storeModuleUrl);
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "event-log-store-"));
