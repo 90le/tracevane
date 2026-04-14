@@ -38,11 +38,13 @@ const sessionRouteKey = computed(() => {
 });
 
 const activeSession = ref<TerminalSessionDescriptor | null>(null);
+let descriptorRequestSeq = 0;
 
 watch(
   () => props.activeSessionId,
   (sessionId) => {
     const normalized = String(sessionId || '').trim();
+    const requestSeq = ++descriptorRequestSeq;
     if (!normalized) {
       activeSession.value = null;
       return;
@@ -50,9 +52,15 @@ watch(
 
     void fetchPersistedTerminalSessionDescriptor(normalized)
       .then((descriptor) => {
+        if (requestSeq !== descriptorRequestSeq) {
+          return;
+        }
         activeSession.value = descriptor || null;
       })
       .catch(() => {
+        if (requestSeq !== descriptorRequestSeq) {
+          return;
+        }
         activeSession.value = null;
       });
   },
