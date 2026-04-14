@@ -503,6 +503,7 @@ export function createTerminalService(
     session: TerminalSession,
     now = Date.now(),
   ): void {
+    let changed = false;
     for (const [connId, subscriber] of Array.from(
       session.gatewaySubscribers.entries(),
     )) {
@@ -510,6 +511,10 @@ export function createTerminalService(
         continue;
       }
       session.gatewaySubscribers.delete(connId);
+      changed = true;
+    }
+    if (changed) {
+      persistSessionDescriptor(session);
     }
     if (getActiveClientCount(session) === 0) {
       scheduleCleanup(session);
@@ -521,6 +526,7 @@ export function createTerminalService(
     event: TerminalGatewayEvent,
   ): void {
     pruneExpiredGatewaySubscribers(session);
+    let changed = false;
     for (const [connId, subscriber] of Array.from(
       session.gatewaySubscribers.entries(),
     )) {
@@ -528,6 +534,10 @@ export function createTerminalService(
         continue;
       }
       session.gatewaySubscribers.delete(connId);
+      changed = true;
+    }
+    if (changed) {
+      persistSessionDescriptor(session);
     }
     if (getActiveClientCount(session) === 0) {
       scheduleCleanup(session);

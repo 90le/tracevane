@@ -58,6 +58,14 @@ test("terminal service wires descriptor and ledger persistence for session recov
     terminalService,
     /listSessionLedger\([\s\S]*sessionId: string[\s\S]*\)/,
   );
+  assert.match(
+    terminalService,
+    /pruneExpiredGatewaySubscribers[\s\S]*persistSessionDescriptor\(session\)/,
+  );
+  assert.match(
+    terminalService,
+    /broadcastGatewayEvent[\s\S]*persistSessionDescriptor\(session\)/,
+  );
 });
 
 test("terminal routes expose minimal recovery endpoints for persisted sessions", () => {

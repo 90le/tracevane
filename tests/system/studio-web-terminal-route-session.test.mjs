@@ -29,4 +29,8 @@ test("terminal session recovery endpoints delegate to persistence readers", () =
     /getPersistedSession\([\s\S]*params\.sessionId[\s\S]*\)/,
   );
   assert.match(terminalRoutesSource, /listSessionLedger\(params\.sessionId\)/);
+  assert.match(
+    terminalRoutesSource,
+    /terminal session not found: \$\{params\.sessionId\}/,
+  );
 });
