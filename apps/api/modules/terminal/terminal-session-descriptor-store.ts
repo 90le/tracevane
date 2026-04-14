@@ -118,7 +118,14 @@ function writeState(
     items,
     updatedAt: new Date().toISOString(),
   };
-  fs.writeFileSync(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  try {
+    fs.writeFileSync(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
 }
 
 export function createTerminalSessionDescriptorStore(
