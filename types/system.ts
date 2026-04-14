@@ -294,9 +294,11 @@ export type SystemEventCategory =
   | "recovery"
   | "alerts";
 
+export type SystemEventKind = "config_change" | (string & {});
+
 export interface SystemEventRecord {
   id: string;
-  kind: string;
+  kind: SystemEventKind;
   category: SystemEventCategory;
   severity: SystemEventSeverity;
   occurredAt: string;
