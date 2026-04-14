@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { CONFIG_AUDIT_WHITELIST_FIELDS } from "./config-audit-fields.js";
 
 export interface DiffConfigAuditChangesInput {
@@ -32,7 +33,12 @@ function getValueByPath(
 }
 
 function isSameValue(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  try {
+    assert.deepStrictEqual(left, right);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function diffConfigAuditChanges({

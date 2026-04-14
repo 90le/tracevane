@@ -104,3 +104,34 @@ test("diffConfigAuditChanges skips unchanged whitelist values", async () => {
   const changes = diffConfigAuditChanges({ before, after });
   assert.deepEqual(changes, []);
 });
+
+test("diffConfigAuditChanges treats object values with different key order as unchanged", async () => {
+  const { diffConfigAuditChanges } = await import(moduleUrl);
+
+  const before = {
+    transport: {
+      gateway: {
+        basePath: "/api/gateway",
+      },
+      standalone: {
+        enabled: true,
+        port: { a: 1, b: 2 },
+      },
+    },
+  };
+
+  const after = {
+    transport: {
+      gateway: {
+        basePath: "/api/gateway",
+      },
+      standalone: {
+        enabled: true,
+        port: { b: 2, a: 1 },
+      },
+    },
+  };
+
+  const changes = diffConfigAuditChanges({ before, after });
+  assert.deepEqual(changes, []);
+});
