@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const rootDir = '/home/binbin/.openclaw/extensions/openclaw-studio';
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const sessionCatalog = fs.readFileSync(
   path.join(rootDir, 'lib/chat-session-catalog.ts'),
   'utf8',

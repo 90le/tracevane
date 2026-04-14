@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const rootDir = '/home/binbin/.openclaw/extensions/openclaw-studio';
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const conversationPane = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ConversationPane.vue'),
   'utf8',
@@ -23,7 +24,7 @@ test('conversation pane uses reka dropdown primitives for the session actions me
   assert.doesNotMatch(conversationPane, /<summary class="chat-conversation-pane__ghost">/);
 });
 
-test('conversation pane closes the menu via reactive open state instead of HTML details state', () => {
+test('conversation pane closes menu surfaces via reactive open state instead of HTML details state', () => {
   assert.match(conversationPane, /const conversationMenuOpen = ref\(false\);/);
-  assert.match(conversationPane, /function closeMenu\(\): void \{\s*conversationMenuOpen\.value = false;\s*\}/);
+  assert.match(conversationPane, /function closeMenu\(\): void \{[\s\S]*conversationMenuOpen\.value = false;[\s\S]*mobileActionSheetOpen\.value = false;[\s\S]*\}/);
 });
