@@ -1952,6 +1952,20 @@ function normalizeConfigTabId(value: unknown): ConfigTabId {
   return CONFIG_TAB_IDS.includes(tab as ConfigTabId) ? tab as ConfigTabId : CONFIG_TAB_IDS[0];
 }
 
+function resolveConfigTabFromSection(value: unknown): ConfigTabId {
+  const section = typeof value === 'string' ? value.trim() : '';
+  if (!section) {
+    return CONFIG_TAB_IDS[0];
+  }
+  if (section.startsWith('transport.') || section.startsWith('gateway')) {
+    return 'gateway';
+  }
+  if (section.startsWith('deviceTrust.')) {
+    return 'security';
+  }
+  return normalizeConfigTabId(section);
+}
+
 const props = withDefaults(defineProps<{
   workspaceSections?: ConfigWorkspaceSection[];
   overviewRecipe?: ConfigOverviewRecipe;
@@ -1961,7 +1975,11 @@ const props = withDefaults(defineProps<{
 });
 
 const route = useRoute();
-const activeTab = ref<ConfigTabId>(normalizeConfigTabId(route.query.tab));
+const activeTab = ref<ConfigTabId>(
+  route.query.section
+    ? resolveConfigTabFromSection(route.query.section)
+    : normalizeConfigTabId(route.query.tab),
+);
 const advancedSheetOpen = ref(false);
 const activeProviderUid = ref('');
 const loggingTabRef = ref<InstanceType<typeof LoggingConfigTab> | null>(null);
@@ -3335,9 +3353,13 @@ onMounted(() => {
 });
 
 watch(
-  () => route.query.tab,
-  (value) => {
-    setActiveTab(normalizeConfigTabId(value));
+  () => [route.query.tab, route.query.section],
+  ([tabValue, sectionValue]) => {
+    setActiveTab(
+      sectionValue
+        ? resolveConfigTabFromSection(sectionValue)
+        : normalizeConfigTabId(tabValue),
+    );
   }
 );
 </script>

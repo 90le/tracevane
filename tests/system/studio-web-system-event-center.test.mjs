@@ -75,6 +75,10 @@ test("system event center page composes summary, filter, timeline, and detail sh
   assert.match(page, /intent === 'open-config'/);
   assert.match(page, /intent === 'open-config-section'/);
   assert.match(page, /router\.push\('\/config'\)/);
+  assert.match(
+    page,
+    /router\.push\(`\/config\?section=\$\{encodeURIComponent\(configPath\)\}`\)/,
+  );
 });
 
 test("system event center page hydrates store and summary from backend endpoints", () => {
