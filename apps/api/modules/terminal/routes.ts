@@ -27,6 +27,34 @@ export function registerTerminalRoutes(
     );
   });
 
+  router.get(
+    "/api/terminal/sessions/:sessionId",
+    async (_req, res, routeCtx, params) => {
+      const session = await routeCtx.services.terminal.getPersistedSession(
+        params.sessionId,
+      );
+      if (!session) {
+        sendJson(res, 404, {
+          error: "not_found",
+          message: `terminal session not found: ${params.sessionId}`,
+        });
+        return;
+      }
+      sendJson(res, 200, session);
+    },
+  );
+
+  router.get(
+    "/api/terminal/sessions/:sessionId/ledger",
+    async (_req, res, routeCtx, params) => {
+      sendJson(
+        res,
+        200,
+        await routeCtx.services.terminal.listSessionLedger(params.sessionId),
+      );
+    },
+  );
+
   router.get("/api/terminal/actions", async (_req, res, routeCtx) => {
     sendJson(res, 200, await routeCtx.services.terminal.listWorkspaceActions());
   });

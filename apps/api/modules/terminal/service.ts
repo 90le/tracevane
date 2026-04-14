@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { exec, execFile } from "node:child_process";
 import crypto from "node:crypto";
+import path from "node:path";
 import { promisify } from "node:util";
 import type http from "node:http";
 import type { Duplex } from "node:stream";
@@ -9,6 +10,9 @@ import type { StudioServerConfig } from "../../../../types/api.js";
 import type { SkillsService } from "../skills/service.js";
 import { buildTerminalActionCatalog } from "./action-catalog.js";
 import { buildTerminalSessionSummary } from "./session-summary.js";
+import { buildTerminalRecentOutputSummary } from "./terminal-session-summary.js";
+import { createTerminalSessionDescriptorStore } from "./terminal-session-descriptor-store.js";
+import { createTerminalSessionLedger } from "./terminal-session-ledger.js";
 import type {
   TerminalActionCatalogResponse,
   TerminalBinaryId,
@@ -33,6 +37,8 @@ import type {
   TerminalLaunchPayload,
   TerminalLaunchResponse,
   TerminalInstallStreamEvent,
+  TerminalSessionDescriptor,
+  TerminalSessionLedgerEvent,
   TerminalSessionSummaryResponse,
   TerminalStatusPayload,
 } from "../../../../types/terminal.js";
@@ -72,7 +78,9 @@ interface TerminalSession {
   shell: string;
   cwd: string;
   source: "manual";
+  createdAt: string;
   lastActivityAt: string;
+  lastAttachedAt: string | null;
 }
 
 interface TerminalCliSpec {
@@ -313,6 +321,11 @@ function summarizeAttempts(attempts: TerminalInstallAttemptLog[]): string {
 export interface TerminalService {
   getStatus(): Promise<TerminalStatusPayload>;
   listWorkspaceSessions(): Promise<TerminalSessionSummaryResponse>;
+  listPersistedSessions(): Promise<TerminalSessionSummaryResponse>;
+  getPersistedSession(
+    sessionId: string,
+  ): Promise<TerminalSessionDescriptor | null>;
+  listSessionLedger(sessionId: string): Promise<TerminalSessionLedgerEvent[]>;
   listWorkspaceActions(): Promise<TerminalActionCatalogResponse>;
   installCli(
     target: TerminalInstallRequestId,
@@ -364,6 +377,16 @@ export function createTerminalService(
   const pty = createOptionalPty();
   const wss = new WebSocketServer({ noServer: true });
   const sessions = new Map<string, TerminalSession>();
+  const persistenceStateDir = path.join(
+    options.config.openclawRoot,
+    "terminal",
+  );
+  const descriptorStore = createTerminalSessionDescriptorStore({
+    stateDir: persistenceStateDir,
+  });
+  const ledger = createTerminalSessionLedger({
+    stateDir: persistenceStateDir,
+  });
 
   const pingTimer = setInterval(() => {
     const now = Date.now();
@@ -400,8 +423,69 @@ export function createTerminalService(
     session.cleanupTimer = null;
   }
 
+  function buildSessionDescriptor(
+    session: TerminalSession,
+    status: "running" | "detached" | "completed" | "failed" | "lost",
+  ): TerminalSessionDescriptor {
+    const observerClientIds = Array.from(
+      session.gatewaySubscribers.keys(),
+    ).sort();
+    const controllerClientId = observerClientIds[0] || null;
+    const events = ledger.listBySession(session.id);
+    const recent = buildTerminalRecentOutputSummary(events);
+
+    return {
+      sessionId: session.id,
+      title: `Terminal ${session.id}`,
+      source: session.source,
+      sourceModule: "terminal",
+      sourceAction: "terminal.attach",
+      originRoute: `/terminal/${session.id}`,
+      status,
+      controllerClientId,
+      observerClientIds,
+      createdAt: session.createdAt,
+      lastActiveAt: session.lastActivityAt,
+      lastAttachedAt: session.lastAttachedAt,
+      canResume: status === "running" || status === "detached",
+      resumeKey: session.id,
+      handoffContext: null,
+      recentOutputSummary: {
+        sample: recent.tailText,
+        byteLength: Buffer.byteLength(recent.tailText, "utf8"),
+        truncated: false,
+        capturedAt: recent.updatedAt,
+      },
+      controlState: controllerClientId ? "controller" : "observer",
+      observerCount: observerClientIds.length,
+      updatedAt: session.lastActivityAt,
+    };
+  }
+
+  function persistSessionDescriptor(session: TerminalSession): void {
+    const status = getActiveClientCount(session) > 0 ? "running" : "detached";
+    descriptorStore.upsert(buildSessionDescriptor(session, status));
+  }
+
+  function appendLedgerEvent(
+    session: TerminalSession,
+    type: string,
+    detail: Record<string, unknown>,
+    actorClientId: string | null = null,
+  ): void {
+    ledger.append({
+      eventId: crypto.randomUUID(),
+      sessionId: session.id,
+      type,
+      timestamp: new Date().toISOString(),
+      actorClientId,
+      detail,
+    });
+  }
+
   function markSessionActivity(session: TerminalSession): void {
     session.lastActivityAt = new Date().toISOString();
+    persistSessionDescriptor(session);
   }
 
   function emitGatewayEvent(
@@ -462,6 +546,14 @@ export function createTerminalService(
       if (!session.gatewaySubscribers.delete(connId)) {
         continue;
       }
+      appendLedgerEvent(
+        session,
+        "detach",
+        {
+          reason: "gateway_detach",
+        },
+        connId,
+      );
       markSessionActivity(session);
       if (getActiveClientCount(session) === 0) {
         scheduleCleanup(session);
@@ -497,6 +589,15 @@ export function createTerminalService(
   ): void {
     clearCleanupTimer(session);
     detachGatewayConnId(runtime.connId);
+    session.lastAttachedAt = new Date().toISOString();
+    appendLedgerEvent(
+      session,
+      "attach",
+      {
+        reason: "gateway_attach",
+      },
+      runtime.connId,
+    );
     markSessionActivity(session);
     session.gatewaySubscribers.set(runtime.connId, {
       connId: runtime.connId,
@@ -561,6 +662,8 @@ export function createTerminalService(
     clearCleanupTimer(session);
     sessions.delete(sessionId);
     session.closed = true;
+    appendLedgerEvent(session, "ended", { reason: "session_ended" }, null);
+    descriptorStore.upsert(buildSessionDescriptor(session, "completed"));
     broadcastGatewayEvent(session, {
       type: "closed",
       sid: session.id,
@@ -676,10 +779,13 @@ export function createTerminalService(
       shell,
       cwd,
       source: "manual",
+      createdAt: lastActivityAt,
       lastActivityAt,
+      lastAttachedAt: null,
     };
 
     term.onData((data) => {
+      appendLedgerEvent(session, "output", { data });
       broadcastChunk(session, data);
     });
 
@@ -700,12 +806,19 @@ export function createTerminalService(
       session.clients.clear();
       session.gatewaySubscribers.clear();
       markSessionActivity(session);
+      descriptorStore.upsert(buildSessionDescriptor(session, "completed"));
       clearCleanupTimer(session);
       sessions.delete(session.id);
       session.closed = true;
     });
 
     sessions.set(session.id, session);
+    appendLedgerEvent(session, "created", {
+      source: session.source,
+      shell: session.shell,
+      cwd: session.cwd,
+    });
+    persistSessionDescriptor(session);
     return session;
   }
 
@@ -1271,6 +1384,12 @@ export function createTerminalService(
             if (data.type === "resize" && data.cols && data.rows) {
               session.lastCols = Math.max(1, data.cols);
               session.lastRows = Math.max(1, data.rows);
+              appendLedgerEvent(
+                session,
+                "resize",
+                { cols: session.lastCols, rows: session.lastRows },
+                null,
+              );
               session.term.resize(session.lastCols, session.lastRows);
               return;
             }
@@ -1283,6 +1402,7 @@ export function createTerminalService(
           }
         }
 
+        appendLedgerEvent(session, "input", { data: payload }, null);
         session.term.write(payload);
       });
 
@@ -1314,6 +1434,24 @@ export function createTerminalService(
 
     async listWorkspaceSessions(): Promise<TerminalSessionSummaryResponse> {
       return buildSessionSummaryPayload();
+    },
+
+    async listPersistedSessions(): Promise<TerminalSessionSummaryResponse> {
+      return {
+        sessions: descriptorStore.listRecent(),
+      };
+    },
+
+    async getPersistedSession(
+      sessionId: string,
+    ): Promise<TerminalSessionDescriptor | null> {
+      return descriptorStore.get(sessionId);
+    },
+
+    async listSessionLedger(
+      sessionId: string,
+    ): Promise<TerminalSessionLedgerEvent[]> {
+      return ledger.listBySession(sessionId);
     },
 
     async listWorkspaceActions(): Promise<TerminalActionCatalogResponse> {
@@ -1405,6 +1543,12 @@ export function createTerminalService(
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
       markSessionActivity(session);
+      appendLedgerEvent(
+        session,
+        "input",
+        { data: String(payload.data || "") },
+        runtime.connId,
+      );
       session.term.write(String(payload.data || ""));
       return createGatewayAck(session);
     },
@@ -1418,6 +1562,12 @@ export function createTerminalService(
       markSessionActivity(session);
       session.lastCols = Math.max(1, Number(payload.cols || 0));
       session.lastRows = Math.max(1, Number(payload.rows || 0));
+      appendLedgerEvent(
+        session,
+        "resize",
+        { cols: session.lastCols, rows: session.lastRows },
+        runtime.connId,
+      );
       session.term.resize(session.lastCols, session.lastRows);
       return createGatewayAck(session);
     },
@@ -1438,6 +1588,12 @@ export function createTerminalService(
     ): TerminalGatewayAckResponse {
       const targetSessionId = String(payload.sid || "").trim();
       detachGatewayConnId(runtime.connId, targetSessionId || null);
+      if (targetSessionId) {
+        const session = sessions.get(targetSessionId);
+        if (session && !session.closed) {
+          persistSessionDescriptor(session);
+        }
+      }
       return {
         ok: true,
         sid: targetSessionId || "",

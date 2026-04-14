@@ -20,10 +20,20 @@ const workspaceCssPath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/terminal-workspace.css",
 );
+const terminalServicePath = path.join(
+  rootDir,
+  "apps/api/modules/terminal/service.ts",
+);
+const terminalRoutesPath = path.join(
+  rootDir,
+  "apps/api/modules/terminal/routes.ts",
+);
 
 const terminalView = fs.readFileSync(terminalViewPath, "utf8");
 const workspacePage = fs.readFileSync(workspacePagePath, "utf8");
 const workspaceCss = fs.readFileSync(workspaceCssPath, "utf8");
+const terminalService = fs.readFileSync(terminalServicePath, "utf8");
+const terminalRoutes = fs.readFileSync(terminalRoutesPath, "utf8");
 
 test("terminal view mounts workspace page instead of console placeholder", () => {
   assert.match(terminalView, /<TerminalWorkspacePage\s*\/>/);
@@ -32,6 +42,30 @@ test("terminal view mounts workspace page instead of console placeholder", () =>
     /import\s*\{\s*TerminalWorkspacePage\s*\}\s*from\s*['"]\.\.\/features\/terminal['"]/,
   );
   assert.doesNotMatch(terminalView, /<TerminalConsolePage\s*\/>/);
+});
+
+test("terminal service wires descriptor and ledger persistence for session recovery", () => {
+  assert.match(terminalService, /createTerminalSessionDescriptorStore/);
+  assert.match(terminalService, /createTerminalSessionLedger/);
+  assert.match(terminalService, /descriptorStore\.upsert\(/);
+  assert.match(terminalService, /ledger\.append\(/);
+  assert.match(terminalService, /listPersistedSessions\(\)/);
+  assert.match(
+    terminalService,
+    /getPersistedSession\([\s\S]*sessionId: string[\s\S]*\)/,
+  );
+  assert.match(
+    terminalService,
+    /listSessionLedger\([\s\S]*sessionId: string[\s\S]*\)/,
+  );
+});
+
+test("terminal routes expose minimal recovery endpoints for persisted sessions", () => {
+  assert.match(terminalRoutes, /\"\/api\/terminal\/sessions\/:sessionId\"/);
+  assert.match(
+    terminalRoutes,
+    /\"\/api\/terminal\/sessions\/:sessionId\/ledger\"/,
+  );
 });
 
 test("terminal workspace page composes workspace shell sections and binds state modules", () => {

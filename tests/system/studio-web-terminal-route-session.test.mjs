@@ -8,38 +8,25 @@ const rootDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
-const routeManifestPath = path.join(
+const terminalRoutesPath = path.join(
   rootDir,
-  "apps/web-vue/src/features/shell/route-manifest.ts",
-);
-const workspacePagePath = path.join(
-  rootDir,
-  "apps/web-vue/src/features/terminal/TerminalWorkspacePage.vue",
+  "apps/api/modules/terminal/routes.ts",
 );
 
-const routeManifest = fs.readFileSync(routeManifestPath, "utf8");
-const workspacePage = fs.readFileSync(workspacePagePath, "utf8");
+const terminalRoutesSource = fs.readFileSync(terminalRoutesPath, "utf8");
 
-test("shell route manifest supports terminal base and session routes", () => {
+test("terminal routes expose recovery-oriented session endpoints", () => {
+  assert.match(terminalRoutesSource, /\/api\/terminal\/sessions\/:sessionId/);
   assert.match(
-    routeManifest,
-    /\{\s*path:\s*['"]\/terminal['"],\s*component:\s*TerminalView\s*\}/,
-  );
-  assert.match(
-    routeManifest,
-    /\{\s*path:\s*['"]\/terminal\/:sessionId['"],\s*component:\s*TerminalView\s*\}/,
+    terminalRoutesSource,
+    /\/api\/terminal\/sessions\/:sessionId\/ledger/,
   );
 });
 
-test("terminal workspace page persists route session id to terminal session storage", () => {
-  assert.match(workspacePage, /route\.params\.sessionId/);
+test("terminal session recovery endpoints delegate to persistence readers", () => {
   assert.match(
-    workspacePage,
-    /TERMINAL_SESSION_STORAGE_KEY\s*=\s*['"]openclaw-studio\.terminal\.sid['"]/,
+    terminalRoutesSource,
+    /getPersistedSession\([\s\S]*params\.sessionId[\s\S]*\)/,
   );
-  assert.match(
-    workspacePage,
-    /sessionStorage\.setItem\(TERMINAL_SESSION_STORAGE_KEY, normalizedSessionId\)/,
-  );
-  assert.match(workspacePage, /sessionRouteKey/);
+  assert.match(terminalRoutesSource, /listSessionLedger\(params\.sessionId\)/);
 });
