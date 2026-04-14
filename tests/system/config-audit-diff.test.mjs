@@ -58,18 +58,18 @@ test("diffConfigAuditChanges only reports whitelist changes", async () => {
   assert.equal(changes.length, 2);
 
   assert.deepEqual(changes[0], {
-    module: "transport",
+    module: "system",
     path: "transport.gateway.basePath",
-    label: "Gateway Base Path",
+    label: "Gateway basePath",
     before: "/api/gateway",
     after: "/api/gateway/v2",
     changeType: "updated",
   });
 
   assert.deepEqual(changes[1], {
-    module: "deviceTrust",
+    module: "system",
     path: "deviceTrust.autoApproveLocalHelper",
-    label: "Auto Approve Local Helper",
+    label: "Local helper auto-approve",
     before: false,
     after: true,
     changeType: "updated",
