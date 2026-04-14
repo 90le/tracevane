@@ -44,6 +44,27 @@ export interface DashboardRuntimeSummary {
   expectedCliCount: number;
 }
 
+export interface DashboardEventSummary {
+  recentFailures: number;
+  pendingAuditItems: number;
+  recentRecoveries: number;
+  latestFailureTitle: string | null;
+  latestAuditTitle: string | null;
+  latestRecoveryTitle: string | null;
+}
+
+export interface DashboardTerminalWorkspaceSummary {
+  totalSessions: number;
+  recoverableSessions: number;
+  detachedSessions: number;
+  runningSessions: number;
+  latestSessionId: string | null;
+  latestSessionTitle: string | null;
+  latestSessionUpdatedAt: string | null;
+  latestCommandHint: string | null;
+  latestError: string | null;
+}
+
 export interface DashboardSummaryPayload {
   checkedAt: string;
   server: {
@@ -72,5 +93,7 @@ export interface DashboardSummaryPayload {
   bootstrap: DashboardBootstrapSummary;
   deviceTrust: DashboardDeviceTrustSummary;
   runtime: DashboardRuntimeSummary;
+  events: DashboardEventSummary;
+  terminalWorkspace: DashboardTerminalWorkspaceSummary;
   domains: DashboardDomainSummary[];
 }

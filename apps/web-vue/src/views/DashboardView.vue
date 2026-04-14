@@ -147,6 +147,46 @@
         </section>
       </div>
 
+      <section class="dashboard-followup-strip">
+        <div class="dashboard-section-heading dashboard-section-heading-row">
+          <div>
+            <p class="eyebrow">Follow-up</p>
+            <h3>{{ text('继续处理入口', 'Continue handling') }}</h3>
+          </div>
+          <p class="dashboard-section-copy">
+            {{ text('把刚接入的系统事件与终端恢复摘要直接变成首页可继续操作的入口。', 'Turn newly wired system events and terminal recovery summaries into direct follow-up entry points on the dashboard.') }}
+          </p>
+        </div>
+
+        <div class="dashboard-followup-grid">
+          <RouterLink to="/system/events" class="dashboard-followup-card tone-partial">
+            <span class="dashboard-followup-card__eyebrow">System Events</span>
+            <strong>{{ text('系统事件中心', 'System event center') }}</strong>
+            <p>
+              {{ text('失败', 'Failures') }} {{ summary?.events.recentFailures ?? '--' }} ·
+              {{ text('审计', 'Audit') }} {{ summary?.events.pendingAuditItems ?? '--' }} ·
+              {{ text('恢复', 'Recoveries') }} {{ summary?.events.recentRecoveries ?? '--' }}
+            </p>
+            <span class="dashboard-followup-card__note">
+              {{ summary?.events.latestFailureTitle || summary?.events.latestAuditTitle || summary?.events.latestRecoveryTitle || text('打开系统事件时间线继续处理。', 'Open the event timeline to continue handling.') }}
+            </span>
+          </RouterLink>
+
+          <RouterLink to="/terminal" class="dashboard-followup-card tone-partial">
+            <span class="dashboard-followup-card__eyebrow">Terminal Recovery</span>
+            <strong>{{ text('终端恢复工作台', 'Terminal recovery workspace') }}</strong>
+            <p>
+              {{ text('可恢复', 'Recoverable') }} {{ summary?.terminalWorkspace.recoverableSessions ?? '--' }} ·
+              {{ text('运行中', 'Running') }} {{ summary?.terminalWorkspace.runningSessions ?? '--' }} ·
+              {{ text('已分离', 'Detached') }} {{ summary?.terminalWorkspace.detachedSessions ?? '--' }}
+            </p>
+            <span class="dashboard-followup-card__note">
+              {{ summary?.terminalWorkspace.latestError || summary?.terminalWorkspace.latestCommandHint || summary?.terminalWorkspace.latestSessionTitle || text('打开终端工作台恢复最近会话。', 'Open the terminal workspace to resume the latest session.') }}
+            </span>
+          </RouterLink>
+        </div>
+      </section>
+
       <section class="dashboard-track-strip">
         <div class="dashboard-section-heading dashboard-section-heading-row">
           <div>
@@ -721,6 +761,7 @@ onBeforeUnmount(() => {
 
 .dashboard-overview-river,
 .dashboard-signal-runway,
+.dashboard-followup-strip,
 .dashboard-track-strip,
 .dashboard-runtime-band,
 .dashboard-release-band {
@@ -766,6 +807,7 @@ onBeforeUnmount(() => {
 
 .dashboard-domain-stream__list,
 .dashboard-fact-tape,
+.dashboard-followup-grid,
 .dashboard-track-list {
   display: grid;
   gap: 10px;
@@ -835,8 +877,13 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+.dashboard-followup-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .dashboard-runtime-band,
 .dashboard-release-band,
+.dashboard-followup-strip,
 .dashboard-track-strip {
   padding: 18px;
   border-radius: 12px;
@@ -844,6 +891,45 @@ onBeforeUnmount(() => {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 32%),
     var(--shell-panel-fill);
+}
+
+.dashboard-followup-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--shell-panel-border);
+  background: var(--shell-panel-fill);
+  color: var(--text);
+  text-decoration: none;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.dashboard-followup-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--dashboard-command-link-hover-border);
+  background: var(--dashboard-command-link-hover-fill);
+}
+
+.dashboard-followup-card__eyebrow {
+  color: var(--acc);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.dashboard-followup-card strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.dashboard-followup-card p,
+.dashboard-followup-card__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .dashboard-release-band__summary {
@@ -888,6 +974,7 @@ onBeforeUnmount(() => {
 @media (max-width: 1180px) {
   .dashboard-meter-ribbon,
   .dashboard-runway-grid,
+  .dashboard-followup-grid,
   .dashboard-track-list,
   .dashboard-release-band__summary {
     grid-template-columns: 1fr;

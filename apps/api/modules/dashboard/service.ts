@@ -24,7 +24,20 @@ interface DashboardServiceOptions {
 export function createDashboardService(options: DashboardServiceOptions): DashboardService {
   return {
     async getSummary(): Promise<DashboardSummaryPayload> {
-      const [agentSummary, channelSummary, cronSummary, skillsSummary, systemHealth, terminalStatus, bootstrap, deviceTrust, release, upgradeStatus] = await Promise.all([
+      const [
+        agentSummary,
+        channelSummary,
+        cronSummary,
+        skillsSummary,
+        systemHealth,
+        terminalStatus,
+        bootstrap,
+        deviceTrust,
+        release,
+        upgradeStatus,
+        eventSummary,
+        persistedTerminalSessions,
+      ] = await Promise.all([
         Promise.resolve(options.agents.getSummary()),
         Promise.resolve(options.channels.getSummary()),
         Promise.resolve(options.cron.getSummary()),
@@ -35,6 +48,8 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
         options.system.getDeviceTrust(),
         options.system.getStudioRelease(),
         options.system.getStudioUpgradeStatus(),
+        options.system.getEventSummary(),
+        options.terminal.listPersistedSessions(),
       ]);
       const installedCliCount = terminalStatus.binaries.filter((binary) => binary.installed).length;
       const legacyDeviceTrust = deviceTrust as unknown as { pending?: unknown[]; pendingRequests?: unknown[] };
@@ -55,6 +70,11 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
       const healthUrl = transportMode === 'gateway'
         ? `${options.config.transport.gateway.basePath || '/studio'}/api/system/health`
         : `http://127.0.0.1:${options.config.transport.standalone.port}/api/system/health`;
+      const persistedSessions = persistedTerminalSessions.sessions || [];
+      const latestTerminalSession = [...persistedSessions].sort(
+        (left, right) =>
+          Date.parse(right.updatedAt || '') - Date.parse(left.updatedAt || ''),
+      )[0] || null;
 
       return {
         checkedAt: new Date().toISOString(),
@@ -116,6 +136,25 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
           installedCliCount,
           expectedCliCount: terminalStatus.binaries.length,
         },
+        events: {
+          recentFailures: eventSummary.recentFailures.count,
+          pendingAuditItems: eventSummary.pendingAuditItems.count,
+          recentRecoveries: eventSummary.recentRecoveries.count,
+          latestFailureTitle: eventSummary.recentFailures.items[0]?.title || null,
+          latestAuditTitle: eventSummary.pendingAuditItems.items[0]?.title || null,
+          latestRecoveryTitle: eventSummary.recentRecoveries.items[0]?.title || null,
+        },
+        terminalWorkspace: {
+          totalSessions: persistedSessions.length,
+          recoverableSessions: persistedSessions.filter((session) => session.canResume).length,
+          detachedSessions: persistedSessions.filter((session) => session.status === 'detached').length,
+          runningSessions: persistedSessions.filter((session) => session.status === 'running').length,
+          latestSessionId: latestTerminalSession?.sessionId || null,
+          latestSessionTitle: latestTerminalSession?.title || null,
+          latestSessionUpdatedAt: latestTerminalSession?.updatedAt || null,
+          latestCommandHint: latestTerminalSession?.recentOutputSummary?.lastCommandHint || null,
+          latestError: latestTerminalSession?.recentOutputSummary?.lastError || null,
+        },
         domains: [
           {
             key: 'config',
@@ -134,9 +173,18 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
           {
             key: 'terminal',
             label: '维护终端',
-            status: installedCliCount >= Math.max(1, terminalStatus.binaries.length - 1) ? 'ready' : 'partial',
-            value: `${installedCliCount}/${terminalStatus.binaries.length}`,
-            note: '终端环境会显示 CLI 安装完备度，可用于判断沙盒与运维链路是否可用。',
+            status:
+              persistedSessions.some((session) => session.status === 'detached')
+              || persistedSessions.some((session) => session.recentOutputSummary?.lastError)
+              || installedCliCount < Math.max(1, terminalStatus.binaries.length - 1)
+                ? 'partial'
+                : 'ready',
+            value: `${persistedSessions.filter((session) => session.canResume).length} recoverable`,
+            note: latestTerminalSession?.recentOutputSummary?.lastError
+              ? `最近终端错误：${latestTerminalSession.recentOutputSummary.lastError}`
+              : latestTerminalSession?.recentOutputSummary?.lastCommandHint
+                ? `最近命令：${latestTerminalSession.recentOutputSummary.lastCommandHint}`
+                : '终端恢复摘要已接入，可直接从首页跳回继续处理最近会话。',
           },
           {
             key: 'channels',
@@ -162,11 +210,19 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
           {
             key: 'system',
             label: '系统概览',
-            status: systemHealth.gatewayConnected && deviceTrust.helper?.paired ? 'ready' : 'partial',
-            value: systemHealth.gateway,
-            note: release.updateAvailable
-              ? `检测到 Studio ${release.latestVersion} 可升级，当前升级状态 ${upgradeStatus.status}。`
-              : '健康、升级与设备信任状态均已并入系统摘要。',
+            status:
+              eventSummary.recentFailures.count > 0
+              || eventSummary.pendingAuditItems.count > 0
+              || !systemHealth.gatewayConnected
+              || !deviceTrust.helper?.paired
+                ? 'partial'
+                : 'ready',
+            value: `${eventSummary.recentFailures.count} / ${eventSummary.pendingAuditItems.count}`,
+            note: eventSummary.recentFailures.items[0]?.title
+              ? `最新系统事件：${eventSummary.recentFailures.items[0].title}`
+              : release.updateAvailable
+                ? `检测到 Studio ${release.latestVersion} 可升级，当前升级状态 ${upgradeStatus.status}。`
+                : '健康、升级、设备信任与系统事件摘要均已并入系统首页。',
           },
         ],
       };

@@ -118,6 +118,11 @@ function createDashboard() {
           ],
         };
       },
+      async listPersistedSessions() {
+        return {
+          sessions: [],
+        };
+      },
     },
   });
 }
@@ -141,4 +146,8 @@ test("dashboard summary exposes transport, bootstrap, release, and device trust 
   assert.equal(summary.deviceTrust.helperConfigured, true);
   assert.equal(summary.runtime.installedCliCount, 2);
   assert.equal(summary.runtime.expectedCliCount, 3);
+  assert.equal(summary.events.recentFailures, 0);
+  assert.equal(summary.events.pendingAuditItems, 0);
+  assert.equal(summary.terminalWorkspace.totalSessions, 0);
+  assert.equal(summary.terminalWorkspace.recoverableSessions, 0);
 });
