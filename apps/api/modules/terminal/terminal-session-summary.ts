@@ -92,6 +92,13 @@ export function buildTerminalRecentOutputSummary(
         exitSummary = summary;
       }
     }
+
+    if (event?.type === "ended") {
+      const reason = asString(detail?.reason);
+      if (reason) {
+        exitSummary = reason;
+      }
+    }
   }
 
   return {

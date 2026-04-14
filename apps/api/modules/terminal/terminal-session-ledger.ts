@@ -90,7 +90,14 @@ export function createTerminalSessionLedger(
         throw new Error("invalid terminal ledger event");
       }
       records.push(normalized);
-      fs.appendFileSync(filePath, `${JSON.stringify(normalized)}\n`, "utf8");
+      try {
+        fs.mkdirSync(options.stateDir, { recursive: true });
+        fs.appendFileSync(filePath, `${JSON.stringify(normalized)}\n`, "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          throw error;
+        }
+      }
       return normalized;
     },
     listBySession(sessionId: string): TerminalSessionLedgerEvent[] {

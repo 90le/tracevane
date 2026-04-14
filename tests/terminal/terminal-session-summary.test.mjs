@@ -176,3 +176,18 @@ test("recent output summary 无事件时返回空摘要并使用当前时间", (
   assert.equal(summary.exitSummary, null);
   assert.match(summary.updatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
 });
+
+test("recent output summary can fall back to ended reason when exit event is absent", () => {
+  const summary = terminalSessionSummary.buildTerminalRecentOutputSummary([
+    {
+      type: "ended",
+      detail: {
+        reason: "session_ended",
+      },
+      timestamp: "2026-04-14T00:00:03.000Z",
+    },
+  ]);
+
+  assert.equal(summary.exitSummary, "session_ended");
+  assert.equal(summary.updatedAt, "2026-04-14T00:00:03.000Z");
+});

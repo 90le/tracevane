@@ -802,7 +802,7 @@ export function createTerminalService(
       broadcastChunk(session, data);
     });
 
-    term.onExit(() => {
+    term.onExit((event) => {
       const alreadyClosed = session.closed;
       if (!alreadyClosed) {
         broadcastGatewayEvent(session, {
@@ -811,6 +811,15 @@ export function createTerminalService(
           reason: "session_exited",
         });
       }
+      appendLedgerEvent(
+        session,
+        "exit",
+        {
+          code: typeof event?.exitCode === "number" ? event.exitCode : null,
+          signal: typeof event?.signal === "number" ? String(event.signal) : null,
+        },
+        null,
+      );
       for (const client of Array.from(session.clients)) {
         try {
           client.close();
