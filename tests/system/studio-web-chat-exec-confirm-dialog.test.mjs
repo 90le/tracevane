@@ -30,3 +30,25 @@ test('host-management exec toggle uses a custom chat dialog instead of browser c
   assert.ok(toggleBlock);
   assert.doesNotMatch(toggleBlock[0], /window\.confirm/);
 });
+
+test('folder and chat deletion actions reuse a Studio destructive confirm dialog instead of window.confirm', () => {
+  const folderDeleteBlock = chatShellPage.match(/async function handleFolderAction[\s\S]*?\n}\n\nasync function handleAssignSessions/);
+  const batchDeleteBlock = chatShellPage.match(/async function handleBatchAction[\s\S]*?\n}\n\nasync function handleSessionAction/);
+  const sessionDeleteBlock = chatShellPage.match(/async function handleSessionAction[\s\S]*?\n}\n\nfunction handleComposerKeydown/);
+
+  assert.match(chatShellPage, /const destructiveConfirmOpen = ref\(false\);/);
+  assert.match(chatShellPage, /const destructiveConfirmState = ref<ChatConfirmDialogState \| null>\(null\);/);
+  assert.match(chatShellPage, /function openDestructiveConfirm\(options:/);
+  assert.match(chatShellPage, /async function confirmDestructiveAction\(\): Promise<void> \{/);
+  assert.match(chatShellPage, /<DialogRoot :open="destructiveConfirmOpen" @update:open="handleDestructiveConfirmOpenChange">/);
+  assert.match(chatShellPage, /destructiveConfirmState\.confirmLabel/);
+  assert.ok(folderDeleteBlock);
+  assert.ok(batchDeleteBlock);
+  assert.ok(sessionDeleteBlock);
+  assert.match(folderDeleteBlock[0], /openDestructiveConfirm\(\{/);
+  assert.match(batchDeleteBlock[0], /openDestructiveConfirm\(\{/);
+  assert.match(sessionDeleteBlock[0], /openDestructiveConfirm\(\{/);
+  assert.doesNotMatch(folderDeleteBlock[0], /window\.confirm/);
+  assert.doesNotMatch(batchDeleteBlock[0], /window\.confirm/);
+  assert.doesNotMatch(sessionDeleteBlock[0], /window\.confirm/);
+});

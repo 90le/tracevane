@@ -319,6 +319,56 @@
         </DialogContent>
       </DialogPortal>
     </DialogRoot>
+
+    <DialogRoot :open="destructiveConfirmOpen" @update:open="handleDestructiveConfirmOpenChange">
+      <DialogPortal>
+        <DialogOverlay class="chat-host-exec-confirm-mask" />
+        <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
+          <section v-if="destructiveConfirmOpen && destructiveConfirmState" class="chat-host-exec-confirm-dialog">
+            <header class="chat-host-exec-confirm-head">
+              <div class="chat-host-exec-confirm-copy">
+                <DialogTitle as-child>
+                  <strong>{{ destructiveConfirmState.title }}</strong>
+                </DialogTitle>
+                <DialogDescription as-child>
+                  <span>{{ destructiveConfirmState.description }}</span>
+                </DialogDescription>
+              </div>
+              <DialogClose as-child>
+                <button
+                  type="button"
+                  class="chat-host-exec-confirm-close"
+                  :aria-label="text('关闭确认窗口', 'Close confirmation dialog')"
+                >
+                  ×
+                </button>
+              </DialogClose>
+            </header>
+
+            <footer class="chat-host-exec-confirm-actions">
+              <button
+                type="button"
+                class="chat-host-exec-confirm-secondary"
+                :disabled="destructiveConfirmBusy"
+                @click="closeDestructiveConfirm"
+              >
+                {{ text('取消', 'Cancel') }}
+              </button>
+              <button
+                type="button"
+                class="chat-host-exec-confirm-primary"
+                :disabled="destructiveConfirmBusy"
+                @click="confirmDestructiveAction"
+              >
+                {{ destructiveConfirmBusy
+                  ? text('处理中...', 'Working...')
+                  : destructiveConfirmState.confirmLabel }}
+              </button>
+            </footer>
+          </section>
+        </DialogContent>
+      </DialogPortal>
+    </DialogRoot>
   </section>
 </template>
 
@@ -538,6 +588,12 @@ type PendingQueuedSlashCommand = {
   queuedAt: string;
 };
 
+type ChatConfirmDialogState = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+};
+
 type ComposerImageAttachment = ChatSendAttachment & {
   id: string;
   dataUrl: string;
@@ -605,6 +661,10 @@ const inspectorTab = ref<'overview' | 'tools' | 'activity' | 'diagnostics'>('ove
 const inspectorDrawerOpen = ref(true);
 const hostManagementExecConfirmOpen = ref(false);
 const pendingHostManagementExecValue = ref<boolean | null>(null);
+const destructiveConfirmOpen = ref(false);
+const destructiveConfirmState = ref<ChatConfirmDialogState | null>(null);
+const destructiveConfirmBusy = ref(false);
+const destructiveConfirmAction = ref<(() => Promise<void>) | null>(null);
 const soundCuesEnabled = ref(true);
 const showToolPreviews = ref(CHAT_PROCESS_VISIBILITY_DEFAULTS.showToolPreviews);
 const showThinkingBlocks = ref(CHAT_PROCESS_VISIBILITY_DEFAULTS.showThinkingBlocks);
@@ -4261,6 +4321,52 @@ function closeHostManagementExecConfirm(): void {
   pendingHostManagementExecValue.value = null;
 }
 
+function handleDestructiveConfirmOpenChange(nextOpen: boolean): void {
+  destructiveConfirmOpen.value = nextOpen;
+  if (!nextOpen) {
+    destructiveConfirmState.value = null;
+    destructiveConfirmAction.value = null;
+    destructiveConfirmBusy.value = false;
+  }
+}
+
+function closeDestructiveConfirm(): void {
+  destructiveConfirmOpen.value = false;
+  destructiveConfirmState.value = null;
+  destructiveConfirmAction.value = null;
+  destructiveConfirmBusy.value = false;
+}
+
+function openDestructiveConfirm(options: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  action: () => Promise<void>;
+}): void {
+  destructiveConfirmState.value = {
+    title: options.title,
+    description: options.description,
+    confirmLabel: options.confirmLabel,
+  };
+  destructiveConfirmAction.value = options.action;
+  destructiveConfirmBusy.value = false;
+  destructiveConfirmOpen.value = true;
+}
+
+async function confirmDestructiveAction(): Promise<void> {
+  if (!destructiveConfirmAction.value || destructiveConfirmBusy.value) {
+    return;
+  }
+  destructiveConfirmBusy.value = true;
+  try {
+    await destructiveConfirmAction.value();
+    closeDestructiveConfirm();
+  } catch (error) {
+    closeDestructiveConfirm();
+    setNotice('error', error instanceof Error ? error.message : text('操作失败。', 'Action failed.'));
+  }
+}
+
 async function confirmSessionHostManagementExec(): Promise<void> {
   if (pendingHostManagementExecValue.value !== true) {
     closeHostManagementExecConfirm();
@@ -4511,15 +4617,16 @@ async function handleFolderAction(payload: {
     }
 
     if (payload.action === 'delete') {
-      const confirmed = window.confirm(
-        text('删除文件夹后，其中会话会自动回到根目录。确认继续？', 'Delete this folder and return its chats to root?')
-      );
-      if (!confirmed) {
-        return;
-      }
-      const response = await deleteChatFolder(payload.folderId);
-      applyOrganizer(response.organizer);
-      setNotice('success', text('文件夹已删除。', 'Folder deleted.'));
+      openDestructiveConfirm({
+        title: text('删除文件夹', 'Delete folder'),
+        description: text('删除文件夹后，其中会话会自动回到根目录。确认继续？', 'Delete this folder and return its chats to root?'),
+        confirmLabel: text('确认删除', 'Delete folder'),
+        action: async () => {
+          const response = await deleteChatFolder(payload.folderId);
+          applyOrganizer(response.organizer);
+          setNotice('success', text('文件夹已删除。', 'Folder deleted.'));
+        },
+      });
       return;
     }
 
@@ -4589,23 +4696,24 @@ async function handleBatchAction(payload: {
       return;
     }
 
-    const confirmed = window.confirm(
-      text(`将删除 ${sessionKeys.length} 个会话，并清理本地与远端记录。确认继续？`, `Delete ${sessionKeys.length} chats from Studio and the gateway?`)
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    const result = await deleteSessionKeys(sessionKeys);
-    if (result.failedKeys.length) {
-      throw new Error(
-        text(
-          `批量删除部分失败。成功 ${result.deletedKeys.length} 个，失败 ${result.failedKeys.length} 个：${result.failedKeys.join(', ')}`,
-          `Batch delete partially failed. Deleted ${result.deletedKeys.length}, failed ${result.failedKeys.length}: ${result.failedKeys.join(', ')}`,
-        ),
-      );
-    }
-    setNotice('success', text('已删除所选会话。', 'Selected chats deleted.'));
+    openDestructiveConfirm({
+      title: text('批量删除会话', 'Delete selected chats'),
+      description: text(`将删除 ${sessionKeys.length} 个会话，并清理本地与远端记录。确认继续？`, `Delete ${sessionKeys.length} chats from Studio and the gateway?`),
+      confirmLabel: text('确认删除', 'Delete chats'),
+      action: async () => {
+        const result = await deleteSessionKeys(sessionKeys);
+        if (result.failedKeys.length) {
+          throw new Error(
+            text(
+              `批量删除部分失败。成功 ${result.deletedKeys.length} 个，失败 ${result.failedKeys.length} 个：${result.failedKeys.join(', ')}`,
+              `Batch delete partially failed. Deleted ${result.deletedKeys.length}, failed ${result.failedKeys.length}: ${result.failedKeys.join(', ')}`,
+            ),
+          );
+        }
+        setNotice('success', text('已删除所选会话。', 'Selected chats deleted.'));
+      },
+    });
+    return;
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('批量操作失败。', 'Batch action failed.'));
   }
@@ -4654,23 +4762,24 @@ async function handleSessionAction(payload: { action: 'rename' | 'archive' | 'de
       return;
     }
 
-    const confirmed = window.confirm(
-      text('删除后会同时清理本地和远端会话记录，确认继续？', 'Delete this chat from both local Studio state and the gateway?')
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    const result = await deleteSessionKeys([session.key]);
-    if (result.failedKeys.length) {
-      throw new Error(
-        text(
-          `删除会话失败：${result.failedKeys.join(', ')}`,
-          `Failed to delete chat: ${result.failedKeys.join(', ')}`,
-        ),
-      );
-    }
-    setNotice('success', text('会话已删除。', 'Chat deleted.'));
+    openDestructiveConfirm({
+      title: text('删除会话', 'Delete chat'),
+      description: text('删除后会同时清理本地和远端会话记录，确认继续？', 'Delete this chat from both local Studio state and the gateway?'),
+      confirmLabel: text('确认删除', 'Delete chat'),
+      action: async () => {
+        const result = await deleteSessionKeys([session.key]);
+        if (result.failedKeys.length) {
+          throw new Error(
+            text(
+              `删除会话失败：${result.failedKeys.join(', ')}`,
+              `Failed to delete chat: ${result.failedKeys.join(', ')}`,
+            ),
+          );
+        }
+        setNotice('success', text('会话已删除。', 'Chat deleted.'));
+      },
+    });
+    return;
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('会话操作失败。', 'Chat action failed.'));
   }
