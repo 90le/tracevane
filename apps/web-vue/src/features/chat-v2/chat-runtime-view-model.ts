@@ -168,15 +168,6 @@ export function useChatRuntimeViewModel(params: {
     }),
   );
   const effectiveOverlays = computed(() => overlaySummary.value.overlays);
-  const overlayToolCallIds = computed(() =>
-    renderTimelineItems.value.flatMap((item) =>
-      item.type === "run_overlay"
-        ? item.overlay.toolCalls
-            .map((toolCall) => toolCall.toolCallId)
-            .filter(Boolean)
-        : [],
-    ),
-  );
   const conversationTitle = computed(
     () => runtimeSummary.value.conversationTitle,
   );
@@ -208,6 +199,15 @@ export function useChatRuntimeViewModel(params: {
       messages: displayMessages.value,
       overlays: effectiveOverlays.value,
     }),
+  );
+  const overlayToolCallIds = computed(() =>
+    renderTimelineItems.value.flatMap((item) =>
+      item.type === "run_overlay"
+        ? item.overlay.toolCalls
+            .map((toolCall) => toolCall.toolCallId)
+            .filter(Boolean)
+        : [],
+    ),
   );
   const timelineVersion = computed(() =>
     buildTimelineVersion(renderTimelineItems.value),
