@@ -9,6 +9,7 @@ const sessionSummary =
   await import("../../apps/api/modules/terminal/session-summary.ts");
 const terminalService =
   await import("../../apps/api/modules/terminal/service.ts");
+const terminalTypes = await import("../../types/terminal.ts");
 
 test("terminal session summary exposes recoverable status and controller metadata", () => {
   const summary = sessionSummary.buildTerminalSessionSummary({
@@ -51,6 +52,15 @@ test("terminal session summary preserves explicit source and activity time", () 
   assert.equal(summary.source, "system_action");
   assert.equal(summary.updatedAt, updatedAt);
   assert.equal(summary.status, "detached");
+});
+
+test("terminal session status helper identifies recoverable states", () => {
+  assert.equal(typeof terminalTypes.isRecoverableTerminalStatus, "function");
+  assert.equal(terminalTypes.isRecoverableTerminalStatus("running"), true);
+  assert.equal(terminalTypes.isRecoverableTerminalStatus("detached"), true);
+  assert.equal(terminalTypes.isRecoverableTerminalStatus("completed"), false);
+  assert.equal(terminalTypes.isRecoverableTerminalStatus("failed"), false);
+  assert.equal(terminalTypes.isRecoverableTerminalStatus("lost"), false);
 });
 
 test("terminal service session summaries derive detached status from real activity metadata", async () => {

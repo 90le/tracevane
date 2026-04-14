@@ -108,15 +108,55 @@ export type TerminalSessionSource =
 
 export type TerminalSessionControlState = "controller" | "observer";
 
+export interface TerminalHandoffContext {
+  fromClientId: string | null;
+  toClientId: string | null;
+  reason: string | null;
+  handoffAt: string;
+}
+
+export interface TerminalRecentOutputSummary {
+  sample: string;
+  byteLength: number;
+  truncated: boolean;
+  capturedAt: string;
+}
+
+export interface TerminalSessionLedgerEvent {
+  eventId: string;
+  sessionId: string;
+  type: string;
+  timestamp: string;
+  actorClientId: string | null;
+  detail: Record<string, unknown>;
+}
+
 export interface TerminalSessionDescriptor {
   sessionId: string;
   title: string;
-  status: TerminalSessionStatus;
   source: TerminalSessionSource;
+  sourceModule: string;
+  sourceAction: string;
+  originRoute: string;
+  status: TerminalSessionStatus;
+  controllerClientId: string | null;
+  observerClientIds: string[];
+  createdAt: string;
+  lastActiveAt: string;
+  lastAttachedAt: string | null;
   canResume: boolean;
+  resumeKey: string | null;
+  handoffContext: TerminalHandoffContext | null;
+  recentOutputSummary: TerminalRecentOutputSummary | null;
   controlState: TerminalSessionControlState;
   observerCount: number;
   updatedAt: string;
+}
+
+export function isRecoverableTerminalStatus(
+  status: TerminalSessionStatus,
+): boolean {
+  return status === "running" || status === "detached";
 }
 
 export interface TerminalSessionSummaryResponse {
