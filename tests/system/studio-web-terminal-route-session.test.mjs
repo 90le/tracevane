@@ -34,3 +34,11 @@ test("terminal session recovery endpoints delegate to persistence readers", () =
     /terminal session not found: \$\{params\.sessionId\}/,
   );
 });
+
+test("system terminal handoff helper encodes a stable session route", async () => {
+  const mod =
+    await import("../../apps/web-vue/src/features/system/system-terminal-handoff.ts");
+  const handoff = mod.buildSystemTerminalHandoff({ sessionId: "term-1" });
+
+  assert.equal(handoff.to, "/terminal/term-1");
+});

@@ -20,13 +20,13 @@
             {{ buildTerminalTakeoverSummary({ controlState: session.controlState }).labelZh }}
           </span>
           <span
-            v-if="session.handoffContext?.reason"
+            v-if="session.handoffContext?.triggerLabel || session.handoffContext?.fromModule"
             class="terminal-recent-extra"
           >
-            交接：{{ session.handoffContext.reason }}
+            交接：{{ session.handoffContext?.triggerLabel || session.handoffContext?.fromModule }}
           </span>
           <span
-            v-if="session.recentOutputSummary?.sample"
+            v-if="session.recentOutputSummary?.tailText"
             class="terminal-recent-extra"
           >
             {{ session.status === 'completed' ? '最近输出（已完成）' : (session.status === 'failed' ? '最近输出（失败）' : '最近输出') }}

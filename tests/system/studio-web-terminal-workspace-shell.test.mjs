@@ -98,6 +98,12 @@ test("terminal workspace page composes workspace shell sections and binds state 
     workspacePage,
     /import \{ bindTerminalRouteSync \} from '\.\/terminal-route-sync'/,
   );
+  assert.match(workspacePage, /fetchPersistedTerminalSessions/);
+  assert.match(
+    workspacePage,
+    /workspace\.hydrateSessions\(summary\.sessions \|\| \[\]\)/,
+  );
+  assert.doesNotMatch(workspacePage, /fetchTerminalSessions\(/);
 
   assert.match(workspaceCss, /\.terminal-workspace-shell\s*\{/);
   assert.match(workspaceCss, /\.terminal-workspace-main\s*\{/);

@@ -1,44 +1,28 @@
 import { reactive } from "vue";
+import type {
+  TerminalHandoffContext as SharedTerminalHandoffContext,
+  TerminalRecentOutputSummary as SharedTerminalRecentOutputSummary,
+  TerminalSessionControlState,
+  TerminalSessionDescriptor as SharedTerminalSessionDescriptor,
+  TerminalSessionSource,
+  TerminalSessionStatus,
+} from "../../../../../types/terminal";
 
-export type TerminalSessionStatus =
-  | "running"
-  | "detached"
-  | "completed"
-  | "failed"
-  | "lost";
+export type TerminalSessionHandoffContext = SharedTerminalHandoffContext;
+export type TerminalRecentOutputSummary = SharedTerminalRecentOutputSummary;
 
-export type TerminalSessionSource =
-  | "manual"
-  | "system_action"
-  | "linked_context";
-
-export type TerminalSessionControlState = "controller" | "observer";
-
-export interface TerminalSessionHandoffContext {
-  fromClientId: string | null;
-  toClientId: string | null;
-  reason: string | null;
-  handoffAt: string;
-}
-
-export interface TerminalRecentOutputSummary {
-  sample: string;
-  byteLength: number;
-  truncated: boolean;
-  capturedAt: string;
-}
-
-export interface TerminalSessionDescriptor {
-  sessionId: string;
-  title: string;
-  status: TerminalSessionStatus;
-  source: TerminalSessionSource;
-  canResume: boolean;
-  controlState: TerminalSessionControlState;
-  updatedAt: string;
-  handoffContext?: TerminalSessionHandoffContext | null;
-  recentOutputSummary?: TerminalRecentOutputSummary | null;
-}
+export interface TerminalSessionDescriptor extends Pick<
+  SharedTerminalSessionDescriptor,
+  | "sessionId"
+  | "title"
+  | "status"
+  | "source"
+  | "canResume"
+  | "updatedAt"
+  | "handoffContext"
+  | "recentOutputSummary"
+  | "controlState"
+> {}
 
 export interface TerminalSessionStorageLike {
   getItem(key: string): string | null;

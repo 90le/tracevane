@@ -22,9 +22,7 @@ export function fetchTerminalSessions(): Promise<TerminalSessionSummaryResponse>
 }
 
 export function fetchPersistedTerminalSessions(): Promise<TerminalSessionSummaryResponse> {
-  return requestJson<TerminalSessionSummaryResponse>(
-    "/api/terminal/persisted-sessions",
-  );
+  return requestJson<TerminalSessionSummaryResponse>("/api/terminal/sessions");
 }
 
 export function fetchPersistedTerminalSessionDescriptor(

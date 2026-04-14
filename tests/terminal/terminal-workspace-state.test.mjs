@@ -144,7 +144,7 @@ test("terminal workspace restores recoverable sessions from persisted descriptor
           handoffAt: "2026-04-13T10:07:58.000Z",
         },
         recentOutputSummary: {
-          sample: "deploy failed",
+          tailText: "deploy failed",
           byteLength: 13,
           truncated: false,
           capturedAt: "2026-04-13T10:07:59.000Z",
@@ -181,7 +181,7 @@ test("terminal workspace includes persisted completed session in recent list whe
       controlState: "observer",
       updatedAt: "2026-04-13T10:06:00.000Z",
       recentOutputSummary: {
-        sample: "task finished",
+        tailText: "task finished",
         byteLength: 13,
         truncated: false,
         capturedAt: "2026-04-13T10:05:59.000Z",
@@ -267,7 +267,7 @@ test("terminal route sync recovers persisted descriptor metadata by route sessio
         handoffAt: "2026-04-13T11:10:00.000Z",
       },
       recentOutputSummary: {
-        sample: "npm run build failed",
+        tailText: "npm run build failed",
         byteLength: 20,
         truncated: false,
         capturedAt: "2026-04-13T11:10:30.000Z",
@@ -289,7 +289,7 @@ test("terminal route sync recovers persisted descriptor metadata by route sessio
     "network_reconnect",
   );
   assert.equal(
-    workspace.sessions.value["term-persisted-1"]?.recentOutputSummary?.sample,
+    workspace.sessions.value["term-persisted-1"]?.recentOutputSummary?.tailText,
     "npm run build failed",
   );
 });

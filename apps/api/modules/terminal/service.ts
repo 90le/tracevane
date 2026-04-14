@@ -450,12 +450,7 @@ export function createTerminalService(
       canResume: status === "running" || status === "detached",
       resumeKey: session.id,
       handoffContext: null,
-      recentOutputSummary: {
-        sample: recent.tailText,
-        byteLength: Buffer.byteLength(recent.tailText, "utf8"),
-        truncated: false,
-        capturedAt: recent.updatedAt,
-      },
+      recentOutputSummary: recent,
       controlState: controllerClientId ? "controller" : "observer",
       observerCount: observerClientIds.length,
       updatedAt: session.lastActivityAt,

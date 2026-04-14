@@ -63,7 +63,7 @@ export function createTerminalWorkspaceState(
       .filter(
         (session) =>
           session.canResume ||
-          (Boolean(session.recentOutputSummary?.sample) &&
+          (Boolean(session.recentOutputSummary?.tailText) &&
             (session.status === "completed" || session.status === "failed")),
       )
       .sort(sortTerminalSessionsByUpdatedAtDesc),

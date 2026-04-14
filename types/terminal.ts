@@ -104,22 +104,28 @@ export type TerminalSessionStatus =
 export type TerminalSessionSource =
   | "manual"
   | "system_action"
-  | "linked_context";
+  | "linked_context"
+  | "system-handoff"
+  | "action-panel";
 
 export type TerminalSessionControlState = "controller" | "observer";
 
 export interface TerminalHandoffContext {
-  fromClientId: string | null;
-  toClientId: string | null;
-  reason: string | null;
-  handoffAt: string;
+  fromModule: string;
+  fromRoute: string;
+  triggerType: string;
+  triggerLabel: string;
+  targetEntity: string;
+  recommendedCommand: string;
+  relatedEventId: string | null;
 }
 
 export interface TerminalRecentOutputSummary {
-  sample: string;
-  byteLength: number;
-  truncated: boolean;
-  capturedAt: string;
+  tailText: string;
+  lastError: string | null;
+  lastCommandHint: string | null;
+  exitSummary: string | null;
+  updatedAt: string;
 }
 
 export interface TerminalSessionLedgerEvent {

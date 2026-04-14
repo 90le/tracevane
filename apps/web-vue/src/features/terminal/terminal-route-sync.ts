@@ -34,6 +34,8 @@ export function bindTerminalRouteSync(options: TerminalRouteSyncOptions): void {
         canResume: true,
         controlState: "observer",
         updatedAt: new Date().toISOString(),
+        handoffContext: null,
+        recentOutputSummary: null,
       });
       options.setActiveSession(normalized);
 

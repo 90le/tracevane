@@ -28,7 +28,7 @@ import TerminalActionPanel from './TerminalActionPanel.vue';
 import TerminalRecentSessionRail from './TerminalRecentSessionRail.vue';
 import TerminalSessionPane from './TerminalSessionPane.vue';
 import TerminalTabRail from './TerminalTabRail.vue';
-import { fetchTerminalActions, fetchTerminalSessions } from './api';
+import { fetchPersistedTerminalSessions, fetchTerminalActions } from './api';
 import { buildTerminalActionLayers } from './terminal-action-catalog';
 import { bindTerminalRouteSync } from './terminal-route-sync';
 import { createTerminalWorkspaceState } from './terminal-workspace-state';
@@ -53,16 +53,15 @@ bindTerminalRouteSync({
 
 onMounted(async () => {
   const normalizedSessionId = String(route.params.sessionId || '').trim();
-  const sessionRouteKey = normalizedSessionId;
   if (normalizedSessionId && typeof globalThis.sessionStorage?.setItem === 'function') {
     globalThis.sessionStorage.setItem(TERMINAL_SESSION_STORAGE_KEY, normalizedSessionId);
   }
 
   try {
-    const summary = await fetchTerminalSessions();
+    const summary = await fetchPersistedTerminalSessions();
     workspace.hydrateSessions(summary.sessions || []);
   } catch {
-    // keep route/local workspace as-is when backend summaries are unavailable
+    // keep route/local workspace as-is when persisted descriptors are unavailable
   }
 
   try {

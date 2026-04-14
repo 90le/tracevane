@@ -1,7 +1,7 @@
 import type {
   TerminalSessionControlState,
   TerminalSessionStatus,
-} from "./terminal-session-registry";
+} from "../../../../../types/terminal";
 
 export interface TerminalSessionStatusSummary {
   tone: "success" | "warning" | "muted";
