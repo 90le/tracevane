@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const rootDir = "/home/binbin/.openclaw/extensions/openclaw-studio";
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 function read(filePath) {
   return fs.readFileSync(path.join(rootDir, filePath), "utf8");
@@ -50,5 +51,8 @@ test("agent sessions page uses card rows with a compact summary strip", () => {
   assert.match(sessionsPage, /agents-session-summary-strip/);
   assert.match(sessionsPage, /agents-session-card-list/);
   assert.match(sessionsPage, /agents-session-card/);
+  assert.match(sessionsPage, /encodeChatSessionRef/);
+  assert.match(sessionsPage, /router\.push\(`\/chat\/s\/\$\{encodeChatSessionRef\(sessionRef\)\}`\)/);
+  assert.doesNotMatch(sessionsPage, /encodeURIComponent\(sessionRef\)/);
   assert.doesNotMatch(sessionsPage, /agents-session-head/);
 });

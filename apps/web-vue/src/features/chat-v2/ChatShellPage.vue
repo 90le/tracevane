@@ -461,7 +461,9 @@ import {
   readChatRuntimeSnapshot,
   restoreRuntimeMachineStateFromSnapshot,
   resolveChatRouteSessionKey,
+  shouldNormalizeChatSessionQueryRoute,
   resolveFallbackSessionKey as resolveRuntimeFallbackSessionKey,
+  resolveRequestedOrFallbackSessionKey,
   saveChatRuntimeSnapshot,
   shouldIncludeMessageInHistoryWindow,
   shouldRestoreRuntimeMachineStateFromSnapshot,
@@ -666,10 +668,17 @@ const protectedSessionRowDeadlines = new Map<string, number>();
 const sessionSendGuardDeadlines = new Map<string, number>();
 const sessionSendGuardVersion = ref(0);
 
-const routeSessionKey = computed(() => resolveChatRouteSessionKey({
+const routeSessionRefParams = computed(() => ({
   routeParamSessionRef: typeof route.params.sessionRef === 'string' ? route.params.sessionRef : '',
   routeQuerySessionRef: typeof route.query.sessionRef === 'string' ? route.query.sessionRef : '',
   legacyQuerySession: typeof route.query.session === 'string' ? route.query.session : '',
+}));
+
+const routeSessionKey = computed(() => resolveChatRouteSessionKey(routeSessionRefParams.value));
+const routeUsesLegacySessionQuery = computed(() => shouldNormalizeChatSessionQueryRoute({
+  currentPath: route.path,
+  shellMode: props.shellMode,
+  ...routeSessionRefParams.value,
 }));
 
 const runtimeRenderModel = computed(() => buildChatSessionRuntimeRenderModel(runtimeMachineState.value));
@@ -4720,11 +4729,29 @@ watch(
     const requested = routeSessionKey.value;
     const available = inspectPinned.value ? [...studioManagedSessions.value, ...observedSessions.value] : studioManagedSessions.value;
     if (requested) {
-      if (!selectedSessionKey.value) {
-        primeConversationStateFromSnapshot(requested);
+      const resolved = resolveRequestedOrFallbackSessionKey({
+        requestedSessionKey: requested,
+        availableSessions: available,
+        storedSessionKey: readLastChatSessionKey(),
+      });
+      if (resolved === requested) {
+        if (!selectedSessionKey.value) {
+          primeConversationStateFromSnapshot(requested);
+        }
+        selectSessionKeyLocally(requested);
+        if (routeUsesLegacySessionQuery.value) {
+          await router.replace(buildChatRoute(requested, props.shellMode));
+        }
+        return;
       }
-      selectSessionKeyLocally(requested);
-      return;
+      if (
+        route.path === '/chat/workbench'
+        || route.path.startsWith('/chat/s/')
+        || routeUsesLegacySessionQuery.value
+      ) {
+        await router.replace(buildChatRoute(resolved || null, props.shellMode));
+        return;
+      }
     }
     const fallback = resolveFallbackSessionKey();
     if (!selectedSessionKey.value || !available.some((session) => session.key === selectedSessionKey.value)) {

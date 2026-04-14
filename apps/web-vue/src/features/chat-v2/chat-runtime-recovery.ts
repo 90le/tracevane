@@ -61,6 +61,28 @@ export function resolveChatRouteSessionKey(params: {
   return params.legacyQuerySession || null;
 }
 
+export function shouldNormalizeChatSessionQueryRoute(params: {
+  currentPath: string;
+  shellMode: 'chat' | 'inspect';
+  routeParamSessionRef: string;
+  routeQuerySessionRef: string;
+  legacyQuerySession: string;
+}): boolean {
+  if (params.routeParamSessionRef) {
+    return false;
+  }
+  if (params.legacyQuerySession) {
+    return true;
+  }
+  if (!params.routeQuerySessionRef) {
+    return false;
+  }
+  if (params.shellMode === 'inspect' && params.currentPath === '/chat/workbench') {
+    return false;
+  }
+  return true;
+}
+
 export function resolveFallbackSessionKey(params: {
   availableSessions: ChatSessionRow[];
   storedSessionKey: string | null;
@@ -69,6 +91,23 @@ export function resolveFallbackSessionKey(params: {
     return params.storedSessionKey;
   }
   return params.availableSessions[0]?.key || '';
+}
+
+export function resolveRequestedOrFallbackSessionKey(params: {
+  requestedSessionKey: string | null;
+  availableSessions: ChatSessionRow[];
+  storedSessionKey: string | null;
+}): string {
+  if (
+    params.requestedSessionKey
+    && params.availableSessions.some((session) => session.key === params.requestedSessionKey)
+  ) {
+    return params.requestedSessionKey;
+  }
+  return resolveFallbackSessionKey({
+    availableSessions: params.availableSessions,
+    storedSessionKey: params.storedSessionKey,
+  });
 }
 
 export function buildChatRoute(params: {

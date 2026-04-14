@@ -73,6 +73,7 @@ import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AgentDetailPayload, AgentSessionSummary } from '../../../../../types/agents';
 import { useLocalePreference } from '../../shared/locale';
+import { encodeChatSessionRef } from '../chat/session-ref';
 import { clearAgentSessions, deleteAgentSession, fetchAgentDetail } from './api';
 
 defineOptions({ name: 'AgentSessionsPage' });
@@ -97,7 +98,7 @@ function formatDate(value: string | null): string {
 function openChatSession(session: AgentSessionSummary): void {
   const sessionRef = session.sessionId || session.routeKey;
   if (!sessionRef) return;
-  void router.push(`/chat/s/${encodeURIComponent(sessionRef)}`);
+  void router.push(`/chat/s/${encodeChatSessionRef(sessionRef)}`);
 }
 
 async function loadDetail(): Promise<void> {
