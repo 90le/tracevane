@@ -77,7 +77,11 @@ interface TerminalSession {
   lastRows: number;
   shell: string;
   cwd: string;
-  source: "manual";
+  source: "manual" | "system-handoff" | "linked_context";
+  sourceModule: string;
+  sourceAction: string;
+  originRoute: string;
+  handoffContext: TerminalSessionDescriptor["handoffContext"];
   createdAt: string;
   lastActivityAt: string;
   lastAttachedAt: string | null;
@@ -438,9 +442,9 @@ export function createTerminalService(
       sessionId: session.id,
       title: `Terminal ${session.id}`,
       source: session.source,
-      sourceModule: "terminal",
-      sourceAction: "terminal.attach",
-      originRoute: `/terminal/${session.id}`,
+      sourceModule: session.sourceModule,
+      sourceAction: session.sourceAction,
+      originRoute: session.originRoute,
       status,
       controllerClientId,
       observerClientIds,
@@ -449,7 +453,7 @@ export function createTerminalService(
       lastAttachedAt: session.lastAttachedAt,
       canResume: status === "running" || status === "detached",
       resumeKey: session.id,
-      handoffContext: null,
+      handoffContext: session.handoffContext,
       recentOutputSummary: recent,
       controlState: controllerClientId ? "controller" : "observer",
       observerCount: observerClientIds.length,
@@ -784,6 +788,10 @@ export function createTerminalService(
       shell,
       cwd,
       source: "manual",
+      sourceModule: "terminal",
+      sourceAction: "terminal.attach",
+      originRoute: `/terminal/${sessionId}`,
+      handoffContext: null,
       createdAt: lastActivityAt,
       lastActivityAt,
       lastAttachedAt: null,
@@ -1533,7 +1541,15 @@ export function createTerminalService(
         );
       }
       const session = getOrCreateSession(payload.sid || null);
+      if (payload.handoffContext) {
+        session.source = "system-handoff";
+        session.sourceModule = payload.handoffContext.fromModule || "system";
+        session.sourceAction = payload.handoffContext.triggerType || "system-handoff";
+        session.originRoute = payload.handoffContext.fromRoute || `/terminal/${session.id}`;
+        session.handoffContext = payload.handoffContext;
+      }
       registerGatewaySubscriber(session, runtime);
+      persistSessionDescriptor(session);
       return {
         sid: session.id,
         leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS,

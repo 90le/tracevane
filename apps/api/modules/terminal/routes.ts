@@ -23,7 +23,7 @@ export function registerTerminalRoutes(
     sendJson(
       res,
       200,
-      await routeCtx.services.terminal.listWorkspaceSessions(),
+      await routeCtx.services.terminal.listPersistedSessions(),
     );
   });
 

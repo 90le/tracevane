@@ -263,7 +263,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import type { IDisposable, Terminal as XTermTerminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type {
@@ -290,6 +290,7 @@ import {
   streamTerminalInstall,
 } from './api';
 
+const route = useRoute();
 const router = useRouter();
 const { text } = useLocalePreference();
 
@@ -602,6 +603,28 @@ async function requestGatewayTerminal<T>(method: string, params: unknown): Promi
   return client.request<T>(method, params);
 }
 
+function readRouteHandoffContext() {
+  const fromModule = typeof route.query.fromModule === 'string' ? route.query.fromModule.trim() : '';
+  const fromRoute = typeof route.query.fromRoute === 'string' ? route.query.fromRoute.trim() : '';
+  const triggerType = typeof route.query.triggerType === 'string' ? route.query.triggerType.trim() : '';
+  const triggerLabel = typeof route.query.triggerLabel === 'string' ? route.query.triggerLabel.trim() : '';
+  const targetEntity = typeof route.query.targetEntity === 'string' ? route.query.targetEntity.trim() : '';
+  const recommendedCommand = typeof route.query.recommendedCommand === 'string' ? route.query.recommendedCommand.trim() : '';
+  const relatedEventId = typeof route.query.relatedEventId === 'string' ? route.query.relatedEventId.trim() : '';
+  if (!fromModule && !triggerLabel && !targetEntity) {
+    return null;
+  }
+  return {
+    fromModule: fromModule || 'system',
+    fromRoute: fromRoute || '/system',
+    triggerType: triggerType || 'system-handoff',
+    triggerLabel: triggerLabel || 'System handoff',
+    targetEntity: targetEntity || getSessionId(),
+    recommendedCommand,
+    relatedEventId: relatedEventId || null,
+  };
+}
+
 async function attachGatewayTerminal(): Promise<void> {
   if (!gatewayClient) return;
   const response = await requestGatewayTerminal<TerminalGatewayAttachResponse>(
@@ -610,6 +633,7 @@ async function attachGatewayTerminal(): Promise<void> {
       sid: getSessionId(),
       lastSeq: lastOutputSeq || undefined,
       instanceId: terminalInstanceId || undefined,
+      handoffContext: readRouteHandoffContext(),
     },
   );
   connected.value = true;

@@ -225,6 +225,7 @@ export interface TerminalGatewayAttachPayload {
   sid?: string | null;
   lastSeq?: number | null;
   instanceId?: string | null;
+  handoffContext?: TerminalHandoffContext | null;
 }
 
 export interface TerminalGatewayInputPayload {

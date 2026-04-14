@@ -21,6 +21,7 @@ test("terminal routes expose recovery-oriented session endpoints", () => {
     terminalRoutesSource,
     /\/api\/terminal\/sessions\/:sessionId\/ledger/,
   );
+  assert.match(terminalRoutesSource, /listPersistedSessions\(\)/);
 });
 
 test("terminal session recovery endpoints delegate to persistence readers", () => {

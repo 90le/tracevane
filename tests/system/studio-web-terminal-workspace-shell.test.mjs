@@ -28,12 +28,17 @@ const terminalRoutesPath = path.join(
   rootDir,
   "apps/api/modules/terminal/routes.ts",
 );
+const terminalConsolePath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/terminal/TerminalConsolePage.vue",
+);
 
 const terminalView = fs.readFileSync(terminalViewPath, "utf8");
 const workspacePage = fs.readFileSync(workspacePagePath, "utf8");
 const workspaceCss = fs.readFileSync(workspaceCssPath, "utf8");
 const terminalService = fs.readFileSync(terminalServicePath, "utf8");
 const terminalRoutes = fs.readFileSync(terminalRoutesPath, "utf8");
+const terminalConsole = fs.readFileSync(terminalConsolePath, "utf8");
 
 test("terminal view mounts workspace page instead of console placeholder", () => {
   assert.match(terminalView, /<TerminalWorkspacePage\s*\/>/);
@@ -66,6 +71,7 @@ test("terminal service wires descriptor and ledger persistence for session recov
     terminalService,
     /broadcastGatewayEvent[\s\S]*persistSessionDescriptor\(session\)/,
   );
+  assert.match(terminalService, /session\.handoffContext = payload\.handoffContext/);
 });
 
 test("terminal routes expose minimal recovery endpoints for persisted sessions", () => {
@@ -87,6 +93,7 @@ test("terminal session pane consumes recent output summary tail text", () => {
   assert.match(pane, /recentOutputSummary\.lastError/);
   assert.match(pane, /recentOutputSummary\.lastCommandHint/);
   assert.match(pane, /recentOutputSummary\.exitSummary/);
+  assert.match(terminalConsole, /handoffContext: readRouteHandoffContext\(\)/);
 });
 
 test("terminal workspace page composes workspace shell sections and binds state modules", () => {
