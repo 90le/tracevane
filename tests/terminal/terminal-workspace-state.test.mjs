@@ -205,6 +205,7 @@ test("terminal route sync keeps active session and tabs aligned", async () => {
     params: {
       sessionId: "term-route-1",
     },
+    query: {},
   };
   const routerCalls = [];
   const router = {
@@ -239,6 +240,15 @@ test("terminal route sync recovers persisted descriptor metadata by route sessio
     params: {
       sessionId: "term-persisted-1",
     },
+    query: {
+      fromModule: "system",
+      fromRoute: "/system",
+      triggerType: "system-control",
+      triggerLabel: "System handoff",
+      targetEntity: "bootstrap",
+      recommendedCommand: "studio diagnostics collect",
+      relatedEventId: "evt-1",
+    },
   };
   const router = {
     replace() {
@@ -261,16 +271,20 @@ test("terminal route sync recovers persisted descriptor metadata by route sessio
       controlState: "observer",
       updatedAt: "2026-04-13T11:11:00.000Z",
       handoffContext: {
-        fromClientId: "console-a",
-        toClientId: "console-b",
-        reason: "network_reconnect",
-        handoffAt: "2026-04-13T11:10:00.000Z",
+        fromModule: "system",
+        fromRoute: "/system",
+        triggerType: "system-control",
+        triggerLabel: "System handoff",
+        targetEntity: "bootstrap",
+        recommendedCommand: "studio diagnostics collect",
+        relatedEventId: "evt-1",
       },
       recentOutputSummary: {
         tailText: "npm run build failed",
-        byteLength: 20,
-        truncated: false,
-        capturedAt: "2026-04-13T11:10:30.000Z",
+        lastError: "exit code 1",
+        lastCommandHint: "npm run build",
+        exitSummary: "failed",
+        updatedAt: "2026-04-13T11:10:30.000Z",
       },
     }),
   });
@@ -285,8 +299,8 @@ test("terminal route sync recovers persisted descriptor metadata by route sessio
     "Recovered persisted session",
   );
   assert.equal(
-    workspace.sessions.value["term-persisted-1"]?.handoffContext?.reason,
-    "network_reconnect",
+    workspace.sessions.value["term-persisted-1"]?.handoffContext?.triggerLabel,
+    "System handoff",
   );
   assert.equal(
     workspace.sessions.value["term-persisted-1"]?.recentOutputSummary?.tailText,

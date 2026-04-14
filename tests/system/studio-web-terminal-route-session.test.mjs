@@ -40,5 +40,6 @@ test("system terminal handoff helper encodes a stable session route", async () =
     await import("../../apps/web-vue/src/features/system/system-terminal-handoff.ts");
   const handoff = mod.buildSystemTerminalHandoff({ sessionId: "term-1" });
 
-  assert.equal(handoff.to, "/terminal/term-1");
+  assert.match(handoff.to, /^\/terminal\/term-1\?/);
+  assert.match(handoff.to, /fromModule=system/);
 });

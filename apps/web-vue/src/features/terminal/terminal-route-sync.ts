@@ -18,6 +18,10 @@ function normalizeSessionId(sessionId: unknown): string {
   return typeof sessionId === "string" ? sessionId.trim() : "";
 }
 
+function readQueryString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function bindTerminalRouteSync(options: TerminalRouteSyncOptions): void {
   watch(
     () => options.route.params.sessionId,
@@ -26,6 +30,7 @@ export function bindTerminalRouteSync(options: TerminalRouteSyncOptions): void {
       if (!normalized) return;
       if (options.activeSessionId.value === normalized) return;
 
+      const query = (options.route.query || {}) as Record<string, unknown>;
       options.registerSession({
         sessionId: normalized,
         title: normalized,
@@ -34,7 +39,15 @@ export function bindTerminalRouteSync(options: TerminalRouteSyncOptions): void {
         canResume: true,
         controlState: "observer",
         updatedAt: new Date().toISOString(),
-        handoffContext: null,
+        handoffContext: {
+          fromModule: readQueryString(query.fromModule) || "terminal",
+          fromRoute: readQueryString(query.fromRoute) || "/terminal",
+          triggerType: readQueryString(query.triggerType) || "route-sync",
+          triggerLabel: readQueryString(query.triggerLabel) || "Terminal session",
+          targetEntity: readQueryString(query.targetEntity) || normalized,
+          recommendedCommand: readQueryString(query.recommendedCommand),
+          relatedEventId: readQueryString(query.relatedEventId) || null,
+        },
         recentOutputSummary: null,
       });
       options.setActiveSession(normalized);

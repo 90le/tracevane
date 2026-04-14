@@ -617,7 +617,17 @@ const stageHeader = computed(() => buildSystemStageHeader({
 
 const quickActions = computed(() => buildSystemQuickActions(text));
 
-const terminalHandoff = computed(() => buildSystemTerminalHandoff());
+const terminalHandoff = computed(() => buildSystemTerminalHandoff({
+  context: {
+    fromModule: 'system',
+    fromRoute: '/system',
+    triggerType: 'system-control',
+    triggerLabel: text('系统侧动作交接', 'System handoff'),
+    targetEntity: activeTab.value,
+    recommendedCommand: diagnostics.value ? 'studio diagnostics collect' : '',
+    relatedEventId: null,
+  },
+}));
 
 const eventSummaryItems = computed(() => buildSystemEventSummary({
   diagnostics: diagnostics.value,
