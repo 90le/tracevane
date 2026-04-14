@@ -22,17 +22,21 @@ test("buildConfigAuditEvents maps diff records into persisted config_change even
     occurredAt,
     changes: [
       {
-        module: "transport",
+        module: "system",
         path: "transport.gateway.basePath",
-        label: "Gateway Base Path",
+        label: "Gateway basePath",
+        severity: "warning",
+        actionKey: "open-config-section",
         before: "/api/gateway",
         after: "/api/gateway/v2",
         changeType: "updated",
       },
       {
-        module: "deviceTrust",
+        module: "system",
         path: "deviceTrust.autoApproveLocalHelper",
-        label: "Auto Approve Local Helper",
+        label: "Local helper auto-approve",
+        severity: "warning",
+        actionKey: "open-config-section",
         before: false,
         after: true,
         changeType: "updated",
@@ -47,7 +51,7 @@ test("buildConfigAuditEvents maps diff records into persisted config_change even
   assert.equal(events[0].sourceModule, "config");
   assert.equal(events[0].sourceEntity, "config:transport.gateway.basePath");
   assert.equal(events[0].details.path, "transport.gateway.basePath");
-  assert.equal(events[0].action, "transport.gateway.basePath.update");
+  assert.equal(events[0].action, "open-config-section");
 
   assert.equal(events[1].kind, "config_change");
   assert.equal(events[1].category, "audit");
@@ -57,7 +61,7 @@ test("buildConfigAuditEvents maps diff records into persisted config_change even
     "config:deviceTrust.autoApproveLocalHelper",
   );
   assert.equal(events[1].details.path, "deviceTrust.autoApproveLocalHelper");
-  assert.equal(events[1].action, "deviceTrust.autoApproveLocalHelper.toggle");
+  assert.equal(events[1].action, "open-config-section");
 
   for (const event of events) {
     assert.equal(event.occurredAt, occurredAt);
