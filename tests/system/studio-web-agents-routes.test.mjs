@@ -2,14 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const rootDir = "/home/binbin/.openclaw/extensions/openclaw-studio";
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 function read(filePath) {
   return fs.readFileSync(path.join(rootDir, filePath), "utf8");
 }
 
 const routerSource = read("apps/web-vue/src/router.ts");
+const routeManifestSource = read("apps/web-vue/src/features/shell/route-manifest.ts");
 const agentsViewSource = read("apps/web-vue/src/views/AgentsView.vue");
 const agentsWorkspaceLayoutPath =
   "apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue";
@@ -22,8 +24,9 @@ const sessionsPagePath =
   "apps/web-vue/src/features/agents/AgentSessionsPage.vue";
 
 test("agents router keeps a persistent workspace layout with an overview route per agent", () => {
+  assert.match(routerSource, /routes:\s*shellRoutes/);
   assert.match(
-    routerSource,
+    routeManifestSource,
     /\{\s*path:\s*["']\/agents["'],\s*component:\s*AgentsView,\s*children:\s*\[[\s\S]*?path:\s*["']:agentId["'][\s\S]*?path:\s*["']:agentId\/docs["'][\s\S]*?path:\s*["']:agentId\/bindings["'][\s\S]*?path:\s*["']:agentId\/sessions["'][\s\S]*?path:\s*["']:agentId\/advanced["'][\s\S]*?\],\s*\}/,
   );
   assert.match(
