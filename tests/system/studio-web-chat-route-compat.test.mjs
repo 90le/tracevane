@@ -18,6 +18,7 @@ test('chat route manifest keeps legacy chat entrypoints redirecting into the uni
   assert.match(routeManifest, /isChatSessionRef\(sessionRef\)/);
   assert.match(routeManifest, /\? sessionRef/);
   assert.match(routeManifest, /: encodeChatSessionRef\(sessionRef\)/);
+  assert.match(routeManifest, /redirect: \(to\) => \{/);
   assert.match(routeManifest, /path:\s*"workbench"/);
   assert.match(routeManifest, /path:\s*"s\/:sessionRef"/);
 });

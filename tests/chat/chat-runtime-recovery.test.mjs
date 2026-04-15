@@ -102,6 +102,24 @@ test('buildChatRoute keeps inspect mode on /chat/workbench with sessionRef query
   });
 });
 
+test('buildChatRoute preserves /chat as the unified home entry and deep-links from session routes', () => {
+  assert.deepEqual(buildChatRoute({
+    currentPath: '/chat',
+    shellMode: 'chat',
+    sessionKey: 'agent:main:session-1',
+  }), {
+    path: '/chat',
+  });
+
+  assert.deepEqual(buildChatRoute({
+    currentPath: '/chat/s/r1_YWdlbnQ6bWFpbjpzZXNzaW9uLTE',
+    shellMode: 'chat',
+    sessionKey: 'agent:main:session-1',
+  }), {
+    path: '/chat/s/r1_YWdlbnQ6bWFpbjpzZXNzaW9uLTE',
+  });
+});
+
 test('resolveFallbackSessionKey prefers stored session when still available', () => {
   const availableSessions = [createSession('session-a'), createSession('session-b')];
   assert.equal(resolveFallbackSessionKey({
