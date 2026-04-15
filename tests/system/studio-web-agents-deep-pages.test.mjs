@@ -42,6 +42,10 @@ test("agent bindings page stays focused on bindings instead of duplicating sessi
   assert.match(bindingsPage, /agents-binding-summary-strip/);
   assert.match(bindingsPage, /openChannelWorkspace/);
   assert.match(bindingsPage, /openChannelBindings/);
+  assert.match(bindingsPage, /DialogRoot/);
+  assert.match(bindingsPage, /openConfirm\(/);
+  assert.match(bindingsPage, /confirmOpen/);
+  assert.doesNotMatch(bindingsPage, /window\.confirm/);
   assert.doesNotMatch(bindingsPage, /openSessionsPage/);
   assert.doesNotMatch(bindingsPage, /detail\.sessions/);
   assert.doesNotMatch(bindingsPage, /recentSessions/);
