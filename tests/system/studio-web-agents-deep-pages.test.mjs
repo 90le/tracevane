@@ -52,7 +52,11 @@ test("agent sessions page uses card rows with a compact summary strip", () => {
   assert.match(sessionsPage, /agents-session-card-list/);
   assert.match(sessionsPage, /agents-session-card/);
   assert.match(sessionsPage, /encodeChatSessionRef/);
+  assert.match(sessionsPage, /DialogRoot/);
+  assert.match(sessionsPage, /openConfirm\(/);
+  assert.match(sessionsPage, /confirmOpen/);
   assert.match(sessionsPage, /router\.push\(`\/chat\/s\/\$\{encodeChatSessionRef\(sessionRef\)\}`\)/);
   assert.doesNotMatch(sessionsPage, /encodeURIComponent\(sessionRef\)/);
+  assert.doesNotMatch(sessionsPage, /window\.confirm/);
   assert.doesNotMatch(sessionsPage, /agents-session-head/);
 });
