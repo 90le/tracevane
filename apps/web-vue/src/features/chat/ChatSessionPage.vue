@@ -1,7 +1,7 @@
 <template>
-  <ChatShellPage shell-mode="chat" />
+  <ChatShellPageV2 shell-mode="chat" />
 </template>
 
 <script setup lang="ts">
-import ChatShellPage from './ChatShellPage.vue';
+import ChatShellPageV2 from '../chat-v2/ChatShellPage.vue';
 </script>
