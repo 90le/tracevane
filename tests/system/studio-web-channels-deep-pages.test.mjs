@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const rootDir = '/home/binbin/.openclaw/extensions/openclaw-studio';
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 function read(filePath) {
   return fs.readFileSync(path.join(rootDir, filePath), 'utf8');
@@ -27,6 +28,10 @@ test('channels deep pages use single-task heads and avoid page-level header rows
   assert.match(bindingsPage, /channels-stage-task-head/);
   assert.match(bindingsPage, /channels-binding-editor/);
   assert.match(bindingsPage, /channels-binding-editor-section/);
+  assert.match(bindingsPage, /DialogRoot/);
+  assert.match(bindingsPage, /openConfirm\(/);
+  assert.match(bindingsPage, /confirmOpen/);
+  assert.doesNotMatch(bindingsPage, /window\.confirm/);
 
   assert.doesNotMatch(providerSettingsPage, /page-header-row/);
   assert.doesNotMatch(accountDetailPage, /page-header-row/);
