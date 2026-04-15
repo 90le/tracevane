@@ -49,6 +49,18 @@ test('resolveChatRouteSessionKey prefers route param, then query ref, then legac
   }), 'def');
 
   assert.equal(resolveChatRouteSessionKey({
+    routeParamSessionRef: 'not-a-session-ref',
+    routeQuerySessionRef: 'r1_ZGVm',
+    legacyQuerySession: 'legacy',
+  }), 'def');
+
+  assert.equal(resolveChatRouteSessionKey({
+    routeParamSessionRef: 'not-a-session-ref',
+    routeQuerySessionRef: 'not-a-session-ref',
+    legacyQuerySession: 'legacy',
+  }), 'legacy');
+
+  assert.equal(resolveChatRouteSessionKey({
     routeParamSessionRef: '',
     routeQuerySessionRef: 'not-a-session-ref',
     legacyQuerySession: 'legacy',

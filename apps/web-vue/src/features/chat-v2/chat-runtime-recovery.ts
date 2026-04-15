@@ -53,7 +53,12 @@ export function resolveChatRouteSessionKey(params: {
   legacyQuerySession: string;
 }): string | null {
   if (params.routeParamSessionRef) {
-    return decodeChatSessionRef(params.routeParamSessionRef);
+    const decodedParamSessionRef = decodeChatSessionRef(
+      params.routeParamSessionRef,
+    );
+    if (decodedParamSessionRef) {
+      return decodedParamSessionRef;
+    }
   }
   if (params.routeQuerySessionRef) {
     const decodedQuerySessionRef = decodeChatSessionRef(
