@@ -192,6 +192,7 @@ export const shellRoutes: RouteRecordRaw[] = [
     component: ChatView,
     children: [
       { path: "", component: ChatShellPage, props: { shellMode: "chat" } },
+      { path: "new", redirect: "/chat" },
       {
         path: "workbench",
         component: ChatShellPage,
