@@ -13,8 +13,11 @@ const routeManifest = fs.readFileSync(
 test('chat route manifest keeps legacy chat entrypoints redirecting into the unified chat shell', () => {
   assert.match(routeManifest, /path:\s*"\/chat"/);
   assert.match(routeManifest, /path:\s*"new",\s*redirect:\s*"\/chat"/);
-  assert.match(routeManifest, /import \{ encodeChatSessionRef \} from "\.\.\/chat\/session-ref";/);
-  assert.match(routeManifest, /path:\s*":sessionRef"[\s\S]*redirect:\s*\(to\) => `\/chat\/s\/\$\{encodeChatSessionRef\(String\(to\.params\.sessionRef \|\| ""\)\)\}`/);
+  assert.match(routeManifest, /import \{ encodeChatSessionRef, isChatSessionRef \} from "\.\.\/chat\/session-ref";/);
+  assert.match(routeManifest, /const sessionRef = String\(to\.params\.sessionRef \|\| ""\);/);
+  assert.match(routeManifest, /isChatSessionRef\(sessionRef\)/);
+  assert.match(routeManifest, /\? sessionRef/);
+  assert.match(routeManifest, /: encodeChatSessionRef\(sessionRef\)/);
   assert.match(routeManifest, /path:\s*"workbench"/);
   assert.match(routeManifest, /path:\s*"s\/:sessionRef"/);
 });

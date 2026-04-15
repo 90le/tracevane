@@ -12,7 +12,7 @@ const SystemView = () => import("../../views/SystemView.vue");
 const DreamingView = () => import("../../views/DreamingView.vue");
 const ChatShellPage = () => import("../chat-v2/ChatShellPage.vue");
 const AgentsControlPage = () => import("../agents/AgentsControlPage.vue");
-import { encodeChatSessionRef } from "../chat/session-ref";
+import { encodeChatSessionRef, isChatSessionRef } from "../chat/session-ref";
 const AgentDocsPage = () => import("../agents/AgentDocsPage.vue");
 const AgentBindingsPage = () => import("../agents/AgentBindingsPage.vue");
 const AgentAdvancedPage = () => import("../agents/AgentAdvancedPage.vue");
@@ -196,7 +196,14 @@ export const shellRoutes: RouteRecordRaw[] = [
       { path: "new", redirect: "/chat" },
       {
         path: ":sessionRef",
-        redirect: (to) => `/chat/s/${encodeChatSessionRef(String(to.params.sessionRef || ""))}`,
+        redirect: (to) => {
+          const sessionRef = String(to.params.sessionRef || "");
+          return `/chat/s/${
+            isChatSessionRef(sessionRef)
+              ? sessionRef
+              : encodeChatSessionRef(sessionRef)
+          }`;
+        },
       },
       {
         path: "workbench",
