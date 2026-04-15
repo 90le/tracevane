@@ -72,6 +72,12 @@ test('resolveChatRouteSessionKey prefers route param, then query ref, then legac
     routeQuerySessionRef: '',
     legacyQuerySession: 'legacy',
   }), 'legacy');
+
+  assert.equal(resolveChatRouteSessionKey({
+    routeParamSessionRef: '',
+    routeQuerySessionRef: '',
+    legacyQuerySession: '   ',
+  }), null);
 });
 
 test('hasBrokenChatRouteSessionRef only turns true for undecodable path params', () => {
@@ -120,6 +126,14 @@ test('shouldNormalizeChatSessionQueryRoute only normalizes true legacy query rou
     routeQuerySessionRef: '',
     legacyQuerySession: 'legacy',
   }), true);
+
+  assert.equal(shouldNormalizeChatSessionQueryRoute({
+    currentPath: '/chat',
+    shellMode: 'chat',
+    routeParamSessionRef: '',
+    routeQuerySessionRef: '',
+    legacyQuerySession: '   ',
+  }), false);
 });
 
 test('buildChatRoute keeps inspect mode on /chat/workbench with sessionRef query', () => {

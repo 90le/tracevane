@@ -47,6 +47,11 @@ export function shouldIncludeMessageInHistoryWindow(params: {
   return matchesSelectedHistoryDay(params.message, params.selectedDay);
 }
 
+function normalizeLegacySessionKey(value: string): string | null {
+  const trimmed = String(value || '').trim();
+  return trimmed || null;
+}
+
 export function resolveChatRouteSessionKey(params: {
   routeParamSessionRef: string;
   routeQuerySessionRef: string;
@@ -68,7 +73,7 @@ export function resolveChatRouteSessionKey(params: {
       return decodedQuerySessionRef;
     }
   }
-  return params.legacyQuerySession || null;
+  return normalizeLegacySessionKey(params.legacyQuerySession);
 }
 
 export function hasBrokenChatRouteSessionRef(params: {
@@ -89,9 +94,12 @@ export function shouldNormalizeChatSessionQueryRoute(params: {
 }): boolean {
   if (params.routeParamSessionRef) {
     return hasBrokenChatRouteSessionRef(params)
-      && Boolean(params.routeQuerySessionRef || params.legacyQuerySession);
+      && Boolean(
+        params.routeQuerySessionRef
+          || normalizeLegacySessionKey(params.legacyQuerySession),
+      );
   }
-  if (params.legacyQuerySession) {
+  if (normalizeLegacySessionKey(params.legacyQuerySession)) {
     return true;
   }
   if (!params.routeQuerySessionRef) {
