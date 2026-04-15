@@ -120,6 +120,14 @@ test('shouldNormalizeChatSessionQueryRoute only normalizes true legacy query rou
   }), false);
 
   assert.equal(shouldNormalizeChatSessionQueryRoute({
+    currentPath: '/chat/workbench',
+    shellMode: 'inspect',
+    routeParamSessionRef: '',
+    routeQuerySessionRef: 'not-a-session-ref',
+    legacyQuerySession: '',
+  }), true);
+
+  assert.equal(shouldNormalizeChatSessionQueryRoute({
     currentPath: '/chat',
     shellMode: 'chat',
     routeParamSessionRef: '',

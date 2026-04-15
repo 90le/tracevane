@@ -105,8 +105,11 @@ export function shouldNormalizeChatSessionQueryRoute(params: {
   if (!params.routeQuerySessionRef) {
     return false;
   }
+  const hasValidQuerySessionRef = Boolean(
+    decodeChatSessionRef(params.routeQuerySessionRef),
+  );
   if (params.shellMode === 'inspect' && params.currentPath === '/chat/workbench') {
-    return false;
+    return !hasValidQuerySessionRef;
   }
   return true;
 }
