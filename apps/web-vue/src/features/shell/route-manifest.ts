@@ -195,6 +195,16 @@ export const shellRoutes: RouteRecordRaw[] = [
       { path: "", component: ChatShellPage, props: { shellMode: "chat" } },
       { path: "new", redirect: "/chat" },
       {
+        path: "workbench",
+        component: ChatShellPage,
+        props: { shellMode: "inspect" },
+      },
+      {
+        path: "s/:sessionRef",
+        component: ChatShellPage,
+        props: { shellMode: "chat" },
+      },
+      {
         path: ":sessionRef",
         redirect: (to) => {
           const sessionRef = String(to.params.sessionRef || "");
@@ -204,16 +214,6 @@ export const shellRoutes: RouteRecordRaw[] = [
               : encodeChatSessionRef(sessionRef)
           }`;
         },
-      },
-      {
-        path: "workbench",
-        component: ChatShellPage,
-        props: { shellMode: "inspect" },
-      },
-      {
-        path: "s/:sessionRef",
-        component: ChatShellPage,
-        props: { shellMode: "chat" },
       },
     ],
   },

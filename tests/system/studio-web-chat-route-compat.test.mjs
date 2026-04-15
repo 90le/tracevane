@@ -22,3 +22,20 @@ test('chat route manifest keeps legacy chat entrypoints redirecting into the uni
   assert.match(routeManifest, /path:\s*"workbench"/);
   assert.match(routeManifest, /path:\s*"s\/:sessionRef"/);
 });
+
+test('chat route manifest places literal child routes before the legacy :sessionRef compatibility matcher', () => {
+  const chatBlock = routeManifest.match(/path:\s*"\/chat"[\s\S]*?children:\s*\[([\s\S]*?)\]\s*,/);
+  assert.ok(chatBlock);
+  const childrenSource = chatBlock[1] || '';
+  const newIndex = childrenSource.indexOf('path: "new"');
+  const workbenchIndex = childrenSource.indexOf('path: "workbench"');
+  const sessionIndex = childrenSource.indexOf('path: "s/:sessionRef"');
+  const legacyIndex = childrenSource.indexOf('path: ":sessionRef"');
+  assert.notEqual(newIndex, -1);
+  assert.notEqual(workbenchIndex, -1);
+  assert.notEqual(sessionIndex, -1);
+  assert.notEqual(legacyIndex, -1);
+  assert.ok(newIndex < legacyIndex);
+  assert.ok(workbenchIndex < legacyIndex);
+  assert.ok(sessionIndex < legacyIndex);
+});
