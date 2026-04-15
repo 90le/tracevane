@@ -193,6 +193,7 @@ export const shellRoutes: RouteRecordRaw[] = [
     children: [
       { path: "", component: ChatShellPage, props: { shellMode: "chat" } },
       { path: "new", redirect: "/chat" },
+      { path: ":sessionRef", redirect: (to) => `/chat/s/${String(to.params.sessionRef || "")}` },
       {
         path: "workbench",
         component: ChatShellPage,

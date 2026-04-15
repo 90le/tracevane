@@ -10,9 +10,10 @@ const routeManifest = fs.readFileSync(
   'utf8',
 );
 
-test('chat route manifest keeps /chat/new as a compatibility redirect into the unified chat shell', () => {
+test('chat route manifest keeps legacy chat entrypoints redirecting into the unified chat shell', () => {
   assert.match(routeManifest, /path:\s*"\/chat"/);
   assert.match(routeManifest, /path:\s*"new",\s*redirect:\s*"\/chat"/);
+  assert.match(routeManifest, /path:\s*":sessionRef",\s*redirect:\s*\(to\) => `\/chat\/s\/\$\{String\(to\.params\.sessionRef \|\| ""\)\}`/);
   assert.match(routeManifest, /path:\s*"workbench"/);
   assert.match(routeManifest, /path:\s*"s\/:sessionRef"/);
 });
