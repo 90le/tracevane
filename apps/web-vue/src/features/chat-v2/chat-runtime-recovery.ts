@@ -56,7 +56,12 @@ export function resolveChatRouteSessionKey(params: {
     return decodeChatSessionRef(params.routeParamSessionRef);
   }
   if (params.routeQuerySessionRef) {
-    return decodeChatSessionRef(params.routeQuerySessionRef);
+    const decodedQuerySessionRef = decodeChatSessionRef(
+      params.routeQuerySessionRef,
+    );
+    if (decodedQuerySessionRef) {
+      return decodedQuerySessionRef;
+    }
   }
   return params.legacyQuerySession || null;
 }
