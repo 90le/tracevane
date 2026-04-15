@@ -511,6 +511,7 @@ import {
   readChatRuntimeSnapshot,
   restoreRuntimeMachineStateFromSnapshot,
   resolveChatRouteSessionKey,
+  hasBrokenChatRouteSessionRef,
   shouldNormalizeChatSessionQueryRoute,
   resolveFallbackSessionKey as resolveRuntimeFallbackSessionKey,
   resolveRequestedOrFallbackSessionKey,
@@ -735,6 +736,9 @@ const routeSessionRefParams = computed(() => ({
 }));
 
 const routeSessionKey = computed(() => resolveChatRouteSessionKey(routeSessionRefParams.value));
+const routeHasBrokenSessionRef = computed(() =>
+  hasBrokenChatRouteSessionRef(routeSessionRefParams.value),
+);
 const routeUsesLegacySessionQuery = computed(() => shouldNormalizeChatSessionQueryRoute({
   currentPath: route.path,
   shellMode: props.shellMode,
@@ -4848,7 +4852,7 @@ watch(
           primeConversationStateFromSnapshot(requested);
         }
         selectSessionKeyLocally(requested);
-        if (routeUsesLegacySessionQuery.value) {
+        if (routeUsesLegacySessionQuery.value || routeHasBrokenSessionRef.value) {
           await router.replace(buildChatRoute(requested, props.shellMode));
         }
         return;

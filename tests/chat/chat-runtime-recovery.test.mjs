@@ -4,6 +4,7 @@ import 'tsx/esm';
 
 const {
   buildChatRoute,
+  hasBrokenChatRouteSessionRef,
   shouldNormalizeChatSessionQueryRoute,
   resolveChatRouteSessionKey,
   resolveFallbackSessionKey,
@@ -73,6 +74,12 @@ test('resolveChatRouteSessionKey prefers route param, then query ref, then legac
   }), 'legacy');
 });
 
+test('hasBrokenChatRouteSessionRef only turns true for undecodable path params', () => {
+  assert.equal(hasBrokenChatRouteSessionRef({ routeParamSessionRef: 'r1_YWJj' }), false);
+  assert.equal(hasBrokenChatRouteSessionRef({ routeParamSessionRef: 'not-a-session-ref' }), true);
+  assert.equal(hasBrokenChatRouteSessionRef({ routeParamSessionRef: '' }), false);
+});
+
 test('shouldNormalizeChatSessionQueryRoute only normalizes true legacy query routes', () => {
   assert.equal(shouldNormalizeChatSessionQueryRoute({
     currentPath: '/chat/s/r1_YWJj',
@@ -81,6 +88,14 @@ test('shouldNormalizeChatSessionQueryRoute only normalizes true legacy query rou
     routeQuerySessionRef: 'r1_ZGVm',
     legacyQuerySession: 'legacy',
   }), false);
+
+  assert.equal(shouldNormalizeChatSessionQueryRoute({
+    currentPath: '/chat/s/not-a-session-ref',
+    shellMode: 'chat',
+    routeParamSessionRef: 'not-a-session-ref',
+    routeQuerySessionRef: 'r1_ZGVm',
+    legacyQuerySession: '',
+  }), true);
 
   assert.equal(shouldNormalizeChatSessionQueryRoute({
     currentPath: '/chat',

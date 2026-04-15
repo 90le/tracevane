@@ -71,6 +71,15 @@ export function resolveChatRouteSessionKey(params: {
   return params.legacyQuerySession || null;
 }
 
+export function hasBrokenChatRouteSessionRef(params: {
+  routeParamSessionRef: string;
+}): boolean {
+  return Boolean(
+    params.routeParamSessionRef
+      && !decodeChatSessionRef(params.routeParamSessionRef),
+  );
+}
+
 export function shouldNormalizeChatSessionQueryRoute(params: {
   currentPath: string;
   shellMode: 'chat' | 'inspect';
@@ -79,7 +88,8 @@ export function shouldNormalizeChatSessionQueryRoute(params: {
   legacyQuerySession: string;
 }): boolean {
   if (params.routeParamSessionRef) {
-    return false;
+    return hasBrokenChatRouteSessionRef(params)
+      && Boolean(params.routeQuerySessionRef || params.legacyQuerySession);
   }
   if (params.legacyQuerySession) {
     return true;

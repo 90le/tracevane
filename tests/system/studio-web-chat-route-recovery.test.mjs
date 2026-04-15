@@ -27,10 +27,13 @@ test('chat shell repairs stale deep links for both inspect and standard chat rou
 });
 
 test('chat shell normalizes only true legacy query session routes back to canonical chat routes', () => {
+  assert.match(chatShellPage, /const routeHasBrokenSessionRef = computed\(\(\) =>/);
+  assert.match(chatShellPage, /hasBrokenChatRouteSessionRef\(routeSessionRefParams\.value\)/);
   assert.match(chatShellPage, /const routeUsesLegacySessionQuery = computed\(\(\) => shouldNormalizeChatSessionQueryRoute\(\{/);
   assert.match(chatShellPage, /currentPath: route\.path,/);
   assert.match(chatShellPage, /shellMode: props\.shellMode,/);
-  assert.match(chatShellPage, /if \(routeUsesLegacySessionQuery\.value\) \{[\s\S]*await router\.replace\(buildChatRoute\(requested, props\.shellMode\)\);/);
+  assert.match(chatShellPage, /if \(routeUsesLegacySessionQuery\.value \|\| routeHasBrokenSessionRef\.value\) \{[\s\S]*await router\.replace\(buildChatRoute\(requested, props\.shellMode\)\);/);
   assert.match(chatShellPage, /\|\| routeUsesLegacySessionQuery\.value/);
+  assert.match(chatRuntimeRecovery, /export function hasBrokenChatRouteSessionRef/);
   assert.match(chatRuntimeRecovery, /export function shouldNormalizeChatSessionQueryRoute/);
 });
