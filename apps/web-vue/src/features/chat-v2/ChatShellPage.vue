@@ -4864,6 +4864,10 @@ watch(
     }
     const fallback = resolveFallbackSessionKey();
     if (!selectedSessionKey.value || !available.some((session) => session.key === selectedSessionKey.value)) {
+      if (route.path.startsWith('/chat/s/')) {
+        await router.replace(buildChatRoute(fallback || null, props.shellMode));
+        return;
+      }
       selectedSessionKey.value = fallback;
     }
   },

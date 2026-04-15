@@ -23,6 +23,7 @@ test('chat shell repairs stale deep links for both inspect and standard chat rou
   assert.match(chatShellPage, /route\.path === '\/chat\/workbench'/);
   assert.match(chatShellPage, /route\.path\.startsWith\('\/chat\/s\/'\)/);
   assert.match(chatShellPage, /await router\.replace\(buildChatRoute\(resolved \|\| null, props\.shellMode\)\);/);
+  assert.match(chatShellPage, /if \(route\.path\.startsWith\('\/chat\/s\/'\)\) \{[\s\S]*await router\.replace\(buildChatRoute\(fallback \|\| null, props\.shellMode\)\);/);
 });
 
 test('chat shell normalizes only true legacy query session routes back to canonical chat routes', () => {
