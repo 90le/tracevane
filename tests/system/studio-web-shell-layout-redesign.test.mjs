@@ -17,21 +17,42 @@ test("shell redesign introduces topbar, context rail, and task-group navigation"
   assert.match(appVue, /StudioShellTopbar/);
   assert.match(appVue, /StudioShellContextRail/);
   assert.match(appVue, /shell-main-grid/);
+  assert.match(
+    appVue,
+    /const\s*\{[^}]*\bthemeMode\b[^}]*\bsetThemeMode\b[^}]*\}\s*=\s*useThemePreference\s*\(\s*\)/s,
+  );
+  assert.match(appVue, /<ConfirmDialog\b/);
+  assert.match(appVue, /class="shell-route-stage"/);
+  assert.match(appVue, /<[^>]*\btheme-mode\s*=\s*["']themeMode["']/);
 
-  assert.match(routerSource, /path:\s*['\"]\/home['\"]/);
-  assert.match(routerSource, /alias:\s*\[?['\"]\/dashboard['\"]/);
-  assert.match(routerSource, /path:\s*['\"]\/chat['\"]/);
-  assert.match(routerSource, /path:\s*['\"]\/agents['\"]/);
-  assert.match(routerSource, /path:\s*['\"]\/channels['\"]/);
-  assert.match(routerSource, /path:\s*['\"]\/cron['\"]/);
-  assert.match(routerSource, /path:\s*['\"]\/system['\"]/);
-  assert.match(routerSource, /path:\s*['\"]\/terminal['\"]/);
+  for (const routePath of [
+    "/home",
+    "/chat",
+    "/agents",
+    "/channels",
+    "/cron",
+    "/system",
+    "/terminal",
+  ]) {
+    assert.match(
+      routerSource,
+      new RegExp(`path:\\s*["']${routePath.replace("/", "\\/")}["']`),
+    );
+  }
+  assert.match(routerSource, /alias:\s*\[[^\]]*["']\/dashboard["']/s);
 
-  assert.match(uiContentSource, /to:\s*['\"]\/home['\"]/);
-  assert.match(uiContentSource, /to:\s*['\"]\/chat['\"]/);
-  assert.match(uiContentSource, /to:\s*['\"]\/agents['\"]/);
-  assert.match(uiContentSource, /to:\s*['\"]\/system['\"]/);
-  assert.match(uiContentSource, /to:\s*['\"]\/terminal['\"]/);
-  assert.match(uiContentSource, /to:\s*['\"]\/config['\"]/);
-  assert.match(uiContentSource, /to:\s*['\"]\/skills['\"]/);
+  for (const target of [
+    "/home",
+    "/chat",
+    "/agents",
+    "/system",
+    "/terminal",
+    "/config",
+    "/skills",
+  ]) {
+    assert.match(
+      uiContentSource,
+      new RegExp(`to:\\s*["']${target.replace("/", "\\/")}["']`),
+    );
+  }
 });

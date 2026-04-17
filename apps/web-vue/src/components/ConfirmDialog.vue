@@ -7,7 +7,7 @@
       @click="onMaskClick"
     >
       <section
-        class="confirm-dialog"
+        class="confirm-dialog__surface"
         role="alertdialog"
         aria-modal="true"
         :aria-label="activeConfirmDialog.title"
@@ -17,7 +17,7 @@
           <h3>{{ activeConfirmDialog.title }}</h3>
           <p v-if="activeConfirmDialog.message">{{ activeConfirmDialog.message }}</p>
         </header>
-        <footer class="confirm-dialog__foot">
+        <footer class="confirm-dialog__actions">
           <button
             type="button"
             class="secondary-button"
@@ -28,7 +28,10 @@
           <button
             type="button"
             class="primary-button"
-            :class="{ 'is-danger': activeConfirmDialog.tone === 'danger' }"
+            :class="{
+              'is-danger': activeConfirmDialog.tone === 'danger',
+              'is-safe': activeConfirmDialog.tone === 'safe',
+            }"
             @click="confirmAccept"
           >
             {{ activeConfirmDialog.confirmText }}

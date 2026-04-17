@@ -1,6 +1,6 @@
 import { ref } from "vue";
 
-export type ConfirmDialogTone = "default" | "danger";
+export type ConfirmDialogTone = "default" | "danger" | "safe";
 
 export interface ConfirmDialogOptions {
   title: string;
