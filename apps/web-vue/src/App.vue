@@ -9,17 +9,6 @@
       <div class="ambient-orb ambient-orb-c" aria-hidden="true" :style="ambientStyles[2]"></div>
 
       <DialogRoot v-if="isMobile" v-model:open="mobileSidebarOpen">
-        <DialogTrigger as-child>
-          <button
-            v-if="!mobileSidebarOpen"
-            type="button"
-            class="mobile-nav-trigger"
-            :aria-label="text('打开导航', 'Open navigation')"
-            :title="text('打开导航', 'Open navigation')"
-          >
-            ☰
-          </button>
-        </DialogTrigger>
         <DialogPortal>
           <DialogOverlay class="mobile-sidebar-mask" />
           <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
@@ -93,24 +82,72 @@
       </aside>
 
       <main class="main-content shell-main" :class="{ 'chat-surface-route': isChatSurface, 'shell-main-chat': isChatSurface }">
-        <RouterView v-slot="{ Component }">
-          <section
-            class="shell-route-stage"
-            :class="{ 'shell-route-stage-chat': isChatSurface }"
-          >
-            <component :is="Component" />
+        <button
+          v-if="isMobile && isChatSurface && !mobileSidebarOpen"
+          type="button"
+          class="mobile-nav-trigger"
+          :aria-label="text('打开导航', 'Open navigation')"
+          :title="text('打开导航', 'Open navigation')"
+          @click="toggleSidebar"
+        >
+          ☰
+        </button>
+        <div class="shell-main-grid" :class="{ 'shell-main-grid-chat': isChatSurface }">
+          <section class="shell-center-stage">
+            <StudioShellTopbar
+              v-if="!isChatSurface"
+              :is-mobile="isMobile"
+              :mobile-nav-open="mobileSidebarOpen"
+              :search-label="text('搜索与命令', 'Search and commands')"
+              :search-shortcut-label="text('命令面板', 'Command palette')"
+              :risk-summary-label="text('风险', 'Risk')"
+              :risk-summary-value="riskSummaryValue"
+              :pending-summary-label="text('待办', 'Pending')"
+              :pending-summary-value="pendingSummaryValue"
+              :mobile-nav-label="text('打开导航', 'Open navigation')"
+              :theme-switch-label="text('主题模式', 'Theme mode')"
+              :locale-switch-label="text('语言模式', 'Language mode')"
+              :theme-mode="themeMode"
+              :theme-options="themeOptions"
+              :locale="locale"
+              :locale-options="localeOptions"
+              @toggle-mobile-nav="toggleSidebar"
+              @set-theme-mode="setThemeMode"
+              @set-locale="setLocale"
+            />
+            <RouterView v-slot="{ Component }">
+              <section
+                class="shell-route-stage"
+                :class="{ 'shell-route-stage-chat': isChatSurface }"
+              >
+                <component :is="Component" />
+              </section>
+            </RouterView>
           </section>
-        </RouterView>
+          <StudioShellContextRail
+            v-if="!isChatSurface"
+            :title="text('上下文', 'Context')"
+            :alerts-title="text('提醒', 'Alerts')"
+            :pending-title="text('待处理', 'Pending Work')"
+            :alerts="topStatus"
+            :pending-items="contextPendingItems"
+          />
+        </div>
       </main>
+      <ConfirmDialog />
     </div>
   </TooltipProvider>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTrigger, TooltipProvider } from 'reka-ui';
+import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, TooltipProvider } from 'reka-ui';
 import { RouterView, useRoute } from 'vue-router';
+import ConfirmDialog from './components/ConfirmDialog.vue';
+import StudioShellContextRail from './components/StudioShellContextRail.vue';
+import StudioShellTopbar from './components/StudioShellTopbar.vue';
 import StudioSidebarRail from './components/StudioSidebarRail.vue';
+import { useConfirmDialog } from './composables/useConfirmDialog';
 import { useUiContent } from './data/mock';
 import { useLocalePreference, type Locale } from './shared/locale';
 import { useThemePreference, type ThemeMode } from './shared/theme';
@@ -142,8 +179,28 @@ const ambientStyles = [
   ref<Record<string, string>>({}),
 ];
 const { locale, setLocale, text } = useLocalePreference();
-const { navGroups } = useUiContent();
+const { confirm } = useConfirmDialog();
+const { navGroups, topStatus } = useUiContent();
 const isChatSurface = computed(() => route.path === '/chat' || route.path.startsWith('/chat/'));
+const riskSummaryValue = computed(() => text('2 项', '2 items'));
+const pendingSummaryValue = computed(() => text('5 项', '5 items'));
+const contextPendingItems = computed(() => [
+  {
+    id: 'operate-shell',
+    title: text('Operate 语义入口', 'Operate semantic entry'),
+    detail: text('通过 /agents 承载 Operate 分组入口。', 'Operate group entry is mapped to /agents.'),
+  },
+  {
+    id: 'chat-shell',
+    title: text('Chat 壳层保留', 'Chat shell continuity'),
+    detail: text('Chat 路由继续保留现有工作台行为。', 'Chat routes keep current workbench behavior.'),
+  },
+  {
+    id: 'mobile-nav',
+    title: text('移动端导航守护', 'Mobile nav guardrail'),
+    detail: text('移动端侧栏抽屉交互保持可用。', 'Mobile sidebar drawer interaction remains available.'),
+  },
+]);
 const { themeMode, setThemeMode } = useThemePreference();
 const themeOptions: Array<{ value: ThemeMode; icon: string; label: string; shortLabel: string }> = [
   { value: 'light', icon: '☀️', label: text('浅色模式', 'Light theme'), shortLabel: text('浅色', 'Light') },
@@ -302,14 +359,16 @@ async function handleStudioUpgradeAction(): Promise<void> {
   }
 
   const target = studioRelease.value.latestVersion || '';
-  const confirmed = typeof window !== 'undefined'
-    ? window.confirm(
-      text(
-        `确认升级到 v${target}？升级期间 Gateway 可能会重启。`,
-        `Upgrade to v${target}? Gateway may restart during upgrade.`,
-      ),
-    )
-    : false;
+  const confirmed = await confirm({
+    title: text('确认升级 Studio', 'Confirm Studio upgrade'),
+    message: text(
+      `确认升级到 v${target}？升级期间 Gateway 可能会重启。`,
+      `Upgrade to v${target}? Gateway may restart during upgrade.`,
+    ),
+    confirmText: text('确认升级', 'Upgrade now'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
   if (!confirmed) {
     return;
   }

@@ -41,8 +41,8 @@ const ChannelBindingsPage = () =>
 export const router = createRouter({
   history: createWebHistory(getRouterBase()),
   routes: [
-    { path: "/", redirect: "/dashboard" },
-    { path: "/dashboard", component: DashboardView },
+    { path: "/", redirect: "/home" },
+    { path: "/home", component: DashboardView, alias: ["/dashboard"] },
     {
       path: "/agents",
       component: AgentsView,

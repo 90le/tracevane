@@ -11,7 +11,7 @@
     </article>
 
     <article v-if="editing" class="panel-card channels-form-panel channels-binding-editor">
-      <div class="channels-stage-task-head">
+      <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ focusedAccount ? `${channel.type} · ${focusedAccount.id}` : channel.type }}</p>
           <h3>{{ bindingTaskTitle }}</h3>
@@ -136,7 +136,7 @@
     </article>
 
     <article class="panel-card binding-table">
-      <div class="channels-stage-task-head">
+      <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ focusedAccount ? `${channel.type} · ${focusedAccount.id}` : channel.type }}</p>
           <h3>{{ text('绑定列表', 'Binding list') }}</h3>
@@ -194,6 +194,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { ChannelBindingSummary } from '../../../../../types/channels';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createChannelBinding, deleteChannelBinding, updateChannelBinding } from './api';
@@ -206,6 +207,7 @@ const workspace = useChannelsWorkspace();
 const router = useRouter();
 const route = useRoute();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const channel = computed(() => workspace.selectedChannel.value);
 const bindings = computed(() => workspace.selectedBindings.value);
@@ -377,8 +379,15 @@ async function save(): Promise<void> {
 }
 
 async function remove(bindingId: string): Promise<void> {
-  if (!window.confirm(text('确定删除这条 binding 吗？', 'Delete this binding?'))) return;
   if (!channel.value) return;
+  const accepted = await confirm({
+    title: text('确认删除绑定', 'Confirm delete binding'),
+    message: text('确定删除这条 binding 吗？', 'Delete this binding?'),
+    confirmText: text('删除', 'Delete'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
+  if (!accepted) return;
   workspace.clearMessages();
   workspace.busyKey.value = 'save-binding';
   try {

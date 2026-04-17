@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell system-page">
+  <section class="page-shell system-page system-control-surface">
     <header class="page-header-row">
       <div>
         <p class="eyebrow">System</p>
@@ -30,8 +30,8 @@
       {{ text('基础健康状态已就绪，深诊断仍在加载中…', 'Basic health is ready; deep diagnostics are still loading...') }}
     </div>
 
-    <section class="system-workbench">
-      <aside class="system-sidebar">
+    <section class="system-control-grid">
+      <aside class="system-health-strip">
         <article class="panel-card system-sidebar-panel">
           <div class="system-sidebar-head">
             <div>
@@ -82,8 +82,8 @@
         </article>
       </aside>
 
-      <section class="system-stage">
-        <article class="panel-card system-stage-header">
+      <section class="system-main-stage">
+        <article class="panel-card system-topic-rail">
           <div class="system-stage-head">
             <div>
               <p class="eyebrow">{{ diagnostics?.config.pluginId || 'studio' }}</p>
@@ -109,7 +109,7 @@
             </div>
           </div>
 
-          <nav class="system-stage-tabs">
+          <nav class="system-stage-tabs mobile-stage-tabs">
             <button
               v-for="tab in tabs"
               :key="tab.id"
@@ -550,7 +550,7 @@
           </section>
         </article>
 
-        <article v-else class="panel-card system-stage-panel">
+        <article v-else class="panel-card system-stage-panel system-raw-inspector">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -599,6 +599,7 @@ import type {
   SystemStudioUpgradeStatusPayload,
 } from '../../../../../types/system';
 import StatusPill from '../../components/StatusPill.vue';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';
 import {
   approveSystemDeviceTrust,
@@ -621,6 +622,7 @@ interface NoticeLike {
 
 const router = useRouter();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const health = ref<SystemHealthPayload>(normalizeHealth({}));
 const diagnostics = ref<SystemDiagnosticsPayload>(normalizeDiagnostics({}));
@@ -978,14 +980,16 @@ async function handleStudioUpgradeAction(): Promise<void> {
   }
 
   const targetVersion = studioRelease.value.latestVersion || '';
-  const confirmed = typeof window !== 'undefined'
-    ? window.confirm(
-      text(
-        `确认升级到 v${targetVersion}？升级期间 Gateway 可能会重启。`,
-        `Upgrade to v${targetVersion}? Gateway may restart during the process.`,
-      ),
-    )
-    : false;
+  const confirmed = await confirm({
+    title: text('确认升级 Studio', 'Confirm Studio upgrade'),
+    message: text(
+      `确认升级到 v${targetVersion}？升级期间 Gateway 可能会重启。`,
+      `Upgrade to v${targetVersion}? Gateway may restart during the process.`,
+    ),
+    confirmText: text('确认升级', 'Upgrade now'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
   if (!confirmed) {
     return;
   }
@@ -1156,24 +1160,26 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.system-page {
+.system-page,
+.system-control-surface {
   gap: 18px;
 }
 
-.system-workbench {
+.system-control-grid {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
 
-.system-sidebar,
-.system-stage {
+.system-health-strip,
+.system-main-stage {
   min-width: 0;
 }
 
 .system-sidebar-panel,
 .system-stage-header,
+.system-topic-rail,
 .system-stage-panel {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1297,7 +1303,8 @@ onMounted(async () => {
   color: var(--text);
 }
 
-.system-stage-header {
+.system-stage-header,
+.system-topic-rail {
   padding: 18px 18px 0 18px;
 }
 
@@ -1399,8 +1406,22 @@ onMounted(async () => {
 }
 
 @media (max-width: 1180px) {
-  .system-workbench {
+  .system-control-grid {
     grid-template-columns: 1fr;
+  }
+
+  .system-main-stage {
+    order: -1;
+  }
+
+  .system-health-strip {
+    order: 1;
+  }
+
+  .system-topic-rail {
+    position: sticky;
+    top: 0;
+    z-index: 2;
   }
 }
 
@@ -1418,6 +1439,30 @@ onMounted(async () => {
 
   .system-stage-facts {
     justify-content: flex-start;
+  }
+
+  .system-stage-tabs.mobile-stage-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 12px;
+    margin-inline: -4px;
+    padding-inline: 4px;
+    scrollbar-width: thin;
+  }
+
+  .system-stage-tabs.mobile-stage-tabs::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .system-stage-tabs.mobile-stage-tabs::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+  }
+
+  .system-stage-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 }
 </style>

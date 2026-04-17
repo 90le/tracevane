@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell channels-page">
+  <section class="page-shell channels-page operate-workspace-shell">
     <header class="page-header-row">
       <div>
         <p class="eyebrow">{{ text('CHANNEL SETTINGS', 'CHANNEL SETTINGS') }}</p>
@@ -23,7 +23,7 @@
     <div v-else-if="workspace.successMessage.value" class="status-banner status-banner-success">{{ workspace.successMessage.value }}</div>
 
     <section class="channels-workbench">
-      <aside class="channels-sidebar">
+      <aside class="channels-sidebar operate-resource-rail mobile-resource-drawer">
         <article class="panel-card channels-sidebar-panel">
           <div class="channels-sidebar-head">
             <div>
@@ -101,9 +101,9 @@
         </article>
       </aside>
 
-      <section class="channels-stage">
+      <section class="channels-stage operate-stage">
         <article v-if="workspace.selectedChannel.value" class="panel-card channels-stage-header">
-          <div class="channels-stage-head">
+          <div class="channels-stage-head operate-stage-task-head">
             <div class="channels-stage-ident">
               <span class="channels-stage-icon" aria-hidden="true">{{ workspace.channelIcon(workspace.selectedChannel.value.type) }}</span>
               <div>
@@ -132,7 +132,7 @@
             </div>
           </div>
 
-          <nav class="channels-top-tabs" :aria-label="text('频道工作区页面', 'Channel workspace pages')">
+          <nav class="channels-top-tabs mobile-stage-tabs" :aria-label="text('频道工作区页面', 'Channel workspace pages')">
             <button
               v-for="tab in topTabs"
               :key="tab.id"

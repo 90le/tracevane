@@ -2,7 +2,7 @@
   <div class="sidebar-header">
     <TooltipRoot :disabled="!showRailTooltips">
       <TooltipTrigger as-child>
-        <RouterLink to="/dashboard" class="logo" @click="$emit('navigate')">
+        <RouterLink to="/home" class="logo" @click="$emit('navigate')">
           <span class="logo-icon">
             <LogoMark />
           </span>

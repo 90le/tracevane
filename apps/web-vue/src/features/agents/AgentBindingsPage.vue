@@ -1,6 +1,6 @@
 <template>
   <section v-if="detail && agentId" class="agents-stage-view">
-    <div class="agents-stage-task-head">
+    <div class="agents-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ agentId }}</p>
         <h3>{{ text('绑定管理', 'Bindings') }}</h3>
@@ -180,6 +180,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AgentBindingInput, AgentDetailPayload } from '../../../../../types/agents';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createAgentBinding, deleteAgentBinding, fetchAgentDetail, updateAgentBinding } from './api';
@@ -189,6 +190,7 @@ defineOptions({ name: 'AgentBindingsPage' });
 const route = useRoute();
 const router = useRouter();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const agentId = computed(() => String(route.params.agentId || ''));
 const detail = ref<AgentDetailPayload | null>(null);
@@ -375,9 +377,13 @@ async function saveBinding(): Promise<void> {
 
 async function removeBinding(bindingId: string): Promise<void> {
   if (!agentId.value || !bindingId) return;
-  const ok = window.confirm(
-    text('确定删除这条绑定吗？', 'Delete this binding?')
-  );
+  const ok = await confirm({
+    title: text('确认删除绑定', 'Confirm delete binding'),
+    message: text('确定删除这条绑定吗？', 'Delete this binding?'),
+    confirmText: text('删除', 'Delete'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
   if (!ok) return;
 
   bindingBusy.value = true;

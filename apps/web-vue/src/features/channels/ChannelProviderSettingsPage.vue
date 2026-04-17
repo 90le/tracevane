@@ -1,7 +1,7 @@
 <template>
   <section v-if="channel" class="channels-stage-view">
     <article class="panel-card channels-form-panel">
-      <div class="channels-stage-task-head">
+      <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ channel.type }}</p>
           <h3>{{ text('频道高级设置', 'Provider Settings') }}</h3>
@@ -151,6 +151,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { updateChannel } from './api';
@@ -174,6 +175,7 @@ defineOptions({ name: 'ChannelProviderSettingsPage' });
 
 const workspace = useChannelsWorkspace();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const channel = computed(() => workspace.selectedChannel.value);
 const catalog = computed(() => workspace.selectedCatalog.value);
@@ -194,6 +196,8 @@ function captureDraftSnapshot(): string {
     renderMode: draft.renderMode,
     domain: draft.domain,
     responsePrefix: draft.responsePrefix,
+    configWritesMode: draft.configWritesMode,
+    healthMonitorMode: draft.healthMonitorMode,
     dmJson: draft.dmJson,
     groupsJson: draft.groupsJson,
     guildsJson: draft.guildsJson,
@@ -249,11 +253,14 @@ const saveStateCopy = computed(() => {
   return text('当前草稿和已保存配置一致。', 'The current draft matches the saved configuration.');
 });
 
-onBeforeRouteLeave(() => {
+onBeforeRouteLeave(async () => {
   if (!hasUnsavedChanges.value) return true;
-  return window.confirm(
-    text('当前还有未保存更改，确定要离开这个页面吗？', 'You have unsaved changes. Leave this page anyway?'),
-  );
+  return await confirm({
+    title: text('确认离开页面', 'Confirm leaving page'),
+    message: text('当前还有未保存更改，确定要离开这个页面吗？', 'You have unsaved changes. Leave this page anyway?'),
+    confirmText: text('离开', 'Leave'),
+    cancelText: text('继续编辑', 'Keep editing'),
+  });
 });
 
 async function save(): Promise<void> {

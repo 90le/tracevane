@@ -1,6 +1,6 @@
 <template>
   <section v-if="detail && agentId" class="agents-stage-view">
-    <div class="agents-stage-task-head">
+    <div class="agents-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ agentId }}</p>
         <h3>{{ text('会话管理', 'Session Management') }}</h3>
@@ -72,6 +72,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AgentDetailPayload, AgentSessionSummary } from '../../../../../types/agents';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';
 import { clearAgentSessions, deleteAgentSession, fetchAgentDetail } from './api';
 
@@ -80,6 +81,7 @@ defineOptions({ name: 'AgentSessionsPage' });
 const route = useRoute();
 const router = useRouter();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const agentId = computed(() => String(route.params.agentId || ''));
 const detail = ref<AgentDetailPayload | null>(null);
@@ -109,12 +111,16 @@ async function loadDetail(): Promise<void> {
 
 async function clearAllSessions(): Promise<void> {
   if (!agentId.value) return;
-  const ok = window.confirm(
-    text(
+  const ok = await confirm({
+    title: text('确认清空全部会话', 'Confirm clear all sessions'),
+    message: text(
       `确定清空 Agent "${agentId.value}" 的全部会话吗？这会删除当前会话索引和会话日志文件。`,
       `Clear all sessions for "${agentId.value}"? This removes the session index and session log files.`
-    )
-  );
+    ),
+    confirmText: text('确认清空', 'Clear all'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
   if (!ok) return;
 
   sessionBusy.value = true;
@@ -135,12 +141,16 @@ async function clearAllSessions(): Promise<void> {
 
 async function removeSession(sessionId: string): Promise<void> {
   if (!agentId.value || !sessionId) return;
-  const ok = window.confirm(
-    text(
+  const ok = await confirm({
+    title: text('确认删除会话', 'Confirm delete session'),
+    message: text(
       '确定删除这条会话吗？该操作不可恢复。',
       'Delete this session? This action cannot be undone.'
-    )
-  );
+    ),
+    confirmText: text('删除', 'Delete'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
   if (!ok) return;
 
   sessionBusy.value = true;

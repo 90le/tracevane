@@ -8,7 +8,7 @@
     }"
   >
     <div class="chat-shell-layout">
-      <aside class="chat-shell-sidebar">
+      <aside class="chat-shell-sidebar chat-session-rail">
         <SessionListPanel
           :organizer="organizerState"
           :active-sessions="activeStudioManagedSessions"
@@ -30,7 +30,7 @@
         />
       </aside>
 
-      <main class="chat-shell-main">
+      <main class="chat-shell-main chat-main-stage">
         <ConversationPane
           :selected-session="selectedSession"
           :title="conversationTitle"
@@ -170,7 +170,7 @@
           :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'"
         />
         <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
-          <aside class="chat-mobile-drawer" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
+          <aside class="chat-mobile-drawer chat-mobile-session-rail" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
           <SessionListPanel
             :organizer="organizerState"
             :active-sessions="activeStudioManagedSessions"
@@ -202,7 +202,7 @@
           :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'"
         />
         <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
-          <aside class="chat-inspector-sheet" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
+          <aside class="chat-inspector-sheet chat-side-inspector chat-mobile-inspector-sheet" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
           <InspectorPanel
             :tab="inspectorTab"
             :session="selectedSession"
@@ -375,6 +375,7 @@ import { getWebSocketBasePath, resolveStudioGatewayClientAuth } from '../../shar
 import { GatewayBrowserClient, type GatewayEventFrame } from '../../shared/gateway-client';
 import { getStudioExposureKind, getStudioRealtimeTransport, isChatRealtimeEnabled } from '../../shared/runtime-config';
 import { useThemePreference } from '../../shared/theme';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import {
   playChatCue,
   readChatSoundCuesEnabled,
@@ -555,6 +556,7 @@ const route = useRoute();
 const router = useRouter();
 const { locale, text } = useLocalePreference();
 const { resolvedTheme } = useThemePreference();
+const { confirm } = useConfirmDialog();
 
 const agentRows = ref<AgentSummary[]>([]);
 const organizerState = ref<ChatSessionOrganizerState>(createEmptyChatSessionOrganizerState());
@@ -601,6 +603,7 @@ const inspectorTab = ref<'overview' | 'tools' | 'activity' | 'diagnostics'>('ove
 const inspectorDrawerOpen = ref(true);
 const hostManagementExecConfirmOpen = ref(false);
 const pendingHostManagementExecValue = ref<boolean | null>(null);
+const pendingHostManagementExecSessionKey = ref<string | null>(null);
 const soundCuesEnabled = ref(true);
 const showToolPreviews = ref(CHAT_PROCESS_VISIBILITY_DEFAULTS.showToolPreviews);
 const showThinkingBlocks = ref(CHAT_PROCESS_VISIBILITY_DEFAULTS.showThinkingBlocks);
@@ -4209,42 +4212,49 @@ async function toggleSessionHostManagementExec(nextValue: boolean): Promise<void
   }
   if (nextValue) {
     pendingHostManagementExecValue.value = true;
+    pendingHostManagementExecSessionKey.value = selectedSession.value.key;
     hostManagementExecConfirmOpen.value = true;
     return;
   }
-  await commitSessionHostManagementExecToggle(nextValue);
+  await commitSessionHostManagementExecToggle(selectedSession.value.key, nextValue);
 }
 
 function handleHostManagementExecConfirmOpenChange(nextOpen: boolean): void {
   hostManagementExecConfirmOpen.value = nextOpen;
   if (!nextOpen) {
     pendingHostManagementExecValue.value = null;
+    pendingHostManagementExecSessionKey.value = null;
   }
 }
 
 function closeHostManagementExecConfirm(): void {
   hostManagementExecConfirmOpen.value = false;
   pendingHostManagementExecValue.value = null;
+  pendingHostManagementExecSessionKey.value = null;
 }
 
 async function confirmSessionHostManagementExec(): Promise<void> {
-  if (pendingHostManagementExecValue.value !== true) {
+  const sessionKey = pendingHostManagementExecSessionKey.value;
+  const targetSession = sessionKey
+    ? sessionRows.value.find((session) => session.key === sessionKey) || null
+    : null;
+  if (pendingHostManagementExecValue.value !== true || !targetSession || !targetSession.permissions.writable) {
     closeHostManagementExecConfirm();
     return;
   }
   closeHostManagementExecConfirm();
-  await commitSessionHostManagementExecToggle(true);
+  await commitSessionHostManagementExecToggle(targetSession.key, true);
 }
 
-async function commitSessionHostManagementExecToggle(nextValue: boolean): Promise<void> {
+async function commitSessionHostManagementExecToggle(sessionKey: string, nextValue: boolean): Promise<void> {
   hostManagementExecToggleBusy.value = true;
   clearNotice();
   try {
     const request: ChatPatchSessionControlsRequest = {
       allowHostManagementExec: nextValue,
     };
-    const response: ChatSessionControlsPayload = await patchChatSessionControls(selectedSession.value.key, request);
-    applySessionControlsState(selectedSession.value.key, response.controls);
+    const response: ChatSessionControlsPayload = await patchChatSessionControls(sessionKey, request);
+    applySessionControlsState(sessionKey, response.controls);
     setNotice(
       'success',
       nextValue
@@ -4477,9 +4487,13 @@ async function handleFolderAction(payload: {
     }
 
     if (payload.action === 'delete') {
-      const confirmed = window.confirm(
-        text('删除文件夹后，其中会话会自动回到根目录。确认继续？', 'Delete this folder and return its chats to root?')
-      );
+      const confirmed = await confirm({
+        title: text('删除文件夹', 'Delete folder'),
+        message: text('删除文件夹后，其中会话会自动回到根目录。确认继续？', 'Delete this folder and return its chats to root?'),
+        confirmText: text('确认', 'Confirm'),
+        cancelText: text('取消', 'Cancel'),
+        tone: 'danger',
+      });
       if (!confirmed) {
         return;
       }
@@ -4555,9 +4569,13 @@ async function handleBatchAction(payload: {
       return;
     }
 
-    const confirmed = window.confirm(
-      text(`将删除 ${sessionKeys.length} 个会话，并清理本地与远端记录。确认继续？`, `Delete ${sessionKeys.length} chats from Studio and the gateway?`)
-    );
+    const confirmed = await confirm({
+      title: text('批量删除会话', 'Batch delete chats'),
+      message: text(`将删除 ${sessionKeys.length} 个会话，并清理本地与远端记录。确认继续？`, `Delete ${sessionKeys.length} chats from Studio and the gateway?`),
+      confirmText: text('确认', 'Confirm'),
+      cancelText: text('取消', 'Cancel'),
+      tone: 'danger',
+    });
     if (!confirmed) {
       return;
     }
@@ -4620,9 +4638,13 @@ async function handleSessionAction(payload: { action: 'rename' | 'archive' | 'de
       return;
     }
 
-    const confirmed = window.confirm(
-      text('删除后会同时清理本地和远端会话记录，确认继续？', 'Delete this chat from both local Studio state and the gateway?')
-    );
+    const confirmed = await confirm({
+      title: text('删除会话', 'Delete chat'),
+      message: text('删除后会同时清理本地和远端会话记录，确认继续？', 'Delete this chat from both local Studio state and the gateway?'),
+      confirmText: text('确认', 'Confirm'),
+      cancelText: text('取消', 'Cancel'),
+      tone: 'danger',
+    });
     if (!confirmed) {
       return;
     }
@@ -5421,139 +5443,6 @@ onBeforeUnmount(() => {
     border-radius: 0;
   }
 
-  .chat-inspector-sheet {
-    top: 10px;
-    right: 10px;
-    width: min(100vw - 20px, 640px);
-    height: calc(100dvh - 20px);
-    border-radius: 12px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-mobile-drawer-mask[data-state='open'],
-  .chat-mobile-drawer[data-state='open'],
-  .chat-inspector-mask[data-state='open'],
-  .chat-inspector-sheet[data-state='open'] {
-    animation: none;
-  }
-}
-</style>
-
-<style>
-.chat-mobile-drawer-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 1400;
-  background: rgba(6, 10, 18, 0.42);
-  backdrop-filter: blur(10px);
-}
-
-.chat-mobile-drawer-mask[data-state='open'] {
-  animation: chat-mobile-drawer-mask-in 180ms ease;
-  animation-fill-mode: both;
-}
-
-.chat-mobile-drawer-mask.theme-light {
-  background: rgba(229, 237, 246, 0.74);
-}
-
-.chat-mobile-drawer-mask.theme-dark {
-  background: rgba(6, 10, 18, 0.42);
-}
-
-.chat-mobile-drawer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 1401;
-  width: min(360px, calc(100vw - 18px));
-  height: 100dvh;
-  overflow: hidden;
-  border-radius: 0 12px 12px 0;
-  background: var(--chat-drawer-surface);
-  border-right: 1px solid var(--chat-line-strong);
-  box-shadow: 22px 0 56px rgba(0, 0, 0, 0.32);
-  backdrop-filter: blur(20px);
-  color: var(--chat-text);
-}
-
-.chat-mobile-drawer[data-state='open'] {
-  animation: chat-mobile-drawer-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  animation-fill-mode: both;
-}
-
-.chat-inspector-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 1420;
-  background: rgba(6, 10, 18, 0.44);
-  backdrop-filter: blur(16px);
-}
-
-.chat-inspector-mask[data-state='open'] {
-  animation: chat-inspector-mask-in 180ms ease;
-  animation-fill-mode: both;
-}
-
-.chat-inspector-mask.theme-light {
-  background: rgba(229, 237, 246, 0.72);
-}
-
-.chat-inspector-mask.theme-dark {
-  background: rgba(6, 10, 18, 0.44);
-}
-
-.chat-inspector-sheet {
-  --chat-inspector-bg: #0b1624;
-  --chat-inspector-card-bg: #101c2c;
-  --chat-inspector-shadow: 0 28px 88px rgba(0, 0, 0, 0.42);
-  --chat-line: rgba(255, 255, 255, 0.08);
-  --chat-line-strong: rgba(255, 255, 255, 0.16);
-  --chat-text: #edf4ff;
-  --chat-text-soft: #9cb0c8;
-  --chat-accent: #78a8ff;
-  --chat-muted-chip: #142235;
-  --chat-code-bg: #020817;
-  --chat-code-text: #d8e4f8;
-  --chat-tool-success: rgba(74, 222, 128, 0.14);
-  --chat-tool-error: rgba(248, 113, 113, 0.16);
-  --chat-tool-running: rgba(64, 135, 255, 0.14);
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  z-index: 1421;
-  width: min(620px, calc(100vw - 24px));
-  height: calc(100dvh - 24px);
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--chat-inspector-surface);
-  border: 1px solid var(--chat-line-strong);
-  box-shadow: var(--chat-inspector-shadow);
-  backdrop-filter: blur(18px);
-}
-
-.chat-inspector-sheet[data-state='open'] {
-  animation: none;
-  opacity: 1;
-  transform: none;
-}
-
-.chat-inspector-sheet.theme-light {
-  --chat-inspector-bg: #f3f7fc;
-  --chat-inspector-card-bg: #ffffff;
-  --chat-inspector-shadow: 0 28px 88px rgba(24, 42, 68, 0.18);
-  --chat-line: rgba(25, 50, 77, 0.1);
-  --chat-line-strong: rgba(25, 50, 77, 0.18);
-  --chat-text: #132238;
-  --chat-text-soft: #5c7088;
-  --chat-accent: #2563eb;
-  --chat-muted-chip: #e7edf5;
-  --chat-code-bg: #0f172a;
-  --chat-code-text: #e6edf8;
-}
-
-@media (max-width: 760px) {
   .chat-inspector-sheet {
     top: 10px;
     right: 10px;

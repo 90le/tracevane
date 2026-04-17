@@ -1,7 +1,7 @@
 <template>
   <section v-if="channel && account" class="channels-stage-view">
     <article class="panel-card channels-form-panel">
-      <div class="channels-stage-task-head">
+      <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ channel.type }} · {{ account.id }}</p>
           <h3>{{ text('访问控制', 'Access Control') }}</h3>
@@ -80,6 +80,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import { fetchChannelAccountAccess, saveChannelAccountAccess } from './api';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';
 import { stableStringify } from './channel-ui';
 import { useChannelsWorkspace } from './workspace';
@@ -89,6 +90,7 @@ defineOptions({ name: 'ChannelAccessControlPage' });
 const workspace = useChannelsWorkspace();
 const route = useRoute();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const channel = computed(() => workspace.selectedChannel.value);
 const account = computed(() => {
@@ -143,11 +145,14 @@ const saveStateCopy = computed(() => {
   return text('当前白名单草稿和已保存配置一致。', 'The current allowlist draft matches the saved configuration.');
 });
 
-onBeforeRouteLeave(() => {
+onBeforeRouteLeave(async () => {
   if (!hasUnsavedChanges.value) return true;
-  return window.confirm(
-    text('当前还有未保存更改，确定要离开这个页面吗？', 'You have unsaved changes. Leave this page anyway?'),
-  );
+  return await confirm({
+    title: text('确认离开页面', 'Confirm leaving page'),
+    message: text('当前还有未保存更改，确定要离开这个页面吗？', 'You have unsaved changes. Leave this page anyway?'),
+    confirmText: text('离开', 'Leave'),
+    cancelText: text('继续编辑', 'Keep editing'),
+  });
 });
 
 function appendEntry(scope: 'allow' | 'group'): void {

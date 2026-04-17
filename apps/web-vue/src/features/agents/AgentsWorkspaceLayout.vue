@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell agents-workspace-shell">
+  <section class="page-shell agents-workspace-shell operate-workspace-shell">
     <header class="page-header-row agents-workspace-head">
       <div>
         <p class="eyebrow">Agents</p>
@@ -29,7 +29,7 @@
     </div>
 
     <div class="agents-workspace-layout">
-      <aside class="panel-card agents-workspace-sidebar">
+      <aside class="panel-card agents-workspace-sidebar operate-resource-rail mobile-resource-drawer">
         <div class="agents-workspace-sidebar__head">
           <div>
             <p class="eyebrow">{{ text('ROSTER', 'ROSTER') }}</p>
@@ -106,9 +106,9 @@
         </div>
       </aside>
 
-      <section class="agents-workspace-stage">
+      <section class="agents-workspace-stage operate-stage">
         <article class="panel-card agents-stage-header">
-          <div v-if="selectedAgent" class="agents-stage-header__body">
+          <div v-if="selectedAgent" class="agents-stage-header__body operate-stage-task-head">
             <div class="agents-stage-header__identity">
               <span class="agents-stage-header__avatar" aria-hidden="true">
                 <AgentAvatarContent
@@ -153,7 +153,7 @@
                 <p>{{ text('左侧 rail 会一直保留，右侧 stage 根据当前 Agent 切换概览和工作区标签。', 'The left rail stays persistent while the right stage switches between overview and workspace tabs for the selected agent.') }}</p>
           </div>
 
-          <nav v-if="selectedAgent" class="agents-stage-tabs" :aria-label="text('Agent 页面', 'Agent pages')">
+          <nav v-if="selectedAgent" class="agents-stage-tabs mobile-stage-tabs" :aria-label="text('Agent 页面', 'Agent pages')">
             <button
               v-for="tab in stageTabs"
               :key="tab.value"

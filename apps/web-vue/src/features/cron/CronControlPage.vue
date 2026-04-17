@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell cron-page">
+  <section class="page-shell cron-page operate-workspace-shell">
     <header class="page-header-row">
       <div>
         <p class="eyebrow">Cron</p>
@@ -30,7 +30,7 @@
     </div>
 
     <section class="cron-workbench">
-      <aside class="cron-sidebar">
+      <aside class="cron-sidebar operate-resource-rail mobile-resource-drawer">
         <article class="panel-card cron-sidebar-panel">
           <div class="cron-sidebar-head">
             <div>
@@ -106,12 +106,12 @@
         </article>
       </aside>
 
-      <section class="cron-stage">
+      <section class="cron-stage operate-stage">
         <div v-if="detailLoading" class="panel-card cron-empty-state">{{ text('正在读取任务详情…', 'Loading job details...') }}</div>
 
         <TabsRoot v-else-if="detail" v-model="activeTab" class="cron-stage-workspace">
           <article class="panel-card cron-stage-header">
-            <div class="cron-stage-head">
+            <div class="cron-stage-head operate-stage-task-head">
               <div>
                 <p class="eyebrow">{{ detail.job.id }}</p>
                 <h3 class="cron-stage-title">{{ detail.job.name }}</h3>
@@ -134,7 +134,7 @@
               </div>
             </div>
 
-            <TabsList class="cron-stage-tabs" aria-label="Cron workspace tabs">
+            <TabsList class="cron-stage-tabs mobile-stage-tabs" aria-label="Cron workspace tabs">
               <TabsTrigger
                 v-for="tab in workspaceTabs"
                 :key="tab.id"
@@ -828,6 +828,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type { CronDetailPayload, CronJobInput, CronRunSummary, CronSummaryPayload } from '../../../../../types/cron';
 import StatusPill from '../../components/StatusPill.vue';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
@@ -889,6 +890,7 @@ interface CronFormState {
 }
 
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const summary = ref<CronSummaryPayload | null>(null);
 const detail = ref<CronDetailPayload | null>(null);
@@ -1341,7 +1343,13 @@ async function runSelectedJob(): Promise<void> {
 
 async function confirmDeleteJob(): Promise<void> {
   if (!selectedJobId.value || !detail.value) return;
-  const ok = window.confirm(text(`确定删除任务 "${detail.value.job.name}" 吗？`, `Delete job "${detail.value.job.name}"?`));
+  const ok = await confirm({
+    title: text('确认删除任务', 'Confirm delete job'),
+    message: text(`确定删除任务 "${detail.value.job.name}" 吗？`, `Delete job "${detail.value.job.name}"?`),
+    confirmText: text('删除任务', 'Delete job'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
   if (!ok) return;
   deleteBusy.value = true;
   try {
