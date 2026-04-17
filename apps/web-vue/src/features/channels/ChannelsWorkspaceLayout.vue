@@ -24,7 +24,7 @@
 
     <section class="channels-workbench">
       <aside class="channels-sidebar operate-resource-rail mobile-resource-drawer">
-        <article class="panel-card channels-sidebar-panel">
+        <article class="panel-card channels-sidebar-panel operate-workspace-surface">
           <div class="channels-sidebar-head">
             <div>
               <p class="eyebrow">{{ text('PROVIDERS', 'PROVIDERS') }}</p>
@@ -102,19 +102,33 @@
       </aside>
 
       <section class="channels-stage operate-stage">
-        <article v-if="workspace.selectedChannel.value" class="panel-card channels-stage-header">
+        <article v-if="workspace.selectedChannel.value" class="panel-card channels-stage-header operate-workspace-surface">
           <div class="channels-stage-head operate-stage-task-head">
             <div class="channels-stage-ident">
               <span class="channels-stage-icon" aria-hidden="true">{{ workspace.channelIcon(workspace.selectedChannel.value.type) }}</span>
               <div>
                 <p class="eyebrow">{{ selectedAccount ? `${workspace.selectedChannel.value.type} · ${selectedAccount.id}` : workspace.selectedChannel.value.type }}</p>
-                <h3 class="channels-stage-title">{{ stageSummary.headline || workspace.channelLabel(workspace.selectedChannel.value.type) }}</h3>
-                <p class="panel-muted">{{ stageSummary.copy }}</p>
+                <h3 class="channels-stage-title">{{ workspace.channelLabel(workspace.selectedChannel.value.type) }}</h3>
+                <p class="panel-muted">
+                  {{
+                    selectedAccount
+                      ? text(
+                          `${selectedAccountKindLabel}。账号配置只影响当前账号，不影响其它账号。`,
+                          `${selectedAccountKindLabel}. Account settings only affect this account, not the other accounts.`
+                        )
+                      : text('当前 provider 的概览、设置和绑定会在这里切换；账号配置请从下方账号索引进入。', 'This stage switches between provider overview, settings, and bindings. Open account settings from the account index below.')
+                  }}
+                </p>
               </div>
             </div>
 
-            <div class="channels-stage-badges">
-              <span v-for="badge in stageSummary.badges" :key="badge" class="channels-stage-badge">{{ badge }}</span>
+            <div class="channels-stage-badges operate-fact-strip">
+              <span class="channels-stage-badge operate-summary-pill">{{ workspace.selectedChannel.value.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled') }}</span>
+              <span class="channels-stage-badge operate-summary-pill">{{ text(`${workspace.selectedChannel.value.accountCount} 个账号`, `${workspace.selectedChannel.value.accountCount} accounts`) }}</span>
+              <span class="channels-stage-badge operate-summary-pill">{{ text(`${workspace.selectedChannel.value.bindingCount} 条绑定`, `${workspace.selectedChannel.value.bindingCount} bindings`) }}</span>
+              <span v-if="workspace.selectedChannel.value.defaultAccount" class="channels-stage-badge operate-summary-pill operate-badge">
+                {{ text(`默认账号 ${workspace.selectedChannel.value.defaultAccount}`, `Default ${workspace.selectedChannel.value.defaultAccount}`) }}
+              </span>
             </div>
           </div>
 
@@ -207,9 +221,6 @@
 import { computed, reactive, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { ChannelAccountInput } from '../../../../../types/channels';
-import type { ChannelsOverviewRecipe } from './channels-overview-recipe';
-import { buildChannelsOverviewRecipe } from './channels-overview-recipe';
-import { buildChannelStageSummary } from './channel-workspace-summary';
 import StatusPill from '../../components/StatusPill.vue';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
@@ -233,10 +244,6 @@ import {
 import { provideChannelsWorkspace } from './workspace';
 
 defineOptions({ name: 'ChannelsWorkspaceLayout' });
-
-const props = defineProps<{
-  overviewRecipe?: ChannelsOverviewRecipe;
-}>();
 
 const workspace = provideChannelsWorkspace();
 const route = useRoute();
@@ -297,14 +304,12 @@ const accountTabs = computed(() => [
   { id: 'pairing' as const, label: text('配对审批', 'Pairing') },
 ]);
 
-const overviewRecipe = computed(() => props.overviewRecipe || buildChannelsOverviewRecipe(text));
-
-const stageSummary = computed(() => buildChannelStageSummary({
-  recipe: overviewRecipe.value,
-  channel: workspace.selectedChannel.value,
-  account: selectedAccount.value,
-  fallbackHeadline: workspace.selectedChannel.value ? workspace.channelLabel(workspace.selectedChannel.value.type) : '',
-}));
+const selectedAccountKindLabel = computed(() => {
+  if (!selectedAccount.value) return '';
+  return selectedAccount.value.kind === 'default'
+    ? text('当前是默认账号', 'This is the default account')
+    : text('当前是命名账号', 'This is a named account');
+});
 
 const accountCreateSeed = computed<ChannelAccountInput | null>(() => {
   const channel = workspace.selectedChannel.value;

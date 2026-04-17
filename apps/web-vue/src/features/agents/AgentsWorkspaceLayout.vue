@@ -29,7 +29,7 @@
     </div>
 
     <div class="agents-workspace-layout">
-      <aside class="panel-card agents-workspace-sidebar operate-resource-rail mobile-resource-drawer">
+      <aside class="panel-card agents-workspace-sidebar operate-resource-rail operate-workspace-surface mobile-resource-drawer">
         <div class="agents-workspace-sidebar__head">
           <div>
             <p class="eyebrow">{{ text('ROSTER', 'ROSTER') }}</p>
@@ -107,7 +107,7 @@
       </aside>
 
       <section class="agents-workspace-stage operate-stage">
-        <article class="panel-card agents-stage-header">
+        <article class="panel-card agents-stage-header operate-workspace-surface">
           <div v-if="selectedAgent" class="agents-stage-header__body operate-stage-task-head">
             <div class="agents-stage-header__identity">
               <span class="agents-stage-header__avatar" aria-hidden="true">
@@ -140,12 +140,12 @@
               </button>
             </div>
 
-            <div class="agents-stage-header__facts">
-              <span class="agents-summary-pill">{{ selectedAgent.model || text('系统默认模型', 'System model') }}</span>
-              <span class="agents-summary-pill">{{ selectedAgent.runtime.type === 'acp' ? 'ACP' : text('默认运行时', 'Default runtime') }}</span>
-              <span class="agents-summary-pill">{{ text(`${selectedAgent.sessionCount} 个会话`, `${selectedAgent.sessionCount} sessions`) }}</span>
-              <span class="agents-summary-pill">{{ text(`${selectedAgent.bindingCount} 条绑定`, `${selectedAgent.bindingCount} bindings`) }}</span>
-              <span class="agents-summary-pill">{{ selectedAgent.workspace || text('未设置工作区', 'Workspace unset') }}</span>
+            <div class="agents-stage-header__facts operate-fact-strip">
+              <span class="agents-summary-pill operate-summary-pill">{{ selectedAgent.model || text('系统默认模型', 'System model') }}</span>
+              <span class="agents-summary-pill operate-summary-pill">{{ selectedAgent.runtime.type === 'acp' ? 'ACP' : text('默认运行时', 'Default runtime') }}</span>
+              <span class="agents-summary-pill operate-summary-pill">{{ text(`${selectedAgent.sessionCount} 个会话`, `${selectedAgent.sessionCount} sessions`) }}</span>
+              <span class="agents-summary-pill operate-summary-pill">{{ text(`${selectedAgent.bindingCount} 条绑定`, `${selectedAgent.bindingCount} bindings`) }}</span>
+              <span class="agents-summary-pill operate-summary-pill operate-badge">{{ selectedAgent.workspace || text('未设置工作区', 'Workspace unset') }}</span>
             </div>
           </div>
           <div v-else class="agents-stage-empty">

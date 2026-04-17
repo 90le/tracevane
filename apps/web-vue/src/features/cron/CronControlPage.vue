@@ -24,7 +24,7 @@
 
     <section class="cron-workbench">
       <aside class="cron-sidebar operate-resource-rail mobile-resource-drawer">
-        <article class="panel-card cron-sidebar-panel">
+        <article class="panel-card cron-sidebar-panel operate-workspace-surface">
           <div class="cron-sidebar-head">
             <div>
               <p class="eyebrow">{{ text('SCHEDULER', 'SCHEDULER') }}</p>
@@ -87,8 +87,8 @@
               </div>
 
               <div class="cron-list-footer">
-                <span class="cron-chip">{{ sessionTargetLabel(job.sessionTargetMode) }}</span>
-                <span class="cron-chip">{{ deliveryModeLabel(job.delivery.mode) }}</span>
+                <span class="cron-chip operate-summary-pill">{{ sessionTargetLabel(job.sessionTargetMode) }}</span>
+                <span class="cron-chip operate-summary-pill operate-badge">{{ deliveryModeLabel(job.delivery.mode) }}</span>
                 <span class="cron-list-note">{{ lastStatusLabel(job.state.lastStatus) }}</span>
               </div>
             </button>
@@ -103,7 +103,7 @@
         <div v-if="detailLoading" class="panel-card cron-empty-state">{{ text('正在读取任务详情…', 'Loading job details...') }}</div>
 
         <TabsRoot v-else-if="detail" v-model="activeTab" class="cron-stage-workspace">
-          <article class="panel-card cron-stage-header">
+          <article class="panel-card cron-stage-header operate-workspace-surface">
             <div class="cron-stage-head operate-stage-task-head">
               <div>
                 <p class="eyebrow">{{ detail.job.id }}</p>
@@ -111,7 +111,7 @@
                 <p class="panel-muted">{{ detail.job.description || text('当前没有描述说明。', 'No description yet.') }}</p>
               </div>
 
-              <div class="cron-stage-facts">
+              <div class="cron-stage-facts operate-fact-strip">
                 <div class="cron-stage-fact">
                   <span>{{ text('计划', 'Schedule') }}</span>
                   <strong>{{ detail.job.schedule.label }}</strong>
@@ -196,10 +196,10 @@
 
               <div class="cron-payload-card">
                 <div class="cron-payload-meta">
-                  <span class="cron-chip">{{ payloadKindLabel(detail.job.payload.kind) }}</span>
-                  <span v-if="detail.job.payload.thinking" class="cron-chip">{{ detail.job.payload.thinking }}</span>
-                  <span v-if="detail.job.payload.timeoutSeconds" class="cron-chip">{{ detail.job.payload.timeoutSeconds }}s</span>
-                  <span v-if="detail.job.payload.model" class="cron-chip">{{ detail.job.payload.model }}</span>
+                  <span class="cron-chip operate-summary-pill">{{ payloadKindLabel(detail.job.payload.kind) }}</span>
+                  <span v-if="detail.job.payload.thinking" class="cron-chip operate-summary-pill">{{ detail.job.payload.thinking }}</span>
+                  <span v-if="detail.job.payload.timeoutSeconds" class="cron-chip operate-summary-pill">{{ detail.job.payload.timeoutSeconds }}s</span>
+                  <span v-if="detail.job.payload.model" class="cron-chip operate-summary-pill">{{ detail.job.payload.model }}</span>
                 </div>
                 <pre class="cron-payload-preview">{{ detail.job.payload.kind === 'systemEvent' ? detail.job.payload.systemEvent : detail.job.payload.message }}</pre>
               </div>
@@ -638,11 +638,11 @@
 
                 <div class="cron-run-detail" v-if="selectedRun">
                   <div class="cron-run-meta">
-                    <span class="cron-chip">{{ lastStatusLabel(selectedRun.status) }}</span>
-                    <span class="cron-chip" v-if="selectedRun.model">{{ selectedRun.model }}</span>
-                    <span class="cron-chip" v-if="selectedRun.provider">{{ selectedRun.provider }}</span>
-                    <span class="cron-chip" v-if="selectedRun.durationMs">{{ selectedRun.durationMs }}ms</span>
-                    <span class="cron-chip" v-if="selectedRun.totalTokens !== null">{{ selectedRun.totalTokens }} tokens</span>
+                    <span class="cron-chip operate-summary-pill">{{ lastStatusLabel(selectedRun.status) }}</span>
+                    <span class="cron-chip operate-summary-pill" v-if="selectedRun.model">{{ selectedRun.model }}</span>
+                    <span class="cron-chip operate-summary-pill" v-if="selectedRun.provider">{{ selectedRun.provider }}</span>
+                    <span class="cron-chip operate-summary-pill" v-if="selectedRun.durationMs">{{ selectedRun.durationMs }}ms</span>
+                    <span class="cron-chip operate-summary-pill" v-if="selectedRun.totalTokens !== null">{{ selectedRun.totalTokens }} tokens</span>
                   </div>
 
                   <div class="cron-run-fields">
