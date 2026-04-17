@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const rootDir = "/home/binbin/.openclaw/extensions/openclaw-studio";
+const testFileDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(testFileDir, "..", "..");
 
 function read(filePath) {
   return fs.readFileSync(path.join(rootDir, filePath), "utf8");
@@ -46,6 +48,22 @@ test("shared studio surface primitives keep page-level frames in the small-corne
   assert.match(
     styleCss,
     /\.panel-card,\s*\.metric-card\s*\{[\s\S]*border-radius:\s*12px;/,
+  );
+  assert.match(
+    styleCss,
+    /\.panel-card,\s*\.metric-card\s*\{[\s\S]*background:\s*var\(--surface-base\);/,
+  );
+  assert.match(
+    styleCss,
+    /\.panel-card,\s*\.metric-card\s*\{[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
+  );
+  assert.match(
+    styleCss,
+    /\.primary-button\s*\{[\s\S]*background:\s*var\(--accent-primary\);/,
+  );
+  assert.match(
+    styleCss,
+    /\.status-banner\s*\{[\s\S]*background:\s*var\(--surface-raised\);/,
   );
   assert.match(styleCss, /\.surface-drawer\s*\{[\s\S]*border-radius:\s*12px;/);
   assert.match(styleCss, /\.surface-tab\s*\{[\s\S]*border-radius:\s*10px;/);
@@ -97,23 +115,19 @@ test("shared studio surface primitives keep page-level frames in the small-corne
 test("dashboard and config recipes avoid oversized rounded slabs", () => {
   assert.match(
     dashboardView,
-    /\.dashboard-hero-stage,[\s\S]*border-radius:\s*12px;/,
+    /\.home-situation-band,[\s\S]*\.home-risk-stage,[\s\S]*\.home-resource-panel,[\s\S]*\.home-recent-stream\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
     dashboardView,
-    /\.dashboard-meter\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.home-situation-meter\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
     dashboardView,
-    /\.dashboard-command-link\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.home-quick-action\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
     dashboardView,
-    /\.dashboard-runtime-band,[\s\S]*border-radius:\s*12px;/,
-  );
-  assert.match(
-    dashboardView,
-    /\.dashboard-domain-row__state,\s*\.dashboard-track-item span\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.home-risk-row__state,\s*\.home-track-item span\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     configEditorPage,
@@ -137,10 +151,7 @@ test("control surfaces across agents, skills, cron, system, and terminal stay re
   assert.match(agentsControlPage, /agents-overview-card/);
   assert.match(agentsControlPage, /agents-overview-identity/);
   assert.match(agentsWorkspaceLayout, /agents-modal-mask/);
-  assert.match(
-    styleCss,
-    /\.agent-rail-item\s*\{[\s\S]*border-radius:\s*14px;/,
-  );
+  assert.match(styleCss, /\.agent-rail-item\s*\{[\s\S]*border-radius:\s*14px;/);
   assert.match(styleCss, /\.agents-overview-card--primary\s*\{/);
   assert.match(
     styleCss,
@@ -222,7 +233,7 @@ test("control surfaces across agents, skills, cron, system, and terminal stay re
   );
   assert.match(
     systemControlPage,
-    /\.system-sidebar-panel,\s*\.system-stage-header,\s*\.system-stage-panel\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.system-sidebar-panel,\s*\.system-stage-header,[\s\S]*\.system-stage-panel\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
     terminalConsolePage,
@@ -242,7 +253,7 @@ test("control surfaces across agents, skills, cron, system, and terminal stay re
   );
   assert.match(
     terminalConsolePage,
-    /\.terminal-main\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.terminal-main-canvas\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
     avatarFieldEditor,

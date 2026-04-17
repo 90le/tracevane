@@ -1,29 +1,30 @@
-import { computed, ref } from 'vue';
+import { computed, ref } from "vue";
 
-export type ThemeMode = 'system' | 'light' | 'dark';
-export type ResolvedTheme = 'light' | 'dark';
+export type ThemeMode = "system" | "light" | "dark";
+export type ResolvedTheme = "light" | "dark";
 
-const THEME_STORAGE_KEY = 'openclaw-studio.theme-mode';
+const THEME_STORAGE_KEY = "openclaw-studio.theme-mode";
 
-const themeMode = ref<ThemeMode>('system');
-const systemTheme = ref<ResolvedTheme>('dark');
+const themeMode = ref<ThemeMode>("system");
+const systemTheme = ref<ResolvedTheme>("dark");
 
 let initialized = false;
 let mediaQueryList: MediaQueryList | null = null;
 
 function readStoredThemeMode(): ThemeMode {
-  if (typeof window === 'undefined') return 'system';
+  if (typeof window === "undefined") return "system";
   try {
     const value = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (value === 'light' || value === 'dark' || value === 'system') return value;
+    if (value === "light" || value === "dark" || value === "system")
+      return value;
   } catch {
     // ignore storage issues
   }
-  return 'system';
+  return "system";
 }
 
 function persistThemeMode(value: ThemeMode): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, value);
   } catch {
@@ -31,30 +32,34 @@ function persistThemeMode(value: ThemeMode): void {
   }
 }
 
-function getResolvedTheme(mode: ThemeMode, systemValue: ResolvedTheme): ResolvedTheme {
-  return mode === 'system' ? systemValue : mode;
+function getResolvedTheme(
+  mode: ThemeMode,
+  systemValue: ResolvedTheme,
+): ResolvedTheme {
+  return mode === "system" ? systemValue : mode;
 }
 
 function applyThemeAttributes(): void {
-  if (typeof document === 'undefined') return;
+  if (typeof document === "undefined") return;
   const resolved = getResolvedTheme(themeMode.value, systemTheme.value);
-  document.documentElement.dataset.theme = resolved;
-  document.documentElement.dataset.themeMode = themeMode.value;
-  document.documentElement.style.colorScheme = resolved;
+  const root = document.documentElement;
+  root.dataset.theme = resolved;
+  root.dataset.themeMode = themeMode.value;
+  root.style.colorScheme = resolved;
 }
 
 function bindSystemThemeListener(): void {
-  if (typeof window === 'undefined') return;
-  mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
-  systemTheme.value = mediaQueryList.matches ? 'dark' : 'light';
+  if (typeof window === "undefined") return;
+  mediaQueryList = window.matchMedia("(prefers-color-scheme: dark)");
+  systemTheme.value = mediaQueryList.matches ? "dark" : "light";
 
   const handleChange = (event: MediaQueryListEvent) => {
-    systemTheme.value = event.matches ? 'dark' : 'light';
-    if (themeMode.value === 'system') applyThemeAttributes();
+    systemTheme.value = event.matches ? "dark" : "light";
+    if (themeMode.value === "system") applyThemeAttributes();
   };
 
-  if (typeof mediaQueryList.addEventListener === 'function') {
-    mediaQueryList.addEventListener('change', handleChange);
+  if (typeof mediaQueryList.addEventListener === "function") {
+    mediaQueryList.addEventListener("change", handleChange);
   } else {
     mediaQueryList.addListener(handleChange);
   }
@@ -79,7 +84,9 @@ export function useThemePreference() {
 
   return {
     themeMode,
-    resolvedTheme: computed<ResolvedTheme>(() => getResolvedTheme(themeMode.value, systemTheme.value)),
+    resolvedTheme: computed<ResolvedTheme>(() =>
+      getResolvedTheme(themeMode.value, systemTheme.value),
+    ),
     setThemeMode,
   };
 }
