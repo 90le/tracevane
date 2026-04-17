@@ -2,8 +2,8 @@
   <div v-if="errorMessage" class="status-banner status-banner-error">{{ errorMessage }}</div>
   <div v-else-if="loading && !summary" class="status-banner">{{ text('正在加载首页控制面数据…', 'Loading home control surface data...') }}</div>
 
-  <motion.section class="home-control-surface" v-bind="pageSurfaceReveal">
-    <motion.header class="home-situation-band" v-bind="pageMastheadReveal">
+  <motion.section class="home-control-surface home-stage-rhythm" v-bind="pageSurfaceReveal">
+    <motion.header class="home-situation-band" data-home-zone="situation" v-bind="pageMastheadReveal">
       <div class="home-situation-copy">
         <p class="eyebrow">Home</p>
         <h2 class="page-title">{{ text('Studio 总控首页', 'Studio Home Control Surface') }}</h2>
@@ -22,9 +22,9 @@
       </div>
     </motion.header>
 
-    <section class="home-risk-stage">
+    <section class="home-risk-stage" data-home-zone="risk">
       <div class="home-risk-stage__main">
-        <div class="home-section-heading home-section-heading-row">
+        <div class="home-section-heading home-section-heading-row home-section-marker">
           <div>
             <p class="eyebrow">{{ text('Control Focus', 'Control Focus') }}</p>
             <h3>{{ text('风险与待处理', 'Risks and pending') }}</h3>
@@ -82,7 +82,7 @@
       </aside>
     </section>
 
-    <section class="home-resource-grid">
+    <section class="home-resource-grid" data-home-zone="resource">
       <section class="home-resource-panel">
         <div class="home-section-heading">
           <div>
@@ -142,8 +142,8 @@
       </section>
     </section>
 
-    <section class="home-recent-stream">
-      <div class="home-section-heading home-section-heading-row">
+    <section class="home-recent-stream" data-home-zone="recent">
+      <div class="home-section-heading home-section-heading-row home-section-marker">
         <div>
           <p class="eyebrow">{{ text('Recent Changes', 'Recent Changes') }}</p>
           <h3>{{ text('最近变化流', 'Recent stream') }}</h3>
