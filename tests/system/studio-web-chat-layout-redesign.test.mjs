@@ -16,8 +16,19 @@ const chatShellPage = read(
 test("chat page redesign keeps stage contracts and removes equal three-way blocks", () => {
   assert.match(chatShellPage, /chat-main-stage/);
   assert.match(chatShellPage, /chat-side-inspector/);
+  assert.match(chatShellPage, /chat-focused-workspace/);
+  assert.match(chatShellPage, /chat-session-rail-context/);
+  assert.match(chatShellPage, /chat-main-stage-focus/);
   assert.doesNotMatch(
     chatShellPage,
     /(chat-three-way-equal-block|chat-equal-three-column|chat-main-equal-grid)/,
   );
+});
+
+test("chat page redesign keeps layered workspace hierarchy tokens", () => {
+  assert.match(chatShellPage, /--chat-layer-stage:\s*1/);
+  assert.match(chatShellPage, /--chat-layer-toast:\s*35/);
+  assert.match(chatShellPage, /--chat-layer-overlay:\s*1400/);
+  assert.match(chatShellPage, /--chat-layer-inspector:\s*1421/);
+  assert.match(chatShellPage, /--chat-layer-dialog:\s*1431/);
 });
