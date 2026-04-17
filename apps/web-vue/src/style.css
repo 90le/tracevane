@@ -1551,7 +1551,6 @@ button {
 
 .metric-card {
   padding: 14px;
-  background: var(--shell-panel-fill-strong), var(--glass-accent);
 }
 
 .metric-eyebrow {
