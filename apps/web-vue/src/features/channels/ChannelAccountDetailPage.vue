@@ -1,7 +1,7 @@
 <template>
   <section v-if="account && catalog && channel" class="channels-stage-view">
     <article class="panel-card channels-form-panel">
-      <div class="channels-stage-task-head">
+      <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ channel.type }} · {{ account.id }}</p>
           <h3>{{ text('账号详情', 'Account detail') }}</h3>
@@ -197,6 +197,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import type { ChannelFieldDescriptor, ChannelFieldGroupId } from '../../../../../types/channels';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { updateChannelAccount } from './api';
@@ -226,6 +227,7 @@ defineOptions({ name: 'ChannelAccountDetailPage' });
 const workspace = useChannelsWorkspace();
 const route = useRoute();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const channel = computed(() => workspace.selectedChannel.value);
 const catalog = computed(() => workspace.selectedCatalog.value);
@@ -250,6 +252,8 @@ function captureDraftSnapshot(): string {
     renderMode: draft.renderMode,
     domain: draft.domain,
     responsePrefix: draft.responsePrefix,
+    configWritesMode: draft.configWritesMode,
+    healthMonitorMode: draft.healthMonitorMode,
     dmJson: draft.dmJson,
     groupsJson: draft.groupsJson,
     guildsJson: draft.guildsJson,
@@ -313,11 +317,14 @@ const saveStateCopy = computed(() => {
   return text('当前草稿和已保存账号配置一致。', 'The current draft matches the saved account configuration.');
 });
 
-onBeforeRouteLeave(() => {
+onBeforeRouteLeave(async () => {
   if (!hasUnsavedChanges.value) return true;
-  return window.confirm(
-    text('当前还有未保存更改，确定要离开这个页面吗？', 'You have unsaved changes. Leave this page anyway?'),
-  );
+  return await confirm({
+    title: text('确认离开页面', 'Confirm leaving page'),
+    message: text('当前还有未保存更改，确定要离开这个页面吗？', 'You have unsaved changes. Leave this page anyway?'),
+    confirmText: text('离开', 'Leave'),
+    cancelText: text('继续编辑', 'Keep editing'),
+  });
 });
 
 function accountFieldPlaceholder(field: ChannelFieldDescriptor) {
@@ -367,6 +374,8 @@ async function save(): Promise<void> {
       renderMode: draft.renderMode || null,
       domain: draft.domain || null,
       responsePrefix: draft.responsePrefix || null,
+      configWrites: draft.configWritesMode === 'inherit' ? undefined : draft.configWritesMode === 'enabled',
+      healthMonitor: draft.healthMonitorMode === 'inherit' ? undefined : draft.healthMonitorMode === 'enabled',
       dm: parseOptionalJsonObject('DM JSON', draft.dmJson, text),
       groups: parseOptionalJsonObject(text('群组 JSON', 'Groups JSON'), draft.groupsJson, text),
       guilds: parseOptionalJsonObject('Guilds JSON', draft.guildsJson, text),

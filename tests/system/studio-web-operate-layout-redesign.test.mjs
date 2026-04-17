@@ -19,9 +19,26 @@ const cronControlPage = read(
   "apps/web-vue/src/features/cron/CronControlPage.vue",
 );
 
-test("operate pages share workspace shell and cron task head contracts", () => {
+test("operate pages share workspace shell, rail, and stage contracts", () => {
   assert.match(agentsWorkspaceLayout, /operate-workspace-shell/);
   assert.match(channelsWorkspaceLayout, /operate-workspace-shell/);
   assert.match(cronControlPage, /operate-workspace-shell/);
+
+  assert.match(agentsWorkspaceLayout, /operate-resource-rail/);
+  assert.match(channelsWorkspaceLayout, /operate-resource-rail/);
+  assert.match(cronControlPage, /operate-resource-rail/);
+
+  assert.match(agentsWorkspaceLayout, /operate-stage/);
+  assert.match(channelsWorkspaceLayout, /operate-stage/);
+  assert.match(cronControlPage, /operate-stage/);
+
+  assert.match(
+    agentsWorkspaceLayout,
+    /operate-stage-task-head|agents-stage-task-head/,
+  );
+  assert.match(
+    channelsWorkspaceLayout,
+    /operate-stage-task-head|channels-stage-head/,
+  );
   assert.match(cronControlPage, /operate-stage-task-head/);
 });

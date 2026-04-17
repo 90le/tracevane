@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';
 import { deleteChannel, deleteChannelAccount, updateChannel, updateChannelAccount } from './api';
 import { buildAccountMutationInput, buildChannelIssues } from './channel-ui';
@@ -43,6 +44,7 @@ defineOptions({ name: 'ChannelsControlPage' });
 const workspace = useChannelsWorkspace();
 const router = useRouter();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const channel = computed(() => workspace.selectedChannel.value);
 const bindings = computed(() => workspace.selectedBindings.value);
@@ -97,10 +99,17 @@ async function deleteAccount(accountId: string): Promise<void> {
   const account = channel.value.accounts.find((entry) => entry.id === accountId);
   if (!account || account.kind === 'default') return;
   const channelType = channel.value.type;
-  if (!window.confirm(text(
-    `确定删除账号 ${accountId} 吗？该账号相关绑定也会一起移除。`,
-    `Delete account ${accountId}? Related bindings for this account will also be removed.`
-  ))) {
+  const accepted = await confirm({
+    title: text('确认删除账号', 'Confirm delete account'),
+    message: text(
+      `确定删除账号 ${accountId} 吗？该账号相关绑定也会一起移除。`,
+      `Delete account ${accountId}? Related bindings for this account will also be removed.`
+    ),
+    confirmText: text('删除账号', 'Delete account'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
+  if (!accepted) {
     return;
   }
 
@@ -121,10 +130,17 @@ async function deleteAccount(accountId: string): Promise<void> {
 async function deleteProvider(): Promise<void> {
   if (!channel.value) return;
   const channelType = channel.value.type;
-  if (!window.confirm(text(
-    `确定删除频道 ${channelType} 吗？该频道的账号和绑定也会一起移除。`,
-    `Delete provider ${channelType}? Its accounts and bindings will also be removed.`
-  ))) {
+  const accepted = await confirm({
+    title: text('确认删除频道', 'Confirm delete provider'),
+    message: text(
+      `确定删除频道 ${channelType} 吗？该频道的账号和绑定也会一起移除。`,
+      `Delete provider ${channelType}? Its accounts and bindings will also be removed.`
+    ),
+    confirmText: text('删除频道', 'Delete provider'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
+  if (!accepted) {
     return;
   }
 

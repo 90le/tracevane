@@ -1,35 +1,4 @@
 <template>
-  <DialogRoot :open="confirmOpen" @update:open="handleConfirmOpenChange">
-    <DialogPortal>
-      <DialogOverlay class="channels-confirm-mask" />
-      <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
-        <section v-if="confirmOpen && confirmState" class="channels-confirm-dialog">
-          <header class="channels-confirm-head">
-            <div class="channels-confirm-copy">
-              <DialogTitle as-child>
-                <strong>{{ confirmState.title }}</strong>
-              </DialogTitle>
-              <DialogDescription as-child>
-                <span>{{ confirmState.description }}</span>
-              </DialogDescription>
-            </div>
-            <DialogClose as-child>
-              <button type="button" class="channels-confirm-close" :aria-label="text('关闭确认窗口', 'Close confirmation dialog')">×</button>
-            </DialogClose>
-          </header>
-          <footer class="channels-confirm-actions">
-            <button type="button" class="channels-confirm-secondary" :disabled="saving" @click="closeConfirm">
-              {{ text('取消', 'Cancel') }}
-            </button>
-            <button type="button" class="channels-confirm-primary" :disabled="saving" @click="confirmAction">
-              {{ saving ? text('处理中...', 'Working...') : confirmState.confirmLabel }}
-            </button>
-          </footer>
-        </section>
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
-
   <section v-if="channel" class="channels-stage-view">
     <article v-if="focusedAccount" class="panel-card channels-focus-strip">
       <div>
@@ -42,7 +11,7 @@
     </article>
 
     <article v-if="editing" class="panel-card channels-form-panel channels-binding-editor">
-      <div class="channels-stage-task-head">
+      <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ focusedAccount ? `${channel.type} · ${focusedAccount.id}` : channel.type }}</p>
           <h3>{{ bindingTaskTitle }}</h3>
@@ -167,7 +136,7 @@
     </article>
 
     <article class="panel-card binding-table">
-      <div class="channels-stage-task-head">
+      <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ focusedAccount ? `${channel.type} · ${focusedAccount.id}` : channel.type }}</p>
           <h3>{{ text('绑定列表', 'Binding list') }}</h3>
@@ -223,9 +192,9 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { useRoute, useRouter } from 'vue-router';
 import type { ChannelBindingSummary } from '../../../../../types/channels';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createChannelBinding, deleteChannelBinding, updateChannelBinding } from './api';
@@ -238,6 +207,7 @@ const workspace = useChannelsWorkspace();
 const router = useRouter();
 const route = useRoute();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const channel = computed(() => workspace.selectedChannel.value);
 const bindings = computed(() => workspace.selectedBindings.value);
@@ -283,9 +253,6 @@ const accountOptions = computed(() => {
 
 const editing = ref(false);
 const editingBindingId = ref('');
-const confirmOpen = ref(false);
-const confirmState = ref<{ title: string; description: string; confirmLabel: string } | null>(null);
-const confirmActionHandler = ref<(() => Promise<void>) | null>(null);
 const draft = reactive({
   type: 'agent',
   agentId: '',
@@ -355,37 +322,6 @@ function cancelEdit(): void {
   resetDraft();
 }
 
-function handleConfirmOpenChange(open: boolean): void {
-  confirmOpen.value = open;
-  if (!open) {
-    confirmState.value = null;
-    confirmActionHandler.value = null;
-  }
-}
-
-function closeConfirm(): void {
-  confirmOpen.value = false;
-  confirmState.value = null;
-  confirmActionHandler.value = null;
-}
-
-function openConfirm(options: { title: string; description: string; confirmLabel: string; action: () => Promise<void> }): void {
-  confirmState.value = {
-    title: options.title,
-    description: options.description,
-    confirmLabel: options.confirmLabel,
-  };
-  confirmActionHandler.value = options.action;
-  confirmOpen.value = true;
-}
-
-async function confirmAction(): Promise<void> {
-  if (!confirmActionHandler.value) return;
-  const action = confirmActionHandler.value;
-  closeConfirm();
-  await action();
-}
-
 async function clearAccountFocus(): Promise<void> {
   const nextQuery: Record<string, string> = {};
   for (const [key, value] of Object.entries(route.query)) {
@@ -444,25 +380,26 @@ async function save(): Promise<void> {
 
 async function remove(bindingId: string): Promise<void> {
   if (!channel.value) return;
-  openConfirm({
-    title: text('删除绑定', 'Delete binding'),
-    description: text('确定删除这条 binding 吗？', 'Delete this binding?'),
-    confirmLabel: text('确认删除', 'Delete binding'),
-    action: async () => {
-      workspace.clearMessages();
-      workspace.busyKey.value = 'save-binding';
-      try {
-        const response = await deleteChannelBinding(bindingId);
-        workspace.summary.value = response.summary;
-        workspace.setSuccessMessage(response.message);
-        await workspace.refreshSummary(channel.value.type);
-      } catch (error) {
-        workspace.setErrorMessage(error instanceof Error ? error.message : text('未知错误', 'Unknown error'));
-      } finally {
-        workspace.busyKey.value = '';
-      }
-    },
+  const accepted = await confirm({
+    title: text('确认删除绑定', 'Confirm delete binding'),
+    message: text('确定删除这条 binding 吗？', 'Delete this binding?'),
+    confirmText: text('删除', 'Delete'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
   });
+  if (!accepted) return;
+  workspace.clearMessages();
+  workspace.busyKey.value = 'save-binding';
+  try {
+    const response = await deleteChannelBinding(bindingId);
+    workspace.summary.value = response.summary;
+    workspace.setSuccessMessage(response.message);
+    await workspace.refreshSummary(channel.value.type);
+  } catch (error) {
+    workspace.setErrorMessage(error instanceof Error ? error.message : text('未知错误', 'Unknown error'));
+  } finally {
+    workspace.busyKey.value = '';
+  }
 }
 
 watch(

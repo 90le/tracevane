@@ -8,7 +8,7 @@
     }"
   >
     <div class="chat-shell-layout">
-      <aside class="chat-shell-sidebar">
+      <aside class="chat-shell-sidebar chat-session-rail">
         <SessionListPanel
           :organizer="organizerState"
           :active-sessions="activeStudioManagedSessions"
@@ -30,12 +30,12 @@
         />
       </aside>
 
-      <main class="chat-shell-main">
+      <main class="chat-shell-main chat-main-stage">
         <ConversationPane
           :selected-session="selectedSession"
-          :title="stageHeader.title"
-          :subtitle="stageHeader.subtitle"
-          :agent-name="stageHeader.agentName"
+          :title="conversationTitle"
+          :subtitle="conversationSubtitle"
+          :agent-name="agentName"
           :agent-avatar="agentAvatar"
           :agent-emoji="agentEmoji"
           :agent-initial="agentInitial"
@@ -51,8 +51,8 @@
           :history-loading-after="historyLoadingAfter"
           :viewing-historical-position="viewingHistoricalPosition"
           :history-error-message="historyErrorMessage"
-          :access-error="overviewWarnings.accessError"
-          :gateway-warning="overviewWarnings.gatewayWarning"
+          :access-error="accessError"
+          :gateway-warning="gatewayWarning"
           :slash-feedback="selectedSlashFeedback"
           :composer-document="composerDocument"
           :composer-attachments="composerAttachments"
@@ -76,8 +76,8 @@
           :session-host-management-exec-enabled="selectedSessionControls.allowHostManagementExec"
           :can-toggle-host-management-exec="canToggleHostManagementExec"
           :host-management-exec-toggle-busy="hostManagementExecToggleBusy"
-          :record-browser-open="overviewQuickActions.recordBrowserOpen"
-          :record-browser-has-active-filters="overviewQuickActions.recordBrowserHasActiveFilters"
+          :record-browser-open="recordBrowserOpen"
+          :record-browser-has-active-filters="recordBrowserHasActiveFilters"
           :queue-mutating-entry-id="queueMutatingEntryId"
           @update:composer-document="composerDocument = $event"
           @send="sendMessage($event)"
@@ -106,10 +106,10 @@
           @dismiss-slash-feedback="dismissSelectedSlashFeedback"
         />
         <ChatRecordBrowserPanel
-          :open="overviewQuickActions.recordBrowserOpen"
+          :open="recordBrowserOpen"
           :theme="resolvedTheme"
-          :session-title="stageHeader.title"
-          :session-subtitle="stageHeader.subtitle"
+          :session-title="conversationTitle"
+          :session-subtitle="conversationSubtitle"
           :query="recordBrowserQuery"
           :role-filter="recordBrowserRoleFilter"
           :content-filter="recordBrowserContentFilter"
@@ -117,7 +117,7 @@
           :selected-day="recordBrowserSelectedDay"
           :loading="recordBrowserLoading"
           :error-message="recordBrowserErrorMessage"
-          :has-active-filters="overviewQuickActions.recordBrowserHasActiveFilters"
+          :has-active-filters="recordBrowserHasActiveFilters"
           :match-count="recordBrowserMatchCount"
           :visible-matches="recordBrowserVisibleMatches"
           :grouped-visible-matches="recordBrowserGroupedVisibleMatches"
@@ -170,7 +170,7 @@
           :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'"
         />
         <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
-          <aside class="chat-mobile-drawer" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
+          <aside class="chat-mobile-drawer chat-mobile-session-rail" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
           <SessionListPanel
             :organizer="organizerState"
             :active-sessions="activeStudioManagedSessions"
@@ -202,15 +202,15 @@
           :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'"
         />
         <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
-          <aside class="chat-inspector-sheet" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
+          <aside class="chat-inspector-sheet chat-side-inspector chat-mobile-inspector-sheet" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
           <InspectorPanel
             :tab="inspectorTab"
             :session="selectedSession"
-            :agent-name="stageHeader.agentName"
+            :agent-name="agentName"
             :runtime="activeRuntime"
             :diagnostics="activeDiagnostics"
             :observability="activeObservability"
-            :warning-message="overviewWarnings.inspectorWarningMessage"
+            :warning-message="gatewayWarning || accessError || activeRuntime?.lastErrorMessage || ''"
             @close="closeInspectorDrawer"
             @update:tab="inspectorTab = $event"
           />
@@ -236,9 +236,9 @@
 
     <SlashStatusDialog
       :open="slashStatusOpen"
-      :title="stageHeader.title"
+      :title="conversationTitle"
       :session-key="selectedSession?.key || ''"
-      :agent-name="stageHeader.agentName"
+      :agent-name="agentName"
       :agent-id="selectedSession?.agentId || ''"
       :writable="Boolean(selectedSession?.permissions.writable)"
       :runtime="activeRuntime"
@@ -249,8 +249,8 @@
       :viewing-historical-position="viewingHistoricalPosition"
       :has-more-before="historyPageInfo.hasMoreBefore"
       :has-more-after="historyPageInfo.hasMoreAfter"
-      :gateway-warning="overviewWarnings.gatewayWarning"
-      :access-error="overviewWarnings.accessError"
+      :gateway-warning="gatewayWarning"
+      :access-error="accessError"
       @close="closeSlashStatusDialog"
     />
 
@@ -319,56 +319,6 @@
         </DialogContent>
       </DialogPortal>
     </DialogRoot>
-
-    <DialogRoot :open="destructiveConfirmOpen" @update:open="handleDestructiveConfirmOpenChange">
-      <DialogPortal>
-        <DialogOverlay class="chat-host-exec-confirm-mask" />
-        <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
-          <section v-if="destructiveConfirmOpen && destructiveConfirmState" class="chat-host-exec-confirm-dialog">
-            <header class="chat-host-exec-confirm-head">
-              <div class="chat-host-exec-confirm-copy">
-                <DialogTitle as-child>
-                  <strong>{{ destructiveConfirmState.title }}</strong>
-                </DialogTitle>
-                <DialogDescription as-child>
-                  <span>{{ destructiveConfirmState.description }}</span>
-                </DialogDescription>
-              </div>
-              <DialogClose as-child>
-                <button
-                  type="button"
-                  class="chat-host-exec-confirm-close"
-                  :aria-label="text('关闭确认窗口', 'Close confirmation dialog')"
-                >
-                  ×
-                </button>
-              </DialogClose>
-            </header>
-
-            <footer class="chat-host-exec-confirm-actions">
-              <button
-                type="button"
-                class="chat-host-exec-confirm-secondary"
-                :disabled="destructiveConfirmBusy"
-                @click="closeDestructiveConfirm"
-              >
-                {{ text('取消', 'Cancel') }}
-              </button>
-              <button
-                type="button"
-                class="chat-host-exec-confirm-primary"
-                :disabled="destructiveConfirmBusy"
-                @click="confirmDestructiveAction"
-              >
-                {{ destructiveConfirmBusy
-                  ? text('处理中...', 'Working...')
-                  : destructiveConfirmState.confirmLabel }}
-              </button>
-            </footer>
-          </section>
-        </DialogContent>
-      </DialogPortal>
-    </DialogRoot>
   </section>
 </template>
 
@@ -425,6 +375,7 @@ import { getWebSocketBasePath, resolveStudioGatewayClientAuth } from '../../shar
 import { GatewayBrowserClient, type GatewayEventFrame } from '../../shared/gateway-client';
 import { getStudioExposureKind, getStudioRealtimeTransport, isChatRealtimeEnabled } from '../../shared/runtime-config';
 import { useThemePreference } from '../../shared/theme';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import {
   playChatCue,
   readChatSoundCuesEnabled,
@@ -511,10 +462,7 @@ import {
   readChatRuntimeSnapshot,
   restoreRuntimeMachineStateFromSnapshot,
   resolveChatRouteSessionKey,
-  hasBrokenChatRouteSessionRef,
-  shouldNormalizeChatSessionQueryRoute,
   resolveFallbackSessionKey as resolveRuntimeFallbackSessionKey,
-  resolveRequestedOrFallbackSessionKey,
   saveChatRuntimeSnapshot,
   shouldIncludeMessageInHistoryWindow,
   shouldRestoreRuntimeMachineStateFromSnapshot,
@@ -552,8 +500,6 @@ import {
   useChatRecordBrowserState,
 } from './chat-record-browser-state';
 import { useChatRuntimeViewModel } from './chat-runtime-view-model';
-import { buildChatShellQuickActions, buildChatShellWarnings } from './chat-shell-overview-recipe';
-import { buildChatHistoryStateSummary, buildChatStageHeader } from './chat-stage-selectors';
 import {
   CHAT_PROCESS_VISIBILITY_DEFAULTS,
   CHAT_PROCESS_VISIBILITY_STORAGE_KEYS,
@@ -589,12 +535,6 @@ type PendingQueuedSlashCommand = {
   queuedAt: string;
 };
 
-type ChatConfirmDialogState = {
-  title: string;
-  description: string;
-  confirmLabel: string;
-};
-
 type ComposerImageAttachment = ChatSendAttachment & {
   id: string;
   dataUrl: string;
@@ -616,6 +556,7 @@ const route = useRoute();
 const router = useRouter();
 const { locale, text } = useLocalePreference();
 const { resolvedTheme } = useThemePreference();
+const { confirm } = useConfirmDialog();
 
 const agentRows = ref<AgentSummary[]>([]);
 const organizerState = ref<ChatSessionOrganizerState>(createEmptyChatSessionOrganizerState());
@@ -662,10 +603,7 @@ const inspectorTab = ref<'overview' | 'tools' | 'activity' | 'diagnostics'>('ove
 const inspectorDrawerOpen = ref(true);
 const hostManagementExecConfirmOpen = ref(false);
 const pendingHostManagementExecValue = ref<boolean | null>(null);
-const destructiveConfirmOpen = ref(false);
-const destructiveConfirmState = ref<ChatConfirmDialogState | null>(null);
-const destructiveConfirmBusy = ref(false);
-const destructiveConfirmAction = ref<(() => Promise<void>) | null>(null);
+const pendingHostManagementExecSessionKey = ref<string | null>(null);
 const soundCuesEnabled = ref(true);
 const showToolPreviews = ref(CHAT_PROCESS_VISIBILITY_DEFAULTS.showToolPreviews);
 const showThinkingBlocks = ref(CHAT_PROCESS_VISIBILITY_DEFAULTS.showThinkingBlocks);
@@ -729,20 +667,10 @@ const protectedSessionRowDeadlines = new Map<string, number>();
 const sessionSendGuardDeadlines = new Map<string, number>();
 const sessionSendGuardVersion = ref(0);
 
-const routeSessionRefParams = computed(() => ({
+const routeSessionKey = computed(() => resolveChatRouteSessionKey({
   routeParamSessionRef: typeof route.params.sessionRef === 'string' ? route.params.sessionRef : '',
   routeQuerySessionRef: typeof route.query.sessionRef === 'string' ? route.query.sessionRef : '',
   legacyQuerySession: typeof route.query.session === 'string' ? route.query.session : '',
-}));
-
-const routeSessionKey = computed(() => resolveChatRouteSessionKey(routeSessionRefParams.value));
-const routeHasBrokenSessionRef = computed(() =>
-  hasBrokenChatRouteSessionRef(routeSessionRefParams.value),
-);
-const routeUsesLegacySessionQuery = computed(() => shouldNormalizeChatSessionQueryRoute({
-  currentPath: route.path,
-  shellMode: props.shellMode,
-  ...routeSessionRefParams.value,
 }));
 
 const runtimeRenderModel = computed(() => buildChatSessionRuntimeRenderModel(runtimeMachineState.value));
@@ -794,31 +722,6 @@ const gatewayWarning = runtimeView.gatewayWarning;
 const accessError = runtimeView.accessError;
 const renderTimelineItems = runtimeView.renderTimelineItems;
 const timelineVersion = runtimeView.timelineVersion;
-const viewingHistoricalPosition = computed(() => historyPageInfo.value.hasMoreAfter);
-const stageHeader = computed(() => buildChatStageHeader({
-  conversationTitle: conversationTitle.value,
-  conversationSubtitle: conversationSubtitle.value,
-  agentName: agentName.value,
-}));
-const overviewWarnings = computed(() => buildChatShellWarnings({
-  gatewayWarning: gatewayWarning.value,
-  accessError: accessError.value,
-  runtimeLastErrorMessage: activeRuntime.value?.lastErrorMessage || '',
-}));
-const overviewQuickActions = computed(() => buildChatShellQuickActions({
-  selectedSessionKey: selectedSessionKey.value,
-  recordBrowserOpen: recordBrowserOpen.value,
-  recordBrowserHasActiveFilters: recordBrowserHasActiveFilters.value,
-  historyMode: historyMode.value,
-  inspectPinned: inspectPinned.value,
-}));
-const historyStateSummary = computed(() => buildChatHistoryStateSummary({
-  historyMode: historyMode.value,
-  selectedSessionKey: selectedSessionKey.value,
-  selectedSession: selectedSession.value,
-  activeRunId: activeRuntime.value?.activeRunId || null,
-  viewingHistoricalPosition: viewingHistoricalPosition.value,
-}));
 const activeToast = computed<NoticeMessage | null>(() => {
   if (errorMessage.value) {
     return {
@@ -1710,7 +1613,7 @@ function clearConversationState(): void {
 }
 
 function primeConversationStateFromSnapshot(sessionKey: string): boolean {
-  if (!sessionKey || historyStateSummary.value.historyMode !== 'history') {
+  if (!sessionKey || historyMode.value !== 'history') {
     return false;
   }
   const snapshot = readChatRuntimeSnapshot(sessionKey);
@@ -2823,7 +2726,7 @@ function applyHistoryPagePayload(payload: ChatHistoryPayload, mode: 'replace' | 
     }
   } else {
     runtimeMachineState.value = replaceChatSessionCanonicalMessageLedger(runtimeMachineState.value, payload.messages, {
-      preserveLocalMessages: historyStateSummary.value.historyMode === 'history',
+      preserveLocalMessages: historyMode.value === 'history',
     });
   }
   runtimeMachineState.value = replaceChatSessionProcessLedger(runtimeMachineState.value, payload.overlays);
@@ -3199,11 +3102,13 @@ async function jumpToLive(): Promise<void> {
   }
 }
 
+const viewingHistoricalPosition = computed(() => historyPageInfo.value.hasMoreAfter);
+
 function toggleRecordBrowser(): void {
-  if (!overviewQuickActions.value.canToggleRecordBrowser) {
+  if (!selectedSession.value) {
     return;
   }
-  recordBrowserOpen.value = !overviewQuickActions.value.recordBrowserOpen;
+  recordBrowserOpen.value = !recordBrowserOpen.value;
 }
 
 function closeRecordBrowser(): void {
@@ -4307,88 +4212,49 @@ async function toggleSessionHostManagementExec(nextValue: boolean): Promise<void
   }
   if (nextValue) {
     pendingHostManagementExecValue.value = true;
+    pendingHostManagementExecSessionKey.value = selectedSession.value.key;
     hostManagementExecConfirmOpen.value = true;
     return;
   }
-  await commitSessionHostManagementExecToggle(nextValue);
+  await commitSessionHostManagementExecToggle(selectedSession.value.key, nextValue);
 }
 
 function handleHostManagementExecConfirmOpenChange(nextOpen: boolean): void {
   hostManagementExecConfirmOpen.value = nextOpen;
   if (!nextOpen) {
     pendingHostManagementExecValue.value = null;
+    pendingHostManagementExecSessionKey.value = null;
   }
 }
 
 function closeHostManagementExecConfirm(): void {
   hostManagementExecConfirmOpen.value = false;
   pendingHostManagementExecValue.value = null;
-}
-
-function handleDestructiveConfirmOpenChange(nextOpen: boolean): void {
-  destructiveConfirmOpen.value = nextOpen;
-  if (!nextOpen) {
-    destructiveConfirmState.value = null;
-    destructiveConfirmAction.value = null;
-    destructiveConfirmBusy.value = false;
-  }
-}
-
-function closeDestructiveConfirm(): void {
-  destructiveConfirmOpen.value = false;
-  destructiveConfirmState.value = null;
-  destructiveConfirmAction.value = null;
-  destructiveConfirmBusy.value = false;
-}
-
-function openDestructiveConfirm(options: {
-  title: string;
-  description: string;
-  confirmLabel: string;
-  action: () => Promise<void>;
-}): void {
-  destructiveConfirmState.value = {
-    title: options.title,
-    description: options.description,
-    confirmLabel: options.confirmLabel,
-  };
-  destructiveConfirmAction.value = options.action;
-  destructiveConfirmBusy.value = false;
-  destructiveConfirmOpen.value = true;
-}
-
-async function confirmDestructiveAction(): Promise<void> {
-  if (!destructiveConfirmAction.value || destructiveConfirmBusy.value) {
-    return;
-  }
-  destructiveConfirmBusy.value = true;
-  try {
-    await destructiveConfirmAction.value();
-    closeDestructiveConfirm();
-  } catch (error) {
-    closeDestructiveConfirm();
-    setNotice('error', error instanceof Error ? error.message : text('操作失败。', 'Action failed.'));
-  }
+  pendingHostManagementExecSessionKey.value = null;
 }
 
 async function confirmSessionHostManagementExec(): Promise<void> {
-  if (pendingHostManagementExecValue.value !== true) {
+  const sessionKey = pendingHostManagementExecSessionKey.value;
+  const targetSession = sessionKey
+    ? sessionRows.value.find((session) => session.key === sessionKey) || null
+    : null;
+  if (pendingHostManagementExecValue.value !== true || !targetSession || !targetSession.permissions.writable) {
     closeHostManagementExecConfirm();
     return;
   }
   closeHostManagementExecConfirm();
-  await commitSessionHostManagementExecToggle(true);
+  await commitSessionHostManagementExecToggle(targetSession.key, true);
 }
 
-async function commitSessionHostManagementExecToggle(nextValue: boolean): Promise<void> {
+async function commitSessionHostManagementExecToggle(sessionKey: string, nextValue: boolean): Promise<void> {
   hostManagementExecToggleBusy.value = true;
   clearNotice();
   try {
     const request: ChatPatchSessionControlsRequest = {
       allowHostManagementExec: nextValue,
     };
-    const response: ChatSessionControlsPayload = await patchChatSessionControls(selectedSession.value.key, request);
-    applySessionControlsState(selectedSession.value.key, response.controls);
+    const response: ChatSessionControlsPayload = await patchChatSessionControls(sessionKey, request);
+    applySessionControlsState(sessionKey, response.controls);
     setNotice(
       'success',
       nextValue
@@ -4621,16 +4487,19 @@ async function handleFolderAction(payload: {
     }
 
     if (payload.action === 'delete') {
-      openDestructiveConfirm({
+      const confirmed = await confirm({
         title: text('删除文件夹', 'Delete folder'),
-        description: text('删除文件夹后，其中会话会自动回到根目录。确认继续？', 'Delete this folder and return its chats to root?'),
-        confirmLabel: text('确认删除', 'Delete folder'),
-        action: async () => {
-          const response = await deleteChatFolder(payload.folderId);
-          applyOrganizer(response.organizer);
-          setNotice('success', text('文件夹已删除。', 'Folder deleted.'));
-        },
+        message: text('删除文件夹后，其中会话会自动回到根目录。确认继续？', 'Delete this folder and return its chats to root?'),
+        confirmText: text('确认', 'Confirm'),
+        cancelText: text('取消', 'Cancel'),
+        tone: 'danger',
       });
+      if (!confirmed) {
+        return;
+      }
+      const response = await deleteChatFolder(payload.folderId);
+      applyOrganizer(response.organizer);
+      setNotice('success', text('文件夹已删除。', 'Folder deleted.'));
       return;
     }
 
@@ -4700,24 +4569,27 @@ async function handleBatchAction(payload: {
       return;
     }
 
-    openDestructiveConfirm({
-      title: text('批量删除会话', 'Delete selected chats'),
-      description: text(`将删除 ${sessionKeys.length} 个会话，并清理本地与远端记录。确认继续？`, `Delete ${sessionKeys.length} chats from Studio and the gateway?`),
-      confirmLabel: text('确认删除', 'Delete chats'),
-      action: async () => {
-        const result = await deleteSessionKeys(sessionKeys);
-        if (result.failedKeys.length) {
-          throw new Error(
-            text(
-              `批量删除部分失败。成功 ${result.deletedKeys.length} 个，失败 ${result.failedKeys.length} 个：${result.failedKeys.join(', ')}`,
-              `Batch delete partially failed. Deleted ${result.deletedKeys.length}, failed ${result.failedKeys.length}: ${result.failedKeys.join(', ')}`,
-            ),
-          );
-        }
-        setNotice('success', text('已删除所选会话。', 'Selected chats deleted.'));
-      },
+    const confirmed = await confirm({
+      title: text('批量删除会话', 'Batch delete chats'),
+      message: text(`将删除 ${sessionKeys.length} 个会话，并清理本地与远端记录。确认继续？`, `Delete ${sessionKeys.length} chats from Studio and the gateway?`),
+      confirmText: text('确认', 'Confirm'),
+      cancelText: text('取消', 'Cancel'),
+      tone: 'danger',
     });
-    return;
+    if (!confirmed) {
+      return;
+    }
+
+    const result = await deleteSessionKeys(sessionKeys);
+    if (result.failedKeys.length) {
+      throw new Error(
+        text(
+          `批量删除部分失败。成功 ${result.deletedKeys.length} 个，失败 ${result.failedKeys.length} 个：${result.failedKeys.join(', ')}`,
+          `Batch delete partially failed. Deleted ${result.deletedKeys.length}, failed ${result.failedKeys.length}: ${result.failedKeys.join(', ')}`,
+        ),
+      );
+    }
+    setNotice('success', text('已删除所选会话。', 'Selected chats deleted.'));
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('批量操作失败。', 'Batch action failed.'));
   }
@@ -4766,24 +4638,27 @@ async function handleSessionAction(payload: { action: 'rename' | 'archive' | 'de
       return;
     }
 
-    openDestructiveConfirm({
+    const confirmed = await confirm({
       title: text('删除会话', 'Delete chat'),
-      description: text('删除后会同时清理本地和远端会话记录，确认继续？', 'Delete this chat from both local Studio state and the gateway?'),
-      confirmLabel: text('确认删除', 'Delete chat'),
-      action: async () => {
-        const result = await deleteSessionKeys([session.key]);
-        if (result.failedKeys.length) {
-          throw new Error(
-            text(
-              `删除会话失败：${result.failedKeys.join(', ')}`,
-              `Failed to delete chat: ${result.failedKeys.join(', ')}`,
-            ),
-          );
-        }
-        setNotice('success', text('会话已删除。', 'Chat deleted.'));
-      },
+      message: text('删除后会同时清理本地和远端会话记录，确认继续？', 'Delete this chat from both local Studio state and the gateway?'),
+      confirmText: text('确认', 'Confirm'),
+      cancelText: text('取消', 'Cancel'),
+      tone: 'danger',
     });
-    return;
+    if (!confirmed) {
+      return;
+    }
+
+    const result = await deleteSessionKeys([session.key]);
+    if (result.failedKeys.length) {
+      throw new Error(
+        text(
+          `删除会话失败：${result.failedKeys.join(', ')}`,
+          `Failed to delete chat: ${result.failedKeys.join(', ')}`,
+        ),
+      );
+    }
+    setNotice('success', text('会话已删除。', 'Chat deleted.'));
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('会话操作失败。', 'Chat action failed.'));
   }
@@ -4842,36 +4717,14 @@ watch(
     const requested = routeSessionKey.value;
     const available = inspectPinned.value ? [...studioManagedSessions.value, ...observedSessions.value] : studioManagedSessions.value;
     if (requested) {
-      const resolved = resolveRequestedOrFallbackSessionKey({
-        requestedSessionKey: requested,
-        availableSessions: available,
-        storedSessionKey: readLastChatSessionKey(),
-      });
-      if (resolved === requested) {
-        if (!selectedSessionKey.value) {
-          primeConversationStateFromSnapshot(requested);
-        }
-        selectSessionKeyLocally(requested);
-        if (routeUsesLegacySessionQuery.value || routeHasBrokenSessionRef.value) {
-          await router.replace(buildChatRoute(requested, props.shellMode));
-        }
-        return;
+      if (!selectedSessionKey.value) {
+        primeConversationStateFromSnapshot(requested);
       }
-      if (
-        route.path === '/chat/workbench'
-        || route.path.startsWith('/chat/s/')
-        || routeUsesLegacySessionQuery.value
-      ) {
-        await router.replace(buildChatRoute(resolved || null, props.shellMode));
-        return;
-      }
+      selectSessionKeyLocally(requested);
+      return;
     }
     const fallback = resolveFallbackSessionKey();
     if (!selectedSessionKey.value || !available.some((session) => session.key === selectedSessionKey.value)) {
-      if (route.path.startsWith('/chat/s/') || routeUsesLegacySessionQuery.value) {
-        await router.replace(buildChatRoute(fallback || null, props.shellMode));
-        return;
-      }
       selectedSessionKey.value = fallback;
     }
   },
@@ -5590,139 +5443,6 @@ onBeforeUnmount(() => {
     border-radius: 0;
   }
 
-  .chat-inspector-sheet {
-    top: 10px;
-    right: 10px;
-    width: min(100vw - 20px, 640px);
-    height: calc(100dvh - 20px);
-    border-radius: 12px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-mobile-drawer-mask[data-state='open'],
-  .chat-mobile-drawer[data-state='open'],
-  .chat-inspector-mask[data-state='open'],
-  .chat-inspector-sheet[data-state='open'] {
-    animation: none;
-  }
-}
-</style>
-
-<style>
-.chat-mobile-drawer-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 1400;
-  background: rgba(6, 10, 18, 0.42);
-  backdrop-filter: blur(10px);
-}
-
-.chat-mobile-drawer-mask[data-state='open'] {
-  animation: chat-mobile-drawer-mask-in 180ms ease;
-  animation-fill-mode: both;
-}
-
-.chat-mobile-drawer-mask.theme-light {
-  background: rgba(229, 237, 246, 0.74);
-}
-
-.chat-mobile-drawer-mask.theme-dark {
-  background: rgba(6, 10, 18, 0.42);
-}
-
-.chat-mobile-drawer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 1401;
-  width: min(360px, calc(100vw - 18px));
-  height: 100dvh;
-  overflow: hidden;
-  border-radius: 0 12px 12px 0;
-  background: var(--chat-drawer-surface);
-  border-right: 1px solid var(--chat-line-strong);
-  box-shadow: 22px 0 56px rgba(0, 0, 0, 0.32);
-  backdrop-filter: blur(20px);
-  color: var(--chat-text);
-}
-
-.chat-mobile-drawer[data-state='open'] {
-  animation: chat-mobile-drawer-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  animation-fill-mode: both;
-}
-
-.chat-inspector-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 1420;
-  background: rgba(6, 10, 18, 0.44);
-  backdrop-filter: blur(16px);
-}
-
-.chat-inspector-mask[data-state='open'] {
-  animation: chat-inspector-mask-in 180ms ease;
-  animation-fill-mode: both;
-}
-
-.chat-inspector-mask.theme-light {
-  background: rgba(229, 237, 246, 0.72);
-}
-
-.chat-inspector-mask.theme-dark {
-  background: rgba(6, 10, 18, 0.44);
-}
-
-.chat-inspector-sheet {
-  --chat-inspector-bg: #0b1624;
-  --chat-inspector-card-bg: #101c2c;
-  --chat-inspector-shadow: 0 28px 88px rgba(0, 0, 0, 0.42);
-  --chat-line: rgba(255, 255, 255, 0.08);
-  --chat-line-strong: rgba(255, 255, 255, 0.16);
-  --chat-text: #edf4ff;
-  --chat-text-soft: #9cb0c8;
-  --chat-accent: #78a8ff;
-  --chat-muted-chip: #142235;
-  --chat-code-bg: #020817;
-  --chat-code-text: #d8e4f8;
-  --chat-tool-success: rgba(74, 222, 128, 0.14);
-  --chat-tool-error: rgba(248, 113, 113, 0.16);
-  --chat-tool-running: rgba(64, 135, 255, 0.14);
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  z-index: 1421;
-  width: min(620px, calc(100vw - 24px));
-  height: calc(100dvh - 24px);
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--chat-inspector-surface);
-  border: 1px solid var(--chat-line-strong);
-  box-shadow: var(--chat-inspector-shadow);
-  backdrop-filter: blur(18px);
-}
-
-.chat-inspector-sheet[data-state='open'] {
-  animation: none;
-  opacity: 1;
-  transform: none;
-}
-
-.chat-inspector-sheet.theme-light {
-  --chat-inspector-bg: #f3f7fc;
-  --chat-inspector-card-bg: #ffffff;
-  --chat-inspector-shadow: 0 28px 88px rgba(24, 42, 68, 0.18);
-  --chat-line: rgba(25, 50, 77, 0.1);
-  --chat-line-strong: rgba(25, 50, 77, 0.18);
-  --chat-text: #132238;
-  --chat-text-soft: #5c7088;
-  --chat-accent: #2563eb;
-  --chat-muted-chip: #e7edf5;
-  --chat-code-bg: #0f172a;
-  --chat-code-text: #e6edf8;
-}
-
-@media (max-width: 760px) {
   .chat-inspector-sheet {
     top: 10px;
     right: 10px;

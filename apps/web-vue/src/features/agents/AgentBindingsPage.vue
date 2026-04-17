@@ -1,37 +1,6 @@
 <template>
-  <DialogRoot :open="confirmOpen" @update:open="handleConfirmOpenChange">
-    <DialogPortal>
-      <DialogOverlay class="agents-confirm-mask" />
-      <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
-        <section v-if="confirmOpen && confirmState" class="agents-confirm-dialog">
-          <header class="agents-confirm-head">
-            <div class="agents-confirm-copy">
-              <DialogTitle as-child>
-                <strong>{{ confirmState.title }}</strong>
-              </DialogTitle>
-              <DialogDescription as-child>
-                <span>{{ confirmState.description }}</span>
-              </DialogDescription>
-            </div>
-            <DialogClose as-child>
-              <button type="button" class="agents-confirm-close" :aria-label="text('关闭确认窗口', 'Close confirmation dialog')">×</button>
-            </DialogClose>
-          </header>
-          <footer class="agents-confirm-actions">
-            <button type="button" class="agents-confirm-secondary" :disabled="bindingBusy" @click="closeConfirm">
-              {{ text('取消', 'Cancel') }}
-            </button>
-            <button type="button" class="agents-confirm-primary" :disabled="bindingBusy" @click="confirmAction">
-              {{ bindingBusy ? text('处理中...', 'Working...') : confirmState.confirmLabel }}
-            </button>
-          </footer>
-        </section>
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
-
   <section v-if="detail && agentId" class="agents-stage-view">
-    <div class="agents-stage-task-head">
+    <div class="agents-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ agentId }}</p>
         <h3>{{ text('绑定管理', 'Bindings') }}</h3>
@@ -209,9 +178,9 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { useRoute, useRouter } from 'vue-router';
 import type { AgentBindingInput, AgentDetailPayload } from '../../../../../types/agents';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createAgentBinding, deleteAgentBinding, fetchAgentDetail, updateAgentBinding } from './api';
@@ -221,6 +190,7 @@ defineOptions({ name: 'AgentBindingsPage' });
 const route = useRoute();
 const router = useRouter();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const agentId = computed(() => String(route.params.agentId || ''));
 const detail = ref<AgentDetailPayload | null>(null);
@@ -229,9 +199,6 @@ const bindingDialogOpen = ref(false);
 const editingBindingId = ref('');
 const errorMessage = ref('');
 const noticeMessage = ref('');
-const confirmOpen = ref(false);
-const confirmState = ref<{ title: string; description: string; confirmLabel: string } | null>(null);
-const confirmActionHandler = ref<(() => Promise<void>) | null>(null);
 
 const bindingForm = reactive<AgentBindingInput>({
   type: 'route',
@@ -354,37 +321,6 @@ function closeBindingDialog(): void {
   editingBindingId.value = '';
 }
 
-function handleConfirmOpenChange(open: boolean): void {
-  confirmOpen.value = open;
-  if (!open) {
-    confirmState.value = null;
-    confirmActionHandler.value = null;
-  }
-}
-
-function closeConfirm(): void {
-  confirmOpen.value = false;
-  confirmState.value = null;
-  confirmActionHandler.value = null;
-}
-
-function openConfirm(options: { title: string; description: string; confirmLabel: string; action: () => Promise<void> }): void {
-  confirmState.value = {
-    title: options.title,
-    description: options.description,
-    confirmLabel: options.confirmLabel,
-  };
-  confirmActionHandler.value = options.action;
-  confirmOpen.value = true;
-}
-
-async function confirmAction(): Promise<void> {
-  if (!confirmActionHandler.value) return;
-  const action = confirmActionHandler.value;
-  closeConfirm();
-  await action();
-}
-
 async function loadDetail(): Promise<void> {
   if (!agentId.value) return;
   errorMessage.value = '';
@@ -441,28 +377,30 @@ async function saveBinding(): Promise<void> {
 
 async function removeBinding(bindingId: string): Promise<void> {
   if (!agentId.value || !bindingId) return;
-  openConfirm({
-    title: text('删除绑定', 'Delete binding'),
-    description: text('确定删除这条绑定吗？', 'Delete this binding?'),
-    confirmLabel: text('确认删除', 'Delete binding'),
-    action: async () => {
-      bindingBusy.value = true;
-      errorMessage.value = '';
-      noticeMessage.value = '';
-      try {
-        const response = await deleteAgentBinding(agentId.value, bindingId);
-        if (response.detail) {
-          detail.value = response.detail;
-          resetBindingForm({ cwd: response.detail.agent.workspace });
-        }
-        noticeMessage.value = response.message;
-      } catch (error) {
-        errorMessage.value = error instanceof Error ? error.message : text('删除绑定失败。', 'Failed to delete binding.');
-      } finally {
-        bindingBusy.value = false;
-      }
-    },
+  const ok = await confirm({
+    title: text('确认删除绑定', 'Confirm delete binding'),
+    message: text('确定删除这条绑定吗？', 'Delete this binding?'),
+    confirmText: text('删除', 'Delete'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
   });
+  if (!ok) return;
+
+  bindingBusy.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    const response = await deleteAgentBinding(agentId.value, bindingId);
+    if (response.detail) {
+      detail.value = response.detail;
+      resetBindingForm({ cwd: response.detail.agent.workspace });
+    }
+    noticeMessage.value = response.message;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : text('删除绑定失败。', 'Failed to delete binding.');
+  } finally {
+    bindingBusy.value = false;
+  }
 }
 
 watch(

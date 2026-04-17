@@ -1,7 +1,7 @@
 <template>
   <section v-if="channel && account" class="channels-stage-view">
     <article class="panel-card channels-form-panel">
-      <div class="channels-stage-task-head">
+      <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ channel.type }} · {{ account.id }}</p>
           <h3>{{ text('配对审批', 'Pairing') }}</h3>

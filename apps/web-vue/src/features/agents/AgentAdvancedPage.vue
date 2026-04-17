@@ -1,6 +1,6 @@
 <template>
   <section v-if="agentId" class="agents-stage-view">
-    <div class="agents-stage-task-head">
+    <div class="agents-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ agentId }}</p>
         <h3>{{ text('高级配置', 'Advanced') }}</h3>
@@ -27,7 +27,7 @@
       </div>
 
       <article class="panel-card agents-stage-panel">
-        <div class="agents-stage-task-head">
+        <div class="agents-stage-task-head operate-stage-task-head">
           <div>
             <p class="eyebrow">{{ text('CORE', 'CORE') }}</p>
             <h3>{{ text('基础配置', 'Core configuration') }}</h3>
@@ -56,7 +56,7 @@
       </article>
 
       <article class="panel-card agents-stage-panel">
-        <div class="agents-stage-task-head">
+        <div class="agents-stage-task-head operate-stage-task-head">
           <div>
             <p class="eyebrow">{{ text('IDENTITY', 'IDENTITY') }}</p>
             <h3>{{ text('身份字段', 'Identity') }}</h3>

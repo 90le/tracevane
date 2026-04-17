@@ -669,6 +669,7 @@ import type {
   DreamingSceneEntry,
   DreamingSnapshotPayload,
 } from '../../../../../types/dreaming';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';
 import { pageMastheadReveal, pageSurfaceReveal } from '../../shared/motion';
 import {
@@ -710,6 +711,7 @@ interface GroundedLaneItem {
 }
 
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const activeTab = ref<DreamingWorkbenchTab>('scene');
 const selectedDiaryEntryId = ref('');
@@ -1222,21 +1224,30 @@ async function repairConfig(): Promise<void> {
   }
 }
 
-function confirmGroundedAction(action: DreamingActionKind): boolean {
-  if (typeof window === 'undefined') {
-    return true;
-  }
+async function confirmGroundedAction(action: DreamingActionKind): Promise<boolean> {
   if (action === 'reset-diary') {
-    return window.confirm(text(
-      '这会移除 DREAMS.md 里由 grounded backfill 写入的条目。继续吗？',
-      'This removes grounded backfill entries from DREAMS.md. Continue?'
-    ));
+    return await confirm({
+      title: text('确认重置 Dream Diary 回填', 'Confirm reset Dream Diary backfill'),
+      message: text(
+        '这会移除 DREAMS.md 里由 grounded backfill 写入的条目。继续吗？',
+        'This removes grounded backfill entries from DREAMS.md. Continue?'
+      ),
+      confirmText: text('继续重置', 'Continue reset'),
+      cancelText: text('取消', 'Cancel'),
+      tone: 'danger',
+    });
   }
   if (action === 'clear-grounded') {
-    return window.confirm(text(
-      '这会清理仅由 grounded replay 产生、且还没有 live support 的 short-term 条目。继续吗？',
-      'This clears grounded-only short-term entries that still lack live support. Continue?'
-    ));
+    return await confirm({
+      title: text('确认清理 grounded 条目', 'Confirm clear grounded entries'),
+      message: text(
+        '这会清理仅由 grounded replay 产生、且还没有 live support 的 short-term 条目。继续吗？',
+        'This clears grounded-only short-term entries that still lack live support. Continue?'
+      ),
+      confirmText: text('继续清理', 'Continue clear'),
+      cancelText: text('取消', 'Cancel'),
+      tone: 'danger',
+    });
   }
   return true;
 }
@@ -1261,7 +1272,7 @@ function buildGroundedActionNotice(response: DreamingActionResponse): string {
 }
 
 async function runGroundedAction(action: DreamingActionKind): Promise<void> {
-  if (!confirmGroundedAction(action)) {
+  if (!await confirmGroundedAction(action)) {
     return;
   }
   groundedActionBusy.value = action;

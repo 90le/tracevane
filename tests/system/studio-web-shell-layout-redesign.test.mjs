@@ -20,10 +20,18 @@ test("shell redesign introduces topbar, context rail, and task-group navigation"
 
   assert.match(routerSource, /path:\s*['\"]\/home['\"]/);
   assert.match(routerSource, /alias:\s*\[?['\"]\/dashboard['\"]/);
+  assert.match(routerSource, /path:\s*['\"]\/chat['\"]/);
+  assert.match(routerSource, /path:\s*['\"]\/agents['\"]/);
+  assert.match(routerSource, /path:\s*['\"]\/channels['\"]/);
+  assert.match(routerSource, /path:\s*['\"]\/cron['\"]/);
+  assert.match(routerSource, /path:\s*['\"]\/system['\"]/);
+  assert.match(routerSource, /path:\s*['\"]\/terminal['\"]/);
 
-  assert.match(uiContentSource, /Home/);
-  assert.match(uiContentSource, /Chat/);
-  assert.match(uiContentSource, /Operate/);
-  assert.match(uiContentSource, /System/);
-  assert.match(uiContentSource, /Terminal/);
+  assert.match(uiContentSource, /to:\s*['\"]\/home['\"]/);
+  assert.match(uiContentSource, /to:\s*['\"]\/chat['\"]/);
+  assert.match(uiContentSource, /to:\s*['\"]\/agents['\"]/);
+  assert.match(uiContentSource, /to:\s*['\"]\/system['\"]/);
+  assert.match(uiContentSource, /to:\s*['\"]\/terminal['\"]/);
+  assert.match(uiContentSource, /to:\s*['\"]\/config['\"]/);
+  assert.match(uiContentSource, /to:\s*['\"]\/skills['\"]/);
 });

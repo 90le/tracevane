@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell system-page">
+  <section class="page-shell system-page system-control-surface">
     <header class="page-header-row">
       <div>
         <p class="eyebrow">System</p>
@@ -15,11 +15,8 @@
       </div>
 
       <div class="page-actions">
-        <button type="button" class="secondary-button" @click="router.push('/system/events')">
-          {{ text('进入事件中心', 'Open event center') }}
-        </button>
-        <button type="button" class="secondary-button" :disabled="controlActionSummary.refreshing" @click="refreshAll">
-          {{ controlActionSummary.refreshLabel }}
+        <button type="button" class="secondary-button" :disabled="loading" @click="refreshAll">
+          {{ loading ? text('刷新中...', 'Refreshing...') : text('刷新诊断', 'Refresh Diagnostics') }}
         </button>
       </div>
     </header>
@@ -33,46 +30,86 @@
       {{ text('基础健康状态已就绪，深诊断仍在加载中…', 'Basic health is ready; deep diagnostics are still loading...') }}
     </div>
 
-    <section class="system-workbench">
-      <aside class="system-sidebar">
-        <SystemSectionRail
-          :title="text('HEALTH', 'HEALTH')"
-          :subtitle="text('当前状态', 'Current Status')"
-          :copy="text('优先看 Gateway、systemd、Node、内存和诊断摘要。', 'Start with Gateway, systemd, Node, memory, and the current diagnostic summary.')"
-          :health-summary="healthSummary"
-          :event-summary-items="eventSummaryItems"
-          :quick-actions="quickActions"
-          @navigate="handleSystemNavigate"
-        />
+    <section class="system-control-grid">
+      <aside class="system-health-strip">
+        <article class="panel-card system-sidebar-panel">
+          <div class="system-sidebar-head">
+            <div>
+              <p class="eyebrow">{{ text('HEALTH', 'HEALTH') }}</p>
+              <h3 class="system-sidebar-title">{{ text('当前状态', 'Current Status') }}</h3>
+              <p class="panel-muted">{{ text('优先看 Gateway、systemd、Node、内存和诊断摘要。', 'Start with Gateway, systemd, Node, memory, and the current diagnostic summary.') }}</p>
+            </div>
+          </div>
 
-        <SystemActionHandoffPanel
-          :title="text('终端联动', 'Terminal Handoff')"
-          :copy="text('系统侧动作交给终端会话执行，确保跳转指向稳定 session 路由。', 'System actions can continue in Terminal with a stable session route handoff.')"
-          :action-label="text('进入终端会话', 'Open terminal session')"
-          :route-label="text('路由', 'Route')"
-          :route-target="terminalHandoff.to"
-          @handoff="openTerminalHandoff"
-        />
+          <div v-if="health" class="system-status-stack">
+            <div class="system-status-row">
+              <StatusPill :label="health.gatewayConnected ? text('Gateway 在线', 'Gateway Online') : text('Gateway 离线', 'Gateway Offline')" :tone="health.gatewayConnected ? 'sage' : 'accent'" />
+              <span class="system-chip">{{ health.serviceState }} / {{ health.serviceSubState }}</span>
+            </div>
+            <div class="system-status-row">
+              <span class="system-chip">Node {{ health.nodeVersion }}</span>
+              <span class="system-chip">{{ health.platform }} / {{ health.arch }}</span>
+            </div>
+            <div class="system-status-row">
+              <span class="system-chip">{{ health.hostname }}</span>
+              <span class="system-chip">{{ text('连接', 'SSE') }} {{ health.sseConnections }}</span>
+            </div>
+          </div>
+
+          <div v-if="diagnostics" class="system-sidebar-summary">
+            <div class="system-summary-item">
+              <span>{{ text('安全审计', 'Security Audit') }}</span>
+              <strong>{{ diagnostics.status.securityCritical }} critical / {{ diagnostics.status.securityWarn }} warn</strong>
+            </div>
+            <div class="system-summary-item">
+              <span>{{ text('Agent / 会话', 'Agents / Sessions') }}</span>
+              <strong>{{ diagnostics.status.agentCount }} / {{ diagnostics.status.sessionCount }}</strong>
+            </div>
+            <div class="system-summary-item">
+              <span>{{ text('更新版本', 'Latest Version') }}</span>
+              <strong>{{ studioRelease.latestVersion || diagnostics.status.updateLatestVersion || text('未知', 'Unknown') }}</strong>
+            </div>
+          </div>
+
+          <div class="system-quick-links">
+            <button type="button" class="secondary-button compact-button" @click="router.push('/terminal')">
+              {{ text('去终端', 'Open Terminal') }}
+            </button>
+            <button type="button" class="secondary-button compact-button" @click="router.push('/cron')">
+              {{ text('去定时任务', 'Open Cron') }}
+            </button>
+          </div>
+        </article>
       </aside>
 
-      <section class="system-stage">
-        <article class="panel-card system-stage-header">
+      <section class="system-main-stage">
+        <article class="panel-card system-topic-rail">
           <div class="system-stage-head">
             <div>
-              <p class="eyebrow">{{ stageHeader.eyebrow }}</p>
-              <h3 class="system-stage-title">{{ stageHeader.title }}</h3>
-              <p class="panel-muted">{{ stageHeader.copy }}</p>
+              <p class="eyebrow">{{ diagnostics?.config.pluginId || 'studio' }}</p>
+              <h3 class="system-stage-title">{{ text('系统工作区', 'System Workspace') }}</h3>
+              <p class="panel-muted">
+                {{ text('右侧不再是文案占位，而是直接查看运行态、Gateway 和 doctor 输出。', 'The right side is no longer placeholder copy; it now shows live runtime, Gateway, and doctor output directly.') }}
+              </p>
             </div>
 
-            <div class="system-stage-facts">
-              <div v-for="fact in stageHeader.facts" :key="fact.label" class="system-stage-fact">
-                <span>{{ fact.label }}</span>
-                <strong>{{ fact.value }}</strong>
+            <div class="system-stage-facts" v-if="health">
+              <div class="system-stage-fact">
+                <span>PID</span>
+                <strong>{{ health.pid }}</strong>
+              </div>
+              <div class="system-stage-fact">
+                <span>{{ text('Gateway 端口', 'Gateway Port') }}</span>
+                <strong>{{ health.gatewayPort }}</strong>
+              </div>
+              <div class="system-stage-fact">
+                <span>{{ text('内存占用', 'Memory Free') }}</span>
+                <strong>{{ formatBytes(health.freeMemoryBytes) }}</strong>
               </div>
             </div>
           </div>
 
-          <nav class="system-stage-tabs">
+          <nav class="system-stage-tabs mobile-stage-tabs">
             <button
               v-for="tab in tabs"
               :key="tab.id"
@@ -87,15 +124,79 @@
           </nav>
         </article>
 
-        <SystemOverviewPanel
-          v-if="activeTab === 'overview'"
-          :health-title="text('快速健康', 'Quick Health')"
-          :health-copy="text('这是最轻量的一层健康摘要，不依赖重型 CLI 诊断。', 'This is the lightest health summary layer and does not depend on heavyweight CLI diagnostics.')"
-          :runtime-title="text('运行摘要', 'Runtime Summary')"
-          :runtime-copy="text('这些值直接来自 `openclaw status --json` 与本地状态文件聚合。', 'These values come from `openclaw status --json` and local state file aggregation.')"
-          :health-cards="overviewCards.healthCards"
-          :runtime-cards="overviewCards.runtimeCards"
-        />
+        <article v-if="activeTab === 'overview'" class="panel-card system-stage-panel">
+          <section class="system-section">
+            <div class="system-section-head">
+              <div>
+                <h3>{{ text('快速健康', 'Quick Health') }}</h3>
+                <p>{{ text('这是最轻量的一层健康摘要，不依赖重型 CLI 诊断。', 'This is the lightest health summary layer and does not depend on heavyweight CLI diagnostics.') }}</p>
+              </div>
+            </div>
+
+            <div v-if="health" class="system-overview-grid">
+              <div class="system-overview-item">
+                <span>{{ text('Gateway', 'Gateway') }}</span>
+                <strong>{{ health.gatewayConnected ? text('在线', 'Online') : text('离线', 'Offline') }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>systemd</span>
+                <strong>{{ health.serviceState }} / {{ health.serviceSubState }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('主机', 'Host') }}</span>
+                <strong>{{ health.hostname }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('Uptime', 'Uptime') }}</span>
+                <strong>{{ formatUptime(health.uptime) }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('CPU', 'CPU') }}</span>
+                <strong>{{ health.cpus }} cores</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('Load', 'Load') }}</span>
+                <strong>{{ formatLoad(health.loadavg) }}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="system-section">
+            <div class="system-section-head">
+              <div>
+                <h3>{{ text('运行摘要', 'Runtime Summary') }}</h3>
+                <p>{{ text('这些值直接来自 `openclaw status --json` 与本地状态文件聚合。', 'These values come from `openclaw status --json` and local state file aggregation.') }}</p>
+              </div>
+            </div>
+
+            <div v-if="diagnostics" class="system-overview-grid">
+              <div class="system-overview-item">
+                <span>{{ text('默认 Agent', 'Default Agent') }}</span>
+                <strong>{{ diagnostics.status.agentsDefaultId || text('未知', 'Unknown') }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('Agent 数量', 'Agent Count') }}</span>
+                <strong>{{ diagnostics.status.agentCount }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('会话数', 'Sessions') }}</span>
+                <strong>{{ diagnostics.status.sessionCount }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('Bootstrap 待处理', 'Bootstrap Pending') }}</span>
+                <strong>{{ diagnostics.status.bootstrapPendingCount }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('安全审计', 'Security Audit') }}</span>
+                <strong>{{ diagnostics.status.securityCritical }} / {{ diagnostics.status.securityWarn }} / {{ diagnostics.status.securityInfo }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('更新通道', 'Updates') }}</span>
+                <strong>{{ diagnostics.status.updateLatestVersion || text('未知', 'Unknown') }}</strong>
+              </div>
+            </div>
+          </section>
+        </article>
 
         <article v-else-if="activeTab === 'release'" class="panel-card system-stage-panel">
           <section class="system-section">
@@ -315,15 +416,11 @@
                 />
               </div>
             </div>
-          </section>
-        </article>
 
-        <article v-else-if="activeTab === 'environment'" class="panel-card system-stage-panel">
-          <section class="system-section">
             <div v-if="diagnostics" class="system-section-head system-section-head-tight">
               <div>
-                <h3>{{ text('设备信任与环境', 'Device Trust and Environment') }}</h3>
-                <p>{{ text('把 helper trust、待批准请求与当前环境状态独立成显式分区，避免继续挤在 bootstrap 面板里。', 'Expose helper trust, pending approvals, and current environment state as a dedicated seam instead of keeping them inside bootstrap.') }}</p>
+                <h3>{{ text('设备信任', 'Device Trust') }}</h3>
+                <p>{{ text('Studio helper 的 operator pairing、自愈开关，以及待批准的浏览器/设备请求。', 'Studio helper operator pairing, self-heal toggle, and pending browser/device approvals.') }}</p>
               </div>
               <div class="system-inline-actions">
                 <button
@@ -392,22 +489,6 @@
                 <span>{{ text('Metadata Repair', 'Metadata Repair') }}</span>
                 <strong>{{ diagnostics.deviceTrust.helper.metadataRepairPending ? text('待修复', 'Pending') : text('正常', 'Healthy') }}</strong>
               </div>
-              <div class="system-overview-item">
-                <span>{{ text('Node', 'Node') }}</span>
-                <strong>{{ diagnostics.runtime.nodeVersion }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('平台', 'Platform') }}</span>
-                <strong>{{ diagnostics.runtime.platform }} / {{ diagnostics.runtime.arch }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('主机名', 'Hostname') }}</span>
-                <strong>{{ diagnostics.runtime.hostname }}</strong>
-              </div>
-              <div class="system-overview-item">
-                <span>{{ text('工作目录', 'Working Directory') }}</span>
-                <strong>{{ diagnostics.runtime.cwd || '-' }}</strong>
-              </div>
             </div>
 
             <div v-if="diagnostics.deviceTrust.notes.length" class="system-callout">
@@ -469,7 +550,7 @@
           </section>
         </article>
 
-        <article v-else-if="activeTab === 'diagnostics'" class="panel-card system-stage-panel">
+        <article v-else class="panel-card system-stage-panel system-raw-inspector">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -518,6 +599,7 @@ import type {
   SystemStudioUpgradeStatusPayload,
 } from '../../../../../types/system';
 import StatusPill from '../../components/StatusPill.vue';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';
 import {
   approveSystemDeviceTrust,
@@ -530,23 +612,8 @@ import {
   repairSystemDeviceTrustHelper,
   startStudioUpgrade,
 } from './api';
-import SystemActionHandoffPanel from './SystemActionHandoffPanel.vue';
-import SystemOverviewPanel from './SystemOverviewPanel.vue';
-import SystemSectionRail from './SystemSectionRail.vue';
-import {
-  buildSystemOverviewCards,
-  buildSystemQuickActions,
-} from './system-overview-recipe';
-import { buildSystemTerminalHandoff } from './system-terminal-handoff';
-import { buildSystemRuntimeViewModel } from './system-runtime-view-model';
-import { buildSystemEventSummary } from './system-event-summary';
-import {
-  buildSystemControlActionSummary,
-  buildSystemHealthSummary,
-  buildSystemStageHeader,
-} from './system-stage-selectors';
 
-type SystemTab = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics' | 'environment';
+type SystemTab = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics';
 
 interface NoticeLike {
   kind: 'success' | 'error';
@@ -555,6 +622,7 @@ interface NoticeLike {
 
 const router = useRouter();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const health = ref<SystemHealthPayload>(normalizeHealth({}));
 const diagnostics = ref<SystemDiagnosticsPayload>(normalizeDiagnostics({}));
@@ -576,84 +644,28 @@ const releaseCheckRunning = ref(false);
 const releaseUpgradeRunning = ref(false);
 
 const releaseBusy = computed(() => releaseCheckRunning.value || releaseUpgradeRunning.value);
-
-const runtimeViewModel = computed(() => buildSystemRuntimeViewModel({
-  studioRelease: studioRelease.value,
-  studioUpgrade: studioUpgrade.value,
-  releaseUpgradeRunning: releaseUpgradeRunning.value,
-  text,
-}));
-
-const studioUpgradeStatusLabel = computed(() => runtimeViewModel.value.studioUpgradeStatusLabel);
-
-const studioUpgradeActionLabel = computed(() => runtimeViewModel.value.studioUpgradeActionLabel);
+const studioUpgradeStatusLabel = computed(() => {
+  if (studioUpgrade.value.running) return text('升级中', 'Running');
+  if (studioUpgrade.value.status === 'failed') return text('失败', 'Failed');
+  if (studioUpgrade.value.status === 'succeeded') return text('已完成', 'Completed');
+  if (studioRelease.value.updateAvailable) return text('可升级', 'Update available');
+  return text('已最新', 'Up to date');
+});
+const studioUpgradeActionLabel = computed(() => {
+  if (releaseUpgradeRunning.value) return text('处理中...', 'Working...');
+  if (studioUpgrade.value.running) return text('刷新状态', 'Refresh status');
+  if (studioUpgrade.value.status === 'failed') return text('重试升级', 'Retry upgrade');
+  if (studioRelease.value.updateAvailable) return text('一键升级', 'Upgrade now');
+  return text('刷新状态', 'Refresh status');
+});
 
 const tabs = computed(() => [
   { id: 'bootstrap' as const, icon: '⚑', label: text('引导', 'Bootstrap') },
   { id: 'overview' as const, icon: '◉', label: text('概览', 'Overview') },
   { id: 'release' as const, icon: '⭮', label: text('升级', 'Release') },
   { id: 'gateway' as const, icon: '⛭', label: text('Gateway', 'Gateway') },
-  { id: 'environment' as const, icon: '⌂', label: text('环境', 'Environment') },
   { id: 'diagnostics' as const, icon: '⌘', label: text('诊断输出', 'Diagnostics') },
 ]);
-
-const controlActionSummary = computed(() => buildSystemControlActionSummary({
-  loading: loading.value,
-  diagnosticsLoading: diagnosticsLoading.value,
-  text,
-}));
-
-const healthSummary = computed(() => buildSystemHealthSummary({
-  health: health.value,
-  text,
-}));
-
-const stageHeader = computed(() => buildSystemStageHeader({
-  pluginId: diagnostics.value?.config.pluginId || 'studio',
-  health: health.value,
-  text,
-  formatBytes,
-}));
-
-const quickActions = computed(() => buildSystemQuickActions(text));
-
-const terminalHandoff = computed(() => buildSystemTerminalHandoff({
-  context: {
-    fromModule: 'system',
-    fromRoute: '/system',
-    triggerType: 'system-control',
-    triggerLabel: text('系统侧动作交接', 'System handoff'),
-    targetEntity: activeTab.value,
-    recommendedCommand: diagnostics.value ? 'studio diagnostics collect' : '',
-    relatedEventId: null,
-  },
-}));
-
-const eventSummaryItems = computed(() => buildSystemEventSummary({
-  diagnostics: diagnostics.value,
-  studioRelease: studioRelease.value,
-  text,
-}));
-
-const overviewCards = computed(() => buildSystemOverviewCards({
-  health: health.value,
-  diagnostics: diagnostics.value,
-  text,
-  formatUptime,
-  formatLoad,
-}));
-
-function openTerminalHandoff(): void {
-  router.push(terminalHandoff.value.to);
-}
-
-function handleSystemNavigate(to: '/terminal' | '/cron'): void {
-  if (to === '/terminal') {
-    openTerminalHandoff();
-    return;
-  }
-  router.push(to);
-}
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -968,14 +980,16 @@ async function handleStudioUpgradeAction(): Promise<void> {
   }
 
   const targetVersion = studioRelease.value.latestVersion || '';
-  const confirmed = typeof window !== 'undefined'
-    ? window.confirm(
-      text(
-        `确认升级到 v${targetVersion}？升级期间 Gateway 可能会重启。`,
-        `Upgrade to v${targetVersion}? Gateway may restart during the process.`,
-      ),
-    )
-    : false;
+  const confirmed = await confirm({
+    title: text('确认升级 Studio', 'Confirm Studio upgrade'),
+    message: text(
+      `确认升级到 v${targetVersion}？升级期间 Gateway 可能会重启。`,
+      `Upgrade to v${targetVersion}? Gateway may restart during the process.`,
+    ),
+    confirmText: text('确认升级', 'Upgrade now'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
+  });
   if (!confirmed) {
     return;
   }
@@ -1146,24 +1160,26 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.system-page {
+.system-page,
+.system-control-surface {
   gap: 18px;
 }
 
-.system-workbench {
+.system-control-grid {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
 
-.system-sidebar,
-.system-stage {
+.system-health-strip,
+.system-main-stage {
   min-width: 0;
 }
 
 .system-sidebar-panel,
 .system-stage-header,
+.system-topic-rail,
 .system-stage-panel {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1287,7 +1303,8 @@ onMounted(async () => {
   color: var(--text);
 }
 
-.system-stage-header {
+.system-stage-header,
+.system-topic-rail {
   padding: 18px 18px 0 18px;
 }
 
@@ -1389,8 +1406,22 @@ onMounted(async () => {
 }
 
 @media (max-width: 1180px) {
-  .system-workbench {
+  .system-control-grid {
     grid-template-columns: 1fr;
+  }
+
+  .system-main-stage {
+    order: -1;
+  }
+
+  .system-health-strip {
+    order: 1;
+  }
+
+  .system-topic-rail {
+    position: sticky;
+    top: 0;
+    z-index: 2;
   }
 }
 
@@ -1408,6 +1439,30 @@ onMounted(async () => {
 
   .system-stage-facts {
     justify-content: flex-start;
+  }
+
+  .system-stage-tabs.mobile-stage-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 12px;
+    margin-inline: -4px;
+    padding-inline: 4px;
+    scrollbar-width: thin;
+  }
+
+  .system-stage-tabs.mobile-stage-tabs::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .system-stage-tabs.mobile-stage-tabs::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+  }
+
+  .system-stage-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 }
 </style>

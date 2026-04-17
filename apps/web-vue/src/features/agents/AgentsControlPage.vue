@@ -53,7 +53,7 @@
         </div>
 
         <div class="agents-overview-quick-edit">
-          <div class="agents-stage-task-head">
+          <div class="agents-stage-task-head operate-stage-task-head">
             <div>
               <p class="eyebrow">{{ text('QUICK EDIT', 'QUICK EDIT') }}</p>
               <h3>{{ text('高频快改', 'High-frequency quick edits') }}</h3>

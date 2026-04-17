@@ -18,5 +18,25 @@ const terminalConsolePage = read(
 
 test("system and terminal pages keep dedicated surface contracts", () => {
   assert.match(systemControlPage, /system-control-surface/);
+  assert.match(systemControlPage, /system-health-strip/);
+  assert.match(systemControlPage, /system-control-grid/);
+  assert.match(systemControlPage, /system-main-stage/);
+  assert.match(systemControlPage, /system-raw-inspector/);
+  assert.match(
+    systemControlPage,
+    /@media \(max-width: 1180px\) \{[\s\S]*\.system-main-stage \{[\s\S]*order:\s*-1;/,
+  );
+  assert.match(
+    systemControlPage,
+    /@media \(max-width: 880px\) \{[\s\S]*\.system-stage-tabs\.mobile-stage-tabs \{[\s\S]*overflow-x:\s*auto/,
+  );
+
   assert.match(terminalConsolePage, /terminal-workspace-surface/);
+  assert.match(terminalConsolePage, /terminal-workspace-grid/);
+  assert.match(terminalConsolePage, /terminal-main-canvas/);
+  assert.match(terminalConsolePage, /terminal-side-utilities/);
+  assert.match(
+    terminalConsolePage,
+    /@media \(max-width: 1120px\) \{[\s\S]*\.terminal-main-canvas \{[\s\S]*order:\s*-1;/,
+  );
 });

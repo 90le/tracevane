@@ -1,6 +1,6 @@
 <template>
   <section v-if="agentId" class="agents-stage-view">
-    <div class="agents-stage-task-head">
+    <div class="agents-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ agentId }}</p>
         <h3>{{ text('工作区文档', 'Workspace Docs') }}</h3>

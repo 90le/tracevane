@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell terminal-page">
+  <section class="page-shell terminal-page terminal-workspace-surface">
     <header class="page-header-row">
       <div>
         <p class="eyebrow">Terminal</p>
@@ -25,8 +25,8 @@
       {{ noticeMessage.text }}
     </div>
 
-    <div class="terminal-layout">
-      <aside class="terminal-sidebar">
+    <div class="terminal-workspace-grid">
+      <aside class="terminal-side-utilities">
         <section class="terminal-card terminal-card-runtime">
           <div class="terminal-card-head">
             <h3>{{ text('运行状态', 'Runtime') }}</h3>
@@ -228,8 +228,8 @@
         </section>
       </aside>
 
-      <section class="terminal-main">
-        <header class="terminal-toolbar">
+      <section class="terminal-main-canvas">
+        <header class="terminal-toolbar terminal-toolbar-strip">
           <div class="terminal-toolbar-left">
             <span class="status-pill" :class="connected ? 'tone-sage' : 'tone-neutral'">
               <span class="status-pill-dot"></span>
@@ -1085,7 +1085,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.terminal-page {
+.terminal-page,
+.terminal-workspace-surface {
   gap: 16px;
   min-height: calc(100dvh - 180px);
   display: grid;
@@ -1093,7 +1094,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.terminal-layout {
+.terminal-workspace-grid {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   gap: 14px;
@@ -1102,7 +1103,7 @@ onBeforeUnmount(() => {
   align-items: stretch;
 }
 
-.terminal-sidebar {
+.terminal-side-utilities {
   display: grid;
   gap: 10px;
   align-content: start;
@@ -1314,7 +1315,7 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-.terminal-main {
+.terminal-main-canvas {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
@@ -1326,7 +1327,8 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-soft);
 }
 
-.terminal-toolbar {
+.terminal-toolbar,
+.terminal-toolbar-strip {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1381,7 +1383,7 @@ onBeforeUnmount(() => {
   overflow-y: auto !important;
 }
 
-:global(html[data-theme="light"]) .terminal-main {
+:global(html[data-theme="light"]) .terminal-main-canvas {
   background: linear-gradient(180deg, #112233, #0f1419 18%, #0f1419 100%);
 }
 
@@ -1410,13 +1412,23 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1120px) {
-  .terminal-layout {
+  .terminal-workspace-grid {
     grid-template-columns: minmax(0, 1fr);
     height: auto;
     min-height: 0;
   }
 
-  .terminal-page {
+  .terminal-main-canvas {
+    order: -1;
+    min-height: 62dvh;
+  }
+
+  .terminal-side-utilities {
+    order: 1;
+  }
+
+  .terminal-page,
+  .terminal-workspace-surface {
     min-height: 0;
     overflow: visible;
   }

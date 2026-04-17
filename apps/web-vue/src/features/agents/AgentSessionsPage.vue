@@ -1,37 +1,6 @@
 <template>
-  <DialogRoot :open="confirmOpen" @update:open="handleConfirmOpenChange">
-    <DialogPortal>
-      <DialogOverlay class="agents-confirm-mask" />
-      <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
-        <section v-if="confirmOpen && confirmState" class="agents-confirm-dialog">
-          <header class="agents-confirm-head">
-            <div class="agents-confirm-copy">
-              <DialogTitle as-child>
-                <strong>{{ confirmState.title }}</strong>
-              </DialogTitle>
-              <DialogDescription as-child>
-                <span>{{ confirmState.description }}</span>
-              </DialogDescription>
-            </div>
-            <DialogClose as-child>
-              <button type="button" class="agents-confirm-close" :aria-label="text('关闭确认窗口', 'Close confirmation dialog')">×</button>
-            </DialogClose>
-          </header>
-          <footer class="agents-confirm-actions">
-            <button type="button" class="agents-confirm-secondary" :disabled="sessionBusy" @click="closeConfirm">
-              {{ text('取消', 'Cancel') }}
-            </button>
-            <button type="button" class="agents-confirm-primary" :disabled="sessionBusy" @click="confirmAction">
-              {{ sessionBusy ? text('处理中...', 'Working...') : confirmState.confirmLabel }}
-            </button>
-          </footer>
-        </section>
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
-
   <section v-if="detail && agentId" class="agents-stage-view">
-    <div class="agents-stage-task-head">
+    <div class="agents-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ agentId }}</p>
         <h3>{{ text('会话管理', 'Session Management') }}</h3>
@@ -101,11 +70,10 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { useRoute, useRouter } from 'vue-router';
 import type { AgentDetailPayload, AgentSessionSummary } from '../../../../../types/agents';
+import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';
-import { encodeChatSessionRef } from '../chat/session-ref';
 import { clearAgentSessions, deleteAgentSession, fetchAgentDetail } from './api';
 
 defineOptions({ name: 'AgentSessionsPage' });
@@ -113,15 +81,13 @@ defineOptions({ name: 'AgentSessionsPage' });
 const route = useRoute();
 const router = useRouter();
 const { text } = useLocalePreference();
+const { confirm } = useConfirmDialog();
 
 const agentId = computed(() => String(route.params.agentId || ''));
 const detail = ref<AgentDetailPayload | null>(null);
 const sessionBusy = ref(false);
 const errorMessage = ref('');
 const noticeMessage = ref('');
-const confirmOpen = ref(false);
-const confirmState = ref<{ title: string; description: string; confirmLabel: string } | null>(null);
-const confirmActionHandler = ref<(() => Promise<void>) | null>(null);
 
 function formatDate(value: string | null): string {
   if (!value) return text('暂无', 'None yet');
@@ -133,38 +99,7 @@ function formatDate(value: string | null): string {
 function openChatSession(session: AgentSessionSummary): void {
   const sessionRef = session.sessionId || session.routeKey;
   if (!sessionRef) return;
-  void router.push(`/chat/s/${encodeChatSessionRef(sessionRef)}`);
-}
-
-function handleConfirmOpenChange(open: boolean): void {
-  confirmOpen.value = open;
-  if (!open) {
-    confirmState.value = null;
-    confirmActionHandler.value = null;
-  }
-}
-
-function closeConfirm(): void {
-  confirmOpen.value = false;
-  confirmState.value = null;
-  confirmActionHandler.value = null;
-}
-
-function openConfirm(options: { title: string; description: string; confirmLabel: string; action: () => Promise<void> }): void {
-  confirmState.value = {
-    title: options.title,
-    description: options.description,
-    confirmLabel: options.confirmLabel,
-  };
-  confirmActionHandler.value = options.action;
-  confirmOpen.value = true;
-}
-
-async function confirmAction(): Promise<void> {
-  if (!confirmActionHandler.value) return;
-  const action = confirmActionHandler.value;
-  closeConfirm();
-  await action();
+  void router.push(`/chat/s/${encodeURIComponent(sessionRef)}`);
 }
 
 async function loadDetail(): Promise<void> {
@@ -176,58 +111,62 @@ async function loadDetail(): Promise<void> {
 
 async function clearAllSessions(): Promise<void> {
   if (!agentId.value) return;
-  openConfirm({
-    title: text('清空全部会话', 'Clear all sessions'),
-    description: text(
+  const ok = await confirm({
+    title: text('确认清空全部会话', 'Confirm clear all sessions'),
+    message: text(
       `确定清空 Agent "${agentId.value}" 的全部会话吗？这会删除当前会话索引和会话日志文件。`,
       `Clear all sessions for "${agentId.value}"? This removes the session index and session log files.`
     ),
-    confirmLabel: text('确认清空', 'Clear sessions'),
-    action: async () => {
-      sessionBusy.value = true;
-      errorMessage.value = '';
-      noticeMessage.value = '';
-      try {
-        const response = await clearAgentSessions(agentId.value);
-        if (response.detail) {
-          detail.value = response.detail;
-        }
-        noticeMessage.value = response.message;
-      } catch (error) {
-        errorMessage.value = error instanceof Error ? error.message : text('清空全部会话失败。', 'Failed to clear all sessions.');
-      } finally {
-        sessionBusy.value = false;
-      }
-    },
+    confirmText: text('确认清空', 'Clear all'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
   });
+  if (!ok) return;
+
+  sessionBusy.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    const response = await clearAgentSessions(agentId.value);
+    if (response.detail) {
+      detail.value = response.detail;
+    }
+    noticeMessage.value = response.message;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : text('清空全部会话失败。', 'Failed to clear all sessions.');
+  } finally {
+    sessionBusy.value = false;
+  }
 }
 
 async function removeSession(sessionId: string): Promise<void> {
   if (!agentId.value || !sessionId) return;
-  openConfirm({
-    title: text('删除会话', 'Delete session'),
-    description: text(
+  const ok = await confirm({
+    title: text('确认删除会话', 'Confirm delete session'),
+    message: text(
       '确定删除这条会话吗？该操作不可恢复。',
       'Delete this session? This action cannot be undone.'
     ),
-    confirmLabel: text('确认删除', 'Delete session'),
-    action: async () => {
-      sessionBusy.value = true;
-      errorMessage.value = '';
-      noticeMessage.value = '';
-      try {
-        const response = await deleteAgentSession(agentId.value, sessionId);
-        if (response.detail) {
-          detail.value = response.detail;
-        }
-        noticeMessage.value = response.message;
-      } catch (error) {
-        errorMessage.value = error instanceof Error ? error.message : text('删除会话失败。', 'Failed to delete session.');
-      } finally {
-        sessionBusy.value = false;
-      }
-    },
+    confirmText: text('删除', 'Delete'),
+    cancelText: text('取消', 'Cancel'),
+    tone: 'danger',
   });
+  if (!ok) return;
+
+  sessionBusy.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    const response = await deleteAgentSession(agentId.value, sessionId);
+    if (response.detail) {
+      detail.value = response.detail;
+    }
+    noticeMessage.value = response.message;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : text('删除会话失败。', 'Failed to delete session.');
+  } finally {
+    sessionBusy.value = false;
+  }
 }
 
 watch(

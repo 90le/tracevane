@@ -1,218 +1,172 @@
 <template>
   <div v-if="errorMessage" class="status-banner status-banner-error">{{ errorMessage }}</div>
-  <div v-else-if="loading && !summary" class="status-banner">{{ text('正在加载实时数据…', 'Loading live dashboard data...') }}</div>
+  <div v-else-if="loading && !summary" class="status-banner">{{ text('正在加载首页控制面数据…', 'Loading home control surface data...') }}</div>
 
-  <motion.section class="dashboard-workbench" v-bind="pageSurfaceReveal">
-    <motion.header class="dashboard-hero-stage" v-bind="pageMastheadReveal">
-      <div class="dashboard-hero-copy">
-        <p class="eyebrow">Dashboard</p>
-        <h2 class="page-title">{{ text('管理控制台恢复总览', 'Management Console Recovery Overview') }}</h2>
-        <p class="dashboard-page-copy">
-          {{ text('把恢复状态、配置入口和关键工作流收束到一个更像 Studio 的控制面。', 'Bring recovery status, configuration entry points, and key workstreams into a dashboard that feels like a Studio surface.') }}
+  <motion.section class="home-control-surface" v-bind="pageSurfaceReveal">
+    <motion.header class="home-situation-band" v-bind="pageMastheadReveal">
+      <div class="home-situation-copy">
+        <p class="eyebrow">Home</p>
+        <h2 class="page-title">{{ text('Studio 总控首页', 'Studio Home Control Surface') }}</h2>
+        <p class="home-page-copy">
+          {{ text('把运行态、风险与待处理事项收束在同一主舞台，先看态势再进入对应域。', 'Bring runtime posture, risk, and pending work into one primary stage so operators can read the situation first, then act by domain.') }}
         </p>
       </div>
 
-      <div class="dashboard-meter-ribbon">
-        <article v-for="metric in dashboardMetrics" :key="metric.eyebrow" class="dashboard-meter">
-          <span class="dashboard-meter__eyebrow">{{ metric.eyebrow }}</span>
-          <strong class="dashboard-meter__value">{{ metric.value }}</strong>
-          <p class="dashboard-meter__label">{{ metric.label }}</p>
-          <span class="dashboard-meter__note">{{ metric.note }}</span>
+      <div class="home-situation-meters">
+        <article v-for="metric in homeSituationMetrics" :key="metric.eyebrow" class="home-situation-meter">
+          <span class="home-situation-meter__eyebrow">{{ metric.eyebrow }}</span>
+          <strong class="home-situation-meter__value">{{ metric.value }}</strong>
+          <p class="home-situation-meter__label">{{ metric.label }}</p>
+          <span class="home-situation-meter__note">{{ metric.note }}</span>
         </article>
       </div>
     </motion.header>
 
-    <motion.section class="dashboard-action-belt" v-bind="pageSurfaceReveal">
-      <div class="dashboard-action-belt__copy">
-        <p class="dashboard-kicker">{{ text('CONTROL SURFACE', 'CONTROL SURFACE') }}</p>
-        <h3>{{ text('先判断系统是否稳，再从入口带进入具体配置域。', 'Read system stability first, then move into the right configuration domain from the action belt.') }}</h3>
-      </div>
-
-      <div class="dashboard-status-strip">
-        <article
-          v-for="chip in dashboardStatusChips"
-          :key="chip.label"
-          class="dashboard-status-chip"
-          :class="`tone-${chip.tone}`"
-        >
-          <span class="dashboard-status-chip__label">{{ chip.label }}</span>
-          <strong>{{ chip.value }}</strong>
-        </article>
-      </div>
-
-      <div class="dashboard-command-actions">
-        <RouterLink
-          v-for="action in dashboardQuickActions"
-          :key="action.to"
-          :to="action.to"
-          class="dashboard-command-link"
-        >
-          <div class="dashboard-command-link__copy">
-            <span class="dashboard-command-link__eyebrow">{{ action.eyebrow }}</span>
-            <strong>{{ action.label }}</strong>
-          </div>
-          <span class="dashboard-command-link__note">{{ action.copy }}</span>
-        </RouterLink>
-      </div>
-    </motion.section>
-
-    <section class="dashboard-overview-river">
-      <div class="dashboard-section-heading dashboard-section-heading-row">
-        <div>
-          <p class="eyebrow">{{ text('Domain Snapshot', 'Domain Snapshot') }}</p>
-          <h3>{{ text('模块状态河流', 'Domain River') }}</h3>
-        </div>
-        <p class="dashboard-section-copy">
-          {{ text('用连续的流式行块呈现模块状态，而不是再做一面双栏卡片墙。', 'Use continuous surfaced rows for domain state instead of another split card wall.') }}
-        </p>
-      </div>
-
-      <div class="dashboard-domain-stream__list">
-        <RouterLink
-          v-for="domain in dashboardDomainCards"
-          :key="domain.key"
-          :to="domain.to"
-          class="dashboard-domain-row"
-          :class="`tone-${domain.tone}`"
-        >
-          <div class="dashboard-domain-row__lead">
-            <span class="dashboard-domain-row__eyebrow">{{ domain.kicker }}</span>
-            <h4>{{ domain.label }}</h4>
-          </div>
-          <strong class="dashboard-domain-row__value">{{ domain.value }}</strong>
-          <p class="dashboard-domain-row__note">{{ domain.note }}</p>
-          <span class="dashboard-domain-row__state">{{ domain.state }}</span>
-        </RouterLink>
-      </div>
-    </section>
-
-    <section class="dashboard-signal-runway">
-      <div class="dashboard-runway-grid">
-        <section class="dashboard-runtime-band">
-          <div class="dashboard-section-heading">
-            <div>
-              <p class="eyebrow">{{ text('Runtime Transport', 'Runtime Transport') }}</p>
-              <h3>{{ transportModeLabel }}</h3>
-            </div>
-          </div>
-
-          <div class="dashboard-fact-tape">
-            <div class="dashboard-fact">
-              <span>{{ text('入口', 'Entry') }}</span>
-              <strong>{{ summary?.transport.entryUrl || '--' }}</strong>
-            </div>
-            <div class="dashboard-fact">
-              <span>{{ text('健康检查', 'Health') }}</span>
-              <strong>{{ summary?.transport.healthUrl || '--' }}</strong>
-            </div>
-            <div class="dashboard-fact">
-              <span>Gateway</span>
-              <strong>{{ summary?.gateway.url || '--' }}</strong>
-            </div>
-            <div class="dashboard-fact">
-              <span>{{ text('端口映射', 'Port map') }}</span>
-              <strong>{{ summary ? `${summary.transport.gatewayPort} / ${summary.transport.standalonePort}` : '--' }}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section class="dashboard-release-band">
-          <div class="dashboard-section-heading">
-            <div>
-              <p class="eyebrow">{{ text('Release Pulse', 'Release Pulse') }}</p>
-              <h3>{{ text('版本与系统脉冲', 'Release and System Pulse') }}</h3>
-            </div>
-          </div>
-
-          <div class="dashboard-release-band__summary">
-            <div class="dashboard-release-value">
-              <span>{{ text('当前版本', 'Current version') }}</span>
-              <strong>v{{ summary?.release.currentVersion || '--' }}</strong>
-            </div>
-            <div class="dashboard-release-copy">
-              <p>{{ text('最新版本', 'Latest version') }}: {{ summary?.release.latestVersion ? `v${summary.release.latestVersion}` : '--' }}</p>
-              <p>{{ text('升级状态', 'Upgrade state') }}: {{ releaseStatusLabel }}</p>
-              <p v-if="summary?.release.targetVersion">{{ text('目标版本', 'Target') }}: v{{ summary.release.targetVersion }}</p>
-              <p v-if="summary?.release.source">{{ text('版本源', 'Source') }}: {{ summary.release.source }}</p>
-            </div>
-          </div>
-
-          <div class="dashboard-signal-ribbon">
-            <article v-for="signal in dashboardSystemSignals" :key="signal.label" class="dashboard-signal">
-              <span>{{ signal.label }}</span>
-              <strong>{{ signal.value }}</strong>
-              <p>{{ signal.detail }}</p>
-            </article>
-          </div>
-        </section>
-      </div>
-
-      <section class="dashboard-followup-strip">
-        <div class="dashboard-section-heading dashboard-section-heading-row">
+    <section class="home-risk-stage">
+      <div class="home-risk-stage__main">
+        <div class="home-section-heading home-section-heading-row">
           <div>
-            <p class="eyebrow">Follow-up</p>
-            <h3>{{ text('继续处理入口', 'Continue handling') }}</h3>
+            <p class="eyebrow">{{ text('Control Focus', 'Control Focus') }}</p>
+            <h3>{{ text('风险与待处理', 'Risks and pending') }}</h3>
           </div>
-          <p class="dashboard-section-copy">
-            {{ text('把刚接入的系统事件与终端恢复摘要直接变成首页可继续操作的入口。', 'Turn newly wired system events and terminal recovery summaries into direct follow-up entry points on the dashboard.') }}
+          <p class="home-section-copy">
+            {{ text('把 Gateway、Bootstrap、Release 与本地配对状态作为总控首页主舞台。', 'Use gateway, bootstrap, release, and local trust pairing as the central risk stage for Home.') }}
           </p>
         </div>
 
-        <div class="dashboard-followup-grid">
-          <RouterLink to="/system/events" class="dashboard-followup-card tone-partial">
-            <span class="dashboard-followup-card__eyebrow">System Events</span>
-            <strong>{{ text('系统事件中心', 'System event center') }}</strong>
-            <p>
-              {{ text('失败', 'Failures') }} {{ summary?.events.recentFailures ?? '--' }} ·
-              {{ text('审计', 'Audit') }} {{ summary?.events.pendingAuditItems ?? '--' }} ·
-              {{ text('恢复', 'Recoveries') }} {{ summary?.events.recentRecoveries ?? '--' }}
-            </p>
-            <span class="dashboard-followup-card__note">
-              {{ summary?.events.latestFailureTitle || summary?.events.latestAuditTitle || summary?.events.latestRecoveryTitle || text('打开系统事件时间线继续处理。', 'Open the event timeline to continue handling.') }}
-            </span>
-          </RouterLink>
+        <div class="home-risk-chip-strip">
+          <article
+            v-for="chip in dashboardStatusChips"
+            :key="chip.label"
+            class="home-risk-chip"
+            :class="`tone-${chip.tone}`"
+          >
+            <span class="home-risk-chip__label">{{ chip.label }}</span>
+            <strong>{{ chip.value }}</strong>
+          </article>
+        </div>
 
-          <RouterLink to="/terminal" class="dashboard-followup-card tone-partial">
-            <span class="dashboard-followup-card__eyebrow">Terminal Recovery</span>
-            <strong>{{ text('终端恢复工作台', 'Terminal recovery workspace') }}</strong>
-            <p>
-              {{ text('可恢复', 'Recoverable') }} {{ summary?.terminalWorkspace.recoverableSessions ?? '--' }} ·
-              {{ text('运行中', 'Running') }} {{ summary?.terminalWorkspace.runningSessions ?? '--' }} ·
-              {{ text('已分离', 'Detached') }} {{ summary?.terminalWorkspace.detachedSessions ?? '--' }}
-            </p>
-            <span class="dashboard-followup-card__note">
-              {{ summary?.terminalWorkspace.latestError || summary?.terminalWorkspace.latestCommandHint || summary?.terminalWorkspace.latestSessionTitle || text('打开终端工作台恢复最近会话。', 'Open the terminal workspace to resume the latest session.') }}
-            </span>
+        <div class="home-risk-stream">
+          <RouterLink
+            v-for="domain in dashboardDomainCards"
+            :key="domain.key"
+            :to="domain.to"
+            class="home-risk-row"
+            :class="`tone-${domain.tone}`"
+          >
+            <div class="home-risk-row__lead">
+              <span class="home-risk-row__eyebrow">{{ domain.kicker }}</span>
+              <h4>{{ domain.label }}</h4>
+            </div>
+            <strong class="home-risk-row__value">{{ domain.value }}</strong>
+            <p class="home-risk-row__note">{{ domain.note }}</p>
+            <span class="home-risk-row__state">{{ domain.state }}</span>
           </RouterLink>
+        </div>
+      </div>
+
+      <aside class="home-risk-stage__side">
+        <h4>{{ text('快速动作', 'Quick actions') }}</h4>
+        <RouterLink
+          v-for="action in homeQuickActions"
+          :key="action.to"
+          :to="action.to"
+          class="home-quick-action"
+        >
+          <div class="home-quick-action__copy">
+            <span class="home-quick-action__eyebrow">{{ action.eyebrow }}</span>
+            <strong>{{ action.label }}</strong>
+          </div>
+          <span class="home-quick-action__note">{{ action.copy }}</span>
+        </RouterLink>
+      </aside>
+    </section>
+
+    <section class="home-resource-grid">
+      <section class="home-resource-panel">
+        <div class="home-section-heading">
+          <div>
+            <p class="eyebrow">{{ text('Runtime Summary', 'Runtime Summary') }}</p>
+            <h3>{{ transportModeLabel }}</h3>
+          </div>
+        </div>
+
+        <div class="home-fact-tape">
+          <div class="home-fact">
+            <span>{{ text('入口', 'Entry') }}</span>
+            <strong>{{ summary?.transport.entryUrl || '--' }}</strong>
+          </div>
+          <div class="home-fact">
+            <span>{{ text('健康检查', 'Health') }}</span>
+            <strong>{{ summary?.transport.healthUrl || '--' }}</strong>
+          </div>
+          <div class="home-fact">
+            <span>Gateway</span>
+            <strong>{{ summary?.gateway.url || '--' }}</strong>
+          </div>
+          <div class="home-fact">
+            <span>{{ text('端口映射', 'Port map') }}</span>
+            <strong>{{ summary ? `${summary.transport.gatewayPort} / ${summary.transport.standalonePort}` : '--' }}</strong>
+          </div>
         </div>
       </section>
 
-      <section class="dashboard-track-strip">
-        <div class="dashboard-section-heading dashboard-section-heading-row">
+      <section class="home-resource-panel">
+        <div class="home-section-heading">
           <div>
-            <p class="eyebrow">{{ text('Parallel Workstreams', 'Parallel Workstreams') }}</p>
-            <h3>{{ text('恢复轨道', 'Recovery Tracks') }}</h3>
+            <p class="eyebrow">{{ text('Release Summary', 'Release Summary') }}</p>
+            <h3>{{ text('资源摘要与系统脉冲', 'Resource summary and pulse') }}</h3>
           </div>
-          <p class="dashboard-section-copy">
-            {{ text('把恢复任务压成一条清晰的工作轨道，而不是再堆一组小卡片。', 'Compress recovery work into a clear runway instead of another row of small cards.') }}
-          </p>
         </div>
 
-        <div class="dashboard-track-list">
-          <article
-            v-for="track in parallelTracks"
-            :key="track.name"
-            class="dashboard-track-item"
-            :class="`tone-${track.tone}`"
-          >
-            <div class="dashboard-track-item__body">
-              <strong>{{ track.name }}</strong>
-              <p>{{ track.summary }}</p>
-            </div>
-            <span>{{ track.state }}</span>
+        <div class="home-release-summary">
+          <div class="home-release-value">
+            <span>{{ text('当前版本', 'Current version') }}</span>
+            <strong>v{{ summary?.release.currentVersion || '--' }}</strong>
+          </div>
+          <div class="home-release-copy">
+            <p>{{ text('最新版本', 'Latest version') }}: {{ summary?.release.latestVersion ? `v${summary.release.latestVersion}` : '--' }}</p>
+            <p>{{ text('升级状态', 'Upgrade state') }}: {{ releaseStatusLabel }}</p>
+            <p v-if="summary?.release.targetVersion">{{ text('目标版本', 'Target') }}: v{{ summary.release.targetVersion }}</p>
+            <p v-if="summary?.release.source">{{ text('版本源', 'Source') }}: {{ summary.release.source }}</p>
+          </div>
+        </div>
+
+        <div class="home-resource-signals">
+          <article v-for="signal in dashboardSystemSignals" :key="signal.label" class="home-resource-signal">
+            <span>{{ signal.label }}</span>
+            <strong>{{ signal.value }}</strong>
+            <p>{{ signal.detail }}</p>
           </article>
         </div>
       </section>
+    </section>
+
+    <section class="home-recent-stream">
+      <div class="home-section-heading home-section-heading-row">
+        <div>
+          <p class="eyebrow">{{ text('Recent Changes', 'Recent Changes') }}</p>
+          <h3>{{ text('最近变化流', 'Recent stream') }}</h3>
+        </div>
+        <p class="home-section-copy">
+          {{ text('保留最近域状态变化作为首页收尾，支持继续追踪。', 'Keep a short stream of recent domain state shifts as the home tail signal.') }}
+        </p>
+      </div>
+
+      <div class="home-track-list">
+        <article
+          v-for="track in homeRecentTracks"
+          :key="track.name"
+          class="home-track-item"
+          :class="`tone-${track.tone}`"
+        >
+          <div class="home-track-item__body">
+            <strong>{{ track.name }}</strong>
+            <p>{{ track.summary }}</p>
+          </div>
+          <span>{{ track.state }}</span>
+        </article>
+      </div>
     </section>
   </motion.section>
 </template>
@@ -224,7 +178,6 @@ import { useLocalePreference } from '../shared/locale';
 import { fetchDashboardSummary, subscribeDashboardSummary } from '../features/dashboard/api';
 import type { DashboardDomainSummary, DashboardSummaryPayload } from '../../../../types/dashboard';
 import { pageMastheadReveal, pageSurfaceReveal } from '../shared/motion';
-import { buildDashboardOverviewSignals, buildDashboardQuickActions } from '../features/dashboard/overview-recipe';
 
 type DashboardChipTone = 'ready' | 'accent' | 'danger' | 'neutral';
 type DashboardDomainTone = 'ready' | 'partial' | 'planned';
@@ -285,13 +238,20 @@ const helperStatusLabel = computed(() => {
     : text('待配对', 'Pending');
 });
 
-function domainStateLabel(status: DashboardDomainSummary['status']): string {
+function domainStateLabel(status: DashboardDomainSummary['status'] | string): string {
   if (status === 'ready') return text('就绪', 'Ready');
   if (status === 'partial') return text('进行中', 'In Progress');
   return text('规划中', 'Planned');
 }
 
-function fallbackDomainLabel(key: DashboardDomainSummary['key']): string {
+function normalizeDomainTone(status: DashboardDomainSummary['status'] | string): DashboardDomainTone {
+  if (status === 'ready' || status === 'partial' || status === 'planned') {
+    return status;
+  }
+  return 'planned';
+}
+
+function fallbackDomainLabel(key: string): string {
   switch (key) {
     case 'agents':
       return text('Agent', 'Agents');
@@ -310,6 +270,10 @@ function fallbackDomainLabel(key: DashboardDomainSummary['key']): string {
     default:
       return key;
   }
+}
+
+function resolveDomainRoute(key: string): string {
+  return dashboardRouteMap[key as DashboardDomainSummary['key']] ?? '/system';
 }
 
 function formatDateTime(value: string): string {
@@ -366,7 +330,7 @@ const dashboardStatusChips = computed(() => {
   ];
 });
 
-const dashboardMetrics = computed(() => {
+const homeSituationMetrics = computed(() => {
   const payload = summary.value;
   if (!payload) {
     return [
@@ -406,7 +370,44 @@ const dashboardMetrics = computed(() => {
   ];
 });
 
-const dashboardQuickActions = computed(() => buildDashboardQuickActions(text));
+const homeQuickActions = computed(() => ([
+  {
+    to: '/chat',
+    eyebrow: 'Chat',
+    label: text('继续指挥会话', 'Continue operator chat'),
+    copy: text('回到最近私聊，或直接开启新的指挥会话。', 'Return to recent private sessions or start a new operator thread.'),
+  },
+  {
+    to: '/agents',
+    eyebrow: 'Agents',
+    label: text('查看执行单元', 'Inspect agents'),
+    copy: text('核对 Agent 配置、工作区和当前状态。', 'Validate agent configuration, workspace assignment, and current state.'),
+  },
+  {
+    to: '/config',
+    eyebrow: 'Config',
+    label: text('收口默认策略', 'Tune defaults'),
+    copy: text('统一模型、sandbox 与工具默认设置。', 'Align model, sandbox, and tooling defaults from one control path.'),
+  },
+  {
+    to: '/cron',
+    eyebrow: 'Cron',
+    label: text('处理待运行任务', 'Review scheduled work'),
+    copy: text('检查定时策略、投递目标和手动运行入口。', 'Check schedules, delivery targets, and run-now controls.'),
+  },
+  {
+    to: '/dreaming',
+    eyebrow: 'Dreaming',
+    label: text('查看记忆态势', 'Open memory lab'),
+    copy: text('检查 memory slot、Dreaming 开关与 Dream Diary。', 'Inspect memory slot selection, dreaming toggle, and Dream Diary.'),
+  },
+  {
+    to: '/system',
+    eyebrow: 'System',
+    label: text('进入系统诊断', 'Open diagnostics'),
+    copy: text('追踪健康状态、bootstrap 与设备信任。', 'Track health, bootstrap state, and local device trust.'),
+  },
+]));
 
 const dashboardDomainCards = computed(() => {
   const payload = summary.value;
@@ -424,23 +425,51 @@ const dashboardDomainCards = computed(() => {
   }
   return payload.domains.map((domain) => ({
     key: domain.key,
-    to: dashboardRouteMap[domain.key],
+    to: resolveDomainRoute(domain.key),
     kicker: domain.key.toUpperCase(),
-    label: domain.label,
+    label: domain.label || fallbackDomainLabel(domain.key),
     state: domainStateLabel(domain.status),
-    tone: domain.status as DashboardDomainTone,
+    tone: normalizeDomainTone(domain.status),
     value: domain.value,
     note: domain.note,
   }));
 });
 
-const dashboardSystemSignals = computed(() => buildDashboardOverviewSignals({
-  payload: summary.value,
-  text,
-  formatUptime,
-}));
+const dashboardSystemSignals = computed(() => {
+  const payload = summary.value;
+  if (!payload) {
+    return [
+      { label: text('CLI coverage', 'CLI coverage'), value: '--', detail: text('等待数据', 'Waiting for data') },
+      { label: text('Server uptime', 'Server uptime'), value: '--', detail: text('等待数据', 'Waiting for data') },
+      { label: text('Pending fixes', 'Pending fixes'), value: '--', detail: text('等待数据', 'Waiting for data') },
+      { label: text('Pending pairing', 'Pending pairing'), value: '--', detail: text('等待数据', 'Waiting for data') },
+    ];
+  }
+  return [
+    {
+      label: text('CLI coverage', 'CLI coverage'),
+      value: `${payload.runtime.installedCliCount}/${payload.runtime.expectedCliCount}`,
+      detail: text('运行时 CLI 已安装 / 预期数量', 'Installed / expected runtime CLIs'),
+    },
+    {
+      label: text('Server uptime', 'Server uptime'),
+      value: formatUptime(payload.server.uptime),
+      detail: `Node ${payload.server.nodeVersion}`,
+    },
+    {
+      label: text('Pending fixes', 'Pending fixes'),
+      value: String(payload.bootstrap.fixable),
+      detail: text('bootstrap 阶段可自动修复的问题数量', 'Fixable issues reported by bootstrap'),
+    },
+    {
+      label: text('Pending pairing', 'Pending pairing'),
+      value: String(payload.deviceTrust.pendingRequests),
+      detail: text('等待审批的本地设备配对请求', 'Device trust requests awaiting approval'),
+    },
+  ];
+});
 
-const parallelTracks = computed(() => {
+const homeRecentTracks = computed(() => {
   const payload = summary.value;
   if (!payload) {
     return [
@@ -519,7 +548,7 @@ async function loadDashboardSummary(silent = false): Promise<void> {
   } catch (error) {
     errorMessage.value = error instanceof Error
       ? error.message
-      : text('读取 Dashboard 失败。', 'Failed to load dashboard.');
+      : text('读取首页控制面失败。', 'Failed to load home control surface.');
   } finally {
     if (!silent) {
       loading.value = false;
@@ -530,7 +559,6 @@ async function loadDashboardSummary(silent = false): Promise<void> {
 onMounted(() => {
   void loadDashboardSummary();
   connectDashboardStream();
-  ensurePollingFallback();
 });
 
 onBeforeUnmount(() => {
@@ -541,18 +569,19 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.dashboard-workbench {
+.home-control-surface {
   display: grid;
   gap: 18px;
 }
 
-.dashboard-hero-stage,
-.dashboard-action-belt,
-.dashboard-overview-river,
-.dashboard-signal-runway {
+.home-situation-band,
+.home-risk-stage,
+.home-resource-panel,
+.home-recent-stream {
   position: relative;
   display: grid;
   gap: 16px;
+  padding: 22px;
   border-radius: 12px;
   border: 1px solid var(--shell-panel-border);
   background:
@@ -562,14 +591,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.dashboard-hero-stage,
-.dashboard-action-belt,
-.dashboard-overview-river,
-.dashboard-signal-runway {
-  padding: 22px;
-}
-
-.dashboard-hero-stage {
+.home-situation-band {
   gap: 18px;
   background:
     radial-gradient(560px 240px at 12% 0%, rgba(255, 255, 255, 0.15), transparent 58%),
@@ -577,27 +599,27 @@ onBeforeUnmount(() => {
     var(--shell-stage-fill-strong);
 }
 
-.dashboard-hero-copy {
+.home-situation-copy {
   display: grid;
   gap: 12px;
   max-width: 860px;
 }
 
-.dashboard-page-copy {
+.home-page-copy {
   margin: 0;
-  max-width: 720px;
+  max-width: 760px;
   color: var(--muted);
   font-size: 14px;
   line-height: 1.72;
 }
 
-.dashboard-meter-ribbon {
+.home-situation-meters {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
-.dashboard-meter {
+.home-situation-meter {
   display: grid;
   gap: 6px;
   min-width: 0;
@@ -607,12 +629,12 @@ onBeforeUnmount(() => {
   background: var(--shell-panel-fill);
 }
 
-.dashboard-meter__eyebrow,
-.dashboard-status-chip__label,
-.dashboard-domain-row__eyebrow,
-.dashboard-fact span,
-.dashboard-release-value span,
-.dashboard-signal span {
+.home-situation-meter__eyebrow,
+.home-risk-chip__label,
+.home-risk-row__eyebrow,
+.home-fact span,
+.home-release-value span,
+.home-resource-signal span {
   color: var(--muted-soft);
   font-size: 10px;
   font-weight: 700;
@@ -620,68 +642,83 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
-.dashboard-meter__value,
-.dashboard-domain-row__value {
+.home-situation-meter__value,
+.home-risk-row__value {
   color: var(--text);
   font-size: 28px;
   line-height: 1;
   letter-spacing: -0.04em;
 }
 
-.dashboard-meter__label {
+.home-situation-meter__label {
   margin: 0;
   color: var(--text);
   font-size: 13px;
   font-weight: 700;
 }
 
-.dashboard-meter__note,
-.dashboard-command-link__note,
-.dashboard-domain-row__note,
-.dashboard-release-copy p,
-.dashboard-signal p,
-.dashboard-track-item__body p {
+.home-situation-meter__note,
+.home-quick-action__note,
+.home-risk-row__note,
+.home-release-copy p,
+.home-resource-signal p,
+.home-track-item__body p {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
 }
 
-.dashboard-action-belt {
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+.home-risk-stage {
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
   align-items: start;
 }
 
-.dashboard-action-belt__copy {
+.home-risk-stage__main,
+.home-risk-stage__side {
   display: grid;
-  gap: 10px;
-  max-width: 520px;
+  gap: 12px;
+  min-width: 0;
 }
 
-.dashboard-kicker {
+.home-risk-stage__side h4 {
   margin: 0;
-  color: var(--acc);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-size: 16px;
+  color: var(--text);
 }
 
-.dashboard-action-belt__copy h3 {
+.home-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+
+.home-section-heading h3 {
   margin: 0;
   color: var(--text);
-  font-size: clamp(30px, 3.9vw, 42px);
-  line-height: 1.08;
-  letter-spacing: -0.04em;
-  max-width: 14ch;
+  font-size: 18px;
 }
 
-.dashboard-status-strip {
+.home-section-heading-row {
+  align-items: end;
+}
+
+.home-section-copy {
+  margin: 0;
+  max-width: 48ch;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+  text-align: right;
+}
+
+.home-risk-chip-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.dashboard-status-chip {
+.home-risk-chip {
   display: grid;
   gap: 6px;
   min-width: 148px;
@@ -691,129 +728,39 @@ onBeforeUnmount(() => {
   background: var(--shell-panel-fill);
 }
 
-.dashboard-status-chip strong,
-.dashboard-domain-row h4,
-.dashboard-command-link strong,
-.dashboard-track-item__body strong,
-.dashboard-signal strong {
+.home-risk-chip strong,
+.home-risk-row h4,
+.home-quick-action strong,
+.home-track-item__body strong,
+.home-resource-signal strong {
   color: var(--text);
 }
 
-.dashboard-status-chip strong {
+.home-risk-chip strong {
   font-size: 15px;
 }
 
-.dashboard-status-chip.tone-ready {
+.home-risk-chip.tone-ready {
   border-color: rgba(127, 255, 212, 0.2);
 }
 
-.dashboard-status-chip.tone-accent {
+.home-risk-chip.tone-accent {
   border-color: rgba(255, 214, 165, 0.2);
 }
 
-.dashboard-status-chip.tone-danger {
+.home-risk-chip.tone-danger {
   border-color: rgba(255, 154, 154, 0.22);
 }
 
-.dashboard-command-actions {
-  display: grid;
-  gap: 10px;
-  grid-column: 1 / -1;
-}
-
-.dashboard-command-link {
-  display: grid;
-  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
-  gap: 18px;
-  align-items: center;
-  padding: 16px 18px;
-  border-radius: 10px;
-  border: 1px solid var(--shell-panel-border);
-  background: var(--shell-panel-fill);
-  color: var(--text);
-  text-decoration: none;
-  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-}
-
-.dashboard-command-link:hover,
-.dashboard-domain-row:hover {
-  transform: translateY(-1px);
-  border-color: var(--dashboard-command-link-hover-border);
-  background: var(--dashboard-command-link-hover-fill);
-}
-
-.dashboard-command-link__copy,
-.dashboard-domain-row__lead,
-.dashboard-track-item__body,
-.dashboard-release-value,
-.dashboard-release-copy {
-  display: grid;
-  gap: 6px;
-}
-
-.dashboard-command-link__eyebrow {
-  color: var(--acc);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.dashboard-overview-river,
-.dashboard-signal-runway,
-.dashboard-followup-strip,
-.dashboard-track-strip,
-.dashboard-runtime-band,
-.dashboard-release-band {
-  display: grid;
-  gap: 14px;
-}
-
-.dashboard-overview-river {
-  display: grid;
-  gap: 14px;
-}
-
-.dashboard-signal-runway {
-  display: grid;
-  gap: 14px;
-}
-
-.dashboard-section-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 12px;
-}
-
-.dashboard-section-heading h3 {
-  margin: 0;
-  color: var(--text);
-  font-size: 18px;
-}
-
-.dashboard-section-heading-row {
-  align-items: end;
-}
-
-.dashboard-section-copy {
-  margin: 0;
-  max-width: 48ch;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.65;
-  text-align: right;
-}
-
-.dashboard-domain-stream__list,
-.dashboard-fact-tape,
-.dashboard-followup-grid,
-.dashboard-track-list {
+.home-risk-stream,
+.home-fact-tape,
+.home-track-list,
+.home-risk-stage__side {
   display: grid;
   gap: 10px;
 }
 
-.dashboard-domain-row {
+.home-risk-row {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 0.9fr) auto;
   gap: 16px;
@@ -827,8 +774,47 @@ onBeforeUnmount(() => {
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
-.dashboard-domain-row__state,
-.dashboard-track-item span {
+.home-quick-action {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--shell-panel-border);
+  border-radius: 10px;
+  background: var(--shell-panel-fill);
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  box-shadow: var(--shadow-soft);
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.home-quick-action:hover,
+.home-risk-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(127, 255, 212, 0.2);
+  background: var(--shell-panel-fill-strong);
+}
+
+.home-quick-action__copy,
+.home-risk-row__lead,
+.home-track-item__body,
+.home-release-value,
+.home-release-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.home-quick-action__eyebrow {
+  color: var(--acc);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.home-risk-row__state,
+.home-track-item span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -843,96 +829,46 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.dashboard-domain-row.tone-ready .dashboard-domain-row__state,
-.dashboard-track-item.tone-ready span {
+.home-risk-row.tone-ready .home-risk-row__state,
+.home-track-item.tone-ready span {
   background: rgba(127, 255, 212, 0.12);
   color: var(--mint);
 }
 
-.dashboard-fact,
-.dashboard-signal,
-.dashboard-track-item,
-.dashboard-release-band__summary {
+.home-resource-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+}
+
+.home-fact,
+.home-resource-signal,
+.home-track-item,
+.home-release-summary {
   border-radius: 10px;
   border: 1px solid var(--shell-panel-border);
   background: var(--shell-panel-fill);
 }
 
-.dashboard-fact {
+.home-fact {
   display: grid;
   gap: 4px;
   padding: 13px 14px;
 }
 
-.dashboard-fact strong {
+.home-fact strong {
   color: var(--text);
   font-size: 13px;
   line-height: 1.5;
   word-break: break-word;
 }
 
-.dashboard-runway-grid {
+.home-resource-panel {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 12px;
+  gap: 14px;
 }
 
-.dashboard-followup-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.dashboard-runtime-band,
-.dashboard-release-band,
-.dashboard-followup-strip,
-.dashboard-track-strip {
-  padding: 18px;
-  border-radius: 12px;
-  border: 1px solid var(--shell-panel-border);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 32%),
-    var(--shell-panel-fill);
-}
-
-.dashboard-followup-card {
-  display: grid;
-  gap: 8px;
-  padding: 16px 18px;
-  border-radius: 10px;
-  border: 1px solid var(--shell-panel-border);
-  background: var(--shell-panel-fill);
-  color: var(--text);
-  text-decoration: none;
-  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-}
-
-.dashboard-followup-card:hover {
-  transform: translateY(-1px);
-  border-color: var(--dashboard-command-link-hover-border);
-  background: var(--dashboard-command-link-hover-fill);
-}
-
-.dashboard-followup-card__eyebrow {
-  color: var(--acc);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.dashboard-followup-card strong {
-  color: var(--text);
-  font-size: 16px;
-}
-
-.dashboard-followup-card p,
-.dashboard-followup-card__note {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.dashboard-release-band__summary {
+.home-release-summary {
   display: grid;
   grid-template-columns: minmax(180px, auto) minmax(0, 1fr);
   gap: 18px;
@@ -940,30 +876,30 @@ onBeforeUnmount(() => {
   padding: 14px 16px;
 }
 
-.dashboard-release-value strong {
+.home-release-value strong {
   color: var(--text);
   font-size: 24px;
   letter-spacing: -0.04em;
 }
 
-.dashboard-signal-ribbon {
+.home-resource-signals {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.dashboard-signal {
+.home-resource-signal {
   display: grid;
   gap: 4px;
   padding: 13px 14px;
 }
 
-.dashboard-track-list {
+.home-track-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.dashboard-track-item {
+.home-track-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -972,58 +908,53 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1180px) {
-  .dashboard-meter-ribbon,
-  .dashboard-runway-grid,
-  .dashboard-followup-grid,
-  .dashboard-track-list,
-  .dashboard-release-band__summary {
+  .home-situation-meters,
+  .home-resource-grid,
+  .home-track-list,
+  .home-release-summary {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-action-belt {
+  .home-risk-stage {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 920px) {
-  .dashboard-hero-stage,
-  .dashboard-action-belt,
-  .dashboard-overview-river,
-  .dashboard-signal-runway {
+  .home-situation-band,
+  .home-risk-stage,
+  .home-resource-panel,
+  .home-recent-stream {
     padding: 18px;
   }
 
-  .dashboard-section-heading-row {
+  .home-section-heading-row {
     align-items: start;
     flex-direction: column;
   }
 
-  .dashboard-section-copy {
+  .home-section-copy {
     max-width: none;
     text-align: left;
   }
 
-  .dashboard-domain-row {
+  .home-risk-row {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 720px) {
-  .dashboard-command-link {
+  .home-resource-signals {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-signal-ribbon {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard-track-item {
+  .home-track-item {
     align-items: start;
     flex-direction: column;
   }
 
-  .dashboard-track-item span,
-  .dashboard-domain-row__state {
+  .home-track-item span,
+  .home-risk-row__state {
     white-space: normal;
   }
 }

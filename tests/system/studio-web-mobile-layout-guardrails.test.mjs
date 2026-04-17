@@ -37,15 +37,15 @@ test("mobile chat keeps dedicated rail drawer and inspector sheet contracts", ()
 });
 
 test("mobile operate and system side areas use sheet, tabs, drawer, or accordion contracts", () => {
-  const operateAndSystemSources = [
-    agentsWorkspaceLayout,
-    channelsWorkspaceLayout,
-    cronControlPage,
-    systemControlPage,
-  ].join("\n");
+  const mobileDownshiftContract =
+    /(mobile-[a-z-]*(sheet|tabs|drawer|accordion)|(sheet|tabs|drawer|accordion)-mobile)/i;
 
+  assert.match(agentsWorkspaceLayout, mobileDownshiftContract);
+  assert.match(channelsWorkspaceLayout, mobileDownshiftContract);
+  assert.match(cronControlPage, mobileDownshiftContract);
+  assert.match(systemControlPage, mobileDownshiftContract);
   assert.match(
-    operateAndSystemSources,
-    /(mobile-[a-z-]*(sheet|tabs|drawer|accordion)|(sheet|tabs|drawer|accordion)-mobile)/i,
+    systemControlPage,
+    /@media \(max-width: 880px\) \{[\s\S]*\.system-stage-tabs\.mobile-stage-tabs \{[\s\S]*overflow-x:\s*auto/,
   );
 });
