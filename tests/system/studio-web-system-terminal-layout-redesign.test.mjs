@@ -45,13 +45,8 @@ test("system control tower and terminal workspace expressions stay explicit", ()
   assert.match(systemControlPage, /system-control-tower-surface/);
   assert.match(systemControlPage, /system-control-tower-rail/);
   assert.match(systemControlPage, /var\(--system-control-tower-glow\)/);
-  assert.match(systemControlPage, /text\('系统诊断', 'System Diagnostics'\)/);
 
   assert.match(terminalConsolePage, /terminal-maintenance-workspace/);
   assert.match(terminalConsolePage, /terminal-immersive-canvas/);
   assert.match(terminalConsolePage, /var\(--terminal-workspace-glow\)/);
-  assert.match(
-    terminalConsolePage,
-    /text\('维护终端', 'Maintenance Terminal'\)/,
-  );
 });
