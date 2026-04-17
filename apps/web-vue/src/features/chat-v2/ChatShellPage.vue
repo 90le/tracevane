@@ -7,8 +7,8 @@
       'theme-dark': resolvedTheme === 'dark',
     }"
   >
-    <div class="chat-shell-layout">
-      <aside class="chat-shell-sidebar chat-session-rail">
+    <div class="chat-shell-layout chat-focused-workspace">
+      <aside class="chat-shell-sidebar chat-session-rail chat-session-rail-context">
         <SessionListPanel
           :organizer="organizerState"
           :active-sessions="activeStudioManagedSessions"
@@ -30,7 +30,7 @@
         />
       </aside>
 
-      <main class="chat-shell-main chat-main-stage">
+      <main class="chat-shell-main chat-main-stage chat-main-stage-focus">
         <ConversationPane
           :selected-session="selectedSession"
           :title="conversationTitle"
@@ -4865,6 +4865,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .chat-v2-shell {
+  --chat-layer-stage: 1;
+  --chat-layer-toast: 35;
+  --chat-layer-overlay: 1400;
+  --chat-layer-inspector: 1421;
+  --chat-layer-dialog: 1431;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -4982,6 +4987,11 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(20px);
 }
 
+.chat-focused-workspace {
+  position: relative;
+  isolation: isolate;
+}
+
 .chat-shell-sidebar {
   display: flex;
   flex-direction: column;
@@ -4990,6 +5000,11 @@ onBeforeUnmount(() => {
   border-right: 1px solid var(--chat-line);
   background: var(--chat-sidebar-bg);
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.04);
+}
+
+.chat-session-rail-context {
+  position: relative;
+  z-index: var(--chat-layer-stage);
 }
 
 .chat-shell-main {
@@ -5002,6 +5017,11 @@ onBeforeUnmount(() => {
   background: var(--chat-thread-bg);
 }
 
+.chat-main-stage-focus {
+  z-index: var(--chat-layer-stage);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--chat-line) 84%, transparent);
+}
+
 .chat-shell-sidebar > *,
 .chat-shell-main > * {
   flex: 1 1 auto;
@@ -5012,7 +5032,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 16px;
   left: 50%;
-  z-index: 30;
+  z-index: var(--chat-layer-toast);
   width: min(420px, calc(100% - 24px));
   transform: translate3d(-50%, 0, 0);
   pointer-events: none;
@@ -5124,7 +5144,7 @@ onBeforeUnmount(() => {
 .chat-host-exec-confirm-mask {
   position: fixed;
   inset: 0;
-  z-index: 1430;
+  z-index: calc(var(--chat-layer-dialog) - 1);
   background: rgba(6, 12, 22, 0.54);
   backdrop-filter: blur(12px);
 }
@@ -5133,7 +5153,7 @@ onBeforeUnmount(() => {
   position: fixed;
   top: 50%;
   left: 50%;
-  z-index: 1431;
+  z-index: var(--chat-layer-dialog);
   width: min(440px, calc(100vw - 28px));
   display: grid;
   gap: 14px;
@@ -5253,7 +5273,7 @@ onBeforeUnmount(() => {
 .chat-mobile-drawer-mask {
   position: fixed;
   inset: 0;
-  z-index: 1400;
+  z-index: var(--chat-layer-overlay);
   background: rgba(6, 10, 18, 0.42);
   backdrop-filter: blur(10px);
 }
@@ -5275,7 +5295,7 @@ onBeforeUnmount(() => {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 1401;
+  z-index: calc(var(--chat-layer-overlay) + 1);
   width: min(360px, calc(100vw - 18px));
   height: 100dvh;
   overflow: hidden;
@@ -5295,7 +5315,7 @@ onBeforeUnmount(() => {
 .chat-inspector-mask {
   position: fixed;
   inset: 0;
-  z-index: 1420;
+  z-index: calc(var(--chat-layer-inspector) - 1);
   background: rgba(6, 10, 18, 0.44);
   backdrop-filter: blur(16px);
 }
@@ -5331,7 +5351,7 @@ onBeforeUnmount(() => {
   position: fixed;
   top: 12px;
   right: 12px;
-  z-index: 1421;
+  z-index: var(--chat-layer-inspector);
   width: min(620px, calc(100vw - 24px));
   height: calc(100dvh - 24px);
   border-radius: 12px;
