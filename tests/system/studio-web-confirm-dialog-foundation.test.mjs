@@ -26,6 +26,39 @@ test("confirm dialog foundation exposes shared component/composable path contrac
   );
 });
 
+test("confirm dialog foundation defines shared tone and structure contracts", () => {
+  const dialogVue = read("apps/web-vue/src/components/ConfirmDialog.vue");
+  const composableSource = read(
+    "apps/web-vue/src/composables/useConfirmDialog.ts",
+  );
+
+  assert.match(
+    composableSource,
+    /ConfirmDialogTone\s*=\s*["']default["']\s*\|\s*["']danger["']\s*\|\s*["']safe["']/,
+    'expected ConfirmDialogTone to include "safe"',
+  );
+  assert.match(
+    dialogVue,
+    /class="confirm-dialog__surface"/,
+    "expected ConfirmDialog to expose confirm-dialog__surface class",
+  );
+  assert.match(
+    dialogVue,
+    /class="confirm-dialog__actions"/,
+    "expected ConfirmDialog to expose confirm-dialog__actions class",
+  );
+  assert.match(
+    dialogVue,
+    /activeConfirmDialog\.tone\s*===\s*['"]danger['"]|activeConfirmDialog\.value\.tone\s*===\s*['"]danger['"]/,
+    "expected ConfirmDialog to check danger tone explicitly",
+  );
+  assert.match(
+    dialogVue,
+    /activeConfirmDialog\.tone\s*===\s*['"]safe['"]|activeConfirmDialog\.value\.tone\s*===\s*['"]safe['"]/,
+    "expected ConfirmDialog to check safe tone explicitly",
+  );
+});
+
 test("app shell mounts shared ConfirmDialog component", () => {
   const appVue = read("apps/web-vue/src/App.vue");
 

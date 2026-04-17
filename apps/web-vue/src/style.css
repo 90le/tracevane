@@ -1984,6 +1984,13 @@ button.page-command-link {
   box-shadow: 0 14px 32px color-mix(in srgb, var(--danger) 24%, transparent), inset 0 1px 0 color-mix(in srgb, white 32%, transparent);
 }
 
+.primary-button.is-safe {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--mint) 68%, #d4fff0), color-mix(in srgb, var(--mint) 88%, #14966e));
+  color: #072518;
+  border-color: color-mix(in srgb, var(--mint) 56%, var(--line));
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--mint) 24%, transparent), inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+}
+
 .confirm-dialog-mask {
   position: fixed;
   inset: 0;
@@ -1995,7 +2002,7 @@ button.page-command-link {
   backdrop-filter: blur(10px);
 }
 
-.confirm-dialog {
+.confirm-dialog__surface {
   width: min(420px, calc(100vw - 32px));
   border: 1px solid color-mix(in srgb, var(--line) 96%, transparent);
   border-radius: 14px;
@@ -2024,7 +2031,7 @@ button.page-command-link {
   line-height: 1.55;
 }
 
-.confirm-dialog__foot {
+.confirm-dialog__actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;

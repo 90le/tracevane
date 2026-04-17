@@ -118,7 +118,7 @@
             <RouterView v-slot="{ Component }">
               <section
                 class="shell-route-stage"
-                :class="{ 'shell-route-stage-chat': isChatSurface }"
+                :class="{ 'shell-route-stage-chat': isChatSurface, }"
               >
                 <component :is="Component" />
               </section>

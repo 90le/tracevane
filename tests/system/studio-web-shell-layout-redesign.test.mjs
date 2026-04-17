@@ -17,6 +17,13 @@ test("shell redesign introduces topbar, context rail, and task-group navigation"
   assert.match(appVue, /StudioShellTopbar/);
   assert.match(appVue, /StudioShellContextRail/);
   assert.match(appVue, /shell-main-grid/);
+  assert.match(
+    appVue,
+    /const\s*\{\s*themeMode\s*,\s*setThemeMode\s*\}\s*=\s*useThemePreference\(\);/,
+  );
+  assert.match(appVue, /<ConfirmDialog\b/);
+  assert.match(appVue, /class="shell-route-stage"/);
+  assert.match(appVue, /theme-mode="themeMode"/);
 
   assert.match(routerSource, /path:\s*['\"]\/home['\"]/);
   assert.match(routerSource, /alias:\s*\[?['\"]\/dashboard['\"]/);
