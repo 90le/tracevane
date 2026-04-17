@@ -25,6 +25,8 @@
   --border-strong: var(--shell-stage-border);
   --accent-primary: var(--acc);
   --accent-soft: rgba(91, 150, 255, 0.14);
+  --system-control-tower-glow: rgba(111, 167, 255, 0.22);
+  --terminal-workspace-glow: rgba(114, 223, 207, 0.2);
   --focus-ring: rgba(91, 150, 255, 0.24);
   --bg1: var(--shell-bg-start);
   --bg2: var(--shell-bg-mid);
@@ -168,6 +170,8 @@ html[data-theme="light"] {
   --border-strong: var(--shell-stage-border);
   --accent-primary: var(--acc);
   --accent-soft: rgba(91, 150, 255, 0.12);
+  --system-control-tower-glow: rgba(79, 132, 248, 0.2);
+  --terminal-workspace-glow: rgba(26, 168, 138, 0.18);
   --focus-ring: rgba(91, 150, 255, 0.18);
   --bg1: var(--shell-bg-start);
   --bg2: var(--shell-bg-mid);

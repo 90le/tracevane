@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell system-page system-control-surface">
+  <section class="page-shell system-page system-control-surface system-control-tower-surface">
     <header class="page-header-row">
       <div>
         <p class="eyebrow">System</p>
@@ -31,7 +31,7 @@
     </div>
 
     <section class="system-control-grid">
-      <aside class="system-health-strip">
+      <aside class="system-health-strip system-control-tower-rail">
         <article class="panel-card system-sidebar-panel">
           <div class="system-sidebar-head">
             <div>
@@ -1161,8 +1161,21 @@ onMounted(async () => {
 
 <style scoped>
 .system-page,
-.system-control-surface {
+.system-control-surface,
+.system-control-tower-surface {
   gap: 18px;
+  position: relative;
+}
+
+.system-control-tower-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(520px 200px at 8% 0%, var(--system-control-tower-glow), transparent 64%),
+    linear-gradient(180deg, transparent, color-mix(in srgb, var(--system-control-tower-glow) 18%, transparent));
+  opacity: 0.82;
 }
 
 .system-control-grid {
@@ -1175,6 +1188,13 @@ onMounted(async () => {
 .system-health-strip,
 .system-main-stage {
   min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.system-control-tower-rail .system-sidebar-panel {
+  border-color: color-mix(in srgb, var(--system-control-tower-glow) 38%, var(--line));
+  box-shadow: 0 18px 38px color-mix(in srgb, var(--system-control-tower-glow) 18%, transparent);
 }
 
 .system-sidebar-panel,
