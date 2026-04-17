@@ -18,6 +18,7 @@ const channelsWorkspaceLayout = read(
 const cronControlPage = read(
   "apps/web-vue/src/features/cron/CronControlPage.vue",
 );
+const globalStyle = read("apps/web-vue/src/style.css");
 
 test("operate pages share workspace shell, rail, and stage contracts", () => {
   assert.match(agentsWorkspaceLayout, /operate-workspace-shell/);
@@ -41,4 +42,25 @@ test("operate pages share workspace shell, rail, and stage contracts", () => {
     /operate-stage-task-head|channels-stage-head/,
   );
   assert.match(cronControlPage, /operate-stage-task-head/);
+});
+
+test("operate pages share unified workspace language hooks", () => {
+  assert.match(agentsWorkspaceLayout, /operate-summary-pill/);
+  assert.match(channelsWorkspaceLayout, /operate-summary-pill/);
+  assert.match(cronControlPage, /operate-summary-pill/);
+
+  assert.match(agentsWorkspaceLayout, /operate-fact-strip/);
+  assert.match(channelsWorkspaceLayout, /operate-fact-strip/);
+  assert.match(cronControlPage, /operate-fact-strip/);
+
+  assert.match(globalStyle, /\.operate-workspace-surface\s*\{/);
+  assert.match(globalStyle, /\.operate-summary-pill\s*\{/);
+  assert.match(globalStyle, /\.operate-fact-strip\s*\{/);
+  assert.match(globalStyle, /\.operate-badge\s*\{/);
+
+  assert.match(
+    globalStyle,
+    /html\[data-theme="light"\] \.operate-summary-pill/,
+  );
+  assert.match(globalStyle, /html\[data-theme="light"\] \.operate-badge/);
 });

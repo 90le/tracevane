@@ -24,7 +24,7 @@
 
     <section class="channels-workbench">
       <aside class="channels-sidebar operate-resource-rail mobile-resource-drawer">
-        <article class="panel-card channels-sidebar-panel">
+        <article class="panel-card channels-sidebar-panel operate-workspace-surface">
           <div class="channels-sidebar-head">
             <div>
               <p class="eyebrow">{{ text('PROVIDERS', 'PROVIDERS') }}</p>
@@ -102,7 +102,7 @@
       </aside>
 
       <section class="channels-stage operate-stage">
-        <article v-if="workspace.selectedChannel.value" class="panel-card channels-stage-header">
+        <article v-if="workspace.selectedChannel.value" class="panel-card channels-stage-header operate-workspace-surface">
           <div class="channels-stage-head operate-stage-task-head">
             <div class="channels-stage-ident">
               <span class="channels-stage-icon" aria-hidden="true">{{ workspace.channelIcon(workspace.selectedChannel.value.type) }}</span>
@@ -122,11 +122,11 @@
               </div>
             </div>
 
-            <div class="channels-stage-badges">
-              <span class="channels-stage-badge">{{ workspace.selectedChannel.value.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled') }}</span>
-              <span class="channels-stage-badge">{{ text(`${workspace.selectedChannel.value.accountCount} 个账号`, `${workspace.selectedChannel.value.accountCount} accounts`) }}</span>
-              <span class="channels-stage-badge">{{ text(`${workspace.selectedChannel.value.bindingCount} 条绑定`, `${workspace.selectedChannel.value.bindingCount} bindings`) }}</span>
-              <span v-if="workspace.selectedChannel.value.defaultAccount" class="channels-stage-badge">
+            <div class="channels-stage-badges operate-fact-strip">
+              <span class="channels-stage-badge operate-summary-pill">{{ workspace.selectedChannel.value.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled') }}</span>
+              <span class="channels-stage-badge operate-summary-pill">{{ text(`${workspace.selectedChannel.value.accountCount} 个账号`, `${workspace.selectedChannel.value.accountCount} accounts`) }}</span>
+              <span class="channels-stage-badge operate-summary-pill">{{ text(`${workspace.selectedChannel.value.bindingCount} 条绑定`, `${workspace.selectedChannel.value.bindingCount} bindings`) }}</span>
+              <span v-if="workspace.selectedChannel.value.defaultAccount" class="channels-stage-badge operate-summary-pill operate-badge">
                 {{ text(`默认账号 ${workspace.selectedChannel.value.defaultAccount}`, `Default ${workspace.selectedChannel.value.defaultAccount}`) }}
               </span>
             </div>
