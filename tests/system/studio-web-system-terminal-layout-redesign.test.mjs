@@ -40,3 +40,13 @@ test("system and terminal pages keep dedicated surface contracts", () => {
     /@media \(max-width: 1120px\) \{[\s\S]*\.terminal-main-canvas \{[\s\S]*order:\s*-1;/,
   );
 });
+
+test("system control tower and terminal workspace expressions stay explicit", () => {
+  assert.match(systemControlPage, /system-control-tower-surface/);
+  assert.match(systemControlPage, /system-control-tower-rail/);
+  assert.match(systemControlPage, /var\(--system-control-tower-glow\)/);
+
+  assert.match(terminalConsolePage, /terminal-maintenance-workspace/);
+  assert.match(terminalConsolePage, /terminal-immersive-canvas/);
+  assert.match(terminalConsolePage, /var\(--terminal-workspace-glow\)/);
+});

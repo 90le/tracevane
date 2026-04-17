@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell terminal-page terminal-workspace-surface">
+  <section class="page-shell terminal-page terminal-workspace-surface terminal-maintenance-workspace">
     <header class="page-header-row">
       <div>
         <p class="eyebrow">Terminal</p>
@@ -228,7 +228,7 @@
         </section>
       </aside>
 
-      <section class="terminal-main-canvas">
+      <section class="terminal-main-canvas terminal-immersive-canvas">
         <header class="terminal-toolbar terminal-toolbar-strip">
           <div class="terminal-toolbar-left">
             <span class="status-pill" :class="connected ? 'tone-sage' : 'tone-neutral'">
@@ -1086,12 +1086,25 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .terminal-page,
-.terminal-workspace-surface {
+.terminal-workspace-surface,
+.terminal-maintenance-workspace {
   gap: 16px;
   min-height: calc(100dvh - 180px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
+  position: relative;
+}
+
+.terminal-maintenance-workspace::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(600px 220px at 72% 0%, var(--terminal-workspace-glow), transparent 66%),
+    linear-gradient(180deg, color-mix(in srgb, var(--terminal-workspace-glow) 12%, transparent), transparent 42%);
+  opacity: 0.78;
 }
 
 .terminal-workspace-grid {
@@ -1101,6 +1114,8 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 0;
   align-items: stretch;
+  position: relative;
+  z-index: 1;
 }
 
 .terminal-side-utilities {
