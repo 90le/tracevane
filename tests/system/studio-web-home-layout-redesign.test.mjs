@@ -14,6 +14,7 @@ const dashboardView = read("apps/web-vue/src/views/DashboardView.vue");
 test("home page redesign keeps primary-stage class contracts", () => {
   const requiredClasses = [
     "home-control-surface",
+    "home-stage-rhythm",
     "home-situation-band",
     "home-risk-stage",
     "home-risk-stage__main",
@@ -24,6 +25,7 @@ test("home page redesign keeps primary-stage class contracts", () => {
     "home-resource-panel",
     "home-recent-stream",
     "home-track-list",
+    "home-section-marker",
   ];
 
   for (const className of requiredClasses) {
@@ -32,11 +34,19 @@ test("home page redesign keeps primary-stage class contracts", () => {
 
   assert.match(
     dashboardView,
-    /<section class="home-risk-stage">[\s\S]*<div class="home-risk-stage__main">[\s\S]*<aside class="home-risk-stage__side">/,
+    /<motion\.header class="home-situation-band"[\s\S]*data-home-zone="situation"/,
   );
   assert.match(
     dashboardView,
-    /<section class="home-resource-grid">[\s\S]*<section class="home-resource-panel">[\s\S]*<section class="home-resource-panel">/,
+    /<section class="home-risk-stage"[\s\S]*data-home-zone="risk"[\s\S]*<div class="home-risk-stage__main">[\s\S]*<aside class="home-risk-stage__side">/,
+  );
+  assert.match(
+    dashboardView,
+    /<section class="home-resource-grid"[\s\S]*data-home-zone="resource"[\s\S]*<section class="home-resource-panel">[\s\S]*<section class="home-resource-panel">/,
+  );
+  assert.match(
+    dashboardView,
+    /<section class="home-recent-stream"[\s\S]*data-home-zone="recent"/,
   );
   assert.match(
     dashboardView,

@@ -2063,9 +2063,69 @@ button.page-command-link {
   min-width: 0;
 }
 
+.home-stage-rhythm {
+  gap: 20px;
+}
+
+.home-stage-rhythm > [data-home-zone] {
+  position: relative;
+}
+
+.home-stage-rhythm > [data-home-zone]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sky) 32%, transparent), transparent 72%);
+  opacity: 0.68;
+  pointer-events: none;
+}
+
+.home-stage-rhythm > [data-home-zone='situation']::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 44%, transparent), transparent 74%);
+  opacity: 0.86;
+}
+
+.home-stage-rhythm > [data-home-zone='risk']::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 34%, transparent), transparent 74%);
+}
+
+.home-stage-rhythm > [data-home-zone='resource']::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mint) 30%, transparent), transparent 74%);
+}
+
+.home-stage-rhythm > [data-home-zone='recent']::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--violet) 32%, transparent), transparent 74%);
+}
+
 .home-risk-stage,
 .home-recent-stream {
   min-width: 0;
+}
+
+.home-section-marker {
+  position: relative;
+  padding-top: 3px;
+}
+
+.home-section-marker::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 48px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--acc), color-mix(in srgb, var(--sky) 44%, transparent));
+  opacity: 0.8;
+}
+
+@media (max-width: 920px) {
+  .home-stage-rhythm {
+    gap: 16px;
+  }
 }
 
 @media (max-width: 1120px) {
