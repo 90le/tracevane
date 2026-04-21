@@ -1,51 +1,135 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const rootDir = '/home/binbin/.openclaw/extensions/openclaw-studio';
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(testDir, "../..");
 const dashboardView = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/views/DashboardView.vue'),
-  'utf8',
+  path.join(rootDir, "apps/web-vue/src/views/DashboardView.vue"),
+  "utf8",
+);
+const dashboardApi = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/dashboard/api.ts"),
+  "utf8",
+);
+const dashboardRecipe = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/dashboard/overview-recipe.ts"),
+  "utf8",
 );
 
-test('dashboard view exposes the new recipe building blocks', () => {
-  assert.match(dashboardView, /class="dashboard-workbench"/);
-  assert.match(dashboardView, /class="dashboard-hero-stage"/);
-  assert.match(dashboardView, /class="dashboard-action-belt"/);
-  assert.match(dashboardView, /class="dashboard-overview-river"/);
-  assert.match(dashboardView, /class="dashboard-signal-runway"/);
+test("dashboard view exposes a simplified home recipe with clear focus order", () => {
+  const requiredClasses = [
+    "home-control-surface",
+    "home-stage-rhythm",
+    "home-situation-band",
+    "home-risk-stage",
+    "home-compact-visual-strip",
+    "home-system-snapshot",
+  ];
+
+  for (const className of requiredClasses) {
+    assert.match(dashboardView, new RegExp(className));
+  }
+
+  const zones = [
+    'data-home-zone="situation"',
+    'data-home-zone="risk"',
+    'data-home-zone="visual"',
+    'data-home-zone="snapshot"',
+  ];
+
+  for (const zone of zones) {
+    assert.match(dashboardView, new RegExp(zone));
+  }
+
+  assert.doesNotMatch(dashboardView, /data-home-zone="trend"/);
+  assert.doesNotMatch(dashboardView, /data-home-zone="recent"/);
+  assert.doesNotMatch(dashboardView, /home-risk-chip-strip/);
+  assert.doesNotMatch(dashboardView, /home-recent-stream/);
 });
 
-test('dashboard view derives layout data from dedicated computed collections', () => {
-  assert.match(dashboardView, /const dashboardStatusChips = computed\(/);
+test("dashboard view derives compact layout data from dedicated computed collections", () => {
+  assert.match(dashboardView, /const homeSituationMetrics = computed\(/);
   assert.match(dashboardView, /const dashboardQuickActions = computed\(/);
-  assert.match(dashboardView, /const dashboardDomainCards = computed\(/);
+  assert.match(dashboardView, /const dashboardRiskStageCards = computed\(/);
+  assert.match(dashboardView, /const dashboardContextSummary = computed\(/);
   assert.match(dashboardView, /const dashboardSystemSignals = computed\(/);
+  assert.match(dashboardView, /const dashboardCoverageBars = computed\(/);
+  assert.doesNotMatch(dashboardView, /const dashboardStatusChips = computed\(/);
+  assert.doesNotMatch(dashboardView, /const dashboardTrendPanels = computed\(/);
+  assert.doesNotMatch(dashboardView, /const dashboardTrendPoints = computed\(/);
 });
 
-test('dashboard view owns scoped page styling for the migrated recipe', () => {
+test("dashboard view owns scoped page styling for the simplified home control surface", () => {
   assert.match(dashboardView, /<style scoped>/);
-  assert.match(dashboardView, /\.dashboard-workbench\s*\{/);
-  assert.match(dashboardView, /\.dashboard-hero-stage\s*\{/);
-  assert.match(dashboardView, /\.dashboard-action-belt\s*\{/);
-  assert.match(dashboardView, /\.dashboard-overview-river\s*\{/);
-  assert.match(dashboardView, /\.dashboard-signal-runway\s*\{/);
+  assert.match(dashboardView, /\.home-control-surface\s*\{/);
+  assert.match(dashboardView, /\.home-risk-stage\s*\{/);
+  assert.match(dashboardView, /\.home-compact-visual-strip\s*\{/);
+  assert.match(dashboardView, /\.home-system-snapshot\s*\{/);
+  assert.match(dashboardView, /\.home-system-snapshot\s*\{/);
+  assert.doesNotMatch(dashboardView, /\.home-recent-stream\s*\{/);
 });
 
-test('dashboard recipe removes the old split workboard and grid wall', () => {
-  assert.doesNotMatch(dashboardView, /class="panel-card dashboard-hero-card"/);
-  assert.doesNotMatch(dashboardView, /class="panel-card dashboard-side-card"/);
-  assert.doesNotMatch(dashboardView, /class="panel-card dashboard-track-panel"/);
+test("dashboard recipe removes the old split workboard and hero vocabulary", () => {
+  assert.doesNotMatch(dashboardView, /class="dashboard-workbench"/);
+  assert.doesNotMatch(dashboardView, /class="dashboard-hero-stage"/);
+  assert.doesNotMatch(dashboardView, /class="dashboard-action-belt"/);
+  assert.doesNotMatch(dashboardView, /class="dashboard-overview-river"/);
+  assert.doesNotMatch(dashboardView, /class="dashboard-signal-runway"/);
+  assert.doesNotMatch(dashboardView, /const dashboardDomainCards = computed\(/);
   assert.doesNotMatch(dashboardView, /class="dashboard-workboard"/);
   assert.doesNotMatch(dashboardView, /class="dashboard-side-module"/);
   assert.doesNotMatch(dashboardView, /class="dashboard-promenade"/);
   assert.doesNotMatch(dashboardView, /class="dashboard-command-deck"/);
   assert.doesNotMatch(dashboardView, /class="dashboard-track-rail"/);
-  assert.doesNotMatch(dashboardView, /\.dashboard-domain-grid\s*\{/);
-  assert.doesNotMatch(dashboardView, /\.dashboard-stat-card:nth-child\(4n \+ 1\)/);
-  assert.doesNotMatch(dashboardView, /\.dashboard-stat-card:nth-child\(4n \+ 2\)/);
-  assert.doesNotMatch(dashboardView, /\.dashboard-stat-card:nth-child\(4n \+ 3\)/);
-  assert.doesNotMatch(dashboardView, /\.dashboard-stat-card:nth-child\(4n \+ 4\)/);
-  assert.doesNotMatch(dashboardView, /\.dashboard-release-block\s*\{[\s\S]*255,\s*190,\s*122/);
+});
+
+test("dashboard api normalizes collection fields and threads locale for summary + stream", () => {
+  assert.match(dashboardApi, /function normalizeDashboardSummary\(/);
+  assert.match(
+    dashboardApi,
+    /recovery:\s*\{[\s\S]*items:\s*Array\.isArray\(payload\.recovery\?\.items\)\s*\?\s*payload\.recovery\.items\s*:\s*\[\]/,
+  );
+  assert.match(
+    dashboardApi,
+    /trends:\s*\{[\s\S]*points:\s*Array\.isArray\(payload\.trends\?\.points\)\s*\?\s*payload\.trends\.points\s*:\s*\[\]/,
+  );
+  assert.match(
+    dashboardApi,
+    /panels:\s*Array\.isArray\(payload\.trends\?\.panels\)\s*\?\s*payload\.trends\.panels\s*:\s*\[\]/,
+  );
+  assert.match(
+    dashboardApi,
+    /domains:\s*Array\.isArray\(payload\.domains\)\s*\?\s*payload\.domains\s*:\s*\[\]/,
+  );
+  assert.match(
+    dashboardApi,
+    /fetchDashboardSummary\([\s\S]*locale:\s*"zh"\s*\|\s*"en"/,
+  );
+  assert.match(dashboardApi, /\?locale=\$\{locale\}/);
+  assert.match(
+    dashboardApi,
+    /subscribeDashboardSummary\([\s\S]*locale: "zh" \| "en"/,
+  );
+  assert.match(
+    dashboardApi,
+    /joinApiPath\(`\/api\/stream\/dashboard\?locale=\$\{locale\}`\)/,
+  );
+});
+
+test("dashboard recipe helpers always return arrays from payload-derived collections", () => {
+  assert.match(
+    dashboardRecipe,
+    /return Array\.isArray\(options\.payload\?\.recovery\?\.items\)\s*\?\s*options\.payload\.recovery\.items\s*:\s*\[\]/,
+  );
+  assert.match(
+    dashboardRecipe,
+    /return Array\.isArray\(payload\?\.trends\?\.panels\)\s*\?\s*payload\.trends\.panels\s*:\s*\[\]/,
+  );
+  assert.match(
+    dashboardRecipe,
+    /return Array\.isArray\(payload\?\.trends\?\.points\)\s*\?\s*payload\.trends\.points\s*:\s*\[\]/,
+  );
 });

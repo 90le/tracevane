@@ -34,6 +34,7 @@ export interface TerminalSessionRegistry {
   sessionsById: Record<string, TerminalSessionDescriptor>;
   upsertSession(session: TerminalSessionDescriptor): void;
   removeSession(sessionId: string): void;
+  renameSession(sessionId: string, title: string): void;
   getSession(sessionId: string): TerminalSessionDescriptor | null;
 }
 
@@ -99,6 +100,16 @@ export function createTerminalSessionRegistry(
       const normalized = normalizeSessionId(sessionId);
       if (!normalized) return;
       delete sessionsById[normalized];
+    },
+    renameSession(sessionId, title) {
+      const normalized = normalizeSessionId(sessionId);
+      const current = sessionsById[normalized];
+      if (!current) return;
+      const nextTitle = String(title || "").trim() || normalized;
+      sessionsById[normalized] = normalizeSessionDescriptor({
+        ...current,
+        title: nextTitle,
+      });
     },
     getSession(sessionId) {
       const normalized = normalizeSessionId(sessionId);

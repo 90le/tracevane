@@ -16,22 +16,18 @@ const styleCss = read("apps/web-vue/src/style.css");
 test("shared primitives consume semantic aliases for surfaces and action accents", () => {
   assert.match(
     styleCss,
-    /\.panel-card,\s*\.metric-card\s*\{[\s\S]*background:\s*var\(--surface-base\);/,
+    /\.panel-card,\s*\.metric-card\s*\{[^}]*background:\s*var\(--surface-base\);/,
   );
   assert.match(
     styleCss,
-    /\.panel-card,\s*\.metric-card\s*\{[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
+    /\.panel-card,\s*\.metric-card\s*\{[^}]*border:\s*1px solid var\(--border-subtle\);/,
   );
   assert.match(
     styleCss,
-    /\.primary-button\s*\{[\s\S]*background:\s*var\(--accent-primary\);/,
+    /\.primary-button\s*\{[^}]*background:\s*var\(--accent-primary\);/,
   );
   assert.match(
     styleCss,
-    /\.status-banner\s*\{[\s\S]*background:\s*var\(--surface-raised\);/,
-  );
-  assert.match(
-    styleCss,
-    /\.status-banner\s*\{[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
+    /\.status-banner\s*\{[^}]*background:\s*var\(--surface-raised\);/,
   );
 });

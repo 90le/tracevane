@@ -8,6 +8,10 @@
     >
       <section
         class="confirm-dialog__surface"
+        :class="{
+          'confirm-dialog is-danger': activeConfirmDialog.tone === 'danger',
+          'confirm-dialog is-safe': activeConfirmDialog.tone === 'safe',
+        }"
         role="alertdialog"
         aria-modal="true"
         :aria-label="activeConfirmDialog.title"

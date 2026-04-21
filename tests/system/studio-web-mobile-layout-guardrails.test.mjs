@@ -49,3 +49,9 @@ test("mobile operate and system side areas use sheet, tabs, drawer, or accordion
     /@media \(max-width: 880px\) \{[\s\S]*\.system-stage-tabs\.mobile-stage-tabs \{[\s\S]*overflow-x:\s*auto/,
   );
 });
+
+test("operate mobile layouts keep drawer and tabs contracts", () => {
+  assert.match(agentsWorkspaceLayout, /mobile-resource-drawer/);
+  assert.match(channelsWorkspaceLayout, /mobile-resource-drawer/);
+  assert.match(cronControlPage, /mobile-resource-drawer|mobile-stage-tabs/);
+});

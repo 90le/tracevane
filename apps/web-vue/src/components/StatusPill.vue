@@ -8,7 +8,7 @@
 <script setup lang="ts">
 withDefaults(defineProps<{
   label: string;
-  tone?: 'neutral' | 'accent' | 'sage';
+  tone?: 'neutral' | 'accent' | 'sage' | 'danger';
 }>(), {
   tone: 'neutral',
 });

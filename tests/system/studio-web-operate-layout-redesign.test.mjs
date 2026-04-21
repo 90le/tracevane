@@ -20,11 +20,25 @@ const cronControlPage = read(
 );
 const globalStyle = read("apps/web-vue/src/style.css");
 
-test("operate pages share workspace shell, rail, and stage contracts", () => {
+test("agents expose operate shell, task head, and mobile stage tabs", () => {
   assert.match(agentsWorkspaceLayout, /operate-workspace-shell/);
-  assert.match(channelsWorkspaceLayout, /operate-workspace-shell/);
-  assert.match(cronControlPage, /operate-workspace-shell/);
+  assert.match(agentsWorkspaceLayout, /operate-stage-task-head/);
+  assert.match(agentsWorkspaceLayout, /mobile-stage-tabs/);
+});
 
+test("channels expose operate shell, stage badges, and mobile stage tabs", () => {
+  assert.match(channelsWorkspaceLayout, /operate-workspace-shell/);
+  assert.match(channelsWorkspaceLayout, /channels-stage-badge/);
+  assert.match(channelsWorkspaceLayout, /mobile-stage-tabs/);
+});
+
+test("cron exposes operate shell, task head, and mobile stage tabs", () => {
+  assert.match(cronControlPage, /operate-workspace-shell/);
+  assert.match(cronControlPage, /operate-stage-task-head/);
+  assert.match(cronControlPage, /mobile-stage-tabs/);
+});
+
+test("operate pages keep shared workspace language hooks", () => {
   assert.match(agentsWorkspaceLayout, /operate-resource-rail/);
   assert.match(channelsWorkspaceLayout, /operate-resource-rail/);
   assert.match(cronControlPage, /operate-resource-rail/);
@@ -34,33 +48,28 @@ test("operate pages share workspace shell, rail, and stage contracts", () => {
   assert.match(cronControlPage, /operate-stage/);
 
   assert.match(
-    agentsWorkspaceLayout,
-    /operate-stage-task-head|agents-stage-task-head/,
+    globalStyle,
+    /\.operate-workspace-shell\s+\.panel-card,[\s\S]*\.operate-resource-rail,[\s\S]*\.operate-stage\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
   );
-  assert.match(
-    channelsWorkspaceLayout,
-    /operate-stage-task-head|channels-stage-head/,
-  );
-  assert.match(cronControlPage, /operate-stage-task-head/);
-});
-
-test("operate pages share unified workspace language hooks", () => {
-  assert.match(agentsWorkspaceLayout, /operate-summary-pill/);
-  assert.match(channelsWorkspaceLayout, /operate-summary-pill/);
-  assert.match(cronControlPage, /operate-summary-pill/);
-
-  assert.match(agentsWorkspaceLayout, /operate-fact-strip/);
-  assert.match(channelsWorkspaceLayout, /operate-fact-strip/);
-  assert.match(cronControlPage, /operate-fact-strip/);
-
-  assert.match(globalStyle, /\.operate-workspace-surface\s*\{/);
-  assert.match(globalStyle, /\.operate-summary-pill\s*\{/);
-  assert.match(globalStyle, /\.operate-fact-strip\s*\{/);
-  assert.match(globalStyle, /\.operate-badge\s*\{/);
-
   assert.match(
     globalStyle,
-    /html\[data-theme="light"\] \.operate-summary-pill/,
+    /\.operate-stage-task-head,[\s\S]*\.channels-stage-badges,[\s\S]*\.cron-stage-facts,[\s\S]*\.agents-stage-header__facts\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-wrap:\s*wrap;[\s\S]*gap:\s*10px;/,
   );
-  assert.match(globalStyle, /html\[data-theme="light"\] \.operate-badge/);
+  assert.match(
+    globalStyle,
+    /\.channels-stage-badge,[\s\S]*\.agents-summary-pill,[\s\S]*\.cron-chip\s*\{[\s\S]*border:\s*1px solid var\(--border-subtle\);[\s\S]*background:\s*color-mix\(in srgb, var\(--surface-raised\) 90%, transparent\);/,
+  );
+});
+
+test("cron page keeps one create failure alert watcher and shared surface tokens", () => {
+  const createFailureAlertWatcherMatches =
+    cronControlPage.match(
+      /watch\(\s*\(\) => createForm\.failureAlertEnabled,/g,
+    ) || [];
+
+  assert.equal(createFailureAlertWatcherMatches.length, 1);
+  assert.match(
+    cronControlPage,
+    /\.cron-sidebar-panel,[\s\S]*\.cron-stage-header,[\s\S]*\.cron-stage-panel\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
+  );
 });

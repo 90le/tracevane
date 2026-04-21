@@ -72,6 +72,9 @@
           </div>
 
           <div class="system-quick-links">
+            <button type="button" class="secondary-button compact-button" @click="router.push('/system/events')">
+              {{ text('事件中心', 'Event Center') }}
+            </button>
             <button type="button" class="secondary-button compact-button" @click="router.push('/terminal')">
               {{ text('去终端', 'Open Terminal') }}
             </button>
@@ -620,6 +623,10 @@ interface NoticeLike {
   text: string;
 }
 
+interface RefreshAllOptions {
+  preserveNotice?: boolean;
+}
+
 const router = useRouter();
 const { text } = useLocalePreference();
 const { confirm } = useConfirmDialog();
@@ -1024,16 +1031,18 @@ async function repairBootstrapConfig(): Promise<void> {
   }
   bootstrapRepairRunning.value = true;
   errorMessage.value = '';
+  const successNotice: NoticeLike = {
+    kind: 'success',
+    text: '',
+  };
   try {
     const response = await repairSystemBootstrapConfig();
     diagnostics.value = normalizeDiagnostics({ ...(diagnostics.value || {}), bootstrap: response.snapshot } as Record<string, any>);
-    notice.value = {
-      kind: 'success',
-      text: response.changed
-        ? text('已写入推荐初始化配置。', 'Recommended bootstrap defaults were applied.')
-        : text('当前配置已满足推荐初始化要求。', 'Current config already satisfies the recommended bootstrap baseline.'),
-    };
-    await refreshAll();
+    successNotice.text = response.changed
+      ? text('已写入推荐初始化配置。', 'Recommended bootstrap defaults were applied.')
+      : text('当前配置已满足推荐初始化要求。', 'Current config already satisfies the recommended bootstrap baseline.');
+    await refreshAll({ preserveNotice: true });
+    notice.value = successNotice;
   } catch (error) {
     notice.value = {
       kind: 'error',
@@ -1050,14 +1059,15 @@ async function approvePendingRequest(requestId: string): Promise<void> {
   }
   activeApproveRequestId.value = requestId;
   errorMessage.value = '';
+  const successNotice: NoticeLike = {
+    kind: 'success',
+    text: text('设备请求已批准。', 'Device request approved.'),
+  };
   try {
     const response = await approveSystemDeviceTrust({ requestId });
     diagnostics.value = normalizeDiagnostics({ ...(diagnostics.value || {}), deviceTrust: response.snapshot } as Record<string, any>);
-    notice.value = {
-      kind: 'success',
-      text: text('设备请求已批准。', 'Device request approved.'),
-    };
-    await refreshAll();
+    await refreshAll({ preserveNotice: true });
+    notice.value = successNotice;
   } catch (error) {
     notice.value = {
       kind: 'error',
@@ -1072,17 +1082,18 @@ async function toggleAutoApproveLocalHelper(): Promise<void> {
   const current = diagnostics.value?.deviceTrust.settings.autoApproveLocalHelper !== false;
   autoApproveSaving.value = true;
   errorMessage.value = '';
+  const successNotice: NoticeLike = {
+    kind: 'success',
+    text: !current
+      ? text('已开启 helper 自动批准。', 'Helper auto-approve enabled.')
+      : text('已关闭 helper 自动批准。', 'Helper auto-approve disabled.'),
+  };
   try {
     await patchSystemDeviceTrustSettings({
       autoApproveLocalHelper: !current,
     });
-    notice.value = {
-      kind: 'success',
-      text: !current
-        ? text('已开启 helper 自动批准。', 'Helper auto-approve enabled.')
-        : text('已关闭 helper 自动批准。', 'Helper auto-approve disabled.'),
-    };
-    await refreshAll();
+    await refreshAll({ preserveNotice: true });
+    notice.value = successNotice;
   } catch (error) {
     notice.value = {
       kind: 'error',
@@ -1099,16 +1110,18 @@ async function repairHelperTrust(): Promise<void> {
   }
   helperRepairRunning.value = true;
   errorMessage.value = '';
+  const successNotice: NoticeLike = {
+    kind: 'success',
+    text: '',
+  };
   try {
     const response = await repairSystemDeviceTrustHelper();
     diagnostics.value = normalizeDiagnostics({ ...(diagnostics.value || {}), deviceTrust: response.snapshot } as Record<string, any>);
-    notice.value = {
-      kind: 'success',
-      text: response.synchronizedToken || response.approvedRequestId
-        ? text('helper 配对/本地 token cache 已修复。', 'Helper pairing / local token cache repaired.')
-        : text('helper 状态已检查，无需额外修复。', 'Helper state checked; no repair was needed.'),
-    };
-    await refreshAll();
+    successNotice.text = response.synchronizedToken || response.approvedRequestId
+      ? text('helper 配对/本地 token cache 已修复。', 'Helper pairing / local token cache repaired.')
+      : text('helper 状态已检查，无需额外修复。', 'Helper state checked; no repair was needed.');
+    await refreshAll({ preserveNotice: true });
+    notice.value = successNotice;
   } catch (error) {
     notice.value = {
       kind: 'error',
@@ -1119,10 +1132,12 @@ async function repairHelperTrust(): Promise<void> {
   }
 }
 
-async function refreshAll(): Promise<void> {
+async function refreshAll(options: RefreshAllOptions = {}): Promise<void> {
   loading.value = true;
   diagnosticsLoading.value = true;
-  errorMessage.value = '';
+  if (!options.preserveNotice) {
+    errorMessage.value = '';
+  }
   const healthTask = fetchSystemHealth()
     .then((nextHealth) => {
       health.value = normalizeHealth(nextHealth as unknown as Record<string, any>);
@@ -1136,7 +1151,6 @@ async function refreshAll(): Promise<void> {
     .then((nextDiagnostics) => {
       diagnostics.value = normalizeDiagnostics(nextDiagnostics as unknown as Record<string, any>);
       diagnosticsLoaded.value = true;
-      notice.value = null;
     })
     .catch((error) => {
       errorMessage.value = error instanceof Error ? error.message : text('无法读取系统诊断。', 'Failed to load system diagnostics.');
@@ -1198,13 +1212,12 @@ onMounted(async () => {
 }
 
 .system-sidebar-panel,
-.system-stage-header,
 .system-topic-rail,
 .system-stage-panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  box-shadow: var(--soft-shadow);
+  box-shadow: var(--shadow-soft);
 }
 
 .system-sidebar-panel,
@@ -1358,6 +1371,10 @@ onMounted(async () => {
   border-top: 1px solid var(--line);
 }
 
+.system-stage-tabs.mobile-stage-tabs {
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+}
+
 .system-stage-tab {
   display: inline-flex;
   align-items: center;
@@ -1407,8 +1424,8 @@ onMounted(async () => {
 }
 
 .system-callout-error {
-  border-color: rgba(255, 122, 99, 0.32);
-  background: linear-gradient(180deg, rgba(255, 122, 99, 0.12), rgba(255, 122, 99, 0.04));
+  background: var(--surface-danger);
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border-subtle));
 }
 
 .system-callout-list {

@@ -21,23 +21,47 @@ const appPath = path.join(rootDir, "apps/web-vue/src/App.vue");
 test("shell route manifest defines grouped current routes and future placeholders", () => {
   assert.equal(fs.existsSync(manifestPath), true);
   const manifest = fs.readFileSync(manifestPath, "utf8");
-  assert.match(manifest, /key:\s*'overview'/);
-  assert.match(manifest, /key:\s*'operations'/);
-  assert.match(manifest, /key:\s*'management'/);
-  assert.match(manifest, /key:\s*'system'/);
-  assert.match(manifest, /key:\s*'dashboard'/);
-  assert.match(manifest, /key:\s*'chat'/);
-  assert.match(manifest, /key:\s*'config'/);
-  assert.match(manifest, /key:\s*'room'/);
+  assert.match(manifest, /key:\s*"overview"/);
+  assert.match(manifest, /key:\s*"operations"/);
+  assert.match(manifest, /key:\s*"management"/);
+  assert.match(manifest, /key:\s*"system"/);
+  assert.match(manifest, /key:\s*"room"/);
   assert.match(manifest, /future:\s*true/);
+  assert.doesNotMatch(manifest, /Legacy test sentinel/);
+});
+
+test("manifest exports shell route records with route-aware context policy", () => {
+  const manifest = fs.readFileSync(manifestPath, "utf8");
+  assert.match(manifest, /export const shellRoutes/);
+
+  assert.match(manifest, /path:\s*"\/chat"[\s\S]*?contextPanel:\s*"chat-inspector"/);
+  assert.match(manifest, /path:\s*"\/terminal"[\s\S]*?contextPanel:\s*"disabled"/);
+  assert.match(manifest, /path:\s*"\/terminal\/:sessionId"[\s\S]*?contextPanel:\s*"disabled"/);
+
+  for (const routePath of [
+    "/dashboard",
+    "/agents",
+    "/channels",
+    "/skills",
+    "/cron",
+    "/dreaming",
+    "/config",
+    "/system/events",
+    "/system",
+  ]) {
+    assert.match(
+      manifest,
+      new RegExp(`path:\\s*\"${routePath.replace(/\//g, "\\/")}\"[\\s\\S]*?contextPanel:\\s*\"default\"`),
+    );
+  }
 });
 
 test("router and app consume shell route metadata instead of local mock navigation", () => {
   assert.equal(fs.existsSync(navPath), true);
   const router = fs.readFileSync(routerPath, "utf8");
   const app = fs.readFileSync(appPath, "utf8");
-  assert.match(router, /from '\.\/features\/shell\/route-manifest'/);
-  assert.match(router, /shellRoutes/);
+  assert.match(router, /from "\.\/features\/shell\/route-manifest"|from '\.\/features\/shell\/route-manifest'/);
+  assert.match(router, /routes:\s*shellRoutes/);
   assert.match(app, /from '\.\/features\/shell\/use-shell-navigation'/);
   assert.doesNotMatch(app, /useUiContent/);
 });

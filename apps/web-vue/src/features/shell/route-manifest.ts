@@ -29,6 +29,8 @@ const ChannelBindingsPage = () => import("../channels/ChannelBindingsPage.vue");
 const SystemEventCenterPage = () =>
   import("../system/SystemEventCenterPage.vue");
 
+export type ShellContextPanelMode = "default" | "chat-inspector" | "disabled";
+
 export type ShellNavItem = {
   key: string;
   to: string;
@@ -55,7 +57,6 @@ export type ShellNavGroup = {
   items: ShellNavItem[];
 };
 
-// Legacy test sentinel: key: 'overview' key: 'operations' key: 'management' key: 'system' key: 'dashboard' key: 'chat' key: 'config' key: 'room' future: true
 export const shellNavGroups: ShellNavGroup[] = [
   {
     key: "overview",
@@ -175,10 +176,15 @@ export const shellNavGroups: ShellNavGroup[] = [
 
 export const shellRoutes: RouteRecordRaw[] = [
   { path: "/", redirect: "/dashboard" },
-  { path: "/dashboard", component: DashboardView },
+  {
+    path: "/dashboard",
+    component: DashboardView,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+  },
   {
     path: "/agents",
     component: AgentsView,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
     children: [
       { path: "", component: AgentsControlPage },
       { path: ":agentId", component: AgentsControlPage },
@@ -191,6 +197,7 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/chat",
     component: ChatView,
+    meta: { contextPanel: "chat-inspector" satisfies ShellContextPanelMode },
     children: [
       { path: "", component: ChatShellPage, props: { shellMode: "chat" } },
       { path: "new", redirect: "/chat" },
@@ -220,6 +227,7 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/channels",
     component: ChannelsView,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
     children: [
       { path: "", component: ChannelsControlPage },
       { path: ":type", component: ChannelsControlPage },
@@ -239,12 +247,44 @@ export const shellRoutes: RouteRecordRaw[] = [
       { path: ":type/bindings", component: ChannelBindingsPage },
     ],
   },
-  { path: "/skills", component: SkillsView },
-  { path: "/cron", component: CronView },
-  { path: "/dreaming", component: DreamingView },
-  { path: "/terminal", component: TerminalView },
-  { path: "/terminal/:sessionId", component: TerminalView },
-  { path: "/config", component: ConfigView },
-  { path: "/system/events", component: SystemEventCenterPage },
-  { path: "/system", component: SystemView },
+  {
+    path: "/skills",
+    component: SkillsView,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+  },
+  {
+    path: "/cron",
+    component: CronView,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+  },
+  {
+    path: "/dreaming",
+    component: DreamingView,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+  },
+  {
+    path: "/terminal",
+    component: TerminalView,
+    meta: { contextPanel: "disabled" satisfies ShellContextPanelMode },
+  },
+  {
+    path: "/terminal/:sessionId",
+    component: TerminalView,
+    meta: { contextPanel: "disabled" satisfies ShellContextPanelMode },
+  },
+  {
+    path: "/config",
+    component: ConfigView,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+  },
+  {
+    path: "/system/events",
+    component: SystemEventCenterPage,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+  },
+  {
+    path: "/system",
+    component: SystemView,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+  },
 ];

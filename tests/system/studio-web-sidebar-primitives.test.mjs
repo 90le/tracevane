@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const rootDir = '/home/binbin/.openclaw/extensions/openclaw-studio';
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(testDir, '../..');
 const packageJson = fs.readFileSync(path.join(rootDir, 'apps/web-vue/package.json'), 'utf8');
 const appVue = fs.readFileSync(path.join(rootDir, 'apps/web-vue/src/App.vue'), 'utf8');
 const styleCss = fs.readFileSync(path.join(rootDir, 'apps/web-vue/src/style.css'), 'utf8');
@@ -16,16 +18,15 @@ test('web workspace installs reka-ui as the shell interaction primitive layer', 
 test('app shell uses reka dialog primitives for the mobile sidebar instead of a hand-rolled mask div', () => {
   assert.match(appVue, /from 'reka-ui'/);
   assert.match(appVue, /DialogRoot/);
-  assert.match(appVue, /DialogTrigger/);
   assert.match(appVue, /DialogPortal/);
   assert.match(appVue, /DialogOverlay/);
   assert.match(appVue, /DialogContent/);
   assert.match(appVue, /TooltipProvider/);
   assert.match(appVue, /StudioSidebarRail/);
   assert.match(appVue, /<DialogRoot[^>]*v-if="isMobile"[^>]*v-model:open="mobileSidebarOpen"/);
-  assert.match(appVue, /<DialogTrigger as-child>/);
   assert.match(appVue, /<DialogOverlay class="mobile-sidebar-mask"\s*\/>/);
   assert.match(appVue, /<DialogContent as-child[\s\S]*?>/);
+  assert.doesNotMatch(appVue, /DialogTrigger/);
   assert.doesNotMatch(appVue, /v-if="isMobile && mobileSidebarOpen"\s+class="mobile-sidebar-mask"/);
 });
 

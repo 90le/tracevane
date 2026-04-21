@@ -1,11 +1,14 @@
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'openclaw-studio.sidebar-collapsed';
 
-export function useShellChrome() {
+export function useShellChrome(contextPanelEnabled: Ref<boolean>) {
   const sidebarCollapsed = ref(false);
   const isMobile = ref(false);
   const mobileSidebarOpen = ref(false);
+  const contextPanelOpen = ref(false);
+
+  const canOpenContextPanel = computed(() => contextPanelEnabled.value);
 
   const updateViewportState = () => {
     if (typeof window === 'undefined') return;
@@ -37,6 +40,23 @@ export function useShellChrome() {
     if (isMobile.value) mobileSidebarOpen.value = false;
   };
 
+  const openContextPanel = () => {
+    if (!canOpenContextPanel.value) return;
+    contextPanelOpen.value = true;
+  };
+
+  const closeContextPanel = () => {
+    contextPanelOpen.value = false;
+  };
+
+  const toggleContextPanel = () => {
+    if (!canOpenContextPanel.value) {
+      contextPanelOpen.value = false;
+      return;
+    }
+    contextPanelOpen.value = !contextPanelOpen.value;
+  };
+
   onMounted(() => {
     updateViewportState();
     syncSidebarPreference();
@@ -50,6 +70,12 @@ export function useShellChrome() {
     persistSidebarPreference(value);
   });
 
+  watch(contextPanelEnabled, (enabled) => {
+    if (!enabled) {
+      contextPanelOpen.value = false;
+    }
+  }, { immediate: true });
+
   onUnmounted(() => {
     if (typeof window !== 'undefined') {
       window.removeEventListener('resize', updateViewportState);
@@ -60,7 +86,12 @@ export function useShellChrome() {
     sidebarCollapsed,
     isMobile,
     mobileSidebarOpen,
+    contextPanelOpen,
+    canOpenContextPanel,
     toggleSidebar,
     handleSidebarNavigate,
+    openContextPanel,
+    closeContextPanel,
+    toggleContextPanel,
   };
 }

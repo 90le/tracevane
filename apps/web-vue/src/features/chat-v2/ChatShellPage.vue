@@ -1,6 +1,7 @@
 <template>
   <section
     class="chat-v2-shell"
+    data-context-policy="local-inspector"
     :class="{
       'inspect-mode': inspectPinned,
       'theme-light': resolvedTheme === 'light',
@@ -4997,9 +4998,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid var(--chat-line);
-  background: var(--chat-sidebar-bg);
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.04);
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-base);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--border-subtle) 42%, transparent);
 }
 
 .chat-session-rail-context {
@@ -5014,12 +5015,15 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--chat-thread-bg);
+}
+
+.chat-main-stage {
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
 }
 
 .chat-main-stage-focus {
   z-index: var(--chat-layer-stage);
-  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--chat-line) 84%, transparent);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border-subtle) 84%, transparent);
 }
 
 .chat-shell-sidebar > *,
@@ -5070,9 +5074,9 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 12px 12px 11px;
-  border: 1px solid var(--chat-toast-border);
+  border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  background: var(--chat-toast-surface);
+  background: var(--surface-base);
   color: var(--chat-toast-text);
   box-shadow: var(--chat-toast-shadow);
   backdrop-filter: blur(16px);
@@ -5159,8 +5163,8 @@ onBeforeUnmount(() => {
   gap: 14px;
   padding: 16px;
   border-radius: 16px;
-  border: 1px solid var(--chat-line-strong);
-  background: var(--chat-dialog-surface);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-base);
   box-shadow: 0 30px 76px rgba(0, 0, 0, 0.32);
   transform: translate(-50%, -50%);
 }
@@ -5257,8 +5261,8 @@ onBeforeUnmount(() => {
 }
 
 .chat-host-exec-confirm-primary {
-  border: 1px solid color-mix(in srgb, var(--chat-accent) 48%, transparent);
-  background: color-mix(in srgb, var(--chat-accent) 94%, white);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 48%, transparent);
+  background: var(--accent-primary);
   color: #fff;
   box-shadow: 0 12px 28px rgba(37, 99, 235, 0.24);
 }

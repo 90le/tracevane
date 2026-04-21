@@ -11,48 +11,69 @@ const read = (filePath) =>
 
 const appVue = read("apps/web-vue/src/App.vue");
 const routerSource = read("apps/web-vue/src/router.ts");
-const uiContentSource = read("apps/web-vue/src/data/mock.ts");
 
-test("shell redesign introduces topbar, context rail, and task-group navigation", () => {
+test("shell redesign uses on-demand context panel and manifest-driven router", () => {
   assert.match(appVue, /StudioShellTopbar/);
-  assert.match(appVue, /StudioShellContextRail/);
-  assert.match(appVue, /shell-main-grid/);
+  assert.match(appVue, /StudioContextPanel/);
+  assert.doesNotMatch(appVue, /StudioShellContextRail/);
+  assert.match(appVue, /shell-layout/);
+  assert.match(appVue, /shell-main-stage/);
+  assert.match(appVue, /shell-context-panel/);
+  assert.match(appVue, /<ConfirmDialog\b/);
   assert.match(
     appVue,
-    /const\s*\{[^}]*\bthemeMode\b[^}]*\bsetThemeMode\b[^}]*\}\s*=\s*useThemePreference\s*\(\s*\)/s,
+    /const \{ themeMode, setThemeMode \} = useThemePreference\(\);/,
   );
-  assert.match(appVue, /<ConfirmDialog\b/);
   assert.match(appVue, /class="shell-route-stage"/);
-  assert.match(appVue, /<[^>]*\btheme-mode\s*=\s*["']themeMode["']/);
+  assert.match(appVue, /:theme-mode="themeMode"/);
+  assert.match(appVue, /from '\.\/features\/shell\/use-shell-navigation'/);
+  assert.doesNotMatch(appVue, /useUiContent/);
 
-  for (const routePath of [
-    "/home",
-    "/chat",
-    "/agents",
-    "/channels",
-    "/cron",
-    "/system",
-    "/terminal",
-  ]) {
-    assert.match(
-      routerSource,
-      new RegExp(`path:\\s*["']${routePath.replace("/", "\\/")}["']`),
-    );
-  }
-  assert.match(routerSource, /alias:\s*\[[^\]]*["']\/dashboard["']/s);
+  assert.match(
+    routerSource,
+    /from "\.\/features\/shell\/route-manifest"|from '\.\/features\/shell\/route-manifest'/,
+  );
+  assert.match(routerSource, /routes:\s*shellRoutes/);
+});
 
-  for (const target of [
-    "/home",
-    "/chat",
-    "/agents",
-    "/system",
-    "/terminal",
-    "/config",
-    "/skills",
-  ]) {
-    assert.match(
-      uiContentSource,
-      new RegExp(`to:\\s*["']${target.replace("/", "\\/")}["']`),
-    );
-  }
+const dashboardSummarySource = read(
+  "apps/web-vue/src/features/dashboard/use-dashboard-summary.ts",
+);
+
+test("shell app reuses shared dashboard summary for topbar counts", () => {
+  assert.match(appVue, /riskSummaryValue/);
+  assert.match(appVue, /pendingSummaryValue/);
+  assert.match(dashboardSummarySource, /subscribeDashboardSummary/);
+  assert.match(dashboardSummarySource, /consumerCount/);
+  assert.match(dashboardSummarySource, /startDashboardSummary/);
+});
+
+const shellNavigationSource = read(
+  "apps/web-vue/src/features/shell/use-shell-navigation.ts",
+);
+
+test("shell context panel keeps live summary lightweight", () => {
+  assert.match(shellNavigationSource, /buildDashboardPriorityAction/);
+  assert.match(
+    shellNavigationSource,
+    /const liveNextStep = computed\([\s\S]*?buildDashboardPriorityAction/,
+  );
+  assert.match(
+    shellNavigationSource,
+    /activeContext\.value\.actions[\s\S]*?\.slice\(0, 2\)/,
+  );
+  assert.doesNotMatch(
+    shellNavigationSource,
+    /const livePendingItems = computed\(\(\) => \{/,
+  );
+});
+
+test("app locale-dependent shell labels stay reactive", () => {
+  assert.match(
+    appVue,
+    /const themeOptions = computed<Array<\{ value: ThemeMode; icon: string; label: string; shortLabel: string \}>>\(\(\) => \[/,
+  );
+  assert.match(appVue, /const contextToggleLabel = computed\(\(\) => \(/);
+  assert.match(appVue, /contextPanelTitle/);
+  assert.match(appVue, /contextPanelDescription/);
 });

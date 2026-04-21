@@ -31,6 +31,9 @@ test("confirm dialog foundation defines shared tone and structure contracts", ()
   const composableSource = read(
     "apps/web-vue/src/composables/useConfirmDialog.ts",
   );
+  const chatShellPage = read(
+    "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
+  );
 
   assert.match(
     composableSource,
@@ -56,6 +59,16 @@ test("confirm dialog foundation defines shared tone and structure contracts", ()
     dialogVue,
     /activeConfirmDialog\.tone\s*===\s*['"]safe['"]|activeConfirmDialog\.value\.tone\s*===\s*['"]safe['"]/,
     "expected ConfirmDialog to check safe tone explicitly",
+  );
+  assert.match(
+    chatShellPage,
+    /class="chat-host-exec-confirm-dialog"/,
+    "expected chat shell to expose host exec confirm dialog surface",
+  );
+  assert.match(
+    chatShellPage,
+    /class="chat-host-exec-confirm-primary"/,
+    "expected chat shell to expose host exec confirm primary action",
   );
 });
 

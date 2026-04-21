@@ -4,14 +4,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const rootDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
 
 function read(filePath) {
   return fs.readFileSync(path.join(rootDir, filePath), "utf8");
 }
 
 const routerSource = read("apps/web-vue/src/router.ts");
-const routeManifestSource = read("apps/web-vue/src/features/shell/route-manifest.ts");
+const routeManifestSource = read(
+  "apps/web-vue/src/features/shell/route-manifest.ts",
+);
 const agentsViewSource = read("apps/web-vue/src/views/AgentsView.vue");
 const agentsWorkspaceLayoutPath =
   "apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue";
@@ -25,14 +30,34 @@ const sessionsPagePath =
 
 test("agents router keeps a persistent workspace layout with an overview route per agent", () => {
   assert.match(routerSource, /routes:\s*shellRoutes/);
+  assert.match(routeManifestSource, /path:\s*"\/agents"/);
+  assert.match(routeManifestSource, /component:\s*AgentsView/);
+  assert.match(routeManifestSource, /meta:\s*\{\s*contextPanel:\s*"default"/);
   assert.match(
     routeManifestSource,
-    /\{\s*path:\s*["']\/agents["'],\s*component:\s*AgentsView,\s*children:\s*\[[\s\S]*?path:\s*["']:agentId["'][\s\S]*?path:\s*["']:agentId\/docs["'][\s\S]*?path:\s*["']:agentId\/bindings["'][\s\S]*?path:\s*["']:agentId\/sessions["'][\s\S]*?path:\s*["']:agentId\/advanced["'][\s\S]*?\],\s*\}/,
+    /\{ path:\s*"", component:\s*AgentsControlPage \}/,
   );
   assert.match(
-    agentsViewSource,
-    /AgentsWorkspaceLayout/,
+    routeManifestSource,
+    /\{ path:\s*":agentId", component:\s*AgentsControlPage \}/,
   );
+  assert.match(
+    routeManifestSource,
+    /\{ path:\s*":agentId\/docs", component:\s*AgentDocsPage \}/,
+  );
+  assert.match(
+    routeManifestSource,
+    /\{ path:\s*":agentId\/bindings", component:\s*AgentBindingsPage \}/,
+  );
+  assert.match(
+    routeManifestSource,
+    /\{ path:\s*":agentId\/sessions", component:\s*AgentSessionsPage \}/,
+  );
+  assert.match(
+    routeManifestSource,
+    /\{ path:\s*":agentId\/advanced", component:\s*AgentAdvancedPage \}/,
+  );
+  assert.match(agentsViewSource, /AgentsWorkspaceLayout/);
   assert.doesNotMatch(
     agentsViewSource,
     /<template>\s*<RouterView\s*\/>\s*<\/template>/,
@@ -40,7 +65,10 @@ test("agents router keeps a persistent workspace layout with an overview route p
 });
 
 test("agents workspace layout exists and owns the persistent stage shell", () => {
-  assert.equal(fs.existsSync(path.join(rootDir, agentsWorkspaceLayoutPath)), true);
+  assert.equal(
+    fs.existsSync(path.join(rootDir, agentsWorkspaceLayoutPath)),
+    true,
+  );
 
   const agentsWorkspaceLayoutSource = read(agentsWorkspaceLayoutPath);
 

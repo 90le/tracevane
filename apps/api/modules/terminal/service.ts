@@ -329,6 +329,15 @@ export interface TerminalService {
   getPersistedSession(
     sessionId: string,
   ): Promise<TerminalSessionDescriptor | null>;
+  renamePersistedSession(
+    sessionId: string,
+    title: string,
+  ): Promise<TerminalSessionDescriptor | null>;
+  deletePersistedSession(sessionId: string): Promise<{
+    success: boolean;
+    sessionId: string;
+    reason?: "session_active";
+  }>;
   listSessionLedger(sessionId: string): Promise<TerminalSessionLedgerEvent[]>;
   listWorkspaceActions(): Promise<TerminalActionCatalogResponse>;
   installCli(
@@ -816,7 +825,8 @@ export function createTerminalService(
         "exit",
         {
           code: typeof event?.exitCode === "number" ? event.exitCode : null,
-          signal: typeof event?.signal === "number" ? String(event.signal) : null,
+          signal:
+            typeof event?.signal === "number" ? String(event.signal) : null,
         },
         null,
       );
@@ -932,43 +942,49 @@ export function createTerminalService(
 
     const binaryPath =
       candidates.find((item) => !isWindowsMountedPath(item)) || "";
-    if (!binaryPath) {
-      return {
-        id: spec.id,
-        label: spec.label,
-        binary: spec.binary,
-        installed: false,
-        path: null,
-        version: null,
-        packageName: spec.packageName,
-        installSupported: spec.installMode !== "none",
-        category: spec.category,
-      };
-    }
 
     const verifyArgs = spec.verifyArgs || ["--version"];
-    const verifyResult = await execFileAsync(binaryPath, verifyArgs, {
-      timeout: 10_000,
-      maxBuffer: 4 * 1024 * 1024,
-    })
-      .then((result) => ({
-        success: true,
-        output: `${result.stdout}${result.stderr}`.trim(),
-      }))
-      .catch(() => ({
-        success: false,
-        output: "",
-      }));
+    async function verifyAt(pathToBinary: string): Promise<{
+      success: boolean;
+      output: string;
+    }> {
+      return execFileAsync(pathToBinary, verifyArgs, {
+        timeout: 10_000,
+        maxBuffer: 4 * 1024 * 1024,
+      })
+        .then((result) => ({
+          success: true,
+          output: `${result.stdout}${result.stderr}`.trim(),
+        }))
+        .catch(() => ({
+          success: false,
+          output: "",
+        }));
+    }
+
+    const verifyFromPath = binaryPath ? await verifyAt(binaryPath) : null;
+    const fallbackVerify = verifyFromPath?.success
+      ? null
+      : await verifyAt(spec.binary);
+    const installed = Boolean(
+      verifyFromPath?.success || fallbackVerify?.success,
+    );
+    const resolvedPath = verifyFromPath?.success
+      ? binaryPath
+      : fallbackVerify?.success
+        ? spec.binary
+        : null;
+    const versionOutput = verifyFromPath?.success
+      ? verifyFromPath.output
+      : fallbackVerify?.output || "";
 
     return {
       id: spec.id,
       label: spec.label,
       binary: spec.binary,
-      installed: verifyResult.success,
-      path: verifyResult.success ? binaryPath : null,
-      version: verifyResult.success
-        ? truncateLog(verifyResult.output, 300)
-        : null,
+      installed,
+      path: resolvedPath,
+      version: installed ? truncateLog(versionOutput, 300) : null,
       packageName: spec.packageName,
       installSupported: spec.installMode !== "none",
       category: spec.category,
@@ -1470,6 +1486,53 @@ export function createTerminalService(
       return descriptorStore.get(sessionId);
     },
 
+    async renamePersistedSession(
+      sessionId: string,
+      title: string,
+    ): Promise<TerminalSessionDescriptor | null> {
+      return descriptorStore.rename(sessionId, title);
+    },
+
+    async deletePersistedSession(sessionId: string): Promise<{
+      success: boolean;
+      sessionId: string;
+      reason?: "session_active";
+    }> {
+      const normalized = String(sessionId || "").trim();
+      if (!normalized) {
+        return {
+          success: false,
+          sessionId: normalized,
+        };
+      }
+
+      const runtimeSession = sessions.get(normalized);
+      if (runtimeSession && !runtimeSession.closed) {
+        return {
+          success: false,
+          sessionId: normalized,
+          reason: "session_active",
+        };
+      }
+
+      const persisted = descriptorStore.get(normalized);
+      if (persisted) {
+        if (persisted.status === "running" || persisted.status === "detached") {
+          return {
+            success: false,
+            sessionId: normalized,
+            reason: "session_active",
+          };
+        }
+      }
+
+      const deleted = descriptorStore.remove(normalized);
+      return {
+        success: deleted,
+        sessionId: normalized,
+      };
+    },
+
     async listSessionLedger(
       sessionId: string,
     ): Promise<TerminalSessionLedgerEvent[]> {
@@ -1553,8 +1616,10 @@ export function createTerminalService(
       if (payload.handoffContext) {
         session.source = "system-handoff";
         session.sourceModule = payload.handoffContext.fromModule || "system";
-        session.sourceAction = payload.handoffContext.triggerType || "system-handoff";
-        session.originRoute = payload.handoffContext.fromRoute || `/terminal/${session.id}`;
+        session.sourceAction =
+          payload.handoffContext.triggerType || "system-handoff";
+        session.originRoute =
+          payload.handoffContext.fromRoute || `/terminal/${session.id}`;
         session.handoffContext = payload.handoffContext;
       }
       registerGatewaySubscriber(session, runtime);

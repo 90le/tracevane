@@ -73,6 +73,33 @@ export function endTerminalSession(
   });
 }
 
+export function renameTerminalSession(
+  sessionId: string,
+  title: string,
+): Promise<TerminalSessionDescriptor> {
+  return requestJson<TerminalSessionDescriptor>(
+    `/api/terminal/sessions/${encodeURIComponent(sessionId.trim())}/rename`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title }),
+    },
+  );
+}
+
+export function deleteTerminalSession(
+  sessionId: string,
+): Promise<{ success: boolean; sessionId: string }> {
+  return requestJson<{ success: boolean; sessionId: string }>(
+    `/api/terminal/sessions/${encodeURIComponent(sessionId.trim())}/delete`,
+    {
+      method: "POST",
+    },
+  );
+}
+
 export async function streamTerminalInstall(
   cli: TerminalInstallRequestId,
   onEvent: (event: TerminalInstallStreamEvent) => void,

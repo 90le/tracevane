@@ -29,6 +29,17 @@
       <span class="studio-shell-topbar__badge">
         {{ pendingSummaryLabel }} · {{ pendingSummaryValue }}
       </span>
+      <button
+        v-if="showContextToggle"
+        type="button"
+        class="studio-shell-topbar__context-toggle"
+        :aria-pressed="String(contextPanelOpen)"
+        :aria-label="contextToggleLabel"
+        :title="contextToggleLabel"
+        @click="$emit('toggle-context-panel')"
+      >
+        {{ contextToggleLabel }}
+      </button>
     </div>
 
     <div class="studio-shell-topbar__controls">
@@ -93,6 +104,9 @@ defineProps<{
   pendingSummaryLabel: string;
   pendingSummaryValue: string;
   mobileNavLabel: string;
+  showContextToggle: boolean;
+  contextPanelOpen: boolean;
+  contextToggleLabel: string;
   themeSwitchLabel: string;
   localeSwitchLabel: string;
   themeMode: ThemeMode;
@@ -103,6 +117,7 @@ defineProps<{
 
 defineEmits<{
   (event: 'toggle-mobile-nav'): void;
+  (event: 'toggle-context-panel'): void;
   (event: 'set-theme-mode', value: ThemeMode): void;
   (event: 'set-locale', value: Locale): void;
 }>();

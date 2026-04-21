@@ -706,11 +706,11 @@ test("conversation utility pills and live preview chrome avoid oversized capsule
   assert.match(markdownBlock, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(
     chatShellPage,
-    /\.chat-mobile-drawer\s*\{[\s\S]*z-index:\s*1401;/,
+    /\.chat-mobile-drawer\s*\{[\s\S]*z-index:\s*calc\(var\(--chat-layer-overlay\) \+ 1\);/,
   );
   assert.match(
     chatShellPage,
-    /\.chat-inspector-sheet\s*\{[\s\S]*z-index:\s*1421;/,
+    /\.chat-inspector-sheet\s*\{[\s\S]*z-index:\s*var\(--chat-layer-inspector\);/,
   );
 });
 

@@ -43,7 +43,8 @@ export function bindTerminalRouteSync(options: TerminalRouteSyncOptions): void {
           fromModule: readQueryString(query.fromModule) || "terminal",
           fromRoute: readQueryString(query.fromRoute) || "/terminal",
           triggerType: readQueryString(query.triggerType) || "route-sync",
-          triggerLabel: readQueryString(query.triggerLabel) || "Terminal session",
+          triggerLabel:
+            readQueryString(query.triggerLabel) || "Terminal session",
           targetEntity: readQueryString(query.targetEntity) || normalized,
           recommendedCommand: readQueryString(query.recommendedCommand),
           relatedEventId: readQueryString(query.relatedEventId) || null,
@@ -76,22 +77,4 @@ export function bindTerminalRouteSync(options: TerminalRouteSyncOptions): void {
     },
     { immediate: true },
   );
-
-  watch(options.activeSessionId, (sessionId) => {
-    const normalized = normalizeSessionId(sessionId);
-    const currentRouteSessionId = normalizeSessionId(
-      options.route.params.sessionId,
-    );
-
-    if (normalized === currentRouteSessionId) {
-      return;
-    }
-
-    if (!normalized) {
-      void options.router.replace("/terminal");
-      return;
-    }
-
-    void options.router.replace(`/terminal/${encodeURIComponent(normalized)}`);
-  });
 }

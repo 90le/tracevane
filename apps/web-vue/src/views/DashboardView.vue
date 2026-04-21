@@ -1,6 +1,6 @@
 <template>
-  <div v-if="errorMessage" class="status-banner status-banner-error">{{ errorMessage }}</div>
-  <div v-else-if="loading && !summary" class="status-banner">{{ text('正在加载首页控制面数据…', 'Loading home control surface data...') }}</div>
+  <div v-if="errorMessage && !hasSummary" class="status-banner status-banner-error">{{ errorMessage }}</div>
+  <div v-else-if="loading && !hasSummary" class="status-banner">{{ text('正在加载首页控制面数据…', 'Loading home control surface data...') }}</div>
 
   <motion.section class="home-control-surface home-stage-rhythm" v-bind="pageSurfaceReveal">
     <motion.header class="home-situation-band" data-home-zone="situation" v-bind="pageMastheadReveal">
@@ -8,7 +8,7 @@
         <p class="eyebrow">Home</p>
         <h2 class="page-title">{{ text('Studio 总控首页', 'Studio Home Control Surface') }}</h2>
         <p class="home-page-copy">
-          {{ text('把运行态、风险与待处理事项收束在同一主舞台，先看态势再进入对应域。', 'Bring runtime posture, risk, and pending work into one primary stage so operators can read the situation first, then act by domain.') }}
+          {{ text('把运行态与风险信号收束在同一主舞台，先看态势再进入对应域。', 'Bring runtime posture and risk signals into one primary stage so teams can read the situation first, then navigate by domain.') }}
         </p>
       </div>
 
@@ -26,49 +26,46 @@
       <div class="home-risk-stage__main">
         <div class="home-section-heading home-section-heading-row home-section-marker">
           <div>
-            <p class="eyebrow">{{ text('Control Focus', 'Control Focus') }}</p>
-            <h3>{{ text('风险与待处理', 'Risks and pending') }}</h3>
+            <p class="eyebrow">{{ text('Risk First', 'Risk First') }}</p>
+            <h3>{{ text('风险优先总览', 'Risk-first overview') }}</h3>
           </div>
           <p class="home-section-copy">
-            {{ text('把 Gateway、Bootstrap、Release 与本地配对状态作为总控首页主舞台。', 'Use gateway, bootstrap, release, and local trust pairing as the central risk stage for Home.') }}
+            {{ text('优先展示风险等级与关键信号，先判断态势，再进入对应模块。', 'Show risk stage and key signals first so teams can assess posture before navigating to modules.') }}
           </p>
-        </div>
-
-        <div class="home-risk-chip-strip">
-          <article
-            v-for="chip in dashboardStatusChips"
-            :key="chip.label"
-            class="home-risk-chip"
-            :class="`tone-${chip.tone}`"
-          >
-            <span class="home-risk-chip__label">{{ chip.label }}</span>
-            <strong>{{ chip.value }}</strong>
-          </article>
         </div>
 
         <div class="home-risk-stream">
           <RouterLink
-            v-for="domain in dashboardDomainCards"
-            :key="domain.key"
-            :to="domain.to"
+            v-for="card in dashboardRiskStageCards"
+            :key="card.key"
+            :to="card.to"
             class="home-risk-row"
-            :class="`tone-${domain.tone}`"
+            :class="`tone-${dashboardContextSummary.riskStage}`"
           >
             <div class="home-risk-row__lead">
-              <span class="home-risk-row__eyebrow">{{ domain.kicker }}</span>
-              <h4>{{ domain.label }}</h4>
+              <span class="home-risk-row__eyebrow">{{ card.key }}</span>
+              <h4>{{ card.title }}</h4>
             </div>
-            <strong class="home-risk-row__value">{{ domain.value }}</strong>
-            <p class="home-risk-row__note">{{ domain.note }}</p>
-            <span class="home-risk-row__state">{{ domain.state }}</span>
+            <strong class="home-risk-row__value">{{ card.value }}</strong>
+            <p class="home-risk-row__note">{{ card.summary }}</p>
+            <span class="home-risk-row__state">{{ localizedRiskStageLabel(dashboardContextSummary.riskStage) }}</span>
           </RouterLink>
+          <article v-if="dashboardRiskStageCards.length === 0" class="home-risk-row tone-planned">
+            <div class="home-risk-row__lead">
+              <span class="home-risk-row__eyebrow">--</span>
+              <h4>{{ text('等待风险汇总', 'Waiting for risk summary') }}</h4>
+            </div>
+            <strong class="home-risk-row__value">--</strong>
+            <p class="home-risk-row__note">{{ text('尚未收到 contextSummary 与恢复统计。', 'No context summary and recovery totals yet.') }}</p>
+            <span class="home-risk-row__state">{{ text('等待', 'Waiting') }}</span>
+          </article>
         </div>
       </div>
 
       <aside class="home-risk-stage__side">
-        <h4>{{ text('快速动作', 'Quick actions') }}</h4>
+        <h4>{{ text('概览入口', 'Overview links') }}</h4>
         <RouterLink
-          v-for="action in homeQuickActions"
+          v-for="action in dashboardQuickActions"
           :key="action.to"
           :to="action.to"
           class="home-quick-action"
@@ -82,89 +79,70 @@
       </aside>
     </section>
 
-    <section class="home-resource-grid" data-home-zone="resource">
-      <section class="home-resource-panel">
-        <div class="home-section-heading">
-          <div>
-            <p class="eyebrow">{{ text('Runtime Summary', 'Runtime Summary') }}</p>
-            <h3>{{ transportModeLabel }}</h3>
-          </div>
-        </div>
-
-        <div class="home-fact-tape">
-          <div class="home-fact">
-            <span>{{ text('入口', 'Entry') }}</span>
-            <strong>{{ summary?.transport.entryUrl || '--' }}</strong>
-          </div>
-          <div class="home-fact">
-            <span>{{ text('健康检查', 'Health') }}</span>
-            <strong>{{ summary?.transport.healthUrl || '--' }}</strong>
-          </div>
-          <div class="home-fact">
-            <span>Gateway</span>
-            <strong>{{ summary?.gateway.url || '--' }}</strong>
-          </div>
-          <div class="home-fact">
-            <span>{{ text('端口映射', 'Port map') }}</span>
-            <strong>{{ summary ? `${summary.transport.gatewayPort} / ${summary.transport.standalonePort}` : '--' }}</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="home-resource-panel">
-        <div class="home-section-heading">
-          <div>
-            <p class="eyebrow">{{ text('Release Summary', 'Release Summary') }}</p>
-            <h3>{{ text('资源摘要与系统脉冲', 'Resource summary and pulse') }}</h3>
-          </div>
-        </div>
-
-        <div class="home-release-summary">
-          <div class="home-release-value">
-            <span>{{ text('当前版本', 'Current version') }}</span>
-            <strong>v{{ summary?.release.currentVersion || '--' }}</strong>
-          </div>
-          <div class="home-release-copy">
-            <p>{{ text('最新版本', 'Latest version') }}: {{ summary?.release.latestVersion ? `v${summary.release.latestVersion}` : '--' }}</p>
-            <p>{{ text('升级状态', 'Upgrade state') }}: {{ releaseStatusLabel }}</p>
-            <p v-if="summary?.release.targetVersion">{{ text('目标版本', 'Target') }}: v{{ summary.release.targetVersion }}</p>
-            <p v-if="summary?.release.source">{{ text('版本源', 'Source') }}: {{ summary.release.source }}</p>
-          </div>
-        </div>
-
-        <div class="home-resource-signals">
-          <article v-for="signal in dashboardSystemSignals" :key="signal.label" class="home-resource-signal">
-            <span>{{ signal.label }}</span>
-            <strong>{{ signal.value }}</strong>
-            <p>{{ signal.detail }}</p>
-          </article>
-        </div>
-      </section>
-    </section>
-
-    <section class="home-recent-stream" data-home-zone="recent">
+    <section class="home-compact-visual-strip" data-home-zone="visual">
       <div class="home-section-heading home-section-heading-row home-section-marker">
         <div>
-          <p class="eyebrow">{{ text('Recent Changes', 'Recent Changes') }}</p>
-          <h3>{{ text('最近变化流', 'Recent stream') }}</h3>
+          <p class="eyebrow">{{ text('Signal Mini Chart', 'Signal Mini Chart') }}</p>
+          <h3>{{ text('轻量信号图', 'Compact signal chart') }}</h3>
         </div>
         <p class="home-section-copy">
-          {{ text('保留最近域状态变化作为首页收尾，支持继续追踪。', 'Keep a short stream of recent domain state shifts as the home tail signal.') }}
+          {{ text('用简洁条形刻度呈现覆盖率与压力面，保持首页以态势阅读为主。', 'Use compact bars to show coverage and pressure while keeping the home view overview-first.') }}
         </p>
       </div>
 
-      <div class="home-track-list">
+      <div class="home-mini-chart-grid">
         <article
-          v-for="track in homeRecentTracks"
-          :key="track.name"
-          class="home-track-item"
-          :class="`tone-${track.tone}`"
+          v-for="bar in dashboardCoverageBars"
+          :key="bar.key"
+          class="home-mini-chart"
         >
-          <div class="home-track-item__body">
-            <strong>{{ track.name }}</strong>
-            <p>{{ track.summary }}</p>
+          <div class="home-mini-chart__head">
+            <span>{{ bar.label }}</span>
+            <strong>{{ bar.value }}</strong>
           </div>
-          <span>{{ track.state }}</span>
+          <div class="home-mini-chart__rail" :class="`tone-${bar.tone}`">
+            <span class="home-mini-chart__fill" :style="{ width: `${bar.percent}%` }" />
+          </div>
+          <p class="home-mini-chart__note">{{ bar.note }}</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="home-system-snapshot" data-home-zone="snapshot">
+      <div class="home-section-heading home-section-heading-row home-section-marker">
+        <div>
+          <p class="eyebrow">{{ text('System Snapshot', 'System Snapshot') }}</p>
+          <h3>{{ text('紧凑系统快照', 'Compact system snapshot') }}</h3>
+        </div>
+        <p class="home-section-copy">
+          {{ text('保留入口、版本与关键系统信号，减少重复区块。', 'Keep entry, release state, and key system signals with less visual noise.') }}
+        </p>
+      </div>
+
+      <div class="home-fact-tape">
+        <div class="home-fact">
+          <span>{{ text('入口', 'Entry') }}</span>
+          <strong>{{ summary?.transport.entryUrl || '--' }}</strong>
+        </div>
+        <div class="home-fact">
+          <span>{{ text('健康检查', 'Health') }}</span>
+          <strong>{{ summary?.transport.healthUrl || '--' }}</strong>
+        </div>
+        <div class="home-fact">
+          <span>{{ text('当前版本', 'Current version') }}</span>
+          <strong>v{{ summary?.release.currentVersion || '--' }}</strong>
+        </div>
+        <div class="home-fact">
+          <span>{{ text('升级状态', 'Upgrade state') }}</span>
+          <strong>{{ releaseStatusLabel }}</strong>
+        </div>
+      </div>
+
+      <div class="home-resource-signals">
+        <article v-for="signal in dashboardSystemSignals" :key="signal.label" class="home-resource-signal">
+          <span>{{ signal.label }}</span>
+          <strong>{{ signal.value }}</strong>
+          <p>{{ signal.detail }}</p>
         </article>
       </div>
     </section>
@@ -172,45 +150,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed } from 'vue';
 import { motion } from 'motion-v';
 import { useLocalePreference } from '../shared/locale';
-import { fetchDashboardSummary, subscribeDashboardSummary } from '../features/dashboard/api';
-import type { DashboardDomainSummary, DashboardSummaryPayload } from '../../../../types/dashboard';
+import { useDashboardSummary } from '../features/dashboard/use-dashboard-summary';
 import { pageMastheadReveal, pageSurfaceReveal } from '../shared/motion';
+import {
+  buildDashboardContextSummary,
+  buildDashboardOverviewSignals,
+  buildDashboardRiskStage,
+} from '../features/dashboard/overview-recipe';
+import type { DashboardContextSummary } from '../../../../types/dashboard';
 
-type DashboardChipTone = 'ready' | 'accent' | 'danger' | 'neutral';
-type DashboardDomainTone = 'ready' | 'partial' | 'planned';
 
-const dashboardRouteMap: Record<DashboardDomainSummary['key'], string> = {
-  agents: '/agents',
-  channels: '/channels',
-  config: '/config',
-  cron: '/cron',
-  skills: '/skills',
-  system: '/system',
-  terminal: '/terminal',
-};
-
-const { locale, text } = useLocalePreference();
-
-const summary = ref<DashboardSummaryPayload | null>(null);
-const loading = ref(false);
-const errorMessage = ref('');
-let refreshTimer: number | null = null;
-let disconnectSummaryStream: (() => void) | null = null;
-
-const gatewayStatusLabel = computed(() => {
-  if (!summary.value) return '--';
-  return summary.value.gateway.connected ? text('在线', 'Online') : text('离线', 'Offline');
-});
-
-const transportModeLabel = computed(() => {
-  if (!summary.value) return '--';
-  return summary.value.transport.mode === 'gateway'
-    ? text('单口 Gateway /studio', 'Single-port Gateway /studio')
-    : text('独立端口 Standalone', 'Standalone transport');
-});
+const { text } = useLocalePreference();
+const { summary, hasSummary, loading, errorMessage } = useDashboardSummary();
 
 const releaseStatusLabel = computed(() => {
   if (!summary.value) return '--';
@@ -219,115 +173,6 @@ const releaseStatusLabel = computed(() => {
   if (summary.value.release.upgradeStatus === 'succeeded') return text('已完成', 'Completed');
   if (summary.value.release.updateAvailable) return text('有新版本', 'Update available');
   return text('已最新', 'Up to date');
-});
-
-const bootstrapLabel = computed(() => {
-  if (!summary.value) return '--';
-  if (summary.value.bootstrap.ready) return text('已就绪', 'Ready');
-  return text(
-    `${summary.value.bootstrap.errors} 错误 / ${summary.value.bootstrap.warnings} 警告`,
-    `${summary.value.bootstrap.errors} errors / ${summary.value.bootstrap.warnings} warnings`,
-  );
-});
-
-const helperStatusLabel = computed(() => {
-  if (!summary.value) return '--';
-  if (!summary.value.deviceTrust.helperConfigured) return text('未初始化', 'Not initialized');
-  return summary.value.deviceTrust.helperPaired
-    ? text('已配对', 'Paired')
-    : text('待配对', 'Pending');
-});
-
-function domainStateLabel(status: DashboardDomainSummary['status'] | string): string {
-  if (status === 'ready') return text('就绪', 'Ready');
-  if (status === 'partial') return text('进行中', 'In Progress');
-  return text('规划中', 'Planned');
-}
-
-function normalizeDomainTone(status: DashboardDomainSummary['status'] | string): DashboardDomainTone {
-  if (status === 'ready' || status === 'partial' || status === 'planned') {
-    return status;
-  }
-  return 'planned';
-}
-
-function fallbackDomainLabel(key: string): string {
-  switch (key) {
-    case 'agents':
-      return text('Agent', 'Agents');
-    case 'channels':
-      return text('频道', 'Channels');
-    case 'config':
-      return text('配置', 'Config');
-    case 'cron':
-      return text('定时任务', 'Cron');
-    case 'skills':
-      return text('技能', 'Skills');
-    case 'system':
-      return text('系统', 'System');
-    case 'terminal':
-      return text('终端', 'Terminal');
-    default:
-      return key;
-  }
-}
-
-function resolveDomainRoute(key: string): string {
-  return dashboardRouteMap[key as DashboardDomainSummary['key']] ?? '/system';
-}
-
-function formatDateTime(value: string): string {
-  if (!value) return '--';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '--';
-  const formatter = new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  return formatter.format(date);
-}
-
-const checkedAtLabel = computed(() => formatDateTime(summary.value?.checkedAt ?? ''));
-
-const dashboardStatusChips = computed(() => {
-  const payload = summary.value;
-  if (!payload) {
-    return [
-      { label: 'Gateway', value: text('等待同步', 'Waiting'), tone: 'neutral' as DashboardChipTone },
-      { label: text('Bootstrap', 'Bootstrap'), value: text('等待同步', 'Waiting'), tone: 'neutral' as DashboardChipTone },
-      { label: text('Release', 'Release'), value: text('等待同步', 'Waiting'), tone: 'neutral' as DashboardChipTone },
-      { label: text('Local helper', 'Local helper'), value: text('等待同步', 'Waiting'), tone: 'neutral' as DashboardChipTone },
-      { label: text('Checked', 'Checked'), value: '--', tone: 'neutral' as DashboardChipTone },
-    ];
-  }
-
-  const releaseTone: DashboardChipTone = payload.release.upgradeStatus === 'failed'
-    ? 'danger'
-    : payload.release.upgradeRunning || payload.release.updateAvailable
-      ? 'accent'
-      : 'neutral';
-
-  const helperTone: DashboardChipTone = payload.deviceTrust.helperPaired
-    ? 'ready'
-    : payload.deviceTrust.helperConfigured
-      ? 'accent'
-      : 'neutral';
-
-  const bootstrapTone: DashboardChipTone = payload.bootstrap.ready
-    ? 'ready'
-    : payload.bootstrap.errors > 0
-      ? 'danger'
-      : 'accent';
-
-  return [
-    { label: 'Gateway', value: gatewayStatusLabel.value, tone: payload.gateway.connected ? 'ready' : 'danger' as DashboardChipTone },
-    { label: text('Bootstrap', 'Bootstrap'), value: bootstrapLabel.value, tone: bootstrapTone },
-    { label: text('Release', 'Release'), value: releaseStatusLabel.value, tone: releaseTone },
-    { label: text('Local helper', 'Local helper'), value: helperStatusLabel.value, tone: helperTone },
-    { label: text('Checked', 'Checked'), value: checkedAtLabel.value, tone: 'neutral' as DashboardChipTone },
-  ];
 });
 
 const homeSituationMetrics = computed(() => {
@@ -361,7 +206,7 @@ const homeSituationMetrics = computed(() => {
     },
     {
       eyebrow: 'Gateway',
-      value: gatewayStatusLabel.value,
+      value: payload.gateway.connected ? text('在线', 'Online') : text('离线', 'Offline'),
       label: text('实时链路', 'Realtime link'),
       note: payload.transport.mode === 'gateway'
         ? text(`单口 ${payload.transport.basePath}`, `Single-port ${payload.transport.basePath}`)
@@ -370,124 +215,145 @@ const homeSituationMetrics = computed(() => {
   ];
 });
 
-const homeQuickActions = computed(() => ([
+const dashboardQuickActions = computed(() => [
   {
     to: '/chat',
     eyebrow: 'Chat',
-    label: text('继续指挥会话', 'Continue operator chat'),
-    copy: text('回到最近私聊，或直接开启新的指挥会话。', 'Return to recent private sessions or start a new operator thread.'),
+    label: text('Chat', 'Chat'),
+    copy: text('查看私聊上下文', 'View private chat context'),
   },
   {
     to: '/agents',
     eyebrow: 'Agents',
-    label: text('查看执行单元', 'Inspect agents'),
-    copy: text('核对 Agent 配置、工作区和当前状态。', 'Validate agent configuration, workspace assignment, and current state.'),
-  },
-  {
-    to: '/config',
-    eyebrow: 'Config',
-    label: text('收口默认策略', 'Tune defaults'),
-    copy: text('统一模型、sandbox 与工具默认设置。', 'Align model, sandbox, and tooling defaults from one control path.'),
-  },
-  {
-    to: '/cron',
-    eyebrow: 'Cron',
-    label: text('处理待运行任务', 'Review scheduled work'),
-    copy: text('检查定时策略、投递目标和手动运行入口。', 'Check schedules, delivery targets, and run-now controls.'),
-  },
-  {
-    to: '/dreaming',
-    eyebrow: 'Dreaming',
-    label: text('查看记忆态势', 'Open memory lab'),
-    copy: text('检查 memory slot、Dreaming 开关与 Dream Diary。', 'Inspect memory slot selection, dreaming toggle, and Dream Diary.'),
+    label: text('Agents', 'Agents'),
+    copy: text('查看 Agent 状态概览', 'View agent status overview'),
   },
   {
     to: '/system',
     eyebrow: 'System',
-    label: text('进入系统诊断', 'Open diagnostics'),
-    copy: text('追踪健康状态、bootstrap 与设备信任。', 'Track health, bootstrap state, and local device trust.'),
+    label: text('System', 'System'),
+    copy: text('查看系统运行概览', 'View system overview'),
   },
-]));
+]);
 
-const dashboardDomainCards = computed(() => {
-  const payload = summary.value;
-  if (!payload) {
-    return (Object.entries(dashboardRouteMap) as Array<[DashboardDomainSummary['key'], string]>).map(([key, to]) => ({
-      key,
-      to,
-      kicker: key.toUpperCase(),
-      label: fallbackDomainLabel(key),
-      state: text('等待数据', 'Waiting'),
-      tone: 'planned' as DashboardDomainTone,
-      value: '--',
-      note: text('等待 dashboard summary。', 'Waiting for dashboard summary.'),
-    }));
-  }
-  return payload.domains.map((domain) => ({
-    key: domain.key,
-    to: resolveDomainRoute(domain.key),
-    kicker: domain.key.toUpperCase(),
-    label: domain.label || fallbackDomainLabel(domain.key),
-    state: domainStateLabel(domain.status),
-    tone: normalizeDomainTone(domain.status),
-    value: domain.value,
-    note: domain.note,
-  }));
-});
+const dashboardRiskStageCards = computed(() => buildDashboardRiskStage({
+  payload: summary.value,
+  text,
+}));
 
-const dashboardSystemSignals = computed(() => {
+const dashboardContextSummary = computed(() => buildDashboardContextSummary({
+  payload: summary.value,
+  text,
+}));
+
+const dashboardSystemSignals = computed(() => buildDashboardOverviewSignals({
+  payload: summary.value,
+  text,
+  formatUptime,
+}));
+
+type DashboardCoverageBar = {
+  key: string;
+  label: string;
+  value: string;
+  note: string;
+  percent: number;
+  tone: 'low' | 'medium' | 'high';
+};
+
+const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
   const payload = summary.value;
+
   if (!payload) {
     return [
-      { label: text('CLI coverage', 'CLI coverage'), value: '--', detail: text('等待数据', 'Waiting for data') },
-      { label: text('Server uptime', 'Server uptime'), value: '--', detail: text('等待数据', 'Waiting for data') },
-      { label: text('Pending fixes', 'Pending fixes'), value: '--', detail: text('等待数据', 'Waiting for data') },
-      { label: text('Pending pairing', 'Pending pairing'), value: '--', detail: text('等待数据', 'Waiting for data') },
+      {
+        key: 'cli',
+        label: text('CLI 覆盖率', 'CLI coverage'),
+        value: '--',
+        note: text('等待数据', 'Waiting for data'),
+        percent: 0,
+        tone: 'medium',
+      },
+      {
+        key: 'bootstrap',
+        label: text('Bootstrap 可修复压力', 'Bootstrap fix pressure'),
+        value: '--',
+        note: text('等待数据', 'Waiting for data'),
+        percent: 0,
+        tone: 'medium',
+      },
+      {
+        key: 'pairing',
+        label: text('设备配对待处理', 'Pending pairing queue'),
+        value: '--',
+        note: text('等待数据', 'Waiting for data'),
+        percent: 0,
+        tone: 'medium',
+      },
+      {
+        key: 'events',
+        label: text('事件失败占比', 'Event failure share'),
+        value: '--',
+        note: text('等待数据', 'Waiting for data'),
+        percent: 0,
+        tone: 'medium',
+      },
     ];
   }
+
+  const cliExpected = Math.max(payload.runtime.expectedCliCount, 1);
+  const cliPercent = clampPercent((payload.runtime.installedCliCount / cliExpected) * 100);
+
+  const bootstrapBase = payload.bootstrap.pending + payload.bootstrap.fixable;
+  const bootstrapPercent = clampPercent((payload.bootstrap.fixable / Math.max(bootstrapBase, 1)) * 100);
+
+  const pairingQueueBase = payload.deviceTrust.pendingRequests + payload.deviceTrust.approvedDevices;
+  const pairingPercent = clampPercent((payload.deviceTrust.pendingRequests / Math.max(pairingQueueBase, 1)) * 100);
+
+  const eventTotal = payload.events.recentFailures + payload.events.pendingAuditItems;
+  const eventPercent = clampPercent((payload.events.recentFailures / Math.max(eventTotal, 1)) * 100);
+
   return [
     {
-      label: text('CLI coverage', 'CLI coverage'),
+      key: 'cli',
+      label: text('CLI 覆盖率', 'CLI coverage'),
       value: `${payload.runtime.installedCliCount}/${payload.runtime.expectedCliCount}`,
-      detail: text('运行时 CLI 已安装 / 预期数量', 'Installed / expected runtime CLIs'),
+      note: text('安装数量 / 期望数量', 'Installed / expected'),
+      percent: cliPercent,
+      tone: toneForPositiveMetric(cliPercent),
     },
     {
-      label: text('Server uptime', 'Server uptime'),
-      value: formatUptime(payload.server.uptime),
-      detail: `Node ${payload.server.nodeVersion}`,
-    },
-    {
-      label: text('Pending fixes', 'Pending fixes'),
+      key: 'bootstrap',
+      label: text('Bootstrap 可修复压力', 'Bootstrap fix pressure'),
       value: String(payload.bootstrap.fixable),
-      detail: text('bootstrap 阶段可自动修复的问题数量', 'Fixable issues reported by bootstrap'),
+      note: text('可自动修复项占当前 bootstrap 总量', 'Fixable share of current bootstrap total'),
+      percent: bootstrapPercent,
+      tone: toneForInverseMetric(bootstrapPercent),
     },
     {
-      label: text('Pending pairing', 'Pending pairing'),
+      key: 'pairing',
+      label: text('设备配对待处理', 'Pending pairing queue'),
       value: String(payload.deviceTrust.pendingRequests),
-      detail: text('等待审批的本地设备配对请求', 'Device trust requests awaiting approval'),
+      note: text('待处理占设备信任总量', 'Pending share of device trust total'),
+      percent: pairingPercent,
+      tone: toneForInverseMetric(pairingPercent),
+    },
+    {
+      key: 'events',
+      label: text('事件失败占比', 'Event failure share'),
+      value: String(payload.events.recentFailures),
+      note: text('失败事件占近期事件总量', 'Failure share of recent event load'),
+      percent: eventPercent,
+      tone: toneForInverseMetric(eventPercent),
     },
   ];
 });
 
-const homeRecentTracks = computed(() => {
-  const payload = summary.value;
-  if (!payload) {
-    return [
-      {
-        name: text('数据汇总', 'Summary Pipeline'),
-        summary: text('等待后端返回 dashboard summary。', 'Waiting for dashboard summary payload.'),
-        state: text('加载中', 'Loading'),
-        tone: 'planned' as DashboardDomainTone,
-      },
-    ];
-  }
-  return payload.domains.map((domain) => ({
-    name: domain.label,
-    summary: domain.note,
-    state: domainStateLabel(domain.status),
-    tone: domain.status as DashboardDomainTone,
-  }));
-});
+function localizedRiskStageLabel(riskStage: DashboardContextSummary['riskStage']): string {
+  if (riskStage === 'high') return text('高风险', 'High');
+  if (riskStage === 'medium') return text('中风险', 'Medium');
+  return text('低风险', 'Low');
+}
 
 function formatUptime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0m';
@@ -500,93 +366,41 @@ function formatUptime(seconds: number): string {
   return `${minutes}m`;
 }
 
-function applyDashboardSummary(payload: DashboardSummaryPayload): void {
-  summary.value = payload;
-  errorMessage.value = '';
-  loading.value = false;
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function clearRefreshTimer(): void {
-  if (refreshTimer !== null) {
-    window.clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
+function toneForPositiveMetric(percent: number): DashboardCoverageBar['tone'] {
+  if (percent >= 70) return 'low';
+  if (percent >= 40) return 'medium';
+  return 'high';
 }
 
-function ensurePollingFallback(): void {
-  if (typeof window === 'undefined' || refreshTimer !== null) {
-    return;
-  }
-  refreshTimer = window.setInterval(() => {
-    void loadDashboardSummary(true);
-  }, 10_000);
+function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
+  if (percent >= 70) return 'high';
+  if (percent >= 40) return 'medium';
+  return 'low';
 }
 
-function connectDashboardStream(): void {
-  if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
-    ensurePollingFallback();
-    return;
-  }
-  disconnectSummaryStream?.();
-  disconnectSummaryStream = subscribeDashboardSummary(
-    (payload) => {
-      clearRefreshTimer();
-      applyDashboardSummary(payload);
-    },
-    () => {
-      ensurePollingFallback();
-    },
-  );
-}
-
-async function loadDashboardSummary(silent = false): Promise<void> {
-  if (!silent) {
-    loading.value = true;
-  }
-  try {
-    applyDashboardSummary(await fetchDashboardSummary());
-  } catch (error) {
-    errorMessage.value = error instanceof Error
-      ? error.message
-      : text('读取首页控制面失败。', 'Failed to load home control surface.');
-  } finally {
-    if (!silent) {
-      loading.value = false;
-    }
-  }
-}
-
-onMounted(() => {
-  void loadDashboardSummary();
-  connectDashboardStream();
-});
-
-onBeforeUnmount(() => {
-  disconnectSummaryStream?.();
-  disconnectSummaryStream = null;
-  clearRefreshTimer();
-});
 </script>
 
 <style scoped>
 .home-control-surface {
   display: grid;
-  gap: 18px;
 }
 
 .home-situation-band,
 .home-risk-stage,
-.home-resource-panel,
-.home-recent-stream {
+.home-compact-visual-strip,
+.home-system-snapshot {
   position: relative;
   display: grid;
   gap: 16px;
   padding: 22px;
   border-radius: 12px;
-  border: 1px solid var(--shell-panel-border);
-  background:
-    radial-gradient(520px 220px at 14% 0%, rgba(255, 255, 255, 0.13), transparent 60%),
-    var(--shell-panel-fill);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-base);
   box-shadow: var(--shadow-soft);
   overflow: hidden;
 }
@@ -594,9 +408,8 @@ onBeforeUnmount(() => {
 .home-situation-band {
   gap: 18px;
   background:
-    radial-gradient(560px 240px at 12% 0%, rgba(255, 255, 255, 0.15), transparent 58%),
-    linear-gradient(135deg, rgba(92, 168, 255, 0.08), transparent 36%),
-    var(--shell-stage-fill-strong);
+    radial-gradient(560px 240px at 12% 0%, color-mix(in srgb, var(--accent-soft) 70%, transparent), transparent 58%),
+    var(--surface-raised);
 }
 
 .home-situation-copy {
@@ -630,10 +443,8 @@ onBeforeUnmount(() => {
 }
 
 .home-situation-meter__eyebrow,
-.home-risk-chip__label,
 .home-risk-row__eyebrow,
 .home-fact span,
-.home-release-value span,
 .home-resource-signal span {
   color: var(--muted-soft);
   font-size: 10px;
@@ -660,9 +471,7 @@ onBeforeUnmount(() => {
 .home-situation-meter__note,
 .home-quick-action__note,
 .home-risk-row__note,
-.home-release-copy p,
-.home-resource-signal p,
-.home-track-item__body p {
+.home-resource-signal p {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
@@ -712,50 +521,17 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-.home-risk-chip-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.home-risk-chip {
-  display: grid;
-  gap: 6px;
-  min-width: 148px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--shell-panel-border);
-  background: var(--shell-panel-fill);
-}
-
-.home-risk-chip strong,
 .home-risk-row h4,
 .home-quick-action strong,
-.home-track-item__body strong,
-.home-resource-signal strong {
+.home-resource-signal strong,
+.home-mini-chart__head strong {
   color: var(--text);
-}
-
-.home-risk-chip strong {
-  font-size: 15px;
-}
-
-.home-risk-chip.tone-ready {
-  border-color: rgba(127, 255, 212, 0.2);
-}
-
-.home-risk-chip.tone-accent {
-  border-color: rgba(255, 214, 165, 0.2);
-}
-
-.home-risk-chip.tone-danger {
-  border-color: rgba(255, 154, 154, 0.22);
 }
 
 .home-risk-stream,
 .home-fact-tape,
-.home-track-list,
-.home-risk-stage__side {
+.home-risk-stage__side,
+.home-mini-chart-grid {
   display: grid;
   gap: 10px;
 }
@@ -792,15 +568,12 @@ onBeforeUnmount(() => {
 .home-quick-action:hover,
 .home-risk-row:hover {
   transform: translateY(-1px);
-  border-color: rgba(127, 255, 212, 0.2);
-  background: var(--shell-panel-fill-strong);
+  border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-subtle));
+  background: var(--surface-raised);
 }
 
 .home-quick-action__copy,
-.home-risk-row__lead,
-.home-track-item__body,
-.home-release-value,
-.home-release-copy {
+.home-risk-row__lead {
   display: grid;
   gap: 6px;
 }
@@ -813,8 +586,7 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
-.home-risk-row__state,
-.home-track-item span {
+.home-risk-row__state {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -829,22 +601,114 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.home-risk-row.tone-ready .home-risk-row__state,
-.home-track-item.tone-ready span {
+.home-risk-row.tone-high {
+  border-color: rgba(255, 154, 154, 0.28);
+  background: linear-gradient(135deg, rgba(255, 154, 154, 0.12), rgba(255, 255, 255, 0.03));
+}
+
+.home-risk-row.tone-medium {
+  border-color: rgba(255, 214, 165, 0.26);
+  background: linear-gradient(135deg, rgba(255, 214, 165, 0.12), rgba(255, 255, 255, 0.03));
+}
+
+.home-risk-row.tone-low {
+  border-color: rgba(127, 255, 212, 0.24);
+  background: linear-gradient(135deg, rgba(127, 255, 212, 0.1), rgba(255, 255, 255, 0.03));
+}
+
+.home-risk-row.tone-high .home-risk-row__state {
+  background: rgba(255, 154, 154, 0.14);
+  color: #ffd8d8;
+}
+
+.home-risk-row.tone-medium .home-risk-row__state {
+  background: rgba(255, 214, 165, 0.16);
+  color: #ffe6bf;
+}
+
+.home-risk-row.tone-low .home-risk-row__state,
+.home-risk-row.tone-ready .home-risk-row__state {
   background: rgba(127, 255, 212, 0.12);
   color: var(--mint);
 }
 
-.home-resource-grid {
+.home-compact-visual-strip {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+}
+
+.home-mini-chart-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.home-mini-chart {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--shell-panel-border);
+  background: var(--shell-panel-fill);
+}
+
+.home-mini-chart__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.home-mini-chart__head span {
+  color: var(--muted-soft);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.home-mini-chart__head strong {
+  font-size: 14px;
+}
+
+.home-mini-chart__rail {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--shell-panel-border) 70%, transparent);
+  overflow: hidden;
+}
+
+.home-mini-chart__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--mint);
+}
+
+.home-mini-chart__rail.tone-high .home-mini-chart__fill {
+  background: #ff9a9a;
+}
+
+.home-mini-chart__rail.tone-medium .home-mini-chart__fill {
+  background: #ffd6a5;
+}
+
+.home-mini-chart__rail.tone-low .home-mini-chart__fill {
+  background: var(--mint);
+}
+
+.home-mini-chart__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.home-system-snapshot {
+  display: grid;
   gap: 12px;
 }
 
 .home-fact,
-.home-resource-signal,
-.home-track-item,
-.home-release-summary {
+.home-resource-signal {
   border-radius: 10px;
   border: 1px solid var(--shell-panel-border);
   background: var(--shell-panel-fill);
@@ -863,25 +727,6 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
-.home-resource-panel {
-  display: grid;
-  gap: 14px;
-}
-
-.home-release-summary {
-  display: grid;
-  grid-template-columns: minmax(180px, auto) minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-  padding: 14px 16px;
-}
-
-.home-release-value strong {
-  color: var(--text);
-  font-size: 24px;
-  letter-spacing: -0.04em;
-}
-
 .home-resource-signals {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -894,24 +739,10 @@ onBeforeUnmount(() => {
   padding: 13px 14px;
 }
 
-.home-track-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.home-track-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 18px;
-  padding: 14px 16px;
-}
-
 @media (max-width: 1180px) {
   .home-situation-meters,
-  .home-resource-grid,
-  .home-track-list,
-  .home-release-summary {
+  .home-fact-tape,
+  .home-mini-chart-grid {
     grid-template-columns: 1fr;
   }
 
@@ -923,8 +754,7 @@ onBeforeUnmount(() => {
 @media (max-width: 920px) {
   .home-situation-band,
   .home-risk-stage,
-  .home-resource-panel,
-  .home-recent-stream {
+  .home-system-snapshot {
     padding: 18px;
   }
 
@@ -948,12 +778,6 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .home-track-item {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .home-track-item span,
   .home-risk-row__state {
     white-space: normal;
   }

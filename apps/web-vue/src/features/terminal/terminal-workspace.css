@@ -1,40 +1,94 @@
 .terminal-workspace-shell {
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 12px;
-  min-height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
 }
 
-.terminal-workspace-main {
+.terminal-workspace-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px 260px;
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 28vw, 380px);
   gap: 12px;
   min-height: 0;
+  height: 100%;
+  align-items: stretch;
+}
+
+.terminal-inspector-drawer,
+.terminal-workspace-stage {
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-base);
+}
+
+.terminal-workspace-stage {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface-base);
+}
+
+.terminal-workspace-stage > * {
+  min-height: 0;
+}
+
+.terminal-inspector-drawer {
+  width: clamp(300px, 28vw, 380px);
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  background: color-mix(in srgb, var(--surface-base) 90%, var(--surface-raised));
+}
+
+.terminal-inspector-rail-scroll {
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
 }
 
 .terminal-tab-rail {
   display: flex;
   gap: 8px;
   overflow-x: auto;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-raised) 76%, transparent);
 }
 
 .terminal-tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--border-color, #d9d9df);
+  border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  background: var(--panel-bg, #ffffff);
+  background: var(--surface-base);
+  color: var(--text-primary);
 }
 
 .terminal-tab.active {
-  border-color: var(--accent-color, #7c5cff);
+  border-color: var(--accent-primary, var(--accent-color, #7c5cff));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary, #7c5cff) 28%, transparent);
 }
 
 .terminal-tab-select,
 .terminal-tab-close,
+.terminal-tab-rename,
+.terminal-tab-end,
+.terminal-tab-delete,
+.terminal-tab-rename-save,
+.terminal-tab-rename-cancel,
 .terminal-action-item,
-.terminal-recent-item {
+.terminal-recent-item,
+.terminal-session-item {
   border: 0;
   background: transparent;
   color: inherit;
@@ -46,12 +100,34 @@
   text-align: left;
 }
 
-.terminal-tab-close {
+.terminal-tab-rename,
+.terminal-tab-close,
+.terminal-tab-end,
+.terminal-tab-delete,
+.terminal-tab-rename-save,
+.terminal-tab-rename-cancel {
   padding: 6px 8px;
+  color: var(--muted);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.terminal-tab-rename:hover,
+.terminal-tab-close:hover,
+.terminal-tab-end:hover,
+.terminal-tab-delete:hover,
+.terminal-tab-rename-save:hover,
+.terminal-tab-rename-cancel:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
+}
+
+.terminal-tab-delete:hover {
+  color: var(--danger, #dc2626);
 }
 
 .terminal-tab-title,
-.terminal-recent-title {
+.terminal-recent-title,
+.terminal-session-item__title {
   display: block;
   font-weight: 600;
 }
@@ -60,44 +136,233 @@
 .terminal-recent-meta {
   display: block;
   font-size: 12px;
-  opacity: 0.72;
+  color: var(--muted);
 }
 
 .terminal-tab-add {
   padding: 8px 12px;
 }
 
+.terminal-tab-rename-input {
+  width: 180px;
+  max-width: 40vw;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--surface-base);
+  color: var(--text-primary);
+}
+
 .terminal-session-pane {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-session-pane > .terminal-console-surface {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.terminal-stage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+}
+
+.terminal-stage-header-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.terminal-stage-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.terminal-inspector-toggle {
+  margin: 10px 12px 0;
+  width: fit-content;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-base);
+  color: var(--muted);
+  padding: 6px 10px;
+}
+
+.terminal-inspector-toggle:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent-primary, #7c5cff) 24%, var(--border-subtle));
+}
+
+.terminal-inspector-tooling,
+.terminal-action-panel,
+.terminal-tooling-status-item {
   min-width: 0;
 }
 
-.terminal-action-panel,
-.terminal-recent-rail {
-  border: 1px solid var(--border-color, #d9d9df);
+.terminal-inspector-tooling {
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  padding: 10px;
-  background: var(--panel-bg, #ffffff);
+  padding: 8px;
+  background: var(--surface-base);
+  margin-bottom: 8px;
 }
 
-.terminal-action-layer + .terminal-action-layer {
-  margin-top: 12px;
+.terminal-inspector-tooling-summary {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.terminal-inspector-tooling-actions {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 6px;
+}
+
+.terminal-tooling-status-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.terminal-tooling-status-item {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px;
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+}
+
+.terminal-tooling-status-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-tooling-status-chip {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.terminal-tooling-status-chip[data-installed='true'] {
+  color: var(--success, #16a34a);
+}
+
+.terminal-tooling-status-meta {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.terminal-tooling-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.terminal-install-feedback {
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px;
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+}
+
+.terminal-install-feedback[data-kind='success'] {
+  border-color: color-mix(in srgb, var(--success, #16a34a) 36%, var(--border-subtle));
+}
+
+.terminal-install-feedback[data-kind='error'] {
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 36%, var(--border-subtle));
+}
+
+.terminal-install-feedback pre {
+  margin: 6px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.terminal-action-panel {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 8px;
+  background: var(--surface-base);
+}
+
+.terminal-action-layer + .terminal-action-layer,
+.terminal-session-group + .terminal-session-group {
+  margin-top: 8px;
 }
 
 .terminal-action-panel ul,
-.terminal-recent-rail ul {
+.terminal-session-group ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .terminal-action-item,
-.terminal-recent-item {
+.terminal-session-item {
   width: 100%;
-  padding: 8px;
+  padding: 6px 8px;
   text-align: left;
   border-radius: 8px;
 }
 
-.terminal-recent-item.active {
-  background: rgba(124, 92, 255, 0.12);
+.terminal-session-item.active {
+  background: color-mix(in srgb, var(--surface-raised) 80%, transparent);
+}
+
+:global(html[data-theme="light"]) .terminal-workspace-stage,
+:global(html[data-theme="light"]) .terminal-inspector-drawer {
+  background: var(--surface-base);
+}
+
+:global(html[data-theme="light"]) .terminal-stage-header {
+  background: color-mix(in srgb, var(--surface-raised) 90%, var(--surface-base));
+}
+
+@media (max-width: 1080px) {
+  .terminal-workspace-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .terminal-inspector-drawer {
+    order: -1;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    height: auto;
+  }
+
+  .terminal-inspector-rail-scroll {
+    height: auto;
+    overflow: visible;
+  }
 }

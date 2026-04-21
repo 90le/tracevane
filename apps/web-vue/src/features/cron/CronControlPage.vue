@@ -1454,15 +1454,6 @@ watch(
   }
 );
 
-watch(
-  () => createForm.failureAlertEnabled,
-  (enabled) => {
-    if (!enabled) {
-      createForm.failureAlertTo = '';
-    }
-  }
-);
-
 onMounted(async () => {
   await refreshSummary();
 });
@@ -1488,8 +1479,8 @@ onMounted(async () => {
 .cron-sidebar-panel,
 .cron-stage-header,
 .cron-stage-panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
   box-shadow: var(--soft-shadow);
 }

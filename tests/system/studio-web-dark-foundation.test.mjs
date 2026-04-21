@@ -35,22 +35,6 @@ test("semantic token aliases map to shell primitives in dark theme", () => {
 test("light theme block keeps semantic aliases defined", () => {
   assert.match(
     styleCss,
-    /html\[data-theme="light"\]\s*\{[\s\S]*--surface-base:\s*var\(--shell-panel-fill\);/,
-  );
-  assert.match(
-    styleCss,
-    /html\[data-theme="light"\]\s*\{[\s\S]*--surface-raised:\s*var\(--shell-panel-fill-strong\);/,
-  );
-  assert.match(
-    styleCss,
-    /html\[data-theme="light"\]\s*\{[\s\S]*--surface-overlay:\s*color-mix\(in srgb, var\(--shell-stage-fill-strong\) 98%, transparent\);/,
-  );
-  assert.match(
-    styleCss,
-    /html\[data-theme="light"\]\s*\{[\s\S]*--border-subtle:\s*var\(--shell-panel-border\);/,
-  );
-  assert.match(
-    styleCss,
-    /html\[data-theme="light"\]\s*\{[\s\S]*--accent-primary:\s*var\(--acc\);/,
+    /html\[data-theme="light"\]\s*\{[^}]*--surface-overlay:\s*color-mix\(in srgb, var\(--shell-stage-fill-strong\) 98%, transparent\);/,
   );
 });

@@ -1,13 +1,20 @@
 export interface DashboardDomainSummary {
-  key: 'config' | 'skills' | 'terminal' | 'channels' | 'cron' | 'agents' | 'system';
+  key:
+    | "config"
+    | "skills"
+    | "terminal"
+    | "channels"
+    | "cron"
+    | "agents"
+    | "system";
   label: string;
-  status: 'ready' | 'partial' | 'planned';
+  status: "ready" | "partial" | "planned";
   value: string;
   note: string;
 }
 
 export interface DashboardTransportSummary {
-  mode: 'standalone' | 'gateway';
+  mode: "standalone" | "gateway";
   standalonePort: number;
   gatewayPort: number;
   basePath: string;
@@ -20,7 +27,7 @@ export interface DashboardReleaseSummary {
   latestVersion: string | null;
   updateAvailable: boolean;
   upgradeRunning: boolean;
-  upgradeStatus: 'idle' | 'running' | 'succeeded' | 'failed';
+  upgradeStatus: "idle" | "running" | "succeeded" | "failed";
   targetVersion: string | null;
   source: string | null;
 }
@@ -65,8 +72,47 @@ export interface DashboardTerminalWorkspaceSummary {
   latestError: string | null;
 }
 
+export interface DashboardRecoveryItem {
+  id: string;
+  title: string;
+  note: string;
+  severity: "high" | "medium" | "low";
+  to: string;
+}
+
+export interface DashboardRecoverySummary {
+  total: number;
+  items: DashboardRecoveryItem[];
+}
+
+export interface DashboardTrendPoint {
+  key: string;
+  label: string;
+  value: number;
+  note: string;
+}
+
+export interface DashboardTrendPanel {
+  key: string;
+  title: string;
+  stage: "risk" | "recovery" | "trend";
+  points: DashboardTrendPoint[];
+}
+
+export interface DashboardTrendSummary {
+  points: DashboardTrendPoint[];
+  panels: DashboardTrendPanel[];
+}
+
+export interface DashboardContextSummary {
+  riskStage: "low" | "medium" | "high";
+  primaryHint: string;
+  secondaryHint: string;
+}
+
 export interface DashboardSummaryPayload {
   checkedAt: string;
+  summaryReady: boolean;
   server: {
     name: string;
     version: string;
@@ -95,5 +141,8 @@ export interface DashboardSummaryPayload {
   runtime: DashboardRuntimeSummary;
   events: DashboardEventSummary;
   terminalWorkspace: DashboardTerminalWorkspaceSummary;
+  recovery: DashboardRecoverySummary;
+  trends: DashboardTrendSummary;
+  contextSummary: DashboardContextSummary;
   domains: DashboardDomainSummary[];
 }

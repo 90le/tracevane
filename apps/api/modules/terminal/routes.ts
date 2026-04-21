@@ -69,6 +69,53 @@ export function registerTerminalRoutes(
     sendJson(res, 200, await routeCtx.services.terminal.listWorkspaceActions());
   });
 
+  router.post(
+    "/api/terminal/sessions/:sessionId/rename",
+    async (req, res, routeCtx, params) => {
+      const body = await parseJsonBody<{ title?: string }>(req);
+      const title = String(body.title || "");
+      const terminal = routeCtx.services.terminal;
+      const session = await terminal.renamePersistedSession(
+        params.sessionId,
+        title,
+      );
+      if (!session) {
+        sendJson(res, 404, {
+          error: "not_found",
+          message: `terminal session not found: ${params.sessionId}`,
+        });
+        return;
+      }
+      sendJson(res, 200, session);
+    },
+  );
+
+  router.post(
+    "/api/terminal/sessions/:sessionId/delete",
+    async (_req, res, routeCtx, params) => {
+      const result = await routeCtx.services.terminal.deletePersistedSession(
+        params.sessionId,
+      );
+      if (!result.success) {
+        if (result.reason === "session_active") {
+          sendJson(res, 409, {
+            error: "conflict",
+            message:
+              "terminal session is active and must be ended before delete",
+          });
+          return;
+        }
+
+        sendJson(res, 404, {
+          error: "not_found",
+          message: `terminal session not found: ${params.sessionId}`,
+        });
+        return;
+      }
+      sendJson(res, 200, result);
+    },
+  );
+
   router.post("/api/terminal/install", async (req, res, routeCtx) => {
     const body = await parseJsonBody<{ cli?: TerminalInstallRequestId }>(req);
     const target = body.cli || "all-missing";

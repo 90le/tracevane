@@ -10,6 +10,8 @@ export interface TerminalSessionDescriptorStoreOptions {
 
 export interface TerminalSessionDescriptorStore {
   upsert(descriptor: TerminalSessionDescriptor): void;
+  rename(sessionId: string, title: string): TerminalSessionDescriptor | null;
+  remove(sessionId: string): boolean;
   listRecent(): TerminalSessionDescriptor[];
   get(sessionId: string): TerminalSessionDescriptor | null;
 }
@@ -176,6 +178,36 @@ export function createTerminalSessionDescriptorStore(
       }
       records.set(normalized.sessionId, normalized);
       flush();
+    },
+    rename(sessionId: string, title: string): TerminalSessionDescriptor | null {
+      const normalizedId = String(sessionId || "").trim();
+      if (!normalizedId) {
+        return null;
+      }
+      const current = records.get(normalizedId);
+      if (!current) {
+        return null;
+      }
+      const nextTitle = String(title || "").trim() || normalizedId;
+      const next = normalizeDescriptor({
+        ...current,
+        title: nextTitle,
+        updatedAt: new Date().toISOString(),
+      });
+      records.set(normalizedId, next);
+      flush();
+      return next;
+    },
+    remove(sessionId: string): boolean {
+      const normalizedId = String(sessionId || "").trim();
+      if (!normalizedId) {
+        return false;
+      }
+      const existed = records.delete(normalizedId);
+      if (existed) {
+        flush();
+      }
+      return existed;
     },
     listRecent(): TerminalSessionDescriptor[] {
       return sortRecent(Array.from(records.values()));

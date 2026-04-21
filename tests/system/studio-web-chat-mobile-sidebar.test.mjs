@@ -71,21 +71,23 @@ test("mobile drawer and inspector use reka dialog primitives while preserving ov
     chatShellPage,
     /<DialogContent as-child @open-auto-focus\.prevent @close-auto-focus\.prevent>/,
   );
+  assert.match(chatShellPage, /--chat-layer-overlay:\s*1400;/);
+  assert.match(chatShellPage, /--chat-layer-inspector:\s*1421;/);
   assert.match(
     chatShellPage,
-    /\.chat-mobile-drawer-mask\s*\{[\s\S]*z-index:\s*1400;/,
+    /\.chat-mobile-drawer-mask\s*\{[\s\S]*z-index:\s*var\(--chat-layer-overlay\);/,
   );
   assert.match(
     chatShellPage,
-    /\.chat-mobile-drawer\s*\{[\s\S]*z-index:\s*1401;/,
+    /\.chat-mobile-drawer\s*\{[\s\S]*z-index:\s*calc\(var\(--chat-layer-overlay\) \+ 1\);/,
   );
   assert.match(
     chatShellPage,
-    /\.chat-inspector-mask\s*\{[\s\S]*z-index:\s*1420;/,
+    /\.chat-inspector-mask\s*\{[\s\S]*z-index:\s*calc\(var\(--chat-layer-inspector\) - 1\);/,
   );
   assert.match(
     chatShellPage,
-    /\.chat-inspector-sheet\s*\{[\s\S]*z-index:\s*1421;/,
+    /\.chat-inspector-sheet\s*\{[\s\S]*z-index:\s*var\(--chat-layer-inspector\);/,
   );
   assert.match(sessionContextMenu, /:z-index="1605"/);
   assert.match(folderPickerMenu, /:z-index="1610"/);

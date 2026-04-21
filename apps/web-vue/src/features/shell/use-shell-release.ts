@@ -5,6 +5,7 @@ import {
   startStudioUpgrade,
 } from "../system/api";
 import { useLocalePreference } from "../../shared/locale";
+import { useConfirmDialog } from "../../composables/useConfirmDialog";
 import type {
   SystemStudioReleasePayload,
   SystemStudioUpgradeStatusPayload,
@@ -12,6 +13,7 @@ import type {
 
 export function useShellRelease(buildVersion: string) {
   const { text } = useLocalePreference();
+  const { confirm } = useConfirmDialog();
   const studioRelease = ref<SystemStudioReleasePayload | null>(null);
   const studioUpgradeStatus = ref<SystemStudioUpgradeStatusPayload | null>(
     null,
@@ -198,15 +200,16 @@ export function useShellRelease(buildVersion: string) {
     }
 
     const target = studioRelease.value.latestVersion || "";
-    const confirmed =
-      typeof window !== "undefined"
-        ? window.confirm(
-            text(
-              `确认升级到 v${target}？升级期间 Gateway 可能会重启。`,
-              `Upgrade to v${target}? Gateway may restart during upgrade.`,
-            ),
-          )
-        : false;
+    const confirmed = await confirm({
+      title: text("确认升级 Studio", "Confirm Studio upgrade"),
+      message: text(
+        `确认升级到 v${target}？升级期间 Gateway 可能会重启。`,
+        `Upgrade to v${target}? Gateway may restart during upgrade.`,
+      ),
+      confirmText: text("确认升级", "Upgrade now"),
+      cancelText: text("取消", "Cancel"),
+      tone: "danger",
+    });
     if (!confirmed) {
       return;
     }
@@ -217,26 +220,30 @@ export function useShellRelease(buildVersion: string) {
         version: target || undefined,
       });
       studioUpgradeStatus.value = response.status;
-      if (typeof window !== "undefined") {
-        const message = response.ok
-          ? text(
-              "升级任务已启动，可在系统页查看日志。",
-              "Upgrade started. You can monitor logs in System page.",
-            )
-          : text(
-              "升级任务启动失败，请查看系统页日志。",
-              "Failed to start upgrade. Check logs in System page.",
-            );
-        window.alert(message);
+      if (!response.ok) {
+        const message = text(
+          "升级任务启动失败，请查看系统页日志。",
+          "Failed to start upgrade. Check logs in System page.",
+        );
+        await confirm({
+          title: text("升级任务未启动", "Upgrade did not start"),
+          message,
+          confirmText: text("知道了", "Got it"),
+          cancelText: text("关闭", "Close"),
+          tone: "danger",
+        });
       }
     } catch (error) {
-      if (typeof window !== "undefined") {
-        window.alert(
+      await confirm({
+        title: text("升级请求失败", "Upgrade request failed"),
+        message:
           error instanceof Error
             ? error.message
             : text("升级请求失败。", "Upgrade request failed."),
-        );
-      }
+        confirmText: text("知道了", "Got it"),
+        cancelText: text("关闭", "Close"),
+        tone: "danger",
+      });
     } finally {
       studioUpgradeBusy.value = false;
       await refreshStudioReleaseState();

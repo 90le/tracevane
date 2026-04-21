@@ -1,39 +1,83 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const rootDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
 const chatShellPage = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatShellPage.vue'),
-  'utf8',
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
+  "utf8",
 );
 const chatRuntimeRecovery = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/chat-runtime-recovery.ts'),
-  'utf8',
+  path.join(
+    rootDir,
+    "apps/web-vue/src/features/chat-v2/chat-runtime-recovery.ts",
+  ),
+  "utf8",
 );
 
-test('chat shell resolves requested route sessions through the shared recovery helper', () => {
-  assert.match(chatShellPage, /resolveRequestedOrFallbackSessionKey/);
-  assert.match(chatRuntimeRecovery, /export function resolveRequestedOrFallbackSessionKey/);
+test("chat shell resolves route sessions through the shared recovery helpers", () => {
+  assert.match(chatShellPage, /resolveChatRouteSessionKey/);
+  assert.match(chatShellPage, /resolveRuntimeFallbackSessionKey/);
+  assert.match(chatShellPage, /buildRuntimeChatRoute/);
+  assert.match(
+    chatRuntimeRecovery,
+    /export function resolveChatRouteSessionKey/,
+  );
+  assert.match(
+    chatRuntimeRecovery,
+    /export function resolveFallbackSessionKey/,
+  );
+  assert.match(chatRuntimeRecovery, /export function buildChatRoute/);
 });
 
-test('chat shell repairs stale deep links for both inspect and standard chat routes', () => {
-  assert.match(chatShellPage, /route\.path === '\/chat\/workbench'/);
-  assert.match(chatShellPage, /route\.path\.startsWith\('\/chat\/s\/'\)/);
-  assert.match(chatShellPage, /await router\.replace\(buildChatRoute\(resolved \|\| null, props\.shellMode\)\);/);
-  assert.match(chatShellPage, /if \(route\.path\.startsWith\('\/chat\/s\/'\) \|\| routeUsesLegacySessionQuery\.value\) \{[\s\S]*await router\.replace\(buildChatRoute\(fallback \|\| null, props\.shellMode\)\);/);
+test("chat shell derives route session keys from params and legacy query inputs", () => {
+  assert.match(
+    chatShellPage,
+    /const routeSessionKey = computed\(\(\) => resolveChatRouteSessionKey\(\{/,
+  );
+  assert.match(
+    chatShellPage,
+    /routeParamSessionRef: typeof route\.params\.sessionRef === 'string' \? route\.params\.sessionRef : ''/,
+  );
+  assert.match(
+    chatShellPage,
+    /routeQuerySessionRef: typeof route\.query\.sessionRef === 'string' \? route\.query\.sessionRef : ''/,
+  );
+  assert.match(
+    chatShellPage,
+    /legacyQuerySession: typeof route\.query\.session === 'string' \? route\.query\.session : ''/,
+  );
 });
 
-test('chat shell normalizes only true legacy query session routes back to canonical chat routes', () => {
-  assert.match(chatShellPage, /const routeHasBrokenSessionRef = computed\(\(\) =>/);
-  assert.match(chatShellPage, /hasBrokenChatRouteSessionRef\(routeSessionRefParams\.value\)/);
-  assert.match(chatShellPage, /const routeUsesLegacySessionQuery = computed\(\(\) => shouldNormalizeChatSessionQueryRoute\(\{/);
+test("chat shell builds canonical chat routes from the shared route builder", () => {
+  assert.match(
+    chatShellPage,
+    /function resolveFallbackSessionKey\(\): string \{/,
+  );
+  assert.match(chatShellPage, /return resolveRuntimeFallbackSessionKey\(\{/);
+  assert.match(
+    chatShellPage,
+    /function buildChatRoute\(sessionKey: string \| null, mode: 'chat' \| 'inspect' = props\.shellMode\): \{ path: string; query\?: Record<string, string> \} \{/,
+  );
+  assert.match(chatShellPage, /return buildRuntimeChatRoute\(\{/);
   assert.match(chatShellPage, /currentPath: route\.path,/);
-  assert.match(chatShellPage, /shellMode: props\.shellMode,/);
-  assert.match(chatShellPage, /if \(routeUsesLegacySessionQuery\.value \|\| routeHasBrokenSessionRef\.value\) \{[\s\S]*await router\.replace\(buildChatRoute\(requested, props\.shellMode\)\);/);
-  assert.match(chatShellPage, /if \(route\.path\.startsWith\('\/chat\/s\/'\) \|\| routeUsesLegacySessionQuery\.value\) \{[\s\S]*await router\.replace\(buildChatRoute\(fallback \|\| null, props\.shellMode\)\);/);
-  assert.match(chatRuntimeRecovery, /export function hasBrokenChatRouteSessionRef/);
-  assert.match(chatRuntimeRecovery, /export function shouldNormalizeChatSessionQueryRoute/);
+  assert.match(chatShellPage, /shellMode: mode,/);
+  assert.match(chatShellPage, /sessionKey,/);
+  assert.match(
+    chatShellPage,
+    /await router\.replace\(nextSessionKey \? buildChatRoute\(nextSessionKey, props\.shellMode\) : '\/chat'\);/,
+  );
+  assert.match(
+    chatRuntimeRecovery,
+    /export function hasBrokenChatRouteSessionRef/,
+  );
+  assert.match(
+    chatRuntimeRecovery,
+    /export function shouldNormalizeChatSessionQueryRoute/,
+  );
 });

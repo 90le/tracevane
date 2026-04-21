@@ -64,25 +64,32 @@ test("channels view wires through workspace overview recipe seam", () => {
   );
 });
 
-test("channels workspace layout consumes a single stage summary selector seam", () => {
+test("channels workspace layout keeps a tabbed provider stage with account-specific branches", () => {
+  assert.match(workspaceLayout, /class="channels-workbench"/);
   assert.match(
     workspaceLayout,
-    /import\s+\{\s*buildChannelStageSummary\s*\}\s+from\s+'\.\/channel-workspace-summary'/,
+    /class="channels-sidebar operate-resource-rail mobile-resource-drawer"/,
+  );
+  assert.match(workspaceLayout, /class="channels-stage operate-stage"/);
+  assert.match(workspaceLayout, /class="channels-top-tabs mobile-stage-tabs"/);
+  assert.match(
+    workspaceLayout,
+    /const activeTopTab = computed<'overview' \| 'settings' \| 'bindings' \| 'accounts'>\(\(\) =>/,
   );
   assert.match(
+    workspaceLayout,
+    /const activeAccountTab = computed<'account' \| 'access' \| 'pairing'>\(\(\) =>/,
+  );
+  assert.match(workspaceLayout, /const topTabs = computed\(\(\) => \[/);
+  assert.match(workspaceLayout, /const accountTabs = computed\(\(\) => \[/);
+  assert.match(workspaceLayout, /openStageTab\(/);
+  assert.match(workspaceLayout, /openAccountStageTab\(/);
+  assert.match(workspaceLayout, /openPrimaryAccess\(/);
+  assert.match(workspaceLayout, /openPrimaryPairing\(/);
+  assert.match(workspaceLayout, /<RouterView \/>/);
+  assert.doesNotMatch(
     workspaceLayout,
     /const\s+stageSummary\s*=\s*computed\(\(\)\s*=>\s*buildChannelStageSummary\(/,
-  );
-  assert.match(workspaceLayout, /stageSummary\.headline/);
-  assert.match(workspaceLayout, /stageSummary\.copy/);
-  assert.match(workspaceLayout, /stageSummary\.badges/);
-  assert.doesNotMatch(
-    workspaceLayout,
-    /const\s+workspaceSummary\s*=\s*computed\(/,
-  );
-  assert.doesNotMatch(
-    workspaceLayout,
-    /const\s+accountWorkspaceSummary\s*=\s*computed\(/,
   );
 });
 

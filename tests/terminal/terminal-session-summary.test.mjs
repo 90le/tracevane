@@ -134,6 +134,140 @@ test("terminal service session summaries derive detached status from real activi
   }
 });
 
+test("terminal service rename/delete return missing-session signals", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const configFile = path.join(tempDir, "openclaw-config.json");
+  fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
+
+  const service = terminalService.createTerminalService({
+    config: {
+      pluginId: "test",
+      pluginName: "test",
+      version: "0.0.0",
+      port: 0,
+      autoStart: false,
+      openclawRoot: tempDir,
+      openclawConfigFile: configFile,
+      projectRoot: tempDir,
+      webDistDir: tempDir,
+      gatewayPort: 0,
+      gatewayWsUrl: "ws://127.0.0.1",
+      gatewayControlUiBasePath: "/",
+      transport: {
+        standalone: { enabled: false, port: 0 },
+        gateway: { enabled: false, basePath: "/" },
+      },
+    },
+    skills: {
+      async getSummary() {
+        return {
+          skills: [],
+          tools: {
+            clawhubInstalled: false,
+            skillhubInstalled: false,
+          },
+        };
+      },
+    },
+  });
+
+  try {
+    const renamed = await service.renamePersistedSession(
+      "missing-session",
+      "x",
+    );
+    assert.equal(renamed, null);
+
+    const deleted = await service.deletePersistedSession("missing-session");
+    assert.deepEqual(deleted, {
+      success: false,
+      sessionId: "missing-session",
+    });
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal service delete rejects running and detached sessions", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const configFile = path.join(tempDir, "openclaw-config.json");
+  fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
+
+  const service = terminalService.createTerminalService({
+    config: {
+      pluginId: "test",
+      pluginName: "test",
+      version: "0.0.0",
+      port: 0,
+      autoStart: false,
+      openclawRoot: tempDir,
+      openclawConfigFile: configFile,
+      projectRoot: tempDir,
+      webDistDir: tempDir,
+      gatewayPort: 0,
+      gatewayWsUrl: "ws://127.0.0.1",
+      gatewayControlUiBasePath: "/",
+      transport: {
+        standalone: { enabled: false, port: 0 },
+        gateway: { enabled: false, basePath: "/" },
+      },
+    },
+    skills: {
+      async getSummary() {
+        return {
+          skills: [],
+          tools: {
+            clawhubInstalled: false,
+            skillhubInstalled: false,
+          },
+        };
+      },
+    },
+  });
+
+  try {
+    const attached = service.attachGatewayClient(
+      { sid: "term-live-delete" },
+      { connId: "conn-delete", emit: () => true },
+    );
+
+    const runningDelete = await service.deletePersistedSession(attached.sid);
+    assert.deepEqual(runningDelete, {
+      success: false,
+      sessionId: attached.sid,
+      reason: "session_active",
+    });
+
+    service.detachGatewayClient(
+      { sid: attached.sid },
+      { connId: "conn-delete" },
+    );
+
+    const detachedDelete = await service.deletePersistedSession(attached.sid);
+    assert.deepEqual(detachedDelete, {
+      success: false,
+      sessionId: attached.sid,
+      reason: "session_active",
+    });
+
+    const persisted = await service.getPersistedSession(attached.sid);
+    assert.ok(persisted);
+
+    const ended = await service.endSession({ sid: attached.sid });
+    assert.equal(ended.success, true);
+
+    const completedDelete = await service.deletePersistedSession(attached.sid);
+    assert.deepEqual(completedDelete, {
+      success: true,
+      sessionId: attached.sid,
+    });
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("recent output summary 提取 tailText/lastError/lastCommandHint/exitSummary/updatedAt", () => {
   const summary = terminalSessionSummary.buildTerminalRecentOutputSummary([
     {
@@ -190,4 +324,21 @@ test("recent output summary can fall back to ended reason when exit event is abs
 
   assert.equal(summary.exitSummary, "session_ended");
   assert.equal(summary.updatedAt, "2026-04-14T00:00:03.000Z");
+});
+
+test("terminal service source includes binary-name fallback verification for marketplace CLIs", () => {
+  const source = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /const verifyFromPath = binaryPath \? await verifyAt\(binaryPath\) : null;/,
+  );
+  assert.match(
+    source,
+    /const fallbackVerify = verifyFromPath\?\.success[\s\S]*await verifyAt\(spec\.binary\);/,
+  );
+  assert.match(source, /path: resolvedPath,/);
 });

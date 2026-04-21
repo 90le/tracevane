@@ -2,6 +2,7 @@ export interface TerminalActionItem {
   key: string;
   labelZh: string;
   labelEn: string;
+  command?: string;
 }
 
 export interface TerminalActionLayer {

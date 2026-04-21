@@ -1,276 +1,66 @@
 <template>
-  <section class="page-shell terminal-page terminal-workspace-surface terminal-maintenance-workspace">
-    <header class="page-header-row">
-      <div>
-        <p class="eyebrow">Terminal</p>
-        <h2 class="page-title">{{ text('维护终端', 'Maintenance Terminal') }}</h2>
-        <p class="page-copy">
-          {{
-            text(
-              '维护页只保留一个持久终端。刷新页面或切换页面时复用当前会话，只有点“结束终端”或“新建终端”才会重置成新的终端。',
-              'This maintenance page keeps only one persistent terminal. Refreshing or navigating reuses the current session, and only End/New terminal resets it.'
-            )
-          }}
-        </p>
-      </div>
-
-      <div class="page-actions">
-        <button type="button" class="secondary-button" :disabled="statusLoading || installBusy" @click="refreshStatus">
-          {{ text('重新检测', 'Refresh checks') }}
-        </button>
-      </div>
-    </header>
-
+  <section
+    class="terminal-console-surface"
+    :class="{ 'terminal-console-surface-embedded': props.embedded }"
+    data-testid="terminal-console-surface"
+    data-context-policy="none"
+  >
     <div v-if="noticeMessage" class="status-banner" :class="noticeMessage.kind === 'error' ? 'status-banner-error' : 'status-banner-success'">
       {{ noticeMessage.text }}
     </div>
 
-    <div class="terminal-workspace-grid">
-      <aside class="terminal-side-utilities">
-        <section class="terminal-card terminal-card-runtime">
-          <div class="terminal-card-head">
-            <h3>{{ text('运行状态', 'Runtime') }}</h3>
-          </div>
+    <section class="terminal-console-main">
+      <header v-if="props.showToolbar" class="terminal-console-header">
+        <div class="terminal-console-header-left">
+          <span class="status-pill" :class="connected ? 'tone-sage' : 'tone-neutral'">
+            <span class="status-pill-dot"></span>
+            <span>{{ connected ? text('终端已连接', 'Terminal connected') : text('终端未连接', 'Terminal disconnected') }}</span>
+          </span>
+          <span class="terminal-console-header-chip">{{ text('当前终端', 'Active shell') }} · {{ activeCliLabel }}</span>
+          <span class="terminal-console-header-chip">{{ text('会话', 'Session') }} · {{ sessionPreview }}</span>
+        </div>
 
-          <div v-if="status" class="terminal-overview-grid">
-            <div class="terminal-overview-item">
-              <span>{{ text('PTY', 'PTY') }}</span>
-              <strong>{{ status.ptyAvailable ? text('可用', 'Available') : text('不可用', 'Unavailable') }}</strong>
-            </div>
-            <div class="terminal-overview-item">
-              <span>{{ text('连接', 'Socket') }}</span>
-              <strong>{{ connected ? text('已连接', 'Connected') : text('未连接', 'Disconnected') }}</strong>
-            </div>
-            <div class="terminal-overview-item">
-              <span>{{ text('当前终端', 'Active shell') }}</span>
-              <strong>{{ activeCliLabel }}</strong>
-            </div>
-            <div class="terminal-overview-item">
-              <span>{{ text('当前会话', 'Session') }}</span>
-              <strong>{{ sessionPreview }}</strong>
-            </div>
-          </div>
-        </section>
+        <div class="terminal-console-header-actions">
+          <button type="button" class="secondary-button compact-button" :disabled="endingTerminal || !connected" @click="resetTerminal('terminal ended; new terminal ready')">
+            {{ endingTerminal ? text('处理中…', 'Processing...') : text('结束终端', 'End terminal') }}
+          </button>
+          <button type="button" class="secondary-button compact-button" :disabled="endingTerminal" @click="resetTerminal('new terminal created')">
+            {{ text('新建终端', 'New terminal') }}
+          </button>
+          <button type="button" class="secondary-button compact-button" :disabled="endingTerminal || !termReady" @click="reconnect">
+            {{ text('重连', 'Reconnect') }}
+          </button>
+          <button type="button" class="secondary-button compact-button" :disabled="!termReady" @click="clearTerminal">
+            {{ text('清屏', 'Clear') }}
+          </button>
+          <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('claude')" @click="launchCli('claude')">
+            Claude
+          </button>
+          <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('codex')" @click="launchCli('codex')">
+            Codex
+          </button>
+          <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('opencode')" @click="launchCli('opencode')">
+            OpenCode
+          </button>
+          <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('bash')" @click="launchCli('bash')">
+            Shell
+          </button>
+        </div>
+      </header>
 
-        <section class="terminal-card terminal-card-cli">
-          <div class="terminal-card-head">
-            <h3>{{ text('Agent CLI', 'Agent CLI') }}</h3>
-            <span class="terminal-card-chip">{{ agentInstalledCount }} / {{ agentCliBinaries.length }}</span>
-          </div>
-
-          <div class="terminal-card-subhead">
-            {{ text('直接启动 Claude / Codex / OpenCode / Shell。缺失的 CLI 可以在这里安装。', 'Launch Claude / Codex / OpenCode / shell directly. Missing CLIs can be installed here.') }}
-          </div>
-
-          <div class="terminal-cli-list">
-            <article
-              v-for="binary in agentCliBinaries"
-              :key="binary.id"
-              class="terminal-cli-item"
-            >
-              <div class="terminal-cli-copy">
-                <strong>{{ binary.label }}</strong>
-                <span>{{ binary.path || binary.binary }}</span>
-              </div>
-
-              <div class="terminal-cli-actions">
-                <span class="status-pill" :class="binary.installed ? 'tone-sage' : 'tone-accent'">
-                  <span class="status-pill-dot"></span>
-                  <span>{{ binary.installed ? text('已安装', 'Installed') : text('未安装', 'Missing') }}</span>
-                </span>
-
-                <button
-                  v-if="!binary.installed && binary.installSupported"
-                  type="button"
-                  class="secondary-button compact-button"
-                  :disabled="installBusy"
-                  @click="installCli(binary.id)"
-                >
-                  {{ installingTarget === binary.id ? text('安装中…', 'Installing...') : text('安装', 'Install') }}
-                </button>
-              </div>
-            </article>
-          </div>
-
-          <div class="terminal-launch-grid">
-            <button
-              type="button"
-              class="primary-button"
-              :disabled="!canLaunch('claude')"
-              @click="launchCli('claude')"
-            >
-              {{ text('启动 Claude', 'Launch Claude') }}
-            </button>
-            <button
-              type="button"
-              class="secondary-button"
-              :disabled="!canLaunch('codex')"
-              @click="launchCli('codex')"
-            >
-              {{ text('启动 Codex', 'Launch Codex') }}
-            </button>
-            <button
-              type="button"
-              class="secondary-button"
-              :disabled="!canLaunch('opencode')"
-              @click="launchCli('opencode')"
-            >
-              {{ text('启动 OpenCode', 'Launch OpenCode') }}
-            </button>
-            <button
-              type="button"
-              class="secondary-button"
-              :disabled="!canLaunch('bash')"
-              @click="launchCli('bash')"
-            >
-              {{ text('普通 Shell', 'Plain shell') }}
-            </button>
-          </div>
-        </section>
-
-        <section class="terminal-card terminal-card-skills">
-          <div class="terminal-card-head">
-            <h3>{{ text('Skills 工具链', 'Skills Tooling') }}</h3>
-            <span class="terminal-card-chip">{{ marketplaceInstalledCount }} / {{ marketplaceCliBinaries.length }}</span>
-          </div>
-
-          <div v-if="status" class="terminal-overview-grid terminal-overview-grid-compact">
-            <div class="terminal-overview-item">
-              <span>{{ text('待补技能', 'Needs setup') }}</span>
-              <strong>{{ status.skills.needsSetupCount }}</strong>
-            </div>
-            <div class="terminal-overview-item">
-              <span>{{ text('缺失命令', 'Missing bins') }}</span>
-              <strong>{{ status.skills.missingBinaryCount }}</strong>
-            </div>
-          </div>
-
-          <div class="terminal-cli-list">
-            <article
-              v-for="binary in marketplaceCliBinaries"
-              :key="binary.id"
-              class="terminal-cli-item"
-            >
-              <div class="terminal-cli-copy">
-                <strong>{{ binary.label }}</strong>
-                <span>{{ binary.path || binary.binary }}</span>
-              </div>
-
-              <div class="terminal-cli-actions">
-                <span class="status-pill" :class="binary.installed ? 'tone-sage' : 'tone-accent'">
-                  <span class="status-pill-dot"></span>
-                  <span>{{ binary.installed ? text('已安装', 'Installed') : text('未安装', 'Missing') }}</span>
-                </span>
-
-                <button
-                  v-if="!binary.installed && binary.installSupported"
-                  type="button"
-                  class="secondary-button compact-button"
-                  :disabled="installBusy"
-                  @click="installCli(binary.id)"
-                >
-                  {{ installingTarget === binary.id ? text('安装中…', 'Installing...') : text('安装', 'Install') }}
-                </button>
-              </div>
-            </article>
-          </div>
-
-          <div v-if="status?.skills.missingBinaries.length" class="terminal-missing-block">
-            <div class="terminal-block-head">
-              <h4>{{ text('Skills 缺失命令', 'Missing skill binaries') }}</h4>
-              <button
-                type="button"
-                class="secondary-button compact-button"
-                @click="goToSkills"
-              >
-                {{ text('去 Skills', 'Open Skills') }}
-              </button>
-            </div>
-
-            <div class="terminal-chip-list">
-              <span
-                v-for="item in status.skills.missingBinaries"
-                :key="item.binary"
-                class="terminal-chip"
-              >
-                {{ item.binary }} · {{ item.skills.length }}
-              </span>
-            </div>
-          </div>
-        </section>
-
-        <section v-if="installMessage || installLog" class="terminal-card">
-          <div class="terminal-card-head">
-            <h3>{{ text('安装日志', 'Install log') }}</h3>
-            <div class="terminal-card-actions" v-if="installLog">
-              <button
-                type="button"
-                class="secondary-button compact-button"
-                @click="copyInstallLog"
-              >
-                {{ text('复制', 'Copy') }}
-              </button>
-              <button
-                type="button"
-                class="secondary-button compact-button"
-                @click="downloadInstallLog"
-              >
-                {{ text('下载', 'Download') }}
-              </button>
-            </div>
-          </div>
-
-          <p v-if="installMessage" class="terminal-install-message" :class="{ error: installError }">
-            {{ installMessage }}
-          </p>
-
-          <pre v-if="installLog" class="code-block terminal-log">{{ installLog }}</pre>
-        </section>
-      </aside>
-
-      <section class="terminal-main-canvas terminal-immersive-canvas">
-        <header class="terminal-toolbar terminal-toolbar-strip">
-          <div class="terminal-toolbar-left">
-            <span class="status-pill" :class="connected ? 'tone-sage' : 'tone-neutral'">
-              <span class="status-pill-dot"></span>
-              <span>{{ connected ? text('终端已连接', 'Terminal connected') : text('终端未连接', 'Terminal disconnected') }}</span>
-            </span>
-            <span class="terminal-toolbar-chip">{{ text('当前终端', 'Active shell') }} · {{ activeCliLabel }}</span>
-            <span class="terminal-toolbar-chip">{{ text('会话', 'Session') }} · {{ sessionPreview }}</span>
-          </div>
-
-          <div class="terminal-toolbar-actions">
-            <button type="button" class="secondary-button compact-button" :disabled="endingTerminal || !connected" @click="resetTerminal('terminal ended; new terminal ready')">
-              {{ endingTerminal ? text('处理中…', 'Processing...') : text('结束终端', 'End terminal') }}
-            </button>
-            <button type="button" class="secondary-button compact-button" :disabled="endingTerminal" @click="resetTerminal('new terminal created')">
-              {{ text('新建终端', 'New terminal') }}
-            </button>
-            <button type="button" class="secondary-button compact-button" :disabled="endingTerminal || !termReady" @click="reconnect">
-              {{ text('重连', 'Reconnect') }}
-            </button>
-            <button type="button" class="secondary-button compact-button" :disabled="!termReady" @click="clearTerminal">
-              {{ text('清屏', 'Clear') }}
-            </button>
-          </div>
-        </header>
-
-        <div ref="termContainer" class="terminal-container"></div>
-      </section>
-    </div>
+      <div ref="termContainer" class="terminal-container"></div>
+    </section>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import type { IDisposable, Terminal as XTermTerminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type {
   TerminalGatewayAttachResponse,
   TerminalGatewayEvent,
-  TerminalInstallRequestId,
-  TerminalInstallStreamEvent,
   TerminalLaunchCli,
   TerminalStatusPayload,
 } from '../../../../../types/terminal';
@@ -282,27 +72,37 @@ import { useLocalePreference } from '../../shared/locale';
 import { getWebSocketBasePath, resolveStudioGatewayClientAuth } from '../../shared/api';
 import { GatewayBrowserClient, type GatewayEventFrame } from '../../shared/gateway-client';
 import { getStudioRealtimeTransport, isTerminalRealtimeEnabled } from '../../shared/runtime-config';
-import { copyTextToClipboard } from '../../shared/clipboard';
 import {
   endTerminalSession,
   fetchTerminalLaunch,
   fetchTerminalStatus,
-  streamTerminalInstall,
 } from './api';
+import type { TerminalSessionDescriptor } from './terminal-session-registry';
+
+const props = withDefaults(defineProps<{
+  sessionId?: string;
+  queuedCommand?: string;
+  showToolbar?: boolean;
+  embedded?: boolean;
+}>(), {
+  sessionId: '',
+  queuedCommand: '',
+  showToolbar: true,
+  embedded: false,
+});
 
 const route = useRoute();
-const router = useRouter();
 const { text } = useLocalePreference();
+
+const emit = defineEmits<{
+  (e: 'consumeQueuedCommand'): void;
+  (e: 'sessionAttached', session: TerminalSessionDescriptor): void;
+}>();
 
 const termContainer = ref<HTMLElement | null>(null);
 const status = ref<TerminalStatusPayload | null>(null);
-const statusLoading = ref(false);
 const connected = ref(false);
 const activeCliLabel = ref(text('普通 Shell', 'Plain shell'));
-const installMessage = ref('');
-const installError = ref(false);
-const installLog = ref('');
-const installingTarget = ref<TerminalInstallRequestId | ''>('');
 const endingTerminal = ref(false);
 const noticeMessage = ref<{ kind: 'success' | 'error'; text: string } | null>(null);
 
@@ -323,7 +123,6 @@ let lastOutputSeq = 0;
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
 const TERMINAL_RUNTIME_STORAGE_KEY = 'openclaw-studio.terminal.runtime';
 
-const installBusy = computed(() => Boolean(installingTarget.value));
 const termReady = ref(false);
 const sessionPreview = computed(() => {
   if (!terminalSessionId.value) return text('未初始化', 'Uninitialized');
@@ -331,39 +130,43 @@ const sessionPreview = computed(() => {
     ? terminalSessionId.value
     : `${terminalSessionId.value.slice(0, 8)}...${terminalSessionId.value.slice(-6)}`;
 });
-const agentCliBinaries = computed(() => (status.value?.binaries || []).filter((item) => item.category === 'agent'));
-const marketplaceCliBinaries = computed(() => (status.value?.binaries || []).filter((item) => item.category === 'marketplace'));
-const agentInstalledCount = computed(() => agentCliBinaries.value.filter((item) => item.installed).length);
-const marketplaceInstalledCount = computed(() => marketplaceCliBinaries.value.filter((item) => item.installed).length);
+
+function normalizeSessionId(value: unknown): string {
+  return String(value || '').trim();
+}
+
+function runtimeStorageKey(): string {
+  const sid = normalizeSessionId(terminalSessionId.value);
+  return sid ? `${TERMINAL_RUNTIME_STORAGE_KEY}.${sid}` : TERMINAL_RUNTIME_STORAGE_KEY;
+}
 
 function setNotice(kind: 'success' | 'error', message: string): void {
   noticeMessage.value = { kind, text: message };
 }
 
-async function copyInstallLog(): Promise<void> {
-  if (!installLog.value) return;
-  try {
-    const copied = await copyTextToClipboard(installLog.value);
-    if (!copied) {
-      throw new Error(text('当前环境不支持复制到剪贴板。', 'Clipboard copy is not available in this environment.'));
-    }
-    setNotice('success', text('安装日志已复制。', 'Install log copied.'));
-  } catch (error) {
-    setNotice('error', error instanceof Error ? error.message : text('复制安装日志失败。', 'Failed to copy install log.'));
-  }
+function emitSessionAttached(sessionId: string): void {
+  const normalizedSessionId = normalizeSessionId(sessionId);
+  if (!normalizedSessionId) return;
+
+  emit('sessionAttached', {
+    sessionId: normalizedSessionId,
+    title: normalizedSessionId,
+    status: connected.value ? 'running' : 'detached',
+    source: 'manual',
+    canResume: true,
+    controlState: 'controller',
+    updatedAt: new Date().toISOString(),
+    handoffContext: readRouteHandoffContext(),
+    recentOutputSummary: null,
+  });
 }
 
-function downloadInstallLog(): void {
-  if (!installLog.value || typeof document === 'undefined') return;
-  const blob = new Blob([installLog.value], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `terminal-install-${new Date().toISOString().replace(/[:.]/g, '-')}.log`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
+function schedulePostLayoutFitSync(): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      syncTerminalSize();
+    });
+  });
 }
 
 function generateSessionId(): string {
@@ -371,7 +174,7 @@ function generateSessionId(): string {
 }
 
 function isInvalidSessionId(value: unknown): boolean {
-  const normalized = String(value || '').trim();
+  const normalized = normalizeSessionId(value);
   return !normalized
     || normalized === '[object Object]'
     || normalized === 'objectObject'
@@ -380,7 +183,7 @@ function isInvalidSessionId(value: unknown): boolean {
 
 function saveRuntime(): void {
   try {
-    sessionStorage.setItem(TERMINAL_RUNTIME_STORAGE_KEY, JSON.stringify({
+    sessionStorage.setItem(runtimeStorageKey(), JSON.stringify({
       instanceId: terminalInstanceId,
       outputSeq: lastOutputSeq,
       activeCliLabel: activeCliLabel.value,
@@ -391,11 +194,12 @@ function saveRuntime(): void {
 }
 
 function clearRuntime(): void {
+  const key = runtimeStorageKey();
   terminalInstanceId = '';
   lastOutputSeq = 0;
   activeCliLabel.value = text('普通 Shell', 'Plain shell');
   try {
-    sessionStorage.removeItem(TERMINAL_RUNTIME_STORAGE_KEY);
+    sessionStorage.removeItem(key);
   } catch {
     // ignore
   }
@@ -403,7 +207,7 @@ function clearRuntime(): void {
 
 function restoreRuntime(): void {
   try {
-    const raw = sessionStorage.getItem(TERMINAL_RUNTIME_STORAGE_KEY);
+    const raw = sessionStorage.getItem(runtimeStorageKey());
     if (!raw) return;
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     terminalInstanceId = typeof parsed.instanceId === 'string' ? parsed.instanceId : '';
@@ -416,7 +220,25 @@ function restoreRuntime(): void {
   }
 }
 
+function setSessionId(nextId: string): void {
+  terminalSessionId.value = isInvalidSessionId(nextId) ? generateSessionId() : nextId;
+  try {
+    sessionStorage.setItem(TERMINAL_SESSION_STORAGE_KEY, terminalSessionId.value);
+  } catch {
+    // ignore
+  }
+  emitSessionAttached(terminalSessionId.value);
+}
+
 function getSessionId(): string {
+  const preferred = normalizeSessionId(props.sessionId);
+  if (preferred && !isInvalidSessionId(preferred)) {
+    if (terminalSessionId.value !== preferred) {
+      setSessionId(preferred);
+    }
+    return terminalSessionId.value;
+  }
+
   if (terminalSessionId.value) return terminalSessionId.value;
   try {
     const existing = sessionStorage.getItem(TERMINAL_SESSION_STORAGE_KEY);
@@ -436,23 +258,11 @@ function getSessionId(): string {
   return terminalSessionId.value;
 }
 
-function setSessionId(nextId: string): void {
-  terminalSessionId.value = isInvalidSessionId(nextId) ? generateSessionId() : nextId;
-  try {
-    sessionStorage.setItem(TERMINAL_SESSION_STORAGE_KEY, terminalSessionId.value);
-  } catch {
-    // ignore
-  }
-}
-
 async function refreshStatus(): Promise<void> {
-  statusLoading.value = true;
   try {
     status.value = await fetchTerminalStatus();
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('读取终端状态失败。', 'Failed to load terminal status.'));
-  } finally {
-    statusLoading.value = false;
   }
 }
 
@@ -460,60 +270,6 @@ function canLaunch(cli: TerminalLaunchCli): boolean {
   if (cli === 'bash') return connected.value;
   const binary = status.value?.binaries.find((item) => item.id === cli);
   return connected.value && Boolean(binary?.installed);
-}
-
-async function installCli(target: TerminalInstallRequestId): Promise<void> {
-  if (installBusy.value) return;
-  installingTarget.value = target;
-  installMessage.value = '';
-  installError.value = false;
-  installLog.value = '';
-
-  try {
-    await streamTerminalInstall(target, (event: TerminalInstallStreamEvent) => {
-      if (event.type === 'start') {
-        installMessage.value = event.message || '';
-        return;
-      }
-
-      if (event.type === 'attempt') {
-        const lines = [
-          event.command ? `$ ${event.command}` : '',
-          event.message || '',
-        ].filter(Boolean);
-        installLog.value = `${installLog.value}${installLog.value ? '\n\n' : ''}${lines.join('\n')}`;
-        return;
-      }
-
-      if (event.type === 'result') {
-        const lines = [
-          event.message || '',
-          event.output || '',
-          event.stderr || '',
-          event.error ? `ERROR: ${event.error}` : '',
-        ].filter(Boolean);
-        installLog.value = `${installLog.value}${installLog.value ? '\n\n' : ''}${lines.join('\n')}`;
-        return;
-      }
-
-      if (event.type === 'done' && event.response) {
-        installError.value = !event.response.success;
-        installMessage.value = event.response.message;
-        status.value = event.response.status;
-        return;
-      }
-
-      if (event.type === 'error') {
-        installError.value = true;
-        installMessage.value = event.message || text('安装失败。', 'Install failed.');
-      }
-    });
-  } catch (error) {
-    installError.value = true;
-    installMessage.value = error instanceof Error ? error.message : text('安装失败。', 'Install failed.');
-  } finally {
-    installingTarget.value = '';
-  }
 }
 
 async function launchCli(cli: TerminalLaunchCli): Promise<void> {
@@ -645,6 +401,7 @@ async function attachGatewayTerminal(): Promise<void> {
   }
   saveRuntime();
   syncTerminalSize();
+  schedulePostLayoutFitSync();
   void refreshStatus();
 }
 
@@ -848,6 +605,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
     }
     startHeartbeat();
     syncTerminalSize();
+    schedulePostLayoutFitSync();
     void refreshStatus();
   };
 
@@ -938,7 +696,12 @@ async function resetTerminal(message: string): Promise<void> {
   }
 
   clearRuntime();
-  setSessionId(generateSessionId());
+  const lockedSessionId = normalizeSessionId(props.sessionId);
+  if (lockedSessionId && !isInvalidSessionId(lockedSessionId)) {
+    setSessionId(lockedSessionId);
+  } else {
+    setSessionId(generateSessionId());
+  }
   termInstance?.clear();
   if (message) {
     termInstance?.write(`\r\n\x1b[33m[${message}]\x1b[0m\r\n`);
@@ -956,10 +719,6 @@ async function resetTerminal(message: string): Promise<void> {
 
 function clearTerminal(): void {
   termInstance?.clear();
-}
-
-function goToSkills(): void {
-  void router.push('/skills');
 }
 
 async function initTerminal(): Promise<void> {
@@ -1008,10 +767,11 @@ async function initTerminal(): Promise<void> {
   if (!termContainer.value) return;
   term.open(termContainer.value);
   fitTerminal();
+  schedulePostLayoutFitSync();
 
   termInstance = term;
   termReady.value = true;
-  resizeObserver = new ResizeObserver(() => syncTerminalSize());
+  resizeObserver = new ResizeObserver(() => schedulePostLayoutFitSync());
   resizeObserver.observe(termContainer.value);
 
   term.onResize(({ cols, rows }) => {
@@ -1035,6 +795,42 @@ function handleFocus(): void {
   syncTerminalSize();
   if (!connected.value) connectWs();
 }
+
+watch(
+  () => props.sessionId,
+  (nextSessionId) => {
+    const normalized = normalizeSessionId(nextSessionId);
+    if (!normalized || isInvalidSessionId(normalized)) {
+      if (!terminalSessionId.value) {
+        getSessionId();
+        restoreRuntime();
+      }
+      return;
+    }
+
+    if (terminalSessionId.value === normalized) {
+      return;
+    }
+
+    setSessionId(normalized);
+    clearRuntime();
+    termInstance?.clear();
+    if (termReady.value) {
+      reconnect();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.queuedCommand,
+  (command) => {
+    const normalized = String(command || '');
+    if (!normalized) return;
+    sendTerminalInput(normalized);
+    emit('consumeQueuedCommand');
+  },
+);
 
 onMounted(async () => {
   intentionalClose = false;
@@ -1085,307 +881,71 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.terminal-page,
-.terminal-workspace-surface,
-.terminal-maintenance-workspace {
-  gap: 16px;
-  min-height: calc(100dvh - 180px);
+.terminal-console-surface {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  position: relative;
-}
-
-.terminal-maintenance-workspace::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(600px 220px at 72% 0%, var(--terminal-workspace-glow), transparent 66%),
-    linear-gradient(180deg, color-mix(in srgb, var(--terminal-workspace-glow) 12%, transparent), transparent 42%);
-  opacity: 0.78;
-}
-
-.terminal-workspace-grid {
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
   height: 100%;
-  min-height: 0;
-  align-items: stretch;
-  position: relative;
-  z-index: 1;
 }
 
-.terminal-side-utilities {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-
-.terminal-card {
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--glass-bg), var(--glass-accent);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-soft);
-  display: grid;
-  gap: 10px;
-}
-
-.terminal-card-runtime {
-  border-color: rgba(111, 211, 255, 0.18);
-}
-
-.terminal-card-cli {
-  border-color: rgba(109, 240, 207, 0.18);
-}
-
-.terminal-card-skills {
-  border-color: rgba(255, 127, 143, 0.16);
-}
-
-.terminal-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.terminal-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.terminal-card-head h3,
-.terminal-block-head h4 {
-  margin: 0;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.terminal-card-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.terminal-card-subhead {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.terminal-overview-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.terminal-overview-grid-compact {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.terminal-overview-item {
-  display: grid;
-  gap: 5px;
-  padding: 9px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.terminal-overview-item span {
-  color: var(--muted);
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.terminal-overview-item strong {
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.45;
-  word-break: break-word;
-}
-
-.terminal-cli-list {
-  display: grid;
-  gap: 8px;
-}
-
-.terminal-cli-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 9px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.terminal-cli-copy {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.terminal-cli-copy strong {
-  color: var(--text);
-  font-size: 12px;
-}
-
-.terminal-cli-copy span {
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.35;
-  word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.terminal-cli-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.terminal-launch-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.terminal-launch-grid .primary-button,
-.terminal-launch-grid .secondary-button {
-  min-height: 0;
-  padding: 8px 9px;
-  font-size: 11px;
-}
-
-.terminal-missing-block {
-  display: grid;
-  gap: 10px;
-  padding: 10px;
-  border-radius: 10px;
-  background: rgba(255, 190, 122, 0.08);
-  border: 1px solid rgba(255, 190, 122, 0.14);
-}
-
-.terminal-block-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.terminal-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.terminal-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--line);
-  color: var(--text-soft);
-  font-size: 11px;
-}
-
-.terminal-install-message {
-  margin: 0;
-  color: var(--mint);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.terminal-install-message.error {
-  color: var(--danger);
-}
-
-.terminal-log {
-  max-height: 180px;
-  overflow: auto;
-  margin: 0;
-}
-
-.terminal-main-canvas {
+.terminal-console-main {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  min-width: 0;
   min-height: 0;
+  height: 100%;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  background: #0f1419;
-  box-shadow: var(--shadow-soft);
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
 }
 
-.terminal-toolbar,
-.terminal-toolbar-strip {
+.terminal-console-surface-embedded .terminal-console-main {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.terminal-console-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  background: rgba(15, 20, 25, 0.9);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-base);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.terminal-toolbar .secondary-button {
-  background: rgba(255, 255, 255, 0.08);
-  color: #eff9ff;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-.terminal-toolbar .secondary-button:hover {
-  border-color: rgba(255, 190, 122, 0.24);
-}
-
-.terminal-toolbar-left,
-.terminal-toolbar-actions {
+.terminal-console-header-left,
+.terminal-console-header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.terminal-toolbar-chip {
+.terminal-console-header-chip {
   display: inline-flex;
   align-items: center;
   padding: 6px 10px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #e6e1cf;
   font-size: 11px;
+  color: var(--text-soft);
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
 }
 
 .terminal-container {
   min-height: 0;
   height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   padding: 0 6px 6px;
+  background: color-mix(in srgb, var(--surface-raised) 90%, rgba(5, 10, 18, 0.2));
+}
+
+.terminal-console-surface-embedded .terminal-container {
+  padding: 0;
 }
 
 .terminal-container :deep(.xterm),
@@ -1398,76 +958,26 @@ onBeforeUnmount(() => {
   overflow-y: auto !important;
 }
 
-:global(html[data-theme="light"]) .terminal-main-canvas {
-  background: linear-gradient(180deg, #112233, #0f1419 18%, #0f1419 100%);
+:global(html[data-theme="light"]) .terminal-console-main {
+  background: var(--surface-base);
 }
 
-:global(html[data-theme="light"]) .terminal-toolbar {
+:global(html[data-theme="light"]) .terminal-console-header {
   background: rgba(246, 250, 253, 0.96);
-  border-bottom: 1px solid rgba(19, 32, 49, 0.1);
 }
 
-:global(html[data-theme="light"]) .terminal-toolbar-chip {
+:global(html[data-theme="light"]) .terminal-console-header-chip {
   background: rgba(19, 32, 49, 0.06);
   color: #16324b;
   border: 1px solid rgba(19, 32, 49, 0.1);
 }
 
-:global(html[data-theme="light"]) .terminal-toolbar .secondary-button {
-  background: rgba(255, 255, 255, 0.92);
-  color: #16324b;
-  border-color: rgba(19, 32, 49, 0.12);
-  box-shadow: none;
+:global(html[data-theme="light"]) .terminal-container {
+  background: linear-gradient(180deg, #112233, #0f1419 18%, #0f1419 100%);
 }
 
-:global(html[data-theme="light"]) .terminal-toolbar .secondary-button:hover {
-  background: rgba(255, 255, 255, 1);
-  border-color: rgba(22, 185, 150, 0.24);
-  color: #10233a;
-}
-
-@media (max-width: 1120px) {
-  .terminal-workspace-grid {
-    grid-template-columns: minmax(0, 1fr);
-    height: auto;
-    min-height: 0;
-  }
-
-  .terminal-main-canvas {
-    order: -1;
-    min-height: 62dvh;
-  }
-
-  .terminal-side-utilities {
-    order: 1;
-  }
-
-  .terminal-page,
-  .terminal-workspace-surface {
-    min-height: 0;
-    overflow: visible;
-  }
-
-  .terminal-launch-grid,
-  .terminal-overview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 760px) {
-  .terminal-overview-grid,
-  .terminal-cli-item,
-  .terminal-launch-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .terminal-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .terminal-block-head,
-  .terminal-card-head {
+@media (max-width: 860px) {
+  .terminal-console-header {
     align-items: flex-start;
     flex-direction: column;
   }

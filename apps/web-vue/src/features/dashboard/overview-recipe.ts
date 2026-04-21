@@ -1,7 +1,29 @@
-import type { DashboardSummaryPayload } from "../../../../../types/dashboard";
-import { shellNavGroups } from '../shell/route-manifest';
+import type {
+  DashboardContextSummary,
+  DashboardRecoveryItem,
+  DashboardSummaryPayload,
+  DashboardTrendPanel,
+  DashboardTrendPoint,
+} from "../../../../../types/dashboard";
+import { shellNavGroups } from "../shell/route-manifest";
+
+export type DashboardPriorityAction = {
+  id: string;
+  to: string;
+  title: string;
+  detail: string;
+};
 
 type DashboardText = (zh: string, en: string) => string;
+
+function pickFirstNonEmpty(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
 
 type DashboardQuickActionKey =
   | "chat"
@@ -108,6 +130,147 @@ export function buildDashboardQuickActions(text: DashboardText) {
       },
     ];
   });
+}
+
+export function buildDashboardPriorityAction(options: {
+  payload: DashboardSummaryPayload | null;
+  text: DashboardText;
+}): DashboardPriorityAction | null {
+  const { payload, text } = options;
+
+  if (!payload) {
+    return null;
+  }
+
+  if (payload.events.recentFailures > 0) {
+    return {
+      id: "summary-recent-failures",
+      to: "/system/events",
+      title: text("排查最近失败", "Investigate recent failures"),
+      detail:
+        pickFirstNonEmpty(payload.events.latestFailureTitle) ||
+        text(
+          "存在最近失败事件，建议优先排查。",
+          "Recent failures need investigation.",
+        ),
+    };
+  }
+
+  const recoveryItem = payload.recovery.items[0];
+  if (recoveryItem) {
+    return {
+      id: `recovery-${recoveryItem.id}`,
+      to: recoveryItem.to,
+      title: recoveryItem.title,
+      detail: recoveryItem.note,
+    };
+  }
+
+  if (payload.terminalWorkspace.recoverableSessions > 0) {
+    return {
+      id: "summary-recoverable-sessions",
+      to: "/terminal",
+      title: text("恢复终端工作", "Resume terminal work"),
+      detail:
+        pickFirstNonEmpty(
+          payload.terminalWorkspace.latestSessionTitle,
+          payload.terminalWorkspace.latestCommandHint,
+        ) ||
+        text(
+          "存在可恢复终端会话，建议继续处理。",
+          "Recoverable terminal sessions are available.",
+        ),
+    };
+  }
+
+  if (payload.events.pendingAuditItems > 0) {
+    return {
+      id: "summary-pending-audit",
+      to: "/system/events",
+      title: text("检查待审计事项", "Review pending audit items"),
+      detail:
+        pickFirstNonEmpty(payload.events.latestAuditTitle) ||
+        text(
+          "存在待审计事项，建议尽快处理。",
+          "Pending audit items require review.",
+        ),
+    };
+  }
+
+  return null;
+}
+
+export function buildDashboardRiskStage(options: {
+  payload: DashboardSummaryPayload | null;
+  text: DashboardText;
+}) {
+  const { payload, text } = options;
+
+  if (!payload) {
+    return [];
+  }
+
+  return [
+    {
+      key: "recovery",
+      title: text("恢复待处理", "Recovery backlog"),
+      value: String(payload.recovery.total),
+      summary: payload.contextSummary.primaryHint,
+      to: "/system",
+    },
+    {
+      key: "risk",
+      title: text("当前风险等级", "Risk stage"),
+      value: payload.contextSummary.riskStage,
+      summary: payload.contextSummary.secondaryHint,
+      to: "/system/events",
+    },
+  ];
+}
+
+export function buildDashboardRecoveryItems(options: {
+  payload: DashboardSummaryPayload | null;
+  text: DashboardText;
+}): DashboardRecoveryItem[] {
+  return Array.isArray(options.payload?.recovery?.items)
+    ? options.payload.recovery.items
+    : [];
+}
+
+export function buildDashboardTrendPanels(options: {
+  payload: DashboardSummaryPayload | null;
+  text: DashboardText;
+}): DashboardTrendPanel[] {
+  const { payload } = options;
+  return Array.isArray(payload?.trends?.panels) ? payload.trends.panels : [];
+}
+
+export function buildDashboardTrendPoints(options: {
+  payload: DashboardSummaryPayload | null;
+  text: DashboardText;
+}): DashboardTrendPoint[] {
+  const { payload } = options;
+  return Array.isArray(payload?.trends?.points) ? payload.trends.points : [];
+}
+
+export function buildDashboardContextSummary(options: {
+  payload: DashboardSummaryPayload | null;
+  text: DashboardText;
+}): DashboardContextSummary {
+  const { payload, text } = options;
+
+  if (!payload) {
+    return {
+      riskStage: "low",
+      primaryHint: text(
+        "等待 context summary。",
+        "Waiting for context summary.",
+      ),
+      secondaryHint: text("等待恢复总览。", "Waiting for recovery summary."),
+    };
+  }
+
+  return payload.contextSummary;
 }
 
 export function buildDashboardOverviewSignals(options: {
