@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 
 import { createStudioChatDurableMirrorStore } from '../../dist/apps/api/modules/chat/durable-mirror-store.js';
 
@@ -87,6 +88,265 @@ test('sqlite: backend is sqlite when node:sqlite is available', () => {
     const config = makeConfig(root);
     const store = createStudioChatDurableMirrorStore(config);
     assert.equal(store.backend, 'sqlite');
+  } finally {
+    cleanupTempRoot(root);
+  }
+});
+
+test('sqlite: mirror state is persisted in shared chat.sqlite with transcript metadata', () => {
+  const root = makeTempRoot();
+  try {
+    const config = makeConfig(root);
+    const store = createStudioChatDurableMirrorStore(config);
+    const observability = {
+      lifecycle: null,
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        costUsd: 0.001,
+      },
+      toolCards: [{
+        toolCallId: 'tool-1',
+        runId: 'run-1',
+        name: 'browser',
+        status: 'completed',
+        startedAt: '2026-03-26T10:00:00.000Z',
+        updatedAt: '2026-03-26T10:00:01.000Z',
+        argsPreview: '{"url":"https://example.com"}',
+        resultPreview: '{"summary":"ok"}',
+        isError: false,
+      }],
+      timeline: [{
+        id: 'usage-1',
+        kind: 'usage',
+        runId: null,
+        toolCallId: null,
+        emittedAt: '2026-03-26T10:00:01.000Z',
+        title: 'Usage · 20 tokens',
+        detail: 'in 12 / out 8',
+        level: 'info',
+      }],
+    };
+    store.replaceSnapshot({
+      sessionKey: SESSION_KEY,
+      version: 'v1',
+      source: 'local_transcript',
+      messages: [makeMessage('msg-1')],
+      baseMessageSeq: 1,
+      savedAt: '2026-03-26T10:00:00.000Z',
+      sourceSignature: 'sig-1',
+      sourceSessionFile: '/tmp/session-1.jsonl',
+      sourceMtimeMs: 1234,
+      observability,
+    });
+
+    const snapshot = store.readSession(SESSION_KEY);
+    assert.ok(snapshot);
+    assert.equal(snapshot.sourceSignature, 'sig-1');
+    assert.equal(snapshot.sourceSessionFile, '/tmp/session-1.jsonl');
+    assert.equal(snapshot.sourceMtimeMs, 1234);
+    assert.equal(snapshot.observability?.usage?.totalTokens, 20);
+    assert.equal(snapshot.observability?.toolCards?.[0]?.toolCallId, 'tool-1');
+    assert.equal(fs.existsSync(path.join(root, 'studio', 'chat.sqlite')), true);
+    assert.equal(fs.existsSync(path.join(root, 'studio', 'chat-durable-mirror', 'mirror.sqlite')), false);
+  } finally {
+    cleanupTempRoot(root);
+  }
+});
+
+test('sqlite: legacy mirror.sqlite snapshots are lazily migrated into shared chat.sqlite', () => {
+  const root = makeTempRoot();
+  try {
+    const config = makeConfig(root);
+    const legacyFile = path.join(root, 'studio', 'chat-durable-mirror', 'mirror.sqlite');
+    fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
+    const legacyDb = new DatabaseSync(legacyFile);
+    legacyDb.exec(`
+      CREATE TABLE IF NOT EXISTS mirror_checkpoint (
+        session_key TEXT PRIMARY KEY,
+        version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        base_message_seq INTEGER NOT NULL,
+        saved_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      );
+    `);
+    legacyDb.exec(`
+      CREATE TABLE IF NOT EXISTS mirror_oplog (
+        session_key TEXT NOT NULL,
+        version TEXT NOT NULL,
+        message_seq INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        saved_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        PRIMARY KEY (session_key, version, message_seq)
+      );
+    `);
+    legacyDb.prepare(`
+      INSERT INTO mirror_checkpoint (session_key, version, source, base_message_seq, saved_at, payload_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      SESSION_KEY,
+      'legacy-v1',
+      'history_sse',
+      1,
+      '2026-03-26T10:00:00.000Z',
+      JSON.stringify([makeMessage('legacy-base')]),
+    );
+    legacyDb.prepare(`
+      INSERT INTO mirror_oplog (session_key, version, message_seq, source, saved_at, payload_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      SESSION_KEY,
+      'legacy-v1',
+      2,
+      'history_sse',
+      '2026-03-26T10:01:00.000Z',
+      JSON.stringify(makeMessage('legacy-oplog', 'user', 'hello from legacy')),
+    );
+
+    const store = createStudioChatDurableMirrorStore(config);
+    const snapshot = store.readSession(SESSION_KEY);
+    assert.ok(snapshot);
+    assert.equal(snapshot.version, 'legacy-v1');
+    assert.deepEqual(snapshot.messages.map((message) => message.id), ['legacy-base', 'legacy-oplog']);
+
+    const sharedDb = new DatabaseSync(path.join(root, 'studio', 'chat.sqlite'));
+    const migrated = sharedDb.prepare(`
+      SELECT version, base_message_seq
+      FROM mirror_checkpoint
+      WHERE session_key = ?
+    `).get(SESSION_KEY);
+    assert.ok(migrated);
+    assert.equal(migrated.version, 'legacy-v1');
+    assert.equal(migrated.base_message_seq, 2);
+  } finally {
+    cleanupTempRoot(root);
+  }
+});
+
+test('sqlite: clearSession also removes lazily migrated legacy mirror rows', () => {
+  const root = makeTempRoot();
+  try {
+    const config = makeConfig(root);
+    const legacyFile = path.join(root, 'studio', 'chat-durable-mirror', 'mirror.sqlite');
+    fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
+    const legacyDb = new DatabaseSync(legacyFile);
+    legacyDb.exec(`
+      CREATE TABLE IF NOT EXISTS mirror_checkpoint (
+        session_key TEXT PRIMARY KEY,
+        version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        base_message_seq INTEGER NOT NULL,
+        saved_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      );
+    `);
+    legacyDb.exec(`
+      CREATE TABLE IF NOT EXISTS mirror_oplog (
+        session_key TEXT NOT NULL,
+        version TEXT NOT NULL,
+        message_seq INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        saved_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        PRIMARY KEY (session_key, version, message_seq)
+      );
+    `);
+    legacyDb.prepare(`
+      INSERT INTO mirror_checkpoint (session_key, version, source, base_message_seq, saved_at, payload_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      SESSION_KEY,
+      'legacy-v1',
+      'history_sse',
+      1,
+      '2026-03-26T10:00:00.000Z',
+      JSON.stringify([makeMessage('legacy-base')]),
+    );
+
+    const store = createStudioChatDurableMirrorStore(config);
+    assert.ok(store.readSession(SESSION_KEY));
+    store.clearSession(SESSION_KEY);
+    assert.equal(store.readSession(SESSION_KEY), null);
+
+    const sharedDb = new DatabaseSync(path.join(root, 'studio', 'chat.sqlite'));
+    const sharedCount = sharedDb.prepare(`
+      SELECT COUNT(*) AS count
+      FROM mirror_checkpoint
+      WHERE session_key = ?
+    `).get(SESSION_KEY);
+    const legacyCount = legacyDb.prepare(`
+      SELECT COUNT(*) AS count
+      FROM mirror_checkpoint
+      WHERE session_key = ?
+    `).get(SESSION_KEY);
+    assert.equal(sharedCount.count, 0);
+    assert.equal(legacyCount.count, 0);
+  } finally {
+    cleanupTempRoot(root);
+  }
+});
+
+test('sqlite: tombstones prevent stale legacy mirror re-import after clearSession', () => {
+  const root = makeTempRoot();
+  try {
+    const config = makeConfig(root);
+    const legacyFile = path.join(root, 'studio', 'chat-durable-mirror', 'mirror.sqlite');
+    fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
+    const legacyDb = new DatabaseSync(legacyFile);
+    legacyDb.exec(`
+      CREATE TABLE IF NOT EXISTS mirror_checkpoint (
+        session_key TEXT PRIMARY KEY,
+        version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        base_message_seq INTEGER NOT NULL,
+        saved_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      );
+    `);
+    legacyDb.exec(`
+      CREATE TABLE IF NOT EXISTS mirror_oplog (
+        session_key TEXT NOT NULL,
+        version TEXT NOT NULL,
+        message_seq INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        saved_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        PRIMARY KEY (session_key, version, message_seq)
+      );
+    `);
+    const insertLegacyCheckpoint = () => legacyDb.prepare(`
+      INSERT OR REPLACE INTO mirror_checkpoint (session_key, version, source, base_message_seq, saved_at, payload_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      SESSION_KEY,
+      'legacy-v1',
+      'history_sse',
+      1,
+      '2026-03-26T10:00:00.000Z',
+      JSON.stringify([makeMessage('legacy-base')]),
+    );
+
+    insertLegacyCheckpoint();
+    const store = createStudioChatDurableMirrorStore(config);
+    assert.ok(store.readSession(SESSION_KEY));
+    store.clearSession(SESSION_KEY);
+
+    // Simulate a failed legacy delete or an external stale writer after clear.
+    insertLegacyCheckpoint();
+    assert.equal(store.readSession(SESSION_KEY), null);
+
+    const sharedDb = new DatabaseSync(path.join(root, 'studio', 'chat.sqlite'));
+    const tombstone = sharedDb.prepare(`
+      SELECT cleared_at
+      FROM mirror_tombstones
+      WHERE session_key = ?
+    `).get(SESSION_KEY);
+    assert.ok(tombstone?.cleared_at);
   } finally {
     cleanupTempRoot(root);
   }

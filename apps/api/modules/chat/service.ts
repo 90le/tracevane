@@ -280,6 +280,7 @@ function formatGatewayFileRef(relativePath: string): string {
 
 const CHAT_GATEWAY_LEASE_MS = 35_000;
 const CHAT_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
+const CHAT_GATEWAY_HEALTH_CACHE_MS = 1_500;
 
 function compileGatewayMessageText(text: string, fileRefs: ChatSendFileRef[]): string {
   const refs = fileRefs.map((item) => formatGatewayFileRef(item.relativePath));
@@ -806,6 +807,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   const queueFlushSessions = new Set<string>();
   const streamSnapshots = new Map<string, string>();
   const suppressedGatewayRunIds = new Map<string, Set<string>>();
+  let gatewayConnectedCache: { value: boolean; checkedAt: number } | null = null;
   let projectionSequence = 0;
   const wss = new WebSocketServer({ noServer: true });
   const gatewaySweepTimer = setInterval(() => {
@@ -817,16 +819,36 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   gatewaySweepTimer.unref?.();
 
   async function isGatewayConnected(): Promise<boolean> {
+    const now = Date.now();
+    if (gatewayConnectedCache && now - gatewayConnectedCache.checkedAt < CHAT_GATEWAY_HEALTH_CACHE_MS) {
+      return gatewayConnectedCache.value;
+    }
     try {
       const health = await options.system.getHealth();
-      return health.gatewayConnected === true;
+      const value = health.gatewayConnected === true;
+      gatewayConnectedCache = {
+        value,
+        checkedAt: now,
+      };
+      return value;
     } catch {
+      gatewayConnectedCache = {
+        value: false,
+        checkedAt: now,
+      };
       return false;
     }
   }
 
-  async function buildHealth(notes: string[] = []): Promise<ChatDiagnostics> {
-    return createBaseDiagnostics(options.config, await isGatewayConnected(), notes);
+  async function buildHealth(
+    notes: string[] = [],
+    gatewayReachableHint: boolean | null = null,
+  ): Promise<ChatDiagnostics> {
+    return createBaseDiagnostics(
+      options.config,
+      gatewayReachableHint ?? await isGatewayConnected(),
+      notes,
+    );
   }
 
   function getChatProtocolMode(): ChatProtocolMode {
@@ -1957,20 +1979,29 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
   }
 
-  async function requireSession(sessionKey: string): Promise<ChatSessionRow> {
+  async function requireSession(sessionKey: string, gatewayConnectedHint?: boolean | null): Promise<ChatSessionRow> {
     const inMemory = getStudioSession(sessionKey);
     if (inMemory) return inMemory.row;
 
     const registryEntry = getRegistryEntry(sessionKey);
     if (registryEntry) {
-      return buildStudioManagedRowFromRegistry(registryEntry, await isGatewayConnected());
+      return buildStudioManagedRowFromRegistry(
+        registryEntry,
+        gatewayConnectedHint ?? await isGatewayConnected(),
+      );
     }
 
     const agentId = deriveAgentIdFromSessionKey(sessionKey);
     const store = readJsonFile<Record<string, LocalSessionRecord>>(resolveAgentSessionsStorePath(options.config, agentId), {});
     const record = store[sessionKey];
     if (record) {
-      const mapped = mapLocalSessionRow(agentId, sessionKey, record, await isGatewayConnected(), registryEntry);
+      const mapped = mapLocalSessionRow(
+        agentId,
+        sessionKey,
+        record,
+        gatewayConnectedHint ?? await isGatewayConnected(),
+        registryEntry,
+      );
       if (mapped.kind === 'studio_managed' && !registryEntry) {
         saveRegistryEntry(buildRegistryEntryFromRow(mapped));
       }
@@ -2357,6 +2388,25 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     ].join('::');
   }
 
+  function buildTranscriptMirrorSignature(
+    selection: Extract<ChatCanonicalSourceSelection, { kind: 'local_transcript' }>,
+  ): string {
+    const currentStat = safeStatSync(selection.sessionFile);
+    const priorFileSignature = selection.priorSessionFiles
+      .map((file) => {
+        const stat = safeStatSync(file);
+        return `${file}:${stat?.ino || 0}:${stat?.size || 0}:${stat?.mtimeMs || 0}`;
+      })
+      .join('|');
+    return [
+      selection.sessionFile,
+      String(currentStat?.ino || 0),
+      String(currentStat?.size || 0),
+      String(currentStat?.mtimeMs || 0),
+      priorFileSignature,
+    ].join('::');
+  }
+
   function cloneHistorySnapshotCacheEntry(entry: HistorySnapshotCacheEntry): HistorySnapshotCacheEntry {
     return {
       ...entry,
@@ -2484,8 +2534,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     sourceSessionFile: string | null;
     sourceMtimeMs: number | null;
   }> {
-    let session = await requireSession(sessionKey);
-    const diagnostics = await buildHealth([]);
+    const gatewayConnected = await isGatewayConnected();
+    let session = await requireSession(sessionKey, gatewayConnected);
+    const diagnostics = await buildHealth([], gatewayConnected);
     let messages: ChatMessageItem[] = [];
     let canonicalEntries: ChatCanonicalEntry[] = [];
     let canonicalSource: ChatCanonicalState['source'] = 'history_rpc';
@@ -2547,7 +2598,38 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       };
     }
 
-    if (sourceSelection.kind === 'local_transcript') {
+    const transcriptMirrorSignature = sourceSelection.kind === 'local_transcript'
+      ? buildTranscriptMirrorSignature(sourceSelection)
+      : null;
+    let reusedTranscriptMirror = false;
+    if (sourceSelection.kind === 'local_transcript' && transcriptMirrorSignature && !inMemory) {
+      const mirrorSnapshot = durableMirrorStore.readSession(sessionKey);
+      if (
+        mirrorSnapshot
+        && mirrorSnapshot.source === 'local_transcript'
+        && mirrorSnapshot.sourceSignature === transcriptMirrorSignature
+      ) {
+        messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
+        canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
+        canonicalSource = 'local_transcript';
+        if (mirrorSnapshot.observability) {
+          const restoredObservability = cloneObservabilityState(mirrorSnapshot.observability);
+          observability.lifecycle = restoredObservability.lifecycle;
+          observability.usage = restoredObservability.usage;
+          observability.toolCards = restoredObservability.toolCards;
+          observability.timeline = restoredObservability.timeline;
+          historyToolCards = restoredObservability.toolCards;
+        }
+        reusedTranscriptMirror = true;
+        diagnostics.notes.push(
+          loadOptions.localOnly
+            ? `Local bootstrap reused transcript-aligned Studio durable mirror (${mirrorSnapshot.backend}) without remapping local transcript history.`
+            : `History reused transcript-aligned Studio durable mirror (${mirrorSnapshot.backend}) without remapping local transcript history.`,
+        );
+      }
+    }
+
+    if (sourceSelection.kind === 'local_transcript' && !reusedTranscriptMirror) {
       // Load entries from prior (reset backup) session files first, then current
       const priorRawEntries: Record<string, unknown>[] = [];
       for (const priorFile of sourceSelection.priorSessionFiles) {
@@ -2604,6 +2686,14 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
         canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
         canonicalSource = 'studio_mirror';
+        if (mirrorSnapshot.observability) {
+          const restoredObservability = cloneObservabilityState(mirrorSnapshot.observability);
+          observability.lifecycle = restoredObservability.lifecycle;
+          observability.usage = restoredObservability.usage;
+          observability.toolCards = restoredObservability.toolCards;
+          observability.timeline = restoredObservability.timeline;
+          historyToolCards = restoredObservability.toolCards;
+        }
         diagnostics.notes.push(`Local bootstrap used Studio durable mirror (${mirrorSnapshot.backend}) without a gateway roundtrip.`);
       } else if (inMemory) {
         messages = currentStudioHistory(inMemory);
@@ -2788,6 +2878,20 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         historyTruncated: diagnostics.historyTruncated,
         truncationMode: diagnostics.truncationMode,
       });
+      if (!reusedTranscriptMirror && transcriptMirrorSignature) {
+        durableMirrorStore.replaceSnapshot({
+          sessionKey,
+          version: nextCanonicalVersion(sessionKey, 'local_transcript'),
+          source: 'local_transcript',
+          messages,
+          baseMessageSeq: canonicalEntries[canonicalEntries.length - 1]?.messageSeq || messages.length,
+          savedAt: new Date().toISOString(),
+          sourceSignature: transcriptMirrorSignature,
+          sourceSessionFile,
+          sourceMtimeMs,
+          observability,
+        });
+      }
     }
 
     return {
@@ -4875,8 +4979,17 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             pageInfo: page.pageInfo,
             day: page.day,
           };
-          queue = await buildQueuePayload(selectedSessionKey);
-          controls = await buildSessionControlsPayload(selectedSessionKey);
+          const sessionState = ensureStudioSessionState(snapshot.session);
+          queue = {
+            checkedAt: new Date().toISOString(),
+            session: sessionState.row,
+            items: cloneChatQueuedMessageList(sessionState.pendingQueue),
+          };
+          controls = {
+            checkedAt: new Date().toISOString(),
+            session: sessionState.row,
+            controls: cloneSessionControls(sessionState.controls),
+          };
         } catch (error) {
           diagnostics.notes.push(
             `Local bootstrap could not preload session '${selectedSessionKey}' (${error instanceof Error ? error.message : String(error)}).`,

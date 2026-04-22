@@ -331,6 +331,7 @@ test("history page API windows messages and exposes search/date helpers", async 
 
     const originalReadFileSync = fs.readFileSync;
     let cachedTranscriptReads = 0;
+    let bootstrapTranscriptReads = 0;
     let onlyCode = null;
     fs.readFileSync = ((filePath, ...args) => {
       if (String(filePath) === transcriptFile) {
@@ -340,6 +341,53 @@ test("history page API windows messages and exposes search/date helpers", async 
     });
 
     try {
+      cachedTranscriptReads = 0;
+      const coldContext = createStudioContext({
+        config,
+        logger: createLogger(),
+      });
+      let bootstrapHealthChecks = 0;
+      const originalColdGetHealth = coldContext.services.system.getHealth.bind(coldContext.services.system);
+      coldContext.services.system.getHealth = async (...args) => {
+        bootstrapHealthChecks += 1;
+        return originalColdGetHealth(...args);
+      };
+      const bootstrapReplay = await coldContext.services.chat.getBootstrap({
+        sessionKey,
+        recentLimit: 10,
+        historyLimit: 2,
+      });
+      bootstrapTranscriptReads = cachedTranscriptReads;
+      assert.deepEqual(
+        bootstrapReplay.history?.messages.map((message) => message.id),
+        ["m3", "m4"],
+      );
+      assert.match(
+        bootstrapReplay.history?.diagnostics.notes.join("\n") || "",
+        /transcript-aligned Studio durable mirror/i,
+      );
+      assert.equal(bootstrapTranscriptReads, 0);
+      assert.equal(bootstrapHealthChecks, 1);
+
+      cachedTranscriptReads = 0;
+      const coldHistoryContext = createStudioContext({
+        config,
+        logger: createLogger(),
+      });
+      const coldPage = await coldHistoryContext.services.chat.getHistory(sessionKey, {
+        limit: 2,
+      });
+      assert.deepEqual(
+        coldPage.messages.map((message) => message.id),
+        ["m3", "m4"],
+      );
+      assert.match(
+        coldPage.diagnostics.notes.join("\n"),
+        /transcript-aligned Studio durable mirror/i,
+      );
+      assert.equal(cachedTranscriptReads, 0);
+
+      cachedTranscriptReads = 0;
       const page2 = await context.services.chat.getHistory(sessionKey, {
         limit: 2,
         before: page1.pageInfo.beforeCursor,
