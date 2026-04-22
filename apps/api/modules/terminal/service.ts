@@ -249,6 +249,12 @@ function normalizeSkipReplay(value: unknown): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
+function normalizeResumeSession(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
 function createOptionalPty(): PtyModule | null {
   try {
     return require("@homebridge/node-pty-prebuilt-multiarch") as PtyModule;
@@ -613,6 +619,13 @@ export function createTerminalService(
     runtime: TerminalGatewayRuntime,
   ): void {
     clearCleanupTimer(session);
+    const existingSubscriber = session.gatewaySubscribers.get(runtime.connId);
+    if (existingSubscriber) {
+      existingSubscriber.lastLeaseAt = Date.now();
+      session.lastAttachedAt = new Date().toISOString();
+      markSessionActivity(session);
+      return;
+    }
     detachGatewayConnId(runtime.connId);
     session.lastAttachedAt = new Date().toISOString();
     appendLedgerEvent(
@@ -912,7 +925,10 @@ export function createTerminalService(
     return markPersistedSessionLost(descriptor.sessionId) || descriptor;
   }
 
-  function getOrCreateSession(rawSessionId: string | null): TerminalSession {
+  function getOrCreateSession(
+    rawSessionId: string | null,
+    options: { resumePersisted?: boolean } = {},
+  ): TerminalSession {
     const sessionId = normalizeSessionId(rawSessionId);
     const existing = sessions.get(sessionId);
     if (existing && !existing.closed) {
@@ -922,6 +938,9 @@ export function createTerminalService(
     if (rawSessionId) {
       const persisted = descriptorStore.get(sessionId);
       if (persisted) {
+        if (options.resumePersisted) {
+          return createSession(sessionId);
+        }
         reconcilePersistedDescriptor(persisted);
         throw new Error("terminal_session_unavailable");
       }
@@ -1461,7 +1480,9 @@ export function createTerminalService(
 
     try {
       const url = new URL(req.url || "/", "http://127.0.0.1");
-      const session = getOrCreateSession(url.searchParams.get("sid"));
+      const session = getOrCreateSession(url.searchParams.get("sid"), {
+        resumePersisted: normalizeResumeSession(url.searchParams.get("resume")),
+      });
       if (!attachSocket(session, ws, url.searchParams)) {
         try {
           ws.close();
@@ -1683,7 +1704,9 @@ export function createTerminalService(
           "node-pty is not available; terminal sessions are disabled",
         );
       }
-      const session = getOrCreateSession(payload.sid || null);
+      const session = getOrCreateSession(payload.sid || null, {
+        resumePersisted: normalizeResumeSession(payload.resume),
+      });
       if (payload.handoffContext) {
         session.source = "system-handoff";
         session.sourceModule = payload.handoffContext.fromModule || "system";

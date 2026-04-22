@@ -105,6 +105,33 @@ export function registerChatRoutes(
     }
   });
 
+  router.get("/api/chat/bootstrap", async (req, res, routeCtx) => {
+    try {
+      const url = new URL(
+        req.url || "/",
+        `http://${req.headers.host || "127.0.0.1"}`,
+      );
+      const recentLimit = (() => {
+        const raw = Number(url.searchParams.get("recentLimit") || 40);
+        return Number.isFinite(raw)
+          ? Math.min(100, Math.max(1, Math.trunc(raw)))
+          : 40;
+      })();
+      sendJson(res, 200, await routeCtx.services.chat.getBootstrap({
+        sessionKey: url.searchParams.get("sessionKey"),
+        recentLimit,
+        historyLimit: (() => {
+          const raw = Number(url.searchParams.get("historyLimit") || 24);
+          return Number.isFinite(raw)
+            ? Math.min(100, Math.max(1, Math.trunc(raw)))
+            : 24;
+        })(),
+      }));
+    } catch (error) {
+      sendChatError(res, error);
+    }
+  });
+
   router.get("/api/chat/organizer", async (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, await routeCtx.services.chat.getOrganizer());

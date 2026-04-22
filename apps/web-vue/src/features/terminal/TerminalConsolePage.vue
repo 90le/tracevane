@@ -87,11 +87,13 @@ const props = withDefaults(defineProps<{
   queuedCommand?: TerminalQueuedCommand | null;
   showToolbar?: boolean;
   embedded?: boolean;
+  restoreTranscript?: boolean;
 }>(), {
   sessionId: '',
   queuedCommand: null,
   showToolbar: true,
   embedded: false,
+  restoreTranscript: true,
 });
 
 const route = useRoute();
@@ -119,6 +121,9 @@ let termDataDisposable: IDisposable | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let statusPollTimer: ReturnType<typeof setInterval> | null = null;
+let gatewayOutputCatchupTimer: ReturnType<typeof setTimeout> | null = null;
+let gatewayOutputCatchupActive = false;
+let gatewayOutputCatchupDirty = false;
 let intentionalClose = false;
 const terminalSessionId = ref('');
 let terminalInstanceId = '';
@@ -217,6 +222,7 @@ function restoreRuntime(): void {
 
 async function restorePersistedTranscriptIfNeeded(sessionId: string): Promise<boolean> {
   const normalizedSessionId = normalizeSessionId(sessionId);
+  if (!props.restoreTranscript) return false;
   if (!normalizedSessionId || !termInstance) return false;
   if (transcriptRestoreAttemptedSessionId === normalizedSessionId) return false;
 
@@ -241,14 +247,19 @@ async function restorePersistedTranscriptIfNeeded(sessionId: string): Promise<bo
   }
 }
 
-function setSessionId(nextId: string): void {
+function setSessionId(
+  nextId: string,
+  options: { emitAttached?: boolean } = {},
+): void {
   terminalSessionId.value = isInvalidSessionId(nextId) ? generateSessionId() : nextId;
   try {
     sessionStorage.setItem(TERMINAL_SESSION_STORAGE_KEY, terminalSessionId.value);
   } catch {
     // ignore
   }
-  emitSessionAttached(terminalSessionId.value);
+  if (options.emitAttached) {
+    emitSessionAttached(terminalSessionId.value);
+  }
 }
 
 function getSessionId(): string {
@@ -328,18 +339,18 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
   }
   if (payload.type === 'session') {
     if (typeof payload.sid === 'string' && payload.sid.trim()) {
-      setSessionId(payload.sid);
+      setSessionId(payload.sid, { emitAttached: true });
     }
     terminalInstanceId = String(payload.instanceId || '');
-    if (typeof payload.outputSeq === 'number' && payload.outputSeq > lastOutputSeq) {
-      lastOutputSeq = payload.outputSeq;
-    }
+    // Do not advance lastOutputSeq from the session summary. Attach responses
+    // include the summary before replayed output events; advancing here would
+    // make those output events look stale and hide live terminal text until reload.
     saveRuntime();
     return;
   }
   if (payload.type === 'reset') {
     if (typeof payload.sid === 'string' && payload.sid.trim()) {
-      setSessionId(payload.sid);
+      setSessionId(payload.sid, { emitAttached: true });
     }
     terminalInstanceId = String(payload.instanceId || '');
     lastOutputSeq = 0;
@@ -417,12 +428,13 @@ async function attachGatewayTerminal(): Promise<void> {
       lastSeq: lastOutputSeq || undefined,
       instanceId: terminalInstanceId || undefined,
       skipReplay: skipReplay || undefined,
+      resume: props.embedded || undefined,
       handoffContext: readRouteHandoffContext(),
     },
   );
   connected.value = true;
   if (response.sid) {
-    setSessionId(response.sid);
+    setSessionId(response.sid, { emitAttached: true });
   }
   for (const event of response.events || []) {
     handleTerminalRealtimeEvent(event);
@@ -433,7 +445,60 @@ async function attachGatewayTerminal(): Promise<void> {
   void refreshStatus();
 }
 
+async function requestGatewayOutputCatchup(): Promise<void> {
+  if (!gatewayClient?.connected) return;
+  const sid = getSessionId();
+  if (!sid) return;
+  const response = await requestGatewayTerminal<TerminalGatewayAttachResponse>(
+    STUDIO_TERMINAL_GATEWAY_METHODS.attach,
+    {
+      sid,
+      lastSeq: lastOutputSeq || undefined,
+      instanceId: terminalInstanceId || undefined,
+      resume: props.embedded || undefined,
+    },
+  );
+  if (response.sid) {
+    setSessionId(response.sid, { emitAttached: true });
+  }
+  for (const event of response.events || []) {
+    handleTerminalRealtimeEvent(event);
+  }
+  saveRuntime();
+}
+
+function scheduleGatewayOutputCatchup(delayMs = 80): void {
+  if (!usesGatewayRpc()) return;
+  gatewayOutputCatchupDirty = true;
+  if (gatewayOutputCatchupTimer || gatewayOutputCatchupActive) return;
+  gatewayOutputCatchupTimer = window.setTimeout(() => {
+    gatewayOutputCatchupTimer = null;
+    if (intentionalClose || !gatewayClient?.connected) {
+      gatewayOutputCatchupDirty = false;
+      return;
+    }
+    gatewayOutputCatchupActive = true;
+    gatewayOutputCatchupDirty = false;
+    void requestGatewayOutputCatchup()
+      .catch(() => {
+        recoverGatewayAttachment();
+      })
+      .finally(() => {
+        gatewayOutputCatchupActive = false;
+        if (gatewayOutputCatchupDirty && !intentionalClose) {
+          scheduleGatewayOutputCatchup(80);
+        }
+      });
+  }, delayMs);
+}
+
 function disconnectGatewayClient(): void {
+  if (gatewayOutputCatchupTimer) {
+    window.clearTimeout(gatewayOutputCatchupTimer);
+    gatewayOutputCatchupTimer = null;
+  }
+  gatewayOutputCatchupActive = false;
+  gatewayOutputCatchupDirty = false;
   gatewayClient?.stop();
   gatewayClient = null;
 }
@@ -543,6 +608,8 @@ function sendTerminalInput(data: string): boolean {
       },
     ).catch(() => {
       recoverGatewayAttachment();
+    }).then(() => {
+      scheduleGatewayOutputCatchup();
     });
     return true;
   }
@@ -638,6 +705,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   if (lastOutputSeq > 0) params.set('lastSeq', String(lastOutputSeq));
   if (terminalInstanceId) params.set('instanceId', terminalInstanceId);
   if (skipReplay) params.set('skipReplay', '1');
+  if (props.embedded) params.set('resume', '1');
 
   const socket = new WebSocket(`${protocol}//${window.location.host}${wsPath}?${params.toString()}`);
   ws = socket;
@@ -783,8 +851,22 @@ function sendTerminalShortcut(key: string): boolean {
   return sendTerminalInput(controlChar);
 }
 
+async function pasteClipboard(): Promise<boolean> {
+  try {
+    const text = await navigator.clipboard?.readText?.();
+    if (!text) return false;
+    focusTerminal();
+    return sendTerminalInput(text);
+  } catch {
+    return false;
+  }
+}
+
 function shouldCaptureTerminalShortcut(event: KeyboardEvent): boolean {
   if (!terminalFocused.value || !termReady.value) return false;
+  if (event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey && event.key.toUpperCase() === 'V') {
+    return true;
+  }
   if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
     return false;
   }
@@ -802,6 +884,12 @@ function shouldCaptureTerminalShortcut(event: KeyboardEvent): boolean {
 
 function handleTerminalKeydown(event: KeyboardEvent): void {
   if (!shouldCaptureTerminalShortcut(event)) return;
+  if (event.ctrlKey && event.shiftKey && event.key.toUpperCase() === 'V') {
+    event.preventDefault();
+    event.stopPropagation();
+    void pasteClipboard();
+    return;
+  }
   if (!sendTerminalShortcut(event.key)) return;
   event.preventDefault();
   event.stopPropagation();
@@ -944,6 +1032,10 @@ onBeforeUnmount(() => {
   intentionalClose = true;
   stopHeartbeat();
   clearReconnectTimer();
+  if (gatewayOutputCatchupTimer) {
+    window.clearTimeout(gatewayOutputCatchupTimer);
+    gatewayOutputCatchupTimer = null;
+  }
   resizeObserver?.disconnect();
   resizeObserver = null;
   termDataDisposable?.dispose();
@@ -981,6 +1073,7 @@ onBeforeUnmount(() => {
 defineExpose({
   clearTerminal,
   focusTerminal,
+  pasteClipboard,
   sendTerminalShortcut,
 });
 </script>

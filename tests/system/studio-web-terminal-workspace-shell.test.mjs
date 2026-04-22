@@ -182,6 +182,8 @@ test("terminal workspace page composes integrated shell sections and binds state
 
 test("terminal workspace exposes shared inspector content and mobile bottom sheet trigger", () => {
   assert.match(workspacePage, /<TerminalInspectorContent/);
+  assert.match(workspacePage, /desktopInspectorOpen/);
+  assert.match(workspacePage, /terminal-desktop-inspector-trigger/);
   assert.match(workspacePage, /terminal-mobile-inspector-trigger/);
   assert.match(workspacePage, /<DialogRoot v-if="compactInspectorMode" v-model:open="mobileInspectorOpen">/);
   assert.match(workspacePage, /terminal-mobile-sheet/);
@@ -207,21 +209,45 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /fetchPersistedTerminalSessionLedger/);
   assert.match(terminalConsole, /buildTerminalSessionReplayTranscript/);
   assert.match(terminalConsole, /restorePersistedTranscriptIfNeeded/);
+  assert.match(terminalConsole, /restoreTranscript\?: boolean/);
+  assert.match(terminalConsole, /restoreTranscript: true/);
+  assert.match(terminalConsole, /if \(!props\.restoreTranscript\) return false;/);
+  assert.match(terminalConsole, /Do not advance lastOutputSeq from the session summary/);
+  assert.doesNotMatch(
+    terminalConsole,
+    /payload\.type === 'session'[\s\S]{0,500}lastOutputSeq = payload\.outputSeq/,
+  );
+  assert.match(terminalConsole, /requestGatewayOutputCatchup/);
+  assert.match(terminalConsole, /scheduleGatewayOutputCatchup/);
+  assert.match(terminalConsole, /scheduleGatewayOutputCatchup\(\);/);
+  assert.match(terminalConsole, /gatewayOutputCatchupDirty/);
   assert.match(terminalConsole, /skipReplay: skipReplay \|\| undefined/);
+  assert.match(terminalConsole, /resume: props\.embedded \|\| undefined/);
   assert.match(terminalConsole, /params\.set\('skipReplay', '1'\)/);
+  assert.match(terminalConsole, /params\.set\('resume', '1'\)/);
+  assert.match(terminalConsole, /options: \{ emitAttached\?: boolean \} = \{\}/);
+  assert.match(terminalConsole, /if \(options\.emitAttached\) \{\s*emitSessionAttached\(terminalSessionId\.value\);/);
+  assert.match(terminalConsole, /setSessionId\(response\.sid, \{ emitAttached: true \}\)/);
   assert.match(terminalConsole, /handleTerminalKeydown/);
   assert.match(terminalConsole, /window\.addEventListener\('keydown', handleTerminalKeydown, true\)/);
   assert.match(terminalConsole, /addEventListener\('focusin', handleTerminalFocusIn\)/);
   assert.match(terminalConsole, /addEventListener\('focusout', handleTerminalFocusOut\)/);
+  assert.match(terminalConsole, /async function pasteClipboard\(\): Promise<boolean>/);
+  assert.match(terminalConsole, /navigator\.clipboard\?\.readText/);
+  assert.match(terminalConsole, /event\.ctrlKey && event\.shiftKey[\s\S]*event\.key\.toUpperCase\(\) === 'V'/);
   assert.doesNotMatch(terminalConsole, /\.onFocus\(/);
   assert.doesNotMatch(terminalConsole, /\.onBlur\(/);
   assert.match(terminalConsole, /sendTerminalShortcut/);
-  assert.match(terminalConsole, /defineExpose\(\{\s*clearTerminal,\s*focusTerminal,\s*sendTerminalShortcut,/);
+  assert.match(terminalConsole, /defineExpose\(\{\s*clearTerminal,\s*focusTerminal,\s*pasteClipboard,\s*sendTerminalShortcut,/);
   assert.match(
     terminalConsole,
     /function restoreRuntime\(\): void \{\s*terminalInstanceId = '';\s*lastOutputSeq = 0;\s*transcriptRestoreAttemptedSessionId = '';\s*\}/,
   );
   assert.match(terminalService, /function normalizeSkipReplay/);
+  assert.match(terminalService, /function normalizeResumeSession/);
+  assert.match(terminalService, /resumePersisted: normalizeResumeSession/);
+  assert.match(terminalService, /const existingSubscriber = session\.gatewaySubscribers\.get\(runtime\.connId\)/);
+  assert.match(terminalService, /existingSubscriber\.lastLeaseAt = Date\.now\(\)/);
   assert.match(terminalService, /skipReplay\?: boolean \| string \| null;/);
 });
 
@@ -317,14 +343,18 @@ test("terminal workspace no longer renders action and recent rails as fixed side
   );
 });
 
-test("terminal workspace keeps inspector drawer open by default", () => {
-  assert.doesNotMatch(workspacePage, /data-testid="terminal-inspector-toggle"/);
-  assert.doesNotMatch(workspacePage, /@click="toggleInspector"/);
+test("terminal workspace exposes collapsible desktop inspector drawer", () => {
+  assert.match(workspacePage, /TERMINAL_DESKTOP_INSPECTOR_STORAGE_KEY/);
+  assert.match(workspacePage, /restoreDesktopInspectorPreference/);
+  assert.match(workspacePage, /setDesktopInspectorOpen/);
+  assert.match(workspacePage, /terminal-inspector-drawer-head/);
+  assert.match(workspacePage, /terminal-inspector-drawer-collapse/);
+  assert.match(workspacePage, /@click="setDesktopInspectorOpen\(false\)"/);
+  assert.match(workspacePage, /@click="setDesktopInspectorOpen\(true\)"/);
   assert.match(
     workspacePage,
-    /<TerminalInspectorDrawer[^>]*:open="true"[^>]*>/,
+    /<TerminalInspectorDrawer v-if="!compactInspectorMode && desktopInspectorOpen"[\s\S]*:open="true"/,
   );
-  assert.doesNotMatch(workspacePage, /function toggleInspector\(\)/);
 });
 
 test("terminal tab strip exposes inline rename edit controls and session actions", () => {
@@ -339,13 +369,27 @@ test("terminal tab strip exposes inline rename edit controls and session actions
   assert.match(tabRail, /terminal-tab-rename-input/);
   assert.match(tabRail, /terminal-tab-rename-save/);
   assert.match(tabRail, /terminal-tab-rename-cancel/);
+  assert.match(tabRail, /role="tablist"/);
+  assert.match(tabRail, /role="tab"/);
+  assert.match(tabRail, /terminal-tab-dot/);
+  assert.match(tabRail, /@dblclick="startRename\(tab\)"/);
+  assert.match(tabRail, /@keydown\.f2\.prevent="startRename\(tab\)"/);
+  assert.match(tabRail, /@keydown\.delete\.prevent="\$emit\('close', tab\.sessionId\)"/);
+  assert.match(tabRail, /function shortSessionId\(sessionId: string\): string/);
+  assert.match(tabRail, /function tabTooltip\(tab: TerminalSessionDescriptor\): string/);
   assert.doesNotMatch(tabRail, /globalThis\.prompt/);
   assert.match(tabRail, /close/);
   assert.match(tabRail, /end/);
   assert.match(tabRail, /delete/);
-  assert.match(tabRail, /terminal-tab-end/);
-  assert.match(tabRail, /terminal-tab-delete/);
+  assert.match(tabRail, /terminal-tab-menu/);
   assert.match(tabRail, /terminal-tab-overflow/);
+  assert.match(tabRail, /terminal-tab-scroll/);
+  assert.match(tabRail, /terminal-tab-rail-actions/);
+  assert.match(tabRail, /class="terminal-tab-add"/);
+  assert.match(tabRail, /terminal-tab-add__icon/);
+  assert.match(tabRail, /terminal-tab-add__copy/);
+  assert.match(tabRail, /新建终端标签/);
+  assert.match(tabRail, /New terminal tab/);
 });
 
 test("terminal session pane hosts integrated tab controls and lifecycle affordances", () => {
@@ -363,12 +407,32 @@ test("terminal session pane hosts integrated tab controls and lifecycle affordan
   assert.match(pane, /endSession/);
   assert.match(pane, /deleteSession/);
   assert.match(pane, /terminal-stage-header-actions/);
+  assert.match(pane, /terminal-stage-action--focus/);
+  assert.match(pane, /terminal-stage-action--control/);
+  assert.match(pane, /terminal-stage-action--clear/);
+  assert.match(pane, /terminal-stage-action--danger/);
+  assert.match(workspaceCss, /\.terminal-stage-header\s*\{[\s\S]*z-index:\s*12;[\s\S]*overflow:\s*visible;/);
+  assert.match(workspaceCss, /\.terminal-stage-header-actions\s*\{[\s\S]*flex-wrap:\s*wrap;[\s\S]*overflow:\s*visible;/);
+  assert.match(workspaceCss, /\.terminal-tab-rail\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/);
+  assert.match(workspaceCss, /\.terminal-tab-scroll\s*\{[\s\S]*overflow-x:\s*auto;[\s\S]*padding-bottom:\s*8px;/);
+  assert.match(workspaceCss, /\.terminal-tab-rail-actions\s*\{[\s\S]*min-width:\s*max-content;/);
+  assert.match(workspaceCss, /\.terminal-shortcut-menu__panel\s*\{[\s\S]*z-index:\s*60;[\s\S]*backdrop-filter:\s*blur\(12px\);/);
   assert.match(pane, /Ctrl\+C/);
   assert.match(pane, /Ctrl\+L/);
+  assert.match(pane, /Ctrl\+D/);
+  assert.match(pane, /Ctrl\+Z/);
+  assert.match(pane, /Ctrl\+U/);
+  assert.match(pane, /Ctrl\+K/);
+  assert.match(pane, /terminal-shortcut-menu/);
+  assert.match(pane, /function pasteClipboard\(\): void/);
   assert.match(pane, /Focus/);
   assert.match(pane, /Force End/);
   assert.match(pane, /ref="consolePage"/);
+  assert.match(pane, /:restore-transcript="shouldRestoreTranscript"/);
+  assert.match(pane, /const shouldRestoreTranscript = computed\(\(\) =>/);
+  assert.match(pane, /session\.status !== 'running' \|\| Boolean\(session\.recentOutputSummary\?\.tailText\)/);
   assert.match(pane, /sendTerminalShortcut: \(key: string\) => boolean;/);
+  assert.match(pane, /pasteClipboard: \(\) => Promise<boolean>;/);
   assert.match(pane, /function sendShortcut\(key: string\): void/);
   assert.match(pane, /function clearTerminal\(\): void/);
   assert.match(pane, /function endActiveSession\(\): void/);
@@ -397,6 +461,9 @@ test("terminal route sync keeps route-driven restore and avoids active-session p
     terminalRouteSync,
     /watch\(\s*\(\) => options\.route\.params\.sessionId/,
   );
+  assert.doesNotMatch(terminalRouteSync, /source: "linked_context"/);
+  assert.doesNotMatch(terminalRouteSync, /title: normalized/);
+  assert.match(terminalRouteSync, /Do not synthesize a route-only session/);
   assert.doesNotMatch(terminalRouteSync, /watch\(options\.activeSessionId/);
   assert.doesNotMatch(terminalRouteSync, /router\.replace\(`/);
 });
@@ -419,6 +486,12 @@ test("terminal workspace wires pane actions to session lifecycle handlers", () =
   assert.match(workspacePage, /function handleSessionClose\(sessionId: string\): void/);
   assert.match(workspacePage, /async function navigateToSession\(sessionId: string \| null \| undefined\): Promise<void>/);
   assert.match(workspacePage, /await router\.push\(\{ path: targetPath \}\)/);
+  assert.match(workspacePage, /function clearStoredTerminalSessionId/);
+  assert.match(workspacePage, /sessionStorage\.removeItem\(TERMINAL_SESSION_STORAGE_KEY\)/);
+  assert.match(workspacePage, /const pendingLocalSessionIds = new Set<string>\(\)/);
+  assert.match(workspacePage, /pendingLocalSessionIds\.add\(sessionId\)/);
+  assert.match(workspacePage, /pendingLocalSessionIds\.has\(normalizedSessionId\)/);
+  assert.match(workspacePage, /pendingLocalSessionIds\.delete\(sessionId\)/);
 });
 
 test("terminal console session attachment sync is surfaced from console to workspace state", () => {
@@ -507,6 +580,8 @@ test("terminal workspace passes tab and active session state into integrated ses
   assert.match(pane, /activeSession: TerminalSessionDescriptor \| null/);
   assert.match(pane, /const resolvedActiveSession = computed\(\(\) =>/);
   assert.match(pane, /props\.activeSession \?\? activeSession\.value/);
+  assert.match(pane, /\(\) => \[props\.activeSessionId, props\.activeSession\?\.sessionId \|\| ''\] as const/);
+  assert.match(pane, /if \(providedSessionId === normalized\) \{\s*activeSession\.value = null;\s*return;\s*\}/);
   assert.match(
     pane,
     /<TerminalConsolePage[\s\S]*:session-id="resolvedActiveSession\?\.sessionId \|\| ''"[\s\S]*:queued-command="props\.queuedCommand"[\s\S]*:show-toolbar="false"/,

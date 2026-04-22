@@ -308,6 +308,27 @@ test("history page API windows messages and exposes search/date helpers", async 
     assert.deepEqual(page1.overlays, []);
     assert.equal(fs.existsSync(path.join(root, "studio", "chat-index")), true);
 
+    const bootstrap = await context.services.chat.getBootstrap({
+      sessionKey,
+      recentLimit: 10,
+      historyLimit: 2,
+    });
+    assert.equal(bootstrap.selectedSessionKey, sessionKey);
+    assert.deepEqual(
+      bootstrap.sessions.map((session) => session.key),
+      [sessionKey],
+    );
+    assert.deepEqual(
+      bootstrap.history?.messages.map((message) => message.id),
+      ["m3", "m4"],
+    );
+    assert.equal(bootstrap.queue?.items.length, 0);
+    assert.equal(bootstrap.controls?.controls.allowHostManagementExec, false);
+    assert.match(
+      bootstrap.diagnostics.notes.join("\n"),
+      /local-first/i,
+    );
+
     const originalReadFileSync = fs.readFileSync;
     let cachedTranscriptReads = 0;
     let onlyCode = null;

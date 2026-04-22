@@ -16,7 +16,7 @@
       <div class="terminal-stage-header-actions">
         <button
           type="button"
-          class="secondary-button compact-button"
+          class="secondary-button compact-button terminal-stage-action terminal-stage-action--focus"
           :disabled="!resolvedActiveSession?.sessionId"
           @click="focusTerminal"
         >
@@ -24,7 +24,7 @@
         </button>
         <button
           type="button"
-          class="secondary-button compact-button"
+          class="secondary-button compact-button terminal-stage-action terminal-stage-action--control"
           :disabled="!resolvedActiveSession?.sessionId"
           @click="sendShortcut('c')"
         >
@@ -32,7 +32,7 @@
         </button>
         <button
           type="button"
-          class="secondary-button compact-button"
+          class="secondary-button compact-button terminal-stage-action terminal-stage-action--control"
           :disabled="!resolvedActiveSession?.sessionId"
           @click="sendShortcut('l')"
         >
@@ -40,7 +40,31 @@
         </button>
         <button
           type="button"
-          class="secondary-button compact-button"
+          class="secondary-button compact-button terminal-stage-action terminal-stage-action--control"
+          :disabled="!resolvedActiveSession?.sessionId"
+          :title="text('发送 EOF / 结束输入', 'Send EOF / end input')"
+          @click="sendShortcut('d')"
+        >
+          Ctrl+D
+        </button>
+        <details class="terminal-shortcut-menu">
+          <summary class="secondary-button compact-button terminal-stage-action terminal-stage-action--menu">
+            {{ text('快捷键', 'Keys') }}
+          </summary>
+          <div class="terminal-shortcut-menu__panel">
+            <button type="button" :disabled="!resolvedActiveSession?.sessionId" @click="sendShortcut('z')">Ctrl+Z</button>
+            <button type="button" :disabled="!resolvedActiveSession?.sessionId" @click="sendShortcut('u')">Ctrl+U</button>
+            <button type="button" :disabled="!resolvedActiveSession?.sessionId" @click="sendShortcut('k')">Ctrl+K</button>
+            <button type="button" :disabled="!resolvedActiveSession?.sessionId" @click="sendShortcut('a')">Ctrl+A</button>
+            <button type="button" :disabled="!resolvedActiveSession?.sessionId" @click="sendShortcut('e')">Ctrl+E</button>
+            <button type="button" :disabled="!resolvedActiveSession?.sessionId" @click="pasteClipboard">
+              {{ text('粘贴', 'Paste') }}
+            </button>
+          </div>
+        </details>
+        <button
+          type="button"
+          class="secondary-button compact-button terminal-stage-action terminal-stage-action--clear"
           :disabled="!resolvedActiveSession?.sessionId"
           @click="clearTerminal"
         >
@@ -48,7 +72,7 @@
         </button>
         <button
           type="button"
-          class="secondary-button compact-button"
+          class="secondary-button compact-button terminal-stage-action terminal-stage-action--danger"
           :disabled="!resolvedActiveSession?.sessionId"
           @click="endActiveSession"
         >
@@ -72,6 +96,7 @@
       :queued-command="props.queuedCommand"
       :show-toolbar="false"
       :embedded="true"
+      :restore-transcript="shouldRestoreTranscript"
       @consume-queued-command="emit('consumeQueuedCommand', resolvedActiveSession?.sessionId || '')"
       @session-attached="emit('sessionAttached', $event)"
     />
@@ -109,18 +134,28 @@ const consolePage = ref<null | {
   clearTerminal: () => void;
   focusTerminal: () => void;
   sendTerminalShortcut: (key: string) => boolean;
+  pasteClipboard: () => Promise<boolean>;
 }>(null);
 
 const activeSession = ref<TerminalSessionDescriptor | null>(null);
 const resolvedActiveSession = computed(() => props.activeSession ?? activeSession.value);
+const shouldRestoreTranscript = computed(() => {
+  const session = resolvedActiveSession.value;
+  if (!session) return false;
+  return session.status !== 'running' || Boolean(session.recentOutputSummary?.tailText);
+});
 let descriptorRequestSeq = 0;
 
 watch(
-  () => props.activeSessionId,
-  (sessionId) => {
+  () => [props.activeSessionId, props.activeSession?.sessionId || ''] as const,
+  ([sessionId, providedSessionId]) => {
     const normalized = String(sessionId || '').trim();
     const requestSeq = ++descriptorRequestSeq;
     if (!normalized) {
+      activeSession.value = null;
+      return;
+    }
+    if (providedSessionId === normalized) {
       activeSession.value = null;
       return;
     }
@@ -152,6 +187,10 @@ function clearTerminal(): void {
 
 function sendShortcut(key: string): void {
   consolePage.value?.sendTerminalShortcut(key);
+}
+
+function pasteClipboard(): void {
+  void consolePage.value?.pasteClipboard();
 }
 
 function endActiveSession(): void {

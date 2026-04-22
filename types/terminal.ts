@@ -231,6 +231,7 @@ export interface TerminalGatewayAttachPayload {
   lastSeq?: number | null;
   instanceId?: string | null;
   skipReplay?: boolean | null;
+  resume?: boolean | null;
   handoffContext?: TerminalHandoffContext | null;
 }
 

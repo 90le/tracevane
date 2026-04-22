@@ -960,8 +960,11 @@ test("chat shell bootstraps the first session rail quickly and hydrates lower-pr
   assert.match(chatApi, /export function fetchChatSessions\([\s\S]*includeDerivedTitles\?: boolean;[\s\S]*includeLastMessage\?: boolean;/);
   assert.match(chatApi, /url\.searchParams\.set\('includeDerivedTitles', options\.includeDerivedTitles \? '1' : '0'\);/);
   assert.match(chatApi, /url\.searchParams\.set\('includeLastMessage', options\.includeLastMessage \? '1' : '0'\);/);
+  assert.match(chatApi, /export function fetchChatBootstrap\(/);
+  assert.match(chatApi, /const url = new URL\('\/api\/chat\/bootstrap'/);
   assert.match(chatShellPage, /async function bootstrapChatSurface\(\): Promise<void> \{/);
-  assert.match(chatShellPage, /await loadAgents\(\);[\s\S]*void loadSessions\(\{ deferRemainingAgents: true \}\);[\s\S]*void loadHealth\(\);[\s\S]*void loadOrganizer\(\);[\s\S]*void loadStudioChatGlobalExecConfig\(\);/);
+  assert.match(chatShellPage, /await loadChatBootstrap\(bootstrapSessionKey\);/);
+  assert.match(chatShellPage, /void loadAgents\(\)\.then\(\(\) => loadSessions\(\{ deferRemainingAgents: true \}\)\);/);
   assert.match(chatShellPage, /if \(!selectedSessionKey\.value\) \{[\s\S]*const rememberedSessionKey = resolveBootstrapSessionKey\(\);[\s\S]*selectSessionKeyLocally\(rememberedSessionKey\);/);
   assert.match(chatShellPage, /const hasPendingOptimisticStartup = \(/);
   assert.match(chatShellPage, /await loadSessions\(\{ deferRemainingAgents: true \}\);/);

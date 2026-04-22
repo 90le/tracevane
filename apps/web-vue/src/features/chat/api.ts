@@ -40,6 +40,7 @@ import type {
   ChatCreateOrganizerFolderRequest,
   ChatCreateOrganizerFolderResponse,
   ChatCreateSessionResponse,
+  ChatBootstrapPayload,
   ChatDeleteSessionResponse,
   ChatDeleteOrganizerFolderResponse,
   ChatFileUploadRequest,
@@ -69,6 +70,24 @@ export function fetchAgentsSummary(): Promise<AgentsSummaryPayload> {
 
 export function fetchChatHealth(): Promise<ChatHealthPayload> {
   return requestChatJson<ChatHealthPayload>('/api/chat/health');
+}
+
+export function fetchChatBootstrap(options: {
+  sessionKey?: string | null;
+  recentLimit?: number;
+  historyLimit?: number;
+} = {}): Promise<ChatBootstrapPayload> {
+  const url = new URL('/api/chat/bootstrap', window.location.origin);
+  if (options.sessionKey) {
+    url.searchParams.set('sessionKey', options.sessionKey);
+  }
+  if (typeof options.recentLimit === 'number' && Number.isFinite(options.recentLimit)) {
+    url.searchParams.set('recentLimit', String(Math.max(1, Math.trunc(options.recentLimit))));
+  }
+  if (typeof options.historyLimit === 'number' && Number.isFinite(options.historyLimit)) {
+    url.searchParams.set('historyLimit', String(Math.max(1, Math.trunc(options.historyLimit))));
+  }
+  return requestChatJson<ChatBootstrapPayload>(`${url.pathname}${url.search}`);
 }
 
 export function fetchChatOrganizer(): Promise<ChatOrganizerPayload> {

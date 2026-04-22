@@ -359,6 +359,7 @@ import type {
   ChatSendAttachment,
   ChatSendFileRef,
   ChatSendRequest,
+  ChatBootstrapPayload,
   ChatSessionControlState,
   ChatSessionControlsPayload,
   ChatSessionFolderMove,
@@ -406,6 +407,7 @@ import {
   deleteChatFolder,
   deleteChatSession,
   enqueueChatMessage,
+  fetchChatBootstrap,
   fetchChatOrganizer,
   fetchChatHistoryDates,
   fetchChatHistoryPage,
@@ -686,6 +688,8 @@ const sessionSendGuardVersion = ref(0);
 const historyDatesLoadedSessionKey = ref('');
 const historyDatesLoading = ref(false);
 const optimisticStartupSessionKey = ref('');
+const bootstrapPrimedSessionKey = ref('');
+const bootstrapLoading = ref(true);
 
 const routeSessionKey = computed(() => resolveChatRouteSessionKey({
   routeParamSessionRef: typeof route.params.sessionRef === 'string' ? route.params.sessionRef : '',
@@ -1610,6 +1614,7 @@ function clearConversationState(): void {
   clearDeferredInitialHistoryLoad();
   clearDeferredSessionHydration();
   optimisticStartupSessionKey.value = '';
+  bootstrapPrimedSessionKey.value = '';
   clearLiveHistorySyncTimer();
   clearRunSettlementSyncTimer();
   abortReplaceHistoryRequest();
@@ -2682,6 +2687,36 @@ async function loadOrganizer(): Promise<void> {
   } catch {
     applyOrganizer(createEmptyChatSessionOrganizerState());
   }
+}
+
+function applyBootstrapPayload(payload: ChatBootstrapPayload): void {
+  applyOrganizer(payload.organizer || createEmptyChatSessionOrganizerState());
+  sessionRows.value = payload.sessions || [];
+  const bootstrapSessionKey = payload.selectedSessionKey || '';
+  if (bootstrapSessionKey) {
+    if (payload.queue) {
+      applyQueueState(bootstrapSessionKey, payload.queue.items || []);
+    }
+    if (payload.controls) {
+      applySessionControlsState(bootstrapSessionKey, payload.controls.controls);
+    }
+    if (payload.history) {
+      applyHistoryPagePayload(payload.history, 'replace');
+    }
+    bootstrapPrimedSessionKey.value = (
+      payload.history && payload.queue && payload.controls ? bootstrapSessionKey : ''
+    );
+    selectSessionKeyLocally(bootstrapSessionKey);
+  }
+}
+
+async function loadChatBootstrap(sessionKey: string | null = null): Promise<void> {
+  const payload = await fetchChatBootstrap({
+    sessionKey,
+    recentLimit: CHAT_SESSION_BOOTSTRAP_ROW_LIMIT,
+    historyLimit: CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
+  });
+  applyBootstrapPayload(payload);
 }
 
 async function loadSessionRowsForAgents(
@@ -4936,8 +4971,12 @@ async function refreshAll(): Promise<void> {
 async function bootstrapChatSurface(): Promise<void> {
   clearNotice();
   errorMessage.value = '';
-  await loadAgents();
-  void loadSessions({ deferRemainingAgents: true });
+  const bootstrapSessionKey = resolveBootstrapSessionKey();
+  try {
+    await loadChatBootstrap(bootstrapSessionKey);
+  } catch {}
+  bootstrapLoading.value = false;
+  void loadAgents().then(() => loadSessions({ deferRemainingAgents: true }));
   void loadHealth();
   void loadOrganizer();
   void loadStudioChatGlobalExecConfig();
@@ -4959,10 +4998,21 @@ watch(
     if (!selectedSessionKey.value) {
       const rememberedSessionKey = resolveBootstrapSessionKey();
       if (rememberedSessionKey) {
+        if (bootstrapLoading.value) {
+          return;
+        }
+        const rememberedSessionKnown = (
+          available.some((session) => session.key === rememberedSessionKey)
+          || historyPayload.value?.session.key === rememberedSessionKey
+        );
+        if (!rememberedSessionKnown) {
+          optimisticStartupSessionKey.value = '';
+        } else {
         optimisticStartupSessionKey.value = rememberedSessionKey;
         primeConversationStateFromSnapshot(rememberedSessionKey);
         selectSessionKeyLocally(rememberedSessionKey);
         return;
+        }
       }
     }
     const fallback = resolveFallbackSessionKey();
@@ -5025,11 +5075,17 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
     }
   }
   const primedConversationState = hasPrimedConversationState || primeConversationStateFromSnapshot(sessionKey);
+  const primedByBootstrap = bootstrapPrimedSessionKey.value === sessionKey;
   if (!primedConversationState && selectedSession.value) {
     primeEmptyConversationShell(selectedSession.value, selectedSession.value.runtime);
   }
   if (sessionKey === previousKey && historyPayload.value?.session.key === sessionKey) return;
-  void loadSessionSurfaceState(sessionKey);
+  if (!primedByBootstrap) {
+    void loadSessionSurfaceState(sessionKey);
+  }
+  if (primedByBootstrap) {
+    bootstrapPrimedSessionKey.value = '';
+  }
   connectChatSocket(sessionKey);
   const shouldDeferInitialRootHistoryLoad = (
     !previousKey
@@ -5038,6 +5094,7 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
     && historyMode.value === 'history'
   );
   if (shouldDeferInitialRootHistoryLoad) {
+    if (primedByBootstrap) return;
     if (!primedConversationState) {
       historyLoadingInitial.value = true;
     }

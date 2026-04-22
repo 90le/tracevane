@@ -1,6 +1,9 @@
 <template>
   <section class="terminal-workspace-shell" data-testid="terminal-workspace-shell">
-    <div class="terminal-workspace-body" :class="{ 'terminal-workspace-body--stage-only': compactInspectorMode }">
+    <div
+      class="terminal-workspace-body"
+      :class="{ 'terminal-workspace-body--stage-only': compactInspectorMode || !desktopInspectorOpen }"
+    >
       <section class="terminal-workspace-stage">
         <TerminalSessionPane
           v-if="workspaceHydrated"
@@ -22,7 +25,21 @@
         </div>
       </section>
 
-      <TerminalInspectorDrawer v-if="!compactInspectorMode" class="terminal-inspector-drawer" :open="true">
+      <TerminalInspectorDrawer v-if="!compactInspectorMode && desktopInspectorOpen" class="terminal-inspector-drawer" :open="true">
+        <header class="terminal-inspector-drawer-head">
+          <div>
+            <strong>{{ text('终端面板', 'Terminal Panel') }}</strong>
+            <span>{{ activeInspectorSummary }}</span>
+          </div>
+          <button
+            type="button"
+            class="terminal-inspector-drawer-collapse"
+            :aria-label="text('收起终端面板', 'Collapse terminal panel')"
+            @click="setDesktopInspectorOpen(false)"
+          >
+            {{ text('收起', 'Collapse') }}
+          </button>
+        </header>
         <div class="terminal-inspector-rail-scroll">
           <TerminalInspectorContent
             :compact-mode="compactInspectorMode"
@@ -68,6 +85,16 @@
         </div>
       </TerminalInspectorDrawer>
     </div>
+
+    <button
+      v-if="!compactInspectorMode && !desktopInspectorOpen"
+      type="button"
+      class="terminal-desktop-inspector-trigger"
+      @click="setDesktopInspectorOpen(true)"
+    >
+      <span>{{ text('终端面板', 'Terminal Panel') }}</span>
+      <strong>{{ activeInspectorSummary }}</strong>
+    </button>
 
     <button
       v-if="compactInspectorMode && !mobileInspectorOpen"
@@ -193,6 +220,7 @@ const router = useRouter();
 const { text } = useLocalePreference();
 
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
+const TERMINAL_DESKTOP_INSPECTOR_STORAGE_KEY = 'openclaw-studio.terminal.desktopInspectorOpen';
 
 const workspace = createTerminalWorkspaceState();
 const localActionLayers = buildTerminalActionLayers();
@@ -201,6 +229,7 @@ const terminalStatus = ref<Awaited<ReturnType<typeof fetchTerminalStatus>> | nul
 const inspectorBusy = ref(false);
 const inspectorSection = ref<InspectorSectionKey>('tools');
 const compactInspectorMode = ref(false);
+const desktopInspectorOpen = ref(true);
 const inspectorSummaryExpanded = ref(true);
 const mobileInspectorOpen = ref(false);
 const workspaceHydrated = ref(false);
@@ -219,6 +248,7 @@ let resolveWorkspaceReady: (() => void) | null = null;
 const workspaceReady = new Promise<void>((resolve) => {
   resolveWorkspaceReady = resolve;
 });
+const pendingLocalSessionIds = new Set<string>();
 
 const activeSession = computed(() => workspace.sessions.value[workspace.activeSessionId.value || ''] || null);
 const activeSessionTitle = computed(() => {
@@ -324,6 +354,28 @@ function syncCompactInspectorMode(): void {
   }
 }
 
+function restoreDesktopInspectorPreference(): void {
+  try {
+    const raw = globalThis.localStorage?.getItem(TERMINAL_DESKTOP_INSPECTOR_STORAGE_KEY);
+    if (raw === '0') {
+      desktopInspectorOpen.value = false;
+    } else if (raw === '1') {
+      desktopInspectorOpen.value = true;
+    }
+  } catch {
+    // ignore unavailable storage
+  }
+}
+
+function setDesktopInspectorOpen(open: boolean): void {
+  desktopInspectorOpen.value = open;
+  try {
+    globalThis.localStorage?.setItem(TERMINAL_DESKTOP_INSPECTOR_STORAGE_KEY, open ? '1' : '0');
+  } catch {
+    // ignore unavailable storage
+  }
+}
+
 bindTerminalRouteSync({
   activeSessionId: workspace.activeSessionId,
   setActiveSession: workspace.setActiveSession,
@@ -353,6 +405,11 @@ async function loadSessionHistory(sessionId: string | null | undefined): Promise
   const normalizedSessionId = String(sessionId || '').trim();
   const requestSeq = ++historyRequestSeq;
   if (!normalizedSessionId) {
+    sessionHistoryEntries.value = [];
+    sessionHistoryBusy.value = false;
+    return;
+  }
+  if (pendingLocalSessionIds.has(normalizedSessionId)) {
     sessionHistoryEntries.value = [];
     sessionHistoryBusy.value = false;
     return;
@@ -400,6 +457,18 @@ function toggleInspectorSummary(): void {
 function closeMobileInspectorIfCompact(): void {
   if (compactInspectorMode.value) {
     mobileInspectorOpen.value = false;
+  }
+}
+
+function clearStoredTerminalSessionId(sessionId: string | null | undefined): void {
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId) return;
+  try {
+    if (globalThis.sessionStorage?.getItem(TERMINAL_SESSION_STORAGE_KEY) === normalizedSessionId) {
+      globalThis.sessionStorage.removeItem(TERMINAL_SESSION_STORAGE_KEY);
+    }
+  } catch {
+    // ignore unavailable storage
   }
 }
 
@@ -451,6 +520,7 @@ async function syncRouteLockedSession(sessionId: string | null | undefined): Pro
 }
 
 onMounted(async () => {
+  restoreDesktopInspectorPreference();
   syncCompactInspectorMode();
   window.addEventListener('resize', syncCompactInspectorMode);
 
@@ -561,6 +631,7 @@ async function openCommandSession(options: {
 }): Promise<string> {
   await ensureWorkspaceReady();
   const sessionId = buildSessionId();
+  pendingLocalSessionIds.add(sessionId);
   workspace.registerSession({
     sessionId,
     title: String(options.title || text('终端', 'Shell')).trim() || text('终端', 'Shell'),
@@ -593,6 +664,7 @@ function handleSessionAttached(session: TerminalSessionDescriptor): void {
   if (lockedRouteSessionId && lockedRouteSessionId !== sessionId) {
     return;
   }
+  pendingLocalSessionIds.delete(sessionId);
   const preserveRouteLockedActiveSession =
     Boolean(lockedRouteSessionId) &&
     lockedRouteSessionId !== sessionId;
@@ -620,6 +692,7 @@ function handleSessionAttached(session: TerminalSessionDescriptor): void {
       // ignore descriptor sync failures
     });
   }
+  void loadSessionHistory(sessionId);
 }
 
 function findActionItem(actionKey: string): TerminalActionItem | null {
@@ -802,6 +875,7 @@ async function deleteSession(sessionId: string): Promise<void> {
   }
 
   workspace.deleteSession(normalized);
+  clearStoredTerminalSessionId(normalized);
   if (wasActive) {
     await syncRouteToWorkspaceActiveSession();
   }

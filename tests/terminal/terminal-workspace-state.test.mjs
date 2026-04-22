@@ -503,7 +503,7 @@ test("terminal route sync exports bind function", () => {
   assert.equal(typeof routeSyncModule.bindTerminalRouteSync, "function");
 });
 
-test("terminal route sync keeps active session and tabs aligned", async () => {
+test("terminal route sync does not synthesize missing route sessions", async () => {
   const workspace = workspaceStateModule.createTerminalWorkspaceState();
   const route = {
     params: {
@@ -518,6 +518,7 @@ test("terminal route sync keeps active session and tabs aligned", async () => {
       return Promise.resolve();
     },
   };
+  const resolved = [];
 
   routeSyncModule.bindTerminalRouteSync({
     activeSessionId: workspace.activeSessionId,
@@ -525,16 +526,19 @@ test("terminal route sync keeps active session and tabs aligned", async () => {
     registerSession: workspace.registerSession,
     route,
     router,
+    resolveSessionDescriptor: async (sessionId) => {
+      resolved.push(sessionId);
+      return null;
+    },
   });
 
   await nextTick();
+  await Promise.resolve();
 
-  assert.equal(workspace.activeSessionId.value, "term-route-1");
-  assert.deepEqual(workspace.tabOrder.value, ["term-route-1"]);
-  assert.deepEqual(
-    workspace.tabs.value.map((item) => item.sessionId),
-    ["term-route-1"],
-  );
+  assert.deepEqual(resolved, ["term-route-1"]);
+  assert.equal(workspace.activeSessionId.value, null);
+  assert.deepEqual(workspace.tabOrder.value, []);
+  assert.deepEqual(workspace.tabs.value, []);
   assert.equal(routerCalls.length, 0);
 });
 

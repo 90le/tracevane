@@ -17,6 +17,7 @@ import type {
   ChatCreateOrganizerFolderResponse,
   ChatCreateSessionRequest,
   ChatCreateSessionResponse,
+  ChatBootstrapPayload,
   ChatDeleteSessionResponse,
   ChatDeleteOrganizerFolderResponse,
   ChatDiagnostics,
@@ -147,6 +148,7 @@ import {
   deleteFolderFromOrganizer,
   normalizeChatSessionOrganizerState,
   patchFolderInOrganizer,
+  pruneOrganizerStateSessionKeys,
   removeSessionsFromOrganizer,
 } from '../../../../lib/chat-session-organizer.js';
 import {
@@ -710,6 +712,11 @@ export interface ChatService {
   patchFolder(folderId: string, payload: ChatPatchOrganizerFolderRequest): Promise<ChatPatchOrganizerFolderResponse>;
   deleteFolder(folderId: string): Promise<ChatDeleteOrganizerFolderResponse>;
   assignSessionsToFolder(payload: ChatAssignSessionsToFolderRequest): Promise<ChatAssignSessionsToFolderResponse>;
+  getBootstrap(options?: {
+    sessionKey?: string | null;
+    recentLimit?: number;
+    historyLimit?: number;
+  }): Promise<ChatBootstrapPayload>;
   listSessions(agentId: string, options?: {
     limit?: number;
     includeDerivedTitles?: boolean;
@@ -1994,6 +2001,117 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return normalizeMessageLedger(supplementHistoryWithRunState(state.row.key, state.messages.slice()));
   }
 
+  function compareSessionRowRecency(left: ChatSessionRow, right: ChatSessionRow): number {
+    const leftTs = Math.max(
+      Date.parse(left.updatedAt || '') || 0,
+      Date.parse(left.runtime.lastEventAt || '') || 0,
+      Date.parse(left.runtime.lastAckAt || '') || 0,
+    );
+    const rightTs = Math.max(
+      Date.parse(right.updatedAt || '') || 0,
+      Date.parse(right.runtime.lastEventAt || '') || 0,
+      Date.parse(right.runtime.lastAckAt || '') || 0,
+    );
+    if (leftTs !== rightTs) {
+      return rightTs - leftTs;
+    }
+    return left.key.localeCompare(right.key);
+  }
+
+  function bootstrapSessionRank(session: ChatSessionRow): number {
+    const runtimeActive = Boolean(
+      session.runtime.activeRunId
+      || session.runtime.state === 'running'
+      || session.runtime.state === 'streaming',
+    );
+    if (runtimeActive) {
+      return 0;
+    }
+    if (session.permissions.canSend && session.kind === 'studio_managed') {
+      return 1;
+    }
+    if (session.permissions.canSend) {
+      return 2;
+    }
+    if (session.kind === 'studio_managed') {
+      return 3;
+    }
+    return 4;
+  }
+
+  function compareBootstrapSessionPreference(left: ChatSessionRow, right: ChatSessionRow): number {
+    return bootstrapSessionRank(left) - bootstrapSessionRank(right)
+      || compareSessionRowRecency(left, right);
+  }
+
+  function buildLocalSessionRowsForAgent(agentId: string, gatewayConnected: boolean): ChatSessionRow[] {
+    const rows: ChatSessionRow[] = [];
+    const seenKeys = new Set<string>();
+    const store = readJsonFile<Record<string, LocalSessionRecord>>(resolveAgentSessionsStorePath(options.config, agentId), {});
+    for (const [key, record] of Object.entries(store)) {
+      const row = mapLocalSessionRow(agentId, key, record, gatewayConnected, getRegistryEntry(key));
+      if (!row.permissions.visibleInFrontend) {
+        continue;
+      }
+      rows.push(row);
+      seenKeys.add(row.key);
+    }
+
+    const registry = ensureRegistryLoaded();
+    for (const entry of Object.values(registry)) {
+      if (entry.agentId !== agentId || seenKeys.has(entry.key)) {
+        continue;
+      }
+      const row = getStudioSession(entry.key)?.row || buildStudioManagedRowFromRegistry(entry, gatewayConnected);
+      if (!row.permissions.visibleInFrontend) {
+        continue;
+      }
+      rows.push(row);
+      seenKeys.add(row.key);
+    }
+
+    return rows.sort(compareSessionRowRecency);
+  }
+
+  function buildLocalSessionCatalog(params: {
+    preferredSessionKey?: string | null;
+    recentLimit?: number;
+  }): ChatSessionRow[] {
+    const recentLimit = normalizeHistoryLimit(params.recentLimit, 40);
+    const agentIds = new Set<string>(resolveAvailableAgentIds(options.config));
+    const registry = ensureRegistryLoaded();
+    for (const entry of Object.values(registry)) {
+      if (entry.agentId) {
+        agentIds.add(entry.agentId);
+      }
+    }
+    if (params.preferredSessionKey) {
+      agentIds.add(deriveAgentIdFromSessionKey(params.preferredSessionKey));
+    }
+
+    const deduped = new Map<string, ChatSessionRow>();
+    for (const agentId of agentIds) {
+      for (const row of buildLocalSessionRowsForAgent(agentId, false)) {
+        const current = deduped.get(row.key);
+        if (!current || compareSessionRowRecency(row, current) < 0) {
+          deduped.set(row.key, row);
+        }
+      }
+    }
+
+    const rows = [...deduped.values()].sort(compareSessionRowRecency);
+    const preferredSessionKey = normalizeString(params.preferredSessionKey) || null;
+    if (!preferredSessionKey) {
+      return rows.slice(0, recentLimit);
+    }
+    const preferredRow = rows.find((row) => row.key === preferredSessionKey) || null;
+    if (!preferredRow) {
+      return rows.slice(0, recentLimit);
+    }
+    const trimmed = rows.slice(0, recentLimit).filter((row) => row.key !== preferredSessionKey);
+    return [preferredRow, ...trimmed].slice(0, recentLimit);
+  }
+
   function isLocalTranscriptBehindInMemory(
     inMemory: StudioManagedSessionState | null,
     transcriptMessages: ChatMessageItem[],
@@ -2240,7 +2358,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return derivedObs.toolCards;
   }
 
-  async function loadHistorySnapshot(sessionKey: string): Promise<{
+  async function loadHistorySnapshot(
+    sessionKey: string,
+    loadOptions: {
+      localOnly?: boolean;
+    } = {},
+  ): Promise<{
     checkedAt: string;
     session: ChatSessionRow;
     messages: ChatMessageItem[];
@@ -2367,6 +2490,24 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         ].slice(-40);
       }
       diagnostics.notes.push('History is sourced from local transcript canonical authority and paged by the Studio BFF.');
+    } else if (loadOptions.localOnly) {
+      const mirrorSnapshot = durableMirrorStore.readSession(sessionKey);
+      if (mirrorSnapshot) {
+        messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
+        canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
+        canonicalSource = 'studio_mirror';
+        diagnostics.notes.push(`Local bootstrap used Studio durable mirror (${mirrorSnapshot.backend}) without a gateway roundtrip.`);
+      } else if (inMemory) {
+        messages = currentStudioHistory(inMemory);
+        canonicalEntries = buildCanonicalEntriesFromMessages(messages.filter((message) => message.source !== 'inject'));
+        canonicalSource = 'history_rpc';
+        diagnostics.notes.push('Local bootstrap used in-memory Studio history without a gateway roundtrip.');
+      } else {
+        messages = [];
+        canonicalEntries = [];
+        canonicalSource = 'history_rpc';
+        diagnostics.notes.push('Local bootstrap found no transcript or durable mirror, so it returned an empty history window.');
+      }
     } else {
       try {
         const payload = await requestGateway<Record<string, unknown>>(options.config, 'chat.history', {
@@ -4544,6 +4685,107 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         'Gateway adapter is wired for studio-managed send / abort / reset / ws stream.',
         'Observed external history still falls back to local transcript parsing when gateway history is unavailable.',
       ]);
+    },
+
+    async getBootstrap(params: {
+      sessionKey?: string | null;
+      recentLimit?: number;
+      historyLimit?: number;
+    } = {}): Promise<ChatBootstrapPayload> {
+      const selectedSessionKeyHint = normalizeString(params.sessionKey) || null;
+      const sessions = buildLocalSessionCatalog({
+        preferredSessionKey: selectedSessionKeyHint,
+        recentLimit: params.recentLimit,
+      });
+      let selectedSessionKey = (
+        selectedSessionKeyHint
+          ? (sessions.some((row) => row.key === selectedSessionKeyHint) ? selectedSessionKeyHint : null)
+          : (sessions.slice().sort(compareBootstrapSessionPreference)[0]?.key || null)
+      );
+      let bootstrapSessions = sessions;
+      if (selectedSessionKeyHint && !selectedSessionKey) {
+        try {
+          const requestedSession = await requireSession(selectedSessionKeyHint);
+          if (requestedSession.permissions.visibleInFrontend) {
+            bootstrapSessions = [requestedSession, ...sessions.filter((row) => row.key !== requestedSession.key)];
+            selectedSessionKey = requestedSession.key;
+          }
+        } catch {}
+      }
+      if (selectedSessionKey) {
+        const selectedRow = bootstrapSessions.find((row) => row.key === selectedSessionKey) || null;
+        if (selectedRow) {
+          bootstrapSessions = [selectedRow, ...bootstrapSessions.filter((row) => row.key !== selectedSessionKey)];
+        }
+      }
+      const diagnostics = createBaseDiagnostics(options.config, false, [
+        'Bootstrap payload is local-first and does not wait for gateway session enumeration.',
+      ]);
+      const organizer = pruneOrganizerStateSessionKeys(
+        readOrganizerState(),
+        bootstrapSessions
+          .filter((row) => row.kind === 'studio_managed')
+          .map((row) => row.key),
+      );
+
+      let history: ChatHistoryPayload | null = null;
+      let queue: ChatQueuePayload | null = null;
+      let controls: ChatSessionControlsPayload | null = null;
+
+      if (selectedSessionKey) {
+        try {
+          const snapshot = await loadHistorySnapshot(selectedSessionKey, { localOnly: true });
+          const page = paginateMessageList(snapshot.messages, {
+            limit: params.historyLimit,
+            source: 'history_window',
+          });
+          const pageOverlays = filterOverlaysForMessageWindow(snapshot.overlays, page.messages);
+          const runtimeSummary = buildChatSessionRuntimeSummary(snapshot.runtime);
+          const diagnosticsSummary = buildChatDiagnosticsSummary(snapshot.diagnostics);
+          history = {
+            checkedAt: snapshot.checkedAt,
+            session: snapshot.session,
+            messages: page.messages,
+            overlays: pageOverlays,
+            runtime: {
+              ...snapshot.runtime,
+              state: runtimeSummary.state,
+              activeRunId: runtimeSummary.activeRunId,
+              gatewayConnected: runtimeSummary.gatewayConnected,
+              sessionWritable: runtimeSummary.sessionWritable,
+              lastEventAt: runtimeSummary.lastEventAt,
+              lastAckAt: runtimeSummary.lastAckAt,
+              lastErrorCode: runtimeSummary.lastErrorCode,
+            },
+            diagnostics: {
+              ...snapshot.diagnostics,
+              gatewayReachable: diagnosticsSummary.gatewayReachable,
+              historyTruncated: diagnosticsSummary.historyTruncated,
+              truncationMode: diagnosticsSummary.truncationMode,
+            },
+            observability: snapshot.observability,
+            pageInfo: page.pageInfo,
+            day: page.day,
+          };
+          queue = await buildQueuePayload(selectedSessionKey);
+          controls = await buildSessionControlsPayload(selectedSessionKey);
+        } catch (error) {
+          diagnostics.notes.push(
+            `Local bootstrap could not preload session '${selectedSessionKey}' (${error instanceof Error ? error.message : String(error)}).`,
+          );
+        }
+      }
+
+      return {
+        checkedAt: new Date().toISOString(),
+        organizer,
+        sessions: bootstrapSessions,
+        selectedSessionKey,
+        history,
+        queue,
+        controls,
+        diagnostics,
+      };
     },
 
     async getOrganizer(): Promise<ChatOrganizerPayload> {

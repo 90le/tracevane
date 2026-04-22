@@ -432,6 +432,17 @@ export interface ChatSessionsPayload {
   diagnostics: ChatDiagnostics;
 }
 
+export interface ChatBootstrapPayload {
+  checkedAt: string;
+  organizer: ChatSessionOrganizerState;
+  sessions: ChatSessionRow[];
+  selectedSessionKey: string | null;
+  history: ChatHistoryPayload | null;
+  queue: ChatQueuePayload | null;
+  controls: ChatSessionControlsPayload | null;
+  diagnostics: ChatDiagnostics;
+}
+
 export interface ChatOrganizerPayload {
   checkedAt: string;
   organizer: ChatSessionOrganizerState;

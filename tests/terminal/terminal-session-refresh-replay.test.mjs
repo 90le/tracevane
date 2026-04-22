@@ -145,3 +145,41 @@ test("terminal service replays backlog for refresh-like reattach without lastSeq
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("terminal service requires explicit resume before reopening a persisted ended session id", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const service = createTestService(tempDir);
+
+  try {
+    const attached = service.attachGatewayClient(
+      { sid: "term-explicit-resume" },
+      { connId: "conn-live", emit: () => true },
+    );
+
+    const ended = await service.endSession({ sid: attached.sid });
+    assert.equal(ended.success, true);
+
+    assert.throws(
+      () =>
+        service.attachGatewayClient(
+          { sid: attached.sid },
+          { connId: "conn-rejected", emit: () => true },
+        ),
+      /terminal_session_unavailable/,
+    );
+
+    const resumed = service.attachGatewayClient(
+      { sid: attached.sid, resume: true },
+      { connId: "conn-resume", emit: () => true },
+    );
+
+    assert.equal(resumed.sid, attached.sid);
+    assert.equal(
+      resumed.events.some((event) => event.type === "session"),
+      true,
+    );
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
