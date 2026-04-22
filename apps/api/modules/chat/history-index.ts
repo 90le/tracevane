@@ -8,7 +8,7 @@ import type {
   ChatMessageItem,
 } from '../../../../types/chat.js';
 import { clipPreview, LruMap, normalizeDate } from './shared.js';
-
+import { openStudioChatSqliteDatabase } from './chat-sqlite.js';
 const CHAT_HISTORY_INDEX_SCHEMA_VERSION = 3;
 
 export interface ChatHistoryIndexItem {
@@ -59,6 +59,26 @@ function writeHistoryIndex(config: StudioServerConfig, index: ChatHistoryIndex):
   const file = historyIndexPath(config, index.sessionKey);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(index, null, 2)}\n`);
+}
+
+function loadSqliteDatabase(config: StudioServerConfig): any | null {
+  const database = openStudioChatSqliteDatabase(config);
+  if (!database) {
+    return null;
+  }
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS history_indexes (
+        session_key TEXT PRIMARY KEY,
+        signature TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      );
+    `);
+    return database;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeIndexText(value: string): string {
@@ -198,9 +218,14 @@ function intersectSortedPositions(groups: number[][]): number[] {
 }
 
 export function createStudioChatHistoryIndexStore(config: StudioServerConfig) {
+  const database = loadSqliteDatabase(config);
+  let sqliteHealthy = Boolean(database);
+  let jsonHealthy = true;
   const memoryCache = new LruMap<string, ChatHistoryIndex>(50);
 
   return {
+    backend: database ? 'sqlite' as const : 'json' as const,
+
     ensureIndex(params: {
       sessionKey: string;
       messages: ChatMessageItem[];
@@ -213,23 +238,96 @@ export function createStudioChatHistoryIndexStore(config: StudioServerConfig) {
         return cached;
       }
 
-      const disk = readHistoryIndex(config, params.sessionKey);
+      if (database && sqliteHealthy) {
+        try {
+          const row = database.prepare(`
+            SELECT payload_json
+            FROM history_indexes
+            WHERE session_key = ? AND signature = ?
+          `).get(params.sessionKey, nextSignature);
+          if (row) {
+            const parsed = JSON.parse(String(row.payload_json || '{}')) as ChatHistoryIndex;
+            memoryCache.set(params.sessionKey, parsed);
+            return parsed;
+          }
+        } catch {
+          sqliteHealthy = false;
+        }
+      }
+
+      const disk = jsonHealthy ? readHistoryIndex(config, params.sessionKey) : null;
       if (disk && disk.signature === nextSignature) {
         memoryCache.set(params.sessionKey, disk);
+        if (database && sqliteHealthy) {
+          try {
+            database.prepare(`
+              INSERT INTO history_indexes (session_key, signature, updated_at, payload_json)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT(session_key) DO UPDATE SET
+                signature = excluded.signature,
+                updated_at = excluded.updated_at,
+                payload_json = excluded.payload_json
+            `).run(
+              disk.sessionKey,
+              disk.signature,
+              new Date().toISOString(),
+              JSON.stringify(disk),
+            );
+          } catch {
+            sqliteHealthy = false;
+          }
+        }
         return disk;
       }
 
       const built = buildIndex(params);
       memoryCache.set(params.sessionKey, built);
-      writeHistoryIndex(config, built);
+      if (database && sqliteHealthy) {
+        try {
+          database.prepare(`
+            INSERT INTO history_indexes (session_key, signature, updated_at, payload_json)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(session_key) DO UPDATE SET
+              signature = excluded.signature,
+              updated_at = excluded.updated_at,
+              payload_json = excluded.payload_json
+          `).run(
+            built.sessionKey,
+            built.signature,
+            new Date().toISOString(),
+            JSON.stringify(built),
+          );
+        } catch {
+          sqliteHealthy = false;
+        }
+      }
+      try {
+        writeHistoryIndex(config, built);
+        jsonHealthy = true;
+      } catch {
+        jsonHealthy = false;
+      }
       return built;
     },
 
     clearSession(sessionKey: string): void {
       memoryCache.delete(sessionKey);
+      if (database && sqliteHealthy) {
+        try {
+          database.prepare('DELETE FROM history_indexes WHERE session_key = ?').run(sessionKey);
+        } catch {
+          sqliteHealthy = false;
+        }
+      }
+      if (!jsonHealthy) {
+        return;
+      }
       try {
         fs.rmSync(historyIndexPath(config, sessionKey), { force: true });
-      } catch {}
+        jsonHealthy = true;
+      } catch {
+        jsonHealthy = false;
+      }
     },
 
     searchPositions(index: ChatHistoryIndex, query: string, filters: {

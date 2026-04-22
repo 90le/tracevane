@@ -93,6 +93,7 @@ import {
   deriveAgentIdFromSessionKey,
   mapLocalSessionRow,
   readStudioChatRegistry,
+  resolveStudioChatRegistryPath,
   resolveAgentSessionsStorePath,
   resolveAvailableAgentIds,
   StudioSessionRegistryEntry,
@@ -176,6 +177,8 @@ import {
 } from './errors.js';
 import { createStudioChatOrganizerStore } from './organizer-store.js';
 import { createStudioChatDurableMirrorStore } from './durable-mirror-store.js';
+import { createStudioChatSessionCatalogStore } from './session-catalog-store.js';
+import { createStudioChatSessionStateStore } from './session-state-store.js';
 import { applyDerivedAutoLabelToSessionRow } from '../../../../lib/chat-session-auto-title.js';
 import { maybeAutoApproveStudioHelperPairing } from '../system/device-trust.js';
 import {
@@ -787,6 +790,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   const shadowStore = createStudioChatMessageShadowStore(options.config);
   const runShadowStore = createStudioChatRunProjectionStore(options.config);
   const durableMirrorStore = createStudioChatDurableMirrorStore(options.config);
+  const sessionCatalogStore = createStudioChatSessionCatalogStore(options.config);
+  const sessionStateStore = createStudioChatSessionStateStore(options.config);
   const historyIndexStore = createStudioChatHistoryIndexStore(options.config);
   const organizerStore = createStudioChatOrganizerStore(options.config);
   const studioSessions = new LruMap<string, StudioManagedSessionState>(200);
@@ -1259,6 +1264,17 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     const registry = ensureRegistryLoaded();
     registry[entry.key] = entry;
     writeStudioChatRegistry(options.config, registry);
+    const current = sessionCatalogStore.readSession(entry.key);
+    if (current) {
+      sessionCatalogStore.writeSession({
+        ...current,
+        label: normalizeString(entry.customLabel, entry.label),
+        presentation: buildSessionPresentation(entry),
+        updatedAt: entry.updatedAt,
+      });
+      return;
+    }
+    sessionCatalogStore.writeSession(buildStudioManagedRowFromRegistry(entry, false));
   }
 
   function deleteRegistryEntry(sessionKey: string): void {
@@ -1266,6 +1282,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (!registry[sessionKey]) return;
     delete registry[sessionKey];
     writeStudioChatRegistry(options.config, registry);
+    sessionCatalogStore.clearSession(sessionKey);
   }
 
   function buildRegistryEntryFromRow(
@@ -1369,6 +1386,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     clearRunProjections(sessionKey);
     writeOrganizerState(removeSessionsFromOrganizer(readOrganizerState(), [sessionKey]));
     deleteRegistryEntry(sessionKey);
+    sessionStateStore.clear(sessionKey);
     studioSessions.delete(sessionKey);
     clearStudioChatSessionHostManagementExecEnabled(sessionKey);
     canonicalStates.delete(sessionKey);
@@ -1416,6 +1434,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     state.controls = cloneSessionControls(state.controls);
     syncSessionControlState(state);
     studioSessions.set(state.row.key, state);
+    sessionCatalogStore.writeSession(state.row);
+    sessionStateStore.write(state.row.key, {
+      pendingQueue: state.pendingQueue,
+      controls: state.controls,
+    });
   }
 
   function ensureStudioSessionState(
@@ -1426,13 +1449,14 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (existing) {
       return existing;
     }
+    const persistedState = sessionStateStore.read(session.key);
     const state: StudioManagedSessionState = {
       row: session,
       messages: [],
       diagnosticsNotes: [],
       observability: createEmptyObservabilityState(),
-      pendingQueue: [],
-      controls: createDefaultSessionControls(),
+      pendingQueue: persistedState?.pendingQueue || [],
+      controls: persistedState?.controls || createDefaultSessionControls(),
       materialized: false,
       resetPending: false,
       clearedAt: null,
@@ -2044,12 +2068,37 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       || compareSessionRowRecency(left, right);
   }
 
-  function buildLocalSessionRowsForAgent(agentId: string, gatewayConnected: boolean): ChatSessionRow[] {
+  function readJsonObjectStrict<T extends Record<string, unknown>>(
+    filePath: string,
+  ): { ok: boolean; exists: boolean; value: T } {
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(raw) as T;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { ok: false, exists: true, value: {} as T };
+      }
+      return { ok: true, exists: true, value: parsed };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
+        return { ok: true, exists: false, value: {} as T };
+      }
+      return { ok: false, exists: true, value: {} as T };
+    }
+  }
+
+  function buildLocalSessionRowsForAgent(
+    agentId: string,
+    gatewayConnected: boolean,
+    registry: Record<string, StudioSessionRegistryEntry> = ensureRegistryLoaded(),
+    localStore: Record<string, LocalSessionRecord> = readJsonFile<Record<string, LocalSessionRecord>>(
+      resolveAgentSessionsStorePath(options.config, agentId),
+      {},
+    ),
+  ): ChatSessionRow[] {
     const rows: ChatSessionRow[] = [];
     const seenKeys = new Set<string>();
-    const store = readJsonFile<Record<string, LocalSessionRecord>>(resolveAgentSessionsStorePath(options.config, agentId), {});
-    for (const [key, record] of Object.entries(store)) {
-      const row = mapLocalSessionRow(agentId, key, record, gatewayConnected, getRegistryEntry(key));
+    for (const [key, record] of Object.entries(localStore)) {
+      const row = mapLocalSessionRow(agentId, key, record, gatewayConnected, registry[key] || null);
       if (!row.permissions.visibleInFrontend) {
         continue;
       }
@@ -2057,7 +2106,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       seenKeys.add(row.key);
     }
 
-    const registry = ensureRegistryLoaded();
     for (const entry of Object.values(registry)) {
       if (entry.agentId !== agentId || seenKeys.has(entry.key)) {
         continue;
@@ -2073,13 +2121,61 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return rows.sort(compareSessionRowRecency);
   }
 
+  function computeLocalSessionCatalogSignature(): string {
+    const parts: string[] = [];
+    const registryPath = resolveStudioChatRegistryPath(options.config);
+    const registryStat = safeStatSync(registryPath);
+    parts.push(`registry:${registryPath}:${registryStat?.ino || 0}:${registryStat?.size || 0}:${registryStat?.mtimeMs || 0}`);
+
+    const agentsRoot = path.join(options.config.openclawRoot, 'agents');
+    let agentIds: string[] = [];
+    try {
+      agentIds = fs.readdirSync(agentsRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort();
+    } catch {
+      agentIds = [];
+    }
+
+    for (const agentId of agentIds) {
+      const storePath = resolveAgentSessionsStorePath(options.config, agentId);
+      const stat = safeStatSync(storePath);
+      parts.push(`agent:${agentId}:${stat?.ino || 0}:${stat?.size || 0}:${stat?.mtimeMs || 0}`);
+    }
+
+    return parts.join('|');
+  }
+
   function buildLocalSessionCatalog(params: {
     preferredSessionKey?: string | null;
     recentLimit?: number;
   }): ChatSessionRow[] {
     const recentLimit = normalizeHistoryLimit(params.recentLimit, 40);
+    const localCatalogSignature = computeLocalSessionCatalogSignature();
+    const catalogSnapshot = sessionCatalogStore.readSnapshot();
+    const catalogRows = catalogSnapshot.sessions
+      .filter((row) => row.permissions.visibleInFrontend)
+      .sort(compareSessionRowRecency);
+    if (catalogRows.length > 0 && catalogSnapshot.signature === localCatalogSignature) {
+      const preferredSessionKey = normalizeString(params.preferredSessionKey) || null;
+      if (!preferredSessionKey) {
+        return catalogRows.slice(0, recentLimit);
+      }
+      const preferredRow = catalogRows.find((row) => row.key === preferredSessionKey) || null;
+      if (!preferredRow) {
+        return catalogRows.slice(0, recentLimit);
+      }
+      const trimmed = catalogRows.slice(0, recentLimit).filter((row) => row.key !== preferredSessionKey);
+      return [preferredRow, ...trimmed].slice(0, recentLimit);
+    }
+
     const agentIds = new Set<string>(resolveAvailableAgentIds(options.config));
-    const registry = ensureRegistryLoaded();
+    const strictRegistryResult = readJsonObjectStrict<Record<string, StudioSessionRegistryEntry>>(
+      resolveStudioChatRegistryPath(options.config),
+    );
+    const registry = strictRegistryResult.ok ? strictRegistryResult.value : ensureRegistryLoaded();
+    let catalogSourcesHealthy = strictRegistryResult.ok;
     for (const entry of Object.values(registry)) {
       if (entry.agentId) {
         agentIds.add(entry.agentId);
@@ -2091,7 +2187,16 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
     const deduped = new Map<string, ChatSessionRow>();
     for (const agentId of agentIds) {
-      for (const row of buildLocalSessionRowsForAgent(agentId, false)) {
+      const strictStoreResult = readJsonObjectStrict<Record<string, LocalSessionRecord>>(
+        resolveAgentSessionsStorePath(options.config, agentId),
+      );
+      catalogSourcesHealthy = catalogSourcesHealthy && strictStoreResult.ok;
+      for (const row of buildLocalSessionRowsForAgent(
+        agentId,
+        false,
+        registry,
+        strictStoreResult.ok ? strictStoreResult.value : {},
+      )) {
         const current = deduped.get(row.key);
         if (!current || compareSessionRowRecency(row, current) < 0) {
           deduped.set(row.key, row);
@@ -2100,6 +2205,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }
 
     const rows = [...deduped.values()].sort(compareSessionRowRecency);
+    if (catalogSourcesHealthy && sessionCatalogStore.replaceAllSessions(rows)) {
+      sessionCatalogStore.setSignature(localCatalogSignature);
+    }
     const preferredSessionKey = normalizeString(params.preferredSessionKey) || null;
     if (!preferredSessionKey) {
       return rows.slice(0, recentLimit);
@@ -4956,6 +5064,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
 
       rows.sort((left, right) => (right.updatedAt || '').localeCompare(left.updatedAt || ''));
+      sessionCatalogStore.replaceAgentSessions(agentId, rows);
 
       return {
         checkedAt: new Date().toISOString(),
