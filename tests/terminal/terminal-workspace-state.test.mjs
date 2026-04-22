@@ -104,7 +104,7 @@ test("terminal workspace queues commands for a specific session", () => {
   assert.equal(workspace.queuedCommand.value, null);
 });
 
-test("terminal workspace hydrate keeps persisted sessions closed by default", () => {
+test("terminal workspace hydrate restores the most relevant persisted session into view", () => {
   const workspace = workspaceStateModule.createTerminalWorkspaceState();
 
   workspace.hydrateSessions([
@@ -128,8 +128,8 @@ test("terminal workspace hydrate keeps persisted sessions closed by default", ()
     },
   ]);
 
-  assert.deepEqual(workspace.tabOrder.value, []);
-  assert.equal(workspace.activeSessionId.value, null);
+  assert.deepEqual(workspace.tabOrder.value, ["term-backend-2"]);
+  assert.equal(workspace.activeSessionId.value, "term-backend-2");
   assert.deepEqual(
     workspace.recoverableSessions.value.map((item) => item.sessionId),
     ["term-backend-2", "term-backend-1"],
@@ -237,7 +237,7 @@ test("terminal workspace hydrate reconciles removed persisted sessions", () => {
   ]);
 
   workspace.openTab("term-b");
-  assert.deepEqual(workspace.tabOrder.value, ["term-b"]);
+  assert.deepEqual(workspace.tabOrder.value, ["term-a", "term-b"]);
   assert.equal(workspace.activeSessionId.value, "term-b");
 
   workspace.hydrateSessions([
@@ -253,8 +253,8 @@ test("terminal workspace hydrate reconciles removed persisted sessions", () => {
   ]);
 
   assert.equal(workspace.sessions.value["term-b"], undefined);
-  assert.deepEqual(workspace.tabOrder.value, []);
-  assert.equal(workspace.activeSessionId.value, null);
+  assert.deepEqual(workspace.tabOrder.value, ["term-a"]);
+  assert.equal(workspace.activeSessionId.value, "term-a");
   assert.deepEqual(
     workspace.recoverableSessions.value.map((item) => item.sessionId),
     ["term-a"],
@@ -364,6 +364,10 @@ test("terminal workspace groups recent and ended sessions without overlap", () =
 
   assert.deepEqual(
     workspace.recentSessions.value.map((item) => item.sessionId),
+    [],
+  );
+  assert.deepEqual(
+    workspace.openSessions.value.map((item) => item.sessionId),
     ["term-running"],
   );
   assert.deepEqual(
@@ -397,8 +401,8 @@ test("terminal workspace lifecycle transitions are applied to tab and session st
     },
   ]);
 
-  assert.deepEqual(workspace.tabOrder.value, []);
-  assert.equal(workspace.activeSessionId.value, null);
+  assert.deepEqual(workspace.tabOrder.value, ["term-persisted"]);
+  assert.equal(workspace.activeSessionId.value, "term-persisted");
 
   workspace.openTab("term-persisted");
   assert.deepEqual(workspace.tabOrder.value, ["term-persisted"]);

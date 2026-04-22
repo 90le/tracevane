@@ -75,8 +75,25 @@ export function fetchChatOrganizer(): Promise<ChatOrganizerPayload> {
   return requestChatJson<ChatOrganizerPayload>('/api/chat/organizer');
 }
 
-export function fetchChatSessions(agentId: string): Promise<ChatSessionsPayload> {
-  return requestChatJson<ChatSessionsPayload>(`/api/chat/agents/${encodeURIComponent(agentId)}/sessions`);
+export function fetchChatSessions(
+  agentId: string,
+  options: {
+    limit?: number;
+    includeDerivedTitles?: boolean;
+    includeLastMessage?: boolean;
+  } = {},
+): Promise<ChatSessionsPayload> {
+  const url = new URL(`/api/chat/agents/${encodeURIComponent(agentId)}/sessions`, window.location.origin);
+  if (typeof options.limit === 'number' && Number.isFinite(options.limit)) {
+    url.searchParams.set('limit', String(Math.max(1, Math.trunc(options.limit))));
+  }
+  if (typeof options.includeDerivedTitles === 'boolean') {
+    url.searchParams.set('includeDerivedTitles', options.includeDerivedTitles ? '1' : '0');
+  }
+  if (typeof options.includeLastMessage === 'boolean') {
+    url.searchParams.set('includeLastMessage', options.includeLastMessage ? '1' : '0');
+  }
+  return requestChatJson<ChatSessionsPayload>(`${url.pathname}${url.search}`);
 }
 
 export function fetchChatHistoryPage(
@@ -87,6 +104,7 @@ export function fetchChatHistoryPage(
     anchor?: string | null;
     limit?: number;
     day?: string | null;
+    signal?: AbortSignal;
   } = {},
 ): Promise<ChatHistoryPayload> {
   const url = new URL(`/api/chat/sessions/${encodeURIComponent(sessionKey)}/history`, window.location.origin);
@@ -95,7 +113,9 @@ export function fetchChatHistoryPage(
   if (options.anchor) url.searchParams.set('anchor', options.anchor);
   if (options.day) url.searchParams.set('day', options.day);
   url.searchParams.set('limit', String(options.limit || 50));
-  return requestChatJson<ChatHistoryPayload>(`${url.pathname}${url.search}`);
+  return requestChatJson<ChatHistoryPayload>(`${url.pathname}${url.search}`, {
+    signal: options.signal,
+  });
 }
 
 export function fetchChatHistory(sessionKey: string): Promise<ChatHistoryPayload> {
@@ -111,6 +131,7 @@ export function searchChatHistory(
     day?: string | null;
     before?: string | null;
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<ChatHistorySearchPayload> {
   const url = new URL(`/api/chat/sessions/${encodeURIComponent(sessionKey)}/search`, window.location.origin);
@@ -120,11 +141,15 @@ export function searchChatHistory(
   if (options.day) url.searchParams.set('day', options.day);
   if (options.before) url.searchParams.set('before', options.before);
   url.searchParams.set('limit', String(options.limit || 50));
-  return requestChatJson<ChatHistorySearchPayload>(`${url.pathname}${url.search}`);
+  return requestChatJson<ChatHistorySearchPayload>(`${url.pathname}${url.search}`, {
+    signal: options.signal,
+  });
 }
 
-export function fetchChatHistoryDates(sessionKey: string): Promise<ChatHistoryDatesPayload> {
-  return requestChatJson<ChatHistoryDatesPayload>(`/api/chat/sessions/${encodeURIComponent(sessionKey)}/dates`);
+export function fetchChatHistoryDates(sessionKey: string, signal?: AbortSignal): Promise<ChatHistoryDatesPayload> {
+  return requestChatJson<ChatHistoryDatesPayload>(`/api/chat/sessions/${encodeURIComponent(sessionKey)}/dates`, {
+    signal,
+  });
 }
 
 export function buildChatStreamUrl(sessionKey: string): string {

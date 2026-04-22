@@ -308,77 +308,92 @@ test("history page API windows messages and exposes search/date helpers", async 
     assert.deepEqual(page1.overlays, []);
     assert.equal(fs.existsSync(path.join(root, "studio", "chat-index")), true);
 
-    const page2 = await context.services.chat.getHistory(sessionKey, {
-      limit: 2,
-      before: page1.pageInfo.beforeCursor,
+    const originalReadFileSync = fs.readFileSync;
+    let cachedTranscriptReads = 0;
+    let onlyCode = null;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        cachedTranscriptReads += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
     });
-    assert.deepEqual(
-      page2.messages.map((message) => message.id),
-      ["m1", "m2"],
-    );
-    assert.equal(page2.pageInfo.hasMoreBefore, false);
-    assert.equal(page2.pageInfo.hasMoreAfter, true);
-    assert.equal(typeof page2.pageInfo.afterCursor, "string");
-    // Overlays remain windowed independently of the history page bounds.
-    assert.equal(page2.overlays.length, 1);
-    assert.equal(page2.overlays[0]?.runId, "run-alpha");
 
-    const filteredDay = await context.services.chat.getHistory(sessionKey, {
-      limit: 10,
-      day: "2026-03-20",
-    });
-    assert.deepEqual(
-      filteredDay.messages.map((message) => message.id),
-      ["m1", "m2"],
-    );
-    assert.equal(filteredDay.day, "2026-03-20");
+    try {
+      const page2 = await context.services.chat.getHistory(sessionKey, {
+        limit: 2,
+        before: page1.pageInfo.beforeCursor,
+      });
+      assert.deepEqual(
+        page2.messages.map((message) => message.id),
+        ["m1", "m2"],
+      );
+      assert.equal(page2.pageInfo.hasMoreBefore, false);
+      assert.equal(page2.pageInfo.hasMoreAfter, true);
+      assert.equal(typeof page2.pageInfo.afterCursor, "string");
+      // Overlays remain windowed independently of the history page bounds.
+      assert.equal(page2.overlays.length, 1);
+      assert.equal(page2.overlays[0]?.runId, "run-alpha");
 
-    const search = await context.services.chat.searchHistory(sessionKey, {
-      query: "keyword alpha",
-      limit: 10,
-    });
-    assert.deepEqual(
-      search.messages.map((message) => message.id),
-      ["m2"],
-    );
-    assert.equal(search.overlays.length, 1);
-    assert.equal(search.overlays[0]?.runId, "run-alpha");
-    assert.equal(search.pageInfo.hasMoreBefore, false);
-    assert.equal(search.pageInfo.hasMoreAfter, false);
-    assert.equal(search.pageInfo.afterCursor, null);
-    const searchSummaryNotes = search.diagnostics.notes.filter((note) =>
-      note.startsWith("History search summary:"),
-    );
-    assert.deepEqual(searchSummaryNotes, [
-      "History search summary: 1 matches across 1 day(s).",
-    ]);
-
-    const onlyAssistant = await context.services.chat.searchHistory(
-      sessionKey,
-      {
-        query: "keyword",
-        role: "assistant",
-        content: "all",
+      const filteredDay = await context.services.chat.getHistory(sessionKey, {
         limit: 10,
-      },
-    );
-    assert.deepEqual(
-      onlyAssistant.messages.map((message) => message.id),
-      ["m2"],
-    );
-    assert.equal(onlyAssistant.roleFilter, "assistant");
-    assert.equal(onlyAssistant.contentFilter, "all");
+        day: "2026-03-20",
+      });
+      assert.deepEqual(
+        filteredDay.messages.map((message) => message.id),
+        ["m1", "m2"],
+      );
+      assert.equal(filteredDay.day, "2026-03-20");
 
-    const onlyCode = await context.services.chat.searchHistory(sessionKey, {
-      query: "SELECT",
-      role: "all",
-      content: "code",
-      limit: 10,
-    });
-    assert.deepEqual(
-      onlyCode.messages.map((message) => message.id),
-      ["m4"],
-    );
+      const search = await context.services.chat.searchHistory(sessionKey, {
+        query: "keyword alpha",
+        limit: 10,
+      });
+      assert.deepEqual(
+        search.messages.map((message) => message.id),
+        ["m2"],
+      );
+      assert.equal(search.overlays.length, 1);
+      assert.equal(search.overlays[0]?.runId, "run-alpha");
+      assert.equal(search.pageInfo.hasMoreBefore, false);
+      assert.equal(search.pageInfo.hasMoreAfter, false);
+      assert.equal(search.pageInfo.afterCursor, null);
+      const searchSummaryNotes = search.diagnostics.notes.filter((note) =>
+        note.startsWith("History search summary:"),
+      );
+      assert.deepEqual(searchSummaryNotes, [
+        "History search summary: 1 matches across 1 day(s).",
+      ]);
+
+      const onlyAssistant = await context.services.chat.searchHistory(
+        sessionKey,
+        {
+          query: "keyword",
+          role: "assistant",
+          content: "all",
+          limit: 10,
+        },
+      );
+      assert.deepEqual(
+        onlyAssistant.messages.map((message) => message.id),
+        ["m2"],
+      );
+      assert.equal(onlyAssistant.roleFilter, "assistant");
+      assert.equal(onlyAssistant.contentFilter, "all");
+
+      onlyCode = await context.services.chat.searchHistory(sessionKey, {
+        query: "SELECT",
+        role: "all",
+        content: "code",
+        limit: 10,
+      });
+      assert.deepEqual(
+        onlyCode.messages.map((message) => message.id),
+        ["m4"],
+      );
+    } finally {
+      fs.readFileSync = originalReadFileSync;
+    }
+    assert.equal(cachedTranscriptReads, 0);
     assert.equal(onlyCode.roleFilter, "all");
     assert.equal(onlyCode.contentFilter, "code");
     assert.equal(onlyCode.matches[0]?.messageId, "m4");

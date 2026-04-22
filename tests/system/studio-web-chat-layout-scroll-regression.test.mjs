@@ -32,10 +32,11 @@ const conversationPane = fs.readFileSync(
 test("app shell uses a direct route host so chat is not boxed inside extra shell wrappers", () => {
   assert.match(
     appVue,
-    /class="main-content shell-main" :class="\{ 'chat-surface-route': isChatSurface, 'shell-main-chat': isChatSurface \}"/,
+    /class="main-content shell-main"[\s\S]*'chat-surface-route': isChatSurface,[\s\S]*'shell-main-chat': isChatSurface,[\s\S]*'terminal-surface-route': isTerminalSurface,/,
   );
   assert.match(appVue, /<RouterView v-slot="\{ Component \}">/);
-  assert.match(appVue, /class="shell-route-stage shell-main-stage"/);
+  assert.match(appVue, /<section class="shell-main-stage">/);
+  assert.match(appVue, /class="shell-route-stage"/);
   assert.doesNotMatch(appVue, /class="shell-stage-surface"/);
   assert.doesNotMatch(appVue, /class="shell-canvas"/);
 });
@@ -55,7 +56,19 @@ test("chat route shell establishes an unbroken full-height chain without centere
   );
   assert.match(
     styleCss,
+    /\.main-content\.chat-surface-route\s+\.shell-layout\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*0;[\s\S]*height:\s*100%;/,
+  );
+  assert.match(
+    styleCss,
+    /\.main-content\.chat-surface-route\s+\.shell-main-stage\s*\{[\s\S]*display:\s*flex;[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;[\s\S]*height:\s*100%;[\s\S]*overflow:\s*hidden;/,
+  );
+  assert.match(
+    styleCss,
     /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*\{[\s\S]*display:\s*flex;[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;[\s\S]*height:\s*100%;/,
+  );
+  assert.match(
+    styleCss,
+    /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*\{[\s\S]*overflow:\s*hidden;[\s\S]*align-content:\s*stretch;/,
   );
   assert.match(
     styleCss,

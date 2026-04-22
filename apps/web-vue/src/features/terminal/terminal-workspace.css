@@ -46,6 +46,15 @@
   min-height: 0;
 }
 
+.terminal-workspace-stage-loading {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+}
+
 .terminal-inspector-drawer {
   width: clamp(300px, 28vw, 380px);
   max-width: 100%;
@@ -950,6 +959,71 @@ html[data-theme="light"] .terminal-inspector-switcher {
   gap: 12px;
   height: auto;
   min-height: 0;
+}
+
+.terminal-session-history-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.terminal-session-history-note {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent-primary, #d97706) 28%, var(--border-subtle));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.terminal-session-history-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.terminal-session-history-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+}
+
+.terminal-session-history-item__kind {
+  display: inline-flex;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-base) 84%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.terminal-session-history-item[data-kind='command'] .terminal-session-history-item__kind {
+  color: var(--accent-primary);
+}
+
+.terminal-session-history-item[data-kind='error'] .terminal-session-history-item__kind {
+  color: var(--danger, #dc2626);
+}
+
+.terminal-session-history-item[data-kind='system'] .terminal-session-history-item__kind {
+  color: var(--success, #16a34a);
+}
+
+.terminal-session-history-item pre {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 92%, transparent);
+  background: rgba(8, 16, 26, 0.64);
+  color: color-mix(in srgb, var(--text-primary) 94%, #d7fdf5);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
 }
 
 .terminal-missing-deps-panel,

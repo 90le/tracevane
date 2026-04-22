@@ -59,6 +59,10 @@ const queuedMessageRail = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/QueuedMessageRail.vue"),
   "utf8",
 );
+const chatApi = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat/api.ts"),
+  "utf8",
+);
 const conversationPane = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
   "utf8",
@@ -918,4 +922,48 @@ test("mobile composer tracks visual viewport keyboard changes so the input can r
     composerBar,
     /\.chat-composer-shell\s*\{[\s\S]*margin-bottom:\s*var\(--chat-composer-keyboard-offset,\s*0px\);/,
   );
+});
+
+test("chat shell defers the root-route history window and loads date buckets on demand", () => {
+  assert.match(chatShellPage, /const CHAT_HISTORY_INITIAL_WINDOW_LIMIT = 24;/);
+  assert.match(chatShellPage, /const CHAT_HISTORY_DEFER_MS = 320;/);
+  assert.match(chatShellPage, /let deferredInitialHistoryLoadTimer: number \| null = null;/);
+  assert.match(chatShellPage, /let historyReplaceRequestController: AbortController \| null = null;/);
+  assert.match(chatShellPage, /let historyDatesRequestController: AbortController \| null = null;/);
+  assert.match(chatShellPage, /function scheduleDeferredInitialConversationLoad\(sessionKey: string\): void \{/);
+  assert.match(
+    chatShellPage,
+    /watch\(selectedSessionKey, async \(sessionKey, previousKey\) => \{[\s\S]*const shouldDeferInitialRootHistoryLoad = \([\s\S]*!previousKey[\s\S]*!routeSessionKey\.value[\s\S]*scheduleDeferredInitialConversationLoad\(sessionKey\);/,
+  );
+  assert.match(chatShellPage, /async function ensureSessionDatesLoaded\(sessionKey: string, force = false\): Promise<void> \{/);
+  assert.match(chatShellPage, /if \(nextOpen && !historyDatesLoading\.value\) \{[\s\S]*ensureSessionDatesLoaded\(selectedSession\.value\.key\);/);
+  assert.doesNotMatch(chatShellPage, /await loadSessionDates\(sessionKey\);/);
+});
+
+test("chat shell bootstraps the first session rail quickly and hydrates lower-priority agents later", () => {
+  assert.match(chatShellPage, /const CHAT_SESSION_BOOTSTRAP_AGENT_LIMIT = 1;/);
+  assert.match(chatShellPage, /const CHAT_SESSION_DEFERRED_HYDRATION_DELAY_MS = 180;/);
+  assert.match(chatShellPage, /const CHAT_SESSION_BOOTSTRAP_ROW_LIMIT = 40;/);
+  assert.match(chatShellPage, /let deferredSessionHydrationTimer: number \| null = null;/);
+  assert.match(chatShellPage, /const organizerSourceState = ref<ChatSessionOrganizerState>\(createEmptyChatSessionOrganizerState\(\)\);/);
+  assert.match(chatShellPage, /const optimisticStartupSessionKey = ref\(''\);/);
+  assert.match(chatShellPage, /function applyOrganizer\(next: ChatSessionOrganizerState\): void \{[\s\S]*organizerSourceState\.value = next;/);
+  assert.match(chatShellPage, /watch\(sessionRows, \(\) => \{[\s\S]*organizerSourceState\.value/);
+  assert.match(chatShellPage, /function resolveBootstrapSessionKey\(\): string \{/);
+  assert.match(chatShellPage, /async function loadSessionRowsForAgents\(/);
+  assert.match(chatShellPage, /function scheduleDeferredSessionHydration\(/);
+  assert.match(chatShellPage, /async function loadSessions\(options: \{ deferRemainingAgents\?: boolean \} = \{\}\): Promise<void> \{/);
+  assert.match(chatShellPage, /const prioritizedAgentId = deriveAgentIdFromChatSessionKey\(/);
+  assert.match(chatShellPage, /const immediateAgentCount = options\.deferRemainingAgents/);
+  assert.match(chatShellPage, /const CHAT_SESSION_BOOTSTRAP_FETCH_OPTIONS = \{[\s\S]*limit: CHAT_SESSION_BOOTSTRAP_ROW_LIMIT,[\s\S]*includeDerivedTitles: false,[\s\S]*includeLastMessage: false,[\s\S]*\} as const;/);
+  assert.match(chatShellPage, /scheduleDeferredSessionHydration\(deferredAgents, loadVersion, mergedRows\);/);
+  assert.match(chatApi, /export function fetchChatSessions\([\s\S]*includeDerivedTitles\?: boolean;[\s\S]*includeLastMessage\?: boolean;/);
+  assert.match(chatApi, /url\.searchParams\.set\('includeDerivedTitles', options\.includeDerivedTitles \? '1' : '0'\);/);
+  assert.match(chatApi, /url\.searchParams\.set\('includeLastMessage', options\.includeLastMessage \? '1' : '0'\);/);
+  assert.match(chatShellPage, /async function bootstrapChatSurface\(\): Promise<void> \{/);
+  assert.match(chatShellPage, /await loadAgents\(\);[\s\S]*void loadSessions\(\{ deferRemainingAgents: true \}\);[\s\S]*void loadHealth\(\);[\s\S]*void loadOrganizer\(\);[\s\S]*void loadStudioChatGlobalExecConfig\(\);/);
+  assert.match(chatShellPage, /if \(!selectedSessionKey\.value\) \{[\s\S]*const rememberedSessionKey = resolveBootstrapSessionKey\(\);[\s\S]*selectSessionKeyLocally\(rememberedSessionKey\);/);
+  assert.match(chatShellPage, /const hasPendingOptimisticStartup = \(/);
+  assert.match(chatShellPage, /await loadSessions\(\{ deferRemainingAgents: true \}\);/);
+  assert.match(chatShellPage, /onMounted\(async \(\) => \{[\s\S]*await bootstrapChatSurface\(\);/);
 });

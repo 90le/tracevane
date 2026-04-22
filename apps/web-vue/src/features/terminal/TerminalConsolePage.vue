@@ -74,10 +74,12 @@ import { GatewayBrowserClient, type GatewayEventFrame } from '../../shared/gatew
 import { getStudioRealtimeTransport, isTerminalRealtimeEnabled } from '../../shared/runtime-config';
 import {
   endTerminalSession,
+  fetchPersistedTerminalSessionLedger,
   fetchTerminalLaunch,
   fetchTerminalStatus,
 } from './api';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
+import { buildTerminalSessionReplayTranscript } from './terminal-session-history';
 import type { TerminalQueuedCommand } from './terminal-workspace-state';
 
 const props = withDefaults(defineProps<{
@@ -106,6 +108,7 @@ const connected = ref(false);
 const activeCliLabel = ref(text('普通 Shell', 'Plain shell'));
 const endingTerminal = ref(false);
 const noticeMessage = ref<{ kind: 'success' | 'error'; text: string } | null>(null);
+const terminalFocused = ref(false);
 
 let termInstance: XTermTerminal | null = null;
 let fitAddon: FitAddon | null = null;
@@ -120,9 +123,10 @@ let intentionalClose = false;
 const terminalSessionId = ref('');
 let terminalInstanceId = '';
 let lastOutputSeq = 0;
+let transcriptRestoreAttemptedSessionId = '';
+let transcriptRestoreRequestSeq = 0;
 
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
-const TERMINAL_RUNTIME_STORAGE_KEY = 'openclaw-studio.terminal.runtime';
 
 const termReady = ref(false);
 const sessionPreview = computed(() => {
@@ -136,13 +140,24 @@ function normalizeSessionId(value: unknown): string {
   return String(value || '').trim();
 }
 
-function runtimeStorageKey(): string {
-  const sid = normalizeSessionId(terminalSessionId.value);
-  return sid ? `${TERMINAL_RUNTIME_STORAGE_KEY}.${sid}` : TERMINAL_RUNTIME_STORAGE_KEY;
-}
-
 function setNotice(kind: 'success' | 'error', message: string): void {
   noticeMessage.value = { kind, text: message };
+}
+
+function focusTerminal(): void {
+  termInstance?.focus();
+}
+
+function handleTerminalFocusIn(): void {
+  terminalFocused.value = true;
+}
+
+function handleTerminalFocusOut(event: FocusEvent): void {
+  const nextTarget = event.relatedTarget as Node | null;
+  if (nextTarget && termContainer.value?.contains(nextTarget)) {
+    return;
+  }
+  terminalFocused.value = false;
 }
 
 function emitSessionAttached(sessionId: string): void {
@@ -183,41 +198,46 @@ function isInvalidSessionId(value: unknown): boolean {
 }
 
 function saveRuntime(): void {
-  try {
-    sessionStorage.setItem(runtimeStorageKey(), JSON.stringify({
-      instanceId: terminalInstanceId,
-      outputSeq: lastOutputSeq,
-      activeCliLabel: activeCliLabel.value,
-    }));
-  } catch {
-    // ignore
-  }
+  // Keep replay cursor state in-memory only. Persisting it across remounts makes
+  // a brand-new xterm buffer skip backlog replay after refresh/navigation.
 }
 
 function clearRuntime(): void {
-  const key = runtimeStorageKey();
   terminalInstanceId = '';
   lastOutputSeq = 0;
+  transcriptRestoreAttemptedSessionId = '';
   activeCliLabel.value = text('普通 Shell', 'Plain shell');
-  try {
-    sessionStorage.removeItem(key);
-  } catch {
-    // ignore
-  }
 }
 
 function restoreRuntime(): void {
+  terminalInstanceId = '';
+  lastOutputSeq = 0;
+  transcriptRestoreAttemptedSessionId = '';
+}
+
+async function restorePersistedTranscriptIfNeeded(sessionId: string): Promise<boolean> {
+  const normalizedSessionId = normalizeSessionId(sessionId);
+  if (!normalizedSessionId || !termInstance) return false;
+  if (transcriptRestoreAttemptedSessionId === normalizedSessionId) return false;
+
+  transcriptRestoreAttemptedSessionId = normalizedSessionId;
+  const requestSeq = ++transcriptRestoreRequestSeq;
+
   try {
-    const raw = sessionStorage.getItem(runtimeStorageKey());
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    terminalInstanceId = typeof parsed.instanceId === 'string' ? parsed.instanceId : '';
-    lastOutputSeq = typeof parsed.outputSeq === 'number' ? parsed.outputSeq : 0;
-    if (typeof parsed.activeCliLabel === 'string') {
-      activeCliLabel.value = parsed.activeCliLabel;
-    }
+    const events = await fetchPersistedTerminalSessionLedger(normalizedSessionId);
+    if (requestSeq !== transcriptRestoreRequestSeq) return false;
+    if (!termInstance) return false;
+    if (normalizeSessionId(getSessionId()) !== normalizedSessionId) return false;
+
+    const transcript = buildTerminalSessionReplayTranscript(events, {
+      maxChars: 64_000,
+    });
+    if (!transcript) return false;
+    termInstance.clear();
+    termInstance.write(transcript);
+    return true;
   } catch {
-    // ignore
+    return false;
   }
 }
 
@@ -241,6 +261,9 @@ function getSessionId(): string {
   }
 
   if (terminalSessionId.value) return terminalSessionId.value;
+  if (props.embedded) {
+    return '';
+  }
   try {
     const existing = sessionStorage.getItem(TERMINAL_SESSION_STORAGE_KEY);
     if (existing && !isInvalidSessionId(existing)) {
@@ -384,12 +407,16 @@ function readRouteHandoffContext() {
 
 async function attachGatewayTerminal(): Promise<void> {
   if (!gatewayClient) return;
+  const sid = getSessionId();
+  if (!sid) return;
+  const skipReplay = await restorePersistedTranscriptIfNeeded(sid);
   const response = await requestGatewayTerminal<TerminalGatewayAttachResponse>(
     STUDIO_TERMINAL_GATEWAY_METHODS.attach,
     {
-      sid: getSessionId(),
+      sid,
       lastSeq: lastOutputSeq || undefined,
       instanceId: terminalInstanceId || undefined,
+      skipReplay: skipReplay || undefined,
       handoffContext: readRouteHandoffContext(),
     },
   );
@@ -452,7 +479,7 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
     password: auth.password,
     clientVersion: 'openclaw-studio-terminal',
     mode: 'webchat',
-    instanceId: `studio-terminal-${getSessionId()}`,
+    instanceId: `studio-terminal-${normalizeSessionId(getSessionId()) || 'pending'}`,
     onHello: () => {
       if (gatewayClient !== client) return;
       clearReconnectTimer();
@@ -584,6 +611,9 @@ function scheduleReconnect(): void {
 
 async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   if (!termInstance) return;
+  const sid = getSessionId();
+  if (!sid) return;
+  const skipReplay = await restorePersistedTranscriptIfNeeded(sid);
   if (!isTerminalRealtimeEnabled()) {
     connected.value = false;
     setNotice(
@@ -604,9 +634,10 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const basePath = getWebSocketBasePath();
   const wsPath = basePath ? `${basePath}/ws/terminal` : '/ws/terminal';
-  const params = new URLSearchParams({ sid: getSessionId() });
+  const params = new URLSearchParams({ sid });
   if (lastOutputSeq > 0) params.set('lastSeq', String(lastOutputSeq));
   if (terminalInstanceId) params.set('instanceId', terminalInstanceId);
+  if (skipReplay) params.set('skipReplay', '1');
 
   const socket = new WebSocket(`${protocol}//${window.location.host}${wsPath}?${params.toString()}`);
   ws = socket;
@@ -734,6 +765,46 @@ async function resetTerminal(message: string): Promise<void> {
 
 function clearTerminal(): void {
   termInstance?.clear();
+  focusTerminal();
+}
+
+function controlCharacterForKey(key: string): string | null {
+  const normalized = String(key || '').trim().toUpperCase();
+  if (!/^[A-Z]$/.test(normalized)) {
+    return null;
+  }
+  return String.fromCharCode(normalized.charCodeAt(0) - 64);
+}
+
+function sendTerminalShortcut(key: string): boolean {
+  const controlChar = controlCharacterForKey(key);
+  if (!controlChar) return false;
+  focusTerminal();
+  return sendTerminalInput(controlChar);
+}
+
+function shouldCaptureTerminalShortcut(event: KeyboardEvent): boolean {
+  if (!terminalFocused.value || !termReady.value) return false;
+  if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+    return false;
+  }
+  const controlChar = controlCharacterForKey(event.key);
+  if (!controlChar) return false;
+
+  const target = event.target as HTMLElement | null;
+  const editableTarget = target?.closest('input, textarea, [contenteditable="true"]');
+  if (editableTarget && !termContainer.value?.contains(editableTarget)) {
+    return false;
+  }
+
+  return true;
+}
+
+function handleTerminalKeydown(event: KeyboardEvent): void {
+  if (!shouldCaptureTerminalShortcut(event)) return;
+  if (!sendTerminalShortcut(event.key)) return;
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 async function initTerminal(): Promise<void> {
@@ -796,6 +867,9 @@ async function initTerminal(): Promise<void> {
   termDataDisposable = term.onData((data) => {
     sendTerminalInput(data);
   });
+  termContainer.value.addEventListener('focusin', handleTerminalFocusIn);
+  termContainer.value.addEventListener('focusout', handleTerminalFocusOut);
+  termContainer.value.addEventListener('mousedown', focusTerminal);
 
   connectWs();
 }
@@ -816,6 +890,12 @@ watch(
   (nextSessionId) => {
     const normalized = normalizeSessionId(nextSessionId);
     if (!normalized || isInvalidSessionId(normalized)) {
+      if (props.embedded) {
+        terminalSessionId.value = '';
+        clearRuntime();
+        connected.value = false;
+        return;
+      }
       if (!terminalSessionId.value) {
         getSessionId();
         restoreRuntime();
@@ -854,6 +934,7 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', handleVisibility);
   window.addEventListener('focus', handleFocus);
   window.addEventListener('online', handleFocus);
+  window.addEventListener('keydown', handleTerminalKeydown, true);
   statusPollTimer = window.setInterval(() => {
     void refreshStatus();
   }, 15_000);
@@ -867,6 +948,10 @@ onBeforeUnmount(() => {
   resizeObserver = null;
   termDataDisposable?.dispose();
   termDataDisposable = null;
+  terminalFocused.value = false;
+  termContainer.value?.removeEventListener('focusin', handleTerminalFocusIn);
+  termContainer.value?.removeEventListener('focusout', handleTerminalFocusOut);
+  termContainer.value?.removeEventListener('mousedown', focusTerminal);
   if (gatewayClient?.connected) {
     void requestGatewayTerminal(
       STUDIO_TERMINAL_GATEWAY_METHODS.detach,
@@ -890,6 +975,13 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', handleVisibility);
   window.removeEventListener('focus', handleFocus);
   window.removeEventListener('online', handleFocus);
+  window.removeEventListener('keydown', handleTerminalKeydown, true);
+});
+
+defineExpose({
+  clearTerminal,
+  focusTerminal,
+  sendTerminalShortcut,
 });
 </script>
 

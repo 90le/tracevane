@@ -13,6 +13,48 @@
           @create="emit('createSession')"
         />
       </div>
+      <div class="terminal-stage-header-actions">
+        <button
+          type="button"
+          class="secondary-button compact-button"
+          :disabled="!resolvedActiveSession?.sessionId"
+          @click="focusTerminal"
+        >
+          {{ text('聚焦', 'Focus') }}
+        </button>
+        <button
+          type="button"
+          class="secondary-button compact-button"
+          :disabled="!resolvedActiveSession?.sessionId"
+          @click="sendShortcut('c')"
+        >
+          Ctrl+C
+        </button>
+        <button
+          type="button"
+          class="secondary-button compact-button"
+          :disabled="!resolvedActiveSession?.sessionId"
+          @click="sendShortcut('l')"
+        >
+          Ctrl+L
+        </button>
+        <button
+          type="button"
+          class="secondary-button compact-button"
+          :disabled="!resolvedActiveSession?.sessionId"
+          @click="clearTerminal"
+        >
+          {{ text('清屏', 'Clear') }}
+        </button>
+        <button
+          type="button"
+          class="secondary-button compact-button"
+          :disabled="!resolvedActiveSession?.sessionId"
+          @click="endActiveSession"
+        >
+          {{ text('强制结束', 'Force End') }}
+        </button>
+      </div>
     </header>
 
     <div v-if="resolvedActiveSession?.handoffContext" class="terminal-session-context">
@@ -25,6 +67,7 @@
     </div>
 
     <TerminalConsolePage
+      ref="consolePage"
       :session-id="resolvedActiveSession?.sessionId || ''"
       :queued-command="props.queuedCommand"
       :show-toolbar="false"
@@ -62,6 +105,11 @@ const emit = defineEmits<{
   (e: 'sessionAttached', session: TerminalSessionDescriptor): void;
 }>();
 const { text } = useLocalePreference();
+const consolePage = ref<null | {
+  clearTerminal: () => void;
+  focusTerminal: () => void;
+  sendTerminalShortcut: (key: string) => boolean;
+}>(null);
 
 const activeSession = ref<TerminalSessionDescriptor | null>(null);
 const resolvedActiveSession = computed(() => props.activeSession ?? activeSession.value);
@@ -93,5 +141,23 @@ watch(
   },
   { immediate: true },
 );
+
+function focusTerminal(): void {
+  consolePage.value?.focusTerminal();
+}
+
+function clearTerminal(): void {
+  consolePage.value?.clearTerminal();
+}
+
+function sendShortcut(key: string): void {
+  consolePage.value?.sendTerminalShortcut(key);
+}
+
+function endActiveSession(): void {
+  const sessionId = String(resolvedActiveSession.value?.sessionId || '').trim();
+  if (!sessionId) return;
+  emit('endSession', sessionId);
+}
 
 </script>

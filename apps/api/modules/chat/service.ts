@@ -247,6 +247,20 @@ interface ChatCanonicalState {
   entries: ChatCanonicalEntry[];
 }
 
+interface HistorySnapshotCacheEntry {
+  signature: string;
+  session: ChatSessionRow;
+  messages: ChatMessageItem[];
+  canonicalEntries: ChatCanonicalEntry[];
+  canonicalSource: ChatCanonicalState['source'];
+  observability: ChatObservabilityState;
+  toolCards: ChatToolCard[];
+  sourceSessionFile: string | null;
+  sourceMtimeMs: number | null;
+  historyTruncated: boolean;
+  truncationMode: ChatDiagnostics['truncationMode'];
+}
+
 interface OfficialCanonicalStreamState {
   sessionKey: string;
   controller: AbortController | null;
@@ -305,6 +319,23 @@ function cloneChatMessageItem<T extends ChatMessageItem | null | undefined>(valu
     resources: value.resources?.map((item) => ({ ...item })),
     media: value.media?.map((item) => ({ ...item })),
   } as T;
+}
+
+function cloneChatToolCard<T extends ChatToolCard | null | undefined>(value: T): T {
+  if (!value) {
+    return value;
+  }
+  return {
+    ...value,
+    artifacts: value.artifacts?.map((item) => ({ ...item })),
+  } as T;
+}
+
+function cloneCanonicalEntries(entries: ChatCanonicalEntry[]): ChatCanonicalEntry[] {
+  return entries.map((entry) => ({
+    ...entry,
+    message: cloneChatMessageItem(entry.message)!,
+  }));
 }
 
 function createDefaultSessionControls(): ChatSessionControlState {
@@ -679,7 +710,11 @@ export interface ChatService {
   patchFolder(folderId: string, payload: ChatPatchOrganizerFolderRequest): Promise<ChatPatchOrganizerFolderResponse>;
   deleteFolder(folderId: string): Promise<ChatDeleteOrganizerFolderResponse>;
   assignSessionsToFolder(payload: ChatAssignSessionsToFolderRequest): Promise<ChatAssignSessionsToFolderResponse>;
-  listSessions(agentId: string): Promise<ChatSessionsPayload>;
+  listSessions(agentId: string, options?: {
+    limit?: number;
+    includeDerivedTitles?: boolean;
+    includeLastMessage?: boolean;
+  }): Promise<ChatSessionsPayload>;
   getHistory(
     sessionKey: string,
     options?: {
@@ -748,6 +783,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   const historyIndexStore = createStudioChatHistoryIndexStore(options.config);
   const organizerStore = createStudioChatOrganizerStore(options.config);
   const studioSessions = new LruMap<string, StudioManagedSessionState>(200);
+  const historySnapshotCache = new LruMap<string, HistorySnapshotCacheEntry>(120);
   const canonicalStates = new LruMap<string, ChatCanonicalState>(150);
   const officialCanonicalStreams = new Map<string, OfficialCanonicalStreamState>();
   const runProjections = new LruMap<string, Map<string, ChatRunProjection>>(200);
@@ -1322,6 +1358,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     runShadowStore.clearSession(sessionKey);
     durableMirrorStore.clearSession(sessionKey);
     historyIndexStore.clearSession(sessionKey);
+    historySnapshotCache.delete(sessionKey);
     clearRunProjections(sessionKey);
     writeOrganizerState(removeSessionsFromOrganizer(readOrganizerState(), [sessionKey]));
     deleteRegistryEntry(sessionKey);
@@ -2059,6 +2096,52 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
   }
 
+  function buildHistorySnapshotCacheSignature(params: {
+    sessionKey: string;
+    sourceSelection: ChatCanonicalSourceSelection;
+    inMemory: StudioManagedSessionState | null;
+    session: ChatSessionRow;
+  }): string {
+    const currentHistory = params.inMemory?.messages || [];
+    const lastMessage = currentHistory[currentHistory.length - 1] || null;
+    const runtime = params.inMemory?.row.runtime || params.session.runtime;
+    const priorFileSignature = params.sourceSelection.priorSessionFiles
+      .map((file) => {
+        const stat = safeStatSync(file);
+        return `${file}:${stat?.ino || 0}:${stat?.size || 0}:${stat?.mtimeMs || 0}`;
+      })
+      .join('|');
+    return [
+      params.sessionKey,
+      params.sourceSelection.kind,
+      params.sourceSelection.sessionFile || '',
+      String(params.sourceSelection.sourceMtimeMs || 0),
+      priorFileSignature,
+      params.session.label || '',
+      params.session.derivedTitle || '',
+      params.session.updatedAt || '',
+      String(currentHistory.length),
+      lastMessage?.id || '',
+      lastMessage?.createdAt || '',
+      runtime.activeRunId || '',
+      runtime.lastEventAt || '',
+      runtime.lastAckAt || '',
+      params.inMemory?.clearedAt || '',
+      params.inMemory?.resetPending ? '1' : '0',
+    ].join('::');
+  }
+
+  function cloneHistorySnapshotCacheEntry(entry: HistorySnapshotCacheEntry): HistorySnapshotCacheEntry {
+    return {
+      ...entry,
+      session: JSON.parse(JSON.stringify(entry.session)) as ChatSessionRow,
+      messages: entry.messages.map((message) => cloneChatMessageItem(message)!),
+      canonicalEntries: cloneCanonicalEntries(entry.canonicalEntries),
+      observability: cloneObservabilityState(entry.observability),
+      toolCards: entry.toolCards.map((item) => cloneChatToolCard(item)!),
+    };
+  }
+
   function readTranscriptRawEntries(sessionFile: string): Record<string, unknown>[] {
     try {
       return fs.readFileSync(sessionFile, 'utf-8')
@@ -2201,6 +2284,37 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     const sourceSelection = selectCanonicalSource(sessionKey);
     sourceSessionFile = sourceSelection.sessionFile;
     sourceMtimeMs = sourceSelection.sourceMtimeMs;
+    const historySnapshotCacheSignature = buildHistorySnapshotCacheSignature({
+      sessionKey,
+      sourceSelection,
+      inMemory,
+      session,
+    });
+    const cachedSnapshot = sourceSelection.kind === 'local_transcript'
+      ? historySnapshotCache.get(sessionKey)
+      : null;
+    if (cachedSnapshot && cachedSnapshot.signature === historySnapshotCacheSignature) {
+      const restored = cloneHistorySnapshotCacheEntry(cachedSnapshot);
+      diagnostics.historyTruncated = restored.historyTruncated;
+      diagnostics.truncationMode = restored.truncationMode;
+      diagnostics.notes.push('History snapshot reused from Studio in-process cache; transcript remap skipped for this request.');
+      return {
+        checkedAt: new Date().toISOString(),
+        session: restored.session,
+        messages: restored.messages,
+        canonicalEntries: restored.canonicalEntries,
+        canonicalSource: restored.canonicalSource,
+        overlays: filterRedundantTerminalOverlays(
+          restored.messages,
+          enrichOverlaysWithToolCards(listRunOverlaysForSession(sessionKey), restored.toolCards),
+        ),
+        runtime: restored.session.runtime,
+        diagnostics,
+        observability: restored.observability,
+        sourceSessionFile: restored.sourceSessionFile,
+        sourceMtimeMs: restored.sourceMtimeMs,
+      };
+    }
 
     if (sourceSelection.kind === 'local_transcript') {
       // Load entries from prior (reset backup) session files first, then current
@@ -2410,6 +2524,22 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       : diagnostics.historyTruncated
         ? 'tail_marked'
         : 'none';
+
+    if (sourceSelection.kind === 'local_transcript') {
+      historySnapshotCache.set(sessionKey, {
+        signature: historySnapshotCacheSignature,
+        session: JSON.parse(JSON.stringify(session)) as ChatSessionRow,
+        messages: messages.map((message) => cloneChatMessageItem(message)!),
+        canonicalEntries: cloneCanonicalEntries(canonicalEntries),
+        canonicalSource,
+        observability: cloneObservabilityState(observability),
+        toolCards: toolCardsForHistory.map((item) => cloneChatToolCard(item)!),
+        sourceSessionFile,
+        sourceMtimeMs,
+        historyTruncated: diagnostics.historyTruncated,
+        truncationMode: diagnostics.truncationMode,
+      });
+    }
 
     return {
       checkedAt: new Date().toISOString(),
@@ -4517,9 +4647,16 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       };
     },
 
-    async listSessions(agentId: string): Promise<ChatSessionsPayload> {
+    async listSessions(agentId: string, queryOptions: {
+      limit?: number;
+      includeDerivedTitles?: boolean;
+      includeLastMessage?: boolean;
+    } = {}): Promise<ChatSessionsPayload> {
       const gatewayConnected = await isGatewayConnected();
       const diagnostics = createBaseDiagnostics(options.config, gatewayConnected, []);
+      const sessionListLimit = normalizeHistoryLimit(queryOptions.limit, 200);
+      const includeDerivedTitles = queryOptions.includeDerivedTitles !== false;
+      const includeLastMessage = queryOptions.includeLastMessage !== false;
 
       const rows: ChatSessionRow[] = [];
       const seenKeys = new Set<string>();
@@ -4527,9 +4664,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       try {
         const payload = await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {
           agentId,
-          limit: 200,
-          includeDerivedTitles: true,
-          includeLastMessage: true,
+          limit: sessionListLimit,
+          includeDerivedTitles,
+          includeLastMessage,
         });
         const gatewayRows = Array.isArray(payload.sessions) ? payload.sessions : [];
         for (const row of gatewayRows) {

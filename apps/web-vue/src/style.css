@@ -1528,6 +1528,23 @@ button {
   min-height: 0;
   height: 100%;
   padding: 0;
+  overflow: hidden;
+  align-content: stretch;
+}
+
+.main-content.chat-surface-route .shell-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.main-content.chat-surface-route .shell-main-stage {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .main-content.chat-surface-route .shell-route-stage > * {
@@ -4675,7 +4692,8 @@ html[data-theme="light"] .nav-link.router-link-active {
   }
 
   .shell-route-stage-chat {
-    min-height: 100dvh;
+    min-height: 0;
+    height: 100%;
     padding: 0;
   }
 

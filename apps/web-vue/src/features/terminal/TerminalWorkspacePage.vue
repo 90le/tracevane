@@ -3,19 +3,23 @@
     <div class="terminal-workspace-body" :class="{ 'terminal-workspace-body--stage-only': compactInspectorMode }">
       <section class="terminal-workspace-stage">
         <TerminalSessionPane
+          v-if="workspaceHydrated"
           :tabs="workspace.tabs.value"
           :active-session-id="workspace.activeSessionId.value"
           :active-session="workspace.sessions.value[workspace.activeSessionId.value || ''] || null"
           :queued-command="workspace.queuedCommand.value"
           @consume-queued-command="workspace.consumeQueuedCommand($event)"
-          @select-session="workspace.setActiveSession"
-          @close-session="workspace.closeTab"
+          @select-session="handleSessionSelect"
+          @close-session="handleSessionClose"
           @create-session="createSession"
           @rename-session="renameSession"
           @end-session="endSession"
           @delete-session="deleteSession"
           @session-attached="handleSessionAttached"
         />
+        <div v-else class="terminal-workspace-stage-loading terminal-empty-state">
+          {{ text('正在恢复终端会话…', 'Restoring terminal session...') }}
+        </div>
       </section>
 
       <TerminalInspectorDrawer v-if="!compactInspectorMode" class="terminal-inspector-drawer" :open="true">
@@ -43,8 +47,12 @@
             :recent-sessions="workspace.recentSessions.value"
             :ended-sessions="workspace.endedSessions.value"
             :active-session-id="workspace.activeSessionId.value"
+            :active-session-status="activeSession?.status || null"
             :recent-output="activeSessionRecentOutput"
             :recent-output-label="activeSessionRecentOutputLabel"
+            :history-busy="sessionHistoryBusy"
+            :history-entries="sessionHistoryEntries"
+            :replay-command="replayCommand"
             @toggle-summary="toggleInspectorSummary"
             @refresh="refreshInspectorStatus"
             @select-section="inspectorSection = $event"
@@ -55,6 +63,7 @@
             @select-session="handleInspectorSessionSelect"
             @end-session="handleInspectorSessionEnd"
             @delete-session="handleInspectorSessionDelete"
+            @replay-last-command="handleReplayLastCommand"
           />
         </div>
       </TerminalInspectorDrawer>
@@ -118,8 +127,12 @@
                 :recent-sessions="workspace.recentSessions.value"
                 :ended-sessions="workspace.endedSessions.value"
                 :active-session-id="workspace.activeSessionId.value"
+                :active-session-status="activeSession?.status || null"
                 :recent-output="activeSessionRecentOutput"
                 :recent-output-label="activeSessionRecentOutputLabel"
+                :history-busy="sessionHistoryBusy"
+                :history-entries="sessionHistoryEntries"
+                :replay-command="replayCommand"
                 @toggle-summary="toggleInspectorSummary"
                 @refresh="refreshInspectorStatus"
                 @select-section="inspectorSection = $event"
@@ -130,6 +143,7 @@
                 @select-session="handleInspectorSessionSelect"
                 @end-session="handleInspectorSessionEnd"
                 @delete-session="handleInspectorSessionDelete"
+                @replay-last-command="handleReplayLastCommand"
               />
             </div>
           </section>
@@ -140,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { useRoute, useRouter } from 'vue-router';
 import type {
@@ -159,12 +173,15 @@ import {
   deleteTerminalSession,
   endTerminalSession,
   fetchPersistedTerminalSessions,
+  fetchPersistedTerminalSessionDescriptor,
+  fetchPersistedTerminalSessionLedger,
   fetchTerminalActions,
   fetchTerminalLaunch,
   fetchTerminalStatus,
   renameTerminalSession,
 } from './api';
 import { buildTerminalActionLayers } from './terminal-action-catalog';
+import { buildTerminalSessionHistory, type TerminalSessionHistoryEntry } from './terminal-session-history';
 import { bindTerminalRouteSync } from './terminal-route-sync';
 import { createTerminalWorkspaceState } from './terminal-workspace-state';
 import './terminal-workspace.css';
@@ -187,6 +204,8 @@ const compactInspectorMode = ref(false);
 const inspectorSummaryExpanded = ref(true);
 const mobileInspectorOpen = ref(false);
 const workspaceHydrated = ref(false);
+const sessionHistoryBusy = ref(false);
+const sessionHistoryEntries = ref<TerminalSessionHistoryEntry[]>([]);
 const installFeedback = ref<{
   kind: 'info' | 'success' | 'error';
   message: string;
@@ -217,6 +236,7 @@ const activeSessionRecentOutput = computed<TerminalRecentOutputSummary | null>((
   if (!summary?.tailText) return null;
   return summary;
 });
+const replayCommand = computed(() => activeSession.value?.recentOutputSummary?.lastCommandHint || null);
 const activeSessionRecentOutputLabel = computed(() => {
   if (!activeSessionRecentOutput.value) return '';
   if (activeSession.value?.status === 'completed') return text('最近输出（已完成）', 'Recent Output (Completed)');
@@ -292,6 +312,7 @@ const activeInspectorSummary = computed(() => {
   if (!current) return '';
   return `${current.label} ${current.count}`;
 });
+let historyRequestSeq = 0;
 
 function syncCompactInspectorMode(): void {
   const nextCompactMode =
@@ -328,6 +349,50 @@ function refreshStatusLater(delayMs = 1800): void {
   }, delayMs);
 }
 
+async function loadSessionHistory(sessionId: string | null | undefined): Promise<void> {
+  const normalizedSessionId = String(sessionId || '').trim();
+  const requestSeq = ++historyRequestSeq;
+  if (!normalizedSessionId) {
+    sessionHistoryEntries.value = [];
+    sessionHistoryBusy.value = false;
+    return;
+  }
+
+  sessionHistoryBusy.value = true;
+  try {
+    const events = await fetchPersistedTerminalSessionLedger(normalizedSessionId);
+    if (requestSeq !== historyRequestSeq) return;
+    sessionHistoryEntries.value = buildTerminalSessionHistory(events, { limit: 60 });
+    if (
+      activeSession.value &&
+      activeSession.value.status !== 'running' &&
+      activeSession.value.status !== 'detached' &&
+      sessionHistoryEntries.value.length &&
+      inspectorSection.value !== 'sessions'
+    ) {
+      inspectorSection.value = 'sessions';
+    }
+  } catch {
+    if (requestSeq !== historyRequestSeq) return;
+    sessionHistoryEntries.value = [];
+  } finally {
+    if (requestSeq === historyRequestSeq) {
+      sessionHistoryBusy.value = false;
+    }
+  }
+}
+
+function refreshSessionHistoryLater(
+  sessionId: string | null | undefined,
+  delayMs = 1200,
+): void {
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId) return;
+  globalThis.setTimeout(() => {
+    void loadSessionHistory(normalizedSessionId);
+  }, delayMs);
+}
+
 function toggleInspectorSummary(): void {
   inspectorSummaryExpanded.value = !inspectorSummaryExpanded.value;
 }
@@ -336,6 +401,53 @@ function closeMobileInspectorIfCompact(): void {
   if (compactInspectorMode.value) {
     mobileInspectorOpen.value = false;
   }
+}
+
+function buildTerminalRoutePath(sessionId: string | null | undefined): string {
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId) {
+    return '/terminal';
+  }
+  return `/terminal/${encodeURIComponent(normalizedSessionId)}`;
+}
+
+async function navigateToSession(sessionId: string | null | undefined): Promise<void> {
+  const targetPath = buildTerminalRoutePath(sessionId);
+  if (router.currentRoute.value.path === targetPath) {
+    return;
+  }
+  try {
+    await router.push({ path: targetPath });
+  } catch {
+    // ignore navigation duplication or transient route failures
+  }
+}
+
+async function syncRouteToWorkspaceActiveSession(): Promise<void> {
+  await navigateToSession(workspace.activeSessionId.value);
+}
+
+async function syncRouteLockedSession(sessionId: string | null | undefined): Promise<void> {
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId || !workspaceHydrated.value) return;
+
+  const fallbackSession = workspace.sessions.value[normalizedSessionId] || null;
+  let descriptor = fallbackSession;
+  if (!descriptor || descriptor.title === normalizedSessionId) {
+    try {
+      descriptor = await fetchPersistedTerminalSessionDescriptor(normalizedSessionId);
+    } catch {
+      descriptor = fallbackSession;
+    }
+  }
+
+  if (descriptor) {
+    workspace.registerSession({
+      ...descriptor,
+      sessionId: normalizedSessionId,
+    });
+  }
+  workspace.setActiveSession(normalizedSessionId);
 }
 
 onMounted(async () => {
@@ -350,6 +462,9 @@ onMounted(async () => {
   try {
     const summary = await fetchPersistedTerminalSessions();
     workspace.hydrateSessions(summary.sessions || []);
+    if (normalizedSessionId) {
+      await syncRouteLockedSession(normalizedSessionId);
+    }
   } catch {
     // keep route/local workspace as-is when persisted descriptors are unavailable
   } finally {
@@ -385,6 +500,31 @@ onMounted(async () => {
     actionLayers.value = localActionLayers;
   }
 });
+
+watch(
+  () => activeSession.value?.sessionId,
+  (sessionId) => {
+    void loadSessionHistory(sessionId);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => inspectorSection.value,
+  (section) => {
+    if (section !== 'sessions') return;
+    void loadSessionHistory(activeSession.value?.sessionId);
+  },
+);
+
+watch(
+  () => [workspaceHydrated.value, route.params.sessionId] as const,
+  ([hydrated, sessionId]) => {
+    if (!hydrated) return;
+    void syncRouteLockedSession(String(sessionId || ''));
+  },
+  { immediate: true },
+);
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncCompactInspectorMode);
@@ -431,8 +571,10 @@ async function openCommandSession(options: {
     updatedAt: new Date().toISOString(),
   });
   workspace.setActiveSession(sessionId);
+  await navigateToSession(sessionId);
   if (options.command) {
     workspace.setQueuedCommand(sessionId, ensureCommandLineBreak(options.command));
+    refreshSessionHistoryLater(sessionId);
   }
   return sessionId;
 }
@@ -447,6 +589,13 @@ async function createSession(): Promise<string> {
 function handleSessionAttached(session: TerminalSessionDescriptor): void {
   const sessionId = String(session?.sessionId || '').trim();
   if (!sessionId) return;
+  const lockedRouteSessionId = String(route.params.sessionId || '').trim();
+  if (lockedRouteSessionId && lockedRouteSessionId !== sessionId) {
+    return;
+  }
+  const preserveRouteLockedActiveSession =
+    Boolean(lockedRouteSessionId) &&
+    lockedRouteSessionId !== sessionId;
 
   const existing = workspace.sessions.value[sessionId] || null;
   const preservedTitle =
@@ -458,7 +607,9 @@ function handleSessionAttached(session: TerminalSessionDescriptor): void {
     ...session,
     title: preservedTitle || session.title,
   });
-  workspace.setActiveSession(session.sessionId);
+  if (!preserveRouteLockedActiveSession) {
+    workspace.setActiveSession(session.sessionId);
+  }
 
   if (
     preservedTitle &&
@@ -484,8 +635,18 @@ function findActionItem(actionKey: string): TerminalActionItem | null {
 }
 
 function resolveBinaryLabel(binaryId: TerminalBinaryId): string {
+  if (binaryId === 'bash') {
+    return text('终端', 'Shell');
+  }
   const binary = terminalStatus.value?.binaries?.find((item) => item.id === binaryId);
   return binary?.label || binaryId;
+}
+
+function resolveCliTitle(cli: TerminalLaunchCli, backendLabel?: string): string {
+  if (cli === 'bash') {
+    return text('终端', 'Shell');
+  }
+  return String(backendLabel || resolveBinaryLabel(cli)).trim() || resolveBinaryLabel(cli);
 }
 
 async function handleActionTrigger(actionKey: string): Promise<void> {
@@ -512,7 +673,7 @@ async function launchCli(cli: TerminalLaunchCli): Promise<void> {
   try {
     const result = await fetchTerminalLaunch({ cli });
     await openCommandSession({
-      title: result.label,
+      title: resolveCliTitle(cli, result.label),
       command: result.command,
       source: 'manual',
     });
@@ -525,7 +686,7 @@ async function launchCli(cli: TerminalLaunchCli): Promise<void> {
       bash: 'bash',
     };
     await openCommandSession({
-      title: cli === 'bash' ? 'Shell' : resolveBinaryLabel(cli),
+      title: resolveCliTitle(cli),
       command: fallbackCommands[cli],
       source: 'manual',
     });
@@ -615,6 +776,7 @@ async function renameSession(payload: { sessionId: string; title: string }): Pro
 async function endSession(sessionId: string): Promise<void> {
   const normalized = String(sessionId || '').trim();
   if (!normalized) return;
+  const wasActive = workspace.activeSessionId.value === normalized;
 
   try {
     await endTerminalSession({ sid: normalized });
@@ -623,11 +785,15 @@ async function endSession(sessionId: string): Promise<void> {
   }
 
   workspace.endSession(normalized);
+  if (wasActive) {
+    await syncRouteToWorkspaceActiveSession();
+  }
 }
 
 async function deleteSession(sessionId: string): Promise<void> {
   const normalized = String(sessionId || '').trim();
   if (!normalized) return;
+  const wasActive = workspace.activeSessionId.value === normalized;
 
   try {
     await deleteTerminalSession(normalized);
@@ -636,6 +802,9 @@ async function deleteSession(sessionId: string): Promise<void> {
   }
 
   workspace.deleteSession(normalized);
+  if (wasActive) {
+    await syncRouteToWorkspaceActiveSession();
+  }
 }
 
 async function handleLaunchCli(cli: TerminalLaunchCli): Promise<void> {
@@ -654,8 +823,26 @@ async function handleInspectorActionTrigger(actionKey: string): Promise<void> {
   await handleActionTrigger(actionKey);
 }
 
-function handleInspectorSessionSelect(sessionId: string): void {
+async function handleSessionSelect(sessionId: string): Promise<void> {
   workspace.openTab(sessionId);
+  await navigateToSession(sessionId);
+  void loadSessionHistory(sessionId);
+}
+
+function handleSessionClose(sessionId: string): void {
+  const normalized = String(sessionId || '').trim();
+  if (!normalized) return;
+  const wasActive = workspace.activeSessionId.value === normalized;
+  workspace.closeTab(normalized);
+  if (wasActive) {
+    void syncRouteToWorkspaceActiveSession();
+  }
+}
+
+async function handleInspectorSessionSelect(sessionId: string): Promise<void> {
+  workspace.openTab(sessionId);
+  await navigateToSession(sessionId);
+  void loadSessionHistory(sessionId);
   closeMobileInspectorIfCompact();
 }
 
@@ -665,5 +852,16 @@ async function handleInspectorSessionEnd(sessionId: string): Promise<void> {
 
 async function handleInspectorSessionDelete(sessionId: string): Promise<void> {
   await deleteSession(sessionId);
+}
+
+async function handleReplayLastCommand(command: string): Promise<void> {
+  const normalizedCommand = String(command || '').trim();
+  if (!normalizedCommand) return;
+  await openCommandSession({
+    title: text('重放命令', 'Replay Command'),
+    command: normalizedCommand,
+    source: 'manual',
+  });
+  closeMobileInspectorIfCompact();
 }
 </script>

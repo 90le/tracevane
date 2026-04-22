@@ -8,6 +8,7 @@ import type {
   TerminalInstallStreamEvent,
   TerminalLaunchPayload,
   TerminalLaunchResponse,
+  TerminalSessionLedgerEvent,
   TerminalSessionSummaryResponse,
   TerminalStatusPayload,
 } from "../../../../../types/terminal";
@@ -30,6 +31,14 @@ export function fetchPersistedTerminalSessionDescriptor(
 ): Promise<TerminalSessionDescriptor> {
   return requestJson<TerminalSessionDescriptor>(
     `/api/terminal/sessions/${encodeURIComponent(sessionId.trim())}`,
+  );
+}
+
+export function fetchPersistedTerminalSessionLedger(
+  sessionId: string,
+): Promise<TerminalSessionLedgerEvent[]> {
+  return requestJson<TerminalSessionLedgerEvent[]>(
+    `/api/terminal/sessions/${encodeURIComponent(sessionId.trim())}/ledger`,
   );
 }
 

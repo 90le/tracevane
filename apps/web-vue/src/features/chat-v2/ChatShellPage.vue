@@ -632,6 +632,10 @@ let sessionsLoadVersion = 0;
 let recordBrowserSearchVersion = 0;
 let liveHistorySyncTimer: number | null = null;
 let runSettlementSyncTimer: number | null = null;
+let deferredInitialHistoryLoadTimer: number | null = null;
+let deferredSessionHydrationTimer: number | null = null;
+let historyReplaceRequestController: AbortController | null = null;
+let historyDatesRequestController: AbortController | null = null;
 let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 const suppressedRunIds = new Set<string>();
 const terminalRunFenceBySession = new Map<string, Set<string>>();
@@ -640,6 +644,7 @@ const playedChatReceivedCueIds = new Set<string>();
 const historyMode = ref<'history' | 'search'>('history');
 const searchQuery = ref('');
 const selectedHistoryDay = ref<string | null>(null);
+const organizerSourceState = ref<ChatSessionOrganizerState>(createEmptyChatSessionOrganizerState());
 const recordBrowser = useChatRecordBrowserState();
 const recordBrowserOpen = recordBrowser.open;
 const recordBrowserQuery = recordBrowser.query;
@@ -662,11 +667,25 @@ const NOTICE_TIMEOUT_MS: Record<NoticeMessage['kind'], number> = {
   success: 2400,
   error: 5600,
 };
+const CHAT_HISTORY_INITIAL_WINDOW_LIMIT = 24;
+const CHAT_HISTORY_PAGE_LIMIT = 32;
+const CHAT_HISTORY_DEFER_MS = 320;
+const CHAT_SESSION_BOOTSTRAP_AGENT_LIMIT = 1;
+const CHAT_SESSION_DEFERRED_HYDRATION_DELAY_MS = 180;
+const CHAT_SESSION_BOOTSTRAP_ROW_LIMIT = 40;
+const CHAT_SESSION_BOOTSTRAP_FETCH_OPTIONS = {
+  limit: CHAT_SESSION_BOOTSTRAP_ROW_LIMIT,
+  includeDerivedTitles: false,
+  includeLastMessage: false,
+} as const;
 const SESSION_ROW_PROTECTION_TTL_MS = 20_000;
 const SESSION_CREATE_SEND_GUARD_MS = 1_200;
 const protectedSessionRowDeadlines = new Map<string, number>();
 const sessionSendGuardDeadlines = new Map<string, number>();
 const sessionSendGuardVersion = ref(0);
+const historyDatesLoadedSessionKey = ref('');
+const historyDatesLoading = ref(false);
+const optimisticStartupSessionKey = ref('');
 
 const routeSessionKey = computed(() => resolveChatRouteSessionKey({
   routeParamSessionRef: typeof route.params.sessionRef === 'string' ? route.params.sessionRef : '',
@@ -1410,7 +1429,7 @@ async function loadSessionSurfaceState(sessionKey: string): Promise<void> {
     }
 
     try {
-      await loadSessions();
+      await loadSessions({ deferRemainingAgents: true });
     } catch {
       // Best-effort self-heal for sessions discovered from Gateway before their
       // local Studio registry entry has been reconstructed.
@@ -1588,8 +1607,13 @@ function replaceSessionRow(row: ChatSessionRow): void {
 }
 
 function clearConversationState(): void {
+  clearDeferredInitialHistoryLoad();
+  clearDeferredSessionHydration();
+  optimisticStartupSessionKey.value = '';
   clearLiveHistorySyncTimer();
   clearRunSettlementSyncTimer();
+  abortReplaceHistoryRequest();
+  abortHistoryDatesRequest();
   clearTerminalRunFence();
   clearWsReconnectTimer();
   if (selectedSessionKey.value) {
@@ -1598,7 +1622,12 @@ function clearConversationState(): void {
   historyPayload.value = null;
   runtimeMachineState.value = resetChatSessionRuntimeMachine();
   historyPageInfo.value = { hasMoreBefore: false, beforeCursor: null, hasMoreAfter: false, afterCursor: null };
+  historyDays.value = [];
+  historyDatesLoadedSessionKey.value = '';
+  historyLoadingInitial.value = false;
+  historyLoadingBefore.value = false;
   historyLoadingAfter.value = false;
+  historyDatesLoading.value = false;
   historyErrorMessage.value = '';
   recordBrowserSearchVersion += 1;
   resetRecordBrowserState();
@@ -2637,6 +2666,7 @@ async function loadHealth(): Promise<void> {
 }
 
 function applyOrganizer(next: ChatSessionOrganizerState): void {
+  organizerSourceState.value = next;
   organizerState.value = pruneOrganizerStateSessionKeys(
     next,
     sessionRows.value
@@ -2654,12 +2684,88 @@ async function loadOrganizer(): Promise<void> {
   }
 }
 
-async function loadSessions(): Promise<void> {
+async function loadSessionRowsForAgents(
+  agents: AgentSummary[],
+  loadVersion: number,
+  seedRows: ChatSessionRow[],
+  fetchOptions: Parameters<typeof fetchChatSessions>[1] = {},
+): Promise<ChatSessionRow[]> {
+  if (!agents.length) {
+    sessionRows.value = seedRows;
+    return seedRows;
+  }
+
+  let mergedRows = seedRows;
+  let nextIndex = 0;
+
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      const agent = agents[currentIndex];
+      if (!agent) {
+        return;
+      }
+      try {
+        const payload = await fetchChatSessions(agent.id, fetchOptions);
+        if (loadVersion !== sessionsLoadVersion) {
+          return;
+        }
+        const incomingRows = payload.sessions || [];
+        const preservedRows = collectPreservedAgentRows(mergedRows, agent.id, incomingRows);
+        mergedRows = mergeSessionRowsForAgent(mergedRows, agent.id, incomingRows, {
+          preserveMissingRows: preservedRows,
+        });
+        sessionRows.value = mergedRows;
+      } catch {
+        if (loadVersion !== sessionsLoadVersion) {
+          return;
+        }
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(CHAT_SESSION_LOAD_CONCURRENCY, agents.length) }, () => worker()),
+  );
+  return mergedRows;
+}
+
+function scheduleDeferredSessionHydration(
+  agents: AgentSummary[],
+  loadVersion: number,
+  seedRows: ChatSessionRow[],
+): void {
+  clearDeferredSessionHydration();
+  deferredSessionHydrationTimer = window.setTimeout(async () => {
+    deferredSessionHydrationTimer = null;
+    if (loadVersion !== sessionsLoadVersion) {
+      return;
+    }
+    try {
+      await loadSessionRowsForAgents(agents, loadVersion, seedRows);
+    } finally {
+      if (loadVersion === sessionsLoadVersion) {
+        sessionsLoading.value = false;
+      }
+    }
+  }, CHAT_SESSION_DEFERRED_HYDRATION_DELAY_MS);
+}
+
+async function loadSessions(options: { deferRemainingAgents?: boolean } = {}): Promise<void> {
   const loadVersion = ++sessionsLoadVersion;
+  clearDeferredSessionHydration();
   sessionsLoading.value = true;
   try {
+    const prioritizedAgentId = deriveAgentIdFromChatSessionKey(
+      routeSessionKey.value
+      || optimisticStartupSessionKey.value
+      || selectedSessionKey.value
+      || readLastChatSessionKey()
+      || '',
+    );
     const agents = prioritizeAgentsForSessionLoad(agentRows.value.slice(), {
-      selectedAgentId: selectedAgentId.value,
+      selectedAgentId: prioritizedAgentId || selectedAgentId.value,
       recentAgentId: readLastChatAgentId(),
     });
     if (!agents.length) {
@@ -2670,46 +2776,37 @@ async function loadSessions(): Promise<void> {
     const allowedAgentIds = new Set(agents.map((agent) => agent.id));
     let mergedRows = sessionRows.value.filter((row) => allowedAgentIds.has(row.agentId));
     sessionRows.value = mergedRows;
-    let nextIndex = 0;
-
-    const worker = async (): Promise<void> => {
-      while (true) {
-        const currentIndex = nextIndex;
-        nextIndex += 1;
-        const agent = agents[currentIndex];
-        if (!agent) {
-          return;
-        }
-        try {
-          const payload = await fetchChatSessions(agent.id);
-          if (loadVersion !== sessionsLoadVersion) {
-            return;
-          }
-          const incomingRows = payload.sessions || [];
-          const preservedRows = collectPreservedAgentRows(mergedRows, agent.id, incomingRows);
-          mergedRows = mergeSessionRowsForAgent(mergedRows, agent.id, incomingRows, {
-            preserveMissingRows: preservedRows,
-          });
-          sessionRows.value = mergedRows;
-        } catch {
-          if (loadVersion !== sessionsLoadVersion) {
-            return;
-          }
-        }
-      }
-    };
-
-    await Promise.all(
-      Array.from({ length: Math.min(CHAT_SESSION_LOAD_CONCURRENCY, agents.length) }, () => worker()),
+    const immediateAgentCount = options.deferRemainingAgents
+      ? Math.min(CHAT_SESSION_BOOTSTRAP_AGENT_LIMIT, agents.length)
+      : agents.length;
+    const immediateAgents = agents.slice(0, immediateAgentCount);
+    const deferredAgents = agents.slice(immediateAgentCount);
+    mergedRows = await loadSessionRowsForAgents(
+      immediateAgents,
+      loadVersion,
+      mergedRows,
+      options.deferRemainingAgents ? CHAT_SESSION_BOOTSTRAP_FETCH_OPTIONS : {},
     );
+    if (loadVersion !== sessionsLoadVersion) {
+      return;
+    }
+    if (options.deferRemainingAgents && deferredAgents.length) {
+      scheduleDeferredSessionHydration(deferredAgents, loadVersion, mergedRows);
+      return;
+    }
   } finally {
-    if (loadVersion === sessionsLoadVersion) sessionsLoading.value = false;
+    if (loadVersion === sessionsLoadVersion && deferredSessionHydrationTimer == null) {
+      sessionsLoading.value = false;
+    }
   }
 }
 
 function applyHistoryPagePayload(payload: ChatHistoryPayload, mode: 'replace' | 'prepend' = 'replace'): void {
   const nextSession = applyDerivedAutoLabelToSessionRow(payload.session, payload.messages);
   ensureSessionRow(nextSession);
+  if (optimisticStartupSessionKey.value === nextSession.key) {
+    optimisticStartupSessionKey.value = '';
+  }
   historyPayload.value = {
     ...payload,
     session: nextSession,
@@ -2748,6 +2845,38 @@ function clearRunSettlementSyncTimer(): void {
     window.clearTimeout(runSettlementSyncTimer);
     runSettlementSyncTimer = null;
   }
+}
+
+function clearDeferredInitialHistoryLoad(): void {
+  if (deferredInitialHistoryLoadTimer != null) {
+    window.clearTimeout(deferredInitialHistoryLoadTimer);
+    deferredInitialHistoryLoadTimer = null;
+  }
+}
+
+function clearDeferredSessionHydration(): void {
+  if (deferredSessionHydrationTimer != null) {
+    window.clearTimeout(deferredSessionHydrationTimer);
+    deferredSessionHydrationTimer = null;
+  }
+}
+
+function abortReplaceHistoryRequest(): void {
+  if (historyReplaceRequestController) {
+    historyReplaceRequestController.abort();
+    historyReplaceRequestController = null;
+  }
+}
+
+function abortHistoryDatesRequest(): void {
+  if (historyDatesRequestController) {
+    historyDatesRequestController.abort();
+    historyDatesRequestController = null;
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && (error as { name?: string }).name === 'AbortError');
 }
 
 function isTerminalToolStatus(status: ChatToolCard['status'] | null | undefined): boolean {
@@ -2863,7 +2992,7 @@ function scheduleRunSettlementHistorySync(
     }
     try {
       const payload = await fetchChatHistoryPage(sessionKey, {
-        limit: 50,
+        limit: CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
         day: selectedHistoryDay.value,
       });
       if (selectedSessionKey.value !== sessionKey || historyMode.value !== 'history') {
@@ -2901,7 +3030,7 @@ function scheduleLiveHistorySync(sessionKey: string, delayMs = 140): void {
     }
     try {
       const payload = await fetchChatHistoryPage(sessionKey, {
-        limit: 50,
+        limit: CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
         day: selectedHistoryDay.value,
       });
       if (selectedSessionKey.value !== sessionKey || historyMode.value !== 'history') {
@@ -2912,20 +3041,62 @@ function scheduleLiveHistorySync(sessionKey: string, delayMs = 140): void {
   }, delayMs);
 }
 
-async function loadSessionDates(sessionKey: string): Promise<void> {
+function scheduleDeferredInitialConversationLoad(sessionKey: string): void {
+  clearDeferredInitialHistoryLoad();
+  deferredInitialHistoryLoadTimer = window.setTimeout(() => {
+    deferredInitialHistoryLoadTimer = null;
+    if (selectedSessionKey.value !== sessionKey) {
+      return;
+    }
+    void loadConversationWindowInitial(sessionKey, {
+      limit: CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
+    });
+  }, CHAT_HISTORY_DEFER_MS);
+}
+
+async function ensureSessionDatesLoaded(sessionKey: string, force = false): Promise<void> {
+  if (!sessionKey) {
+    return;
+  }
+  if (!force && historyDatesLoadedSessionKey.value === sessionKey) {
+    return;
+  }
+  abortHistoryDatesRequest();
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  historyDatesRequestController = controller;
+  historyDatesLoading.value = true;
   try {
-    const payload = await fetchChatHistoryDates(sessionKey);
+    const payload = await fetchChatHistoryDates(sessionKey, controller?.signal);
     if (sessionKey !== selectedSessionKey.value) {
       return;
     }
     historyDays.value = payload.days;
-  } catch {
-    historyDays.value = [];
+    historyDatesLoadedSessionKey.value = sessionKey;
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+    if (sessionKey === selectedSessionKey.value) {
+      historyDays.value = [];
+      historyDatesLoadedSessionKey.value = '';
+    }
+  } finally {
+    if (historyDatesRequestController === controller) {
+      historyDatesRequestController = null;
+      historyDatesLoading.value = false;
+    }
   }
 }
 
-async function loadConversationWindowInitial(sessionKey: string): Promise<void> {
+async function loadConversationWindowInitial(
+  sessionKey: string,
+  options: { limit?: number } = {},
+): Promise<void> {
   const loadVersion = ++historyLoadVersion;
+  clearDeferredInitialHistoryLoad();
+  abortReplaceHistoryRequest();
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  historyReplaceRequestController = controller;
   historyLoadingInitial.value = true;
   historyErrorMessage.value = '';
   try {
@@ -2933,14 +3104,16 @@ async function loadConversationWindowInitial(sessionKey: string): Promise<void> 
     const payload = historyMode.value === 'search' && searchQuery.value.trim()
       ? await searchChatHistory(sessionKey, {
         query: searchQuery.value.trim(),
-        limit: 50,
+        limit: options.limit ?? CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
+        signal: controller?.signal,
       }).then((result): ChatHistoryPayload => buildSearchHistoryPayload(
         result,
         historyPayload.value?.observability || createEmptyRuntimeObservability(),
       ))
       : await fetchChatHistoryPage(sessionKey, {
-        limit: 50,
+        limit: options.limit ?? CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
         day: selectedHistoryDay.value,
+        signal: controller?.signal,
       });
     if (loadVersion !== historyLoadVersion || sessionKey !== selectedSessionKey.value) {
       return;
@@ -2959,15 +3132,21 @@ async function loadConversationWindowInitial(sessionKey: string): Promise<void> 
     if (restoredRuntimeMachine && historyMode.value === 'history') {
       runtimeMachineState.value = restoredRuntimeMachine;
     }
-    await loadSessionDates(sessionKey);
   } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
     if (loadVersion !== historyLoadVersion || sessionKey !== selectedSessionKey.value) return;
     historyPayload.value = null;
     runtimeMachineState.value = resetChatSessionRuntimeMachine(sessionKey);
     historyPageInfo.value = { hasMoreBefore: false, beforeCursor: null, hasMoreAfter: false, afterCursor: null };
     historyDays.value = [];
+    historyDatesLoadedSessionKey.value = '';
     historyErrorMessage.value = error instanceof Error ? error.message : text('读取对话失败。', 'Failed to load conversation.');
   } finally {
+    if (historyReplaceRequestController === controller) {
+      historyReplaceRequestController = null;
+    }
     if (loadVersion === historyLoadVersion) historyLoadingInitial.value = false;
   }
 }
@@ -2978,13 +3157,18 @@ async function loadConversationWindowAnchor(
   day?: string | null,
 ): Promise<void> {
   const loadVersion = ++historyLoadVersion;
+  clearDeferredInitialHistoryLoad();
+  abortReplaceHistoryRequest();
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  historyReplaceRequestController = controller;
   historyLoadingInitial.value = true;
   historyErrorMessage.value = '';
   try {
     const payload = await fetchChatHistoryPage(sessionKey, {
       anchor: anchorMessageId,
-      limit: 50,
+      limit: CHAT_HISTORY_PAGE_LIMIT,
       day: day || null,
+      signal: controller?.signal,
     });
     if (loadVersion !== historyLoadVersion || sessionKey !== selectedSessionKey.value) {
       return;
@@ -3004,9 +3188,15 @@ async function loadConversationWindowAnchor(
     rememberLastChatAgentId(payload.session.agentId);
     persistHistorySnapshot(payload.session.key);
   } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
     if (loadVersion !== historyLoadVersion || sessionKey !== selectedSessionKey.value) return;
     historyErrorMessage.value = error instanceof Error ? error.message : text('跳转到指定位置失败。', 'Failed to jump to anchor.');
   } finally {
+    if (historyReplaceRequestController === controller) {
+      historyReplaceRequestController = null;
+    }
     if (loadVersion === historyLoadVersion) historyLoadingInitial.value = false;
   }
 }
@@ -3022,14 +3212,14 @@ async function loadMoreHistoryBefore(): Promise<void> {
       ? await searchChatHistory(sessionKey, {
         query: searchQuery.value.trim(),
         before: historyPageInfo.value.beforeCursor,
-        limit: 50,
+        limit: CHAT_HISTORY_PAGE_LIMIT,
       }).then((result): ChatHistoryPayload => buildSearchHistoryPayload(
         result,
         historyPayload.value?.observability || createEmptyRuntimeObservability(),
       ))
       : await fetchChatHistoryPage(sessionKey, {
         before: historyPageInfo.value.beforeCursor,
-        limit: 50,
+        limit: CHAT_HISTORY_PAGE_LIMIT,
         day: selectedHistoryDay.value,
       });
     if (sessionKey !== selectedSessionKey.value) {
@@ -3052,7 +3242,7 @@ async function loadMoreHistoryAfter(): Promise<void> {
   try {
     const payload = await fetchChatHistoryPage(sessionKey, {
       after: historyPageInfo.value.afterCursor,
-      limit: 50,
+      limit: CHAT_HISTORY_PAGE_LIMIT,
       day: selectedHistoryDay.value,
     });
     if (sessionKey !== selectedSessionKey.value) {
@@ -3086,19 +3276,30 @@ function applyHistoryPagePayloadAppend(payload: ChatHistoryPayload): void {
 async function jumpToLive(): Promise<void> {
   const sessionKey = selectedSessionKey.value;
   if (!sessionKey) return;
+  clearDeferredInitialHistoryLoad();
+  abortReplaceHistoryRequest();
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  historyReplaceRequestController = controller;
   selectedHistoryDay.value = null;
   searchQuery.value = '';
   historyMode.value = 'history';
   historyLoadingInitial.value = true;
   try {
     const payload = await fetchChatHistoryPage(sessionKey, {
-      limit: 50,
+      limit: CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
+      signal: controller?.signal,
     });
     if (sessionKey !== selectedSessionKey.value) return;
     applyHistoryPagePayload(payload, 'replace');
   } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
     setNotice('error', error instanceof Error ? error.message : text('跳转到最新失败。', 'Failed to jump to latest.'));
   } finally {
+    if (historyReplaceRequestController === controller) {
+      historyReplaceRequestController = null;
+    }
     historyLoadingInitial.value = false;
   }
 }
@@ -3109,7 +3310,11 @@ function toggleRecordBrowser(): void {
   if (!selectedSession.value) {
     return;
   }
-  recordBrowserOpen.value = !recordBrowserOpen.value;
+  const nextOpen = !recordBrowserOpen.value;
+  recordBrowserOpen.value = nextOpen;
+  if (nextOpen && !historyDatesLoading.value) {
+    void ensureSessionDatesLoaded(selectedSession.value.key);
+  }
 }
 
 function closeRecordBrowser(): void {
@@ -3197,6 +3402,9 @@ async function handleRecordBrowserDayJump(day: string): Promise<void> {
   if (!sessionKey) {
     return;
   }
+  if (!historyDatesLoadedSessionKey.value || historyDatesLoadedSessionKey.value !== sessionKey) {
+    await ensureSessionDatesLoaded(sessionKey);
+  }
   const bucket = historyDays.value.find((entry) => entry.day === day);
   if (!bucket) {
     setNotice('error', text('这一天没有可跳转的聊天记录。', 'No jump target was found for this day.'));
@@ -3252,8 +3460,17 @@ function applyDayFilter(day: string | null): void {
   if (bucket) {
     void loadConversationWindowAnchor(sessionKey, bucket.firstMessageId, day);
   } else {
-    // Fallback: just use day filter with initial load
-    void loadConversationWindowInitial(sessionKey);
+    void ensureSessionDatesLoaded(sessionKey).then(() => {
+      if (selectedSessionKey.value !== sessionKey || selectedHistoryDay.value !== day) {
+        return;
+      }
+      const refreshedBucket = historyDays.value.find((d) => d.day === day);
+      if (refreshedBucket) {
+        void loadConversationWindowAnchor(sessionKey, refreshedBucket.firstMessageId, day);
+        return;
+      }
+      void loadConversationWindowInitial(sessionKey);
+    });
   }
 }
 
@@ -3271,6 +3488,10 @@ function resolveFallbackSessionKey(): string {
     availableSessions: availableSessionsForCurrentMode(),
     storedSessionKey: readLastChatSessionKey(),
   });
+}
+
+function resolveBootstrapSessionKey(): string {
+  return routeSessionKey.value || readLastChatSessionKey() || '';
 }
 
 function selectSessionKeyLocally(nextKey: string): void {
@@ -4415,7 +4636,7 @@ function applyDeletedSessionsLocally(sessionKeys: string[]): void {
   sessionControlsBySession.value = Object.fromEntries(
     Object.entries(sessionControlsBySession.value).filter(([sessionKey]) => !deleted.has(sessionKey)),
   );
-  applyOrganizer(removeSessionsFromOrganizer(organizerState.value, sessionKeys));
+  applyOrganizer(removeSessionsFromOrganizer(organizerSourceState.value, sessionKeys));
 }
 
 async function deleteSessionKeys(sessionKeys: string[]): Promise<{ deletedKeys: string[]; failedKeys: string[] }> {
@@ -4712,8 +4933,18 @@ async function refreshAll(): Promise<void> {
   await loadSessions();
 }
 
+async function bootstrapChatSurface(): Promise<void> {
+  clearNotice();
+  errorMessage.value = '';
+  await loadAgents();
+  void loadSessions({ deferRemainingAgents: true });
+  void loadHealth();
+  void loadOrganizer();
+  void loadStudioChatGlobalExecConfig();
+}
+
 watch(
-  [routeSessionKey, () => props.shellMode, studioManagedSessions, observedSessions],
+  [routeSessionKey, () => props.shellMode, studioManagedSessions, observedSessions, sessionsLoading],
   async () => {
     const requested = routeSessionKey.value;
     const available = inspectPinned.value ? [...studioManagedSessions.value, ...observedSessions.value] : studioManagedSessions.value;
@@ -4721,20 +4952,44 @@ watch(
       if (!selectedSessionKey.value) {
         primeConversationStateFromSnapshot(requested);
       }
+      optimisticStartupSessionKey.value = requested;
       selectSessionKeyLocally(requested);
       return;
     }
+    if (!selectedSessionKey.value) {
+      const rememberedSessionKey = resolveBootstrapSessionKey();
+      if (rememberedSessionKey) {
+        optimisticStartupSessionKey.value = rememberedSessionKey;
+        primeConversationStateFromSnapshot(rememberedSessionKey);
+        selectSessionKeyLocally(rememberedSessionKey);
+        return;
+      }
+    }
     const fallback = resolveFallbackSessionKey();
+    const hasPendingOptimisticStartup = (
+      optimisticStartupSessionKey.value
+      && selectedSessionKey.value === optimisticStartupSessionKey.value
+      && sessionsLoading.value
+      && historyPayload.value?.session.key !== optimisticStartupSessionKey.value
+      && !available.some((session) => session.key === optimisticStartupSessionKey.value)
+    );
+    if (hasPendingOptimisticStartup) {
+      return;
+    }
     if (!selectedSessionKey.value || !available.some((session) => session.key === selectedSessionKey.value)) {
-      selectedSessionKey.value = fallback;
+      optimisticStartupSessionKey.value = '';
+      selectSessionKeyLocally(fallback);
     }
   },
   { immediate: true },
 );
 
 watch(selectedSessionKey, async (sessionKey, previousKey) => {
+  clearDeferredInitialHistoryLoad();
   clearLiveHistorySyncTimer();
   clearRunSettlementSyncTimer();
+  abortReplaceHistoryRequest();
+  abortHistoryDatesRequest();
   closeHostManagementExecConfirm();
   if (previousKey) {
     clearTerminalRunFence(previousKey);
@@ -4746,7 +5001,7 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
   if (!sessionKey) {
     const requestedSessionKey = routeSessionKey.value;
     if (requestedSessionKey) {
-      selectedSessionKey.value = requestedSessionKey;
+      selectSessionKeyLocally(requestedSessionKey);
       return;
     }
     clearConversationState();
@@ -4761,21 +5016,35 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
     selectedHistoryDay.value = null;
     historyMode.value = 'history';
     historyDays.value = [];
+    historyDatesLoadedSessionKey.value = '';
+    historyDatesLoading.value = false;
     recordBrowserSearchVersion += 1;
     resetRecordBrowserState();
     if (!hasPrimedConversationState) {
       runtimeMachineState.value = resetChatSessionRuntimeMachine(sessionKey);
     }
   }
-  if (!hasPrimedConversationState) {
-    primeConversationStateFromSnapshot(sessionKey);
+  const primedConversationState = hasPrimedConversationState || primeConversationStateFromSnapshot(sessionKey);
+  if (!primedConversationState && selectedSession.value) {
+    primeEmptyConversationShell(selectedSession.value, selectedSession.value.runtime);
   }
   if (sessionKey === previousKey && historyPayload.value?.session.key === sessionKey) return;
-  await Promise.all([
-    loadConversationWindowInitial(sessionKey),
-    loadSessionSurfaceState(sessionKey),
-  ]);
+  void loadSessionSurfaceState(sessionKey);
   connectChatSocket(sessionKey);
+  const shouldDeferInitialRootHistoryLoad = (
+    !previousKey
+    && !routeSessionKey.value
+    && props.shellMode === 'chat'
+    && historyMode.value === 'history'
+  );
+  if (shouldDeferInitialRootHistoryLoad) {
+    if (!primedConversationState) {
+      historyLoadingInitial.value = true;
+    }
+    scheduleDeferredInitialConversationLoad(sessionKey);
+    return;
+  }
+  void loadConversationWindowInitial(sessionKey);
 }, { immediate: true });
 
 watch(
@@ -4788,7 +5057,7 @@ watch(
 
 watch(sessionRows, () => {
   organizerState.value = pruneOrganizerStateSessionKeys(
-    organizerState.value,
+    organizerSourceState.value,
     sessionRows.value
       .filter((row) => row.kind === 'studio_managed')
       .map((row) => row.key),
@@ -4818,7 +5087,7 @@ onMounted(async () => {
     (window as Window & { __OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE?: () => void }).__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE = forceCloseChatSocketForTest;
     window.addEventListener('keydown', handleGlobalKeydown);
   }
-  await refreshAll();
+  await bootstrapChatSurface();
 });
 
 watch(showToolPreviews, (value) => {
@@ -4840,9 +5109,13 @@ watch(soundCuesEnabled, (value) => {
 });
 
 onBeforeUnmount(() => {
+  clearDeferredInitialHistoryLoad();
+  clearDeferredSessionHydration();
   clearLiveHistorySyncTimer();
   clearRunSettlementSyncTimer();
   clearNoticeTimer();
+  abortReplaceHistoryRequest();
+  abortHistoryDatesRequest();
   clearTerminalRunFence();
   clearWsReconnectTimer();
   if (typeof window !== 'undefined') {

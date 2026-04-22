@@ -230,6 +230,7 @@ export interface TerminalGatewayAttachPayload {
   sid?: string | null;
   lastSeq?: number | null;
   instanceId?: string | null;
+  skipReplay?: boolean | null;
   handoffContext?: TerminalHandoffContext | null;
 }
 

@@ -104,7 +104,7 @@ test('chat record browser state keeps the browser state isolated from the main t
 
 test('chat search API forwards role, content, and day filters for the record browser', () => {
   assert.match(chatApi, /searchChatHistory\(/);
-  const searchFunctionSource = chatApi.match(/export function searchChatHistory[\s\S]*?return requestChatJson<ChatHistorySearchPayload>\(`\$\{url\.pathname\}\$\{url\.search\}`\);\n\}/)?.[0] || '';
+  const searchFunctionSource = chatApi.match(/export function searchChatHistory[\s\S]*?\n\}/)?.[0] || '';
   assert.match(searchFunctionSource, /url\.searchParams\.set\('role'/);
   assert.match(searchFunctionSource, /url\.searchParams\.set\('content'/);
   assert.match(searchFunctionSource, /url\.searchParams\.set\('day'/);

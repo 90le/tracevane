@@ -57,7 +57,7 @@
         <button type="button" class="secondary-button compact-button" :disabled="!launchableCliIds.includes('claude')" @click="$emit('launchCli', 'claude')">Claude</button>
         <button type="button" class="secondary-button compact-button" :disabled="!launchableCliIds.includes('codex')" @click="$emit('launchCli', 'codex')">Codex</button>
         <button type="button" class="secondary-button compact-button" :disabled="!launchableCliIds.includes('opencode')" @click="$emit('launchCli', 'opencode')">OpenCode</button>
-        <button type="button" class="secondary-button compact-button" :disabled="!launchableCliIds.includes('bash')" @click="$emit('launchCli', 'bash')">Shell</button>
+        <button type="button" class="secondary-button compact-button" :disabled="!launchableCliIds.includes('bash')" @click="$emit('launchCli', 'bash')">{{ text('终端', 'Shell') }}</button>
       </div>
     </section>
 
@@ -181,6 +181,14 @@
     />
 
     <section v-else class="terminal-inspector-session-panel">
+      <TerminalSessionHistoryPanel
+        :busy="historyBusy"
+        :entries="historyEntries"
+        :replay-command="replayCommand"
+        :session-status="activeSessionStatus"
+        @replay-last-command="$emit('replayLastCommand', $event)"
+      />
+
       <TerminalSessionExplorer
         :open-sessions="openSessions"
         :recent-sessions="recentSessions"
@@ -212,8 +220,10 @@ import type {
 } from '../../../../../types/terminal';
 import { useLocalePreference } from '../../shared/locale';
 import TerminalActionPanel from './TerminalActionPanel.vue';
+import TerminalSessionHistoryPanel from './TerminalSessionHistoryPanel.vue';
 import TerminalSessionExplorer from './TerminalSessionExplorer.vue';
 import type { TerminalActionLayer } from './terminal-action-catalog';
+import type { TerminalSessionHistoryEntry } from './terminal-session-history';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
 
 type InspectorSectionKey = 'tools' | 'dependencies' | 'actions' | 'sessions';
@@ -230,6 +240,7 @@ defineEmits<{
   (e: 'selectSession', sessionId: string): void;
   (e: 'endSession', sessionId: string): void;
   (e: 'deleteSession', sessionId: string): void;
+  (e: 'replayLastCommand', command: string): void;
 }>();
 
 function resolveBinaryCategoryLabel(category: TerminalBinaryStatus['category']): string {
@@ -270,8 +281,12 @@ const props = defineProps<{
   recentSessions: TerminalSessionDescriptor[];
   endedSessions: TerminalSessionDescriptor[];
   activeSessionId: string | null;
+  activeSessionStatus: "running" | "detached" | "completed" | "failed" | "lost" | null;
   recentOutput: TerminalRecentOutputSummary | null;
   recentOutputLabel: string;
+  historyBusy: boolean;
+  historyEntries: TerminalSessionHistoryEntry[];
+  replayCommand: string | null;
 }>();
 
 const showExpandedSummary = computed(() => !props.compactMode || props.summaryExpanded);

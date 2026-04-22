@@ -70,6 +70,33 @@ export function registerChatRoutes(
       : fallback;
   }
 
+  function readBooleanQuery(
+    req: Parameters<StudioRouter["get"]>[1] extends (
+      req: infer R,
+      ...args: any[]
+    ) => any
+      ? R
+      : never,
+    key: string,
+    fallback: boolean,
+  ): boolean {
+    const url = new URL(
+      req.url || "/",
+      `http://${req.headers.host || "127.0.0.1"}`,
+    );
+    const raw = (url.searchParams.get(key) || "").trim().toLowerCase();
+    if (!raw) {
+      return fallback;
+    }
+    if (raw === "1" || raw === "true" || raw === "yes") {
+      return true;
+    }
+    if (raw === "0" || raw === "false" || raw === "no") {
+      return false;
+    }
+    return fallback;
+  }
+
   router.get("/api/chat/health", async (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, await routeCtx.services.chat.getHealth());
@@ -144,12 +171,16 @@ export function registerChatRoutes(
 
   router.get(
     "/api/chat/agents/:agentId/sessions",
-    async (_req, res, routeCtx, params) => {
+    async (req, res, routeCtx, params) => {
       try {
         sendJson(
           res,
           200,
-          await routeCtx.services.chat.listSessions(params.agentId),
+          await routeCtx.services.chat.listSessions(params.agentId, {
+            limit: readLimit(req, 200),
+            includeDerivedTitles: readBooleanQuery(req, "includeDerivedTitles", true),
+            includeLastMessage: readBooleanQuery(req, "includeLastMessage", true),
+          }),
         );
       } catch (error) {
         sendChatError(res, error);

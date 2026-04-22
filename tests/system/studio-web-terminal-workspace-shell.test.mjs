@@ -36,6 +36,22 @@ const terminalConsolePath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/TerminalConsolePage.vue",
 );
+const terminalTabRailPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/terminal/TerminalTabRail.vue",
+);
+const terminalSessionExplorerPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/terminal/TerminalSessionExplorer.vue",
+);
+const terminalActionPanelPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/terminal/TerminalActionPanel.vue",
+);
+const terminalSessionPanePath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/terminal/TerminalSessionPane.vue",
+);
 
 const terminalView = fs.readFileSync(terminalViewPath, "utf8");
 const workspacePage = fs.readFileSync(workspacePagePath, "utf8");
@@ -44,6 +60,20 @@ const inspectorContent = fs.readFileSync(inspectorContentPath, "utf8");
 const terminalService = fs.readFileSync(terminalServicePath, "utf8");
 const terminalRoutes = fs.readFileSync(terminalRoutesPath, "utf8");
 const terminalConsole = fs.readFileSync(terminalConsolePath, "utf8");
+const terminalTabRail = fs.readFileSync(terminalTabRailPath, "utf8");
+const terminalSessionExplorer = fs.readFileSync(terminalSessionExplorerPath, "utf8");
+const terminalActionPanel = fs.readFileSync(terminalActionPanelPath, "utf8");
+const terminalSessionPane = fs.readFileSync(terminalSessionPanePath, "utf8");
+const terminalHistoryPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/terminal/terminal-session-history.ts",
+);
+const terminalHistoryPanelPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/terminal/TerminalSessionHistoryPanel.vue",
+);
+const terminalHistory = fs.readFileSync(terminalHistoryPath, "utf8");
+const terminalHistoryPanel = fs.readFileSync(terminalHistoryPanelPath, "utf8");
 const terminalRouteSyncPath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/terminal-route-sync.ts",
@@ -85,6 +115,9 @@ test("terminal service wires descriptor and ledger persistence for session recov
     terminalService,
     /session\.handoffContext = payload\.handoffContext/,
   );
+  assert.match(terminalService, /markPersistedSessionLost/);
+  assert.match(terminalService, /reconcilePersistedDescriptor/);
+  assert.match(terminalService, /terminal_session_unavailable/);
 });
 
 test("terminal routes expose minimal recovery endpoints for persisted sessions", () => {
@@ -155,6 +188,84 @@ test("terminal workspace exposes shared inspector content and mobile bottom shee
   assert.match(workspacePage, /closeMobileInspectorIfCompact\(\)/);
   assert.match(inspectorContent, /terminal-inspector-switcher__button/);
   assert.match(inspectorContent, /terminal-summary-inline__chip/);
+});
+
+test("terminal workspace loads persisted ledger history and replay affordances", () => {
+  assert.match(workspacePage, /fetchPersistedTerminalSessionLedger/);
+  assert.match(workspacePage, /buildTerminalSessionHistory/);
+  assert.match(workspacePage, /sessionHistoryEntries/);
+  assert.match(workspacePage, /loadSessionHistory/);
+  assert.match(workspacePage, /handleReplayLastCommand/);
+  assert.match(inspectorContent, /<TerminalSessionHistoryPanel/);
+  assert.match(terminalHistoryPanel, /replayLastCommand/);
+  assert.match(terminalHistory, /buildTerminalSessionHistory/);
+});
+
+test("terminal console keeps replay cursor ephemeral so refreshed xterm replays backlog", () => {
+  assert.doesNotMatch(terminalConsole, /TERMINAL_RUNTIME_STORAGE_KEY/);
+  assert.match(terminalConsole, /Keep replay cursor state in-memory only/);
+  assert.match(terminalConsole, /fetchPersistedTerminalSessionLedger/);
+  assert.match(terminalConsole, /buildTerminalSessionReplayTranscript/);
+  assert.match(terminalConsole, /restorePersistedTranscriptIfNeeded/);
+  assert.match(terminalConsole, /skipReplay: skipReplay \|\| undefined/);
+  assert.match(terminalConsole, /params\.set\('skipReplay', '1'\)/);
+  assert.match(terminalConsole, /handleTerminalKeydown/);
+  assert.match(terminalConsole, /window\.addEventListener\('keydown', handleTerminalKeydown, true\)/);
+  assert.match(terminalConsole, /addEventListener\('focusin', handleTerminalFocusIn\)/);
+  assert.match(terminalConsole, /addEventListener\('focusout', handleTerminalFocusOut\)/);
+  assert.doesNotMatch(terminalConsole, /\.onFocus\(/);
+  assert.doesNotMatch(terminalConsole, /\.onBlur\(/);
+  assert.match(terminalConsole, /sendTerminalShortcut/);
+  assert.match(terminalConsole, /defineExpose\(\{\s*clearTerminal,\s*focusTerminal,\s*sendTerminalShortcut,/);
+  assert.match(
+    terminalConsole,
+    /function restoreRuntime\(\): void \{\s*terminalInstanceId = '';\s*lastOutputSeq = 0;\s*transcriptRestoreAttemptedSessionId = '';\s*\}/,
+  );
+  assert.match(terminalService, /function normalizeSkipReplay/);
+  assert.match(terminalService, /skipReplay\?: boolean \| string \| null;/);
+});
+
+test("embedded terminal console does not synthesize random session ids before the workspace resolves one", () => {
+  assert.match(
+    terminalConsole,
+    /if \(props\.embedded\) \{\s*return '';\s*\}/,
+  );
+  assert.match(terminalConsole, /const sid = getSessionId\(\);\s*if \(!sid\) return;/);
+  assert.match(
+    terminalConsole,
+    /if \(props\.embedded\) \{\s*terminalSessionId\.value = '';\s*clearRuntime\(\);\s*connected\.value = false;\s*return;\s*\}/,
+  );
+});
+
+test("terminal workspace waits for hydrate before mounting the stage console and keeps route-locked sessions active", () => {
+  assert.match(
+    workspacePage,
+    /<TerminalSessionPane\s+v-if="workspaceHydrated"/,
+  );
+  assert.match(workspacePage, /terminal-workspace-stage-loading/);
+  assert.match(workspacePage, /fetchPersistedTerminalSessionDescriptor/);
+  assert.match(workspacePage, /async function syncRouteLockedSession/);
+  assert.match(workspacePage, /workspace\.setActiveSession\(normalizedSessionId\)/);
+  assert.match(workspacePage, /watch\(\s*\(\) => \[workspaceHydrated\.value, route\.params\.sessionId\] as const,/);
+  assert.match(workspacePage, /if \(normalizedSessionId\) \{\s*await syncRouteLockedSession\(normalizedSessionId\);/);
+  assert.match(workspacePage, /const lockedRouteSessionId = String\(route\.params\.sessionId \|\| ''\)\.trim\(\);/);
+  assert.match(workspacePage, /if \(lockedRouteSessionId && lockedRouteSessionId !== sessionId\) \{\s*return;\s*\}/);
+  assert.match(workspacePage, /preserveRouteLockedActiveSession/);
+  assert.match(workspacePage, /lockedRouteSessionId !== sessionId/);
+  assert.match(workspacePage, /if \(!preserveRouteLockedActiveSession\) \{\s*workspace\.setActiveSession\(session\.sessionId\);/);
+});
+
+test("terminal workspace UI surfaces are locale-aware", () => {
+  assert.match(workspacePage, /useLocalePreference/);
+  assert.match(inspectorContent, /useLocalePreference/);
+  assert.match(terminalTabRail, /useLocalePreference/);
+  assert.match(terminalSessionExplorer, /useLocalePreference/);
+  assert.match(terminalActionPanel, /useLocalePreference/);
+  assert.match(terminalSessionPane, /useLocalePreference/);
+  assert.match(workspacePage, /text\('终端', 'Shell'\)/);
+  assert.match(inspectorContent, /text\('刷新状态', 'Refresh Status'\)/);
+  assert.match(terminalTabRail, /text\('更多', 'More'\)/);
+  assert.match(terminalSessionExplorer, /text\('运行中 \/ 已打开', 'Live \/ Open'\)/);
 });
 
 test("terminal workspace state exposes explicit session lifecycle actions", () => {
@@ -251,7 +362,16 @@ test("terminal session pane hosts integrated tab controls and lifecycle affordan
   assert.match(pane, /@delete=/);
   assert.match(pane, /endSession/);
   assert.match(pane, /deleteSession/);
-  assert.doesNotMatch(pane, /terminal-stage-header-actions/);
+  assert.match(pane, /terminal-stage-header-actions/);
+  assert.match(pane, /Ctrl\+C/);
+  assert.match(pane, /Ctrl\+L/);
+  assert.match(pane, /Focus/);
+  assert.match(pane, /Force End/);
+  assert.match(pane, /ref="consolePage"/);
+  assert.match(pane, /sendTerminalShortcut: \(key: string\) => boolean;/);
+  assert.match(pane, /function sendShortcut\(key: string\): void/);
+  assert.match(pane, /function clearTerminal\(\): void/);
+  assert.match(pane, /function endActiveSession\(\): void/);
   assert.doesNotMatch(pane, /terminal-session-actions/);
   assert.match(
     pane,
@@ -293,6 +413,12 @@ test("terminal workspace wires pane actions to session lifecycle handlers", () =
   assert.match(workspacePage, /renameTerminalSession/);
   assert.match(workspacePage, /deleteTerminalSession/);
   assert.match(workspacePage, /endTerminalSession/);
+  assert.match(workspacePage, /@select-session="handleSessionSelect"/);
+  assert.match(workspacePage, /@close-session="handleSessionClose"/);
+  assert.match(workspacePage, /async function handleSessionSelect\(sessionId: string\): Promise<void>/);
+  assert.match(workspacePage, /function handleSessionClose\(sessionId: string\): void/);
+  assert.match(workspacePage, /async function navigateToSession\(sessionId: string \| null \| undefined\): Promise<void>/);
+  assert.match(workspacePage, /await router\.push\(\{ path: targetPath \}\)/);
 });
 
 test("terminal console session attachment sync is surfaced from console to workspace state", () => {
@@ -321,10 +447,7 @@ test("terminal console session attachment sync is surfaced from console to works
   );
   assert.match(workspacePage, /workspace\.registerSession\(\{/);
   assert.match(workspacePage, /title: preservedTitle \|\| session\.title/);
-  assert.match(
-    workspacePage,
-    /workspace\.setActiveSession\(session\.sessionId\)/,
-  );
+  assert.match(workspacePage, /workspace\.setActiveSession\(session\.sessionId\)/);
 });
 
 test("terminal workspace maps inspector action triggers to real terminal commands", () => {

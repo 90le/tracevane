@@ -224,7 +224,22 @@ export function createTerminalWorkspaceState(
       return;
     }
 
-    activeSessionId.value = tabOrder.value[tabOrder.value.length - 1] || null;
+    const preferredSession = Object.values(registry.sessionsById)
+      .filter(
+        (session) =>
+          session.canResume || Boolean(session.recentOutputSummary?.tailText),
+      )
+      .sort(sortTerminalSessionsByUpdatedAtDesc)[0]
+      || Object.values(registry.sessionsById)
+        .sort(sortTerminalSessionsByUpdatedAtDesc)[0]
+      || null;
+
+    if (preferredSession?.sessionId) {
+      ensureTab(preferredSession.sessionId);
+      activeSessionId.value = preferredSession.sessionId;
+    } else {
+      activeSessionId.value = null;
+    }
     persistSessions();
   }
 

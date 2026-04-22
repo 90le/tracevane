@@ -7,6 +7,7 @@ import type http from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { StudioServerConfig } from "../../../../types/api.js";
+import { isRecoverableTerminalStatus } from "../../../../types/terminal.js";
 import type { SkillsService } from "../skills/service.js";
 import { buildTerminalActionCatalog } from "./action-catalog.js";
 import { buildTerminalSessionSummary } from "./session-summary.js";
@@ -240,6 +241,12 @@ function normalizeOutputSeq(value: string | number | null | undefined): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return 0;
   return Math.floor(parsed);
+}
+
+function normalizeSkipReplay(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 function createOptionalPty(): PtyModule | null {
@@ -641,10 +648,12 @@ export function createTerminalService(
     params: {
       lastSeq?: string | number | null;
       instanceId?: string | null;
+      skipReplay?: boolean | string | null;
     },
   ): TerminalGatewayEvent[] {
     const lastSeq = normalizeOutputSeq(params.lastSeq);
     const instanceId = String(params.instanceId || "").trim();
+    const skipReplay = normalizeSkipReplay(params.skipReplay);
     const requiresReset =
       lastSeq > session.outputSeq ||
       (instanceId && instanceId !== session.instanceId);
@@ -666,10 +675,12 @@ export function createTerminalService(
       });
     }
 
-    const replayAfterSeq = requiresReset ? 0 : lastSeq;
-    for (const chunk of session.backlog) {
-      if (chunk.seq <= replayAfterSeq) continue;
-      events.push(buildOutputEvent(session, chunk));
+    if (!skipReplay) {
+      const replayAfterSeq = requiresReset ? 0 : lastSeq;
+      for (const chunk of session.backlog) {
+        if (chunk.seq <= replayAfterSeq) continue;
+        events.push(buildOutputEvent(session, chunk));
+      }
     }
     return events;
   }
@@ -854,12 +865,66 @@ export function createTerminalService(
     return session;
   }
 
+  function markPersistedSessionLost(
+    sessionId: string,
+    reason = "runtime_unavailable",
+  ): TerminalSessionDescriptor | null {
+    const persisted = descriptorStore.get(sessionId);
+    if (!persisted) return null;
+    if (!isRecoverableTerminalStatus(persisted.status)) {
+      return persisted;
+    }
+
+    const nextUpdatedAt = new Date().toISOString();
+    ledger.append({
+      eventId: crypto.randomUUID(),
+      sessionId,
+      type: "ended",
+      timestamp: nextUpdatedAt,
+      actorClientId: null,
+      detail: { reason },
+    });
+    const recentOutputSummary = buildTerminalRecentOutputSummary(
+      ledger.listBySession(sessionId),
+    );
+    const nextDescriptor: TerminalSessionDescriptor = {
+      ...persisted,
+      status: "lost",
+      canResume: false,
+      recentOutputSummary,
+      updatedAt: nextUpdatedAt,
+    };
+    descriptorStore.upsert(nextDescriptor);
+    return nextDescriptor;
+  }
+
+  function reconcilePersistedDescriptor(
+    descriptor: TerminalSessionDescriptor | null,
+  ): TerminalSessionDescriptor | null {
+    if (!descriptor) return null;
+    if (!isRecoverableTerminalStatus(descriptor.status)) {
+      return descriptor;
+    }
+    const runtimeSession = sessions.get(descriptor.sessionId);
+    if (runtimeSession && !runtimeSession.closed) {
+      return descriptor;
+    }
+    return markPersistedSessionLost(descriptor.sessionId) || descriptor;
+  }
+
   function getOrCreateSession(rawSessionId: string | null): TerminalSession {
     const sessionId = normalizeSessionId(rawSessionId);
     const existing = sessions.get(sessionId);
     if (existing && !existing.closed) {
       clearCleanupTimer(existing);
       return existing;
+    }
+    if (rawSessionId) {
+      const persisted = descriptorStore.get(sessionId);
+      if (persisted) {
+        reconcilePersistedDescriptor(persisted);
+        throw new Error("terminal_session_unavailable");
+      }
     }
     return createSession(sessionId);
   }
@@ -887,6 +952,7 @@ export function createTerminalService(
     const attachEvents = buildAttachEvents(session, {
       lastSeq: params.get("lastSeq"),
       instanceId: params.get("instanceId"),
+      skipReplay: params.get("skipReplay"),
     });
     for (const event of attachEvents) {
       if (!sendEvent(ws, event)) {
@@ -1476,14 +1542,19 @@ export function createTerminalService(
 
     async listPersistedSessions(): Promise<TerminalSessionSummaryResponse> {
       return {
-        sessions: descriptorStore.listRecent(),
+        sessions: descriptorStore
+          .listRecent()
+          .map((descriptor) => reconcilePersistedDescriptor(descriptor))
+          .filter((descriptor): descriptor is TerminalSessionDescriptor =>
+            Boolean(descriptor),
+          ),
       };
     },
 
     async getPersistedSession(
       sessionId: string,
     ): Promise<TerminalSessionDescriptor | null> {
-      return descriptorStore.get(sessionId);
+      return reconcilePersistedDescriptor(descriptorStore.get(sessionId));
     },
 
     async renamePersistedSession(
