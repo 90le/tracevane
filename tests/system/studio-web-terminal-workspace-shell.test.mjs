@@ -16,6 +16,10 @@ const workspacePagePath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/TerminalWorkspacePage.vue",
 );
+const inspectorContentPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/terminal/TerminalInspectorContent.vue",
+);
 const workspaceCssPath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/terminal-workspace.css",
@@ -36,6 +40,7 @@ const terminalConsolePath = path.join(
 const terminalView = fs.readFileSync(terminalViewPath, "utf8");
 const workspacePage = fs.readFileSync(workspacePagePath, "utf8");
 const workspaceCss = fs.readFileSync(workspaceCssPath, "utf8");
+const inspectorContent = fs.readFileSync(inspectorContentPath, "utf8");
 const terminalService = fs.readFileSync(terminalServicePath, "utf8");
 const terminalRoutes = fs.readFileSync(terminalRoutesPath, "utf8");
 const terminalConsole = fs.readFileSync(terminalConsolePath, "utf8");
@@ -99,10 +104,10 @@ test("terminal session pane does not render recent output disclosure above termi
 
   assert.doesNotMatch(pane, /terminal-session-output-disclosure/);
   assert.doesNotMatch(pane, /recentOutputSummaryLabel/);
-  assert.match(workspacePage, /terminal-inspector-recent-output/);
+  assert.match(inspectorContent, /terminal-inspector-recent-output/);
   assert.match(workspacePage, /activeSessionRecentOutputLabel/);
-  assert.match(workspacePage, /activeSessionRecentOutput\.tailText/);
-  assert.match(workspacePage, /activeSessionRecentOutput\.lastError/);
+  assert.match(inspectorContent, /recentOutput\.tailText/);
+  assert.match(inspectorContent, /recentOutput\.lastError/);
   assert.match(terminalConsole, /handoffContext: readRouteHandoffContext\(\)/);
 });
 
@@ -111,10 +116,10 @@ test("terminal workspace page composes integrated shell sections and binds state
   assert.equal(fs.existsSync(workspaceCssPath), true);
 
   assert.match(workspacePage, /<section class="terminal-workspace-shell"/);
-  assert.doesNotMatch(workspacePage, /<TerminalSessionExplorer/);
   assert.match(workspacePage, /<TerminalSessionPane/);
   assert.match(workspacePage, /<TerminalInspectorDrawer/);
-  assert.match(workspacePage, /<TerminalActionPanel/);
+  assert.match(workspacePage, /<TerminalInspectorContent/);
+  assert.match(inspectorContent, /<TerminalSessionExplorer/);
   assert.doesNotMatch(workspacePage, /<TerminalTabRail/);
   assert.doesNotMatch(workspacePage, /<TerminalRecentSessionRail/);
 
@@ -140,6 +145,16 @@ test("terminal workspace page composes integrated shell sections and binds state
   assert.doesNotMatch(workspacePage, /fetchTerminalSessions\(/);
 
   assert.match(workspaceCss, /\.terminal-workspace-shell\s*\{/);
+});
+
+test("terminal workspace exposes shared inspector content and mobile bottom sheet trigger", () => {
+  assert.match(workspacePage, /<TerminalInspectorContent/);
+  assert.match(workspacePage, /terminal-mobile-inspector-trigger/);
+  assert.match(workspacePage, /<DialogRoot v-if="compactInspectorMode" v-model:open="mobileInspectorOpen">/);
+  assert.match(workspacePage, /terminal-mobile-sheet/);
+  assert.match(workspacePage, /closeMobileInspectorIfCompact\(\)/);
+  assert.match(inspectorContent, /terminal-inspector-switcher__button/);
+  assert.match(inspectorContent, /terminal-summary-inline__chip/);
 });
 
 test("terminal workspace state exposes explicit session lifecycle actions", () => {
@@ -219,6 +234,7 @@ test("terminal tab strip exposes inline rename edit controls and session actions
   assert.match(tabRail, /delete/);
   assert.match(tabRail, /terminal-tab-end/);
   assert.match(tabRail, /terminal-tab-delete/);
+  assert.match(tabRail, /terminal-tab-overflow/);
 });
 
 test("terminal session pane hosts integrated tab controls and lifecycle affordances", () => {
@@ -303,7 +319,8 @@ test("terminal console session attachment sync is surfaced from console to works
     workspacePage,
     /function handleSessionAttached\(session: TerminalSessionDescriptor\): void/,
   );
-  assert.match(workspacePage, /workspace\.registerSession\(session\)/);
+  assert.match(workspacePage, /workspace\.registerSession\(\{/);
+  assert.match(workspacePage, /title: preservedTitle \|\| session\.title/);
   assert.match(
     workspacePage,
     /workspace\.setActiveSession\(session\.sessionId\)/,
@@ -311,35 +328,34 @@ test("terminal console session attachment sync is surfaced from console to works
 });
 
 test("terminal workspace maps inspector action triggers to real terminal commands", () => {
-  assert.match(workspacePage, /TERMINAL_ACTION_COMMANDS/);
-  assert.match(workspacePage, /['"]health-check['"]:\s*['"]/);
-  assert.match(workspacePage, /['"]collect-diagnostics['"]:\s*['"]/);
-  assert.match(workspacePage, /['"]gateway-logs['"]:\s*['"]/);
-  assert.match(workspacePage, /['"]env-check['"]:\s*['"]/);
+  assert.match(workspacePage, /function findActionItem\(actionKey: string\): TerminalActionItem \| null/);
   assert.match(
     workspacePage,
-    /function handleActionTrigger\(actionKey: string\): void/,
+    /async function handleActionTrigger\(actionKey: string\): Promise<void>/,
   );
-  assert.match(workspacePage, /workspace\.setQueuedCommand\(/);
-  assert.match(workspacePage, /createSession\(\)/);
+  assert.match(workspacePage, /openCommandSession\(\{/);
+  assert.match(workspacePage, /item\.recommendedTitle \|\| item\.labelZh/);
+  assert.match(workspacePage, /workspace\.setQueuedCommand\(sessionId, ensureCommandLineBreak\(options\.command\)\)/);
 });
 
 test("terminal workspace restores richer cli and skills inspector with command-injection install UX", () => {
-  assert.match(workspacePage, /terminal-inspector-tooling/);
-  assert.match(workspacePage, /terminal-inspector-tooling-summary/);
-  assert.match(workspacePage, /terminal-inspector-tooling-grid/);
-  assert.match(workspacePage, /launchCli\('claude'\)/);
-  assert.match(workspacePage, /launchCli\('bash'\)/);
-  assert.match(workspacePage, /canLaunch\('claude'\)/);
+  assert.match(inspectorContent, /terminal-inspector-summary-card/);
+  assert.match(inspectorContent, /terminal-inspector-switcher/);
+  assert.match(inspectorContent, /terminal-inspector-tooling/);
+  assert.match(inspectorContent, /terminal-binary-grid/);
+  assert.match(inspectorContent, /terminal-missing-deps/);
+  assert.match(inspectorContent, /\$emit\('launchCli', 'claude'\)/);
+  assert.match(inspectorContent, /\$emit\('launchCli', 'bash'\)/);
+  assert.match(workspacePage, /launchableCliIds/);
   assert.match(workspacePage, /getInstallCommand\(/);
   assert.match(workspacePage, /queueInstallCommand\(/);
-  assert.match(workspacePage, /workspace\.setQueuedCommand\(/);
+  assert.match(workspacePage, /openCommandSession\(\{/);
   assert.match(workspacePage, /fetchTerminalStatus\(/);
   assert.match(workspacePage, /terminalStatus\.value\?\.binaries/);
   assert.match(workspacePage, /terminalStatus\.value\?\.installTargets/);
-  assert.match(workspacePage, /terminal-inspector-tooling-detection/);
-  assert.match(workspacePage, /terminal-install-feedback/);
-  assert.match(workspacePage, /已发送安装命令到当前终端/);
+  assert.doesNotMatch(workspacePage, /terminal-inspector-tooling-detection/);
+  assert.match(inspectorContent, /terminal-install-feedback/);
+  assert.match(workspacePage, /已在新标签注入/);
   assert.match(workspacePage, /refreshStatusLater\(/);
   assert.doesNotMatch(workspacePage, /streamTerminalInstall\(/);
   assert.doesNotMatch(workspacePage, /installTerminalCli\(/);

@@ -39,3 +39,4 @@ release/
 *.tar.gz
 *.zip
 .gstack/
+.omx/

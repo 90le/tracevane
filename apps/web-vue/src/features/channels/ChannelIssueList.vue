@@ -5,10 +5,20 @@
         <p class="eyebrow">{{ text('ATTENTION', 'ATTENTION') }}</p>
         <h3>{{ text('待处理问题', 'Needs attention') }}</h3>
       </div>
-      <strong>{{ issues.length }}</strong>
+      <div class="channel-issue-list__controls">
+        <button
+          v-if="canToggle"
+          type="button"
+          class="secondary-button compact-button"
+          @click="showAllIssues = !showAllIssues"
+        >
+          {{ showAllIssues ? text('收起', 'Show less') : text('查看全部', 'Show all') }}
+        </button>
+        <strong>{{ issues.length }}</strong>
+      </div>
     </header>
 
-    <article v-for="issue in issues" :key="issue.id" class="channel-issue-list__item">
+    <article v-for="issue in visibleIssues" :key="issue.id" class="channel-issue-list__item">
       <div>
         <strong>{{ issue.title }}</strong>
         <p>{{ issue.description }}</p>
@@ -26,6 +36,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue';
 import type { ChannelIssue } from './channel-ui';
 import { useLocalePreference } from '../../shared/locale';
 
@@ -35,11 +46,23 @@ defineEmits<{
   (event: 'activate-issue', issue: ChannelIssue): void;
 }>();
 
-defineProps<{
+const props = defineProps<{
   issues: ChannelIssue[];
 }>();
 
 const { text } = useLocalePreference();
+const showAllIssues = ref(false);
+const canToggle = computed(() => props.issues.length > 4);
+const visibleIssues = computed(() => {
+  return showAllIssues.value ? props.issues : props.issues.slice(0, 4);
+});
+
+watch(
+  () => props.issues.map((issue) => issue.id).join('|'),
+  () => {
+    showAllIssues.value = false;
+  },
+);
 </script>
 
 <style scoped>
@@ -53,6 +76,14 @@ const { text } = useLocalePreference();
   justify-content: space-between;
   gap: 12px;
   align-items: flex-end;
+}
+
+.channel-issue-list__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .channel-issue-list__head h3 {
@@ -90,6 +121,14 @@ const { text } = useLocalePreference();
 }
 
 @media (max-width: 920px) {
+  .channel-issue-list__head {
+    align-items: flex-start;
+  }
+
+  .channel-issue-list__controls {
+    justify-content: flex-start;
+  }
+
   .channel-issue-list__item {
     flex-direction: column;
     align-items: flex-start;

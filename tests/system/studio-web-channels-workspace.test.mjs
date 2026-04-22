@@ -39,6 +39,14 @@ test("channels workspace keeps a persistent stage header with top tabs and accou
   assert.match(channelsWorkspaceLayout, /channels-subtabs/);
   assert.match(channelsWorkspaceLayout, /openAccountStageTab/);
   assert.match(channelsWorkspaceLayout, /channels-stage-actions/);
+  assert.match(channelsWorkspaceLayout, /mobileRailCollapsed/);
+  assert.match(channelsWorkspaceLayout, /showMobileRailToggle/);
+  assert.match(channelsWorkspaceLayout, /showProviderRailBody/);
+  assert.match(channelsWorkspaceLayout, /toggleMobileRail/);
+  assert.match(channelsWorkspaceLayout, /channels-sidebar-current/);
+  assert.match(channelsWorkspaceLayout, /channels-sidebar-body/);
+  assert.match(channelsWorkspaceLayout, /showProviderRailBody \? text\('收起列表', 'Hide providers'\) : text\('切换频道', 'Switch provider'\)/);
+  assert.match(channelsWorkspaceLayout, /workspace\.createChannelExpanded\.value = false/);
   assert.match(channelsWorkspaceLayout, /Binding rules|绑定规则/);
   assert.match(channelsWorkspaceLayout, /Provider settings|Provider 设置/);
   assert.match(channelsWorkspaceLayout, /Default account access|默认账号权限/);

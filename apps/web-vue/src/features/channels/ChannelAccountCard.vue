@@ -23,8 +23,27 @@
       <span v-if="account.connectionMode">{{ account.connectionMode }}</span>
     </div>
 
-    <footer class="channel-account-card__actions">
-      <button type="button" class="ghost-action ghost-action-primary" @click="$emit('edit')">{{ text('账号详情', 'Account') }}</button>
+    <footer class="channel-account-card__footer">
+      <div class="channel-account-card__action-row">
+        <button type="button" class="ghost-action ghost-action-primary channel-account-card__primary-action" @click="$emit('edit')">
+          {{ text('账号详情', 'Account') }}
+        </button>
+
+        <div class="channel-account-card__manage-actions">
+          <button type="button" class="ghost-action ghost-action-danger" :disabled="busy" @click="$emit('toggle-enabled')">
+            {{ busy ? text('处理中...', 'Working...') : account.enabled ? text('禁用', 'Disable') : text('启用', 'Enable') }}
+          </button>
+          <button
+            v-if="account.kind !== 'default'"
+            type="button"
+            class="ghost-action ghost-action-delete"
+            :disabled="busy"
+            @click="$emit('delete')"
+          >
+            {{ text('删除', 'Delete') }}
+          </button>
+        </div>
+      </div>
 
       <section class="channel-account-card__task-group" :aria-label="text('配置任务', 'Configuration tasks')">
         <span class="channel-account-card__task-label">{{ text('配置任务', 'Tasks') }}</span>
@@ -35,21 +54,6 @@
           <button type="button" class="ghost-action" @click="$emit('bindings')">{{ text(`绑定 ${bindingCount}`, `Bindings ${bindingCount}`) }}</button>
         </div>
       </section>
-
-      <div class="channel-account-card__manage-actions">
-        <button type="button" class="ghost-action ghost-action-danger" :disabled="busy" @click="$emit('toggle-enabled')">
-          {{ busy ? text('处理中...', 'Working...') : account.enabled ? text('禁用', 'Disable') : text('启用', 'Enable') }}
-        </button>
-        <button
-          v-if="account.kind !== 'default'"
-          type="button"
-          class="ghost-action ghost-action-delete"
-          :disabled="busy"
-          @click="$emit('delete')"
-        >
-          {{ text('删除', 'Delete') }}
-        </button>
-      </div>
     </footer>
   </article>
 </template>
@@ -118,17 +122,28 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
 }
 
 .channel-account-card__facts,
-.channel-account-card__tags,
-.channel-account-card__actions {
+.channel-account-card__tags {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.channel-account-card__actions {
+.channel-account-card__footer {
   display: grid;
-  grid-template-columns: minmax(180px, 0.75fr) minmax(0, 1.45fr) auto;
-  align-items: stretch;
+  gap: 10px;
+}
+
+.channel-account-card__action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.channel-account-card__primary-action {
+  flex: 1 1 200px;
+  min-width: 0;
 }
 
 .channel-account-card__task-group {
@@ -151,13 +166,14 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
 
 .channel-account-card__task-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 6px;
 }
 
 .channel-account-card__manage-actions {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 }
 
@@ -216,19 +232,18 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
   border-color: color-mix(in srgb, #ef4444 28%, var(--line));
 }
 
-@media (max-width: 1100px) {
-  .channel-account-card__actions {
-    grid-template-columns: 1fr;
+@media (max-width: 720px) {
+  .channel-account-card__action-row {
+    align-items: stretch;
   }
 
   .channel-account-card__manage-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    justify-content: flex-start;
   }
-}
 
-@media (max-width: 560px) {
-  .channel-account-card__task-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .channel-account-card__manage-actions .ghost-action {
+    flex: 1 1 140px;
   }
 }
 </style>

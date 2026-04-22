@@ -1,14 +1,13 @@
 <template>
   <section class="terminal-workspace-shell" data-testid="terminal-workspace-shell">
-    <div class="terminal-workspace-body">
+    <div class="terminal-workspace-body" :class="{ 'terminal-workspace-body--stage-only': compactInspectorMode }">
       <section class="terminal-workspace-stage">
         <TerminalSessionPane
           :tabs="workspace.tabs.value"
           :active-session-id="workspace.activeSessionId.value"
           :active-session="workspace.sessions.value[workspace.activeSessionId.value || ''] || null"
-          :header-controls="headerControls"
           :queued-command="workspace.queuedCommand.value"
-          @consume-queued-command="workspace.consumeQueuedCommand"
+          @consume-queued-command="workspace.consumeQueuedCommand($event)"
           @select-session="workspace.setActiveSession"
           @close-session="workspace.closeTab"
           @create-session="createSession"
@@ -19,109 +18,149 @@
         />
       </section>
 
-      <TerminalInspectorDrawer class="terminal-inspector-drawer" :open="true">
+      <TerminalInspectorDrawer v-if="!compactInspectorMode" class="terminal-inspector-drawer" :open="true">
         <div class="terminal-inspector-rail-scroll">
-          <section class="terminal-inspector-tooling">
-            <h3>Agent CLI / Skills</h3>
-
-            <div class="terminal-inspector-tooling-summary">
-              <span>会话：{{ workspace.activeSessionId.value || '未激活' }}</span>
-              <span>终端实例：{{ terminalStatus?.sessionCount ?? 0 }}</span>
-              <span>缺失依赖：{{ terminalStatus?.skills?.missingBinaryCount ?? 0 }}</span>
-            </div>
-
-            <div class="terminal-inspector-tooling-actions">
-              <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('claude')" @click="launchCli('claude')">Claude</button>
-              <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('codex')" @click="launchCli('codex')">Codex</button>
-              <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('opencode')" @click="launchCli('opencode')">OpenCode</button>
-              <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('bash')" @click="launchCli('bash')">Shell</button>
-              <button type="button" class="secondary-button compact-button" :disabled="inspectorBusy" @click="refreshInspectorStatus">刷新状态</button>
-            </div>
-
-            <ul v-if="terminalStatus?.binaries?.length" class="terminal-tooling-status-list terminal-inspector-tooling-grid">
-              <li
-                v-for="binary in terminalStatus.binaries"
-                :key="binary.id"
-                class="terminal-tooling-status-item"
-              >
-                <div class="terminal-tooling-status-main">
-                  <strong>{{ binary.label }}</strong>
-                  <span class="terminal-tooling-status-chip" :data-installed="binary.installed ? 'true' : 'false'">
-                    {{ binary.installed ? '已安装' : '未安装' }}
-                  </span>
-                </div>
-                <div class="terminal-tooling-status-meta">
-                  <span v-if="binary.path">路径：{{ binary.path }}</span>
-                  <span v-else>命令：{{ binary.binary }}</span>
-                  <span v-if="binary.version">版本：{{ binary.version }}</span>
-                  <span v-if="binary.packageName">包：{{ binary.packageName }}</span>
-                </div>
-                <div class="terminal-tooling-status-actions">
-                  <button
-                    v-if="binary.id !== 'bash'"
-                    type="button"
-                    class="secondary-button compact-button"
-                    :disabled="!canQueueBinaryCommand(binary.id)"
-                    @click="queueBinaryCommand(binary.id)"
-                  >
-                    打开
-                  </button>
-                  <button
-                    v-if="shouldShowInstall(binary.id)"
-                    type="button"
-                    class="secondary-button compact-button"
-                    :disabled="!canInstall(binary.id)"
-                    @click="queueInstallCommand(binary.id)"
-                  >
-                    安装（注入终端）
-                  </button>
-                </div>
-              </li>
-            </ul>
-
-            <div class="terminal-inspector-tooling-detection">
-              <div>ClawHub：{{ terminalStatus?.skills?.marketplaceCli?.clawhubInstalled ? '已安装' : '未安装' }}</div>
-              <div>SkillHub：{{ terminalStatus?.skills?.marketplaceCli?.skillhubInstalled ? '已安装' : '未安装' }}</div>
-            </div>
-
-            <div v-if="activeSessionRecentOutput" class="terminal-inspector-recent-output">
-              <strong>{{ activeSessionRecentOutputLabel }}</strong>
-              <pre>{{ activeSessionRecentOutput.tailText }}</pre>
-              <div v-if="activeSessionRecentOutput.lastError">最近错误：{{ activeSessionRecentOutput.lastError }}</div>
-              <div v-if="activeSessionRecentOutput.lastCommandHint">最近命令：{{ activeSessionRecentOutput.lastCommandHint }}</div>
-              <div v-if="activeSessionRecentOutput.exitSummary">退出摘要：{{ activeSessionRecentOutput.exitSummary }}</div>
-            </div>
-
-            <div v-if="installFeedback.message || installFeedback.logs.length" class="terminal-install-feedback" :data-kind="installFeedback.kind">
-              <strong>{{ installFeedback.message }}</strong>
-              <pre v-if="installFeedback.logs.length">{{ installFeedback.logs.join('\n') }}</pre>
-            </div>
-          </section>
-          <TerminalActionPanel :action-layers="actionLayers" @trigger="handleActionTrigger" />
+          <TerminalInspectorContent
+            :compact-mode="compactInspectorMode"
+            :summary-expanded="inspectorSummaryExpanded"
+            :inspector-busy="inspectorBusy"
+            :active-session-title="activeSessionTitle"
+            :session-count="terminalStatus?.sessionCount ?? 0"
+            :missing-binary-count="terminalStatus?.skills?.missingBinaryCount ?? 0"
+            :needs-setup-count="terminalStatus?.skills?.needsSetupCount ?? 0"
+            :blocked-count="terminalStatus?.skills?.blockedCount ?? 0"
+            :runtime-model-label="runtimeModelLabel"
+            :launchable-cli-ids="launchableCliIds"
+            :inspector-sections="inspectorSections"
+            :inspector-section="inspectorSection"
+            :visible-binaries="visibleBinaries"
+            :openable-binary-ids="openableBinaryIds"
+            :installable-binary-ids="installableBinaryIds"
+            :missing-dependency-rows="missingDependencyRows"
+            :install-feedback="installFeedback"
+            :action-layers="actionLayers"
+            :open-sessions="workspace.openSessions.value"
+            :recent-sessions="workspace.recentSessions.value"
+            :ended-sessions="workspace.endedSessions.value"
+            :active-session-id="workspace.activeSessionId.value"
+            :recent-output="activeSessionRecentOutput"
+            :recent-output-label="activeSessionRecentOutputLabel"
+            @toggle-summary="toggleInspectorSummary"
+            @refresh="refreshInspectorStatus"
+            @select-section="inspectorSection = $event"
+            @launch-cli="handleLaunchCli"
+            @open-binary="handleOpenBinary"
+            @install-binary="handleInstallBinary"
+            @trigger-action="handleInspectorActionTrigger"
+            @select-session="handleInspectorSessionSelect"
+            @end-session="handleInspectorSessionEnd"
+            @delete-session="handleInspectorSessionDelete"
+          />
         </div>
       </TerminalInspectorDrawer>
     </div>
+
+    <button
+      v-if="compactInspectorMode && !mobileInspectorOpen"
+      type="button"
+      class="terminal-mobile-inspector-trigger"
+      @click="mobileInspectorOpen = true"
+    >
+      <span>{{ text('终端面板', 'Terminal Panel') }}</span>
+      <strong>{{ activeInspectorSummary }}</strong>
+    </button>
+
+    <DialogRoot v-if="compactInspectorMode" v-model:open="mobileInspectorOpen">
+      <DialogPortal>
+        <DialogOverlay class="terminal-mobile-sheet-mask" />
+        <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
+          <section v-if="mobileInspectorOpen" class="terminal-mobile-sheet">
+            <header class="terminal-mobile-sheet__head">
+              <div class="terminal-mobile-sheet__copy">
+                <DialogTitle as-child>
+                  <strong>{{ text('终端面板', 'Terminal Panel') }}</strong>
+                </DialogTitle>
+                <DialogDescription as-child>
+                  <span>{{ text('把工具、依赖、动作和会话收进底部面板，优先给终端留出可视空间。', 'Move tools, dependencies, actions, and sessions into a bottom sheet so the terminal keeps more visible space.') }}</span>
+                </DialogDescription>
+              </div>
+              <button
+                type="button"
+                class="terminal-mobile-sheet__close"
+                :aria-label="text('关闭终端面板', 'Close terminal panel')"
+                @click="mobileInspectorOpen = false"
+              >
+                ×
+              </button>
+            </header>
+
+            <div class="terminal-mobile-sheet__body">
+              <TerminalInspectorContent
+                :compact-mode="compactInspectorMode"
+                :summary-expanded="inspectorSummaryExpanded"
+                :inspector-busy="inspectorBusy"
+                :active-session-title="activeSessionTitle"
+                :session-count="terminalStatus?.sessionCount ?? 0"
+                :missing-binary-count="terminalStatus?.skills?.missingBinaryCount ?? 0"
+                :needs-setup-count="terminalStatus?.skills?.needsSetupCount ?? 0"
+                :blocked-count="terminalStatus?.skills?.blockedCount ?? 0"
+                :runtime-model-label="runtimeModelLabel"
+                :launchable-cli-ids="launchableCliIds"
+                :inspector-sections="inspectorSections"
+                :inspector-section="inspectorSection"
+                :visible-binaries="visibleBinaries"
+                :openable-binary-ids="openableBinaryIds"
+                :installable-binary-ids="installableBinaryIds"
+                :missing-dependency-rows="missingDependencyRows"
+                :install-feedback="installFeedback"
+                :action-layers="actionLayers"
+                :open-sessions="workspace.openSessions.value"
+                :recent-sessions="workspace.recentSessions.value"
+                :ended-sessions="workspace.endedSessions.value"
+                :active-session-id="workspace.activeSessionId.value"
+                :recent-output="activeSessionRecentOutput"
+                :recent-output-label="activeSessionRecentOutputLabel"
+                @toggle-summary="toggleInspectorSummary"
+                @refresh="refreshInspectorStatus"
+                @select-section="inspectorSection = $event"
+                @launch-cli="handleLaunchCli"
+                @open-binary="handleOpenBinary"
+                @install-binary="handleInstallBinary"
+                @trigger-action="handleInspectorActionTrigger"
+                @select-session="handleInspectorSessionSelect"
+                @end-session="handleInspectorSessionEnd"
+                @delete-session="handleInspectorSessionDelete"
+              />
+            </div>
+          </section>
+        </DialogContent>
+      </DialogPortal>
+    </DialogRoot>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { useRoute, useRouter } from 'vue-router';
 import type {
   TerminalBinaryId,
   TerminalLaunchCli,
   TerminalRecentOutputSummary,
 } from '../../../../../types/terminal';
+import { useLocalePreference } from '../../shared/locale';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
-import type { TerminalActionLayer } from './terminal-action-catalog';
-import TerminalActionPanel from './TerminalActionPanel.vue';
+import type { TerminalActionItem, TerminalActionLayer } from './terminal-action-catalog';
+import TerminalInspectorContent from './TerminalInspectorContent.vue';
 import TerminalInspectorDrawer from './TerminalInspectorDrawer.vue';
 import TerminalSessionPane from './TerminalSessionPane.vue';
+import { buildTerminalSessionDisplayTitle } from './terminal-session-selectors';
 import {
   deleteTerminalSession,
   endTerminalSession,
   fetchPersistedTerminalSessions,
   fetchTerminalActions,
+  fetchTerminalLaunch,
   fetchTerminalStatus,
   renameTerminalSession,
 } from './api';
@@ -130,23 +169,24 @@ import { bindTerminalRouteSync } from './terminal-route-sync';
 import { createTerminalWorkspaceState } from './terminal-workspace-state';
 import './terminal-workspace.css';
 
+type InspectorSectionKey = 'tools' | 'dependencies' | 'actions' | 'sessions';
+
 const route = useRoute();
 const router = useRouter();
+const { text } = useLocalePreference();
 
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
-
-const TERMINAL_ACTION_COMMANDS: Record<string, string> = {
-  'health-check': 'studio health-check',
-  'collect-diagnostics': 'studio diagnostics collect',
-  'gateway-logs': 'npm run dev:api',
-  'env-check': 'node scripts/start-standalone-api.mjs --help',
-};
 
 const workspace = createTerminalWorkspaceState();
 const localActionLayers = buildTerminalActionLayers();
 const actionLayers = ref<TerminalActionLayer[]>(localActionLayers);
 const terminalStatus = ref<Awaited<ReturnType<typeof fetchTerminalStatus>> | null>(null);
 const inspectorBusy = ref(false);
+const inspectorSection = ref<InspectorSectionKey>('tools');
+const compactInspectorMode = ref(false);
+const inspectorSummaryExpanded = ref(true);
+const mobileInspectorOpen = ref(false);
+const workspaceHydrated = ref(false);
 const installFeedback = ref<{
   kind: 'info' | 'success' | 'error';
   message: string;
@@ -156,8 +196,22 @@ const installFeedback = ref<{
   message: '',
   logs: [],
 });
+let resolveWorkspaceReady: (() => void) | null = null;
+const workspaceReady = new Promise<void>((resolve) => {
+  resolveWorkspaceReady = resolve;
+});
 
 const activeSession = computed(() => workspace.sessions.value[workspace.activeSessionId.value || ''] || null);
+const activeSessionTitle = computed(() => {
+  if (!activeSession.value) {
+    return text('未激活', 'Inactive');
+  }
+  const displayTitle = buildTerminalSessionDisplayTitle({
+    title: activeSession.value.title,
+    sessionId: activeSession.value.sessionId,
+  });
+  return text(displayTitle.labelZh, displayTitle.labelEn);
+});
 const activeSessionRecentOutput = computed<TerminalRecentOutputSummary | null>(() => {
   const summary = activeSession.value?.recentOutputSummary;
   if (!summary?.tailText) return null;
@@ -165,15 +219,89 @@ const activeSessionRecentOutput = computed<TerminalRecentOutputSummary | null>((
 });
 const activeSessionRecentOutputLabel = computed(() => {
   if (!activeSessionRecentOutput.value) return '';
-  if (activeSession.value?.status === 'completed') return '最近输出（已完成）';
-  if (activeSession.value?.status === 'failed') return '最近输出（失败）';
-  return '最近输出';
+  if (activeSession.value?.status === 'completed') return text('最近输出（已完成）', 'Recent Output (Completed)');
+  if (activeSession.value?.status === 'failed') return text('最近输出（失败）', 'Recent Output (Failed)');
+  return text('最近输出', 'Recent Output');
+});
+const runtimeModelLabel = computed(() => {
+  const provider = String(terminalStatus.value?.config?.provider || '').trim();
+  const model = String(terminalStatus.value?.config?.model || '').trim();
+  if (provider && model) return `${provider} / ${model}`;
+  return model || text('未配置', 'Not configured');
+});
+const visibleBinaries = computed(() =>
+  (terminalStatus.value?.binaries || []).filter((binary) => binary.id !== 'bash'),
+);
+const missingDependencyRows = computed(() => {
+  const binaries = terminalStatus.value?.binaries || [];
+  const installTargets = terminalStatus.value?.installTargets || [];
+  return (terminalStatus.value?.skills?.missingBinaries || []).map((item) => {
+    const matchedBinary = binaries.find((binary) => binary.binary === item.binary || binary.id === item.binary);
+    const binaryId = matchedBinary?.id || null;
+    return {
+      binary: item.binary,
+      label: matchedBinary?.label || item.binary,
+      binaryId,
+      skills: [...item.skills].sort((left, right) => left.localeCompare(right)),
+    };
+  });
+});
+const inspectorSections = computed(() => [
+  {
+    key: 'tools' as const,
+    label: text('工具', 'Tools'),
+    count: visibleBinaries.value.length,
+  },
+  {
+    key: 'dependencies' as const,
+    label: text('依赖', 'Deps'),
+    count: missingDependencyRows.value.length,
+  },
+  {
+    key: 'actions' as const,
+    label: text('动作', 'Actions'),
+    count: actionLayers.value.reduce((total, layer) => total + layer.items.length, 0),
+  },
+  {
+    key: 'sessions' as const,
+    label: text('会话', 'Sessions'),
+    count:
+      workspace.openSessions.value.length +
+      workspace.recentSessions.value.length +
+      workspace.endedSessions.value.length,
+  },
+]);
+const showExpandedInspectorSummary = computed(
+  () => !compactInspectorMode.value || inspectorSummaryExpanded.value,
+);
+const launchableCliIds = computed<TerminalLaunchCli[]>(() =>
+  (['claude', 'codex', 'opencode', 'bash'] as TerminalLaunchCli[]).filter((cli) => canLaunch(cli)),
+);
+const openableBinaryIds = computed<TerminalBinaryId[]>(() =>
+  (visibleBinaries.value || [])
+    .filter((binary) => canQueueBinaryCommand(binary.id))
+    .map((binary) => binary.id),
+);
+const installableBinaryIds = computed<TerminalBinaryId[]>(() =>
+  (visibleBinaries.value || [])
+    .filter((binary) => shouldShowInstall(binary.id))
+    .map((binary) => binary.id),
+);
+const activeInspectorSummary = computed(() => {
+  const current = inspectorSections.value.find((item) => item.key === inspectorSection.value);
+  if (!current) return '';
+  return `${current.label} ${current.count}`;
 });
 
-const headerControls = computed(() => ({
-  canLaunch,
-  launchCli,
-}));
+function syncCompactInspectorMode(): void {
+  const nextCompactMode =
+    typeof window !== 'undefined' && window.innerWidth <= 720;
+  compactInspectorMode.value = nextCompactMode;
+  if (!nextCompactMode) {
+    inspectorSummaryExpanded.value = true;
+    mobileInspectorOpen.value = false;
+  }
+}
 
 bindTerminalRouteSync({
   activeSessionId: workspace.activeSessionId,
@@ -200,7 +328,20 @@ function refreshStatusLater(delayMs = 1800): void {
   }, delayMs);
 }
 
+function toggleInspectorSummary(): void {
+  inspectorSummaryExpanded.value = !inspectorSummaryExpanded.value;
+}
+
+function closeMobileInspectorIfCompact(): void {
+  if (compactInspectorMode.value) {
+    mobileInspectorOpen.value = false;
+  }
+}
+
 onMounted(async () => {
+  syncCompactInspectorMode();
+  window.addEventListener('resize', syncCompactInspectorMode);
+
   const normalizedSessionId = String(route.params.sessionId || '').trim();
   if (normalizedSessionId && typeof globalThis.sessionStorage?.setItem === 'function') {
     globalThis.sessionStorage.setItem(TERMINAL_SESSION_STORAGE_KEY, normalizedSessionId);
@@ -211,6 +352,10 @@ onMounted(async () => {
     workspace.hydrateSessions(summary.sessions || []);
   } catch {
     // keep route/local workspace as-is when persisted descriptors are unavailable
+  } finally {
+    workspaceHydrated.value = true;
+    resolveWorkspaceReady?.();
+    resolveWorkspaceReady = null;
   }
 
   await refreshInspectorStatus();
@@ -222,11 +367,17 @@ onMounted(async () => {
         key: group.key,
         titleZh: group.titleZh,
         titleEn: group.titleEn,
+        descriptionZh: group.descriptionZh,
+        descriptionEn: group.descriptionEn,
         items: group.items.map((item) => ({
           key: item.key,
           labelZh: item.labelZh,
           labelEn: item.labelEn,
+          descriptionZh: item.descriptionZh,
+          descriptionEn: item.descriptionEn,
           command: item.command,
+          recommendedTitle: item.recommendedTitle,
+          runMode: item.runMode,
         })),
       }));
     }
@@ -235,51 +386,118 @@ onMounted(async () => {
   }
 });
 
-function createSession(): void {
-  const sessionId = globalThis.crypto?.randomUUID?.() || `term-${Date.now().toString(36)}`;
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncCompactInspectorMode);
+});
+
+function buildSessionId(): string {
+  return globalThis.crypto?.randomUUID?.() || `term-${Date.now().toString(36)}`;
+}
+
+function buildUntitledSessionTitle(): string {
+  const baseTitle = text('终端', 'Shell');
+  const nextIndex = workspace.tabs.value.filter((session) => session.title.startsWith(baseTitle)).length + 1;
+  if (nextIndex <= 1) {
+    return baseTitle;
+  }
+  return `${baseTitle} ${nextIndex}`;
+}
+
+async function ensureWorkspaceReady(): Promise<void> {
+  if (workspaceHydrated.value) return;
+  await workspaceReady;
+}
+
+function ensureCommandLineBreak(command: string): string {
+  const normalized = String(command || '');
+  if (!normalized) return '';
+  return normalized.endsWith('\n') ? normalized : `${normalized}\n`;
+}
+
+async function openCommandSession(options: {
+  title: string;
+  command?: string;
+  source?: TerminalSessionDescriptor['source'];
+}): Promise<string> {
+  await ensureWorkspaceReady();
+  const sessionId = buildSessionId();
   workspace.registerSession({
     sessionId,
-    title: '新终端会话',
+    title: String(options.title || text('终端', 'Shell')).trim() || text('终端', 'Shell'),
     status: 'running',
-    source: 'manual',
+    source: options.source || 'manual',
     canResume: true,
     controlState: 'controller',
     updatedAt: new Date().toISOString(),
   });
   workspace.setActiveSession(sessionId);
+  if (options.command) {
+    workspace.setQueuedCommand(sessionId, ensureCommandLineBreak(options.command));
+  }
+  return sessionId;
+}
+
+async function createSession(): Promise<string> {
+  return openCommandSession({
+    title: buildUntitledSessionTitle(),
+    source: 'manual',
+  });
 }
 
 function handleSessionAttached(session: TerminalSessionDescriptor): void {
   const sessionId = String(session?.sessionId || '').trim();
   if (!sessionId) return;
 
-  workspace.registerSession(session);
+  const existing = workspace.sessions.value[sessionId] || null;
+  const preservedTitle =
+    existing?.title && existing.title !== sessionId
+      ? existing.title
+      : session.title;
+
+  workspace.registerSession({
+    ...session,
+    title: preservedTitle || session.title,
+  });
   workspace.setActiveSession(session.sessionId);
+
+  if (
+    preservedTitle &&
+    preservedTitle !== session.title &&
+    preservedTitle !== sessionId
+  ) {
+    void renameTerminalSession(sessionId, preservedTitle).catch(() => {
+      // ignore descriptor sync failures
+    });
+  }
 }
 
-function resolveActionCommand(actionKey: string): string {
+function findActionItem(actionKey: string): TerminalActionItem | null {
   const normalizedKey = String(actionKey || '').trim();
-  if (!normalizedKey) return '';
+  if (!normalizedKey) return null;
 
   for (const layer of actionLayers.value) {
     const item = layer.items.find((candidate) => candidate.key === normalizedKey);
-    if (item?.command) return item.command;
+    if (item) return item;
   }
 
-  return TERMINAL_ACTION_COMMANDS[normalizedKey] || '';
+  return null;
 }
 
-function ensureActiveSession(): void {
-  if (!workspace.activeSessionId.value) {
-    createSession();
-  }
+function resolveBinaryLabel(binaryId: TerminalBinaryId): string {
+  const binary = terminalStatus.value?.binaries?.find((item) => item.id === binaryId);
+  return binary?.label || binaryId;
 }
 
-function handleActionTrigger(actionKey: string): void {
-  const command = resolveActionCommand(actionKey);
-  if (!command) return;
-  ensureActiveSession();
-  workspace.setQueuedCommand(`${command}\n`);
+async function handleActionTrigger(actionKey: string): Promise<void> {
+  const item = findActionItem(actionKey);
+  if (!item?.command) return;
+
+  await openCommandSession({
+    title: text(item.recommendedTitle || item.labelZh, item.labelEn),
+    command: item.command,
+    source: 'manual',
+  });
+  closeMobileInspectorIfCompact();
 }
 
 function canLaunch(cli: TerminalLaunchCli): boolean {
@@ -288,15 +506,31 @@ function canLaunch(cli: TerminalLaunchCli): boolean {
   return Boolean(binary?.installed);
 }
 
-function launchCli(cli: TerminalLaunchCli): void {
-  const commandByCli: Record<TerminalLaunchCli, string> = {
-    claude: 'claude',
-    codex: 'codex',
-    opencode: 'opencode',
-    bash: 'bash',
-  };
-  ensureActiveSession();
-  workspace.setQueuedCommand(`${commandByCli[cli]}\n`);
+async function launchCli(cli: TerminalLaunchCli): Promise<void> {
+  if (!canLaunch(cli)) return;
+
+  try {
+    const result = await fetchTerminalLaunch({ cli });
+    await openCommandSession({
+      title: result.label,
+      command: result.command,
+      source: 'manual',
+    });
+    closeMobileInspectorIfCompact();
+  } catch {
+    const fallbackCommands: Record<TerminalLaunchCli, string> = {
+      claude: 'claude',
+      codex: 'codex',
+      opencode: 'opencode',
+      bash: 'bash',
+    };
+    await openCommandSession({
+      title: cli === 'bash' ? 'Shell' : resolveBinaryLabel(cli),
+      command: fallbackCommands[cli],
+      source: 'manual',
+    });
+    closeMobileInspectorIfCompact();
+  }
 }
 
 const BINARY_COMMANDS: Partial<Record<TerminalBinaryId, string>> = {
@@ -310,30 +544,27 @@ const BINARY_COMMANDS: Partial<Record<TerminalBinaryId, string>> = {
 function canQueueBinaryCommand(binaryId: TerminalBinaryId): boolean {
   const command = BINARY_COMMANDS[binaryId];
   if (!command) return false;
-  if (binaryId === 'bash') return true;
   const binary = terminalStatus.value?.binaries?.find((item) => item.id === binaryId);
   return Boolean(binary?.installed);
 }
 
-function queueBinaryCommand(binaryId: TerminalBinaryId): void {
+async function queueBinaryCommand(binaryId: TerminalBinaryId): Promise<void> {
   const command = BINARY_COMMANDS[binaryId];
   if (!command || !canQueueBinaryCommand(binaryId)) {
     return;
   }
-  ensureActiveSession();
-  workspace.setQueuedCommand(`${command}\n`);
+  await openCommandSession({
+    title: resolveBinaryLabel(binaryId),
+    command,
+    source: 'manual',
+  });
+  closeMobileInspectorIfCompact();
 }
 
 function shouldShowInstall(binaryId: TerminalBinaryId): boolean {
   const binary = terminalStatus.value?.binaries?.find((item) => item.id === binaryId);
   if (!binary || binary.installed || !binary.installSupported) {
     return false;
-  }
-  if (binary.id === 'clawhub') {
-    return !Boolean(terminalStatus.value?.skills?.marketplaceCli?.clawhubInstalled);
-  }
-  if (binary.id === 'skillhub') {
-    return !Boolean(terminalStatus.value?.skills?.marketplaceCli?.skillhubInstalled);
   }
   return Boolean(terminalStatus.value?.installTargets?.some((target) => target.id === binaryId));
 }
@@ -347,18 +578,24 @@ function getInstallCommand(binaryId: TerminalBinaryId): string {
   return String(installTarget?.installHint || '').trim();
 }
 
-function queueInstallCommand(binaryId: TerminalBinaryId): void {
+async function queueInstallCommand(binaryId: TerminalBinaryId): Promise<void> {
   if (!canInstall(binaryId)) return;
   const installCommand = getInstallCommand(binaryId);
   if (!installCommand) return;
-  ensureActiveSession();
-  workspace.setQueuedCommand(`${installCommand}\n`);
+
+  const label = resolveBinaryLabel(binaryId);
+  await openCommandSession({
+    title: `${text('安装', 'Install')} ${label}`,
+    command: installCommand,
+    source: 'manual',
+  });
   installFeedback.value = {
     kind: 'info',
-    message: `已发送安装命令到当前终端：${binaryId}`,
+    message: text(`已在新标签注入 ${label} 的安装命令。`, `Injected the ${label} install command into a new tab.`),
     logs: [installCommand],
   };
   refreshStatusLater();
+  closeMobileInspectorIfCompact();
 }
 
 async function renameSession(payload: { sessionId: string; title: string }): Promise<void> {
@@ -401,4 +638,32 @@ async function deleteSession(sessionId: string): Promise<void> {
   workspace.deleteSession(normalized);
 }
 
+async function handleLaunchCli(cli: TerminalLaunchCli): Promise<void> {
+  await launchCli(cli);
+}
+
+async function handleOpenBinary(binaryId: TerminalBinaryId): Promise<void> {
+  await queueBinaryCommand(binaryId);
+}
+
+async function handleInstallBinary(binaryId: TerminalBinaryId): Promise<void> {
+  await queueInstallCommand(binaryId);
+}
+
+async function handleInspectorActionTrigger(actionKey: string): Promise<void> {
+  await handleActionTrigger(actionKey);
+}
+
+function handleInspectorSessionSelect(sessionId: string): void {
+  workspace.openTab(sessionId);
+  closeMobileInspectorIfCompact();
+}
+
+async function handleInspectorSessionEnd(sessionId: string): Promise<void> {
+  await endSession(sessionId);
+}
+
+async function handleInspectorSessionDelete(sessionId: string): Promise<void> {
+  await deleteSession(sessionId);
+}
 </script>

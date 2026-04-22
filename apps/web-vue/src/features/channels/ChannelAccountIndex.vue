@@ -143,7 +143,7 @@ const namedAccounts = computed(() => props.accounts.filter((account) => account.
 
 .channel-account-index__list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 12px;
 }
 

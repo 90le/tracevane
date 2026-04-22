@@ -47,3 +47,34 @@ test("buildTerminalSessionStatusSummary marks completed session as ended", () =>
   assert.equal(summary.tone, "muted");
   assert.equal(summary.labelZh, "已结束");
 });
+
+test("buildTerminalSessionStatusSummary marks failed sessions explicitly", () => {
+  const summary = selectors.buildTerminalSessionStatusSummary({
+    status: "failed",
+    controlState: "observer",
+    canResume: false,
+  });
+
+  assert.equal(summary.tone, "warning");
+  assert.equal(summary.labelZh, "失败");
+});
+
+test("buildTerminalSessionDisplayTitle localizes generated terminal titles", () => {
+  const summary = selectors.buildTerminalSessionDisplayTitle({
+    title: "Terminal test-session",
+    sessionId: "test-session",
+  });
+
+  assert.equal(summary.labelZh, "终端 test-session");
+  assert.equal(summary.labelEn, "Shell test-session");
+});
+
+test("buildTerminalSessionDisplayTitle falls back to a short shell label", () => {
+  const summary = selectors.buildTerminalSessionDisplayTitle({
+    title: "",
+    sessionId: "term-1",
+  });
+
+  assert.equal(summary.labelZh, "终端");
+  assert.equal(summary.labelEn, "Shell");
+});

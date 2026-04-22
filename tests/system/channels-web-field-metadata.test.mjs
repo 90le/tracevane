@@ -28,8 +28,11 @@ test('channel account detail page keeps grouped dynamic field rendering instead 
   assert.match(channelAccountDetailPage, /v-for="accountField in fieldGroup\.fields"/);
   assert.match(channelAccountDetailPage, /channels-account-detail-section/);
   assert.match(channelAccountDetailPage, /channels-account-schema-groups/);
+  assert.match(channelAccountDetailPage, /channels-account-schema-group/);
+  assert.match(channelAccountDetailPage, /isPrimaryAccountFieldGroup/);
   assert.match(channelAccountDetailPage, /accountFieldGroupLabel\(fieldGroup\.id\)/);
   assert.match(channelAccountDetailPage, /function accountFieldGroupLabel\(groupId: ChannelFieldGroupId \| ''\): string/);
+  assert.match(channelAccountDetailPage, /function isPrimaryAccountFieldGroup\(groupId: ChannelFieldGroupId \| ''\): boolean/);
   assert.match(channelAccountDetailPage, /field\.group \|\| ''/);
   assert.match(channelAccountDetailPage, /field\.semantic/);
   assert.match(channelAccountDetailPage, /accountFieldOptions\(field: ChannelFieldDescriptor\): GlassSelectOption\[\]/);

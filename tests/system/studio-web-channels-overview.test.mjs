@@ -17,11 +17,14 @@ const channelAccountIndex = read('apps/web-vue/src/features/channels/ChannelAcco
 const channelIssueList = read('apps/web-vue/src/features/channels/ChannelIssueList.vue');
 const channelSummaryStrip = read('apps/web-vue/src/features/channels/ChannelSummaryStrip.vue');
 const channelBindingsPage = read('apps/web-vue/src/features/channels/ChannelBindingsPage.vue');
+const channelBindingEditorPanel = read('apps/web-vue/src/features/channels/ChannelBindingEditorPanel.vue');
 
 test('channels workspace shell uses RouterView for the right-side workspace outlet', () => {
   assert.match(channelsWorkspaceLayout, /import\s+\{[^}]*RouterView[^}]*\}\s+from\s+'vue-router';/);
   assert.match(channelsWorkspaceLayout, /channels-stage/);
   assert.match(channelsWorkspaceLayout, /<RouterView\s*\/>/);
+  assert.match(channelsWorkspaceLayout, /showProviderRailBody/);
+  assert.match(channelsWorkspaceLayout, /toggleMobileRail/);
   assert.doesNotMatch(channelsWorkspaceLayout, /activeWorkspaceTab/);
 });
 
@@ -73,12 +76,15 @@ test('workspace layout owns quick overlays instead of pushing them into the over
 
 test('account cards are concise index cards instead of inline form editors', () => {
   assert.match(channelAccountCard, /channel-account-card/);
+  assert.match(channelAccountCard, /channel-account-card__footer/);
+  assert.match(channelAccountCard, /channel-account-card__action-row/);
   assert.match(channelAccountCard, /channel-account-card__task-group/);
   assert.match(channelAccountCard, /channel-account-card__manage-actions/);
   assert.match(channelAccountCard, /Credentials|凭据/);
   assert.match(channelAccountCard, /Access|权限/);
   assert.match(channelAccountCard, /Pairing|配对/);
   assert.doesNotMatch(channelAccountCard, /channel-account-card__secondary-actions/);
+  assert.doesNotMatch(channelAccountCard, /grid-template-columns:\s*minmax\(180px,\s*0\.75fr\)\s*minmax\(0,\s*1\.45fr\)\s*auto/);
   assert.doesNotMatch(channelAccountCard, /form-input/);
   assert.doesNotMatch(channelAccountCard, /form-textarea/);
 });
@@ -86,6 +92,11 @@ test('account cards are concise index cards instead of inline form editors', () 
 test('issue list routes operators to the relevant workflow instead of only opening account detail', () => {
   assert.match(channelIssueList, /activate-issue/);
   assert.match(channelIssueList, /issue\.actionLabel/);
+  assert.match(channelIssueList, /showAllIssues/);
+  assert.match(channelIssueList, /visibleIssues/);
+  assert.match(channelIssueList, /watch\(/);
+  assert.match(channelIssueList, /showAllIssues\.value = false/);
+  assert.match(channelIssueList, /查看全部|Show all/);
   assert.doesNotMatch(channelIssueList, /查看账号/);
 });
 
@@ -100,9 +111,13 @@ test('bindings page can preserve account context when opened from an account car
   assert.match(channelBindingsPage, /draft\.accountId = focusedAccountId/);
   assert.match(channelBindingsPage, /bindingTaskTitle/);
   assert.match(channelBindingsPage, /为账号 .* 新增绑定|Create binding for account/);
-  assert.match(channelBindingsPage, /channels-binding-editor/);
-  assert.match(channelBindingsPage, /channels-binding-editor-section/);
+  assert.match(channelBindingsPage, /isCreatingBinding/);
+  assert.match(channelBindingsPage, /binding-table-item/);
+  assert.match(channelBindingsPage, /binding-table-editor-row/);
   assert.match(channelBindingsPage, /editingBindingId === binding\.id/);
+  assert.match(channelBindingsPage, /ChannelBindingEditorPanel/);
+  assert.match(channelBindingEditorPanel, /channels-binding-editor/);
+  assert.match(channelBindingEditorPanel, /channels-binding-editor-section/);
 });
 
 test('bindings page keeps roles and acp fields round-trippable during edit/save', () => {
@@ -116,9 +131,9 @@ test('bindings page keeps roles and acp fields round-trippable during edit/save'
   assert.match(channelBindingsPage, /acpLabel:\s*draft\.type === 'acp' \? draft\.acpLabel \|\| null : null/);
   assert.match(channelBindingsPage, /acpCwd:\s*draft\.type === 'acp' \? draft\.acpCwd \|\| null : null/);
   assert.match(channelBindingsPage, /acpBackend:\s*draft\.type === 'acp' \? draft\.acpBackend \|\| null : null/);
-  assert.match(channelBindingsPage, /绑定角色|Binding roles/);
-  assert.match(channelBindingsPage, /ACP 模式|ACP mode/);
-  assert.match(channelBindingsPage, /ACP 标签|ACP label/);
-  assert.match(channelBindingsPage, /ACP 工作目录|ACP working directory/);
-  assert.match(channelBindingsPage, /ACP 后端|ACP backend/);
+  assert.match(channelBindingEditorPanel, /绑定角色|Binding roles/);
+  assert.match(channelBindingEditorPanel, /ACP 模式|ACP mode/);
+  assert.match(channelBindingEditorPanel, /ACP 标签|ACP label/);
+  assert.match(channelBindingEditorPanel, /ACP 工作目录|ACP working directory/);
+  assert.match(channelBindingEditorPanel, /ACP 后端|ACP backend/);
 });

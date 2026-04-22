@@ -36,67 +36,83 @@
               </p>
             </div>
 
-            <button type="button" class="secondary-button compact-button" @click="workspace.createChannelExpanded.value = !workspace.createChannelExpanded.value">
-              {{ workspace.createChannelExpanded.value ? text('收起', 'Hide') : text('新增频道', 'Add Provider') }}
-            </button>
+            <div class="channels-sidebar-toolbar">
+              <button
+                v-if="showMobileRailToggle"
+                type="button"
+                class="secondary-button compact-button"
+                @click="toggleMobileRail"
+              >
+                {{ showProviderRailBody ? text('收起列表', 'Hide providers') : text('切换频道', 'Switch provider') }}
+              </button>
+              <button type="button" class="secondary-button compact-button" @click="toggleCreateChannelPanel">
+                {{ workspace.createChannelExpanded.value ? text('收起', 'Hide') : text('新增频道', 'Add Provider') }}
+              </button>
+            </div>
           </div>
 
-          <div v-if="workspace.createChannelExpanded.value" class="channels-create-panel">
-            <div class="form-field">
-              <label class="form-label">{{ text('渠道类型', 'Provider Type') }}</label>
-              <GlassSelect
-                v-model="workspace.createChannelDraft.type"
-                :options="workspace.availableCreateTypeOptions.value"
-                :placeholder="text('请选择渠道类型', 'Select provider type')"
-              />
+          <p v-if="showMobileRailToggle" class="channels-sidebar-current">
+            {{ text(`当前频道 ${currentProviderLabel}`, `Current ${currentProviderLabel}`) }}
+          </p>
+
+          <div v-if="showProviderRailBody" class="channels-sidebar-body">
+            <div v-if="workspace.createChannelExpanded.value" class="channels-create-panel">
+              <div class="form-field">
+                <label class="form-label">{{ text('渠道类型', 'Provider Type') }}</label>
+                <GlassSelect
+                  v-model="workspace.createChannelDraft.type"
+                  :options="workspace.availableCreateTypeOptions.value"
+                  :placeholder="text('请选择渠道类型', 'Select provider type')"
+                />
+              </div>
+
+              <label class="toggle-card">
+                <input v-model="workspace.createChannelDraft.enabled" class="form-checkbox" type="checkbox" />
+                <div>
+                  <strong>{{ text('创建后立即启用', 'Enable after create') }}</strong>
+                  <span>{{ text('这里仍保留轻量创建入口，但不会自动展开完整编辑器。', 'This keeps lightweight provider creation in the rail without opening a full editor immediately.') }}</span>
+                </div>
+              </label>
+
+              <button
+                type="button"
+                class="primary-button compact-button"
+                :disabled="!workspace.createChannelDraft.type || workspace.busyKey.value === 'create-channel'"
+                @click="workspace.submitCreateChannel()"
+              >
+                {{ workspace.busyKey.value === 'create-channel' ? text('创建中...', 'Creating...') : text('创建频道', 'Create Provider') }}
+              </button>
             </div>
 
-            <label class="toggle-card">
-              <input v-model="workspace.createChannelDraft.enabled" class="form-checkbox" type="checkbox" />
-              <div>
-                <strong>{{ text('创建后立即启用', 'Enable after create') }}</strong>
-                <span>{{ text('这里仍保留轻量创建入口，但不会自动展开完整编辑器。', 'This keeps lightweight provider creation in the rail without opening a full editor immediately.') }}</span>
-              </div>
-            </label>
-
-            <button
-              type="button"
-              class="primary-button compact-button"
-              :disabled="!workspace.createChannelDraft.type || workspace.busyKey.value === 'create-channel'"
-              @click="workspace.submitCreateChannel()"
-            >
-              {{ workspace.busyKey.value === 'create-channel' ? text('创建中...', 'Creating...') : text('创建频道', 'Create Provider') }}
-            </button>
-          </div>
-
-          <div v-if="workspace.summary.value?.channels.length" class="channel-rail-list">
-            <button
-              v-for="channel in workspace.summary.value.channels"
-              :key="channel.type"
-              type="button"
-              class="channel-rail-item"
-              :class="{ active: channel.type === workspace.selectedChannelType.value }"
-              @click="workspace.selectChannel(channel.type)"
-            >
-              <div class="channel-rail-head">
-                <span class="channel-rail-icon" aria-hidden="true">{{ workspace.channelIcon(channel.type) }}</span>
-                <div>
-                  <strong>{{ workspace.channelLabel(channel.type) }}</strong>
-                  <p>{{ channel.type }}</p>
+            <div v-if="workspace.summary.value?.channels.length" class="channel-rail-list">
+              <button
+                v-for="channel in workspace.summary.value.channels"
+                :key="channel.type"
+                type="button"
+                class="channel-rail-item"
+                :class="{ active: channel.type === workspace.selectedChannelType.value }"
+                @click="workspace.selectChannel(channel.type)"
+              >
+                <div class="channel-rail-head">
+                  <span class="channel-rail-icon" aria-hidden="true">{{ workspace.channelIcon(channel.type) }}</span>
+                  <div>
+                    <strong>{{ workspace.channelLabel(channel.type) }}</strong>
+                    <p>{{ channel.type }}</p>
+                  </div>
                 </div>
-              </div>
 
-              <div class="channel-rail-meta">
-                <span>{{ text('账号', 'Accounts') }} {{ channel.accountCount }}</span>
-                <span>{{ text('绑定', 'Bindings') }} {{ channel.bindingCount }}</span>
-              </div>
+                <div class="channel-rail-meta">
+                  <span>{{ text('账号', 'Accounts') }} {{ channel.accountCount }}</span>
+                  <span>{{ text('绑定', 'Bindings') }} {{ channel.bindingCount }}</span>
+                </div>
 
-              <StatusPill :label="channel.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled')" :tone="channel.enabled ? 'sage' : 'neutral'" />
-            </button>
-          </div>
+                <StatusPill :label="channel.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled')" :tone="channel.enabled ? 'sage' : 'neutral'" />
+              </button>
+            </div>
 
-          <div v-else-if="!workspace.loading.value" class="empty-inline">
-            {{ text('当前还没有任何频道入口。先创建一个 provider。', 'No providers exist yet. Create one to get started.') }}
+            <div v-else-if="!workspace.loading.value" class="empty-inline">
+              {{ text('当前还没有任何频道入口。先创建一个 provider。', 'No providers exist yet. Create one to get started.') }}
+            </div>
           </div>
         </article>
       </aside>
@@ -218,7 +234,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { ChannelAccountInput } from '../../../../../types/channels';
 import StatusPill from '../../components/StatusPill.vue';
@@ -249,6 +265,8 @@ const workspace = provideChannelsWorkspace();
 const route = useRoute();
 const router = useRouter();
 const { text } = useLocalePreference();
+const isMobileChannelsViewport = ref(false);
+const mobileRailCollapsed = ref(false);
 
 const activeOverlay = computed(() => {
   const value = route.query.overlay;
@@ -309,6 +327,18 @@ const selectedAccountKindLabel = computed(() => {
   return selectedAccount.value.kind === 'default'
     ? text('当前是默认账号', 'This is the default account')
     : text('当前是命名账号', 'This is a named account');
+});
+
+const currentProviderLabel = computed(() => {
+  return workspace.selectedChannel.value ? workspace.channelLabel(workspace.selectedChannel.value.type) : '';
+});
+
+const showMobileRailToggle = computed(() => {
+  return isMobileChannelsViewport.value && Boolean(workspace.selectedChannel.value);
+});
+
+const showProviderRailBody = computed(() => {
+  return !showMobileRailToggle.value || !mobileRailCollapsed.value || workspace.createChannelExpanded.value;
 });
 
 const accountCreateSeed = computed<ChannelAccountInput | null>(() => {
@@ -398,6 +428,37 @@ function openPrimaryPairing(): void {
   void router.push(`${accountBasePath(channel.type, primaryActionAccountId.value)}/pairing`);
 }
 
+function syncResponsiveRailState(): void {
+  if (typeof window === 'undefined') return;
+  const nextIsMobile = window.innerWidth <= 920;
+  isMobileChannelsViewport.value = nextIsMobile;
+  if (!nextIsMobile) {
+    mobileRailCollapsed.value = false;
+    return;
+  }
+  mobileRailCollapsed.value = Boolean(workspace.selectedChannel.value) && !workspace.createChannelExpanded.value;
+}
+
+function toggleMobileRail(): void {
+  if (!showMobileRailToggle.value) return;
+  if (showProviderRailBody.value) {
+    workspace.createChannelExpanded.value = false;
+    mobileRailCollapsed.value = true;
+    return;
+  }
+  mobileRailCollapsed.value = false;
+}
+
+function toggleCreateChannelPanel(): void {
+  const nextExpanded = !workspace.createChannelExpanded.value;
+  workspace.createChannelExpanded.value = nextExpanded;
+  if (nextExpanded) {
+    mobileRailCollapsed.value = false;
+  } else {
+    syncResponsiveRailState();
+  }
+}
+
 watch(
   () => [activeOverlay.value, overlayAccount.value?.id, workspace.selectedChannel.value?.type] as const,
   async ([overlay, accountId, channelType]) => {
@@ -419,6 +480,27 @@ watch(
   },
   { immediate: true },
 );
+
+watch(
+  () => [workspace.selectedChannel.value?.type, workspace.createChannelExpanded.value] as const,
+  () => {
+    syncResponsiveRailState();
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  syncResponsiveRailState();
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', syncResponsiveRailState);
+  }
+});
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', syncResponsiveRailState);
+  }
+});
 
 async function createAccountQuickly(payload: ChannelAccountInput): Promise<void> {
   if (!workspace.selectedChannel.value || !workspace.selectedCatalog.value) return;

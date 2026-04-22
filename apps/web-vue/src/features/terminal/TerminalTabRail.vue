@@ -1,7 +1,7 @@
 <template>
   <nav class="terminal-tab-rail" aria-label="Terminal sessions">
     <div
-      v-for="tab in tabs"
+      v-for="tab in visibleTabs"
       :key="tab.sessionId"
       class="terminal-tab"
       :class="{ active: tab.sessionId === activeSessionId }"
@@ -19,81 +19,103 @@
           class="terminal-tab-rename-save"
           @click="saveRename(tab.sessionId)"
         >
-          保存
+          {{ text('保存', 'Save') }}
         </button>
         <button
           type="button"
           class="terminal-tab-rename-cancel"
           @click="cancelRename"
         >
-          取消
+          {{ text('取消', 'Cancel') }}
         </button>
       </template>
 
       <template v-else>
         <button type="button" class="terminal-tab-select" @click="$emit('select', tab.sessionId)">
-          <span class="terminal-tab-title">{{ tab.title || tab.sessionId }}</span>
-          <span class="terminal-tab-status" :data-tone="buildTerminalSessionStatusSummary({
-            status: tab.status,
-            controlState: tab.controlState,
-            canResume: tab.canResume,
-          }).tone">
-            {{ buildTerminalSessionStatusSummary({
-              status: tab.status,
-              controlState: tab.controlState,
-              canResume: tab.canResume,
-            }).labelZh }}
+          <span class="terminal-tab-title-row">
+            <span class="terminal-tab-title">{{ text(buildDisplayTitle(tab).labelZh, buildDisplayTitle(tab).labelEn) }}</span>
+            <span class="terminal-tab-source">{{ text(buildTerminalSessionSourceSummary(tab.source).labelZh, buildTerminalSessionSourceSummary(tab.source).labelEn) }}</span>
+          </span>
+          <span class="terminal-tab-status" :data-tone="getStatusSummary(tab).tone">
+            {{ text(getStatusSummary(tab).labelZh, getStatusSummary(tab).labelEn) }}
           </span>
         </button>
-        <button
-          type="button"
-          class="terminal-tab-rename"
-          aria-label="Rename tab"
-          @click="startRename(tab)"
-        >
-          ⋯
-        </button>
-        <button
-          type="button"
-          class="terminal-tab-close"
-          aria-label="Close tab"
-          @click="$emit('close', tab.sessionId)"
-        >
-          ×
-        </button>
-        <button
-          v-if="tab.status === 'running' || tab.status === 'detached'"
-          type="button"
-          class="terminal-tab-end"
-          aria-label="End session"
-          @click="$emit('end', tab.sessionId)"
-        >
-          结束
-        </button>
-        <button
-          v-if="tab.status === 'completed' || tab.status === 'failed' || tab.status === 'lost'"
-          type="button"
-          class="terminal-tab-delete"
-          aria-label="Delete session"
-          @click="$emit('delete', tab.sessionId)"
-        >
-          删除
-        </button>
+        <div v-if="tab.sessionId === activeSessionId" class="terminal-tab-actions">
+          <button
+            type="button"
+            class="terminal-tab-rename"
+            :aria-label="text('重命名标签', 'Rename tab')"
+            @click="startRename(tab)"
+          >
+            ⋯
+          </button>
+          <button
+            type="button"
+            class="terminal-tab-close"
+            :aria-label="text('关闭标签', 'Close tab')"
+            @click="$emit('close', tab.sessionId)"
+          >
+            ×
+          </button>
+          <button
+            v-if="tab.status === 'running' || tab.status === 'detached'"
+            type="button"
+            class="terminal-tab-end"
+            :aria-label="text('结束会话', 'End session')"
+            @click="$emit('end', tab.sessionId)"
+          >
+            {{ text('结束', 'End') }}
+          </button>
+          <button
+            v-if="tab.status === 'completed' || tab.status === 'failed' || tab.status === 'lost'"
+            type="button"
+            class="terminal-tab-delete"
+            :aria-label="text('删除会话', 'Delete session')"
+            @click="$emit('delete', tab.sessionId)"
+          >
+            {{ text('删除', 'Delete') }}
+          </button>
+        </div>
       </template>
     </div>
 
+    <details v-if="hiddenTabs.length" class="terminal-tab-overflow">
+      <summary class="terminal-tab-overflow__trigger">
+        {{ text('更多', 'More') }} {{ hiddenTabs.length }}
+      </summary>
+      <div class="terminal-tab-overflow__menu">
+        <button
+          v-for="tab in hiddenTabs"
+          :key="tab.sessionId"
+          type="button"
+          class="terminal-tab-overflow__item"
+          @click="$emit('select', tab.sessionId)"
+        >
+          <strong>{{ text(buildDisplayTitle(tab).labelZh, buildDisplayTitle(tab).labelEn) }}</strong>
+          <span>{{ text(getStatusSummary(tab).labelZh, getStatusSummary(tab).labelEn) }}</span>
+        </button>
+      </div>
+    </details>
+
     <button type="button" class="terminal-tab terminal-tab-add" @click="$emit('create')">
-      +
+      <span class="terminal-tab-title">{{ text('终端', 'Shell') }}</span>
+      <span class="terminal-tab-status">{{ text('空白', 'Blank') }}</span>
     </button>
   </nav>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useLocalePreference } from '../../shared/locale';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
-import { buildTerminalSessionStatusSummary } from './terminal-session-selectors';
+import {
+  buildTerminalSessionDisplayTitle,
+  buildTerminalSessionSourceSummary,
+  buildTerminalSessionStatusSummary,
+} from './terminal-session-selectors';
+const { text } = useLocalePreference();
 
-defineProps<{
+const props = defineProps<{
   tabs: TerminalSessionDescriptor[];
   activeSessionId: string | null;
 }>();
@@ -109,6 +131,42 @@ const emit = defineEmits<{
 
 const editingSessionId = ref<string | null>(null);
 const renameDraft = ref('');
+const compactMode = ref(false);
+
+function updateCompactMode(): void {
+  compactMode.value = typeof window !== 'undefined' && window.innerWidth <= 720;
+}
+
+const visibleTabs = computed(() => {
+  if (!compactMode.value || props.tabs.length <= 2) {
+    return props.tabs;
+  }
+
+  const keep = new Set<string>();
+  if (props.activeSessionId) {
+    keep.add(props.activeSessionId);
+  }
+
+  for (let index = props.tabs.length - 1; index >= 0 && keep.size < 2; index -= 1) {
+    keep.add(props.tabs[index].sessionId);
+  }
+
+  return props.tabs.filter((tab) => keep.has(tab.sessionId));
+});
+
+const hiddenTabs = computed(() => {
+  const visibleIds = new Set(visibleTabs.value.map((tab) => tab.sessionId));
+  return props.tabs.filter((tab) => !visibleIds.has(tab.sessionId));
+});
+
+onMounted(() => {
+  updateCompactMode();
+  window.addEventListener('resize', updateCompactMode);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateCompactMode);
+});
 
 function startRename(tab: TerminalSessionDescriptor): void {
   editingSessionId.value = tab.sessionId;
@@ -128,5 +186,20 @@ function saveRename(sessionId: string): void {
   }
   emit('rename', { sessionId, title: normalizedTitle });
   cancelRename();
+}
+
+function getStatusSummary(tab: TerminalSessionDescriptor) {
+  return buildTerminalSessionStatusSummary({
+    status: tab.status,
+    controlState: tab.controlState,
+    canResume: tab.canResume,
+  });
+}
+
+function buildDisplayTitle(tab: TerminalSessionDescriptor) {
+  return buildTerminalSessionDisplayTitle({
+    title: tab.title,
+    sessionId: tab.sessionId,
+  });
 }
 </script>

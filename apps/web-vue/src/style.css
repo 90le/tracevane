@@ -1263,6 +1263,14 @@ button {
   overflow: hidden;
 }
 
+.main-content.terminal-surface-route {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 .main-content::before {
   content: "";
   position: absolute;
@@ -1293,12 +1301,27 @@ button {
   padding: 0;
 }
 
+.main-content.terminal-surface-route .shell-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
 .shell-main-stage {
   min-width: 0;
   min-height: 0;
   display: grid;
   gap: 12px;
   align-content: start;
+}
+
+.main-content.terminal-surface-route .shell-main-stage {
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
 }
 
 .studio-shell-topbar {
@@ -1509,6 +1532,24 @@ button {
 
 .main-content.chat-surface-route .shell-route-stage > * {
   flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+
+.main-content.terminal-surface-route .shell-route-stage {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  gap: 0;
+  overflow: hidden;
+  align-content: stretch;
+}
+
+.main-content.terminal-surface-route .shell-route-stage > * {
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   height: 100%;
   width: 100%;
@@ -3742,10 +3783,28 @@ html[data-theme="light"] .nav-link.router-link-active {
   align-items: flex-start;
 }
 
+.channels-sidebar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .channels-sidebar-title {
   margin: 0;
   color: var(--text);
   font-size: 18px;
+}
+
+.channels-sidebar-current {
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.channels-sidebar-body {
+  display: grid;
+  gap: 12px;
 }
 
 .channels-create-panel {
@@ -4300,6 +4359,20 @@ html[data-theme="light"] .nav-link.router-link-active {
   box-shadow: var(--shadow-soft);
 }
 
+.binding-table-item {
+  display: grid;
+  gap: 10px;
+}
+
+.binding-table-editor-row {
+  display: grid;
+}
+
+.channels-binding-editor--inline {
+  border-color: color-mix(in srgb, var(--sky) 24%, var(--line));
+  box-shadow: var(--shadow-soft);
+}
+
 .binding-table-cell {
   min-width: 0;
 }
@@ -4561,12 +4634,22 @@ html[data-theme="light"] .nav-link.router-link-active {
     height: 100dvh;
   }
 
+  .main-content.terminal-surface-route {
+    min-height: 100dvh;
+    height: 100dvh;
+  }
+
   .shell-layout {
     padding: 58px 10px 12px;
   }
 
   .shell-layout-chat {
     padding: 0;
+  }
+
+  .main-content.terminal-surface-route .shell-layout {
+    min-height: 0;
+    height: 100%;
   }
 
   .studio-shell-topbar {
@@ -4594,6 +4677,52 @@ html[data-theme="light"] .nav-link.router-link-active {
   .shell-route-stage-chat {
     min-height: 100dvh;
     padding: 0;
+  }
+
+  .main-content.terminal-surface-route .shell-route-stage {
+    min-height: 0;
+    height: 100%;
+    padding: 0 2px 6px;
+  }
+
+  .channels-sidebar-head {
+    flex-direction: column;
+  }
+
+  .channels-sidebar-toolbar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .channel-rail-list {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(220px, 84vw);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    padding-bottom: 4px;
+    margin-top: 0;
+  }
+
+  .channel-rail-item {
+    scroll-snap-align: start;
+  }
+
+  .channels-stage-title {
+    font-size: 24px;
+  }
+
+  .channels-top-tabs,
+  .channels-subtabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .channels-top-tab,
+  .channels-subtab {
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 12px;
   }
 }
 
@@ -5727,8 +5856,32 @@ html[data-theme="light"] .capability-chip {
     max-height: 48vh;
   }
 
+  .channel-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .channels-stage-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+  }
+
+  .channels-top-tab,
+  .channels-subtab {
+    font-size: 13px;
+  }
+
+  .channels-top-tab-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .channels-stage-task-card {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .channel-summary-strip {
+    grid-template-columns: 1fr;
   }
 }

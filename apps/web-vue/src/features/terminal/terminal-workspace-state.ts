@@ -9,6 +9,11 @@ import {
   type TerminalSessionStorageLike,
 } from "./terminal-session-registry";
 
+export interface TerminalQueuedCommand {
+  sessionId: string;
+  command: string;
+}
+
 export interface TerminalWorkspaceState {
   sessions: ComputedRef<Record<string, TerminalSessionDescriptor>>;
   tabs: ComputedRef<TerminalSessionDescriptor[]>;
@@ -17,14 +22,14 @@ export interface TerminalWorkspaceState {
   endedSessions: ComputedRef<TerminalSessionDescriptor[]>;
   tabOrder: Ref<string[]>;
   activeSessionId: Ref<string | null>;
-  queuedCommand: Ref<string>;
+  queuedCommand: Ref<TerminalQueuedCommand | null>;
   recoverableSessions: ComputedRef<TerminalSessionDescriptor[]>;
   registerSession(session: TerminalSessionDescriptor): void;
   hydrateSessions(sessions: TerminalSessionDescriptor[]): void;
   persistSessions(): void;
   setActiveSession(sessionId: string | null): void;
-  setQueuedCommand(command: string): void;
-  consumeQueuedCommand(): string;
+  setQueuedCommand(sessionId: string, command: string): void;
+  consumeQueuedCommand(sessionId?: string | null): string;
   openTab(sessionId: string): void;
   renameSession(sessionId: string, title: string): void;
   endSession(sessionId: string): void;
@@ -87,7 +92,7 @@ export function createTerminalWorkspaceState(
       restoredActiveSessionId ||
       null,
   );
-  const queuedCommand = ref("");
+  const queuedCommand = ref<TerminalQueuedCommand | null>(null);
 
   const sessions = computed(() => registry.sessionsById);
 
@@ -112,7 +117,14 @@ export function createTerminalWorkspaceState(
       .sort(sortTerminalSessionsByUpdatedAtDesc),
   );
 
-  const openSessions = computed(() => tabs.value);
+  const openSessions = computed(() =>
+    tabs.value.filter(
+      (session) =>
+        session.status !== "completed" &&
+        session.status !== "failed" &&
+        session.status !== "lost",
+    ),
+  );
 
   const recentSessions = computed(() =>
     Object.values(registry.sessionsById)
@@ -130,10 +142,9 @@ export function createTerminalWorkspaceState(
     Object.values(registry.sessionsById)
       .filter(
         (session) =>
-          !tabOrder.value.includes(session.sessionId) &&
-          (session.status === "completed" ||
-            session.status === "failed" ||
-            session.status === "lost"),
+          session.status === "completed" ||
+          session.status === "failed" ||
+          session.status === "lost",
       )
       .sort(sortTerminalSessionsByUpdatedAtDesc),
   );
@@ -234,13 +245,30 @@ export function createTerminalWorkspaceState(
     persistWorkspaceUiState();
   }
 
-  function setQueuedCommand(command: string): void {
-    queuedCommand.value = String(command || "");
+  function setQueuedCommand(sessionId: string, command: string): void {
+    const normalizedSessionId = normalizeSessionId(sessionId);
+    const normalizedCommand = String(command || "");
+    if (!normalizedSessionId || !normalizedCommand) {
+      queuedCommand.value = null;
+      return;
+    }
+    queuedCommand.value = {
+      sessionId: normalizedSessionId,
+      command: normalizedCommand,
+    };
   }
 
-  function consumeQueuedCommand(): string {
-    const value = queuedCommand.value;
-    queuedCommand.value = "";
+  function consumeQueuedCommand(sessionId?: string | null): string {
+    if (!queuedCommand.value) return "";
+    const normalizedSessionId = normalizeSessionId(sessionId || "");
+    if (
+      normalizedSessionId &&
+      queuedCommand.value.sessionId !== normalizedSessionId
+    ) {
+      return "";
+    }
+    const value = queuedCommand.value.command;
+    queuedCommand.value = null;
     return value;
   }
 

@@ -78,15 +78,16 @@ import {
   fetchTerminalStatus,
 } from './api';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
+import type { TerminalQueuedCommand } from './terminal-workspace-state';
 
 const props = withDefaults(defineProps<{
   sessionId?: string;
-  queuedCommand?: string;
+  queuedCommand?: TerminalQueuedCommand | null;
   showToolbar?: boolean;
   embedded?: boolean;
 }>(), {
   sessionId: '',
-  queuedCommand: '',
+  queuedCommand: null,
   showToolbar: true,
   embedded: false,
 });
@@ -504,9 +505,9 @@ function sendTerminalResize(cols: number, rows: number): void {
   ws.send(JSON.stringify({ type: 'resize', cols, rows }));
 }
 
-function sendTerminalInput(data: string): void {
+function sendTerminalInput(data: string): boolean {
   if (usesGatewayRpc()) {
-    if (!gatewayClient?.connected) return;
+    if (!gatewayClient?.connected) return false;
     void requestGatewayTerminal(
       STUDIO_TERMINAL_GATEWAY_METHODS.input,
       {
@@ -516,11 +517,25 @@ function sendTerminalInput(data: string): void {
     ).catch(() => {
       recoverGatewayAttachment();
     });
-    return;
+    return true;
   }
 
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
   ws.send(data);
+  return true;
+}
+
+function dispatchQueuedCommandIfReady(): void {
+  const normalizedSessionId = normalizeSessionId(props.sessionId);
+  const queuedCommand = props.queuedCommand;
+  if (!queuedCommand || queuedCommand.sessionId !== normalizedSessionId) return;
+  if (!termReady.value || !connected.value) return;
+
+  const normalizedCommand = String(queuedCommand.command || '');
+  if (!normalizedCommand) return;
+
+  if (!sendTerminalInput(normalizedCommand)) return;
+  emit('consumeQueuedCommand');
 }
 
 function syncTerminalSize(): void {
@@ -823,13 +838,11 @@ watch(
 );
 
 watch(
-  () => props.queuedCommand,
-  (command) => {
-    const normalized = String(command || '');
-    if (!normalized) return;
-    sendTerminalInput(normalized);
-    emit('consumeQueuedCommand');
+  () => [props.queuedCommand, connected.value, termReady.value, props.sessionId],
+  () => {
+    dispatchQueuedCommandIfReady();
   },
+  { immediate: true },
 );
 
 onMounted(async () => {
@@ -885,13 +898,16 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   gap: 10px;
+  min-width: 0;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
 }
 
 .terminal-console-main {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
   min-height: 0;
   height: 100%;
   border-radius: 10px;
@@ -902,6 +918,7 @@ onBeforeUnmount(() => {
 
 .terminal-console-surface-embedded .terminal-console-main {
   border: 0;
+  grid-template-rows: minmax(0, 1fr);
   border-radius: 0;
   background: transparent;
 }
@@ -935,6 +952,7 @@ onBeforeUnmount(() => {
 }
 
 .terminal-container {
+  min-width: 0;
   min-height: 0;
   height: 100%;
   display: grid;

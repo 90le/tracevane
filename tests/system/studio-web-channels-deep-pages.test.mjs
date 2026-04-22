@@ -26,6 +26,9 @@ const pairingPage = read(
 const bindingsPage = read(
   "apps/web-vue/src/features/channels/ChannelBindingsPage.vue",
 );
+const bindingEditorPanel = read(
+  "apps/web-vue/src/features/channels/ChannelBindingEditorPanel.vue",
+);
 
 test("channels deep pages use single-task heads and avoid page-level header rows", () => {
   assert.match(providerSettingsPage, /channels-stage-task-head/);
@@ -37,8 +40,11 @@ test("channels deep pages use single-task heads and avoid page-level header rows
   assert.match(pairingPage, /channels-stage-task-head/);
   assert.match(pairingPage, /channels-pairing-card/);
   assert.match(bindingsPage, /channels-stage-task-head/);
-  assert.match(bindingsPage, /channels-binding-editor/);
-  assert.match(bindingsPage, /channels-binding-editor-section/);
+  assert.match(bindingsPage, /binding-table-editor-row/);
+  assert.match(bindingsPage, /ChannelBindingEditorPanel/);
+  assert.match(bindingEditorPanel, /channels-binding-editor/);
+  assert.match(bindingEditorPanel, /channels-binding-editor--inline/);
+  assert.match(bindingEditorPanel, /channels-binding-editor-section/);
 
   assert.doesNotMatch(providerSettingsPage, /page-header-row/);
   assert.doesNotMatch(accountDetailPage, /page-header-row/);

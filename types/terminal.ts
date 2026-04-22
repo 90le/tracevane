@@ -105,8 +105,7 @@ export type TerminalSessionSource =
   | "manual"
   | "system_action"
   | "linked_context"
-  | "system-handoff"
-  | "action-panel";
+  | "system-handoff";
 
 export type TerminalSessionControlState = "controller" | "observer";
 
@@ -173,13 +172,19 @@ export interface TerminalActionDescriptor {
   key: string;
   labelZh: string;
   labelEn: string;
+  descriptionZh: string;
+  descriptionEn: string;
   command: string;
+  recommendedTitle: string;
+  runMode: "new-session" | "active-session";
 }
 
 export interface TerminalActionGroup {
-  key: "builtin" | "scripts";
+  key: string;
   titleZh: string;
   titleEn: string;
+  descriptionZh: string;
+  descriptionEn: string;
   items: TerminalActionDescriptor[];
 }
 

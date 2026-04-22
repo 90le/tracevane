@@ -107,51 +107,63 @@
       <details v-if="groupedAccountFields.length" class="config-collapsible" open>
         <summary>{{ text('Schema 字段', 'Schema fields') }}</summary>
         <div class="channels-account-schema-groups">
-          <section v-for="fieldGroup in groupedAccountFields" :key="fieldGroup.id" class="channels-account-detail-section">
-            <div class="channels-account-detail-section__head">
-              <strong>{{ accountFieldGroupLabel(fieldGroup.id) }}</strong>
-              <span>{{ text('来自 provider schema 的账号级字段，按用途分组展示。', 'Account-level fields from the provider schema, grouped by purpose.') }}</span>
-            </div>
+          <details
+            v-for="fieldGroup in groupedAccountFields"
+            :key="fieldGroup.id"
+            class="config-collapsible channels-account-schema-group"
+            :open="isPrimaryAccountFieldGroup(fieldGroup.id)"
+          >
+            <summary class="channels-account-schema-group__summary">
+              <span>{{ accountFieldGroupLabel(fieldGroup.id) }}</span>
+              <small>{{ text(`${fieldGroup.fields.length} 个字段`, `${fieldGroup.fields.length} fields`) }}</small>
+            </summary>
 
-            <div class="form-grid">
-              <template v-for="accountField in fieldGroup.fields" :key="accountField.key">
-              <div v-if="accountField.input === 'boolean'" class="form-field">
-                <label class="form-label">{{ accountField.label }}</label>
-                <GlassSelect v-model="draft.fieldValues[accountField.key]" :options="booleanInheritOptions" :placeholder="text('继承默认值', 'Inherit default')" />
-                <span v-if="accountField.helpText" class="field-hint">{{ accountField.helpText }}</span>
+            <section class="channels-account-detail-section">
+              <div class="channels-account-detail-section__head">
+                <strong>{{ accountFieldGroupLabel(fieldGroup.id) }}</strong>
+                <span>{{ text('来自 provider schema 的账号级字段，按用途分组展示。', 'Account-level fields from the provider schema, grouped by purpose.') }}</span>
               </div>
-              <div v-else-if="accountField.input === 'select'" class="form-field">
-                <label class="form-label">{{ accountField.label }}</label>
-                <GlassSelect
-                  v-model="draft.fieldValues[accountField.key]"
-                  :options="accountFieldOptions(accountField)"
-                  :placeholder="accountFieldPlaceholder(accountField)"
-                />
-                <span v-if="accountField.helpText" class="field-hint">{{ accountField.helpText }}</span>
+
+              <div class="form-grid">
+                <template v-for="accountField in fieldGroup.fields" :key="accountField.key">
+                <div v-if="accountField.input === 'boolean'" class="form-field">
+                  <label class="form-label">{{ accountField.label }}</label>
+                  <GlassSelect v-model="draft.fieldValues[accountField.key]" :options="booleanInheritOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+                  <span v-if="accountField.helpText" class="field-hint">{{ accountField.helpText }}</span>
+                </div>
+                <div v-else-if="accountField.input === 'select'" class="form-field">
+                  <label class="form-label">{{ accountField.label }}</label>
+                  <GlassSelect
+                    v-model="draft.fieldValues[accountField.key]"
+                    :options="accountFieldOptions(accountField)"
+                    :placeholder="accountFieldPlaceholder(accountField)"
+                  />
+                  <span v-if="accountField.helpText" class="field-hint">{{ accountField.helpText }}</span>
+                </div>
+                <div v-else-if="accountField.input === 'textarea' || accountField.input === 'stringList'" class="form-field form-field-full">
+                  <label class="form-label">{{ accountField.label }}</label>
+                  <textarea
+                    v-model="draft.fieldValues[accountField.key]"
+                    class="form-textarea"
+                    rows="5"
+                    :placeholder="accountFieldPlaceholder(accountField)"
+                  />
+                  <span v-if="accountField.helpText" class="field-hint">{{ accountField.helpText }}</span>
+                </div>
+                <div v-else class="form-field">
+                  <label class="form-label">{{ accountField.label }}</label>
+                  <input
+                    v-model="draft.fieldValues[accountField.key]"
+                    class="form-input"
+                    :type="accountFieldInputType(accountField)"
+                    :placeholder="accountFieldPlaceholder(accountField)"
+                  />
+                  <span v-if="accountField.helpText" class="field-hint">{{ accountField.helpText }}</span>
+                </div>
+                </template>
               </div>
-              <div v-else-if="accountField.input === 'textarea' || accountField.input === 'stringList'" class="form-field form-field-full">
-                <label class="form-label">{{ accountField.label }}</label>
-                <textarea
-                  v-model="draft.fieldValues[accountField.key]"
-                  class="form-textarea"
-                  rows="5"
-                  :placeholder="accountFieldPlaceholder(accountField)"
-                />
-                <span v-if="accountField.helpText" class="field-hint">{{ accountField.helpText }}</span>
-              </div>
-              <div v-else class="form-field">
-                <label class="form-label">{{ accountField.label }}</label>
-                <input
-                  v-model="draft.fieldValues[accountField.key]"
-                  class="form-input"
-                  :type="accountFieldInputType(accountField)"
-                  :placeholder="accountFieldPlaceholder(accountField)"
-                />
-                <span v-if="accountField.helpText" class="field-hint">{{ accountField.helpText }}</span>
-              </div>
-              </template>
-            </div>
-          </section>
+            </section>
+          </details>
         </div>
       </details>
 
@@ -343,6 +355,10 @@ function accountFieldGroupLabel(groupId: ChannelFieldGroupId | ''): string {
   return accountFieldGroupLabelForText(groupId, text);
 }
 
+function isPrimaryAccountFieldGroup(groupId: ChannelFieldGroupId | ''): boolean {
+  return groupId === 'connection';
+}
+
 function buildAccountDetailFieldPayload(): Record<string, unknown> {
   const values = buildDynamicFieldPayload(draft, catalog.value);
   for (const field of catalog.value?.credentialFields || []) {
@@ -398,6 +414,22 @@ async function save(): Promise<void> {
 .channels-account-schema-groups {
   display: grid;
   gap: 12px;
+}
+
+.channels-account-schema-group {
+  margin: 0;
+}
+
+.channels-account-schema-group__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.channels-account-schema-group__summary small {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .channels-account-detail-section {

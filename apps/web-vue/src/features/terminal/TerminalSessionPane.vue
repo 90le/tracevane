@@ -16,12 +16,12 @@
     </header>
 
     <div v-if="resolvedActiveSession?.handoffContext" class="terminal-session-context">
-      <strong>交接上下文</strong>
-      <div>来源模块：{{ resolvedActiveSession.handoffContext.fromModule || 'unknown' }}</div>
-      <div>来源路由：{{ resolvedActiveSession.handoffContext.fromRoute || 'unknown' }}</div>
-      <div>触发动作：{{ resolvedActiveSession.handoffContext.triggerLabel || 'unknown' }}</div>
-      <div>目标对象：{{ resolvedActiveSession.handoffContext.targetEntity || 'unknown' }}</div>
-      <div>推荐命令：{{ resolvedActiveSession.handoffContext.recommendedCommand || 'unknown' }}</div>
+      <strong>{{ text('交接上下文', 'Handoff Context') }}</strong>
+      <div>{{ text('来源模块', 'Source Module') }}：{{ resolvedActiveSession.handoffContext.fromModule || text('未知', 'Unknown') }}</div>
+      <div>{{ text('来源路由', 'Source Route') }}：{{ resolvedActiveSession.handoffContext.fromRoute || text('未知', 'Unknown') }}</div>
+      <div>{{ text('触发动作', 'Trigger') }}：{{ resolvedActiveSession.handoffContext.triggerLabel || text('未知', 'Unknown') }}</div>
+      <div>{{ text('目标对象', 'Target') }}：{{ resolvedActiveSession.handoffContext.targetEntity || text('未知', 'Unknown') }}</div>
+      <div>{{ text('推荐命令', 'Suggested Command') }}：{{ resolvedActiveSession.handoffContext.recommendedCommand || text('未知', 'Unknown') }}</div>
     </div>
 
     <TerminalConsolePage
@@ -29,7 +29,7 @@
       :queued-command="props.queuedCommand"
       :show-toolbar="false"
       :embedded="true"
-      @consume-queued-command="emit('consumeQueuedCommand')"
+      @consume-queued-command="emit('consumeQueuedCommand', resolvedActiveSession?.sessionId || '')"
       @session-attached="emit('sessionAttached', $event)"
     />
   </section>
@@ -37,20 +37,18 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useLocalePreference } from '../../shared/locale';
 import TerminalConsolePage from './TerminalConsolePage.vue';
 import TerminalTabRail from './TerminalTabRail.vue';
 import { fetchPersistedTerminalSessionDescriptor } from './api';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
+import type { TerminalQueuedCommand } from './terminal-workspace-state';
 
 const props = defineProps<{
   tabs: TerminalSessionDescriptor[];
   activeSessionId: string | null;
   activeSession: TerminalSessionDescriptor | null;
-  headerControls: {
-    canLaunch: (cli: 'claude' | 'codex' | 'opencode' | 'bash') => boolean;
-    launchCli: (cli: 'claude' | 'codex' | 'opencode' | 'bash') => void;
-  };
-  queuedCommand: string;
+  queuedCommand: TerminalQueuedCommand | null;
 }>();
 
 const emit = defineEmits<{
@@ -60,9 +58,10 @@ const emit = defineEmits<{
   (e: 'renameSession', payload: { sessionId: string; title: string }): void;
   (e: 'endSession', sessionId: string): void;
   (e: 'deleteSession', sessionId: string): void;
-  (e: 'consumeQueuedCommand'): void;
+  (e: 'consumeQueuedCommand', sessionId: string): void;
   (e: 'sessionAttached', session: TerminalSessionDescriptor): void;
 }>();
+const { text } = useLocalePreference();
 
 const activeSession = ref<TerminalSessionDescriptor | null>(null);
 const resolvedActiveSession = computed(() => props.activeSession ?? activeSession.value);

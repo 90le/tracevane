@@ -81,7 +81,14 @@
         />
       </aside>
 
-      <main class="main-content shell-main" :class="{ 'chat-surface-route': isChatSurface, 'shell-main-chat': isChatSurface }">
+      <main
+        class="main-content shell-main"
+        :class="{
+          'chat-surface-route': isChatSurface,
+          'shell-main-chat': isChatSurface,
+          'terminal-surface-route': isTerminalSurface,
+        }"
+      >
         <button
           v-if="isMobile && isChatSurface && !mobileSidebarOpen"
           type="button"
@@ -193,6 +200,7 @@ const contextPanelMode = computed<'default' | 'chat-inspector' | 'disabled'>(() 
   return metaMode === 'chat-inspector' || metaMode === 'disabled' ? metaMode : 'default';
 });
 const isChatSurface = computed(() => contextPanelMode.value === 'chat-inspector');
+const isTerminalSurface = computed(() => route.path === '/terminal' || route.path.startsWith('/terminal/'));
 const contextPanelEnabled = computed(() => contextPanelMode.value === 'default');
 
 const {

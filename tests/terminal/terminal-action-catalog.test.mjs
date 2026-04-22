@@ -5,25 +5,33 @@ import "tsx/esm";
 const actionCatalog =
   await import("../../apps/api/modules/terminal/action-catalog.ts");
 
-test("terminal action catalog exposes builtin and script action groups", () => {
+test("terminal action catalog exposes richer grouped actions", () => {
   const payload = actionCatalog.buildTerminalActionCatalog();
 
   assert.deepEqual(
     payload.groups.map((group) => group.key),
-    ["builtin", "scripts"],
+    ["builtin", "development", "workspace"],
   );
   assert.ok(payload.groups[0]?.items.length);
   assert.ok(payload.groups[1]?.items.length);
+  assert.ok(payload.groups[2]?.items.length);
 });
 
-test("terminal action catalog includes executable command fields", () => {
+test("terminal action catalog includes executable metadata for each action", () => {
   const payload = actionCatalog.buildTerminalActionCatalog();
 
-  const commands = payload.groups.flatMap((group) =>
-    group.items.map((item) => item.command),
-  );
+  const items = payload.groups.flatMap((group) => group.items);
 
   assert.ok(
-    commands.every((command) => typeof command === "string" && command),
+    items.every(
+      (item) =>
+        typeof item.command === "string" &&
+        item.command &&
+        typeof item.descriptionZh === "string" &&
+        item.descriptionZh &&
+        typeof item.recommendedTitle === "string" &&
+        item.recommendedTitle &&
+        item.runMode === "new-session",
+    ),
   );
 });

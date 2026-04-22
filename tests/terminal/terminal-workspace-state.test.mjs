@@ -77,6 +77,33 @@ test("terminal workspace recomputes recoverable sessions after register", () => 
   );
 });
 
+test("terminal workspace queues commands for a specific session", () => {
+  const workspace = workspaceStateModule.createTerminalWorkspaceState();
+
+  workspace.registerSession({
+    sessionId: "term-queued",
+    title: "Queued Session",
+    status: "running",
+    source: "manual",
+    canResume: true,
+    controlState: "controller",
+    updatedAt: "2026-04-13T10:03:00.000Z",
+  });
+
+  workspace.setQueuedCommand("term-queued", "npm run typecheck:web\n");
+
+  assert.deepEqual(workspace.queuedCommand.value, {
+    sessionId: "term-queued",
+    command: "npm run typecheck:web\n",
+  });
+  assert.equal(workspace.consumeQueuedCommand("term-other"), "");
+  assert.equal(
+    workspace.consumeQueuedCommand("term-queued"),
+    "npm run typecheck:web\n",
+  );
+  assert.equal(workspace.queuedCommand.value, null);
+});
+
 test("terminal workspace hydrate keeps persisted sessions closed by default", () => {
   const workspace = workspaceStateModule.createTerminalWorkspaceState();
 
@@ -421,11 +448,11 @@ test("terminal workspace open/recent/ended groups are mutually exclusive for ope
 
   assert.deepEqual(
     workspace.openSessions.value.map((item) => item.sessionId),
-    ["term-ended"],
+    [],
   );
   assert.deepEqual(
     workspace.endedSessions.value.map((item) => item.sessionId),
-    [],
+    ["term-ended"],
   );
   assert.deepEqual(
     workspace.recentSessions.value.map((item) => item.sessionId),
