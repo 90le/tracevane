@@ -43,6 +43,23 @@ function buildGatewayWsUrl(port: number): string {
   return `ws://127.0.0.1:${port}`;
 }
 
+function resolveOpenClawRoot(api: OpenClawPluginApi): string {
+  const envFallback =
+    process.env.OPENCLAW_STATE_DIR
+    || path.join(process.env.HOME || os.homedir(), '.openclaw');
+
+  if (typeof api.resolvePath !== 'function') {
+    return envFallback;
+  }
+
+  try {
+    const resolved = api.resolvePath('~/.openclaw');
+    return typeof resolved === 'string' && resolved.trim() ? resolved : envFallback;
+  } catch {
+    return envFallback;
+  }
+}
+
 function resolveStudioVersion(projectRoot: string): string {
   if (cachedStudioVersion) {
     return cachedStudioVersion;
@@ -136,10 +153,7 @@ export function createStudioConfig(
 ): StudioServerConfig {
   const projectRoot = resolveProjectRoot(path.dirname(fileURLToPath(import.meta.url)));
   const studioVersion = resolveStudioVersion(projectRoot);
-  const openclawRoot = typeof api.resolvePath === 'function'
-    ? api.resolvePath('~/.openclaw')
-    : process.env.OPENCLAW_STATE_DIR
-      || path.join(process.env.HOME || os.homedir(), '.openclaw');
+  const openclawRoot = resolveOpenClawRoot(api);
   const openclawConfigFile = path.join(openclawRoot, 'openclaw.json');
   const gatewayConfig = (api.config?.gateway || {}) as { port?: unknown; controlUi?: { basePath?: unknown } };
   const gatewayRuntime = readGatewayRuntimeFromOpenClawConfig(

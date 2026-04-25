@@ -48,6 +48,45 @@ export function cloneObservabilityState(value: ChatObservabilityState): ChatObse
   };
 }
 
+export function compactObservabilityState(
+  value: ChatObservabilityState,
+  options: {
+    toolCardLimit?: number;
+    timelineLimit?: number;
+    toolDetailLimit?: number;
+    timelineDetailLimit?: number;
+  } = {},
+): ChatObservabilityState {
+  const next = cloneObservabilityState(value);
+  const toolDetailLimit = Number.isFinite(options.toolDetailLimit)
+    ? Math.max(0, Math.floor(options.toolDetailLimit!))
+    : 180;
+  const timelineDetailLimit = Number.isFinite(options.timelineDetailLimit)
+    ? Math.max(0, Math.floor(options.timelineDetailLimit!))
+    : 220;
+  const toolCardLimit = Number.isFinite(options.toolCardLimit)
+    ? Math.max(0, Math.floor(options.toolCardLimit!))
+    : next.toolCards.length;
+  const timelineLimit = Number.isFinite(options.timelineLimit)
+    ? Math.max(0, Math.floor(options.timelineLimit!))
+    : next.timeline.length;
+
+  next.toolCards = next.toolCards
+    .slice(0, toolCardLimit)
+    .map((item) => ({
+      ...item,
+      argsPreview: item.argsPreview ? clipPreview(item.argsPreview, toolDetailLimit) : null,
+      resultPreview: item.resultPreview ? clipPreview(item.resultPreview, toolDetailLimit) : null,
+    }));
+  next.timeline = next.timeline
+    .slice(-timelineLimit)
+    .map((item) => ({
+      ...item,
+      detail: item.detail ? clipPreview(item.detail, timelineDetailLimit) : null,
+    }));
+  return next;
+}
+
 export function appendTimelineItem(
   state: ChatObservabilityState,
   item: ChatActivityItem,

@@ -189,6 +189,7 @@ export function createStudioChatSessionCatalogStore(config: StudioServerConfig) 
         try {
           database.exec('BEGIN');
           database.prepare('DELETE FROM session_rows WHERE agent_id = ?').run(agentId);
+          database.prepare('DELETE FROM catalog_meta WHERE key = ?').run('signature');
           const statement = database.prepare(`
             INSERT INTO session_rows (session_key, agent_id, updated_at, saved_at, payload_json)
             VALUES (?, ?, ?, ?, ?)
@@ -220,6 +221,7 @@ export function createStudioChatSessionCatalogStore(config: StudioServerConfig) 
       for (const row of cloned) {
         current.sessions[row.key] = row;
       }
+      current.signature = null;
       writeJsonCatalog(config, current);
     },
 

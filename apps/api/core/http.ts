@@ -1,4 +1,5 @@
 import type http from 'node:http';
+import fs from 'node:fs';
 
 export const STUDIO_CHAT_DEV_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5176',
@@ -74,6 +75,53 @@ export function sendText(res: http.ServerResponse, statusCode: number, payload: 
   res.statusCode = statusCode;
   res.setHeader('Content-Type', contentType);
   res.end(payload);
+}
+
+export function sendBinary(
+  res: http.ServerResponse,
+  statusCode: number,
+  payload: Buffer,
+  contentType = 'application/octet-stream',
+  headers: Record<string, string> = {},
+): void {
+  if (res.writableEnded) return;
+  setCorsHeaders(res);
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Length', String(payload.byteLength));
+  for (const [key, value] of Object.entries(headers)) {
+    res.setHeader(key, value);
+  }
+  res.end(payload);
+}
+
+export function sendFileStream(
+  res: http.ServerResponse,
+  options: {
+    filePath: string;
+    statusCode?: number;
+    contentType?: string;
+    headers?: Record<string, string>;
+  },
+): void {
+  if (res.writableEnded) return;
+  const stat = fs.statSync(options.filePath);
+  setCorsHeaders(res);
+  res.statusCode = options.statusCode || 200;
+  res.setHeader('Content-Type', options.contentType || 'application/octet-stream');
+  res.setHeader('Content-Length', String(stat.size));
+  for (const [key, value] of Object.entries(options.headers || {})) {
+    res.setHeader(key, value);
+  }
+
+  const stream = fs.createReadStream(options.filePath);
+  stream.on('error', () => {
+    if (!res.writableEnded) {
+      res.statusCode = 500;
+      res.end();
+    }
+  });
+  stream.pipe(res);
 }
 
 export function sendNoContent(res: http.ServerResponse, statusCode = 204): void {

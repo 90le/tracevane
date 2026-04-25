@@ -55,7 +55,84 @@
             }
           }
         }
+      },
+      "chat": {
+        "type": "object",
+        "properties": {
+          "allowHostManagementExecInStudioChat": {
+            "type": "boolean",
+            "default": false,
+            "description": "是否允许在 Studio Chat 中执行宿主机管理命令"
+          }
+        }
       }
+    }
+  },
+  "uiHints": {
+    "__root__": {
+      "label": "基础运行设置",
+      "help": "优先调整 Studio 的启动和暴露方式；更细的链路配置在高级字段内。",
+      "order": -10
+    },
+    "apiPort": {
+      "label": "API 端口",
+      "help": "Studio standalone HTTP / WS 默认端口。",
+      "placeholder": "3760",
+      "order": 10,
+      "group": "__root__"
+    },
+    "autoStart": {
+      "label": "自动启动 API",
+      "help": "启用后宿主加载插件时会自动拉起 Studio API 服务。",
+      "order": 20,
+      "group": "__root__"
+    },
+    "transport": {
+      "label": "暴露模式",
+      "help": "管理 standalone 和 gateway 两种入口。",
+      "order": 40
+    },
+    "transport.standalone.enabled": {
+      "label": "启用 Standalone",
+      "group": "transport-standalone",
+      "groupLabel": "Standalone",
+      "groupHelp": "独立端口暴露，适合本地开发和直连调试。",
+      "groupOrder": 10,
+      "order": 10
+    },
+    "transport.standalone.port": {
+      "label": "Standalone 端口",
+      "placeholder": "3760",
+      "group": "transport-standalone",
+      "groupLabel": "Standalone",
+      "groupOrder": 10,
+      "order": 20
+    },
+    "transport.gateway.enabled": {
+      "label": "启用 Gateway 模式",
+      "group": "transport-gateway",
+      "groupLabel": "Gateway",
+      "groupHelp": "复用 OpenClaw Gateway 单端口入口。",
+      "groupOrder": 20,
+      "order": 10
+    },
+    "transport.gateway.basePath": {
+      "label": "Gateway Base Path",
+      "placeholder": "/studio",
+      "group": "transport-gateway",
+      "groupLabel": "Gateway",
+      "groupOrder": 20,
+      "order": 20
+    },
+    "chat.allowHostManagementExecInStudioChat": {
+      "label": "允许 Chat 执行宿主管理命令",
+      "help": "高风险调试开关，仅在本地受控环境下开启。",
+      "group": "advanced-chat",
+      "groupLabel": "Chat Runtime",
+      "groupHelp": "这些能力会直接影响 Studio Chat 可执行的宿主动作。",
+      "groupOrder": 90,
+      "order": 10,
+      "advanced": true
     }
   }
 }

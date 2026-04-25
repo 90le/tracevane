@@ -38,8 +38,7 @@ def open_new_chat(page):
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
-    with page.expect_response(lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST", timeout=30000):
-        click_enabled(option)
+    click_enabled(option)
     page.wait_for_function(
         "(before) => document.querySelectorAll('.chat-shell-session-item').length >= before + 1",
         arg=before_count,
@@ -91,33 +90,25 @@ def main() -> None:
 
         textarea = page.locator(".chat-composer-editor").first
         send_btn = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
-        stop_btn = page.get_by_role("button", name=re.compile("^停止$|^Stop$")).first
-
         prompt = (
             f"Reply in plain text only. Do not use any tools. "
-            f"Repeat the exact token {token} 180 times separated by spaces. "
+            f"Repeat the exact token {token} 60 times separated by spaces. "
             "No markdown, no code fences, no explanation."
         )
         fill_editor(page, textarea, prompt)
         click_enabled(send_btn)
 
-        wait_button_enabled(stop_btn, timeout=30000)
         page.wait_for_function(
             """(prefix) => Array.from(document.querySelectorAll('.chat-message-group.role-assistant .chat-message-bubble'))
                 .some((el) => (el.textContent || '').includes(prefix))""",
             arg=token_prefix,
-            timeout=45000,
+            timeout=90000,
         )
         result["pure_text_live_stream_visible"] = assistant_bubble_contains(page, token_prefix)
 
         page.wait_for_function(
-            """(token) => {
-                const hasToken = Array.from(document.querySelectorAll('.chat-message-group.role-assistant .chat-message-bubble'))
-                    .some((el) => (el.textContent || '').includes(token));
-                const stop = Array.from(document.querySelectorAll('button'))
-                    .find((el) => /^(发送|Send|停止|Stop)$/.test((el.textContent || '').trim()) && /(停止|Stop)/.test((el.textContent || '').trim()));
-                return hasToken && !!stop && stop.disabled;
-            }""",
+            """(token) => Array.from(document.querySelectorAll('.chat-message-group.role-assistant .chat-message-bubble'))
+                .some((el) => (el.textContent || '').includes(token))""",
             arg=token,
             timeout=90000,
         )

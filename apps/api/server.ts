@@ -20,6 +20,8 @@ import { registerChannelsRoutes } from './modules/channels/routes.js';
 import { registerConfigRoutes } from './modules/config/routes.js';
 import { registerCronRoutes } from './modules/cron/routes.js';
 import { registerDashboardRoutes } from './modules/dashboard/routes.js';
+import { registerFilesRoutes } from './modules/files/routes.js';
+import { registerPluginsRoutes } from './modules/plugins/routes.js';
 import { registerSkillsRoutes } from './modules/skills/routes.js';
 import { registerSystemRoutes } from './modules/system/routes.js';
 import { registerTerminalRoutes } from './modules/terminal/routes.js';
@@ -35,11 +37,13 @@ const CONTENT_TYPES: Record<string, string> = {
 export function createStudioRouter(ctx: StudioApiContext): StudioRouter {
   const router = new StudioRouter();
   registerDashboardRoutes(router, ctx);
+  registerFilesRoutes(router, ctx);
   registerAgentsRoutes(router, ctx);
   registerChatRoutes(router, ctx);
   registerChannelsRoutes(router, ctx);
   registerConfigRoutes(router, ctx);
   registerCronRoutes(router, ctx);
+  registerPluginsRoutes(router, ctx);
   registerSkillsRoutes(router, ctx);
   registerTerminalRoutes(router, ctx);
   registerSystemRoutes(router, ctx);

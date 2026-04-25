@@ -103,6 +103,61 @@ test('sqlite: ensureIndex/search/date buckets roundtrip through the store', () =
       store.buildDateBuckets(index).map((bucket) => bucket.day),
       ['2026-04-22', '2026-04-21'],
     );
+    const snapshot = store.readSnapshot({
+      sessionKey: 'agent:main:webchat:direct:test',
+      sourceSessionFile: null,
+      sourceMtimeMs: null,
+    });
+    assert.equal(snapshot?.signature, index.signature);
+  } finally {
+    cleanupTempRoot(root);
+  }
+});
+
+test('sqlite: ensureIndexFromItems builds a persisted index from metadata rows', () => {
+  const root = makeTempRoot();
+  try {
+    const store = createStudioChatHistoryIndexStore(makeConfig(root));
+    const index = store.ensureIndexFromItems({
+      sessionKey: 'agent:main:webchat:direct:test-seeded',
+      items: [
+        {
+          id: 'm1',
+          role: 'user',
+          createdAt: '2026-04-21T09:00:00.000Z',
+          previewText: 'older hello',
+          snippetText: 'older hello',
+          runId: null,
+          messageIndex: 0,
+          hasText: true,
+          hasResources: false,
+          hasCode: false,
+        },
+        {
+          id: 'm2',
+          role: 'assistant',
+          createdAt: '2026-04-21T09:01:00.000Z',
+          previewText: 'contains keyword alpha',
+          snippetText: 'contains keyword alpha',
+          runId: null,
+          messageIndex: 1,
+          hasText: true,
+          hasResources: false,
+          hasCode: false,
+        },
+      ],
+      totalMessages: 2,
+      sourceSessionFile: '/tmp/session.jsonl',
+      sourceMtimeMs: 1234,
+    });
+    assert.equal(index.totalMessages, 2);
+    assert.deepEqual(store.searchPositions(index, 'keyword alpha'), [1]);
+    const snapshot = store.readSnapshot({
+      sessionKey: 'agent:main:webchat:direct:test-seeded',
+      sourceSessionFile: '/tmp/session.jsonl',
+      sourceMtimeMs: 1234,
+    });
+    assert.equal(snapshot?.signature, index.signature);
   } finally {
     cleanupTempRoot(root);
   }

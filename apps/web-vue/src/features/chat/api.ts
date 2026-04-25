@@ -100,6 +100,7 @@ export function fetchChatSessions(
     limit?: number;
     includeDerivedTitles?: boolean;
     includeLastMessage?: boolean;
+    localOnly?: boolean;
   } = {},
 ): Promise<ChatSessionsPayload> {
   const url = new URL(`/api/chat/agents/${encodeURIComponent(agentId)}/sessions`, window.location.origin);
@@ -111,6 +112,9 @@ export function fetchChatSessions(
   }
   if (typeof options.includeLastMessage === 'boolean') {
     url.searchParams.set('includeLastMessage', options.includeLastMessage ? '1' : '0');
+  }
+  if (typeof options.localOnly === 'boolean') {
+    url.searchParams.set('localOnly', options.localOnly ? '1' : '0');
   }
   return requestChatJson<ChatSessionsPayload>(`${url.pathname}${url.search}`);
 }
@@ -171,8 +175,15 @@ export function fetchChatHistoryDates(sessionKey: string, signal?: AbortSignal):
   });
 }
 
-export function buildChatStreamUrl(sessionKey: string): string {
-  return joinChatPath(`/api/chat/sessions/${encodeURIComponent(sessionKey)}/stream`);
+export function buildChatStreamUrl(
+  sessionKey: string,
+  options: {
+    bootstrapSnapshot?: boolean;
+  } = {},
+): string {
+  const url = new URL(`/api/chat/sessions/${encodeURIComponent(sessionKey)}/stream`, window.location.origin);
+  url.searchParams.set('bootstrapSnapshot', options.bootstrapSnapshot ? '1' : '0');
+  return joinChatPath(`${url.pathname}${url.search}`);
 }
 
 export function createChatSession(

@@ -24,6 +24,76 @@ function pickPreview(previous: string | null | undefined, next: string | null | 
   return incoming.length >= current.length ? incoming : current;
 }
 
+function resolveAgentAssistantText(data: Record<string, unknown>): { text: string; deltaText: string | null } {
+  const text = typeof data.text === 'string'
+    ? data.text
+    : typeof data.accumulatedText === 'string'
+      ? data.accumulatedText
+    : typeof data.delta === 'string'
+      ? data.delta
+      : summarizeUnknown(data.text, 4_000) || '';
+  const deltaText = typeof data.delta === 'string'
+    ? data.delta
+    : null;
+  return {
+    text,
+    deltaText,
+  };
+}
+
+function mapAgentToolLikeEvent(params: {
+  sessionKey: string;
+  runId: string | null;
+  emittedAt: string;
+  phase: string;
+  toolCallId: string;
+  name: string;
+  argsSource?: unknown;
+  resultSource?: unknown;
+  isError?: boolean;
+  previousToolCard?: ChatToolCard | null;
+  collectToolArtifacts?: (sessionKey: string, raw: unknown, toolCallId?: string | null) => ChatToolArtifactItem[];
+}): Extract<ChatStreamEvent, { kind: 'agent_tool_call' | 'agent_tool_result' }> {
+  const normalizedPhase = normalizeString(params.phase).toLowerCase();
+  const terminal = normalizedPhase === 'result' || normalizedPhase === 'end';
+  const argsPreview = summarizeUnknown(params.argsSource, 220);
+  const resultPreview = summarizeUnknown(params.resultSource, 260);
+  const computedStatus = terminal ? (params.isError ? 'error' : 'completed') : 'running';
+  const artifacts = terminal || normalizedPhase === 'update' || normalizedPhase === 'delta'
+    ? params.collectToolArtifacts?.(params.sessionKey, params.resultSource ?? {}, params.toolCallId) || params.previousToolCard?.artifacts || []
+    : params.previousToolCard?.artifacts || [];
+  const tool: ChatToolCard = {
+    toolCallId: params.toolCallId,
+    runId: params.runId,
+    name: params.name,
+    status: pickStatus(params.previousToolCard?.status, computedStatus),
+    startedAt: params.previousToolCard?.startedAt || params.emittedAt,
+    updatedAt: normalizeDate(params.emittedAt) || params.previousToolCard?.updatedAt || params.emittedAt,
+    argsPreview: pickPreview(params.previousToolCard?.argsPreview, argsPreview),
+    resultPreview: statusRank(computedStatus) > statusRank(params.previousToolCard?.status)
+      ? (normalizeString(resultPreview) || pickPreview(params.previousToolCard?.resultPreview, resultPreview))
+      : pickPreview(params.previousToolCard?.resultPreview, resultPreview),
+    isError: params.previousToolCard?.isError || params.isError === true || pickStatus(params.previousToolCard?.status, computedStatus) === 'error',
+    artifacts: artifacts.length ? artifacts : undefined,
+  };
+  return normalizedPhase === 'start'
+    ? {
+      kind: 'agent_tool_call',
+      sessionKey: params.sessionKey,
+      runId: params.runId,
+      emittedAt: params.emittedAt,
+      tool,
+    }
+    : {
+      kind: 'agent_tool_result',
+      sessionKey: params.sessionKey,
+      runId: params.runId,
+      emittedAt: params.emittedAt,
+      partial: !terminal,
+      tool,
+    };
+}
+
 export interface MapGatewayAgentEventParams {
   sessionKey: string;
   payload: Record<string, unknown>;
@@ -61,10 +131,9 @@ export function mapGatewayAgentEventPayload({
   }
 
   if (stream === 'assistant') {
-    const text = typeof data.text === 'string' ? data.text : summarizeUnknown(data.text, 4_000);
+    const { text, deltaText } = resolveAgentAssistantText(data);
     if (!runId || !text) return null;
     const textPreview = summarizeUnknown(text, 220) || text;
-    const deltaText = summarizeUnknown(data.delta, 180);
     return {
       kind: 'agent_assistant',
       sessionKey,
@@ -80,7 +149,6 @@ export function mapGatewayAgentEventPayload({
     const phase = normalizeString(data.phase).toLowerCase() || 'update';
     const toolCallId = normalizeString(data.toolCallId, `tool-${Math.random().toString(36).slice(2)}`);
     const name = normalizeString(data.name, 'tool');
-    const argsPreview = summarizeUnknown(data.args, 220);
     const resultSource = phase === 'start'
       ? null
       : (
@@ -88,45 +156,59 @@ export function mapGatewayAgentEventPayload({
           ? (data.partialResult ?? data.result ?? data.output ?? data.text ?? data.error)
           : (data.result ?? data.output ?? data.text ?? data.error ?? data.partialResult)
       );
-    const resultPreview = summarizeUnknown(resultSource, 260);
-    const isError = data.isError === true;
-    const computedStatus = phase === 'result' ? (isError ? 'error' : 'completed') : 'running';
-    const shouldCollectArtifacts = name !== 'studio_delivery';
-    const artifacts = phase === 'start'
-      ? previousToolCard?.artifacts || []
-      : shouldCollectArtifacts
-        ? collectToolArtifacts?.(sessionKey, resultSource ?? data, toolCallId) || previousToolCard?.artifacts || []
-        : previousToolCard?.artifacts || [];
-    const tool: ChatToolCard = {
-      toolCallId,
+    return mapAgentToolLikeEvent({
+      sessionKey,
       runId,
+      emittedAt,
+      phase: phase === 'result' ? 'end' : phase,
+      toolCallId,
       name,
-      status: pickStatus(previousToolCard?.status, computedStatus),
-      startedAt: previousToolCard?.startedAt || emittedAt,
-      updatedAt: normalizeDate(emittedAt) || previousToolCard?.updatedAt || emittedAt,
-      argsPreview: pickPreview(previousToolCard?.argsPreview, argsPreview),
-      resultPreview: statusRank(computedStatus) > statusRank(previousToolCard?.status)
-        ? (normalizeString(resultPreview) || pickPreview(previousToolCard?.resultPreview, resultPreview))
-        : pickPreview(previousToolCard?.resultPreview, resultPreview),
-      isError: previousToolCard?.isError || isError || pickStatus(previousToolCard?.status, computedStatus) === 'error',
-      artifacts: artifacts.length ? artifacts : undefined,
-    };
-    return phase === 'start'
-      ? {
-        kind: 'agent_tool_call',
-        sessionKey,
-        runId,
-        emittedAt,
-        tool,
-      }
-      : {
-        kind: 'agent_tool_result',
-        sessionKey,
-        runId,
-        emittedAt,
-        partial: phase !== 'result',
-        tool,
-      };
+      argsSource: data.args,
+      resultSource,
+      isError: data.isError === true || normalizeString(data.status).toLowerCase() === 'failed',
+      previousToolCard,
+      collectToolArtifacts: name !== 'studio_delivery' ? collectToolArtifacts : undefined,
+    });
+  }
+
+  if (stream === 'item') {
+    const toolCallId = normalizeString(data.toolCallId || data.itemId);
+    if (!toolCallId) return null;
+    const phase = normalizeString(data.phase).toLowerCase() || 'update';
+    const status = normalizeString(data.status).toLowerCase();
+    return mapAgentToolLikeEvent({
+      sessionKey,
+      runId,
+      emittedAt,
+      phase: phase === 'end' ? 'end' : phase,
+      toolCallId,
+      name: normalizeString(data.name || data.title || data.kind, 'tool'),
+      argsSource: data.meta ? { title: data.title, meta: data.meta } : data.title,
+      resultSource: data.progressText ?? data.summary ?? data.error,
+      isError: status === 'failed' || status === 'blocked' || Boolean(data.error),
+      previousToolCard,
+      collectToolArtifacts,
+    });
+  }
+
+  if (stream === 'command_output') {
+    const toolCallId = normalizeString(data.toolCallId || data.itemId);
+    if (!toolCallId) return null;
+    const phase = normalizeString(data.phase).toLowerCase() || 'delta';
+    const status = normalizeString(data.status).toLowerCase();
+    const exitCode = typeof data.exitCode === 'number' ? data.exitCode : null;
+    return mapAgentToolLikeEvent({
+      sessionKey,
+      runId,
+      emittedAt,
+      phase: phase === 'end' ? 'end' : 'update',
+      toolCallId,
+      name: normalizeString(data.name || data.title, 'command'),
+      resultSource: data.output ?? data.summary ?? data.error,
+      isError: status === 'failed' || (exitCode != null && exitCode !== 0),
+      previousToolCard,
+      collectToolArtifacts,
+    });
   }
 
   return null;

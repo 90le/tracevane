@@ -920,6 +920,95 @@ test('draft session patch/delete persists presentation metadata without gateway 
   }
 });
 
+test('local-only session listing serves local catalog rows without gateway sessions.list', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-local-list-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway({
+      onRequest(request) {
+        if (request.method === 'sessions.list') {
+          return {
+            sessions: [],
+          };
+        }
+        return { ok: true };
+      },
+    });
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+
+    const created = await context.services.chat.createSession('main', {});
+    const localOnly = await context.services.chat.listSessions('main', {
+      localOnly: true,
+      includeDerivedTitles: false,
+      includeLastMessage: false,
+    });
+
+    assert.equal(localOnly.sessions.some((entry) => entry.key === created.session.key), true);
+    assert.match(
+      localOnly.diagnostics.notes.join('\n'),
+      /local session catalog without waiting for Gateway sessions\.list/i,
+    );
+    assert.equal(gateway.requests.some((request) => request.method === 'sessions.list'), false);
+  } finally {
+    try {
+      await gateway?.close();
+    } catch {}
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('session listing compacts oversized gateway labels and previews for rail transport', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-transport-compact-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    const longLabel = `Observed session ${'L'.repeat(180)}`;
+    const longDerivedTitle = `Derived ${'D'.repeat(180)}`;
+    const longPreview = `Preview ${'P'.repeat(260)}`;
+    gateway = await startFakeGateway({
+      onRequest(request) {
+        if (request.method === 'sessions.list') {
+          return {
+            sessions: [
+              {
+                key: 'agent:main:main',
+                sessionId: 'observed-session-1',
+                label: longLabel,
+                derivedTitle: longDerivedTitle,
+                lastMessagePreview: longPreview,
+                updatedAt: '2026-04-22T10:00:00.000Z',
+                channel: 'webchat',
+                lastChannel: 'webchat',
+              },
+            ],
+          };
+        }
+        return { ok: true };
+      },
+    });
+
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+    const listed = await context.services.chat.listSessions('main');
+    const row = listed.sessions.find((entry) => entry.key === 'agent:main:main');
+
+    assert.ok(row);
+    assert.ok(row.label.length < longLabel.length);
+    assert.ok(row.label.endsWith('…'));
+    assert.ok((row.derivedTitle || '').length < longDerivedTitle.length);
+    assert.ok((row.derivedTitle || '').endsWith('…'));
+    assert.ok((row.lastMessagePreview || '').length < longPreview.length);
+    assert.ok((row.lastMessagePreview || '').endsWith('…'));
+  } finally {
+    try {
+      await gateway?.close();
+    } catch {}
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('gateway-discovered studio sessions without registry are adopted so queue and controls endpoints stay available', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-adopt-'));
   let gateway = null;

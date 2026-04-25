@@ -136,9 +136,25 @@ function parseTimelineTimestamp(value: string | null | undefined): number {
   return Date.parse(value || '') || 0;
 }
 
-function collectOverlayAnchorMessageIds(messages: ChatMessageItem[], overlay: ChatRunOverlay): string[] {
+function collectOverlayAnchorMessageIds(
+  messages: ChatMessageItem[],
+  overlay: ChatRunOverlay,
+  originalToolCallIdsByMessageId: Map<string, Set<string>>,
+): string[] {
+  const overlayToolCallIds = new Set(
+    overlay.toolCalls.map((toolCall) => toolCall.toolCallId).filter(Boolean),
+  );
   return messages
-    .filter((message) => message.runId === overlay.runId && normalizeDisplayRole(message.role) === 'assistant')
+    .filter((message) => (
+      normalizeDisplayRole(message.role) === 'assistant'
+      && (
+        message.runId === overlay.runId
+        || Boolean(
+          [...(originalToolCallIdsByMessageId.get(message.id) || [])]
+            .some((toolCallId) => overlayToolCallIds.has(toolCallId)),
+        )
+      )
+    ))
     .map((message) => message.id);
 }
 
@@ -194,6 +210,12 @@ export function buildChatRenderableTimeline(params: {
   messages: ChatMessageItem[];
   overlays: ChatRunOverlay[];
 }): ChatRenderableItem[] {
+  const originalToolCallIdsByMessageId = new Map<string, Set<string>>(
+    params.messages.map((message) => [
+      message.id,
+      new Set((message.toolCalls || []).map((toolCall) => toolCall.toolCallId).filter(Boolean)),
+    ]),
+  );
   const canonicalToolStepToolCallIds = new Set(
     params.messages
       .filter((message) => isCanonicalToolStepMessage(message))
@@ -254,7 +276,7 @@ export function buildChatRenderableTimeline(params: {
     ...overlays.map((overlay) => ({
       type: 'run_overlay',
       overlay,
-      anchorMessageIds: collectOverlayAnchorMessageIds(displayMessages, overlay),
+      anchorMessageIds: collectOverlayAnchorMessageIds(displayMessages, overlay, originalToolCallIdsByMessageId),
       processBlocks: processBlocksByOverlayRunId.get(overlay.runId) || [],
     }) as TimelineUnit),
   ].sort((left, right) => {

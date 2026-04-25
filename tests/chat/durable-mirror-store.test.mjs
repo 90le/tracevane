@@ -157,6 +157,206 @@ test('sqlite: mirror state is persisted in shared chat.sqlite with transcript me
   }
 });
 
+test('sqlite: session metadata and page messages can be read without hydrating the full mirror snapshot', () => {
+  const root = makeTempRoot();
+  try {
+    const config = makeConfig(root);
+    const store = createStudioChatDurableMirrorStore(config);
+    store.replaceSnapshot({
+      sessionKey: SESSION_KEY,
+      version: 'v1',
+      source: 'local_transcript',
+      messages: [
+        makeMessage('msg-1', 'user', 'first'),
+        makeMessage('msg-2', 'assistant', 'second'),
+        makeMessage('msg-3', 'assistant', 'third'),
+      ],
+      baseMessageSeq: 3,
+      savedAt: '2026-03-26T10:00:03.000Z',
+      sourceSignature: 'sig-3',
+      sourceSessionFile: '/tmp/session-3.jsonl',
+      sourceMtimeMs: 3333,
+      observability: {
+        lifecycle: null,
+        usage: null,
+        toolCards: [],
+        timeline: [],
+      },
+    });
+
+    const meta = store.readSessionMeta(SESSION_KEY);
+    assert.ok(meta);
+    assert.equal(meta.sourceSessionFile, '/tmp/session-3.jsonl');
+    assert.equal(meta.sourceMtimeMs, 3333);
+    assert.equal(store.readMessageCount(SESSION_KEY), 3);
+    assert.equal(store.readMessageIndex(SESSION_KEY, 'msg-2'), 1);
+
+    const page = store.readMessagesByIds(SESSION_KEY, ['msg-3', 'msg-1']);
+    assert.deepEqual(
+      page.map((message) => [message.id, message.text]),
+      [['msg-3', 'third'], ['msg-1', 'first']],
+    );
+    const range = store.readMessagesInIndexRange(SESSION_KEY, 1, 3);
+    assert.deepEqual(
+      range.map((message) => [message.id, message.text]),
+      [['msg-2', 'second'], ['msg-3', 'third']],
+    );
+    const dayStubs = store.readMessageStubsForDay(SESSION_KEY, '2026-03-26');
+    assert.deepEqual(
+      dayStubs.map((message) => message.id),
+      ['msg-1', 'msg-2', 'msg-3'],
+    );
+    assert.deepEqual(
+      store.readDateBuckets(SESSION_KEY).map((bucket) => [bucket.day, bucket.count, bucket.firstMessageId, bucket.lastMessageId]),
+      [['2026-03-26', 3, 'msg-1', 'msg-3']],
+    );
+    assert.deepEqual(
+      store.searchMessageStubs(SESSION_KEY, {
+        query: 'third',
+        roleFilter: 'assistant',
+        contentFilter: 'text',
+      }).map((message) => message.id),
+      ['msg-3'],
+    );
+    store.replaceSnapshot({
+      sessionKey: SESSION_KEY,
+      version: 'v2',
+      source: 'local_transcript',
+      messages: [
+        makeMessage('msg-a', 'assistant', 'alpha bridge keyword'),
+        makeMessage('msg-b', 'assistant', 'keyword only'),
+      ],
+      baseMessageSeq: 2,
+      savedAt: '2026-03-26T10:00:05.000Z',
+      sourceSignature: 'sig-4',
+      sourceSessionFile: '/tmp/session-4.jsonl',
+      sourceMtimeMs: 4444,
+      observability: {
+        lifecycle: null,
+        usage: null,
+        toolCards: [],
+        timeline: [],
+      },
+    });
+    assert.deepEqual(
+      store.searchMessageStubs(SESSION_KEY, {
+        query: 'keyword alpha',
+        roleFilter: 'assistant',
+        contentFilter: 'text',
+      }).map((message) => message.id),
+      ['msg-a'],
+    );
+    const db = new DatabaseSync(path.join(root, 'studio', 'chat.sqlite'));
+    const ftsTable = db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'mirror_messages_fts'
+      LIMIT 1
+    `).get();
+    assert.equal(ftsTable?.name, 'mirror_messages_fts');
+    const ftsRows = db.prepare(`
+      SELECT message_id
+      FROM mirror_messages_fts
+      WHERE session_key = ? AND mirror_messages_fts MATCH ?
+      ORDER BY message_index ASC
+    `).all(SESSION_KEY, '"keyword" AND "alpha"');
+    assert.deepEqual(
+      ftsRows.map((row) => row.message_id),
+      ['msg-a'],
+    );
+    store.replaceSnapshot({
+      sessionKey: SESSION_KEY,
+      version: 'v3',
+      source: 'local_transcript',
+      messages: [
+        makeMessage('msg-c', 'assistant', '关键字测试'),
+      ],
+      baseMessageSeq: 1,
+      savedAt: '2026-03-26T10:00:06.000Z',
+      sourceSignature: 'sig-5',
+      sourceSessionFile: '/tmp/session-5.jsonl',
+      sourceMtimeMs: 5555,
+      observability: {
+        lifecycle: null,
+        usage: null,
+        toolCards: [],
+        timeline: [],
+      },
+    });
+    const cjkFtsRows = db.prepare(`
+      SELECT message_id
+      FROM mirror_messages_fts
+      WHERE session_key = ? AND mirror_messages_fts MATCH ?
+      ORDER BY message_index ASC
+    `).all(SESSION_KEY, '"关键" AND "键字"');
+    assert.deepEqual(
+      cjkFtsRows.map((row) => row.message_id),
+      ['msg-c'],
+    );
+    assert.deepEqual(
+      store.searchMessageStubs(SESSION_KEY, {
+        query: '关键字',
+        roleFilter: 'assistant',
+        contentFilter: 'text',
+      }).map((message) => message.id),
+      ['msg-c'],
+    );
+    store.replaceSnapshot({
+      sessionKey: SESSION_KEY,
+      version: 'v4',
+      source: 'local_transcript',
+      messages: [
+        makeMessage('page-1', 'user', 'one'),
+        { ...makeMessage('page-2', 'assistant', 'two'), createdAt: '2026-03-27T10:00:00.000Z' },
+        { ...makeMessage('page-3', 'assistant', 'three'), createdAt: '2026-03-27T10:01:00.000Z' },
+        { ...makeMessage('page-4', 'assistant', 'four'), createdAt: '2026-03-27T10:02:00.000Z' },
+        { ...makeMessage('page-5', 'assistant', 'five'), createdAt: '2026-03-27T10:03:00.000Z' },
+        { ...makeMessage('page-6', 'assistant', 'six'), createdAt: '2026-03-27T10:04:00.000Z' },
+      ],
+      baseMessageSeq: 6,
+      savedAt: '2026-03-27T10:04:00.000Z',
+      sourceSignature: 'sig-6',
+      sourceSessionFile: '/tmp/session-6.jsonl',
+      sourceMtimeMs: 6666,
+      observability: {
+        lifecycle: null,
+        usage: null,
+        toolCards: [],
+        timeline: [],
+      },
+    });
+    const anchoredWindow = store.readMessageWindow(SESSION_KEY, {
+      anchor: 'page-4',
+      day: '2026-03-27',
+      limit: 4,
+    });
+    assert.ok(anchoredWindow);
+    assert.deepEqual(
+      anchoredWindow.messages.map((message) => message.id),
+      ['page-2', 'page-3', 'page-4', 'page-5', 'page-6'],
+    );
+    assert.equal(anchoredWindow.day, '2026-03-27');
+    assert.equal(anchoredWindow.hasMoreBefore, false);
+    assert.equal(anchoredWindow.hasMoreAfter, false);
+    const afterWindow = store.readMessageWindow(SESSION_KEY, {
+      after: {
+        anchorIndex: 2,
+        anchorMessageId: 'page-3',
+      },
+      day: '2026-03-27',
+      limit: 2,
+    });
+    assert.ok(afterWindow);
+    assert.deepEqual(
+      afterWindow.messages.map((message) => message.id),
+      ['page-3', 'page-4'],
+    );
+    db.close();
+  } finally {
+    cleanupTempRoot(root);
+  }
+});
+
 test('sqlite: legacy mirror.sqlite snapshots are lazily migrated into shared chat.sqlite', () => {
   const root = makeTempRoot();
   try {

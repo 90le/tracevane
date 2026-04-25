@@ -63,6 +63,9 @@ test("studio management coverage baseline includes the skills workspace recipe r
   assert.deepEqual(skills, {
     domainId: "skills",
     testPattern: "studio-web-skills-*.test.mjs",
-    matchedFiles: ["tests/system/studio-web-skills-workspace-recipe.test.mjs"],
+    matchedFiles: [
+      "tests/system/studio-web-skills-lifecycle-contract.test.mjs",
+      "tests/system/studio-web-skills-workspace-recipe.test.mjs",
+    ],
   });
 });

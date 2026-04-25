@@ -176,7 +176,7 @@ import type { ThemeMode } from '../shared/theme';
 import LogoMark from './LogoMark.vue';
 import SidebarIcon from './SidebarIcon.vue';
 
-type SidebarIconName = 'dashboard' | 'agents' | 'chat' | 'channels' | 'cron' | 'dreaming' | 'skills' | 'terminal' | 'config' | 'system';
+type SidebarIconName = 'dashboard' | 'agents' | 'chat' | 'channels' | 'cron' | 'dreaming' | 'skills' | 'files' | 'plugins' | 'terminal' | 'config' | 'system';
 
 type NavGroup = {
   title: string;

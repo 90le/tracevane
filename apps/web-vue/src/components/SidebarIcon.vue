@@ -48,6 +48,20 @@
       <path d="M6.2 9.8L4.5 8.1" />
       <path d="M17.8 9.8l1.7-1.7" />
     </template>
+    <template v-else-if="name === 'files'">
+      <path d="M4.4 6.6A1.6 1.6 0 0 1 6 5h4l1.5 1.8H18a1.6 1.6 0 0 1 1.6 1.6v7.8A1.8 1.8 0 0 1 17.8 18H6.2a1.8 1.8 0 0 1-1.8-1.8V6.6Z" />
+      <path d="M4.6 9h15" />
+      <path d="M8.2 12.2h3.6" />
+      <path d="M8.2 14.8h6.4" />
+    </template>
+    <template v-else-if="name === 'plugins'">
+      <path d="M8.2 4.6v4" />
+      <path d="M15.8 4.6v4" />
+      <path d="M6.5 8.6h11" />
+      <path d="M7.5 8.6v3.2a4.5 4.5 0 0 0 9 0V8.6" />
+      <path d="M12 16.3v3.1" />
+      <path d="M9.8 19.4h4.4" />
+    </template>
     <template v-else-if="name === 'terminal'">
       <rect x="3.8" y="5" width="16.4" height="14" rx="2" />
       <path d="M7.4 10.2l2.5 2.3l-2.5 2.3" />
@@ -77,6 +91,6 @@
 
 <script setup lang="ts">
 defineProps<{
-  name: 'dashboard' | 'agents' | 'chat' | 'channels' | 'cron' | 'dreaming' | 'skills' | 'terminal' | 'config' | 'system';
+  name: 'dashboard' | 'agents' | 'chat' | 'channels' | 'cron' | 'dreaming' | 'skills' | 'files' | 'plugins' | 'terminal' | 'config' | 'system';
 }>();
 </script>

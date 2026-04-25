@@ -12,11 +12,16 @@ export type SkillStatus = 'ready' | 'needs-setup' | 'disabled' | 'blocked';
 export type SkillApiKeyMode = 'none' | 'plaintext' | 'secret-ref';
 
 export type SkillsMarketplaceSourceId = 'skillhub-tencent' | 'clawhub';
+export type SkillPackageSourceId = SkillsMarketplaceSourceId | 'upload';
 
 export type SkillsMarketplaceSort = 'featured' | 'downloads' | 'stars' | 'installs' | 'newest';
 
 export type SkillsInstallMethod = 'skillhub-cli' | 'clawhub-cli' | 'mirror-download' | 'unavailable';
 export type SkillsMaintenanceAction = 'update' | 'uninstall';
+export type SkillInstallTargetScope = 'default-workspace' | 'agent-workspace' | 'managed' | 'custom';
+export type SkillsLifecycleAction = 'delete' | 'copy' | 'move' | 'promote' | 'map' | 'unmap' | 'detach' | 'sync';
+export type SkillsDeleteMode = 'physical-only' | 'mappings-only' | 'physical-and-mappings';
+export type SkillAgentAccessMode = 'local-copy' | 'shared-mapping' | 'global-default' | 'detached-fork';
 export type SkillsRiskLevel = 'low' | 'medium' | 'high';
 
 export interface SkillMissingRequirements {
@@ -34,10 +39,54 @@ export interface SkillInstallMetadata {
   ownerId: string | null;
 }
 
+export interface SkillTargetRef {
+  scope: SkillInstallTargetScope;
+  agentId?: string | null;
+  targetPath?: string | null;
+  installAs?: string | null;
+}
+
+export interface SkillTargetDescriptor {
+  id: string;
+  scope: SkillInstallTargetScope;
+  label: string;
+  path: string;
+  agentId: string | null;
+  writable: boolean;
+  safe: boolean;
+}
+
+export interface SkillInstalledIdentity {
+  canonicalSlug: string;
+  folderName: string;
+  aliases: string[];
+  sourceId: SkillPackageSourceId | null;
+  installMetadata: SkillInstallMetadata | null;
+}
+
+export interface SkillPhysicalCopy {
+  scope: SkillInstallTargetScope;
+  agentId: string | null;
+  path: string;
+  folderName: string;
+  identity: SkillInstalledIdentity;
+}
+
+export interface SkillAgentMapping {
+  agentId: string;
+  agentName: string;
+  slug: string;
+  mode: SkillAgentAccessMode;
+  sourcePath: string | null;
+  targetPath: string | null;
+}
+
 export interface SkillPathInfo {
   workspacePath: string | null;
   managedPath: string | null;
   activePath: string | null;
+  agentWorkspacePaths: Record<string, string>;
+  physicalCopies: SkillPhysicalCopy[];
 }
 
 export interface SkillSummary {
@@ -62,6 +111,7 @@ export interface SkillSummary {
   missing: SkillMissingRequirements;
   paths: SkillPathInfo;
   installMetadata: SkillInstallMetadata | null;
+  agentMappings: SkillAgentMapping[];
 }
 
 export interface SkillsSummaryPayload {
@@ -171,6 +221,8 @@ export interface SkillsMarketplaceItem {
   detailUrl: string;
   updatedAt: string | null;
   installed: boolean;
+  installedAs: string | null;
+  installedReason: string | null;
 }
 
 export interface SkillsMarketplacePayload {
@@ -189,6 +241,7 @@ export interface SkillsMarketplacePayload {
 export interface SkillsMarketplaceInstallPayload {
   sourceId: SkillsMarketplaceSourceId;
   slug: string;
+  target?: SkillTargetRef;
   replaceExisting?: boolean;
 }
 
@@ -196,11 +249,18 @@ export interface SkillsMarketplaceInstallResponse {
   success: boolean;
   sourceId: SkillsMarketplaceSourceId;
   slug: string;
+  canonicalSlug: string;
+  target: SkillTargetDescriptor | null;
   method: SkillsInstallMethod;
   installedPath: string | null;
   output: string;
   note: string | null;
   requiresNewSession: boolean;
+}
+
+export interface SkillsTargetsPayload {
+  checkedAt: string;
+  targets: SkillTargetDescriptor[];
 }
 
 export interface SkillsPreflightPayload {
@@ -227,12 +287,45 @@ export interface SkillsPreflightPayloadData {
 
 export interface SkillsPreflightResult {
   checkedAt: string;
-  sourceId: SkillsMarketplaceSourceId;
+  sourceId: SkillPackageSourceId;
   slug: string;
   level: SkillsRiskLevel;
   summary: string;
   indicators: SkillsPreflightIndicator[];
   payload: SkillsPreflightPayloadData;
+}
+
+export interface SkillsUploadArchivePayload {
+  fileName: string;
+  dataBase64: string;
+}
+
+export interface SkillsUploadPreflightPayload extends SkillsUploadArchivePayload {}
+
+export interface SkillsUploadPreflightResult {
+  checkedAt: string;
+  fileName: string;
+  suggestedSlug: string;
+  skillRootName: string;
+  preflight: SkillsPreflightResult;
+}
+
+export interface SkillsUploadInstallPayload extends SkillsUploadArchivePayload {
+  target?: SkillTargetRef;
+  installAs?: string | null;
+  replaceExisting?: boolean;
+}
+
+export interface SkillsUploadInstallResponse {
+  success: boolean;
+  slug: string;
+  canonicalSlug: string;
+  target: SkillTargetDescriptor | null;
+  installedPath: string | null;
+  output: string;
+  note: string | null;
+  requiresNewSession: boolean;
+  preflight: SkillsPreflightResult;
 }
 
 export interface SkillsMaintenancePayload {
@@ -248,5 +341,30 @@ export interface SkillsMaintenanceResponse {
   output: string;
   note: string | null;
   affectedPath: string | null;
+  requiresNewSession: boolean;
+}
+
+export interface SkillsLifecyclePayload {
+  action: SkillsLifecycleAction;
+  slug: string;
+  source?: SkillTargetRef | null;
+  destination?: SkillTargetRef | null;
+  agentIds?: string[];
+  deleteMode?: SkillsDeleteMode;
+  replaceExisting?: boolean;
+  confirmAffected?: boolean;
+}
+
+export interface SkillsLifecycleResponse {
+  success: boolean;
+  action: SkillsLifecycleAction;
+  slug: string;
+  source: SkillTargetDescriptor | null;
+  destination: SkillTargetDescriptor | null;
+  affectedPaths: string[];
+  affectedAgents: SkillAgentMapping[];
+  skippedAgents: SkillAgentMapping[];
+  output: string;
+  note: string | null;
   requiresNewSession: boolean;
 }

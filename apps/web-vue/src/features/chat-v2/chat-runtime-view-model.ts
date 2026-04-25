@@ -194,6 +194,19 @@ export function useChatRuntimeViewModel(params: {
       source.filter((message) => message.role !== "tool"),
     );
   });
+  const activeStreamingMessageId = computed(() => {
+    const activeRunId = activeRuntime.value?.activeRunId || null;
+    if (!activeRunId) {
+      return null;
+    }
+    const streamMessages = displayMessages.value.filter(
+      (message) =>
+        message.role === "assistant" &&
+        message.source === "stream" &&
+        message.runId === activeRunId,
+    );
+    return streamMessages[streamMessages.length - 1]?.id || null;
+  });
   const renderTimelineItems = computed(() =>
     buildChatRenderableTimeline({
       messages: displayMessages.value,
@@ -236,6 +249,7 @@ export function useChatRuntimeViewModel(params: {
     gatewayWarning,
     accessError,
     displayMessages,
+    activeStreamingMessageId,
     renderTimelineItems,
     timelineVersion,
   };

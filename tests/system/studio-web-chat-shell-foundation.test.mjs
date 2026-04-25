@@ -407,6 +407,20 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
     messageBubble,
     /\.chat-inline-thinking-pill\s*\{[\s\S]*border-radius:\s*8px;/,
   );
+  assert.match(messageBubble, /:open="shouldOpenProcessDetails\(message, messageIndex\)"/);
+  assert.match(messageBubble, /function isProcessStreaming\(message: ChatMessageGroup\['messages'\]\[number\]\): boolean \{/);
+  assert.match(messageBubble, /function shouldOpenProcessDetails\(message: ChatMessageGroup\['messages'\]\[number\], index: number\): boolean \{/);
+  assert.match(messageBubble, /function shouldOpenGroupedProcessDetails\(message: ChatMessageGroup\['messages'\]\[number\]\): boolean \{/);
+  assert.match(messageBubble, /正在思考，回复会在下方继续生成。/);
+  assert.match(messageBubble, /正在推理，工具步骤会继续更新。/);
+  assert.match(
+    messageBubble,
+    /\.chat-inline-thinking-body\s*\{[\s\S]*max-height:\s*min\(220px,\s*36vh\);[\s\S]*overflow:\s*auto;/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-thinking__item-body\s*\{[\s\S]*max-height:\s*min\(220px,\s*36vh\);[\s\S]*overflow:\s*auto;/,
+  );
   assert.match(
     messageBubble,
     /\.chat-inline-process-pill\s*\{[\s\S]*border-radius:\s*8px;/,
@@ -422,6 +436,53 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   assert.match(
     messageBubble,
     /\.chat-inline-process-head-state\s*\{[\s\S]*border-radius:\s*8px;/,
+  );
+  assert.match(messageBubble, /class="chat-inline-process-live"/);
+  assert.match(messageBubble, /正在执行，工具输出会实时更新。/);
+  assert.match(messageBubble, /function toolOutputLabel\(status: ChatToolStatus\): string \{/);
+  assert.match(messageBubble, /text\('工具输入', 'Tool input'\)/);
+  assert.match(messageBubble, /text\('实时输出', 'Live output'\)/);
+  assert.match(messageBubble, /text\('工具输出', 'Tool output'\)/);
+  assert.match(messageBubble, /text\('等待工具输出…', 'Waiting for tool output\.\.\.'\)/);
+  assert.match(messageBubble, /function shouldRenderToolOutputPlaceholder\(/);
+  assert.match(messageBubble, /class="chat-inline-process-copy"/);
+  assert.match(messageBubble, /function copyToolPreview\(tool: ChatDisplayToolHint, kind: ToolPreviewKind\): Promise<void> \{/);
+  assert.match(messageBubble, /function toolCopyTitle\(tool: ChatDisplayToolHint, kind: ToolPreviewKind\): string \{/);
+  assert.match(messageBubble, /text\('复制工具输入', 'Copy tool input'\)/);
+  assert.match(messageBubble, /text\('复制工具输出', 'Copy tool output'\)/);
+  assert.match(messageBubble, /const toolCopyState = reactive<Record<string, 'copied' \| 'error' \| undefined>>\(\{\}\);/);
+  assert.match(messageBubble, /const TOOL_DETAIL_AUTO_OPEN_PREVIEW_LIMIT = 520;/);
+  assert.match(messageBubble, /:open="shouldOpenToolDetails\(tool, toolIndex\)"/);
+  assert.match(messageBubble, /function shouldOpenToolDetails\(tool: ChatDisplayToolHint, index: number\): boolean \{/);
+  assert.match(messageBubble, /if \(tool\.status === 'running' \|\| tool\.status === 'error'\) \{/);
+  assert.match(messageBubble, /return previewLength > 0 && previewLength <= TOOL_DETAIL_AUTO_OPEN_PREVIEW_LIMIT;/);
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-live-dot\s*\{[\s\S]*animation:\s*chat-tool-live-pulse/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-copy\s*\{[\s\S]*border-radius:\s*8px;/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-block pre\s*\{[\s\S]*max-height:\s*min\(260px,\s*42vh\);/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-detail\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-block\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-block-head\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-block pre\s*\{[\s\S]*max-width:\s*100%;[\s\S]*min-width:\s*0;[\s\S]*overflow-wrap:\s*anywhere;/,
   );
   assert.match(
     messageBubble,
@@ -925,22 +986,176 @@ test("mobile composer tracks visual viewport keyboard changes so the input can r
 });
 
 test("chat shell defers the root-route history window and loads date buckets on demand", () => {
+  assert.match(chatShellPage, /const CHAT_HISTORY_BOOTSTRAP_WINDOW_LIMIT = 12;/);
   assert.match(chatShellPage, /const CHAT_HISTORY_INITIAL_WINDOW_LIMIT = 24;/);
+  assert.match(chatShellPage, /const CHAT_HISTORY_PAGE_LIMIT = 12;/);
+  assert.match(chatShellPage, /const CHAT_HISTORY_AUTO_FILL_PAGE_LIMIT = 24;/);
   assert.match(chatShellPage, /const CHAT_HISTORY_DEFER_MS = 320;/);
   assert.match(chatShellPage, /let deferredInitialHistoryLoadTimer: number \| null = null;/);
   assert.match(chatShellPage, /let historyReplaceRequestController: AbortController \| null = null;/);
   assert.match(chatShellPage, /let historyDatesRequestController: AbortController \| null = null;/);
+  assert.match(chatShellPage, /let historyBeforePrefetchController: AbortController \| null = null;/);
+  assert.match(chatShellPage, /let historyBeforePrefetchTimer: number \| null = null;/);
+  assert.match(chatShellPage, /let historyBeforePrefetchIdleHandle: number \| null = null;/);
+  assert.match(chatShellPage, /const prefetchedHistoryBefore = ref<\{/);
+  assert.match(conversationPane, /const HISTORY_BEFORE_PREFETCH_TRIGGER_PX = 1400;/);
+  assert.match(conversationPane, /const HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX = 720;/);
+  assert.match(conversationPane, /const HISTORY_BROWSE_GUARD_MS = 6000;/);
+  assert.match(conversationPane, /function historyBeforePrefetchTriggerPx\(metrics: ChatSessionScrollMetrics\): number \{/);
+  assert.match(conversationPane, /function historyBeforeMaterializeTriggerPx\(metrics: ChatSessionScrollMetrics\): number \{/);
+  assert.match(conversationPane, /function extendHistoryBrowseGuard\(nowMs = Date\.now\(\)\): void \{/);
+  assert.match(conversationPane, /let historyPrependMutationPending = false;/);
+  assert.match(conversationPane, /let historyPrependPendingBottomDistance: number \| null = null;/);
   assert.match(chatShellPage, /function scheduleDeferredInitialConversationLoad\(sessionKey: string\): void \{/);
+  assert.match(chatShellPage, /async function runHistoryBeforePrefetch\(sessionKey: string\): Promise<void> \{/);
+  assert.match(chatShellPage, /function scheduleHistoryBeforePrefetch\(sessionKey: string, delayMs = 180\): void \{/);
+  assert.match(chatShellPage, /scheduleHistoryBeforePrefetch\(sessionKey, 0\);/);
+  assert.match(chatShellPage, /function prefetchMoreHistoryBefore\(\): void \{/);
+  assert.match(chatShellPage, /async function waitForHistoryBeforePrefetch\(/);
+  assert.match(chatShellPage, /requestIdleCallback/);
+  assert.match(chatShellPage, /@prefetch-more-before="prefetchMoreHistoryBefore"/);
   assert.match(
     chatShellPage,
-    /watch\(selectedSessionKey, async \(sessionKey, previousKey\) => \{[\s\S]*const shouldDeferInitialRootHistoryLoad = \([\s\S]*!previousKey[\s\S]*!routeSessionKey\.value[\s\S]*scheduleDeferredInitialConversationLoad\(sessionKey\);/,
+    /watch\(selectedSessionKey, async \(sessionKey, previousKey\) => \{[\s\S]*connectChatSocket\(sessionKey\);[\s\S]*const shouldDeferInitialRootHistoryLoad = \([\s\S]*!previousKey[\s\S]*!routeSessionKey\.value[\s\S]*scheduleDeferredInitialConversationLoad\(sessionKey\);/,
+  );
+  assert.match(
+    chatShellPage,
+    /watch\(\s*\[routeSessionKey, \(\) => props\.shellMode, studioManagedSessions, observedSessions, sessionsLoading, bootstrapLoading\],/,
+  );
+  assert.match(
+    chatShellPage,
+    /if \(requested\) \{[\s\S]*optimisticStartupSessionKey\.value = requested;[\s\S]*if \(bootstrapLoading\.value\) \{[\s\S]*return;[\s\S]*\}/,
   );
   assert.match(chatShellPage, /async function ensureSessionDatesLoaded\(sessionKey: string, force = false\): Promise<void> \{/);
   assert.match(chatShellPage, /if \(nextOpen && !historyDatesLoading\.value\) \{[\s\S]*ensureSessionDatesLoaded\(selectedSession\.value\.key\);/);
   assert.doesNotMatch(chatShellPage, /await loadSessionDates\(sessionKey\);/);
+  assert.match(chatShellPage, /let prefetchedPayload = readMatchedHistoryBeforePrefetchPayload\(prefetchKey\);/);
+  assert.match(chatShellPage, /if \(!prefetchedPayload\) \{\s*clearHistoryBeforePrefetch\(\);\s*\}/);
+  assert.doesNotMatch(chatShellPage, /applyBootstrapPayload[\s\S]*scheduleHistoryBeforePrefetch\(bootstrapSessionKey\)/);
+  assert.match(conversationPane, /&& scrollState\.value\.autoScrollLockedByUser/);
+});
+
+test("chat shell coalesces high-frequency tool partial output while keeping terminal tool events immediate", () => {
+  assert.match(chatShellPage, /const CHAT_TOOL_STREAM_THROTTLE_MS = 80;/);
+  assert.match(chatShellPage, /const CHAT_DEBUG_TRACE_STORAGE_KEY = 'openclaw-studio\.chat\.debug-stream-trace';/);
+  assert.match(chatShellPage, /window\.__OPENCLAW_STUDIO_CHAT_TRACE__/);
+  assert.match(chatShellPage, /function recordChatDebugTrace\(entry: ChatDebugTraceEntry\): void \{/);
+  assert.match(chatShellPage, /kind: 'optimistic\.user'/);
+  assert.match(chatShellPage, /const pendingTemporaryToolEvents = new Map<string, ChatTemporaryToolStreamEvent>\(\);/);
+  assert.match(chatShellPage, /function temporaryToolEventKey\(event: ChatTemporaryToolStreamEvent\): string \{/);
+  assert.match(chatShellPage, /function flushPendingTemporaryToolEvents\(\): void \{/);
+  assert.match(chatShellPage, /function scheduleTemporaryToolStreamEvent\(event: ChatTemporaryToolStreamEvent\): void \{/);
+  assert.match(chatShellPage, /pendingTemporaryToolEvents\.set\(temporaryToolEventKey\(event\), event\);/);
+  assert.match(chatShellPage, /window\.setTimeout\(\(\) => \{[\s\S]*flushPendingTemporaryToolEvents\(\);[\s\S]*\}, CHAT_TOOL_STREAM_THROTTLE_MS\)/);
+  assert.match(chatShellPage, /function handleTemporaryToolStreamEvent\(event: ChatTemporaryToolStreamEvent\): void \{/);
+  assert.match(chatShellPage, /if \(terminalToolEvent\) \{[\s\S]*pendingTemporaryToolEvents\.delete\(temporaryToolEventKey\(event\)\);[\s\S]*applyTemporaryToolStreamEvent\(event\);/);
+  assert.match(chatShellPage, /if \(event\.partial\) \{[\s\S]*scheduleTemporaryToolStreamEvent\(event\);[\s\S]*return;/);
+  assert.match(chatShellPage, /if \(event\.kind === 'temporary\.tool'\) \{[\s\S]*handleTemporaryToolStreamEvent\(event\);/);
+  assert.match(chatShellPage, /function clearPendingTemporaryToolEvents\(\): void \{/);
+  assert.match(chatShellPage, /clearConversationState\(\): void \{[\s\S]*clearPendingTemporaryToolEvents\(\);/);
+  assert.match(chatShellPage, /onBeforeUnmount\(\(\) => \{[\s\S]*clearPendingTemporaryToolEvents\(\);/);
+});
+
+test("conversation pane memoizes stable timeline subtrees so prepend and append updates do not repatch every bubble", () => {
+  assert.match(conversationPane, /<MessageBubble[\s\S]*v-memo="timelineItemMemoKey\(item\)"/);
+  assert.match(conversationPane, /:active-streaming-message-id="activeStreamingMessageId"/);
+  assert.match(conversationPane, /function timelineItemMemoKey\(item: ChatRenderableItem\): unknown\[] \{/);
+  assert.match(conversationPane, /item\.type === 'message_group'/);
+  assert.match(conversationPane, /item\.overlay\.toolCalls\.map\(\(toolCall\) => `\$\{toolCall\.toolCallId\}:\$\{toolCall\.status\}:\$\{toolCall\.resultPreview\?\.length \|\| 0\}`\)\.join\('\|'\)/);
+});
+
+test("conversation pane virtualizes the timeline shell so only viewport-adjacent bubbles mount heavy content", () => {
+  assert.match(conversationPane, /class="chat-conversation-thread__live-placeholder"/);
+  assert.match(conversationPane, /const showActiveRunPlaceholder = computed\(\(\) => \{/);
+  assert.match(conversationPane, /正在处理中，等待实时消息或工具过程返回。/);
+  assert.match(
+    conversationPane,
+    /\.chat-conversation-thread__live-placeholder-dot\s*\{[\s\S]*animation:\s*chat-thread-live-placeholder-pulse/,
+  );
+  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_MIN_ITEMS = 160;/);
+  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_OVERSCAN_PX = 3600;/);
+  assert.match(conversationPane, /const TIMELINE_ITEM_DEFAULT_HEIGHT = 280;/);
+  assert.match(conversationPane, /const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 1200;/);
+  assert.match(conversationPane, /const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 1400;/);
+  assert.match(conversationPane, /const HISTORY_LOADING_INDICATOR_DELAY_MS = 650;/);
+  assert.match(conversationPane, /const timelineViewport = ref\(\{/);
+  assert.match(conversationPane, /const timelineItemHeights = reactive<Record<string, number>>\(\{\}\);/);
+  assert.match(conversationPane, /function timelineItemEstimatedHeight\(item: ChatRenderableItem, index: number\): number \{/);
+  assert.match(conversationPane, /function estimateTextBlockHeight\(text: string\): number \{/);
+  assert.match(conversationPane, /function estimateMessageGroupHeight\(item: Extract<ChatRenderableItem, \{ type: 'message_group' \}>\): number \{/);
+  assert.match(conversationPane, /const timelineVirtualWindow = computed\(\(\) => \{/);
+  assert.match(conversationPane, /if \(props\.forceEagerHistoryRender \|\| total <= TIMELINE_VIRTUALIZE_MIN_ITEMS\) \{/);
+  assert.match(conversationPane, /function isTimelineItemVisible\(index: number\): boolean \{/);
+  assert.match(conversationPane, /function shouldForceEagerTimelineItem\(index: number\): boolean \{/);
+  assert.match(conversationPane, /:force-eager-render="shouldForceEagerTimelineItem\(itemIndex\)"/);
+  assert.match(conversationPane, /:id="timelineItemAnchorId\(item\) \|\| undefined"/);
+  assert.match(conversationPane, /class="chat-conversation-thread__item-shell"/);
+  assert.match(conversationPane, /:style="timelineItemShellStyle\(item, itemIndex\)"/);
+  assert.match(conversationPane, /v-if="isTimelineItemVisible\(itemIndex\)"/);
+  assert.match(conversationPane, /class="chat-conversation-thread__item-placeholder"/);
+  assert.match(conversationPane, /const showHistoryLoadingBeforeIndicator = ref\(false\);/);
+  assert.match(conversationPane, /function scheduleHistoryLoadingIndicator\(kind: 'before' \| 'after', loading: boolean\): void \{/);
+  assert.match(conversationPane, /class="chat-conversation-thread__loading-indicator chat-conversation-thread__loading-indicator--before"/);
+  assert.match(conversationPane, /class="chat-conversation-thread__loading-indicator chat-conversation-thread__loading-indicator--after"/);
+  assert.match(
+    conversationPane,
+    /\.chat-conversation-thread__loading-indicator\s*\{[\s\S]*height:\s*0;[\s\S]*position:\s*sticky;/,
+  );
+});
+
+test("history prepend restores against the newest loaded message boundary instead of jumping to batch start", () => {
+  assert.match(chatShellPage, /const historyPrependAnchorMessageId = ref<string \| null>\(null\);/);
+  assert.match(chatShellPage, /:history-prepend-anchor-message-id="historyPrependAnchorMessageId"/);
+  assert.match(chatShellPage, /armHistoryRenderStabilization\(\);[\s\S]*applyHistoryPagePayload\(hydratedPayload, 'replace'\);/);
+  assert.match(chatShellPage, /armHistoryRenderStabilization\(\);[\s\S]*historyPayload\.value = payload;/);
+  assert.match(chatShellPage, /armHistoryRenderStabilization\(\);[\s\S]*applyHistoryPagePayload\(payload, 'prepend'/);
+  assert.match(chatShellPage, /armHistoryRenderStabilization\(\);[\s\S]*applyHistoryPagePayloadAppend\(payload\);/);
+  assert.match(chatShellPage, /function armHistoryRenderStabilization\(timeoutMs = 1200\): void \{/);
+  assert.match(chatShellPage, /historyPrependAnchorMessageId\.value = payload\.messages\[payload\.messages\.length - 1\]\?\.id \|\| null;/);
+  assert.match(conversationPane, /historyPrependAnchorMessageId\?: string \| null;/);
+  assert.match(conversationPane, /let prependRestoreBoundaryMessageId: string \| null = null;/);
+  assert.match(conversationPane, /function resolveMessageBubbleElement\(messageId: string\): HTMLElement \| null \{/);
+  assert.match(conversationPane, /function markThreadUserBrowseIntent\(\): void \{/);
+  assert.match(conversationPane, /@wheel\.passive="handleThreadWheel"/);
+  assert.match(conversationPane, /markThreadUserBrowseIntent\(\): void \{[\s\S]*emit\('prefetch-more-before'\);/);
+  assert.match(conversationPane, /metrics\.scrollTop <= historyBeforeMaterializeTriggerPx\(metrics\)[\s\S]*requestMoreBefore\(\);/);
+  assert.match(conversationPane, /preserveHistoryBrowse = Boolean\([\s\S]*isHistoryBrowseGuardActive\(\)[\s\S]*previousScrollState\.autoScrollLockedByUser/);
+  assert.match(conversationPane, /function restorePendingPrependBottomClipIfNeeded\(\): boolean \{/);
+  assert.match(conversationPane, /onUpdated\(\(\) => \{[\s\S]*restorePendingPrependBottomClipIfNeeded\(\);/);
+  assert.match(conversationPane, /historyPrependPendingBottomDistance = scrollBottomDistance\(metrics\);/);
+  assert.match(conversationPane, /function restorePrependVisualAnchor\([\s\S]*restoreTimelineItemAnchor\(anchorItemId, anchorOffset\)/);
+  assert.match(conversationPane, /restorePrependVisualAnchor\(anchorItemId, anchorOffset, boundaryMessageId\);/);
+  assert.match(conversationPane, /const desiredBottomOffset = Math\.min\(/);
+  assert.match(conversationPane, /const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 5\.5;/);
+  assert.match(conversationPane, /function requestMoreBeforeForAutoFill\(\): void \{/);
+  assert.match(conversationPane, /function scheduleHistoryBeforeAutoFill\(\): void \{/);
+  assert.match(conversationPane, /emit\('load-more-before', 'continuation'\);/);
+  assert.doesNotMatch(conversationPane, /forceLatestBottomAnchor\(\);/);
+  assert.match(conversationPane, /emit\('load-more-before', 'autofill'\);/);
+  assert.match(messageBubble, /:data-chat-message-id="message\.id"/);
+  assert.match(conversationPane, /function armLatestBottomAnchorStabilizer\(\): void \{/);
+  assert.match(conversationPane, /initialLatestAnchorSettleUntil = Math\.max\(/);
+  assert.match(conversationPane, /async function restoreLatestBottomAnchorIfNeeded\(\): Promise<void> \{/);
+  assert.match(conversationPane, /const settling = Date\.now\(\) < initialLatestAnchorSettleUntil;/);
+  assert.match(conversationPane, /if \(bottomDistance <= 40 && !settling\) \{/);
+  assert.match(conversationPane, /if \(\s*!props\.selectedSession[\s\S]*\|\| props\.hasMoreAfter[\s\S]*\|\| scrollState\.value\.autoScrollLockedByUser[\s\S]*\|\| isHistoryBrowseGuardActive\(\)/);
+  assert.match(conversationPane, /overflow-anchor:\s*none;/);
+  assert.match(conversationPane, /scrollToBottom\('auto'\);/);
+  assert.match(chatShellPage, /const shouldShowLoadingState = !prefetchedPayload;/);
+  assert.match(chatShellPage, /if \(shouldShowLoadingState\) \{\s*historyLoadingBefore\.value = true;\s*\}/);
+  assert.match(chatShellPage, /if \(mode !== 'autofill' && sessionKey === selectedSessionKey\.value\) \{/);
 });
 
 test("chat shell bootstraps the first session rail quickly and hydrates lower-priority agents later", () => {
+  assert.match(chatShellPage, /const activeStreamingMessageId = runtimeView\.activeStreamingMessageId;/);
+  assert.match(chatShellPage, /type ChatShellWarmCacheSnapshot = \{/);
+  assert.match(chatShellPage, /const CHAT_SHELL_WARM_CACHE_TTL_MS = 45_000;/);
+  assert.match(chatShellPage, /const CHAT_SHELL_WARM_CACHE_STORAGE_KEY = 'openclaw-studio\.chat\.shell-warm-cache';/);
+  assert.match(chatShellPage, /let chatShellWarmCache: ChatShellWarmCacheSnapshot \| null = null;/);
+  assert.match(chatShellPage, /function rememberChatShellWarmCache\(\): void \{/);
+  assert.match(chatShellPage, /window\.sessionStorage\.setItem\(\s*CHAT_SHELL_WARM_CACHE_STORAGE_KEY,/);
+  assert.match(chatShellPage, /function restoreChatShellWarmCache\(expectedSessionKey: string \| null = null\): boolean \{/);
+  assert.match(chatShellPage, /window\.sessionStorage\.getItem\(CHAT_SHELL_WARM_CACHE_STORAGE_KEY\)/);
   assert.match(chatShellPage, /const CHAT_SESSION_BOOTSTRAP_AGENT_LIMIT = 1;/);
   assert.match(chatShellPage, /const CHAT_SESSION_DEFERRED_HYDRATION_DELAY_MS = 180;/);
   assert.match(chatShellPage, /const CHAT_SESSION_BOOTSTRAP_ROW_LIMIT = 40;/);
@@ -955,18 +1170,58 @@ test("chat shell bootstraps the first session rail quickly and hydrates lower-pr
   assert.match(chatShellPage, /async function loadSessions\(options: \{ deferRemainingAgents\?: boolean \} = \{\}\): Promise<void> \{/);
   assert.match(chatShellPage, /const prioritizedAgentId = deriveAgentIdFromChatSessionKey\(/);
   assert.match(chatShellPage, /const immediateAgentCount = options\.deferRemainingAgents/);
-  assert.match(chatShellPage, /const CHAT_SESSION_BOOTSTRAP_FETCH_OPTIONS = \{[\s\S]*limit: CHAT_SESSION_BOOTSTRAP_ROW_LIMIT,[\s\S]*includeDerivedTitles: false,[\s\S]*includeLastMessage: false,[\s\S]*\} as const;/);
+  assert.match(chatShellPage, /const CHAT_SESSION_BOOTSTRAP_LOCAL_FETCH_OPTIONS = \{[\s\S]*limit: CHAT_SESSION_BOOTSTRAP_ROW_LIMIT,[\s\S]*includeDerivedTitles: false,[\s\S]*includeLastMessage: false,[\s\S]*localOnly: true,[\s\S]*\} as const;/);
+  assert.match(chatShellPage, /const deferredAgents = options\.deferRemainingAgents[\s\S]*\? agents[\s\S]*: agents\.slice\(immediateAgentCount\);/);
   assert.match(chatShellPage, /scheduleDeferredSessionHydration\(deferredAgents, loadVersion, mergedRows\);/);
-  assert.match(chatApi, /export function fetchChatSessions\([\s\S]*includeDerivedTitles\?: boolean;[\s\S]*includeLastMessage\?: boolean;/);
+  assert.match(chatApi, /export function fetchChatSessions\([\s\S]*includeDerivedTitles\?: boolean;[\s\S]*includeLastMessage\?: boolean;[\s\S]*localOnly\?: boolean;/);
   assert.match(chatApi, /url\.searchParams\.set\('includeDerivedTitles', options\.includeDerivedTitles \? '1' : '0'\);/);
   assert.match(chatApi, /url\.searchParams\.set\('includeLastMessage', options\.includeLastMessage \? '1' : '0'\);/);
+  assert.match(chatApi, /url\.searchParams\.set\('localOnly', options\.localOnly \? '1' : '0'\);/);
   assert.match(chatApi, /export function fetchChatBootstrap\(/);
+  assert.match(chatApi, /export function buildChatStreamUrl\([\s\S]*bootstrapSnapshot\?: boolean;[\s\S]*\): string \{/);
+  assert.match(chatApi, /url\.searchParams\.set\('bootstrapSnapshot', options\.bootstrapSnapshot \? '1' : '0'\);/);
+  assert.match(chatShellPage, /bootstrapSnapshot: false,/);
+  assert.match(chatShellPage, /new WebSocket\([\s\S]*bootstrapSnapshot=0[\s\S]*\)/);
   assert.match(chatApi, /const url = new URL\('\/api\/chat\/bootstrap'/);
   assert.match(chatShellPage, /async function bootstrapChatSurface\(\): Promise<void> \{/);
-  assert.match(chatShellPage, /await loadChatBootstrap\(bootstrapSessionKey\);/);
+  assert.match(chatShellPage, /const restoredWarmCache = restoreChatShellWarmCache\(bootstrapSessionKey \|\| null\);/);
+  assert.match(chatShellPage, /if \(restoredWarmCache\) \{[\s\S]*bootstrapLoading\.value = false;[\s\S]*return;[\s\S]*\}/);
+  assert.match(chatShellPage, /let bootstrapPayload: ChatBootstrapPayload \| null = null;/);
+  assert.match(chatShellPage, /bootstrapPayload = await loadChatBootstrap\(bootstrapSessionKey\);/);
+  assert.match(chatShellPage, /const bootstrapHistoryLimit = sessionKey[\s\S]*CHAT_HISTORY_INITIAL_WINDOW_LIMIT[\s\S]*CHAT_HISTORY_BOOTSTRAP_WINDOW_LIMIT;/);
+  assert.match(chatShellPage, /historyLimit: bootstrapHistoryLimit,/);
+  assert.match(chatShellPage, /const bootstrapHistorySyncSkipSessionKeys = new Set<string>\(\);/);
+  assert.match(chatShellPage, /if \(payload\.history\) \{[\s\S]*bootstrapHistorySyncSkipSessionKeys\.add\(bootstrapSessionKey\);/);
+  assert.match(chatShellPage, /if \(bootstrapHistorySyncSkipSessionKeys\.delete\(sessionKey\)\) \{[\s\S]*return;[\s\S]*\}/);
+  assert.match(chatShellPage, /chatHealth\.value = payload\.diagnostics \|\| null;/);
   assert.match(chatShellPage, /void loadAgents\(\)\.then\(\(\) => loadSessions\(\{ deferRemainingAgents: true \}\)\);/);
+  assert.match(chatShellPage, /if \(!bootstrapPayload\?\.diagnostics\) \{[\s\S]*void loadHealth\(\);[\s\S]*\}/);
+  assert.match(chatShellPage, /if \(!bootstrapPayload\?\.organizer\) \{[\s\S]*void loadOrganizer\(\);[\s\S]*\}/);
   assert.match(chatShellPage, /if \(!selectedSessionKey\.value\) \{[\s\S]*const rememberedSessionKey = resolveBootstrapSessionKey\(\);[\s\S]*selectSessionKeyLocally\(rememberedSessionKey\);/);
   assert.match(chatShellPage, /const hasPendingOptimisticStartup = \(/);
   assert.match(chatShellPage, /await loadSessions\(\{ deferRemainingAgents: true \}\);/);
   assert.match(chatShellPage, /onMounted\(async \(\) => \{[\s\S]*await bootstrapChatSurface\(\);/);
+  assert.match(chatShellPage, /const exhaustedHistoryBeforeCursorBySession = new Map<string, string>\(\);/);
+  assert.match(chatShellPage, /const exhaustedHistoryAfterCursorBySession = new Map<string, string>\(\);/);
+  assert.match(
+    fs.readFileSync(
+      path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-session-scroll-state.ts"),
+      "utf8",
+    ),
+    /&& params\.state\.autoScrollLockedByUser/,
+  );
+  assert.match(chatShellPage, /if \(exhaustedHistoryBeforeCursorBySession\.get\(sessionKey\) === beforeCursor\) \{/);
+  assert.match(chatShellPage, /let historyBeforeMaterializeInFlight = false;/);
+  assert.match(chatShellPage, /if \(\s*!sessionKey[\s\S]*\|\| historyBeforeMaterializeInFlight[\s\S]*\|\| historyLoadingBefore\.value[\s\S]*\|\| historyLoadingInitial\.value[\s\S]*\|\| !historyPageInfo\.value\.hasMoreBefore[\s\S]*\|\| !historyPageInfo\.value\.beforeCursor/);
+  assert.match(chatShellPage, /historyBeforeMaterializeInFlight = true;/);
+  assert.match(chatShellPage, /finally \{[\s\S]*historyBeforeMaterializeInFlight = false;/);
+  assert.match(chatShellPage, /const noProgress = \(/);
+  assert.match(chatShellPage, /historyPageInfo\.value = \{ \.\.\.historyPageInfo\.value, hasMoreBefore: false, beforeCursor: null \};/);
+  assert.match(chatShellPage, /const useWideHistoryPage = historyMode\.value === 'history' && !selectedHistoryDay\.value;/);
+  assert.match(chatShellPage, /const requestLimit = mode === 'autofill' \|\| mode === 'continuation' \|\| useWideHistoryPage/);
+  assert.match(chatShellPage, /prefetchedPayload = await waitForHistoryBeforePrefetch\(prefetchKey\);/);
+  assert.match(chatShellPage, /if \(mode !== 'autofill' && sessionKey === selectedSessionKey\.value\) \{/);
+  assert.match(chatShellPage, /if \(requestCursor && exhaustedHistoryAfterCursorBySession\.get\(sessionKey\) === requestCursor\) \{/);
+  assert.match(chatShellPage, /historyPageInfo\.value = \{ \.\.\.historyPageInfo\.value, hasMoreAfter: false, afterCursor: null \};/);
+  assert.match(chatShellPage, /onBeforeUnmount\(\(\) => \{[\s\S]*rememberChatShellWarmCache\(\);/);
 });

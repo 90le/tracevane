@@ -207,6 +207,7 @@ export function registerChatRoutes(
             limit: readLimit(req, 200),
             includeDerivedTitles: readBooleanQuery(req, "includeDerivedTitles", true),
             includeLastMessage: readBooleanQuery(req, "includeLastMessage", true),
+            localOnly: readBooleanQuery(req, "localOnly", false),
           }),
         );
       } catch (error) {

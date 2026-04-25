@@ -9,6 +9,10 @@ const markdownBlock = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/MarkdownBlock.vue'),
   'utf8',
 );
+const markdownRenderer = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat/markdown.ts'),
+  'utf8',
+);
 
 test('markdown live preview uses reka dialog primitives instead of a hand-rolled teleported mask', () => {
   assert.match(markdownBlock, /from 'reka-ui'/);
@@ -73,4 +77,11 @@ test('markdown live preview scales rendered svg markup with explicit canvas boun
   assert.match(markdownBlock, /:style="livePreviewCanvasStyle"/);
   assert.match(markdownBlock, /:style="livePreviewRenderedMarkupStyle"/);
   assert.doesNotMatch(markdownBlock, /class="chat-live-preview-scale-wrap"[\s\S]*:style="livePreviewZoomFit \? undefined : livePreviewZoomStyle"/);
+});
+
+test('markdown media markup defaults to lazy image decode and non-eager video preload', () => {
+  assert.match(markdownRenderer, /loading="lazy"/);
+  assert.match(markdownRenderer, /decoding="async"/);
+  assert.match(markdownRenderer, /fetchpriority="low"/);
+  assert.match(markdownRenderer, /preload="none"/);
 });

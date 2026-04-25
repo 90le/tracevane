@@ -3,11 +3,14 @@ import type { StudioApiContext } from '../../core/context.js';
 import type { StudioRouter } from '../../core/router.js';
 import type {
   SkillConfigUpdatePayload,
+  SkillsLifecyclePayload,
   SkillsMaintenancePayload,
   SkillsMarketplaceInstallPayload,
   SkillsMarketplaceSourceId,
   SkillsMarketplaceSort,
   SkillsPreflightPayload,
+  SkillsUploadInstallPayload,
+  SkillsUploadPreflightPayload,
 } from '../../../../types/skills.js';
 
 function parseMarketplaceSource(value: string | null): SkillsMarketplaceSourceId {
@@ -26,6 +29,15 @@ export function registerSkillsRoutes(router: StudioRouter, ctx: StudioApiContext
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const refresh = url.searchParams.get('refresh') === '1';
     sendJson(res, 200, await ctx.services.skills.getSummary({ refresh }));
+  });
+
+  router.get('/api/skills/targets', async (_req, res, routeCtx) => {
+    sendJson(res, 200, await routeCtx.services.skills.getTargets());
+  });
+
+  router.post('/api/skills/lifecycle', async (req, res, routeCtx) => {
+    const body = await parseJsonBody<SkillsLifecyclePayload>(req);
+    sendJson(res, 200, await routeCtx.services.skills.runLifecycleAction(body));
   });
 
   router.get('/api/skills/:slug/config', async (_req, res, routeCtx, params) => {
@@ -75,6 +87,16 @@ export function registerSkillsRoutes(router: StudioRouter, ctx: StudioApiContext
   router.post('/api/marketplace/install', async (req, res, routeCtx) => {
     const body = await parseJsonBody<SkillsMarketplaceInstallPayload>(req);
     sendJson(res, 200, await routeCtx.services.skills.installMarketplaceSkill(body));
+  });
+
+  router.post('/api/skills/upload/preflight', async (req, res, routeCtx) => {
+    const body = await parseJsonBody<SkillsUploadPreflightPayload>(req);
+    sendJson(res, 200, await routeCtx.services.skills.preflightUploadedSkillArchive(body));
+  });
+
+  router.post('/api/skills/upload/install', async (req, res, routeCtx) => {
+    const body = await parseJsonBody<SkillsUploadInstallPayload>(req);
+    sendJson(res, 200, await routeCtx.services.skills.installUploadedSkillArchive(body));
   });
 
   router.post('/api/skills/:slug/update', async (req, res, routeCtx, params) => {

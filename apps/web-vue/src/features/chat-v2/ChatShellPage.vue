@@ -51,6 +51,9 @@
           :has-more-after="historyPageInfo.hasMoreAfter"
           :history-loading-after="historyLoadingAfter"
           :viewing-historical-position="viewingHistoricalPosition"
+          :auto-fill-history-before-enabled="historyMode === 'history' && !selectedHistoryDay"
+          :force-eager-history-render="historyRenderStabilizing"
+          :history-prepend-anchor-message-id="historyPrependAnchorMessageId"
           :history-error-message="historyErrorMessage"
           :access-error="accessError"
           :gateway-warning="gatewayWarning"
@@ -69,6 +72,7 @@
           :slash-arg-options-overrides="slashArgOptionsOverrides"
           :inspect-pinned="inspectPinned"
           :active-run-id="activeRuntime?.activeRunId || null"
+          :active-streaming-message-id="activeStreamingMessageId"
           :queued-items="selectedQueuedItems"
           :queue-rail-expanded="queueRailExpanded"
           :mobile-queue-sheet-open="mobileQueueSheetOpen"
@@ -101,6 +105,7 @@
           @refresh-session="refreshSelectedConversation"
           @composer-keydown="handleComposerKeydown"
           @load-more-before="loadMoreHistoryBefore"
+          @prefetch-more-before="prefetchMoreHistoryBefore"
           @load-more-after="loadMoreHistoryAfter"
           @jump-to-live="jumpToLive"
           @jump-to-message="handleSearchResultJump"
@@ -580,6 +585,7 @@ const sessionsLoading = ref(false);
 const historyLoadingInitial = ref(false);
 const historyLoadingBefore = ref(false);
 const historyLoadingAfter = ref(false);
+let historyBeforeMaterializeInFlight = false;
 const sessionCreating = ref(false);
 const sendBusy = ref(false);
 const abortBusy = ref(false);
@@ -638,6 +644,10 @@ let deferredInitialHistoryLoadTimer: number | null = null;
 let deferredSessionHydrationTimer: number | null = null;
 let historyReplaceRequestController: AbortController | null = null;
 let historyDatesRequestController: AbortController | null = null;
+let historyBeforePrefetchController: AbortController | null = null;
+let historyBeforePrefetchTimer: number | null = null;
+let historyBeforePrefetchIdleHandle: number | null = null;
+let historyRenderStabilizeTimer: number | null = null;
 let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 const suppressedRunIds = new Set<string>();
 const terminalRunFenceBySession = new Map<string, Set<string>>();
@@ -669,16 +679,22 @@ const NOTICE_TIMEOUT_MS: Record<NoticeMessage['kind'], number> = {
   success: 2400,
   error: 5600,
 };
+const CHAT_HISTORY_BOOTSTRAP_WINDOW_LIMIT = 12;
 const CHAT_HISTORY_INITIAL_WINDOW_LIMIT = 24;
-const CHAT_HISTORY_PAGE_LIMIT = 32;
+const CHAT_HISTORY_PAGE_LIMIT = 12;
+const CHAT_HISTORY_AUTO_FILL_PAGE_LIMIT = 24;
 const CHAT_HISTORY_DEFER_MS = 320;
+const CHAT_TOOL_STREAM_THROTTLE_MS = 80;
+const CHAT_DEBUG_TRACE_STORAGE_KEY = 'openclaw-studio.chat.debug-stream-trace';
+const CHAT_DEBUG_TRACE_LIMIT = 300;
 const CHAT_SESSION_BOOTSTRAP_AGENT_LIMIT = 1;
 const CHAT_SESSION_DEFERRED_HYDRATION_DELAY_MS = 180;
 const CHAT_SESSION_BOOTSTRAP_ROW_LIMIT = 40;
-const CHAT_SESSION_BOOTSTRAP_FETCH_OPTIONS = {
+const CHAT_SESSION_BOOTSTRAP_LOCAL_FETCH_OPTIONS = {
   limit: CHAT_SESSION_BOOTSTRAP_ROW_LIMIT,
   includeDerivedTitles: false,
   includeLastMessage: false,
+  localOnly: true,
 } as const;
 const SESSION_ROW_PROTECTION_TTL_MS = 20_000;
 const SESSION_CREATE_SEND_GUARD_MS = 1_200;
@@ -687,9 +703,63 @@ const sessionSendGuardDeadlines = new Map<string, number>();
 const sessionSendGuardVersion = ref(0);
 const historyDatesLoadedSessionKey = ref('');
 const historyDatesLoading = ref(false);
+const historyRenderStabilizing = ref(false);
+const historyPrependAnchorMessageId = ref<string | null>(null);
 const optimisticStartupSessionKey = ref('');
 const bootstrapPrimedSessionKey = ref('');
 const bootstrapLoading = ref(true);
+const prefetchedHistoryBefore = ref<{
+  sessionKey: string;
+  mode: 'history' | 'search';
+  beforeCursor: string;
+  day: string | null;
+  query: string;
+  payload: ChatHistoryPayload;
+} | null>(null);
+type ChatHistoryBeforePrefetchKey = {
+  sessionKey: string;
+  mode: 'history' | 'search';
+  beforeCursor: string;
+  day: string | null;
+  query: string;
+};
+const bootstrapHistorySyncSkipSessionKeys = new Set<string>();
+type ChatTemporaryToolStreamEvent = Extract<ChatStreamEvent, { kind: 'temporary.tool' }>;
+const pendingTemporaryToolEvents = new Map<string, ChatTemporaryToolStreamEvent>();
+let temporaryToolFlushTimer: number | null = null;
+type ChatDebugTraceEntry = {
+  at: string;
+  source: 'stream' | 'send' | 'session';
+  kind: string;
+  sessionKey: string | null;
+  runId: string | null;
+  note?: string;
+};
+let chatDebugTraceEnabled = false;
+const chatDebugTraceBuffer: ChatDebugTraceEntry[] = [];
+
+type ChatShellWarmCacheSnapshot = {
+  capturedAt: number;
+  agentRows: AgentSummary[];
+  sessionRows: ChatSessionRow[];
+  organizer: ChatSessionOrganizerState;
+  chatHealth: ChatDiagnostics | null;
+  globalHostManagementExecEnabled: boolean;
+  slashModelOptions: string[];
+};
+
+const CHAT_SHELL_WARM_CACHE_TTL_MS = 45_000;
+const CHAT_SHELL_WARM_CACHE_STORAGE_KEY = 'openclaw-studio.chat.shell-warm-cache';
+let chatShellWarmCache: ChatShellWarmCacheSnapshot | null = null;
+const exhaustedHistoryBeforeCursorBySession = new Map<string, string>();
+const exhaustedHistoryAfterCursorBySession = new Map<string, string>();
+
+declare global {
+  interface Window {
+    __OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE?: () => void;
+    __OPENCLAW_STUDIO_CHAT_TRACE__?: ChatDebugTraceEntry[];
+  }
+}
 
 const routeSessionKey = computed(() => resolveChatRouteSessionKey({
   routeParamSessionRef: typeof route.params.sessionRef === 'string' ? route.params.sessionRef : '',
@@ -744,6 +814,7 @@ const conversationTitle = runtimeView.conversationTitle;
 const conversationSubtitle = runtimeView.conversationSubtitle;
 const gatewayWarning = runtimeView.gatewayWarning;
 const accessError = runtimeView.accessError;
+const activeStreamingMessageId = runtimeView.activeStreamingMessageId;
 const renderTimelineItems = runtimeView.renderTimelineItems;
 const timelineVersion = runtimeView.timelineVersion;
 const activeToast = computed<NoticeMessage | null>(() => {
@@ -1020,6 +1091,33 @@ function setNotice(kind: NoticeMessage['kind'], message: string): void {
   }, NOTICE_TIMEOUT_MS[kind]);
 }
 
+function refreshChatDebugTraceFlag(): void {
+  if (typeof window === 'undefined') {
+    chatDebugTraceEnabled = false;
+    return;
+  }
+  try {
+    chatDebugTraceEnabled = window.localStorage.getItem(CHAT_DEBUG_TRACE_STORAGE_KEY) === '1';
+  } catch {
+    chatDebugTraceEnabled = false;
+  }
+  if (!chatDebugTraceEnabled) {
+    chatDebugTraceBuffer.length = 0;
+    delete window.__OPENCLAW_STUDIO_CHAT_TRACE__;
+  }
+}
+
+function recordChatDebugTrace(entry: ChatDebugTraceEntry): void {
+  if (!chatDebugTraceEnabled || typeof window === 'undefined') {
+    return;
+  }
+  chatDebugTraceBuffer.push(entry);
+  while (chatDebugTraceBuffer.length > CHAT_DEBUG_TRACE_LIMIT) {
+    chatDebugTraceBuffer.shift();
+  }
+  window.__OPENCLAW_STUDIO_CHAT_TRACE__ = [...chatDebugTraceBuffer];
+}
+
 function clearNotice(): void {
   clearNoticeTimer();
   noticeMessage.value = null;
@@ -1084,15 +1182,18 @@ function syncSessionRow(sessionKey: string, patch: Partial<ChatSessionRow>): voi
     deliveryContext: patch.deliveryContext || current.deliveryContext,
     permissions: patch.permissions || current.permissions,
   };
+  rememberChatShellWarmCache();
 }
 
 function ensureSessionRow(row: ChatSessionRow): void {
   const index = sessionRows.value.findIndex((current) => current.key === row.key);
   if (index === -1) {
     sessionRows.value = [row, ...sessionRows.value];
+    rememberChatShellWarmCache();
     return;
   }
   sessionRows.value[index] = row;
+  rememberChatShellWarmCache();
 }
 
 function applyQueueState(sessionKey: string, items: ChatQueuedMessageItem[]): void {
@@ -1393,6 +1494,7 @@ async function loadStudioChatGlobalExecConfig(): Promise<void> {
       ...slashArgOptionsOverrides.value,
       model: deriveSlashModelOptionsFromConfigSummary(summary),
     };
+    rememberChatShellWarmCache();
   } catch {
     globalHostManagementExecEnabled.value = false;
     slashArgOptionsOverrides.value = {
@@ -1478,6 +1580,9 @@ function collectPreservedAgentRows(
   currentRows: ChatSessionRow[],
   agentId: string,
   incomingRows: ChatSessionRow[],
+  options: {
+    preserveAllMissing?: boolean;
+  } = {},
 ): ChatSessionRow[] {
   const now = Date.now();
   pruneProtectedSessionRows(now);
@@ -1489,7 +1594,9 @@ function collectPreservedAgentRows(
     row.agentId === agentId
     && !incomingKeys.has(row.key)
     && (
-      Boolean(row.runtime.activeRunId)
+      options.preserveAllMissing
+      || row.kind !== 'studio_managed'
+      || Boolean(row.runtime.activeRunId)
       || isProtectedSessionRow(row.key, now)
     )
   ));
@@ -1619,12 +1726,17 @@ function clearConversationState(): void {
   clearRunSettlementSyncTimer();
   abortReplaceHistoryRequest();
   abortHistoryDatesRequest();
+  clearHistoryBeforePrefetch();
+  clearPendingTemporaryToolEvents();
   clearTerminalRunFence();
   clearWsReconnectTimer();
   if (selectedSessionKey.value) {
     clearChatRuntimeSnapshot(selectedSessionKey.value);
+    exhaustedHistoryBeforeCursorBySession.delete(selectedSessionKey.value);
+    exhaustedHistoryAfterCursorBySession.delete(selectedSessionKey.value);
   }
   historyPayload.value = null;
+  historyPrependAnchorMessageId.value = null;
   runtimeMachineState.value = resetChatSessionRuntimeMachine();
   historyPageInfo.value = { hasMoreBefore: false, beforeCursor: null, hasMoreAfter: false, afterCursor: null };
   historyDays.value = [];
@@ -1632,6 +1744,7 @@ function clearConversationState(): void {
   historyLoadingInitial.value = false;
   historyLoadingBefore.value = false;
   historyLoadingAfter.value = false;
+  historyBeforeMaterializeInFlight = false;
   historyDatesLoading.value = false;
   historyErrorMessage.value = '';
   recordBrowserSearchVersion += 1;
@@ -1759,6 +1872,108 @@ function applySideResultEvent(event: Extract<ChatStreamEvent, { kind: 'side_resu
   if (isSelectedSession && event.result.isError) {
     setNotice('error', event.result.text);
   }
+}
+
+function temporaryToolEventKey(event: ChatTemporaryToolStreamEvent): string {
+  return `${event.sessionKey}:${event.runId || 'none'}:${event.tool.toolCallId}`;
+}
+
+function clearTemporaryToolFlushTimer(): void {
+  if (temporaryToolFlushTimer == null) {
+    return;
+  }
+  window.clearTimeout(temporaryToolFlushTimer);
+  temporaryToolFlushTimer = null;
+}
+
+function clearPendingTemporaryToolEvents(): void {
+  clearTemporaryToolFlushTimer();
+  pendingTemporaryToolEvents.clear();
+}
+
+function applyTemporaryToolStreamEvent(event: ChatTemporaryToolStreamEvent): void {
+  const isSelectedSession = selectedSession.value?.key === event.sessionKey;
+  const terminalToolEvent = isTerminalToolStatus(event.tool.status);
+  const shouldIgnoreLateRunningEvent = Boolean(
+    event.runId
+    && event.tool.status === 'running'
+    && isRunTerminal(event.sessionKey, event.runId),
+  );
+  if (shouldIgnoreLateRunningEvent) {
+    return;
+  }
+  if (event.runId && event.tool.status === 'running') {
+    markRunAsActive(event.sessionKey, event.runId);
+  }
+  if (isSelectedSession && event.runId) {
+    runtimeMachineState.value = applyChatSessionTemporaryToolEvent(runtimeMachineState.value, {
+      runId: event.runId,
+      emittedAt: event.emittedAt,
+      partial: event.partial,
+      tool: event.tool,
+    });
+  }
+  if (!isSelectedSession) {
+    return;
+  }
+  const observability = ensureObservabilityState();
+  observability.toolCards = upsertRuntimeToolCards(observability.toolCards, event.tool);
+  if (terminalToolEvent) {
+    observability.timeline = upsertRuntimeTimelineItems(observability.timeline, {
+      id: `tool-result-${event.tool.toolCallId}-${event.emittedAt}`,
+      kind: 'tool_result',
+      runId: event.runId,
+      toolCallId: event.tool.toolCallId,
+      emittedAt: event.emittedAt,
+      title: text(`Tool result · ${event.tool.name}`, `Tool result · ${event.tool.name}`),
+      detail: event.tool.resultPreview,
+      level: event.tool.isError ? 'error' : 'success',
+    });
+  }
+  applyObservability(observability);
+  persistHistorySnapshot(event.sessionKey);
+  if (terminalToolEvent) {
+    scheduleRunSettlementHistorySync(event.sessionKey, event.runId, {
+      delayMs: 220,
+      attempts: 8,
+    });
+  }
+}
+
+function flushPendingTemporaryToolEvents(): void {
+  clearTemporaryToolFlushTimer();
+  if (!pendingTemporaryToolEvents.size) {
+    return;
+  }
+  const events = [...pendingTemporaryToolEvents.values()];
+  pendingTemporaryToolEvents.clear();
+  for (const event of events) {
+    applyTemporaryToolStreamEvent(event);
+  }
+}
+
+function scheduleTemporaryToolStreamEvent(event: ChatTemporaryToolStreamEvent): void {
+  pendingTemporaryToolEvents.set(temporaryToolEventKey(event), event);
+  if (temporaryToolFlushTimer != null) {
+    return;
+  }
+  temporaryToolFlushTimer = window.setTimeout(() => {
+    flushPendingTemporaryToolEvents();
+  }, CHAT_TOOL_STREAM_THROTTLE_MS);
+}
+
+function handleTemporaryToolStreamEvent(event: ChatTemporaryToolStreamEvent): void {
+  const terminalToolEvent = isTerminalToolStatus(event.tool.status);
+  if (terminalToolEvent) {
+    pendingTemporaryToolEvents.delete(temporaryToolEventKey(event));
+    applyTemporaryToolStreamEvent(event);
+    return;
+  }
+  if (event.partial) {
+    scheduleTemporaryToolStreamEvent(event);
+    return;
+  }
+  applyTemporaryToolStreamEvent(event);
 }
 
 function handleLegacyStreamEvent(event: ChatStreamEvent): void {
@@ -2143,50 +2358,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'temporary.tool') {
-    const terminalToolEvent = isTerminalToolStatus(event.tool.status);
-    const shouldIgnoreLateRunningEvent = Boolean(
-      event.runId
-      && event.tool.status === 'running'
-      && isRunTerminal(event.sessionKey, event.runId),
-    );
-    if (shouldIgnoreLateRunningEvent) {
-      return;
-    }
-    if (event.runId && event.tool.status === 'running') {
-      markRunAsActive(event.sessionKey, event.runId);
-    }
-    if (isSelectedSession && event.runId) {
-      runtimeMachineState.value = applyChatSessionTemporaryToolEvent(runtimeMachineState.value, {
-        runId: event.runId,
-        emittedAt: event.emittedAt,
-        partial: event.partial,
-        tool: event.tool,
-      });
-    }
-    if (isSelectedSession) {
-      const observability = ensureObservabilityState();
-      observability.toolCards = upsertRuntimeToolCards(observability.toolCards, event.tool);
-      if (terminalToolEvent) {
-        observability.timeline = upsertRuntimeTimelineItems(observability.timeline, {
-          id: `tool-result-${event.tool.toolCallId}-${event.emittedAt}`,
-          kind: 'tool_result',
-          runId: event.runId,
-          toolCallId: event.tool.toolCallId,
-          emittedAt: event.emittedAt,
-          title: text(`Tool result · ${event.tool.name}`, `Tool result · ${event.tool.name}`),
-          detail: event.tool.resultPreview,
-          level: event.tool.isError ? 'error' : 'success',
-        });
-      }
-      applyObservability(observability);
-      persistHistorySnapshot(event.sessionKey);
-      if (terminalToolEvent) {
-        scheduleRunSettlementHistorySync(event.sessionKey, event.runId, {
-          delayMs: 220,
-          attempts: 8,
-        });
-      }
-    }
+    handleTemporaryToolStreamEvent(event);
     return;
   }
 
@@ -2300,6 +2472,13 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
 }
 
 function handleStreamEvent(event: ChatStreamEvent): void {
+  recordChatDebugTrace({
+    at: new Date().toISOString(),
+    source: 'stream',
+    kind: event.kind,
+    sessionKey: event.sessionKey || null,
+    runId: 'runId' in event ? (event.runId || null) : null,
+  });
   if (event.kind === 'queue.state') {
     applyQueueState(event.sessionKey, event.items);
     return;
@@ -2322,6 +2501,81 @@ function clearWsReconnectTimer(): void {
     clearTimeout(wsReconnectTimer);
     wsReconnectTimer = null;
   }
+}
+
+function cloneChatShellWarmValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function rememberChatShellWarmCache(): void {
+  chatShellWarmCache = {
+    capturedAt: Date.now(),
+    agentRows: cloneChatShellWarmValue(agentRows.value),
+    sessionRows: cloneChatShellWarmValue(sessionRows.value),
+    organizer: cloneChatShellWarmValue(organizerSourceState.value),
+    chatHealth: cloneChatShellWarmValue(chatHealth.value),
+    globalHostManagementExecEnabled: globalHostManagementExecEnabled.value,
+    slashModelOptions: [...(slashArgOptionsOverrides.value.model || [])],
+  };
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage.setItem(
+        CHAT_SHELL_WARM_CACHE_STORAGE_KEY,
+        JSON.stringify(chatShellWarmCache),
+      );
+    } catch {}
+  }
+}
+
+function canUseChatShellWarmCache(expectedSessionKey: string | null = null): boolean {
+  const snapshot = (() => {
+    if (chatShellWarmCache) {
+      return chatShellWarmCache;
+    }
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    try {
+      const raw = window.sessionStorage.getItem(CHAT_SHELL_WARM_CACHE_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw) as ChatShellWarmCacheSnapshot;
+      chatShellWarmCache = parsed;
+      return parsed;
+    } catch {
+      return null;
+    }
+  })();
+  if (!snapshot) {
+    return false;
+  }
+  if (Date.now() - snapshot.capturedAt > CHAT_SHELL_WARM_CACHE_TTL_MS) {
+    return false;
+  }
+  if (!snapshot.agentRows.length || !snapshot.sessionRows.length) {
+    return false;
+  }
+  if (expectedSessionKey && !snapshot.sessionRows.some((row) => row.key === expectedSessionKey)) {
+    return false;
+  }
+  return true;
+}
+
+function restoreChatShellWarmCache(expectedSessionKey: string | null = null): boolean {
+  if (!canUseChatShellWarmCache(expectedSessionKey) || !chatShellWarmCache) {
+    return false;
+  }
+  agentRows.value = cloneChatShellWarmValue(chatShellWarmCache.agentRows);
+  sessionRows.value = cloneChatShellWarmValue(chatShellWarmCache.sessionRows);
+  applyOrganizer(cloneChatShellWarmValue(chatShellWarmCache.organizer));
+  chatHealth.value = cloneChatShellWarmValue(chatShellWarmCache.chatHealth);
+  globalHostManagementExecEnabled.value = chatShellWarmCache.globalHostManagementExecEnabled;
+  slashArgOptionsOverrides.value = {
+    ...slashArgOptionsOverrides.value,
+    model: [...chatShellWarmCache.slashModelOptions],
+  };
+  return true;
 }
 
 function usesGatewayRpc(): boolean {
@@ -2399,11 +2653,17 @@ async function attachGatewayChat(sessionKey: string): Promise<void> {
   gatewayChatSessionKey = sessionKey;
   const response = await requestGatewayChat<ChatGatewayAttachResponse>(
     STUDIO_CHAT_GATEWAY_METHODS.attach,
-    { sessionKey },
+    {
+      sessionKey,
+      bootstrapSnapshot: false,
+    },
   );
   wsConnected.value = true;
   for (const event of response.events || []) {
     handleStreamEvent(event);
+  }
+  if (bootstrapHistorySyncSkipSessionKeys.delete(sessionKey)) {
+    return;
   }
   if (selectedSessionKey.value === sessionKey && historyMode.value === 'history') {
     scheduleLiveHistorySync(sessionKey, 40);
@@ -2454,7 +2714,9 @@ function connectChatEventSource(sessionKey: string): void {
   disconnectChatEventSource();
   clearWsReconnectTimer();
 
-  const source = new EventSource(buildChatStreamUrl(sessionKey), {
+  const source = new EventSource(buildChatStreamUrl(sessionKey, {
+    bootstrapSnapshot: false,
+  }), {
     withCredentials: true,
   });
   chatEventSource = source;
@@ -2607,7 +2869,9 @@ function connectChatSocket(sessionKey: string): void {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const basePath = getWebSocketBasePath();
   const wsPath = basePath ? `${basePath}/ws/chat` : '/ws/chat';
-  const socket = new WebSocket(`${protocol}//${window.location.host}${wsPath}?sessionKey=${encodeURIComponent(sessionKey)}`);
+  const socket = new WebSocket(
+    `${protocol}//${window.location.host}${wsPath}?sessionKey=${encodeURIComponent(sessionKey)}&bootstrapSnapshot=0`,
+  );
   chatSocket = socket;
   chatSocketSessionKey = sessionKey;
 
@@ -2654,6 +2918,7 @@ async function loadAgents(): Promise<void> {
   try {
     const payload = await fetchAgentsSummary();
     agentRows.value = payload.agents || [];
+    rememberChatShellWarmCache();
   } catch (error) {
     clearNotice();
     errorMessage.value = error instanceof Error ? error.message : text('读取 Agent 失败。', 'Failed to load agents.');
@@ -2678,6 +2943,7 @@ function applyOrganizer(next: ChatSessionOrganizerState): void {
       .filter((row) => row.kind === 'studio_managed')
       .map((row) => row.key),
   );
+  rememberChatShellWarmCache();
 }
 
 async function loadOrganizer(): Promise<void> {
@@ -2691,6 +2957,7 @@ async function loadOrganizer(): Promise<void> {
 
 function applyBootstrapPayload(payload: ChatBootstrapPayload): void {
   applyOrganizer(payload.organizer || createEmptyChatSessionOrganizerState());
+  chatHealth.value = payload.diagnostics || null;
   sessionRows.value = payload.sessions || [];
   const bootstrapSessionKey = payload.selectedSessionKey || '';
   if (bootstrapSessionKey) {
@@ -2702,21 +2969,27 @@ function applyBootstrapPayload(payload: ChatBootstrapPayload): void {
     }
     if (payload.history) {
       applyHistoryPagePayload(payload.history, 'replace');
+      bootstrapHistorySyncSkipSessionKeys.add(bootstrapSessionKey);
     }
     bootstrapPrimedSessionKey.value = (
       payload.history && payload.queue && payload.controls ? bootstrapSessionKey : ''
     );
     selectSessionKeyLocally(bootstrapSessionKey);
   }
+  rememberChatShellWarmCache();
 }
 
-async function loadChatBootstrap(sessionKey: string | null = null): Promise<void> {
+async function loadChatBootstrap(sessionKey: string | null = null): Promise<ChatBootstrapPayload> {
+  const bootstrapHistoryLimit = sessionKey
+    ? CHAT_HISTORY_INITIAL_WINDOW_LIMIT
+    : CHAT_HISTORY_BOOTSTRAP_WINDOW_LIMIT;
   const payload = await fetchChatBootstrap({
     sessionKey,
     recentLimit: CHAT_SESSION_BOOTSTRAP_ROW_LIMIT,
-    historyLimit: CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
+    historyLimit: bootstrapHistoryLimit,
   });
   applyBootstrapPayload(payload);
+  return payload;
 }
 
 async function loadSessionRowsForAgents(
@@ -2747,7 +3020,9 @@ async function loadSessionRowsForAgents(
           return;
         }
         const incomingRows = payload.sessions || [];
-        const preservedRows = collectPreservedAgentRows(mergedRows, agent.id, incomingRows);
+        const preservedRows = collectPreservedAgentRows(mergedRows, agent.id, incomingRows, {
+          preserveAllMissing: fetchOptions.localOnly === true,
+        });
         mergedRows = mergeSessionRowsForAgent(mergedRows, agent.id, incomingRows, {
           preserveMissingRows: preservedRows,
         });
@@ -2815,13 +3090,18 @@ async function loadSessions(options: { deferRemainingAgents?: boolean } = {}): P
       ? Math.min(CHAT_SESSION_BOOTSTRAP_AGENT_LIMIT, agents.length)
       : agents.length;
     const immediateAgents = agents.slice(0, immediateAgentCount);
-    const deferredAgents = agents.slice(immediateAgentCount);
+    const deferredAgents = options.deferRemainingAgents
+      ? agents
+      : agents.slice(immediateAgentCount);
     mergedRows = await loadSessionRowsForAgents(
       immediateAgents,
       loadVersion,
       mergedRows,
-      options.deferRemainingAgents ? CHAT_SESSION_BOOTSTRAP_FETCH_OPTIONS : {},
+      options.deferRemainingAgents ? CHAT_SESSION_BOOTSTRAP_LOCAL_FETCH_OPTIONS : {},
     );
+    if (loadVersion === sessionsLoadVersion) {
+      rememberChatShellWarmCache();
+    }
     if (loadVersion !== sessionsLoadVersion) {
       return;
     }
@@ -2836,7 +3116,13 @@ async function loadSessions(options: { deferRemainingAgents?: boolean } = {}): P
   }
 }
 
-function applyHistoryPagePayload(payload: ChatHistoryPayload, mode: 'replace' | 'prepend' = 'replace'): void {
+function applyHistoryPagePayload(
+  payload: ChatHistoryPayload,
+  mode: 'replace' | 'prepend' = 'replace',
+  options: {
+    preserveAfterCursor?: boolean;
+  } = {},
+): void {
   const nextSession = applyDerivedAutoLabelToSessionRow(payload.session, payload.messages);
   ensureSessionRow(nextSession);
   if (optimisticStartupSessionKey.value === nextSession.key) {
@@ -2846,18 +3132,35 @@ function applyHistoryPagePayload(payload: ChatHistoryPayload, mode: 'replace' | 
     ...payload,
     session: nextSession,
   };
-  historyPageInfo.value = payload.pageInfo;
+  const previousPageInfo = historyPageInfo.value;
+  historyPageInfo.value = mode === 'prepend' && options.preserveAfterCursor
+    ? {
+      ...payload.pageInfo,
+      hasMoreAfter: previousPageInfo.hasMoreAfter,
+      afterCursor: previousPageInfo.afterCursor,
+    }
+    : payload.pageInfo;
+  const exhaustedCursor = exhaustedHistoryBeforeCursorBySession.get(nextSession.key);
+  if (!payload.pageInfo.beforeCursor || exhaustedCursor !== payload.pageInfo.beforeCursor) {
+    exhaustedHistoryBeforeCursorBySession.delete(nextSession.key);
+  }
+  const exhaustedAfterCursor = exhaustedHistoryAfterCursorBySession.get(nextSession.key);
+  if (!payload.pageInfo.afterCursor || exhaustedAfterCursor !== payload.pageInfo.afterCursor) {
+    exhaustedHistoryAfterCursorBySession.delete(nextSession.key);
+  }
   runtimeMachineState.value = {
     ...runtimeMachineState.value,
     sessionKey: nextSession.key,
   };
   if (mode === 'prepend') {
+    historyPrependAnchorMessageId.value = payload.messages[payload.messages.length - 1]?.id || null;
     const result = prependChatSessionCanonicalMessageLedger(runtimeMachineState.value, payload.messages);
     runtimeMachineState.value = result.state;
     if (result.eviction.evictedBottom > 0) {
       historyPageInfo.value = { ...historyPageInfo.value, hasMoreAfter: true };
     }
   } else {
+    historyPrependAnchorMessageId.value = null;
     runtimeMachineState.value = replaceChatSessionCanonicalMessageLedger(runtimeMachineState.value, payload.messages, {
       preserveLocalMessages: historyMode.value === 'history',
     });
@@ -2908,6 +3211,198 @@ function abortHistoryDatesRequest(): void {
     historyDatesRequestController.abort();
     historyDatesRequestController = null;
   }
+}
+
+function abortHistoryBeforePrefetch(): void {
+  if (historyBeforePrefetchController) {
+    historyBeforePrefetchController.abort();
+    historyBeforePrefetchController = null;
+  }
+}
+
+function clearHistoryBeforePrefetch(): void {
+  if (historyBeforePrefetchTimer != null) {
+    window.clearTimeout(historyBeforePrefetchTimer);
+    historyBeforePrefetchTimer = null;
+  }
+  if (historyBeforePrefetchIdleHandle != null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+    window.cancelIdleCallback(historyBeforePrefetchIdleHandle);
+    historyBeforePrefetchIdleHandle = null;
+  }
+  abortHistoryBeforePrefetch();
+  prefetchedHistoryBefore.value = null;
+}
+
+function armHistoryRenderStabilization(timeoutMs = 1200): void {
+  historyRenderStabilizing.value = true;
+  if (historyRenderStabilizeTimer != null) {
+    window.clearTimeout(historyRenderStabilizeTimer);
+  }
+  historyRenderStabilizeTimer = window.setTimeout(() => {
+    historyRenderStabilizeTimer = null;
+    historyRenderStabilizing.value = false;
+  }, timeoutMs);
+}
+
+function currentHistoryBeforePrefetchKey(sessionKey: string): ChatHistoryBeforePrefetchKey | null {
+  const beforeCursor = historyPageInfo.value.beforeCursor;
+  if (!sessionKey || !historyPageInfo.value.hasMoreBefore || !beforeCursor) {
+    return null;
+  }
+  if (exhaustedHistoryBeforeCursorBySession.get(sessionKey) === beforeCursor) {
+    return null;
+  }
+  return {
+    sessionKey,
+    mode: historyMode.value,
+    beforeCursor,
+    day: selectedHistoryDay.value,
+    query: historyMode.value === 'search' ? searchQuery.value.trim() : '',
+  };
+}
+
+function matchesHistoryBeforePrefetch(
+  expected: ChatHistoryBeforePrefetchKey | null,
+): boolean {
+  if (!expected) {
+    return prefetchedHistoryBefore.value == null;
+  }
+  const current = prefetchedHistoryBefore.value;
+  return Boolean(
+    current
+    && current.sessionKey === expected.sessionKey
+    && current.mode === expected.mode
+    && current.beforeCursor === expected.beforeCursor
+    && current.day === expected.day
+    && current.query === expected.query,
+  );
+}
+
+function readMatchedHistoryBeforePrefetchPayload(
+  expected: ChatHistoryBeforePrefetchKey | null,
+): ChatHistoryPayload | null {
+  return matchesHistoryBeforePrefetch(expected)
+    ? prefetchedHistoryBefore.value?.payload || null
+    : null;
+}
+
+async function waitForHistoryBeforePrefetch(
+  expected: ChatHistoryBeforePrefetchKey | null,
+  timeoutMs = 900,
+): Promise<ChatHistoryPayload | null> {
+  if (!expected || !historyBeforePrefetchController) {
+    return readMatchedHistoryBeforePrefetchPayload(expected);
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (historyBeforePrefetchController && Date.now() < deadline) {
+    const payload = readMatchedHistoryBeforePrefetchPayload(expected);
+    if (payload) {
+      return payload;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 40));
+  }
+  return readMatchedHistoryBeforePrefetchPayload(expected);
+}
+
+async function runHistoryBeforePrefetch(sessionKey: string): Promise<void> {
+  const key = currentHistoryBeforePrefetchKey(sessionKey);
+  if (!key) {
+    clearHistoryBeforePrefetch();
+    return;
+  }
+  if (matchesHistoryBeforePrefetch(key)) {
+    return;
+  }
+  abortHistoryBeforePrefetch();
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  historyBeforePrefetchController = controller;
+  try {
+    const requestLimit = key.mode === 'history' && !key.day
+      ? CHAT_HISTORY_AUTO_FILL_PAGE_LIMIT
+      : CHAT_HISTORY_PAGE_LIMIT;
+    const payload = key.mode === 'search' && key.query
+      ? await searchChatHistory(sessionKey, {
+        query: key.query,
+        before: key.beforeCursor,
+        limit: requestLimit,
+        signal: controller?.signal,
+      }).then((result): ChatHistoryPayload => buildSearchHistoryPayload(
+        result,
+        historyPayload.value?.observability || createEmptyRuntimeObservability(),
+      ))
+      : await fetchChatHistoryPage(sessionKey, {
+        before: key.beforeCursor,
+        limit: requestLimit,
+        day: key.day,
+        signal: controller?.signal,
+      });
+    const currentKey = currentHistoryBeforePrefetchKey(sessionKey);
+    if (
+      historyBeforePrefetchController !== controller
+      || !currentKey
+      || currentKey.sessionKey !== key.sessionKey
+      || currentKey.mode !== key.mode
+      || currentKey.beforeCursor !== key.beforeCursor
+      || currentKey.day !== key.day
+      || currentKey.query !== key.query
+    ) {
+      return;
+    }
+    prefetchedHistoryBefore.value = {
+      ...key,
+      payload,
+    };
+  } catch (error) {
+    if (!isAbortError(error)) {
+      prefetchedHistoryBefore.value = null;
+    }
+  } finally {
+    if (historyBeforePrefetchController === controller) {
+      historyBeforePrefetchController = null;
+    }
+  }
+}
+
+function scheduleHistoryBeforePrefetch(sessionKey: string, delayMs = 180): void {
+  const key = currentHistoryBeforePrefetchKey(sessionKey);
+  if (!key) {
+    clearHistoryBeforePrefetch();
+    return;
+  }
+  if (matchesHistoryBeforePrefetch(key) || historyBeforePrefetchController != null) {
+    return;
+  }
+  if (historyBeforePrefetchTimer != null) {
+    window.clearTimeout(historyBeforePrefetchTimer);
+    historyBeforePrefetchTimer = null;
+  }
+  if (historyBeforePrefetchIdleHandle != null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+    window.cancelIdleCallback(historyBeforePrefetchIdleHandle);
+    historyBeforePrefetchIdleHandle = null;
+  }
+  const run = () => {
+    historyBeforePrefetchTimer = null;
+    historyBeforePrefetchIdleHandle = null;
+    void runHistoryBeforePrefetch(sessionKey);
+  };
+  if (delayMs <= 0) {
+    historyBeforePrefetchTimer = window.setTimeout(run, 0);
+    return;
+  }
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    historyBeforePrefetchIdleHandle = window.requestIdleCallback(() => {
+      run();
+    }, { timeout: Math.max(250, delayMs + 420) });
+    historyBeforePrefetchTimer = window.setTimeout(() => {
+      if (historyBeforePrefetchIdleHandle != null && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(historyBeforePrefetchIdleHandle);
+        historyBeforePrefetchIdleHandle = null;
+      }
+      run();
+    }, delayMs);
+    return;
+  }
+  historyBeforePrefetchTimer = window.setTimeout(run, delayMs);
 }
 
 function isAbortError(error: unknown): boolean {
@@ -3125,8 +3620,24 @@ async function ensureSessionDatesLoaded(sessionKey: string, force = false): Prom
 
 async function loadConversationWindowInitial(
   sessionKey: string,
-  options: { limit?: number } = {},
+  options: { limit?: number; force?: boolean } = {},
 ): Promise<void> {
+  const requestedLimit = options.limit ?? CHAT_HISTORY_INITIAL_WINDOW_LIMIT;
+  const canReusePrimedWindow = (
+    !options.force
+    && historyMode.value === 'history'
+    && !selectedHistoryDay.value
+    && !searchQuery.value.trim()
+    && historyPayload.value?.session.key === sessionKey
+    && historyPayload.value.messages.length >= requestedLimit
+    && !historyLoadingBefore.value
+    && !historyLoadingAfter.value
+  );
+  if (canReusePrimedWindow) {
+    historyLoadingInitial.value = false;
+    historyErrorMessage.value = '';
+    return;
+  }
   const loadVersion = ++historyLoadVersion;
   clearDeferredInitialHistoryLoad();
   abortReplaceHistoryRequest();
@@ -3139,14 +3650,14 @@ async function loadConversationWindowInitial(
     const payload = historyMode.value === 'search' && searchQuery.value.trim()
       ? await searchChatHistory(sessionKey, {
         query: searchQuery.value.trim(),
-        limit: options.limit ?? CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
+        limit: requestedLimit,
         signal: controller?.signal,
       }).then((result): ChatHistoryPayload => buildSearchHistoryPayload(
         result,
         historyPayload.value?.observability || createEmptyRuntimeObservability(),
       ))
       : await fetchChatHistoryPage(sessionKey, {
-        limit: options.limit ?? CHAT_HISTORY_INITIAL_WINDOW_LIMIT,
+        limit: requestedLimit,
         day: selectedHistoryDay.value,
         signal: controller?.signal,
       });
@@ -3156,6 +3667,7 @@ async function loadConversationWindowInitial(
     const hydratedPayload = historyMode.value === 'history'
       ? hydrateHistoryPayloadFromSnapshot(payload, snapshot)
       : payload;
+    armHistoryRenderStabilization();
     applyHistoryPagePayload(hydratedPayload, 'replace');
     const restoredRuntimeMachine = shouldRestoreRuntimeMachineStateFromSnapshot({
       sessionKey,
@@ -3182,7 +3694,9 @@ async function loadConversationWindowInitial(
     if (historyReplaceRequestController === controller) {
       historyReplaceRequestController = null;
     }
-    if (loadVersion === historyLoadVersion) historyLoadingInitial.value = false;
+    if (loadVersion === historyLoadVersion) {
+      historyLoadingInitial.value = false;
+    }
   }
 }
 
@@ -3208,6 +3722,7 @@ async function loadConversationWindowAnchor(
     if (loadVersion !== historyLoadVersion || sessionKey !== selectedSessionKey.value) {
       return;
     }
+    armHistoryRenderStabilization();
     historyPayload.value = payload;
     historyPageInfo.value = payload.pageInfo;
     runtimeMachineState.value = {
@@ -3232,47 +3747,124 @@ async function loadConversationWindowAnchor(
     if (historyReplaceRequestController === controller) {
       historyReplaceRequestController = null;
     }
-    if (loadVersion === historyLoadVersion) historyLoadingInitial.value = false;
+    if (loadVersion === historyLoadVersion) {
+      historyLoadingInitial.value = false;
+    }
   }
 }
 
-async function loadMoreHistoryBefore(): Promise<void> {
+async function loadMoreHistoryBefore(mode: 'browse' | 'autofill' | 'continuation' = 'browse'): Promise<void> {
   const sessionKey = selectedSessionKey.value;
-  if (!sessionKey || historyLoadingBefore.value || historyLoadingInitial.value || !historyPageInfo.value.hasMoreBefore) {
+  if (
+    !sessionKey
+    || historyBeforeMaterializeInFlight
+    || historyLoadingBefore.value
+    || historyLoadingInitial.value
+    || !historyPageInfo.value.hasMoreBefore
+    || !historyPageInfo.value.beforeCursor
+  ) {
     return;
   }
-  historyLoadingBefore.value = true;
+  historyBeforeMaterializeInFlight = true;
+  const requestCursor = historyPageInfo.value.beforeCursor;
+  if (requestCursor && exhaustedHistoryBeforeCursorBySession.get(sessionKey) === requestCursor) {
+    historyPageInfo.value = { ...historyPageInfo.value, hasMoreBefore: false, beforeCursor: null };
+    clearHistoryBeforePrefetch();
+    historyBeforeMaterializeInFlight = false;
+    return;
+  }
+  const existingIds = new Set((historyPayload.value?.messages || []).map((message) => message.id));
+  const useWideHistoryPage = historyMode.value === 'history' && !selectedHistoryDay.value;
+  const requestLimit = mode === 'autofill' || mode === 'continuation' || useWideHistoryPage
+    ? CHAT_HISTORY_AUTO_FILL_PAGE_LIMIT
+    : CHAT_HISTORY_PAGE_LIMIT;
+  const prefetchKey = currentHistoryBeforePrefetchKey(sessionKey);
+  let prefetchedPayload = readMatchedHistoryBeforePrefetchPayload(prefetchKey);
+  const shouldShowLoadingState = !prefetchedPayload;
+  if (shouldShowLoadingState) {
+    historyLoadingBefore.value = true;
+  }
   try {
-    const payload = historyMode.value === 'search' && searchQuery.value.trim()
-      ? await searchChatHistory(sessionKey, {
-        query: searchQuery.value.trim(),
-        before: historyPageInfo.value.beforeCursor,
-        limit: CHAT_HISTORY_PAGE_LIMIT,
-      }).then((result): ChatHistoryPayload => buildSearchHistoryPayload(
-        result,
-        historyPayload.value?.observability || createEmptyRuntimeObservability(),
-      ))
-      : await fetchChatHistoryPage(sessionKey, {
-        before: historyPageInfo.value.beforeCursor,
-        limit: CHAT_HISTORY_PAGE_LIMIT,
-        day: selectedHistoryDay.value,
-      });
+    if (!prefetchedPayload && historyBeforePrefetchController) {
+      prefetchedPayload = await waitForHistoryBeforePrefetch(prefetchKey);
+    }
+    if (!prefetchedPayload) {
+      clearHistoryBeforePrefetch();
+    }
+    const payload = prefetchedPayload
+      ? prefetchedPayload
+      : historyMode.value === 'search' && searchQuery.value.trim()
+        ? await searchChatHistory(sessionKey, {
+          query: searchQuery.value.trim(),
+          before: historyPageInfo.value.beforeCursor,
+          limit: requestLimit,
+        }).then((result): ChatHistoryPayload => buildSearchHistoryPayload(
+          result,
+          historyPayload.value?.observability || createEmptyRuntimeObservability(),
+        ))
+        : await fetchChatHistoryPage(sessionKey, {
+          before: historyPageInfo.value.beforeCursor,
+          limit: requestLimit,
+          day: selectedHistoryDay.value,
+        });
+    prefetchedHistoryBefore.value = null;
     if (sessionKey !== selectedSessionKey.value) {
       return;
     }
-    applyHistoryPagePayload(payload, 'prepend');
+    const noProgress = (
+      !payload.messages.length
+      || (requestCursor != null && payload.pageInfo.beforeCursor === requestCursor)
+      || payload.messages.every((message) => existingIds.has(message.id))
+    );
+    if (noProgress) {
+      if (requestCursor) {
+        exhaustedHistoryBeforeCursorBySession.set(sessionKey, requestCursor);
+      }
+      historyPageInfo.value = { ...historyPageInfo.value, hasMoreBefore: false, beforeCursor: null };
+      return;
+    }
+    armHistoryRenderStabilization();
+    applyHistoryPagePayload(payload, 'prepend', {
+      preserveAfterCursor: mode === 'autofill' && !viewingHistoricalPosition.value,
+    });
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('加载更早消息失败。', 'Failed to load older messages.'));
   } finally {
-    historyLoadingBefore.value = false;
+    historyBeforeMaterializeInFlight = false;
+    if (shouldShowLoadingState) {
+      historyLoadingBefore.value = false;
+    }
+    if (mode !== 'autofill' && sessionKey === selectedSessionKey.value) {
+      void scheduleHistoryBeforePrefetch(sessionKey, 0);
+    }
   }
+}
+
+function prefetchMoreHistoryBefore(): void {
+  const sessionKey = selectedSessionKey.value;
+  if (!sessionKey || historyLoadingInitial.value || historyLoadingBefore.value || historyBeforeMaterializeInFlight) {
+    return;
+  }
+  void scheduleHistoryBeforePrefetch(sessionKey, 0);
 }
 
 async function loadMoreHistoryAfter(): Promise<void> {
   const sessionKey = selectedSessionKey.value;
-  if (!sessionKey || historyLoadingAfter.value || historyLoadingInitial.value || !historyPageInfo.value.hasMoreAfter) {
+  if (
+    !sessionKey
+    || historyLoadingAfter.value
+    || historyLoadingInitial.value
+    || !historyPageInfo.value.hasMoreAfter
+    || !historyPageInfo.value.afterCursor
+  ) {
     return;
   }
+  const requestCursor = historyPageInfo.value.afterCursor;
+  if (requestCursor && exhaustedHistoryAfterCursorBySession.get(sessionKey) === requestCursor) {
+    historyPageInfo.value = { ...historyPageInfo.value, hasMoreAfter: false, afterCursor: null };
+    return;
+  }
+  const existingIds = new Set((historyPayload.value?.messages || []).map((message) => message.id));
   historyLoadingAfter.value = true;
   try {
     const payload = await fetchChatHistoryPage(sessionKey, {
@@ -3283,6 +3875,19 @@ async function loadMoreHistoryAfter(): Promise<void> {
     if (sessionKey !== selectedSessionKey.value) {
       return;
     }
+    const noProgress = (
+      !payload.messages.length
+      || (requestCursor != null && payload.pageInfo.afterCursor === requestCursor)
+      || payload.messages.every((message) => existingIds.has(message.id))
+    );
+    if (noProgress) {
+      if (requestCursor) {
+        exhaustedHistoryAfterCursorBySession.set(sessionKey, requestCursor);
+      }
+      historyPageInfo.value = { ...historyPageInfo.value, hasMoreAfter: false, afterCursor: null };
+      return;
+    }
+    armHistoryRenderStabilization();
     applyHistoryPagePayloadAppend(payload);
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('加载更新消息失败。', 'Failed to load newer messages.'));
@@ -3292,6 +3897,7 @@ async function loadMoreHistoryAfter(): Promise<void> {
 }
 
 function applyHistoryPagePayloadAppend(payload: ChatHistoryPayload): void {
+  historyPrependAnchorMessageId.value = null;
   historyPayload.value = payload;
   historyPageInfo.value = {
     ...historyPageInfo.value,
@@ -4351,6 +4957,14 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       blocks: blocks.length ? blocks : undefined,
       resources,
     };
+    recordChatDebugTrace({
+      at: createdAt,
+      source: 'send',
+      kind: 'optimistic.user',
+      sessionKey,
+      runId: requestId,
+      note: previewText.slice(0, 120) || null || undefined,
+    });
     if (historyPayload.value?.session.key === sessionKey) {
       historyPayload.value = {
         ...historyPayload.value,
@@ -4939,7 +5553,7 @@ async function refreshSelectedConversation(): Promise<void> {
   try {
     await Promise.all([loadHealth(), loadSessions(), loadStudioChatGlobalExecConfig()]);
     await Promise.all([
-      loadConversationWindowInitial(sessionKey),
+      loadConversationWindowInitial(sessionKey, { force: true }),
       loadSessionSurfaceState(sessionKey),
     ]);
     if (usesChatEventSource()) {
@@ -4972,26 +5586,39 @@ async function bootstrapChatSurface(): Promise<void> {
   clearNotice();
   errorMessage.value = '';
   const bootstrapSessionKey = resolveBootstrapSessionKey();
+  const restoredWarmCache = restoreChatShellWarmCache(bootstrapSessionKey || null);
+  if (restoredWarmCache) {
+    bootstrapLoading.value = false;
+    return;
+  }
+  let bootstrapPayload: ChatBootstrapPayload | null = null;
   try {
-    await loadChatBootstrap(bootstrapSessionKey);
+    bootstrapPayload = await loadChatBootstrap(bootstrapSessionKey);
   } catch {}
   bootstrapLoading.value = false;
   void loadAgents().then(() => loadSessions({ deferRemainingAgents: true }));
-  void loadHealth();
-  void loadOrganizer();
+  if (!bootstrapPayload?.diagnostics) {
+    void loadHealth();
+  }
+  if (!bootstrapPayload?.organizer) {
+    void loadOrganizer();
+  }
   void loadStudioChatGlobalExecConfig();
 }
 
 watch(
-  [routeSessionKey, () => props.shellMode, studioManagedSessions, observedSessions, sessionsLoading],
+  [routeSessionKey, () => props.shellMode, studioManagedSessions, observedSessions, sessionsLoading, bootstrapLoading],
   async () => {
     const requested = routeSessionKey.value;
     const available = inspectPinned.value ? [...studioManagedSessions.value, ...observedSessions.value] : studioManagedSessions.value;
     if (requested) {
+      optimisticStartupSessionKey.value = requested;
+      if (bootstrapLoading.value) {
+        return;
+      }
       if (!selectedSessionKey.value) {
         primeConversationStateFromSnapshot(requested);
       }
-      optimisticStartupSessionKey.value = requested;
       selectSessionKeyLocally(requested);
       return;
     }
@@ -5043,7 +5670,9 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
   closeHostManagementExecConfirm();
   if (previousKey) {
     clearTerminalRunFence(previousKey);
+    exhaustedHistoryBeforeCursorBySession.delete(previousKey);
   }
+  historyPrependAnchorMessageId.value = null;
   composerDocument.value = createEmptyComposerDocument();
   composerAttachments.value = [];
   queueRailExpanded.value = false;
@@ -5057,6 +5686,7 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
     clearConversationState();
     return;
   }
+  exhaustedHistoryBeforeCursorBySession.delete(sessionKey);
   const hasPrimedConversationState = (
     historyPayload.value?.session.key === sessionKey
     && runtimeMachineState.value.sessionKey === sessionKey
@@ -5083,10 +5713,13 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
   if (!primedByBootstrap) {
     void loadSessionSurfaceState(sessionKey);
   }
+  connectChatSocket(sessionKey);
   if (primedByBootstrap) {
     bootstrapPrimedSessionKey.value = '';
+    if (historyPayload.value?.session.key === sessionKey) {
+      return;
+    }
   }
-  connectChatSocket(sessionKey);
   const shouldDeferInitialRootHistoryLoad = (
     !previousKey
     && !routeSessionKey.value
@@ -5134,6 +5767,7 @@ function handleGlobalKeydown(event: KeyboardEvent): void {
 
 onMounted(async () => {
   if (typeof window !== 'undefined') {
+    refreshChatDebugTraceFlag();
     try {
       const stored = window.localStorage.getItem(CHAT_PROCESS_VISIBILITY_STORAGE_KEYS.showToolPreviews);
       if (stored === '0') showToolPreviews.value = false;
@@ -5141,7 +5775,7 @@ onMounted(async () => {
       if (storedThinking === '1') showThinkingBlocks.value = true;
     } catch {}
     soundCuesEnabled.value = readChatSoundCuesEnabled();
-    (window as Window & { __OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE?: () => void }).__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE = forceCloseChatSocketForTest;
+    window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE = forceCloseChatSocketForTest;
     window.addEventListener('keydown', handleGlobalKeydown);
   }
   await bootstrapChatSurface();
@@ -5166,6 +5800,7 @@ watch(soundCuesEnabled, (value) => {
 });
 
 onBeforeUnmount(() => {
+  rememberChatShellWarmCache();
   clearDeferredInitialHistoryLoad();
   clearDeferredSessionHydration();
   clearLiveHistorySyncTimer();
@@ -5173,10 +5808,13 @@ onBeforeUnmount(() => {
   clearNoticeTimer();
   abortReplaceHistoryRequest();
   abortHistoryDatesRequest();
+  clearHistoryBeforePrefetch();
+  clearPendingTemporaryToolEvents();
   clearTerminalRunFence();
   clearWsReconnectTimer();
   if (typeof window !== 'undefined') {
-    delete (window as Window & { __OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE?: () => void }).__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE;
+    delete window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE;
+    delete window.__OPENCLAW_STUDIO_CHAT_TRACE__;
     window.removeEventListener('keydown', handleGlobalKeydown);
   }
   if (chatSocket) {

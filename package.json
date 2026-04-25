@@ -37,6 +37,7 @@
     "dev:web": "npm run dev --workspace=apps/web-vue",
     "smoke:chat:browser": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/browser.acceptance.py",
     "smoke:chat:gateway": "python tests/chat/gateway.acceptance.py",
+    "smoke:chat:heavy-history": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/heavy-history.acceptance.py",
     "smoke:chat:fresh-tool": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/fresh-tool.acceptance.py",
     "smoke:chat:im": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/chat-im.acceptance.py",
     "smoke:chat:surface": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/surface.acceptance.py",

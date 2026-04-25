@@ -37,12 +37,14 @@ test("manifest exports shell route records with route-aware context policy", () 
   assert.match(manifest, /path:\s*"\/chat"[\s\S]*?contextPanel:\s*"chat-inspector"/);
   assert.match(manifest, /path:\s*"\/terminal"[\s\S]*?contextPanel:\s*"disabled"/);
   assert.match(manifest, /path:\s*"\/terminal\/:sessionId"[\s\S]*?contextPanel:\s*"disabled"/);
+  assert.match(manifest, /path:\s*"\/files"[\s\S]*?contextPanel:\s*"disabled"/);
 
   for (const routePath of [
     "/dashboard",
     "/agents",
     "/channels",
     "/skills",
+    "/plugins",
     "/cron",
     "/dreaming",
     "/config",
@@ -63,5 +65,7 @@ test("router and app consume shell route metadata instead of local mock navigati
   assert.match(router, /from "\.\/features\/shell\/route-manifest"|from '\.\/features\/shell\/route-manifest'/);
   assert.match(router, /routes:\s*shellRoutes/);
   assert.match(app, /from '\.\/features\/shell\/use-shell-navigation'/);
+  assert.match(app, /isFilesSurface/);
+  assert.match(app, /!isChatSurface && !isFilesSurface/);
   assert.doesNotMatch(app, /useUiContent/);
 });

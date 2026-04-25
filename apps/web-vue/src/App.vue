@@ -2,7 +2,7 @@
   <TooltipProvider :delay-duration="140" :skip-delay-duration="80" :disable-hoverable-content="true">
     <div
       class="app-container"
-      :class="{ mobile: isMobile, 'sidebar-collapsed': !isMobile && sidebarCollapsed, 'chat-shell': isChatSurface }"
+      :class="{ mobile: isMobile, 'sidebar-collapsed': !isMobile && sidebarCollapsed, 'chat-shell': isChatSurface, 'files-shell': isFilesSurface }"
     >
       <div class="ambient-orb ambient-orb-a" aria-hidden="true" :style="ambientStyles[0]"></div>
       <div class="ambient-orb ambient-orb-b" aria-hidden="true" :style="ambientStyles[1]"></div>
@@ -87,10 +87,11 @@
           'chat-surface-route': isChatSurface,
           'shell-main-chat': isChatSurface,
           'terminal-surface-route': isTerminalSurface,
+          'file-surface-route': isFilesSurface,
         }"
       >
         <button
-          v-if="isMobile && isChatSurface && !mobileSidebarOpen"
+          v-if="isMobile && (isChatSurface || isFilesSurface) && !mobileSidebarOpen"
           type="button"
           class="mobile-nav-trigger"
           :aria-label="text('打开导航', 'Open navigation')"
@@ -100,10 +101,10 @@
           ☰
         </button>
 
-        <div class="shell-layout" :class="{ 'shell-layout-chat': isChatSurface }">
+        <div class="shell-layout" :class="{ 'shell-layout-chat': isChatSurface, 'shell-layout-files': isFilesSurface }">
           <section class="shell-main-stage">
             <StudioShellTopbar
-              v-if="!isChatSurface"
+              v-if="!isChatSurface && !isFilesSurface"
               :is-mobile="isMobile"
               :mobile-nav-open="mobileSidebarOpen"
               :search-label="text('搜索与命令', 'Search and commands')"
@@ -132,7 +133,7 @@
               <section
                 class="shell-route-stage"
                 :theme-mode="themeMode"
-                :class="{ 'shell-route-stage-chat': isChatSurface }"
+                :class="{ 'shell-route-stage-chat': isChatSurface, 'shell-route-stage-files': isFilesSurface }"
               >
                 <component :is="Component" />
               </section>
@@ -201,6 +202,7 @@ const contextPanelMode = computed<'default' | 'chat-inspector' | 'disabled'>(() 
 });
 const isChatSurface = computed(() => contextPanelMode.value === 'chat-inspector');
 const isTerminalSurface = computed(() => route.path === '/terminal' || route.path.startsWith('/terminal/'));
+const isFilesSurface = computed(() => route.path === '/files' || route.path.startsWith('/files/'));
 const contextPanelEnabled = computed(() => contextPanelMode.value === 'default');
 
 const {

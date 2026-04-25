@@ -39,6 +39,19 @@ export interface ChatHistoryIndex {
   };
 }
 
+export interface ChatHistoryIndexSeedItem {
+  id: string;
+  role: string;
+  createdAt: string | null;
+  previewText: string;
+  snippetText?: string | null;
+  runId: string | null;
+  messageIndex: number;
+  hasText: boolean;
+  hasResources: boolean;
+  hasCode: boolean;
+}
+
 function encodeSessionKey(sessionKey: string): string {
   return Buffer.from(sessionKey, 'utf-8').toString('base64url');
 }
@@ -127,6 +140,28 @@ function buildHistorySignature(messages: ChatMessageItem[], sourceSessionFile: s
   ].join('|');
 }
 
+function buildHistorySignatureFromItems(
+  items: Array<{
+    id: string;
+    createdAt: string | null;
+    runId: string | null;
+  }>,
+  totalMessages: number,
+  sourceSessionFile: string | null,
+  sourceMtimeMs: number | null,
+): string {
+  const last = items[items.length - 1] || null;
+  return [
+    String(CHAT_HISTORY_INDEX_SCHEMA_VERSION),
+    sourceSessionFile || '',
+    String(sourceMtimeMs || 0),
+    String(totalMessages),
+    last?.id || '',
+    last?.createdAt || '',
+    last?.runId || '',
+  ].join('|');
+}
+
 function buildIndex(params: {
   sessionKey: string;
   messages: ChatMessageItem[];
@@ -202,6 +237,80 @@ function buildIndex(params: {
   };
 }
 
+function buildIndexFromSeedItems(params: {
+  sessionKey: string;
+  items: ChatHistoryIndexSeedItem[];
+  totalMessages?: number;
+  sourceSessionFile: string | null;
+  sourceMtimeMs: number | null;
+}): ChatHistoryIndex {
+  const items: ChatHistoryIndexItem[] = params.items.map((item) => {
+    const createdAt = normalizeDate(item.createdAt) || null;
+    return {
+      id: item.id,
+      role: item.role,
+      createdAt,
+      dayKey: createdAt ? createdAt.slice(0, 10) : null,
+      previewText: item.previewText,
+      snippetText: item.snippetText || item.previewText,
+      runId: item.runId || null,
+      messageIndex: item.messageIndex,
+      hasText: item.hasText,
+      hasResources: item.hasResources,
+      hasCode: item.hasCode,
+    };
+  });
+
+  const termMap = new Map<string, number[]>();
+  const roleMap: Record<ChatHistorySearchRoleFilter, number[]> = {
+    all: [],
+    user: [],
+    assistant: [],
+    tool: [],
+  };
+  const contentFilterMap: Record<ChatHistorySearchContentFilter, number[]> = {
+    all: [],
+    text: [],
+    resource: [],
+    code: [],
+  };
+  items.forEach((item, index) => {
+    roleMap.all.push(index);
+    contentFilterMap.all.push(index);
+    if (item.role === 'user' || item.role === 'assistant' || item.role === 'tool') {
+      roleMap[item.role].push(index);
+    }
+    if (item.hasText) contentFilterMap.text.push(index);
+    if (item.hasResources) contentFilterMap.resource.push(index);
+    if (item.hasCode) contentFilterMap.code.push(index);
+    const terms = new Set(tokenizeIndexText(item.previewText));
+    for (const term of terms) {
+      const positions = termMap.get(term) || [];
+      positions.push(index);
+      termMap.set(term, positions);
+    }
+  });
+
+  return {
+    sessionKey: params.sessionKey,
+    sourceSessionFile: params.sourceSessionFile,
+    sourceMtimeMs: params.sourceMtimeMs,
+    totalMessages: params.totalMessages ?? items.length,
+    signature: buildHistorySignatureFromItems(
+      items,
+      params.totalMessages ?? items.length,
+      params.sourceSessionFile,
+      params.sourceMtimeMs,
+    ),
+    items,
+    searchIndex: {
+      terms: Object.fromEntries(termMap.entries()),
+      roles: roleMap,
+      contentFilters: contentFilterMap,
+    },
+  };
+}
+
 function intersectSortedPositions(groups: number[][]): number[] {
   if (!groups.length) {
     return [];
@@ -225,6 +334,55 @@ export function createStudioChatHistoryIndexStore(config: StudioServerConfig) {
 
   return {
     backend: database ? 'sqlite' as const : 'json' as const,
+
+    readSnapshot(params: {
+      sessionKey: string;
+      sourceSessionFile: string | null;
+      sourceMtimeMs: number | null;
+    }): ChatHistoryIndex | null {
+      const cached = memoryCache.get(params.sessionKey);
+      if (
+        cached
+        && cached.sourceSessionFile === params.sourceSessionFile
+        && (cached.sourceMtimeMs ?? null) === (params.sourceMtimeMs ?? null)
+      ) {
+        return cached;
+      }
+
+      if (database && sqliteHealthy) {
+        try {
+          const row = database.prepare(`
+            SELECT payload_json
+            FROM history_indexes
+            WHERE session_key = ?
+          `).get(params.sessionKey);
+          if (row) {
+            const parsed = JSON.parse(String(row.payload_json || '{}')) as ChatHistoryIndex;
+            if (
+              parsed.sourceSessionFile === params.sourceSessionFile
+              && (parsed.sourceMtimeMs ?? null) === (params.sourceMtimeMs ?? null)
+            ) {
+              memoryCache.set(params.sessionKey, parsed);
+              return parsed;
+            }
+          }
+        } catch {
+          sqliteHealthy = false;
+        }
+      }
+
+      const disk = jsonHealthy ? readHistoryIndex(config, params.sessionKey) : null;
+      if (
+        disk
+        && disk.sourceSessionFile === params.sourceSessionFile
+        && (disk.sourceMtimeMs ?? null) === (params.sourceMtimeMs ?? null)
+      ) {
+        memoryCache.set(params.sessionKey, disk);
+        return disk;
+      }
+
+      return null;
+    },
 
     ensureIndex(params: {
       sessionKey: string;
@@ -306,6 +464,73 @@ export function createStudioChatHistoryIndexStore(config: StudioServerConfig) {
         jsonHealthy = true;
       } catch {
         jsonHealthy = false;
+      }
+      return built;
+    },
+
+    ensureIndexFromItems(params: {
+      sessionKey: string;
+      items: ChatHistoryIndexSeedItem[];
+      totalMessages?: number;
+      sourceSessionFile: string | null;
+      sourceMtimeMs: number | null;
+    }): ChatHistoryIndex {
+      const nextSignature = buildHistorySignatureFromItems(
+        params.items,
+        params.totalMessages ?? params.items.length,
+        params.sourceSessionFile,
+        params.sourceMtimeMs,
+      );
+      const cached = memoryCache.get(params.sessionKey);
+      if (cached && cached.signature === nextSignature) {
+        return cached;
+      }
+
+      if (database && sqliteHealthy) {
+        try {
+          const row = database.prepare(`
+            SELECT payload_json
+            FROM history_indexes
+            WHERE session_key = ? AND signature = ?
+          `).get(params.sessionKey, nextSignature);
+          if (row) {
+            const parsed = JSON.parse(String(row.payload_json || '{}')) as ChatHistoryIndex;
+            memoryCache.set(params.sessionKey, parsed);
+            return parsed;
+          }
+        } catch {
+          sqliteHealthy = false;
+        }
+      }
+
+      const built = buildIndexFromSeedItems(params);
+      memoryCache.set(params.sessionKey, built);
+      if (database && sqliteHealthy) {
+        try {
+          database.prepare(`
+            INSERT INTO history_indexes (session_key, signature, updated_at, payload_json)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(session_key) DO UPDATE SET
+              signature = excluded.signature,
+              updated_at = excluded.updated_at,
+              payload_json = excluded.payload_json
+          `).run(
+            built.sessionKey,
+            built.signature,
+            new Date().toISOString(),
+            JSON.stringify(built),
+          );
+        } catch {
+          sqliteHealthy = false;
+        }
+      }
+      if (!database) {
+        try {
+          writeHistoryIndex(config, built);
+          jsonHealthy = true;
+        } catch {
+          jsonHealthy = false;
+        }
       }
       return built;
     },

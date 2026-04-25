@@ -13,6 +13,8 @@ import { createChannelsService } from './modules/channels/service.js';
 import { createConfigService } from './modules/config/service.js';
 import { createCronService } from './modules/cron/service.js';
 import { createDashboardService } from './modules/dashboard/service.js';
+import { createFilesService } from './modules/files/service.js';
+import { createPluginsService } from './modules/plugins/service.js';
 import { createSkillsService } from './modules/skills/service.js';
 import { createSystemService } from './modules/system/service.js';
 import { createTerminalService } from './modules/terminal/service.js';
@@ -32,6 +34,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
   const channels = createChannelsService(options.config);
   const config = createConfigService(options.config);
   const cron = createCronService(options.config);
+  const plugins = createPluginsService(options.config);
   const skills = createSkillsService(options.config);
   const terminal = createTerminalService({
     config: options.config,
@@ -51,6 +54,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
     system,
     terminal,
   });
+  const files = createFilesService(options.config);
 
   const services: StudioServices = {
     agents,
@@ -59,6 +63,8 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
     config,
     cron,
     dashboard,
+    files,
+    plugins,
     skills,
     system,
     terminal,

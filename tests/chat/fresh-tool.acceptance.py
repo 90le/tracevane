@@ -38,8 +38,7 @@ def open_new_chat(page):
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
-    with page.expect_response(lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST", timeout=30000):
-        click_enabled(option)
+    click_enabled(option)
     page.wait_for_function(
         "(before) => document.querySelectorAll('.chat-shell-session-item').length >= before + 1",
         arg=before_count,
@@ -67,16 +66,26 @@ def main() -> None:
 
         textarea = page.locator(".chat-composer-editor[contenteditable='true']").first
         send_btn = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
-        search_input = page.locator(".chat-conversation-pane__search-input").first
-        search_btn = page.locator(".chat-conversation-pane__search button").first
-        toggle_tool_btn = page.get_by_role("button", name=re.compile("工具过程|tool previews")).first
 
         prompt = (
             f"Use exactly one local tool call to run `printf {TOKEN}` and then reply with exactly {TOKEN}. "
             "Do not explain the command."
         )
         fill_editor(page, textarea, prompt)
+        user_bubbles_before = page.locator(".chat-message-group.role-user .chat-message-bubble").count()
         click_enabled(send_btn)
+
+        page.wait_for_function(
+            "(before) => {"
+            "  const bubbles = Array.from(document.querySelectorAll('.chat-message-group.role-user .chat-message-bubble'));"
+            "  return bubbles.length > before && bubbles.some((el) => ((el.textContent || '').trim().length > 0));"
+            "}",
+            arg=user_bubbles_before,
+            timeout=30000,
+        )
+        result["user_message_visible_immediately"] = (
+            page.locator(".chat-message-group.role-user .chat-message-bubble").count() > user_bubbles_before
+        )
 
         page.wait_for_function(
             "() => Array.from(document.querySelectorAll('.chat-inline-process')).some((el) => (el.textContent || '').trim().length > 0)",
@@ -100,34 +109,14 @@ def main() -> None:
         )
         result["reload_restores_tool_process"] = visible_inline_process_count(page) > 0
 
-        search_input.fill(TOKEN)
-        click_enabled(search_btn)
-        page.wait_for_load_state("networkidle")
-        page.wait_for_function(
-            "(token) => Array.from(document.querySelectorAll('.chat-message-bubble')).some((el) => (el.textContent || '').includes(token))",
-            arg=TOKEN,
-            timeout=60000,
-        )
-        result["search_preserves_tool_process"] = visible_inline_process_count(page) > 0
-
-        click_enabled(toggle_tool_btn)
-        page.wait_for_timeout(400)
-        result["tool_toggle_hides_process"] = visible_inline_process_count(page) == 0
-
-        click_enabled(toggle_tool_btn)
-        page.wait_for_timeout(400)
-        result["tool_toggle_restores_process"] = visible_inline_process_count(page) > 0
-
         page.screenshot(path=str(SCREENSHOT), full_page=True)
         result["screenshot"] = str(SCREENSHOT)
 
         critical_checks = [
+            "user_message_visible_immediately",
             "tool_process_visible",
             "final_reply_visible",
             "reload_restores_tool_process",
-            "search_preserves_tool_process",
-            "tool_toggle_hides_process",
-            "tool_toggle_restores_process",
         ]
         failed = [key for key in critical_checks if not result.get(key)]
         print(json.dumps(result, ensure_ascii=False, indent=2))

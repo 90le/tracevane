@@ -151,6 +151,7 @@ test('folder scope keeps agent/source filter options from descendant sessions an
   const activeSessions = ref([
     createSession('root-session', 'alpha', 'studio'),
     createSession('child-session', 'beta', 'external'),
+    createSession('loose-root-session', 'gamma', 'studio'),
   ]);
   const archivedSessions = ref([
     createSession('archived-session', 'delta', 'system', {
@@ -222,7 +223,7 @@ test('folder scope keeps agent/source filter options from descendant sessions an
     text: makeText,
   });
 
-  assert.equal(viewModel.baseActiveSessions.value.length, 0);
+  assert.deepEqual(viewModel.baseActiveSessions.value.map((session) => session.key), ['loose-root-session']);
 
   viewModel.setListScope('folders');
   assert.deepEqual(filters.availableAgentOptions.value.map((option) => option.id), ['alpha', 'beta']);

@@ -44,15 +44,16 @@
       <button
         type="button"
         class="skills-mode-button"
-        :class="{ active: mode === 'plugins' }"
-        @click="mode = 'plugins'"
+        :class="{ active: mode === 'local-install' }"
+        @click="mode = 'local-install'"
       >
-        <span class="skills-mode-icon" aria-hidden="true">🔌</span>
+        <span class="skills-mode-icon" aria-hidden="true">📦</span>
         <span>
-          <strong>{{ text('插件管理', 'Plugin Settings') }}</strong>
-          <span>{{ text('白名单、加载路径和已注册插件的集中管理', 'Manage plugin allowlist, load paths, and registered plugins') }}</span>
+          <strong>{{ text('本地安装', 'Local Install') }}</strong>
+          <span>{{ text('上传压缩包、结构检测、选择安装目标', 'Upload archive, validate structure, choose target') }}</span>
         </span>
       </button>
+
     </div>
 
     <div v-if="summaryError" class="status-banner status-banner-error">
@@ -233,6 +234,39 @@
 
             <div v-else class="skills-empty-inline">
               {{ text('当前没有缺失项，这个技能已经具备 ready 条件。', 'No missing requirements. This skill currently satisfies ready conditions.') }}
+            </div>
+          </section>
+
+          <section v-else-if="installedDetailTab === 'agents'" class="skills-detail-panel">
+            <div class="skills-section-head compact">
+              <h4>{{ text('Agent 复用矩阵', 'Agent reuse matrix') }}</h4>
+              <p>{{ text('这里只围绕当前技能显示每个 Agent 的来源：本地副本、共享映射、全局默认、本地分叉或未关联。', 'This panel only shows how each agent gets the current skill: local copy, shared mapping, global default, detached fork, or not linked.') }}</p>
+            </div>
+
+            <div v-if="agentSkillMatrixRows.length" class="skills-agent-matrix-grid">
+              <article v-for="row in agentSkillMatrixRows" :key="row.agentId" class="skills-agent-matrix-card">
+                <div>
+                  <strong>{{ row.agentName }}</strong>
+                  <span>{{ row.agentId }}</span>
+                </div>
+                <span class="skills-mini-chip">{{ row.statusLabel }}</span>
+                <code>{{ row.path || row.sourcePath || text('未关联', 'Not linked') }}</code>
+                <div class="skills-agent-matrix-actions">
+                  <button type="button" class="secondary-button compact-button" :disabled="lifecycleRunning || row.hasMapping" @click.stop="requestSkillLifecycleForAgent('map', row.agentId)">
+                    {{ text('映射', 'Map') }}
+                  </button>
+                  <button type="button" class="secondary-button compact-button" :disabled="lifecycleRunning || !row.canUnmap" @click.stop="requestSkillLifecycleForAgent('unmap', row.agentId)">
+                    {{ text('取消映射', 'Unmap') }}
+                  </button>
+                  <button type="button" class="secondary-button compact-button" :disabled="lifecycleRunning || row.hasLocalCopy || !canMaintainSkill(selectedSkillSummary)" @click.stop="requestSkillLifecycleForAgent('copy', row.agentId)">
+                    {{ text('复制', 'Copy') }}
+                  </button>
+                </div>
+              </article>
+            </div>
+
+            <div v-else class="skills-empty-inline">
+              {{ text('当前没有可用 Agent 目标。', 'No agent targets are available.') }}
             </div>
           </section>
 
@@ -456,6 +490,51 @@
                 <span>{{ text('当前本地位置', 'Current local path') }}</span>
                 <strong>{{ selectedSkillSummary.paths.activePath || text('无本地副本', 'No local copy') }}</strong>
               </div>
+            </div>
+
+            <div class="skills-section-head compact">
+              <h4>{{ text('生命周期操作', 'Lifecycle actions') }}</h4>
+              <p>{{ text('删除、复制、移动、提升到共享目录，或把共享技能映射给其它 Agent 复用。', 'Delete, copy, move, promote to shared, or map shared skills to agents for reuse.') }}</p>
+            </div>
+
+            <div class="skills-maintenance-grid">
+              <label class="form-field">
+                <span class="form-label">{{ text('目标位置 / Agent', 'Target location / Agent') }}</span>
+                <GlassSelect
+                  v-model="lifecycleTargetId"
+                  :options="skillTargetOptions"
+                  :placeholder="text('选择目标', 'Select target')"
+                />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('安装为', 'Install as') }}</span>
+                <input
+                  v-model="lifecycleInstallAs"
+                  class="form-input"
+                  :placeholder="selectedSkillSummary.slug"
+                />
+              </label>
+            </div>
+
+            <div class="skills-maintenance-actions">
+              <button type="button" class="secondary-button" :disabled="lifecycleRunning || !canMaintainSkill(selectedSkillSummary)" @click="requestSkillLifecycleAction('copy')">
+                {{ text('复制到目标', 'Copy to target') }}
+              </button>
+              <button type="button" class="secondary-button" :disabled="lifecycleRunning || !canMaintainSkill(selectedSkillSummary)" @click="requestSkillLifecycleAction('move')">
+                {{ text('移动到目标', 'Move to target') }}
+              </button>
+              <button type="button" class="secondary-button" :disabled="lifecycleRunning || !canMaintainSkill(selectedSkillSummary)" @click="requestSkillLifecycleAction('promote')">
+                {{ text('提升到共享', 'Promote shared') }}
+              </button>
+              <button type="button" class="secondary-button" :disabled="lifecycleRunning || !selectedLifecycleTarget?.agentId" @click="requestSkillLifecycleAction('map')">
+                {{ text('映射给 Agent', 'Map to agent') }}
+              </button>
+              <button type="button" class="secondary-button" :disabled="lifecycleRunning" @click="requestSkillLifecycleAction('sync')">
+                {{ text('同步映射', 'Sync mappings') }}
+              </button>
+              <button type="button" class="danger-link" :disabled="lifecycleRunning || !canMaintainSkill(selectedSkillSummary)" @click="requestSkillLifecycleAction('delete')">
+                {{ text('删除当前副本', 'Delete copy') }}
+              </button>
             </div>
 
             <div class="skills-maintenance-actions">
@@ -834,6 +913,34 @@
               </div>
             </div>
 
+            <div class="skills-section-head compact">
+              <h4>{{ text('安装目标', 'Install target') }}</h4>
+              <p>{{ text('可以安装到默认 workspace、共享目录，或指定 Agent 的 workspace。', 'Install into the default workspace, shared directory, or a specific agent workspace.') }}</p>
+            </div>
+
+            <div class="skills-maintenance-grid">
+              <label class="form-field">
+                <span class="form-label">{{ text('目标', 'Target') }}</span>
+                <GlassSelect
+                  v-model="marketInstallTargetId"
+                  :options="skillTargetOptions"
+                  :placeholder="text('选择安装目标', 'Select install target')"
+                />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('安装目录名', 'Install folder name') }}</span>
+                <input
+                  v-model="marketInstallAs"
+                  class="form-input"
+                  :placeholder="selectedMarketItem.slug"
+                />
+              </label>
+              <label class="skills-checkbox-row form-field-full">
+                <input v-model="marketReplaceExisting" type="checkbox" />
+                <span>{{ text('如果目标已存在，允许替换现有技能副本。', 'Allow replacing an existing skill copy at the target.') }}</span>
+              </label>
+            </div>
+
             <div v-if="activeMarketSource && !activeMarketSource.cliInstalled" class="skills-cli-callout">
               <div class="skills-section-head compact">
                 <h4>{{ text('CLI 尚未安装', 'CLI is not installed') }}</h4>
@@ -900,7 +1007,7 @@
                     ? text('已安装到本地', 'Already installed')
                     : installingSkillSlug === selectedMarketItem.slug
                       ? text('安装中…', 'Installing...')
-                      : text('安装到当前 workspace', 'Install to current workspace')
+                      : text('安装到选定目标', 'Install to selected target')
                 }}
               </button>
 
@@ -918,143 +1025,65 @@
       </aside>
     </template>
 
-    <template v-else-if="mode === 'plugins'">
+    <template v-else-if="mode === 'local-install'">
       <section class="skills-board">
         <div class="skills-board-head">
           <div>
-            <h3>{{ pluginsHeadline }}</h3>
-            <p>{{ pluginsCopy }}</p>
+            <h3>{{ uploadHeadline }}</h3>
+            <p>{{ uploadCopy }}</p>
           </div>
 
           <div class="skills-inline-stats">
-            <span>{{ text('白名单', 'Allowlist') }} {{ pluginForm.allow.length }}</span>
-            <span>{{ text('加载路径', 'Load paths') }} {{ pluginForm.loadPaths.length }}</span>
-            <span>{{ text('已注册', 'Registered') }} {{ pluginEntryIds.length }}</span>
-            <span>{{ text('已启用', 'Enabled') }} {{ pluginEnabledCount }}</span>
+            <span>{{ text('默认目标', 'Default target') }} · {{ text('共享目录', 'Shared') }}</span>
+            <span>{{ text('格式', 'Format') }} · .zip</span>
+            <span>{{ text('校验', 'Validation') }} · SKILL.md</span>
           </div>
         </div>
 
-        <div v-if="pluginLoading" class="skills-empty-state">
-          {{ text('正在读取插件配置…', 'Loading plugin configuration...') }}
-        </div>
-
-        <template v-else>
-          <div class="skills-plugin-layout">
-            <section class="skills-plugin-card">
-              <div class="skills-section-head compact">
-                <h4>{{ text('插件白名单', 'Plugin Allowlist') }}</h4>
-                <p>{{ text('只有白名单中的插件 ID 才会被加载。', 'Only plugin IDs on this list will be loaded.') }}</p>
-              </div>
-
-              <div v-if="pluginForm.allow.length" class="skills-kv-list skills-plugin-list">
-                <div v-for="(item, idx) in pluginForm.allow" :key="'allow-' + idx" class="skills-plugin-row">
-                  <input
-                    :value="item"
-                    @input="pluginForm.allow[idx] = ($event.target as HTMLInputElement).value"
-                    class="form-input"
-                    type="text"
-                    :placeholder="text('插件 ID', 'Plugin ID')"
-                  />
-                  <button type="button" class="danger-link compact-button" @click="pluginForm.allow.splice(idx, 1)">
-                    {{ text('移除', 'Remove') }}
-                  </button>
-                </div>
-              </div>
-
-              <div v-else class="skills-empty-inline">
-                {{ text('未配置插件白名单。', 'No plugin allowlist configured.') }}
-              </div>
-
-              <div class="skills-section-actions">
-                <button type="button" class="secondary-button" @click="pluginForm.allow.push('')">
-                  {{ text('添加白名单项', 'Add allowlist entry') }}
-                </button>
-              </div>
-            </section>
-
-            <section class="skills-plugin-card">
-              <div class="skills-section-head compact">
-                <h4>{{ text('加载路径', 'Load Paths') }}</h4>
-                <p>{{ text('插件加载目录，引擎启动时会从这些路径扫描插件。', 'Plugin load directories scanned by the engine at startup.') }}</p>
-              </div>
-
-              <div v-if="pluginForm.loadPaths.length" class="skills-kv-list skills-plugin-list">
-                <div v-for="(item, idx) in pluginForm.loadPaths" :key="'path-' + idx" class="skills-plugin-row">
-                  <input
-                    :value="item"
-                    @input="pluginForm.loadPaths[idx] = ($event.target as HTMLInputElement).value"
-                    class="form-input"
-                    type="text"
-                    :placeholder="text('插件加载路径', 'Plugin load path')"
-                  />
-                  <button type="button" class="danger-link compact-button" @click="pluginForm.loadPaths.splice(idx, 1)">
-                    {{ text('移除', 'Remove') }}
-                  </button>
-                </div>
-              </div>
-
-              <div v-else class="skills-empty-inline">
-                {{ text('未配置额外加载路径。', 'No extra load paths configured.') }}
-              </div>
-
-              <div class="skills-section-actions">
-                <button type="button" class="secondary-button" @click="pluginForm.loadPaths.push('')">
-                  {{ text('添加加载路径', 'Add load path') }}
-                </button>
-              </div>
-            </section>
-
-            <section class="skills-plugin-card skills-plugin-card-entries">
-              <div class="skills-section-head compact">
-                <h4>{{ text('已注册插件', 'Registered Plugins') }}</h4>
-                <p>{{ text('当前配置中已注册的插件列表，可切换启用状态并编辑额外配置。', 'Registered plugins from current config. Toggle enabled state and edit extra config.') }}</p>
-              </div>
-
-              <div v-if="pluginEntryIds.length" class="skills-plugin-entry-list">
-                <article v-for="pluginId in pluginEntryIds" :key="pluginId" class="skills-plugin-entry">
-                  <div class="skills-plugin-entry-head">
-                    <strong>{{ pluginId }}</strong>
-                    <label class="skills-inline-toggle">
-                      <input
-                        type="checkbox"
-                        :checked="pluginForm.entries[pluginId]?.enabled ?? true"
-                        @change="onPluginEnabledToggle(pluginId, ($event.target as HTMLInputElement).checked)"
-                      />
-                      <span>{{ pluginForm.entries[pluginId]?.enabled ? text('启用', 'On') : text('关闭', 'Off') }}</span>
-                    </label>
-                  </div>
-
-                  <div v-if="pluginHasExtraConfig(pluginId)" class="skills-plugin-entry-config">
-                    <span class="form-label">{{ text('插件配置 (JSON)', 'Plugin Config (JSON)') }}</span>
-                    <textarea
-                      :value="pluginExtraJson(pluginId)"
-                      @input="onPluginExtraJsonInput(pluginId, ($event.target as HTMLTextAreaElement).value)"
-                      class="form-textarea skills-json-field"
-                      rows="4"
-                      spellcheck="false"
-                      :placeholder="text('输入 JSON 格式的额外配置', 'Enter extra configuration in JSON format')"
-                    ></textarea>
-                  </div>
-                </article>
-              </div>
-
-              <div v-else class="skills-empty-inline">
-                {{ text('当前没有已注册的插件。', 'No registered plugins.') }}
-              </div>
-            </section>
-
-            <div class="skills-section-actions skills-plugin-savebar">
-              <button
-                type="button"
-                class="primary-button"
-                :disabled="pluginSaving"
-                @click="savePluginConfig"
-              >
-                {{ pluginSaving ? text('保存中…', 'Saving...') : text('保存插件配置', 'Save plugin config') }}
-              </button>
-            </div>
+        <section class="skills-upload-panel">
+          <div class="skills-section-head compact">
+            <h4>{{ text('上传技能压缩包', 'Upload skill archive') }}</h4>
+            <p>{{ text('上传 .zip 技能包会先做结构校验：必须能定位唯一 SKILL.md，默认安装到共享目录，也可以选择其它目标。', 'Uploaded .zip archives are validated first: exactly one SKILL.md skill root is required. Default target is shared, but another target can be selected.') }}</p>
           </div>
-        </template>
+
+          <div class="skills-maintenance-grid">
+            <label class="form-field">
+              <span class="form-label">{{ text('技能压缩包', 'Skill archive') }}</span>
+              <input class="form-input" type="file" accept=".zip,application/zip" @change="handleUploadArchiveChange" />
+              <span v-if="uploadFileName" class="field-hint">{{ uploadFileName }}</span>
+            </label>
+            <label class="form-field">
+              <span class="form-label">{{ text('安装目标', 'Install target') }}</span>
+              <GlassSelect
+                v-model="uploadTargetId"
+                :options="skillTargetOptions"
+                :placeholder="text('默认共享目录', 'Default shared directory')"
+              />
+            </label>
+            <label class="form-field">
+              <span class="form-label">{{ text('安装目录名', 'Install folder name') }}</span>
+              <input v-model="uploadInstallAs" class="form-input" :placeholder="uploadSuggestedSlug || text('预检后自动建议', 'Suggested after preflight')" />
+            </label>
+            <label class="skills-checkbox-row">
+              <input v-model="uploadReplaceExisting" type="checkbox" />
+              <span>{{ text('如果目标已存在，允许替换。', 'Allow replacing an existing target.') }}</span>
+            </label>
+          </div>
+
+          <div class="skills-maintenance-actions">
+            <button type="button" class="secondary-button" :disabled="uploadBusy || !uploadDataBase64" @click="preflightUploadedArchive">
+              {{ uploadBusy ? text('检测中…', 'Checking...') : text('检测压缩包', 'Validate archive') }}
+            </button>
+            <button type="button" class="primary-button" :disabled="uploadBusy || !uploadPreflight" @click="installUploadedArchive">
+              {{ uploadBusy ? text('安装中…', 'Installing...') : text('安装上传技能', 'Install uploaded skill') }}
+            </button>
+          </div>
+
+          <div v-if="uploadPreflight" class="skills-preflight-summary" :class="preflightTone(uploadPreflight.preflight.level)">
+            <strong>{{ text('检测通过', 'Validation passed') }} · {{ uploadPreflight.suggestedSlug }}</strong>
+            <p>{{ uploadPreflight.preflight.summary }}</p>
+          </div>
+        </section>
       </section>
     </template>
 
@@ -1085,7 +1114,12 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import type {
   SkillApiKeyMode,
+  SkillInstallTargetScope,
   SkillSummary,
+  SkillTargetDescriptor,
+  SkillTargetRef,
+  SkillsLifecycleAction,
+  SkillsLifecyclePayload,
   SkillsMarketplaceItem,
   SkillsMarketplacePayload,
   SkillsMarketplaceSort,
@@ -1095,6 +1129,7 @@ import type {
   SkillsPreflightResult,
   SkillsRiskLevel,
   SkillsSummaryPayload,
+  SkillsUploadPreflightResult,
 } from '../../../../../types/skills';
 import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
@@ -1103,25 +1138,27 @@ import {
   fetchMarketplaceSources,
   fetchSkillConfig,
   fetchSkillSecret,
+  fetchSkillTargets,
   fetchSkillsSummary,
+  installUploadedSkillArchive,
   installMarketplaceSkill,
   preflightMarketplaceSkill,
+  preflightUploadedSkillArchive,
+  runSkillLifecycleAction,
   saveSkillConfig,
   toggleSkill,
   uninstallSkill,
   updateInstalledSkill,
 } from './api';
-import { fetchConfigSummary } from '../config/api';
-import { requestJson } from '../../shared/api';
 import { copyTextToClipboard } from '../../shared/clipboard';
 import {
   buildDefaultSkillsOverviewRecipe,
   type SkillsOverviewRecipe,
 } from './skills-overview-recipe';
 
-type PageMode = 'installed' | 'marketplace' | 'plugins';
+type PageMode = 'installed' | 'marketplace' | 'local-install';
 type InstalledFilter = 'all' | 'ready' | 'needs-setup' | 'disabled' | 'workspace' | 'managed' | 'bundled';
-type InstalledDetailTab = 'overview' | 'config' | 'maintenance';
+type InstalledDetailTab = 'overview' | 'agents' | 'config' | 'maintenance';
 type MarketDetailTab = 'overview' | 'preflight' | 'install';
 type ConfigFieldType = 'string' | 'number' | 'boolean' | 'json';
 type MarketQuickFilter = 'all' | 'installed' | 'not-installed' | 'high-downloads';
@@ -1154,11 +1191,12 @@ interface EditableSkillConfig {
 }
 
 interface ConfirmDialogState {
-  kind: 'install' | 'update' | 'uninstall';
+  kind: 'install' | 'update' | 'uninstall' | 'lifecycle';
   title: string;
   message: string;
   detail: string;
   confirmLabel: string;
+  lifecyclePayload?: SkillsLifecyclePayload;
 }
 
 const props = defineProps<{
@@ -1175,8 +1213,8 @@ const installedHeadline = computed(() => overviewRecipe.value.installedHeadline)
 const installedCopy = computed(() => overviewRecipe.value.installedCopy);
 const marketplaceHeadline = computed(() => overviewRecipe.value.marketplaceHeadline);
 const marketplaceCopy = computed(() => overviewRecipe.value.marketplaceCopy);
-const pluginsHeadline = computed(() => overviewRecipe.value.pluginsHeadline);
-const pluginsCopy = computed(() => overviewRecipe.value.pluginsCopy);
+const uploadHeadline = computed(() => overviewRecipe.value.uploadHeadline);
+const uploadCopy = computed(() => overviewRecipe.value.uploadCopy);
 
 const mode = ref<PageMode>('installed');
 const summary = ref<SkillsSummaryPayload | null>(null);
@@ -1198,6 +1236,7 @@ const maintenanceRunning = ref<'update' | 'uninstall' | ''>('');
 const maintenanceSourceId = ref<SkillsMarketplaceSourceId>('skillhub-tencent');
 
 const marketSources = ref<SkillsMarketplaceSource[]>([]);
+const skillTargets = ref<SkillTargetDescriptor[]>([]);
 const marketSourceId = ref<SkillsMarketplaceSourceId>('skillhub-tencent');
 const marketSearch = ref('');
 const marketSort = ref<SkillsMarketplaceSort>('featured');
@@ -1213,24 +1252,21 @@ const preflightResultMap = ref<Record<string, SkillsPreflightResult>>({});
 const preflightErrorMap = ref<Record<string, string>>({});
 const preflightLoading = ref(false);
 const installingSkillSlug = ref('');
+const marketInstallTargetId = ref('default-workspace');
+const marketInstallAs = ref('');
+const marketReplaceExisting = ref(false);
+const lifecycleTargetId = ref('managed');
+const lifecycleInstallAs = ref('');
+const lifecycleRunning = ref(false);
+const uploadFileName = ref('');
+const uploadDataBase64 = ref('');
+const uploadInstallAs = ref('');
+const uploadTargetId = ref('managed');
+const uploadReplaceExisting = ref(false);
+const uploadBusy = ref(false);
+const uploadPreflight = ref<SkillsUploadPreflightResult | null>(null);
 const confirmDialog = ref<ConfirmDialogState | null>(null);
 const confirmRunning = ref(false);
-
-interface PluginEntry {
-  enabled: boolean;
-  config?: Record<string, unknown>;
-}
-
-const pluginForm = reactive({
-  allow: [] as string[],
-  loadPaths: [] as string[],
-  entries: {} as Record<string, PluginEntry>,
-});
-const pluginLoading = ref(false);
-const pluginSaving = ref(false);
-
-const pluginEntryIds = computed(() => Object.keys(pluginForm.entries).sort());
-const pluginEnabledCount = computed(() => pluginEntryIds.value.filter((id) => pluginForm.entries[id]?.enabled !== false).length);
 
 let marketSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1440,6 +1476,36 @@ function createEditableSkillConfig(payload: Awaited<ReturnType<typeof fetchSkill
   };
 }
 
+function buildTargetRef(
+  targetId: string,
+  installAs: string,
+  fallbackSlug: string,
+): SkillTargetRef | undefined {
+  const target = targetById(targetId);
+  if (!target) return undefined;
+  const targetRef: SkillTargetRef = {
+    scope: target.scope as SkillInstallTargetScope,
+    agentId: target.agentId,
+    installAs: installAs.trim() || fallbackSlug,
+  };
+  if (target.scope === 'custom') targetRef.targetPath = target.path;
+  return targetRef;
+}
+
+function lifecycleActionLabel(action: SkillsLifecycleAction): string {
+  switch (action) {
+    case 'copy': return text('复制', 'Copy');
+    case 'move': return text('移动', 'Move');
+    case 'promote': return text('提升到共享', 'Promote shared');
+    case 'map': return text('映射给 Agent', 'Map to agent');
+    case 'sync': return text('同步映射', 'Sync mappings');
+    case 'delete': return text('删除', 'Delete');
+    case 'detach': return text('脱离成副本', 'Detach copy');
+    case 'unmap': return text('取消映射', 'Unmap');
+    default: return action;
+  }
+}
+
 const installedFilterOptions = computed<GlassSelectOption[]>(() => [
   { value: 'all', label: text('全部技能', 'All skills') },
   { value: 'ready', label: text('可直接用', 'Ready') },
@@ -1459,6 +1525,7 @@ const configFieldTypeOptions = computed<GlassSelectOption[]>(() => [
 
 const installedDetailTabs = computed(() => [
   { value: 'overview', label: text('概览', 'Overview') },
+  { value: 'agents', label: text('Agent', 'Agents') },
   { value: 'config', label: text('配置', 'Config') },
   { value: 'maintenance', label: text('维护', 'Maintenance') },
 ]);
@@ -1496,6 +1563,64 @@ const marketQuickFilters = computed(() => [
 
 const selectedSkillSummary = computed(() => {
   return summary.value?.skills.find((skill) => skill.slug === selectedSkillSlug.value) || null;
+});
+
+const skillTargetOptions = computed<GlassSelectOption[]>(() =>
+  skillTargets.value.map((target) => ({
+    value: target.id,
+    label: `${target.label} · ${target.path}`,
+  })),
+);
+
+function targetById(targetId: string): SkillTargetDescriptor | null {
+  return skillTargets.value.find((target) => target.id === targetId) || null;
+}
+
+const selectedMarketInstallTarget = computed(() => targetById(marketInstallTargetId.value));
+const selectedLifecycleTarget = computed(() => targetById(lifecycleTargetId.value));
+const uploadSuggestedSlug = computed(() => uploadPreflight.value?.suggestedSlug || '');
+
+const agentTargets = computed(() => skillTargets.value.filter((target) => target.scope === 'agent-workspace' && target.agentId));
+
+const agentSkillMatrixRows = computed(() => {
+  const skill = selectedSkillSummary.value;
+  if (!skill) return [] as Array<{
+    agentId: string;
+    agentName: string;
+    hasLocalCopy: boolean;
+    hasMapping: boolean;
+    canUnmap: boolean;
+    path: string;
+    sourcePath: string;
+    statusLabel: string;
+  }>;
+  return agentTargets.value.map((target) => {
+    const agentId = target.agentId || '';
+    const mapping = (skill.agentMappings || []).find((item) => item.agentId === agentId) || null;
+    const localPath = mapping?.targetPath || skill.paths.agentWorkspacePaths?.[agentId] || '';
+    const hasLocalCopy = mapping?.mode === 'local-copy' || mapping?.mode === 'detached-fork' || Boolean(localPath);
+    const hasMapping = mapping?.mode === 'shared-mapping' || mapping?.mode === 'global-default';
+    const canUnmap = mapping?.mode === 'shared-mapping';
+    const sourcePath = mapping?.sourcePath || skill.paths.managedPath || skill.paths.workspacePath || '';
+    return {
+      agentId,
+      agentName: target.label,
+      hasLocalCopy,
+      hasMapping,
+      canUnmap,
+      path: localPath,
+      sourcePath,
+      statusLabel: mapping?.mode === 'detached-fork'
+        ? text('本地分叉', 'Detached fork')
+        : mapping?.mode === 'local-copy'
+          ? text('本地副本', 'Local copy')
+          : mapping?.mode === 'shared-mapping'
+            ? text('Agent 映射', 'Agent mapping')
+            : mapping?.mode === 'global-default'
+              ? text('全局默认', 'Global default')
+              : text('未关联', 'Not linked'),
+    };
+  });
 });
 
 const filteredInstalledSkills = computed(() => {
@@ -1617,103 +1742,6 @@ function canMaintainSkill(skill: SkillSummary | null): boolean {
   if (!skill) return false;
   if (skill.sourceCategory === 'bundled') return false;
   return Boolean(skill.paths.activePath);
-}
-
-function hydratePluginForm(summary: Record<string, unknown>): void {
-  const plugins = summary?.plugins as Record<string, unknown> | undefined;
-  if (!plugins) return;
-
-  pluginForm.allow = Array.isArray(plugins.allow) ? [...plugins.allow] : [];
-  pluginForm.loadPaths = Array.isArray(plugins.loadPaths) ? [...plugins.loadPaths] : [];
-
-  const entries = (plugins.entries ?? {}) as Record<string, Record<string, unknown>>;
-  const newEntries: Record<string, PluginEntry> = {};
-  for (const [id, entry] of Object.entries(entries)) {
-    const { enabled, ...rest } = entry;
-    newEntries[id] = {
-      enabled: enabled !== false,
-      config: Object.keys(rest).length ? rest : undefined,
-    };
-  }
-  pluginForm.entries = newEntries;
-}
-
-async function loadPluginConfig(): Promise<void> {
-  pluginLoading.value = true;
-  try {
-    const summary = await fetchConfigSummary();
-    hydratePluginForm(summary as unknown as Record<string, unknown>);
-  } catch (error) {
-    setNotice('error', error instanceof Error ? error.message : text('读取插件配置失败。', 'Failed to load plugin config.'));
-  } finally {
-    pluginLoading.value = false;
-  }
-}
-
-async function savePluginConfig(): Promise<void> {
-  pluginSaving.value = true;
-  try {
-    const entries: Record<string, { enabled: boolean; config?: Record<string, unknown> }> = {};
-    for (const [id, entry] of Object.entries(pluginForm.entries)) {
-      const payload: { enabled: boolean; config?: Record<string, unknown> } = { enabled: entry.enabled };
-      if (entry.config && Object.keys(entry.config).length) {
-        payload.config = { ...entry.config };
-      }
-      entries[id] = payload;
-    }
-
-    await requestJson('/api/config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        plugins: {
-          allow: pluginForm.allow.filter((s: string) => s.trim()),
-          loadPaths: pluginForm.loadPaths.filter((s: string) => s.trim()),
-          entries,
-        },
-      }),
-    });
-
-    setNotice('success', text('插件配置已保存。', 'Plugin configuration saved.'));
-  } catch (error) {
-    setNotice('error', error instanceof Error ? error.message : text('保存插件配置失败。', 'Failed to save plugin config.'));
-  } finally {
-    pluginSaving.value = false;
-  }
-}
-
-function pluginHasExtraConfig(pluginId: string): boolean {
-  const entry = pluginForm.entries[pluginId];
-  return !!(entry?.config && Object.keys(entry.config).length);
-}
-
-function pluginExtraJson(pluginId: string): string {
-  const entry = pluginForm.entries[pluginId];
-  if (!entry?.config || !Object.keys(entry.config).length) return '';
-  try {
-    return JSON.stringify(entry.config, null, 2);
-  } catch {
-    return '';
-  }
-}
-
-function onPluginExtraJsonInput(pluginId: string, jsonStr: string): void {
-  try {
-    const parsed = JSON.parse(jsonStr);
-    if (typeof parsed !== 'object' || parsed === null) return;
-    pluginForm.entries[pluginId] = {
-      ...pluginForm.entries[pluginId],
-      config: parsed,
-    };
-  } catch {
-    // invalid JSON, silently ignore until user finishes editing
-  }
-}
-
-function onPluginEnabledToggle(pluginId: string, enabled: boolean): void {
-  if (pluginForm.entries[pluginId]) {
-    pluginForm.entries[pluginId].enabled = enabled;
-  }
 }
 
 function preflightTone(level: SkillsRiskLevel): string {
@@ -1931,6 +1959,118 @@ async function loadMarketplaceSources(): Promise<void> {
   }
 }
 
+async function loadSkillTargets(): Promise<void> {
+  try {
+    const payload = await fetchSkillTargets();
+    skillTargets.value = payload.targets || [];
+    if (!targetById(marketInstallTargetId.value)) {
+      marketInstallTargetId.value = skillTargets.value[0]?.id || 'default-workspace';
+    }
+    if (!targetById(lifecycleTargetId.value)) {
+      lifecycleTargetId.value = skillTargets.value.find((target) => target.scope === 'managed')?.id
+        || skillTargets.value[0]?.id
+        || 'managed';
+    }
+    if (!targetById(uploadTargetId.value)) {
+      uploadTargetId.value = skillTargets.value.find((target) => target.scope === 'managed')?.id
+        || skillTargets.value[0]?.id
+        || 'managed';
+    }
+  } catch (error) {
+    setNotice('error', error instanceof Error ? error.message : text('读取技能目标失败。', 'Failed to load skill targets.'));
+  }
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || '');
+      resolve(value.includes(',') ? value.split(',').pop() || '' : value);
+    };
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleUploadArchiveChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0] || null;
+  uploadPreflight.value = null;
+  uploadInstallAs.value = '';
+  uploadDataBase64.value = '';
+  uploadFileName.value = '';
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    setNotice('error', text('请上传 .zip 技能压缩包。', 'Upload a .zip skill archive.'));
+    input.value = '';
+    return;
+  }
+  try {
+    uploadFileName.value = file.name;
+    uploadDataBase64.value = await readFileAsBase64(file);
+  } catch (error) {
+    setNotice('error', error instanceof Error ? error.message : text('读取上传文件失败。', 'Failed to read uploaded file.'));
+  }
+}
+
+async function preflightUploadedArchive(): Promise<void> {
+  if (!uploadDataBase64.value || !uploadFileName.value) return;
+  uploadBusy.value = true;
+  try {
+    const payload = await preflightUploadedSkillArchive({
+      fileName: uploadFileName.value,
+      dataBase64: uploadDataBase64.value,
+    });
+    uploadPreflight.value = payload;
+    uploadInstallAs.value = payload.suggestedSlug;
+    setNotice('success', text('压缩包结构检测通过。', 'Archive structure validated.'));
+  } catch (error) {
+    uploadPreflight.value = null;
+    setNotice('error', error instanceof Error ? error.message : text('压缩包检测失败。', 'Archive validation failed.'));
+  } finally {
+    uploadBusy.value = false;
+  }
+}
+
+async function installUploadedArchive(): Promise<void> {
+  if (!uploadDataBase64.value || !uploadFileName.value || !uploadPreflight.value) return;
+  uploadBusy.value = true;
+  try {
+    const result = await installUploadedSkillArchive({
+      fileName: uploadFileName.value,
+      dataBase64: uploadDataBase64.value,
+      target: buildTargetRef(uploadTargetId.value, uploadInstallAs.value || uploadPreflight.value.suggestedSlug, uploadPreflight.value.suggestedSlug),
+      installAs: uploadInstallAs.value || uploadPreflight.value.suggestedSlug,
+      replaceExisting: uploadReplaceExisting.value,
+    });
+    setNotice('success', `${result.output}${result.note ? ` ${result.note}` : ''}`);
+    await loadSummary(true);
+    await loadSkillTargets();
+  } catch (error) {
+    setNotice('error', error instanceof Error ? error.message : text('安装上传技能失败。', 'Failed to install uploaded skill.'));
+  } finally {
+    uploadBusy.value = false;
+  }
+}
+
+async function runLifecycle(payload: SkillsLifecyclePayload): Promise<void> {
+  lifecycleRunning.value = true;
+  try {
+    const result = await runSkillLifecycleAction(payload);
+    const affected = result.affectedAgents.length
+      ? text(`，影响 ${result.affectedAgents.length} 个 Agent`, `, ${result.affectedAgents.length} agent(s) affected`)
+      : '';
+    setNotice('success', `${result.output}${affected}${result.note ? ` ${result.note}` : ''}`);
+    await loadSummary(true);
+    await loadSkillTargets();
+  } catch (error) {
+    setNotice('error', error instanceof Error ? error.message : text('执行技能生命周期操作失败。', 'Failed to run skill lifecycle action.'));
+  } finally {
+    lifecycleRunning.value = false;
+  }
+}
+
 async function loadMarketplace(force = false): Promise<void> {
   if (!force && marketplace.value && marketSourceId.value === marketplace.value.source.id) return;
   marketLoading.value = true;
@@ -1997,12 +2137,94 @@ function requestRemoveInstalledSkill(): void {
 
 function requestInstallSelectedMarketSkill(): void {
   if (!selectedMarketItem.value) return;
+  const targetLabel = selectedMarketInstallTarget.value?.label || text('默认 workspace', 'Default workspace');
   confirmDialog.value = {
     kind: 'install',
     title: text('确认安装技能', 'Confirm skill install'),
-    message: text('将把该技能安装到当前 workspace/skills，并在下一个新会话中由 OpenClaw 自动发现。', 'Studio will install this skill into the current workspace/skills directory and OpenClaw will discover it in the next new session.'),
-    detail: `${selectedMarketItem.value.slug} · ${marketplaceSourceLabel(selectedMarketItem.value.sourceId)}`,
+    message: text('将把该技能安装到选定目标，并在下一个新会话中由 OpenClaw 自动发现。', 'Studio will install this skill into the selected target and OpenClaw will discover it in the next new session.'),
+    detail: `${selectedMarketItem.value.slug} · ${marketplaceSourceLabel(selectedMarketItem.value.sourceId)} · ${targetLabel}`,
     confirmLabel: text('确认安装', 'Install now'),
+  };
+}
+
+function requestSkillLifecycleAction(action: SkillsLifecycleAction): void {
+  if (!selectedSkillSummary.value) return;
+  const slug = selectedSkillSummary.value.slug;
+  const targetRef = buildTargetRef(lifecycleTargetId.value, lifecycleInstallAs.value, slug);
+  const lifecyclePayload: SkillsLifecyclePayload = {
+    action,
+    slug,
+    replaceExisting: true,
+    confirmAffected: action === 'delete',
+  };
+  if (action === 'copy' || action === 'move' || action === 'detach') {
+    lifecyclePayload.destination = targetRef || null;
+  } else if (action === 'promote') {
+    lifecyclePayload.destination = { scope: 'managed', installAs: lifecycleInstallAs.value.trim() || slug };
+  } else if (action === 'map' || action === 'unmap') {
+    if (!selectedLifecycleTarget.value?.agentId) {
+      setNotice('error', text('请先选择一个 Agent 目标。', 'Select an agent target first.'));
+      return;
+    }
+    lifecyclePayload.agentIds = [selectedLifecycleTarget.value.agentId];
+  } else if (action === 'delete') {
+    lifecyclePayload.deleteMode = 'physical-and-mappings';
+  }
+
+  confirmDialog.value = {
+    kind: 'lifecycle',
+    title: text(`确认${lifecycleActionLabel(action)}`, `Confirm ${lifecycleActionLabel(action)}`),
+    message: text('该操作会修改技能目录或 Agent 技能映射，执行后建议开启新会话。', 'This changes skill directories or agent skill mappings. Start a new session after running it.'),
+    detail: `${slug} · ${lifecycleActionLabel(action)}${selectedLifecycleTarget.value ? ` · ${selectedLifecycleTarget.value.label}` : ''}`,
+    confirmLabel: lifecycleActionLabel(action),
+    lifecyclePayload,
+  };
+}
+
+function requestSkillLifecycleForAgent(action: 'copy' | 'map' | 'unmap', agentId: string): void {
+  if (!selectedSkillSummary.value) return;
+  const slug = selectedSkillSummary.value.slug;
+  const target = skillTargets.value.find((item) => item.scope === 'agent-workspace' && item.agentId === agentId);
+  if (!target) {
+    setNotice('error', text('找不到 Agent 目标。', 'Agent target not found.'));
+    return;
+  }
+  const lifecyclePayload: SkillsLifecyclePayload = action === 'map' || action === 'unmap'
+    ? {
+        action,
+        slug,
+        agentIds: [agentId],
+      }
+    : {
+        action: 'copy',
+        slug,
+        destination: {
+          scope: 'agent-workspace',
+          agentId,
+          installAs: slug,
+        },
+        replaceExisting: true,
+      };
+
+  confirmDialog.value = {
+    kind: 'lifecycle',
+    title: action === 'copy'
+      ? text('确认复制技能', 'Confirm skill copy')
+      : action === 'unmap'
+        ? text('确认取消映射', 'Confirm unmap')
+        : text('确认映射技能', 'Confirm skill mapping'),
+    message: action === 'copy'
+      ? text('将为该 Agent 创建一个本地技能副本，后续可独立编辑。', 'This creates a local skill copy for the agent so it can be edited independently later.')
+      : action === 'unmap'
+        ? text('将从该 Agent 的技能列表中移除映射，不删除任何物理副本。', 'This removes the mapping from the agent skill list without deleting physical copies.')
+        : text('将把共享技能映射给该 Agent 复用，不创建新的物理副本。', 'This maps the shared skill to the agent without creating a new physical copy.'),
+    detail: `${slug} · ${target.label}`,
+    confirmLabel: action === 'copy'
+      ? text('确认复制', 'Copy now')
+      : action === 'unmap'
+        ? text('确认取消映射', 'Unmap now')
+        : text('确认映射', 'Map now'),
+    lifecyclePayload,
   };
 }
 
@@ -2043,6 +2265,8 @@ async function installSelectedMarketSkill(): Promise<void> {
     const result = await installMarketplaceSkill({
       sourceId: selectedMarketItem.value.sourceId,
       slug: selectedMarketItem.value.slug,
+      target: buildTargetRef(marketInstallTargetId.value, marketInstallAs.value, selectedMarketItem.value.slug),
+      replaceExisting: marketReplaceExisting.value,
     });
     setNotice('success', result.note ? `${result.output} ${result.note}` : `${result.output} ${text('新的 OpenClaw session 会自动拾取这个技能。', 'A new OpenClaw session will pick up this skill automatically.')}`);
     await loadSummary(true);
@@ -2063,6 +2287,10 @@ async function executeConfirmDialog(): Promise<void> {
       await installSelectedMarketSkill();
     } else if (confirmDialog.value.kind === 'update') {
       await updateInstalledSkillVersion();
+    } else if (confirmDialog.value.kind === 'lifecycle') {
+      if (confirmDialog.value.lifecyclePayload) {
+        await runLifecycle(confirmDialog.value.lifecyclePayload);
+      }
     } else {
       await removeInstalledSkill();
     }
@@ -2089,9 +2317,6 @@ watch(mode, async (value) => {
   confirmDialog.value = null;
   if (value === 'marketplace' && !marketplace.value) {
     await loadMarketplace(true);
-  }
-  if (value === 'plugins') {
-    await loadPluginConfig();
   }
 });
 
@@ -2143,6 +2368,7 @@ onMounted(async () => {
   await Promise.all([
     loadSummary(false),
     loadMarketplaceSources(),
+    loadSkillTargets(),
   ]);
 });
 </script>
@@ -2154,7 +2380,7 @@ onMounted(async () => {
 
 .skills-mode-switch {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -2290,6 +2516,75 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.skills-agent-matrix {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.skills-upload-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(135deg, rgba(109, 240, 207, 0.055), transparent 56%),
+    var(--surface);
+}
+
+.skills-agent-matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skills-agent-matrix-card {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+  min-width: 0;
+}
+
+.skills-agent-matrix-card strong,
+.skills-agent-matrix-card span {
+  display: block;
+}
+
+.skills-agent-matrix-card strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.skills-agent-matrix-card span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.skills-agent-matrix-card code {
+  min-height: 34px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--code-bg);
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.skills-agent-matrix-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .skills-plugin-card {
@@ -2929,6 +3224,7 @@ html[data-theme="light"] .skills-confirm-dialog {
   .skills-toolbar-grid.market,
   .skills-table-head,
   .skills-table-row,
+  .skills-agent-matrix-grid,
   .skills-facts-grid,
   .skills-maintenance-grid,
   .skills-missing-grid,

@@ -221,6 +221,43 @@ const routeContextConfigs: ShellContextConfig[] = [
     ],
   },
   {
+    match: (path) => path.startsWith("/files"),
+    titleZh: "文件管理上下文",
+    titleEn: "Files context",
+    descriptionZh:
+      "文件管理页适合作为资源浏览、上传编辑和系统目录维护的统一入口。",
+    descriptionEn:
+      "Files works best as a unified surface for browsing assets, uploads, editing, and system-directory maintenance.",
+    focusZh: "资源与工作区",
+    focusEn: "Assets and workspaces",
+    actions: [
+      {
+        id: "files-home",
+        to: "/files",
+        titleZh: "回到文件管理",
+        titleEn: "Return to files",
+        detailZh: "继续处理目录树、上传、下载和文本编辑。",
+        detailEn: "Continue with tree navigation, uploads, downloads, and text editing.",
+      },
+      {
+        id: "files-terminal",
+        to: "/terminal",
+        titleZh: "切到维护终端",
+        titleEn: "Open terminal",
+        detailZh: "需要 CLI 校验或批量脚本时直接切换。",
+        detailEn: "Jump to the terminal when you need CLI verification or bulk scripts.",
+      },
+      {
+        id: "files-system",
+        to: "/system",
+        titleZh: "查看系统诊断",
+        titleEn: "Open diagnostics",
+        detailZh: "文件变更后回到系统诊断确认运行态。",
+        detailEn: "After file changes, verify runtime health in diagnostics.",
+      },
+    ],
+  },
+  {
     match: (path) => path.startsWith("/cron"),
     titleZh: "定时任务上下文",
     titleEn: "Cron context",

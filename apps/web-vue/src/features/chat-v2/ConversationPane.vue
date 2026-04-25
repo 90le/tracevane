@@ -269,9 +269,12 @@
     </div>
 
     <div v-else class="chat-conversation-pane__body">
-      <section class="chat-conversation-thread" ref="threadBody" @scroll="handleThreadScroll">
+      <section class="chat-conversation-thread" ref="threadBody" @scroll="handleThreadScroll" @wheel.passive="handleThreadWheel">
         <div ref="historyTopSentinel" class="chat-conversation-thread__top-sentinel" aria-hidden="true"></div>
-        <div v-if="historyLoadingBefore" class="chat-conversation-thread__loading-indicator">
+        <div
+          v-if="showHistoryLoadingBeforeIndicator"
+          class="chat-conversation-thread__loading-indicator chat-conversation-thread__loading-indicator--before"
+        >
           <span class="chat-conversation-thread__spinner"></span>
         </div>
         <div v-if="viewingHistoricalPosition && !historyLoadingInitial" class="chat-conversation-thread__history-banner">
@@ -280,6 +283,15 @@
           <button type="button" class="chat-conversation-thread__history-banner-action" @click="$emit('jump-to-live')">
             {{ text('返回最新', 'Return to latest') }}
           </button>
+        </div>
+        <div
+          v-if="showActiveRunPlaceholder"
+          class="chat-conversation-thread__live-placeholder"
+          role="status"
+          aria-live="polite"
+        >
+          <span class="chat-conversation-thread__live-placeholder-dot" aria-hidden="true"></span>
+          <span>{{ text('正在处理中，等待实时消息或工具过程返回。', 'Processing. Waiting for live assistant or tool updates.') }}</span>
         </div>
         <div v-if="!selectedSession" class="chat-conversation-empty">
           <h3>{{ text('开始新的聊天', 'Start a new chat') }}</h3>
@@ -299,7 +311,14 @@
           <p>{{ text('从底部输入框开始，新的对话会在这里自然展开。', 'Use the composer below and the conversation will unfold here.') }}</p>
         </div>
         <div v-else class="chat-conversation-groups">
-          <template v-for="(item, itemIndex) in timelineItems" :key="item.id">
+          <div
+            v-for="(item, itemIndex) in timelineItems"
+            :id="timelineItemAnchorId(item) || undefined"
+            :key="item.id"
+            class="chat-conversation-thread__item-shell"
+            :style="timelineItemShellStyle(item, itemIndex)"
+            :ref="(el) => setTimelineItemShellRef(item.id, el as HTMLElement | null)"
+          >
             <div
               v-if="dateSeparatorLabel(item, itemIndex)"
               class="chat-conversation-thread__date-separator"
@@ -307,6 +326,8 @@
               <span>{{ dateSeparatorLabel(item, itemIndex) }}</span>
             </div>
             <MessageBubble
+              v-if="isTimelineItemVisible(itemIndex)"
+              v-memo="timelineItemMemoKey(item)"
               :group="item.type === 'message_group' ? item.group : null"
               :overlay="item.type === 'run_overlay' ? item.overlay : null"
               :overlay-anchor-message-ids="item.type === 'run_overlay' ? item.anchorMessageIds : []"
@@ -319,11 +340,21 @@
               :agent-emoji="agentEmoji"
               :agent-initial="agentInitial"
               :active-run-id="activeRunId"
+              :active-streaming-message-id="activeStreamingMessageId"
               :session-key="selectedSession?.key || null"
+              :force-eager-render="shouldForceEagerTimelineItem(itemIndex)"
             />
-          </template>
+            <div
+              v-else
+              class="chat-conversation-thread__item-placeholder"
+              aria-hidden="true"
+            ></div>
+          </div>
         </div>
-        <div v-if="historyLoadingAfter" class="chat-conversation-thread__loading-indicator">
+        <div
+          v-if="showHistoryLoadingAfterIndicator"
+          class="chat-conversation-thread__loading-indicator chat-conversation-thread__loading-indicator--after"
+        >
           <span class="chat-conversation-thread__spinner"></span>
         </div>
         <div v-if="hasMoreAfter" ref="historyBottomSentinel" class="chat-conversation-thread__bottom-sentinel" aria-hidden="true"></div>
@@ -720,7 +751,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUpdated, reactive, ref, watch } from 'vue';
 import {
   DialogClose,
   DialogContent,
@@ -769,6 +800,8 @@ import {
   captureChatSessionAppendAnchor,
   captureChatSessionPrependAnchor,
   createChatSessionScrollState,
+  markChatSessionUserBrowseIntent,
+  preserveChatSessionHistoryBrowsePosition,
   resolveChatSessionJumpToBottom,
   resolveChatSessionTimelineMutation,
   shouldObserveChatSessionBottomSentinel,
@@ -797,6 +830,9 @@ const props = defineProps<{
   hasMoreAfter: boolean;
   historyLoadingAfter: boolean;
   viewingHistoricalPosition: boolean;
+  autoFillHistoryBeforeEnabled?: boolean;
+  forceEagerHistoryRender: boolean;
+  historyPrependAnchorMessageId?: string | null;
   historyErrorMessage: string;
   accessError: string;
   gatewayWarning: string;
@@ -824,6 +860,7 @@ const props = defineProps<{
   slashArgOptionsOverrides: Record<string, string[]>;
   inspectPinned: boolean;
   activeRunId: string | null;
+  activeStreamingMessageId: string | null;
   queuedItems: ChatQueuedMessageItem[];
   queueRailExpanded: boolean;
   mobileQueueSheetOpen: boolean;
@@ -855,7 +892,8 @@ const emit = defineEmits<{
   (event: 'delete-queued-item', entryId: string): void;
   (event: 'toggle-host-management-exec', nextValue: boolean): void;
   (event: 'toggle-sound-cues', value: boolean): void;
-  (event: 'load-more-before'): void;
+  (event: 'load-more-before', mode?: 'browse' | 'autofill' | 'continuation'): void;
+  (event: 'prefetch-more-before'): void;
   (event: 'load-more-after'): void;
   (event: 'jump-to-live'): void;
   (event: 'jump-to-message', messageId: string): void;
@@ -977,6 +1015,8 @@ const hasSessionPreviewOverrides = computed(() => {
 
 const scrollState = ref(createChatSessionScrollState());
 const pendingUnreadCount = computed(() => scrollState.value.pendingUnreadCount);
+const showHistoryLoadingBeforeIndicator = ref(false);
+const showHistoryLoadingAfterIndicator = ref(false);
 const showJumpToBottom = computed(() => (
   scrollState.value.pendingUnreadCount > 0 || scrollState.value.autoScrollLockedByUser || props.viewingHistoricalPosition
 ));
@@ -985,11 +1025,58 @@ const showInitialLoadingState = computed(() => shouldShowInitialConversationLoad
   historyLoadingInitial: props.historyLoadingInitial,
   timelineItemCount: props.timelineItems.length,
 }));
+const showActiveRunPlaceholder = computed(() => {
+  if (!props.selectedSession || !props.activeRunId || props.historyLoadingInitial || props.historyErrorMessage) {
+    return false;
+  }
+  return !props.timelineItems.some((item) => (
+    item.type === 'message_group'
+      ? item.group.messages.some((message) => message.runId === props.activeRunId || message.id === props.activeStreamingMessageId)
+      : item.overlay.runId === props.activeRunId
+  ));
+});
 let topSentinelObserver: IntersectionObserver | null = null;
 let bottomSentinelObserver: IntersectionObserver | null = null;
 let ignoreScrollEvents = false;
+let prependRestoreAnchorItemId: string | null = null;
+let prependRestoreAnchorOffset = 0;
+let prependRestoreBoundaryMessageId: string | null = null;
+let stableRestoreAnchorItemId: string | null = null;
+let stableRestoreAnchorOffset = 0;
+let stableRestoreBottomDistance: number | null = null;
+let stableRestoreUntil = 0;
+let stableRestoreFrame: number | null = null;
+let initialLatestAnchorPending = true;
+let initialLatestAnchorSettleUntil = 0;
+let initialLatestAnchorTimer: number | null = null;
+let latestBottomScrollToken = 0;
+let historyBeforeAutoFillTimer: number | null = null;
+let historyBeforeContinuationTimer: number | null = null;
+let historyBeforeIndicatorTimer: number | null = null;
+let historyAfterIndicatorTimer: number | null = null;
+let historyBeforeContinuationArmed = false;
+let historyBrowseGuardUntil = 0;
+let historyPrependMutationPending = false;
+let historyPrependPendingBottomDistance: number | null = null;
 let compactViewportMediaQuery: MediaQueryList | null = null;
 let compactViewportListener: ((event: MediaQueryListEvent) => void) | null = null;
+const HISTORY_BEFORE_PREFETCH_TRIGGER_PX = 1400;
+const HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX = 720;
+const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 5.5;
+const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 1200;
+const HISTORY_BROWSE_GUARD_MS = 6000;
+const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 1400;
+const HISTORY_LOADING_INDICATOR_DELAY_MS = 650;
+const TIMELINE_VIRTUALIZE_MIN_ITEMS = 160;
+const TIMELINE_VIRTUALIZE_OVERSCAN_PX = 3600;
+const TIMELINE_ITEM_DEFAULT_HEIGHT = 280;
+const timelineViewport = ref({
+  scrollTop: 0,
+  clientHeight: 0,
+});
+const timelineItemHeights = reactive<Record<string, number>>({});
+const timelineItemShellRefs = new Map<string, HTMLElement>();
+let timelineMeasureFrame: number | null = null;
 
 function readScrollMetrics(): ChatSessionScrollMetrics | null {
   const container = threadBody.value;
@@ -1000,6 +1087,387 @@ function readScrollMetrics(): ChatSessionScrollMetrics | null {
     scrollTop: container.scrollTop,
     scrollHeight: container.scrollHeight,
     clientHeight: container.clientHeight,
+  };
+}
+
+function syncTimelineViewport(metrics: ChatSessionScrollMetrics | null = readScrollMetrics()): void {
+  if (!metrics) {
+    timelineViewport.value = {
+      scrollTop: 0,
+      clientHeight: 0,
+    };
+    return;
+  }
+  timelineViewport.value = {
+    scrollTop: metrics.scrollTop,
+    clientHeight: metrics.clientHeight,
+  };
+}
+
+function scrollBottomDistance(metrics: ChatSessionScrollMetrics): number {
+  return Math.max(0, metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight);
+}
+
+function extendHistoryBrowseGuard(nowMs = Date.now()): void {
+  historyBrowseGuardUntil = Math.max(historyBrowseGuardUntil, nowMs + HISTORY_BROWSE_GUARD_MS);
+}
+
+function isHistoryBrowseGuardActive(nowMs = Date.now()): boolean {
+  return historyBrowseGuardUntil > nowMs;
+}
+
+function clearHistoryBrowseGuard(): void {
+  historyBrowseGuardUntil = 0;
+}
+
+function setTimelineItemShellRef(itemId: string, element: HTMLElement | null): void {
+  if (!element) {
+    timelineItemShellRefs.delete(itemId);
+    return;
+  }
+  timelineItemShellRefs.set(itemId, element);
+}
+
+function captureVisibleTimelineAnchor(): void {
+  const container = threadBody.value;
+  if (!container) {
+    prependRestoreAnchorItemId = null;
+    prependRestoreAnchorOffset = 0;
+    return;
+  }
+  const containerRect = container.getBoundingClientRect();
+  for (const item of props.timelineItems) {
+    const element = timelineItemShellRefs.get(item.id);
+    if (!element) {
+      continue;
+    }
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom <= containerRect.top || rect.top >= containerRect.bottom) {
+      continue;
+    }
+    prependRestoreAnchorItemId = item.id;
+    prependRestoreAnchorOffset = rect.top - containerRect.top;
+    return;
+  }
+  prependRestoreAnchorItemId = null;
+  prependRestoreAnchorOffset = 0;
+}
+
+function escapeCssAttributeValue(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, '\\$&');
+}
+
+function resolveMessageBubbleElement(messageId: string): HTMLElement | null {
+  if (!messageId) {
+    return null;
+  }
+  const selector = `[data-chat-message-id="${escapeCssAttributeValue(messageId)}"]`;
+  for (const shell of timelineItemShellRefs.values()) {
+    const found = shell.querySelector<HTMLElement>(selector);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+function restoreTimelineItemAnchor(itemId: string | null, offset: number): boolean {
+  const container = threadBody.value;
+  const anchorElement = itemId ? timelineItemShellRefs.get(itemId) : null;
+  if (!container || !anchorElement) {
+    return false;
+  }
+  const containerRect = container.getBoundingClientRect();
+  const anchorRect = anchorElement.getBoundingClientRect();
+  container.scrollTop += (anchorRect.top - containerRect.top) - offset;
+  return true;
+}
+
+function restorePrependVisualAnchor(
+  anchorItemId: string | null,
+  anchorOffset: number,
+  boundaryMessageId: string | null,
+): boolean {
+  const container = threadBody.value;
+  if (!container) {
+    return false;
+  }
+  if (anchorItemId && restoreTimelineItemAnchor(anchorItemId, anchorOffset)) {
+    return true;
+  }
+  if (!boundaryMessageId) {
+    return false;
+  }
+  const boundaryElement = resolveMessageBubbleElement(boundaryMessageId);
+  const containerRect = container.getBoundingClientRect();
+  const boundaryRect = boundaryElement?.getBoundingClientRect();
+  if (!boundaryRect) {
+    return false;
+  }
+  const desiredBottomOffset = Math.min(
+    Math.max(20, Math.floor(container.clientHeight * 0.18)),
+    120,
+  );
+  container.scrollTop += (boundaryRect.bottom - containerRect.top) - desiredBottomOffset;
+  return true;
+}
+
+function restoreHistoryBrowseFallbackBottomDistance(bottomDistance: number | null): boolean {
+  const container = threadBody.value;
+  if (!container || bottomDistance == null) {
+    return false;
+  }
+  const nextTop = Math.max(0, container.scrollHeight - container.clientHeight - bottomDistance);
+  container.scrollTop = nextTop;
+  return true;
+}
+
+function restorePendingPrependBottomClipIfNeeded(): boolean {
+  if (!historyPrependMutationPending || historyPrependPendingBottomDistance == null) {
+    return false;
+  }
+  const metrics = readScrollMetrics();
+  if (!metrics) {
+    return false;
+  }
+  const currentBottomDistance = scrollBottomDistance(metrics);
+  const clippedThreshold = Math.min(300, historyPrependPendingBottomDistance * 0.5);
+  if (currentBottomDistance > clippedThreshold) {
+    return false;
+  }
+  ignoreScrollEvents = true;
+  restoreHistoryBrowseFallbackBottomDistance(historyPrependPendingBottomDistance);
+  requestAnimationFrame(() => {
+    ignoreScrollEvents = false;
+  });
+  const restoredMetrics = readScrollMetrics();
+  if (restoredMetrics) {
+    scrollState.value = preserveChatSessionHistoryBrowsePosition(scrollState.value, restoredMetrics);
+    syncTimelineViewport(restoredMetrics);
+  }
+  return true;
+}
+
+function clearStableRestoreAnchor(options: { clearPrependPending?: boolean } = {}): void {
+  const clearPrependPending = options.clearPrependPending ?? true;
+  if (stableRestoreFrame != null) {
+    window.cancelAnimationFrame(stableRestoreFrame);
+    stableRestoreFrame = null;
+  }
+  stableRestoreAnchorItemId = null;
+  stableRestoreAnchorOffset = 0;
+  stableRestoreBottomDistance = null;
+  stableRestoreUntil = 0;
+  if (clearPrependPending) {
+    historyPrependMutationPending = false;
+    historyPrependPendingBottomDistance = null;
+  }
+}
+
+function scheduleStableRestoreAnchorTick(): void {
+  if (stableRestoreFrame != null || (!stableRestoreAnchorItemId && stableRestoreBottomDistance == null)) {
+    return;
+  }
+  stableRestoreFrame = window.requestAnimationFrame(() => {
+    stableRestoreFrame = null;
+    if ((!stableRestoreAnchorItemId && stableRestoreBottomDistance == null) || Date.now() > stableRestoreUntil) {
+      clearStableRestoreAnchor();
+      return;
+    }
+    ignoreScrollEvents = true;
+    const restoredItemAnchor = restoreTimelineItemAnchor(stableRestoreAnchorItemId, stableRestoreAnchorOffset);
+    const restoredMetrics = readScrollMetrics();
+    const clippedTowardLatest = Boolean(
+      stableRestoreBottomDistance != null
+      && restoredMetrics
+      && scrollBottomDistance(restoredMetrics) < Math.min(300, stableRestoreBottomDistance * 0.5),
+    );
+    if (!restoredItemAnchor || clippedTowardLatest) {
+      restoreHistoryBrowseFallbackBottomDistance(stableRestoreBottomDistance);
+    }
+    requestAnimationFrame(() => {
+      ignoreScrollEvents = false;
+      const nextMetrics = readScrollMetrics();
+      if (nextMetrics) {
+        scrollState.value = preserveChatSessionHistoryBrowsePosition(scrollState.value, nextMetrics);
+        syncTimelineViewport(nextMetrics);
+      }
+      scheduleStableRestoreAnchorTick();
+    });
+  });
+}
+
+function startStableRestoreAnchor(itemId: string | null, offset: number, bottomDistance: number | null): void {
+  if (!itemId && bottomDistance == null) {
+    clearStableRestoreAnchor();
+    return;
+  }
+  stableRestoreAnchorItemId = itemId;
+  stableRestoreAnchorOffset = offset;
+  stableRestoreBottomDistance = bottomDistance;
+  historyPrependMutationPending = true;
+  historyPrependPendingBottomDistance = bottomDistance;
+  stableRestoreUntil = Date.now() + HISTORY_PREPEND_ANCHOR_STABILIZE_MS;
+  scheduleStableRestoreAnchorTick();
+}
+
+function scheduleTimelineItemMeasurement(): void {
+  if (timelineMeasureFrame != null) {
+    window.cancelAnimationFrame(timelineMeasureFrame);
+  }
+  timelineMeasureFrame = window.requestAnimationFrame(() => {
+    timelineMeasureFrame = null;
+    let changed = false;
+    for (const [itemId, element] of timelineItemShellRefs.entries()) {
+      const nextHeight = Math.ceil(element.getBoundingClientRect().height || element.offsetHeight || 0);
+      if (nextHeight > 0 && timelineItemHeights[itemId] !== nextHeight) {
+        timelineItemHeights[itemId] = nextHeight;
+        changed = true;
+      }
+    }
+    if (changed && initialLatestAnchorPending) {
+      scheduleInitialLatestAnchorRetry(1);
+    }
+    if (changed && stableRestoreAnchorItemId) {
+      scheduleStableRestoreAnchorTick();
+    }
+  });
+}
+
+function timelineItemDateLabel(item: ChatRenderableItem, index: number): string | null {
+  const day = extractItemDay(item);
+  if (!day) return null;
+  if (index > 0) {
+    const prevDay = extractItemDay(props.timelineItems[index - 1]);
+    if (prevDay === day) return null;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (day === today) return text('今天', 'Today');
+  if (day === yesterday) return text('昨天', 'Yesterday');
+  return day;
+}
+
+function dateSeparatorLabel(item: ChatRenderableItem, index: number): string | null {
+  return timelineItemDateLabel(item, index);
+}
+
+function timelineItemEstimatedHeight(item: ChatRenderableItem, index: number): number {
+  const measured = timelineItemHeights[item.id];
+  if (measured) {
+    return measured;
+  }
+  const hasDateSeparator = Boolean(timelineItemDateLabel(item, index));
+  const base = item.type === 'run_overlay'
+    ? estimateRunOverlayHeight(item)
+    : estimateMessageGroupHeight(item);
+  return base + (hasDateSeparator ? 44 : 0);
+}
+
+function estimateTextBlockHeight(text: string): number {
+  const normalized = String(text || '').trim();
+  if (!normalized) {
+    return 0;
+  }
+  const hardLineCount = normalized.split(/\r?\n/).length;
+  const softLineCount = Math.ceil(normalized.length / 86);
+  const codeFenceCount = (normalized.match(/```/g) || []).length;
+  const tableLineCount = (normalized.match(/^\s*\|.+\|\s*$/gm) || []).length;
+  return Math.min(
+    7200,
+    48
+      + Math.max(hardLineCount, softLineCount) * 22
+      + codeFenceCount * 42
+      + tableLineCount * 10,
+  );
+}
+
+function estimateMessageGroupHeight(item: Extract<ChatRenderableItem, { type: 'message_group' }>): number {
+  let height = 96;
+  for (const message of item.group.messages) {
+    height += Math.max(120, estimateTextBlockHeight(message.text || ''));
+    height += (message.toolCalls?.length || 0) * 76;
+    height += (message.processBlocks?.length || 0) * 88;
+    height += (message.resources?.length || 0) * 96;
+    height += (message.media?.length || 0) * 128;
+  }
+  return Math.min(8400, Math.max(TIMELINE_ITEM_DEFAULT_HEIGHT, height));
+}
+
+function estimateRunOverlayHeight(item: Extract<ChatRenderableItem, { type: 'run_overlay' }>): number {
+  return Math.min(
+    4200,
+    180
+      + estimateTextBlockHeight(item.overlay.previewText || '') * 0.55
+      + item.overlay.toolCalls.length * 74
+      + item.processBlocks.length * 86,
+  );
+}
+
+const timelineVirtualWindow = computed(() => {
+  const total = props.timelineItems.length;
+  if (props.forceEagerHistoryRender || total <= TIMELINE_VIRTUALIZE_MIN_ITEMS) {
+    return {
+      start: 0,
+      end: total,
+    };
+  }
+  const top = Math.max(0, timelineViewport.value.scrollTop - TIMELINE_VIRTUALIZE_OVERSCAN_PX);
+  const bottom = timelineViewport.value.scrollTop + timelineViewport.value.clientHeight + TIMELINE_VIRTUALIZE_OVERSCAN_PX;
+  let offset = 0;
+  let start = 0;
+  let end = total;
+  let foundStart = false;
+  for (let index = 0; index < total; index += 1) {
+    const item = props.timelineItems[index]!;
+    const itemHeight = timelineItemEstimatedHeight(item, index) + (index < total - 1 ? 18 : 0);
+    const itemTop = offset;
+    const itemBottom = offset + itemHeight;
+    if (!foundStart && itemBottom >= top) {
+      start = Math.max(0, index - 2);
+      foundStart = true;
+    }
+    if (foundStart && itemTop > bottom) {
+      end = Math.min(total, index + 2);
+      break;
+    }
+    offset = itemBottom;
+  }
+  return { start, end };
+});
+
+watch(
+  () => props.historyPrependAnchorMessageId || null,
+  (messageId) => {
+    prependRestoreBoundaryMessageId = messageId;
+  },
+);
+
+function isTimelineItemVisible(index: number): boolean {
+  return index >= timelineVirtualWindow.value.start && index < timelineVirtualWindow.value.end;
+}
+
+function shouldForceEagerTimelineItem(index: number): boolean {
+  return props.forceEagerHistoryRender || isTimelineItemVisible(index);
+}
+
+function timelineItemAnchorId(item: ChatRenderableItem): string | null {
+  if (item.type !== 'message_group') {
+    return null;
+  }
+  return item.group.messages[0]?.id ? `msg-${item.group.messages[0].id}` : null;
+}
+
+function timelineItemShellStyle(item: ChatRenderableItem, index: number): Record<string, string> | undefined {
+  const measured = timelineItemHeights[item.id];
+  if (isTimelineItemVisible(index) && measured) {
+    return undefined;
+  }
+  return {
+    minHeight: `${timelineItemEstimatedHeight(item, index)}px`,
   };
 }
 
@@ -1021,14 +1489,29 @@ watch(
     });
     scrollState.value = resolved.state;
     if (resolved.resolution.kind === 'restore-prepend') {
+      extendHistoryBrowseGuard();
       ignoreScrollEvents = true;
+      const anchorItemId = prependRestoreAnchorItemId;
+      const anchorOffset = prependRestoreAnchorOffset;
+      const boundaryMessageId = prependRestoreBoundaryMessageId;
+      const targetBottomDistance = scrollBottomDistance({
+        ...metrics,
+        scrollTop: resolved.resolution.top,
+      });
       container.scrollTop = resolved.resolution.top;
+      restorePrependVisualAnchor(anchorItemId, anchorOffset, boundaryMessageId);
       requestAnimationFrame(() => {
+        restorePrependVisualAnchor(anchorItemId, anchorOffset, boundaryMessageId);
+        prependRestoreBoundaryMessageId = null;
+        prependRestoreAnchorItemId = null;
+        prependRestoreAnchorOffset = 0;
         ignoreScrollEvents = false;
         const nextMetrics = readScrollMetrics();
         if (nextMetrics) {
-          scrollState.value = syncChatSessionPinnedState(scrollState.value, nextMetrics);
+          scrollState.value = preserveChatSessionHistoryBrowsePosition(scrollState.value, nextMetrics);
+          syncTimelineViewport(nextMetrics);
         }
+        startStableRestoreAnchor(anchorItemId, anchorOffset, targetBottomDistance);
       });
       return;
     }
@@ -1045,8 +1528,20 @@ watch(
       return;
     }
     if (resolved.resolution.kind === 'scroll-bottom') {
+      if (isHistoryBrowseGuardActive() || historyPrependMutationPending || scrollState.value.prependAnchor) {
+        scrollState.value = preserveChatSessionHistoryBrowsePosition(scrollState.value, metrics);
+        syncTimelineViewport(metrics);
+        return;
+      }
+      armLatestBottomAnchorStabilizer();
       scrollToBottom('auto');
+      if (initialLatestAnchorPending) {
+        scheduleInitialLatestAnchorRetry(1);
+      }
     }
+    syncTimelineViewport(metrics);
+    scheduleTimelineItemMeasurement();
+    scheduleHistoryBeforeAutoFill();
   },
 );
 
@@ -1068,33 +1563,383 @@ function scrollToBottom(behavior: ScrollBehavior): void {
   if (!container) {
     return;
   }
+  const token = ++latestBottomScrollToken;
   ignoreScrollEvents = true;
   container.scrollTo({
     top: container.scrollHeight,
     behavior,
   });
   requestAnimationFrame(() => {
+    if (token !== latestBottomScrollToken || scrollState.value.autoScrollLockedByUser || isHistoryBrowseGuardActive()) {
+      ignoreScrollEvents = false;
+      return;
+    }
     container.scrollTop = container.scrollHeight;
     requestAnimationFrame(() => {
       window.setTimeout(() => {
+        if (token !== latestBottomScrollToken || scrollState.value.autoScrollLockedByUser || isHistoryBrowseGuardActive()) {
+          ignoreScrollEvents = false;
+          return;
+        }
         container.scrollTop = container.scrollHeight;
         ignoreScrollEvents = false;
         const metrics = readScrollMetrics();
         if (metrics) {
           scrollState.value = syncChatSessionPinnedState(scrollState.value, metrics);
         }
+        if (initialLatestAnchorPending && !scrollState.value.autoScrollLockedByUser) {
+          scheduleInitialLatestAnchorRetry(1);
+        }
       }, 80);
     });
   });
+}
+
+function armLatestBottomAnchorStabilizer(): void {
+  initialLatestAnchorPending = true;
+  initialLatestAnchorSettleUntil = Math.max(
+    initialLatestAnchorSettleUntil,
+    Date.now() + HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS,
+  );
+}
+
+async function restoreLatestBottomAnchorIfNeeded(): Promise<void> {
+  if (
+    !props.selectedSession
+    || props.autoFillHistoryBeforeEnabled === false
+    || props.historyLoadingInitial
+    || props.historyLoadingBefore
+    || props.historyLoadingAfter
+    || props.viewingHistoricalPosition
+    || props.hasMoreAfter
+    || scrollState.value.autoScrollLockedByUser
+    || isHistoryBrowseGuardActive()
+    || !props.timelineItems.length
+  ) {
+    return;
+  }
+  await nextTick();
+  const container = threadBody.value;
+  const metrics = readScrollMetrics();
+  if (!container || !metrics) {
+    return;
+  }
+  const bottomDistance = Math.max(0, metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight);
+  const settling = Date.now() < initialLatestAnchorSettleUntil;
+  if (bottomDistance <= 40 && !settling) {
+    initialLatestAnchorPending = false;
+    initialLatestAnchorSettleUntil = 0;
+    return;
+  }
+  if (bottomDistance <= 40) {
+    scrollState.value = {
+      ...scrollState.value,
+      isPinnedToBottom: true,
+      autoScrollLockedByUser: false,
+      pendingUnreadCount: 0,
+    };
+    scheduleInitialLatestAnchorRetry(1);
+    return;
+  }
+  scrollState.value = {
+    ...scrollState.value,
+    awaitingInitialBottomAnchor: false,
+    isPinnedToBottom: true,
+    autoScrollLockedByUser: false,
+    pendingUnreadCount: 0,
+  };
+  scrollToBottom('auto');
+  scheduleInitialLatestAnchorRetry(1);
+}
+
+function clearInitialLatestAnchorTimer(): void {
+  if (initialLatestAnchorTimer != null) {
+    window.clearTimeout(initialLatestAnchorTimer);
+    initialLatestAnchorTimer = null;
+  }
+}
+
+function cancelLatestBottomAnchorRetry(): void {
+  latestBottomScrollToken += 1;
+  initialLatestAnchorPending = false;
+  initialLatestAnchorSettleUntil = 0;
+  clearInitialLatestAnchorTimer();
+}
+
+function markThreadUserBrowseIntent(): void {
+  const metrics = readScrollMetrics();
+  extendHistoryBrowseGuard();
+  cancelLatestBottomAnchorRetry();
+  clearStableRestoreAnchor({ clearPrependPending: false });
+  historyBeforeContinuationArmed = Boolean(
+    metrics
+    && metrics.scrollTop <= 24
+    && props.hasMoreBefore
+    && !historyPrependMutationPending
+    && !scrollState.value.prependAnchor,
+  );
+  scrollState.value = markChatSessionUserBrowseIntent(scrollState.value, metrics);
+  if (props.hasMoreBefore && !props.historyLoadingBefore && !props.historyLoadingInitial) {
+    emit('prefetch-more-before');
+  }
+  reconnectBottomObserver();
+  if (historyBeforeContinuationArmed) {
+    scheduleHistoryBeforeContinuation();
+  }
+}
+
+function clearHistoryBeforeIndicatorTimer(): void {
+  if (historyBeforeIndicatorTimer != null) {
+    window.clearTimeout(historyBeforeIndicatorTimer);
+    historyBeforeIndicatorTimer = null;
+  }
+}
+
+function clearHistoryAfterIndicatorTimer(): void {
+  if (historyAfterIndicatorTimer != null) {
+    window.clearTimeout(historyAfterIndicatorTimer);
+    historyAfterIndicatorTimer = null;
+  }
+}
+
+function scheduleHistoryLoadingIndicator(kind: 'before' | 'after', loading: boolean): void {
+  const clearTimer = kind === 'before'
+    ? clearHistoryBeforeIndicatorTimer
+    : clearHistoryAfterIndicatorTimer;
+  const visibleRef = kind === 'before'
+    ? showHistoryLoadingBeforeIndicator
+    : showHistoryLoadingAfterIndicator;
+  clearTimer();
+  if (!loading) {
+    visibleRef.value = false;
+    return;
+  }
+  if (kind === 'before') {
+    historyBeforeIndicatorTimer = window.setTimeout(() => {
+      historyBeforeIndicatorTimer = null;
+      visibleRef.value = true;
+    }, HISTORY_LOADING_INDICATOR_DELAY_MS);
+    return;
+  }
+  historyAfterIndicatorTimer = window.setTimeout(() => {
+    historyAfterIndicatorTimer = null;
+    visibleRef.value = true;
+  }, HISTORY_LOADING_INDICATOR_DELAY_MS);
+}
+
+function clearHistoryBeforeAutoFillTimer(): void {
+  if (historyBeforeAutoFillTimer != null) {
+    window.clearTimeout(historyBeforeAutoFillTimer);
+    historyBeforeAutoFillTimer = null;
+  }
+}
+
+function clearHistoryBeforeContinuationTimer(): void {
+  if (historyBeforeContinuationTimer != null) {
+    window.clearTimeout(historyBeforeContinuationTimer);
+    historyBeforeContinuationTimer = null;
+  }
+}
+
+function scheduleInitialLatestAnchorRetry(attempt = 0): void {
+  clearInitialLatestAnchorTimer();
+  if (attempt > 8 || !initialLatestAnchorPending || scrollState.value.autoScrollLockedByUser) {
+    return;
+  }
+  initialLatestAnchorTimer = window.setTimeout(async () => {
+    initialLatestAnchorTimer = null;
+    await restoreLatestBottomAnchorIfNeeded();
+    if (initialLatestAnchorPending) {
+      scheduleInitialLatestAnchorRetry(attempt + 1);
+    }
+  }, attempt === 0 ? 0 : Math.min(800, 120 * attempt));
+}
+
+function shouldAutoFillHistoryBefore(metrics: ChatSessionScrollMetrics | null = readScrollMetrics()): boolean {
+  if (
+    !props.selectedSession
+    || props.autoFillHistoryBeforeEnabled === false
+    || !props.hasMoreBefore
+    || props.historyLoadingInitial
+    || props.historyLoadingBefore
+    || props.viewingHistoricalPosition
+    || scrollState.value.autoScrollLockedByUser
+    || !metrics
+  ) {
+    return false;
+  }
+  return metrics.scrollHeight <= metrics.clientHeight * HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER;
+}
+
+function requestMoreBeforeForAutoFill(): void {
+  const metrics = readScrollMetrics();
+  if (!shouldAutoFillHistoryBefore(metrics)) {
+    return;
+  }
+  armLatestBottomAnchorStabilizer();
+  emit('load-more-before', 'autofill');
+}
+
+function scheduleHistoryBeforeContinuation(): void {
+  clearHistoryBeforeContinuationTimer();
+  if (
+    !props.selectedSession
+    || !props.hasMoreBefore
+    || props.historyLoadingInitial
+    || historyPrependMutationPending
+    || scrollState.value.prependAnchor
+    || !historyBeforeContinuationArmed
+  ) {
+    return;
+  }
+  const metrics = readScrollMetrics();
+  if (!metrics || metrics.scrollTop > 24) {
+    historyBeforeContinuationArmed = false;
+    return;
+  }
+  historyBeforeContinuationTimer = window.setTimeout(() => {
+    historyBeforeContinuationTimer = null;
+    const nextMetrics = readScrollMetrics();
+    if (
+      !nextMetrics
+      || nextMetrics.scrollTop > 24
+      || !props.hasMoreBefore
+      || props.historyLoadingInitial
+      || !historyBeforeContinuationArmed
+    ) {
+      if (!nextMetrics || nextMetrics.scrollTop > 24 || !props.hasMoreBefore) {
+        historyBeforeContinuationArmed = false;
+      }
+      return;
+    }
+    if (props.historyLoadingBefore) {
+      scheduleHistoryBeforeContinuation();
+      return;
+    }
+    extendHistoryBrowseGuard();
+    captureVisibleTimelineAnchor();
+    historyPrependMutationPending = true;
+    historyPrependPendingBottomDistance = scrollBottomDistance(nextMetrics);
+    scrollState.value = captureChatSessionPrependAnchor(scrollState.value, nextMetrics);
+    historyBeforeContinuationArmed = false;
+    emit('load-more-before', 'continuation');
+  }, 90);
+}
+
+function scheduleHistoryBeforeAutoFill(): void {
+  clearHistoryBeforeAutoFillTimer();
+  if (!shouldAutoFillHistoryBefore()) {
+    return;
+  }
+  historyBeforeAutoFillTimer = window.setTimeout(() => {
+    historyBeforeAutoFillTimer = null;
+    requestMoreBeforeForAutoFill();
+  }, 40);
+}
+
+function historyBeforePrefetchTriggerPx(metrics: ChatSessionScrollMetrics): number {
+  return Math.max(HISTORY_BEFORE_PREFETCH_TRIGGER_PX, Math.floor(metrics.clientHeight * 4));
+}
+
+function historyBeforeMaterializeTriggerPx(metrics: ChatSessionScrollMetrics): number {
+  return Math.max(HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX, Math.floor(metrics.clientHeight * 2.75));
+}
+
+function handleThreadWheel(event: WheelEvent): void {
+  if (event.deltaY < -4) {
+    const container = threadBody.value;
+    const metrics = readScrollMetrics();
+    markThreadUserBrowseIntent();
+    if (container && metrics && scrollBottomDistance(metrics) <= 80) {
+      container.scrollTop = Math.max(0, metrics.scrollTop + event.deltaY);
+      const nudgedMetrics = readScrollMetrics();
+      if (nudgedMetrics) {
+        scrollState.value = preserveChatSessionHistoryBrowsePosition(scrollState.value, nudgedMetrics);
+        syncTimelineViewport(nudgedMetrics);
+      }
+    }
+  }
 }
 
 function handleThreadScroll(): void {
   if (ignoreScrollEvents) {
     return;
   }
-  const metrics = readScrollMetrics();
+  let metrics = readScrollMetrics();
   if (metrics) {
-    scrollState.value = applyChatSessionManualScroll(scrollState.value, metrics);
+    syncTimelineViewport(metrics);
+    if (initialLatestAnchorPending && !scrollState.value.autoScrollLockedByUser) {
+      return;
+    }
+    const previousScrollState = scrollState.value;
+    const bottomDistance = scrollBottomDistance(metrics);
+    const lastScrollTop = previousScrollState.lastScrollTop;
+    const downwardIntent = lastScrollTop != null && metrics.scrollTop > lastScrollTop + 4;
+    const prependMutationPending = historyPrependMutationPending || Boolean(previousScrollState.prependAnchor);
+    if (
+      prependMutationPending
+      && historyPrependPendingBottomDistance != null
+      && bottomDistance <= 80
+      && metrics.scrollHeight > (previousScrollState.prependAnchor?.scrollHeight || 0)
+    ) {
+      if (restorePendingPrependBottomClipIfNeeded()) {
+        return;
+      }
+    }
+    const preserveHistoryBrowse = Boolean(
+      isHistoryBrowseGuardActive()
+      && (previousScrollState.autoScrollLockedByUser || prependMutationPending)
+      && !(bottomDistance <= 80 && downwardIntent && !prependMutationPending)
+    );
+    scrollState.value = preserveHistoryBrowse
+      ? preserveChatSessionHistoryBrowsePosition(scrollState.value, metrics)
+      : applyChatSessionManualScroll(scrollState.value, metrics);
+    if (!scrollState.value.autoScrollLockedByUser && bottomDistance <= 80 && !prependMutationPending) {
+      clearHistoryBrowseGuard();
+    }
+    if (
+      scrollState.value.autoScrollLockedByUser
+      && (!previousScrollState.autoScrollLockedByUser || metrics.scrollTop < (previousScrollState.lastScrollTop ?? metrics.scrollTop))
+    ) {
+      extendHistoryBrowseGuard();
+      cancelLatestBottomAnchorRetry();
+      clearStableRestoreAnchor({ clearPrependPending: false });
+    }
+    if (
+      metrics.scrollTop <= 24
+      && props.hasMoreBefore
+      && scrollState.value.autoScrollLockedByUser
+      && !prependMutationPending
+    ) {
+      historyBeforeContinuationArmed = true;
+    }
+    if (metrics.scrollTop > 24) {
+      historyBeforeContinuationArmed = false;
+    }
+    if (
+      metrics.scrollTop <= historyBeforePrefetchTriggerPx(metrics)
+      && props.hasMoreBefore
+      && !props.historyLoadingBefore
+      && !props.historyLoadingInitial
+      && scrollState.value.autoScrollLockedByUser
+    ) {
+      emit('prefetch-more-before');
+    }
+    if (
+      metrics.scrollTop <= historyBeforeMaterializeTriggerPx(metrics)
+      && props.hasMoreBefore
+      && !props.historyLoadingBefore
+      && !props.historyLoadingInitial
+      && scrollState.value.autoScrollLockedByUser
+    ) {
+      requestMoreBefore();
+      return;
+    }
+    if (!scrollState.value.autoScrollLockedByUser) {
+      scheduleHistoryBeforeAutoFill();
+    } else {
+      scheduleHistoryBeforeContinuation();
+    }
   }
 }
 
@@ -1112,13 +1957,24 @@ function requestMoreBefore(): void {
   })) {
     return;
   }
+  extendHistoryBrowseGuard();
+  historyPrependMutationPending = true;
+  historyPrependPendingBottomDistance = scrollBottomDistance(metrics);
+  scrollState.value = {
+    ...scrollState.value,
+    isPinnedToBottom: false,
+    autoScrollLockedByUser: true,
+  };
+  historyBeforeContinuationArmed = false;
+  captureVisibleTimelineAnchor();
   scrollState.value = captureChatSessionPrependAnchor(scrollState.value, metrics);
-  emit('load-more-before');
+  emit('load-more-before', 'browse');
 }
 
 function requestMoreAfter(): void {
   const metrics = readScrollMetrics();
   if (!metrics || !shouldObserveChatSessionBottomSentinel({
+    state: scrollState.value,
     hasMoreAfter: props.hasMoreAfter,
     historyLoadingAfter: props.historyLoadingAfter,
     historyLoadingInitial: props.historyLoadingInitial,
@@ -1134,6 +1990,7 @@ function jumpToBottom(): void {
     emit('jump-to-live');
     return;
   }
+  clearHistoryBrowseGuard();
   const resolved = resolveChatSessionJumpToBottom(scrollState.value);
   scrollState.value = resolved.state;
   scrollToBottom('smooth');
@@ -1164,18 +2021,39 @@ function extractItemDay(item: ChatRenderableItem): string | null {
   return null;
 }
 
-function dateSeparatorLabel(item: ChatRenderableItem, index: number): string | null {
-  const day = extractItemDay(item);
-  if (!day) return null;
-  if (index > 0) {
-    const prevDay = extractItemDay(props.timelineItems[index - 1]);
-    if (prevDay === day) return null;
+function timelineItemMemoKey(item: ChatRenderableItem): unknown[] {
+  if (item.type === 'message_group') {
+    const lastMessage = item.group.messages[item.group.messages.length - 1] || null;
+    return [
+      item.id,
+      props.showToolPreviews,
+      props.showThinkingBlocks,
+      item.group.messages.length,
+      item.group.runId || '',
+      lastMessage?.id || '',
+      lastMessage?.source || '',
+      lastMessage?.text.length || 0,
+      lastMessage?.aborted ? 1 : 0,
+      lastMessage?.omitted ? 1 : 0,
+      lastMessage?.truncated ? 1 : 0,
+      props.activeRunId && item.group.runId === props.activeRunId ? props.activeRunId : '',
+      props.activeStreamingMessageId && item.group.messages.some((message) => message.id === props.activeStreamingMessageId)
+        ? props.activeStreamingMessageId
+        : '',
+    ];
   }
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  if (day === today) return text('今天', 'Today');
-  if (day === yesterday) return text('昨天', 'Yesterday');
-  return day;
+  return [
+    item.id,
+    props.showToolPreviews,
+    props.showThinkingBlocks,
+    item.overlay.runId,
+    item.overlay.updatedAt || '',
+    item.overlay.lifecycle,
+    item.overlay.previewText.length,
+    item.overlay.toolCalls.length,
+    item.overlay.toolCalls.map((toolCall) => `${toolCall.toolCallId}:${toolCall.status}:${toolCall.resultPreview?.length || 0}`).join('|'),
+    props.activeRunId && item.overlay.runId === props.activeRunId ? props.activeRunId : '',
+  ];
 }
 
 function reconnectTopObserver(): void {
@@ -1185,6 +2063,8 @@ function reconnectTopObserver(): void {
     typeof IntersectionObserver === 'undefined'
     || !threadBody.value
     || !historyTopSentinel.value
+    || historyPrependMutationPending
+    || scrollState.value.prependAnchor
     || !shouldObserveChatSessionTopSentinel({
       state: scrollState.value,
       hasMoreBefore: props.hasMoreBefore,
@@ -1195,7 +2075,11 @@ function reconnectTopObserver(): void {
     return;
   }
   topSentinelObserver = new IntersectionObserver((entries) => {
-    if (entries.some((entry) => entry.isIntersecting)) {
+    if (
+      entries.some((entry) => entry.isIntersecting)
+      && !historyPrependMutationPending
+      && !scrollState.value.prependAnchor
+    ) {
       requestMoreBefore();
     }
   }, {
@@ -1213,6 +2097,7 @@ function reconnectBottomObserver(): void {
     || !threadBody.value
     || !historyBottomSentinel.value
     || !shouldObserveChatSessionBottomSentinel({
+      state: scrollState.value,
       hasMoreAfter: props.hasMoreAfter,
       historyLoadingAfter: props.historyLoadingAfter,
       historyLoadingInitial: props.historyLoadingInitial,
@@ -1413,19 +2298,35 @@ onMounted(() => {
     }
     refreshInlinePreviewPrefs();
   });
+  syncTimelineViewport();
+  scheduleTimelineItemMeasurement();
   reconnectTopObserver();
   reconnectBottomObserver();
+});
+
+onUpdated(() => {
+  restorePendingPrependBottomClipIfNeeded();
 });
 
 watch(
   () => props.selectedSession?.key || null,
   () => {
+    clearHistoryBrowseGuard();
+    armLatestBottomAnchorStabilizer();
+    clearInitialLatestAnchorTimer();
+    clearStableRestoreAnchor();
     refreshInlinePreviewPrefs();
     scrollState.value = beginChatSessionScrollRestore(scrollState.value);
+    Object.keys(timelineItemHeights).forEach((key) => {
+      delete timelineItemHeights[key];
+    });
+    timelineItemShellRefs.clear();
     if (renderingSettingsScope.value === 'session' && !props.selectedSession) {
       renderingSettingsScope.value = 'global';
     }
     nextTick(() => {
+      syncTimelineViewport();
+      scheduleTimelineItemMeasurement();
       reconnectTopObserver();
       reconnectBottomObserver();
       if (!props.timelineItems.length) {
@@ -1435,6 +2336,8 @@ watch(
         };
         scrollToBottom('auto');
       }
+      scheduleInitialLatestAnchorRetry();
+      scheduleHistoryBeforeAutoFill();
     });
   },
 );
@@ -1444,14 +2347,59 @@ watch(
   () => {
     reconnectTopObserver();
     reconnectBottomObserver();
+    scheduleHistoryBeforeContinuation();
+  },
+);
+
+watch(
+  () => props.historyLoadingBefore,
+  (loading) => {
+    scheduleHistoryLoadingIndicator('before', loading);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.historyLoadingAfter,
+  (loading) => {
+    scheduleHistoryLoadingIndicator('after', loading);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => [timelineVirtualWindow.value.start, timelineVirtualWindow.value.end, props.timelineVersion || ''] as const,
+  async () => {
+    await nextTick();
+    scheduleTimelineItemMeasurement();
+    scheduleHistoryBeforeAutoFill();
+  },
+);
+
+watch(
+  () => [props.historyLoadingInitial, props.historyLoadingBefore, props.historyLoadingAfter, props.timelineVersion || '', props.viewingHistoricalPosition, props.hasMoreAfter] as const,
+  () => {
+    void restoreLatestBottomAnchorIfNeeded();
+    scheduleHistoryBeforeAutoFill();
   },
 );
 
 onBeforeUnmount(() => {
+  clearInitialLatestAnchorTimer();
+  clearHistoryBeforeAutoFillTimer();
+  clearHistoryBeforeContinuationTimer();
+  clearHistoryBeforeIndicatorTimer();
+  clearHistoryAfterIndicatorTimer();
+  clearStableRestoreAnchor();
   topSentinelObserver?.disconnect();
   topSentinelObserver = null;
   bottomSentinelObserver?.disconnect();
   bottomSentinelObserver = null;
+  if (timelineMeasureFrame != null) {
+    window.cancelAnimationFrame(timelineMeasureFrame);
+    timelineMeasureFrame = null;
+  }
+  timelineItemShellRefs.clear();
   unbindCompactViewport();
   stopInlinePreviewPrefListener?.();
   stopInlinePreviewPrefListener = null;
@@ -2241,6 +3189,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   height: 100%;
   overflow: auto;
+  overflow-anchor: none;
   position: relative;
   padding: 18px 22px 12px;
   display: flex;
@@ -2277,6 +3226,15 @@ onBeforeUnmount(() => {
   gap: 18px;
 }
 
+.chat-conversation-thread__item-shell {
+  min-width: 0;
+}
+
+.chat-conversation-thread__item-placeholder {
+  width: 100%;
+  min-height: inherit;
+}
+
 .chat-conversation-thread__top-sentinel {
   width: 100%;
   height: 1px;
@@ -2287,15 +3245,30 @@ onBeforeUnmount(() => {
   align-self: center;
   display: flex;
   justify-content: center;
-  padding: 8px 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  position: sticky;
+  z-index: 5;
+}
+
+.chat-conversation-thread__loading-indicator--before {
+  top: 10px;
+}
+
+.chat-conversation-thread__loading-indicator--after {
+  bottom: 10px;
 }
 
 .chat-conversation-thread__spinner {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
+  background: color-mix(in srgb, var(--chat-panel-solid) 86%, transparent);
   border: 2px solid color-mix(in srgb, var(--chat-accent) 22%, var(--chat-line));
   border-top-color: var(--chat-accent);
   border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
   animation: spin-loader 0.7s linear infinite;
 }
 
@@ -2353,6 +3326,44 @@ onBeforeUnmount(() => {
 
 .chat-conversation-thread__history-banner-action:hover {
   opacity: 0.85;
+}
+
+.chat-conversation-thread__live-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(100%, 520px);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-thread-bg));
+  border: 1px solid color-mix(in srgb, var(--chat-accent) 16%, var(--chat-line));
+  color: var(--chat-text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-conversation-thread__live-placeholder-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chat-accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--chat-accent) 36%, transparent);
+  animation: chat-thread-live-placeholder-pulse 1.4s ease-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes chat-thread-live-placeholder-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--chat-accent) 36%, transparent);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 .chat-message-highlight {

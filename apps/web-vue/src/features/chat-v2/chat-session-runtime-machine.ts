@@ -12,7 +12,7 @@ import {
   normalizeMessageLedger,
 } from '../../../../../lib/chat-runtime-state.js';
 
-const MESSAGE_WINDOW_MAX = 300;
+export const CHAT_SESSION_MESSAGE_WINDOW_MAX = 2000;
 
 export interface WindowEvictionResult {
   evictedTop: number;
@@ -627,11 +627,11 @@ export function windowChatSessionCanonicalMessageLedger(
   const ledger = state.canonicalMessageLedger;
   const result: WindowEvictionResult = { evictedTop: 0, evictedBottom: 0 };
 
-  if (ledger.length <= MESSAGE_WINDOW_MAX) {
+  if (ledger.length <= CHAT_SESSION_MESSAGE_WINDOW_MAX) {
     return result;
   }
 
-  const excess = ledger.length - MESSAGE_WINDOW_MAX;
+  const excess = ledger.length - CHAT_SESSION_MESSAGE_WINDOW_MAX;
 
   // Collect runIds that are currently streaming (in transientRunState)
   // so we never evict messages belonging to an active stream.

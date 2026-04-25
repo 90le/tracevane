@@ -6,6 +6,8 @@ export * from './config.js';
 export * from './cron.js';
 export * from './dashboard.js';
 export * from './dreaming.js';
+export * from './files.js';
+export * from './plugins.js';
 export * from './skills.js';
 export * from './system.js';
 export * from './terminal.js';

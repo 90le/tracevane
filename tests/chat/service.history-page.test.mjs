@@ -5,6 +5,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { WebSocketServer } from "ws";
 
 import {
@@ -306,7 +307,7 @@ test("history page API windows messages and exposes search/date helpers", async 
     assert.equal(page1.pageInfo.hasMoreAfter, false);
     assert.equal(page1.pageInfo.afterCursor, null);
     assert.deepEqual(page1.overlays, []);
-    assert.equal(fs.existsSync(path.join(root, "studio", "chat-index")), true);
+    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
 
     const bootstrap = await context.services.chat.getBootstrap({
       sessionKey,
@@ -364,7 +365,7 @@ test("history page API windows messages and exposes search/date helpers", async 
       );
       assert.match(
         bootstrapReplay.history?.diagnostics.notes.join("\n") || "",
-        /transcript-aligned Studio durable mirror/i,
+        /transcript tail window/i,
       );
       assert.equal(bootstrapTranscriptReads, 0);
       assert.equal(bootstrapHealthChecks, 1);
@@ -383,9 +384,23 @@ test("history page API windows messages and exposes search/date helpers", async 
       );
       assert.match(
         coldPage.diagnostics.notes.join("\n"),
-        /transcript-aligned Studio durable mirror/i,
+        /sqlite durable mirror page quer|local transcript canonical authority|lightweight transcript scan/i,
       );
-      assert.equal(cachedTranscriptReads, 0);
+      assert.equal(cachedTranscriptReads, 1);
+
+      const coldBeforePage = await coldHistoryContext.services.chat.getHistory(sessionKey, {
+        before: page1.pageInfo.beforeCursor,
+        limit: 2,
+      });
+      assert.deepEqual(
+        coldBeforePage.messages.map((message) => message.id),
+        ["m1", "m2"],
+      );
+      assert.match(
+        coldBeforePage.diagnostics.notes.join("\n"),
+        /sqlite durable mirror page quer|local transcript canonical authority|lightweight transcript scan/i,
+      );
+      assert.ok(cachedTranscriptReads >= 1 && cachedTranscriptReads <= 2);
 
       cachedTranscriptReads = 0;
       const page2 = await context.services.chat.getHistory(sessionKey, {
@@ -628,6 +643,915 @@ test("history page API windows messages and exposes search/date helpers", async 
   }
 });
 
+test("bootstrap reads only the local transcript tail window before full history access", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-bootstrap-tail-"),
+  );
+  const originalReadFileSync = fs.readFileSync;
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-tail.jsonl");
+    const sessionKey = "agent:main:webchat:direct:tail-session";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      Array.from({ length: 30 }, (_, index) =>
+        JSON.stringify({
+          id: `m${index + 1}`,
+          role: index % 2 === 0 ? "user" : "assistant",
+          text: `message ${index + 1}`,
+          timestamp: `2026-03-22T10:${String(index).padStart(2, "0")}:00.000Z`,
+        }),
+      ).join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-tail",
+            sessionFile: transcriptFile,
+            label: "Tail transcript",
+            updatedAt: "2026-03-22T10:29:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Tail transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+    const context = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    let transcriptReadFileSyncCount = 0;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        transcriptReadFileSyncCount += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
+    });
+
+    const bootstrap = await context.services.chat.getBootstrap({
+      sessionKey,
+      recentLimit: 10,
+      historyLimit: 3,
+    });
+    assert.equal(transcriptReadFileSyncCount, 0);
+    assert.deepEqual(
+      bootstrap.history?.messages.map((message) => message.id),
+      ["m28", "m29", "m30"],
+    );
+    assert.equal(bootstrap.history?.pageInfo.hasMoreBefore, true);
+    assert.match(
+      bootstrap.history?.diagnostics.notes.join("\n") || "",
+      /transcript tail window/i,
+    );
+
+    const beforePage = await context.services.chat.getHistory(sessionKey, {
+      before: bootstrap.history?.pageInfo.beforeCursor,
+      limit: 3,
+    });
+    assert.deepEqual(
+      beforePage.messages.map((message) => message.id),
+      ["m25", "m26", "m27"],
+    );
+    assert.match(
+      beforePage.diagnostics.notes.join("\n"),
+      /lightweight transcript scan/i,
+    );
+    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
+    sharedDb.close();
+    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+
+    const coldContext = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+    const coldBeforePage = await coldContext.services.chat.getHistory(sessionKey, {
+      before: bootstrap.history?.pageInfo.beforeCursor,
+      limit: 3,
+    });
+    assert.deepEqual(
+      coldBeforePage.messages.map((message) => message.id),
+      ["m25", "m26", "m27"],
+    );
+    assert.match(
+      coldBeforePage.diagnostics.notes.join("\n"),
+      /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan and mapped only the requested page messages/i,
+    );
+    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("history page can rebuild a persisted local index from a lightweight transcript scan before any mirror exists", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-history-window-scan-fast-"),
+  );
+  const originalReadFileSync = fs.readFileSync;
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-window-fast.jsonl");
+    const sessionKey = "agent:main:webchat:direct:window-fast-session";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      Array.from({ length: 12 }, (_, index) =>
+        JSON.stringify({
+          id: `w${index + 1}`,
+          role: index % 2 === 0 ? "user" : "assistant",
+          text: `window message ${index + 1}`,
+          timestamp: `2026-03-22T10:${String(index).padStart(2, "0")}:00.000Z`,
+        }),
+      ).join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-window-fast",
+            sessionFile: transcriptFile,
+            label: "Window fast transcript",
+            updatedAt: "2026-03-22T10:11:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Window fast transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+    const context = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    let transcriptReadFileSyncCount = 0;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        transcriptReadFileSyncCount += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
+    });
+
+    const page = await context.services.chat.getHistory(sessionKey, {
+      anchor: "w6",
+      limit: 4,
+    });
+    assert.deepEqual(
+      page.messages.map((message) => message.id),
+      ["w4", "w5", "w6", "w7", "w8"],
+    );
+    assert.match(
+      page.diagnostics.notes.join("\n"),
+      /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan and mapped only the requested page messages/i,
+    );
+    assert.equal(transcriptReadFileSyncCount, 1);
+    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("history dates use a lightweight transcript scan before full history access", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-history-dates-fast-"),
+  );
+  const originalReadFileSync = fs.readFileSync;
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-dates.jsonl");
+    const sessionKey = "agent:main:webchat:direct:dates-session";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      [
+        JSON.stringify({ id: "d1", role: "user", text: "one", timestamp: "2026-03-20T09:00:00.000Z" }),
+        JSON.stringify({ id: "d2", role: "assistant", text: "two", timestamp: "2026-03-20T10:00:00.000Z" }),
+        JSON.stringify({ id: "d3", role: "user", text: "three", timestamp: "2026-03-21T09:00:00.000Z" }),
+      ].join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-dates",
+            sessionFile: transcriptFile,
+            label: "Dates transcript",
+            updatedAt: "2026-03-21T09:00:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Dates transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+    const context = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    let transcriptReadFileSyncCount = 0;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        transcriptReadFileSyncCount += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
+    });
+
+    const dates = await context.services.chat.getHistoryDates(sessionKey);
+    assert.equal(transcriptReadFileSyncCount, 1);
+    assert.deepEqual(
+      dates.days.map((day) => [day.day, day.count, day.firstMessageId, day.lastMessageId]),
+      [
+        ["2026-03-21", 1, "d3", "d3"],
+        ["2026-03-20", 2, "d1", "d2"],
+      ],
+    );
+    assert.match(
+      dates.diagnostics.notes.join("\n"),
+      /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan/i,
+    );
+    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("history dates can reuse sqlite durable mirror rows without a persisted history index", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-history-dates-mirror-fast-"),
+  );
+  const originalReadFileSync = fs.readFileSync;
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-dates-mirror.jsonl");
+    const sessionKey = "agent:main:webchat:direct:dates-mirror-session";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      [
+        JSON.stringify({ id: "md1", role: "user", text: "one", timestamp: "2026-03-20T09:00:00.000Z" }),
+        JSON.stringify({ id: "md2", role: "assistant", text: "two", timestamp: "2026-03-20T10:00:00.000Z" }),
+        JSON.stringify({ id: "md3", role: "user", text: "three", timestamp: "2026-03-21T09:00:00.000Z" }),
+      ].join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-dates-mirror",
+            sessionFile: transcriptFile,
+            label: "Dates mirror transcript",
+            updatedAt: "2026-03-21T09:00:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Dates mirror transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+    const warmContext = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    await warmContext.services.chat.getHistory(sessionKey, { limit: 2 });
+    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
+    sharedDb.close();
+    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+
+    let transcriptReadFileSyncCount = 0;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        transcriptReadFileSyncCount += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
+    });
+
+    const coldContext = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+    const dates = await coldContext.services.chat.getHistoryDates(sessionKey);
+    assert.deepEqual(
+      dates.days.map((day) => [day.day, day.count, day.firstMessageId, day.lastMessageId]),
+      [
+        ["2026-03-21", 1, "md3", "md3"],
+        ["2026-03-20", 2, "md1", "md2"],
+      ],
+    );
+    assert.match(
+      dates.diagnostics.notes.join("\n"),
+      /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan/i,
+    );
+    assert.equal(transcriptReadFileSyncCount, 1);
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("history day pages can reuse sqlite durable mirror rows without a persisted history index", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-history-day-mirror-fast-"),
+  );
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-day-fast.jsonl");
+    const sessionKey = "agent:main:webchat:direct:day-fast-session";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      [
+        JSON.stringify({ id: "df1", role: "user", text: "day one user", timestamp: "2026-03-20T09:00:00.000Z" }),
+        JSON.stringify({ id: "df2", role: "assistant", text: "day one assistant", timestamp: "2026-03-20T10:00:00.000Z" }),
+        JSON.stringify({ id: "df3", role: "user", text: "day two user", timestamp: "2026-03-21T09:00:00.000Z" }),
+        JSON.stringify({ id: "df4", role: "assistant", text: "day two assistant", timestamp: "2026-03-21T10:00:00.000Z" }),
+      ].join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-day-fast",
+            sessionFile: transcriptFile,
+            label: "Day fast transcript",
+            updatedAt: "2026-03-21T10:00:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Day fast transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+    const warmContext = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    await warmContext.services.chat.getHistory(sessionKey, { limit: 2 });
+    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
+    sharedDb.close();
+    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+
+    const coldContext = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+    const dayPage = await coldContext.services.chat.getHistory(sessionKey, {
+      day: "2026-03-20",
+      limit: 10,
+    });
+    assert.deepEqual(
+      dayPage.messages.map((message) => message.id),
+      ["df1", "df2"],
+    );
+    assert.match(
+      dayPage.diagnostics.notes.join("\n"),
+      /durable mirror row metadata|durable mirror page quer|lightweight transcript scan/i,
+    );
+    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("history anchor jump can reuse a rebuilt local index from durable mirror rows", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-history-anchor-mirror-fast-"),
+  );
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-anchor-fast.jsonl");
+    const sessionKey = "agent:main:webchat:direct:anchor-fast-session";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      Array.from({ length: 10 }, (_, index) =>
+        JSON.stringify({
+          id: `am${index + 1}`,
+          role: index % 2 === 0 ? "user" : "assistant",
+          text: `anchor message ${index + 1}`,
+          timestamp: `2026-03-22T10:${String(index).padStart(2, "0")}:00.000Z`,
+        }),
+      ).join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-anchor-fast",
+            sessionFile: transcriptFile,
+            label: "Anchor fast transcript",
+            updatedAt: "2026-03-22T10:09:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Anchor fast transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+    const warmContext = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    await warmContext.services.chat.getHistory(sessionKey, { limit: 3 });
+    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
+    sharedDb.close();
+    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+
+    const coldContext = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+    const anchored = await coldContext.services.chat.getHistory(sessionKey, {
+      anchor: "am6",
+      limit: 4,
+    });
+    assert.deepEqual(
+      anchored.messages.map((message) => message.id),
+      ["am4", "am5", "am6", "am7", "am8"],
+    );
+    assert.match(
+      anchored.diagnostics.notes.join("\n"),
+      /durable mirror row metadata|durable mirror page quer|lightweight transcript scan/i,
+    );
+
+    const anchoredWithinDay = await coldContext.services.chat.getHistory(sessionKey, {
+      anchor: "am6",
+      day: "2026-03-22",
+      limit: 4,
+    });
+    assert.deepEqual(
+      anchoredWithinDay.messages.map((message) => message.id),
+      ["am4", "am5", "am6", "am7", "am8"],
+    );
+    assert.equal(anchoredWithinDay.day, "2026-03-22");
+    assert.match(
+      anchoredWithinDay.diagnostics.notes.join("\n"),
+      /durable mirror row metadata|durable mirror page quer|lightweight transcript scan/i,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("history search can reuse sqlite durable mirror rows without a persisted history index", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-history-search-mirror-fast-"),
+  );
+  const originalReadFileSync = fs.readFileSync;
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-search-mirror.jsonl");
+    const sessionKey = "agent:main:webchat:direct:search-mirror-session";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      [
+        JSON.stringify({ id: "sm1", role: "user", text: "ordinary", timestamp: "2026-03-20T09:00:00.000Z" }),
+        JSON.stringify({ id: "sm2", role: "assistant", text: "alpha 关键字 keyword", timestamp: "2026-03-20T10:00:00.000Z" }),
+        JSON.stringify({ id: "sm3", role: "assistant", text: "```sql\nSELECT keyword FROM ledger;\n```", timestamp: "2026-03-21T09:00:00.000Z" }),
+      ].join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-search-mirror",
+            sessionFile: transcriptFile,
+            label: "Search mirror transcript",
+            updatedAt: "2026-03-21T09:00:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Search mirror transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+    const warmContext = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    await warmContext.services.chat.getHistory(sessionKey, { limit: 2 });
+    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
+    sharedDb.close();
+    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+
+    let transcriptReadFileSyncCount = 0;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        transcriptReadFileSyncCount += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
+    });
+
+    const coldContext = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+    const result = await coldContext.services.chat.searchHistory(sessionKey, {
+      query: "keyword",
+      content: "code",
+      limit: 10,
+    });
+    assert.deepEqual(
+      result.messages.map((message) => message.id),
+      ["sm3"],
+    );
+    assert.match(
+      result.diagnostics.notes.join("\n"),
+      /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan and mapped only the requested page messages/i,
+    );
+    assert.equal(transcriptReadFileSyncCount, 1);
+    const reordered = await coldContext.services.chat.searchHistory(sessionKey, {
+      query: "keyword alpha",
+      content: "text",
+      limit: 10,
+    });
+    assert.deepEqual(
+      reordered.messages.map((message) => message.id),
+      ["sm2"],
+    );
+    const cjk = await coldContext.services.chat.searchHistory(sessionKey, {
+      query: "关键字",
+      content: "text",
+      limit: 10,
+    });
+    assert.deepEqual(
+      cjk.messages.map((message) => message.id),
+      ["sm2"],
+    );
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("history search scans local transcript lightly before full index access", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-history-search-fast-"),
+  );
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-search.jsonl");
+    const sessionKey = "agent:main:webchat:direct:search-session";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      [
+        JSON.stringify({ id: "s1", role: "user", text: "ordinary", timestamp: "2026-03-20T09:00:00.000Z" }),
+        JSON.stringify({ id: "s2", role: "assistant", text: "contains keyword alpha", timestamp: "2026-03-20T10:00:00.000Z" }),
+        JSON.stringify({ id: "s3", role: "assistant", text: "```sql\nSELECT keyword FROM ledger;\n```", timestamp: "2026-03-21T09:00:00.000Z" }),
+      ].join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-search",
+            sessionFile: transcriptFile,
+            label: "Search transcript",
+            updatedAt: "2026-03-21T09:00:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Search transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+    const context = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    const result = await context.services.chat.searchHistory(sessionKey, {
+      query: "keyword",
+      content: "code",
+      limit: 10,
+    });
+    assert.deepEqual(
+      result.messages.map((message) => message.id),
+      ["s3"],
+    );
+    assert.match(
+      result.diagnostics.notes.join("\n"),
+      /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan and mapped only the requested page messages/i,
+    );
+    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("history page resyncs local transcript after rewrite and truncation without duplicating assistant steps", async () => {
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "openclaw-studio-history-resync-"),
@@ -796,6 +1720,201 @@ test("history page resyncs local transcript after rewrite and truncation without
     assert.equal(truncated.pageInfo.hasMoreBefore, false);
     assert.equal(truncated.pageInfo.hasMoreAfter, false);
     assert.equal(truncated.pageInfo.afterCursor, null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("history page upgrades legacy mirrors without observability before enabling cold transcript fast-path reuse", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-history-legacy-mirror-upgrade-"),
+  );
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-legacy.jsonl");
+    const sessionKey = "agent:main:webchat:direct:external-legacy";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+    fs.mkdirSync(path.join(root, "studio", "chat-durable-mirror"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      [
+        JSON.stringify({
+          id: "legacy-m1",
+          role: "user",
+          text: "legacy hello",
+          timestamp: "2026-03-20T09:00:00.000Z",
+        }),
+        JSON.stringify({
+          id: "legacy-m2",
+          role: "assistant",
+          text: "legacy answer",
+          timestamp: "2026-03-20T09:01:00.000Z",
+        }),
+      ].join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-legacy",
+            sessionFile: transcriptFile,
+            label: "Legacy transcript",
+            updatedAt: "2026-03-20T09:01:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Legacy transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const legacyMirrorDb = new DatabaseSync(
+      path.join(root, "studio", "chat-durable-mirror", "mirror.sqlite"),
+    );
+    legacyMirrorDb.exec(`
+      CREATE TABLE IF NOT EXISTS mirror_checkpoint (
+        session_key TEXT PRIMARY KEY,
+        version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        base_message_seq INTEGER NOT NULL,
+        saved_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      );
+    `);
+    legacyMirrorDb.exec(`
+      CREATE TABLE IF NOT EXISTS mirror_oplog (
+        session_key TEXT NOT NULL,
+        version TEXT NOT NULL,
+        message_seq INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        saved_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        PRIMARY KEY (session_key, version, message_seq)
+      );
+    `);
+    legacyMirrorDb.prepare(`
+      INSERT INTO mirror_checkpoint (session_key, version, source, base_message_seq, saved_at, payload_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      sessionKey,
+      "legacy-v1",
+      "local_transcript",
+      2,
+      "2026-03-20T09:01:00.000Z",
+      JSON.stringify([
+        {
+          id: "legacy-m1",
+          role: "user",
+          text: "legacy hello",
+          createdAt: "2026-03-20T09:00:00.000Z",
+          source: "history",
+          runId: null,
+          truncated: false,
+          omitted: false,
+          aborted: false,
+          stopReason: null,
+        },
+        {
+          id: "legacy-m2",
+          role: "assistant",
+          text: "legacy answer",
+          createdAt: "2026-03-20T09:01:00.000Z",
+          source: "history",
+          runId: null,
+          truncated: false,
+          omitted: false,
+          aborted: false,
+          stopReason: null,
+        },
+      ]),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+
+    const originalReadFileSync = fs.readFileSync;
+    let transcriptReads = 0;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        transcriptReads += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
+    });
+
+    try {
+      const coldUpgradeContext = createStudioContext({
+        config,
+        logger: createLogger(),
+      });
+      const upgraded = await coldUpgradeContext.services.chat.getHistory(sessionKey, {
+        limit: 2,
+      });
+      assert.deepEqual(
+        upgraded.messages.map((message) => message.id),
+        ["legacy-m1", "legacy-m2"],
+      );
+    assert.match(
+      upgraded.diagnostics.notes.join("\n"),
+      /lightweight transcript scan/i,
+    );
+      assert.ok(transcriptReads > 0);
+
+      transcriptReads = 0;
+      const coldFastPathContext = createStudioContext({
+        config,
+        logger: createLogger(),
+      });
+      const reused = await coldFastPathContext.services.chat.getHistory(sessionKey, {
+        limit: 2,
+      });
+      assert.deepEqual(
+        reused.messages.map((message) => message.id),
+        ["legacy-m1", "legacy-m2"],
+      );
+      assert.match(
+        reused.diagnostics.notes.join("\n"),
+        /sqlite durable mirror page quer|local transcript canonical authority|lightweight transcript scan/i,
+      );
+      assert.equal(transcriptReads, 1);
+    } finally {
+      fs.readFileSync = originalReadFileSync;
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

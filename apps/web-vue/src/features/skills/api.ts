@@ -6,6 +6,8 @@ import type {
   SkillsMaintenanceResponse,
   SkillSecretPayload,
   SkillTogglePayload,
+  SkillsLifecyclePayload,
+  SkillsLifecycleResponse,
   SkillsMarketplaceInstallPayload,
   SkillsMarketplaceInstallResponse,
   SkillsMarketplacePayload,
@@ -15,6 +17,11 @@ import type {
   SkillsPreflightPayload,
   SkillsPreflightResult,
   SkillsSummaryPayload,
+  SkillsTargetsPayload,
+  SkillsUploadInstallPayload,
+  SkillsUploadInstallResponse,
+  SkillsUploadPreflightPayload,
+  SkillsUploadPreflightResult,
 } from "../../../../../types/skills";
 
 export function fetchSkillsSummary(
@@ -67,6 +74,10 @@ export function fetchSkillSecret(slug: string): Promise<SkillSecretPayload> {
   );
 }
 
+export function fetchSkillTargets(): Promise<SkillsTargetsPayload> {
+  return requestJson<SkillsTargetsPayload>("/api/skills/targets");
+}
+
 export function fetchMarketplaceSources(): Promise<SkillsMarketplaceSourcesPayload> {
   return requestJson<SkillsMarketplaceSourcesPayload>(
     "/api/marketplace/sources",
@@ -110,6 +121,42 @@ export function preflightMarketplaceSkill(
   payload: SkillsPreflightPayload,
 ): Promise<SkillsPreflightResult> {
   return requestJson<SkillsPreflightResult>("/api/marketplace/preflight", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function preflightUploadedSkillArchive(
+  payload: SkillsUploadPreflightPayload,
+): Promise<SkillsUploadPreflightResult> {
+  return requestJson<SkillsUploadPreflightResult>("/api/skills/upload/preflight", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function installUploadedSkillArchive(
+  payload: SkillsUploadInstallPayload,
+): Promise<SkillsUploadInstallResponse> {
+  return requestJson<SkillsUploadInstallResponse>("/api/skills/upload/install", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function runSkillLifecycleAction(
+  payload: SkillsLifecyclePayload,
+): Promise<SkillsLifecycleResponse> {
+  return requestJson<SkillsLifecycleResponse>("/api/skills/lifecycle", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

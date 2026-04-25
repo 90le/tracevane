@@ -2,10 +2,26 @@
   <div
     ref="root"
     class="chat-markdown"
-    :class="{ 'has-mermaid': rendered.hasMermaid }"
-    v-html="rendered.html"
+    :class="{
+      'has-mermaid': renderReady && rendered.hasMermaid,
+      'chat-markdown--deferred': !renderReady,
+    }"
     @click="handleClick"
-  ></div>
+  >
+    <div
+      v-if="renderReady"
+      v-html="rendered.html"
+    ></div>
+    <button
+      v-else
+      type="button"
+      class="chat-markdown-deferred-card"
+      @click.stop="ensureMarkdownRenderReady"
+    >
+      <strong>Large message</strong>
+      <span>{{ deferredPreviewText }}</span>
+    </button>
+  </div>
 
   <DialogRoot :open="Boolean(livePreview)" @update:open="handleLivePreviewOpenChange">
     <DialogPortal>
@@ -179,7 +195,14 @@ const props = defineProps<{
   sessionKey?: string | null;
   role?: RenderingRole | null;
   resources?: ChatResourceItem[];
+  forceEagerRender?: boolean;
 }>();
+
+const MARKDOWN_LAZY_RENDER_MIN_CHARS = 1600;
+const MARKDOWN_LAZY_RENDER_HEAVY_LINE_COUNT = 18;
+const MARKDOWN_LAZY_RENDER_PREVIEW_LIMIT = 220;
+const MARKDOWN_LAZY_RENDER_ROOT_MARGIN = '900px 0px';
+const MARKDOWN_LAZY_RENDER_IDLE_TIMEOUT_MS = 220;
 
 type PreviewKind = 'mermaid' | 'html' | 'svg';
 
@@ -219,15 +242,55 @@ const root = ref<HTMLElement | null>(null);
 const livePreviewDialog = ref<HTMLElement | null>(null);
 const livePreviewBody = ref<HTMLElement | null>(null);
 const livePreviewScaleWrap = ref<HTMLElement | null>(null);
+const renderReady = ref(false);
+const renderReadyPending = ref(false);
+function isHeavyMarkdownSource(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized) {
+    return false;
+  }
+  if (normalized.length >= MARKDOWN_LAZY_RENDER_MIN_CHARS) {
+    return true;
+  }
+  if (/```/.test(normalized)) {
+    return true;
+  }
+  if (/<(?:table|svg|iframe|pre|code|details|summary|article|section|div)\b/i.test(normalized)) {
+    return true;
+  }
+  if (
+    /^\s*\|.+\|\s*$/m.test(normalized)
+    && /^\s*\|?[\s:-]+\|[\s|:-]*$/m.test(normalized)
+  ) {
+    return true;
+  }
+  return normalized.split(/\r?\n/).length >= MARKDOWN_LAZY_RENDER_HEAVY_LINE_COUNT;
+}
+const shouldLazyRender = computed(() => !props.forceEagerRender && isHeavyMarkdownSource(props.source));
+const deferredPreviewText = computed(() => {
+  const normalized = props.source.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return 'Tap to render';
+  }
+  return normalized.length > MARKDOWN_LAZY_RENDER_PREVIEW_LIMIT
+    ? `${normalized.slice(0, MARKDOWN_LAZY_RENDER_PREVIEW_LIMIT - 1)}…`
+    : normalized;
+});
 const rendered = computed(() =>
-  renderChatMarkdownResult(props.source, {
-    interactive: true,
-    inlineHtml: inlinePreviewPrefs.value.inlineHtml,
-    inlineSvg: inlinePreviewPrefs.value.inlineSvg,
-    inlineScript: inlinePreviewPrefs.value.inlineScript,
-    sanitizeLevel: sanitizeLevel.value,
-    resources: props.resources,
-  })
+  renderReady.value || !shouldLazyRender.value
+    ? renderChatMarkdownResult(props.source, {
+      interactive: true,
+      inlineHtml: inlinePreviewPrefs.value.inlineHtml,
+      inlineSvg: inlinePreviewPrefs.value.inlineSvg,
+      inlineScript: inlinePreviewPrefs.value.inlineScript,
+      sanitizeLevel: sanitizeLevel.value,
+      resources: props.resources,
+    })
+    : {
+      html: '',
+      hasMermaid: false,
+      hasPreviewBlocks: false,
+    }
 );
 const livePreview = ref<LivePreviewState | null>(null);
 const livePreviewCopied = ref(false);
@@ -263,6 +326,9 @@ let bodyOverflowLocked = false;
 let stopInlinePreviewPrefListener: (() => void) | null = null;
 let enhanceDebounceTimer: number | null = null;
 let livePreviewReturnFocusTarget: HTMLElement | null = null;
+let renderVisibilityObserver: IntersectionObserver | null = null;
+let renderReadyTimer: number | null = null;
+let renderReadyIdleHandle: number | null = null;
 
 function refreshInlinePreviewPrefs(): void {
   inlinePreviewPrefs.value = readEffectiveRoleAwareInlinePreviewPreferences(props.role, props.sessionKey);
@@ -270,6 +336,9 @@ function refreshInlinePreviewPrefs(): void {
 }
 
 function debouncedEnhanceMarkdown(): void {
+  if (!renderReady.value) {
+    return;
+  }
   if (enhanceDebounceTimer != null) {
     window.clearTimeout(enhanceDebounceTimer);
   }
@@ -342,6 +411,84 @@ const livePreviewRenderedMarkupStyle = computed<Record<string, string> | undefin
 
 function currentTheme(): 'light' | 'dark' {
   return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
+
+function unbindMarkdownVisibilityObserver(): void {
+  renderVisibilityObserver?.disconnect();
+  renderVisibilityObserver = null;
+}
+
+function clearScheduledMarkdownRenderReady(): void {
+  if (renderReadyTimer != null) {
+    window.clearTimeout(renderReadyTimer);
+    renderReadyTimer = null;
+  }
+  if (
+    renderReadyIdleHandle != null
+    && typeof window !== 'undefined'
+    && 'cancelIdleCallback' in window
+  ) {
+    window.cancelIdleCallback(renderReadyIdleHandle);
+    renderReadyIdleHandle = null;
+  }
+  renderReadyPending.value = false;
+}
+
+function ensureMarkdownRenderReady(): void {
+  if (renderReady.value) {
+    return;
+  }
+  clearScheduledMarkdownRenderReady();
+  renderReady.value = true;
+  unbindMarkdownVisibilityObserver();
+}
+
+function scheduleMarkdownRenderReady(): void {
+  if (renderReady.value || renderReadyPending.value) {
+    return;
+  }
+  renderReadyPending.value = true;
+  const run = () => {
+    renderReadyTimer = null;
+    renderReadyIdleHandle = null;
+    renderReadyPending.value = false;
+    ensureMarkdownRenderReady();
+  };
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    renderReadyIdleHandle = window.requestIdleCallback(() => {
+      run();
+    }, { timeout: MARKDOWN_LAZY_RENDER_IDLE_TIMEOUT_MS });
+    return;
+  }
+  renderReadyTimer = window.setTimeout(run, 80);
+}
+
+function bindMarkdownVisibilityObserver(): void {
+  if (
+    renderReady.value
+    || !shouldLazyRender.value
+    || typeof IntersectionObserver === 'undefined'
+  ) {
+    renderReady.value = true;
+    return;
+  }
+  unbindMarkdownVisibilityObserver();
+  const element = root.value;
+  if (!element) {
+    return;
+  }
+  renderVisibilityObserver = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (!entry?.isIntersecting) {
+      return;
+    }
+    scheduleMarkdownRenderReady();
+  }, {
+    root: null,
+    rootMargin: MARKDOWN_LAZY_RENDER_ROOT_MARGIN,
+    threshold: 0,
+  });
+  renderVisibilityObserver.observe(element);
 }
 
 function currentMermaidTheme(): string {
@@ -968,6 +1115,9 @@ function installInlinePreviewAffordances(container: HTMLElement): void {
 }
 
 async function enhanceMarkdown(): Promise<void> {
+  if (!renderReady.value) {
+    return;
+  }
   await nextTick();
   const container = root.value;
   if (!container) {
@@ -1498,6 +1648,35 @@ function handleWindowMessage(event: MessageEvent<HtmlPreviewMessage>): void {
 watch(
   () => rendered.value.html,
   () => {
+    if (!renderReady.value) {
+      return;
+    }
+    void enhanceMarkdown();
+  },
+);
+
+watch(
+  () => props.forceEagerRender,
+  (force) => {
+    if (!force) {
+      return;
+    }
+    ensureMarkdownRenderReady();
+  },
+);
+
+watch(
+  () => props.source,
+  () => {
+    clearScheduledMarkdownRenderReady();
+    renderReady.value = !shouldLazyRender.value;
+    if (!renderReady.value) {
+      unbindMarkdownVisibilityObserver();
+      void nextTick(() => {
+        bindMarkdownVisibilityObserver();
+      });
+      return;
+    }
     void enhanceMarkdown();
   },
 );
@@ -1541,6 +1720,7 @@ watch(
 );
 
 onMounted(() => {
+  renderReady.value = !shouldLazyRender.value;
   refreshInlinePreviewPrefs();
   stopInlinePreviewPrefListener = listenInlinePreviewPreferenceChange(({ scope, sessionKey }) => {
     if (scope !== 'global' && sessionKey !== props.sessionKey) {
@@ -1567,7 +1747,13 @@ onMounted(() => {
   window.addEventListener('mouseup', handlePreviewMouseUp);
   window.addEventListener('message', handleWindowMessage);
   document.addEventListener('fullscreenchange', syncPreviewFullscreenState);
-  void enhanceMarkdown();
+  if (renderReady.value) {
+    void enhanceMarkdown();
+    return;
+  }
+  void nextTick(() => {
+    bindMarkdownVisibilityObserver();
+  });
 });
 
 watch(
@@ -1595,6 +1781,8 @@ watch(
 onBeforeUnmount(() => {
   void exitPreviewFullscreen();
   resetPreviewCopyState();
+  clearScheduledMarkdownRenderReady();
+  unbindMarkdownVisibilityObserver();
   if (enhanceDebounceTimer != null) {
     window.clearTimeout(enhanceDebounceTimer);
     enhanceDebounceTimer = null;
@@ -1620,6 +1808,39 @@ onBeforeUnmount(() => {
   position: relative;
   min-width: 0;
   max-width: 100%;
+}
+
+.chat-markdown--deferred {
+  display: block;
+}
+
+.chat-markdown-deferred-card {
+  display: block;
+  width: 100%;
+  border: 1px dashed rgba(148, 163, 184, 0.36);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.03);
+  padding: 12px 14px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.chat-markdown-deferred-card strong {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.chat-markdown-deferred-card span {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.82;
+  word-break: break-word;
 }
 
 .chat-markdown :deep(.chat-inline-overflow-viewport) {

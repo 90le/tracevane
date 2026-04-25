@@ -24,6 +24,7 @@ import type {
   ChatFileUploadRequest,
   ChatFileUploadResponse,
   ChatHistoryCursor,
+  ChatHistoryDateBucket,
   ChatHistoryDatesPayload,
   ChatHistoryPayload,
   ChatHistorySearchContentFilter,
@@ -78,6 +79,7 @@ import {
 } from '../../core/http.js';
 import {
   appendTimelineItem,
+  compactObservabilityState,
   cloneObservabilityState,
   createEmptyObservabilityState,
   deriveObservabilityFromHistory,
@@ -102,6 +104,7 @@ import {
 } from './session-model.js';
 import {
   extractTranscriptRecord,
+  extractTranscriptRole,
   extractTranscriptToolName,
   extractMessageText,
   isAssistantNoReplyMessage,
@@ -112,6 +115,7 @@ import {
   mapTranscriptMessage,
   readTranscriptCanonicalEntries,
   readTranscriptMessages,
+  shouldSkipTranscriptLine,
   type TranscriptMappingOptions,
   type TranscriptCanonicalEntry,
   type TranscriptOverrideResult,
@@ -132,11 +136,15 @@ import {
 import { mapGatewayAgentEventPayload } from './agent-event-mapper.js';
 import {
   LruMap,
+  clipPreview,
   normalizeDate,
   normalizeString,
   summarizeUnknown,
 } from './shared.js';
-import { createStudioChatHistoryIndexStore } from './history-index.js';
+import {
+  createStudioChatHistoryIndexStore,
+  type ChatHistoryIndexSeedItem,
+} from './history-index.js';
 import {
   listRunOverlaysForHistorySnapshot,
   supplementHistoryWithRunState as supplementHistoryWithRunStateSnapshot,
@@ -647,6 +655,30 @@ function deriveLastMessagePreview(message: ChatMessageItem | undefined, fallback
     || fallback;
 }
 
+const CHAT_SESSION_TRANSPORT_LABEL_LIMIT = 88;
+const CHAT_SESSION_TRANSPORT_TITLE_LIMIT = 96;
+const CHAT_SESSION_TRANSPORT_PREVIEW_LIMIT = 140;
+const CHAT_SESSION_TRANSPORT_ORIGIN_LIMIT = 72;
+const CHAT_HISTORY_ORPHAN_OVERLAY_LIMIT = 8;
+const CHAT_HISTORY_ORPHAN_OVERLAY_CONTEXT_MS = 5 * 60 * 1000;
+
+function compactSessionRowForTransport(row: ChatSessionRow): ChatSessionRow {
+  return {
+    ...row,
+    label: clipPreview(row.label, CHAT_SESSION_TRANSPORT_LABEL_LIMIT),
+    derivedTitle: row.derivedTitle ? clipPreview(row.derivedTitle, CHAT_SESSION_TRANSPORT_TITLE_LIMIT) : null,
+    lastMessagePreview: row.lastMessagePreview ? clipPreview(row.lastMessagePreview, CHAT_SESSION_TRANSPORT_PREVIEW_LIMIT) : null,
+    source: {
+      ...row.source,
+      originLabel: row.source.originLabel ? clipPreview(row.source.originLabel, CHAT_SESSION_TRANSPORT_ORIGIN_LIMIT) : null,
+    },
+  };
+}
+
+function compactSessionRowsForTransport(rows: ChatSessionRow[]): ChatSessionRow[] {
+  return rows.map((row) => compactSessionRowForTransport(row));
+}
+
 function isGatewayHistoryStaleAfterLocalReset(
   inMemory: StudioManagedSessionState | null,
   gatewayMessages: ChatMessageItem[],
@@ -725,6 +757,7 @@ export interface ChatService {
     limit?: number;
     includeDerivedTitles?: boolean;
     includeLastMessage?: boolean;
+    localOnly?: boolean;
   }): Promise<ChatSessionsPayload>;
   getHistory(
     sessionKey: string,
@@ -797,6 +830,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   const organizerStore = createStudioChatOrganizerStore(options.config);
   const studioSessions = new LruMap<string, StudioManagedSessionState>(200);
   const historySnapshotCache = new LruMap<string, HistorySnapshotCacheEntry>(120);
+  const transcriptContentCache = new LruMap<string, string>(12);
   const canonicalStates = new LruMap<string, ChatCanonicalState>(150);
   const officialCanonicalStreams = new Map<string, OfficialCanonicalStreamState>();
   const runProjections = new LruMap<string, Map<string, ChatRunProjection>>(200);
@@ -1266,13 +1300,19 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
   }
 
-  // Registry in-memory cache — avoids repeated readFileSync on every get/save.
-  // Writes remain synchronous for durability.
+  // Registry reads are cached for hot paths, but writes always merge against
+  // disk first so a stale Studio/API process cannot overwrite sessions that
+  // another process registered after this context started.
   let registryCache: Record<string, StudioSessionRegistryEntry> | null = null;
+
+  function readRegistryFromDisk(): Record<string, StudioSessionRegistryEntry> {
+    registryCache = readStudioChatRegistry(options.config);
+    return registryCache;
+  }
 
   function ensureRegistryLoaded(): Record<string, StudioSessionRegistryEntry> {
     if (!registryCache) {
-      registryCache = readStudioChatRegistry(options.config);
+      return readRegistryFromDisk();
     }
     return registryCache;
   }
@@ -1283,13 +1323,24 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   function saveRegistryEntry(entry: StudioSessionRegistryEntry): void {
-    const registry = ensureRegistryLoaded();
-    registry[entry.key] = entry;
+    const registry = readRegistryFromDisk();
+    const current = registry[entry.key] || null;
+    const priorSessionIds = [
+      ...(current?.priorSessionIds || []),
+      ...(entry.priorSessionIds || []),
+    ].filter((sessionId, index, all) => normalizeString(sessionId) && all.indexOf(sessionId) === index);
+    registry[entry.key] = {
+      ...current,
+      ...entry,
+      createdAt: entry.createdAt || current?.createdAt || new Date().toISOString(),
+      priorSessionIds: priorSessionIds.length > 0 ? priorSessionIds : undefined,
+    };
     writeStudioChatRegistry(options.config, registry);
-    const current = sessionCatalogStore.readSession(entry.key);
-    if (current) {
+    registryCache = registry;
+    const currentSession = sessionCatalogStore.readSession(entry.key);
+    if (currentSession) {
       sessionCatalogStore.writeSession({
-        ...current,
+        ...currentSession,
         label: normalizeString(entry.customLabel, entry.label),
         presentation: buildSessionPresentation(entry),
         updatedAt: entry.updatedAt,
@@ -1300,10 +1351,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   function deleteRegistryEntry(sessionKey: string): void {
-    const registry = ensureRegistryLoaded();
+    const registry = readRegistryFromDisk();
     if (!registry[sessionKey]) return;
     delete registry[sessionKey];
     writeStudioChatRegistry(options.config, registry);
+    registryCache = registry;
     sessionCatalogStore.clearSession(sessionKey);
   }
 
@@ -2184,11 +2236,23 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }): ChatSessionRow[] {
     const recentLimit = normalizeHistoryLimit(params.recentLimit, 40);
     const localCatalogSignature = computeLocalSessionCatalogSignature();
+    const strictRegistryResult = readJsonObjectStrict<Record<string, StudioSessionRegistryEntry>>(
+      resolveStudioChatRegistryPath(options.config),
+    );
+    const registry = strictRegistryResult.ok ? strictRegistryResult.value : ensureRegistryLoaded();
+    const registryMinimumRows = Object.values(registry)
+      .filter((entry) => normalizeString(entry?.key) && normalizeString(entry?.agentId))
+      .length;
     const catalogSnapshot = sessionCatalogStore.readSnapshot();
     const catalogRows = catalogSnapshot.sessions
       .filter((row) => row.permissions.visibleInFrontend)
       .sort(compareSessionRowRecency);
-    if (catalogRows.length > 0 && catalogSnapshot.signature === localCatalogSignature) {
+    const catalogSnapshotLooksComplete = registryMinimumRows === 0 || catalogRows.length >= registryMinimumRows;
+    if (
+      catalogRows.length > 0
+      && catalogSnapshot.signature === localCatalogSignature
+      && catalogSnapshotLooksComplete
+    ) {
       const preferredSessionKey = normalizeString(params.preferredSessionKey) || null;
       if (!preferredSessionKey) {
         return catalogRows.slice(0, recentLimit);
@@ -2202,10 +2266,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }
 
     const agentIds = new Set<string>(resolveAvailableAgentIds(options.config));
-    const strictRegistryResult = readJsonObjectStrict<Record<string, StudioSessionRegistryEntry>>(
-      resolveStudioChatRegistryPath(options.config),
-    );
-    const registry = strictRegistryResult.ok ? strictRegistryResult.value : ensureRegistryLoaded();
     let catalogSourcesHealthy = strictRegistryResult.ok;
     for (const entry of Object.values(registry)) {
       if (entry.agentId) {
@@ -2276,6 +2336,21 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   function normalizeHistoryLimit(value: number | null | undefined, fallback = 50): number {
     const numeric = Number.isFinite(value) ? Math.trunc(Number(value)) : fallback;
     return Math.min(100, Math.max(1, numeric || fallback));
+  }
+
+  function transcriptContentCacheKey(sessionFile: string, sourceMtimeMs: number | null): string {
+    return `${sessionFile}::${sourceMtimeMs ?? 'none'}`;
+  }
+
+  function readTranscriptContentCached(sessionFile: string, sourceMtimeMs: number | null): string {
+    const key = transcriptContentCacheKey(sessionFile, sourceMtimeMs);
+    const cached = transcriptContentCache.get(key);
+    if (typeof cached === 'string') {
+      return cached;
+    }
+    const content = fs.readFileSync(sessionFile, 'utf-8');
+    transcriptContentCache.set(key, content);
+    return content;
   }
 
   function resolveLocalSessionSource(sessionKey: string): {
@@ -2435,6 +2510,308 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     } catch {
       return [];
     }
+  }
+
+  function readTranscriptRawTailEntries(sessionFile: string, rawLineLimit: number): {
+    entries: Record<string, unknown>[];
+    hasMoreBefore: boolean;
+  } {
+    const limit = Math.max(1, Math.trunc(rawLineLimit || 1));
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(sessionFile);
+    } catch {
+      return { entries: [], hasMoreBefore: false };
+    }
+    if (stat.size <= 0) {
+      return { entries: [], hasMoreBefore: false };
+    }
+
+    const blockSize = 64 * 1024;
+    const maxReadBytes = 8 * 1024 * 1024;
+    const chunks: Buffer[] = [];
+    let position = stat.size;
+    let readBytes = 0;
+    let completeLineCount = 0;
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(sessionFile, 'r');
+      while (position > 0 && completeLineCount < limit && readBytes < maxReadBytes) {
+        const size = Math.min(blockSize, position, maxReadBytes - readBytes);
+        position -= size;
+        const buffer = Buffer.allocUnsafe(size);
+        const bytesRead = fs.readSync(fd, buffer, 0, size, position);
+        if (bytesRead <= 0) {
+          break;
+        }
+        const chunk = bytesRead === size ? buffer : buffer.subarray(0, bytesRead);
+        chunks.unshift(chunk);
+        readBytes += bytesRead;
+        const text = Buffer.concat(chunks).toString('utf-8');
+        const parts = text.split(/\r?\n/);
+        const completeParts = position > 0 ? parts.slice(1) : parts;
+        completeLineCount = completeParts.map((line) => line.trim()).filter(Boolean).length;
+      }
+    } catch {
+      return { entries: [], hasMoreBefore: false };
+    } finally {
+      if (fd != null) {
+        try { fs.closeSync(fd); } catch {}
+      }
+    }
+
+    const text = Buffer.concat(chunks).toString('utf-8');
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const selectedLines = lines.slice(-limit);
+    const entries = selectedLines.flatMap((line) => {
+      try {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        return parsed && typeof parsed === 'object' ? [parsed] : [];
+      } catch {
+        return [];
+      }
+    });
+    return {
+      entries,
+      hasMoreBefore: position > 0 || lines.length > selectedLines.length,
+    };
+  }
+
+  function extractTranscriptLineTimestamp(raw: Record<string, unknown>): string | null {
+    const record = extractTranscriptRecord(raw);
+    return normalizeDate(raw.timestamp || raw.createdAt || raw.updatedAt || record.timestamp || record.createdAt || record.updatedAt) || null;
+  }
+
+  function readTranscriptDateBucketsFast(sessionFile: string): ChatHistoryDateBucket[] | null {
+    let content: string;
+    try {
+      content = fs.readFileSync(sessionFile, 'utf-8');
+    } catch {
+      return null;
+    }
+    const buckets = new Map<string, ChatHistoryDateBucket>();
+    let visibleIndex = 0;
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      let raw: Record<string, unknown>;
+      try {
+        raw = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (!raw || typeof raw !== 'object' || shouldSkipTranscriptLine(raw)) {
+        continue;
+      }
+      const day = extractTranscriptLineTimestamp(raw)?.slice(0, 10) || null;
+      if (!day) {
+        continue;
+      }
+      const record = extractTranscriptRecord(raw);
+      const messageId = normalizeString(raw.id || record.id, `history-${visibleIndex}`);
+      visibleIndex += 1;
+      const current = buckets.get(day);
+      if (!current) {
+        buckets.set(day, {
+          day,
+          count: 1,
+          firstMessageId: messageId,
+          lastMessageId: messageId,
+        });
+        continue;
+      }
+      current.count += 1;
+      current.lastMessageId = messageId;
+    }
+    return [...buckets.values()].sort((left, right) => right.day.localeCompare(left.day));
+  }
+
+  function normalizeTranscriptSearchText(value: string): string {
+    return value.toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
+  function transcriptRawHasResource(raw: Record<string, unknown>): boolean {
+    const record = extractTranscriptRecord(raw);
+    if (
+      Array.isArray(record.resources)
+      || Array.isArray(record.media)
+      || Array.isArray(record.blocks)
+      || Array.isArray(raw.resources)
+      || Array.isArray(raw.media)
+      || Array.isArray(raw.blocks)
+    ) {
+      return true;
+    }
+    const content = Array.isArray(record.content) ? record.content : [];
+    return content.some((item) => {
+      if (!item || typeof item !== 'object') {
+        return false;
+      }
+      const type = normalizeString((item as Record<string, unknown>).type).toLowerCase();
+      return type === 'image'
+        || type === 'video'
+        || type === 'file'
+        || type === 'resource'
+        || type === 'canvas';
+    });
+  }
+
+  function transcriptRawHasCode(raw: Record<string, unknown>, textValue: string): boolean {
+    if (/```/.test(textValue) || /^\s{4,}\S/m.test(textValue)) {
+      return true;
+    }
+    const record = extractTranscriptRecord(raw);
+    const content = Array.isArray(record.content) ? record.content : [];
+    return content.some((item) => {
+      if (!item || typeof item !== 'object') {
+        return false;
+      }
+      const type = normalizeString((item as Record<string, unknown>).type).toLowerCase();
+      return type === 'code' || type === 'pre';
+    });
+  }
+
+  function transcriptRawMatchesSearchFilters(params: {
+    raw: Record<string, unknown>;
+    textValue: string;
+    query: string;
+    roleFilter: ChatHistorySearchRoleFilter;
+    contentFilter: ChatHistorySearchContentFilter;
+    day: string | null;
+  }): boolean {
+    if (shouldSkipTranscriptLine(params.raw)) {
+      return false;
+    }
+    const role = extractTranscriptRole(params.raw);
+    if (params.roleFilter !== 'all' && role !== params.roleFilter) {
+      return false;
+    }
+    if (params.day && extractTranscriptLineTimestamp(params.raw)?.slice(0, 10) !== params.day) {
+      return false;
+    }
+    if (params.contentFilter === 'text' && !normalizeTranscriptSearchText(params.textValue)) {
+      return false;
+    }
+    if (params.contentFilter === 'resource' && !transcriptRawHasResource(params.raw)) {
+      return false;
+    }
+    if (params.contentFilter === 'code' && !transcriptRawHasCode(params.raw, params.textValue)) {
+      return false;
+    }
+    if (!params.query) {
+      return true;
+    }
+    const haystack = normalizeTranscriptSearchText(params.textValue);
+    const normalizedQuery = normalizeTranscriptSearchText(params.query);
+    if (!normalizedQuery) {
+      return true;
+    }
+    if (haystack.includes(normalizedQuery)) {
+      return true;
+    }
+    const terms = normalizedQuery.match(/[\p{L}\p{N}]+/gu) || [];
+    return terms.length > 0 && terms.every((term) => haystack.includes(term));
+  }
+
+  function scanTranscriptIndexSeedItemsFastFromContent(content: string): ChatHistoryIndexSeedItem[] {
+    const items: ChatHistoryIndexSeedItem[] = [];
+    let visibleIndex = 0;
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      let raw: Record<string, unknown>;
+      try {
+        raw = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (!raw || typeof raw !== 'object' || shouldSkipTranscriptLine(raw)) {
+        continue;
+      }
+      const record = extractTranscriptRecord(raw);
+      const textValue = extractMessageText(raw);
+      const messageId = normalizeString(raw.id || record.id, `history-${visibleIndex}`);
+      const createdAt = extractTranscriptLineTimestamp(raw);
+      const previewText = clipPreview(textValue, 280);
+      items.push({
+        id: messageId,
+        role: extractTranscriptRole(raw),
+        createdAt,
+        previewText,
+        snippetText: previewText,
+        runId: normalizeString(raw.runId || record.runId) || null,
+        messageIndex: visibleIndex,
+        hasText: Boolean(normalizeTranscriptSearchText(textValue)),
+        hasResources: transcriptRawHasResource(raw),
+        hasCode: transcriptRawHasCode(raw, textValue),
+      });
+      visibleIndex += 1;
+    }
+    return items;
+  }
+
+  function scanTranscriptIndexSeedItemsFast(sessionFile: string): ChatHistoryIndexSeedItem[] | null {
+    let content: string;
+    try {
+      content = fs.readFileSync(sessionFile, 'utf-8');
+    } catch {
+      return null;
+    }
+    return scanTranscriptIndexSeedItemsFastFromContent(content);
+  }
+
+  function mapTranscriptMessagesByIdsFastFromContent(
+    content: string,
+    sessionKey: string,
+    messageIds: string[],
+  ): ChatMessageItem[] {
+    if (!messageIds.length) {
+      return [];
+    }
+    const targetIds = new Set(messageIds);
+    const messagesById = new Map<string, ChatMessageItem>();
+    let visibleIndex = 0;
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      let raw: Record<string, unknown>;
+      try {
+        raw = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (!raw || typeof raw !== 'object' || shouldSkipTranscriptLine(raw)) {
+        continue;
+      }
+      const record = extractTranscriptRecord(raw);
+      const messageId = normalizeString(raw.id || record.id, `history-${visibleIndex}`);
+      if (targetIds.has(messageId)) {
+        const message = mapTranscriptMessage(raw, visibleIndex, {
+          sessionKey,
+          collectMessageResources: mediaBridge.collectMessageResources,
+          overrideMessage: overrideTranscriptMessage,
+        });
+        if (message) {
+          messagesById.set(messageId, message);
+        }
+      }
+      visibleIndex += 1;
+      if (messagesById.size === targetIds.size) {
+        break;
+      }
+    }
+    return messageIds
+      .map((messageId) => messagesById.get(messageId))
+      .filter((message): message is ChatMessageItem => Boolean(message));
   }
 
   interface TranscriptStatCacheEntry {
@@ -2608,18 +2985,17 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         mirrorSnapshot
         && mirrorSnapshot.source === 'local_transcript'
         && mirrorSnapshot.sourceSignature === transcriptMirrorSignature
+        && mirrorSnapshot.observability
       ) {
         messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
         canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
         canonicalSource = 'local_transcript';
-        if (mirrorSnapshot.observability) {
-          const restoredObservability = cloneObservabilityState(mirrorSnapshot.observability);
-          observability.lifecycle = restoredObservability.lifecycle;
-          observability.usage = restoredObservability.usage;
-          observability.toolCards = restoredObservability.toolCards;
-          observability.timeline = restoredObservability.timeline;
-          historyToolCards = restoredObservability.toolCards;
-        }
+        const restoredObservability = cloneObservabilityState(mirrorSnapshot.observability);
+        observability.lifecycle = restoredObservability.lifecycle;
+        observability.usage = restoredObservability.usage;
+        observability.toolCards = restoredObservability.toolCards;
+        observability.timeline = restoredObservability.timeline;
+        historyToolCards = restoredObservability.toolCards;
         reusedTranscriptMirror = true;
         diagnostics.notes.push(
           loadOptions.localOnly
@@ -2909,6 +3285,768 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
   }
 
+  async function loadLocalTranscriptBootstrapHistoryWindow(
+    sessionKey: string,
+    params: {
+      limit?: number;
+      gatewayConnected: boolean;
+    },
+  ): Promise<ChatHistoryPayload | null> {
+    const sourceSelection = selectCanonicalSource(sessionKey);
+    if (
+      sourceSelection.kind !== 'local_transcript'
+      || sourceSelection.priorSessionFiles.length > 0
+    ) {
+      return null;
+    }
+
+    const limit = normalizeHistoryLimit(params.limit, 12);
+    const rawTail = readTranscriptRawTailEntries(
+      sourceSelection.sessionFile,
+      Math.max(limit * 8, limit + 40),
+    );
+    const mappingOptions: TranscriptMappingOptions = {
+      sessionKey,
+      collectMessageResources: mediaBridge.collectMessageResources,
+      overrideMessage: overrideTranscriptMessage,
+    };
+    const tailMessages = normalizeMessageLedger(mapMessagesFromParsedEntries(rawTail.entries, mappingOptions));
+    const derivedObservability = deriveObservabilityFromHistory(rawTail.entries, {
+      sessionKey,
+      collectToolArtifacts: mediaBridge.collectToolArtifacts,
+      toolCardLimit: 12,
+    });
+    const messages = enrichMessagesWithToolCards(tailMessages.slice(-limit), derivedObservability.toolCards);
+    const session = await requireSession(sessionKey, params.gatewayConnected);
+    const diagnostics = await buildHealth([], params.gatewayConnected);
+    diagnostics.notes.push('Local bootstrap read only the transcript tail window; full transcript remap is deferred until explicit history/search access.');
+
+    const hasMoreBefore = Boolean(rawTail.hasMoreBefore || tailMessages.length > messages.length);
+    const firstMessage = messages[0] || null;
+    const pageInfo: ChatHistoryPayload['pageInfo'] = {
+      hasMoreBefore,
+      beforeCursor: firstMessage && hasMoreBefore
+        ? encodeHistoryCursor({
+          source: 'history_window',
+          anchorIndex: 0,
+          anchorMessageId: firstMessage.id,
+          anchorCreatedAt: firstMessage.createdAt,
+          day: null,
+          query: null,
+          roleFilter: null,
+          contentFilter: null,
+        })
+        : null,
+      hasMoreAfter: false,
+      afterCursor: null,
+    };
+    const overlays = buildPageOverlaysForMessageWindow(
+      filterRedundantTerminalOverlays(
+        messages,
+        enrichOverlaysWithToolCards(listRunOverlaysForSession(sessionKey), derivedObservability.toolCards),
+      ),
+      messages,
+      messages,
+      pageInfo,
+    );
+    const runtimeSummary = buildChatSessionRuntimeSummary(session.runtime);
+    const diagnosticsSummary = buildChatDiagnosticsSummary(diagnostics);
+    return {
+      checkedAt: new Date().toISOString(),
+      session,
+      messages,
+      overlays,
+      runtime: {
+        ...session.runtime,
+        state: runtimeSummary.state,
+        activeRunId: runtimeSummary.activeRunId,
+        gatewayConnected: runtimeSummary.gatewayConnected,
+        sessionWritable: runtimeSummary.sessionWritable,
+        lastEventAt: runtimeSummary.lastEventAt,
+        lastAckAt: runtimeSummary.lastAckAt,
+        lastErrorCode: runtimeSummary.lastErrorCode,
+      },
+      diagnostics: {
+        ...diagnostics,
+        gatewayReachable: diagnosticsSummary.gatewayReachable,
+        historyTruncated: diagnosticsSummary.historyTruncated,
+        truncationMode: diagnosticsSummary.truncationMode,
+      },
+      observability: compactObservabilityState(derivedObservability, {
+        toolCardLimit: 6,
+        timelineLimit: 8,
+        toolDetailLimit: 180,
+        timelineDetailLimit: 220,
+      }),
+      pageInfo,
+      day: null,
+    };
+  }
+
+  function ensureLocalTranscriptHistoryIndexFromMirror(
+    sessionKey: string,
+    params: {
+      sourceSessionFile: string;
+      sourceMtimeMs: number | null;
+    },
+    existingSnapshot?: ReturnType<typeof historyIndexStore.readSnapshot> | null,
+  ) {
+    if (existingSnapshot) {
+      return existingSnapshot;
+    }
+    const mirrorItems = durableMirrorStore.listSearchStubs(sessionKey);
+    if (!mirrorItems.length) {
+      return null;
+    }
+    return historyIndexStore.ensureIndexFromItems({
+      sessionKey,
+      items: mirrorItems.map((item) => ({
+        id: item.id,
+        role: item.role,
+        createdAt: item.createdAt,
+        previewText: item.previewText,
+        snippetText: item.previewText,
+        runId: item.runId,
+        messageIndex: item.messageIndex,
+        hasText: item.hasText,
+        hasResources: item.hasResources,
+        hasCode: item.hasCode,
+      })),
+      totalMessages: mirrorItems.length,
+      sourceSessionFile: params.sourceSessionFile,
+      sourceMtimeMs: params.sourceMtimeMs,
+    });
+  }
+
+  async function loadLocalTranscriptHistoryWindowFast(
+    sessionKey: string,
+    options: {
+      before?: string | null;
+      after?: string | null;
+      anchor?: string | null;
+      limit?: number;
+      day?: string | null;
+    },
+    gatewayConnected: boolean,
+  ): Promise<ChatHistoryPayload | null> {
+    const sourceSelection = selectCanonicalSource(sessionKey);
+    if (
+      sourceSelection.kind !== 'local_transcript'
+      || sourceSelection.priorSessionFiles.length > 0
+    ) {
+      return null;
+    }
+    const indexSnapshot = historyIndexStore.readSnapshot({
+      sessionKey,
+      sourceSessionFile: sourceSelection.sessionFile,
+      sourceMtimeMs: sourceSelection.sourceMtimeMs,
+    });
+    const mirrorMeta = durableMirrorStore.readSessionMeta(sessionKey);
+    const mirrorAligned = Boolean(
+      mirrorMeta
+      && mirrorMeta.sourceSessionFile === sourceSelection.sessionFile
+      && (mirrorMeta.sourceMtimeMs ?? null) === (sourceSelection.sourceMtimeMs ?? null),
+    );
+
+    let allMessages: ChatMessageItem[];
+    let pageMessages: ChatMessageItem[];
+    let pageInfo: ChatHistoryPayload['pageInfo'];
+    let pageDay: string | null;
+    let effectiveIndex = mirrorAligned
+      ? ensureLocalTranscriptHistoryIndexFromMirror(
+        sessionKey,
+        {
+          sourceSessionFile: sourceSelection.sessionFile,
+          sourceMtimeMs: sourceSelection.sourceMtimeMs,
+        },
+        indexSnapshot,
+      )
+      : indexSnapshot;
+    let transcriptContent: string | null = null;
+    if (!effectiveIndex) {
+      try {
+        transcriptContent = readTranscriptContentCached(sourceSelection.sessionFile, sourceSelection.sourceMtimeMs);
+      } catch {
+        return null;
+      }
+      const seedItems = scanTranscriptIndexSeedItemsFastFromContent(transcriptContent);
+      if (!seedItems.length) {
+        return null;
+      }
+      effectiveIndex = historyIndexStore.ensureIndexFromItems({
+        sessionKey,
+        items: seedItems,
+        totalMessages: seedItems.length,
+        sourceSessionFile: sourceSelection.sessionFile,
+        sourceMtimeMs: sourceSelection.sourceMtimeMs,
+      });
+    }
+    if (!effectiveIndex) {
+      return null;
+    }
+
+    allMessages = effectiveIndex.items.map((item) => buildIndexStubMessage(item));
+    if (mirrorAligned) {
+      const day = normalizeString(options.day) || null;
+      const beforeCursor = decodeHistoryCursor(options.before);
+      const afterCursor = decodeHistoryCursor(options.after);
+      const normalizedBefore = beforeCursor?.source === 'history_window' && (beforeCursor.day || null) === day
+        ? beforeCursor
+        : null;
+      const normalizedAfter = afterCursor?.source === 'history_window' && (afterCursor.day || null) === day
+        ? afterCursor
+        : null;
+      const window = durableMirrorStore.readMessageWindow(sessionKey, {
+        before: normalizedBefore
+          ? {
+            anchorIndex: normalizedBefore.anchorIndex,
+            anchorMessageId: normalizedBefore.anchorMessageId,
+          }
+          : null,
+        after: normalizedAfter
+          ? {
+            anchorIndex: normalizedAfter.anchorIndex,
+            anchorMessageId: normalizedAfter.anchorMessageId,
+          }
+          : null,
+        anchor: normalizeString(options.anchor) || null,
+        limit: options.limit,
+        day,
+      });
+      if (!window) {
+        return null;
+      }
+      pageMessages = window.messages;
+      pageDay = window.day;
+      pageInfo = {
+        hasMoreBefore: window.hasMoreBefore,
+        beforeCursor: window.beforeBoundary
+          ? encodeHistoryCursor({
+            source: 'history_window',
+            anchorIndex: window.beforeBoundary.anchorIndex,
+            anchorMessageId: window.beforeBoundary.anchorMessageId,
+            anchorCreatedAt: window.beforeBoundary.anchorCreatedAt,
+            day: pageDay,
+            query: null,
+            roleFilter: null,
+            contentFilter: null,
+          })
+          : null,
+        hasMoreAfter: window.hasMoreAfter,
+        afterCursor: window.afterBoundary
+          ? encodeHistoryCursor({
+            source: 'history_window',
+            anchorIndex: window.afterBoundary.anchorIndex,
+            anchorMessageId: window.afterBoundary.anchorMessageId,
+            anchorCreatedAt: window.afterBoundary.anchorCreatedAt,
+            day: pageDay,
+            query: null,
+            roleFilter: null,
+            contentFilter: null,
+          })
+          : null,
+      };
+    } else {
+      const page = paginateMessageList(allMessages, {
+        before: options.before,
+        after: options.after,
+        anchor: options.anchor,
+        day: options.day,
+        limit: options.limit,
+        source: 'history_window',
+      });
+      const pageMessageIds = page.messages.map((message) => message.id);
+      if (transcriptContent == null) {
+        try {
+          transcriptContent = readTranscriptContentCached(sourceSelection.sessionFile, sourceSelection.sourceMtimeMs);
+        } catch {
+          return null;
+        }
+      }
+      const fetchedMessages = mapTranscriptMessagesByIdsFastFromContent(
+        transcriptContent,
+        sessionKey,
+        pageMessageIds,
+      );
+      if (fetchedMessages.length !== pageMessageIds.length) {
+        return null;
+      }
+      const byId = new Map(fetchedMessages.map((message) => [message.id, message]));
+      pageMessages = pageMessageIds
+        .map((messageId) => byId.get(messageId))
+        .filter((message): message is ChatMessageItem => Boolean(message));
+      pageInfo = page.pageInfo;
+      pageDay = page.day;
+    }
+    const session = await requireSession(sessionKey, gatewayConnected);
+    const diagnostics = await buildHealth([], gatewayConnected);
+    diagnostics.notes.push(indexSnapshot && mirrorAligned
+      ? 'History window reused the persisted sqlite/json history index and sqlite durable mirror page queries.'
+      : mirrorAligned
+        ? 'History window rebuilt a persisted sqlite/json history index from durable mirror row metadata and reused sqlite durable mirror page queries.'
+        : 'History window rebuilt a persisted sqlite/json history index from a lightweight transcript scan and mapped only the requested page messages.');
+    const runtimeSummary = buildChatSessionRuntimeSummary(session.runtime);
+    const diagnosticsSummary = buildChatDiagnosticsSummary(diagnostics);
+    const allOverlays = filterRedundantTerminalOverlays(
+      pageMessages,
+      enrichOverlaysWithToolCards(
+        listRunOverlaysForSession(sessionKey),
+        mirrorMeta?.observability?.toolCards || [],
+      ),
+    );
+
+    return {
+      checkedAt: new Date().toISOString(),
+      session,
+      messages: pageMessages,
+      overlays: buildPageOverlaysForMessageWindow(allOverlays, allMessages, pageMessages, pageInfo),
+      runtime: {
+        ...session.runtime,
+        state: runtimeSummary.state,
+        activeRunId: runtimeSummary.activeRunId,
+        gatewayConnected: runtimeSummary.gatewayConnected,
+        sessionWritable: runtimeSummary.sessionWritable,
+        lastEventAt: runtimeSummary.lastEventAt,
+        lastAckAt: runtimeSummary.lastAckAt,
+        lastErrorCode: runtimeSummary.lastErrorCode,
+      },
+      diagnostics: {
+        ...diagnostics,
+        gatewayReachable: diagnosticsSummary.gatewayReachable,
+        historyTruncated: diagnosticsSummary.historyTruncated,
+        truncationMode: diagnosticsSummary.truncationMode,
+      },
+      observability: cloneObservabilityState(
+        (mirrorAligned ? mirrorMeta?.observability : getStudioSession(sessionKey)?.observability)
+        || createEmptyObservabilityState(),
+      ),
+      pageInfo,
+      day: pageDay,
+    };
+  }
+
+  async function searchLocalTranscriptHistoryFast(
+    sessionKey: string,
+    options: {
+      query: string;
+      role?: ChatHistorySearchRoleFilter | null;
+      content?: ChatHistorySearchContentFilter | null;
+      day?: string | null;
+      before?: string | null;
+      after?: string | null;
+      limit?: number;
+    },
+    gatewayConnected: boolean,
+  ): Promise<ChatHistorySearchPayload | null> {
+    const sourceSelection = selectCanonicalSource(sessionKey);
+    if (
+      sourceSelection.kind !== 'local_transcript'
+      || sourceSelection.priorSessionFiles.length > 0
+      || historySnapshotCache.has(sessionKey)
+    ) {
+      return null;
+    }
+    const query = normalizeString(options.query);
+    const roleFilter = normalizeHistorySearchRoleFilter(options.role);
+    const contentFilter = normalizeHistorySearchContentFilter(options.content);
+    const day = normalizeString(options.day) || null;
+    const indexSnapshot = historyIndexStore.readSnapshot({
+      sessionKey,
+      sourceSessionFile: sourceSelection.sessionFile,
+      sourceMtimeMs: sourceSelection.sourceMtimeMs,
+    });
+    const mirrorMeta = durableMirrorStore.readSessionMeta(sessionKey);
+    if (
+      mirrorMeta
+      && mirrorMeta.sourceSessionFile === sourceSelection.sessionFile
+      && (mirrorMeta.sourceMtimeMs ?? null) === (sourceSelection.sourceMtimeMs ?? null)
+    ) {
+      const effectiveIndex = ensureLocalTranscriptHistoryIndexFromMirror(
+        sessionKey,
+        {
+          sourceSessionFile: sourceSelection.sessionFile,
+          sourceMtimeMs: sourceSelection.sourceMtimeMs,
+        },
+        indexSnapshot,
+      );
+      const ftsMatchedStubs = indexSnapshot
+        ? null
+        : durableMirrorStore.searchMessageStubs(sessionKey, {
+          query,
+          day,
+          roleFilter,
+          contentFilter,
+        });
+      const matchedItems = indexSnapshot
+        ? historyIndexStore
+          .searchPositions(effectiveIndex!, query, {
+            roleFilter,
+            contentFilter,
+          })
+          .map((position) => effectiveIndex!.items[position]!)
+          .filter(Boolean)
+        : ftsMatchedStubs
+          ? (() => {
+            const itemById = new Map((effectiveIndex?.items || []).map((item) => [item.id, item]));
+            return ftsMatchedStubs
+              .map((item) => itemById.get(item.id) || ({
+                id: item.id,
+                role: item.role,
+                createdAt: item.createdAt,
+                dayKey: item.createdAt ? item.createdAt.slice(0, 10) : null,
+                previewText: item.previewText,
+                snippetText: item.previewText,
+                runId: item.runId,
+              }))
+              .filter(Boolean);
+          })()
+          : [];
+      const page = paginateMessageList(
+        matchedItems.map((item) => buildIndexStubMessage(item)),
+        {
+          before: options.before,
+          after: options.after,
+          day,
+          limit: options.limit,
+          source: 'history_search',
+          query,
+          roleFilter,
+          contentFilter,
+        },
+      );
+      const pageMessageIds = page.messages.map((message) => message.id);
+      const fetchedMessages = durableMirrorStore.readMessagesByIds(sessionKey, pageMessageIds);
+      if (fetchedMessages.length === pageMessageIds.length) {
+        const fetchedById = new Map(fetchedMessages.map((message) => [message.id, message]));
+        const pageMessages = pageMessageIds
+          .map((messageId) => fetchedById.get(messageId))
+          .filter((message): message is ChatMessageItem => Boolean(message));
+        const itemByMessageId = new Map((effectiveIndex ? effectiveIndex.items : matchedItems).map((item) => [item.id, item]));
+        const matches: ChatHistorySearchMatch[] = pageMessages.map((message) => {
+          const item = itemByMessageId.get(message.id);
+          return {
+            messageId: message.id,
+            role: message.role,
+            createdAt: message.createdAt || item?.createdAt || null,
+            day: item?.dayKey || (normalizeDate(message.createdAt) || '').slice(0, 10) || null,
+            snippet: item?.snippetText || item?.previewText || message.text.slice(0, 280),
+          };
+        });
+        const session = await requireSession(sessionKey, gatewayConnected);
+        const diagnostics = await buildHealth([], gatewayConnected);
+        diagnostics.notes.push(indexSnapshot
+          ? 'History search reused the persisted sqlite/json history index and transcript-aligned durable mirror.'
+          : ftsMatchedStubs
+            ? 'History search reused sqlite FTS candidates and rebuilt a persisted sqlite/json history index from durable mirror row metadata without remapping the transcript.'
+            : effectiveIndex
+              ? 'History search rebuilt a persisted sqlite/json history index from durable mirror row metadata without remapping the transcript.'
+              : 'History search reused sqlite/json durable mirror row metadata without remapping the transcript.');
+        const runtimeSummary = buildChatSessionRuntimeSummary(session.runtime);
+        const diagnosticsSummary = buildChatDiagnosticsSummary(diagnostics);
+        const searchSummary = buildHistorySearchSummary({
+          query,
+          day: page.day,
+          roleFilter,
+          contentFilter,
+          matches,
+        });
+        return {
+          checkedAt: new Date().toISOString(),
+          session,
+          query: searchSummary.query,
+          roleFilter,
+          contentFilter,
+          day: searchSummary.day,
+          matches,
+          messages: pageMessages,
+          overlays: buildPageOverlaysForMessageWindow(
+            filterRedundantTerminalOverlays(pageMessages, listRunOverlaysForSession(sessionKey)),
+            pageMessages,
+            pageMessages,
+            page.pageInfo,
+          ),
+          runtime: {
+            ...session.runtime,
+            state: runtimeSummary.state,
+            activeRunId: runtimeSummary.activeRunId,
+            gatewayConnected: runtimeSummary.gatewayConnected,
+            sessionWritable: runtimeSummary.sessionWritable,
+            lastEventAt: runtimeSummary.lastEventAt,
+            lastAckAt: runtimeSummary.lastAckAt,
+            lastErrorCode: runtimeSummary.lastErrorCode,
+          },
+          diagnostics: {
+            ...diagnostics,
+            gatewayReachable: diagnosticsSummary.gatewayReachable,
+            historyTruncated: diagnosticsSummary.historyTruncated,
+            truncationMode: diagnosticsSummary.truncationMode,
+            notes: [
+              ...diagnostics.notes,
+              `History search summary: ${searchSummary.totalMatches} matches across ${searchSummary.days.length} day(s).`,
+            ],
+          },
+          pageInfo: page.pageInfo,
+        };
+      }
+    }
+
+    let content: string;
+    try {
+      content = readTranscriptContentCached(sourceSelection.sessionFile, sourceSelection.sourceMtimeMs);
+    } catch {
+      return null;
+    }
+    const seedItems = scanTranscriptIndexSeedItemsFastFromContent(content);
+    if (seedItems?.length) {
+      const index = historyIndexStore.ensureIndexFromItems({
+        sessionKey,
+        items: seedItems,
+        totalMessages: seedItems.length,
+        sourceSessionFile: sourceSelection.sessionFile,
+        sourceMtimeMs: sourceSelection.sourceMtimeMs,
+      });
+      const positions = historyIndexStore.searchPositions(index, query, {
+        roleFilter,
+        contentFilter,
+      });
+      const matchedItems = positions.map((position) => index.items[position]!).filter(Boolean);
+      const page = paginateMessageList(
+        matchedItems.map((item) => buildIndexStubMessage(item)),
+        {
+          before: options.before,
+          after: options.after,
+          day,
+          limit: options.limit,
+          source: 'history_search',
+          query,
+          roleFilter,
+          contentFilter,
+        },
+      );
+      const targetIds = new Set(page.messages.map((message) => message.id));
+      const pageMessagesById = new Map<string, ChatMessageItem>();
+      let visibleIndex = 0;
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          continue;
+        }
+        let raw: Record<string, unknown>;
+        try {
+          raw = JSON.parse(trimmed) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+        if (!raw || typeof raw !== 'object' || shouldSkipTranscriptLine(raw)) {
+          continue;
+        }
+        const record = extractTranscriptRecord(raw);
+        const messageId = normalizeString(raw.id || record.id, `history-${visibleIndex}`);
+        if (targetIds.has(messageId)) {
+          const message = mapTranscriptMessage(raw, visibleIndex, {
+            sessionKey,
+            collectMessageResources: mediaBridge.collectMessageResources,
+            overrideMessage: overrideTranscriptMessage,
+          });
+          if (message) {
+            pageMessagesById.set(messageId, message);
+          }
+        }
+        visibleIndex += 1;
+      }
+
+      const pageMessages = page.messages
+        .map((message) => pageMessagesById.get(message.id))
+        .filter((message): message is ChatMessageItem => Boolean(message));
+      if (pageMessages.length === page.messages.length) {
+        const itemByMessageId = new Map(index.items.map((item) => [item.id, item]));
+        const matches: ChatHistorySearchMatch[] = pageMessages.map((message) => {
+          const item = itemByMessageId.get(message.id);
+          return {
+            messageId: message.id,
+            role: message.role,
+            createdAt: message.createdAt || item?.createdAt || null,
+            day: item?.dayKey || (normalizeDate(message.createdAt) || '').slice(0, 10) || null,
+            snippet: item?.snippetText || item?.previewText || message.text.slice(0, 280),
+          };
+        });
+        const session = await requireSession(sessionKey, gatewayConnected);
+        const diagnostics = await buildHealth([], gatewayConnected);
+        diagnostics.notes.push('History search rebuilt a persisted sqlite/json history index from a lightweight transcript scan and mapped only the requested page messages.');
+        const runtimeSummary = buildChatSessionRuntimeSummary(session.runtime);
+        const diagnosticsSummary = buildChatDiagnosticsSummary(diagnostics);
+        const searchSummary = buildHistorySearchSummary({
+          query,
+          day: page.day,
+          roleFilter,
+          contentFilter,
+          matches,
+        });
+        const enrichedPageMessages = enrichMessagesWithToolCards(pageMessages, []);
+        const pageOverlays = buildPageOverlaysForMessageWindow(
+          filterRedundantTerminalOverlays(
+            enrichedPageMessages,
+            listRunOverlaysForSession(sessionKey),
+          ),
+          enrichedPageMessages,
+          enrichedPageMessages,
+          page.pageInfo,
+        );
+        return {
+          checkedAt: new Date().toISOString(),
+          session,
+          query: searchSummary.query,
+          roleFilter,
+          contentFilter,
+          day: searchSummary.day,
+          matches,
+          messages: enrichedPageMessages,
+          overlays: pageOverlays,
+          runtime: {
+            ...session.runtime,
+            state: runtimeSummary.state,
+            activeRunId: runtimeSummary.activeRunId,
+            gatewayConnected: runtimeSummary.gatewayConnected,
+            sessionWritable: runtimeSummary.sessionWritable,
+            lastEventAt: runtimeSummary.lastEventAt,
+            lastAckAt: runtimeSummary.lastAckAt,
+            lastErrorCode: runtimeSummary.lastErrorCode,
+          },
+          diagnostics: {
+            ...diagnostics,
+            gatewayReachable: diagnosticsSummary.gatewayReachable,
+            historyTruncated: diagnosticsSummary.historyTruncated,
+            truncationMode: diagnosticsSummary.truncationMode,
+            notes: [
+              ...diagnostics.notes,
+              `History search summary: ${searchSummary.totalMatches} matches across ${searchSummary.days.length} day(s).`,
+            ],
+          },
+          pageInfo: page.pageInfo,
+        };
+      }
+    }
+    const rawMatches: Array<{
+      raw: Record<string, unknown>;
+      message: ChatMessageItem;
+      snippet: string;
+      day: string | null;
+    }> = [];
+    let rawIndex = 0;
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      let raw: Record<string, unknown>;
+      try {
+        raw = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (!raw || typeof raw !== 'object') {
+        continue;
+      }
+      const textValue = extractMessageText(raw);
+      if (!transcriptRawMatchesSearchFilters({ raw, textValue, query, roleFilter, contentFilter, day })) {
+        rawIndex += 1;
+        continue;
+      }
+      const message = mapTranscriptMessage(raw, rawIndex, {
+        sessionKey,
+        collectMessageResources: mediaBridge.collectMessageResources,
+        overrideMessage: overrideTranscriptMessage,
+      });
+      rawIndex += 1;
+      if (!message) {
+        continue;
+      }
+      rawMatches.push({
+        raw,
+        message,
+        snippet: clipPreview(textValue, 280),
+        day: extractTranscriptLineTimestamp(raw)?.slice(0, 10) || null,
+      });
+    }
+
+    const matchedMessages = rawMatches.map((item) => item.message);
+    const page = paginateMessageList(matchedMessages, {
+      before: options.before,
+      after: options.after,
+      day,
+      limit: options.limit,
+      source: 'history_search',
+      query,
+      roleFilter,
+      contentFilter,
+    });
+    const rawByMessageId = new Map(rawMatches.map((item) => [item.message.id, item]));
+    const matches: ChatHistorySearchMatch[] = page.messages.map((message) => {
+      const match = rawByMessageId.get(message.id);
+      return {
+        messageId: message.id,
+        role: message.role,
+        createdAt: message.createdAt || extractTranscriptLineTimestamp(match?.raw || {}) || null,
+        day: match?.day || (normalizeDate(message.createdAt) || '').slice(0, 10) || null,
+        snippet: match?.snippet || message.text.slice(0, 280),
+      };
+    });
+    const session = await requireSession(sessionKey, gatewayConnected);
+    const diagnostics = await buildHealth([], gatewayConnected);
+    diagnostics.notes.push('History search used a lightweight transcript line scan; full transcript remap/index is deferred.');
+    const runtimeSummary = buildChatSessionRuntimeSummary(session.runtime);
+    const diagnosticsSummary = buildChatDiagnosticsSummary(diagnostics);
+    const searchSummary = buildHistorySearchSummary({
+      query,
+      day: page.day,
+      roleFilter,
+      contentFilter,
+      matches,
+    });
+    const pageMessages = enrichMessagesWithToolCards(page.messages, []);
+    const pageOverlays = buildPageOverlaysForMessageWindow(
+      filterRedundantTerminalOverlays(
+        pageMessages,
+        listRunOverlaysForSession(sessionKey),
+      ),
+      pageMessages,
+      pageMessages,
+      page.pageInfo,
+    );
+    return {
+      checkedAt: new Date().toISOString(),
+      session,
+      query: searchSummary.query,
+      roleFilter,
+      contentFilter,
+      day: searchSummary.day,
+      matches,
+      messages: pageMessages,
+      overlays: pageOverlays,
+      runtime: {
+        ...session.runtime,
+        state: runtimeSummary.state,
+        activeRunId: runtimeSummary.activeRunId,
+        gatewayConnected: runtimeSummary.gatewayConnected,
+        sessionWritable: runtimeSummary.sessionWritable,
+        lastEventAt: runtimeSummary.lastEventAt,
+        lastAckAt: runtimeSummary.lastAckAt,
+        lastErrorCode: runtimeSummary.lastErrorCode,
+      },
+      diagnostics: {
+        ...diagnostics,
+        gatewayReachable: diagnosticsSummary.gatewayReachable,
+        historyTruncated: diagnosticsSummary.historyTruncated,
+        truncationMode: diagnosticsSummary.truncationMode,
+        notes: [
+          ...diagnostics.notes,
+          `History search summary: ${searchSummary.totalMatches} matches across ${searchSummary.days.length} day(s).`,
+        ],
+      },
+      pageInfo: page.pageInfo,
+    };
+  }
+
   function applyCanonicalStateUpdate(params: {
     sessionKey: string;
     source: ChatCanonicalState['source'];
@@ -3084,6 +4222,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   async function emitBootstrapEventsToSse(
     sessionKey: string,
     res: http.ServerResponse,
+    options: {
+      includeSnapshot?: boolean;
+    } = {},
   ): Promise<void> {
     const session = sessionKey ? getStudioSession(sessionKey)?.row : null;
     const runtime = session?.runtime || buildRuntimeState(await isGatewayConnected(), Boolean(session?.permissions.writable));
@@ -3118,13 +4259,18 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         terminal: isRunProjectionTerminal(overlay.lifecycle),
       } satisfies ChatStreamEvent);
     }
-    const snapshot = await buildCanonicalSnapshotEvent(sessionKey);
-    if (snapshot) {
-      sendSseEvent(res, 'chat-stream', snapshot);
+    if (options.includeSnapshot !== false) {
+      const snapshot = await buildCanonicalSnapshotEvent(sessionKey);
+      if (snapshot) {
+        sendSseEvent(res, 'chat-stream', snapshot);
+      }
     }
   }
 
-  async function buildGatewayAttachEvents(sessionKey: string): Promise<ChatStreamEvent[]> {
+  async function buildGatewayAttachEvents(
+    sessionKey: string,
+    options: { includeSnapshot?: boolean } = {},
+  ): Promise<ChatStreamEvent[]> {
     const session = getStudioSession(sessionKey)?.row || await requireSession(sessionKey);
     const runtime = getStudioSession(sessionKey)?.row.runtime
       || session.runtime
@@ -3169,9 +4315,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       });
     }
 
-    const snapshotEvent = await buildCanonicalSnapshotEvent(sessionKey);
-    if (snapshotEvent) {
-      events.push(snapshotEvent);
+    if (options.includeSnapshot !== false) {
+      const snapshotEvent = await buildCanonicalSnapshotEvent(sessionKey);
+      if (snapshotEvent) {
+        events.push(snapshotEvent);
+      }
     }
     return events;
   }
@@ -3265,14 +4413,26 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const afterCursor = decodeHistoryCursor(options.after);
       if (afterCursor && cursorMatchesContext(afterCursor)) {
         // After mode: load messages forward from cursor position
-        const startInclusive = Math.min(filtered.length, afterCursor.anchorIndex);
+        const anchorById = afterCursor.anchorMessageId
+          ? filtered.findIndex((message) => message.id === afterCursor.anchorMessageId)
+          : -1;
+        const startInclusive = Math.min(
+          filtered.length,
+          anchorById >= 0 ? anchorById : afterCursor.anchorIndex,
+        );
         start = startInclusive;
         end = Math.min(filtered.length, start + limit);
       } else {
         const beforeCursor = decodeHistoryCursor(options.before);
         if (beforeCursor && cursorMatchesContext(beforeCursor)) {
           // Before mode (existing behavior): load messages before cursor position
-          end = Math.min(filtered.length, beforeCursor.anchorIndex);
+          const anchorById = beforeCursor.anchorMessageId
+            ? filtered.findIndex((message) => message.id === beforeCursor.anchorMessageId)
+            : -1;
+          end = Math.min(
+            filtered.length,
+            anchorById >= 0 ? anchorById : beforeCursor.anchorIndex,
+          );
           start = Math.max(0, end - limit);
         } else {
           // Default: load the last N messages
@@ -3341,6 +4501,105 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       runIds.has(normalizeString(overlay.runId))
       || overlay.toolCalls.some((toolCall) => toolCallIds.has(normalizeString(toolCall.toolCallId)))
     ));
+  }
+
+  function overlayTimestampMs(overlay: ChatRunOverlay): number {
+    return Date.parse(
+      overlay.firstToolStartedAt
+      || overlay.firstAssistantSeenAt
+      || overlay.finalCreatedAt
+      || overlay.startedAt
+      || overlay.updatedAt
+      || '',
+    ) || 0;
+  }
+
+  function messageTimestampMs(message: ChatMessageItem): number {
+    return Date.parse(message.createdAt || '') || 0;
+  }
+
+  function collectOrphanOverlaysForMessageWindow(
+    overlays: ChatRunOverlay[],
+    allMessages: ChatMessageItem[],
+    pageMessages: ChatMessageItem[],
+    pageInfo: ChatHistoryPayload['pageInfo'],
+    alreadyIncluded: ChatRunOverlay[],
+  ): ChatRunOverlay[] {
+    if (!overlays.length) {
+      return [];
+    }
+    const allRunIds = new Set(allMessages.map((message) => normalizeString(message.runId)).filter(Boolean));
+    const allToolCallIds = new Set(
+      allMessages
+        .flatMap((message) => (message.toolCalls || []).map((toolCall) => normalizeString(toolCall.toolCallId)))
+        .filter(Boolean),
+    );
+    const includedRunIds = new Set(alreadyIncluded.map((overlay) => normalizeString(overlay.runId)).filter(Boolean));
+    const orphanOverlays = overlays
+      .filter((overlay) => {
+        const runId = normalizeString(overlay.runId);
+        if (!runId || includedRunIds.has(runId) || allRunIds.has(runId)) {
+          return false;
+        }
+        return !overlay.toolCalls.some((toolCall) => allToolCallIds.has(normalizeString(toolCall.toolCallId)));
+      })
+      .sort((left, right) => overlayTimestampMs(left) - overlayTimestampMs(right));
+    if (!orphanOverlays.length) {
+      return [];
+    }
+
+    const pageTimestamps = pageMessages.map(messageTimestampMs).filter(Boolean);
+    if (pageTimestamps.length) {
+      const start = Math.min(...pageTimestamps) - CHAT_HISTORY_ORPHAN_OVERLAY_CONTEXT_MS;
+      const end = Math.max(...pageTimestamps) + CHAT_HISTORY_ORPHAN_OVERLAY_CONTEXT_MS;
+      const contextual = orphanOverlays
+        .filter((overlay) => {
+          const ts = overlayTimestampMs(overlay);
+          return ts >= start && ts <= end;
+        })
+        .slice(-CHAT_HISTORY_ORPHAN_OVERLAY_LIMIT);
+      if (contextual.length) {
+        return contextual;
+      }
+    }
+
+    return pageInfo.hasMoreAfter
+      ? []
+      : orphanOverlays.slice(-CHAT_HISTORY_ORPHAN_OVERLAY_LIMIT);
+  }
+
+  function buildPageOverlaysForMessageWindow(
+    overlays: ChatRunOverlay[],
+    allMessages: ChatMessageItem[],
+    pageMessages: ChatMessageItem[],
+    pageInfo: ChatHistoryPayload['pageInfo'],
+  ): ChatRunOverlay[] {
+    const pageOverlays = filterOverlaysForMessageWindow(overlays, pageMessages);
+    return [
+      ...pageOverlays,
+      ...collectOrphanOverlaysForMessageWindow(overlays, allMessages, pageMessages, pageInfo, pageOverlays),
+    ];
+  }
+
+  function buildIndexStubMessage(item: {
+    id: string;
+    role: string;
+    createdAt: string | null;
+    runId: string | null;
+    previewText: string;
+  }): ChatMessageItem {
+    return {
+      id: item.id,
+      role: item.role as ChatMessageItem['role'],
+      text: item.previewText,
+      createdAt: item.createdAt,
+      source: 'history',
+      runId: item.runId,
+      truncated: false,
+      omitted: false,
+      aborted: false,
+      stopReason: null,
+    };
   }
 
   function buildGatewayRuntime(sessionKey: string, writable: boolean, overrides: Partial<ChatRuntimeState> = {}): ChatRuntimeState {
@@ -3910,6 +5169,17 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }
 
     if (mapped.kind === 'agent_assistant') {
+      const existingProjection = mapped.runId
+        ? getRunProjectionMap(sessionKey, false)?.get(mapped.runId)
+        : null;
+      const previousText = existingProjection?.previewText || '';
+      const nextAssistantText = (() => {
+        if (!previousText) return mapped.text;
+        if (mapped.text.startsWith(previousText)) return mapped.text;
+        if (previousText.startsWith(mapped.text) && !mapped.deltaText) return previousText;
+        if (mapped.deltaText) return `${previousText}${mapped.deltaText}`;
+        return mapped.text || previousText;
+      })();
       updateObservabilityCache(sessionKey, (current) => appendTimelineItem(current, {
         id: `assistant-${mapped.runId}`,
         kind: 'assistant',
@@ -3917,86 +5187,105 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         toolCallId: null,
         emittedAt: mapped.emittedAt,
         title: 'Assistant stream',
-        detail: mapped.textPreview,
+        detail: summarizeUnknown(nextAssistantText, 220) || mapped.textPreview,
         level: 'info',
       }, `assistant-${mapped.runId}`));
       const projection = ensureRunProjection(sessionKey, mapped.runId, mapped.emittedAt, { lifecycle: 'running' });
       projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'running');
-      projection.previewText = mapped.text || projection.previewText;
-      if (mapped.text && !projection.firstAssistantSeenAt) {
+      projection.previewText = nextAssistantText || projection.previewText;
+      if (nextAssistantText && !projection.firstAssistantSeenAt) {
         projection.firstAssistantSeenAt = mapped.emittedAt;
       }
       saveRunProjection(sessionKey, projection);
       const overlayEvent = buildRunOverlayEvent(sessionKey, projection, mapped.emittedAt, false);
-      return overlayEvent ? [mapped, overlayEvent] : [mapped];
+      const events: ChatStreamEvent[] = [mapped];
+      if (shouldEmitCanonicalProtocol()) {
+        events.push({
+          kind: 'temporary.assistant',
+          sessionKey,
+          runId: mapped.runId,
+          emittedAt: mapped.emittedAt,
+          textDelta: mapped.deltaText || mapped.text,
+          accumulatedText: nextAssistantText,
+        });
+      }
+      if (overlayEvent) {
+        events.push(overlayEvent);
+      }
+      return events;
     }
 
     if (mapped.kind === 'agent_tool_call' || mapped.kind === 'agent_tool_result') {
+      const toolStreamRunId = mapped.runId || `tool:${mapped.tool.toolCallId}`;
+      const normalizedMapped = mapped.runId ? mapped : {
+        ...mapped,
+        runId: toolStreamRunId,
+      };
       updateObservabilityCache(sessionKey, (current) => {
-        let next = upsertToolCard(current, mapped.tool);
-        const shouldAppendTimeline = mapped.kind === 'agent_tool_call' || !mapped.partial;
+        let next = upsertToolCard(current, normalizedMapped.tool);
+        const shouldAppendTimeline = normalizedMapped.kind === 'agent_tool_call' || !normalizedMapped.partial;
         if (shouldAppendTimeline) {
           next = appendTimelineItem(next, {
-            id: mapped.kind === 'agent_tool_call'
-              ? `start-${mapped.tool.toolCallId}-${mapped.emittedAt}`
-              : `result-${mapped.tool.toolCallId}-${mapped.emittedAt}`,
-            kind: mapped.kind === 'agent_tool_call' ? 'tool_call' : 'tool_result',
-            runId: mapped.runId,
-            toolCallId: mapped.tool.toolCallId,
-            emittedAt: mapped.emittedAt,
-            title: mapped.kind === 'agent_tool_call'
-              ? `Tool start · ${mapped.tool.name}`
-              : `Tool result · ${mapped.tool.name}`,
-            detail: mapped.kind === 'agent_tool_call' ? mapped.tool.argsPreview : mapped.tool.resultPreview,
-            level: mapped.tool.isError ? 'error' : mapped.kind === 'agent_tool_result' ? 'success' : 'info',
+            id: normalizedMapped.kind === 'agent_tool_call'
+              ? `start-${normalizedMapped.tool.toolCallId}-${normalizedMapped.emittedAt}`
+              : `result-${normalizedMapped.tool.toolCallId}-${normalizedMapped.emittedAt}`,
+            kind: normalizedMapped.kind === 'agent_tool_call' ? 'tool_call' : 'tool_result',
+            runId: normalizedMapped.runId,
+            toolCallId: normalizedMapped.tool.toolCallId,
+            emittedAt: normalizedMapped.emittedAt,
+            title: normalizedMapped.kind === 'agent_tool_call'
+              ? `Tool start · ${normalizedMapped.tool.name}`
+              : `Tool result · ${normalizedMapped.tool.name}`,
+            detail: normalizedMapped.kind === 'agent_tool_call' ? normalizedMapped.tool.argsPreview : normalizedMapped.tool.resultPreview,
+            level: normalizedMapped.tool.isError ? 'error' : normalizedMapped.kind === 'agent_tool_result' ? 'success' : 'info',
           });
         }
         return next;
       });
-      if (mapped.runId) {
-        const projection = ensureRunProjection(sessionKey, mapped.runId, mapped.emittedAt, { lifecycle: 'running' });
+      if (normalizedMapped.runId) {
+        const projection = ensureRunProjection(sessionKey, normalizedMapped.runId, normalizedMapped.emittedAt, { lifecycle: 'running' });
         projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'running');
-        projection.toolCalls = upsertProjectionToolCallItem(projection.toolCalls, mapped.tool);
+        projection.toolCalls = upsertProjectionToolCallItem(projection.toolCalls, normalizedMapped.tool);
         if (!projection.firstToolStartedAt) {
-          projection.firstToolStartedAt = mapped.tool.startedAt || mapped.emittedAt;
+          projection.firstToolStartedAt = normalizedMapped.tool.startedAt || normalizedMapped.emittedAt;
         }
-        if (mapped.kind === 'agent_tool_result') {
-          const deliveryMessage = maybeBuildAssistantDeliveryMessage(sessionKey, payload, mapped);
+        if (normalizedMapped.kind === 'agent_tool_result') {
+          const deliveryMessage = maybeBuildAssistantDeliveryMessage(sessionKey, payload, normalizedMapped);
           if (deliveryMessage) {
             projection.previewText = deliveryMessage.text || projection.previewText;
           }
         }
         saveRunProjection(sessionKey, projection);
         persistProjectionIfTerminal(projection);
-        const events: ChatStreamEvent[] = [mapped];
+        const events: ChatStreamEvent[] = [normalizedMapped];
         if (shouldEmitCanonicalProtocol()) {
           events.push({
             kind: 'temporary.tool',
             sessionKey,
-            runId: mapped.runId,
-            emittedAt: mapped.emittedAt,
-            partial: mapped.kind === 'agent_tool_result' ? mapped.partial : false,
-            tool: mapped.tool,
+            runId: toolStreamRunId,
+            emittedAt: normalizedMapped.emittedAt,
+            partial: normalizedMapped.kind === 'agent_tool_result' ? normalizedMapped.partial : false,
+            tool: normalizedMapped.tool,
             source: 'agent.tool',
           });
         }
         if (shouldEmitLegacyProtocol()) {
-          const overlayEvent = buildRunOverlayEvent(sessionKey, projection, mapped.emittedAt, isRunProjectionTerminal(projection.lifecycle));
+          const overlayEvent = buildRunOverlayEvent(sessionKey, projection, normalizedMapped.emittedAt, isRunProjectionTerminal(projection.lifecycle));
           if (overlayEvent) {
             events.push(overlayEvent);
           }
         }
         return events;
       }
-      const events: ChatStreamEvent[] = [mapped];
+      const events: ChatStreamEvent[] = [normalizedMapped];
       if (shouldEmitCanonicalProtocol()) {
         events.push({
           kind: 'temporary.tool',
           sessionKey,
-          runId: mapped.runId,
-          emittedAt: mapped.emittedAt,
-          partial: mapped.kind === 'agent_tool_result' ? mapped.partial : false,
-          tool: mapped.tool,
+          runId: toolStreamRunId,
+          emittedAt: normalizedMapped.emittedAt,
+          partial: normalizedMapped.kind === 'agent_tool_result' ? normalizedMapped.partial : false,
+          tool: normalizedMapped.tool,
           source: 'agent.tool',
         });
       }
@@ -4321,6 +5610,26 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return Boolean(getStudioSession(sessionKey)?.row.runtime.activeRunId);
   }
 
+  function bridgeSessionOwnsRunId(sessionKey: string, runId: unknown): boolean {
+    const normalizedRunId = normalizeString(runId);
+    if (!normalizedRunId) {
+      return false;
+    }
+    const session = getStudioSession(sessionKey);
+    if (normalizeString(session?.row.runtime.activeRunId) === normalizedRunId) {
+      return true;
+    }
+    return Boolean(getRunProjection(sessionKey, normalizedRunId));
+  }
+
+  function gatewayEventMatchesBridgeSession(bridge: SessionGatewayBridge, payload: Record<string, unknown>): boolean {
+    const eventSessionKey = normalizeString(payload?.sessionKey);
+    if (eventSessionKey) {
+      return eventSessionKey === bridge.sessionKey;
+    }
+    return bridgeSessionOwnsRunId(bridge.sessionKey, payload?.runId);
+  }
+
   function disposeSessionBridge(sessionKey: string): void {
     const bridge = sessionBridges.get(sessionKey);
     if (!bridge) return;
@@ -4374,13 +5683,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     bridge.ws = ws;
 
     const resolveReady = (): void => {
-      bridge.resolveReady?.();
-      bridge.resolveReady = null;
-      bridge.rejectReady = null;
-      bridge.pendingSignatureRetry = false;
-      bridge.signatureRetryBudgetUsed = false;
-      bridge.pendingPairingRetry = false;
-      bridge.pairingRetryBudgetUsed = false;
       const session = getStudioSession(bridge.sessionKey)?.row;
       const runtime = session?.runtime || buildRuntimeState(true, false);
       updateRuntimeCache(bridge.sessionKey, {
@@ -4399,10 +5701,26 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           lastErrorMessage: null,
         },
       );
-      void requestViaBridge<Record<string, unknown>>(bridge, 'sessions.subscribe', {}).catch(() => {});
+      const subscriptions: Array<Promise<unknown>> = [
+        requestViaBridge<Record<string, unknown>>(bridge, 'sessions.subscribe', {}).catch(() => null),
+      ];
       if (selectCanonicalSource(bridge.sessionKey).kind === 'official_canonical_stream') {
-        void requestViaBridge<Record<string, unknown>>(bridge, 'sessions.messages.subscribe', { key: bridge.sessionKey }).catch(() => {});
+        subscriptions.push(
+          requestViaBridge<Record<string, unknown>>(bridge, 'sessions.messages.subscribe', { key: bridge.sessionKey }).catch(() => null),
+        );
       }
+      void Promise.allSettled(subscriptions).then(() => {
+        if (!bridge.resolveReady) {
+          return;
+        }
+        bridge.resolveReady();
+        bridge.resolveReady = null;
+        bridge.rejectReady = null;
+        bridge.pendingSignatureRetry = false;
+        bridge.signatureRetryBudgetUsed = false;
+        bridge.pendingPairingRetry = false;
+        bridge.pairingRetryBudgetUsed = false;
+      });
     };
 
     const failReady = (error: unknown): void => {
@@ -4519,9 +5837,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         return;
       }
 
-      if (frame.type === 'event' && frame.event === 'agent') {
+      if (frame.type === 'event' && (frame.event === 'agent' || frame.event === 'session.tool')) {
         const payload = frame.payload as Record<string, unknown>;
-        if (normalizeString(payload?.sessionKey) !== bridge.sessionKey) return;
+        if (!gatewayEventMatchesBridgeSession(bridge, payload)) return;
         const mappedEvents = mapGatewayAgentEvents(bridge.sessionKey, payload);
         for (const mapped of mappedEvents) {
           broadcastToSession(bridge.sessionKey, mapped);
@@ -4645,6 +5963,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url || CHAT_API_PATHS.stream, `http://${req.headers.host || '127.0.0.1'}`);
     const sessionKey = url.searchParams.get('sessionKey') || '';
+    const includeBootstrapSnapshot = url.searchParams.get('bootstrapSnapshot') === '1';
     const subscribers = frontendSubscribers.get(sessionKey) || new Set<WebSocket>();
     subscribers.add(ws);
     frontendSubscribers.set(sessionKey, subscribers);
@@ -4700,7 +6019,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           };
           ws.send(JSON.stringify(overlayEvent));
         }
-        if (shouldEmitCanonicalProtocol()) {
+        if (shouldEmitCanonicalProtocol() && includeBootstrapSnapshot) {
           await bootstrapCanonicalSnapshotForSession(sessionKey, ws);
         }
       }
@@ -4777,6 +6096,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       materialized: false,
       clearedAt: null,
     });
+    const optimisticProjection = ensureRunProjection(sessionKey, requestId, now, {
+      lifecycle: 'queued',
+    });
+    optimisticProjection.lifecycle = pickProjectionLifecycle(optimisticProjection.lifecycle, 'queued');
+    optimisticProjection.updatedAt = now;
+    saveRunProjection(sessionKey, optimisticProjection);
     const raw = await requestViaSessionBridge<Record<string, unknown>>(sessionKey, 'chat.send', {
       sessionKey,
       message: transportText,
@@ -4904,6 +6229,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       recentLimit?: number;
       historyLimit?: number;
     } = {}): Promise<ChatBootstrapPayload> {
+      const gatewayConnected = await isGatewayConnected();
       const selectedSessionKeyHint = normalizeString(params.sessionKey) || null;
       const sessions = buildLocalSessionCatalog({
         preferredSessionKey: selectedSessionKeyHint,
@@ -4930,7 +6256,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           bootstrapSessions = [selectedRow, ...bootstrapSessions.filter((row) => row.key !== selectedSessionKey)];
         }
       }
-      const diagnostics = createBaseDiagnostics(options.config, false, [
+      const diagnostics = createBaseDiagnostics(options.config, gatewayConnected, [
         'Bootstrap payload is local-first and does not wait for gateway session enumeration.',
       ]);
       const organizer = pruneOrganizerStateSessionKeys(
@@ -4946,40 +6272,51 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
       if (selectedSessionKey) {
         try {
-          const snapshot = await loadHistorySnapshot(selectedSessionKey, { localOnly: true });
-          const page = paginateMessageList(snapshot.messages, {
+          history = await loadLocalTranscriptBootstrapHistoryWindow(selectedSessionKey, {
             limit: params.historyLimit,
-            source: 'history_window',
+            gatewayConnected,
           });
-          const pageOverlays = filterOverlaysForMessageWindow(snapshot.overlays, page.messages);
-          const runtimeSummary = buildChatSessionRuntimeSummary(snapshot.runtime);
-          const diagnosticsSummary = buildChatDiagnosticsSummary(snapshot.diagnostics);
-          history = {
-            checkedAt: snapshot.checkedAt,
-            session: snapshot.session,
-            messages: page.messages,
-            overlays: pageOverlays,
-            runtime: {
-              ...snapshot.runtime,
-              state: runtimeSummary.state,
-              activeRunId: runtimeSummary.activeRunId,
-              gatewayConnected: runtimeSummary.gatewayConnected,
-              sessionWritable: runtimeSummary.sessionWritable,
-              lastEventAt: runtimeSummary.lastEventAt,
-              lastAckAt: runtimeSummary.lastAckAt,
-              lastErrorCode: runtimeSummary.lastErrorCode,
-            },
-            diagnostics: {
-              ...snapshot.diagnostics,
-              gatewayReachable: diagnosticsSummary.gatewayReachable,
-              historyTruncated: diagnosticsSummary.historyTruncated,
-              truncationMode: diagnosticsSummary.truncationMode,
-            },
-            observability: snapshot.observability,
-            pageInfo: page.pageInfo,
-            day: page.day,
-          };
-          const sessionState = ensureStudioSessionState(snapshot.session);
+          if (!history) {
+            const snapshot = await loadHistorySnapshot(selectedSessionKey, { localOnly: true });
+            const page = paginateMessageList(snapshot.messages, {
+              limit: params.historyLimit,
+              source: 'history_window',
+            });
+            const pageOverlays = buildPageOverlaysForMessageWindow(snapshot.overlays, snapshot.messages, page.messages, page.pageInfo);
+            const runtimeSummary = buildChatSessionRuntimeSummary(snapshot.runtime);
+            const diagnosticsSummary = buildChatDiagnosticsSummary(snapshot.diagnostics);
+            history = {
+              checkedAt: snapshot.checkedAt,
+              session: snapshot.session,
+              messages: page.messages,
+              overlays: pageOverlays,
+              runtime: {
+                ...snapshot.runtime,
+                state: runtimeSummary.state,
+                activeRunId: runtimeSummary.activeRunId,
+                gatewayConnected: runtimeSummary.gatewayConnected,
+                sessionWritable: runtimeSummary.sessionWritable,
+                lastEventAt: runtimeSummary.lastEventAt,
+                lastAckAt: runtimeSummary.lastAckAt,
+                lastErrorCode: runtimeSummary.lastErrorCode,
+              },
+              diagnostics: {
+                ...snapshot.diagnostics,
+                gatewayReachable: diagnosticsSummary.gatewayReachable,
+                historyTruncated: diagnosticsSummary.historyTruncated,
+                truncationMode: diagnosticsSummary.truncationMode,
+              },
+              observability: compactObservabilityState(snapshot.observability, {
+                toolCardLimit: 6,
+                timelineLimit: 8,
+                toolDetailLimit: 180,
+                timelineDetailLimit: 220,
+              }),
+              pageInfo: page.pageInfo,
+              day: page.day,
+            };
+          }
+          const sessionState = ensureStudioSessionState(history.session);
           queue = {
             checkedAt: new Date().toISOString(),
             session: sessionState.row,
@@ -5000,7 +6337,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return {
         checkedAt: new Date().toISOString(),
         organizer,
-        sessions: bootstrapSessions,
+        sessions: compactSessionRowsForTransport(bootstrapSessions),
         selectedSessionKey,
         history,
         queue,
@@ -5114,66 +6451,84 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       limit?: number;
       includeDerivedTitles?: boolean;
       includeLastMessage?: boolean;
+      localOnly?: boolean;
     } = {}): Promise<ChatSessionsPayload> {
       const gatewayConnected = await isGatewayConnected();
       const diagnostics = createBaseDiagnostics(options.config, gatewayConnected, []);
       const sessionListLimit = normalizeHistoryLimit(queryOptions.limit, 200);
       const includeDerivedTitles = queryOptions.includeDerivedTitles !== false;
       const includeLastMessage = queryOptions.includeLastMessage !== false;
+      const localOnly = queryOptions.localOnly === true;
 
       const rows: ChatSessionRow[] = [];
       const seenKeys = new Set<string>();
 
-      try {
-        const payload = await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {
-          agentId,
-          limit: sessionListLimit,
-          includeDerivedTitles,
-          includeLastMessage,
-        });
-        const gatewayRows = Array.isArray(payload.sessions) ? payload.sessions : [];
-        for (const row of gatewayRows) {
-          if (!row || typeof row !== 'object') continue;
-          const mapped = mapGatewaySessionRow(agentId, row as Record<string, unknown>, gatewayConnected);
-          const registryEntry = getRegistryEntry(mapped.key);
-          if (
-            mapped.kind === 'studio_managed'
-          ) {
-            if (!registryEntry) {
-              saveRegistryEntry(buildRegistryEntryFromRow(mapped));
-            } else if (normalizeString(mapped.sessionId) !== normalizeString(registryEntry.sessionId)) {
-              saveRegistryEntry(buildRegistryEntryFromRow({
-                ...mapped,
-                updatedAt: mapped.updatedAt || registryEntry.updatedAt,
-              }, registryEntry));
+      if (!localOnly) {
+        try {
+          const payload = await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {
+            agentId,
+            limit: sessionListLimit,
+            includeDerivedTitles,
+            includeLastMessage,
+          });
+          const gatewayRows = Array.isArray(payload.sessions) ? payload.sessions : [];
+          for (const row of gatewayRows) {
+            if (!row || typeof row !== 'object') continue;
+            const mapped = mapGatewaySessionRow(agentId, row as Record<string, unknown>, gatewayConnected);
+            const registryEntry = getRegistryEntry(mapped.key);
+            if (
+              mapped.kind === 'studio_managed'
+            ) {
+              if (!registryEntry) {
+                saveRegistryEntry(buildRegistryEntryFromRow(mapped));
+              } else if (normalizeString(mapped.sessionId) !== normalizeString(registryEntry.sessionId)) {
+                saveRegistryEntry(buildRegistryEntryFromRow({
+                  ...mapped,
+                  updatedAt: mapped.updatedAt || registryEntry.updatedAt,
+                }, registryEntry));
+              }
+            }
+            if (mapped.permissions.visibleInFrontend) {
+              rows.push(mapped);
+              seenKeys.add(mapped.key);
             }
           }
-          if (mapped.permissions.visibleInFrontend) {
-            rows.push(mapped);
-            seenKeys.add(mapped.key);
+          diagnostics.notes.push('Session list is sourced from Gateway sessions.list and merged with Studio draft registry.');
+        } catch (error) {
+          diagnostics.notes.push(`Gateway sessions.list unavailable; falling back to local session store (${error instanceof Error ? error.message : String(error)}).`);
+        }
+      } else {
+        diagnostics.notes.push('Session list is sourced from Studio local session catalog without waiting for Gateway sessions.list.');
+      }
+
+      {
+        const localCatalogSignature = computeLocalSessionCatalogSignature();
+        const catalogSnapshot = sessionCatalogStore.readSnapshot();
+        const registry = ensureRegistryLoaded();
+        const registryAgentRowCount = Object.values(registry)
+          .filter((entry) => normalizeString(entry?.key) && normalizeString(entry?.agentId) === agentId)
+          .length;
+        const snapshotAgentRows = catalogSnapshot.signature === localCatalogSignature
+          ? sessionCatalogStore.readAgentSessions(agentId)
+            .filter((row) => row.permissions.visibleInFrontend)
+            .sort(compareSessionRowRecency)
+          : [];
+        const catalogRows = (
+          catalogSnapshot.signature === localCatalogSignature
+          && (registryAgentRowCount === 0 || snapshotAgentRows.length >= registryAgentRowCount)
+        )
+          ? snapshotAgentRows
+          : buildLocalSessionRowsForAgent(agentId, gatewayConnected);
+        for (const row of catalogRows) {
+          if (seenKeys.has(row.key)) {
+            continue;
           }
-        }
-        diagnostics.notes.push('Session list is sourced from Gateway sessions.list and merged with Studio draft registry.');
-      } catch (error) {
-        diagnostics.notes.push(`Gateway sessions.list unavailable; falling back to local session store (${error instanceof Error ? error.message : String(error)}).`);
-      }
-
-      const store = readJsonFile<Record<string, LocalSessionRecord>>(resolveAgentSessionsStorePath(options.config, agentId), {});
-      for (const [key, record] of Object.entries(store)) {
-        if (seenKeys.has(key)) continue;
-        const row = mapLocalSessionRow(agentId, key, record, gatewayConnected, getRegistryEntry(key));
-        if (row.permissions.visibleInFrontend) {
           rows.push(row);
-          seenKeys.add(key);
+          seenKeys.add(row.key);
         }
-      }
-
-      const registry = ensureRegistryLoaded();
-      for (const entry of Object.values(registry)) {
-        if (entry.agentId !== agentId || seenKeys.has(entry.key)) continue;
-        const inMemory = getStudioSession(entry.key);
-        const row = inMemory?.row || buildStudioManagedRowFromRegistry(entry, gatewayConnected);
-        if (row.permissions.visibleInFrontend) rows.push(row);
+        if (!localOnly) {
+          diagnostics.notes.push('Session list is merged with Studio local session catalog so locally registered chats are not dropped by partial Gateway enumeration.');
+        }
       }
 
       rows.sort((left, right) => (right.updatedAt || '').localeCompare(left.updatedAt || ''));
@@ -5182,7 +6537,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return {
         checkedAt: new Date().toISOString(),
         agentId,
-        sessions: rows,
+        sessions: compactSessionRowsForTransport(rows),
         diagnostics,
       };
     },
@@ -5197,6 +6552,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         day?: string | null;
       } = {},
     ): Promise<ChatHistoryPayload> {
+      const gatewayConnected = await isGatewayConnected();
+      const fastWindow = await loadLocalTranscriptHistoryWindowFast(sessionKey, options, gatewayConnected);
+      if (fastWindow) {
+        return fastWindow;
+      }
       const snapshot = await loadHistorySnapshot(sessionKey);
       historyIndexStore.ensureIndex({
         sessionKey,
@@ -5212,20 +6572,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         day: options.day,
         source: 'history_window',
       });
-      const pageOverlays = filterOverlaysForMessageWindow(snapshot.overlays, page.messages);
-      // Include orphan overlays (tool-only runs with no corresponding message in the full list)
-      const allRunIds = new Set(
-        snapshot.messages
-          .map((m) => normalizeString(m.runId))
-          .filter(Boolean),
-      );
-      const pageRunIds = new Set(pageOverlays.map((o) => normalizeString(o.runId)).filter(Boolean));
-      for (const overlay of snapshot.overlays) {
-        const rid = normalizeString(overlay.runId);
-        if (rid && !allRunIds.has(rid) && !pageRunIds.has(rid)) {
-          pageOverlays.push(overlay);
-        }
-      }
+      const pageOverlays = buildPageOverlaysForMessageWindow(snapshot.overlays, snapshot.messages, page.messages, page.pageInfo);
       const runtimeSummary = buildChatSessionRuntimeSummary(snapshot.runtime);
       const diagnosticsSummary = buildChatDiagnosticsSummary(snapshot.diagnostics);
       return {
@@ -5267,6 +6614,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         limit?: number;
       },
     ): Promise<ChatHistorySearchPayload> {
+      const gatewayConnected = await isGatewayConnected();
+      const fastSearch = await searchLocalTranscriptHistoryFast(sessionKey, options, gatewayConnected);
+      if (fastSearch) {
+        return fastSearch;
+      }
       const snapshot = await loadHistorySnapshot(sessionKey);
       const query = normalizeString(options.query);
       const roleFilter = normalizeHistorySearchRoleFilter(options.role);
@@ -5321,7 +6673,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         day: searchSummary.day,
         matches,
         messages: page.messages,
-        overlays: filterOverlaysForMessageWindow(snapshot.overlays, page.messages),
+        overlays: buildPageOverlaysForMessageWindow(snapshot.overlays, snapshot.messages, page.messages, page.pageInfo),
         runtime: {
           ...snapshot.runtime,
           state: runtimeSummary.state,
@@ -5347,6 +6699,76 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     },
 
     async getHistoryDates(sessionKey: string): Promise<ChatHistoryDatesPayload> {
+      const sourceSelection = selectCanonicalSource(sessionKey);
+      if (
+        sourceSelection.kind === 'local_transcript'
+        && sourceSelection.priorSessionFiles.length === 0
+      ) {
+        const indexSnapshot = historyIndexStore.readSnapshot({
+          sessionKey,
+          sourceSessionFile: sourceSelection.sessionFile,
+          sourceMtimeMs: sourceSelection.sourceMtimeMs,
+        });
+        if (indexSnapshot) {
+          const gatewayConnected = await isGatewayConnected();
+          const session = await requireSession(sessionKey, gatewayConnected);
+          const diagnostics = await buildHealth([], gatewayConnected);
+          diagnostics.notes.push('History dates reused the persisted sqlite/json history index without remapping the transcript.');
+          return {
+            checkedAt: new Date().toISOString(),
+            session,
+            diagnostics,
+            days: historyIndexStore.buildDateBuckets(indexSnapshot),
+          };
+        }
+        const mirrorMeta = durableMirrorStore.readSessionMeta(sessionKey);
+        if (
+          mirrorMeta
+          && mirrorMeta.sourceSessionFile === sourceSelection.sessionFile
+          && (mirrorMeta.sourceMtimeMs ?? null) === (sourceSelection.sourceMtimeMs ?? null)
+        ) {
+          const index = ensureLocalTranscriptHistoryIndexFromMirror(
+            sessionKey,
+            {
+              sourceSessionFile: sourceSelection.sessionFile,
+              sourceMtimeMs: sourceSelection.sourceMtimeMs,
+            },
+            null,
+          );
+          if (index) {
+            const gatewayConnected = await isGatewayConnected();
+            const session = await requireSession(sessionKey, gatewayConnected);
+            const diagnostics = await buildHealth([], gatewayConnected);
+            diagnostics.notes.push('History dates rebuilt a persisted sqlite/json history index from durable mirror row metadata without remapping the transcript.');
+            return {
+              checkedAt: new Date().toISOString(),
+              session,
+              diagnostics,
+              days: historyIndexStore.buildDateBuckets(index),
+            };
+          }
+        }
+        const seedItems = scanTranscriptIndexSeedItemsFast(sourceSelection.sessionFile);
+        if (seedItems?.length) {
+          const index = historyIndexStore.ensureIndexFromItems({
+            sessionKey,
+            items: seedItems,
+            totalMessages: seedItems.length,
+            sourceSessionFile: sourceSelection.sessionFile,
+            sourceMtimeMs: sourceSelection.sourceMtimeMs,
+          });
+          const gatewayConnected = await isGatewayConnected();
+          const session = await requireSession(sessionKey, gatewayConnected);
+          const diagnostics = await buildHealth([], gatewayConnected);
+          diagnostics.notes.push('History dates rebuilt a persisted sqlite/json history index from a lightweight transcript scan.');
+          return {
+            checkedAt: new Date().toISOString(),
+            session,
+            diagnostics,
+            days: historyIndexStore.buildDateBuckets(index),
+          };
+        }
+      }
       const snapshot = await loadHistorySnapshot(sessionKey);
       const index = historyIndexStore.ensureIndex({
         sessionKey,
@@ -5850,7 +7272,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return {
         sessionKey,
         leaseTtlMs: CHAT_GATEWAY_LEASE_MS,
-        events: await buildGatewayAttachEvents(sessionKey),
+        events: await buildGatewayAttachEvents(sessionKey, {
+          includeSnapshot: payload.bootstrapSnapshot === true,
+        }),
       };
     },
 
@@ -5906,7 +7330,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         sessionKey: normalizedSessionKey,
         connectedAt: new Date().toISOString(),
       });
-      await emitBootstrapEventsToSse(normalizedSessionKey, res);
+      const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+      await emitBootstrapEventsToSse(normalizedSessionKey, res, {
+        includeSnapshot: url.searchParams.get('bootstrapSnapshot') === '1',
+      });
 
       const heartbeat = setInterval(() => {
         if (res.writableEnded || res.destroyed) {

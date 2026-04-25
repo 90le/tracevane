@@ -5,6 +5,8 @@ const AgentsView = () => import("../../views/AgentsView.vue");
 const ChatView = () => import("../../views/ChatView.vue");
 const ChannelsView = () => import("../../views/ChannelsView.vue");
 const SkillsView = () => import("../../views/SkillsView.vue");
+const FilesView = () => import("../../views/FilesView.vue");
+const PluginsView = () => import("../../views/PluginsView.vue");
 const CronView = () => import("../../views/CronView.vue");
 const TerminalView = () => import("../../views/TerminalView.vue");
 const ConfigView = () => import("../../views/ConfigView.vue");
@@ -42,6 +44,8 @@ export type ShellNavItem = {
     | "channels"
     | "cron"
     | "skills"
+    | "files"
+    | "plugins"
     | "terminal"
     | "config"
     | "system";
@@ -108,6 +112,13 @@ export const shellNavGroups: ShellNavGroup[] = [
         labelEn: "Skills",
       },
       {
+        key: "files",
+        to: "/files",
+        icon: "files",
+        labelZh: "文件管理",
+        labelEn: "Files",
+      },
+      {
         key: "terminal",
         to: "/terminal",
         icon: "terminal",
@@ -155,6 +166,13 @@ export const shellNavGroups: ShellNavGroup[] = [
         icon: "config",
         labelZh: "系统配置",
         labelEn: "Config",
+      },
+      {
+        key: "plugins",
+        to: "/plugins",
+        icon: "plugins",
+        labelZh: "插件管理",
+        labelEn: "Plugins",
       },
     ],
   },
@@ -250,6 +268,16 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/skills",
     component: SkillsView,
+    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+  },
+  {
+    path: "/files",
+    component: FilesView,
+    meta: { contextPanel: "disabled" satisfies ShellContextPanelMode },
+  },
+  {
+    path: "/plugins",
+    component: PluginsView,
     meta: { contextPanel: "default" satisfies ShellContextPanelMode },
   },
   {

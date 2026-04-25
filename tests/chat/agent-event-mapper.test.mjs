@@ -81,6 +81,74 @@ test('maps assistant stream preview into Studio contract', () => {
   assert.equal(mapped?.deltaText, 'world');
 });
 
+test('maps assistant delta-only stream into Studio contract', () => {
+  const mapped = mapGatewayAgentEventPayload({
+    sessionKey: 'agent:main:webchat:direct:studio-1',
+    payload: {
+      runId: 'run-2d',
+      stream: 'assistant',
+      ts: Date.parse('2026-03-19T03:00:03.000Z'),
+      data: {
+        delta: 'hello',
+      },
+    },
+  });
+
+  assert.equal(mapped?.kind, 'agent_assistant');
+  assert.equal(mapped?.text, 'hello');
+  assert.equal(mapped?.deltaText, 'hello');
+});
+
+test('maps item and command_output agent streams into live tool projections', () => {
+  const item = mapGatewayAgentEventPayload({
+    sessionKey: 'agent:main:webchat:direct:studio-1',
+    payload: {
+      runId: 'run-item-1',
+      stream: 'item',
+      ts: Date.parse('2026-03-19T03:00:01.000Z'),
+      data: {
+        itemId: 'item-read-1',
+        phase: 'start',
+        kind: 'tool',
+        title: 'read file',
+        status: 'running',
+        name: 'read',
+        toolCallId: 'tool-read-1',
+        meta: '/tmp/a.txt',
+      },
+    },
+  });
+
+  assert.equal(item?.kind, 'agent_tool_call');
+  assert.equal(item?.tool.toolCallId, 'tool-read-1');
+  assert.equal(item?.tool.status, 'running');
+  assert.match(item?.tool.argsPreview || '', /read file/);
+
+  const output = mapGatewayAgentEventPayload({
+    sessionKey: 'agent:main:webchat:direct:studio-1',
+    previousToolCard: item?.tool,
+    payload: {
+      runId: 'run-item-1',
+      stream: 'command_output',
+      ts: Date.parse('2026-03-19T03:00:02.000Z'),
+      data: {
+        itemId: 'command-tool-read-1',
+        phase: 'delta',
+        title: 'read file',
+        toolCallId: 'tool-read-1',
+        name: 'read',
+        output: 'line 1',
+        status: 'running',
+      },
+    },
+  });
+
+  assert.equal(output?.kind, 'agent_tool_result');
+  assert.equal(output?.partial, true);
+  assert.equal(output?.tool.status, 'running');
+  assert.match(output?.tool.resultPreview || '', /line 1/);
+});
+
 test('tool status is monotonic and richer result preview is preserved', () => {
   const completed = mapGatewayAgentEventPayload({
     sessionKey: 'agent:main:webchat:direct:studio-1',

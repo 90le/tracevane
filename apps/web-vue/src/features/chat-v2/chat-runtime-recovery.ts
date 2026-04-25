@@ -9,6 +9,9 @@ import type {
 import type { ChatSessionRuntimeMachineState } from './chat-session-runtime-machine';
 import { decodeChatSessionRef, encodeChatSessionRef } from '../chat/session-ref';
 
+const CHAT_RUNTIME_SNAPSHOT_MAX_MESSAGES = 120;
+const CHAT_RUNTIME_SNAPSHOT_MAX_SETTLED_OVERLAYS = 24;
+
 export function buildSearchHistoryPayload(
   result: ChatHistorySearchPayload,
   observability: ChatObservabilityState,
@@ -173,6 +176,118 @@ type RuntimeSnapshot = {
   savedAt: string;
 };
 
+function cloneMessage(message: ChatMessageItem): ChatMessageItem {
+  return { ...message };
+}
+
+function cloneOverlay(overlay: ChatRunOverlay): ChatRunOverlay {
+  return {
+    ...overlay,
+    toolCalls: overlay.toolCalls.map((toolCall) => ({ ...toolCall })),
+  };
+}
+
+function overlayTimestamp(overlay: ChatRunOverlay): number {
+  return (
+    Date.parse(overlay.updatedAt || '') ||
+    Date.parse(overlay.startedAt || '') ||
+    0
+  );
+}
+
+function isOverlaySettled(overlay: ChatRunOverlay): boolean {
+  return overlay.lifecycle === 'completed' || overlay.lifecycle === 'aborted' || overlay.lifecycle === 'error';
+}
+
+function trimSnapshotMessages(messages: ChatMessageItem[]): ChatMessageItem[] {
+  if (messages.length <= CHAT_RUNTIME_SNAPSHOT_MAX_MESSAGES) {
+    return messages.map(cloneMessage);
+  }
+  return messages.slice(-CHAT_RUNTIME_SNAPSHOT_MAX_MESSAGES).map(cloneMessage);
+}
+
+function trimSnapshotOverlays(
+  overlays: ChatRunOverlay[],
+  preservedRunIds: Set<string>,
+): ChatRunOverlay[] {
+  const sorted = overlays
+    .map(cloneOverlay)
+    .sort((left, right) => overlayTimestamp(right) - overlayTimestamp(left));
+  const preserved = sorted.filter((overlay) => preservedRunIds.has(overlay.runId) || !isOverlaySettled(overlay));
+  const preservedRunIdSet = new Set(preserved.map((overlay) => overlay.runId));
+  const recentSettled = sorted.filter((overlay) => !preservedRunIdSet.has(overlay.runId)).slice(0, CHAT_RUNTIME_SNAPSHOT_MAX_SETTLED_OVERLAYS);
+  return [...preserved, ...recentSettled]
+    .sort((left, right) => overlayTimestamp(left) - overlayTimestamp(right));
+}
+
+function trimSnapshotRuntimeState(
+  runtimeMachineState: ChatSessionRuntimeMachineState | undefined,
+  messages: ChatMessageItem[],
+  overlays: ChatRunOverlay[],
+): ChatSessionRuntimeMachineState | undefined {
+  if (!runtimeMachineState) {
+    return undefined;
+  }
+  const allowedRunIds = new Set<string>();
+  for (const message of messages) {
+    if (message.runId) {
+      allowedRunIds.add(message.runId);
+    }
+  }
+  for (const overlay of overlays) {
+    if (overlay.runId) {
+      allowedRunIds.add(overlay.runId);
+    }
+  }
+  for (const runId of Object.keys(runtimeMachineState.transientRunState)) {
+    allowedRunIds.add(runId);
+  }
+  const nextTransientRunState = Object.fromEntries(
+    Object.entries(runtimeMachineState.transientRunState).filter(([runId]) => allowedRunIds.has(runId)),
+  );
+  const nextProcessLedger = Object.fromEntries(
+    Object.entries(runtimeMachineState.processLedger).filter(([runId]) => allowedRunIds.has(runId)),
+  );
+  return {
+    ...runtimeMachineState,
+    canonicalMessageLedger: messages.map(cloneMessage),
+    transientRunState: nextTransientRunState,
+    processLedger: nextProcessLedger,
+  };
+}
+
+function normalizeRuntimeSnapshot(snapshot: RuntimeSnapshot): RuntimeSnapshot {
+  const trimmedMessages = trimSnapshotMessages(snapshot.messages || snapshot.payload.messages || []);
+  const preservedRunIds = new Set<string>();
+  for (const message of trimmedMessages) {
+    if (message.runId) {
+      preservedRunIds.add(message.runId);
+    }
+  }
+  if (snapshot.runtimeMachineState) {
+    for (const runId of Object.keys(snapshot.runtimeMachineState.transientRunState)) {
+      preservedRunIds.add(runId);
+    }
+    for (const overlay of Object.values(snapshot.runtimeMachineState.processLedger)) {
+      if (!isOverlaySettled(overlay) && overlay.runId) {
+        preservedRunIds.add(overlay.runId);
+      }
+    }
+  }
+  const trimmedOverlays = trimSnapshotOverlays(snapshot.overlays || snapshot.payload.overlays || [], preservedRunIds);
+  return {
+    ...snapshot,
+    payload: {
+      ...snapshot.payload,
+      messages: trimmedMessages.map(cloneMessage),
+      overlays: trimmedOverlays.map(cloneOverlay),
+    },
+    messages: trimmedMessages.map(cloneMessage),
+    overlays: trimmedOverlays.map(cloneOverlay),
+    runtimeMachineState: trimSnapshotRuntimeState(snapshot.runtimeMachineState, trimmedMessages, trimmedOverlays),
+  };
+}
+
 export function saveChatRuntimeSnapshot(
   sessionKey: string,
   payload: ChatHistoryPayload,
@@ -183,7 +298,7 @@ export function saveChatRuntimeSnapshot(
   if (typeof window === 'undefined') {
     return;
   }
-  const snapshot: RuntimeSnapshot = {
+  const snapshot = normalizeRuntimeSnapshot({
     sessionKey,
     payload: {
       ...payload,
@@ -194,7 +309,7 @@ export function saveChatRuntimeSnapshot(
     overlays,
     runtimeMachineState,
     savedAt: new Date().toISOString(),
-  };
+  });
   try {
     window.sessionStorage.setItem(
       `${CHAT_RUNTIME_SNAPSHOT_PREFIX}${sessionKey}`,
@@ -212,10 +327,16 @@ export function readChatRuntimeSnapshot(sessionKey: string): RuntimeSnapshot | n
     if (!raw) {
       return null;
     }
-    const parsed = JSON.parse(raw) as RuntimeSnapshot;
+    const parsed = normalizeRuntimeSnapshot(JSON.parse(raw) as RuntimeSnapshot);
     if (!parsed || parsed.sessionKey !== sessionKey || !parsed.payload || !Array.isArray(parsed.messages)) {
       return null;
     }
+    try {
+      window.sessionStorage.setItem(
+        `${CHAT_RUNTIME_SNAPSHOT_PREFIX}${sessionKey}`,
+        JSON.stringify(parsed),
+      );
+    } catch {}
     return parsed;
   } catch {
     return null;

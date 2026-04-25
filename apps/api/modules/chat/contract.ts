@@ -69,6 +69,8 @@ export const CHAT_PHASE2_GATEWAY_STREAMS = [
   'lifecycle',
   'assistant',
   'tool',
+  'item',
+  'command_output',
 ] as const;
 
 export const CHAT_SEND_STATUS_MAP = {

@@ -1,5 +1,6 @@
 <template>
   <article
+    ref="bubbleRoot"
     v-if="groupHasVisibleBubble"
     :id="'msg-' + (group?.messages[0]?.id || '')"
     class="chat-message-group"
@@ -22,22 +23,44 @@
         <span>{{ timeLabel }}</span>
       </header>
 
-      <div class="chat-message-bubble-stack">
+      <div v-if="!bubbleBodyReady && canDeferBubbleBody" class="chat-message-bubble-stack">
+        <section
+          class="chat-message-bubble chat-message-bubble-deferred"
+          :class="{ user: displayGroup.role === 'user' }"
+        >
+          <p class="chat-message-bubble-deferred__summary">{{ deferredBubbleSummary }}</p>
+        </section>
+      </div>
+
+      <div v-else class="chat-message-bubble-stack">
         <template v-for="(message, messageIndex) in displayGroup.messages" :key="message.id">
           <section
             v-if="shouldRenderBubble(message, messageIndex)"
             class="chat-message-bubble"
             :class="bubbleClass(message, messageIndex)"
+            :data-chat-message-id="message.id"
           >
             <details
               v-if="shouldRenderProcessBlocks(messageIndex)"
               class="chat-inline-thinking"
-              :open="message.source === 'stream'"
+              :open="shouldOpenProcessDetails(message, messageIndex)"
             >
               <summary class="chat-inline-thinking-summary">
                 <span class="chat-inline-thinking-pill">⋯</span>
                 <span>{{ processSummary(messageIndex) }}</span>
+                <span v-if="isProcessStreaming(message)" class="chat-inline-thinking-summary-meta">
+                  {{ text('正在思考', 'Thinking') }}
+                </span>
               </summary>
+              <div
+                v-if="isProcessStreaming(message)"
+                class="chat-inline-thinking-live"
+                role="status"
+                aria-live="polite"
+              >
+                <span class="chat-inline-thinking-live-dot" aria-hidden="true"></span>
+                <span>{{ text('正在思考，回复会在下方继续生成。', 'Thinking. The reply will continue below.') }}</span>
+              </div>
               <div class="chat-inline-thinking-list">
                 <section
                   v-for="(block, blockIndex) in displayAt(messageIndex).processBlocks"
@@ -53,6 +76,7 @@
                       :session-key="sessionKey"
                       :role="markdownRole"
                       :resources="displayAt(messageIndex).resourceItems"
+                      :force-eager-render="forceEagerRender"
                     />
                   </div>
                 </section>
@@ -71,6 +95,7 @@
                     :session-key="sessionKey"
                     :role="markdownRole"
                     :resources="displayAt(messageIndex).resourceItems"
+                    :force-eager-render="forceEagerRender"
                   />
                 </div>
 
@@ -101,6 +126,9 @@
                             class="chat-inline-resource-media"
                             :src="inlinePreviewSrc(segment.item)"
                             :alt="segment.item.alt"
+                            loading="lazy"
+                            decoding="async"
+                            fetchpriority="low"
                           >
                           <span class="chat-inline-resource-caption">{{ inlineDisplayLabel(segment.item) }}</span>
                         </button>
@@ -124,7 +152,7 @@
                             :src="inlinePreviewSrc(segment.item)"
                             muted
                             playsinline
-                            preload="metadata"
+                            preload="none"
                           ></video>
                           <span class="chat-inline-resource-caption">{{ inlineDisplayLabel(segment.item) }}</span>
                         </button>
@@ -175,6 +203,9 @@
                           class="chat-inline-resource-media"
                           :src="inlinePreviewSrc(run.segment.item)"
                           :alt="run.segment.item.alt"
+                          loading="lazy"
+                          decoding="async"
+                          fetchpriority="low"
                         >
                         <span class="chat-inline-resource-caption">{{ inlineDisplayLabel(run.segment.item) }}</span>
                       </button>
@@ -198,7 +229,7 @@
                           :src="inlinePreviewSrc(run.segment.item)"
                           muted
                           playsinline
-                          preload="metadata"
+                          preload="none"
                         ></video>
                         <span class="chat-inline-resource-caption">{{ inlineDisplayLabel(run.segment.item) }}</span>
                       </button>
@@ -266,12 +297,21 @@
                 <details
                   v-if="groupedProcessBlocks.length"
                   class="chat-inline-process-thinking"
-                  :open="message.source === 'stream'"
+                  :open="shouldOpenGroupedProcessDetails(message)"
                 >
                   <summary class="chat-inline-process-thinking__head">
                     <strong>{{ text('思考 / 判定', 'Thinking / reasoning') }}</strong>
                     <span class="chat-inline-process-thinking__meta">{{ groupedProcessSummary() }}</span>
                   </summary>
+                  <div
+                    v-if="isProcessStreaming(message)"
+                    class="chat-inline-process-thinking__live"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span class="chat-inline-thinking-live-dot" aria-hidden="true"></span>
+                    <span>{{ text('正在推理，工具步骤会继续更新。', 'Reasoning. Tool steps will keep updating.') }}</span>
+                  </div>
                   <div class="chat-inline-process-thinking__list">
                     <section
                       v-for="(block, blockIndex) in groupedProcessBlocks"
@@ -286,6 +326,7 @@
                           :source="block.text"
                           :session-key="sessionKey"
                           :role="markdownRole"
+                          :force-eager-render="forceEagerRender"
                         />
                       </div>
                     </section>
@@ -297,7 +338,7 @@
                   :key="tool.id"
                   class="chat-inline-process-item"
                   :class="`status-${tool.status}`"
-                  :open="tool.status === 'running'"
+                  :open="shouldOpenToolDetails(tool, toolIndex)"
                 >
                   <summary class="chat-inline-process-head">
                     <div class="chat-inline-process-head-main">
@@ -309,14 +350,57 @@
                     </div>
                     <span class="chat-inline-process-head-state" :class="`status-${tool.status}`">{{ toolStatusLabel(tool.status) }}</span>
                   </summary>
-                  <div v-if="tool.argsPreview || tool.resultPreview" class="chat-inline-process-detail">
+                  <div
+                    v-if="tool.status === 'running'"
+                    class="chat-inline-process-live"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span class="chat-inline-process-live-dot" aria-hidden="true"></span>
+                    <span>{{ text('正在执行，工具输出会实时更新。', 'Executing. Tool output updates live.') }}</span>
+                  </div>
+                  <div v-if="tool.argsPreview || tool.resultPreview || shouldRenderToolOutputPlaceholder(tool)" class="chat-inline-process-detail">
                     <section v-if="tool.argsPreview" class="chat-inline-process-block">
-                      <span>{{ text('参数', 'Args') }}</span>
+                      <div class="chat-inline-process-block-head">
+                        <span>{{ text('工具输入', 'Tool input') }}</span>
+                        <button
+                          type="button"
+                          class="chat-inline-process-copy"
+                          :data-copied="toolCopyState[toolCopyKey(tool, 'input')] === 'copied' ? '1' : null"
+                          :data-error="toolCopyState[toolCopyKey(tool, 'input')] === 'error' ? '1' : null"
+                          :aria-label="toolCopyTitle(tool, 'input')"
+                          :title="toolCopyTitle(tool, 'input')"
+                          @click="copyToolPreview(tool, 'input')"
+                        >
+                          <span class="chat-inline-process-copy__idle">{{ text('复制', 'Copy') }}</span>
+                          <span class="chat-inline-process-copy__done">{{ text('已复制', 'Copied') }}</span>
+                          <span class="chat-inline-process-copy__error">{{ text('失败', 'Failed') }}</span>
+                        </button>
+                      </div>
                       <pre>{{ tool.argsPreview }}</pre>
                     </section>
                     <section v-if="tool.resultPreview" class="chat-inline-process-block">
-                      <span>{{ tool.status === 'error' ? text('错误', 'Error') : text('结果', 'Result') }}</span>
+                      <div class="chat-inline-process-block-head">
+                        <span>{{ toolOutputLabel(tool.status) }}</span>
+                        <button
+                          type="button"
+                          class="chat-inline-process-copy"
+                          :data-copied="toolCopyState[toolCopyKey(tool, 'output')] === 'copied' ? '1' : null"
+                          :data-error="toolCopyState[toolCopyKey(tool, 'output')] === 'error' ? '1' : null"
+                          :aria-label="toolCopyTitle(tool, 'output')"
+                          :title="toolCopyTitle(tool, 'output')"
+                          @click="copyToolPreview(tool, 'output')"
+                        >
+                          <span class="chat-inline-process-copy__idle">{{ text('复制', 'Copy') }}</span>
+                          <span class="chat-inline-process-copy__done">{{ text('已复制', 'Copied') }}</span>
+                          <span class="chat-inline-process-copy__error">{{ text('失败', 'Failed') }}</span>
+                        </button>
+                      </div>
                       <pre>{{ tool.resultPreview }}</pre>
+                    </section>
+                    <section v-else-if="shouldRenderToolOutputPlaceholder(tool)" class="chat-inline-process-block chat-inline-process-block-placeholder">
+                      <span>{{ text('工具输出', 'Tool output') }}</span>
+                      <p>{{ text('等待工具输出…', 'Waiting for tool output...') }}</p>
                     </section>
                   </div>
                   <div v-if="tool.artifacts?.length" class="chat-inline-process-artifacts">
@@ -381,6 +465,7 @@
             class="chat-image-preview-image"
             :src="mediaPreview.src"
             :alt="mediaPreview.alt"
+            decoding="async"
           >
           <video
             v-else-if="mediaPreview?.kind === 'video'"
@@ -389,6 +474,7 @@
             controls
             autoplay
             playsinline
+            preload="metadata"
           ></video>
 
           <div v-if="mediaPreview" class="chat-image-preview-meta">
@@ -404,7 +490,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import { useLocalePreference } from '../../shared/locale';
 import type { ChatInlineResourceDisplay, ChatMessageItem, ChatProcessBlock, ChatRunOverlay, ChatToolStatus } from '../../../../../types/chat';
@@ -434,7 +520,9 @@ const props = defineProps<{
   agentEmoji: string;
   agentInitial: string;
   activeRunId: string | null;
+  activeStreamingMessageId: string | null;
   sessionKey: string | null;
+  forceEagerRender: boolean;
 }>();
 
 const { text } = useLocalePreference();
@@ -450,13 +538,36 @@ const EMPTY_DISPLAY: ChatDisplayMessage = {
   resourceItems: [],
   hasStructuredBlocks: false,
 };
+type ChatDisplayToolHint = ChatDisplayMessage['toolHints'][number];
+type ToolPreviewKind = 'input' | 'output';
 
 const messageDisplayCache = new WeakMap<ChatMessageItem, ChatDisplayMessage>();
 const bubbleCopyState = reactive<Record<string, 'copied' | 'error' | undefined>>({});
 const bubbleCopyTimers = new Map<string, number>();
+const toolCopyState = reactive<Record<string, 'copied' | 'error' | undefined>>({});
+const toolCopyTimers = new Map<string, number>();
 const mediaPreview = ref<{ src: string; alt: string; kind: 'image' | 'video' } | null>(null);
+const bubbleRoot = ref<HTMLElement | null>(null);
+const bubbleBodyReady = ref(false);
+const bubbleBodyReadyPending = ref(false);
 let previousBodyOverflow = '';
 let bodyOverflowLocked = false;
+let bubbleVisibilityObserver: IntersectionObserver | null = null;
+let bubbleBodyReadyTimer: number | null = null;
+let bubbleBodyReadyIdleHandle: number | null = null;
+
+const MESSAGE_BUBBLE_DEFER_MIN_CHARS = 480;
+const MESSAGE_BUBBLE_DEFER_ROOT_MARGIN = '1200px 0px';
+const MESSAGE_BUBBLE_DEFER_IDLE_TIMEOUT_MS = 220;
+const TOOL_DETAIL_AUTO_OPEN_PREVIEW_LIMIT = 520;
+
+function clipBubblePreview(value: string, limit = 220): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+  return normalized.length > limit ? `${normalized.slice(0, limit - 1)}…` : normalized;
+}
 
 function buildOverlayGroup(overlay: ChatRunOverlay | null | undefined): ChatMessageGroup {
   const normalizedOverlay = overlay || {
@@ -498,6 +609,34 @@ function buildOverlayGroup(overlay: ChatRunOverlay | null | undefined): ChatMess
 const displayGroup = computed<ChatMessageGroup>(() => props.group || buildOverlayGroup(props.overlay));
 const isOverlayContinuation = computed(() => Boolean(props.overlay && props.overlayAnchorMessageIds?.length));
 const coveredToolCallIdSet = computed(() => new Set((props.coveredToolCallIds || []).filter(Boolean)));
+const shouldForceBubbleBody = computed(() => {
+  if (props.forceEagerRender) {
+    return true;
+  }
+  if (props.overlay && (props.overlay.lifecycle === 'running' || props.overlay.lifecycle === 'queued')) {
+    return true;
+  }
+  return displayGroup.value.messages.some((message) => (
+    message.source === 'stream'
+    || (props.activeRunId && message.runId === props.activeRunId)
+  ));
+});
+
+const canDeferBubbleBody = computed(() => {
+  if (shouldForceBubbleBody.value) {
+    return false;
+  }
+  if (props.overlay) {
+    return true;
+  }
+  return displayGroup.value.messages.some((message) => {
+    const text = String(message.text || '');
+    return text.length >= MESSAGE_BUBBLE_DEFER_MIN_CHARS
+      || /```/.test(text)
+      || /<(?:table|svg|iframe|pre|code|details|summary|article|section|div)\b/i.test(text)
+      || Boolean(message.toolCalls?.length || message.processBlocks?.length || message.resources?.length || message.media?.length);
+  });
+});
 
 const markdownRole = computed<RenderingRole | null>(() => {
   const role = displayGroup.value.role;
@@ -582,7 +721,11 @@ function displayFor(message: ChatMessageGroup['messages'][number]): ChatDisplayM
   };
 }
 
-const groupDisplays = computed(() => displayGroup.value.messages.map((message) => displayFor(message)));
+const groupDisplays = computed(() => (
+  bubbleBodyReady.value || !canDeferBubbleBody.value
+    ? displayGroup.value.messages.map((message) => displayFor(message))
+    : []
+));
 
 const groupedToolHints = computed(() => {
   const merged: ChatDisplayMessage['toolHints'] = [];
@@ -610,12 +753,41 @@ const groupedProcessBlocks = computed(() => {
   return merged;
 });
 
+const deferredBubbleSummary = computed(() => {
+  if (props.overlay) {
+    const preview = clipBubblePreview(props.overlay.previewText || '', 200);
+    if (preview) {
+      return preview;
+    }
+    if (props.overlay.toolCalls.length) {
+      return text(`工具过程 ${props.overlay.toolCalls.length} 项`, `${props.overlay.toolCalls.length} tool updates`);
+    }
+    return text('离屏运行摘要已折叠，靠近视口时会自动展开。', 'Offscreen run details are collapsed and expand near the viewport.');
+  }
+  const rawText = displayGroup.value.messages
+    .map((message) => clipBubblePreview(String(message.text || ''), 120))
+    .filter(Boolean)
+    .join(' · ');
+  if (rawText) {
+    return rawText;
+  }
+  const resourceCount = displayGroup.value.messages.reduce((count, message) => count + (message.resources?.length || 0) + (message.media?.length || 0), 0);
+  if (resourceCount > 0) {
+    return text(`包含 ${resourceCount} 个资源项`, `${resourceCount} attached resources`);
+  }
+  if (displayGroup.value.messages.some((message) => message.toolCalls?.length || message.processBlocks?.length)) {
+    return text('包含工具过程与思考块，靠近视口时再展开。', 'Contains tool/process details and expands near the viewport.');
+  }
+  return text('离屏消息已折叠，靠近视口时会自动展开。', 'Offscreen messages are collapsed and expand near the viewport.');
+});
+
 function displayAt(index: number): ChatDisplayMessage {
   return groupDisplays.value[index] || EMPTY_DISPLAY;
 }
 
 const groupHasVisibleBubble = computed(() => (
-  displayGroup.value.messages.some((message, index) => shouldRenderBubble(message, index))
+  (!bubbleBodyReady.value && canDeferBubbleBody.value)
+  || displayGroup.value.messages.some((message, index) => shouldRenderBubble(message, index))
 ));
 
 function shouldRenderProcessBlocks(index: number): boolean {
@@ -675,6 +847,26 @@ function processSummary(index: number): string {
     return text('思考块', 'Thinking block');
   }
   return text(`${count} 个思考块`, `${count} thinking blocks`);
+}
+
+function isProcessStreaming(message: ChatMessageGroup['messages'][number]): boolean {
+  return message.source === 'stream' || Boolean(props.activeRunId && message.runId === props.activeRunId);
+}
+
+function shouldOpenProcessDetails(message: ChatMessageGroup['messages'][number], index: number): boolean {
+  if (isProcessStreaming(message)) {
+    return true;
+  }
+  const totalLength = displayAt(index).processBlocks.reduce((sum, block) => sum + block.text.length, 0);
+  return totalLength > 0 && totalLength <= 360;
+}
+
+function shouldOpenGroupedProcessDetails(message: ChatMessageGroup['messages'][number]): boolean {
+  if (isProcessStreaming(message)) {
+    return true;
+  }
+  const totalLength = groupedProcessBlocks.value.reduce((sum, block) => sum + block.text.length, 0);
+  return totalLength > 0 && totalLength <= 360;
 }
 
 function groupedProcessSummary(): string {
@@ -737,6 +929,54 @@ function bubbleCopyTitle(messageId: string, index: number): string {
   return displayAt(index).renderMode === 'markdown'
     ? text('复制 Markdown 原文', 'Copy markdown source')
     : text('复制消息内容', 'Copy message content');
+}
+
+function toolCopyKey(tool: ChatDisplayToolHint, kind: ToolPreviewKind): string {
+  return `${tool.id}:${kind}`;
+}
+
+function toolPreviewSource(tool: ChatDisplayToolHint, kind: ToolPreviewKind): string {
+  return kind === 'input'
+    ? String(tool.argsPreview || '')
+    : String(tool.resultPreview || '');
+}
+
+function clearToolCopyTimer(key: string): void {
+  const timer = toolCopyTimers.get(key);
+  if (timer != null) {
+    window.clearTimeout(timer);
+    toolCopyTimers.delete(key);
+  }
+}
+
+function setToolCopyState(key: string, state: 'copied' | 'error'): void {
+  toolCopyState[key] = state;
+  clearToolCopyTimer(key);
+  const duration = state === 'copied' ? COPIED_FOR_MS : ERROR_FOR_MS;
+  const timer = window.setTimeout(() => {
+    delete toolCopyState[key];
+    toolCopyTimers.delete(key);
+  }, duration);
+  toolCopyTimers.set(key, timer);
+}
+
+async function copyToolPreview(tool: ChatDisplayToolHint, kind: ToolPreviewKind): Promise<void> {
+  const source = toolPreviewSource(tool, kind);
+  if (!source) {
+    return;
+  }
+  const key = toolCopyKey(tool, kind);
+  const copied = await copyTextToClipboard(source);
+  setToolCopyState(key, copied ? 'copied' : 'error');
+}
+
+function toolCopyTitle(tool: ChatDisplayToolHint, kind: ToolPreviewKind): string {
+  const state = toolCopyState[toolCopyKey(tool, kind)];
+  if (state === 'copied') return text('已复制', 'Copied');
+  if (state === 'error') return text('复制失败', 'Copy failed');
+  return kind === 'input'
+    ? text('复制工具输入', 'Copy tool input')
+    : text('复制工具输出', 'Copy tool output');
 }
 
 function isInlineResourceMissing(item: ChatDisplayResourceItem): boolean {
@@ -902,6 +1142,9 @@ function shouldRenderFooter(message: ChatMessageGroup['messages'][number], index
 }
 
 function shouldRenderBubble(message: ChatMessageGroup['messages'][number], index: number): boolean {
+  if (!bubbleBodyReady.value && canDeferBubbleBody.value) {
+    return false;
+  }
   if (shouldRenderToolHints(message, index)) return true;
   const display = displayAt(index);
   if (display.blocks.length) return true;
@@ -911,16 +1154,116 @@ function shouldRenderBubble(message: ChatMessageGroup['messages'][number], index
   return false;
 }
 
+function disconnectBubbleVisibilityObserver(): void {
+  bubbleVisibilityObserver?.disconnect();
+  bubbleVisibilityObserver = null;
+}
+
+function clearScheduledBubbleBodyReady(): void {
+  if (bubbleBodyReadyTimer != null) {
+    window.clearTimeout(bubbleBodyReadyTimer);
+    bubbleBodyReadyTimer = null;
+  }
+  if (
+    bubbleBodyReadyIdleHandle != null
+    && typeof window !== 'undefined'
+    && 'cancelIdleCallback' in window
+  ) {
+    window.cancelIdleCallback(bubbleBodyReadyIdleHandle);
+    bubbleBodyReadyIdleHandle = null;
+  }
+  bubbleBodyReadyPending.value = false;
+}
+
+function ensureBubbleBodyReady(): void {
+  if (bubbleBodyReady.value) {
+    return;
+  }
+  clearScheduledBubbleBodyReady();
+  bubbleBodyReady.value = true;
+  disconnectBubbleVisibilityObserver();
+}
+
+function scheduleBubbleBodyReady(): void {
+  if (bubbleBodyReady.value || bubbleBodyReadyPending.value) {
+    return;
+  }
+  bubbleBodyReadyPending.value = true;
+  const run = () => {
+    bubbleBodyReadyTimer = null;
+    bubbleBodyReadyIdleHandle = null;
+    bubbleBodyReadyPending.value = false;
+    ensureBubbleBodyReady();
+  };
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    bubbleBodyReadyIdleHandle = window.requestIdleCallback(() => {
+      run();
+    }, { timeout: MESSAGE_BUBBLE_DEFER_IDLE_TIMEOUT_MS });
+    return;
+  }
+  bubbleBodyReadyTimer = window.setTimeout(run, 80);
+}
+
+function bindBubbleVisibilityObserver(): void {
+  if (
+    bubbleBodyReady.value
+    || !canDeferBubbleBody.value
+    || shouldForceBubbleBody.value
+    || typeof IntersectionObserver === 'undefined'
+  ) {
+    bubbleBodyReady.value = true;
+    return;
+  }
+  disconnectBubbleVisibilityObserver();
+  const element = bubbleRoot.value;
+  if (!element) {
+    return;
+  }
+  bubbleVisibilityObserver = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (!entry?.isIntersecting) {
+      return;
+    }
+    scheduleBubbleBodyReady();
+  }, {
+    root: null,
+    rootMargin: MESSAGE_BUBBLE_DEFER_ROOT_MARGIN,
+    threshold: 0,
+  });
+  bubbleVisibilityObserver.observe(element);
+}
+
 function toolStatusLabel(status: ChatToolStatus): string {
   if (status === 'running') return text('执行中', 'Running');
   if (status === 'completed') return text('已完成', 'Completed');
   return text('错误', 'Error');
 }
 
+function toolOutputLabel(status: ChatToolStatus): string {
+  if (status === 'running') return text('实时输出', 'Live output');
+  if (status === 'completed') return text('工具输出', 'Tool output');
+  return text('错误输出', 'Error output');
+}
+
+function shouldRenderToolOutputPlaceholder(tool: ChatDisplayMessage['toolHints'][number]): boolean {
+  return tool.status === 'running' && !tool.resultPreview;
+}
+
+function shouldOpenToolDetails(tool: ChatDisplayToolHint, index: number): boolean {
+  if (tool.status === 'running' || tool.status === 'error') {
+    return true;
+  }
+  if (index > 1) {
+    return false;
+  }
+  const previewLength = String(tool.argsPreview || '').length + String(tool.resultPreview || '').length;
+  return previewLength > 0 && previewLength <= TOOL_DETAIL_AUTO_OPEN_PREVIEW_LIMIT;
+}
+
 function bubbleClass(message: ChatMessageGroup['messages'][number], index: number): Record<string, boolean> {
   const display = displayAt(index);
   return {
-    streaming: message.source === 'stream' && props.activeRunId === message.runId,
+    streaming: message.source === 'stream' && props.activeRunId === message.runId && props.activeStreamingMessageId === message.id,
     user: displayGroup.value.role === 'user',
     'tool-message': display.toolHints.length > 0 && !display.markdownSource,
     'process-message': display.processBlocks.length > 0,
@@ -950,14 +1293,42 @@ watch(mediaPreview, (value) => {
 });
 
 onMounted(() => {
+  bubbleBodyReady.value = !canDeferBubbleBody.value || shouldForceBubbleBody.value;
+  if (!bubbleBodyReady.value) {
+    bindBubbleVisibilityObserver();
+  }
   window.addEventListener('keydown', handleWindowKeydown);
 });
 
+watch(
+  [canDeferBubbleBody, shouldForceBubbleBody],
+  async ([canDefer, forced]) => {
+    if (forced || !canDefer) {
+      ensureBubbleBodyReady();
+      return;
+    }
+    if (bubbleBodyReady.value) {
+      return;
+    }
+    clearScheduledBubbleBodyReady();
+    bubbleBodyReady.value = false;
+    await nextTick();
+    bindBubbleVisibilityObserver();
+  },
+  { immediate: false },
+);
+
 onBeforeUnmount(() => {
+  clearScheduledBubbleBodyReady();
+  disconnectBubbleVisibilityObserver();
   for (const timer of bubbleCopyTimers.values()) {
     window.clearTimeout(timer);
   }
   bubbleCopyTimers.clear();
+  for (const timer of toolCopyTimers.values()) {
+    window.clearTimeout(timer);
+  }
+  toolCopyTimers.clear();
   window.removeEventListener('keydown', handleWindowKeydown);
   if (bodyOverflowLocked && typeof document !== 'undefined') {
     document.body.style.overflow = previousBodyOverflow;
@@ -1064,6 +1435,23 @@ onBeforeUnmount(() => {
 
 .chat-message-bubble:hover {
   box-shadow: 0 4px 16px rgba(8, 15, 26, 0.08);
+}
+
+.chat-message-bubble-deferred {
+  min-width: min(320px, 100%);
+  max-width: min(560px, 100%);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--chat-assistant-bubble-soft) 82%, transparent);
+  box-shadow: none;
+}
+
+.chat-message-bubble-deferred__summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--chat-text-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .chat-message-group.is-overlay-continuation .chat-message-bubble {
@@ -1606,6 +1994,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   color: var(--chat-text-soft);
   font-size: 12px;
   cursor: pointer;
@@ -1624,6 +2013,57 @@ onBeforeUnmount(() => {
   background: var(--chat-muted-chip);
   color: var(--chat-text);
   font-size: 11px;
+}
+
+.chat-inline-thinking-summary-meta {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-muted-chip));
+  color: var(--chat-accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chat-inline-thinking-live,
+.chat-inline-process-thinking__live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--chat-accent) 8%, transparent);
+  color: var(--chat-text-soft);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.chat-inline-thinking-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--chat-accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--chat-accent) 36%, transparent);
+  animation: chat-thinking-live-pulse 1.5s ease-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes chat-thinking-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--chat-accent) 36%, transparent);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 .chat-inline-thinking-list {
@@ -1651,6 +2091,8 @@ onBeforeUnmount(() => {
 
 .chat-inline-thinking-body {
   min-width: 0;
+  max-height: min(220px, 36vh);
+  overflow: auto;
 }
 
 .chat-inline-process-summary {
@@ -1779,6 +2221,8 @@ onBeforeUnmount(() => {
 
 .chat-inline-process-thinking__item-body {
   min-width: 0;
+  max-height: min(220px, 36vh);
+  overflow: auto;
   color: var(--chat-text);
 }
 
@@ -1873,6 +2317,44 @@ onBeforeUnmount(() => {
   color: #dc2626;
 }
 
+.chat-inline-process-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 8px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--chat-accent) 9%, transparent);
+  color: var(--chat-text-soft);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.chat-inline-process-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--chat-accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--chat-accent) 38%, transparent);
+  animation: chat-tool-live-pulse 1.4s ease-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes chat-tool-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--chat-accent) 38%, transparent);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
 .chat-inline-process-item p {
   margin: 0;
   padding-top: 2px;
@@ -1884,12 +2366,25 @@ onBeforeUnmount(() => {
 .chat-inline-process-detail {
   display: grid;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
   padding-top: 4px;
 }
 
 .chat-inline-process-block {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-inline-process-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chat-inline-process-block span {
@@ -1900,9 +2395,58 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
+.chat-inline-process-copy {
+  border: 1px solid var(--chat-line);
+  border-radius: 8px;
+  background: var(--chat-muted-chip);
+  color: var(--chat-text-soft);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+}
+
+.chat-inline-process-copy:hover,
+.chat-inline-process-copy:focus-visible {
+  color: var(--chat-text);
+  border-color: var(--chat-line-strong);
+}
+
+.chat-inline-process-copy__done,
+.chat-inline-process-copy__error {
+  display: none;
+}
+
+.chat-inline-process-copy[data-copied="1"] {
+  color: var(--chat-success);
+}
+
+.chat-inline-process-copy[data-copied="1"] .chat-inline-process-copy__idle {
+  display: none;
+}
+
+.chat-inline-process-copy[data-copied="1"] .chat-inline-process-copy__done {
+  display: inline;
+}
+
+.chat-inline-process-copy[data-error="1"] {
+  color: #dc2626;
+}
+
+.chat-inline-process-copy[data-error="1"] .chat-inline-process-copy__idle {
+  display: none;
+}
+
+.chat-inline-process-copy[data-error="1"] .chat-inline-process-copy__error {
+  display: inline;
+}
+
 .chat-inline-process-block pre {
   margin: 0;
   overflow: auto;
+  max-height: min(260px, 42vh);
+  max-width: 100%;
+  min-width: 0;
   padding: 10px 12px;
   border-radius: 12px;
   background: var(--chat-code-bg);
@@ -1910,6 +2454,21 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-inline-process-block-placeholder p {
+  margin: 0;
+  max-width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--chat-code-bg);
+  color: var(--chat-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 

@@ -14,7 +14,7 @@ import { normalizeChatHistoryText } from './chat-history-normalization.js';
  * Beyond this, the oldest messages are trimmed to prevent unbounded memory
  * growth in long-lived sessions (e.g. 1 month of continuous chat).
  */
-const LEDGER_MAX_MESSAGES = 2000;
+const LEDGER_MAX_MESSAGES = 4000;
 
 function normalizePreview(value: string | null | undefined): string | null {
   const normalized = String(value || '').trim();

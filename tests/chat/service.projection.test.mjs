@@ -337,6 +337,14 @@ async function startFakeGateway() {
         payload,
       }));
     },
+    sendSessionToolEvent(payload) {
+      assert.ok(bridgeSocket, 'expected Studio gateway bridge connection');
+      bridgeSocket.send(JSON.stringify({
+        type: 'event',
+        event: 'session.tool',
+        payload,
+      }));
+    },
     sendChatEvent(payload) {
       assert.ok(bridgeSocket, 'expected Studio gateway bridge connection');
       bridgeSocket.send(JSON.stringify({
@@ -566,6 +574,483 @@ test('run_overlay keeps tool-only runs visible while history stays canonical and
     });
     try { restartedFrontendWs.close(); } catch {}
     await restartedStudio.close();
+  } finally {
+    if (frontendWs) {
+      try { frontendWs.close(); } catch {}
+    }
+    if (studio) {
+      await studio.close();
+    }
+    if (gateway) {
+      await gateway.close();
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('temporary.tool synthesizes a stable tool run id when gateway tool events omit runId', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-tool-stream-no-runid-'));
+  const workspace = path.join(root, 'workspace');
+  const frontendEvents = [];
+
+  let gateway = null;
+  let studio = null;
+  let frontendWs = null;
+
+  try {
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(root, 'openclaw.json'), JSON.stringify({
+      gateway: {
+        auth: {
+          token: 'gateway-token-test',
+        },
+      },
+      agents: {
+        defaults: { workspace },
+        list: [{ id: 'main', workspace, default: true }],
+      },
+    }, null, 2));
+    writeGatewayIdentity(root);
+
+    gateway = await startFakeGateway();
+    studio = await startStudio(root, gateway.port);
+
+    const created = await studio.context.services.chat.createSession('main', {});
+    const sessionKey = created.session.key;
+
+    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs.on('message', (raw) => {
+      frontendEvents.push(JSON.parse(String(raw)));
+    });
+
+    await new Promise((resolve, reject) => {
+      frontendWs.once('open', resolve);
+      frontendWs.once('error', reject);
+    });
+    await gateway.waitForStudioConnection();
+
+    gateway.sendAgentEvent({
+      sessionKey,
+      stream: 'tool',
+      ts: Date.parse('2026-03-23T10:10:00.000Z'),
+      data: {
+        phase: 'start',
+        toolCallId: 'tool-no-run-1',
+        name: 'exec',
+        args: { command: 'echo hello' },
+      },
+    });
+
+    await waitFor(() => {
+      const event = frontendEvents.find((entry) => entry.kind === 'temporary.tool' && entry.tool?.toolCallId === 'tool-no-run-1');
+      assert.ok(event, 'expected temporary.tool start event');
+      assert.equal(event.runId, 'tool:tool-no-run-1');
+      assert.equal(event.tool?.status, 'running');
+    });
+
+    gateway.sendAgentEvent({
+      sessionKey,
+      stream: 'tool',
+      ts: Date.parse('2026-03-23T10:10:01.000Z'),
+      data: {
+        phase: 'result',
+        toolCallId: 'tool-no-run-1',
+        name: 'exec',
+        result: { ok: true, stdout: 'hello' },
+      },
+    });
+
+    await waitFor(() => {
+      const event = [...frontendEvents]
+        .reverse()
+        .find((entry) => entry.kind === 'temporary.tool' && entry.tool?.toolCallId === 'tool-no-run-1');
+      assert.ok(event, 'expected terminal temporary.tool event');
+      assert.equal(event.runId, 'tool:tool-no-run-1');
+      assert.equal(event.tool?.status, 'completed');
+      assert.match(event.tool?.resultPreview || '', /hello/i);
+    });
+
+    const liveHistory = await studio.context.services.chat.getHistory(sessionKey);
+    const overlay = liveHistory.overlays.find((entry) => entry.runId === 'tool:tool-no-run-1');
+    assert.ok(overlay, 'expected synthetic tool overlay in history');
+    assert.equal(overlay?.toolCalls?.[0]?.status, 'completed');
+    assert.match(overlay?.toolCalls?.[0]?.resultPreview || '', /hello/i);
+  } finally {
+    if (frontendWs) {
+      try { frontendWs.close(); } catch {}
+    }
+    if (studio) {
+      await studio.close();
+    }
+    if (gateway) {
+      await gateway.close();
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('session.tool gateway events enter the live chat stream before final history sync', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-tool-stream-'));
+  const workspace = path.join(root, 'workspace');
+  const frontendEvents = [];
+
+  let gateway = null;
+  let studio = null;
+  let frontendWs = null;
+
+  try {
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(root, 'openclaw.json'), JSON.stringify({
+      gateway: {
+        auth: {
+          token: 'gateway-token-test',
+        },
+      },
+      agents: {
+        defaults: { workspace },
+        list: [{ id: 'main', workspace, default: true }],
+      },
+    }, null, 2));
+    writeGatewayIdentity(root);
+
+    gateway = await startFakeGateway();
+    studio = await startStudio(root, gateway.port);
+
+    const created = await studio.context.services.chat.createSession('main', {});
+    const sessionKey = created.session.key;
+
+    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs.on('message', (raw) => {
+      frontendEvents.push(JSON.parse(String(raw)));
+    });
+
+    await new Promise((resolve, reject) => {
+      frontendWs.once('open', resolve);
+      frontendWs.once('error', reject);
+    });
+    await gateway.waitForStudioConnection();
+    await gateway.waitForSessionEventSubscription();
+
+    gateway.sendSessionToolEvent({
+      sessionKey,
+      runId: 'run-session-tool-1',
+      stream: 'tool',
+      ts: Date.parse('2026-03-23T10:20:00.000Z'),
+      data: {
+        phase: 'start',
+        toolCallId: 'tool-session-1',
+        name: 'exec',
+        args: { command: 'pwd' },
+      },
+    });
+
+    await waitFor(() => {
+      const event = frontendEvents.find((entry) => entry.kind === 'temporary.tool' && entry.tool?.toolCallId === 'tool-session-1');
+      assert.ok(event, 'expected live temporary.tool from session.tool');
+      assert.equal(event.runId, 'run-session-tool-1');
+      assert.equal(event.tool?.status, 'running');
+      assert.match(event.tool?.argsPreview || '', /pwd/);
+    });
+  } finally {
+    if (frontendWs) {
+      try { frontendWs.close(); } catch {}
+    }
+    if (studio) {
+      await studio.close();
+    }
+    if (gateway) {
+      await gateway.close();
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('agent assistant events are mirrored into temporary assistant drafts for realtime fallback', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-agent-assistant-stream-'));
+  const workspace = path.join(root, 'workspace');
+  const frontendEvents = [];
+
+  let gateway = null;
+  let studio = null;
+  let frontendWs = null;
+
+  try {
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(root, 'openclaw.json'), JSON.stringify({
+      gateway: {
+        auth: {
+          token: 'gateway-token-test',
+        },
+      },
+      agents: {
+        defaults: { workspace },
+        list: [{ id: 'main', workspace, default: true }],
+      },
+    }, null, 2));
+    writeGatewayIdentity(root);
+
+    gateway = await startFakeGateway();
+    studio = await startStudio(root, gateway.port);
+
+    const created = await studio.context.services.chat.createSession('main', {});
+    const sessionKey = created.session.key;
+
+    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs.on('message', (raw) => {
+      frontendEvents.push(JSON.parse(String(raw)));
+    });
+
+    await new Promise((resolve, reject) => {
+      frontendWs.once('open', resolve);
+      frontendWs.once('error', reject);
+    });
+    await gateway.waitForStudioConnection();
+
+    gateway.sendAgentEvent({
+      sessionKey,
+      runId: 'run-agent-assistant-1',
+      stream: 'assistant',
+      ts: Date.parse('2026-03-23T10:25:00.000Z'),
+      data: {
+        delta: '正在准备工具调用。',
+      },
+    });
+
+    await waitFor(() => {
+      const event = frontendEvents.find((entry) => entry.kind === 'temporary.assistant' && entry.runId === 'run-agent-assistant-1');
+      assert.ok(event, 'expected temporary.assistant fallback event');
+      assert.match(event.accumulatedText || '', /准备工具/);
+    });
+
+    gateway.sendAgentEvent({
+      sessionKey,
+      runId: 'run-agent-assistant-1',
+      stream: 'assistant',
+      ts: Date.parse('2026-03-23T10:25:01.000Z'),
+      data: {
+        delta: '继续执行。',
+      },
+    });
+
+    await waitFor(() => {
+      const event = [...frontendEvents]
+        .reverse()
+        .find((entry) => entry.kind === 'temporary.assistant' && entry.runId === 'run-agent-assistant-1');
+      assert.ok(event, 'expected accumulated temporary.assistant fallback event');
+      assert.match(event.accumulatedText || '', /准备工具调用。继续执行。/);
+    });
+  } finally {
+    if (frontendWs) {
+      try { frontendWs.close(); } catch {}
+    }
+    if (studio) {
+      await studio.close();
+    }
+    if (gateway) {
+      await gateway.close();
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('item and command_output agent events become live temporary tool updates', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-item-command-stream-'));
+  const workspace = path.join(root, 'workspace');
+  const frontendEvents = [];
+
+  let gateway = null;
+  let studio = null;
+  let frontendWs = null;
+
+  try {
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(root, 'openclaw.json'), JSON.stringify({
+      gateway: {
+        auth: {
+          token: 'gateway-token-test',
+        },
+      },
+      agents: {
+        defaults: { workspace },
+        list: [{ id: 'main', workspace, default: true }],
+      },
+    }, null, 2));
+    writeGatewayIdentity(root);
+
+    gateway = await startFakeGateway();
+    studio = await startStudio(root, gateway.port);
+
+    const created = await studio.context.services.chat.createSession('main', {});
+    const sessionKey = created.session.key;
+
+    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs.on('message', (raw) => {
+      frontendEvents.push(JSON.parse(String(raw)));
+    });
+
+    await new Promise((resolve, reject) => {
+      frontendWs.once('open', resolve);
+      frontendWs.once('error', reject);
+    });
+    await gateway.waitForStudioConnection();
+
+    gateway.sendAgentEvent({
+      sessionKey,
+      runId: 'run-item-command-1',
+      stream: 'item',
+      ts: Date.parse('2026-03-23T10:30:00.000Z'),
+      data: {
+        itemId: 'item-read-1',
+        phase: 'start',
+        kind: 'tool',
+        title: 'read file',
+        status: 'running',
+        name: 'read',
+        toolCallId: 'tool-read-live-1',
+        meta: '/tmp/a.txt',
+      },
+    });
+
+    await waitFor(() => {
+      const event = frontendEvents.find((entry) => entry.kind === 'temporary.tool' && entry.tool?.toolCallId === 'tool-read-live-1');
+      assert.ok(event, 'expected temporary.tool from item stream');
+      assert.equal(event.runId, 'run-item-command-1');
+      assert.equal(event.tool?.status, 'running');
+      assert.match(event.tool?.argsPreview || '', /read file/);
+    });
+
+    gateway.sendAgentEvent({
+      sessionKey,
+      runId: 'run-item-command-1',
+      stream: 'command_output',
+      ts: Date.parse('2026-03-23T10:30:01.000Z'),
+      data: {
+        itemId: 'command-read-1',
+        phase: 'delta',
+        title: 'read file',
+        toolCallId: 'tool-read-live-1',
+        name: 'read',
+        output: 'file line',
+        status: 'running',
+      },
+    });
+
+    await waitFor(() => {
+      const event = [...frontendEvents]
+        .reverse()
+        .find((entry) => entry.kind === 'temporary.tool' && entry.tool?.toolCallId === 'tool-read-live-1');
+      assert.ok(event, 'expected temporary.tool update from command_output');
+      assert.equal(event.tool?.status, 'running');
+      assert.match(event.tool?.resultPreview || '', /file line/);
+    });
+
+    gateway.sendAgentEvent({
+      runId: 'run-item-command-1',
+      stream: 'command_output',
+      ts: Date.parse('2026-03-23T10:30:02.000Z'),
+      data: {
+        itemId: 'command-read-1',
+        phase: 'delta',
+        title: 'read file',
+        toolCallId: 'tool-read-live-1',
+        name: 'read',
+        output: 'file line without session key',
+        status: 'running',
+      },
+    });
+
+    await waitFor(() => {
+      const event = [...frontendEvents]
+        .reverse()
+        .find((entry) => entry.kind === 'temporary.tool' && entry.tool?.toolCallId === 'tool-read-live-1');
+      assert.ok(event, 'expected no-sessionKey command_output to match tracked run');
+      assert.match(event.tool?.resultPreview || '', /without session key/);
+    });
+  } finally {
+    if (frontendWs) {
+      try { frontendWs.close(); } catch {}
+    }
+    if (studio) {
+      await studio.close();
+    }
+    if (gateway) {
+      await gateway.close();
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('history pages cap unrelated tool-only orphan overlays so long sessions do not inflate every page', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-orphan-overlay-cap-'));
+  const workspace = path.join(root, 'workspace');
+
+  let gateway = null;
+  let studio = null;
+  let frontendWs = null;
+
+  try {
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(root, 'openclaw.json'), JSON.stringify({
+      gateway: {
+        auth: {
+          token: 'gateway-token-test',
+        },
+      },
+      agents: {
+        defaults: { workspace },
+        list: [{ id: 'main', workspace, default: true }],
+      },
+    }, null, 2));
+    writeGatewayIdentity(root);
+
+    gateway = await startFakeGateway();
+    studio = await startStudio(root, gateway.port);
+
+    const created = await studio.context.services.chat.createSession('main', {});
+    const sessionKey = created.session.key;
+
+    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    await new Promise((resolve, reject) => {
+      frontendWs.once('open', resolve);
+      frontendWs.once('error', reject);
+    });
+    await gateway.waitForStudioConnection();
+
+    for (let index = 0; index < 14; index += 1) {
+      gateway.sendAgentEvent({
+        sessionKey,
+        runId: `run-tool-orphan-${index}`,
+        stream: 'tool',
+        ts: Date.parse(`2026-03-23T10:${String(index).padStart(2, '0')}:00.000Z`),
+        data: {
+          phase: 'start',
+          toolCallId: `tool-orphan-${index}`,
+          name: 'exec',
+          args: { index },
+        },
+      });
+      gateway.sendAgentEvent({
+        sessionKey,
+        runId: `run-tool-orphan-${index}`,
+        stream: 'tool',
+        ts: Date.parse(`2026-03-23T10:${String(index).padStart(2, '0')}:01.000Z`),
+        data: {
+          phase: 'result',
+          toolCallId: `tool-orphan-${index}`,
+          name: 'exec',
+          result: { ok: true, index },
+        },
+      });
+    }
+
+    await waitFor(async () => {
+      const history = await studio.context.services.chat.getHistory(sessionKey);
+      assert.equal(history.overlays.length, 8);
+      assert.deepEqual(
+        history.overlays.map((overlay) => overlay.runId),
+        Array.from({ length: 8 }, (_, offset) => `run-tool-orphan-${offset + 6}`),
+      );
+    });
   } finally {
     if (frontendWs) {
       try { frontendWs.close(); } catch {}

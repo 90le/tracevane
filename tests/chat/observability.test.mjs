@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   appendTimelineItem,
+  compactObservabilityState,
   createEmptyObservabilityState,
   deriveObservabilityFromHistory,
   upsertToolCard,
@@ -197,4 +198,54 @@ test('history observability can keep the full tool card set when the caller disa
   assert.equal(observability.toolCards.length, 14);
   assert.equal(observability.toolCards[0]?.toolCallId, 'tool-call-13');
   assert.equal(observability.toolCards.at(-1)?.toolCallId, 'tool-call-0');
+});
+
+test('compactObservabilityState trims timeline length and clips verbose tool/timeline details', () => {
+  const longDetail = 'x'.repeat(500);
+  const state = {
+    lifecycle: null,
+    usage: {
+      inputTokens: 1,
+      outputTokens: 2,
+      totalTokens: 3,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd: 0,
+    },
+    toolCards: Array.from({ length: 4 }, (_, index) => ({
+      toolCallId: `tool-${index}`,
+      runId: null,
+      name: `tool-${index}`,
+      status: 'completed',
+      startedAt: `2026-03-24T13:08:0${index}.000Z`,
+      updatedAt: `2026-03-24T13:08:0${index}.500Z`,
+      argsPreview: longDetail,
+      resultPreview: longDetail,
+      isError: false,
+    })),
+    timeline: Array.from({ length: 20 }, (_, index) => ({
+      id: `timeline-${index}`,
+      kind: 'tool_result',
+      runId: null,
+      toolCallId: `tool-${index % 4}`,
+      emittedAt: `2026-03-24T13:08:${String(index).padStart(2, '0')}.000Z`,
+      title: `timeline-${index}`,
+      detail: longDetail,
+      level: 'info',
+    })),
+  };
+
+  const compacted = compactObservabilityState(state, {
+    timelineLimit: 12,
+    toolDetailLimit: 180,
+    timelineDetailLimit: 220,
+  });
+
+  assert.equal(compacted.toolCards.length, 4);
+  assert.equal(compacted.timeline.length, 12);
+  assert.ok((compacted.toolCards[0]?.argsPreview || '').length <= 180);
+  assert.ok((compacted.toolCards[0]?.resultPreview || '').length <= 180);
+  assert.ok((compacted.timeline[0]?.detail || '').length <= 220);
+  assert.equal(compacted.timeline[0]?.id, 'timeline-8');
+  assert.equal(compacted.timeline.at(-1)?.id, 'timeline-19');
 });

@@ -761,8 +761,8 @@ function renderStudioInlineMediaHtml(params: {
     : 'chat-inline-resource chat-inline-resource-video';
   const className = isBreak ? `${baseClass} chat-break-resource` : baseClass;
   const mediaNode = params.kind === 'image'
-    ? `<img class="chat-inline-resource-media" src="${escapeHtml(params.href)}" alt="${escapeHtml(params.alt)}">`
-    : `<video class="chat-inline-resource-media" src="${escapeHtml(params.href)}" muted playsinline preload="metadata"></video>`;
+    ? `<img class="chat-inline-resource-media" src="${escapeHtml(params.href)}" alt="${escapeHtml(params.alt)}" loading="lazy" decoding="async" fetchpriority="low">`
+    : `<video class="chat-inline-resource-media" src="${escapeHtml(params.href)}" muted playsinline preload="none"></video>`;
   const html = [
     `<button type="button" class="${className}"`,
     ` data-studio-display="${escapeHtml(params.display)}"`,
@@ -805,8 +805,8 @@ function renderStudioCardHtml(params: {
 }): string {
   if (params.kind === 'image' || params.kind === 'video') {
     const mediaNode = params.kind === 'image'
-      ? `<img class="chat-resource-image" src="${escapeHtml(params.href)}" alt="${escapeHtml(params.alt)}">`
-      : `<video class="chat-resource-video" src="${escapeHtml(params.href)}" muted playsinline preload="metadata"></video>`;
+      ? `<img class="chat-resource-image" src="${escapeHtml(params.href)}" alt="${escapeHtml(params.alt)}" loading="lazy" decoding="async" fetchpriority="low">`
+      : `<video class="chat-resource-video" src="${escapeHtml(params.href)}" muted playsinline preload="none"></video>`;
     return wrapCardResourceHtml([
       `<button type="button" class="chat-resource-card ${params.kind} chat-md-card-resource"`,
       ' data-studio-display="card"',

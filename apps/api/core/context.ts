@@ -6,6 +6,8 @@ import type { ChannelsService } from '../modules/channels/service.js';
 import type { ConfigService } from '../modules/config/service.js';
 import type { CronService } from '../modules/cron/service.js';
 import type { DashboardService } from '../modules/dashboard/service.js';
+import type { FilesService } from '../modules/files/service.js';
+import type { PluginsService } from '../modules/plugins/service.js';
 import type { SkillsService } from '../modules/skills/service.js';
 import type { SystemService } from '../modules/system/service.js';
 import type { TerminalService } from '../modules/terminal/service.js';
@@ -17,6 +19,8 @@ export interface StudioServices {
   config: ConfigService;
   cron: CronService;
   dashboard: DashboardService;
+  files: FilesService;
+  plugins: PluginsService;
   skills: SkillsService;
   system: SystemService;
   terminal: TerminalService;

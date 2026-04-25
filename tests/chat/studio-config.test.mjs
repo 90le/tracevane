@@ -77,6 +77,37 @@ test('plugin runtime reads gateway port from openclaw.json when host config snap
   assert.equal(config.gatewayControlUiBasePath, '/gateway-ui');
 });
 
+test('plugin runtime falls back to HOME when resolvePath returns undefined', () => {
+  const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+  const previousHome = process.env.HOME;
+  process.env.OPENCLAW_STATE_DIR = '';
+  process.env.HOME = '/tmp/fallback-home';
+
+  try {
+    const config = createStudioConfig({
+      config: {
+        gateway: {
+          port: 31879,
+        },
+      },
+      resolvePath() {
+        return undefined;
+      },
+    }, {});
+
+    assert.equal(config.openclawRoot, '/tmp/fallback-home/.openclaw');
+    assert.equal(
+      config.openclawConfigFile,
+      '/tmp/fallback-home/.openclaw/openclaw.json',
+    );
+  } finally {
+    if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+    else process.env.OPENCLAW_STATE_DIR = previousStateDir;
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
 test('standalone-only helper keeps gateway exposure off by default', () => {
   const config = createStandaloneStudioConfig({
     openclawRoot: '/tmp/openclaw-state',

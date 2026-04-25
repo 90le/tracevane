@@ -62,12 +62,15 @@ test("skills control page consumes recipe content for workspace copy", () => {
   assert.match(skillsControlPage, /overviewRecipe\.value\.pageTitle/);
   assert.match(skillsControlPage, /overviewRecipe\.value\.installedHeadline/);
   assert.match(skillsControlPage, /overviewRecipe\.value\.marketplaceHeadline/);
-  assert.match(skillsControlPage, /overviewRecipe\.value\.pluginsHeadline/);
+  assert.match(skillsControlPage, /overviewRecipe\.value\.uploadHeadline/);
   assert.doesNotMatch(skillsControlPage, /DEFAULT_SKILLS_OVERVIEW_RECIPE/);
 });
 
 test("skills overview recipe exports typed default recipe builder", () => {
   assert.match(skillsOverviewRecipe, /export interface SkillsOverviewRecipe/);
+  assert.match(skillsOverviewRecipe, /uploadHeadline:\s*string/);
+  assert.match(skillsOverviewRecipe, /uploadCopy:\s*string/);
+  assert.doesNotMatch(skillsOverviewRecipe, /pluginsHeadline:\s*string/);
   assert.match(
     skillsOverviewRecipe,
     /export function buildDefaultSkillsOverviewRecipe\(/,

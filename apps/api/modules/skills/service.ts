@@ -5,17 +5,26 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type {
   SkillApiKeyMode,
+  SkillAgentMapping,
   SkillConfigPayload,
   SkillConfigSaveResponse,
   SkillConfigState,
   SkillConfigUpdatePayload,
+  SkillInstallTargetScope,
   SkillInstallMetadata,
+  SkillPackageSourceId,
   SkillMissingRequirements,
+  SkillPhysicalCopy,
   SkillStatus,
   SkillSummary,
+  SkillTargetDescriptor,
+  SkillTargetRef,
   SkillTogglePayload,
   SkillSecretPayload,
+  SkillsDeleteMode,
   SkillsInstallMethod,
+  SkillsLifecyclePayload,
+  SkillsLifecycleResponse,
   SkillsMaintenancePayload,
   SkillsMaintenanceResponse,
   SkillsMarketplaceInstallPayload,
@@ -31,6 +40,12 @@ import type {
   SkillsPreflightResult,
   SkillsRiskLevel,
   SkillsSummaryPayload,
+  SkillsTargetsPayload,
+  SkillsUploadArchivePayload,
+  SkillsUploadInstallPayload,
+  SkillsUploadInstallResponse,
+  SkillsUploadPreflightPayload,
+  SkillsUploadPreflightResult,
 } from "../../../../types/skills.js";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
@@ -47,6 +62,7 @@ const SKILLS_SNAPSHOT_STALE_MS = 15 * 60_000;
 const MARKETPLACE_TTL_MS = 5 * 60_000;
 const DEFAULT_WORKSPACE_DIRNAME = "workspace";
 const TEXT_SCAN_MAX_BYTES = 200_000;
+const UPLOAD_ARCHIVE_MAX_BYTES = 16 * 1024 * 1024;
 
 const SKILLHUB_INSTALL_DOC_URL =
   "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/skillhub.md";
@@ -392,15 +408,166 @@ function readInstallMetadataFromDir(
   }
 }
 
+interface AgentSkillTargetInfo {
+  id: string;
+  name: string;
+  workspace: string;
+}
+
+function normalizeAliasKey(value: string | null | undefined): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function readSkillMarkdownName(dirPath: string): string {
+  const skillMdPath = path.join(dirPath, "SKILL.md");
+  if (!fileExists(skillMdPath)) return "";
+  const content = safeReadText(skillMdPath) || "";
+  const yamlName = content.match(/^name:\s*["']?([^"'\n]+)["']?/m)?.[1];
+  if (yamlName?.trim()) return yamlName.trim();
+  const heading = content.match(/^#\s+(.+)$/m)?.[1];
+  return heading?.trim() || "";
+}
+
+function buildInstalledIdentity(
+  dirPath: string,
+  sourceId: SkillPackageSourceId | null = null,
+): SkillPhysicalCopy["identity"] {
+  const folderName = path.basename(dirPath);
+  const installMetadata = readInstallMetadataFromDir(dirPath);
+  const skillMdName = readSkillMarkdownName(dirPath);
+  const canonicalSlug = installMetadata?.slug || skillMdName || folderName;
+  const aliases = Array.from(
+    new Set(
+      [folderName, canonicalSlug, installMetadata?.slug || "", skillMdName]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return {
+    canonicalSlug,
+    folderName,
+    aliases,
+    sourceId,
+    installMetadata,
+  };
+}
+
+function buildPhysicalCopy(
+  scope: SkillInstallTargetScope,
+  agentId: string | null,
+  dirPath: string,
+): SkillPhysicalCopy | null {
+  if (!fileExists(dirPath)) return null;
+  return {
+    scope,
+    agentId,
+    path: dirPath,
+    folderName: path.basename(dirPath),
+    identity: buildInstalledIdentity(dirPath),
+  };
+}
+
+function readConfiguredAgentTargets(
+  config: StudioServerConfig,
+  openclawConfig: Record<string, any>,
+): AgentSkillTargetInfo[] {
+  const defaults = openclawConfig.agents?.defaults || {};
+  const rawAgents = Array.isArray(openclawConfig.agents?.list)
+    ? openclawConfig.agents.list
+    : [];
+  const agents = rawAgents
+    .filter((agent: unknown): agent is Record<string, any> => isPlainObject(agent))
+    .map((agent: Record<string, any>) => {
+      const id = normalizeOptionalText(agent.id);
+      if (!id) return null;
+      const workspace = normalizeOptionalText(agent.workspace)
+        || normalizeOptionalText(defaults.workspace)
+        || path.join(config.openclawRoot, id === "main" ? "workspace" : `workspace-${id}`);
+      return {
+        id,
+        name: normalizeOptionalText(agent.name) || id,
+        workspace,
+      };
+    })
+    .filter((agent: AgentSkillTargetInfo | null): agent is AgentSkillTargetInfo => Boolean(agent));
+
+  if (agents.length) return agents;
+  const fallbackWorkspace = normalizeOptionalText(defaults.workspace)
+    || path.join(config.openclawRoot, DEFAULT_WORKSPACE_DIRNAME);
+  return [{ id: "main", name: "main", workspace: fallbackWorkspace }];
+}
+
+function isSafeDescendantPath(root: string, target: string): boolean {
+  const resolvedRoot = path.resolve(root);
+  const resolvedTarget = path.resolve(target);
+  const relative = path.relative(resolvedRoot, resolvedTarget);
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function assertSafeTargetPath(config: StudioServerConfig, targetPath: string): string {
+  const resolved = path.resolve(targetPath);
+  if (!isSafeDescendantPath(config.openclawRoot, resolved)) {
+    throw new Error(`Unsafe skill target path outside OpenClaw root: ${resolved}`);
+  }
+  return resolved;
+}
+
+function canWriteParent(targetPath: string): boolean {
+  try {
+    ensureDir(path.dirname(targetPath));
+    fs.accessSync(path.dirname(targetPath), fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function targetDescriptor(params: {
+  id: string;
+  scope: SkillInstallTargetScope;
+  label: string;
+  targetPath: string;
+  agentId?: string | null;
+  config: StudioServerConfig;
+}): SkillTargetDescriptor {
+  const safe = isSafeDescendantPath(params.config.openclawRoot, params.targetPath);
+  return {
+    id: params.id,
+    scope: params.scope,
+    label: params.label,
+    path: path.resolve(params.targetPath),
+    agentId: params.agentId || null,
+    writable: safe && canWriteParent(params.targetPath),
+    safe,
+  };
+}
+
 function getSkillPaths(
   workspaceDir: string,
   managedSkillsDir: string,
   slug: string,
+  agentTargets: AgentSkillTargetInfo[] = [],
 ): SkillSummary["paths"] {
   const workspacePath = path.join(workspaceDir, "skills", slug);
   const managedPath = path.join(managedSkillsDir, slug);
   const workspaceExists = fileExists(workspacePath);
   const managedExists = fileExists(managedPath);
+  const agentWorkspacePaths: Record<string, string> = {};
+  const physicalCopies: SkillPhysicalCopy[] = [];
+
+  const workspaceCopy = buildPhysicalCopy("default-workspace", null, workspacePath);
+  const managedCopy = buildPhysicalCopy("managed", null, managedPath);
+  if (workspaceCopy) physicalCopies.push(workspaceCopy);
+  if (managedCopy) physicalCopies.push(managedCopy);
+
+  for (const agent of agentTargets) {
+    const agentSkillPath = path.join(agent.workspace, "skills", slug);
+    if (!fileExists(agentSkillPath)) continue;
+    agentWorkspacePaths[agent.id] = agentSkillPath;
+    const copy = buildPhysicalCopy("agent-workspace", agent.id, agentSkillPath);
+    if (copy) physicalCopies.push(copy);
+  }
 
   return {
     workspacePath: workspaceExists ? workspacePath : null,
@@ -409,8 +576,58 @@ function getSkillPaths(
       ? workspacePath
       : managedExists
         ? managedPath
-        : null,
+        : Object.values(agentWorkspacePaths)[0] || null,
+    agentWorkspacePaths,
+    physicalCopies,
   };
+}
+
+function normalizedSkillList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => normalizeAliasKey(String(item))).filter(Boolean)
+    : [];
+}
+
+function buildAgentMappingsForSummary(params: {
+  slug: string;
+  openclawConfig: Record<string, any>;
+  agentTargets: AgentSkillTargetInfo[];
+  paths: SkillSummary["paths"];
+}): SkillAgentMapping[] {
+  const normalizedSlug = normalizeAliasKey(params.slug);
+  const globalDefaults = normalizedSkillList(params.openclawConfig.agents?.defaults?.skills);
+  const mappings: SkillAgentMapping[] = [];
+
+  for (const agent of params.agentTargets) {
+    const rawAgent = Array.isArray(params.openclawConfig.agents?.list)
+      ? params.openclawConfig.agents.list.find((item: Record<string, any>) => normalizeOptionalText(item.id) === agent.id)
+      : null;
+    const agentSkills = normalizedSkillList(rawAgent?.skills);
+    const localPath = params.paths.agentWorkspacePaths[agent.id] || "";
+    const hasLocalCopy = Boolean(localPath);
+    const hasAgentMapping = agentSkills.includes(normalizedSlug);
+    const hasGlobalDefault = globalDefaults.includes(normalizedSlug);
+    if (!hasLocalCopy && !hasAgentMapping && !hasGlobalDefault) continue;
+
+    const mode: SkillAgentMapping["mode"] = hasLocalCopy
+      ? hasAgentMapping || hasGlobalDefault
+        ? "detached-fork"
+        : "local-copy"
+      : hasAgentMapping
+        ? "shared-mapping"
+        : "global-default";
+
+    mappings.push({
+      agentId: agent.id,
+      agentName: agent.name,
+      slug: params.slug,
+      mode,
+      sourcePath: params.paths.managedPath || params.paths.workspacePath || null,
+      targetPath: hasLocalCopy ? localPath : null,
+    });
+  }
+
+  return mappings;
 }
 
 function buildSummaryRecord(
@@ -418,9 +635,11 @@ function buildSummaryRecord(
   entry: SkillEntryRecord | undefined,
   workspaceDir: string,
   managedSkillsDir: string,
+  agentTargets: AgentSkillTargetInfo[] = [],
+  openclawConfig: Record<string, any> = {},
 ): SkillSummary {
   const slug = skill.name;
-  const paths = getSkillPaths(workspaceDir, managedSkillsDir, slug);
+  const paths = getSkillPaths(workspaceDir, managedSkillsDir, slug, agentTargets);
   const apiKeyMode = detectApiKeyMode(entry?.apiKey);
   const env = normalizeStringRecord(entry?.env);
   const config = normalizeConfigRecord(entry?.config);
@@ -458,6 +677,12 @@ function buildSummaryRecord(
     installMetadata: readInstallMetadataFromDir(
       paths.workspacePath || paths.managedPath,
     ),
+    agentMappings: buildAgentMappingsForSummary({
+      slug,
+      openclawConfig,
+      agentTargets,
+      paths,
+    }),
   };
 }
 
@@ -466,8 +691,10 @@ function buildConfigOnlySummary(
   entry: SkillEntryRecord | undefined,
   workspaceDir: string,
   managedSkillsDir: string,
+  agentTargets: AgentSkillTargetInfo[] = [],
+  openclawConfig: Record<string, any> = {},
 ): SkillSummary {
-  const paths = getSkillPaths(workspaceDir, managedSkillsDir, slug);
+  const paths = getSkillPaths(workspaceDir, managedSkillsDir, slug, agentTargets);
   const apiKeyMode = detectApiKeyMode(entry?.apiKey);
   const env = normalizeStringRecord(entry?.env);
   const config = normalizeConfigRecord(entry?.config);
@@ -503,6 +730,12 @@ function buildConfigOnlySummary(
     installMetadata: readInstallMetadataFromDir(
       paths.workspacePath || paths.managedPath,
     ),
+    agentMappings: buildAgentMappingsForSummary({
+      slug,
+      openclawConfig,
+      agentTargets,
+      paths,
+    }),
   };
 }
 
@@ -635,18 +868,62 @@ function createMarketplaceSourcePayload(
   };
 }
 
+function buildInstalledAliasSet(skills: SkillSummary[]): Set<string> {
+  const aliases = new Set<string>();
+  for (const skill of skills) {
+    aliases.add(normalizeAliasKey(skill.slug));
+    aliases.add(normalizeAliasKey(skill.name));
+    if (skill.installMetadata?.slug) aliases.add(normalizeAliasKey(skill.installMetadata.slug));
+    for (const copy of skill.paths.physicalCopies || []) {
+      aliases.add(normalizeAliasKey(copy.folderName));
+      aliases.add(normalizeAliasKey(copy.identity.canonicalSlug));
+      for (const alias of copy.identity.aliases) aliases.add(normalizeAliasKey(alias));
+      if (copy.identity.installMetadata?.slug) aliases.add(normalizeAliasKey(copy.identity.installMetadata.slug));
+    }
+  }
+  aliases.delete("");
+  return aliases;
+}
+
+function resolveMarketplaceInstalledState(input: {
+  slug: string;
+  name: string;
+  installedAliases: Set<string>;
+}): { installed: boolean; installedAs: string | null; installedReason: string | null } {
+  const candidates = [input.slug, input.name].filter(Boolean);
+  for (const candidate of candidates) {
+    const key = normalizeAliasKey(candidate);
+    if (input.installedAliases.has(key)) {
+      return {
+        installed: true,
+        installedAs: candidate,
+        installedReason: key === normalizeAliasKey(input.slug)
+          ? "slug-match"
+          : "alias-match",
+      };
+    }
+  }
+  return { installed: false, installedAs: null, installedReason: null };
+}
+
 function normalizeTencentMarketItem(
   item: Record<string, unknown>,
-  installedSlugs: Set<string>,
+  installedAliases: Set<string>,
 ): SkillsMarketplaceItem {
   const slug = typeof item.slug === "string" ? item.slug : "";
   const ownerName = typeof item.ownerName === "string" ? item.ownerName : null;
   const homepage = typeof item.homepage === "string" ? item.homepage : null;
+  const name = typeof item.name === "string" ? item.name : slug;
+  const installedState = resolveMarketplaceInstalledState({
+    slug,
+    name,
+    installedAliases,
+  });
 
   return {
     sourceId: "skillhub-tencent",
     slug,
-    name: typeof item.name === "string" ? item.name : slug,
+    name,
     summary:
       typeof item.description_zh === "string" && item.description_zh.trim()
         ? item.description_zh
@@ -670,13 +947,15 @@ function normalizeTencentMarketItem(
       typeof item.updated_at === "number"
         ? new Date(item.updated_at).toISOString()
         : null,
-    installed: installedSlugs.has(slug),
+    installed: installedState.installed,
+    installedAs: installedState.installedAs,
+    installedReason: installedState.installedReason,
   };
 }
 
 function normalizeClawhubMarketItem(
   item: Record<string, unknown>,
-  installedSlugs: Set<string>,
+  installedAliases: Set<string>,
 ): SkillsMarketplaceItem {
   const slug = typeof item.slug === "string" ? item.slug : "";
   const latestVersion = isPlainObject(item.latestVersion)
@@ -695,6 +974,11 @@ function normalizeClawhubMarketItem(
       : typeof item.name === "string"
         ? item.name
         : slug;
+  const installedState = resolveMarketplaceInstalledState({
+    slug,
+    name,
+    installedAliases,
+  });
   const detailUrl =
     typeof item.url === "string"
       ? item.url
@@ -741,7 +1025,9 @@ function normalizeClawhubMarketItem(
         : latestVersion && typeof latestVersion.createdAt === "string"
           ? latestVersion.createdAt
           : null,
-    installed: installedSlugs.has(slug),
+    installed: installedState.installed,
+    installedAs: installedState.installedAs,
+    installedReason: installedState.installedReason,
   };
 }
 
@@ -825,7 +1111,7 @@ function deriveRiskLevel(
 }
 
 function analyzeExtractedSkillBundle(
-  sourceId: SkillsMarketplaceSourceId,
+  sourceId: SkillPackageSourceId,
   slug: string,
   skillRoot: string,
 ): SkillsPreflightResult {
@@ -1039,6 +1325,94 @@ function locateSkillRoot(rootDir: string): string {
   return rootDir;
 }
 
+function locateUniqueSkillRoot(rootDir: string): string {
+  const skillMdFiles = collectFiles(rootDir).filter(
+    (filePath) => path.basename(filePath) === "SKILL.md",
+  );
+  if (skillMdFiles.length === 0) {
+    throw new Error("Uploaded archive does not contain SKILL.md");
+  }
+  if (skillMdFiles.length > 1) {
+    throw new Error(
+      `Uploaded archive contains multiple SKILL.md files (${skillMdFiles.length}); install one skill at a time`,
+    );
+  }
+  return path.dirname(skillMdFiles[0]);
+}
+
+async function extractZipSafely(zipPath: string, outputDir: string): Promise<void> {
+  if (!(await commandExists("python3"))) {
+    throw new Error("python3 is required to safely inspect uploaded zip archives");
+  }
+  await execFileAsync(
+    "python3",
+    [
+      "-c",
+      `
+import pathlib
+import sys
+import zipfile
+
+zip_path, output_dir = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(zip_path) as zf:
+    for member in zf.infolist():
+        name = member.filename
+        pure = pathlib.PurePosixPath(name)
+        if not name or name.startswith('/') or pure.is_absolute() or '..' in pure.parts:
+            raise SystemExit(f'unsafe zip entry: {name}')
+    zf.extractall(output_dir)
+`,
+      zipPath,
+      outputDir,
+    ],
+    {
+      timeout: 60_000,
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
+}
+
+function decodeUploadArchive(payload: SkillsUploadArchivePayload): Buffer {
+  const fileName = normalizeOptionalText(payload.fileName);
+  if (!fileName.toLowerCase().endsWith(".zip")) {
+    throw new Error("Only .zip skill archives are supported");
+  }
+  const rawBase64 = normalizeOptionalText(payload.dataBase64).replace(/^data:[^,]+,/, "");
+  if (!rawBase64) throw new Error("Uploaded archive is empty");
+  const buffer = Buffer.from(rawBase64, "base64");
+  if (!buffer.length) throw new Error("Uploaded archive could not be decoded");
+  if (buffer.length > UPLOAD_ARCHIVE_MAX_BYTES) {
+    throw new Error(`Uploaded archive is too large; limit is ${UPLOAD_ARCHIVE_MAX_BYTES / 1024 / 1024} MiB`);
+  }
+  return buffer;
+}
+
+async function extractUploadedSkillArchive(
+  payload: SkillsUploadArchivePayload,
+): Promise<ExtractedSkillBundle> {
+  const tmpDir = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "openclaw-studio-upload-skill-"),
+  );
+  const zipPath = path.join(tmpDir, "upload.zip");
+  const extractDir = path.join(tmpDir, "extract");
+
+  try {
+    const buffer = decodeUploadArchive(payload);
+    ensureDir(extractDir);
+    await fs.promises.writeFile(zipPath, buffer);
+    await extractZipSafely(zipPath, extractDir);
+    const skillRoot = locateUniqueSkillRoot(extractDir);
+    return {
+      tmpDir,
+      extractDir,
+      skillRoot,
+    };
+  } catch (error) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function downloadAndExtractSkillBundle(
   downloadUrl: string,
 ): Promise<ExtractedSkillBundle> {
@@ -1109,6 +1483,7 @@ async function downloadAndInstallSkill(params: {
 
 export interface SkillsService {
   getSummary(options?: { refresh?: boolean }): Promise<SkillsSummaryPayload>;
+  getTargets(): Promise<SkillsTargetsPayload>;
   toggleSkill(payload: SkillTogglePayload): Promise<SkillTogglePayload>;
   getSkillConfig(slug: string): Promise<SkillConfigPayload>;
   saveSkillConfig(
@@ -1126,12 +1501,21 @@ export interface SkillsService {
   installMarketplaceSkill(
     payload: SkillsMarketplaceInstallPayload,
   ): Promise<SkillsMarketplaceInstallResponse>;
+  preflightUploadedSkillArchive(
+    payload: SkillsUploadPreflightPayload,
+  ): Promise<SkillsUploadPreflightResult>;
+  installUploadedSkillArchive(
+    payload: SkillsUploadInstallPayload,
+  ): Promise<SkillsUploadInstallResponse>;
   updateInstalledSkill(
     payload: SkillsMaintenancePayload,
   ): Promise<SkillsMaintenanceResponse>;
   uninstallSkill(
     payload: SkillsMaintenancePayload,
   ): Promise<SkillsMaintenanceResponse>;
+  runLifecycleAction(
+    payload: SkillsLifecyclePayload,
+  ): Promise<SkillsLifecycleResponse>;
 }
 
 export function createSkillsService(config: StudioServerConfig): SkillsService {
@@ -1218,6 +1602,7 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
       const entries = isPlainObject(openclawConfig.skills?.entries)
         ? (openclawConfig.skills.entries as Record<string, SkillEntryRecord>)
         : {};
+      const agentTargets = readConfiguredAgentTargets(config, openclawConfig);
 
       const summaries = new Map<string, SkillSummary>();
       for (const item of snapshot.skills || []) {
@@ -1228,8 +1613,60 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
             entries[item.name],
             workspaceDir,
             managedSkillsDir,
+            agentTargets,
+            openclawConfig,
           ),
         );
+      }
+
+      for (const slug of listSubdirectories(path.join(workspaceDir, "skills"))) {
+        if (!summaries.has(slug)) {
+          summaries.set(
+            slug,
+            buildConfigOnlySummary(
+              slug,
+              entries[slug],
+              workspaceDir,
+              managedSkillsDir,
+              agentTargets,
+              openclawConfig,
+            ),
+          );
+        }
+      }
+
+      for (const slug of listSubdirectories(managedSkillsDir)) {
+        if (!summaries.has(slug)) {
+          summaries.set(
+            slug,
+            buildConfigOnlySummary(
+              slug,
+              entries[slug],
+              workspaceDir,
+              managedSkillsDir,
+              agentTargets,
+              openclawConfig,
+            ),
+          );
+        }
+      }
+
+      for (const agent of agentTargets) {
+        for (const slug of listSubdirectories(path.join(agent.workspace, "skills"))) {
+          if (!summaries.has(slug)) {
+            summaries.set(
+              slug,
+              buildConfigOnlySummary(
+                slug,
+                entries[slug],
+                workspaceDir,
+                managedSkillsDir,
+                agentTargets,
+                openclawConfig,
+              ),
+            );
+          }
+        }
       }
 
       for (const slug of Object.keys(entries)) {
@@ -1241,6 +1678,8 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
               entries[slug],
               workspaceDir,
               managedSkillsDir,
+              agentTargets,
+              openclawConfig,
             ),
           );
         }
@@ -1289,11 +1728,17 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
       const entries = isPlainObject(openclawConfig.skills?.entries)
         ? (openclawConfig.skills.entries as Record<string, SkillEntryRecord>)
         : {};
+      const agentTargets = readConfiguredAgentTargets(config, openclawConfig);
 
       const slugs = new Set<string>(Object.keys(entries));
       for (const slug of listSubdirectories(path.join(workspaceDir, "skills")))
         slugs.add(slug);
       for (const slug of listSubdirectories(managedSkillsDir)) slugs.add(slug);
+      for (const agent of agentTargets) {
+        for (const slug of listSubdirectories(path.join(agent.workspace, "skills"))) {
+          slugs.add(slug);
+        }
+      }
 
       const summaries = new Map<string, SkillSummary>();
       for (const slug of slugs) {
@@ -1304,6 +1749,8 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
             entries[slug],
             workspaceDir,
             managedSkillsDir,
+            agentTargets,
+            openclawConfig,
           ),
         );
       }
@@ -1448,9 +1895,209 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
     throw new Error("CLI not available");
   }
 
+  function sanitizeInstallFolder(value: string | null | undefined, fallback: string): string {
+    const folder = normalizeOptionalText(value) || fallback;
+    if (
+      !folder ||
+      folder.includes("/") ||
+      folder.includes("\\") ||
+      folder.includes("..") ||
+      !/^[a-zA-Z0-9@._-]+$/.test(folder)
+    ) {
+      throw new Error(`Invalid skill install folder: ${folder}`);
+    }
+    return folder;
+  }
+
+  function buildTargetDescriptors(
+    summary: SkillsSummaryPayload,
+    openclawConfig: Record<string, any>,
+  ): SkillTargetDescriptor[] {
+    const agents = readConfiguredAgentTargets(config, openclawConfig);
+    return [
+      targetDescriptor({
+        id: "default-workspace",
+        scope: "default-workspace",
+        label: "Default workspace",
+        targetPath: path.join(summary.workspaceDir, "skills"),
+        config,
+      }),
+      targetDescriptor({
+        id: "managed",
+        scope: "managed",
+        label: "Shared managed skills",
+        targetPath: summary.managedSkillsDir,
+        config,
+      }),
+      ...agents.map((agent) =>
+        targetDescriptor({
+          id: `agent:${agent.id}`,
+          scope: "agent-workspace",
+          label: `${agent.name} (${agent.id})`,
+          targetPath: path.join(agent.workspace, "skills"),
+          agentId: agent.id,
+          config,
+        }),
+      ),
+    ];
+  }
+
+  function resolveAgentTarget(
+    openclawConfig: Record<string, any>,
+    agentId: string | null | undefined,
+  ): AgentSkillTargetInfo {
+    const normalizedAgentId = normalizeOptionalText(agentId);
+    const match = readConfiguredAgentTargets(config, openclawConfig).find(
+      (agent) => agent.id === normalizedAgentId,
+    );
+    if (!match) throw new Error(`Unknown agent target: ${normalizedAgentId || "(missing)"}`);
+    return match;
+  }
+
+  function resolveSkillTarget(params: {
+    target: SkillTargetRef | null | undefined;
+    slug: string;
+    summary: SkillsSummaryPayload;
+    openclawConfig: Record<string, any>;
+    defaultScope?: SkillInstallTargetScope;
+  }): SkillTargetDescriptor {
+    const scope = params.target?.scope || params.defaultScope || "default-workspace";
+    const folder = sanitizeInstallFolder(params.target?.installAs, params.slug);
+    let targetPath = "";
+    let label = "";
+    let agentId: string | null = null;
+    let id: string = scope;
+
+    if (scope === "managed") {
+      targetPath = path.join(params.summary.managedSkillsDir, folder);
+      label = "Shared managed skills";
+    } else if (scope === "agent-workspace") {
+      const agent = resolveAgentTarget(params.openclawConfig, params.target?.agentId);
+      targetPath = path.join(agent.workspace, "skills", folder);
+      label = `${agent.name} (${agent.id})`;
+      agentId = agent.id;
+      id = `agent:${agent.id}`;
+    } else if (scope === "custom") {
+      const customBase = normalizeOptionalText(params.target?.targetPath);
+      if (!customBase) throw new Error("Custom skill target path is required");
+      targetPath = params.target?.installAs ? path.join(customBase, folder) : customBase;
+      label = "Custom target";
+    } else {
+      targetPath = path.join(params.summary.workspaceDir, "skills", folder);
+      label = "Default workspace";
+      id = "default-workspace";
+    }
+
+    const safePath = assertSafeTargetPath(config, targetPath);
+    return targetDescriptor({
+      id,
+      scope,
+      label,
+      targetPath: safePath,
+      agentId,
+      config,
+    });
+  }
+
+  function inferTargetRefFromPath(skill: SkillSummary, sourcePath: string): SkillTargetRef {
+    if (skill.paths.managedPath === sourcePath) return { scope: "managed" };
+    if (skill.paths.workspacePath === sourcePath) return { scope: "default-workspace" };
+    const agentEntry = Object.entries(skill.paths.agentWorkspacePaths || {}).find(([, value]) => value === sourcePath);
+    if (agentEntry) return { scope: "agent-workspace", agentId: agentEntry[0] };
+    return { scope: "custom", targetPath: sourcePath };
+  }
+
+  async function resolveLifecycleSource(
+    slug: string,
+    source: SkillTargetRef | null | undefined,
+    summary: SkillsSummaryPayload,
+    openclawConfig: Record<string, any>,
+  ): Promise<{ descriptor: SkillTargetDescriptor; path: string; skill: SkillSummary }> {
+    const skill = await getSkillOrThrow(slug);
+    const sourceRef = source || inferTargetRefFromPath(skill, skill.paths.activePath || "");
+    const descriptor = resolveSkillTarget({
+      target: sourceRef,
+      slug,
+      summary,
+      openclawConfig,
+    });
+    if (!fileExists(descriptor.path)) {
+      throw new Error(`Skill source does not exist: ${descriptor.path}`);
+    }
+    return { descriptor, path: descriptor.path, skill };
+  }
+
+  function readAgentMappings(
+    slug: string,
+    openclawConfig: Record<string, any>,
+    skill: SkillSummary | null = null,
+  ): SkillAgentMapping[] {
+    const normalizedSlug = normalizeAliasKey(slug);
+    const mappings: SkillAgentMapping[] = [];
+    for (const agent of readConfiguredAgentTargets(config, openclawConfig)) {
+      const rawAgent = Array.isArray(openclawConfig.agents?.list)
+        ? openclawConfig.agents.list.find((item: Record<string, any>) => normalizeOptionalText(item.id) === agent.id)
+        : null;
+      const configured = Array.isArray(rawAgent?.skills)
+        ? rawAgent.skills.map((value: unknown) => normalizeAliasKey(String(value)))
+        : [];
+      const localPath = skill?.paths.agentWorkspacePaths?.[agent.id] || path.join(agent.workspace, "skills", slug);
+      const hasLocalCopy = fileExists(localPath);
+      if (!configured.includes(normalizedSlug) && !hasLocalCopy) continue;
+      mappings.push({
+        agentId: agent.id,
+        agentName: agent.name,
+        slug,
+        mode: hasLocalCopy ? "local-copy" : "shared-mapping",
+        sourcePath: skill?.paths.managedPath || skill?.paths.workspacePath || null,
+        targetPath: hasLocalCopy ? localPath : null,
+      });
+    }
+    return mappings;
+  }
+
+  function updateAgentSkillMappings(
+    slug: string,
+    agentIds: string[],
+    enabled: boolean,
+    openclawConfig: Record<string, any>,
+  ): SkillAgentMapping[] {
+    if (!isPlainObject(openclawConfig.agents) || !Array.isArray(openclawConfig.agents.list)) {
+      openclawConfig.agents = { ...(isPlainObject(openclawConfig.agents) ? openclawConfig.agents : {}), list: [] };
+    }
+    const affected: SkillAgentMapping[] = [];
+    const targets = readConfiguredAgentTargets(config, openclawConfig);
+    for (const agentId of agentIds) {
+      const target = targets.find((agent) => agent.id === agentId);
+      if (!target) throw new Error(`Unknown agent target: ${agentId}`);
+      let rawAgent = openclawConfig.agents.list.find((item: Record<string, any>) => normalizeOptionalText(item.id) === agentId);
+      if (!rawAgent) {
+        rawAgent = { id: agentId, name: target.name, workspace: target.workspace };
+        openclawConfig.agents.list.push(rawAgent);
+      }
+      const current = Array.isArray(rawAgent.skills)
+        ? rawAgent.skills.map((value: unknown) => String(value).trim()).filter(Boolean)
+        : [];
+      const next = enabled
+        ? Array.from(new Set([...current, slug]))
+        : current.filter((value: string) => normalizeAliasKey(value) !== normalizeAliasKey(slug));
+      if (next.length) rawAgent.skills = next;
+      else delete rawAgent.skills;
+      affected.push({
+        agentId,
+        agentName: target.name,
+        slug,
+        mode: "shared-mapping",
+        sourcePath: null,
+        targetPath: null,
+      });
+    }
+    return affected;
+  }
+
   async function fetchTencentMarketplace(
     options: MarketplaceQueryOptions,
-    installedSlugs: Set<string>,
+    installedAliases: Set<string>,
   ): Promise<SkillsMarketplacePayload> {
     const sort = options.sort || "featured";
     const page = Math.max(1, options.page || 1);
@@ -1502,7 +2149,7 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
           .filter((item): item is Record<string, unknown> =>
             isPlainObject(item),
           )
-          .map((item) => normalizeTencentMarketItem(item, installedSlugs))
+          .map((item) => normalizeTencentMarketItem(item, installedAliases))
       : [];
     const total =
       typeof payload.total === "number" ? payload.total : items.length;
@@ -1523,7 +2170,7 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
 
   async function fetchClawhubMarketplace(
     options: MarketplaceQueryOptions,
-    installedSlugs: Set<string>,
+    installedAliases: Set<string>,
   ): Promise<SkillsMarketplacePayload> {
     const sort = options.sort || "downloads";
     const query = (options.query || "").trim();
@@ -1558,7 +2205,7 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
         : [];
     const items = itemsRaw
       .filter((item): item is Record<string, unknown> => isPlainObject(item))
-      .map((item) => normalizeClawhubMarketItem(item, installedSlugs));
+      .map((item) => normalizeClawhubMarketItem(item, installedAliases));
     const total =
       typeof data.total === "number"
         ? data.total
@@ -1584,6 +2231,17 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
   return {
     async getSummary(options = {}): Promise<SkillsSummaryPayload> {
       return loadSummary(Boolean(options.refresh));
+    },
+
+    async getTargets(): Promise<SkillsTargetsPayload> {
+      const [summary, openclawConfig] = await Promise.all([
+        loadSummary(false),
+        Promise.resolve(readOpenClawConfig(config)),
+      ]);
+      return {
+        checkedAt: new Date().toISOString(),
+        targets: buildTargetDescriptors(summary, openclawConfig),
+      };
     },
 
     async toggleSkill(
@@ -1675,18 +2333,18 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
       }
 
       const summary = await loadSummary(false);
-      const installedSlugs = new Set(summary.skills.map((skill) => skill.slug));
+      const installedAliases = buildInstalledAliasSet(summary.skills);
 
       try {
         const payload =
           sourceId === "skillhub-tencent"
             ? await fetchTencentMarketplace(
                 { sourceId, query, sort, page, pageSize },
-                installedSlugs,
+                installedAliases,
               )
             : await fetchClawhubMarketplace(
                 { sourceId, query, sort, page, pageSize },
-                installedSlugs,
+                installedAliases,
               );
 
         marketplaceCache.set(cacheKey, {
@@ -1753,24 +2411,32 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
       const slug = sanitizeSkillSlug(payload.slug);
       const replaceExisting = payload.replaceExisting === true;
       const summary = await loadSummary(true);
-      const workspaceDir =
-        summary.workspaceDir ||
-        path.join(config.openclawRoot, DEFAULT_WORKSPACE_DIRNAME);
-      const targetDir = path.join(workspaceDir, "skills", slug);
+      const openclawConfig = readOpenClawConfig(config);
+      const target = resolveSkillTarget({
+        target: payload.target,
+        slug,
+        summary,
+        openclawConfig,
+        defaultScope: "default-workspace",
+      });
+      const targetDir = target.path;
 
       if (fileExists(targetDir) && !replaceExisting) {
-        throw new Error(`Skill ${slug} already exists in workspace`);
+        throw new Error(`Skill ${slug} already exists at ${targetDir}`);
       }
 
       let method: SkillsInstallMethod = "unavailable";
       let output = "";
       let note: string | null = null;
+      const defaultTargetDir = path.join(summary.workspaceDir, "skills", slug);
+      const canUseCli = target.scope === "default-workspace" && targetDir === defaultTargetDir;
 
       try {
+        if (!canUseCli) throw new Error("CLI target override unavailable");
         const cliResult = await runMarketplaceCliInstall(
           sourceId,
           slug,
-          workspaceDir,
+          summary.workspaceDir || path.join(config.openclawRoot, DEFAULT_WORKSPACE_DIRNAME),
         );
         method = cliResult.method;
         output = cliResult.output;
@@ -1793,7 +2459,8 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
             "ClawHub 官方源直连安装完成；若后续遇到限流，建议切换到腾讯镜像。";
         } else if (
           cliError instanceof Error &&
-          cliError.message !== "CLI not available"
+          cliError.message !== "CLI not available" &&
+          cliError.message !== "CLI target override unavailable"
         ) {
           note = `SkillHub CLI 安装失败，已回退为镜像直连安装：${cliError.message}`;
         }
@@ -1803,16 +2470,106 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
       clearSummaryFileCache(config);
       marketplaceCache.clear();
 
+      const identity = fileExists(targetDir) ? buildInstalledIdentity(targetDir, sourceId) : null;
+
       return {
         success: true,
         sourceId,
         slug,
+        canonicalSlug: identity?.canonicalSlug || slug,
+        target,
         method,
         installedPath: targetDir,
         output,
         note,
         requiresNewSession: true,
       };
+    },
+
+    async preflightUploadedSkillArchive(
+      payload: SkillsUploadPreflightPayload,
+    ): Promise<SkillsUploadPreflightResult> {
+      let bundle: ExtractedSkillBundle | null = null;
+      try {
+        bundle = await extractUploadedSkillArchive(payload);
+        const identity = buildInstalledIdentity(bundle.skillRoot, "upload");
+        return {
+          checkedAt: new Date().toISOString(),
+          fileName: normalizeOptionalText(payload.fileName),
+          suggestedSlug: sanitizeInstallFolder(identity.canonicalSlug, identity.folderName),
+          skillRootName: path.basename(bundle.skillRoot),
+          preflight: analyzeExtractedSkillBundle(
+            "upload",
+            identity.canonicalSlug,
+            bundle.skillRoot,
+          ),
+        };
+      } finally {
+        cleanupExtractedSkillBundle(bundle);
+      }
+    },
+
+    async installUploadedSkillArchive(
+      payload: SkillsUploadInstallPayload,
+    ): Promise<SkillsUploadInstallResponse> {
+      let bundle: ExtractedSkillBundle | null = null;
+      try {
+        bundle = await extractUploadedSkillArchive(payload);
+        const identity = buildInstalledIdentity(bundle.skillRoot, "upload");
+        const preflight = analyzeExtractedSkillBundle(
+          "upload",
+          identity.canonicalSlug,
+          bundle.skillRoot,
+        );
+        if (!preflight.payload.hasSkillMd) {
+          throw new Error("Uploaded archive failed SKILL.md validation");
+        }
+
+        const summary = await loadSummary(true);
+        const openclawConfig = readOpenClawConfig(config);
+        const installAs = sanitizeInstallFolder(
+          payload.installAs || payload.target?.installAs,
+          identity.canonicalSlug || identity.folderName,
+        );
+        const target = resolveSkillTarget({
+          target: {
+            ...(payload.target || { scope: "managed" as const }),
+            scope: payload.target?.scope || "managed",
+            installAs,
+          },
+          slug: installAs,
+          summary,
+          openclawConfig,
+          defaultScope: "managed",
+        });
+
+        if (fileExists(target.path) && payload.replaceExisting !== true) {
+          throw new Error(`Skill already exists at ${target.path}`);
+        }
+
+        fs.rmSync(target.path, { recursive: true, force: true });
+        ensureDir(path.dirname(target.path));
+        fs.cpSync(bundle.skillRoot, target.path, { recursive: true });
+
+        summaryCache = null;
+        clearSummaryFileCache(config);
+        marketplaceCache.clear();
+
+        const installedIdentity = buildInstalledIdentity(target.path, "upload");
+        return {
+          success: true,
+          slug: installAs,
+          canonicalSlug: installedIdentity.canonicalSlug || installAs,
+          target,
+          installedPath: target.path,
+          output: `Installed uploaded skill ${installAs} into ${target.path}`,
+          note: "上传技能已通过结构校验；建议开启新会话让 OpenClaw 重新发现。",
+          requiresNewSession: true,
+          preflight,
+        };
+      } finally {
+        cleanupExtractedSkillBundle(bundle);
+      }
     },
 
     async updateInstalledSkill(
@@ -1883,6 +2640,119 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
         output: `Removed ${slug} from ${removedPaths.join(", ")}`,
         note: "已同步清理该技能的 Studio 配置项。",
         affectedPath: removedPaths[0] || null,
+        requiresNewSession: true,
+      };
+    },
+
+    async runLifecycleAction(
+      payload: SkillsLifecyclePayload,
+    ): Promise<SkillsLifecycleResponse> {
+      const slug = sanitizeSkillSlug(payload.slug);
+      const summary = await loadSummary(true);
+      const openclawConfig = readOpenClawConfig(config);
+      const action = payload.action;
+      let source: SkillTargetDescriptor | null = null;
+      let destination: SkillTargetDescriptor | null = null;
+      const affectedPaths: string[] = [];
+      let affectedAgents: SkillAgentMapping[] = [];
+      let skippedAgents: SkillAgentMapping[] = [];
+      let note: string | null = null;
+      let output = "";
+
+      if (action === "map" || action === "unmap") {
+        const agentIds = Array.from(new Set((payload.agentIds || []).map(normalizeOptionalText).filter(Boolean)));
+        if (!agentIds.length) throw new Error(`${action} requires at least one agent id`);
+        affectedAgents = updateAgentSkillMappings(slug, agentIds, action === "map", openclawConfig);
+        writeJsonFile(config.openclawConfigFile, openclawConfig);
+        output = `${action === "map" ? "Mapped" : "Unmapped"} ${slug} for ${agentIds.length} agent(s)`;
+      } else if (action === "sync") {
+        const skill = await getSkillOrThrow(slug);
+        const mappings = readAgentMappings(slug, openclawConfig, skill);
+        affectedAgents = mappings.filter((mapping) => mapping.mode !== "local-copy");
+        skippedAgents = mappings.filter((mapping) => mapping.mode === "local-copy");
+        output = `Synced ${affectedAgents.length} mapped agent(s) for ${slug}`;
+        if (skippedAgents.length) {
+          note = `${skippedAgents.length} agent(s) have local detached copies and were not overwritten.`;
+        }
+      } else {
+        const sourceResolved = await resolveLifecycleSource(
+          slug,
+          payload.source,
+          summary,
+          openclawConfig,
+        );
+        source = sourceResolved.descriptor;
+
+        if (action === "delete") {
+          const deleteMode: SkillsDeleteMode = payload.deleteMode || "physical-and-mappings";
+          const mappings = readAgentMappings(slug, openclawConfig, sourceResolved.skill);
+          const sharedDelete = source.scope === "managed" || source.scope === "default-workspace";
+          if (sharedDelete && mappings.length && !payload.confirmAffected) {
+            throw new Error(`Deleting ${slug} affects ${mappings.length} agent mapping(s); confirmAffected is required`);
+          }
+          if (deleteMode !== "mappings-only") {
+            fs.rmSync(source.path, { recursive: true, force: true });
+            affectedPaths.push(source.path);
+          }
+          if (deleteMode !== "physical-only") {
+            affectedAgents = updateAgentSkillMappings(
+              slug,
+              mappings.map((mapping) => mapping.agentId),
+              false,
+              openclawConfig,
+            );
+            writeJsonFile(config.openclawConfigFile, openclawConfig);
+          }
+          output = `Deleted ${slug} (${deleteMode})`;
+        } else {
+          const destinationScope: SkillInstallTargetScope = action === "promote"
+            ? "managed"
+            : action === "detach"
+              ? "agent-workspace"
+              : payload.destination?.scope || "managed";
+          destination = resolveSkillTarget({
+            target: { ...(payload.destination || {}), scope: destinationScope },
+            slug,
+            summary,
+            openclawConfig,
+            defaultScope: destinationScope,
+          });
+          if (fileExists(destination.path) && !payload.replaceExisting) {
+            throw new Error(`Destination already exists: ${destination.path}`);
+          }
+          fs.rmSync(destination.path, { recursive: true, force: true });
+          ensureDir(path.dirname(destination.path));
+          fs.cpSync(source.path, destination.path, { recursive: true });
+          affectedPaths.push(destination.path);
+
+          if (action === "move" || action === "promote") {
+            fs.rmSync(source.path, { recursive: true, force: true });
+            affectedPaths.push(source.path);
+          }
+
+          if (action === "detach" && destination.agentId) {
+            affectedAgents = updateAgentSkillMappings(slug, [destination.agentId], true, openclawConfig);
+            writeJsonFile(config.openclawConfigFile, openclawConfig);
+          }
+          output = `${action} ${slug} from ${source.path} to ${destination.path}`;
+        }
+      }
+
+      summaryCache = null;
+      clearSummaryFileCache(config);
+      marketplaceCache.clear();
+
+      return {
+        success: true,
+        action,
+        slug,
+        source,
+        destination,
+        affectedPaths,
+        affectedAgents,
+        skippedAgents,
+        output,
+        note,
         requiresNewSession: true,
       };
     },

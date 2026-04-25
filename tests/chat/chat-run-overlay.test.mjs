@@ -199,6 +199,61 @@ test('same toolCallId suppresses message-level toolCalls even when runId differs
   assert.equal(renderables[1]?.overlay.toolCalls[0]?.status, 'completed');
 });
 
+test('overlay anchors to assistant messages by shared toolCallId even when runId differs', () => {
+  const renderables = buildChatRenderableTimeline({
+    messages: [
+      {
+        id: 'assistant-tool-shell',
+        role: 'assistant',
+        text: '我先调用工具处理一下。',
+        createdAt: '2026-03-23T10:00:00.000Z',
+        source: 'history',
+        runId: null,
+        truncated: false,
+        omitted: false,
+        aborted: false,
+        stopReason: null,
+        toolCalls: [
+          {
+            toolCallId: 'tool-anchor-shared',
+            runId: null,
+            name: 'exec',
+            status: 'running',
+            startedAt: '2026-03-23T10:00:00.100Z',
+            updatedAt: '2026-03-23T10:00:00.100Z',
+            argsPreview: '{"command":"echo hello"}',
+            resultPreview: null,
+            isError: false,
+          },
+        ],
+      },
+    ],
+    overlays: [
+      buildOverlay({
+        runId: 'tool:tool-anchor-shared',
+        finalMessageId: null,
+        finalCreatedAt: null,
+        toolCalls: [
+          {
+            toolCallId: 'tool-anchor-shared',
+            runId: 'tool:tool-anchor-shared',
+            name: 'exec',
+            status: 'completed',
+            startedAt: '2026-03-23T10:00:00.100Z',
+            updatedAt: '2026-03-23T10:00:01.000Z',
+            argsPreview: '{"command":"echo hello"}',
+            resultPreview: 'hello',
+            isError: false,
+          },
+        ],
+      }),
+    ],
+  });
+
+  assert.equal(renderables[1]?.type, 'run_overlay');
+  assert.deepEqual(renderables[1]?.anchorMessageIds, ['assistant-tool-shell']);
+});
+
 test('overlay update keeps a single continuation source while status changes in place', () => {
   const messages = [
     {

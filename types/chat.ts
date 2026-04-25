@@ -777,6 +777,7 @@ export type ChatStreamEvent =
 
 export interface ChatGatewayAttachPayload {
   sessionKey: string;
+  bootstrapSnapshot?: boolean;
 }
 
 export interface ChatGatewayHeartbeatPayload {

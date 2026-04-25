@@ -13,6 +13,7 @@ import {
   buildChatOverlaySummary,
   buildChatRuntimeSummary,
   buildChatSessionRuntimeRenderModel,
+  CHAT_SESSION_MESSAGE_WINDOW_MAX,
   clearChatSessionTransientRun,
   createEmptyChatSessionRuntimeMachineState,
   injectChatSessionOptimisticMessage,
@@ -706,7 +707,7 @@ test('runtime machine keeps authoritative completed tool overlays after live syn
 // IM-style windowing: prepend, append, anchor, window eviction
 // ──────────────────────────────────────────────────────────────────────────────
 
-const MESSAGE_WINDOW_MAX = 300;
+const MESSAGE_WINDOW_MAX = CHAT_SESSION_MESSAGE_WINDOW_MAX;
 
 function generateMessages(count, prefix = 'msg') {
   return Array.from({ length: count }, (_, i) => createMessage(`${prefix}-${i}`, {
@@ -734,6 +735,20 @@ test('prependChatSessionCanonicalMessageLedger prepends messages and returns evi
   assert.equal(render.messages[3]?.id, 'existing-2');
   assert.equal(result.eviction.evictedTop, 0);
   assert.equal(result.eviction.evictedBottom, 0);
+});
+
+test('prependChatSessionCanonicalMessageLedger keeps realistic browse history below the window budget', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-prepend-heavy-browse');
+  state = replaceChatSessionCanonicalMessageLedger(state, generateMessages(120, 'existing'));
+
+  const result = prependChatSessionCanonicalMessageLedger(state, generateMessages(24, 'prepended'));
+
+  const render = buildChatSessionRuntimeRenderModel(result.state);
+  assert.equal(render.messages.length, 144);
+  assert.equal(render.messages[0]?.id, 'prepended-0');
+  assert.equal(render.messages[143]?.id, 'existing-119');
+  assert.equal(result.eviction.evictedBottom, 0);
+  assert.equal(result.eviction.evictedTop, 0);
 });
 
 test('prependChatSessionCanonicalMessageLedger evicts from bottom when exceeding window budget', () => {

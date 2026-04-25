@@ -21,6 +21,28 @@ function cssBlock(source, selector) {
 }
 
 test('message bubbles constrain inline html/svg content and wrap control bars on narrow screens', () => {
+  assert.match(messageBubble, /ref="bubbleRoot"/);
+  assert.match(messageBubble, /const bubbleBodyReady = ref\(false\);/);
+  assert.match(messageBubble, /const bubbleBodyReadyPending = ref\(false\);/);
+  assert.match(messageBubble, /let bubbleVisibilityObserver: IntersectionObserver \| null = null;/);
+  assert.match(messageBubble, /let bubbleBodyReadyTimer: number \| null = null;/);
+  assert.match(messageBubble, /let bubbleBodyReadyIdleHandle: number \| null = null;/);
+  assert.match(messageBubble, /const MESSAGE_BUBBLE_DEFER_MIN_CHARS = 480;/);
+  assert.match(messageBubble, /const MESSAGE_BUBBLE_DEFER_ROOT_MARGIN = '1200px 0px';/);
+  assert.match(messageBubble, /const MESSAGE_BUBBLE_DEFER_IDLE_TIMEOUT_MS = 220;/);
+  assert.match(messageBubble, /const canDeferBubbleBody = computed\(\(\) => \{/);
+  assert.match(messageBubble, /const deferredBubbleSummary = computed\(\(\) => \{/);
+  assert.match(messageBubble, /function scheduleBubbleBodyReady\(\): void \{/);
+  assert.match(messageBubble, /requestIdleCallback/);
+  assert.match(messageBubble, /function bindBubbleVisibilityObserver\(\): void \{/);
+  assert.match(messageBubble, /new IntersectionObserver\(/);
+  assert.match(messageBubble, /class="chat-message-bubble chat-message-bubble-deferred"/);
+  assert.match(messageBubble, /\.chat-message-bubble-deferred\s*\{/);
+  assert.match(messageBubble, /loading="lazy"/);
+  assert.match(messageBubble, /decoding="async"/);
+  assert.match(messageBubble, /fetchpriority="low"/);
+  assert.match(messageBubble, /preload="none"/);
+  const groupBlock = cssBlock(messageBubble, /\.chat-message-group\s*\{[\s\S]*?\n\}/);
   const tableWrap = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.chat-markdown-table-wrap\)\s*\{[\s\S]*?\n\}/);
   const htmlShell = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.chat-inline-preview-shell\.kind-html\),[\s\S]*?\.chat-message-bubble-body :deep\(\.chat-inline-preview-shell\.kind-svg\)\s*\{[\s\S]*?\n\}/);
   const overflowViewport = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.chat-inline-overflow-viewport\)\s*\{[\s\S]*?\n\}/);
@@ -59,6 +81,10 @@ test('message bubbles constrain inline html/svg content and wrap control bars on
   assert.match(mermaidShell, /overflow-x:\s*auto;/);
   assert.match(livePreviewSvg, /width:\s*100%;/);
   assert.match(livePreviewSvg, /overflow-x:\s*auto;/);
+  assert.doesNotMatch(messageBubble, /content-visibility:\s*auto;/);
+  assert.doesNotMatch(messageBubble, /contain-intrinsic-size:/);
+  assert.match(messageBubble, /if \(bubbleBodyReady\.value\) \{\s*return;\s*\}/);
+  assert.match(groupBlock, /display:\s*flex;/);
   assert.match(messageBubble, /\.chat-message-bubble-body :deep\(\.code-block-header\),[\s\S]*flex-wrap:\s*wrap;/);
 });
 
@@ -75,6 +101,25 @@ test('fullscreen preview dialog uses bounded mobile viewport and touch scrolling
 });
 
 test('touch devices keep inline preview actions discoverable without hover', () => {
+  assert.match(markdownBlock, /const MARKDOWN_LAZY_RENDER_MIN_CHARS = 1600;/);
+  assert.match(markdownBlock, /const MARKDOWN_LAZY_RENDER_HEAVY_LINE_COUNT = 18;/);
+  assert.match(markdownBlock, /const MARKDOWN_LAZY_RENDER_IDLE_TIMEOUT_MS = 220;/);
+  assert.match(markdownBlock, /const MARKDOWN_LAZY_RENDER_ROOT_MARGIN = '900px 0px';/);
+  assert.match(markdownBlock, /const renderReady = ref\(false\);/);
+  assert.match(markdownBlock, /const renderReadyPending = ref\(false\);/);
+  assert.match(markdownBlock, /let renderVisibilityObserver: IntersectionObserver \| null = null;/);
+  assert.match(markdownBlock, /let renderReadyTimer: number \| null = null;/);
+  assert.match(markdownBlock, /let renderReadyIdleHandle: number \| null = null;/);
+  assert.match(markdownBlock, /function isHeavyMarkdownSource\(value: string\): boolean \{/);
+  assert.match(markdownBlock, /const shouldLazyRender = computed\(\(\) => !props\.forceEagerRender && isHeavyMarkdownSource\(props\.source\)\);/);
+  assert.match(markdownBlock, /function ensureMarkdownRenderReady\(\): void \{/);
+  assert.match(markdownBlock, /function scheduleMarkdownRenderReady\(\): void \{/);
+  assert.match(markdownBlock, /requestIdleCallback/);
+  assert.match(markdownBlock, /function bindMarkdownVisibilityObserver\(\): void \{/);
+  assert.match(markdownBlock, /new IntersectionObserver\(/);
+  assert.match(markdownBlock, /rootMargin: MARKDOWN_LAZY_RENDER_ROOT_MARGIN,/);
+  assert.match(markdownBlock, /class="chat-markdown-deferred-card"/);
+  assert.match(markdownBlock, /\.chat-markdown-deferred-card\s*\{/);
   assert.match(markdownBlock, /function buildInlineOverflowViewport\(kind:\s*'html'\s*\|\s*'svg'\): HTMLDivElement \{/);
   assert.match(markdownBlock, /viewport\.className = `chat-inline-overflow-viewport kind-\$\{kind\}`;/);
   assert.match(markdownBlock, /function installTableOverflowGuards\(container: HTMLElement\): void \{/);

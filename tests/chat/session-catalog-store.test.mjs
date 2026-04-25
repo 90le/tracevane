@@ -138,6 +138,7 @@ test('sqlite: replaceAgentSessions refreshes one agent slice without touching ot
     const store = createStudioChatSessionCatalogStore(makeConfig(root));
     store.writeSession(makeSession('agent:main:webchat:direct:one'));
     store.writeSession(makeSession('agent:backend:webchat:direct:two', { agentId: 'backend' }));
+    store.setSignature('complete-catalog-signature');
 
     store.replaceAgentSessions('main', [
       makeSession('agent:main:webchat:direct:three', { updatedAt: '2026-04-22T11:00:00.000Z' }),
@@ -148,6 +149,7 @@ test('sqlite: replaceAgentSessions refreshes one agent slice without touching ot
       'agent:backend:webchat:direct:two',
       'agent:main:webchat:direct:three',
     ]);
+    assert.equal(store.readSnapshot().signature, null);
   } finally {
     cleanupTempRoot(root);
   }

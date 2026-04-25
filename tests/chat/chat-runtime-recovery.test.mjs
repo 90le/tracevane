@@ -9,6 +9,8 @@ const {
   resolveChatRouteSessionKey,
   resolveFallbackSessionKey,
   resolveRequestedOrFallbackSessionKey,
+  saveChatRuntimeSnapshot,
+  readChatRuntimeSnapshot,
 } = await import('../../apps/web-vue/src/features/chat-v2/chat-runtime-recovery.ts');
 
 function createSession(key, overrides = {}) {
@@ -208,4 +210,97 @@ test('resolveRequestedOrFallbackSessionKey falls back when route points at missi
     availableSessions,
     storedSessionKey: 'session-gone',
   }), 'session-a');
+});
+
+test('runtime snapshots trim oversized ledgers to the recent window before restore', () => {
+  const storage = new Map();
+  globalThis.window = {
+    sessionStorage: {
+      getItem(key) {
+        return storage.has(key) ? storage.get(key) : null;
+      },
+      setItem(key, value) {
+        storage.set(key, String(value));
+      },
+      removeItem(key) {
+        storage.delete(key);
+      },
+    },
+  };
+
+  const sessionKey = 'agent:main:oversized';
+  const messages = Array.from({ length: 260 }, (_, index) => ({
+    id: `msg-${index + 1}`,
+    role: 'assistant',
+    text: `message ${index + 1}`,
+    createdAt: `2026-04-24T12:${String(index % 60).padStart(2, '0')}:00.000Z`,
+    source: 'history',
+    runId: index >= 255 ? 'run-live' : `run-${index + 1}`,
+    truncated: false,
+    omitted: false,
+    aborted: false,
+    stopReason: null,
+  }));
+  const payload = {
+    checkedAt: '2026-04-24T12:00:00.000Z',
+    session: createSession(sessionKey),
+    messages: messages.slice(-24),
+    overlays: [
+      {
+        runId: 'run-live',
+        startedAt: '2026-04-24T12:55:00.000Z',
+        updatedAt: '2026-04-24T12:56:00.000Z',
+        lifecycle: 'running',
+        previewText: '',
+        toolCalls: [],
+        finalMessageId: null,
+        finalCreatedAt: null,
+        firstAssistantSeenAt: null,
+        firstToolStartedAt: null,
+        sequence: 1,
+      },
+    ],
+    runtime: null,
+    diagnostics: null,
+    observability: { toolCards: [], timeline: [] },
+    pageInfo: { hasMoreBefore: true, beforeCursor: 'before', hasMoreAfter: false, afterCursor: null },
+    day: null,
+  };
+  const runtimeMachineState = {
+    sessionKey,
+    canonicalVersion: null,
+    canonicalMessageLedger: messages,
+    transientRunState: {
+      'run-live': {
+        runId: 'run-live',
+        phases: [],
+        activePhaseId: null,
+        activePhaseKind: null,
+        lastAccumulatedAssistantText: '',
+        nextPhaseIndex: 0,
+      },
+    },
+    processLedger: {
+      'run-live': payload.overlays[0],
+    },
+  };
+
+  saveChatRuntimeSnapshot(
+    sessionKey,
+    payload,
+    runtimeMachineState.canonicalMessageLedger,
+    payload.overlays,
+    runtimeMachineState,
+  );
+  const snapshot = readChatRuntimeSnapshot(sessionKey);
+
+  assert.ok(snapshot);
+  assert.equal(snapshot.messages.length, 120);
+  assert.equal(snapshot.messages[0].id, 'msg-141');
+  assert.equal(snapshot.messages.at(-1).id, 'msg-260');
+  assert.equal(snapshot.runtimeMachineState.canonicalMessageLedger.length, 120);
+  assert.deepEqual(Object.keys(snapshot.runtimeMachineState.transientRunState), ['run-live']);
+  assert.deepEqual(Object.keys(snapshot.runtimeMachineState.processLedger), ['run-live']);
+
+  delete globalThis.window;
 });
