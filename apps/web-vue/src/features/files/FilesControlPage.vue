@@ -1,9 +1,5 @@
 <template>
-  <section
-    class="file-manager-page"
-    tabindex="0"
-    @keydown="handleFileManagerKeydown"
-  >
+  <section class="file-manager-page">
     <div
       v-if="noticeMessage"
       class="file-manager-notice"
@@ -62,43 +58,6 @@
         <div class="file-manager-statusbar">
           <span>{{ text(`已选 ${selectedItems.length} 项`, `${selectedItems.length} selected`) }}</span>
           <button
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="refreshExplorer"
-          >
-            {{ text("刷新", "Refresh") }}
-          </button>
-          <button
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="quickCreateDirectory"
-          >
-            {{ text("新建文件夹", "New folder") }}
-          </button>
-          <button
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="quickCreateFile"
-          >
-            {{ text("新建文件", "New file") }}
-          </button>
-          <button
-            v-if="selectedItems.length"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="putSelectedItemsOnClipboard('copy')"
-          >
-            {{ text("复制", "Copy") }}
-          </button>
-          <button
-            v-if="selectedItems.length"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="putSelectedItemsOnClipboard('move')"
-          >
-            {{ text("剪切", "Cut") }}
-          </button>
-          <button
             v-if="selectedItems.length"
             type="button"
             class="file-manager-statusbar__button"
@@ -121,22 +80,6 @@
             @click="openDetailsForSelection"
           >
             {{ text("详情", "Details") }}
-          </button>
-          <button
-            v-if="fileClipboard"
-            type="button"
-            class="file-manager-statusbar__button file-manager-statusbar__button--primary"
-            @click="pasteFileClipboardIntoCurrentDirectory"
-          >
-            {{ fileClipboardLabel }}
-          </button>
-          <button
-            v-if="fileClipboard"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="clearFileClipboard"
-          >
-            {{ text("清空剪贴板", "Clear clipboard") }}
           </button>
           <button
             v-if="selectedCodeFiles.length"
@@ -300,201 +243,49 @@
       </article>
     </section>
 
-    <section
+    <FileEditorWorkspace
       v-if="editorTabs.length"
-      class="file-manager-editor-drawer"
-      :class="{ 'file-manager-editor-drawer--maximized': editorMaximized }"
-      aria-live="polite"
-    >
-      <div class="file-manager-editor-drawer__head">
-        <div class="file-manager-editor-drawer__title">
-          <div class="file-manager-editor-drawer__tabs" role="tablist">
-            <button
-              v-for="tab in editorTabs"
-              :key="tab.id"
-              type="button"
-              class="file-manager-editor-drawer__tab"
-              :class="{ active: tab.id === activeEditorId, dirty: tab.draft !== tab.content, error: Boolean(tab.error) }"
-              role="tab"
-              :aria-selected="tab.id === activeEditorId"
-              @click="setActiveEditor(tab.id)"
-            >
-              <span class="file-manager-editor-drawer__tab-icon">{{ editorFileIconForName(tab.name) }}</span>
-              <strong>{{ tab.name || text("未命名", "Untitled") }}</strong>
-              <span v-if="tab.draft !== tab.content" class="file-manager-editor-drawer__dirty" aria-hidden="true"></span>
-              <span
-                role="button"
-                tabindex="0"
-                class="file-manager-editor-drawer__tab-close"
-                :aria-label="text('关闭文件', 'Close file')"
-                @click.stop="closeEditor(tab.id)"
-                @keydown.enter.stop.prevent="closeEditor(tab.id)"
-                @keydown.space.stop.prevent="closeEditor(tab.id)"
-              >
-                ×
-              </span>
-            </button>
-          </div>
-          <span class="file-manager-editor-drawer__path" :title="editorState.path">{{ editorState.path }}</span>
-        </div>
-
-        <div class="file-manager-editor-drawer__actions">
-          <span v-if="editorState.readOnly" class="file-manager-editor-drawer__badge">
-            {{ text("只读", "Read only") }}
-          </span>
-          <button
-            type="button"
-            class="file-manager-editor-drawer__button"
-            :disabled="editorState.content == null"
-            @click="requestEditorSearch"
-          >
-            {{ text("搜索/替换", "Search/replace") }}
-          </button>
-          <button
-            type="button"
-            class="file-manager-editor-drawer__button"
-            :disabled="!editorDownloadUrl"
-            @click="downloadEditorFile"
-          >
-            {{ text("下载", "Download") }}
-          </button>
-          <button
-            type="button"
-            class="file-manager-editor-drawer__button"
-            :disabled="editorLoading || !editorDirty"
-            @click="resetEditor"
-          >
-            {{ text("回退", "Revert") }}
-          </button>
-          <button
-            type="button"
-            class="file-manager-editor-drawer__button file-manager-editor-drawer__button--primary"
-            :disabled="editorLoading || editorSaving || editorState.readOnly || !editorDirty"
-            @click="saveEditor"
-          >
-            {{ editorSaving ? text("保存中…", "Saving...") : text("保存", "Save") }}
-          </button>
-          <button
-            type="button"
-            class="file-manager-editor-drawer__button"
-            @click="editorMaximized = !editorMaximized"
-          >
-            {{ editorMaximized ? text("还原", "Restore") : text("最大化", "Maximize") }}
-          </button>
-          <button
-            type="button"
-            class="file-manager-editor-drawer__button"
-            @click="closeEditor()"
-          >
-            {{ text("关闭", "Close") }}
-          </button>
-        </div>
-      </div>
-
-      <div class="file-manager-editor-drawer__body">
-        <aside class="file-manager-editor-sidebar">
-          <div class="file-manager-editor-sidebar__brand">
-            <strong>{{ text("编辑器", "Editor") }}</strong>
-            <span>{{ text("当前目录与打开文件", "Folder and open files") }}</span>
-          </div>
-
-          <div class="file-manager-editor-sidebar__section">
-            <div class="file-manager-editor-sidebar__label">
-              <span>{{ text("打开文件", "Open files") }}</span>
-              <strong>{{ editorTabs.length }}</strong>
-            </div>
-            <button
-              v-for="tab in editorTabs"
-              :key="`side-${tab.id}`"
-              type="button"
-              class="file-manager-editor-sidebar__file"
-              :class="{ active: tab.id === activeEditorId, dirty: tab.draft !== tab.content }"
-              @click="setActiveEditor(tab.id)"
-            >
-              <span>{{ editorFileIconForName(tab.name) }}</span>
-              <strong>{{ tab.name }}</strong>
-            </button>
-          </div>
-
-          <div class="file-manager-editor-sidebar__section">
-            <div class="file-manager-editor-sidebar__label">
-              <span>{{ text("当前目录", "Current folder") }}</span>
-              <strong>{{ editorDirectoryEntries.length }}</strong>
-            </div>
-            <p class="file-manager-editor-sidebar__path">{{ editorDirectoryPath || "/" }}</p>
-            <button
-              v-for="entry in editorDirectoryEntries"
-              :key="`dir-${entry.path}`"
-              type="button"
-              class="file-manager-editor-sidebar__file"
-              :class="{ active: entry.path === editorState.apiPath }"
-              :disabled="!isCodeEditableEntry(entry)"
-              @click="openEditorForEntry(entry)"
-            >
-              <span>{{ editorFileIconForName(entry.name) }}</span>
-              <strong>{{ entry.name }}</strong>
-            </button>
-            <p v-if="editorDirectoryLoading" class="file-manager-editor-sidebar__hint">
-              {{ text("正在加载目录…", "Loading folder...") }}
-            </p>
-            <p v-else-if="!editorDirectoryEntries.length" class="file-manager-editor-sidebar__hint">
-              {{ text("当前目录没有可编辑文件。", "No editable files in this folder.") }}
-            </p>
-          </div>
-        </aside>
-
-        <div
-          v-if="editorLoading"
-          class="file-manager-editor-drawer__empty"
-        >
-          {{ text("正在加载文件内容…", "Loading file content...") }}
-        </div>
-        <div
-          v-else-if="editorState.error"
-          class="file-manager-editor-drawer__empty file-manager-editor-drawer__empty--error"
-        >
-          {{ editorState.error }}
-        </div>
-        <div v-else-if="editorState.content == null" class="file-manager-editor-drawer__empty">
-          {{ text("当前文件没有可编辑内容。", "This file has no editable content.") }}
-        </div>
-        <AsyncCodeFileEditor
-          v-else
-          v-model="editorDraft"
-          class="file-manager-editor-drawer__editor"
-          :path="editorState.path"
-          :read-only="editorState.readOnly"
-          :dark="resolvedTheme === 'dark'"
-          :search-request="editorSearchRequest"
-          @save="saveEditor"
-        />
-      </div>
-
-      <footer class="file-manager-editor-drawer__statusbar">
-        <span>{{ editorLanguageLabel }}</span>
-        <span>{{ text(`${editorLineCount} 行`, `${editorLineCount} lines`) }}</span>
-        <span>{{ text(`${editorCharacterCount} 字符`, `${editorCharacterCount} chars`) }}</span>
-        <span>UTF-8</span>
-        <span>LF</span>
-        <span v-if="editorState.truncated">
-          {{ text("已截断", "Truncated") }}
-        </span>
-      </footer>
-    </section>
+      v-model="editorDraft"
+      :tabs="editorTabs"
+      :active-tab-id="activeEditorId"
+      :maximized="editorMaximized"
+      :state="editorState"
+      :loading="editorLoading"
+      :saving="editorSaving"
+      :dirty="editorDirty"
+      :download-url="editorDownloadUrl"
+      :recent-files="recentEditorFiles"
+      :line-count="editorLineCount"
+      :character-count="editorCharacterCount"
+      :language-label="editorLanguageLabel"
+      :search-request="editorSearchRequest"
+      :theme="resolvedTheme"
+      :text="text"
+      @set-active="setActiveEditor"
+      @close="closeEditor"
+      @search="requestEditorSearch"
+      @download="downloadEditorFile"
+      @reset="resetEditor"
+      @save="saveEditor"
+      @open-recent="openRecentEditorFile"
+      @update:maximized="editorMaximized = $event"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from "vue";
+import { computed, onMounted, provide, ref } from "vue";
 import { VueFinder, contextMenuItems as builtInContextMenuItems } from "vuefinder";
 import type { ConfigDefaults, DirEntry, FeaturesConfig, Item as VueFinderContextItem } from "vuefinder";
-import type { FileEntrySummary, FilesReadPayload, FilesSummaryPayload, FileRootSummary } from "../../../../../types/files";
+import zhCN from "vuefinder/dist/locales/zhCN.js";
+import en from "vuefinder/dist/locales/en.js";
+import "vuefinder/dist/vuefinder.css";
+import type { FilesReadPayload, FilesSummaryPayload, FileRootSummary } from "../../../../../types/files";
 import { useLocalePreference } from "../../shared/locale";
 import { useThemePreference } from "../../shared/theme";
-import { browseDirectory, buildArchiveDownloadUrl, buildFileDownloadUrl, copyPath, createDirectory, createFile, fetchFilesSummary, movePath, readFileContent, saveFileContent, unarchiveFile } from "./api";
+import { buildArchiveDownloadUrl, buildFileDownloadUrl, copyPath, fetchFilesSummary, readFileContent, saveFileContent, unarchiveFile } from "./api";
+import FileEditorWorkspace from "./FileEditorWorkspace.vue";
 import { StudioFilesVueFinderDriver, type StudioFileStorageRoot } from "./vuefinder-driver";
-
-const AsyncCodeFileEditor = defineAsyncComponent(() => import("./CodeFileEditor.vue"));
 
 defineProps<{
   pageEyebrow: string;
@@ -502,6 +293,13 @@ defineProps<{
 
 const { locale, text } = useLocalePreference();
 const { resolvedTheme } = useThemePreference();
+provide("VueFinderOptions", {
+  locale: "zhCN",
+  i18n: {
+    zhCN,
+    en,
+  },
+});
 
 interface EditorFileTab {
   id: string;
@@ -518,20 +316,13 @@ interface EditorFileTab {
   saving: boolean;
 }
 
-interface FileClipboardItem {
+interface RecentEditorFile {
+  id: string;
   rootId: string;
+  apiPath: string;
   path: string;
   name: string;
-}
-
-interface FileClipboardState {
-  mode: "copy" | "move";
-  items: FileClipboardItem[];
-}
-
-interface FileExplorerTarget {
-  rootId: string;
-  directoryPath: string;
+  openedAt: string;
 }
 
 type ExplorerDensity = "compact" | "comfortable" | "visual";
@@ -547,6 +338,7 @@ interface ExplorerUiPrefs {
 type ExplorerUiToggleKey = Exclude<keyof ExplorerUiPrefs, "density">;
 
 const FILE_MANAGER_UI_STORAGE_KEY = "openclaw-studio.files.ui";
+const RECENT_EDITOR_FILES_STORAGE_KEY = "openclaw-studio.files.recent-editor";
 const DEFAULT_EXPLORER_UI_PREFS: ExplorerUiPrefs = {
   menuBar: true,
   toolbar: true,
@@ -585,22 +377,41 @@ function persistExplorerUiPrefs(prefs: ExplorerUiPrefs): void {
   }
 }
 
+function readRecentEditorFiles(): RecentEditorFile[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(RECENT_EDITOR_FILES_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) as RecentEditorFile[] : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((item) => item?.rootId && item.apiPath && item.name)
+          .slice(0, 12)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistRecentEditorFiles(items: RecentEditorFile[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RECENT_EDITOR_FILES_STORAGE_KEY, JSON.stringify(items.slice(0, 12)));
+  } catch {
+    // Ignore storage failures; recent files are a convenience, not critical state.
+  }
+}
+
 const summary = ref<FilesSummaryPayload | null>(null);
 const loading = ref(false);
 const noticeMessage = ref<{ kind: "success" | "error" | "info" | "warning"; text: string } | null>(null);
 const selectedItems = ref<DirEntry[]>([]);
-const currentExplorerPath = ref("");
-const fileClipboard = ref<FileClipboardState | null>(null);
 const detailsItem = ref<DirEntry | null>(null);
 const explorerUiPrefs = ref<ExplorerUiPrefs>(readExplorerUiPrefs());
 const editorMaximized = ref(false);
 const editorTabs = ref<EditorFileTab[]>([]);
 const activeEditorId = ref("");
+const recentEditorFiles = ref<RecentEditorFile[]>(readRecentEditorFiles());
 const editorSearchRequest = ref(0);
-const editorDirectoryLoading = ref(false);
-const editorDirectoryRootId = ref("");
-const editorDirectoryPath = ref("");
-const editorDirectoryEntries = ref<FileEntrySummary[]>([]);
 const viewerRefreshNonce = ref(0);
 
 const viewerId = "studio-files-viewer";
@@ -699,26 +510,6 @@ const selectedZipFiles = computed(
   () => selectedItems.value.filter((item) => isZipArchiveItem(item)),
 );
 const selectedSingleItem = computed(() => selectedItems.value.length === 1 ? selectedItems.value[0] : null);
-const currentExplorerTarget = computed<FileExplorerTarget | null>(() => {
-  const parsed = parseVueFinderPath(currentExplorerPath.value);
-  const rootId =
-    rootIdForStorage(parsed.storage)
-    || summary.value?.defaultRootId
-    || storageRoots.value[0]?.id
-    || "";
-  if (!rootId) return null;
-  return {
-    rootId,
-    directoryPath: parsed.relativePath,
-  };
-});
-const fileClipboardLabel = computed(() => {
-  const clipboard = fileClipboard.value;
-  if (!clipboard) return "";
-  const count = clipboard.items.length;
-  const action = clipboard.mode === "copy" ? text("粘贴复制", "Paste copy") : text("粘贴移动", "Paste move");
-  return count > 1 ? text(`${action} ${count}`, `${action} ${count}`) : action;
-});
 const detailsTypeLabel = computed(() => {
   const item = detailsItem.value;
   if (!item) return "";
@@ -823,40 +614,6 @@ const explorerContextMenuItems = computed<VueFinderContextItem[]>(() => [
     },
     show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
     order: 115,
-  },
-  {
-    id: "studio_quick_copy",
-    title: () => text("复制到 Studio 剪贴板", "Copy to Studio clipboard"),
-    action: (_app, items) => {
-      putItemsOnClipboard("copy", items);
-    },
-    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
-    order: 116,
-  },
-  {
-    id: "studio_quick_cut",
-    title: () => text("剪切到 Studio 剪贴板", "Cut to Studio clipboard"),
-    action: (_app, items) => {
-      putItemsOnClipboard("move", items);
-    },
-    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
-    order: 117,
-  },
-  {
-    id: "studio_quick_paste",
-    title: () => text("粘贴到此处", "Paste here"),
-    action: (_app, items) => {
-      const target = items.length === 1 && items[0].type === "dir"
-        ? targetDirectoryFromItem(items[0])
-        : currentExplorerTarget.value;
-      void pasteFileClipboard(target);
-    },
-    show: (_app, ctx) => {
-      if (!fileClipboard.value?.items.length) return false;
-      if (!ctx.target) return true;
-      return ctx.target.type === "dir";
-    },
-    order: 118,
   },
   {
     id: "studio_copy_path",
@@ -1004,30 +761,32 @@ function relativePathFromVueFinderPath(pathValue: string): string {
   return parseVueFinderPath(pathValue).relativePath;
 }
 
-function directoryPathForFile(filePath: string): string {
-  const normalized = filePath.replace(/^\/+|\/+$/g, "");
-  const slashIndex = normalized.lastIndexOf("/");
-  return slashIndex === -1 ? "" : normalized.slice(0, slashIndex);
-}
-
 function createEditorTabId(rootId: string, apiPath: string): string {
   return `${rootId}:${apiPath}`;
 }
 
-function editorFileIconForName(fileName: string): string {
-  const match = fileName.toLowerCase().match(/\.([^.]+)$/);
-  const ext = match?.[1] || "";
-  if (["json", "jsonl"].includes(ext)) return "{}";
-  if (["md", "markdown"].includes(ext)) return "MD";
-  if (["css", "scss", "less"].includes(ext)) return "#";
-  if (["html", "htm", "vue"].includes(ext)) return "<>";
-  if (["yaml", "yml", "toml", "ini", "env"].includes(ext)) return "::";
-  if (["sh"].includes(ext)) return "$";
-  return "fx";
-}
-
 function storageForRootId(rootId: string): string {
   return storageRoots.value.find((root) => root.id === rootId)?.storage || "";
+}
+
+function recordRecentEditorFile(input: Omit<RecentEditorFile, "id" | "openedAt">): void {
+  const id = createEditorTabId(input.rootId, input.apiPath);
+  const nextItem: RecentEditorFile = {
+    ...input,
+    id,
+    openedAt: new Date().toISOString(),
+  };
+  recentEditorFiles.value = [
+    nextItem,
+    ...recentEditorFiles.value.filter((item) => item.id !== id),
+  ].slice(0, 12);
+  persistRecentEditorFiles(recentEditorFiles.value);
+}
+
+async function openRecentEditorFile(item: RecentEditorFile): Promise<void> {
+  const storage = storageForRootId(item.rootId);
+  const vuePath = storage ? `${storage}://${item.apiPath}` : item.path;
+  await openEditorForPath(item.rootId, item.apiPath, vuePath, item.name);
 }
 
 function setActiveEditor(tabId: string): void {
@@ -1046,178 +805,13 @@ function requestEditorSearch(): void {
   editorSearchRequest.value += 1;
 }
 
-async function refreshEditorDirectory(rootId: string, directoryPath: string): Promise<void> {
-  if (!rootId) return;
-  editorDirectoryLoading.value = true;
-  editorDirectoryRootId.value = rootId;
-  editorDirectoryPath.value = directoryPath;
-  try {
-    const payload = await browseDirectory(rootId, directoryPath, true);
-    editorDirectoryEntries.value = payload.entries.filter((entry) => entry.kind === "file" && isCodeEditableEntry(entry));
-  } catch {
-    editorDirectoryEntries.value = [];
-  } finally {
-    editorDirectoryLoading.value = false;
-  }
-}
-
 function setNotice(kind: "success" | "error" | "info" | "warning", message: string): void {
   noticeMessage.value = { kind, text: message };
-}
-
-function shouldIgnoreShortcut(event: KeyboardEvent): boolean {
-  const target = event.target as HTMLElement | null;
-  if (!target) return false;
-  const tagName = target.tagName.toLowerCase();
-  return tagName === "input" || tagName === "textarea" || target.isContentEditable;
-}
-
-function handleFileManagerKeydown(event: KeyboardEvent): void {
-  if (shouldIgnoreShortcut(event)) return;
-  const meta = event.ctrlKey || event.metaKey;
-  if (meta && event.key.toLowerCase() === "r") {
-    event.preventDefault();
-    refreshExplorer();
-    return;
-  }
-  if (meta && event.shiftKey && event.key.toLowerCase() === "n") {
-    event.preventDefault();
-    quickCreateDirectory();
-    return;
-  }
-  if (meta && event.key.toLowerCase() === "n") {
-    event.preventDefault();
-    quickCreateFile();
-    return;
-  }
-  if (meta && event.key.toLowerCase() === "c" && selectedItems.value.length) {
-    event.preventDefault();
-    putSelectedItemsOnClipboard("copy");
-    return;
-  }
-  if (meta && event.key.toLowerCase() === "x" && selectedItems.value.length) {
-    event.preventDefault();
-    putSelectedItemsOnClipboard("move");
-    return;
-  }
-  if (meta && event.key.toLowerCase() === "v" && fileClipboard.value) {
-    event.preventDefault();
-    pasteFileClipboardIntoCurrentDirectory();
-    return;
-  }
-  if (meta && event.key.toLowerCase() === "d" && selectedItems.value.length) {
-    event.preventDefault();
-    duplicateSelectedItems();
-    return;
-  }
-  if (meta && event.key.toLowerCase() === "i" && selectedSingleItem.value) {
-    event.preventDefault();
-    openDetailsForSelection();
-    return;
-  }
-  if (event.key === "Escape") {
-    detailsItem.value = null;
-  }
 }
 
 function refreshExplorer(): void {
   viewerRefreshNonce.value += 1;
   selectedItems.value = [];
-}
-
-function promptForName(title: string, placeholder: string): string {
-  if (typeof window === "undefined") return "";
-  return (window.prompt(title, placeholder) || "").trim();
-}
-
-async function quickCreateDirectory(): Promise<void> {
-  const target = currentExplorerTarget.value;
-  if (!target) return;
-  const name = promptForName(text("输入新文件夹名称", "Enter new folder name"), "untitled-folder");
-  if (!name) return;
-  try {
-    await createDirectory({
-      rootId: target.rootId,
-      directoryPath: target.directoryPath,
-      name,
-    });
-    refreshExplorer();
-    setNotice("success", text("文件夹已创建", "Folder created"));
-  } catch (error) {
-    setNotice("error", error instanceof Error ? error.message : text("创建文件夹失败", "Failed to create folder"));
-  }
-}
-
-async function quickCreateFile(): Promise<void> {
-  const target = currentExplorerTarget.value;
-  if (!target) return;
-  const name = promptForName(text("输入新文件名称", "Enter new file name"), "untitled.txt");
-  if (!name) return;
-  try {
-    await createFile({
-      rootId: target.rootId,
-      directoryPath: target.directoryPath,
-      name,
-      content: "",
-    });
-    refreshExplorer();
-    setNotice("success", text("文件已创建", "File created"));
-  } catch (error) {
-    setNotice("error", error instanceof Error ? error.message : text("创建文件失败", "Failed to create file"));
-  }
-}
-
-function targetDirectoryFromItem(item: DirEntry): FileExplorerTarget | null {
-  if (item.type !== "dir") return null;
-  const rootId = rootIdForStorage(item.storage);
-  if (!rootId) return null;
-  return {
-    rootId,
-    directoryPath: relativePathFromVueFinderPath(item.path),
-  };
-}
-
-function fileClipboardItemsFor(items: DirEntry[]): FileClipboardItem[] {
-  const candidates = items.length ? items : selectedItems.value;
-  return candidates
-    .map((item) => {
-      const rootId = rootIdForStorage(item.storage);
-      const itemPath = relativePathFromVueFinderPath(item.path);
-      if (!rootId || !itemPath) return null;
-      return {
-        rootId,
-        path: itemPath,
-        name: item.basename,
-      };
-    })
-    .filter((item): item is FileClipboardItem => Boolean(item));
-}
-
-function putItemsOnClipboard(mode: FileClipboardState["mode"], items: DirEntry[]): void {
-  const clipboardItems = fileClipboardItemsFor(items);
-  if (!clipboardItems.length) {
-    setNotice("warning", text("请选择要复制或剪切的文件", "Select files or folders to copy or cut"));
-    return;
-  }
-  fileClipboard.value = {
-    mode,
-    items: clipboardItems,
-  };
-  setNotice(
-    "info",
-    mode === "copy"
-      ? text(`已复制 ${clipboardItems.length} 项到剪贴板`, `Copied ${clipboardItems.length} item(s) to clipboard`)
-      : text(`已剪切 ${clipboardItems.length} 项到剪贴板`, `Cut ${clipboardItems.length} item(s) to clipboard`),
-  );
-}
-
-function putSelectedItemsOnClipboard(mode: FileClipboardState["mode"]): void {
-  putItemsOnClipboard(mode, selectedItems.value);
-}
-
-function clearFileClipboard(): void {
-  fileClipboard.value = null;
-  setNotice("info", text("剪贴板已清空", "Clipboard cleared"));
 }
 
 async function writeTextToSystemClipboard(content: string): Promise<void> {
@@ -1299,53 +893,6 @@ async function duplicateItems(items: DirEntry[]): Promise<void> {
 
 function duplicateSelectedItems(): void {
   void duplicateItems(selectedItems.value);
-}
-
-async function pasteFileClipboard(target: FileExplorerTarget | null = currentExplorerTarget.value): Promise<void> {
-  const clipboard = fileClipboard.value;
-  if (!clipboard?.items.length) {
-    setNotice("warning", text("剪贴板为空", "Clipboard is empty"));
-    return;
-  }
-  if (!target?.rootId) {
-    setNotice("error", text("无法确定当前目录", "Could not determine the current folder"));
-    return;
-  }
-
-  try {
-    for (const item of clipboard.items) {
-      const payload = {
-        sourceRootId: item.rootId,
-        sourcePath: item.path,
-        destinationRootId: target.rootId,
-        destinationDirectoryPath: target.directoryPath,
-      };
-      if (clipboard.mode === "copy") {
-        await copyPath(payload);
-      } else {
-        await movePath(payload);
-      }
-    }
-    if (clipboard.mode === "move") {
-      fileClipboard.value = null;
-    }
-    refreshExplorer();
-    setNotice(
-      "success",
-      clipboard.mode === "copy"
-        ? text(`已粘贴复制 ${clipboard.items.length} 项`, `Pasted ${clipboard.items.length} copied item(s)`)
-        : text(`已移动 ${clipboard.items.length} 项`, `Moved ${clipboard.items.length} item(s)`),
-    );
-  } catch (error) {
-    setNotice(
-      "error",
-      error instanceof Error ? error.message : text("粘贴失败", "Paste failed"),
-    );
-  }
-}
-
-function pasteFileClipboardIntoCurrentDirectory(): void {
-  void pasteFileClipboard(currentExplorerTarget.value);
 }
 
 function formatFileSize(size: number | null | undefined): string {
@@ -1439,36 +986,6 @@ function isZipArchiveItem(item: DirEntry): boolean {
   return mime === "application/zip" || extension === "zip" || item.basename.toLowerCase().endsWith(".zip");
 }
 
-function isCodeEditableEntry(entry: FileEntrySummary): boolean {
-  if (entry.kind !== "file") return false;
-  if (entry.textLike) return true;
-  const ext = String(entry.ext || "").replace(/^\./, "").toLowerCase();
-  return [
-    "ts",
-    "tsx",
-    "js",
-    "jsx",
-    "json",
-    "jsonl",
-    "md",
-    "markdown",
-    "html",
-    "htm",
-    "vue",
-    "css",
-    "scss",
-    "less",
-    "py",
-    "yaml",
-    "yml",
-    "sql",
-    "sh",
-    "env",
-    "toml",
-    "ini",
-  ].includes(ext);
-}
-
 async function reloadSummary(): Promise<void> {
   loading.value = true;
   try {
@@ -1500,8 +1017,7 @@ function handleExplorerSelect(items: DirEntry[]): void {
   selectedItems.value = Array.isArray(items) ? items : [];
 }
 
-function handleExplorerPathChange(pathValue: string): void {
-  currentExplorerPath.value = pathValue || "";
+function handleExplorerPathChange(_pathValue: string): void {
   selectedItems.value = [];
 }
 
@@ -1512,19 +1028,17 @@ async function openEditorForItem(item: DirEntry): Promise<void> {
   await openEditorForPath(rootId, apiPath, item.path, item.basename);
 }
 
-async function openEditorForEntry(entry: FileEntrySummary): Promise<void> {
-  if (!editorDirectoryRootId.value || !isCodeEditableEntry(entry)) return;
-  const storage = storageForRootId(editorDirectoryRootId.value);
-  const vuePath = storage ? `${storage}://${entry.path}` : entry.path;
-  await openEditorForPath(editorDirectoryRootId.value, entry.path, vuePath, entry.name);
-}
-
 async function openEditorForPath(rootId: string, apiPath: string, vuePath: string, fallbackName: string): Promise<void> {
   const tabId = createEditorTabId(rootId, apiPath);
-  void refreshEditorDirectory(rootId, directoryPathForFile(apiPath));
   const existingTab = editorTabs.value.find((tab) => tab.id === tabId);
   if (existingTab) {
     activeEditorId.value = existingTab.id;
+    recordRecentEditorFile({
+      rootId,
+      apiPath,
+      path: vuePath,
+      name: existingTab.name || fallbackName,
+    });
     return;
   }
 
@@ -1557,6 +1071,12 @@ async function openEditorForPath(rootId: string, apiPath: string, vuePath: strin
       draft: payload.content || "",
       error: null,
       loading: false,
+    });
+    recordRecentEditorFile({
+      rootId,
+      apiPath: payload.path,
+      path: vuePath,
+      name: payload.name,
     });
   } catch (error) {
     updateEditorTab(tabId, {
@@ -1769,8 +1289,7 @@ onMounted(() => {
   font-size: 12px;
 }
 
-.file-manager-statusbar__button,
-.file-manager-editor-drawer__button {
+.file-manager-statusbar__button {
   min-height: 28px;
   padding: 0 10px;
   border: 1px solid var(--line);
@@ -1782,8 +1301,7 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.file-manager-statusbar__button:hover,
-.file-manager-editor-drawer__button:hover {
+.file-manager-statusbar__button:hover {
   border-color: color-mix(in srgb, var(--acc) 36%, var(--line));
   background: color-mix(in srgb, var(--button-secondary-bg) 82%, var(--acc) 10%);
   color: var(--text);
@@ -1795,8 +1313,7 @@ onMounted(() => {
   color: color-mix(in srgb, var(--acc) 72%, var(--text));
 }
 
-.file-manager-statusbar__button:disabled,
-.file-manager-editor-drawer__button:disabled {
+.file-manager-statusbar__button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -2074,361 +1591,6 @@ onMounted(() => {
   gap: 8px;
 }
 
-.file-manager-editor-drawer {
-  position: fixed;
-  inset: 0 0 0 auto;
-  z-index: 1180;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  width: min(920px, calc(100vw - var(--sidebar-width, 280px)));
-  border: 0;
-  border-left: 1px solid var(--file-manager-border);
-  border-radius: 0;
-  background: var(--file-manager-panel);
-  box-shadow: -24px 0 42px rgba(15, 23, 42, 0.16);
-  overflow: hidden;
-  max-height: 100%;
-}
-
-.file-manager-editor-drawer--maximized {
-  inset: 0 0 0 var(--sidebar-width, 280px);
-  width: auto;
-  border-left: 0;
-}
-
-.file-manager-editor-drawer__head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 34px 30px;
-  align-items: stretch;
-  gap: 6px;
-  height: 84px;
-  min-height: 84px;
-  max-height: 84px;
-  padding: 8px 10px 6px;
-  border-bottom: 1px solid var(--file-manager-border);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--file-manager-panel-strong) 86%, var(--acc) 5%), var(--file-manager-panel-strong));
-  overflow: hidden;
-}
-
-.file-manager-editor-drawer__title {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.file-manager-editor-drawer__tabs {
-  display: flex;
-  align-items: end;
-  min-width: 0;
-  max-width: 100%;
-  height: 34px;
-  min-height: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-}
-
-.file-manager-editor-drawer__tab {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 clamp(136px, 18vw, 210px);
-  min-width: 0;
-  min-height: 32px;
-  gap: 7px;
-  max-width: 220px;
-  padding: 3px 7px;
-  border: 1px solid transparent;
-  border-bottom: 0;
-  border-radius: 6px 6px 0 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.file-manager-editor-drawer__tab.active {
-  border-color: var(--file-manager-border);
-  background: var(--file-manager-panel);
-}
-
-.file-manager-editor-drawer__tab.error {
-  color: var(--danger);
-}
-
-.file-manager-editor-drawer__tab-close {
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  color: var(--muted);
-  font-weight: 900;
-}
-
-.file-manager-editor-drawer__tab-close:hover {
-  background: var(--file-manager-hover);
-  color: var(--text);
-}
-
-.file-manager-editor-drawer__title strong {
-  color: var(--text);
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-manager-editor-drawer__path {
-  display: none;
-}
-
-.file-manager-editor-drawer__title span {
-  color: var(--muted);
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-manager-editor-drawer__tab-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 23px;
-  height: 23px;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 4px;
-  color: color-mix(in srgb, var(--acc) 80%, var(--text));
-  font-size: 11px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.file-manager-editor-drawer__dirty {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--warning, #f59e0b) 78%, #f59e0b);
-}
-
-.file-manager-editor-drawer__actions {
-  display: flex;
-  flex-wrap: nowrap;
-  justify-content: flex-start;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 0 0 2px;
-  scrollbar-width: thin;
-}
-
-.file-manager-editor-drawer__badge {
-  display: inline-grid;
-  min-height: 28px;
-  align-items: center;
-  padding: 0 9px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.file-manager-editor-drawer__button--primary {
-  border-color: color-mix(in srgb, var(--acc) 44%, var(--line));
-  background: var(--button-primary-bg);
-  color: var(--button-primary-text);
-}
-
-.file-manager-editor-drawer__button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.file-manager-editor-drawer__body {
-  display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
-  min-height: 0;
-  overflow: hidden;
-  background: var(--file-manager-panel);
-}
-
-.file-manager-editor-sidebar {
-  display: grid;
-  grid-template-rows: auto minmax(84px, 0.42fr) minmax(0, 1fr);
-  align-content: start;
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-  padding: 10px;
-  border-right: 1px solid var(--file-manager-border);
-  background: var(--file-manager-panel-strong);
-  overflow: hidden;
-  scrollbar-width: thin;
-}
-
-.file-manager-editor-sidebar__brand {
-  display: grid;
-  gap: 2px;
-  padding: 2px 4px 0;
-}
-
-.file-manager-editor-sidebar__brand strong {
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1.2;
-}
-
-.file-manager-editor-sidebar__brand span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.file-manager-editor-sidebar__section {
-  display: grid;
-  align-content: start;
-  gap: 6px;
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 2px;
-  scrollbar-width: thin;
-}
-
-.file-manager-editor-sidebar__label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 4px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.file-manager-editor-sidebar__label strong {
-  display: inline-grid;
-  min-width: 20px;
-  height: 20px;
-  place-items: center;
-  border: 1px solid var(--file-manager-border);
-  border-radius: 999px;
-  color: var(--text);
-  font-size: 11px;
-  letter-spacing: 0;
-}
-
-.file-manager-editor-sidebar__path,
-.file-manager-editor-sidebar__hint {
-  margin: 0;
-  padding: 0 4px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.45;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-manager-editor-sidebar__file {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: center;
-  gap: 7px;
-  min-height: 34px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.file-manager-editor-sidebar__file span {
-  display: inline-grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--file-manager-border);
-  border-radius: 4px;
-  color: color-mix(in srgb, var(--acc) 78%, var(--text));
-  font-size: 10px;
-  font-weight: 900;
-}
-
-.file-manager-editor-sidebar__file strong {
-  min-width: 0;
-  overflow: hidden;
-  color: inherit;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-manager-editor-sidebar__file:hover {
-  background: var(--file-manager-hover);
-  color: var(--text);
-}
-
-.file-manager-editor-sidebar__file:disabled {
-  opacity: 0.44;
-  cursor: not-allowed;
-}
-
-.file-manager-editor-sidebar__file.active {
-  border-color: var(--file-manager-border);
-  background: var(--file-manager-active);
-  color: var(--text);
-}
-
-.file-manager-editor-drawer__empty {
-  display: grid;
-  place-items: center;
-  min-height: 320px;
-  height: 100%;
-  padding: 24px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.file-manager-editor-drawer__empty--error {
-  color: var(--danger);
-}
-
-.file-manager-editor-drawer__editor {
-  min-width: 0;
-  min-height: 0;
-}
-
-.file-manager-editor-drawer__statusbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 24px;
-  margin: 0;
-  padding: 0 9px;
-  border-top: 1px solid var(--line);
-  background: var(--file-manager-panel-strong);
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
 .file-manager-page :deep(.vuefinder),
 .file-manager-page :deep(.silver),
 .file-manager-page :deep(.midnight),
@@ -2540,14 +1702,6 @@ onMounted(() => {
   background: color-mix(in srgb, var(--surface) 64%, var(--acc) 14%);
 }
 
-:deep(.code-file-editor),
-:deep(.code-file-editor__host),
-:deep(.cm-editor),
-:deep(.cm-scroller) {
-  height: 100%;
-  min-height: 0;
-}
-
 @media (max-width: 720px) {
   .file-manager-statusbar {
     align-items: flex-start;
@@ -2594,80 +1748,4 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 920px) {
-  .file-manager-editor-drawer {
-    inset: 46px 0 0;
-    z-index: 1080;
-    width: 100%;
-    border-left: 0;
-    border-radius: 0;
-  }
-
-  .file-manager-editor-drawer--maximized {
-    inset: 46px 0 0;
-  }
-
-  .file-manager-editor-drawer__head {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 32px 30px;
-    align-items: stretch;
-    gap: 6px;
-    height: 78px;
-    min-height: 78px;
-    max-height: 78px;
-    padding: 6px 10px;
-  }
-
-  .file-manager-editor-drawer__tab {
-    flex-basis: 142px;
-    max-width: 172px;
-    min-height: 30px;
-  }
-
-  .file-manager-editor-drawer__tabs {
-    height: 32px;
-  }
-
-  .file-manager-editor-drawer__actions {
-    justify-content: start;
-    width: 100%;
-    max-width: 100%;
-    padding: 0 0 3px;
-  }
-
-  .file-manager-editor-drawer__body {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .file-manager-editor-sidebar {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(170px, 1fr));
-    grid-template-rows: minmax(0, 1fr);
-    align-items: stretch;
-    gap: 8px;
-    max-height: 118px;
-    padding: 8px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-right: 0;
-    border-bottom: 1px solid var(--file-manager-border);
-  }
-
-  .file-manager-editor-sidebar__brand {
-    display: none;
-  }
-
-  .file-manager-editor-sidebar__section {
-    min-width: 0;
-    max-height: 102px;
-    padding: 0 4px 0 0;
-    overflow-y: auto;
-  }
-
-  .file-manager-editor-sidebar__file {
-    min-width: 0;
-    min-height: 30px;
-  }
-}
 </style>

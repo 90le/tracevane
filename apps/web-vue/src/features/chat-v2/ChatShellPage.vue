@@ -113,6 +113,7 @@
           @dismiss-slash-feedback="dismissSelectedSlashFeedback"
         />
         <ChatRecordBrowserPanel
+          v-if="recordBrowserOpen"
           :open="recordBrowserOpen"
           :theme="resolvedTheme"
           :session-title="conversationTitle"
@@ -211,6 +212,7 @@
         <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
           <aside class="chat-inspector-sheet chat-side-inspector chat-mobile-inspector-sheet" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
           <InspectorPanel
+            v-if="inspectPinned && inspectorDrawerOpen"
             :tab="inspectorTab"
             :session="selectedSession"
             :agent-name="agentName"
@@ -227,6 +229,7 @@
     </DialogRoot>
 
     <NewChatAgentPicker
+      v-if="newChatOpen"
       :open="newChatOpen"
       :creating="sessionCreating"
       :agents="agentRows"
@@ -235,6 +238,7 @@
     />
 
     <SlashCommandHelpDialog
+      v-if="slashHelpOpen"
       :open="slashHelpOpen"
       :filter="slashHelpFilter"
       @close="closeSlashHelpDialog"
@@ -242,6 +246,7 @@
     />
 
     <SlashStatusDialog
+      v-if="slashStatusOpen"
       :open="slashStatusOpen"
       :title="conversationTitle"
       :session-key="selectedSession?.key || ''"
@@ -330,7 +335,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   DialogClose,
   DialogContent,
@@ -502,7 +507,6 @@ import {
   type WindowEvictionResult,
 } from './chat-session-runtime-machine';
 import { CHAT_PROTOCOL_MODE_DEFAULT } from '../../../../api/modules/chat/contract';
-import ChatRecordBrowserPanel from './ChatRecordBrowserPanel.vue';
 import {
   groupSearchMatchesByDay,
   normalizeChatRecordBrowserQuery,
@@ -515,15 +519,8 @@ import {
 } from '../../../../../lib/chat-process-visibility';
 import { isSelectedChatSessionRealtimeReady } from '../../../../../lib/chat-realtime-ready';
 import ConversationPane from './ConversationPane.vue';
-import InspectorPanel from './InspectorPanel.vue';
-import NewChatAgentPicker from './NewChatAgentPicker.vue';
-import SlashCommandHelpDialog from './SlashCommandHelpDialog.vue';
-import SlashStatusDialog from './SlashStatusDialog.vue';
 import SessionListPanel from './SessionListPanel.vue';
 import { parseStudioSlashCommand, type StudioSlashCommandDef } from './slash-commands';
-import { resolveStudioBashSlashHandling } from './slash-bash-policy';
-import { buildSlashSessionExportDocument } from './slash-export-session';
-import { executeStudioSlashLocalGatewayCommand } from './slash-local-executor';
 import {
   applyRuntimeToStudioSlashExecutionFeedback,
   createStudioSlashExecutionFeedback,
@@ -543,6 +540,12 @@ type PendingQueuedSlashCommand = {
   args: string;
   queuedAt: string;
 };
+
+const ChatRecordBrowserPanel = defineAsyncComponent(() => import('./ChatRecordBrowserPanel.vue'));
+const InspectorPanel = defineAsyncComponent(() => import('./InspectorPanel.vue'));
+const NewChatAgentPicker = defineAsyncComponent(() => import('./NewChatAgentPicker.vue'));
+const SlashCommandHelpDialog = defineAsyncComponent(() => import('./SlashCommandHelpDialog.vue'));
+const SlashStatusDialog = defineAsyncComponent(() => import('./SlashStatusDialog.vue'));
 
 type ComposerImageAttachment = ChatSendAttachment & {
   id: string;
@@ -4555,6 +4558,7 @@ async function executeLocalSlashCommand(commandText: string): Promise<boolean> {
       case 'kill':
       case 'steer':
       case 'redirect': {
+        const { executeStudioSlashLocalGatewayCommand } = await import('./slash-local-executor');
         const result = await executeStudioSlashLocalGatewayCommand(
           { request: (method, params) => requestStudioSlashGatewayChat(sessionKey, method, params) },
           sessionKey,
@@ -4604,6 +4608,7 @@ async function executeLocalSlashCommand(commandText: string): Promise<boolean> {
         return true;
       }
       case 'bash': {
+        const { resolveStudioBashSlashHandling } = await import('./slash-bash-policy');
         const decision = resolveStudioBashSlashHandling({
           args: parsed.args,
           globalHostManagementExecEnabled: globalHostManagementExecEnabled.value,
@@ -4631,6 +4636,7 @@ async function executeLocalSlashCommand(commandText: string): Promise<boolean> {
         return true;
       }
       case 'restart': {
+        const { resolveStudioBashSlashHandling } = await import('./slash-bash-policy');
         const decision = resolveStudioBashSlashHandling({
           args: 'openclaw gateway restart',
           globalHostManagementExecEnabled: globalHostManagementExecEnabled.value,
@@ -4675,6 +4681,7 @@ async function executeLocalSlashCommand(commandText: string): Promise<boolean> {
           }
           return true;
         }
+        const { buildSlashSessionExportDocument } = await import('./slash-export-session');
         const exportDocument = buildSlashSessionExportDocument({
           locale: locale.value,
           session: selectedSession.value,

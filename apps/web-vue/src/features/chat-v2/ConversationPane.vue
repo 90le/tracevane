@@ -1059,12 +1059,18 @@ let historyBeforeContinuationArmed = false;
 let historyBrowseGuardUntil = 0;
 let historyPrependMutationPending = false;
 let historyPrependPendingBottomDistance: number | null = null;
+let stableRestoreAnchorRefreshFrame: number | null = null;
+let stableRestoreResumeTimer: number | null = null;
+let lastThreadUserScrollAt = 0;
 let compactViewportMediaQuery: MediaQueryList | null = null;
 let compactViewportListener: ((event: MediaQueryListEvent) => void) | null = null;
-const HISTORY_BEFORE_PREFETCH_TRIGGER_PX = 1400;
-const HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX = 720;
+const HISTORY_BEFORE_PREFETCH_TRIGGER_PX = 1800;
+const HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX = 1100;
+const HISTORY_BEFORE_PREFETCH_VIEWPORTS = 6;
+const HISTORY_BEFORE_MATERIALIZE_VIEWPORTS = 3.5;
 const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 5.5;
 const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 1200;
+const HISTORY_PREPEND_USER_SCROLL_GRACE_MS = 260;
 const HISTORY_BROWSE_GUARD_MS = 6000;
 const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 1400;
 const HISTORY_LOADING_INDICATOR_DELAY_MS = 650;
@@ -1119,6 +1125,14 @@ function isHistoryBrowseGuardActive(nowMs = Date.now()): boolean {
 
 function clearHistoryBrowseGuard(): void {
   historyBrowseGuardUntil = 0;
+}
+
+function markThreadUserScrollActivity(nowMs = Date.now()): void {
+  lastThreadUserScrollAt = nowMs;
+}
+
+function isThreadUserScrollRecent(nowMs = Date.now()): boolean {
+  return nowMs - lastThreadUserScrollAt <= HISTORY_PREPEND_USER_SCROLL_GRACE_MS;
 }
 
 function setTimelineItemShellRef(itemId: string, element: HTMLElement | null): void {
@@ -1277,6 +1291,14 @@ function clearStableRestoreAnchor(options: { clearPrependPending?: boolean } = {
     window.cancelAnimationFrame(stableRestoreFrame);
     stableRestoreFrame = null;
   }
+  if (stableRestoreAnchorRefreshFrame != null) {
+    window.cancelAnimationFrame(stableRestoreAnchorRefreshFrame);
+    stableRestoreAnchorRefreshFrame = null;
+  }
+  if (stableRestoreResumeTimer != null) {
+    window.clearTimeout(stableRestoreResumeTimer);
+    stableRestoreResumeTimer = null;
+  }
   stableRestoreAnchorItemId = null;
   stableRestoreAnchorOffset = 0;
   stableRestoreBottomDistance = null;
@@ -1288,14 +1310,53 @@ function clearStableRestoreAnchor(options: { clearPrependPending?: boolean } = {
   }
 }
 
+function updateStableRestoreAnchorFromCurrentViewport(metrics: ChatSessionScrollMetrics | null = readScrollMetrics()): boolean {
+  if (!historyPrependMutationPending || !metrics) {
+    return false;
+  }
+  const anchor = readVisibleTimelineAnchor();
+  if (anchor) {
+    stableRestoreAnchorItemId = anchor.itemId;
+    stableRestoreAnchorOffset = anchor.offset;
+  }
+  const bottomDistance = scrollBottomDistance(metrics);
+  stableRestoreBottomDistance = bottomDistance;
+  historyPrependPendingBottomDistance = bottomDistance;
+  scrollState.value = preserveChatSessionHistoryBrowsePosition(scrollState.value, metrics);
+  syncTimelineViewport(metrics);
+  return true;
+}
+
+function scheduleStableRestoreAnchorResume(delayMs: number): void {
+  if (stableRestoreResumeTimer != null) {
+    return;
+  }
+  stableRestoreResumeTimer = window.setTimeout(() => {
+    stableRestoreResumeTimer = null;
+    scheduleStableRestoreAnchorTick();
+  }, Math.max(24, Math.ceil(delayMs)));
+}
+
 function scheduleStableRestoreAnchorTick(): void {
   if (stableRestoreFrame != null || (!stableRestoreAnchorItemId && stableRestoreBottomDistance == null)) {
     return;
   }
   stableRestoreFrame = window.requestAnimationFrame(() => {
     stableRestoreFrame = null;
-    if ((!stableRestoreAnchorItemId && stableRestoreBottomDistance == null) || Date.now() > stableRestoreUntil) {
+    const nowMs = Date.now();
+    if ((!stableRestoreAnchorItemId && stableRestoreBottomDistance == null) || nowMs > stableRestoreUntil) {
       clearStableRestoreAnchor();
+      return;
+    }
+    const currentMetrics = readScrollMetrics();
+    const clippedTowardLatestBeforeRestore = Boolean(
+      stableRestoreBottomDistance != null
+      && currentMetrics
+      && scrollBottomDistance(currentMetrics) < Math.max(300, stableRestoreBottomDistance * 0.5),
+    );
+    if (isThreadUserScrollRecent(nowMs) && !clippedTowardLatestBeforeRestore) {
+      updateStableRestoreAnchorFromCurrentViewport(currentMetrics);
+      scheduleStableRestoreAnchorResume(HISTORY_PREPEND_USER_SCROLL_GRACE_MS - (nowMs - lastThreadUserScrollAt));
       return;
     }
     ignoreScrollEvents = true;
@@ -1343,16 +1404,19 @@ function refreshStableRestoreAnchorFromCurrentViewport(): void {
   if (!metrics) {
     return;
   }
-  const anchor = readVisibleTimelineAnchor();
-  if (anchor) {
-    stableRestoreAnchorItemId = anchor.itemId;
-    stableRestoreAnchorOffset = anchor.offset;
-  }
-  const bottomDistance = scrollBottomDistance(metrics);
-  stableRestoreBottomDistance = bottomDistance;
-  historyPrependPendingBottomDistance = bottomDistance;
+  updateStableRestoreAnchorFromCurrentViewport(metrics);
   stableRestoreUntil = Math.max(stableRestoreUntil, Date.now() + HISTORY_PREPEND_ANCHOR_STABILIZE_MS);
   scheduleStableRestoreAnchorTick();
+}
+
+function scheduleStableRestoreAnchorRefreshFromCurrentViewport(): void {
+  if (!historyPrependMutationPending || stableRestoreAnchorRefreshFrame != null) {
+    return;
+  }
+  stableRestoreAnchorRefreshFrame = window.requestAnimationFrame(() => {
+    stableRestoreAnchorRefreshFrame = null;
+    refreshStableRestoreAnchorFromCurrentViewport();
+  });
 }
 
 function scheduleTimelineItemMeasurement(): void {
@@ -1755,17 +1819,18 @@ function cancelLatestBottomAnchorRetry(): void {
 
 function markThreadUserBrowseIntent(): void {
   const metrics = readScrollMetrics();
+  markThreadUserScrollActivity();
   extendHistoryBrowseGuard();
   cancelLatestBottomAnchorRetry();
   historyBeforeContinuationArmed = Boolean(
     metrics
-    && metrics.scrollTop <= 24
+    && metrics.scrollTop <= historyBeforeContinuationTriggerPx(metrics)
     && props.hasMoreBefore
     && !historyPrependMutationPending
     && !scrollState.value.prependAnchor,
   );
   scrollState.value = markChatSessionUserBrowseIntent(scrollState.value, metrics);
-  refreshStableRestoreAnchorFromCurrentViewport();
+  scheduleStableRestoreAnchorRefreshFromCurrentViewport();
   if (props.hasMoreBefore && !props.historyLoadingBefore && !props.historyLoadingInitial) {
     emit('prefetch-more-before');
   }
@@ -1880,7 +1945,7 @@ function scheduleHistoryBeforeContinuation(): void {
     return;
   }
   const metrics = readScrollMetrics();
-  if (!metrics || metrics.scrollTop > 24) {
+  if (!metrics || metrics.scrollTop > historyBeforeContinuationTriggerPx(metrics)) {
     historyBeforeContinuationArmed = false;
     return;
   }
@@ -1889,12 +1954,12 @@ function scheduleHistoryBeforeContinuation(): void {
     const nextMetrics = readScrollMetrics();
     if (
       !nextMetrics
-      || nextMetrics.scrollTop > 24
+      || nextMetrics.scrollTop > historyBeforeContinuationTriggerPx(nextMetrics)
       || !props.hasMoreBefore
       || props.historyLoadingInitial
       || !historyBeforeContinuationArmed
     ) {
-      if (!nextMetrics || nextMetrics.scrollTop > 24 || !props.hasMoreBefore) {
+      if (!nextMetrics || nextMetrics.scrollTop > historyBeforeContinuationTriggerPx(nextMetrics) || !props.hasMoreBefore) {
         historyBeforeContinuationArmed = false;
       }
       return;
@@ -1925,11 +1990,15 @@ function scheduleHistoryBeforeAutoFill(): void {
 }
 
 function historyBeforePrefetchTriggerPx(metrics: ChatSessionScrollMetrics): number {
-  return Math.max(HISTORY_BEFORE_PREFETCH_TRIGGER_PX, Math.floor(metrics.clientHeight * 4));
+  return Math.max(HISTORY_BEFORE_PREFETCH_TRIGGER_PX, Math.floor(metrics.clientHeight * HISTORY_BEFORE_PREFETCH_VIEWPORTS));
 }
 
 function historyBeforeMaterializeTriggerPx(metrics: ChatSessionScrollMetrics): number {
-  return Math.max(HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX, Math.floor(metrics.clientHeight * 2.75));
+  return Math.max(HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX, Math.floor(metrics.clientHeight * HISTORY_BEFORE_MATERIALIZE_VIEWPORTS));
+}
+
+function historyBeforeContinuationTriggerPx(metrics: ChatSessionScrollMetrics): number {
+  return historyBeforeMaterializeTriggerPx(metrics);
 }
 
 function handleThreadWheel(event: WheelEvent): void {
@@ -1954,6 +2023,9 @@ function handleThreadScroll(): void {
   }
   let metrics = readScrollMetrics();
   if (metrics) {
+    if (scrollState.value.autoScrollLockedByUser || scrollBottomDistance(metrics) > 80) {
+      markThreadUserScrollActivity();
+    }
     syncTimelineViewport(metrics);
     if (initialLatestAnchorPending && !scrollState.value.autoScrollLockedByUser) {
       return;
@@ -1993,14 +2065,14 @@ function handleThreadScroll(): void {
       refreshStableRestoreAnchorFromCurrentViewport();
     }
     if (
-      metrics.scrollTop <= 24
+      metrics.scrollTop <= historyBeforeContinuationTriggerPx(metrics)
       && props.hasMoreBefore
       && scrollState.value.autoScrollLockedByUser
       && !prependMutationPending
     ) {
       historyBeforeContinuationArmed = true;
     }
-    if (metrics.scrollTop > 24) {
+    if (metrics.scrollTop > historyBeforeContinuationTriggerPx(metrics)) {
       historyBeforeContinuationArmed = false;
     }
     if (
@@ -2161,6 +2233,10 @@ function reconnectTopObserver(): void {
   ) {
     return;
   }
+  const metrics = readScrollMetrics();
+  const preloadRootMargin = metrics
+    ? historyBeforeMaterializeTriggerPx(metrics)
+    : Math.max(HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX, Math.floor(threadBody.value.clientHeight * HISTORY_BEFORE_MATERIALIZE_VIEWPORTS));
   topSentinelObserver = new IntersectionObserver((entries) => {
     if (
       entries.some((entry) => entry.isIntersecting)
@@ -2171,6 +2247,7 @@ function reconnectTopObserver(): void {
     }
   }, {
     root: threadBody.value,
+    rootMargin: `${preloadRootMargin}px 0px 0px 0px`,
     threshold: 0.1,
   });
   topSentinelObserver.observe(historyTopSentinel.value);

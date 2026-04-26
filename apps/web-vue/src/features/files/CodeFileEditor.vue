@@ -1,5 +1,85 @@
 <template>
-  <div class="code-file-editor" :class="{ 'is-readonly': readOnly }">
+  <div class="code-file-editor" :class="{ 'is-readonly': readOnly, 'has-search': searchVisible }">
+    <form
+      v-if="searchVisible"
+      class="code-file-editor__searchbar"
+      @submit.prevent="runFindNext"
+    >
+      <label class="code-file-editor__search-field">
+        <span>{{ t("查找", "Find") }}</span>
+        <input
+          ref="searchInputRef"
+          v-model="searchQuery"
+          type="search"
+          autocomplete="off"
+          :placeholder="t('输入关键字', 'Search text')"
+          @input="syncSearchQuery"
+          @keydown.escape.prevent="hideSearch"
+        />
+      </label>
+      <label class="code-file-editor__search-field">
+        <span>{{ t("替换", "Replace") }}</span>
+        <input
+          v-model="replaceQuery"
+          type="text"
+          autocomplete="off"
+          :disabled="readOnly"
+          :placeholder="readOnly ? t('只读文件', 'Read only') : t('替换为', 'Replace with')"
+          @input="syncSearchQuery"
+          @keydown.escape.prevent="hideSearch"
+        />
+      </label>
+      <div class="code-file-editor__search-actions">
+        <button type="button" :disabled="!searchQuery" @click="runFindPrevious">
+          {{ t("上一个", "Prev") }}
+        </button>
+        <button type="submit" :disabled="!searchQuery">
+          {{ t("下一个", "Next") }}
+        </button>
+        <button type="button" :disabled="readOnly || !searchQuery" @click="runReplaceNext">
+          {{ t("替换", "Replace") }}
+        </button>
+        <button type="button" :disabled="readOnly || !searchQuery" @click="runReplaceAll">
+          {{ t("全部", "All") }}
+        </button>
+        <button
+          type="button"
+          class="code-file-editor__toggle"
+          :class="{ active: searchCaseSensitive }"
+          :title="t('区分大小写', 'Case sensitive')"
+          @click="toggleSearchOption('case')"
+        >
+          Aa
+        </button>
+        <button
+          type="button"
+          class="code-file-editor__toggle"
+          :class="{ active: searchWholeWord }"
+          :title="t('全词匹配', 'Whole word')"
+          @click="toggleSearchOption('word')"
+        >
+          W
+        </button>
+        <button
+          type="button"
+          class="code-file-editor__toggle"
+          :class="{ active: searchRegexp }"
+          :title="t('正则表达式', 'Regular expression')"
+          @click="toggleSearchOption('regexp')"
+        >
+          .*
+        </button>
+        <button
+          type="button"
+          class="code-file-editor__close-search"
+          :aria-label="t('关闭查找', 'Close search')"
+          @click="hideSearch"
+        >
+          ×
+        </button>
+      </div>
+      <p v-if="searchError" class="code-file-editor__search-error">{{ searchError }}</p>
+    </form>
     <div ref="hostRef" class="code-file-editor__host"></div>
   </div>
 </template>
@@ -19,11 +99,11 @@ import {
   rectangularSelection,
   scrollPastEnd,
 } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { SearchQuery, findNext, findPrevious, highlightSelectionMatches, replaceAll, replaceNext, search, setSearchQuery } from "@codemirror/search";
 import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 const props = withDefaults(
   defineProps<{
@@ -32,6 +112,7 @@ const props = withDefaults(
     readOnly?: boolean;
     dark?: boolean;
     searchRequest?: number;
+    text?: (zh: string, en: string) => string;
   }>(),
   {
     path: "",
@@ -47,12 +128,24 @@ const emit = defineEmits<{
 }>();
 
 const hostRef = ref<HTMLDivElement | null>(null);
+const searchInputRef = ref<HTMLInputElement | null>(null);
+const searchVisible = ref(false);
+const searchQuery = ref("");
+const replaceQuery = ref("");
+const searchCaseSensitive = ref(false);
+const searchWholeWord = ref(false);
+const searchRegexp = ref(false);
+const searchError = ref("");
 let view: EditorView | null = null;
 const editableCompartment = new Compartment();
 const languageCompartment = new Compartment();
 const themeCompartment = new Compartment();
 let syncingFromOutside = false;
 let languageLoadToken = 0;
+
+function t(zh: string, en: string): string {
+  return props.text ? props.text(zh, en) : zh;
+}
 
 async function loadLanguageExtension(filePath: string): Promise<Extension> {
   const normalized = filePath.toLowerCase();
@@ -118,15 +211,15 @@ function themeExtension(dark: boolean) {
       height: "100%",
       minHeight: "0",
       overflow: "auto",
-      fontFamily: "\"IBM Plex Mono\", \"SFMono-Regular\", \"Cascadia Code\", \"Fira Code\", monospace",
-      lineHeight: "1.58",
+      fontFamily: "\"JetBrains Mono\", \"IBM Plex Mono\", \"SFMono-Regular\", \"Cascadia Code\", \"Fira Code\", monospace",
+      lineHeight: "1.56",
     },
     ".cm-content": {
       minHeight: "100%",
-      padding: "10px 0 80px",
+      padding: "8px 0 72px",
     },
     ".cm-line": {
-      padding: "0 18px 0 8px",
+      padding: "0 20px 0 10px",
     },
     ".cm-gutters": {
       borderRight: "1px solid var(--line)",
@@ -160,11 +253,14 @@ function themeExtension(dark: boolean) {
   });
   const lightTheme = EditorView.theme({
     "&": {
-      backgroundColor: "#ffffff",
+      backgroundColor: "#fbfdff",
       color: "#1f2937",
     },
+    ".cm-scroller": {
+      backgroundColor: "#fbfdff",
+    },
     ".cm-gutters": {
-      backgroundColor: "#f8fafc",
+      backgroundColor: "#f3f6fa",
       color: "#7c8798",
     },
     ".cm-cursor": {
@@ -173,14 +269,14 @@ function themeExtension(dark: boolean) {
   });
   const darkTheme = EditorView.theme({
     "&": {
-      backgroundColor: "#0b1220",
+      backgroundColor: "#0d1117",
       color: "#dbe7f3",
     },
     ".cm-scroller": {
-      backgroundColor: "#0b1220",
+      backgroundColor: "#0d1117",
     },
     ".cm-gutters": {
-      backgroundColor: "#08111d",
+      backgroundColor: "#0a0f16",
       color: "#6b7c92",
       borderRight: "1px solid rgba(148, 163, 184, 0.18)",
     },
@@ -218,6 +314,7 @@ function createEditor(): void {
         bracketMatching(),
         highlightActiveLine(),
         scrollPastEnd(),
+        search({ top: true }),
         highlightSelectionMatches(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         keymap.of([
@@ -229,9 +326,41 @@ function createEditor(): void {
               return true;
             },
           },
+          {
+            key: "Mod-f",
+            preventDefault: true,
+            run: (targetView) => {
+              showSearch(targetView);
+              return true;
+            },
+          },
+          {
+            key: "Escape",
+            run: () => {
+              if (!searchVisible.value) return false;
+              hideSearch();
+              return true;
+            },
+          },
+          {
+            key: "F3",
+            run: (targetView) => runFindNextCommand(targetView),
+          },
+          {
+            key: "Shift-F3",
+            run: (targetView) => runFindPreviousCommand(targetView),
+          },
+          {
+            key: "Mod-g",
+            run: (targetView) => runFindNextCommand(targetView),
+          },
+          {
+            key: "Shift-Mod-g",
+            run: (targetView) => runFindPreviousCommand(targetView),
+          },
+          indentWithTab,
           ...defaultKeymap,
           ...historyKeymap,
-          ...searchKeymap,
         ]),
         editableCompartment.of(editableExtension(props.readOnly)),
         languageCompartment.of([]),
@@ -244,6 +373,111 @@ function createEditor(): void {
     }),
     parent: hostRef.value,
   });
+}
+
+function buildSearchQuery(): SearchQuery {
+  return new SearchQuery({
+    search: searchQuery.value,
+    replace: replaceQuery.value,
+    caseSensitive: searchCaseSensitive.value,
+    regexp: searchRegexp.value,
+    wholeWord: searchWholeWord.value,
+  });
+}
+
+function syncSearchQuery(targetView = view): SearchQuery | null {
+  if (!targetView) return null;
+  const query = buildSearchQuery();
+  searchError.value = query.valid ? "" : t("正则表达式无效", "Invalid regular expression");
+  targetView.dispatch({
+    effects: setSearchQuery.of(query),
+  });
+  return query;
+}
+
+async function focusSearchInput(): Promise<void> {
+  await nextTick();
+  searchInputRef.value?.focus();
+  searchInputRef.value?.select();
+}
+
+function showSearch(targetView = view): void {
+  if (targetView) {
+    const selection = targetView.state.sliceDoc(
+      targetView.state.selection.main.from,
+      targetView.state.selection.main.to,
+    );
+    if (selection && !selection.includes("\n")) {
+      searchQuery.value = selection;
+    }
+  }
+  searchVisible.value = true;
+  syncSearchQuery(targetView);
+  void focusSearchInput();
+}
+
+function hideSearch(): void {
+  searchVisible.value = false;
+  searchError.value = "";
+  view?.focus();
+}
+
+function runFindNextCommand(targetView = view): boolean {
+  if (!targetView) return false;
+  searchVisible.value = true;
+  const query = syncSearchQuery(targetView);
+  if (!query?.valid || !query.search) {
+    void focusSearchInput();
+    return true;
+  }
+  findNext(targetView);
+  targetView.focus();
+  return true;
+}
+
+function runFindPreviousCommand(targetView = view): boolean {
+  if (!targetView) return false;
+  searchVisible.value = true;
+  const query = syncSearchQuery(targetView);
+  if (!query?.valid || !query.search) {
+    void focusSearchInput();
+    return true;
+  }
+  findPrevious(targetView);
+  targetView.focus();
+  return true;
+}
+
+function runFindNext(): void {
+  runFindNextCommand();
+}
+
+function runFindPrevious(): void {
+  runFindPreviousCommand();
+}
+
+function runReplaceNext(): void {
+  if (!view || props.readOnly) return;
+  const query = syncSearchQuery(view);
+  if (!query?.valid || !query.search) return;
+  replaceNext(view);
+  view.focus();
+}
+
+function runReplaceAll(): void {
+  if (!view || props.readOnly) return;
+  const query = syncSearchQuery(view);
+  if (!query?.valid || !query.search) return;
+  replaceAll(view);
+  view.focus();
+}
+
+function toggleSearchOption(option: "case" | "word" | "regexp"): void {
+  if (option === "case") searchCaseSensitive.value = !searchCaseSensitive.value;
+  if (option === "word") searchWholeWord.value = !searchWholeWord.value;
+  if (option === "regexp") searchRegexp.value = !searchRegexp.value;
+  syncSearchQuery();
+  void focusSearchInput();
 }
 
 async function applyLanguageExtension(filePath: string): Promise<void> {
@@ -305,8 +539,7 @@ watch(
   () => props.searchRequest,
   (nextValue, previousValue) => {
     if (!view || nextValue === previousValue) return;
-    openSearchPanel(view);
-    view.focus();
+    showSearch(view);
   },
 );
 
@@ -323,6 +556,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .code-file-editor {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   border: 0;
@@ -331,8 +566,117 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--surface) 96%, transparent);
 }
 
+.code-file-editor.has-search {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 :global(html[data-theme="dark"] .code-file-editor) {
-  background: #0b1220;
+  background: #0d1117;
+}
+
+.code-file-editor__searchbar {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto;
+  align-items: end;
+  gap: 7px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  background: color-mix(in srgb, var(--file-manager-panel-strong, var(--surface)) 94%, var(--file-manager-bg, var(--surface)));
+  box-shadow: 0 1px 0 color-mix(in srgb, #ffffff 40%, transparent) inset;
+}
+
+:global(html[data-theme="dark"] .code-file-editor__searchbar) {
+  background: #101a2b;
+  box-shadow: none;
+}
+
+.code-file-editor__search-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.code-file-editor__search-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 27px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.code-file-editor__search-field input:focus {
+  border-color: color-mix(in srgb, var(--acc) 58%, var(--line));
+  outline: none;
+}
+
+.code-file-editor__search-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.code-file-editor__search-actions button {
+  min-height: 27px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.code-file-editor__search-actions button:hover {
+  border-color: color-mix(in srgb, var(--acc) 38%, var(--line));
+  background: color-mix(in srgb, var(--button-secondary-bg) 82%, var(--acc) 10%);
+  color: var(--text);
+}
+
+.code-file-editor__search-actions button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.code-file-editor__search-actions .code-file-editor__toggle {
+  width: 31px;
+  padding: 0;
+  color: var(--muted);
+}
+
+.code-file-editor__search-actions .code-file-editor__toggle.active {
+  border-color: color-mix(in srgb, var(--acc) 58%, var(--line));
+  background: color-mix(in srgb, var(--acc) 16%, var(--button-secondary-bg));
+  color: color-mix(in srgb, var(--acc) 76%, var(--text));
+}
+
+.code-file-editor__search-actions .code-file-editor__close-search {
+  width: 28px;
+  padding: 0;
+  color: var(--muted);
+}
+
+.code-file-editor__search-error {
+  grid-column: 1 / -1;
+  margin: -1px 0 0;
+  color: var(--danger);
+  font-size: 11px;
 }
 
 .code-file-editor__host {
@@ -351,8 +695,7 @@ onBeforeUnmount(() => {
 }
 
 :deep(.cm-editor.cm-focused) {
-  outline: 1px solid color-mix(in srgb, var(--acc) 32%, transparent);
-  outline-offset: -1px;
+  outline: none;
 }
 
 :deep(.cm-scroller) {
@@ -365,7 +708,7 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--surface) 92%, var(--bg-app) 8%);
   color: var(--text);
   font-family: inherit;
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.12);
+  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.1);
 }
 
 :global(html[data-theme="dark"] .code-file-editor .cm-panels) {
@@ -374,23 +717,24 @@ onBeforeUnmount(() => {
 }
 
 :deep(.cm-panels-top) {
-  max-height: 92px;
+  max-height: 86px;
   overflow: auto;
   z-index: 6;
 }
 
 :deep(.cm-search) {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-  min-width: max-content;
-  padding: 7px 8px;
+  min-width: 0;
+  padding: 6px 8px;
 }
 
 :deep(.cm-search input) {
-  min-height: 26px;
-  min-width: 150px;
+  min-height: 25px;
+  width: clamp(136px, 18vw, 220px);
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--input-bg);
@@ -398,7 +742,7 @@ onBeforeUnmount(() => {
 }
 
 :deep(.cm-search button) {
-  min-height: 26px;
+  min-height: 25px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--button-secondary-bg);
@@ -425,5 +769,19 @@ onBeforeUnmount(() => {
 :deep(.cm-scroller::-webkit-scrollbar-thumb:hover) {
   background: color-mix(in srgb, var(--muted) 64%, transparent);
   background-clip: padding-box;
+}
+
+@media (max-width: 780px) {
+  .code-file-editor__searchbar {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .code-file-editor__search-actions {
+    justify-content: flex-start;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
 }
 </style>

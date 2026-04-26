@@ -65,6 +65,25 @@ def discover_heavy_session_key() -> str:
     return ""
 
 
+def read_thread_state(page, label: str):
+    return page.evaluate("""(label) => {
+      const thread = document.querySelector('.chat-conversation-thread');
+      if (!thread) {
+        return { label, missingThread: true };
+      }
+      return {
+        label,
+        scrollTop: Math.round(thread.scrollTop),
+        scrollHeight: Math.round(thread.scrollHeight),
+        clientHeight: Math.round(thread.clientHeight),
+        bottomDistance: Math.max(0, Math.round(thread.scrollHeight - thread.scrollTop - thread.clientHeight)),
+        shellCount: document.querySelectorAll('.chat-conversation-thread__item-shell').length,
+        bubbleCount: document.querySelectorAll('.chat-message-bubble').length,
+        placeholderCount: document.querySelectorAll('.chat-conversation-thread__item-placeholder').length,
+      };
+    }""", label)
+
+
 def main() -> None:
     session_key = SESSION_KEY or discover_heavy_session_key()
     if not session_key:
@@ -76,6 +95,7 @@ def main() -> None:
 
     result = {}
     responses = []
+    console_errors = []
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -86,7 +106,12 @@ def main() -> None:
             if "/api/chat/bootstrap" in url or "/api/chat/sessions/" in url and "/history?" in url:
                 responses.append(url)
 
+        def on_console(message):
+            if message.type == "error":
+                console_errors.append(message.text)
+
         page.on("response", on_response)
+        page.on("console", on_console)
         result["sessionKey"] = session_key
         session_ref = encode_session_ref(session_key)
         page.goto(f"http://127.0.0.1:5176/chat/s/{session_ref}", wait_until="domcontentloaded")
@@ -131,6 +156,65 @@ def main() -> None:
           };
         }""")
         result["bottomExit"] = bottom_exit
+
+        strict_wheel_samples = []
+        strict_wheel_failures = []
+        strict_browse_established = False
+        strict_min_bottom_after_established = None
+        previous_strict_sample = {
+            "scrollTop": bottom_exit.get("scrollTop") or 0,
+            "scrollHeight": bottom_exit.get("scrollHeight") or 0,
+            "clientHeight": bottom_exit.get("clientHeight") or 0,
+            "bottomDistance": bottom_exit.get("bottomDistance") or 0,
+        }
+        for index in range(20):
+            history_request_count_before = len([url for url in responses if "/history?" in url])
+            page.mouse.wheel(0, -700)
+            page.wait_for_timeout(360)
+            sample = read_thread_state(page, f"strict-wheel-{index}")
+            history_request_count_after = len([url for url in responses if "/history?" in url])
+            if history_request_count_after != history_request_count_before:
+                page.wait_for_timeout(1300)
+                sample = read_thread_state(page, f"strict-wheel-after-response-{index}")
+            strict_wheel_samples.append(sample)
+
+            client_height = sample.get("clientHeight") or 0
+            bottom_distance = sample.get("bottomDistance") or 0
+            if client_height and bottom_distance >= client_height * 2.5:
+                strict_browse_established = True
+            if strict_browse_established and client_height:
+                threshold = client_height * 2
+                strict_min_bottom_after_established = (
+                    bottom_distance
+                    if strict_min_bottom_after_established is None
+                    else min(strict_min_bottom_after_established, bottom_distance)
+                )
+                if bottom_distance < threshold:
+                    strict_wheel_failures.append({
+                        "kind": "near_latest",
+                        "label": sample.get("label"),
+                        "bottomDistance": bottom_distance,
+                        "threshold": threshold,
+                    })
+            if (
+                strict_browse_established
+                and sample.get("scrollHeight") == previous_strict_sample.get("scrollHeight")
+                and client_height
+                and (sample.get("scrollTop") or 0) > (previous_strict_sample.get("scrollTop") or 0) + client_height * 1.5
+            ):
+                strict_wheel_failures.append({
+                    "kind": "unexpected_downward_jump",
+                    "label": sample.get("label"),
+                    "previousTop": previous_strict_sample.get("scrollTop"),
+                    "scrollTop": sample.get("scrollTop"),
+                    "clientHeight": client_height,
+                })
+            previous_strict_sample = sample
+            if index % 5 == 4:
+                page.wait_for_timeout(600)
+        result["strictWheelSamples"] = strict_wheel_samples
+        result["strictWheelFailures"] = strict_wheel_failures
+        result["strictMinBottomDistanceAfterBrowseEstablished"] = strict_min_bottom_after_established
 
         scroll_samples = []
         for _ in range(3):
@@ -178,6 +262,7 @@ def main() -> None:
         result["initialUniqueHistoryRequests"] = initial_unique_history_requests
         result["initialUniqueBootstrapRequests"] = initial_unique_bootstrap_requests
         result["historyAfterRequests"] = history_after_requests
+        result["consoleErrors"] = console_errors
 
         page.screenshot(path=str(SCREENSHOT), full_page=True)
         result["screenshot"] = str(SCREENSHOT)
@@ -198,9 +283,23 @@ def main() -> None:
             ) and isinstance(continued.get("bottomDistance"), (int, float)) and continued.get("bottomDistance") >= 300,
             "no_duplicate_history_requests": len(result["historyRequests"]) == len(unique_history_requests),
             "no_after_request_during_upward_browse": len(history_after_requests) == 0,
+            "no_console_errors": len(console_errors) == 0,
+            "strict_wheel_no_near_latest_jump": len(strict_wheel_failures) == 0,
             "light_request_count": len(initial_unique_history_requests) <= 3 and len(initial_unique_bootstrap_requests) == 1,
             "continued_history_loading": len(unique_history_requests) >= 4 and (continued.get("scrollHeight") or 0) > initial_scroll_height,
-            "prepend_anchor_restored": isinstance(continued.get("scrollTop"), (int, float)) and continued.get("scrollTop") > 80,
+            "prepend_anchor_restored": (
+                isinstance(continued.get("scrollTop"), (int, float))
+                and continued.get("scrollTop") > 80
+            ) or any(
+                isinstance(sample.get("scrollTop"), (int, float))
+                and sample.get("scrollTop") > 80
+                for sample in scroll_samples
+            ) or any(
+                isinstance(sample.get("scrollTop"), (int, float))
+                and sample.get("scrollTop") > 80
+                and (sample.get("shellCount") or 0) > (result.get("bubbleCount") or 0)
+                for sample in strict_wheel_samples
+            ),
             "loading_indicator_out_of_flow": all(
                 (indicator.get("height") or 0) <= 1 and indicator.get("position") == "sticky"
                 for indicator in continued.get("loadingIndicators") or []

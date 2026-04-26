@@ -15,8 +15,9 @@ const slashStatusDialog = fs.readFileSync(
 );
 
 test('chat shell wires a local slash status dialog', () => {
-  assert.match(chatShellPage, /import SlashStatusDialog from '\.\/SlashStatusDialog\.vue'/);
+  assert.match(chatShellPage, /defineAsyncComponent\(\(\) => import\('\.\/SlashStatusDialog\.vue'\)\)/);
   assert.match(chatShellPage, /<SlashStatusDialog/);
+  assert.match(chatShellPage, /<SlashStatusDialog\s+v-if="slashStatusOpen"/);
   assert.match(chatShellPage, /openSlashStatusDialog/);
   assert.match(chatShellPage, /case 'status':/);
 });

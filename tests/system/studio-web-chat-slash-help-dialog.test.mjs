@@ -15,8 +15,9 @@ const slashHelpDialog = fs.readFileSync(
 );
 
 test('chat shell wires a local slash help dialog for /help and /commands', () => {
-  assert.match(chatShellPage, /import SlashCommandHelpDialog from '\.\/SlashCommandHelpDialog\.vue'/);
+  assert.match(chatShellPage, /defineAsyncComponent\(\(\) => import\('\.\/SlashCommandHelpDialog\.vue'\)\)/);
   assert.match(chatShellPage, /<SlashCommandHelpDialog/);
+  assert.match(chatShellPage, /<SlashCommandHelpDialog\s+v-if="slashHelpOpen"/);
   assert.match(chatShellPage, /openSlashHelpDialog/);
   assert.match(chatShellPage, /case 'help':/);
 });

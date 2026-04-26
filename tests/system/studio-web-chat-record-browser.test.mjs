@@ -36,7 +36,9 @@ test('conversation pane exposes a chat-records entry and removes inline history 
 
 test('chat shell mounts the current-session record browser and wires result jumps', () => {
   assert.match(chatShellPage, /useChatRecordBrowserState/);
+  assert.match(chatShellPage, /defineAsyncComponent\(\(\) => import\('\.\/ChatRecordBrowserPanel\.vue'\)\)/);
   assert.match(chatShellPage, /<ChatRecordBrowserPanel/);
+  assert.match(chatShellPage, /<ChatRecordBrowserPanel\s+v-if="recordBrowserOpen"/);
   assert.match(chatShellPage, /:theme="resolvedTheme"/);
   assert.match(chatShellPage, /:available-days="historyDays"/);
   assert.match(chatShellPage, /:selected-day="recordBrowserSelectedDay"/);

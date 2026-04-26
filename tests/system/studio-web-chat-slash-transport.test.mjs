@@ -13,6 +13,8 @@ const chatShellPage = fs.readFileSync(
 test('chat shell routes local slash gateway commands through the Studio HTTP backend', () => {
   assert.match(chatShellPage, /requestChatSlashGateway/);
   assert.match(chatShellPage, /requestStudioSlashGatewayChat/);
+  assert.match(chatShellPage, /await import\('\.\/slash-local-executor'\)/);
+  assert.doesNotMatch(chatShellPage, /from '\.\/slash-local-executor'/);
   assert.match(chatShellPage, /executeStudioSlashLocalGatewayCommand\(\s*\{\s*request:\s*\(method,\s*params\)\s*=>\s*requestStudioSlashGatewayChat\(sessionKey,\s*method,\s*params\)\s*\}/);
   assert.doesNotMatch(chatShellPage, /executeStudioSlashLocalGatewayCommand\(\s*\{\s*request:\s*requestCoreGatewayChat\s*\}/);
 });
