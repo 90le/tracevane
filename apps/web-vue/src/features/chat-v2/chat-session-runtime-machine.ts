@@ -1,5 +1,6 @@
 import type {
   ChatMessageItem,
+  ChatMessageToolCallItem,
   ChatRunOverlay,
   ChatRuntimeState,
   ChatSessionRow,
@@ -8,6 +9,7 @@ import {
   areChatMessagesEquivalent,
   mergeCanonicalMessageLedger,
   mergeRuntimeOverlay,
+  mergeRuntimeToolLike,
   normalizeMessageLedger,
 } from '../../../../../lib/chat-runtime-state.js';
 
@@ -289,6 +291,40 @@ function isProcessPhase(phase: ChatSessionLivePhase): phase is ChatSessionProces
   return phase.kind === 'process';
 }
 
+function getProcessToolCallIds(params: {
+  overlay?: ChatRunOverlay;
+  toolCall?: ChatRunOverlay['toolCalls'][number];
+}): Set<string> {
+  const ids = new Set<string>();
+  if (params.toolCall?.toolCallId) {
+    ids.add(params.toolCall.toolCallId);
+  }
+  for (const toolCall of params.overlay?.toolCalls || []) {
+    if (toolCall.toolCallId) {
+      ids.add(toolCall.toolCallId);
+    }
+  }
+  return ids;
+}
+
+function findProcessPhaseByToolCall(
+  transient: ChatSessionTransientRunState,
+  toolCallIds: Set<string>,
+): ChatSessionProcessPhase | null {
+  if (!toolCallIds.size) {
+    return null;
+  }
+  for (const phase of transient.phases) {
+    if (!isProcessPhase(phase)) {
+      continue;
+    }
+    if (phase.overlay.toolCalls.some((toolCall) => toolCallIds.has(toolCall.toolCallId))) {
+      return phase;
+    }
+  }
+  return null;
+}
+
 function canonicalAssistantMatchesPhase(
   phase: ChatSessionAssistantPhase,
   message: ChatMessageItem,
@@ -473,6 +509,198 @@ function upsertAssistantPhase(params: {
   params.transient.lastAccumulatedAssistantText = params.fullText || params.transient.lastAccumulatedAssistantText;
 }
 
+function settleOverlayRunningToolsBeforeAssistant(
+  overlay: ChatRunOverlay,
+  emittedAt: string,
+): ChatRunOverlay {
+  if (!overlay.toolCalls.length) {
+    return overlay;
+  }
+  let changed = false;
+  const toolCalls = overlay.toolCalls.map((toolCall) => {
+    if (toolCall.status !== 'running') {
+      return { ...toolCall };
+    }
+    changed = true;
+    return {
+      ...toolCall,
+      status: 'completed' as const,
+      updatedAt: emittedAt || toolCall.updatedAt,
+    };
+  });
+  if (!changed) {
+    return overlay;
+  }
+  const lifecycle = toolCalls.some((toolCall) => toolCall.status === 'error')
+    ? 'error'
+    : toolCalls.every((toolCall) => isTerminalToolStatus(toolCall.status))
+      ? 'completed'
+      : overlay.lifecycle;
+  return {
+    ...overlay,
+    lifecycle,
+    toolCalls,
+    updatedAt: emittedAt || overlay.updatedAt,
+  };
+}
+
+function settleRunProcessPhasesBeforeAssistant(
+  transient: ChatSessionTransientRunState | undefined,
+  emittedAt: string,
+): boolean {
+  if (!transient) {
+    return false;
+  }
+  let changed = false;
+  for (const phase of transient.phases) {
+    if (!isProcessPhase(phase)) {
+      continue;
+    }
+    const settled = settleOverlayRunningToolsBeforeAssistant(phase.overlay, emittedAt);
+    if (settled !== phase.overlay) {
+      phase.overlay = settled;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function settleProcessLedgerBeforeAssistant(
+  processLedger: ChatSessionRuntimeMachineState['processLedger'],
+  runId: string,
+  emittedAt: string,
+): ChatSessionRuntimeMachineState['processLedger'] {
+  const overlay = processLedger[runId];
+  if (!overlay) {
+    return processLedger;
+  }
+  const settled = settleOverlayRunningToolsBeforeAssistant(overlay, emittedAt);
+  if (settled === overlay) {
+    return processLedger;
+  }
+  return {
+    ...processLedger,
+    [runId]: settled,
+  };
+}
+
+function settleChatSessionRunToolsBeforeAssistant(
+  state: ChatSessionRuntimeMachineState,
+  runId: string | null | undefined,
+  emittedAt: string,
+): ChatSessionRuntimeMachineState {
+  if (!runId) {
+    return state;
+  }
+  const clonedTransient = cloneTransientRunState(state.transientRunState);
+  const transientChanged = settleRunProcessPhasesBeforeAssistant(clonedTransient[runId], emittedAt);
+  const processLedger = settleProcessLedgerBeforeAssistant(state.processLedger, runId, emittedAt);
+  if (!transientChanged && processLedger === state.processLedger) {
+    return state;
+  }
+  return {
+    ...state,
+    transientRunState: transientChanged ? clonedTransient : state.transientRunState,
+    processLedger,
+  };
+}
+
+function parseRuntimeTimestamp(value: string | null | undefined): number {
+  return Date.parse(value || '') || 0;
+}
+
+function latestAssistantTimestampForRun(
+  state: ChatSessionRuntimeMachineState,
+  runId: string | null | undefined,
+): number {
+  if (!runId) {
+    return 0;
+  }
+  let timestamp = 0;
+  for (const message of state.canonicalMessageLedger) {
+    if (message.role !== 'assistant' || message.runId !== runId) {
+      continue;
+    }
+    timestamp = Math.max(timestamp, parseRuntimeTimestamp(message.createdAt));
+  }
+  const transient = state.transientRunState[runId];
+  if (transient) {
+    for (const phase of transient.phases) {
+      if (!isAssistantPhase(phase)) {
+        continue;
+      }
+      timestamp = Math.max(timestamp, parseRuntimeTimestamp(phase.message.createdAt));
+    }
+  }
+  return timestamp;
+}
+
+function settleRunningToolCallAfterAssistantBoundary<T extends ChatRunOverlay['toolCalls'][number]>(
+  toolCall: T,
+  assistantTimestamp: number,
+  emittedAt: string,
+): T {
+  if (toolCall.status !== 'running' || assistantTimestamp <= 0) {
+    return toolCall;
+  }
+  const toolStartedAt = parseRuntimeTimestamp(toolCall.startedAt || toolCall.updatedAt || emittedAt);
+  if (!toolStartedAt || toolStartedAt > assistantTimestamp) {
+    return toolCall;
+  }
+  return {
+    ...toolCall,
+    status: 'completed' as const,
+    updatedAt: emittedAt || toolCall.updatedAt,
+    resultPreview: null,
+  } as T;
+}
+
+function settleIncomingOverlayAfterAssistantBoundary(
+  state: ChatSessionRuntimeMachineState,
+  overlay: ChatRunOverlay,
+  emittedAt: string,
+): ChatRunOverlay {
+  const assistantTimestamp = latestAssistantTimestampForRun(state, overlay.runId);
+  if (assistantTimestamp <= 0 || !overlay.toolCalls.some((toolCall) => toolCall.status === 'running')) {
+    return overlay;
+  }
+  let changed = false;
+  const toolCalls = overlay.toolCalls.map((toolCall) => {
+    const settled = settleRunningToolCallAfterAssistantBoundary(toolCall, assistantTimestamp, emittedAt);
+    if (settled !== toolCall) {
+      changed = true;
+    }
+    return settled;
+  });
+  if (!changed) {
+    return overlay;
+  }
+  const lifecycle = toolCalls.some((toolCall) => toolCall.status === 'error')
+    ? 'error'
+    : toolCalls.every((toolCall) => isTerminalToolStatus(toolCall.status))
+      ? 'completed'
+      : overlay.lifecycle;
+  return {
+    ...overlay,
+    lifecycle,
+    toolCalls,
+    updatedAt: emittedAt || overlay.updatedAt,
+  };
+}
+
+function settleIncomingToolCallAfterAssistantBoundary(
+  state: ChatSessionRuntimeMachineState,
+  runId: string,
+  toolCall: ChatRunOverlay['toolCalls'][number],
+  emittedAt: string,
+): ChatRunOverlay['toolCalls'][number] {
+  return settleRunningToolCallAfterAssistantBoundary(
+    toolCall,
+    latestAssistantTimestampForRun(state, runId),
+    emittedAt,
+  );
+}
+
 function createProcessOverlay(params: {
   runId: string;
   phaseId: string;
@@ -517,11 +745,13 @@ function upsertProcessPhase(params: {
   overlay?: ChatRunOverlay;
   toolCall?: ChatRunOverlay['toolCalls'][number];
 }): void {
-  const phase = params.transient.activePhaseKind === 'process'
-    ? params.transient.phases.find((entry): entry is ChatSessionProcessPhase => (
+  const toolCallIds = getProcessToolCallIds(params);
+  const phase = findProcessPhaseByToolCall(params.transient, toolCallIds)
+    || (params.transient.activePhaseKind === 'process'
+      ? params.transient.phases.find((entry): entry is ChatSessionProcessPhase => (
       entry.id === params.transient.activePhaseId && isProcessPhase(entry)
-    )) || null
-    : null;
+      )) || null
+      : null);
   if (!phase) {
     const id = nextPhaseId(params.transient, 'process');
     params.transient.phases.push({
@@ -655,13 +885,14 @@ export function anchorChatSessionCanonicalMessageLedger(
   messages: ChatMessageItem[],
   overlays: ChatRunOverlay[],
 ): ChatSessionRuntimeMachineState {
+  const canonicalMessageLedger = mergeCanonicalMessageLedger(
+    state.canonicalMessageLedger,
+    messages,
+    'replace',
+  );
   return {
     ...state,
-    canonicalMessageLedger: mergeCanonicalMessageLedger(
-      state.canonicalMessageLedger,
-      messages,
-      'replace',
-    ),
+    canonicalMessageLedger,
     processLedger: overlays.length
       ? mergeProcessLedgerRecord(state.processLedger, overlays, { preserveExisting: true })
       : state.processLedger,
@@ -747,8 +978,9 @@ export function upsertChatSessionProcessLedgerOverlay(
   state: ChatSessionRuntimeMachineState,
   overlay: ChatRunOverlay,
 ): ChatSessionRuntimeMachineState {
-  const current = state.processLedger[overlay.runId];
-  const merged = mergeRuntimeOverlay(current, overlay);
+  const settledOverlay = settleIncomingOverlayAfterAssistantBoundary(state, overlay, overlay.updatedAt);
+  const current = state.processLedger[settledOverlay.runId];
+  const merged = mergeRuntimeOverlay(current, settledOverlay);
   const nextTransient = isSettledOverlay(merged)
     ? removeTransientRunStateByTerminalOverlays(state.transientRunState, [merged])
     : state.transientRunState;
@@ -757,7 +989,7 @@ export function upsertChatSessionProcessLedgerOverlay(
     transientRunState: nextTransient,
     processLedger: {
       ...state.processLedger,
-      [overlay.runId]: merged,
+      [settledOverlay.runId]: merged,
     },
   };
 }
@@ -789,9 +1021,10 @@ export function applyChatSessionDeltaEvent(
     message.role === 'assistant'
     && areChatMessagesEquivalent(canonicalAssistantDraft, message)
   ))) {
-    return state;
+    return settleChatSessionRunToolsBeforeAssistant(state, params.runId, params.emittedAt);
   }
-  const { nextState, transient } = ensureTransientRunState(state, params.runId);
+  const baseState = settleChatSessionRunToolsBeforeAssistant(state, params.runId, params.emittedAt);
+  const { nextState, transient } = ensureTransientRunState(baseState, params.runId);
   upsertAssistantPhase({
     transient,
     emittedAt: params.emittedAt,
@@ -823,14 +1056,19 @@ export function applyChatSessionFinalEvent(
   state: ChatSessionRuntimeMachineState,
   message: ChatMessageItem,
 ): ChatSessionRuntimeMachineState {
-  const nextTransient = cloneTransientRunState(state.transientRunState);
+  const settledState = settleChatSessionRunToolsBeforeAssistant(
+    state,
+    message.runId,
+    message.createdAt || '',
+  );
+  const nextTransient = cloneTransientRunState(settledState.transientRunState);
   if (message.runId) {
     delete nextTransient[message.runId];
   }
   return {
-    ...state,
+    ...settledState,
     canonicalMessageLedger: mergeCanonicalMessageLedger(
-      state.canonicalMessageLedger,
+      settledState.canonicalMessageLedger,
       [message],
       'append',
     ),
@@ -919,19 +1157,27 @@ export function applyChatSessionCanonicalMessageEvent(
     message: ChatMessageItem;
     messageId: string;
     messageSeq: number;
+    emittedAt?: string;
   },
 ): ChatSessionRuntimeMachineState {
+  const settledState = params.message.role === 'assistant'
+    ? settleChatSessionRunToolsBeforeAssistant(
+      state,
+      params.message.runId,
+      params.emittedAt || params.message.createdAt || '',
+    )
+    : state;
   const canonicalMessageLedger = mergeCanonicalMessageLedger(
-    state.canonicalMessageLedger,
+    settledState.canonicalMessageLedger,
     [params.message],
     'append',
   );
-  const nextTransient = cloneTransientRunState(state.transientRunState);
+  const nextTransient = cloneTransientRunState(settledState.transientRunState);
   if (params.message.runId) {
     delete nextTransient[params.message.runId];
   }
   return {
-    ...state,
+    ...settledState,
     canonicalVersion: params.version,
     canonicalMessageLedger,
     transientRunState: removeTransientRunStateByCanonical(nextTransient, canonicalMessageLedger),
@@ -996,12 +1242,13 @@ export function applyChatSessionToolEvent(
     tool: ChatRunOverlay['toolCalls'][number];
   },
 ): ChatSessionRuntimeMachineState {
+  const tool = settleIncomingToolCallAfterAssistantBoundary(state, params.runId, params.tool, params.emittedAt);
   const authoritativeOverlay = state.processLedger[params.runId];
   if (authoritativeOverlay) {
     if (isSettledOverlay(authoritativeOverlay)) {
       return state;
     }
-    const authoritativeTool = authoritativeOverlay.toolCalls.find((item) => item.toolCallId === params.tool.toolCallId);
+    const authoritativeTool = authoritativeOverlay.toolCalls.find((item) => item.toolCallId === tool.toolCallId);
     if (authoritativeTool && isTerminalToolStatus(authoritativeTool.status)) {
       return state;
     }
@@ -1010,7 +1257,7 @@ export function applyChatSessionToolEvent(
   upsertProcessPhase({
     transient,
     emittedAt: params.emittedAt,
-    toolCall: params.tool,
+    toolCall: tool,
   });
   return nextState;
 }
@@ -1040,9 +1287,10 @@ export function applyChatSessionLiveOverlayEvent(
     terminal?: boolean;
   },
 ): ChatSessionRuntimeMachineState {
+  const incomingOverlay = settleIncomingOverlayAfterAssistantBoundary(state, params.overlay, params.emittedAt);
   const overlay = filterOverlayToolCallsAfterAuthoritativeTerminal(
     state.processLedger[params.runId],
-    params.overlay,
+    incomingOverlay,
   );
   if (!overlay) {
     return state;
@@ -1102,19 +1350,213 @@ export function buildChatSessionRuntimeRenderModel(
       }
     }
   }
-  return {
-    messages: normalizeMessageLedger([
-      ...state.canonicalMessageLedger,
-      ...draftMessages,
-    ]),
-    overlays: [
-      ...Object.values(state.processLedger).filter((overlay) => (
+  const overlays = [
+    ...Object.values(state.processLedger).filter((overlay) => (
         !transientRunIds.has(overlay.runId)
         && !overlay.toolCalls.every((toolCall) => canonicalToolCallIds.has(toolCall.toolCallId))
-      )),
-      ...liveProcessOverlays.filter((overlay) => (
-        !overlay.toolCalls.every((toolCall) => canonicalToolCallIds.has(toolCall.toolCallId))
-      )),
-    ].sort(overlaySort),
+    )),
+    ...liveProcessOverlays.filter((overlay) => (
+      !overlay.toolCalls.every((toolCall) => canonicalToolCallIds.has(toolCall.toolCallId))
+    )),
+  ].sort(overlaySort);
+  const messages = normalizeMessageLedger([
+    ...state.canonicalMessageLedger,
+    ...draftMessages,
+  ]);
+  const messagesWithToolResults = enrichMessagesWithAdjacentToolResults(messages);
+  return {
+    messages: enrichMessagesWithOverlayToolCalls(messagesWithToolResults, [
+      ...Object.values(state.processLedger),
+      ...liveProcessOverlays,
+    ]),
+    overlays,
   };
+}
+
+function isToolResultMessage(message: ChatMessageItem): boolean {
+  return message.role === 'tool';
+}
+
+function messageResultPreview(message: ChatMessageItem): string | null {
+  const text = String(message.text || '').trim();
+  return text || null;
+}
+
+function messageToolResultCallId(message: ChatMessageItem): string | null {
+  const record = message as ChatMessageItem & {
+    toolCallId?: string | null;
+    tool_call_id?: string | null;
+  };
+  return record.toolCallId || record.tool_call_id || null;
+}
+
+function enrichMessagesWithAdjacentToolResults(messages: ChatMessageItem[]): ChatMessageItem[] {
+  if (!messages.some((message) => message.toolCalls?.some((toolCall) => toolCall.status === 'running'))) {
+    return messages;
+  }
+  let changed = false;
+  const nextMessages = messages.map((message) => ({
+    ...message,
+    toolCalls: message.toolCalls?.map((toolCall) => ({ ...toolCall })),
+  }));
+  const pendingById = new Map<string, { messageIndex: number; toolIndex: number }>();
+  const pendingQueue: { messageIndex: number; toolIndex: number }[] = [];
+
+  for (let messageIndex = 0; messageIndex < nextMessages.length; messageIndex += 1) {
+    const message = nextMessages[messageIndex]!;
+    if (message.toolCalls?.length) {
+      message.toolCalls.forEach((toolCall, toolIndex) => {
+        if (toolCall.status !== 'running') {
+          return;
+        }
+        const pending = { messageIndex, toolIndex };
+        pendingById.set(toolCall.toolCallId, pending);
+        pendingQueue.push(pending);
+      });
+      continue;
+    }
+
+    if (!isToolResultMessage(message)) {
+      continue;
+    }
+    const resultPreview = messageResultPreview(message);
+    if (!resultPreview) {
+      continue;
+    }
+    const toolCallId = messageToolResultCallId(message);
+    const pending = toolCallId
+      ? pendingById.get(toolCallId)
+      : pendingQueue.length
+        ? pendingQueue[pendingQueue.length - 1]
+        : null;
+    if (!pending) {
+      continue;
+    }
+    const owner = nextMessages[pending.messageIndex];
+    const toolCall = owner?.toolCalls?.[pending.toolIndex];
+    if (!owner?.toolCalls || !toolCall || toolCall.status !== 'running') {
+      continue;
+    }
+    owner.toolCalls[pending.toolIndex] = {
+      ...toolCall,
+      status: 'completed',
+      updatedAt: message.createdAt || toolCall.updatedAt,
+      resultPreview: toolCall.resultPreview || resultPreview,
+    };
+    pendingById.delete(toolCall.toolCallId);
+    const queueIndex = pendingQueue.findIndex((item) => (
+      item.messageIndex === pending.messageIndex && item.toolIndex === pending.toolIndex
+    ));
+    if (queueIndex >= 0) {
+      pendingQueue.splice(queueIndex, 1);
+    }
+    changed = true;
+  }
+
+  return changed ? nextMessages : messages;
+}
+
+function normalizeToolIdentityValue(value: string | null | undefined): string {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function overlayToolRunId(
+  overlay: ChatRunOverlay,
+  toolCall: ChatRunOverlay['toolCalls'][number],
+): string | null {
+  return toolCall.runId || overlay.runId || null;
+}
+
+function buildOverlayToolLookup(overlays: ChatRunOverlay[]): {
+  byId: Map<string, ChatMessageToolCallItem>;
+  bySingleRunName: Map<string, ChatMessageToolCallItem>;
+} {
+  const byId = new Map<string, ChatMessageToolCallItem>();
+  const byRunNameCandidates = new Map<string, ChatMessageToolCallItem | null>();
+  for (const overlay of overlays) {
+    for (const toolCall of overlay.toolCalls) {
+      byId.set(toolCall.toolCallId, { ...toolCall });
+      if (!isTerminalToolStatus(toolCall.status)) {
+        continue;
+      }
+      const runId = overlayToolRunId(overlay, toolCall);
+      const name = normalizeToolIdentityValue(toolCall.name);
+      if (!runId || !name) {
+        continue;
+      }
+      const key = `${runId}:${name}`;
+      if (byRunNameCandidates.has(key)) {
+        byRunNameCandidates.set(key, null);
+      } else {
+        byRunNameCandidates.set(key, { ...toolCall });
+      }
+    }
+  }
+  const bySingleRunName = new Map<string, ChatMessageToolCallItem>();
+  for (const [key, value] of byRunNameCandidates) {
+    if (value) {
+      bySingleRunName.set(key, value);
+    }
+  }
+  return { byId, bySingleRunName };
+}
+
+function findOverlayToolForMessageTool(
+  lookup: ReturnType<typeof buildOverlayToolLookup>,
+  message: ChatMessageItem,
+  toolCall: ChatMessageToolCallItem,
+): ChatMessageToolCallItem | null {
+  const byId = lookup.byId.get(toolCall.toolCallId);
+  if (byId) {
+    return byId;
+  }
+  const runId = toolCall.runId || message.runId;
+  const name = normalizeToolIdentityValue(toolCall.name);
+  if (!runId || !name) {
+    return null;
+  }
+  return lookup.bySingleRunName.get(`${runId}:${name}`) || null;
+}
+
+function enrichMessagesWithOverlayToolCalls(
+  messages: ChatMessageItem[],
+  overlays: ChatRunOverlay[],
+): ChatMessageItem[] {
+  if (!messages.some((message) => message.toolCalls?.length) || !overlays.some((overlay) => overlay.toolCalls.length)) {
+    return messages;
+  }
+  const lookup = buildOverlayToolLookup(overlays);
+  let changed = false;
+  const nextMessages = messages.map((message) => {
+    if (!message.toolCalls?.length) {
+      return message;
+    }
+    let messageChanged = false;
+    const toolCalls = message.toolCalls.map((toolCall) => {
+      const overlayTool = findOverlayToolForMessageTool(lookup, message, toolCall);
+      if (!overlayTool) {
+        return toolCall;
+      }
+      const merged = mergeRuntimeToolLike(toolCall, overlayTool);
+      if (
+        merged.toolCallId !== toolCall.toolCallId
+        || merged.status !== toolCall.status
+        || merged.resultPreview !== toolCall.resultPreview
+        || merged.argsPreview !== toolCall.argsPreview
+        || merged.isError !== toolCall.isError
+      ) {
+        messageChanged = true;
+      }
+      return merged;
+    });
+    if (!messageChanged) {
+      return message;
+    }
+    changed = true;
+    return {
+      ...message,
+      toolCalls,
+    };
+  });
+  return changed ? nextMessages : messages;
 }

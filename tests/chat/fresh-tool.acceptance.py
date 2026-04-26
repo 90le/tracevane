@@ -32,23 +32,95 @@ def fill_editor(page, locator, text):
 
 
 def open_new_chat(page):
-    before_count = page.locator(".chat-shell-session-item").count()
     button = page.locator(".chat-new-chat-trigger").first
     click_enabled(button)
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
-    click_enabled(option)
+    with page.expect_response(lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST", timeout=30000) as response_info:
+        click_enabled(option)
+    payload = response_info.value.json()
+    session_key = ((payload.get("session") or {}).get("key") or "").strip()
+    if not session_key:
+        raise AssertionError(f"create session response missing session.key: {payload}")
     page.wait_for_function(
-        "(before) => document.querySelectorAll('.chat-shell-session-item').length >= before + 1",
-        arg=before_count,
+        """() => (
+            document.querySelector('.chat-shell-session-row.active')
+            && document.querySelector('.chat-composer-editor[contenteditable="true"]')
+        )""",
         timeout=30000,
     )
+    page.locator(".chat-composer-editor[contenteditable='true']").first.wait_for(state="visible", timeout=30000)
     page.wait_for_load_state("networkidle")
+    return session_key
 
 
 def visible_inline_process_count(page):
     return page.locator(".chat-inline-process:visible").count()
+
+
+def visible_tool_state_labels(page):
+    return page.evaluate(
+        """() => Array.from(document.querySelectorAll('.chat-inline-process-head-state'))
+          .filter((el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length))
+          .map((el) => ({ text: (el.textContent || '').trim(), cls: String(el.className || '') }))"""
+    )
+
+
+def is_terminal_tool_label(label):
+    text = label.get("text")
+    cls = str(label.get("cls"))
+    return (
+        "status-completed" in cls
+        or "status-error" in cls
+        or text in ("已完成", "Completed", "错误", "Error")
+    )
+
+
+def is_running_tool_label(label):
+    text = label.get("text")
+    cls = str(label.get("cls"))
+    return "status-running" in cls or text in ("执行中", "Running")
+
+
+def observe_tool_status_until_final(page, token):
+    terminal_seen = False
+    regression_samples = []
+    sample_tail = []
+
+    for sample_index in range(360):
+        labels = visible_tool_state_labels(page)
+        sample_tail.append(labels)
+        sample_tail = sample_tail[-8:]
+        if any(is_terminal_tool_label(label) for label in labels):
+            terminal_seen = True
+        if terminal_seen and any(is_running_tool_label(label) for label in labels):
+            regression_samples.append({"index": sample_index, "labels": labels})
+        final_seen = page.evaluate(
+            "(token) => Array.from(document.querySelectorAll('.chat-message-bubble')).some((el) => (el.textContent || '').includes(token))",
+            token,
+        )
+        if final_seen:
+            for post_index in range(24):
+                labels = visible_tool_state_labels(page)
+                sample_tail.append(labels)
+                sample_tail = sample_tail[-8:]
+                if any(is_terminal_tool_label(label) for label in labels):
+                    terminal_seen = True
+                if terminal_seen and any(is_running_tool_label(label) for label in labels):
+                    regression_samples.append({"index": f"post-{post_index}", "labels": labels})
+                page.wait_for_timeout(250)
+            final_labels = visible_tool_state_labels(page)
+            terminal_seen = terminal_seen or any(is_terminal_tool_label(label) for label in final_labels)
+            return {
+                "terminal_seen": terminal_seen,
+                "regression_samples": regression_samples[:5],
+                "final_labels": final_labels,
+                "sample_tail": sample_tail,
+            }
+        page.wait_for_timeout(250)
+
+    raise PlaywrightTimeoutError("timed out while waiting for final tool reply")
 
 
 def main() -> None:
@@ -93,6 +165,13 @@ def main() -> None:
         )
         result["tool_process_visible"] = visible_inline_process_count(page) > 0
 
+        status_observation = observe_tool_status_until_final(page, TOKEN)
+        result["tool_terminal_seen"] = status_observation["terminal_seen"]
+        result["tool_status_never_regressed"] = not status_observation["regression_samples"]
+        result["tool_status_final_labels"] = status_observation["final_labels"]
+        if status_observation["regression_samples"]:
+            result["tool_status_regression_samples"] = status_observation["regression_samples"]
+
         page.wait_for_function(
             "(token) => Array.from(document.querySelectorAll('.chat-message-bubble')).some((el) => (el.textContent || '').includes(token))",
             arg=TOKEN,
@@ -115,6 +194,8 @@ def main() -> None:
         critical_checks = [
             "user_message_visible_immediately",
             "tool_process_visible",
+            "tool_terminal_seen",
+            "tool_status_never_regressed",
             "final_reply_visible",
             "reload_restores_tool_process",
         ]

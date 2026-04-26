@@ -25,8 +25,9 @@ test("app shell now uses a lighter rail-plus-route layout instead of a boxed top
   assert.match(appVue, /class="sidebar sidebar-rail"/);
   assert.match(appVue, /class="mobile-nav-trigger"/);
   assert.match(appVue, /StudioSidebarRail/);
-  assert.match(appVue, /<RouterView v-slot="\{ Component \}">/);
-  assert.match(appVue, /class="shell-route-stage shell-main-stage"/);
+  assert.match(appVue, /<RouterView v-slot="\{ Component, route: routedView \}">/);
+  assert.match(appVue, /class="shell-main-stage"/);
+  assert.match(appVue, /class="shell-route-stage"/);
   assert.doesNotMatch(appVue, /class="shell-command-dock"/);
   assert.doesNotMatch(appVue, /class="shell-stage-surface"/);
   assert.doesNotMatch(appVue, /class="shell-canvas"/);
@@ -67,10 +68,10 @@ test("dashboard adopts the new home control surface vocabulary", () => {
   assert.match(dashboardView, /class="home-control-surface home-stage-rhythm"/);
   assert.match(dashboardView, /class="home-situation-band"/);
   assert.match(dashboardView, /class="home-risk-stage"/);
-  assert.match(dashboardView, /class="home-recovery-stage"/);
-  assert.match(dashboardView, /class="home-trend-stage"/);
-  assert.match(dashboardView, /class="home-resource-grid"/);
-  assert.match(dashboardView, /class="home-recent-stream"/);
+  assert.match(dashboardView, /class="home-compact-visual-strip"/);
+  assert.match(dashboardView, /class="home-mini-chart-grid"/);
+  assert.match(dashboardView, /class="home-system-snapshot"/);
+  assert.match(dashboardView, /class="home-resource-signals"/);
   assert.doesNotMatch(dashboardView, /class="dashboard-hero-stage"/);
   assert.doesNotMatch(dashboardView, /class="dashboard-overview-river"/);
 });

@@ -2,6 +2,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
 import json
 import re
+import time
 
 
 SCREENSHOT = Path("/tmp/openclaw-studio-chat-mvp-acceptance.png")
@@ -30,6 +31,26 @@ def fill_editor(page, locator, text):
     page.wait_for_timeout(300)
 
 
+def wait_for_run_to_settle(page, timeout=60000):
+    deadline = time.monotonic() + (timeout / 1000)
+    while time.monotonic() < deadline:
+        stop_button = page.get_by_role("button", name=re.compile("^停止$|^Stop$")).first
+        running_status = page.locator(".chat-conversation-pane__status").first
+        stop_visible = stop_button.count() > 0 and stop_button.is_visible()
+        status_visible = running_status.count() > 0 and running_status.is_visible()
+        composer_running = page.evaluate(
+            """() => {
+                const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
+                const placeholder = editor?.getAttribute('data-placeholder') || '';
+                return /reply is still running|回复生成中|生成中/i.test(placeholder);
+            }"""
+        )
+        if not stop_visible and not status_visible and not composer_running:
+            return True
+        page.wait_for_timeout(250)
+    return False
+
+
 def thread_bottom_distance(page):
     return page.evaluate(
         """() => {
@@ -49,27 +70,62 @@ def bubble_signatures(page):
 
 
 def open_new_chat(page):
-    before_count = page.locator(".chat-shell-session-item").count()
     button = page.locator(".chat-new-chat-trigger").first
     click_enabled(button)
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
-    with page.expect_response(lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST", timeout=30000):
+    with page.expect_response(lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST", timeout=30000) as response_info:
         click_enabled(option)
+    payload = response_info.value.json()
+    session_key = ((payload.get("session") or {}).get("key") or "").strip()
+    if not session_key:
+        raise AssertionError(f"create session response missing session.key: {payload}")
     page.wait_for_function(
-        "(before) => document.querySelectorAll('.chat-shell-session-item').length >= before + 1",
-        arg=before_count,
+        """() => (
+            document.querySelector('.chat-shell-session-row.active')
+            && document.querySelector('.chat-composer-editor[contenteditable="true"]')
+        )""",
         timeout=30000,
     )
     page.wait_for_load_state("networkidle")
+    return session_key
 
 
 def open_reset_menu(page):
-    summary = page.locator(".chat-session-menu summary").first
-    summary.wait_for(state="visible", timeout=10000)
-    summary.click()
+    trigger = page.get_by_role("button", name=re.compile("更多|More")).first
+    trigger.wait_for(state="visible", timeout=10000)
+    trigger.click()
     page.locator(".chat-session-menu-popover").wait_for(state="visible", timeout=10000)
+
+
+def reset_menu_item(page):
+    return page.locator(".chat-session-menu-item").filter(has_text=re.compile("重置 Session|Reset Session")).first
+
+
+def click_reset_menu_item(page):
+    item = reset_menu_item(page)
+    item.wait_for(state="visible", timeout=10000)
+    item.evaluate("(el) => el.click()")
+
+
+def reset_menu_item_disabled(page):
+    item = reset_menu_item(page)
+    item.wait_for(state="visible", timeout=10000)
+    return item.evaluate("(el) => el.hasAttribute('data-disabled') || el.getAttribute('aria-disabled') === 'true'")
+
+
+def visible_button_is_disabled(locator):
+    if locator.count() == 0 or not locator.is_visible():
+        return True
+    return locator.is_disabled()
+
+
+def click_if_visible_enabled(locator, timeout=20000):
+    if locator.count() == 0 or not locator.is_visible() or locator.is_disabled():
+        return False
+    click_enabled(locator, timeout=timeout)
+    return True
 
 
 def close_inspector_if_open(page):
@@ -147,6 +203,7 @@ def main() -> None:
             timeout=30000,
         )
         result["send_final_visible"] = "acceptance smoke one" in page.locator(".chat-conversation-thread").inner_text()
+        result["first_run_settled"] = wait_for_run_to_settle(page)
 
         long_text = "acceptance abort " + ("please output 10000 numbered lines in a markdown code block. " * 20)
         fill_editor(page, textarea, long_text)
@@ -158,10 +215,15 @@ def main() -> None:
             result["abort_notice_present"] = page.locator("text=已中止").count() > 0 or page.locator("text=Aborted").count() > 0
         except PlaywrightTimeoutError:
             result["abort_notice_present"] = False
+        result["run_settled_before_reset"] = wait_for_run_to_settle(page)
+        if not result["run_settled_before_reset"]:
+            page.screenshot(path=str(SCREENSHOT), full_page=True)
+            result["screenshot"] = str(SCREENSHOT)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            raise SystemExit("workbench smoke failed: run_settled_before_reset")
 
         open_reset_menu(page)
-        reset_btn = page.get_by_role("button", name=re.compile("重置 Session|Reset Session")).first
-        click_enabled(reset_btn)
+        click_reset_menu_item(page)
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(500)
         result["reset_empty_state"] = (
@@ -229,15 +291,18 @@ def main() -> None:
             page.wait_for_timeout(600)
             fill_editor(page, textarea, "cross-session long request " + ("stream " * 80))
             click_enabled(send_btn)
-            wait_button_enabled(stop_btn, timeout=20000)
+            try:
+                wait_button_enabled(stop_btn, timeout=12000)
+            except PlaywrightTimeoutError:
+                # Some models refuse or summarize the long prompt quickly; cross-session isolation is still checkable.
+                pass
             click_enabled(second_writable)
             page.wait_for_timeout(1200)
             body_text = page.locator(".chat-conversation-thread").inner_text()
             result["switch_session_no_cross_talk"] = "cross-session long request" not in body_text
             click_enabled(first_writable)
             page.wait_for_timeout(600)
-            if not stop_btn.is_disabled():
-                click_enabled(stop_btn, timeout=20000)
+            if click_if_visible_enabled(stop_btn, timeout=20000):
                 page.wait_for_timeout(800)
 
         readonly_session = page.locator(".chat-shell-observed-section .chat-shell-session-item").first
@@ -246,9 +311,9 @@ def main() -> None:
             click_enabled(readonly_session)
             page.wait_for_timeout(600)
             result["readonly_send_disabled"] = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first.is_disabled()
-            result["readonly_stop_disabled"] = page.get_by_role("button", name=re.compile("^停止$|^Stop$")).first.is_disabled()
+            result["readonly_stop_disabled"] = visible_button_is_disabled(page.get_by_role("button", name=re.compile("^停止$|^Stop$")).first)
             open_reset_menu(page)
-            result["readonly_reset_disabled"] = page.get_by_role("button", name=re.compile("重置 Session|Reset Session")).first.is_disabled()
+            result["readonly_reset_disabled"] = reset_menu_item_disabled(page)
         else:
             result["readonly_send_disabled"] = True
             result["readonly_stop_disabled"] = True
@@ -276,6 +341,8 @@ def main() -> None:
             "composer_visible",
             "created_session_selected",
             "send_final_visible",
+            "first_run_settled",
+            "run_settled_before_reset",
             "reset_empty_state",
             "send_after_reset",
             "reload_restored_session",

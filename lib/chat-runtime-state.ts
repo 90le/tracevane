@@ -402,6 +402,31 @@ function pickRuntimeToolStatus<
   ) as T;
 }
 
+function pickRuntimeToolResultPreview(params: {
+  currentStatus: ChatToolCard['status'] | ChatMessageToolCallItem['status'] | null | undefined;
+  nextStatus: ChatToolCard['status'] | ChatMessageToolCallItem['status'] | null | undefined;
+  currentPreview: string | null | undefined;
+  nextPreview: string | null | undefined;
+}): string | null {
+  const currentRank = runtimeToolStatusRank(params.currentStatus);
+  const nextRank = runtimeToolStatusRank(params.nextStatus);
+  const currentPreview = normalizePreview(params.currentPreview);
+  const nextPreview = normalizePreview(params.nextPreview);
+  if (nextRank > currentRank) {
+    return nextPreview || currentPreview;
+  }
+  if (nextRank < currentRank) {
+    return currentPreview || nextPreview;
+  }
+  if (!currentPreview) {
+    return nextPreview;
+  }
+  if (!nextPreview) {
+    return currentPreview;
+  }
+  return nextPreview.length >= currentPreview.length ? nextPreview : currentPreview;
+}
+
 function overlayLifecycleRank(value: ChatRunOverlay['lifecycle'] | null | undefined): number {
   if (value === 'error') return 5;
   if (value === 'completed') return 4;
@@ -424,11 +449,12 @@ export function mergeRuntimeToolLike<
     argsPreview: normalizePreview(current.argsPreview) && !normalizePreview(next.argsPreview)
       ? normalizePreview(current.argsPreview)
       : normalizePreview(next.argsPreview) || normalizePreview(current.argsPreview),
-    resultPreview: (
-      runtimeToolStatusRank(next.status) > runtimeToolStatusRank(current.status) && normalizePreview(next.resultPreview)
-        ? normalizePreview(next.resultPreview)
-        : normalizePreview(next.resultPreview) || normalizePreview(current.resultPreview)
-    ),
+    resultPreview: pickRuntimeToolResultPreview({
+      currentStatus: current.status,
+      nextStatus: next.status,
+      currentPreview: current.resultPreview,
+      nextPreview: next.resultPreview,
+    }),
     isError: current.isError || next.isError || mergedStatus === 'error',
     artifacts: next.artifacts?.length
       ? next.artifacts.map((item) => ({ ...item }))

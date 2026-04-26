@@ -425,6 +425,41 @@ test('sqlite: session metadata and page messages can be read without hydrating t
       anchorMessageId: 'search-5',
       anchorCreatedAt: '2026-03-27T09:04:00.000Z',
     });
+    const searchDayBefore = store.readSearchMessageWindow(SESSION_KEY, {
+      query: 'needle',
+      day: '2026-03-27',
+      before: {
+        anchorIndex: searchDayTail.beforeBoundary.anchorIndex,
+        anchorMessageId: searchDayTail.beforeBoundary.anchorMessageId,
+      },
+      limit: 1,
+    });
+    assert.ok(searchDayBefore);
+    assert.deepEqual(
+      searchDayBefore.stubs.map((message) => message.id),
+      ['search-3'],
+    );
+    assert.equal(searchDayBefore.hasMoreBefore, false);
+    assert.equal(searchDayBefore.hasMoreAfter, true);
+    assert.deepEqual(searchDayBefore.afterBoundary, {
+      anchorIndex: 1,
+      anchorMessageId: 'search-5',
+      anchorCreatedAt: '2026-03-27T09:04:00.000Z',
+    });
+    const searchDayAfter = store.readSearchMessageWindow(SESSION_KEY, {
+      query: 'needle',
+      day: '2026-03-27',
+      after: {
+        anchorIndex: searchDayBefore.afterBoundary.anchorIndex,
+        anchorMessageId: searchDayBefore.afterBoundary.anchorMessageId,
+      },
+      limit: 1,
+    });
+    assert.ok(searchDayAfter);
+    assert.deepEqual(
+      searchDayAfter.stubs.map((message) => message.id),
+      ['search-5'],
+    );
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
       version: 'v4',

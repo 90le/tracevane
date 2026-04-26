@@ -139,6 +139,39 @@ test('tool cards stay capped and latest state wins', () => {
   assert.equal(state.toolCards[0].resultPreview, 'ok');
 });
 
+test('tool cards keep terminal status over late running updates', () => {
+  let state = createEmptyObservabilityState();
+
+  state = upsertToolCard(state, {
+    toolCallId: 'tool-terminal',
+    runId: 'run-terminal',
+    name: 'read',
+    status: 'completed',
+    startedAt: '2026-03-19T03:00:00.000Z',
+    updatedAt: '2026-03-19T03:00:01.000Z',
+    argsPreview: '{"file":"README.md"}',
+    resultPreview: 'final contents',
+    isError: false,
+  });
+
+  state = upsertToolCard(state, {
+    toolCallId: 'tool-terminal',
+    runId: 'run-terminal',
+    name: 'read',
+    status: 'running',
+    startedAt: '2026-03-19T03:00:00.000Z',
+    updatedAt: '2026-03-19T03:00:02.000Z',
+    argsPreview: '{"file":"README.md"}',
+    resultPreview: 'late partial',
+    isError: false,
+  });
+
+  assert.equal(state.toolCards.length, 1);
+  assert.equal(state.toolCards[0].status, 'completed');
+  assert.equal(state.toolCards[0].resultPreview, 'final contents');
+  assert.equal(state.toolCards[0].isError, false);
+});
+
 test('history observability maps tool role results without explicit toolCallId back onto the pending tool call', () => {
   const observability = deriveObservabilityFromHistory([
     {

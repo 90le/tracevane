@@ -22,20 +22,26 @@ def click_enabled(page, locator, timeout=20000):
 
 
 def create_session(page):
-    before_count = page.locator('.chat-shell-session-item').count()
     new_chat = page.locator('.chat-new-chat-trigger').first
     click_enabled(page, new_chat)
     picker = page.locator('.chat-agent-picker')
     picker.wait_for(state='visible', timeout=20000)
     first_agent = picker.locator('.chat-agent-picker-option').first
-    with page.expect_response(lambda resp: '/api/chat/agents/' in resp.url and resp.request.method == 'POST', timeout=30000):
+    with page.expect_response(lambda resp: '/api/chat/agents/' in resp.url and resp.request.method == 'POST', timeout=30000) as response_info:
         click_enabled(page, first_agent)
+    payload = response_info.value.json()
+    session_key = ((payload.get('session') or {}).get('key') or '').strip()
+    if not session_key:
+        raise AssertionError(f'create session response missing session.key: {payload}')
     page.wait_for_function(
-        "(before) => document.querySelectorAll('.chat-shell-session-item').length >= before + 1",
-        arg=before_count,
+        """() => (
+            document.querySelector('.chat-shell-session-row.active')
+            && document.querySelector('.chat-composer-editor[contenteditable="true"]')
+        )""",
         timeout=30000,
     )
     page.wait_for_load_state('networkidle')
+    return session_key
 
 
 def create_folder(page, title):

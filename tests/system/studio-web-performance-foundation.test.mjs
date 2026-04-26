@@ -12,6 +12,7 @@ const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8")
 
 const apiSource = read("apps/web-vue/src/shared/api.ts");
 const appVue = read("apps/web-vue/src/App.vue");
+const globalStyle = read("apps/web-vue/src/style.css");
 const agentsWorkspace = read("apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue");
 const channelsWorkspace = read("apps/web-vue/src/features/channels/workspace.ts");
 const channelsWorkspaceLayout = read("apps/web-vue/src/features/channels/ChannelsWorkspaceLayout.vue");
@@ -45,6 +46,9 @@ test("shell release status no longer runs fixed global polling on every page", (
 test("non-chat shell routes are kept alive and preloaded only after idle", () => {
   assert.match(appVue, /<KeepAlive v-if="Component && shouldKeepRouteAlive\(routedView\)" :max="16">/);
   assert.match(appVue, /targetRoute\.meta\.keepAlive !== false/);
+  assert.match(appVue, /'standard-scroll-route': !isChatSurface && !isTerminalSurface && !isFilesSurface/);
+  assert.match(globalStyle, /\.main-content\.standard-scroll-route \.shell-layout \{/);
+  assert.match(globalStyle, /\.main-content\.standard-scroll-route \.shell-route-stage \{/);
   assert.match(appVue, /preloadNonChatShellRouteChunks/);
   assert.match(appVue, /preloadNonChatShellRouteChunks\('core'\)/);
   assert.match(appVue, /preloadNonChatShellRouteChunks\('extended'\)/);

@@ -91,6 +91,7 @@
           @composer-files="handleComposerFiles"
           @composer-remove-attachment="removeComposerAttachment"
           @patch-queued-item="patchQueuedMessage"
+          @retry-queued-item="retryQueuedMessage"
           @delete-queued-item="removeQueuedMessage"
           @reset="resetCurrentSession"
           @new-chat="newChatOpen = true"
@@ -467,6 +468,7 @@ import { readLastChatAgentId, readLastChatSessionKey, rememberLastChatAgentId, r
 import {
   cloneRuntimeObservability,
   createEmptyRuntimeObservability,
+  settleRuntimeToolCardsBeforeAssistant,
   upsertRuntimeTimelineItems,
   upsertRuntimeToolCards,
 } from './chat-runtime-events';
@@ -653,9 +655,13 @@ let deferredSessionHydrationTimer: number | null = null;
 let historyReplaceRequestController: AbortController | null = null;
 let historyDatesRequestController: AbortController | null = null;
 let historyBeforePrefetchController: AbortController | null = null;
+let historyBeforePrefetchKey: ChatHistoryBeforePrefetchKey | null = null;
+let historyBeforePrefetchPromise: Promise<void> | null = null;
 let historyBeforePrefetchTimer: number | null = null;
 let historyBeforePrefetchIdleHandle: number | null = null;
 let historyAfterPrefetchController: AbortController | null = null;
+let historyAfterPrefetchKey: ChatHistoryAfterPrefetchKey | null = null;
+let historyAfterPrefetchPromise: Promise<void> | null = null;
 let historyAfterPrefetchTimer: number | null = null;
 let historyAfterPrefetchIdleHandle: number | null = null;
 let historyRenderStabilizeTimer: number | null = null;
@@ -904,7 +910,12 @@ const canSend = computed(() => Boolean(
   && !accessError.value,
 ));
 const canAbort = computed(() => Boolean(selectedSession.value?.permissions.canAbort && activeRuntime.value?.activeRunId && !abortBusy.value && !accessError.value));
-const canReset = computed(() => Boolean(selectedSession.value?.permissions.canReset && !resetBusy.value && !accessError.value));
+const canReset = computed(() => Boolean(
+  selectedSession.value?.permissions.canReset
+  && !activeRuntime.value?.activeRunId
+  && !resetBusy.value
+  && !accessError.value,
+));
 const canRefresh = computed(() => Boolean(selectedSession.value && !refreshBusy.value && !accessError.value));
 
 function buildAttachmentPreviewResources(attachments: ComposerImageAttachment[]): ChatResourceItem[] {
@@ -1874,6 +1885,16 @@ function applyObservability(next: ChatObservabilityState): void {
   };
 }
 
+function settleObservabilityToolsForAssistantStream(runId: string | null | undefined, emittedAt: string): void {
+  const observability = ensureObservabilityState();
+  const toolCards = settleRuntimeToolCardsBeforeAssistant(observability.toolCards, runId, emittedAt);
+  if (toolCards === observability.toolCards) {
+    return;
+  }
+  observability.toolCards = toolCards;
+  applyObservability(observability);
+}
+
 function applySideResultEvent(event: Extract<ChatStreamEvent, { kind: 'side_result' }>, isSelectedSession: boolean): void {
   const existing = slashFeedbackBySession.value[event.sessionKey];
   const previous = existing && existing.commandName === 'btw' && (!existing.runId || existing.runId === event.runId)
@@ -2041,6 +2062,7 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'delta') {
+    flushPendingTemporaryToolEvents();
     const currentRuntime = activeRuntime.value;
     const runtime = {
       ...(currentRuntime || {}),
@@ -2056,6 +2078,7 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
     syncSessionRow(event.sessionKey, { runtime });
     if (isSelectedSession) {
       applyRuntime(runtime);
+      settleObservabilityToolsForAssistantStream(event.runId, event.emittedAt);
       playChatCueSafely('received', event.runId ? `${event.sessionKey}:${event.runId}` : null);
       runtimeMachineState.value = applyChatSessionDeltaEvent(runtimeMachineState.value, {
         runId: event.runId,
@@ -2092,6 +2115,7 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'final') {
+    flushPendingTemporaryToolEvents();
     syncSessionRow(event.sessionKey, {
       runtime: event.runtime,
       updatedAt: event.message.createdAt || event.emittedAt,
@@ -2188,7 +2212,9 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'agent_assistant') {
+    flushPendingTemporaryToolEvents();
     const observability = ensureObservabilityState();
+    observability.toolCards = settleRuntimeToolCardsBeforeAssistant(observability.toolCards, event.runId, event.emittedAt);
     observability.timeline = upsertRuntimeTimelineItems(observability.timeline, {
       id: `assistant-${event.runId}`,
       kind: 'assistant',
@@ -2328,6 +2354,9 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'canonical.message') {
+    if (event.message.role === 'assistant') {
+      flushPendingTemporaryToolEvents();
+    }
     syncSessionRow(event.sessionKey, {
       updatedAt: event.message.createdAt || event.emittedAt,
       lastMessagePreview: deriveRuntimeMessagePreview(event.message),
@@ -2341,6 +2370,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
         message: event.message,
         messageId: event.messageId,
         messageSeq: event.messageSeq,
+        emittedAt: event.emittedAt,
       });
       if (historyPayload.value?.session.key === event.sessionKey) {
         historyPayload.value = {
@@ -2362,6 +2392,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'temporary.assistant') {
+    flushPendingTemporaryToolEvents();
     markRunAsActive(event.sessionKey, event.runId);
     const currentRuntime = activeRuntime.value;
     const runtime = {
@@ -2378,6 +2409,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
     syncSessionRow(event.sessionKey, { runtime });
     if (isSelectedSession) {
       applyRuntime(runtime);
+      settleObservabilityToolsForAssistantStream(event.runId, event.emittedAt);
       playChatCueSafely('received', event.runId ? `${event.sessionKey}:${event.runId}` : null);
       runtimeMachineState.value = applyChatSessionTemporaryAssistantEvent(runtimeMachineState.value, {
         runId: event.runId,
@@ -2455,7 +2487,9 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'agent_assistant') {
+    flushPendingTemporaryToolEvents();
     const observability = ensureObservabilityState();
+    observability.toolCards = settleRuntimeToolCardsBeforeAssistant(observability.toolCards, event.runId, event.emittedAt);
     observability.timeline = upsertRuntimeTimelineItems(observability.timeline, {
       id: `assistant-${event.runId}`,
       kind: 'assistant',
@@ -3250,6 +3284,8 @@ function abortHistoryBeforePrefetch(): void {
     historyBeforePrefetchController.abort();
     historyBeforePrefetchController = null;
   }
+  historyBeforePrefetchKey = null;
+  historyBeforePrefetchPromise = null;
 }
 
 function abortHistoryAfterPrefetch(): void {
@@ -3257,6 +3293,8 @@ function abortHistoryAfterPrefetch(): void {
     historyAfterPrefetchController.abort();
     historyAfterPrefetchController = null;
   }
+  historyAfterPrefetchKey = null;
+  historyAfterPrefetchPromise = null;
 }
 
 function clearHistoryBeforePrefetch(): void {
@@ -3352,6 +3390,21 @@ function currentHistoryBeforePrefetchKey(sessionKey: string): ChatHistoryBeforeP
   };
 }
 
+function sameHistoryBeforePrefetchKey(
+  left: ChatHistoryBeforePrefetchKey | null,
+  right: ChatHistoryBeforePrefetchKey | null,
+): boolean {
+  return Boolean(
+    left
+    && right
+    && left.sessionKey === right.sessionKey
+    && left.mode === right.mode
+    && left.beforeCursor === right.beforeCursor
+    && left.day === right.day
+    && left.query === right.query,
+  );
+}
+
 function matchesHistoryBeforePrefetch(
   expected: ChatHistoryBeforePrefetchKey | null,
 ): boolean {
@@ -3384,6 +3437,10 @@ async function waitForHistoryBeforePrefetch(
   if (!expected || !historyBeforePrefetchController) {
     return readMatchedHistoryBeforePrefetchPayload(expected);
   }
+  if (historyBeforePrefetchPromise && sameHistoryBeforePrefetchKey(historyBeforePrefetchKey, expected)) {
+    await historyBeforePrefetchPromise;
+    return readMatchedHistoryBeforePrefetchPayload(expected);
+  }
   const deadline = Date.now() + timeoutMs;
   while (historyBeforePrefetchController && Date.now() < deadline) {
     const payload = readMatchedHistoryBeforePrefetchPayload(expected);
@@ -3404,54 +3461,65 @@ async function runHistoryBeforePrefetch(sessionKey: string): Promise<void> {
   if (matchesHistoryBeforePrefetch(key)) {
     return;
   }
+  if (historyBeforePrefetchPromise && sameHistoryBeforePrefetchKey(historyBeforePrefetchKey, key)) {
+    await historyBeforePrefetchPromise;
+    return;
+  }
   abortHistoryBeforePrefetch();
   const controller = typeof AbortController === 'undefined' ? null : new AbortController();
   historyBeforePrefetchController = controller;
-  try {
-    const requestLimit = key.mode === 'history' && !key.day
-      ? CHAT_HISTORY_AUTO_FILL_PAGE_LIMIT
-      : CHAT_HISTORY_PAGE_LIMIT;
-    const payload = key.mode === 'search' && key.query
-      ? await searchChatHistory(sessionKey, {
-        query: key.query,
-        before: key.beforeCursor,
-        limit: requestLimit,
-        signal: controller?.signal,
-      }).then((result): ChatHistoryPayload => buildSearchHistoryPayload(
-        result,
-        historyPayload.value?.observability || createEmptyRuntimeObservability(),
-      ))
-      : await fetchChatHistoryPage(sessionKey, {
-        before: key.beforeCursor,
-        limit: requestLimit,
-        day: key.day,
-        signal: controller?.signal,
-      });
-    const currentKey = currentHistoryBeforePrefetchKey(sessionKey);
-    if (
-      historyBeforePrefetchController !== controller
-      || !currentKey
-      || currentKey.sessionKey !== key.sessionKey
-      || currentKey.mode !== key.mode
-      || currentKey.beforeCursor !== key.beforeCursor
-      || currentKey.day !== key.day
-      || currentKey.query !== key.query
-    ) {
-      return;
+  historyBeforePrefetchKey = key;
+  const prefetchPromise = (async () => {
+    try {
+      const requestLimit = key.mode === 'history' && !key.day
+        ? CHAT_HISTORY_AUTO_FILL_PAGE_LIMIT
+        : CHAT_HISTORY_PAGE_LIMIT;
+      const payload = key.mode === 'search' && key.query
+        ? await searchChatHistory(sessionKey, {
+          query: key.query,
+          before: key.beforeCursor,
+          limit: requestLimit,
+          signal: controller?.signal,
+        }).then((result): ChatHistoryPayload => buildSearchHistoryPayload(
+          result,
+          historyPayload.value?.observability || createEmptyRuntimeObservability(),
+        ))
+        : await fetchChatHistoryPage(sessionKey, {
+          before: key.beforeCursor,
+          limit: requestLimit,
+          day: key.day,
+          signal: controller?.signal,
+        });
+      const currentKey = currentHistoryBeforePrefetchKey(sessionKey);
+      if (
+        historyBeforePrefetchController !== controller
+        || !currentKey
+        || currentKey.sessionKey !== key.sessionKey
+        || currentKey.mode !== key.mode
+        || currentKey.beforeCursor !== key.beforeCursor
+        || currentKey.day !== key.day
+        || currentKey.query !== key.query
+      ) {
+        return;
+      }
+      prefetchedHistoryBefore.value = {
+        ...key,
+        payload,
+      };
+    } catch (error) {
+      if (!isAbortError(error)) {
+        prefetchedHistoryBefore.value = null;
+      }
+    } finally {
+      if (historyBeforePrefetchController === controller) {
+        historyBeforePrefetchController = null;
+        historyBeforePrefetchKey = null;
+        historyBeforePrefetchPromise = null;
+      }
     }
-    prefetchedHistoryBefore.value = {
-      ...key,
-      payload,
-    };
-  } catch (error) {
-    if (!isAbortError(error)) {
-      prefetchedHistoryBefore.value = null;
-    }
-  } finally {
-    if (historyBeforePrefetchController === controller) {
-      historyBeforePrefetchController = null;
-    }
-  }
+  })();
+  historyBeforePrefetchPromise = prefetchPromise;
+  await prefetchPromise;
 }
 
 function scheduleHistoryBeforePrefetch(sessionKey: string, delayMs = 180): void {
@@ -3517,6 +3585,19 @@ function currentHistoryAfterPrefetchKey(sessionKey: string): ChatHistoryAfterPre
   };
 }
 
+function sameHistoryAfterPrefetchKey(
+  left: ChatHistoryAfterPrefetchKey | null,
+  right: ChatHistoryAfterPrefetchKey | null,
+): boolean {
+  return Boolean(
+    left
+    && right
+    && left.sessionKey === right.sessionKey
+    && left.afterCursor === right.afterCursor
+    && left.day === right.day,
+  );
+}
+
 function matchesHistoryAfterPrefetch(expected: ChatHistoryAfterPrefetchKey | null): boolean {
   if (!expected) {
     return prefetchedHistoryAfter.value == null;
@@ -3545,6 +3626,10 @@ async function waitForHistoryAfterPrefetch(
   if (!expected || !historyAfterPrefetchController) {
     return readMatchedHistoryAfterPrefetchPayload(expected);
   }
+  if (historyAfterPrefetchPromise && sameHistoryAfterPrefetchKey(historyAfterPrefetchKey, expected)) {
+    await historyAfterPrefetchPromise;
+    return readMatchedHistoryAfterPrefetchPayload(expected);
+  }
   const deadline = Date.now() + timeoutMs;
   while (historyAfterPrefetchController && Date.now() < deadline) {
     const payload = readMatchedHistoryAfterPrefetchPayload(expected);
@@ -3565,39 +3650,50 @@ async function runHistoryAfterPrefetch(sessionKey: string): Promise<void> {
   if (matchesHistoryAfterPrefetch(key)) {
     return;
   }
+  if (historyAfterPrefetchPromise && sameHistoryAfterPrefetchKey(historyAfterPrefetchKey, key)) {
+    await historyAfterPrefetchPromise;
+    return;
+  }
   abortHistoryAfterPrefetch();
   const controller = typeof AbortController === 'undefined' ? null : new AbortController();
   historyAfterPrefetchController = controller;
-  try {
-    const payload = await fetchChatHistoryPage(sessionKey, {
-      after: key.afterCursor,
-      limit: CHAT_HISTORY_PAGE_LIMIT,
-      day: key.day,
-      signal: controller?.signal,
-    });
-    const currentKey = currentHistoryAfterPrefetchKey(sessionKey);
-    if (
-      historyAfterPrefetchController !== controller
-      || !currentKey
-      || currentKey.sessionKey !== key.sessionKey
-      || currentKey.afterCursor !== key.afterCursor
-      || currentKey.day !== key.day
-    ) {
-      return;
+  historyAfterPrefetchKey = key;
+  const prefetchPromise = (async () => {
+    try {
+      const payload = await fetchChatHistoryPage(sessionKey, {
+        after: key.afterCursor,
+        limit: CHAT_HISTORY_PAGE_LIMIT,
+        day: key.day,
+        signal: controller?.signal,
+      });
+      const currentKey = currentHistoryAfterPrefetchKey(sessionKey);
+      if (
+        historyAfterPrefetchController !== controller
+        || !currentKey
+        || currentKey.sessionKey !== key.sessionKey
+        || currentKey.afterCursor !== key.afterCursor
+        || currentKey.day !== key.day
+      ) {
+        return;
+      }
+      prefetchedHistoryAfter.value = {
+        ...key,
+        payload,
+      };
+    } catch (error) {
+      if (!isAbortError(error)) {
+        prefetchedHistoryAfter.value = null;
+      }
+    } finally {
+      if (historyAfterPrefetchController === controller) {
+        historyAfterPrefetchController = null;
+        historyAfterPrefetchKey = null;
+        historyAfterPrefetchPromise = null;
+      }
     }
-    prefetchedHistoryAfter.value = {
-      ...key,
-      payload,
-    };
-  } catch (error) {
-    if (!isAbortError(error)) {
-      prefetchedHistoryAfter.value = null;
-    }
-  } finally {
-    if (historyAfterPrefetchController === controller) {
-      historyAfterPrefetchController = null;
-    }
-  }
+  })();
+  historyAfterPrefetchPromise = prefetchPromise;
+  await prefetchPromise;
 }
 
 function scheduleHistoryAfterPrefetch(sessionKey: string, delayMs = 120): void {
@@ -4041,14 +4137,14 @@ async function loadMoreHistoryBefore(mode: 'browse' | 'autofill' | 'continuation
       : historyMode.value === 'search' && searchQuery.value.trim()
         ? await searchChatHistory(sessionKey, {
           query: searchQuery.value.trim(),
-          before: historyPageInfo.value.beforeCursor,
+          before: requestCursor,
           limit: requestLimit,
         }).then((result): ChatHistoryPayload => buildSearchHistoryPayload(
           result,
           historyPayload.value?.observability || createEmptyRuntimeObservability(),
         ))
         : await fetchChatHistoryPage(sessionKey, {
-          before: historyPageInfo.value.beforeCursor,
+          before: requestCursor,
           limit: requestLimit,
           day: selectedHistoryDay.value,
         });
@@ -4131,7 +4227,7 @@ async function loadMoreHistoryAfter(): Promise<void> {
     const payload = prefetchedPayload
       ? prefetchedPayload
       : await fetchChatHistoryPage(sessionKey, {
-        after: historyPageInfo.value.afterCursor,
+        after: requestCursor,
         limit: CHAT_HISTORY_PAGE_LIMIT,
         day: selectedHistoryDay.value,
       });
@@ -5187,7 +5283,10 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
     };
     const hadActiveRun = Boolean(activeRuntime.value?.activeRunId);
     if (hadActiveRun) {
-      const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, sendPayload);
+      const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, {
+        ...sendPayload,
+        flushWhenIdle: true,
+      });
       applyQueueState(sessionKey, queuePayload.items);
       if (parsedSlashCommand) {
         trackQueuedSlashCommand(sessionKey, requestId, slashCommandText, queuePayload.items);
@@ -5315,18 +5414,50 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
 
 async function patchQueuedMessage(payload: { entryId: string; text: string }): Promise<void> {
   if (!selectedSession.value?.permissions.canSend || accessError.value) return;
+  const currentItem = selectedQueuedItems.value.find((item) => item.id === payload.entryId) || null;
   queueMutatingEntryId.value = payload.entryId;
   clearNotice();
   try {
     const request: ChatPatchQueueEntryRequest = {
       text: payload.text,
+      flushWhenIdle: currentItem?.status === 'blocked',
     };
     const queuePayload = await patchChatQueueEntry(selectedSession.value.key, payload.entryId, request);
     applyQueueState(selectedSession.value.key, queuePayload.items);
     updateTrackedQueuedSlashEntry(selectedSession.value.key, payload.entryId, payload.text);
-    setNotice('success', text('队列消息已更新。', 'Queued message updated.'));
+    setNotice(
+      'success',
+      currentItem?.status === 'blocked'
+        ? text('队列消息已更新，并会在可发送时重试。', 'Queued message updated and will retry when sending is available.')
+        : text('队列消息已更新。', 'Queued message updated.'),
+    );
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('更新队列消息失败。', 'Failed to update queued message.'));
+  } finally {
+    queueMutatingEntryId.value = null;
+  }
+}
+
+async function retryQueuedMessage(entryId: string): Promise<void> {
+  if (!selectedSession.value?.permissions.canSend || accessError.value) return;
+  const currentItem = selectedQueuedItems.value.find((item) => item.id === entryId) || null;
+  if (!currentItem) return;
+  queueMutatingEntryId.value = entryId;
+  clearNotice();
+  try {
+    const request: ChatPatchQueueEntryRequest = {
+      text: currentItem.text,
+      clientRequestId: currentItem.clientRequestId || undefined,
+      composerDocument: currentItem.composerDocument,
+      fileRefs: currentItem.fileRefs,
+      attachments: currentItem.attachments,
+      flushWhenIdle: true,
+    };
+    const queuePayload = await patchChatQueueEntry(selectedSession.value.key, entryId, request);
+    applyQueueState(selectedSession.value.key, queuePayload.items);
+    setNotice('success', text('已重新加入待发送队列。', 'Queued message retry scheduled.'));
+  } catch (error) {
+    setNotice('error', error instanceof Error ? error.message : text('重试队列消息失败。', 'Failed to retry queued message.'));
   } finally {
     queueMutatingEntryId.value = null;
   }
@@ -5442,6 +5573,10 @@ async function abortCurrentRun(): Promise<boolean> {
 
 async function resetCurrentSession(): Promise<boolean> {
   if (!selectedSession.value?.permissions.canReset || accessError.value) return false;
+  if (activeRuntime.value?.activeRunId) {
+    setNotice('warning', text('请先停止当前回复，再重置 Session。', 'Stop the current reply before resetting the session.'));
+    return false;
+  }
   const currentSession = selectedSession.value;
   const previousHistoryPayload = historyPayload.value
     ? JSON.parse(JSON.stringify(historyPayload.value)) as ChatHistoryPayload

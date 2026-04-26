@@ -194,10 +194,18 @@ test('shouldRevealMoreSessionRowsOnScroll only triggers near the rail bottom', (
     scrollHeight: 1600,
     clientHeight: 400,
   }, 360), false);
+});
 
+test('shouldRevealMoreSessionRowsOnScroll fills a rail that has hidden rows but no scrollbar yet', () => {
   assert.equal(shouldRevealMoreSessionRowsOnScroll({
     scrollTop: 0,
     scrollHeight: 300,
+    clientHeight: 400,
+  }, 360), true);
+
+  assert.equal(shouldRevealMoreSessionRowsOnScroll({
+    scrollTop: 0,
+    scrollHeight: 0,
     clientHeight: 400,
   }, 360), false);
 });

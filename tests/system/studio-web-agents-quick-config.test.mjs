@@ -52,6 +52,14 @@ test("agents polish keeps newcomer guidance and deep-page escape hatches visible
   assert.match(quickConfigDialogContent, /打开高级配置/);
 });
 
+test("agents overview exposes fast per-agent HEARTBEAT controls without opening raw config", () => {
+  assert.match(agentsControlPageContent, /Built-in HEARTBEAT/);
+  assert.match(agentsControlPageContent, /quickEdit\.heartbeatMode/);
+  assert.match(agentsControlPageContent, /resolveHeartbeatMode\(payload\.editor\.heartbeat\)/);
+  assert.match(agentsControlPageContent, /buildAgentHeartbeatConfig\(detail\.value\.editor\.heartbeat, quickEdit\.heartbeatMode, quickEdit\.heartbeatEvery\)/);
+  assert.match(agentsControlPageContent, /every: "0m"/);
+});
+
 test("agents polish keeps mobile action groups stacked for thumb reach", () => {
   assert.match(
     styleContent,

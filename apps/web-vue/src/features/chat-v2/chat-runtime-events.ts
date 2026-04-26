@@ -77,6 +77,29 @@ export function upsertRuntimeToolCards(cards: ChatToolCard[], card: ChatToolCard
     .slice(0, 12);
 }
 
+export function settleRuntimeToolCardsBeforeAssistant(
+  cards: ChatToolCard[],
+  runId: string | null | undefined,
+  emittedAt: string,
+): ChatToolCard[] {
+  if (!runId) {
+    return cards;
+  }
+  let changed = false;
+  const next = cards.map((card) => {
+    if (card.runId !== runId || card.status !== 'running') {
+      return { ...card };
+    }
+    changed = true;
+    return {
+      ...card,
+      status: 'completed' as const,
+      updatedAt: emittedAt || card.updatedAt,
+    };
+  });
+  return changed ? next : cards;
+}
+
 export function upsertRuntimeTimelineItems(items: ChatActivityItem[], item: ChatActivityItem): ChatActivityItem[] {
   const next = items.slice();
   const index = next.findIndex((entry) => entry.id === item.id);

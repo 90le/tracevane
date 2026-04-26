@@ -168,7 +168,13 @@
           </nav>
         </article>
 
-        <RouterView />
+        <RouterView v-slot="{ Component, route: childRoute }">
+          <component
+            v-if="Component"
+            :is="Component"
+            :key="childRoute.path"
+          />
+        </RouterView>
       </section>
     </div>
 
@@ -700,7 +706,7 @@ function openQuickConfig(): void {
   });
 }
 
-function openAgent(agentId: string, section: 'overview' | 'docs' | 'bindings' | 'sessions' | 'advanced' = activeSection.value): void {
+function openAgent(agentId: string, section: 'overview' | 'docs' | 'bindings' | 'sessions' | 'advanced' = 'overview'): void {
   if (!agentId) return;
   const query = { ...route.query };
   delete query.overlay;
@@ -850,8 +856,11 @@ async function refreshSummary(preferredAgentId = ''): Promise<void> {
     }
 
     if (routeAgentId.value !== nextAgentId || route.path === '/agents') {
+      const nextSection = routeAgentId.value === nextAgentId && route.path !== '/agents'
+        ? activeSection.value
+        : 'overview';
       await router.replace({
-        path: buildAgentPath(nextAgentId, routeAgentId.value ? activeSection.value : 'overview'),
+        path: buildAgentPath(nextAgentId, nextSection),
         query: route.query,
       });
       return;

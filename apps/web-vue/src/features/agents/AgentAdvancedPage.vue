@@ -163,6 +163,23 @@
               <span>{{ text('限制文件系统访问在当前工作区内。', 'Restrict filesystem access to the current workspace.') }}</span>
             </div>
           </label>
+          <section class="config-subsection form-field-full agents-heartbeat-config">
+            <div class="config-subsection-head">
+              <h4>{{ text('内置 HEARTBEAT', 'Built-in HEARTBEAT') }}</h4>
+              <p>{{ text('单独控制这个 Agent 的 heartbeat。继承会删除这个 Agent 的 heartbeat 块；禁用会写入 every: "0m"。', 'Controls heartbeat for this agent. Inherit removes this agent heartbeat block; disabled writes every: "0m".') }}</p>
+            </div>
+            <div class="agents-form-grid">
+              <div class="form-field">
+                <label class="form-label">{{ text('心跳策略', 'Heartbeat policy') }}</label>
+                <GlassSelect v-model="draft.heartbeatMode" :options="heartbeatModeOptions" />
+              </div>
+              <div class="form-field">
+                <label class="form-label">{{ text('心跳周期', 'Heartbeat interval') }}</label>
+                <input v-model="draft.heartbeatEvery" class="form-input" :disabled="draft.heartbeatMode !== 'enabled'" placeholder="30m" />
+                <span class="field-hint">{{ text('例如 10m / 30m / 1h。启用但留空时保存为 30m。', 'For example 10m / 30m / 1h. If enabled and empty, Studio saves 30m.') }}</span>
+              </div>
+            </div>
+          </section>
         </div>
       </details>
 
@@ -212,6 +229,11 @@
             <textarea v-model="draft.memorySearchJson" class="form-textarea" rows="5" />
           </div>
           <div class="form-field form-field-full">
+            <label class="form-label">{{ text('Heartbeat JSON', 'Heartbeat JSON') }}</label>
+            <textarea v-model="draft.heartbeatJson" class="form-textarea" rows="5" />
+            <span class="field-hint">{{ text('every 由上方心跳策略控制；启用或禁用时会合并保留 includeReasoning 等低频字段，继承会删除整个 heartbeat 块。', 'every is controlled by the heartbeat policy above; enabled or disabled modes preserve low-frequency fields such as includeReasoning, while inherit removes the whole heartbeat block.') }}</span>
+          </div>
+          <div class="form-field form-field-full">
             <label class="form-label">{{ text('参数 JSON', 'Params JSON') }}</label>
             <textarea v-model="draft.paramsJson" class="form-textarea" rows="5" />
           </div>
@@ -227,6 +249,7 @@ import { useRoute } from 'vue-router';
 import type { AgentDetailPayload } from '../../../../../types/agents';
 import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
+import { buildAgentHeartbeatConfig, resolveHeartbeatEvery, resolveHeartbeatMode, type HeartbeatMode } from '../../shared/heartbeat-config';
 import { useLocalePreference } from '../../shared/locale';
 import { fetchAgentDetail, fetchAgentsSummary, updateAgent } from './api';
 
@@ -260,6 +283,9 @@ const draft = reactive({
   sandboxJson: '',
   toolsJson: '',
   memorySearchJson: '',
+  heartbeatMode: 'inherit' as HeartbeatMode,
+  heartbeatEvery: '',
+  heartbeatJson: '',
   paramsJson: '',
   runtime: {
     type: 'default',
@@ -330,6 +356,11 @@ const runtimeModeOptions = computed(() => [
   { value: 'persistent', label: text('持久', 'Persistent') },
   { value: 'oneshot', label: text('单次', 'Oneshot') },
 ]);
+const heartbeatModeOptions = computed(() => [
+  { value: 'inherit', label: text('继承全局', 'Inherit global') },
+  { value: 'enabled', label: text('启用', 'Enabled') },
+  { value: 'disabled', label: text('禁用', 'Disabled') },
+]);
 const modelOptions = computed(() => [
   { value: '', label: text('跟随系统默认', 'Inherit system default') },
   ...availableModels.value.map((model) => ({ value: model, label: model })),
@@ -391,6 +422,9 @@ function resetDraftFromDetail(value: AgentDetailPayload): void {
   draft.sandboxJson = formatJsonEditor(editor.sandboxRaw ?? null);
   draft.toolsJson = formatJsonEditor(editor.toolsRaw ?? null);
   draft.memorySearchJson = formatJsonEditor(editor.memorySearch ?? null);
+  draft.heartbeatMode = resolveHeartbeatMode(editor.heartbeat);
+  draft.heartbeatEvery = resolveHeartbeatEvery(editor.heartbeat);
+  draft.heartbeatJson = formatJsonEditor(editor.heartbeat ?? null);
   draft.paramsJson = formatJsonEditor(editor.params ?? null);
   draft.runtime.type = editor.runtime?.type === 'acp' ? 'acp' : 'default';
   draft.runtime.backend = editor.runtime?.backend || '';
@@ -438,6 +472,7 @@ async function saveAgentChanges(): Promise<void> {
   errorMessage.value = '';
   noticeMessage.value = '';
   try {
+    const heartbeatRaw = parseOptionalJsonObject('Heartbeat JSON', draft.heartbeatJson);
     const payload = await updateAgent(agentId.value, {
       name: draft.name,
       model: draft.model,
@@ -455,6 +490,7 @@ async function saveAgentChanges(): Promise<void> {
       sandboxRaw: parseOptionalJsonObject('Sandbox JSON', draft.sandboxJson),
       toolsRaw: parseOptionalJsonObject('Tools JSON', draft.toolsJson),
       memorySearch: parseOptionalJsonObject('Memory Search JSON', draft.memorySearchJson),
+      heartbeat: buildAgentHeartbeatConfig(heartbeatRaw, draft.heartbeatMode, draft.heartbeatEvery),
       params: parseOptionalJsonObject('Params JSON', draft.paramsJson),
       runtime: {
         type: draft.runtime.type as 'default' | 'acp',

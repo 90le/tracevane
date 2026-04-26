@@ -75,6 +75,7 @@ test("workspace section builder exports the single config tab source", () => {
   assert.match(workspaceSections, /id:\s*["']session["']/);
   assert.match(workspaceSections, /id:\s*["']providers["']/);
   assert.match(workspaceSections, /id:\s*["']mcp-skills["']/);
+  assert.doesNotMatch(workspaceSections, /id:\s*["']appearance["']/);
 });
 
 test("overview recipe builder owns both signal metadata and key-to-value mapping", () => {

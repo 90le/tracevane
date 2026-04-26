@@ -47,6 +47,14 @@ test("agents advanced page keeps grouped task sections inside a continuous edito
   assert.match(advancedPage, /agents-advanced-summary/);
 });
 
+test("agents advanced page exposes per-agent HEARTBEAT persistence controls", () => {
+  assert.match(advancedPage, /Built-in HEARTBEAT/);
+  assert.match(advancedPage, /draft\.heartbeatMode/);
+  assert.match(advancedPage, /resolveHeartbeatMode\(editor\.heartbeat\)/);
+  assert.match(advancedPage, /buildAgentHeartbeatConfig\(heartbeatRaw, draft\.heartbeatMode, draft\.heartbeatEvery\)/);
+  assert.match(advancedPage, /every: "0m"/);
+});
+
 test("agent bindings page stays focused on bindings instead of duplicating session data", () => {
   assert.match(bindingsPage, /agents-binding-summary-strip/);
   assert.match(bindingsPage, /openChannelWorkspace/);

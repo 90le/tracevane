@@ -7,6 +7,7 @@ import urllib.request
 
 
 BASE_URL = "http://127.0.0.1:5176"
+CANONICAL_USER_SOURCES = {"history", "inject"}
 
 
 def wait_button_enabled(locator, timeout=30000):
@@ -41,7 +42,6 @@ def close_inspector_if_open(page):
 
 
 def open_new_chat(page):
-    before_count = page.locator(".chat-shell-session-item").count()
     button = page.locator(".chat-new-chat-trigger").first
     click_enabled(button)
     picker = page.locator(".chat-agent-picker")
@@ -49,9 +49,9 @@ def open_new_chat(page):
     option = picker.locator(".chat-agent-picker-option").first
     with page.expect_response(lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST", timeout=30000):
         click_enabled(option)
+    picker.wait_for(state="hidden", timeout=15000)
     page.wait_for_function(
-        "(before) => document.querySelectorAll('.chat-shell-session-item').length >= before + 1",
-        arg=before_count,
+        "() => document.querySelector(\".chat-composer-editor[contenteditable='true']\")",
         timeout=30000,
     )
     page.wait_for_load_state("networkidle")
@@ -84,7 +84,7 @@ def wait_for_single_history_user(session_key, needle, timeout_ms=30000):
             for message in payload["messages"]
             if message.get("role") == "user" and needle in (message.get("text") or "")
         ]
-        if len(matches) == 1 and matches[0].get("source") == "history" and matches[0].get("text") == needle:
+        if len(matches) == 1 and matches[0].get("source") in CANONICAL_USER_SOURCES and matches[0].get("text") == needle:
             return payload, matches
         time.sleep(0.25)
     raise AssertionError("timed out waiting for a single canonical history user message")
@@ -97,7 +97,7 @@ def main():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1600, "height": 1200})
 
-        page.goto(f"{BASE_URL}/chat/workbench", wait_until="domcontentloaded")
+        page.goto(f"{BASE_URL}/chat", wait_until="domcontentloaded")
         page.wait_for_load_state("networkidle")
         close_inspector_if_open(page)
 
@@ -128,13 +128,13 @@ def main():
         assert live_bubble_count == 1, f"expected one live user bubble, got {live_bubble_count}"
         assert len(live_matches) == 1, f"expected one live history match, got {len(live_matches)}"
         assert live_matches[0]["text"] == prompt
-        assert live_matches[0]["source"] == "history"
+        assert live_matches[0]["source"] in CANONICAL_USER_SOURCES
 
         page.reload(wait_until="domcontentloaded")
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(1200)
         if matching_user_bubble_count(page, prompt) == 0:
-            page.goto(f"{BASE_URL}/chat/workbench", wait_until="domcontentloaded")
+            page.goto(f"{BASE_URL}/chat", wait_until="domcontentloaded")
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(1200)
         page.wait_for_timeout(1200)
@@ -145,7 +145,7 @@ def main():
         assert reload_bubble_count == 1, f"expected one user bubble after reload, got {reload_bubble_count}"
         assert len(reload_matches) == 1, f"expected one history match after reload, got {len(reload_matches)}"
         assert reload_matches[0]["text"] == prompt
-        assert reload_matches[0]["source"] == "history"
+        assert reload_matches[0]["source"] in CANONICAL_USER_SOURCES
 
         print(json.dumps({
             "sessionKey": session_key,

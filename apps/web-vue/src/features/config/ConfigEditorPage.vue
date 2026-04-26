@@ -4,12 +4,15 @@
       <div>
         <p class="eyebrow">Config</p>
         <h2 class="page-title">{{ text('系统配置', 'System Configuration') }}</h2>
-        <p class="page-copy">{{ text('按配置域拆开编辑，先保证读取准确、保存稳定，再逐步补高级自动化能力。', 'Edit by domain: keep config reads accurate and saves stable first, then expand advanced automation.') }}</p>
+        <p class="page-copy">{{ text('只管理低频系统级参数；主题、语言、技能安装和插件运维优先使用各自的全局入口或管理页面。', 'Manage low-frequency system parameters only; use global controls or dedicated management pages for theme, language, skill installs, and plugin operations.') }}</p>
       </div>
       <div class="page-actions">
+        <button class="secondary-button" type="button" @click="openGlobalConfig">
+          {{ text('全局配置', 'Global Config') }}
+        </button>
         <button class="secondary-button" type="button" @click="refreshConfigWithDirtyCheck" :disabled="loading || saving">↻ {{ text('刷新', 'Refresh') }}</button>
-        <button class="primary-button" type="button" @click="saveChanges" :disabled="loading || saving || !saveReadiness.canSave">
-          {{ saving ? text('保存中...', 'Saving...') : `✦ ${text('保存配置', 'Save Config')}` }}
+        <button class="primary-button" :class="{ 'is-saved': saveFeedbackVisible && !hasUnsavedChanges }" type="button" @click="saveChanges" :disabled="loading || saving || !saveReadiness.canSave">
+          {{ saving ? text('保存中...', 'Saving...') : saveFeedbackVisible && !hasUnsavedChanges ? `✓ ${text('已保存', 'Saved')}` : `✦ ${text('保存配置', 'Save Config')}` }}
         </button>
       </div>
     </motion.header>
@@ -32,8 +35,8 @@
         <aside class="panel-card config-sidebar">
           <div class="config-sidebar-head">
             <p class="eyebrow">{{ text('CONFIG DOMAINS', 'CONFIG DOMAINS') }}</p>
-            <h3 class="config-sidebar-title">{{ text('配置分组', 'Configuration Groups') }}</h3>
-            <p class="panel-muted">{{ text('左侧切换配置域，右侧只看当前分组内容。', 'Switch config domains on the left and focus on one group at a time on the right.') }}</p>
+            <h3 class="config-sidebar-title">{{ text('从这里开始', 'Start Here') }}</h3>
+            <p class="panel-muted">{{ text('先改模型与供应商，再处理安全、会话和集成。日常管理能力不放在这里重复配置。', 'Configure models and providers first, then security, sessions, and integrations. Daily management workflows are not duplicated here.') }}</p>
           </div>
 
           <article class="config-sidebar-callout">
@@ -42,19 +45,30 @@
             <p>{{ configSidebarSummary.copy }}</p>
           </article>
 
-          <nav class="config-tabs" :aria-label="text('配置标签页', 'Configuration tabs')">
-            <button
-              v-for="tab in tabs"
-              :key="tab.id"
-              type="button"
-              class="config-tab"
-              :class="{ active: activeTab === tab.id }"
-              @click="setActiveTab(tab.id)"
+          <nav class="config-tabs config-tabs-grouped" :aria-label="text('配置标签页', 'Configuration tabs')">
+            <section
+              v-for="group in groupedTabs"
+              :key="group.id"
+              class="config-tab-group"
+              :aria-label="group.label"
             >
-              <span class="config-tab-icon">{{ tab.icon }}</span>
-              <span class="config-tab-title">{{ tab.label }}</span>
-              <span class="config-tab-copy">{{ tab.copy }}</span>
-            </button>
+              <div class="config-tab-group__head">
+                <span>{{ group.label }}</span>
+                <strong>{{ group.items.length }}</strong>
+              </div>
+              <button
+                v-for="tab in group.items"
+                :key="tab.id"
+                type="button"
+                class="config-tab"
+                :class="{ active: activeTab === tab.id }"
+                @click="setActiveTab(tab.id)"
+              >
+                <span class="config-tab-icon">{{ tab.icon }}</span>
+                <span class="config-tab-title">{{ tab.label }}</span>
+                <span class="config-tab-copy">{{ tab.copy }}</span>
+              </button>
+            </section>
           </nav>
         </aside>
 
@@ -88,11 +102,11 @@
             </div>
           </article>
 
-      <section v-if="activeTab === 'model'" class="page-shell config-section-grid config-section-grid-model">
+      <section v-if="activeTab === 'model'" id="global-config" class="page-shell config-section-grid config-section-grid-model">
         <article class="panel-card config-sheet">
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>🧠</span><span>{{ text('模型与 Agent 默认值', 'Model & Agent Defaults') }}</span></h3>
+            <h3 class="panel-heading-emph"><span>🧠</span><span>{{ text('全局配置与 Agent 默认值', 'Global Config & Agent Defaults') }}</span></h3>
           </div>
           <div class="config-subsection-grid">
             <section class="config-subsection is-primary">
@@ -115,8 +129,8 @@
 
             <section class="config-subsection">
               <div class="config-subsection-head">
-                <h4>{{ text('运行默认值', 'Runtime defaults') }}</h4>
-                <p>{{ text('主路径只保留最常改的工作区、超时和推荐基线。更细的注入策略、JSON 配置和低频守卫放到高级面板。', 'The core path keeps only the most frequently edited workspace, timeout, and recommended baselines. Detailed injection policy, JSON configuration, and low-frequency guards live in the advanced sheet.') }}</p>
+                <h4>{{ text('全局运行默认值', 'Global runtime defaults') }}</h4>
+                <p>{{ text('这里就是全局配置入口：默认工作区、超时、并发、思考级别、Verbose 和全局 HEARTBEAT 都写入 openclaw.json 的 agents.defaults。', 'This is the global config entry: default workspace, timeout, concurrency, thinking, verbose, and global HEARTBEAT are written to agents.defaults in openclaw.json.') }}</p>
               </div>
               <div class="config-core-baseline">
                 <article class="config-core-baseline__item">
@@ -184,6 +198,24 @@
                   </button>
                 </div>
               </div>
+              <section class="config-subsection config-subsection-heartbeat">
+                <div class="config-subsection-head">
+                  <h4>{{ text('内置 HEARTBEAT', 'Built-in HEARTBEAT') }}</h4>
+                  <p>{{ text('Heartbeat 不是 cron；这里持久写入 agents.defaults.heartbeat.every。target: none 不会关闭模型心跳消耗。', 'Heartbeat is not cron; this persistently writes agents.defaults.heartbeat.every. target: none does not stop model-consuming heartbeat turns.') }}</p>
+                </div>
+                <div class="form-grid">
+                  <label class="form-field">
+                    <span class="form-label">{{ text('全局心跳策略', 'Global heartbeat policy') }}</span>
+                    <GlassSelect v-model="form.defaults.heartbeatMode" :options="choiceToSelectOptions(heartbeatModeOptions)" />
+                    <span class="field-hint">{{ text('禁用会持久保存 every: "0m"；不覆盖会移除 every，但不等于关闭宿主默认心跳。', 'Disabled persists every: "0m"; no override removes every, but does not disable host defaults.') }}</span>
+                  </label>
+                  <label class="form-field">
+                    <span class="form-label">{{ text('心跳周期', 'Heartbeat interval') }}</span>
+                    <input v-model="form.defaults.heartbeatEvery" class="form-input" :disabled="form.defaults.heartbeatMode !== 'enabled'" placeholder="30m" />
+                    <span class="field-hint">{{ text('例如 10m / 30m / 1h。启用但留空时保存为 30m。', 'For example 10m / 30m / 1h. If enabled and empty, Studio saves 30m.') }}</span>
+                  </label>
+                </div>
+              </section>
               <p class="field-hint config-core-hint">
                 {{ text('需要修改默认技能、系统提示词覆盖、消息包络、JSON provider 参数或低频守卫时，使用上方高级设置入口。', 'Use the advanced settings entry above when you need default skills, system prompt override, message envelope tuning, JSON provider params, or low-frequency runtime guards.') }}
               </p>
@@ -531,68 +563,6 @@
             </section>
             </div>
           </details>
-          </section>
-        </article>
-      </section>
-
-      <section v-else-if="activeTab === 'appearance'" class="page-shell config-section-grid config-section-grid-appearance">
-        <article class="panel-card config-sheet">
-          <section class="config-block">
-          <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>🎨</span><span>{{ text('界面偏好', 'Interface Preferences') }}</span></h3>
-          </div>
-          <div class="settings-stack">
-            <div class="setting-block">
-              <span class="form-label">{{ text('界面主题', 'Theme') }}</span>
-              <div class="config-preference-list">
-                <button
-                  v-for="option in themeOptions"
-                  :key="option.value"
-                  type="button"
-                  class="config-preference-item"
-                  :class="{ active: themeMode === option.value }"
-                  @click="setThemeMode(option.value)"
-                >
-                  <span class="config-preference-icon" aria-hidden="true">{{ option.icon }}</span>
-                  <strong>{{ option.label }}</strong>
-                  <span>{{ option.description }}</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="setting-block">
-              <span class="form-label">{{ text('界面语言', 'Interface Language') }}</span>
-              <div class="config-preference-list">
-                <button
-                  v-for="option in localeOptions"
-                  :key="option.value"
-                  type="button"
-                  class="config-preference-item"
-                  :class="{ active: locale === option.value }"
-                  @click="setLocale(option.value)"
-                >
-                  <span class="config-preference-icon" aria-hidden="true">{{ option.icon }}</span>
-                  <strong>{{ option.label }}</strong>
-                  <span>{{ option.description }}</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="config-fact-list">
-              <div class="config-fact">
-                <span>{{ text('当前生效主题', 'Active theme') }}</span>
-                <strong>{{ resolvedTheme === 'dark' ? text('深色模式', 'Dark mode') : text('浅色模式', 'Light mode') }}</strong>
-              </div>
-              <div class="config-fact">
-                <span>{{ text('当前界面语言', 'Active language') }}</span>
-                <strong>{{ locale === 'zh' ? text('中文界面', 'Chinese interface') : text('英文界面', 'English interface') }}</strong>
-              </div>
-              <div class="config-fact">
-                <span>{{ text('偏好说明', 'Preference notes') }}</span>
-                <strong>{{ text('仅保存在浏览器本地', 'Stored in browser only') }}</strong>
-              </div>
-            </div>
-          </div>
           </section>
         </article>
       </section>
@@ -1444,7 +1414,7 @@
                   <label class="form-field">
                     <span class="form-label">{{ text('空闲回收 TTL (ms)', 'Idle TTL (ms)') }}</span>
                     <input v-model.number="form.mcpSkills.mcpSessionIdleTtlMs" class="form-input" type="number" min="0" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
-                    <span class="field-hint">{{ text('0 或空值表示不在 Studio 覆盖该值。', '0 or empty means Studio will not override this value.') }}</span>
+                    <span class="field-hint">{{ text('对应 mcp.sessionIdleTtlMs；0 表示禁用空闲回收，留空表示不覆盖。', 'Maps to mcp.sessionIdleTtlMs; 0 disables idle eviction, empty means no override.') }}</span>
                   </label>
                   <label class="form-field form-field-wide">
                     <span class="form-label">{{ text('MCP Servers JSON', 'MCP Servers JSON') }}</span>
@@ -1464,41 +1434,77 @@
               <section class="config-subsection">
                 <div class="config-subsection-head">
                   <h4>{{ text('共享技能策略', 'Shared skill policy') }}</h4>
-                  <p>{{ text('维护 skills.allowBundled、skills.load.extraDirs、skills.install.* 和 skills.limits.*。具体技能安装、迁移、同步仍在技能管理页处理。', 'Maintains skills.allowBundled, skills.load.extraDirs, skills.install.*, and skills.limits.*. Concrete install, migration, and sync flows remain in Skills management.') }}</p>
+                  <p>{{ text('这里只维护技能运行时的加载、监听、安装偏好和限制。安装、删除、迁移、同步请使用技能管理页，避免配置页变成第二个技能市场。', 'This section only maintains skill runtime loading, watching, install preferences, and limits. Use Skills management for install, remove, migration, and sync workflows.') }}</p>
                 </div>
                 <div class="settings-stack">
+                  <div class="form-grid">
+                    <label class="form-field">
+                      <span class="form-label">{{ text('内置技能白名单', 'Bundled skill allowlist') }}</span>
+                      <textarea v-model="form.mcpSkills.skillsAllowBundledText" class="form-textarea" rows="4" :placeholder="text('每行一个内置技能 ID；留空表示不覆盖', 'One bundled skill id per line; leave empty to avoid overriding')" />
+                      <span class="field-hint">{{ text('对应 skills.allowBundled。官方结构是字符串数组，不是开关；未配置时留空不会写入，已有配置时清空会写入空白名单。', 'Maps to skills.allowBundled. The official shape is a string array, not a boolean; empty untouched state is not written, while clearing an existing value writes an empty allowlist.') }}</span>
+                    </label>
+                    <label class="form-field">
+                      <span class="form-label">{{ text('额外技能目录', 'Extra skill directories') }}</span>
+                      <textarea v-model="form.mcpSkills.skillsExtraDirsText" class="form-textarea" rows="4" :placeholder="text('每行一个目录，例如 ~/.openclaw/shared-skills', 'One directory per line, e.g. ~/.openclaw/shared-skills')" />
+                      <span class="field-hint">{{ text('对应 skills.load.extraDirs。共享技能目录、团队技能目录可以放这里。', 'Maps to skills.load.extraDirs. Shared or team skill directories can be listed here.') }}</span>
+                    </label>
+                  </div>
                   <div class="settings-inline-grid">
                     <label class="toggle-card">
-                      <input v-model="form.mcpSkills.skillsAllowBundled" class="form-checkbox" type="checkbox" />
+                      <input v-model="form.mcpSkills.skillsLoadWatch" class="form-checkbox" type="checkbox" />
                       <div>
-                        <strong>{{ text('允许内置技能', 'Allow bundled skills') }}</strong>
-                        <span>{{ text('关闭后只使用显式安装或额外目录中的技能。', 'When disabled, only explicitly installed or extra-dir skills are used.') }}</span>
+                        <strong>{{ text('监听技能目录', 'Watch skill directories') }}</strong>
+                        <span>{{ text('对应 skills.load.watch，适合开发环境热更新技能。', 'Maps to skills.load.watch; useful for skill hot reload in development.') }}</span>
                       </div>
                     </label>
                     <label class="toggle-card">
                       <input v-model="form.mcpSkills.skillsPreferBrew" class="form-checkbox" type="checkbox" />
                       <div>
                         <strong>{{ text('优先使用 Brew', 'Prefer Brew') }}</strong>
-                        <span>{{ text('安装依赖时优先走 Homebrew。', 'Prefer Homebrew when installing dependencies.') }}</span>
+                        <span>{{ text('对应 skills.install.preferBrew。', 'Maps to skills.install.preferBrew.') }}</span>
                       </div>
                     </label>
                   </div>
                   <div class="form-grid">
                     <label class="form-field">
-                      <span class="form-label">{{ text('额外技能目录', 'Extra skill directories') }}</span>
-                      <textarea v-model="form.mcpSkills.skillsExtraDirsText" class="form-textarea" rows="4" :placeholder="text('每行一个目录，例如 ~/.openclaw/shared-skills', 'One directory per line, e.g. ~/.openclaw/shared-skills')" />
-                      <span class="field-hint">{{ text('对应 skills.load.extraDirs。共享技能目录、团队技能目录可以放这里。', 'Maps to skills.load.extraDirs. Shared or team skill directories can be listed here.') }}</span>
+                      <span class="form-label">{{ text('监听防抖 (ms)', 'Watch debounce (ms)') }}</span>
+                      <input v-model.number="form.mcpSkills.skillsWatchDebounceMs" class="form-input" type="number" min="0" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+                      <span class="field-hint">{{ text('对应 skills.load.watchDebounceMs。', 'Maps to skills.load.watchDebounceMs.') }}</span>
                     </label>
                     <label class="form-field">
                       <span class="form-label">{{ text('Node 管理器', 'Node manager') }}</span>
-                      <input v-model="form.mcpSkills.skillsNodeManager" class="form-input" type="text" placeholder="auto / pnpm / npm / bun" />
-                      <span class="field-hint">{{ text('对应 skills.install.nodeManager；留空表示不覆盖。', 'Maps to skills.install.nodeManager; leave empty to avoid overriding it.') }}</span>
+                      <GlassSelect v-model="form.mcpSkills.skillsNodeManager" :options="nodeManagerOptions" :placeholder="text('不覆盖', 'No override')" />
+                      <span class="field-hint">{{ text('对应 skills.install.nodeManager，只允许 npm / pnpm / yarn / bun。', 'Maps to skills.install.nodeManager; only npm / pnpm / yarn / bun are valid.') }}</span>
                     </label>
                     <label class="form-field">
                       <span class="form-label">{{ text('技能提示词最大字符数', 'Max skill prompt chars') }}</span>
                       <input v-model.number="form.mcpSkills.skillsMaxPromptChars" class="form-input" type="number" min="1" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
                       <span class="field-hint">{{ text('对应 skills.limits.maxSkillsPromptChars。', 'Maps to skills.limits.maxSkillsPromptChars.') }}</span>
                     </label>
+                    <details class="config-collapsible form-field-wide">
+                      <summary class="config-collapsible-summary">
+                        <span>{{ text('更多运行限制', 'More runtime limits') }}</span>
+                        <span class="config-collapsible-meta">{{ text('官方 skills.limits', 'official skills.limits') }}</span>
+                      </summary>
+                      <div class="form-grid config-collapsible-body">
+                        <label class="form-field">
+                          <span class="form-label">{{ text('每个根目录候选上限', 'Max candidates per root') }}</span>
+                          <input v-model.number="form.mcpSkills.skillsMaxCandidatesPerRoot" class="form-input" type="number" min="1" />
+                        </label>
+                        <label class="form-field">
+                          <span class="form-label">{{ text('每个来源加载上限', 'Max loaded per source') }}</span>
+                          <input v-model.number="form.mcpSkills.skillsMaxLoadedPerSource" class="form-input" type="number" min="1" />
+                        </label>
+                        <label class="form-field">
+                          <span class="form-label">{{ text('提示词技能数量上限', 'Max skills in prompt') }}</span>
+                          <input v-model.number="form.mcpSkills.skillsMaxInPrompt" class="form-input" type="number" min="0" />
+                        </label>
+                        <label class="form-field">
+                          <span class="form-label">{{ text('单个 SKILL.md 字节上限', 'Max SKILL.md bytes') }}</span>
+                          <input v-model.number="form.mcpSkills.skillsMaxSkillFileBytes" class="form-input" type="number" min="0" />
+                        </label>
+                      </div>
+                    </details>
                     <label class="form-field form-field-wide">
                       <span class="form-label">{{ text('Skill Entries JSON', 'Skill Entries JSON') }}</span>
                       <textarea v-model="form.mcpSkills.skillsEntriesJson" class="form-textarea code-textarea" rows="8" spellcheck="false" placeholder="{\n  &quot;docs-search&quot;: {\n    &quot;enabled&quot;: true\n  }\n}" />
@@ -1526,12 +1532,12 @@
         </div>
       </motion.div>
 
-      <section class="config-save-dock" :class="{ 'is-dirty': hasUnsavedChanges }" aria-live="polite">
+      <section class="config-save-dock" :class="{ 'is-dirty': hasUnsavedChanges, 'is-saved': saveFeedbackVisible && !hasUnsavedChanges }" aria-live="polite">
         <div class="config-save-dock__status">
-          <span class="config-save-dock__indicator" :class="{ active: hasUnsavedChanges }"></span>
+          <span class="config-save-dock__indicator" :class="{ active: hasUnsavedChanges, saved: saveFeedbackVisible && !hasUnsavedChanges }"></span>
           <div>
-            <strong>{{ saveReadiness.label }}</strong>
-            <p>{{ saveReadiness.description }}</p>
+            <strong>{{ saveDockState.label }}</strong>
+            <p>{{ saveDockState.description }}</p>
           </div>
         </div>
         <div v-if="dirtyDomains.length" class="config-save-dock__changes" :aria-label="text('已修改配置域', 'Changed config domains')">
@@ -1541,11 +1547,12 @@
           <span v-if="dirtyDomains.length > 4" class="config-change-chip muted">+{{ dirtyDomains.length - 4 }}</span>
         </div>
         <div class="config-save-dock__actions">
+          <span v-if="saveFeedbackVisible && !hasUnsavedChanges" class="config-save-dock__saved-pill">✓ {{ text('已保存', 'Saved') }}</span>
           <button class="secondary-button compact-button" type="button" @click="refreshConfigWithDirtyCheck" :disabled="loading || saving">
             {{ text('放弃并刷新', 'Discard & refresh') }}
           </button>
-          <button class="primary-button compact-button" type="button" @click="saveChanges" :disabled="loading || saving || !saveReadiness.canSave">
-            {{ saving ? text('保存中...', 'Saving...') : text('保存变更', 'Save changes') }}
+          <button class="primary-button compact-button" :class="{ 'is-saved': saveFeedbackVisible && !hasUnsavedChanges }" type="button" @click="saveChanges" :disabled="loading || saving || !saveReadiness.canSave">
+            {{ saving ? text('保存中...', 'Saving...') : saveFeedbackVisible && !hasUnsavedChanges ? text('已保存', 'Saved') : text('保存变更', 'Save changes') }}
           </button>
         </div>
       </section>
@@ -1760,6 +1767,7 @@
                   <label class="form-field">
                     <span class="form-label">{{ text('心跳任务 JSON', 'Heartbeat JSON') }}</span>
                     <textarea v-model="form.defaults.heartbeatJson" class="form-textarea" rows="5" :placeholder="text('可选：heartbeat 默认配置。', 'Optional: default heartbeat configuration.')" />
+                    <span class="field-hint">{{ text('every 由主配置里的 HEARTBEAT 策略控制；这里适合保留 includeReasoning 等低频字段。', 'every is controlled by the main HEARTBEAT policy; keep low-frequency fields such as includeReasoning here.') }}</span>
                   </label>
                 </div>
               </section>
@@ -1840,12 +1848,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { motion } from 'motion-v';
 import { useRoute, useRouter } from 'vue-router';
 import { fetchConfigChannelSummary, fetchConfigSummary, fetchProviderSecret, saveConfig } from './api';
-import { useLocalePreference, type Locale } from '../../shared/locale';
-import { useThemePreference, type ThemeMode } from '../../shared/theme';
+import { useLocalePreference } from '../../shared/locale';
+import { useThemePreference } from '../../shared/theme';
 import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
 import GatewayConfigTab from './GatewayConfigTab.vue';
 import AcpConfigTab from './AcpConfigTab.vue';
@@ -1856,8 +1864,9 @@ import BrowserConfigTab from './BrowserConfigTab.vue';
 import ConfigDomainAdvancedSheet from './ConfigDomainAdvancedSheet.vue';
 import { createUuid } from '../../shared/uuid';
 import { pageMastheadReveal, pageSurfaceReveal } from '../../shared/motion';
+import { buildHeartbeatConfig, resolveHeartbeatEvery, resolveHeartbeatMode, type HeartbeatMode } from '../../shared/heartbeat-config';
 import { buildConfigOverviewRecipe, buildConfigOverviewSignals, buildConfigSidebarSummary, type ConfigOverviewRecipe } from './config-overview-recipe';
-import { CONFIG_TAB_IDS, DEFAULT_CONFIG_WORKSPACE_SECTIONS, buildConfigWorkspaceSections, type ConfigTabId, type ConfigWorkspaceSection } from './config-workspace-sections';
+import { CONFIG_TAB_IDS, DEFAULT_CONFIG_WORKSPACE_SECTIONS, type ConfigTabId, type ConfigWorkspaceSection } from './config-workspace-sections';
 import type {
   ConfigProviderInput,
   ConfigProviderSummary,
@@ -1969,6 +1978,8 @@ interface ConfigFormState {
       embeddedPiProjectSettingsPolicy: string;
       memorySearchJson: string;
       humanDelayJson: string;
+      heartbeatMode: HeartbeatMode;
+      heartbeatEvery: string;
       heartbeatJson: string;
       paramsJson: string;
       cliBackendsJson: string;
@@ -2046,11 +2057,17 @@ interface ConfigFormState {
   mcpSkills: {
     mcpSessionIdleTtlMs: number | null;
     mcpServersJson: string;
-    skillsAllowBundled: boolean;
+    skillsAllowBundledText: string;
     skillsExtraDirsText: string;
+    skillsLoadWatch: boolean;
+    skillsWatchDebounceMs: number | null;
     skillsPreferBrew: boolean;
     skillsNodeManager: string;
+    skillsMaxCandidatesPerRoot: number | null;
+    skillsMaxLoadedPerSource: number | null;
+    skillsMaxInPrompt: number | null;
     skillsMaxPromptChars: number | null;
+    skillsMaxSkillFileBytes: number | null;
     skillsEntriesJson: string;
   };
   sessionReset: {
@@ -2070,6 +2087,14 @@ interface ConfigDirtyDomain {
   id: ConfigTabId;
   label: string;
   detail: string;
+}
+
+type ConfigTabGroupId = 'core' | 'runtime' | 'integrations' | 'maintenance';
+
+interface ConfigTabGroup {
+  id: ConfigTabGroupId;
+  label: string;
+  items: ConfigWorkspaceSection[];
 }
 
 const CONFIG_ACTIVE_TAB_STORAGE_KEY = 'openclaw-studio.config.activeTab';
@@ -2127,8 +2152,24 @@ const activeProviderUid = ref('');
 const loggingTabRef = ref<InstanceType<typeof LoggingConfigTab> | null>(null);
 const browserTabRef = ref<InstanceType<typeof BrowserConfigTab> | null>(null);
 const acpTabRef = ref<InstanceType<typeof AcpConfigTab> | null>(null);
-const { locale, setLocale, text } = useLocalePreference();
+const { locale, text } = useLocalePreference();
 const tabs = computed(() => props.workspaceSections?.length ? props.workspaceSections : DEFAULT_CONFIG_WORKSPACE_SECTIONS);
+const groupedTabs = computed<ConfigTabGroup[]>(() => {
+  const byId = new Map(tabs.value.map((tab) => [tab.id, tab]));
+  const groupRecipe: Array<{ id: ConfigTabGroupId; label: string; ids: ConfigTabId[] }> = [
+    { id: 'core', label: text('基础', 'Core'), ids: ['model', 'providers'] },
+    { id: 'runtime', label: text('运行与安全', 'Runtime & Security'), ids: ['security', 'session', 'session-policy'] },
+    { id: 'integrations', label: text('集成', 'Integrations'), ids: ['gateway', 'acp', 'mcp-skills', 'commands-hooks', 'browser'] },
+    { id: 'maintenance', label: text('维护', 'Maintenance'), ids: ['logging'] },
+  ];
+  return groupRecipe
+    .map((group) => ({
+      id: group.id,
+      label: group.label,
+      items: group.ids.map((id) => byId.get(id)).filter((tab): tab is ConfigWorkspaceSection => Boolean(tab)),
+    }))
+    .filter((group) => group.items.length > 0);
+});
 const activeTabMeta = computed(() => tabs.value.find((tab) => tab.id === activeTab.value) || tabs.value[0]);
 const activeAdvancedSheetMeta = computed(() => {
   if (activeTab.value !== 'model') return null;
@@ -2143,18 +2184,16 @@ const activeAdvancedSheetMeta = computed(() => {
 });
 const activeProviderIndex = computed(() => form.providers.findIndex((provider) => provider.uid === activeProviderUid.value));
 const activeProvider = computed(() => form.providers[activeProviderIndex.value] || null);
-const { themeMode, resolvedTheme, setThemeMode } = useThemePreference();
-const themeOptions = computed<Array<{ value: ThemeMode; icon: string; label: string; description: string }>>(() => [
-  { value: 'light', icon: '☀️', label: text('浅色模式', 'Light mode'), description: text('适合白天、明亮环境和长时间阅读。', 'Best for daytime, bright rooms, and long reading sessions.') },
-  { value: 'dark', icon: '🌙', label: text('深色模式', 'Dark mode'), description: text('适合夜间、低照度环境和控制台场景。', 'Best for night, low-light environments, and console-heavy workflows.') },
-  { value: 'system', icon: '🖥️', label: text('跟随系统', 'Follow system'), description: text('自动根据系统外观切换浅色或深色。', 'Automatically follow the operating system appearance.') },
-]);
-const localeOptions = computed<Array<{ value: Locale; icon: string; label: string; description: string }>>(() => [
-  { value: 'zh', icon: '中', label: text('中文', 'Chinese'), description: text('使用中文语义和中文界面文案。', 'Use Chinese semantics and Chinese UI copy.') },
-  { value: 'en', icon: 'EN', label: text('英文', 'English'), description: text('使用英文语义和英文界面文案。', 'Use English semantics and English UI copy.') },
-]);
+const { resolvedTheme } = useThemePreference();
 
 const providerApiOptions = ['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative', 'azure-openai'];
+const nodeManagerOptions = computed<GlassSelectOption[]>(() => [
+  { value: '', label: text('不覆盖', 'No override') },
+  { value: 'npm', label: 'npm' },
+  { value: 'pnpm', label: 'pnpm' },
+  { value: 'yarn', label: 'yarn' },
+  { value: 'bun', label: 'bun' },
+]);
 const thinkingOptions = computed<ChoiceOption[]>(() => [
   { value: 'off', label: text('关闭', 'Off'), note: text('最低成本', 'Lowest cost') },
   { value: 'minimal', label: text('极低', 'Minimal'), note: text('轻量推理', 'Light reasoning') },
@@ -2173,6 +2212,11 @@ const verboseOptions = computed<ChoiceOption[]>(() => [
   { value: 'off', label: text('关闭', 'Off') },
   { value: 'on', label: text('开启', 'On') },
   { value: 'full', label: text('完整', 'Full') },
+]);
+const heartbeatModeOptions = computed<ChoiceOption[]>(() => [
+  { value: 'inherit', label: text('不覆盖', 'No override'), note: text('不写 agents.defaults.heartbeat.every，不代表关闭', 'Do not write agents.defaults.heartbeat.every; this is not disabled') },
+  { value: 'enabled', label: text('启用', 'Enabled'), note: text('按指定周期触发内置 HEARTBEAT', 'Run built-in HEARTBEAT on the specified interval') },
+  { value: 'disabled', label: text('禁用', 'Disabled'), note: text('写入 every: "0m" 以持久关闭调度', 'Persist every: "0m" to disable scheduling') },
 ]);
 const contextInjectionOptions = computed<ChoiceOption[]>(() => [
   { value: '', label: text('未设置', 'Unset') },
@@ -2312,11 +2356,13 @@ const loading = ref(true);
 const saving = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
+const saveFeedbackVisible = ref(false);
 const loadedSummary = ref<ConfigSummaryPayload | null>(null);
 const loadedChannelIds = ref<string[]>([]);
 const baselineDomainFingerprints = ref<Record<string, string>>({});
 const gatewayFormData = ref<Record<string, unknown> | null>(null);
 const gatewayBaselineData = ref<Record<string, unknown> | null>(null);
+let saveFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 const commandsFormData = ref<ConfigSummaryPayload['commands']>({
   native: 'auto',
   nativeSkills: 'auto',
@@ -2515,6 +2561,8 @@ const form = reactive<ConfigFormState>({
     embeddedPiProjectSettingsPolicy: 'sanitize',
     memorySearchJson: '',
     humanDelayJson: '',
+    heartbeatMode: 'inherit',
+    heartbeatEvery: '',
     heartbeatJson: '',
     paramsJson: '',
     cliBackendsJson: '',
@@ -2588,11 +2636,17 @@ const form = reactive<ConfigFormState>({
   mcpSkills: {
     mcpSessionIdleTtlMs: null,
     mcpServersJson: '',
-    skillsAllowBundled: true,
+    skillsAllowBundledText: '',
     skillsExtraDirsText: '',
+    skillsLoadWatch: false,
+    skillsWatchDebounceMs: null,
     skillsPreferBrew: false,
     skillsNodeManager: '',
+    skillsMaxCandidatesPerRoot: null,
+    skillsMaxLoadedPerSource: null,
+    skillsMaxInPrompt: null,
     skillsMaxPromptChars: null,
+    skillsMaxSkillFileBytes: null,
     skillsEntriesJson: '',
   },
   sessionReset: {
@@ -2791,10 +2845,6 @@ function currentDomainFingerprints(): Record<string, string> {
       commands: commandsFormData.value,
       hooks: hooksFormData.value,
     }),
-    appearance: domainFingerprint({
-      themeMode: themeMode.value,
-      locale: locale.value,
-    }),
     logging: domainFingerprint({
       draft: loggingTabRef.value?.buildLoggingPayload() || normalizeLoggingDraft(loadedSummary.value),
     }),
@@ -2832,7 +2882,7 @@ const activeTabFacts = computed(() => {
         { label: text('图片模型', 'Image model'), value: form.defaults.imageModel || '--' },
         { label: text('回退链', 'Fallbacks'), value: `${form.defaults.modelFallback.length} / ${form.defaults.imageModelFallback.length}` },
         { label: text('模型目录', 'Model registry'), value: String(Object.keys(loadedSummary.value?.defaults.models || {}).length) },
-        { label: text('最大并发', 'Concurrency'), value: String(form.defaults.maxConcurrent) },
+        { label: 'HEARTBEAT', value: form.defaults.heartbeatMode === 'enabled' ? (form.defaults.heartbeatEvery || '30m') : form.defaults.heartbeatMode === 'disabled' ? text('关闭', 'Off') : text('不覆盖', 'No override') },
       ];
     case 'security':
       return [
@@ -2889,13 +2939,6 @@ const activeTabFacts = computed(() => {
         { label: text('Native skills', 'Native skills'), value: commandsFormData.value.nativeSkills || '--' },
         { label: text('内部钩子', 'Internal hooks'), value: hooksFormData.value.internal.enabled ? text('开启', 'On') : text('关闭', 'Off') },
         { label: text('Hook 数量', 'Hook count'), value: String(Object.keys(hooksFormData.value.internal.entries || {}).length) },
-      ];
-    case 'appearance':
-      return [
-        { label: text('主题偏好', 'Theme'), value: themeMode.value },
-        { label: text('解析主题', 'Resolved'), value: resolvedTheme.value },
-        { label: text('语言', 'Locale'), value: locale.value },
-        { label: text('分组数', 'Groups'), value: String(tabs.value.length) },
       ];
     case 'logging':
       return [
@@ -2972,6 +3015,17 @@ const saveReadiness = computed(() => {
       'Saving writes openclaw.json; Gateway, plugin, browser, and tool policy changes may require restart or new sessions.',
     ),
   };
+});
+
+const saveDockState = computed(() => {
+  if (saveFeedbackVisible.value && !hasUnsavedChanges.value && !saving.value) {
+    return {
+      canSave: true,
+      label: text('配置已保存', 'Configuration saved'),
+      description: text('改动已写入 openclaw.json，当前页面不会刷新。', 'Changes were written to openclaw.json without refreshing this page.'),
+    };
+  }
+  return saveReadiness.value;
 });
 
 function toProviderModelForm(model: ConfigProviderSummary['models'][number]): ProviderModelFormState {
@@ -3109,6 +3163,8 @@ function hydrateForm(summary: ConfigSummaryPayload) {
   form.defaults.embeddedPiProjectSettingsPolicy = summary.defaults.embeddedPiProjectSettingsPolicy || 'sanitize';
   form.defaults.memorySearchJson = formatJsonEditor(summary.defaults.memorySearch);
   form.defaults.humanDelayJson = formatJsonEditor(summary.defaults.humanDelay);
+  form.defaults.heartbeatMode = resolveHeartbeatMode(summary.defaults.heartbeat);
+  form.defaults.heartbeatEvery = resolveHeartbeatEvery(summary.defaults.heartbeat);
   form.defaults.heartbeatJson = formatJsonEditor(summary.defaults.heartbeat);
   form.defaults.paramsJson = formatJsonEditor(summary.defaults.params);
   form.defaults.cliBackendsJson = formatJsonEditor(summary.defaults.cliBackends);
@@ -3163,13 +3219,21 @@ function hydrateForm(summary: ConfigSummaryPayload) {
   activeProviderUid.value = form.providers[0]?.uid || '';
   form.mcpSkills.mcpSessionIdleTtlMs = summary.mcp?.sessionIdleTtlMs ?? null;
   form.mcpSkills.mcpServersJson = formatJsonEditor(summary.mcp?.servers || {});
-  form.mcpSkills.skillsAllowBundled = summary.skills?.allowBundled !== false;
+  form.mcpSkills.skillsAllowBundledText = Array.isArray(summary.skills?.allowBundled)
+    ? summary.skills.allowBundled.join('\n')
+    : '';
   form.mcpSkills.skillsExtraDirsText = Array.isArray(summary.skills?.load?.extraDirs)
     ? summary.skills.load.extraDirs.join('\n')
     : '';
+  form.mcpSkills.skillsLoadWatch = summary.skills?.load?.watch === true;
+  form.mcpSkills.skillsWatchDebounceMs = summary.skills?.load?.watchDebounceMs ?? null;
   form.mcpSkills.skillsPreferBrew = summary.skills?.install?.preferBrew === true;
   form.mcpSkills.skillsNodeManager = summary.skills?.install?.nodeManager || '';
+  form.mcpSkills.skillsMaxCandidatesPerRoot = summary.skills?.limits?.maxCandidatesPerRoot ?? null;
+  form.mcpSkills.skillsMaxLoadedPerSource = summary.skills?.limits?.maxSkillsLoadedPerSource ?? null;
+  form.mcpSkills.skillsMaxInPrompt = summary.skills?.limits?.maxSkillsInPrompt ?? null;
   form.mcpSkills.skillsMaxPromptChars = summary.skills?.limits?.maxSkillsPromptChars ?? null;
+  form.mcpSkills.skillsMaxSkillFileBytes = summary.skills?.limits?.maxSkillFileBytes ?? null;
   form.mcpSkills.skillsEntriesJson = formatJsonEditor(summary.skills?.entries || {});
   form.sessionReset.mode = summary.sessionReset?.mode || 'idle';
   form.sessionReset.atHour = summary.sessionReset?.atHour ?? 4;
@@ -3204,6 +3268,12 @@ function normalizeStringListFromText(value: string): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
     .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function normalizeOptionalInteger(value: unknown, min = 0): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const normalized = Math.floor(value);
+  return normalized >= min ? normalized : null;
 }
 
 function formatJsonEditor(value: unknown): string {
@@ -3249,7 +3319,8 @@ function buildProviderModels(models: ProviderModelFormState[]) {
 function buildPayload(): ConfigUpdatePayload {
   const memorySearch = parseOptionalJsonObject('Memory Search JSON', form.defaults.memorySearchJson);
   const humanDelay = parseOptionalJsonObject('Human Delay JSON', form.defaults.humanDelayJson);
-  const heartbeat = parseOptionalJsonObject('Heartbeat JSON', form.defaults.heartbeatJson);
+  const heartbeatRaw = parseOptionalJsonObject('Heartbeat JSON', form.defaults.heartbeatJson);
+  const heartbeat = buildHeartbeatConfig(heartbeatRaw, form.defaults.heartbeatMode, form.defaults.heartbeatEvery);
   const modelParams = parseOptionalJsonObject('Global Model Params JSON', form.defaults.paramsJson);
   const blockStreamingChunk = parseOptionalJsonObject('Block Streaming Chunk JSON', form.defaults.blockStreamingChunkJson);
   const blockStreamingCoalesce = parseOptionalJsonObject('Block Streaming Coalesce JSON', form.defaults.blockStreamingCoalesceJson);
@@ -3466,22 +3537,32 @@ function buildPayload(): ConfigUpdatePayload {
     },
   };
 
-  const mcpSessionIdleTtlMs = form.mcpSkills.mcpSessionIdleTtlMs != null && Number(form.mcpSkills.mcpSessionIdleTtlMs) > 0
-    ? Number(form.mcpSkills.mcpSessionIdleTtlMs)
-    : null;
+  const mcpSessionIdleTtlMs = normalizeOptionalInteger(form.mcpSkills.mcpSessionIdleTtlMs, 0);
+  const skillsAllowBundled = normalizeStringListFromText(form.mcpSkills.skillsAllowBundledText);
   const skillsExtraDirs = normalizeStringListFromText(form.mcpSkills.skillsExtraDirsText);
-  const skillsMaxPromptChars = form.mcpSkills.skillsMaxPromptChars != null && Number(form.mcpSkills.skillsMaxPromptChars) > 0
-    ? Number(form.mcpSkills.skillsMaxPromptChars)
-    : null;
+  const skillsWatchDebounceMs = normalizeOptionalInteger(form.mcpSkills.skillsWatchDebounceMs, 0);
+  const skillsMaxCandidatesPerRoot = normalizeOptionalInteger(form.mcpSkills.skillsMaxCandidatesPerRoot, 1);
+  const skillsMaxLoadedPerSource = normalizeOptionalInteger(form.mcpSkills.skillsMaxLoadedPerSource, 1);
+  const skillsMaxInPrompt = normalizeOptionalInteger(form.mcpSkills.skillsMaxInPrompt, 0);
+  const skillsMaxPromptChars = normalizeOptionalInteger(form.mcpSkills.skillsMaxPromptChars, 0);
+  const skillsMaxSkillFileBytes = normalizeOptionalInteger(form.mcpSkills.skillsMaxSkillFileBytes, 0);
   const shouldSendMcp = Boolean(loadedSummary.value?.mcp)
     || mcpSessionIdleTtlMs != null
     || Object.keys(mcpServers).length > 0;
+  const shouldSendAllowBundled = Array.isArray(loadedSummary.value?.skills?.allowBundled)
+    || skillsAllowBundled.length > 0;
   const shouldSendSkills = Boolean(loadedSummary.value?.skills)
-    || form.mcpSkills.skillsAllowBundled !== true
+    || shouldSendAllowBundled
     || skillsExtraDirs.length > 0
+    || form.mcpSkills.skillsLoadWatch === true
+    || skillsWatchDebounceMs != null
     || form.mcpSkills.skillsPreferBrew === true
     || Boolean(form.mcpSkills.skillsNodeManager.trim())
+    || skillsMaxCandidatesPerRoot != null
+    || skillsMaxLoadedPerSource != null
+    || skillsMaxInPrompt != null
     || skillsMaxPromptChars != null
+    || skillsMaxSkillFileBytes != null
     || Object.keys(skillEntries).length > 0;
   if (shouldSendMcp) {
     payload.mcp = {
@@ -3490,20 +3571,51 @@ function buildPayload(): ConfigUpdatePayload {
     };
   }
   if (shouldSendSkills) {
-    payload.skills = {
-      allowBundled: form.mcpSkills.skillsAllowBundled === true,
-      load: {
-        extraDirs: skillsExtraDirs,
-      },
-      install: {
-        preferBrew: form.mcpSkills.skillsPreferBrew === true,
-        nodeManager: form.mcpSkills.skillsNodeManager.trim(),
-      },
-      limits: {
-        maxSkillsPromptChars: skillsMaxPromptChars,
-      },
-      entries: skillEntries,
-    };
+    const existingSkills = loadedSummary.value?.skills;
+    const skillsPayload: NonNullable<ConfigUpdatePayload['skills']> = {};
+    const loadPayload: NonNullable<NonNullable<ConfigUpdatePayload['skills']>['load']> = {};
+    const installPayload: NonNullable<NonNullable<ConfigUpdatePayload['skills']>['install']> = {};
+    const limitsPayload: NonNullable<NonNullable<ConfigUpdatePayload['skills']>['limits']> = {};
+    if (existingSkills?.load || skillsExtraDirs.length > 0) {
+      loadPayload.extraDirs = skillsExtraDirs;
+    }
+    if (existingSkills?.load?.watch != null || form.mcpSkills.skillsLoadWatch === true) {
+      loadPayload.watch = form.mcpSkills.skillsLoadWatch === true;
+    }
+    if (existingSkills?.load?.watchDebounceMs != null || skillsWatchDebounceMs != null) {
+      loadPayload.watchDebounceMs = skillsWatchDebounceMs;
+    }
+    if (existingSkills?.install?.preferBrew != null || form.mcpSkills.skillsPreferBrew === true) {
+      installPayload.preferBrew = form.mcpSkills.skillsPreferBrew === true;
+    }
+    if (existingSkills?.install?.nodeManager || form.mcpSkills.skillsNodeManager.trim()) {
+      installPayload.nodeManager = form.mcpSkills.skillsNodeManager.trim();
+    }
+    if (existingSkills?.limits?.maxCandidatesPerRoot != null || skillsMaxCandidatesPerRoot != null) {
+      limitsPayload.maxCandidatesPerRoot = skillsMaxCandidatesPerRoot;
+    }
+    if (existingSkills?.limits?.maxSkillsLoadedPerSource != null || skillsMaxLoadedPerSource != null) {
+      limitsPayload.maxSkillsLoadedPerSource = skillsMaxLoadedPerSource;
+    }
+    if (existingSkills?.limits?.maxSkillsInPrompt != null || skillsMaxInPrompt != null) {
+      limitsPayload.maxSkillsInPrompt = skillsMaxInPrompt;
+    }
+    if (existingSkills?.limits?.maxSkillsPromptChars != null || skillsMaxPromptChars != null) {
+      limitsPayload.maxSkillsPromptChars = skillsMaxPromptChars;
+    }
+    if (existingSkills?.limits?.maxSkillFileBytes != null || skillsMaxSkillFileBytes != null) {
+      limitsPayload.maxSkillFileBytes = skillsMaxSkillFileBytes;
+    }
+    if (Object.keys(loadPayload).length > 0) skillsPayload.load = loadPayload;
+    if (Object.keys(installPayload).length > 0) skillsPayload.install = installPayload;
+    if (Object.keys(limitsPayload).length > 0) skillsPayload.limits = limitsPayload;
+    if (existingSkills?.entries || Object.keys(skillEntries).length > 0) {
+      skillsPayload.entries = skillEntries;
+    }
+    if (shouldSendAllowBundled) {
+      skillsPayload.allowBundled = skillsAllowBundled;
+    }
+    payload.skills = skillsPayload;
   }
 
   if (loggingTabRef.value) {
@@ -3652,6 +3764,49 @@ function persistActiveConfigTab(nextTab: ConfigTabId): void {
   }
 }
 
+function getRouteScrollContainer(): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  return document.querySelector<HTMLElement>('.main-content.standard-scroll-route');
+}
+
+function getRouteScrollTop(): number {
+  const container = getRouteScrollContainer();
+  if (container) return container.scrollTop;
+  return typeof window !== 'undefined' ? window.scrollY : 0;
+}
+
+function setRouteScrollTop(top: number): void {
+  const container = getRouteScrollContainer();
+  if (container) {
+    container.scrollTo({ top, behavior: 'auto' });
+    return;
+  }
+  if (typeof window !== 'undefined') {
+    window.scrollTo({ top, behavior: 'auto' });
+  }
+}
+
+function mergeConfigSummaryInPlace(nextSummary: ConfigSummaryPayload): void {
+  if (!loadedSummary.value) {
+    loadedSummary.value = nextSummary;
+    return;
+  }
+  const target = loadedSummary.value as unknown as Record<string, unknown>;
+  const source = nextSummary as unknown as Record<string, unknown>;
+  for (const key of Object.keys(target)) {
+    if (!(key in source)) delete target[key];
+  }
+  Object.assign(target, source);
+}
+
+function acceptSavedConfigSummary(nextSummary: ConfigSummaryPayload): void {
+  mergeConfigSummaryInPlace(nextSummary);
+  if (gatewayFormData.value) {
+    gatewayBaselineData.value = { ...gatewayFormData.value };
+  }
+  captureConfigBaseline();
+}
+
 function applyActiveTab(nextTab: ConfigTabId): void {
   activeTab.value = nextTab;
   closeAdvancedSheet();
@@ -3660,11 +3815,21 @@ function applyActiveTab(nextTab: ConfigTabId): void {
 
 function setActiveTab(nextTab: ConfigTabId): void {
   applyActiveTab(nextTab);
+  void nextTick(() => setRouteScrollTop(0));
   if (!isConfigRouteActive.value) return;
   const query = { ...route.query, tab: nextTab };
   delete query.section;
   if (route.query.tab === nextTab && route.query.section == null) return;
   void router.replace({ path: route.path, query });
+}
+
+function openGlobalConfig(): void {
+  setActiveTab('model');
+  void nextTick(() => {
+    if (typeof document !== 'undefined') {
+      document.getElementById('global-config')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  });
 }
 
 async function loadConfig() {
@@ -3703,10 +3868,19 @@ async function refreshConfigWithDirtyCheck(): Promise<void> {
   await loadConfig();
 }
 
+function showSaveFeedback(): void {
+  if (saveFeedbackTimer) clearTimeout(saveFeedbackTimer);
+  saveFeedbackVisible.value = true;
+  saveFeedbackTimer = setTimeout(() => {
+    saveFeedbackVisible.value = false;
+    saveFeedbackTimer = null;
+  }, 2800);
+}
+
 async function saveChanges() {
   if (!saveReadiness.value.canSave) return;
   const tabBeforeSave = activeTab.value;
-  const scrollBeforeSave = typeof window !== 'undefined' ? window.scrollY : 0;
+  const scrollBeforeSave = getRouteScrollTop();
   persistActiveConfigTab(tabBeforeSave);
   saving.value = true;
   errorMessage.value = '';
@@ -3714,18 +3888,17 @@ async function saveChanges() {
   try {
     const payload = buildPayload();
     const response = await saveConfig(payload);
-    loadedSummary.value = response.config;
-    gatewayFormData.value = null;
-    gatewayBaselineData.value = null;
-    hydrateForm(response.config);
-    applyActiveTab(tabBeforeSave);
-    captureConfigBaseline();
+    acceptSavedConfigSummary(response.config);
     successMessage.value = response.message || text('配置已保存。', 'Configuration saved.');
+    showSaveFeedback();
     await nextTick();
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: scrollBeforeSave, behavior: 'auto' });
-    }
+    setRouteScrollTop(scrollBeforeSave);
   } catch (error) {
+    if (saveFeedbackTimer) {
+      clearTimeout(saveFeedbackTimer);
+      saveFeedbackTimer = null;
+    }
+    saveFeedbackVisible.value = false;
     errorMessage.value = error instanceof Error ? error.message : text('配置保存失败', 'Failed to save configuration');
   } finally {
     saving.value = false;
@@ -3860,6 +4033,12 @@ function activateConfigPage(): void {
 
 onMounted(activateConfigPage);
 onActivated(activateConfigPage);
+onBeforeUnmount(() => {
+  if (saveFeedbackTimer) {
+    clearTimeout(saveFeedbackTimer);
+    saveFeedbackTimer = null;
+  }
+});
 
 watch(
   () => [route.query.tab, route.query.section],
@@ -3962,6 +4141,76 @@ watch(
   line-height: 1.6;
 }
 
+.config-tabs-grouped {
+  gap: 12px;
+}
+
+.config-tab-group {
+  display: grid;
+  gap: 7px;
+}
+
+.config-tab-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted-soft);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.config-tab-group__head strong {
+  min-width: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.config-page-shell .config-tab {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: center;
+  padding: 10px 11px;
+}
+
+.config-page-shell .config-tab-icon {
+  grid-row: span 2;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  border-radius: 9px;
+  font-size: 15px;
+}
+
+.config-page-shell .config-tab-title,
+.config-page-shell .config-tab-copy {
+  min-width: 0;
+}
+
+.config-page-shell .config-tab-title {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-page-shell .config-tab-copy {
+  min-height: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .config-page-shell .config-main {
   gap: 16px;
 }
@@ -4040,30 +4289,53 @@ watch(
 
 .config-save-dock {
   position: sticky;
-  bottom: 12px;
-  z-index: 8;
+  bottom: 16px;
+  z-index: 12;
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(140px, auto) auto;
+  grid-template-areas:
+    "status actions"
+    "changes actions";
+  grid-template-columns: minmax(240px, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-base) 96%, var(--shell-panel-fill));
+  gap: 10px 14px;
+  width: min(780px, calc(100% - 8px));
+  margin: 6px 0 0 auto;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 72%, var(--modal-border));
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--modal-panel-bg-strong) 92%, var(--acc) 8%), var(--modal-panel-bg));
   box-shadow:
-    0 18px 52px color-mix(in srgb, black 20%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+    0 18px 48px color-mix(in srgb, black 24%, transparent),
+    0 2px 10px color-mix(in srgb, black 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  isolation: isolate;
 }
 
 .config-save-dock.is-dirty {
-  border-color: color-mix(in srgb, var(--acc) 44%, var(--line-strong));
+  border-color: color-mix(in srgb, var(--acc) 48%, var(--line-strong));
+  background:
+    radial-gradient(220px 80px at 0% 0%, color-mix(in srgb, var(--acc) 16%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--modal-panel-bg-strong) 88%, var(--acc) 12%), var(--modal-panel-bg));
   box-shadow:
-    0 18px 52px color-mix(in srgb, black 22%, transparent),
+    0 20px 54px color-mix(in srgb, black 26%, transparent),
     0 0 0 1px color-mix(in srgb, var(--acc) 18%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+    inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+}
+
+.config-save-dock.is-saved {
+  border-color: color-mix(in srgb, #26d69a 55%, var(--line-strong));
+  background:
+    radial-gradient(240px 90px at 0% 0%, color-mix(in srgb, #26d69a 18%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--modal-panel-bg-strong) 90%, #26d69a 10%), var(--modal-panel-bg));
+  box-shadow:
+    0 20px 54px color-mix(in srgb, black 24%, transparent),
+    0 0 0 1px color-mix(in srgb, #26d69a 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
 }
 
 .config-save-dock__status {
+  grid-area: status;
   display: flex;
   min-width: 0;
   align-items: center;
@@ -4082,6 +4354,13 @@ watch(
 .config-save-dock__indicator.active {
   background: var(--acc);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--acc) 16%, transparent);
+}
+
+.config-save-dock__indicator.saved {
+  background: #26d69a;
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, #26d69a 18%, transparent),
+    0 0 18px color-mix(in srgb, #26d69a 44%, transparent);
 }
 
 .config-save-dock__status strong {
@@ -4106,11 +4385,39 @@ watch(
 }
 
 .config-save-dock__changes {
-  justify-content: flex-end;
+  grid-area: changes;
+  justify-content: flex-start;
 }
 
 .config-save-dock__actions {
+  grid-area: actions;
   justify-content: flex-end;
+  padding-left: 4px;
+}
+
+.config-save-dock__saved-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, #26d69a 38%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, #26d69a 13%, var(--modal-panel-bg));
+  color: color-mix(in srgb, #26d69a 78%, var(--text));
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.primary-button.is-saved {
+  border-color: color-mix(in srgb, #26d69a 62%, var(--acc-strong));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, #26d69a 92%, #ffffff 8%), color-mix(in srgb, #12a876 82%, #07111f 18%));
+  color: #04120d;
+  box-shadow:
+    0 12px 26px color-mix(in srgb, #26d69a 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 32%, transparent);
 }
 
 .config-change-chip {
@@ -4238,7 +4545,12 @@ watch(
   }
 
   .config-save-dock {
+    width: min(680px, 100%);
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "status"
+      "changes"
+      "actions";
   }
 
   .config-save-dock__changes,
@@ -4269,9 +4581,10 @@ watch(
   }
 
   .config-save-dock {
-    bottom: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    width: 100%;
     padding: 10px;
-    border-radius: 14px;
+    border-radius: 15px;
   }
 
   .config-save-dock__actions .compact-button {

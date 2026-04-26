@@ -42,6 +42,18 @@ test('sidebar rail component uses reka tooltip primitives for collapsed navigati
   assert.match(sidebarRail, /class="sidebar-rail-tooltip"/);
 });
 
+test('sidebar rail no longer duplicates topbar theme and locale controls', () => {
+  const sidebarRail = fs.readFileSync(sidebarRailPath, 'utf8');
+  assert.doesNotMatch(sidebarRail, /sidebar-utility-cluster/);
+  assert.doesNotMatch(sidebarRail, /themeSwitchLabel/);
+  assert.doesNotMatch(sidebarRail, /localeSwitchLabel/);
+  assert.doesNotMatch(sidebarRail, /set-theme-mode/);
+  assert.doesNotMatch(sidebarRail, /set-locale/);
+  assert.doesNotMatch(styleCss, /sidebar-utility-cluster/);
+  assert.match(appVue, /<StudioShellTopbar[\s\S]*:theme-switch-label/);
+  assert.match(appVue, /<StudioShellTopbar[\s\S]*:locale-switch-label/);
+});
+
 test('shell styles define a dedicated tooltip surface for the collapsed sidebar rail', () => {
   assert.match(styleCss, /\.sidebar-rail-tooltip\s*\{/);
 });

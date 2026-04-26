@@ -81,6 +81,19 @@ test("agents workspace layout exists and owns the persistent stage shell", () =>
   assert.match(agentsWorkspaceLayoutSource, /openCreateModal/);
 });
 
+test("agents workspace navigation can leave advanced routes cleanly", () => {
+  const agentsWorkspaceLayoutSource = read(agentsWorkspaceLayoutPath);
+
+  assert.match(agentsWorkspaceLayoutSource, /<RouterView v-slot="\{ Component, route: childRoute \}">/);
+  assert.match(agentsWorkspaceLayoutSource, /:key="childRoute\.path"/);
+  assert.match(
+    agentsWorkspaceLayoutSource,
+    /function openAgent\(agentId: string, section: 'overview' \| 'docs' \| 'bindings' \| 'sessions' \| 'advanced' = 'overview'\)/,
+  );
+  assert.match(agentsWorkspaceLayoutSource, /@click="openAgent\(routeAgentId, tab\.value\)"/);
+  assert.match(agentsWorkspaceLayoutSource, /const nextSection = routeAgentId\.value === nextAgentId && route\.path !== '\/agents'/);
+});
+
 test("agents deep pages still exist and stay route-backed inside the workspace shell", () => {
   assert.equal(fs.existsSync(path.join(rootDir, docsPagePath)), true);
   assert.equal(fs.existsSync(path.join(rootDir, bindingsPagePath)), true);

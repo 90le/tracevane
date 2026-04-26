@@ -546,6 +546,7 @@ function revealMoreSessionsNearRailBottom(element: HTMLElement | null): void {
     return;
   }
   windows.showMoreVisibleSections();
+  scheduleRevealMoreSessionsNearRailBottom(element);
 }
 
 function scheduleRevealMoreSessionsNearRailBottom(element: HTMLElement | null): void {

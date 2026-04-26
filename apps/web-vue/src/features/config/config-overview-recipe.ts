@@ -29,40 +29,40 @@ export function buildConfigOverviewRecipe(
     signals: [
       {
         key: "defaultModel",
-        label: text("默认模型", "Default model"),
+        label: text("1. 模型默认值", "1. Model defaults"),
         note: text(
-          "主文本路由的当前目标",
-          "Current primary target for text routes",
-        ),
-      },
-      {
-        key: "imageModel",
-        label: text("图片模型", "Image model"),
-        note: text(
-          "image / pdf 默认走这条链路",
-          "image / pdf flows default to this route",
+          "先确认主模型、图片模型和回退链",
+          "Start with primary models and fallback chains",
         ),
       },
       {
         key: "providers",
-        label: text("供应商", "Providers"),
+        label: text("2. 供应商", "2. Providers"),
         note: text(
-          "当前已录入的模型供应商数量",
-          "Number of configured model providers",
+          "再补 API Key、模型矩阵和请求参数",
+          "Then add API keys, model matrix, and request options",
+        ),
+      },
+      {
+        key: "imageModel",
+        label: text("3. 安全与集成", "3. Security & integrations"),
+        note: text(
+          "按需调整 Sandbox、Gateway、ACP、MCP",
+          "Tune Sandbox, Gateway, ACP, and MCP only as needed",
         ),
       },
       {
         key: "syncedAt",
         label: text("同步时间", "Synced"),
         note: text(
-          "最后一次读取配置摘要的时间",
-          "Last refresh time for the config summary",
+          "保存不会刷新页面或跳回其它分组",
+          "Saving keeps the page and active group in place",
         ),
       },
     ],
     sidebarTitle: text(
-      "先定配置域，再改参数",
-      "Set the domain first, then change the parameters",
+      "按使用频率收敛配置",
+      "Configuration grouped by usage frequency",
     ),
   };
 }
@@ -96,8 +96,8 @@ export function buildConfigSidebarSummary(
   return {
     title: params.title,
     copy: text(
-      `当前域：${params.activeLabel}。${params.activeCopy}。先看右侧事实卡，再进入下面的分段工作台。`,
-      `Current domain: ${params.activeLabel}. ${params.activeCopy}. Read the fact rail first, then move through the segmented workbench below.`,
+      `当前域：${params.activeLabel}。${params.activeCopy}。主题和语言用全局快捷开关，技能安装和插件维护去对应管理页。`,
+      `Current domain: ${params.activeLabel}. ${params.activeCopy}. Use global quick switches for theme/language and dedicated pages for skill or plugin operations.`,
     ),
   };
 }

@@ -809,6 +809,29 @@ test('agent assistant events are mirrored into temporary assistant drafts for re
     gateway.sendAgentEvent({
       sessionKey,
       runId: 'run-agent-assistant-1',
+      stream: 'tool',
+      ts: Date.parse('2026-03-23T10:24:59.000Z'),
+      data: {
+        phase: 'update',
+        toolCallId: 'tool-agent-assistant-1',
+        name: 'read',
+        partialResult: { text: 'tool output ready before assistant reply' },
+      },
+    });
+
+    await waitFor(() => {
+      const event = frontendEvents.find((entry) => (
+        entry.kind === 'temporary.tool'
+        && entry.runId === 'run-agent-assistant-1'
+        && entry.tool?.toolCallId === 'tool-agent-assistant-1'
+      ));
+      assert.ok(event, 'expected running temporary.tool before assistant reply');
+      assert.equal(event.tool?.status, 'running');
+    });
+
+    gateway.sendAgentEvent({
+      sessionKey,
+      runId: 'run-agent-assistant-1',
       stream: 'assistant',
       ts: Date.parse('2026-03-23T10:25:00.000Z'),
       data: {
@@ -820,6 +843,16 @@ test('agent assistant events are mirrored into temporary assistant drafts for re
       const event = frontendEvents.find((entry) => entry.kind === 'temporary.assistant' && entry.runId === 'run-agent-assistant-1');
       assert.ok(event, 'expected temporary.assistant fallback event');
       assert.match(event.accumulatedText || '', /准备工具/);
+    });
+
+    await waitFor(() => {
+      const event = [...frontendEvents]
+        .reverse()
+        .find((entry) => entry.kind === 'run_overlay' && entry.runId === 'run-agent-assistant-1');
+      assert.ok(event, 'expected run_overlay after assistant starts');
+      assert.equal(event.overlay?.toolCalls?.[0]?.toolCallId, 'tool-agent-assistant-1');
+      assert.equal(event.overlay?.toolCalls?.[0]?.status, 'completed');
+      assert.match(event.overlay?.toolCalls?.[0]?.resultPreview || '', /tool output ready/i);
     });
 
     gateway.sendAgentEvent({

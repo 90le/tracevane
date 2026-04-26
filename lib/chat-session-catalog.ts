@@ -161,6 +161,9 @@ export function shouldRevealMoreSessionRowsOnScroll(metrics: {
 }, thresholdPx = CHAT_SESSION_RAIL_AUTO_REVEAL_THRESHOLD_PX): boolean {
   const scrollHeight = Math.max(0, Number(metrics.scrollHeight) || 0);
   const clientHeight = Math.max(0, Number(metrics.clientHeight) || 0);
+  if (scrollHeight > 0 && clientHeight > 0 && scrollHeight <= clientHeight) {
+    return true;
+  }
   if (scrollHeight <= clientHeight) {
     return false;
   }

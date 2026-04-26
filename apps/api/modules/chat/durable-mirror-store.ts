@@ -945,96 +945,6 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
     }
   }
 
-  function readSqliteWindowBoundaries(
-    sessionKey: string,
-    day: string | null,
-    offsets: number[],
-  ): Map<number, DurableMirrorPageBoundary> {
-    const boundaries = new Map<number, DurableMirrorPageBoundary>();
-    const requestedOffsets = [...new Set(offsets.filter((offset) => Number.isFinite(offset) && offset >= 0))];
-    if (!database || !requestedOffsets.length) {
-      return boundaries;
-    }
-    ensureSqliteMessageRowsLoaded(database, config, sessionKey);
-    const where = ['session_key = ?'];
-    const params: unknown[] = [sessionKey];
-    if (day) {
-      where.push('day_key = ?');
-      params.push(day);
-    }
-    const requestedValues = requestedOffsets.map(() => '(?)').join(', ');
-    const row = database.prepare(`
-      WITH requested(offset) AS (
-        VALUES ${requestedValues}
-      ),
-      filtered AS (
-        SELECT
-          message_id,
-          created_at,
-          ROW_NUMBER() OVER (ORDER BY message_index ASC) - 1 AS offset
-        FROM mirror_messages
-        WHERE ${where.join(' AND ')}
-      )
-      SELECT requested.offset, filtered.message_id, filtered.created_at
-      FROM requested
-      LEFT JOIN filtered ON filtered.offset = requested.offset
-    `).all(...requestedOffsets, ...params) as Array<{
-      offset?: number | null;
-      message_id?: string | null;
-      created_at?: string | null;
-    }>;
-    for (const item of row) {
-      const offset = Number(item.offset ?? -1);
-      if (!Number.isFinite(offset) || offset < 0 || !item.message_id) {
-        continue;
-      }
-      boundaries.set(offset, {
-        anchorIndex: offset,
-        anchorMessageId: typeof item.message_id === 'string' && item.message_id ? item.message_id : null,
-        anchorCreatedAt: typeof item.created_at === 'string' && item.created_at ? item.created_at : null,
-      });
-    }
-    return boundaries;
-  }
-
-  function resolveSqliteFilteredOffset(params: {
-    sessionKey: string;
-    day: string | null;
-    anchorMessageId?: string | null;
-    anchorIndex?: number | null;
-  }): number | null {
-    if (!database) {
-      return null;
-    }
-    ensureSqliteMessageRowsLoaded(database, config, params.sessionKey);
-    if (params.anchorMessageId) {
-      const where = ['m.session_key = ?'];
-      const queryParams: unknown[] = [params.sessionKey];
-      if (params.day) {
-        where.push('m.day_key = ?');
-        queryParams.push(params.day);
-      }
-      const row = database.prepare(`
-        SELECT COUNT(*) AS offset
-        FROM mirror_messages AS m
-        WHERE ${where.join(' AND ')}
-          AND m.message_index < (
-            SELECT message_index
-            FROM mirror_messages
-            WHERE session_key = ? AND message_id = ?
-            LIMIT 1
-          )
-      `).get(...queryParams, params.sessionKey, params.anchorMessageId) as { offset?: number } | undefined;
-      if (row && Number.isFinite(row.offset)) {
-        return Number(row.offset);
-      }
-    }
-    if (typeof params.anchorIndex === 'number' && Number.isFinite(params.anchorIndex) && params.anchorIndex >= 0) {
-      return params.anchorIndex;
-    }
-    return null;
-  }
-
   function buildSqliteSearchPlan(sessionKey: string, options: {
     query: string;
     day?: string | null;
@@ -1101,75 +1011,6 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
     };
   }
 
-  function readSqliteSearchBoundary(
-    plan: {
-      fromClause: string;
-      whereClause: string;
-      params: unknown[];
-    },
-    offset: number,
-  ): DurableMirrorPageBoundary | null {
-    if (!database || offset < 0) {
-      return null;
-    }
-    const row = database.prepare(`
-      SELECT m.message_id, m.created_at
-      FROM ${plan.fromClause}
-      WHERE ${plan.whereClause}
-      ORDER BY m.message_index ASC
-      LIMIT 1 OFFSET ?
-    `).get(...plan.params, offset) as {
-      message_id?: string | null;
-      created_at?: string | null;
-    } | undefined;
-    if (!row) {
-      return null;
-    }
-    return {
-      anchorIndex: offset,
-      anchorMessageId: typeof row.message_id === 'string' ? row.message_id : null,
-      anchorCreatedAt: typeof row.created_at === 'string' ? row.created_at : null,
-    };
-  }
-
-  function resolveSqliteSearchOffset(
-    sessionKey: string,
-    plan: {
-      fromClause: string;
-      whereClause: string;
-      params: unknown[];
-    },
-    anchor?: { anchorIndex?: number | null; anchorMessageId?: string | null } | null,
-  ): number | null {
-    if (!database || !anchor) {
-      return null;
-    }
-    if (anchor.anchorMessageId) {
-      const row = database.prepare(`
-        SELECT COUNT(*) AS offset
-        FROM ${plan.fromClause}
-        WHERE ${plan.whereClause}
-          AND m.message_index < (
-            SELECT message_index
-            FROM mirror_messages
-            WHERE session_key = ? AND message_id = ?
-            LIMIT 1
-          )
-      `).get(...plan.params, sessionKey, anchor.anchorMessageId) as { offset?: number } | undefined;
-      if (row && Number.isFinite(row.offset)) {
-        return Number(row.offset);
-      }
-    }
-    if (
-      typeof anchor.anchorIndex === 'number'
-      && Number.isFinite(anchor.anchorIndex)
-      && anchor.anchorIndex >= 0
-    ) {
-      return anchor.anchorIndex;
-    }
-    return null;
-  }
-
   function readSqliteMessageWindow(sessionKey: string, options: {
     before?: { anchorIndex?: number | null; anchorMessageId?: string | null } | null;
     after?: { anchorIndex?: number | null; anchorMessageId?: string | null } | null;
@@ -1182,18 +1023,140 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
     }
     ensureSqliteMessageRowsLoaded(database, config, sessionKey);
     const day = options.day || null;
+    const limit = Math.max(1, Number(options.limit || 50));
+    const anchorBefore = Math.floor(limit / 2);
+    const anchorAfter = Math.ceil(limit / 2);
+    const anchorWindowSize = limit + 1;
+    const beforeIndex = typeof options.before?.anchorIndex === 'number' && Number.isFinite(options.before.anchorIndex)
+      ? options.before.anchorIndex
+      : -1;
+    const afterIndex = typeof options.after?.anchorIndex === 'number' && Number.isFinite(options.after.anchorIndex)
+      ? options.after.anchorIndex
+      : -1;
     const where = ['session_key = ?'];
     const baseParams: unknown[] = [sessionKey];
     if (day) {
       where.push('day_key = ?');
       baseParams.push(day);
     }
-    const countRow = database.prepare(`
-      SELECT COUNT(*) AS count
-      FROM mirror_messages
-      WHERE ${where.join(' AND ')}
-    `).get(...baseParams) as { count?: number } | undefined;
-    const totalCount = Number(countRow?.count || 0);
+    const rows = database.prepare(`
+      WITH filtered AS (
+        SELECT
+          message_id,
+          created_at,
+          payload_json,
+          ROW_NUMBER() OVER (ORDER BY message_index ASC) - 1 AS offset
+        FROM mirror_messages
+        WHERE ${where.join(' AND ')}
+      ),
+      stats AS (
+        SELECT COUNT(*) AS total_count
+        FROM filtered
+      ),
+      anchor_lookup AS (
+        SELECT
+          (SELECT offset FROM filtered WHERE message_id = ? LIMIT 1) AS anchor_offset,
+          (SELECT offset FROM filtered WHERE message_id = ? LIMIT 1) AS before_offset_by_id,
+          (SELECT offset FROM filtered WHERE message_id = ? LIMIT 1) AS after_offset_by_id
+      ),
+      resolved AS (
+        SELECT
+          stats.total_count,
+          anchor_lookup.anchor_offset,
+          CASE
+            WHEN anchor_lookup.before_offset_by_id IS NOT NULL THEN anchor_lookup.before_offset_by_id
+            WHEN ? >= 0 THEN ?
+            ELSE NULL
+          END AS before_offset,
+          CASE
+            WHEN anchor_lookup.after_offset_by_id IS NOT NULL THEN anchor_lookup.after_offset_by_id
+            WHEN ? >= 0 THEN ?
+            ELSE NULL
+          END AS after_offset
+        FROM stats, anchor_lookup
+      ),
+      range_initial AS (
+        SELECT
+          total_count,
+          CASE
+            WHEN anchor_offset IS NOT NULL AND anchor_offset >= 0 AND anchor_offset < total_count
+              THEN max(0, anchor_offset - ${anchorBefore})
+            WHEN after_offset IS NOT NULL AND after_offset >= 0
+              THEN min(total_count, after_offset)
+            WHEN before_offset IS NOT NULL AND before_offset >= 0
+              THEN max(0, min(total_count, before_offset) - ${limit})
+            ELSE max(0, total_count - ${limit})
+          END AS raw_start,
+          CASE
+            WHEN anchor_offset IS NOT NULL AND anchor_offset >= 0 AND anchor_offset < total_count
+              THEN min(total_count, anchor_offset + ${anchorAfter} + 1)
+            WHEN after_offset IS NOT NULL AND after_offset >= 0
+              THEN min(total_count, min(total_count, after_offset) + ${limit})
+            WHEN before_offset IS NOT NULL AND before_offset >= 0
+              THEN min(total_count, before_offset)
+            ELSE total_count
+          END AS raw_end,
+          CASE
+            WHEN anchor_offset IS NOT NULL AND anchor_offset >= 0 AND anchor_offset < total_count THEN 1
+            ELSE 0
+          END AS used_anchor
+        FROM resolved
+      ),
+      range_adjusted AS (
+        SELECT
+          total_count,
+          CASE
+            WHEN used_anchor = 1 AND raw_start = 0 THEN 0
+            WHEN used_anchor = 1 AND raw_end = total_count THEN max(0, raw_end - ${anchorWindowSize})
+            ELSE raw_start
+          END AS start_offset,
+          CASE
+            WHEN used_anchor = 1 AND raw_start = 0 THEN min(total_count, ${anchorWindowSize})
+            ELSE raw_end
+          END AS end_offset
+        FROM range_initial
+      )
+      SELECT
+        range_adjusted.total_count,
+        range_adjusted.start_offset,
+        range_adjusted.end_offset,
+        page.payload_json,
+        before_boundary.message_id AS before_message_id,
+        before_boundary.created_at AS before_created_at,
+        after_boundary.message_id AS after_message_id,
+        after_boundary.created_at AS after_created_at
+      FROM range_adjusted
+      LEFT JOIN filtered AS page
+        ON page.offset >= range_adjusted.start_offset
+       AND page.offset < range_adjusted.end_offset
+      LEFT JOIN filtered AS before_boundary
+        ON before_boundary.offset = range_adjusted.start_offset
+      LEFT JOIN filtered AS after_boundary
+        ON after_boundary.offset = range_adjusted.end_offset
+      ORDER BY page.offset ASC
+    `).all(
+      ...baseParams,
+      options.anchor || null,
+      options.before?.anchorMessageId || null,
+      options.after?.anchorMessageId || null,
+      beforeIndex,
+      beforeIndex,
+      afterIndex,
+      afterIndex,
+    ) as Array<{
+      total_count?: number | null;
+      start_offset?: number | null;
+      end_offset?: number | null;
+      payload_json?: string | null;
+      before_message_id?: string | null;
+      before_created_at?: string | null;
+      after_message_id?: string | null;
+      after_created_at?: string | null;
+    }>;
+    const meta = rows[0] || null;
+    const totalCount = Number(meta?.total_count || 0);
+    const start = Math.max(0, Number(meta?.start_offset || 0));
+    const end = Math.max(start, Number(meta?.end_offset || 0));
     if (totalCount <= 0) {
       return {
         messages: [],
@@ -1207,48 +1170,23 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
         afterBoundary: null,
       };
     }
-    const limit = Math.max(1, Number(options.limit || 50));
-    const anchorOffset = resolveSqliteFilteredOffset({
-      sessionKey,
-      day,
-      anchorMessageId: options.anchor || null,
-      anchorIndex: null,
-    });
-    const beforeOffset = resolveSqliteFilteredOffset({
-      sessionKey,
-      day,
-      anchorMessageId: options.before?.anchorMessageId || null,
-      anchorIndex: options.before?.anchorIndex ?? null,
-    });
-    const afterOffset = resolveSqliteFilteredOffset({
-      sessionKey,
-      day,
-      anchorMessageId: options.after?.anchorMessageId || null,
-      anchorIndex: options.after?.anchorIndex ?? null,
-    });
-    const { start, end } = computeWindowRange({
-      totalCount,
-      limit,
-      anchorOffset,
-      beforeOffset,
-      afterOffset,
-    });
-    const rows = database.prepare(`
-      SELECT payload_json
-      FROM mirror_messages
-      WHERE ${where.join(' AND ')}
-      ORDER BY message_index ASC
-      LIMIT ? OFFSET ?
-    `).all(...baseParams, Math.max(0, end - start), start) as Array<{ payload_json: string }>;
-    const messages = rows.map((row) => cloneMessage(JSON.parse(String(row.payload_json || '{}')) as ChatMessageItem));
-    const boundaries = readSqliteWindowBoundaries(
-      sessionKey,
-      day,
-      [
-        start > 0 ? start : -1,
-        end < totalCount ? end : -1,
-      ],
-    );
+    const messages = rows
+      .map((row) => row.payload_json ? cloneMessage(JSON.parse(String(row.payload_json)) as ChatMessageItem) : null)
+      .filter((message): message is ChatMessageItem => Boolean(message));
+    const beforeBoundary = start > 0 && meta?.before_message_id
+      ? {
+        anchorIndex: start,
+        anchorMessageId: meta.before_message_id,
+        anchorCreatedAt: meta.before_created_at || null,
+      }
+      : null;
+    const afterBoundary = end < totalCount && meta?.after_message_id
+      ? {
+        anchorIndex: end,
+        anchorMessageId: meta.after_message_id,
+        anchorCreatedAt: meta.after_created_at || null,
+      }
+      : null;
     return {
       messages,
       day,
@@ -1257,8 +1195,8 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
       endOffset: end,
       hasMoreBefore: start > 0,
       hasMoreAfter: end < totalCount,
-      beforeBoundary: start > 0 ? boundaries.get(start) || null : null,
-      afterBoundary: end < totalCount ? boundaries.get(end) || null : null,
+      beforeBoundary,
+      afterBoundary,
     };
   }
 
@@ -1676,12 +1614,128 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
         if (!plan) {
           return null;
         }
-        const countRow = database.prepare(`
-          SELECT COUNT(*) AS count
-          FROM ${plan.fromClause}
-          WHERE ${plan.whereClause}
-        `).get(...plan.params) as { count?: number } | undefined;
-        const totalCount = Number(countRow?.count || 0);
+        const limit = Math.max(1, Number(options.limit || 50));
+        const beforeIndex = typeof options.before?.anchorIndex === 'number' && Number.isFinite(options.before.anchorIndex)
+          ? options.before.anchorIndex
+          : -1;
+        const afterIndex = typeof options.after?.anchorIndex === 'number' && Number.isFinite(options.after.anchorIndex)
+          ? options.after.anchorIndex
+          : -1;
+        const rows = database.prepare(`
+          WITH matched AS (
+            SELECT
+              m.message_id,
+              m.message_index,
+              m.role,
+              m.created_at,
+              m.run_id,
+              m.preview_text,
+              m.has_text,
+              m.has_resources,
+              m.has_code,
+              ROW_NUMBER() OVER (ORDER BY m.message_index ASC) - 1 AS offset
+            FROM ${plan.fromClause}
+            WHERE ${plan.whereClause}
+          ),
+          stats AS (
+            SELECT COUNT(*) AS total_count
+            FROM matched
+          ),
+          anchor_lookup AS (
+            SELECT
+              (SELECT offset FROM matched WHERE message_id = ? LIMIT 1) AS before_offset_by_id,
+              (SELECT offset FROM matched WHERE message_id = ? LIMIT 1) AS after_offset_by_id
+          ),
+          resolved AS (
+            SELECT
+              stats.total_count,
+              CASE
+                WHEN anchor_lookup.before_offset_by_id IS NOT NULL THEN anchor_lookup.before_offset_by_id
+                WHEN ? >= 0 THEN ?
+                ELSE NULL
+              END AS before_offset,
+              CASE
+                WHEN anchor_lookup.after_offset_by_id IS NOT NULL THEN anchor_lookup.after_offset_by_id
+                WHEN ? >= 0 THEN ?
+                ELSE NULL
+              END AS after_offset
+            FROM stats, anchor_lookup
+          ),
+          range_calculated AS (
+            SELECT
+              total_count,
+              CASE
+                WHEN after_offset IS NOT NULL AND after_offset >= 0
+                  THEN min(total_count, after_offset)
+                WHEN before_offset IS NOT NULL AND before_offset >= 0
+                  THEN max(0, min(total_count, before_offset) - ${limit})
+                ELSE max(0, total_count - ${limit})
+              END AS start_offset,
+              CASE
+                WHEN after_offset IS NOT NULL AND after_offset >= 0
+                  THEN min(total_count, min(total_count, after_offset) + ${limit})
+                WHEN before_offset IS NOT NULL AND before_offset >= 0
+                  THEN min(total_count, before_offset)
+                ELSE total_count
+              END AS end_offset
+            FROM resolved
+          )
+          SELECT
+            range_calculated.total_count,
+            range_calculated.start_offset,
+            range_calculated.end_offset,
+            page.message_id,
+            page.message_index,
+            page.role,
+            page.created_at,
+            page.run_id,
+            page.preview_text,
+            page.has_text,
+            page.has_resources,
+            page.has_code,
+            before_boundary.message_id AS before_message_id,
+            before_boundary.created_at AS before_created_at,
+            after_boundary.message_id AS after_message_id,
+            after_boundary.created_at AS after_created_at
+          FROM range_calculated
+          LEFT JOIN matched AS page
+            ON page.offset >= range_calculated.start_offset
+           AND page.offset < range_calculated.end_offset
+          LEFT JOIN matched AS before_boundary
+            ON before_boundary.offset = range_calculated.start_offset
+          LEFT JOIN matched AS after_boundary
+            ON after_boundary.offset = range_calculated.end_offset
+          ORDER BY page.offset ASC
+        `).all(
+          ...plan.params,
+          options.before?.anchorMessageId || null,
+          options.after?.anchorMessageId || null,
+          beforeIndex,
+          beforeIndex,
+          afterIndex,
+          afterIndex,
+        ) as Array<{
+          total_count?: number | null;
+          start_offset?: number | null;
+          end_offset?: number | null;
+          message_id?: string | null;
+          message_index?: number | null;
+          role?: string | null;
+          created_at?: string | null;
+          run_id?: string | null;
+          preview_text?: string | null;
+          has_text?: number | null;
+          has_resources?: number | null;
+          has_code?: number | null;
+          before_message_id?: string | null;
+          before_created_at?: string | null;
+          after_message_id?: string | null;
+          after_created_at?: string | null;
+        }>;
+        const meta = rows[0] || null;
+        const totalCount = Number(meta?.total_count || 0);
+        const start = Math.max(0, Number(meta?.start_offset || 0));
+        const end = Math.max(start, Number(meta?.end_offset || 0));
         if (totalCount <= 0) {
           return {
             stubs: [],
@@ -1695,51 +1749,37 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
             afterBoundary: null,
           };
         }
-        const beforeOffset = resolveSqliteSearchOffset(sessionKey, plan, options.before);
-        const afterOffset = resolveSqliteSearchOffset(sessionKey, plan, options.after);
-        const { start, end } = computeWindowRange({
-          totalCount,
-          limit: Math.max(1, Number(options.limit || 50)),
-          anchorOffset: null,
-          beforeOffset,
-          afterOffset,
-        });
-        const rows = database.prepare(`
-          SELECT
-            m.message_id,
-            m.message_index,
-            m.role,
-            m.created_at,
-            m.run_id,
-            m.preview_text,
-            m.has_text,
-            m.has_resources,
-            m.has_code
-          FROM ${plan.fromClause}
-          WHERE ${plan.whereClause}
-          ORDER BY m.message_index ASC
-          LIMIT ? OFFSET ?
-        `).all(...plan.params, Math.max(0, end - start), start) as Array<{
-          message_id: string;
-          message_index?: number | null;
-          role?: string | null;
-          created_at?: string | null;
-          run_id?: string | null;
-          preview_text?: string | null;
-          has_text?: number | null;
-          has_resources?: number | null;
-          has_code?: number | null;
-        }>;
+        const beforeBoundary = start > 0 && meta?.before_message_id
+          ? {
+            anchorIndex: start,
+            anchorMessageId: meta.before_message_id,
+            anchorCreatedAt: meta.before_created_at || null,
+          }
+          : null;
+        const afterBoundary = end < totalCount && meta?.after_message_id
+          ? {
+            anchorIndex: end,
+            anchorMessageId: meta.after_message_id,
+            anchorCreatedAt: meta.after_created_at || null,
+          }
+          : null;
         return {
-          stubs: rows.map(mapSearchStubRow),
+          stubs: rows
+            .map((row) => {
+              if (typeof row.message_id !== 'string' || !row.message_id) {
+                return null;
+              }
+              return mapSearchStubRow({ ...row, message_id: row.message_id });
+            })
+            .filter((stub): stub is DurableMirrorSearchStub => Boolean(stub)),
           day: plan.day,
           totalCount,
           startOffset: start,
           endOffset: end,
           hasMoreBefore: start > 0,
           hasMoreAfter: end < totalCount,
-          beforeBoundary: start > 0 ? readSqliteSearchBoundary(plan, start) : null,
-          afterBoundary: end < totalCount ? readSqliteSearchBoundary(plan, end) : null,
+          beforeBoundary,
+          afterBoundary,
         };
       }
 

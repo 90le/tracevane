@@ -25,6 +25,7 @@ import {
   replaceChatSessionCanonicalMessageLedger,
   replaceChatSessionProcessLedger,
   syncChatSessionCanonicalMessageLedger,
+  upsertChatSessionProcessLedgerOverlay,
 } from '../../dist/apps/web-vue/src/features/chat-v2/chat-session-runtime-machine.js';
 
 function createMessage(id, overrides = {}) {
@@ -702,6 +703,312 @@ test('runtime machine keeps authoritative completed tool overlays after live syn
   assert.equal(render.overlays[0]?.runId, 'run-13');
   assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'completed');
   assert.match(render.overlays[0]?.toolCalls[0]?.resultPreview || '', /done/i);
+});
+
+test('runtime machine merges late running tool partial back into completed transient tool phase', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-transient-late-running');
+  state = applyChatSessionTemporaryToolEvent(state, {
+    runId: 'run-transient-late-running',
+    emittedAt: '2026-03-24T20:35:00.000Z',
+    partial: true,
+    tool: {
+      toolCallId: 'tool-transient-late-running',
+      runId: 'run-transient-late-running',
+      name: 'read',
+      status: 'running',
+      startedAt: '2026-03-24T20:35:00.000Z',
+      updatedAt: '2026-03-24T20:35:00.000Z',
+      argsPreview: '{"filePath":"README.md"}',
+      resultPreview: null,
+      isError: false,
+    },
+  });
+
+  state = applyChatSessionTemporaryToolEvent(state, {
+    runId: 'run-transient-late-running',
+    emittedAt: '2026-03-24T20:35:01.000Z',
+    partial: false,
+    tool: {
+      toolCallId: 'tool-transient-late-running',
+      runId: 'run-transient-late-running',
+      name: 'read',
+      status: 'completed',
+      startedAt: '2026-03-24T20:35:00.000Z',
+      updatedAt: '2026-03-24T20:35:01.000Z',
+      argsPreview: '{"filePath":"README.md"}',
+      resultPreview: 'final file contents',
+      isError: false,
+    },
+  });
+
+  state = applyChatSessionTemporaryAssistantEvent(state, {
+    runId: 'run-transient-late-running',
+    emittedAt: '2026-03-24T20:35:01.100Z',
+    accumulatedText: 'I read the file.',
+    textDelta: 'I read the file.',
+  });
+
+  state = applyChatSessionTemporaryToolEvent(state, {
+    runId: 'run-transient-late-running',
+    emittedAt: '2026-03-24T20:35:01.200Z',
+    partial: true,
+    tool: {
+      toolCallId: 'tool-transient-late-running',
+      runId: 'run-transient-late-running',
+      name: 'read',
+      status: 'running',
+      startedAt: '2026-03-24T20:35:00.000Z',
+      updatedAt: '2026-03-24T20:35:01.200Z',
+      argsPreview: '{"filePath":"README.md"}',
+      resultPreview: 'stale partial chunk',
+      isError: false,
+    },
+  });
+
+  const transient = state.transientRunState['run-transient-late-running'];
+  const processPhases = transient?.phases.filter((phase) => phase.kind === 'process') || [];
+  const render = buildChatSessionRuntimeRenderModel(state);
+
+  assert.equal(processPhases.length, 1);
+  assert.equal(render.overlays.length, 1);
+  assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'completed');
+  assert.match(render.overlays[0]?.toolCalls[0]?.resultPreview || '', /final file contents/i);
+  assert.equal(render.messages.at(-1)?.text, 'I read the file.');
+});
+
+test('runtime machine marks active running tool phase completed when assistant reply starts', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-assistant-settles-tool');
+  state = applyChatSessionTemporaryToolEvent(state, {
+    runId: 'run-assistant-settles-tool',
+    emittedAt: '2026-03-24T20:36:00.000Z',
+    partial: true,
+    tool: {
+      toolCallId: 'tool-assistant-settles-tool',
+      runId: 'run-assistant-settles-tool',
+      name: 'read',
+      status: 'running',
+      startedAt: '2026-03-24T20:36:00.000Z',
+      updatedAt: '2026-03-24T20:36:00.500Z',
+      argsPreview: '{"filePath":"README.md"}',
+      resultPreview: 'file contents already streamed',
+      isError: false,
+    },
+  });
+
+  state = applyChatSessionTemporaryAssistantEvent(state, {
+    runId: 'run-assistant-settles-tool',
+    emittedAt: '2026-03-24T20:36:01.000Z',
+    accumulatedText: 'The file says hello.',
+    textDelta: 'The file says hello.',
+  });
+
+  const render = buildChatSessionRuntimeRenderModel(state);
+  assert.equal(render.overlays.length, 1);
+  assert.equal(render.overlays[0]?.lifecycle, 'completed');
+  assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'completed');
+  assert.match(render.overlays[0]?.toolCalls[0]?.resultPreview || '', /file contents/i);
+  assert.equal(render.messages.at(-1)?.text, 'The file says hello.');
+});
+
+test('runtime machine settles process ledger tool overlay when canonical assistant message arrives', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-canonical-settles-ledger-tool');
+  state = replaceChatSessionProcessLedger(state, [
+    createOverlay({
+      runId: 'run-canonical-settles-ledger-tool',
+      lifecycle: 'running',
+      updatedAt: '2026-03-24T20:37:00.500Z',
+      toolCalls: [{
+        toolCallId: 'tool-canonical-settles-ledger-tool',
+        runId: 'run-canonical-settles-ledger-tool',
+        name: 'exec',
+        status: 'running',
+        startedAt: '2026-03-24T20:37:00.000Z',
+        updatedAt: '2026-03-24T20:37:00.500Z',
+        argsPreview: '{"command":"printf ok"}',
+        resultPreview: null,
+        isError: false,
+      }],
+    }),
+  ]);
+
+  state = applyChatSessionCanonicalMessageEvent(state, {
+    version: 'v-canonical-settles-ledger-tool',
+    messageId: 'assistant-canonical-settles-ledger-tool',
+    messageSeq: 1,
+    emittedAt: '2026-03-24T20:37:01.000Z',
+    message: createMessage('assistant-canonical-settles-ledger-tool', {
+      role: 'assistant',
+      runId: 'run-canonical-settles-ledger-tool',
+      text: 'The command finished.',
+      createdAt: '2026-03-24T20:37:01.000Z',
+      source: 'history',
+    }),
+  });
+
+  const render = buildChatSessionRuntimeRenderModel(state);
+  assert.equal(render.overlays.length, 1);
+  assert.equal(render.overlays[0]?.lifecycle, 'completed');
+  assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'completed');
+  assert.equal(render.messages.at(-1)?.text, 'The command finished.');
+});
+
+test('runtime machine settles process ledger tool overlay when final assistant message arrives', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-final-settles-ledger-tool');
+  state = replaceChatSessionProcessLedger(state, [
+    createOverlay({
+      runId: 'run-final-settles-ledger-tool',
+      lifecycle: 'running',
+      updatedAt: '2026-03-24T20:38:00.500Z',
+      toolCalls: [{
+        toolCallId: 'tool-final-settles-ledger-tool',
+        runId: 'run-final-settles-ledger-tool',
+        name: 'exec',
+        status: 'running',
+        startedAt: '2026-03-24T20:38:00.000Z',
+        updatedAt: '2026-03-24T20:38:00.500Z',
+        argsPreview: '{"command":"printf ok"}',
+        resultPreview: null,
+        isError: false,
+      }],
+    }),
+  ]);
+
+  state = applyChatSessionFinalEvent(state, createMessage('assistant-final-settles-ledger-tool', {
+    role: 'assistant',
+    runId: 'run-final-settles-ledger-tool',
+    text: 'Final answer.',
+    createdAt: '2026-03-24T20:38:01.000Z',
+    source: 'history',
+  }));
+
+  const render = buildChatSessionRuntimeRenderModel(state);
+  assert.equal(render.overlays.length, 1);
+  assert.equal(render.overlays[0]?.lifecycle, 'completed');
+  assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'completed');
+  assert.equal(render.messages.at(-1)?.text, 'Final answer.');
+});
+
+test('runtime machine settles stale running overlay that arrives after assistant has started', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-late-running-overlay-after-assistant');
+  state = applyChatSessionCanonicalMessageEvent(state, {
+    version: 'v-late-running-overlay-after-assistant',
+    messageId: 'assistant-late-running-overlay-after-assistant',
+    messageSeq: 1,
+    emittedAt: '2026-03-24T20:39:01.000Z',
+    message: createMessage('assistant-late-running-overlay-after-assistant', {
+      role: 'assistant',
+      runId: 'run-late-running-overlay-after-assistant',
+      text: 'Assistant text has started.',
+      createdAt: '2026-03-24T20:39:01.000Z',
+      source: 'history',
+    }),
+  });
+
+  state = upsertChatSessionProcessLedgerOverlay(state, createOverlay({
+    runId: 'run-late-running-overlay-after-assistant',
+    lifecycle: 'running',
+    updatedAt: '2026-03-24T20:39:01.200Z',
+    toolCalls: [{
+      toolCallId: 'tool-late-running-overlay-after-assistant',
+      runId: 'run-late-running-overlay-after-assistant',
+      name: 'exec',
+      status: 'running',
+      startedAt: '2026-03-24T20:39:00.000Z',
+      updatedAt: '2026-03-24T20:39:01.200Z',
+      argsPreview: '{"command":"printf ok"}',
+      resultPreview: null,
+      isError: false,
+    }],
+  }));
+
+  const render = buildChatSessionRuntimeRenderModel(state);
+  assert.equal(render.overlays.length, 1);
+  assert.equal(render.overlays[0]?.lifecycle, 'completed');
+  assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'completed');
+});
+
+test('runtime machine enriches message tool hints from completed overlay for the same run', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-enrich-message-tool-from-overlay');
+  state = replaceChatSessionCanonicalMessageLedger(state, [
+    createMessage('assistant-tool-hint-running', {
+      role: 'assistant',
+      runId: 'run-enrich-message-tool-from-overlay',
+      text: '',
+      createdAt: '2026-03-24T20:39:30.000Z',
+      source: 'history',
+      stopReason: 'toolUse',
+      toolCalls: [{
+        toolCallId: 'raw-tool-hint-running',
+        runId: 'run-enrich-message-tool-from-overlay',
+        name: 'exec',
+        status: 'running',
+        startedAt: '2026-03-24T20:39:30.000Z',
+        updatedAt: '2026-03-24T20:39:30.200Z',
+        argsPreview: '{"command":"printf ok"}',
+        resultPreview: null,
+        isError: false,
+      }],
+    }),
+  ]);
+  state = replaceChatSessionProcessLedger(state, [
+    createOverlay({
+      runId: 'run-enrich-message-tool-from-overlay',
+      lifecycle: 'completed',
+      updatedAt: '2026-03-24T20:39:31.000Z',
+      toolCalls: [{
+        toolCallId: 'completed-overlay-tool',
+        runId: 'run-enrich-message-tool-from-overlay',
+        name: 'exec',
+        status: 'completed',
+        startedAt: '2026-03-24T20:39:30.000Z',
+        updatedAt: '2026-03-24T20:39:31.000Z',
+        argsPreview: '{"title":"command print text, `printf ok`"}',
+        resultPreview: 'ok',
+        isError: false,
+      }],
+    }),
+  ]);
+
+  const render = buildChatSessionRuntimeRenderModel(state);
+  assert.equal(render.messages[0]?.toolCalls?.[0]?.toolCallId, 'completed-overlay-tool');
+  assert.equal(render.messages[0]?.toolCalls?.[0]?.status, 'completed');
+  assert.equal(render.messages[0]?.toolCalls?.[0]?.resultPreview, 'ok');
+});
+
+test('runtime machine enriches running message tool hint from adjacent tool result message', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-enrich-message-tool-from-tool-result');
+  state = replaceChatSessionCanonicalMessageLedger(state, [
+    createMessage('assistant-tool-hint-local-transcript', {
+      role: 'assistant',
+      runId: null,
+      text: '',
+      createdAt: '2026-03-24T20:39:40.000Z',
+      source: 'history',
+      stopReason: 'toolUse',
+      toolCalls: [{
+        toolCallId: 'local-transcript-tool-call',
+        runId: null,
+        name: 'exec',
+        status: 'running',
+        startedAt: '2026-03-24T20:39:40.000Z',
+        updatedAt: '2026-03-24T20:39:40.100Z',
+        argsPreview: '{"command":"printf ok"}',
+        resultPreview: null,
+        isError: false,
+      }],
+    }),
+    createMessage('tool-result-local-transcript', {
+      role: 'tool',
+      runId: null,
+      text: 'ok',
+      createdAt: '2026-03-24T20:39:40.200Z',
+      source: 'history',
+    }),
+  ]);
+
+  const render = buildChatSessionRuntimeRenderModel(state);
+  assert.equal(render.messages[0]?.toolCalls?.[0]?.status, 'completed');
+  assert.equal(render.messages[0]?.toolCalls?.[0]?.resultPreview, 'ok');
 });
 
 test('runtime machine does not downgrade completed tool status when history refresh returns stale running overlay', () => {

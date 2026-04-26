@@ -53,6 +53,15 @@
 
             <div class="chat-queue-rail__actions">
               <button
+                v-if="item.status === 'blocked'"
+                type="button"
+                class="chat-queue-rail__ghost"
+                :disabled="mutatingEntryId === item.id"
+                @click="$emit('retry-item', item.id)"
+              >
+                {{ text('重试', 'Retry') }}
+              </button>
+              <button
                 type="button"
                 class="chat-queue-rail__ghost"
                 :disabled="mutatingEntryId === item.id"
@@ -132,6 +141,7 @@ const emit = defineEmits<{
   (event: 'update:summary-expanded', value: boolean): void;
   (event: 'open-sheet'): void;
   (event: 'patch-item', payload: { entryId: string; text: string }): void;
+  (event: 'retry-item', entryId: string): void;
   (event: 'delete-item', entryId: string): void;
 }>();
 

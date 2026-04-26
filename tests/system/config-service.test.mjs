@@ -810,16 +810,22 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
       },
     },
     skills: {
-      allowBundled: false,
+      allowBundled: ["skill-a", "skill-b"],
       load: {
         extraDirs: ["~/.openclaw/shared-skills"],
+        watch: true,
+        watchDebounceMs: 250,
       },
       install: {
         preferBrew: true,
         nodeManager: "pnpm",
       },
       limits: {
+        maxCandidatesPerRoot: 100,
+        maxSkillsLoadedPerSource: 30,
+        maxSkillsInPrompt: 12,
         maxSkillsPromptChars: 50000,
+        maxSkillFileBytes: 200000,
       },
       entries: {
         "docs-search": {
@@ -841,10 +847,16 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
   const summary = service.getSummary();
   assert.equal(summary.mcp.sessionIdleTtlMs, 120000);
   assert.equal(summary.mcp.servers.filesystem.command, "npx");
-  assert.equal(summary.skills.allowBundled, false);
+  assert.deepEqual(summary.skills.allowBundled, ["skill-a", "skill-b"]);
   assert.deepEqual(summary.skills.load.extraDirs, ["~/.openclaw/shared-skills"]);
+  assert.equal(summary.skills.load.watch, true);
+  assert.equal(summary.skills.load.watchDebounceMs, 250);
   assert.equal(summary.skills.install.nodeManager, "pnpm");
+  assert.equal(summary.skills.limits.maxCandidatesPerRoot, 100);
+  assert.equal(summary.skills.limits.maxSkillsLoadedPerSource, 30);
+  assert.equal(summary.skills.limits.maxSkillsInPrompt, 12);
   assert.equal(summary.skills.limits.maxSkillsPromptChars, 50000);
+  assert.equal(summary.skills.limits.maxSkillFileBytes, 200000);
   assert.equal(summary.browser.tabCleanup.enabled, true);
   assert.equal(summary.browser.tabCleanup.maxTabsPerSession, 12);
 
@@ -860,16 +872,22 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
       },
     },
     skills: {
-      allowBundled: true,
+      allowBundled: ["skill-c"],
       load: {
         extraDirs: ["~/.openclaw/team-skills"],
+        watch: false,
+        watchDebounceMs: 500,
       },
       install: {
         preferBrew: false,
         nodeManager: "npm",
       },
       limits: {
+        maxCandidatesPerRoot: 120,
+        maxSkillsLoadedPerSource: 40,
+        maxSkillsInPrompt: 18,
         maxSkillsPromptChars: 65000,
+        maxSkillFileBytes: 300000,
       },
       entries: {
         "docs-search": {
@@ -892,9 +910,16 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
   );
   assert.equal(nextConfig.mcp.sessionIdleTtlMs, 240000);
   assert.equal(nextConfig.mcp.servers.playwright.command, "npx");
+  assert.deepEqual(nextConfig.skills.allowBundled, ["skill-c"]);
   assert.deepEqual(nextConfig.skills.load.extraDirs, ["~/.openclaw/team-skills"]);
+  assert.equal(nextConfig.skills.load.watch, false);
+  assert.equal(nextConfig.skills.load.watchDebounceMs, 500);
   assert.equal(nextConfig.skills.install.nodeManager, "npm");
+  assert.equal(nextConfig.skills.limits.maxCandidatesPerRoot, 120);
+  assert.equal(nextConfig.skills.limits.maxSkillsLoadedPerSource, 40);
+  assert.equal(nextConfig.skills.limits.maxSkillsInPrompt, 18);
   assert.equal(nextConfig.skills.limits.maxSkillsPromptChars, 65000);
+  assert.equal(nextConfig.skills.limits.maxSkillFileBytes, 300000);
   assert.equal(nextConfig.skills.entries["docs-search"].enabled, false);
   assert.equal(nextConfig.browser.tabCleanup.enabled, false);
   assert.equal(nextConfig.browser.tabCleanup.idleMinutes, 45);

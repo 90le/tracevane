@@ -840,6 +840,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   const gatewaySubscribers = new Map<string, Map<string, ChatGatewaySubscriber>>();
   const sessionBridges = new Map<string, SessionGatewayBridge>();
   const queueFlushSessions = new Set<string>();
+  const queueFlushRerunSessions = new Set<string>();
   const streamSnapshots = new Map<string, string>();
   const suppressedGatewayRunIds = new Map<string, Set<string>>();
   let gatewayConnectedCache: { value: boolean; checkedAt: number } | null = null;
@@ -1632,6 +1633,24 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   function saveRunProjection(sessionKey: string, projection: ChatRunProjection): void {
     const projectionMap = getRunProjectionMap(sessionKey, true)!;
     projectionMap.set(projection.runId, cloneChatRunProjection(projection));
+  }
+
+  function settleProjectionRunningToolsBeforeAssistant(projection: ChatRunProjection, emittedAt: string): void {
+    let changed = false;
+    projection.toolCalls = projection.toolCalls.map((toolCall) => {
+      if (toolCall.status !== 'running') {
+        return cloneChatMessageToolCallItem(toolCall);
+      }
+      changed = true;
+      return {
+        ...cloneChatMessageToolCallItem(toolCall),
+        status: 'completed',
+        updatedAt: normalizeDate(emittedAt) || normalizeDate(toolCall.updatedAt) || null,
+      };
+    });
+    if (changed) {
+      projection.updatedAt = emittedAt;
+    }
   }
 
   function clearRunProjections(sessionKey: string): void {
@@ -4711,6 +4730,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
   async function flushQueueIfIdle(sessionKey: string): Promise<void> {
     if (queueFlushSessions.has(sessionKey)) {
+      queueFlushRerunSessions.add(sessionKey);
       return;
     }
     queueFlushSessions.add(sessionKey);
@@ -4762,6 +4782,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
     } finally {
       queueFlushSessions.delete(sessionKey);
+      if (queueFlushRerunSessions.delete(sessionKey)) {
+        void Promise.resolve().then(() => flushQueueIfIdle(sessionKey));
+      }
     }
   }
 
@@ -5223,6 +5246,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }, `assistant-${mapped.runId}`));
       const projection = ensureRunProjection(sessionKey, mapped.runId, mapped.emittedAt, { lifecycle: 'running' });
       projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'running');
+      settleProjectionRunningToolsBeforeAssistant(projection, mapped.emittedAt);
       projection.previewText = nextAssistantText || projection.previewText;
       if (nextAssistantText && !projection.firstAssistantSeenAt) {
         projection.firstAssistantSeenAt = mapped.emittedAt;
@@ -5277,26 +5301,33 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         const projection = ensureRunProjection(sessionKey, normalizedMapped.runId, normalizedMapped.emittedAt, { lifecycle: 'running' });
         projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'running');
         projection.toolCalls = upsertProjectionToolCallItem(projection.toolCalls, normalizedMapped.tool);
+        const projectedTool = projection.toolCalls.find((item) => item.toolCallId === normalizedMapped.tool.toolCallId) || normalizedMapped.tool;
+        const projectedMapped = projectedTool === normalizedMapped.tool
+          ? normalizedMapped
+          : {
+            ...normalizedMapped,
+            tool: projectedTool,
+          };
         if (!projection.firstToolStartedAt) {
-          projection.firstToolStartedAt = normalizedMapped.tool.startedAt || normalizedMapped.emittedAt;
+          projection.firstToolStartedAt = projectedTool.startedAt || normalizedMapped.emittedAt;
         }
-        if (normalizedMapped.kind === 'agent_tool_result') {
-          const deliveryMessage = maybeBuildAssistantDeliveryMessage(sessionKey, payload, normalizedMapped);
+        if (projectedMapped.kind === 'agent_tool_result') {
+          const deliveryMessage = maybeBuildAssistantDeliveryMessage(sessionKey, payload, projectedMapped);
           if (deliveryMessage) {
             projection.previewText = deliveryMessage.text || projection.previewText;
           }
         }
         saveRunProjection(sessionKey, projection);
         persistProjectionIfTerminal(projection);
-        const events: ChatStreamEvent[] = [normalizedMapped];
+        const events: ChatStreamEvent[] = [projectedMapped];
         if (shouldEmitCanonicalProtocol()) {
           events.push({
             kind: 'temporary.tool',
             sessionKey,
             runId: toolStreamRunId,
-            emittedAt: normalizedMapped.emittedAt,
-            partial: normalizedMapped.kind === 'agent_tool_result' ? normalizedMapped.partial : false,
-            tool: normalizedMapped.tool,
+            emittedAt: projectedMapped.emittedAt,
+            partial: projectedMapped.kind === 'agent_tool_result' ? projectedMapped.partial : false,
+            tool: projectedMapped.tool,
             source: 'agent.tool',
           });
         }
@@ -5994,7 +6025,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url || CHAT_API_PATHS.stream, `http://${req.headers.host || '127.0.0.1'}`);
     const sessionKey = url.searchParams.get('sessionKey') || '';
-    const includeBootstrapSnapshot = url.searchParams.get('bootstrapSnapshot') === '1';
+    const bootstrapSnapshotParam = url.searchParams.get('bootstrapSnapshot');
+    const includeBootstrapSnapshot = bootstrapSnapshotParam === '1';
     const subscribers = frontendSubscribers.get(sessionKey) || new Set<WebSocket>();
     subscribers.add(ws);
     frontendSubscribers.set(sessionKey, subscribers);
@@ -6050,7 +6082,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           };
           ws.send(JSON.stringify(overlayEvent));
         }
-        if (shouldEmitCanonicalProtocol() && includeBootstrapSnapshot) {
+        if (
+          shouldEmitCanonicalProtocol()
+          && (
+            includeBootstrapSnapshot
+            || (bootstrapSnapshotParam == null && canonicalStates.has(sessionKey))
+          )
+        ) {
           await bootstrapCanonicalSnapshotForSession(sessionKey, ws);
         }
       }
@@ -6913,12 +6951,16 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const session = await requireSession(sessionKey);
       requireWritable(session, 'send');
       const state = ensureStudioSessionState(session);
+      const flushWhenIdle = payload.flushWhenIdle === true;
       state.pendingQueue = [
         ...state.pendingQueue,
         buildQueuedMessageItem(sessionKey, payload),
       ];
       setStudioSession(state);
       broadcastQueueState(sessionKey);
+      if (flushWhenIdle) {
+        void flushQueueIfIdle(sessionKey);
+      }
       return await buildQueuePayload(sessionKey);
     },
 
@@ -6960,6 +7002,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       ];
       setStudioSession(state);
       broadcastQueueState(sessionKey);
+      if (payload.flushWhenIdle === true) {
+        void flushQueueIfIdle(sessionKey);
+      }
       return await buildQueuePayload(sessionKey);
     },
 

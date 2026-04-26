@@ -17,15 +17,9 @@
                 :is-mobile="true"
                 :sidebar-collapsed="false"
                 :subtitle="text('管理控制台', 'Management Console')"
-                :theme-switch-label="text('主题模式', 'Theme mode')"
-                :locale-switch-label="text('语言模式', 'Language mode')"
                 :docs-label="text('官方文档', 'Official docs')"
                 :toggle-title="text('折叠侧边栏', 'Collapse sidebar')"
                 :nav-groups="navGroups"
-                :theme-mode="themeMode"
-                :theme-options="themeOptions"
-                :locale="locale"
-                :locale-options="localeOptions"
                 :version-info-class="versionInfoClass"
                 :version-title="versionTitle"
                 :version-label="versionLabel"
@@ -37,8 +31,6 @@
                 :version-action-busy="versionActionBusy"
                 @navigate="handleSidebarNavigate"
                 @toggle-sidebar="toggleSidebar"
-                @set-theme-mode="setThemeMode"
-                @set-locale="setLocale"
                 @upgrade-action="handleStudioUpgradeAction"
               />
             </aside>
@@ -55,15 +47,9 @@
           :is-mobile="false"
           :sidebar-collapsed="sidebarCollapsed"
           :subtitle="text('管理控制台', 'Management Console')"
-          :theme-switch-label="text('主题模式', 'Theme mode')"
-          :locale-switch-label="text('语言模式', 'Language mode')"
           :docs-label="text('官方文档', 'Official docs')"
           :toggle-title="sidebarCollapsed ? text('展开侧边栏', 'Expand sidebar') : text('折叠侧边栏', 'Collapse sidebar')"
           :nav-groups="navGroups"
-          :theme-mode="themeMode"
-          :theme-options="themeOptions"
-          :locale="locale"
-          :locale-options="localeOptions"
           :version-info-class="versionInfoClass"
           :version-title="versionTitle"
           :version-label="versionLabel"
@@ -75,8 +61,6 @@
           :version-action-busy="versionActionBusy"
           @navigate="handleSidebarNavigate"
           @toggle-sidebar="toggleSidebar"
-          @set-theme-mode="setThemeMode"
-          @set-locale="setLocale"
           @upgrade-action="handleStudioUpgradeAction"
         />
       </aside>
@@ -88,6 +72,7 @@
           'shell-main-chat': isChatSurface,
           'terminal-surface-route': isTerminalSurface,
           'file-surface-route': isFilesSurface,
+          'standard-scroll-route': !isChatSurface && !isTerminalSurface && !isFilesSurface,
         }"
       >
         <button

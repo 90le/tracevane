@@ -110,10 +110,68 @@ export function appendTimelineItem(
   return next;
 }
 
+function toolStatusRank(status: ChatToolCard['status'] | null | undefined): number {
+  if (status === 'error') return 3;
+  if (status === 'completed') return 2;
+  return 1;
+}
+
+function pickMonotonicToolStatus(
+  current: ChatToolCard['status'] | null | undefined,
+  next: ChatToolCard['status'] | null | undefined,
+): ChatToolCard['status'] {
+  return toolStatusRank(next) >= toolStatusRank(current) ? (next || 'running') : (current || 'running');
+}
+
+function pickToolPreview(params: {
+  currentStatus: ChatToolCard['status'] | null | undefined;
+  nextStatus: ChatToolCard['status'] | null | undefined;
+  currentPreview: string | null | undefined;
+  nextPreview: string | null | undefined;
+}): string | null {
+  const currentRank = toolStatusRank(params.currentStatus);
+  const nextRank = toolStatusRank(params.nextStatus);
+  const currentPreview = normalizeString(params.currentPreview) || null;
+  const nextPreview = normalizeString(params.nextPreview) || null;
+  if (nextRank > currentRank) {
+    return nextPreview || currentPreview;
+  }
+  if (nextRank < currentRank) {
+    return currentPreview || nextPreview;
+  }
+  if (!currentPreview) {
+    return nextPreview;
+  }
+  if (!nextPreview) {
+    return currentPreview;
+  }
+  return nextPreview.length >= currentPreview.length ? nextPreview : currentPreview;
+}
+
+function mergeToolCard(current: ChatToolCard, next: ChatToolCard): ChatToolCard {
+  const status = pickMonotonicToolStatus(current.status, next.status);
+  return {
+    ...current,
+    ...next,
+    status,
+    startedAt: current.startedAt || next.startedAt,
+    updatedAt: normalizeDate(next.updatedAt) || normalizeDate(current.updatedAt) || null,
+    argsPreview: normalizeString(next.argsPreview) || normalizeString(current.argsPreview) || null,
+    resultPreview: pickToolPreview({
+      currentStatus: current.status,
+      nextStatus: next.status,
+      currentPreview: current.resultPreview,
+      nextPreview: next.resultPreview,
+    }),
+    isError: current.isError || next.isError || status === 'error',
+    artifacts: next.artifacts?.length ? next.artifacts.map((item) => ({ ...item })) : current.artifacts?.map((item) => ({ ...item })),
+  };
+}
+
 export function upsertToolCard(state: ChatObservabilityState, card: ChatToolCard): ChatObservabilityState {
   const next = cloneObservabilityState(state);
   const index = next.toolCards.findIndex((entry) => entry.toolCallId === card.toolCallId);
-  if (index >= 0) next.toolCards[index] = { ...next.toolCards[index], ...card };
+  if (index >= 0) next.toolCards[index] = mergeToolCard(next.toolCards[index]!, card);
   else next.toolCards.unshift(card);
   next.toolCards = next.toolCards
     .sort((left, right) => (right.updatedAt || right.startedAt || '').localeCompare(left.updatedAt || left.startedAt || ''))

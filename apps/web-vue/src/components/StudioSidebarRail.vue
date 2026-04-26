@@ -83,37 +83,6 @@
   </nav>
 
   <div class="sidebar-footer">
-    <div class="sidebar-utility-cluster">
-      <div class="theme-switch" role="group" :aria-label="themeSwitchLabel">
-        <button
-          v-for="option in themeOptions"
-          :key="option.value"
-          type="button"
-          class="theme-switch-button"
-          :class="{ active: themeMode === option.value }"
-          :title="option.label"
-          :aria-pressed="String(themeMode === option.value)"
-          @click="$emit('set-theme-mode', option.value)"
-        >
-          <span class="theme-switch-emoji" aria-hidden="true">{{ option.icon }}</span>
-          <span>{{ option.shortLabel }}</span>
-        </button>
-      </div>
-      <div class="theme-switch sidebar-locale-switch" role="group" :aria-label="localeSwitchLabel">
-        <button
-          v-for="option in localeOptions"
-          :key="option.value"
-          type="button"
-          class="theme-switch-button locale-switch-button"
-          :class="{ active: locale === option.value }"
-          :title="option.label"
-          :aria-pressed="String(locale === option.value)"
-          @click="$emit('set-locale', option.value)"
-        >
-          <span>{{ option.shortLabel }}</span>
-        </button>
-      </div>
-    </div>
     <div class="connection-status-bar">
       <a
         class="docs-link"
@@ -171,8 +140,6 @@
 import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 import { TooltipContent, TooltipPortal, TooltipRoot, TooltipTrigger } from 'reka-ui';
-import type { Locale } from '../shared/locale';
-import type { ThemeMode } from '../shared/theme';
 import LogoMark from './LogoMark.vue';
 import SidebarIcon from './SidebarIcon.vue';
 
@@ -187,32 +154,13 @@ type NavGroup = {
   }>;
 };
 
-type ThemeOption = {
-  value: ThemeMode;
-  icon: string;
-  label: string;
-  shortLabel: string;
-};
-
-type LocaleOption = {
-  value: Locale;
-  label: string;
-  shortLabel: string;
-};
-
 const props = defineProps<{
   isMobile: boolean;
   sidebarCollapsed: boolean;
   subtitle: string;
-  themeSwitchLabel: string;
-  localeSwitchLabel: string;
   docsLabel: string;
   toggleTitle: string;
   navGroups: NavGroup[];
-  themeMode: ThemeMode;
-  themeOptions: ThemeOption[];
-  locale: Locale;
-  localeOptions: LocaleOption[];
   versionInfoClass: Record<string, boolean>;
   versionTitle: string;
   versionLabel: string;
@@ -227,8 +175,6 @@ const props = defineProps<{
 defineEmits<{
   (event: 'toggle-sidebar'): void;
   (event: 'navigate'): void;
-  (event: 'set-theme-mode', value: ThemeMode): void;
-  (event: 'set-locale', value: Locale): void;
   (event: 'upgrade-action'): void;
 }>();
 

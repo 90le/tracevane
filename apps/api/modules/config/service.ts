@@ -23,6 +23,7 @@ import { buildConfigAuditEvents } from "./config-audit-events.js";
 import { createSystemEventWriter } from "../system/event-writer.js";
 
 const NON_DOCKER_SANDBOX_BACKENDS = new Set(["ssh", "openshell"]);
+const SKILL_NODE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
 
 const DEFAULT_PROVIDER_BASE_URL_BY_API: Record<string, string> = {
   "openai-completions": "https://api.openai.com/v1",
@@ -45,6 +46,13 @@ function normalizeStringList(value: unknown): string[] {
     items.push(normalized);
   }
   return items;
+}
+
+function normalizeSkillNodeManager(value: unknown): "" | "npm" | "pnpm" | "yarn" | "bun" {
+  const normalized = normalizeString(value);
+  return SKILL_NODE_MANAGERS.has(normalized)
+    ? normalized as "npm" | "pnpm" | "yarn" | "bun"
+    : "";
 }
 
 function cloneJsonObject(value: unknown): Record<string, unknown> | null {
@@ -946,20 +954,42 @@ function buildSkillsSummary(
   const limits =
     skills.limits && typeof skills.limits === "object" ? skills.limits : {};
   return {
-    allowBundled:
-      skills.allowBundled != null ? skills.allowBundled !== false : undefined,
+    allowBundled: Array.isArray(skills.allowBundled)
+      ? normalizeStringList(skills.allowBundled)
+      : undefined,
     load: {
       extraDirs: normalizeStringList(load.extraDirs),
+      watch: load.watch != null ? load.watch === true : undefined,
+      watchDebounceMs:
+        load.watchDebounceMs != null
+          ? normalizeNumber(load.watchDebounceMs, 0, 0)
+          : null,
     },
     install: {
       preferBrew:
         install.preferBrew != null ? install.preferBrew === true : undefined,
-      nodeManager: normalizeString(install.nodeManager) || undefined,
+      nodeManager: normalizeSkillNodeManager(install.nodeManager) || undefined,
     },
     limits: {
+      maxCandidatesPerRoot:
+        limits.maxCandidatesPerRoot != null
+          ? normalizeNumber(limits.maxCandidatesPerRoot, 1, 1)
+          : null,
+      maxSkillsLoadedPerSource:
+        limits.maxSkillsLoadedPerSource != null
+          ? normalizeNumber(limits.maxSkillsLoadedPerSource, 1, 1)
+          : null,
+      maxSkillsInPrompt:
+        limits.maxSkillsInPrompt != null
+          ? normalizeNumber(limits.maxSkillsInPrompt, 0, 0)
+          : null,
       maxSkillsPromptChars:
         limits.maxSkillsPromptChars != null
           ? normalizeNumber(limits.maxSkillsPromptChars, 0, 0)
+          : null,
+      maxSkillFileBytes:
+        limits.maxSkillFileBytes != null
+          ? normalizeNumber(limits.maxSkillFileBytes, 0, 0)
           : null,
     },
     entries:
@@ -2151,19 +2181,23 @@ function applyConfigUpdate(
   if (payload.mcp) {
     openclawConfig.mcp = openclawConfig.mcp || {};
     const mcpPayload = payload.mcp as Record<string, any>;
-    if (mcpPayload.sessionIdleTtlMs != null) {
-      openclawConfig.mcp.sessionIdleTtlMs = normalizeNumber(
+    if (Object.hasOwn(mcpPayload, "sessionIdleTtlMs")) {
+      setOptionalNonNegativeNumberField(
+        openclawConfig.mcp,
+        "sessionIdleTtlMs",
         mcpPayload.sessionIdleTtlMs,
-        openclawConfig.mcp.sessionIdleTtlMs || 0,
-        0,
       );
     }
-    if (
-      mcpPayload.servers &&
-      typeof mcpPayload.servers === "object" &&
-      !Array.isArray(mcpPayload.servers)
-    ) {
-      openclawConfig.mcp.servers = cloneJsonObject(mcpPayload.servers) || {};
+    if (Object.hasOwn(mcpPayload, "servers")) {
+      if (
+        mcpPayload.servers &&
+        typeof mcpPayload.servers === "object" &&
+        !Array.isArray(mcpPayload.servers)
+      ) {
+        openclawConfig.mcp.servers = cloneJsonObject(mcpPayload.servers) || {};
+      } else {
+        delete openclawConfig.mcp.servers;
+      }
     }
     deleteRecordFieldIfEmpty(openclawConfig, "mcp");
   }
@@ -2171,15 +2205,37 @@ function applyConfigUpdate(
   if (payload.skills) {
     openclawConfig.skills = openclawConfig.skills || {};
     const skillsPayload = payload.skills as Record<string, any>;
-    if (skillsPayload.allowBundled != null) {
-      openclawConfig.skills.allowBundled =
-        skillsPayload.allowBundled !== false;
+    if (Object.hasOwn(skillsPayload, "allowBundled")) {
+      if (Array.isArray(skillsPayload.allowBundled)) {
+        openclawConfig.skills.allowBundled = normalizeStringList(
+          skillsPayload.allowBundled,
+        );
+      } else {
+        delete openclawConfig.skills.allowBundled;
+      }
     }
     if (skillsPayload.load && typeof skillsPayload.load === "object") {
       openclawConfig.skills.load = openclawConfig.skills.load || {};
-      if ((skillsPayload.load as Record<string, unknown>).extraDirs != null) {
-        openclawConfig.skills.load.extraDirs = normalizeStringList(
-          (skillsPayload.load as Record<string, unknown>).extraDirs,
+      const loadPayload = skillsPayload.load as Record<string, unknown>;
+      if (Object.hasOwn(loadPayload, "extraDirs")) {
+        setOptionalStringListField(
+          openclawConfig.skills.load,
+          "extraDirs",
+          loadPayload.extraDirs,
+        );
+      }
+      if (Object.hasOwn(loadPayload, "watch")) {
+        if (typeof loadPayload.watch === "boolean") {
+          openclawConfig.skills.load.watch = loadPayload.watch;
+        } else {
+          delete openclawConfig.skills.load.watch;
+        }
+      }
+      if (Object.hasOwn(loadPayload, "watchDebounceMs")) {
+        setOptionalNonNegativeNumberField(
+          openclawConfig.skills.load,
+          "watchDebounceMs",
+          loadPayload.watchDebounceMs,
         );
       }
       deleteRecordFieldIfEmpty(openclawConfig.skills, "load");
@@ -2192,32 +2248,62 @@ function applyConfigUpdate(
           installPayload.preferBrew === true;
       }
       if (installPayload.nodeManager != null) {
-        setOptionalStringField(
-          openclawConfig.skills.install,
-          "nodeManager",
-          installPayload.nodeManager,
-        );
+        const nodeManager = normalizeSkillNodeManager(installPayload.nodeManager);
+        if (nodeManager) openclawConfig.skills.install.nodeManager = nodeManager;
+        else delete openclawConfig.skills.install.nodeManager;
       }
       deleteRecordFieldIfEmpty(openclawConfig.skills, "install");
     }
     if (skillsPayload.limits && typeof skillsPayload.limits === "object") {
       openclawConfig.skills.limits = openclawConfig.skills.limits || {};
       const limitsPayload = skillsPayload.limits as Record<string, unknown>;
-      if (limitsPayload.maxSkillsPromptChars != null) {
+      if (Object.hasOwn(limitsPayload, "maxCandidatesPerRoot")) {
         setOptionalPositiveNumberField(
+          openclawConfig.skills.limits,
+          "maxCandidatesPerRoot",
+          limitsPayload.maxCandidatesPerRoot,
+        );
+      }
+      if (Object.hasOwn(limitsPayload, "maxSkillsLoadedPerSource")) {
+        setOptionalPositiveNumberField(
+          openclawConfig.skills.limits,
+          "maxSkillsLoadedPerSource",
+          limitsPayload.maxSkillsLoadedPerSource,
+        );
+      }
+      if (Object.hasOwn(limitsPayload, "maxSkillsInPrompt")) {
+        setOptionalNonNegativeNumberField(
+          openclawConfig.skills.limits,
+          "maxSkillsInPrompt",
+          limitsPayload.maxSkillsInPrompt,
+        );
+      }
+      if (Object.hasOwn(limitsPayload, "maxSkillsPromptChars")) {
+        setOptionalNonNegativeNumberField(
           openclawConfig.skills.limits,
           "maxSkillsPromptChars",
           limitsPayload.maxSkillsPromptChars,
         );
       }
+      if (Object.hasOwn(limitsPayload, "maxSkillFileBytes")) {
+        setOptionalNonNegativeNumberField(
+          openclawConfig.skills.limits,
+          "maxSkillFileBytes",
+          limitsPayload.maxSkillFileBytes,
+        );
+      }
       deleteRecordFieldIfEmpty(openclawConfig.skills, "limits");
     }
-    if (
-      skillsPayload.entries &&
-      typeof skillsPayload.entries === "object" &&
-      !Array.isArray(skillsPayload.entries)
-    ) {
-      openclawConfig.skills.entries = cloneJsonObject(skillsPayload.entries) || {};
+    if (Object.hasOwn(skillsPayload, "entries")) {
+      if (
+        skillsPayload.entries &&
+        typeof skillsPayload.entries === "object" &&
+        !Array.isArray(skillsPayload.entries)
+      ) {
+        openclawConfig.skills.entries = cloneJsonObject(skillsPayload.entries) || {};
+      } else {
+        delete openclawConfig.skills.entries;
+      }
     }
     deleteRecordFieldIfEmpty(openclawConfig, "skills");
   }

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { createStandaloneStudioConfig, createStudioContext, createStudioRequestHandler, syncStandaloneStudioConfig } from '../api/index.js';
 
@@ -94,8 +94,43 @@ function studioManualChunk(id: string): string | undefined {
   return undefined;
 }
 
+function toViteFsModulePath(filePath: string): string {
+  const normalized = filePath.split(path.sep).join('/');
+  return normalized.startsWith('/') ? `/@fs${normalized}` : `/@fs/${normalized}`;
+}
+
+function createKatexOptimizedDepFallbackPlugin(): Plugin {
+  const katexModulePath = toViteFsModulePath(path.join(studioRootDir, 'node_modules', 'katex', 'dist', 'katex.mjs'));
+
+  return {
+    name: 'openclaw-studio-katex-optimized-dep-fallback',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const requestPath = (req.url || '').split('?')[0];
+        if (requestPath !== '/node_modules/.vite/deps/katex.js') {
+          next();
+          return;
+        }
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end([
+          `import katexDefault from ${JSON.stringify(katexModulePath)};`,
+          `export * from ${JSON.stringify(katexModulePath)};`,
+          'export default katexDefault;',
+          '',
+        ].join('\n'));
+      });
+    },
+  };
+}
+
 export default defineConfig({
+  optimizeDeps: {
+    exclude: ['katex'],
+  },
   plugins: [
+    createKatexOptimizedDepFallbackPlugin(),
     vue(),
     !useExternalApi && {
       name: 'openclaw-studio-dev-api',
@@ -104,7 +139,6 @@ export default defineConfig({
         const handleOpenClawConfigChange = (file: string) => {
           if (file !== openclawConfigFile) return;
           syncStudioDevConfig('openclaw.json changed');
-          server.ws.send({ type: 'full-reload' });
         };
 
         server.watcher.add(openclawConfigFile);

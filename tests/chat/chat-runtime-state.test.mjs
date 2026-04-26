@@ -103,6 +103,89 @@ test('mergeRuntimeOverlay keeps monotonic lifecycle and richer tool result previ
   assert.equal(merged.sequence, 2);
 });
 
+test('mergeRuntimeOverlay keeps terminal tool result preview over late running partials', () => {
+  const completed = createOverlay({
+    lifecycle: 'completed',
+    updatedAt: '2026-03-24T10:00:02.000Z',
+    toolCalls: [{
+      toolCallId: 'tool-1',
+      runId: 'run-1',
+      name: 'browser',
+      status: 'completed',
+      startedAt: '2026-03-24T10:00:00.500Z',
+      updatedAt: '2026-03-24T10:00:02.000Z',
+      argsPreview: '{"url":"https://example.com"}',
+      resultPreview: '{"summary":"final page snapshot"}',
+      isError: false,
+    }],
+    sequence: 2,
+  });
+  const staleRunning = createOverlay({
+    lifecycle: 'running',
+    updatedAt: '2026-03-24T10:00:03.000Z',
+    toolCalls: [{
+      toolCallId: 'tool-1',
+      runId: 'run-1',
+      name: 'browser',
+      status: 'running',
+      startedAt: '2026-03-24T10:00:00.500Z',
+      updatedAt: '2026-03-24T10:00:03.000Z',
+      argsPreview: null,
+      resultPreview: '{"summary":"50%"}',
+      isError: false,
+    }],
+    sequence: 3,
+  });
+
+  const merged = mergeRuntimeOverlay(completed, staleRunning);
+
+  assert.equal(merged.lifecycle, 'completed');
+  assert.equal(merged.toolCalls[0]?.status, 'completed');
+  assert.match(merged.toolCalls[0]?.resultPreview || '', /final page snapshot/i);
+});
+
+test('mergeRuntimeOverlay keeps failed tool result preview over late running partials', () => {
+  const failed = createOverlay({
+    lifecycle: 'error',
+    updatedAt: '2026-03-24T10:00:02.000Z',
+    toolCalls: [{
+      toolCallId: 'tool-1',
+      runId: 'run-1',
+      name: 'shell',
+      status: 'error',
+      startedAt: '2026-03-24T10:00:00.500Z',
+      updatedAt: '2026-03-24T10:00:02.000Z',
+      argsPreview: '{"cmd":"false"}',
+      resultPreview: '{"error":"exit 1"}',
+      isError: true,
+    }],
+    sequence: 2,
+  });
+  const staleRunning = createOverlay({
+    lifecycle: 'running',
+    updatedAt: '2026-03-24T10:00:03.000Z',
+    toolCalls: [{
+      toolCallId: 'tool-1',
+      runId: 'run-1',
+      name: 'shell',
+      status: 'running',
+      startedAt: '2026-03-24T10:00:00.500Z',
+      updatedAt: '2026-03-24T10:00:03.000Z',
+      argsPreview: null,
+      resultPreview: '{"summary":"retrying"}',
+      isError: false,
+    }],
+    sequence: 3,
+  });
+
+  const merged = mergeRuntimeOverlay(failed, staleRunning);
+
+  assert.equal(merged.lifecycle, 'error');
+  assert.equal(merged.toolCalls[0]?.status, 'error');
+  assert.match(merged.toolCalls[0]?.resultPreview || '', /exit 1/i);
+  assert.equal(merged.toolCalls[0]?.isError, true);
+});
+
 test('mergeRuntimeWindowMessages preserves transcript arrival order for unrelated equal-timestamp messages', () => {
   const merged = mergeRuntimeWindowMessages([], [
     createMessage('user-1', {

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import {
@@ -88,6 +89,24 @@ function runShadowPath(root) {
 
 function historyIndexPath(root, sessionKey) {
   return path.join(root, 'studio', 'chat-index', `${Buffer.from(sessionKey, 'utf-8').toString('base64url')}.json`);
+}
+
+function readSqliteHistoryIndexCount(root, sessionKey) {
+  const sqlitePath = path.join(root, 'studio', 'chat.sqlite');
+  if (!fs.existsSync(sqlitePath)) {
+    return 0;
+  }
+  const db = new DatabaseSync(sqlitePath);
+  try {
+    const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'history_indexes'").get();
+    if (!table) {
+      return 0;
+    }
+    const row = db.prepare('SELECT COUNT(*) AS count FROM history_indexes WHERE session_key = ?').get(sessionKey);
+    return Number(row?.count || 0);
+  } finally {
+    db.close();
+  }
 }
 
 function readJson(file, fallback) {
@@ -271,6 +290,112 @@ test('session queue and controls round-trip from in-memory service state', async
     const roundTripControls = await context.services.chat.getControls(created.session.key);
     assert.equal(roundTripControls.controls.allowHostManagementExec, true);
   } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ui queued message flushes when the active run settles before enqueue reaches the backend', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-queue-idle-flush-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway({
+      onRequest({ method }) {
+        if (method === 'chat.send') {
+          return {
+            ok: true,
+            status: 'started',
+            runId: 'run-late-queued',
+          };
+        }
+        return { ok: true };
+      },
+    });
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+    const created = await context.services.chat.createSession('main', {});
+
+    await context.services.chat.enqueue(created.session.key, {
+      text: 'late queued message',
+      clientRequestId: 'late-queued-1',
+      flushWhenIdle: true,
+    });
+
+    await waitFor(async () => {
+      const sendRequests = gateway.requests.filter((entry) => entry.method === 'chat.send');
+      assert.equal(sendRequests.length, 1);
+      assert.equal(sendRequests[0]?.params.message, 'late queued message');
+      const queue = await context.services.chat.getQueue(created.session.key);
+      assert.equal(queue.items.length, 0);
+    });
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('blocked queued message can be retried without sending a separate nudge', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-queue-blocked-retry-'));
+  let gateway = null;
+  let sendCount = 0;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway({
+      onRequest({ method }) {
+        if (method !== 'chat.send') {
+          return { ok: true };
+        }
+        sendCount += 1;
+        if (sendCount === 1) {
+          return {
+            __frameOk: false,
+            errorMessage: 'temporary send failure',
+          };
+        }
+        return {
+          ok: true,
+          status: 'started',
+          runId: `run-${sendCount}`,
+        };
+      },
+    });
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+    const created = await context.services.chat.createSession('main', {});
+    const sessionKey = created.session.key;
+
+    await context.services.chat.enqueue(sessionKey, {
+      text: 'retry without nudge',
+      clientRequestId: 'blocked-retry-1',
+      flushWhenIdle: true,
+    });
+
+    let blockedEntry = null;
+    await waitFor(async () => {
+      const queue = await context.services.chat.getQueue(sessionKey);
+      assert.equal(queue.items.length, 1);
+      assert.equal(queue.items[0]?.status, 'blocked');
+      blockedEntry = queue.items[0];
+    });
+
+    await context.services.chat.patchQueueEntry(sessionKey, blockedEntry.id, {
+      text: blockedEntry.text,
+      clientRequestId: blockedEntry.clientRequestId || undefined,
+      flushWhenIdle: true,
+    });
+
+    await waitFor(async () => {
+      const sendRequests = gateway.requests.filter((entry) => entry.method === 'chat.send');
+      assert.equal(sendRequests.length, 2);
+      assert.deepEqual(sendRequests.map((entry) => entry.params.message), [
+        'retry without nudge',
+        'retry without nudge',
+      ]);
+      const queue = await context.services.chat.getQueue(sessionKey);
+      assert.equal(queue.items.length, 0);
+    });
+  } finally {
+    await gateway?.close?.();
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
@@ -1130,7 +1255,7 @@ test('materialized studio session delete clears local artifacts only after gatew
     }, null, 2));
 
     await context.services.chat.getHistory(sessionKey);
-    assert.equal(fs.existsSync(historyIndexPath(root, sessionKey)), true);
+    assert.equal(readSqliteHistoryIndexCount(root, sessionKey), 1);
 
     const deleted = await context.services.chat.deleteSession(sessionKey);
     assert.deepEqual(deleted, {
@@ -1150,6 +1275,7 @@ test('materialized studio session delete clears local artifacts only after gatew
     assert.equal(readJson(registryPath(root), {})[sessionKey], undefined);
     assert.equal(readJson(messageShadowPath(root), { sessions: {} }).sessions[sessionKey], undefined);
     assert.equal(readJson(runShadowPath(root), { sessions: {} }).sessions[sessionKey], undefined);
+    assert.equal(readSqliteHistoryIndexCount(root, sessionKey), 0);
     assert.equal(fs.existsSync(historyIndexPath(root, sessionKey)), false);
   } finally {
     await gateway?.close();

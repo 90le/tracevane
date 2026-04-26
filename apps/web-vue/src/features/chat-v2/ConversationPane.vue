@@ -128,37 +128,6 @@
               <DropdownMenuItem class="chat-session-menu-item" @select="openRenderingSettings">
                 {{ text('渲染设置', 'Rendering settings') }}
               </DropdownMenuItem>
-              <DropdownMenuItem class="chat-session-menu-item" @select="triggerMenuAction('toggle-tool-previews')">
-                {{ showToolPreviews ? text('隐藏工具过程', 'Hide tool previews') : text('显示工具过程', 'Show tool previews') }}
-              </DropdownMenuItem>
-              <DropdownMenuItem class="chat-session-menu-item" @select="triggerMenuAction('toggle-thinking-blocks')">
-                {{ showThinkingBlocks ? text('隐藏思考块', 'Hide thinking blocks') : text('显示思考块', 'Show thinking blocks') }}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                v-if="selectedSession"
-                class="chat-session-menu-item"
-                :disabled="!canRefresh"
-                @select="triggerMenuAction('refresh-session')"
-              >
-                {{ text('刷新对话', 'Refresh conversation') }}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                v-if="selectedSession"
-                class="chat-session-menu-item"
-                @select="triggerMenuAction('open-record-browser')"
-              >
-                {{ text('聊天记录', 'Chat records') }}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                v-if="selectedSession"
-                class="chat-session-menu-item"
-                :disabled="!canToggleHostManagementExec || hostManagementExecToggleBusy || !globalHostManagementExecEnabled"
-                @select="toggleHostManagementExecFromMenu"
-              >
-                {{ sessionHostManagementExecEnabled
-                  ? text('关闭本会话 Exec', 'Disable Exec for this chat')
-                  : text('开启本会话 Exec', 'Enable Exec for this chat') }}
-              </DropdownMenuItem>
               <DropdownMenuItem
                 class="chat-session-menu-item"
                 :disabled="!canReset"
@@ -451,6 +420,7 @@
           @update:summary-expanded="$emit('update:queue-rail-expanded', $event)"
           @open-sheet="openQueueSheet"
           @patch-item="$emit('patch-queued-item', $event)"
+          @retry-item="$emit('retry-queued-item', $event)"
           @delete-item="$emit('delete-queued-item', $event)"
         />
         <ComposerBar
@@ -514,6 +484,7 @@
               :compact-viewport="false"
               :presentation-mode="'sheet'"
               @patch-item="$emit('patch-queued-item', $event)"
+              @retry-item="$emit('retry-queued-item', $event)"
               @delete-item="$emit('delete-queued-item', $event)"
             />
           </div>
@@ -891,6 +862,7 @@ const emit = defineEmits<{
   (event: 'refresh-session'): void;
   (event: 'composer-keydown', payload: KeyboardEvent): void;
   (event: 'patch-queued-item', payload: { entryId: string; text: string }): void;
+  (event: 'retry-queued-item', entryId: string): void;
   (event: 'delete-queued-item', entryId: string): void;
   (event: 'toggle-host-management-exec', nextValue: boolean): void;
   (event: 'toggle-sound-cues', value: boolean): void;
@@ -2611,15 +2583,10 @@ function handleQueueSheetOpenChange(open: boolean): void {
 }
 
 function triggerMenuAction(
-  action: 'new-chat' | 'toggle-inspect' | 'reset' | 'toggle-tool-previews' | 'toggle-thinking-blocks' | 'refresh-session' | 'open-record-browser',
+  action: 'new-chat' | 'toggle-inspect' | 'reset' | 'open-record-browser',
 ): void {
   closeMenu();
   emit(action);
-}
-
-function toggleHostManagementExecFromMenu(): void {
-  closeMenu();
-  emit('toggle-host-management-exec', !props.sessionHostManagementExecEnabled);
 }
 
 function syncCompactViewport(): void {

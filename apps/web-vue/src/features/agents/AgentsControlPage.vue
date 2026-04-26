@@ -57,7 +57,7 @@
             <div>
               <p class="eyebrow">{{ text('QUICK EDIT', 'QUICK EDIT') }}</p>
               <h3>{{ text('高频快改', 'High-frequency quick edits') }}</h3>
-              <p>{{ text('概览页只保留启用状态、模型和工作区这三项高频字段。', 'The overview keeps only enabled state, model, and workspace as high-frequency edits.') }}</p>
+              <p>{{ text('概览页保留启用、模型、工作区和 HEARTBEAT 这几项高频字段。', 'The overview keeps enabled state, model, workspace, and HEARTBEAT as high-frequency edits.') }}</p>
             </div>
 
             <div class="page-actions">
@@ -92,6 +92,24 @@
               <label class="form-label">{{ text('工作区', 'Workspace') }}</label>
               <input v-model="quickEdit.workspace" class="form-input" :placeholder="text('未设置工作区', 'Workspace unset')" />
             </div>
+
+            <section class="config-subsection form-field-full agents-heartbeat-config">
+              <div class="config-subsection-head">
+                <h4>{{ text('内置 HEARTBEAT', 'Built-in HEARTBEAT') }}</h4>
+                <p>{{ text('Heartbeat 不是 cron。继承会移除这个 Agent 的 heartbeat 块；禁用会写入 every: "0m"。', 'Heartbeat is not cron. Inherit removes this agent heartbeat block; disabled writes every: "0m".') }}</p>
+              </div>
+              <div class="agents-form-grid">
+                <div class="form-field">
+                  <label class="form-label">{{ text('心跳策略', 'Heartbeat policy') }}</label>
+                  <GlassSelect v-model="quickEdit.heartbeatMode" :options="heartbeatModeOptions" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label">{{ text('心跳周期', 'Heartbeat interval') }}</label>
+                  <input v-model="quickEdit.heartbeatEvery" class="form-input" :disabled="quickEdit.heartbeatMode !== 'enabled'" placeholder="30m" />
+                  <span class="field-hint">{{ text('例如 10m / 30m / 1h。target: none 不会关闭模型心跳消耗。', 'For example 10m / 30m / 1h. target: none does not stop model-consuming heartbeat turns.') }}</span>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
 
@@ -217,6 +235,7 @@ import { ref, watch, computed, reactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AgentDetailPayload } from '../../../../../types/agents';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
+import { buildAgentHeartbeatConfig, resolveHeartbeatEvery, resolveHeartbeatMode, type HeartbeatMode } from '../../shared/heartbeat-config';
 import { useLocalePreference } from '../../shared/locale';
 import { fetchAgentDetail, fetchAgentsSummary, updateAgent } from './api';
 
@@ -234,6 +253,8 @@ const quickEdit = reactive({
   enabled: true,
   model: '',
   workspace: '',
+  heartbeatMode: 'inherit' as HeartbeatMode,
+  heartbeatEvery: '',
 });
 
 const agentId = computed(() => {
@@ -244,6 +265,11 @@ const agentId = computed(() => {
 const modelOptions = computed(() => [
   { value: '', label: text('跟随系统默认', 'Inherit system default') },
   ...availableModels.value.map((model) => ({ value: model, label: model })),
+]);
+const heartbeatModeOptions = computed(() => [
+  { value: 'inherit', label: text('继承全局', 'Inherit global') },
+  { value: 'enabled', label: text('启用', 'Enabled') },
+  { value: 'disabled', label: text('禁用', 'Disabled') },
 ]);
 
 function formatDate(value: string | null): string {
@@ -257,6 +283,8 @@ function resetQuickEditFromDetail(payload: AgentDetailPayload): void {
   quickEdit.enabled = payload.agent.enabled;
   quickEdit.model = payload.agent.model || '';
   quickEdit.workspace = payload.agent.workspace || '';
+  quickEdit.heartbeatMode = resolveHeartbeatMode(payload.editor.heartbeat);
+  quickEdit.heartbeatEvery = resolveHeartbeatEvery(payload.editor.heartbeat);
 }
 
 async function saveOverviewQuickEdit(): Promise<void> {
@@ -268,6 +296,7 @@ async function saveOverviewQuickEdit(): Promise<void> {
       enabled: quickEdit.enabled,
       model: quickEdit.model,
       workspace: quickEdit.workspace,
+      heartbeat: buildAgentHeartbeatConfig(detail.value.editor.heartbeat, quickEdit.heartbeatMode, quickEdit.heartbeatEvery),
     });
     if (response.detail) {
       detail.value = response.detail;

@@ -240,16 +240,22 @@ export interface ConfigSummaryPayload {
     servers?: Record<string, unknown>;
   };
   skills?: {
-    allowBundled?: boolean;
+    allowBundled?: string[];
     load?: {
       extraDirs?: string[];
+      watch?: boolean;
+      watchDebounceMs?: number | null;
     };
     install?: {
       preferBrew?: boolean;
-      nodeManager?: string;
+      nodeManager?: 'npm' | 'pnpm' | 'yarn' | 'bun' | '';
     };
     limits?: {
+      maxCandidatesPerRoot?: number | null;
+      maxSkillsLoadedPerSource?: number | null;
+      maxSkillsInPrompt?: number | null;
       maxSkillsPromptChars?: number | null;
+      maxSkillFileBytes?: number | null;
     };
     entries?: Record<string, unknown>;
   };
@@ -379,8 +385,8 @@ export interface ConfigUpdatePayload {
   sessionReset?: Partial<ConfigSummaryPayload['sessionReset']>;
   hooks?: Partial<ConfigSummaryPayload['hooks']>;
   commands?: Partial<ConfigSummaryPayload['commands']>;
-  mcp?: Partial<ConfigSummaryPayload['mcp']>;
-  skills?: Partial<ConfigSummaryPayload['skills']>;
+  mcp?: Partial<NonNullable<ConfigSummaryPayload['mcp']>>;
+  skills?: Partial<NonNullable<ConfigSummaryPayload['skills']>>;
   acp?: Partial<ConfigSummaryPayload['acp']>;
   plugins?: Partial<ConfigSummaryPayload['plugins']>;
   browser?: Partial<ConfigSummaryPayload['browser']>;

@@ -515,6 +515,7 @@ export interface ChatSendAttachment {
 export interface ChatSendRequest {
   text: string;
   clientRequestId?: string;
+  flushWhenIdle?: boolean;
   thinking?: string | null;
   composerDocument?: ChatComposerDocument;
   fileRefs?: ChatSendFileRef[];
