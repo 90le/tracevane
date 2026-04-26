@@ -349,6 +349,84 @@ test('sqlite: session metadata and page messages can be read without hydrating t
     );
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
+      version: 'v3-search-window',
+      source: 'local_transcript',
+      messages: [
+        { ...makeMessage('search-1', 'user', 'plain intro'), createdAt: '2026-03-26T09:00:00.000Z' },
+        { ...makeMessage('search-2', 'assistant', 'needle alpha'), createdAt: '2026-03-26T09:01:00.000Z' },
+        { ...makeMessage('search-3', 'assistant', 'needle beta'), createdAt: '2026-03-27T09:02:00.000Z' },
+        { ...makeMessage('search-4', 'assistant', 'unrelated'), createdAt: '2026-03-27T09:03:00.000Z' },
+        { ...makeMessage('search-5', 'assistant', 'needle gamma'), createdAt: '2026-03-27T09:04:00.000Z' },
+        { ...makeMessage('search-6', 'assistant', 'needle delta'), createdAt: '2026-03-28T09:05:00.000Z' },
+      ],
+      baseMessageSeq: 6,
+      savedAt: '2026-03-28T09:05:00.000Z',
+      sourceSignature: 'sig-search-window',
+      sourceSessionFile: '/tmp/session-search-window.jsonl',
+      sourceMtimeMs: 5656,
+      observability: {
+        lifecycle: null,
+        usage: null,
+        toolCards: [],
+        timeline: [],
+      },
+    });
+    const searchTail = store.readSearchMessageWindow(SESSION_KEY, {
+      query: 'needle',
+      limit: 2,
+    });
+    assert.ok(searchTail);
+    assert.deepEqual(
+      searchTail.stubs.map((message) => message.id),
+      ['search-5', 'search-6'],
+    );
+    assert.equal(searchTail.totalCount, 4);
+    assert.equal(searchTail.hasMoreBefore, true);
+    assert.equal(searchTail.hasMoreAfter, false);
+    assert.deepEqual(searchTail.beforeBoundary, {
+      anchorIndex: 2,
+      anchorMessageId: 'search-5',
+      anchorCreatedAt: '2026-03-27T09:04:00.000Z',
+    });
+    const searchBefore = store.readSearchMessageWindow(SESSION_KEY, {
+      query: 'needle',
+      before: {
+        anchorIndex: searchTail.beforeBoundary.anchorIndex,
+        anchorMessageId: searchTail.beforeBoundary.anchorMessageId,
+      },
+      limit: 2,
+    });
+    assert.ok(searchBefore);
+    assert.deepEqual(
+      searchBefore.stubs.map((message) => message.id),
+      ['search-2', 'search-3'],
+    );
+    assert.equal(searchBefore.hasMoreBefore, false);
+    assert.equal(searchBefore.hasMoreAfter, true);
+    assert.deepEqual(searchBefore.afterBoundary, {
+      anchorIndex: 2,
+      anchorMessageId: 'search-5',
+      anchorCreatedAt: '2026-03-27T09:04:00.000Z',
+    });
+    const searchDayTail = store.readSearchMessageWindow(SESSION_KEY, {
+      query: 'needle',
+      day: '2026-03-27',
+      limit: 1,
+    });
+    assert.ok(searchDayTail);
+    assert.deepEqual(
+      searchDayTail.stubs.map((message) => message.id),
+      ['search-5'],
+    );
+    assert.equal(searchDayTail.totalCount, 2);
+    assert.equal(searchDayTail.day, '2026-03-27');
+    assert.deepEqual(searchDayTail.beforeBoundary, {
+      anchorIndex: 1,
+      anchorMessageId: 'search-5',
+      anchorCreatedAt: '2026-03-27T09:04:00.000Z',
+    });
+    store.replaceSnapshot({
+      sessionKey: SESSION_KEY,
       version: 'v4',
       source: 'local_transcript',
       messages: [

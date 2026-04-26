@@ -11,6 +11,7 @@ import {
   prioritizeAgentsForSessionLoad,
   resolveObservedSessionsForRail,
   resolveSessionSectionWindow,
+  shouldRevealMoreSessionRowsOnScroll,
 } from '../../dist/lib/chat-session-catalog.js';
 import { createEmptyChatSessionOrganizerState, createFolderInOrganizer, deriveOrganizerFolderTree } from '../../dist/lib/chat-session-organizer.js';
 
@@ -179,6 +180,26 @@ test('resolveSessionSectionWindow enforces initial caps but search bypasses them
   });
   assert.equal(searched.rows.length, rows.length);
   assert.equal(searched.hiddenCount, 0);
+});
+
+test('shouldRevealMoreSessionRowsOnScroll only triggers near the rail bottom', () => {
+  assert.equal(shouldRevealMoreSessionRowsOnScroll({
+    scrollTop: 900,
+    scrollHeight: 1600,
+    clientHeight: 400,
+  }, 360), true);
+
+  assert.equal(shouldRevealMoreSessionRowsOnScroll({
+    scrollTop: 500,
+    scrollHeight: 1600,
+    clientHeight: 400,
+  }, 360), false);
+
+  assert.equal(shouldRevealMoreSessionRowsOnScroll({
+    scrollTop: 0,
+    scrollHeight: 300,
+    clientHeight: 400,
+  }, 360), false);
 });
 
 test('resolveObservedSessionsForRail only returns observed rows in inspect mode', () => {

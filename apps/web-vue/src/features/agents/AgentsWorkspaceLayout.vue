@@ -415,6 +415,7 @@ const routeAgentId = computed(() => {
   const value = route.params.agentId;
   return typeof value === 'string' ? value : '';
 });
+const isAgentsRouteActive = computed(() => route.path === '/agents' || route.path.startsWith('/agents/'));
 
 const selectedAgentId = computed(() => routeAgentId.value);
 
@@ -801,6 +802,7 @@ function buildCreatePayload(): AgentCreatePayload {
 }
 
 async function loadSelectedDetail(agentId: string): Promise<void> {
+  if (!isAgentsRouteActive.value) return;
   if (!agentId) {
     detail.value = null;
     return;
@@ -822,6 +824,7 @@ async function loadSelectedDetail(agentId: string): Promise<void> {
 }
 
 async function refreshSummary(preferredAgentId = ''): Promise<void> {
+  if (!isAgentsRouteActive.value) return;
   summaryLoading.value = true;
   errorMessage.value = '';
 
@@ -830,6 +833,7 @@ async function refreshSummary(preferredAgentId = ''): Promise<void> {
       fetchAgentsSummary(),
       fetchConfigSummary().catch(() => null),
     ]);
+    if (!isAgentsRouteActive.value) return;
     summary.value = nextSummary;
     configSummary.value = nextConfigSummary;
 
@@ -935,6 +939,7 @@ async function submitCreateAgent(): Promise<void> {
 watch(
   () => route.params.agentId,
   async () => {
+    if (!isAgentsRouteActive.value) return;
     if (!routeAgentId.value) {
       detail.value = null;
       if (summary.value?.agents.length) {
@@ -970,6 +975,7 @@ watch(
 );
 
 onMounted(async () => {
+  if (!isAgentsRouteActive.value) return;
   await refreshSummary(routeAgentId.value);
 });
 </script>

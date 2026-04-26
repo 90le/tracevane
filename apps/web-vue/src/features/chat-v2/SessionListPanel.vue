@@ -51,7 +51,12 @@
       @batch-action="actions.emitBatchAction"
     />
 
-    <div class="chat-shell-session-list__body" @contextmenu="actions.openSurfaceContextMenu">
+    <div
+      ref="sessionListBodyRef"
+      class="chat-shell-session-list__body"
+      @scroll.passive="handleSessionListBodyScroll"
+      @contextmenu="actions.openSurfaceContextMenu"
+    >
       <div v-if="windows.showInitialLoading.value" class="chat-shell-session-list__empty">
         {{ text('正在读取会话...', 'Loading chats...') }}
       </div>
@@ -173,7 +178,8 @@
 <script setup lang="ts">
 import './session-list-shared.css';
 
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { shouldRevealMoreSessionRowsOnScroll } from '../../../../../lib/chat-session-catalog';
 import {
   canRenameOrganizerEntryId,
   deriveOrganizerChildFolders,
@@ -230,37 +236,47 @@ const emit = defineEmits<{
   (event: 'batch-action', payload: { action: BatchAction; sessionKeys: string[] }): void;
 }>();
 
-const { text } = useLocalePreference();
+const { locale, text } = useLocalePreference();
+const sessionListBodyRef = ref<HTMLElement | null>(null);
+let sessionListAutoRevealFrame = 0;
 
-function agentNameFor(session: ChatSessionRow): string {
-  const agent = props.agents.find((item) => item.id === session.agentId) || null;
+type SessionDisplayMeta = {
+  agentName: string;
+  agentAvatar: string;
+  agentEmoji: string;
+  agentInitial: string;
+  title: string;
+  preview: string;
+  observedPreview: string;
+  stateLabel: string;
+  stateTone: string;
+};
+
+const agentById = computed(() => new Map(
+  props.agents.map((agent) => [agent.id, agent]),
+));
+
+const displaySessions = computed(() => [
+  ...props.activeSessions,
+  ...props.archivedSessions,
+  ...props.observedSessions,
+]);
+
+function resolveAgent(session: ChatSessionRow): AgentSummary | null {
+  return agentById.value.get(session.agentId) || null;
+}
+
+function deriveAgentName(session: ChatSessionRow): string {
+  const agent = resolveAgent(session);
   return agent?.name || agent?.identity.name || session.agentId;
 }
 
-function agentAvatarFor(session: ChatSessionRow): string {
-  const agent = props.agents.find((item) => item.id === session.agentId) || null;
-  return agent?.identity.avatar || '';
-}
-
-function agentEmojiFor(session: ChatSessionRow): string {
-  const agent = props.agents.find((item) => item.id === session.agentId) || null;
-  return agent?.identity.emoji || '';
-}
-
-function agentInitialFor(session: ChatSessionRow): string {
-  return agentNameFor(session).trim().charAt(0).toUpperCase() || 'A';
-}
-
-function sessionTitle(session: ChatSessionRow): string {
-  return deriveChatSessionTitle(session, agentNameFor(session));
-}
-
-function sessionPreview(session: ChatSessionRow, observed = false): string {
+function deriveSessionPreviewText(session: ChatSessionRow, observed = false): string {
   return deriveChatPreview(session.lastMessagePreview)
     || (observed ? text('只读观察会话', 'Observed history session') : text('还没有消息', 'No messages yet'));
 }
 
-function sessionStateLabel(session: ChatSessionRow): string {
+function deriveSessionStateLabel(session: ChatSessionRow): string {
   if (!session.permissions.writable) {
     return text('只读', 'Read-only');
   }
@@ -274,7 +290,7 @@ function sessionStateLabel(session: ChatSessionRow): string {
   return text('可聊', 'Live');
 }
 
-function sessionStateTone(session: ChatSessionRow): string {
+function deriveSessionStateTone(session: ChatSessionRow): string {
   if (!session.permissions.writable) {
     return 'readonly';
   }
@@ -286,6 +302,84 @@ function sessionStateTone(session: ChatSessionRow): string {
     return 'running';
   }
   return 'live';
+}
+
+const sessionDisplayMetaByKey = computed(() => {
+  const metaByKey = new Map<string, SessionDisplayMeta>();
+  // Explicitly depend on locale so cached labels update immediately after language changes.
+  void locale.value;
+  for (const session of displaySessions.value) {
+    if (metaByKey.has(session.key)) {
+      continue;
+    }
+    const agent = resolveAgent(session);
+    const agentName = deriveAgentName(session);
+    metaByKey.set(session.key, {
+      agentName,
+      agentAvatar: agent?.identity.avatar || '',
+      agentEmoji: agent?.identity.emoji || '',
+      agentInitial: agentName.trim().charAt(0).toUpperCase() || 'A',
+      title: deriveChatSessionTitle(session, agentName),
+      preview: deriveSessionPreviewText(session, false),
+      observedPreview: deriveSessionPreviewText(session, true),
+      stateLabel: deriveSessionStateLabel(session),
+      stateTone: deriveSessionStateTone(session),
+    });
+  }
+  return metaByKey;
+});
+
+function sessionDisplayMeta(session: ChatSessionRow): SessionDisplayMeta {
+  const cached = sessionDisplayMetaByKey.value.get(session.key);
+  if (cached) {
+    return cached;
+  }
+  const agent = resolveAgent(session);
+  const agentName = deriveAgentName(session);
+  return {
+    agentName,
+    agentAvatar: agent?.identity.avatar || '',
+    agentEmoji: agent?.identity.emoji || '',
+    agentInitial: agentName.trim().charAt(0).toUpperCase() || 'A',
+    title: deriveChatSessionTitle(session, agentName),
+    preview: deriveSessionPreviewText(session, false),
+    observedPreview: deriveSessionPreviewText(session, true),
+    stateLabel: deriveSessionStateLabel(session),
+    stateTone: deriveSessionStateTone(session),
+  };
+}
+
+function agentNameFor(session: ChatSessionRow): string {
+  return sessionDisplayMeta(session).agentName;
+}
+
+function agentAvatarFor(session: ChatSessionRow): string {
+  return sessionDisplayMeta(session).agentAvatar;
+}
+
+function agentEmojiFor(session: ChatSessionRow): string {
+  return sessionDisplayMeta(session).agentEmoji;
+}
+
+function agentInitialFor(session: ChatSessionRow): string {
+  return sessionDisplayMeta(session).agentInitial;
+}
+
+function sessionTitle(session: ChatSessionRow): string {
+  return sessionDisplayMeta(session).title;
+}
+
+function sessionPreview(session: ChatSessionRow, observed = false): string {
+  const meta = sessionDisplayMeta(session);
+  return observed ? meta.observedPreview : meta.preview;
+}
+
+function sessionStateLabel(session: ChatSessionRow): string {
+  return sessionDisplayMeta(session).stateLabel;
+}
+
+function sessionStateTone(session: ChatSessionRow): string {
+  return sessionDisplayMeta(session).stateTone;
 }
 
 function formatDate(value: string | null): string {
@@ -441,6 +535,37 @@ function handleSessionPrimaryClick(session: ChatSessionRow): void {
   emit('select-session', session.key);
 }
 
+function revealMoreSessionsNearRailBottom(element: HTMLElement | null): void {
+  if (!element || !windows.hasHiddenRows.value || !shouldRevealMoreSessionRowsOnScroll({
+    scrollTop: element.scrollTop,
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  })) {
+    return;
+  }
+  windows.showMoreVisibleSections();
+}
+
+function handleSessionListBodyScroll(event: Event): void {
+  if (!windows.hasHiddenRows.value || sessionListAutoRevealFrame) {
+    return;
+  }
+  const element = event.currentTarget instanceof HTMLElement
+    ? event.currentTarget
+    : sessionListBodyRef.value;
+  if (!element || !shouldRevealMoreSessionRowsOnScroll({
+    scrollTop: element.scrollTop,
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  })) {
+    return;
+  }
+  sessionListAutoRevealFrame = window.requestAnimationFrame(() => {
+    sessionListAutoRevealFrame = 0;
+    revealMoreSessionsNearRailBottom(element);
+  });
+}
+
 watch(
   [
     filters.searchText,
@@ -453,6 +578,15 @@ watch(
   () => {
     actions.resetTransientState();
     selection.clearSelection();
+  },
+);
+
+watch(
+  () => windows.hasHiddenRows.value,
+  () => {
+    requestAnimationFrame(() => {
+      revealMoreSessionsNearRailBottom(sessionListBodyRef.value);
+    });
   },
 );
 </script>

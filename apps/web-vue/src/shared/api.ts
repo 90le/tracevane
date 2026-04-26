@@ -15,6 +15,7 @@ const TOKEN_LOCAL_STORAGE_KEY_PREFIX = 'openclaw.control.token.persisted.v1:';
 
 let resolvedApiBase: string | null = null;
 let resolveApiBasePromise: Promise<string> | null = null;
+const inflightJsonRequests = new Map<string, Promise<unknown>>();
 
 function isAbsoluteUrl(input: string): boolean {
   return /^https?:\/\//.test(input);
@@ -366,8 +367,62 @@ export function joinApiPath(path: string): string {
   return joinApiUrl(base, path);
 }
 
+function normalizeRequestMethod(init?: RequestInit): string {
+  return (init?.method || 'GET').toUpperCase();
+}
+
+function snapshotHeaders(init?: RequestInit): string {
+  const headers = new Headers(init?.headers || {});
+  return Array.from(headers.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}:${value}`)
+    .join('\n');
+}
+
+function buildJsonRequestDedupeKey(input: string, init?: RequestInit): string | null {
+  if (normalizeRequestMethod(init) !== 'GET') return null;
+  if (init?.body || init?.signal) return null;
+
+  const requestShape = {
+    input,
+    method: 'GET',
+    headers: snapshotHeaders(init),
+    cache: init?.cache || '',
+    credentials: init?.credentials || '',
+    integrity: init?.integrity || '',
+    keepalive: init?.keepalive || false,
+    mode: init?.mode || '',
+    redirect: init?.redirect || '',
+    referrer: init?.referrer || '',
+    referrerPolicy: init?.referrerPolicy || '',
+  };
+  return JSON.stringify(requestShape);
+}
+
 export async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
-  const response = await fetchStudioResponse(input, init);
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json() as Promise<T>;
+  const requestInit = withStudioAuthorization(init);
+  const dedupeKey = buildJsonRequestDedupeKey(input, requestInit);
+  const pendingRequest = dedupeKey ? inflightJsonRequests.get(dedupeKey) : null;
+  if (pendingRequest) {
+    return pendingRequest as Promise<T>;
+  }
+
+  const requestPromise = (async () => {
+    const response = await fetchStudioResponse(input, requestInit);
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return response.json() as Promise<T>;
+  })();
+
+  if (!dedupeKey) {
+    return requestPromise;
+  }
+
+  inflightJsonRequests.set(dedupeKey, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    if (inflightJsonRequests.get(dedupeKey) === requestPromise) {
+      inflightJsonRequests.delete(dedupeKey);
+    }
+  }
 }

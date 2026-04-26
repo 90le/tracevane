@@ -3664,7 +3664,38 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           indexSnapshot,
         )
         : null;
-      const ftsMatchedStubs = indexSnapshot
+      const searchCursorMatchesContext = (cursor: ChatHistoryCursor | null): boolean => {
+        if (!cursor) return false;
+        return cursor.source === 'history_search'
+          && (cursor.day || null) === day
+          && (cursor.query || null) === query
+          && (cursor.roleFilter || null) === roleFilter
+          && (cursor.contentFilter || null) === contentFilter;
+      };
+      const decodedBeforeCursor = decodeHistoryCursor(options.before);
+      const decodedAfterCursor = decodeHistoryCursor(options.after);
+      const searchWindow = indexSnapshot
+        ? null
+        : durableMirrorStore.readSearchMessageWindow(sessionKey, {
+          query,
+          day,
+          roleFilter,
+          contentFilter,
+          before: searchCursorMatchesContext(decodedBeforeCursor)
+            ? {
+              anchorIndex: decodedBeforeCursor!.anchorIndex,
+              anchorMessageId: decodedBeforeCursor!.anchorMessageId,
+            }
+            : null,
+          after: searchCursorMatchesContext(decodedAfterCursor)
+            ? {
+              anchorIndex: decodedAfterCursor!.anchorIndex,
+              anchorMessageId: decodedAfterCursor!.anchorMessageId,
+            }
+            : null,
+          limit: options.limit,
+        });
+      const ftsMatchedStubs = indexSnapshot || searchWindow
         ? null
         : durableMirrorStore.searchMessageStubs(sessionKey, {
           query,
@@ -3680,8 +3711,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           })
           .map((position) => effectiveIndex!.items[position]!)
           .filter(Boolean)
-        : ftsMatchedStubs
-          ? ftsMatchedStubs
+        : searchWindow
+          ? searchWindow.stubs
             .map((item) => ({
               id: item.id,
               role: item.role,
@@ -3692,21 +3723,68 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
               runId: item.runId,
             }))
             .filter(Boolean)
-          : [];
-      const page = paginateMessageList(
-        matchedItems.map((item) => buildIndexStubMessage(item)),
-        {
-          before: options.before,
-          after: options.after,
-          day,
-          limit: options.limit,
-          source: 'history_search',
-          query,
-          roleFilter,
-          contentFilter,
-        },
-      );
-      const pageMessageIds = page.messages.map((message) => message.id);
+          : ftsMatchedStubs
+            ? ftsMatchedStubs
+              .map((item) => ({
+                id: item.id,
+                role: item.role,
+                createdAt: item.createdAt,
+                dayKey: item.createdAt ? item.createdAt.slice(0, 10) : null,
+                previewText: item.previewText,
+                snippetText: item.previewText,
+                runId: item.runId,
+              }))
+              .filter(Boolean)
+            : [];
+      const page = searchWindow
+        ? null
+        : paginateMessageList(
+          matchedItems.map((item) => buildIndexStubMessage(item)),
+          {
+            before: options.before,
+            after: options.after,
+            day,
+            limit: options.limit,
+            source: 'history_search',
+            query,
+            roleFilter,
+            contentFilter,
+          },
+        );
+      const pageInfo = searchWindow
+        ? {
+          hasMoreBefore: searchWindow.hasMoreBefore,
+          beforeCursor: searchWindow.beforeBoundary
+            ? encodeHistoryCursor({
+              source: 'history_search',
+              anchorIndex: searchWindow.beforeBoundary.anchorIndex,
+              anchorMessageId: searchWindow.beforeBoundary.anchorMessageId,
+              anchorCreatedAt: searchWindow.beforeBoundary.anchorCreatedAt,
+              day: searchWindow.day,
+              query,
+              roleFilter,
+              contentFilter,
+            })
+            : null,
+          hasMoreAfter: searchWindow.hasMoreAfter,
+          afterCursor: searchWindow.afterBoundary
+            ? encodeHistoryCursor({
+              source: 'history_search',
+              anchorIndex: searchWindow.afterBoundary.anchorIndex,
+              anchorMessageId: searchWindow.afterBoundary.anchorMessageId,
+              anchorCreatedAt: searchWindow.afterBoundary.anchorCreatedAt,
+              day: searchWindow.day,
+              query,
+              roleFilter,
+              contentFilter,
+            })
+            : null,
+        }
+        : page!.pageInfo;
+      const pageDay = searchWindow ? searchWindow.day : page!.day;
+      const pageMessageIds = searchWindow
+        ? searchWindow.stubs.map((message) => message.id)
+        : page!.messages.map((message) => message.id);
       const fetchedMessages = durableMirrorStore.readMessagesByIds(sessionKey, pageMessageIds);
       if (fetchedMessages.length === pageMessageIds.length) {
         const fetchedById = new Map(fetchedMessages.map((message) => [message.id, message]));
@@ -3728,7 +3806,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         const diagnostics = await buildHealth([], gatewayConnected);
         diagnostics.notes.push(indexSnapshot
           ? 'History search reused the persisted sqlite/json history index and transcript-aligned durable mirror.'
-          : ftsMatchedStubs
+          : searchWindow
+            ? 'History search reused a paged sqlite FTS durable mirror window without rebuilding the persisted history index or remapping the transcript.'
+            : ftsMatchedStubs
             ? 'History search reused sqlite FTS candidates from the durable mirror without rebuilding the persisted history index or remapping the transcript.'
             : effectiveIndex
               ? 'History search rebuilt a persisted sqlite/json history index from durable mirror row metadata without remapping the transcript.'
@@ -3737,7 +3817,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         const diagnosticsSummary = buildChatDiagnosticsSummary(diagnostics);
         const searchSummary = buildHistorySearchSummary({
           query,
-          day: page.day,
+          day: pageDay,
           roleFilter,
           contentFilter,
           matches,
@@ -3755,7 +3835,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             filterRedundantTerminalOverlays(pageMessages, listRunOverlaysForSession(sessionKey)),
             pageMessages,
             pageMessages,
-            page.pageInfo,
+            pageInfo,
           ),
           runtime: {
             ...session.runtime,
@@ -3777,7 +3857,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
               `History search summary: ${searchSummary.totalMatches} matches across ${searchSummary.days.length} day(s).`,
             ],
           },
-          pageInfo: page.pageInfo,
+          pageInfo,
         };
       }
     }

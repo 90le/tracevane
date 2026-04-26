@@ -19,6 +19,8 @@ export const CHAT_SESSION_CONTEXT_MENU_SIZE = {
   padding: 12,
 } as const;
 
+export const CHAT_SESSION_RAIL_AUTO_REVEAL_THRESHOLD_PX = 360;
+
 export interface ChatSessionDestinationItem {
   id: string;
   label: string;
@@ -150,6 +152,20 @@ export function resolveSessionSectionWindow<T>(
     rows: rows.slice(0, visibleCount),
     hiddenCount: Math.max(0, rows.length - visibleCount),
   };
+}
+
+export function shouldRevealMoreSessionRowsOnScroll(metrics: {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}, thresholdPx = CHAT_SESSION_RAIL_AUTO_REVEAL_THRESHOLD_PX): boolean {
+  const scrollHeight = Math.max(0, Number(metrics.scrollHeight) || 0);
+  const clientHeight = Math.max(0, Number(metrics.clientHeight) || 0);
+  if (scrollHeight <= clientHeight) {
+    return false;
+  }
+  const bottomDistance = scrollHeight - clientHeight - Math.max(0, Number(metrics.scrollTop) || 0);
+  return bottomDistance <= Math.max(0, Number(thresholdPx) || 0);
 }
 
 export function resolveObservedSessionsForRail<T>(rows: T[], inspectMode: boolean): T[] {

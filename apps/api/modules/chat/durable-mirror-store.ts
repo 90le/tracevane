@@ -110,6 +110,18 @@ export interface DurableMirrorMessageWindow {
   afterBoundary: DurableMirrorPageBoundary | null;
 }
 
+export interface DurableMirrorSearchWindow {
+  stubs: DurableMirrorSearchStub[];
+  day: string | null;
+  totalCount: number;
+  startOffset: number;
+  endOffset: number;
+  hasMoreBefore: boolean;
+  hasMoreAfter: boolean;
+  beforeBoundary: DurableMirrorPageBoundary | null;
+  afterBoundary: DurableMirrorPageBoundary | null;
+}
+
 function normalizeIndexText(value: string): string {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -155,22 +167,28 @@ function buildFtsMatchExpression(value: string): string | null {
   return terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' AND ');
 }
 
-const mirrorMessageWhereColumnAliases: Record<string, string> = {
-  session_key: 'm.session_key',
-  day_key: 'm.day_key',
-  role: 'm.role',
-  has_text: 'm.has_text',
-  has_resources: 'm.has_resources',
-  has_code: 'm.has_code',
-};
-
-function qualifyMirrorMessageWhereClause(clause: string): string {
-  for (const [column, qualifiedColumn] of Object.entries(mirrorMessageWhereColumnAliases)) {
-    if (clause === column || clause.startsWith(`${column} `)) {
-      return `${qualifiedColumn}${clause.slice(column.length)}`;
-    }
-  }
-  return clause;
+function mapSearchStubRow(row: {
+  message_id: string;
+  message_index?: number | null;
+  role?: string | null;
+  created_at?: string | null;
+  run_id?: string | null;
+  preview_text?: string | null;
+  has_text?: number | null;
+  has_resources?: number | null;
+  has_code?: number | null;
+}): DurableMirrorSearchStub {
+  return {
+    id: String(row.message_id || ''),
+    messageIndex: Number(row.message_index ?? 0),
+    role: typeof row.role === 'string' && row.role ? row.role : 'assistant',
+    createdAt: typeof row.created_at === 'string' && row.created_at ? row.created_at : null,
+    runId: typeof row.run_id === 'string' && row.run_id ? row.run_id : null,
+    previewText: typeof row.preview_text === 'string' ? row.preview_text : '',
+    hasText: Boolean(row.has_text),
+    hasResources: Boolean(row.has_resources),
+    hasCode: Boolean(row.has_code),
+  };
 }
 
 function encodeSessionKey(sessionKey: string): string {
@@ -1017,6 +1035,141 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
     return null;
   }
 
+  function buildSqliteSearchPlan(sessionKey: string, options: {
+    query: string;
+    day?: string | null;
+    roleFilter?: ChatHistorySearchRoleFilter | null;
+    contentFilter?: ChatHistorySearchContentFilter | null;
+  }): {
+    fromClause: string;
+    whereClause: string;
+    params: unknown[];
+    day: string | null;
+  } | null {
+    const query = normalizeIndexText(options.query || '');
+    if (!query) {
+      return null;
+    }
+    const roleFilter = options.roleFilter || 'all';
+    const contentFilter = options.contentFilter || 'all';
+    const day = options.day || null;
+    const ftsQuery = buildFtsMatchExpression(query);
+    const useFts = sqliteFtsHealthy && Boolean(ftsQuery);
+    const where = ['m.session_key = ?'];
+    const params: unknown[] = [sessionKey];
+    if (day) {
+      where.push('m.day_key = ?');
+      params.push(day);
+    }
+    if (roleFilter !== 'all') {
+      where.push('m.role = ?');
+      params.push(roleFilter);
+    }
+    if (contentFilter === 'text') {
+      where.push('m.has_text = 1');
+    } else if (contentFilter === 'resource') {
+      where.push('m.has_resources = 1');
+    } else if (contentFilter === 'code') {
+      where.push('m.has_code = 1');
+    }
+    if (useFts) {
+      where.push('mirror_messages_fts MATCH ?');
+      params.push(ftsQuery);
+    }
+    const queryTerms = [...new Set(tokenizeIndexText(query))];
+    if (containsCJK(query)) {
+      where.push('m.search_text LIKE ?');
+      params.push(`%${query}%`);
+    } else if (queryTerms.length) {
+      for (const term of queryTerms) {
+        where.push('m.search_text LIKE ?');
+        params.push(`%${term}%`);
+      }
+    }
+    return {
+      fromClause: useFts
+        ? `
+          mirror_messages AS m
+          JOIN mirror_messages_fts AS f
+            ON f.session_key = m.session_key
+           AND f.message_id = m.message_id
+        `
+        : 'mirror_messages AS m',
+      whereClause: where.join(' AND '),
+      params,
+      day,
+    };
+  }
+
+  function readSqliteSearchBoundary(
+    plan: {
+      fromClause: string;
+      whereClause: string;
+      params: unknown[];
+    },
+    offset: number,
+  ): DurableMirrorPageBoundary | null {
+    if (!database || offset < 0) {
+      return null;
+    }
+    const row = database.prepare(`
+      SELECT m.message_id, m.created_at
+      FROM ${plan.fromClause}
+      WHERE ${plan.whereClause}
+      ORDER BY m.message_index ASC
+      LIMIT 1 OFFSET ?
+    `).get(...plan.params, offset) as {
+      message_id?: string | null;
+      created_at?: string | null;
+    } | undefined;
+    if (!row) {
+      return null;
+    }
+    return {
+      anchorIndex: offset,
+      anchorMessageId: typeof row.message_id === 'string' ? row.message_id : null,
+      anchorCreatedAt: typeof row.created_at === 'string' ? row.created_at : null,
+    };
+  }
+
+  function resolveSqliteSearchOffset(
+    sessionKey: string,
+    plan: {
+      fromClause: string;
+      whereClause: string;
+      params: unknown[];
+    },
+    anchor?: { anchorIndex?: number | null; anchorMessageId?: string | null } | null,
+  ): number | null {
+    if (!database || !anchor) {
+      return null;
+    }
+    if (anchor.anchorMessageId) {
+      const row = database.prepare(`
+        SELECT COUNT(*) AS offset
+        FROM ${plan.fromClause}
+        WHERE ${plan.whereClause}
+          AND m.message_index < (
+            SELECT message_index
+            FROM mirror_messages
+            WHERE session_key = ? AND message_id = ?
+            LIMIT 1
+          )
+      `).get(...plan.params, sessionKey, anchor.anchorMessageId) as { offset?: number } | undefined;
+      if (row && Number.isFinite(row.offset)) {
+        return Number(row.offset);
+      }
+    }
+    if (
+      typeof anchor.anchorIndex === 'number'
+      && Number.isFinite(anchor.anchorIndex)
+      && anchor.anchorIndex >= 0
+    ) {
+      return anchor.anchorIndex;
+    }
+    return null;
+  }
+
   function readSqliteMessageWindow(sessionKey: string, options: {
     before?: { anchorIndex?: number | null; anchorMessageId?: string | null } | null;
     after?: { anchorIndex?: number | null; anchorMessageId?: string | null } | null;
@@ -1503,6 +1656,141 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
       })) as Array<DurableMirrorSearchStub>;
     },
 
+    readSearchMessageWindow(sessionKey: string, options: {
+      query: string;
+      day?: string | null;
+      roleFilter?: ChatHistorySearchRoleFilter | null;
+      contentFilter?: ChatHistorySearchContentFilter | null;
+      before?: { anchorIndex?: number | null; anchorMessageId?: string | null } | null;
+      after?: { anchorIndex?: number | null; anchorMessageId?: string | null } | null;
+      limit?: number;
+    }): DurableMirrorSearchWindow | null {
+      const query = normalizeIndexText(options.query || '');
+      if (!query) {
+        return null;
+      }
+      if (database) {
+        ensureSqliteMessageRowsLoaded(database, config, sessionKey);
+        ensureSqliteFtsRowsLoaded(sessionKey);
+        const plan = buildSqliteSearchPlan(sessionKey, options);
+        if (!plan) {
+          return null;
+        }
+        const countRow = database.prepare(`
+          SELECT COUNT(*) AS count
+          FROM ${plan.fromClause}
+          WHERE ${plan.whereClause}
+        `).get(...plan.params) as { count?: number } | undefined;
+        const totalCount = Number(countRow?.count || 0);
+        if (totalCount <= 0) {
+          return {
+            stubs: [],
+            day: plan.day,
+            totalCount: 0,
+            startOffset: 0,
+            endOffset: 0,
+            hasMoreBefore: false,
+            hasMoreAfter: false,
+            beforeBoundary: null,
+            afterBoundary: null,
+          };
+        }
+        const beforeOffset = resolveSqliteSearchOffset(sessionKey, plan, options.before);
+        const afterOffset = resolveSqliteSearchOffset(sessionKey, plan, options.after);
+        const { start, end } = computeWindowRange({
+          totalCount,
+          limit: Math.max(1, Number(options.limit || 50)),
+          anchorOffset: null,
+          beforeOffset,
+          afterOffset,
+        });
+        const rows = database.prepare(`
+          SELECT
+            m.message_id,
+            m.message_index,
+            m.role,
+            m.created_at,
+            m.run_id,
+            m.preview_text,
+            m.has_text,
+            m.has_resources,
+            m.has_code
+          FROM ${plan.fromClause}
+          WHERE ${plan.whereClause}
+          ORDER BY m.message_index ASC
+          LIMIT ? OFFSET ?
+        `).all(...plan.params, Math.max(0, end - start), start) as Array<{
+          message_id: string;
+          message_index?: number | null;
+          role?: string | null;
+          created_at?: string | null;
+          run_id?: string | null;
+          preview_text?: string | null;
+          has_text?: number | null;
+          has_resources?: number | null;
+          has_code?: number | null;
+        }>;
+        return {
+          stubs: rows.map(mapSearchStubRow),
+          day: plan.day,
+          totalCount,
+          startOffset: start,
+          endOffset: end,
+          hasMoreBefore: start > 0,
+          hasMoreAfter: end < totalCount,
+          beforeBoundary: start > 0 ? readSqliteSearchBoundary(plan, start) : null,
+          afterBoundary: end < totalCount ? readSqliteSearchBoundary(plan, end) : null,
+        };
+      }
+
+      const stubs = this.searchMessageStubs(sessionKey, options);
+      const offsetForAnchor = (
+        anchor?: { anchorIndex?: number | null; anchorMessageId?: string | null } | null,
+      ): number | null => {
+        if (!anchor) {
+          return null;
+        }
+        if (anchor.anchorMessageId) {
+          const index = stubs.findIndex((stub) => stub.id === anchor.anchorMessageId);
+          if (index >= 0) {
+            return index;
+          }
+        }
+        return typeof anchor.anchorIndex === 'number' && anchor.anchorIndex >= 0
+          ? anchor.anchorIndex
+          : null;
+      };
+      const { start, end } = computeWindowRange({
+        totalCount: stubs.length,
+        limit: Math.max(1, Number(options.limit || 50)),
+        anchorOffset: null,
+        beforeOffset: offsetForAnchor(options.before),
+        afterOffset: offsetForAnchor(options.after),
+      });
+      const boundaryForOffset = (offset: number): DurableMirrorPageBoundary | null => {
+        const stub = stubs[offset];
+        if (!stub) {
+          return null;
+        }
+        return {
+          anchorIndex: offset,
+          anchorMessageId: stub.id,
+          anchorCreatedAt: stub.createdAt,
+        };
+      };
+      return {
+        stubs: stubs.slice(start, end),
+        day: options.day || null,
+        totalCount: stubs.length,
+        startOffset: start,
+        endOffset: end,
+        hasMoreBefore: start > 0,
+        hasMoreAfter: end < stubs.length,
+        beforeBoundary: start > 0 ? boundaryForOffset(start) : null,
+        afterBoundary: end < stubs.length ? boundaryForOffset(end) : null,
+      };
+    },
+
     searchMessageStubs(sessionKey: string, options: {
       query: string;
       day?: string | null;
@@ -1533,99 +1821,41 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
       if (database) {
         ensureSqliteMessageRowsLoaded(database, config, sessionKey);
         ensureSqliteFtsRowsLoaded(sessionKey);
-        const normalizedQuery = normalizeIndexText(query);
-        const ftsQuery = buildFtsMatchExpression(normalizedQuery);
-        const queryTerms = [...new Set(tokenizeIndexText(normalizedQuery))];
-        const useFts = sqliteFtsHealthy && Boolean(ftsQuery);
-        const where: string[] = ['session_key = ?'];
-        const params: unknown[] = [sessionKey];
-        if (day) {
-          where.push('day_key = ?');
-          params.push(day);
+        const plan = buildSqliteSearchPlan(sessionKey, {
+          query,
+          day,
+          roleFilter,
+          contentFilter,
+        });
+        if (!plan) {
+          return [];
         }
-        if (roleFilter !== 'all') {
-          where.push('role = ?');
-          params.push(roleFilter);
-        }
-        if (contentFilter === 'text') {
-          where.push('has_text = 1');
-        } else if (contentFilter === 'resource') {
-          where.push('has_resources = 1');
-        } else if (contentFilter === 'code') {
-          where.push('has_code = 1');
-        }
-        const sql = useFts
-          ? `
-            SELECT
-              m.message_id,
-              m.message_index,
-              m.role,
-              m.created_at,
-              m.run_id,
-              m.preview_text,
-              m.search_text,
-              m.has_text,
-              m.has_resources,
-              m.has_code
-            FROM mirror_messages AS m
-            JOIN mirror_messages_fts AS f
-              ON f.session_key = m.session_key
-             AND f.message_id = m.message_id
-            WHERE ${where.map(qualifyMirrorMessageWhereClause).join(' AND ')}
-              AND mirror_messages_fts MATCH ?
-            ORDER BY m.message_index ASC
-          `
-          : `
-            SELECT message_id, message_index, role, created_at, run_id, preview_text, search_text, has_text, has_resources, has_code
-            FROM mirror_messages
-            WHERE ${where.join(' AND ')}
-            ORDER BY message_index ASC
-          `;
-        if (useFts) {
-          params.push(ftsQuery);
-        } else if (containsCJK(normalizedQuery)) {
-          where.push('search_text LIKE ?');
-          params.push(`%${normalizedQuery}%`);
-        } else if (queryTerms.length) {
-          for (const term of queryTerms) {
-            where.push('search_text LIKE ?');
-            params.push(`%${term}%`);
-          }
-        }
-        const rows = database.prepare(useFts ? sql : `
-          SELECT message_id, message_index, role, created_at, run_id, preview_text, search_text, has_text, has_resources, has_code
-          FROM mirror_messages
-          WHERE ${where.join(' AND ')}
-          ORDER BY message_index ASC
-        `).all(...params) as Array<{
+        const rows = database.prepare(`
+          SELECT
+            m.message_id,
+            m.message_index,
+            m.role,
+            m.created_at,
+            m.run_id,
+            m.preview_text,
+            m.has_text,
+            m.has_resources,
+            m.has_code
+          FROM ${plan.fromClause}
+          WHERE ${plan.whereClause}
+          ORDER BY m.message_index ASC
+        `).all(...plan.params) as Array<{
           message_id: string;
           message_index?: number | null;
           role?: string | null;
           created_at?: string | null;
           run_id?: string | null;
           preview_text?: string | null;
-          search_text?: string | null;
           has_text?: number | null;
           has_resources?: number | null;
           has_code?: number | null;
         }>;
-        const searchTextById = new Map(rows.map((row) => [
-          String(row.message_id || ''),
-          typeof row.search_text === 'string' ? row.search_text : '',
-        ]));
-        return rows
-          .map((row) => ({
-            id: String(row.message_id || ''),
-            messageIndex: Number(row.message_index ?? 0),
-            role: typeof row.role === 'string' && row.role ? row.role : 'assistant',
-            createdAt: typeof row.created_at === 'string' && row.created_at ? row.created_at : null,
-            runId: typeof row.run_id === 'string' && row.run_id ? row.run_id : null,
-            previewText: typeof row.preview_text === 'string' ? row.preview_text : '',
-            hasText: Boolean(row.has_text),
-            hasResources: Boolean(row.has_resources),
-            hasCode: Boolean(row.has_code),
-          }))
-          .filter((item) => matchesQuery(searchTextById.get(item.id) || item.previewText));
+        return rows.map(mapSearchStubRow);
       }
 
       const snapshot = buildSnapshotFromJson(sessionKey, readJsonMirrorRecord(config, sessionKey));

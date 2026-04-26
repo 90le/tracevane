@@ -33,6 +33,13 @@ const SystemEventCenterPage = () =>
 
 export type ShellContextPanelMode = "default" | "chat-inspector" | "disabled";
 
+export type ShellRouteMeta = {
+  contextPanel: ShellContextPanelMode;
+  keepAlive?: boolean;
+};
+
+type RouteChunkLoader = () => Promise<unknown>;
+
 export type ShellNavItem = {
   key: string;
   to: string;
@@ -192,17 +199,55 @@ export const shellNavGroups: ShellNavGroup[] = [
   },
 ];
 
+const nonChatRouteChunkLoaders: RouteChunkLoader[] = [
+  DashboardView,
+  AgentsView,
+  AgentsControlPage,
+  AgentDocsPage,
+  AgentBindingsPage,
+  AgentAdvancedPage,
+  AgentSessionsPage,
+  ChannelsView,
+  ChannelsControlPage,
+  ChannelProviderSettingsPage,
+  ChannelAccountDetailPage,
+  ChannelAccessControlPage,
+  ChannelPairingPage,
+  ChannelBindingsPage,
+  SkillsView,
+  FilesView,
+  PluginsView,
+  CronView,
+  TerminalView,
+  ConfigView,
+  SystemView,
+  SystemEventCenterPage,
+  DreamingView,
+];
+
+let nonChatRouteChunksPreloadPromise: Promise<PromiseSettledResult<unknown>[]> | null = null;
+
+export function preloadNonChatShellRouteChunks(): Promise<PromiseSettledResult<unknown>[]> {
+  if (!nonChatRouteChunksPreloadPromise) {
+    const uniqueLoaders = Array.from(new Set(nonChatRouteChunkLoaders));
+    nonChatRouteChunksPreloadPromise = Promise.allSettled(
+      uniqueLoaders.map((loadRouteChunk) => loadRouteChunk()),
+    );
+  }
+  return nonChatRouteChunksPreloadPromise;
+}
+
 export const shellRoutes: RouteRecordRaw[] = [
   { path: "/", redirect: "/dashboard" },
   {
     path: "/dashboard",
     component: DashboardView,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/agents",
     component: AgentsView,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
     children: [
       { path: "", component: AgentsControlPage },
       { path: ":agentId", component: AgentsControlPage },
@@ -215,7 +260,7 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/chat",
     component: ChatView,
-    meta: { contextPanel: "chat-inspector" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "chat-inspector", keepAlive: false } satisfies ShellRouteMeta,
     children: [
       { path: "", component: ChatShellPage, props: { shellMode: "chat" } },
       { path: "new", redirect: "/chat" },
@@ -245,7 +290,7 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/channels",
     component: ChannelsView,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
     children: [
       { path: "", component: ChannelsControlPage },
       { path: ":type", component: ChannelsControlPage },
@@ -268,51 +313,51 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/skills",
     component: SkillsView,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/files",
     component: FilesView,
-    meta: { contextPanel: "disabled" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "disabled" } satisfies ShellRouteMeta,
   },
   {
     path: "/plugins",
     component: PluginsView,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/cron",
     component: CronView,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/dreaming",
     component: DreamingView,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/terminal",
     component: TerminalView,
-    meta: { contextPanel: "disabled" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "disabled" } satisfies ShellRouteMeta,
   },
   {
     path: "/terminal/:sessionId",
     component: TerminalView,
-    meta: { contextPanel: "disabled" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "disabled" } satisfies ShellRouteMeta,
   },
   {
     path: "/config",
     component: ConfigView,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/system/events",
     component: SystemEventCenterPage,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/system",
     component: SystemView,
-    meta: { contextPanel: "default" satisfies ShellContextPanelMode },
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
 ];

@@ -1610,9 +1610,31 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
     );
     assert.match(
       result.diagnostics.notes.join("\n"),
-      /reused sqlite FTS candidates.*without rebuilding the persisted history index/i,
+      /reused a paged sqlite FTS durable mirror window.*without rebuilding the persisted history index/i,
     );
     assert.equal(transcriptReadFileSyncCount, 0);
+    const keywordTail = await coldContext.services.chat.searchHistory(sessionKey, {
+      query: "keyword",
+      limit: 1,
+    });
+    assert.deepEqual(
+      keywordTail.messages.map((message) => message.id),
+      ["sm3"],
+    );
+    assert.equal(keywordTail.pageInfo.hasMoreBefore, true);
+    assert.equal(keywordTail.pageInfo.hasMoreAfter, false);
+    assert.equal(typeof keywordTail.pageInfo.beforeCursor, "string");
+    const keywordBefore = await coldContext.services.chat.searchHistory(sessionKey, {
+      query: "keyword",
+      before: keywordTail.pageInfo.beforeCursor,
+      limit: 1,
+    });
+    assert.deepEqual(
+      keywordBefore.messages.map((message) => message.id),
+      ["sm2"],
+    );
+    assert.equal(keywordBefore.pageInfo.hasMoreBefore, false);
+    assert.equal(keywordBefore.pageInfo.hasMoreAfter, true);
     const reordered = await coldContext.services.chat.searchHistory(sessionKey, {
       query: "keyword alpha",
       content: "text",

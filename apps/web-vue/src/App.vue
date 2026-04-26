@@ -130,13 +130,16 @@
               @set-locale="setLocale"
             />
 
-            <RouterView v-slot="{ Component }">
+            <RouterView v-slot="{ Component, route: routedView }">
               <section
                 class="shell-route-stage"
                 :theme-mode="themeMode"
                 :class="{ 'shell-route-stage-chat': isChatSurface, 'shell-route-stage-files': isFilesSurface }"
               >
-                <component :is="Component" />
+                <KeepAlive v-if="Component && shouldKeepRouteAlive(routedView)" :max="16">
+                  <component :is="Component" />
+                </KeepAlive>
+                <component v-else-if="Component" :is="Component" />
               </section>
             </RouterView>
           </section>
@@ -169,17 +172,32 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, TooltipProvider } from 'reka-ui';
-import { RouterView, useRoute } from 'vue-router';
+import { RouterView, useRoute, type RouteLocationNormalizedLoaded } from 'vue-router';
 import ConfirmDialog from './components/ConfirmDialog.vue';
 import StudioCommandPalette from './components/StudioCommandPalette.vue';
 import StudioContextPanel from './components/StudioContextPanel.vue';
 import StudioShellTopbar from './components/StudioShellTopbar.vue';
 import StudioSidebarRail from './components/StudioSidebarRail.vue';
+import { preloadNonChatShellRouteChunks } from './features/shell/route-manifest';
 import { useShellChrome } from './features/shell/use-shell-chrome';
 import { useShellNavigation } from './features/shell/use-shell-navigation';
 import { useShellRelease } from './features/shell/use-shell-release';
 import { useLocalePreference, type Locale } from './shared/locale';
 import { useThemePreference, type ThemeMode } from './shared/theme';
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (
+    callback: () => void,
+    options?: { timeout?: number },
+  ) => number;
+};
+
+type NavigatorWithConnection = Navigator & {
+  connection?: {
+    saveData?: boolean;
+    effectiveType?: string;
+  };
+};
 
 const route = useRoute();
 const buildVersion = typeof import.meta.env.STUDIO_APP_VERSION === 'string'
@@ -249,6 +267,32 @@ const openCommandPalette = () => {
   commandPaletteOpen.value = true;
 };
 
+const shouldKeepRouteAlive = (targetRoute: RouteLocationNormalizedLoaded) => (
+  targetRoute.meta.keepAlive !== false
+);
+
+const canPreloadRouteChunks = () => {
+  if (typeof navigator === 'undefined') return false;
+  const connection = (navigator as NavigatorWithConnection).connection;
+  if (connection?.saveData) return false;
+  if (connection?.effectiveType && /(^|-)2g$/i.test(connection.effectiveType)) return false;
+  return true;
+};
+
+const scheduleNonChatRoutePreload = () => {
+  if (typeof window === 'undefined' || !canPreloadRouteChunks()) return;
+
+  const preload = () => {
+    void preloadNonChatShellRouteChunks();
+  };
+  const idleWindow = window as IdleWindow;
+  if (idleWindow.requestIdleCallback) {
+    idleWindow.requestIdleCallback(preload, { timeout: 3_500 });
+    return;
+  }
+  window.setTimeout(preload, 2_500);
+};
+
 const handleGlobalKeydown = (event: KeyboardEvent) => {
   if (!(event.ctrlKey || event.metaKey) || event.key.toLocaleLowerCase() !== 'k') return;
   const target = event.target instanceof Element ? event.target : null;
@@ -261,6 +305,7 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown);
+  scheduleNonChatRoutePreload();
 });
 
 onUnmounted(() => {

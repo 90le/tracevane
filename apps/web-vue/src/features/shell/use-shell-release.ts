@@ -11,6 +11,20 @@ import type {
   SystemStudioUpgradeStatusPayload,
 } from "../../../../../types/system";
 
+const RELEASE_REFRESH_INTERVAL_MS = 300_000;
+const UPGRADE_RUNNING_POLL_INTERVAL_MS = 6_000;
+const UPGRADE_IDLE_POLL_INTERVAL_MS = 60_000;
+const HIDDEN_TAB_POLL_INTERVAL_MS = 180_000;
+const INITIAL_STATUS_IDLE_TIMEOUT_MS = 1_500;
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (
+    callback: () => void,
+    options?: { timeout?: number },
+  ) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
 export function useShellRelease(buildVersion: string) {
   const { text } = useLocalePreference();
   const { confirm } = useConfirmDialog();
@@ -22,6 +36,10 @@ export function useShellRelease(buildVersion: string) {
   const studioReleaseCheckBusy = ref(false);
   let releaseRefreshTimer: number | null = null;
   let upgradePollTimer: number | null = null;
+  let initialIdleHandle: number | null = null;
+  let initialIdleHandleKind: "idle" | "timeout" | null = null;
+  let releaseRequestRunning = false;
+  let upgradeRequestRunning = false;
 
   const versionUpgradeFailed = computed(
     () => studioUpgradeStatus.value?.status === "failed",
@@ -164,20 +182,139 @@ export function useShellRelease(buildVersion: string) {
     return "";
   });
 
-  async function refreshStudioReleaseState(): Promise<void> {
+  function isDocumentVisible(): boolean {
+    return typeof document === "undefined" || document.visibilityState !== "hidden";
+  }
+
+  function clearReleaseTimer(): void {
+    if (typeof window === "undefined" || releaseRefreshTimer === null) return;
+    window.clearTimeout(releaseRefreshTimer);
+    releaseRefreshTimer = null;
+  }
+
+  function clearUpgradeTimer(): void {
+    if (typeof window === "undefined" || upgradePollTimer === null) return;
+    window.clearTimeout(upgradePollTimer);
+    upgradePollTimer = null;
+  }
+
+  function clearInitialIdleRefresh(): void {
+    if (typeof window === "undefined" || initialIdleHandle === null) return;
+    const idleWindow = window as IdleWindow;
+    if (initialIdleHandleKind === "idle" && idleWindow.cancelIdleCallback) {
+      idleWindow.cancelIdleCallback(initialIdleHandle);
+    } else {
+      window.clearTimeout(initialIdleHandle);
+    }
+    initialIdleHandle = null;
+    initialIdleHandleKind = null;
+  }
+
+  async function refreshStudioReleaseState(options: { force?: boolean } = {}): Promise<void> {
+    if (!options.force && !isDocumentVisible()) {
+      return;
+    }
+    if (releaseRequestRunning) {
+      return;
+    }
+    releaseRequestRunning = true;
     try {
       studioRelease.value = await fetchStudioRelease();
     } catch {
       // keep UI usable when release endpoint is unavailable
+    } finally {
+      releaseRequestRunning = false;
     }
   }
 
-  async function refreshStudioUpgradeState(): Promise<void> {
+  async function refreshStudioUpgradeState(options: { force?: boolean } = {}): Promise<void> {
+    if (!options.force && !isDocumentVisible()) {
+      return;
+    }
+    if (upgradeRequestRunning) {
+      return;
+    }
+    upgradeRequestRunning = true;
     try {
       studioUpgradeStatus.value = await fetchStudioUpgradeStatus();
     } catch {
       // keep UI usable when upgrade endpoint is unavailable
+    } finally {
+      upgradeRequestRunning = false;
     }
+  }
+
+  function nextUpgradePollDelay(): number {
+    if (!isDocumentVisible()) return HIDDEN_TAB_POLL_INTERVAL_MS;
+    return studioUpgradeStatus.value?.running
+      ? UPGRADE_RUNNING_POLL_INTERVAL_MS
+      : UPGRADE_IDLE_POLL_INTERVAL_MS;
+  }
+
+  function scheduleReleaseRefresh(delay = RELEASE_REFRESH_INTERVAL_MS): void {
+    if (typeof window === "undefined") return;
+    clearReleaseTimer();
+    releaseRefreshTimer = window.setTimeout(() => {
+      releaseRefreshTimer = null;
+      void refreshStudioReleaseState().finally(() => {
+        scheduleReleaseRefresh(RELEASE_REFRESH_INTERVAL_MS);
+      });
+    }, delay);
+  }
+
+  function scheduleUpgradePoll(delay = nextUpgradePollDelay()): void {
+    if (typeof window === "undefined") return;
+    clearUpgradeTimer();
+    upgradePollTimer = window.setTimeout(() => {
+      upgradePollTimer = null;
+      void refreshStudioUpgradeState().finally(() => {
+        scheduleUpgradePoll(nextUpgradePollDelay());
+      });
+    }, delay);
+  }
+
+  function scheduleInitialStatusRefresh(): void {
+    if (typeof window === "undefined") return;
+    clearInitialIdleRefresh();
+
+    const runInitialRefresh = () => {
+      initialIdleHandle = null;
+      initialIdleHandleKind = null;
+      void Promise.all([
+        refreshStudioReleaseState(),
+        refreshStudioUpgradeState(),
+      ]).finally(() => {
+        scheduleReleaseRefresh();
+        scheduleUpgradePoll();
+      });
+    };
+
+    const idleWindow = window as IdleWindow;
+    if (idleWindow.requestIdleCallback) {
+      initialIdleHandle = idleWindow.requestIdleCallback(runInitialRefresh, {
+        timeout: INITIAL_STATUS_IDLE_TIMEOUT_MS,
+      });
+      initialIdleHandleKind = "idle";
+      return;
+    }
+    initialIdleHandle = window.setTimeout(runInitialRefresh, INITIAL_STATUS_IDLE_TIMEOUT_MS);
+    initialIdleHandleKind = "timeout";
+  }
+
+  function handleVisibilityChange(): void {
+    if (!isDocumentVisible()) {
+      scheduleReleaseRefresh(HIDDEN_TAB_POLL_INTERVAL_MS);
+      scheduleUpgradePoll(HIDDEN_TAB_POLL_INTERVAL_MS);
+      return;
+    }
+
+    void Promise.all([
+      refreshStudioReleaseState({ force: true }),
+      refreshStudioUpgradeState({ force: true }),
+    ]).finally(() => {
+      scheduleReleaseRefresh();
+      scheduleUpgradePoll();
+    });
   }
 
   async function handleStudioUpgradeAction(): Promise<void> {
@@ -185,14 +322,14 @@ export function useShellRelease(buildVersion: string) {
       return;
     }
     if (studioUpgradeStatus.value?.running) {
-      await refreshStudioUpgradeState();
+      await refreshStudioUpgradeState({ force: true });
       return;
     }
     if (!studioRelease.value?.updateAvailable) {
       studioReleaseCheckBusy.value = true;
       try {
-        await refreshStudioReleaseState();
-        await refreshStudioUpgradeState();
+        await refreshStudioReleaseState({ force: true });
+        await refreshStudioUpgradeState({ force: true });
       } finally {
         studioReleaseCheckBusy.value = false;
       }
@@ -246,32 +383,26 @@ export function useShellRelease(buildVersion: string) {
       });
     } finally {
       studioUpgradeBusy.value = false;
-      await refreshStudioReleaseState();
-      await refreshStudioUpgradeState();
+      await refreshStudioReleaseState({ force: true });
+      await refreshStudioUpgradeState({ force: true });
+      scheduleUpgradePoll(UPGRADE_RUNNING_POLL_INTERVAL_MS);
+      scheduleReleaseRefresh();
     }
   }
 
   onMounted(() => {
-    void refreshStudioReleaseState();
-    void refreshStudioUpgradeState();
     if (typeof window !== "undefined") {
-      releaseRefreshTimer = window.setInterval(() => {
-        void refreshStudioReleaseState();
-      }, 300_000);
-      upgradePollTimer = window.setInterval(() => {
-        void refreshStudioUpgradeState();
-      }, 6_000);
+      scheduleInitialStatusRefresh();
+      document.addEventListener("visibilitychange", handleVisibilityChange);
     }
   });
 
   onUnmounted(() => {
-    if (releaseRefreshTimer !== null) {
-      window.clearInterval(releaseRefreshTimer);
-      releaseRefreshTimer = null;
-    }
-    if (upgradePollTimer !== null) {
-      window.clearInterval(upgradePollTimer);
-      upgradePollTimer = null;
+    clearInitialIdleRefresh();
+    clearReleaseTimer();
+    clearUpgradeTimer();
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     }
   });
 

@@ -207,6 +207,11 @@ export function useSessionListWindows(params: {
   const activeHiddenCount = computed(() => activeWindow.value.hiddenCount);
   const archivedHiddenCount = computed(() => archivedWindow.value.hiddenCount);
   const observedHiddenCount = computed(() => observedWindow.value.hiddenCount);
+  const hasHiddenRows = computed(() => (
+    activeHiddenCount.value
+    + archivedHiddenCount.value
+    + observedHiddenCount.value
+  ) > 0);
   const hasVisibleContent = computed(() => (
     params.visibleFolderEntries.value.length
     + params.visibleChildFolders.value.length
@@ -243,6 +248,21 @@ export function useSessionListWindows(params: {
     observedVisibleCount.value += CHAT_SESSION_VISIBLE_LIMITS.observed;
   }
 
+  function showMoreVisibleSections(): void {
+    if (params.archiveViewOpen.value) {
+      if (archivedHiddenCount.value > 0) {
+        showMore('archived');
+      }
+      return;
+    }
+    if (activeHiddenCount.value > 0) {
+      showMore('active');
+    }
+    if (observedHiddenCount.value > 0) {
+      showMore('observed');
+    }
+  }
+
   return {
     activeVisibleCount,
     archivedVisibleCount,
@@ -253,9 +273,11 @@ export function useSessionListWindows(params: {
     activeHiddenCount,
     archivedHiddenCount,
     observedHiddenCount,
+    hasHiddenRows,
     hasVisibleContent,
     showInitialLoading,
     currentViewSummary,
     showMore,
+    showMoreVisibleSections,
   };
 }
