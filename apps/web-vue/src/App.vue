@@ -107,8 +107,8 @@
               v-if="!isChatSurface && !isFilesSurface"
               :is-mobile="isMobile"
               :mobile-nav-open="mobileSidebarOpen"
-              :search-label="text('搜索与命令', 'Search and commands')"
-              :search-shortcut-label="text('命令面板', 'Command palette')"
+              :search-label="text('搜索页面与命令', 'Search pages and commands')"
+              search-shortcut-label="Ctrl K"
               :risk-summary-label="text('风险', 'Risk')"
               :risk-summary-value="riskSummaryValue"
               :pending-summary-label="text('待办', 'Pending')"
@@ -125,6 +125,7 @@
               :locale-options="localeOptions"
               @toggle-mobile-nav="toggleSidebar"
               @toggle-context-panel="toggleContextPanel"
+              @open-command-palette="openCommandPalette"
               @set-theme-mode="setThemeMode"
               @set-locale="setLocale"
             />
@@ -155,15 +156,22 @@
       />
 
       <ConfirmDialog />
+
+      <StudioCommandPalette
+        v-model:open="commandPaletteOpen"
+        :nav-groups="navGroups"
+        :context-items="contextPendingItems"
+      />
     </div>
   </TooltipProvider>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, TooltipProvider } from 'reka-ui';
 import { RouterView, useRoute } from 'vue-router';
 import ConfirmDialog from './components/ConfirmDialog.vue';
+import StudioCommandPalette from './components/StudioCommandPalette.vue';
 import StudioContextPanel from './components/StudioContextPanel.vue';
 import StudioShellTopbar from './components/StudioShellTopbar.vue';
 import StudioSidebarRail from './components/StudioSidebarRail.vue';
@@ -235,9 +243,33 @@ const contextToggleLabel = computed(() => (
     ? text('关闭上下文', 'Hide context')
     : text('打开上下文', 'Show context')
 ));
+const commandPaletteOpen = ref(false);
+
+const openCommandPalette = () => {
+  commandPaletteOpen.value = true;
+};
+
+const handleGlobalKeydown = (event: KeyboardEvent) => {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLocaleLowerCase() !== 'k') return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('input, textarea, select, [contenteditable="true"], .terminal-workspace-shell, .xterm')) {
+    return;
+  }
+  event.preventDefault();
+  openCommandPalette();
+};
+
+onMounted(() => {
+  window.addEventListener('keydown', handleGlobalKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown);
+});
 
 watch(() => route.fullPath, () => {
   closeContextPanel();
+  commandPaletteOpen.value = false;
 });
 
 const { themeMode, setThemeMode } = useThemePreference();

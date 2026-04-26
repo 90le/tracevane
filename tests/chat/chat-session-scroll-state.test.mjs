@@ -136,7 +136,7 @@ test('stable history restore preserves browsing state instead of re-pinning near
   assert.equal(state.userBrowseLockUntil >= 8200, true);
 });
 
-test('append newer page keeps downward reading continuity instead of pinning old top', () => {
+test('append newer page preserves current viewport so the reader can continue downward naturally', () => {
   let state = createChatSessionScrollState();
   state = {
     ...state,
@@ -161,8 +161,10 @@ test('append newer page keeps downward reading continuity instead of pinning old
   });
 
   assert.equal(resolved.resolution.kind, 'restore-append');
-  assert.equal(resolved.resolution.top, 780);
+  assert.equal(resolved.resolution.top, 500);
   assert.equal(resolved.state.appendAnchor, null);
+  assert.equal(resolved.state.isPinnedToBottom, false);
+  assert.equal(resolved.state.autoScrollLockedByUser, true);
 });
 
 test('manual upward scroll stops auto-follow until jump-to-bottom is requested', () => {

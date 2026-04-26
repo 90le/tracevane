@@ -58,6 +58,7 @@
           :access-error="accessError"
           :gateway-warning="gatewayWarning"
           :slash-feedback="selectedSlashFeedback"
+          :latest-jump-token="latestJumpToken"
           :composer-document="composerDocument"
           :composer-attachments="composerAttachments"
           :placeholder="composerPlaceholder"
@@ -106,6 +107,7 @@
           @composer-keydown="handleComposerKeydown"
           @load-more-before="loadMoreHistoryBefore"
           @prefetch-more-before="prefetchMoreHistoryBefore"
+          @prefetch-more-after="prefetchMoreHistoryAfter"
           @load-more-after="loadMoreHistoryAfter"
           @history-before-render-settled="handleHistoryBeforeRenderSettled"
           @jump-to-live="jumpToLive"
@@ -589,6 +591,7 @@ const sessionsLoading = ref(false);
 const historyLoadingInitial = ref(false);
 const historyLoadingBefore = ref(false);
 const historyLoadingAfter = ref(false);
+const latestJumpToken = ref(0);
 let historyBeforeMaterializeInFlight = false;
 let historyBeforeMaterializeReleaseTimer: number | null = null;
 const sessionCreating = ref(false);
@@ -652,6 +655,9 @@ let historyDatesRequestController: AbortController | null = null;
 let historyBeforePrefetchController: AbortController | null = null;
 let historyBeforePrefetchTimer: number | null = null;
 let historyBeforePrefetchIdleHandle: number | null = null;
+let historyAfterPrefetchController: AbortController | null = null;
+let historyAfterPrefetchTimer: number | null = null;
+let historyAfterPrefetchIdleHandle: number | null = null;
 let historyRenderStabilizeTimer: number | null = null;
 let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 const suppressedRunIds = new Set<string>();
@@ -721,12 +727,23 @@ const prefetchedHistoryBefore = ref<{
   query: string;
   payload: ChatHistoryPayload;
 } | null>(null);
+const prefetchedHistoryAfter = ref<{
+  sessionKey: string;
+  afterCursor: string;
+  day: string | null;
+  payload: ChatHistoryPayload;
+} | null>(null);
 type ChatHistoryBeforePrefetchKey = {
   sessionKey: string;
   mode: 'history' | 'search';
   beforeCursor: string;
   day: string | null;
   query: string;
+};
+type ChatHistoryAfterPrefetchKey = {
+  sessionKey: string;
+  afterCursor: string;
+  day: string | null;
 };
 const bootstrapHistorySyncSkipSessionKeys = new Set<string>();
 type ChatTemporaryToolStreamEvent = Extract<ChatStreamEvent, { kind: 'temporary.tool' }>;
@@ -1732,6 +1749,7 @@ function clearConversationState(): void {
   abortReplaceHistoryRequest();
   abortHistoryDatesRequest();
   clearHistoryBeforePrefetch();
+  clearHistoryAfterPrefetch();
   clearHistoryBeforeMaterializeReleaseTimer();
   clearPendingTemporaryToolEvents();
   clearTerminalRunFence();
@@ -3226,6 +3244,13 @@ function abortHistoryBeforePrefetch(): void {
   }
 }
 
+function abortHistoryAfterPrefetch(): void {
+  if (historyAfterPrefetchController) {
+    historyAfterPrefetchController.abort();
+    historyAfterPrefetchController = null;
+  }
+}
+
 function clearHistoryBeforePrefetch(): void {
   if (historyBeforePrefetchTimer != null) {
     window.clearTimeout(historyBeforePrefetchTimer);
@@ -3237,6 +3262,19 @@ function clearHistoryBeforePrefetch(): void {
   }
   abortHistoryBeforePrefetch();
   prefetchedHistoryBefore.value = null;
+}
+
+function clearHistoryAfterPrefetch(): void {
+  if (historyAfterPrefetchTimer != null) {
+    window.clearTimeout(historyAfterPrefetchTimer);
+    historyAfterPrefetchTimer = null;
+  }
+  if (historyAfterPrefetchIdleHandle != null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+    window.cancelIdleCallback(historyAfterPrefetchIdleHandle);
+    historyAfterPrefetchIdleHandle = null;
+  }
+  abortHistoryAfterPrefetch();
+  prefetchedHistoryAfter.value = null;
 }
 
 function armHistoryRenderStabilization(timeoutMs = 1200): void {
@@ -3439,6 +3477,146 @@ function scheduleHistoryBeforePrefetch(sessionKey: string, delayMs = 180): void 
     return;
   }
   historyBeforePrefetchTimer = window.setTimeout(run, delayMs);
+}
+
+function currentHistoryAfterPrefetchKey(sessionKey: string): ChatHistoryAfterPrefetchKey | null {
+  const afterCursor = historyPageInfo.value.afterCursor;
+  if (!sessionKey || historyMode.value !== 'history' || !historyPageInfo.value.hasMoreAfter || !afterCursor) {
+    return null;
+  }
+  if (exhaustedHistoryAfterCursorBySession.get(sessionKey) === afterCursor) {
+    return null;
+  }
+  return {
+    sessionKey,
+    afterCursor,
+    day: selectedHistoryDay.value,
+  };
+}
+
+function matchesHistoryAfterPrefetch(expected: ChatHistoryAfterPrefetchKey | null): boolean {
+  if (!expected) {
+    return prefetchedHistoryAfter.value == null;
+  }
+  const current = prefetchedHistoryAfter.value;
+  return Boolean(
+    current
+    && current.sessionKey === expected.sessionKey
+    && current.afterCursor === expected.afterCursor
+    && current.day === expected.day,
+  );
+}
+
+function readMatchedHistoryAfterPrefetchPayload(
+  expected: ChatHistoryAfterPrefetchKey | null,
+): ChatHistoryPayload | null {
+  return matchesHistoryAfterPrefetch(expected)
+    ? prefetchedHistoryAfter.value?.payload || null
+    : null;
+}
+
+async function waitForHistoryAfterPrefetch(
+  expected: ChatHistoryAfterPrefetchKey | null,
+  timeoutMs = 900,
+): Promise<ChatHistoryPayload | null> {
+  if (!expected || !historyAfterPrefetchController) {
+    return readMatchedHistoryAfterPrefetchPayload(expected);
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (historyAfterPrefetchController && Date.now() < deadline) {
+    const payload = readMatchedHistoryAfterPrefetchPayload(expected);
+    if (payload) {
+      return payload;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 40));
+  }
+  return readMatchedHistoryAfterPrefetchPayload(expected);
+}
+
+async function runHistoryAfterPrefetch(sessionKey: string): Promise<void> {
+  const key = currentHistoryAfterPrefetchKey(sessionKey);
+  if (!key) {
+    clearHistoryAfterPrefetch();
+    return;
+  }
+  if (matchesHistoryAfterPrefetch(key)) {
+    return;
+  }
+  abortHistoryAfterPrefetch();
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  historyAfterPrefetchController = controller;
+  try {
+    const payload = await fetchChatHistoryPage(sessionKey, {
+      after: key.afterCursor,
+      limit: CHAT_HISTORY_PAGE_LIMIT,
+      day: key.day,
+      signal: controller?.signal,
+    });
+    const currentKey = currentHistoryAfterPrefetchKey(sessionKey);
+    if (
+      historyAfterPrefetchController !== controller
+      || !currentKey
+      || currentKey.sessionKey !== key.sessionKey
+      || currentKey.afterCursor !== key.afterCursor
+      || currentKey.day !== key.day
+    ) {
+      return;
+    }
+    prefetchedHistoryAfter.value = {
+      ...key,
+      payload,
+    };
+  } catch (error) {
+    if (!isAbortError(error)) {
+      prefetchedHistoryAfter.value = null;
+    }
+  } finally {
+    if (historyAfterPrefetchController === controller) {
+      historyAfterPrefetchController = null;
+    }
+  }
+}
+
+function scheduleHistoryAfterPrefetch(sessionKey: string, delayMs = 120): void {
+  const key = currentHistoryAfterPrefetchKey(sessionKey);
+  if (!key) {
+    clearHistoryAfterPrefetch();
+    return;
+  }
+  if (matchesHistoryAfterPrefetch(key) || historyAfterPrefetchController != null) {
+    return;
+  }
+  if (historyAfterPrefetchTimer != null) {
+    window.clearTimeout(historyAfterPrefetchTimer);
+    historyAfterPrefetchTimer = null;
+  }
+  if (historyAfterPrefetchIdleHandle != null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+    window.cancelIdleCallback(historyAfterPrefetchIdleHandle);
+    historyAfterPrefetchIdleHandle = null;
+  }
+  const run = () => {
+    historyAfterPrefetchTimer = null;
+    historyAfterPrefetchIdleHandle = null;
+    void runHistoryAfterPrefetch(sessionKey);
+  };
+  if (delayMs <= 0) {
+    historyAfterPrefetchTimer = window.setTimeout(run, 0);
+    return;
+  }
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    historyAfterPrefetchIdleHandle = window.requestIdleCallback(() => {
+      run();
+    }, { timeout: Math.max(220, delayMs + 360) });
+    historyAfterPrefetchTimer = window.setTimeout(() => {
+      if (historyAfterPrefetchIdleHandle != null && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(historyAfterPrefetchIdleHandle);
+        historyAfterPrefetchIdleHandle = null;
+      }
+      run();
+    }, delayMs);
+    return;
+  }
+  historyAfterPrefetchTimer = window.setTimeout(run, delayMs);
 }
 
 function isAbortError(error: unknown): boolean {
@@ -3904,16 +4082,31 @@ async function loadMoreHistoryAfter(): Promise<void> {
   const requestCursor = historyPageInfo.value.afterCursor;
   if (requestCursor && exhaustedHistoryAfterCursorBySession.get(sessionKey) === requestCursor) {
     historyPageInfo.value = { ...historyPageInfo.value, hasMoreAfter: false, afterCursor: null };
+    clearHistoryAfterPrefetch();
     return;
   }
-  const existingIds = new Set((historyPayload.value?.messages || []).map((message) => message.id));
-  historyLoadingAfter.value = true;
+  const existingIds = new Set(runtimeMachineState.value.canonicalMessageLedger.map((message) => message.id));
+  const prefetchKey = currentHistoryAfterPrefetchKey(sessionKey);
+  let prefetchedPayload = readMatchedHistoryAfterPrefetchPayload(prefetchKey);
+  const shouldShowLoadingState = !prefetchedPayload;
+  if (shouldShowLoadingState) {
+    historyLoadingAfter.value = true;
+  }
   try {
-    const payload = await fetchChatHistoryPage(sessionKey, {
-      after: historyPageInfo.value.afterCursor,
-      limit: CHAT_HISTORY_PAGE_LIMIT,
-      day: selectedHistoryDay.value,
-    });
+    if (!prefetchedPayload && historyAfterPrefetchController) {
+      prefetchedPayload = await waitForHistoryAfterPrefetch(prefetchKey);
+    }
+    if (!prefetchedPayload) {
+      clearHistoryAfterPrefetch();
+    }
+    const payload = prefetchedPayload
+      ? prefetchedPayload
+      : await fetchChatHistoryPage(sessionKey, {
+        after: historyPageInfo.value.afterCursor,
+        limit: CHAT_HISTORY_PAGE_LIMIT,
+        day: selectedHistoryDay.value,
+      });
+    prefetchedHistoryAfter.value = null;
     if (sessionKey !== selectedSessionKey.value) {
       return;
     }
@@ -3927,6 +4120,7 @@ async function loadMoreHistoryAfter(): Promise<void> {
         exhaustedHistoryAfterCursorBySession.set(sessionKey, requestCursor);
       }
       historyPageInfo.value = { ...historyPageInfo.value, hasMoreAfter: false, afterCursor: null };
+      clearHistoryAfterPrefetch();
       return;
     }
     armHistoryRenderStabilization();
@@ -3934,7 +4128,9 @@ async function loadMoreHistoryAfter(): Promise<void> {
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('加载更新消息失败。', 'Failed to load newer messages.'));
   } finally {
-    historyLoadingAfter.value = false;
+    if (shouldShowLoadingState) {
+      historyLoadingAfter.value = false;
+    }
   }
 }
 
@@ -3952,8 +4148,15 @@ function applyHistoryPagePayloadAppend(payload: ChatHistoryPayload): void {
   if (result.eviction.evictedTop > 0) {
     historyPageInfo.value = { ...historyPageInfo.value, hasMoreBefore: true };
   }
-  replaceChatSessionProcessLedger(runtimeMachineState.value, payload.overlays);
   persistHistorySnapshot(payload.session.key);
+}
+
+function prefetchMoreHistoryAfter(): void {
+  const sessionKey = selectedSessionKey.value;
+  if (!sessionKey || historyLoadingInitial.value || historyLoadingAfter.value || historyMode.value !== 'history') {
+    return;
+  }
+  void scheduleHistoryAfterPrefetch(sessionKey, 0);
 }
 
 async function jumpToLive(): Promise<void> {
@@ -3961,6 +4164,8 @@ async function jumpToLive(): Promise<void> {
   if (!sessionKey) return;
   clearDeferredInitialHistoryLoad();
   abortReplaceHistoryRequest();
+  clearHistoryBeforePrefetch();
+  clearHistoryAfterPrefetch();
   const controller = typeof AbortController === 'undefined' ? null : new AbortController();
   historyReplaceRequestController = controller;
   selectedHistoryDay.value = null;
@@ -3974,6 +4179,7 @@ async function jumpToLive(): Promise<void> {
     });
     if (sessionKey !== selectedSessionKey.value) return;
     applyHistoryPagePayload(payload, 'replace');
+    latestJumpToken.value += 1;
   } catch (error) {
     if (isAbortError(error)) {
       return;
@@ -5855,6 +6061,7 @@ onBeforeUnmount(() => {
   abortReplaceHistoryRequest();
   abortHistoryDatesRequest();
   clearHistoryBeforePrefetch();
+  clearHistoryAfterPrefetch();
   clearHistoryBeforeMaterializeReleaseTimer();
   clearPendingTemporaryToolEvents();
   clearTerminalRunFence();

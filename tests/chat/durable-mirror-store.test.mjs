@@ -78,6 +78,13 @@ function runJsonFallbackScript(root, script) {
   return result.trim();
 }
 
+function explainPlanDetails(db, sql, ...params) {
+  return db.prepare(`EXPLAIN QUERY PLAN ${sql}`)
+    .all(...params)
+    .map((row) => String(row.detail || ''))
+    .join('\n');
+}
+
 // ===========================================================================
 // SQLite path tests
 // ===========================================================================
@@ -274,6 +281,24 @@ test('sqlite: session metadata and page messages can be read without hydrating t
         'mirror_messages_session_has_text_index',
         'mirror_messages_session_role_index',
       ],
+    );
+    assert.match(
+      explainPlanDetails(db, `
+        SELECT message_id
+        FROM mirror_messages INDEXED BY mirror_messages_session_role_index
+        WHERE session_key = ? AND role = ?
+        ORDER BY message_index ASC
+      `, SESSION_KEY, 'assistant'),
+      /mirror_messages_session_role_index/,
+    );
+    assert.match(
+      explainPlanDetails(db, `
+        SELECT message_id
+        FROM mirror_messages INDEXED BY mirror_messages_session_has_code_index
+        WHERE session_key = ? AND has_code = 1
+        ORDER BY message_index ASC
+      `, SESSION_KEY),
+      /mirror_messages_session_has_code_index/,
     );
     const ftsRows = db.prepare(`
       SELECT message_id

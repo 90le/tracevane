@@ -52,12 +52,13 @@ const shellNavigationSource = read(
   "apps/web-vue/src/features/shell/use-shell-navigation.ts",
 );
 
-test("shell context panel keeps live summary lightweight", () => {
-  assert.match(shellNavigationSource, /buildDashboardPriorityAction/);
+test("shell context panel keeps route-context summary lightweight", () => {
+  assert.match(shellNavigationSource, /const routeContextConfigs: ShellContextConfig\[\] = \[/);
   assert.match(
     shellNavigationSource,
-    /const liveNextStep = computed\([\s\S]*?buildDashboardPriorityAction/,
+    /routeContextConfigs\.find\(\(config\) => config\.match\(route\.path\)\)/,
   );
+  assert.match(shellNavigationSource, /const liveNextStep = computed\(\(\) => null\);/);
   assert.match(
     shellNavigationSource,
     /activeContext\.value\.actions[\s\S]*?\.slice\(0, 2\)/,

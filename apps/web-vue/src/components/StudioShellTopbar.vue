@@ -17,6 +17,7 @@
       class="studio-shell-topbar__search"
       :title="searchLabel"
       :aria-label="searchLabel"
+      @click="$emit('open-command-palette')"
     >
       <span class="studio-shell-topbar__search-label">{{ searchLabel }}</span>
       <span class="studio-shell-topbar__search-shortcut">{{ searchShortcutLabel }}</span>
@@ -118,6 +119,7 @@ defineProps<{
 defineEmits<{
   (event: 'toggle-mobile-nav'): void;
   (event: 'toggle-context-panel'): void;
+  (event: 'open-command-palette'): void;
   (event: 'set-theme-mode', value: ThemeMode): void;
   (event: 'set-locale', value: Locale): void;
 }>();

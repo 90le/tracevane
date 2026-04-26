@@ -155,6 +155,24 @@ function buildFtsMatchExpression(value: string): string | null {
   return terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' AND ');
 }
 
+const mirrorMessageWhereColumnAliases: Record<string, string> = {
+  session_key: 'm.session_key',
+  day_key: 'm.day_key',
+  role: 'm.role',
+  has_text: 'm.has_text',
+  has_resources: 'm.has_resources',
+  has_code: 'm.has_code',
+};
+
+function qualifyMirrorMessageWhereClause(clause: string): string {
+  for (const [column, qualifiedColumn] of Object.entries(mirrorMessageWhereColumnAliases)) {
+    if (clause === column || clause.startsWith(`${column} `)) {
+      return `${qualifiedColumn}${clause.slice(column.length)}`;
+    }
+  }
+  return clause;
+}
+
 function encodeSessionKey(sessionKey: string): string {
   return Buffer.from(sessionKey, 'utf-8').toString('base64url');
 }
@@ -1553,7 +1571,7 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
             JOIN mirror_messages_fts AS f
               ON f.session_key = m.session_key
              AND f.message_id = m.message_id
-            WHERE ${where.map((clause) => clause.replaceAll('session_key', 'm.session_key').replaceAll('day_key', 'm.day_key').replaceAll('role =', 'm.role =').replaceAll('has_text', 'm.has_text').replaceAll('has_resources', 'm.has_resources').replaceAll('has_code', 'm.has_code')).join(' AND ')}
+            WHERE ${where.map(qualifyMirrorMessageWhereClause).join(' AND ')}
               AND mirror_messages_fts MATCH ?
             ORDER BY m.message_index ASC
           `

@@ -154,6 +154,19 @@ export function preserveChatSessionHistoryBrowsePosition(
   };
 }
 
+export function preserveChatSessionAppendBrowsePosition(
+  state: ChatSessionScrollState,
+  metrics: ChatSessionScrollMetrics,
+): ChatSessionScrollState {
+  return {
+    ...state,
+    isPinnedToBottom: false,
+    autoScrollLockedByUser: true,
+    awaitingInitialBottomAnchor: false,
+    lastScrollTop: metrics.scrollTop,
+  };
+}
+
 export function captureChatSessionPrependAnchor(
   state: ChatSessionScrollState,
   metrics: ChatSessionScrollMetrics,
@@ -224,19 +237,19 @@ export function resolveChatSessionTimelineMutation(
   }
 
   if (state.appendAnchor && !params.loadingAfter) {
-    const delta = params.metrics.scrollHeight - state.appendAnchor.scrollHeight;
-    const nextState = syncChatSessionPinnedState({
+    const restoredTop = state.appendAnchor.scrollTop;
+    const nextState = preserveChatSessionAppendBrowsePosition({
       ...state,
       appendAnchor: null,
     }, {
       ...params.metrics,
-      scrollTop: state.appendAnchor.scrollTop + delta,
-    }, nowMs);
+      scrollTop: restoredTop,
+    });
     return {
       state: nextState,
       resolution: {
         kind: 'restore-append',
-        top: state.appendAnchor.scrollTop + delta,
+        top: restoredTop,
       },
     };
   }

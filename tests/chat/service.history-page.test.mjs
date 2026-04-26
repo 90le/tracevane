@@ -85,6 +85,26 @@ async function getFreePort() {
   return port;
 }
 
+function hasHistoryIndexesTable(db) {
+  return Boolean(
+    db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'history_indexes'").get(),
+  );
+}
+
+function clearHistoryIndexIfPresent(db, sessionKey) {
+  if (hasHistoryIndexesTable(db)) {
+    db.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
+  }
+}
+
+function readHistoryIndexCount(db, sessionKey) {
+  if (!hasHistoryIndexesTable(db)) {
+    return 0;
+  }
+  const row = db.prepare("SELECT COUNT(*) AS count FROM history_indexes WHERE session_key = ?").get(sessionKey);
+  return Number(row?.count || 0);
+}
+
 async function startFakeGateway() {
   const port = await getFreePort();
   const requests = [];
@@ -1065,14 +1085,39 @@ test("history dates can reuse sqlite durable mirror rows without a persisted his
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const warmContext = createStudioContext({
-      config,
-      logger: createLogger(),
+    const sourceMtimeMs = fs.statSync(transcriptFile).mtimeMs;
+    const mirrorMessages = [
+      { id: "md1", role: "user", text: "one", createdAt: "2026-03-20T09:00:00.000Z" },
+      { id: "md2", role: "assistant", text: "two", createdAt: "2026-03-20T10:00:00.000Z" },
+      { id: "md3", role: "user", text: "three", createdAt: "2026-03-21T09:00:00.000Z" },
+    ].map((message) => ({
+      ...message,
+      source: "history",
+      runId: null,
+      truncated: false,
+      omitted: false,
+      aborted: false,
+      stopReason: null,
+    }));
+    createStudioChatDurableMirrorStore(config).replaceSnapshot({
+      sessionKey,
+      version: "dates-mirror-v1",
+      source: "local_transcript",
+      messages: mirrorMessages,
+      baseMessageSeq: mirrorMessages.length,
+      savedAt: "2026-03-21T09:00:00.000Z",
+      sourceSignature: "dates-mirror-signature",
+      sourceSessionFile: transcriptFile,
+      sourceMtimeMs,
+      observability: {
+        lifecycle: null,
+        usage: null,
+        toolCards: [],
+        timeline: [],
+      },
     });
-
-    await warmContext.services.chat.getHistory(sessionKey, { limit: 2 });
     const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
-    sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
+    clearHistoryIndexIfPresent(sharedDb, sessionKey);
     sharedDb.close();
     fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
 
@@ -1098,9 +1143,13 @@ test("history dates can reuse sqlite durable mirror rows without a persisted his
     );
     assert.match(
       dates.diagnostics.notes.join("\n"),
-      /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan/i,
+      /reused sqlite durable mirror date buckets without rebuilding the persisted history index/i,
     );
-    assert.equal(transcriptReadFileSyncCount, 1);
+    assert.equal(transcriptReadFileSyncCount, 0);
+    const verifyDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const indexCount = readHistoryIndexCount(verifyDb, sessionKey);
+    verifyDb.close();
+    assert.equal(indexCount, 0);
   } finally {
     fs.readFileSync = originalReadFileSync;
     fs.rmSync(root, { recursive: true, force: true });
@@ -1111,6 +1160,7 @@ test("history day pages can reuse sqlite durable mirror rows without a persisted
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "openclaw-studio-history-day-mirror-fast-"),
   );
+  const originalReadFileSync = fs.readFileSync;
   try {
     const workspace = path.join(root, "workspace");
     const transcriptFile = path.join(root, "transcripts", "session-day-fast.jsonl");
@@ -1177,16 +1227,50 @@ test("history day pages can reuse sqlite durable mirror rows without a persisted
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const warmContext = createStudioContext({
-      config,
-      logger: createLogger(),
+    const sourceMtimeMs = fs.statSync(transcriptFile).mtimeMs;
+    const mirrorMessages = [
+      { id: "df1", role: "user", text: "day one user", createdAt: "2026-03-20T09:00:00.000Z" },
+      { id: "df2", role: "assistant", text: "day one assistant", createdAt: "2026-03-20T10:00:00.000Z" },
+      { id: "df3", role: "user", text: "day two user", createdAt: "2026-03-21T09:00:00.000Z" },
+      { id: "df4", role: "assistant", text: "day two assistant", createdAt: "2026-03-21T10:00:00.000Z" },
+    ].map((message) => ({
+      ...message,
+      source: "history",
+      runId: null,
+      truncated: false,
+      omitted: false,
+      aborted: false,
+      stopReason: null,
+    }));
+    createStudioChatDurableMirrorStore(config).replaceSnapshot({
+      sessionKey,
+      version: "day-fast-v1",
+      source: "local_transcript",
+      messages: mirrorMessages,
+      baseMessageSeq: mirrorMessages.length,
+      savedAt: "2026-03-21T10:00:00.000Z",
+      sourceSignature: "day-fast-signature",
+      sourceSessionFile: transcriptFile,
+      sourceMtimeMs,
+      observability: {
+        lifecycle: null,
+        usage: null,
+        toolCards: [],
+        timeline: [],
+      },
     });
-
-    await warmContext.services.chat.getHistory(sessionKey, { limit: 2 });
     const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
-    sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
+    clearHistoryIndexIfPresent(sharedDb, sessionKey);
     sharedDb.close();
     fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+
+    let transcriptReadFileSyncCount = 0;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        transcriptReadFileSyncCount += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
+    });
 
     const coldContext = createStudioContext({
       config,
@@ -1202,10 +1286,16 @@ test("history day pages can reuse sqlite durable mirror rows without a persisted
     );
     assert.match(
       dayPage.diagnostics.notes.join("\n"),
-      /durable mirror row metadata|durable mirror page quer|lightweight transcript scan/i,
+      /reused sqlite durable mirror page queries without rebuilding the persisted history index/i,
     );
+    assert.equal(transcriptReadFileSyncCount, 0);
+    const verifyDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const indexCount = readHistoryIndexCount(verifyDb, sessionKey);
+    verifyDb.close();
+    assert.equal(indexCount, 0);
     assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
   } finally {
+    fs.readFileSync = originalReadFileSync;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
@@ -1214,6 +1304,7 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "openclaw-studio-history-anchor-mirror-fast-"),
   );
+  const originalReadFileSync = fs.readFileSync;
   try {
     const workspace = path.join(root, "workspace");
     const transcriptFile = path.join(root, "transcripts", "session-anchor-fast.jsonl");
@@ -1282,16 +1373,48 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const warmContext = createStudioContext({
-      config,
-      logger: createLogger(),
+    const sourceMtimeMs = fs.statSync(transcriptFile).mtimeMs;
+    const mirrorMessages = Array.from({ length: 10 }, (_, index) => ({
+      id: `am${index + 1}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      text: `anchor message ${index + 1}`,
+      createdAt: `2026-03-22T10:${String(index).padStart(2, "0")}:00.000Z`,
+      source: "history",
+      runId: null,
+      truncated: false,
+      omitted: false,
+      aborted: false,
+      stopReason: null,
+    }));
+    createStudioChatDurableMirrorStore(config).replaceSnapshot({
+      sessionKey,
+      version: "anchor-fast-v1",
+      source: "local_transcript",
+      messages: mirrorMessages,
+      baseMessageSeq: mirrorMessages.length,
+      savedAt: "2026-03-22T10:09:00.000Z",
+      sourceSignature: "anchor-fast-signature",
+      sourceSessionFile: transcriptFile,
+      sourceMtimeMs,
+      observability: {
+        lifecycle: null,
+        usage: null,
+        toolCards: [],
+        timeline: [],
+      },
     });
-
-    await warmContext.services.chat.getHistory(sessionKey, { limit: 3 });
     const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
-    sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
+    clearHistoryIndexIfPresent(sharedDb, sessionKey);
     sharedDb.close();
     fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+
+    let transcriptReadFileSyncCount = 0;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        transcriptReadFileSyncCount += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
+    });
 
     const coldContext = createStudioContext({
       config,
@@ -1307,8 +1430,9 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
     );
     assert.match(
       anchored.diagnostics.notes.join("\n"),
-      /durable mirror row metadata|durable mirror page quer|lightweight transcript scan/i,
+      /reused sqlite durable mirror page queries without rebuilding the persisted history index/i,
     );
+    assert.equal(transcriptReadFileSyncCount, 0);
 
     const anchoredWithinDay = await coldContext.services.chat.getHistory(sessionKey, {
       anchor: "am6",
@@ -1322,9 +1446,15 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
     assert.equal(anchoredWithinDay.day, "2026-03-22");
     assert.match(
       anchoredWithinDay.diagnostics.notes.join("\n"),
-      /durable mirror row metadata|durable mirror page quer|lightweight transcript scan/i,
+      /reused sqlite durable mirror page queries without rebuilding the persisted history index/i,
     );
+    assert.equal(transcriptReadFileSyncCount, 0);
+    const verifyDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const indexCount = readHistoryIndexCount(verifyDb, sessionKey);
+    verifyDb.close();
+    assert.equal(indexCount, 0);
   } finally {
+    fs.readFileSync = originalReadFileSync;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

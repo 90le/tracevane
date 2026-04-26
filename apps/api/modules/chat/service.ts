@@ -3448,44 +3448,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       && (mirrorMeta.sourceMtimeMs ?? null) === (sourceSelection.sourceMtimeMs ?? null),
     );
 
-    let allMessages: ChatMessageItem[];
+    let allMessages: ChatMessageItem[] = [];
     let pageMessages: ChatMessageItem[];
     let pageInfo: ChatHistoryPayload['pageInfo'];
     let pageDay: string | null;
-    let effectiveIndex = mirrorAligned
-      ? ensureLocalTranscriptHistoryIndexFromMirror(
-        sessionKey,
-        {
-          sourceSessionFile: sourceSelection.sessionFile,
-          sourceMtimeMs: sourceSelection.sourceMtimeMs,
-        },
-        indexSnapshot,
-      )
-      : indexSnapshot;
     let transcriptContent: string | null = null;
-    if (!effectiveIndex) {
-      try {
-        transcriptContent = readTranscriptContentCached(sourceSelection.sessionFile, sourceSelection.sourceMtimeMs);
-      } catch {
-        return null;
-      }
-      const seedItems = scanTranscriptIndexSeedItemsFastFromContent(transcriptContent);
-      if (!seedItems.length) {
-        return null;
-      }
-      effectiveIndex = historyIndexStore.ensureIndexFromItems({
-        sessionKey,
-        items: seedItems,
-        totalMessages: seedItems.length,
-        sourceSessionFile: sourceSelection.sessionFile,
-        sourceMtimeMs: sourceSelection.sourceMtimeMs,
-      });
-    }
-    if (!effectiveIndex) {
-      return null;
-    }
-
-    allMessages = effectiveIndex.items.map((item) => buildIndexStubMessage(item));
     if (mirrorAligned) {
       const day = normalizeString(options.day) || null;
       const beforeCursor = decodeHistoryCursor(options.before);
@@ -3518,6 +3485,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
       pageMessages = window.messages;
       pageDay = window.day;
+      allMessages = indexSnapshot
+        ? indexSnapshot.items.map((item) => buildIndexStubMessage(item))
+        : pageMessages;
       pageInfo = {
         hasMoreBefore: window.hasMoreBefore,
         beforeCursor: window.beforeBoundary
@@ -3547,6 +3517,29 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           : null,
       };
     } else {
+      let effectiveIndex = indexSnapshot;
+      if (!effectiveIndex) {
+        try {
+          transcriptContent = readTranscriptContentCached(sourceSelection.sessionFile, sourceSelection.sourceMtimeMs);
+        } catch {
+          return null;
+        }
+        const seedItems = scanTranscriptIndexSeedItemsFastFromContent(transcriptContent);
+        if (!seedItems.length) {
+          return null;
+        }
+        effectiveIndex = historyIndexStore.ensureIndexFromItems({
+          sessionKey,
+          items: seedItems,
+          totalMessages: seedItems.length,
+          sourceSessionFile: sourceSelection.sessionFile,
+          sourceMtimeMs: sourceSelection.sourceMtimeMs,
+        });
+      }
+      if (!effectiveIndex) {
+        return null;
+      }
+      allMessages = effectiveIndex.items.map((item) => buildIndexStubMessage(item));
       const page = paginateMessageList(allMessages, {
         before: options.before,
         after: options.after,
@@ -3580,11 +3573,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }
     const session = await requireSession(sessionKey, gatewayConnected);
     const diagnostics = await buildHealth([], gatewayConnected);
-    diagnostics.notes.push(indexSnapshot && mirrorAligned
-      ? 'History window reused the persisted sqlite/json history index and sqlite durable mirror page queries.'
-      : mirrorAligned
-        ? 'History window rebuilt a persisted sqlite/json history index from durable mirror row metadata and reused sqlite durable mirror page queries.'
-        : 'History window rebuilt a persisted sqlite/json history index from a lightweight transcript scan and mapped only the requested page messages.');
+    diagnostics.notes.push(mirrorAligned
+      ? indexSnapshot
+        ? 'History window reused sqlite durable mirror page queries with existing persisted history index metadata.'
+        : 'History window reused sqlite durable mirror page queries without rebuilding the persisted history index or remapping the transcript.'
+      : 'History window rebuilt a persisted sqlite/json history index from a lightweight transcript scan and mapped only the requested page messages.');
     const runtimeSummary = buildChatSessionRuntimeSummary(session.runtime);
     const diagnosticsSummary = buildChatDiagnosticsSummary(diagnostics);
     const allOverlays = filterRedundantTerminalOverlays(
@@ -6726,24 +6719,24 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           && mirrorMeta.sourceSessionFile === sourceSelection.sessionFile
           && (mirrorMeta.sourceMtimeMs ?? null) === (sourceSelection.sourceMtimeMs ?? null)
         ) {
-          const index = ensureLocalTranscriptHistoryIndexFromMirror(
-            sessionKey,
-            {
-              sourceSessionFile: sourceSelection.sessionFile,
-              sourceMtimeMs: sourceSelection.sourceMtimeMs,
-            },
-            null,
-          );
-          if (index) {
+          const days = durableMirrorStore.readDateBuckets(sessionKey)
+            .map((bucket) => ({
+              day: bucket.day,
+              count: bucket.count,
+              firstMessageId: bucket.firstMessageId || '',
+              lastMessageId: bucket.lastMessageId || '',
+            }))
+            .filter((bucket) => bucket.firstMessageId && bucket.lastMessageId);
+          if (days.length) {
             const gatewayConnected = await isGatewayConnected();
             const session = await requireSession(sessionKey, gatewayConnected);
             const diagnostics = await buildHealth([], gatewayConnected);
-            diagnostics.notes.push('History dates rebuilt a persisted sqlite/json history index from durable mirror row metadata without remapping the transcript.');
+            diagnostics.notes.push('History dates reused sqlite durable mirror date buckets without rebuilding the persisted history index or remapping the transcript.');
             return {
               checkedAt: new Date().toISOString(),
               session,
               diagnostics,
-              days: historyIndexStore.buildDateBuckets(index),
+              days,
             };
           }
         }

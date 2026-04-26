@@ -837,6 +837,7 @@ const props = defineProps<{
   accessError: string;
   gatewayWarning: string;
   slashFeedback: StudioSlashExecutionFeedback | null;
+  latestJumpToken?: number;
   composerDocument: ChatComposerDocument;
   composerAttachments: Array<{
     id: string;
@@ -894,6 +895,7 @@ const emit = defineEmits<{
   (event: 'toggle-sound-cues', value: boolean): void;
   (event: 'load-more-before', mode?: 'browse' | 'autofill' | 'continuation'): void;
   (event: 'prefetch-more-before'): void;
+  (event: 'prefetch-more-after'): void;
   (event: 'load-more-after'): void;
   (event: 'history-before-render-settled'): void;
   (event: 'jump-to-live'): void;
@@ -1042,6 +1044,7 @@ let ignoreScrollEvents = false;
 let prependRestoreAnchorItemId: string | null = null;
 let prependRestoreAnchorOffset = 0;
 let prependRestoreBoundaryMessageId: string | null = null;
+let prependRestoreToken = 0;
 let stableRestoreAnchorItemId: string | null = null;
 let stableRestoreAnchorOffset = 0;
 let stableRestoreBottomDistance: number | null = null;
@@ -1057,17 +1060,23 @@ let historyBeforeIndicatorTimer: number | null = null;
 let historyAfterIndicatorTimer: number | null = null;
 let historyBeforeContinuationArmed = false;
 let historyBrowseGuardUntil = 0;
+let historyBeforeAutoFillSuppressedUntil = 0;
 let historyPrependMutationPending = false;
 let historyPrependPendingBottomDistance: number | null = null;
 let stableRestoreAnchorRefreshFrame: number | null = null;
 let stableRestoreResumeTimer: number | null = null;
 let lastThreadUserScrollAt = 0;
+let lastThreadScrollDirection: 'up' | 'down' | null = null;
 let compactViewportMediaQuery: MediaQueryList | null = null;
 let compactViewportListener: ((event: MediaQueryListEvent) => void) | null = null;
 const HISTORY_BEFORE_PREFETCH_TRIGGER_PX = 1800;
 const HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX = 1100;
+const HISTORY_AFTER_PREFETCH_TRIGGER_PX = 1800;
+const HISTORY_AFTER_MATERIALIZE_TRIGGER_PX = 900;
 const HISTORY_BEFORE_PREFETCH_VIEWPORTS = 6;
 const HISTORY_BEFORE_MATERIALIZE_VIEWPORTS = 3.5;
+const HISTORY_AFTER_PREFETCH_VIEWPORTS = 5;
+const HISTORY_AFTER_MATERIALIZE_VIEWPORTS = 2.5;
 const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 5.5;
 const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 1200;
 const HISTORY_PREPEND_USER_SCROLL_GRACE_MS = 260;
@@ -1127,12 +1136,29 @@ function clearHistoryBrowseGuard(): void {
   historyBrowseGuardUntil = 0;
 }
 
-function markThreadUserScrollActivity(nowMs = Date.now()): void {
+function cancelPendingPrependVisualRestore(): void {
+  prependRestoreToken += 1;
+  prependRestoreAnchorItemId = null;
+  prependRestoreAnchorOffset = 0;
+  prependRestoreBoundaryMessageId = null;
+}
+
+function markThreadUserScrollActivity(
+  nowMs = Date.now(),
+  direction: 'up' | 'down' | null = null,
+): void {
   lastThreadUserScrollAt = nowMs;
+  if (direction) {
+    lastThreadScrollDirection = direction;
+  }
 }
 
 function isThreadUserScrollRecent(nowMs = Date.now()): boolean {
   return nowMs - lastThreadUserScrollAt <= HISTORY_PREPEND_USER_SCROLL_GRACE_MS;
+}
+
+function isRecentThreadDownwardScroll(nowMs = Date.now()): boolean {
+  return lastThreadScrollDirection === 'down' && isThreadUserScrollRecent(nowMs);
 }
 
 function setTimelineItemShellRef(itemId: string, element: HTMLElement | null): void {
@@ -1285,6 +1311,9 @@ function clearStableRestoreAnchor(options: { clearPrependPending?: boolean } = {
   const clearPrependPending = options.clearPrependPending ?? true;
   if (!clearPrependPending && historyPrependMutationPending) {
     return;
+  }
+  if (clearPrependPending) {
+    cancelPendingPrependVisualRestore();
   }
   const hadPrependPending = historyPrependMutationPending || historyPrependPendingBottomDistance != null;
   if (stableRestoreFrame != null) {
@@ -1463,7 +1492,7 @@ function scheduleTimelineItemMeasurement(): void {
         changed = true;
       }
     }
-    if (heightDeltaAboveViewport !== 0 && container) {
+    if (heightDeltaAboveViewport !== 0 && container && !isRecentThreadDownwardScroll()) {
       ignoreScrollEvents = true;
       container.scrollTop += heightDeltaAboveViewport;
       requestAnimationFrame(() => {
@@ -1638,17 +1667,30 @@ watch(
     if (resolved.resolution.kind === 'restore-prepend') {
       extendHistoryBrowseGuard();
       ignoreScrollEvents = true;
+      const restoreToken = ++prependRestoreToken;
+      const restoreDuringDownwardRead = lastThreadScrollDirection === 'down';
       const anchorItemId = prependRestoreAnchorItemId;
       const anchorOffset = prependRestoreAnchorOffset;
       const boundaryMessageId = prependRestoreBoundaryMessageId;
+      const targetTop = restoreDuringDownwardRead
+        ? Math.max(resolved.resolution.top, container.scrollTop)
+        : resolved.resolution.top;
       const targetBottomDistance = scrollBottomDistance({
         ...metrics,
-        scrollTop: resolved.resolution.top,
+        scrollTop: targetTop,
       });
-      container.scrollTop = resolved.resolution.top;
-      restorePrependVisualAnchor(anchorItemId, anchorOffset, boundaryMessageId);
-      requestAnimationFrame(() => {
+      container.scrollTop = targetTop;
+      if (!restoreDuringDownwardRead) {
         restorePrependVisualAnchor(anchorItemId, anchorOffset, boundaryMessageId);
+      }
+      requestAnimationFrame(() => {
+        if (restoreToken !== prependRestoreToken) {
+          ignoreScrollEvents = false;
+          return;
+        }
+        if (!restoreDuringDownwardRead) {
+          restorePrependVisualAnchor(anchorItemId, anchorOffset, boundaryMessageId);
+        }
         prependRestoreBoundaryMessageId = null;
         prependRestoreAnchorItemId = null;
         prependRestoreAnchorOffset = 0;
@@ -1658,19 +1700,28 @@ watch(
           scrollState.value = preserveChatSessionHistoryBrowsePosition(scrollState.value, nextMetrics);
           syncTimelineViewport(nextMetrics);
         }
+        if (restoreDuringDownwardRead) {
+          clearStableRestoreAnchor();
+          return;
+        }
         startStableRestoreAnchor(anchorItemId, anchorOffset, targetBottomDistance);
       });
       return;
     }
     if (resolved.resolution.kind === 'restore-append') {
       ignoreScrollEvents = true;
-      container.scrollTop = resolved.resolution.top;
+      const targetTop = lastThreadScrollDirection === 'down'
+        ? Math.max(resolved.resolution.top, container.scrollTop)
+        : resolved.resolution.top;
+      container.scrollTop = targetTop;
       requestAnimationFrame(() => {
         ignoreScrollEvents = false;
         const nextMetrics = readScrollMetrics();
         if (nextMetrics) {
           scrollState.value = syncChatSessionPinnedState(scrollState.value, nextMetrics);
+          syncTimelineViewport(nextMetrics);
         }
+        scheduleTimelineItemMeasurement();
       });
       return;
     }
@@ -1705,11 +1756,27 @@ watch(isCompactViewport, (compactViewport) => {
   }
 });
 
-function scrollToBottom(behavior: ScrollBehavior): void {
+function resetScrollLocksForLatestJump(): void {
+  clearHistoryBrowseGuard();
+  clearStableRestoreAnchor();
+  prependRestoreAnchorItemId = null;
+  prependRestoreAnchorOffset = 0;
+  prependRestoreBoundaryMessageId = null;
+  historyBeforeContinuationArmed = false;
+  scrollState.value = {
+    ...resolveChatSessionJumpToBottom(scrollState.value).state,
+    userBrowseLockUntil: 0,
+    prependAnchor: null,
+    appendAnchor: null,
+  };
+}
+
+function scrollToBottom(behavior: ScrollBehavior, options: { force?: boolean } = {}): void {
   const container = threadBody.value;
   if (!container) {
     return;
   }
+  const force = Boolean(options.force);
   const token = ++latestBottomScrollToken;
   ignoreScrollEvents = true;
   container.scrollTo({
@@ -1717,14 +1784,14 @@ function scrollToBottom(behavior: ScrollBehavior): void {
     behavior,
   });
   requestAnimationFrame(() => {
-    if (token !== latestBottomScrollToken || scrollState.value.autoScrollLockedByUser || isHistoryBrowseGuardActive()) {
+    if (token !== latestBottomScrollToken || (!force && (scrollState.value.autoScrollLockedByUser || isHistoryBrowseGuardActive()))) {
       ignoreScrollEvents = false;
       return;
     }
     container.scrollTop = container.scrollHeight;
     requestAnimationFrame(() => {
       window.setTimeout(() => {
-        if (token !== latestBottomScrollToken || scrollState.value.autoScrollLockedByUser || isHistoryBrowseGuardActive()) {
+        if (token !== latestBottomScrollToken || (!force && (scrollState.value.autoScrollLockedByUser || isHistoryBrowseGuardActive()))) {
           ignoreScrollEvents = false;
           return;
         }
@@ -1739,6 +1806,17 @@ function scrollToBottom(behavior: ScrollBehavior): void {
         }
       }, 80);
     });
+  });
+}
+
+function forceScrollToLatest(behavior: ScrollBehavior = 'auto'): void {
+  historyBeforeAutoFillSuppressedUntil = Date.now() + 2500;
+  resetScrollLocksForLatestJump();
+  armLatestBottomAnchorStabilizer();
+  scrollToBottom(behavior, { force: true });
+  nextTick(() => {
+    scrollToBottom('auto', { force: true });
+    scheduleInitialLatestAnchorRetry(1);
   });
 }
 
@@ -1819,7 +1897,7 @@ function cancelLatestBottomAnchorRetry(): void {
 
 function markThreadUserBrowseIntent(): void {
   const metrics = readScrollMetrics();
-  markThreadUserScrollActivity();
+  markThreadUserScrollActivity(Date.now(), 'up');
   extendHistoryBrowseGuard();
   cancelLatestBottomAnchorRetry();
   historyBeforeContinuationArmed = Boolean(
@@ -1915,6 +1993,7 @@ function shouldAutoFillHistoryBefore(metrics: ChatSessionScrollMetrics | null = 
     || props.historyLoadingInitial
     || props.historyLoadingBefore
     || props.viewingHistoricalPosition
+    || Date.now() < historyBeforeAutoFillSuppressedUntil
     || scrollState.value.autoScrollLockedByUser
     || !metrics
   ) {
@@ -2001,6 +2080,14 @@ function historyBeforeContinuationTriggerPx(metrics: ChatSessionScrollMetrics): 
   return historyBeforeMaterializeTriggerPx(metrics);
 }
 
+function historyAfterMaterializeTriggerPx(metrics: ChatSessionScrollMetrics): number {
+  return Math.max(HISTORY_AFTER_MATERIALIZE_TRIGGER_PX, Math.floor(metrics.clientHeight * HISTORY_AFTER_MATERIALIZE_VIEWPORTS));
+}
+
+function historyAfterPrefetchTriggerPx(metrics: ChatSessionScrollMetrics): number {
+  return Math.max(HISTORY_AFTER_PREFETCH_TRIGGER_PX, Math.floor(metrics.clientHeight * HISTORY_AFTER_PREFETCH_VIEWPORTS));
+}
+
 function handleThreadWheel(event: WheelEvent): void {
   if (event.deltaY < -4) {
     const container = threadBody.value;
@@ -2014,6 +2101,21 @@ function handleThreadWheel(event: WheelEvent): void {
         syncTimelineViewport(nudgedMetrics);
       }
     }
+    return;
+  }
+  if (event.deltaY > 4) {
+    markThreadUserScrollActivity(Date.now(), 'down');
+    historyBeforeContinuationArmed = false;
+    cancelPendingPrependVisualRestore();
+    if (scrollState.value.prependAnchor) {
+      scrollState.value = {
+        ...scrollState.value,
+        prependAnchor: null,
+      };
+    }
+    if (historyPrependMutationPending || stableRestoreAnchorItemId || stableRestoreBottomDistance != null) {
+      clearStableRestoreAnchor();
+    }
   }
 }
 
@@ -2023,17 +2125,49 @@ function handleThreadScroll(): void {
   }
   let metrics = readScrollMetrics();
   if (metrics) {
-    if (scrollState.value.autoScrollLockedByUser || scrollBottomDistance(metrics) > 80) {
-      markThreadUserScrollActivity();
-    }
-    syncTimelineViewport(metrics);
-    if (initialLatestAnchorPending && !scrollState.value.autoScrollLockedByUser) {
-      return;
-    }
     const previousScrollState = scrollState.value;
     const bottomDistance = scrollBottomDistance(metrics);
     const lastScrollTop = previousScrollState.lastScrollTop;
     const downwardIntent = lastScrollTop != null && metrics.scrollTop > lastScrollTop + 4;
+    const upwardIntent = lastScrollTop != null && metrics.scrollTop < lastScrollTop - 4;
+    if (scrollState.value.autoScrollLockedByUser || bottomDistance > 80) {
+      markThreadUserScrollActivity(Date.now(), downwardIntent ? 'down' : upwardIntent ? 'up' : null);
+    }
+    syncTimelineViewport(metrics);
+    if (downwardIntent) {
+      historyBeforeContinuationArmed = false;
+      cancelPendingPrependVisualRestore();
+      if (scrollState.value.prependAnchor) {
+        scrollState.value = {
+          ...scrollState.value,
+          prependAnchor: null,
+        };
+      }
+      if (
+        historyPrependMutationPending
+        || stableRestoreAnchorItemId
+        || stableRestoreBottomDistance != null
+        || previousScrollState.prependAnchor
+      ) {
+        clearStableRestoreAnchor();
+      }
+    }
+    if (initialLatestAnchorPending && !scrollState.value.autoScrollLockedByUser) {
+      return;
+    }
+    if (
+      downwardIntent
+      && !props.historyLoadingBefore
+      && metrics.scrollTop > historyBeforeContinuationTriggerPx(metrics)
+      && (
+        historyPrependMutationPending
+        || stableRestoreAnchorItemId
+        || stableRestoreBottomDistance != null
+      )
+    ) {
+      clearStableRestoreAnchor();
+      historyBeforeContinuationArmed = false;
+    }
     const prependMutationPending = historyPrependMutationPending || Boolean(previousScrollState.prependAnchor);
     if (
       prependMutationPending
@@ -2058,7 +2192,10 @@ function handleThreadScroll(): void {
     }
     if (
       scrollState.value.autoScrollLockedByUser
-      && (!previousScrollState.autoScrollLockedByUser || metrics.scrollTop < (previousScrollState.lastScrollTop ?? metrics.scrollTop))
+      && (
+        !previousScrollState.autoScrollLockedByUser
+        || Math.abs(metrics.scrollTop - (previousScrollState.lastScrollTop ?? metrics.scrollTop)) > 4
+      )
     ) {
       extendHistoryBrowseGuard();
       cancelLatestBottomAnchorRetry();
@@ -2069,10 +2206,11 @@ function handleThreadScroll(): void {
       && props.hasMoreBefore
       && scrollState.value.autoScrollLockedByUser
       && !prependMutationPending
+      && !downwardIntent
     ) {
       historyBeforeContinuationArmed = true;
     }
-    if (metrics.scrollTop > historyBeforeContinuationTriggerPx(metrics)) {
+    if (downwardIntent || metrics.scrollTop > historyBeforeContinuationTriggerPx(metrics)) {
       historyBeforeContinuationArmed = false;
     }
     if (
@@ -2081,6 +2219,7 @@ function handleThreadScroll(): void {
       && !props.historyLoadingBefore
       && !props.historyLoadingInitial
       && scrollState.value.autoScrollLockedByUser
+      && !downwardIntent
     ) {
       emit('prefetch-more-before');
     }
@@ -2090,8 +2229,30 @@ function handleThreadScroll(): void {
       && !props.historyLoadingBefore
       && !props.historyLoadingInitial
       && scrollState.value.autoScrollLockedByUser
+      && !downwardIntent
     ) {
       requestMoreBefore();
+      return;
+    }
+    if (
+      downwardIntent
+      && scrollBottomDistance(metrics) <= historyAfterPrefetchTriggerPx(metrics)
+      && props.hasMoreAfter
+      && !props.historyLoadingAfter
+      && !props.historyLoadingInitial
+      && !scrollState.value.appendAnchor
+    ) {
+      emit('prefetch-more-after');
+    }
+    if (
+      downwardIntent
+      && scrollBottomDistance(metrics) <= historyAfterMaterializeTriggerPx(metrics)
+      && props.hasMoreAfter
+      && !props.historyLoadingAfter
+      && !props.historyLoadingInitial
+      && !scrollState.value.appendAnchor
+    ) {
+      requestMoreAfter({ allowDuringBrowseLock: true, metrics });
       return;
     }
     if (!scrollState.value.autoScrollLockedByUser) {
@@ -2130,9 +2291,18 @@ function requestMoreBefore(): void {
   emit('load-more-before', 'browse');
 }
 
-function requestMoreAfter(): void {
-  const metrics = readScrollMetrics();
-  if (!metrics || !shouldObserveChatSessionBottomSentinel({
+function requestMoreAfter(options: { allowDuringBrowseLock?: boolean; metrics?: ChatSessionScrollMetrics } = {}): void {
+  const metrics = options.metrics ?? readScrollMetrics();
+  if (
+    !metrics
+    || !props.hasMoreAfter
+    || props.historyLoadingAfter
+    || props.historyLoadingInitial
+    || scrollState.value.appendAnchor
+  ) {
+    return;
+  }
+  if (!options.allowDuringBrowseLock && !shouldObserveChatSessionBottomSentinel({
     state: scrollState.value,
     hasMoreAfter: props.hasMoreAfter,
     historyLoadingAfter: props.historyLoadingAfter,
@@ -2146,13 +2316,11 @@ function requestMoreAfter(): void {
 
 function jumpToBottom(): void {
   if (props.viewingHistoricalPosition) {
+    resetScrollLocksForLatestJump();
     emit('jump-to-live');
     return;
   }
-  clearHistoryBrowseGuard();
-  const resolved = resolveChatSessionJumpToBottom(scrollState.value);
-  scrollState.value = resolved.state;
-  scrollToBottom('smooth');
+  forceScrollToLatest('smooth');
 }
 
 function extractItemDay(item: ChatRenderableItem): string | null {
@@ -2260,6 +2428,7 @@ function reconnectBottomObserver(): void {
     typeof IntersectionObserver === 'undefined'
     || !threadBody.value
     || !historyBottomSentinel.value
+    || scrollState.value.appendAnchor
     || !shouldObserveChatSessionBottomSentinel({
       state: scrollState.value,
       hasMoreAfter: props.hasMoreAfter,
@@ -2269,13 +2438,25 @@ function reconnectBottomObserver(): void {
   ) {
     return;
   }
+  const metrics = readScrollMetrics();
+  const preloadRootMargin = metrics
+    ? historyAfterMaterializeTriggerPx(metrics)
+    : Math.max(HISTORY_AFTER_MATERIALIZE_TRIGGER_PX, Math.floor(threadBody.value.clientHeight * HISTORY_AFTER_MATERIALIZE_VIEWPORTS));
   bottomSentinelObserver = new IntersectionObserver((entries) => {
-    if (entries.some((entry) => entry.isIntersecting)) {
-      requestMoreAfter();
+    const metrics = readScrollMetrics();
+    if (
+      entries.some((entry) => entry.isIntersecting)
+      && metrics
+      && !scrollState.value.appendAnchor
+      && lastThreadScrollDirection === 'down'
+      && scrollBottomDistance(metrics) <= historyAfterMaterializeTriggerPx(metrics)
+    ) {
+      requestMoreAfter({ allowDuringBrowseLock: true, metrics });
     }
   }, {
     root: threadBody.value,
-    threshold: 0.1,
+    rootMargin: `0px 0px ${preloadRootMargin}px 0px`,
+    threshold: 0.01,
   });
   bottomSentinelObserver.observe(historyBottomSentinel.value);
 }
@@ -2479,6 +2660,7 @@ watch(
     armLatestBottomAnchorStabilizer();
     clearInitialLatestAnchorTimer();
     clearStableRestoreAnchor();
+    historyBeforeAutoFillSuppressedUntil = 0;
     refreshInlinePreviewPrefs();
     scrollState.value = beginChatSessionScrollRestore(scrollState.value);
     Object.keys(timelineItemHeights).forEach((key) => {
@@ -2545,6 +2727,16 @@ watch(
   () => {
     void restoreLatestBottomAnchorIfNeeded();
     scheduleHistoryBeforeAutoFill();
+  },
+);
+
+watch(
+  () => props.latestJumpToken || 0,
+  (token, previousToken) => {
+    if (!token || token === previousToken) {
+      return;
+    }
+    forceScrollToLatest('auto');
   },
 );
 
