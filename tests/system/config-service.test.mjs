@@ -796,6 +796,110 @@ test("config save clears browser profiles when an empty list is submitted", () =
   assert.equal(nextConfig.browser.profiles, undefined);
 });
 
+test("config summary and save cover current MCP, skills, and browser tab cleanup fields", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    mcp: {
+      sessionIdleTtlMs: 120000,
+      servers: {
+        filesystem: {
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-filesystem"],
+        },
+      },
+    },
+    skills: {
+      allowBundled: false,
+      load: {
+        extraDirs: ["~/.openclaw/shared-skills"],
+      },
+      install: {
+        preferBrew: true,
+        nodeManager: "pnpm",
+      },
+      limits: {
+        maxSkillsPromptChars: 50000,
+      },
+      entries: {
+        "docs-search": {
+          enabled: true,
+        },
+      },
+    },
+    browser: {
+      tabCleanup: {
+        enabled: true,
+        idleMinutes: 30,
+        maxTabsPerSession: 12,
+        sweepMinutes: 5,
+      },
+    },
+  });
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  assert.equal(summary.mcp.sessionIdleTtlMs, 120000);
+  assert.equal(summary.mcp.servers.filesystem.command, "npx");
+  assert.equal(summary.skills.allowBundled, false);
+  assert.deepEqual(summary.skills.load.extraDirs, ["~/.openclaw/shared-skills"]);
+  assert.equal(summary.skills.install.nodeManager, "pnpm");
+  assert.equal(summary.skills.limits.maxSkillsPromptChars, 50000);
+  assert.equal(summary.browser.tabCleanup.enabled, true);
+  assert.equal(summary.browser.tabCleanup.maxTabsPerSession, 12);
+
+  service.saveConfig({
+    ...buildPayload(summary),
+    mcp: {
+      sessionIdleTtlMs: 240000,
+      servers: {
+        playwright: {
+          command: "npx",
+          args: ["-y", "@playwright/mcp"],
+        },
+      },
+    },
+    skills: {
+      allowBundled: true,
+      load: {
+        extraDirs: ["~/.openclaw/team-skills"],
+      },
+      install: {
+        preferBrew: false,
+        nodeManager: "npm",
+      },
+      limits: {
+        maxSkillsPromptChars: 65000,
+      },
+      entries: {
+        "docs-search": {
+          enabled: false,
+        },
+      },
+    },
+    browser: {
+      tabCleanup: {
+        enabled: false,
+        idleMinutes: 45,
+        maxTabsPerSession: 8,
+        sweepMinutes: 10,
+      },
+    },
+  });
+
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+  assert.equal(nextConfig.mcp.sessionIdleTtlMs, 240000);
+  assert.equal(nextConfig.mcp.servers.playwright.command, "npx");
+  assert.deepEqual(nextConfig.skills.load.extraDirs, ["~/.openclaw/team-skills"]);
+  assert.equal(nextConfig.skills.install.nodeManager, "npm");
+  assert.equal(nextConfig.skills.limits.maxSkillsPromptChars, 65000);
+  assert.equal(nextConfig.skills.entries["docs-search"].enabled, false);
+  assert.equal(nextConfig.browser.tabCleanup.enabled, false);
+  assert.equal(nextConfig.browser.tabCleanup.idleMinutes, 45);
+});
+
 test("config save disables docker-backed sandbox modes when docker is unavailable and global mode is off", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

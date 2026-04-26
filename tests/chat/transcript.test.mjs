@@ -5,6 +5,7 @@ import {
   isAssistantNoReplyMessage,
   isAssistantStudioDeliveryToolUseEnvelope,
   mapTranscriptMessage,
+  mapMessagesFromParsedEntries,
   extractMessageText,
 } from '../../dist/apps/api/modules/chat/transcript.js';
 
@@ -208,4 +209,145 @@ test('toolresult transcript role is normalized to tool so main chat does not ren
 
   const mapped = mapTranscriptMessage(raw, 0);
   assert.equal(mapped?.role, 'tool');
+});
+
+test('transcript replay dedupes official duplicate rows with new outer ids', () => {
+  const userText = '[Sun 2026-04-26 17:40 GMT+8] 我设置了，你重新试试图片生成';
+  const finalText = '成功了 ✅\n\n`image_generate` 已经可以通过 `openai/gpt-image-2` 正常生成。';
+  const entries = [
+    {
+      type: 'message',
+      id: 'user-original',
+      parentId: 'prev',
+      timestamp: '2026-04-26T09:40:47.535Z',
+      message: {
+        role: 'user',
+        timestamp: 1777196447501,
+        content: [{
+          type: 'text',
+          text: [
+            'Sender (untrusted metadata):',
+            '```json',
+            '{"label":"cli","id":"cli"}',
+            '```',
+            '',
+            userText,
+          ].join('\n'),
+        }],
+      },
+    },
+    {
+      type: 'message',
+      id: 'assistant-tool-original',
+      parentId: 'user-original',
+      timestamp: '2026-04-26T09:40:54.327Z',
+      message: {
+        role: 'assistant',
+        timestamp: 1777196447570,
+        responseId: 'resp-image',
+        stopReason: 'toolUse',
+        content: [{
+          type: 'toolCall',
+          id: 'call-image|fc-image',
+          name: 'image_generate',
+          arguments: { prompt: 'city', model: 'openai/gpt-image-2' },
+        }],
+      },
+    },
+    {
+      type: 'message',
+      id: 'tool-original',
+      parentId: 'assistant-tool-original',
+      timestamp: '2026-04-26T09:41:47.855Z',
+      message: {
+        role: 'toolResult',
+        timestamp: 1777196507855,
+        toolCallId: 'call-image|fc-image',
+        toolName: 'image_generate',
+        content: [{ type: 'text', text: 'Generated 1 image with openai/gpt-image-2.' }],
+        isError: false,
+      },
+    },
+    {
+      type: 'message',
+      id: 'assistant-final-original',
+      parentId: 'tool-original',
+      timestamp: '2026-04-26T09:41:55.298Z',
+      message: {
+        role: 'assistant',
+        timestamp: 1777196507866,
+        responseId: 'resp-final',
+        stopReason: 'stop',
+        content: [{ type: 'text', text: finalText }],
+      },
+    },
+    {
+      type: 'message',
+      id: 'user-replay',
+      parentId: 'prev',
+      timestamp: '2026-04-26T09:41:55.396Z',
+      message: {
+        role: 'user',
+        timestamp: 1777196447501,
+        content: [{ type: 'text', text: userText }],
+      },
+    },
+    {
+      type: 'message',
+      id: 'assistant-tool-replay',
+      parentId: 'user-replay',
+      timestamp: '2026-04-26T09:41:55.396Z',
+      message: {
+        role: 'assistant',
+        timestamp: 1777196447570,
+        responseId: 'resp-image',
+        stopReason: 'toolUse',
+        content: [{
+          type: 'toolCall',
+          id: 'call-image|fc-image',
+          name: 'image_generate',
+          arguments: { prompt: 'city', model: 'openai/gpt-image-2' },
+        }],
+      },
+    },
+    {
+      type: 'message',
+      id: 'tool-replay',
+      parentId: 'assistant-tool-replay',
+      timestamp: '2026-04-26T09:41:55.397Z',
+      message: {
+        role: 'toolResult',
+        timestamp: 1777196507855,
+        toolCallId: 'call-image|fc-image',
+        toolName: 'image_generate',
+        content: [{ type: 'text', text: 'Generated 1 image with openai/gpt-image-2.' }],
+        isError: false,
+      },
+    },
+    {
+      type: 'message',
+      id: 'assistant-final-replay',
+      parentId: 'tool-replay',
+      timestamp: '2026-04-26T09:41:55.397Z',
+      message: {
+        role: 'assistant',
+        timestamp: 1777196507866,
+        responseId: 'resp-final',
+        stopReason: 'stop',
+        content: [{ type: 'text', text: finalText }],
+      },
+    },
+  ];
+
+  const messages = mapMessagesFromParsedEntries(entries);
+
+  assert.deepEqual(messages.map((message) => message.id), [
+    'user-original',
+    'assistant-tool-original',
+    'tool-original',
+    'assistant-final-original',
+  ]);
+  assert.deepEqual(messages.map((message) => message.role), ['user', 'assistant', 'tool', 'assistant']);
+  assert.equal(messages[0]?.text, '我设置了，你重新试试图片生成');
+  assert.equal(messages[1]?.toolCalls?.[0]?.toolCallId, 'call-image|fc-image');
 });

@@ -171,6 +171,31 @@ test('assistant markdown compile upgrades studio-file: absolute path card links'
   }
 });
 
+test('assistant markdown compile upgrades studio-file: image syntax under state media root', () => {
+  const studio = createTempStudioConfig();
+
+  try {
+    const mediaDir = path.join(studio.root, 'media', 'tool-image-generation');
+    fs.mkdirSync(mediaDir, { recursive: true });
+    const imagePath = path.join(mediaDir, 'cyberpunk-city.png');
+    fs.writeFileSync(imagePath, 'png');
+    const result = createBridge(studio).compileAssistantMarkdown(
+      'agent:main:webchat:direct:studio-test',
+      `![赛博朋克未来城市夜景](studio-file:${imagePath} "studio:break-image")`,
+    );
+
+    assert.ok(result);
+    assert.equal(result.resources.length, 1);
+    assert.equal(result.resources[0].kind, 'image');
+    assert.equal(result.resources[0].status, 'ready');
+    assert.equal(result.resources[0].originalPath, `studio-file:${imagePath}`);
+    assert.match(result.markdown, /^!\[赛博朋克未来城市夜景\]\(\/api\/chat\/sessions\//);
+    assert.doesNotMatch(result.markdown, /studio-file:/);
+  } finally {
+    fs.rmSync(studio.root, { recursive: true, force: true });
+  }
+});
+
 test('assistant markdown compile upgrades studio-file: relative path inline-chip links', () => {
   const studio = createTempStudioConfig();
 
@@ -246,7 +271,7 @@ test('assistant markdown compile ignores code fences and inline code studio hint
   }
 });
 
-test('assistant markdown compile safely degrades when local path is missing', () => {
+test('assistant markdown compile records missing explicit local refs', () => {
   const studio = createTempStudioConfig();
 
   try {
@@ -255,7 +280,35 @@ test('assistant markdown compile safely degrades when local path is missing', ()
       '[结构图](workspace:missing.png "studio:break-image")',
     );
 
-    assert.equal(result, null);
+    assert.ok(result);
+    assert.equal(result.resources.length, 1);
+    assert.equal(result.resources[0].kind, 'image');
+    assert.equal(result.resources[0].status, 'missing');
+    assert.equal(result.resources[0].relativePath, 'missing.png');
+    assert.equal(result.resources[0].originalPath, 'workspace:missing.png');
+    assert.match(result.markdown, /workspace:missing\.png/);
+  } finally {
+    fs.rmSync(studio.root, { recursive: true, force: true });
+  }
+});
+
+test('assistant markdown compile records missing studio-file image refs without dropping the resource', () => {
+  const studio = createTempStudioConfig();
+
+  try {
+    const missingPath = path.join(studio.root, 'media', 'tool-image-generation', 'missing-city.png');
+    const result = createBridge(studio).compileAssistantMarkdown(
+      'agent:main:webchat:direct:studio-test',
+      `![赛博朋克未来城市夜景](studio-file:${missingPath} "studio:break-image")`,
+    );
+
+    assert.ok(result);
+    assert.equal(result.resources.length, 1);
+    assert.equal(result.resources[0].kind, 'image');
+    assert.equal(result.resources[0].status, 'missing');
+    assert.equal(result.resources[0].fileName, 'missing-city.png');
+    assert.equal(result.resources[0].originalPath, `studio-file:${missingPath}`);
+    assert.match(result.markdown, new RegExp(`studio-file:${missingPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
   } finally {
     fs.rmSync(studio.root, { recursive: true, force: true });
   }

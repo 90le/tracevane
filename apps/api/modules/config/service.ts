@@ -751,6 +751,8 @@ function buildSummary(
     sessionReset: buildSessionResetSummary(openclawConfig),
     hooks: buildHooksSummary(openclawConfig),
     commands: buildCommandsSummary(openclawConfig),
+    mcp: buildMcpSummary(openclawConfig),
+    skills: buildSkillsSummary(openclawConfig),
     acp: buildAcpSummary(openclawConfig),
     plugins: buildPluginsSummary(openclawConfig),
     browser: buildBrowserSummary(openclawConfig),
@@ -916,6 +918,57 @@ function buildCommandsSummary(
   };
 }
 
+function buildMcpSummary(
+  openclawConfig: Record<string, any>,
+): ConfigSummaryPayload["mcp"] {
+  const mcp = openclawConfig.mcp;
+  if (!mcp || typeof mcp !== "object") return undefined;
+  return {
+    sessionIdleTtlMs:
+      mcp.sessionIdleTtlMs != null
+        ? normalizeNumber(mcp.sessionIdleTtlMs, 0, 0)
+        : null,
+    servers:
+      mcp.servers && typeof mcp.servers === "object" && !Array.isArray(mcp.servers)
+        ? cloneJsonObject(mcp.servers) || {}
+        : {},
+  };
+}
+
+function buildSkillsSummary(
+  openclawConfig: Record<string, any>,
+): ConfigSummaryPayload["skills"] {
+  const skills = openclawConfig.skills;
+  if (!skills || typeof skills !== "object") return undefined;
+  const load = skills.load && typeof skills.load === "object" ? skills.load : {};
+  const install =
+    skills.install && typeof skills.install === "object" ? skills.install : {};
+  const limits =
+    skills.limits && typeof skills.limits === "object" ? skills.limits : {};
+  return {
+    allowBundled:
+      skills.allowBundled != null ? skills.allowBundled !== false : undefined,
+    load: {
+      extraDirs: normalizeStringList(load.extraDirs),
+    },
+    install: {
+      preferBrew:
+        install.preferBrew != null ? install.preferBrew === true : undefined,
+      nodeManager: normalizeString(install.nodeManager) || undefined,
+    },
+    limits: {
+      maxSkillsPromptChars:
+        limits.maxSkillsPromptChars != null
+          ? normalizeNumber(limits.maxSkillsPromptChars, 0, 0)
+          : null,
+    },
+    entries:
+      skills.entries && typeof skills.entries === "object" && !Array.isArray(skills.entries)
+        ? cloneJsonObject(skills.entries) || {}
+        : {},
+  };
+}
+
 function buildAcpSummary(
   openclawConfig: Record<string, any>,
 ): ConfigSummaryPayload["acp"] {
@@ -1071,6 +1124,27 @@ function buildBrowserSummary(
       browser.snapshotDefaults && typeof browser.snapshotDefaults === "object"
         ? {
             mode: normalizeString(browser.snapshotDefaults.mode) || undefined,
+          }
+        : undefined,
+    tabCleanup:
+      browser.tabCleanup && typeof browser.tabCleanup === "object"
+        ? {
+            enabled:
+              browser.tabCleanup.enabled != null
+                ? browser.tabCleanup.enabled !== false
+                : undefined,
+            idleMinutes:
+              browser.tabCleanup.idleMinutes != null
+                ? normalizeNumber(browser.tabCleanup.idleMinutes, 0, 0)
+                : null,
+            maxTabsPerSession:
+              browser.tabCleanup.maxTabsPerSession != null
+                ? normalizeNumber(browser.tabCleanup.maxTabsPerSession, 0, 1)
+                : null,
+            sweepMinutes:
+              browser.tabCleanup.sweepMinutes != null
+                ? normalizeNumber(browser.tabCleanup.sweepMinutes, 0, 0)
+                : null,
           }
         : undefined,
     ssrfPolicy:
@@ -2074,6 +2148,80 @@ function applyConfigUpdate(
       );
   }
 
+  if (payload.mcp) {
+    openclawConfig.mcp = openclawConfig.mcp || {};
+    const mcpPayload = payload.mcp as Record<string, any>;
+    if (mcpPayload.sessionIdleTtlMs != null) {
+      openclawConfig.mcp.sessionIdleTtlMs = normalizeNumber(
+        mcpPayload.sessionIdleTtlMs,
+        openclawConfig.mcp.sessionIdleTtlMs || 0,
+        0,
+      );
+    }
+    if (
+      mcpPayload.servers &&
+      typeof mcpPayload.servers === "object" &&
+      !Array.isArray(mcpPayload.servers)
+    ) {
+      openclawConfig.mcp.servers = cloneJsonObject(mcpPayload.servers) || {};
+    }
+    deleteRecordFieldIfEmpty(openclawConfig, "mcp");
+  }
+
+  if (payload.skills) {
+    openclawConfig.skills = openclawConfig.skills || {};
+    const skillsPayload = payload.skills as Record<string, any>;
+    if (skillsPayload.allowBundled != null) {
+      openclawConfig.skills.allowBundled =
+        skillsPayload.allowBundled !== false;
+    }
+    if (skillsPayload.load && typeof skillsPayload.load === "object") {
+      openclawConfig.skills.load = openclawConfig.skills.load || {};
+      if ((skillsPayload.load as Record<string, unknown>).extraDirs != null) {
+        openclawConfig.skills.load.extraDirs = normalizeStringList(
+          (skillsPayload.load as Record<string, unknown>).extraDirs,
+        );
+      }
+      deleteRecordFieldIfEmpty(openclawConfig.skills, "load");
+    }
+    if (skillsPayload.install && typeof skillsPayload.install === "object") {
+      openclawConfig.skills.install = openclawConfig.skills.install || {};
+      const installPayload = skillsPayload.install as Record<string, unknown>;
+      if (installPayload.preferBrew != null) {
+        openclawConfig.skills.install.preferBrew =
+          installPayload.preferBrew === true;
+      }
+      if (installPayload.nodeManager != null) {
+        setOptionalStringField(
+          openclawConfig.skills.install,
+          "nodeManager",
+          installPayload.nodeManager,
+        );
+      }
+      deleteRecordFieldIfEmpty(openclawConfig.skills, "install");
+    }
+    if (skillsPayload.limits && typeof skillsPayload.limits === "object") {
+      openclawConfig.skills.limits = openclawConfig.skills.limits || {};
+      const limitsPayload = skillsPayload.limits as Record<string, unknown>;
+      if (limitsPayload.maxSkillsPromptChars != null) {
+        setOptionalPositiveNumberField(
+          openclawConfig.skills.limits,
+          "maxSkillsPromptChars",
+          limitsPayload.maxSkillsPromptChars,
+        );
+      }
+      deleteRecordFieldIfEmpty(openclawConfig.skills, "limits");
+    }
+    if (
+      skillsPayload.entries &&
+      typeof skillsPayload.entries === "object" &&
+      !Array.isArray(skillsPayload.entries)
+    ) {
+      openclawConfig.skills.entries = cloneJsonObject(skillsPayload.entries) || {};
+    }
+    deleteRecordFieldIfEmpty(openclawConfig, "skills");
+  }
+
   if (payload.acp) {
     openclawConfig.acp = openclawConfig.acp || {};
     deepMerge(openclawConfig.acp, payload.acp as Record<string, any>);
@@ -2193,6 +2341,39 @@ function applyConfigUpdate(
           openclawConfig.browser.snapshotDefaults.mode || "efficient",
         );
       }
+    }
+    if (
+      browserPayload.tabCleanup &&
+      typeof browserPayload.tabCleanup === "object"
+    ) {
+      openclawConfig.browser.tabCleanup =
+        openclawConfig.browser.tabCleanup || {};
+      if (browserPayload.tabCleanup.enabled != null) {
+        openclawConfig.browser.tabCleanup.enabled =
+          browserPayload.tabCleanup.enabled !== false;
+      }
+      if (browserPayload.tabCleanup.idleMinutes != null) {
+        openclawConfig.browser.tabCleanup.idleMinutes = normalizeNumber(
+          browserPayload.tabCleanup.idleMinutes,
+          openclawConfig.browser.tabCleanup.idleMinutes || 0,
+          0,
+        );
+      }
+      if (browserPayload.tabCleanup.maxTabsPerSession != null) {
+        openclawConfig.browser.tabCleanup.maxTabsPerSession = normalizeNumber(
+          browserPayload.tabCleanup.maxTabsPerSession,
+          openclawConfig.browser.tabCleanup.maxTabsPerSession || 0,
+          1,
+        );
+      }
+      if (browserPayload.tabCleanup.sweepMinutes != null) {
+        openclawConfig.browser.tabCleanup.sweepMinutes = normalizeNumber(
+          browserPayload.tabCleanup.sweepMinutes,
+          openclawConfig.browser.tabCleanup.sweepMinutes || 0,
+          0,
+        );
+      }
+      deleteRecordFieldIfEmpty(openclawConfig.browser, "tabCleanup");
     }
     if (
       browserPayload.ssrfPolicy &&

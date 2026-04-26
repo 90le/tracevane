@@ -1008,10 +1008,10 @@ test("chat shell defers the root-route history window and loads date buckets on 
   assert.match(chatShellPage, /let historyBeforePrefetchTimer: number \| null = null;/);
   assert.match(chatShellPage, /let historyBeforePrefetchIdleHandle: number \| null = null;/);
   assert.match(chatShellPage, /const prefetchedHistoryBefore = ref<\{/);
-  assert.match(conversationPane, /const HISTORY_BEFORE_PREFETCH_TRIGGER_PX = 1800;/);
-  assert.match(conversationPane, /const HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX = 1100;/);
-  assert.match(conversationPane, /const HISTORY_BEFORE_PREFETCH_VIEWPORTS = 6;/);
-  assert.match(conversationPane, /const HISTORY_BEFORE_MATERIALIZE_VIEWPORTS = 3\.5;/);
+  assert.match(conversationPane, /const HISTORY_BEFORE_PREFETCH_TRIGGER_PX = 2600;/);
+  assert.match(conversationPane, /const HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX = 1800;/);
+  assert.match(conversationPane, /const HISTORY_BEFORE_PREFETCH_VIEWPORTS = 8;/);
+  assert.match(conversationPane, /const HISTORY_BEFORE_MATERIALIZE_VIEWPORTS = 5;/);
   assert.match(conversationPane, /const HISTORY_BROWSE_GUARD_MS = 6000;/);
   assert.match(conversationPane, /function historyBeforePrefetchTriggerPx\(metrics: ChatSessionScrollMetrics\): number \{/);
   assert.match(conversationPane, /function historyBeforeMaterializeTriggerPx\(metrics: ChatSessionScrollMetrics\): number \{/);
@@ -1095,7 +1095,7 @@ test("conversation pane virtualizes the timeline shell so only viewport-adjacent
     /\.chat-conversation-thread__live-placeholder-dot\s*\{[\s\S]*animation:\s*chat-thread-live-placeholder-pulse/,
   );
   assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_MIN_ITEMS = 160;/);
-  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_OVERSCAN_PX = 3600;/);
+  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_OVERSCAN_PX = 5200;/);
   assert.match(conversationPane, /const TIMELINE_ITEM_DEFAULT_HEIGHT = 280;/);
   assert.match(conversationPane, /const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 2200;/);
   assert.match(conversationPane, /const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 3600;/);
@@ -1141,7 +1141,8 @@ test("history prepend restores against the newest loaded message boundary instea
   assert.match(chatShellPage, /armHistoryRenderStabilization\(\);[\s\S]*historyPayload\.value = payload;/);
   assert.match(chatShellPage, /armHistoryRenderStabilization\(\);[\s\S]*applyHistoryPagePayload\(payload, 'prepend'/);
   assert.match(chatShellPage, /armHistoryRenderStabilization\(\);[\s\S]*applyHistoryPagePayloadAppend\(payload\);/);
-  assert.match(chatShellPage, /function armHistoryRenderStabilization\(timeoutMs = 1200\): void \{/);
+  assert.match(chatShellPage, /function finishHistoryRenderStabilization\(\): void \{/);
+  assert.match(chatShellPage, /function armHistoryRenderStabilization\(timeoutMs = 2600\): void \{/);
   assert.match(chatShellPage, /historyPrependAnchorMessageId\.value = payload\.messages\[payload\.messages\.length - 1\]\?\.id \|\| null;/);
   assert.match(conversationPane, /historyPrependAnchorMessageId\?: string \| null;/);
   assert.match(conversationPane, /let prependRestoreBoundaryMessageId: string \| null = null;/);
@@ -1263,7 +1264,7 @@ test("chat shell bootstraps the first session rail quickly and hydrates lower-pr
   assert.match(chatShellPage, /@history-before-render-settled="handleHistoryBeforeRenderSettled"/);
   assert.match(chatShellPage, /if \(\s*!sessionKey[\s\S]*\|\| historyBeforeMaterializeInFlight[\s\S]*\|\| historyLoadingBefore\.value[\s\S]*\|\| historyLoadingInitial\.value[\s\S]*\|\| !historyPageInfo\.value\.hasMoreBefore[\s\S]*\|\| !historyPageInfo\.value\.beforeCursor/);
   assert.match(chatShellPage, /historyBeforeMaterializeInFlight = true;/);
-  assert.match(chatShellPage, /function holdHistoryBeforeMaterializeLockUntilRenderSettles\(timeoutMs = 1800\): void \{/);
+  assert.match(chatShellPage, /function holdHistoryBeforeMaterializeLockUntilRenderSettles\(timeoutMs = 2600\): void \{/);
   assert.match(chatShellPage, /function handleHistoryBeforeRenderSettled\(\): void \{/);
   assert.match(chatShellPage, /if \(!holdLockUntilRenderSettles\) \{[\s\S]*releaseHistoryBeforeMaterializeLock\(\);/);
   assert.match(chatShellPage, /const noProgress = \(/);

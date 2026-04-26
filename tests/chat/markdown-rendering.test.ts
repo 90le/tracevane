@@ -20,6 +20,7 @@ async function withDom<T>(run: (markdown: MarkdownModule) => Promise<T> | T): Pr
     SVGSVGElement: Object.getOwnPropertyDescriptor(globalThis, 'SVGSVGElement'),
     MutationObserver: Object.getOwnPropertyDescriptor(globalThis, 'MutationObserver'),
     Node: Object.getOwnPropertyDescriptor(globalThis, 'Node'),
+    NodeFilter: Object.getOwnPropertyDescriptor(globalThis, 'NodeFilter'),
     navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator'),
   };
 
@@ -35,6 +36,7 @@ async function withDom<T>(run: (markdown: MarkdownModule) => Promise<T> | T): Pr
     SVGSVGElement: dom.window.SVGSVGElement,
     MutationObserver: dom.window.MutationObserver,
     Node: dom.window.Node,
+    NodeFilter: dom.window.NodeFilter,
     navigator: dom.window.navigator,
   })) {
     Object.defineProperty(globalThis, key, {
@@ -176,6 +178,39 @@ test('math delimiters render stable placeholders for KaTeX enhancement', async (
   assert.doesNotMatch(result.html, /data-math-source="x\+y"/);
   assert.match(result.html, /data-copy-source="\\\[ not math inside code \\\]"/);
   assert.match(result.html, /<code class="hljs language-text">\\\[ not math inside code \\\]\n<\/code>/);
+});
+
+test('missing studio-file markdown media renders a safe placeholder instead of the custom scheme', async () => {
+  const href = 'studio-file:/home/binbin/.openclaw/media/tool-image-generation/missing-city.png';
+  const result = await withDom(({ renderChatMarkdownResult }) => renderChatMarkdownResult(
+    `![赛博朋克未来城市夜景](${href} "studio:break-image")`,
+    {
+      interactive: true,
+      inlineHtml: true,
+      inlineSvg: true,
+      sanitizeLevel: 'moderate',
+      resources: [
+        {
+          id: 'resource-missing-city',
+          kind: 'image',
+          url: '',
+          downloadUrl: '',
+          fileName: 'missing-city.png',
+          mimeType: 'image/png',
+          originalPath: href,
+          source: 'assistant_markdown',
+          status: 'missing',
+          placement: 'append',
+        },
+      ],
+    },
+  ));
+
+  assert.match(result.html, /Image missing:/);
+  assert.match(result.html, /chat-inline-resource[^"]*missing/);
+  assert.doesNotMatch(result.html, /src="studio-file:/);
+  assert.doesNotMatch(result.html, /href="studio-file:/);
+  assert.doesNotMatch(result.html, /ERR_UNKNOWN_URL_SCHEME/);
 });
 
 test('fenced code blocks render wrapped toolbar with copy action in interactive mode', async () => {

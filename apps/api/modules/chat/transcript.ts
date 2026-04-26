@@ -228,6 +228,66 @@ export function extractTranscriptToolCalls(raw: Record<string, unknown>): ChatMe
   return toolCalls.length ? toolCalls : undefined;
 }
 
+function extractTranscriptReplayTimestamp(raw: Record<string, unknown>): string {
+  const record = extractTranscriptRecord(raw);
+  return normalizeDate(record.timestamp || record.createdAt || record.updatedAt || raw.timestamp || raw.createdAt || raw.updatedAt) || '';
+}
+
+function extractTranscriptReplayToolIds(raw: Record<string, unknown>): string {
+  const record = extractTranscriptRecord(raw);
+  const ids = [
+    record.toolCallId,
+    raw.toolCallId,
+    ...extractTranscriptContentItems(raw).map((item) => item.id || item.toolCallId),
+  ]
+    .map((value) => normalizeString(value))
+    .filter(Boolean)
+    .sort();
+  return ids.join(',');
+}
+
+function buildTranscriptReplayIdentity(raw: Record<string, unknown>): string | null {
+  if (shouldSkipTranscriptLine(raw)) {
+    return null;
+  }
+  const record = extractTranscriptRecord(raw);
+  const role = extractTranscriptRole(raw);
+  const timestamp = extractTranscriptReplayTimestamp(raw);
+  const text = normalizeChatHistoryText(extractMessageText(raw), role).replace(/\s+/g, ' ').trim();
+  const responseId = normalizeString(record.responseId || raw.responseId);
+  const stopReason = normalizeString(record.stopReason || raw.stopReason).toLowerCase();
+  const toolName = normalizeString(record.toolName || record.name || raw.toolName || raw.name).toLowerCase();
+  const toolIds = extractTranscriptReplayToolIds(raw);
+  if (!timestamp && !text && !responseId && !toolIds) {
+    return null;
+  }
+  return [
+    role,
+    timestamp,
+    responseId,
+    stopReason,
+    toolName,
+    toolIds,
+    text,
+  ].join('\u241f');
+}
+
+export function dedupeTranscriptReplayEntries<T extends Record<string, unknown>>(entries: T[]): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const entry of entries) {
+    const identity = buildTranscriptReplayIdentity(entry);
+    if (identity && seen.has(identity)) {
+      continue;
+    }
+    if (identity) {
+      seen.add(identity);
+    }
+    deduped.push(entry);
+  }
+  return deduped;
+}
+
 export function mapTranscriptMessage(
   raw: Record<string, unknown>,
   index: number,
@@ -302,9 +362,17 @@ export function readTranscriptMessages(
       .map((line) => line.trim())
       .filter(Boolean);
     const items: ChatMessageItem[] = [];
-    for (const [index, line] of lines.entries()) {
+    const entries = dedupeTranscriptReplayEntries(lines.flatMap((line) => {
       try {
-        const mapped = mapTranscriptMessage(JSON.parse(line) as Record<string, unknown>, index, options);
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        return parsed && typeof parsed === 'object' ? [parsed] : [];
+      } catch {
+        return [];
+      }
+    }));
+    for (const [index, raw] of entries.entries()) {
+      try {
+        const mapped = mapTranscriptMessage(raw, index, options);
         if (mapped) {
           items.push(mapped);
         }
@@ -312,7 +380,7 @@ export function readTranscriptMessages(
         items.push({
           id: `history-${index}`,
           role: 'unknown',
-          text: line,
+          text: JSON.stringify(raw),
           createdAt: null,
           source: 'history',
           runId: null,
@@ -404,9 +472,17 @@ export function readTranscriptCanonicalEntries(
       .map((line) => line.trim())
       .filter(Boolean);
     const items: TranscriptCanonicalEntry[] = [];
-    for (const [index, line] of lines.entries()) {
+    const entries = dedupeTranscriptReplayEntries(lines.flatMap((line) => {
       try {
-        const mapped = mapTranscriptCanonicalEntry(JSON.parse(line) as Record<string, unknown>, index, options);
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        return parsed && typeof parsed === 'object' ? [parsed] : [];
+      } catch {
+        return [];
+      }
+    }));
+    for (const [index, raw] of entries.entries()) {
+      try {
+        const mapped = mapTranscriptCanonicalEntry(raw, index, options);
         if (mapped) {
           items.push(mapped);
         }
@@ -423,7 +499,7 @@ export function mapMessagesFromParsedEntries(
   options: TranscriptMappingOptions = {},
 ): ChatMessageItem[] {
   const items: ChatMessageItem[] = [];
-  for (const [index, raw] of entries.entries()) {
+  for (const [index, raw] of dedupeTranscriptReplayEntries(entries).entries()) {
     const mapped = mapTranscriptMessage(raw, index, options);
     if (mapped) {
       items.push(mapped);
@@ -437,7 +513,7 @@ export function mapCanonicalEntriesFromParsedEntries(
   options: TranscriptMappingOptions = {},
 ): TranscriptCanonicalEntry[] {
   const items: TranscriptCanonicalEntry[] = [];
-  for (const [index, raw] of entries.entries()) {
+  for (const [index, raw] of dedupeTranscriptReplayEntries(entries).entries()) {
     const mapped = mapTranscriptCanonicalEntry(raw, index, options);
     if (mapped) {
       items.push(mapped);

@@ -17,7 +17,11 @@ import type {
 } from '../../../../types/chat.js';
 import { readOpenClawConfig } from '../../core/state.js';
 import { extractStudioDeliveryPayload, summarizeStudioDeliveryText, type StudioDeliveryResult, type StudioDeliveryResource } from '../../../../lib/studio-delivery.js';
-import { appendStudioMarkdownMediaMeta, type StudioMarkdownMediaRef } from '../../../../lib/studio-markdown-media.js';
+import {
+  appendStudioMarkdownMediaMeta,
+  isStudioMarkdownExplicitLocalRef,
+  type StudioMarkdownMediaRef,
+} from '../../../../lib/studio-markdown-media.js';
 import { compileAssistantMarkdownMedia, type CompileAssistantMarkdownMediaResult } from './assistant-markdown-media.js';
 import { deriveAgentIdFromSessionKey } from './session-model.js';
 
@@ -532,6 +536,36 @@ function buildMissingResourceItem(
     placement: 'append',
     toolCallId: options.toolCallId || null,
   };
+}
+
+function buildAssistantMarkdownResourceItem(
+  ctx: CollectResourceContext,
+  ref: string,
+  parsedRef: StudioMarkdownMediaRef | null,
+): ChatResourceItem | null {
+  const localFilePath = resolveStudioMarkdownMediaFilePath(ctx.config, ctx.sessionKey, ref, parsedRef);
+  if (localFilePath) {
+    return buildLocalResourceItem(ctx, localFilePath, {
+      source: 'assistant_markdown',
+      relativePath: resolveWorkspaceRelativePath(ctx, localFilePath),
+      originalPath: ref,
+    });
+  }
+
+  const isExplicitStudioRef = Boolean(parsedRef);
+  const isLegacyRelativeRef = !parsedRef && isStudioMarkdownExplicitLocalRef(ref);
+  if (!isExplicitStudioRef && !isLegacyRelativeRef) {
+    return null;
+  }
+
+  const refPath = parsedRef?.path || ref;
+  return buildMissingResourceItem(ctx, refPath, {
+    source: 'assistant_markdown',
+    relativePath: parsedRef?.kind === 'workspace' || parsedRef?.kind === 'uploads'
+      ? parsedRef.path
+      : undefined,
+    originalPath: ref,
+  });
 }
 
 function maybeAddResourceRef(
@@ -1189,17 +1223,12 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
       const compiled = compileAssistantMarkdownMedia({
         markdown,
         resolveResource(ref, parsedRef) {
-          const localFilePath = resolveStudioMarkdownMediaFilePath(config, sessionKey, ref, parsedRef);
-          if (!localFilePath) {
-            return null;
-          }
-          return buildLocalResourceItem(ctx, localFilePath, {
-            source: 'assistant_markdown',
-            relativePath: resolveWorkspaceRelativePath(ctx, localFilePath),
-            originalPath: ref,
-          });
+          return buildAssistantMarkdownResourceItem(ctx, ref, parsedRef);
         },
         rewriteHref(resource) {
+          if (resource.status === 'missing') {
+            return resource.originalPath || resource.relativePath || resource.fileName;
+          }
           return appendStudioMarkdownMediaMeta(resource.url, {
             kind: resource.kind,
             fileName: resource.fileName,

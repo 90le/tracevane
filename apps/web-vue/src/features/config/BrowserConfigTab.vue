@@ -99,6 +99,38 @@
 
           <section class="config-subsection">
             <div class="config-subsection-head">
+              <h4>{{ text('标签清理', 'Tab Cleanup') }}</h4>
+              <p>{{ text('对应 browser.tabCleanup.*，控制浏览器会话空闲标签的自动回收，避免长时间运行后标签堆积。', 'Maps to browser.tabCleanup.* and controls automatic cleanup of idle tabs to avoid tab buildup in long-running sessions.') }}</p>
+            </div>
+            <div class="settings-stack">
+              <div class="settings-inline-grid">
+                <label class="toggle-card">
+                  <input v-model="form.tabCleanupEnabled" class="form-checkbox" type="checkbox" />
+                  <div>
+                    <strong>{{ text('启用自动清理', 'Enable cleanup') }}</strong>
+                    <span>{{ text('按空闲时间和单会话标签上限清理。', 'Clean tabs by idle time and per-session tab limit.') }}</span>
+                  </div>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label class="form-field">
+                  <span class="form-label">{{ text('空闲分钟', 'Idle minutes') }}</span>
+                  <input v-model.number="form.tabCleanupIdleMinutes" class="form-input" type="number" min="0" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+                </label>
+                <label class="form-field">
+                  <span class="form-label">{{ text('每会话最大标签数', 'Max tabs per session') }}</span>
+                  <input v-model.number="form.tabCleanupMaxTabsPerSession" class="form-input" type="number" min="1" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+                </label>
+                <label class="form-field">
+                  <span class="form-label">{{ text('扫描间隔分钟', 'Sweep minutes') }}</span>
+                  <input v-model.number="form.tabCleanupSweepMinutes" class="form-input" type="number" min="0" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="config-subsection">
+            <div class="config-subsection-head">
               <h4>{{ text('SSRF / 私网访问', 'SSRF / Private Network') }}</h4>
               <p>{{ text('对应 browser.ssrfPolicy；公网部署时建议按需收紧。', 'Maps to browser.ssrfPolicy; tighten it deliberately on public deployments.') }}</p>
             </div>
@@ -224,6 +256,10 @@ const form = reactive({
   extraArgsText: '',
   color: '',
   snapshotMode: '',
+  tabCleanupEnabled: false,
+  tabCleanupIdleMinutes: null as number | null,
+  tabCleanupMaxTabsPerSession: null as number | null,
+  tabCleanupSweepMinutes: null as number | null,
   allowPrivateNetwork: true,
   hostnameAllowlistText: '',
   allowedHostnamesText: '',
@@ -280,6 +316,10 @@ function hydrateFromSummary(summary: ConfigSummaryPayload) {
   form.extraArgsText = (browser?.extraArgs || []).join('\n');
   form.color = browser?.color ?? '';
   form.snapshotMode = browser?.snapshotDefaults?.mode ?? '';
+  form.tabCleanupEnabled = browser?.tabCleanup?.enabled === true;
+  form.tabCleanupIdleMinutes = browser?.tabCleanup?.idleMinutes ?? null;
+  form.tabCleanupMaxTabsPerSession = browser?.tabCleanup?.maxTabsPerSession ?? null;
+  form.tabCleanupSweepMinutes = browser?.tabCleanup?.sweepMinutes ?? null;
   form.allowPrivateNetwork = browser?.ssrfPolicy?.dangerouslyAllowPrivateNetwork !== false;
   form.hostnameAllowlistText = (browser?.ssrfPolicy?.hostnameAllowlist || []).join('\n');
   form.allowedHostnamesText = (browser?.ssrfPolicy?.allowedHostnames || []).join('\n');
@@ -329,6 +369,12 @@ function buildBrowserPayload() {
     color: form.color.trim() || undefined,
     snapshotDefaults: {
       mode: form.snapshotMode.trim() || undefined,
+    },
+    tabCleanup: {
+      enabled: form.tabCleanupEnabled,
+      idleMinutes: form.tabCleanupIdleMinutes != null && form.tabCleanupIdleMinutes > 0 ? form.tabCleanupIdleMinutes : undefined,
+      maxTabsPerSession: form.tabCleanupMaxTabsPerSession != null && form.tabCleanupMaxTabsPerSession > 0 ? form.tabCleanupMaxTabsPerSession : undefined,
+      sweepMinutes: form.tabCleanupSweepMinutes != null && form.tabCleanupSweepMinutes > 0 ? form.tabCleanupSweepMinutes : undefined,
     },
     profiles: form.profiles
       .map((profile) => ({

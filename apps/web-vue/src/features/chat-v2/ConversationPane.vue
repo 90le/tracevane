@@ -802,6 +802,7 @@ import {
   createChatSessionScrollState,
   markChatSessionUserBrowseIntent,
   preserveChatSessionHistoryBrowsePosition,
+  resolveStableHistoryBrowseBottomDistance,
   resolveChatSessionJumpToBottom,
   resolveChatSessionTimelineMutation,
   shouldObserveChatSessionBottomSentinel,
@@ -1069,12 +1070,12 @@ let lastThreadUserScrollAt = 0;
 let lastThreadScrollDirection: 'up' | 'down' | null = null;
 let compactViewportMediaQuery: MediaQueryList | null = null;
 let compactViewportListener: ((event: MediaQueryListEvent) => void) | null = null;
-const HISTORY_BEFORE_PREFETCH_TRIGGER_PX = 1800;
-const HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX = 1100;
+const HISTORY_BEFORE_PREFETCH_TRIGGER_PX = 2600;
+const HISTORY_BEFORE_MATERIALIZE_TRIGGER_PX = 1800;
 const HISTORY_AFTER_PREFETCH_TRIGGER_PX = 1800;
 const HISTORY_AFTER_MATERIALIZE_TRIGGER_PX = 900;
-const HISTORY_BEFORE_PREFETCH_VIEWPORTS = 6;
-const HISTORY_BEFORE_MATERIALIZE_VIEWPORTS = 3.5;
+const HISTORY_BEFORE_PREFETCH_VIEWPORTS = 8;
+const HISTORY_BEFORE_MATERIALIZE_VIEWPORTS = 5;
 const HISTORY_AFTER_PREFETCH_VIEWPORTS = 5;
 const HISTORY_AFTER_MATERIALIZE_VIEWPORTS = 2.5;
 const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 3.5;
@@ -1084,7 +1085,7 @@ const HISTORY_BROWSE_GUARD_MS = 6000;
 const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 3600;
 const HISTORY_LOADING_INDICATOR_DELAY_MS = 650;
 const TIMELINE_VIRTUALIZE_MIN_ITEMS = 160;
-const TIMELINE_VIRTUALIZE_OVERSCAN_PX = 3600;
+const TIMELINE_VIRTUALIZE_OVERSCAN_PX = 5200;
 const TIMELINE_ITEM_DEFAULT_HEIGHT = 280;
 const timelineViewport = ref({
   scrollTop: 0,
@@ -1472,8 +1473,13 @@ function updateStableRestoreAnchorFromCurrentViewport(metrics: ChatSessionScroll
     stableRestoreAnchorOffset = anchor.offset;
   }
   const bottomDistance = scrollBottomDistance(metrics);
-  stableRestoreBottomDistance = bottomDistance;
-  historyPrependPendingBottomDistance = bottomDistance;
+  const resolvedBottomDistance = resolveStableHistoryBrowseBottomDistance({
+    previousBottomDistance: stableRestoreBottomDistance,
+    nextBottomDistance: bottomDistance,
+    direction: lastThreadScrollDirection,
+  });
+  stableRestoreBottomDistance = resolvedBottomDistance;
+  historyPrependPendingBottomDistance = resolvedBottomDistance;
   scrollState.value = preserveChatSessionHistoryBrowsePosition(scrollState.value, metrics);
   syncTimelineViewport(metrics);
   return true;

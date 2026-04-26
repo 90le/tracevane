@@ -9,6 +9,7 @@ import {
   createChatSessionScrollState,
   markChatSessionUserBrowseIntent,
   preserveChatSessionHistoryBrowsePosition,
+  resolveStableHistoryBrowseBottomDistance,
   resolveChatSessionJumpToBottom,
   resolveChatSessionTimelineMutation,
   shouldObserveChatSessionBottomSentinel,
@@ -321,4 +322,24 @@ test('bottom sentinel stays disabled during upward browse grace so after pages c
     historyLoadingInitial: false,
     nowMs: 2300,
   }), true);
+});
+
+test('stable upward history restore does not let late layout changes drift back toward latest', () => {
+  assert.equal(resolveStableHistoryBrowseBottomDistance({
+    previousBottomDistance: 5000,
+    nextBottomDistance: 3600,
+    direction: 'up',
+  }), 5000);
+
+  assert.equal(resolveStableHistoryBrowseBottomDistance({
+    previousBottomDistance: 5000,
+    nextBottomDistance: 6400,
+    direction: 'up',
+  }), 6400);
+
+  assert.equal(resolveStableHistoryBrowseBottomDistance({
+    previousBottomDistance: 5000,
+    nextBottomDistance: 3600,
+    direction: 'down',
+  }), 3600);
 });

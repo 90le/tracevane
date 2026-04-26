@@ -107,6 +107,7 @@ import {
   extractTranscriptRole,
   extractTranscriptToolName,
   extractMessageText,
+  dedupeTranscriptReplayEntries,
   isAssistantNoReplyMessage,
   isAssistantStudioDeliveryToolUseEnvelope,
   mapCanonicalEntriesFromParsedEntries,
@@ -2512,6 +2513,21 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }
   }
 
+  function parseTranscriptRawEntriesFromContent(content: string): Record<string, unknown>[] {
+    return content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          const parsed = JSON.parse(line) as Record<string, unknown>;
+          return parsed && typeof parsed === 'object' ? [parsed] : [];
+        } catch {
+          return [];
+        }
+      });
+  }
+
   function readTranscriptRawTailEntries(sessionFile: string, rawLineLimit: number): {
     entries: Record<string, unknown>[];
     hasMoreBefore: boolean;
@@ -2566,14 +2582,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       .map((line) => line.trim())
       .filter(Boolean);
     const selectedLines = lines.slice(-limit);
-    const entries = selectedLines.flatMap((line) => {
-      try {
-        const parsed = JSON.parse(line) as Record<string, unknown>;
-        return parsed && typeof parsed === 'object' ? [parsed] : [];
-      } catch {
-        return [];
-      }
-    });
+    const entries = dedupeTranscriptReplayEntries(parseTranscriptRawEntriesFromContent(selectedLines.join('\n')));
     return {
       entries,
       hasMoreBefore: position > 0 || lines.length > selectedLines.length,
@@ -2594,17 +2603,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }
     const buckets = new Map<string, ChatHistoryDateBucket>();
     let visibleIndex = 0;
-    for (const line of content.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      let raw: Record<string, unknown>;
-      try {
-        raw = JSON.parse(trimmed) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
+    for (const raw of dedupeTranscriptReplayEntries(parseTranscriptRawEntriesFromContent(content))) {
       if (!raw || typeof raw !== 'object' || shouldSkipTranscriptLine(raw)) {
         continue;
       }
@@ -2721,17 +2720,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   function scanTranscriptIndexSeedItemsFastFromContent(content: string): ChatHistoryIndexSeedItem[] {
     const items: ChatHistoryIndexSeedItem[] = [];
     let visibleIndex = 0;
-    for (const line of content.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      let raw: Record<string, unknown>;
-      try {
-        raw = JSON.parse(trimmed) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
+    for (const raw of dedupeTranscriptReplayEntries(parseTranscriptRawEntriesFromContent(content))) {
       if (!raw || typeof raw !== 'object' || shouldSkipTranscriptLine(raw)) {
         continue;
       }
@@ -2778,17 +2767,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     const targetIds = new Set(messageIds);
     const messagesById = new Map<string, ChatMessageItem>();
     let visibleIndex = 0;
-    for (const line of content.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      let raw: Record<string, unknown>;
-      try {
-        raw = JSON.parse(trimmed) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
+    for (const raw of dedupeTranscriptReplayEntries(parseTranscriptRawEntriesFromContent(content))) {
       if (!raw || typeof raw !== 'object' || shouldSkipTranscriptLine(raw)) {
         continue;
       }
@@ -2846,7 +2825,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return cached.entries;
     }
 
-    const entries = readTranscriptRawEntries(sessionFile);
+    const entries = dedupeTranscriptReplayEntries(readTranscriptRawEntries(sessionFile));
     transcriptStatCache.set(sessionFile, {
       ino: stat.ino,
       size: stat.size,
@@ -3014,7 +2993,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
       const currentRawEntries = readTranscriptEntriesIncremental(sourceSelection.sessionFile);
       const transcriptRawMessages = priorRawEntries.length > 0
-        ? [...priorRawEntries, ...currentRawEntries]
+        ? dedupeTranscriptReplayEntries([...priorRawEntries, ...currentRawEntries])
         : currentRawEntries;
       const mappingOptions: TranscriptMappingOptions = {
         sessionKey,
@@ -3898,17 +3877,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const targetIds = new Set(page.messages.map((message) => message.id));
       const pageMessagesById = new Map<string, ChatMessageItem>();
       let visibleIndex = 0;
-      for (const line of content.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          continue;
-        }
-        let raw: Record<string, unknown>;
-        try {
-          raw = JSON.parse(trimmed) as Record<string, unknown>;
-        } catch {
-          continue;
-        }
+      for (const raw of dedupeTranscriptReplayEntries(parseTranscriptRawEntriesFromContent(content))) {
         if (!raw || typeof raw !== 'object' || shouldSkipTranscriptLine(raw)) {
           continue;
         }
@@ -4005,17 +3974,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       day: string | null;
     }> = [];
     let rawIndex = 0;
-    for (const line of content.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      let raw: Record<string, unknown>;
-      try {
-        raw = JSON.parse(trimmed) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
+    for (const raw of dedupeTranscriptReplayEntries(parseTranscriptRawEntriesFromContent(content))) {
       if (!raw || typeof raw !== 'object') {
         continue;
       }

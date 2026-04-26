@@ -167,6 +167,20 @@ export function preserveChatSessionAppendBrowsePosition(
   };
 }
 
+export function resolveStableHistoryBrowseBottomDistance(params: {
+  previousBottomDistance: number | null;
+  nextBottomDistance: number;
+  direction: 'up' | 'down' | null;
+}): number {
+  if (params.previousBottomDistance == null) {
+    return params.nextBottomDistance;
+  }
+  if (params.direction === 'up') {
+    return Math.max(params.previousBottomDistance, params.nextBottomDistance);
+  }
+  return params.nextBottomDistance;
+}
+
 export function captureChatSessionPrependAnchor(
   state: ChatSessionScrollState,
   metrics: ChatSessionScrollMetrics,

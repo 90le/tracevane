@@ -3285,7 +3285,15 @@ function clearHistoryAfterPrefetch(): void {
   prefetchedHistoryAfter.value = null;
 }
 
-function armHistoryRenderStabilization(timeoutMs = 1200): void {
+function finishHistoryRenderStabilization(): void {
+  if (historyRenderStabilizeTimer != null) {
+    window.clearTimeout(historyRenderStabilizeTimer);
+    historyRenderStabilizeTimer = null;
+  }
+  historyRenderStabilizing.value = false;
+}
+
+function armHistoryRenderStabilization(timeoutMs = 2600): void {
   historyRenderStabilizing.value = true;
   if (historyRenderStabilizeTimer != null) {
     window.clearTimeout(historyRenderStabilizeTimer);
@@ -3314,7 +3322,7 @@ function releaseHistoryBeforeMaterializeLock(options: { schedulePrefetch?: boole
   }
 }
 
-function holdHistoryBeforeMaterializeLockUntilRenderSettles(timeoutMs = 1800): void {
+function holdHistoryBeforeMaterializeLockUntilRenderSettles(timeoutMs = 2600): void {
   clearHistoryBeforeMaterializeReleaseTimer();
   historyBeforeMaterializeReleaseTimer = window.setTimeout(() => {
     historyBeforeMaterializeReleaseTimer = null;
@@ -3323,6 +3331,7 @@ function holdHistoryBeforeMaterializeLockUntilRenderSettles(timeoutMs = 1800): v
 }
 
 function handleHistoryBeforeRenderSettled(): void {
+  finishHistoryRenderStabilization();
   releaseHistoryBeforeMaterializeLock({ schedulePrefetch: true });
 }
 

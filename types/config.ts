@@ -235,6 +235,24 @@ export interface ConfigSummaryPayload {
     restart: boolean;
     ownerDisplay: string;
   };
+  mcp?: {
+    sessionIdleTtlMs?: number | null;
+    servers?: Record<string, unknown>;
+  };
+  skills?: {
+    allowBundled?: boolean;
+    load?: {
+      extraDirs?: string[];
+    };
+    install?: {
+      preferBrew?: boolean;
+      nodeManager?: string;
+    };
+    limits?: {
+      maxSkillsPromptChars?: number | null;
+    };
+    entries?: Record<string, unknown>;
+  };
   acp?: {
     enabled?: boolean;
     dispatch?: { enabled?: boolean };
@@ -281,6 +299,12 @@ export interface ConfigSummaryPayload {
     color?: string;
     snapshotDefaults?: {
       mode?: string;
+    };
+    tabCleanup?: {
+      enabled?: boolean;
+      idleMinutes?: number | null;
+      maxTabsPerSession?: number | null;
+      sweepMinutes?: number | null;
     };
     ssrfPolicy?: {
       dangerouslyAllowPrivateNetwork?: boolean;
@@ -355,6 +379,8 @@ export interface ConfigUpdatePayload {
   sessionReset?: Partial<ConfigSummaryPayload['sessionReset']>;
   hooks?: Partial<ConfigSummaryPayload['hooks']>;
   commands?: Partial<ConfigSummaryPayload['commands']>;
+  mcp?: Partial<ConfigSummaryPayload['mcp']>;
+  skills?: Partial<ConfigSummaryPayload['skills']>;
   acp?: Partial<ConfigSummaryPayload['acp']>;
   plugins?: Partial<ConfigSummaryPayload['plugins']>;
   browser?: Partial<ConfigSummaryPayload['browser']>;

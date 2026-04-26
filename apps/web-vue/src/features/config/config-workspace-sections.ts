@@ -6,6 +6,7 @@ export const CONFIG_TAB_IDS = [
   "providers",
   "gateway",
   "acp",
+  "mcp-skills",
   "commands-hooks",
   "appearance",
   "logging",
@@ -65,6 +66,12 @@ export const DEFAULT_CONFIG_WORKSPACE_SECTIONS = [
     copy: "External coding-session entry and allowed harnesses",
   },
   {
+    id: "mcp-skills",
+    icon: "🧰",
+    label: "MCP & Skills",
+    copy: "MCP runtime, skill loading, install policy, and skill entries",
+  },
+  {
     id: "commands-hooks",
     icon: "⚡",
     label: "Commands & Hooks",
@@ -111,13 +118,15 @@ export function buildConfigWorkspaceSections(
                   ? text("网关设置", section.label)
                   : section.id === "acp"
                     ? text("ACP", section.label)
-                    : section.id === "commands-hooks"
-                      ? text("命令与钩子", section.label)
-                      : section.id === "appearance"
-                        ? text("界面主题", section.label)
-                        : section.id === "logging"
-                          ? text("日志设置", section.label)
-                          : text("浏览器", section.label),
+                    : section.id === "mcp-skills"
+                      ? text("MCP 与技能", section.label)
+                      : section.id === "commands-hooks"
+                        ? text("命令与钩子", section.label)
+                        : section.id === "appearance"
+                          ? text("界面主题", section.label)
+                          : section.id === "logging"
+                            ? text("日志设置", section.label)
+                            : text("浏览器", section.label),
     copy:
       section.id === "model"
         ? text("主模型、回退链和默认执行参数", section.copy)
@@ -133,15 +142,17 @@ export function buildConfigWorkspaceSections(
                   ? text("端口、认证、速率限制和 Tailscale", section.copy)
                   : section.id === "acp"
                     ? text("外部编码会话入口与允许执行器", section.copy)
-                    : section.id === "commands-hooks"
-                      ? text("原生命令、技能开关和内部钩子", section.copy)
-                      : section.id === "appearance"
-                        ? text("浅色、深色和跟随系统", section.copy)
-                        : section.id === "logging"
-                          ? text("日志级别、文件和数据脱敏", section.copy)
-                          : text(
-                              "Chrome 路径、无头模式和沙盒配置",
-                              section.copy,
-                            ),
+                    : section.id === "mcp-skills"
+                      ? text("MCP 运行时、技能加载、安装策略和技能条目", section.copy)
+                      : section.id === "commands-hooks"
+                        ? text("原生命令、技能开关和内部钩子", section.copy)
+                        : section.id === "appearance"
+                          ? text("浅色、深色和跟随系统", section.copy)
+                          : section.id === "logging"
+                            ? text("日志级别、文件和数据脱敏", section.copy)
+                            : text(
+                                "Chrome 路径、无头模式和沙盒配置",
+                                section.copy,
+                              ),
   }));
 }

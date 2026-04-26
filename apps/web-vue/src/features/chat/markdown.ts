@@ -947,6 +947,14 @@ function chipBadge(kind: 'image' | 'video' | 'file'): string {
   return 'File';
 }
 
+type ResolvedStudioMediaTarget = {
+  url: string;
+  kind: ChatResourceItem['kind'] | null;
+  fileName: string | null;
+  missing: boolean;
+  originalPath: string | null;
+};
+
 function normalizeStudioResourceLabel(label: string | null | undefined, fallback: string | null | undefined): string {
   const normalized = typeof label === 'string' ? label.trim() : '';
   if (normalized) {
@@ -987,27 +995,36 @@ function resolveStudioResourceFromRef(
   )) || null;
 }
 
+function isMissingStudioResource(resource: ChatResourceItem | null | undefined): boolean {
+  return Boolean(resource && (resource.status === 'missing' || (!resource.url && !resource.downloadUrl)));
+}
+
 function resolveStudioMediaHref(
   href: string,
   resources: ChatResourceItem[] | undefined,
-): { url: string; kind: ChatResourceItem['kind'] | null; fileName: string | null } | null {
+): ResolvedStudioMediaTarget | null {
   const meta = stripStudioMarkdownMediaMeta(href);
   if (isStudioMarkdownCompiledUrl(meta.url)) {
     return {
       url: joinApiPath(meta.url),
       kind: meta.kind,
       fileName: meta.fileName,
+      missing: false,
+      originalPath: null,
     };
   }
 
   const resource = resolveStudioResourceFromRef(href, resources);
-  if (!resource?.url) {
+  if (!resource) {
     return null;
   }
+  const missing = isMissingStudioResource(resource);
   return {
-    url: joinApiPath(resource.url),
+    url: missing ? '' : joinApiPath(resource.url),
     kind: resource.kind,
     fileName: resource.fileName,
+    missing,
+    originalPath: resource.originalPath || resource.relativePath || null,
   };
 }
 
@@ -1017,6 +1034,58 @@ function wrapBreakResourceHtml(html: string): string {
 
 function wrapCardResourceHtml(html: string): string {
   return `<span class="chat-md-card-resource-wrap">${html}</span>`;
+}
+
+function studioMissingLabel(kind: 'image' | 'video' | 'file', label: string): string {
+  if (kind === 'image') return `Image missing: ${label}`;
+  if (kind === 'video') return `Video missing: ${label}`;
+  return `File missing: ${label}`;
+}
+
+function renderStudioMissingResourceHtml(params: {
+  display: StudioMarkdownMediaDisplay;
+  kind: 'image' | 'video' | 'file';
+  label: string;
+  fileName: string;
+  originalPath: string | null;
+}): string {
+  const target = params.originalPath || params.fileName || params.label || 'media';
+  const label = studioMissingLabel(params.kind, target);
+  if (params.display === 'inline-image' || params.display === 'break-image' || params.display === 'inline-video' || params.display === 'break-video') {
+    const isBreak = params.display.startsWith('break-');
+    const baseClass = params.kind === 'video'
+      ? 'chat-inline-resource chat-inline-resource-video'
+      : 'chat-inline-resource chat-inline-resource-image';
+    const className = `${baseClass}${isBreak ? ' chat-break-resource' : ''} missing`;
+    const html = [
+      `<span class="${className}" data-studio-display="${escapeHtml(params.display)}" title="${escapeAttribute(label)}">`,
+      `<span class="chat-inline-resource-missing">${escapeHtml(label)}</span>`,
+      '</span>',
+    ].join('');
+    return isBreak ? wrapBreakResourceHtml(html) : html;
+  }
+
+  if (params.display === 'inline-chip' || params.display === 'break-chip') {
+    const isBreak = params.display === 'break-chip';
+    const className = `${isBreak ? 'chat-inline-chip chat-break-chip' : 'chat-inline-chip'} missing`;
+    const html = [
+      `<span class="${className}" data-studio-display="${escapeHtml(params.display)}" title="${escapeAttribute(label)}">`,
+      `<span class="chat-inline-chip-badge">${chipBadge(params.kind)}</span>`,
+      `<span class="chat-inline-chip-label">${escapeHtml(label)}</span>`,
+      '</span>',
+    ].join('');
+    return isBreak ? wrapBreakResourceHtml(html) : html;
+  }
+
+  return wrapCardResourceHtml([
+    `<div class="chat-resource-card ${params.kind} chat-md-card-resource missing" data-studio-display="card">`,
+    '<div class="chat-resource-file-copy">',
+    `<span class="chat-resource-file-badge">${chipBadge(params.kind)}</span>`,
+    `<strong>${escapeHtml(params.label || params.fileName || 'Missing resource')}</strong>`,
+    `<span>${escapeHtml(label)}</span>`,
+    '</div>',
+    '</div>',
+  ].join(''));
 }
 
 function renderStudioInlineMediaHtml(params: {
@@ -1130,6 +1199,20 @@ function renderStudioMarkdownMediaToken(params: {
     return null;
   }
 
+  const fileName = resolved.fileName || params.label || 'media';
+  const label = normalizeStudioResourceLabel(params.label, fileName);
+  const alt = normalizeStudioResourceLabel(params.label, fileName);
+
+  if (resolved.missing) {
+    return renderStudioMissingResourceHtml({
+      display,
+      kind,
+      label,
+      fileName,
+      originalPath: resolved.originalPath,
+    });
+  }
+
   if (
     (kind === 'image' && !isSafeImageUrl(resolved.url))
     || (kind === 'video' && !isSafeMediaUrl(resolved.url))
@@ -1137,10 +1220,6 @@ function renderStudioMarkdownMediaToken(params: {
   ) {
     return null;
   }
-
-  const fileName = resolved.fileName || params.label || 'media';
-  const label = normalizeStudioResourceLabel(params.label, fileName);
-  const alt = normalizeStudioResourceLabel(params.label, fileName);
 
   if (display === 'inline-image' || display === 'break-image') {
     if (kind !== 'image') {
@@ -1252,14 +1331,6 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
     return null;
   }
 
-  if (
-    (kind === 'image' && !isSafeImageUrl(resolved.url))
-    || (kind === 'video' && !isSafeMediaUrl(resolved.url))
-    || (kind === 'file' && !isSafeLinkUrl(resolved.url))
-  ) {
-    return null;
-  }
-
   const labelSource = element instanceof HTMLAnchorElement
     ? element.textContent?.trim() || ''
     : element.getAttribute('alt')?.trim()
@@ -1273,6 +1344,24 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
       || labelSource,
     fileName,
   );
+
+  if (resolved.missing) {
+    return renderStudioMissingResourceHtml({
+      display,
+      kind,
+      label,
+      fileName,
+      originalPath: resolved.originalPath,
+    });
+  }
+
+  if (
+    (kind === 'image' && !isSafeImageUrl(resolved.url))
+    || (kind === 'video' && !isSafeMediaUrl(resolved.url))
+    || (kind === 'file' && !isSafeLinkUrl(resolved.url))
+  ) {
+    return null;
+  }
 
   if (display === 'inline-image' || display === 'break-image') {
     if (kind !== 'image') {

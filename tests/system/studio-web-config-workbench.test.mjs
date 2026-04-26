@@ -45,12 +45,20 @@ test('config workbench exposes the advanced sheet entrypoint instead of keeping 
   assert.match(configEditorPage, /function setActiveTab\(nextTab: ConfigTabId\)/);
 });
 
-test('config workbench aligns tabs with official OpenClaw config references', () => {
-  assert.match(configEditorPage, /class="config-official-reference"/);
-  assert.match(configEditorPage, /OpenClaw v2026\.4\.24/);
-  assert.match(configEditorPage, /const officialConfigReference = computed<OfficialConfigReference>/);
-  assert.match(configEditorPage, /agents\.defaults\.\*/);
-  assert.match(configEditorPage, /browser\.\*/);
+test('config workbench persists active tab across save and reload', () => {
+  assert.match(configEditorPage, /CONFIG_ACTIVE_TAB_STORAGE_KEY/);
+  assert.match(configEditorPage, /function resolveInitialConfigTab\(\): ConfigTabId/);
+  assert.match(configEditorPage, /void router\.replace\(\{ path: route\.path, query \}\)/);
+  assert.match(configEditorPage, /const tabBeforeSave = activeTab\.value/);
+  assert.match(configEditorPage, /window\.scrollTo\(\{ top: scrollBeforeSave, behavior: 'auto' \}\)/);
+});
+
+test('config workbench exposes current MCP and skills config fields', () => {
+  assert.match(configEditorPage, /activeTab === 'mcp-skills'/);
+  assert.match(configEditorPage, /MCP Servers JSON/);
+  assert.match(configEditorPage, /Skill Entries JSON/);
+  assert.match(configEditorPage, /mcpSessionIdleTtlMs/);
+  assert.match(configEditorPage, /skillsMaxPromptChars/);
 });
 
 test('config workbench tracks unsaved domains and protects refresh', () => {

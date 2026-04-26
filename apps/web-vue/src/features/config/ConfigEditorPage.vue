@@ -76,15 +76,6 @@
               </article>
             </div>
 
-            <article class="config-official-reference">
-              <div>
-                <span class="config-official-reference__eyebrow">OpenClaw v2026.4.24</span>
-                <strong>{{ officialConfigReference.title }}</strong>
-                <p>{{ officialConfigReference.description }}</p>
-              </div>
-              <code>{{ officialConfigReference.path }}</code>
-            </article>
-
             <div v-if="activeAdvancedSheetMeta" class="config-advanced-entry">
               <div class="config-advanced-entry__copy">
                 <span class="config-advanced-entry__eyebrow">{{ text('ADVANCED SETTINGS', 'ADVANCED SETTINGS') }}</span>
@@ -1437,6 +1428,90 @@
 
       <AcpConfigTab v-else-if="activeTab === 'acp'" ref="acpTabRef" :summary="loadedSummary" :saving="saving" @quick-save="saveChanges" />
 
+      <section v-else-if="activeTab === 'mcp-skills'" class="page-shell config-section-grid config-section-grid-mcp-skills">
+        <article class="panel-card config-sheet">
+          <section class="config-block">
+            <div class="panel-head">
+              <h3 class="panel-heading-emph"><span>🧰</span><span>{{ text('MCP 运行时', 'MCP Runtime') }}</span></h3>
+            </div>
+            <div class="config-subsection-grid">
+              <section class="config-subsection is-primary">
+                <div class="config-subsection-head">
+                  <h4>{{ text('MCP 会话与服务器', 'MCP sessions and servers') }}</h4>
+                  <p>{{ text('维护 mcp.sessionIdleTtlMs 与 mcp.servers。服务器对象保持 JSON 编辑，避免把不同 MCP transport 的结构硬编码死。', 'Maintain mcp.sessionIdleTtlMs and mcp.servers. Server definitions stay JSON-based so different MCP transports are not hard-coded into the UI.') }}</p>
+                </div>
+                <div class="form-grid">
+                  <label class="form-field">
+                    <span class="form-label">{{ text('空闲回收 TTL (ms)', 'Idle TTL (ms)') }}</span>
+                    <input v-model.number="form.mcpSkills.mcpSessionIdleTtlMs" class="form-input" type="number" min="0" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+                    <span class="field-hint">{{ text('0 或空值表示不在 Studio 覆盖该值。', '0 or empty means Studio will not override this value.') }}</span>
+                  </label>
+                  <label class="form-field form-field-wide">
+                    <span class="form-label">{{ text('MCP Servers JSON', 'MCP Servers JSON') }}</span>
+                    <textarea v-model="form.mcpSkills.mcpServersJson" class="form-textarea code-textarea" rows="10" spellcheck="false" placeholder="{\n  &quot;filesystem&quot;: {\n    &quot;command&quot;: &quot;npx&quot;,\n    &quot;args&quot;: [&quot;-y&quot;, &quot;@modelcontextprotocol/server-filesystem&quot;]\n  }\n}" />
+                    <span class="field-hint">{{ text('对应 mcp.servers；保存前会校验必须是 JSON 对象。', 'Maps to mcp.servers; Studio validates that it is a JSON object before saving.') }}</span>
+                  </label>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section class="config-block">
+            <div class="panel-head">
+              <h3 class="panel-heading-emph"><span>🧩</span><span>{{ text('技能加载与安装', 'Skill Loading & Install') }}</span></h3>
+            </div>
+            <div class="config-subsection-grid">
+              <section class="config-subsection">
+                <div class="config-subsection-head">
+                  <h4>{{ text('共享技能策略', 'Shared skill policy') }}</h4>
+                  <p>{{ text('维护 skills.allowBundled、skills.load.extraDirs、skills.install.* 和 skills.limits.*。具体技能安装、迁移、同步仍在技能管理页处理。', 'Maintains skills.allowBundled, skills.load.extraDirs, skills.install.*, and skills.limits.*. Concrete install, migration, and sync flows remain in Skills management.') }}</p>
+                </div>
+                <div class="settings-stack">
+                  <div class="settings-inline-grid">
+                    <label class="toggle-card">
+                      <input v-model="form.mcpSkills.skillsAllowBundled" class="form-checkbox" type="checkbox" />
+                      <div>
+                        <strong>{{ text('允许内置技能', 'Allow bundled skills') }}</strong>
+                        <span>{{ text('关闭后只使用显式安装或额外目录中的技能。', 'When disabled, only explicitly installed or extra-dir skills are used.') }}</span>
+                      </div>
+                    </label>
+                    <label class="toggle-card">
+                      <input v-model="form.mcpSkills.skillsPreferBrew" class="form-checkbox" type="checkbox" />
+                      <div>
+                        <strong>{{ text('优先使用 Brew', 'Prefer Brew') }}</strong>
+                        <span>{{ text('安装依赖时优先走 Homebrew。', 'Prefer Homebrew when installing dependencies.') }}</span>
+                      </div>
+                    </label>
+                  </div>
+                  <div class="form-grid">
+                    <label class="form-field">
+                      <span class="form-label">{{ text('额外技能目录', 'Extra skill directories') }}</span>
+                      <textarea v-model="form.mcpSkills.skillsExtraDirsText" class="form-textarea" rows="4" :placeholder="text('每行一个目录，例如 ~/.openclaw/shared-skills', 'One directory per line, e.g. ~/.openclaw/shared-skills')" />
+                      <span class="field-hint">{{ text('对应 skills.load.extraDirs。共享技能目录、团队技能目录可以放这里。', 'Maps to skills.load.extraDirs. Shared or team skill directories can be listed here.') }}</span>
+                    </label>
+                    <label class="form-field">
+                      <span class="form-label">{{ text('Node 管理器', 'Node manager') }}</span>
+                      <input v-model="form.mcpSkills.skillsNodeManager" class="form-input" type="text" placeholder="auto / pnpm / npm / bun" />
+                      <span class="field-hint">{{ text('对应 skills.install.nodeManager；留空表示不覆盖。', 'Maps to skills.install.nodeManager; leave empty to avoid overriding it.') }}</span>
+                    </label>
+                    <label class="form-field">
+                      <span class="form-label">{{ text('技能提示词最大字符数', 'Max skill prompt chars') }}</span>
+                      <input v-model.number="form.mcpSkills.skillsMaxPromptChars" class="form-input" type="number" min="1" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+                      <span class="field-hint">{{ text('对应 skills.limits.maxSkillsPromptChars。', 'Maps to skills.limits.maxSkillsPromptChars.') }}</span>
+                    </label>
+                    <label class="form-field form-field-wide">
+                      <span class="form-label">{{ text('Skill Entries JSON', 'Skill Entries JSON') }}</span>
+                      <textarea v-model="form.mcpSkills.skillsEntriesJson" class="form-textarea code-textarea" rows="8" spellcheck="false" placeholder="{\n  &quot;docs-search&quot;: {\n    &quot;enabled&quot;: true\n  }\n}" />
+                      <span class="field-hint">{{ text('对应 skills.entries。需要批量编辑技能条目时使用，日常安装删除优先去技能管理页。', 'Maps to skills.entries. Use this for batch entry edits; use Skills management for normal install/remove flows.') }}</span>
+                    </label>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+        </article>
+      </section>
+
       <section v-else-if="activeTab === 'commands-hooks'" class="page-shell config-section-grid">
         <CommandsHooksConfigTab
           :commands="commandsFormData"
@@ -1765,9 +1840,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onMounted, reactive, ref, watch } from 'vue';
 import { motion } from 'motion-v';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { fetchConfigChannelSummary, fetchConfigSummary, fetchProviderSecret, saveConfig } from './api';
 import { useLocalePreference, type Locale } from '../../shared/locale';
 import { useThemePreference, type ThemeMode } from '../../shared/theme';
@@ -1968,6 +2043,16 @@ interface ConfigFormState {
     };
   };
   providers: ProviderFormState[];
+  mcpSkills: {
+    mcpSessionIdleTtlMs: number | null;
+    mcpServersJson: string;
+    skillsAllowBundled: boolean;
+    skillsExtraDirsText: string;
+    skillsPreferBrew: boolean;
+    skillsNodeManager: string;
+    skillsMaxPromptChars: number | null;
+    skillsEntriesJson: string;
+  };
   sessionReset: {
     mode: string;
     atHour: number;
@@ -1987,11 +2072,7 @@ interface ConfigDirtyDomain {
   detail: string;
 }
 
-interface OfficialConfigReference {
-  title: string;
-  description: string;
-  path: string;
-}
+const CONFIG_ACTIVE_TAB_STORAGE_KEY = 'openclaw-studio.config.activeTab';
 
 function normalizeConfigTabId(value: unknown): ConfigTabId {
   const tab = typeof value === 'string' ? value.trim() : '';
@@ -2021,14 +2102,26 @@ const props = withDefaults(defineProps<{
 });
 
 const route = useRoute();
+const router = useRouter();
 const isConfigRouteActive = computed(() => route.path === '/config' || route.path.startsWith('/config/'));
 let configPageBootstrapped = false;
 let configLoadPromise: Promise<void> | null = null;
-const activeTab = ref<ConfigTabId>(
-  route.query.section
-    ? resolveConfigTabFromSection(route.query.section)
-    : normalizeConfigTabId(route.query.tab),
-);
+function readPersistedConfigTab(): ConfigTabId {
+  if (typeof window === 'undefined') return CONFIG_TAB_IDS[0];
+  try {
+    return normalizeConfigTabId(window.localStorage.getItem(CONFIG_ACTIVE_TAB_STORAGE_KEY));
+  } catch {
+    return CONFIG_TAB_IDS[0];
+  }
+}
+
+function resolveInitialConfigTab(): ConfigTabId {
+  if (route.query.section) return resolveConfigTabFromSection(route.query.section);
+  if (route.query.tab) return normalizeConfigTabId(route.query.tab);
+  return readPersistedConfigTab();
+}
+
+const activeTab = ref<ConfigTabId>(resolveInitialConfigTab());
 const advancedSheetOpen = ref(false);
 const activeProviderUid = ref('');
 const loggingTabRef = ref<InstanceType<typeof LoggingConfigTab> | null>(null);
@@ -2492,6 +2585,16 @@ const form = reactive<ConfigFormState>({
     },
   },
   providers: [],
+  mcpSkills: {
+    mcpSessionIdleTtlMs: null,
+    mcpServersJson: '',
+    skillsAllowBundled: true,
+    skillsExtraDirsText: '',
+    skillsPreferBrew: false,
+    skillsNodeManager: '',
+    skillsMaxPromptChars: null,
+    skillsEntriesJson: '',
+  },
   sessionReset: {
     mode: 'idle',
     atHour: 4,
@@ -2577,6 +2680,14 @@ function normalizeBrowserDraft(summary: ConfigSummaryPayload | null) {
     color: browser?.color?.trim() || undefined,
     snapshotDefaults: {
       mode: browser?.snapshotDefaults?.mode?.trim() || undefined,
+    },
+    tabCleanup: {
+      enabled: browser?.tabCleanup?.enabled === true,
+      idleMinutes: browser?.tabCleanup?.idleMinutes && browser.tabCleanup.idleMinutes > 0 ? browser.tabCleanup.idleMinutes : undefined,
+      maxTabsPerSession: browser?.tabCleanup?.maxTabsPerSession && browser.tabCleanup.maxTabsPerSession > 0
+        ? browser.tabCleanup.maxTabsPerSession
+        : undefined,
+      sweepMinutes: browser?.tabCleanup?.sweepMinutes && browser.tabCleanup.sweepMinutes > 0 ? browser.tabCleanup.sweepMinutes : undefined,
     },
     profiles: Array.isArray(browser?.profiles)
       ? browser.profiles
@@ -2675,6 +2786,7 @@ function currentDomainFingerprints(): Record<string, string> {
             plugins: normalizeAcpPluginsDraft(loadedSummary.value) || null,
           },
     }),
+    'mcp-skills': domainFingerprint(form.mcpSkills),
     'commands-hooks': domainFingerprint({
       commands: commandsFormData.value,
       hooks: hooksFormData.value,
@@ -2764,6 +2876,13 @@ const activeTabFacts = computed(() => {
         { label: text('默认 Agent', 'Default agent'), value: loadedSummary.value?.acp?.defaultAgent || '--' },
         { label: text('允许 Agent', 'Allowed agents'), value: String(loadedSummary.value?.acp?.allowedAgents?.length || 0) },
       ];
+    case 'mcp-skills':
+      return [
+        { label: 'MCP Servers', value: String(Object.keys(loadedSummary.value?.mcp?.servers || {}).length) },
+        { label: text('MCP TTL', 'MCP TTL'), value: loadedSummary.value?.mcp?.sessionIdleTtlMs != null ? `${loadedSummary.value.mcp.sessionIdleTtlMs}ms` : '--' },
+        { label: text('额外技能目录', 'Extra dirs'), value: String(loadedSummary.value?.skills?.load?.extraDirs?.length || 0) },
+        { label: text('技能条目', 'Skill entries'), value: String(Object.keys(loadedSummary.value?.skills?.entries || {}).length) },
+      ];
     case 'commands-hooks':
       return [
         { label: text('原生命令', 'Native command'), value: commandsFormData.value.native || '--' },
@@ -2799,116 +2918,6 @@ const activeTabFacts = computed(() => {
         { label: text('同步时间', 'Synced'), value: loadedSummary.value ? formatConfigCheckedAt(loadedSummary.value.checkedAt) : '--' },
         { label: text('配置分组', 'Config groups'), value: String(tabs.value.length) },
       ];
-  }
-});
-
-const officialConfigReference = computed<OfficialConfigReference>(() => {
-  switch (activeTab.value) {
-    case 'model':
-      return {
-        title: text('Agent 默认值、模型与压缩策略', 'Agent defaults, models, and compaction'),
-        description: text(
-          '对齐官方配置域：agents.defaults.*、agents.defaults.compaction.*、agents.defaults.subagents.*。',
-          'Aligned with official config paths: agents.defaults.*, agents.defaults.compaction.*, agents.defaults.subagents.*.',
-        ),
-        path: 'agents.defaults.*',
-      };
-    case 'security':
-      return {
-        title: text('Sandbox、Tools 与 Exec 审批', 'Sandbox, tools, and exec approvals'),
-        description: text(
-          '对齐官方配置域：agents.defaults.sandbox.*、tools.*，以及独立 exec-approvals.json。',
-          'Aligned with official config paths: agents.defaults.sandbox.*, tools.*, plus the separate exec-approvals.json file.',
-        ),
-        path: 'agents.defaults.sandbox.* / tools.* / exec-approvals.json',
-      };
-    case 'session':
-      return {
-        title: text('会话、消息与线程绑定', 'Sessions, messages, and thread bindings'),
-        description: text(
-          '对齐官方配置域：session.*、messages.*。频道专属设置继续在频道管理页维护。',
-          'Aligned with official config paths: session.* and messages.*. Channel-specific settings remain in channel management.',
-        ),
-        path: 'session.* / messages.*',
-      };
-    case 'session-policy':
-      return {
-        title: text('会话重置策略', 'Session reset policy'),
-        description: text(
-          '对齐官方会话生命周期配置：全局重置、按会话类型覆盖、按频道覆盖。',
-          'Aligned with official session lifecycle config: global reset, per-type overrides, and per-channel overrides.',
-        ),
-        path: 'session.reset.*',
-      };
-    case 'providers':
-      return {
-        title: text('模型供应商注册表', 'Model provider registry'),
-        description: text(
-          '对齐官方配置域：models.providers.*。密钥默认遮掩，只有显式显示或录入才参与保存。',
-          'Aligned with official config path: models.providers.*. Secrets stay masked unless explicitly revealed or entered.',
-        ),
-        path: 'models.providers.*',
-      };
-    case 'gateway':
-      return {
-        title: text('Gateway 与 Control UI', 'Gateway and Control UI'),
-        description: text(
-          '对齐官方配置域：gateway.*。这类变更通常需要重启 Gateway 或重新打开会话。',
-          'Aligned with official config path: gateway.*. These changes usually require restarting Gateway or opening a new session.',
-        ),
-        path: 'gateway.*',
-      };
-    case 'acp':
-      return {
-        title: text('ACP 与对应插件入口', 'ACP and plugin entry'),
-        description: text(
-          '对齐官方配置域：acp.*，并联动 plugins.entries.acpx 的启用策略。',
-          'Aligned with official config path: acp.*, with plugins.entries.acpx enablement linked.',
-        ),
-        path: 'acp.* / plugins.entries.acpx',
-      };
-    case 'commands-hooks':
-      return {
-        title: text('命令与内部 hooks', 'Commands and internal hooks'),
-        description: text(
-          '对齐官方配置域：commands.*、hooks.internal.*。插件 hooks 的深度配置在插件管理页维护。',
-          'Aligned with official config paths: commands.* and hooks.internal.*. Plugin-hook deep config belongs in plugin management.',
-        ),
-        path: 'commands.* / hooks.internal.*',
-      };
-    case 'appearance':
-      return {
-        title: text('Studio 本地偏好', 'Studio local preferences'),
-        description: text(
-          '主题和语言是 Studio 浏览器本地偏好，不写入 openclaw.json。',
-          'Theme and language are Studio browser-local preferences and are not written to openclaw.json.',
-        ),
-        path: 'localStorage',
-      };
-    case 'logging':
-      return {
-        title: text('日志配置', 'Logging config'),
-        description: text(
-          '对齐官方配置域：logging.*，包括日志级别、文件输出和敏感信息脱敏策略。',
-          'Aligned with official config path: logging.*, including levels, file output, and sensitive-data redaction.',
-        ),
-        path: 'logging.*',
-      };
-    case 'browser':
-      return {
-        title: text('Browser 工具配置', 'Browser tool config'),
-        description: text(
-          '对齐官方配置域：browser.*，包括 CDP、profile、无头模式、SSRF 与标签清理策略。',
-          'Aligned with official config path: browser.*, including CDP, profiles, headless mode, SSRF, and tab cleanup policy.',
-        ),
-        path: 'browser.*',
-      };
-    default:
-      return {
-        title: text('官方配置域', 'Official config domain'),
-        description: text('当前分组对齐 OpenClaw 2026.4.24 配置参考。', 'This group aligns with the OpenClaw 2026.4.24 config reference.'),
-        path: 'openclaw.json',
-      };
   }
 });
 
@@ -3152,6 +3161,16 @@ function hydrateForm(summary: ConfigSummaryPayload) {
   }));
   form.providers = summary.providers.map((provider) => toProviderForm(provider));
   activeProviderUid.value = form.providers[0]?.uid || '';
+  form.mcpSkills.mcpSessionIdleTtlMs = summary.mcp?.sessionIdleTtlMs ?? null;
+  form.mcpSkills.mcpServersJson = formatJsonEditor(summary.mcp?.servers || {});
+  form.mcpSkills.skillsAllowBundled = summary.skills?.allowBundled !== false;
+  form.mcpSkills.skillsExtraDirsText = Array.isArray(summary.skills?.load?.extraDirs)
+    ? summary.skills.load.extraDirs.join('\n')
+    : '';
+  form.mcpSkills.skillsPreferBrew = summary.skills?.install?.preferBrew === true;
+  form.mcpSkills.skillsNodeManager = summary.skills?.install?.nodeManager || '';
+  form.mcpSkills.skillsMaxPromptChars = summary.skills?.limits?.maxSkillsPromptChars ?? null;
+  form.mcpSkills.skillsEntriesJson = formatJsonEditor(summary.skills?.entries || {});
   form.sessionReset.mode = summary.sessionReset?.mode || 'idle';
   form.sessionReset.atHour = summary.sessionReset?.atHour ?? 4;
   form.sessionReset.idleMinutes = summary.sessionReset?.idleMinutes ?? 60;
@@ -3237,6 +3256,8 @@ function buildPayload(): ConfigUpdatePayload {
   const cliBackends = parseOptionalJsonObject('CLI Backends JSON', form.defaults.cliBackendsJson);
   const contextPruning = parseOptionalJsonObject('Context Pruning JSON', form.defaults.contextPruningJson);
   const modelRegistry = parseOptionalJsonObject('Model Registry JSON', form.defaults.modelsJson);
+  const mcpServers = parseOptionalJsonObject('MCP Servers JSON', form.mcpSkills.mcpServersJson) || {};
+  const skillEntries = parseOptionalJsonObject('Skill Entries JSON', form.mcpSkills.skillsEntriesJson) || {};
   const providers: ConfigProviderInput[] = form.providers.map((provider) => {
     const providerId = provider.id.trim();
     if (!providerId) throw new Error(text('Provider ID 不能为空', 'Provider ID is required'));
@@ -3445,6 +3466,46 @@ function buildPayload(): ConfigUpdatePayload {
     },
   };
 
+  const mcpSessionIdleTtlMs = form.mcpSkills.mcpSessionIdleTtlMs != null && Number(form.mcpSkills.mcpSessionIdleTtlMs) > 0
+    ? Number(form.mcpSkills.mcpSessionIdleTtlMs)
+    : null;
+  const skillsExtraDirs = normalizeStringListFromText(form.mcpSkills.skillsExtraDirsText);
+  const skillsMaxPromptChars = form.mcpSkills.skillsMaxPromptChars != null && Number(form.mcpSkills.skillsMaxPromptChars) > 0
+    ? Number(form.mcpSkills.skillsMaxPromptChars)
+    : null;
+  const shouldSendMcp = Boolean(loadedSummary.value?.mcp)
+    || mcpSessionIdleTtlMs != null
+    || Object.keys(mcpServers).length > 0;
+  const shouldSendSkills = Boolean(loadedSummary.value?.skills)
+    || form.mcpSkills.skillsAllowBundled !== true
+    || skillsExtraDirs.length > 0
+    || form.mcpSkills.skillsPreferBrew === true
+    || Boolean(form.mcpSkills.skillsNodeManager.trim())
+    || skillsMaxPromptChars != null
+    || Object.keys(skillEntries).length > 0;
+  if (shouldSendMcp) {
+    payload.mcp = {
+      sessionIdleTtlMs: mcpSessionIdleTtlMs,
+      servers: mcpServers,
+    };
+  }
+  if (shouldSendSkills) {
+    payload.skills = {
+      allowBundled: form.mcpSkills.skillsAllowBundled === true,
+      load: {
+        extraDirs: skillsExtraDirs,
+      },
+      install: {
+        preferBrew: form.mcpSkills.skillsPreferBrew === true,
+        nodeManager: form.mcpSkills.skillsNodeManager.trim(),
+      },
+      limits: {
+        maxSkillsPromptChars: skillsMaxPromptChars,
+      },
+      entries: skillEntries,
+    };
+  }
+
   if (loggingTabRef.value) {
     (payload as any).logging = loggingTabRef.value.buildLoggingPayload();
   }
@@ -3582,9 +3643,28 @@ function closeAdvancedSheet(): void {
   advancedSheetOpen.value = false;
 }
 
-function setActiveTab(nextTab: ConfigTabId): void {
+function persistActiveConfigTab(nextTab: ConfigTabId): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(CONFIG_ACTIVE_TAB_STORAGE_KEY, nextTab);
+  } catch {
+    // Ignore storage failures in private or restricted browsing modes.
+  }
+}
+
+function applyActiveTab(nextTab: ConfigTabId): void {
   activeTab.value = nextTab;
   closeAdvancedSheet();
+  persistActiveConfigTab(nextTab);
+}
+
+function setActiveTab(nextTab: ConfigTabId): void {
+  applyActiveTab(nextTab);
+  if (!isConfigRouteActive.value) return;
+  const query = { ...route.query, tab: nextTab };
+  delete query.section;
+  if (route.query.tab === nextTab && route.query.section == null) return;
+  void router.replace({ path: route.path, query });
 }
 
 async function loadConfig() {
@@ -3625,6 +3705,9 @@ async function refreshConfigWithDirtyCheck(): Promise<void> {
 
 async function saveChanges() {
   if (!saveReadiness.value.canSave) return;
+  const tabBeforeSave = activeTab.value;
+  const scrollBeforeSave = typeof window !== 'undefined' ? window.scrollY : 0;
+  persistActiveConfigTab(tabBeforeSave);
   saving.value = true;
   errorMessage.value = '';
   successMessage.value = '';
@@ -3635,8 +3718,13 @@ async function saveChanges() {
     gatewayFormData.value = null;
     gatewayBaselineData.value = null;
     hydrateForm(response.config);
+    applyActiveTab(tabBeforeSave);
     captureConfigBaseline();
     successMessage.value = response.message || text('配置已保存。', 'Configuration saved.');
+    await nextTick();
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: scrollBeforeSave, behavior: 'auto' });
+    }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : text('配置保存失败', 'Failed to save configuration');
   } finally {
@@ -3777,7 +3865,7 @@ watch(
   () => [route.query.tab, route.query.section],
   ([tabValue, sectionValue]) => {
     if (!isConfigRouteActive.value) return;
-    setActiveTab(
+    applyActiveTab(
       sectionValue
         ? resolveConfigTabFromSection(sectionValue)
         : normalizeConfigTabId(tabValue),
@@ -3947,58 +4035,6 @@ watch(
   color: var(--text);
   font-size: 14px;
   line-height: 1.45;
-  word-break: break-word;
-}
-
-.config-official-reference {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 15px;
-  border: 1px solid color-mix(in srgb, var(--acc) 26%, var(--line));
-  border-radius: 12px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--acc) 9%, var(--surface-base)), var(--surface-base));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
-}
-
-.config-official-reference__eyebrow {
-  display: inline-flex;
-  margin-bottom: 5px;
-  color: var(--acc);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.config-official-reference strong {
-  display: block;
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1.35;
-}
-
-.config-official-reference p {
-  max-width: 720px;
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.config-official-reference code {
-  flex: 0 0 auto;
-  max-width: min(360px, 42vw);
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--shell-panel-fill) 88%, black 12%);
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.4;
-  white-space: normal;
   word-break: break-word;
 }
 
@@ -4230,15 +4266,6 @@ watch(
   .config-advanced-entry {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .config-official-reference {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .config-official-reference code {
-    max-width: 100%;
   }
 
   .config-save-dock {
