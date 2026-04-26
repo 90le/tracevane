@@ -83,6 +83,8 @@ export interface FilesReadPayload {
 
 export interface FileSearchResult extends FileEntrySummary {
   directoryPath: string;
+  matchKind?: "name" | "content";
+  snippet?: string | null;
 }
 
 export interface FilesSearchPayload {

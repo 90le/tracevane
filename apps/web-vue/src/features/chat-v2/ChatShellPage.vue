@@ -107,6 +107,7 @@
           @load-more-before="loadMoreHistoryBefore"
           @prefetch-more-before="prefetchMoreHistoryBefore"
           @load-more-after="loadMoreHistoryAfter"
+          @history-before-render-settled="handleHistoryBeforeRenderSettled"
           @jump-to-live="jumpToLive"
           @jump-to-message="handleSearchResultJump"
           @dismiss-slash-feedback="dismissSelectedSlashFeedback"
@@ -586,6 +587,7 @@ const historyLoadingInitial = ref(false);
 const historyLoadingBefore = ref(false);
 const historyLoadingAfter = ref(false);
 let historyBeforeMaterializeInFlight = false;
+let historyBeforeMaterializeReleaseTimer: number | null = null;
 const sessionCreating = ref(false);
 const sendBusy = ref(false);
 const abortBusy = ref(false);
@@ -1727,6 +1729,7 @@ function clearConversationState(): void {
   abortReplaceHistoryRequest();
   abortHistoryDatesRequest();
   clearHistoryBeforePrefetch();
+  clearHistoryBeforeMaterializeReleaseTimer();
   clearPendingTemporaryToolEvents();
   clearTerminalRunFence();
   clearWsReconnectTimer();
@@ -3244,6 +3247,36 @@ function armHistoryRenderStabilization(timeoutMs = 1200): void {
   }, timeoutMs);
 }
 
+function clearHistoryBeforeMaterializeReleaseTimer(): void {
+  if (historyBeforeMaterializeReleaseTimer != null) {
+    window.clearTimeout(historyBeforeMaterializeReleaseTimer);
+    historyBeforeMaterializeReleaseTimer = null;
+  }
+}
+
+function releaseHistoryBeforeMaterializeLock(options: { schedulePrefetch?: boolean } = {}): void {
+  clearHistoryBeforeMaterializeReleaseTimer();
+  historyBeforeMaterializeInFlight = false;
+  if (options.schedulePrefetch) {
+    const sessionKey = selectedSessionKey.value;
+    if (sessionKey && !historyLoadingInitial.value && historyPageInfo.value.hasMoreBefore) {
+      void scheduleHistoryBeforePrefetch(sessionKey, 120);
+    }
+  }
+}
+
+function holdHistoryBeforeMaterializeLockUntilRenderSettles(timeoutMs = 1800): void {
+  clearHistoryBeforeMaterializeReleaseTimer();
+  historyBeforeMaterializeReleaseTimer = window.setTimeout(() => {
+    historyBeforeMaterializeReleaseTimer = null;
+    releaseHistoryBeforeMaterializeLock({ schedulePrefetch: true });
+  }, timeoutMs);
+}
+
+function handleHistoryBeforeRenderSettled(): void {
+  releaseHistoryBeforeMaterializeLock({ schedulePrefetch: true });
+}
+
 function currentHistoryBeforePrefetchKey(sessionKey: string): ChatHistoryBeforePrefetchKey | null {
   const beforeCursor = historyPageInfo.value.beforeCursor;
   if (!sessionKey || !historyPageInfo.value.hasMoreBefore || !beforeCursor) {
@@ -3766,11 +3799,12 @@ async function loadMoreHistoryBefore(mode: 'browse' | 'autofill' | 'continuation
     return;
   }
   historyBeforeMaterializeInFlight = true;
+  clearHistoryBeforeMaterializeReleaseTimer();
   const requestCursor = historyPageInfo.value.beforeCursor;
   if (requestCursor && exhaustedHistoryBeforeCursorBySession.get(sessionKey) === requestCursor) {
     historyPageInfo.value = { ...historyPageInfo.value, hasMoreBefore: false, beforeCursor: null };
     clearHistoryBeforePrefetch();
-    historyBeforeMaterializeInFlight = false;
+    releaseHistoryBeforeMaterializeLock();
     return;
   }
   const existingIds = new Set((historyPayload.value?.messages || []).map((message) => message.id));
@@ -3784,6 +3818,7 @@ async function loadMoreHistoryBefore(mode: 'browse' | 'autofill' | 'continuation
   if (shouldShowLoadingState) {
     historyLoadingBefore.value = true;
   }
+  let holdLockUntilRenderSettles = false;
   try {
     if (!prefetchedPayload && historyBeforePrefetchController) {
       prefetchedPayload = await waitForHistoryBeforePrefetch(prefetchKey);
@@ -3827,14 +3862,18 @@ async function loadMoreHistoryBefore(mode: 'browse' | 'autofill' | 'continuation
     applyHistoryPagePayload(payload, 'prepend', {
       preserveAfterCursor: mode === 'autofill' && !viewingHistoricalPosition.value,
     });
+    holdLockUntilRenderSettles = true;
+    holdHistoryBeforeMaterializeLockUntilRenderSettles();
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('加载更早消息失败。', 'Failed to load older messages.'));
   } finally {
-    historyBeforeMaterializeInFlight = false;
+    if (!holdLockUntilRenderSettles) {
+      releaseHistoryBeforeMaterializeLock();
+    }
     if (shouldShowLoadingState) {
       historyLoadingBefore.value = false;
     }
-    if (mode !== 'autofill' && sessionKey === selectedSessionKey.value) {
+    if (!holdLockUntilRenderSettles && mode !== 'autofill' && sessionKey === selectedSessionKey.value) {
       void scheduleHistoryBeforePrefetch(sessionKey, 0);
     }
   }
@@ -5809,6 +5848,7 @@ onBeforeUnmount(() => {
   abortReplaceHistoryRequest();
   abortHistoryDatesRequest();
   clearHistoryBeforePrefetch();
+  clearHistoryBeforeMaterializeReleaseTimer();
   clearPendingTemporaryToolEvents();
   clearTerminalRunFence();
   clearWsReconnectTimer();

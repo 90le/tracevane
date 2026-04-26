@@ -61,10 +61,17 @@ test("files service supports search, read, write, create, rename, copy, move, de
   const config = makeConfig(root);
   writeFile(path.join(config.projectRoot, "docs", "guide.md"), "hello world\n");
   writeFile(path.join(config.projectRoot, "docs", "notes.txt"), "draft\n");
+  writeFile(path.join(config.projectRoot, "docs", "content-only.txt"), "alpha hidden needle beta\n");
   const service = createFilesService(config);
 
   const search = service.search("project-root", "", "guide", true, true);
   assert.equal(search.results[0].path, "docs/guide.md");
+  assert.equal(search.results[0].matchKind, "name");
+
+  const contentSearch = service.search("project-root", "", "needle", true, true);
+  assert.equal(contentSearch.results[0].path, "docs/content-only.txt");
+  assert.equal(contentSearch.results[0].matchKind, "content");
+  assert.match(contentSearch.results[0].snippet || "", /needle/);
 
   const read = service.readFile("project-root", "docs/guide.md");
   assert.equal(read.editable, true);

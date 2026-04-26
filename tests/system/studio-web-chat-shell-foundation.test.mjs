@@ -1081,6 +1081,10 @@ test("conversation pane virtualizes the timeline shell so only viewport-adjacent
   assert.match(conversationPane, /const timelineViewport = ref\(\{/);
   assert.match(conversationPane, /const timelineItemHeights = reactive<Record<string, number>>\(\{\}\);/);
   assert.match(conversationPane, /function timelineItemEstimatedHeight\(item: ChatRenderableItem, index: number\): number \{/);
+  assert.match(conversationPane, /const shouldCompensateMeasuredHeights = Boolean\(/);
+  assert.match(conversationPane, /let heightDeltaAboveViewport = 0;/);
+  assert.match(conversationPane, /itemRect\.bottom <= containerRect\.top/);
+  assert.match(conversationPane, /container\.scrollTop \+= heightDeltaAboveViewport;/);
   assert.match(conversationPane, /function estimateTextBlockHeight\(text: string\): number \{/);
   assert.match(conversationPane, /function estimateMessageGroupHeight\(item: Extract<ChatRenderableItem, \{ type: 'message_group' \}>\): number \{/);
   assert.match(conversationPane, /const timelineVirtualWindow = computed\(\(\) => \{/);
@@ -1116,6 +1120,10 @@ test("history prepend restores against the newest loaded message boundary instea
   assert.match(conversationPane, /let prependRestoreBoundaryMessageId: string \| null = null;/);
   assert.match(conversationPane, /function resolveMessageBubbleElement\(messageId: string\): HTMLElement \| null \{/);
   assert.match(conversationPane, /function markThreadUserBrowseIntent\(\): void \{/);
+  assert.match(conversationPane, /function readVisibleTimelineAnchor\(\): \{ itemId: string; offset: number \} \| null \{/);
+  assert.match(conversationPane, /function refreshStableRestoreAnchorFromCurrentViewport\(\): void \{/);
+  assert.match(conversationPane, /stableRestoreAnchorItemId = anchor\.itemId;/);
+  assert.match(conversationPane, /historyPrependPendingBottomDistance = bottomDistance;/);
   assert.match(conversationPane, /@wheel\.passive="handleThreadWheel"/);
   assert.match(conversationPane, /markThreadUserBrowseIntent\(\): void \{[\s\S]*emit\('prefetch-more-before'\);/);
   assert.match(conversationPane, /metrics\.scrollTop <= historyBeforeMaterializeTriggerPx\(metrics\)[\s\S]*requestMoreBefore\(\);/);
@@ -1125,6 +1133,8 @@ test("history prepend restores against the newest loaded message boundary instea
   assert.match(conversationPane, /historyPrependPendingBottomDistance = scrollBottomDistance\(metrics\);/);
   assert.match(conversationPane, /function restorePrependVisualAnchor\([\s\S]*restoreTimelineItemAnchor\(anchorItemId, anchorOffset\)/);
   assert.match(conversationPane, /restorePrependVisualAnchor\(anchorItemId, anchorOffset, boundaryMessageId\);/);
+  assert.match(conversationPane, /emit\('history-before-render-settled'\);/);
+  assert.match(conversationPane, /if \(!clearPrependPending && historyPrependMutationPending\) \{/);
   assert.match(conversationPane, /const desiredBottomOffset = Math\.min\(/);
   assert.match(conversationPane, /const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 5\.5;/);
   assert.match(conversationPane, /function requestMoreBeforeForAutoFill\(\): void \{/);
@@ -1139,11 +1149,12 @@ test("history prepend restores against the newest loaded message boundary instea
   assert.match(conversationPane, /const settling = Date\.now\(\) < initialLatestAnchorSettleUntil;/);
   assert.match(conversationPane, /if \(bottomDistance <= 40 && !settling\) \{/);
   assert.match(conversationPane, /if \(\s*!props\.selectedSession[\s\S]*\|\| props\.hasMoreAfter[\s\S]*\|\| scrollState\.value\.autoScrollLockedByUser[\s\S]*\|\| isHistoryBrowseGuardActive\(\)/);
+  assert.match(conversationPane, /props\.hasMoreAfter[\s\S]*\|\| historyPrependMutationPending[\s\S]*\|\| scrollState\.value\.prependAnchor/);
   assert.match(conversationPane, /overflow-anchor:\s*none;/);
   assert.match(conversationPane, /scrollToBottom\('auto'\);/);
   assert.match(chatShellPage, /const shouldShowLoadingState = !prefetchedPayload;/);
   assert.match(chatShellPage, /if \(shouldShowLoadingState\) \{\s*historyLoadingBefore\.value = true;\s*\}/);
-  assert.match(chatShellPage, /if \(mode !== 'autofill' && sessionKey === selectedSessionKey\.value\) \{/);
+  assert.match(chatShellPage, /if \(!holdLockUntilRenderSettles && mode !== 'autofill' && sessionKey === selectedSessionKey\.value\) \{/);
 });
 
 test("chat shell bootstraps the first session rail quickly and hydrates lower-priority agents later", () => {
@@ -1212,15 +1223,19 @@ test("chat shell bootstraps the first session rail quickly and hydrates lower-pr
   );
   assert.match(chatShellPage, /if \(exhaustedHistoryBeforeCursorBySession\.get\(sessionKey\) === beforeCursor\) \{/);
   assert.match(chatShellPage, /let historyBeforeMaterializeInFlight = false;/);
+  assert.match(chatShellPage, /let historyBeforeMaterializeReleaseTimer: number \| null = null;/);
+  assert.match(chatShellPage, /@history-before-render-settled="handleHistoryBeforeRenderSettled"/);
   assert.match(chatShellPage, /if \(\s*!sessionKey[\s\S]*\|\| historyBeforeMaterializeInFlight[\s\S]*\|\| historyLoadingBefore\.value[\s\S]*\|\| historyLoadingInitial\.value[\s\S]*\|\| !historyPageInfo\.value\.hasMoreBefore[\s\S]*\|\| !historyPageInfo\.value\.beforeCursor/);
   assert.match(chatShellPage, /historyBeforeMaterializeInFlight = true;/);
-  assert.match(chatShellPage, /finally \{[\s\S]*historyBeforeMaterializeInFlight = false;/);
+  assert.match(chatShellPage, /function holdHistoryBeforeMaterializeLockUntilRenderSettles\(timeoutMs = 1800\): void \{/);
+  assert.match(chatShellPage, /function handleHistoryBeforeRenderSettled\(\): void \{/);
+  assert.match(chatShellPage, /if \(!holdLockUntilRenderSettles\) \{[\s\S]*releaseHistoryBeforeMaterializeLock\(\);/);
   assert.match(chatShellPage, /const noProgress = \(/);
   assert.match(chatShellPage, /historyPageInfo\.value = \{ \.\.\.historyPageInfo\.value, hasMoreBefore: false, beforeCursor: null \};/);
   assert.match(chatShellPage, /const useWideHistoryPage = historyMode\.value === 'history' && !selectedHistoryDay\.value;/);
   assert.match(chatShellPage, /const requestLimit = mode === 'autofill' \|\| mode === 'continuation' \|\| useWideHistoryPage/);
   assert.match(chatShellPage, /prefetchedPayload = await waitForHistoryBeforePrefetch\(prefetchKey\);/);
-  assert.match(chatShellPage, /if \(mode !== 'autofill' && sessionKey === selectedSessionKey\.value\) \{/);
+  assert.match(chatShellPage, /if \(!holdLockUntilRenderSettles && mode !== 'autofill' && sessionKey === selectedSessionKey\.value\) \{/);
   assert.match(chatShellPage, /if \(requestCursor && exhaustedHistoryAfterCursorBySession\.get\(sessionKey\) === requestCursor\) \{/);
   assert.match(chatShellPage, /historyPageInfo\.value = \{ \.\.\.historyPageInfo\.value, hasMoreAfter: false, afterCursor: null \};/);
   assert.match(chatShellPage, /onBeforeUnmount\(\(\) => \{[\s\S]*rememberChatShellWarmCache\(\);/);

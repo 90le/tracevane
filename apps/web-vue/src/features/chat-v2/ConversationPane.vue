@@ -895,6 +895,7 @@ const emit = defineEmits<{
   (event: 'load-more-before', mode?: 'browse' | 'autofill' | 'continuation'): void;
   (event: 'prefetch-more-before'): void;
   (event: 'load-more-after'): void;
+  (event: 'history-before-render-settled'): void;
   (event: 'jump-to-live'): void;
   (event: 'jump-to-message', messageId: string): void;
   (event: 'open-record-browser'): void;
@@ -1128,12 +1129,10 @@ function setTimelineItemShellRef(itemId: string, element: HTMLElement | null): v
   timelineItemShellRefs.set(itemId, element);
 }
 
-function captureVisibleTimelineAnchor(): void {
+function readVisibleTimelineAnchor(): { itemId: string; offset: number } | null {
   const container = threadBody.value;
   if (!container) {
-    prependRestoreAnchorItemId = null;
-    prependRestoreAnchorOffset = 0;
-    return;
+    return null;
   }
   const containerRect = container.getBoundingClientRect();
   for (const item of props.timelineItems) {
@@ -1145,8 +1144,19 @@ function captureVisibleTimelineAnchor(): void {
     if (rect.bottom <= containerRect.top || rect.top >= containerRect.bottom) {
       continue;
     }
-    prependRestoreAnchorItemId = item.id;
-    prependRestoreAnchorOffset = rect.top - containerRect.top;
+    return {
+      itemId: item.id,
+      offset: rect.top - containerRect.top,
+    };
+  }
+  return null;
+}
+
+function captureVisibleTimelineAnchor(): void {
+  const anchor = readVisibleTimelineAnchor();
+  if (anchor) {
+    prependRestoreAnchorItemId = anchor.itemId;
+    prependRestoreAnchorOffset = anchor.offset;
     return;
   }
   prependRestoreAnchorItemId = null;
@@ -1234,7 +1244,7 @@ function restorePendingPrependBottomClipIfNeeded(): boolean {
     return false;
   }
   const currentBottomDistance = scrollBottomDistance(metrics);
-  const clippedThreshold = Math.min(300, historyPrependPendingBottomDistance * 0.5);
+  const clippedThreshold = Math.max(300, historyPrependPendingBottomDistance * 0.5);
   if (currentBottomDistance > clippedThreshold) {
     return false;
   }
@@ -1251,8 +1261,18 @@ function restorePendingPrependBottomClipIfNeeded(): boolean {
   return true;
 }
 
+function emitHistoryBeforeRenderSettledIfNeeded(hadPrependPending: boolean): void {
+  if (hadPrependPending) {
+    emit('history-before-render-settled');
+  }
+}
+
 function clearStableRestoreAnchor(options: { clearPrependPending?: boolean } = {}): void {
   const clearPrependPending = options.clearPrependPending ?? true;
+  if (!clearPrependPending && historyPrependMutationPending) {
+    return;
+  }
+  const hadPrependPending = historyPrependMutationPending || historyPrependPendingBottomDistance != null;
   if (stableRestoreFrame != null) {
     window.cancelAnimationFrame(stableRestoreFrame);
     stableRestoreFrame = null;
@@ -1264,6 +1284,7 @@ function clearStableRestoreAnchor(options: { clearPrependPending?: boolean } = {
   if (clearPrependPending) {
     historyPrependMutationPending = false;
     historyPrependPendingBottomDistance = null;
+    emitHistoryBeforeRenderSettledIfNeeded(hadPrependPending);
   }
 }
 
@@ -1283,7 +1304,7 @@ function scheduleStableRestoreAnchorTick(): void {
     const clippedTowardLatest = Boolean(
       stableRestoreBottomDistance != null
       && restoredMetrics
-      && scrollBottomDistance(restoredMetrics) < Math.min(300, stableRestoreBottomDistance * 0.5),
+      && scrollBottomDistance(restoredMetrics) < Math.max(300, stableRestoreBottomDistance * 0.5),
     );
     if (!restoredItemAnchor || clippedTowardLatest) {
       restoreHistoryBrowseFallbackBottomDistance(stableRestoreBottomDistance);
@@ -1314,19 +1335,81 @@ function startStableRestoreAnchor(itemId: string | null, offset: number, bottomD
   scheduleStableRestoreAnchorTick();
 }
 
+function refreshStableRestoreAnchorFromCurrentViewport(): void {
+  if (!historyPrependMutationPending) {
+    return;
+  }
+  const metrics = readScrollMetrics();
+  if (!metrics) {
+    return;
+  }
+  const anchor = readVisibleTimelineAnchor();
+  if (anchor) {
+    stableRestoreAnchorItemId = anchor.itemId;
+    stableRestoreAnchorOffset = anchor.offset;
+  }
+  const bottomDistance = scrollBottomDistance(metrics);
+  stableRestoreBottomDistance = bottomDistance;
+  historyPrependPendingBottomDistance = bottomDistance;
+  stableRestoreUntil = Math.max(stableRestoreUntil, Date.now() + HISTORY_PREPEND_ANCHOR_STABILIZE_MS);
+  scheduleStableRestoreAnchorTick();
+}
+
 function scheduleTimelineItemMeasurement(): void {
   if (timelineMeasureFrame != null) {
     window.cancelAnimationFrame(timelineMeasureFrame);
   }
   timelineMeasureFrame = window.requestAnimationFrame(() => {
     timelineMeasureFrame = null;
+    const container = threadBody.value;
+    const shouldCompensateMeasuredHeights = Boolean(
+      container
+      && !ignoreScrollEvents
+      && !props.historyLoadingInitial
+      && !initialLatestAnchorPending
+      && !historyPrependMutationPending
+      && !stableRestoreAnchorItemId
+      && stableRestoreBottomDistance == null
+      && (scrollState.value.autoScrollLockedByUser || isHistoryBrowseGuardActive()),
+    );
+    const containerRect = shouldCompensateMeasuredHeights
+      ? container!.getBoundingClientRect()
+      : null;
+    const itemIndexById = shouldCompensateMeasuredHeights
+      ? new Map(props.timelineItems.map((item, index) => [item.id, index] as const))
+      : null;
+    let heightDeltaAboveViewport = 0;
     let changed = false;
     for (const [itemId, element] of timelineItemShellRefs.entries()) {
       const nextHeight = Math.ceil(element.getBoundingClientRect().height || element.offsetHeight || 0);
       if (nextHeight > 0 && timelineItemHeights[itemId] !== nextHeight) {
+        if (shouldCompensateMeasuredHeights && containerRect && itemIndexById) {
+          const index = itemIndexById.get(itemId);
+          const item = typeof index === 'number' ? props.timelineItems[index] : null;
+          const previousHeight = item
+            ? (timelineItemHeights[itemId] || timelineItemEstimatedHeight(item, index))
+            : (timelineItemHeights[itemId] || 0);
+          const itemRect = element.getBoundingClientRect();
+          const delta = nextHeight - previousHeight;
+          if (previousHeight > 0 && Math.abs(delta) >= 1 && itemRect.bottom <= containerRect.top) {
+            heightDeltaAboveViewport += delta;
+          }
+        }
         timelineItemHeights[itemId] = nextHeight;
         changed = true;
       }
+    }
+    if (heightDeltaAboveViewport !== 0 && container) {
+      ignoreScrollEvents = true;
+      container.scrollTop += heightDeltaAboveViewport;
+      requestAnimationFrame(() => {
+        ignoreScrollEvents = false;
+        const nextMetrics = readScrollMetrics();
+        if (nextMetrics) {
+          scrollState.value = preserveChatSessionHistoryBrowsePosition(scrollState.value, nextMetrics);
+          syncTimelineViewport(nextMetrics);
+        }
+      });
     }
     if (changed && initialLatestAnchorPending) {
       scheduleInitialLatestAnchorRetry(1);
@@ -1612,6 +1695,10 @@ async function restoreLatestBottomAnchorIfNeeded(): Promise<void> {
     || props.historyLoadingAfter
     || props.viewingHistoricalPosition
     || props.hasMoreAfter
+    || historyPrependMutationPending
+    || scrollState.value.prependAnchor
+    || stableRestoreAnchorItemId
+    || stableRestoreBottomDistance != null
     || scrollState.value.autoScrollLockedByUser
     || isHistoryBrowseGuardActive()
     || !props.timelineItems.length
@@ -1670,7 +1757,6 @@ function markThreadUserBrowseIntent(): void {
   const metrics = readScrollMetrics();
   extendHistoryBrowseGuard();
   cancelLatestBottomAnchorRetry();
-  clearStableRestoreAnchor({ clearPrependPending: false });
   historyBeforeContinuationArmed = Boolean(
     metrics
     && metrics.scrollTop <= 24
@@ -1679,6 +1765,7 @@ function markThreadUserBrowseIntent(): void {
     && !scrollState.value.prependAnchor,
   );
   scrollState.value = markChatSessionUserBrowseIntent(scrollState.value, metrics);
+  refreshStableRestoreAnchorFromCurrentViewport();
   if (props.hasMoreBefore && !props.historyLoadingBefore && !props.historyLoadingInitial) {
     emit('prefetch-more-before');
   }
@@ -1903,7 +1990,7 @@ function handleThreadScroll(): void {
     ) {
       extendHistoryBrowseGuard();
       cancelLatestBottomAnchorRetry();
-      clearStableRestoreAnchor({ clearPrependPending: false });
+      refreshStableRestoreAnchorFromCurrentViewport();
     }
     if (
       metrics.scrollTop <= 24

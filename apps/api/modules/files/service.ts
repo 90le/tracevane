@@ -28,6 +28,7 @@ import type {
 } from "../../../../types/files.js";
 
 const MAX_TEXT_FILE_BYTES = 1024 * 1024;
+const MAX_SEARCH_TEXT_BYTES = 256 * 1024;
 const MAX_UPLOAD_FILE_BYTES = 24 * 1024 * 1024;
 const SEARCH_LIMIT = 250;
 
@@ -364,6 +365,29 @@ function isTextLike(entryPath: string, sample: Buffer | null = null): boolean {
   if (TEXT_FILE_EXTENSIONS.has(ext)) return true;
   if (!sample) return false;
   return isProbablyTextBuffer(sample);
+}
+
+function findContentSearchSnippet(filePath: string, normalizedQuery: string): string | null {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    return null;
+  }
+  if (!stat.isFile() || stat.size > MAX_SEARCH_TEXT_BYTES) return null;
+  let sample: Buffer;
+  try {
+    sample = readBufferSlice(filePath, Math.min(stat.size, MAX_SEARCH_TEXT_BYTES));
+  } catch {
+    return null;
+  }
+  if (!isTextLike(filePath, sample)) return null;
+  const content = sample.toString("utf8");
+  const matchIndex = content.toLowerCase().indexOf(normalizedQuery);
+  if (matchIndex === -1) return null;
+  const start = Math.max(0, matchIndex - 48);
+  const end = Math.min(content.length, matchIndex + normalizedQuery.length + 72);
+  return content.slice(start, end).replace(/\s+/g, " ").trim();
 }
 
 function readBufferSlice(filePath: string, maxBytes: number): Buffer {
@@ -767,10 +791,17 @@ export function createFilesService(config: StudioServerConfig): FilesService {
             showHidden,
           );
           if (!summary) continue;
-          if (summary.name.toLowerCase().includes(normalizedQuery)) {
+          const nameMatches = summary.name.toLowerCase().includes(normalizedQuery);
+          const contentSnippet =
+            !nameMatches && summary.kind === "file"
+              ? findContentSearchSnippet(path.join(current.absolutePath, dirent.name), normalizedQuery)
+              : null;
+          if (nameMatches || contentSnippet) {
             results.push({
               ...summary,
               directoryPath: current.relativePath,
+              matchKind: nameMatches ? "name" : "content",
+              snippet: contentSnippet,
             });
             if (results.length >= SEARCH_LIMIT) break;
           }

@@ -1,5 +1,9 @@
 <template>
-  <section class="file-manager-page">
+  <section
+    class="file-manager-page"
+    tabindex="0"
+    @keydown="handleFileManagerKeydown"
+  >
     <div
       v-if="noticeMessage"
       class="file-manager-notice"
@@ -25,6 +29,7 @@
       @error="handleExplorerError"
       @notify="handleNotify"
       @select="handleExplorerSelect"
+      @path-change="handleExplorerPathChange"
       @file-dclick="handleFileDclick"
     >
       <template #icon="{ item, view }">
@@ -56,6 +61,83 @@
       <template #status-bar>
         <div class="file-manager-statusbar">
           <span>{{ text(`已选 ${selectedItems.length} 项`, `${selectedItems.length} selected`) }}</span>
+          <button
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="refreshExplorer"
+          >
+            {{ text("刷新", "Refresh") }}
+          </button>
+          <button
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="quickCreateDirectory"
+          >
+            {{ text("新建文件夹", "New folder") }}
+          </button>
+          <button
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="quickCreateFile"
+          >
+            {{ text("新建文件", "New file") }}
+          </button>
+          <button
+            v-if="selectedItems.length"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="putSelectedItemsOnClipboard('copy')"
+          >
+            {{ text("复制", "Copy") }}
+          </button>
+          <button
+            v-if="selectedItems.length"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="putSelectedItemsOnClipboard('move')"
+          >
+            {{ text("剪切", "Cut") }}
+          </button>
+          <button
+            v-if="selectedItems.length"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="copySelectedPathsToClipboard"
+          >
+            {{ text("复制路径", "Copy path") }}
+          </button>
+          <button
+            v-if="selectedItems.length"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="duplicateSelectedItems"
+          >
+            {{ selectedItems.length > 1 ? text(`创建副本 ${selectedItems.length}`, `Duplicate ${selectedItems.length}`) : text("创建副本", "Duplicate") }}
+          </button>
+          <button
+            v-if="selectedSingleItem"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="openDetailsForSelection"
+          >
+            {{ text("详情", "Details") }}
+          </button>
+          <button
+            v-if="fileClipboard"
+            type="button"
+            class="file-manager-statusbar__button file-manager-statusbar__button--primary"
+            @click="pasteFileClipboardIntoCurrentDirectory"
+          >
+            {{ fileClipboardLabel }}
+          </button>
+          <button
+            v-if="fileClipboard"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="clearFileClipboard"
+          >
+            {{ text("清空剪贴板", "Clear clipboard") }}
+          </button>
           <button
             v-if="selectedCodeFiles.length"
             type="button"
@@ -130,6 +212,93 @@
     <div v-else class="file-manager-loading file-manager-loading--error">
       {{ text("文件管理器不可用", "File manager unavailable") }}
     </div>
+
+    <section
+      v-if="detailsItem"
+      class="file-manager-details"
+      aria-live="polite"
+      @click.self="closeDetails"
+    >
+      <article class="file-manager-details__panel">
+        <header class="file-manager-details__head">
+          <span
+            class="studio-file-icon studio-file-icon--grid"
+            :class="`studio-file-icon--${explorerItemIconKind(detailsItem)}`"
+            aria-hidden="true"
+          >
+            <span class="studio-file-icon__shape">
+              <span class="studio-file-icon__fold"></span>
+              <span
+                v-if="detailsItem.type === 'dir'"
+                class="studio-file-icon__folder-tab"
+              ></span>
+              <span v-else class="studio-file-icon__extension">
+                {{ explorerItemIconText(detailsItem) }}
+              </span>
+            </span>
+          </span>
+          <div>
+            <strong>{{ detailsItem.basename }}</strong>
+            <span>{{ detailsItem.path }}</span>
+          </div>
+          <button type="button" class="file-manager-details__close" @click="closeDetails">
+            ×
+          </button>
+        </header>
+
+        <dl class="file-manager-details__grid">
+          <div>
+            <dt>{{ text("类型", "Type") }}</dt>
+            <dd>{{ detailsTypeLabel }}</dd>
+          </div>
+          <div>
+            <dt>{{ text("大小", "Size") }}</dt>
+            <dd>{{ formatFileSize(detailsItem.file_size) }}</dd>
+          </div>
+          <div>
+            <dt>{{ text("修改时间", "Modified") }}</dt>
+            <dd>{{ formatUnixTimestamp(detailsItem.last_modified) }}</dd>
+          </div>
+          <div>
+            <dt>{{ text("存储", "Storage") }}</dt>
+            <dd>{{ detailsItem.storage }}</dd>
+          </div>
+          <div>
+            <dt>{{ text("扩展名", "Extension") }}</dt>
+            <dd>{{ detailsItem.extension || "-" }}</dd>
+          </div>
+          <div>
+            <dt>MIME</dt>
+            <dd>{{ detailsItem.mime_type || "-" }}</dd>
+          </div>
+        </dl>
+
+        <div class="file-manager-details__actions">
+          <button type="button" class="file-manager-statusbar__button" @click="copyPathsToClipboard([detailsItem])">
+            {{ text("复制路径", "Copy path") }}
+          </button>
+          <button
+            v-if="isCodeEditableItem(detailsItem)"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="openDetailsItemInEditor"
+          >
+            {{ text("编辑", "Edit") }}
+          </button>
+          <button type="button" class="file-manager-statusbar__button" @click="duplicateItems([detailsItem])">
+            {{ text("创建副本", "Duplicate") }}
+          </button>
+          <button
+            v-if="detailsItem.type === 'file'"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="downloadDetailItem"
+          >
+            {{ text("下载", "Download") }}
+          </button>
+        </div>
+      </article>
+    </section>
 
     <section
       v-if="editorTabs.length"
@@ -322,7 +491,7 @@ import type { ConfigDefaults, DirEntry, FeaturesConfig, Item as VueFinderContext
 import type { FileEntrySummary, FilesReadPayload, FilesSummaryPayload, FileRootSummary } from "../../../../../types/files";
 import { useLocalePreference } from "../../shared/locale";
 import { useThemePreference } from "../../shared/theme";
-import { browseDirectory, buildArchiveDownloadUrl, buildFileDownloadUrl, fetchFilesSummary, readFileContent, saveFileContent, unarchiveFile } from "./api";
+import { browseDirectory, buildArchiveDownloadUrl, buildFileDownloadUrl, copyPath, createDirectory, createFile, fetchFilesSummary, movePath, readFileContent, saveFileContent, unarchiveFile } from "./api";
 import { StudioFilesVueFinderDriver, type StudioFileStorageRoot } from "./vuefinder-driver";
 
 const AsyncCodeFileEditor = defineAsyncComponent(() => import("./CodeFileEditor.vue"));
@@ -347,6 +516,22 @@ interface EditorFileTab {
   error: string | null;
   loading: boolean;
   saving: boolean;
+}
+
+interface FileClipboardItem {
+  rootId: string;
+  path: string;
+  name: string;
+}
+
+interface FileClipboardState {
+  mode: "copy" | "move";
+  items: FileClipboardItem[];
+}
+
+interface FileExplorerTarget {
+  rootId: string;
+  directoryPath: string;
 }
 
 type ExplorerDensity = "compact" | "comfortable" | "visual";
@@ -404,6 +589,9 @@ const summary = ref<FilesSummaryPayload | null>(null);
 const loading = ref(false);
 const noticeMessage = ref<{ kind: "success" | "error" | "info" | "warning"; text: string } | null>(null);
 const selectedItems = ref<DirEntry[]>([]);
+const currentExplorerPath = ref("");
+const fileClipboard = ref<FileClipboardState | null>(null);
+const detailsItem = ref<DirEntry | null>(null);
 const explorerUiPrefs = ref<ExplorerUiPrefs>(readExplorerUiPrefs());
 const editorMaximized = ref(false);
 const editorTabs = ref<EditorFileTab[]>([]);
@@ -510,6 +698,35 @@ const selectedCodeFiles = computed(
 const selectedZipFiles = computed(
   () => selectedItems.value.filter((item) => isZipArchiveItem(item)),
 );
+const selectedSingleItem = computed(() => selectedItems.value.length === 1 ? selectedItems.value[0] : null);
+const currentExplorerTarget = computed<FileExplorerTarget | null>(() => {
+  const parsed = parseVueFinderPath(currentExplorerPath.value);
+  const rootId =
+    rootIdForStorage(parsed.storage)
+    || summary.value?.defaultRootId
+    || storageRoots.value[0]?.id
+    || "";
+  if (!rootId) return null;
+  return {
+    rootId,
+    directoryPath: parsed.relativePath,
+  };
+});
+const fileClipboardLabel = computed(() => {
+  const clipboard = fileClipboard.value;
+  if (!clipboard) return "";
+  const count = clipboard.items.length;
+  const action = clipboard.mode === "copy" ? text("粘贴复制", "Paste copy") : text("粘贴移动", "Paste move");
+  return count > 1 ? text(`${action} ${count}`, `${action} ${count}`) : action;
+});
+const detailsTypeLabel = computed(() => {
+  const item = detailsItem.value;
+  if (!item) return "";
+  if (item.type === "dir") return text("文件夹", "Folder");
+  return item.extension
+    ? text(`${item.extension.toUpperCase()} 文件`, `${item.extension.toUpperCase()} file`)
+    : text("文件", "File");
+});
 const explorerDensityLabel = computed(() => {
   if (explorerUiPrefs.value.density === "compact") return text("紧凑", "Compact");
   if (explorerUiPrefs.value.density === "visual") return text("大图标", "Large");
@@ -557,6 +774,16 @@ const editorLanguageLabel = computed(() => {
 const explorerContextMenuItems = computed<VueFinderContextItem[]>(() => [
   ...builtInContextMenuItems,
   {
+    id: "studio_show_details",
+    title: () => text("查看详情", "Show details"),
+    action: (_app, items) => {
+      const item = items[0] || selectedItems.value[0];
+      if (item) openDetailsForItem(item);
+    },
+    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
+    order: 51,
+  },
+  {
     id: "studio_open_in_editor",
     title: () => text("在代码编辑器中打开", "Open in code editor"),
     action: (_app, items) => {
@@ -587,6 +814,58 @@ const explorerContextMenuItems = computed<VueFinderContextItem[]>(() => [
       return items.length === 1 && isZipArchiveItem(items[0]);
     },
     order: 92,
+  },
+  {
+    id: "studio_duplicate",
+    title: () => text("创建副本", "Duplicate"),
+    action: (_app, items) => {
+      void duplicateItems(items.length ? items : selectedItems.value);
+    },
+    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
+    order: 115,
+  },
+  {
+    id: "studio_quick_copy",
+    title: () => text("复制到 Studio 剪贴板", "Copy to Studio clipboard"),
+    action: (_app, items) => {
+      putItemsOnClipboard("copy", items);
+    },
+    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
+    order: 116,
+  },
+  {
+    id: "studio_quick_cut",
+    title: () => text("剪切到 Studio 剪贴板", "Cut to Studio clipboard"),
+    action: (_app, items) => {
+      putItemsOnClipboard("move", items);
+    },
+    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
+    order: 117,
+  },
+  {
+    id: "studio_quick_paste",
+    title: () => text("粘贴到此处", "Paste here"),
+    action: (_app, items) => {
+      const target = items.length === 1 && items[0].type === "dir"
+        ? targetDirectoryFromItem(items[0])
+        : currentExplorerTarget.value;
+      void pasteFileClipboard(target);
+    },
+    show: (_app, ctx) => {
+      if (!fileClipboard.value?.items.length) return false;
+      if (!ctx.target) return true;
+      return ctx.target.type === "dir";
+    },
+    order: 118,
+  },
+  {
+    id: "studio_copy_path",
+    title: () => text("复制路径", "Copy path"),
+    action: (_app, items) => {
+      void copyPathsToClipboard(items);
+    },
+    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
+    order: 119,
   },
   {
     id: "studio_download_archive",
@@ -706,11 +985,23 @@ function rootIdForStorage(storage: string): string {
   return storageRoots.value.find((root) => root.storage === storage)?.id || "";
 }
 
-function relativePathFromVueFinderPath(pathValue: string): string {
+function parseVueFinderPath(pathValue: string): { storage: string; relativePath: string } {
   const marker = "://";
   const markerIndex = pathValue.indexOf(marker);
-  const rawPath = markerIndex === -1 ? pathValue : pathValue.slice(markerIndex + marker.length);
-  return rawPath.replace(/^\/+|\/+$/g, "");
+  if (markerIndex === -1) {
+    return {
+      storage: storageRoots.value[0]?.storage || "",
+      relativePath: pathValue.replace(/^\/+|\/+$/g, ""),
+    };
+  }
+  return {
+    storage: pathValue.slice(0, markerIndex),
+    relativePath: pathValue.slice(markerIndex + marker.length).replace(/^\/+|\/+$/g, ""),
+  };
+}
+
+function relativePathFromVueFinderPath(pathValue: string): string {
+  return parseVueFinderPath(pathValue).relativePath;
 }
 
 function directoryPathForFile(filePath: string): string {
@@ -772,6 +1063,342 @@ async function refreshEditorDirectory(rootId: string, directoryPath: string): Pr
 
 function setNotice(kind: "success" | "error" | "info" | "warning", message: string): void {
   noticeMessage.value = { kind, text: message };
+}
+
+function shouldIgnoreShortcut(event: KeyboardEvent): boolean {
+  const target = event.target as HTMLElement | null;
+  if (!target) return false;
+  const tagName = target.tagName.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || target.isContentEditable;
+}
+
+function handleFileManagerKeydown(event: KeyboardEvent): void {
+  if (shouldIgnoreShortcut(event)) return;
+  const meta = event.ctrlKey || event.metaKey;
+  if (meta && event.key.toLowerCase() === "r") {
+    event.preventDefault();
+    refreshExplorer();
+    return;
+  }
+  if (meta && event.shiftKey && event.key.toLowerCase() === "n") {
+    event.preventDefault();
+    quickCreateDirectory();
+    return;
+  }
+  if (meta && event.key.toLowerCase() === "n") {
+    event.preventDefault();
+    quickCreateFile();
+    return;
+  }
+  if (meta && event.key.toLowerCase() === "c" && selectedItems.value.length) {
+    event.preventDefault();
+    putSelectedItemsOnClipboard("copy");
+    return;
+  }
+  if (meta && event.key.toLowerCase() === "x" && selectedItems.value.length) {
+    event.preventDefault();
+    putSelectedItemsOnClipboard("move");
+    return;
+  }
+  if (meta && event.key.toLowerCase() === "v" && fileClipboard.value) {
+    event.preventDefault();
+    pasteFileClipboardIntoCurrentDirectory();
+    return;
+  }
+  if (meta && event.key.toLowerCase() === "d" && selectedItems.value.length) {
+    event.preventDefault();
+    duplicateSelectedItems();
+    return;
+  }
+  if (meta && event.key.toLowerCase() === "i" && selectedSingleItem.value) {
+    event.preventDefault();
+    openDetailsForSelection();
+    return;
+  }
+  if (event.key === "Escape") {
+    detailsItem.value = null;
+  }
+}
+
+function refreshExplorer(): void {
+  viewerRefreshNonce.value += 1;
+  selectedItems.value = [];
+}
+
+function promptForName(title: string, placeholder: string): string {
+  if (typeof window === "undefined") return "";
+  return (window.prompt(title, placeholder) || "").trim();
+}
+
+async function quickCreateDirectory(): Promise<void> {
+  const target = currentExplorerTarget.value;
+  if (!target) return;
+  const name = promptForName(text("输入新文件夹名称", "Enter new folder name"), "untitled-folder");
+  if (!name) return;
+  try {
+    await createDirectory({
+      rootId: target.rootId,
+      directoryPath: target.directoryPath,
+      name,
+    });
+    refreshExplorer();
+    setNotice("success", text("文件夹已创建", "Folder created"));
+  } catch (error) {
+    setNotice("error", error instanceof Error ? error.message : text("创建文件夹失败", "Failed to create folder"));
+  }
+}
+
+async function quickCreateFile(): Promise<void> {
+  const target = currentExplorerTarget.value;
+  if (!target) return;
+  const name = promptForName(text("输入新文件名称", "Enter new file name"), "untitled.txt");
+  if (!name) return;
+  try {
+    await createFile({
+      rootId: target.rootId,
+      directoryPath: target.directoryPath,
+      name,
+      content: "",
+    });
+    refreshExplorer();
+    setNotice("success", text("文件已创建", "File created"));
+  } catch (error) {
+    setNotice("error", error instanceof Error ? error.message : text("创建文件失败", "Failed to create file"));
+  }
+}
+
+function targetDirectoryFromItem(item: DirEntry): FileExplorerTarget | null {
+  if (item.type !== "dir") return null;
+  const rootId = rootIdForStorage(item.storage);
+  if (!rootId) return null;
+  return {
+    rootId,
+    directoryPath: relativePathFromVueFinderPath(item.path),
+  };
+}
+
+function fileClipboardItemsFor(items: DirEntry[]): FileClipboardItem[] {
+  const candidates = items.length ? items : selectedItems.value;
+  return candidates
+    .map((item) => {
+      const rootId = rootIdForStorage(item.storage);
+      const itemPath = relativePathFromVueFinderPath(item.path);
+      if (!rootId || !itemPath) return null;
+      return {
+        rootId,
+        path: itemPath,
+        name: item.basename,
+      };
+    })
+    .filter((item): item is FileClipboardItem => Boolean(item));
+}
+
+function putItemsOnClipboard(mode: FileClipboardState["mode"], items: DirEntry[]): void {
+  const clipboardItems = fileClipboardItemsFor(items);
+  if (!clipboardItems.length) {
+    setNotice("warning", text("请选择要复制或剪切的文件", "Select files or folders to copy or cut"));
+    return;
+  }
+  fileClipboard.value = {
+    mode,
+    items: clipboardItems,
+  };
+  setNotice(
+    "info",
+    mode === "copy"
+      ? text(`已复制 ${clipboardItems.length} 项到剪贴板`, `Copied ${clipboardItems.length} item(s) to clipboard`)
+      : text(`已剪切 ${clipboardItems.length} 项到剪贴板`, `Cut ${clipboardItems.length} item(s) to clipboard`),
+  );
+}
+
+function putSelectedItemsOnClipboard(mode: FileClipboardState["mode"]): void {
+  putItemsOnClipboard(mode, selectedItems.value);
+}
+
+function clearFileClipboard(): void {
+  fileClipboard.value = null;
+  setNotice("info", text("剪贴板已清空", "Clipboard cleared"));
+}
+
+async function writeTextToSystemClipboard(content: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(content);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = content;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) throw new Error("Clipboard API is unavailable");
+}
+
+async function copyPathsToClipboard(items: DirEntry[]): Promise<void> {
+  const paths = (items.length ? items : selectedItems.value)
+    .map((item) => item.path)
+    .filter(Boolean);
+  if (!paths.length) return;
+  try {
+    await writeTextToSystemClipboard(paths.join("\n"));
+    setNotice(
+      "success",
+      paths.length > 1 ? text(`已复制 ${paths.length} 个路径`, `Copied ${paths.length} paths`) : text("路径已复制", "Path copied"),
+    );
+  } catch (error) {
+    setNotice(
+      "error",
+      error instanceof Error ? error.message : text("复制路径失败", "Failed to copy path"),
+    );
+  }
+}
+
+function copySelectedPathsToClipboard(): void {
+  void copyPathsToClipboard(selectedItems.value);
+}
+
+function buildDuplicateName(name: string, index: number, total: number): string {
+  const dotIndex = name.lastIndexOf(".");
+  const copyId = Date.now().toString(36).slice(-4);
+  const suffix = total > 1 ? `-copy-${index + 1}-${copyId}` : `-copy-${copyId}`;
+  if (dotIndex > 0) {
+    return `${name.slice(0, dotIndex)}${suffix}${name.slice(dotIndex)}`;
+  }
+  return `${name}${suffix}`;
+}
+
+async function duplicateItems(items: DirEntry[]): Promise<void> {
+  const targets = (items.length ? items : selectedItems.value).filter(Boolean);
+  if (!targets.length) return;
+  try {
+    for (const [index, item] of targets.entries()) {
+      const sourceRootId = rootIdForStorage(item.storage);
+      const sourcePath = relativePathFromVueFinderPath(item.path);
+      const destinationDirectoryPath = relativePathFromVueFinderPath(item.dir);
+      if (!sourceRootId || !sourcePath) continue;
+      await copyPath({
+        sourceRootId,
+        sourcePath,
+        destinationRootId: sourceRootId,
+        destinationDirectoryPath,
+        nextName: buildDuplicateName(item.basename, index, targets.length),
+      });
+    }
+    refreshExplorer();
+    setNotice(
+      "success",
+      targets.length > 1 ? text(`已创建 ${targets.length} 个副本`, `Created ${targets.length} duplicates`) : text("副本已创建", "Duplicate created"),
+    );
+  } catch (error) {
+    setNotice("error", error instanceof Error ? error.message : text("创建副本失败", "Failed to duplicate item"));
+  }
+}
+
+function duplicateSelectedItems(): void {
+  void duplicateItems(selectedItems.value);
+}
+
+async function pasteFileClipboard(target: FileExplorerTarget | null = currentExplorerTarget.value): Promise<void> {
+  const clipboard = fileClipboard.value;
+  if (!clipboard?.items.length) {
+    setNotice("warning", text("剪贴板为空", "Clipboard is empty"));
+    return;
+  }
+  if (!target?.rootId) {
+    setNotice("error", text("无法确定当前目录", "Could not determine the current folder"));
+    return;
+  }
+
+  try {
+    for (const item of clipboard.items) {
+      const payload = {
+        sourceRootId: item.rootId,
+        sourcePath: item.path,
+        destinationRootId: target.rootId,
+        destinationDirectoryPath: target.directoryPath,
+      };
+      if (clipboard.mode === "copy") {
+        await copyPath(payload);
+      } else {
+        await movePath(payload);
+      }
+    }
+    if (clipboard.mode === "move") {
+      fileClipboard.value = null;
+    }
+    refreshExplorer();
+    setNotice(
+      "success",
+      clipboard.mode === "copy"
+        ? text(`已粘贴复制 ${clipboard.items.length} 项`, `Pasted ${clipboard.items.length} copied item(s)`)
+        : text(`已移动 ${clipboard.items.length} 项`, `Moved ${clipboard.items.length} item(s)`),
+    );
+  } catch (error) {
+    setNotice(
+      "error",
+      error instanceof Error ? error.message : text("粘贴失败", "Paste failed"),
+    );
+  }
+}
+
+function pasteFileClipboardIntoCurrentDirectory(): void {
+  void pasteFileClipboard(currentExplorerTarget.value);
+}
+
+function formatFileSize(size: number | null | undefined): string {
+  if (size == null) return "-";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = size;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${unitIndex === 0 ? value : value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
+function formatUnixTimestamp(timestamp: number | null | undefined): string {
+  if (!timestamp) return "-";
+  try {
+    return new Intl.DateTimeFormat(locale.value === "zh" ? "zh-CN" : "en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(timestamp * 1000));
+  } catch {
+    return new Date(timestamp * 1000).toLocaleString();
+  }
+}
+
+function openDetailsForItem(item: DirEntry): void {
+  detailsItem.value = item;
+}
+
+function openDetailsForSelection(): void {
+  const item = selectedItems.value.length === 1 ? selectedItems.value[0] : null;
+  if (item) openDetailsForItem(item);
+}
+
+function closeDetails(): void {
+  detailsItem.value = null;
+}
+
+function openDetailsItemInEditor(): void {
+  const item = detailsItem.value;
+  if (!item || !isCodeEditableItem(item)) return;
+  void openEditorForItem(item);
+  detailsItem.value = null;
+}
+
+function downloadDetailItem(): void {
+  const item = detailsItem.value;
+  if (!item || item.type !== "file") return;
+  const rootId = rootIdForStorage(item.storage);
+  const apiPath = relativePathFromVueFinderPath(item.path);
+  if (!rootId || !apiPath) return;
+  triggerBrowserDownload(buildFileDownloadUrl(rootId, apiPath), item.basename);
 }
 
 function isCodeEditableItem(item: DirEntry): boolean {
@@ -871,6 +1498,11 @@ function handleNotify(payload: { type: string; message: string }): void {
 
 function handleExplorerSelect(items: DirEntry[]): void {
   selectedItems.value = Array.isArray(items) ? items : [];
+}
+
+function handleExplorerPathChange(pathValue: string): void {
+  currentExplorerPath.value = pathValue || "";
+  selectedItems.value = [];
 }
 
 async function openEditorForItem(item: DirEntry): Promise<void> {
@@ -1157,6 +1789,12 @@ onMounted(() => {
   color: var(--text);
 }
 
+.file-manager-statusbar__button--primary {
+  border-color: color-mix(in srgb, var(--acc) 58%, var(--line));
+  background: color-mix(in srgb, var(--acc) 18%, var(--button-secondary-bg));
+  color: color-mix(in srgb, var(--acc) 72%, var(--text));
+}
+
 .file-manager-statusbar__button:disabled,
 .file-manager-editor-drawer__button:disabled {
   opacity: 0.5;
@@ -1323,6 +1961,117 @@ onMounted(() => {
 .studio-file-icon--file {
   --studio-file-icon-accent: color-mix(in srgb, var(--muted) 72%, var(--acc));
   --studio-file-icon-text: color-mix(in srgb, var(--muted) 78%, var(--text));
+}
+
+.file-manager-details {
+  position: fixed;
+  inset: 0;
+  z-index: 1120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, #020617 28%, transparent);
+}
+
+.file-manager-details__panel {
+  display: grid;
+  gap: 14px;
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(680px, calc(100vh - 48px));
+  padding: 14px;
+  border: 1px solid var(--file-manager-border);
+  border-radius: 12px;
+  background: var(--file-manager-panel);
+  color: var(--text);
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.24);
+  overflow: auto;
+}
+
+.file-manager-details__head {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.file-manager-details__head .studio-file-icon {
+  --vf-icon-size: 42px;
+}
+
+.file-manager-details__head div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.file-manager-details__head strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-manager-details__head span:not(.studio-file-icon, .studio-file-icon__shape, .studio-file-icon__fold, .studio-file-icon__folder-tab, .studio-file-icon__extension) {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-manager-details__close {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--file-manager-border);
+  border-radius: 999px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  cursor: pointer;
+}
+
+.file-manager-details__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.file-manager-details__grid div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--file-manager-border);
+  border-radius: 8px;
+  background: var(--file-manager-panel-strong);
+}
+
+.file-manager-details__grid dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.file-manager-details__grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-manager-details__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .file-manager-editor-drawer {
@@ -1827,6 +2576,21 @@ onMounted(() => {
 
   .file-manager-view-controls__button--wide {
     min-width: auto;
+  }
+
+  .file-manager-details {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .file-manager-details__panel {
+    width: 100%;
+    max-height: min(620px, calc(100vh - 20px));
+    border-radius: 12px 12px 8px 8px;
+  }
+
+  .file-manager-details__grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
