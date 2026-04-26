@@ -39,6 +39,7 @@ export type ShellRouteMeta = {
 };
 
 type RouteChunkLoader = () => Promise<unknown>;
+type RoutePreloadProfile = "core" | "extended";
 
 export type ShellNavItem = {
   key: string;
@@ -199,7 +200,7 @@ export const shellNavGroups: ShellNavGroup[] = [
   },
 ];
 
-const nonChatRouteChunkLoaders: RouteChunkLoader[] = [
+const coreRouteChunkLoaders: RouteChunkLoader[] = [
   DashboardView,
   AgentsView,
   AgentsControlPage,
@@ -215,26 +216,40 @@ const nonChatRouteChunkLoaders: RouteChunkLoader[] = [
   ChannelPairingPage,
   ChannelBindingsPage,
   SkillsView,
-  FilesView,
   PluginsView,
   CronView,
-  TerminalView,
   ConfigView,
   SystemView,
   SystemEventCenterPage,
   DreamingView,
 ];
 
-let nonChatRouteChunksPreloadPromise: Promise<PromiseSettledResult<unknown>[]> | null = null;
+const extendedRouteChunkLoaders: RouteChunkLoader[] = [
+  TerminalView,
+];
 
-export function preloadNonChatShellRouteChunks(): Promise<PromiseSettledResult<unknown>[]> {
-  if (!nonChatRouteChunksPreloadPromise) {
-    const uniqueLoaders = Array.from(new Set(nonChatRouteChunkLoaders));
-    nonChatRouteChunksPreloadPromise = Promise.allSettled(
+const routeChunkPreloadPromises = new Map<RoutePreloadProfile, Promise<PromiseSettledResult<unknown>[]>>();
+
+function routeChunkLoadersForProfile(profile: RoutePreloadProfile): RouteChunkLoader[] {
+  return profile === "extended"
+    ? [...coreRouteChunkLoaders, ...extendedRouteChunkLoaders]
+    : coreRouteChunkLoaders;
+}
+
+export function preloadNonChatShellRouteChunks(
+  profile: RoutePreloadProfile = "core",
+): Promise<PromiseSettledResult<unknown>[]> {
+  const currentPromise = routeChunkPreloadPromises.get(profile);
+  if (currentPromise) return currentPromise;
+
+  const preloadPromise = (async () => {
+    const uniqueLoaders = Array.from(new Set(routeChunkLoadersForProfile(profile)));
+    return Promise.allSettled(
       uniqueLoaders.map((loadRouteChunk) => loadRouteChunk()),
     );
-  }
-  return nonChatRouteChunksPreloadPromise;
+  })();
+  routeChunkPreloadPromises.set(profile, preloadPromise);
+  return preloadPromise;
 }
 
 export const shellRoutes: RouteRecordRaw[] = [

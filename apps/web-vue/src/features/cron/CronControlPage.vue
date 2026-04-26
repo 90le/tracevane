@@ -817,7 +817,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type { CronDetailPayload, CronJobInput, CronRunSummary, CronSummaryPayload } from '../../../../../types/cron';
 import StatusPill from '../../components/StatusPill.vue';
@@ -892,6 +893,9 @@ const props = defineProps<{
 
 const { text } = useLocalePreference();
 const { confirm } = useConfirmDialog();
+const route = useRoute();
+const isCronRouteActive = computed(() => route.path === '/cron' || route.path.startsWith('/cron/'));
+let cronPageBootstrapped = false;
 
 const overviewRecipe = computed(() => props.overviewRecipe ?? buildDefaultCronOverviewRecipe(text));
 const pageEyebrow = computed(() => overviewRecipe.value.pageEyebrow);
@@ -1242,10 +1246,12 @@ function closeCreateModal(): void {
 }
 
 async function refreshSummary(preferredJobId?: string): Promise<void> {
+  if (!isCronRouteActive.value) return;
   summaryLoading.value = true;
   errorMessage.value = '';
   try {
     const payload = await fetchCronSummary();
+    if (!isCronRouteActive.value) return;
     summary.value = payload;
     const availableIds = payload.jobs.map((job) => job.id);
     const nextId = preferredJobId && availableIds.includes(preferredJobId)
@@ -1260,6 +1266,7 @@ async function refreshSummary(preferredJobId?: string): Promise<void> {
     }
     await selectJob(nextId);
   } catch (error) {
+    if (!isCronRouteActive.value) return;
     errorMessage.value = error instanceof Error ? error.message : text('无法读取定时任务。', 'Failed to load cron jobs.');
   } finally {
     summaryLoading.value = false;
@@ -1267,15 +1274,18 @@ async function refreshSummary(preferredJobId?: string): Promise<void> {
 }
 
 async function selectJob(jobId: string): Promise<void> {
+  if (!isCronRouteActive.value) return;
   selectedJobId.value = jobId;
   detailLoading.value = true;
   manualRunOutput.value = '';
   try {
     const payload = await fetchCronDetail(jobId);
+    if (!isCronRouteActive.value) return;
     detail.value = payload;
     resetFormFromDetail(payload);
     selectedRunIndex.value = 0;
   } catch (error) {
+    if (!isCronRouteActive.value) return;
     detail.value = null;
     errorMessage.value = error instanceof Error ? error.message : text('无法读取任务详情。', 'Failed to load cron detail.');
   } finally {
@@ -1454,9 +1464,15 @@ watch(
   }
 );
 
-onMounted(async () => {
-  await refreshSummary();
-});
+function activateCronPage(): void {
+  if (!isCronRouteActive.value) return;
+  if (cronPageBootstrapped && summary.value) return;
+  cronPageBootstrapped = true;
+  void refreshSummary();
+}
+
+onMounted(activateCronPage);
+onActivated(activateCronPage);
 </script>
 
 <style scoped>

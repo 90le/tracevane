@@ -117,7 +117,7 @@
           :archived-hidden-count="windows.archivedHiddenCount.value"
           :observed-hidden-count="windows.observedHiddenCount.value"
           :archive-view-open="viewModel.archiveViewOpen.value"
-          :show-observed="inspectMode && viewModel.listScope.value === 'all'"
+          :show-observed="showObservedRail"
           :selection-mode="selection.selectionMode.value"
           :selected-session-key="selectedSessionKey"
           :session-rename-draft="actions.sessionRenameDraft.value"
@@ -178,7 +178,7 @@
 <script setup lang="ts">
 import './session-list-shared.css';
 
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { shouldRevealMoreSessionRowsOnScroll } from '../../../../../lib/chat-session-catalog';
 import {
   canRenameOrganizerEntryId,
@@ -464,6 +464,7 @@ const visibleChildFolders = computed(() => (
       .filter((folder) => filters.matchesFolderFilter(folder))
     : []
 ));
+const showObservedRail = computed(() => props.inspectMode && viewModel.listScope.value === 'all');
 
 const windows = useSessionListWindows({
   filteredActiveSessions: filters.filteredActiveSessions,
@@ -473,6 +474,7 @@ const windows = useSessionListWindows({
   visibleChildFolders,
   currentFolder: viewModel.currentFolder,
   archiveViewOpen: viewModel.archiveViewOpen,
+  showObserved: showObservedRail,
   searchActive: filters.searchActive,
   loading: loadingRef,
   text,
@@ -546,6 +548,16 @@ function revealMoreSessionsNearRailBottom(element: HTMLElement | null): void {
   windows.showMoreVisibleSections();
 }
 
+function scheduleRevealMoreSessionsNearRailBottom(element: HTMLElement | null): void {
+  if (!element || sessionListAutoRevealFrame) {
+    return;
+  }
+  sessionListAutoRevealFrame = window.requestAnimationFrame(() => {
+    sessionListAutoRevealFrame = 0;
+    revealMoreSessionsNearRailBottom(element);
+  });
+}
+
 function handleSessionListBodyScroll(event: Event): void {
   if (!windows.hasHiddenRows.value || sessionListAutoRevealFrame) {
     return;
@@ -560,10 +572,7 @@ function handleSessionListBodyScroll(event: Event): void {
   })) {
     return;
   }
-  sessionListAutoRevealFrame = window.requestAnimationFrame(() => {
-    sessionListAutoRevealFrame = 0;
-    revealMoreSessionsNearRailBottom(element);
-  });
+  scheduleRevealMoreSessionsNearRailBottom(element);
 }
 
 watch(
@@ -584,11 +593,16 @@ watch(
 watch(
   () => windows.hasHiddenRows.value,
   () => {
-    requestAnimationFrame(() => {
-      revealMoreSessionsNearRailBottom(sessionListBodyRef.value);
-    });
+    scheduleRevealMoreSessionsNearRailBottom(sessionListBodyRef.value);
   },
 );
+
+onBeforeUnmount(() => {
+  if (sessionListAutoRevealFrame) {
+    window.cancelAnimationFrame(sessionListAutoRevealFrame);
+    sessionListAutoRevealFrame = 0;
+  }
+});
 </script>
 
 <style scoped>

@@ -95,7 +95,7 @@ test("shell chrome allows mobile context panel on eligible routes and resets by 
   assert.match(app, /:show-context-toggle="canOpenContextPanel"/);
   assert.match(
     app,
-    /watch\(\(\) => route\.fullPath, \(\) => \{\s*closeContextPanel\(\);\s*\}\);/,
+    /watch\(\(\) => route\.fullPath, \(\) => \{\s*closeContextPanel\(\);\s*commandPaletteOpen\.value = false;\s*\}\);/,
   );
 });
 
@@ -108,14 +108,13 @@ const dashboardSummaryPath = path.join(
   "apps/web-vue/src/features/dashboard/use-dashboard-summary.ts",
 );
 
-test("shell navigation consumes shared dashboard summary for live context", () => {
+test("shell navigation keeps route-context summary lightweight", () => {
   const navigation = fs.readFileSync(navigationPath, "utf8");
   const dashboardSummary = fs.readFileSync(dashboardSummaryPath, "utf8");
 
-  assert.match(navigation, /useDashboardSummary/);
-  assert.match(navigation, /from ['"]\.\.\/dashboard\/overview-recipe['"]/);
-  assert.match(navigation, /buildDashboardPriorityAction/);
-  assert.match(navigation, /contextSummary\.primaryHint/);
+  assert.doesNotMatch(navigation, /useDashboardSummary/);
+  assert.doesNotMatch(navigation, /from ['"]\.\.\/dashboard\/overview-recipe['"]/);
+  assert.doesNotMatch(navigation, /buildDashboardPriorityAction/);
   assert.match(navigation, /const liveNextStep = computed\(/);
   assert.match(
     navigation,
@@ -129,6 +128,7 @@ test("shell navigation consumes shared dashboard summary for live context", () =
   assert.match(navigation, /pendingSummaryValue/);
   assert.match(dashboardSummary, /consumerCount/);
   assert.match(dashboardSummary, /subscribeDashboardSummary/);
+  assert.match(dashboardSummary, /onDeactivated/);
 });
 
 test("shell styles define a three-region layout and context panel surface", () => {

@@ -1111,7 +1111,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import type {
   SkillApiKeyMode,
   SkillInstallTargetScope,
@@ -1204,6 +1205,8 @@ const props = defineProps<{
 }>();
 
 const { text } = useLocalePreference();
+const route = useRoute();
+const isSkillsRouteActive = computed(() => route.path === '/skills' || route.path.startsWith('/skills/'));
 
 const overviewRecipe = computed(() => props.overviewRecipe ?? buildDefaultSkillsOverviewRecipe(text));
 const pageEyebrow = computed(() => overviewRecipe.value.pageEyebrow);
@@ -1269,6 +1272,13 @@ const confirmDialog = ref<ConfirmDialogState | null>(null);
 const confirmRunning = ref(false);
 
 let marketSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let skillsPageBootstrapped = false;
+
+function clearMarketSearchTimer(): void {
+  if (!marketSearchTimer) return;
+  window.clearTimeout(marketSearchTimer);
+  marketSearchTimer = null;
+}
 
 function createId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -1757,17 +1767,20 @@ function preflightLevelLabel(level: SkillsRiskLevel): string {
 }
 
 async function loadSummary(refresh = false): Promise<void> {
+  if (!isSkillsRouteActive.value) return;
   summaryLoading.value = true;
   summaryError.value = '';
 
   try {
     const payload = await fetchSkillsSummary(refresh);
+    if (!isSkillsRouteActive.value) return;
     summary.value = payload;
 
     if (!selectedSkillSlug.value || !payload.skills.some((skill) => skill.slug === selectedSkillSlug.value)) {
       selectedSkillSlug.value = payload.skills[0]?.slug || '';
     }
   } catch (error) {
+    if (!isSkillsRouteActive.value) return;
     summaryError.value = error instanceof Error ? error.message : text('读取技能状态失败。', 'Failed to load skills.');
   } finally {
     summaryLoading.value = false;
@@ -1946,8 +1959,10 @@ function handleMaintenanceResult(result: SkillsMaintenanceResponse, fallback: st
 }
 
 async function loadMarketplaceSources(): Promise<void> {
+  if (!isSkillsRouteActive.value) return;
   try {
     const payload = await fetchMarketplaceSources();
+    if (!isSkillsRouteActive.value) return;
     marketSources.value = payload.sources;
     maintenanceSourceId.value = payload.recommendedSourceId;
     if (!marketplace.value) {
@@ -1955,13 +1970,16 @@ async function loadMarketplaceSources(): Promise<void> {
       marketSort.value = payload.recommendedSourceId === 'skillhub-tencent' ? 'featured' : 'downloads';
     }
   } catch (error) {
+    if (!isSkillsRouteActive.value) return;
     setNotice('error', error instanceof Error ? error.message : text('读取市场源失败。', 'Failed to load marketplace sources.'));
   }
 }
 
 async function loadSkillTargets(): Promise<void> {
+  if (!isSkillsRouteActive.value) return;
   try {
     const payload = await fetchSkillTargets();
+    if (!isSkillsRouteActive.value) return;
     skillTargets.value = payload.targets || [];
     if (!targetById(marketInstallTargetId.value)) {
       marketInstallTargetId.value = skillTargets.value[0]?.id || 'default-workspace';
@@ -1977,6 +1995,7 @@ async function loadSkillTargets(): Promise<void> {
         || 'managed';
     }
   } catch (error) {
+    if (!isSkillsRouteActive.value) return;
     setNotice('error', error instanceof Error ? error.message : text('读取技能目标失败。', 'Failed to load skill targets.'));
   }
 }
@@ -2072,6 +2091,7 @@ async function runLifecycle(payload: SkillsLifecyclePayload): Promise<void> {
 }
 
 async function loadMarketplace(force = false): Promise<void> {
+  if (!isSkillsRouteActive.value) return;
   if (!force && marketplace.value && marketSourceId.value === marketplace.value.source.id) return;
   marketLoading.value = true;
   marketplaceError.value = '';
@@ -2084,12 +2104,14 @@ async function loadMarketplace(force = false): Promise<void> {
       page: 1,
       pageSize: 24,
     });
+    if (!isSkillsRouteActive.value) return;
     marketplace.value = payload;
     marketCategory.value = '';
     if (!selectedMarketSlug.value || !payload.items.some((item) => item.slug === selectedMarketSlug.value)) {
       selectedMarketSlug.value = payload.items[0]?.slug || '';
     }
   } catch (error) {
+    if (!isSkillsRouteActive.value) return;
     marketplaceError.value = error instanceof Error ? error.message : text('读取市场失败。', 'Failed to load marketplace.');
   } finally {
     marketLoading.value = false;
@@ -2301,6 +2323,7 @@ async function executeConfirmDialog(): Promise<void> {
 }
 
 watch(installedDetailTab, (tab) => {
+  if (!isSkillsRouteActive.value) return;
   if (tab === 'config') {
     void ensureSkillConfigLoaded();
   }
@@ -2312,6 +2335,7 @@ watch(selectedSkillSlug, () => {
 });
 
 watch(mode, async (value) => {
+  if (!isSkillsRouteActive.value) return;
   installedDrawerOpen.value = false;
   marketDrawerOpen.value = false;
   confirmDialog.value = null;
@@ -2321,18 +2345,21 @@ watch(mode, async (value) => {
 });
 
 watch(marketSourceId, () => {
+  if (!isSkillsRouteActive.value) return;
   if (mode.value === 'marketplace') {
     void loadMarketplace(true);
   }
 });
 
 watch(marketSort, () => {
+  if (!isSkillsRouteActive.value) return;
   if (mode.value === 'marketplace') {
     void loadMarketplace(true);
   }
 });
 
 watch(filteredMarketItems, (items) => {
+  if (!isSkillsRouteActive.value) return;
   if (!items.length) {
     selectedMarketSlug.value = '';
     return;
@@ -2344,33 +2371,51 @@ watch(filteredMarketItems, (items) => {
 });
 
 watch(marketSearch, () => {
-  if (marketSearchTimer) window.clearTimeout(marketSearchTimer);
+  clearMarketSearchTimer();
+  if (!isSkillsRouteActive.value) return;
   marketSearchTimer = window.setTimeout(() => {
-    if (mode.value === 'marketplace') {
+    marketSearchTimer = null;
+    if (isSkillsRouteActive.value && mode.value === 'marketplace') {
       void loadMarketplace(true);
     }
   }, 240);
 });
 
 watch(selectedMarketSlug, () => {
+  if (!isSkillsRouteActive.value) return;
   if (selectedMarketItem.value) {
     void ensureSelectedMarketPreflight(false);
   }
 });
 
 watch(marketDetailTab, (tab) => {
+  if (!isSkillsRouteActive.value) return;
   if (tab === 'preflight' || tab === 'install') {
     void ensureSelectedMarketPreflight(false);
   }
 });
 
-onMounted(async () => {
-  await Promise.all([
-    loadSummary(false),
-    loadMarketplaceSources(),
-    loadSkillTargets(),
-  ]);
-});
+async function activateSkillsPage(): Promise<void> {
+  if (!isSkillsRouteActive.value) return;
+  if (!skillsPageBootstrapped) {
+    skillsPageBootstrapped = true;
+    await Promise.all([
+      loadSummary(false),
+      loadMarketplaceSources(),
+      loadSkillTargets(),
+    ]);
+    return;
+  }
+  if (!summary.value) void loadSummary(false);
+  if (!marketSources.value.length) void loadMarketplaceSources();
+  if (!skillTargets.value.length) void loadSkillTargets();
+  if (mode.value === 'marketplace' && !marketplace.value) void loadMarketplace(true);
+}
+
+onMounted(() => { void activateSkillsPage(); });
+onActivated(() => { void activateSkillsPage(); });
+onDeactivated(clearMarketSearchTimer);
+onBeforeUnmount(clearMarketSearchTimer);
 </script>
 
 <style scoped>

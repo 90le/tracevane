@@ -15,6 +15,23 @@ def encode_session_ref(session_key: str) -> str:
     return f"r1_{encoded}"
 
 
+def wait_for_chat_thread_ready(page) -> None:
+    page.wait_for_selector(".chat-conversation-thread", timeout=20000)
+    page.wait_for_function(
+        """() => {
+          const thread = document.querySelector('.chat-conversation-thread');
+          const empty = document.querySelector('.chat-conversation-empty');
+          const emptyText = (empty?.textContent || '').trim();
+          const stillLoading = emptyText.includes('正在读取') || emptyText.includes('Loading conversation');
+          return !!thread && (
+            document.querySelectorAll('.chat-message-bubble').length > 0
+            || (!!empty && !stillLoading)
+          );
+        }""",
+        timeout=20000,
+    )
+
+
 def discover_heavy_session_key() -> str:
     root = Path(os.environ.get("OPENCLAW_ROOT", str(Path.home() / ".openclaw")))
     sqlite_path = root / "studio" / "chat.sqlite"
@@ -115,7 +132,7 @@ def main() -> None:
         result["sessionKey"] = session_key
         session_ref = encode_session_ref(session_key)
         page.goto(f"http://127.0.0.1:5176/chat/s/{session_ref}", wait_until="domcontentloaded")
-        page.wait_for_load_state("networkidle")
+        wait_for_chat_thread_ready(page)
         page.wait_for_timeout(5000)
 
         result.update(page.evaluate("""() => {

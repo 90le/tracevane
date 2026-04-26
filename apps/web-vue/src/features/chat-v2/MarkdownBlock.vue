@@ -215,6 +215,16 @@ type MermaidModule = {
   render(id: string, source: string): Promise<MermaidRenderResult | string>;
 };
 
+type KatexApi = {
+  renderToString(source: string, options: {
+    displayMode: boolean;
+    throwOnError: boolean;
+    strict: 'ignore';
+    trust: boolean;
+    output: 'htmlAndMathml';
+  }): string;
+};
+
 type HtmlPreviewPayload = {
   previewId: string;
   srcdoc: string;
@@ -289,6 +299,7 @@ const rendered = computed(() =>
     : {
       html: '',
       hasMermaid: false,
+      hasMath: false,
       hasPreviewBlocks: false,
     }
 );
@@ -329,6 +340,7 @@ let livePreviewReturnFocusTarget: HTMLElement | null = null;
 let renderVisibilityObserver: IntersectionObserver | null = null;
 let renderReadyTimer: number | null = null;
 let renderReadyIdleHandle: number | null = null;
+let katexLoader: Promise<KatexApi> | null = null;
 
 function refreshInlinePreviewPrefs(): void {
   inlinePreviewPrefs.value = readEffectiveRoleAwareInlinePreviewPreferences(props.role, props.sessionKey);
@@ -799,6 +811,56 @@ async function getMermaid(): Promise<MermaidModule> {
   return mermaidLoader;
 }
 
+async function getKatex(): Promise<KatexApi> {
+  if (!katexLoader) {
+    katexLoader = Promise.all([
+      import('katex'),
+      import('katex/dist/katex.min.css'),
+    ]).then(([module]) => {
+      const loaded = module as typeof import('katex') & { default?: KatexApi };
+      return loaded.default ?? loaded;
+    });
+  }
+  return katexLoader;
+}
+
+async function renderMathBlocks(container: HTMLElement): Promise<void> {
+  const targets = Array.from(container.querySelectorAll<HTMLElement>('.chat-math:not([data-math-rendered="1"])'));
+  if (!targets.length) {
+    return;
+  }
+
+  let katex: KatexApi;
+  try {
+    katex = await getKatex();
+  } catch (error) {
+    console.warn('[chat] failed to load KaTeX renderer:', error);
+    return;
+  }
+
+  targets.forEach((target) => {
+    const source = target.dataset.mathSource?.trim() || target.textContent?.trim() || '';
+    if (!source) {
+      return;
+    }
+    const displayMode = target.dataset.mathDisplay === 'block';
+    try {
+      target.innerHTML = katex.renderToString(source, {
+        displayMode,
+        throwOnError: false,
+        strict: 'ignore',
+        trust: false,
+        output: 'htmlAndMathml',
+      });
+      target.dataset.mathRendered = '1';
+      delete target.dataset.mathError;
+    } catch (error) {
+      console.warn('[chat] failed to render math:', error);
+      target.dataset.mathError = '1';
+    }
+  });
+}
+
 async function renderMermaidSvg(source: string): Promise<string> {
   const mermaid = await getMermaid();
   mermaid.initialize(mermaidRenderConfig());
@@ -1122,6 +1184,9 @@ async function enhanceMarkdown(): Promise<void> {
   const container = root.value;
   if (!container) {
     return;
+  }
+  if (rendered.value.hasMath) {
+    await renderMathBlocks(container);
   }
   installTableOverflowGuards(container);
   installInlinePreviewAffordances(container);

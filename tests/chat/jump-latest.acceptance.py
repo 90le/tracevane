@@ -14,6 +14,23 @@ def encode_session_ref(session_key: str) -> str:
     return f"r1_{encoded}"
 
 
+def wait_for_chat_thread_ready(page) -> None:
+    page.wait_for_selector(".chat-conversation-thread", timeout=20000)
+    page.wait_for_function(
+        """() => {
+          const thread = document.querySelector('.chat-conversation-thread');
+          const empty = document.querySelector('.chat-conversation-empty');
+          const emptyText = (empty?.textContent || '').trim();
+          const stillLoading = emptyText.includes('正在读取') || emptyText.includes('Loading conversation');
+          return !!thread && (
+            document.querySelectorAll('.chat-message-bubble').length > 0
+            || (!!empty && !stillLoading)
+          );
+        }""",
+        timeout=20000,
+    )
+
+
 def read_thread_state(page, label: str):
     return page.evaluate("""(label) => {
       const thread = document.querySelector('.chat-conversation-thread');
@@ -55,7 +72,7 @@ def main() -> None:
 
         session_ref = encode_session_ref(SESSION_KEY)
         page.goto(f"http://127.0.0.1:5176/chat/s/{session_ref}", wait_until="domcontentloaded")
-        page.wait_for_load_state("networkidle")
+        wait_for_chat_thread_ready(page)
         page.wait_for_timeout(2500)
 
         thread = page.locator(".chat-conversation-thread").first
@@ -104,11 +121,24 @@ def main() -> None:
         page.screenshot(path=str(SCREENSHOT), full_page=True)
         result["screenshot"] = str(SCREENSHOT)
 
+        latest_requests_after_click = [
+            url for url in result["historyRequestsAfterClick"]
+            if "history?limit=24" in url
+        ]
+        backfill_requests_after_click = [
+            url for url in result["historyRequestsAfterClick"]
+            if "history?before=" in url or "history?after=" in url
+        ]
+
         checks = {
             "started_from_history": before_click.get("bottomDistance", 0) > 1600 and before_click.get("historicalJumpVisible") is True,
             "single_click_reached_latest": after_click.get("bottomDistance", 999999) <= 80,
             "historical_jump_hidden": after_click.get("historicalJumpVisible") is False,
-            "single_click_does_not_backfill_history": len(result["historyRequestsAfterClick"]) == 1 and "history?limit=24" in result["historyRequestsAfterClick"][0],
+            "single_click_does_not_backfill_history": (
+                len(backfill_requests_after_click) == 0
+                and len(latest_requests_after_click) <= 1
+                and len(result["historyRequestsAfterClick"]) == len(latest_requests_after_click)
+            ),
             "no_console_errors": len(console_errors) == 0,
         }
         result["checks"] = checks

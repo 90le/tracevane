@@ -2069,6 +2069,14 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'run_overlay') {
+    if (event.runId && event.overlay.lifecycle === 'running' && isRunTerminal(event.sessionKey, event.runId)) {
+      return;
+    }
+    if (event.runId && isSettledOverlay(event.overlay)) {
+      markRunAsTerminal(event.sessionKey, event.runId);
+    } else if (event.runId && event.overlay.lifecycle === 'running') {
+      markRunAsActive(event.sessionKey, event.runId);
+    }
     syncSessionRow(event.sessionKey, {
       updatedAt: event.overlay.updatedAt || event.emittedAt,
       lastMessagePreview: event.overlay.previewText.slice(0, 160)
@@ -3455,6 +3463,12 @@ function scheduleHistoryBeforePrefetch(sessionKey: string, delayMs = 180): void 
     historyBeforePrefetchIdleHandle = null;
   }
   const run = () => {
+    if (historyBeforePrefetchTimer != null) {
+      window.clearTimeout(historyBeforePrefetchTimer);
+    }
+    if (historyBeforePrefetchIdleHandle != null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+      window.cancelIdleCallback(historyBeforePrefetchIdleHandle);
+    }
     historyBeforePrefetchTimer = null;
     historyBeforePrefetchIdleHandle = null;
     void runHistoryBeforePrefetch(sessionKey);
@@ -3595,6 +3609,12 @@ function scheduleHistoryAfterPrefetch(sessionKey: string, delayMs = 120): void {
     historyAfterPrefetchIdleHandle = null;
   }
   const run = () => {
+    if (historyAfterPrefetchTimer != null) {
+      window.clearTimeout(historyAfterPrefetchTimer);
+    }
+    if (historyAfterPrefetchIdleHandle != null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+      window.cancelIdleCallback(historyAfterPrefetchIdleHandle);
+    }
     historyAfterPrefetchTimer = null;
     historyAfterPrefetchIdleHandle = null;
     void runHistoryAfterPrefetch(sessionKey);

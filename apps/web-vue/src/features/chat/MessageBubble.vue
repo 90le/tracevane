@@ -379,6 +379,39 @@ function bubbleClass(message: ChatMessageGroup['messages'][number]): Record<stri
   color: #f8fbff;
 }
 
+.chat-message-bubble-body :deep(.chat-math) {
+  max-width: 100%;
+  color: inherit;
+}
+
+.chat-message-bubble-body :deep(.chat-math-block) {
+  display: block;
+  margin: 8px 0 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  text-align: center;
+}
+
+.chat-message-bubble-body :deep(.chat-math-inline) {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: -0.15em;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chat-message-bubble-body :deep(.chat-math-source) {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  white-space: nowrap;
+}
+
+.chat-message-bubble-body :deep(.chat-math .katex) {
+  font-size: 1.04em;
+  white-space: nowrap;
+}
+
 .chat-message-bubble-body :deep(a) {
   color: var(--chat-accent);
   text-decoration: underline;

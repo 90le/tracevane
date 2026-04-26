@@ -10,6 +10,7 @@ import {
   applyChatSessionTemporaryAssistantEvent,
   applyChatSessionTemporaryToolEvent,
   applyChatSessionToolEvent,
+  applyChatSessionLiveOverlayEvent,
   buildChatOverlaySummary,
   buildChatRuntimeSummary,
   buildChatSessionRuntimeRenderModel,
@@ -701,6 +702,154 @@ test('runtime machine keeps authoritative completed tool overlays after live syn
   assert.equal(render.overlays[0]?.runId, 'run-13');
   assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'completed');
   assert.match(render.overlays[0]?.toolCalls[0]?.resultPreview || '', /done/i);
+});
+
+test('runtime machine does not downgrade completed tool status when history refresh returns stale running overlay', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-stale-overlay-completed');
+  state = replaceChatSessionProcessLedger(state, [
+    createOverlay({
+      runId: 'run-stale-completed',
+      lifecycle: 'completed',
+      updatedAt: '2026-03-24T20:40:02.000Z',
+      toolCalls: [{
+        toolCallId: 'tool-stale-completed',
+        runId: 'run-stale-completed',
+        name: 'browser',
+        status: 'completed',
+        startedAt: '2026-03-24T20:40:00.000Z',
+        updatedAt: '2026-03-24T20:40:02.000Z',
+        argsPreview: '{"url":"https://example.com"}',
+        resultPreview: '{"summary":"done"}',
+        isError: false,
+      }],
+    }),
+  ]);
+
+  state = replaceChatSessionProcessLedger(state, [
+    createOverlay({
+      runId: 'run-stale-completed',
+      lifecycle: 'running',
+      updatedAt: '2026-03-24T20:40:03.000Z',
+      finalMessageId: null,
+      finalCreatedAt: null,
+      toolCalls: [{
+        toolCallId: 'tool-stale-completed',
+        runId: 'run-stale-completed',
+        name: 'browser',
+        status: 'running',
+        startedAt: '2026-03-24T20:40:00.000Z',
+        updatedAt: '2026-03-24T20:40:03.000Z',
+        argsPreview: '{"url":"https://example.com"}',
+        resultPreview: null,
+        isError: false,
+      }],
+    }),
+  ]);
+
+  const render = buildChatSessionRuntimeRenderModel(state);
+  assert.equal(render.overlays[0]?.lifecycle, 'completed');
+  assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'completed');
+  assert.match(render.overlays[0]?.toolCalls[0]?.resultPreview || '', /done/i);
+});
+
+test('runtime machine does not downgrade failed tool status when canonical snapshot returns stale running overlay', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-stale-overlay-error');
+  state = replaceChatSessionProcessLedger(state, [
+    createOverlay({
+      runId: 'run-stale-error',
+      lifecycle: 'running',
+      updatedAt: '2026-03-24T20:45:02.000Z',
+      toolCalls: [{
+        toolCallId: 'tool-stale-error',
+        runId: 'run-stale-error',
+        name: 'shell',
+        status: 'error',
+        startedAt: '2026-03-24T20:45:00.000Z',
+        updatedAt: '2026-03-24T20:45:02.000Z',
+        argsPreview: '{"cmd":"false"}',
+        resultPreview: '{"error":"exit 1"}',
+        isError: true,
+      }],
+    }),
+  ]);
+
+  state = applyChatSessionCanonicalSnapshotEvent(state, {
+    version: 'snapshot-stale-error',
+    messages: [],
+    overlays: [
+      createOverlay({
+        runId: 'run-stale-error',
+        lifecycle: 'running',
+        updatedAt: '2026-03-24T20:45:03.000Z',
+        finalMessageId: null,
+        finalCreatedAt: null,
+        toolCalls: [{
+          toolCallId: 'tool-stale-error',
+          runId: 'run-stale-error',
+          name: 'shell',
+          status: 'running',
+          startedAt: '2026-03-24T20:45:00.000Z',
+          updatedAt: '2026-03-24T20:45:03.000Z',
+          argsPreview: '{"cmd":"false"}',
+          resultPreview: null,
+          isError: false,
+        }],
+      }),
+    ],
+  });
+
+  const render = buildChatSessionRuntimeRenderModel(state);
+  assert.equal(render.overlays[0]?.lifecycle, 'running');
+  assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'error');
+  assert.match(render.overlays[0]?.toolCalls[0]?.resultPreview || '', /exit 1/i);
+});
+
+test('runtime machine ignores stale live overlay after authoritative terminal overlay', () => {
+  let state = createEmptyChatSessionRuntimeMachineState('session-stale-live-overlay');
+  state = replaceChatSessionProcessLedger(state, [
+    createOverlay({
+      runId: 'run-stale-live',
+      lifecycle: 'completed',
+      toolCalls: [{
+        toolCallId: 'tool-stale-live',
+        runId: 'run-stale-live',
+        name: 'read',
+        status: 'completed',
+        startedAt: '2026-03-24T20:50:00.000Z',
+        updatedAt: '2026-03-24T20:50:01.000Z',
+        argsPreview: '{"path":"README.md"}',
+        resultPreview: '{"bytes":128}',
+        isError: false,
+      }],
+    }),
+  ]);
+
+  state = applyChatSessionLiveOverlayEvent(state, {
+    runId: 'run-stale-live',
+    emittedAt: '2026-03-24T20:50:02.000Z',
+    overlay: createOverlay({
+      runId: 'run-stale-live',
+      lifecycle: 'running',
+      finalMessageId: null,
+      finalCreatedAt: null,
+      toolCalls: [{
+        toolCallId: 'tool-stale-live',
+        runId: 'run-stale-live',
+        name: 'read',
+        status: 'running',
+        startedAt: '2026-03-24T20:50:00.000Z',
+        updatedAt: '2026-03-24T20:50:02.000Z',
+        argsPreview: '{"path":"README.md"}',
+        resultPreview: null,
+        isError: false,
+      }],
+    }),
+  });
+
+  const render = buildChatSessionRuntimeRenderModel(state);
+  assert.equal(state.transientRunState['run-stale-live'], undefined);
+  assert.equal(render.overlays.length, 1);
+  assert.equal(render.overlays[0]?.toolCalls[0]?.status, 'completed');
 });
 
 // ──────────────────────────────────────────────────────────────────────────────

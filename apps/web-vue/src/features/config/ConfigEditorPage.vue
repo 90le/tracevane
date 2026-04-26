@@ -7,8 +7,8 @@
         <p class="page-copy">{{ text('按配置域拆开编辑，先保证读取准确、保存稳定，再逐步补高级自动化能力。', 'Edit by domain: keep config reads accurate and saves stable first, then expand advanced automation.') }}</p>
       </div>
       <div class="page-actions">
-        <button class="secondary-button" type="button" @click="loadConfig" :disabled="loading || saving">↻ {{ text('刷新', 'Refresh') }}</button>
-        <button class="primary-button" type="button" @click="saveChanges" :disabled="loading || saving">
+        <button class="secondary-button" type="button" @click="refreshConfigWithDirtyCheck" :disabled="loading || saving">↻ {{ text('刷新', 'Refresh') }}</button>
+        <button class="primary-button" type="button" @click="saveChanges" :disabled="loading || saving || !saveReadiness.canSave">
           {{ saving ? text('保存中...', 'Saving...') : `✦ ${text('保存配置', 'Save Config')}` }}
         </button>
       </div>
@@ -75,6 +75,16 @@
                 <strong>{{ fact.value }}</strong>
               </article>
             </div>
+
+            <article class="config-official-reference">
+              <div>
+                <span class="config-official-reference__eyebrow">OpenClaw v2026.4.24</span>
+                <strong>{{ officialConfigReference.title }}</strong>
+                <p>{{ officialConfigReference.description }}</p>
+              </div>
+              <code>{{ officialConfigReference.path }}</code>
+            </article>
+
             <div v-if="activeAdvancedSheetMeta" class="config-advanced-entry">
               <div class="config-advanced-entry__copy">
                 <span class="config-advanced-entry__eyebrow">{{ text('ADVANCED SETTINGS', 'ADVANCED SETTINGS') }}</span>
@@ -1441,6 +1451,30 @@
         </div>
       </motion.div>
 
+      <section class="config-save-dock" :class="{ 'is-dirty': hasUnsavedChanges }" aria-live="polite">
+        <div class="config-save-dock__status">
+          <span class="config-save-dock__indicator" :class="{ active: hasUnsavedChanges }"></span>
+          <div>
+            <strong>{{ saveReadiness.label }}</strong>
+            <p>{{ saveReadiness.description }}</p>
+          </div>
+        </div>
+        <div v-if="dirtyDomains.length" class="config-save-dock__changes" :aria-label="text('已修改配置域', 'Changed config domains')">
+          <span v-for="domain in dirtyDomains.slice(0, 4)" :key="domain.id" class="config-change-chip">
+            {{ domain.label }}
+          </span>
+          <span v-if="dirtyDomains.length > 4" class="config-change-chip muted">+{{ dirtyDomains.length - 4 }}</span>
+        </div>
+        <div class="config-save-dock__actions">
+          <button class="secondary-button compact-button" type="button" @click="refreshConfigWithDirtyCheck" :disabled="loading || saving">
+            {{ text('放弃并刷新', 'Discard & refresh') }}
+          </button>
+          <button class="primary-button compact-button" type="button" @click="saveChanges" :disabled="loading || saving || !saveReadiness.canSave">
+            {{ saving ? text('保存中...', 'Saving...') : text('保存变更', 'Save changes') }}
+          </button>
+        </div>
+      </section>
+
       <ConfigDomainAdvancedSheet
         v-if="activeAdvancedSheetMeta"
         :open="advancedSheetOpen"
@@ -1731,7 +1765,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
 import { motion } from 'motion-v';
 import { useRoute } from 'vue-router';
 import { fetchConfigChannelSummary, fetchConfigSummary, fetchProviderSecret, saveConfig } from './api';
@@ -1947,6 +1981,18 @@ interface ConfigFormState {
   };
 }
 
+interface ConfigDirtyDomain {
+  id: ConfigTabId;
+  label: string;
+  detail: string;
+}
+
+interface OfficialConfigReference {
+  title: string;
+  description: string;
+  path: string;
+}
+
 function normalizeConfigTabId(value: unknown): ConfigTabId {
   const tab = typeof value === 'string' ? value.trim() : '';
   return CONFIG_TAB_IDS.includes(tab as ConfigTabId) ? tab as ConfigTabId : CONFIG_TAB_IDS[0];
@@ -1975,6 +2021,9 @@ const props = withDefaults(defineProps<{
 });
 
 const route = useRoute();
+const isConfigRouteActive = computed(() => route.path === '/config' || route.path.startsWith('/config/'));
+let configPageBootstrapped = false;
+let configLoadPromise: Promise<void> | null = null;
 const activeTab = ref<ConfigTabId>(
   route.query.section
     ? resolveConfigTabFromSection(route.query.section)
@@ -2172,6 +2221,7 @@ const errorMessage = ref('');
 const successMessage = ref('');
 const loadedSummary = ref<ConfigSummaryPayload | null>(null);
 const loadedChannelIds = ref<string[]>([]);
+const baselineDomainFingerprints = ref<Record<string, string>>({});
 const gatewayFormData = ref<Record<string, unknown> | null>(null);
 const gatewayBaselineData = ref<Record<string, unknown> | null>(null);
 const commandsFormData = ref<ConfigSummaryPayload['commands']>({
@@ -2464,6 +2514,188 @@ function formatConfigCheckedAt(value: string): string {
   return formatter.format(date);
 }
 
+function stableStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(value, (key, entry) => {
+    if (key === 'uid' || key === 'apiKeyVisible' || key === 'apiKeyLoading') {
+      return undefined;
+    }
+    if (key === 'apiKeyLoaded' || key === 'apiKey') {
+      return undefined;
+    }
+    if (entry && typeof entry === 'object') {
+      if (seen.has(entry as object)) return undefined;
+      seen.add(entry as object);
+      if (!Array.isArray(entry)) {
+        return Object.keys(entry as Record<string, unknown>)
+          .sort()
+          .reduce<Record<string, unknown>>((next, entryKey) => {
+            next[entryKey] = (entry as Record<string, unknown>)[entryKey];
+            return next;
+          }, {});
+      }
+    }
+    return entry;
+  });
+}
+
+function domainFingerprint(value: unknown): string {
+  return stableStringify(value);
+}
+
+function normalizeLoggingDraft(summary: ConfigSummaryPayload | null) {
+  const log = summary?.logging;
+  return {
+    level: log?.level ?? 'info',
+    file: log?.file ?? '',
+    maxFileBytes: log?.maxFileBytes ?? 0,
+    consoleLevel: log?.consoleLevel ?? 'info',
+    consoleStyle: log?.consoleStyle ?? 'pretty',
+    redactSensitive: log?.redactSensitive ?? 'off',
+  };
+}
+
+function normalizeBrowserDraft(summary: ConfigSummaryPayload | null) {
+  const browser = summary?.browser;
+  return {
+    enabled: browser?.enabled !== false,
+    evaluateEnabled: browser?.evaluateEnabled !== false,
+    cdpUrl: browser?.cdpUrl?.trim() || undefined,
+    remoteCdpTimeoutMs: browser?.remoteCdpTimeoutMs && browser.remoteCdpTimeoutMs > 0 ? browser.remoteCdpTimeoutMs : undefined,
+    remoteCdpHandshakeTimeoutMs: browser?.remoteCdpHandshakeTimeoutMs && browser.remoteCdpHandshakeTimeoutMs > 0
+      ? browser.remoteCdpHandshakeTimeoutMs
+      : undefined,
+    defaultProfile: browser?.defaultProfile?.trim() || undefined,
+    attachOnly: browser?.attachOnly === true,
+    cdpPortRangeStart: browser?.cdpPortRangeStart && browser.cdpPortRangeStart > 0 ? browser.cdpPortRangeStart : undefined,
+    executablePath: browser?.executablePath ?? '',
+    headless: browser?.headless ?? false,
+    noSandbox: browser?.noSandbox ?? false,
+    extraArgs: Array.isArray(browser?.extraArgs)
+      ? browser.extraArgs.map((value) => value.trim()).filter(Boolean)
+      : [],
+    color: browser?.color?.trim() || undefined,
+    snapshotDefaults: {
+      mode: browser?.snapshotDefaults?.mode?.trim() || undefined,
+    },
+    profiles: Array.isArray(browser?.profiles)
+      ? browser.profiles
+          .map((profile) => ({
+            id: profile.id.trim(),
+            driver: profile.driver?.trim() || undefined,
+            attachOnly: profile.attachOnly === true,
+            cdpPort: profile.cdpPort != null && profile.cdpPort > 0 ? profile.cdpPort : undefined,
+            cdpUrl: profile.cdpUrl?.trim() || undefined,
+            userDataDir: profile.userDataDir?.trim() || undefined,
+            color: profile.color?.trim() || undefined,
+          }))
+          .filter((profile) => profile.id)
+      : [],
+    ssrfPolicy: {
+      dangerouslyAllowPrivateNetwork: browser?.ssrfPolicy?.dangerouslyAllowPrivateNetwork !== false,
+      hostnameAllowlist: Array.isArray(browser?.ssrfPolicy?.hostnameAllowlist)
+        ? browser.ssrfPolicy.hostnameAllowlist.map((value) => value.trim()).filter(Boolean)
+        : [],
+      allowedHostnames: Array.isArray(browser?.ssrfPolicy?.allowedHostnames)
+        ? browser.ssrfPolicy.allowedHostnames.map((value) => value.trim()).filter(Boolean)
+        : [],
+    },
+  };
+}
+
+function normalizeAcpDraft(summary: ConfigSummaryPayload | null) {
+  const acp = summary?.acp;
+  return {
+    enabled: acp?.enabled ?? false,
+    dispatch: { enabled: acp?.dispatch?.enabled ?? false },
+    backend: acp?.backend ?? 'acpx',
+    defaultAgent: acp?.defaultAgent ?? '',
+    allowedAgents: Array.isArray(acp?.allowedAgents)
+      ? acp.allowedAgents.filter((agent) => agent.trim() !== '')
+      : [],
+    maxConcurrentSessions: acp?.maxConcurrentSessions ?? 4,
+  };
+}
+
+function normalizeAcpPluginsDraft(summary: ConfigSummaryPayload | null) {
+  const acp = normalizeAcpDraft(summary);
+  const backend = acp.backend.trim().toLowerCase();
+  const shouldEnsureAcpx = (acp.enabled || acp.dispatch.enabled || backend === 'acpx') && (!backend || backend === 'acpx');
+  if (!shouldEnsureAcpx) return undefined;
+  const allow = Array.isArray(summary?.plugins?.allow)
+    ? Array.from(new Set([...(summary?.plugins?.allow || []), 'acpx']))
+    : undefined;
+  return {
+    ...(allow && allow.length > 0 ? { allow } : {}),
+    entries: {
+      acpx: {
+        enabled: true,
+      },
+    },
+  };
+}
+
+function currentDomainFingerprints(): Record<string, string> {
+  return {
+    model: domainFingerprint({
+      defaults: form.defaults,
+      compaction: form.compaction,
+    }),
+    security: domainFingerprint({
+      sandbox: form.sandbox,
+      tools: form.tools,
+      studioChat: form.studioChat,
+      execApprovals: form.execApprovals,
+    }),
+    session: domainFingerprint({
+      session: form.session,
+      messages: form.messages,
+    }),
+    'session-policy': domainFingerprint({
+      sessionReset: form.sessionReset,
+      threadBindings: form.session.threadBindings,
+      dmScope: form.session.dmScope,
+    }),
+    providers: domainFingerprint(form.providers),
+    gateway: domainFingerprint({
+      summary: loadedSummary.value?.gateway || null,
+      draft: gatewayFormData.value || null,
+      patch: buildSparseGatewayPatch(),
+    }),
+    acp: domainFingerprint({
+      summary: loadedSummary.value?.acp || null,
+      pluginEntries: loadedSummary.value?.plugins?.entries || null,
+      draft: acpTabRef.value
+        ? {
+            acp: acpTabRef.value.buildAcpPayload(),
+            plugins: acpTabRef.value.buildPluginsPayload?.() || null,
+          }
+        : {
+            acp: normalizeAcpDraft(loadedSummary.value),
+            plugins: normalizeAcpPluginsDraft(loadedSummary.value) || null,
+          },
+    }),
+    'commands-hooks': domainFingerprint({
+      commands: commandsFormData.value,
+      hooks: hooksFormData.value,
+    }),
+    appearance: domainFingerprint({
+      themeMode: themeMode.value,
+      locale: locale.value,
+    }),
+    logging: domainFingerprint({
+      draft: loggingTabRef.value?.buildLoggingPayload() || normalizeLoggingDraft(loadedSummary.value),
+    }),
+    browser: domainFingerprint({
+      draft: browserTabRef.value?.buildBrowserPayload() || normalizeBrowserDraft(loadedSummary.value),
+    }),
+  };
+}
+
+function captureConfigBaseline(): void {
+  baselineDomainFingerprints.value = currentDomainFingerprints();
+}
+
 const configOverviewSignals = computed(() => buildConfigOverviewSignals(
   props.overviewRecipe || buildConfigOverviewRecipe(text),
   {
@@ -2568,6 +2800,169 @@ const activeTabFacts = computed(() => {
         { label: text('配置分组', 'Config groups'), value: String(tabs.value.length) },
       ];
   }
+});
+
+const officialConfigReference = computed<OfficialConfigReference>(() => {
+  switch (activeTab.value) {
+    case 'model':
+      return {
+        title: text('Agent 默认值、模型与压缩策略', 'Agent defaults, models, and compaction'),
+        description: text(
+          '对齐官方配置域：agents.defaults.*、agents.defaults.compaction.*、agents.defaults.subagents.*。',
+          'Aligned with official config paths: agents.defaults.*, agents.defaults.compaction.*, agents.defaults.subagents.*.',
+        ),
+        path: 'agents.defaults.*',
+      };
+    case 'security':
+      return {
+        title: text('Sandbox、Tools 与 Exec 审批', 'Sandbox, tools, and exec approvals'),
+        description: text(
+          '对齐官方配置域：agents.defaults.sandbox.*、tools.*，以及独立 exec-approvals.json。',
+          'Aligned with official config paths: agents.defaults.sandbox.*, tools.*, plus the separate exec-approvals.json file.',
+        ),
+        path: 'agents.defaults.sandbox.* / tools.* / exec-approvals.json',
+      };
+    case 'session':
+      return {
+        title: text('会话、消息与线程绑定', 'Sessions, messages, and thread bindings'),
+        description: text(
+          '对齐官方配置域：session.*、messages.*。频道专属设置继续在频道管理页维护。',
+          'Aligned with official config paths: session.* and messages.*. Channel-specific settings remain in channel management.',
+        ),
+        path: 'session.* / messages.*',
+      };
+    case 'session-policy':
+      return {
+        title: text('会话重置策略', 'Session reset policy'),
+        description: text(
+          '对齐官方会话生命周期配置：全局重置、按会话类型覆盖、按频道覆盖。',
+          'Aligned with official session lifecycle config: global reset, per-type overrides, and per-channel overrides.',
+        ),
+        path: 'session.reset.*',
+      };
+    case 'providers':
+      return {
+        title: text('模型供应商注册表', 'Model provider registry'),
+        description: text(
+          '对齐官方配置域：models.providers.*。密钥默认遮掩，只有显式显示或录入才参与保存。',
+          'Aligned with official config path: models.providers.*. Secrets stay masked unless explicitly revealed or entered.',
+        ),
+        path: 'models.providers.*',
+      };
+    case 'gateway':
+      return {
+        title: text('Gateway 与 Control UI', 'Gateway and Control UI'),
+        description: text(
+          '对齐官方配置域：gateway.*。这类变更通常需要重启 Gateway 或重新打开会话。',
+          'Aligned with official config path: gateway.*. These changes usually require restarting Gateway or opening a new session.',
+        ),
+        path: 'gateway.*',
+      };
+    case 'acp':
+      return {
+        title: text('ACP 与对应插件入口', 'ACP and plugin entry'),
+        description: text(
+          '对齐官方配置域：acp.*，并联动 plugins.entries.acpx 的启用策略。',
+          'Aligned with official config path: acp.*, with plugins.entries.acpx enablement linked.',
+        ),
+        path: 'acp.* / plugins.entries.acpx',
+      };
+    case 'commands-hooks':
+      return {
+        title: text('命令与内部 hooks', 'Commands and internal hooks'),
+        description: text(
+          '对齐官方配置域：commands.*、hooks.internal.*。插件 hooks 的深度配置在插件管理页维护。',
+          'Aligned with official config paths: commands.* and hooks.internal.*. Plugin-hook deep config belongs in plugin management.',
+        ),
+        path: 'commands.* / hooks.internal.*',
+      };
+    case 'appearance':
+      return {
+        title: text('Studio 本地偏好', 'Studio local preferences'),
+        description: text(
+          '主题和语言是 Studio 浏览器本地偏好，不写入 openclaw.json。',
+          'Theme and language are Studio browser-local preferences and are not written to openclaw.json.',
+        ),
+        path: 'localStorage',
+      };
+    case 'logging':
+      return {
+        title: text('日志配置', 'Logging config'),
+        description: text(
+          '对齐官方配置域：logging.*，包括日志级别、文件输出和敏感信息脱敏策略。',
+          'Aligned with official config path: logging.*, including levels, file output, and sensitive-data redaction.',
+        ),
+        path: 'logging.*',
+      };
+    case 'browser':
+      return {
+        title: text('Browser 工具配置', 'Browser tool config'),
+        description: text(
+          '对齐官方配置域：browser.*，包括 CDP、profile、无头模式、SSRF 与标签清理策略。',
+          'Aligned with official config path: browser.*, including CDP, profiles, headless mode, SSRF, and tab cleanup policy.',
+        ),
+        path: 'browser.*',
+      };
+    default:
+      return {
+        title: text('官方配置域', 'Official config domain'),
+        description: text('当前分组对齐 OpenClaw 2026.4.24 配置参考。', 'This group aligns with the OpenClaw 2026.4.24 config reference.'),
+        path: 'openclaw.json',
+      };
+  }
+});
+
+const dirtyDomains = computed<ConfigDirtyDomain[]>(() => {
+  const baseline = baselineDomainFingerprints.value;
+  const current = currentDomainFingerprints();
+  return tabs.value
+    .filter((tab) => baseline[tab.id] !== undefined && baseline[tab.id] !== current[tab.id])
+    .map((tab) => ({
+      id: tab.id,
+      label: tab.label,
+      detail: tab.copy,
+    }));
+});
+
+const hasUnsavedChanges = computed(() => dirtyDomains.value.length > 0);
+
+const saveReadiness = computed(() => {
+  if (saving.value) {
+    return {
+      canSave: false,
+      label: text('正在保存配置', 'Saving configuration'),
+      description: text('正在写入 openclaw.json；请等待完成。', 'Writing openclaw.json; wait for completion.'),
+    };
+  }
+  if (loading.value) {
+    return {
+      canSave: false,
+      label: text('正在读取配置', 'Loading configuration'),
+      description: text('配置摘要加载完成后才能保存。', 'Saving is available after the config summary loads.'),
+    };
+  }
+  if (!loadedSummary.value) {
+    return {
+      canSave: false,
+      label: text('配置尚未加载', 'Configuration not loaded'),
+      description: text('请先刷新并确认配置来源。', 'Refresh first and confirm the config source.'),
+    };
+  }
+  if (!hasUnsavedChanges.value) {
+    return {
+      canSave: true,
+      label: text('没有未保存修改', 'No unsaved changes'),
+      description: text('当前草稿与最近一次读取的配置一致。', 'The draft matches the latest loaded configuration.'),
+    };
+  }
+  return {
+    canSave: true,
+    label: text(`有 ${dirtyDomains.value.length} 个配置域待保存`, `${dirtyDomains.value.length} config domain(s) changed`),
+    description: text(
+      '保存会写入 openclaw.json；Gateway、插件、浏览器和工具策略类变更可能需要重启或开启新会话。',
+      'Saving writes openclaw.json; Gateway, plugin, browser, and tool policy changes may require restart or new sessions.',
+    ),
+  };
 });
 
 function toProviderModelForm(model: ConfigProviderSummary['models'][number]): ProviderModelFormState {
@@ -3193,6 +3588,7 @@ function setActiveTab(nextTab: ConfigTabId): void {
 }
 
 async function loadConfig() {
+  if (!isConfigRouteActive.value) return;
   loading.value = true;
   errorMessage.value = '';
   successMessage.value = '';
@@ -3201,19 +3597,34 @@ async function loadConfig() {
       fetchConfigSummary(),
       fetchConfigChannelSummary().catch(() => null),
     ]);
+    if (!isConfigRouteActive.value) return;
     loadedSummary.value = summary;
     loadedChannelIds.value = channels?.channels.map((channel) => channel.type).sort() || [];
     gatewayFormData.value = null;
     gatewayBaselineData.value = null;
     hydrateForm(summary);
+    captureConfigBaseline();
   } catch (error) {
+    if (!isConfigRouteActive.value) return;
     errorMessage.value = error instanceof Error ? error.message : text('配置加载失败', 'Failed to load configuration');
   } finally {
     loading.value = false;
   }
 }
 
+async function refreshConfigWithDirtyCheck(): Promise<void> {
+  if (hasUnsavedChanges.value && typeof window !== 'undefined') {
+    const shouldDiscard = window.confirm(text(
+      `当前有 ${dirtyDomains.value.length} 个配置域有未保存修改。刷新会丢弃这些修改，是否继续？`,
+      `There are ${dirtyDomains.value.length} config domain(s) with unsaved changes. Refreshing will discard them. Continue?`,
+    ));
+    if (!shouldDiscard) return;
+  }
+  await loadConfig();
+}
+
 async function saveChanges() {
+  if (!saveReadiness.value.canSave) return;
   saving.value = true;
   errorMessage.value = '';
   successMessage.value = '';
@@ -3224,7 +3635,8 @@ async function saveChanges() {
     gatewayFormData.value = null;
     gatewayBaselineData.value = null;
     hydrateForm(response.config);
-    successMessage.value = response.message;
+    captureConfigBaseline();
+    successMessage.value = response.message || text('配置已保存。', 'Configuration saved.');
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : text('配置保存失败', 'Failed to save configuration');
   } finally {
@@ -3348,13 +3760,23 @@ function removeQueueChannelMode(index: number) {
   form.messages.queue.byChannel.splice(index, 1);
 }
 
-onMounted(() => {
-  void loadConfig();
-});
+function activateConfigPage(): void {
+  if (!isConfigRouteActive.value) return;
+  if (configPageBootstrapped && loadedSummary.value) return;
+  configPageBootstrapped = true;
+  if (configLoadPromise) return;
+  configLoadPromise = loadConfig().finally(() => {
+    configLoadPromise = null;
+  });
+}
+
+onMounted(activateConfigPage);
+onActivated(activateConfigPage);
 
 watch(
   () => [route.query.tab, route.query.section],
   ([tabValue, sectionValue]) => {
+    if (!isConfigRouteActive.value) return;
     setActiveTab(
       sectionValue
         ? resolveConfigTabFromSection(sectionValue)
@@ -3528,6 +3950,156 @@ watch(
   word-break: break-word;
 }
 
+.config-official-reference {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 15px;
+  border: 1px solid color-mix(in srgb, var(--acc) 26%, var(--line));
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--acc) 9%, var(--surface-base)), var(--surface-base));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
+}
+
+.config-official-reference__eyebrow {
+  display: inline-flex;
+  margin-bottom: 5px;
+  color: var(--acc);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.config-official-reference strong {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.config-official-reference p {
+  max-width: 720px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.config-official-reference code {
+  flex: 0 0 auto;
+  max-width: min(360px, 42vw);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--shell-panel-fill) 88%, black 12%);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.config-save-dock {
+  position: sticky;
+  bottom: 12px;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(140px, auto) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-base) 96%, var(--shell-panel-fill));
+  box-shadow:
+    0 18px 52px color-mix(in srgb, black 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+}
+
+.config-save-dock.is-dirty {
+  border-color: color-mix(in srgb, var(--acc) 44%, var(--line-strong));
+  box-shadow:
+    0 18px 52px color-mix(in srgb, black 22%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--acc) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+}
+
+.config-save-dock__status {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+
+.config-save-dock__indicator {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted-soft);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--muted-soft) 12%, transparent);
+}
+
+.config-save-dock__indicator.active {
+  background: var(--acc);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--acc) 16%, transparent);
+}
+
+.config-save-dock__status strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.config-save-dock__status p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.config-save-dock__changes,
+.config-save-dock__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.config-save-dock__changes {
+  justify-content: flex-end;
+}
+
+.config-save-dock__actions {
+  justify-content: flex-end;
+}
+
+.config-change-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 140px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--acc) 32%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--acc) 12%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-change-chip.muted {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
+  color: var(--muted);
+}
+
 .config-page-shell :deep(.config-sheet) {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
 }
@@ -3629,6 +4201,15 @@ watch(
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .config-save-dock {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .config-save-dock__changes,
+  .config-save-dock__actions {
+    justify-content: flex-start;
+  }
+
   .config-page-shell .config-workbench {
     grid-template-columns: 1fr;
   }
@@ -3649,6 +4230,25 @@ watch(
   .config-advanced-entry {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .config-official-reference {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .config-official-reference code {
+    max-width: 100%;
+  }
+
+  .config-save-dock {
+    bottom: 8px;
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .config-save-dock__actions .compact-button {
+    flex: 1 1 140px;
   }
 }
 </style>

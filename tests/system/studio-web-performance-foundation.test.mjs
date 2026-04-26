@@ -13,6 +13,14 @@ const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8")
 const apiSource = read("apps/web-vue/src/shared/api.ts");
 const appVue = read("apps/web-vue/src/App.vue");
 const agentsWorkspace = read("apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue");
+const channelsWorkspace = read("apps/web-vue/src/features/channels/workspace.ts");
+const channelsWorkspaceLayout = read("apps/web-vue/src/features/channels/ChannelsWorkspaceLayout.vue");
+const dashboardSummary = read("apps/web-vue/src/features/dashboard/use-dashboard-summary.ts");
+const skillsControlPage = read("apps/web-vue/src/features/skills/SkillsControlPage.vue");
+const pluginsControlPage = read("apps/web-vue/src/features/plugins/PluginsControlPage.vue");
+const cronControlPage = read("apps/web-vue/src/features/cron/CronControlPage.vue");
+const systemControlPage = read("apps/web-vue/src/features/system/SystemControlPage.vue");
+const configEditorPage = read("apps/web-vue/src/features/config/ConfigEditorPage.vue");
 const routeManifest = read("apps/web-vue/src/features/shell/route-manifest.ts");
 const shellRelease = read("apps/web-vue/src/features/shell/use-shell-release.ts");
 
@@ -38,13 +46,17 @@ test("non-chat shell routes are kept alive and preloaded only after idle", () =>
   assert.match(appVue, /<KeepAlive v-if="Component && shouldKeepRouteAlive\(routedView\)" :max="16">/);
   assert.match(appVue, /targetRoute\.meta\.keepAlive !== false/);
   assert.match(appVue, /preloadNonChatShellRouteChunks/);
-  assert.match(appVue, /requestIdleCallback\(preload, \{ timeout: 3_500 \}\)/);
+  assert.match(appVue, /preloadNonChatShellRouteChunks\('core'\)/);
+  assert.match(appVue, /preloadNonChatShellRouteChunks\('extended'\)/);
+  assert.match(appVue, /deviceMemory < 4/);
+  assert.match(appVue, /hardwareConcurrency && navigator\.hardwareConcurrency < 4/);
   assert.match(routeManifest, /keepAlive: false/);
   assert.match(routeManifest, /function preloadNonChatShellRouteChunks/);
 
-  const preloadBlock = routeManifest.match(/const nonChatRouteChunkLoaders[\s\S]*?\];/)?.[0] || "";
-  assert.doesNotMatch(preloadBlock, /ChatView/);
-  assert.doesNotMatch(preloadBlock, /ChatShellPage/);
+  const corePreloadBlock = routeManifest.match(/const coreRouteChunkLoaders[\s\S]*?\];/)?.[0] || "";
+  assert.doesNotMatch(corePreloadBlock, /ChatView/);
+  assert.doesNotMatch(corePreloadBlock, /ChatShellPage/);
+  assert.doesNotMatch(corePreloadBlock, /FilesView/);
 });
 
 test("cached agent workspace does not redirect after leaving the agents route", () => {
@@ -53,4 +65,67 @@ test("cached agent workspace does not redirect after leaving the agents route", 
   assert.match(agentsWorkspace, /async function refreshSummary[\s\S]*?if \(!isAgentsRouteActive\.value\) return;/);
   assert.match(agentsWorkspace, /if \(!isAgentsRouteActive\.value\) return;[\s\S]*?summary\.value = nextSummary;/);
   assert.match(agentsWorkspace, /watch\([\s\S]*?\(\) => route\.params\.agentId,[\s\S]*?if \(!isAgentsRouteActive\.value\) return;/);
+});
+
+test("cached channel workspace does not redirect or keep listeners after leaving channels", () => {
+  assert.match(channelsWorkspace, /const isChannelsRouteActive = computed/);
+  assert.match(channelsWorkspace, /route\.path === '\/channels' \|\| route\.path\.startsWith\('\/channels\/'\)/);
+  assert.match(channelsWorkspace, /async function ensureRouteAfterSummary[\s\S]*?if \(!isChannelsRouteActive\.value\) return;/);
+  assert.match(channelsWorkspace, /const nextSummary = await fetchChannelsSummary\(\);[\s\S]*?if \(!isChannelsRouteActive\.value\) return;/);
+  assert.match(channelsWorkspaceLayout, /onDeactivated/);
+  assert.match(channelsWorkspaceLayout, /unregisterResizeListener/);
+  assert.match(channelsWorkspaceLayout, /if \(!isChannelsRouteActive\.value\) return;[\s\S]*?fetchChannelAccountCredentials/);
+});
+
+test("dashboard summary transport stops when cached dashboard route deactivates", () => {
+  assert.match(dashboardSummary, /onActivated/);
+  assert.match(dashboardSummary, /onDeactivated/);
+  assert.match(dashboardSummary, /function registerConsumer\(\)/);
+  assert.match(dashboardSummary, /function unregisterConsumer\(\)/);
+  assert.match(dashboardSummary, /visibilitychange/);
+  assert.match(dashboardSummary, /suspendDashboardSummary/);
+  assert.doesNotMatch(dashboardSummary, /window\.setInterval/);
+});
+
+test("cached skills page cancels marketplace debounce and ignores stale route results", () => {
+  assert.match(skillsControlPage, /const isSkillsRouteActive = computed/);
+  assert.match(skillsControlPage, /route\.path === '\/skills' \|\| route\.path\.startsWith\('\/skills\/'\)/);
+  assert.match(skillsControlPage, /function clearMarketSearchTimer\(\)/);
+  assert.match(skillsControlPage, /onDeactivated\(clearMarketSearchTimer\)/);
+  assert.match(skillsControlPage, /const payload = await fetchSkillsSummary\(refresh\);[\s\S]*?if \(!isSkillsRouteActive\.value\) return;[\s\S]*?summary\.value = payload;/);
+  assert.match(skillsControlPage, /const payload = await fetchMarketplaceSkills[\s\S]*?if \(!isSkillsRouteActive\.value\) return;[\s\S]*?marketplace\.value = payload;/);
+  assert.match(skillsControlPage, /marketSearchTimer = window\.setTimeout\(\(\) => \{[\s\S]*?isSkillsRouteActive\.value && mode\.value === 'marketplace'/);
+});
+
+test("cached plugins page does not hydrate stale summary after leaving plugins", () => {
+  assert.match(pluginsControlPage, /const isPluginsRouteActive = computed/);
+  assert.match(pluginsControlPage, /route\.path === '\/plugins' \|\| route\.path\.startsWith\('\/plugins\/'\)/);
+  assert.match(pluginsControlPage, /const payload = await fetchPluginsSummary\(\);[\s\S]*?if \(!isPluginsRouteActive\.value\) return;[\s\S]*?hydrate\(payload\);/);
+  assert.match(pluginsControlPage, /onActivated\(activatePluginsPage\)/);
+});
+
+test("cached cron page does not apply stale summary or detail responses after leaving cron", () => {
+  assert.match(cronControlPage, /const isCronRouteActive = computed/);
+  assert.match(cronControlPage, /route\.path === '\/cron' \|\| route\.path\.startsWith\('\/cron\/'\)/);
+  assert.match(cronControlPage, /const payload = await fetchCronSummary\(\);[\s\S]*?if \(!isCronRouteActive\.value\) return;[\s\S]*?summary\.value = payload;/);
+  assert.match(cronControlPage, /const payload = await fetchCronDetail\(jobId\);[\s\S]*?if \(!isCronRouteActive\.value\) return;[\s\S]*?detail\.value = payload;/);
+  assert.match(cronControlPage, /onActivated\(activateCronPage\)/);
+});
+
+test("cached system page gates multi-panel refreshes to the active system route", () => {
+  assert.match(systemControlPage, /const isSystemRouteActive = computed/);
+  assert.match(systemControlPage, /route\.path === '\/system'/);
+  assert.match(systemControlPage, /async function refreshStudioReleasePanel[\s\S]*?if \(!isSystemRouteActive\.value\) return;[\s\S]*?fetchStudioRelease/);
+  assert.match(systemControlPage, /fetchSystemHealth\(\)[\s\S]*?if \(!isSystemRouteActive\.value\) return;[\s\S]*?health\.value = normalizeHealth/);
+  assert.match(systemControlPage, /fetchSystemDiagnostics\(\)[\s\S]*?if \(!isSystemRouteActive\.value\) return;[\s\S]*?diagnostics\.value = normalizeDiagnostics/);
+  assert.match(systemControlPage, /onActivated\(activateSystemPage\)/);
+});
+
+test("cached config page does not hydrate stale config summary after route changes", () => {
+  assert.match(configEditorPage, /const isConfigRouteActive = computed/);
+  assert.match(configEditorPage, /route\.path === '\/config' \|\| route\.path\.startsWith\('\/config\/'\)/);
+  assert.match(configEditorPage, /let configLoadPromise: Promise<void> \| null = null;/);
+  assert.match(configEditorPage, /const \[summary, channels\] = await Promise\.all[\s\S]*?if \(!isConfigRouteActive\.value\) return;[\s\S]*?loadedSummary\.value = summary;/);
+  assert.match(configEditorPage, /watch\([\s\S]*?\(\) => \[route\.query\.tab, route\.query\.section\],[\s\S]*?if \(!isConfigRouteActive\.value\) return;/);
+  assert.match(configEditorPage, /onActivated\(activateConfigPage\)/);
 });

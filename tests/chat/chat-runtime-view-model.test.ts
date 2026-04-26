@@ -13,6 +13,10 @@ const viewModelPath = path.join(
   rootDir,
   "apps/web-vue/src/features/chat-v2/chat-runtime-view-model.ts",
 );
+const conversationPanePath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/chat-v2/ConversationPane.vue",
+);
 
 test("chat runtime view model consumes runtime summary helpers", () => {
   const source = fs.readFileSync(viewModelPath, "utf8");
@@ -20,4 +24,21 @@ test("chat runtime view model consumes runtime summary helpers", () => {
   assert.match(source, /buildChatOverlaySummary/);
   assert.match(source, /const runtimeSummary = computed/);
   assert.match(source, /const overlaySummary = computed/);
+});
+
+test("conversation pane observes async item resizes for scroll stability", () => {
+  const source = fs.readFileSync(conversationPanePath, "utf8");
+  assert.match(source, /let timelineItemResizeObserver: ResizeObserver \| null = null;/);
+  assert.match(source, /function observeTimelineItemShell/);
+  assert.match(source, /new ResizeObserver/);
+  assert.match(source, /handleObservedTimelineResize/);
+  assert.match(source, /scheduleTimelineItemMeasurement\(\)/);
+  assert.match(source, /scrollState\.value\.isPinnedToBottom/);
+  assert.match(source, /let pinnedBottomRepairFrame: number \| null = null;/);
+  assert.match(source, /function schedulePinnedBottomRepair\(\): void \{/);
+  assert.match(source, /window\.requestAnimationFrame\(\(\) => \{/);
+  assert.match(source, /scrollToBottom\('auto', \{ force: true \}\)/);
+  assert.match(source, /const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 2200;/);
+  assert.match(source, /changed && \(stableRestoreAnchorItemId \|\| stableRestoreBottomDistance != null\)/);
+  assert.match(source, /const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 3600;/);
 });

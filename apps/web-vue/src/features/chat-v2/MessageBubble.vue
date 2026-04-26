@@ -559,7 +559,6 @@ let bubbleBodyReadyIdleHandle: number | null = null;
 const MESSAGE_BUBBLE_DEFER_MIN_CHARS = 480;
 const MESSAGE_BUBBLE_DEFER_ROOT_MARGIN = '1200px 0px';
 const MESSAGE_BUBBLE_DEFER_IDLE_TIMEOUT_MS = 220;
-const TOOL_DETAIL_AUTO_OPEN_PREVIEW_LIMIT = 520;
 
 function clipBubblePreview(value: string, limit = 220): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
@@ -1249,15 +1248,8 @@ function shouldRenderToolOutputPlaceholder(tool: ChatDisplayMessage['toolHints']
   return tool.status === 'running' && !tool.resultPreview;
 }
 
-function shouldOpenToolDetails(tool: ChatDisplayToolHint, index: number): boolean {
-  if (tool.status === 'running' || tool.status === 'error') {
-    return true;
-  }
-  if (index > 1) {
-    return false;
-  }
-  const previewLength = String(tool.argsPreview || '').length + String(tool.resultPreview || '').length;
-  return previewLength > 0 && previewLength <= TOOL_DETAIL_AUTO_OPEN_PREVIEW_LIMIT;
+function shouldOpenToolDetails(tool: ChatDisplayToolHint, _index: number): boolean {
+  return tool.status === 'error';
 }
 
 function bubbleClass(message: ChatMessageGroup['messages'][number], index: number): Record<string, boolean> {
@@ -1983,6 +1975,10 @@ onBeforeUnmount(() => {
 
 .chat-inline-process {
   margin-bottom: 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chat-inline-thinking {
@@ -2101,6 +2097,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
   color: var(--chat-text-soft);
   font-size: 12px;
   cursor: pointer;
@@ -2124,6 +2122,9 @@ onBeforeUnmount(() => {
 .chat-inline-process-summary-meta {
   display: inline-flex;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
   font-size: 11px;
 }
 
@@ -2131,6 +2132,8 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 8px;
   margin-top: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chat-inline-process-thinking {
@@ -2229,6 +2232,9 @@ onBeforeUnmount(() => {
 .chat-inline-process-item {
   display: grid;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 10px 12px;
   border-radius: 12px;
   background: var(--chat-inline-tool-bg);
@@ -2252,6 +2258,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
   color: var(--chat-text);
   font-size: 12px;
   cursor: pointer;
@@ -2272,6 +2280,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .chat-inline-process-step {
@@ -2288,9 +2299,13 @@ onBeforeUnmount(() => {
 }
 
 .chat-inline-process-head-summary {
+  min-width: 0;
+  max-width: 100%;
   color: var(--chat-text-soft);
   font-size: 11px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chat-inline-process-head-state {
@@ -2323,12 +2338,15 @@ onBeforeUnmount(() => {
   gap: 7px;
   width: fit-content;
   max-width: 100%;
+  min-width: 0;
   padding: 5px 8px;
   border-radius: 9px;
   background: color-mix(in srgb, var(--chat-accent) 9%, transparent);
   color: var(--chat-text-soft);
   font-size: 11px;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chat-inline-process-live-dot {
@@ -2444,9 +2462,11 @@ onBeforeUnmount(() => {
 .chat-inline-process-block pre {
   margin: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   max-height: min(260px, 42vh);
   max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
   padding: 10px 12px;
   border-radius: 12px;
   background: var(--chat-code-bg);
@@ -2743,6 +2763,41 @@ onBeforeUnmount(() => {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
   box-sizing: border-box;
+}
+
+.chat-message-bubble-body :deep(.chat-math) {
+  max-width: 100%;
+  color: inherit;
+}
+
+.chat-message-bubble-body :deep(.chat-math-block) {
+  display: block;
+  margin: 0.35em 0 0.95em;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.chat-message-bubble-body :deep(.chat-math-inline) {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: -0.15em;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chat-message-bubble-body :deep(.chat-math-source) {
+  font-family: 'SFMono-Regular', 'Consolas', monospace;
+  white-space: nowrap;
+}
+
+.chat-message-bubble-body :deep(.chat-math .katex) {
+  font-size: 1.04em;
+  white-space: nowrap;
 }
 
 .chat-message-bubble-body :deep(.chat-inline-preview-shell.kind-html),

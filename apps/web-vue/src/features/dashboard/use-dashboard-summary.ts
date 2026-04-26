@@ -1,4 +1,12 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import type { DashboardSummaryPayload } from "../../../../../types/dashboard";
 import { useLocalePreference, type Locale } from "../../shared/locale";
 import { fetchDashboardSummary, subscribeDashboardSummary } from "./api";
@@ -15,6 +23,8 @@ let refreshTimer: number | null = null;
 let disconnectSummaryStream: (() => void) | null = null;
 let consumerCount = 0;
 let started = false;
+let activeLocale: Locale = "zh";
+let visibilityListenerRegistered = false;
 let fallbackErrorMessage = () => "Failed to load home control surface.";
 
 function applyDashboardSummary(
@@ -29,7 +39,7 @@ function applyDashboardSummary(
 
 function clearRefreshTimer(): void {
   if (refreshTimer !== null) {
-    window.clearInterval(refreshTimer);
+    window.clearTimeout(refreshTimer);
     refreshTimer = null;
   }
 }
@@ -61,8 +71,14 @@ function ensurePollingFallback(locale: Locale): void {
   if (typeof window === "undefined" || refreshTimer !== null) {
     return;
   }
-  refreshTimer = window.setInterval(() => {
-    void loadDashboardSummary(true, locale);
+  refreshTimer = window.setTimeout(() => {
+    refreshTimer = null;
+    if (consumerCount <= 0) return;
+    void loadDashboardSummary(true, locale).finally(() => {
+      if (!streamConnected.value && consumerCount > 0) {
+        ensurePollingFallback(locale);
+      }
+    });
   }, 10_000);
 }
 
@@ -85,6 +101,7 @@ function connectDashboardStream(locale: Locale): void {
 }
 
 function startDashboardSummary(locale: Locale): void {
+  activeLocale = locale;
   if (started) {
     return;
   }
@@ -104,11 +121,63 @@ function stopDashboardSummary(): void {
   started = false;
 }
 
+function suspendDashboardSummary(): void {
+  disconnectSummaryStream?.();
+  disconnectSummaryStream = null;
+  clearRefreshTimer();
+  streamConnected.value = false;
+  started = false;
+}
+
+function handleVisibilityChange(): void {
+  if (consumerCount <= 0) {
+    return;
+  }
+  if (document.visibilityState === "hidden") {
+    suspendDashboardSummary();
+    return;
+  }
+  startDashboardSummary(activeLocale);
+}
+
+function ensureVisibilityListener(): void {
+  if (visibilityListenerRegistered || typeof document === "undefined") return;
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  visibilityListenerRegistered = true;
+}
+
+function releaseVisibilityListener(): void {
+  if (!visibilityListenerRegistered || typeof document === "undefined") return;
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+  visibilityListenerRegistered = false;
+}
+
 export function useDashboardSummary(autoStart = true) {
   const { locale, text } = useLocalePreference();
   const currentLocale = computed(() => locale.value);
+  let consumerRegistered = false;
   fallbackErrorMessage = () =>
     text("读取首页控制面失败。", "Failed to load home control surface.");
+
+  function registerConsumer(): void {
+    if (consumerRegistered) return;
+    consumerRegistered = true;
+    consumerCount += 1;
+    if (autoStart && consumerCount === 1) {
+      startDashboardSummary(currentLocale.value);
+    }
+    ensureVisibilityListener();
+  }
+
+  function unregisterConsumer(): void {
+    if (!consumerRegistered) return;
+    consumerRegistered = false;
+    consumerCount = Math.max(0, consumerCount - 1);
+    if (consumerCount === 0) {
+      releaseVisibilityListener();
+      stopDashboardSummary();
+    }
+  }
 
   watch(currentLocale, () => {
     if (!started || !autoStart || consumerCount <= 0) {
@@ -122,17 +191,19 @@ export function useDashboardSummary(autoStart = true) {
   });
 
   onMounted(() => {
-    consumerCount += 1;
-    if (autoStart && consumerCount === 1) {
-      startDashboardSummary(currentLocale.value);
-    }
+    registerConsumer();
   });
 
   onBeforeUnmount(() => {
-    consumerCount = Math.max(0, consumerCount - 1);
-    if (consumerCount === 0) {
-      stopDashboardSummary();
-    }
+    unregisterConsumer();
+  });
+
+  onActivated(() => {
+    registerConsumer();
+  });
+
+  onDeactivated(() => {
+    unregisterConsumer();
   });
 
   return {

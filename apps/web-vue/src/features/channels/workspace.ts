@@ -68,6 +68,7 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
     type: '',
     enabled: true,
   });
+  const isChannelsRouteActive = computed(() => route.path === '/channels' || route.path.startsWith('/channels/'));
 
   const selectedChannelType = computed(() => {
     const type = route.params.type;
@@ -136,6 +137,7 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
   }
 
   async function ensureRouteAfterSummary(preferredChannelType?: string): Promise<void> {
+    if (!isChannelsRouteActive.value) return;
     const channels = summary.value?.channels || [];
     if (!channels.length) {
       if (route.fullPath !== '/channels') {
@@ -161,9 +163,12 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
   }
 
   async function refreshSummary(preferredChannelType?: string): Promise<void> {
+    if (!isChannelsRouteActive.value) return;
     loading.value = true;
     try {
-      summary.value = await fetchChannelsSummary();
+      const nextSummary = await fetchChannelsSummary();
+      if (!isChannelsRouteActive.value) return;
+      summary.value = nextSummary;
       await ensureRouteAfterSummary(preferredChannelType);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : text('未知错误', 'Unknown error'));
@@ -173,6 +178,7 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
   }
 
   async function selectChannel(channelType: string): Promise<void> {
+    if (!isChannelsRouteActive.value) return;
     clearMessages();
     await router.push({
       path: providerOverviewPath(channelType),
@@ -181,12 +187,14 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
   }
 
   async function submitCreateChannel(): Promise<void> {
+    if (!isChannelsRouteActive.value) return;
     if (!createChannelDraft.type) return;
     clearMessages();
     busyKey.value = 'create-channel';
     const createdType = createChannelDraft.type;
     try {
       const response = await createChannel(createdType, createChannelDraft.enabled);
+      if (!isChannelsRouteActive.value) return;
       summary.value = response.summary;
       createChannelDraft.type = '';
       createChannelDraft.enabled = true;
@@ -201,6 +209,7 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
   }
 
   async function openOverlay(overlay: string, accountId?: string): Promise<void> {
+    if (!isChannelsRouteActive.value) return;
     const nextQuery: Record<string, string> = {};
     for (const [key, value] of Object.entries(route.query)) {
       if (typeof value === 'string' && key !== 'overlay' && key !== 'accountId') {
@@ -213,6 +222,7 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
   }
 
   async function closeOverlay(): Promise<void> {
+    if (!isChannelsRouteActive.value) return;
     const nextQuery: Record<string, string> = {};
     for (const [key, value] of Object.entries(route.query)) {
       if (typeof value === 'string' && key !== 'overlay' && key !== 'accountId') {
@@ -253,6 +263,7 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
   provide(ChannelsWorkspaceKey, state);
 
   onMounted(() => {
+    if (!isChannelsRouteActive.value) return;
     void refreshSummary();
   });
 

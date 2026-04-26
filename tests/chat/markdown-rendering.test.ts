@@ -132,6 +132,52 @@ test('fenced html/svg/mermaid blocks restore preview placeholders', async () => 
   assert.equal(result.hasMermaid, true);
 });
 
+test('math delimiters render stable placeholders for KaTeX enhancement', async () => {
+  const source = [
+    'Standard formula:',
+    '',
+    '\\[ a \\oplus b := a+b+1 \\]',
+    '',
+    'Bracket shorthand:',
+    '',
+    '[ a \\oplus b := a+b+1 ]',
+    '',
+    'Inline \\(x^2+y^2=z^2\\), dollar $e^{i\\pi} + 1 = 0$, and bracket [ m+n=2 ].',
+    '',
+    '- Binomial: $\\binom{n}{k} = \\frac{n!}{k!(n-k)!}$',
+    '- Conditional: $P(A\\mid B)=\\frac{P(A\\cap B)}{P(B)}$',
+    '- Norm: $\\|x\\|_2 = \\sqrt{\\sum_{i=1}^n x_i^2}$',
+    '',
+    'Do not render price $5 or inline code `$x+y$`.',
+    '',
+    '```text',
+    '\\[ not math inside code \\]',
+    '```',
+  ].join('\n');
+
+  const result = await withDom(({ renderChatMarkdownResult }) => renderChatMarkdownResult(source, {
+    interactive: true,
+    inlineHtml: true,
+    inlineSvg: true,
+    sanitizeLevel: 'moderate',
+  }));
+
+  assert.equal(result.hasMath, true);
+  assert.match(result.html, /class="chat-math chat-math-block"/);
+  assert.match(result.html, /class="chat-math chat-math-inline"/);
+  assert.doesNotMatch(result.html, /class="chat-math[^"]*"[^>]*data-inline-html-root/);
+  assert.match(result.html, /data-math-source="a \\oplus b := a\+b\+1"/);
+  assert.match(result.html, /data-math-source="x\^2\+y\^2=z\^2"/);
+  assert.match(result.html, /data-math-source="e\^\{i\\pi\} \+ 1 = 0"/);
+  assert.match(result.html, /data-math-source="\\binom\{n\}\{k\} = \\frac\{n!\}\{k!\(n-k\)!\}"/);
+  assert.match(result.html, /data-math-source="P\(A\\mid B\)=\\frac\{P\(A\\cap B\)\}\{P\(B\)\}"/);
+  assert.match(result.html, /data-math-source="\\\|x\\\|_2 = \\sqrt\{\\sum_\{i=1\}\^n x_i\^2\}"/);
+  assert.match(result.html, /<code>\$x\+y\$<\/code>/);
+  assert.doesNotMatch(result.html, /data-math-source="x\+y"/);
+  assert.match(result.html, /data-copy-source="\\\[ not math inside code \\\]"/);
+  assert.match(result.html, /<code class="hljs language-text">\\\[ not math inside code \\\]\n<\/code>/);
+});
+
 test('fenced code blocks render wrapped toolbar with copy action in interactive mode', async () => {
   const source = [
     '```bash',

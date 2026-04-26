@@ -6,7 +6,6 @@ import type {
 } from '../../../../../types/chat.js';
 import {
   areChatMessagesEquivalent,
-  buildRunOverlayRecord,
   mergeCanonicalMessageLedger,
   mergeRuntimeOverlay,
   normalizeMessageLedger,
@@ -230,6 +229,56 @@ function isSettledOverlay(overlay: ChatRunOverlay | null | undefined): boolean {
     return !overlay.toolCalls.length || overlay.toolCalls.every((toolCall) => isTerminalToolStatus(toolCall.status));
   }
   return true;
+}
+
+function mergeProcessLedgerRecord(
+  current: Record<string, ChatRunOverlay>,
+  overlays: ChatRunOverlay[],
+  options: { preserveExisting?: boolean } = {},
+): Record<string, ChatRunOverlay> {
+  const next = options.preserveExisting ? { ...current } : {};
+  for (const overlay of overlays) {
+    if (!overlay.runId) {
+      continue;
+    }
+    next[overlay.runId] = mergeRuntimeOverlay(next[overlay.runId] || current[overlay.runId], overlay);
+  }
+  return next;
+}
+
+function filterOverlayToolCallsAfterAuthoritativeTerminal(
+  authoritativeOverlay: ChatRunOverlay | null | undefined,
+  overlay: ChatRunOverlay,
+): ChatRunOverlay | null {
+  if (!authoritativeOverlay) {
+    return overlay;
+  }
+  if (isSettledOverlay(authoritativeOverlay)) {
+    return null;
+  }
+  if (!overlay.toolCalls.length) {
+    return overlay;
+  }
+  const terminalToolCallIds = new Set(
+    authoritativeOverlay.toolCalls
+      .filter((toolCall) => isTerminalToolStatus(toolCall.status))
+      .map((toolCall) => toolCall.toolCallId)
+      .filter(Boolean),
+  );
+  if (!terminalToolCallIds.size) {
+    return overlay;
+  }
+  const toolCalls = overlay.toolCalls.filter((toolCall) => !terminalToolCallIds.has(toolCall.toolCallId));
+  if (toolCalls.length === overlay.toolCalls.length) {
+    return overlay;
+  }
+  if (!toolCalls.length && !String(overlay.previewText || '').trim()) {
+    return null;
+  }
+  return {
+    ...overlay,
+    toolCalls,
+  };
 }
 
 function isAssistantPhase(phase: ChatSessionLivePhase): phase is ChatSessionAssistantPhase {
@@ -590,7 +639,7 @@ export function appendChatSessionCanonicalMessageLedger(
     'append',
   );
   const nextProcessLedger = overlays.length
-    ? { ...state.processLedger, ...buildRunOverlayRecord(overlays) }
+    ? mergeProcessLedgerRecord(state.processLedger, overlays, { preserveExisting: true })
     : state.processLedger;
   const nextState: ChatSessionRuntimeMachineState = {
     ...state,
@@ -614,7 +663,7 @@ export function anchorChatSessionCanonicalMessageLedger(
       'replace',
     ),
     processLedger: overlays.length
-      ? { ...state.processLedger, ...buildRunOverlayRecord(overlays) }
+      ? mergeProcessLedgerRecord(state.processLedger, overlays, { preserveExisting: true })
       : state.processLedger,
     transientRunState: {},
   };
@@ -690,7 +739,7 @@ export function replaceChatSessionProcessLedger(
   return {
     ...state,
     transientRunState: removeTransientRunStateByTerminalOverlays(state.transientRunState, overlays),
-    processLedger: buildRunOverlayRecord(overlays),
+    processLedger: mergeProcessLedgerRecord(state.processLedger, overlays),
   };
 }
 
@@ -859,7 +908,7 @@ export function applyChatSessionCanonicalSnapshotEvent(
       removeTransientRunStateByCanonical(state.transientRunState, canonicalMessageLedger),
       params.overlays,
     ),
-    processLedger: buildRunOverlayRecord(params.overlays),
+    processLedger: mergeProcessLedgerRecord(state.processLedger, params.overlays),
   };
 }
 
@@ -991,6 +1040,13 @@ export function applyChatSessionLiveOverlayEvent(
     terminal?: boolean;
   },
 ): ChatSessionRuntimeMachineState {
+  const overlay = filterOverlayToolCallsAfterAuthoritativeTerminal(
+    state.processLedger[params.runId],
+    params.overlay,
+  );
+  if (!overlay) {
+    return state;
+  }
   if (params.terminal && !state.transientRunState[params.runId]) {
     return state;
   }
@@ -998,7 +1054,7 @@ export function applyChatSessionLiveOverlayEvent(
   upsertProcessPhase({
     transient,
     emittedAt: params.emittedAt,
-    overlay: params.overlay,
+    overlay,
   });
   return nextState;
 }

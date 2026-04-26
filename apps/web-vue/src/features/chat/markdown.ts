@@ -108,6 +108,8 @@ const sanitizeOptions = {
   ADD_ATTR: [
     'data-code',
     'data-copy-source',
+    'data-math-display',
+    'data-math-source',
     'data-mermaid-source',
     'data-preview-kind',
     'data-studio-display',
@@ -138,6 +140,11 @@ type PreviewPlaceholderKind = 'mermaid' | 'html' | 'svg';
 
 type PreviewPlaceholderEntry = {
   kind: PreviewPlaceholderKind;
+  source: string;
+};
+
+type MathPlaceholderEntry = {
+  displayMode: 'inline' | 'block';
   source: string;
 };
 
@@ -183,20 +190,283 @@ function restorePreviewPlaceholders(html: string, placeholders: Map<string, Prev
   return output;
 }
 
+function looksLikeMathSource(source: string): boolean {
+  const normalized = source.trim();
+  if (!normalized || normalized.length > 5000) {
+    return false;
+  }
+  if (/\\[a-zA-Z]+/.test(normalized)) {
+    return true;
+  }
+  if (/(?:^|[^\w])(?:[a-zA-Z]\s*[_^]|[a-zA-Z0-9)]\s*(?:=|:=|≤|≥|≠|≈|∈|∉|⊂|⊆|→|←|↔)|[=+\-*/^_]|∑|∏|√|∞)(?:[^\w]|$)/.test(normalized)) {
+    return true;
+  }
+  return /[a-zA-Z0-9]\s*[+\-*/]\s*[a-zA-Z0-9]/.test(normalized);
+}
+
+function isEscapedAt(value: string, index: number): boolean {
+  let slashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && value.charAt(cursor) === '\\'; cursor -= 1) {
+    slashCount += 1;
+  }
+  return slashCount % 2 === 1;
+}
+
+function isInlineDollarOpen(value: string, index: number): boolean {
+  if (value.charAt(index) !== '$' || isEscapedAt(value, index)) {
+    return false;
+  }
+  const previous = value.charAt(index - 1);
+  const next = value.charAt(index + 1);
+  if (!next || previous === '$' || next === '$' || /\s/.test(next)) {
+    return false;
+  }
+  return true;
+}
+
+function isInlineDollarClose(value: string, index: number): boolean {
+  if (value.charAt(index) !== '$' || isEscapedAt(value, index)) {
+    return false;
+  }
+  const previous = value.charAt(index - 1);
+  const next = value.charAt(index + 1);
+  if (!previous || /\s/.test(previous) || next === '$') {
+    return false;
+  }
+  return true;
+}
+
+function findInlineDollarMath(value: string, fromIndex: number): {
+  start: number;
+  end: number;
+  source: string;
+} | null {
+  for (let start = fromIndex; start < value.length; start += 1) {
+    if (!isInlineDollarOpen(value, start)) {
+      continue;
+    }
+
+    for (let end = start + 1; end < value.length; end += 1) {
+      const current = value.charAt(end);
+      if (current === '\n' || current === '\r') {
+        break;
+      }
+      if (!isInlineDollarClose(value, end)) {
+        continue;
+      }
+      const source = value.slice(start + 1, end);
+      if (looksLikeMathSource(source)) {
+        return { start, end: end + 1, source };
+      }
+      break;
+    }
+  }
+  return null;
+}
+
+function replaceInlineDollarMath(
+  text: string,
+  placeholders: Map<string, MathPlaceholderEntry>,
+): string {
+  let output = '';
+  let cursor = 0;
+  let searchFrom = 0;
+  let match = findInlineDollarMath(text, searchFrom);
+
+  while (match) {
+    output += text.slice(cursor, match.start);
+    output += createMathPlaceholder(placeholders, match.source, 'inline');
+    cursor = match.end;
+    searchFrom = match.end;
+    match = findInlineDollarMath(text, searchFrom);
+  }
+
+  if (cursor < text.length) {
+    output += text.slice(cursor);
+  }
+  return output;
+}
+
+function replaceOutsideInlineCode(
+  text: string,
+  replaceSegment: (segment: string) => string,
+): string {
+  let output = '';
+  let cursor = 0;
+  const inlineCodePattern = /(`+)([\s\S]*?)\1/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = inlineCodePattern.exec(text))) {
+    output += replaceSegment(text.slice(cursor, match.index));
+    output += match[0];
+    cursor = match.index + match[0].length;
+  }
+
+  if (cursor < text.length) {
+    output += replaceSegment(text.slice(cursor));
+  }
+  return output;
+}
+
+function createMathPlaceholder(
+  placeholders: Map<string, MathPlaceholderEntry>,
+  source: string,
+  displayMode: MathPlaceholderEntry['displayMode'],
+): string {
+  const key = `OPENCLAW_MATH_${placeholders.size}`;
+  placeholders.set(key, {
+    displayMode,
+    source: source.trim(),
+  });
+  return displayMode === 'block'
+    ? `<div data-openclaw-math-placeholder="${key}"></div>`
+    : `<span data-openclaw-math-placeholder="${key}"></span>`;
+}
+
+function replaceMathInUnprotectedMarkdown(
+  text: string,
+  placeholders: Map<string, MathPlaceholderEntry>,
+): string {
+  return replaceOutsideInlineCode(text, (segment) => replaceMathInPlainMarkdown(segment, placeholders));
+}
+
+function replaceMathInPlainMarkdown(
+  text: string,
+  placeholders: Map<string, MathPlaceholderEntry>,
+): string {
+  let output = text
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_match, source) =>
+      createMathPlaceholder(placeholders, String(source || ''), 'block'))
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_match, source) =>
+      createMathPlaceholder(placeholders, String(source || ''), 'block'));
+
+  output = output.replace(/(^|\n)([ \t]*)\[\s+([^\]\n]+?)\s+\](?=\n|$)/g, (match, prefix, indent, source) => {
+    const mathSource = String(source || '');
+    if (!looksLikeMathSource(mathSource)) {
+      return match;
+    }
+    return `${prefix}${indent}${createMathPlaceholder(placeholders, mathSource, 'block')}`;
+  });
+
+  output = output
+    .replace(/\\\((.+?)\\\)/g, (_match, source) =>
+      createMathPlaceholder(placeholders, String(source || ''), 'inline'))
+    .replace(/(^|[\s（(「『“"'])\[\s+([^\]\n]+?)\s+\](?!\()(?=$|[\s，。；：、.!?）)」』”"'])/g, (match, prefix, source) => {
+      const mathSource = String(source || '');
+      if (!looksLikeMathSource(mathSource)) {
+        return match;
+      }
+      return `${prefix}${createMathPlaceholder(placeholders, mathSource, 'inline')}`;
+    });
+
+  return replaceInlineDollarMath(output, placeholders);
+}
+
+function extractMathPlaceholders(text: string): {
+  text: string;
+  placeholders: Map<string, MathPlaceholderEntry>;
+} {
+  const placeholders = new Map<string, MathPlaceholderEntry>();
+  let output = '';
+  let cursor = 0;
+  let protectedStart = -1;
+  let fenceMarker = '';
+  let fenceLength = 0;
+  const linePattern = /.*(?:\r?\n|$)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = linePattern.exec(text))) {
+    const line = match[0];
+    if (!line) {
+      break;
+    }
+    const lineStart = match.index;
+    const lineEnd = lineStart + line.length;
+    const fence = line.match(/^[ \t]{0,3}(`{3,}|~{3,})/);
+
+    if (protectedStart >= 0) {
+      if (fence && fence[1]?.startsWith(fenceMarker) && fence[1].length >= fenceLength) {
+        output += text.slice(protectedStart, lineEnd);
+        cursor = lineEnd;
+        protectedStart = -1;
+        fenceMarker = '';
+        fenceLength = 0;
+      }
+      continue;
+    }
+
+    if (fence) {
+      output += replaceMathInUnprotectedMarkdown(text.slice(cursor, lineStart), placeholders);
+      protectedStart = lineStart;
+      fenceMarker = fence[1]?.charAt(0) || '';
+      fenceLength = fence[1]?.length || 0;
+      cursor = lineStart;
+    }
+  }
+
+  if (protectedStart >= 0) {
+    output += text.slice(protectedStart);
+  } else {
+    output += replaceMathInUnprotectedMarkdown(text.slice(cursor), placeholders);
+  }
+
+  return { text: output, placeholders };
+}
+
+function renderMathPlaceholder(entry: MathPlaceholderEntry): string {
+  const display = entry.displayMode === 'block' ? 'block' : 'inline';
+  const source = entry.source.trim();
+  const content = escapeHtml(source);
+  const attrs = [
+    `class="chat-math chat-math-${display}"`,
+    `data-math-source="${escapeAttribute(source)}"`,
+    `data-math-display="${display}"`,
+    `aria-label="${escapeAttribute(source)}"`,
+  ].join(' ');
+
+  if (display === 'block') {
+    return `<div ${attrs}><span class="chat-math-source">${content}</span></div>`;
+  }
+  return `<span ${attrs}><span class="chat-math-source">${content}</span></span>`;
+}
+
+function restoreMathPlaceholders(html: string, placeholders: Map<string, MathPlaceholderEntry>): string {
+  let output = html;
+  for (const [key, entry] of placeholders.entries()) {
+    const marker = new RegExp(`<(?:span|div)[^>]*data-openclaw-math-placeholder=["']${key}["'][^>]*><\\/(?:span|div)>`, 'g');
+    output = output.replace(marker, renderMathPlaceholder(entry));
+  }
+  return output;
+}
+
+function hasMathMarkdown(value: string): boolean {
+  return /\\\[|\\\(|\$\$/.test(value)
+    || findInlineDollarMath(value, 0) != null
+    || /(^|\n)\s*\[\s+[^\]\n]*(?:\\[a-zA-Z]+|:=|[=+\-*/^_]|≤|≥|≠|≈|∈|∉|⊂|⊆|→|←|↔)[^\]\n]*\s+\](?=\n|$)/.test(value)
+    || /(^|[\s（(「『“"'])\[\s+[^\]\n]*(?:\\[a-zA-Z]+|:=|[=+\-*/^_]|≤|≥|≠|≈|∈|∉|⊂|⊆|→|←|↔)[^\]\n]*\s+\](?!\()(?=$|[\s，。；：、.!?）)」』”"'])/.test(value);
+}
+
 function renderMarkdownWithUnified(
   markdown: string,
   options: ChatMarkdownRenderOptions,
 ): string {
-  const prepared = extractPreviewPlaceholders(markdown);
+  const previewPrepared = extractPreviewPlaceholders(markdown);
+  const mathPrepared = hasMathMarkdown(previewPrepared.text)
+    ? extractMathPlaceholders(previewPrepared.text)
+    : { text: previewPrepared.text, placeholders: new Map<string, MathPlaceholderEntry>() };
   const file = unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(rehypeStringify, { allowDangerousHtml: true })
-    .processSync(prepared.text);
+    .processSync(mathPrepared.text);
 
-  return restorePreviewPlaceholders(String(file), prepared.placeholders, options.interactive ?? false);
+  const rendered = String(file);
+  const mathRestored = mathPrepared.placeholders.size
+    ? restoreMathPlaceholders(rendered, mathPrepared.placeholders)
+    : rendered;
+  return restorePreviewPlaceholders(mathRestored, previewPrepared.placeholders, options.interactive ?? false);
 }
 
 const INLINE_HTML_BLOCK_TAGS = new Set([
@@ -278,6 +548,7 @@ export interface ChatMarkdownRenderOptions {
 export interface ChatMarkdownRenderResult {
   html: string;
   hasMermaid: boolean;
+  hasMath: boolean;
   hasPreviewBlocks: boolean;
 }
 
@@ -421,7 +692,7 @@ function installHooks(): void {
       && !isInsideSvgTree
       && INLINE_HTML_BLOCK_TAGS.has(node.tagName.toLowerCase())
       && !node.parentElement?.closest(INLINE_HTML_BLOCK_SELECTOR)
-      && !node.closest('.chat-inline-resource, .chat-inline-chip, .chat-resource-card, .chat-mermaid-block, .code-block-wrapper, .json-collapse, .chat-mermaid-source, .chat-markdown-table-wrap')
+      && !node.closest('.chat-inline-resource, .chat-inline-chip, .chat-resource-card, .chat-mermaid-block, .chat-math, .code-block-wrapper, .json-collapse, .chat-mermaid-source, .chat-markdown-table-wrap')
     ) {
       node.setAttribute('data-inline-html-root', '1');
     }
@@ -1357,6 +1628,7 @@ export function renderChatMarkdownResult(
     return {
       html: '<p></p>',
       hasMermaid: false,
+      hasMath: false,
       hasPreviewBlocks: false,
     };
   }
@@ -1410,6 +1682,7 @@ export function renderChatMarkdownResult(
     const result: ChatMarkdownRenderResult = {
       html: DOMPurify.sanitize(renderedHtml, buildFinalSanitizeOptions(normalizedOptions)),
       hasMermaid: /```mermaid[\s\S]*?```/i.test(input),
+      hasMath: hasMathMarkdown(input),
       hasPreviewBlocks: /```(?:mermaid|html|htm|svg)\b[\s\S]*?```/i.test(input),
     };
 

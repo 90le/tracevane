@@ -897,7 +897,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, reactive, ref, watch, type PropType } from 'vue';
+import { computed, defineComponent, h, onActivated, onMounted, reactive, ref, watch, type PropType } from 'vue';
+import { useRoute } from 'vue-router';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 import type {
   PluginEntrySummary,
@@ -1016,6 +1017,9 @@ const PolicyListEditor = defineComponent({
 const props = defineProps<{ pageEyebrow: string }>();
 const { text } = useLocalePreference();
 const { confirm } = useConfirmDialog();
+const route = useRoute();
+const isPluginsRouteActive = computed(() => route.path === '/plugins' || route.path.startsWith('/plugins/'));
+let pluginsPageBootstrapped = false;
 
 function readPersistedPluginsUiState(): PersistedPluginsUiState {
   if (typeof window === 'undefined') return {};
@@ -2121,10 +2125,14 @@ function removeGuidedArrayField(field: GuidedSchemaField, index: number): void {
 }
 
 async function loadPlugins(): Promise<void> {
+  if (!isPluginsRouteActive.value) return;
   loading.value = true;
   try {
-    hydrate(await fetchPluginsSummary());
+    const payload = await fetchPluginsSummary();
+    if (!isPluginsRouteActive.value) return;
+    hydrate(payload);
   } catch (error) {
+    if (!isPluginsRouteActive.value) return;
     noticeMessage.value = { kind: 'error', text: error instanceof Error ? error.message : text('读取插件配置失败。', 'Failed to load plugin config.') };
   } finally {
     loading.value = false;
@@ -2418,7 +2426,15 @@ watch(
 watch([pluginInstallSpec, pluginInstallMarketplace], () => {
   pluginPreflight.value = null;
 });
-onMounted(() => { void loadPlugins(); });
+function activatePluginsPage(): void {
+  if (!isPluginsRouteActive.value) return;
+  if (pluginsPageBootstrapped && summary.value) return;
+  pluginsPageBootstrapped = true;
+  void loadPlugins();
+}
+
+onMounted(activatePluginsPage);
+onActivated(activatePluginsPage);
 </script>
 
 <style scoped>

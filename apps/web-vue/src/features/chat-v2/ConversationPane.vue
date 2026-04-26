@@ -1077,11 +1077,11 @@ const HISTORY_BEFORE_PREFETCH_VIEWPORTS = 6;
 const HISTORY_BEFORE_MATERIALIZE_VIEWPORTS = 3.5;
 const HISTORY_AFTER_PREFETCH_VIEWPORTS = 5;
 const HISTORY_AFTER_MATERIALIZE_VIEWPORTS = 2.5;
-const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 5.5;
-const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 1200;
+const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 3.5;
+const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 2200;
 const HISTORY_PREPEND_USER_SCROLL_GRACE_MS = 260;
 const HISTORY_BROWSE_GUARD_MS = 6000;
-const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 1400;
+const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 3600;
 const HISTORY_LOADING_INDICATOR_DELAY_MS = 650;
 const TIMELINE_VIRTUALIZE_MIN_ITEMS = 160;
 const TIMELINE_VIRTUALIZE_OVERSCAN_PX = 3600;
@@ -1092,7 +1092,12 @@ const timelineViewport = ref({
 });
 const timelineItemHeights = reactive<Record<string, number>>({});
 const timelineItemShellRefs = new Map<string, HTMLElement>();
+const timelineItemObservedElements = new Map<string, HTMLElement>();
 let timelineMeasureFrame: number | null = null;
+let timelineItemResizeObserver: ResizeObserver | null = null;
+let threadResizeObserver: ResizeObserver | null = null;
+let threadResizeObserverElement: HTMLElement | null = null;
+let pinnedBottomRepairFrame: number | null = null;
 
 function readScrollMetrics(): ChatSessionScrollMetrics | null {
   const container = threadBody.value;
@@ -1163,10 +1168,128 @@ function isRecentThreadDownwardScroll(nowMs = Date.now()): boolean {
 
 function setTimelineItemShellRef(itemId: string, element: HTMLElement | null): void {
   if (!element) {
+    unobserveTimelineItemShell(itemId);
     timelineItemShellRefs.delete(itemId);
     return;
   }
+  const previous = timelineItemShellRefs.get(itemId);
+  if (previous === element) {
+    return;
+  }
   timelineItemShellRefs.set(itemId, element);
+  observeTimelineItemShell(itemId, element);
+}
+
+function handleObservedTimelineResize(): void {
+  scheduleTimelineItemMeasurement();
+  if (initialLatestAnchorPending && !scrollState.value.autoScrollLockedByUser) {
+    scheduleInitialLatestAnchorRetry(1);
+    return;
+  }
+  if (shouldRepairPinnedBottomAfterResize()) {
+    schedulePinnedBottomRepair();
+    return;
+  }
+  if (historyPrependMutationPending || stableRestoreAnchorItemId || stableRestoreBottomDistance != null) {
+    scheduleStableRestoreAnchorTick();
+  }
+}
+
+function shouldRepairPinnedBottomAfterResize(): boolean {
+  return Boolean(
+    !scrollState.value.autoScrollLockedByUser
+    && scrollState.value.isPinnedToBottom
+    && !isHistoryBrowseGuardActive()
+    && !historyPrependMutationPending
+    && !stableRestoreAnchorItemId
+    && stableRestoreBottomDistance == null,
+  );
+}
+
+function schedulePinnedBottomRepair(): void {
+  if (pinnedBottomRepairFrame != null) {
+    return;
+  }
+  pinnedBottomRepairFrame = window.requestAnimationFrame(() => {
+    pinnedBottomRepairFrame = null;
+    if (!shouldRepairPinnedBottomAfterResize()) {
+      return;
+    }
+    armLatestBottomAnchorStabilizer();
+    scrollToBottom('auto', { force: true });
+  });
+}
+
+function ensureTimelineItemResizeObserver(): ResizeObserver | null {
+  if (typeof ResizeObserver === 'undefined') {
+    return null;
+  }
+  if (!timelineItemResizeObserver) {
+    timelineItemResizeObserver = new ResizeObserver((entries) => {
+      if (!entries.length) {
+        return;
+      }
+      handleObservedTimelineResize();
+    });
+  }
+  return timelineItemResizeObserver;
+}
+
+function observeTimelineItemShell(itemId: string, element: HTMLElement): void {
+  const observer = ensureTimelineItemResizeObserver();
+  if (!observer) {
+    return;
+  }
+  const previous = timelineItemObservedElements.get(itemId);
+  if (previous === element) {
+    return;
+  }
+  if (previous) {
+    observer.unobserve(previous);
+  }
+  timelineItemObservedElements.set(itemId, element);
+  observer.observe(element);
+}
+
+function unobserveTimelineItemShell(itemId: string): void {
+  const element = timelineItemObservedElements.get(itemId);
+  if (!element) {
+    return;
+  }
+  timelineItemResizeObserver?.unobserve(element);
+  timelineItemObservedElements.delete(itemId);
+}
+
+function clearTimelineItemObservations(): void {
+  timelineItemResizeObserver?.disconnect();
+  timelineItemResizeObserver = null;
+  timelineItemObservedElements.clear();
+}
+
+function bindThreadResizeObserver(): void {
+  if (typeof ResizeObserver === 'undefined') {
+    return;
+  }
+  const element = threadBody.value;
+  if (!element || threadResizeObserverElement === element) {
+    return;
+  }
+  threadResizeObserver?.disconnect();
+  threadResizeObserverElement = element;
+  threadResizeObserver = new ResizeObserver(() => {
+    const metrics = readScrollMetrics();
+    syncTimelineViewport(metrics);
+    reconnectTopObserver();
+    reconnectBottomObserver();
+    handleObservedTimelineResize();
+  });
+  threadResizeObserver.observe(element);
+}
+
+function disconnectThreadResizeObserver(): void {
+  threadResizeObserver?.disconnect();
+  threadResizeObserver = null;
+  threadResizeObserverElement = null;
 }
 
 function readVisibleTimelineAnchor(): { itemId: string; offset: number } | null {
@@ -1507,7 +1630,7 @@ function scheduleTimelineItemMeasurement(): void {
     if (changed && initialLatestAnchorPending) {
       scheduleInitialLatestAnchorRetry(1);
     }
-    if (changed && stableRestoreAnchorItemId) {
+    if (changed && (stableRestoreAnchorItemId || stableRestoreBottomDistance != null)) {
       scheduleStableRestoreAnchorTick();
     }
   });
@@ -1909,7 +2032,14 @@ function markThreadUserBrowseIntent(): void {
   );
   scrollState.value = markChatSessionUserBrowseIntent(scrollState.value, metrics);
   scheduleStableRestoreAnchorRefreshFromCurrentViewport();
-  if (props.hasMoreBefore && !props.historyLoadingBefore && !props.historyLoadingInitial) {
+  if (
+    metrics
+    && metrics.scrollTop <= historyBeforePrefetchTriggerPx(metrics)
+    && metrics.scrollTop > historyBeforeMaterializeTriggerPx(metrics)
+    && props.hasMoreBefore
+    && !props.historyLoadingBefore
+    && !props.historyLoadingInitial
+  ) {
     emit('prefetch-more-before');
   }
   reconnectBottomObserver();
@@ -2214,16 +2344,6 @@ function handleThreadScroll(): void {
       historyBeforeContinuationArmed = false;
     }
     if (
-      metrics.scrollTop <= historyBeforePrefetchTriggerPx(metrics)
-      && props.hasMoreBefore
-      && !props.historyLoadingBefore
-      && !props.historyLoadingInitial
-      && scrollState.value.autoScrollLockedByUser
-      && !downwardIntent
-    ) {
-      emit('prefetch-more-before');
-    }
-    if (
       metrics.scrollTop <= historyBeforeMaterializeTriggerPx(metrics)
       && props.hasMoreBefore
       && !props.historyLoadingBefore
@@ -2233,6 +2353,16 @@ function handleThreadScroll(): void {
     ) {
       requestMoreBefore();
       return;
+    }
+    if (
+      metrics.scrollTop <= historyBeforePrefetchTriggerPx(metrics)
+      && props.hasMoreBefore
+      && !props.historyLoadingBefore
+      && !props.historyLoadingInitial
+      && scrollState.value.autoScrollLockedByUser
+      && !downwardIntent
+    ) {
+      emit('prefetch-more-before');
     }
     if (
       downwardIntent
@@ -2644,12 +2774,14 @@ onMounted(() => {
     refreshInlinePreviewPrefs();
   });
   syncTimelineViewport();
+  bindThreadResizeObserver();
   scheduleTimelineItemMeasurement();
   reconnectTopObserver();
   reconnectBottomObserver();
 });
 
 onUpdated(() => {
+  bindThreadResizeObserver();
   restorePendingPrependBottomClipIfNeeded();
 });
 
@@ -2666,6 +2798,7 @@ watch(
     Object.keys(timelineItemHeights).forEach((key) => {
       delete timelineItemHeights[key];
     });
+    clearTimelineItemObservations();
     timelineItemShellRefs.clear();
     if (renderingSettingsScope.value === 'session' && !props.selectedSession) {
       renderingSettingsScope.value = 'global';
@@ -2751,9 +2884,15 @@ onBeforeUnmount(() => {
   topSentinelObserver = null;
   bottomSentinelObserver?.disconnect();
   bottomSentinelObserver = null;
+  disconnectThreadResizeObserver();
+  clearTimelineItemObservations();
   if (timelineMeasureFrame != null) {
     window.cancelAnimationFrame(timelineMeasureFrame);
     timelineMeasureFrame = null;
+  }
+  if (pinnedBottomRepairFrame != null) {
+    window.cancelAnimationFrame(pinnedBottomRepairFrame);
+    pinnedBottomRepairFrame = null;
   }
   timelineItemShellRefs.clear();
   unbindCompactViewport();

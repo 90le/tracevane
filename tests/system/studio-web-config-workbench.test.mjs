@@ -44,3 +44,22 @@ test('config workbench exposes the advanced sheet entrypoint instead of keeping 
   assert.match(configEditorPage, /setActiveTab\(tab\.id\)/);
   assert.match(configEditorPage, /function setActiveTab\(nextTab: ConfigTabId\)/);
 });
+
+test('config workbench aligns tabs with official OpenClaw config references', () => {
+  assert.match(configEditorPage, /class="config-official-reference"/);
+  assert.match(configEditorPage, /OpenClaw v2026\.4\.24/);
+  assert.match(configEditorPage, /const officialConfigReference = computed<OfficialConfigReference>/);
+  assert.match(configEditorPage, /agents\.defaults\.\*/);
+  assert.match(configEditorPage, /browser\.\*/);
+});
+
+test('config workbench tracks unsaved domains and protects refresh', () => {
+  assert.match(configEditorPage, /class="config-save-dock"/);
+  assert.match(configEditorPage, /const dirtyDomains = computed<ConfigDirtyDomain\[\]>/);
+  assert.match(configEditorPage, /function captureConfigBaseline\(\): void/);
+  assert.match(configEditorPage, /function normalizeLoggingDraft\(summary: ConfigSummaryPayload \| null\)/);
+  assert.match(configEditorPage, /function normalizeBrowserDraft\(summary: ConfigSummaryPayload \| null\)/);
+  assert.match(configEditorPage, /async function refreshConfigWithDirtyCheck\(\): Promise<void>/);
+  assert.match(configEditorPage, /window\.confirm\(text\(/);
+  assert.match(configEditorPage, /aria-live="polite"/);
+});

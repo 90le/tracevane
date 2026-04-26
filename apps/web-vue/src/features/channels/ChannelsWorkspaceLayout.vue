@@ -234,7 +234,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { ChannelAccountInput } from '../../../../../types/channels';
 import StatusPill from '../../components/StatusPill.vue';
@@ -267,6 +267,9 @@ const router = useRouter();
 const { text } = useLocalePreference();
 const isMobileChannelsViewport = ref(false);
 const mobileRailCollapsed = ref(false);
+let resizeListenerRegistered = false;
+
+const isChannelsRouteActive = computed(() => route.path === '/channels' || route.path.startsWith('/channels/'));
 
 const activeOverlay = computed(() => {
   const value = route.query.overlay;
@@ -462,10 +465,12 @@ function toggleCreateChannelPanel(): void {
 watch(
   () => [activeOverlay.value, overlayAccount.value?.id, workspace.selectedChannel.value?.type] as const,
   async ([overlay, accountId, channelType]) => {
+    if (!isChannelsRouteActive.value) return;
     if (overlay !== 'credentials' || !accountId || !channelType) return;
     workspace.busyKey.value = 'load-credentials';
     try {
       const payload = await fetchChannelAccountCredentials(channelType, accountId);
+      if (!isChannelsRouteActive.value) return;
       for (const key of Object.keys(credentialValues)) {
         delete credentialValues[key];
       }
@@ -484,22 +489,44 @@ watch(
 watch(
   () => [workspace.selectedChannel.value?.type, workspace.createChannelExpanded.value] as const,
   () => {
+    if (!isChannelsRouteActive.value) return;
     syncResponsiveRailState();
   },
   { immediate: true },
 );
 
-onMounted(() => {
+function registerResizeListener(): void {
+  if (resizeListenerRegistered || typeof window === 'undefined') return;
+  window.addEventListener('resize', syncResponsiveRailState);
+  resizeListenerRegistered = true;
+}
+
+function unregisterResizeListener(): void {
+  if (!resizeListenerRegistered || typeof window === 'undefined') return;
+  window.removeEventListener('resize', syncResponsiveRailState);
+  resizeListenerRegistered = false;
+}
+
+function activateChannelsWorkspaceChrome(): void {
+  if (!isChannelsRouteActive.value) return;
   syncResponsiveRailState();
-  if (typeof window !== 'undefined') {
-    window.addEventListener('resize', syncResponsiveRailState);
-  }
+  registerResizeListener();
+}
+
+onMounted(() => {
+  activateChannelsWorkspaceChrome();
+});
+
+onActivated(() => {
+  activateChannelsWorkspaceChrome();
+});
+
+onDeactivated(() => {
+  unregisterResizeListener();
 });
 
 onBeforeUnmount(() => {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('resize', syncResponsiveRailState);
-  }
+  unregisterResizeListener();
 });
 
 async function createAccountQuickly(payload: ChannelAccountInput): Promise<void> {

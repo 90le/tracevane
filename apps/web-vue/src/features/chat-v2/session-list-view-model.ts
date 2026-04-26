@@ -180,6 +180,7 @@ export function useSessionListWindows(params: {
   visibleChildFolders: ReadonlyRef<ChatSessionFolder[]>;
   currentFolder: ReadonlyRef<ChatSessionFolder | null>;
   archiveViewOpen: ReadonlyRef<boolean>;
+  showObserved: ReadonlyRef<boolean>;
   searchActive: ReadonlyRef<boolean>;
   loading: ReadonlyRef<boolean>;
   text: TextFn;
@@ -196,10 +197,18 @@ export function useSessionListWindows(params: {
     visibleCount: archivedVisibleCount.value,
     searchActive: params.searchActive.value,
   }));
-  const observedWindow = computed(() => resolveSessionSectionWindow(params.filteredObservedSessions.value, {
-    visibleCount: observedVisibleCount.value,
-    searchActive: params.searchActive.value,
-  }));
+  const observedWindow = computed(() => {
+    if (!params.showObserved.value) {
+      return {
+        rows: [],
+        hiddenCount: 0,
+      };
+    }
+    return resolveSessionSectionWindow(params.filteredObservedSessions.value, {
+      visibleCount: observedVisibleCount.value,
+      searchActive: params.searchActive.value,
+    });
+  });
 
   const visibleActiveSessions = computed(() => activeWindow.value.rows);
   const visibleArchivedSessions = computed(() => archivedWindow.value.rows);
@@ -258,7 +267,7 @@ export function useSessionListWindows(params: {
     if (activeHiddenCount.value > 0) {
       showMore('active');
     }
-    if (observedHiddenCount.value > 0) {
+    if (params.showObserved.value && observedHiddenCount.value > 0) {
       showMore('observed');
     }
   }

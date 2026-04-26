@@ -197,6 +197,7 @@ type NavigatorWithConnection = Navigator & {
     saveData?: boolean;
     effectiveType?: string;
   };
+  deviceMemory?: number;
 };
 
 const route = useRoute();
@@ -279,18 +280,36 @@ const canPreloadRouteChunks = () => {
   return true;
 };
 
+const canPreloadExtendedRouteChunks = () => {
+  if (!canPreloadRouteChunks()) return false;
+  const navigatorInfo = navigator as NavigatorWithConnection;
+  if (typeof navigatorInfo.deviceMemory === 'number' && navigatorInfo.deviceMemory < 4) return false;
+  if (navigator.hardwareConcurrency && navigator.hardwareConcurrency < 4) return false;
+  return true;
+};
+
 const scheduleNonChatRoutePreload = () => {
   if (typeof window === 'undefined' || !canPreloadRouteChunks()) return;
 
-  const preload = () => {
-    void preloadNonChatShellRouteChunks();
+  const scheduleIdleTask = (callback: () => void, timeout: number, fallbackDelay: number) => {
+    const idleWindow = window as IdleWindow;
+    if (idleWindow.requestIdleCallback) {
+      idleWindow.requestIdleCallback(callback, { timeout });
+      return;
+    }
+    window.setTimeout(callback, fallbackDelay);
   };
-  const idleWindow = window as IdleWindow;
-  if (idleWindow.requestIdleCallback) {
-    idleWindow.requestIdleCallback(preload, { timeout: 3_500 });
-    return;
-  }
-  window.setTimeout(preload, 2_500);
+
+  scheduleIdleTask(() => {
+    void preloadNonChatShellRouteChunks('core');
+  }, 3_500, 2_500);
+
+  if (!canPreloadExtendedRouteChunks()) return;
+  window.setTimeout(() => {
+    scheduleIdleTask(() => {
+      void preloadNonChatShellRouteChunks('extended');
+    }, 8_000, 4_000);
+  }, 10_000);
 };
 
 const handleGlobalKeydown = (event: KeyboardEvent) => {

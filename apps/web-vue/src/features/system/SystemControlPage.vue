@@ -593,8 +593,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onActivated, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import type {
   SystemDiagnosticsPayload,
   SystemHealthPayload,
@@ -628,8 +628,11 @@ interface RefreshAllOptions {
 }
 
 const router = useRouter();
+const route = useRoute();
 const { text } = useLocalePreference();
 const { confirm } = useConfirmDialog();
+const isSystemRouteActive = computed(() => route.path === '/system');
+let systemPageBootstrapped = false;
 
 const health = ref<SystemHealthPayload>(normalizeHealth({}));
 const diagnostics = ref<SystemDiagnosticsPayload>(normalizeDiagnostics({}));
@@ -944,10 +947,12 @@ function normalizeStudioUpgradeStatus(payload: Record<string, any>): SystemStudi
 }
 
 async function refreshStudioReleasePanel(): Promise<void> {
+  if (!isSystemRouteActive.value) return;
   const [nextRelease, nextUpgrade] = await Promise.all([
     fetchStudioRelease(),
     fetchStudioUpgradeStatus(),
   ]);
+  if (!isSystemRouteActive.value) return;
   studioRelease.value = normalizeStudioRelease(nextRelease as unknown as Record<string, any>);
   studioUpgrade.value = normalizeStudioUpgradeStatus(nextUpgrade as unknown as Record<string, any>);
   releaseLoaded.value = true;
@@ -1133,6 +1138,7 @@ async function repairHelperTrust(): Promise<void> {
 }
 
 async function refreshAll(options: RefreshAllOptions = {}): Promise<void> {
+  if (!isSystemRouteActive.value) return;
   loading.value = true;
   diagnosticsLoading.value = true;
   if (!options.preserveNotice) {
@@ -1140,19 +1146,23 @@ async function refreshAll(options: RefreshAllOptions = {}): Promise<void> {
   }
   const healthTask = fetchSystemHealth()
     .then((nextHealth) => {
+      if (!isSystemRouteActive.value) return;
       health.value = normalizeHealth(nextHealth as unknown as Record<string, any>);
       healthLoaded.value = true;
     })
     .catch((error) => {
+      if (!isSystemRouteActive.value) return;
       errorMessage.value = error instanceof Error ? error.message : text('无法读取系统健康状态。', 'Failed to load system health.');
     });
 
   const diagnosticsTask = fetchSystemDiagnostics()
     .then((nextDiagnostics) => {
+      if (!isSystemRouteActive.value) return;
       diagnostics.value = normalizeDiagnostics(nextDiagnostics as unknown as Record<string, any>);
       diagnosticsLoaded.value = true;
     })
     .catch((error) => {
+      if (!isSystemRouteActive.value) return;
       errorMessage.value = error instanceof Error ? error.message : text('无法读取系统诊断。', 'Failed to load system diagnostics.');
     })
     .finally(() => {
@@ -1161,6 +1171,7 @@ async function refreshAll(options: RefreshAllOptions = {}): Promise<void> {
 
   const releaseTask = refreshStudioReleasePanel()
     .catch((error) => {
+      if (!isSystemRouteActive.value) return;
       errorMessage.value = error instanceof Error ? error.message : text('无法读取 Studio 升级状态。', 'Failed to load Studio release status.');
     });
 
@@ -1168,9 +1179,15 @@ async function refreshAll(options: RefreshAllOptions = {}): Promise<void> {
   loading.value = false;
 }
 
-onMounted(async () => {
-  await refreshAll();
-});
+function activateSystemPage(): void {
+  if (!isSystemRouteActive.value) return;
+  if (systemPageBootstrapped && healthLoaded.value && diagnosticsLoaded.value && releaseLoaded.value) return;
+  systemPageBootstrapped = true;
+  void refreshAll();
+}
+
+onMounted(activateSystemPage);
+onActivated(activateSystemPage);
 </script>
 
 <style scoped>

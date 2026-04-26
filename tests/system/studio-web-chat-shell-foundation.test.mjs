@@ -451,11 +451,9 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   assert.match(messageBubble, /text\('复制工具输入', 'Copy tool input'\)/);
   assert.match(messageBubble, /text\('复制工具输出', 'Copy tool output'\)/);
   assert.match(messageBubble, /const toolCopyState = reactive<Record<string, 'copied' \| 'error' \| undefined>>\(\{\}\);/);
-  assert.match(messageBubble, /const TOOL_DETAIL_AUTO_OPEN_PREVIEW_LIMIT = 520;/);
   assert.match(messageBubble, /:open="shouldOpenToolDetails\(tool, toolIndex\)"/);
-  assert.match(messageBubble, /function shouldOpenToolDetails\(tool: ChatDisplayToolHint, index: number\): boolean \{/);
-  assert.match(messageBubble, /if \(tool\.status === 'running' \|\| tool\.status === 'error'\) \{/);
-  assert.match(messageBubble, /return previewLength > 0 && previewLength <= TOOL_DETAIL_AUTO_OPEN_PREVIEW_LIMIT;/);
+  assert.match(messageBubble, /function shouldOpenToolDetails\(tool: ChatDisplayToolHint, _index: number\): boolean \{/);
+  assert.match(messageBubble, /return tool\.status === 'error';/);
   assert.match(
     messageBubble,
     /\.chat-inline-process-live-dot\s*\{[\s\S]*animation:\s*chat-tool-live-pulse/,
@@ -467,6 +465,18 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   assert.match(
     messageBubble,
     /\.chat-inline-process-block pre\s*\{[\s\S]*max-height:\s*min\(260px,\s*42vh\);/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;[\s\S]*overflow-wrap:\s*anywhere;/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-item\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;[\s\S]*box-sizing:\s*border-box;/,
+  );
+  assert.match(
+    messageBubble,
+    /\.chat-inline-process-head-summary\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;[\s\S]*overflow-wrap:\s*anywhere;/,
   );
   assert.match(
     messageBubble,
@@ -482,7 +492,7 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   );
   assert.match(
     messageBubble,
-    /\.chat-inline-process-block pre\s*\{[\s\S]*max-width:\s*100%;[\s\S]*min-width:\s*0;[\s\S]*overflow-wrap:\s*anywhere;/,
+    /\.chat-inline-process-block pre\s*\{[\s\S]*overscroll-behavior:\s*contain;[\s\S]*max-width:\s*100%;[\s\S]*min-width:\s*0;[\s\S]*box-sizing:\s*border-box;[\s\S]*overflow-wrap:\s*anywhere;/,
   );
   assert.match(
     messageBubble,
@@ -1017,6 +1027,14 @@ test("chat shell defers the root-route history window and loads date buckets on 
   assert.match(chatShellPage, /function prefetchMoreHistoryBefore\(\): void \{/);
   assert.match(chatShellPage, /async function waitForHistoryBeforePrefetch\(/);
   assert.match(chatShellPage, /requestIdleCallback/);
+  assert.match(
+    chatShellPage,
+    /const run = \(\) => \{[\s\S]*window\.clearTimeout\(historyBeforePrefetchTimer\);[\s\S]*window\.cancelIdleCallback\(historyBeforePrefetchIdleHandle\);[\s\S]*void runHistoryBeforePrefetch\(sessionKey\);/,
+  );
+  assert.match(
+    chatShellPage,
+    /const run = \(\) => \{[\s\S]*window\.clearTimeout\(historyAfterPrefetchTimer\);[\s\S]*window\.cancelIdleCallback\(historyAfterPrefetchIdleHandle\);[\s\S]*void runHistoryAfterPrefetch\(sessionKey\);/,
+  );
   assert.match(chatShellPage, /@prefetch-more-before="prefetchMoreHistoryBefore"/);
   assert.match(
     chatShellPage,
@@ -1079,8 +1097,13 @@ test("conversation pane virtualizes the timeline shell so only viewport-adjacent
   assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_MIN_ITEMS = 160;/);
   assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_OVERSCAN_PX = 3600;/);
   assert.match(conversationPane, /const TIMELINE_ITEM_DEFAULT_HEIGHT = 280;/);
-  assert.match(conversationPane, /const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 1200;/);
-  assert.match(conversationPane, /const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 1400;/);
+  assert.match(conversationPane, /const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 2200;/);
+  assert.match(conversationPane, /const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 3600;/);
+  assert.match(conversationPane, /scrollState\.value\.isPinnedToBottom/);
+  assert.match(conversationPane, /let pinnedBottomRepairFrame: number \| null = null;/);
+  assert.match(conversationPane, /function schedulePinnedBottomRepair\(\): void \{/);
+  assert.match(conversationPane, /window\.requestAnimationFrame\(\(\) => \{/);
+  assert.match(conversationPane, /scrollToBottom\('auto', \{ force: true \}\)/);
   assert.match(conversationPane, /const HISTORY_LOADING_INDICATOR_DELAY_MS = 650;/);
   assert.match(conversationPane, /const timelineViewport = ref\(\{/);
   assert.match(conversationPane, /const timelineItemHeights = reactive<Record<string, number>>\(\{\}\);/);
@@ -1134,6 +1157,7 @@ test("history prepend restores against the newest loaded message boundary instea
   assert.match(conversationPane, /function scheduleStableRestoreAnchorRefreshFromCurrentViewport\(\): void \{/);
   assert.match(conversationPane, /stableRestoreAnchorItemId = anchor\.itemId;/);
   assert.match(conversationPane, /historyPrependPendingBottomDistance = bottomDistance;/);
+  assert.match(conversationPane, /changed && \(stableRestoreAnchorItemId \|\| stableRestoreBottomDistance != null\)/);
   assert.match(conversationPane, /if \(isThreadUserScrollRecent\(nowMs\) && !clippedTowardLatestBeforeRestore\) \{/);
   assert.match(conversationPane, /scheduleStableRestoreAnchorResume\(HISTORY_PREPEND_USER_SCROLL_GRACE_MS - \(nowMs - lastThreadUserScrollAt\)\);/);
   assert.match(conversationPane, /@wheel\.passive="handleThreadWheel"/);
@@ -1148,7 +1172,7 @@ test("history prepend restores against the newest loaded message boundary instea
   assert.match(conversationPane, /emit\('history-before-render-settled'\);/);
   assert.match(conversationPane, /if \(!clearPrependPending && historyPrependMutationPending\) \{/);
   assert.match(conversationPane, /const desiredBottomOffset = Math\.min\(/);
-  assert.match(conversationPane, /const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 5\.5;/);
+  assert.match(conversationPane, /const HISTORY_BEFORE_AUTO_FILL_TARGET_MULTIPLIER = 3\.5;/);
   assert.match(conversationPane, /function requestMoreBeforeForAutoFill\(\): void \{/);
   assert.match(conversationPane, /function scheduleHistoryBeforeAutoFill\(\): void \{/);
   assert.match(conversationPane, /emit\('load-more-before', 'continuation'\);/);
