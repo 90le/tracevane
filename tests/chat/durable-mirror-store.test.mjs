@@ -254,6 +254,27 @@ test('sqlite: session metadata and page messages can be read without hydrating t
       LIMIT 1
     `).get();
     assert.equal(ftsTable?.name, 'mirror_messages_fts');
+    const messageIndexes = db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'index'
+        AND name IN (
+          'mirror_messages_session_role_index',
+          'mirror_messages_session_has_text_index',
+          'mirror_messages_session_has_resources_index',
+          'mirror_messages_session_has_code_index'
+        )
+      ORDER BY name ASC
+    `).all();
+    assert.deepEqual(
+      messageIndexes.map((row) => row.name),
+      [
+        'mirror_messages_session_has_code_index',
+        'mirror_messages_session_has_resources_index',
+        'mirror_messages_session_has_text_index',
+        'mirror_messages_session_role_index',
+      ],
+    );
     const ftsRows = db.prepare(`
       SELECT message_id
       FROM mirror_messages_fts

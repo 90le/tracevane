@@ -391,6 +391,25 @@ function loadSqliteDatabase(config: StudioServerConfig): any | null {
       CREATE INDEX IF NOT EXISTS mirror_messages_session_day_index
       ON mirror_messages (session_key, day_key, message_index);
     `);
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS mirror_messages_session_role_index
+      ON mirror_messages (session_key, role, message_index);
+    `);
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS mirror_messages_session_has_text_index
+      ON mirror_messages (session_key, message_index)
+      WHERE has_text = 1;
+    `);
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS mirror_messages_session_has_resources_index
+      ON mirror_messages (session_key, message_index)
+      WHERE has_resources = 1;
+    `);
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS mirror_messages_session_has_code_index
+      ON mirror_messages (session_key, message_index)
+      WHERE has_code = 1;
+    `);
     try {
       database.exec(`
         CREATE VIRTUAL TABLE IF NOT EXISTS mirror_messages_fts
@@ -890,13 +909,15 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
     }
   }
 
-  function readSqliteWindowBoundary(
+  function readSqliteWindowBoundaries(
     sessionKey: string,
     day: string | null,
-    offset: number,
-  ): DurableMirrorPageBoundary | null {
-    if (!database || offset < 0) {
-      return null;
+    offsets: number[],
+  ): Map<number, DurableMirrorPageBoundary> {
+    const boundaries = new Map<number, DurableMirrorPageBoundary>();
+    const requestedOffsets = [...new Set(offsets.filter((offset) => Number.isFinite(offset) && offset >= 0))];
+    if (!database || !requestedOffsets.length) {
+      return boundaries;
     }
     ensureSqliteMessageRowsLoaded(database, config, sessionKey);
     const where = ['session_key = ?'];
@@ -905,21 +926,39 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
       where.push('day_key = ?');
       params.push(day);
     }
+    const requestedValues = requestedOffsets.map(() => '(?)').join(', ');
     const row = database.prepare(`
-      SELECT message_id, created_at
-      FROM mirror_messages
-      WHERE ${where.join(' AND ')}
-      ORDER BY message_index ASC
-      LIMIT 1 OFFSET ?
-    `).get(...params, offset) as { message_id?: string | null; created_at?: string | null } | undefined;
-    if (!row) {
-      return null;
+      WITH requested(offset) AS (
+        VALUES ${requestedValues}
+      ),
+      filtered AS (
+        SELECT
+          message_id,
+          created_at,
+          ROW_NUMBER() OVER (ORDER BY message_index ASC) - 1 AS offset
+        FROM mirror_messages
+        WHERE ${where.join(' AND ')}
+      )
+      SELECT requested.offset, filtered.message_id, filtered.created_at
+      FROM requested
+      LEFT JOIN filtered ON filtered.offset = requested.offset
+    `).all(...requestedOffsets, ...params) as Array<{
+      offset?: number | null;
+      message_id?: string | null;
+      created_at?: string | null;
+    }>;
+    for (const item of row) {
+      const offset = Number(item.offset ?? -1);
+      if (!Number.isFinite(offset) || offset < 0 || !item.message_id) {
+        continue;
+      }
+      boundaries.set(offset, {
+        anchorIndex: offset,
+        anchorMessageId: typeof item.message_id === 'string' && item.message_id ? item.message_id : null,
+        anchorCreatedAt: typeof item.created_at === 'string' && item.created_at ? item.created_at : null,
+      });
     }
-    return {
-      anchorIndex: offset,
-      anchorMessageId: typeof row.message_id === 'string' && row.message_id ? row.message_id : null,
-      anchorCreatedAt: typeof row.created_at === 'string' && row.created_at ? row.created_at : null,
-    };
+    return boundaries;
   }
 
   function resolveSqliteFilteredOffset(params: {
@@ -1031,6 +1070,14 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
       LIMIT ? OFFSET ?
     `).all(...baseParams, Math.max(0, end - start), start) as Array<{ payload_json: string }>;
     const messages = rows.map((row) => cloneMessage(JSON.parse(String(row.payload_json || '{}')) as ChatMessageItem));
+    const boundaries = readSqliteWindowBoundaries(
+      sessionKey,
+      day,
+      [
+        start > 0 ? start : -1,
+        end < totalCount ? end : -1,
+      ],
+    );
     return {
       messages,
       day,
@@ -1039,8 +1086,8 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
       endOffset: end,
       hasMoreBefore: start > 0,
       hasMoreAfter: end < totalCount,
-      beforeBoundary: start > 0 ? readSqliteWindowBoundary(sessionKey, day, start) : null,
-      afterBoundary: end < totalCount ? readSqliteWindowBoundary(sessionKey, day, end) : null,
+      beforeBoundary: start > 0 ? boundaries.get(start) || null : null,
+      afterBoundary: end < totalCount ? boundaries.get(end) || null : null,
     };
   }
 
@@ -1318,40 +1365,48 @@ export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
       if (database) {
         ensureSqliteMessageRowsLoaded(database, config, sessionKey);
         const rows = database.prepare(`
+          WITH day_ranges AS (
+            SELECT
+              day_key,
+              COUNT(*) AS count,
+              MIN(message_index) AS first_index,
+              MAX(message_index) AS last_index
+            FROM mirror_messages
+            WHERE session_key = ? AND day_key IS NOT NULL
+            GROUP BY day_key
+          )
           SELECT
-            day_key,
-            COUNT(*) AS count,
-            MIN(message_index) AS first_index,
-            MAX(message_index) AS last_index
-          FROM mirror_messages
-          WHERE session_key = ? AND day_key IS NOT NULL
-          GROUP BY day_key
-          ORDER BY day_key DESC
-        `).all(sessionKey) as Array<{
+            day_ranges.day_key,
+            day_ranges.count,
+            first_message.message_id AS first_message_id,
+            last_message.message_id AS last_message_id
+          FROM day_ranges
+          LEFT JOIN mirror_messages AS first_message
+            ON first_message.session_key = ?
+           AND first_message.day_key = day_ranges.day_key
+           AND first_message.message_index = day_ranges.first_index
+          LEFT JOIN mirror_messages AS last_message
+            ON last_message.session_key = ?
+           AND last_message.day_key = day_ranges.day_key
+           AND last_message.message_index = day_ranges.last_index
+          ORDER BY day_ranges.day_key DESC
+        `).all(sessionKey, sessionKey, sessionKey) as Array<{
           day_key?: string | null;
           count?: number;
-          first_index?: number;
-          last_index?: number;
+          first_message_id?: string | null;
+          last_message_id?: string | null;
         }>;
-        const lookupMessageId = database.prepare(`
-          SELECT message_id
-          FROM mirror_messages
-          WHERE session_key = ? AND message_index = ?
-          LIMIT 1
-        `);
         return rows
           .map((row) => {
             const day = typeof row.day_key === 'string' ? row.day_key : '';
             if (!day) {
               return null;
             }
-            const first = lookupMessageId.get(sessionKey, Number(row.first_index ?? -1)) as { message_id?: string } | undefined;
-            const last = lookupMessageId.get(sessionKey, Number(row.last_index ?? -1)) as { message_id?: string } | undefined;
             return {
               day,
               count: Number(row.count || 0),
-              firstMessageId: typeof first?.message_id === 'string' ? first.message_id : null,
-              lastMessageId: typeof last?.message_id === 'string' ? last.message_id : null,
+              firstMessageId: typeof row.first_message_id === 'string' ? row.first_message_id : null,
+              lastMessageId: typeof row.last_message_id === 'string' ? row.last_message_id : null,
             } satisfies DurableMirrorDateBucket;
           })
           .filter((bucket): bucket is DurableMirrorDateBucket => Boolean(bucket));

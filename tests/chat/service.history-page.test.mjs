@@ -12,6 +12,7 @@ import {
   createStandaloneStudioConfig,
   createStudioContext,
 } from "../../dist/apps/api/index.js";
+import { createStudioChatDurableMirrorStore } from "../../dist/apps/api/modules/chat/durable-mirror-store.js";
 
 function createLogger() {
   return {
@@ -1398,15 +1399,62 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const warmContext = createStudioContext({
-      config,
-      logger: createLogger(),
+    const sourceMtimeMs = fs.statSync(transcriptFile).mtimeMs;
+    const mirrorMessages = [
+      {
+        id: "sm1",
+        role: "user",
+        text: "ordinary",
+        createdAt: "2026-03-20T09:00:00.000Z",
+        source: "history",
+        runId: null,
+        truncated: false,
+        omitted: false,
+        aborted: false,
+        stopReason: null,
+      },
+      {
+        id: "sm2",
+        role: "assistant",
+        text: "alpha 关键字 keyword",
+        createdAt: "2026-03-20T10:00:00.000Z",
+        source: "history",
+        runId: null,
+        truncated: false,
+        omitted: false,
+        aborted: false,
+        stopReason: null,
+      },
+      {
+        id: "sm3",
+        role: "assistant",
+        text: "```sql\nSELECT keyword FROM ledger;\n```",
+        createdAt: "2026-03-21T09:00:00.000Z",
+        source: "history",
+        runId: null,
+        truncated: false,
+        omitted: false,
+        aborted: false,
+        stopReason: null,
+      },
+    ];
+    createStudioChatDurableMirrorStore(config).replaceSnapshot({
+      sessionKey,
+      version: "search-mirror-v1",
+      source: "local_transcript",
+      messages: mirrorMessages,
+      baseMessageSeq: mirrorMessages.length,
+      savedAt: "2026-03-21T09:00:00.000Z",
+      sourceSignature: "search-mirror-signature",
+      sourceSessionFile: transcriptFile,
+      sourceMtimeMs,
+      observability: {
+        lifecycle: null,
+        usage: null,
+        toolCards: [],
+        timeline: [],
+      },
     });
-
-    await warmContext.services.chat.getHistory(sessionKey, { limit: 2 });
-    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
-    sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
-    sharedDb.close();
     fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
 
     let transcriptReadFileSyncCount = 0;
@@ -1432,9 +1480,9 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
     );
     assert.match(
       result.diagnostics.notes.join("\n"),
-      /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan and mapped only the requested page messages/i,
+      /reused sqlite FTS candidates.*without rebuilding the persisted history index/i,
     );
-    assert.equal(transcriptReadFileSyncCount, 1);
+    assert.equal(transcriptReadFileSyncCount, 0);
     const reordered = await coldContext.services.chat.searchHistory(sessionKey, {
       query: "keyword alpha",
       content: "text",
@@ -1453,6 +1501,13 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
       cjk.messages.map((message) => message.id),
       ["sm2"],
     );
+    const verifyDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const indexCountRow = verifyDb
+      .prepare("SELECT COUNT(*) AS count FROM history_indexes WHERE session_key = ?")
+      .get(sessionKey);
+    verifyDb.close();
+    assert.equal(Number(indexCountRow?.count || 0), 0);
+    assert.equal(transcriptReadFileSyncCount, 0);
   } finally {
     fs.readFileSync = originalReadFileSync;
     fs.rmSync(root, { recursive: true, force: true });

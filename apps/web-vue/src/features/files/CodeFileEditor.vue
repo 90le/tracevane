@@ -388,7 +388,9 @@ function buildSearchQuery(): SearchQuery {
 function syncSearchQuery(targetView = view): SearchQuery | null {
   if (!targetView) return null;
   const query = buildSearchQuery();
-  searchError.value = query.valid ? "" : t("正则表达式无效", "Invalid regular expression");
+  searchError.value = searchQuery.value && !query.valid
+    ? t("正则表达式无效", "Invalid regular expression")
+    : "";
   targetView.dispatch({
     effects: setSearchQuery.of(query),
   });
@@ -576,8 +578,8 @@ onBeforeUnmount(() => {
 
 .code-file-editor__searchbar {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto;
-  align-items: end;
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) minmax(320px, auto);
+  align-items: center;
   gap: 7px;
   min-width: 0;
   padding: 7px 8px;
@@ -592,8 +594,9 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor__search-field {
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   color: var(--muted);
   font-size: 10px;
@@ -603,6 +606,7 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor__search-field input {
+  flex: 1 1 auto;
   width: 100%;
   min-width: 0;
   min-height: 27px;
@@ -622,11 +626,15 @@ onBeforeUnmount(() => {
 
 .code-file-editor__search-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   align-items: center;
   gap: 5px;
   min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 1px;
+  scrollbar-width: thin;
 }
 
 .code-file-editor__search-actions button {
@@ -773,15 +781,44 @@ onBeforeUnmount(() => {
 
 @media (max-width: 780px) {
   .code-file-editor__searchbar {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: stretch;
+    gap: 5px;
+    padding: 5px 7px;
   }
 
   .code-file-editor__search-actions {
+    grid-column: 1 / -1;
     justify-content: flex-start;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    padding-bottom: 2px;
+    padding-bottom: 1px;
+  }
+
+  .code-file-editor__search-field {
+    gap: 0;
+  }
+
+  .code-file-editor__search-field span {
+    display: none;
+  }
+
+  .code-file-editor__search-field input {
+    min-height: 25px;
+    padding: 0 7px;
+    font-size: 12px;
+  }
+
+  .code-file-editor__search-actions button {
+    min-height: 25px;
+    padding: 0 7px;
+    font-size: 11px;
+  }
+
+  .code-file-editor__search-actions .code-file-editor__toggle {
+    width: 28px;
+  }
+
+  .code-file-editor__search-actions .code-file-editor__close-search {
+    width: 26px;
   }
 }
 </style>

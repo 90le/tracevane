@@ -3661,14 +3661,16 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       && mirrorMeta.sourceSessionFile === sourceSelection.sessionFile
       && (mirrorMeta.sourceMtimeMs ?? null) === (sourceSelection.sourceMtimeMs ?? null)
     ) {
-      const effectiveIndex = ensureLocalTranscriptHistoryIndexFromMirror(
-        sessionKey,
-        {
-          sourceSessionFile: sourceSelection.sessionFile,
-          sourceMtimeMs: sourceSelection.sourceMtimeMs,
-        },
-        indexSnapshot,
-      );
+      const effectiveIndex = indexSnapshot
+        ? ensureLocalTranscriptHistoryIndexFromMirror(
+          sessionKey,
+          {
+            sourceSessionFile: sourceSelection.sessionFile,
+            sourceMtimeMs: sourceSelection.sourceMtimeMs,
+          },
+          indexSnapshot,
+        )
+        : null;
       const ftsMatchedStubs = indexSnapshot
         ? null
         : durableMirrorStore.searchMessageStubs(sessionKey, {
@@ -3686,20 +3688,17 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           .map((position) => effectiveIndex!.items[position]!)
           .filter(Boolean)
         : ftsMatchedStubs
-          ? (() => {
-            const itemById = new Map((effectiveIndex?.items || []).map((item) => [item.id, item]));
-            return ftsMatchedStubs
-              .map((item) => itemById.get(item.id) || ({
-                id: item.id,
-                role: item.role,
-                createdAt: item.createdAt,
-                dayKey: item.createdAt ? item.createdAt.slice(0, 10) : null,
-                previewText: item.previewText,
-                snippetText: item.previewText,
-                runId: item.runId,
-              }))
-              .filter(Boolean);
-          })()
+          ? ftsMatchedStubs
+            .map((item) => ({
+              id: item.id,
+              role: item.role,
+              createdAt: item.createdAt,
+              dayKey: item.createdAt ? item.createdAt.slice(0, 10) : null,
+              previewText: item.previewText,
+              snippetText: item.previewText,
+              runId: item.runId,
+            }))
+            .filter(Boolean)
           : [];
       const page = paginateMessageList(
         matchedItems.map((item) => buildIndexStubMessage(item)),
@@ -3737,7 +3736,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         diagnostics.notes.push(indexSnapshot
           ? 'History search reused the persisted sqlite/json history index and transcript-aligned durable mirror.'
           : ftsMatchedStubs
-            ? 'History search reused sqlite FTS candidates and rebuilt a persisted sqlite/json history index from durable mirror row metadata without remapping the transcript.'
+            ? 'History search reused sqlite FTS candidates from the durable mirror without rebuilding the persisted history index or remapping the transcript.'
             : effectiveIndex
               ? 'History search rebuilt a persisted sqlite/json history index from durable mirror row metadata without remapping the transcript.'
               : 'History search reused sqlite/json durable mirror row metadata without remapping the transcript.');

@@ -643,25 +643,32 @@ function editorFileIconForName(fileName: string): string {
 
   .file-manager-editor-drawer__head {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 32px 30px;
+    grid-template-rows: 30px 28px;
     align-items: stretch;
-    gap: 6px;
-    height: 76px;
-    min-height: 76px;
-    padding: 6px 10px;
+    gap: 5px;
+    height: 68px;
+    min-height: 68px;
+    padding: 5px 8px;
   }
 
   .file-manager-editor-drawer__tab {
-    flex-basis: 136px;
-    max-width: 166px;
+    flex-basis: 124px;
+    max-width: 152px;
     margin-top: 0;
+    padding: 0 6px;
   }
 
   .file-manager-editor-drawer__actions {
     justify-content: start;
     width: 100%;
     max-width: 100%;
-    padding-bottom: 3px;
+    padding-bottom: 2px;
+  }
+
+  .file-manager-editor-drawer__button,
+  .file-manager-editor-drawer__badge {
+    min-height: 24px;
+    font-size: 11px;
   }
 
   .file-manager-editor-drawer__body {
@@ -670,30 +677,70 @@ function editorFileIconForName(fileName: string): string {
   }
 
   .file-manager-editor-sidebar {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
-    grid-template-rows: minmax(0, 1fr);
-    align-items: stretch;
-    gap: 8px;
-    max-height: 112px;
-    padding: 8px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    min-height: 48px;
+    max-height: 48px;
+    padding: 6px 8px;
     overflow-x: auto;
     overflow-y: hidden;
     border-right: 0;
     border-bottom: 1px solid var(--file-manager-border);
+    scrollbar-width: thin;
   }
 
   .file-manager-editor-sidebar__section,
   .file-manager-editor-sidebar__section--empty {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
-    max-height: 96px;
-    padding: 0 4px 0 0;
+    min-height: 0;
+    max-height: none;
+    padding: 0;
     border-bottom: 0;
-    overflow-y: auto;
+    overflow: visible;
+  }
+
+  .file-manager-editor-sidebar__section:not(:first-child) {
+    display: none;
+  }
+
+  .file-manager-editor-sidebar__label {
+    display: none;
   }
 
   .file-manager-editor-sidebar__file {
-    min-height: 28px;
+    flex: 0 0 118px;
+    grid-template-columns: 20px minmax(0, 1fr);
+    min-height: 34px;
+    max-width: 150px;
+    border-color: var(--file-manager-border);
+    background: color-mix(in srgb, var(--file-manager-panel) 78%, transparent);
+  }
+
+  .file-manager-editor-sidebar__file span {
+    width: 18px;
+    height: 18px;
+  }
+
+  .file-manager-editor-sidebar__file strong {
+    font-size: 11px;
+  }
+
+  .file-manager-editor-drawer__statusbar {
+    gap: 8px;
+    min-height: 21px;
+    padding: 0 7px;
+    font-size: 10px;
+  }
+
+  .file-manager-editor-drawer__statusbar span:nth-child(5),
+  .file-manager-editor-drawer__statusbar span:nth-child(6) {
+    display: none;
   }
 }
 </style>
