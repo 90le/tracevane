@@ -4,12 +4,12 @@ import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { resolveProjectRoot } from '../../lib/project-root.js';
-import type { StudioServerConfig, StudioTransportConfig } from '../../types/api.js';
+import type { StudioExposureKind, StudioServerConfig, StudioTransportConfig } from '../../types/api.js';
 
 const DEFAULT_PORT = 3760;
 const DEFAULT_GATEWAY_PORT = 18789;
 const DEFAULT_GATEWAY_BASE_PATH = '/studio';
-const STUDIO_VERSION_FALLBACK = '0.1.20';
+const STUDIO_VERSION_FALLBACK = '0.1.23';
 
 let cachedStudioVersion: string | null = null;
 
@@ -20,6 +20,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizePort(value: unknown, fallback: number): number {
   const port = Number(value);
   return Number.isFinite(port) && port > 0 ? Math.floor(port) : fallback;
+}
+
+function normalizeExposureKind(value: unknown): StudioExposureKind | null {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return normalized === 'gateway' || normalized === 'standalone' ? normalized : null;
 }
 
 function normalizeGatewayBasePath(value: unknown, fallback = DEFAULT_GATEWAY_BASE_PATH): string {
@@ -123,10 +128,16 @@ function resolveTransportConfig(
   const standalone = isRecord(transport.standalone) ? transport.standalone : {};
   const gateway = isRecord(transport.gateway) ? transport.gateway : {};
   const gatewayEnabled = gateway.enabled !== false;
+  const standaloneEnabled = standalone.enabled !== false;
+  const preferredMode = normalizeExposureKind(transport.preferredMode)
+    || normalizeExposureKind(pluginConfig.preferredMode)
+    || normalizeExposureKind(pluginConfig.mode)
+    || (gatewayEnabled && !standaloneEnabled ? 'gateway' : 'standalone');
 
   return {
+    preferredMode,
     standalone: {
-      enabled: standalone.enabled !== false,
+      enabled: standaloneEnabled,
       port: normalizePort(standalone.port, standalonePort),
     },
     gateway: {
@@ -194,6 +205,7 @@ export function createStandaloneStudioConfig(overrides: Partial<StudioServerConf
     : normalizePort(overrides.gatewayPort, DEFAULT_GATEWAY_PORT);
   const standalonePort = normalizePort(overrides.port, DEFAULT_PORT);
   const transport = overrides.transport || {
+    preferredMode: 'standalone',
     standalone: {
       enabled: true,
       port: standalonePort,
@@ -218,6 +230,11 @@ export function createStandaloneStudioConfig(overrides: Partial<StudioServerConf
     gatewayWsUrl: overrides.gatewayWsUrl || buildGatewayWsUrl(gatewayPort),
     gatewayControlUiBasePath: normalizeOptionalBasePath(overrides.gatewayControlUiBasePath),
     transport: {
+      preferredMode: transport.preferredMode || (
+        transport.gateway.enabled === true && transport.standalone.enabled === false
+          ? 'gateway'
+          : 'standalone'
+      ),
       standalone: {
         enabled: transport.standalone.enabled !== false,
         port: normalizePort(transport.standalone.port, standalonePort),

@@ -788,6 +788,24 @@ function normalizeDiagnostics(payload: Record<string, any>): SystemDiagnosticsPa
       webDistDir: String(payload.config?.webDistDir || ''),
       gatewayPort: Number(payload.config?.gatewayPort || 0),
       gatewayWsUrl: String(payload.config?.gatewayWsUrl || ''),
+      gatewayControlUiBasePath: String(payload.config?.gatewayControlUiBasePath || ''),
+      transport: {
+        preferredMode: (
+          payload.config?.transport?.preferredMode === 'gateway'
+          || (
+            payload.config?.transport?.gateway?.enabled === true
+            && payload.config?.transport?.standalone?.enabled === false
+          )
+        ) ? 'gateway' : 'standalone',
+        standalone: {
+          enabled: payload.config?.transport?.standalone?.enabled !== false,
+          port: Number(payload.config?.transport?.standalone?.port || payload.config?.port || 3760),
+        },
+        gateway: {
+          enabled: payload.config?.transport?.gateway?.enabled !== false,
+          basePath: String(payload.config?.transport?.gateway?.basePath || '/studio'),
+        },
+      },
     },
     runtime: {
       cwd: String(payload.runtime?.cwd || ''),

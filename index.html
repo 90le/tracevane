@@ -434,7 +434,7 @@
     </div>
     <div class="mode-alert-item mode-alert-corp">
       <span class="mode-alert-icon">🏢</span>
-      <span>模式二：<strong>单口</strong><br><p style="color: var(--muted);font-size: 12px;">外网只能开放 OpenClaw 一个端口，Studio 挂载到 /studio</p></span>
+      <span>模式二：<strong>单口</strong><br><p style="color: var(--muted);font-size: 12px;">外网只开放 OpenClaw 端口，Studio 挂载到 /studio，同时保留本机 3760</p></span>
     </div>
   </div>
 
@@ -479,7 +479,7 @@
       <button class="copy-btn" onclick="copyPrompt('prompt2',this)">复制 Prompt</button>
     </div>
     <div class="prompt-body">
-      <pre id="prompt2">请在我的 OpenClaw 环境里安装 OpenClaw Studio，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /studio）。
+      <pre id="prompt2">请在我的 OpenClaw 环境里安装 OpenClaw Studio，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /studio，同时保留本机 3760 standalone 入口）。
 
 请按下面步骤执行，不要使用在线脚本直通执行：
 
@@ -493,16 +493,17 @@
 2. 下载并解压 openclaw-studio-{{STUDIO_VERSION}}.tar.gz
 3. 自动修正发布包入口元数据，确保宿主能正确加载 studio 插件
 4. 安装依赖并重建 node-pty
-5. 写入 plugins.entries.studio / plugins.load.paths / gateway transport 配置
+5. 写入 plugins.entries.studio / plugins.load.paths / gateway transport 配置，并保留 3760 standalone 监听
 6. 补齐 gateway.bind / gateway.auth.token / gateway.controlUi.allowedOrigins 等最低可用配置
 7. 执行 openclaw gateway install --force 与重启
-8. 对 http://127.0.0.1:&lt;gateway_port&gt;/studio/api/system/health 做健康检查
+8. 对 http://127.0.0.1:&lt;gateway_port&gt;/studio/api/system/health 和 http://127.0.0.1:3760/api/system/health 做健康检查
 
 执行完成后，请把以下结果告诉我：
 - OpenClaw 版本
 - 配置文件路径
 - 安装目录
 - Gateway 端口
+- 3760 回退入口健康检查
 - 访问地址
 - 健康检查结果</pre>
     </div>
@@ -549,7 +550,7 @@
 </footer>
 
 <script>
-const STUDIO_VERSION = "0.1.21";
+const STUDIO_VERSION = "0.1.23";
 const OPENCLAW_MIN_VERSION = "2026.4.8";
 
 function applyReleasePlaceholders(version, minVersion) {

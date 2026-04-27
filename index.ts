@@ -71,6 +71,11 @@ const studioPlugin = {
       transport: {
         type: 'object',
         properties: {
+          preferredMode: {
+            type: 'string',
+            enum: ['standalone', 'gateway'],
+            default: 'standalone',
+          },
           standalone: {
             type: 'object',
             properties: {

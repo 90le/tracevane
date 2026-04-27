@@ -23,7 +23,13 @@ export function parseReleaseMetadata(raw) {
   return {
     version,
     packageUrl: typeof parsed.packageUrl === 'string' ? parsed.packageUrl.trim() : '',
-    minVersion: typeof parsed.minOpenClawVersion === 'string' ? parsed.minOpenClawVersion.trim() : '',
+    minVersion: typeof parsed.minOpenClawVersion === 'string'
+      ? parsed.minOpenClawVersion.trim()
+      : typeof parsed.minHostVersion === 'string'
+        ? parsed.minHostVersion.trim()
+        : parsed.openclaw && typeof parsed.openclaw.minHostVersion === 'string'
+          ? parsed.openclaw.minHostVersion.trim()
+          : '',
   };
 }
 
@@ -65,12 +71,18 @@ export function injectLandingPageVersion(source, version, minVersion) {
     throw new Error('version and minVersion are required');
   }
 
+  const versionPattern = /const\s+STUDIO_VERSION\s*=\s*["'][^"']+["'];/;
+  const minVersionPattern = /const\s+OPENCLAW_MIN_VERSION\s*=\s*["'][^"']+["'];/;
+  if (!versionPattern.test(source) || !minVersionPattern.test(source)) {
+    throw new Error('landing page version markers not found');
+  }
+
   let rewritten = source.replace(
-    /const\s+STUDIO_VERSION\s*=\s*["'][^"']+["'];/,
+    versionPattern,
     `const STUDIO_VERSION = "${normalizedVersion}";`,
   );
   rewritten = rewritten.replace(
-    /const\s+OPENCLAW_MIN_VERSION\s*=\s*["'][^"']+["'];/,
+    minVersionPattern,
     `const OPENCLAW_MIN_VERSION = "${normalizedMinVersion}";`,
   );
   return rewritten;

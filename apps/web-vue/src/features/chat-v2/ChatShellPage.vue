@@ -648,6 +648,7 @@ const STANDALONE_EVENTSOURCE_FALLBACK_THRESHOLD = 2;
 let historyLoadVersion = 0;
 let sessionsLoadVersion = 0;
 let recordBrowserSearchVersion = 0;
+let recordBrowserSearchController: AbortController | null = null;
 let liveHistorySyncTimer: number | null = null;
 let runSettlementSyncTimer: number | null = null;
 let deferredInitialHistoryLoadTimer: number | null = null;
@@ -1782,7 +1783,7 @@ function clearConversationState(): void {
   historyBeforeMaterializeInFlight = false;
   historyDatesLoading.value = false;
   historyErrorMessage.value = '';
-  recordBrowserSearchVersion += 1;
+  abortRecordBrowserSearch();
   resetRecordBrowserState();
   if (chatSocket) {
     try { chatSocket.close(); } catch {}
@@ -4332,11 +4333,12 @@ function toggleRecordBrowser(): void {
 }
 
 function closeRecordBrowser(): void {
+  abortRecordBrowserSearch();
   recordBrowserOpen.value = false;
 }
 
 function clearRecordBrowserState(): void {
-  recordBrowserSearchVersion += 1;
+  abortRecordBrowserSearch();
   recordBrowserQuery.value = '';
   recordBrowserRoleFilter.value = 'all';
   recordBrowserContentFilter.value = 'all';
@@ -4358,9 +4360,19 @@ function updateRecordBrowserSelectedDay(nextDay: string | null): void {
   }
 }
 
+function abortRecordBrowserSearch(): void {
+  recordBrowserSearchVersion += 1;
+  if (recordBrowserSearchController) {
+    recordBrowserSearchController.abort();
+    recordBrowserSearchController = null;
+  }
+  recordBrowserLoading.value = false;
+}
+
 async function runRecordBrowserSearch(): Promise<void> {
   const sessionKey = selectedSessionKey.value;
   const query = normalizeChatRecordBrowserQuery(recordBrowserQuery.value);
+  abortRecordBrowserSearch();
   const requestVersion = ++recordBrowserSearchVersion;
   if (!sessionKey) {
     return;
@@ -4373,6 +4385,8 @@ async function runRecordBrowserSearch(): Promise<void> {
     return;
   }
   recordBrowserQuery.value = query;
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  recordBrowserSearchController = controller;
   recordBrowserLoading.value = true;
   recordBrowserErrorMessage.value = '';
   try {
@@ -4382,6 +4396,7 @@ async function runRecordBrowserSearch(): Promise<void> {
       content: recordBrowserContentFilter.value,
       day: recordBrowserSelectedDay.value,
       limit: 50,
+      signal: controller?.signal,
     });
     if (selectedSessionKey.value !== sessionKey || recordBrowserSearchVersion !== requestVersion) {
       return;
@@ -4389,6 +4404,9 @@ async function runRecordBrowserSearch(): Promise<void> {
     recordBrowserSetPayload(payload);
     recordBrowserSelectResult(payload.matches[0]?.messageId || null);
   } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
     if (selectedSessionKey.value !== sessionKey || recordBrowserSearchVersion !== requestVersion) {
       return;
     }
@@ -4399,6 +4417,9 @@ async function runRecordBrowserSearch(): Promise<void> {
   } finally {
     if (selectedSessionKey.value === sessionKey && recordBrowserSearchVersion === requestVersion) {
       recordBrowserLoading.value = false;
+    }
+    if (recordBrowserSearchController === controller) {
+      recordBrowserSearchController = null;
     }
   }
 }
@@ -6114,7 +6135,7 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
     historyDays.value = [];
     historyDatesLoadedSessionKey.value = '';
     historyDatesLoading.value = false;
-    recordBrowserSearchVersion += 1;
+    abortRecordBrowserSearch();
     resetRecordBrowserState();
     if (!hasPrimedConversationState) {
       runtimeMachineState.value = resetChatSessionRuntimeMachine(sessionKey);
@@ -6224,6 +6245,7 @@ onBeforeUnmount(() => {
   clearNoticeTimer();
   abortReplaceHistoryRequest();
   abortHistoryDatesRequest();
+  abortRecordBrowserSearch();
   clearHistoryBeforePrefetch();
   clearHistoryAfterPrefetch();
   clearHistoryBeforeMaterializeReleaseTimer();

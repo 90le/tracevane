@@ -31,6 +31,7 @@ test('plugin runtime defaults gateway exposure on when not explicitly configured
 
   assert.equal(config.transport.standalone.enabled, true);
   assert.equal(config.transport.gateway.enabled, true);
+  assert.equal(config.transport.preferredMode, 'standalone');
   assert.equal(config.transport.gateway.basePath, '/studio');
   assert.equal(isStudioGatewayEnabled(config), true);
 });
@@ -46,8 +47,33 @@ test('plugin runtime still allows gateway exposure to be disabled explicitly', (
   });
 
   assert.equal(config.transport.gateway.enabled, false);
+  assert.equal(config.transport.preferredMode, 'standalone');
   assert.equal(config.transport.gateway.basePath, '/nested/studio');
   assert.equal(isStudioGatewayEnabled(config), false);
+});
+
+test('plugin runtime can prefer gateway while preserving standalone 3760 fallback', () => {
+  const config = createStudioConfig(createFakePluginApi(), {
+    apiPort: 3760,
+    autoStart: true,
+    transport: {
+      preferredMode: 'gateway',
+      standalone: {
+        enabled: true,
+        port: 3760,
+      },
+      gateway: {
+        enabled: true,
+        basePath: '/studio',
+      },
+    },
+  });
+
+  assert.equal(config.transport.preferredMode, 'gateway');
+  assert.equal(config.transport.standalone.enabled, true);
+  assert.equal(config.transport.standalone.port, 3760);
+  assert.equal(config.transport.gateway.enabled, true);
+  assert.equal(config.transport.gateway.basePath, '/studio');
 });
 
 test('plugin runtime reads gateway port from openclaw.json when host config snapshot is stale', () => {
@@ -116,4 +142,5 @@ test('standalone-only helper keeps gateway exposure off by default', () => {
 
   assert.equal(config.transport.standalone.enabled, true);
   assert.equal(config.transport.gateway.enabled, false);
+  assert.equal(config.transport.preferredMode, 'standalone');
 });

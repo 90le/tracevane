@@ -105,6 +105,8 @@ test("studio plugin manifest exposes uiHints for grouped plugin config rendering
   assert.equal(studioPluginManifest.id, "studio");
   assert.equal(studioPluginManifest.configSchema.properties.chat.properties.allowHostManagementExecInStudioChat.type, "boolean");
   assert.equal(studioPluginManifest.uiHints.apiPort.label, "API 端口");
+  assert.equal(studioPluginManifest.configSchema.properties.transport.properties.preferredMode.default, "standalone");
+  assert.equal(studioPluginManifest.uiHints["transport.preferredMode"].placeholder, "standalone");
   assert.equal(studioPluginManifest.uiHints["transport.gateway.basePath"].placeholder, "/studio");
   assert.equal(studioPluginManifest.uiHints["chat.allowHostManagementExecInStudioChat"].advanced, true);
   assert.equal(studioPluginManifest.uiHints["transport.gateway.enabled"].groupLabel, "Gateway");

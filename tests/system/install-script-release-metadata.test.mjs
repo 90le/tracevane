@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import {
   injectInstallerDefaultVersion,
@@ -20,6 +21,22 @@ test('parseReleaseMetadata extracts version, package URL, and min host version f
     version: '0.1.21',
     packageUrl: 'https://studio.90le.cn/openclaw-studio-0.1.21.tar.gz',
     minVersion: '2026.4.8',
+  });
+});
+
+test('parseReleaseMetadata accepts alternate min host version shapes', () => {
+  assert.deepEqual(parseReleaseMetadata(`
+    {
+      "latestVersion": "0.1.22",
+      "packageUrl": "/openclaw-studio-0.1.22.tar.gz",
+      "openclaw": {
+        "minHostVersion": "2026.4.9"
+      }
+    }
+  `), {
+    version: '0.1.22',
+    packageUrl: '/openclaw-studio-0.1.22.tar.gz',
+    minVersion: '2026.4.9',
   });
 });
 
@@ -47,4 +64,39 @@ const OPENCLAW_MIN_VERSION = "2026.4.8";
 
   assert.match(rewritten, /const STUDIO_VERSION = "0\.1\.21";/);
   assert.match(rewritten, /const OPENCLAW_MIN_VERSION = "2026\.4\.9";/);
+});
+
+test('installer remains self-contained for remote metadata and gateway keeps 3760 enabled', () => {
+  const installer = fs.readFileSync(new URL('../../install-openclaw-studio.sh', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(installer, /scripts\/studio-release-installer-utils\.mjs/);
+  assert.match(installer, /studioConfig\.transport\.preferredMode = mode;/);
+  assert.match(installer, /studioConfig\.transport\.standalone = \{\s*enabled: true,\s*port: apiPort,\s*\};/);
+  assert.match(installer, /STANDALONE_HEALTH_URL="http:\/\/127\.0\.0\.1:\$\{STUDIO_API_PORT\}\/api\/system\/health"/);
+});
+
+test('pack script syncs landing page versions and includes the current App.vue source snapshot', () => {
+  const packScript = fs.readFileSync(new URL('../../pack.sh', import.meta.url), 'utf8');
+
+  assert.match(packScript, /同步 package\/workspace 版本/);
+  assert.match(packScript, /apps\/api\/package\.json/);
+  assert.match(packScript, /apps\/web-vue\/package\.json/);
+  assert.match(packScript, /package-lock\.json/);
+  assert.match(packScript, /STUDIO_VERSION_FALLBACK/);
+  assert.match(packScript, /STUDIO_PACKAGE_VERSION_FALLBACK/);
+  assert.match(packScript, /install-openclaw-studio\.sh/);
+  assert.match(packScript, /rewrite-landing-version/);
+  assert.match(packScript, /cp "\$\{LANDING_PAGE_PATH\}" "\$\{ROOT_LANDING_PATH\}"/);
+  assert.match(packScript, /cp "\$\{APP_VUE_SOURCE_PATH\}" "\$\{PACKAGE_DIR\}\/apps\/web-vue\/src\/App\.vue"/);
+  assert.match(packScript, /release-build\.json/);
+});
+
+test('local source fallback versions stay aligned with package.json for dev debugging', () => {
+  const rootPackage = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  const version = rootPackage.version;
+  const apiConfig = fs.readFileSync(new URL('../../apps/api/config.ts', import.meta.url), 'utf8');
+  const viteConfig = fs.readFileSync(new URL('../../apps/web-vue/vite.config.ts', import.meta.url), 'utf8');
+
+  assert.match(apiConfig, new RegExp(`const STUDIO_VERSION_FALLBACK = '${version.replace(/\./g, '\\.')}'`));
+  assert.match(viteConfig, new RegExp(`const STUDIO_PACKAGE_VERSION_FALLBACK = '${version.replace(/\./g, '\\.')}'`));
 });

@@ -16,6 +16,7 @@ export interface StudioGatewayTransportConfig {
 }
 
 export interface StudioTransportConfig {
+  preferredMode?: StudioExposureKind;
   standalone: StudioStandaloneTransportConfig;
   gateway: StudioGatewayTransportConfig;
 }

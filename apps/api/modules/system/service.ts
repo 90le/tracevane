@@ -311,8 +311,19 @@ function resolveConfiguredStudioMode(config: StudioServerConfig): {
       : {};
   const gatewayEnabled = gateway.enabled === true;
   const standaloneEnabled = standalone.enabled !== false;
+  const preferredMode = normalizeString(
+    transport.preferredMode ||
+      studioConfig?.preferredMode ||
+      studioConfig?.mode,
+  ).toLowerCase();
   const mode: "standalone" | "gateway" =
-    gatewayEnabled && !standaloneEnabled ? "gateway" : "standalone";
+    preferredMode === "gateway" && gatewayEnabled
+      ? "gateway"
+      : preferredMode === "standalone"
+        ? "standalone"
+        : gatewayEnabled && !standaloneEnabled
+          ? "gateway"
+          : "standalone";
   const apiPort = Number(
     studioConfig?.apiPort || standalone.port || config.port,
   );
@@ -1149,6 +1160,11 @@ export function createSystemService(
           gatewayWsUrl: config.gatewayWsUrl,
           gatewayControlUiBasePath: config.gatewayControlUiBasePath,
           transport: {
+            preferredMode:
+              config.transport.preferredMode ||
+              (config.transport.gateway.enabled && !config.transport.standalone.enabled
+                ? "gateway"
+                : "standalone"),
             standalone: {
               enabled: config.transport.standalone.enabled,
               port: config.transport.standalone.port,

@@ -24,6 +24,15 @@
         "type": "object",
         "description": "Studio 暴露模式配置。默认同时保留 standalone 和 gateway 单口入口；只有显式关闭时才禁用对应入口。",
         "properties": {
+          "preferredMode": {
+            "type": "string",
+            "enum": [
+              "standalone",
+              "gateway"
+            ],
+            "default": "standalone",
+            "description": "Studio UI 优先展示和升级时继承的主入口模式"
+          },
           "standalone": {
             "type": "object",
             "properties": {
@@ -91,6 +100,12 @@
       "label": "暴露模式",
       "help": "管理 standalone 和 gateway 两种入口。",
       "order": 40
+    },
+    "transport.preferredMode": {
+      "label": "首选入口",
+      "help": "影响系统摘要展示和一键升级默认模式；gateway 模式仍会保留 3760 standalone 回退入口。",
+      "placeholder": "standalone",
+      "order": 5
     },
     "transport.standalone.enabled": {
       "label": "启用 Standalone",

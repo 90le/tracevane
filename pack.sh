@@ -5,21 +5,95 @@
 
 set -euo pipefail
 
-VERSION=${1:-$(node -p "require('./package.json').version")}
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VERSION=${1:-$(node -p "require(process.argv[1]).version" "${SCRIPT_DIR}/package.json")}
 OUTPUT_DIR="${SCRIPT_DIR}/release"
 PACKAGE_NAME="openclaw-studio-${VERSION}"
 PACKAGE_DIR="${OUTPUT_DIR}/${PACKAGE_NAME}"
 ROOT_INSTALLER_PATH="${OUTPUT_DIR}/install-openclaw-studio.sh"
+ROOT_LANDING_PATH="${OUTPUT_DIR}/index.html"
+LANDING_PAGE_PATH="${SCRIPT_DIR}/index.html"
+APP_VUE_SOURCE_PATH="${SCRIPT_DIR}/apps/web-vue/src/App.vue"
 OPENCLAW_TARGET_VERSION="$(
-  node -e "const fs=require('node:fs');const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));const raw=String(pkg?.openclaw?.install?.minHostVersion||'2026.4.8');const match=raw.match(/[0-9]+(?:\\.[0-9A-Za-z-]+)+/g);console.log(match?match[match.length-1]:'2026.4.8');"
+  node - "${SCRIPT_DIR}/package.json" <<'NODE'
+const fs = require('node:fs');
+const pkg = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const raw = String(pkg?.openclaw?.install?.minHostVersion || '2026.4.8');
+const match = raw.match(/[0-9]+(?:\.[0-9A-Za-z-]+)+/g);
+console.log(match ? match[match.length - 1] : '2026.4.8');
+NODE
 )"
 
 echo "=== OpenClaw Studio 打包脚本 ==="
 echo "版本: ${VERSION}"
 echo "输出目录: ${OUTPUT_DIR}"
 echo ""
+
+echo "[0.2/6] 同步 package/workspace 版本..."
+node - "${SCRIPT_DIR}" "${VERSION}" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+
+const scriptDir = process.argv[2];
+const version = process.argv[3];
+const packageFiles = [
+  'package.json',
+  'apps/api/package.json',
+  'apps/web-vue/package.json',
+];
+
+for (const relativePath of packageFiles) {
+  const filePath = path.join(scriptDir, relativePath);
+  if (!fs.existsSync(filePath)) continue;
+  const payload = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  payload.version = version;
+  fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+const lockPath = path.join(scriptDir, 'package-lock.json');
+if (fs.existsSync(lockPath)) {
+  const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+  lock.version = version;
+  for (const packageKey of ['', 'apps/api', 'apps/web-vue']) {
+    if (lock.packages?.[packageKey]) {
+      lock.packages[packageKey].version = version;
+    }
+  }
+  fs.writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`, 'utf8');
+}
+
+function rewriteTextFile(relativePath, replacements) {
+  const filePath = path.join(scriptDir, relativePath);
+  if (!fs.existsSync(filePath)) return;
+  let source = fs.readFileSync(filePath, 'utf8');
+  for (const [pattern, replacement] of replacements) {
+    if (!pattern.test(source)) {
+      throw new Error(`version marker not found in ${relativePath}: ${pattern}`);
+    }
+    source = source.replace(pattern, replacement);
+  }
+  fs.writeFileSync(filePath, source, 'utf8');
+}
+
+rewriteTextFile('apps/api/config.ts', [
+  [/const STUDIO_VERSION_FALLBACK = '[^']+';/, `const STUDIO_VERSION_FALLBACK = '${version}';`],
+]);
+rewriteTextFile('apps/web-vue/vite.config.ts', [
+  [/const STUDIO_PACKAGE_VERSION_FALLBACK = '[^']+';/, `const STUDIO_PACKAGE_VERSION_FALLBACK = '${version}';`],
+]);
+NODE
+
+echo "[0.4/6] 同步本地 installer 默认版本..."
+node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-installer-version \
+  "${VERSION}" \
+  "${OPENCLAW_TARGET_VERSION}" \
+  "${SCRIPT_DIR}/install-openclaw-studio.sh"
+
+echo "[0.5/6] 同步站点安装页版本..."
+node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-landing-version \
+  "${VERSION}" \
+  "${OPENCLAW_TARGET_VERSION}" \
+  "${LANDING_PAGE_PATH}"
 
 echo "[1/6] 构建 API..."
 cd "${SCRIPT_DIR}"
@@ -35,6 +109,8 @@ mkdir -p "${PACKAGE_DIR}/apps/web-vue"
 echo "[4/6] 复制构建产物..."
 cp -r "${SCRIPT_DIR}/dist" "${PACKAGE_DIR}/"
 cp -r "${SCRIPT_DIR}/apps/web-vue/dist" "${PACKAGE_DIR}/apps/web-vue/"
+mkdir -p "${PACKAGE_DIR}/apps/web-vue/src"
+cp "${APP_VUE_SOURCE_PATH}" "${PACKAGE_DIR}/apps/web-vue/src/App.vue"
 
 echo "[5/6] 复制元数据..."
 cp "${SCRIPT_DIR}/package.json" "${PACKAGE_DIR}/"
@@ -42,6 +118,7 @@ cp "${SCRIPT_DIR}/openclaw.plugin.json" "${PACKAGE_DIR}/"
 cp "${SCRIPT_DIR}/DEPLOY.md" "${PACKAGE_DIR}/"
 cp "${SCRIPT_DIR}/install-openclaw-studio.sh" "${PACKAGE_DIR}/"
 cp "${SCRIPT_DIR}/install-openclaw-studio.sh" "${ROOT_INSTALLER_PATH}"
+cp "${LANDING_PAGE_PATH}" "${ROOT_LANDING_PATH}"
 
 echo "[5.2/6] 同步 installer 默认版本..."
 node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-installer-version \
@@ -76,6 +153,32 @@ fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 manifest.version = version;
 fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+NODE
+
+echo "[5.6/6] 记录发布源码快照..."
+node - "${PACKAGE_DIR}" "${VERSION}" "${OPENCLAW_TARGET_VERSION}" "${APP_VUE_SOURCE_PATH}" <<'NODE'
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const packageDir = process.argv[2];
+const version = process.argv[3];
+const targetVersion = process.argv[4];
+const appVuePath = process.argv[5];
+const appVue = fs.readFileSync(appVuePath);
+const payload = {
+  version,
+  minOpenClawVersion: targetVersion,
+  builtAt: new Date().toISOString(),
+  sourceSnapshot: {
+    appVue: {
+      path: 'apps/web-vue/src/App.vue',
+      sha256: crypto.createHash('sha256').update(appVue).digest('hex'),
+      bytes: appVue.length,
+    },
+  },
+};
+fs.writeFileSync(path.join(packageDir, 'release-build.json'), `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 NODE
 
 echo "[6/6] 生成安装脚本..."

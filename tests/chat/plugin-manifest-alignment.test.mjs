@@ -14,7 +14,7 @@ const docs = fs.readFileSync(path.join(root, 'docs', 'chat-official-parity.md'),
 test('package.json keeps official host install metadata authoritative', () => {
   assert.equal(packageJson.openclaw?.id, 'studio');
   assert.deepEqual(packageJson.openclaw?.extensions, ['./index.ts']);
-  assert.equal(packageJson.openclaw?.install?.minHostVersion, '>=2026.3.23');
+  assert.equal(packageJson.openclaw?.install?.minHostVersion, '>=2026.4.8');
 });
 
 test('openclaw.plugin.json no longer carries host install/runtime entry semantics', () => {

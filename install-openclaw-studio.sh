@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STUDIO_DEFAULT_VERSION="${STUDIO_DEFAULT_VERSION:-0.1.21}"
+STUDIO_DEFAULT_VERSION="${STUDIO_DEFAULT_VERSION:-0.1.23}"
 VERSION_EXPLICIT=0
 PACKAGE_URL_EXPLICIT=0
 GATEWAY_BIND_EXPLICIT=0
@@ -98,6 +98,9 @@ OpenClaw Studio 一键安装脚本
   bash install-openclaw-studio.sh --mode gateway
   chmod +x ./install-openclaw-studio.sh
   ./install-openclaw-studio.sh --mode gateway
+
+说明:
+  gateway 单口模式会挂载到 OpenClaw Gateway 的 /studio，同时保留本机 3760 standalone 入口用于健康检查和回退。
 
 选项:
   --mode <standalone|gateway>   安装模式，默认 standalone
@@ -197,8 +200,40 @@ resolve_remote_release_metadata() {
       continue
     fi
     if ! parsed="$(
-      STUDIO_RELEASE_METADATA="${manifest_body}" \
-        node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" parse-metadata
+      STUDIO_RELEASE_METADATA="${manifest_body}" node - <<'NODE'
+const raw = process.env.STUDIO_RELEASE_METADATA || '';
+let parsed;
+try {
+  parsed = JSON.parse(raw);
+} catch {
+  process.exit(1);
+}
+const record = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+  ? parsed
+  : {};
+const version = typeof record.version === 'string'
+  ? record.version.trim()
+  : typeof record.latestVersion === 'string'
+    ? record.latestVersion.trim()
+    : '';
+if (!version) {
+  process.exit(1);
+}
+const openclaw = record.openclaw && typeof record.openclaw === 'object'
+  ? record.openclaw
+  : {};
+const minVersion = typeof record.minOpenClawVersion === 'string'
+  ? record.minOpenClawVersion.trim()
+  : typeof record.minHostVersion === 'string'
+    ? record.minHostVersion.trim()
+    : typeof openclaw.minHostVersion === 'string'
+      ? openclaw.minHostVersion.trim()
+      : '';
+const packageUrl = typeof record.packageUrl === 'string'
+  ? record.packageUrl.trim()
+  : '';
+process.stdout.write([version, packageUrl, minVersion].join('\t'));
+NODE
     )"; then
       continue
     fi
@@ -423,6 +458,9 @@ fi
 log "当前 OpenClaw 版本: ${CURRENT_OPENCLAW_VERSION}"
 log "目标 Studio 版本: ${STUDIO_VERSION}"
 log "安装模式: ${STUDIO_MODE}"
+if [[ "${STUDIO_MODE}" == "gateway" ]]; then
+  log "单口模式会同时保留本机 standalone 入口: http://127.0.0.1:${STUDIO_API_PORT}/"
+fi
 
 if version_lt "${CURRENT_OPENCLAW_VERSION}" "${OPENCLAW_MIN_VERSION}"; then
   if [[ "${SKIP_UPGRADE}" -eq 1 ]]; then
@@ -648,8 +686,9 @@ const studioConfig = ensureObject(studioEntry, 'config');
 studioConfig.autoStart = true;
 studioConfig.apiPort = apiPort;
 studioConfig.transport = studioConfig.transport && typeof studioConfig.transport === 'object' ? studioConfig.transport : {};
+studioConfig.transport.preferredMode = mode;
 studioConfig.transport.standalone = {
-  enabled: mode === 'standalone',
+  enabled: true,
   port: apiPort,
 };
 studioConfig.transport.gateway = {
@@ -824,12 +863,29 @@ fi
 
 sleep 2
 
+probe_health() {
+  local url="$1"
+  local attempts="${2:-20}"
+  local delay_seconds="${3:-2}"
+  local body=""
+  for _ in $(seq 1 "${attempts}"); do
+    if body="$(http_get "${url}" 2>/dev/null)"; then
+      printf '%s' "${body}"
+      return 0
+    fi
+    sleep "${delay_seconds}"
+  done
+  return 1
+}
+
 if [[ "${STUDIO_MODE}" == "standalone" ]]; then
   HEALTH_URL="http://127.0.0.1:${STUDIO_API_PORT}/api/system/health"
   ACCESS_URL="http://HOST:${STUDIO_API_PORT}/"
+  STANDALONE_HEALTH_URL=""
 else
   HEALTH_URL="http://127.0.0.1:${GATEWAY_PORT}${STUDIO_GATEWAY_BASE_PATH}/api/system/health"
   ACCESS_URL="http://HOST:${GATEWAY_PORT}${STUDIO_GATEWAY_BASE_PATH}/"
+  STANDALONE_HEALTH_URL="http://127.0.0.1:${STUDIO_API_PORT}/api/system/health"
   if [[ "${GATEWAY_AUTH_MODE}" == "token" && -n "${GATEWAY_TOKEN}" ]]; then
     HEALTH_URL="${HEALTH_URL}?token=${GATEWAY_TOKEN}"
     ACCESS_URL="${ACCESS_URL}?token=${GATEWAY_TOKEN}"
@@ -839,13 +895,18 @@ fi
 log "执行健康检查: ${HEALTH_URL}"
 HEALTH_OK=0
 HEALTH_BODY=""
-for _ in $(seq 1 20); do
-  if HEALTH_BODY="$(http_get "${HEALTH_URL}" 2>/dev/null)"; then
-    HEALTH_OK=1
-    break
+if HEALTH_BODY="$(probe_health "${HEALTH_URL}")"; then
+  HEALTH_OK=1
+fi
+
+STANDALONE_HEALTH_OK=0
+STANDALONE_HEALTH_BODY=""
+if [[ -n "${STANDALONE_HEALTH_URL}" ]]; then
+  log "执行 3760 回退入口健康检查: ${STANDALONE_HEALTH_URL}"
+  if STANDALONE_HEALTH_BODY="$(probe_health "${STANDALONE_HEALTH_URL}" 8 2)"; then
+    STANDALONE_HEALTH_OK=1
   fi
-  sleep 2
-done
+fi
 
 printf '\n'
 printf '=== OpenClaw Studio 安装完成 ===\n'
@@ -859,6 +920,7 @@ if [[ "${STUDIO_MODE}" == "standalone" ]]; then
 else
   printf 'Gateway 端口: %s\n' "${GATEWAY_PORT}"
   printf 'Gateway Base Path: %s\n' "${STUDIO_GATEWAY_BASE_PATH}"
+  printf 'Standalone 回退端口: %s\n' "${STUDIO_API_PORT}"
 fi
 printf '访问地址: %s\n' "${ACCESS_URL}"
 printf '健康检查: %s\n' "$([[ "${HEALTH_OK}" -eq 1 ]] && printf '成功' || printf '失败')"
@@ -866,5 +928,13 @@ if [[ "${HEALTH_OK}" -eq 1 ]]; then
   printf '健康检查响应: %s\n' "${HEALTH_BODY}"
 else
   warn "健康检查未通过，请手工执行: openclaw gateway health 或通过浏览器访问 ${HEALTH_URL}"
+fi
+if [[ -n "${STANDALONE_HEALTH_URL}" ]]; then
+  printf '3760 回退健康检查: %s\n' "$([[ "${STANDALONE_HEALTH_OK}" -eq 1 ]] && printf '成功' || printf '失败')"
+  if [[ "${STANDALONE_HEALTH_OK}" -eq 1 ]]; then
+    printf '3760 健康检查响应: %s\n' "${STANDALONE_HEALTH_BODY}"
+  else
+    warn "3760 回退入口健康检查未通过，请确认 Studio standalone transport 已启用: ${STANDALONE_HEALTH_URL}"
+  fi
 fi
 trap - ERR

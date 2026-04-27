@@ -663,14 +663,14 @@ test("composer, picker, and queue utilities keep the flatter control language", 
 
 test("conversation utility pills and live preview chrome avoid oversized capsules", () => {
   assert.match(conversationPane, /DialogRoot/);
-  assert.match(conversationPane, /triggerMenuAction\('toggle-tool-previews'\)/);
-  assert.match(
-    conversationPane,
-    /triggerMenuAction\('toggle-thinking-blocks'\)/,
-  );
-  assert.match(conversationPane, /triggerMenuAction\('refresh-session'\)/);
-  assert.match(conversationPane, /triggerMenuAction\('open-record-browser'\)/);
-  assert.match(conversationPane, /toggleHostManagementExecFromMenu/);
+  assert.match(conversationPane, /@click="\$emit\('toggle-tool-previews'\)"/);
+  assert.match(conversationPane, /@click="\$emit\('toggle-thinking-blocks'\)"/);
+  assert.match(conversationPane, /@click="\$emit\('refresh-session'\)"/);
+  assert.match(conversationPane, /@click="\$emit\('open-record-browser'\)"/);
+  assert.doesNotMatch(conversationPane, /triggerMenuAction\('toggle-tool-previews'\)/);
+  assert.doesNotMatch(conversationPane, /triggerMenuAction\('toggle-thinking-blocks'\)/);
+  assert.doesNotMatch(conversationPane, /triggerMenuAction\('refresh-session'\)/);
+  assert.doesNotMatch(conversationPane, /toggleHostManagementExecFromMenu/);
   assert.match(
     conversationPane,
     /\.chat-rendering-settings-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-rendering-settings-mask-in 0\.2s ease;/,
@@ -1004,6 +1004,7 @@ test("chat shell defers the root-route history window and loads date buckets on 
   assert.match(chatShellPage, /let deferredInitialHistoryLoadTimer: number \| null = null;/);
   assert.match(chatShellPage, /let historyReplaceRequestController: AbortController \| null = null;/);
   assert.match(chatShellPage, /let historyDatesRequestController: AbortController \| null = null;/);
+  assert.match(chatShellPage, /let recordBrowserSearchController: AbortController \| null = null;/);
   assert.match(chatShellPage, /let historyBeforePrefetchController: AbortController \| null = null;/);
   assert.match(chatShellPage, /let historyBeforePrefetchTimer: number \| null = null;/);
   assert.match(chatShellPage, /let historyBeforePrefetchIdleHandle: number \| null = null;/);
@@ -1050,6 +1051,8 @@ test("chat shell defers the root-route history window and loads date buckets on 
   );
   assert.match(chatShellPage, /async function ensureSessionDatesLoaded\(sessionKey: string, force = false\): Promise<void> \{/);
   assert.match(chatShellPage, /if \(nextOpen && !historyDatesLoading\.value\) \{[\s\S]*ensureSessionDatesLoaded\(selectedSession\.value\.key\);/);
+  assert.match(chatShellPage, /function abortRecordBrowserSearch\(\): void \{[\s\S]*recordBrowserSearchController\.abort\(\);/);
+  assert.match(chatShellPage, /async function runRecordBrowserSearch\(\): Promise<void> \{[\s\S]*abortRecordBrowserSearch\(\);[\s\S]*signal: controller\?\.signal,/);
   assert.doesNotMatch(chatShellPage, /await loadSessionDates\(sessionKey\);/);
   assert.match(chatShellPage, /let prefetchedPayload = readMatchedHistoryBeforePrefetchPayload\(prefetchKey\);/);
   assert.match(chatShellPage, /if \(!prefetchedPayload\) \{\s*clearHistoryBeforePrefetch\(\);\s*\}/);

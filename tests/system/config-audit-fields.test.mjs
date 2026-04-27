@@ -26,6 +26,7 @@ test("config audit whitelist includes core transport and device trust paths", ()
     CONFIG_AUDIT_WHITELIST_FIELDS.map((entry) => entry.path),
   );
 
+  assert.equal(paths.has("transport.preferredMode"), true);
   assert.equal(paths.has("transport.standalone.enabled"), true);
   assert.equal(paths.has("transport.standalone.port"), true);
   assert.equal(paths.has("transport.gateway.enabled"), true);

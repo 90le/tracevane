@@ -289,10 +289,13 @@ export function createDashboardService(
         ? legacyDeviceTrust.pendingRequests.length
         : 0;
     const transportMode: "standalone" | "gateway" =
-      options.config.transport.gateway.enabled &&
-      !options.config.transport.standalone.enabled
+      options.config.transport.preferredMode === "gateway" &&
+      options.config.transport.gateway.enabled
         ? "gateway"
-        : "standalone";
+        : options.config.transport.gateway.enabled &&
+            !options.config.transport.standalone.enabled
+          ? "gateway"
+          : "standalone";
     const bootstrapErrors = bootstrap.checks.filter(
       (check) => check.level === "error",
     ).length;

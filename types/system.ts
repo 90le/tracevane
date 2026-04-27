@@ -187,6 +187,7 @@ export interface SystemDiagnosticsPayload {
     gatewayWsUrl: string;
     gatewayControlUiBasePath: string;
     transport: {
+      preferredMode: "standalone" | "gateway";
       standalone: {
         enabled: boolean;
         port: number;

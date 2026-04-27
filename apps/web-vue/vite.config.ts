@@ -17,13 +17,14 @@ const studioWebPort = normalizePort(process.env.STUDIO_WEB_PORT, 5176);
 const studioBasePath = process.env.STUDIO_BASE_PATH || '';
 const webConfigDir = path.dirname(fileURLToPath(import.meta.url));
 const studioRootDir = path.resolve(webConfigDir, '..', '..');
+const STUDIO_PACKAGE_VERSION_FALLBACK = '0.1.23';
 const studioPackageVersion = (() => {
   try {
     const raw = fs.readFileSync(path.join(studioRootDir, 'package.json'), 'utf-8');
     const parsed = JSON.parse(raw) as { version?: unknown };
-    return typeof parsed.version === 'string' && parsed.version.trim() ? parsed.version.trim() : '0.1.21';
+    return typeof parsed.version === 'string' && parsed.version.trim() ? parsed.version.trim() : STUDIO_PACKAGE_VERSION_FALLBACK;
   } catch {
-    return '0.1.21';
+    return STUDIO_PACKAGE_VERSION_FALLBACK;
   }
 })();
 
