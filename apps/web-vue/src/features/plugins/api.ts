@@ -28,7 +28,7 @@ export function savePluginsConfig(
   payload: Partial<NonNullable<ConfigSummaryPayload["plugins"]>>,
 ): Promise<ConfigSummaryPayload> {
   return requestJson<ConfigSummaryPayload>("/api/config", {
-    method: "PUT",
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ plugins: payload }),
   });

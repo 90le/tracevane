@@ -2,6 +2,7 @@ import { requestJson } from "../../shared/api";
 import type { ChannelsSummaryPayload } from "../../../../../types/channels";
 import type {
   ConfigChannelSecretPayload,
+  ConfigPatchPayload,
   ConfigProviderSecretPayload,
   ConfigSaveResponse,
   ConfigSummaryPayload,
@@ -21,6 +22,18 @@ export function saveConfig(
 ): Promise<ConfigSaveResponse> {
   return requestJson<ConfigSaveResponse>("/api/config", {
     method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchConfig(
+  payload: ConfigPatchPayload,
+): Promise<ConfigSaveResponse> {
+  return requestJson<ConfigSaveResponse>("/api/config", {
+    method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },

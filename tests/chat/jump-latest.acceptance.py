@@ -3,6 +3,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import json
 import os
+import sqlite3
 
 
 SESSION_KEY = os.environ.get("CHAT_HEAVY_SESSION_KEY", "").strip()
@@ -31,6 +32,48 @@ def wait_for_chat_thread_ready(page) -> None:
     )
 
 
+def discover_heavy_session_key() -> str:
+    root = Path(os.environ.get("OPENCLAW_ROOT", str(Path.home() / ".openclaw")))
+    sqlite_path = root / "studio" / "chat.sqlite"
+    if not sqlite_path.exists():
+        return ""
+
+    conn = sqlite3.connect(str(sqlite_path))
+    try:
+        rows = conn.execute(
+            """
+            SELECT session_key, COUNT(*) AS message_count
+            FROM mirror_messages
+            GROUP BY session_key
+            ORDER BY message_count DESC
+            LIMIT 40
+            """
+        ).fetchall()
+        for session_key, message_count in rows:
+            if not session_key or int(message_count or 0) < 50:
+                continue
+            session_row = conn.execute(
+                "SELECT payload_json FROM session_rows WHERE session_key = ? LIMIT 1",
+                (session_key,),
+            ).fetchone()
+            if not session_row:
+                return str(session_key)
+            try:
+                payload = json.loads(session_row[0])
+            except Exception:
+                payload = {}
+            if payload.get("kind") != "studio_managed":
+                continue
+            permissions = payload.get("permissions") or {}
+            presentation = payload.get("presentation") or {}
+            if permissions.get("visibleInFrontend") is False or presentation.get("archived") is True:
+                continue
+            return str(session_key)
+    finally:
+        conn.close()
+    return ""
+
+
 def read_thread_state(page, label: str):
     return page.evaluate("""(label) => {
       const thread = document.querySelector('.chat-conversation-thread');
@@ -52,14 +95,15 @@ def read_thread_state(page, label: str):
 
 
 def main() -> None:
-    if not SESSION_KEY:
+    session_key = SESSION_KEY or discover_heavy_session_key()
+    if not session_key:
         print(json.dumps({
             "skipped": True,
-            "reason": "CHAT_HEAVY_SESSION_KEY is required for jump latest smoke",
+            "reason": "No heavy visible session was found and CHAT_HEAVY_SESSION_KEY is not set",
         }, ensure_ascii=False, indent=2))
         return
 
-    result = {"sessionKey": SESSION_KEY}
+    result = {"sessionKey": session_key}
     responses = []
     console_errors = []
 
@@ -70,7 +114,7 @@ def main() -> None:
         page.on("response", lambda resp: responses.append(resp.url) if "/api/chat/sessions/" in resp.url and "/history?" in resp.url else None)
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
-        session_ref = encode_session_ref(SESSION_KEY)
+        session_ref = encode_session_ref(session_key)
         page.goto(f"http://127.0.0.1:5176/chat/s/{session_ref}", wait_until="domcontentloaded")
         wait_for_chat_thread_ready(page)
         page.wait_for_timeout(2500)

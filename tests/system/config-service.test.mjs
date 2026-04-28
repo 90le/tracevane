@@ -1075,3 +1075,81 @@ test("config save persists and applies the global Studio host-management exec sw
   );
   assert.equal(getStudioChatGlobalHostManagementExecEnabled(), true);
 });
+
+test("config patch accepts sparse plugin payloads without dropping unrelated plugin config", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    models: {
+      providers: {
+        demo: {
+          api: "openai-responses",
+          baseUrl: "https://demo.example/v1",
+          apiKey: "secret-demo",
+          models: [{ id: "demo-model", name: "Demo Model" }],
+        },
+      },
+    },
+    plugins: {
+      enabled: true,
+      allow: ["studio", "alpha"],
+      deny: ["unsafe-plugin"],
+      load: {
+        paths: ["/opt/openclaw/extensions"],
+      },
+      entries: {
+        studio: {
+          enabled: true,
+          config: {
+            chat: {
+              allowHostManagementExecInStudioChat: false,
+            },
+            existingFlag: "keep-me",
+          },
+        },
+        alpha: {
+          enabled: true,
+          config: {
+            nested: {
+              value: 42,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  resetStudioChatManagementPolicyState();
+  const service = createConfigService(config);
+  const response = service.patchConfig({
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            chat: {
+              allowHostManagementExecInStudioChat: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+  assert.equal(response.success, true);
+  assert.equal(
+    nextConfig.plugins.entries.studio.config.chat
+      .allowHostManagementExecInStudioChat,
+    true,
+  );
+  assert.equal(nextConfig.plugins.entries.studio.config.existingFlag, "keep-me");
+  assert.deepEqual(nextConfig.plugins.entries.alpha.config.nested, {
+    value: 42,
+  });
+  assert.deepEqual(nextConfig.plugins.allow, ["studio", "alpha"]);
+  assert.deepEqual(nextConfig.plugins.load.paths, ["/opt/openclaw/extensions"]);
+  assert.equal(nextConfig.models.providers.demo.apiKey, "secret-demo");
+  assert.equal(getStudioChatGlobalHostManagementExecEnabled(), true);
+});

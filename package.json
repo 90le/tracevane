@@ -44,6 +44,8 @@
     "smoke:chat:fresh-tool": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/fresh-tool.acceptance.py",
     "smoke:chat:host-exec": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/host-exec.acceptance.py",
     "smoke:chat:im": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/chat-im.acceptance.py",
+    "smoke:chat:matrix": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/smoke-matrix.py --profile core",
+    "smoke:chat:matrix:full": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/smoke-matrix.py --profile full",
     "smoke:chat:surface": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/surface.acceptance.py",
     "test:chat": "npm run build:api && node --test tests/chat/*.test.mjs && npm run test:chat:web",
     "test:system": "npm run build:api && node --test tests/system/*.test.mjs",

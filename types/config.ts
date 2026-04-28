@@ -393,6 +393,8 @@ export interface ConfigUpdatePayload {
   logging?: Partial<ConfigSummaryPayload['logging']>;
 }
 
+export type ConfigPatchPayload = Partial<ConfigUpdatePayload>;
+
 export interface ConfigSaveResponse {
   success: boolean;
   message: string;

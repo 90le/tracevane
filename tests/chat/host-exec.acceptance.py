@@ -23,27 +23,8 @@ def api_json(path, method="GET", payload=None):
         return json.loads(response.read().decode("utf-8"))
 
 
-def build_config_payload(summary, enabled):
+def build_config_payload(enabled):
     return {
-        "defaults": summary["defaults"],
-        "compaction": summary["compaction"],
-        "sandbox": summary["sandbox"],
-        "tools": summary["tools"],
-        "execApprovals": {
-            "defaults": summary["execApprovals"]["defaults"],
-            "agents": summary["execApprovals"]["agents"],
-        },
-        "session": summary["session"],
-        "messages": summary["messages"],
-        "providers": [
-            {
-                "id": provider["id"],
-                "api": provider.get("api"),
-                "baseUrl": provider.get("baseUrl"),
-                "models": provider.get("models") or [],
-            }
-            for provider in summary.get("providers", [])
-        ],
         "plugins": {
             "entries": {
                 "studio": {
@@ -70,8 +51,7 @@ def read_global_host_exec(summary):
 
 
 def set_global_host_exec(enabled):
-    summary = api_json("/api/config")
-    api_json("/api/config", method="PUT", payload=build_config_payload(summary, enabled))
+    api_json("/api/config", method="PATCH", payload=build_config_payload(enabled))
 
 
 def wait_button_enabled(locator, timeout=30000):

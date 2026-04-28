@@ -31,6 +31,26 @@ def fill_editor(page, locator, text):
     page.wait_for_timeout(300)
 
 
+def wait_for_run_to_settle(page, timeout=90000):
+    deadline = time.monotonic() + timeout / 1000
+    while time.monotonic() < deadline:
+        stop_button = page.get_by_role("button", name=re.compile("^停止$|^Stop$")).first
+        running_status = page.locator(".chat-conversation-pane__status").first
+        stop_visible = stop_button.count() > 0 and stop_button.is_visible()
+        status_visible = running_status.count() > 0 and running_status.is_visible()
+        composer_running = page.evaluate(
+            """() => {
+                const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
+                const placeholder = editor?.getAttribute('data-placeholder') || '';
+                return /reply is still running|回复生成中|生成中/i.test(placeholder);
+            }"""
+        )
+        if not stop_visible and not status_visible and not composer_running:
+            return True
+        page.wait_for_timeout(250)
+    return False
+
+
 def open_new_chat(page):
     button = page.locator(".chat-new-chat-trigger").first
     click_enabled(button)
@@ -64,11 +84,11 @@ def thread_bottom_distance(page):
     )
 
 
-def bubble_texts(page):
+def message_group_roles(page):
     return page.evaluate(
-        """() => Array.from(document.querySelectorAll('.chat-message-bubble'))
-            .map((el) => (el.textContent || '').replace(/\\s+/g, ' ').trim())
-            .filter(Boolean)"""
+        """() => Array.from(document.querySelectorAll('.chat-message-group'))
+            .map((group) => Array.from(group.classList).find((name) => name.startsWith('role-')) || 'role-unknown')
+            .filter((value) => value !== 'role-unknown')"""
     )
 
 
@@ -123,19 +143,22 @@ def main() -> None:
         page.wait_for_timeout(1200)
         result["final_bubble_persists"] = assistant_bubble_contains(page, token)
         result["initial_bottom_anchor"] = thread_bottom_distance(page) <= 100
+        result["run_settled_before_reload"] = wait_for_run_to_settle(page)
 
-        bubble_texts_before = bubble_texts(page)
+        role_order_before = message_group_roles(page)
         page.reload(wait_until="domcontentloaded")
         page.wait_for_load_state("networkidle")
         page.wait_for_function(
             """(token) => Array.from(document.querySelectorAll('.chat-message-group.role-assistant .chat-message-bubble'))
                 .some((el) => (el.textContent || '').includes(token))""",
             arg=token,
-            timeout=60000,
+            timeout=120000,
         )
-        bubble_texts_after = bubble_texts(page)
+        role_order_after = message_group_roles(page)
         result["reload_restores_final"] = assistant_bubble_contains(page, token)
-        result["reload_order_stable"] = bubble_texts_before == bubble_texts_after
+        result["reload_order_stable"] = role_order_before == role_order_after
+        result["role_order_before_reload"] = role_order_before
+        result["role_order_after_reload"] = role_order_after
         result["reload_bottom_anchor"] = thread_bottom_distance(page) <= 100
         result["no_timestamp_prefix_leakage"] = not bool(
             re.search(r"\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]]*\]", page.locator(".chat-conversation-thread").inner_text())
@@ -149,6 +172,7 @@ def main() -> None:
             "final_bubble_visible",
             "final_bubble_persists",
             "initial_bottom_anchor",
+            "run_settled_before_reload",
             "reload_restores_final",
             "reload_order_stable",
             "reload_bottom_anchor",

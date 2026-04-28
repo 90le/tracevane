@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import type {
+  ConfigPatchPayload,
   ConfigProviderInput,
   ConfigProviderModelSummary,
   ConfigProviderSecretPayload,
@@ -2537,6 +2538,54 @@ function applyConfigUpdate(
   return openclawConfig;
 }
 
+function buildConfigUpdatePayloadFromSummary(
+  summary: ConfigSummaryPayload,
+): ConfigUpdatePayload {
+  return {
+    defaults: cloneJsonObject(
+      summary.defaults,
+    ) as ConfigSummaryPayload["defaults"],
+    compaction: cloneJsonObject(
+      summary.compaction,
+    ) as ConfigSummaryPayload["compaction"],
+    sandbox: cloneJsonObject(summary.sandbox) as ConfigSummaryPayload["sandbox"],
+    tools: cloneJsonObject(summary.tools) as ConfigSummaryPayload["tools"],
+    execApprovals: {
+      defaults: cloneJsonObject(
+        summary.execApprovals.defaults,
+      ) as ConfigSummaryPayload["execApprovals"]["defaults"],
+      agents: summary.execApprovals.agents.map((agent) => ({
+        ...agent,
+        allowlist: agent.allowlist.map((entry) => ({ ...entry })),
+      })),
+    },
+    session: cloneJsonObject(
+      summary.session,
+    ) as ConfigSummaryPayload["session"],
+    messages: cloneJsonObject(
+      summary.messages,
+    ) as ConfigSummaryPayload["messages"],
+    providers: summary.providers.map((provider) => ({
+      id: provider.id,
+      api: provider.api,
+      baseUrl: provider.baseUrl,
+      models: provider.models.map((model) => ({ ...model })),
+    })),
+  };
+}
+
+function resolveConfigPatchPayload(
+  config: StudioServerConfig,
+  openclawConfig: Record<string, any>,
+  patch: ConfigPatchPayload,
+): ConfigUpdatePayload {
+  const basePayload = buildConfigUpdatePayloadFromSummary(
+    buildSummary(config, openclawConfig),
+  ) as Record<string, any>;
+  const normalizedPatch = cloneJsonObject(patch) || {};
+  return deepMerge(basePayload, normalizedPatch) as ConfigUpdatePayload;
+}
+
 export interface ConfigService {
   getSummary(): ConfigSummaryPayload;
   getProviderSecret(providerId: string): ConfigProviderSecretPayload;
@@ -2545,6 +2594,7 @@ export interface ConfigService {
     accountId: string,
   ): ConfigChannelSecretPayload;
   saveConfig(payload: ConfigUpdatePayload): ConfigSaveResponse;
+  patchConfig(payload: ConfigPatchPayload): ConfigSaveResponse;
 }
 
 function normalizeApprovalAllowlistEntry(
@@ -2581,6 +2631,121 @@ export function createConfigService(config: StudioServerConfig): ConfigService {
     maxRecords: 500,
     maxAgeDays: 7,
   });
+
+  function persistConfigPayload(
+    payload: ConfigUpdatePayload,
+    beforeConfig = readOpenClawConfig(config),
+  ): ConfigSaveResponse {
+    const beforeAuditSnapshot = buildConfigAuditSnapshot(
+      config,
+      beforeConfig,
+    );
+    const previousGlobalHostManagementExecEnabled =
+      resolveStudioHostManagementExecEnabled(beforeConfig);
+    const openclawConfig = applyConfigUpdate(beforeConfig, payload);
+    writeJsonFile(config.openclawConfigFile, openclawConfig);
+    const globalHostManagementExecEnabled =
+      syncStudioManagementPolicyFromConfig(openclawConfig);
+    if (
+      previousGlobalHostManagementExecEnabled !==
+      globalHostManagementExecEnabled
+    ) {
+      syncStudioManagementPolicyToGateway(
+        config,
+        globalHostManagementExecEnabled,
+      );
+    }
+
+    const approvalsFile = `${config.openclawRoot}/exec-approvals.json`;
+    const approvals = readJsonFile<Record<string, any>>(approvalsFile, {
+      socket: {},
+      defaults: {},
+      agents: {},
+    });
+    approvals.defaults = approvals.defaults || {};
+    approvals.defaults.security = normalizeString(
+      payload.execApprovals.defaults.security,
+      approvals.defaults.security || "deny",
+    );
+    approvals.defaults.ask = normalizeString(
+      payload.execApprovals.defaults.ask,
+      approvals.defaults.ask || "on-miss",
+    );
+    approvals.defaults.askFallback = normalizeString(
+      payload.execApprovals.defaults.askFallback,
+      approvals.defaults.askFallback || "deny",
+    );
+    approvals.defaults.autoAllowSkills =
+      payload.execApprovals.defaults.autoAllowSkills === true;
+    approvals.agents = approvals.agents || {};
+
+    const nextAgentIds = new Set(
+      payload.execApprovals.agents.map((agent) => agent.agentId),
+    );
+    for (const agentId of Object.keys(approvals.agents)) {
+      if (!nextAgentIds.has(agentId)) delete approvals.agents[agentId];
+    }
+
+    for (const agent of payload.execApprovals.agents) {
+      const agentId = normalizeString(agent.agentId);
+      if (!agentId) continue;
+
+      const existingAgent = approvals.agents[agentId] || {};
+      const existingAllowlist = Array.isArray(existingAgent.allowlist)
+        ? existingAgent.allowlist
+        : [];
+      const normalizedAllowlist = agent.allowlist
+        .map((entry) =>
+          normalizeApprovalAllowlistEntry(entry, existingAllowlist),
+        )
+        .filter((entry): entry is Record<string, unknown> => entry !== null);
+
+      approvals.agents[agentId] = {
+        ...existingAgent,
+        security: normalizeString(
+          agent.security,
+          existingAgent.security || "",
+        ),
+        ask: normalizeString(agent.ask, existingAgent.ask || ""),
+        askFallback: normalizeString(
+          agent.askFallback,
+          existingAgent.askFallback || "",
+        ),
+        autoAllowSkills: agent.autoAllowSkills === true,
+        allowlist: normalizedAllowlist,
+      };
+
+      if (!approvals.agents[agentId].security)
+        delete approvals.agents[agentId].security;
+      if (!approvals.agents[agentId].ask)
+        delete approvals.agents[agentId].ask;
+      if (!approvals.agents[agentId].askFallback)
+        delete approvals.agents[agentId].askFallback;
+      if (!approvals.agents[agentId].allowlist?.length)
+        delete approvals.agents[agentId].allowlist;
+      if (Object.keys(approvals.agents[agentId]).length === 0)
+        delete approvals.agents[agentId];
+    }
+
+    writeJsonFile(approvalsFile, approvals);
+
+    const afterAuditSnapshot = buildConfigAuditSnapshot(
+      config,
+      openclawConfig,
+    );
+    const auditChanges = diffConfigAuditChanges({
+      before: beforeAuditSnapshot,
+      after: afterAuditSnapshot,
+    });
+    const auditEvents = buildConfigAuditEvents({ changes: auditChanges });
+    systemEventWriter.persistConfigAuditEvents(auditEvents as any);
+
+    return {
+      success: true,
+      message: "配置已保存",
+      config: buildSummary(config, openclawConfig),
+    };
+  }
 
   return {
     getSummary(): ConfigSummaryPayload {
@@ -2630,108 +2795,17 @@ export function createConfigService(config: StudioServerConfig): ConfigService {
     },
 
     saveConfig(payload: ConfigUpdatePayload): ConfigSaveResponse {
+      return persistConfigPayload(payload);
+    },
+
+    patchConfig(payload: ConfigPatchPayload): ConfigSaveResponse {
       const beforeConfig = readOpenClawConfig(config);
-      const beforeAuditSnapshot = buildConfigAuditSnapshot(
+      const resolvedPayload = resolveConfigPatchPayload(
         config,
         beforeConfig,
+        payload,
       );
-      const previousGlobalHostManagementExecEnabled = resolveStudioHostManagementExecEnabled(beforeConfig);
-      const openclawConfig = applyConfigUpdate(beforeConfig, payload);
-      writeJsonFile(config.openclawConfigFile, openclawConfig);
-      const globalHostManagementExecEnabled = syncStudioManagementPolicyFromConfig(openclawConfig);
-      if (previousGlobalHostManagementExecEnabled !== globalHostManagementExecEnabled) {
-        syncStudioManagementPolicyToGateway(config, globalHostManagementExecEnabled);
-      }
-
-      const approvalsFile = `${config.openclawRoot}/exec-approvals.json`;
-      const approvals = readJsonFile<Record<string, any>>(approvalsFile, {
-        socket: {},
-        defaults: {},
-        agents: {},
-      });
-      approvals.defaults = approvals.defaults || {};
-      approvals.defaults.security = normalizeString(
-        payload.execApprovals.defaults.security,
-        approvals.defaults.security || "deny",
-      );
-      approvals.defaults.ask = normalizeString(
-        payload.execApprovals.defaults.ask,
-        approvals.defaults.ask || "on-miss",
-      );
-      approvals.defaults.askFallback = normalizeString(
-        payload.execApprovals.defaults.askFallback,
-        approvals.defaults.askFallback || "deny",
-      );
-      approvals.defaults.autoAllowSkills =
-        payload.execApprovals.defaults.autoAllowSkills === true;
-      approvals.agents = approvals.agents || {};
-
-      const nextAgentIds = new Set(
-        payload.execApprovals.agents.map((agent) => agent.agentId),
-      );
-      for (const agentId of Object.keys(approvals.agents)) {
-        if (!nextAgentIds.has(agentId)) delete approvals.agents[agentId];
-      }
-
-      for (const agent of payload.execApprovals.agents) {
-        const agentId = normalizeString(agent.agentId);
-        if (!agentId) continue;
-
-        const existingAgent = approvals.agents[agentId] || {};
-        const existingAllowlist = Array.isArray(existingAgent.allowlist)
-          ? existingAgent.allowlist
-          : [];
-        const normalizedAllowlist = agent.allowlist
-          .map((entry) =>
-            normalizeApprovalAllowlistEntry(entry, existingAllowlist),
-          )
-          .filter((entry): entry is Record<string, unknown> => entry !== null);
-
-        approvals.agents[agentId] = {
-          ...existingAgent,
-          security: normalizeString(
-            agent.security,
-            existingAgent.security || "",
-          ),
-          ask: normalizeString(agent.ask, existingAgent.ask || ""),
-          askFallback: normalizeString(
-            agent.askFallback,
-            existingAgent.askFallback || "",
-          ),
-          autoAllowSkills: agent.autoAllowSkills === true,
-          allowlist: normalizedAllowlist,
-        };
-
-        if (!approvals.agents[agentId].security)
-          delete approvals.agents[agentId].security;
-        if (!approvals.agents[agentId].ask)
-          delete approvals.agents[agentId].ask;
-        if (!approvals.agents[agentId].askFallback)
-          delete approvals.agents[agentId].askFallback;
-        if (!approvals.agents[agentId].allowlist?.length)
-          delete approvals.agents[agentId].allowlist;
-        if (Object.keys(approvals.agents[agentId]).length === 0)
-          delete approvals.agents[agentId];
-      }
-
-      writeJsonFile(approvalsFile, approvals);
-
-      const afterAuditSnapshot = buildConfigAuditSnapshot(
-        config,
-        openclawConfig,
-      );
-      const auditChanges = diffConfigAuditChanges({
-        before: beforeAuditSnapshot,
-        after: afterAuditSnapshot,
-      });
-      const auditEvents = buildConfigAuditEvents({ changes: auditChanges });
-      systemEventWriter.persistConfigAuditEvents(auditEvents as any);
-
-      return {
-        success: true,
-        message: "配置已保存",
-        config: buildSummary(config, openclawConfig),
-      };
+      return persistConfigPayload(resolvedPayload, beforeConfig);
     },
   };
 }

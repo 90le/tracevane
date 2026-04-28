@@ -1,7 +1,10 @@
 import { parseJsonBody, sendJson } from '../../core/http.js';
 import type { StudioApiContext } from '../../core/context.js';
 import type { StudioRouter } from '../../core/router.js';
-import type { ConfigUpdatePayload } from '../../../../types/config.js';
+import type {
+  ConfigPatchPayload,
+  ConfigUpdatePayload,
+} from '../../../../types/config.js';
 
 export function registerConfigRoutes(router: StudioRouter, ctx: StudioApiContext): void {
   router.get('/api/config', (_req, res) => {
@@ -16,6 +19,11 @@ export function registerConfigRoutes(router: StudioRouter, ctx: StudioApiContext
   router.post('/api/config', async (req, res, routeCtx) => {
     const payload = await parseJsonBody<ConfigUpdatePayload>(req);
     sendJson(res, 200, routeCtx.services.config.saveConfig(payload));
+  });
+
+  router.patch('/api/config', async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<ConfigPatchPayload>(req);
+    sendJson(res, 200, routeCtx.services.config.patchConfig(payload));
   });
 
   router.get('/api/config/providers/:providerId/secret', (_req, res, routeCtx, params) => {
