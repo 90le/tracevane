@@ -18,6 +18,12 @@ function appendVaryHeader(res: http.ServerResponse, value: string): void {
   res.setHeader('Vary', parts.join(', '));
 }
 
+function setNoSniffHeader(res: http.ServerResponse): void {
+  if (!res.hasHeader('X-Content-Type-Options')) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  }
+}
+
 export function isStudioChatApiPath(pathname: string): boolean {
   return pathname === '/api/chat/health' || pathname.startsWith('/api/chat/');
 }
@@ -66,6 +72,7 @@ export function sendJson(res: http.ServerResponse, statusCode: number, payload: 
   setCorsHeaders(res);
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  setNoSniffHeader(res);
   res.end(JSON.stringify(payload, null, 2));
 }
 
@@ -74,6 +81,7 @@ export function sendText(res: http.ServerResponse, statusCode: number, payload: 
   setCorsHeaders(res);
   res.statusCode = statusCode;
   res.setHeader('Content-Type', contentType);
+  setNoSniffHeader(res);
   res.end(payload);
 }
 
@@ -89,10 +97,35 @@ export function sendBinary(
   res.statusCode = statusCode;
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Length', String(payload.byteLength));
+  setNoSniffHeader(res);
   for (const [key, value] of Object.entries(headers)) {
     res.setHeader(key, value);
   }
   res.end(payload);
+}
+
+function normalizeDownloadFileName(value: string): string {
+  return value.replace(/[\r\n\0-\x1f\x7f]+/g, ' ').trim() || 'download';
+}
+
+function escapeContentDispositionFallback(value: string): string {
+  return normalizeDownloadFileName(value)
+    .replace(/[^\x20-\x7e]/g, '_')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .trim() || 'download';
+}
+
+function encodeRfc5987Value(value: string): string {
+  return encodeURIComponent(normalizeDownloadFileName(value))
+    .replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+export function buildContentDisposition(
+  fileName: string,
+  disposition: 'inline' | 'attachment',
+): string {
+  return `${disposition}; filename="${escapeContentDispositionFallback(fileName)}"; filename*=UTF-8''${encodeRfc5987Value(fileName)}`;
 }
 
 export function sendFileStream(
@@ -110,6 +143,7 @@ export function sendFileStream(
   res.statusCode = options.statusCode || 200;
   res.setHeader('Content-Type', options.contentType || 'application/octet-stream');
   res.setHeader('Content-Length', String(stat.size));
+  setNoSniffHeader(res);
   for (const [key, value] of Object.entries(options.headers || {})) {
     res.setHeader(key, value);
   }

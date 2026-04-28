@@ -179,11 +179,14 @@ test("files api and server routes cover browse, tree, read, search, mutate, uplo
   assert.match(filesRoutes, /\/api\/files\/search/);
   assert.match(filesRoutes, /\/api\/files\/download/);
   assert.match(filesRoutes, /Content-Disposition/);
+  assert.match(filesRoutes, /buildContentDisposition/);
+  assert.match(filesRoutes, /"Cache-Control": "no-store"/);
   assert.match(filesRoutes, /readFlag\(url\.searchParams\.get\("download"\), false\) \? "attachment" : "inline"/);
   assert.match(filesRoutes, /\/api\/files\/upload/);
   assert.match(filesRoutes, /\/api\/files\/archive/);
   assert.match(filesRoutes, /\/api\/files\/unarchive/);
   assert.match(filesRoutes, /\/api\/files\/download-archive/);
+  assert.match(filesRoutes, /buildContentDisposition\(payload\.fileName, "attachment"\)/);
   assert.match(filesDriver, /buildFileDownloadUrl\(target\.root\.id, target\.relativePath, \{ download: true \}\)/);
   assert.match(read("types/files.ts"), /matchKind\?: "name" \| "content"/);
   assert.match(read("apps/api/modules/files/service.ts"), /findContentSearchSnippet/);

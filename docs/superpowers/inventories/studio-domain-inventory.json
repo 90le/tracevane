@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-28T06:02:34.565Z",
+  "generatedAt": "2026-04-28T06:20:07.889Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -124,6 +124,7 @@
     "tests/system/dreaming-service.test.mjs",
     "tests/system/dreaming-view-model.test.ts",
     "tests/system/files-service.test.mjs",
+    "tests/system/http-content-disposition.test.mjs",
     "tests/system/install-script-release-metadata.test.mjs",
     "tests/system/plugins-service.test.mjs",
     "tests/system/skills-service-lifecycle.test.mjs",

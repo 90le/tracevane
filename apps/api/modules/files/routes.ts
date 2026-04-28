@@ -1,6 +1,6 @@
 import type http from "node:http";
 import fs from "node:fs";
-import { parseJsonBody, sendFileStream, sendJson } from "../../core/http.js";
+import { buildContentDisposition, parseJsonBody, sendFileStream, sendJson } from "../../core/http.js";
 import type { StudioApiContext } from "../../core/context.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
@@ -22,14 +22,6 @@ function readUrl(req: http.IncomingMessage): URL {
 function readFlag(value: string | null, fallback = false): boolean {
   if (value == null) return fallback;
   return value === "1" || value === "true" || value === "yes";
-}
-
-function escapeHeaderFileName(value: string): string {
-  return value.replace(/"/g, '\\"');
-}
-
-function buildContentDisposition(fileName: string, disposition: "inline" | "attachment"): string {
-  return `${disposition}; filename="${escapeHeaderFileName(fileName)}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
 export function registerFilesRoutes(router: StudioRouter, ctx: StudioApiContext): void {
@@ -100,6 +92,7 @@ export function registerFilesRoutes(router: StudioRouter, ctx: StudioApiContext)
       filePath: payload.absolutePath,
       contentType: payload.mimeType,
       headers: {
+        "Cache-Control": "no-store",
         "Content-Disposition": buildContentDisposition(
           payload.fileName,
           readFlag(url.searchParams.get("download"), false) ? "attachment" : "inline",
@@ -131,7 +124,8 @@ export function registerFilesRoutes(router: StudioRouter, ctx: StudioApiContext)
       filePath: payload.archivePath,
       contentType: "application/zip",
       headers: {
-        "Content-Disposition": `attachment; filename="${payload.fileName}"`,
+        "Cache-Control": "no-store",
+        "Content-Disposition": buildContentDisposition(payload.fileName, "attachment"),
       },
     });
   });

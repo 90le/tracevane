@@ -15,6 +15,7 @@ import type {
   ChatSendFileRef,
   ChatToolArtifactItem,
 } from '../../../../types/chat.js';
+import { buildContentDisposition } from '../../core/http.js';
 import { readOpenClawConfig } from '../../core/state.js';
 import { extractStudioDeliveryPayload, summarizeStudioDeliveryText, type StudioDeliveryResult, type StudioDeliveryResource } from '../../../../lib/studio-delivery.js';
 import {
@@ -847,10 +848,6 @@ function collectToolArtifactsFromUnknown(
   collectStructuredArtifactRecord(record, ctx, toolCallId);
 }
 
-function escapeHeaderFileName(value: string): string {
-  return value.replace(/"/g, '\\"');
-}
-
 function buildUserUploadResourceFromRef(
   ctx: CollectResourceContext,
   ref: string,
@@ -1126,9 +1123,7 @@ function rehydrateStoredResourceItem(
   return { ...item };
 }
 
-export function buildContentDisposition(fileName: string, disposition: 'inline' | 'attachment'): string {
-  return `${disposition}; filename="${escapeHeaderFileName(fileName)}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
-}
+export { buildContentDisposition };
 
 export function createStudioChatMediaBridge(config: StudioServerConfig) {
   const secret = resolveMediaTokenSecret(config);
