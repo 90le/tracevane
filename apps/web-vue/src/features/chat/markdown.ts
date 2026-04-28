@@ -583,8 +583,26 @@ function truncateText(
   };
 }
 
+function getResourceCacheFingerprint(resources: ChatResourceItem[] | undefined): string {
+  if (!resources?.length) {
+    return '';
+  }
+  return resources
+    .map((item) => [
+      item.id,
+      item.kind,
+      item.status || '',
+      item.originalPath || '',
+      item.relativePath || '',
+      item.fileName || '',
+      item.url || '',
+      item.downloadUrl || '',
+    ].join('|'))
+    .join('~');
+}
+
 function getCacheKey(markdown: string, options: ChatMarkdownRenderOptions): string {
-  return `${options.interactive ? 'i' : 's'}:${options.inlineHtml ? 'h' : ''}:${options.inlineSvg ? 'v' : ''}:${options.inlineScript ? 'x' : ''}:${options.sanitizeLevel || 'S'}:${markdown}`;
+  return `${options.interactive ? 'i' : 's'}:${options.inlineHtml ? 'h' : ''}:${options.inlineSvg ? 'v' : ''}:${options.inlineScript ? 'x' : ''}:${options.sanitizeLevel || 'S'}:${getResourceCacheFingerprint(options.resources)}:${markdown}`;
 }
 
 function getCachedMarkdown(key: string): ChatMarkdownRenderResult | null {

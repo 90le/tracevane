@@ -189,6 +189,10 @@ import {
 } from './inline-preview-preferences';
 import { COPIED_FOR_MS, ERROR_FOR_MS, copyTextToClipboard } from './markdown-copy';
 import { createUuid } from '../../shared/uuid';
+import {
+  mergeChatResourceItems,
+  resolveMissingStudioResourcesForMarkdown,
+} from './chat-resource-resolver';
 
 const props = defineProps<{
   source: string;
@@ -286,6 +290,8 @@ const deferredPreviewText = computed(() => {
     ? `${normalized.slice(0, MARKDOWN_LAZY_RENDER_PREVIEW_LIMIT - 1)}…`
     : normalized;
 });
+const resolvedStudioResources = ref<ChatResourceItem[]>([]);
+const effectiveRenderResources = computed(() => mergeChatResourceItems(props.resources, resolvedStudioResources.value));
 const rendered = computed(() =>
   renderReady.value || !shouldLazyRender.value
     ? renderChatMarkdownResult(props.source, {
@@ -294,7 +300,7 @@ const rendered = computed(() =>
       inlineSvg: inlinePreviewPrefs.value.inlineSvg,
       inlineScript: inlinePreviewPrefs.value.inlineScript,
       sanitizeLevel: sanitizeLevel.value,
-      resources: props.resources,
+      resources: effectiveRenderResources.value,
     })
     : {
       html: '',
@@ -341,6 +347,7 @@ let renderVisibilityObserver: IntersectionObserver | null = null;
 let renderReadyTimer: number | null = null;
 let renderReadyIdleHandle: number | null = null;
 let katexLoader: Promise<KatexApi> | null = null;
+let resourceResolveSerial = 0;
 
 function refreshInlinePreviewPrefs(): void {
   inlinePreviewPrefs.value = readEffectiveRoleAwareInlinePreviewPreferences(props.role, props.sessionKey);
@@ -1718,6 +1725,31 @@ watch(
     }
     void enhanceMarkdown();
   },
+);
+
+watch(
+  () => [props.sessionKey, props.source, props.resources] as const,
+  async () => {
+    const serial = ++resourceResolveSerial;
+    try {
+      const nextResources = await resolveMissingStudioResourcesForMarkdown(
+        props.sessionKey,
+        props.source,
+        props.resources,
+      );
+      if (serial !== resourceResolveSerial) {
+        return;
+      }
+      resolvedStudioResources.value = nextResources;
+    } catch (error) {
+      if (serial !== resourceResolveSerial) {
+        return;
+      }
+      resolvedStudioResources.value = [];
+      console.warn('[MarkdownBlock] Failed to resolve studio resources:', error);
+    }
+  },
+  { immediate: true },
 );
 
 watch(

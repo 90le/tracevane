@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
+import {
+  extractStudioResourceRefs,
+  hasResourceForRef,
+  hasReadyResourceForRef,
+  mergeChatResourceItems,
+} from '../../apps/web-vue/src/features/chat-v2/chat-resource-resolver.ts';
 
 type MarkdownModule = typeof import('../../apps/web-vue/src/features/chat/markdown.ts');
 
@@ -61,6 +67,72 @@ async function withDom<T>(run: (markdown: MarkdownModule) => Promise<T> | T): Pr
     dom.window.close();
   }
 }
+
+test('studio markdown resource resolver extracts refs without code or angle-link duplicates', () => {
+  const refs = extractStudioResourceRefs([
+    '请看 [报告](<uploads:report final.pdf> "studio:inline-chip")。',
+    '结构图 ![图](workspace:diagram.png "studio:break-image")。',
+    '`workspace:code-sample.png` should stay plain.',
+    '```md',
+    '[skip](uploads:inside-code.png "studio:card")',
+    '```',
+  ].join('\n'));
+
+  assert.deepEqual(refs, ['uploads:report final.pdf', 'workspace:diagram.png']);
+  const missingResource = {
+    id: 'upload-report',
+    kind: 'file' as const,
+    url: '',
+    downloadUrl: '',
+    fileName: 'report final.pdf',
+    mimeType: 'application/pdf',
+    originalPath: 'uploads:report final.pdf',
+    relativePath: 'uploads/report final.pdf',
+    source: 'studio_resource' as const,
+    status: 'missing' as const,
+    placement: 'append' as const,
+  };
+  const readyResource = {
+    ...missingResource,
+    id: 'upload-report-ready',
+    url: '/api/chat/sessions/demo/media/report.pdf',
+    downloadUrl: '/api/chat/sessions/demo/media/report.pdf?download=1',
+    status: 'ready' as const,
+  };
+
+  assert.equal(hasResourceForRef([
+    missingResource,
+  ], 'uploads:report final.pdf'), true);
+  assert.equal(hasReadyResourceForRef([
+    missingResource,
+  ], 'uploads:report final.pdf'), false);
+  assert.deepEqual(mergeChatResourceItems([
+    missingResource,
+  ], [
+    readyResource,
+  ]), [
+    readyResource,
+  ]);
+  assert.equal(mergeChatResourceItems(undefined, undefined), undefined);
+});
+
+test('studio markdown resource resolver keeps ready refs from refetching', () => {
+  assert.equal(hasReadyResourceForRef([
+    {
+      id: 'upload-report-ready',
+      kind: 'file',
+      url: '/api/chat/sessions/demo/media/report.pdf',
+      downloadUrl: '/api/chat/sessions/demo/media/report.pdf?download=1',
+      fileName: 'report final.pdf',
+      mimeType: 'application/pdf',
+      originalPath: 'uploads:report final.pdf',
+      relativePath: 'uploads/report final.pdf',
+      source: 'studio_resource',
+      status: 'ready',
+      placement: 'append',
+    },
+  ], 'uploads:report final.pdf'), true);
+});
 
 test('raw html keeps style/align attributes and is not split into text fragments', async () => {
   const result = await withDom(({ renderChatMarkdownResult }) => renderChatMarkdownResult(
@@ -211,6 +283,45 @@ test('missing studio-file markdown media renders a safe placeholder instead of t
   assert.doesNotMatch(result.html, /src="studio-file:/);
   assert.doesNotMatch(result.html, /href="studio-file:/);
   assert.doesNotMatch(result.html, /ERR_UNKNOWN_URL_SCHEME/);
+});
+
+test('markdown cache is invalidated when studio resources become available', async () => {
+  const source = '![结构图](workspace:graph.png "studio:break-image")';
+  await withDom(({ renderChatMarkdownResult }) => {
+    const first = renderChatMarkdownResult(source, {
+      interactive: true,
+      inlineHtml: true,
+      inlineSvg: true,
+      sanitizeLevel: 'moderate',
+      resources: [],
+    });
+    assert.doesNotMatch(first.html, /Image missing:/);
+
+    const second = renderChatMarkdownResult(source, {
+      interactive: true,
+      inlineHtml: true,
+      inlineSvg: true,
+      sanitizeLevel: 'moderate',
+      resources: [
+        {
+          id: 'resource-graph',
+          kind: 'image',
+          url: '',
+          downloadUrl: '',
+          fileName: 'graph.png',
+          mimeType: 'image/png',
+          originalPath: 'workspace:graph.png',
+          relativePath: 'graph.png',
+          source: 'studio_resource',
+          status: 'missing',
+          placement: 'append',
+        },
+      ],
+    });
+
+    assert.match(second.html, /Image missing:/);
+    assert.match(second.html, /chat-inline-resource-image[^"]*missing/);
+  });
 });
 
 test('fenced code blocks render wrapped toolbar with copy action in interactive mode', async () => {
