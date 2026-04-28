@@ -1728,9 +1728,13 @@ watch(
 );
 
 watch(
-  () => [props.sessionKey, props.source, props.resources] as const,
+  () => [props.sessionKey, props.source, props.resources, renderReady.value, shouldLazyRender.value] as const,
   async () => {
     const serial = ++resourceResolveSerial;
+    if (shouldLazyRender.value && !renderReady.value) {
+      resolvedStudioResources.value = [];
+      return;
+    }
     try {
       const nextResources = await resolveMissingStudioResourcesForMarkdown(
         props.sessionKey,
