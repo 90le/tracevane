@@ -1363,6 +1363,14 @@ function applySessionControlsState(sessionKey: string, controls: ChatSessionCont
   };
 }
 
+function applySessionControlsPayload(sessionKey: string, payload: ChatSessionControlsPayload): void {
+  if (typeof payload.globalHostManagementExecEnabled === 'boolean') {
+    globalHostManagementExecEnabled.value = payload.globalHostManagementExecEnabled;
+  }
+  applySessionControlsState(sessionKey, payload.controls);
+  rememberChatShellWarmCache();
+}
+
 function setSlashFeedbackState(sessionKey: string, feedback: StudioSlashExecutionFeedback | null): void {
   slashFeedbackBySession.value = {
     ...slashFeedbackBySession.value,
@@ -1642,7 +1650,6 @@ async function loadStudioChatGlobalExecConfig(): Promise<void> {
     };
     rememberChatShellWarmCache();
   } catch {
-    globalHostManagementExecEnabled.value = false;
     slashArgOptionsOverrides.value = {
       ...slashArgOptionsOverrides.value,
       model: [],
@@ -1696,10 +1703,14 @@ async function loadSessionSurfaceState(sessionKey: string): Promise<void> {
     return;
   }
   applyQueueState(sessionKey, queuePayload?.items || []);
-  applySessionControlsState(sessionKey, controlsPayload?.controls || {
-    allowHostManagementExec: false,
-    updatedAt: null,
-  });
+  if (controlsPayload) {
+    applySessionControlsPayload(sessionKey, controlsPayload);
+  } else if (!sessionControlsBySession.value[sessionKey]) {
+    applySessionControlsState(sessionKey, {
+      allowHostManagementExec: false,
+      updatedAt: null,
+    });
+  }
 }
 
 function protectSessionRow(sessionKey: string, ttlMs = SESSION_ROW_PROTECTION_TTL_MS): void {
@@ -2664,6 +2675,10 @@ function handleStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'session.controls') {
+    if (typeof event.globalHostManagementExecEnabled === 'boolean') {
+      globalHostManagementExecEnabled.value = event.globalHostManagementExecEnabled;
+      rememberChatShellWarmCache();
+    }
     applySessionControlsState(event.sessionKey, event.controls);
     return;
   }
@@ -3144,7 +3159,7 @@ function applyBootstrapPayload(payload: ChatBootstrapPayload): void {
       applyQueueState(bootstrapSessionKey, payload.queue.items || []);
     }
     if (payload.controls) {
-      applySessionControlsState(bootstrapSessionKey, payload.controls.controls);
+      applySessionControlsPayload(bootstrapSessionKey, payload.controls);
     }
     if (payload.history) {
       applyHistoryPagePayload(payload.history, 'replace');
@@ -5639,11 +5654,27 @@ async function removeQueuedMessage(entryId: string): Promise<void> {
   }
 }
 
+async function refreshHostManagementExecState(sessionKey: string): Promise<boolean> {
+  try {
+    const controls = await fetchChatSessionControls(sessionKey);
+    applySessionControlsPayload(sessionKey, controls);
+    return controls.globalHostManagementExecEnabled === true;
+  } catch {
+    await loadStudioChatGlobalExecConfig();
+    return globalHostManagementExecEnabled.value;
+  }
+}
+
 async function toggleSessionHostManagementExec(nextValue: boolean): Promise<void> {
   if (!selectedSession.value || !canToggleHostManagementExec.value) {
     return;
   }
-  if (!globalHostManagementExecEnabled.value) {
+  if (nextValue && !globalHostManagementExecEnabled.value) {
+    const refreshedGlobalExecEnabled = await refreshHostManagementExecState(selectedSession.value.key);
+    if (refreshedGlobalExecEnabled) {
+      await toggleSessionHostManagementExec(nextValue);
+      return;
+    }
     setNotice(
       'error',
       text(
@@ -5697,7 +5728,7 @@ async function commitSessionHostManagementExecToggle(sessionKey: string, nextVal
       allowHostManagementExec: nextValue,
     };
     const response: ChatSessionControlsPayload = await patchChatSessionControls(sessionKey, request);
-    applySessionControlsState(sessionKey, response.controls);
+    applySessionControlsPayload(sessionKey, response);
     setNotice(
       'success',
       nextValue

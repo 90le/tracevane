@@ -551,6 +551,7 @@ export interface ChatPatchQueueEntryRequest extends ChatSendRequest {}
 export interface ChatSessionControlsPayload {
   checkedAt: string;
   session: ChatSessionRow;
+  globalHostManagementExecEnabled: boolean;
   controls: ChatSessionControlState;
 }
 
@@ -648,6 +649,7 @@ export type ChatStreamEvent =
     kind: 'session.controls';
     sessionKey: string;
     emittedAt: string;
+    globalHostManagementExecEnabled?: boolean;
     controls: ChatSessionControlState;
   }
   | {
@@ -820,6 +822,12 @@ export interface ChatGatewayAbortPayload {
   sessionKey: string;
 }
 
+export interface ChatGatewayPolicySyncPayload {
+  globalHostManagementExecEnabled?: boolean;
+  sessionKey?: string | null;
+  allowHostManagementExec?: boolean;
+}
+
 export interface ChatGatewayAttachResponse {
   sessionKey: string;
   leaseTtlMs: number;
@@ -839,4 +847,5 @@ export const STUDIO_CHAT_GATEWAY_METHODS = {
   detach: 'studio.chat.detach',
   send: 'studio.chat.send',
   abort: 'studio.chat.abort',
+  policySync: 'studio.chat.policy.sync',
 } as const;

@@ -12,6 +12,7 @@ import type {
   ConfigUpdatePayload,
 } from "../../../../types/config.js";
 import type { StudioServerConfig } from "../../../../types/api.js";
+import { STUDIO_CHAT_GATEWAY_METHODS } from "../../../../types/chat.js";
 import { setStudioChatGlobalHostManagementExecEnabled } from "../../../../lib/studio-chat-management-policy.js";
 import {
   readJsonFile,
@@ -21,6 +22,7 @@ import {
 import { diffConfigAuditChanges } from "./config-audit-diff.js";
 import { buildConfigAuditEvents } from "./config-audit-events.js";
 import { createSystemEventWriter } from "../system/event-writer.js";
+import { requestGateway } from "../chat/gateway-request.js";
 
 const NON_DOCKER_SANDBOX_BACKENDS = new Set(["ssh", "openshell"]);
 const SKILL_NODE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
@@ -1206,10 +1208,22 @@ function resolveStudioHostManagementExecEnabled(
 
 function syncStudioManagementPolicyFromConfig(
   openclawConfig: Record<string, any>,
+): boolean {
+  const enabled = resolveStudioHostManagementExecEnabled(openclawConfig);
+  setStudioChatGlobalHostManagementExecEnabled(enabled);
+  return enabled;
+}
+
+function syncStudioManagementPolicyToGateway(
+  config: StudioServerConfig,
+  globalHostManagementExecEnabled: boolean,
 ): void {
-  setStudioChatGlobalHostManagementExecEnabled(
-    resolveStudioHostManagementExecEnabled(openclawConfig),
-  );
+  void requestGateway(config, STUDIO_CHAT_GATEWAY_METHODS.policySync, {
+    globalHostManagementExecEnabled,
+  }, { timeoutMs: 1_000 }).catch(() => {
+    // Gateway sync is best-effort here; the local API state and config file are
+    // authoritative, and the next session toggle will retry.
+  });
 }
 
 function buildLoggingSummary(
@@ -2621,9 +2635,13 @@ export function createConfigService(config: StudioServerConfig): ConfigService {
         config,
         beforeConfig,
       );
+      const previousGlobalHostManagementExecEnabled = resolveStudioHostManagementExecEnabled(beforeConfig);
       const openclawConfig = applyConfigUpdate(beforeConfig, payload);
       writeJsonFile(config.openclawConfigFile, openclawConfig);
-      syncStudioManagementPolicyFromConfig(openclawConfig);
+      const globalHostManagementExecEnabled = syncStudioManagementPolicyFromConfig(openclawConfig);
+      if (previousGlobalHostManagementExecEnabled !== globalHostManagementExecEnabled) {
+        syncStudioManagementPolicyToGateway(config, globalHostManagementExecEnabled);
+      }
 
       const approvalsFile = `${config.openclawRoot}/exec-approvals.json`;
       const approvals = readJsonFile<Record<string, any>>(approvalsFile, {

@@ -4,6 +4,7 @@ import type http from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { StudioServerConfig } from '../../../../types/api.js';
+import { STUDIO_CHAT_GATEWAY_METHODS } from '../../../../types/chat.js';
 import type {
   ChatAbortResponse,
   ChatGatewayAckResponse,
@@ -195,6 +196,7 @@ import { applyDerivedAutoLabelToSessionRow } from '../../../../lib/chat-session-
 import { maybeAutoApproveStudioHelperPairing } from '../system/device-trust.js';
 import {
   clearStudioChatSessionHostManagementExecEnabled,
+  getStudioChatGlobalHostManagementExecEnabled,
   setStudioChatSessionHostManagementExecEnabled,
 } from '../../../../lib/studio-chat-management-policy.js';
 import {
@@ -1129,8 +1131,53 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return {
       checkedAt: new Date().toISOString(),
       session: state.row,
+      globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
       controls: cloneSessionControls(state.controls),
     };
+  }
+
+  async function syncSessionControlsToGatewayPolicy(
+    sessionKey: string,
+    controls: ChatSessionControlState,
+  ): Promise<void> {
+    try {
+      await requestGateway(options.config, STUDIO_CHAT_GATEWAY_METHODS.policySync, {
+        sessionKey,
+        allowHostManagementExec: controls.allowHostManagementExec === true,
+        globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
+      }, { timeoutMs: 2_000 });
+    } catch {
+      // The standalone API remains the source of truth. Older gateways or
+      // temporarily disconnected gateways will resync on the next toggle.
+    }
+  }
+
+  function buildSessionControlsEvent(
+    sessionKey: string,
+    controls: ChatSessionControlState,
+    emittedAt = new Date().toISOString(),
+  ): ChatStreamEvent {
+    return {
+      kind: 'session.controls',
+      sessionKey,
+      emittedAt,
+      globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
+      controls: cloneSessionControls(controls),
+    };
+  }
+
+  async function resolveSessionStateForAttachEvents(sessionKey: string): Promise<StudioManagedSessionState | null> {
+    const existing = getStudioSession(sessionKey);
+    if (existing) {
+      return existing;
+    }
+    try {
+      const session = await requireSession(sessionKey);
+      requireFrontendVisible(session);
+      return ensureStudioSessionState(session);
+    } catch {
+      return null;
+    }
   }
 
   function broadcastQueueState(sessionKey: string, emittedAt = new Date().toISOString()): void {
@@ -1151,12 +1198,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (!current) {
       return;
     }
-    broadcastToSession(sessionKey, {
-      kind: 'session.controls',
-      sessionKey,
-      emittedAt,
-      controls: cloneSessionControls(current.controls),
-    });
+    broadcastToSession(sessionKey, buildSessionControlsEvent(sessionKey, current.controls, emittedAt));
   }
 
   function readOrganizerState(): ChatSessionOrganizerState {
@@ -4280,7 +4322,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       includeSnapshot?: boolean;
     } = {},
   ): Promise<void> {
-    const session = sessionKey ? getStudioSession(sessionKey)?.row : null;
+    const state = sessionKey ? await resolveSessionStateForAttachEvents(sessionKey) : null;
+    const session = state?.row || null;
     const runtime = session?.runtime || buildRuntimeState(await isGatewayConnected(), Boolean(session?.permissions.writable));
     sendSseEvent(res, 'chat-stream', {
       kind: 'runtime',
@@ -4289,20 +4332,15 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       emittedAt: new Date().toISOString(),
       runtime,
     } satisfies ChatStreamEvent);
-    const queueState = getStudioSession(sessionKey)?.pendingQueue || [];
+    const queueState = state?.pendingQueue || [];
     sendSseEvent(res, 'chat-stream', {
       kind: 'queue.state',
       sessionKey,
       emittedAt: new Date().toISOString(),
       items: cloneChatQueuedMessageList(queueState),
     } satisfies ChatStreamEvent);
-    const controls = getStudioSession(sessionKey)?.controls || createDefaultSessionControls();
-    sendSseEvent(res, 'chat-stream', {
-      kind: 'session.controls',
-      sessionKey,
-      emittedAt: new Date().toISOString(),
-      controls: cloneSessionControls(controls),
-    } satisfies ChatStreamEvent);
+    const controls = state?.controls || createDefaultSessionControls();
+    sendSseEvent(res, 'chat-stream', buildSessionControlsEvent(sessionKey, controls));
     for (const overlay of listRunOverlaysForSession(sessionKey)) {
       sendSseEvent(res, 'chat-stream', {
         kind: 'run_overlay',
@@ -4325,8 +4363,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     sessionKey: string,
     options: { includeSnapshot?: boolean } = {},
   ): Promise<ChatStreamEvent[]> {
-    const session = getStudioSession(sessionKey)?.row || await requireSession(sessionKey);
-    const runtime = getStudioSession(sessionKey)?.row.runtime
+    const state = await resolveSessionStateForAttachEvents(sessionKey);
+    const session = state?.row || await requireSession(sessionKey);
+    const runtime = state?.row.runtime
       || session.runtime
       || buildRuntimeState(await isGatewayConnected(), Boolean(session.permissions.writable));
     const emittedAt = new Date().toISOString();
@@ -4340,13 +4379,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       kind: 'queue.state',
       sessionKey,
       emittedAt,
-      items: cloneChatQueuedMessageList(getStudioSession(sessionKey)?.pendingQueue || []),
-    }, {
-      kind: 'session.controls',
-      sessionKey,
-      emittedAt,
-      controls: cloneSessionControls(getStudioSession(sessionKey)?.controls || createDefaultSessionControls()),
-    }];
+      items: cloneChatQueuedMessageList(state?.pendingQueue || []),
+    }, buildSessionControlsEvent(sessionKey, state?.controls || createDefaultSessionControls(), emittedAt)];
 
     if (shouldEmitCanonicalProtocol()) {
       events.push({
@@ -6043,7 +6077,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     ensureOfficialCanonicalStream(sessionKey);
 
     void (async () => {
-      const session = sessionKey ? getStudioSession(sessionKey)?.row : null;
+      const state = sessionKey ? await resolveSessionStateForAttachEvents(sessionKey) : null;
+      const session = state?.row || null;
       const runtime = session?.runtime || buildRuntimeState(await isGatewayConnected(), Boolean(session?.permissions.writable));
       const runtimeEvent: ChatStreamEvent = {
         kind: 'runtime',
@@ -6058,14 +6093,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           kind: 'queue.state',
           sessionKey,
           emittedAt: runtimeEvent.emittedAt,
-          items: cloneChatQueuedMessageList(getStudioSession(sessionKey)?.pendingQueue || []),
+          items: cloneChatQueuedMessageList(state?.pendingQueue || []),
         } satisfies ChatStreamEvent));
-        ws.send(JSON.stringify({
-          kind: 'session.controls',
+        ws.send(JSON.stringify(buildSessionControlsEvent(
           sessionKey,
-          emittedAt: runtimeEvent.emittedAt,
-          controls: cloneSessionControls(getStudioSession(sessionKey)?.controls || createDefaultSessionControls()),
-        } satisfies ChatStreamEvent));
+          state?.controls || createDefaultSessionControls(),
+          runtimeEvent.emittedAt,
+        )));
         if (shouldEmitCanonicalProtocol()) {
           ws.send(JSON.stringify({
             kind: 'runtime.state',
@@ -6398,6 +6432,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           controls = {
             checkedAt: new Date().toISOString(),
             session: sessionState.row,
+            globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
             controls: cloneSessionControls(sessionState.controls),
           };
         } catch (error) {
@@ -7039,6 +7074,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         updatedAt: new Date().toISOString(),
       };
       setStudioSession(state);
+      await syncSessionControlsToGatewayPolicy(sessionKey, state.controls);
       broadcastSessionControls(sessionKey);
       return await buildSessionControlsPayload(sessionKey);
     },

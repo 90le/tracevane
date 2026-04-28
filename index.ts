@@ -17,6 +17,7 @@ import {
   type ChatGatewayAbortPayload,
   type ChatGatewayDetachPayload,
   type ChatGatewayHeartbeatPayload,
+  type ChatGatewayPolicySyncPayload,
   type ChatGatewaySendPayload,
 } from './types/chat.js';
 import {
@@ -32,7 +33,12 @@ import {
   buildStudioBeforePromptBuildResult,
   buildStudioBeforeToolCallResult,
 } from './lib/studio-delivery-hooks.js';
-import { setStudioChatGlobalHostManagementExecEnabled } from './lib/studio-chat-management-policy.js';
+import {
+  getStudioChatGlobalHostManagementExecEnabled,
+  getStudioChatSessionHostManagementExecEnabled,
+  setStudioChatGlobalHostManagementExecEnabled,
+  setStudioChatSessionHostManagementExecEnabled,
+} from './lib/studio-chat-management-policy.js';
 import { maybeHandleStudioReplyDispatch } from './lib/studio-reply-dispatch.js';
 import { resolveStudioDeliveryTool } from './lib/studio-delivery-tool.js';
 import { resolvePluginHostContext } from './lib/plugin-host-compat.js';
@@ -315,6 +321,35 @@ const studioPlugin = {
             opts.respond(false, undefined, buildGatewayMethodError(
               error instanceof Error ? error.message : 'chat_abort_failed',
               'CHAT_ABORT_FAILED',
+            ));
+          }
+        }, { scope: 'operator.read' });
+
+        registerGatewayMethod(STUDIO_CHAT_GATEWAY_METHODS.policySync, (opts) => {
+          try {
+            const payload = opts.params as unknown as ChatGatewayPolicySyncPayload;
+            const sessionKey = String(payload?.sessionKey || '').trim();
+            if (typeof payload?.globalHostManagementExecEnabled === 'boolean') {
+              setStudioChatGlobalHostManagementExecEnabled(payload.globalHostManagementExecEnabled);
+            }
+            if (sessionKey) {
+              setStudioChatSessionHostManagementExecEnabled(
+                sessionKey,
+                payload?.allowHostManagementExec === true,
+              );
+            }
+            opts.respond(true, {
+              ok: true,
+              sessionKey: sessionKey || null,
+              globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
+              allowHostManagementExec: sessionKey
+                ? getStudioChatSessionHostManagementExecEnabled(sessionKey)
+                : null,
+            });
+          } catch (error) {
+            opts.respond(false, undefined, buildGatewayMethodError(
+              error instanceof Error ? error.message : 'chat_policy_sync_failed',
+              'CHAT_POLICY_SYNC_FAILED',
             ));
           }
         }, { scope: 'operator.read' });

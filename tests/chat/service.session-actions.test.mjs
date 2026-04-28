@@ -13,6 +13,7 @@ import {
   createStudioContext,
   createStudioServer,
 } from '../../dist/apps/api/index.js';
+import { STUDIO_CHAT_GATEWAY_METHODS } from '../../dist/types/chat.js';
 
 function createLogger() {
   return {
@@ -35,7 +36,7 @@ async function getFreePort() {
   return port;
 }
 
-function writeOpenClawConfig(root) {
+function writeOpenClawConfig(root, options = {}) {
   const workspace = path.join(root, 'workspace');
   fs.mkdirSync(workspace, { recursive: true });
   fs.mkdirSync(path.join(root, 'agents', 'main', 'sessions'), { recursive: true });
@@ -48,6 +49,18 @@ function writeOpenClawConfig(root) {
     agents: {
       defaults: { workspace },
       list: [{ id: 'main', workspace, default: true }],
+    },
+    plugins: {
+      entries: {
+        studio: {
+          enabled: true,
+          config: {
+            chat: {
+              allowHostManagementExecInStudioChat: options.allowHostManagementExecInStudioChat === true,
+            },
+          },
+        },
+      },
     },
   }, null, 2));
 }
@@ -269,6 +282,7 @@ test('session queue and controls round-trip from in-memory service state', async
     const created = await context.services.chat.createSession('main', {});
 
     const initialControls = await context.services.chat.getControls(created.session.key);
+    assert.equal(initialControls.globalHostManagementExecEnabled, false);
     assert.equal(initialControls.controls.allowHostManagementExec, false);
 
     const queued = await context.services.chat.enqueue(created.session.key, {
@@ -290,6 +304,39 @@ test('session queue and controls round-trip from in-memory service state', async
     const roundTripControls = await context.services.chat.getControls(created.session.key);
     assert.equal(roundTripControls.controls.allowHostManagementExec, true);
   } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('session controls payload carries global host-management exec and survives rematerialization', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-controls-global-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root, { allowHostManagementExecInStudioChat: true });
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const gatewayWsUrl = `ws://127.0.0.1:${gateway.port}`;
+    const context = await createContextForRoot(root, gatewayWsUrl);
+    const created = await context.services.chat.createSession('main', {});
+
+    const patchedControls = await context.services.chat.patchControls(created.session.key, {
+      allowHostManagementExec: true,
+    });
+    assert.equal(patchedControls.globalHostManagementExecEnabled, true);
+    assert.equal(patchedControls.controls.allowHostManagementExec, true);
+    const syncRequest = gateway.requests.find((request) => request.method === STUDIO_CHAT_GATEWAY_METHODS.policySync);
+    assert.deepEqual(syncRequest?.params, {
+      sessionKey: created.session.key,
+      allowHostManagementExec: true,
+      globalHostManagementExecEnabled: true,
+    });
+
+    const rematerializedContext = await createContextForRoot(root, gatewayWsUrl);
+    const roundTripControls = await rematerializedContext.services.chat.getControls(created.session.key);
+    assert.equal(roundTripControls.globalHostManagementExecEnabled, true);
+    assert.equal(roundTripControls.controls.allowHostManagementExec, true);
+  } finally {
+    await gateway?.close?.();
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
