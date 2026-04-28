@@ -79,11 +79,17 @@ test("files workspace exposes explorer layout, tree, listing, editor, upload, an
   assert.match(filesControlPage, /refreshExplorer/);
   assert.match(filesControlPage, /copySelectedPathsToClipboard/);
   assert.match(filesControlPage, /copySelectedStudioRefsToClipboard/);
+  assert.match(filesControlPage, /copySelectedStudioMarkdownRefsToClipboard/);
   assert.match(filesControlPage, /writeTextToSystemClipboard/);
   assert.match(filesControlPage, /studioRefForItem/);
   assert.match(filesControlPage, /workspace:\$\{workspaceRelativePath\}/);
   assert.match(filesControlPage, /uploads:\$\{uploadRelativePath\}/);
   assert.match(filesControlPage, /studio-file:\$\{absolutePath\}/);
+  assert.match(filesControlPage, /studioMarkdownRefForItem/);
+  assert.match(filesControlPage, /"studio:break-image"/);
+  assert.match(filesControlPage, /"studio:break-video"/);
+  assert.match(filesControlPage, /"studio:card"/);
+  assert.match(filesControlPage, /studio_copy_chat_markdown/);
   assert.match(filesControlPage, /duplicateSelectedItems/);
   assert.match(filesControlPage, /file-manager-details/);
   assert.match(filesControlPage, /openDetailsForSelection/);

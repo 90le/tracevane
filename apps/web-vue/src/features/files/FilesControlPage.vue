@@ -74,6 +74,14 @@
             {{ text("复制 Studio 引用", "Copy Studio ref") }}
           </button>
           <button
+            v-if="selectedMarkdownRefItems.length"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="copySelectedStudioMarkdownRefsToClipboard"
+          >
+            {{ text("复制 Chat Markdown", "Copy Chat Markdown") }}
+          </button>
+          <button
             v-if="selectedItems.length"
             type="button"
             class="file-manager-statusbar__button"
@@ -230,6 +238,14 @@
           </button>
           <button type="button" class="file-manager-statusbar__button" @click="copyStudioRefsToClipboard([detailsItem])">
             {{ text("复制 Studio 引用", "Copy Studio ref") }}
+          </button>
+          <button
+            v-if="isChatMarkdownReferenceItem(detailsItem)"
+            type="button"
+            class="file-manager-statusbar__button"
+            @click="copyStudioMarkdownRefsToClipboard([detailsItem])"
+          >
+            {{ text("复制 Chat Markdown", "Copy Chat Markdown") }}
           </button>
           <button
             v-if="isCodeEditableItem(detailsItem)"
@@ -517,6 +533,9 @@ const selectedArchiveTarget = computed(() => {
 const selectedCodeFiles = computed(
   () => selectedItems.value.filter((item) => isCodeEditableItem(item)),
 );
+const selectedMarkdownRefItems = computed(
+  () => selectedItems.value.filter((item) => isChatMarkdownReferenceItem(item)),
+);
 const selectedZipFiles = computed(
   () => selectedItems.value.filter((item) => isZipArchiveItem(item)),
 );
@@ -643,6 +662,18 @@ const explorerContextMenuItems = computed<VueFinderContextItem[]>(() => [
     },
     show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
     order: 120,
+  },
+  {
+    id: "studio_copy_chat_markdown",
+    title: () => text("复制 Chat Markdown", "Copy Chat Markdown"),
+    action: (_app, items) => {
+      void copyStudioMarkdownRefsToClipboard(items);
+    },
+    show: (_app, ctx) => {
+      const items = ctx.items?.length ? ctx.items : ctx.target ? [ctx.target] : [];
+      return items.some((item) => isChatMarkdownReferenceItem(item));
+    },
+    order: 121,
   },
   {
     id: "studio_download_archive",
@@ -922,6 +953,45 @@ function studioRefForItem(item: DirEntry): string {
   return `studio-file:${absolutePath}`;
 }
 
+function escapeMarkdownLabel(value: string): string {
+  return value.replace(/([\\[\]])/g, "\\$1").trim() || "file";
+}
+
+function markdownDestinationForStudioRef(ref: string): string {
+  if (/[\s()<>]/.test(ref)) {
+    return `<${ref.replace(/>/g, "%3E")}>`;
+  }
+  return ref;
+}
+
+function isChatMarkdownReferenceItem(item: DirEntry): boolean {
+  return item.type === "file";
+}
+
+function isImageMarkdownReferenceItem(item: DirEntry): boolean {
+  const mime = String(item.mime_type || "").toLowerCase();
+  const extension = String(item.extension || "").replace(/^\./, "").toLowerCase();
+  return mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(extension);
+}
+
+function isVideoMarkdownReferenceItem(item: DirEntry): boolean {
+  const mime = String(item.mime_type || "").toLowerCase();
+  const extension = String(item.extension || "").replace(/^\./, "").toLowerCase();
+  return mime.startsWith("video/") || ["mp4", "mov", "avi", "mkv", "webm"].includes(extension);
+}
+
+function studioMarkdownRefForItem(item: DirEntry): string {
+  const label = escapeMarkdownLabel(item.basename || "file");
+  const destination = markdownDestinationForStudioRef(studioRefForItem(item));
+  if (isImageMarkdownReferenceItem(item)) {
+    return `![${label}](${destination} "studio:break-image")`;
+  }
+  if (isVideoMarkdownReferenceItem(item)) {
+    return `[${label}](${destination} "studio:break-video")`;
+  }
+  return `[${label}](${destination} "studio:card")`;
+}
+
 async function copyStudioRefsToClipboard(items: DirEntry[]): Promise<void> {
   const refs = (items.length ? items : selectedItems.value)
     .map((item) => studioRefForItem(item))
@@ -945,6 +1015,32 @@ async function copyStudioRefsToClipboard(items: DirEntry[]): Promise<void> {
 
 function copySelectedStudioRefsToClipboard(): void {
   void copyStudioRefsToClipboard(selectedItems.value);
+}
+
+async function copyStudioMarkdownRefsToClipboard(items: DirEntry[]): Promise<void> {
+  const refs = (items.length ? items : selectedItems.value)
+    .filter((item) => isChatMarkdownReferenceItem(item))
+    .map((item) => studioMarkdownRefForItem(item))
+    .filter(Boolean);
+  if (!refs.length) return;
+  try {
+    await writeTextToSystemClipboard(refs.join("\n"));
+    setNotice(
+      "success",
+      refs.length > 1
+        ? text(`已复制 ${refs.length} 个 Chat Markdown 引用`, `Copied ${refs.length} Chat Markdown refs`)
+        : text("Chat Markdown 引用已复制", "Chat Markdown ref copied"),
+    );
+  } catch (error) {
+    setNotice(
+      "error",
+      error instanceof Error ? error.message : text("复制 Chat Markdown 失败", "Failed to copy Chat Markdown"),
+    );
+  }
+}
+
+function copySelectedStudioMarkdownRefsToClipboard(): void {
+  void copyStudioMarkdownRefsToClipboard(selectedMarkdownRefItems.value);
 }
 
 function buildDuplicateName(name: string, index: number, total: number): string {
