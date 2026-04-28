@@ -6,6 +6,9 @@ import {
   hasResourceForRef,
   hasReadyResourceForRef,
   mergeChatResourceItems,
+  resetChatResourceResolverForTest,
+  resolveMissingStudioResourcesForMarkdown,
+  setChatResourceResolveTransportForTest,
 } from '../../apps/web-vue/src/features/chat-v2/chat-resource-resolver.ts';
 
 type MarkdownModule = typeof import('../../apps/web-vue/src/features/chat/markdown.ts');
@@ -132,6 +135,66 @@ test('studio markdown resource resolver keeps ready refs from refetching', () =>
       placement: 'append',
     },
   ], 'uploads:report final.pdf'), true);
+});
+
+test('studio markdown resource resolver batches concurrent missing refs per session', async () => {
+  resetChatResourceResolverForTest();
+  const calls: string[][] = [];
+  const restore = setChatResourceResolveTransportForTest(async (sessionKey, payload) => {
+    assert.equal(sessionKey, 'session-batch');
+    calls.push([...payload.refs]);
+    return {
+      ok: true,
+      sessionKey,
+      resources: payload.refs.map((ref) => ({
+        ref,
+        resourceRef: ref,
+        aiReadable: false,
+        resource: {
+          id: `resource:${ref}`,
+          kind: 'image',
+          url: '',
+          downloadUrl: '',
+          fileName: ref.split('/').pop()?.split(':').pop() || 'image.png',
+          mimeType: 'image/png',
+          originalPath: ref,
+          source: 'studio_resource',
+          status: 'missing',
+          placement: 'append',
+        },
+      })),
+    };
+  });
+
+  try {
+    const [first, second] = await Promise.all([
+      resolveMissingStudioResourcesForMarkdown(
+        'session-batch',
+        '![A](workspace:a.png "studio:break-image")',
+        undefined,
+      ),
+      resolveMissingStudioResourcesForMarkdown(
+        'session-batch',
+        '![B](workspace:b.png "studio:break-image") ![A](workspace:a.png "studio:break-image")',
+        undefined,
+      ),
+    ]);
+
+    assert.deepEqual(calls, [['workspace:a.png', 'workspace:b.png']]);
+    assert.deepEqual(first.map((item) => item.originalPath), ['workspace:a.png']);
+    assert.deepEqual(second.map((item) => item.originalPath), ['workspace:b.png', 'workspace:a.png']);
+
+    const cached = await resolveMissingStudioResourcesForMarkdown(
+      'session-batch',
+      '![A](workspace:a.png "studio:break-image")',
+      undefined,
+    );
+    assert.deepEqual(cached.map((item) => item.originalPath), ['workspace:a.png']);
+    assert.deepEqual(calls, [['workspace:a.png', 'workspace:b.png']]);
+  } finally {
+    restore();
+    resetChatResourceResolverForTest();
+  }
 });
 
 test('raw html keeps style/align attributes and is not split into text fragments', async () => {
