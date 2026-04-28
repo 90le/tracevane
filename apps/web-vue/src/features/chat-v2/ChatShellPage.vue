@@ -367,12 +367,10 @@ import type {
   ChatPatchSessionControlsRequest,
   ChatQueuedMessageItem,
   ChatQueuePayload,
-  ChatResourceItem,
   ChatRunOverlay,
   ChatRuntimeState,
   ChatSendAck,
   ChatSendAttachment,
-  ChatSendFileRef,
   ChatSendRequest,
   ChatBootstrapPayload,
   ChatSessionControlState,
@@ -400,18 +398,15 @@ import {
 } from './chat-sound-preferences';
 import {
   areComposerAttachmentsReady,
-  buildOptimisticResourcesFromComposerAttachments,
+  buildComposerSendPlan,
   runLimitedComposerUploadQueue,
   type ChatComposerUploadState,
 } from '../../../../../lib/chat-composer';
 import {
-  buildComposerFileRefs,
-  buildComposerMessageBlocks,
   createEmptyComposerDocument,
   extractComposerPlainText,
   hasComposerDocumentContent,
   normalizeComposerDocument,
-  serializeComposerDocumentToMarkdown,
 } from '../../../../../lib/composer-model';
 import {
   abortChatRun,
@@ -930,10 +925,6 @@ const canReset = computed(() => Boolean(
   && !accessError.value,
 ));
 const canRefresh = computed(() => Boolean(selectedSession.value && !refreshBusy.value && !accessError.value));
-
-function buildAttachmentPreviewResources(attachments: ComposerImageAttachment[]): ChatResourceItem[] {
-  return buildOptimisticResourcesFromComposerAttachments(attachments);
-}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -5410,39 +5401,22 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
     }
     const sessionKey = session.key;
 
-    const textValue = serializeComposerDocumentToMarkdown(documentValue, attachments);
-    const blocks = buildComposerMessageBlocks(documentValue, attachments);
-    const fileRefs: ChatSendFileRef[] = buildComposerFileRefs(attachments);
     requestId = `ui-${Date.now()}`;
-
-    const inlineImageAttachments = attachments.filter((attachment) => (
-      attachment.type === 'image'
-      && !attachment.relativePath
-      && Boolean(attachment.content)
-    ));
+    const sendPlan = buildComposerSendPlan({
+      document: documentValue,
+      attachments,
+      clientRequestId: requestId,
+    });
 
     const createdAt = new Date().toISOString();
-    const sendPayload: ChatSendRequest = {
-      text: textValue,
-      clientRequestId: requestId,
-      composerDocument: documentValue,
-      fileRefs,
-    };
-    if (inlineImageAttachments.length) {
-      sendPayload.attachments = inlineImageAttachments.map((attachment) => ({
-        type: attachment.type,
-        mimeType: attachment.mimeType,
-        fileName: attachment.fileName,
-        content: attachment.content,
-      }));
-    }
+    const sendPayload = sendPlan.payload;
     const hadActiveRun = Boolean(activeRuntime.value?.activeRunId);
     if (hadActiveRun) {
       const optimisticQueueItem = buildOptimisticQueuedMessageItem({
         sessionKey,
         requestId,
         payload: sendPayload,
-        previewText: extractComposerPlainText(documentValue).trim(),
+        previewText: sendPlan.previewText,
         createdAt,
       });
       rollbackComposerDocument = documentValue;
@@ -5454,10 +5428,12 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       applyOptimisticQueueItem(sessionKey, optimisticQueueItem);
       composerDocument.value = createEmptyComposerDocument();
       composerAttachments.value = [];
-      const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, {
-        ...sendPayload,
+      const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, buildComposerSendPlan({
+        document: sendPlan.document,
+        attachments,
+        clientRequestId: requestId,
         flushWhenIdle: true,
-      });
+      }).payload);
       applyQueueState(sessionKey, queuePayload.items);
       rollbackComposerDocument = null;
       rollbackComposerAttachments = null;
@@ -5493,12 +5469,11 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
     rollbackComposerDocument = documentValue;
     rollbackComposerAttachments = attachments.map((attachment) => ({ ...attachment }));
     protectSessionRow(sessionKey);
-    const resources = attachments.length ? buildAttachmentPreviewResources(attachments) : undefined;
-    const previewText = extractComposerPlainText(documentValue).trim();
+    const previewText = sendPlan.previewText;
     const optimisticUserMessage: ChatMessageItem = {
       id: `ui-user-${requestId}`,
       role: 'user',
-      text: textValue,
+      text: sendPlan.text,
       createdAt,
       source: 'inject',
       runId: requestId,
@@ -5506,8 +5481,8 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       omitted: false,
       aborted: false,
       stopReason: null,
-      blocks: blocks.length ? blocks : undefined,
-      resources,
+      blocks: sendPlan.blocks.length ? sendPlan.blocks : undefined,
+      resources: sendPlan.resources,
     };
     recordChatDebugTrace({
       at: createdAt,

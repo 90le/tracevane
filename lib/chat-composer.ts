@@ -1,4 +1,18 @@
-import type { ChatAttachmentKind, ChatResourceItem } from '../types/chat.js';
+import type {
+  ChatAttachmentKind,
+  ChatComposerDocument,
+  ChatMessageBlock,
+  ChatResourceItem,
+  ChatSendFileRef,
+  ChatSendRequest,
+} from '../types/chat.js';
+import {
+  buildComposerFileRefs,
+  buildComposerMessageBlocks,
+  extractComposerPlainText,
+  normalizeComposerDocument,
+  serializeComposerDocumentToMarkdown,
+} from './composer-model.js';
 
 export type ChatComposerUploadState = 'uploading' | 'ready' | 'failed';
 
@@ -7,6 +21,7 @@ export interface ChatComposerAttachmentLike {
   type: ChatAttachmentKind;
   fileName?: string;
   mimeType: string;
+  content?: string | null;
   dataUrl: string;
   downloadUrl?: string | null;
   relativePath?: string | null;
@@ -20,6 +35,17 @@ export interface ChatComposerAttachmentUploadSummary {
   failed: number;
   allReady: boolean;
   hasBlocking: boolean;
+}
+
+export interface ChatComposerSendPlan {
+  document: ChatComposerDocument;
+  text: string;
+  previewText: string;
+  blocks: ChatMessageBlock[];
+  fileRefs: ChatSendFileRef[];
+  resources: ChatResourceItem[] | undefined;
+  inlineAttachments: NonNullable<ChatSendRequest['attachments']>;
+  payload: ChatSendRequest;
 }
 
 export function deriveComposerAttachmentUploadState(
@@ -123,4 +149,57 @@ export function buildOptimisticResourcesFromComposerAttachments(
       status: 'ready',
       placement: 'append',
     }));
+}
+
+export function buildComposerSendPlan(input: {
+  document: ChatComposerDocument | undefined | null;
+  attachments: ChatComposerAttachmentLike[];
+  clientRequestId: string;
+  flushWhenIdle?: boolean;
+}): ChatComposerSendPlan {
+  const document = normalizeComposerDocument(input.document);
+  const attachments = input.attachments.slice();
+  const text = serializeComposerDocumentToMarkdown(document, attachments);
+  const blocks = buildComposerMessageBlocks(document, attachments);
+  const fileRefs = buildComposerFileRefs(attachments);
+  const resources = attachments.length
+    ? buildOptimisticResourcesFromComposerAttachments(attachments)
+    : undefined;
+  const inlineAttachments = attachments
+    .filter((attachment) => (
+      attachment.type === 'image'
+      && !attachment.relativePath
+      && typeof attachment.content === 'string'
+      && attachment.content.length > 0
+    ))
+    .map((attachment) => ({
+      type: attachment.type,
+      mimeType: attachment.mimeType,
+      fileName: attachment.fileName,
+      content: attachment.content as string,
+    }));
+
+  const payload: ChatSendRequest = {
+    text,
+    clientRequestId: input.clientRequestId,
+    composerDocument: document,
+    fileRefs,
+  };
+  if (input.flushWhenIdle === true) {
+    payload.flushWhenIdle = true;
+  }
+  if (inlineAttachments.length) {
+    payload.attachments = inlineAttachments;
+  }
+
+  return {
+    document,
+    text,
+    previewText: extractComposerPlainText(document).trim(),
+    blocks,
+    fileRefs,
+    resources,
+    inlineAttachments,
+    payload,
+  };
 }

@@ -9,13 +9,17 @@ const chatShellPage = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatShellPage.vue'),
   'utf8',
 );
+const chatComposerModel = fs.readFileSync(
+  path.join(rootDir, 'lib/chat-composer.ts'),
+  'utf8',
+);
 
 test('uploaded composer attachments send through fileRefs without duplicate inline base64 payloads', () => {
-  assert.match(chatShellPage, /content:\s*''/);
+  assert.match(chatShellPage, /buildComposerSendPlan/);
   assert.match(
-    chatShellPage,
-    /const inlineImageAttachments = attachments\.filter\(\(attachment\) => \([\s\S]*attachment\.type === 'image'[\s\S]*&& !attachment\.relativePath[\s\S]*&& Boolean\(attachment\.content\)[\s\S]*\)\);/,
+    chatComposerModel,
+    /attachment\.type === 'image'[\s\S]*&& !attachment\.relativePath[\s\S]*&& typeof attachment\.content === 'string'/,
   );
-  assert.match(chatShellPage, /if \(inlineImageAttachments\.length\) \{/);
-  assert.match(chatShellPage, /sendPayload\.attachments = inlineImageAttachments\.map/);
+  assert.match(chatShellPage, /const sendPayload = sendPlan\.payload/);
+  assert.doesNotMatch(chatShellPage, /sendPayload\.attachments = inlineImageAttachments\.map/);
 });

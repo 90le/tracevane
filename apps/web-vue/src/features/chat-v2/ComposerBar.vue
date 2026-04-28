@@ -213,7 +213,10 @@
               {{ getFileIcon(attachment) }}
             </span>
           </span>
-          <span class="chat-composer-pool-name">{{ attachmentLabel(attachment, attachment.id) }}</span>
+          <span class="chat-composer-pool-copy">
+            <span class="chat-composer-pool-name">{{ attachmentLabel(attachment, attachment.id) }}</span>
+            <span class="chat-composer-pool-meta">{{ attachmentMetaLabel(attachment) }}</span>
+          </span>
         </button>
 
         <span
@@ -721,8 +724,40 @@ function referenceCountLabel(count: number): string {
   return text(`已引用 ${count} 次`, `${count} refs`);
 }
 
+function formatAttachmentSize(size: number | undefined): string {
+  if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+    return '';
+  }
+  if (size < 1024) {
+    return `${Math.round(size)} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${Math.round(size / 102.4) / 10} KB`;
+  }
+  return `${Math.round(size / 1024 / 102.4) / 10} MB`;
+}
+
 function attachmentState(attachment: ComposerAttachment): ChatComposerUploadState {
   return deriveComposerAttachmentUploadState(attachment);
+}
+
+function attachmentMetaLabel(attachment: ComposerAttachment): string {
+  const state = attachmentState(attachment);
+  if (state === 'uploading') {
+    const progress = typeof attachment.progress === 'number' && Number.isFinite(attachment.progress)
+      ? Math.max(0, Math.min(100, Math.round(attachment.progress)))
+      : null;
+    return progress == null
+      ? text('上传中', 'Uploading')
+      : text(`上传 ${progress}%`, `Uploading ${progress}%`);
+  }
+  if (state === 'failed') {
+    return text('上传失败', 'Upload failed');
+  }
+  const size = formatAttachmentSize(attachment.size);
+  return size
+    ? text(`已就绪 · ${size}`, `Ready · ${size}`)
+    : text('已就绪', 'Ready');
 }
 
 function defaultDisplay(type: ChatAttachmentKind): ChatComposerResourceDisplay {
@@ -2033,6 +2068,13 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.chat-composer-pool-copy {
+  display: inline-grid;
+  min-width: 0;
+  gap: 1px;
+  text-align: left;
+}
+
 .chat-composer-pool-chip:disabled {
   cursor: default;
   opacity: 0.7;
@@ -2086,6 +2128,17 @@ onBeforeUnmount(() => {
   font-weight: 500;
   word-break: normal;
   writing-mode: horizontal-tb;
+}
+
+.chat-composer-pool-meta {
+  display: block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--chat-text-soft);
+  font-size: 10px;
+  line-height: 1.2;
 }
 
 .chat-composer-pool-refcount {

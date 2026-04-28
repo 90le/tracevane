@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   areComposerAttachmentsReady,
+  buildComposerSendPlan,
   buildOptimisticResourcesFromComposerAttachments,
   canSendComposerDraft,
   runLimitedComposerUploadQueue,
@@ -248,4 +249,98 @@ test('composer message blocks keep referenced resources inline and unreferenced 
     resourceId: 'file-1',
     display: 'card',
   });
+});
+
+test('composer send plan centralizes markdown, file refs, resources, and payload shape', () => {
+  const plan = buildComposerSendPlan({
+    clientRequestId: 'ui-send-plan',
+    document: [
+      { type: 'text', id: 'text-1', text: '请参考 ' },
+      { type: 'resource-ref', id: 'ref-1', attachmentId: 'img-1', display: 'inline-image' },
+      { type: 'text', id: 'text-2', text: '，并阅读附件。' },
+    ],
+    attachments: [
+      {
+        id: 'img-1',
+        type: 'image',
+        fileName: 'diagram.png',
+        mimeType: 'image/png',
+        content: '',
+        dataUrl: '/api/chat/sessions/demo/media/diagram.png',
+        downloadUrl: '/api/chat/sessions/demo/media/diagram.png?download=1',
+        relativePath: 'uploads/diagram.png',
+        uploadState: 'ready',
+      },
+      {
+        id: 'doc-1',
+        type: 'file',
+        fileName: 'notes.md',
+        mimeType: 'text/markdown',
+        content: '',
+        dataUrl: '/api/chat/sessions/demo/media/notes.md',
+        downloadUrl: '/api/chat/sessions/demo/media/notes.md?download=1',
+        relativePath: 'uploads/notes.md',
+        uploadState: 'ready',
+      },
+    ],
+  });
+
+  assert.equal(
+    plan.text,
+    '请参考 [@diagram.png](uploads:diagram.png "studio:inline-image")，并阅读附件。',
+  );
+  assert.equal(plan.previewText, '请参考 ，并阅读附件。');
+  assert.equal(plan.payload.clientRequestId, 'ui-send-plan');
+  assert.equal(plan.payload.text, plan.text);
+  assert.deepEqual(plan.payload.composerDocument, plan.document);
+  assert.equal(plan.payload.attachments, undefined);
+  assert.equal(plan.fileRefs.length, 2);
+  assert.deepEqual(plan.payload.fileRefs, plan.fileRefs);
+  assert.equal(plan.resources?.length, 2);
+  assert.deepEqual(plan.blocks, [
+    {
+      type: 'paragraph',
+      segments: [
+        { type: 'text', text: '请参考 ' },
+        { type: 'resource', resourceId: 'img-1', display: 'inline-image' },
+        { type: 'text', text: '，并阅读附件。' },
+      ],
+    },
+    {
+      type: 'resource',
+      resourceId: 'doc-1',
+      display: 'card',
+    },
+  ]);
+});
+
+test('composer send plan keeps legacy inline image fallback isolated from uploaded file refs', () => {
+  const plan = buildComposerSendPlan({
+    clientRequestId: 'ui-legacy-image',
+    document: [{ type: 'text', id: 'text-1', text: 'image only' }],
+    attachments: [
+      {
+        id: 'inline-img',
+        type: 'image',
+        fileName: 'inline.png',
+        mimeType: 'image/png',
+        content: 'base64-inline',
+        dataUrl: 'data:image/png;base64,base64-inline',
+        relativePath: null,
+        uploadState: 'uploading',
+      },
+    ],
+  });
+
+  assert.deepEqual(plan.fileRefs, []);
+  assert.deepEqual(plan.payload.fileRefs, []);
+  assert.deepEqual(plan.inlineAttachments, [
+    {
+      type: 'image',
+      mimeType: 'image/png',
+      fileName: 'inline.png',
+      content: 'base64-inline',
+    },
+  ]);
+  assert.deepEqual(plan.payload.attachments, plan.inlineAttachments);
 });
