@@ -125,7 +125,9 @@ test("terminal workspace uses integrated stage-drawer shell without dedicated ex
   assert.match(terminalWorkspacePage, /terminal-inspector-drawer/);
   assert.match(terminalSessionPane, /terminal-stage-header/);
   assert.match(terminalSessionPane, /terminal-stage-header-main/);
-  assert.doesNotMatch(terminalSessionPane, /terminal-stage-header-actions/);
+  assert.match(terminalSessionPane, /terminal-stage-header-actions/);
+  assert.match(terminalSessionPane, /terminal-stage-action--focus/);
+  assert.match(terminalSessionPane, /sendShortcut\('c'\)/);
   assert.doesNotMatch(terminalSessionPane, /terminal-session-actions/);
   assert.doesNotMatch(
     terminalWorkspaceCss,
@@ -213,11 +215,15 @@ test("terminal workspace keeps strong shell-relative height chain for stage and 
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-session-pane\s*>\s*\.terminal-console-surface\s*\{[\s\S]*flex:\s*1\s+1\s+0;/,
+    /\.terminal-session-pane\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\);/,
   );
   assert.match(
     terminalWorkspaceCss,
     /\.terminal-session-pane\s*>\s*\.terminal-console-surface\s*\{[\s\S]*height:\s*100%;/,
+  );
+  assert.match(
+    terminalWorkspaceCss,
+    /\.terminal-session-pane\s*>\s*\.terminal-console-surface\s*\{[\s\S]*min-height:\s*0;/,
   );
   assert.match(
     terminalConsolePage,
@@ -268,11 +274,11 @@ test("terminal workspace theme uses unified surface tokens for stage and drawer"
   );
   assert.match(
     terminalWorkspaceCss,
-    /:global\(html\[data-theme="light"\]\) \.terminal-workspace-stage/,
+    /html\[data-theme="light"\] \.terminal-workspace-stage/,
   );
   assert.match(
     terminalWorkspaceCss,
-    /:global\(html\[data-theme="light"\]\) \.terminal-stage-header/,
+    /html\[data-theme="light"\] \.terminal-stage-header/,
   );
 });
 

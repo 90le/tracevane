@@ -616,7 +616,9 @@ destination.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(archive, "r") as zf:
     for member in zf.infolist():
         target = (destination / member.filename).resolve()
-        if not str(target).startswith(str(destination)):
+        try:
+            target.relative_to(destination)
+        except ValueError:
             raise RuntimeError(f"unsafe archive entry: {member.filename}")
     zf.extractall(destination)
 `,

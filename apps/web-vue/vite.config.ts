@@ -17,8 +17,10 @@ const studioWebPort = normalizePort(process.env.STUDIO_WEB_PORT, 5176);
 const studioBasePath = process.env.STUDIO_BASE_PATH || '';
 const webConfigDir = path.dirname(fileURLToPath(import.meta.url));
 const studioRootDir = path.resolve(webConfigDir, '..', '..');
-const STUDIO_PACKAGE_VERSION_FALLBACK = '0.1.25';
+const STUDIO_PACKAGE_VERSION_FALLBACK = '0.1.26';
+const studioPackageVersionOverride = process.env.OPENCLAW_STUDIO_BUILD_VERSION?.trim() || '';
 const studioPackageVersion = (() => {
+  if (studioPackageVersionOverride) return studioPackageVersionOverride;
   try {
     const raw = fs.readFileSync(path.join(studioRootDir, 'package.json'), 'utf-8');
     const parsed = JSON.parse(raw) as { version?: unknown };

@@ -155,8 +155,16 @@ export function unarchiveFile(payload: FilesUnarchivePayload): Promise<FilesMuta
   });
 }
 
-export function buildFileDownloadUrl(rootId: string, filePath: string): string {
-  return joinApiPath(`/api/files/download${buildQuery({ rootId, path: filePath })}`);
+export function buildFileDownloadUrl(
+  rootId: string,
+  filePath: string,
+  options: { download?: boolean } = {},
+): string {
+  return joinApiPath(`/api/files/download${buildQuery({
+    rootId,
+    path: filePath,
+    download: options.download ? 1 : undefined,
+  })}`);
 }
 
 export function buildArchiveDownloadUrl(

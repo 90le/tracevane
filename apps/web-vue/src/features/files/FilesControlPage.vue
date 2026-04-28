@@ -69,6 +69,14 @@
             v-if="selectedItems.length"
             type="button"
             class="file-manager-statusbar__button"
+            @click="copySelectedStudioRefsToClipboard"
+          >
+            {{ text("复制 Studio 引用", "Copy Studio ref") }}
+          </button>
+          <button
+            v-if="selectedItems.length"
+            type="button"
+            class="file-manager-statusbar__button"
             @click="duplicateSelectedItems"
           >
             {{ selectedItems.length > 1 ? text(`创建副本 ${selectedItems.length}`, `Duplicate ${selectedItems.length}`) : text("创建副本", "Duplicate") }}
@@ -219,6 +227,9 @@
         <div class="file-manager-details__actions">
           <button type="button" class="file-manager-statusbar__button" @click="copyPathsToClipboard([detailsItem])">
             {{ text("复制路径", "Copy path") }}
+          </button>
+          <button type="button" class="file-manager-statusbar__button" @click="copyStudioRefsToClipboard([detailsItem])">
+            {{ text("复制 Studio 引用", "Copy Studio ref") }}
           </button>
           <button
             v-if="isCodeEditableItem(detailsItem)"
@@ -487,7 +498,7 @@ const editorDirty = computed(
 );
 const editorDownloadUrl = computed(() => {
   if (!editorState.value.rootId || !editorState.value.apiPath) return "";
-  return buildFileDownloadUrl(editorState.value.rootId, editorState.value.apiPath);
+  return buildFileDownloadUrl(editorState.value.rootId, editorState.value.apiPath, { download: true });
 });
 const selectedArchiveTarget = computed(() => {
   if (!selectedItems.value.length) return null;
@@ -623,6 +634,15 @@ const explorerContextMenuItems = computed<VueFinderContextItem[]>(() => [
     },
     show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
     order: 119,
+  },
+  {
+    id: "studio_copy_ref",
+    title: () => text("复制 Studio 引用", "Copy Studio ref"),
+    action: (_app, items) => {
+      void copyStudioRefsToClipboard(items);
+    },
+    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
+    order: 120,
   },
   {
     id: "studio_download_archive",
@@ -854,6 +874,79 @@ function copySelectedPathsToClipboard(): void {
   void copyPathsToClipboard(selectedItems.value);
 }
 
+function normalizePortableFilePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/\/+/g, "/");
+}
+
+function joinPortableFilePath(basePath: string, relativePath: string): string {
+  const base = normalizePortableFilePath(basePath).replace(/\/+$/g, "");
+  const relative = normalizePortableFilePath(relativePath).replace(/^\/+/g, "");
+  if (!relative) return base || "/";
+  return base === "/" ? `/${relative}` : `${base}/${relative}`;
+}
+
+function relativeWithinPortablePath(basePath: string, targetPath: string): string | null {
+  const base = normalizePortableFilePath(basePath).replace(/\/+$/g, "") || "/";
+  const target = normalizePortableFilePath(targetPath);
+  if (target === base) return "";
+  const prefix = base === "/" ? "/" : `${base}/`;
+  return target.startsWith(prefix) ? target.slice(prefix.length) : null;
+}
+
+function rootSummaryForItem(item: DirEntry): FileRootSummary | null {
+  const rootId = rootIdForStorage(item.storage);
+  return roots.value.find((root) => root.id === rootId) || null;
+}
+
+function absolutePathForItem(item: DirEntry): string {
+  const root = rootSummaryForItem(item);
+  const relativePath = relativePathFromVueFinderPath(item.path);
+  return root ? joinPortableFilePath(root.absolutePath, relativePath) : item.path;
+}
+
+function studioRefForItem(item: DirEntry): string {
+  const absolutePath = absolutePathForItem(item);
+  const openclawRoot = roots.value.find((root) => root.id === "openclaw-root")?.absolutePath || "";
+  if (openclawRoot) {
+    const workspaceRoot = joinPortableFilePath(openclawRoot, "workspace");
+    const uploadsRoot = joinPortableFilePath(workspaceRoot, "uploads");
+    const uploadRelativePath = relativeWithinPortablePath(uploadsRoot, absolutePath);
+    if (uploadRelativePath !== null) {
+      return `uploads:${uploadRelativePath}`;
+    }
+    const workspaceRelativePath = relativeWithinPortablePath(workspaceRoot, absolutePath);
+    if (workspaceRelativePath !== null) {
+      return `workspace:${workspaceRelativePath}`;
+    }
+  }
+  return `studio-file:${absolutePath}`;
+}
+
+async function copyStudioRefsToClipboard(items: DirEntry[]): Promise<void> {
+  const refs = (items.length ? items : selectedItems.value)
+    .map((item) => studioRefForItem(item))
+    .filter(Boolean);
+  if (!refs.length) return;
+  try {
+    await writeTextToSystemClipboard(refs.join("\n"));
+    setNotice(
+      "success",
+      refs.length > 1
+        ? text(`已复制 ${refs.length} 个 Studio 引用`, `Copied ${refs.length} Studio refs`)
+        : text("Studio 引用已复制", "Studio ref copied"),
+    );
+  } catch (error) {
+    setNotice(
+      "error",
+      error instanceof Error ? error.message : text("复制 Studio 引用失败", "Failed to copy Studio ref"),
+    );
+  }
+}
+
+function copySelectedStudioRefsToClipboard(): void {
+  void copyStudioRefsToClipboard(selectedItems.value);
+}
+
 function buildDuplicateName(name: string, index: number, total: number): string {
   const dotIndex = name.lastIndexOf(".");
   const copyId = Date.now().toString(36).slice(-4);
@@ -945,7 +1038,7 @@ function downloadDetailItem(): void {
   const rootId = rootIdForStorage(item.storage);
   const apiPath = relativePathFromVueFinderPath(item.path);
   if (!rootId || !apiPath) return;
-  triggerBrowserDownload(buildFileDownloadUrl(rootId, apiPath), item.basename);
+  triggerBrowserDownload(buildFileDownloadUrl(rootId, apiPath, { download: true }), item.basename);
 }
 
 function isCodeEditableItem(item: DirEntry): boolean {

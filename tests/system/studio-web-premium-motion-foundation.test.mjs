@@ -37,8 +37,9 @@ test('shared motion presets exist for shell and page-stage reveals', () => {
 });
 
 test('app shell keeps route staging static to avoid page-switch flicker', () => {
-  assert.match(appVue, /<RouterView v-slot="\{ Component \}">/);
+  assert.match(appVue, /<RouterView v-slot="\{ Component,\s*route:\s*routedView \}">/);
   assert.match(appVue, /class="shell-route-stage"/);
+  assert.match(appVue, /<KeepAlive v-if="Component && shouldKeepRouteAlive\(routedView\)" :max="16">/);
   assert.match(appVue, /<section/);
   assert.doesNotMatch(appVue, /<AnimatePresence/);
   assert.doesNotMatch(appVue, /<motion\.section/);

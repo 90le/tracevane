@@ -4,6 +4,7 @@
     "agents",
     "channels",
     "skills",
+    "files",
     "plugins",
     "cron"
   ],
@@ -27,6 +28,11 @@
       "domainId": "skills",
       "routePath": "/skills",
       "file": "apps/web-vue/src/views/SkillsView.vue"
+    },
+    {
+      "domainId": "files",
+      "routePath": "/files",
+      "file": "apps/web-vue/src/views/FilesView.vue"
     },
     {
       "domainId": "plugins",
@@ -55,6 +61,10 @@
     {
       "domainId": "skills",
       "dir": "apps/api/modules/skills"
+    },
+    {
+      "domainId": "files",
+      "dir": "apps/api/modules/files"
     },
     {
       "domainId": "plugins",
@@ -107,6 +117,13 @@
       "matchedFiles": [
         "tests/system/studio-web-skills-lifecycle-contract.test.mjs",
         "tests/system/studio-web-skills-workspace-recipe.test.mjs"
+      ]
+    },
+    {
+      "domainId": "files",
+      "testPattern": "studio-web-files-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-files-workspace.test.mjs"
       ]
     },
     {

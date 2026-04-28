@@ -34,9 +34,10 @@ test("app shell uses a direct route host so chat is not boxed inside extra shell
     appVue,
     /class="main-content shell-main"[\s\S]*'chat-surface-route': isChatSurface,[\s\S]*'shell-main-chat': isChatSurface,[\s\S]*'terminal-surface-route': isTerminalSurface,/,
   );
-  assert.match(appVue, /<RouterView v-slot="\{ Component \}">/);
+  assert.match(appVue, /<RouterView v-slot="\{ Component,\s*route:\s*routedView \}">/);
   assert.match(appVue, /<section class="shell-main-stage">/);
   assert.match(appVue, /class="shell-route-stage"/);
+  assert.match(appVue, /<KeepAlive v-if="Component && shouldKeepRouteAlive\(routedView\)" :max="16">/);
   assert.doesNotMatch(appVue, /class="shell-stage-surface"/);
   assert.doesNotMatch(appVue, /class="shell-canvas"/);
 });

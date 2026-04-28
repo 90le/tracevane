@@ -300,7 +300,7 @@ export class StudioFilesVueFinderDriver extends BaseAdapter implements Driver {
 
   getDownloadUrl(params: { path: string }): string {
     const target = this.resolvePath(params.path);
-    return buildFileDownloadUrl(target.root.id, target.relativePath);
+    return buildFileDownloadUrl(target.root.id, target.relativePath, { download: true });
   }
 
   async search(params: SearchParams): Promise<DirEntry[]> {
@@ -357,6 +357,7 @@ export class StudioFilesVueFinderDriver extends BaseAdapter implements Driver {
           uploadURL: buildFileDownloadUrl(
             target.root.id,
             [target.relativePath, file.name || "file"].filter(Boolean).join("/"),
+            { download: true },
           ),
         });
       }

@@ -16,18 +16,22 @@ const writerModulePath = path.join(
 );
 const writerModuleUrl = `${pathToFileURL(writerModulePath).href}?t=${Date.now()}`;
 
+function recentIso(offsetMs = 0) {
+  return new Date(Date.now() + offsetMs).toISOString();
+}
+
 function makePersistedEvent(id, overrides = {}) {
   return {
     id,
     kind: "diagnostic_issue",
     category: "alerts",
     severity: "warning",
-    occurredAt: "2026-04-13T09:00:00.000Z",
+    occurredAt: recentIso(),
     title: `Event ${id}`,
     summary: `Summary ${id}`,
     status: "pending",
     dedupeKey: `diagnostics:${id}`,
-    persistedAt: "2026-04-13T09:00:01.000Z",
+    persistedAt: recentIso(1000),
     sourceEntity: "system:diagnostics",
     details: { scope: "test" },
     action: "snapshot",

@@ -218,6 +218,7 @@ test('folder scope keeps agent/source filter options from descendant sessions an
     visibleChildFolders,
     currentFolder: viewModel.currentFolder,
     archiveViewOpen: viewModel.archiveViewOpen,
+    showObserved: ref(false),
     searchActive: filters.searchActive,
     loading: ref(false),
     text: makeText,

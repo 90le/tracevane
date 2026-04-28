@@ -2378,9 +2378,14 @@ const hooksFormData = ref<ConfigSummaryPayload['hooks']>({
 
 function onGatewayUpdate(data: Record<string, unknown>) {
   const next = { ...data };
+  const shouldSyncBaselineFingerprint = !gatewayBaselineData.value;
   gatewayFormData.value = next;
-  if (!gatewayBaselineData.value) {
+  if (shouldSyncBaselineFingerprint) {
     gatewayBaselineData.value = { ...next };
+    baselineDomainFingerprints.value = {
+      ...baselineDomainFingerprints.value,
+      gateway: currentDomainFingerprints().gateway,
+    };
   }
 }
 
@@ -3801,9 +3806,9 @@ function mergeConfigSummaryInPlace(nextSummary: ConfigSummaryPayload): void {
 
 function acceptSavedConfigSummary(nextSummary: ConfigSummaryPayload): void {
   mergeConfigSummaryInPlace(nextSummary);
-  if (gatewayFormData.value) {
-    gatewayBaselineData.value = { ...gatewayFormData.value };
-  }
+  gatewayFormData.value = null;
+  gatewayBaselineData.value = null;
+  hydrateForm(nextSummary);
   captureConfigBaseline();
 }
 

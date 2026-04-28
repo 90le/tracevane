@@ -2,12 +2,82 @@
 # OpenClaw Studio 打包脚本
 # 用法: ./pack.sh [版本号]
 # 示例: ./pack.sh 0.1.21
+# 测试打包: ./pack.sh --no-source-sync --output-dir /tmp/openclaw-studio-release-test 0.1.26
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION=${1:-$(node -p "require(process.argv[1]).version" "${SCRIPT_DIR}/package.json")}
-OUTPUT_DIR="${SCRIPT_DIR}/release"
+
+usage() {
+  cat <<'EOF'
+OpenClaw Studio 打包脚本
+
+用法:
+  ./pack.sh [options] [版本号]
+
+选项:
+  --source-sync              同步本地源码版本后再打包，默认用于正式发布
+  --no-source-sync           测试打包模式，不修改当前源码里的版本文件
+  --output-dir <dir>         输出目录，默认 ./release
+  -h, --help                 显示帮助
+
+示例:
+  ./pack.sh
+  ./pack.sh 0.1.26
+  ./pack.sh --no-source-sync --output-dir /tmp/openclaw-studio-release-test 0.1.26
+EOF
+}
+
+SOURCE_SYNC=1
+OUTPUT_DIR_INPUT="${SCRIPT_DIR}/release"
+VERSION=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --source-sync)
+      SOURCE_SYNC=1
+      shift
+      ;;
+    --no-source-sync)
+      SOURCE_SYNC=0
+      shift
+      ;;
+    --output-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "错误: --output-dir 需要目录参数" >&2
+        exit 2
+      fi
+      OUTPUT_DIR_INPUT="$2"
+      shift 2
+      ;;
+    --output-dir=*)
+      OUTPUT_DIR_INPUT="${1#*=}"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "错误: 未知参数 $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      if [[ -n "${VERSION}" ]]; then
+        echo "错误: 只能指定一个版本号" >&2
+        usage >&2
+        exit 2
+      fi
+      VERSION="$1"
+      shift
+      ;;
+  esac
+done
+
+VERSION=${VERSION:-$(node -p "require(process.argv[1]).version" "${SCRIPT_DIR}/package.json")}
+mkdir -p "${OUTPUT_DIR_INPUT}"
+OUTPUT_DIR="$(cd "${OUTPUT_DIR_INPUT}" && pwd)"
 PACKAGE_NAME="openclaw-studio-${VERSION}"
 PACKAGE_DIR="${OUTPUT_DIR}/${PACKAGE_NAME}"
 ROOT_INSTALLER_PATH="${OUTPUT_DIR}/install-openclaw-studio.sh"
@@ -27,10 +97,16 @@ NODE
 echo "=== OpenClaw Studio 打包脚本 ==="
 echo "版本: ${VERSION}"
 echo "输出目录: ${OUTPUT_DIR}"
+if [[ "${SOURCE_SYNC}" -eq 1 ]]; then
+  echo "源码同步: enabled (会覆盖本地版本源)"
+else
+  echo "源码同步: disabled (--no-source-sync，不修改本地版本源)"
+fi
 echo ""
 
-echo "[0.2/6] 同步 package/workspace 版本..."
-node - "${SCRIPT_DIR}" "${VERSION}" <<'NODE'
+if [[ "${SOURCE_SYNC}" -eq 1 ]]; then
+  echo "[0.2/6] 同步 package/workspace 版本..."
+  node - "${SCRIPT_DIR}" "${VERSION}" <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -82,25 +158,36 @@ rewriteTextFile('apps/web-vue/vite.config.ts', [
   [/const STUDIO_PACKAGE_VERSION_FALLBACK = '[^']+';/, `const STUDIO_PACKAGE_VERSION_FALLBACK = '${version}';`],
 ]);
 NODE
+else
+  echo "[0.2/6] 跳过本地 package/workspace 版本同步..."
+fi
 
-echo "[0.4/6] 同步本地 installer 默认版本..."
-node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-installer-version \
-  "${VERSION}" \
-  "${OPENCLAW_TARGET_VERSION}" \
-  "${SCRIPT_DIR}/install-openclaw-studio.sh"
+if [[ "${SOURCE_SYNC}" -eq 1 ]]; then
+  echo "[0.4/6] 同步本地 installer 默认版本..."
+  node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-installer-version \
+    "${VERSION}" \
+    "${OPENCLAW_TARGET_VERSION}" \
+    "${SCRIPT_DIR}/install-openclaw-studio.sh"
+else
+  echo "[0.4/6] 跳过本地 installer 版本同步..."
+fi
 
-echo "[0.5/6] 同步站点安装页版本..."
-node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-landing-version \
-  "${VERSION}" \
-  "${OPENCLAW_TARGET_VERSION}" \
-  "${LANDING_PAGE_PATH}"
+if [[ "${SOURCE_SYNC}" -eq 1 ]]; then
+  echo "[0.5/6] 同步站点安装页版本..."
+  node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-landing-version \
+    "${VERSION}" \
+    "${OPENCLAW_TARGET_VERSION}" \
+    "${LANDING_PAGE_PATH}"
+else
+  echo "[0.5/6] 跳过本地站点安装页版本同步..."
+fi
 
 echo "[1/6] 构建 API..."
 cd "${SCRIPT_DIR}"
 npm run build:api
 
 echo "[2/6] 构建前端..."
-npm run build:web
+OPENCLAW_STUDIO_BUILD_VERSION="${VERSION}" npm run build:web
 
 echo "[3/6] 准备打包目录..."
 rm -rf "${PACKAGE_DIR}"
@@ -126,6 +213,12 @@ node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-installe
   "${OPENCLAW_TARGET_VERSION}" \
   "${PACKAGE_DIR}/install-openclaw-studio.sh" \
   "${ROOT_INSTALLER_PATH}"
+
+echo "[5.3/6] 同步输出目录安装页版本..."
+node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-landing-version \
+  "${VERSION}" \
+  "${OPENCLAW_TARGET_VERSION}" \
+  "${ROOT_LANDING_PATH}"
 
 echo "[5.5/6] 修正发布包元数据..."
 node - "${PACKAGE_DIR}" "${VERSION}" "${OPENCLAW_TARGET_VERSION}" <<'NODE'

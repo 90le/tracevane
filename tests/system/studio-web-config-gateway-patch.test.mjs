@@ -12,7 +12,9 @@ const configEditorPage = fs.readFileSync(
 test('config editor keeps a gateway baseline snapshot so display defaults do not become save defaults', () => {
   assert.match(configEditorPage, /const gatewayBaselineData = ref<Record<string, unknown> \| null>\(null\);/);
   assert.match(configEditorPage, /function onGatewayUpdate\(data: Record<string, unknown>\) \{/);
-  assert.match(configEditorPage, /if \(!gatewayBaselineData\.value\) \{\s*gatewayBaselineData\.value = \{\s*\.\.\.next\s*\};/);
+  assert.match(configEditorPage, /const shouldSyncBaselineFingerprint = !gatewayBaselineData\.value;/);
+  assert.match(configEditorPage, /if \(shouldSyncBaselineFingerprint\) \{\s*gatewayBaselineData\.value = \{\s*\.\.\.next\s*\};/);
+  assert.match(configEditorPage, /gateway:\s*currentDomainFingerprints\(\)\.gateway,/);
 });
 
 test('config editor serializes gateway drafts through a sparse diff instead of posting the hydrated full form', () => {
@@ -26,5 +28,9 @@ test('config editor serializes gateway drafts through a sparse diff instead of p
 
 test('config editor resets gateway baseline after reload and save responses so later edits diff against the latest persisted state', () => {
   assert.match(configEditorPage, /gatewayFormData\.value = null;\s*gatewayBaselineData\.value = null;\s*hydrateForm\(summary\);/);
-  assert.match(configEditorPage, /gatewayFormData\.value = null;\s*gatewayBaselineData\.value = null;\s*hydrateForm\(response\.config\);/);
+  assert.match(
+    configEditorPage,
+    /function acceptSavedConfigSummary\(nextSummary: ConfigSummaryPayload\): void \{[\s\S]*gatewayFormData\.value = null;\s*gatewayBaselineData\.value = null;\s*hydrateForm\(nextSummary\);[\s\S]*captureConfigBaseline\(\);[\s\S]*\}/,
+  );
+  assert.match(configEditorPage, /acceptSavedConfigSummary\(response\.config\);/);
 });

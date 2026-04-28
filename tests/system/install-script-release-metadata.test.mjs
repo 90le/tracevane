@@ -91,6 +91,22 @@ test('pack script syncs landing page versions and includes the current App.vue s
   assert.match(packScript, /release-build\.json/);
 });
 
+test('pack script provides a non-mutating test mode for release smoke checks', () => {
+  const packScript = fs.readFileSync(new URL('../../pack.sh', import.meta.url), 'utf8');
+  const viteConfig = fs.readFileSync(new URL('../../apps/web-vue/vite.config.ts', import.meta.url), 'utf8');
+
+  assert.match(packScript, /--no-source-sync/);
+  assert.match(packScript, /--output-dir/);
+  assert.match(packScript, /SOURCE_SYNC=0/);
+  assert.match(packScript, /跳过本地 package\/workspace 版本同步/);
+  assert.match(packScript, /跳过本地 installer 版本同步/);
+  assert.match(packScript, /跳过本地站点安装页版本同步/);
+  assert.match(packScript, /OPENCLAW_STUDIO_BUILD_VERSION="\$\{VERSION\}" npm run build:web/);
+  assert.match(packScript, /rewrite-landing-version[\s\S]*"\$\{ROOT_LANDING_PATH\}"/);
+  assert.match(viteConfig, /OPENCLAW_STUDIO_BUILD_VERSION/);
+  assert.match(viteConfig, /if \(studioPackageVersionOverride\) return studioPackageVersionOverride;/);
+});
+
 test('local source fallback versions stay aligned with package.json for dev debugging', () => {
   const rootPackage = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
   const version = rootPackage.version;

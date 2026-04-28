@@ -34,6 +34,10 @@ function makeEvent(id, occurredAt) {
   };
 }
 
+function recentIso(offsetMs = 0) {
+  return new Date(Date.now() + offsetMs).toISOString();
+}
+
 test("resolveSystemEventStorePaths returns jsonl and state file paths", async () => {
   const { resolveSystemEventStorePaths } = await import(pathsModuleUrl);
 
@@ -52,8 +56,8 @@ test("append 后能读回最近事件并写入 jsonl/state 文件", async () => 
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "event-log-store-"));
 
   const store = createSystemEventLogStore({ stateDir, maxRecords: 5 });
-  store.append([makeEvent("a", "2026-04-13T00:00:00.000Z")]);
-  store.append([makeEvent("b", "2026-04-13T00:00:01.000Z")]);
+  store.append([makeEvent("a", recentIso(-1000))]);
+  store.append([makeEvent("b", recentIso())]);
 
   assert.deepEqual(
     store.list(2).map((event) => event.id),
@@ -74,9 +78,9 @@ test("retention 限制有效", async () => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "event-log-store-"));
 
   const store = createSystemEventLogStore({ stateDir, maxRecords: 2 });
-  store.append([makeEvent("a", "2026-04-13T00:00:00.000Z")]);
-  store.append([makeEvent("b", "2026-04-13T00:00:01.000Z")]);
-  store.append([makeEvent("c", "2026-04-13T00:00:02.000Z")]);
+  store.append([makeEvent("a", recentIso(-2000))]);
+  store.append([makeEvent("b", recentIso(-1000))]);
+  store.append([makeEvent("c", recentIso())]);
 
   assert.deepEqual(
     store.list(10).map((event) => event.id),
@@ -121,7 +125,7 @@ test("corrupted tail line 安全忽略", async () => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "event-log-store-"));
 
   const eventsJsonlPath = path.join(stateDir, "system-events.jsonl");
-  const validLine = `${JSON.stringify(makeEvent("a", "2026-04-13T00:00:00.000Z"))}\n`;
+  const validLine = `${JSON.stringify(makeEvent("a", recentIso()))}\n`;
   fs.writeFileSync(eventsJsonlPath, `${validLine}{broken-json`, "utf8");
 
   const store = createSystemEventLogStore({ stateDir, maxRecords: 5 });
