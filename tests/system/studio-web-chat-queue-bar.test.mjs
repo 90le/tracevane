@@ -50,3 +50,24 @@ test('queued message rail hides empty queues and switches to a dedicated sheet p
   assert.match(queuedMessageRail, /v-if="presentationMode === 'rail'"/);
   assert.match(queuedMessageRail, /v-if="summaryExpanded \|\| presentationMode === 'sheet'"/);
 });
+
+test('queued message rail collapsed summary exposes the next queued item instead of generic copy only', () => {
+  assert.match(queuedMessageRail, /const summaryDetail = computed\(\(\) => \{/);
+  assert.match(queuedMessageRail, /firstItem\.status === 'blocked' && firstItem\.blockedReason/);
+  assert.match(queuedMessageRail, /`首条：\$\{preview\}`/);
+  assert.match(queuedMessageRail, /`Next: \$\{preview\}`/);
+  assert.match(queuedMessageRail, /function compactQueuePreview\(value: string\): string \{/);
+});
+
+test('active-run sends publish an optimistic queued item before waiting for backend enqueue', () => {
+  assert.match(chatShellPage, /function buildOptimisticQueuedMessageItem\(params: \{/);
+  assert.match(chatShellPage, /function applyOptimisticQueueItem\(sessionKey: string, item: ChatQueuedMessageItem\): void \{/);
+  assertInOrder(chatShellPage, [
+    'const optimisticQueueItem = buildOptimisticQueuedMessageItem({',
+    'applyOptimisticQueueItem(sessionKey, optimisticQueueItem);',
+    'composerDocument.value = createEmptyComposerDocument();',
+    'const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, {',
+    'applyQueueState(sessionKey, queuePayload.items);',
+  ]);
+  assert.match(chatShellPage, /if \(rollbackOptimisticQueueItem\) \{[\s\S]*removeOptimisticQueueItem\(rollbackOptimisticQueueItem\.sessionKey, rollbackOptimisticQueueItem\.itemId\);[\s\S]*\}/);
+});

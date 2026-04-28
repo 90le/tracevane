@@ -1241,6 +1241,57 @@ function applyQueueState(sessionKey: string, items: ChatQueuedMessageItem[]): vo
   }
 }
 
+function applyOptimisticQueueItem(sessionKey: string, item: ChatQueuedMessageItem): void {
+  const currentItems = queuedItemsBySession.value[sessionKey] || [];
+  const existingIndex = currentItems.findIndex((current) => (
+    current.id === item.id
+    || (Boolean(current.clientRequestId) && current.clientRequestId === item.clientRequestId)
+  ));
+  const nextItems = existingIndex === -1
+    ? [...currentItems, item]
+    : currentItems.map((current, index) => (index === existingIndex ? item : current));
+  applyQueueState(sessionKey, nextItems);
+}
+
+function removeOptimisticQueueItem(sessionKey: string, itemId: string): void {
+  const currentItems = queuedItemsBySession.value[sessionKey] || [];
+  if (!currentItems.some((item) => item.id === itemId)) {
+    return;
+  }
+  applyQueueState(sessionKey, currentItems.filter((item) => item.id !== itemId));
+}
+
+function buildOptimisticQueuedMessageItem(params: {
+  sessionKey: string;
+  requestId: string;
+  payload: ChatSendRequest;
+  previewText: string;
+  createdAt: string;
+}): ChatQueuedMessageItem {
+  const fileRefs = params.payload.fileRefs?.map((item) => ({ ...item }));
+  const attachments = params.payload.attachments?.map((item) => ({ ...item }));
+  const previewText = params.previewText
+    || params.payload.text
+    || fileRefs?.[0]?.fileName
+    || attachments?.[0]?.fileName
+    || '';
+  return {
+    id: `ui-queue-${params.requestId}`,
+    sessionKey: params.sessionKey,
+    clientRequestId: params.requestId,
+    deliveryRequestId: params.requestId,
+    text: params.payload.text,
+    previewText,
+    composerDocument: params.payload.composerDocument?.map((node) => ({ ...node })),
+    fileRefs,
+    attachments,
+    createdAt: params.createdAt,
+    updatedAt: params.createdAt,
+    status: 'queued',
+    blockedReason: null,
+  };
+}
+
 function applySessionControlsState(sessionKey: string, controls: ChatSessionControlState): void {
   sessionControlsBySession.value = {
     ...sessionControlsBySession.value,
@@ -5186,6 +5237,7 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
   let rollbackSessionRow: ChatSessionRow | null = null;
   let rollbackComposerDocument: ChatComposerDocument | null = null;
   let rollbackComposerAttachments: ComposerImageAttachment[] | null = null;
+  let rollbackOptimisticQueueItem: { sessionKey: string; itemId: string } | null = null;
   let requestId: string | null = null;
   sendBusy.value = true;
   clearNotice();
@@ -5304,11 +5356,30 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
     };
     const hadActiveRun = Boolean(activeRuntime.value?.activeRunId);
     if (hadActiveRun) {
+      const optimisticQueueItem = buildOptimisticQueuedMessageItem({
+        sessionKey,
+        requestId,
+        payload: sendPayload,
+        previewText: extractComposerPlainText(documentValue).trim(),
+        createdAt,
+      });
+      rollbackComposerDocument = documentValue;
+      rollbackComposerAttachments = attachments.map((attachment) => ({ ...attachment }));
+      rollbackOptimisticQueueItem = {
+        sessionKey,
+        itemId: optimisticQueueItem.id,
+      };
+      applyOptimisticQueueItem(sessionKey, optimisticQueueItem);
+      composerDocument.value = createEmptyComposerDocument();
+      composerAttachments.value = [];
       const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, {
         ...sendPayload,
         flushWhenIdle: true,
       });
       applyQueueState(sessionKey, queuePayload.items);
+      rollbackComposerDocument = null;
+      rollbackComposerAttachments = null;
+      rollbackOptimisticQueueItem = null;
       if (parsedSlashCommand) {
         trackQueuedSlashCommand(sessionKey, requestId, slashCommandText, queuePayload.items);
         setSlashFeedbackFromCommand(sessionKey, slashCommandText, 'send', 'accepted', {
@@ -5320,8 +5391,6 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
           ),
         });
       }
-      composerDocument.value = createEmptyComposerDocument();
-      composerAttachments.value = [];
       setNotice(
         'success',
         text(
@@ -5405,6 +5474,9 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       });
     }
   } catch (error) {
+    if (rollbackOptimisticQueueItem) {
+      removeOptimisticQueueItem(rollbackOptimisticQueueItem.sessionKey, rollbackOptimisticQueueItem.itemId);
+    }
     if (rollbackHistoryPayload && historyPayload.value?.session.key === sessionKey) {
       historyPayload.value = rollbackHistoryPayload;
     }

@@ -9,9 +9,7 @@
       >
         <span class="chat-queue-rail__summary-copy">
           <strong>{{ text(`待发送 ${items.length}`, `Queued ${items.length}`) }}</strong>
-          <span>{{ summaryExpanded
-            ? text('收起后仍可继续编辑待发送项。', 'Collapse to keep the queued items compact while preserving edits.')
-            : text('默认折叠，点开查看待发送消息。', 'Collapsed by default. Open to review queued messages.') }}</span>
+          <span>{{ summaryDetail }}</span>
         </span>
         <span class="chat-queue-rail__summary-state">
           {{ compactViewport
@@ -123,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { ChatQueuedMessageItem } from '../../../../../types/chat';
 import { useLocalePreference } from '../../shared/locale';
 
@@ -148,6 +146,33 @@ const emit = defineEmits<{
 const { text } = useLocalePreference();
 const editingId = ref('');
 const editingText = ref('');
+
+const summaryDetail = computed(() => {
+  const firstItem = props.items[0] || null;
+  if (!firstItem) {
+    return text('队列为空。', 'The queue is empty.');
+  }
+  const assetCount = queuedAssetCount(firstItem);
+  if (firstItem.status === 'blocked' && firstItem.blockedReason) {
+    return text(
+      `首条阻塞：${compactQueuePreview(firstItem.blockedReason)}`,
+      `First blocked: ${compactQueuePreview(firstItem.blockedReason)}`,
+    );
+  }
+  const preview = compactQueuePreview(firstItem.previewText || firstItem.text || '');
+  if (preview && assetCount > 0) {
+    return text(`首条：${preview} · 附件 ${assetCount}`, `Next: ${preview} · Assets ${assetCount}`);
+  }
+  if (preview) {
+    return text(`首条：${preview}`, `Next: ${preview}`);
+  }
+  if (assetCount > 0) {
+    return text(`首条为附件消息 · 附件 ${assetCount}`, `Next queued item contains assets · ${assetCount}`);
+  }
+  return props.summaryExpanded
+    ? text('收起后仍可继续编辑待发送项。', 'Collapse to keep queued items compact while preserving edits.')
+    : text('默认折叠，点开查看待发送消息。', 'Collapsed by default. Open to review queued messages.');
+});
 
 watch(
   [() => props.items, () => props.mutatingEntryId] as const,
@@ -176,6 +201,18 @@ function handleSummaryClick(): void {
     return;
   }
   emit('update:summary-expanded', !props.summaryExpanded);
+}
+
+function compactQueuePreview(value: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= 96) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 95)}…`;
+}
+
+function queuedAssetCount(item: ChatQueuedMessageItem): number {
+  return Number(item.fileRefs?.length || 0) + Number(item.attachments?.length || 0);
 }
 
 function startEdit(item: ChatQueuedMessageItem): void {
