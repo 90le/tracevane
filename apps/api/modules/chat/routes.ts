@@ -13,6 +13,7 @@ import type {
   ChatPatchSessionControlsRequest,
   ChatHistorySearchContentFilter,
   ChatHistorySearchRoleFilter,
+  ChatResourceResolveRequest,
   ChatSendRequest,
 } from "../../../../types/chat.js";
 import type { ChatSlashGatewayRequest } from "./service.js";
@@ -521,6 +522,22 @@ export function registerChatRoutes(
           res,
           200,
           await routeCtx.services.chat.send(params.sessionKey, payload),
+        );
+      } catch (error) {
+        sendChatError(res, error);
+      }
+    },
+  );
+
+  router.post(
+    "/api/chat/sessions/:sessionKey/resources/resolve",
+    async (req, res, routeCtx, params) => {
+      try {
+        const payload = await parseJsonBody<ChatResourceResolveRequest>(req);
+        sendJson(
+          res,
+          200,
+          await routeCtx.services.chat.resolveResourceRefs(params.sessionKey, payload),
         );
       } catch (error) {
         sendChatError(res, error);

@@ -43,6 +43,8 @@ import type {
   ChatPatchSessionControlsRequest,
   ChatQueuePayload,
   ChatQueuedMessageItem,
+  ChatResourceResolveRequest,
+  ChatResourceResolveResponse,
   ChatResourceItem,
   ChatRunProjection,
   ChatRunOverlay,
@@ -794,6 +796,7 @@ export interface ChatService {
   patchControls(sessionKey: string, payload: ChatPatchSessionControlsRequest): Promise<ChatSessionControlsPayload>;
   requestSlashGateway(sessionKey: string, payload: ChatSlashGatewayRequest): Promise<unknown>;
   send(sessionKey: string, payload: ChatSendRequest): Promise<ChatSendAck>;
+  resolveResourceRefs(sessionKey: string, payload: ChatResourceResolveRequest): Promise<ChatResourceResolveResponse>;
   resolveMedia(sessionKey: string, mediaId: string): Promise<ResolvedChatMedia>;
   deleteSession(sessionKey: string): Promise<ChatDeleteSessionResponse>;
   abort(sessionKey: string): Promise<ChatAbortResponse>;
@@ -7130,6 +7133,27 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
     async send(sessionKey: string, payload: ChatSendRequest): Promise<ChatSendAck> {
       return await performDirectSend(sessionKey, payload);
+    },
+
+    async resolveResourceRefs(sessionKey: string, payload: ChatResourceResolveRequest): Promise<ChatResourceResolveResponse> {
+      const session = await requireSession(sessionKey);
+      requireFrontendVisible(session);
+
+      const refs = Array.isArray(payload.refs)
+        ? payload.refs
+          .map((item) => (typeof item === 'string' ? item.trim() : ''))
+          .filter(Boolean)
+          .slice(0, 100)
+        : [];
+
+      return {
+        ok: true,
+        sessionKey: session.key,
+        resources: refs.map((ref) => ({
+          ref,
+          ...mediaBridge.resolveResourceRef(sessionKey, ref),
+        })),
+      };
     },
 
     async resolveMedia(sessionKey: string, mediaId: string): Promise<ResolvedChatMedia> {

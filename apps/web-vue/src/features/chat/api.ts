@@ -58,6 +58,8 @@ import type {
   ChatPatchSessionResponse,
   ChatQueuePayload,
   ChatResetResponse,
+  ChatResourceResolveRequest,
+  ChatResourceResolveResponse,
   ChatSendAck,
   ChatSendRequest,
   ChatSessionControlsPayload,
@@ -382,6 +384,22 @@ export function uploadChatFile(
       },
       body: JSON.stringify(payload),
     }
+  );
+}
+
+export function resolveChatResources(
+  sessionKey: string,
+  payload: ChatResourceResolveRequest,
+): Promise<ChatResourceResolveResponse> {
+  return requestChatJson<ChatResourceResolveResponse>(
+    `/api/chat/sessions/${encodeURIComponent(sessionKey)}/resources/resolve`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
   );
 }
 

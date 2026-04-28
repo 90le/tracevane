@@ -21,6 +21,7 @@ import { extractStudioDeliveryPayload, summarizeStudioDeliveryText, type StudioD
 import {
   appendStudioMarkdownMediaMeta,
   isStudioMarkdownExplicitLocalRef,
+  parseStudioMarkdownMediaRef,
   type StudioMarkdownMediaRef,
 } from '../../../../lib/studio-markdown-media.js';
 import { buildStudioResourceRefFromRelativePath } from '../../../../lib/studio-resource-refs.js';
@@ -350,6 +351,13 @@ function resolveScopedWorkspaceFilePath(
     return null;
   }
   return candidate;
+}
+
+function isSafeScopedResourceRefPath(value: string): boolean {
+  const normalized = toPortableRelativePath(value);
+  return Boolean(normalized)
+    && !path.isAbsolute(normalized)
+    && !normalized.split('/').includes('..');
 }
 
 function resolveStudioMarkdownMediaFilePath(
@@ -1403,6 +1411,73 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
     buildUserUploadResource(sessionKey: string, relativePath: string, resourceId?: string): ChatResourceItem {
       const ctx = { sessionKey, config, signToken };
       return buildUserUploadResourceFromRef(ctx, relativePath, 0, resourceId);
+    },
+
+    resolveResourceRef(sessionKey: string, ref: string): {
+      resourceRef: string | null;
+      aiReadable: boolean;
+      resource: ChatResourceItem | null;
+    } {
+      const normalizedRef = typeof ref === 'string' ? ref.trim() : '';
+      if (!normalizedRef) {
+        return {
+          resourceRef: null,
+          aiReadable: false,
+          resource: null,
+        };
+      }
+
+      const parsedRef = parseStudioMarkdownMediaRef(normalizedRef);
+      const isLegacyRelativeRef = !parsedRef && isStudioMarkdownExplicitLocalRef(normalizedRef);
+      const unsafeScopedRef = Boolean(
+        parsedRef
+        && (parsedRef.kind === 'workspace' || parsedRef.kind === 'uploads')
+        && !isSafeScopedResourceRefPath(parsedRef.path),
+      );
+      if (unsafeScopedRef) {
+        return {
+          resourceRef: null,
+          aiReadable: false,
+          resource: null,
+        };
+      }
+      if (!parsedRef && !isLegacyRelativeRef) {
+        return {
+          resourceRef: null,
+          aiReadable: false,
+          resource: null,
+        };
+      }
+
+      const ctx = { sessionKey, config, signToken };
+      const refPath = parsedRef?.path || normalizedRef;
+      const localFilePath = resolveStudioMarkdownMediaFilePath(config, sessionKey, normalizedRef, parsedRef);
+      const resourceRef = parsedRef
+        ? `${parsedRef.kind}:${parsedRef.path}`
+        : buildStudioResourceRefFromRelativePath(normalizedRef);
+      const relativePath = parsedRef?.kind === 'workspace'
+        ? parsedRef.path
+        : parsedRef?.kind === 'uploads'
+          ? `uploads/${parsedRef.path}`
+          : undefined;
+
+      const resource = localFilePath
+        ? buildLocalResourceItem(ctx, localFilePath, {
+          source: 'studio_resource',
+          relativePath: resolveWorkspaceRelativePath(ctx, localFilePath) || relativePath,
+          originalPath: normalizedRef,
+        })
+        : buildMissingResourceItem(ctx, refPath, {
+          source: 'studio_resource',
+          relativePath,
+          originalPath: normalizedRef,
+        });
+
+      return {
+        resourceRef: resourceRef || normalizedRef,
+        aiReadable: resource.status === 'ready' && Boolean(resource.relativePath),
+        resource,
+      };
     },
 
     buildSendResources(

@@ -22,7 +22,8 @@ export type ChatResourceSource =
   | 'tool_artifact'
   | 'structured_message'
   | 'studio_delivery'
-  | 'assistant_markdown';
+  | 'assistant_markdown'
+  | 'studio_resource';
 export type ChatResourceStatus = 'ready' | 'missing';
 export type ChatResourcePlacement = 'append';
 export type ChatInlineResourceDisplay =
@@ -605,6 +606,23 @@ export interface ChatFileUploadResponse {
   mimeType: string | null;
   kind: ChatAttachmentKind;
   size: number;
+}
+
+export interface ChatResourceResolveRequest {
+  refs: string[];
+}
+
+export interface ChatResolvedResourceItem {
+  ref: string;
+  resourceRef: string | null;
+  aiReadable: boolean;
+  resource: ChatResourceItem | null;
+}
+
+export interface ChatResourceResolveResponse {
+  ok: boolean;
+  sessionKey: string;
+  resources: ChatResolvedResourceItem[];
 }
 
 export type ChatCanonicalSnapshotSource = 'local_transcript' | 'history_sse' | 'history_rpc' | 'studio_mirror';
