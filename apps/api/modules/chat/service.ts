@@ -167,6 +167,7 @@ import {
   normalizeComposerDocument,
   serializeComposerDocumentToMarkdown,
 } from '../../../../lib/composer-model.js';
+import { buildStudioResourceRefFromRelativePath } from '../../../../lib/studio-resource-refs.js';
 import {
   buildGatewayConnectRequest,
   loadGatewayAuthContext,
@@ -7320,12 +7321,17 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       if (!stat) {
         throw new ChatServiceError(500, buildChatError('internal_error', 'Failed to save file'));
       }
+      const resource = mediaBridge.buildUserUploadResource(sessionKey, relativePath);
 
       return {
         ok: true,
         relativePath,
+        resourceRef: buildStudioResourceRefFromRelativePath(resource.relativePath || relativePath) || `workspace:${relativePath}`,
+        resource,
         absolutePath,
         fileName: payload.fileName,
+        mimeType: resource.mimeType,
+        kind: resource.kind,
         size: stat.size,
       };
     },

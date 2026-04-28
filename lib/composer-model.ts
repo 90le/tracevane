@@ -10,6 +10,10 @@ import type {
   ChatMessageParagraphBlock,
   ChatSendFileRef,
 } from '../types/chat.js';
+import {
+  buildStudioResourceRefFromRelativePath,
+  formatMarkdownResourceDestination,
+} from './studio-resource-refs.js';
 
 export interface ChatComposerAttachmentRefLike {
   id: string;
@@ -130,17 +134,7 @@ function escapeMarkdownLabel(value: string): string {
 }
 
 function attachmentHref(attachment: ChatComposerAttachmentRefLike): string | null {
-  const relativePath = normalizeRelativePath(attachment.relativePath);
-  if (!relativePath) {
-    return null;
-  }
-  if (relativePath === 'uploads' || relativePath.startsWith('uploads/')) {
-    const uploadPath = relativePath === 'uploads'
-      ? ''
-      : relativePath.slice('uploads/'.length);
-    return uploadPath ? `uploads:${uploadPath}` : null;
-  }
-  return `workspace:${relativePath}`;
+  return buildStudioResourceRefFromRelativePath(attachment.relativePath);
 }
 
 function attachmentMap(
@@ -385,7 +379,7 @@ export function serializeComposerDocumentToMarkdown(
       result += label;
       continue;
     }
-    result += `[${escapeMarkdownLabel(label)}](${href} "studio:${node.display}")`;
+    result += `[${escapeMarkdownLabel(label)}](${formatMarkdownResourceDestination(href)} "studio:${node.display}")`;
   }
 
   return result;
@@ -475,13 +469,18 @@ export function buildComposerFileRefs(
       if (!relativePath) {
         return null;
       }
-      return {
+      const resourceRef = buildStudioResourceRefFromRelativePath(relativePath);
+      const item: ChatSendFileRef = {
         id: attachment.id,
         relativePath,
         fileName: composeAttachmentLabel(attachment),
         kind: attachmentKind(attachment),
         mimeType: attachment.mimeType || null,
-      } satisfies ChatSendFileRef;
+      };
+      if (resourceRef) {
+        item.resourceRef = resourceRef;
+      }
+      return item;
     })
     .filter((item): item is ChatSendFileRef => Boolean(item));
 }

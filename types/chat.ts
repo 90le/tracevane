@@ -285,6 +285,7 @@ export type ChatComposerDocument = ChatComposerNode[];
 export interface ChatSendFileRef {
   id: string;
   relativePath: string;
+  resourceRef?: string;
   fileName: string;
   kind: ChatAttachmentKind;
   mimeType: string | null;
@@ -597,8 +598,12 @@ export interface ChatFileUploadRequest {
 export interface ChatFileUploadResponse {
   ok: boolean;
   relativePath: string; // relative path from workspace root, for @path reference
+  resourceRef: string;
+  resource: ChatResourceItem;
   absolutePath: string;
   fileName: string;
+  mimeType: string | null;
+  kind: ChatAttachmentKind;
   size: number;
 }
 

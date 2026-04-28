@@ -19,6 +19,63 @@ function createLogger() {
   };
 }
 
+test('chat upload returns canonical resource ref and signed preview resource', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-service-upload-resource-'));
+  const workspace = path.join(root, 'workspace');
+  const sessionKey = 'agent:main:webchat:direct:studio-test';
+  const sessionFile = path.join(root, 'agents', 'main', 'sessions', 'studio-test.jsonl');
+  const sessionStoreFile = path.join(root, 'agents', 'main', 'sessions', 'sessions.json');
+
+  try {
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(root, 'openclaw.json'), JSON.stringify({
+      agents: {
+        defaults: { workspace },
+        list: [{ id: 'main', workspace, default: true }],
+      },
+    }, null, 2));
+    fs.writeFileSync(sessionStoreFile, JSON.stringify({
+      [sessionKey]: {
+        sessionId: 'session-1',
+        sessionFile,
+        label: 'Studio chat · main',
+        updatedAt: '2026-03-22T00:00:00.000Z',
+      },
+    }, null, 2));
+    fs.writeFileSync(sessionFile, '');
+
+    const config = createStandaloneStudioConfig({
+      openclawRoot: root,
+      gatewayPort: 0,
+      gatewayWsUrl: 'ws://127.0.0.1:0',
+    });
+    const context = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    const payload = await context.services.chat.uploadFile(sessionKey, {
+      fileName: 'city map.png',
+      content: Buffer.from('image').toString('base64'),
+      mimeType: 'image/png',
+    });
+
+    assert.equal(payload.ok, true);
+    assert.match(payload.relativePath, /^uploads\//);
+    assert.equal(payload.resourceRef, `uploads:${payload.relativePath.slice('uploads/'.length)}`);
+    assert.equal(payload.resource.relativePath, payload.relativePath);
+    assert.equal(payload.resource.source, 'user_upload');
+    assert.equal(payload.resource.status, 'ready');
+    assert.match(payload.resource.url, /^\/api\/chat\/sessions\//);
+    assert.match(payload.resource.downloadUrl, /download=1/);
+    assert.equal(payload.kind, 'image');
+    assert.equal(payload.mimeType, 'image/png');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('chat service restores user shadow blocks with inline refs and keeps only unreferenced attachments as cards', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-service-user-shadow-'));
   const workspace = path.join(root, 'workspace');

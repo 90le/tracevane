@@ -278,6 +278,12 @@
       <DialogOverlay class="chat-composer-preview-mask" />
       <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
         <div class="chat-composer-preview-dialog" :aria-label="attachmentPreview?.alt || text('附件预览', 'Attachment preview')">
+          <DialogTitle as-child>
+            <span class="sr-only">{{ attachmentPreview?.alt || text('附件预览', 'Attachment preview') }}</span>
+          </DialogTitle>
+          <DialogDescription as-child>
+            <span class="sr-only">{{ text('预览当前聊天附件，可关闭后继续编辑消息。', 'Preview the current chat attachment, then close to continue editing.') }}</span>
+          </DialogDescription>
           <DialogClose as-child>
             <button
               type="button"
@@ -362,6 +368,7 @@ type ComposerAttachment = {
   fileName?: string;
   mimeType: string;
   dataUrl: string;
+  downloadUrl?: string | null;
   size?: number;
   progress?: number;
   relativePath?: string | null;
@@ -744,7 +751,7 @@ function openAttachmentPreview(attachment: ComposerAttachment): void {
     return;
   }
   if (typeof window !== 'undefined') {
-    window.open(attachment.dataUrl, '_blank', 'noopener,noreferrer');
+    window.open(attachment.downloadUrl || attachment.dataUrl, '_blank', 'noopener,noreferrer');
   }
 }
 

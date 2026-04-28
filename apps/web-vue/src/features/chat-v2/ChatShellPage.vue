@@ -554,6 +554,7 @@ const SlashStatusDialog = defineAsyncComponent(() => import('./SlashStatusDialog
 type ComposerImageAttachment = ChatSendAttachment & {
   id: string;
   dataUrl: string;
+  downloadUrl?: string | null;
   size?: number;
   progress?: number;
   relativePath?: string; // Workspace-relative path for @path reference
@@ -953,14 +954,15 @@ async function handleComposerFiles(files: File[]): Promise<void> {
   }
 
   const sessionKey = selectedSessionKey.value;
+  const preparedUploads: Array<{
+    id: string;
+    fileName: string;
+    mimeType: string;
+    content: string;
+  }> = [];
 
-  // Add attachments immediately with progress 0 for immediate UI feedback
-  const attachmentIds: string[] = [];
   for (const file of files) {
     const id = `composer-file-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    attachmentIds.push(id);
-
-    // Read file as data URL for preview
     const dataUrl = await readFileAsDataUrl(file);
     const mimeType = file.type || 'application/octet-stream';
     const kind = inferAttachmentKind(mimeType, file.name);
@@ -980,28 +982,25 @@ async function handleComposerFiles(files: File[]): Promise<void> {
     };
 
     composerAttachments.value = [...composerAttachments.value, attachment];
+    preparedUploads.push({
+      id,
+      fileName: file.name,
+      mimeType,
+      content: base64Content,
+    });
   }
 
-  // Upload files one by one to track progress
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const attachmentId = attachmentIds[i];
-
+  for (const prepared of preparedUploads) {
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      const mimeType = file.type || 'application/octet-stream';
-      const base64Content = dataUrl.replace(/^data:[^;]+;base64,/i, '');
-
       const uploadResult = await uploadChatFileWithProgress(
         sessionKey,
         {
-          fileName: file.name,
-          content: base64Content,
-          mimeType,
+          fileName: prepared.fileName,
+          content: prepared.content,
+          mimeType: prepared.mimeType,
         },
         (progress) => {
-          // Update progress in the attachment
-          const idx = composerAttachments.value.findIndex((a) => a.id === attachmentId);
+          const idx = composerAttachments.value.findIndex((a) => a.id === prepared.id);
           if (idx !== -1) {
             const attachment = composerAttachments.value[idx];
             composerAttachments.value = [
@@ -1013,19 +1012,27 @@ async function handleComposerFiles(files: File[]): Promise<void> {
         }
       );
 
-      // Update with relative path and mark as complete
-      const idx = composerAttachments.value.findIndex((a) => a.id === attachmentId);
+      const idx = composerAttachments.value.findIndex((a) => a.id === prepared.id);
       if (idx !== -1) {
         const attachment = composerAttachments.value[idx];
+        const resource = uploadResult.resource;
         composerAttachments.value = [
           ...composerAttachments.value.slice(0, idx),
-          { ...attachment, progress: 100, relativePath: uploadResult.relativePath, uploadState: 'ready' },
+          {
+            ...attachment,
+            content: '',
+            dataUrl: resource?.url || attachment.dataUrl,
+            downloadUrl: resource?.downloadUrl || attachment.downloadUrl,
+            progress: 100,
+            relativePath: uploadResult.relativePath,
+            uploadState: 'ready',
+          },
           ...composerAttachments.value.slice(idx + 1),
         ];
       }
     } catch (uploadError) {
       console.warn('Failed to upload file to workspace:', uploadError);
-      const idx = composerAttachments.value.findIndex((a) => a.id === attachmentId);
+      const idx = composerAttachments.value.findIndex((a) => a.id === prepared.id);
       if (idx !== -1) {
         const attachment = composerAttachments.value[idx];
         composerAttachments.value = [
@@ -5339,7 +5346,11 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
     const fileRefs: ChatSendFileRef[] = buildComposerFileRefs(attachments);
     requestId = `ui-${Date.now()}`;
 
-    const imageAttachments = attachments.filter((a) => a.type === 'image');
+    const inlineImageAttachments = attachments.filter((attachment) => (
+      attachment.type === 'image'
+      && !attachment.relativePath
+      && Boolean(attachment.content)
+    ));
 
     const createdAt = new Date().toISOString();
     const sendPayload: ChatSendRequest = {
@@ -5347,13 +5358,15 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       clientRequestId: requestId,
       composerDocument: documentValue,
       fileRefs,
-      attachments: imageAttachments.map((attachment) => ({
+    };
+    if (inlineImageAttachments.length) {
+      sendPayload.attachments = inlineImageAttachments.map((attachment) => ({
         type: attachment.type,
         mimeType: attachment.mimeType,
         fileName: attachment.fileName,
         content: attachment.content,
-        })),
-    };
+      }));
+    }
     const hadActiveRun = Boolean(activeRuntime.value?.activeRunId);
     if (hadActiveRun) {
       const optimisticQueueItem = buildOptimisticQueuedMessageItem({

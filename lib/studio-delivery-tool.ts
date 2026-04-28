@@ -16,6 +16,8 @@ export function createStudioDeliveryTool() {
     description: [
       'Fallback Studio-only final delivery tool for the current Studio WebChat session.',
       'Prefer assistant Markdown rich replies first for ordinary Studio returns, using explicit refs like workspace:, uploads:, or studio-file: plus studio: display hints.',
+      'Prefer portable workspace: or uploads: refs for newly created workspace/upload files; use studio-file: mainly for explicit local-file compatibility when no workspace/upload ref can express the file.',
+      'These refs describe user-facing rendering. Files that the user uploads for model reading are delivered by Studio as structured fileRefs/attachments and should not be flattened into bare path text.',
       'Raw HTML rich replies are also supported for ordinary Studio returns when you need mixed HTML layout, details/summary, inline SVG, or HTML-based resource composition without structured fallback blocks.',
       'When Markdown is awkward, prefer direct assistant raw HTML with explicit refs in <img>, <video>, <source>, <a>, or similar tags, using title="studio:break-image" or data-studio-display="break-image" style hints so Studio upgrades the HTML into its rich media/card rendering.',
       'Use studio_delivery only when assistant Markdown cannot express the final reply reliably enough.',

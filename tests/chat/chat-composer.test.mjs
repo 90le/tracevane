@@ -7,6 +7,7 @@ import {
 } from '../../dist/lib/chat-composer.js';
 import {
   buildComposerMessageBlocks,
+  buildComposerFileRefs,
   countComposerAttachmentReferences,
   createEmptyComposerDocument,
   insertComposerResourceNodeAtOffset,
@@ -14,6 +15,10 @@ import {
   removeComposerAttachmentReferences,
   serializeComposerDocumentToMarkdown,
 } from '../../dist/lib/composer-model.js';
+import {
+  buildStudioResourceRefFromRelativePath,
+  formatMarkdownResourceDestination,
+} from '../../dist/lib/studio-resource-refs.js';
 
 test('composer attachments block send while uploading or failed', () => {
   assert.equal(areComposerAttachmentsReady([]), true);
@@ -125,6 +130,36 @@ test('composer serialization keeps inline resource order and explicit Studio ref
     markdown,
     '请参考 [@diagram.png](uploads:123-diagram.png "studio:inline-image")，再结合 [@report.pdf](uploads:456-report.pdf "studio:inline-chip")。',
   );
+});
+
+test('composer serialization uses stable markdown destinations for refs with spaces', () => {
+  const markdown = serializeComposerDocumentToMarkdown([
+    { type: 'text', id: 'text-1', text: '请看 ' },
+    { type: 'resource-ref', id: 'ref-1', attachmentId: 'file-1', display: 'inline-chip' },
+  ], [
+    { id: 'file-1', type: 'file', fileName: 'report final.pdf', relativePath: 'uploads/2026 report final.pdf' },
+  ]);
+
+  assert.equal(
+    markdown,
+    '请看 [@report final.pdf](<uploads:2026 report final.pdf> "studio:inline-chip")',
+  );
+});
+
+test('composer file refs carry canonical studio resource refs', () => {
+  const refs = buildComposerFileRefs([
+    { id: 'img-1', type: 'image', fileName: 'diagram.png', relativePath: 'uploads/diagram.png' },
+    { id: 'doc-1', type: 'file', fileName: 'notes.md', relativePath: 'docs/notes.md' },
+  ]);
+
+  assert.equal(refs[0]?.resourceRef, 'uploads:diagram.png');
+  assert.equal(refs[1]?.resourceRef, 'workspace:docs/notes.md');
+});
+
+test('studio resource ref helpers keep display refs portable', () => {
+  assert.equal(buildStudioResourceRefFromRelativePath('uploads/a.png'), 'uploads:a.png');
+  assert.equal(buildStudioResourceRefFromRelativePath('docs/a.md'), 'workspace:docs/a.md');
+  assert.equal(formatMarkdownResourceDestination('uploads:a b.png'), '<uploads:a b.png>');
 });
 
 test('composer message blocks keep referenced resources inline and unreferenced resources as fallback cards', () => {

@@ -23,6 +23,7 @@ import {
   isStudioMarkdownExplicitLocalRef,
   type StudioMarkdownMediaRef,
 } from '../../../../lib/studio-markdown-media.js';
+import { buildStudioResourceRefFromRelativePath } from '../../../../lib/studio-resource-refs.js';
 import { compileAssistantMarkdownMedia, type CompileAssistantMarkdownMediaResult } from './assistant-markdown-media.js';
 import { deriveAgentIdFromSessionKey } from './session-model.js';
 
@@ -1380,7 +1381,8 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
               : path.basename(relativePath);
             const mimeType = normalizeMimeType(fileRef.mimeType) || mimeTypeFromPath(fileName);
             const kind = inferMediaKind(fileName, mimeType);
-            return {
+            const resourceRef = buildStudioResourceRefFromRelativePath(relativePath);
+            const item: ChatSendFileRef = {
               id: typeof fileRef.id === 'string' && fileRef.id.trim()
                 ? fileRef.id.trim()
                 : `file-ref-${index + 1}`,
@@ -1388,10 +1390,19 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
               fileName,
               mimeType,
               kind,
-            } satisfies ChatSendFileRef;
+            };
+            if (resourceRef) {
+              item.resourceRef = resourceRef;
+            }
+            return item;
           })
           .filter((item): item is ChatSendFileRef => Boolean(item)) ?? []
       );
+    },
+
+    buildUserUploadResource(sessionKey: string, relativePath: string, resourceId?: string): ChatResourceItem {
+      const ctx = { sessionKey, config, signToken };
+      return buildUserUploadResourceFromRef(ctx, relativePath, 0, resourceId);
     },
 
     buildSendResources(
