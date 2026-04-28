@@ -78,8 +78,8 @@
               type="button"
               class="chat-composer-send"
               :disabled="!canActuallySend"
-              :aria-label="sendBusy ? text('发送中...', 'Sending...') : text('发送', 'Send')"
-              :title="sendBusy ? text('发送中...', 'Sending...') : text('发送', 'Send')"
+              :aria-label="sendControlLabel"
+              :title="sendControlLabel"
               @click="handleSendClick"
             >
               <span class="chat-composer-send-icon">↑</span>
@@ -230,12 +230,22 @@
           :class="attachmentState(attachment)"
           :title="attachmentState(attachment) === 'uploading'
             ? text('上传中', 'Uploading')
-            : text('上传失败，请移除后重试', 'Upload failed. Remove it and retry.')"
+            : text('上传失败，可重试或移除', 'Upload failed. Retry or remove it.')"
         >
           {{ attachmentState(attachment) === 'uploading' ? '…' : '!' }}
         </span>
 
         <div class="chat-composer-pool-actions">
+          <button
+            v-if="attachmentState(attachment) === 'failed'"
+            type="button"
+            class="chat-composer-pool-retry"
+            :title="text('重新上传', 'Retry upload')"
+            @mousedown.prevent="prepareToolbarAction"
+            @click="handleRetryAttachment(attachment.id)"
+          >
+            ↻
+          </button>
           <button
             type="button"
             class="chat-composer-pool-insert"
@@ -270,6 +280,13 @@
     <div class="chat-composer-footnote">
       <span>{{ text('Ctrl/Cmd+Enter 发送', 'Ctrl/Cmd+Enter to send') }}</span>
       <span>{{ text('输入 / 打开命令菜单', 'Type / to open command menu') }}</span>
+      <span
+        v-if="attachmentUploadSummary.total"
+        class="chat-composer-footnote-status"
+        :class="{ blocked: attachmentUploadSummary.hasBlocking }"
+      >
+        {{ attachmentUploadSummaryLabel }}
+      </span>
     </div>
   </div>
 
@@ -348,7 +365,9 @@ import {
   removeComposerAttachmentReferences,
 } from '../../../../../lib/composer-model';
 import {
+  canSendComposerDraft,
   deriveComposerAttachmentUploadState,
+  summarizeComposerAttachmentUploadStates,
   type ChatComposerUploadState,
 } from '../../../../../lib/chat-composer';
 import { useLocalePreference } from '../../shared/locale';
@@ -395,6 +414,7 @@ const emit = defineEmits<{
   (event: 'abort'): void;
   (event: 'select-files', payload: File[]): void;
   (event: 'remove-attachment', attachmentId: string): void;
+  (event: 'retry-attachment', attachmentId: string): void;
   (event: 'keydown', payload: KeyboardEvent): void;
   (event: 'viewport-lift', value: number): void;
 }>();
@@ -430,7 +450,55 @@ let suppressNextBlurSync = false;
 let compactViewportMediaQuery: MediaQueryList | null = null;
 let compactViewportListener: ((event: MediaQueryListEvent) => void) | null = null;
 let viewportKeyboardListener: (() => void) | null = null;
-const canActuallySend = computed(() => Boolean(props.canSend && (hasLocalContent.value || props.attachments.length > 0)));
+const attachmentUploadSummary = computed(() => summarizeComposerAttachmentUploadStates(props.attachments));
+const canActuallySend = computed(() => canSendComposerDraft({
+  canSend: props.canSend,
+  hasContent: hasLocalContent.value,
+  attachments: props.attachments,
+}));
+const sendControlLabel = computed(() => {
+  if (props.sendBusy) {
+    return text('发送中...', 'Sending...');
+  }
+  if (attachmentUploadSummary.value.uploading > 0) {
+    return text(
+      `还有 ${attachmentUploadSummary.value.uploading} 个附件上传中`,
+      `${attachmentUploadSummary.value.uploading} attachment(s) still uploading`,
+    );
+  }
+  if (attachmentUploadSummary.value.failed > 0) {
+    return text(
+      `${attachmentUploadSummary.value.failed} 个附件上传失败，请重试或移除`,
+      `${attachmentUploadSummary.value.failed} attachment(s) failed. Retry or remove them.`,
+    );
+  }
+  if (!props.canSend || props.disabled) {
+    return text('当前不能发送', 'Cannot send right now');
+  }
+  if (!hasLocalContent.value && props.attachments.length === 0) {
+    return text('输入消息或添加附件后发送', 'Type a message or attach a file first');
+  }
+  return text('发送', 'Send');
+});
+const attachmentUploadSummaryLabel = computed(() => {
+  const summary = attachmentUploadSummary.value;
+  if (summary.uploading > 0) {
+    return text(
+      `附件上传中 ${summary.uploading}/${summary.total}`,
+      `Uploading attachments ${summary.uploading}/${summary.total}`,
+    );
+  }
+  if (summary.failed > 0) {
+    return text(
+      `附件失败 ${summary.failed}/${summary.total}`,
+      `Failed attachments ${summary.failed}/${summary.total}`,
+    );
+  }
+  return text(
+    `附件就绪 ${summary.ready}/${summary.total}`,
+    `Attachments ready ${summary.ready}/${summary.total}`,
+  );
+});
 const attachmentLookup = computed(() => new Map(props.attachments.map((attachment) => [attachment.id, attachment] as const)));
 
 function clearSlashMenuState(): void {
@@ -1359,6 +1427,11 @@ function handleRemoveAttachment(attachmentId: string): void {
   emit('remove-attachment', attachmentId);
 }
 
+function handleRetryAttachment(attachmentId: string): void {
+  suppressNextBlurSync = false;
+  emit('retry-attachment', attachmentId);
+}
+
 function setSelectionFromPoint(clientX: number, clientY: number): void {
   const selection = window.getSelection();
   if (!selection) {
@@ -2059,7 +2132,8 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.chat-composer-pool-insert {
+.chat-composer-pool-insert,
+.chat-composer-pool-retry {
   width: 24px;
   height: 24px;
   padding: 0;
@@ -2072,7 +2146,13 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.chat-composer-pool-retry {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+}
+
 .chat-composer-pool-insert:disabled,
+.chat-composer-pool-retry:disabled,
 .chat-composer-attachment-remove:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -2109,7 +2189,9 @@ onBeforeUnmount(() => {
 .chat-composer-attachment-remove:hover,
 .chat-composer-attachment-remove:focus-visible,
 .chat-composer-pool-insert:hover,
-.chat-composer-pool-insert:focus-visible {
+.chat-composer-pool-insert:focus-visible,
+.chat-composer-pool-retry:hover,
+.chat-composer-pool-retry:focus-visible {
   outline: none;
   border-color: color-mix(in srgb, var(--chat-accent) 34%, var(--chat-line));
   color: var(--chat-text);
@@ -2117,11 +2199,22 @@ onBeforeUnmount(() => {
 
 .chat-composer-footnote {
   display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
   justify-content: center;
   padding: 0 6px;
   color: var(--chat-text-soft);
   font-size: 11px;
   opacity: 0.7;
+}
+
+.chat-composer-footnote-status {
+  color: var(--chat-text);
+  font-weight: 650;
+}
+
+.chat-composer-footnote-status.blocked {
+  color: #b45309;
 }
 
 .chat-composer-preview-mask {
@@ -2292,6 +2385,7 @@ onBeforeUnmount(() => {
   }
 
   .chat-composer-pool-insert,
+  .chat-composer-pool-retry,
   .chat-composer-attachment-remove {
     width: 22px;
     height: 22px;

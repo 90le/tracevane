@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import {
   areComposerAttachmentsReady,
   buildOptimisticResourcesFromComposerAttachments,
+  canSendComposerDraft,
+  runLimitedComposerUploadQueue,
+  summarizeComposerAttachmentUploadStates,
 } from '../../dist/lib/chat-composer.js';
 import {
   buildComposerMessageBlocks,
@@ -32,6 +35,67 @@ test('composer attachments block send while uploading or failed', () => {
   assert.equal(areComposerAttachmentsReady([
     { uploadState: 'failed', relativePath: null },
   ]), false);
+});
+
+test('composer attachment summary exposes blocking upload states', () => {
+  const summary = summarizeComposerAttachmentUploadStates([
+    { uploadState: 'ready', relativePath: 'uploads/a.png' },
+    { uploadState: 'uploading', relativePath: null },
+    { uploadState: 'failed', relativePath: null },
+    { uploadState: 'ready', relativePath: null },
+  ]);
+
+  assert.deepEqual(summary, {
+    total: 4,
+    ready: 1,
+    uploading: 1,
+    failed: 2,
+    allReady: false,
+    hasBlocking: true,
+  });
+});
+
+test('composer draft send gate requires content and ready attachments', () => {
+  assert.equal(canSendComposerDraft({
+    canSend: true,
+    hasContent: false,
+    attachments: [],
+  }), false);
+  assert.equal(canSendComposerDraft({
+    canSend: true,
+    hasContent: true,
+    attachments: [{ uploadState: 'uploading', relativePath: null }],
+  }), false);
+  assert.equal(canSendComposerDraft({
+    canSend: true,
+    hasContent: false,
+    attachments: [{ uploadState: 'ready', relativePath: 'uploads/a.png' }],
+  }), true);
+  assert.equal(canSendComposerDraft({
+    canSend: false,
+    hasContent: true,
+    attachments: [{ uploadState: 'ready', relativePath: 'uploads/a.png' }],
+  }), false);
+});
+
+test('limited composer upload queue caps concurrency and completes all items', async () => {
+  const items = [1, 2, 3, 4, 5];
+  const completed = [];
+  let active = 0;
+  let maxActive = 0;
+
+  await runLimitedComposerUploadQueue(items, 2, async (item) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 5);
+    });
+    completed.push(item);
+    active -= 1;
+  });
+
+  assert.equal(maxActive, 2);
+  assert.deepEqual(completed.sort((a, b) => a - b), items);
 });
 
 test('optimistic resources only include ready attachments', () => {

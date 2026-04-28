@@ -438,6 +438,7 @@
           @abort="$emit('abort')"
           @select-files="$emit('composer-files', $event)"
           @remove-attachment="$emit('composer-remove-attachment', $event)"
+          @retry-attachment="$emit('composer-retry-attachment', $event)"
           @keydown="$emit('composer-keydown', $event)"
           @viewport-lift="handleComposerViewportLift"
         />
@@ -853,6 +854,7 @@ const emit = defineEmits<{
   (event: 'abort'): void;
   (event: 'composer-files', payload: File[]): void;
   (event: 'composer-remove-attachment', attachmentId: string): void;
+  (event: 'composer-retry-attachment', attachmentId: string): void;
   (event: 'reset'): void;
   (event: 'new-chat'): void;
   (event: 'toggle-inspect'): void;

@@ -90,6 +90,7 @@
           @abort="abortCurrentRun"
           @composer-files="handleComposerFiles"
           @composer-remove-attachment="removeComposerAttachment"
+          @composer-retry-attachment="retryComposerAttachment"
           @patch-queued-item="patchQueuedMessage"
           @retry-queued-item="retryQueuedMessage"
           @delete-queued-item="removeQueuedMessage"
@@ -400,6 +401,7 @@ import {
 import {
   areComposerAttachmentsReady,
   buildOptimisticResourcesFromComposerAttachments,
+  runLimitedComposerUploadQueue,
   type ChatComposerUploadState,
 } from '../../../../../lib/chat-composer';
 import {
@@ -560,6 +562,15 @@ type ComposerImageAttachment = ChatSendAttachment & {
   relativePath?: string; // Workspace-relative path for @path reference
   uploadState: ChatComposerUploadState;
 };
+
+type PreparedComposerUpload = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  content: string;
+};
+
+const COMPOSER_UPLOAD_CONCURRENCY = 3;
 
 const props = withDefaults(defineProps<{
   shellMode?: 'chat' | 'inspect';
@@ -948,18 +959,79 @@ function inferAttachmentKind(mimeType: string, fileName: string): ChatAttachment
   return 'file';
 }
 
+function patchComposerAttachment(
+  attachmentId: string,
+  update: (attachment: ComposerImageAttachment) => ComposerImageAttachment,
+): void {
+  const idx = composerAttachments.value.findIndex((attachment) => attachment.id === attachmentId);
+  if (idx === -1) {
+    return;
+  }
+  const attachment = composerAttachments.value[idx] as ComposerImageAttachment;
+  composerAttachments.value = [
+    ...composerAttachments.value.slice(0, idx),
+    update(attachment),
+    ...composerAttachments.value.slice(idx + 1),
+  ];
+}
+
+async function uploadPreparedComposerAttachment(
+  sessionKey: string,
+  prepared: PreparedComposerUpload,
+): Promise<void> {
+  try {
+    const uploadResult = await uploadChatFileWithProgress(
+      sessionKey,
+      {
+        fileName: prepared.fileName,
+        content: prepared.content,
+        mimeType: prepared.mimeType,
+      },
+      (progress) => {
+        patchComposerAttachment(prepared.id, (attachment) => ({
+          ...attachment,
+          progress,
+          uploadState: 'uploading',
+        }));
+      },
+    );
+
+    patchComposerAttachment(prepared.id, (attachment) => {
+      const resource = uploadResult.resource;
+      return {
+        ...attachment,
+        content: '',
+        dataUrl: resource?.url || attachment.dataUrl,
+        downloadUrl: resource?.downloadUrl || attachment.downloadUrl,
+        progress: 100,
+        relativePath: uploadResult.relativePath,
+        uploadState: 'ready',
+      };
+    });
+  } catch (uploadError) {
+    console.warn('Failed to upload file to workspace:', uploadError);
+    patchComposerAttachment(prepared.id, (attachment) => ({
+      ...attachment,
+      progress: undefined,
+      relativePath: undefined,
+      uploadState: 'failed',
+    }));
+    setNotice(
+      'error',
+      uploadError instanceof Error
+        ? uploadError.message
+        : text('文件上传失败，可重试或移除。', 'File upload failed. Retry or remove it.'),
+    );
+  }
+}
+
 async function handleComposerFiles(files: File[]): Promise<void> {
   if (!files.length || !selectedSessionKey.value) {
     return;
   }
 
   const sessionKey = selectedSessionKey.value;
-  const preparedUploads: Array<{
-    id: string;
-    fileName: string;
-    mimeType: string;
-    content: string;
-  }> = [];
+  const preparedUploads: PreparedComposerUpload[] = [];
 
   for (const file of files) {
     const id = `composer-file-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -990,64 +1062,46 @@ async function handleComposerFiles(files: File[]): Promise<void> {
     });
   }
 
-  for (const prepared of preparedUploads) {
-    try {
-      const uploadResult = await uploadChatFileWithProgress(
-        sessionKey,
-        {
-          fileName: prepared.fileName,
-          content: prepared.content,
-          mimeType: prepared.mimeType,
-        },
-        (progress) => {
-          const idx = composerAttachments.value.findIndex((a) => a.id === prepared.id);
-          if (idx !== -1) {
-            const attachment = composerAttachments.value[idx];
-            composerAttachments.value = [
-              ...composerAttachments.value.slice(0, idx),
-              { ...attachment, progress, uploadState: 'uploading' },
-              ...composerAttachments.value.slice(idx + 1),
-            ];
-          }
-        }
-      );
-
-      const idx = composerAttachments.value.findIndex((a) => a.id === prepared.id);
-      if (idx !== -1) {
-        const attachment = composerAttachments.value[idx];
-        const resource = uploadResult.resource;
-        composerAttachments.value = [
-          ...composerAttachments.value.slice(0, idx),
-          {
-            ...attachment,
-            content: '',
-            dataUrl: resource?.url || attachment.dataUrl,
-            downloadUrl: resource?.downloadUrl || attachment.downloadUrl,
-            progress: 100,
-            relativePath: uploadResult.relativePath,
-            uploadState: 'ready',
-          },
-          ...composerAttachments.value.slice(idx + 1),
-        ];
-      }
-    } catch (uploadError) {
-      console.warn('Failed to upload file to workspace:', uploadError);
-      const idx = composerAttachments.value.findIndex((a) => a.id === prepared.id);
-      if (idx !== -1) {
-        const attachment = composerAttachments.value[idx];
-        composerAttachments.value = [
-          ...composerAttachments.value.slice(0, idx),
-          { ...attachment, progress: undefined, relativePath: undefined, uploadState: 'failed' },
-          ...composerAttachments.value.slice(idx + 1),
-        ];
-      }
-      setNotice('error', uploadError instanceof Error ? uploadError.message : text('文件上传失败，请移除后重试。', 'File upload failed. Remove it and retry.'));
-    }
-  }
+  await runLimitedComposerUploadQueue(
+    preparedUploads,
+    COMPOSER_UPLOAD_CONCURRENCY,
+    (prepared) => uploadPreparedComposerAttachment(sessionKey, prepared),
+  );
 }
 
 function removeComposerAttachment(attachmentId: string): void {
   composerAttachments.value = composerAttachments.value.filter((attachment) => attachment.id !== attachmentId);
+}
+
+async function retryComposerAttachment(attachmentId: string): Promise<void> {
+  const sessionKey = selectedSessionKey.value;
+  const attachment = composerAttachments.value.find((item) => item.id === attachmentId);
+  if (!sessionKey || !attachment || attachment.uploadState !== 'failed') {
+    return;
+  }
+  if (!attachment.content) {
+    setNotice(
+      'error',
+      text(
+        '这个附件缺少本地上传缓存，请移除后重新选择文件。',
+        'This attachment no longer has a local upload cache. Remove it and select the file again.',
+      ),
+    );
+    return;
+  }
+
+  patchComposerAttachment(attachmentId, (current) => ({
+    ...current,
+    progress: 0,
+    relativePath: undefined,
+    uploadState: 'uploading',
+  }));
+  await uploadPreparedComposerAttachment(sessionKey, {
+    id: attachment.id,
+    fileName: attachment.fileName || `file-${attachment.id}`,
+    mimeType: attachment.mimeType,
+    content: attachment.content,
+  });
 }
 
 function shouldIncludeMessageInCurrentWindow(message: ChatMessageItem): boolean {
