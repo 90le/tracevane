@@ -615,6 +615,7 @@ import {
   repairSystemDeviceTrustHelper,
   startStudioUpgrade,
 } from './api';
+import { isStudioUpgradeEffectivelyFailed } from './studio-release-state';
 
 type SystemTab = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics';
 
@@ -652,11 +653,17 @@ const helperRepairRunning = ref(false);
 const bootstrapRepairRunning = ref(false);
 const releaseCheckRunning = ref(false);
 const releaseUpgradeRunning = ref(false);
+const studioUpgradeFailed = computed(() =>
+  isStudioUpgradeEffectivelyFailed({
+    studioRelease: studioRelease.value,
+    studioUpgrade: studioUpgrade.value,
+  }),
+);
 
 const releaseBusy = computed(() => releaseCheckRunning.value || releaseUpgradeRunning.value);
 const studioUpgradeStatusLabel = computed(() => {
   if (studioUpgrade.value.running) return text('升级中', 'Running');
-  if (studioUpgrade.value.status === 'failed') return text('失败', 'Failed');
+  if (studioUpgradeFailed.value) return text('失败', 'Failed');
   if (studioUpgrade.value.status === 'succeeded') return text('已完成', 'Completed');
   if (studioRelease.value.updateAvailable) return text('可升级', 'Update available');
   return text('已最新', 'Up to date');
@@ -664,7 +671,7 @@ const studioUpgradeStatusLabel = computed(() => {
 const studioUpgradeActionLabel = computed(() => {
   if (releaseUpgradeRunning.value) return text('处理中...', 'Working...');
   if (studioUpgrade.value.running) return text('刷新状态', 'Refresh status');
-  if (studioUpgrade.value.status === 'failed') return text('重试升级', 'Retry upgrade');
+  if (studioUpgradeFailed.value) return text('重试升级', 'Retry upgrade');
   if (studioRelease.value.updateAvailable) return text('一键升级', 'Upgrade now');
   return text('刷新状态', 'Refresh status');
 });
@@ -1004,7 +1011,7 @@ async function handleStudioUpgradeAction(): Promise<void> {
   if (releaseUpgradeRunning.value) {
     return;
   }
-  if (studioUpgrade.value.running || (!studioRelease.value.updateAvailable && studioUpgrade.value.status !== 'failed')) {
+  if (studioUpgrade.value.running || (!studioRelease.value.updateAvailable && !studioUpgradeFailed.value)) {
     await checkStudioRelease();
     return;
   }

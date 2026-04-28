@@ -128,6 +128,16 @@ function compareVersionSegments(left: string, right: string): number {
   return 0;
 }
 
+function studioUpgradeTargetInstalled(
+  config: StudioServerConfig,
+  status: SystemStudioUpgradeStatusPayload,
+): boolean {
+  const currentVersion = normalizeVersionCandidate(config.version);
+  const targetVersion = normalizeVersionCandidate(status.targetVersion);
+  return !!currentVersion && !!targetVersion
+    && compareVersionSegments(currentVersion, targetVersion) >= 0;
+}
+
 function withTimeoutSignal(timeoutMs: number): AbortSignal {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -813,6 +823,19 @@ export function createSystemService(
     const checkedAt = new Date().toISOString();
     const current = readStudioUpgradeStatus(config);
     if (!current.running) {
+      if (current.status === "failed" && studioUpgradeTargetInstalled(config, current)) {
+        const recovered: SystemStudioUpgradeStatusPayload = {
+          ...current,
+          checkedAt,
+          running: false,
+          pid: null,
+          status: "succeeded",
+          finishedAt: normalizeDate(current.finishedAt) || checkedAt,
+          lastError: "",
+        };
+        writeStudioUpgradeStatus(config, recovered);
+        return recovered;
+      }
       return {
         ...current,
         checkedAt,
@@ -826,11 +849,14 @@ export function createSystemService(
     }
 
     const logTail = readTail(current.logFile);
-    const succeeded = /=== OpenClaw Studio 安装完成 ===/.test(logTail);
+    const succeeded =
+      /=== OpenClaw Studio 安装完成 ===/.test(logTail) ||
+      studioUpgradeTargetInstalled(config, current);
     const next: SystemStudioUpgradeStatusPayload = {
       ...current,
       checkedAt,
       running: false,
+      pid: null,
       status: succeeded ? "succeeded" : "failed",
       finishedAt: normalizeDate(current.finishedAt) || checkedAt,
       lastError: succeeded

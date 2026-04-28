@@ -2,6 +2,7 @@ import type {
   SystemStudioReleasePayload,
   SystemStudioUpgradeStatusPayload,
 } from "../../../../../types/system";
+import { isStudioUpgradeEffectivelyFailed } from "./studio-release-state";
 
 type SystemText = (zh: string, en: string) => string;
 
@@ -17,10 +18,14 @@ export function buildSystemRuntimeViewModel(params: {
   text: SystemText;
 }): SystemRuntimeViewModel {
   const { studioRelease, studioUpgrade, releaseUpgradeRunning, text } = params;
+  const upgradeFailed = isStudioUpgradeEffectivelyFailed({
+    studioRelease,
+    studioUpgrade,
+  });
 
   const studioUpgradeStatusLabel = (() => {
     if (studioUpgrade?.running) return text("升级中", "Running");
-    if (studioUpgrade?.status === "failed") return text("失败", "Failed");
+    if (upgradeFailed) return text("失败", "Failed");
     if (studioUpgrade?.status === "succeeded")
       return text("已完成", "Completed");
     if (studioRelease?.updateAvailable)
@@ -31,7 +36,7 @@ export function buildSystemRuntimeViewModel(params: {
   const studioUpgradeActionLabel = (() => {
     if (releaseUpgradeRunning) return text("处理中...", "Working...");
     if (studioUpgrade?.running) return text("刷新状态", "Refresh status");
-    if (studioUpgrade?.status === "failed")
+    if (upgradeFailed)
       return text("重试升级", "Retry upgrade");
     if (studioRelease?.updateAvailable) return text("一键升级", "Upgrade now");
     return text("刷新状态", "Refresh status");

@@ -30,6 +30,7 @@ function createConfig(root) {
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "/studio",
     transport: {
+      preferredMode: "gateway",
       standalone: { enabled: false, port: 3760 },
       gateway: { enabled: true, basePath: "/studio" },
     },
@@ -114,4 +115,47 @@ test("config write success persists config_change event into system-events.jsonl
   assert.ok(configChangeEvent);
   assert.equal(configChangeEvent.category, "audit");
   assert.equal(configChangeEvent.sourceModule, "config");
+});
+
+test("system service recovers stale failed upgrade status after the installed version reaches the target", async () => {
+  const root = createTempRoot();
+  fs.mkdirSync(path.join(root, "studio"), { recursive: true });
+  const config = {
+    ...createConfig(root),
+    version: "0.1.25",
+  };
+  const upgradeStatusPath = path.join(root, "studio", "upgrade-status.json");
+  fs.writeFileSync(
+    upgradeStatusPath,
+    `${JSON.stringify(
+      {
+        checkedAt: "2026-04-27T00:00:00.000Z",
+        status: "failed",
+        running: false,
+        pid: null,
+        mode: "gateway",
+        targetVersion: "0.1.25",
+        startedAt: "2026-04-27T00:00:00.000Z",
+        finishedAt: "2026-04-27T00:01:00.000Z",
+        logFile: path.join(root, "studio", "upgrade.log"),
+        lastError: "installer log marker missing",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  const service = createSystemService(config, () => 0);
+  const status = await service.getStudioUpgradeStatus();
+
+  assert.equal(status.status, "succeeded");
+  assert.equal(status.running, false);
+  assert.equal(status.pid, null);
+  assert.equal(status.targetVersion, "0.1.25");
+  assert.equal(status.lastError, "");
+
+  const persisted = JSON.parse(fs.readFileSync(upgradeStatusPath, "utf8"));
+  assert.equal(persisted.status, "succeeded");
+  assert.equal(persisted.lastError, "");
 });

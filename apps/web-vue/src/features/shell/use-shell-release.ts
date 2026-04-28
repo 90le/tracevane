@@ -10,6 +10,7 @@ import type {
   SystemStudioReleasePayload,
   SystemStudioUpgradeStatusPayload,
 } from "../../../../../types/system";
+import { isStudioUpgradeEffectivelyFailed } from "../system/studio-release-state";
 
 const RELEASE_REFRESH_INTERVAL_MS = 300_000;
 const UPGRADE_RUNNING_POLL_INTERVAL_MS = 6_000;
@@ -42,7 +43,12 @@ export function useShellRelease(buildVersion: string) {
   let upgradeRequestRunning = false;
 
   const versionUpgradeFailed = computed(
-    () => studioUpgradeStatus.value?.status === "failed",
+    () =>
+      isStudioUpgradeEffectivelyFailed({
+        studioRelease: studioRelease.value,
+        studioUpgrade: studioUpgradeStatus.value,
+        buildVersion,
+      }),
   );
   const versionIsLatest = computed(
     () =>
