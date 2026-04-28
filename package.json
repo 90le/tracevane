@@ -36,6 +36,7 @@
     "dev:restart": "bash scripts/restart-dev.sh",
     "dev:web": "npm run dev --workspace=apps/web-vue",
     "smoke:chat:browser": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/browser.acceptance.py",
+    "smoke:chat:composer-attachment": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/composer-attachment.acceptance.py",
     "smoke:chat:gateway": "python tests/chat/gateway.acceptance.py",
     "smoke:chat:heavy-history": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/heavy-history.acceptance.py",
     "smoke:chat:jump-latest": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && npm run dev:web\" --port 5176 -- python tests/chat/jump-latest.acceptance.py",

@@ -344,3 +344,44 @@ test('composer send plan keeps legacy inline image fallback isolated from upload
   ]);
   assert.deepEqual(plan.payload.attachments, plan.inlineAttachments);
 });
+
+test('composer send plan preserves file refs when preparing queued flush payloads', () => {
+  const plan = buildComposerSendPlan({
+    clientRequestId: 'ui-queued-with-file',
+    flushWhenIdle: true,
+    document: [
+      { type: 'text', id: 'text-1', text: 'queued file ' },
+      { type: 'resource-ref', id: 'ref-1', attachmentId: 'doc-1', display: 'inline-chip' },
+    ],
+    attachments: [
+      {
+        id: 'doc-1',
+        type: 'file',
+        fileName: 'brief final.pdf',
+        mimeType: 'application/pdf',
+        content: '',
+        dataUrl: '/api/chat/sessions/demo/media/brief-final.pdf',
+        downloadUrl: '/api/chat/sessions/demo/media/brief-final.pdf?download=1',
+        relativePath: 'uploads/brief final.pdf',
+        uploadState: 'ready',
+      },
+    ],
+  });
+
+  assert.equal(plan.payload.flushWhenIdle, true);
+  assert.equal(
+    plan.payload.text,
+    'queued file [@brief final.pdf](<uploads:brief final.pdf> "studio:inline-chip")',
+  );
+  assert.deepEqual(plan.payload.fileRefs, [
+    {
+      id: 'doc-1',
+      fileName: 'brief final.pdf',
+      kind: 'file',
+      mimeType: 'application/pdf',
+      relativePath: 'uploads/brief final.pdf',
+      resourceRef: 'uploads:brief final.pdf',
+    },
+  ]);
+  assert.equal(plan.payload.attachments, undefined);
+});

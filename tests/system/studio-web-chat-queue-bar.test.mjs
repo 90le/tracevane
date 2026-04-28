@@ -66,8 +66,11 @@ test('active-run sends publish an optimistic queued item before waiting for back
     'const optimisticQueueItem = buildOptimisticQueuedMessageItem({',
     'applyOptimisticQueueItem(sessionKey, optimisticQueueItem);',
     'composerDocument.value = createEmptyComposerDocument();',
-    'const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, {',
+    'const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, buildComposerSendPlan({',
+    'flushWhenIdle: true,',
+    '}).payload);',
     'applyQueueState(sessionKey, queuePayload.items);',
   ]);
+  assert.doesNotMatch(chatShellPage, /await enqueueChatMessage\(sessionKey, \{\s*\.\.\.sendPayload,/);
   assert.match(chatShellPage, /if \(rollbackOptimisticQueueItem\) \{[\s\S]*removeOptimisticQueueItem\(rollbackOptimisticQueueItem\.sessionKey, rollbackOptimisticQueueItem\.itemId\);[\s\S]*\}/);
 });

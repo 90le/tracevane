@@ -33,6 +33,12 @@ MATRIX: tuple[SmokeItem, ...] = (
         timeout_seconds=60,
     ),
     SmokeItem(
+        name="composer-attachment-browser",
+        category="attachments",
+        command=["python", "tests/chat/composer-attachment.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
         name="host-exec-state",
         category="host-exec",
         command=["python", "tests/chat/host-exec.acceptance.py"],
