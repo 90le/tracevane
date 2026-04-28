@@ -9,6 +9,7 @@ import { resolveChatResources } from '../chat/api';
 const MAX_STUDIO_RESOURCE_REFS_PER_MESSAGE = 48;
 const MAX_STUDIO_RESOURCE_REFS_PER_BATCH = 100;
 const RESOURCE_RESOLVE_BATCH_DELAY_MS = 8;
+const RESOLVED_RESOURCE_CACHE_LIMIT = 800;
 const READY_RESOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
 const MISSING_RESOURCE_CACHE_TTL_MS = 10 * 1000;
 
@@ -181,14 +182,36 @@ function readCachedResource(sessionKey: string, ref: string): ChatResourceItem |
     resolvedResourceCache.delete(key);
     return undefined;
   }
+  resolvedResourceCache.delete(key);
+  resolvedResourceCache.set(key, cached);
   return cached.resource;
 }
 
+function pruneResolvedResourceCache(now = Date.now()): void {
+  for (const [key, item] of resolvedResourceCache.entries()) {
+    if (item.expiresAt <= now) {
+      resolvedResourceCache.delete(key);
+    }
+  }
+  while (resolvedResourceCache.size > RESOLVED_RESOURCE_CACHE_LIMIT) {
+    const oldest = resolvedResourceCache.keys().next().value;
+    if (!oldest) {
+      return;
+    }
+    resolvedResourceCache.delete(oldest);
+  }
+}
+
 function writeCachedResource(sessionKey: string, ref: string, resource: ChatResourceItem | null): void {
-  resolvedResourceCache.set(cacheKey(sessionKey, ref), {
+  const key = cacheKey(sessionKey, ref);
+  if (resolvedResourceCache.has(key)) {
+    resolvedResourceCache.delete(key);
+  }
+  resolvedResourceCache.set(key, {
     resource,
     expiresAt: Date.now() + (resource?.status === 'missing' || !resource ? MISSING_RESOURCE_CACHE_TTL_MS : READY_RESOURCE_CACHE_TTL_MS),
   });
+  pruneResolvedResourceCache();
 }
 
 function chunkRefs(refs: string[]): string[][] {

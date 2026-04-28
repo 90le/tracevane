@@ -197,6 +197,59 @@ test('studio markdown resource resolver batches concurrent missing refs per sess
   }
 });
 
+test('studio markdown resource resolver prunes old cache entries under long histories', async () => {
+  resetChatResourceResolverForTest();
+  const calls: string[][] = [];
+  const restore = setChatResourceResolveTransportForTest(async (sessionKey, payload) => {
+    assert.equal(sessionKey, 'session-cache-limit');
+    calls.push([...payload.refs]);
+    return {
+      ok: true,
+      sessionKey,
+      resources: payload.refs.map((ref) => ({
+        ref,
+        resourceRef: ref,
+        aiReadable: false,
+        resource: {
+          id: `resource:${ref}`,
+          kind: 'image',
+          url: '',
+          downloadUrl: '',
+          fileName: ref.split('/').pop()?.split(':').pop() || 'image.png',
+          mimeType: 'image/png',
+          originalPath: ref,
+          source: 'studio_resource',
+          status: 'missing',
+          placement: 'append',
+        },
+      })),
+    };
+  });
+
+  try {
+    await Promise.all(Array.from({ length: 805 }, (_item, index) => (
+      resolveMissingStudioResourcesForMarkdown(
+        'session-cache-limit',
+        `![R](workspace:${index}.png "studio:break-image")`,
+        undefined,
+      )
+    )));
+    const callCountAfterFill = calls.length;
+
+    await resolveMissingStudioResourcesForMarkdown(
+      'session-cache-limit',
+      '![R](workspace:0.png "studio:break-image")',
+      undefined,
+    );
+
+    assert.equal(calls.length, callCountAfterFill + 1);
+    assert.deepEqual(calls[calls.length - 1], ['workspace:0.png']);
+  } finally {
+    restore();
+    resetChatResourceResolverForTest();
+  }
+});
+
 test('raw html keeps style/align attributes and is not split into text fragments', async () => {
   const result = await withDom(({ renderChatMarkdownResult }) => renderChatMarkdownResult(
     [
