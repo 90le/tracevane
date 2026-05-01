@@ -149,11 +149,18 @@ test("terminal service applies a conservative native worker budget for web termi
 
   try {
     const env = terminalService.buildTerminalEnv({
+      version: "0.1.28",
       openclawConfigFile: configFile,
     });
 
     assert.equal(env.RAYON_NUM_THREADS, "1");
     assert.equal(env.TOKIO_WORKER_THREADS, "1");
+    assert.equal(env.TERM, "xterm-256color");
+    assert.equal(env.COLORTERM, "truecolor");
+    assert.equal(env.CLICOLOR, "1");
+    assert.equal(env.TERM_PROGRAM, "openclaw-studio");
+    assert.equal(env.TERM_PROGRAM_VERSION, "0.1.28");
+    assert.equal(env.OPENCLAW_TERMINAL_CLIENT, "xterm.js");
   } finally {
     restoreEnv("RAYON_NUM_THREADS", previousRayon);
     restoreEnv("TOKIO_WORKER_THREADS", previousTokio);
@@ -177,6 +184,7 @@ test("terminal service preserves explicit native worker env overrides", () => {
 
   try {
     const env = terminalService.buildTerminalEnv({
+      version: "0.1.28",
       openclawConfigFile: configFile,
     });
 

@@ -16,6 +16,8 @@
             <span class="status-pill-dot"></span>
             <span>{{ connected ? text('终端已连接', 'Terminal connected') : text('终端未连接', 'Terminal disconnected') }}</span>
           </span>
+          <span class="terminal-console-header-chip">{{ terminalRendererLabel }}</span>
+          <span v-if="terminalScreenModeLabel" class="terminal-console-header-chip terminal-console-header-chip--mode">{{ terminalScreenModeLabel }}</span>
           <span class="terminal-console-header-chip">{{ text('当前终端', 'Active shell') }} · {{ activeCliLabel }}</span>
           <span class="terminal-console-header-chip">{{ text('会话', 'Session') }} · {{ sessionPreview }}</span>
           <span v-if="terminalTitleLabel" class="terminal-console-header-chip">{{ text('标题', 'Title') }} · {{ terminalTitleLabel }}</span>
@@ -52,6 +54,8 @@
       </header>
 
       <div v-else-if="hasTerminalTelemetry" class="terminal-console-meta-strip">
+        <span class="terminal-console-header-chip">{{ terminalRendererLabel }}</span>
+        <span v-if="terminalScreenModeLabel" class="terminal-console-header-chip terminal-console-header-chip--mode">{{ terminalScreenModeLabel }}</span>
         <span v-if="terminalTitleLabel" class="terminal-console-header-chip">{{ text('标题', 'Title') }} · {{ terminalTitleLabel }}</span>
         <span v-if="terminalProgressLabel" class="terminal-console-header-chip" :class="terminalProgressChipClass">{{ terminalProgressLabel }}</span>
         <span v-if="terminalStatusLabel" class="terminal-console-header-chip terminal-console-header-chip--status">{{ terminalStatusLabel }}</span>
@@ -123,6 +127,8 @@ const terminalFocused = ref(false);
 const terminalTitle = ref('');
 const terminalProgress = ref<{ state: 'running' | 'error' | 'paused' | 'indeterminate'; value: number | null } | null>(null);
 const terminalStatusHint = ref('');
+const terminalScreenMode = ref<'normal' | 'alternate'>('normal');
+const terminalRenderer = ref<'dom' | 'webgl'>('dom');
 
 let termInstance: XTermTerminal | null = null;
 let fitAddon: FitAddon | null = null;
@@ -133,6 +139,7 @@ let termDataDisposable: IDisposable | null = null;
 let titleChangeDisposable: IDisposable | null = null;
 let writeParsedDisposable: IDisposable | null = null;
 let oscProgressDisposable: IDisposable | null = null;
+let bufferChangeDisposable: IDisposable | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let statusPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -157,6 +164,16 @@ const sessionPreview = computed(() => {
 });
 const terminalTitleLabel = computed(() => terminalTitle.value.trim());
 const terminalStatusLabel = computed(() => terminalStatusHint.value.trim());
+const terminalScreenModeLabel = computed(() =>
+  terminalScreenMode.value === 'alternate'
+    ? text('TUI 模式', 'TUI mode')
+    : '',
+);
+const terminalRendererLabel = computed(() =>
+  terminalRenderer.value === 'webgl'
+    ? text('渲染 · GPU', 'Render · GPU')
+    : text('渲染 · 标准', 'Render · Standard'),
+);
 const terminalProgressLabel = computed(() => {
   const progress = terminalProgress.value;
   if (!progress) return '';
@@ -204,12 +221,26 @@ const TERMINAL_STATUS_KEYWORDS = [
   '进度',
 ];
 
+const TELEMETRY_TOOL_LABELS: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /\bcodex\b/i, label: 'Codex' },
+  { pattern: /\bclaude\b/i, label: 'Claude' },
+  { pattern: /\bopencode\b/i, label: 'OpenCode' },
+];
+
 function normalizeSessionId(value: unknown): string {
   return String(value || '').trim();
 }
 
 function setNotice(kind: 'success' | 'error', message: string): void {
   noticeMessage.value = { kind, text: message };
+}
+
+function inferCliLabel(source: string): void {
+  const textValue = normalizeTerminalTelemetryText(source);
+  if (!textValue) return;
+  const match = TELEMETRY_TOOL_LABELS.find((item) => item.pattern.test(textValue));
+  if (!match) return;
+  activeCliLabel.value = match.label;
 }
 
 function focusTerminal(): void {
@@ -278,6 +309,8 @@ function clearRuntime(): void {
   terminalTitle.value = '';
   terminalProgress.value = null;
   terminalStatusHint.value = '';
+  terminalScreenMode.value = 'normal';
+  terminalRenderer.value = 'dom';
 }
 
 function restoreRuntime(): void {
@@ -496,6 +529,7 @@ function updateTerminalStatusHint(): void {
   }
 
   terminalStatusHint.value = nextHint;
+  inferCliLabel(nextHint);
 }
 
 function scheduleTerminalStatusHint(): void {
@@ -537,6 +571,10 @@ function handleTerminalProgressOsc(data: string): boolean {
     default:
       return false;
   }
+}
+
+function updateTerminalScreenMode(term: XTermTerminal): void {
+  terminalScreenMode.value = term.buffer.active.type;
 }
 
 function clearReconnectTimer(): void {
@@ -1035,6 +1073,13 @@ async function initTerminal(): Promise<void> {
     cursorBlink: true,
     cursorStyle: 'bar',
     allowProposedApi: true,
+    allowTransparency: true,
+    convertEol: false,
+    drawBoldTextInBrightColors: true,
+    macOptionIsMeta: true,
+    rightClickSelectsWord: true,
+    scrollback: 10000,
+    minimumContrastRatio: 1,
     theme: {
       background: '#0f1419',
       foreground: '#e6e1cf',
@@ -1062,6 +1107,18 @@ async function initTerminal(): Promise<void> {
   fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
   term.loadAddon(new WebLinksAddon());
+  try {
+    const { WebglAddon } = await import('@xterm/addon-webgl');
+    const webglAddon = new WebglAddon();
+    term.loadAddon(webglAddon);
+    terminalRenderer.value = 'webgl';
+    webglAddon.onContextLoss(() => {
+      terminalRenderer.value = 'dom';
+      schedulePostLayoutFitSync();
+    });
+  } catch {
+    terminalRenderer.value = 'dom';
+  }
 
   await nextTick();
   if (!termContainer.value) return;
@@ -1071,6 +1128,7 @@ async function initTerminal(): Promise<void> {
 
   termInstance = term;
   termReady.value = true;
+  updateTerminalScreenMode(term);
   resizeObserver = new ResizeObserver(() => schedulePostLayoutFitSync());
   resizeObserver.observe(termContainer.value);
 
@@ -1084,11 +1142,16 @@ async function initTerminal(): Promise<void> {
   });
   titleChangeDisposable = term.onTitleChange((title) => {
     terminalTitle.value = normalizeTerminalTelemetryText(title);
+    inferCliLabel(title);
   });
   writeParsedDisposable = term.onWriteParsed(() => {
     scheduleTerminalStatusHint();
   });
   oscProgressDisposable = term.parser.registerOscHandler(9, (data) => handleTerminalProgressOsc(data));
+  bufferChangeDisposable = term.buffer.onBufferChange(() => {
+    updateTerminalScreenMode(term);
+    scheduleTerminalStatusHint();
+  });
   termContainer.value.addEventListener('focusin', handleTerminalFocusIn);
   termContainer.value.addEventListener('focusout', handleTerminalFocusOut);
   termContainer.value.addEventListener('mousedown', focusTerminal);
@@ -1181,6 +1244,8 @@ onBeforeUnmount(() => {
   writeParsedDisposable = null;
   oscProgressDisposable?.dispose();
   oscProgressDisposable = null;
+  bufferChangeDisposable?.dispose();
+  bufferChangeDisposable = null;
   terminalFocused.value = false;
   termContainer.value?.removeEventListener('focusin', handleTerminalFocusIn);
   termContainer.value?.removeEventListener('focusout', handleTerminalFocusOut);
@@ -1292,6 +1357,11 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.terminal-console-header-chip--mode {
+  color: color-mix(in srgb, var(--text-primary) 82%, #82aaff);
+  border: 1px solid color-mix(in srgb, #82aaff 24%, transparent);
 }
 
 .terminal-console-header-chip--progress-running,

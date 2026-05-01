@@ -325,6 +325,20 @@ async function runCommand(
 
 export function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv {
   const env = { ...process.env };
+  if (!env.TERM?.trim() || env.TERM.trim().toLowerCase() === "dumb") {
+    env.TERM = "xterm-256color";
+  }
+  if (!env.COLORTERM?.trim()) {
+    env.COLORTERM = "truecolor";
+  }
+  if (!env.CLICOLOR?.trim()) {
+    env.CLICOLOR = "1";
+  }
+  env.TERM_PROGRAM = "openclaw-studio";
+  if (config.version?.trim()) {
+    env.TERM_PROGRAM_VERSION = config.version.trim();
+  }
+  env.OPENCLAW_TERMINAL_CLIENT = "xterm.js";
   try {
     const raw = require("node:fs").readFileSync(
       config.openclawConfigFile,

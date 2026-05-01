@@ -232,9 +232,18 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /terminalTitleLabel/);
   assert.match(terminalConsole, /terminalProgressLabel/);
   assert.match(terminalConsole, /terminalStatusLabel/);
+  assert.match(terminalConsole, /terminalScreenModeLabel/);
+  assert.match(terminalConsole, /terminalRendererLabel/);
   assert.match(terminalConsole, /term\.onTitleChange/);
   assert.match(terminalConsole, /term\.onWriteParsed/);
   assert.match(terminalConsole, /term\.parser\.registerOscHandler\(9,/);
+  assert.match(terminalConsole, /term\.buffer\.onBufferChange/);
+  assert.match(terminalConsole, /WebglAddon/);
+  assert.match(terminalConsole, /terminalRenderer\.value = 'webgl'/);
+  assert.match(terminalConsole, /terminalRenderer\.value = 'dom'/);
+  assert.match(terminalConsole, /updateTerminalScreenMode/);
+  assert.match(terminalConsole, /buffer\.active\.type/);
+  assert.match(terminalConsole, /inferCliLabel/);
   assert.match(terminalConsole, /handleTerminalProgressOsc/);
   assert.match(terminalConsole, /scheduleTerminalStatusHint/);
   assert.match(terminalConsole, /updateTerminalStatusHint/);
@@ -285,6 +294,7 @@ test("terminal gateway targeted output does not use dropIfSlow", () => {
 
 test("terminal console surfaces compact telemetry chips even when toolbar is hidden", () => {
   assert.match(terminalConsole, /<div v-else-if="hasTerminalTelemetry" class="terminal-console-meta-strip">/);
+  assert.match(terminalConsole, /terminal-console-header-chip--mode/);
   assert.match(terminalConsole, /terminal-console-header-chip--progress-running/);
   assert.match(terminalConsole, /terminal-console-header-chip--progress-error/);
   assert.match(terminalConsole, /terminal-console-header-chip--status/);
