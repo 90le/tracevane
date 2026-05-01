@@ -18,6 +18,9 @@
           </span>
           <span class="terminal-console-header-chip">{{ text('当前终端', 'Active shell') }} · {{ activeCliLabel }}</span>
           <span class="terminal-console-header-chip">{{ text('会话', 'Session') }} · {{ sessionPreview }}</span>
+          <span v-if="terminalTitleLabel" class="terminal-console-header-chip">{{ text('标题', 'Title') }} · {{ terminalTitleLabel }}</span>
+          <span v-if="terminalProgressLabel" class="terminal-console-header-chip" :class="terminalProgressChipClass">{{ terminalProgressLabel }}</span>
+          <span v-if="terminalStatusLabel" class="terminal-console-header-chip terminal-console-header-chip--status">{{ terminalStatusLabel }}</span>
         </div>
 
         <div class="terminal-console-header-actions">
@@ -47,6 +50,12 @@
           </button>
         </div>
       </header>
+
+      <div v-else-if="hasTerminalTelemetry" class="terminal-console-meta-strip">
+        <span v-if="terminalTitleLabel" class="terminal-console-header-chip">{{ text('标题', 'Title') }} · {{ terminalTitleLabel }}</span>
+        <span v-if="terminalProgressLabel" class="terminal-console-header-chip" :class="terminalProgressChipClass">{{ terminalProgressLabel }}</span>
+        <span v-if="terminalStatusLabel" class="terminal-console-header-chip terminal-console-header-chip--status">{{ terminalStatusLabel }}</span>
+      </div>
 
       <div ref="termContainer" class="terminal-container"></div>
     </section>
@@ -111,6 +120,9 @@ const activeCliLabel = ref(text('普通 Shell', 'Plain shell'));
 const endingTerminal = ref(false);
 const noticeMessage = ref<{ kind: 'success' | 'error'; text: string } | null>(null);
 const terminalFocused = ref(false);
+const terminalTitle = ref('');
+const terminalProgress = ref<{ state: 'running' | 'error' | 'paused' | 'indeterminate'; value: number | null } | null>(null);
+const terminalStatusHint = ref('');
 
 let termInstance: XTermTerminal | null = null;
 let fitAddon: FitAddon | null = null;
@@ -118,11 +130,15 @@ let ws: WebSocket | null = null;
 let gatewayClient: GatewayBrowserClient | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let termDataDisposable: IDisposable | null = null;
+let titleChangeDisposable: IDisposable | null = null;
+let writeParsedDisposable: IDisposable | null = null;
+let oscProgressDisposable: IDisposable | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let statusPollTimer: ReturnType<typeof setInterval> | null = null;
 let gatewayInputRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let gatewayInputRecoverySeq = 0;
+let terminalStatusFrame: number | null = null;
 let intentionalClose = false;
 const terminalSessionId = ref('');
 let terminalInstanceId = '';
@@ -139,6 +155,54 @@ const sessionPreview = computed(() => {
     ? terminalSessionId.value
     : `${terminalSessionId.value.slice(0, 8)}...${terminalSessionId.value.slice(-6)}`;
 });
+const terminalTitleLabel = computed(() => terminalTitle.value.trim());
+const terminalStatusLabel = computed(() => terminalStatusHint.value.trim());
+const terminalProgressLabel = computed(() => {
+  const progress = terminalProgress.value;
+  if (!progress) return '';
+  if (progress.state === 'error') {
+    return text('进度 · 错误', 'Progress · Error');
+  }
+  if (progress.state === 'paused') {
+    return progress.value === null
+      ? text('进度 · 已暂停', 'Progress · Paused')
+      : text(`进度 · 已暂停 ${progress.value}%`, `Progress · Paused ${progress.value}%`);
+  }
+  if (progress.state === 'indeterminate') {
+    return text('进度 · 进行中', 'Progress · Running');
+  }
+  return progress.value === null
+    ? text('进度 · 运行中', 'Progress · Running')
+    : text(`进度 · ${progress.value}%`, `Progress · ${progress.value}%`);
+});
+const terminalProgressChipClass = computed(() => {
+  const progress = terminalProgress.value;
+  if (!progress) return '';
+  return `terminal-console-header-chip--progress-${progress.state}`;
+});
+const hasTerminalTelemetry = computed(() =>
+  Boolean(terminalTitleLabel.value || terminalProgressLabel.value || terminalStatusLabel.value),
+);
+
+const TERMINAL_STATUS_KEYWORDS = [
+  'starting',
+  'loading',
+  'thinking',
+  'running',
+  'processing',
+  'connecting',
+  'installing',
+  'compacting',
+  'indexing',
+  'interrupt',
+  'mcp',
+  '正在',
+  '启动',
+  '连接',
+  '处理中',
+  '加载',
+  '进度',
+];
 
 function normalizeSessionId(value: unknown): string {
   return String(value || '').trim();
@@ -211,6 +275,9 @@ function clearRuntime(): void {
   lastOutputSeq = 0;
   transcriptRestoreAttemptedSessionId = '';
   activeCliLabel.value = text('普通 Shell', 'Plain shell');
+  terminalTitle.value = '';
+  terminalProgress.value = null;
+  terminalStatusHint.value = '';
 }
 
 function restoreRuntime(): void {
@@ -386,6 +453,90 @@ function clearGatewayInputRecovery(): void {
   if (!gatewayInputRecoveryTimer) return;
   window.clearTimeout(gatewayInputRecoveryTimer);
   gatewayInputRecoveryTimer = null;
+}
+
+function normalizeTerminalTelemetryText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function updateTerminalStatusHint(): void {
+  const term = termInstance;
+  if (!term) return;
+
+  const buffer = term.buffer.active;
+  const viewportBottom = Math.min(buffer.length - 1, buffer.viewportY + term.rows - 1);
+  const candidates: number[] = [];
+  for (let offset = 0; offset < Math.min(term.rows, 14); offset += 1) {
+    const row = viewportBottom - offset;
+    if (row < 0) break;
+    candidates.push(row);
+  }
+  const cursorRow = buffer.baseY + buffer.cursorY;
+  if (!candidates.includes(cursorRow)) {
+    candidates.unshift(cursorRow);
+  }
+
+  let nextHint = '';
+  for (const row of candidates) {
+    const line = buffer.getLine(row);
+    const textValue = normalizeTerminalTelemetryText(line?.translateToString(true) || '');
+    if (!textValue) continue;
+    if (/^(?:[>$#]|\$|❯|›)\s*$/.test(textValue)) continue;
+    if (/^[a-z0-9._-]+@[^:]+:/.test(textValue.toLowerCase())) continue;
+    const lower = textValue.toLowerCase();
+    const looksLikeProgress = /\b\d+\/\d+\b/.test(textValue)
+      || /\(\d+s\b/.test(textValue)
+      || /%/.test(textValue)
+      || /esc to interrupt/i.test(textValue)
+      || /child_agents_md/i.test(textValue)
+      || TERMINAL_STATUS_KEYWORDS.some((keyword) => lower.includes(keyword));
+    if (!looksLikeProgress) continue;
+    nextHint = textValue;
+    break;
+  }
+
+  terminalStatusHint.value = nextHint;
+}
+
+function scheduleTerminalStatusHint(): void {
+  if (terminalStatusFrame !== null) return;
+  terminalStatusFrame = window.requestAnimationFrame(() => {
+    terminalStatusFrame = null;
+    updateTerminalStatusHint();
+  });
+}
+
+function handleTerminalProgressOsc(data: string): boolean {
+  const payload = String(data || '').trim();
+  if (!payload.startsWith('4;')) {
+    return false;
+  }
+
+  const [, stateRaw = '', valueRaw = ''] = payload.split(';');
+  const state = Number.parseInt(stateRaw, 10);
+  const nextValue = Number.isFinite(Number.parseInt(valueRaw, 10))
+    ? Math.max(0, Math.min(100, Number.parseInt(valueRaw, 10)))
+    : null;
+
+  switch (state) {
+    case 0:
+      terminalProgress.value = null;
+      return true;
+    case 1:
+      terminalProgress.value = { state: 'running', value: nextValue };
+      return true;
+    case 2:
+      terminalProgress.value = { state: 'error', value: nextValue };
+      return true;
+    case 3:
+      terminalProgress.value = { state: 'indeterminate', value: null };
+      return true;
+    case 4:
+      terminalProgress.value = { state: 'paused', value: nextValue };
+      return true;
+    default:
+      return false;
+  }
 }
 
 function clearReconnectTimer(): void {
@@ -925,11 +1076,19 @@ async function initTerminal(): Promise<void> {
 
   term.onResize(({ cols, rows }) => {
     sendTerminalResize(cols, rows);
+    scheduleTerminalStatusHint();
   });
 
   termDataDisposable = term.onData((data) => {
     sendTerminalInput(data);
   });
+  titleChangeDisposable = term.onTitleChange((title) => {
+    terminalTitle.value = normalizeTerminalTelemetryText(title);
+  });
+  writeParsedDisposable = term.onWriteParsed(() => {
+    scheduleTerminalStatusHint();
+  });
+  oscProgressDisposable = term.parser.registerOscHandler(9, (data) => handleTerminalProgressOsc(data));
   termContainer.value.addEventListener('focusin', handleTerminalFocusIn);
   termContainer.value.addEventListener('focusout', handleTerminalFocusOut);
   termContainer.value.addEventListener('mousedown', focusTerminal);
@@ -1008,10 +1167,20 @@ onBeforeUnmount(() => {
   stopHeartbeat();
   clearReconnectTimer();
   clearGatewayInputRecovery();
+  if (terminalStatusFrame !== null) {
+    window.cancelAnimationFrame(terminalStatusFrame);
+    terminalStatusFrame = null;
+  }
   resizeObserver?.disconnect();
   resizeObserver = null;
   termDataDisposable?.dispose();
   termDataDisposable = null;
+  titleChangeDisposable?.dispose();
+  titleChangeDisposable = null;
+  writeParsedDisposable?.dispose();
+  writeParsedDisposable = null;
+  oscProgressDisposable?.dispose();
+  oscProgressDisposable = null;
   terminalFocused.value = false;
   termContainer.value?.removeEventListener('focusin', handleTerminalFocusIn);
   termContainer.value?.removeEventListener('focusout', handleTerminalFocusOut);
@@ -1090,6 +1259,16 @@ defineExpose({
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.terminal-console-meta-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 8px 10px 0;
+  background: transparent;
+}
+
 .terminal-console-header-left,
 .terminal-console-header-actions {
   display: flex;
@@ -1106,6 +1285,29 @@ defineExpose({
   font-size: 11px;
   color: var(--text-soft);
   background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+}
+
+.terminal-console-header-chip--status {
+  max-width: min(100%, 42rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-console-header-chip--progress-running,
+.terminal-console-header-chip--progress-indeterminate {
+  color: color-mix(in srgb, var(--text-primary) 82%, #7fdbca);
+  border: 1px solid color-mix(in srgb, #7fdbca 28%, transparent);
+}
+
+.terminal-console-header-chip--progress-paused {
+  color: color-mix(in srgb, var(--text-primary) 80%, #ffd580);
+  border: 1px solid color-mix(in srgb, #ffd580 28%, transparent);
+}
+
+.terminal-console-header-chip--progress-error {
+  color: color-mix(in srgb, var(--text-primary) 78%, #ff6666);
+  border: 1px solid color-mix(in srgb, #ff6666 28%, transparent);
 }
 
 .terminal-container {
@@ -1139,6 +1341,10 @@ defineExpose({
 
 :global(html[data-theme="light"]) .terminal-console-header {
   background: rgba(246, 250, 253, 0.96);
+}
+
+:global(html[data-theme="light"]) .terminal-console-meta-strip {
+  background: transparent;
 }
 
 :global(html[data-theme="light"]) .terminal-console-header-chip {

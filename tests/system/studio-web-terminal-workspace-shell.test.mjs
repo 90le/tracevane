@@ -229,6 +229,17 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /scheduleGatewayInputRecovery/);
   assert.match(terminalConsole, /const lastSeenSeq = lastOutputSeq/);
   assert.match(terminalConsole, /scheduleGatewayInputRecovery\(lastSeenSeq\)/);
+  assert.match(terminalConsole, /terminalTitleLabel/);
+  assert.match(terminalConsole, /terminalProgressLabel/);
+  assert.match(terminalConsole, /terminalStatusLabel/);
+  assert.match(terminalConsole, /term\.onTitleChange/);
+  assert.match(terminalConsole, /term\.onWriteParsed/);
+  assert.match(terminalConsole, /term\.parser\.registerOscHandler\(9,/);
+  assert.match(terminalConsole, /handleTerminalProgressOsc/);
+  assert.match(terminalConsole, /scheduleTerminalStatusHint/);
+  assert.match(terminalConsole, /updateTerminalStatusHint/);
+  assert.match(terminalConsole, /translateToString\(true\)/);
+  assert.match(terminalConsole, /TERMINAL_STATUS_KEYWORDS/);
   assert.match(terminalConsole, /skipReplay: skipReplay \|\| undefined/);
   assert.match(terminalConsole, /resume: props\.embedded \|\| undefined/);
   assert.match(terminalConsole, /params\.set\('skipReplay', '1'\)/);
@@ -270,6 +281,13 @@ test("terminal gateway targeted output does not use dropIfSlow", () => {
     studioPluginSource,
     /broadcastToConnIds\(STUDIO_TERMINAL_GATEWAY_EVENT, event, connIds, \{\s*dropIfSlow: true,\s*\}\)/,
   );
+});
+
+test("terminal console surfaces compact telemetry chips even when toolbar is hidden", () => {
+  assert.match(terminalConsole, /<div v-else-if="hasTerminalTelemetry" class="terminal-console-meta-strip">/);
+  assert.match(terminalConsole, /terminal-console-header-chip--progress-running/);
+  assert.match(terminalConsole, /terminal-console-header-chip--progress-error/);
+  assert.match(terminalConsole, /terminal-console-header-chip--status/);
 });
 
 test("embedded terminal console does not synthesize random session ids before the workspace resolves one", () => {
