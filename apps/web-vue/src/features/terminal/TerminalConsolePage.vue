@@ -121,9 +121,8 @@ let termDataDisposable: IDisposable | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let statusPollTimer: ReturnType<typeof setInterval> | null = null;
-let gatewayOutputCatchupTimer: ReturnType<typeof setTimeout> | null = null;
-let gatewayOutputCatchupActive = false;
-let gatewayOutputCatchupDirty = false;
+let gatewayInputRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+let gatewayInputRecoverySeq = 0;
 let intentionalClose = false;
 const terminalSessionId = ref('');
 let terminalInstanceId = '';
@@ -354,6 +353,7 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
     }
     terminalInstanceId = String(payload.instanceId || '');
     lastOutputSeq = 0;
+    clearGatewayInputRecovery();
     saveRuntime();
     termInstance?.clear();
     return;
@@ -362,6 +362,7 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
     const seq = typeof payload.seq === 'number' ? payload.seq : 0;
     if (seq && seq <= lastOutputSeq) return;
     if (seq) lastOutputSeq = seq;
+    clearGatewayInputRecovery();
     if (typeof payload.data === 'string') {
       termInstance?.write(payload.data);
     }
@@ -370,6 +371,7 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
   }
   if (payload.type === 'closed') {
     connected.value = false;
+    clearGatewayInputRecovery();
     setNotice(
       'error',
       text(
@@ -378,6 +380,12 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
       ),
     );
   }
+}
+
+function clearGatewayInputRecovery(): void {
+  if (!gatewayInputRecoveryTimer) return;
+  window.clearTimeout(gatewayInputRecoveryTimer);
+  gatewayInputRecoveryTimer = null;
 }
 
 function clearReconnectTimer(): void {
@@ -420,6 +428,7 @@ async function attachGatewayTerminal(): Promise<void> {
   if (!gatewayClient) return;
   const sid = getSessionId();
   if (!sid) return;
+  clearGatewayInputRecovery();
   const skipReplay = await restorePersistedTranscriptIfNeeded(sid);
   const response = await requestGatewayTerminal<TerminalGatewayAttachResponse>(
     STUDIO_TERMINAL_GATEWAY_METHODS.attach,
@@ -445,60 +454,23 @@ async function attachGatewayTerminal(): Promise<void> {
   void refreshStatus();
 }
 
-async function requestGatewayOutputCatchup(): Promise<void> {
-  if (!gatewayClient?.connected) return;
-  const sid = getSessionId();
-  if (!sid) return;
-  const response = await requestGatewayTerminal<TerminalGatewayAttachResponse>(
-    STUDIO_TERMINAL_GATEWAY_METHODS.attach,
-    {
-      sid,
-      lastSeq: lastOutputSeq || undefined,
-      instanceId: terminalInstanceId || undefined,
-      resume: props.embedded || undefined,
-    },
-  );
-  if (response.sid) {
-    setSessionId(response.sid, { emitAttached: true });
-  }
-  for (const event of response.events || []) {
-    handleTerminalRealtimeEvent(event);
-  }
-  saveRuntime();
-}
-
-function scheduleGatewayOutputCatchup(delayMs = 80): void {
+function scheduleGatewayInputRecovery(lastSeenSeq: number, delayMs = 120): void {
   if (!usesGatewayRpc()) return;
-  gatewayOutputCatchupDirty = true;
-  if (gatewayOutputCatchupTimer || gatewayOutputCatchupActive) return;
-  gatewayOutputCatchupTimer = window.setTimeout(() => {
-    gatewayOutputCatchupTimer = null;
-    if (intentionalClose || !gatewayClient?.connected) {
-      gatewayOutputCatchupDirty = false;
-      return;
-    }
-    gatewayOutputCatchupActive = true;
-    gatewayOutputCatchupDirty = false;
-    void requestGatewayOutputCatchup()
-      .catch(() => {
-        recoverGatewayAttachment();
-      })
-      .finally(() => {
-        gatewayOutputCatchupActive = false;
-        if (gatewayOutputCatchupDirty && !intentionalClose) {
-          scheduleGatewayOutputCatchup(80);
-        }
-      });
+  clearGatewayInputRecovery();
+  const requestSeq = ++gatewayInputRecoverySeq;
+  gatewayInputRecoveryTimer = window.setTimeout(() => {
+    gatewayInputRecoveryTimer = null;
+    if (requestSeq !== gatewayInputRecoverySeq) return;
+    if (intentionalClose || !gatewayClient?.connected) return;
+    if (lastOutputSeq !== lastSeenSeq) return;
+    void attachGatewayTerminal().catch(() => {
+      connected.value = false;
+    });
   }, delayMs);
 }
 
 function disconnectGatewayClient(): void {
-  if (gatewayOutputCatchupTimer) {
-    window.clearTimeout(gatewayOutputCatchupTimer);
-    gatewayOutputCatchupTimer = null;
-  }
-  gatewayOutputCatchupActive = false;
-  gatewayOutputCatchupDirty = false;
+  clearGatewayInputRecovery();
   gatewayClient?.stop();
   gatewayClient = null;
 }
@@ -600,17 +572,20 @@ function sendTerminalResize(cols: number, rows: number): void {
 function sendTerminalInput(data: string): boolean {
   if (usesGatewayRpc()) {
     if (!gatewayClient?.connected) return false;
+    const lastSeenSeq = lastOutputSeq;
     void requestGatewayTerminal(
       STUDIO_TERMINAL_GATEWAY_METHODS.input,
       {
         sid: getSessionId(),
         data,
       },
-    ).catch(() => {
-      recoverGatewayAttachment();
-    }).then(() => {
-      scheduleGatewayOutputCatchup();
-    });
+    )
+      .then(() => {
+        scheduleGatewayInputRecovery(lastSeenSeq);
+      })
+      .catch(() => {
+        recoverGatewayAttachment();
+      });
     return true;
   }
 
@@ -1032,10 +1007,7 @@ onBeforeUnmount(() => {
   intentionalClose = true;
   stopHeartbeat();
   clearReconnectTimer();
-  if (gatewayOutputCatchupTimer) {
-    window.clearTimeout(gatewayOutputCatchupTimer);
-    gatewayOutputCatchupTimer = null;
-  }
+  clearGatewayInputRecovery();
   resizeObserver?.disconnect();
   resizeObserver = null;
   termDataDisposable?.dispose();

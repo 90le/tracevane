@@ -117,6 +117,7 @@ const TERMINAL_GATEWAY_LEASE_MS = 35_000;
 const TERMINAL_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
 const WS_PING_INTERVAL = 20_000;
 const WS_IDLE_TIMEOUT = 90_000;
+const DEFAULT_TERMINAL_NATIVE_WORKER_BUDGET = "1";
 
 const TERMINAL_CLI_SPECS: Record<TerminalBinaryId, TerminalCliSpec> = {
   claude: {
@@ -206,6 +207,30 @@ function truncateLog(text: string, maxLength = 16_000): string {
   if (!normalized) return "";
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength)}\n...[truncated]`;
+}
+
+function resolveTerminalNativeWorkerBudget(env: NodeJS.ProcessEnv): string {
+  const parsed = Number.parseInt(
+    String(env.OPENCLAW_TERMINAL_NATIVE_WORKERS || "").trim(),
+    10,
+  );
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return String(parsed);
+  }
+  return DEFAULT_TERMINAL_NATIVE_WORKER_BUDGET;
+}
+
+function applyTerminalNativeWorkerBudget(
+  env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const budget = resolveTerminalNativeWorkerBudget(env);
+  if (!env.RAYON_NUM_THREADS?.trim()) {
+    env.RAYON_NUM_THREADS = budget;
+  }
+  if (!env.TOKIO_WORKER_THREADS?.trim()) {
+    env.TOKIO_WORKER_THREADS = budget;
+  }
+  return env;
 }
 
 function isWindowsMountedPath(binPath: string): boolean {
@@ -298,7 +323,7 @@ async function runCommand(
   }
 }
 
-function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv {
+export function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv {
   const env = { ...process.env };
   try {
     const raw = require("node:fs").readFileSync(
@@ -321,7 +346,7 @@ function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv {
   } catch {
     // ignore invalid config here; status endpoints already report separately
   }
-  return env;
+  return applyTerminalNativeWorkerBudget(env);
 }
 
 function summarizeAttempts(attempts: TerminalInstallAttemptLog[]): string {

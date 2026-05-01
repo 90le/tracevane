@@ -52,6 +52,10 @@ const terminalSessionPanePath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/TerminalSessionPane.vue",
 );
+const studioPluginPath = path.join(
+  rootDir,
+  "index.ts",
+);
 
 const terminalView = fs.readFileSync(terminalViewPath, "utf8");
 const workspacePage = fs.readFileSync(workspacePagePath, "utf8");
@@ -64,6 +68,7 @@ const terminalTabRail = fs.readFileSync(terminalTabRailPath, "utf8");
 const terminalSessionExplorer = fs.readFileSync(terminalSessionExplorerPath, "utf8");
 const terminalActionPanel = fs.readFileSync(terminalActionPanelPath, "utf8");
 const terminalSessionPane = fs.readFileSync(terminalSessionPanePath, "utf8");
+const studioPluginSource = fs.readFileSync(studioPluginPath, "utf8");
 const terminalHistoryPath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/terminal-session-history.ts",
@@ -217,10 +222,13 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
     terminalConsole,
     /payload\.type === 'session'[\s\S]{0,500}lastOutputSeq = payload\.outputSeq/,
   );
-  assert.match(terminalConsole, /requestGatewayOutputCatchup/);
-  assert.match(terminalConsole, /scheduleGatewayOutputCatchup/);
-  assert.match(terminalConsole, /scheduleGatewayOutputCatchup\(\);/);
-  assert.match(terminalConsole, /gatewayOutputCatchupDirty/);
+  assert.doesNotMatch(terminalConsole, /requestGatewayOutputCatchup/);
+  assert.doesNotMatch(terminalConsole, /scheduleGatewayOutputCatchup/);
+  assert.doesNotMatch(terminalConsole, /gatewayOutputCatchupDirty/);
+  assert.match(terminalConsole, /clearGatewayInputRecovery/);
+  assert.match(terminalConsole, /scheduleGatewayInputRecovery/);
+  assert.match(terminalConsole, /const lastSeenSeq = lastOutputSeq/);
+  assert.match(terminalConsole, /scheduleGatewayInputRecovery\(lastSeenSeq\)/);
   assert.match(terminalConsole, /skipReplay: skipReplay \|\| undefined/);
   assert.match(terminalConsole, /resume: props\.embedded \|\| undefined/);
   assert.match(terminalConsole, /params\.set\('skipReplay', '1'\)/);
@@ -238,6 +246,8 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.doesNotMatch(terminalConsole, /\.onFocus\(/);
   assert.doesNotMatch(terminalConsole, /\.onBlur\(/);
   assert.match(terminalConsole, /sendTerminalShortcut/);
+  assert.match(terminalConsole, /onGap: \(\) => \{/);
+  assert.match(terminalConsole, /void attachGatewayTerminal\(\)\.catch\(\(\) => \{/);
   assert.match(terminalConsole, /defineExpose\(\{\s*clearTerminal,\s*focusTerminal,\s*pasteClipboard,\s*sendTerminalShortcut,/);
   assert.match(
     terminalConsole,
@@ -249,6 +259,17 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalService, /const existingSubscriber = session\.gatewaySubscribers\.get\(runtime\.connId\)/);
   assert.match(terminalService, /existingSubscriber\.lastLeaseAt = Date\.now\(\)/);
   assert.match(terminalService, /skipReplay\?: boolean \| string \| null;/);
+});
+
+test("terminal gateway targeted output does not use dropIfSlow", () => {
+  assert.match(
+    studioPluginSource,
+    /broadcastToConnIds\(STUDIO_TERMINAL_GATEWAY_EVENT, event, connIds\)/,
+  );
+  assert.doesNotMatch(
+    studioPluginSource,
+    /broadcastToConnIds\(STUDIO_TERMINAL_GATEWAY_EVENT, event, connIds, \{\s*dropIfSlow: true,\s*\}\)/,
+  );
 });
 
 test("embedded terminal console does not synthesize random session ids before the workspace resolves one", () => {

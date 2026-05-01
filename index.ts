@@ -363,9 +363,7 @@ const studioPlugin = {
               {
                 connId,
                 emit: (event) => {
-                  opts.context.broadcastToConnIds(STUDIO_TERMINAL_GATEWAY_EVENT, event, connIds, {
-                    dropIfSlow: true,
-                  });
+                  opts.context.broadcastToConnIds(STUDIO_TERMINAL_GATEWAY_EVENT, event, connIds);
                   return true;
                 },
               }

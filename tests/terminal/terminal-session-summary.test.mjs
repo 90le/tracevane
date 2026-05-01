@@ -134,6 +134,62 @@ test("terminal service session summaries derive detached status from real activi
   }
 });
 
+test("terminal service applies a conservative native worker budget for web terminal shells", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-env-"));
+  const configFile = path.join(tempDir, "openclaw-config.json");
+  fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
+
+  const previousRayon = process.env.RAYON_NUM_THREADS;
+  const previousTokio = process.env.TOKIO_WORKER_THREADS;
+  const previousBudget = process.env.OPENCLAW_TERMINAL_NATIVE_WORKERS;
+
+  delete process.env.RAYON_NUM_THREADS;
+  delete process.env.TOKIO_WORKER_THREADS;
+  delete process.env.OPENCLAW_TERMINAL_NATIVE_WORKERS;
+
+  try {
+    const env = terminalService.buildTerminalEnv({
+      openclawConfigFile: configFile,
+    });
+
+    assert.equal(env.RAYON_NUM_THREADS, "1");
+    assert.equal(env.TOKIO_WORKER_THREADS, "1");
+  } finally {
+    restoreEnv("RAYON_NUM_THREADS", previousRayon);
+    restoreEnv("TOKIO_WORKER_THREADS", previousTokio);
+    restoreEnv("OPENCLAW_TERMINAL_NATIVE_WORKERS", previousBudget);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal service preserves explicit native worker env overrides", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-env-"));
+  const configFile = path.join(tempDir, "openclaw-config.json");
+  fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
+
+  const previousRayon = process.env.RAYON_NUM_THREADS;
+  const previousTokio = process.env.TOKIO_WORKER_THREADS;
+  const previousBudget = process.env.OPENCLAW_TERMINAL_NATIVE_WORKERS;
+
+  process.env.RAYON_NUM_THREADS = "7";
+  process.env.TOKIO_WORKER_THREADS = "5";
+  process.env.OPENCLAW_TERMINAL_NATIVE_WORKERS = "3";
+
+  try {
+    const env = terminalService.buildTerminalEnv({
+      openclawConfigFile: configFile,
+    });
+
+    assert.equal(env.RAYON_NUM_THREADS, "7");
+    assert.equal(env.TOKIO_WORKER_THREADS, "5");
+  } finally {
+    restoreEnv("RAYON_NUM_THREADS", previousRayon);
+    restoreEnv("TOKIO_WORKER_THREADS", previousTokio);
+    restoreEnv("OPENCLAW_TERMINAL_NATIVE_WORKERS", previousBudget);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("terminal service rename/delete return missing-session signals", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
   const configFile = path.join(tempDir, "openclaw-config.json");
@@ -188,6 +244,14 @@ test("terminal service rename/delete return missing-session signals", async () =
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+function restoreEnv(key, value) {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+  process.env[key] = value;
+}
 
 test("terminal service delete rejects running and detached sessions", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
