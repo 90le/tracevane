@@ -153,6 +153,8 @@ const terminalSyncState = ref<'live' | 'syncing' | 'reconnecting' | 'degraded'>(
 const terminalLastOutputAt = ref<number>(0);
 const terminalLastInputAt = ref<number>(0);
 const terminalLastAckAt = ref<number>(0);
+const terminalLastHeartbeatAt = ref<number>(0);
+const terminalInputAckLatencyMs = ref<number | null>(null);
 
 let termInstance: XTermTerminal | null = null;
 let fitAddon: FitAddon | null = null;
@@ -170,7 +172,7 @@ let statusPollTimer: ReturnType<typeof setInterval> | null = null;
 let gatewayInputRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let gatewayInputRecoverySeq = 0;
 let terminalStatusFrame: number | null = null;
-let terminalOutputFrame: number | null = null;
+let terminalOutputTimer: ReturnType<typeof setTimeout> | null = null;
 let terminalOutputQueue = '';
 let intentionalClose = false;
 const terminalSessionId = ref('');
@@ -180,6 +182,8 @@ let transcriptRestoreAttemptedSessionId = '';
 let transcriptRestoreRequestSeq = 0;
 
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
+const TERMINAL_IMMEDIATE_OUTPUT_LIMIT = 8 * 1024;
+const TERMINAL_BULK_OUTPUT_FLUSH_MS = 4;
 
 const termReady = ref(false);
 const sessionPreview = computed(() => {
@@ -238,9 +242,14 @@ const terminalConnectionLabel = computed(() => {
   return text('链路 · 实时', 'Link · Live');
 });
 const terminalLatencyLabel = computed(() => {
-  if (!terminalLastInputAt.value || !terminalLastAckAt.value) return '';
-  const latency = Math.max(0, terminalLastAckAt.value - terminalLastInputAt.value);
-  return latency > 0 ? text(`ACK · ${latency}ms`, `ACK · ${latency}ms`) : '';
+  const parts: string[] = [];
+  if (terminalInputAckLatencyMs.value !== null) {
+    parts.push(text(`输入 · ${terminalInputAckLatencyMs.value}ms`, `Input · ${terminalInputAckLatencyMs.value}ms`));
+  }
+  if (terminalLastHeartbeatAt.value) {
+    parts.push(text('心跳 · 正常', 'Heartbeat · OK'));
+  }
+  return parts.join(' · ');
 });
 const terminalCliState = computed(() => deriveTerminalCliState({
   title: terminalTitle.value,
@@ -538,6 +547,8 @@ function clearRuntime(): void {
   terminalLastOutputAt.value = 0;
   terminalLastInputAt.value = 0;
   terminalLastAckAt.value = 0;
+  terminalLastHeartbeatAt.value = 0;
+  terminalInputAckLatencyMs.value = null;
 }
 
 function restoreRuntime(): void {
@@ -720,31 +731,55 @@ function clearGatewayInputRecovery(): void {
 
 function clearTerminalOutputQueue(): void {
   terminalOutputQueue = '';
-  if (terminalOutputFrame !== null) {
-    window.cancelAnimationFrame(terminalOutputFrame);
-    terminalOutputFrame = null;
+  if (terminalOutputTimer !== null) {
+    window.clearTimeout(terminalOutputTimer);
+    terminalOutputTimer = null;
   }
 }
 
 function flushTerminalOutputQueue(): void {
-  terminalOutputFrame = null;
+  terminalOutputTimer = null;
   if (!terminalOutputQueue || !termInstance) return;
   const output = terminalOutputQueue;
   terminalOutputQueue = '';
   termInstance.write(output);
+  scheduleTerminalStatusHint();
 }
 
 function enqueueTerminalOutput(data: string): void {
   if (!data) return;
-  terminalOutputQueue += data;
   terminalLastOutputAt.value = Date.now();
   terminalSyncState.value = 'live';
-  if (terminalOutputFrame !== null) return;
-  terminalOutputFrame = window.requestAnimationFrame(flushTerminalOutputQueue);
+  if (!termInstance) {
+    terminalOutputQueue += data;
+    return;
+  }
+  if (!terminalOutputQueue && data.length <= TERMINAL_IMMEDIATE_OUTPUT_LIMIT) {
+    termInstance.write(data);
+    scheduleTerminalStatusHint();
+    return;
+  }
+  terminalOutputQueue += data;
+  if (terminalOutputQueue.length >= TERMINAL_IMMEDIATE_OUTPUT_LIMIT * 4) {
+    flushTerminalOutputQueue();
+    return;
+  }
+  if (terminalOutputTimer !== null) return;
+  terminalOutputTimer = window.setTimeout(flushTerminalOutputQueue, TERMINAL_BULK_OUTPUT_FLUSH_MS);
 }
 
-function handleGatewayAckResponse(response: TerminalGatewayAckResponse): void {
-  terminalLastAckAt.value = Date.now();
+function handleGatewayAckResponse(
+  response: TerminalGatewayAckResponse,
+  options: { inputStartedAt?: number; heartbeat?: boolean } = {},
+): void {
+  const ackAt = Date.now();
+  terminalLastAckAt.value = ackAt;
+  if (options.heartbeat) {
+    terminalLastHeartbeatAt.value = ackAt;
+  }
+  if (options.inputStartedAt) {
+    terminalInputAckLatencyMs.value = Math.max(0, ackAt - options.inputStartedAt);
+  }
   if (response.instanceId) {
     terminalInstanceId = response.instanceId;
   }
@@ -1059,7 +1094,8 @@ function sendTerminalInput(data: string): boolean {
   if (usesGatewayRpc()) {
     if (!gatewayClient?.connected) return false;
     const lastSeenSeq = lastOutputSeq;
-    terminalLastInputAt.value = Date.now();
+    const inputStartedAt = Date.now();
+    terminalLastInputAt.value = inputStartedAt;
     void requestGatewayTerminal(
       STUDIO_TERMINAL_GATEWAY_METHODS.input,
       {
@@ -1070,7 +1106,7 @@ function sendTerminalInput(data: string): boolean {
       },
     )
       .then((response) => {
-        handleGatewayAckResponse(response as TerminalGatewayAckResponse);
+        handleGatewayAckResponse(response as TerminalGatewayAckResponse, { inputStartedAt });
         scheduleGatewayInputRecovery(lastSeenSeq);
       })
       .catch(() => {
@@ -1080,7 +1116,9 @@ function sendTerminalInput(data: string): boolean {
   }
 
   if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-  terminalLastInputAt.value = Date.now();
+  const inputStartedAt = Date.now();
+  terminalLastInputAt.value = inputStartedAt;
+  terminalInputAckLatencyMs.value = 0;
   ws.send(data);
   return true;
 }
@@ -1123,7 +1161,7 @@ function startHeartbeat(): void {
           instanceId: terminalInstanceId || undefined,
         },
       )
-        .then((response) => handleGatewayAckResponse(response as TerminalGatewayAckResponse))
+        .then((response) => handleGatewayAckResponse(response as TerminalGatewayAckResponse, { heartbeat: true }))
         .catch(() => {
           recoverGatewayAttachment();
         });
@@ -1462,6 +1500,7 @@ async function initTerminal(): Promise<void> {
 
   termInstance = term;
   termReady.value = true;
+  flushTerminalOutputQueue();
   updateTerminalScreenMode(term);
   resizeObserver = new ResizeObserver(() => schedulePostLayoutFitSync());
   resizeObserver.observe(termContainer.value);
