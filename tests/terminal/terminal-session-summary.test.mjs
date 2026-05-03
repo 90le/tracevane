@@ -158,9 +158,13 @@ test("terminal service applies a conservative native worker budget for web termi
     assert.equal(env.TERM, "xterm-256color");
     assert.equal(env.COLORTERM, "truecolor");
     assert.equal(env.CLICOLOR, "1");
+    assert.equal(env.FORCE_COLOR, "1");
+    assert.equal(env.LANG, "C.UTF-8");
+    assert.equal(env.LC_CTYPE, "C.UTF-8");
     assert.equal(env.TERM_PROGRAM, "openclaw-studio");
     assert.equal(env.TERM_PROGRAM_VERSION, "0.1.28");
     assert.equal(env.OPENCLAW_TERMINAL_CLIENT, "xterm.js");
+    assert.equal(env.XTERM_VERSION, "OpenClaw Studio 0.1.28");
   } finally {
     restoreEnv("RAYON_NUM_THREADS", previousRayon);
     restoreEnv("TOKIO_WORKER_THREADS", previousTokio);

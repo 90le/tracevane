@@ -334,11 +334,21 @@ export function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv 
   if (!env.CLICOLOR?.trim()) {
     env.CLICOLOR = "1";
   }
+  if (!env.FORCE_COLOR?.trim()) {
+    env.FORCE_COLOR = "1";
+  }
+  if (!env.LANG?.trim()) {
+    env.LANG = "C.UTF-8";
+  }
+  if (!env.LC_CTYPE?.trim()) {
+    env.LC_CTYPE = "C.UTF-8";
+  }
   env.TERM_PROGRAM = "openclaw-studio";
   if (config.version?.trim()) {
     env.TERM_PROGRAM_VERSION = config.version.trim();
   }
   env.OPENCLAW_TERMINAL_CLIENT = "xterm.js";
+  env.XTERM_VERSION = `OpenClaw Studio ${config.version?.trim() || "terminal"}`;
   try {
     const raw = require("node:fs").readFileSync(
       config.openclawConfigFile,
@@ -706,9 +716,17 @@ export function createTerminalService(
     const lastSeq = normalizeOutputSeq(params.lastSeq);
     const instanceId = String(params.instanceId || "").trim();
     const skipReplay = normalizeSkipReplay(params.skipReplay);
+    const firstBacklogSeq = session.backlog[0]?.seq || 0;
+    const hasBacklogGap =
+      !skipReplay &&
+      lastSeq > 0 &&
+      session.outputSeq > lastSeq &&
+      firstBacklogSeq > 0 &&
+      lastSeq < firstBacklogSeq - 1;
     const requiresReset =
       lastSeq > session.outputSeq ||
-      (instanceId && instanceId !== session.instanceId);
+      (instanceId && instanceId !== session.instanceId) ||
+      hasBacklogGap;
     const events: TerminalGatewayEvent[] = [
       {
         type: "session",
@@ -723,7 +741,10 @@ export function createTerminalService(
         type: "reset",
         sid: session.id,
         instanceId: session.instanceId,
-        reason: "session_recreated",
+        reason:
+          hasBacklogGap && !(instanceId && instanceId !== session.instanceId)
+            ? "backlog_gap"
+            : "session_recreated",
       });
     }
 
@@ -1039,10 +1060,22 @@ export function createTerminalService(
 
   function createGatewayAck(
     session: TerminalSession,
+    params: {
+      lastSeq?: string | number | null;
+      instanceId?: string | null;
+      skipReplay?: boolean | string | null;
+    } = {},
   ): TerminalGatewayAckResponse {
+    const events = buildAttachEvents(session, params).filter(
+      (event) => event.type !== "session",
+    );
     return {
       ok: true,
       sid: session.id,
+      instanceId: session.instanceId,
+      outputSeq: session.outputSeq,
+      leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS,
+      events,
     };
   }
 
@@ -1778,7 +1811,7 @@ export function createTerminalService(
         runtime.connId,
       );
       session.term.write(String(payload.data || ""));
-      return createGatewayAck(session);
+      return createGatewayAck(session, payload);
     },
 
     resizeGatewayClient(
@@ -1797,7 +1830,7 @@ export function createTerminalService(
         runtime.connId,
       );
       session.term.resize(session.lastCols, session.lastRows);
-      return createGatewayAck(session);
+      return createGatewayAck(session, payload);
     },
 
     heartbeatGatewayClient(
@@ -1807,7 +1840,7 @@ export function createTerminalService(
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
       markSessionActivity(session);
-      return createGatewayAck(session);
+      return createGatewayAck(session, payload);
     },
 
     detachGatewayClient(

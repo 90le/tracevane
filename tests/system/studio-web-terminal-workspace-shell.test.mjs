@@ -229,11 +229,31 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /scheduleGatewayInputRecovery/);
   assert.match(terminalConsole, /const lastSeenSeq = lastOutputSeq/);
   assert.match(terminalConsole, /scheduleGatewayInputRecovery\(lastSeenSeq\)/);
+  assert.match(terminalConsole, /handleGatewayAckResponse/);
+  assert.match(terminalConsole, /lastSeq: lastOutputSeq \|\| undefined/);
+  assert.match(terminalConsole, /instanceId: terminalInstanceId \|\| undefined/);
+  assert.match(terminalConsole, /handleGatewayAckResponse\(response as TerminalGatewayAckResponse\)/);
+  assert.match(terminalConsole, /enqueueTerminalOutput/);
+  assert.match(terminalConsole, /flushTerminalOutputQueue/);
+  assert.match(terminalConsole, /requestAnimationFrame\(flushTerminalOutputQueue\)/);
+  assert.match(terminalConsole, /clearTerminalOutputQueue/);
+  assert.match(terminalConsole, /terminalSyncState/);
+  assert.match(terminalConsole, /terminalConnectionLabel/);
+  assert.match(terminalConsole, /terminalLatencyLabel/);
+  assert.match(terminalConsole, /terminalLastInputAt/);
+  assert.match(terminalConsole, /terminalLastAckAt/);
+  assert.match(terminalConsole, /formatTerminalPaste/);
+  assert.match(terminalConsole, /termInstance\?\.modes\.bracketedPasteMode/);
+  assert.match(terminalConsole, /\\x1b\[200~/);
   assert.match(terminalConsole, /terminalTitleLabel/);
   assert.match(terminalConsole, /terminalProgressLabel/);
   assert.match(terminalConsole, /terminalStatusLabel/);
   assert.match(terminalConsole, /terminalScreenModeLabel/);
   assert.match(terminalConsole, /terminalRendererLabel/);
+  assert.match(terminalConsole, /terminalCliState/);
+  assert.match(terminalConsole, /deriveTerminalCliState/);
+  assert.match(terminalConsole, /parseProgressParts/);
+  assert.match(terminalConsole, /parseElapsedLabel/);
   assert.match(terminalConsole, /term\.onTitleChange/);
   assert.match(terminalConsole, /term\.onWriteParsed/);
   assert.match(terminalConsole, /term\.parser\.registerOscHandler\(9,/);
@@ -241,6 +261,10 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /WebglAddon/);
   assert.match(terminalConsole, /terminalRenderer\.value = 'webgl'/);
   assert.match(terminalConsole, /terminalRenderer\.value = 'dom'/);
+  assert.match(terminalConsole, /customGlyphs: true/);
+  assert.match(terminalConsole, /rescaleOverlappingGlyphs: true/);
+  assert.match(terminalConsole, /scrollOnEraseInDisplay: true/);
+  assert.match(terminalConsole, /smoothScrollDuration: 0/);
   assert.match(terminalConsole, /updateTerminalScreenMode/);
   assert.match(terminalConsole, /buffer\.active\.type/);
   assert.match(terminalConsole, /inferCliLabel/);
@@ -275,6 +299,12 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   );
   assert.match(terminalService, /function normalizeSkipReplay/);
   assert.match(terminalService, /function normalizeResumeSession/);
+  assert.match(terminalService, /hasBacklogGap/);
+  assert.match(terminalService, /reason:\s*[\s\S]*\?\s*"backlog_gap"/);
+  assert.match(terminalService, /function createGatewayAck/);
+  assert.match(terminalService, /const events = buildAttachEvents\(session, params\)\.filter/);
+  assert.match(terminalService, /outputSeq: session\.outputSeq/);
+  assert.match(terminalService, /leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS/);
   assert.match(terminalService, /resumePersisted: normalizeResumeSession/);
   assert.match(terminalService, /const existingSubscriber = session\.gatewaySubscribers\.get\(runtime\.connId\)/);
   assert.match(terminalService, /existingSubscriber\.lastLeaseAt = Date\.now\(\)/);
@@ -294,6 +324,10 @@ test("terminal gateway targeted output does not use dropIfSlow", () => {
 
 test("terminal console surfaces compact telemetry chips even when toolbar is hidden", () => {
   assert.match(terminalConsole, /<div v-else-if="hasTerminalTelemetry" class="terminal-console-meta-strip">/);
+  assert.match(terminalConsole, /data-testid="terminal-console-workbench-bar"/);
+  assert.match(terminalConsole, /terminal-console-cli-state/);
+  assert.match(terminalConsole, /terminal-console-cli-progress/);
+  assert.match(terminalConsole, /terminal-console-link-state/);
   assert.match(terminalConsole, /terminal-console-header-chip--mode/);
   assert.match(terminalConsole, /terminal-console-header-chip--progress-running/);
   assert.match(terminalConsole, /terminal-console-header-chip--progress-error/);

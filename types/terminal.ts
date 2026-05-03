@@ -238,16 +238,22 @@ export interface TerminalGatewayAttachPayload {
 export interface TerminalGatewayInputPayload {
   sid: string;
   data: string;
+  lastSeq?: number | null;
+  instanceId?: string | null;
 }
 
 export interface TerminalGatewayResizePayload {
   sid: string;
   cols: number;
   rows: number;
+  lastSeq?: number | null;
+  instanceId?: string | null;
 }
 
 export interface TerminalGatewayHeartbeatPayload {
   sid: string;
+  lastSeq?: number | null;
+  instanceId?: string | null;
 }
 
 export interface TerminalGatewayDetachPayload {
@@ -265,7 +271,7 @@ export interface TerminalGatewayResetEvent {
   type: "reset";
   sid: string;
   instanceId: string;
-  reason: "session_recreated";
+  reason: "session_recreated" | "backlog_gap";
 }
 
 export interface TerminalGatewayOutputEvent {
@@ -303,6 +309,10 @@ export interface TerminalGatewayAttachResponse {
 export interface TerminalGatewayAckResponse {
   ok: true;
   sid: string;
+  instanceId?: string;
+  outputSeq?: number;
+  leaseTtlMs?: number;
+  events?: TerminalGatewayEvent[];
 }
 
 export const STUDIO_TERMINAL_GATEWAY_EVENT = "studio.terminal";

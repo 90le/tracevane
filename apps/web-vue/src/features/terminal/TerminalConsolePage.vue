@@ -61,7 +61,26 @@
         <span v-if="terminalStatusLabel" class="terminal-console-header-chip terminal-console-header-chip--status">{{ terminalStatusLabel }}</span>
       </div>
 
-      <div ref="termContainer" class="terminal-container"></div>
+      <div class="terminal-console-frame">
+        <div v-if="hasTerminalWorkbenchTelemetry" class="terminal-console-workbench-bar" data-testid="terminal-console-workbench-bar">
+          <div class="terminal-console-cli-state">
+            <span class="terminal-console-cli-state__dot" :class="`terminal-console-cli-state__dot--${terminalCliState.state}`"></span>
+            <span class="terminal-console-cli-state__label">{{ terminalCliStateLabel }}</span>
+            <span v-if="terminalCliDetailLabel" class="terminal-console-cli-state__detail">{{ terminalCliDetailLabel }}</span>
+          </div>
+          <div class="terminal-console-cli-progress" :class="`terminal-console-cli-progress--${terminalCliState.state}`">
+            <span :class="terminalCliProgressClass" :style="terminalCliProgressStyle"></span>
+          </div>
+          <div class="terminal-console-link-state">
+            <span>{{ terminalConnectionLabel }}</span>
+            <span v-if="terminalLatencyLabel">{{ terminalLatencyLabel }}</span>
+            <span>{{ terminalRendererLabel }}</span>
+            <span v-if="terminalScreenModeLabel">{{ terminalScreenModeLabel }}</span>
+          </div>
+        </div>
+
+        <div ref="termContainer" class="terminal-container"></div>
+      </div>
     </section>
   </section>
 </template>
@@ -72,6 +91,7 @@ import { useRoute } from 'vue-router';
 import type { IDisposable, Terminal as XTermTerminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type {
+  TerminalGatewayAckResponse,
   TerminalGatewayAttachResponse,
   TerminalGatewayEvent,
   TerminalLaunchCli,
@@ -129,6 +149,10 @@ const terminalProgress = ref<{ state: 'running' | 'error' | 'paused' | 'indeterm
 const terminalStatusHint = ref('');
 const terminalScreenMode = ref<'normal' | 'alternate'>('normal');
 const terminalRenderer = ref<'dom' | 'webgl'>('dom');
+const terminalSyncState = ref<'live' | 'syncing' | 'reconnecting' | 'degraded'>('syncing');
+const terminalLastOutputAt = ref<number>(0);
+const terminalLastInputAt = ref<number>(0);
+const terminalLastAckAt = ref<number>(0);
 
 let termInstance: XTermTerminal | null = null;
 let fitAddon: FitAddon | null = null;
@@ -146,6 +170,8 @@ let statusPollTimer: ReturnType<typeof setInterval> | null = null;
 let gatewayInputRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let gatewayInputRecoverySeq = 0;
 let terminalStatusFrame: number | null = null;
+let terminalOutputFrame: number | null = null;
+let terminalOutputQueue = '';
 let intentionalClose = false;
 const terminalSessionId = ref('');
 let terminalInstanceId = '';
@@ -200,6 +226,71 @@ const terminalProgressChipClass = computed(() => {
 const hasTerminalTelemetry = computed(() =>
   Boolean(terminalTitleLabel.value || terminalProgressLabel.value || terminalStatusLabel.value),
 );
+const terminalConnectionLabel = computed(() => {
+  if (!connected.value) {
+    return terminalSyncState.value === 'reconnecting'
+      ? text('链路 · 重连中', 'Link · Reconnecting')
+      : text('链路 · 未连接', 'Link · Offline');
+  }
+  if (terminalSyncState.value === 'syncing') return text('链路 · 同步中', 'Link · Syncing');
+  if (terminalSyncState.value === 'degraded') return text('链路 · 补发保护', 'Link · Recovery');
+  if (!terminalLastOutputAt.value) return text('链路 · 已连接', 'Link · Connected');
+  return text('链路 · 实时', 'Link · Live');
+});
+const terminalLatencyLabel = computed(() => {
+  if (!terminalLastInputAt.value || !terminalLastAckAt.value) return '';
+  const latency = Math.max(0, terminalLastAckAt.value - terminalLastInputAt.value);
+  return latency > 0 ? text(`ACK · ${latency}ms`, `ACK · ${latency}ms`) : '';
+});
+const terminalCliState = computed(() => deriveTerminalCliState({
+  title: terminalTitle.value,
+  status: terminalStatusHint.value,
+  progress: terminalProgress.value,
+  screenMode: terminalScreenMode.value,
+  connected: connected.value,
+}));
+const terminalCliStateLabel = computed(() => {
+  const state = terminalCliState.value;
+  return text(`${state.tool} · ${state.labelZh}`, `${state.tool} · ${state.labelEn}`);
+});
+const terminalCliDetailLabel = computed(() => {
+  const state = terminalCliState.value;
+  const parts = [
+    state.detail,
+    state.progressLabel,
+    state.elapsedLabel,
+    state.interruptible ? text('Esc 可中断', 'Esc interrupts') : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
+});
+const terminalCliProgressStyle = computed(() => {
+  const ratio = terminalCliState.value.progressRatio;
+  if (ratio === null) return { width: '100%' };
+  return { width: `${Math.max(3, Math.min(100, Math.round(ratio * 100)))}%` };
+});
+const terminalCliProgressClass = computed(() =>
+  `terminal-console-cli-progress__fill terminal-console-cli-progress__fill--${terminalCliState.value.state}`,
+);
+const hasTerminalWorkbenchTelemetry = computed(() =>
+  Boolean(termReady.value || connected.value || terminalCliDetailLabel.value || terminalLatencyLabel.value || terminalScreenModeLabel.value),
+);
+
+type TerminalProgressState = {
+  state: 'running' | 'error' | 'paused' | 'indeterminate';
+  value: number | null;
+};
+
+type TerminalCliState = {
+  tool: string;
+  state: 'idle' | 'starting' | 'running' | 'waiting' | 'error';
+  labelZh: string;
+  labelEn: string;
+  detail: string;
+  progressLabel: string;
+  elapsedLabel: string;
+  progressRatio: number | null;
+  interruptible: boolean;
+};
 
 const TERMINAL_STATUS_KEYWORDS = [
   'starting',
@@ -226,6 +317,138 @@ const TELEMETRY_TOOL_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\bclaude\b/i, label: 'Claude' },
   { pattern: /\bopencode\b/i, label: 'OpenCode' },
 ];
+
+function parseProgressParts(value: string): {
+  current: number;
+  total: number;
+  label: string;
+  ratio: number | null;
+} | null {
+  const match = value.match(/\b(\d+)\s*\/\s*(\d+)\b/);
+  if (!match) return null;
+  const current = Number.parseInt(match[1], 10);
+  const total = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) return null;
+  return {
+    current,
+    total,
+    label: `${current}/${total}`,
+    ratio: Math.max(0, Math.min(1, current / total)),
+  };
+}
+
+function parseElapsedLabel(value: string): string {
+  const secondsMatch = value.match(/\((\d+)s\b/i) || value.match(/\b(\d+)s\s*(?:•|$)/i);
+  if (secondsMatch) return `${secondsMatch[1]}s`;
+  const minutesMatch = value.match(/\((\d+)m\s*(\d+)?s?\b/i);
+  if (!minutesMatch) return '';
+  const minutes = Number.parseInt(minutesMatch[1], 10);
+  const seconds = Number.parseInt(minutesMatch[2] || '0', 10);
+  return `${minutes}m${seconds ? ` ${seconds}s` : ''}`;
+}
+
+function inferTelemetryTool(source: string): string {
+  const normalized = normalizeTerminalTelemetryText(source);
+  const match = TELEMETRY_TOOL_LABELS.find((item) => item.pattern.test(normalized));
+  return match?.label || activeCliLabel.value || text('普通 Shell', 'Plain shell');
+}
+
+function deriveTerminalCliState(params: {
+  title: string;
+  status: string;
+  progress: TerminalProgressState | null;
+  screenMode: 'normal' | 'alternate';
+  connected: boolean;
+}): TerminalCliState {
+  const source = normalizeTerminalTelemetryText(`${params.title} ${params.status}`);
+  const tool = inferTelemetryTool(source);
+  const progressParts = parseProgressParts(source);
+  const elapsedLabel = parseElapsedLabel(source);
+  const explicitProgressRatio =
+    params.progress?.value !== null && params.progress?.value !== undefined
+      ? Math.max(0, Math.min(1, params.progress.value / 100))
+      : null;
+  const progressRatio = progressParts?.ratio ?? explicitProgressRatio;
+  const progressLabel =
+    progressParts?.label ||
+    (params.progress?.value !== null && params.progress?.value !== undefined
+      ? `${params.progress.value}%`
+      : '');
+  const detail = params.status || params.title || '';
+  const interruptible = /esc to interrupt|ctrl\+c|interrupt|可中断/i.test(source);
+
+  if (!params.connected) {
+    return {
+      tool,
+      state: 'waiting',
+      labelZh: '等待连接',
+      labelEn: 'Waiting for link',
+      detail,
+      progressLabel,
+      elapsedLabel,
+      progressRatio,
+      interruptible: false,
+    };
+  }
+
+  if (/panic|panicked|crashed|failed|error|exception|失败|错误|崩溃/i.test(source)) {
+    return {
+      tool,
+      state: 'error',
+      labelZh: '异常',
+      labelEn: 'Error',
+      detail,
+      progressLabel,
+      elapsedLabel,
+      progressRatio,
+      interruptible,
+    };
+  }
+
+  if (/starting|loading|connecting|installing|indexing|启动|加载|连接|安装|索引|mcp/i.test(source)) {
+    return {
+      tool,
+      state: 'starting',
+      labelZh: '启动中',
+      labelEn: 'Starting',
+      detail,
+      progressLabel,
+      elapsedLabel,
+      progressRatio,
+      interruptible,
+    };
+  }
+
+  if (
+    params.progress ||
+    params.screenMode === 'alternate' ||
+    /thinking|running|processing|compacting|执行|处理中|思考|运行/i.test(source)
+  ) {
+    return {
+      tool,
+      state: 'running',
+      labelZh: '运行中',
+      labelEn: 'Running',
+      detail,
+      progressLabel,
+      elapsedLabel,
+      progressRatio,
+      interruptible,
+    };
+  }
+
+  return {
+    tool,
+    state: 'idle',
+    labelZh: '就绪',
+    labelEn: 'Ready',
+    detail,
+    progressLabel,
+    elapsedLabel,
+    progressRatio,
+    interruptible,
+  };
+}
 
 function normalizeSessionId(value: unknown): string {
   return String(value || '').trim();
@@ -311,6 +534,10 @@ function clearRuntime(): void {
   terminalStatusHint.value = '';
   terminalScreenMode.value = 'normal';
   terminalRenderer.value = 'dom';
+  terminalSyncState.value = 'syncing';
+  terminalLastOutputAt.value = 0;
+  terminalLastInputAt.value = 0;
+  terminalLastAckAt.value = 0;
 }
 
 function restoreRuntime(): void {
@@ -338,6 +565,7 @@ async function restorePersistedTranscriptIfNeeded(sessionId: string): Promise<bo
       maxChars: 64_000,
     });
     if (!transcript) return false;
+    clearTerminalOutputQueue();
     termInstance.clear();
     termInstance.write(transcript);
     return true;
@@ -454,6 +682,7 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
     terminalInstanceId = String(payload.instanceId || '');
     lastOutputSeq = 0;
     clearGatewayInputRecovery();
+    clearTerminalOutputQueue();
     saveRuntime();
     termInstance?.clear();
     return;
@@ -464,13 +693,14 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
     if (seq) lastOutputSeq = seq;
     clearGatewayInputRecovery();
     if (typeof payload.data === 'string') {
-      termInstance?.write(payload.data);
+      enqueueTerminalOutput(payload.data);
     }
     saveRuntime();
     return;
   }
   if (payload.type === 'closed') {
     connected.value = false;
+    terminalSyncState.value = 'reconnecting';
     clearGatewayInputRecovery();
     setNotice(
       'error',
@@ -486,6 +716,53 @@ function clearGatewayInputRecovery(): void {
   if (!gatewayInputRecoveryTimer) return;
   window.clearTimeout(gatewayInputRecoveryTimer);
   gatewayInputRecoveryTimer = null;
+}
+
+function clearTerminalOutputQueue(): void {
+  terminalOutputQueue = '';
+  if (terminalOutputFrame !== null) {
+    window.cancelAnimationFrame(terminalOutputFrame);
+    terminalOutputFrame = null;
+  }
+}
+
+function flushTerminalOutputQueue(): void {
+  terminalOutputFrame = null;
+  if (!terminalOutputQueue || !termInstance) return;
+  const output = terminalOutputQueue;
+  terminalOutputQueue = '';
+  termInstance.write(output);
+}
+
+function enqueueTerminalOutput(data: string): void {
+  if (!data) return;
+  terminalOutputQueue += data;
+  terminalLastOutputAt.value = Date.now();
+  terminalSyncState.value = 'live';
+  if (terminalOutputFrame !== null) return;
+  terminalOutputFrame = window.requestAnimationFrame(flushTerminalOutputQueue);
+}
+
+function handleGatewayAckResponse(response: TerminalGatewayAckResponse): void {
+  terminalLastAckAt.value = Date.now();
+  if (response.instanceId) {
+    terminalInstanceId = response.instanceId;
+  }
+  for (const event of response.events || []) {
+    handleTerminalRealtimeEvent(event);
+  }
+  if (
+    typeof response.outputSeq === 'number' &&
+    response.outputSeq > lastOutputSeq &&
+    !(response.events || []).length
+  ) {
+    terminalSyncState.value = 'degraded';
+    void attachGatewayTerminal().catch(() => {
+      connected.value = false;
+      terminalSyncState.value = 'reconnecting';
+    });
+  }
+  saveRuntime();
 }
 
 function normalizeTerminalTelemetryText(value: string): string {
@@ -631,12 +908,21 @@ async function attachGatewayTerminal(): Promise<void> {
     },
   );
   connected.value = true;
+  terminalSyncState.value = 'syncing';
   if (response.sid) {
     setSessionId(response.sid, { emitAttached: true });
   }
+  const attachOutputSeq = response.events
+    .filter((event) => event.type === 'session')
+    .map((event) => event.outputSeq)
+    .find((seq) => typeof seq === 'number' && seq >= 0);
   for (const event of response.events || []) {
     handleTerminalRealtimeEvent(event);
   }
+  if (skipReplay && typeof attachOutputSeq === 'number' && attachOutputSeq > lastOutputSeq) {
+    lastOutputSeq = attachOutputSeq;
+  }
+  terminalSyncState.value = 'live';
   saveRuntime();
   syncTerminalSize();
   schedulePostLayoutFitSync();
@@ -652,8 +938,10 @@ function scheduleGatewayInputRecovery(lastSeenSeq: number, delayMs = 120): void 
     if (requestSeq !== gatewayInputRecoverySeq) return;
     if (intentionalClose || !gatewayClient?.connected) return;
     if (lastOutputSeq !== lastSeenSeq) return;
+    terminalSyncState.value = 'degraded';
     void attachGatewayTerminal().catch(() => {
       connected.value = false;
+      terminalSyncState.value = 'reconnecting';
     });
   }, delayMs);
 }
@@ -666,6 +954,7 @@ function disconnectGatewayClient(): void {
 
 function recoverGatewayAttachment(): void {
   connected.value = false;
+  terminalSyncState.value = 'reconnecting';
   if (intentionalClose) return;
   if (!gatewayClient?.connected) return;
   void attachGatewayTerminal().catch(() => {
@@ -709,6 +998,7 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
     onHello: () => {
       if (gatewayClient !== client) return;
       clearReconnectTimer();
+      terminalSyncState.value = 'syncing';
       startHeartbeat();
       void attachGatewayTerminal().catch((error) => {
         connected.value = false;
@@ -724,12 +1014,15 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
     onClose: () => {
       if (gatewayClient !== client) return;
       connected.value = false;
+      terminalSyncState.value = 'reconnecting';
       stopHeartbeat();
     },
     onGap: () => {
       if (gatewayClient !== client) return;
+      terminalSyncState.value = 'degraded';
       void attachGatewayTerminal().catch(() => {
         connected.value = false;
+        terminalSyncState.value = 'reconnecting';
       });
     },
   });
@@ -747,10 +1040,14 @@ function sendTerminalResize(cols: number, rows: number): void {
         sid: getSessionId(),
         cols,
         rows,
+        lastSeq: lastOutputSeq || undefined,
+        instanceId: terminalInstanceId || undefined,
       },
-    ).catch(() => {
-      recoverGatewayAttachment();
-    });
+    )
+      .then((response) => handleGatewayAckResponse(response as TerminalGatewayAckResponse))
+      .catch(() => {
+        recoverGatewayAttachment();
+      });
     return;
   }
 
@@ -762,14 +1059,18 @@ function sendTerminalInput(data: string): boolean {
   if (usesGatewayRpc()) {
     if (!gatewayClient?.connected) return false;
     const lastSeenSeq = lastOutputSeq;
+    terminalLastInputAt.value = Date.now();
     void requestGatewayTerminal(
       STUDIO_TERMINAL_GATEWAY_METHODS.input,
       {
         sid: getSessionId(),
         data,
+        lastSeq: lastOutputSeq || undefined,
+        instanceId: terminalInstanceId || undefined,
       },
     )
-      .then(() => {
+      .then((response) => {
+        handleGatewayAckResponse(response as TerminalGatewayAckResponse);
         scheduleGatewayInputRecovery(lastSeenSeq);
       })
       .catch(() => {
@@ -779,6 +1080,7 @@ function sendTerminalInput(data: string): boolean {
   }
 
   if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  terminalLastInputAt.value = Date.now();
   ws.send(data);
   return true;
 }
@@ -815,10 +1117,16 @@ function startHeartbeat(): void {
       if (!gatewayClient?.connected) return;
       void requestGatewayTerminal(
         STUDIO_TERMINAL_GATEWAY_METHODS.heartbeat,
-        { sid: getSessionId() },
-      ).catch(() => {
-        recoverGatewayAttachment();
-      });
+        {
+          sid: getSessionId(),
+          lastSeq: lastOutputSeq || undefined,
+          instanceId: terminalInstanceId || undefined,
+        },
+      )
+        .then((response) => handleGatewayAckResponse(response as TerminalGatewayAckResponse))
+        .catch(() => {
+          recoverGatewayAttachment();
+        });
       return;
     }
 
@@ -847,6 +1155,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   const skipReplay = await restorePersistedTranscriptIfNeeded(sid);
   if (!isTerminalRealtimeEnabled()) {
     connected.value = false;
+    terminalSyncState.value = 'degraded';
     setNotice(
       'error',
       text(
@@ -877,6 +1186,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   socket.onopen = () => {
     if (ws !== socket) return;
     connected.value = true;
+    terminalSyncState.value = 'live';
     if (reconnectTimer) {
       window.clearTimeout(reconnectTimer);
       reconnectTimer = null;
@@ -901,7 +1211,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
     }
 
     if (typeof event.data === 'string') {
-      termInstance?.write(event.data);
+      enqueueTerminalOutput(event.data);
     }
   };
 
@@ -909,6 +1219,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
     if (ws !== socket) return;
     ws = null;
     connected.value = false;
+    terminalSyncState.value = 'reconnecting';
     stopHeartbeat();
     if (!intentionalClose) {
       scheduleReconnect();
@@ -918,6 +1229,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   socket.onerror = () => {
     if (ws !== socket) return;
     connected.value = false;
+    terminalSyncState.value = 'reconnecting';
     try { socket.close(); } catch {
       // ignore
     }
@@ -928,6 +1240,7 @@ function reconnect(): void {
   intentionalClose = false;
   stopHeartbeat();
   connected.value = false;
+  terminalSyncState.value = 'reconnecting';
   clearReconnectTimer();
   if (usesGatewayRpc()) {
     disconnectGatewayClient();
@@ -949,6 +1262,7 @@ async function resetTerminal(message: string): Promise<void> {
   intentionalClose = true;
   stopHeartbeat();
   connected.value = false;
+  terminalSyncState.value = 'reconnecting';
   clearReconnectTimer();
 
   if (ws) {
@@ -980,6 +1294,7 @@ async function resetTerminal(message: string): Promise<void> {
   } else {
     setSessionId(generateSessionId());
   }
+  clearTerminalOutputQueue();
   termInstance?.clear();
   if (message) {
     termInstance?.write(`\r\n\x1b[33m[${message}]\x1b[0m\r\n`);
@@ -996,6 +1311,7 @@ async function resetTerminal(message: string): Promise<void> {
 }
 
 function clearTerminal(): void {
+  clearTerminalOutputQueue();
   termInstance?.clear();
   focusTerminal();
 }
@@ -1020,10 +1336,17 @@ async function pasteClipboard(): Promise<boolean> {
     const text = await navigator.clipboard?.readText?.();
     if (!text) return false;
     focusTerminal();
-    return sendTerminalInput(text);
+    return sendTerminalInput(formatTerminalPaste(text));
   } catch {
     return false;
   }
+}
+
+function formatTerminalPaste(value: string): string {
+  if (!termInstance?.modes.bracketedPasteMode) {
+    return value;
+  }
+  return `\x1b[200~${value.replace(/\r?\n/g, '\r')}\x1b[201~`;
 }
 
 function shouldCaptureTerminalShortcut(event: KeyboardEvent): boolean {
@@ -1074,11 +1397,22 @@ async function initTerminal(): Promise<void> {
     cursorStyle: 'bar',
     allowProposedApi: true,
     allowTransparency: true,
+    altClickMovesCursor: true,
     convertEol: false,
+    customGlyphs: true,
     drawBoldTextInBrightColors: true,
+    fastScrollSensitivity: 8,
+    ignoreBracketedPasteMode: false,
+    lineHeight: 1.15,
     macOptionIsMeta: true,
+    macOptionClickForcesSelection: true,
+    reflowCursorLine: true,
+    rescaleOverlappingGlyphs: true,
     rightClickSelectsWord: true,
+    scrollOnEraseInDisplay: true,
+    scrollOnUserInput: true,
     scrollback: 10000,
+    smoothScrollDuration: 0,
     minimumContrastRatio: 1,
     theme: {
       background: '#0f1419',
@@ -1194,6 +1528,7 @@ watch(
 
     setSessionId(normalized);
     clearRuntime();
+    clearTerminalOutputQueue();
     termInstance?.clear();
     if (termReady.value) {
       reconnect();
@@ -1230,6 +1565,7 @@ onBeforeUnmount(() => {
   stopHeartbeat();
   clearReconnectTimer();
   clearGatewayInputRecovery();
+  clearTerminalOutputQueue();
   if (terminalStatusFrame !== null) {
     window.cancelAnimationFrame(terminalStatusFrame);
     terminalStatusFrame = null;
@@ -1309,7 +1645,7 @@ defineExpose({
 
 .terminal-console-surface-embedded .terminal-console-main {
   border: 0;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   border-radius: 0;
   background: transparent;
 }
@@ -1380,6 +1716,106 @@ defineExpose({
   border: 1px solid color-mix(in srgb, #ff6666 28%, transparent);
 }
 
+.terminal-console-frame {
+  grid-row: 2;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.terminal-console-workbench-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(88px, 160px) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 88%, rgba(15, 20, 25, 0.5));
+}
+
+.terminal-console-cli-state,
+.terminal-console-link-state {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.terminal-console-cli-state__dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #7fdbca;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #7fdbca 18%, transparent);
+}
+
+.terminal-console-cli-state__dot--starting,
+.terminal-console-cli-state__dot--running {
+  animation: terminal-pulse 1.25s ease-in-out infinite;
+}
+
+.terminal-console-cli-state__dot--waiting {
+  background: #ffd580;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #ffd580 18%, transparent);
+}
+
+.terminal-console-cli-state__dot--error {
+  background: #ff6666;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #ff6666 18%, transparent);
+}
+
+.terminal-console-cli-state__label {
+  flex: 0 0 auto;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.terminal-console-cli-state__detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-console-link-state {
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.terminal-console-cli-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-raised) 70%, transparent);
+}
+
+.terminal-console-cli-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7fdbca, #82aaff);
+  transition: width 160ms ease;
+}
+
+.terminal-console-cli-progress__fill--idle {
+  opacity: 0.45;
+}
+
+.terminal-console-cli-progress__fill--waiting {
+  background: linear-gradient(90deg, #ffd580, #82aaff);
+}
+
+.terminal-console-cli-progress__fill--error {
+  background: linear-gradient(90deg, #ff6666, #ffd580);
+}
+
 .terminal-container {
   min-width: 0;
   min-height: 0;
@@ -1423,14 +1859,39 @@ defineExpose({
   border: 1px solid rgba(19, 32, 49, 0.1);
 }
 
+:global(html[data-theme="light"]) .terminal-console-workbench-bar {
+  background: rgba(246, 250, 253, 0.94);
+}
+
 :global(html[data-theme="light"]) .terminal-container {
   background: linear-gradient(180deg, #112233, #0f1419 18%, #0f1419 100%);
+}
+
+@keyframes terminal-pulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
 }
 
 @media (max-width: 860px) {
   .terminal-console-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .terminal-console-workbench-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .terminal-console-link-state {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 </style>
