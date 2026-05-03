@@ -246,8 +246,11 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /terminalLastAckAt/);
   assert.match(terminalConsole, /terminalLastHeartbeatAt/);
   assert.match(terminalConsole, /terminalInputAckLatencyMs/);
+  assert.match(terminalConsole, /terminalOutputLatencyMs/);
+  assert.match(terminalConsole, /payload\.emittedAtMs/);
   assert.match(terminalConsole, /inputStartedAt/);
   assert.match(terminalConsole, /heartbeat: true/);
+  assert.match(terminalConsole, /connectDelayMs: 50/);
   assert.match(terminalConsole, /payload\.type === 'clear'/);
   assert.match(terminalConsole, /clearedThroughSeq/);
   assert.match(terminalConsole, /adoptOutputSeq/);
@@ -315,7 +318,13 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalService, /reason:\s*[\s\S]*\?\s*"backlog_gap"/);
   assert.match(terminalService, /function createGatewayAck/);
   assert.match(terminalService, /TERMINAL_DESCRIPTOR_ACTIVITY_FLUSH_MS/);
+  assert.match(terminalService, /TERMINAL_OUTPUT_LEDGER_FLUSH_MS/);
+  assert.match(terminalService, /TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT/);
+  assert.match(terminalService, /emittedAtMs: Date\.now\(\)/);
+  assert.match(terminalService, /emittedAtMs: chunk\.emittedAtMs/);
   assert.match(terminalService, /function scheduleDescriptorPersist/);
+  assert.match(terminalService, /function enqueueOutputLedgerEvent/);
+  assert.match(terminalService, /ledger\.appendMany\(events\)/);
   assert.match(terminalService, /markSessionActivity\(session, \{ persist: "deferred" \}\)/);
   assert.match(terminalService, /function clearSessionDisplay/);
   assert.match(terminalService, /appendLedgerEvent\(\s*session,\s*"clear"/);

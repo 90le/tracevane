@@ -285,6 +285,7 @@ export interface TerminalGatewayOutputEvent {
   sid: string;
   seq: number;
   data: string;
+  emittedAtMs?: number;
 }
 
 export interface TerminalGatewayClearEvent {

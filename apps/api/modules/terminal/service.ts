@@ -70,7 +70,7 @@ interface TerminalSession {
   term: PtyInstance;
   clients: Set<TerminalSocket>;
   gatewaySubscribers: Map<string, TerminalGatewaySubscriber>;
-  backlog: Array<{ seq: number; data: string }>;
+  backlog: Array<{ seq: number; data: string; emittedAtMs: number }>;
   bufferSize: number;
   outputSeq: number;
   clearedThroughSeq: number;
@@ -119,6 +119,8 @@ const TERMINAL_INSTALL_TIMEOUT_MS = 8 * 60 * 1000;
 const TERMINAL_GATEWAY_LEASE_MS = 35_000;
 const TERMINAL_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
 const TERMINAL_DESCRIPTOR_ACTIVITY_FLUSH_MS = 1_500;
+const TERMINAL_OUTPUT_LEDGER_FLUSH_MS = 250;
+const TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT = 64;
 const WS_PING_INTERVAL = 20_000;
 const WS_IDLE_TIMEOUT = 90_000;
 const DEFAULT_TERMINAL_NATIVE_WORKER_BUDGET = "1";
@@ -470,6 +472,8 @@ export function createTerminalService(
   const ledger = createTerminalSessionLedger({
     stateDir: persistenceStateDir,
   });
+  let outputLedgerFlushTimer: NodeJS.Timeout | null = null;
+  let pendingOutputLedgerEvents: TerminalSessionLedgerEvent[] = [];
 
   const pingTimer = setInterval(() => {
     const now = Date.now();
@@ -510,6 +514,7 @@ export function createTerminalService(
     session: TerminalSession,
     status: "running" | "detached" | "completed" | "failed" | "lost",
   ): TerminalSessionDescriptor {
+    flushOutputLedgerQueue();
     const observerClientIds = Array.from(
       session.gatewaySubscribers.keys(),
     ).sort();
@@ -545,6 +550,56 @@ export function createTerminalService(
     descriptorStore.upsert(buildSessionDescriptor(session, status));
   }
 
+  function buildLedgerEvent(
+    session: TerminalSession,
+    type: string,
+    detail: Record<string, unknown>,
+    actorClientId: string | null = null,
+  ): TerminalSessionLedgerEvent {
+    return {
+      eventId: crypto.randomUUID(),
+      sessionId: session.id,
+      type,
+      timestamp: new Date().toISOString(),
+      actorClientId,
+      detail,
+    };
+  }
+
+  function clearOutputLedgerFlushTimer(): void {
+    if (!outputLedgerFlushTimer) return;
+    clearTimeout(outputLedgerFlushTimer);
+    outputLedgerFlushTimer = null;
+  }
+
+  function flushOutputLedgerQueue(): void {
+    clearOutputLedgerFlushTimer();
+    if (!pendingOutputLedgerEvents.length) return;
+    const events = pendingOutputLedgerEvents;
+    pendingOutputLedgerEvents = [];
+    ledger.appendMany(events);
+  }
+
+  function scheduleOutputLedgerFlush(): void {
+    if (outputLedgerFlushTimer) return;
+    outputLedgerFlushTimer = setTimeout(() => {
+      outputLedgerFlushTimer = null;
+      flushOutputLedgerQueue();
+    }, TERMINAL_OUTPUT_LEDGER_FLUSH_MS);
+    outputLedgerFlushTimer.unref?.();
+  }
+
+  function enqueueOutputLedgerEvent(session: TerminalSession, data: string): void {
+    pendingOutputLedgerEvents.push(
+      buildLedgerEvent(session, "output", { data }, null),
+    );
+    if (pendingOutputLedgerEvents.length >= TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT) {
+      flushOutputLedgerQueue();
+      return;
+    }
+    scheduleOutputLedgerFlush();
+  }
+
   function clearDescriptorPersistTimer(session: TerminalSession): void {
     if (!session.descriptorPersistTimer) return;
     clearTimeout(session.descriptorPersistTimer);
@@ -575,14 +630,10 @@ export function createTerminalService(
     detail: Record<string, unknown>,
     actorClientId: string | null = null,
   ): void {
-    ledger.append({
-      eventId: crypto.randomUUID(),
-      sessionId: session.id,
-      type,
-      timestamp: new Date().toISOString(),
-      actorClientId,
-      detail,
-    });
+    if (type !== "output") {
+      flushOutputLedgerQueue();
+    }
+    ledger.append(buildLedgerEvent(session, type, detail, actorClientId));
   }
 
   function markSessionActivity(
@@ -737,13 +788,14 @@ export function createTerminalService(
 
   function buildOutputEvent(
     session: TerminalSession,
-    chunk: { seq: number; data: string },
+    chunk: { seq: number; data: string; emittedAtMs: number },
   ): TerminalGatewayOutputEvent {
     return {
       type: "output",
       sid: session.id,
       seq: chunk.seq,
       data: chunk.data,
+      emittedAtMs: chunk.emittedAtMs,
     };
   }
 
@@ -899,7 +951,7 @@ export function createTerminalService(
   function broadcastChunk(session: TerminalSession, data: string): void {
     if (!data) return;
     markSessionActivity(session, { persist: "deferred" });
-    const chunk = { seq: ++session.outputSeq, data };
+    const chunk = { seq: ++session.outputSeq, data, emittedAtMs: Date.now() };
     session.backlog.push(chunk);
     session.bufferSize += data.length;
 
@@ -917,7 +969,7 @@ export function createTerminalService(
         continue;
       }
       if (
-        !sendEvent(client, { type: "output", seq: chunk.seq, data: chunk.data })
+        !sendEvent(client, buildOutputEvent(session, chunk))
       ) {
         session.clients.delete(client);
       }
@@ -986,7 +1038,7 @@ export function createTerminalService(
 
     term.onData((data) => {
       broadcastChunk(session, data);
-      appendLedgerEvent(session, "output", { data });
+      enqueueOutputLedgerEvent(session, data);
     });
 
     term.onExit((event) => {
@@ -1799,6 +1851,7 @@ export function createTerminalService(
     async listSessionLedger(
       sessionId: string,
     ): Promise<TerminalSessionLedgerEvent[]> {
+      flushOutputLedgerQueue();
       return ledger.listBySession(sessionId);
     },
 
@@ -1989,6 +2042,7 @@ export function createTerminalService(
     dispose(): void {
       clearInterval(pingTimer);
       clearInterval(gatewaySweepTimer);
+      flushOutputLedgerQueue();
       for (const sessionId of Array.from(sessions.keys())) {
         destroySession(sessionId);
       }

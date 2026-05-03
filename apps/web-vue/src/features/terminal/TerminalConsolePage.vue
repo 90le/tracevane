@@ -155,6 +155,7 @@ const terminalLastInputAt = ref<number>(0);
 const terminalLastAckAt = ref<number>(0);
 const terminalLastHeartbeatAt = ref<number>(0);
 const terminalInputAckLatencyMs = ref<number | null>(null);
+const terminalOutputLatencyMs = ref<number | null>(null);
 
 let termInstance: XTermTerminal | null = null;
 let fitAddon: FitAddon | null = null;
@@ -245,6 +246,9 @@ const terminalLatencyLabel = computed(() => {
   const parts: string[] = [];
   if (terminalInputAckLatencyMs.value !== null) {
     parts.push(text(`输入 · ${terminalInputAckLatencyMs.value}ms`, `Input · ${terminalInputAckLatencyMs.value}ms`));
+  }
+  if (terminalOutputLatencyMs.value !== null) {
+    parts.push(text(`输出 · ${terminalOutputLatencyMs.value}ms`, `Output · ${terminalOutputLatencyMs.value}ms`));
   }
   if (terminalLastHeartbeatAt.value) {
     parts.push(text('心跳 · 正常', 'Heartbeat · OK'));
@@ -549,6 +553,7 @@ function clearRuntime(): void {
   terminalLastAckAt.value = 0;
   terminalLastHeartbeatAt.value = 0;
   terminalInputAckLatencyMs.value = null;
+  terminalOutputLatencyMs.value = null;
 }
 
 function restoreRuntime(): void {
@@ -703,6 +708,11 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
     if (seq && seq <= lastOutputSeq) return;
     if (seq) lastOutputSeq = seq;
     clearGatewayInputRecovery();
+    const emittedAtMs = typeof payload.emittedAtMs === 'number' ? payload.emittedAtMs : 0;
+    const outputLatencyMs = emittedAtMs > 0 ? Date.now() - emittedAtMs : Number.NaN;
+    if (Number.isFinite(outputLatencyMs) && outputLatencyMs >= 0 && outputLatencyMs <= 60_000) {
+      terminalOutputLatencyMs.value = Math.round(outputLatencyMs);
+    }
     if (typeof payload.data === 'string') {
       enqueueTerminalOutput(payload.data);
     }
@@ -1055,6 +1065,7 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
     clientVersion: 'openclaw-studio-terminal',
     mode: 'webchat',
     instanceId: `studio-terminal-${normalizeSessionId(getSessionId()) || 'pending'}`,
+    connectDelayMs: 50,
     onHello: () => {
       if (gatewayClient !== client) return;
       clearReconnectTimer();

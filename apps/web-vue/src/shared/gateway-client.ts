@@ -127,6 +127,7 @@ export type GatewayBrowserClientOptions = {
   platform?: string;
   mode?: string;
   instanceId?: string;
+  connectDelayMs?: number;
   onHello?: (hello: GatewayHelloOk) => void;
   onEvent?: (evt: GatewayEventFrame) => void;
   onClose?: (info: { code: number; reason: string; error?: GatewayErrorInfo }) => void;
@@ -757,6 +758,14 @@ export class GatewayBrowserClient {
     }
     this.connectTimer = window.setTimeout(() => {
       void this.sendConnect();
-    }, 750);
+    }, this.resolveConnectDelayMs());
+  }
+
+  private resolveConnectDelayMs(): number {
+    const delayMs = Number(this.opts.connectDelayMs);
+    if (!Number.isFinite(delayMs)) {
+      return 750;
+    }
+    return Math.max(0, Math.min(750, Math.floor(delayMs)));
   }
 }

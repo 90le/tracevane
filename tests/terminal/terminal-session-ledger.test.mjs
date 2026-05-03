@@ -39,6 +39,29 @@ test("append 会追加写入 terminal-session-ledger.jsonl", () => {
   assert.equal(lines[0].sessionId, "term-1");
 });
 
+test("appendMany 用单次批量追加保持事件顺序", () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "terminal-ledger-"));
+  const ledger = ledgerModule.createTerminalSessionLedger({ stateDir });
+
+  ledger.appendMany([
+    makeEvent({
+      eventId: "evt-batch-1",
+      timestamp: "2026-04-14T00:00:01.000Z",
+      detail: { data: "one" },
+    }),
+    makeEvent({
+      eventId: "evt-batch-2",
+      timestamp: "2026-04-14T00:00:02.000Z",
+      detail: { data: "two" },
+    }),
+  ]);
+
+  assert.deepEqual(
+    ledger.listBySession("term-1").map((item) => item.eventId),
+    ["evt-batch-1", "evt-batch-2"],
+  );
+});
+
 test("listBySession 只返回指定 session 的事件并保持时间顺序", () => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "terminal-ledger-"));
   const ledger = ledgerModule.createTerminalSessionLedger({ stateDir });

@@ -8,6 +8,7 @@ export interface TerminalSessionLedgerOptions {
 
 export interface TerminalSessionLedger {
   append(event: TerminalSessionLedgerEvent): TerminalSessionLedgerEvent;
+  appendMany(events: TerminalSessionLedgerEvent[]): TerminalSessionLedgerEvent[];
   listBySession(sessionId: string): TerminalSessionLedgerEvent[];
 }
 
@@ -99,6 +100,30 @@ export function createTerminalSessionLedger(
         }
       }
       return normalized;
+    },
+    appendMany(events: TerminalSessionLedgerEvent[]): TerminalSessionLedgerEvent[] {
+      const normalizedEvents = (events || [])
+        .map((event) => normalizeEvent(event))
+        .filter((event): event is TerminalSessionLedgerEvent => Boolean(event));
+      if (!normalizedEvents.length) {
+        return [];
+      }
+      records.push(...normalizedEvents);
+      try {
+        fs.mkdirSync(options.stateDir, { recursive: true });
+        fs.appendFileSync(
+          filePath,
+          normalizedEvents
+            .map((event) => JSON.stringify(event))
+            .join("\n") + "\n",
+          "utf8",
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          throw error;
+        }
+      }
+      return normalizedEvents;
     },
     listBySession(sessionId: string): TerminalSessionLedgerEvent[] {
       const normalizedSessionId = String(sessionId || "").trim();
