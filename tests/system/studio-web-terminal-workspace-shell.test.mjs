@@ -232,7 +232,8 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /clearGatewayInputRecovery/);
   assert.match(terminalConsole, /scheduleGatewayInputRecovery/);
   assert.match(terminalConsole, /const lastSeenSeq = lastOutputSeq/);
-  assert.match(terminalConsole, /scheduleGatewayInputRecovery\(lastSeenSeq\)/);
+  assert.match(terminalConsole, /TERMINAL_GATEWAY_COMMAND_RECOVERY_MS/);
+  assert.match(terminalConsole, /scheduleGatewayInputRecovery\(lastSeenSeq, TERMINAL_GATEWAY_COMMAND_RECOVERY_MS\)/);
   assert.match(terminalConsole, /handleGatewayAckResponse/);
   assert.match(terminalConsole, /gatewayClient\.notify\(STUDIO_TERMINAL_GATEWAY_METHODS\.input/);
   assert.match(terminalConsole, /ackMode: 'none'/);
@@ -347,8 +348,13 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalHistory, /function eventsSinceLastClear/);
   assert.match(terminalHistory, /events\[index\]\?\.type === "clear"/);
   assert.match(studioPluginSource, /STUDIO_TERMINAL_GATEWAY_METHODS\.clear/);
-  assert.match(apiRuntimeConfig, /terminalDirectWebSocketPort: config\.transport\.standalone\.enabled/);
+  assert.match(apiRuntimeConfig, /terminalDirectWebSocketPort: null/);
   assert.match(webRuntimeConfig, /function getStudioTerminalDirectWebSocketUrl/);
+  assert.match(terminalService, /gatewayOutputQueue/);
+  assert.match(terminalService, /function enqueueGatewayOutput/);
+  assert.match(terminalService, /setImmediate\(\(\) =>/);
+  assert.match(terminalService, /recentSummaryEvents/);
+  assert.match(terminalService, /buildTerminalRecentOutputSummary\(session\.recentSummaryEvents\)/);
   assert.match(terminalService, /const events = buildAttachEvents\(session, params\)\.filter/);
   assert.match(terminalService, /outputSeq: session\.outputSeq/);
   assert.match(terminalService, /leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS/);
@@ -358,14 +364,18 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalService, /skipReplay\?: boolean \| string \| null;/);
 });
 
-test("terminal gateway targeted output does not use dropIfSlow", () => {
+test("terminal gateway targeted output preserves order through service batching", () => {
   assert.match(
-    studioPluginSource,
-    /broadcastToConnIds\(STUDIO_TERMINAL_GATEWAY_EVENT, event, connIds\)/,
+    terminalService,
+    /enqueueGatewayOutput\(session, chunk\)/,
   );
   assert.doesNotMatch(
     studioPluginSource,
     /broadcastToConnIds\(STUDIO_TERMINAL_GATEWAY_EVENT, event, connIds, \{\s*dropIfSlow: true,\s*\}\)/,
+  );
+  assert.match(
+    studioPluginSource,
+    /params\?\.ackMode === 'none'[\s\S]*return;/,
   );
 });
 

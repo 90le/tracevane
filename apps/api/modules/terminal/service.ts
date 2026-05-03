@@ -11,7 +11,10 @@ import { isRecoverableTerminalStatus } from "../../../../types/terminal.js";
 import type { SkillsService } from "../skills/service.js";
 import { buildTerminalActionCatalog } from "./action-catalog.js";
 import { buildTerminalSessionSummary } from "./session-summary.js";
-import { buildTerminalRecentOutputSummary } from "./terminal-session-summary.js";
+import {
+  buildTerminalRecentOutputSummary,
+  type TerminalRecentOutputSummaryEvent,
+} from "./terminal-session-summary.js";
 import { createTerminalSessionDescriptorStore } from "./terminal-session-descriptor-store.js";
 import { createTerminalSessionLedger } from "./terminal-session-ledger.js";
 import type {
@@ -71,6 +74,12 @@ interface TerminalSession {
   clients: Set<TerminalSocket>;
   gatewaySubscribers: Map<string, TerminalGatewaySubscriber>;
   backlog: Array<{ seq: number; data: string; emittedAtMs: number }>;
+  gatewayOutputQueue: {
+    data: string;
+    seq: number;
+    emittedAtMs: number;
+  } | null;
+  gatewayOutputFlushTimer: NodeJS.Immediate | null;
   bufferSize: number;
   outputSeq: number;
   clearedThroughSeq: number;
@@ -86,6 +95,7 @@ interface TerminalSession {
   sourceAction: string;
   originRoute: string;
   handoffContext: TerminalSessionDescriptor["handoffContext"];
+  recentSummaryEvents: TerminalRecentOutputSummaryEvent[];
   createdAt: string;
   lastActivityAt: string;
   lastAttachedAt: string | null;
@@ -121,6 +131,8 @@ const TERMINAL_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
 const TERMINAL_DESCRIPTOR_ACTIVITY_FLUSH_MS = 1_500;
 const TERMINAL_OUTPUT_LEDGER_FLUSH_MS = 250;
 const TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT = 64;
+const TERMINAL_RECENT_SUMMARY_EVENT_LIMIT = 512;
+const TERMINAL_GATEWAY_OUTPUT_BATCH_LIMIT = 16 * 1024;
 const WS_PING_INTERVAL = 20_000;
 const WS_IDLE_TIMEOUT = 90_000;
 const DEFAULT_TERMINAL_NATIVE_WORKER_BUDGET = "1";
@@ -514,13 +526,11 @@ export function createTerminalService(
     session: TerminalSession,
     status: "running" | "detached" | "completed" | "failed" | "lost",
   ): TerminalSessionDescriptor {
-    flushRealtimeLedgerQueue();
     const observerClientIds = Array.from(
       session.gatewaySubscribers.keys(),
     ).sort();
     const controllerClientId = observerClientIds[0] || null;
-    const events = ledger.listBySession(session.id);
-    const recent = buildTerminalRecentOutputSummary(events);
+    const recent = buildTerminalRecentOutputSummary(session.recentSummaryEvents);
 
     return {
       sessionId: session.id,
@@ -566,6 +576,20 @@ export function createTerminalService(
     };
   }
 
+  function rememberRecentSummaryEvent(
+    session: TerminalSession,
+    event: TerminalRecentOutputSummaryEvent,
+  ): void {
+    session.recentSummaryEvents.push(event);
+    if (session.recentSummaryEvents.length <= TERMINAL_RECENT_SUMMARY_EVENT_LIMIT) {
+      return;
+    }
+    session.recentSummaryEvents.splice(
+      0,
+      session.recentSummaryEvents.length - TERMINAL_RECENT_SUMMARY_EVENT_LIMIT,
+    );
+  }
+
   function clearRealtimeLedgerFlushTimer(): void {
     if (!realtimeLedgerFlushTimer) return;
     clearTimeout(realtimeLedgerFlushTimer);
@@ -595,9 +619,9 @@ export function createTerminalService(
     detail: Record<string, unknown>,
     actorClientId: string | null,
   ): void {
-    pendingRealtimeLedgerEvents.push(
-      buildLedgerEvent(session, type, detail, actorClientId),
-    );
+    const event = buildLedgerEvent(session, type, detail, actorClientId);
+    pendingRealtimeLedgerEvents.push(event);
+    rememberRecentSummaryEvent(session, event);
     if (pendingRealtimeLedgerEvents.length >= TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT) {
       flushRealtimeLedgerQueue();
       return;
@@ -650,7 +674,9 @@ export function createTerminalService(
     if (type !== "output") {
       flushRealtimeLedgerQueue();
     }
-    ledger.append(buildLedgerEvent(session, type, detail, actorClientId));
+    const event = buildLedgerEvent(session, type, detail, actorClientId);
+    rememberRecentSummaryEvent(session, event);
+    ledger.append(event);
   }
 
   function markSessionActivity(
@@ -846,6 +872,7 @@ export function createTerminalService(
     session: TerminalSession,
     actorClientId: string | null,
   ): void {
+    clearPendingGatewayOutput(session);
     session.backlog = [];
     session.bufferSize = 0;
     session.clearedThroughSeq = ++session.outputSeq;
@@ -921,6 +948,7 @@ export function createTerminalService(
   function destroySession(sessionId: string): void {
     const session = sessions.get(sessionId);
     if (!session) return;
+    flushGatewayOutput(session);
     clearCleanupTimer(session);
     clearDescriptorPersistTimer(session);
     sessions.delete(sessionId);
@@ -965,6 +993,57 @@ export function createTerminalService(
     }
   }
 
+  function clearGatewayOutputFlushTimer(session: TerminalSession): void {
+    if (!session.gatewayOutputFlushTimer) return;
+    clearImmediate(session.gatewayOutputFlushTimer);
+    session.gatewayOutputFlushTimer = null;
+  }
+
+  function clearPendingGatewayOutput(session: TerminalSession): void {
+    clearGatewayOutputFlushTimer(session);
+    session.gatewayOutputQueue = null;
+  }
+
+  function flushGatewayOutput(session: TerminalSession): void {
+    clearGatewayOutputFlushTimer(session);
+    const queued = session.gatewayOutputQueue;
+    session.gatewayOutputQueue = null;
+    if (!queued) return;
+    broadcastGatewayEvent(session, buildOutputEvent(session, queued));
+  }
+
+  function scheduleGatewayOutputFlush(session: TerminalSession): void {
+    if (session.gatewayOutputFlushTimer) return;
+    session.gatewayOutputFlushTimer = setImmediate(() => {
+      session.gatewayOutputFlushTimer = null;
+      flushGatewayOutput(session);
+    });
+    session.gatewayOutputFlushTimer.unref?.();
+  }
+
+  function enqueueGatewayOutput(
+    session: TerminalSession,
+    chunk: { seq: number; data: string; emittedAtMs: number },
+  ): void {
+    if (session.gatewaySubscribers.size <= 0) return;
+    if (!session.gatewayOutputQueue) {
+      session.gatewayOutputQueue = { ...chunk };
+    } else {
+      session.gatewayOutputQueue.data += chunk.data;
+      session.gatewayOutputQueue.seq = chunk.seq;
+      session.gatewayOutputQueue.emittedAtMs = Math.min(
+        session.gatewayOutputQueue.emittedAtMs,
+        chunk.emittedAtMs,
+      );
+    }
+
+    if (session.gatewayOutputQueue.data.length >= TERMINAL_GATEWAY_OUTPUT_BATCH_LIMIT) {
+      flushGatewayOutput(session);
+      return;
+    }
+    scheduleGatewayOutputFlush(session);
+  }
+
   function broadcastChunk(session: TerminalSession, data: string): void {
     if (!data) return;
     markSessionActivity(session, { persist: "deferred" });
@@ -992,7 +1071,7 @@ export function createTerminalService(
       }
     }
 
-    broadcastGatewayEvent(session, buildOutputEvent(session, chunk));
+    enqueueGatewayOutput(session, chunk);
   }
 
   function replayBacklog(
@@ -1033,6 +1112,8 @@ export function createTerminalService(
       clients: new Set(),
       gatewaySubscribers: new Map(),
       backlog: [],
+      gatewayOutputQueue: null,
+      gatewayOutputFlushTimer: null,
       bufferSize: 0,
       outputSeq: 0,
       clearedThroughSeq: 0,
@@ -1048,6 +1129,7 @@ export function createTerminalService(
       sourceAction: "terminal.attach",
       originRoute: `/terminal/${sessionId}`,
       handoffContext: null,
+      recentSummaryEvents: [],
       createdAt: lastActivityAt,
       lastActivityAt,
       lastAttachedAt: null,
@@ -1060,6 +1142,7 @@ export function createTerminalService(
 
     term.onExit((event) => {
       const alreadyClosed = session.closed;
+      flushGatewayOutput(session);
       if (!alreadyClosed) {
         broadcastGatewayEvent(session, {
           type: "closed",

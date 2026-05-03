@@ -404,6 +404,8 @@ export class GatewayBrowserClient {
   private deviceAuthPayloadVersion: GatewayDeviceAuthPayloadVersion = 'v2';
   private pendingDeviceAuthPayloadRetry = false;
   private deviceAuthPayloadRetryBudgetUsed = false;
+  private notifySeq = 0;
+  private readonly notifyIdPrefix = `gateway-notify-${Math.random().toString(36).slice(2, 10)}`;
 
   constructor(private readonly opts: GatewayBrowserClientOptions) {}
 
@@ -455,7 +457,7 @@ export class GatewayBrowserClient {
     }
     const frame = {
       type: 'req',
-      id: createUuid('gateway-notify'),
+      id: `${this.notifyIdPrefix}-${(this.notifySeq += 1).toString(36)}`,
       method,
       params,
     };

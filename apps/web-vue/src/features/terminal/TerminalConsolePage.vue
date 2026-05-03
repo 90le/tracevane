@@ -191,6 +191,7 @@ let terminalDirectSocketFailed = false;
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
 const TERMINAL_IMMEDIATE_OUTPUT_LIMIT = 8 * 1024;
 const TERMINAL_BULK_OUTPUT_FLUSH_MS = 4;
+const TERMINAL_GATEWAY_COMMAND_RECOVERY_MS = 1_200;
 
 const termReady = ref(false);
 const sessionPreview = computed(() => {
@@ -1034,7 +1035,7 @@ function scheduleGatewayInputRecovery(lastSeenSeq: number, delayMs = 120): void 
 function shouldScheduleGatewayInputRecovery(data: string): boolean {
   if (!data) return false;
   if (data.includes('\r') || data.includes('\n')) return true;
-  return /^[\x20-\x7e]+$/.test(data);
+  return /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(data);
 }
 
 function disconnectGatewayClient(): void {
@@ -1164,7 +1165,7 @@ function sendTerminalInput(data: string): boolean {
     if (sent) {
       terminalInputAckLatencyMs.value = 0;
       if (shouldScheduleGatewayInputRecovery(data)) {
-        scheduleGatewayInputRecovery(lastSeenSeq, 220);
+        scheduleGatewayInputRecovery(lastSeenSeq, TERMINAL_GATEWAY_COMMAND_RECOVERY_MS);
       }
       return true;
     }

@@ -379,10 +379,14 @@ const studioPlugin = {
 
         registerGatewayMethod(STUDIO_TERMINAL_GATEWAY_METHODS.input, (opts) => {
           try {
+            const params = opts.params as unknown as TerminalGatewayInputPayload;
             const payload = ctx.services.terminal.sendGatewayInput(
-              opts.params as unknown as TerminalGatewayInputPayload,
+              params,
               { connId: withConnId(opts.client) }
             );
+            if (params?.ackMode === 'none') {
+              return;
+            }
             opts.respond(true, payload);
           } catch (error) {
             opts.respond(false, undefined, buildGatewayMethodError(
