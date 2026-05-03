@@ -449,6 +449,24 @@ export class GatewayBrowserClient {
     return promise;
   }
 
+  notify(method: string, params?: unknown): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    const frame = {
+      type: 'req',
+      id: createUuid('gateway-notify'),
+      method,
+      params,
+    };
+    try {
+      this.ws.send(JSON.stringify(frame));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private connect(): void {
     if (this.closed) {
       return;

@@ -104,7 +104,11 @@ import {
 import { useLocalePreference } from '../../shared/locale';
 import { getWebSocketBasePath, resolveStudioGatewayClientAuth } from '../../shared/api';
 import { GatewayBrowserClient, type GatewayEventFrame } from '../../shared/gateway-client';
-import { getStudioRealtimeTransport, isTerminalRealtimeEnabled } from '../../shared/runtime-config';
+import {
+  getStudioRealtimeTransport,
+  getStudioTerminalDirectWebSocketUrl,
+  isTerminalRealtimeEnabled,
+} from '../../shared/runtime-config';
 import {
   endTerminalSession,
   fetchPersistedTerminalSessionLedger,
@@ -181,6 +185,8 @@ let terminalInstanceId = '';
 let lastOutputSeq = 0;
 let transcriptRestoreAttemptedSessionId = '';
 let transcriptRestoreRequestSeq = 0;
+let terminalDirectSocketActive = false;
+let terminalDirectSocketFailed = false;
 
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
 const TERMINAL_IMMEDIATE_OUTPUT_LIMIT = 8 * 1024;
@@ -554,12 +560,15 @@ function clearRuntime(): void {
   terminalLastHeartbeatAt.value = 0;
   terminalInputAckLatencyMs.value = null;
   terminalOutputLatencyMs.value = null;
+  terminalDirectSocketActive = false;
+  terminalDirectSocketFailed = false;
 }
 
 function restoreRuntime(): void {
   terminalInstanceId = '';
   lastOutputSeq = 0;
   transcriptRestoreAttemptedSessionId = '';
+  terminalDirectSocketActive = false;
 }
 
 async function restorePersistedTranscriptIfNeeded(sessionId: string): Promise<boolean> {
@@ -672,7 +681,13 @@ function fitTerminal() {
 }
 
 function usesGatewayRpc(): boolean {
-  return getStudioRealtimeTransport() === 'gateway-rpc';
+  return getStudioRealtimeTransport() === 'gateway-rpc' && !terminalDirectSocketActive;
+}
+
+function canUseDirectTerminalSocket(): boolean {
+  return getStudioRealtimeTransport() === 'gateway-rpc'
+    && !terminalDirectSocketFailed
+    && Boolean(getStudioTerminalDirectWebSocketUrl());
 }
 
 function handleTerminalRealtimeEvent(payload: Record<string, unknown> | TerminalGatewayEvent): void {
@@ -1016,6 +1031,12 @@ function scheduleGatewayInputRecovery(lastSeenSeq: number, delayMs = 120): void 
   }, delayMs);
 }
 
+function shouldScheduleGatewayInputRecovery(data: string): boolean {
+  if (!data) return false;
+  if (data.includes('\r') || data.includes('\n')) return true;
+  return /^[\x20-\x7e]+$/.test(data);
+}
+
 function disconnectGatewayClient(): void {
   clearGatewayInputRecovery();
   gatewayClient?.stop();
@@ -1033,6 +1054,7 @@ function recoverGatewayAttachment(): void {
 }
 
 function connectGatewayClient(options: { force?: boolean } = {}): void {
+  terminalDirectSocketActive = false;
   const auth = resolveStudioGatewayClientAuth();
   if (!auth.gatewayUrl) {
     connected.value = false;
@@ -1132,6 +1154,21 @@ function sendTerminalInput(data: string): boolean {
     const lastSeenSeq = lastOutputSeq;
     const inputStartedAt = Date.now();
     terminalLastInputAt.value = inputStartedAt;
+    const sent = gatewayClient.notify(STUDIO_TERMINAL_GATEWAY_METHODS.input, {
+      sid: getSessionId(),
+      data,
+      lastSeq: lastOutputSeq || undefined,
+      instanceId: terminalInstanceId || undefined,
+      ackMode: 'none',
+    });
+    if (sent) {
+      terminalInputAckLatencyMs.value = 0;
+      if (shouldScheduleGatewayInputRecovery(data)) {
+        scheduleGatewayInputRecovery(lastSeenSeq, 220);
+      }
+      return true;
+    }
+
     void requestGatewayTerminal(
       STUDIO_TERMINAL_GATEWAY_METHODS.input,
       {
@@ -1239,7 +1276,8 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
     );
     return;
   }
-  if (usesGatewayRpc()) {
+  const useDirectTerminalSocket = canUseDirectTerminalSocket();
+  if (getStudioRealtimeTransport() === 'gateway-rpc' && !useDirectTerminalSocket) {
     connectGatewayClient(options);
     return;
   }
@@ -1254,11 +1292,29 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   if (skipReplay) params.set('skipReplay', '1');
   if (props.embedded) params.set('resume', '1');
 
-  const socket = new WebSocket(`${protocol}//${window.location.host}${wsPath}?${params.toString()}`);
+  terminalDirectSocketActive = useDirectTerminalSocket;
+  const directSocketUrl = useDirectTerminalSocket
+    ? getStudioTerminalDirectWebSocketUrl()
+    : '';
+  const socketUrl = directSocketUrl
+    ? `${directSocketUrl}?${params.toString()}`
+    : `${protocol}//${window.location.host}${wsPath}?${params.toString()}`;
+  const socket = new WebSocket(socketUrl);
   ws = socket;
+  let directFallbackStarted = false;
+
+  const fallbackFromDirectSocket = (): boolean => {
+    if (!useDirectTerminalSocket || intentionalClose || directFallbackStarted) return false;
+    directFallbackStarted = true;
+    terminalDirectSocketActive = false;
+    terminalDirectSocketFailed = true;
+    connectGatewayClient({ force: true });
+    return true;
+  };
 
   socket.onopen = () => {
     if (ws !== socket) return;
+    terminalDirectSocketFailed = false;
     connected.value = true;
     terminalSyncState.value = 'live';
     if (reconnectTimer) {
@@ -1292,9 +1348,13 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   socket.onclose = () => {
     if (ws !== socket) return;
     ws = null;
+    if (useDirectTerminalSocket) {
+      terminalDirectSocketActive = false;
+    }
     connected.value = false;
     terminalSyncState.value = 'reconnecting';
     stopHeartbeat();
+    if (fallbackFromDirectSocket()) return;
     if (!intentionalClose) {
       scheduleReconnect();
     }

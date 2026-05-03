@@ -184,6 +184,58 @@ test("terminal service requires explicit resume before reopening a persisted end
   }
 });
 
+test("terminal service keeps fast gateway input off the full ack replay path", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const service = createTestService(tempDir);
+  const marker = "fast-input-proof-0503";
+  const liveEvents = [];
+
+  try {
+    const attached = service.attachGatewayClient(
+      { sid: "term-fast-input" },
+      {
+        connId: "conn-live",
+        emit(event) {
+          liveEvents.push(event);
+          return true;
+        },
+      },
+    );
+
+    const ack = service.sendGatewayInput(
+      {
+        sid: attached.sid,
+        data: `printf '${marker}\\n'\r`,
+        ackMode: "none",
+      },
+      { connId: "conn-live" },
+    );
+
+    assert.equal(ack.ok, true);
+    assert.equal(ack.sid, attached.sid);
+    assert.equal(ack.events, undefined);
+
+    await waitFor(() =>
+      liveEvents.some(
+        (event) =>
+          event.type === "output" && String(event.data || "").includes(marker),
+      ));
+
+    const ledger = await service.listSessionLedger(attached.sid);
+    assert.equal(
+      ledger.some(
+        (event) =>
+          event.type === "input"
+          && String(event.detail?.data || "").includes(marker),
+      ),
+      true,
+    );
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("terminal service clear removes replay backlog for refreshed clients", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
   const service = createTestService(tempDir);

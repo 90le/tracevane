@@ -22,6 +22,9 @@ export function buildStudioClientRuntimeConfig(
       apiBasePath: basePath,
       webSocketBasePath: basePath,
       gatewayAuthStorageScopePath,
+      terminalDirectWebSocketPort: config.transport.standalone.enabled
+        ? config.port
+        : null,
       realtimeTransport: 'gateway-rpc',
       features: {
         chatRealtime: true,
@@ -36,6 +39,7 @@ export function buildStudioClientRuntimeConfig(
     apiBasePath: '',
     webSocketBasePath: '',
     gatewayAuthStorageScopePath,
+    terminalDirectWebSocketPort: null,
     realtimeTransport: 'raw-ws',
     features: {
       chatRealtime: true,

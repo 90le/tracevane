@@ -472,8 +472,8 @@ export function createTerminalService(
   const ledger = createTerminalSessionLedger({
     stateDir: persistenceStateDir,
   });
-  let outputLedgerFlushTimer: NodeJS.Timeout | null = null;
-  let pendingOutputLedgerEvents: TerminalSessionLedgerEvent[] = [];
+  let realtimeLedgerFlushTimer: NodeJS.Timeout | null = null;
+  let pendingRealtimeLedgerEvents: TerminalSessionLedgerEvent[] = [];
 
   const pingTimer = setInterval(() => {
     const now = Date.now();
@@ -514,7 +514,7 @@ export function createTerminalService(
     session: TerminalSession,
     status: "running" | "detached" | "completed" | "failed" | "lost",
   ): TerminalSessionDescriptor {
-    flushOutputLedgerQueue();
+    flushRealtimeLedgerQueue();
     const observerClientIds = Array.from(
       session.gatewaySubscribers.keys(),
     ).sort();
@@ -566,38 +566,55 @@ export function createTerminalService(
     };
   }
 
-  function clearOutputLedgerFlushTimer(): void {
-    if (!outputLedgerFlushTimer) return;
-    clearTimeout(outputLedgerFlushTimer);
-    outputLedgerFlushTimer = null;
+  function clearRealtimeLedgerFlushTimer(): void {
+    if (!realtimeLedgerFlushTimer) return;
+    clearTimeout(realtimeLedgerFlushTimer);
+    realtimeLedgerFlushTimer = null;
   }
 
-  function flushOutputLedgerQueue(): void {
-    clearOutputLedgerFlushTimer();
-    if (!pendingOutputLedgerEvents.length) return;
-    const events = pendingOutputLedgerEvents;
-    pendingOutputLedgerEvents = [];
+  function flushRealtimeLedgerQueue(): void {
+    clearRealtimeLedgerFlushTimer();
+    if (!pendingRealtimeLedgerEvents.length) return;
+    const events = pendingRealtimeLedgerEvents;
+    pendingRealtimeLedgerEvents = [];
     ledger.appendMany(events);
   }
 
-  function scheduleOutputLedgerFlush(): void {
-    if (outputLedgerFlushTimer) return;
-    outputLedgerFlushTimer = setTimeout(() => {
-      outputLedgerFlushTimer = null;
-      flushOutputLedgerQueue();
+  function scheduleRealtimeLedgerFlush(): void {
+    if (realtimeLedgerFlushTimer) return;
+    realtimeLedgerFlushTimer = setTimeout(() => {
+      realtimeLedgerFlushTimer = null;
+      flushRealtimeLedgerQueue();
     }, TERMINAL_OUTPUT_LEDGER_FLUSH_MS);
-    outputLedgerFlushTimer.unref?.();
+    realtimeLedgerFlushTimer.unref?.();
+  }
+
+  function enqueueRealtimeLedgerEvent(
+    session: TerminalSession,
+    type: "input" | "output",
+    detail: Record<string, unknown>,
+    actorClientId: string | null,
+  ): void {
+    pendingRealtimeLedgerEvents.push(
+      buildLedgerEvent(session, type, detail, actorClientId),
+    );
+    if (pendingRealtimeLedgerEvents.length >= TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT) {
+      flushRealtimeLedgerQueue();
+      return;
+    }
+    scheduleRealtimeLedgerFlush();
   }
 
   function enqueueOutputLedgerEvent(session: TerminalSession, data: string): void {
-    pendingOutputLedgerEvents.push(
-      buildLedgerEvent(session, "output", { data }, null),
-    );
-    if (pendingOutputLedgerEvents.length >= TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT) {
-      flushOutputLedgerQueue();
-      return;
-    }
-    scheduleOutputLedgerFlush();
+    enqueueRealtimeLedgerEvent(session, "output", { data }, null);
+  }
+
+  function enqueueInputLedgerEvent(
+    session: TerminalSession,
+    data: string,
+    actorClientId: string | null,
+  ): void {
+    enqueueRealtimeLedgerEvent(session, "input", { data }, actorClientId);
   }
 
   function clearDescriptorPersistTimer(session: TerminalSession): void {
@@ -631,7 +648,7 @@ export function createTerminalService(
     actorClientId: string | null = null,
   ): void {
     if (type !== "output") {
-      flushOutputLedgerQueue();
+      flushRealtimeLedgerQueue();
     }
     ledger.append(buildLedgerEvent(session, type, detail, actorClientId));
   }
@@ -1715,7 +1732,7 @@ export function createTerminalService(
 
       ws.on("message", (message: WebSocket.RawData) => {
         ws._lastAliveAt = Date.now();
-        markSessionActivity(session);
+        markSessionActivity(session, { persist: "deferred" });
         const payload = message.toString();
 
         if (payload.startsWith("{")) {
@@ -1750,8 +1767,8 @@ export function createTerminalService(
           }
         }
 
-        appendLedgerEvent(session, "input", { data: payload }, null);
         session.term.write(payload);
+        enqueueInputLedgerEvent(session, payload, null);
       });
 
       ws.on("close", () => {
@@ -1851,7 +1868,7 @@ export function createTerminalService(
     async listSessionLedger(
       sessionId: string,
     ): Promise<TerminalSessionLedgerEvent[]> {
-      flushOutputLedgerQueue();
+      flushRealtimeLedgerQueue();
       return ledger.listBySession(sessionId);
     },
 
@@ -1955,14 +1972,19 @@ export function createTerminalService(
     ): TerminalGatewayAckResponse {
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
-      markSessionActivity(session);
-      appendLedgerEvent(
-        session,
-        "input",
-        { data: String(payload.data || "") },
-        runtime.connId,
-      );
-      session.term.write(String(payload.data || ""));
+      const inputData = String(payload.data || "");
+      session.term.write(inputData);
+      markSessionActivity(session, { persist: "deferred" });
+      enqueueInputLedgerEvent(session, inputData, runtime.connId);
+      if (payload.ackMode === "none") {
+        return {
+          ok: true,
+          sid: session.id,
+          instanceId: session.instanceId,
+          outputSeq: session.outputSeq,
+          leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS,
+        };
+      }
       return createGatewayAck(session, payload);
     },
 
@@ -2042,7 +2064,7 @@ export function createTerminalService(
     dispose(): void {
       clearInterval(pingTimer);
       clearInterval(gatewaySweepTimer);
-      flushOutputLedgerQueue();
+      flushRealtimeLedgerQueue();
       for (const sessionId of Array.from(sessions.keys())) {
         destroySession(sessionId);
       }

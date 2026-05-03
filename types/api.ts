@@ -30,6 +30,7 @@ export interface StudioClientRuntimeConfig {
   apiBasePath: string;
   webSocketBasePath: string;
   gatewayAuthStorageScopePath: string;
+  terminalDirectWebSocketPort?: number | null;
   realtimeTransport: StudioRealtimeTransportKind;
   features: {
     chatRealtime: boolean;

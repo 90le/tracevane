@@ -84,6 +84,10 @@ const terminalRouteSyncPath = path.join(
   "apps/web-vue/src/features/terminal/terminal-route-sync.ts",
 );
 const terminalRouteSync = fs.readFileSync(terminalRouteSyncPath, "utf8");
+const apiRuntimeConfigPath = path.join(rootDir, "apps/api/runtime-config.ts");
+const apiRuntimeConfig = fs.readFileSync(apiRuntimeConfigPath, "utf8");
+const webRuntimeConfigPath = path.join(rootDir, "apps/web-vue/src/shared/runtime-config.ts");
+const webRuntimeConfig = fs.readFileSync(webRuntimeConfigPath, "utf8");
 
 test("terminal view mounts workspace page instead of console placeholder", () => {
   assert.match(terminalView, /<TerminalWorkspacePage\s*\/>/);
@@ -230,6 +234,10 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /const lastSeenSeq = lastOutputSeq/);
   assert.match(terminalConsole, /scheduleGatewayInputRecovery\(lastSeenSeq\)/);
   assert.match(terminalConsole, /handleGatewayAckResponse/);
+  assert.match(terminalConsole, /gatewayClient\.notify\(STUDIO_TERMINAL_GATEWAY_METHODS\.input/);
+  assert.match(terminalConsole, /ackMode: 'none'/);
+  assert.match(terminalConsole, /terminalInputAckLatencyMs\.value = 0/);
+  assert.match(terminalConsole, /shouldScheduleGatewayInputRecovery/);
   assert.match(terminalConsole, /lastSeq: lastOutputSeq \|\| undefined/);
   assert.match(terminalConsole, /instanceId: terminalInstanceId \|\| undefined/);
   assert.match(terminalConsole, /handleGatewayAckResponse\(response as TerminalGatewayAckResponse\)/);
@@ -251,6 +259,10 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /inputStartedAt/);
   assert.match(terminalConsole, /heartbeat: true/);
   assert.match(terminalConsole, /connectDelayMs: 50/);
+  assert.match(terminalConsole, /canUseDirectTerminalSocket/);
+  assert.match(terminalConsole, /getStudioTerminalDirectWebSocketUrl/);
+  assert.match(terminalConsole, /terminalDirectSocketActive/);
+  assert.match(terminalConsole, /fallbackFromDirectSocket/);
   assert.match(terminalConsole, /payload\.type === 'clear'/);
   assert.match(terminalConsole, /clearedThroughSeq/);
   assert.match(terminalConsole, /adoptOutputSeq/);
@@ -310,7 +322,7 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /defineExpose\(\{\s*clearTerminal,\s*focusTerminal,\s*pasteClipboard,\s*sendTerminalShortcut,/);
   assert.match(
     terminalConsole,
-    /function restoreRuntime\(\): void \{\s*terminalInstanceId = '';\s*lastOutputSeq = 0;\s*transcriptRestoreAttemptedSessionId = '';\s*\}/,
+    /function restoreRuntime\(\): void \{\s*terminalInstanceId = '';\s*lastOutputSeq = 0;\s*transcriptRestoreAttemptedSessionId = '';\s*terminalDirectSocketActive = false;\s*\}/,
   );
   assert.match(terminalService, /function normalizeSkipReplay/);
   assert.match(terminalService, /function normalizeResumeSession/);
@@ -324,6 +336,9 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalService, /emittedAtMs: chunk\.emittedAtMs/);
   assert.match(terminalService, /function scheduleDescriptorPersist/);
   assert.match(terminalService, /function enqueueOutputLedgerEvent/);
+  assert.match(terminalService, /function enqueueInputLedgerEvent/);
+  assert.match(terminalService, /session\.term\.write\(inputData\)[\s\S]*enqueueInputLedgerEvent\(session, inputData, runtime\.connId\)/);
+  assert.match(terminalService, /payload\.ackMode === "none"/);
   assert.match(terminalService, /ledger\.appendMany\(events\)/);
   assert.match(terminalService, /markSessionActivity\(session, \{ persist: "deferred" \}\)/);
   assert.match(terminalService, /function clearSessionDisplay/);
@@ -332,6 +347,8 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalHistory, /function eventsSinceLastClear/);
   assert.match(terminalHistory, /events\[index\]\?\.type === "clear"/);
   assert.match(studioPluginSource, /STUDIO_TERMINAL_GATEWAY_METHODS\.clear/);
+  assert.match(apiRuntimeConfig, /terminalDirectWebSocketPort: config\.transport\.standalone\.enabled/);
+  assert.match(webRuntimeConfig, /function getStudioTerminalDirectWebSocketUrl/);
   assert.match(terminalService, /const events = buildAttachEvents\(session, params\)\.filter/);
   assert.match(terminalService, /outputSeq: session\.outputSeq/);
   assert.match(terminalService, /leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS/);

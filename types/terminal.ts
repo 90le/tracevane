@@ -240,6 +240,7 @@ export interface TerminalGatewayInputPayload {
   data: string;
   lastSeq?: number | null;
   instanceId?: string | null;
+  ackMode?: "full" | "none" | null;
 }
 
 export interface TerminalGatewayResizePayload {

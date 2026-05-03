@@ -7,6 +7,7 @@ export interface StudioRuntimeConfig {
   apiBasePath: string;
   webSocketBasePath: string;
   gatewayAuthStorageScopePath: string;
+  terminalDirectWebSocketPort?: number | null;
   realtimeTransport: StudioRealtimeTransportKind;
   features: {
     chatRealtime: boolean;
@@ -39,6 +40,7 @@ function createDefaultRuntimeConfig(): StudioRuntimeConfig {
     apiBasePath: '',
     webSocketBasePath: buildBasePath,
     gatewayAuthStorageScopePath: '',
+    terminalDirectWebSocketPort: null,
     realtimeTransport: 'raw-ws',
     features: {
       chatRealtime: true,
@@ -60,6 +62,12 @@ export function getStudioRuntimeConfig(): StudioRuntimeConfig {
     webSocketBasePath: normalizeBasePath(injected.webSocketBasePath),
     gatewayAuthStorageScopePath:
       normalizeBasePath(injected.gatewayAuthStorageScopePath) || fallback.gatewayAuthStorageScopePath,
+    terminalDirectWebSocketPort:
+      typeof injected.terminalDirectWebSocketPort === 'number'
+        && Number.isFinite(injected.terminalDirectWebSocketPort)
+        && injected.terminalDirectWebSocketPort > 0
+        ? Math.floor(injected.terminalDirectWebSocketPort)
+        : fallback.terminalDirectWebSocketPort,
     realtimeTransport: injected.realtimeTransport || fallback.realtimeTransport,
     features: {
       chatRealtime: injected.features?.chatRealtime ?? fallback.features.chatRealtime,
@@ -86,6 +94,14 @@ export function getStudioWebSocketBasePath(): string {
 
 export function getStudioGatewayAuthStorageScopePath(): string {
   return getStudioRuntimeConfig().gatewayAuthStorageScopePath;
+}
+
+export function getStudioTerminalDirectWebSocketUrl(): string {
+  if (typeof window === 'undefined') return '';
+  const port = getStudioRuntimeConfig().terminalDirectWebSocketPort;
+  if (!port) return '';
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.hostname}:${port}/ws/terminal`;
 }
 
 export function getStudioRealtimeTransport(): StudioRealtimeTransportKind {
