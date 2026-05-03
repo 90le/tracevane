@@ -256,6 +256,12 @@ export interface TerminalGatewayHeartbeatPayload {
   instanceId?: string | null;
 }
 
+export interface TerminalGatewayClearPayload {
+  sid: string;
+  lastSeq?: number | null;
+  instanceId?: string | null;
+}
+
 export interface TerminalGatewayDetachPayload {
   sid?: string | null;
 }
@@ -281,6 +287,13 @@ export interface TerminalGatewayOutputEvent {
   data: string;
 }
 
+export interface TerminalGatewayClearEvent {
+  type: "clear";
+  sid: string;
+  instanceId: string;
+  clearedThroughSeq: number;
+}
+
 export interface TerminalGatewayClosedEvent {
   type: "closed";
   sid: string;
@@ -297,6 +310,7 @@ export type TerminalGatewayEvent =
   | TerminalGatewaySessionEvent
   | TerminalGatewayResetEvent
   | TerminalGatewayOutputEvent
+  | TerminalGatewayClearEvent
   | TerminalGatewayClosedEvent
   | TerminalGatewayErrorEvent;
 
@@ -322,5 +336,6 @@ export const STUDIO_TERMINAL_GATEWAY_METHODS = {
   input: "studio.terminal.input",
   resize: "studio.terminal.resize",
   heartbeat: "studio.terminal.heartbeat",
+  clear: "studio.terminal.clear",
   detach: "studio.terminal.detach",
 } as const;

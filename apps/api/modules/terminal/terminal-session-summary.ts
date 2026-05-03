@@ -65,6 +65,14 @@ export function buildTerminalRecentOutputSummary(
       updatedAt = event.timestamp;
     }
 
+    if (event?.type === "clear") {
+      tailText = "";
+      lastError = null;
+      lastCommandHint = null;
+      exitSummary = null;
+      continue;
+    }
+
     const detail =
       event?.detail && typeof event.detail === "object" ? event.detail : null;
 

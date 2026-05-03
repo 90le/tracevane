@@ -248,6 +248,12 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /terminalInputAckLatencyMs/);
   assert.match(terminalConsole, /inputStartedAt/);
   assert.match(terminalConsole, /heartbeat: true/);
+  assert.match(terminalConsole, /payload\.type === 'clear'/);
+  assert.match(terminalConsole, /clearedThroughSeq/);
+  assert.match(terminalConsole, /adoptOutputSeq/);
+  assert.match(terminalConsole, /suppressGapRecovery/);
+  assert.match(terminalConsole, /STUDIO_TERMINAL_GATEWAY_METHODS\.clear/);
+  assert.match(terminalConsole, /ws\.send\(JSON\.stringify\(\{ type: 'clear' \}\)\)/);
   assert.match(terminalConsole, /formatTerminalPaste/);
   assert.match(terminalConsole, /termInstance\?\.modes\.bracketedPasteMode/);
   assert.match(terminalConsole, /\\x1b\[200~/);
@@ -308,6 +314,15 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalService, /hasBacklogGap/);
   assert.match(terminalService, /reason:\s*[\s\S]*\?\s*"backlog_gap"/);
   assert.match(terminalService, /function createGatewayAck/);
+  assert.match(terminalService, /TERMINAL_DESCRIPTOR_ACTIVITY_FLUSH_MS/);
+  assert.match(terminalService, /function scheduleDescriptorPersist/);
+  assert.match(terminalService, /markSessionActivity\(session, \{ persist: "deferred" \}\)/);
+  assert.match(terminalService, /function clearSessionDisplay/);
+  assert.match(terminalService, /appendLedgerEvent\(\s*session,\s*"clear"/);
+  assert.match(terminalService, /clearGatewaySession/);
+  assert.match(terminalHistory, /function eventsSinceLastClear/);
+  assert.match(terminalHistory, /events\[index\]\?\.type === "clear"/);
+  assert.match(studioPluginSource, /STUDIO_TERMINAL_GATEWAY_METHODS\.clear/);
   assert.match(terminalService, /const events = buildAttachEvents\(session, params\)\.filter/);
   assert.match(terminalService, /outputSeq: session\.outputSeq/);
   assert.match(terminalService, /leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS/);

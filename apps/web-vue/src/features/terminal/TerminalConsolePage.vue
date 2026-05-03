@@ -709,6 +709,22 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
     saveRuntime();
     return;
   }
+  if (payload.type === 'clear') {
+    if (typeof payload.sid === 'string' && payload.sid.trim()) {
+      setSessionId(payload.sid, { emitAttached: true });
+    }
+    terminalInstanceId = String(payload.instanceId || terminalInstanceId || '');
+    const clearedThroughSeq = typeof payload.clearedThroughSeq === 'number'
+      ? payload.clearedThroughSeq
+      : lastOutputSeq;
+    lastOutputSeq = Math.max(lastOutputSeq, clearedThroughSeq);
+    clearGatewayInputRecovery();
+    clearTerminalOutputQueue();
+    terminalStatusHint.value = '';
+    termInstance?.clear();
+    saveRuntime();
+    return;
+  }
   if (payload.type === 'closed') {
     connected.value = false;
     terminalSyncState.value = 'reconnecting';
@@ -770,7 +786,12 @@ function enqueueTerminalOutput(data: string): void {
 
 function handleGatewayAckResponse(
   response: TerminalGatewayAckResponse,
-  options: { inputStartedAt?: number; heartbeat?: boolean } = {},
+  options: {
+    inputStartedAt?: number;
+    heartbeat?: boolean;
+    adoptOutputSeq?: boolean;
+    suppressGapRecovery?: boolean;
+  } = {},
 ): void {
   const ackAt = Date.now();
   terminalLastAckAt.value = ackAt;
@@ -786,9 +807,13 @@ function handleGatewayAckResponse(
   for (const event of response.events || []) {
     handleTerminalRealtimeEvent(event);
   }
+  if (options.adoptOutputSeq && typeof response.outputSeq === 'number') {
+    lastOutputSeq = Math.max(lastOutputSeq, response.outputSeq);
+  }
   if (
     typeof response.outputSeq === 'number' &&
     response.outputSeq > lastOutputSeq &&
+    !options.suppressGapRecovery &&
     !(response.events || []).length
   ) {
     terminalSyncState.value = 'degraded';
@@ -1351,6 +1376,28 @@ async function resetTerminal(message: string): Promise<void> {
 function clearTerminal(): void {
   clearTerminalOutputQueue();
   termInstance?.clear();
+  terminalStatusHint.value = '';
+  if (usesGatewayRpc()) {
+    if (gatewayClient?.connected) {
+      void requestGatewayTerminal(
+        STUDIO_TERMINAL_GATEWAY_METHODS.clear,
+        {
+          sid: getSessionId(),
+          lastSeq: lastOutputSeq || undefined,
+          instanceId: terminalInstanceId || undefined,
+        },
+      )
+        .then((response) => handleGatewayAckResponse(
+          response as TerminalGatewayAckResponse,
+          { adoptOutputSeq: true, suppressGapRecovery: true },
+        ))
+        .catch(() => {
+          recoverGatewayAttachment();
+        });
+    }
+  } else if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'clear' }));
+  }
   focusTerminal();
 }
 

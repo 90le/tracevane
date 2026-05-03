@@ -23,6 +23,7 @@ import type {
   TerminalGatewayAckResponse,
   TerminalGatewayAttachPayload,
   TerminalGatewayAttachResponse,
+  TerminalGatewayClearPayload,
   TerminalGatewayDetachPayload,
   TerminalGatewayEvent,
   TerminalGatewayHeartbeatPayload,
@@ -72,7 +73,9 @@ interface TerminalSession {
   backlog: Array<{ seq: number; data: string }>;
   bufferSize: number;
   outputSeq: number;
+  clearedThroughSeq: number;
   cleanupTimer: NodeJS.Timeout | null;
+  descriptorPersistTimer: NodeJS.Timeout | null;
   closed: boolean;
   lastCols: number;
   lastRows: number;
@@ -115,6 +118,7 @@ const TERMINAL_BUFFER_LIMIT = 256 * 1024;
 const TERMINAL_INSTALL_TIMEOUT_MS = 8 * 60 * 1000;
 const TERMINAL_GATEWAY_LEASE_MS = 35_000;
 const TERMINAL_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
+const TERMINAL_DESCRIPTOR_ACTIVITY_FLUSH_MS = 1_500;
 const WS_PING_INTERVAL = 20_000;
 const WS_IDLE_TIMEOUT = 90_000;
 const DEFAULT_TERMINAL_NATIVE_WORKER_BUDGET = "1";
@@ -429,6 +433,10 @@ export interface TerminalService {
     payload: TerminalGatewayHeartbeatPayload,
     runtime: Pick<TerminalGatewayRuntime, "connId">,
   ): TerminalGatewayAckResponse;
+  clearGatewaySession(
+    payload: TerminalGatewayClearPayload,
+    runtime: Pick<TerminalGatewayRuntime, "connId">,
+  ): TerminalGatewayAckResponse;
   detachGatewayClient(
     payload: TerminalGatewayDetachPayload,
     runtime: Pick<TerminalGatewayRuntime, "connId">,
@@ -537,6 +545,30 @@ export function createTerminalService(
     descriptorStore.upsert(buildSessionDescriptor(session, status));
   }
 
+  function clearDescriptorPersistTimer(session: TerminalSession): void {
+    if (!session.descriptorPersistTimer) return;
+    clearTimeout(session.descriptorPersistTimer);
+    session.descriptorPersistTimer = null;
+  }
+
+  function scheduleDescriptorPersist(session: TerminalSession): void {
+    if (session.closed || session.descriptorPersistTimer) return;
+    session.descriptorPersistTimer = setTimeout(() => {
+      session.descriptorPersistTimer = null;
+      if (!session.closed) {
+        persistSessionDescriptor(session);
+      }
+    }, TERMINAL_DESCRIPTOR_ACTIVITY_FLUSH_MS);
+    session.descriptorPersistTimer.unref?.();
+  }
+
+  function flushSessionDescriptor(session: TerminalSession): void {
+    clearDescriptorPersistTimer(session);
+    if (!session.closed) {
+      persistSessionDescriptor(session);
+    }
+  }
+
   function appendLedgerEvent(
     session: TerminalSession,
     type: string,
@@ -553,9 +585,19 @@ export function createTerminalService(
     });
   }
 
-  function markSessionActivity(session: TerminalSession): void {
+  function markSessionActivity(
+    session: TerminalSession,
+    options: { persist?: "immediate" | "deferred" | "none" } = {},
+  ): void {
     session.lastActivityAt = new Date().toISOString();
-    persistSessionDescriptor(session);
+    const persistMode = options.persist || "immediate";
+    if (persistMode === "immediate") {
+      flushSessionDescriptor(session);
+      return;
+    }
+    if (persistMode === "deferred") {
+      scheduleDescriptorPersist(session);
+    }
   }
 
   function emitGatewayEvent(
@@ -705,6 +747,49 @@ export function createTerminalService(
     };
   }
 
+  function buildClearEvent(session: TerminalSession): TerminalGatewayEvent {
+    return {
+      type: "clear",
+      sid: session.id,
+      instanceId: session.instanceId,
+      clearedThroughSeq: session.clearedThroughSeq,
+    };
+  }
+
+  function broadcastSessionControlEvent(
+    session: TerminalSession,
+    event: TerminalGatewayEvent,
+  ): void {
+    for (const client of Array.from(session.clients)) {
+      if (client.readyState !== WebSocket.OPEN) {
+        session.clients.delete(client);
+        continue;
+      }
+      if (!sendEvent(client, event)) {
+        session.clients.delete(client);
+      }
+    }
+
+    broadcastGatewayEvent(session, event);
+  }
+
+  function clearSessionDisplay(
+    session: TerminalSession,
+    actorClientId: string | null,
+  ): void {
+    session.backlog = [];
+    session.bufferSize = 0;
+    session.clearedThroughSeq = ++session.outputSeq;
+    appendLedgerEvent(
+      session,
+      "clear",
+      { outputSeq: session.clearedThroughSeq },
+      actorClientId,
+    );
+    markSessionActivity(session);
+    broadcastSessionControlEvent(session, buildClearEvent(session));
+  }
+
   function buildAttachEvents(
     session: TerminalSession,
     params: {
@@ -749,7 +834,13 @@ export function createTerminalService(
     }
 
     if (!skipReplay) {
-      const replayAfterSeq = requiresReset ? 0 : lastSeq;
+      if (session.clearedThroughSeq > 0 && lastSeq < session.clearedThroughSeq) {
+        events.push(buildClearEvent(session));
+      }
+      const replayAfterSeq = Math.max(
+        requiresReset ? 0 : lastSeq,
+        session.clearedThroughSeq,
+      );
       for (const chunk of session.backlog) {
         if (chunk.seq <= replayAfterSeq) continue;
         events.push(buildOutputEvent(session, chunk));
@@ -762,6 +853,7 @@ export function createTerminalService(
     const session = sessions.get(sessionId);
     if (!session) return;
     clearCleanupTimer(session);
+    clearDescriptorPersistTimer(session);
     sessions.delete(sessionId);
     session.closed = true;
     appendLedgerEvent(session, "ended", { reason: "session_ended" }, null);
@@ -806,7 +898,7 @@ export function createTerminalService(
 
   function broadcastChunk(session: TerminalSession, data: string): void {
     if (!data) return;
-    markSessionActivity(session);
+    markSessionActivity(session, { persist: "deferred" });
     const chunk = { seq: ++session.outputSeq, data };
     session.backlog.push(chunk);
     session.bufferSize += data.length;
@@ -874,7 +966,9 @@ export function createTerminalService(
       backlog: [],
       bufferSize: 0,
       outputSeq: 0,
+      clearedThroughSeq: 0,
       cleanupTimer: null,
+      descriptorPersistTimer: null,
       closed: false,
       lastCols: 120,
       lastRows: 30,
@@ -891,8 +985,8 @@ export function createTerminalService(
     };
 
     term.onData((data) => {
-      appendLedgerEvent(session, "output", { data });
       broadcastChunk(session, data);
+      appendLedgerEvent(session, "output", { data });
     });
 
     term.onExit((event) => {
@@ -924,6 +1018,7 @@ export function createTerminalService(
       markSessionActivity(session);
       descriptorStore.upsert(buildSessionDescriptor(session, "completed"));
       clearCleanupTimer(session);
+      clearDescriptorPersistTimer(session);
       sessions.delete(session.id);
       session.closed = true;
     });
@@ -1594,6 +1689,10 @@ export function createTerminalService(
               sendEvent(ws, { type: "pong" });
               return;
             }
+            if (data.type === "clear") {
+              clearSessionDisplay(session, null);
+              return;
+            }
           } catch {
             // fall through
           }
@@ -1840,6 +1939,16 @@ export function createTerminalService(
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
       markSessionActivity(session);
+      return createGatewayAck(session, payload);
+    },
+
+    clearGatewaySession(
+      payload: TerminalGatewayClearPayload,
+      runtime: Pick<TerminalGatewayRuntime, "connId">,
+    ): TerminalGatewayAckResponse {
+      const session = requireActiveSession(payload.sid);
+      requireGatewaySubscriber(session, runtime.connId);
+      clearSessionDisplay(session, runtime.connId);
       return createGatewayAck(session, payload);
     },
 

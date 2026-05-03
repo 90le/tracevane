@@ -104,6 +104,18 @@ function pushTranscriptChunk(
   }
 }
 
+function eventsSinceLastClear(
+  events: TerminalSessionLedgerEvent[],
+): TerminalSessionLedgerEvent[] {
+  let startIndex = 0;
+  for (let index = 0; index < (events || []).length; index += 1) {
+    if (events[index]?.type === "clear") {
+      startIndex = index + 1;
+    }
+  }
+  return (events || []).slice(startIndex);
+}
+
 export function buildTerminalSessionHistory(
   events: TerminalSessionLedgerEvent[],
   options: { limit?: number } = {},
@@ -113,7 +125,7 @@ export function buildTerminalSessionHistory(
   let bufferedCommand = "";
   let bufferedTimestamp = "";
 
-  for (const event of events || []) {
+  for (const event of eventsSinceLastClear(events)) {
     const timestamp = String(event.timestamp || new Date().toISOString());
     if (event.type === "input") {
       const data = typeof event.detail?.data === "string" ? event.detail.data : "";
@@ -188,7 +200,7 @@ export function buildTerminalSessionReplayTranscript(
     : 64_000;
   const chunks: string[] = [];
 
-  for (const event of events || []) {
+  for (const event of eventsSinceLastClear(events)) {
     if (event.type === "output") {
       const data =
         typeof event.detail?.data === "string" ? event.detail.data : "";
@@ -234,7 +246,7 @@ export function buildTerminalSessionReplayTranscript(
     return chunks.join("");
   }
 
-  return buildTerminalSessionHistory(events, { limit: 80 })
+  return buildTerminalSessionHistory(eventsSinceLastClear(events), { limit: 80 })
     .map((entry) => `${entry.text}\r\n`)
     .join("");
 }

@@ -77,3 +77,48 @@ test("terminal replay transcript keeps raw output chunks for xterm restoration",
   assert.match(transcript, /\[runtime_unavailable\]/);
   assert.match(transcript, /binbin@host:~\$/);
 });
+test("terminal replay transcript starts after the latest clear marker", () => {
+  const transcript = historyModule.buildTerminalSessionReplayTranscript([
+    makeEvent({
+      eventId: "old-output",
+      type: "output",
+      detail: { data: "before clear\r\n" },
+    }),
+    makeEvent({
+      eventId: "clear-1",
+      type: "clear",
+      detail: { outputSeq: 1 },
+    }),
+    makeEvent({
+      eventId: "new-output",
+      type: "output",
+      detail: { data: "after clear\r\n" },
+    }),
+  ]);
+
+  assert.doesNotMatch(transcript, /before clear/);
+  assert.match(transcript, /after clear/);
+});
+
+test("terminal visible history starts after the latest clear marker", () => {
+  const entries = historyModule.buildTerminalSessionHistory([
+    makeEvent({
+      eventId: "old-output",
+      type: "output",
+      detail: { data: "before clear\r\n" },
+    }),
+    makeEvent({
+      eventId: "clear-1",
+      type: "clear",
+      detail: { outputSeq: 1 },
+    }),
+    makeEvent({
+      eventId: "new-output",
+      type: "output",
+      detail: { data: "after clear\r\n" },
+    }),
+  ]);
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].text, "after clear");
+});

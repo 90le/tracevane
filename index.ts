@@ -24,6 +24,7 @@ import {
   STUDIO_TERMINAL_GATEWAY_EVENT,
   STUDIO_TERMINAL_GATEWAY_METHODS,
   type TerminalGatewayAttachPayload,
+  type TerminalGatewayClearPayload,
   type TerminalGatewayDetachPayload,
   type TerminalGatewayHeartbeatPayload,
   type TerminalGatewayInputPayload,
@@ -414,6 +415,20 @@ const studioPlugin = {
           } catch (error) {
             opts.respond(false, undefined, buildGatewayMethodError(
               error instanceof Error ? error.message : 'terminal_heartbeat_failed'
+            ));
+          }
+        }, { scope: 'operator.write' });
+
+        registerGatewayMethod(STUDIO_TERMINAL_GATEWAY_METHODS.clear, (opts) => {
+          try {
+            const payload = ctx.services.terminal.clearGatewaySession(
+              opts.params as unknown as TerminalGatewayClearPayload,
+              { connId: withConnId(opts.client) }
+            );
+            opts.respond(true, payload);
+          } catch (error) {
+            opts.respond(false, undefined, buildGatewayMethodError(
+              error instanceof Error ? error.message : 'terminal_clear_failed'
             ));
           }
         }, { scope: 'operator.write' });

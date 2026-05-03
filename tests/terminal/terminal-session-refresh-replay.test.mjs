@@ -183,3 +183,71 @@ test("terminal service requires explicit resume before reopening a persisted end
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("terminal service clear removes replay backlog for refreshed clients", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const service = createTestService(tempDir);
+  const marker = "clear-proof-0422";
+  const liveEvents = [];
+
+  try {
+    const attached = service.attachGatewayClient(
+      { sid: "term-clear-replay" },
+      {
+        connId: "conn-live",
+        emit(event) {
+          liveEvents.push(event);
+          return true;
+        },
+      },
+    );
+
+    service.sendGatewayInput(
+      {
+        sid: attached.sid,
+        data: `printf '${marker}\\n'\r`,
+      },
+      { connId: "conn-live" },
+    );
+
+    await waitFor(() =>
+      liveEvents.some(
+        (event) =>
+          event.type === "output" && String(event.data || "").includes(marker),
+      ));
+
+    const clearAck = service.clearGatewaySession(
+      { sid: attached.sid },
+      { connId: "conn-live" },
+    );
+    assert.equal(clearAck.ok, true);
+    assert.ok(Number(clearAck.outputSeq) > 0);
+    assert.equal(
+      liveEvents.some((event) => event.type === "clear"),
+      true,
+    );
+
+    const refreshed = service.attachGatewayClient(
+      { sid: attached.sid },
+      { connId: "conn-refresh", emit: () => true },
+    );
+    const refreshBacklog = refreshed.events
+      .filter((event) => event.type === "output")
+      .map((event) => String(event.data || ""))
+      .join("");
+
+    assert.equal(
+      refreshed.events.some((event) => event.type === "clear"),
+      true,
+    );
+    assert.doesNotMatch(refreshBacklog, /clear-proof-0422/);
+
+    const ledger = await service.listSessionLedger(attached.sid);
+    const clearEvent = ledger.find((event) => event.type === "clear");
+    assert.ok(clearEvent);
+    assert.equal(typeof clearEvent.detail?.outputSeq, "number");
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});

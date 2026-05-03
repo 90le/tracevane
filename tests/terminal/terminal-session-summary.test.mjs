@@ -418,3 +418,22 @@ test("terminal service source includes binary-name fallback verification for mar
   );
   assert.match(source, /path: resolvedPath,/);
 });
+
+test("terminal recent output summary resets stale output after clear marker", () => {
+  const summary = terminalSessionSummary.buildTerminalRecentOutputSummary([
+    {
+      type: "output",
+      timestamp: "2026-04-14T00:00:00.000Z",
+      detail: { data: "old-output" },
+    },
+    {
+      type: "clear",
+      timestamp: "2026-04-14T00:00:01.000Z",
+      detail: { outputSeq: 1 },
+    },
+  ]);
+
+  assert.equal(summary.tailText, "");
+  assert.equal(summary.lastCommandHint, null);
+  assert.equal(summary.updatedAt, "2026-04-14T00:00:01.000Z");
+});
