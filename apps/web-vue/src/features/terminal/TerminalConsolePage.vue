@@ -110,6 +110,7 @@ import {
   isTerminalRealtimeEnabled,
 } from '../../shared/runtime-config';
 import {
+  buildTerminalStreamUrl,
   endTerminalSession,
   fetchPersistedTerminalSessionLedger,
   fetchTerminalLaunch,
@@ -165,6 +166,7 @@ let termInstance: XTermTerminal | null = null;
 let fitAddon: FitAddon | null = null;
 let ws: WebSocket | null = null;
 let gatewayClient: GatewayBrowserClient | null = null;
+let terminalStreamSource: EventSource | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let termDataDisposable: IDisposable | null = null;
 let titleChangeDisposable: IDisposable | null = null;
@@ -187,6 +189,8 @@ let transcriptRestoreAttemptedSessionId = '';
 let transcriptRestoreRequestSeq = 0;
 let terminalDirectSocketActive = false;
 let terminalDirectSocketFailed = false;
+let terminalHttpStreamActive = false;
+let terminalHttpStreamFailed = false;
 
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
 const TERMINAL_IMMEDIATE_OUTPUT_LIMIT = 8 * 1024;
@@ -563,6 +567,8 @@ function clearRuntime(): void {
   terminalOutputLatencyMs.value = null;
   terminalDirectSocketActive = false;
   terminalDirectSocketFailed = false;
+  terminalHttpStreamFailed = false;
+  disconnectTerminalHttpStream();
 }
 
 function restoreRuntime(): void {
@@ -570,6 +576,8 @@ function restoreRuntime(): void {
   lastOutputSeq = 0;
   transcriptRestoreAttemptedSessionId = '';
   terminalDirectSocketActive = false;
+  terminalHttpStreamFailed = false;
+  disconnectTerminalHttpStream();
 }
 
 async function restorePersistedTranscriptIfNeeded(sessionId: string): Promise<boolean> {
@@ -689,6 +697,10 @@ function canUseDirectTerminalSocket(): boolean {
   return getStudioRealtimeTransport() === 'gateway-rpc'
     && !terminalDirectSocketFailed
     && Boolean(getStudioTerminalDirectWebSocketUrl());
+}
+
+function canUseTerminalHttpStream(): boolean {
+  return getStudioRealtimeTransport() === 'gateway-rpc' && !terminalHttpStreamFailed;
 }
 
 function handleTerminalRealtimeEvent(payload: Record<string, unknown> | TerminalGatewayEvent): void {
@@ -982,14 +994,16 @@ async function attachGatewayTerminal(): Promise<void> {
   if (!sid) return;
   clearGatewayInputRecovery();
   const skipReplay = await restorePersistedTranscriptIfNeeded(sid);
+  const useHttpStream = canUseTerminalHttpStream();
   const response = await requestGatewayTerminal<TerminalGatewayAttachResponse>(
     STUDIO_TERMINAL_GATEWAY_METHODS.attach,
     {
       sid,
       lastSeq: lastOutputSeq || undefined,
       instanceId: terminalInstanceId || undefined,
-      skipReplay: skipReplay || undefined,
+      skipReplay: useHttpStream ? true : skipReplay || undefined,
       resume: props.embedded || undefined,
+      outputMode: useHttpStream ? 'http-stream' : undefined,
       handoffContext: readRouteHandoffContext(),
     },
   );
@@ -1007,6 +1021,9 @@ async function attachGatewayTerminal(): Promise<void> {
   }
   if (skipReplay && typeof attachOutputSeq === 'number' && attachOutputSeq > lastOutputSeq) {
     lastOutputSeq = attachOutputSeq;
+  }
+  if (useHttpStream) {
+    startTerminalHttpStream({ skipReplay });
   }
   terminalSyncState.value = 'live';
   saveRuntime();
@@ -1038,8 +1055,58 @@ function shouldScheduleGatewayInputRecovery(data: string): boolean {
   return /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(data);
 }
 
+function disconnectTerminalHttpStream(): void {
+  terminalHttpStreamActive = false;
+  if (!terminalStreamSource) return;
+  terminalStreamSource.close();
+  terminalStreamSource = null;
+}
+
+function startTerminalHttpStream(options: { skipReplay?: boolean } = {}): void {
+  const sid = getSessionId();
+  if (!sid || !canUseTerminalHttpStream()) return;
+  disconnectTerminalHttpStream();
+
+  const source = new EventSource(
+    buildTerminalStreamUrl(sid, {
+      lastSeq: lastOutputSeq || undefined,
+      instanceId: terminalInstanceId || undefined,
+      skipReplay: options.skipReplay,
+      resume: props.embedded,
+    }),
+    { withCredentials: true },
+  );
+  terminalStreamSource = source;
+  terminalHttpStreamActive = true;
+
+  source.addEventListener('terminal', (event) => {
+    if (terminalStreamSource !== source) return;
+    try {
+      const payload = JSON.parse(event.data || '{}') as Record<string, unknown>;
+      handleTerminalRealtimeEvent(payload);
+    } catch {
+      // Ignore malformed stream frames; Gateway recovery still remains active.
+    }
+  });
+  source.addEventListener('ping', () => {
+    if (terminalStreamSource !== source) return;
+    terminalLastHeartbeatAt.value = Date.now();
+  });
+  source.onerror = () => {
+    if (terminalStreamSource !== source) return;
+    disconnectTerminalHttpStream();
+    terminalHttpStreamFailed = true;
+    if (intentionalClose || !gatewayClient?.connected) return;
+    void attachGatewayTerminal().catch(() => {
+      connected.value = false;
+      terminalSyncState.value = 'reconnecting';
+    });
+  };
+}
+
 function disconnectGatewayClient(): void {
   clearGatewayInputRecovery();
+  disconnectTerminalHttpStream();
   gatewayClient?.stop();
   gatewayClient = null;
 }
@@ -1056,6 +1123,9 @@ function recoverGatewayAttachment(): void {
 
 function connectGatewayClient(options: { force?: boolean } = {}): void {
   terminalDirectSocketActive = false;
+  if (options.force) {
+    terminalHttpStreamFailed = false;
+  }
   const auth = resolveStudioGatewayClientAuth();
   if (!auth.gatewayUrl) {
     connected.value = false;
@@ -1103,6 +1173,7 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
       if (gatewayClient !== client) return;
       if (event.event !== STUDIO_TERMINAL_GATEWAY_EVENT) return;
       if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) return;
+      if (terminalHttpStreamActive && (event.payload as Record<string, unknown>).type === 'output') return;
       handleTerminalRealtimeEvent(event.payload as Record<string, unknown>);
     },
     onClose: () => {
@@ -1282,6 +1353,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
     connectGatewayClient(options);
     return;
   }
+  disconnectTerminalHttpStream();
   if (!options.force && ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';

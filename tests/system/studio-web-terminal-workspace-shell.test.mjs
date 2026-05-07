@@ -135,6 +135,12 @@ test("terminal routes expose minimal recovery endpoints for persisted sessions",
     terminalRoutes,
     /\"\/api\/terminal\/sessions\/:sessionId\/ledger\"/,
   );
+  assert.match(
+    terminalRoutes,
+    /\"\/api\/terminal\/sessions\/:sessionId\/stream\"/,
+  );
+  assert.match(terminalRoutes, /startSse\(res\)/);
+  assert.match(terminalRoutes, /sendSseEvent\(res, "terminal", event\)/);
 });
 
 test("terminal session pane does not render recent output disclosure above terminal stage", () => {
@@ -237,6 +243,11 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /handleGatewayAckResponse/);
   assert.match(terminalConsole, /gatewayClient\.notify\(STUDIO_TERMINAL_GATEWAY_METHODS\.input/);
   assert.match(terminalConsole, /ackMode: 'none'/);
+  assert.match(terminalConsole, /buildTerminalStreamUrl/);
+  assert.match(terminalConsole, /new EventSource/);
+  assert.match(terminalConsole, /outputMode: useHttpStream \? 'http-stream' : undefined/);
+  assert.match(terminalConsole, /terminalHttpStreamActive/);
+  assert.match(terminalConsole, /terminalHttpStreamFailed/);
   assert.match(terminalConsole, /terminalInputAckLatencyMs\.value = 0/);
   assert.match(terminalConsole, /shouldScheduleGatewayInputRecovery/);
   assert.match(terminalConsole, /lastSeq: lastOutputSeq \|\| undefined/);
@@ -301,7 +312,7 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /updateTerminalStatusHint/);
   assert.match(terminalConsole, /translateToString\(true\)/);
   assert.match(terminalConsole, /TERMINAL_STATUS_KEYWORDS/);
-  assert.match(terminalConsole, /skipReplay: skipReplay \|\| undefined/);
+  assert.match(terminalConsole, /skipReplay: useHttpStream \? true : skipReplay \|\| undefined/);
   assert.match(terminalConsole, /resume: props\.embedded \|\| undefined/);
   assert.match(terminalConsole, /params\.set\('skipReplay', '1'\)/);
   assert.match(terminalConsole, /params\.set\('resume', '1'\)/);
@@ -323,7 +334,7 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalConsole, /defineExpose\(\{\s*clearTerminal,\s*focusTerminal,\s*pasteClipboard,\s*sendTerminalShortcut,/);
   assert.match(
     terminalConsole,
-    /function restoreRuntime\(\): void \{\s*terminalInstanceId = '';\s*lastOutputSeq = 0;\s*transcriptRestoreAttemptedSessionId = '';\s*terminalDirectSocketActive = false;\s*\}/,
+    /function restoreRuntime\(\): void \{[\s\S]*terminalDirectSocketActive = false;[\s\S]*terminalHttpStreamFailed = false;[\s\S]*disconnectTerminalHttpStream\(\);[\s\S]*\}/,
   );
   assert.match(terminalService, /function normalizeSkipReplay/);
   assert.match(terminalService, /function normalizeResumeSession/);
@@ -353,6 +364,9 @@ test("terminal console keeps replay cursor ephemeral so refreshed xterm replays 
   assert.match(terminalService, /gatewayOutputQueue/);
   assert.match(terminalService, /function enqueueGatewayOutput/);
   assert.match(terminalService, /setImmediate\(\(\) =>/);
+  assert.match(terminalService, /streamSubscribers/);
+  assert.match(terminalService, /attachStreamClient/);
+  assert.match(terminalService, /suppressOutput: payload\.outputMode === "http-stream"/);
   assert.match(terminalService, /recentSummaryEvents/);
   assert.match(terminalService, /buildTerminalRecentOutputSummary\(session\.recentSummaryEvents\)/);
   assert.match(terminalService, /const events = buildAttachEvents\(session, params\)\.filter/);

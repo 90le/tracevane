@@ -232,6 +232,7 @@ export interface TerminalGatewayAttachPayload {
   instanceId?: string | null;
   skipReplay?: boolean | null;
   resume?: boolean | null;
+  outputMode?: "gateway" | "http-stream" | null;
   handoffContext?: TerminalHandoffContext | null;
 }
 

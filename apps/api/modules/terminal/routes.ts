@@ -1,4 +1,9 @@
-import { parseJsonBody, sendJson } from "../../core/http.js";
+import {
+  parseJsonBody,
+  sendJson,
+  sendSseEvent,
+  startSse,
+} from "../../core/http.js";
 import type { StudioApiContext } from "../../core/context.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
@@ -62,6 +67,71 @@ export function registerTerminalRoutes(
         200,
         await routeCtx.services.terminal.listSessionLedger(params.sessionId),
       );
+    },
+  );
+
+  router.get(
+    "/api/terminal/sessions/:sessionId/stream",
+    async (req, res, routeCtx, params) => {
+      const streamId = `http-stream-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const url = new URL(
+        req.url || "/",
+        `http://${req.headers.host || "127.0.0.1"}`,
+      );
+      const sendTerminalEvent = (event: unknown): boolean => {
+        if (res.writableEnded) return false;
+        sendSseEvent(res, "terminal", event);
+        return !res.writableEnded;
+      };
+      let keepAliveTimer: NodeJS.Timeout | null = null;
+      const cleanup = (): void => {
+        if (keepAliveTimer) {
+          clearInterval(keepAliveTimer);
+          keepAliveTimer = null;
+        }
+        routeCtx.services.terminal.detachStreamClient(
+          params.sessionId,
+          streamId,
+        );
+      };
+
+      startSse(res);
+      keepAliveTimer = setInterval(() => {
+        sendSseEvent(res, "ping", { now: Date.now() });
+      }, 15_000);
+      keepAliveTimer.unref?.();
+      req.on("close", cleanup);
+      res.on("close", cleanup);
+
+      try {
+        const attached = routeCtx.services.terminal.attachStreamClient(
+          {
+            sid: params.sessionId,
+            lastSeq: Number(url.searchParams.get("lastSeq") || 0) || null,
+            instanceId: url.searchParams.get("instanceId"),
+            skipReplay:
+              url.searchParams.get("skipReplay") === "1"
+              || url.searchParams.get("skipReplay") === "true",
+            resume:
+              url.searchParams.get("resume") === "1"
+              || url.searchParams.get("resume") === "true",
+          },
+          {
+            streamId,
+            emit: sendTerminalEvent,
+          },
+        );
+        for (const event of attached.events) {
+          sendTerminalEvent(event);
+        }
+      } catch (error) {
+        sendSseEvent(res, "terminal", {
+          type: "error",
+          message:
+            error instanceof Error ? error.message : "terminal_stream_failed",
+        });
+        res.end();
+      }
     },
   );
 

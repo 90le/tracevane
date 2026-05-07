@@ -236,6 +236,65 @@ test("terminal service keeps fast gateway input off the full ack replay path", a
   }
 });
 
+test("terminal service can suppress gateway output while streaming over http", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const service = createTestService(tempDir);
+  const marker = "http-stream-proof-0507";
+  const gatewayEvents = [];
+  const streamEvents = [];
+
+  try {
+    const attached = service.attachGatewayClient(
+      { sid: "term-http-stream", outputMode: "http-stream" },
+      {
+        connId: "conn-live",
+        emit(event) {
+          gatewayEvents.push(event);
+          return true;
+        },
+      },
+    );
+    const streamed = service.attachStreamClient(
+      { sid: attached.sid },
+      {
+        streamId: "stream-live",
+        emit(event) {
+          streamEvents.push(event);
+          return true;
+        },
+      },
+    );
+
+    assert.equal(streamed.sid, attached.sid);
+
+    service.sendGatewayInput(
+      {
+        sid: attached.sid,
+        data: `printf '${marker}\\n'\r`,
+        ackMode: "none",
+      },
+      { connId: "conn-live" },
+    );
+
+    await waitFor(() =>
+      streamEvents.some(
+        (event) =>
+          event.type === "output" && String(event.data || "").includes(marker),
+      ));
+
+    assert.equal(
+      gatewayEvents.some(
+        (event) =>
+          event.type === "output" && String(event.data || "").includes(marker),
+      ),
+      false,
+    );
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("terminal service clear removes replay backlog for refreshed clients", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
   const service = createTestService(tempDir);

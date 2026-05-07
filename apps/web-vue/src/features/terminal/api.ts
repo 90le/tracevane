@@ -42,6 +42,32 @@ export function fetchPersistedTerminalSessionLedger(
   );
 }
 
+export function buildTerminalStreamUrl(
+  sessionId: string,
+  params: {
+    lastSeq?: number;
+    instanceId?: string;
+    skipReplay?: boolean;
+    resume?: boolean;
+  } = {},
+): string {
+  const query = new URLSearchParams();
+  if (params.lastSeq && params.lastSeq > 0) {
+    query.set("lastSeq", String(params.lastSeq));
+  }
+  if (params.instanceId) {
+    query.set("instanceId", params.instanceId);
+  }
+  if (params.skipReplay) {
+    query.set("skipReplay", "1");
+  }
+  if (params.resume) {
+    query.set("resume", "1");
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return `${getApiBase()}/api/terminal/sessions/${encodeURIComponent(sessionId.trim())}/stream${suffix}`;
+}
+
 export function fetchTerminalActions(): Promise<TerminalActionCatalogResponse> {
   return requestJson<TerminalActionCatalogResponse>("/api/terminal/actions");
 }

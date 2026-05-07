@@ -65,6 +65,12 @@ interface TerminalGatewaySubscriber {
   connId: string;
   emit: (event: TerminalGatewayEvent) => boolean;
   lastLeaseAt: number;
+  suppressOutput: boolean;
+}
+
+interface TerminalStreamSubscriber {
+  streamId: string;
+  emit: (event: TerminalGatewayEvent) => boolean;
 }
 
 interface TerminalSession {
@@ -73,6 +79,7 @@ interface TerminalSession {
   term: PtyInstance;
   clients: Set<TerminalSocket>;
   gatewaySubscribers: Map<string, TerminalGatewaySubscriber>;
+  streamSubscribers: Map<string, TerminalStreamSubscriber>;
   backlog: Array<{ seq: number; data: string; emittedAtMs: number }>;
   gatewayOutputQueue: {
     data: string;
@@ -120,6 +127,11 @@ interface TerminalPackageManager {
 
 interface TerminalGatewayRuntime {
   connId: string;
+  emit: (event: TerminalGatewayEvent) => boolean;
+}
+
+interface TerminalStreamRuntime {
+  streamId: string;
   emit: (event: TerminalGatewayEvent) => boolean;
 }
 
@@ -435,6 +447,11 @@ export interface TerminalService {
     payload: TerminalGatewayAttachPayload,
     runtime: TerminalGatewayRuntime,
   ): TerminalGatewayAttachResponse;
+  attachStreamClient(
+    payload: TerminalGatewayAttachPayload,
+    runtime: TerminalStreamRuntime,
+  ): TerminalGatewayAttachResponse;
+  detachStreamClient(sessionId: string, streamId: string): void;
   sendGatewayInput(
     payload: TerminalGatewayInputPayload,
     runtime: Pick<TerminalGatewayRuntime, "connId">,
@@ -513,7 +530,11 @@ export function createTerminalService(
   gatewaySweepTimer.unref?.();
 
   function getActiveClientCount(session: TerminalSession): number {
-    return session.clients.size + session.gatewaySubscribers.size;
+    return (
+      session.clients.size
+      + session.gatewaySubscribers.size
+      + session.streamSubscribers.size
+    );
   }
 
   function clearCleanupTimer(session: TerminalSession): void {
@@ -698,6 +719,20 @@ export function createTerminalService(
     subscriber: TerminalGatewaySubscriber,
     event: TerminalGatewayEvent,
   ): boolean {
+    if (subscriber.suppressOutput && event.type === "output") {
+      return true;
+    }
+    try {
+      return subscriber.emit(event);
+    } catch {
+      return false;
+    }
+  }
+
+  function emitStreamEvent(
+    subscriber: TerminalStreamSubscriber,
+    event: TerminalGatewayEvent,
+  ): boolean {
     try {
       return subscriber.emit(event);
     } catch {
@@ -750,6 +785,28 @@ export function createTerminalService(
     }
   }
 
+  function broadcastStreamEvent(
+    session: TerminalSession,
+    event: TerminalGatewayEvent,
+  ): void {
+    let changed = false;
+    for (const [streamId, subscriber] of Array.from(
+      session.streamSubscribers.entries(),
+    )) {
+      if (emitStreamEvent(subscriber, event)) {
+        continue;
+      }
+      session.streamSubscribers.delete(streamId);
+      changed = true;
+    }
+    if (changed) {
+      persistSessionDescriptor(session);
+    }
+    if (getActiveClientCount(session) === 0) {
+      scheduleCleanup(session);
+    }
+  }
+
   function detachGatewayConnId(
     connId: string,
     sessionId?: string | null,
@@ -771,6 +828,25 @@ export function createTerminalService(
         connId,
       );
       markSessionActivity(session);
+      if (getActiveClientCount(session) === 0) {
+        scheduleCleanup(session);
+      }
+    }
+  }
+
+  function detachStreamId(
+    streamId: string,
+    sessionId?: string | null,
+  ): void {
+    const targetSessionId = String(sessionId || "").trim();
+    for (const session of sessions.values()) {
+      if (targetSessionId && session.id !== targetSessionId) {
+        continue;
+      }
+      if (!session.streamSubscribers.delete(streamId)) {
+        continue;
+      }
+      markSessionActivity(session, { persist: "deferred" });
       if (getActiveClientCount(session) === 0) {
         scheduleCleanup(session);
       }
@@ -802,11 +878,13 @@ export function createTerminalService(
   function registerGatewaySubscriber(
     session: TerminalSession,
     runtime: TerminalGatewayRuntime,
+    options: { suppressOutput?: boolean } = {},
   ): void {
     clearCleanupTimer(session);
     const existingSubscriber = session.gatewaySubscribers.get(runtime.connId);
     if (existingSubscriber) {
       existingSubscriber.lastLeaseAt = Date.now();
+      existingSubscriber.suppressOutput = options.suppressOutput === true;
       session.lastAttachedAt = new Date().toISOString();
       markSessionActivity(session);
       return;
@@ -826,6 +904,21 @@ export function createTerminalService(
       connId: runtime.connId,
       emit: runtime.emit,
       lastLeaseAt: Date.now(),
+      suppressOutput: options.suppressOutput === true,
+    });
+  }
+
+  function registerStreamSubscriber(
+    session: TerminalSession,
+    runtime: TerminalStreamRuntime,
+  ): void {
+    clearCleanupTimer(session);
+    detachStreamId(runtime.streamId);
+    session.lastAttachedAt = new Date().toISOString();
+    markSessionActivity(session, { persist: "deferred" });
+    session.streamSubscribers.set(runtime.streamId, {
+      streamId: runtime.streamId,
+      emit: runtime.emit,
     });
   }
 
@@ -866,6 +959,7 @@ export function createTerminalService(
     }
 
     broadcastGatewayEvent(session, event);
+    broadcastStreamEvent(session, event);
   }
 
   function clearSessionDisplay(
@@ -960,6 +1054,11 @@ export function createTerminalService(
       sid: session.id,
       reason: "session_ended",
     });
+    broadcastStreamEvent(session, {
+      type: "closed",
+      sid: session.id,
+      reason: "session_ended",
+    });
     for (const client of Array.from(session.clients)) {
       try {
         client.close();
@@ -967,6 +1066,7 @@ export function createTerminalService(
     }
     session.clients.clear();
     session.gatewaySubscribers.clear();
+    session.streamSubscribers.clear();
     try {
       session.term.kill();
     } catch {}
@@ -1072,6 +1172,7 @@ export function createTerminalService(
     }
 
     enqueueGatewayOutput(session, chunk);
+    broadcastStreamEvent(session, buildOutputEvent(session, chunk));
   }
 
   function replayBacklog(
@@ -1111,6 +1212,7 @@ export function createTerminalService(
       term,
       clients: new Set(),
       gatewaySubscribers: new Map(),
+      streamSubscribers: new Map(),
       backlog: [],
       gatewayOutputQueue: null,
       gatewayOutputFlushTimer: null,
@@ -1144,11 +1246,13 @@ export function createTerminalService(
       const alreadyClosed = session.closed;
       flushGatewayOutput(session);
       if (!alreadyClosed) {
-        broadcastGatewayEvent(session, {
+        const closedEvent: TerminalGatewayEvent = {
           type: "closed",
           sid: session.id,
           reason: "session_exited",
-        });
+        };
+        broadcastGatewayEvent(session, closedEvent);
+        broadcastStreamEvent(session, closedEvent);
       }
       appendLedgerEvent(
         session,
@@ -1167,6 +1271,7 @@ export function createTerminalService(
       }
       session.clients.clear();
       session.gatewaySubscribers.clear();
+      session.streamSubscribers.clear();
       markSessionActivity(session);
       descriptorStore.upsert(buildSessionDescriptor(session, "completed"));
       clearCleanupTimer(session);
@@ -2040,13 +2145,40 @@ export function createTerminalService(
           payload.handoffContext.fromRoute || `/terminal/${session.id}`;
         session.handoffContext = payload.handoffContext;
       }
-      registerGatewaySubscriber(session, runtime);
+      registerGatewaySubscriber(session, runtime, {
+        suppressOutput: payload.outputMode === "http-stream",
+      });
       persistSessionDescriptor(session);
       return {
         sid: session.id,
         leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS,
         events: buildAttachEvents(session, payload),
       };
+    },
+
+    attachStreamClient(
+      payload: TerminalGatewayAttachPayload,
+      runtime: TerminalStreamRuntime,
+    ): TerminalGatewayAttachResponse {
+      if (!pty) {
+        throw new Error(
+          "node-pty is not available; terminal sessions are disabled",
+        );
+      }
+      const session = getOrCreateSession(payload.sid || null, {
+        resumePersisted: normalizeResumeSession(payload.resume),
+      });
+      registerStreamSubscriber(session, runtime);
+      persistSessionDescriptor(session);
+      return {
+        sid: session.id,
+        leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS,
+        events: buildAttachEvents(session, payload),
+      };
+    },
+
+    detachStreamClient(sessionId: string, streamId: string): void {
+      detachStreamId(streamId, sessionId);
     },
 
     sendGatewayInput(
