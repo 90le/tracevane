@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import studioPlugin from '../../dist/index.js';
+import studioPlugin, { plugin as namedStudioPlugin } from '../../dist/index.js';
 import { normalizeStudioDeliveryInputDetailed } from '../../dist/lib/studio-delivery.js';
 import { resolveStudioDeliveryTool } from '../../dist/lib/studio-delivery-tool.js';
+
+test('studio plugin exposes default and named exports for host compatibility', () => {
+  assert.equal(namedStudioPlugin, studioPlugin);
+});
 
 test('studio plugin registers studio_delivery tool', () => {
   const registeredTools = [];

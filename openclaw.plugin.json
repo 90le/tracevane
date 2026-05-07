@@ -4,6 +4,14 @@
   "description": "OpenClaw Studio 管理控制台扩展，当前阶段聚焦配置、技能、终端、频道、定时任务和 Agent 管理。",
   "version": "0.1.21",
   "homepage": "https://github.com/binbin/openclaw-studio",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "studio_delivery"
+    ]
+  },
   "skills": [
     "./skills"
   ],

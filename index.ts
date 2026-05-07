@@ -478,4 +478,5 @@ const studioPlugin = {
   },
 };
 
+export const plugin = studioPlugin;
 export default studioPlugin;

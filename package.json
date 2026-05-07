@@ -17,6 +17,9 @@
     "extensions": [
       "./index.ts"
     ],
+    "runtimeExtensions": [
+      "./dist/index.js"
+    ],
     "install": {
       "minHostVersion": ">=2026.4.8"
     },
