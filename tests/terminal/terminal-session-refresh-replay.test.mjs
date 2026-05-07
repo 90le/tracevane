@@ -295,6 +295,38 @@ test("terminal service can suppress gateway output while streaming over http", a
   }
 });
 
+test("terminal service rejects http stream attach before a session exists", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const service = createTestService(tempDir);
+
+  try {
+    assert.throws(
+      () =>
+        service.attachStreamClient(
+          { sid: "term-stream-without-session" },
+          {
+            streamId: "stream-orphan",
+            emit() {
+              return true;
+            },
+          },
+        ),
+      /terminal_session_not_found/,
+    );
+
+    const sessions = await service.listPersistedSessions();
+    assert.equal(
+      sessions.sessions.some(
+        (session) => session.sessionId === "term-stream-without-session",
+      ),
+      false,
+    );
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("terminal service clear removes replay backlog for refreshed clients", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
   const service = createTestService(tempDir);

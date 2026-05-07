@@ -2165,9 +2165,7 @@ export function createTerminalService(
           "node-pty is not available; terminal sessions are disabled",
         );
       }
-      const session = getOrCreateSession(payload.sid || null, {
-        resumePersisted: normalizeResumeSession(payload.resume),
-      });
+      const session = requireActiveSession(payload.sid);
       registerStreamSubscriber(session, runtime);
       persistSessionDescriptor(session);
       return {
