@@ -2436,6 +2436,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
 
   if (event.kind === 'canonical.snapshot') {
     const lastMessage = event.messages[event.messages.length - 1];
+    const shouldApplySnapshotWindow = !viewingHistoricalPosition.value || event.messages.length === 0;
     syncSessionRow(event.sessionKey, {
       runtime: event.runtime,
       updatedAt: lastMessage?.createdAt || event.emittedAt,
@@ -2443,17 +2444,31 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
     });
     if (isSelectedSession) {
       applyRuntime(event.runtime);
-      runtimeMachineState.value = applyChatSessionCanonicalSnapshotEvent(runtimeMachineState.value, {
-        version: event.version,
-        messages: event.messages,
-        overlays: event.overlays,
-      });
-      if (historyPayload.value?.session.key === event.sessionKey) {
+      const snapshotPageInfo = event.pageInfo || historyPayload.value?.pageInfo || historyPageInfo.value;
+      if (shouldApplySnapshotWindow) {
+        runtimeMachineState.value = applyChatSessionCanonicalSnapshotEvent(runtimeMachineState.value, {
+          version: event.version,
+          messages: event.messages,
+          overlays: event.overlays,
+        });
+      }
+      if (event.pageInfo && shouldApplySnapshotWindow) {
+        if (
+          historyPageInfo.value.beforeCursor !== event.pageInfo.beforeCursor
+          || historyPageInfo.value.afterCursor !== event.pageInfo.afterCursor
+        ) {
+          clearHistoryBeforePrefetch();
+          clearHistoryAfterPrefetch();
+        }
+        historyPageInfo.value = event.pageInfo;
+      }
+      if (historyPayload.value?.session.key === event.sessionKey && shouldApplySnapshotWindow) {
         historyPayload.value = {
           ...historyPayload.value,
           messages: event.messages,
           overlays: event.overlays,
           runtime: event.runtime,
+          pageInfo: snapshotPageInfo,
           session: {
             ...historyPayload.value.session,
             runtime: event.runtime,
@@ -2463,7 +2478,9 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
         };
       }
       syncSessionAutoLabel(event.sessionKey, event.messages);
-      persistHistorySnapshot(event.sessionKey);
+      if (shouldApplySnapshotWindow) {
+        persistHistorySnapshot(event.sessionKey);
+      }
     }
     return;
   }

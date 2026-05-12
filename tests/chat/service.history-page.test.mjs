@@ -806,6 +806,127 @@ test("bootstrap reads only the local transcript tail window before full history 
   }
 });
 
+test("canonical bootstrap snapshot is windowed and avoids full local transcript reads", async () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openclaw-studio-canonical-tail-"),
+  );
+  const originalReadFileSync = fs.readFileSync;
+  try {
+    const workspace = path.join(root, "workspace");
+    const transcriptFile = path.join(root, "transcripts", "session-canonical-tail.jsonl");
+    const sessionKey = "agent:main:webchat:direct:canonical-tail-session";
+
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
+    fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+
+    fs.writeFileSync(
+      path.join(root, "openclaw.json"),
+      JSON.stringify(
+        {
+          gateway: {
+            auth: {
+              token: "gateway-token-test",
+            },
+          },
+          agents: {
+            defaults: { workspace },
+            list: [{ id: "main", workspace, default: true }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    fs.writeFileSync(
+      transcriptFile,
+      Array.from({ length: 100 }, (_, index) =>
+        JSON.stringify({
+          id: `m${index + 1}`,
+          role: index % 2 === 0 ? "user" : "assistant",
+          text: `canonical message ${index + 1}`,
+          timestamp: `2026-03-23T${String(10 + Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}:00.000Z`,
+        }),
+      ).join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(root, "agents", "main", "sessions", "sessions.json"),
+      JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId: "session-canonical-tail",
+            sessionFile: transcriptFile,
+            label: "Canonical tail transcript",
+            updatedAt: "2026-03-23T11:39:00.000Z",
+            origin: {
+              provider: "wechat",
+              surface: "webchat",
+              label: "Canonical tail transcript",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const config = createStandaloneStudioConfig({
+      port: await getFreePort(),
+      openclawRoot: root,
+      gatewayWsUrl: "ws://127.0.0.1:1",
+    });
+    const context = createStudioContext({
+      config,
+      logger: createLogger(),
+    });
+
+    let transcriptReadFileSyncCount = 0;
+    fs.readFileSync = ((filePath, ...args) => {
+      if (String(filePath) === transcriptFile) {
+        transcriptReadFileSyncCount += 1;
+      }
+      return originalReadFileSync.call(fs, filePath, ...args);
+    });
+
+    const attached = await context.services.chat.attachGatewayClient(
+      { sessionKey, bootstrapSnapshot: true },
+      { connId: "canonical-tail-test", emit: () => true },
+    );
+    const snapshot = attached.events.find((entry) => entry.kind === "canonical.snapshot");
+    assert.ok(snapshot, "expected canonical bootstrap snapshot");
+    assert.equal(transcriptReadFileSyncCount, 0);
+    assert.equal(snapshot.messages.length, 80);
+    assert.deepEqual(
+      snapshot.messages.map((message) => message.id).slice(0, 3),
+      ["m21", "m22", "m23"],
+    );
+    assert.deepEqual(
+      snapshot.messages.map((message) => message.id).slice(-3),
+      ["m98", "m99", "m100"],
+    );
+    assert.equal(snapshot.pageInfo?.hasMoreBefore, true);
+    assert.equal(typeof snapshot.pageInfo?.beforeCursor, "string");
+    assert.equal(snapshot.pageInfo?.hasMoreAfter, false);
+    assert.equal(snapshot.pageInfo?.afterCursor, null);
+
+    const beforePage = await context.services.chat.getHistory(sessionKey, {
+      before: snapshot.pageInfo?.beforeCursor,
+      limit: 3,
+    });
+    assert.deepEqual(
+      beforePage.messages.map((message) => message.id),
+      ["m18", "m19", "m20"],
+    );
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("history page can rebuild a persisted local index from a lightweight transcript scan before any mirror exists", async () => {
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "openclaw-studio-history-window-scan-fast-"),

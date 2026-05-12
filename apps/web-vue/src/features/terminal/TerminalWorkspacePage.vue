@@ -64,12 +64,6 @@
             :recent-sessions="workspace.recentSessions.value"
             :ended-sessions="workspace.endedSessions.value"
             :active-session-id="workspace.activeSessionId.value"
-            :active-session-status="activeSession?.status || null"
-            :recent-output="activeSessionRecentOutput"
-            :recent-output-label="activeSessionRecentOutputLabel"
-            :history-busy="sessionHistoryBusy"
-            :history-entries="sessionHistoryEntries"
-            :replay-command="replayCommand"
             @toggle-summary="toggleInspectorSummary"
             @refresh="refreshInspectorStatus"
             @select-section="inspectorSection = $event"
@@ -80,7 +74,6 @@
             @select-session="handleInspectorSessionSelect"
             @end-session="handleInspectorSessionEnd"
             @delete-session="handleInspectorSessionDelete"
-            @replay-last-command="handleReplayLastCommand"
           />
         </div>
       </TerminalInspectorDrawer>
@@ -154,12 +147,6 @@
                 :recent-sessions="workspace.recentSessions.value"
                 :ended-sessions="workspace.endedSessions.value"
                 :active-session-id="workspace.activeSessionId.value"
-                :active-session-status="activeSession?.status || null"
-                :recent-output="activeSessionRecentOutput"
-                :recent-output-label="activeSessionRecentOutputLabel"
-                :history-busy="sessionHistoryBusy"
-                :history-entries="sessionHistoryEntries"
-                :replay-command="replayCommand"
                 @toggle-summary="toggleInspectorSummary"
                 @refresh="refreshInspectorStatus"
                 @select-section="inspectorSection = $event"
@@ -170,7 +157,6 @@
                 @select-session="handleInspectorSessionSelect"
                 @end-session="handleInspectorSessionEnd"
                 @delete-session="handleInspectorSessionDelete"
-                @replay-last-command="handleReplayLastCommand"
               />
             </div>
           </section>
@@ -187,7 +173,6 @@ import { useRoute, useRouter } from 'vue-router';
 import type {
   TerminalBinaryId,
   TerminalLaunchCli,
-  TerminalRecentOutputSummary,
 } from '../../../../../types/terminal';
 import { useLocalePreference } from '../../shared/locale';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
@@ -201,14 +186,12 @@ import {
   endTerminalSession,
   fetchPersistedTerminalSessions,
   fetchPersistedTerminalSessionDescriptor,
-  fetchPersistedTerminalSessionLedger,
   fetchTerminalActions,
   fetchTerminalLaunch,
   fetchTerminalStatus,
   renameTerminalSession,
 } from './api';
 import { buildTerminalActionLayers } from './terminal-action-catalog';
-import { buildTerminalSessionHistory, type TerminalSessionHistoryEntry } from './terminal-session-history';
 import { bindTerminalRouteSync } from './terminal-route-sync';
 import { createTerminalWorkspaceState } from './terminal-workspace-state';
 import './terminal-workspace.css';
@@ -233,8 +216,6 @@ const desktopInspectorOpen = ref(true);
 const inspectorSummaryExpanded = ref(true);
 const mobileInspectorOpen = ref(false);
 const workspaceHydrated = ref(false);
-const sessionHistoryBusy = ref(false);
-const sessionHistoryEntries = ref<TerminalSessionHistoryEntry[]>([]);
 const installFeedback = ref<{
   kind: 'info' | 'success' | 'error';
   message: string;
@@ -248,7 +229,6 @@ let resolveWorkspaceReady: (() => void) | null = null;
 const workspaceReady = new Promise<void>((resolve) => {
   resolveWorkspaceReady = resolve;
 });
-const pendingLocalSessionIds = new Set<string>();
 
 const activeSession = computed(() => workspace.sessions.value[workspace.activeSessionId.value || ''] || null);
 const activeSessionTitle = computed(() => {
@@ -260,18 +240,6 @@ const activeSessionTitle = computed(() => {
     sessionId: activeSession.value.sessionId,
   });
   return text(displayTitle.labelZh, displayTitle.labelEn);
-});
-const activeSessionRecentOutput = computed<TerminalRecentOutputSummary | null>(() => {
-  const summary = activeSession.value?.recentOutputSummary;
-  if (!summary?.tailText) return null;
-  return summary;
-});
-const replayCommand = computed(() => activeSession.value?.recentOutputSummary?.lastCommandHint || null);
-const activeSessionRecentOutputLabel = computed(() => {
-  if (!activeSessionRecentOutput.value) return '';
-  if (activeSession.value?.status === 'completed') return text('最近输出（已完成）', 'Recent Output (Completed)');
-  if (activeSession.value?.status === 'failed') return text('最近输出（失败）', 'Recent Output (Failed)');
-  return text('最近输出', 'Recent Output');
 });
 const runtimeModelLabel = computed(() => {
   const provider = String(terminalStatus.value?.config?.provider || '').trim();
@@ -342,7 +310,6 @@ const activeInspectorSummary = computed(() => {
   if (!current) return '';
   return `${current.label} ${current.count}`;
 });
-let historyRequestSeq = 0;
 
 function syncCompactInspectorMode(): void {
   const nextCompactMode =
@@ -398,55 +365,6 @@ async function refreshInspectorStatus(): Promise<void> {
 function refreshStatusLater(delayMs = 1800): void {
   globalThis.setTimeout(() => {
     void refreshInspectorStatus();
-  }, delayMs);
-}
-
-async function loadSessionHistory(sessionId: string | null | undefined): Promise<void> {
-  const normalizedSessionId = String(sessionId || '').trim();
-  const requestSeq = ++historyRequestSeq;
-  if (!normalizedSessionId) {
-    sessionHistoryEntries.value = [];
-    sessionHistoryBusy.value = false;
-    return;
-  }
-  if (pendingLocalSessionIds.has(normalizedSessionId)) {
-    sessionHistoryEntries.value = [];
-    sessionHistoryBusy.value = false;
-    return;
-  }
-
-  sessionHistoryBusy.value = true;
-  try {
-    const events = await fetchPersistedTerminalSessionLedger(normalizedSessionId);
-    if (requestSeq !== historyRequestSeq) return;
-    sessionHistoryEntries.value = buildTerminalSessionHistory(events, { limit: 60 });
-    if (
-      activeSession.value &&
-      activeSession.value.status !== 'running' &&
-      activeSession.value.status !== 'detached' &&
-      sessionHistoryEntries.value.length &&
-      inspectorSection.value !== 'sessions'
-    ) {
-      inspectorSection.value = 'sessions';
-    }
-  } catch {
-    if (requestSeq !== historyRequestSeq) return;
-    sessionHistoryEntries.value = [];
-  } finally {
-    if (requestSeq === historyRequestSeq) {
-      sessionHistoryBusy.value = false;
-    }
-  }
-}
-
-function refreshSessionHistoryLater(
-  sessionId: string | null | undefined,
-  delayMs = 1200,
-): void {
-  const normalizedSessionId = String(sessionId || '').trim();
-  if (!normalizedSessionId) return;
-  globalThis.setTimeout(() => {
-    void loadSessionHistory(normalizedSessionId);
   }, delayMs);
 }
 
@@ -572,22 +490,6 @@ onMounted(async () => {
 });
 
 watch(
-  () => activeSession.value?.sessionId,
-  (sessionId) => {
-    void loadSessionHistory(sessionId);
-  },
-  { immediate: true },
-);
-
-watch(
-  () => inspectorSection.value,
-  (section) => {
-    if (section !== 'sessions') return;
-    void loadSessionHistory(activeSession.value?.sessionId);
-  },
-);
-
-watch(
   () => [workspaceHydrated.value, route.params.sessionId] as const,
   ([hydrated, sessionId]) => {
     if (!hydrated) return;
@@ -631,7 +533,6 @@ async function openCommandSession(options: {
 }): Promise<string> {
   await ensureWorkspaceReady();
   const sessionId = buildSessionId();
-  pendingLocalSessionIds.add(sessionId);
   workspace.registerSession({
     sessionId,
     title: String(options.title || text('终端', 'Shell')).trim() || text('终端', 'Shell'),
@@ -645,7 +546,6 @@ async function openCommandSession(options: {
   await navigateToSession(sessionId);
   if (options.command) {
     workspace.setQueuedCommand(sessionId, ensureCommandLineBreak(options.command));
-    refreshSessionHistoryLater(sessionId);
   }
   return sessionId;
 }
@@ -664,7 +564,6 @@ function handleSessionAttached(session: TerminalSessionDescriptor): void {
   if (lockedRouteSessionId && lockedRouteSessionId !== sessionId) {
     return;
   }
-  pendingLocalSessionIds.delete(sessionId);
   const preserveRouteLockedActiveSession =
     Boolean(lockedRouteSessionId) &&
     lockedRouteSessionId !== sessionId;
@@ -692,7 +591,6 @@ function handleSessionAttached(session: TerminalSessionDescriptor): void {
       // ignore descriptor sync failures
     });
   }
-  void loadSessionHistory(sessionId);
 }
 
 function findActionItem(actionKey: string): TerminalActionItem | null {
@@ -900,7 +798,6 @@ async function handleInspectorActionTrigger(actionKey: string): Promise<void> {
 async function handleSessionSelect(sessionId: string): Promise<void> {
   workspace.openTab(sessionId);
   await navigateToSession(sessionId);
-  void loadSessionHistory(sessionId);
 }
 
 function handleSessionClose(sessionId: string): void {
@@ -916,7 +813,6 @@ function handleSessionClose(sessionId: string): void {
 async function handleInspectorSessionSelect(sessionId: string): Promise<void> {
   workspace.openTab(sessionId);
   await navigateToSession(sessionId);
-  void loadSessionHistory(sessionId);
   closeMobileInspectorIfCompact();
 }
 
@@ -926,16 +822,5 @@ async function handleInspectorSessionEnd(sessionId: string): Promise<void> {
 
 async function handleInspectorSessionDelete(sessionId: string): Promise<void> {
   await deleteSession(sessionId);
-}
-
-async function handleReplayLastCommand(command: string): Promise<void> {
-  const normalizedCommand = String(command || '').trim();
-  if (!normalizedCommand) return;
-  await openCommandSession({
-    title: text('重放命令', 'Replay Command'),
-    command: normalizedCommand,
-    source: 'manual',
-  });
-  closeMobileInspectorIfCompact();
 }
 </script>

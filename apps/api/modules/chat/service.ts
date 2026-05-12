@@ -117,7 +117,6 @@ import {
   mapMessagesFromParsedEntries,
   mapTranscriptCanonicalEntry,
   mapTranscriptMessage,
-  readTranscriptCanonicalEntries,
   readTranscriptMessages,
   shouldSkipTranscriptLine,
   type TranscriptMappingOptions,
@@ -264,6 +263,7 @@ interface ChatCanonicalState {
   version: string;
   source: 'local_transcript' | 'history_sse' | 'history_rpc' | 'studio_mirror';
   entries: ChatCanonicalEntry[];
+  pageInfo?: ChatHistoryPayload['pageInfo'];
 }
 
 interface HistorySnapshotCacheEntry {
@@ -295,6 +295,9 @@ function formatGatewayFileRef(relativePath: string): string {
 const CHAT_GATEWAY_LEASE_MS = 35_000;
 const CHAT_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
 const CHAT_GATEWAY_HEALTH_CACHE_MS = 1_500;
+const CHAT_CANONICAL_SNAPSHOT_WINDOW_LIMIT = 80;
+const CHAT_CANONICAL_STATE_ENTRY_LIMIT = CHAT_CANONICAL_SNAPSHOT_WINDOW_LIMIT * 4;
+const CHAT_CANONICAL_LOCAL_TAIL_RAW_LINE_LIMIT = 800;
 
 function compileGatewayMessageText(text: string, fileRefs: ChatSendFileRef[]): string {
   const refs = fileRefs.map((item) => formatGatewayFileRef(item.relativePath));
@@ -985,6 +988,65 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }));
   }
 
+  function buildCanonicalEntryIdentityKey(message: ChatMessageItem, messageSeq: number): string {
+    return [
+      String(messageSeq),
+      message.role,
+      normalizeString(message.text).replace(/\s+/g, ' '),
+      (message.toolCalls || []).map((item) => item.toolCallId).filter(Boolean).sort().join(','),
+    ].join('|');
+  }
+
+  function resequenceCanonicalEntries(
+    entries: ChatCanonicalEntry[],
+    firstMessageSeq: number,
+  ): ChatCanonicalEntry[] {
+    return entries.map((entry, index) => {
+      const messageSeq = firstMessageSeq + index;
+      const message = cloneChatMessageItem(entry.message)!;
+      return {
+        ...entry,
+        message,
+        messageSeq,
+        identityKey: buildCanonicalEntryIdentityKey(message, messageSeq),
+      };
+    });
+  }
+
+  function cloneHistoryPageInfo(pageInfo: ChatHistoryPayload['pageInfo']): ChatHistoryPayload['pageInfo'] {
+    return {
+      hasMoreBefore: pageInfo.hasMoreBefore,
+      beforeCursor: pageInfo.beforeCursor,
+      hasMoreAfter: pageInfo.hasMoreAfter,
+      afterCursor: pageInfo.afterCursor,
+    };
+  }
+
+  function canonicalEntriesRepresentSameMessage(
+    left: ChatCanonicalEntry,
+    right: ChatCanonicalEntry,
+  ): boolean {
+    return left.messageId === right.messageId;
+  }
+
+  function findCanonicalTailOverlapIndex(
+    entries: ChatCanonicalEntry[],
+    target: ChatCanonicalEntry,
+  ): number {
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      if (canonicalEntriesRepresentSameMessage(entries[index]!, target)) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  function compactLocalCanonicalEntries(entries: ChatCanonicalEntry[]): ChatCanonicalEntry[] {
+    return entries.length > CHAT_CANONICAL_STATE_ENTRY_LIMIT
+      ? entries.slice(-CHAT_CANONICAL_STATE_ENTRY_LIMIT)
+      : entries;
+  }
+
   function buildCanonicalEntriesSignature(entries: ChatCanonicalEntry[]): string {
     return entries
       .map((entry) => `${entry.messageSeq}:${entry.identityKey}:${entry.messageId}`)
@@ -1019,13 +1081,64 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       || buildRuntimeState(false, Boolean(getStudioSession(sessionKey)?.row.permissions.writable));
   }
 
+  function buildCanonicalSnapshotWindow(
+    entries: ChatCanonicalEntry[],
+    overlays: ChatRunOverlay[],
+    pageInfoOverride?: ChatHistoryPayload['pageInfo'] | null,
+  ): {
+    messages: ChatMessageItem[];
+    overlays: ChatRunOverlay[];
+    pageInfo: ChatHistoryPayload['pageInfo'];
+  } {
+    const limit = CHAT_CANONICAL_SNAPSHOT_WINDOW_LIMIT;
+    const end = entries.length;
+    const start = Math.max(0, end - limit);
+    const pageEntries = entries.slice(start, end);
+    const pageMessages = pageEntries.map((entry) => cloneChatMessageItem(entry.message)!);
+    const firstMessage = pageMessages[0] || null;
+    const pageInfo = pageInfoOverride && entries.length <= limit
+      ? cloneHistoryPageInfo(pageInfoOverride)
+      : {
+        hasMoreBefore: start > 0,
+        beforeCursor: firstMessage && start > 0
+          ? encodeHistoryCursor({
+            source: 'history_window',
+            anchorIndex: start,
+            anchorMessageId: firstMessage.id,
+            anchorCreatedAt: firstMessage.createdAt,
+            day: null,
+            query: null,
+            roleFilter: null,
+            contentFilter: null,
+          })
+          : null,
+        hasMoreAfter: false,
+        afterCursor: null,
+      };
+    const allMessagesForOverlayContext = overlays.length
+      ? entries.map((entry) => cloneChatMessageItem(entry.message)!)
+      : pageMessages;
+    return {
+      messages: pageMessages,
+      overlays: buildPageOverlaysForMessageWindow(
+        overlays,
+        allMessagesForOverlayContext,
+        pageMessages,
+        pageInfo,
+      ),
+      pageInfo,
+    };
+  }
+
   function emitCanonicalSnapshot(
     sessionKey: string,
     source: ChatCanonicalState['source'],
     entries: ChatCanonicalEntry[],
     version: string,
     overlays: ChatRunOverlay[],
+    pageInfoOverride?: ChatHistoryPayload['pageInfo'] | null,
   ): void {
+    const snapshotWindow = buildCanonicalSnapshotWindow(entries, overlays, pageInfoOverride);
     canonicalStates.set(sessionKey, {
       sessionKey,
       version,
@@ -1034,6 +1147,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         ...entry,
         message: cloneChatMessageItem(entry.message)!,
       })),
+      pageInfo: snapshotWindow.pageInfo,
     });
     if (!shouldEmitCanonicalProtocol()) {
       return;
@@ -1043,11 +1157,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       sessionKey,
       emittedAt: new Date().toISOString(),
       version,
-      messages: entries.map((entry) => cloneChatMessageItem(entry.message)!),
-      overlays: overlays.map((overlay) => ({
-        ...overlay,
-        toolCalls: overlay.toolCalls.map((item) => cloneChatMessageToolCallItem(item)),
-      })),
+      messages: snapshotWindow.messages,
+      overlays: snapshotWindow.overlays,
+      pageInfo: snapshotWindow.pageInfo,
       runtime: resolveCanonicalRuntime(sessionKey),
       source,
     });
@@ -1071,6 +1183,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           message: cloneChatMessageItem(entry.message)!,
         })),
       ],
+      pageInfo: current?.pageInfo,
     });
     if (!shouldEmitCanonicalProtocol()) {
       return;
@@ -2654,6 +2767,69 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
   }
 
+  function readLocalTranscriptCanonicalTailWindow(
+    sessionKey: string,
+    sourceSelection: Extract<ChatCanonicalSourceSelection, { kind: 'local_transcript' }>,
+  ): {
+    entries: ChatCanonicalEntry[];
+    pageInfo: ChatHistoryPayload['pageInfo'];
+  } {
+    const rawTail = readTranscriptRawTailEntries(
+      sourceSelection.sessionFile,
+      CHAT_CANONICAL_LOCAL_TAIL_RAW_LINE_LIMIT,
+    );
+    const mappingOptions: TranscriptMappingOptions = {
+      sessionKey,
+      collectMessageResources: mediaBridge.collectMessageResources,
+      overrideMessage: overrideTranscriptMessage,
+    };
+    const mappedEntries = mapCanonicalEntriesFromParsedEntries(rawTail.entries, mappingOptions)
+      .map(buildCanonicalEntryFromMapped);
+    const derivedObservability = deriveObservabilityFromHistory(rawTail.entries, {
+      sessionKey,
+      collectToolArtifacts: mediaBridge.collectToolArtifacts,
+      toolCardLimit: 12,
+    });
+    const enrichedMessages = enrichMessagesWithToolCards(
+      mappedEntries.map((entry) => entry.message),
+      derivedObservability.toolCards,
+    );
+    const enrichedEntries = mappedEntries.map((entry, index) => ({
+      ...entry,
+      message: cloneChatMessageItem(enrichedMessages[index] || entry.message)!,
+    }));
+    const windowEntries = resequenceCanonicalEntries(
+      enrichedEntries.slice(-CHAT_CANONICAL_SNAPSHOT_WINDOW_LIMIT),
+      1,
+    );
+    const hasMoreBefore = Boolean(
+      sourceSelection.priorSessionFiles.length > 0
+      || rawTail.hasMoreBefore
+      || enrichedEntries.length > windowEntries.length,
+    );
+    const firstMessage = windowEntries[0]?.message || null;
+    return {
+      entries: windowEntries,
+      pageInfo: {
+        hasMoreBefore,
+        beforeCursor: firstMessage && hasMoreBefore
+          ? encodeHistoryCursor({
+            source: 'history_window',
+            anchorIndex: 0,
+            anchorMessageId: firstMessage.id,
+            anchorCreatedAt: firstMessage.createdAt,
+            day: null,
+            query: null,
+            roleFilter: null,
+            contentFilter: null,
+          })
+          : null,
+        hasMoreAfter: false,
+        afterCursor: null,
+      },
+    };
+  }
+
   function extractTranscriptLineTimestamp(raw: Record<string, unknown>): string | null {
     const record = extractTranscriptRecord(raw);
     return normalizeDate(raw.timestamp || raw.createdAt || raw.updatedAt || record.timestamp || record.createdAt || record.updatedAt) || null;
@@ -2867,15 +3043,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
   const transcriptStatCache = new LruMap<string, TranscriptStatCacheEntry>(200);
 
-  interface TranscriptToolCardsCacheEntry {
-    ino: number;
-    size: number;
-    mtimeMs: number;
-    toolCards: ChatToolCard[];
-  }
-
-  const transcriptToolCardsCache = new LruMap<string, TranscriptToolCardsCacheEntry>(200);
-
   function readTranscriptEntriesIncremental(sessionFile: string): Record<string, unknown>[] {
     let stat: fs.Stats;
     try {
@@ -2898,43 +3065,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       entries,
     });
     return entries;
-  }
-
-  /**
-   * Returns transcript-derived tool cards with stat-based caching.
-   * Re-derives only when the transcript file actually changes on disk;
-   * subsequent calls with the same file state return the cached result.
-   */
-  function deriveTranscriptToolCardsCached(
-    sessionFile: string,
-    sessionKey: string,
-  ): ChatToolCard[] {
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(sessionFile);
-    } catch {
-      return [];
-    }
-    const cached = transcriptToolCardsCache.get(sessionFile);
-    if (cached && cached.ino === stat.ino && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) {
-      return cached.toolCards;
-    }
-    const rawMessages = readTranscriptEntriesIncremental(sessionFile);
-    if (!rawMessages.length) {
-      return [];
-    }
-    const derivedObs = deriveObservabilityFromHistory(rawMessages, {
-      sessionKey,
-      collectToolArtifacts: mediaBridge.collectToolArtifacts,
-      toolCardLimit: Number.POSITIVE_INFINITY,
-    });
-    transcriptToolCardsCache.set(sessionFile, {
-      ino: stat.ino,
-      size: stat.size,
-      mtimeMs: stat.mtimeMs,
-      toolCards: derivedObs.toolCards,
-    });
-    return derivedObs.toolCards;
   }
 
   async function loadHistorySnapshot(
@@ -4189,6 +4319,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     const current = canonicalStates.get(sessionKey);
     let version = current?.version || null;
     let source = current?.source || null;
+    let pageInfo = current?.pageInfo ? cloneHistoryPageInfo(current.pageInfo) : null;
     let entries = current?.entries.map((entry) => ({
       ...entry,
       message: cloneChatMessageItem(entry.message)!,
@@ -4209,55 +4340,69 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             ...entry,
             message: cloneChatMessageItem(entry.message)!,
           }));
+          pageInfo = refreshed.pageInfo ? cloneHistoryPageInfo(refreshed.pageInfo) : null;
         }
       }
       if (!version || !source) {
-        const snapshot = await loadHistorySnapshot(sessionKey);
-        entries = snapshot.canonicalEntries.length
-          ? snapshot.canonicalEntries
-          : buildCanonicalEntriesFromMessages(snapshot.messages.filter((message) => message.source !== 'inject'));
-        version = nextCanonicalVersion(sessionKey, snapshot.canonicalSource);
-        source = snapshot.canonicalSource;
-        overlays = snapshot.overlays;
-        runtime = snapshot.runtime;
-        canonicalStates.set(sessionKey, {
-          sessionKey,
-          version,
-          source,
-          entries: entries.map((entry) => ({
-            ...entry,
-            message: cloneChatMessageItem(entry.message)!,
-          })),
-        });
+        const sourceSelection = selectCanonicalSource(sessionKey);
+        if (sourceSelection.kind === 'local_transcript') {
+          const localTail = readLocalTranscriptCanonicalTailWindow(sessionKey, sourceSelection);
+          entries = localTail.entries;
+          pageInfo = localTail.pageInfo;
+          version = nextCanonicalVersion(sessionKey, 'local_transcript');
+          source = 'local_transcript';
+          try {
+            runtime = (await requireSession(sessionKey)).runtime;
+          } catch {}
+          canonicalStates.set(sessionKey, {
+            sessionKey,
+            version,
+            source,
+            entries: entries.map((entry) => ({
+              ...entry,
+              message: cloneChatMessageItem(entry.message)!,
+            })),
+            pageInfo: cloneHistoryPageInfo(pageInfo),
+          });
+        } else {
+          const snapshot = await loadHistorySnapshot(sessionKey);
+          entries = snapshot.canonicalEntries.length
+            ? snapshot.canonicalEntries
+            : buildCanonicalEntriesFromMessages(snapshot.messages.filter((message) => message.source !== 'inject'));
+          version = nextCanonicalVersion(sessionKey, snapshot.canonicalSource);
+          source = snapshot.canonicalSource;
+          overlays = snapshot.overlays;
+          runtime = snapshot.runtime;
+          pageInfo = null;
+          const snapshotWindow = buildCanonicalSnapshotWindow(entries, overlays);
+          canonicalStates.set(sessionKey, {
+            sessionKey,
+            version,
+            source,
+            entries: entries.map((entry) => ({
+              ...entry,
+              message: cloneChatMessageItem(entry.message)!,
+            })),
+            pageInfo: snapshotWindow.pageInfo,
+          });
+          pageInfo = snapshotWindow.pageInfo;
+        }
       }
     }
     if (!shouldEmitCanonicalProtocol()) {
       return null;
     }
-    let snapshotMessages = entries.map((entry) => cloneChatMessageItem(entry.message)!);
-    let snapshotOverlays = overlays.map((overlay) => ({
-      ...overlay,
-      toolCalls: overlay.toolCalls.map((item) => cloneChatMessageToolCallItem(item)),
-    }));
-    // Collect enrichment tool cards from ALL available sources.
+    const snapshotWindow = buildCanonicalSnapshotWindow(entries, overlays, pageInfo);
+    let snapshotMessages = snapshotWindow.messages;
+    let snapshotOverlays = snapshotWindow.overlays;
+    const snapshotPageInfo = snapshotWindow.pageInfo;
+    // Collect enrichment tool cards from bounded live sources.
     // The canonical cache may hold stale 'running' statuses from streaming events
     // that were cached before tool results arrived (e.g. page refresh mid-stream).
-    // We merge three sources (most complete first):
-    //   1. Transcript-derived tool cards — parsed from the raw JSONL with no count limit,
-    //      each toolresult record yields a terminal status (completed/error).
-    //   2. Overlay tool calls — from run projections/shadows (may be empty after cleanup).
-    //   3. observability.toolCards — the runtime in-memory cache, capped at 12.
+    // Avoid reparsing the full transcript here; local transcript snapshots are already
+    // built from the tail window and full history remains behind explicit pagination.
     const enrichmentMap = new Map<string, ChatToolCard>();
-    // Source 1: Derive terminal statuses from the raw transcript (stat-cached, cheap).
-    const bootstrapSourceSelection = selectCanonicalSource(sessionKey);
-    if (bootstrapSourceSelection.kind === 'local_transcript') {
-      for (const tc of deriveTranscriptToolCardsCached(bootstrapSourceSelection.sessionFile, sessionKey)) {
-        if (tc.toolCallId) {
-          enrichmentMap.set(tc.toolCallId, tc);
-        }
-      }
-    }
-    // Source 2: Overlay tool calls from run projections/shadows.
+    // Source 1: Overlay tool calls from run projections/shadows.
     for (const overlay of snapshotOverlays) {
       for (const tc of overlay.toolCalls) {
         if (tc.toolCallId) {
@@ -4266,7 +4411,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         }
       }
     }
-    // Source 3: Runtime in-memory tool cards (may have richer artifacts data).
+    // Source 2: Runtime in-memory tool cards (may have richer artifacts data).
     const sessionData = getStudioSession(sessionKey);
     const snapshotToolCards = sessionData?.observability?.toolCards;
     if (snapshotToolCards?.length) {
@@ -4292,6 +4437,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       version: version || nextCanonicalVersion(sessionKey, 'history_rpc'),
       messages: snapshotMessages,
       overlays: snapshotOverlays,
+      pageInfo: snapshotPageInfo,
       runtime,
       source: source || 'history_rpc',
     };
@@ -4417,21 +4563,50 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (selection.kind !== 'local_transcript') {
       return;
     }
-    const snapshot = await loadHistorySnapshot(sessionKey);
-    const entries = snapshot.canonicalEntries.length
-      ? snapshot.canonicalEntries
-      : readTranscriptCanonicalEntries(selection.sessionFile, {
-        sessionKey,
-        collectMessageResources: mediaBridge.collectMessageResources,
-        overrideMessage: overrideTranscriptMessage,
-      }).map(buildCanonicalEntryFromMapped);
-    applyCanonicalStateUpdate({
+    const localTail = readLocalTranscriptCanonicalTailWindow(sessionKey, selection);
+    const overlays = listRunOverlaysForSession(sessionKey);
+    const current = canonicalStates.get(sessionKey);
+
+    if (current?.source === 'local_transcript') {
+      const lastCurrentEntry = current.entries[current.entries.length - 1] || null;
+      const overlapIndex = lastCurrentEntry
+        ? findCanonicalTailOverlapIndex(localTail.entries, lastCurrentEntry)
+        : -1;
+      if (lastCurrentEntry && overlapIndex >= 0) {
+        if (overlapIndex >= localTail.entries.length - 1) {
+          return;
+        }
+        const appendEntries = resequenceCanonicalEntries(
+          localTail.entries.slice(overlapIndex + 1),
+          lastCurrentEntry.messageSeq + 1,
+        );
+        emitCanonicalMessages(sessionKey, 'local_transcript', appendEntries, current.version);
+        const updated = canonicalStates.get(sessionKey);
+        if (updated?.source === 'local_transcript') {
+          updated.entries = compactLocalCanonicalEntries(updated.entries);
+          updated.pageInfo = buildCanonicalSnapshotWindow(
+            updated.entries,
+            overlays,
+            current.pageInfo || localTail.pageInfo,
+          ).pageInfo;
+          canonicalStates.set(sessionKey, updated);
+        }
+        return;
+      }
+    }
+
+    const nextVersion = current?.source === 'local_transcript'
+      && buildCanonicalEntriesSignature(current.entries) === buildCanonicalEntriesSignature(localTail.entries)
+      ? current.version
+      : nextCanonicalVersion(sessionKey, 'local_transcript');
+    emitCanonicalSnapshot(
       sessionKey,
-      source: 'local_transcript',
-      entries,
-      overlays: snapshot.overlays,
-      allowAppend: true,
-    });
+      'local_transcript',
+      localTail.entries,
+      nextVersion,
+      overlays,
+      localTail.pageInfo,
+    );
   }
 
   function paginateMessageList(
@@ -5989,6 +6164,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             version: nextCanonicalVersion(bridge.sessionKey, 'history_sse'),
             messages: [],
             overlays: [],
+            pageInfo: {
+              hasMoreBefore: false,
+              beforeCursor: null,
+              hasMoreAfter: false,
+              afterCursor: null,
+            },
             runtime: resolveCanonicalRuntime(bridge.sessionKey),
             source: 'history_sse',
           });

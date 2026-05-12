@@ -73,12 +73,7 @@ const terminalHistoryPath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/terminal-session-history.ts",
 );
-const terminalHistoryPanelPath = path.join(
-  rootDir,
-  "apps/web-vue/src/features/terminal/TerminalSessionHistoryPanel.vue",
-);
 const terminalHistory = fs.readFileSync(terminalHistoryPath, "utf8");
-const terminalHistoryPanel = fs.readFileSync(terminalHistoryPanelPath, "utf8");
 const terminalRouteSyncPath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/terminal-route-sync.ts",
@@ -143,7 +138,7 @@ test("terminal routes expose minimal recovery endpoints for persisted sessions",
   assert.match(terminalRoutes, /sendSseEvent\(res, "terminal", event\)/);
 });
 
-test("terminal session pane does not render recent output disclosure above terminal stage", () => {
+test("terminal side panels do not duplicate terminal output history", () => {
   const panePath = path.join(
     rootDir,
     "apps/web-vue/src/features/terminal/TerminalSessionPane.vue",
@@ -152,10 +147,12 @@ test("terminal session pane does not render recent output disclosure above termi
 
   assert.doesNotMatch(pane, /terminal-session-output-disclosure/);
   assert.doesNotMatch(pane, /recentOutputSummaryLabel/);
-  assert.match(inspectorContent, /terminal-inspector-recent-output/);
-  assert.match(workspacePage, /activeSessionRecentOutputLabel/);
-  assert.match(inspectorContent, /recentOutput\.tailText/);
-  assert.match(inspectorContent, /recentOutput\.lastError/);
+  assert.doesNotMatch(inspectorContent, /terminal-inspector-recent-output/);
+  assert.doesNotMatch(inspectorContent, /recentOutput\.tailText/);
+  assert.doesNotMatch(inspectorContent, /recentOutput\.lastError/);
+  assert.doesNotMatch(terminalSessionExplorer, /terminal-session-item__snippet/);
+  assert.doesNotMatch(terminalSessionExplorer, /recentOutputSummary\.tailText/);
+  assert.doesNotMatch(workspacePage, /activeSessionRecentOutputLabel/);
   assert.match(terminalConsole, /handoffContext: readRouteHandoffContext\(\)/);
 });
 
@@ -207,15 +204,20 @@ test("terminal workspace exposes shared inspector content and mobile bottom shee
   assert.match(inspectorContent, /terminal-summary-inline__chip/);
 });
 
-test("terminal workspace loads persisted ledger history and replay affordances", () => {
-  assert.match(workspacePage, /fetchPersistedTerminalSessionLedger/);
-  assert.match(workspacePage, /buildTerminalSessionHistory/);
-  assert.match(workspacePage, /sessionHistoryEntries/);
-  assert.match(workspacePage, /loadSessionHistory/);
-  assert.match(workspacePage, /handleReplayLastCommand/);
-  assert.match(inspectorContent, /<TerminalSessionHistoryPanel/);
-  assert.match(terminalHistoryPanel, /replayLastCommand/);
-  assert.match(terminalHistory, /buildTerminalSessionHistory/);
+test("terminal inspector does not duplicate persisted history beside the terminal", () => {
+  assert.doesNotMatch(workspacePage, /fetchPersistedTerminalSessionLedger/);
+  assert.doesNotMatch(workspacePage, /buildTerminalSessionHistory/);
+  assert.doesNotMatch(workspacePage, /sessionHistoryEntries/);
+  assert.doesNotMatch(workspacePage, /loadSessionHistory/);
+  assert.doesNotMatch(workspacePage, /handleReplayLastCommand/);
+  assert.doesNotMatch(inspectorContent, /TerminalSessionHistoryPanel/);
+  assert.doesNotMatch(inspectorContent, /historyEntries/);
+  assert.doesNotMatch(inspectorContent, /replayLastCommand/);
+  assert.equal(
+    fs.existsSync(path.join(rootDir, "apps/web-vue/src/features/terminal/TerminalSessionHistoryPanel.vue")),
+    false,
+  );
+  assert.match(terminalHistory, /buildTerminalSessionReplayTranscript/);
 });
 
 test("terminal console keeps replay cursor ephemeral so refreshed xterm replays backlog", () => {
@@ -642,10 +644,7 @@ test("terminal workspace wires pane actions to session lifecycle handlers", () =
   assert.match(workspacePage, /await router\.push\(\{ path: targetPath \}\)/);
   assert.match(workspacePage, /function clearStoredTerminalSessionId/);
   assert.match(workspacePage, /sessionStorage\.removeItem\(TERMINAL_SESSION_STORAGE_KEY\)/);
-  assert.match(workspacePage, /const pendingLocalSessionIds = new Set<string>\(\)/);
-  assert.match(workspacePage, /pendingLocalSessionIds\.add\(sessionId\)/);
-  assert.match(workspacePage, /pendingLocalSessionIds\.has\(normalizedSessionId\)/);
-  assert.match(workspacePage, /pendingLocalSessionIds\.delete\(sessionId\)/);
+  assert.doesNotMatch(workspacePage, /pendingLocalSessionIds/);
 });
 
 test("terminal console session attachment sync is surfaced from console to workspace state", () => {

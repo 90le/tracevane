@@ -27,9 +27,6 @@
                   canResume: session.canResume,
                 }).labelEn) }}
               </span>
-              <span v-if="session.recentOutputSummary?.tailText" class="terminal-session-item__snippet">
-                {{ session.recentOutputSummary.tailText }}
-              </span>
             </button>
             <button
               type="button"
@@ -69,9 +66,6 @@
                   controlState: session.controlState,
                   canResume: session.canResume,
                 }).labelEn) }}
-              </span>
-              <span v-if="session.recentOutputSummary?.tailText" class="terminal-session-item__snippet">
-                {{ session.recentOutputSummary.tailText }}
               </span>
             </button>
             <button
@@ -113,9 +107,6 @@
                   controlState: session.controlState,
                   canResume: session.canResume,
                 }).labelEn) }}
-              </span>
-              <span v-if="session.recentOutputSummary?.tailText" class="terminal-session-item__snippet">
-                {{ session.recentOutputSummary.tailText }}
               </span>
             </button>
             <button

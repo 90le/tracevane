@@ -675,6 +675,7 @@ export type ChatStreamEvent =
     version: string;
     messages: ChatMessageItem[];
     overlays: ChatRunOverlay[];
+    pageInfo?: ChatHistoryPageInfo;
     runtime: ChatRuntimeState;
     source: ChatCanonicalSnapshotSource;
   }

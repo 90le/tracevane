@@ -181,14 +181,6 @@
     />
 
     <section v-else class="terminal-inspector-session-panel">
-      <TerminalSessionHistoryPanel
-        :busy="historyBusy"
-        :entries="historyEntries"
-        :replay-command="replayCommand"
-        :session-status="activeSessionStatus"
-        @replay-last-command="$emit('replayLastCommand', $event)"
-      />
-
       <TerminalSessionExplorer
         :open-sessions="openSessions"
         :recent-sessions="recentSessions"
@@ -198,14 +190,6 @@
         @end-session="$emit('endSession', $event)"
         @delete-session="$emit('deleteSession', $event)"
       />
-
-      <section v-if="recentOutput" class="terminal-inspector-recent-output">
-        <strong>{{ recentOutputLabel }}</strong>
-        <pre>{{ recentOutput.tailText }}</pre>
-        <div v-if="recentOutput.lastError">{{ text('最近错误', 'Recent Error') }}: {{ recentOutput.lastError }}</div>
-        <div v-if="recentOutput.lastCommandHint">{{ text('最近命令', 'Recent Command') }}: {{ recentOutput.lastCommandHint }}</div>
-        <div v-if="recentOutput.exitSummary">{{ text('退出摘要', 'Exit Summary') }}: {{ recentOutput.exitSummary }}</div>
-      </section>
     </section>
   </div>
 </template>
@@ -216,14 +200,11 @@ import type {
   TerminalBinaryId,
   TerminalBinaryStatus,
   TerminalLaunchCli,
-  TerminalRecentOutputSummary,
 } from '../../../../../types/terminal';
 import { useLocalePreference } from '../../shared/locale';
 import TerminalActionPanel from './TerminalActionPanel.vue';
-import TerminalSessionHistoryPanel from './TerminalSessionHistoryPanel.vue';
 import TerminalSessionExplorer from './TerminalSessionExplorer.vue';
 import type { TerminalActionLayer } from './terminal-action-catalog';
-import type { TerminalSessionHistoryEntry } from './terminal-session-history';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
 
 type InspectorSectionKey = 'tools' | 'dependencies' | 'actions' | 'sessions';
@@ -240,7 +221,6 @@ defineEmits<{
   (e: 'selectSession', sessionId: string): void;
   (e: 'endSession', sessionId: string): void;
   (e: 'deleteSession', sessionId: string): void;
-  (e: 'replayLastCommand', command: string): void;
 }>();
 
 function resolveBinaryCategoryLabel(category: TerminalBinaryStatus['category']): string {
@@ -281,12 +261,6 @@ const props = defineProps<{
   recentSessions: TerminalSessionDescriptor[];
   endedSessions: TerminalSessionDescriptor[];
   activeSessionId: string | null;
-  activeSessionStatus: "running" | "detached" | "completed" | "failed" | "lost" | null;
-  recentOutput: TerminalRecentOutputSummary | null;
-  recentOutputLabel: string;
-  historyBusy: boolean;
-  historyEntries: TerminalSessionHistoryEntry[];
-  replayCommand: string | null;
 }>();
 
 const showExpandedSummary = computed(() => !props.compactMode || props.summaryExpanded);

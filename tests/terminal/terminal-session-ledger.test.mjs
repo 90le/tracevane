@@ -122,3 +122,75 @@ test("重新初始化会从已有 jsonl 恢复并可按 session 查询", () => {
     ["evt-1", "evt-2"],
   );
 });
+
+test("启动时超大 ledger 只恢复尾部窗口并压缩文件", () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "terminal-ledger-"));
+  const filePath = path.join(stateDir, "terminal-session-ledger.jsonl");
+  const events = Array.from({ length: 12 }, (_, index) =>
+    makeEvent({
+      eventId: `evt-large-${String(index).padStart(2, "0")}`,
+      sessionId: "term-large",
+      timestamp: `2026-04-14T00:00:${String(index).padStart(2, "0")}.000Z`,
+      detail: { data: "x".repeat(80) },
+    }),
+  );
+
+  fs.writeFileSync(
+    filePath,
+    events.map((event) => JSON.stringify(event)).join("\n") + "\n",
+    "utf8",
+  );
+  const originalSize = fs.statSync(filePath).size;
+
+  const ledger = ledgerModule.createTerminalSessionLedger({
+    stateDir,
+    maxFileBytes: 900,
+    maxReadBytes: 900,
+    maxRetainedEvents: 3,
+  });
+
+  assert.deepEqual(
+    ledger.listBySession("term-large").map((item) => item.eventId),
+    ["evt-large-09", "evt-large-10", "evt-large-11"],
+  );
+  assert.equal(fs.statSync(filePath).size < originalSize, true);
+  assert.equal(fs.statSync(filePath).size <= 900, true);
+});
+
+test("追加超过阈值时会压缩 ledger 并保留最近事件", () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "terminal-ledger-"));
+  const filePath = path.join(stateDir, "terminal-session-ledger.jsonl");
+  const ledger = ledgerModule.createTerminalSessionLedger({
+    stateDir,
+    maxFileBytes: 900,
+    maxReadBytes: 900,
+    maxRetainedEvents: 4,
+  });
+
+  ledger.appendMany(
+    Array.from({ length: 10 }, (_, index) =>
+      makeEvent({
+        eventId: `evt-append-${String(index).padStart(2, "0")}`,
+        sessionId: "term-append",
+        timestamp: `2026-04-14T00:01:${String(index).padStart(2, "0")}.000Z`,
+        detail: { data: "y".repeat(40) },
+      }),
+    ),
+  );
+
+  const fileEvents = fs
+    .readFileSync(filePath, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+
+  assert.deepEqual(
+    ledger.listBySession("term-append").map((item) => item.eventId),
+    ["evt-append-06", "evt-append-07", "evt-append-08", "evt-append-09"],
+  );
+  assert.deepEqual(
+    fileEvents.map((item) => item.eventId),
+    ["evt-append-06", "evt-append-07", "evt-append-08", "evt-append-09"],
+  );
+  assert.equal(fs.statSync(filePath).size <= 900, true);
+});
