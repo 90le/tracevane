@@ -217,6 +217,18 @@ fi
 if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip "cc-connect"; then
   log "Step 3/8: 安装 cc-connect (dmwork 增强版)..."
   mkdir -p "$HOME/.local/bin"
+
+  # Uninstall official npm cc-connect to avoid PATH conflicts
+  # The npm version does NOT support dmwork platform
+  if npm list -g cc-connect &>/dev/null; then
+    log "  检测到 npm 版本 cc-connect（不支持 dmwork），正在卸载..."
+    npm uninstall -g cc-connect 2>/dev/null || true
+    # Also remove the binary symlink left behind
+    rm -f "$HOME/.npm-global/bin/cc-connect" 2>/dev/null || true
+    rm -rf "$HOME/.npm-global/lib/node_modules/cc-connect" 2>/dev/null || true
+    log "  已卸载 npm 版本 cc-connect"
+  fi
+
   CC_BIN="$RESOURCES_DIR/bin/cc-connect"
   # Force reinstall: remove old binary first
   if should_force "cc-connect" && [[ -x "$HOME/.local/bin/cc-connect" ]]; then
@@ -238,11 +250,28 @@ if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip "cc-connect"; then
       warn "  cc-connect 二进制未找到，跳过。可手动安装到 ~/.local/bin/cc-connect"
     fi
   fi
-  # Ensure PATH includes ~/.local/bin
+  # Ensure PATH includes ~/.local/bin with PRIORITY over npm-global
   if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
     export PATH="$HOME/.local/bin:$PATH"
-    log "  已添加 ~/.local/bin 到 PATH"
+    # Prepend to bashrc so it takes priority
+    sed -i '\|^export PATH=|d' "$HOME/.bashrc" 2>/dev/null || true
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+    log "  已添加 ~/.local/bin 到 PATH（优先级最高）"
+  else
+    # Already in PATH but check if it's before npm-global
+    export PATH="$HOME/.local/bin:$PATH"
+  fi
+  # Verify the correct binary is found
+  CC_FOUND="$(command -v cc-connect 2>/dev/null || true)"
+  if [[ -n "$CC_FOUND" ]]; then
+    log "  cc-connect 路径: $CC_FOUND"
+    # Check if it's our dmwork version
+    if "$CC_FOUND" --version 2>&1 | grep -q 'dev'; then
+      log "  ✅ dmwork 增强版已就位"
+    else
+      warn "  当前 cc-connect 不是 dmwork 版本，可能有 PATH 冲突"
+      warn "  路径: $CC_FOUND"
+    fi
   fi
 else
   log "Step 3/8: 跳过 cc-connect（--skip-cc-connect）"
