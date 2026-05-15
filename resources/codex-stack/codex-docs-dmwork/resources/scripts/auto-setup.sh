@@ -760,9 +760,26 @@ codex.env_key = "OPENAI_API_KEY"
 [[projects]]
 name = "main"
 
-# ── DMWork 平台（默认启用） ──
-[[projects.platforms]]
-type = "dmwork"
+# ── 平台配置（至少需要一个，cc-connect 才能启动）──
+# 方式 1: 飞书 — 运行 cc-connect feishu setup 自动配置
+# [[projects.platforms]]
+# type = "feishu"
+# [projects.platforms.options]
+# app_id = "YOUR_FEISHU_APP_ID"
+# app_secret = "YOUR_FEISHU_APP_SECRET"
+
+# 方式 2: DMWork — 需要提供 bot_token
+# [[projects.platforms]]
+# type = "dmwork"
+# [projects.platforms.options]
+# bot_token = "YOUR_DMWORK_BOT_TOKEN"
+# api_url = "https://your-dmwork-instance.com"
+
+# 方式 3: 微信 — 运行 cc-connect weixin setup 扫码绑定
+# [[projects.platforms]]
+# type = "weixin"
+# [projects.platforms.options]
+# token = "YOUR_ILINK_TOKEN"
 
 # 管理员用户（可执行特权命令）
 # 获取方式: journalctl --user -u cc-connect --since "5 min ago" | grep "user="
@@ -783,15 +800,13 @@ interval_ms = 1500
 reset_on_idle_mins = 30
 CCEOF
       log "  cc-connect 配置已写入: $CC_CONFIG"
-      log "  已添加 DMWork 平台支持"
+      warn "  cc-connect 需要至少配置一个平台才能启动"
+      warn "  运行以下命令之一完成平台配置："
+      warn "    cc-connect feishu setup   # 飞书（推荐）"
+      warn "    cc-connect weixin setup   # 微信"
+      warn "  或手动编辑 $CC_CONFIG 添加 [[projects.platforms]]"
     else
       log "  保留现有 cc-connect 配置"
-      # 检查是否已有平台配置
-      if ! grep -q '\[\[projects.platforms\]\]' "$CC_CONFIG"; then
-        # 添加 DMWork 平台到现有配置
-        sed -i '/\[\[projects\]\]/a\\n# ── DMWork 平台（自动添加） ──\n[[projects.platforms]]\ntype = "dmwork"' "$CC_CONFIG"
-        log "  已向现有配置添加 DMWork 平台"
-      fi
     fi
 
     # ── systemd 守护进程 ──
@@ -827,29 +842,43 @@ SVCEOF
 
     systemctl --user daemon-reload
     systemctl --user enable cc-connect.service 2>/dev/null || true
-    if [[ "$NO_START" != true ]]; then
-      systemctl --user restart cc-connect.service 2>/dev/null || {
-        warn "  cc-connect 首次启动，可能需要配置平台后再启动"
-      }
-    else
-      log "  跳过 cc-connect 启动（--no-start）"
-    fi
-    sleep 2
 
-    if systemctl --user is-active cc-connect &>/dev/null; then
-      log "  ✅ cc-connect 运行中 (systemd, 开机自启)"
+    # Check if config has at least one platform configured
+    HAS_PLATFORM=false
+    if grep -q '\[\[projects\.platforms\]\]' "$CC_CONFIG" 2>/dev/null; then
+      # Check that the platforms section is not all commented out
+      if grep -E '^\[\[projects\.platforms\]\]' "$CC_CONFIG" >/dev/null 2>&1; then
+        HAS_PLATFORM=true
+      fi
+    fi
+
+    if [[ "$NO_START" != true && "$HAS_PLATFORM" == true ]]; then
+      systemctl --user restart cc-connect.service 2>/dev/null || {
+        warn "  cc-connect 启动失败 — 请检查配置"
+      }
+      sleep 3
+
+      if systemctl --user is-active cc-connect &>/dev/null; then
+        log "  ✅ cc-connect 运行中 (systemd, 开机自启)"
+      else
+        warn "  cc-connect 启动后退出 — 请检查日志: journalctl --user -u cc-connect"
+      fi
     else
-      log "  ⚠️  cc-connect 未运行 — 需要配置平台后启动"
-      log "      编辑 $CC_CONFIG 添加平台配置后运行:"
-      log "      systemctl --user restart cc-connect.service"
+      if [[ "$HAS_PLATFORM" != true ]]; then
+        log "  cc-connect 未启动 — 需要先配置平台"
+        log "  快速配置："
+        log "    cc-connect --config $CC_CONFIG feishu setup"
+        log "    cc-connect --config $CC_CONFIG weixin setup"
+        log "  配置后启动: systemctl --user restart cc-connect.service"
+      fi
     fi
 
     log ""
-    log "  📌 平台配置提示："
-    log "    飞书: 在 config.toml 中添加 [[projects.platforms]] type="feishu""
-    log "    DMWork: 在 config.toml 中添加 [[projects.platforms]] type="dmwork""
+    log "  📌 cc-connect 平台配置（可选，至少配一个才能启动）:"
+    log "    飞书: cc-connect --config $CC_CONFIG feishu setup"
+    log "    微信: cc-connect --config $CC_CONFIG weixin setup"
+    log "    DMWork: 编辑 $CC_CONFIG 添加 bot_token"
     log "    配置后运行: systemctl --user restart cc-connect.service"
-    log "    获取管理员 ID: journalctl --user -u cc-connect --since '5 min ago' | grep user="
   fi
 else
   log "Step 8/8: 跳过 cc-connect 配置"
