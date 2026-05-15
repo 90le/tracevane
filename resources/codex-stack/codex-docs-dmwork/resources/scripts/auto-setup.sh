@@ -469,6 +469,7 @@ developer_instructions = "You have oh-my-codex installed. AGENTS.md is the orche
 # ── 模型配置 ──
 model = "kimi-k2.6"
 openai_base_url = "http://127.0.0.1:18796/v1"
+experimental_bearer_token = "${CPA_PROXY_KEY}"
 responses_websockets = true
 responses_websockets_v2 = true
 
@@ -626,6 +627,99 @@ fi
 fi  # end NO_START guard
 
 # =============================================================================
+# Step 7.5: 创建 Watchdog 定时器
+# =============================================================================
+if should_skip "watchdog"; then
+  log "Step 7.5: 跳过 Watchdog（--skip=watchdog）"
+else
+  log "创建 Watchdog 定时器..."
+
+  cat > "$HOME/.local/bin/codex-stack-watchdog.sh" << 'WATCHDOG'
+#!/usr/bin/env bash
+set -u
+
+log() { printf '[%s] %s
+' "$(date -Is)" "$*"; }
+
+unit_exists() {
+  systemctl --user list-unit-files "$1" >/dev/null 2>&1
+}
+
+restart_unit() {
+  local unit="$1" reason="$2"
+  log "restart ${unit}: ${reason}"
+  systemctl --user restart "$unit" >/dev/null 2>&1 || true
+}
+
+ensure_active() {
+  local unit="$1"
+  unit_exists "$unit" || return 0
+  if ! systemctl --user is-active --quiet "$unit"; then
+    restart_unit "$unit" "unit is not active"
+    sleep 2
+  fi
+}
+
+CPA_PORT="$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)"
+[[ -n "$CPA_PORT" ]] || CPA_PORT=18795
+COMPACT_PORT=18796
+
+ensure_active cli-proxy-api.service
+if ! curl -fsS --max-time 5 "http://127.0.0.1:${CPA_PORT}/healthz" >/dev/null 2>&1; then
+  sleep 5
+  curl -fsS --max-time 5 "http://127.0.0.1:${CPA_PORT}/healthz" >/dev/null 2>&1 || restart_unit cli-proxy-api.service "CPA healthz failed"
+fi
+
+ensure_active cpa-compact-proxy.service
+if ! curl -fsS --max-time 8 "http://127.0.0.1:${COMPACT_PORT}/v1/models" >/dev/null 2>&1; then
+  sleep 5
+  curl -fsS --max-time 8 "http://127.0.0.1:${COMPACT_PORT}/v1/models" >/dev/null 2>&1 || restart_unit cpa-compact-proxy.service "Compact Proxy /v1/models failed"
+fi
+
+if unit_exists cc-connect.service; then
+  ensure_active cc-connect.service
+fi
+WATCHDOG
+  chmod +x "$HOME/.local/bin/codex-stack-watchdog.sh"
+
+  cat > "$HOME/.config/systemd/user/codex-stack-watchdog.service" << 'SVCEOF'
+[Unit]
+Description=Watchdog for Codex CPA stack
+After=network-online.target cli-proxy-api.service cpa-compact-proxy.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/codex-stack-watchdog.sh
+StandardOutput=journal
+StandardError=journal
+SVCEOF
+
+  cat > "$HOME/.config/systemd/user/codex-stack-watchdog.timer" << 'SVCEOF'
+[Unit]
+Description=Run Codex stack watchdog every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Persistent=true
+Unit=codex-stack-watchdog.service
+
+[Install]
+WantedBy=timers.target
+SVCEOF
+
+  systemctl --user daemon-reload
+  systemctl --user enable codex-stack-watchdog.timer 2>/dev/null || true
+
+  if [[ "$NO_START" != true ]]; then
+    systemctl --user restart codex-stack-watchdog.timer 2>/dev/null || warn "  Watchdog 启动失败"
+    log "  ✅ Watchdog 定时器已启用"
+  fi
+fi
+
+# =============================================================================
 # Step 8: 配置 cc-connect + systemd 守护进程
 # =============================================================================
 if [[ "$SKIP_CC_CONNECT" != true ]]; then
@@ -666,6 +760,10 @@ codex.env_key = "OPENAI_API_KEY"
 [[projects]]
 name = "main"
 
+# ── DMWork 平台（默认启用） ──
+[[projects.platforms]]
+type = "dmwork"
+
 # 管理员用户（可执行特权命令）
 # 获取方式: journalctl --user -u cc-connect --since "5 min ago" | grep "user="
 # admin_from = "YOUR_USER_IDS"
@@ -685,8 +783,15 @@ interval_ms = 1500
 reset_on_idle_mins = 30
 CCEOF
       log "  cc-connect 配置已写入: $CC_CONFIG"
+      log "  已添加 DMWork 平台支持"
     else
       log "  保留现有 cc-connect 配置"
+      # 检查是否已有平台配置
+      if ! grep -q '\[\[projects.platforms\]\]' "$CC_CONFIG"; then
+        # 添加 DMWork 平台到现有配置
+        sed -i '/\[\[projects\]\]/a\\n# ── DMWork 平台（自动添加） ──\n[[projects.platforms]]\ntype = "dmwork"' "$CC_CONFIG"
+        log "  已向现有配置添加 DMWork 平台"
+      fi
     fi
 
     # ── systemd 守护进程 ──
