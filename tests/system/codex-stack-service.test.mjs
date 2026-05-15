@@ -92,6 +92,30 @@ model = "glm-5.1"
 `);
 }
 
+function createBoundCcConnectConfig(root) {
+  writeFile(path.join(root, ".cc-connect/config.toml"), `
+[[projects]]
+name = "main"
+[projects.agent.options]
+model = "glm-5.1"
+
+[[projects.platforms]]
+type = "dmwork"
+[projects.platforms.options]
+account_id = "test"
+`);
+}
+
+async function withMockFetch(handler, task) {
+  const original = globalThis.fetch;
+  globalThis.fetch = handler;
+  try {
+    await task();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
 test("codex stack summary resolves bundled installer and masks secrets", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -121,6 +145,67 @@ test("codex stack summary resolves bundled installer and masks secrets", async (
   assert.equal(summary.secrets.cpaProxyKey.hasSecret, true);
   assert.notEqual(summary.secrets.cpaProxyKey.masked, "secret-cpa-key-123456");
   assert.ok(summary.models.available.includes("glm-5.1"));
+});
+
+test("codex stack summary uses live Compact /v1/models as model catalog", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {});
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withMockFetch(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/v1/models")) {
+      return new Response(JSON.stringify({
+        data: [
+          { id: "live-cpa-model" },
+          { id: "live-cpa-fast" },
+        ],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("ok", { status: 200 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.equal(summary.models.source, "live");
+    assert.equal(summary.models.live, true);
+    assert.equal(summary.models.error, null);
+    assert.equal(summary.models.endpoint, "http://127.0.0.1:18796/v1/models");
+    assert.ok(summary.models.available.includes("live-cpa-model"));
+    assert.ok(summary.models.available.includes("live-cpa-fast"));
+  });
+});
+
+test("codex stack summary falls back to config models when /v1/models is unavailable", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {});
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withMockFetch(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/v1/models")) {
+      return new Response("unavailable", { status: 503 });
+    }
+    return new Response("ok", { status: 200 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.equal(summary.models.source, "config");
+    assert.equal(summary.models.live, false);
+    assert.match(summary.models.error, /HTTP 503/);
+    assert.ok(summary.models.available.includes("glm-5.1"));
+    assert.ok(summary.models.available.includes("gpt-5.4"));
+  });
 });
 
 test("codex stack management guard blocks mutations until explicitly enabled", async () => {
@@ -303,6 +388,35 @@ test("codex stack rejects cc-connect finalizer until QR binding exists", async (
     service.finalizeCcConnect(undefined, { project: "main" }),
     (error) => isCodexStackServiceError(error) && error.code === "codex_stack_cc_connect_unbound",
   );
+});
+
+test("codex stack summary hides finalizer when active channel has no finalizer script", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  createBoundCcConnectConfig(root);
+
+  const service = createCodexStackService(config);
+  const summary = await service.getSummary();
+
+  assert.equal(summary.installer.channel, "dmwork");
+  assert.equal(summary.ccConnect.bindingPresent, true);
+  assert.equal(summary.ccConnect.finalizerAvailable, false);
+  assert.equal(summary.ccConnect.canFinalize, false);
 });
 
 test("codex stack config patch writes backups and updates managed fields", async () => {

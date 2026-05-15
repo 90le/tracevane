@@ -3,9 +3,9 @@
     <header class="page-header-row">
       <div>
         <p class="eyebrow">{{ text("CODEX STACK", "CODEX STACK") }}</p>
-        <h2 class="page-title">{{ text("Codex 栈控制台", "Codex Stack Console") }}</h2>
+        <h2 class="page-title">{{ text("Codex Stack 管理中心", "Codex Stack Management Center") }}</h2>
         <p class="cs-page-subtitle">
-          {{ text("统一查看安装状态、服务控制、cc-connect 与运行配置。", "Manage install state, services, cc-connect, and runtime config in one workspace.") }}
+          {{ text("按“状态判断 → 安装修复 → 模型上游 → Agent 管理 → 日志诊断”的顺序管理 codex-docs 服务。Studio 只做控制面，服务本身保持 systemd 独立运行。", "Manage codex-docs through status, install/repair, model upstreams, agent management, and diagnostics. Studio stays the control plane while services keep running independently under systemd.") }}
         </p>
       </div>
       <div class="page-actions">
@@ -63,6 +63,21 @@
         </div>
       </article>
 
+      <article class="panel-card cs-model-ribbon">
+        <div>
+          <p class="cs-section-kicker">{{ text("模型目录", "Model Catalog") }}</p>
+          <h3>{{ summary.models.current || summary.profile.defaultModel || "--" }}</h3>
+          <p>{{ modelSourceHelp }}</p>
+        </div>
+        <div class="cs-model-ribbon-side">
+          <span class="cs-status-pill" :class="`tone-${modelSourceTone}`">{{ modelSourceLabel }}</span>
+          <span class="cs-info-chip">{{ text("可选模型", "Available models") }} {{ modelOptions.length }}</span>
+          <button type="button" class="secondary-button" :disabled="loading" @click="loadSummary">
+            {{ text("刷新模型列表", "Refresh Models") }}
+          </button>
+        </div>
+      </article>
+
       <div class="cs-workspace">
         <aside class="cs-sidebar">
           <button
@@ -91,7 +106,7 @@
                     <span class="cs-status-pill" :class="`tone-${statusTone}`">{{ statusLabel }}</span>
                   </div>
                   <p class="cs-hero-description">
-                    {{ text("CPA、Compact、cc-connect 与 watchdog 由 systemd 托管，Studio 负责观测与操作入口。", "CPA, Compact, cc-connect, and watchdog are managed by systemd; Studio provides the control surface.") }}
+                    {{ text("先看当前状态，再按建议执行安装、修复或配置。CPA、Compact、cc-connect 与 watchdog 由 systemd 托管，Studio 负责观测与操作入口。", "Start from the current state, then follow suggested install, repair, or config actions. CPA, Compact, cc-connect, and watchdog are managed by systemd; Studio provides the control surface.") }}
                   </p>
                   <div class="cs-chip-row">
                     <span class="cs-info-chip">
@@ -112,7 +127,7 @@
                   <button type="button" class="primary-button" :disabled="busy" @click="runCheck">
                     {{ text("运行健康检查", "Run Health Check") }}
                   </button>
-                  <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="repairRecommended">
+                  <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="repairRecommended">
                     {{ text("自动修复", "Auto Repair") }}
                   </button>
                   <button type="button" class="secondary-button" :disabled="loading || ccConnectLoading" @click="loadAll">
@@ -120,6 +135,43 @@
                   </button>
                 </div>
               </article>
+
+              <div class="cs-command-grid">
+                <article class="panel-card cs-readiness-card">
+                  <p class="cs-section-kicker">{{ text("就绪度", "Readiness") }}</p>
+                  <div class="cs-readiness-meter">
+                    <strong>{{ readyComponentCount }}/{{ summary.components.length }}</strong>
+                    <span>{{ text("组件健康", "healthy components") }}</span>
+                  </div>
+                  <div class="cs-readiness-bar">
+                    <span :style="{ width: readinessPercent }"></span>
+                  </div>
+                  <p class="cs-field-hint">
+                    {{ issueCount ? text(`还有 ${issueCount} 个组件需要处理。`, `${issueCount} components need attention.`) : text("组件和服务状态稳定。", "Components and services are stable.") }}
+                  </p>
+                </article>
+                <article class="panel-card cs-next-card">
+                  <p class="cs-section-kicker">{{ text("建议下一步", "Suggested Next Step") }}</p>
+                  <h4>{{ nextActionTitle }}</h4>
+                  <p>{{ nextActionCopy }}</p>
+                  <div class="cs-actions">
+                    <button type="button" class="primary-button" :disabled="nextActionRequiresMutation ? !canRunMutation : busy" @click="nextActionPrimary">
+                      {{ nextActionButton }}
+                    </button>
+                    <button type="button" class="secondary-button" @click="activeSection = nextActionSection">
+                      {{ text("打开对应页面", "Open Section") }}
+                    </button>
+                  </div>
+                </article>
+                <article class="panel-card cs-next-card">
+                  <p class="cs-section-kicker">{{ text("模型来源", "Model Source") }}</p>
+                  <h4>{{ modelSourceLabel }}</h4>
+                  <p>{{ modelSourceHelp }}</p>
+                  <div class="cs-model-preview">
+                    <span v-for="model in modelCatalogPreview" :key="model">{{ model }}</span>
+                  </div>
+                </article>
+              </div>
 
               <div class="cs-service-grid">
                 <article v-for="service in serviceCards" :key="service.id" class="panel-card cs-service-card">
@@ -154,7 +206,7 @@
                     <button
                       type="button"
                       class="secondary-button"
-                      :disabled="busy || !canMutate || service.active"
+                      :disabled="!canRunMutation || service.active"
                       @click="serviceAction(service.id, 'start')"
                     >
                       {{ text("启动", "Start") }}
@@ -162,7 +214,7 @@
                     <button
                       type="button"
                       class="secondary-button"
-                      :disabled="busy || !canMutate || !service.active"
+                      :disabled="!canRunMutation || !service.active"
                       @click="serviceAction(service.id, 'stop')"
                     >
                       {{ text("停止", "Stop") }}
@@ -170,7 +222,7 @@
                     <button
                       type="button"
                       class="secondary-button"
-                      :disabled="busy || !canMutate"
+                      :disabled="!canRunMutation"
                       @click="serviceAction(service.id, 'restart')"
                     >
                       {{ text("重启", "Restart") }}
@@ -389,7 +441,10 @@
                     <div class="cs-form-grid">
                       <label class="form-field">
                         <span class="form-label">{{ text("默认模型", "Default Model") }}</span>
-                        <input v-model="installForm.model" class="form-input" list="codex-model-options" />
+                        <select v-model="installForm.model" class="form-input">
+                          <option v-for="model in modelOptions" :key="`install-${model}`" :value="model">{{ model }}</option>
+                        </select>
+                        <span class="form-help">{{ modelSourceLabel }}</span>
                       </label>
                       <label class="form-field">
                         <span class="form-label">{{ text("CPA 端口", "CPA Port") }}</span>
@@ -476,6 +531,38 @@
                   </div>
                 </details>
 
+                <article class="panel-card cs-repair-board">
+                  <div class="cs-card-header">
+                    <div>
+                      <p class="cs-section-kicker">{{ text("修复策略", "Repair Strategy") }}</p>
+                      <h4>{{ text("从轻修复到重写配置", "From Light Repair to Config Rewrite") }}</h4>
+                    </div>
+                  </div>
+                  <div class="cs-repair-grid">
+                    <article class="cs-repair-card">
+                      <strong>{{ text("推荐修复", "Recommended Repair") }}</strong>
+                      <p>{{ text("根据当前状态重启未运行的 CPA、Compact、watchdog 或 cc-connect。", "Restart inactive CPA, Compact, watchdog, or cc-connect based on current status.") }}</p>
+                      <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="repairRecommended">
+                        {{ text("执行推荐修复", "Run Recommended") }}
+                      </button>
+                    </article>
+                    <article class="cs-repair-card">
+                      <strong>{{ text("清理旧守护", "Clean Old Daemons") }}</strong>
+                      <p>{{ text("禁用可能抢端口的旧 cpa.service / cliproxyapi.service，再让当前服务接管。", "Disable old cpa.service / cliproxyapi.service units that may occupy ports.") }}</p>
+                      <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="repairConflictingUnits">
+                        {{ text("清理冲突服务", "Clean Conflicts") }}
+                      </button>
+                    </article>
+                    <article class="cs-repair-card">
+                      <strong>{{ text("重写配置不启动", "Rewrite Config Only") }}</strong>
+                      <p>{{ text("重新跑安装器的配置阶段但不启动服务，适合修复损坏配置后手动启动。", "Rerun the installer config phase without starting services, then start manually.") }}</p>
+                      <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="repairConfigOnly">
+                        {{ text("只修复配置", "Repair Config Only") }}
+                      </button>
+                    </article>
+                  </div>
+                </article>
+
                 <article class="panel-card cs-install-cta-card">
                   <div class="cs-card-header">
                     <div>
@@ -487,13 +574,13 @@
                     {{ text("完整安装会同时部署 cc-connect；基础安装只保留 Codex / CPA / Compact / watchdog。", "Full install includes cc-connect; base install keeps Codex / CPA / Compact / watchdog only.") }}
                   </p>
                   <div class="cs-install-cta-row">
-                    <button type="button" class="primary-button cs-big-button" :disabled="busy || !canMutate" @click="installFullStack">
+                    <button type="button" class="primary-button cs-big-button" :disabled="!canRunMutation" @click="installFullStack">
                       {{ text("一键安装全部组件", "Install Full Stack") }}
                     </button>
-                    <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="installBaseOnly">
+                    <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="installBaseOnly">
                       {{ text("仅安装基础组件", "Install Base Only") }}
                     </button>
-                    <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="repairRecommended">
+                    <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="repairRecommended">
                       {{ text("执行推荐修复", "Run Recommended Repair") }}
                     </button>
                   </div>
@@ -516,6 +603,7 @@
                   <span class="cs-info-chip">{{ text("已安装", "Installed") }} {{ yesNo(summary.ccConnect.installed) }}</span>
                   <span class="cs-info-chip">{{ text("已配置", "Configured") }} {{ yesNo(summary.ccConnect.configured) }}</span>
                   <span class="cs-info-chip">{{ text("已绑定", "Binding") }} {{ yesNo(summary.ccConnect.bindingPresent) }}</span>
+                  <span class="cs-info-chip">{{ text("收尾脚本", "Finalizer") }} {{ yesNo(summary.ccConnect.finalizerAvailable) }}</span>
                   <span class="cs-info-chip">{{ text("项目", "Project") }} {{ primaryCcConnectProjectName }}</span>
                   <span class="cs-info-chip">Provider {{ ccConnectProviderDraftCount }}</span>
                   <span class="cs-info-chip">{{ text("项目数", "Projects") }} {{ ccConnectProjectDraftCount }}</span>
@@ -540,7 +628,7 @@
                   <button
                     type="button"
                     class="primary-button"
-                    :disabled="busy || !canMutate || !hasCcConnectStructuredChanges"
+                    :disabled="!canRunMutation || !hasCcConnectStructuredChanges"
                     @click="saveCcConnectStructured"
                   >
                     {{ text("保存可视化配置", "Save Visual Config") }}
@@ -548,7 +636,7 @@
                   <button
                     type="button"
                     class="secondary-button"
-                    :disabled="busy || !canMutate || !hasCcConnectRawChanges"
+                    :disabled="!canRunMutation || !hasCcConnectRawChanges"
                     @click="saveCcConnectRaw"
                   >
                     {{ text("保存 TOML", "Save TOML") }}
@@ -647,7 +735,7 @@
                       v-if="summary.ccConnect.canFinalize"
                       type="button"
                       class="primary-button"
-                      :disabled="busy || !canMutate"
+                      :disabled="!canRunMutation"
                       @click="finalizeCcConnect"
                     >
                       {{ text("完成 cc-connect 安装", "Finalize cc-connect") }}
@@ -723,7 +811,10 @@
                       </label>
                       <label class="form-field">
                         <span class="form-label">{{ text("模型", "Model") }}</span>
-                        <input v-model="project.agentOptions.model" class="form-input" list="codex-model-options" />
+                        <select v-model="project.agentOptions.model" class="form-input">
+                          <option v-for="model in modelOptions" :key="`${project.id}-${model}`" :value="model">{{ model }}</option>
+                        </select>
+                        <span class="form-help">{{ text("模型列表来自模型上游面板。", "Model list is shared from the model upstream panel.") }}</span>
                       </label>
                       <label class="form-field cs-form-span-2">
                         <span class="form-label">{{ text("工作目录", "Work Directory") }}</span>
@@ -788,7 +879,7 @@
                   <button
                     type="button"
                     class="primary-button"
-                    :disabled="busy || !canMutate || !hasCcConnectStructuredChanges"
+                    :disabled="!canRunMutation || !hasCcConnectStructuredChanges"
                     @click="saveCcConnectStructured"
                   >
                     {{ text("保存可视化配置", "Save Visual Config") }}
@@ -816,7 +907,7 @@
                   <button
                     type="button"
                     class="primary-button"
-                    :disabled="busy || !canMutate || !hasCcConnectRawChanges"
+                    :disabled="!canRunMutation || !hasCcConnectRawChanges"
                     @click="saveCcConnectRaw"
                   >
                     {{ text("保存 TOML 配置", "Save TOML Config") }}
@@ -830,11 +921,33 @@
             <section class="cs-section-stack">
               <article class="panel-card cs-section-intro">
                 <div>
-                  <p class="cs-section-kicker">{{ text("设置", "Settings") }}</p>
+                  <p class="cs-section-kicker">{{ text("模型与上游", "Models and Upstreams") }}</p>
                   <h3>{{ text("统一模型、端口与上游配置", "Unified Model, Port, and Upstream Config") }}</h3>
                   <p class="cs-section-copy">
-                    {{ text("这里修改 Codex 默认模型、CPA/Compact 端口和代理密钥；cc-connect 的 Provider/项目模型在 cc-connect 面板中编辑，并可同步这里的默认模型。", "Edit Codex default model, CPA/Compact ports, and proxy key here. cc-connect providers and project models live in the cc-connect panel and can sync this default model.") }}
+                    {{ text("这里是所有模型选择器的来源。优先读取本地 Compact /v1/models；不可达时显示配置回退列表。cc-connect Provider 推荐统一指向本地 Compact。", "This is the source for every model selector. It prefers local Compact /v1/models and falls back to parsed config when unavailable. cc-connect providers should point to local Compact.") }}
                   </p>
+                </div>
+                <div class="cs-chip-row">
+                  <span class="cs-status-pill" :class="`tone-${modelSourceTone}`">{{ modelSourceLabel }}</span>
+                  <span class="cs-info-chip">{{ summary.models.endpoint }}</span>
+                </div>
+              </article>
+
+              <article class="panel-card cs-model-catalog-card">
+                <div class="cs-card-header">
+                  <div>
+                    <p class="cs-section-kicker">{{ text("CPA 模型列表", "CPA Model List") }}</p>
+                    <h4>{{ text("从 /v1/models 读取的可用模型", "Models discovered from /v1/models") }}</h4>
+                  </div>
+                  <button type="button" class="secondary-button" :disabled="loading" @click="loadSummary">
+                    {{ text("重新读取", "Reload") }}
+                  </button>
+                </div>
+                <p class="cs-field-hint">{{ modelSourceHelp }}</p>
+                <div class="cs-model-list">
+                  <span v-for="model in modelOptions" :key="`catalog-${model}`" :class="{ 'cs-model-current': model === summary.models.current }">
+                    {{ model }}
+                  </span>
                 </div>
               </article>
 
@@ -880,7 +993,10 @@
                   <div class="cs-form-grid">
                     <label class="form-field">
                       <span class="form-label">{{ text("默认模型", "Default Model") }}</span>
-                      <input v-model="configForm.defaultModel" class="form-input" list="codex-model-options" />
+                      <select v-model="configForm.defaultModel" class="form-input">
+                        <option v-for="model in modelOptions" :key="`config-${model}`" :value="model">{{ model }}</option>
+                      </select>
+                      <span class="form-help">{{ text("保存后会写入 Codex，并可同步到 cc-connect Agent。", "Saving writes to Codex and can be synced to cc-connect agents.") }}</span>
                     </label>
                     <label class="form-field">
                       <span class="form-label">{{ text("CPA 端口", "CPA Port") }}</span>
@@ -908,7 +1024,7 @@
                     {{ text("需要重启:", "Restart required:") }} {{ restartRequiredUnits.join(", ") }}
                   </div>
                   <div class="cs-actions">
-                    <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="saveConfigPatch">
+                    <button type="button" class="primary-button" :disabled="!canRunMutation" @click="saveConfigPatch">
                       {{ text("保存配置", "Save Config") }}
                     </button>
                   </div>
@@ -1012,9 +1128,6 @@
       </div>
     </template>
 
-    <datalist id="codex-model-options">
-      <option v-for="model in modelOptions" :key="model" :value="model">{{ model }}</option>
-    </datalist>
     <datalist id="cc-platform-options">
       <option value="dmwork">dmwork</option>
       <option value="feishu">feishu</option>
@@ -1041,6 +1154,7 @@ import type {
   CodexStackComponentSummary,
   CodexStackJob,
   CodexStackJobStatus,
+  CodexStackRepairAction,
   CodexStackServiceAction,
   CodexStackServiceId,
   CodexStackSummaryPayload,
@@ -1114,22 +1228,22 @@ let draftIdCounter = 0;
 const navSections = computed(() => [
   {
     id: "dashboard" as const,
-    label: text("概览", "Dashboard"),
+    label: text("控制台", "Console"),
     icon: "M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z",
   },
   {
     id: "install" as const,
-    label: text("安装", "Install"),
+    label: text("安装/修复", "Install/Repair"),
     icon: "M12 3 4 8v8c0 4.42 3.58 8 8 8s8-3.58 8-8V8l-8-5Zm1 13h3l-4 4-4-4h3V9h2v7Z",
   },
   {
     id: "cc-connect" as const,
-    label: "cc-connect",
+    label: text("Agent", "Agents"),
     icon: "M6 7h12v10H6zM4 5v14h16V5H4Zm4 4h8v2H8V9Zm0 4h5v2H8v-2Z",
   },
   {
     id: "settings" as const,
-    label: text("设置", "Settings"),
+    label: text("模型上游", "Models"),
     icon: "M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.49.49 0 0 0 13.9 2h-3.8a.49.49 0 0 0-.49.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z",
   },
   {
@@ -1190,6 +1304,8 @@ const serviceCatalog: Record<
 };
 
 const canMutate = computed(() => summary.value?.management.enabled === true);
+const jobRunning = computed(() => activeJob.value ? isCodexStackJobRunning(activeJob.value) : false);
+const canRunMutation = computed(() => canMutate.value && !busy.value && !jobRunning.value);
 const statusTone = computed(() => codexStackStatusTone(summary.value?.overallStatus || "needs-setup"));
 const statusLabel = computed(() => {
   const status = summary.value?.overallStatus || "needs-setup";
@@ -1202,6 +1318,78 @@ const statusLabel = computed(() => {
     "running-action": text("操作执行中", "Action Running"),
   };
   return labels[status] || status;
+});
+const readyComponentCount = computed(
+  () => summary.value?.components.filter((component) => component.status === "ok").length || 0,
+);
+const issueCount = computed(
+  () => summary.value?.components.filter((component) => component.status !== "ok").length || 0,
+);
+const readinessPercent = computed(() => {
+  const total = summary.value?.components.length || 1;
+  return `${Math.round((readyComponentCount.value / total) * 100)}%`;
+});
+const modelSourceTone = computed(() => {
+  if (summary.value?.models.live) return "sage";
+  return summary.value?.models.source === "config" ? "accent" : "neutral";
+});
+const modelSourceLabel = computed(() => {
+  const source = summary.value?.models.source || "fallback";
+  if (source === "live") return text("来自 CPA /v1/models", "From CPA /v1/models");
+  if (source === "config") return text("使用本地配置回退", "Using config fallback");
+  return text("使用默认回退", "Using default fallback");
+});
+const modelSourceHelp = computed(() => {
+  const models = summary.value?.models;
+  if (!models) return text("正在读取模型列表。", "Loading model catalog.");
+  if (models.live) {
+    return text(
+      `已连接 ${models.endpoint}，模型选择器会跟随 CPA 实际可用列表。`,
+      `Connected to ${models.endpoint}; selectors follow the actual CPA model catalog.`,
+    );
+  }
+  return text(
+    `无法读取 ${models.endpoint}，当前使用本地配置回退。原因：${models.error || "未知"}`,
+    `Could not read ${models.endpoint}; using local config fallback. Reason: ${models.error || "unknown"}`,
+  );
+});
+const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["kimi-k2.6"]);
+const modelCatalogPreview = computed(() => modelOptions.value.slice(0, 6));
+const nextActionSection = computed<SectionId>(() => {
+  const status = summary.value?.overallStatus || "needs-setup";
+  if (status === "needs-setup") return "install";
+  if (status === "binding-required") return "cc-connect";
+  if (status === "running-action") return "logs";
+  if (status === "degraded" || status === "failed") return "dashboard";
+  return "logs";
+});
+const nextActionTitle = computed(() => {
+  const status = summary.value?.overallStatus || "needs-setup";
+  if (status === "ready") return text("运行健康检查确认状态", "Run a health check to confirm");
+  if (status === "binding-required") return text("完成 cc-connect 绑定", "Complete cc-connect binding");
+  if (status === "running-action") return text("查看后台任务输出", "Watch background job output");
+  if (status === "degraded" || status === "failed") return text("执行推荐修复", "Run recommended repair");
+  return text("选择安装范围并开始", "Choose install scope and start");
+});
+const nextActionCopy = computed(() => {
+  const status = summary.value?.overallStatus || "needs-setup";
+  if (status === "ready") return text("服务已就绪，建议定期运行健康检查或查看日志。", "Services are ready; run checks or inspect logs when needed.");
+  if (status === "binding-required") return text("cc-connect 已安装但还需要平台绑定或收尾。", "cc-connect is installed but still needs platform binding or finalization.");
+  if (status === "running-action") return text("安装或修复正在执行，先跟踪输出和结果。", "An install or repair is running; track output and result first.");
+  if (status === "degraded" || status === "failed") return text("有组件未运行或端点不可达，推荐先执行修复。", "Some components are stopped or unreachable; run repair first.");
+  return text("首次使用从 DMWork 增强版开始；已有环境可选择跳过或强制重装组件。", "Start with the DMWork enhanced channel; existing environments can skip or force reinstall components.");
+});
+const nextActionButton = computed(() => {
+  const status = summary.value?.overallStatus || "needs-setup";
+  if (status === "ready") return text("运行检查", "Run Check");
+  if (status === "binding-required") return text("去绑定", "Bind Now");
+  if (status === "running-action") return text("看日志", "View Logs");
+  if (status === "degraded" || status === "failed") return text("自动修复", "Auto Repair");
+  return text("开始安装", "Start Install");
+});
+const nextActionRequiresMutation = computed(() => {
+  const status = summary.value?.overallStatus || "needs-setup";
+  return status === "needs-setup" || status === "degraded" || status === "failed";
 });
 const activeJobTitle = computed(() => {
   if (!activeJob.value) return "";
@@ -1240,7 +1428,6 @@ const hasCcConnectRawChanges = computed(() => ccConnectRawDraft.value !== (ccCon
 const hasCcConnectStructuredChanges = computed(
   () => serializeCcConnectStructuredDraft() !== ccConnectStructuredBaseline.value,
 );
-const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["kimi-k2.6"]);
 const serviceCards = computed(() => {
   if (!summary.value) return [];
   return summary.value.services.map((service) => {
@@ -1460,6 +1647,38 @@ function jobStatusLabel(status: CodexStackJobStatus): string {
   return labels[status];
 }
 
+function guardMutation(): boolean {
+  if (!canMutate.value) {
+    notice.value = {
+      kind: "error",
+      text: text("请先启用管理动作。", "Enable management actions first."),
+    };
+    return false;
+  }
+  if (jobRunning.value) {
+    activeSection.value = "logs";
+    notice.value = {
+      kind: "error",
+      text: text("已有后台任务正在执行，请等待完成后再操作。", "A background job is already running. Wait for it to finish before making another change."),
+    };
+    return false;
+  }
+  return !busy.value;
+}
+
+function nextActionPrimary(): void {
+  const status = summary.value?.overallStatus || "needs-setup";
+  if (status === "ready") {
+    void runCheck();
+    return;
+  }
+  if (status === "degraded" || status === "failed") {
+    void repairRecommended();
+    return;
+  }
+  activeSection.value = nextActionSection.value;
+}
+
 function applySummary(next: CodexStackSummaryPayload): void {
   summary.value = next;
   installForm.model = next.models.current || next.profile.defaultModel || "glm-5.1";
@@ -1584,6 +1803,7 @@ function startPollingJob(job: CodexStackJob): void {
 }
 
 async function installFullStack(): Promise<void> {
+  if (!guardMutation()) return;
   busy.value = true;
   try {
     const response = await startCodexStackInstall(buildInstallPayload(false));
@@ -1597,6 +1817,7 @@ async function installFullStack(): Promise<void> {
 }
 
 async function installBaseOnly(): Promise<void> {
+  if (!guardMutation()) return;
   busy.value = true;
   try {
     const response = await startCodexStackInstall(buildInstallPayload(true));
@@ -1628,11 +1849,34 @@ async function runCheck(): Promise<void> {
 
 async function repairRecommended(): Promise<void> {
   if (!summary.value) return;
+  await startRepairWithActions(
+    buildCodexStackRepairActions(summary.value),
+    text("修复任务已启动。", "Repair job started."),
+  );
+}
+
+async function repairConflictingUnits(): Promise<void> {
+  await startRepairWithActions(
+    ["disable-conflicting-units", "restart-cpa", "restart-compact-proxy"],
+    text("冲突服务清理任务已启动。", "Conflict cleanup repair job started."),
+  );
+}
+
+async function repairConfigOnly(): Promise<void> {
+  await startRepairWithActions(
+    ["rerun-install-no-start"],
+    text("配置修复任务已启动。", "Config repair job started."),
+  );
+}
+
+async function startRepairWithActions(actions: CodexStackRepairAction[], successText: string): Promise<void> {
+  if (!actions.length) return;
+  if (!guardMutation()) return;
   busy.value = true;
   try {
-    const response = await startCodexStackRepair({ actions: buildCodexStackRepairActions(summary.value) });
+    const response = await startCodexStackRepair({ actions });
     startPollingJob(response.job);
-    notice.value = { kind: "success", text: text("修复任务已启动。", "Repair job started.") };
+    notice.value = { kind: "success", text: successText };
   } catch (error) {
     notice.value = { kind: "error", text: error instanceof Error ? error.message : text("修复启动失败", "Repair failed to start") };
   } finally {
@@ -1641,6 +1885,7 @@ async function repairRecommended(): Promise<void> {
 }
 
 async function serviceAction(serviceId: CodexStackServiceId, action: CodexStackServiceAction): Promise<void> {
+  if (!guardMutation()) return;
   busy.value = true;
   try {
     const response = await controlCodexStackService(serviceId, action);
@@ -1654,6 +1899,7 @@ async function serviceAction(serviceId: CodexStackServiceId, action: CodexStackS
 }
 
 async function saveConfigPatch(): Promise<void> {
+  if (!guardMutation()) return;
   busy.value = true;
   try {
     const response = await patchCodexStackConfig({
@@ -1735,6 +1981,7 @@ async function saveCcConnectStructured(): Promise<void> {
     notice.value = { kind: "success", text: text("cc-connect 可视化配置没有变化。", "cc-connect visual config has no changes.") };
     return;
   }
+  if (!guardMutation()) return;
   const confirmed = await confirm({
     title: text("保存 cc-connect 可视化配置", "Save cc-connect visual config"),
     message: text(
@@ -1773,6 +2020,7 @@ async function saveCcConnectRaw(): Promise<void> {
     notice.value = { kind: "success", text: text("cc-connect 配置没有变化。", "cc-connect config has no changes.") };
     return;
   }
+  if (!guardMutation()) return;
   const confirmed = await confirm({
     title: text("保存 cc-connect 配置", "Save cc-connect config"),
     message: text(
@@ -1811,6 +2059,7 @@ async function copySetupCommand(platform: "feishu" | "weixin"): Promise<void> {
 }
 
 async function finalizeCcConnect(): Promise<void> {
+  if (!guardMutation()) return;
   busy.value = true;
   try {
     const response = await finalizeCodexStackCcConnect({ project: summary.value?.ccConnect.project || "main" });
@@ -1879,12 +2128,13 @@ onUnmounted(() => {
 .cs-page-subtitle {
   margin: 6px 0 0;
   color: var(--text-soft);
-  max-width: 760px;
+  max-width: 980px;
 }
 
 .cs-lock-card,
 .cs-job-banner,
-.cs-hero-card {
+.cs-hero-card,
+.cs-model-ribbon {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1904,8 +2154,8 @@ onUnmounted(() => {
 
 .cs-workspace {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
@@ -1925,12 +2175,11 @@ onUnmounted(() => {
 
 .cs-nav-button {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 8px;
   border: 1px solid transparent;
   border-radius: 18px;
-  padding: 12px 8px;
+  padding: 12px 10px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -1944,9 +2193,9 @@ onUnmounted(() => {
 }
 
 .cs-nav-button span {
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   line-height: 1.2;
-  text-align: center;
+  text-align: left;
 }
 
 .cs-nav-button:hover,
@@ -1971,6 +2220,31 @@ onUnmounted(() => {
 
 .cs-job-banner-live {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 30%, transparent);
+}
+
+.cs-model-ribbon {
+  align-items: flex-start;
+  border-color: color-mix(in srgb, var(--acc) 22%, var(--line));
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--sky) 16%, transparent), transparent 34%),
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 94%, #132132 6%), var(--surface));
+}
+
+.cs-model-ribbon h3 {
+  margin: 0;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+}
+
+.cs-model-ribbon p {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+}
+
+.cs-model-ribbon-side {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .cs-job-banner-ok {
@@ -2009,6 +2283,92 @@ onUnmounted(() => {
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 18%, transparent), transparent 36%),
     linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, #071018 8%), var(--surface));
+}
+
+.cs-command-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.1fr) minmax(280px, 1fr);
+  gap: 16px;
+}
+
+.cs-readiness-card,
+.cs-next-card,
+.cs-model-catalog-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
+    var(--surface);
+}
+
+.cs-readiness-meter {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cs-readiness-meter strong {
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1;
+}
+
+.cs-readiness-meter span,
+.form-help {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.cs-readiness-bar {
+  height: 12px;
+  overflow: hidden;
+  margin: 16px 0 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 52%, transparent);
+}
+
+.cs-readiness-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--success), color-mix(in srgb, var(--acc) 68%, var(--success)));
+}
+
+.cs-next-card h4 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.cs-next-card p {
+  color: var(--text-soft);
+}
+
+.cs-model-preview,
+.cs-model-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cs-model-preview span,
+.cs-model-list span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--code-bg) 42%, transparent);
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.cs-model-list {
+  margin-top: 14px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.cs-model-list .cs-model-current {
+  border-color: color-mix(in srgb, var(--success) 48%, var(--line));
+  background: color-mix(in srgb, var(--success) 18%, var(--surface));
+  font-weight: 700;
 }
 
 .cs-hero-copy {
@@ -2054,6 +2414,7 @@ onUnmounted(() => {
 
 .cs-status-pill {
   font-weight: 600;
+  color: var(--text);
 }
 
 .cs-service-grid {
@@ -2422,6 +2783,40 @@ onUnmounted(() => {
     var(--surface);
 }
 
+.cs-repair-board {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--warning) 12%, transparent), transparent 34%),
+    var(--surface);
+}
+
+.cs-repair-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cs-repair-card {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+}
+
+.cs-repair-card strong {
+  color: var(--text);
+}
+
+.cs-repair-card p {
+  flex: 1;
+  margin: 0;
+  color: var(--text-soft);
+}
+
 .cs-flow-card,
 .cs-upstream-map,
 .cs-config-action-strip {
@@ -2641,6 +3036,30 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--muted) 12%, var(--surface));
 }
 
+.cs-status-pill.tone-sage {
+  color: #073b20;
+  border-color: #8fd8a6;
+  background: #dff8e7;
+}
+
+.cs-status-pill.tone-accent {
+  color: #17335f;
+  border-color: #9ec2ff;
+  background: #e4efff;
+}
+
+.cs-status-pill.tone-danger {
+  color: #651d19;
+  border-color: #f1a9a1;
+  background: #ffe4e0;
+}
+
+.cs-status-pill.tone-neutral {
+  color: #263241;
+  border-color: #c5ced8;
+  background: #eef2f6;
+}
+
 .cs-dot.tone-sage {
   color: var(--success);
   background: var(--success);
@@ -2691,7 +3110,8 @@ onUnmounted(() => {
 }
 
 @media (max-width: 1200px) {
-  .cs-service-grid {
+  .cs-service-grid,
+  .cs-command-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -2709,15 +3129,18 @@ onUnmounted(() => {
 
   .cs-nav-button {
     min-width: 92px;
+    justify-content: center;
   }
 
   .cs-dashboard-grid,
+  .cs-command-grid,
   .cs-install-grid,
   .cs-channel-grid,
   .cs-form-grid,
   .cs-provider-grid,
   .cs-platform-grid,
   .cs-checkbox-grid,
+  .cs-repair-grid,
   .cs-flow-steps,
   .cs-upstream-grid {
     grid-template-columns: 1fr;
@@ -2740,6 +3163,7 @@ onUnmounted(() => {
   .cs-job-banner,
   .cs-lock-card,
   .cs-hero-card,
+  .cs-model-ribbon,
   .cs-config-action-strip,
   .cs-card-header,
   .cs-provider-head,
@@ -2749,6 +3173,10 @@ onUnmounted(() => {
   .cs-log-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .cs-model-ribbon-side {
+    justify-content: flex-start;
   }
 
   .cs-service-grid {

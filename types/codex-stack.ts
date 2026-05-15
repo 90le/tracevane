@@ -36,6 +36,8 @@ export type CodexStackInstallerSourceKind =
   | "development-fallback"
   | "missing";
 
+export type CodexStackModelSource = "live" | "config" | "fallback";
+
 export interface CodexStackMaskedSecret {
   hasSecret: boolean;
   masked: string | null;
@@ -122,6 +124,11 @@ export interface CodexStackSummaryPayload {
     current: string;
     defaultModel: string;
     available: string[];
+    source: CodexStackModelSource;
+    endpoint: string;
+    live: boolean;
+    refreshedAt: string;
+    error: string | null;
   };
   secrets: {
     cpaProxyKey: CodexStackMaskedSecret;
@@ -135,6 +142,7 @@ export interface CodexStackSummaryPayload {
     socketPath: string;
     socketPresent: boolean;
     setupCommands: string[];
+    finalizerAvailable: boolean;
     canFinalize: boolean;
   };
   warnings: string[];
@@ -161,15 +169,16 @@ export interface CodexStackInstallRequest {
   };
 }
 
+export type CodexStackRepairAction =
+  | "restart-cpa"
+  | "restart-compact-proxy"
+  | "restart-watchdog"
+  | "restart-cc-connect"
+  | "disable-conflicting-units"
+  | "rerun-install-no-start";
+
 export interface CodexStackRepairRequest {
-  actions: Array<
-    | "restart-cpa"
-    | "restart-compact-proxy"
-    | "restart-watchdog"
-    | "restart-cc-connect"
-    | "disable-conflicting-units"
-    | "rerun-install-no-start"
-  >;
+  actions: CodexStackRepairAction[];
 }
 
 export interface CodexStackConfigPatchRequest {

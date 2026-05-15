@@ -23,6 +23,7 @@ import type {
   CodexStackJob,
   CodexStackJobResponse,
   CodexStackManagementAccess,
+  CodexStackModelSource,
   CodexStackMutationResponse,
   CodexStackProfile,
   CodexStackRepairRequest,
@@ -61,6 +62,15 @@ const SERVICE_IDS = [
 ] as const satisfies readonly CodexStackServiceId[];
 
 const SERVICE_ACTIONS = ["restart", "start", "stop", "enable"] as const satisfies readonly CodexStackServiceAction[];
+
+interface CodexStackModelDiscovery {
+  available: string[];
+  source: CodexStackModelSource;
+  endpoint: string;
+  live: boolean;
+  refreshedAt: string;
+  error: string | null;
+}
 
 /** Detect the port a systemd user service is actually listening on by parsing ss output. */
 async function detectLivePort(patterns: string[]): Promise<number | null> {
@@ -645,6 +655,88 @@ function parseModels(source: string): string[] {
   return Array.from(models).sort((left, right) => left.localeCompare(right));
 }
 
+function normalizeModelId(value: unknown): string {
+  if (typeof value === "string") return normalizeString(value);
+  if (!isRecord(value)) return "";
+  for (const key of ["id", "name", "model", "alias"]) {
+    const candidate = normalizeString(value[key]);
+    if (candidate) return candidate;
+  }
+  return "";
+}
+
+function parseModelListPayload(payload: unknown): string[] {
+  const candidates: unknown[] = [];
+  if (Array.isArray(payload)) {
+    candidates.push(...payload);
+  } else if (isRecord(payload)) {
+    for (const key of ["data", "models", "available", "items"]) {
+      const value = payload[key];
+      if (Array.isArray(value)) candidates.push(...value);
+    }
+  }
+  return Array.from(new Set(candidates.map(normalizeModelId).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+async function discoverModelsFromCompact(
+  endpoint: string,
+  token: string,
+  fallbackModels: string[],
+  fallbackSource: CodexStackModelSource,
+): Promise<CodexStackModelDiscovery> {
+  const refreshedAt = new Date().toISOString();
+  const fallback = Array.from(new Set(fallbackModels.filter(Boolean))).sort((left, right) => left.localeCompare(right));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1800);
+  try {
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(endpoint, { headers, signal: controller.signal });
+    if (!response.ok) {
+      return {
+        available: fallback,
+        source: fallbackSource,
+        endpoint,
+        live: false,
+        refreshedAt,
+        error: `/v1/models returned HTTP ${response.status}`,
+      };
+    }
+    const payload = await response.json() as unknown;
+    const available = parseModelListPayload(payload);
+    if (!available.length) {
+      return {
+        available: fallback,
+        source: fallbackSource,
+        endpoint,
+        live: false,
+        refreshedAt,
+        error: "/v1/models did not return model ids",
+      };
+    }
+    return {
+      available,
+      source: "live",
+      endpoint,
+      live: true,
+      refreshedAt,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      available: fallback,
+      source: fallbackSource,
+      endpoint,
+      live: false,
+      refreshedAt,
+      error: error instanceof Error ? error.message : "/v1/models request failed",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function chooseDefaultModel(models: string[], current = ""): string {
   if (current) return current;
   const envOverride = normalizeString(process.env.CODEX_MODEL);
@@ -1060,15 +1152,29 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const cpaPort = liveCpaPort ?? configCpaPort;
     const compactPort = liveCompactPort ?? configCompactPort;
     const cpaProxyKey = extractTomlString(codexConfig, "experimental_bearer_token");
-    const models = parseModels(`${cpaConfig}\n${codexConfig}\n${ccConfig}`);
+    const parsedModels = parseModels(`${cpaConfig}\n${codexConfig}\n${ccConfig}`);
+    const profile = readProfile();
+    const currentModel = extractTomlString(codexConfig, "model") || ccParsed.projects[0]?.agentOptions.model || profile.defaultModel;
+    const fallbackModels = Array.from(new Set([
+      currentModel,
+      defaultModel(resolveChannel()),
+      ...parsedModels,
+    ].filter(Boolean))).sort((left, right) => left.localeCompare(right));
+    const modelsEndpoint = `http://127.0.0.1:${compactPort}/v1/models`;
     const services = await Promise.all(SERVICE_IDS.map((id) => readServiceStatus(id)));
-    const [codexVersion, omxVersion, ccVersion, cpaHealthy, compactHealthy] = await Promise.all([
+    const [codexVersion, omxVersion, ccVersion, cpaHealthy, modelDiscovery] = await Promise.all([
       versionOf("codex"),
       versionOf("omx"),
       versionOf("cc-connect"),
       probeUrl(`http://127.0.0.1:${cpaPort}/healthz`),
-      probeUrl(`http://127.0.0.1:${compactPort}/v1/models`, cpaProxyKey || DEFAULT_CPA_PROXY_KEY),
+      discoverModelsFromCompact(
+        modelsEndpoint,
+        cpaProxyKey || DEFAULT_CPA_PROXY_KEY,
+        fallbackModels,
+        parsedModels.length || currentModel ? "config" : "fallback",
+      ),
     ]);
+    const compactHealthy = modelDiscovery.live;
     const ccBindingPresent = ccParsed.projects.some((project) => project.platforms.length > 0);
     const components = buildComponents({
       codexVersion,
@@ -1078,13 +1184,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       cpaHealthy,
       compactHealthy,
     });
-    const profile = readProfile();
-    const currentModel = extractTomlString(codexConfig, "model") || ccParsed.projects[0]?.agentOptions.model || profile.defaultModel;
     const warnings: string[] = [];
     const installer = resolveInstallerSource();
+    const ccConnectFinalizerAvailable = Boolean(installer.scripts.ccConnectFinalizer);
     if (installer.kind === "development-fallback") warnings.push("Using development codex-docs checkout as installer source.");
     if (installer.kind === "missing") warnings.push("Bundled Codex Stack installer assets are missing.");
     if (ccConfig && !ccBindingPresent) warnings.push("cc-connect is installed/configured but still needs Feishu or Weixin QR binding.");
+    if (!modelDiscovery.live && modelDiscovery.error) warnings.push(`模型列表未能从 /v1/models 读取，已使用本地配置回退：${modelDiscovery.error}`);
     return {
       checkedAt: new Date().toISOString(),
       overallStatus: classifyOverall(components, listJobs(), ccBindingPresent),
@@ -1105,8 +1211,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ports: { cpa: cpaPort, compact: compactPort, detectedCpa: liveCpaPort, detectedCompact: liveCompactPort },
       models: {
         current: currentModel || defaultModel(resolveChannel()),
-        defaultModel: chooseDefaultModel(models, currentModel),
-        available: Array.from(new Set([currentModel, defaultModel(resolveChannel()), ...models].filter(Boolean))).sort(),
+        defaultModel: chooseDefaultModel(modelDiscovery.available, currentModel),
+        available: Array.from(new Set([
+          currentModel,
+          defaultModel(resolveChannel()),
+          ...modelDiscovery.available,
+        ].filter(Boolean))).sort((left, right) => left.localeCompare(right)),
+        source: modelDiscovery.source,
+        endpoint: modelDiscovery.endpoint,
+        live: modelDiscovery.live,
+        refreshedAt: modelDiscovery.refreshedAt,
+        error: modelDiscovery.error,
       },
       secrets: {
         cpaProxyKey: cpaProxyKey
@@ -1129,7 +1244,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           `cc-connect feishu setup --project ${ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT}`,
           `cc-connect weixin setup --project ${ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT}`,
         ],
-        canFinalize: ccBindingPresent,
+        finalizerAvailable: ccConnectFinalizerAvailable,
+        canFinalize: ccBindingPresent && ccConnectFinalizerAvailable,
       },
       warnings,
     };

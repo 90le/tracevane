@@ -1,6 +1,7 @@
 import type {
   CodexStackComponentStatus,
   CodexStackJob,
+  CodexStackRepairAction,
   CodexStackServiceStatus,
   CodexStackStatus,
   CodexStackSummaryPayload,
@@ -31,17 +32,9 @@ export function countActiveServices(services: CodexStackServiceStatus[]): number
 }
 
 export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload): Array<
-  | "restart-cpa"
-  | "restart-compact-proxy"
-  | "restart-watchdog"
-  | "restart-cc-connect"
+  CodexStackRepairAction
 > {
-  const actions: Array<
-    | "restart-cpa"
-    | "restart-compact-proxy"
-    | "restart-watchdog"
-    | "restart-cc-connect"
-  > = [];
+  const actions: CodexStackRepairAction[] = [];
   const serviceActive = new Map(summary.services.map((service) => [service.id, service.active]));
   if (!serviceActive.get("cli-proxy-api.service")) actions.push("restart-cpa");
   if (!serviceActive.get("cpa-compact-proxy.service")) actions.push("restart-compact-proxy");
