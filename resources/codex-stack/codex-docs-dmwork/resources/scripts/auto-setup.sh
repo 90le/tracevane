@@ -819,7 +819,7 @@ Wants=cli-proxy-api.service
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/cc-connect -config %h/.cc-connect/config.toml
+ExecStart=%h/.local/bin/cc-connect --force --config %h/.cc-connect/config.toml
 WorkingDirectory=%h/.cc-connect
 Restart=always
 RestartSec=5
@@ -839,6 +839,13 @@ Environment=NO_PROXY=localhost,127.0.0.1,::1
 [Install]
 WantedBy=default.target
 SVCEOF
+
+    # Kill any existing cc-connect processes from previous installations
+    systemctl --user stop cc-connect.service 2>/dev/null || true
+    pkill -f 'cc-connect' 2>/dev/null || true
+    sleep 1
+    # Clean stale instance lock
+    rm -f "$HOME/.cc-connect/.config.toml.lock" 2>/dev/null || true
 
     systemctl --user daemon-reload
     systemctl --user enable cc-connect.service 2>/dev/null || true
