@@ -32,9 +32,18 @@ import { readJsonFile } from "../../core/state.js";
 
 const execFileAsync = promisify(execFile);
 
-const DEFAULT_CPA_PORT = 8317;
+const OFFICIAL_CPA_PORT = 8317;
+const DMWORK_CPA_PORT = 18795;
 const DEFAULT_COMPACT_PORT = 18796;
-const DEFAULT_MODEL = "glm-5.1";
+const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
+const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
+
+function defaultCpaPort(channel?: CodexStackChannel): number {
+  return channel === "dmwork" ? DMWORK_CPA_PORT : OFFICIAL_CPA_PORT;
+}
+function defaultModel(channel?: CodexStackChannel): string {
+  return channel === "dmwork" ? DMWORK_DEFAULT_MODEL : OFFICIAL_DEFAULT_MODEL;
+}
 const DEFAULT_CPA_PROXY_KEY = "openclaw-cpa-key";
 const DEFAULT_CC_CONNECT_PROJECT = "main";
 const JOB_TAIL_CHARS = 12_000;
@@ -322,7 +331,7 @@ function redactText(input: string, secrets: string[]): string {
 
 function parseCpaPort(source: string): number {
   const match = source.match(/^port:\s*["']?(\d+)/m);
-  return normalizePort(match?.[1], DEFAULT_CPA_PORT);
+  return normalizePort(match?.[1], DMWORK_CPA_PORT);
 }
 
 function parseModels(source: string): string[] {
@@ -341,7 +350,7 @@ function parseModels(source: string): string[] {
       }
     }
   }
-  for (const preferred of [DEFAULT_MODEL, "gpt-5.5", "gpt-5.4", "kimi-k2.6", "deepseek-v4-flash"]) {
+  for (const preferred of [DMWORK_DEFAULT_MODEL, OFFICIAL_DEFAULT_MODEL, "gpt-5.5", "gpt-5.4", "kimi-k2.6", "deepseek-v4-flash"]) {
     if (source.includes(preferred)) models.add(preferred);
   }
   return Array.from(models).sort((left, right) => left.localeCompare(right));
@@ -351,10 +360,10 @@ function chooseDefaultModel(models: string[], current = ""): string {
   if (current) return current;
   const envOverride = normalizeString(process.env.CODEX_MODEL);
   if (envOverride) return envOverride;
-  for (const preferred of [DEFAULT_MODEL, "gpt-5.5", "gpt-5.4", "kimi-k2.6", "deepseek-v4-flash"]) {
+  for (const preferred of [DMWORK_DEFAULT_MODEL, OFFICIAL_DEFAULT_MODEL, "gpt-5.5", "gpt-5.4", "deepseek-v4-flash"]) {
     if (models.includes(preferred)) return preferred;
   }
-  return models[0] || DEFAULT_MODEL;
+  return models[0] || DMWORK_DEFAULT_MODEL;
 }
 
 function detectCcConnectBinding(source: string): boolean {
@@ -799,9 +808,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       services,
       ports: { cpa: cpaPort, compact: compactPort, detectedCpa: liveCpaPort, detectedCompact: liveCompactPort },
       models: {
-        current: currentModel || DEFAULT_MODEL,
+        current: currentModel || defaultModel(resolveChannel()),
         defaultModel: chooseDefaultModel(models, currentModel),
-        available: Array.from(new Set([currentModel, DEFAULT_MODEL, ...models].filter(Boolean))).sort(),
+        available: Array.from(new Set([currentModel, defaultModel(resolveChannel()), ...models].filter(Boolean))).sort(),
       },
       secrets: {
         cpaProxyKey: cpaProxyKey
@@ -913,9 +922,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       flags,
       secrets,
       profilePatch: {
-        cpaPort: normalizePort(env.CPA_PORT, DEFAULT_CPA_PORT),
+        cpaPort: normalizePort(env.CPA_PORT, defaultCpaPort(resolveChannel())),
         compactPort: normalizePort(env.COMPACT_PORT, DEFAULT_COMPACT_PORT),
-        defaultModel: normalizeString(env.CODEX_MODEL, DEFAULT_MODEL),
+        defaultModel: normalizeString(env.CODEX_MODEL, defaultModel(resolveChannel())),
         hasCpaProxyKey: Boolean(env.CPA_PROXY_KEY),
         upstreamOverride: {
           hasBaseUrl: Boolean(env.OPENCLAW_UPSTREAM_BASE_URL),

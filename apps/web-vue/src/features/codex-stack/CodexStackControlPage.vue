@@ -154,7 +154,7 @@
           <p class="cs-field-hint">{{ text('留空使用默认值。大多数情况无需修改。', 'Leave empty for defaults. Most setups do not need changes.') }}</p>
           <div class="cs-form-grid">
             <label class="form-field"><span class="form-label">{{ text('默认模型', 'Default model') }}</span>
-              <input v-model="installForm.model" class="form-input" placeholder="glm-5.1" /></label>
+              <input v-model="installForm.model" class="form-input" placeholder="kimi-k2.6" /></label>
             <label class="form-field"><span class="form-label">{{ text('CPA 端口', 'CPA port') }}</span>
               <input v-model.number="installForm.cpaPort" class="form-input" type="number" min="1" /></label>
             <label class="form-field"><span class="form-label">{{ text('Compact 端口', 'Compact port') }}</span>
@@ -315,8 +315,8 @@ const tabs = [
 let pollTimer: number | null = null;
 
 const installForm = reactive({
-  model: "glm-5.1",
-  cpaPort: 8317,
+  model: "kimi-k2.6",
+  cpaPort: 18795,
   compactPort: 18796,
   cpaKey: "",
   upstreamBaseUrl: "",
@@ -332,8 +332,8 @@ const installForm = reactive({
 });
 
 const configForm = reactive({
-  defaultModel: "glm-5.1",
-  cpaPort: 8317,
+  defaultModel: "kimi-k2.6",
+  cpaPort: 18795,
   compactPort: 18796,
   ccConnectProject: "main",
   cpaProxyKey: "",
@@ -356,7 +356,7 @@ const statusLabel = computed(() => {
 const activeServiceCount = computed(() => countActiveServices(summary.value?.services || []));
 const loggableServices: CodexStackServiceId[] = ["cli-proxy-api.service", "cpa-compact-proxy.service", "cc-connect.service", "codex-stack-watchdog.timer"];
 
-const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["glm-5.1"]);
+const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["kimi-k2.6"]);
 
 function componentTone(status: Parameters<typeof codexStackComponentTone>[0]) {
   return codexStackComponentTone(status);

@@ -46,10 +46,12 @@ fi
 echo "--- CPA (cli-proxy-api) ---"
 if [[ -x "$HOME/.local/bin/cli-proxy-api" ]] || command -v cli-proxy-api &>/dev/null; then
   ok "CPA 已安装"
-  if ss -tlnp 2>/dev/null | grep -q ':18795'; then
-    ok "CPA 监听在 127.0.0.1:18795"
+  CPA_PORT=$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)
+CPA_PORT=${CPA_PORT:-18795}
+if ss -tlnp 2>/dev/null | grep -q ":${CPA_PORT}"; then
+    ok "CPA 监听在 127.0.0.1:${CPA_PORT}"
   else
-    fail "CPA 未在监听 — 启动: systemctl --user start cpa"
+    fail "CPA 未在监听 (port ${CPA_PORT}) — 启动: systemctl --user start cli-proxy-api.service"
   fi
 else
   fail "CPA 未安装 — 检查 ~/.local/bin/cli-proxy-api"
@@ -72,7 +74,7 @@ fi
 echo "--- cc-connect ---"
 if [[ -x "$HOME/.local/bin/cc-connect" ]]; then
   ok "cc-connect 二进制已安装 ($(du -h "$HOME/.local/bin/cc-connect" | cut -f1))"
-  if systemctl --user is-active cc-connect &>/dev/null; then
+  if systemctl --user is-active cc-connect.service &>/dev/null; then
     ok "cc-connect 服务运行中 (systemd)"
   else
     warn "cc-connect 服务未运行 — 启动: systemctl --user start cc-connect"
@@ -83,8 +85,8 @@ fi
 
 # ── systemd services ──
 echo "--- systemd user services ---"
-for svc in cpa cpa-compact-proxy cc-connect; do
-  if systemctl --user is-enabled "$svc" &>/dev/null; then
+for svc in cli-proxy-api cpa-compact-proxy cc-connect; do
+  if systemctl --user is-enabled "$svc.service" &>/dev/null; then
     ok "$svc 已启用"
   else
     warn "$svc 未启用 — 启用: systemctl --user enable $svc"

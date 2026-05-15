@@ -26,23 +26,83 @@ info() { echo -e "${BLUE}[info]${NC} $1"; }
 
 # ── 参数 ──
 SKIP_CC_CONNECT=false
+SKIP_NPM=false
+SKIP_EXISTING=false
+FORCE_REINSTALL=false
+SKIP_COMPONENTS=""
+FORCE_COMPONENTS=""
+NO_START=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESOURCES_DIR="$(dirname "$SCRIPT_DIR")"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --skip-cc-connect) SKIP_CC_CONNECT=true; shift ;;
+    --skip-npm) SKIP_NPM=true; shift ;;
+    --skip-existing) SKIP_EXISTING=true; shift ;;
+    --force-reinstall) FORCE_REINSTALL=true; shift ;;
+    --skip=*) SKIP_COMPONENTS="${1#--skip=}"; shift ;;
+    --force=*) FORCE_COMPONENTS="${1#--force=}"; shift ;;
+    --no-start) NO_START=true; shift ;;
     --help)
       echo "Usage: bash auto-setup.sh [OPTIONS]"
       echo ""
-      echo "  --skip-cc-connect   跳过 cc-connect 安装"
+      echo "Options:"
+      echo "  --skip-cc-connect       跳过 cc-connect 安装"
+      echo "  --skip-npm              跳过 npm 全局安装 (codex/omx/ws)"
+      echo "  --skip-existing         跳过已安装的组件"
+      echo "  --force-reinstall       强制重新安装所有组件"
+      echo "  --no-start              只安装不启动服务"
+      echo "  --skip=<comp,...>       跳过指定组件 (codex,cpa,compact-proxy,cc-connect,watchdog)"
+      echo "  --force=<comp,...>      强制重装指定组件 (codex,cpa,compact-proxy,cc-connect)"
       echo ""
       echo "  自动从 ~/.openclaw/openclaw.json 读取网关配置。"
-      echo "  无需手动提供 API Key 或网关地址。"
       exit 0 ;;
     *) warn "未知参数: $1"; shift ;;
   esac
 done
+
+# ── 组件过滤辅助函数 ──
+should_skip() {
+  # Returns 0 (true) if the component should be skipped
+  local comp="$1"
+  # --skip= takes priority
+  if [[ -n "$SKIP_COMPONENTS" ]]; then
+    local IFS=','
+    for s in $SKIP_COMPONENTS; do
+      [[ "$s" == "$comp" ]] && return 0
+    done
+  fi
+  # --skip-existing: skip if already installed
+  if [[ "$SKIP_EXISTING" == true ]]; then
+    case "$comp" in
+      codex) command -v codex &>/dev/null && return 0 ;;
+      cpa) [[ -x "$HOME/.local/bin/cli-proxy-api" ]] && return 0 ;;
+      compact-proxy) [[ -f "$HOME/.local/bin/cpa-compact-proxy.mjs" ]] && return 0 ;;
+      cc-connect) [[ -x "$HOME/.local/bin/cc-connect" ]] && return 0 ;;
+      watchdog) return 1 ;;  # watchdog is always lightweight, don't skip
+    esac
+  fi
+  return 1
+}
+
+should_force() {
+  # Returns 0 (true) if the component should be force-reinstalled
+  local comp="$1"
+  [[ "$FORCE_REINSTALL" == true ]] && return 0
+  if [[ -n "$FORCE_COMPONENTS" ]]; then
+    local IFS=','
+    for f in $FORCE_COMPONENTS; do
+      [[ "$f" == "$comp" ]] && return 0
+    done
+  fi
+  return 1
+}
+
+# Derive SKIP_CC_CONNECT from --skip=cc-connect too
+if echo "$SKIP_COMPONENTS" | grep -q 'cc-connect'; then
+  SKIP_CC_CONNECT=true
+fi
 
 # =============================================================================
 # Step 0: 检查前置条件
@@ -119,40 +179,50 @@ log "  主网关: $GATEWAY_URL"
 # =============================================================================
 # Step 2: 安装 Codex CLI + oh-my-codex
 # =============================================================================
-log "Step 2/8: 安装 Codex CLI + oh-my-codex..."
-
-if ! command -v codex &>/dev/null; then
-  npm install -g @openai/codex
-  log "  Codex CLI 安装完成"
+if [[ "$SKIP_NPM" == true ]]; then
+  log "Step 2/8: 跳过 npm 安装（--skip-npm）"
 else
-  log "  Codex CLI 已安装: $(codex --version 2>/dev/null || echo 'ok')"
-fi
+  log "Step 2/8: 安装 Codex CLI + oh-my-codex..."
 
-if ! command -v omx &>/dev/null; then
-  npm install -g oh-my-codex
-  log "  oh-my-codex 安装完成"
-else
-  log "  oh-my-codex 已安装"
-fi
+  if should_skip "codex"; then
+    log "  跳过 Codex CLI（已安装或 --skip=codex）"
+  elif should_force "codex" || ! command -v codex &>/dev/null; then
+    npm install -g @openai/codex
+    log "  Codex CLI 安装完成"
+  else
+    log "  Codex CLI 已安装: $(codex --version 2>/dev/null || echo 'ok')"
+  fi
 
-# ws 模块（Compact Proxy 依赖）
-if ! node -e "require('ws')" &>/dev/null 2>&1; then
-  log "  安装 ws 模块..."
-  npm install -g ws 2>/dev/null || true
-  # 如果全局安装失败，确保 openclaw 的 node_modules 有 ws
-  if [[ -d "$HOME/.openclaw/node_modules" ]]; then
-    cd "$HOME/.openclaw" && npm install ws 2>/dev/null || true
-    cd - > /dev/null
+  if should_force "codex" || ! command -v omx &>/dev/null; then
+    npm install -g oh-my-codex
+    log "  oh-my-codex 安装完成"
+  else
+    log "  oh-my-codex 已安装"
+  fi
+
+  # ws 模块（Compact Proxy 依赖）
+  if ! node -e "require('ws')" &>/dev/null 2>&1; then
+    log "  安装 ws 模块..."
+    npm install -g ws 2>/dev/null || true
+    if [[ -d "$HOME/.openclaw/node_modules" ]]; then
+      cd "$HOME/.openclaw" && npm install ws 2>/dev/null || true
+      cd - > /dev/null
+    fi
   fi
 fi
 
 # =============================================================================
 # Step 3: 安装 cc-connect（dmwork 增强版二进制）
 # =============================================================================
-if [[ "$SKIP_CC_CONNECT" != true ]]; then
+if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip "cc-connect"; then
   log "Step 3/8: 安装 cc-connect (dmwork 增强版)..."
   mkdir -p "$HOME/.local/bin"
   CC_BIN="$RESOURCES_DIR/bin/cc-connect"
+  # Force reinstall: remove old binary first
+  if should_force "cc-connect" && [[ -x "$HOME/.local/bin/cc-connect" ]]; then
+    rm -f "$HOME/.local/bin/cc-connect"
+    log "  已移除旧版 cc-connect（强制重装）"
+  fi
   if [[ -f "$CC_BIN" ]]; then
     cp "$CC_BIN" "$HOME/.local/bin/cc-connect"
     chmod +x "$HOME/.local/bin/cc-connect"
@@ -181,21 +251,45 @@ fi
 # =============================================================================
 # Step 4: 部署 CPA 二进制 + Compact Proxy
 # =============================================================================
-log "Step 4/8: 部署 CPA + Compact Proxy..."
+if should_skip "cpa" && should_skip "compact-proxy"; then
+  log "Step 4/8: 跳过 CPA + Compact Proxy（--skip 或已安装）"
+else
+  log "Step 4/8: 部署 CPA + Compact Proxy..."
+fi
 
 mkdir -p "$HOME/.local/bin"
 
 # 部署 CPA 二进制
-if [[ -x "$HOME/.local/bin/cli-proxy-api" ]]; then
+if should_skip "cpa"; then
+  log "  跳过 CPA（--skip=cpa 或已安装）"
+elif should_force "cpa" && [[ -x "$HOME/.local/bin/cli-proxy-api" ]]; then
+  # Stop CPA service first to avoid "Text file busy"
+  systemctl --user stop cli-proxy-api.service 2>/dev/null || true
+  sleep 1
+  rm -f "$HOME/.local/bin/cli-proxy-api"
+  log "  已移除旧版 CPA（强制重装）"
+fi
+if ! should_skip "cpa" && [[ -x "$HOME/.local/bin/cli-proxy-api" ]]; then
   log "  CPA 已存在于 ~/.local/bin/cli-proxy-api"
 else
+  # Stop CPA before copy to avoid "Text file busy"
+  if [[ -x "$HOME/.local/bin/cli-proxy-api" ]]; then
+    systemctl --user stop cli-proxy-api.service 2>/dev/null || true
+    pkill -f 'cli-proxy-api' 2>/dev/null || true
+    sleep 1
+  fi
   # 尝试从资源目录复制
   if [[ -f "$RESOURCES_DIR/bin/cli-proxy-api" ]]; then
-    cp "$RESOURCES_DIR/bin/cli-proxy-api" "$HOME/.local/bin/cli-proxy-api"
+    cp -f "$RESOURCES_DIR/bin/cli-proxy-api" "$HOME/.local/bin/cli-proxy-api" 2>/dev/null || {
+      # If still busy, force kill and retry
+      pkill -9 -f 'cli-proxy-api' 2>/dev/null || true
+      sleep 2
+      cp "$RESOURCES_DIR/bin/cli-proxy-api" "$HOME/.local/bin/cli-proxy-api"
+    }
     chmod +x "$HOME/.local/bin/cli-proxy-api"
     log "  CPA 从资源目录复制完成"
   elif [[ -f "$RESOURCES_DIR/cpa-config-templates/cli-proxy-api" ]]; then
-    cp "$RESOURCES_DIR/cpa-config-templates/cli-proxy-api" "$HOME/.local/bin/cli-proxy-api"
+    cp -f "$RESOURCES_DIR/cpa-config-templates/cli-proxy-api" "$HOME/.local/bin/cli-proxy-api"
     chmod +x "$HOME/.local/bin/cli-proxy-api"
     log "  CPA 从模板目录复制完成"
   else
@@ -206,7 +300,13 @@ else
 fi
 
 # 部署 Compact Proxy v5 (Node.js)
-if [[ -f "$HOME/.local/bin/cpa-compact-proxy.mjs" ]]; then
+if should_skip "compact-proxy"; then
+  log "  跳过 Compact Proxy（--skip=compact-proxy 或已安装）"
+elif should_force "compact-proxy" && [[ -f "$HOME/.local/bin/cpa-compact-proxy.mjs" ]]; then
+  rm -f "$HOME/.local/bin/cpa-compact-proxy.mjs"
+  log "  已移除旧版 Compact Proxy（强制重装）"
+fi
+if ! should_skip "compact-proxy" && [[ -f "$HOME/.local/bin/cpa-compact-proxy.mjs" ]]; then
   log "  Compact Proxy v5 已存在"
 else
   # 尝试从资源目录复制
@@ -227,8 +327,11 @@ fi
 # =============================================================================
 # Step 5: 生成 CPA 配置
 # =============================================================================
-log "Step 5/8: 生成 CPA 配置..."
-
+if should_skip "cpa" && should_skip "compact-proxy"; then
+  log "Step 5/8: 跳过 CPA 配置生成（CPA 和 Compact Proxy 均跳过）"
+else
+  log "Step 5/8: 生成 CPA 配置..."
+fi
 
 mkdir -p "$HOME/.cli-proxy-api"
 
@@ -328,7 +431,10 @@ log "  CPA 配置写入: $CPA_CONFIG"
 # =============================================================================
 # Step 6: 生成 Codex 配置
 # =============================================================================
-log "Step 6/8: 生成 Codex 配置..."
+if should_skip "codex"; then
+  log "Step 6/8: 跳过 Codex 配置生成（--skip=codex）"
+else
+  log "Step 6/8: 生成 Codex 配置..."
 
 mkdir -p "$HOME/.codex"
 
@@ -363,6 +469,8 @@ developer_instructions = "You have oh-my-codex installed. AGENTS.md is the orche
 # ── 模型配置 ──
 model = "kimi-k2.6"
 openai_base_url = "http://127.0.0.1:18796/v1"
+responses_websockets = true
+responses_websockets_v2 = true
 
 # ── 功能开关 ──
 [features]
@@ -417,10 +525,16 @@ TOMLEOF
 
 log "  Codex 配置写入: $CODEX_CONFIG"
 
+fi  # end should_skip "codex"
+
 # =============================================================================
 # Step 7: 创建 systemd 进程守护
 # =============================================================================
-log "Step 7/8: 创建 systemd 进程守护..."
+if [[ "$NO_START" == true ]]; then
+  log "Step 7/8: 跳过 systemd 服务启动（--no-start）"
+  log "  稍后可手动启动: systemctl --user start cli-proxy-api.service cpa-compact-proxy.service"
+else
+  log "Step 7/8: 创建 systemd 进程守护..."
 
 mkdir -p "$HOME/.config/systemd/user"
 
@@ -432,7 +546,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/cli-proxy-api\nWorkingDirectory=%h/.cli-proxy-api --config %h/.config/cli-proxy-api/config.yaml
+ExecStart=%h/.local/bin/cli-proxy-api --config %h/.cli-proxy-api/config.yaml
+WorkingDirectory=%h/.cli-proxy-api
 Restart=always
 RestartSec=5
 StandardOutput=append:/tmp/cpa.log
@@ -447,16 +562,17 @@ Environment=NO_PROXY=localhost,127.0.0.1,::1
 WantedBy=default.target
 SVCEOF
 
-# Compact Proxy service
-cat > "$HOME/.config/systemd/user/cpa-compact-proxy.service" << 'SVCEOF'
+# Compact Proxy service — resolve node path at install time
+NODE_BIN="$(command -v node || echo /usr/bin/node)"
+cat > "$HOME/.config/systemd/user/cpa-compact-proxy.service" << SVCEOF
 [Unit]
 Description=CPA Compact Proxy v5 (Node.js)
-After=network.target cpa.service
-Wants=cpa.service
+After=network.target cli-proxy-api.service
+Wants=cli-proxy-api.service
 
 [Service]
 Type=simple
-ExecStart=$(which node || echo /usr/bin/node) %h/.local/bin/cpa-compact-proxy.mjs
+ExecStart=${NODE_BIN} %h/.local/bin/cpa-compact-proxy.mjs
 Restart=always
 RestartSec=3
 StandardOutput=append:/tmp/cpa-compact-proxy.log
@@ -506,6 +622,8 @@ if ss -tlnp 2>/dev/null | grep -q ':18796'; then
 else
   warn "  Compact Proxy 端口 18796 未监听"
 fi
+
+fi  # end NO_START guard
 
 # =============================================================================
 # Step 8: 配置 cc-connect + systemd 守护进程
@@ -576,8 +694,8 @@ CCEOF
     cat > "$HOME/.config/systemd/user/cc-connect.service" << 'SVCEOF'
 [Unit]
 Description=cc-connect - AI Agent Chat Bridge
-After=network-online.target cpa.service cpa-compact-proxy.service
-Wants=cpa.service
+After=network-online.target cli-proxy-api.service cpa-compact-proxy.service
+Wants=cli-proxy-api.service
 
 [Service]
 Type=simple
@@ -604,9 +722,13 @@ SVCEOF
 
     systemctl --user daemon-reload
     systemctl --user enable cc-connect.service 2>/dev/null || true
-    systemctl --user restart cc-connect.service.service 2>/dev/null || {
-      warn "  cc-connect 首次启动，可能需要配置平台后再启动"
-    }
+    if [[ "$NO_START" != true ]]; then
+      systemctl --user restart cc-connect.service 2>/dev/null || {
+        warn "  cc-connect 首次启动，可能需要配置平台后再启动"
+      }
+    else
+      log "  跳过 cc-connect 启动（--no-start）"
+    fi
     sleep 2
 
     if systemctl --user is-active cc-connect &>/dev/null; then
