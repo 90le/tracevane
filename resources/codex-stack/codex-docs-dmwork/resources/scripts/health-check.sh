@@ -93,6 +93,23 @@ for svc in cli-proxy-api cpa-compact-proxy cc-connect; do
   fi
 done
 
+# ── Watchdog ──
+echo "--- Codex Stack Watchdog ---"
+if systemctl --user list-unit-files codex-stack-watchdog.timer &>/dev/null; then
+  if systemctl --user is-active codex-stack-watchdog.timer &>/dev/null; then
+    ok "Watchdog 定时器运行中"
+  else
+    warn "Watchdog 定时器未运行 — 启动: systemctl --user start codex-stack-watchdog.timer"
+  fi
+  if systemctl --user is-enabled codex-stack-watchdog.timer &>/dev/null; then
+    ok "Watchdog 已启用"
+  else
+    warn "Watchdog 未启用 — 启用: systemctl --user enable codex-stack-watchdog.timer"
+  fi
+else
+  warn "Watchdog 未安装"
+fi
+
 # ── openclaw.json ──
 echo "--- OpenClaw 配置 ---"
 OPENCLAW_JSON="$HOME/.openclaw/openclaw.json"
