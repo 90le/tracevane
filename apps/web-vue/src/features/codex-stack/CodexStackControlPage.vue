@@ -91,65 +91,99 @@
 
     <!-- Tab: Install -->
     <template v-if="summary && activeTab === 'install'">
-      <article class="panel-card">
-        <h4>{{ text('安装渠道', 'Install Channel') }}</h4>
-        <div class="cs-radio-group">
-          <label class="cs-radio" :class="{ 'cs-radio-active': installForm.channel === 'dmwork' }">
-            <input v-model="installForm.channel" type="radio" value="dmwork" />
-            <strong>DMWork {{ text('增强版', 'Enhanced') }}</strong>
-            <span>{{ text('自编译 cc-connect，支持 DMWork/飞书/微信', 'Self-built cc-connect with DMWork/Feishu/Weixin') }}</span>
-          </label>
-          <label class="cs-radio" :class="{ 'cs-radio-active': installForm.channel === 'official' }">
-            <input v-model="installForm.channel" type="radio" value="official" />
-            <strong>{{ text('官方版', 'Official') }}</strong>
-            <span>{{ text('npm 安装 cc-connect，飞书/微信', 'npm cc-connect, Feishu/Weixin') }}</span>
-          </label>
+      <!-- Install progress overlay -->
+      <article v-if="activeJob && isCodexStackJobRunning(activeJob)" class="panel-card cs-progress-card">
+        <div class="cs-progress-header">
+          <h4>{{ text('安装进行中', 'Installing...') }}</h4>
+          <span class="cs-progress-badge cs-progress-running">{{ activeJob.kind }}: {{ activeJob.status }}</span>
         </div>
-
-        <h4 style="margin-top:18px">{{ text('选择性跳过/强制重装', 'Selective Skip/Force') }}</h4>
-        <div class="cs-comp-toggles">
-          <div v-for="comp in componentOptions" :key="comp.id" class="cs-comp-row">
-            <span class="cs-comp-label">{{ comp.label }}</span>
-            <label class="cs-comp-action"><input type="checkbox" :checked="installForm.skipComponents.includes(comp.id)" @change="toggleSkip(comp.id)" /> {{ text('跳过', 'Skip') }}</label>
-            <label class="cs-comp-action"><input type="checkbox" :checked="installForm.forceComponents.includes(comp.id)" @change="toggleForce(comp.id)" /> {{ text('强制', 'Force') }}</label>
-          </div>
-        </div>
-
-        <h4 style="margin-top:18px">{{ text('安装参数', 'Install Parameters') }}</h4>
-        <div class="cs-form-grid">
-          <label class="form-field"><span class="form-label">{{ text('默认模型', 'Default model') }}</span>
-            <input v-model="installForm.model" class="form-input" placeholder="glm-5.1" /></label>
-          <label class="form-field"><span class="form-label">{{ text('CPA 端口', 'CPA port') }}</span>
-            <input v-model.number="installForm.cpaPort" class="form-input" type="number" min="1" /></label>
-          <label class="form-field"><span class="form-label">{{ text('Compact 端口', 'Compact port') }}</span>
-            <input v-model.number="installForm.compactPort" class="form-input" type="number" min="1" /></label>
-          <label class="form-field"><span class="form-label">{{ text('代理密钥', 'Proxy key') }}</span>
-            <input v-model="installForm.cpaKey" class="form-input" type="password" /></label>
-          <label class="form-field"><span class="form-label">{{ text('上游 URL', 'Upstream URL') }}</span>
-            <input v-model="installForm.upstreamBaseUrl" class="form-input" placeholder="https://api.example.com/v1" /></label>
-          <label class="form-field"><span class="form-label">{{ text('上游 API Key', 'Upstream API Key') }}</span>
-            <input v-model="installForm.upstreamApiKey" class="form-input" type="password" /></label>
-        </div>
-        <div class="cs-checkboxes">
-          <label><input v-model="installForm.skipNpm" type="checkbox" /> {{ text('跳过 npm', 'Skip npm') }}</label>
-          <label><input v-model="installForm.skipCcConnect" type="checkbox" /> {{ text('跳过 cc-connect', 'Skip cc-connect') }}</label>
-          <label><input v-model="installForm.noStart" type="checkbox" /> {{ text('只写不启动', 'Write only') }}</label>
-          <label><input v-model="installForm.skipExisting" type="checkbox" /> {{ text('跳过已安装', 'Skip existing') }}</label>
-          <label><input v-model="installForm.forceReinstall" type="checkbox" /> {{ text('强制全部重装', 'Force all') }}</label>
-        </div>
-
-        <div class="cs-actions">
-          <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="installFullStack">
-            {{ text('安装全部', 'Install Full Stack') }}
-          </button>
-          <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="installBaseOnly">
-            {{ text('仅安装基础', 'Base Only') }}
-          </button>
-          <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="repairRecommended">
-            {{ text('自动修复', 'Auto Repair') }}
-          </button>
-        </div>
+        <p class="cs-progress-hint">{{ text('安装脚本正在后台执行，日志实时更新。', 'Install script is running in the background. Logs update in real time.') }}</p>
+        <pre class="cs-progress-log">{{ activeJob.logTail || text('等待输出...', 'Waiting for output...') }}</pre>
       </article>
+
+      <!-- Install completed summary -->
+      <article v-if="activeJob && !isCodexStackJobRunning(activeJob)" class="panel-card" :class="activeJob.status === 'succeeded' ? 'cs-result-ok' : 'cs-result-fail'">
+        <div class="cs-progress-header">
+          <h4>{{ activeJob.status === 'succeeded' ? text('安装完成', 'Install Succeeded') : text('安装失败', 'Install Failed') }}</h4>
+          <span class="cs-progress-badge" :class="activeJob.status === 'succeeded' ? 'cs-progress-ok' : 'cs-progress-fail'">{{ activeJob.kind }}: {{ activeJob.status }}</span>
+        </div>
+        <pre class="cs-progress-log" v-if="activeJob.error || activeJob.logTail">{{ activeJob.error || activeJob.logTail }}</pre>
+        <button type="button" class="secondary-button" style="margin-top:10px" @click="activeJob = null">{{ text('关闭', 'Dismiss') }}</button>
+      </article>
+
+      <!-- Install form (hidden while job is running) -->
+      <template v-if="!activeJob || !isCodexStackJobRunning(activeJob)">
+        <article class="panel-card">
+          <h4>{{ text('1. 选择安装渠道', '1. Select Channel') }}</h4>
+          <p class="cs-field-hint">{{ text('不同渠道的 cc-connect 支持不同的即时通讯平台。', 'Different cc-connect builds support different IM platforms.') }}</p>
+          <div class="cs-radio-group">
+            <label class="cs-radio" :class="{ 'cs-radio-active': installForm.channel === 'dmwork' }">
+              <input v-model="installForm.channel" type="radio" value="dmwork" />
+              <strong>DMWork {{ text('增强版（推荐）', 'Enhanced (Recommended)') }}</strong>
+              <span>{{ text('自编译二进制，支持 DMWork / 飞书 / 微信三渠道', 'Self-built binary: DMWork + Feishu + Weixin') }}</span>
+            </label>
+            <label class="cs-radio" :class="{ 'cs-radio-active': installForm.channel === 'official' }">
+              <input v-model="installForm.channel" type="radio" value="official" />
+              <strong>{{ text('官方版', 'Official') }}</strong>
+              <span>{{ text('npm 安装 cc-connect，支持飞书 / 微信', 'npm cc-connect: Feishu + Weixin') }}</span>
+            </label>
+          </div>
+        </article>
+
+        <article class="panel-card">
+          <h4>{{ text('2. 组件控制（可选）', '2. Component Control (Optional)') }}</h4>
+          <p class="cs-field-hint">{{ text('默认安装全部组件。勾选「跳过」保留已安装版本，勾选「强制」强制重新安装。', 'All components are installed by default. Check Skip to keep existing, Force to reinstall.') }}</p>
+          <div class="cs-comp-toggles">
+            <div v-for="comp in componentOptions" :key="comp.id" class="cs-comp-row">
+              <span class="cs-comp-label">{{ comp.label }}</span>
+              <label class="cs-comp-action"><input type="checkbox" :checked="installForm.skipComponents.includes(comp.id)" @change="toggleSkip(comp.id)" /> {{ text('跳过', 'Skip') }}</label>
+              <label class="cs-comp-action"><input type="checkbox" :checked="installForm.forceComponents.includes(comp.id)" @change="toggleForce(comp.id)" /> {{ text('强制', 'Force') }}</label>
+            </div>
+          </div>
+          <div class="cs-checkboxes" style="margin-top:10px">
+            <label><input v-model="installForm.skipNpm" type="checkbox" /> {{ text('跳过 npm 更新', 'Skip npm update') }}</label>
+            <label><input v-model="installForm.skipCcConnect" type="checkbox" /> {{ text('跳过 cc-connect', 'Skip cc-connect') }}</label>
+            <label><input v-model="installForm.noStart" type="checkbox" /> {{ text('只写配置不启动服务', 'Write config only') }}</label>
+            <label><input v-model="installForm.skipExisting" type="checkbox" /> {{ text('自动跳过已安装组件', 'Auto-skip installed') }}</label>
+            <label><input v-model="installForm.forceReinstall" type="checkbox" /> {{ text('强制全部重新安装', 'Force reinstall all') }}</label>
+          </div>
+        </article>
+
+        <article class="panel-card">
+          <h4>{{ text('3. 网络参数（可选）', '3. Network Settings (Optional)') }}</h4>
+          <p class="cs-field-hint">{{ text('留空使用默认值。大多数情况无需修改。', 'Leave empty for defaults. Most setups do not need changes.') }}</p>
+          <div class="cs-form-grid">
+            <label class="form-field"><span class="form-label">{{ text('默认模型', 'Default model') }}</span>
+              <input v-model="installForm.model" class="form-input" placeholder="glm-5.1" /></label>
+            <label class="form-field"><span class="form-label">{{ text('CPA 端口', 'CPA port') }}</span>
+              <input v-model.number="installForm.cpaPort" class="form-input" type="number" min="1" /></label>
+            <label class="form-field"><span class="form-label">{{ text('Compact 端口', 'Compact port') }}</span>
+              <input v-model.number="installForm.compactPort" class="form-input" type="number" min="1" /></label>
+            <label class="form-field"><span class="form-label">{{ text('代理密钥', 'Proxy key') }}</span>
+              <input v-model="installForm.cpaKey" class="form-input" type="password" /></label>
+            <label class="form-field"><span class="form-label">{{ text('上游 URL', 'Upstream URL') }}</span>
+              <input v-model="installForm.upstreamBaseUrl" class="form-input" placeholder="https://api.example.com/v1" /></label>
+            <label class="form-field"><span class="form-label">{{ text('上游 API Key', 'Upstream API Key') }}</span>
+              <input v-model="installForm.upstreamApiKey" class="form-input" type="password" /></label>
+          </div>
+        </article>
+
+        <article class="panel-card cs-actions-card">
+          <h4>{{ text('4. 开始安装', '4. Start Install') }}</h4>
+          <p class="cs-field-hint">{{ text('安装通常需要 1-3 分钟。安装过程中可以看到实时日志。', 'Install typically takes 1-3 minutes. Real-time logs are shown during installation.') }}</p>
+          <div class="cs-actions">
+            <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="installFullStack">
+              {{ text('一键安装全部', 'Install Full Stack') }}
+            </button>
+            <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="installBaseOnly">
+              {{ text('仅安装基础（不含 cc-connect）', 'Base Only (no cc-connect)') }}
+            </button>
+            <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="repairRecommended">
+              {{ text('自动修复', 'Auto Repair') }}
+            </button>
+          </div>
+        </article>
+      </template>
     </template>
 
     <!-- Tab: Services -->
@@ -639,6 +673,25 @@ onUnmounted(() => {
 }
 .cs-log { min-height: 200px; max-height: 400px; }
 .cs-empty { padding: 24px; }
+
+.cs-field-hint { color: var(--muted); font-size: 0.9em; margin: 2px 0 8px; }
+
+.cs-progress-card { border: 2px solid var(--acc); }
+.cs-progress-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cs-progress-badge { font-size: 0.85em; padding: 3px 10px; border-radius: 999px; font-weight: 600; }
+.cs-progress-running { background: var(--acc); color: #fff; animation: cs-pulse 1.5s infinite; }
+.cs-progress-ok { background: var(--success); color: #fff; }
+.cs-progress-fail { background: var(--danger); color: #fff; }
+.cs-progress-hint { color: var(--muted); font-size: 0.9em; }
+.cs-progress-log { max-height: 300px; overflow: auto; margin-top: 10px; }
+.cs-result-ok { border-color: var(--success); }
+.cs-result-fail { border-color: var(--danger); }
+.cs-actions-card { background: color-mix(in srgb, var(--surface) 60%, transparent); }
+
+@keyframes cs-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
 
 @media (max-width: 960px) {
   .cs-grid, .cs-status-grid, .cs-form-grid { grid-template-columns: 1fr; }

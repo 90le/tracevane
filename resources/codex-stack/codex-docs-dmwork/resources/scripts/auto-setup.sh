@@ -64,18 +64,9 @@ if ! command -v npm &>/dev/null; then
 fi
 log "npm $(npm --version) ✓"
 
-# jq
+# jq — optional, node fallback handles JSON parsing
 if ! command -v jq &>/dev/null; then
-  warn "jq 未安装，尝试安装..."
-  if command -v apt-get &>/dev/null; then
-    sudo apt-get install -y jq
-  elif command -v yum &>/dev/null; then
-    sudo yum install -y jq
-  elif command -v brew &>/dev/null; then
-    brew install jq
-  else
-    warn "无法自动安装 jq，将使用 fallback 解析"
-  fi
+  info "jq 未安装，使用 node 做 JSON 解析（无需 sudo）"
 fi
 
 # OpenClaw
@@ -91,30 +82,24 @@ log "openclaw.json 存在 ✓"
 log "Step 1/8: 从 openclaw.json 提取网关配置..."
 
 # 提取第一个 provider 的 baseUrl 和 apiKey
-if command -v jq &>/dev/null; then
-  GATEWAY_URL=$(jq -r '.models.providers | to_entries[0].value.baseUrl' "$OPENCLAW_JSON" 2>/dev/null)
-  API_KEY=$(jq -r '.models.providers | to_entries[0].value.apiKey' "$OPENCLAW_JSON" 2>/dev/null)
-  
-  # 提取 mlamp gateway 如果有
-  MLAMP_URL=$(jq -r '.models.providers["custom-llm-gateway-mlamp-cn"].baseUrl // empty' "$OPENCLAW_JSON" 2>/dev/null)
-  MLAMP_KEY=$(jq -r '.models.providers["custom-llm-gateway-mlamp-cn"].apiKey // empty' "$OPENCLAW_JSON" 2>/dev/null)
-  
-  # 提取 bigmodel 如果有
-  BIGMODEL_URL=$(jq -r '.models.providers["bigmodel"].baseUrl // empty' "$OPENCLAW_JSON" 2>/dev/null)
-  BIGMODEL_KEY=$(jq -r '.models.providers["bigmodel"].apiKey // empty' "$OPENCLAW_JSON" 2>/dev/null)
-  
-  # 提取代理设置
-  HTTP_PROXY_VAL=$(jq -r '.env.http_proxy // empty' "$OPENCLAW_JSON" 2>/dev/null)
-  NO_PROXY_VAL=$(jq -r '.env.no_proxy // empty' "$OPENCLAW_JSON" 2>/dev/null)
-else
-  # Fallback: 简单 grep
-  GATEWAY_URL=$(grep -oP '"baseUrl"\s*:\s*"\K[^"]+' "$OPENCLAW_JSON" | head -1)
-  API_KEY=$(grep -oP '"apiKey"\s*:\s*"\K[^"]+' "$OPENCLAW_JSON" | head -1)
-  MLAMP_URL=""
-  MLAMP_KEY=""
-  BIGMODEL_URL=""
-  BIGMODEL_KEY=""
-fi
+# Use node for JSON parsing (always available, no jq/sudo needed)
+eval "$(node -e "
+const fs = require('fs');
+const data = JSON.parse(fs.readFileSync('$OPENCLAW_JSON', 'utf8'));
+const providers = data.models?.providers || {};
+const entries = Object.entries(providers);
+const first = entries[0]?.[1] || {};
+console.log('GATEWAY_URL=' + JSON.stringify(first.baseUrl || ''));
+console.log('API_KEY=' + JSON.stringify(first.apiKey || ''));
+const mlamp = providers['custom-llm-gateway-mlamp-cn'] || {};
+console.log('MLAMP_URL=' + JSON.stringify(mlamp.baseUrl || ''));
+console.log('MLAMP_KEY=' + JSON.stringify(mlamp.apiKey || ''));
+const bigmodel = providers['bigmodel'] || {};
+console.log('BIGMODEL_URL=' + JSON.stringify(bigmodel.baseUrl || ''));
+console.log('BIGMODEL_KEY=' + JSON.stringify(bigmodel.apiKey || ''));
+console.log('HTTP_PROXY_VAL=' + JSON.stringify(data.env?.http_proxy || ''));
+console.log('NO_PROXY_VAL=' + JSON.stringify(data.env?.no_proxy || ''));
+")"
 
 if [[ -z "$GATEWAY_URL" || "$GATEWAY_URL" == "null" ]]; then
   err "无法从 openclaw.json 提取网关地址 (baseUrl)"
@@ -244,11 +229,11 @@ fi
 # =============================================================================
 log "Step 5/8: 生成 CPA 配置..."
 
-mkdir -p "$HOME/.config/cli-proxy-api"
+
 mkdir -p "$HOME/.cli-proxy-api"
 
 # 构建 openai-compatibility providers
-CPA_CONFIG="$HOME/.config/cli-proxy-api/config.yaml"
+CPA_CONFIG="$HOME/.cli-proxy-api/config.yaml"
 
 # 开始写入配置
 cat > "$CPA_CONFIG" << YAMLEOF
@@ -440,14 +425,14 @@ log "Step 7/8: 创建 systemd 进程守护..."
 mkdir -p "$HOME/.config/systemd/user"
 
 # CPA service
-cat > "$HOME/.config/systemd/user/cpa.service" << 'SVCEOF'
+cat > "$HOME/.config/systemd/user/cli-proxy-api.service" << 'SVCEOF'
 [Unit]
-Description=CPA (cli-proxy-api) - Responses API Proxy
+Description=CPA cli-proxy-api - Responses API Proxy
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/cli-proxy-api --config %h/.config/cli-proxy-api/config.yaml
+ExecStart=%h/.local/bin/cli-proxy-api\nWorkingDirectory=%h/.cli-proxy-api --config %h/.config/cli-proxy-api/config.yaml
 Restart=always
 RestartSec=5
 StandardOutput=append:/tmp/cpa.log
@@ -471,7 +456,7 @@ Wants=cpa.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/node %h/.local/bin/cpa-compact-proxy.mjs
+ExecStart=$(which node || echo /usr/bin/node) %h/.local/bin/cpa-compact-proxy.mjs
 Restart=always
 RestartSec=3
 StandardOutput=append:/tmp/cpa-compact-proxy.log
@@ -489,22 +474,22 @@ SVCEOF
 systemctl --user daemon-reload
 
 # CPA
-systemctl --user enable cpa 2>/dev/null || true
-systemctl --user restart cpa 2>/dev/null || {
+systemctl --user enable cli-proxy-api.service 2>/dev/null || true
+systemctl --user restart cli-proxy-api.service 2>/dev/null || {
   warn "CPA 启动失败，可能需要先 kill 旧进程"
   pkill -f 'cli-proxy-api' 2>/dev/null || true
   sleep 2
-  systemctl --user start cpa 2>/dev/null || warn "CPA 仍未启动，请检查: journalctl --user -u cpa"
+  systemctl --user start cli-proxy-api.service 2>/dev/null || warn "CPA 仍未启动，请检查: journalctl --user -u cli-proxy-api.service"
 }
 
 sleep 2
 
 # Compact Proxy
-systemctl --user enable cpa-compact-proxy 2>/dev/null || true
-systemctl --user restart cpa-compact-proxy 2>/dev/null || {
+systemctl --user enable cpa-compact-proxy.service 2>/dev/null || true
+systemctl --user restart cpa-compact-proxy.service 2>/dev/null || {
   warn "Compact Proxy 启动失败"
   sleep 2
-  systemctl --user start cpa-compact-proxy 2>/dev/null || warn "请检查: journalctl --user -u cpa-compact-proxy"
+  systemctl --user start cpa-compact-proxy.service 2>/dev/null || warn "请检查: journalctl --user -u cli-proxy-api.service-compact-proxy"
 }
 
 sleep 2
@@ -618,8 +603,8 @@ WantedBy=default.target
 SVCEOF
 
     systemctl --user daemon-reload
-    systemctl --user enable cc-connect 2>/dev/null || true
-    systemctl --user restart cc-connect 2>/dev/null || {
+    systemctl --user enable cc-connect.service 2>/dev/null || true
+    systemctl --user restart cc-connect.service.service 2>/dev/null || {
       warn "  cc-connect 首次启动，可能需要配置平台后再启动"
     }
     sleep 2
@@ -629,14 +614,14 @@ SVCEOF
     else
       log "  ⚠️  cc-connect 未运行 — 需要配置平台后启动"
       log "      编辑 $CC_CONFIG 添加平台配置后运行:"
-      log "      systemctl --user restart cc-connect"
+      log "      systemctl --user restart cc-connect.service"
     fi
 
     log ""
     log "  📌 平台配置提示："
     log "    飞书: 在 config.toml 中添加 [[projects.platforms]] type="feishu""
     log "    DMWork: 在 config.toml 中添加 [[projects.platforms]] type="dmwork""
-    log "    配置后运行: systemctl --user restart cc-connect"
+    log "    配置后运行: systemctl --user restart cc-connect.service"
     log "    获取管理员 ID: journalctl --user -u cc-connect --since '5 min ago' | grep user="
   fi
 else
@@ -659,11 +644,11 @@ log "  codex                    # 默认模型 kimi-k2.6"
 log "  codex --model glm-5.1   # 切换模型"
 echo ""
 log "管理服务："
-log "  systemctl --user status cpa"
-log "  systemctl --user status cpa-compact-proxy"
-log "  systemctl --user restart cpa cpa-compact-proxy"
+log "  systemctl --user status cli-proxy-api.service"
+log "  systemctl --user status cli-proxy-api.service-compact-proxy"
+log "  systemctl --user restart cli-proxy-api.service cpa-compact-proxy"
 echo ""
 log "查看日志："
 log "  tail -f /tmp/cpa.log"
 log "  tail -f /tmp/cpa-compact-proxy.log"
-log "  journalctl --user -u cpa -f"
+log "  journalctl --user -u cli-proxy-api.service -f"

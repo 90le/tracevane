@@ -7,13 +7,31 @@
  */
 
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { WebSocketServer, WebSocket } = require("/home/mlclaw/.openclaw/node_modules/ws");
+// Resolve ws module from multiple possible locations
+const wsPaths = [
+  process.env.WS_MODULE_PATH,
+  require("path").join(os.homedir(), ".openclaw/node_modules/ws"),
+  require("path").join(os.homedir(), ".local/lib/node_modules/ws"),
+].filter(Boolean);
+let wsMod = null;
+for (const p of wsPaths) {
+  try { wsMod = require(p); break; } catch {}
+}
+if (!wsMod) {
+  try { wsMod = require("ws"); } catch {}
+}
+if (!wsMod) {
+  console.error("Error: ws module not found. Install with: npm install -g ws"); process.exit(1);
+}
+const { WebSocketServer, WebSocket } = wsMod;
 
-const CPA_HOST = "127.0.0.1";
-const CPA_PORT = 18795;
-const LISTEN_PORT = 18796;
+const CPA_HOST = process.env.CPA_HOST || "127.0.0.1";
+const CPA_PORT = Number(process.env.CPA_PORT) || 18795;
+const LISTEN_PORT = Number(process.env.LISTEN_PORT) || 18796;
 const MAX_CONV_CHARS = 300000;
 const COMPACT_TIMEOUT = 300000;
 
