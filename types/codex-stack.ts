@@ -111,6 +111,8 @@ export interface CodexStackSummaryPayload {
   ports: {
     cpa: number;
     compact: number;
+    detectedCpa: number | null;
+    detectedCompact: number | null;
   };
   models: {
     current: string;
@@ -147,6 +149,8 @@ export interface CodexStackInstallRequest {
     skipNpm?: boolean;
     skipCcConnect?: boolean;
     noStart?: boolean;
+    skipExisting?: boolean;
+    forceReinstall?: boolean;
   };
 }
 

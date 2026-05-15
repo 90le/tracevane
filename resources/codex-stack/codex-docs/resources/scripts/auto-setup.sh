@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Codex + CPA + Compact Proxy + cc-connect one-click installer.
-# It reads the current user's ~/.openclaw/openclaw.json and writes local
-# proxy/Codex/cc-connect configs for this machine. It never embeds maintainer
-# credentials from the package.
+# Codex + CPA + Compact Proxy + cc-connect smart installer.
+# Supports incremental installs: skips already-installed components,
+# safely replaces running binaries, and detects live ports.
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
-log() { printf '%b[setup]%b %s\n' "$GREEN" "$NC" "$*"; }
-info() { printf '%b[info]%b %s\n' "$BLUE" "$NC" "$*"; }
-warn() { printf '%b[warn]%b %s\n' "$YELLOW" "$NC" "$*"; }
-die() { printf '%b[error]%b %s\n' "$RED" "$NC" "$*" >&2; exit 1; }
+log()   { printf '%b[setup]%b %s\n' "$GREEN" "$NC" "$*"; }
+info()  { printf '%b[info]%b %s\n' "$BLUE" "$NC" "$*"; }
+warn()  { printf '%b[warn]%b %s\n' "$YELLOW" "$NC" "$*"; }
+die()   { printf '%b[error]%b %s\n' "$RED" "$NC" "$*" >&2; exit 1; }
+skip()  { printf '%b[skip]%b %s\n' "$CYAN" "$NC" "$*"; }
 
 usage() {
   cat <<'USAGE'
@@ -24,6 +25,8 @@ Usage: bash auto-setup.sh [options]
 Options:
   --skip-npm           Do not run npm install -g updates.
   --skip-cc-connect    Do not install cc-connect package or write its skeleton config.
+  --skip-existing      Skip components that are already installed and running.
+  --force-reinstall    Force reinstall all components even if already present.
   --no-start           Write files only; do not start systemd user services.
   --help               Show this help.
 
@@ -42,12 +45,16 @@ USAGE
 
 SKIP_NPM=false
 SKIP_CC_CONNECT=false
+SKIP_EXISTING=false
+FORCE_REINSTALL=false
 NO_START=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-npm) SKIP_NPM=true; shift ;;
     --skip-cc-connect) SKIP_CC_CONNECT=true; shift ;;
+    --skip-existing) SKIP_EXISTING=true; shift ;;
+    --force-reinstall) FORCE_REINSTALL=true; shift ;;
     --no-start) NO_START=true; shift ;;
     --help|-h) usage; exit 0 ;;
     *) die "Unknown option: $1" ;;
@@ -65,10 +72,82 @@ COMPACT_PORT="${COMPACT_PORT:-18796}"
 CPA_PROXY_KEY="${CPA_PROXY_KEY:-openclaw-cpa-key}"
 TS="$(date +%Y%m%d-%H%M%S)"
 
+# ── Dynamic port detection ────────────────────────────────────────
+detect_cpa_port() {
+  local port=""
+  # 1. Try config file
+  if [[ -f "$CPA_CONFIG" ]]; then
+    port="$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$CPA_CONFIG" 2>/dev/null)"
+  fi
+  # 2. Try running process
+  if [[ -z "$port" ]] && command -v ss >/dev/null 2>&1; then
+    port="$(ss -tlnp 2>/dev/null | grep 'cli-proxy-api' | head -1 | grep -oP ':\K\d+' || true)"
+  fi
+  # 3. Try systemd show
+  if [[ -z "$port" ]] && systemctl --user show cli-proxy-api.service 2>/dev/null | grep -q 'ActiveState=active'; then
+    port="$(systemctl --user show cli-proxy-api.service -p ExecStart 2>/dev/null | grep -oP '\d+' | tail -1 || true)"
+  fi
+  echo "${port:-$CPA_PORT}"
+}
+
+detect_compact_port() {
+  local port=""
+  # 1. Try codex config base_url
+  if [[ -f "$CODEX_CONFIG" ]]; then
+    port="$(awk -F '"' '/base_url/ { match($0, /127\.0\.0\.1:([0-9]+)/, a); if (a[1]) print a[1]; exit }' "$CODEX_CONFIG" 2>/dev/null)"
+  fi
+  # 2. Try running process
+  if [[ -z "$port" ]] && command -v ss >/dev/null 2>&1; then
+    port="$(ss -tlnp 2>/dev/null | grep 'compact-proxy\|cpa-compact' | head -1 | grep -oP ':\K\d+' || true)"
+  fi
+  # 3. Try env file in systemd unit
+  if [[ -z "$port" ]] && [[ -f "$HOME/.config/systemd/user/cpa-compact-proxy.service" ]]; then
+    port="$(grep '^LISTEN_PORT=' "$HOME/.config/systemd/user/cpa-compact-proxy.service" 2>/dev/null | head -1 | grep -oP '\d+' || true)"
+  fi
+  echo "${port:-$COMPACT_PORT}"
+}
+
+# Detect live ports and use them as defaults
+DETECTED_CPA_PORT="$(detect_cpa_port)"
+DETECTED_COMPACT_PORT="$(detect_compact_port)"
+
+# Environment overrides still take precedence over detected ports
+CPA_PORT="${CPA_PORT:-$DETECTED_CPA_PORT}"
+COMPACT_PORT="${COMPACT_PORT:-$DETECTED_COMPACT_PORT}"
+
 backup_file() {
   local path="$1"
   [[ -e "$path" ]] || return 0
   cp -a "$path" "${path}.bak.${TS}"
+}
+
+# Safely replace a binary: stop the service first if running
+install_binary() {
+  local src="$1" dst="$2" mode="$3" service_name="${4:-}"
+  [[ -f "$src" ]] || die "Missing package file: $src"
+  mkdir -p "$(dirname "$dst")"
+
+  local needs_stop=false
+  if [[ -x "$dst" ]] && [[ -n "$service_name" ]]; then
+    if systemctl --user is-active --quiet "$service_name" 2>/dev/null; then
+      needs_stop=true
+    fi
+  fi
+
+  if $needs_stop; then
+    log "Stopping $service_name to safely replace binary"
+    systemctl --user stop "$service_name" 2>/dev/null || true
+    sleep 1
+  fi
+
+  backup_file "$dst"
+  cp "$src" "$dst"
+  chmod "$mode" "$dst"
+
+  if $needs_stop; then
+    log "Restarting $service_name after binary update"
+    systemctl --user start "$service_name" 2>/dev/null || true
+  fi
 }
 
 install_file() {
@@ -89,6 +168,35 @@ require_systemd_user() {
   systemctl --user status >/dev/null 2>&1 || die "systemd user manager is not available"
 }
 
+# ── Component status checks ───────────────────────────────────────
+component_installed() {
+  local name="$1"
+  case "$name" in
+    codex)
+      command -v codex >/dev/null 2>&1
+      ;;
+    cpa)
+      [[ -x "$HOME/.local/bin/cli-proxy-api" ]] && [[ -f "$CPA_CONFIG" ]]
+      ;;
+    compact-proxy)
+      [[ -x "$HOME/.local/bin/cpa-compact-proxy.mjs" ]]
+      ;;
+    cc-connect)
+      command -v cc-connect >/dev/null 2>&1 && [[ -f "$CC_CONFIG" ]]
+      ;;
+    watchdog)
+      [[ -x "$HOME/.local/bin/codex-stack-watchdog.sh" ]] && \
+        systemctl --user list-unit-files codex-stack-watchdog.timer >/dev/null 2>&1
+      ;;
+  esac
+}
+
+component_running() {
+  local service="$1"
+  systemctl --user is-active --quiet "$service" 2>/dev/null
+}
+
+# ── Pre-flight ────────────────────────────────────────────────────
 log "Codex stack installer"
 require_cmd node
 require_cmd npm
@@ -102,12 +210,42 @@ node -e 'const major=Number(process.versions.node.split(".")[0]); process.exit(m
 
 mkdir -p "$HOME/.local/bin" "$HOME/.cli-proxy-api" "$HOME/.codex" "$HOME/.cc-connect" "$HOME/.config/systemd/user"
 
-if [[ "$SKIP_NPM" != true ]]; then
-  log "Updating npm tools: @openai/codex, oh-my-codex, ws, cc-connect"
-  if [[ "$SKIP_CC_CONNECT" == true ]]; then
-    npm install -g @openai/codex oh-my-codex ws
+# ── Report current state ──────────────────────────────────────────
+info "Detected CPA port: $CPA_PORT"
+info "Detected Compact port: $COMPACT_PORT"
+info "Skip existing: $SKIP_EXISTING | Force reinstall: $FORCE_REINSTALL"
+
+for comp in codex cpa compact-proxy cc-connect watchdog; do
+  if component_installed "$comp"; then
+    info "Already installed: $comp"
   else
-    npm install -g @openai/codex oh-my-codex ws cc-connect
+    info "Not installed: $comp"
+  fi
+done
+
+# ── NPM packages ──────────────────────────────────────────────────
+if [[ "$SKIP_NPM" != true ]]; then
+  # Check if npm packages need updating
+  NPM_NEEDS_UPDATE=false
+  if ! command -v codex >/dev/null 2>&1; then
+    NPM_NEEDS_UPDATE=true
+  fi
+  if ! command -v omx >/dev/null 2>&1; then
+    NPM_NEEDS_UPDATE=true
+  fi
+  if [[ "$SKIP_CC_CONNECT" != true ]] && ! command -v cc-connect >/dev/null 2>&1; then
+    NPM_NEEDS_UPDATE=true
+  fi
+
+  if $FORCE_REINSTALL || $NPM_NEEDS_UPDATE; then
+    log "Updating npm tools: @openai/codex, oh-my-codex, ws, cc-connect"
+    if [[ "$SKIP_CC_CONNECT" == true ]]; then
+      npm install -g @openai/codex oh-my-codex ws
+    else
+      npm install -g @openai/codex oh-my-codex ws cc-connect
+    fi
+  else
+    skip "npm tools already up to date (use --force-reinstall to force)"
   fi
 else
   warn "Skipping npm updates because --skip-npm was provided"
@@ -119,10 +257,23 @@ if [[ "$SKIP_CC_CONNECT" != true ]]; then
   command -v cc-connect >/dev/null 2>&1 || die "cc-connect command is not on PATH after installation"
 fi
 
-log "Installing local CPA and Compact Proxy files"
-install_file "$RESOURCES_DIR/bin/cli-proxy-api" "$HOME/.local/bin/cli-proxy-api" 0755
-install_file "$RESOURCES_DIR/cpa-config-templates/compact-proxy.mjs" "$HOME/.local/bin/cpa-compact-proxy.mjs" 0755
+# ── CPA binary ────────────────────────────────────────────────────
+if $SKIP_EXISTING && component_installed cpa && component_running cli-proxy-api.service && ! $FORCE_REINSTALL; then
+  skip "CPA binary already installed and running"
+else
+  log "Installing local CPA binary"
+  install_binary "$RESOURCES_DIR/bin/cli-proxy-api" "$HOME/.local/bin/cli-proxy-api" 0755 "cli-proxy-api.service"
+fi
 
+# ── Compact Proxy script ──────────────────────────────────────────
+if $SKIP_EXISTING && component_installed compact-proxy && ! $FORCE_REINSTALL; then
+  skip "Compact Proxy script already installed"
+else
+  log "Installing Compact Proxy script"
+  install_file "$RESOURCES_DIR/cpa-config-templates/compact-proxy.mjs" "$HOME/.local/bin/cpa-compact-proxy.mjs" 0755
+fi
+
+# ── Config generation ─────────────────────────────────────────────
 META_FILE="$(mktemp)"
 trap 'rm -f "$META_FILE"' EXIT
 
@@ -158,298 +309,146 @@ function modelName(m) {
   return m.id || m.name || m.model || m.value || "";
 }
 
-function providerUrl(p) {
-  return p && (p.baseUrl || p.baseURL || p.base_url || p.url || "");
+let openclaw;
+try {
+  openclaw = readJson(openclawPath);
+} catch (e) {
+  process.stderr.write(`Cannot read ${openclawPath}: ${e.message}\n`);
+  process.exit(1);
 }
 
-function providerKey(p) {
-  return p && (p.apiKey || p.api_key || p.key || p.token || "");
+const upstreamBase = env.OPENCLAW_UPSTREAM_BASE_URL || (openclaw.upstream && openclaw.upstream.baseUrl) || "";
+const upstreamKey  = env.OPENCLAW_UPSTREAM_API_KEY  || (openclaw.upstream && openclaw.upstream.apiKey)  || "";
+const model = env.CODEX_MODEL || modelName(openclaw.defaultModel) || "glm-5.1";
+
+sh("OPENCLAW_UPSTREAM_BASE_URL", upstreamBase);
+sh("OPENCLAW_UPSTREAM_API_KEY", upstreamKey);
+sh("CODEX_MODEL", model);
+sh("CPA_PORT", cpaPort);
+sh("COMPACT_PORT", compactPort);
+
+if (!upstreamBase || !upstreamKey) {
+  process.stderr.write(
+    `Warning: upstream base URL or API key is empty. CPA will use environment defaults.\n`
+  );
 }
 
-function isLocalLoop(url) {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^\[|\]$/g, "");
-    const port = Number(u.port || (u.protocol === "https:" ? 443 : 80));
-    return ["127.0.0.1", "localhost", "::1"].includes(host) && [cpaPort, compactPort].includes(port);
-  } catch {
-    return false;
+// ── CPA config.yaml ────────────────────────────────────────────────
+const cpaYaml = [
+  `port: ${cpaPort}`,
+  `upstream_base_url: ${q(upstreamBase)}`,
+  `upstream_api_key: ${q(upstreamKey)}`,
+  `experimental_bearer_token: ${q(proxyKey)}`,
+  `allowed_models:`,
+  `  - "*"`,
+].join("\n") + "\n";
+
+const cpaDir = env.CPA_CONFIG ? require("path").dirname(env.CPA_CONFIG) : `${home}/.cli-proxy-api`;
+fs.mkdirSync(cpaDir, { recursive: true });
+fs.writeFileSync(env.CPA_CONFIG || `${home}/.cli-proxy-api/config.yaml`, cpaYaml);
+
+// ── Codex config.toml ──────────────────────────────────────────────
+const codexPath = env.CODEX_CONFIG || `${home}/.codex/config.toml`;
+const codexDir = require("path").dirname(codexPath);
+fs.mkdirSync(codexDir, { recursive: true });
+
+let codexToml = "";
+try { codexToml = fs.readFileSync(codexPath, "utf8"); } catch {}
+const codexLines = [];
+const seenKeys = new Set();
+
+function setKey(lines, key, value, existing) {
+  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const re = new RegExp(`^(\\s*${key}\\s*=\\s*)"[^"]*"(\\s*)$`, "m");
+  if (re.test(existing)) {
+    return existing.replace(re, `$1"${escaped}"$2`);
+  }
+  return existing + `${key} = "${escaped}"\n`;
+}
+
+codexToml = setKey(codexToml, "model_provider", "cpa", codexToml);
+codexToml = setKey(codexToml, "model", model, codexToml);
+codexToml = setKey(codexToml, "base_url", `http://127.0.0.1:${compactPort}/v1`, codexToml);
+codexToml = setKey(codexToml, "experimental_bearer_token", proxyKey, codexToml);
+
+if (!/responses_websockets\s*=/.test(codexToml)) codexToml += "responses_websockets = true\n";
+if (!/responses_websockets_v2\s*=/.test(codexToml)) codexToml += "responses_websockets_v2 = true\n";
+
+fs.writeFileSync(codexPath, codexToml);
+
+// ── cc-connect config.toml (skeleton) ──────────────────────────────
+if (env.SKIP_CC_CONNECT !== "true") {
+  const ccPath = env.CC_CONNECT_CONFIG || `${home}/.cc-connect/config.toml`;
+  const ccDir = require("path").dirname(ccPath);
+  fs.mkdirSync(ccDir, { recursive: true });
+  const ccProject = env.CC_CONNECT_PROJECT || "main";
+  if (!fs.existsSync(ccPath)) {
+    const ccToml = [
+      `# cc-connect configuration`,
+      `[[projects]]`,
+      `name = ${q(ccProject)}`,
+      `default = true`,
+      `[[projects.platforms]]`,
+      `type = "feishu"`,
+      `[[projects.platforms]]`,
+      `type = "weixin"`,
+    ].join("\n") + "\n";
+    fs.writeFileSync(ccPath, ccToml);
   }
 }
 
-function pushModel(models, name, alias) {
-  if (!name) return;
-  const key = `${name}\n${alias || ""}`;
-  if (models.some((m) => `${m.name}\n${m.alias || ""}` === key)) return;
-  models.push(alias ? { name, alias } : { name });
-}
-
-function enrichModels(id, url, declared) {
-  const lower = `${id} ${url}`.toLowerCase();
-  const models = [];
-  for (const raw of declared || []) {
-    const name = modelName(raw);
-    if (name) pushModel(models, name, raw.alias || "");
-  }
-
-  if (lower.includes("bigmodel") || lower.includes("zhipu") || lower.includes("glm")) {
-    ["glm-5.1", "glm-5", "glm-5-turbo", "glm-5v-turbo", "glm-4.7"].forEach((m) => pushModel(models, m));
-  }
-
-  if (lower.includes("mlamp")) {
-    pushModel(models, "mlamp/kimi-k2.6", "kimi-k2.6");
-    pushModel(models, "mlamp/deepseek-v4-flash", "deepseek-v4-flash");
-    pushModel(models, "mlamp/qwen3-8b", "qwen3-8b");
-    ["gpt-5.5", "gpt-5.4", "qwen3.6-max", "qwen3.6-plus", "qwen3.6-flash", "Doubao-Seed-2.0-Code", "hunyuan-t1-latest"]
-      .forEach((m) => pushModel(models, m));
-  }
-
-  if (models.length === 0) {
-    ["gpt-5.5", "gpt-5.4", "glm-5.1", "glm-5", "kimi-k2.6", "deepseek-v4-flash"].forEach((m) => pushModel(models, m));
-  }
-  return models;
-}
-
-function chooseDefault(providers) {
-  const override = env.CODEX_MODEL;
-  if (override) return override;
-  const all = providers.flatMap((p) => p.models.flatMap((m) => [m.alias, m.name].filter(Boolean)));
-  for (const preferred of ["glm-5.1", "gpt-5.5", "gpt-5.4", "kimi-k2.6", "deepseek-v4-flash"]) {
-    if (all.includes(preferred)) return preferred;
-  }
-  return all[0] || "glm-5.1";
-}
-
-function writeCpaConfig(providers) {
-  const lines = [
-    "# Generated by codex-docs/resources/scripts/auto-setup.sh",
-    `host: ${q("127.0.0.1")}`,
-    `port: ${cpaPort}`,
-    `auth-dir: ${q("~/.cli-proxy-api")}`,
-    "api-keys:",
-    `- ${q(proxyKey)}`,
-    "debug: false",
-    `proxy-url: ${q("direct")}`,
-    "disable-cooling: true",
-    "max-retry-credentials: 0",
-    "request-retry: 3",
-    "openai-compatibility:",
-  ];
-
-  for (const p of providers) {
-    lines.push(`- name: ${q(p.name)}`);
-    lines.push(`  base-url: ${q(p.baseUrl)}`);
-    lines.push("  api-key-entries:");
-    lines.push(`  - api-key: ${q(p.apiKey)}`);
-    lines.push(`    proxy-url: ${q("direct")}`);
-    lines.push("  models:");
-    for (const m of p.models) {
-      lines.push(`  - name: ${q(m.name)}`);
-      if (m.alias) lines.push(`    alias: ${q(m.alias)}`);
-    }
-  }
-
-  fs.mkdirSync(require("path").dirname(cpaConfig), { recursive: true });
-  if (fs.existsSync(cpaConfig)) {
-    fs.copyFileSync(cpaConfig, `${cpaConfig}.bak.${new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}`);
-  }
-  fs.writeFileSync(cpaConfig, `${lines.join("\n")}\n`);
-}
-
-const openclaw = readJson(openclawPath);
-const providers = [];
-
-if (env.OPENCLAW_UPSTREAM_BASE_URL && env.OPENCLAW_UPSTREAM_API_KEY) {
-  providers.push({
-    name: "manual",
-    baseUrl: env.OPENCLAW_UPSTREAM_BASE_URL,
-    apiKey: env.OPENCLAW_UPSTREAM_API_KEY,
-    models: enrichModels("manual", env.OPENCLAW_UPSTREAM_BASE_URL, []),
-  });
-}
-
-const entries = Object.entries(openclaw.models?.providers || {});
-for (const [id, p] of entries) {
-  const baseUrl = providerUrl(p);
-  const apiKey = providerKey(p);
-  if (!baseUrl || !apiKey || isLocalLoop(baseUrl)) continue;
-  const name = String(p.name || id).replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "") || "openclaw";
-  providers.push({
-    name,
-    baseUrl,
-    apiKey,
-    models: enrichModels(id, baseUrl, p.models || []),
-  });
-}
-
-let preserved = false;
-let effectiveCpaPort = cpaPort;
-let defaultModel = chooseDefault(providers);
-
-if (providers.length > 0) {
-  writeCpaConfig(providers);
-} else if (fs.existsSync(cpaConfig) && fs.readFileSync(cpaConfig, "utf8").includes("openai-compatibility:")) {
-  preserved = true;
-  const existing = fs.readFileSync(cpaConfig, "utf8");
-  const portMatch = existing.match(/^port:\s*["']?(\d+)/m);
-  if (portMatch) effectiveCpaPort = Number(portMatch[1]);
-  for (const preferred of ["glm-5.1", "gpt-5.5", "gpt-5.4", "kimi-k2.6"]) {
-    if (existing.includes(preferred)) {
-      defaultModel = env.CODEX_MODEL || preferred;
-      break;
-    }
-  }
-} else {
-  console.error("No upstream provider was found in openclaw.json.");
-  console.error("If openclaw.json already points to a local CPA/Compact Proxy, set OPENCLAW_UPSTREAM_BASE_URL and OPENCLAW_UPSTREAM_API_KEY once.");
-  process.exit(2);
-}
-
-sh("DEFAULT_MODEL", defaultModel);
-sh("PROVIDER_COUNT", providers.length);
-sh("PRESERVED_CPA_CONFIG", preserved ? "1" : "0");
-sh("CPA_PORT_EFFECTIVE", effectiveCpaPort);
+sh("DONE", "yes");
 NODE
 
-# shellcheck disable=SC1090
+if [[ "$(grep -c '^DONE=' "$META_FILE" 2>/dev/null)" -eq 0 ]]; then
+  die "Config generation failed"
+fi
+
+# ── Source metadata from node script ──────────────────────────────
 source "$META_FILE"
-CPA_PORT="$CPA_PORT_EFFECTIVE"
+DEFAULT_MODEL="${CODEX_MODEL:-glm-5.1}"
+info "Model: $DEFAULT_MODEL"
+info "Upstream base URL: ${OPENCLAW_UPSTREAM_BASE_URL:-(none)}"
+info "CPA port: $CPA_PORT"
+info "Compact port: $COMPACT_PORT"
 
-if [[ "$PRESERVED_CPA_CONFIG" == "1" ]]; then
-  warn "openclaw.json points to local proxy only; preserved existing upstream CPA config at $CPA_CONFIG"
-else
-  log "Wrote CPA config with $PROVIDER_COUNT upstream provider(s): $CPA_CONFIG"
-fi
-log "Default Codex model: $DEFAULT_MODEL"
+# ── systemd units ─────────────────────────────────────────────────
+log "Writing systemd user units"
 
-log "Writing Codex config"
-backup_file "$CODEX_CONFIG"
-cat > "$CODEX_CONFIG" <<TOML
-# Generated by codex-docs/resources/scripts/auto-setup.sh
-suppress_unstable_features_warning = true
-model_reasoning_effort = "medium"
-developer_instructions = "You have oh-my-codex installed."
-
-model = "$DEFAULT_MODEL"
-model_provider = "cpa"
-model_context_window = 1000000
-model_auto_compact_token_limit = 900000
-base_url = "http://127.0.0.1:$COMPACT_PORT/v1"
-
-[model_providers.cpa]
-name = "cpa"
-base_url = "http://127.0.0.1:$COMPACT_PORT/v1"
-wire_api = "responses"
-experimental_bearer_token = "$CPA_PROXY_KEY"
-
-[features]
-responses_websockets = true
-responses_websockets_v2 = true
-multi_agent = true
-child_agents_md = true
-hooks = true
-enable_request_compression = true
-
-[agents]
-max_threads = 6
-max_depth = 2
-
-[env]
-USE_OMX_EXPLORE_CMD = "1"
-NO_PROXY = "localhost,127.0.0.1,::1"
-TOML
-
-if [[ "$SKIP_CC_CONNECT" != true ]]; then
-  log "Writing cc-connect skeleton config"
-  backup_file "$CC_CONFIG"
-  cat > "$CC_CONFIG" <<TOML
-# Generated by codex-docs/resources/scripts/auto-setup.sh
-language = "zh"
-
-[display]
-thinking_messages = true
-tool_messages = true
-
-[log]
-level = "info"
-
-[[projects]]
-name = "main"
-admin_from = "*"
-
-[projects.agent]
-type = "codex"
-
-[projects.agent.options]
-work_dir = "$HOME/.openclaw"
-mode = "suggest"
-model = "$DEFAULT_MODEL"
-
-[stream_preview]
-enabled = true
-interval_ms = 1500
-
-reset_on_idle_mins = 30
-TOML
-fi
-
-log "Writing systemd user services"
-backup_file "$HOME/.config/systemd/user/cli-proxy-api.service"
 cat > "$HOME/.config/systemd/user/cli-proxy-api.service" <<UNIT
 [Unit]
-Description=CLI Proxy API for Codex/OpenClaw
+Description=CPA (cli-proxy-api) for Codex
 After=network-online.target
 Wants=network-online.target
-StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/cli-proxy-api -config %h/.cli-proxy-api/config.yaml
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-Environment=HTTP_PROXY=
-Environment=HTTPS_PROXY=
+ExecStart=$HOME/.local/bin/cli-proxy-api
 Environment=NO_PROXY=localhost,127.0.0.1,::1
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=default.target
 UNIT
 
-mkdir -p "$HOME/.config/systemd/user/cli-proxy-api.service.d"
-cat > "$HOME/.config/systemd/user/cli-proxy-api.service.d/10-always-on.conf" <<UNIT
-[Unit]
-StartLimitIntervalSec=0
-
-[Service]
-Restart=always
-RestartSec=5
-UNIT
-
-backup_file "$HOME/.config/systemd/user/cpa-compact-proxy.service"
+COMPACT_ESC="$(echo "$HOME" | sed 's/\//\\\\/g')"
 cat > "$HOME/.config/systemd/user/cpa-compact-proxy.service" <<UNIT
 [Unit]
-Description=Compact Proxy for Codex Responses API
+Description=Compact Proxy for CPA
 After=network-online.target cli-proxy-api.service
-Wants=network-online.target cli-proxy-api.service
-StartLimitIntervalSec=0
+Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env node %h/.local/bin/cpa-compact-proxy.mjs
-Restart=always
-RestartSec=3
-StandardOutput=journal
-StandardError=journal
-Environment=CPA_HOST=127.0.0.1
+ExecStart=$(which node 2>/dev/null || echo /usr/bin/node) $HOME/.local/bin/cpa-compact-proxy.mjs
 Environment=CPA_PORT=$CPA_PORT
-Environment=LISTEN_HOST=127.0.0.1
 Environment=LISTEN_PORT=$COMPACT_PORT
+Environment=CPA_KEY=$CPA_PROXY_KEY
 Environment=COMPACT_DEFAULT_MODEL=$DEFAULT_MODEL
-Environment=HTTP_PROXY=
-Environment=HTTPS_PROXY=
 Environment=NO_PROXY=localhost,127.0.0.1,::1
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=default.target
@@ -465,6 +464,7 @@ Restart=always
 RestartSec=3
 UNIT
 
+# ── Watchdog ──────────────────────────────────────────────────────
 log "Writing watchdog"
 cat > "$HOME/.local/bin/codex-stack-watchdog.sh" <<'WATCHDOG'
 #!/usr/bin/env bash
@@ -554,6 +554,7 @@ Unit=codex-stack-watchdog.service
 WantedBy=timers.target
 UNIT
 
+# ── Service management ───────────────────────────────────────────
 log "Enabling user service persistence"
 if command -v loginctl >/dev/null 2>&1; then
   if ! loginctl show-user "$USER" -p Linger 2>/dev/null | grep -q '=yes'; then
@@ -574,9 +575,17 @@ systemctl --user enable cli-proxy-api.service cpa-compact-proxy.service codex-st
 
 if [[ "$NO_START" != true ]]; then
   log "Starting services"
+  # Start CPA first, wait for health, then compact proxy
   systemctl --user restart cli-proxy-api.service
   sleep 2
+  # Verify CPA is healthy before starting compact proxy
+  if curl -fsS --max-time 5 "http://127.0.0.1:${CPA_PORT}/healthz" >/dev/null 2>&1; then
+    info "CPA health check passed on port $CPA_PORT"
+  else
+    warn "CPA health check failed on port $CPA_PORT, starting compact proxy anyway"
+  fi
   systemctl --user restart cpa-compact-proxy.service
+  sleep 2
   systemctl --user restart codex-stack-watchdog.timer
 else
   warn "Skipping service start because --no-start was provided"

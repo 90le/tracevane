@@ -37,8 +37,8 @@
         <span :class="`tone-${statusTone}`">{{ summary.overallStatus }}</span>
         <span>{{ text('服务', 'Services') }} {{ activeServiceCount }}/{{ summary.services.length }}</span>
         <span>{{ text('模型', 'Model') }} {{ summary.models.current || '--' }}</span>
-        <span>{{ text('CPA', 'CPA') }} :{{ summary.ports.cpa }}</span>
-        <span>{{ text('Compact', 'Compact') }} :{{ summary.ports.compact }}</span>
+        <span>{{ text('CPA', 'CPA') }} :{{ summary.ports.cpa }}<template v-if="summary.ports.detectedCpa && summary.ports.detectedCpa !== summary.ports.cpa"> (live:{{ summary.ports.detectedCpa }})</template></span>
+        <span>{{ text('Compact', 'Compact') }} :{{ summary.ports.compact }}<template v-if="summary.ports.detectedCompact && summary.ports.detectedCompact !== summary.ports.compact"> (live:{{ summary.ports.detectedCompact }})</template></span>
       </div>
     </section>
 
@@ -112,6 +112,8 @@
           <label><input v-model="installForm.skipNpm" type="checkbox" /> {{ text('跳过 npm 安装', 'Skip npm install') }}</label>
           <label><input v-model="installForm.skipCcConnect" type="checkbox" /> {{ text('跳过 cc-connect', 'Skip cc-connect') }}</label>
           <label><input v-model="installForm.noStart" type="checkbox" /> {{ text('只写配置不启动', 'Write only') }}</label>
+          <label><input v-model="installForm.skipExisting" type="checkbox" /> {{ text('跳过已安装组件', 'Skip existing') }}</label>
+          <label><input v-model="installForm.forceReinstall" type="checkbox" /> {{ text('强制重新安装', 'Force reinstall') }}</label>
         </div>
         <div class="codex-stack-actions-row">
           <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="installFullStack">
@@ -274,6 +276,8 @@ const installForm = reactive({
   skipNpm: false,
   skipCcConnect: false,
   noStart: false,
+  skipExisting: false,
+  forceReinstall: false,
 });
 
 const configForm = reactive({
@@ -354,6 +358,8 @@ function buildInstallPayload(skipCcConnect = installForm.skipCcConnect) {
       skipNpm: installForm.skipNpm,
       skipCcConnect,
       noStart: installForm.noStart,
+      skipExisting: installForm.skipExisting,
+      forceReinstall: installForm.forceReinstall,
     },
   };
 }

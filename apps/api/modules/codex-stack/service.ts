@@ -47,6 +47,37 @@ const SERVICE_IDS = [
 
 const SERVICE_ACTIONS = ["restart", "start", "stop", "enable"] as const satisfies readonly CodexStackServiceAction[];
 
+/** Detect the port a systemd user service is actually listening on by parsing ss output. */
+async function detectLivePort(patterns: string[]): Promise<number | null> {
+  try {
+    const { stdout } = await execFileAsync("ss", ["-tlnp"], { timeout: 5_000 });
+    for (const pattern of patterns) {
+      const re = new RegExp(`(?:${pattern}).*:(\\d+)\\s`, "i");
+      const match = stdout.match(re);
+      if (match?.[1]) {
+        const port = Number(match[1]);
+        if (Number.isFinite(port) && port > 0 && port <= 65535) return port;
+      }
+    }
+    // Fallback: look for any LISTEN entry on candidate ports
+    for (const pattern of patterns) {
+      const lines = stdout.split("\n");
+      for (const line of lines) {
+        if (line.toLowerCase().includes(pattern.toLowerCase())) {
+          const portMatch = line.match(/:(\\d+)\\s/);
+          if (portMatch?.[1]) {
+            const port = Number(portMatch[1]);
+            if (Number.isFinite(port) && port > 0) return port;
+          }
+        }
+      }
+    }
+  } catch {
+    // ss not available or failed - non-fatal
+  }
+  return null;
+}
+
 const INSTALL_ENV_KEYS = [
   "CODEX_MODEL",
   "CPA_PORT",
@@ -697,8 +728,14 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const codexConfig = readText(currentPaths.codexConfig);
     const cpaConfig = readText(currentPaths.cpaConfig);
     const ccConfig = readText(currentPaths.ccConnectConfig);
-    const cpaPort = parseCpaPort(cpaConfig);
-    const compactPort = normalizePort(extractTomlString(codexConfig, "base_url").match(/127\.0\.0\.1:(\d+)/)?.[1], DEFAULT_COMPACT_PORT);
+    const configCpaPort = parseCpaPort(cpaConfig);
+    const configCompactPort = normalizePort(extractTomlString(codexConfig, "base_url").match(/127\.0\.0\.1:(\d+)/)?.[1], DEFAULT_COMPACT_PORT);
+    const [liveCpaPort, liveCompactPort] = await Promise.all([
+      detectLivePort(["cli-proxy-api", "cpa"]),
+      detectLivePort(["compact-proxy", "cpa-compact"]),
+    ]);
+    const cpaPort = liveCpaPort ?? configCpaPort;
+    const compactPort = liveCompactPort ?? configCompactPort;
     const cpaProxyKey = extractTomlString(codexConfig, "experimental_bearer_token");
     const models = parseModels(`${cpaConfig}\n${codexConfig}\n${ccConfig}`);
     const services = await Promise.all(SERVICE_IDS.map((id) => readServiceStatus(id)));
@@ -742,7 +779,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       management: managementAccess(req),
       components,
       services,
-      ports: { cpa: cpaPort, compact: compactPort },
+      ports: { cpa: cpaPort, compact: compactPort, detectedCpa: liveCpaPort, detectedCompact: liveCompactPort },
       models: {
         current: currentModel || DEFAULT_MODEL,
         defaultModel: chooseDefaultModel(models, currentModel),
@@ -847,6 +884,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (payload.flags?.skipNpm === true) flags.push("--skip-npm");
     if (payload.flags?.skipCcConnect === true) flags.push("--skip-cc-connect");
     if (payload.flags?.noStart === true) flags.push("--no-start");
+    if (payload.flags?.skipExisting === true) flags.push("--skip-existing");
+    if (payload.flags?.forceReinstall === true) flags.push("--force-reinstall");
     return {
       env,
       flags,
