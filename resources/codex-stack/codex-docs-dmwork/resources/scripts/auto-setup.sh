@@ -218,35 +218,16 @@ if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip "cc-connect"; then
   log "Step 3/8: 安装 cc-connect (dmwork 增强版)..."
   mkdir -p "$HOME/.local/bin"
 
-  # Remove ALL non-dmwork cc-connect binaries from the system
-  # The official cc-connect (npm) does NOT support dmwork platform
-  log "  清理非 dmwork 版本的 cc-connect..."
-
-  # 1. Uninstall npm global cc-connect if present
-  npm uninstall -g cc-connect 2>/dev/null || true
-
-  # 2. Remove all known npm cc-connect paths
+  # Remove non-dmwork cc-connect binaries (official npm version does not support dmwork)
+  log "  清理旧版 cc-connect..."
+  npm uninstall -g cc-connect >/dev/null 2>&1 || true
   rm -f "$HOME/.npm-global/bin/cc-connect" 2>/dev/null || true
   rm -rf "$HOME/.npm-global/lib/node_modules/cc-connect" 2>/dev/null || true
   rm -f "$HOME/.local/lib/node_modules/cc-connect" 2>/dev/null || true
-  rm -rf "$HOME/.local/lib/node_modules/@cc-connect" 2>/dev/null || true
-
-  # 3. Find and remove cc-connect from any npm/node global paths
-  for npmdir in "$HOME/.npm-global" "$HOME/.local" "$HOME/.nvm" "/usr/local"; do
-    if [[ -f "$npmdir/bin/cc-connect" ]]; then
-      # Check if it's a symlink or wrapper (npm version) vs our binary
-      if file "$npmdir/bin/cc-connect" | grep -q 'symbolic\|script\|text'; then
-        log "    移除: $npmdir/bin/cc-connect"
-        rm -f "$npmdir/bin/cc-connect" 2>/dev/null || true
-      fi
-    fi
-  done
-
-  # 4. Also clean up any cc-connect installed by cc-connect daemon
-  # The daemon's own installer puts it in different locations
+  # Stop any running cc-connect before replacing binary
   pkill -f 'cc-connect' 2>/dev/null || true
   sleep 1
-
+  rm -f "$HOME/.cc-connect/.config.toml.lock" 2>/dev/null || true
   log "  清理完成"
 
   CC_BIN="$RESOURCES_DIR/bin/cc-connect"
