@@ -1,3 +1,5 @@
+export type CodexStackChannel = "official" | "dmwork";
+
 export type CodexStackComponentId =
   | "codex"
   | "cpa"
@@ -42,6 +44,7 @@ export interface CodexStackMaskedSecret {
 }
 
 export interface CodexStackInstallerSource {
+  channel: CodexStackChannel;
   kind: CodexStackInstallerSourceKind;
   root: string | null;
   version: string | null;
@@ -83,6 +86,7 @@ export interface CodexStackComponentSummary {
 
 export interface CodexStackProfile {
   updatedAt: string;
+  channel: CodexStackChannel;
   installerSource?: string | null;
   cpaPort: number;
   compactPort: number;
@@ -153,6 +157,7 @@ export interface CodexStackInstallRequest {
     forceReinstall?: boolean;
     skipComponents?: string[];
     forceReinstallComponents?: string[];
+    channel?: CodexStackChannel;
   };
 }
 

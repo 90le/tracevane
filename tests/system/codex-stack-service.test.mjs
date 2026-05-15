@@ -43,12 +43,15 @@ function createStudioConfig(root) {
   };
 }
 
-function createBundledInstaller(config) {
-  const root = path.join(config.projectRoot, "resources/codex-stack/codex-docs");
-  writeFile(path.join(root, "VERSION"), "test-bundle\n");
+function createBundledInstaller(config, channel) {
+  const subDir = channel === "dmwork" ? "codex-docs-dmwork" : "codex-docs";
+  const root = path.join(config.projectRoot, "resources/codex-stack", subDir);
+  writeFile(path.join(root, "VERSION"), channel === "dmwork" ? "dmwork-test-bundle\n" : "test-bundle\n");
   writeFile(path.join(root, "resources/scripts/auto-setup.sh"), "#!/usr/bin/env bash\necho setup\n", 0o755);
   writeFile(path.join(root, "resources/scripts/health-check.sh"), "#!/usr/bin/env bash\necho '  OK fake check'\n", 0o755);
-  writeFile(path.join(root, "resources/scripts/finish-cc-connect-setup.sh"), "#!/usr/bin/env bash\necho finalize\n", 0o755);
+  if (channel !== "dmwork") {
+    writeFile(path.join(root, "resources/scripts/finish-cc-connect-setup.sh"), "#!/usr/bin/env bash\necho finalize\n", 0o755);
+  }
   writeFile(path.join(root, "resources/bin/cli-proxy-api"), "bin\n", 0o755);
   writeFile(path.join(root, "resources/cpa-config-templates/compact-proxy.mjs"), "process.stdout.write('proxy\\n')\n", 0o755);
 }
@@ -105,7 +108,8 @@ test("codex stack summary resolves bundled installer and masks secrets", async (
       },
     },
   });
-  createBundledInstaller(config);
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
 
   const service = createCodexStackService(config);
@@ -123,7 +127,8 @@ test("codex stack management guard blocks mutations until explicitly enabled", a
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {});
-  createBundledInstaller(config);
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
 
   const service = createCodexStackService(config);
   await assert.rejects(
@@ -141,10 +146,16 @@ test("codex stack check runs bundled health script and redacts known secrets", a
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {});
-  createBundledInstaller(config);
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
   writeFile(
     path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
+    "#!/usr/bin/env bash\necho '  OK secret-cpa-key-123456 is hidden'\n",
+    0o755,
+  );
+  writeFile(
+    path.join(config.projectRoot, "resources/codex-stack/codex-docs-dmwork/resources/scripts/health-check.sh"),
     "#!/usr/bin/env bash\necho '  OK secret-cpa-key-123456 is hidden'\n",
     0o755,
   );
@@ -173,7 +184,8 @@ test("codex stack rejects unknown service ids and actions before shell execution
       },
     },
   });
-  createBundledInstaller(config);
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
 
   const service = createCodexStackService(config);
   await assert.rejects(
@@ -190,7 +202,8 @@ test("codex stack uses CODEX_MODEL as default model fallback", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {});
-  createBundledInstaller(config);
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
 
   const previous = process.env.CODEX_MODEL;
   process.env.CODEX_MODEL = "custom-frontier-model";
@@ -224,11 +237,9 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
       },
     },
   });
-  createBundledInstaller(config);
-  const setupScript = path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh");
-  writeFile(
-    setupScript,
-    [
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  const setupScriptContent = [
       "#!/usr/bin/env bash",
       "set -euo pipefail",
       "echo model=$CODEX_MODEL",
@@ -236,9 +247,9 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
       "echo upstream_key=$OPENCLAW_UPSTREAM_API_KEY",
       "echo upstream_url=$OPENCLAW_UPSTREAM_BASE_URL",
       "",
-    ].join("\n"),
-    0o755,
-  );
+    ].join("\n");
+  writeFile(path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"), setupScriptContent, 0o755);
+  writeFile(path.join(config.projectRoot, "resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"), setupScriptContent, 0o755);
 
   const service = createCodexStackService(config);
   const response = await service.startInstall(undefined, {
@@ -283,7 +294,8 @@ test("codex stack rejects cc-connect finalizer until QR binding exists", async (
       },
     },
   });
-  createBundledInstaller(config);
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
 
   const service = createCodexStackService(config);
@@ -309,7 +321,8 @@ test("codex stack config patch writes backups and updates managed fields", async
       },
     },
   });
-  createBundledInstaller(config);
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
   const home = path.dirname(config.openclawRoot);
   const codexConfig = path.join(home, ".codex/config.toml");

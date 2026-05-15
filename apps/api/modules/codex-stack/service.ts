@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import type {
+  CodexStackChannel,
   CodexStackCheckItem,
   CodexStackCheckResponse,
   CodexStackComponentSummary,
@@ -444,6 +445,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       defaultModel: chooseDefaultModel(models, extractTomlString(codex, "model") || extractTomlString(cc, "model")),
       ccConnectProject: readCcConnectProject(cc),
       hasCpaProxyKey: Boolean(extractTomlString(codex, "experimental_bearer_token")),
+      channel: "dmwork" as CodexStackChannel,
       ...readJsonFile<Partial<CodexStackProfile>>(profilePath(), {}),
     };
   }
@@ -455,49 +457,65 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     });
   }
 
-  function resolveInstallerSource(): CodexStackInstallerSource {
+  function resolveChannel(): CodexStackChannel {
+    const profile = readJsonFile<Partial<CodexStackProfile>>(profilePath(), {});
+    return profile.channel || "dmwork";
+  }
+
+  function resolveInstallerSource(channel?: CodexStackChannel): CodexStackInstallerSource {
+    const activeChannel = channel || resolveChannel();
     const pluginConfig = readStudioCodexStackConfig(config);
     const configured = normalizeString(pluginConfig.installerPath);
     const candidates: Array<{ kind: CodexStackInstallerSource["kind"]; root: string }> = [];
     if (configured) candidates.push({ kind: "configured", root: configured });
-    candidates.push({ kind: "bundled", root: path.join(config.projectRoot, "resources", "codex-stack", "codex-docs") });
+
+    const subDir = activeChannel === "dmwork" ? "codex-docs-dmwork" : "codex-docs";
+    candidates.push({ kind: "bundled", root: path.join(config.projectRoot, "resources", "codex-stack", subDir) });
     candidates.push({ kind: "development-fallback", root: path.join(config.openclawRoot, "codex-docs") });
 
-    const required = [
+    const requiredOfficial = [
       "resources/scripts/auto-setup.sh",
       "resources/scripts/health-check.sh",
       "resources/scripts/finish-cc-connect-setup.sh",
       "resources/bin/cli-proxy-api",
       "resources/cpa-config-templates/compact-proxy.mjs",
     ];
+    const requiredDmwork = [
+      "resources/scripts/auto-setup.sh",
+      "resources/scripts/health-check.sh",
+      "resources/bin/cli-proxy-api",
+      "resources/cpa-config-templates/compact-proxy.mjs",
+    ];
+    const required = activeChannel === "dmwork" ? requiredDmwork : requiredOfficial;
+
     for (const candidate of candidates) {
       const missing = required.filter((relative) => !pathExists(path.join(candidate.root, relative)));
       if (missing.length === 0) {
+        const scriptsDir = path.join(candidate.root, "resources", "scripts");
         return {
+          channel: activeChannel,
           kind: candidate.kind,
           root: candidate.root,
           version: readText(path.join(candidate.root, "VERSION")).trim() || null,
           scripts: {
-            autoSetup: path.join(candidate.root, "resources", "scripts", "auto-setup.sh"),
-            healthCheck: path.join(candidate.root, "resources", "scripts", "health-check.sh"),
-            ccConnectFinalizer: path.join(candidate.root, "resources", "scripts", "finish-cc-connect-setup.sh"),
+            autoSetup: path.join(scriptsDir, "auto-setup.sh"),
+            healthCheck: path.join(scriptsDir, "health-check.sh"),
+            ccConnectFinalizer: pathExists(path.join(scriptsDir, "finish-cc-connect-setup.sh"))
+              ? path.join(scriptsDir, "finish-cc-connect-setup.sh") : null,
           },
           requiredFilesPresent: true,
           missingFiles: [],
         };
       }
     }
-    const fallbackRoot = configured || path.join(config.projectRoot, "resources", "codex-stack", "codex-docs");
+    const fallbackRoot = configured || path.join(config.projectRoot, "resources", "codex-stack", subDir);
     const missing = required.filter((relative) => !pathExists(path.join(fallbackRoot, relative)));
     return {
+      channel: activeChannel,
       kind: "missing",
       root: fallbackRoot,
       version: null,
-      scripts: {
-        autoSetup: path.join(fallbackRoot, "resources", "scripts", "auto-setup.sh"),
-        healthCheck: path.join(fallbackRoot, "resources", "scripts", "health-check.sh"),
-        ccConnectFinalizer: path.join(fallbackRoot, "resources", "scripts", "finish-cc-connect-setup.sh"),
-      },
+      scripts: { autoSetup: null, healthCheck: null, ccConnectFinalizer: null },
       requiredFilesPresent: false,
       missingFiles: missing,
     };
@@ -909,7 +927,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
 
   async function startInstall(req: http.IncomingMessage | undefined, payload: CodexStackInstallRequest): Promise<CodexStackJobResponse> {
     requireManagement(req);
-    const installer = resolveInstallerSource();
+    const channel = payload.flags?.channel || resolveChannel();
+    const installer = resolveInstallerSource(channel);
     if (!installer.requiredFilesPresent || !installer.scripts.autoSetup || !installer.root) {
       throw new CodexStackServiceError("codex_stack_installer_missing", "Codex Stack installer assets are missing.", 404);
     }
@@ -950,6 +969,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         ...normalized.profilePatch,
         installerSource: installer.root,
         ccConnectProject: profile.ccConnectProject || DEFAULT_CC_CONNECT_PROJECT,
+        channel: installer.channel,
         lastInstallAt: new Date().toISOString(),
       });
       writeJob(job);

@@ -4,19 +4,10 @@
       <div>
         <p class="eyebrow">{{ text('CODEX STACK', 'CODEX STACK') }}</p>
         <h2 class="page-title">{{ text('Codex 栈管理', 'Codex Stack Management') }}</h2>
-        <p class="page-copy">
-          {{ text('从 Studio 选择性安装和管理 Codex、CPA、Compact Proxy 与 cc-connect。运行服务由 systemd 用户单元托管，Studio 崩溃不会带停运行面。', 'Selectively install and manage Codex, CPA, Compact Proxy, and cc-connect from Studio. Runtime services are owned by user systemd units, so Studio crashes do not stop the data plane.') }}
-        </p>
       </div>
       <div class="page-actions">
         <button type="button" class="secondary-button" :disabled="loading" @click="loadSummary">
           {{ loading ? text('刷新中...', 'Refreshing...') : text('刷新状态', 'Refresh') }}
-        </button>
-        <button type="button" class="secondary-button" :disabled="busy" @click="runCheck">
-          {{ text('运行检查', 'Run Check') }}
-        </button>
-        <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="installFullStack">
-          {{ text('一键安装全部', 'Install Full Stack') }}
         </button>
       </div>
     </header>
@@ -25,214 +16,221 @@
       {{ notice.text }}
     </div>
 
-    <section v-if="summary" class="codex-stack-hero panel-card">
+    <section v-if="summary && !summary.management.enabled" class="panel-card cs-lock-card">
       <div>
-        <p class="eyebrow">{{ text('CONTROL PLANE', 'CONTROL PLANE') }}</p>
-        <h3>{{ statusLabel }}</h3>
-        <p>
-          {{ text('Studio 负责安装、检查、修复和配置；CPA/Compact/cc-connect/watchdog 继续由 systemd 管理。', 'Studio handles install, checks, repair, and configuration; CPA/Compact/cc-connect/watchdog continue under systemd.') }}
-        </p>
-      </div>
-      <div class="codex-stack-hero-metrics">
-        <span :class="`tone-${statusTone}`">{{ summary.overallStatus }}</span>
-        <span>{{ text('服务', 'Services') }} {{ activeServiceCount }}/{{ summary.services.length }}</span>
-        <span>{{ text('模型', 'Model') }} {{ summary.models.current || '--' }}</span>
-        <span>{{ text('CPA', 'CPA') }} :{{ summary.ports.cpa }}<template v-if="summary.ports.detectedCpa && summary.ports.detectedCpa !== summary.ports.cpa"> (live:{{ summary.ports.detectedCpa }})</template></span>
-        <span>{{ text('Compact', 'Compact') }} :{{ summary.ports.compact }}<template v-if="summary.ports.detectedCompact && summary.ports.detectedCompact !== summary.ports.compact"> (live:{{ summary.ports.detectedCompact }})</template></span>
-      </div>
-    </section>
-
-    <section v-if="summary && !summary.management.enabled" class="panel-card codex-stack-lock-card">
-      <div>
-        <p class="eyebrow">{{ text('LOCKED', 'LOCKED') }}</p>
-        <h3>{{ text('宿主管理动作未启用', 'Host management actions are disabled') }}</h3>
-        <p>
-          {{ text('读取状态和运行检查可用；安装、修复、服务控制和配置写入需要显式开启 codexStack.allowManagementActions。', 'Read-only status and checks are available. Install, repair, service control, and config writes require explicit codexStack.allowManagementActions enablement.') }}
-        </p>
+        <h3>{{ text('管理动作未启用', 'Management actions are disabled') }}</h3>
+        <p>{{ text('安装、修复和配置写入需要显式启用。', 'Install, repair, and config writes require explicit enablement.') }}</p>
       </div>
       <button type="button" class="primary-button" :disabled="busy" @click="enableManagement">
-        {{ text('为本机启用管理', 'Enable Management Locally') }}
+        {{ text('启用管理', 'Enable Management') }}
       </button>
     </section>
 
-    <div v-if="summary" class="codex-stack-grid">
-      <article class="panel-card codex-stack-card">
-        <div class="codex-stack-section-head">
-          <div>
-            <p class="eyebrow">{{ text('STATUS', 'STATUS') }}</p>
-            <h3>{{ text('组件健康', 'Component Health') }}</h3>
-          </div>
-        </div>
-        <div class="codex-stack-status-grid">
-          <article v-for="component in summary.components" :key="component.id" class="codex-stack-status-card">
-            <span :class="`codex-stack-dot tone-${componentTone(component.status)}`"></span>
-            <div>
-              <strong>{{ component.label }}</strong>
-              <p>{{ component.status }} · {{ component.version || (component.installed ? text('已安装', 'installed') : text('缺失', 'missing')) }}</p>
-              <small v-if="component.notes.length">{{ component.notes.join(' · ') }}</small>
-            </div>
-          </article>
-        </div>
-      </article>
+    <nav v-if="summary" class="cs-tabs">
+      <button v-for="tab in tabs" :key="tab.id" class="cs-tab" :class="{ 'cs-tab-active': activeTab === tab.id }" @click="activeTab = tab.id">
+        {{ tab.label }}
+      </button>
+    </nav>
 
-      <article class="panel-card codex-stack-card">
-        <div class="codex-stack-section-head">
-          <div>
-            <p class="eyebrow">{{ text('INSTALL', 'INSTALL') }}</p>
-            <h3>{{ text('选择性安装', 'Selective Install') }}</h3>
-          </div>
-        </div>
-        <div class="codex-stack-form-grid">
-          <label class="form-field">
-            <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
-            <input v-model="installForm.model" class="form-input" placeholder="glm-5.1" />
-          </label>
-          <label class="form-field">
-            <span class="form-label">{{ text('CPA 端口', 'CPA port') }}</span>
-            <input v-model.number="installForm.cpaPort" class="form-input" type="number" min="1" />
-          </label>
-          <label class="form-field">
-            <span class="form-label">{{ text('Compact 端口', 'Compact port') }}</span>
-            <input v-model.number="installForm.compactPort" class="form-input" type="number" min="1" />
-          </label>
-          <label class="form-field">
-            <span class="form-label">{{ text('CPA Key 替换', 'Replace CPA key') }}</span>
-            <input v-model="installForm.cpaKey" class="form-input" type="password" :placeholder="summary.secrets.cpaProxyKey.masked || 'openclaw-cpa-key'" />
-          </label>
-          <label class="form-field">
-            <span class="form-label">{{ text('上游 Base URL（可选）', 'Upstream base URL (optional)') }}</span>
-            <input v-model="installForm.upstreamBaseUrl" class="form-input" placeholder="https://api.example.com/v1" />
-          </label>
-          <label class="form-field">
-            <span class="form-label">{{ text('上游 API Key（可选）', 'Upstream API key (optional)') }}</span>
-            <input v-model="installForm.upstreamApiKey" class="form-input" type="password" :placeholder="text('仅用于本次安装写入 CPA 配置', 'Used only for this install to write CPA config')" />
-          </label>
-        </div>
-        <div class="codex-stack-check-row">
-          <label><input v-model="installForm.skipNpm" type="checkbox" /> {{ text('跳过 npm 安装', 'Skip npm install') }}</label>
-          <label><input v-model="installForm.skipCcConnect" type="checkbox" /> {{ text('跳过 cc-connect', 'Skip cc-connect') }}</label>
-          <label><input v-model="installForm.noStart" type="checkbox" /> {{ text('只写配置不启动', 'Write only') }}</label>
-          <label><input v-model="installForm.skipExisting" type="checkbox" /> {{ text('跳过已安装组件', 'Skip existing') }}</label>
-          <label><input v-model="installForm.forceReinstall" type="checkbox" /> {{ text('强制全部重装', 'Force reinstall all') }}</label>
-        </div>
-        <div class="codex-stack-component-toggles">
-          <p class="form-label">{{ text('选择性跳过或强制重装组件：', 'Selective skip or force per component:') }}</p>
-          <div v-for="comp in componentOptions" :key="comp.id" class="codex-stack-comp-row">
-            <span class="codex-stack-comp-label">{{ comp.label }}</span>
-            <label class="codex-stack-comp-action"><input type="checkbox" :checked="installForm.skipComponents.includes(comp.id)" @change="toggleSkip(comp.id)" /> {{ text('跳过', 'Skip') }}</label>
-            <label class="codex-stack-comp-action"><input type="checkbox" :checked="installForm.forceComponents.includes(comp.id)" @change="toggleForce(comp.id)" /> {{ text('强制重装', 'Force') }}</label>
-          </div>
-        </div>
-        <div class="codex-stack-actions-row">
-          <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="installFullStack">
-            {{ text('安装全部服务', 'Install all services') }}
-          </button>
-          <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="installBaseOnly">
-            {{ text('仅安装 Codex/CPA/Compact', 'Install Codex/CPA/Compact only') }}
-          </button>
-        </div>
-        <p class="field-hint">
-          {{ text(`安装源：${summary.installer.kind} ${summary.installer.root || ''}`, `Installer source: ${summary.installer.kind} ${summary.installer.root || ''}`) }}
-        </p>
-      </article>
-
-      <article class="panel-card codex-stack-card">
-        <div class="codex-stack-section-head">
-          <div>
-            <p class="eyebrow">{{ text('MODEL / KEY', 'MODEL / KEY') }}</p>
-            <h3>{{ text('运行配置', 'Runtime Config') }}</h3>
-          </div>
-        </div>
-        <label class="form-field">
-          <span class="form-label">{{ text('切换模型', 'Switch model') }}</span>
-          <select v-model="configForm.defaultModel" class="form-input">
-            <option v-for="model in modelOptions" :key="model" :value="model">{{ model }}</option>
-          </select>
-        </label>
-        <div class="codex-stack-form-grid">
-          <label class="form-field">
-            <span class="form-label">{{ text('CPA 端口', 'CPA port') }}</span>
-            <input v-model.number="configForm.cpaPort" class="form-input" type="number" min="1" />
-          </label>
-          <label class="form-field">
-            <span class="form-label">{{ text('Compact 端口', 'Compact port') }}</span>
-            <input v-model.number="configForm.compactPort" class="form-input" type="number" min="1" />
-          </label>
-        </div>
-        <label class="form-field">
-          <span class="form-label">{{ text('cc-connect Project', 'cc-connect project') }}</span>
-          <input v-model="configForm.ccConnectProject" class="form-input" placeholder="main" />
-        </label>
-        <label class="form-field">
-          <span class="form-label">{{ text('新 CPA Key', 'New CPA key') }}</span>
-          <input v-model="configForm.cpaProxyKey" class="form-input" type="password" :placeholder="summary.secrets.cpaProxyKey.masked || text('仅替换，不展示当前值', 'Replace only; current value is hidden')" />
-        </label>
-        <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="saveConfigPatch">
-          {{ text('保存配置', 'Save config') }}
-        </button>
-        <p v-if="restartRequiredUnits.length" class="field-hint">
-          {{ text(`需要重启：${restartRequiredUnits.join(', ')}`, `Restart required: ${restartRequiredUnits.join(', ')}`) }}
-        </p>
-      </article>
-
-      <article class="panel-card codex-stack-card">
-        <div class="codex-stack-section-head">
-          <div>
-            <p class="eyebrow">{{ text('CC-CONNECT', 'CC-CONNECT') }}</p>
-            <h3>{{ summary.ccConnect.bindingPresent ? text('绑定已检测', 'Binding detected') : text('等待扫码绑定', 'QR binding required') }}</h3>
-          </div>
-        </div>
-        <p>{{ text('安装脚本会完成包安装和配置生成；Feishu/Weixin 授权必须由用户扫码完成。', 'The installer can install the package and config; Feishu/Weixin authorization must be completed by QR scan.') }}</p>
-        <pre class="codex-stack-code">{{ summary.ccConnect.setupCommands.join('\n') }}</pre>
-        <button type="button" class="primary-button" :disabled="busy || !canMutate || !summary.ccConnect.canFinalize" @click="finalizeCcConnect">
-          {{ text('完成 cc-connect 服务安装', 'Finish cc-connect service setup') }}
-        </button>
-      </article>
-
-      <article class="panel-card codex-stack-card codex-stack-card-wide">
-        <div class="codex-stack-section-head">
-          <div>
-            <p class="eyebrow">{{ text('SERVICES', 'SERVICES') }}</p>
-            <h3>{{ text('服务管理', 'Service Management') }}</h3>
-          </div>
-          <button type="button" class="secondary-button compact-button" :disabled="busy || !canMutate" @click="repairRecommended">
-            {{ text('推荐修复', 'Recommended repair') }}
-          </button>
-        </div>
-        <div class="codex-stack-service-list">
-          <div v-for="service in summary.services" :key="service.id" class="codex-stack-service-row">
-            <span :class="`codex-stack-dot ${service.active ? 'tone-sage' : 'tone-accent'}`"></span>
-            <strong>{{ service.id }}</strong>
-            <span>{{ service.enabled ? text('已启用', 'enabled') : text('未启用', 'disabled') }}</span>
-            <span>{{ service.active ? text('运行中', 'active') : service.rawActiveState }}</span>
-            <div class="codex-stack-service-actions">
-              <button type="button" class="secondary-button compact-button" :disabled="busy || !canMutate" @click="serviceAction(service.id, 'restart')">{{ text('重启', 'Restart') }}</button>
-              <button type="button" class="secondary-button compact-button" :disabled="busy || !canMutate" @click="serviceAction(service.id, 'start')">{{ text('启动', 'Start') }}</button>
-              <button type="button" class="secondary-button compact-button" :disabled="busy || !canMutate" @click="serviceAction(service.id, 'enable')">{{ text('启用', 'Enable') }}</button>
-              <button type="button" class="secondary-button compact-button" :disabled="busy || !canMutate" @click="serviceAction(service.id, 'stop')">{{ text('停止', 'Stop') }}</button>
-              <button type="button" class="secondary-button compact-button" :disabled="busy" @click="loadLogs(service.id)">{{ text('日志', 'Logs') }}</button>
-            </div>
-          </div>
-        </div>
-      </article>
-
-      <article class="panel-card codex-stack-card codex-stack-card-wide">
-        <div class="codex-stack-section-head">
-          <div>
-            <p class="eyebrow">{{ text('JOBS / LOGS', 'JOBS / LOGS') }}</p>
-            <h3>{{ activeJob ? `${activeJob.kind}: ${activeJob.status}` : text('最近输出', 'Recent output') }}</h3>
-          </div>
-        </div>
-        <pre class="codex-stack-log">{{ logOutput || activeJob?.logTail || checkOutput || text('暂无输出。', 'No output yet.') }}</pre>
-      </article>
+    <div v-if="!summary" class="panel-card cs-empty">
+      {{ text('正在读取 Codex 栈状态...', 'Loading Codex Stack status...') }}
     </div>
 
-    <section v-else class="panel-card codex-stack-empty">
-      {{ text('正在读取 Codex 栈状态...', 'Loading Codex Stack status...') }}
-    </section>
+    <!-- Tab: Status Overview -->
+    <template v-if="summary && activeTab === 'status'">
+      <div class="cs-hero panel-card">
+        <div>
+          <h3>{{ statusLabel }}</h3>
+          <p>{{ text('CPA/Compact/cc-connect/watchdog 由 systemd 托管，Studio 只做控制面。', 'Services managed by systemd; Studio is the control plane.') }}</p>
+        </div>
+        <div class="cs-hero-metrics">
+          <span :class="`tone-${statusTone}`">{{ summary.overallStatus }}</span>
+          <span>{{ activeServiceCount }}/{{ summary.services.length }} {{ text('服务', 'svc') }}</span>
+          <span>{{ text('模型', 'Model') }} {{ summary.models.current || '--' }}</span>
+          <span>CPA :{{ summary.ports.cpa }}<template v-if="summary.ports.detectedCpa && summary.ports.detectedCpa !== summary.ports.cpa"> (live:{{ summary.ports.detectedCpa }})</template></span>
+          <span>Compact :{{ summary.ports.compact }}<template v-if="summary.ports.detectedCompact && summary.ports.detectedCompact !== summary.ports.compact"> (live:{{ summary.ports.detectedCompact }})</template></span>
+          <span>{{ text('渠道', 'Ch') }} {{ summary.installer.channel }}</span>
+        </div>
+      </div>
+
+      <button type="button" class="secondary-button" :disabled="busy" @click="runCheck" style="margin-bottom:12px">
+        {{ text('运行健康检查', 'Run Health Check') }}
+      </button>
+
+      <div class="cs-grid">
+        <article class="panel-card">
+          <h4>{{ text('组件健康', 'Component Health') }}</h4>
+          <div class="cs-status-grid">
+            <div v-for="c in summary.components" :key="c.id" class="cs-status-card">
+              <span :class="`cs-dot tone-${componentTone(c.status)}`"></span>
+              <div>
+                <strong>{{ c.label }}</strong>
+                <p>{{ c.status }} · {{ c.version || (c.installed ? text('已安装', 'installed') : text('缺失', 'missing')) }}</p>
+                <small v-if="c.notes.length">{{ c.notes.join(' · ') }}</small>
+              </div>
+            </div>
+          </div>
+        </article>
+        <article class="panel-card">
+          <h4>{{ text('服务状态', 'Service Status') }}</h4>
+          <div class="cs-service-list">
+            <div v-for="svc in summary.services" :key="svc.id" class="cs-service-row">
+              <span :class="`cs-dot tone-${svc.active ? 'sage' : 'danger'}`"></span>
+              <span class="cs-service-name">{{ svc.id }}</span>
+              <span class="cs-service-state">{{ svc.active ? text('运行中', 'active') : text('未运行', 'inactive') }}</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <article v-if="checkOutput" class="panel-card">
+        <h4>{{ text('检查输出', 'Check Output') }}</h4>
+        <pre class="cs-code">{{ checkOutput }}</pre>
+      </article>
+    </template>
+
+    <!-- Tab: Install -->
+    <template v-if="summary && activeTab === 'install'">
+      <article class="panel-card">
+        <h4>{{ text('安装渠道', 'Install Channel') }}</h4>
+        <div class="cs-radio-group">
+          <label class="cs-radio" :class="{ 'cs-radio-active': installForm.channel === 'dmwork' }">
+            <input v-model="installForm.channel" type="radio" value="dmwork" />
+            <strong>DMWork {{ text('增强版', 'Enhanced') }}</strong>
+            <span>{{ text('自编译 cc-connect，支持 DMWork/飞书/微信', 'Self-built cc-connect with DMWork/Feishu/Weixin') }}</span>
+          </label>
+          <label class="cs-radio" :class="{ 'cs-radio-active': installForm.channel === 'official' }">
+            <input v-model="installForm.channel" type="radio" value="official" />
+            <strong>{{ text('官方版', 'Official') }}</strong>
+            <span>{{ text('npm 安装 cc-connect，飞书/微信', 'npm cc-connect, Feishu/Weixin') }}</span>
+          </label>
+        </div>
+
+        <h4 style="margin-top:18px">{{ text('选择性跳过/强制重装', 'Selective Skip/Force') }}</h4>
+        <div class="cs-comp-toggles">
+          <div v-for="comp in componentOptions" :key="comp.id" class="cs-comp-row">
+            <span class="cs-comp-label">{{ comp.label }}</span>
+            <label class="cs-comp-action"><input type="checkbox" :checked="installForm.skipComponents.includes(comp.id)" @change="toggleSkip(comp.id)" /> {{ text('跳过', 'Skip') }}</label>
+            <label class="cs-comp-action"><input type="checkbox" :checked="installForm.forceComponents.includes(comp.id)" @change="toggleForce(comp.id)" /> {{ text('强制', 'Force') }}</label>
+          </div>
+        </div>
+
+        <h4 style="margin-top:18px">{{ text('安装参数', 'Install Parameters') }}</h4>
+        <div class="cs-form-grid">
+          <label class="form-field"><span class="form-label">{{ text('默认模型', 'Default model') }}</span>
+            <input v-model="installForm.model" class="form-input" placeholder="glm-5.1" /></label>
+          <label class="form-field"><span class="form-label">{{ text('CPA 端口', 'CPA port') }}</span>
+            <input v-model.number="installForm.cpaPort" class="form-input" type="number" min="1" /></label>
+          <label class="form-field"><span class="form-label">{{ text('Compact 端口', 'Compact port') }}</span>
+            <input v-model.number="installForm.compactPort" class="form-input" type="number" min="1" /></label>
+          <label class="form-field"><span class="form-label">{{ text('代理密钥', 'Proxy key') }}</span>
+            <input v-model="installForm.cpaKey" class="form-input" type="password" /></label>
+          <label class="form-field"><span class="form-label">{{ text('上游 URL', 'Upstream URL') }}</span>
+            <input v-model="installForm.upstreamBaseUrl" class="form-input" placeholder="https://api.example.com/v1" /></label>
+          <label class="form-field"><span class="form-label">{{ text('上游 API Key', 'Upstream API Key') }}</span>
+            <input v-model="installForm.upstreamApiKey" class="form-input" type="password" /></label>
+        </div>
+        <div class="cs-checkboxes">
+          <label><input v-model="installForm.skipNpm" type="checkbox" /> {{ text('跳过 npm', 'Skip npm') }}</label>
+          <label><input v-model="installForm.skipCcConnect" type="checkbox" /> {{ text('跳过 cc-connect', 'Skip cc-connect') }}</label>
+          <label><input v-model="installForm.noStart" type="checkbox" /> {{ text('只写不启动', 'Write only') }}</label>
+          <label><input v-model="installForm.skipExisting" type="checkbox" /> {{ text('跳过已安装', 'Skip existing') }}</label>
+          <label><input v-model="installForm.forceReinstall" type="checkbox" /> {{ text('强制全部重装', 'Force all') }}</label>
+        </div>
+
+        <div class="cs-actions">
+          <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="installFullStack">
+            {{ text('安装全部', 'Install Full Stack') }}
+          </button>
+          <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="installBaseOnly">
+            {{ text('仅安装基础', 'Base Only') }}
+          </button>
+          <button type="button" class="secondary-button" :disabled="busy || !canMutate" @click="repairRecommended">
+            {{ text('自动修复', 'Auto Repair') }}
+          </button>
+        </div>
+      </article>
+    </template>
+
+    <!-- Tab: Services -->
+    <template v-if="summary && activeTab === 'services'">
+      <article class="panel-card">
+        <h4>{{ text('服务控制', 'Service Control') }}</h4>
+        <div class="cs-service-ctrl-list">
+          <div v-for="svc in summary.services" :key="svc.id" class="cs-service-ctrl-row">
+            <span :class="`cs-dot tone-${svc.active ? 'sage' : 'danger'}`"></span>
+            <div class="cs-service-info">
+              <strong>{{ svc.id }}</strong>
+              <p>{{ svc.active ? text('运行中', 'active') : text('未运行', 'inactive') }} · {{ svc.enabled ? text('已启用', 'enabled') : text('未启用', 'disabled') }}</p>
+            </div>
+            <div class="cs-service-actions">
+              <button class="secondary-button" @click="serviceAction(svc.id, 'start')" :disabled="busy || !canMutate || svc.active">{{ text('启动', 'Start') }}</button>
+              <button class="secondary-button" @click="serviceAction(svc.id, 'stop')" :disabled="busy || !canMutate || !svc.active">{{ text('停止', 'Stop') }}</button>
+              <button class="secondary-button" @click="serviceAction(svc.id, 'restart')" :disabled="busy || !canMutate">{{ text('重启', 'Restart') }}</button>
+            </div>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <!-- Tab: Config -->
+    <template v-if="summary && activeTab === 'config'">
+      <article class="panel-card">
+        <h4>{{ text('运行配置', 'Runtime Config') }}</h4>
+        <div class="cs-form-grid">
+          <label class="form-field"><span class="form-label">{{ text('默认模型', 'Default model') }}</span>
+            <input v-model="configForm.defaultModel" class="form-input" /></label>
+          <label class="form-field"><span class="form-label">{{ text('CPA 端口', 'CPA port') }}</span>
+            <input v-model.number="configForm.cpaPort" class="form-input" type="number" min="1" /></label>
+          <label class="form-field"><span class="form-label">{{ text('Compact 端口', 'Compact port') }}</span>
+            <input v-model.number="configForm.compactPort" class="form-input" type="number" min="1" /></label>
+          <label class="form-field"><span class="form-label">{{ text('cc-connect 项目', 'cc-connect project') }}</span>
+            <input v-model="configForm.ccConnectProject" class="form-input" /></label>
+          <label class="form-field"><span class="form-label">{{ text('代理密钥', 'Proxy key') }}</span>
+            <input v-model="configForm.cpaProxyKey" class="form-input" type="password" :placeholder="text('留空不修改', 'Leave empty to keep')"/></label>
+        </div>
+        <div v-if="restartRequiredUnits.length" class="cs-restart-hint">
+          {{ text('需要重启:', 'Restart required:') }} {{ restartRequiredUnits.join(', ') }}
+        </div>
+        <div class="cs-actions">
+          <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="saveConfigPatch">
+            {{ text('保存配置', 'Save Config') }}
+          </button>
+        </div>
+      </article>
+
+      <article v-if="summary.ccConnect.installed" class="panel-card">
+        <h4>{{ text('cc-connect', 'cc-connect') }}</h4>
+        <p>{{ text('绑定状态:', 'Binding:') }} {{ summary.ccConnect.bindingPresent ? text('已绑定', 'bound') : text('未绑定', 'unbound') }}</p>
+        <div v-if="!summary.ccConnect.bindingPresent" class="cs-code">
+          cc-connect feishu setup --project {{ summary.ccConnect.project }}
+          cc-connect weixin setup --project {{ summary.ccConnect.project }}
+        </div>
+        <button v-if="summary.ccConnect.canFinalize" type="button" class="secondary-button" :disabled="busy || !canMutate" @click="finalizeCcConnect">
+          {{ text('完成 cc-connect 安装', 'Finalize cc-connect') }}
+        </button>
+      </article>
+    </template>
+
+    <!-- Tab: Logs -->
+    <template v-if="summary && activeTab === 'logs'">
+      <article class="panel-card">
+        <div class="cs-log-header">
+          <h4>{{ text('服务日志', 'Service Logs') }}</h4>
+          <div class="cs-log-svc-buttons">
+            <button v-for="svc in loggableServices" :key="svc" class="secondary-button" @click="loadLogs(svc)">{{ svc }}</button>
+          </div>
+        </div>
+        <pre class="cs-log">{{ logOutput || text('选择一个服务查看日志。', 'Select a service to view logs.') }}</pre>
+      </article>
+
+      <article v-if="activeJob" class="panel-card">
+        <h4>{{ text('任务输出', 'Job Output') }} — {{ activeJob.kind }}: {{ activeJob.status }}</h4>
+        <pre class="cs-log">{{ activeJob.logTail || text('等待输出...', 'Waiting for output...') }}</pre>
+      </article>
+    </template>
   </section>
 </template>
-
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useLocalePreference } from "../../shared/locale";
@@ -272,6 +270,14 @@ const loading = ref(false);
 const busy = ref(false);
 const restartRequiredUnits = ref<CodexStackServiceId[]>([]);
 const notice = ref<{ kind: "success" | "error"; text: string } | null>(null);
+const activeTab = ref<"status" | "install" | "services" | "config" | "logs">("status");
+const tabs = [
+  { id: "status" as const, label: text("状态总览", "Status") },
+  { id: "install" as const, label: text("安装", "Install") },
+  { id: "services" as const, label: text("服务控制", "Services") },
+  { id: "config" as const, label: text("配置", "Config") },
+  { id: "logs" as const, label: text("日志", "Logs") },
+];
 let pollTimer: number | null = null;
 
 const installForm = reactive({
@@ -288,6 +294,7 @@ const installForm = reactive({
   forceReinstall: false,
   skipComponents: [] as string[],
   forceComponents: [] as string[],
+  channel: "dmwork" as "official" | "dmwork",
 });
 
 const configForm = reactive({
@@ -313,6 +320,8 @@ const statusLabel = computed(() => {
   return labels[status] || status;
 });
 const activeServiceCount = computed(() => countActiveServices(summary.value?.services || []));
+const loggableServices: CodexStackServiceId[] = ["cli-proxy-api.service", "cpa-compact-proxy.service", "cc-connect.service", "codex-stack-watchdog.timer"];
+
 const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["glm-5.1"]);
 
 function componentTone(status: Parameters<typeof codexStackComponentTone>[0]) {
@@ -372,6 +381,7 @@ function buildInstallPayload(skipCcConnect = installForm.skipCcConnect) {
       forceReinstall: installForm.forceReinstall,
       skipComponents: installForm.skipComponents.length ? installForm.skipComponents : undefined,
       forceReinstallComponents: installForm.forceComponents.length ? installForm.forceComponents : undefined,
+      channel: installForm.channel,
     },
   };
 }
@@ -548,198 +558,91 @@ onUnmounted(() => {
   if (pollTimer) window.clearInterval(pollTimer);
 });
 </script>
-
 <style scoped>
-.codex-stack-page {
-  gap: 18px;
+.codex-stack-page { gap: 14px; }
+
+.cs-lock-card, .cs-hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.cs-hero-metrics { display: flex; flex-wrap: wrap; gap: 8px; }
+.cs-hero-metrics span, .cs-restart-hint {
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px;
+  background: var(--surface); color: var(--text-soft); font-size: 0.9em;
 }
 
-.codex-stack-hero,
-.codex-stack-lock-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
+.cs-tabs { display: flex; gap: 2px; border-bottom: 2px solid var(--line); }
+.cs-tab {
+  padding: 8px 16px; background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 0.95em; font-weight: 500;
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
 }
+.cs-tab:hover { color: var(--text); }
+.cs-tab-active { color: var(--acc); border-bottom-color: var(--acc); }
 
-.codex-stack-hero-metrics,
-.codex-stack-actions-row,
-.codex-stack-check-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
+.cs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 
-.codex-stack-hero-metrics span,
-.codex-stack-check-row label {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 8px 10px;
-  background: var(--surface);
-  color: var(--text-soft);
+.cs-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.cs-status-card {
+  display: grid; grid-template-columns: auto 1fr; gap: 8px;
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+  padding: 10px; background: var(--surface);
 }
+.cs-status-card p, .cs-status-card small { margin: 2px 0 0; color: var(--muted); }
 
-.codex-stack-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+.cs-dot {
+  width: 8px; height: 8px; margin-top: 5px; border-radius: 999px;
+  background: var(--muted-soft); box-shadow: 0 0 12px currentColor;
 }
+.tone-sage { color: var(--success); background: var(--success); }
+.tone-accent { color: var(--acc); background: var(--acc); }
+.tone-danger { color: var(--danger); background: var(--danger); }
+.tone-neutral { color: var(--muted-soft); background: var(--muted-soft); }
 
-.codex-stack-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.cs-service-list, .cs-service-ctrl-list { display: flex; flex-direction: column; gap: 8px; }
+.cs-service-row, .cs-service-ctrl-row {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+  padding: 8px 12px; background: var(--surface);
 }
+.cs-service-name { font-weight: 500; }
+.cs-service-state { color: var(--muted); font-size: 0.9em; }
+.cs-service-info { flex: 1; }
+.cs-service-info p { margin: 2px 0 0; color: var(--muted); font-size: 0.9em; }
+.cs-service-actions { display: flex; gap: 6px; }
 
-.codex-stack-card-wide {
-  grid-column: 1 / -1;
+.cs-radio-group { display: flex; gap: 12px; }
+.cs-radio {
+  flex: 1; display: flex; flex-direction: column; gap: 4px;
+  border: 2px solid var(--line); border-radius: var(--radius-lg);
+  padding: 12px 16px; cursor: pointer; transition: border-color 0.2s;
 }
+.cs-radio input[type="radio"] { display: none; }
+.cs-radio-active { border-color: var(--acc); background: color-mix(in srgb, var(--acc) 8%, transparent); }
+.cs-radio span { color: var(--muted); font-size: 0.85em; }
 
-.codex-stack-section-head,
-.codex-stack-service-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
+.cs-comp-toggles { display: flex; flex-direction: column; gap: 4px; }
+.cs-comp-row { display: flex; align-items: center; gap: 10px; }
+.cs-comp-label { min-width: 110px; font-weight: 500; }
+.cs-comp-action { display: inline-flex; align-items: center; gap: 3px; font-size: 0.9em; color: var(--muted); }
 
-.codex-stack-status-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
+.cs-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.cs-checkboxes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.cs-checkboxes label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.9em; }
 
-.codex-stack-status-card {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 12px;
-  background: var(--surface);
-}
+.cs-actions { display: flex; gap: 8px; margin-top: 14px; }
 
-.codex-stack-status-card p,
-.codex-stack-status-card small {
-  margin: 4px 0 0;
-  color: var(--muted);
-}
+.cs-log-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cs-log-svc-buttons { display: flex; gap: 4px; }
 
-.codex-stack-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.cs-code, .cs-log {
+  overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-lg);
+  padding: 10px; background: var(--code-bg); color: var(--text-soft);
+  white-space: pre-wrap; font-size: 0.9em; margin: 0;
 }
-
-.codex-stack-service-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.codex-stack-service-row {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 10px;
-  background: var(--surface);
-}
-
-.codex-stack-service-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.codex-stack-dot {
-  width: 10px;
-  height: 10px;
-  margin-top: 6px;
-  border-radius: 999px;
-  background: var(--muted-soft);
-  box-shadow: 0 0 18px currentColor;
-}
-
-.tone-sage {
-  color: var(--success);
-  background: var(--success);
-}
-
-.tone-accent {
-  color: var(--acc);
-  background: var(--acc);
-}
-
-.tone-danger {
-  color: var(--danger);
-  background: var(--danger);
-}
-
-.tone-neutral {
-  color: var(--muted-soft);
-  background: var(--muted-soft);
-}
-
-.codex-stack-code,
-.codex-stack-log {
-  overflow: auto;
-  margin: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 12px;
-  background: var(--code-bg);
-  color: var(--text-soft);
-  white-space: pre-wrap;
-}
-
-.codex-stack-log {
-  min-height: 220px;
-  max-height: 420px;
-}
-
-.codex-stack-empty {
-  padding: 24px;
-}
-
-.codex-stack-component-toggles {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 0;
-}
-
-.codex-stack-comp-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.codex-stack-comp-label {
-  min-width: 120px;
-  font-weight: 500;
-}
-
-.codex-stack-comp-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.9em;
-  color: var(--muted);
-}
+.cs-log { min-height: 200px; max-height: 400px; }
+.cs-empty { padding: 24px; }
 
 @media (max-width: 960px) {
-  .codex-stack-grid,
-  .codex-stack-status-grid,
-  .codex-stack-form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .codex-stack-hero,
-  .codex-stack-lock-card,
-  .codex-stack-section-head,
-  .codex-stack-service-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
+  .cs-grid, .cs-status-grid, .cs-form-grid { grid-template-columns: 1fr; }
+  .cs-hero, .cs-lock-card, .cs-service-row, .cs-service-ctrl-row { flex-direction: column; align-items: stretch; }
+  .cs-radio-group { flex-direction: column; }
 }
 </style>
