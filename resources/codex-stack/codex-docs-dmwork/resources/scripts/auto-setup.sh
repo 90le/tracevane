@@ -865,6 +865,8 @@ StartLimitBurst=5
 StandardOutput=append:/tmp/cc-connect.log
 StandardError=append:/tmp/cc-connect.log
 
+# Include all possible binary paths so cc-connect can find codex CLI
+Environment=PATH=%h/.npm-global/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=OPENAI_API_KEY=mlamp-proxy-key
 
 # 不走系统代理访问本地
