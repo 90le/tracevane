@@ -218,16 +218,36 @@ if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip "cc-connect"; then
   log "Step 3/8: 安装 cc-connect (dmwork 增强版)..."
   mkdir -p "$HOME/.local/bin"
 
-  # Uninstall official npm cc-connect to avoid PATH conflicts
-  # The npm version does NOT support dmwork platform
-  if npm list -g cc-connect &>/dev/null; then
-    log "  检测到 npm 版本 cc-connect（不支持 dmwork），正在卸载..."
-    npm uninstall -g cc-connect 2>/dev/null || true
-    # Also remove the binary symlink left behind
-    rm -f "$HOME/.npm-global/bin/cc-connect" 2>/dev/null || true
-    rm -rf "$HOME/.npm-global/lib/node_modules/cc-connect" 2>/dev/null || true
-    log "  已卸载 npm 版本 cc-connect"
-  fi
+  # Remove ALL non-dmwork cc-connect binaries from the system
+  # The official cc-connect (npm) does NOT support dmwork platform
+  log "  清理非 dmwork 版本的 cc-connect..."
+
+  # 1. Uninstall npm global cc-connect if present
+  npm uninstall -g cc-connect 2>/dev/null || true
+
+  # 2. Remove all known npm cc-connect paths
+  rm -f "$HOME/.npm-global/bin/cc-connect" 2>/dev/null || true
+  rm -rf "$HOME/.npm-global/lib/node_modules/cc-connect" 2>/dev/null || true
+  rm -f "$HOME/.local/lib/node_modules/cc-connect" 2>/dev/null || true
+  rm -rf "$HOME/.local/lib/node_modules/@cc-connect" 2>/dev/null || true
+
+  # 3. Find and remove cc-connect from any npm/node global paths
+  for npmdir in "$HOME/.npm-global" "$HOME/.local" "$HOME/.nvm" "/usr/local"; do
+    if [[ -f "$npmdir/bin/cc-connect" ]]; then
+      # Check if it's a symlink or wrapper (npm version) vs our binary
+      if file "$npmdir/bin/cc-connect" | grep -q 'symbolic\|script\|text'; then
+        log "    移除: $npmdir/bin/cc-connect"
+        rm -f "$npmdir/bin/cc-connect" 2>/dev/null || true
+      fi
+    fi
+  done
+
+  # 4. Also clean up any cc-connect installed by cc-connect daemon
+  # The daemon's own installer puts it in different locations
+  pkill -f 'cc-connect' 2>/dev/null || true
+  sleep 1
+
+  log "  清理完成"
 
   CC_BIN="$RESOURCES_DIR/bin/cc-connect"
   # Force reinstall: remove old binary first
@@ -239,6 +259,12 @@ if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip "cc-connect"; then
     cp "$CC_BIN" "$HOME/.local/bin/cc-connect"
     chmod +x "$HOME/.local/bin/cc-connect"
     log "  cc-connect 二进制已安装: $(du -h "$HOME/.local/bin/cc-connect" | cut -f1)"
+    # Verify dmwork support
+    if strings "$HOME/.local/bin/cc-connect" 2>/dev/null | grep -q dmwork; then
+      log "  ✅ 已确认 dmwork 增强版"
+    else
+      warn "  ⚠️ 安装的二进制可能不是 dmwork 版本"
+    fi
   else
     # Fallback: 从 tar.gz 提取
     CC_TGZ="$RESOURCES_DIR/../cc-connect-dmwork-linux-x86_64.tar.gz"
