@@ -258,6 +258,44 @@ const routeContextConfigs: ShellContextConfig[] = [
     ],
   },
   {
+    match: (path) => path.startsWith("/codex-stack"),
+    titleZh: "Codex 栈上下文",
+    titleEn: "Codex Stack context",
+    descriptionZh:
+      "这里是 Codex 本地运行栈的控制面：安装、检查、修复和配置都在 Studio 内完成，运行面由 systemd 独立托管。",
+    descriptionEn:
+      "This is the control plane for the local Codex runtime stack: install, checks, repair, and config stay in Studio while systemd owns the runtime.",
+    focusZh: "控制面与运行面分离",
+    focusEn: "Control plane separated from runtime",
+    actions: [
+      {
+        id: "codex-stack-terminal",
+        to: "/terminal",
+        titleZh: "打开维护终端",
+        titleEn: "Open terminal",
+        detailZh: "需要手工 QR 绑定、journal 或 systemctl 时切到终端。",
+        detailEn:
+          "Jump to terminal when QR binding, journal, or systemctl work is needed.",
+      },
+      {
+        id: "codex-stack-system",
+        to: "/system",
+        titleZh: "查看系统诊断",
+        titleEn: "Open diagnostics",
+        detailZh: "交叉确认 Gateway、systemd 和宿主健康。",
+        detailEn: "Cross-check Gateway, systemd, and host health.",
+      },
+      {
+        id: "codex-stack-config",
+        to: "/config",
+        titleZh: "系统配置",
+        titleEn: "Config",
+        detailZh: "需要调整 Studio 插件管理开关时进入配置页。",
+        detailEn: "Open config when Studio plugin management flags need adjustment.",
+      },
+    ],
+  },
+  {
     match: (path) => path.startsWith("/cron"),
     titleZh: "定时任务上下文",
     titleEn: "Cron context",

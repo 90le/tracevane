@@ -46,6 +46,7 @@ test("manifest exports shell route records with route-aware context policy", () 
     "/skills",
     "/plugins",
     "/cron",
+    "/codex-stack",
     "/dreaming",
     "/config",
     "/system/events",

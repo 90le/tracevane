@@ -196,6 +196,9 @@ mkdir -p "${PACKAGE_DIR}/apps/web-vue"
 echo "[4/6] 复制构建产物..."
 cp -r "${SCRIPT_DIR}/dist" "${PACKAGE_DIR}/"
 cp -r "${SCRIPT_DIR}/apps/web-vue/dist" "${PACKAGE_DIR}/apps/web-vue/"
+if [[ -d "${SCRIPT_DIR}/resources" ]]; then
+  cp -r "${SCRIPT_DIR}/resources" "${PACKAGE_DIR}/"
+fi
 mkdir -p "${PACKAGE_DIR}/apps/web-vue/src"
 cp "${APP_VUE_SOURCE_PATH}" "${PACKAGE_DIR}/apps/web-vue/src/App.vue"
 

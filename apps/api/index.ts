@@ -10,6 +10,7 @@ import {
 import { createAgentsService } from './modules/agents/service.js';
 import { createChatService } from './modules/chat/service.js';
 import { createChannelsService } from './modules/channels/service.js';
+import { createCodexStackService } from './modules/codex-stack/service.js';
 import { createConfigService } from './modules/config/service.js';
 import { createCronService } from './modules/cron/service.js';
 import { createDashboardService } from './modules/dashboard/service.js';
@@ -32,6 +33,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
 
   const agents = createAgentsService(options.config);
   const channels = createChannelsService(options.config);
+  const codexStack = createCodexStackService(options.config);
   const config = createConfigService(options.config);
   const cron = createCronService(options.config);
   const plugins = createPluginsService(options.config);
@@ -60,6 +62,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
     agents,
     chat,
     channels,
+    codexStack,
     config,
     cron,
     dashboard,

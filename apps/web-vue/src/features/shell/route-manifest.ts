@@ -8,6 +8,7 @@ const SkillsView = () => import("../../views/SkillsView.vue");
 const FilesView = () => import("../../views/FilesView.vue");
 const PluginsView = () => import("../../views/PluginsView.vue");
 const CronView = () => import("../../views/CronView.vue");
+const CodexStackView = () => import("../../views/CodexStackView.vue");
 const TerminalView = () => import("../../views/TerminalView.vue");
 const ConfigView = () => import("../../views/ConfigView.vue");
 const SystemView = () => import("../../views/SystemView.vue");
@@ -127,6 +128,13 @@ export const shellNavGroups: ShellNavGroup[] = [
         labelEn: "Files",
       },
       {
+        key: "codex-stack",
+        to: "/codex-stack",
+        icon: "terminal",
+        labelZh: "Codex 栈",
+        labelEn: "Codex Stack",
+      },
+      {
         key: "terminal",
         to: "/terminal",
         icon: "terminal",
@@ -218,6 +226,7 @@ const coreRouteChunkLoaders: RouteChunkLoader[] = [
   SkillsView,
   PluginsView,
   CronView,
+  CodexStackView,
   ConfigView,
   SystemView,
   SystemEventCenterPage,
@@ -343,6 +352,11 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/cron",
     component: CronView,
+    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
+  },
+  {
+    path: "/codex-stack",
+    component: CodexStackView,
     meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {

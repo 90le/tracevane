@@ -1,0 +1,145 @@
+{
+  "domains": [
+    "config",
+    "agents",
+    "channels",
+    "skills",
+    "files",
+    "plugins",
+    "cron"
+  ],
+  "webViews": [
+    {
+      "domainId": "config",
+      "routePath": "/config",
+      "file": "apps/web-vue/src/views/ConfigView.vue"
+    },
+    {
+      "domainId": "agents",
+      "routePath": "/agents",
+      "file": "apps/web-vue/src/views/AgentsView.vue"
+    },
+    {
+      "domainId": "channels",
+      "routePath": "/channels",
+      "file": "apps/web-vue/src/views/ChannelsView.vue"
+    },
+    {
+      "domainId": "skills",
+      "routePath": "/skills",
+      "file": "apps/web-vue/src/views/SkillsView.vue"
+    },
+    {
+      "domainId": "files",
+      "routePath": "/files",
+      "file": "apps/web-vue/src/views/FilesView.vue"
+    },
+    {
+      "domainId": "plugins",
+      "routePath": "/plugins",
+      "file": "apps/web-vue/src/views/PluginsView.vue"
+    },
+    {
+      "domainId": "cron",
+      "routePath": "/cron",
+      "file": "apps/web-vue/src/views/CronView.vue"
+    }
+  ],
+  "apiModules": [
+    {
+      "domainId": "config",
+      "dir": "apps/api/modules/config"
+    },
+    {
+      "domainId": "agents",
+      "dir": "apps/api/modules/agents"
+    },
+    {
+      "domainId": "channels",
+      "dir": "apps/api/modules/channels"
+    },
+    {
+      "domainId": "skills",
+      "dir": "apps/api/modules/skills"
+    },
+    {
+      "domainId": "files",
+      "dir": "apps/api/modules/files"
+    },
+    {
+      "domainId": "plugins",
+      "dir": "apps/api/modules/config"
+    },
+    {
+      "domainId": "cron",
+      "dir": "apps/api/modules/cron"
+    }
+  ],
+  "tests": [
+    {
+      "domainId": "config",
+      "testPattern": "studio-web-config-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-config-advanced-sheet.test.mjs",
+        "tests/system/studio-web-config-gateway-patch.test.mjs",
+        "tests/system/studio-web-config-workbench.test.mjs",
+        "tests/system/studio-web-config-workspace-recipe.test.mjs"
+      ]
+    },
+    {
+      "domainId": "agents",
+      "testPattern": "studio-web-agents-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-agents-deep-pages.test.mjs",
+        "tests/system/studio-web-agents-quick-config.test.mjs",
+        "tests/system/studio-web-agents-routes.test.mjs",
+        "tests/system/studio-web-agents-selection-tray.test.mjs",
+        "tests/system/studio-web-agents-workbench.test.mjs",
+        "tests/system/studio-web-agents-workspace-recipe.test.mjs"
+      ]
+    },
+    {
+      "domainId": "channels",
+      "testPattern": "studio-web-channels-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-channels-account-cards.test.mjs",
+        "tests/system/studio-web-channels-deep-pages.test.mjs",
+        "tests/system/studio-web-channels-drawers.test.mjs",
+        "tests/system/studio-web-channels-overview.test.mjs",
+        "tests/system/studio-web-channels-routes.test.mjs",
+        "tests/system/studio-web-channels-workspace-recipe.test.mjs",
+        "tests/system/studio-web-channels-workspace.test.mjs"
+      ]
+    },
+    {
+      "domainId": "skills",
+      "testPattern": "studio-web-skills-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-skills-lifecycle-contract.test.mjs",
+        "tests/system/studio-web-skills-workspace-recipe.test.mjs"
+      ]
+    },
+    {
+      "domainId": "files",
+      "testPattern": "studio-web-files-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-files-workspace.test.mjs"
+      ]
+    },
+    {
+      "domainId": "plugins",
+      "testPattern": "studio-web-plugins-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-plugins-workspace.test.mjs"
+      ]
+    },
+    {
+      "domainId": "cron",
+      "testPattern": "studio-web-cron-*.test.mjs",
+      "matchedFiles": [
+        "tests/system/studio-web-cron-tabs-primitives.test.mjs",
+        "tests/system/studio-web-cron-workspace-recipe.test.mjs"
+      ]
+    }
+  ]
+}

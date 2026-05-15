@@ -2185,8 +2185,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.chat-composer-pool-insert,
-.chat-composer-pool-retry {
+.chat-composer-pool-insert {
   width: 24px;
   height: 24px;
   padding: 0;
@@ -2200,8 +2199,16 @@ onBeforeUnmount(() => {
 }
 
 .chat-composer-pool-retry {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--chat-line);
   color: #b45309;
   background: rgba(245, 158, 11, 0.12);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .chat-composer-pool-insert:disabled,

@@ -1,0 +1,349 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { createCodexStackService, isCodexStackServiceError } from "../../dist/apps/api/modules/codex-stack/service.js";
+
+function makeTempRoot() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-codex-stack-"));
+}
+
+function writeFile(file, value, mode = 0o644) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, value, { mode });
+}
+
+function writeJson(file, value) {
+  writeFile(file, `${JSON.stringify(value, null, 2)}\n`, 0o600);
+}
+
+function createStudioConfig(root) {
+  const openclawRoot = path.join(root, ".openclaw");
+  fs.mkdirSync(openclawRoot, { recursive: true });
+  const projectRoot = path.join(root, "studio");
+  return {
+    pluginId: "studio",
+    pluginName: "OpenClaw Studio",
+    version: "0.1.0",
+    port: 3760,
+    autoStart: true,
+    openclawRoot,
+    openclawConfigFile: path.join(openclawRoot, "openclaw.json"),
+    projectRoot,
+    webDistDir: path.join(projectRoot, "apps/web-vue/dist"),
+    gatewayPort: 31879,
+    gatewayWsUrl: "ws://127.0.0.1:31879",
+    gatewayControlUiBasePath: "",
+    transport: {
+      standalone: { enabled: true, port: 3760 },
+      gateway: { enabled: true, basePath: "/studio" },
+    },
+  };
+}
+
+function createBundledInstaller(config) {
+  const root = path.join(config.projectRoot, "resources/codex-stack/codex-docs");
+  writeFile(path.join(root, "VERSION"), "test-bundle\n");
+  writeFile(path.join(root, "resources/scripts/auto-setup.sh"), "#!/usr/bin/env bash\necho setup\n", 0o755);
+  writeFile(path.join(root, "resources/scripts/health-check.sh"), "#!/usr/bin/env bash\necho '  OK fake check'\n", 0o755);
+  writeFile(path.join(root, "resources/scripts/finish-cc-connect-setup.sh"), "#!/usr/bin/env bash\necho finalize\n", 0o755);
+  writeFile(path.join(root, "resources/bin/cli-proxy-api"), "bin\n", 0o755);
+  writeFile(path.join(root, "resources/cpa-config-templates/compact-proxy.mjs"), "process.stdout.write('proxy\\n')\n", 0o755);
+}
+
+async function waitForJob(service, jobId, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const job = service.getJob(jobId);
+    if (job && !["queued", "running"].includes(job.status)) return job;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`job ${jobId} did not finish within ${timeoutMs}ms`);
+}
+
+function createGeneratedStackFiles(root) {
+  writeFile(path.join(root, ".codex/config.toml"), `
+model = "glm-5.1"
+base_url = "http://127.0.0.1:18796/v1"
+
+[model_providers.cpa]
+experimental_bearer_token = "secret-cpa-key-123456"
+`);
+  writeFile(path.join(root, ".cli-proxy-api/config.yaml"), `
+port: 8317
+api-keys:
+- "secret-cpa-key-123456"
+openai-compatibility:
+- name: "bigmodel"
+  models:
+  - name: "glm-5.1"
+  - name: "gpt-5.4"
+`);
+  writeFile(path.join(root, ".cc-connect/config.toml"), `
+[[projects]]
+name = "main"
+[projects.agent.options]
+model = "glm-5.1"
+`);
+}
+
+test("codex stack summary resolves bundled installer and masks secrets", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: false,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config);
+  createGeneratedStackFiles(root);
+
+  const service = createCodexStackService(config);
+  const summary = await service.getSummary();
+
+  assert.equal(summary.installer.kind, "bundled");
+  assert.equal(summary.installer.requiredFilesPresent, true);
+  assert.equal(summary.management.enabled, false);
+  assert.equal(summary.secrets.cpaProxyKey.hasSecret, true);
+  assert.notEqual(summary.secrets.cpaProxyKey.masked, "secret-cpa-key-123456");
+  assert.ok(summary.models.available.includes("glm-5.1"));
+});
+
+test("codex stack management guard blocks mutations until explicitly enabled", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {});
+  createBundledInstaller(config);
+
+  const service = createCodexStackService(config);
+  await assert.rejects(
+    service.controlService(undefined, "cli-proxy-api.service", "restart"),
+    (error) => isCodexStackServiceError(error) && error.statusCode === 403,
+  );
+
+  const response = await service.enableManagement();
+  assert.equal(response.ok, true);
+  const summary = await service.getSummary();
+  assert.equal(summary.management.enabled, true);
+});
+
+test("codex stack check runs bundled health script and redacts known secrets", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {});
+  createBundledInstaller(config);
+  createGeneratedStackFiles(root);
+  writeFile(
+    path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
+    "#!/usr/bin/env bash\necho '  OK secret-cpa-key-123456 is hidden'\n",
+    0o755,
+  );
+
+  const service = createCodexStackService(config);
+  const check = await service.runCheck();
+
+  assert.equal(check.ok, true);
+  assert.match(check.outputTail, /\[REDACTED\]/);
+  assert.doesNotMatch(check.outputTail, /secret-cpa-key-123456/);
+});
+
+test("codex stack rejects unknown service ids and actions before shell execution", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config);
+
+  const service = createCodexStackService(config);
+  await assert.rejects(
+    service.controlService(undefined, "evil.service", "restart"),
+    (error) => isCodexStackServiceError(error) && error.code === "codex_stack_invalid_service",
+  );
+  await assert.rejects(
+    service.controlService(undefined, "cli-proxy-api.service", "reload-or-run-shell"),
+    (error) => isCodexStackServiceError(error) && error.code === "codex_stack_invalid_service_action",
+  );
+});
+
+test("codex stack uses CODEX_MODEL as default model fallback", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {});
+  createBundledInstaller(config);
+
+  const previous = process.env.CODEX_MODEL;
+  process.env.CODEX_MODEL = "custom-frontier-model";
+  try {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+    assert.equal(summary.models.current, "custom-frontier-model");
+    assert.ok(summary.models.available.includes("custom-frontier-model"));
+  } finally {
+    if (previous === undefined) {
+      delete process.env.CODEX_MODEL;
+    } else {
+      process.env.CODEX_MODEL = previous;
+    }
+  }
+});
+
+test("codex stack install job allows upstream overrides and redacts submitted keys", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config);
+  const setupScript = path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh");
+  writeFile(
+    setupScript,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "echo model=$CODEX_MODEL",
+      "echo cpa_key=$CPA_PROXY_KEY",
+      "echo upstream_key=$OPENCLAW_UPSTREAM_API_KEY",
+      "echo upstream_url=$OPENCLAW_UPSTREAM_BASE_URL",
+      "",
+    ].join("\n"),
+    0o755,
+  );
+
+  const service = createCodexStackService(config);
+  const response = await service.startInstall(undefined, {
+    env: {
+      CODEX_MODEL: "glm-5.1",
+      CPA_PROXY_KEY: "secret-cpa-key-for-job",
+      OPENCLAW_UPSTREAM_BASE_URL: "https://upstream.example.test/v1",
+      OPENCLAW_UPSTREAM_API_KEY: "secret-upstream-key-for-job",
+    },
+    flags: {
+      skipNpm: true,
+      skipCcConnect: false,
+      noStart: true,
+    },
+  });
+
+  const job = await waitForJob(service, response.job.id);
+  assert.equal(job.status, "succeeded");
+  assert.match(job.logTail, /model=glm-5\.1/);
+  assert.match(job.logTail, /upstream_url=https:\/\/upstream\.example\.test\/v1/);
+  assert.doesNotMatch(job.logTail, /secret-cpa-key-for-job/);
+  assert.doesNotMatch(job.logTail, /secret-upstream-key-for-job/);
+
+  const summary = await service.getSummary();
+  assert.equal(summary.profile.upstreamOverride?.hasBaseUrl, true);
+  assert.equal(summary.profile.upstreamOverride?.hasApiKey, true);
+});
+
+test("codex stack rejects cc-connect finalizer until QR binding exists", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config);
+  createGeneratedStackFiles(root);
+
+  const service = createCodexStackService(config);
+  await assert.rejects(
+    service.finalizeCcConnect(undefined, { project: "main" }),
+    (error) => isCodexStackServiceError(error) && error.code === "codex_stack_cc_connect_unbound",
+  );
+});
+
+test("codex stack config patch writes backups and updates managed fields", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config);
+  createGeneratedStackFiles(root);
+  const home = path.dirname(config.openclawRoot);
+  const codexConfig = path.join(home, ".codex/config.toml");
+  const cpaConfig = path.join(home, ".cli-proxy-api/config.yaml");
+  const ccConfig = path.join(home, ".cc-connect/config.toml");
+
+  const service = createCodexStackService(config);
+  const response = await service.patchConfig(undefined, {
+    defaultModel: "gpt-5.4",
+    cpaPort: 9317,
+    compactPort: 28796,
+    cpaProxyKey: "replacement-cpa-key-123",
+    ccConnectProject: "studio-main",
+  });
+
+  assert.equal(response.ok, true);
+  assert.ok(response.restartRequiredUnits?.includes("cli-proxy-api.service"));
+  assert.ok(response.restartRequiredUnits?.includes("cpa-compact-proxy.service"));
+  assert.ok(response.restartRequiredUnits?.includes("cc-connect.service"));
+  assert.match(fs.readFileSync(codexConfig, "utf8"), /model = "gpt-5\.4"/);
+  assert.match(fs.readFileSync(codexConfig, "utf8"), /28796/);
+  assert.match(fs.readFileSync(cpaConfig, "utf8"), /port: 9317/);
+  assert.match(fs.readFileSync(cpaConfig, "utf8"), /replacement-cpa-key-123/);
+  assert.match(fs.readFileSync(ccConfig, "utf8"), /name = "studio-main"/);
+  assert.ok(fs.readdirSync(path.dirname(codexConfig)).some((name) => name.startsWith("config.toml.bak.")));
+  assert.ok(fs.readdirSync(path.dirname(cpaConfig)).some((name) => name.startsWith("config.yaml.bak.")));
+  assert.ok(fs.readdirSync(path.dirname(ccConfig)).some((name) => name.startsWith("config.toml.bak.")));
+});
+
+test("bundled health check treats skipped cc-connect as warning only", () => {
+  const script = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
+    "utf8",
+  );
+  assert.match(script, /cc-connect not found; skip this if you intentionally installed Codex\/CPA\/Compact only/);
+  assert.doesNotMatch(script, /fail "cc-connect not found"/);
+});
