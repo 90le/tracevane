@@ -25,8 +25,12 @@ Usage: bash auto-setup.sh [options]
 Options:
   --skip-npm           Do not run npm install -g updates.
   --skip-cc-connect    Do not install cc-connect package or write its skeleton config.
-  --skip-existing      Skip components that are already installed and running.
+  --skip-existing      Skip all components that are already installed and running.
   --force-reinstall    Force reinstall all components even if already present.
+  --skip=LIST          Comma-separated list of components to skip.
+                       Components: codex, cpa, compact-proxy, cc-connect, watchdog
+  --force=LIST         Comma-separated list of components to force reinstall.
+                       Components: codex, cpa, compact-proxy, cc-connect, watchdog
   --no-start           Write files only; do not start systemd user services.
   --help               Show this help.
 
@@ -46,7 +50,10 @@ USAGE
 SKIP_NPM=false
 SKIP_CC_CONNECT=false
 SKIP_EXISTING=false
+# Note: --skip=cc-connect is handled by should_skip() below; it does NOT set SKIP_CC_CONNECT.
 FORCE_REINSTALL=false
+SKIP_COMPONENTS=""
+FORCE_COMPONENTS=""
 NO_START=false
 
 while [[ $# -gt 0 ]]; do
@@ -55,11 +62,52 @@ while [[ $# -gt 0 ]]; do
     --skip-cc-connect) SKIP_CC_CONNECT=true; shift ;;
     --skip-existing) SKIP_EXISTING=true; shift ;;
     --force-reinstall) FORCE_REINSTALL=true; shift ;;
+    --skip=*) SKIP_COMPONENTS="${1#--skip=}"; shift ;;
+    --force=*) FORCE_COMPONENTS="${1#--force=}"; shift ;;
     --no-start) NO_START=true; shift ;;
     --help|-h) usage; exit 0 ;;
     *) die "Unknown option: $1" ;;
   esac
 done
+
+
+# ── Per-component skip/force helpers ─────────────────────────────
+# Normalise comma-separated list to space-separated lowercase
+normalise_list() {
+  echo "$1" | tr ',' ' ' | tr 'A-Z' 'a-z' | tr -s ' '
+}
+
+should_skip() {
+  local comp="$1"
+  # Global skip-existing: skip if installed
+  if $SKIP_EXISTING && component_installed "$comp"; then
+    return 0
+  fi
+  # Per-component skip list
+  if [[ -n "$SKIP_COMPONENTS" ]]; then
+    local list="$(normalise_list "$SKIP_COMPONENTS")"
+    for item in $list; do
+      [[ "$item" == "$comp" ]] && return 0
+    done
+  fi
+  return 1
+}
+
+should_force() {
+  local comp="$1"
+  # Global force-reinstall
+  if $FORCE_REINSTALL; then
+    return 0
+  fi
+  # Per-component force list
+  if [[ -n "$FORCE_COMPONENTS" ]]; then
+    local list="$(normalise_list "$FORCE_COMPONENTS")"
+    for item in $list; do
+      [[ "$item" == "$comp" ]] && return 0
+    done
+  fi
+  return 1
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESOURCES_DIR="$(dirname "$SCRIPT_DIR")"
@@ -214,12 +262,17 @@ mkdir -p "$HOME/.local/bin" "$HOME/.cli-proxy-api" "$HOME/.codex" "$HOME/.cc-con
 info "Detected CPA port: $CPA_PORT"
 info "Detected Compact port: $COMPACT_PORT"
 info "Skip existing: $SKIP_EXISTING | Force reinstall: $FORCE_REINSTALL"
+info "Skip components: ${SKIP_COMPONENTS:-(none)} | Force components: ${FORCE_COMPONENTS:-(none)}"
 
 for comp in codex cpa compact-proxy cc-connect watchdog; do
-  if component_installed "$comp"; then
+  if should_skip "$comp"; then
+    info "Will skip: $comp (already installed or in --skip list)"
+  elif should_force "$comp"; then
+    info "Will force reinstall: $comp"
+  elif component_installed "$comp"; then
     info "Already installed: $comp"
   else
-    info "Not installed: $comp"
+    info "Not installed: $comp (will install)"
   fi
 done
 
@@ -237,15 +290,22 @@ if [[ "$SKIP_NPM" != true ]]; then
     NPM_NEEDS_UPDATE=true
   fi
 
-  if $FORCE_REINSTALL || $NPM_NEEDS_UPDATE; then
-    log "Updating npm tools: @openai/codex, oh-my-codex, ws, cc-connect"
-    if [[ "$SKIP_CC_CONNECT" == true ]]; then
-      npm install -g @openai/codex oh-my-codex ws
-    else
-      npm install -g @openai/codex oh-my-codex ws cc-connect
+  if should_force codex || should_force cc-connect || $NPM_NEEDS_UPDATE; then
+    local npm_pkgs="@openai/codex oh-my-codex ws"
+    if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip cc-connect; then
+      npm_pkgs="$npm_pkgs cc-connect"
     fi
+    if should_skip codex && ! should_force codex; then
+      # Skip codex npm update, only install oh-my-codex ws
+      npm_pkgs="oh-my-codex ws"
+      if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip cc-connect; then
+        npm_pkgs="$npm_pkgs cc-connect"
+      fi
+    fi
+    log "Updating npm tools: $npm_pkgs"
+    npm install -g $npm_pkgs
   else
-    skip "npm tools already up to date (use --force-reinstall to force)"
+    skip "npm tools already up to date (use --force=codex to force)"
   fi
 else
   warn "Skipping npm updates because --skip-npm was provided"
@@ -253,29 +313,39 @@ fi
 
 command -v codex >/dev/null 2>&1 || warn "codex command is not on PATH after installation"
 command -v omx >/dev/null 2>&1 || warn "omx command is not on PATH after installation"
-if [[ "$SKIP_CC_CONNECT" != true ]]; then
+# --skip=cc-connect also implies --skip-cc-connect
+if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip cc-connect; then
   command -v cc-connect >/dev/null 2>&1 || die "cc-connect command is not on PATH after installation"
 fi
 
 # ── CPA binary ────────────────────────────────────────────────────
-if $SKIP_EXISTING && component_installed cpa && component_running cli-proxy-api.service && ! $FORCE_REINSTALL; then
-  skip "CPA binary already installed and running"
-else
+if should_skip cpa; then
+  skip "CPA binary (in --skip list or already running with --skip-existing)"
+elif should_force cpa || ! component_installed cpa; then
   log "Installing local CPA binary"
   install_binary "$RESOURCES_DIR/bin/cli-proxy-api" "$HOME/.local/bin/cli-proxy-api" 0755 "cli-proxy-api.service"
+else
+  info "CPA binary already installed (use --force=cpa to reinstall)"
 fi
 
 # ── Compact Proxy script ──────────────────────────────────────────
-if $SKIP_EXISTING && component_installed compact-proxy && ! $FORCE_REINSTALL; then
-  skip "Compact Proxy script already installed"
-else
+if should_skip compact-proxy; then
+  skip "Compact Proxy script (in --skip list or already installed with --skip-existing)"
+elif should_force compact-proxy || ! component_installed compact-proxy; then
   log "Installing Compact Proxy script"
   install_file "$RESOURCES_DIR/cpa-config-templates/compact-proxy.mjs" "$HOME/.local/bin/cpa-compact-proxy.mjs" 0755
+else
+  info "Compact Proxy already installed (use --force=compact-proxy to reinstall)"
 fi
 
 # ── Config generation ─────────────────────────────────────────────
 META_FILE="$(mktemp)"
 trap 'rm -f "$META_FILE"' EXIT
+
+# If --skip=cc-connect was given, also set SKIP_CC_CONNECT for the node script
+if should_skip cc-connect; then
+  SKIP_CC_CONNECT=true
+fi
 
 log "Generating CPA config from $OPENCLAW_JSON"
 export OPENCLAW_JSON CPA_CONFIG CPA_PORT COMPACT_PORT CPA_PROXY_KEY META_FILE CODEX_MODEL="${CODEX_MODEL:-}"

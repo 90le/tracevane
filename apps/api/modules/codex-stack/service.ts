@@ -886,6 +886,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (payload.flags?.noStart === true) flags.push("--no-start");
     if (payload.flags?.skipExisting === true) flags.push("--skip-existing");
     if (payload.flags?.forceReinstall === true) flags.push("--force-reinstall");
+    const skipList = payload.flags?.skipComponents?.filter(Boolean).join(",");
+    if (skipList) flags.push(`--skip=${skipList}`);
+    const forceList = payload.flags?.forceReinstallComponents?.filter(Boolean).join(",");
+    if (forceList) flags.push(`--force=${forceList}`);
     return {
       env,
       flags,

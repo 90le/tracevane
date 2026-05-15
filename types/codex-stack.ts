@@ -151,6 +151,8 @@ export interface CodexStackInstallRequest {
     noStart?: boolean;
     skipExisting?: boolean;
     forceReinstall?: boolean;
+    skipComponents?: string[];
+    forceReinstallComponents?: string[];
   };
 }
 

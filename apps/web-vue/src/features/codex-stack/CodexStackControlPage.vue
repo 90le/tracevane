@@ -113,7 +113,15 @@
           <label><input v-model="installForm.skipCcConnect" type="checkbox" /> {{ text('跳过 cc-connect', 'Skip cc-connect') }}</label>
           <label><input v-model="installForm.noStart" type="checkbox" /> {{ text('只写配置不启动', 'Write only') }}</label>
           <label><input v-model="installForm.skipExisting" type="checkbox" /> {{ text('跳过已安装组件', 'Skip existing') }}</label>
-          <label><input v-model="installForm.forceReinstall" type="checkbox" /> {{ text('强制重新安装', 'Force reinstall') }}</label>
+          <label><input v-model="installForm.forceReinstall" type="checkbox" /> {{ text('强制全部重装', 'Force reinstall all') }}</label>
+        </div>
+        <div class="codex-stack-component-toggles">
+          <p class="form-label">{{ text('选择性跳过或强制重装组件：', 'Selective skip or force per component:') }}</p>
+          <div v-for="comp in componentOptions" :key="comp.id" class="codex-stack-comp-row">
+            <span class="codex-stack-comp-label">{{ comp.label }}</span>
+            <label class="codex-stack-comp-action"><input type="checkbox" :checked="installForm.skipComponents.includes(comp.id)" @change="toggleSkip(comp.id)" /> {{ text('跳过', 'Skip') }}</label>
+            <label class="codex-stack-comp-action"><input type="checkbox" :checked="installForm.forceComponents.includes(comp.id)" @change="toggleForce(comp.id)" /> {{ text('强制重装', 'Force') }}</label>
+          </div>
         </div>
         <div class="codex-stack-actions-row">
           <button type="button" class="primary-button" :disabled="busy || !canMutate" @click="installFullStack">
@@ -278,6 +286,8 @@ const installForm = reactive({
   noStart: false,
   skipExisting: false,
   forceReinstall: false,
+  skipComponents: [] as string[],
+  forceComponents: [] as string[],
 });
 
 const configForm = reactive({
@@ -360,6 +370,8 @@ function buildInstallPayload(skipCcConnect = installForm.skipCcConnect) {
       noStart: installForm.noStart,
       skipExisting: installForm.skipExisting,
       forceReinstall: installForm.forceReinstall,
+      skipComponents: installForm.skipComponents.length ? installForm.skipComponents : undefined,
+      forceReinstallComponents: installForm.forceComponents.length ? installForm.forceComponents : undefined,
     },
   };
 }
@@ -495,6 +507,36 @@ async function loadLogs(serviceId: CodexStackServiceId): Promise<void> {
     logOutput.value = response.output;
   } catch (error) {
     notice.value = { kind: "error", text: error instanceof Error ? error.message : text("读取日志失败", "Failed to load logs") };
+  }
+}
+
+const componentOptions = [
+  { id: "codex", label: text("Codex CLI", "Codex CLI") },
+  { id: "cpa", label: text("CPA 代理", "CPA Proxy") },
+  { id: "compact-proxy", label: text("Compact 代理", "Compact Proxy") },
+  { id: "cc-connect", label: "cc-connect" },
+  { id: "watchdog", label: text("看门狗", "Watchdog") },
+];
+
+function toggleSkip(compId: string): void {
+  const idx = installForm.skipComponents.indexOf(compId);
+  if (idx >= 0) installForm.skipComponents.splice(idx, 1);
+  else {
+    installForm.skipComponents.push(compId);
+    // Remove from force if adding to skip
+    const forceIdx = installForm.forceComponents.indexOf(compId);
+    if (forceIdx >= 0) installForm.forceComponents.splice(forceIdx, 1);
+  }
+}
+
+function toggleForce(compId: string): void {
+  const idx = installForm.forceComponents.indexOf(compId);
+  if (idx >= 0) installForm.forceComponents.splice(idx, 1);
+  else {
+    installForm.forceComponents.push(compId);
+    // Remove from skip if adding to force
+    const skipIdx = installForm.skipComponents.indexOf(compId);
+    if (skipIdx >= 0) installForm.skipComponents.splice(skipIdx, 1);
   }
 }
 
@@ -657,6 +699,32 @@ onUnmounted(() => {
 
 .codex-stack-empty {
   padding: 24px;
+}
+
+.codex-stack-component-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+}
+
+.codex-stack-comp-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.codex-stack-comp-label {
+  min-width: 120px;
+  font-weight: 500;
+}
+
+.codex-stack-comp-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9em;
+  color: var(--muted);
 }
 
 @media (max-width: 960px) {
