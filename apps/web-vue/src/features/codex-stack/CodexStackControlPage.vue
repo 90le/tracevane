@@ -6,7 +6,7 @@
         <h2 class="page-title">{{ text('Codex 栈管理', 'Codex Stack Management') }}</h2>
       </div>
       <div class="page-actions">
-        <button type="button" class="secondary-button" :disabled="loading" @click="loadSummary">
+        <button type="button" class="secondary-button" :disabled="loading || ccConnectLoading" @click="loadAll">
           {{ loading ? text('刷新中...', 'Refreshing...') : text('刷新状态', 'Refresh') }}
         </button>
       </div>
@@ -207,6 +207,164 @@
       </article>
     </template>
 
+    <!-- Tab: cc-connect -->
+    <template v-if="summary && activeTab === 'cc-connect'">
+      <article class="panel-card">
+        <div class="cs-section-head">
+          <div>
+            <h4>{{ text('cc-connect 配置概览', 'cc-connect Config Overview') }}</h4>
+            <p class="cs-field-hint">{{ text('读取 ~/.cc-connect/config.toml 并展示解析后的项目、平台和原始 TOML。', 'Reads ~/.cc-connect/config.toml and shows parsed projects, platforms, and the raw TOML.') }}</p>
+          </div>
+        </div>
+        <div class="cs-hero-metrics">
+          <span>{{ text('语言', 'Language') }} {{ ccConnectConfig?.language || '--' }}</span>
+          <span>{{ text('项目数', 'Projects') }} {{ ccConnectProjects.length }}</span>
+          <span>{{ text('Provider 数', 'Providers') }} {{ ccConnectProviders.length }}</span>
+          <span>{{ text('当前项目', 'Current Project') }} {{ primaryCcConnectProjectName }}</span>
+        </div>
+      </article>
+
+      <article class="panel-card">
+        <div class="cs-section-head">
+          <div>
+            <h4>{{ text('Provider 列表', 'Providers') }}</h4>
+            <p class="cs-field-hint">{{ text('展示配置中声明的上游 Provider。敏感字段仅显示前后片段。', 'Shows configured upstream providers. Sensitive fields are masked.') }}</p>
+          </div>
+        </div>
+        <div v-if="ccConnectLoading && !ccConnectConfig" class="cs-empty">
+          {{ text('正在读取 cc-connect 配置...', 'Loading cc-connect config...') }}
+        </div>
+        <div v-else-if="!ccConnectProviders.length" class="cs-empty">
+          {{ text('当前配置没有声明 providers。', 'No providers are declared in the current config.') }}
+        </div>
+        <div v-else class="cs-provider-grid">
+          <article v-for="provider in ccConnectProviders" :key="provider.name || provider.codexEnvKey" class="cs-provider-card">
+            <div class="cs-provider-head">
+              <strong>{{ provider.name || text('未命名 Provider', 'Unnamed Provider') }}</strong>
+              <span class="cs-chip">{{ provider.codexEnvKey || text('未设置环境变量', 'No env key') }}</span>
+            </div>
+            <div class="cs-kv-list">
+              <div class="cs-kv-row">
+                <span>base_url</span>
+                <code>{{ provider.baseUrl || '--' }}</code>
+              </div>
+              <div class="cs-kv-row">
+                <span>api_key</span>
+                <code>{{ maskSecretValue(provider.apiKey) }}</code>
+              </div>
+              <div class="cs-kv-row">
+                <span>codex_env_key</span>
+                <code>{{ provider.codexEnvKey || '--' }}</code>
+              </div>
+            </div>
+          </article>
+        </div>
+      </article>
+
+      <article class="panel-card">
+        <div class="cs-section-head">
+          <div>
+            <h4>{{ text('项目与平台', 'Projects and Platforms') }}</h4>
+            <p class="cs-field-hint">{{ text('每个项目卡片展示 agent 配置、工作目录和平台绑定。', 'Each project card shows the agent config, work directory, and platform bindings.') }}</p>
+          </div>
+        </div>
+        <div v-if="ccConnectLoading && !ccConnectConfig" class="cs-empty">
+          {{ text('正在读取项目配置...', 'Loading project config...') }}
+        </div>
+        <div v-else-if="!ccConnectProjects.length" class="cs-empty">
+          {{ text('当前配置没有 projects。', 'No projects are declared in the current config.') }}
+        </div>
+        <div v-else class="cs-project-list">
+          <article v-for="project in ccConnectProjects" :key="project.name || project.agentOptions.workDir" class="cs-project-card">
+            <div class="cs-project-head">
+              <div>
+                <h5>{{ project.name || text('未命名项目', 'Unnamed Project') }}</h5>
+                <p>{{ project.agentType || '--' }} · {{ project.agentOptions.model || '--' }}</p>
+              </div>
+              <span class="cs-chip">{{ text('Admin From', 'Admin From') }} {{ project.adminFrom || '*' }}</span>
+            </div>
+            <div class="cs-project-meta">
+              <div class="cs-kv-row">
+                <span>{{ text('工作目录', 'Work Directory') }}</span>
+                <code>{{ project.agentOptions.workDir || '--' }}</code>
+              </div>
+              <div class="cs-kv-row">
+                <span>{{ text('模式', 'Mode') }}</span>
+                <code>{{ project.agentOptions.mode || '--' }}</code>
+              </div>
+              <div class="cs-kv-row">
+                <span>{{ text('Agent 类型', 'Agent Type') }}</span>
+                <code>{{ project.agentType || '--' }}</code>
+              </div>
+              <div class="cs-kv-row">
+                <span>{{ text('Admin From', 'Admin From') }}</span>
+                <code>{{ project.adminFrom || '*' }}</code>
+              </div>
+            </div>
+            <div class="cs-platform-section">
+              <div class="cs-platform-title">{{ text('平台列表', 'Platforms') }}</div>
+              <div v-if="!project.platforms.length" class="cs-empty cs-inline-empty">
+                {{ text('该项目暂未配置平台。', 'This project has no platforms configured yet.') }}
+              </div>
+              <div v-else class="cs-platform-grid">
+                <article v-for="platform in project.platforms" :key="`${project.name}-${platform.type}`" class="cs-platform-card">
+                  <div class="cs-platform-head">
+                    <strong>{{ platform.type || text('未命名平台', 'Unnamed Platform') }}</strong>
+                  </div>
+                  <div class="cs-kv-list">
+                    <div v-for="entry in projectPlatformEntries(platform.options)" :key="`${platform.type}-${entry.key}`" class="cs-kv-row">
+                      <span>{{ entry.key }}</span>
+                      <code>{{ entry.value }}</code>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </article>
+        </div>
+      </article>
+
+      <article class="panel-card">
+        <div class="cs-section-head">
+          <div>
+            <h4>{{ text('Raw TOML 编辑器', 'Raw TOML Editor') }}</h4>
+            <p class="cs-field-hint">{{ text('这里显示真实的 ~/.cc-connect/config.toml 内容，保存时会写回原文件。', 'This shows the real ~/.cc-connect/config.toml content and writes it back on save.') }}</p>
+          </div>
+        </div>
+        <textarea
+          v-model="ccConnectRawDraft"
+          class="cs-raw-editor"
+          spellcheck="false"
+          :placeholder="text('cc-connect TOML 会显示在这里。', 'The cc-connect TOML will appear here.')"
+        />
+        <div class="cs-actions">
+          <button type="button" class="primary-button" :disabled="busy || !canMutate || !hasCcConnectRawChanges" @click="saveCcConnectRaw">
+            {{ text('保存 TOML 配置', 'Save TOML Config') }}
+          </button>
+        </div>
+      </article>
+
+      <article class="panel-card">
+        <h4>{{ text('常用动作', 'Actions') }}</h4>
+        <p class="cs-field-hint">{{ text('保存后如果 cc-connect.service 正在运行，会自动重启；未运行时会提示可重启。', 'If cc-connect.service is running it will be restarted after save; otherwise the UI will note that a restart is available.') }}</p>
+        <div class="cs-actions cs-actions-wrap">
+          <button type="button" class="primary-button" :disabled="busy || !canMutate || !hasCcConnectRawChanges" @click="saveCcConnectRaw">
+            {{ text('保存配置', 'Save Config') }}
+          </button>
+          <button type="button" class="secondary-button" :disabled="busy" @click="copySetupCommand('feishu')">
+            {{ text('cc-connect feishu setup', 'cc-connect feishu setup') }}
+          </button>
+          <button type="button" class="secondary-button" :disabled="busy" @click="copySetupCommand('weixin')">
+            {{ text('cc-connect weixin setup', 'cc-connect weixin setup') }}
+          </button>
+          <button v-if="summary.ccConnect.canFinalize" type="button" class="secondary-button" :disabled="busy || !canMutate" @click="finalizeCcConnect">
+            {{ text('完成 cc-connect 安装', 'Finalize cc-connect') }}
+          </button>
+        </div>
+        <pre class="cs-code">{{ ccConnectSetupCommands.join('\n') }}</pre>
+      </article>
+    </template>
+
     <!-- Tab: Config -->
     <template v-if="summary && activeTab === 'config'">
       <article class="panel-card">
@@ -232,18 +390,6 @@
           </button>
         </div>
       </article>
-
-      <article v-if="summary.ccConnect.installed" class="panel-card">
-        <h4>{{ text('cc-connect', 'cc-connect') }}</h4>
-        <p>{{ text('绑定状态:', 'Binding:') }} {{ summary.ccConnect.bindingPresent ? text('已绑定', 'bound') : text('未绑定', 'unbound') }}</p>
-        <div v-if="!summary.ccConnect.bindingPresent" class="cs-code">
-          cc-connect feishu setup --project {{ summary.ccConnect.project }}
-          cc-connect weixin setup --project {{ summary.ccConnect.project }}
-        </div>
-        <button v-if="summary.ccConnect.canFinalize" type="button" class="secondary-button" :disabled="busy || !canMutate" @click="finalizeCcConnect">
-          {{ text('完成 cc-connect 安装', 'Finalize cc-connect') }}
-        </button>
-      </article>
     </template>
 
     <!-- Tab: Logs -->
@@ -267,8 +413,11 @@
 </template>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { confirm } from "../../composables/useConfirmDialog";
+import { copyTextToClipboard } from "../../shared/clipboard";
 import { useLocalePreference } from "../../shared/locale";
 import type {
+  CcConnectConfig,
   CodexStackJob,
   CodexStackServiceAction,
   CodexStackServiceId,
@@ -277,10 +426,12 @@ import type {
 import {
   controlCodexStackService,
   enableCodexStackManagement,
+  fetchCcConnectConfig,
   fetchCodexStackJob,
   fetchCodexStackLogs,
   fetchCodexStackSummary,
   finalizeCodexStackCcConnect,
+  patchCcConnectConfig,
   patchCodexStackConfig,
   runCodexStackCheck,
   startCodexStackInstall,
@@ -297,18 +448,22 @@ import {
 const { text } = useLocalePreference();
 
 const summary = ref<CodexStackSummaryPayload | null>(null);
+const ccConnectConfig = ref<CcConnectConfig | null>(null);
+const ccConnectRawDraft = ref("");
 const activeJob = ref<CodexStackJob | null>(null);
 const checkOutput = ref("");
 const logOutput = ref("");
 const loading = ref(false);
+const ccConnectLoading = ref(false);
 const busy = ref(false);
 const restartRequiredUnits = ref<CodexStackServiceId[]>([]);
 const notice = ref<{ kind: "success" | "error"; text: string } | null>(null);
-const activeTab = ref<"status" | "install" | "services" | "config" | "logs">("status");
+const activeTab = ref<"status" | "install" | "services" | "cc-connect" | "config" | "logs">("status");
 const tabs = [
   { id: "status" as const, label: text("状态总览", "Status") },
   { id: "install" as const, label: text("安装", "Install") },
   { id: "services" as const, label: text("服务控制", "Services") },
+  { id: "cc-connect" as const, label: text("cc-connect", "cc-connect") },
   { id: "config" as const, label: text("配置", "Config") },
   { id: "logs" as const, label: text("日志", "Logs") },
 ];
@@ -355,11 +510,45 @@ const statusLabel = computed(() => {
 });
 const activeServiceCount = computed(() => countActiveServices(summary.value?.services || []));
 const loggableServices: CodexStackServiceId[] = ["cli-proxy-api.service", "cpa-compact-proxy.service", "cc-connect.service", "codex-stack-watchdog.timer"];
+const ccConnectProjects = computed(() => ccConnectConfig.value?.projects || []);
+const ccConnectProviders = computed(() => ccConnectConfig.value?.providers || []);
+const primaryCcConnectProjectName = computed(
+  () => ccConnectProjects.value[0]?.name || summary.value?.ccConnect.project || "main",
+);
+const ccConnectSetupCommands = computed(() => [
+  `cc-connect feishu setup --project ${primaryCcConnectProjectName.value}`,
+  `cc-connect weixin setup --project ${primaryCcConnectProjectName.value}`,
+]);
+const hasCcConnectRawChanges = computed(
+  () => ccConnectRawDraft.value !== (ccConnectConfig.value?.raw || ""),
+);
 
 const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["kimi-k2.6"]);
 
 function componentTone(status: Parameters<typeof codexStackComponentTone>[0]) {
   return codexStackComponentTone(status);
+}
+
+function maskSecretValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "--";
+  if (trimmed.length <= 8) {
+    return `${trimmed.slice(0, 2)}***${trimmed.slice(-2)}`;
+  }
+  return `${trimmed.slice(0, 4)}***${trimmed.slice(-4)}`;
+}
+
+function isSensitiveKey(key: string): boolean {
+  return /(api[_-]?key|bot[_-]?token|token|secret|password)/i.test(key);
+}
+
+function projectPlatformEntries(options: Record<string, string>): Array<{ key: string; value: string }> {
+  return Object.entries(options || {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => ({
+      key,
+      value: isSensitiveKey(key) ? maskSecretValue(value) : (value || "--"),
+    }));
 }
 
 function applySummary(next: CodexStackSummaryPayload): void {
@@ -382,6 +571,28 @@ async function loadSummary(): Promise<void> {
   } finally {
     loading.value = false;
   }
+}
+
+async function loadCcConnectConfig(silent = false): Promise<void> {
+  ccConnectLoading.value = true;
+  try {
+    const config = await fetchCcConnectConfig();
+    ccConnectConfig.value = config;
+    ccConnectRawDraft.value = config.raw;
+  } catch (error) {
+    if (!silent) {
+      notice.value = {
+        kind: "error",
+        text: error instanceof Error ? error.message : text("读取 cc-connect 配置失败", "Failed to load cc-connect config"),
+      };
+    }
+  } finally {
+    ccConnectLoading.value = false;
+  }
+}
+
+async function loadAll(silent = false): Promise<void> {
+  await Promise.all([loadSummary(), loadCcConnectConfig(silent)]);
 }
 
 async function enableManagement(): Promise<void> {
@@ -532,6 +743,54 @@ async function saveConfigPatch(): Promise<void> {
   }
 }
 
+async function saveCcConnectRaw(): Promise<void> {
+  if (!hasCcConnectRawChanges.value) {
+    notice.value = { kind: "success", text: text("cc-connect 配置没有变化。", "cc-connect config has no changes.") };
+    return;
+  }
+  const confirmed = await confirm({
+    title: text("保存 cc-connect 配置", "Save cc-connect config"),
+    message: text(
+      "保存后如果 cc-connect.service 正在运行会自动重启。继续吗？",
+      "Saving will restart cc-connect.service if it is running. Continue?",
+    ),
+    confirmText: text("保存并应用", "Save and apply"),
+    cancelText: text("取消", "Cancel"),
+    tone: "safe",
+  });
+  if (!confirmed) return;
+
+  busy.value = true;
+  try {
+    const response = await patchCcConnectConfig({ raw: ccConnectRawDraft.value });
+    restartRequiredUnits.value = response.restartRequiredUnits || [];
+    if (response.summary) applySummary(response.summary);
+    await loadCcConnectConfig(true);
+    notice.value = { kind: "success", text: response.message };
+  } catch (error) {
+    notice.value = {
+      kind: "error",
+      text: error instanceof Error ? error.message : text("保存 cc-connect 配置失败", "Failed to save cc-connect config"),
+    };
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function copySetupCommand(platform: "feishu" | "weixin"): Promise<void> {
+  const command = `cc-connect ${platform} setup --project ${primaryCcConnectProjectName.value}`;
+  const copied = await copyTextToClipboard(command);
+  notice.value = copied
+    ? {
+        kind: "success",
+        text: text(`已复制命令: ${command}`, `Copied command: ${command}`),
+      }
+    : {
+        kind: "error",
+        text: text(`复制失败，请手动执行: ${command}`, `Copy failed. Run manually: ${command}`),
+      };
+}
+
 async function finalizeCcConnect(): Promise<void> {
   busy.value = true;
   try {
@@ -585,7 +844,7 @@ function toggleForce(compId: string): void {
 }
 
 onMounted(() => {
-  void loadSummary();
+  void loadAll(true);
 });
 
 onUnmounted(() => {
@@ -662,6 +921,7 @@ onUnmounted(() => {
 .cs-checkboxes label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.9em; }
 
 .cs-actions { display: flex; gap: 8px; margin-top: 14px; }
+.cs-actions-wrap { flex-wrap: wrap; }
 
 .cs-log-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .cs-log-svc-buttons { display: flex; gap: 4px; }
@@ -687,6 +947,90 @@ onUnmounted(() => {
 .cs-result-ok { border-color: var(--success); }
 .cs-result-fail { border-color: var(--danger); }
 .cs-actions-card { background: color-mix(in srgb, var(--surface) 60%, transparent); }
+.cs-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.cs-provider-grid, .cs-platform-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.cs-provider-card, .cs-platform-card, .cs-project-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  background: var(--surface);
+}
+.cs-provider-head, .cs-platform-head, .cs-project-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cs-provider-head strong, .cs-platform-head strong, .cs-project-head h5 {
+  margin: 0;
+}
+.cs-project-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.92em;
+}
+.cs-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--text-soft);
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.cs-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cs-project-meta, .cs-kv-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.cs-kv-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 180px) 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.cs-kv-row span {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+.cs-kv-row code {
+  word-break: break-all;
+}
+.cs-platform-section {
+  margin-top: 14px;
+}
+.cs-platform-title {
+  margin-bottom: 10px;
+  color: var(--text-soft);
+  font-size: 0.9em;
+  font-weight: 600;
+}
+.cs-inline-empty {
+  padding: 10px 12px;
+  min-height: 0;
+}
+.cs-raw-editor {
+  width: 100%;
+  min-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  background: var(--code-bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  line-height: 1.5;
+  resize: vertical;
+ }
 
 @keyframes cs-pulse {
   0%, 100% { opacity: 1; }
@@ -694,8 +1038,10 @@ onUnmounted(() => {
 }
 
 @media (max-width: 960px) {
-  .cs-grid, .cs-status-grid, .cs-form-grid { grid-template-columns: 1fr; }
+  .cs-grid, .cs-status-grid, .cs-form-grid, .cs-provider-grid, .cs-platform-grid { grid-template-columns: 1fr; }
   .cs-hero, .cs-lock-card, .cs-service-row, .cs-service-ctrl-row { flex-direction: column; align-items: stretch; }
   .cs-radio-group { flex-direction: column; }
+  .cs-kv-row { grid-template-columns: 1fr; }
+  .cs-section-head, .cs-project-head, .cs-provider-head, .cs-platform-head { flex-direction: column; align-items: stretch; }
 }
 </style>

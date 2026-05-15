@@ -1,6 +1,7 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
+  CodexStackCcConnectConfigPatchRequest,
   CodexStackConfigPatchRequest,
   CodexStackFinalizeRequest,
   CodexStackInstallRequest,
@@ -110,6 +111,23 @@ export function registerCodexStackRoutes(router: StudioRouter): void {
     try {
       const payload = await parseJsonBody<CodexStackConfigPatchRequest>(req);
       sendJson(res, 200, await routeCtx.services.codexStack.patchConfig(req, payload));
+    } catch (error) {
+      sendCodexStackError(res, error);
+    }
+  });
+
+  router.get("/api/codex-stack/cc-connect/config", async (_req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, await routeCtx.services.codexStack.getCcConnectConfig());
+    } catch (error) {
+      sendCodexStackError(res, error);
+    }
+  });
+
+  router.patch("/api/codex-stack/cc-connect/config", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<CodexStackCcConnectConfigPatchRequest>(req);
+      sendJson(res, 200, await routeCtx.services.codexStack.patchCcConnectConfig(req, payload));
     } catch (error) {
       sendCodexStackError(res, error);
     }

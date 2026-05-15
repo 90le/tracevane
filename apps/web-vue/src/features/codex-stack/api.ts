@@ -1,5 +1,7 @@
 import { requestJson } from "../../shared/api";
 import type {
+  CcConnectConfig,
+  CodexStackCcConnectConfigPatchRequest,
   CodexStackCheckResponse,
   CodexStackConfigPatchRequest,
   CodexStackFinalizeRequest,
@@ -60,6 +62,20 @@ export function controlCodexStackService(
 
 export function patchCodexStackConfig(payload: CodexStackConfigPatchRequest): Promise<CodexStackMutationResponse> {
   return requestJson<CodexStackMutationResponse>("/api/codex-stack/config", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchCcConnectConfig(): Promise<CcConnectConfig> {
+  return requestJson<CcConnectConfig>("/api/codex-stack/cc-connect/config");
+}
+
+export function patchCcConnectConfig(
+  payload: CodexStackCcConnectConfigPatchRequest,
+): Promise<CodexStackMutationResponse> {
+  return requestJson<CodexStackMutationResponse>("/api/codex-stack/cc-connect/config", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

@@ -7,9 +7,14 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import type {
+  CcConnectConfig,
+  CcConnectPlatform,
+  CcConnectProject,
+  CcConnectProvider,
   CodexStackChannel,
   CodexStackCheckItem,
   CodexStackCheckResponse,
+  CodexStackCcConnectConfigPatchRequest,
   CodexStackComponentSummary,
   CodexStackConfigPatchRequest,
   CodexStackFinalizeRequest,
@@ -204,6 +209,290 @@ function maskSecret(value: string): { masked: string; length: number } {
   };
 }
 
+function normalizeTomlMultiline(source: string): string {
+  const normalized = source.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return normalized ? `${normalized}\n` : "";
+}
+
+function escapeTomlString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function parseTomlScalar(valueSource: string): string {
+  const trimmed = valueSource.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith('"')) {
+    const match = trimmed.match(/^"((?:\\.|[^"\\])*)"/);
+    if (match?.[1] !== undefined) {
+      try {
+        return JSON.parse(`"${match[1]}"`) as string;
+      } catch {
+        return match[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+      }
+    }
+  }
+  if (trimmed.startsWith("'")) {
+    const endIndex = trimmed.indexOf("'", 1);
+    return endIndex >= 0 ? trimmed.slice(1, endIndex) : trimmed.slice(1);
+  }
+  return trimmed.replace(/\s+#.*$/g, "").trim();
+}
+
+function parseTomlHeader(line: string): { name: string; array: boolean } | null {
+  const trimmed = line.trim();
+  const arrayMatch = trimmed.match(/^\[\[\s*([^\]]+?)\s*\]\]$/);
+  if (arrayMatch?.[1]) {
+    return { name: arrayMatch[1].trim(), array: true };
+  }
+  const tableMatch = trimmed.match(/^\[\s*([^\]]+?)\s*\]$/);
+  if (tableMatch?.[1]) {
+    return { name: tableMatch[1].trim(), array: false };
+  }
+  return null;
+}
+
+function parseTomlAssignment(line: string): { key: string; value: string } | null {
+  const match = line.match(/^\s*([A-Za-z0-9_.-]+)\s*=\s*(.+?)\s*$/);
+  if (!match?.[1] || !match[2]) return null;
+  return {
+    key: match[1].trim(),
+    value: parseTomlScalar(match[2]),
+  };
+}
+
+function emptyCcConnectProvider(): CcConnectProvider {
+  return {
+    name: "",
+    apiKey: "",
+    baseUrl: "",
+    codexEnvKey: "",
+  };
+}
+
+function emptyCcConnectProject(): CcConnectProject {
+  return {
+    name: "",
+    adminFrom: "",
+    agentType: "",
+    agentOptions: {
+      workDir: "",
+      mode: "",
+      model: "",
+    },
+    platforms: [],
+  };
+}
+
+function emptyCcConnectPlatform(): CcConnectPlatform {
+  return {
+    type: "",
+    options: {},
+  };
+}
+
+function parseCcConnectConfigSource(source: string): CcConnectConfig {
+  const config: CcConnectConfig = {
+    language: "",
+    providers: [],
+    projects: [],
+    raw: source,
+  };
+  let currentSection = "";
+  let currentProvider: CcConnectProvider | null = null;
+  let currentProject: CcConnectProject | null = null;
+  let currentPlatform: CcConnectPlatform | null = null;
+
+  for (const line of source.replace(/\r\n/g, "\n").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const header = parseTomlHeader(trimmed);
+    if (header) {
+      currentSection = header.name;
+      if (header.array && header.name === "providers") {
+        currentProvider = emptyCcConnectProvider();
+        config.providers.push(currentProvider);
+      } else if (header.array && header.name === "projects") {
+        currentProject = emptyCcConnectProject();
+        config.projects.push(currentProject);
+        currentPlatform = null;
+      } else if (header.array && header.name === "projects.platforms") {
+        if (!currentProject) {
+          currentProject = emptyCcConnectProject();
+          config.projects.push(currentProject);
+        }
+        currentPlatform = emptyCcConnectPlatform();
+        currentProject.platforms.push(currentPlatform);
+      }
+      continue;
+    }
+
+    const assignment = parseTomlAssignment(trimmed);
+    if (!assignment) continue;
+    const { key, value } = assignment;
+    if (!currentSection && key === "language") {
+      config.language = value;
+      continue;
+    }
+    if (currentSection === "providers" && currentProvider) {
+      if (key === "name") currentProvider.name = value;
+      if (key === "api_key") currentProvider.apiKey = value;
+      if (key === "base_url") currentProvider.baseUrl = value;
+      if (key === "codex_env_key") currentProvider.codexEnvKey = value;
+      continue;
+    }
+    if (currentSection === "projects" && currentProject) {
+      if (key === "name") currentProject.name = value;
+      if (key === "admin_from") currentProject.adminFrom = value;
+      continue;
+    }
+    if (currentSection === "projects.agent" && currentProject) {
+      if (key === "type") currentProject.agentType = value;
+      continue;
+    }
+    if (currentSection === "projects.agent.options" && currentProject) {
+      if (key === "work_dir") currentProject.agentOptions.workDir = value;
+      if (key === "mode") currentProject.agentOptions.mode = value;
+      if (key === "model") currentProject.agentOptions.model = value;
+      continue;
+    }
+    if (currentSection === "projects.platforms" && currentPlatform) {
+      if (key === "type") currentPlatform.type = value;
+      continue;
+    }
+    if (currentSection === "projects.platforms.options" && currentPlatform) {
+      currentPlatform.options[key] = value;
+    }
+  }
+
+  return config;
+}
+
+function serializeCcConnectProviders(providers: CcConnectProvider[]): string {
+  const blocks = providers
+    .map((provider) => {
+      const lines = [
+        "[[providers]]",
+        `name = "${escapeTomlString(provider.name || "")}"`,
+        `api_key = "${escapeTomlString(provider.apiKey || "")}"`,
+        `base_url = "${escapeTomlString(provider.baseUrl || "")}"`,
+        `codex_env_key = "${escapeTomlString(provider.codexEnvKey || "")}"`,
+      ];
+      return lines.join("\n");
+    });
+  return blocks.join("\n\n").trim();
+}
+
+function serializeCcConnectProjects(projects: CcConnectProject[]): string {
+  const blocks = projects.map((project) => {
+    const lines = [
+      "[[projects]]",
+      `name = "${escapeTomlString(project.name || "")}"`,
+      `admin_from = "${escapeTomlString(project.adminFrom || "")}"`,
+      "",
+      "[projects.agent]",
+      `type = "${escapeTomlString(project.agentType || "")}"`,
+      "",
+      "[projects.agent.options]",
+      `work_dir = "${escapeTomlString(project.agentOptions.workDir || "")}"`,
+      `mode = "${escapeTomlString(project.agentOptions.mode || "")}"`,
+      `model = "${escapeTomlString(project.agentOptions.model || "")}"`,
+    ];
+
+    for (const platform of project.platforms || []) {
+      lines.push(
+        "",
+        "[[projects.platforms]]",
+        `type = "${escapeTomlString(platform.type || "")}"`,
+        "",
+        "[projects.platforms.options]",
+      );
+      for (const [key, value] of Object.entries(platform.options || {})) {
+        lines.push(`${key} = "${escapeTomlString(value || "")}"`);
+      }
+    }
+
+    return lines.join("\n");
+  });
+  return blocks.join("\n\n").trim();
+}
+
+function replaceOrAppendTopLevelTomlString(source: string, key: string, value: string): string {
+  const escaped = escapeTomlString(value);
+  const lines = source.replace(/\r\n/g, "\n").split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim().startsWith("[") && line.trim().endsWith("]")) break;
+    if (new RegExp(`^\\s*${key}\\s*=`).test(line)) {
+      lines[index] = `${key} = "${escaped}"`;
+      return lines.join("\n");
+    }
+  }
+  const insertAt = lines.findIndex((line) => line.trim().startsWith("["));
+  if (insertAt >= 0) {
+    lines.splice(insertAt, 0, `${key} = "${escaped}"`, "");
+    return lines.join("\n");
+  }
+  return `${source.replace(/\s+$/g, "")}${source.trim() ? "\n" : ""}${key} = "${escaped}"\n`;
+}
+
+function stripTomlManagedSections(source: string, prefixes: string[]): string {
+  const lines = source.replace(/\r\n/g, "\n").split("\n");
+  const kept: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    const header = parseTomlHeader(line);
+    if (header) {
+      skipping = prefixes.some((prefix) => header.name === prefix || header.name.startsWith(`${prefix}.`));
+      if (!skipping) kept.push(line);
+      continue;
+    }
+    if (skipping) continue;
+    kept.push(line);
+  }
+  return kept.join("\n");
+}
+
+function appendTomlSection(source: string, block: string): string {
+  if (!block.trim()) return source;
+  const base = source.replace(/\s+$/g, "");
+  return `${base}${base ? "\n\n" : ""}${block.trim()}\n`;
+}
+
+function patchCcConnectStructuredToml(
+  source: string,
+  payload: Omit<CodexStackCcConnectConfigPatchRequest, "raw">,
+): string {
+  const current = parseCcConnectConfigSource(source);
+  const nextConfig: CcConnectConfig = {
+    language: payload.language ?? current.language,
+    providers: payload.providers ?? current.providers,
+    projects: payload.projects ?? current.projects,
+    raw: current.raw,
+  };
+
+  let next = source;
+  if (payload.language !== undefined) {
+    next = replaceOrAppendTopLevelTomlString(next, "language", nextConfig.language || "");
+  }
+  if (payload.providers !== undefined) {
+    next = appendTomlSection(stripTomlManagedSections(next, ["providers"]), serializeCcConnectProviders(nextConfig.providers));
+  }
+  if (payload.projects !== undefined) {
+    next = appendTomlSection(stripTomlManagedSections(next, ["projects"]), serializeCcConnectProjects(nextConfig.projects));
+  }
+
+  if (!source.trim()) {
+    const blocks = [
+      nextConfig.language ? `language = "${escapeTomlString(nextConfig.language)}"` : "",
+      serializeCcConnectProviders(nextConfig.providers),
+      serializeCcConnectProjects(nextConfig.projects),
+    ].filter(Boolean);
+    next = blocks.join("\n\n");
+  }
+
+  return normalizeTomlMultiline(next);
+}
+
 function extractTomlString(source: string, key: string): string {
   const match = source.match(new RegExp(`^\\s*${key}\\s*=\\s*"([^"]*)"`, "m"));
   return match?.[1]?.trim() || "";
@@ -367,13 +656,11 @@ function chooseDefaultModel(models: string[], current = ""): string {
 }
 
 function detectCcConnectBinding(source: string): boolean {
-  return /projects\.platforms/.test(source)
-    || /\[\[projects\.platforms\]\]/.test(source)
-    || /\[projects\.platforms\]/.test(source);
+  return parseCcConnectConfigSource(source).projects.some((project) => project.platforms.length > 0);
 }
 
 function readCcConnectProject(source: string): string {
-  return extractTomlString(source, "name") || DEFAULT_CC_CONNECT_PROJECT;
+  return parseCcConnectConfigSource(source).projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT;
 }
 
 async function execText(
@@ -420,6 +707,7 @@ async function probeUrl(url: string, token = ""): Promise<boolean> {
 
 export interface CodexStackService {
   getSummary(req?: http.IncomingMessage): Promise<CodexStackSummaryPayload>;
+  getCcConnectConfig(): Promise<CcConnectConfig>;
   enableManagement(req?: http.IncomingMessage): Promise<CodexStackMutationResponse>;
   runCheck(): Promise<CodexStackCheckResponse>;
   startInstall(req: http.IncomingMessage | undefined, payload: CodexStackInstallRequest): Promise<CodexStackJobResponse>;
@@ -427,6 +715,7 @@ export interface CodexStackService {
   finalizeCcConnect(req: http.IncomingMessage | undefined, payload: CodexStackFinalizeRequest): Promise<CodexStackJobResponse>;
   controlService(req: http.IncomingMessage | undefined, serviceId: string, action: string): Promise<CodexStackMutationResponse>;
   patchConfig(req: http.IncomingMessage | undefined, payload: CodexStackConfigPatchRequest): Promise<CodexStackMutationResponse>;
+  patchCcConnectConfig(req: http.IncomingMessage | undefined, payload: CodexStackCcConnectConfigPatchRequest): Promise<CodexStackMutationResponse>;
   getJob(jobId: string): CodexStackJob | null;
   readLogs(unitId: string, lines?: number): Promise<{ unitId: string; output: string }>;
 }
@@ -443,6 +732,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const codex = readText(currentPaths.codexConfig);
     const cpa = readText(currentPaths.cpaConfig);
     const cc = readText(currentPaths.ccConnectConfig);
+    const ccParsed = parseCcConnectConfigSource(cc);
     const models = parseModels(`${cpa}\n${codex}\n${cc}`);
     return {
       updatedAt: new Date().toISOString(),
@@ -451,8 +741,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         extractTomlString(codex, "base_url").match(/127\.0\.0\.1:(\d+)/)?.[1],
         DEFAULT_COMPACT_PORT,
       ),
-      defaultModel: chooseDefaultModel(models, extractTomlString(codex, "model") || extractTomlString(cc, "model")),
-      ccConnectProject: readCcConnectProject(cc),
+      defaultModel: chooseDefaultModel(models, extractTomlString(codex, "model") || ccParsed.projects[0]?.agentOptions.model),
+      ccConnectProject: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
       hasCpaProxyKey: Boolean(extractTomlString(codex, "experimental_bearer_token")),
       channel: "dmwork" as CodexStackChannel,
       ...readJsonFile<Partial<CodexStackProfile>>(profilePath(), {}),
@@ -750,11 +1040,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   }
 
+  async function getCcConnectConfig(): Promise<CcConnectConfig> {
+    const currentPaths = paths();
+    return parseCcConnectConfigSource(readText(currentPaths.ccConnectConfig));
+  }
+
   async function getSummary(req?: http.IncomingMessage): Promise<CodexStackSummaryPayload> {
     const currentPaths = paths();
     const codexConfig = readText(currentPaths.codexConfig);
     const cpaConfig = readText(currentPaths.cpaConfig);
     const ccConfig = readText(currentPaths.ccConnectConfig);
+    const ccParsed = parseCcConnectConfigSource(ccConfig);
     const configCpaPort = parseCpaPort(cpaConfig);
     const configCompactPort = normalizePort(extractTomlString(codexConfig, "base_url").match(/127\.0\.0\.1:(\d+)/)?.[1], DEFAULT_COMPACT_PORT);
     const [liveCpaPort, liveCompactPort] = await Promise.all([
@@ -773,7 +1069,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       probeUrl(`http://127.0.0.1:${cpaPort}/healthz`),
       probeUrl(`http://127.0.0.1:${compactPort}/v1/models`, cpaProxyKey || DEFAULT_CPA_PROXY_KEY),
     ]);
-    const ccBindingPresent = detectCcConnectBinding(ccConfig);
+    const ccBindingPresent = ccParsed.projects.some((project) => project.platforms.length > 0);
     const components = buildComponents({
       codexVersion,
       omxVersion,
@@ -783,7 +1079,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       compactHealthy,
     });
     const profile = readProfile();
-    const currentModel = extractTomlString(codexConfig, "model") || extractTomlString(ccConfig, "model") || profile.defaultModel;
+    const currentModel = extractTomlString(codexConfig, "model") || ccParsed.projects[0]?.agentOptions.model || profile.defaultModel;
     const warnings: string[] = [];
     const installer = resolveInstallerSource();
     if (installer.kind === "development-fallback") warnings.push("Using development codex-docs checkout as installer source.");
@@ -799,7 +1095,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         cpaPort,
         compactPort,
         defaultModel: currentModel || profile.defaultModel,
-        ccConnectProject: readCcConnectProject(ccConfig),
+        ccConnectProject: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
         hasCpaProxyKey: Boolean(cpaProxyKey),
       },
       installer,
@@ -825,18 +1121,32 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ccConnect: {
         installed: Boolean(ccVersion) || pathExists(currentPaths.ccConnectConfig),
         configured: pathExists(currentPaths.ccConnectConfig),
-        project: readCcConnectProject(ccConfig),
+        project: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
         bindingPresent: ccBindingPresent,
         socketPath: currentPaths.ccConnectSocket,
         socketPresent: isSocket(currentPaths.ccConnectSocket),
         setupCommands: [
-          `cc-connect feishu setup --project ${readCcConnectProject(ccConfig)}`,
-          `cc-connect weixin setup --project ${readCcConnectProject(ccConfig)}`,
+          `cc-connect feishu setup --project ${ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT}`,
+          `cc-connect weixin setup --project ${ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT}`,
         ],
         canFinalize: ccBindingPresent,
       },
       warnings,
     };
+  }
+
+  async function restartCcConnectIfRunning(): Promise<boolean> {
+    const status = await readServiceStatus("cc-connect.service");
+    if (!status.active) return false;
+    const result = await execText("systemctl", ["--user", "restart", "cc-connect.service"], { timeout: 30_000 });
+    if (!result.ok) {
+      throw new CodexStackServiceError(
+        "codex_stack_service_action_failed",
+        redact(result.output || "cc-connect.service restart failed"),
+        500,
+      );
+    }
+    return true;
   }
 
   async function enableManagement(req?: http.IncomingMessage): Promise<CodexStackMutationResponse> {
@@ -1156,9 +1466,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
 
     const cc = readText(currentPaths.ccConnectConfig);
     if (cc) {
-      let next = cc;
-      if (model) next = replaceTomlString(next, "model", model);
-      if (ccProject) next = replaceTomlString(next, "name", ccProject);
+      const parsedCc = parseCcConnectConfigSource(cc);
+      if (!parsedCc.projects.length) {
+        parsedCc.projects.push(emptyCcConnectProject());
+      }
+      if (model) parsedCc.projects[0].agentOptions.model = model;
+      if (ccProject) parsedCc.projects[0].name = ccProject;
+      const next = patchCcConnectStructuredToml(cc, { projects: parsedCc.projects });
       if (next !== cc) {
         backupAndWrite(currentPaths.ccConnectConfig, next);
         restartRequired.add("cc-connect.service");
@@ -1206,6 +1520,60 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     };
   }
 
+  async function patchCcConnectConfig(
+    req: http.IncomingMessage | undefined,
+    payload: CodexStackCcConnectConfigPatchRequest,
+  ): Promise<CodexStackMutationResponse> {
+    requireManagement(req);
+    const allowed = ["raw", "language", "providers", "projects"];
+    const patch = isRecord(payload) ? payload : {};
+    const unknown = Object.keys(patch).filter((key) => !allowed.includes(key));
+    if (unknown.length) {
+      throw new CodexStackServiceError("codex_stack_invalid_cc_connect_patch", `Unsupported cc-connect config fields: ${unknown.join(", ")}`);
+    }
+
+    const currentPaths = paths();
+    const currentRaw = readText(currentPaths.ccConnectConfig);
+    const hasRawPatch = Object.prototype.hasOwnProperty.call(patch, "raw");
+    const hasStructuredPatch = Object.keys(patch).some((key) => key !== "raw");
+    if (hasRawPatch && hasStructuredPatch) {
+      throw new CodexStackServiceError(
+        "codex_stack_invalid_cc_connect_patch",
+        "Provide either raw TOML or structured cc-connect patch fields, not both.",
+      );
+    }
+
+    let nextRaw = currentRaw;
+    if (hasRawPatch) {
+      if (typeof patch.raw !== "string") {
+        throw new CodexStackServiceError("codex_stack_invalid_cc_connect_patch", "raw must be a string.");
+      }
+      nextRaw = normalizeTomlMultiline(patch.raw);
+    } else {
+      nextRaw = patchCcConnectStructuredToml(currentRaw, {
+        language: typeof patch.language === "string" ? patch.language : undefined,
+        providers: Array.isArray(patch.providers) ? patch.providers : undefined,
+        projects: Array.isArray(patch.projects) ? patch.projects : undefined,
+      });
+    }
+
+    const changed = nextRaw !== currentRaw;
+    let restarted = false;
+    if (changed) {
+      backupAndWrite(currentPaths.ccConnectConfig, nextRaw);
+      restarted = await restartCcConnectIfRunning();
+    }
+
+    return {
+      ok: true,
+      message: changed
+        ? (restarted ? "cc-connect config updated and service restarted." : "cc-connect config updated.")
+        : "cc-connect config unchanged.",
+      restartRequiredUnits: changed && !restarted ? ["cc-connect.service"] : [],
+      summary: await getSummary(req),
+    };
+  }
+
   function getJob(jobId: string): CodexStackJob | null {
     const normalized = jobId.replace(/[^A-Za-z0-9_.-]/g, "");
     if (!normalized || normalized !== jobId) return null;
@@ -1229,6 +1597,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
 
   return {
     getSummary,
+    getCcConnectConfig,
     enableManagement,
     runCheck,
     startInstall,
@@ -1236,6 +1605,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     finalizeCcConnect,
     controlService,
     patchConfig,
+    patchCcConnectConfig,
     getJob,
     readLogs,
   };

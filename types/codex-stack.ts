@@ -185,6 +185,46 @@ export interface CodexStackFinalizeRequest {
   noAdminAll?: boolean;
 }
 
+export interface CcConnectProvider {
+  name: string;
+  apiKey: string;
+  baseUrl: string;
+  codexEnvKey: string;
+}
+
+export interface CcConnectAgentOptions {
+  workDir: string;
+  mode: string;
+  model: string;
+}
+
+export interface CcConnectPlatform {
+  type: string;
+  options: Record<string, string>;
+}
+
+export interface CcConnectProject {
+  name: string;
+  adminFrom: string;
+  agentType: string;
+  agentOptions: CcConnectAgentOptions;
+  platforms: CcConnectPlatform[];
+}
+
+export interface CcConnectConfig {
+  language: string;
+  providers: CcConnectProvider[];
+  projects: CcConnectProject[];
+  raw: string;
+}
+
+export interface CodexStackCcConnectConfigPatchRequest {
+  raw?: string;
+  language?: string;
+  providers?: CcConnectProvider[];
+  projects?: CcConnectProject[];
+}
+
 export type CodexStackJobStatus =
   | "queued"
   | "running"
