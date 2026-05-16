@@ -336,10 +336,34 @@
               <article class="panel-card cs-section-intro">
                 <div>
                   <p class="cs-section-kicker">{{ text("安装", "Install") }}</p>
-                  <h3>{{ text("选择安装范围并跟踪执行进度", "Choose Install Scope and Track Progress") }}</h3>
+                  <h3>{{ text("安装/修复指挥台", "Install/Repair Command Center") }}</h3>
                   <p class="cs-section-copy">
-                    {{ text("先确定渠道与模型上游，再选择组件策略。安装启动后会显示实时日志、执行结果和下一步提示。", "Choose channel and model upstream first, then select component strategy. Running jobs show live logs, result state, and next-step guidance.") }}
+                    {{ text("安装页按“计划确认、组件策略、执行进度、修复手册”组织。用户能先看清会改什么，再决定完整安装、基础安装或只修复。", "This page is organized as plan confirmation, component strategy, progress tracking, and repair playbook. Users can see what will change before choosing full install, base install, or repair-only.") }}
                   </p>
+                </div>
+              </article>
+
+              <article class="panel-card cs-install-plan-card">
+                <div>
+                  <p class="cs-section-kicker">{{ text("当前计划", "Current Plan") }}</p>
+                  <h4>{{ text("执行前确认", "Preflight Confirmation") }}</h4>
+                  <p class="cs-field-hint">
+                    {{ text("下面是安装脚本将使用的关键参数。强制/跳过策略会直接转成 auto-setup.sh 参数。", "These are the key parameters passed to the installer. Force/skip strategy maps directly to auto-setup.sh arguments.") }}
+                  </p>
+                </div>
+                <div class="cs-install-plan-list">
+                  <span v-for="item in installPlanHighlights" :key="item">{{ item }}</span>
+                </div>
+                <div class="cs-install-plan-actions">
+                  <button type="button" class="primary-button cs-big-button" :disabled="!canRunMutation" @click="installFullStack">
+                    {{ text("一键安装全部组件", "Install Full Stack") }}
+                  </button>
+                  <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="installBaseOnly">
+                    {{ text("仅基础组件", "Base Only") }}
+                  </button>
+                  <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="repairRecommended">
+                    {{ text("推荐修复", "Recommended Repair") }}
+                  </button>
                 </div>
               </article>
 
@@ -359,6 +383,19 @@
                     <p class="cs-progress-hint">
                       {{ text("安装或修复脚本正在后台执行，日志会持续刷新。", "The install or repair job is running in the background and the log tail is updating continuously.") }}
                     </p>
+                    <div class="cs-job-progress-track" :style="{ '--progress': jobProgressPercent }">
+                      <span></span>
+                    </div>
+                    <div class="cs-job-step-list">
+                      <span
+                        v-for="step in jobProgressSteps"
+                        :key="step.label"
+                        class="cs-job-step"
+                        :class="`cs-job-step-${step.state}`"
+                      >
+                        {{ step.label }}
+                      </span>
+                    </div>
                     <pre class="cs-progress-log">{{ activeJob.logTail || text("等待输出...", "Waiting for output...") }}</pre>
                   </article>
                 </div>
@@ -375,6 +412,19 @@
                     </div>
                     <span class="cs-progress-badge" :class="activeJob.status === 'succeeded' ? 'cs-progress-ok' : 'cs-progress-fail'">
                       {{ activeJobTitle }} · {{ jobStatusLabel(activeJob.status) }}
+                    </span>
+                  </div>
+                  <div class="cs-job-progress-track" :style="{ '--progress': jobProgressPercent }">
+                    <span></span>
+                  </div>
+                  <div class="cs-job-step-list">
+                    <span
+                      v-for="step in jobProgressSteps"
+                      :key="step.label"
+                      class="cs-job-step"
+                      :class="`cs-job-step-${step.state}`"
+                    >
+                      {{ step.label }}
                     </span>
                   </div>
                   <pre v-if="activeJob.error || activeJob.logTail" class="cs-progress-log">{{ activeJob.error || activeJob.logTail }}</pre>
@@ -594,9 +644,9 @@
               <article class="panel-card cs-section-intro">
                 <div>
                   <p class="cs-section-kicker">cc-connect</p>
-                  <h3>{{ text("项目、Provider 与原始 TOML 在一个工作区", "Projects, Providers, and Raw TOML in One Workspace") }}</h3>
+                  <h3>{{ text("Agent 工作台", "Agent Workbench") }}</h3>
                   <p class="cs-section-copy">
-                    {{ text("保留完整配置能力，同时把常用 setup/finalize 动作提到更显眼的位置。", "Full config editing stays intact, while setup and finalize actions move into a clearer control surface.") }}
+                    {{ text("项目、Provider、平台绑定和原始 TOML 分区管理。先选项目，再编辑 Agent 参数和渠道，避免多 Agent、多渠道配置挤在同一张表里。", "Projects, providers, platform binding, and raw TOML are separated. Pick a project first, then edit agent options and channels without crowding every multi-agent field into one table.") }}
                   </p>
                 </div>
                 <div class="cs-chip-row">
@@ -610,12 +660,12 @@
                 </div>
               </article>
 
-              <article class="panel-card cs-config-action-strip">
+              <article class="panel-card cs-config-action-strip cs-agent-savebar">
                 <div>
                   <p class="cs-section-kicker">{{ text("保存与应用", "Save and Apply") }}</p>
-                  <h4>{{ text("可视化编辑和原始 TOML 分开保存", "Visual Editor and Raw TOML Save Separately") }}</h4>
+                  <h4>{{ text("配置保存入口固定在顶部", "Config Save Actions Stay Pinned") }}</h4>
                   <p>
-                    {{ text("Provider、项目、平台参数走可视化保存；高级 TOML 修改走原始配置保存。保存后如服务运行会自动重启。", "Providers, projects, and platform options use visual save; advanced TOML changes use raw config save. Saving restarts the service when it is running.") }}
+                    {{ text("可视化配置负责 Provider、项目和平台；原始 TOML 负责高级字段。保存后如服务运行会自动重启。", "Visual config owns providers, projects, and platforms; raw TOML owns advanced fields. Saving restarts the service when it is running.") }}
                   </p>
                 </div>
                 <div class="cs-actions">
@@ -644,210 +694,169 @@
                 </div>
               </article>
 
-              <div class="cs-dashboard-grid">
-                <article class="panel-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("Provider 列表", "Providers") }}</p>
-                      <h4>{{ text("上游 Provider 可视化编辑", "Visual Upstream Provider Editor") }}</h4>
-                    </div>
-                    <div class="cs-actions">
-                      <label class="cs-language-field">
-                        <span>{{ text("语言", "Language") }}</span>
-                        <input v-model="ccConnectLanguageDraft" class="form-input" placeholder="zh" />
-                      </label>
-                      <button type="button" class="secondary-button" :disabled="busy" @click="ensureCpaProviderDraft">
-                        {{ text("补齐 CPA Provider", "Add CPA Provider") }}
-                      </button>
-                      <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectProvider">
-                        {{ text("新增 Provider", "Add Provider") }}
-                      </button>
-                    </div>
-                  </div>
-                  <div v-if="ccConnectLoading && !ccConnectConfig" class="cs-empty-lite">
-                    {{ text("正在读取 cc-connect 配置...", "Loading cc-connect config...") }}
-                  </div>
-                  <div v-else-if="!ccConnectProviderDrafts.length" class="cs-empty-lite">
-                    <p>
-                      {{ text("当前配置没有 providers。cc-connect 可以依赖环境变量运行，但建议显式新增 cpa provider，指向本地 Compact Proxy。", "No providers are declared. cc-connect can rely on environment variables, but adding an explicit cpa provider pointing to the local Compact Proxy is recommended.") }}
-                    </p>
-                    <button type="button" class="secondary-button" :disabled="busy" @click="ensureCpaProviderDraft">
-                      {{ text("创建推荐 Provider", "Create Recommended Provider") }}
-                    </button>
-                  </div>
-                  <div v-else class="cs-provider-grid">
-                    <article
-                      v-for="provider in ccConnectProviderDrafts"
-                      :key="provider.id"
-                      class="cs-provider-card"
-                    >
-                      <div class="cs-provider-head">
-                        <strong>{{ provider.name || text("未命名 Provider", "Unnamed Provider") }}</strong>
-                        <button type="button" class="text-button danger-text" :disabled="busy" @click="removeCcConnectProvider(provider.id)">
-                          {{ text("删除", "Delete") }}
-                        </button>
-                      </div>
-                      <div class="cs-form-grid cs-form-grid-compact">
-                        <label class="form-field">
-                          <span class="form-label">name</span>
-                          <input v-model="provider.name" class="form-input" placeholder="cpa" />
-                        </label>
-                        <label class="form-field">
-                          <span class="form-label">codex.env_key</span>
-                          <input v-model="provider.codexEnvKey" class="form-input" placeholder="OPENAI_API_KEY" />
-                        </label>
-                        <label class="form-field cs-form-span-2">
-                          <span class="form-label">base_url</span>
-                          <input v-model="provider.baseUrl" class="form-input" :placeholder="compactProxyBaseUrl" />
-                        </label>
-                        <label class="form-field cs-form-span-2">
-                          <span class="form-label">api_key</span>
-                          <input
-                            v-model="provider.apiKey"
-                            class="form-input"
-                            type="password"
-                            :placeholder="text('留空表示不写入或保留空值', 'Leave empty to write/keep an empty value')"
-                          />
-                        </label>
-                      </div>
-                    </article>
-                  </div>
-                </article>
-
-                <article class="panel-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("动作", "Actions") }}</p>
-                      <h4>{{ text("快速绑定命令", "Quick Setup Commands") }}</h4>
-                    </div>
-                  </div>
-                  <p class="cs-field-hint">
-                    {{ text("保存 TOML 后，如果 cc-connect.service 正在运行会自动重启。绑定完成后可直接执行 finalizer。", "Saving TOML restarts cc-connect.service if it is running. After binding, you can immediately run the finalizer.") }}
-                  </p>
-                  <div class="cs-actions cs-actions-wrap">
-                    <button type="button" class="secondary-button" :disabled="busy" @click="copySetupCommand('feishu')">
-                      {{ text("复制 Feishu Setup", "Copy Feishu Setup") }}
-                    </button>
-                    <button type="button" class="secondary-button" :disabled="busy" @click="copySetupCommand('weixin')">
-                      {{ text("复制 Weixin Setup", "Copy Weixin Setup") }}
-                    </button>
+              <div class="cs-agent-workbench">
+                <aside class="panel-card cs-agent-rail">
+                  <div class="cs-agent-pane-switch">
                     <button
-                      v-if="summary.ccConnect.canFinalize"
+                      v-for="pane in agentPanes"
+                      :key="pane.id"
                       type="button"
-                      class="primary-button"
-                      :disabled="!canRunMutation"
-                      @click="finalizeCcConnect"
+                      class="cs-agent-pane-button"
+                      :class="{ 'cs-agent-pane-button-active': activeAgentPane === pane.id }"
+                      @click="activeAgentPane = pane.id"
                     >
-                      {{ text("完成 cc-connect 安装", "Finalize cc-connect") }}
+                      {{ pane.label }}
                     </button>
                   </div>
-                  <pre class="cs-code">{{ ccConnectSetupCommands.join("\n") }}</pre>
-                </article>
-              </div>
+                  <div class="cs-agent-project-rail">
+                    <div class="cs-agent-rail-head">
+                      <strong>{{ text("项目列表", "Projects") }}</strong>
+                      <button type="button" class="text-button" :disabled="busy" @click="addCcConnectProject">
+                        {{ text("新增", "Add") }}
+                      </button>
+                    </div>
+                    <button
+                      v-for="project in ccConnectProjectDrafts"
+                      :key="project.id"
+                      type="button"
+                      class="cs-agent-project-pill"
+                      :class="{ 'cs-agent-project-pill-active': selectedProjectDraft?.id === project.id }"
+                      @click="selectCcConnectProject(project.id)"
+                    >
+                      <strong>{{ project.name || text("未命名项目", "Unnamed Project") }}</strong>
+                      <span>{{ project.agentOptions.model || "--" }} · {{ project.platforms.length }} {{ text("渠道", "channels") }}</span>
+                    </button>
+                  </div>
+                </aside>
 
-              <article class="panel-card">
-                <div class="cs-card-header">
-                  <div>
-                    <p class="cs-section-kicker">{{ text("项目", "Projects") }}</p>
-                    <h4>{{ text("Agent 项目可视化编辑", "Visual Agent Project Editor") }}</h4>
-                  </div>
-                  <div class="cs-actions">
-                    <button type="button" class="secondary-button" :disabled="busy" @click="applyDefaultModelToCcConnectProjects">
-                      {{ text("同步默认模型", "Sync Default Model") }}
-                    </button>
-                    <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectProject">
-                      {{ text("新增项目", "Add Project") }}
-                    </button>
-                  </div>
-                </div>
-                <div v-if="ccConnectLoading && !ccConnectConfig" class="cs-empty-lite">
-                  {{ text("正在读取项目配置...", "Loading project config...") }}
-                </div>
-                <div v-else-if="!ccConnectProjectDrafts.length" class="cs-empty-lite">
-                  <p>{{ text("当前配置没有 projects。新增项目后选择工作目录、模型和平台即可。", "No projects are declared. Add a project, then choose work directory, model, and platforms.") }}</p>
-                  <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectProject">
-                    {{ text("创建第一个项目", "Create First Project") }}
-                  </button>
-                </div>
-                <div v-else class="cs-project-list">
-                  <article
-                    v-for="project in ccConnectProjectDrafts"
-                    :key="project.id"
-                    class="cs-project-card"
-                  >
-                    <div class="cs-project-head">
+                <section class="panel-card cs-agent-stage">
+                  <template v-if="activeAgentPane === 'projects'">
+                    <div class="cs-card-header">
                       <div>
-                        <h5>{{ project.name || text("未命名项目", "Unnamed Project") }}</h5>
-                        <p>{{ project.agentType || "--" }} · {{ project.agentOptions.model || "--" }}</p>
+                        <p class="cs-section-kicker">{{ text("Agent 项目", "Agent Projects") }}</p>
+                        <h4>{{ selectedProjectDraft?.name || text("选择或创建项目", "Select or Create a Project") }}</h4>
+                        <p class="cs-field-hint">{{ selectedProjectSummary }}</p>
                       </div>
-                      <div class="cs-platform-badges">
-                        <span v-for="platform in project.platforms" :key="`${project.id}-${platform.id}`" class="cs-chip">
-                          {{ platform.type || text("未命名平台", "Unnamed Platform") }}
-                        </span>
-                        <span v-if="!project.platforms.length" class="cs-chip">
-                          {{ text("暂无平台", "No Platforms") }}
-                        </span>
-                        <button type="button" class="text-button danger-text" :disabled="busy" @click="removeCcConnectProject(project.id)">
-                          {{ text("删除项目", "Delete Project") }}
+                      <div class="cs-actions">
+                        <button type="button" class="secondary-button" :disabled="busy" @click="applyDefaultModelToCcConnectProjects">
+                          {{ text("同步默认模型到全部项目", "Sync Default Model to All") }}
+                        </button>
+                        <button
+                          v-if="selectedProjectDraft"
+                          type="button"
+                          class="text-button danger-text"
+                          :disabled="busy"
+                          @click="removeCcConnectProject(selectedProjectDraft.id)"
+                        >
+                          {{ text("删除当前项目", "Delete Current Project") }}
                         </button>
                       </div>
                     </div>
-                    <div class="cs-form-grid cs-project-meta">
-                      <label class="form-field">
-                        <span class="form-label">{{ text("项目名", "Project Name") }}</span>
-                        <input v-model="project.name" class="form-input" placeholder="main" />
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("Agent 类型", "Agent Type") }}</span>
-                        <input v-model="project.agentType" class="form-input" placeholder="codex" />
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("模式", "Mode") }}</span>
-                        <select v-model="project.agentOptions.mode" class="form-input">
-                          <option value="suggest">suggest</option>
-                          <option value="yolo">yolo</option>
-                          <option value="read-only">read-only</option>
-                        </select>
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("模型", "Model") }}</span>
-                        <select v-model="project.agentOptions.model" class="form-input">
-                          <option v-for="model in modelOptions" :key="`${project.id}-${model}`" :value="model">{{ model }}</option>
-                        </select>
-                        <span class="form-help">{{ text("模型列表来自模型上游面板。", "Model list is shared from the model upstream panel.") }}</span>
-                      </label>
-                      <label class="form-field cs-form-span-2">
-                        <span class="form-label">{{ text("工作目录", "Work Directory") }}</span>
-                        <input v-model="project.agentOptions.workDir" class="form-input" placeholder="/home/user/.openclaw" />
-                      </label>
-                      <label class="form-field cs-form-span-2">
-                        <span class="form-label">{{ text("管理员来源", "Admin From") }}</span>
-                        <textarea
-                          v-model="project.adminFrom"
-                          class="form-input cs-inline-textarea"
-                          :placeholder="text('多个来源用逗号分隔；留空会禁用管理命令', 'Comma-separated sources; leave empty to disable privileged commands')"
-                        />
-                      </label>
+                    <div class="cs-agent-template-row">
+                      <article v-for="preset in projectPresetCards" :key="preset.id" class="cs-agent-template-card">
+                        <div>
+                          <strong>{{ preset.label }}</strong>
+                          <p>{{ preset.copy }}</p>
+                        </div>
+                        <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectProjectPreset(preset.id)">
+                          {{ preset.action }}
+                        </button>
+                      </article>
                     </div>
-                    <div class="cs-subsection-header">
-                      <div>
-                        <strong>{{ text("平台", "Platforms") }}</strong>
-                        <p>{{ text("DMWork 使用 token/API 信息；Feishu/Weixin 可通过 setup 命令完成绑定。", "DMWork uses token/API fields; Feishu/Weixin can be bound with setup commands.") }}</p>
-                      </div>
-                      <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectPlatform(project)">
-                        {{ text("新增平台", "Add Platform") }}
+                    <div v-if="ccConnectLoading && !ccConnectConfig" class="cs-empty-lite">
+                      {{ text("正在读取项目配置...", "Loading project config...") }}
+                    </div>
+                    <div v-else-if="!selectedProjectDraft" class="cs-empty-lite">
+                      <p>{{ text("当前配置没有 projects。新增项目后选择工作目录、模型和平台即可。", "No projects are declared. Add a project, then choose work directory, model, and platforms.") }}</p>
+                      <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectProject">
+                        {{ text("创建第一个项目", "Create First Project") }}
                       </button>
                     </div>
-                    <div class="cs-platform-grid">
+                    <div v-else class="cs-agent-editor-grid">
+                      <section class="cs-agent-editor-main">
+                        <div class="cs-form-grid cs-project-meta">
+                          <label class="form-field">
+                            <span class="form-label">{{ text("项目名", "Project Name") }}</span>
+                            <input v-model="selectedProjectDraft.name" class="form-input" placeholder="main" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text("Agent 类型", "Agent Type") }}</span>
+                            <input v-model="selectedProjectDraft.agentType" class="form-input" placeholder="codex" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text("模式", "Mode") }}</span>
+                            <select v-model="selectedProjectDraft.agentOptions.mode" class="form-input">
+                              <option value="suggest">suggest</option>
+                              <option value="yolo">yolo</option>
+                              <option value="read-only">read-only</option>
+                            </select>
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text("模型", "Model") }}</span>
+                            <select v-model="selectedProjectDraft.agentOptions.model" class="form-input">
+                              <option v-for="model in modelOptions" :key="`${selectedProjectDraft.id}-${model}`" :value="model">{{ model }}</option>
+                            </select>
+                            <span class="form-help">{{ text("模型列表来自 CPA /v1/models。", "Model list comes from CPA /v1/models.") }}</span>
+                          </label>
+                          <label class="form-field cs-form-span-2">
+                            <span class="form-label">{{ text("工作目录", "Work Directory") }}</span>
+                            <input v-model="selectedProjectDraft.agentOptions.workDir" class="form-input" placeholder="/home/user/.openclaw" />
+                          </label>
+                          <label class="form-field cs-form-span-2">
+                            <span class="form-label">{{ text("管理员来源", "Admin From") }}</span>
+                            <textarea
+                              v-model="selectedProjectDraft.adminFrom"
+                              class="form-input cs-inline-textarea"
+                              :placeholder="text('多个来源用逗号分隔；留空会禁用管理命令', 'Comma-separated sources; leave empty to disable privileged commands')"
+                            />
+                          </label>
+                        </div>
+                      </section>
+                      <aside class="cs-agent-editor-side">
+                        <p class="cs-section-kicker">{{ text("渠道预览", "Channel Preview") }}</p>
+                        <div class="cs-platform-badges">
+                          <span v-for="platform in selectedProjectDraft.platforms" :key="platform.id" class="cs-chip">
+                            {{ platform.type || text("未命名平台", "Unnamed Platform") }}
+                          </span>
+                          <span v-if="!selectedProjectDraft.platforms.length" class="cs-chip">
+                            {{ text("暂无平台", "No Platforms") }}
+                          </span>
+                        </div>
+                        <p class="cs-field-hint">
+                          {{ text("一个项目可以绑定多个平台。DMWork 通常手填 token，Feishu/Weixin 建议先保存项目再执行 setup。", "One project can bind multiple platforms. DMWork usually uses token fields; Feishu/Weixin should be saved before setup.") }}
+                        </p>
+                      </aside>
+                    </div>
+
+                    <div v-if="selectedProjectDraft" class="cs-subsection-header cs-subsection-header-tight">
+                      <div>
+                        <strong>{{ text("平台渠道", "Platform Channels") }}</strong>
+                        <p>{{ text("平台参数单独成卡片，避免和 Agent 基础参数挤在一起。", "Platform options are isolated cards instead of being crowded with base agent fields.") }}</p>
+                      </div>
+                      <div class="cs-platform-template-actions">
+                        <button
+                          v-for="template in platformTemplates"
+                          :key="template.id"
+                          type="button"
+                          class="secondary-button"
+                          :disabled="busy"
+                          :title="template.copy"
+                          @click="addPlatformToSelectedProject(template.id)"
+                        >
+                          {{ text("新增", "Add") }} {{ template.label }}
+                        </button>
+                      </div>
+                    </div>
+                    <div v-if="selectedProjectDraft" class="cs-platform-grid cs-platform-grid-roomy">
                       <article
-                        v-for="platform in project.platforms"
+                        v-for="platform in selectedProjectDraft.platforms"
                         :key="platform.id"
                         class="cs-platform-card"
                       >
                         <div class="cs-platform-head">
                           <strong>{{ platform.type || text("未命名平台", "Unnamed Platform") }}</strong>
-                          <button type="button" class="text-button danger-text" :disabled="busy" @click="removeCcConnectPlatform(project, platform.id)">
-                            {{ text("删除", "Delete") }}
+                          <button type="button" class="text-button danger-text" :disabled="busy" @click="removePlatformFromSelectedProject(platform.id)">
+                            {{ text("删除平台", "Delete Platform") }}
                           </button>
                         </div>
                         <label class="form-field">
@@ -873,47 +882,136 @@
                         </div>
                       </article>
                     </div>
-                  </article>
-                </div>
-                <div class="cs-actions">
-                  <button
-                    type="button"
-                    class="primary-button"
-                    :disabled="!canRunMutation || !hasCcConnectStructuredChanges"
-                    @click="saveCcConnectStructured"
-                  >
-                    {{ text("保存可视化配置", "Save Visual Config") }}
-                  </button>
-                  <span class="cs-field-hint">
-                    {{ hasCcConnectStructuredChanges ? text("有未保存修改", "Unsaved changes") : text("可视化配置已同步", "Visual config is in sync") }}
-                  </span>
-                </div>
-              </article>
+                  </template>
 
-              <article class="panel-card">
-                <div class="cs-card-header">
-                  <div>
-                    <p class="cs-section-kicker">{{ text("原始配置", "Raw Config") }}</p>
-                    <h4>{{ text("TOML 编辑器", "TOML Editor") }}</h4>
-                  </div>
-                </div>
-                <textarea
-                  v-model="ccConnectRawDraft"
-                  class="cs-raw-editor"
-                  spellcheck="false"
-                  :placeholder="text('cc-connect TOML 会显示在这里。', 'The cc-connect TOML will appear here.')"
-                />
-                <div class="cs-actions">
-                  <button
-                    type="button"
-                    class="primary-button"
-                    :disabled="!canRunMutation || !hasCcConnectRawChanges"
-                    @click="saveCcConnectRaw"
-                  >
-                    {{ text("保存 TOML 配置", "Save TOML Config") }}
-                  </button>
-                </div>
-              </article>
+                  <template v-else-if="activeAgentPane === 'providers'">
+                    <div class="cs-card-header">
+                      <div>
+                        <p class="cs-section-kicker">{{ text("Provider", "Provider") }}</p>
+                        <h4>{{ text("上游 Provider 可视化编辑", "Visual Upstream Provider Editor") }}</h4>
+                        <p class="cs-field-hint">
+                          {{ text("cc-connect 通常不需要单独配置上游，推荐统一指向本地 Compact Proxy。", "cc-connect usually does not need a separate upstream; point providers to the local Compact Proxy.") }}
+                        </p>
+                      </div>
+                      <div class="cs-actions">
+                        <label class="cs-language-field">
+                          <span>{{ text("语言", "Language") }}</span>
+                          <input v-model="ccConnectLanguageDraft" class="form-input" placeholder="zh" />
+                        </label>
+                        <button type="button" class="secondary-button" :disabled="busy" @click="ensureCpaProviderDraft">
+                          {{ text("补齐 CPA Provider", "Add CPA Provider") }}
+                        </button>
+                        <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectProvider">
+                          {{ text("新增 Provider", "Add Provider") }}
+                        </button>
+                      </div>
+                    </div>
+                    <div v-if="ccConnectLoading && !ccConnectConfig" class="cs-empty-lite">
+                      {{ text("正在读取 cc-connect 配置...", "Loading cc-connect config...") }}
+                    </div>
+                    <div v-else-if="!ccConnectProviderDrafts.length" class="cs-empty-lite">
+                      <p>
+                        {{ text("当前配置没有 providers。cc-connect 可以依赖环境变量运行，但建议显式新增 cpa provider，指向本地 Compact Proxy。", "No providers are declared. cc-connect can rely on environment variables, but adding an explicit cpa provider pointing to the local Compact Proxy is recommended.") }}
+                      </p>
+                      <button type="button" class="secondary-button" :disabled="busy" @click="ensureCpaProviderDraft">
+                        {{ text("创建推荐 Provider", "Create Recommended Provider") }}
+                      </button>
+                    </div>
+                    <div v-else class="cs-provider-grid cs-provider-grid-roomy">
+                      <article
+                        v-for="provider in ccConnectProviderDrafts"
+                        :key="provider.id"
+                        class="cs-provider-card"
+                      >
+                        <div class="cs-provider-head">
+                          <strong>{{ provider.name || text("未命名 Provider", "Unnamed Provider") }}</strong>
+                          <button type="button" class="text-button danger-text" :disabled="busy" @click="removeCcConnectProvider(provider.id)">
+                            {{ text("删除", "Delete") }}
+                          </button>
+                        </div>
+                        <div class="cs-form-grid cs-form-grid-compact">
+                          <label class="form-field">
+                            <span class="form-label">name</span>
+                            <input v-model="provider.name" class="form-input" placeholder="cpa" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">codex.env_key</span>
+                            <input v-model="provider.codexEnvKey" class="form-input" placeholder="OPENAI_API_KEY" />
+                          </label>
+                          <label class="form-field cs-form-span-2">
+                            <span class="form-label">base_url</span>
+                            <input v-model="provider.baseUrl" class="form-input" :placeholder="compactProxyBaseUrl" />
+                          </label>
+                          <label class="form-field cs-form-span-2">
+                            <span class="form-label">api_key</span>
+                            <input
+                              v-model="provider.apiKey"
+                              class="form-input"
+                              type="password"
+                              :placeholder="text('留空表示不写入或保留空值', 'Leave empty to write/keep an empty value')"
+                            />
+                          </label>
+                        </div>
+                      </article>
+                    </div>
+                  </template>
+
+                  <template v-else-if="activeAgentPane === 'setup'">
+                    <div class="cs-card-header">
+                      <div>
+                        <p class="cs-section-kicker">{{ text("绑定与动作", "Setup and Actions") }}</p>
+                        <h4>{{ text("快速绑定命令", "Quick Setup Commands") }}</h4>
+                      </div>
+                    </div>
+                    <p class="cs-field-hint">
+                      {{ text("保存 TOML 后，如果 cc-connect.service 正在运行会自动重启。绑定完成后可直接执行 finalizer。", "Saving TOML restarts cc-connect.service if it is running. After binding, you can immediately run the finalizer.") }}
+                    </p>
+                    <div class="cs-actions cs-actions-wrap">
+                      <button type="button" class="secondary-button" :disabled="busy" @click="copySetupCommand('feishu')">
+                        {{ text("复制 Feishu Setup", "Copy Feishu Setup") }}
+                      </button>
+                      <button type="button" class="secondary-button" :disabled="busy" @click="copySetupCommand('weixin')">
+                        {{ text("复制 Weixin Setup", "Copy Weixin Setup") }}
+                      </button>
+                      <button
+                        v-if="summary.ccConnect.canFinalize"
+                        type="button"
+                        class="primary-button"
+                        :disabled="!canRunMutation"
+                        @click="finalizeCcConnect"
+                      >
+                        {{ text("完成 cc-connect 安装", "Finalize cc-connect") }}
+                      </button>
+                    </div>
+                    <pre class="cs-code">{{ ccConnectSetupCommands.join("\n") }}</pre>
+                  </template>
+
+                  <template v-else>
+                    <div class="cs-card-header">
+                      <div>
+                        <p class="cs-section-kicker">{{ text("原始配置", "Raw Config") }}</p>
+                        <h4>{{ text("TOML 编辑器", "TOML Editor") }}</h4>
+                      </div>
+                    </div>
+                    <textarea
+                      v-model="ccConnectRawDraft"
+                      class="cs-raw-editor"
+                      spellcheck="false"
+                      :placeholder="text('cc-connect TOML 会显示在这里。', 'The cc-connect TOML will appear here.')"
+                    />
+                    <div class="cs-actions">
+                      <button
+                        type="button"
+                        class="primary-button"
+                        :disabled="!canRunMutation || !hasCcConnectRawChanges"
+                        @click="saveCcConnectRaw"
+                      >
+                        {{ text("保存 TOML 配置", "Save TOML Config") }}
+                      </button>
+                    </div>
+                  </template>
+                </section>
+              </div>
             </section>
           </template>
 
@@ -1087,38 +1185,93 @@
               <article class="panel-card cs-section-intro">
                 <div>
                   <p class="cs-section-kicker">{{ text("日志", "Logs") }}</p>
-                  <h3>{{ text("服务日志与任务输出", "Service Logs and Job Output") }}</h3>
+                  <h3>{{ text("服务日志与任务输出预览", "Service Logs and Job Output Preview") }}</h3>
                   <p class="cs-section-copy">
-                    {{ text("日志查看器聚合 systemd 服务输出，并保留后台任务的最近日志尾部。", "The log viewer aggregates systemd service output and keeps the latest tail from background jobs.") }}
+                    {{ text("日志读取默认轻量预览，必要时再切到完整上下文。自动刷新默认关闭，避免大日志拖慢页面。", "Log reads default to lightweight preview. Switch to deeper context only when needed. Auto-refresh is off by default to avoid large logs slowing the page.") }}
                   </p>
                 </div>
               </article>
 
-              <article class="panel-card">
+              <article class="panel-card cs-log-console">
+                <div class="cs-log-control-grid">
+                  <div>
+                    <p class="cs-section-kicker">{{ text("目标服务", "Target Service") }}</p>
+                    <div class="cs-log-service-list">
+                      <button
+                        v-for="service in serviceCards"
+                        :key="service.id"
+                        type="button"
+                        class="cs-log-service-button"
+                        :class="{ 'cs-log-service-button-active': selectedLogService === service.id }"
+                        @click="selectedLogService = service.id"
+                      >
+                        <span :class="`cs-dot tone-${service.tone}`"></span>
+                        <strong>{{ service.label }}</strong>
+                        <small>{{ service.rawState }}</small>
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <p class="cs-section-kicker">{{ text("读取性能", "Read Performance") }}</p>
+                    <div class="cs-log-mode-list">
+                      <button
+                        v-for="option in logLineOptions"
+                        :key="option.id"
+                        type="button"
+                        class="cs-log-mode-button"
+                        :class="{ 'cs-log-mode-button-active': logLineMode === option.id }"
+                        @click="logLineMode = option.id"
+                      >
+                        <strong>{{ option.label }}</strong>
+                        <span>{{ option.lines }} {{ text("行", "lines") }}</span>
+                      </button>
+                    </div>
+                    <p class="cs-field-hint">{{ logModeHelp }}</p>
+                    <label class="cs-switch-row cs-log-auto">
+                      <input v-model="logAutoRefresh" type="checkbox" />
+                      {{ text("自动刷新当前服务", "Auto-refresh current service") }}
+                    </label>
+                  </div>
+                </div>
                 <div class="cs-log-toolbar">
-                  <label class="form-field cs-log-select">
-                    <span class="form-label">{{ text("服务", "Service") }}</span>
-                    <select v-model="selectedLogService" class="form-input">
-                      <option v-for="service in serviceCards" :key="service.id" :value="service.id">
-                        {{ service.label }}
-                      </option>
-                    </select>
-                  </label>
+                  <div class="cs-chip-row">
+                    <span class="cs-info-chip">{{ text("请求行数", "Requested") }} {{ logLineLimit }}</span>
+                    <span v-if="logMeta" class="cs-info-chip">{{ text("返回行数", "Returned") }} {{ logMeta.returnedLines }}</span>
+                    <span v-if="logMeta" class="cs-info-chip">{{ text("来源", "Sources") }} {{ logMeta.sources.map((source) => source.label).join(" + ") }}</span>
+                    <span v-if="logMeta" class="cs-info-chip">{{ text("读取时间", "Fetched") }} {{ formatTimestamp(logMeta.fetchedAt) }}</span>
+                    <span v-if="logMeta?.truncated" class="cs-status-pill tone-accent">{{ text("内容已截断", "Output truncated") }}</span>
+                  </div>
                   <div class="cs-actions">
-                    <button type="button" class="primary-button" @click="loadLogs(selectedLogService)">
-                      {{ text("读取日志", "Load Logs") }}
+                    <button type="button" class="primary-button" :disabled="logRefreshing" @click="loadLogs(selectedLogService)">
+                      {{ logRefreshing ? text("读取中...", "Loading...") : text("读取日志", "Load Logs") }}
                     </button>
                   </div>
                 </div>
                 <pre class="cs-log">{{ logOutput || text("选择一个服务查看日志。", "Select a service to view logs.") }}</pre>
               </article>
 
-              <article v-if="activeJob" class="panel-card">
+              <article v-if="activeJob" class="panel-card cs-job-output-card">
                 <div class="cs-card-header">
                   <div>
                     <p class="cs-section-kicker">{{ text("任务输出", "Job Output") }}</p>
                     <h4>{{ activeJobTitle }} · {{ jobStatusLabel(activeJob.status) }}</h4>
                   </div>
+                  <span class="cs-status-pill" :class="activeJob.status === 'succeeded' ? 'tone-sage' : activeJob.status === 'failed' ? 'tone-danger' : 'tone-accent'">
+                    {{ jobStatusLabel(activeJob.status) }}
+                  </span>
+                </div>
+                <div class="cs-job-progress-track" :style="{ '--progress': jobProgressPercent }">
+                  <span></span>
+                </div>
+                <div class="cs-job-step-list">
+                  <span
+                    v-for="step in jobProgressSteps"
+                    :key="step.label"
+                    class="cs-job-step"
+                    :class="`cs-job-step-${step.state}`"
+                  >
+                    {{ step.label }}
+                  </span>
                 </div>
                 <pre class="cs-log">{{ activeJob.logTail || text("等待输出...", "Waiting for output...") }}</pre>
               </article>
@@ -1140,7 +1293,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { confirm } from "../../composables/useConfirmDialog";
 import { copyTextToClipboard } from "../../shared/clipboard";
 import { useLocalePreference } from "../../shared/locale";
@@ -1154,6 +1307,7 @@ import type {
   CodexStackComponentSummary,
   CodexStackJob,
   CodexStackJobStatus,
+  CodexStackLogResponse,
   CodexStackRepairAction,
   CodexStackServiceAction,
   CodexStackServiceId,
@@ -1184,7 +1338,11 @@ import {
 const { text } = useLocalePreference();
 
 type SectionId = "dashboard" | "install" | "cc-connect" | "settings" | "logs";
+type AgentPaneId = "projects" | "providers" | "setup" | "raw";
+type LogLineMode = "light" | "balanced" | "deep";
 type ComponentInstallMode = "default" | "skip" | "force";
+type AgentProjectPreset = "admin" | "worker";
+type PlatformTemplateId = "dmwork" | "feishu" | "weixin";
 type CcConnectProviderDraft = CcConnectProvider & { id: string };
 type CcConnectPlatformOptionDraft = { id: string; key: string; value: string };
 type CcConnectPlatformDraft = {
@@ -1221,8 +1379,15 @@ const busy = ref(false);
 const restartRequiredUnits = ref<CodexStackServiceId[]>([]);
 const notice = ref<{ kind: "success" | "error"; text: string } | null>(null);
 const activeSection = ref<SectionId>("dashboard");
+const activeAgentPane = ref<AgentPaneId>("projects");
+const selectedProjectDraftId = ref("");
 const selectedLogService = ref<CodexStackServiceId>("cli-proxy-api.service");
+const logMeta = ref<CodexStackLogResponse | null>(null);
+const logLineMode = ref<LogLineMode>("balanced");
+const logAutoRefresh = ref(false);
+const logRefreshing = ref(false);
 let pollTimer: number | null = null;
+let logPollTimer: number | null = null;
 let draftIdCounter = 0;
 
 const navSections = computed(() => [
@@ -1453,6 +1618,133 @@ const componentOptions = computed(() => [
   { id: "cc-connect" as const, label: "cc-connect" },
   { id: "watchdog" as const, label: text("看门狗", "Watchdog") },
 ]);
+const agentPanes = computed(() => [
+  { id: "projects" as const, label: text("Agent 项目", "Agent Projects") },
+  { id: "providers" as const, label: "Provider" },
+  { id: "setup" as const, label: text("绑定与动作", "Setup & Actions") },
+  { id: "raw" as const, label: "TOML" },
+]);
+const platformTemplates = computed<Array<{ id: PlatformTemplateId; label: string; copy: string }>>(() => [
+  {
+    id: "dmwork",
+    label: "DMWork",
+    copy: text("token / api_url / account_id", "token / api_url / account_id"),
+  },
+  {
+    id: "feishu",
+    label: text("飞书", "Feishu"),
+    copy: text("app_id / app_secret", "app_id / app_secret"),
+  },
+  {
+    id: "weixin",
+    label: text("微信", "Weixin"),
+    copy: text("setup 绑定后自动补齐", "Filled by setup binding"),
+  },
+]);
+const projectPresetCards = computed<Array<{ id: AgentProjectPreset; label: string; copy: string; action: string }>>(() => [
+  {
+    id: "admin",
+    label: text("管理员 Agent", "Admin Agent"),
+    copy: text("suggest 模式，默认工作目录指向 ~/.openclaw，适合主控 Bot。", "Suggest mode with ~/.openclaw as work dir, suitable for the primary bot."),
+    action: text("新建管理员", "New Admin"),
+  },
+  {
+    id: "worker",
+    label: text("工作 Agent", "Worker Agent"),
+    copy: text("yolo 模式，默认使用独立 workspace，适合多 Agent 分流。", "Yolo mode with an isolated workspace, suitable for multi-agent routing."),
+    action: text("新建工作 Agent", "New Worker"),
+  },
+]);
+const selectedProjectDraft = computed(() => {
+  if (!ccConnectProjectDrafts.value.length) return null;
+  return ccConnectProjectDrafts.value.find((project) => project.id === selectedProjectDraftId.value) || ccConnectProjectDrafts.value[0];
+});
+const selectedProjectSummary = computed(() => {
+  const project = selectedProjectDraft.value;
+  if (!project) return text("暂无项目", "No project");
+  return `${project.agentType || "codex"} · ${project.agentOptions.mode || "--"} · ${project.agentOptions.model || "--"}`;
+});
+const installPlanHighlights = computed(() => {
+  const skip = componentOptions.value
+    .filter((component) => installMode(component.id) === "skip")
+    .map((component) => component.label);
+  const force = componentOptions.value
+    .filter((component) => installMode(component.id) === "force")
+    .map((component) => component.label);
+  return [
+    `${text("渠道", "Channel")}: ${channelLabel(installForm.channel)}`,
+    `${text("模型", "Model")}: ${installForm.model || "--"}`,
+    `${text("端口", "Ports")}: CPA ${installForm.cpaPort} / Compact ${installForm.compactPort}`,
+    `${text("跳过", "Skip")}: ${skip.length ? skip.join(", ") : text("无", "None")}`,
+    `${text("强制", "Force")}: ${force.length ? force.join(", ") : text("无", "None")}`,
+  ];
+});
+const logLineOptions = computed<Array<{ id: LogLineMode; label: string; lines: number; help: string }>>(() => [
+  { id: "light", label: text("轻量", "Light"), lines: 80, help: text("最快，只看最近错误。", "Fastest, recent errors only.") },
+  { id: "balanced", label: text("标准", "Balanced"), lines: 160, help: text("默认预览，适合日常排障。", "Default preview for daily diagnosis.") },
+  { id: "deep", label: text("完整", "Deep"), lines: 500, help: text("更多上下文，读取更慢。", "More context, slower fetch.") },
+]);
+const logLineLimit = computed(() => logLineOptions.value.find((option) => option.id === logLineMode.value)?.lines || 160);
+const logModeHelp = computed(() => logLineOptions.value.find((option) => option.id === logLineMode.value)?.help || "");
+const jobProgressDefinitions = computed(() => {
+  const kind = activeJob.value?.kind;
+  if (kind === "repair") {
+    return [
+      { label: text("确认修复项", "Resolve actions"), patterns: ["repair", "修复"] },
+      { label: text("执行服务动作", "Run service actions"), patterns: ["systemctl", "restart", "start", "disable"] },
+      { label: text("刷新状态", "Refresh status"), patterns: ["summary", "health", "检查"] },
+      { label: text("完成", "Done"), patterns: ["succeeded", "completed", "完成"] },
+    ];
+  }
+  if (kind === "finalize") {
+    return [
+      { label: text("读取绑定", "Read binding"), patterns: ["cc-connect", "binding", "绑定"] },
+      { label: text("写入配置", "Write config"), patterns: ["config", "配置"] },
+      { label: text("重启服务", "Restart service"), patterns: ["restart", "systemctl"] },
+      { label: text("完成", "Done"), patterns: ["succeeded", "completed", "完成"] },
+    ];
+  }
+  return [
+    { label: text("预检环境", "Preflight"), patterns: ["node.js", "npm", "openclaw.json", "step 1/8"] },
+    { label: text("安装 CLI", "Install CLI"), patterns: ["step 2/8", "codex cli", "oh-my-codex"] },
+    { label: text("部署 cc-connect", "Deploy cc-connect"), patterns: ["step 3/8", "cc-connect"] },
+    { label: text("部署 CPA / Compact", "Deploy CPA / Compact"), patterns: ["step 4/8", "compact proxy"] },
+    { label: text("写入配置", "Write configs"), patterns: ["step 5/8", "step 6/8"] },
+    { label: text("创建守护", "Create daemons"), patterns: ["step 7/8", "systemd"] },
+    { label: text("启动与验证", "Start and verify"), patterns: ["step 8/8", "安装完成", "install succeeded"] },
+  ];
+});
+const jobProgressSteps = computed(() => {
+  const job = activeJob.value;
+  const definitions = jobProgressDefinitions.value;
+  if (!job) return [];
+  const log = `${job.commandLabel}\n${job.logTail || ""}\n${job.error || ""}`.toLowerCase();
+  let activeIndex = job.status === "queued" ? 0 : -1;
+  definitions.forEach((step, index) => {
+    if (step.patterns.some((pattern) => log.includes(pattern.toLowerCase()))) {
+      activeIndex = index;
+    }
+  });
+  if (job.status === "succeeded") activeIndex = definitions.length - 1;
+  if ((job.status === "failed" || job.status === "interrupted") && activeIndex < 0) activeIndex = 0;
+  return definitions.map((step, index) => {
+    let state: "done" | "active" | "failed" | "pending" = "pending";
+    if (job.status === "succeeded" || index < activeIndex) state = "done";
+    else if (index === activeIndex && (job.status === "failed" || job.status === "interrupted")) state = "failed";
+    else if (index === activeIndex) state = "active";
+    return { ...step, state };
+  });
+});
+const jobProgressPercent = computed(() => {
+  const steps = jobProgressSteps.value;
+  if (!steps.length) return "0%";
+  const score = steps.reduce((total, step) => {
+    if (step.state === "done") return total + 1;
+    if (step.state === "active") return total + 0.55;
+    return total;
+  }, 0);
+  return `${Math.max(6, Math.round((score / steps.length) * 100))}%`;
+});
 
 function nextDraftId(prefix: string): string {
   draftIdCounter += 1;
@@ -1477,18 +1769,35 @@ function createPlatformOptionDraft(key = "", value = ""): CcConnectPlatformOptio
   };
 }
 
-function createPlatformDraft(platform?: Partial<CcConnectPlatform>): CcConnectPlatformDraft {
+function defaultPlatformOptionRows(type: string): CcConnectPlatformOptionDraft[] {
+  if (type === "feishu") {
+    return [
+      createPlatformOptionDraft("app_id", ""),
+      createPlatformOptionDraft("app_secret", ""),
+    ];
+  }
+  if (type === "weixin") {
+    return [
+      createPlatformOptionDraft("app_id", ""),
+      createPlatformOptionDraft("app_secret", ""),
+    ];
+  }
+  return [
+    createPlatformOptionDraft("bot_token", ""),
+    createPlatformOptionDraft("api_url", "https://im.deepminer.com.cn/api"),
+    createPlatformOptionDraft("account_id", ""),
+  ];
+}
+
+function createPlatformDraft(platform?: Partial<CcConnectPlatform>, preferredType: PlatformTemplateId = "dmwork"): CcConnectPlatformDraft {
   const options = Object.entries(platform?.options || {});
+  const type = platform?.type || preferredType;
   return {
     id: nextDraftId("platform"),
-    type: platform?.type || "dmwork",
+    type,
     optionRows: options.length
       ? options.map(([key, value]) => createPlatformOptionDraft(key, value))
-      : [
-          createPlatformOptionDraft("bot_token", ""),
-          createPlatformOptionDraft("api_url", ""),
-          createPlatformOptionDraft("account_id", ""),
-        ],
+      : defaultPlatformOptionRows(type),
   };
 }
 
@@ -1563,6 +1872,7 @@ function hydrateCcConnectStructuredDraft(config: CcConnectConfig): void {
   ccConnectLanguageDraft.value = config.language || "zh";
   ccConnectProviderDrafts.value = config.providers.map((provider) => createProviderDraft(provider));
   ccConnectProjectDrafts.value = config.projects.map((project) => createProjectDraft(project));
+  selectedProjectDraftId.value = ccConnectProjectDrafts.value[0]?.id || "";
   ccConnectStructuredBaseline.value = serializeCcConnectStructuredDraft();
 }
 
@@ -1771,6 +2081,21 @@ function stopPollingJob(): void {
   }
 }
 
+function stopLogPolling(): void {
+  if (logPollTimer) {
+    window.clearInterval(logPollTimer);
+    logPollTimer = null;
+  }
+}
+
+function syncLogPolling(): void {
+  stopLogPolling();
+  if (!logAutoRefresh.value) return;
+  logPollTimer = window.setInterval(() => {
+    void loadLogs(selectedLogService.value, true);
+  }, logLineMode.value === "deep" ? 6000 : 3500);
+}
+
 function startPollingJob(job: CodexStackJob): void {
   activeJob.value = job;
   stopPollingJob();
@@ -1933,21 +2258,57 @@ function removeCcConnectProvider(providerId: string): void {
 }
 
 function addCcConnectProject(): void {
-  ccConnectProjectDrafts.value.push(createProjectDraft({
+  const project = createProjectDraft({
     name: `project-${ccConnectProjectDrafts.value.length + 1}`,
-  }));
+  });
+  ccConnectProjectDrafts.value.push(project);
+  selectedProjectDraftId.value = project.id;
+  activeAgentPane.value = "projects";
+}
+
+function addCcConnectProjectPreset(preset: AgentProjectPreset): void {
+  const index = ccConnectProjectDrafts.value.length + 1;
+  const homeDir = summary.value?.homeDir || "~";
+  const project = createProjectDraft({
+    name: preset === "admin" && !ccConnectProjectDrafts.value.some((item) => item.name === "main") ? "main" : `${preset}-agent-${index}`,
+    adminFrom: "",
+    agentType: "codex",
+    agentOptions: {
+      workDir: preset === "admin" ? `${homeDir}/.openclaw` : `${homeDir}/.openclaw/workspace/${preset}-agent-${index}`,
+      mode: preset === "admin" ? "suggest" : "yolo",
+      model: configForm.defaultModel || installForm.model || summary.value?.models.current || "kimi-k2.6",
+    },
+    platforms: [{ type: "dmwork", options: { api_url: "https://im.deepminer.com.cn/api" } }],
+  });
+  ccConnectProjectDrafts.value.push(project);
+  selectedProjectDraftId.value = project.id;
+  activeAgentPane.value = "projects";
 }
 
 function removeCcConnectProject(projectId: string): void {
   ccConnectProjectDrafts.value = ccConnectProjectDrafts.value.filter((project) => project.id !== projectId);
+  if (selectedProjectDraftId.value === projectId) {
+    selectedProjectDraftId.value = ccConnectProjectDrafts.value[0]?.id || "";
+  }
 }
 
-function addCcConnectPlatform(project: CcConnectProjectDraft): void {
-  project.platforms.push(createPlatformDraft());
+function selectCcConnectProject(projectId: string): void {
+  selectedProjectDraftId.value = projectId;
+  activeAgentPane.value = "projects";
 }
 
 function removeCcConnectPlatform(project: CcConnectProjectDraft, platformId: string): void {
   project.platforms = project.platforms.filter((platform) => platform.id !== platformId);
+}
+
+function addPlatformToSelectedProject(type: PlatformTemplateId = "dmwork"): void {
+  if (!selectedProjectDraft.value) return;
+  selectedProjectDraft.value.platforms.push(createPlatformDraft(undefined, type));
+}
+
+function removePlatformFromSelectedProject(platformId: string): void {
+  if (!selectedProjectDraft.value) return;
+  removeCcConnectPlatform(selectedProjectDraft.value, platformId);
 }
 
 function addCcConnectPlatformOption(platform: CcConnectPlatformDraft): void {
@@ -2075,13 +2436,19 @@ async function finalizeCcConnect(): Promise<void> {
   }
 }
 
-async function loadLogs(serviceId: CodexStackServiceId): Promise<void> {
+async function loadLogs(serviceId: CodexStackServiceId, silent = false): Promise<void> {
   selectedLogService.value = serviceId;
+  logRefreshing.value = true;
   try {
-    const response = await fetchCodexStackLogs(serviceId);
+    const response = await fetchCodexStackLogs(serviceId, logLineLimit.value);
     logOutput.value = response.output;
+    logMeta.value = response;
   } catch (error) {
-    notice.value = { kind: "error", text: error instanceof Error ? error.message : text("读取日志失败", "Failed to load logs") };
+    if (!silent) {
+      notice.value = { kind: "error", text: error instanceof Error ? error.message : text("读取日志失败", "Failed to load logs") };
+    }
+  } finally {
+    logRefreshing.value = false;
   }
 }
 
@@ -2117,6 +2484,12 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPollingJob();
+  stopLogPolling();
+});
+
+watch([logAutoRefresh, logLineMode, selectedLogService], () => {
+  syncLogPolling();
+  void loadLogs(selectedLogService.value, true);
 });
 </script>
 
@@ -2618,6 +2991,50 @@ onUnmounted(() => {
   gap: 18px;
 }
 
+.cs-section-intro {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.cs-install-plan-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(320px, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--acc) 14%, transparent), transparent 35%),
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 94%, #0c1d20 6%), var(--surface));
+}
+
+.cs-install-plan-card h4 {
+  margin: 0;
+}
+
+.cs-install-plan-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cs-install-plan-list span {
+  display: inline-flex;
+  border: 1px solid color-mix(in srgb, var(--acc) 24%, var(--line));
+  border-radius: 14px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--code-bg) 36%, transparent);
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.cs-install-plan-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
 .cs-install-shell-busy > *:not(.cs-install-overlay) {
   opacity: 0.42;
 }
@@ -2682,6 +3099,61 @@ onUnmounted(() => {
 
 .cs-progress-log {
   max-height: 320px;
+}
+
+.cs-job-progress-track {
+  --progress: 0%;
+  height: 10px;
+  overflow: hidden;
+  margin: 12px 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  background: color-mix(in srgb, var(--code-bg) 58%, transparent);
+}
+
+.cs-job-progress-track span {
+  display: block;
+  width: var(--progress);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--acc), color-mix(in srgb, var(--success) 72%, var(--acc)));
+  transition: width 0.28s ease;
+}
+
+.cs-job-step-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cs-job-step {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 8px 10px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  font-size: 0.82rem;
+}
+
+.cs-job-step-done {
+  color: #073b20;
+  border-color: #8fd8a6;
+  background: #dff8e7;
+}
+
+.cs-job-step-active {
+  color: #17335f;
+  border-color: #9ec2ff;
+  background: #e4efff;
+  font-weight: 700;
+}
+
+.cs-job-step-failed {
+  color: #651d19;
+  border-color: #f1a9a1;
+  background: #ffe4e0;
+  font-weight: 700;
 }
 
 .cs-channel-grid {
@@ -2890,6 +3362,159 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.cs-agent-workbench {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.cs-agent-savebar {
+  position: sticky;
+  top: 14px;
+  z-index: 2;
+}
+
+.cs-agent-rail {
+  position: sticky;
+  top: 92px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cs-agent-pane-switch {
+  display: grid;
+  gap: 8px;
+}
+
+.cs-agent-pane-button,
+.cs-agent-project-pill,
+.cs-log-service-button,
+.cs-log-mode-button {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.cs-agent-pane-button {
+  border-radius: 16px;
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 650;
+}
+
+.cs-agent-pane-button-active,
+.cs-agent-project-pill-active,
+.cs-log-service-button-active,
+.cs-log-mode-button-active {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--acc) 44%, var(--line));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--acc) 14%, transparent), color-mix(in srgb, var(--surface) 96%, transparent)),
+    var(--surface);
+}
+
+.cs-agent-pane-button:hover,
+.cs-agent-project-pill:hover,
+.cs-log-service-button:hover,
+.cs-log-mode-button:hover {
+  transform: translateY(-1px);
+}
+
+.cs-agent-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.cs-agent-project-rail {
+  min-width: 0;
+}
+
+.cs-agent-project-pill {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  border-radius: 16px;
+  padding: 12px;
+  margin-top: 8px;
+  text-align: left;
+}
+
+.cs-agent-project-pill span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.cs-agent-stage {
+  min-width: 0;
+}
+
+.cs-agent-template-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.cs-agent-template-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  border: 1px solid color-mix(in srgb, var(--acc) 22%, var(--line));
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 10%, transparent), transparent 34%),
+    color-mix(in srgb, var(--surface) 94%, transparent);
+}
+
+.cs-agent-template-card p {
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
+.cs-agent-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.32fr);
+  gap: 18px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.cs-agent-editor-main,
+.cs-agent-editor-side {
+  min-width: 0;
+}
+
+.cs-agent-editor-side {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--sky) 14%, transparent), transparent 36%),
+    color-mix(in srgb, var(--surface) 94%, transparent);
+}
+
+.cs-subsection-header-tight {
+  margin-top: 22px;
+}
+
+.cs-provider-grid-roomy,
+.cs-platform-grid-roomy {
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  margin-top: 16px;
+}
+
 .cs-form-grid-compact {
   margin-top: 12px;
 }
@@ -2934,6 +3559,13 @@ onUnmounted(() => {
 .cs-subsection-header p {
   margin: 4px 0 0;
   color: var(--text-soft);
+}
+
+.cs-platform-template-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .cs-option-list {
@@ -2993,13 +3625,80 @@ onUnmounted(() => {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-.cs-log-toolbar {
-  justify-content: space-between;
-  margin-bottom: 12px;
+.cs-log-console {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.cs-log-select {
-  min-width: min(340px, 100%);
+.cs-log-control-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(260px, 1fr);
+  gap: 18px;
+}
+
+.cs-log-service-list,
+.cs-log-mode-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cs-log-service-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cs-log-mode-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cs-log-service-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 10px;
+  align-items: center;
+  border-radius: 16px;
+  padding: 12px;
+  text-align: left;
+}
+
+.cs-log-service-button .cs-dot {
+  margin: 0;
+}
+
+.cs-log-service-button small {
+  grid-column: 2;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-log-mode-button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  border-radius: 16px;
+  padding: 12px;
+  text-align: left;
+}
+
+.cs-log-mode-button span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.cs-log-auto {
+  margin-top: 12px;
+}
+
+.cs-log-toolbar {
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.cs-job-output-card {
+  border-color: color-mix(in srgb, var(--acc) 22%, var(--line));
 }
 
 .cs-dot {
@@ -3134,6 +3833,7 @@ onUnmounted(() => {
 
   .cs-dashboard-grid,
   .cs-command-grid,
+  .cs-install-plan-card,
   .cs-install-grid,
   .cs-channel-grid,
   .cs-form-grid,
@@ -3142,8 +3842,24 @@ onUnmounted(() => {
   .cs-checkbox-grid,
   .cs-repair-grid,
   .cs-flow-steps,
-  .cs-upstream-grid {
+  .cs-upstream-grid,
+  .cs-agent-workbench,
+  .cs-agent-editor-grid,
+  .cs-agent-template-row,
+  .cs-log-control-grid,
+  .cs-log-service-list,
+  .cs-log-mode-list {
     grid-template-columns: 1fr;
+  }
+
+  .cs-agent-rail,
+  .cs-agent-savebar {
+    position: static;
+  }
+
+  .cs-install-plan-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
   }
 
   .cs-flow-steps span:not(:last-child)::after {
@@ -3165,10 +3881,12 @@ onUnmounted(() => {
   .cs-hero-card,
   .cs-model-ribbon,
   .cs-config-action-strip,
+  .cs-section-intro,
   .cs-card-header,
   .cs-provider-head,
   .cs-platform-head,
   .cs-project-head,
+  .cs-agent-template-card,
   .cs-subsection-header,
   .cs-log-toolbar {
     flex-direction: column;
@@ -3183,8 +3901,8 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .cs-log-select {
-    min-width: 0;
+  .cs-agent-pane-switch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

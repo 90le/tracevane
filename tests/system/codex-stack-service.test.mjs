@@ -283,6 +283,25 @@ test("codex stack rejects unknown service ids and actions before shell execution
   );
 });
 
+test("codex stack logs expose bounded preview metadata for UI performance controls", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {});
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+
+  const service = createCodexStackService(config);
+  const logs = await service.readLogs("cli-proxy-api.service", 9999);
+
+  assert.equal(logs.unitId, "cli-proxy-api.service");
+  assert.equal(logs.requestedLines, 500);
+  assert.equal(typeof logs.output, "string");
+  assert.ok(logs.sources.some((source) => source.kind === "journal"));
+  assert.equal(typeof logs.returnedLines, "number");
+  assert.equal(typeof logs.truncated, "boolean");
+  assert.match(logs.fetchedAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
 test("codex stack uses CODEX_MODEL as default model fallback", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

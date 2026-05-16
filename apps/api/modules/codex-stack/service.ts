@@ -22,6 +22,7 @@ import type {
   CodexStackInstallerSource,
   CodexStackJob,
   CodexStackJobResponse,
+  CodexStackLogResponse,
   CodexStackManagementAccess,
   CodexStackModelSource,
   CodexStackMutationResponse,
@@ -62,6 +63,13 @@ const SERVICE_IDS = [
 ] as const satisfies readonly CodexStackServiceId[];
 
 const SERVICE_ACTIONS = ["restart", "start", "stop", "enable"] as const satisfies readonly CodexStackServiceAction[];
+
+const FALLBACK_LOG_FILES: Record<CodexStackServiceId, string[]> = {
+  "cli-proxy-api.service": ["/tmp/cpa.log"],
+  "cpa-compact-proxy.service": ["/tmp/cpa-compact-proxy.log"],
+  "cc-connect.service": ["/tmp/cc-connect.log"],
+  "codex-stack-watchdog.timer": [],
+};
 
 interface CodexStackModelDiscovery {
   available: string[];
@@ -192,6 +200,25 @@ function writeJsonSecure(filePath: string, value: unknown): void {
 function readText(filePath: string): string {
   try {
     return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function readFileTailLines(filePath: string, lines: number): string {
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size <= 0) return "";
+    const maxBytes = Math.min(stat.size, Math.max(JOB_TAIL_CHARS, lines * 320));
+    const start = Math.max(0, stat.size - maxBytes);
+    const fd = fs.openSync(filePath, "r");
+    try {
+      const buffer = Buffer.alloc(maxBytes);
+      fs.readSync(fd, buffer, 0, buffer.length, start);
+      return buffer.toString("utf8").split(/\r?\n/).slice(-lines).join("\n").trim();
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch {
     return "";
   }
@@ -809,7 +836,7 @@ export interface CodexStackService {
   patchConfig(req: http.IncomingMessage | undefined, payload: CodexStackConfigPatchRequest): Promise<CodexStackMutationResponse>;
   patchCcConnectConfig(req: http.IncomingMessage | undefined, payload: CodexStackCcConnectConfigPatchRequest): Promise<CodexStackMutationResponse>;
   getJob(jobId: string): CodexStackJob | null;
-  readLogs(unitId: string, lines?: number): Promise<{ unitId: string; output: string }>;
+  readLogs(unitId: string, lines?: number): Promise<CodexStackLogResponse>;
 }
 
 export function createCodexStackService(config: StudioServerConfig): CodexStackService {
@@ -1697,15 +1724,56 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     return job ? { ...job, logTail: readLogTail(job.logPath) } : null;
   }
 
-  async function readLogs(unitId: string, lines = 160): Promise<{ unitId: string; output: string }> {
+  async function readLogs(unitId: string, lines = 160): Promise<CodexStackLogResponse> {
     if (!(SERVICE_IDS as readonly string[]).includes(unitId)) {
       throw new CodexStackServiceError("codex_stack_invalid_service", `Unsupported log unit: ${unitId}`);
     }
+    const serviceId = unitId as CodexStackServiceId;
     const boundedLines = Math.max(20, Math.min(500, Math.floor(Number(lines) || 160)));
-    const result = await execText("journalctl", ["--user", "-u", unitId, "-n", String(boundedLines), "--no-pager"], { timeout: 10_000 });
+    const sections: Array<{
+      kind: "journal" | "file";
+      label: string;
+      path?: string;
+      output: string;
+    }> = [];
+    const result = await execText("journalctl", ["--user", "-u", serviceId, "-n", String(boundedLines), "--no-pager"], { timeout: 10_000 });
+    sections.push({
+      kind: "journal",
+      label: `journalctl --user -u ${serviceId}`,
+      output: redact(result.output),
+    });
+
+    for (const filePath of FALLBACK_LOG_FILES[serviceId] || []) {
+      if (!pathExists(filePath)) continue;
+      const fileOutput = redact(readFileTailLines(filePath, boundedLines));
+      sections.push({
+        kind: "file",
+        label: path.basename(filePath),
+        path: filePath,
+        output: fileOutput,
+      });
+    }
+
+    const joined = sections
+      .map((section) => [
+        `===== ${section.label}${section.path ? ` (${section.path})` : ""} =====`,
+        section.output || "(no output)",
+      ].join("\n"))
+      .join("\n\n");
+    const output = joined.slice(-JOB_TAIL_CHARS);
+    const returnedLines = output ? output.split(/\r?\n/).length : 0;
     return {
-      unitId,
-      output: redact(result.output).slice(-JOB_TAIL_CHARS),
+      unitId: serviceId,
+      output,
+      sources: sections.map((section) => ({
+        kind: section.kind,
+        label: section.label,
+        path: section.path,
+      })),
+      requestedLines: boundedLines,
+      returnedLines,
+      truncated: joined.length > output.length,
+      fetchedAt: new Date().toISOString(),
     };
   }
 

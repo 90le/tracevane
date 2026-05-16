@@ -279,3 +279,17 @@ export interface CodexStackMutationResponse {
   job?: CodexStackJob;
   restartRequiredUnits?: CodexStackServiceId[];
 }
+
+export interface CodexStackLogResponse {
+  unitId: string;
+  output: string;
+  sources: Array<{
+    kind: "journal" | "file";
+    label: string;
+    path?: string;
+  }>;
+  requestedLines: number;
+  returnedLines: number;
+  truncated: boolean;
+  fetchedAt: string;
+}

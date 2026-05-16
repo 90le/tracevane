@@ -7,6 +7,7 @@ import type {
   CodexStackFinalizeRequest,
   CodexStackInstallRequest,
   CodexStackJobResponse,
+  CodexStackLogResponse,
   CodexStackMutationResponse,
   CodexStackRepairRequest,
   CodexStackServiceAction,
@@ -93,8 +94,8 @@ export function finalizeCodexStackCcConnect(payload: CodexStackFinalizeRequest):
 export function fetchCodexStackLogs(
   serviceId: CodexStackServiceId,
   lines = 160,
-): Promise<{ unitId: string; output: string }> {
-  return requestJson<{ unitId: string; output: string }>(
+): Promise<CodexStackLogResponse> {
+  return requestJson<CodexStackLogResponse>(
     `/api/codex-stack/logs/${encodeURIComponent(serviceId)}?lines=${encodeURIComponent(String(lines))}`,
   );
 }
