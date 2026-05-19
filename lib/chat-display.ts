@@ -7,7 +7,7 @@ import type {
   ChatSessionRow,
 } from '../types/chat.js';
 import { normalizeChatMessageBlocks } from './chat-blocks.js';
-import { normalizeChatHistoryText } from './chat-history-normalization.js';
+import { normalizeChatHistoryText, stripInboundMetadata } from './chat-history-normalization.js';
 
 export interface ChatDisplayResourceItem extends ChatResourceItem {
   alt: string;
@@ -102,7 +102,7 @@ function stripOpenClawInlineDirectives(value: string): string {
 }
 
 function stripAssistantInternalScaffolding(value: string): string {
-  return stripOpenClawInlineDirectives(value)
+  return stripInboundMetadata(stripOpenClawInlineDirectives(value))
     .replace(/<\s*think(?:ing)?\s*>[\s\S]*?<\s*\/\s*think(?:ing)?\s*>/gi, '')
     .replace(/<\s*final\s*>/gi, '')
     .replace(/<\s*\/\s*final\s*>/gi, '')
