@@ -159,7 +159,7 @@ export function buildGatewayConnectRequest(params: {
     method: 'connect',
     params: {
       minProtocol: 3,
-      maxProtocol: 3,
+      maxProtocol: 5,
       client: {
         id: 'cli',
         version: 'openclaw-studio',

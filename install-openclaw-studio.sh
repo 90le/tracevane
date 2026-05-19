@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STUDIO_DEFAULT_VERSION="${STUDIO_DEFAULT_VERSION:-0.1.38}"
+STUDIO_DEFAULT_VERSION="${STUDIO_DEFAULT_VERSION:-0.1.58}"
 VERSION_EXPLICIT=0
 PACKAGE_URL_EXPLICIT=0
 GATEWAY_BIND_EXPLICIT=0
@@ -220,7 +220,7 @@ if (!version) {
   process.exit(1);
 }
 const openclaw = record.openclaw && typeof record.openclaw === 'object'
-  ? record.openclaw
+  ? openclaw
   : {};
 const minVersion = typeof record.minOpenClawVersion === 'string'
   ? record.minOpenClawVersion.trim()
@@ -371,6 +371,171 @@ if (value === undefined || value === null) {
 NODE
 }
 
+auto_fix_missing_dependencies() {
+  log "自动检测并修复缺失的依赖模块..."
+  
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "[dry-run] 跳过依赖检测（将执行 openclaw doctor --fix）"
+    return 0
+  fi
+  
+  local error_output
+  local missing_modules=()
+  
+  error_output="$("${OPENCLAW_HOME_DIR}/node_modules/.bin/openclaw" --version 2>&1 || true)" || true
+  
+  while IFS= read -r line; do
+    local match
+    if match=$(echo "$line" | grep -Eo "Cannot find module '([^']+)'" | sed "s/Cannot find module '\([^']\+\)'/\1/"); then
+      missing_modules+=("$match")
+    fi
+  done <<< "$error_output"
+  
+  if [[ ${#missing_modules[@]} -gt 0 ]]; then
+    log "检测到缺失的模块: ${missing_modules[*]}"
+    for module in "${missing_modules[@]}"; do
+      log "安装缺失依赖: ${module}"
+      npm install -g "${module}" 2>/dev/null || warn "安装 ${module} 失败"
+    done
+  fi
+  
+  log "执行 openclaw doctor --fix 进行自动修复..."
+  if ! run_cmd_allow_fail openclaw doctor --fix; then
+    warn "openclaw doctor --fix 执行失败，尝试手动修复"
+    
+    local check_output
+    check_output=$(openclaw gateway run --force 2>&1 || true) || true
+    
+    while IFS= read -r line; do
+      local match
+      if match=$(echo "$line" | grep -Eo "Cannot find module '([^']+)'" | sed "s/Cannot find module '\([^']\+\)'/\1/"); then
+        log "安装缺失依赖: ${match}"
+        npm install -g "${match}" 2>/dev/null || warn "安装 ${match} 失败"
+      fi
+    done <<< "$check_output"
+  fi
+}
+
+auto_cleanup_incompatible_config() {
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "[dry-run] 跳过配置清理（将执行 openclaw config validate 和 doctor --repair）"
+    return 0
+  fi
+  
+  log "自动检测并清理不兼容的配置..."
+  
+  local validate_output
+  validate_output=$(openclaw config validate 2>&1 || true)
+  
+  if echo "$validate_output" | grep -q "valid"; then
+    log "配置验证通过"
+    return 0
+  fi
+  
+  log "配置验证失败，尝试自动修复..."
+  
+  run_cmd_allow_fail openclaw doctor --repair --non-interactive --yes
+  
+  validate_output=$(openclaw config validate 2>&1 || true)
+  
+  if echo "$validate_output" | grep -q "valid"; then
+    log "配置修复成功"
+    return 0
+  fi
+  
+  log "尝试智能清理配置项..."
+  
+  node - "${OPENCLAW_CONFIG_FILE}" <<'NODE'
+const fs = require('node:fs');
+
+const configPath = process.argv[2];
+let config = {};
+try {
+  config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+} catch {
+  console.log('无法读取配置文件');
+  process.exit(0);
+}
+
+let changed = false;
+
+function cleanInvalidPlugins(entries) {
+  if (!entries || typeof entries !== 'object' || Array.isArray(entries)) return;
+  
+  for (const [key, value] of Object.entries(entries)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      delete entries[key];
+      changed = true;
+      console.log(`Removed invalid plugin entry: ${key}`);
+      continue;
+    }
+    
+    if (value.config && typeof value.config === 'object' && !Array.isArray(value.config)) {
+      for (const [configKey, configValue] of Object.entries(value.config)) {
+        if (configValue === null || configValue === undefined) {
+          delete value.config[configKey];
+          changed = true;
+          console.log(`Removed null/undefined config: ${key}.config.${configKey}`);
+        }
+      }
+    }
+  }
+}
+
+function cleanInvalidChannels(channels) {
+  if (!channels || typeof channels !== 'object' || Array.isArray(channels)) return;
+  
+  for (const [channelId, channelConfig] of Object.entries(channels)) {
+    if (!channelConfig || typeof channelConfig !== 'object' || Array.isArray(channelConfig)) {
+      delete channels[channelId];
+      changed = true;
+      console.log(`Removed invalid channel: ${channelId}`);
+      continue;
+    }
+    
+    if (channelConfig.tools && typeof channelConfig.tools === 'object') {
+      delete channelConfig.tools;
+      changed = true;
+      console.log(`Removed tools config from channel: ${channelId}`);
+    }
+  }
+}
+
+function cleanInvalidSlots(slots) {
+  if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return;
+  
+  for (const [slotKey, slotValue] of Object.entries(slots)) {
+    if (slotValue === null || slotValue === undefined || slotValue === '') {
+      delete slots[slotKey];
+      changed = true;
+      console.log(`Removed invalid slot: ${slotKey}`);
+    }
+  }
+}
+
+if (config.plugins?.entries) {
+  cleanInvalidPlugins(config.plugins.entries);
+}
+
+if (config.channels) {
+  cleanInvalidChannels(config.channels);
+}
+
+if (config.plugins?.slots) {
+  cleanInvalidSlots(config.plugins.slots);
+}
+
+if (changed) {
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+  console.log('已自动清理不兼容的配置项');
+} else {
+  console.log('未发现需要清理的配置项');
+}
+NODE
+  
+  run_cmd_allow_fail openclaw doctor --repair --non-interactive --yes || true
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -476,6 +641,8 @@ if version_lt "${CURRENT_OPENCLAW_VERSION}" "${OPENCLAW_MIN_VERSION}"; then
     if version_lt "${CURRENT_OPENCLAW_VERSION}" "${OPENCLAW_MIN_VERSION}"; then
       die "升级后 OpenClaw 版本仍低于最低要求 ${OPENCLAW_MIN_VERSION}"
     fi
+    
+    auto_fix_missing_dependencies
   fi
 fi
 
@@ -581,11 +748,19 @@ log "安装依赖"
 if [[ "${DRY_RUN}" -eq 1 ]]; then
   printf '[dry-run] cd %q && npm install --production --ignore-scripts\n' "${INSTALL_DIR}"
   printf '[dry-run] cd %q && npm rebuild @homebridge/node-pty-prebuilt-multiarch\n' "${INSTALL_DIR}"
+  printf '[dry-run] node -e "require(\x27@homebridge/node-pty-prebuilt-multiarch\x27)"\n'
 else
   (
     cd "${INSTALL_DIR}"
     npm install --production --ignore-scripts
-    npm rebuild @homebridge/node-pty-prebuilt-multiarch 2>/dev/null || warn "node-pty rebuild 失败，可稍后手工执行"
+    npm rebuild @homebridge/node-pty-prebuilt-multiarch 2>&1 || warn "node-pty rebuild 失败，终端功能可能不可用。请确保已安装 build-essential 和 cmake。"
+    if ! node -e "require('@homebridge/node-pty-prebuilt-multiarch')" 2>/dev/null; then
+      warn "node-pty 原生模块加载失败（Node ABI $(node -e 'process.stdout.write(process.versions.modules)')）"
+      warn "终端功能将不可用。常见原因："
+      warn "  1. Node.js 版本过新，prebuilt 尚未支持（当前 Node $(node --version)）"
+      warn "  2. 缺少编译工具：sudo apt install build-essential cmake（Debian/Ubuntu）或 xcode-select --install（macOS）"
+      warn "可稍后手工执行: cd ${INSTALL_DIR} && npm rebuild @homebridge/node-pty-prebuilt-multiarch"
+    fi
   )
 fi
 
@@ -789,8 +964,6 @@ if (!hasDocker) {
   }
 }
 
-// Repair the common 4.8 -> 4.9 dreaming mismatch: memory-core dreaming enabled
-// while plugins.slots.memory is still none/unset.
 plugins.slots = plugins.slots && typeof plugins.slots === 'object' && !Array.isArray(plugins.slots)
   ? plugins.slots
   : {};
@@ -814,14 +987,10 @@ fi
 if [[ "${DRY_RUN}" -eq 0 ]]; then
   log "校验 OpenClaw 配置"
   if ! run_cmd_allow_fail openclaw config validate; then
-    warn "配置校验失败，尝试执行 doctor 自动修复"
-    if run_cmd_allow_fail openclaw doctor --repair --non-interactive --yes; then
-      if ! run_cmd_allow_fail openclaw config validate; then
-        warn "doctor 修复后配置仍未通过校验，回滚到备份: ${CONFIG_BACKUP}"
-        run_cmd cp "${CONFIG_BACKUP}" "${OPENCLAW_CONFIG_FILE}"
-      fi
-    else
-      warn "doctor 自动修复执行失败，回滚到备份: ${CONFIG_BACKUP}"
+    warn "配置校验失败，尝试执行自动修复"
+    auto_cleanup_incompatible_config
+    if ! run_cmd_allow_fail openclaw config validate; then
+      warn "自动修复后配置仍未通过校验，回滚到备份: ${CONFIG_BACKUP}"
       run_cmd cp "${CONFIG_BACKUP}" "${OPENCLAW_CONFIG_FILE}"
     fi
   fi
