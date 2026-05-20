@@ -37,8 +37,10 @@ Options:
 Environment overrides:
   CPA_PORT=8317
   COMPACT_PORT=18796
-  CPA_PROXY_KEY=openclaw-cpa-key
-  CODEX_MODEL=glm-5.1
+  CPA_PROXY_KEY=studio
+  CODEX_MODEL=kimi-k2.6
+  CODEX_CONTEXT_MODE=default|codex-1m|custom
+  CODEX_CONTEXT_WINDOW=1050000
   OPENCLAW_UPSTREAM_BASE_URL=https://...
   OPENCLAW_UPSTREAM_API_KEY=...
 
@@ -291,7 +293,7 @@ if [[ "$SKIP_NPM" != true ]]; then
   fi
 
   if should_force codex || should_force cc-connect || $NPM_NEEDS_UPDATE; then
-    local npm_pkgs="@openai/codex oh-my-codex ws"
+    npm_pkgs="@openai/codex oh-my-codex ws"
     if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip cc-connect; then
       npm_pkgs="$npm_pkgs cc-connect"
     fi
@@ -348,10 +350,11 @@ if should_skip cc-connect; then
 fi
 
 log "Generating CPA config from $OPENCLAW_JSON"
-export OPENCLAW_JSON CPA_CONFIG CPA_PORT COMPACT_PORT CPA_PROXY_KEY META_FILE CODEX_MODEL="${CODEX_MODEL:-}"
+export OPENCLAW_JSON CPA_CONFIG CPA_PORT COMPACT_PORT CPA_PROXY_KEY META_FILE CODEX_MODEL="${CODEX_MODEL:-}" CODEX_CONTEXT_MODE="${CODEX_CONTEXT_MODE:-default}" CODEX_CONTEXT_WINDOW="${CODEX_CONTEXT_WINDOW:-1050000}"
 node <<'NODE'
 const fs = require("fs");
 const os = require("os");
+const path = require("path");
 
 const env = process.env;
 const home = os.homedir();
@@ -378,6 +381,29 @@ function modelName(m) {
   return m.id || m.name || m.model || m.value || "";
 }
 
+function configMentionsModel(openclaw, model) {
+  return JSON.stringify(openclaw).includes(model);
+}
+
+function chooseDefaultModel(openclaw) {
+  if (JSON.stringify(openclaw).includes("llm-gateway.mlamp.cn")) return "kimi-k2.6";
+  if (configMentionsModel(openclaw, "kimi-k2.6")) return "kimi-k2.6";
+  if (configMentionsModel(openclaw, "glm-5.1")) return "glm-5.1";
+  return modelName(openclaw.defaultModel) || "kimi-k2.6";
+}
+
+function contextMode(env) {
+  const mode = env.CODEX_CONTEXT_MODE || "default";
+  return mode === "codex-1m" || mode === "custom" ? mode : "default";
+}
+
+function contextTokens(env, mode) {
+  if (mode === "default") return null;
+  const raw = mode === "codex-1m" ? 1050000 : Number(env.CODEX_CONTEXT_WINDOW || 1050000);
+  if (!Number.isFinite(raw) || raw <= 0) return 1050000;
+  return Math.max(1000, Math.min(1050000, Math.floor(raw)));
+}
+
 let openclaw;
 try {
   openclaw = readJson(openclawPath);
@@ -393,13 +419,17 @@ const upstreamKey  = env.OPENCLAW_UPSTREAM_API_KEY  || (openclaw.upstream && ope
 // 优先使用环境变量，默认使用固定值
 const proxyKey = env.CPA_PROXY_KEY || "studio";
 
-const model = env.CODEX_MODEL || modelName(openclaw.defaultModel) || "glm-5.1";
+const model = env.CODEX_MODEL || chooseDefaultModel(openclaw);
+const codexContextMode = contextMode(env);
+const codexContextTokens = contextTokens(env, codexContextMode);
 
 sh("OPENCLAW_UPSTREAM_BASE_URL", upstreamBase);
 sh("OPENCLAW_UPSTREAM_API_KEY", upstreamKey);
 sh("CODEX_MODEL", model);
 sh("CPA_PORT", cpaPort);
 sh("COMPACT_PORT", compactPort);
+sh("CODEX_CONTEXT_MODE", codexContextMode);
+sh("CODEX_CONTEXT_WINDOW", codexContextTokens || "");
 
 if (!upstreamBase || !upstreamKey) {
   process.stderr.write(
@@ -431,15 +461,16 @@ const cpaYaml = [
   `  allow-remote: false`,
   `  secret-key: "studio"`,
   `  disable-control-panel: false`,
+  `  panel-github-repository: "https://github.com/router-for-me/Cli-Proxy-API-Management-Center"`,
 ].join("\n") + "\n";
 
-const cpaDir = env.CPA_CONFIG ? require("path").dirname(env.CPA_CONFIG) : `${home}/.cli-proxy-api`;
+const cpaDir = env.CPA_CONFIG ? path.dirname(env.CPA_CONFIG) : `${home}/.cli-proxy-api`;
 fs.mkdirSync(cpaDir, { recursive: true });
 fs.writeFileSync(env.CPA_CONFIG || `${home}/.cli-proxy-api/config.yaml`, cpaYaml);
 
 // ── Codex config.toml ──────────────────────────────────────────────
 const codexPath = env.CODEX_CONFIG || `${home}/.codex/config.toml`;
-const codexDir = require("path").dirname(codexPath);
+const codexDir = path.dirname(codexPath);
 fs.mkdirSync(codexDir, { recursive: true });
 
 let codexToml = "";
@@ -456,15 +487,28 @@ function setKey(lines, key, value, existing) {
   return existing + `${key} = "${escaped}"\n`;
 }
 
-codexToml = setKey(codexToml, "model_provider", "cpa", codexToml);
 codexToml = setKey(codexToml, "model", model, codexToml);
 codexToml = setKey(codexToml, "base_url", `http://127.0.0.1:${compactPort}/v1`, codexToml);
+codexToml = setKey(codexToml, "openai_base_url", `http://127.0.0.1:${compactPort}/v1`, codexToml);
 codexToml = setKey(codexToml, "experimental_bearer_token", proxyKey, codexToml);
+if (codexContextTokens) {
+  const replaceNumber = (source, key, value) => {
+    const re = new RegExp(`^(\\s*${key}\\s*=\\s*)[0-9][0-9_]*(\\s*)$`, "m");
+    return re.test(source) ? source.replace(re, `$1${value}$2`) : `${source.replace(/\s+$/g, "")}\n${key} = ${value}\n`;
+  };
+  codexToml = replaceNumber(codexToml, "model_context_window", codexContextTokens);
+  codexToml = replaceNumber(codexToml, "model_auto_compact_token_limit", Math.floor(codexContextTokens * 0.9));
+} else {
+  codexToml = codexToml.replace(/^\s*model_context_window\s*=.*\n?/m, "");
+  codexToml = codexToml.replace(/^\s*model_auto_compact_token_limit\s*=.*\n?/m, "");
+}
 
 if (!/responses_websockets\s*=/.test(codexToml)) codexToml += "responses_websockets = true\n";
 if (!/responses_websockets_v2\s*=/.test(codexToml)) codexToml += "responses_websockets_v2 = true\n";
 
 fs.writeFileSync(codexPath, codexToml);
+fs.writeFileSync(path.join(codexDir, "auth.json"), `${JSON.stringify({ auth_mode: "apikey", OPENAI_API_KEY: proxyKey }, null, 2)}\n`, { mode: 0o600 });
+try { fs.chmodSync(path.join(codexDir, "auth.json"), 0o600); } catch {}
 
 // ── cc-connect config.toml (skeleton) ──────────────────────────────
 if (env.SKIP_CC_CONNECT !== "true") {
@@ -533,6 +577,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=$(which node 2>/dev/null || echo /usr/bin/node) $HOME/.local/bin/cpa-compact-proxy.mjs
 Environment=CPA_PORT=$CPA_PORT
+Environment=CPA_BASE_URL=http://127.0.0.1:$CPA_PORT
 Environment=LISTEN_PORT=$COMPACT_PORT
 Environment=CPA_KEY=$CPA_PROXY_KEY
 Environment=COMPACT_DEFAULT_MODEL=$DEFAULT_MODEL

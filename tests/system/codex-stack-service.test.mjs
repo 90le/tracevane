@@ -71,9 +71,11 @@ function createGeneratedStackFiles(root) {
 model = "glm-5.1"
 base_url = "http://127.0.0.1:18796/v1"
 
-[model_providers.cpa]
-experimental_bearer_token = "secret-cpa-key-123456"
-`);
+	[model_providers.cpa]
+	experimental_bearer_token = "secret-cpa-key-123456"
+	model_context_window = 1050000
+	model_auto_compact_token_limit = 945000
+	`);
   writeFile(path.join(root, ".cli-proxy-api/config.yaml"), `
 port: 8317
 api-keys:
@@ -143,6 +145,11 @@ test("codex stack summary resolves bundled installer and masks secrets", async (
   assert.equal(summary.installer.requiredFilesPresent, true);
   assert.equal(summary.management.enabled, false);
   assert.equal(summary.secrets.cpaProxyKey.hasSecret, true);
+  assert.equal(summary.secrets.codexAuth.hasSecret, false);
+  assert.equal(summary.context.codexOneMillionEnabled, true);
+  assert.equal(summary.models.defaultModel, "glm-5.1");
+  assert.equal(summary.models.recommendedFrontier, "gpt-5.5");
+  assert.equal(summary.installer.cpaLatestVersion, "v7.1.17");
   assert.notEqual(summary.secrets.cpaProxyKey.masked, "secret-cpa-key-123456");
   assert.ok(summary.models.available.includes("glm-5.1"));
 });
@@ -179,6 +186,52 @@ test("codex stack summary uses live Compact /v1/models as model catalog", async 
     assert.equal(summary.models.endpoint, "http://127.0.0.1:18796/v1/models");
     assert.ok(summary.models.available.includes("live-cpa-model"));
     assert.ok(summary.models.available.includes("live-cpa-fast"));
+  });
+});
+
+test("codex stack default model prefers live supported kimi then glm then openclaw default", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, { defaultModel: "openclaw-default-model" });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+
+  await withMockFetch(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/v1/models")) {
+      return new Response(JSON.stringify({
+        data: [{ id: "kimi-k2.6" }, { id: "glm-5.1" }, { id: "gpt-5.5" }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("ok", { status: 200 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.equal(summary.models.current, "kimi-k2.6");
+    assert.equal(summary.models.defaultModel, "kimi-k2.6");
+  });
+
+  await withMockFetch(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/v1/models")) {
+      return new Response(JSON.stringify({
+        data: [{ id: "glm-5.1" }, { id: "other-model" }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("ok", { status: 200 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.equal(summary.models.current, "glm-5.1");
+    assert.equal(summary.models.defaultModel, "glm-5.1");
   });
 });
 
@@ -345,9 +398,11 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   createBundledInstaller(config, "dmwork");
   const setupScriptContent = [
       "#!/usr/bin/env bash",
-      "set -euo pipefail",
-      "echo model=$CODEX_MODEL",
-      "echo cpa_key=$CPA_PROXY_KEY",
+	      "set -euo pipefail",
+	      "echo model=$CODEX_MODEL",
+	      "echo context_mode=$CODEX_CONTEXT_MODE",
+	      "echo context_window=$CODEX_CONTEXT_WINDOW",
+	      "echo cpa_key=$CPA_PROXY_KEY",
       "echo upstream_key=$OPENCLAW_UPSTREAM_API_KEY",
       "echo upstream_url=$OPENCLAW_UPSTREAM_BASE_URL",
       "",
@@ -358,8 +413,10 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   const service = createCodexStackService(config);
   const response = await service.startInstall(undefined, {
     env: {
-      CODEX_MODEL: "glm-5.1",
-      CPA_PROXY_KEY: "secret-cpa-key-for-job",
+	      CODEX_MODEL: "glm-5.1",
+	      CODEX_CONTEXT_MODE: "custom",
+	      CODEX_CONTEXT_WINDOW: 320000,
+	      CPA_PROXY_KEY: "secret-cpa-key-for-job",
       OPENCLAW_UPSTREAM_BASE_URL: "https://upstream.example.test/v1",
       OPENCLAW_UPSTREAM_API_KEY: "secret-upstream-key-for-job",
     },
@@ -373,6 +430,8 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   const job = await waitForJob(service, response.job.id);
   assert.equal(job.status, "succeeded");
   assert.match(job.logTail, /model=glm-5\.1/);
+  assert.match(job.logTail, /context_mode=custom/);
+  assert.match(job.logTail, /context_window=320000/);
   assert.match(job.logTail, /upstream_url=https:\/\/upstream\.example\.test\/v1/);
   assert.doesNotMatch(job.logTail, /secret-cpa-key-for-job/);
   assert.doesNotMatch(job.logTail, /secret-upstream-key-for-job/);
@@ -380,6 +439,8 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   const summary = await service.getSummary();
   assert.equal(summary.profile.upstreamOverride?.hasBaseUrl, true);
   assert.equal(summary.profile.upstreamOverride?.hasApiKey, true);
+  const authJson = JSON.parse(fs.readFileSync(path.join(root, ".codex/auth.json"), "utf8"));
+  assert.equal(authJson.OPENAI_API_KEY, "secret-cpa-key-for-job");
 });
 
 test("codex stack rejects cc-connect finalizer until QR binding exists", async () => {
@@ -463,9 +524,10 @@ test("codex stack config patch writes backups and updates managed fields", async
   const ccConfig = path.join(home, ".cc-connect/config.toml");
 
   const service = createCodexStackService(config);
-  const response = await service.patchConfig(undefined, {
-    defaultModel: "gpt-5.4",
-    cpaPort: 9317,
+	  const response = await service.patchConfig(undefined, {
+	    defaultModel: "gpt-5.4",
+	    contextMode: "codex-1m",
+	    cpaPort: 9317,
     compactPort: 28796,
     cpaProxyKey: "replacement-cpa-key-123",
     ccConnectProject: "studio-main",
@@ -477,8 +539,12 @@ test("codex stack config patch writes backups and updates managed fields", async
   assert.ok(response.restartRequiredUnits?.includes("cc-connect.service"));
   assert.match(fs.readFileSync(codexConfig, "utf8"), /model = "gpt-5\.4"/);
   assert.match(fs.readFileSync(codexConfig, "utf8"), /28796/);
+  assert.match(fs.readFileSync(codexConfig, "utf8"), /model_context_window = 1050000/);
   assert.match(fs.readFileSync(cpaConfig, "utf8"), /port: 9317/);
   assert.match(fs.readFileSync(cpaConfig, "utf8"), /replacement-cpa-key-123/);
+  assert.match(fs.readFileSync(cpaConfig, "utf8"), /secret-key: "studio"/);
+  assert.doesNotMatch(fs.readFileSync(cpaConfig, "utf8"), /secret-key: "replacement-cpa-key-123"/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(home, ".codex/auth.json"), "utf8")).OPENAI_API_KEY, "replacement-cpa-key-123");
   assert.match(fs.readFileSync(ccConfig, "utf8"), /name = "studio-main"/);
   assert.ok(fs.readdirSync(path.dirname(codexConfig)).some((name) => name.startsWith("config.toml.bak.")));
   assert.ok(fs.readdirSync(path.dirname(cpaConfig)).some((name) => name.startsWith("config.yaml.bak.")));

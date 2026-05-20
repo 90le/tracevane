@@ -149,14 +149,24 @@ if [[ -f "$CODEX_CONFIG" ]]; then
   if [[ -z "$CPA_KEY" ]]; then
     CPA_KEY="studio"
   fi
+  [[ -f "$HOME/.codex/auth.json" ]] && ok "auth.json 存在" || fail "auth.json 不存在"
 else
   fail "config.toml 不存在"
 fi
 
+CPA_PORT=$(grep '^port:' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null | head -1 | sed 's/[^0-9]//g')
+[[ -n "$CPA_PORT" ]] || CPA_PORT=18795
+COMPACT_PORT=$(grep '^base_url = ' "$CODEX_CONFIG" 2>/dev/null | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)
+[[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
+if [[ -f "$HOME/.cli-proxy-api/config.yaml" ]]; then
+  grep -q 'remote-management:' "$HOME/.cli-proxy-api/config.yaml" && ok "CPA remote-management 已配置" || fail "CPA remote-management 缺失"
+  grep -q 'disable-control-panel: false' "$HOME/.cli-proxy-api/config.yaml" && ok "CPA 管理看板已启用" || warn "CPA 管理看板未启用"
+fi
+
 # ── 连通性测试 ──
 echo "--- 连通性测试 ---"
-if ss -tlnp 2>/dev/null | grep -q ':18796'; then
-  RESP=$(curl -s --max-time 5 -H "Authorization: Bearer ${CPA_KEY}" http://127.0.0.1:18796/v1/models 2>/dev/null | head -c 200)
+if ss -tlnp 2>/dev/null | grep -q ":${COMPACT_PORT}"; then
+  RESP=$(curl -s --max-time 5 -H "Authorization: Bearer ${CPA_KEY}" "http://127.0.0.1:${COMPACT_PORT}/v1/models" 2>/dev/null | head -c 200)
   if [[ -n "$RESP" && "$RESP" != *"error"* ]]; then
     ok "Compact Proxy → CPA → 网关 链路正常"
   else

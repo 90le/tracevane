@@ -1,272 +1,909 @@
 #!/usr/bin/env node
 /**
- * CPA Compact Proxy v5 (Node.js)
- * - Intercepts /v1/responses/compact -> handles via /v1/chat/completions
- * - All other HTTP requests -> forward to CPA
- * - WebSocket upgrades -> forward to CPA
+ * Compact Proxy for Codex Responses API.
+ *
+ * CPA's OpenAI-compatible provider path is reliable for /v1/chat/completions,
+ * while Codex now talks to /v1/responses. This proxy keeps CPA as the local
+ * chat-completions upstream and provides the Responses compatibility layer that
+ * Codex expects:
+ *
+ * - POST /v1/responses -> translate to /v1/chat/completions and back
+ * - POST /v1/responses/compact -> summarize through /v1/chat/completions
+ * - other HTTP/WebSocket traffic -> forward to CPA
+ *
+ * Set CPA_BASE_URL to use a non-default upstream, including https://... . The
+ * local listener remains plain HTTP, so no local certificate installation is
+ * required.
  */
 
 import http from "node:http";
+import https from "node:https";
+import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
+
 const require = createRequire(import.meta.url);
-// Resolve ws module from multiple possible locations
-const wsPaths = [
-  process.env.WS_MODULE_PATH,
-  require("path").join(os.homedir(), ".openclaw/node_modules/ws"),
-  require("path").join(os.homedir(), ".local/lib/node_modules/ws"),
-  require("path").join(os.homedir(), ".npm-global/lib/node_modules/ws"),
-].filter(Boolean);
-let wsMod = null;
-for (const p of wsPaths) {
-  try { wsMod = require(p); break; } catch {}
+
+function loadWs() {
+  const candidates = ["ws"];
+  const home = os.homedir();
+  candidates.push(path.join(home, ".openclaw", "node_modules", "ws"));
+  candidates.push(path.join(home, ".local", "lib", "node_modules", "ws"));
+  candidates.push(path.join(home, ".npm-global", "lib", "node_modules", "ws"));
+  try {
+    const npmRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    if (npmRoot) candidates.push(path.join(npmRoot, "ws"));
+  } catch {}
+
+  const errors = [];
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch (error) {
+      errors.push(`${candidate}: ${error.message}`);
+    }
+  }
+  throw new Error(`Cannot load ws module. Run: npm install -g ws\n${errors.join("\n")}`);
 }
-if (!wsMod) {
-  try { wsMod = require("ws"); } catch {}
-}
-if (!wsMod) {
-  console.error("Error: ws module not found. Install with: npm install -g ws"); process.exit(1);
-}
-const { WebSocketServer, WebSocket } = wsMod;
+
+const { WebSocketServer, WebSocket } = loadWs();
 
 const CPA_HOST = process.env.CPA_HOST || "127.0.0.1";
-const CPA_PORT = Number(process.env.CPA_PORT) || 18795;
-const LISTEN_PORT = Number(process.env.LISTEN_PORT) || 18796;
-const MAX_CONV_CHARS = 300000;
-const COMPACT_TIMEOUT = 300000;
+const CPA_PORT = Number(process.env.CPA_PORT || 8317);
+const CPA_BASE_URL = process.env.CPA_BASE_URL || process.env.CPA_UPSTREAM_BASE_URL || `http://${CPA_HOST}:${CPA_PORT}`;
+const LISTEN_HOST = process.env.LISTEN_HOST || "127.0.0.1";
+const LISTEN_PORT = Number(process.env.LISTEN_PORT || 18796);
+const DEFAULT_MODEL = process.env.COMPACT_DEFAULT_MODEL || "glm-5.1";
+const MAX_CONV_CHARS = Number(process.env.COMPACT_MAX_CONV_CHARS || 300000);
+const REQUEST_TIMEOUT_MS = Number(process.env.COMPACT_TIMEOUT_MS || 300000);
+const RESPONSES_MODE = (process.env.COMPACT_RESPONSES_MODE || "adapter").toLowerCase();
+const UPSTREAM_API_KEY = process.env.CPA_UPSTREAM_API_KEY || process.env.COMPACT_UPSTREAM_API_KEY || "";
 
-const COMPACT_SYSTEM = `You are a context compaction assistant. Summarize the conversation into a concise but complete summary preserving all important context, decisions, file changes, and task state. The summary replaces the full conversation history. Capture:
-
-1. All task objectives and current progress
-2. Key decisions made and reasoning
-3. Files read, created, or modified (with exact paths)
-4. Errors encountered and resolutions
-5. Current state and next steps
-6. User preferences and constraints
-
-Output structured markdown. Be specific about file paths, function names, technical details.`;
-
-function forwardHeaders(req) {
-  const fwd = {};
-  for (const key of [
-    "authorization", "content-type", "user-agent", "accept",
-    "session_id", "thread_id", "originator", "version",
-    "x-codex-beta-features", "x-codex-installation-id", "x-codex-window-id",
-  ]) {
-    const val = req.headers[key];
-    if (val) fwd[key] = val;
-  }
-  return fwd;
+const upstreamBase = new URL(CPA_BASE_URL);
+if (!["http:", "https:"].includes(upstreamBase.protocol)) {
+  throw new Error(`CPA_BASE_URL must use http or https, got: ${CPA_BASE_URL}`);
 }
 
-function safeJson(obj, res) {
+const COMPACT_SYSTEM = `You are a context compaction assistant. Summarize the conversation into a concise but complete handoff that preserves:
+
+1. Task objectives and current progress
+2. Key decisions and constraints
+3. Files read, created, or modified with exact paths
+4. Errors encountered and resolutions
+5. Current service/runtime state
+6. Next steps
+7. User preferences that future agents must honor
+
+Return structured markdown. Be concrete and avoid generic filler.`;
+
+function log(message) {
+  process.stderr.write(`[compact-proxy] ${message}\n`);
+}
+
+function nowSeconds() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function shortId(prefix) {
+  return `${prefix}_${randomUUID().replace(/-/g, "")}`;
+}
+
+function requestModule() {
+  return upstreamBase.protocol === "https:" ? https : http;
+}
+
+function resolveUpstreamPath(requestPath) {
+  const local = new URL(requestPath || "/", "http://127.0.0.1");
+  const rawPath = `${local.pathname}${local.search}`;
+  const basePath = upstreamBase.pathname.replace(/\/+$/, "");
+  if (!basePath || basePath === "/") return rawPath;
+  if (basePath.endsWith("/v1") && local.pathname.startsWith("/v1/")) {
+    return `${basePath}${rawPath.slice(3)}`;
+  }
+  return `${basePath}${rawPath}`;
+}
+
+function wsUpstreamUrl(requestPath) {
+  const protocol = upstreamBase.protocol === "https:" ? "wss:" : "ws:";
+  const port = upstreamBase.port ? `:${upstreamBase.port}` : "";
+  return `${protocol}//${upstreamBase.hostname}${port}${resolveUpstreamPath(requestPath)}`;
+}
+
+function forwardHeaders(req) {
+  const headers = {};
+  for (const key of [
+    "authorization",
+    "content-type",
+    "user-agent",
+    "accept",
+    "openai-beta",
+    "session_id",
+    "thread_id",
+    "originator",
+    "version",
+    "x-codex-beta-features",
+    "x-codex-installation-id",
+    "x-codex-window-id",
+    "x-stainless-arch",
+    "x-stainless-lang",
+    "x-stainless-os",
+    "x-stainless-package-version",
+    "x-stainless-runtime",
+    "x-stainless-runtime-version",
+  ]) {
+    const value = req.headers[key];
+    if (value) headers[key] = value;
+  }
+  return headers;
+}
+
+function upstreamAuthorization(req) {
+  if (UPSTREAM_API_KEY) return `Bearer ${UPSTREAM_API_KEY}`;
+  return req.headers.authorization || "";
+}
+
+function applyUpstreamAuthorization(headers, req) {
+  const authorization = upstreamAuthorization(req);
+  if (authorization) headers.authorization = authorization;
+  else delete headers.authorization;
+  return headers;
+}
+
+function json(res, status, obj) {
   const body = JSON.stringify(obj);
-  res.writeHead(obj.error ? (obj._status || 502) : 200, {
+  res.writeHead(status, {
     "Content-Type": "application/json",
     "Content-Length": Buffer.byteLength(body),
+    "Access-Control-Allow-Origin": "*",
   });
   res.end(body);
 }
 
-async function handleCompact(req, res) {
+function responseError(message, code = "api_error") {
+  return { error: { message, code, type: code } };
+}
+
+async function readBody(req) {
   const chunks = [];
-  for await (const c of req) chunks.push(c);
-  const raw = Buffer.concat(chunks).toString();
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
 
-  let reqData;
-  try { reqData = JSON.parse(raw); }
-  catch (e) { return safeJson({ error: { message: `invalid JSON: ${e.message}` }, _status: 400 }, res); }
+function requestUpstream({ method, url, headers, body }) {
+  return new Promise((resolve, reject) => {
+    const upstream = requestModule().request({
+      protocol: upstreamBase.protocol,
+      hostname: upstreamBase.hostname,
+      port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
+      method,
+      path: resolveUpstreamPath(url),
+      headers,
+      timeout: REQUEST_TIMEOUT_MS,
+    }, (upstreamRes) => {
+      const chunks = [];
+      upstreamRes.on("data", (chunk) => chunks.push(chunk));
+      upstreamRes.on("end", () => {
+        resolve({
+          statusCode: upstreamRes.statusCode || 502,
+          headers: upstreamRes.headers,
+          body: Buffer.concat(chunks),
+        });
+      });
+    });
 
-  const model = reqData.model || "glm-5.1";
-  const inputItems = reqData.input || [];
-  let convText = JSON.stringify(inputItems, null, 2);
-  if (convText.length > MAX_CONV_CHARS) {
-    process.stderr.write(`[compact-proxy] truncating ${convText.length} -> ${MAX_CONV_CHARS} chars\n`);
-    convText = convText.slice(0, MAX_CONV_CHARS) + "\n\n... [TRUNCATED]";
+    upstream.on("timeout", () => {
+      upstream.destroy(new Error("upstream timeout"));
+    });
+    upstream.on("error", reject);
+    if (body?.length) upstream.end(body);
+    else upstream.end();
+  });
+}
+
+function extractTextContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => {
+    if (!part || typeof part !== "object") return "";
+    if (part.type === "input_text" || part.type === "output_text" || part.type === "text") return part.text || "";
+    if (part.type === "input_image") return "[image input omitted by local Responses adapter]";
+    if (part.type === "input_file") return "[file input omitted by local Responses adapter]";
+    return "";
+  }).filter(Boolean).join("\n");
+}
+
+function normalizeChatRole(role) {
+  if (role === "assistant") return "assistant";
+  if (role === "system" || role === "developer") return "system";
+  if (role === "tool") return "tool";
+  return "user";
+}
+
+function responseInputToChatMessages(body) {
+  if (Array.isArray(body.messages) && body.input === undefined) {
+    return body.messages.map((message) => ({ ...message, role: normalizeChatRole(message.role) }));
   }
 
-  const chatReq = JSON.stringify({
+  const messages = [];
+  if (body.instructions) {
+    messages.push({ role: "system", content: String(body.instructions) });
+  }
+
+  const input = body.input ?? "";
+  if (typeof input === "string") {
+    messages.push({ role: "user", content: input });
+  } else if (Array.isArray(input)) {
+    for (const item of input) {
+      if (!item || typeof item !== "object") continue;
+      if (item.type === "message") {
+        const content = extractTextContent(item.content).trim();
+        if (!content) continue;
+        messages.push({ role: normalizeChatRole(item.role), content });
+        continue;
+      }
+      if (item.type === "function_call") {
+        const callId = item.call_id || item.id || shortId("call");
+        messages.push({
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id: callId,
+            type: "function",
+            function: {
+              name: item.name || "tool",
+              arguments: item.arguments || "{}",
+            },
+          }],
+        });
+        continue;
+      }
+      if (item.type === "function_call_output") {
+        messages.push({
+          role: "tool",
+          tool_call_id: item.call_id,
+          content: item.output || "",
+        });
+      }
+    }
+  }
+
+  if (messages.length === 0) {
+    messages.push({ role: "user", content: "" });
+  }
+  return messages;
+}
+
+function responsesToolsToChatTools(tools) {
+  if (!Array.isArray(tools)) return undefined;
+  const converted = [];
+  for (const tool of tools) {
+    if (!tool || tool.type !== "function") continue;
+    const fn = tool.function && typeof tool.function === "object" ? tool.function : tool;
+    if (!fn.name) continue;
+    const chatTool = {
+      type: "function",
+      function: {
+        name: fn.name,
+        description: fn.description || "",
+        parameters: fn.parameters || {},
+      },
+    };
+    if (fn.strict !== undefined || tool.strict !== undefined) {
+      chatTool.function.strict = Boolean(fn.strict ?? tool.strict);
+    }
+    converted.push(chatTool);
+  }
+  return converted.length > 0 ? converted : undefined;
+}
+
+function responsesToolChoiceToChatToolChoice(toolChoice) {
+  if (!toolChoice || toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
+  if (toolChoice.type === "function" && toolChoice.function?.name) {
+    return { type: "function", function: { name: toolChoice.function.name } };
+  }
+  return undefined;
+}
+
+function responsesBodyToChatBody(body) {
+  const chatBody = {
+    model: body.model || DEFAULT_MODEL,
+    messages: responseInputToChatMessages(body),
+    stream: Boolean(body.stream),
+  };
+
+  const tools = responsesToolsToChatTools(body.tools);
+  if (tools) chatBody.tools = tools;
+
+  const toolChoice = responsesToolChoiceToChatToolChoice(body.tool_choice);
+  if (toolChoice) chatBody.tool_choice = toolChoice;
+
+  if (Number.isFinite(body.max_output_tokens)) chatBody.max_tokens = body.max_output_tokens;
+  if (Number.isFinite(body.temperature)) chatBody.temperature = body.temperature;
+  if (Number.isFinite(body.top_p)) chatBody.top_p = body.top_p;
+  if (typeof body.user === "string") chatBody.user = body.user;
+  if (body.reasoning?.effort) chatBody.reasoning_effort = body.reasoning.effort;
+  if (typeof body.parallel_tool_calls === "boolean") chatBody.parallel_tool_calls = body.parallel_tool_calls;
+
+  return chatBody;
+}
+
+function normalizeUsage(usage) {
+  if (!usage || typeof usage !== "object") {
+    return { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+  }
+  const input = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0) || 0;
+  const output = Number(usage.output_tokens ?? usage.completion_tokens ?? 0) || 0;
+  const total = Number(usage.total_tokens ?? input + output) || 0;
+  return {
+    input_tokens: Math.max(0, input),
+    output_tokens: Math.max(0, output),
+    total_tokens: Math.max(0, total),
+  };
+}
+
+function createAssistantOutputItem({ id, text, status = "completed", phase }) {
+  return {
+    type: "message",
+    id,
+    role: "assistant",
+    content: [{ type: "output_text", text }],
+    ...(phase ? { phase } : {}),
+    status,
+  };
+}
+
+function createFunctionCallOutputItem({ id, callId, name, args, status = "completed" }) {
+  return {
+    type: "function_call",
+    id,
+    call_id: callId,
+    name: name || "tool",
+    arguments: args || "{}",
+    status,
+  };
+}
+
+function createResponseResource({ id, model, status, output, usage, error }) {
+  return {
+    id,
+    object: "response",
+    created_at: nowSeconds(),
+    status,
+    model,
+    output,
+    usage: normalizeUsage(usage),
+    ...(error ? { error } : {}),
+  };
+}
+
+function extractMessageText(message) {
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => {
+    if (typeof part === "string") return part;
+    if (part?.type === "text") return part.text || "";
+    if (part?.type === "output_text") return part.text || "";
+    return "";
+  }).filter(Boolean).join("");
+}
+
+function normalizeToolCalls(toolCalls) {
+  if (!Array.isArray(toolCalls)) return [];
+  return toolCalls.map((toolCall) => ({
+    id: toolCall.id || shortId("call"),
+    name: toolCall.function?.name || toolCall.name || "tool",
+    args: toolCall.function?.arguments || toolCall.arguments || "{}",
+  }));
+}
+
+function writeSseHeaders(res) {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.flushHeaders?.();
+}
+
+function writeSseEvent(res, event) {
+  res.write(`event: ${event.type}\n`);
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function writeSseDone(res) {
+  res.write("data: [DONE]\n\n");
+}
+
+function writeResponsesStreamStart(res, responseId, model, outputItemId) {
+  const initial = createResponseResource({ id: responseId, model, status: "in_progress", output: [] });
+  writeSseEvent(res, { type: "response.created", response: initial });
+  writeSseEvent(res, { type: "response.in_progress", response: initial });
+  writeSseEvent(res, {
+    type: "response.output_item.added",
+    output_index: 0,
+    item: createAssistantOutputItem({ id: outputItemId, text: "", status: "in_progress" }),
+  });
+  writeSseEvent(res, {
+    type: "response.content_part.added",
+    item_id: outputItemId,
+    output_index: 0,
+    content_index: 0,
+    part: { type: "output_text", text: "" },
+  });
+}
+
+function writeResponsesStreamFailure(res, responseId, model, message, code = "api_error") {
+  writeSseEvent(res, {
+    type: "response.failed",
+    response: createResponseResource({
+      id: responseId,
+      model,
+      status: "failed",
+      output: [],
+      error: { code, message },
+    }),
+  });
+  writeSseDone(res);
+  res.end();
+}
+
+function parseSseDataBlocks(bufferState, chunk, onData) {
+  bufferState.text += chunk.toString("utf8");
+  for (;;) {
+    const separatorIndex = bufferState.text.search(/\r?\n\r?\n/);
+    if (separatorIndex < 0) return;
+    const block = bufferState.text.slice(0, separatorIndex);
+    const separator = bufferState.text.match(/\r?\n\r?\n/)[0];
+    bufferState.text = bufferState.text.slice(separatorIndex + separator.length);
+    const data = block.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+    if (data) onData(data);
+  }
+}
+
+function makeStreamToolCallAccumulator() {
+  const byIndex = new Map();
+  return {
+    add(deltaToolCalls) {
+      if (!Array.isArray(deltaToolCalls)) return;
+      for (const part of deltaToolCalls) {
+        const index = Number.isInteger(part.index) ? part.index : byIndex.size;
+        const current = byIndex.get(index) || { id: "", name: "", args: "" };
+        if (part.id) current.id = part.id;
+        if (part.function?.name) current.name = part.function.name;
+        if (part.function?.arguments) current.args += part.function.arguments;
+        byIndex.set(index, current);
+      }
+    },
+    values() {
+      return [...byIndex.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([, value]) => ({
+          id: value.id || shortId("call"),
+          name: value.name || "tool",
+          args: value.args || "{}",
+        }));
+    },
+  };
+}
+
+async function handleResponsesNonStream(req, res, responseReq, chatBody) {
+  const body = Buffer.from(JSON.stringify({ ...chatBody, stream: false }));
+  try {
+    const upstream = await requestUpstream({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: {
+        "content-type": "application/json",
+        "authorization": upstreamAuthorization(req),
+        "content-length": body.length,
+      },
+      body,
+    });
+
+    if (upstream.statusCode < 200 || upstream.statusCode >= 300) {
+      return json(res, upstream.statusCode, responseError(`responses upstream failed with ${upstream.statusCode}: ${upstream.body.toString("utf8").slice(0, 2000)}`, "upstream_error"));
+    }
+
+    const chat = JSON.parse(upstream.body.toString("utf8"));
+    const choice = chat.choices?.[0] || {};
+    const message = choice.message || {};
+    const text = extractMessageText(message);
+    const toolCalls = normalizeToolCalls(message.tool_calls);
+    const outputItemId = shortId("msg");
+    const output = [];
+    output.push(createAssistantOutputItem({
+      id: outputItemId,
+      text,
+      phase: toolCalls.length > 0 ? "commentary" : "final_answer",
+    }));
+    for (const toolCall of toolCalls) {
+      output.push(createFunctionCallOutputItem({
+        id: shortId("fc"),
+        callId: toolCall.id,
+        name: toolCall.name,
+        args: toolCall.args,
+      }));
+    }
+
+    return json(res, 200, createResponseResource({
+      id: shortId("resp"),
+      model: responseReq.model || chat.model || chatBody.model,
+      status: toolCalls.length > 0 ? "incomplete" : "completed",
+      output,
+      usage: chat.usage,
+    }));
+  } catch (error) {
+    log(`responses adapter failed: ${error.message}`);
+    return json(res, 502, responseError(`responses adapter failed: ${error.message}`));
+  }
+}
+
+async function handleResponsesStream(req, res, responseReq, chatBody) {
+  const responseId = shortId("resp");
+  const outputItemId = shortId("msg");
+  const model = responseReq.model || chatBody.model;
+  const body = Buffer.from(JSON.stringify({ ...chatBody, stream: true }));
+  let finished = false;
+
+  writeSseHeaders(res);
+  writeResponsesStreamStart(res, responseId, model, outputItemId);
+
+  const upstreamReq = requestModule().request({
+    protocol: upstreamBase.protocol,
+    hostname: upstreamBase.hostname,
+    port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
+    method: "POST",
+    path: resolveUpstreamPath("/v1/chat/completions"),
+    headers: {
+      "content-type": "application/json",
+      "authorization": upstreamAuthorization(req),
+      "content-length": body.length,
+      "accept": "text/event-stream",
+    },
+    timeout: REQUEST_TIMEOUT_MS,
+  }, (upstreamRes) => {
+    if ((upstreamRes.statusCode || 502) < 200 || (upstreamRes.statusCode || 502) >= 300) {
+      const chunks = [];
+      upstreamRes.on("data", (chunk) => chunks.push(chunk));
+      upstreamRes.on("end", () => {
+        writeResponsesStreamFailure(
+          res,
+          responseId,
+          model,
+          `responses upstream failed with ${upstreamRes.statusCode}: ${Buffer.concat(chunks).toString("utf8").slice(0, 2000)}`,
+          "upstream_error",
+        );
+      });
+      return;
+    }
+
+    const parserState = { text: "" };
+    const toolCalls = makeStreamToolCallAccumulator();
+    let accumulatedText = "";
+    let finalUsage;
+
+    function finalize() {
+      if (finished) return;
+      finished = true;
+      const normalizedToolCalls = toolCalls.values();
+      writeSseEvent(res, {
+        type: "response.output_text.done",
+        item_id: outputItemId,
+        output_index: 0,
+        content_index: 0,
+        text: accumulatedText,
+      });
+      writeSseEvent(res, {
+        type: "response.content_part.done",
+        item_id: outputItemId,
+        output_index: 0,
+        content_index: 0,
+        part: { type: "output_text", text: accumulatedText },
+      });
+      const messageItem = createAssistantOutputItem({
+        id: outputItemId,
+        text: accumulatedText,
+        phase: normalizedToolCalls.length > 0 ? "commentary" : "final_answer",
+      });
+      writeSseEvent(res, { type: "response.output_item.done", output_index: 0, item: messageItem });
+
+      const output = [messageItem];
+      let outputIndex = 1;
+      for (const toolCall of normalizedToolCalls) {
+        const item = createFunctionCallOutputItem({
+          id: shortId("fc"),
+          callId: toolCall.id,
+          name: toolCall.name,
+          args: toolCall.args,
+        });
+        writeSseEvent(res, { type: "response.output_item.added", output_index: outputIndex, item });
+        writeSseEvent(res, { type: "response.output_item.done", output_index: outputIndex, item });
+        output.push(item);
+        outputIndex += 1;
+      }
+
+      writeSseEvent(res, {
+        type: "response.completed",
+        response: createResponseResource({
+          id: responseId,
+          model,
+          status: normalizedToolCalls.length > 0 ? "incomplete" : "completed",
+          output,
+          usage: finalUsage,
+        }),
+      });
+      writeSseDone(res);
+      res.end();
+    }
+
+    upstreamRes.on("data", (chunk) => {
+      parseSseDataBlocks(parserState, chunk, (data) => {
+        if (data === "[DONE]") {
+          finalize();
+          return;
+        }
+        let parsed;
+        try {
+          parsed = JSON.parse(data);
+        } catch (error) {
+          log(`chat SSE parse skipped: ${error.message}`);
+          return;
+        }
+        if (parsed.usage) finalUsage = parsed.usage;
+        const choice = parsed.choices?.[0];
+        const delta = choice?.delta || {};
+        const textDelta = typeof delta.content === "string" ? delta.content : "";
+        if (textDelta) {
+          accumulatedText += textDelta;
+          writeSseEvent(res, {
+            type: "response.output_text.delta",
+            item_id: outputItemId,
+            output_index: 0,
+            content_index: 0,
+            delta: textDelta,
+          });
+        }
+        toolCalls.add(delta.tool_calls);
+        if (choice?.finish_reason && choice.finish_reason !== "tool_calls") {
+          finalUsage = finalUsage || parsed.usage;
+        }
+      });
+    });
+    upstreamRes.on("end", finalize);
+    upstreamRes.on("error", (error) => {
+      if (!finished) writeResponsesStreamFailure(res, responseId, model, `upstream stream failed: ${error.message}`);
+    });
+  });
+
+  upstreamReq.on("timeout", () => upstreamReq.destroy(new Error("upstream timeout")));
+  upstreamReq.on("error", (error) => {
+    if (finished) return;
+    writeResponsesStreamFailure(res, responseId, model, `responses adapter failed: ${error.message}`);
+  });
+  res.on("close", () => {
+    if (finished) return;
+    try { upstreamReq.destroy(); } catch {}
+  });
+  upstreamReq.end(body);
+}
+
+async function handleResponses(req, res) {
+  let request;
+  try {
+    request = JSON.parse((await readBody(req)).toString("utf8"));
+  } catch (error) {
+    return json(res, 400, responseError(`invalid JSON: ${error.message}`, "invalid_request_error"));
+  }
+
+  const chatBody = responsesBodyToChatBody(request);
+  if (request.stream) return handleResponsesStream(req, res, request, chatBody);
+  return handleResponsesNonStream(req, res, request, chatBody);
+}
+
+async function handleCompact(req, res) {
+  let request;
+  try {
+    request = JSON.parse((await readBody(req)).toString("utf8"));
+  } catch (error) {
+    return json(res, 400, { error: { message: `invalid JSON: ${error.message}` } });
+  }
+
+  const model = request.model || DEFAULT_MODEL;
+  let conversation = JSON.stringify(request.input || [], null, 2);
+  if (conversation.length > MAX_CONV_CHARS) {
+    log(`truncating compact input ${conversation.length} -> ${MAX_CONV_CHARS}`);
+    conversation = `${conversation.slice(0, MAX_CONV_CHARS)}\n\n... [TRUNCATED]`;
+  }
+
+  const chatBody = Buffer.from(JSON.stringify({
     model,
     messages: [
       { role: "system", content: COMPACT_SYSTEM },
-      { role: "user", content: `Summarize for context compaction:\n\n${convText}` },
+      { role: "user", content: `Summarize this conversation for context compaction:\n\n${conversation}` },
     ],
     max_tokens: 8192,
     stream: false,
-  });
+  }));
 
-  const auth = req.headers.authorization || "";
-
-  const cpaReq = http.request({
-    hostname: CPA_HOST, port: CPA_PORT,
-    path: "/v1/chat/completions", method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": auth, "Content-Length": Buffer.byteLength(chatReq) },
-    timeout: COMPACT_TIMEOUT,
-  }, (cpaRes) => {
-    const bodyChunks = [];
-    cpaRes.on("data", (c) => bodyChunks.push(c));
-    cpaRes.on("end", () => {
-      try {
-        const chatResp = JSON.parse(Buffer.concat(bodyChunks).toString());
-        const summary = chatResp.choices?.[0]?.message?.content || "";
-        const compactResp = {
-          id: `compact_${reqData.thread_id || "local"}`,
-          object: "response",
-          created_at: chatResp.created || 0,
-          model,
-          status: "completed",
-          output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: summary }] }],
-          usage: chatResp.usage || {},
-          metadata: {},
-        };
-        process.stderr.write(`[compact-proxy] compact OK, ${summary.length} chars\n`);
-        safeJson(compactResp, res);
-      } catch (e) {
-        process.stderr.write(`[compact-proxy] compact parse error: ${e.message}\n`);
-        safeJson({ error: { message: `compact parse failed: ${e.message}` }, _status: 502 }, res);
-      }
-    });
-  });
-
-  cpaReq.on("error", (e) => {
-    process.stderr.write(`[compact-proxy] compact upstream error: ${e.message}\n`);
-    safeJson({ error: { message: `compact failed: ${e.message}` }, _status: 502 }, res);
-  });
-
-  cpaReq.on("timeout", () => {
-    cpaReq.destroy();
-    safeJson({ error: { message: "compact timeout" }, _status: 504 }, res);
-  });
-
-  cpaReq.end(chatReq);
-}
-
-function forwardHttp(req, res) {
-  const chunks = [];
-  req.on("data", (c) => chunks.push(c));
-  req.on("end", () => {
-    const body = Buffer.concat(chunks);
-    const headers = forwardHeaders(req);
-    if (body.length > 0) headers["content-length"] = body.length;
-
-    const cpaReq = http.request({
-      hostname: CPA_HOST, port: CPA_PORT,
-      path: req.url, method: req.method,
-      headers,
-      timeout: 300000,
-    }, (cpaRes) => {
-      const contentType = cpaRes.headers["content-type"] || "";
-      const isSSE = contentType.includes("text/event-stream");
-
-      if (isSSE) {
-        res.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-          "Access-Control-Allow-Origin": "*",
-        });
-        cpaRes.on("data", (chunk) => {
-          try { res.write(chunk); } catch {}
-        });
-        cpaRes.on("end", () => { try { res.end(); } catch {} });
-        cpaRes.on("error", () => { try { res.end(); } catch {} });
-      } else {
-        const respChunks = [];
-        cpaRes.on("data", (c) => respChunks.push(c));
-        cpaRes.on("end", () => {
-          const respBody = Buffer.concat(respChunks);
-          const respHeaders = { "Content-Type": contentType || "application/json" };
-          if (cpaRes.headers["access-control-allow-origin"]) respHeaders["Access-Control-Allow-Origin"] = cpaRes.headers["access-control-allow-origin"];
-          respHeaders["Content-Length"] = respBody.length;
-          res.writeHead(cpaRes.statusCode, respHeaders);
-          res.end(respBody);
-        });
-      }
+  try {
+    const upstream = await requestUpstream({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: {
+        "content-type": "application/json",
+        "authorization": upstreamAuthorization(req),
+        "content-length": chatBody.length,
+      },
+      body: chatBody,
     });
 
-    cpaReq.on("error", (e) => {
-      process.stderr.write(`[compact-proxy] forward error: ${e.message}\n`);
-      const errBody = JSON.stringify({ error: { message: `proxy failed: ${e.message}` } });
-      try {
-        res.writeHead(502, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(errBody) });
-        res.end(errBody);
-      } catch {}
+    if (upstream.statusCode < 200 || upstream.statusCode >= 300) {
+      return json(res, upstream.statusCode, {
+        error: {
+          message: `compact upstream failed with ${upstream.statusCode}`,
+          body: upstream.body.toString("utf8").slice(0, 2000),
+        },
+      });
+    }
+
+    const chat = JSON.parse(upstream.body.toString("utf8"));
+    const summary = chat.choices?.[0]?.message?.content || "";
+    log(`compact completed, ${summary.length} chars`);
+    return json(res, 200, {
+      id: `compact_${request.thread_id || "local"}`,
+      object: "response",
+      created_at: chat.created || nowSeconds(),
+      model,
+      status: "completed",
+      output: [
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: summary }],
+        },
+      ],
+      usage: normalizeUsage(chat.usage),
+      metadata: {},
     });
-
-    if (body.length > 0) cpaReq.end(body);
-    else cpaReq.end();
-  });
-}
-
-// --- HTTP Server ---
-const server = http.createServer((req, res) => {
-  if (req.method === "POST" && req.url === "/v1/responses/compact") {
-    handleCompact(req, res);
-  } else {
-    forwardHttp(req, res);
+  } catch (error) {
+    log(`compact failed: ${error.message}`);
+    return json(res, 502, { error: { message: `compact failed: ${error.message}` } });
   }
+}
+
+async function forwardHttp(req, res) {
+  const body = await readBody(req);
+  const headers = applyUpstreamAuthorization(forwardHeaders(req), req);
+  if (body.length) headers["content-length"] = body.length;
+
+  const upstreamReq = requestModule().request({
+    protocol: upstreamBase.protocol,
+    hostname: upstreamBase.hostname,
+    port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
+    method: req.method,
+    path: resolveUpstreamPath(req.url),
+    headers,
+    timeout: REQUEST_TIMEOUT_MS,
+  }, (upstreamRes) => {
+    const contentType = upstreamRes.headers["content-type"] || "";
+    const isSse = contentType.includes("text/event-stream");
+
+    if (isSse) {
+      res.writeHead(upstreamRes.statusCode || 200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+      });
+      upstreamRes.pipe(res);
+      return;
+    }
+
+    const chunks = [];
+    upstreamRes.on("data", (chunk) => chunks.push(chunk));
+    upstreamRes.on("end", () => {
+      const responseBody = Buffer.concat(chunks);
+      res.writeHead(upstreamRes.statusCode || 502, {
+        "Content-Type": contentType || "application/json",
+        "Content-Length": responseBody.length,
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(responseBody);
+    });
+  });
+
+  upstreamReq.on("timeout", () => upstreamReq.destroy(new Error("upstream timeout")));
+  upstreamReq.on("error", (error) => {
+    log(`forward failed: ${error.message}`);
+    json(res, 502, { error: { message: `proxy failed: ${error.message}` } });
+  });
+
+  if (body.length) upstreamReq.end(body);
+  else upstreamReq.end();
+}
+
+const server = http.createServer((req, res) => {
+  const pathname = new URL(req.url || "/", "http://127.0.0.1").pathname;
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "authorization,content-type,openai-beta,x-codex-beta-features,x-codex-installation-id,x-codex-window-id",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    });
+    res.end();
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/v1/responses/compact") {
+    handleCompact(req, res).catch((error) => json(res, 500, { error: { message: error.message } }));
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/v1/responses" && RESPONSES_MODE !== "native") {
+    handleResponses(req, res).catch((error) => json(res, 500, responseError(error.message)));
+    return;
+  }
+
+  forwardHttp(req, res).catch((error) => json(res, 500, { error: { message: error.message } }));
 });
 
-// --- WebSocket Proxy ---
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", (clientWs, req) => {
-  process.stderr.write(`[compact-proxy] WS upgrade: ${req.url}\n`);
+  const upstreamUrl = wsUpstreamUrl(req.url);
+  const headers = applyUpstreamAuthorization(forwardHeaders(req), req);
+  log(`websocket ${req.url} -> ${upstreamUrl}`);
+  const upstreamWs = new WebSocket(upstreamUrl, { headers });
+  const pendingClientMessages = [];
+  let upstreamOpen = false;
 
-  const wsUrl = `ws://${CPA_HOST}:${CPA_PORT}${req.url}`;
-  const wsHeaders = {};
-  for (const key of ["authorization", "user-agent", "session_id", "thread_id", "originator", "version",
-    "x-codex-beta-features", "x-codex-installation-id", "x-codex-window-id"]) {
-    const val = req.headers[key];
-    if (val) wsHeaders[key] = val;
-  }
-
-  const cpaWs = new WebSocket(wsUrl, { headers: wsHeaders });
-
-  cpaWs.on("open", () => {
-    // Pipe client -> CPA
-    clientWs.on("message", (data, isBinary) => {
-      try {
-        if (isBinary) {
-          cpaWs.send(data.toString("utf-8"), { binary: false });
-        } else {
-          cpaWs.send(data, { binary: false });
-        }
-      } catch {}
-    });
-    clientWs.on("close", (code, reason) => {
-      try { cpaWs.close(code, reason); } catch {}
-    });
-  });
-
-  // Pipe CPA -> client
-  cpaWs.on("message", (data, isBinary) => {
+  clientWs.on("message", (data) => {
+    const payload = Buffer.isBuffer(data) ? data.toString("utf8") : data;
+    if (!upstreamOpen) {
+      pendingClientMessages.push(payload);
+      return;
+    }
     try {
-      if (isBinary) {
-        // CPA sends binary frames; Codex expects text only.
-        // Convert Buffer to UTF-8 string and send as text.
-        clientWs.send(data.toString("utf-8"), { binary: false });
-      } else {
-        clientWs.send(data, { binary: false });
-      }
+      upstreamWs.send(payload, { binary: false });
     } catch {}
   });
-  cpaWs.on("close", (code, reason) => {
+
+  upstreamWs.on("open", () => {
+    upstreamOpen = true;
+    for (const payload of pendingClientMessages.splice(0)) {
+      try {
+        upstreamWs.send(payload, { binary: false });
+      } catch {}
+    }
+  });
+
+  upstreamWs.on("message", (data) => {
+    try {
+      clientWs.send(Buffer.isBuffer(data) ? data.toString("utf8") : data, { binary: false });
+    } catch {}
+  });
+
+  upstreamWs.on("close", (code, reason) => {
     try { clientWs.close(code, reason); } catch {}
   });
-
-  cpaWs.on("error", (e) => {
-    process.stderr.write(`[compact-proxy] WS upstream error: ${e.message}\n`);
+  upstreamWs.on("error", (error) => {
+    log(`websocket upstream failed: ${error.message}`);
     try { clientWs.close(1011, "upstream error"); } catch {}
   });
-
+  clientWs.on("close", (code, reason) => {
+    try { upstreamWs.close(code, reason); } catch {}
+  });
   clientWs.on("error", () => {
-    try { cpaWs.close(); } catch {}
+    try { upstreamWs.close(); } catch {}
   });
 });
 
-server.listen(LISTEN_PORT, "127.0.0.1", () => {
-  console.log(`CPA Compact Proxy v5 (Node.js) on 127.0.0.1:${LISTEN_PORT} -> CPA:${CPA_PORT}`);
-  process.stderr.write(`[compact-proxy] v5 started, pid=${process.pid}, WS support enabled\n`);
+server.listen(LISTEN_PORT, LISTEN_HOST, () => {
+  log(`listening on ${LISTEN_HOST}:${LISTEN_PORT} -> ${upstreamBase.href} (responses ${RESPONSES_MODE})`);
 });

@@ -78,6 +78,11 @@ if [[ -f "$HOME/.codex/config.toml" ]]; then
   grep -q 'responses_websockets = true' "$HOME/.codex/config.toml" && ok "Codex responses_websockets enabled" || fail "responses_websockets is not enabled"
   grep -q 'responses_websockets_v2 = true' "$HOME/.codex/config.toml" && ok "Codex responses_websockets_v2 enabled" || fail "responses_websockets_v2 is not enabled"
 fi
+[[ -f "$HOME/.codex/auth.json" ]] && ok "~/.codex/auth.json exists" || fail "~/.codex/auth.json missing"
+if [[ -f "$HOME/.cli-proxy-api/config.yaml" ]]; then
+  grep -q 'remote-management:' "$HOME/.cli-proxy-api/config.yaml" && ok "CPA remote-management configured" || fail "CPA remote-management missing"
+  grep -q 'disable-control-panel: false' "$HOME/.cli-proxy-api/config.yaml" && ok "CPA management panel enabled" || warn "CPA management panel disabled"
+fi
 
 CPA_PORT="$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)"
 [[ -n "$CPA_PORT" ]] || CPA_PORT=8317

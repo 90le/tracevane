@@ -72,6 +72,7 @@
         <div class="cs-model-ribbon-side">
           <span class="cs-status-pill" :class="`tone-${modelSourceTone}`">{{ modelSourceLabel }}</span>
           <span class="cs-info-chip">{{ text("可选模型", "Available models") }} {{ modelOptions.length }}</span>
+          <span class="cs-info-chip">{{ text("上下文", "Context") }} {{ contextTokensDisplay }}</span>
           <button type="button" class="secondary-button" :disabled="loading" @click="loadSummary">
             {{ text("刷新模型列表", "Refresh Models") }}
           </button>
@@ -114,6 +115,9 @@
                     </span>
                     <span class="cs-info-chip">
                       {{ text("当前模型", "Current model") }} {{ summary.models.current || "--" }}
+                    </span>
+                    <span class="cs-info-chip">
+                      {{ text("Codex 上下文", "Codex context") }} {{ contextTokensDisplay }}
                     </span>
                     <span class="cs-info-chip">
                       {{ text("安装渠道", "Channel") }} {{ channelLabel(summary.installer.channel) }}
@@ -470,7 +474,7 @@
                       </div>
                     </div>
                     <p class="cs-field-hint">
-                      {{ text("这里的默认模型会写入 Codex；cc-connect 项目也可以在可视化配置里同步同一个模型。上游 API 进入 CPA，再由 Compact 暴露给 Codex 和 cc-connect。", "The default model here is written to Codex; cc-connect projects can reuse it from the visual config. Upstream API enters CPA, then Compact exposes it to Codex and cc-connect.") }}
+                    {{ text("默认选择遵循 kimi-k2.6 → glm-5.1 → openclaw.json 默认模型；用户仍可手动改成任何 CPA 支持的模型。上游 API 进入 CPA，再由 Compact 暴露给 Codex 和 cc-connect。", "The default follows kimi-k2.6 → glm-5.1 → the openclaw.json default model, while users can still choose any model supported by CPA. Upstream API enters CPA, then Compact exposes it to Codex and cc-connect.") }}
                     </p>
                     <div class="cs-flow-steps">
                       <span>{{ text("上游 API", "Upstream API") }}</span>
@@ -508,6 +512,27 @@
                         <span class="form-label">{{ text("代理密钥", "Proxy Key") }}</span>
                         <input v-model="installForm.cpaKey" class="form-input" type="password" :maxlength="72" />
                         <span class="form-hint">{{ text("建议使用 16-72 个字符", "Recommended 16-72 characters") }}</span>
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text("Codex 上下文", "Codex Context") }}</span>
+                        <select v-model="installForm.contextMode" class="form-input">
+                          <option value="default">{{ text("默认上下文", "Default context") }}</option>
+                          <option value="codex-1m">{{ text("1M 上下文", "1M context") }}</option>
+                          <option value="custom">{{ text("自定义 token", "Custom tokens") }}</option>
+                        </select>
+                        <span class="form-help">{{ text("1M 适合支持大上下文的模型；默认模式不会写 model_context_window。", "1M is for large-context models; default mode does not write model_context_window.") }}</span>
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text("上下文 tokens", "Context tokens") }}</span>
+                        <input
+                          v-model.number="installForm.contextWindowTokens"
+                          class="form-input"
+                          type="number"
+                          min="1000"
+                          max="1050000"
+                          step="1000"
+                          :disabled="installContextTokensDisabled"
+                        />
                       </label>
                     </div>
                   </article>
@@ -1098,6 +1123,27 @@
                       <span class="form-help">{{ text("保存后会写入 Codex，并可同步到 cc-connect Agent。", "Saving writes to Codex and can be synced to cc-connect agents.") }}</span>
                     </label>
                     <label class="form-field">
+                      <span class="form-label">{{ text("Codex 上下文", "Codex Context") }}</span>
+                      <select v-model="configForm.contextMode" class="form-input">
+                        <option value="default">{{ text("默认上下文", "Default context") }}</option>
+                        <option value="codex-1m">{{ text("1M 上下文", "1M context") }}</option>
+                        <option value="custom">{{ text("自定义 token", "Custom tokens") }}</option>
+                      </select>
+                      <span class="form-help">{{ text("保存后会更新 ~/.codex/config.toml。", "Saving updates ~/.codex/config.toml.") }}</span>
+                    </label>
+                    <label class="form-field">
+                      <span class="form-label">{{ text("上下文 tokens", "Context tokens") }}</span>
+                      <input
+                        v-model.number="configForm.contextWindowTokens"
+                        class="form-input"
+                        type="number"
+                        min="1000"
+                        max="1050000"
+                        step="1000"
+                        :disabled="configContextTokensDisabled"
+                      />
+                    </label>
+                    <label class="form-field">
                       <span class="form-label">{{ text("CPA 端口", "CPA Port") }}</span>
                       <input v-model.number="configForm.cpaPort" class="form-input" type="number" min="1" />
                     </label>
@@ -1168,6 +1214,18 @@
                     <div class="cs-kv-row">
                       <span>{{ text("代理密钥", "Proxy Key") }}</span>
                       <code>{{ summary.secrets.cpaProxyKey.masked || text("未设置", "Not set") }}</code>
+                    </div>
+                    <div class="cs-kv-row">
+                      <span>{{ text("Codex auth.json", "Codex auth.json") }}</span>
+                      <code>{{ summary.secrets.codexAuth.hasSecret ? (summary.secrets.codexAuth.matchesProxyKey ? "ok" : "mismatch") : text("缺失", "Missing") }}</code>
+                    </div>
+                    <div class="cs-kv-row">
+                      <span>{{ text("上下文", "Context") }}</span>
+                      <code>{{ summary.context.mode }} · {{ contextTokensDisplay }}</code>
+                    </div>
+                    <div class="cs-kv-row">
+                      <span>{{ text("CPA 看板", "CPA Dashboard") }}</span>
+                      <code>{{ summary.cpaManagement.controlPanelEnabled ? summary.cpaManagement.dashboardUrl : text("未启用", "Disabled") }}</code>
                     </div>
                   </div>
                   <div v-if="summary.installer.missingFiles.length" class="cs-warning-list">
@@ -1344,6 +1402,7 @@ type LogLineMode = "light" | "balanced" | "deep";
 type ComponentInstallMode = "default" | "skip" | "force";
 type AgentProjectPreset = "admin" | "worker";
 type PlatformTemplateId = "dmwork" | "feishu" | "weixin";
+type ContextMode = "default" | "codex-1m" | "custom";
 type CcConnectProviderDraft = CcConnectProvider & { id: string };
 type CcConnectPlatformOptionDraft = { id: string; key: string; value: string };
 type CcConnectPlatformDraft = {
@@ -1444,6 +1503,8 @@ const navSections = computed(() => [
 
 const installForm = reactive({
   model: "kimi-k2.6",
+  contextMode: "default" as ContextMode,
+  contextWindowTokens: 1050000,
   cpaPort: 18795,
   compactPort: 18796,
   cpaKey: "",
@@ -1461,6 +1522,8 @@ const installForm = reactive({
 
 const configForm = reactive({
   defaultModel: "kimi-k2.6",
+  contextMode: "default" as ContextMode,
+  contextWindowTokens: 1050000,
   cpaPort: 18795,
   compactPort: 18796,
   ccConnectProject: "main",
@@ -1542,7 +1605,7 @@ const modelSourceHelp = computed(() => {
     `Could not read ${models.endpoint}; using local config fallback. Reason: ${models.error || "unknown"}`,
   );
 });
-const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["kimi-k2.6"]);
+const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["kimi-k2.6", "glm-5.1", "gpt-5.5"]);
 const modelCatalogPreview = computed(() => modelOptions.value.slice(0, 6));
 const nextActionSection = computed<SectionId>(() => {
   const status = summary.value?.overallStatus || "needs-setup";
@@ -1597,6 +1660,15 @@ const primaryCcConnectProjectName = computed(
   () => ccConnectProjectDrafts.value[0]?.name || ccConnectProjects.value[0]?.name || summary.value?.ccConnect.project || "main",
 );
 const compactProxyBaseUrl = computed(() => `http://127.0.0.1:${configForm.compactPort || summary.value?.ports.compact || 18796}/v1`);
+const contextTokensDisplay = computed(() => {
+  if (summary.value?.context.mode === "default" && !summary.value.context.tokens) {
+    return text("默认", "Default");
+  }
+  const tokens = summary.value?.context.tokens || summary.value?.context.recommendedTokens || 1050000;
+  return tokens >= 1000000 ? `${(tokens / 1000000).toFixed(tokens % 1000000 === 0 ? 0 : 2)}M` : `${Math.round(tokens / 1000)}K`;
+});
+const configContextTokensDisabled = computed(() => configForm.contextMode !== "custom");
+const installContextTokensDisabled = computed(() => installForm.contextMode !== "custom");
 const canonicalCcConnectProvider = computed(() => {
   const provider = ccConnectProviderDrafts.value.find((item) => item.name === "cpa") || ccConnectProviderDrafts.value[0];
   return {
@@ -1698,6 +1770,7 @@ const installPlanHighlights = computed(() => {
   return [
     `${text("渠道", "Channel")}: ${channelLabel(installForm.channel)}`,
     `${text("模型", "Model")}: ${installForm.model || "--"}`,
+    `${text("上下文", "Context")}: ${installForm.contextMode === "default" ? text("默认", "Default") : `${installForm.contextMode === "codex-1m" ? "1M" : installForm.contextWindowTokens} tokens`}`,
     `${text("端口", "Ports")}: CPA ${installForm.cpaPort} / Compact ${installForm.compactPort}`,
     `${text("跳过", "Skip")}: ${skip.length ? skip.join(", ") : text("无", "None")}`,
     `${text("强制", "Force")}: ${force.length ? force.join(", ") : text("无", "None")}`,
@@ -2015,11 +2088,15 @@ function nextActionPrimary(): void {
 
 function applySummary(next: CodexStackSummaryPayload): void {
   summary.value = next;
-  installForm.model = next.models.current || next.profile.defaultModel || "glm-5.1";
+  installForm.model = next.models.current || next.profile.defaultModel || next.models.defaultModel || "kimi-k2.6";
+  installForm.contextMode = next.context.mode || "default";
+  installForm.contextWindowTokens = next.context.tokens || next.context.recommendedTokens;
   installForm.cpaPort = next.ports.cpa;
   installForm.compactPort = next.ports.compact;
   installForm.channel = next.installer.channel;
-  configForm.defaultModel = next.models.current || next.profile.defaultModel || "glm-5.1";
+  configForm.defaultModel = next.models.current || next.profile.defaultModel || next.models.defaultModel || "kimi-k2.6";
+  configForm.contextMode = next.context.mode || "default";
+  configForm.contextWindowTokens = next.context.tokens || next.context.recommendedTokens;
   configForm.cpaPort = next.ports.cpa;
   configForm.compactPort = next.ports.compact;
   configForm.ccConnectProject = next.ccConnect.project || next.profile.ccConnectProject || "main";
@@ -2079,6 +2156,8 @@ function buildInstallPayload(skipCcConnect = installForm.skipCcConnect) {
   return {
     env: {
       CODEX_MODEL: installForm.model || undefined,
+      CODEX_CONTEXT_MODE: installForm.contextMode,
+      CODEX_CONTEXT_WINDOW: installForm.contextMode === "custom" ? Number(installForm.contextWindowTokens) || undefined : undefined,
       CPA_PORT: Number(installForm.cpaPort) || undefined,
       COMPACT_PORT: Number(installForm.compactPort) || undefined,
       CPA_PROXY_KEY: installForm.cpaKey || undefined,
@@ -2265,6 +2344,8 @@ async function saveConfigPatch(): Promise<void> {
   try {
     const response = await patchCodexStackConfig({
       defaultModel: configForm.defaultModel,
+      contextMode: configForm.contextMode,
+      contextWindowTokens: configForm.contextMode === "custom" ? Number(configForm.contextWindowTokens) || undefined : undefined,
       cpaPort: Number(configForm.cpaPort) || undefined,
       compactPort: Number(configForm.compactPort) || undefined,
       ccConnectProject: configForm.ccConnectProject || undefined,

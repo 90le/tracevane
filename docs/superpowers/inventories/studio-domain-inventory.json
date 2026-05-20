@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-15T06:07:50.893Z",
+  "generatedAt": "2026-05-20T06:47:19.914Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -117,6 +117,7 @@
     "tests/system/channels-service.test.mjs",
     "tests/system/channels-web-field-metadata.test.mjs",
     "tests/system/codex-stack-service.test.mjs",
+    "tests/system/compact-proxy.test.mjs",
     "tests/system/config-audit-diff.test.mjs",
     "tests/system/config-audit-events.test.mjs",
     "tests/system/config-audit-fields.test.mjs",

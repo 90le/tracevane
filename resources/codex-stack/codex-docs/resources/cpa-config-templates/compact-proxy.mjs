@@ -2,12 +2,23 @@
 /**
  * Compact Proxy for Codex Responses API.
  *
- * It forwards normal HTTP/WebSocket traffic to CPA and implements
- * /v1/responses/compact through /v1/chat/completions for gateways that do not
- * provide OpenAI's compact endpoint natively.
+ * CPA's OpenAI-compatible provider path is reliable for /v1/chat/completions,
+ * while Codex now talks to /v1/responses. This proxy keeps CPA as the local
+ * chat-completions upstream and provides the Responses compatibility layer that
+ * Codex expects:
+ *
+ * - POST /v1/responses -> translate to /v1/chat/completions and back
+ * - POST /v1/responses/compact -> summarize through /v1/chat/completions
+ * - other HTTP/WebSocket traffic -> forward to CPA
+ *
+ * Set CPA_BASE_URL to use a non-default upstream, including https://... . The
+ * local listener remains plain HTTP, so no local certificate installation is
+ * required.
  */
 
 import http from "node:http";
+import https from "node:https";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
@@ -19,6 +30,8 @@ function loadWs() {
   const candidates = ["ws"];
   const home = os.homedir();
   candidates.push(path.join(home, ".openclaw", "node_modules", "ws"));
+  candidates.push(path.join(home, ".local", "lib", "node_modules", "ws"));
+  candidates.push(path.join(home, ".npm-global", "lib", "node_modules", "ws"));
   try {
     const npmRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
     if (npmRoot) candidates.push(path.join(npmRoot, "ws"));
@@ -39,11 +52,19 @@ const { WebSocketServer, WebSocket } = loadWs();
 
 const CPA_HOST = process.env.CPA_HOST || "127.0.0.1";
 const CPA_PORT = Number(process.env.CPA_PORT || 8317);
+const CPA_BASE_URL = process.env.CPA_BASE_URL || process.env.CPA_UPSTREAM_BASE_URL || `http://${CPA_HOST}:${CPA_PORT}`;
 const LISTEN_HOST = process.env.LISTEN_HOST || "127.0.0.1";
 const LISTEN_PORT = Number(process.env.LISTEN_PORT || 18796);
 const DEFAULT_MODEL = process.env.COMPACT_DEFAULT_MODEL || "glm-5.1";
 const MAX_CONV_CHARS = Number(process.env.COMPACT_MAX_CONV_CHARS || 300000);
 const REQUEST_TIMEOUT_MS = Number(process.env.COMPACT_TIMEOUT_MS || 300000);
+const RESPONSES_MODE = (process.env.COMPACT_RESPONSES_MODE || "adapter").toLowerCase();
+const UPSTREAM_API_KEY = process.env.CPA_UPSTREAM_API_KEY || process.env.COMPACT_UPSTREAM_API_KEY || "";
+
+const upstreamBase = new URL(CPA_BASE_URL);
+if (!["http:", "https:"].includes(upstreamBase.protocol)) {
+  throw new Error(`CPA_BASE_URL must use http or https, got: ${CPA_BASE_URL}`);
+}
 
 const COMPACT_SYSTEM = `You are a context compaction assistant. Summarize the conversation into a concise but complete handoff that preserves:
 
@@ -61,6 +82,35 @@ function log(message) {
   process.stderr.write(`[compact-proxy] ${message}\n`);
 }
 
+function nowSeconds() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function shortId(prefix) {
+  return `${prefix}_${randomUUID().replace(/-/g, "")}`;
+}
+
+function requestModule() {
+  return upstreamBase.protocol === "https:" ? https : http;
+}
+
+function resolveUpstreamPath(requestPath) {
+  const local = new URL(requestPath || "/", "http://127.0.0.1");
+  const rawPath = `${local.pathname}${local.search}`;
+  const basePath = upstreamBase.pathname.replace(/\/+$/, "");
+  if (!basePath || basePath === "/") return rawPath;
+  if (basePath.endsWith("/v1") && local.pathname.startsWith("/v1/")) {
+    return `${basePath}${rawPath.slice(3)}`;
+  }
+  return `${basePath}${rawPath}`;
+}
+
+function wsUpstreamUrl(requestPath) {
+  const protocol = upstreamBase.protocol === "https:" ? "wss:" : "ws:";
+  const port = upstreamBase.port ? `:${upstreamBase.port}` : "";
+  return `${protocol}//${upstreamBase.hostname}${port}${resolveUpstreamPath(requestPath)}`;
+}
+
 function forwardHeaders(req) {
   const headers = {};
   for (const key of [
@@ -68,6 +118,7 @@ function forwardHeaders(req) {
     "content-type",
     "user-agent",
     "accept",
+    "openai-beta",
     "session_id",
     "thread_id",
     "originator",
@@ -75,10 +126,28 @@ function forwardHeaders(req) {
     "x-codex-beta-features",
     "x-codex-installation-id",
     "x-codex-window-id",
+    "x-stainless-arch",
+    "x-stainless-lang",
+    "x-stainless-os",
+    "x-stainless-package-version",
+    "x-stainless-runtime",
+    "x-stainless-runtime-version",
   ]) {
     const value = req.headers[key];
     if (value) headers[key] = value;
   }
+  return headers;
+}
+
+function upstreamAuthorization(req) {
+  if (UPSTREAM_API_KEY) return `Bearer ${UPSTREAM_API_KEY}`;
+  return req.headers.authorization || "";
+}
+
+function applyUpstreamAuthorization(headers, req) {
+  const authorization = upstreamAuthorization(req);
+  if (authorization) headers.authorization = authorization;
+  else delete headers.authorization;
   return headers;
 }
 
@@ -92,6 +161,10 @@ function json(res, status, obj) {
   res.end(body);
 }
 
+function responseError(message, code = "api_error") {
+  return { error: { message, code, type: code } };
+}
+
 async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -100,11 +173,12 @@ async function readBody(req) {
 
 function requestUpstream({ method, url, headers, body }) {
   return new Promise((resolve, reject) => {
-    const upstream = http.request({
-      hostname: CPA_HOST,
-      port: CPA_PORT,
+    const upstream = requestModule().request({
+      protocol: upstreamBase.protocol,
+      hostname: upstreamBase.hostname,
+      port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
       method,
-      path: url,
+      path: resolveUpstreamPath(url),
       headers,
       timeout: REQUEST_TIMEOUT_MS,
     }, (upstreamRes) => {
@@ -126,6 +200,509 @@ function requestUpstream({ method, url, headers, body }) {
     if (body?.length) upstream.end(body);
     else upstream.end();
   });
+}
+
+function extractTextContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => {
+    if (!part || typeof part !== "object") return "";
+    if (part.type === "input_text" || part.type === "output_text" || part.type === "text") return part.text || "";
+    if (part.type === "input_image") return "[image input omitted by local Responses adapter]";
+    if (part.type === "input_file") return "[file input omitted by local Responses adapter]";
+    return "";
+  }).filter(Boolean).join("\n");
+}
+
+function normalizeChatRole(role) {
+  if (role === "assistant") return "assistant";
+  if (role === "system" || role === "developer") return "system";
+  if (role === "tool") return "tool";
+  return "user";
+}
+
+function responseInputToChatMessages(body) {
+  if (Array.isArray(body.messages) && body.input === undefined) {
+    return body.messages.map((message) => ({ ...message, role: normalizeChatRole(message.role) }));
+  }
+
+  const messages = [];
+  if (body.instructions) {
+    messages.push({ role: "system", content: String(body.instructions) });
+  }
+
+  const input = body.input ?? "";
+  if (typeof input === "string") {
+    messages.push({ role: "user", content: input });
+  } else if (Array.isArray(input)) {
+    for (const item of input) {
+      if (!item || typeof item !== "object") continue;
+      if (item.type === "message") {
+        const content = extractTextContent(item.content).trim();
+        if (!content) continue;
+        messages.push({ role: normalizeChatRole(item.role), content });
+        continue;
+      }
+      if (item.type === "function_call") {
+        const callId = item.call_id || item.id || shortId("call");
+        messages.push({
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id: callId,
+            type: "function",
+            function: {
+              name: item.name || "tool",
+              arguments: item.arguments || "{}",
+            },
+          }],
+        });
+        continue;
+      }
+      if (item.type === "function_call_output") {
+        messages.push({
+          role: "tool",
+          tool_call_id: item.call_id,
+          content: item.output || "",
+        });
+      }
+    }
+  }
+
+  if (messages.length === 0) {
+    messages.push({ role: "user", content: "" });
+  }
+  return messages;
+}
+
+function responsesToolsToChatTools(tools) {
+  if (!Array.isArray(tools)) return undefined;
+  const converted = [];
+  for (const tool of tools) {
+    if (!tool || tool.type !== "function") continue;
+    const fn = tool.function && typeof tool.function === "object" ? tool.function : tool;
+    if (!fn.name) continue;
+    const chatTool = {
+      type: "function",
+      function: {
+        name: fn.name,
+        description: fn.description || "",
+        parameters: fn.parameters || {},
+      },
+    };
+    if (fn.strict !== undefined || tool.strict !== undefined) {
+      chatTool.function.strict = Boolean(fn.strict ?? tool.strict);
+    }
+    converted.push(chatTool);
+  }
+  return converted.length > 0 ? converted : undefined;
+}
+
+function responsesToolChoiceToChatToolChoice(toolChoice) {
+  if (!toolChoice || toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
+  if (toolChoice.type === "function" && toolChoice.function?.name) {
+    return { type: "function", function: { name: toolChoice.function.name } };
+  }
+  return undefined;
+}
+
+function responsesBodyToChatBody(body) {
+  const chatBody = {
+    model: body.model || DEFAULT_MODEL,
+    messages: responseInputToChatMessages(body),
+    stream: Boolean(body.stream),
+  };
+
+  const tools = responsesToolsToChatTools(body.tools);
+  if (tools) chatBody.tools = tools;
+
+  const toolChoice = responsesToolChoiceToChatToolChoice(body.tool_choice);
+  if (toolChoice) chatBody.tool_choice = toolChoice;
+
+  if (Number.isFinite(body.max_output_tokens)) chatBody.max_tokens = body.max_output_tokens;
+  if (Number.isFinite(body.temperature)) chatBody.temperature = body.temperature;
+  if (Number.isFinite(body.top_p)) chatBody.top_p = body.top_p;
+  if (typeof body.user === "string") chatBody.user = body.user;
+  if (body.reasoning?.effort) chatBody.reasoning_effort = body.reasoning.effort;
+  if (typeof body.parallel_tool_calls === "boolean") chatBody.parallel_tool_calls = body.parallel_tool_calls;
+
+  return chatBody;
+}
+
+function normalizeUsage(usage) {
+  if (!usage || typeof usage !== "object") {
+    return { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+  }
+  const input = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0) || 0;
+  const output = Number(usage.output_tokens ?? usage.completion_tokens ?? 0) || 0;
+  const total = Number(usage.total_tokens ?? input + output) || 0;
+  return {
+    input_tokens: Math.max(0, input),
+    output_tokens: Math.max(0, output),
+    total_tokens: Math.max(0, total),
+  };
+}
+
+function createAssistantOutputItem({ id, text, status = "completed", phase }) {
+  return {
+    type: "message",
+    id,
+    role: "assistant",
+    content: [{ type: "output_text", text }],
+    ...(phase ? { phase } : {}),
+    status,
+  };
+}
+
+function createFunctionCallOutputItem({ id, callId, name, args, status = "completed" }) {
+  return {
+    type: "function_call",
+    id,
+    call_id: callId,
+    name: name || "tool",
+    arguments: args || "{}",
+    status,
+  };
+}
+
+function createResponseResource({ id, model, status, output, usage, error }) {
+  return {
+    id,
+    object: "response",
+    created_at: nowSeconds(),
+    status,
+    model,
+    output,
+    usage: normalizeUsage(usage),
+    ...(error ? { error } : {}),
+  };
+}
+
+function extractMessageText(message) {
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => {
+    if (typeof part === "string") return part;
+    if (part?.type === "text") return part.text || "";
+    if (part?.type === "output_text") return part.text || "";
+    return "";
+  }).filter(Boolean).join("");
+}
+
+function normalizeToolCalls(toolCalls) {
+  if (!Array.isArray(toolCalls)) return [];
+  return toolCalls.map((toolCall) => ({
+    id: toolCall.id || shortId("call"),
+    name: toolCall.function?.name || toolCall.name || "tool",
+    args: toolCall.function?.arguments || toolCall.arguments || "{}",
+  }));
+}
+
+function writeSseHeaders(res) {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.flushHeaders?.();
+}
+
+function writeSseEvent(res, event) {
+  res.write(`event: ${event.type}\n`);
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function writeSseDone(res) {
+  res.write("data: [DONE]\n\n");
+}
+
+function writeResponsesStreamStart(res, responseId, model, outputItemId) {
+  const initial = createResponseResource({ id: responseId, model, status: "in_progress", output: [] });
+  writeSseEvent(res, { type: "response.created", response: initial });
+  writeSseEvent(res, { type: "response.in_progress", response: initial });
+  writeSseEvent(res, {
+    type: "response.output_item.added",
+    output_index: 0,
+    item: createAssistantOutputItem({ id: outputItemId, text: "", status: "in_progress" }),
+  });
+  writeSseEvent(res, {
+    type: "response.content_part.added",
+    item_id: outputItemId,
+    output_index: 0,
+    content_index: 0,
+    part: { type: "output_text", text: "" },
+  });
+}
+
+function writeResponsesStreamFailure(res, responseId, model, message, code = "api_error") {
+  writeSseEvent(res, {
+    type: "response.failed",
+    response: createResponseResource({
+      id: responseId,
+      model,
+      status: "failed",
+      output: [],
+      error: { code, message },
+    }),
+  });
+  writeSseDone(res);
+  res.end();
+}
+
+function parseSseDataBlocks(bufferState, chunk, onData) {
+  bufferState.text += chunk.toString("utf8");
+  for (;;) {
+    const separatorIndex = bufferState.text.search(/\r?\n\r?\n/);
+    if (separatorIndex < 0) return;
+    const block = bufferState.text.slice(0, separatorIndex);
+    const separator = bufferState.text.match(/\r?\n\r?\n/)[0];
+    bufferState.text = bufferState.text.slice(separatorIndex + separator.length);
+    const data = block.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+    if (data) onData(data);
+  }
+}
+
+function makeStreamToolCallAccumulator() {
+  const byIndex = new Map();
+  return {
+    add(deltaToolCalls) {
+      if (!Array.isArray(deltaToolCalls)) return;
+      for (const part of deltaToolCalls) {
+        const index = Number.isInteger(part.index) ? part.index : byIndex.size;
+        const current = byIndex.get(index) || { id: "", name: "", args: "" };
+        if (part.id) current.id = part.id;
+        if (part.function?.name) current.name = part.function.name;
+        if (part.function?.arguments) current.args += part.function.arguments;
+        byIndex.set(index, current);
+      }
+    },
+    values() {
+      return [...byIndex.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([, value]) => ({
+          id: value.id || shortId("call"),
+          name: value.name || "tool",
+          args: value.args || "{}",
+        }));
+    },
+  };
+}
+
+async function handleResponsesNonStream(req, res, responseReq, chatBody) {
+  const body = Buffer.from(JSON.stringify({ ...chatBody, stream: false }));
+  try {
+    const upstream = await requestUpstream({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: {
+        "content-type": "application/json",
+        "authorization": upstreamAuthorization(req),
+        "content-length": body.length,
+      },
+      body,
+    });
+
+    if (upstream.statusCode < 200 || upstream.statusCode >= 300) {
+      return json(res, upstream.statusCode, responseError(`responses upstream failed with ${upstream.statusCode}: ${upstream.body.toString("utf8").slice(0, 2000)}`, "upstream_error"));
+    }
+
+    const chat = JSON.parse(upstream.body.toString("utf8"));
+    const choice = chat.choices?.[0] || {};
+    const message = choice.message || {};
+    const text = extractMessageText(message);
+    const toolCalls = normalizeToolCalls(message.tool_calls);
+    const outputItemId = shortId("msg");
+    const output = [];
+    output.push(createAssistantOutputItem({
+      id: outputItemId,
+      text,
+      phase: toolCalls.length > 0 ? "commentary" : "final_answer",
+    }));
+    for (const toolCall of toolCalls) {
+      output.push(createFunctionCallOutputItem({
+        id: shortId("fc"),
+        callId: toolCall.id,
+        name: toolCall.name,
+        args: toolCall.args,
+      }));
+    }
+
+    return json(res, 200, createResponseResource({
+      id: shortId("resp"),
+      model: responseReq.model || chat.model || chatBody.model,
+      status: toolCalls.length > 0 ? "incomplete" : "completed",
+      output,
+      usage: chat.usage,
+    }));
+  } catch (error) {
+    log(`responses adapter failed: ${error.message}`);
+    return json(res, 502, responseError(`responses adapter failed: ${error.message}`));
+  }
+}
+
+async function handleResponsesStream(req, res, responseReq, chatBody) {
+  const responseId = shortId("resp");
+  const outputItemId = shortId("msg");
+  const model = responseReq.model || chatBody.model;
+  const body = Buffer.from(JSON.stringify({ ...chatBody, stream: true }));
+  let finished = false;
+
+  writeSseHeaders(res);
+  writeResponsesStreamStart(res, responseId, model, outputItemId);
+
+  const upstreamReq = requestModule().request({
+    protocol: upstreamBase.protocol,
+    hostname: upstreamBase.hostname,
+    port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
+    method: "POST",
+    path: resolveUpstreamPath("/v1/chat/completions"),
+    headers: {
+      "content-type": "application/json",
+      "authorization": upstreamAuthorization(req),
+      "content-length": body.length,
+      "accept": "text/event-stream",
+    },
+    timeout: REQUEST_TIMEOUT_MS,
+  }, (upstreamRes) => {
+    if ((upstreamRes.statusCode || 502) < 200 || (upstreamRes.statusCode || 502) >= 300) {
+      const chunks = [];
+      upstreamRes.on("data", (chunk) => chunks.push(chunk));
+      upstreamRes.on("end", () => {
+        writeResponsesStreamFailure(
+          res,
+          responseId,
+          model,
+          `responses upstream failed with ${upstreamRes.statusCode}: ${Buffer.concat(chunks).toString("utf8").slice(0, 2000)}`,
+          "upstream_error",
+        );
+      });
+      return;
+    }
+
+    const parserState = { text: "" };
+    const toolCalls = makeStreamToolCallAccumulator();
+    let accumulatedText = "";
+    let finalUsage;
+
+    function finalize() {
+      if (finished) return;
+      finished = true;
+      const normalizedToolCalls = toolCalls.values();
+      writeSseEvent(res, {
+        type: "response.output_text.done",
+        item_id: outputItemId,
+        output_index: 0,
+        content_index: 0,
+        text: accumulatedText,
+      });
+      writeSseEvent(res, {
+        type: "response.content_part.done",
+        item_id: outputItemId,
+        output_index: 0,
+        content_index: 0,
+        part: { type: "output_text", text: accumulatedText },
+      });
+      const messageItem = createAssistantOutputItem({
+        id: outputItemId,
+        text: accumulatedText,
+        phase: normalizedToolCalls.length > 0 ? "commentary" : "final_answer",
+      });
+      writeSseEvent(res, { type: "response.output_item.done", output_index: 0, item: messageItem });
+
+      const output = [messageItem];
+      let outputIndex = 1;
+      for (const toolCall of normalizedToolCalls) {
+        const item = createFunctionCallOutputItem({
+          id: shortId("fc"),
+          callId: toolCall.id,
+          name: toolCall.name,
+          args: toolCall.args,
+        });
+        writeSseEvent(res, { type: "response.output_item.added", output_index: outputIndex, item });
+        writeSseEvent(res, { type: "response.output_item.done", output_index: outputIndex, item });
+        output.push(item);
+        outputIndex += 1;
+      }
+
+      writeSseEvent(res, {
+        type: "response.completed",
+        response: createResponseResource({
+          id: responseId,
+          model,
+          status: normalizedToolCalls.length > 0 ? "incomplete" : "completed",
+          output,
+          usage: finalUsage,
+        }),
+      });
+      writeSseDone(res);
+      res.end();
+    }
+
+    upstreamRes.on("data", (chunk) => {
+      parseSseDataBlocks(parserState, chunk, (data) => {
+        if (data === "[DONE]") {
+          finalize();
+          return;
+        }
+        let parsed;
+        try {
+          parsed = JSON.parse(data);
+        } catch (error) {
+          log(`chat SSE parse skipped: ${error.message}`);
+          return;
+        }
+        if (parsed.usage) finalUsage = parsed.usage;
+        const choice = parsed.choices?.[0];
+        const delta = choice?.delta || {};
+        const textDelta = typeof delta.content === "string" ? delta.content : "";
+        if (textDelta) {
+          accumulatedText += textDelta;
+          writeSseEvent(res, {
+            type: "response.output_text.delta",
+            item_id: outputItemId,
+            output_index: 0,
+            content_index: 0,
+            delta: textDelta,
+          });
+        }
+        toolCalls.add(delta.tool_calls);
+        if (choice?.finish_reason && choice.finish_reason !== "tool_calls") {
+          finalUsage = finalUsage || parsed.usage;
+        }
+      });
+    });
+    upstreamRes.on("end", finalize);
+    upstreamRes.on("error", (error) => {
+      if (!finished) writeResponsesStreamFailure(res, responseId, model, `upstream stream failed: ${error.message}`);
+    });
+  });
+
+  upstreamReq.on("timeout", () => upstreamReq.destroy(new Error("upstream timeout")));
+  upstreamReq.on("error", (error) => {
+    if (finished) return;
+    writeResponsesStreamFailure(res, responseId, model, `responses adapter failed: ${error.message}`);
+  });
+  res.on("close", () => {
+    if (finished) return;
+    try { upstreamReq.destroy(); } catch {}
+  });
+  upstreamReq.end(body);
+}
+
+async function handleResponses(req, res) {
+  let request;
+  try {
+    request = JSON.parse((await readBody(req)).toString("utf8"));
+  } catch (error) {
+    return json(res, 400, responseError(`invalid JSON: ${error.message}`, "invalid_request_error"));
+  }
+
+  const chatBody = responsesBodyToChatBody(request);
+  if (request.stream) return handleResponsesStream(req, res, request, chatBody);
+  return handleResponsesNonStream(req, res, request, chatBody);
 }
 
 async function handleCompact(req, res) {
@@ -159,7 +736,7 @@ async function handleCompact(req, res) {
       url: "/v1/chat/completions",
       headers: {
         "content-type": "application/json",
-        "authorization": req.headers.authorization || "",
+        "authorization": upstreamAuthorization(req),
         "content-length": chatBody.length,
       },
       body: chatBody,
@@ -180,7 +757,7 @@ async function handleCompact(req, res) {
     return json(res, 200, {
       id: `compact_${request.thread_id || "local"}`,
       object: "response",
-      created_at: chat.created || Math.floor(Date.now() / 1000),
+      created_at: chat.created || nowSeconds(),
       model,
       status: "completed",
       output: [
@@ -190,7 +767,7 @@ async function handleCompact(req, res) {
           content: [{ type: "output_text", text: summary }],
         },
       ],
-      usage: chat.usage || {},
+      usage: normalizeUsage(chat.usage),
       metadata: {},
     });
   } catch (error) {
@@ -201,14 +778,15 @@ async function handleCompact(req, res) {
 
 async function forwardHttp(req, res) {
   const body = await readBody(req);
-  const headers = forwardHeaders(req);
+  const headers = applyUpstreamAuthorization(forwardHeaders(req), req);
   if (body.length) headers["content-length"] = body.length;
 
-  const upstreamReq = http.request({
-    hostname: CPA_HOST,
-    port: CPA_PORT,
+  const upstreamReq = requestModule().request({
+    protocol: upstreamBase.protocol,
+    hostname: upstreamBase.hostname,
+    port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
     method: req.method,
-    path: req.url,
+    path: resolveUpstreamPath(req.url),
     headers,
     timeout: REQUEST_TIMEOUT_MS,
   }, (upstreamRes) => {
@@ -250,18 +828,25 @@ async function forwardHttp(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  const pathname = new URL(req.url || "/", "http://127.0.0.1").pathname;
+
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "authorization,content-type,x-codex-beta-features,x-codex-installation-id,x-codex-window-id",
+      "Access-Control-Allow-Headers": "authorization,content-type,openai-beta,x-codex-beta-features,x-codex-installation-id,x-codex-window-id",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     });
     res.end();
     return;
   }
 
-  if (req.method === "POST" && req.url === "/v1/responses/compact") {
+  if (req.method === "POST" && pathname === "/v1/responses/compact") {
     handleCompact(req, res).catch((error) => json(res, 500, { error: { message: error.message } }));
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/v1/responses" && RESPONSES_MODE !== "native") {
+    handleResponses(req, res).catch((error) => json(res, 500, responseError(error.message)));
     return;
   }
 
@@ -271,9 +856,9 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", (clientWs, req) => {
-  const upstreamUrl = `ws://${CPA_HOST}:${CPA_PORT}${req.url}`;
-  const headers = forwardHeaders(req);
-  log(`websocket ${req.url}`);
+  const upstreamUrl = wsUpstreamUrl(req.url);
+  const headers = applyUpstreamAuthorization(forwardHeaders(req), req);
+  log(`websocket ${req.url} -> ${upstreamUrl}`);
   const upstreamWs = new WebSocket(upstreamUrl, { headers });
   const pendingClientMessages = [];
   let upstreamOpen = false;
@@ -320,5 +905,5 @@ wss.on("connection", (clientWs, req) => {
 });
 
 server.listen(LISTEN_PORT, LISTEN_HOST, () => {
-  log(`listening on ${LISTEN_HOST}:${LISTEN_PORT} -> ${CPA_HOST}:${CPA_PORT}`);
+  log(`listening on ${LISTEN_HOST}:${LISTEN_PORT} -> ${upstreamBase.href} (responses ${RESPONSES_MODE})`);
 });

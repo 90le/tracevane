@@ -5,7 +5,6 @@ import http from "node:http";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import bcrypt from "bcryptjs";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import type {
   CcConnectConfig,
@@ -18,6 +17,7 @@ import type {
   CodexStackCcConnectConfigPatchRequest,
   CodexStackComponentSummary,
   CodexStackConfigPatchRequest,
+  CodexStackContextMode,
   CodexStackFinalizeRequest,
   CodexStackInstallRequest,
   CodexStackInstallerSource,
@@ -43,6 +43,12 @@ const execFileAsync = promisify(execFile);
 const OFFICIAL_CPA_PORT = 8317;
 const DMWORK_CPA_PORT = 18795;
 const DEFAULT_COMPACT_PORT = 18796;
+const GPT_55_MODEL = "gpt-5.5";
+const GPT_55_CONTEXT_TOKENS = 1_050_000;
+const DEFAULT_CONTEXT_TOKENS = GPT_55_CONTEXT_TOKENS;
+const MAX_CONTEXT_TOKENS = GPT_55_CONTEXT_TOKENS;
+const CPA_LATEST_VERSION = "v7.1.17";
+const CPA_MANAGEMENT_PANEL_REPOSITORY = "https://github.com/router-for-me/Cli-Proxy-API-Management-Center";
 const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
 const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
 
@@ -52,7 +58,7 @@ function defaultCpaPort(channel?: CodexStackChannel): number {
 function defaultModel(channel?: CodexStackChannel): string {
   return channel === "dmwork" ? DMWORK_DEFAULT_MODEL : OFFICIAL_DEFAULT_MODEL;
 }
-const DEFAULT_CPA_PROXY_KEY = "openclaw-cpa-key";
+const DEFAULT_CPA_PROXY_KEY = "studio";
 const DEFAULT_CC_CONNECT_PROJECT = "main";
 const JOB_TAIL_CHARS = 12_000;
 
@@ -117,6 +123,8 @@ const INSTALL_ENV_KEYS = [
   "CPA_PORT",
   "COMPACT_PORT",
   "CPA_PROXY_KEY",
+  "CODEX_CONTEXT_MODE",
+  "CODEX_CONTEXT_WINDOW",
   "OPENCLAW_UPSTREAM_BASE_URL",
   "OPENCLAW_UPSTREAM_API_KEY",
 ] as const;
@@ -126,6 +134,8 @@ const REPAIR_ACTIONS = [
   "restart-compact-proxy",
   "restart-watchdog",
   "restart-cc-connect",
+  "repair-auth-json",
+  "repair-cpa-management",
   "disable-conflicting-units",
   "rerun-install-no-start",
 ] as const;
@@ -166,6 +176,17 @@ function normalizeString(value: unknown, fallback = ""): string {
 function normalizePort(value: unknown, fallback: number): number {
   const port = Number(value);
   return Number.isFinite(port) && port > 0 && port <= 65535 ? Math.floor(port) : fallback;
+}
+
+function normalizeContextMode(value: unknown, fallback: CodexStackContextMode = "default"): CodexStackContextMode {
+  return value === "default" || value === "codex-1m" || value === "custom" ? value : fallback;
+}
+
+function normalizeContextTokens(value: unknown, fallback: number | null = DEFAULT_CONTEXT_TOKENS): number | null {
+  if (value === null) return null;
+  const tokens = Number(value);
+  if (!Number.isFinite(tokens) || tokens <= 0) return fallback;
+  return Math.max(1_000, Math.min(MAX_CONTEXT_TOKENS, Math.floor(tokens)));
 }
 
 function pathExists(filePath: string): boolean {
@@ -536,6 +557,13 @@ function extractTomlString(source: string, key: string): string {
   return match?.[1]?.trim() || "";
 }
 
+function extractTomlNumber(source: string, key: string): number | null {
+  const match = source.match(new RegExp(`^\\s*${key}\\s*=\\s*([0-9][0-9_]*)`, "m"));
+  if (!match?.[1]) return null;
+  const value = Number(match[1].replace(/_/g, ""));
+  return Number.isFinite(value) ? value : null;
+}
+
 function replaceTomlString(source: string, key: string, value: string): string {
   const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const pattern = new RegExp(`^(\\s*${key}\\s*=\\s*)"[^"]*"(\\s*)$`, "m");
@@ -543,6 +571,19 @@ function replaceTomlString(source: string, key: string, value: string): string {
     return source.replace(pattern, `$1"${escaped}"$2`);
   }
   return `${source.replace(/\s+$/g, "")}\n${key} = "${escaped}"\n`;
+}
+
+function replaceTomlNumber(source: string, key: string, value: number): string {
+  const pattern = new RegExp(`^(\\s*${key}\\s*=\\s*)[0-9][0-9_]*(\\s*)$`, "m");
+  if (pattern.test(source)) {
+    return source.replace(pattern, `$1${value}$2`);
+  }
+  return `${source.replace(/\s+$/g, "")}\n${key} = ${value}\n`;
+}
+
+function removeTopLevelTomlKey(source: string, key: string): string {
+  const pattern = new RegExp(`^\\s*${key}\\s*=.*\\n?`, "m");
+  return source.replace(pattern, "");
 }
 
 function replaceYamlNumber(source: string, key: string, value: number): string {
@@ -561,14 +602,84 @@ function replaceEnvLine(source: string, key: string, value: string | number): st
   return pattern.test(source) ? source.replace(pattern, `$1${String(value)}`) : `${source.replace(/\s+$/g, "")}\nEnvironment=${key}=${String(value)}\n`;
 }
 
-function replaceYamlSecretKey(source: string, hashedValue: string): string {
-  const escaped = JSON.stringify(hashedValue);
-  const pattern = /^(\s*secret-key:\s*).+$/gm;
-  return pattern.test(source) ? source.replace(pattern, `$1${escaped}`) : source;
+function replaceOrAppendYamlString(source: string, key: string, value: string): string {
+  const escaped = JSON.stringify(value);
+  const pattern = new RegExp(`^(\\s*${key}:\\s*).*$`, "m");
+  return pattern.test(source) ? source.replace(pattern, `$1${escaped}`) : `${source.replace(/\s+$/g, "")}\n${key}: ${escaped}\n`;
 }
 
-function hashPassword(plaintext: string): string {
-  return bcrypt.hashSync(plaintext, 10);
+function ensureCpaRemoteManagementBlock(source: string, managementKey = DEFAULT_CPA_PROXY_KEY): string {
+  const block = [
+    "remote-management:",
+    "  allow-remote: false",
+    `  secret-key: ${JSON.stringify(managementKey)}`,
+    "  disable-control-panel: false",
+    `  panel-github-repository: ${JSON.stringify(CPA_MANAGEMENT_PANEL_REPOSITORY)}`,
+  ].join("\n");
+  const pattern = /^remote-management:\n(?:(?:[ \t].*|[ \t]*)\n?)*/m;
+  if (pattern.test(source)) return source.replace(pattern, `${block}\n`);
+  return `${source.replace(/\s+$/g, "")}\n\n${block}\n`;
+}
+
+function yamlBlock(source: string, key: string): string {
+  const match = source.match(new RegExp(`^${key}:\\n((?:(?:[ \\t].*|[ \\t]*)\\n?)*)`, "m"));
+  return match?.[1] || "";
+}
+
+function yamlBlockString(source: string, blockKey: string, key: string): string {
+  const block = yamlBlock(source, blockKey);
+  const match = block.match(new RegExp(`^\\s*${key}:\\s*['"]?([^'"\\n]*)['"]?\\s*$`, "m"));
+  return match?.[1]?.trim() || "";
+}
+
+function yamlBlockBoolean(source: string, blockKey: string, key: string, fallback: boolean): boolean {
+  const value = yamlBlockString(source, blockKey, key).toLowerCase();
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return fallback;
+}
+
+function readCodexAuth(authPath: string): { mode: string | null; key: string } {
+  const auth = readJsonFile<Record<string, unknown>>(authPath, {});
+  return {
+    mode: typeof auth.auth_mode === "string" ? auth.auth_mode : null,
+    key: typeof auth.OPENAI_API_KEY === "string" ? auth.OPENAI_API_KEY.trim() : "",
+  };
+}
+
+function writeCodexAuth(authPath: string, apiKey: string): void {
+  if (!apiKey) return;
+  writeJsonSecure(authPath, {
+    auth_mode: "apikey",
+    OPENAI_API_KEY: apiKey,
+  });
+}
+
+function readCodexContext(source: string): {
+  mode: CodexStackContextMode;
+  tokens: number | null;
+  enabled: boolean;
+} {
+  const tokens = normalizeContextTokens(extractTomlNumber(source, "model_context_window"), null);
+  if (!tokens) return { mode: "default", tokens: null, enabled: false };
+  if (tokens >= 1_000_000) return { mode: "codex-1m", tokens, enabled: true };
+  return { mode: "custom", tokens, enabled: false };
+}
+
+function applyCodexContext(
+  source: string,
+  mode: CodexStackContextMode,
+  tokens: number | null,
+): string {
+  if (mode === "default") {
+    return removeTopLevelTomlKey(removeTopLevelTomlKey(source, "model_context_window"), "model_auto_compact_token_limit");
+  }
+  const nextTokens = mode === "codex-1m" ? GPT_55_CONTEXT_TOKENS : normalizeContextTokens(tokens, DEFAULT_CONTEXT_TOKENS);
+  if (!nextTokens) return source;
+  let next = replaceTomlNumber(source, "model_context_window", nextTokens);
+  const compactLimit = Math.floor(nextTokens * 0.9);
+  next = replaceTomlNumber(next, "model_auto_compact_token_limit", compactLimit);
+  return next;
 }
 
 function resolveHomeDir(config: StudioServerConfig): string {
@@ -586,12 +697,14 @@ function resolvePaths(config: StudioServerConfig) {
     homeDir,
     openclawJson: config.openclawConfigFile,
     codexConfig: path.join(homeDir, ".codex", "config.toml"),
+    codexAuth: path.join(homeDir, ".codex", "auth.json"),
     cpaConfig: path.join(homeDir, ".cli-proxy-api", "config.yaml"),
     ccConnectConfig: path.join(homeDir, ".cc-connect", "config.toml"),
     ccConnectSocket: path.join(homeDir, ".cc-connect", "run", "api.sock"),
     cliProxyApi: path.join(homeDir, ".local", "bin", "cli-proxy-api"),
     compactProxy: path.join(homeDir, ".local", "bin", "cpa-compact-proxy.mjs"),
     compactService: path.join(homeDir, ".config", "systemd", "user", "cpa-compact-proxy.service"),
+    ccConnectSource: path.join(config.projectRoot, "resources", "codex-stack", "cc-connect-source"),
     profile: path.join(config.openclawRoot, "studio", "codex-stack", "profile.json"),
     jobsDir: path.join(config.openclawRoot, "studio", "codex-stack", "jobs"),
   };
@@ -666,9 +779,9 @@ function redactText(input: string, secrets: string[]): string {
   return output;
 }
 
-function parseCpaPort(source: string): number {
+function parseCpaPort(source: string, fallback = DMWORK_CPA_PORT): number {
   const match = source.match(/^port:\s*["']?(\d+)/m);
-  return normalizePort(match?.[1], DMWORK_CPA_PORT);
+  return normalizePort(match?.[1], fallback);
 }
 
 function parseModels(source: string): string[] {
@@ -687,7 +800,7 @@ function parseModels(source: string): string[] {
       }
     }
   }
-  for (const preferred of [DMWORK_DEFAULT_MODEL, OFFICIAL_DEFAULT_MODEL, "gpt-5.5", "gpt-5.4", "kimi-k2.6", "deepseek-v4-flash"]) {
+  for (const preferred of [GPT_55_MODEL, "gpt-5.4", DMWORK_DEFAULT_MODEL, OFFICIAL_DEFAULT_MODEL, "kimi-k2.6", "deepseek-v4-flash"]) {
     if (source.includes(preferred)) models.add(preferred);
   }
   return Array.from(models).sort((left, right) => left.localeCompare(right));
@@ -701,6 +814,26 @@ function normalizeModelId(value: unknown): string {
     if (candidate) return candidate;
   }
   return "";
+}
+
+function readOpenclawDefaultModel(configPath: string): string {
+  const openclaw = readJsonFile<Record<string, unknown>>(configPath, {});
+  const direct = normalizeModelId(openclaw.defaultModel);
+  if (direct) return direct;
+  const models = isRecord(openclaw.models) ? openclaw.models : {};
+  const defaultModel = normalizeModelId(models.defaultModel ?? models.default);
+  if (defaultModel) return defaultModel;
+  return "";
+}
+
+function readOpenclawPreferredModels(configPath: string): string[] {
+  const source = readText(configPath);
+  const preferred: string[] = [];
+  if (source.includes("llm-gateway.mlamp.cn") || source.includes(DMWORK_DEFAULT_MODEL)) preferred.push(DMWORK_DEFAULT_MODEL);
+  if (source.includes(OFFICIAL_DEFAULT_MODEL)) preferred.push(OFFICIAL_DEFAULT_MODEL);
+  const fallback = readOpenclawDefaultModel(configPath);
+  if (fallback) preferred.push(fallback);
+  return Array.from(new Set(preferred));
 }
 
 function parseModelListPayload(payload: unknown): string[] {
@@ -775,14 +908,14 @@ async function discoverModelsFromCompact(
   }
 }
 
-function chooseDefaultModel(models: string[], current = ""): string {
+function chooseDefaultModel(models: string[], current = "", openclawDefault = ""): string {
   if (current) return current;
   const envOverride = normalizeString(process.env.CODEX_MODEL);
   if (envOverride) return envOverride;
-  for (const preferred of [DMWORK_DEFAULT_MODEL, OFFICIAL_DEFAULT_MODEL, "gpt-5.5", "gpt-5.4", "deepseek-v4-flash"]) {
+  for (const preferred of [DMWORK_DEFAULT_MODEL, OFFICIAL_DEFAULT_MODEL, openclawDefault, GPT_55_MODEL, "gpt-5.4", "deepseek-v4-flash"]) {
     if (models.includes(preferred)) return preferred;
   }
-  return models[0] || DMWORK_DEFAULT_MODEL;
+  return models[0] || openclawDefault || DMWORK_DEFAULT_MODEL;
 }
 
 function detectCcConnectBinding(source: string): boolean {
@@ -864,16 +997,21 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const cc = readText(currentPaths.ccConnectConfig);
     const ccParsed = parseCcConnectConfigSource(cc);
     const models = parseModels(`${cpa}\n${codex}\n${cc}`);
+    const openclawDefaultModel = readOpenclawDefaultModel(currentPaths.openclawJson);
+    const openclawPreferredModels = readOpenclawPreferredModels(currentPaths.openclawJson);
+    const context = readCodexContext(codex);
     return {
       updatedAt: new Date().toISOString(),
-      cpaPort: parseCpaPort(cpa),
+      cpaPort: parseCpaPort(cpa, defaultCpaPort(resolveChannel())),
       compactPort: normalizePort(
         extractTomlString(codex, "base_url").match(/127\.0\.0\.1:(\d+)/)?.[1],
         DEFAULT_COMPACT_PORT,
       ),
-      defaultModel: chooseDefaultModel(models, extractTomlString(codex, "model") || ccParsed.projects[0]?.agentOptions.model),
+      defaultModel: chooseDefaultModel([...models, ...openclawPreferredModels], extractTomlString(codex, "model") || ccParsed.projects[0]?.agentOptions.model, openclawDefaultModel),
+      contextMode: context.mode,
+      contextWindowTokens: context.tokens,
       ccConnectProject: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
-      hasCpaProxyKey: Boolean(extractTomlString(codex, "experimental_bearer_token")),
+      hasCpaProxyKey: Boolean(extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key),
       channel: "dmwork" as CodexStackChannel,
       ...readJsonFile<Partial<CodexStackProfile>>(profilePath(), {}),
     };
@@ -921,11 +1059,15 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       const missing = required.filter((relative) => !pathExists(path.join(candidate.root, relative)));
       if (missing.length === 0) {
         const scriptsDir = path.join(candidate.root, "resources", "scripts");
+        const cpaBinary = path.join(candidate.root, "resources", "bin", "cli-proxy-api");
         return {
           channel: activeChannel,
           kind: candidate.kind,
           root: candidate.root,
           version: readText(path.join(candidate.root, "VERSION")).trim() || null,
+          cpaVersion: pathExists(cpaBinary) ? CPA_LATEST_VERSION : null,
+          cpaLatestVersion: CPA_LATEST_VERSION,
+          ccConnectSource: pathExists(paths().ccConnectSource) ? paths().ccConnectSource : null,
           scripts: {
             autoSetup: path.join(scriptsDir, "auto-setup.sh"),
             healthCheck: path.join(scriptsDir, "health-check.sh"),
@@ -944,6 +1086,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       kind: "missing",
       root: fallbackRoot,
       version: null,
+      cpaVersion: null,
+      cpaLatestVersion: CPA_LATEST_VERSION,
+      ccConnectSource: pathExists(paths().ccConnectSource) ? paths().ccConnectSource : null,
       scripts: { autoSetup: null, healthCheck: null, ccConnectFinalizer: null },
       requiredFilesPresent: false,
       missingFiles: missing,
@@ -1094,6 +1239,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     services: CodexStackServiceStatus[];
     cpaHealthy: boolean;
     compactHealthy: boolean;
+    codexAuthOk: boolean;
   }): CodexStackComponentSummary[] {
     const currentPaths = paths();
     const serviceById = new Map(params.services.map((service) => [service.id, service]));
@@ -1104,11 +1250,14 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       {
         id: "codex",
         label: "Codex CLI",
-        status: params.codexVersion && codexConfigExists ? "ok" : "missing",
+        status: params.codexVersion && codexConfigExists ? (params.codexAuthOk ? "ok" : "degraded") : "missing",
         installed: Boolean(params.codexVersion),
         version: params.codexVersion,
-        notes: [params.omxVersion ? `omx ${params.omxVersion}` : "omx not detected"].filter(Boolean),
-        paths: { config: currentPaths.codexConfig },
+        notes: [
+          params.omxVersion ? `omx ${params.omxVersion}` : "omx not detected",
+          params.codexAuthOk ? "auth.json ok" : "auth.json missing or mismatched",
+        ].filter(Boolean),
+        paths: { config: currentPaths.codexConfig, auth: currentPaths.codexAuth },
       },
       {
         id: "cpa",
@@ -1181,7 +1330,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const cpaConfig = readText(currentPaths.cpaConfig);
     const ccConfig = readText(currentPaths.ccConnectConfig);
     const ccParsed = parseCcConnectConfigSource(ccConfig);
-    const configCpaPort = parseCpaPort(cpaConfig);
+    const configCpaPort = parseCpaPort(cpaConfig, defaultCpaPort(resolveChannel()));
     const configCompactPort = normalizePort(extractTomlString(codexConfig, "base_url").match(/127\.0\.0\.1:(\d+)/)?.[1], DEFAULT_COMPACT_PORT);
     const [liveCpaPort, liveCompactPort] = await Promise.all([
       detectLivePort(["cli-proxy-api", "cpa"]),
@@ -1189,13 +1338,26 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     ]);
     const cpaPort = liveCpaPort ?? configCpaPort;
     const compactPort = liveCompactPort ?? configCompactPort;
-    const cpaProxyKey = extractTomlString(codexConfig, "experimental_bearer_token");
+    const codexToken = extractTomlString(codexConfig, "experimental_bearer_token");
+    const codexAuth = readCodexAuth(currentPaths.codexAuth);
+    const cpaProxyKey = codexToken || codexAuth.key;
+    const codexAuthMatches = cpaProxyKey ? codexAuth.key === cpaProxyKey : null;
+    const context = readCodexContext(codexConfig);
+    const openclawDefaultModel = readOpenclawDefaultModel(currentPaths.openclawJson);
+    const openclawPreferredModels = readOpenclawPreferredModels(currentPaths.openclawJson);
+    const managementSecret = yamlBlockString(cpaConfig, "remote-management", "secret-key");
+    const remoteAllowed = yamlBlockBoolean(cpaConfig, "remote-management", "allow-remote", false);
+    const controlPanelEnabled = !yamlBlockBoolean(cpaConfig, "remote-management", "disable-control-panel", true);
     const parsedModels = parseModels(`${cpaConfig}\n${codexConfig}\n${ccConfig}`);
     const profile = readProfile();
-    const currentModel = extractTomlString(codexConfig, "model") || ccParsed.projects[0]?.agentOptions.model || profile.defaultModel;
+    const configuredModel = extractTomlString(codexConfig, "model") || ccParsed.projects[0]?.agentOptions.model;
+    const currentModel = configuredModel;
     const fallbackModels = Array.from(new Set([
       currentModel,
       defaultModel(resolveChannel()),
+      profile.defaultModel,
+      openclawDefaultModel,
+      ...openclawPreferredModels,
       ...parsedModels,
     ].filter(Boolean))).sort((left, right) => left.localeCompare(right));
     const modelsEndpoint = `http://127.0.0.1:${compactPort}/v1/models`;
@@ -1213,6 +1375,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ),
     ]);
     const compactHealthy = modelDiscovery.live;
+    const selectedDefaultModel = chooseDefaultModel(modelDiscovery.available, configuredModel, openclawDefaultModel);
     const ccBindingPresent = ccParsed.projects.some((project) => project.platforms.length > 0);
     const components = buildComponents({
       codexVersion,
@@ -1221,6 +1384,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       services,
       cpaHealthy,
       compactHealthy,
+      codexAuthOk: pathExists(currentPaths.codexAuth) && codexAuthMatches === true,
     });
     const warnings: string[] = [];
     const installer = resolveInstallerSource();
@@ -1228,6 +1392,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (installer.kind === "development-fallback") warnings.push("Using development codex-docs checkout as installer source.");
     if (installer.kind === "missing") warnings.push("Bundled Codex Stack installer assets are missing.");
     if (ccConfig && !ccBindingPresent) warnings.push("cc-connect is installed/configured but still needs Feishu or Weixin QR binding.");
+    if (!pathExists(currentPaths.codexAuth)) warnings.push("~/.codex/auth.json is missing; Codex CLI may not read the local CPA key.");
+    if (codexAuthMatches === false) warnings.push("~/.codex/auth.json OPENAI_API_KEY does not match the configured CPA proxy key.");
+    if (!managementSecret) warnings.push("CPA remote-management.secret-key is empty; the management dashboard/API is disabled.");
+    if (!controlPanelEnabled) warnings.push("CPA management control panel is disabled; /management.html will not load.");
     if (!modelDiscovery.live && modelDiscovery.error) warnings.push(`模型列表未能从 /v1/models 读取，已使用本地配置回退：${modelDiscovery.error}`);
     return {
       checkedAt: new Date().toISOString(),
@@ -1238,7 +1406,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         ...profile,
         cpaPort,
         compactPort,
-        defaultModel: currentModel || profile.defaultModel,
+        defaultModel: currentModel || selectedDefaultModel,
+        contextMode: context.mode,
+        contextWindowTokens: context.tokens,
         ccConnectProject: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
         hasCpaProxyKey: Boolean(cpaProxyKey),
       },
@@ -1248,11 +1418,14 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       services,
       ports: { cpa: cpaPort, compact: compactPort, detectedCpa: liveCpaPort, detectedCompact: liveCompactPort },
       models: {
-        current: currentModel || defaultModel(resolveChannel()),
-        defaultModel: chooseDefaultModel(modelDiscovery.available, currentModel),
+        current: currentModel || selectedDefaultModel,
+        defaultModel: selectedDefaultModel,
+        recommendedFrontier: GPT_55_MODEL,
         available: Array.from(new Set([
           currentModel,
           defaultModel(resolveChannel()),
+          openclawDefaultModel,
+          GPT_55_MODEL,
           ...modelDiscovery.available,
         ].filter(Boolean))).sort((left, right) => left.localeCompare(right)),
         source: modelDiscovery.source,
@@ -1261,10 +1434,24 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         refreshedAt: modelDiscovery.refreshedAt,
         error: modelDiscovery.error,
       },
+      context: {
+        mode: context.mode,
+        tokens: context.tokens,
+        codexOneMillionEnabled: context.enabled,
+        recommendedTokens: DEFAULT_CONTEXT_TOKENS,
+        maxTokens: MAX_CONTEXT_TOKENS,
+        source: context.tokens ? currentPaths.codexConfig : null,
+      },
       secrets: {
         cpaProxyKey: cpaProxyKey
-          ? { hasSecret: true, ...maskSecret(cpaProxyKey), source: currentPaths.codexConfig }
+          ? { hasSecret: true, ...maskSecret(cpaProxyKey), source: codexToken ? currentPaths.codexConfig : currentPaths.codexAuth }
           : { hasSecret: false, masked: null, source: null, length: null },
+        codexAuth: codexAuth.key
+          ? { hasSecret: true, ...maskSecret(codexAuth.key), source: currentPaths.codexAuth, mode: codexAuth.mode, matchesProxyKey: codexAuthMatches }
+          : { hasSecret: false, masked: null, source: pathExists(currentPaths.codexAuth) ? currentPaths.codexAuth : null, length: null, mode: codexAuth.mode, matchesProxyKey: codexAuthMatches },
+        cpaManagementKey: managementSecret
+          ? { hasSecret: true, ...maskSecret(managementSecret), source: currentPaths.cpaConfig }
+          : { hasSecret: false, masked: null, source: pathExists(currentPaths.cpaConfig) ? currentPaths.cpaConfig : null, length: null },
         upstreamKeys: collectGenericSecrets(cpaConfig).map((secret) => ({
           hasSecret: true,
           ...maskSecret(secret),
@@ -1284,6 +1471,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         ],
         finalizerAvailable: ccConnectFinalizerAvailable,
         canFinalize: ccBindingPresent && ccConnectFinalizerAvailable,
+      },
+      cpaManagement: {
+        dashboardUrl: `http://127.0.0.1:${cpaPort}/management.html`,
+        enabled: Boolean(managementSecret),
+        controlPanelEnabled,
+        remoteAllowed,
+        secretConfigured: Boolean(managementSecret),
       },
       warnings,
     };
@@ -1371,6 +1565,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       env[key] = String(value);
       if (key.includes("KEY")) secrets.push(String(value));
     }
+    const contextMode = normalizeContextMode(env.CODEX_CONTEXT_MODE, "default");
+    const contextTokens = contextMode === "default"
+      ? null
+      : (contextMode === "codex-1m" ? GPT_55_CONTEXT_TOKENS : normalizeContextTokens(env.CODEX_CONTEXT_WINDOW, DEFAULT_CONTEXT_TOKENS));
     const flags: string[] = [];
     if (payload.flags?.skipNpm === true) flags.push("--skip-npm");
     if (payload.flags?.skipCcConnect === true) flags.push("--skip-cc-connect");
@@ -1389,7 +1587,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         cpaPort: normalizePort(env.CPA_PORT, defaultCpaPort(resolveChannel())),
         compactPort: normalizePort(env.COMPACT_PORT, DEFAULT_COMPACT_PORT),
         defaultModel: normalizeString(env.CODEX_MODEL, defaultModel(resolveChannel())),
-        hasCpaProxyKey: Boolean(env.CPA_PROXY_KEY),
+        contextMode,
+        contextWindowTokens: contextTokens,
+        hasCpaProxyKey: true,
         upstreamOverride: {
           hasBaseUrl: Boolean(env.OPENCLAW_UPSTREAM_BASE_URL),
           hasApiKey: Boolean(env.OPENCLAW_UPSTREAM_API_KEY),
@@ -1436,6 +1636,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       job.error = code === 0 ? null : `Installer exited with code ${code ?? "unknown"}`;
       job.finishedAt = new Date().toISOString();
       appendJobLog(job, `\n[studio] install ${job.status}\n`, normalized.secrets);
+      if (code === 0) {
+        const proxyKey = normalized.env.CPA_PROXY_KEY || extractTomlString(readText(currentPaths.codexConfig), "experimental_bearer_token") || DEFAULT_CPA_PROXY_KEY;
+        writeCodexAuth(currentPaths.codexAuth, proxyKey);
+      }
       const profile = readProfile();
       writeProfile({
         ...profile,
@@ -1499,6 +1703,22 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         if (action === "restart-compact-proxy") await runSystemctl("restart", "cpa-compact-proxy.service");
         if (action === "restart-watchdog") await runSystemctl("restart", "codex-stack-watchdog.timer");
         if (action === "restart-cc-connect") await runSystemctl("restart", "cc-connect.service");
+        if (action === "repair-auth-json") {
+          const proxyKey = extractTomlString(readText(currentPaths.codexConfig), "experimental_bearer_token") || DEFAULT_CPA_PROXY_KEY;
+          writeCodexAuth(currentPaths.codexAuth, proxyKey);
+          appendJobLog(job, `Rewrote ${currentPaths.codexAuth}.\n`, [proxyKey]);
+        }
+        if (action === "repair-cpa-management") {
+          const cpa = readText(currentPaths.cpaConfig);
+          if (!cpa) throw new Error("CPA config is missing");
+          const next = ensureCpaRemoteManagementBlock(cpa, DEFAULT_CPA_PROXY_KEY);
+          if (next !== cpa) {
+            backupAndWrite(currentPaths.cpaConfig, next);
+            appendJobLog(job, "Repaired CPA remote-management block and enabled control panel.\n");
+          } else {
+            appendJobLog(job, "CPA remote-management block already matched Studio defaults.\n");
+          }
+        }
         if (action === "disable-conflicting-units") {
           await execText("systemctl", ["--user", "disable", "--now", "cpa.service"], { timeout: 30_000 });
           await execText("systemctl", ["--user", "disable", "--now", "cliproxyapi.service"], { timeout: 30_000 });
@@ -1584,7 +1804,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     payload: CodexStackConfigPatchRequest,
   ): Promise<CodexStackMutationResponse> {
     requireManagement(req);
-    const allowed = ["defaultModel", "cpaPort", "compactPort", "cpaProxyKey", "ccConnectProject"];
+    const allowed = ["defaultModel", "contextMode", "contextWindowTokens", "cpaPort", "compactPort", "cpaProxyKey", "ccConnectProject"];
     const unknown = Object.keys(payload || {}).filter((key) => !allowed.includes(key));
     if (unknown.length) {
       throw new CodexStackServiceError("codex_stack_invalid_config_patch", `Unsupported config fields: ${unknown.join(", ")}`);
@@ -1592,6 +1812,12 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const currentPaths = paths();
     const restartRequired = new Set<CodexStackServiceId>();
     const model = normalizeString(payload.defaultModel);
+    const hasContextPatch = Object.prototype.hasOwnProperty.call(payload, "contextMode")
+      || Object.prototype.hasOwnProperty.call(payload, "contextWindowTokens");
+    const contextMode = hasContextPatch ? normalizeContextMode(payload.contextMode, payload.contextWindowTokens === null ? "default" : "custom") : null;
+    const contextTokens = hasContextPatch
+      ? (contextMode === "codex-1m" ? GPT_55_CONTEXT_TOKENS : normalizeContextTokens(payload.contextWindowTokens, DEFAULT_CONTEXT_TOKENS))
+      : null;
     const ccProject = normalizeString(payload.ccConnectProject);
     const cpaPort = payload.cpaPort === undefined ? null : normalizePort(payload.cpaPort, 0);
     const compactPort = payload.compactPort === undefined ? null : normalizePort(payload.compactPort, 0);
@@ -1606,15 +1832,21 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         next = replaceTomlString(next, "model", model);
         restartRequired.add("cpa-compact-proxy.service");
       }
-      if (compactPort) {
-        next = replaceTomlString(next, "base_url", `http://127.0.0.1:${compactPort}/v1`);
-        next = next.replace(/(base_url\s*=\s*")http:\/\/127\.0\.0\.1:\d+\/v1(")/g, `$1http://127.0.0.1:${compactPort}/v1$2`);
+      const effectiveCompactPort = compactPort || readProfile().compactPort || DEFAULT_COMPACT_PORT;
+      if (compactPort || /base_url\s*=\s*"http:\/\/127\.0\.0\.1:\d+\/v1"/.test(next)) {
+        next = replaceTomlString(next, "base_url", `http://127.0.0.1:${effectiveCompactPort}/v1`);
+        next = next.replace(/(base_url\s*=\s*")http:\/\/127\.0\.0\.1:\d+\/v1(")/g, `$1http://127.0.0.1:${effectiveCompactPort}/v1$2`);
         restartRequired.add("cpa-compact-proxy.service");
       }
       if (cpaKey) {
         next = replaceTomlString(next, "experimental_bearer_token", cpaKey);
         restartRequired.add("cpa-compact-proxy.service");
       }
+      if (hasContextPatch && contextMode) {
+        next = applyCodexContext(next, contextMode, contextTokens);
+      }
+      next = removeTopLevelTomlKey(next, "model_provider");
+      next = replaceTomlString(next, "openai_base_url", `http://127.0.0.1:${effectiveCompactPort}/v1`);
       if (next !== codex) backupAndWrite(currentPaths.codexConfig, next);
     }
 
@@ -1631,7 +1863,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         if (!parsedCc.providers) parsedCc.providers = [];
         let cpaProvider = parsedCc.providers.find(p => p.name === "cpa");
         if (!cpaProvider) {
-          cpaProvider = { name: "cpa", apiKey: cpaKey, baseUrl: "http://127.0.0.1:18796/v1", codexEnvKey: "OPENAI_API_KEY" };
+          cpaProvider = { name: "cpa", apiKey: cpaKey, baseUrl: `http://127.0.0.1:${compactPort || readProfile().compactPort || DEFAULT_COMPACT_PORT}/v1`, codexEnvKey: "OPENAI_API_KEY" };
           parsedCc.providers.push(cpaProvider);
         } else {
           cpaProvider.apiKey = cpaKey;
@@ -1653,20 +1885,22 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       }
       if (cpaKey) {
         next = replaceFirstYamlListSecret(next, cpaKey);
-        next = replaceYamlSecretKey(next, cpaKey);
+        next = replaceOrAppendYamlString(next, "experimental_bearer_token", cpaKey);
       }
+      next = ensureCpaRemoteManagementBlock(next, DEFAULT_CPA_PROXY_KEY);
       if (next !== cpa) backupAndWrite(currentPaths.cpaConfig, next);
     }
 
     if (cpaKey) {
-      const codexAuthPath = path.join(path.dirname(currentPaths.codexConfig), "auth.json");
-      fs.writeFileSync(codexAuthPath, JSON.stringify({ auth_mode: "apikey", OPENAI_API_KEY: cpaKey }, null, 2));
+      writeCodexAuth(currentPaths.codexAuth, cpaKey);
     }
 
     const compactUnit = readText(currentPaths.compactService);
     if (compactUnit) {
       let next = compactUnit;
-      if (cpaPort) next = replaceEnvLine(next, "CPA_PORT", cpaPort);
+      const effectiveCpaPort = cpaPort || readProfile().cpaPort || DMWORK_CPA_PORT;
+      next = replaceEnvLine(next, "CPA_PORT", effectiveCpaPort);
+      next = replaceEnvLine(next, "CPA_BASE_URL", `http://127.0.0.1:${effectiveCpaPort}`);
       if (compactPort) next = replaceEnvLine(next, "LISTEN_PORT", compactPort);
       if (model) next = replaceEnvLine(next, "COMPACT_DEFAULT_MODEL", model);
       if (next !== compactUnit) {
@@ -1681,6 +1915,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       cpaPort: cpaPort || profile.cpaPort,
       compactPort: compactPort || profile.compactPort,
       defaultModel: model || profile.defaultModel,
+      contextMode: contextMode || profile.contextMode,
+      contextWindowTokens: hasContextPatch ? (contextMode === "default" ? null : contextTokens) : profile.contextWindowTokens,
       ccConnectProject: ccProject || profile.ccConnectProject,
       hasCpaProxyKey: cpaKey ? true : profile.hasCpaProxyKey,
     });

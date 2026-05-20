@@ -36,6 +36,12 @@ export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload):
 > {
   const actions: CodexStackRepairAction[] = [];
   const serviceActive = new Map(summary.services.map((service) => [service.id, service.active]));
+  if (!summary.secrets.codexAuth.hasSecret || summary.secrets.codexAuth.matchesProxyKey === false) {
+    actions.push("repair-auth-json");
+  }
+  if (!summary.cpaManagement.enabled || !summary.cpaManagement.controlPanelEnabled) {
+    actions.push("repair-cpa-management");
+  }
   if (!serviceActive.get("cli-proxy-api.service")) actions.push("restart-cpa");
   if (!serviceActive.get("cpa-compact-proxy.service")) actions.push("restart-compact-proxy");
   if (!serviceActive.get("codex-stack-watchdog.timer")) actions.push("restart-watchdog");

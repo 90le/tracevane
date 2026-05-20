@@ -34,6 +34,10 @@ FORCE_COMPONENTS=""
 NO_START=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESOURCES_DIR="$(dirname "$SCRIPT_DIR")"
+CPA_PORT="${CPA_PORT:-18795}"
+COMPACT_PORT="${COMPACT_PORT:-18796}"
+CODEX_CONTEXT_MODE="${CODEX_CONTEXT_MODE:-default}"
+CODEX_CONTEXT_WINDOW="${CODEX_CONTEXT_WINDOW:-1050000}"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -157,6 +161,8 @@ console.log('MLAMP_KEY=' + JSON.stringify(mlamp.apiKey || ''));
 const bigmodel = providers['bigmodel'] || {};
 console.log('BIGMODEL_URL=' + JSON.stringify(bigmodel.baseUrl || ''));
 console.log('BIGMODEL_KEY=' + JSON.stringify(bigmodel.apiKey || ''));
+const dm = data.defaultModel;
+console.log('OPENCLAW_DEFAULT_MODEL=' + JSON.stringify(typeof dm === 'string' ? dm : (dm?.id || dm?.name || dm?.model || '')));
 console.log('HTTP_PROXY_VAL=' + JSON.stringify(data.env?.http_proxy || ''));
 console.log('NO_PROXY_VAL=' + JSON.stringify(data.env?.no_proxy || ''));
 ")"
@@ -173,11 +179,18 @@ fi
 # 默认使用固定值，可通过环境变量 CPA_PROXY_KEY 覆盖
 if [[ -n "${CPA_PROXY_KEY:-}" && "${CPA_PROXY_KEY:-}" != "null" ]]; then
   : # 使用环境变量 CPA_PROXY_KEY
-elif [[ -n "$API_KEY" && "$API_KEY" != "null" ]]; then
-  # 兼容旧版本：优先使用 openclaw.json 中的 API Key
-  CPA_PROXY_KEY="$API_KEY"
 else
   CPA_PROXY_KEY="studio"
+fi
+
+if [[ -n "${CODEX_MODEL:-}" && "${CODEX_MODEL:-}" != "null" ]]; then
+  : # 使用环境变量 CODEX_MODEL
+elif [[ -n "$MLAMP_URL" && "$MLAMP_URL" != "null" ]]; then
+  CODEX_MODEL="kimi-k2.6"
+elif [[ -n "$BIGMODEL_URL" && "$BIGMODEL_URL" != "null" ]]; then
+  CODEX_MODEL="glm-5.1"
+else
+  CODEX_MODEL="${OPENCLAW_DEFAULT_MODEL:-kimi-k2.6}"
 fi
 
 log "  主网关: $GATEWAY_URL"
@@ -393,7 +406,7 @@ API_KEYS_LIST="- ${CPA_PROXY_KEY}"
 
 cat > "$CPA_CONFIG" << YAMLEOF
 host: 127.0.0.1
-port: 18795
+port: ${CPA_PORT}
 auth-dir: ~/.cli-proxy-api
 api-keys:
 ${API_KEYS_LIST}
@@ -406,6 +419,7 @@ remote-management:
   allow-remote: false
   secret-key: "studio"
   disable-control-panel: false
+  panel-github-repository: "https://github.com/router-for-me/Cli-Proxy-API-Management-Center"
 YAMLEOF
 
 # 添加 openai-compatibility provider (mlamp gateway)
@@ -512,7 +526,7 @@ fi
 
 cat > "$CODEX_CONFIG" << TOMLEOF
 # Codex CLI 配置 — 由 auto-setup.sh 自动生成
-# 默认模型: kimi-k2.6
+# 默认模型: ${CODEX_MODEL}
 
 suppress_unstable_features_warning = true
 
@@ -524,11 +538,30 @@ model_reasoning_effort = "medium"
 developer_instructions = "You have oh-my-codex installed. AGENTS.md is the orchestration brain and main control surface."
 
 # ── 模型配置 ──
-model = "kimi-k2.6"
-openai_base_url = "http://127.0.0.1:18796/v1"
+model = "${CODEX_MODEL}"
+openai_base_url = "http://127.0.0.1:${COMPACT_PORT}/v1"
+base_url = "http://127.0.0.1:${COMPACT_PORT}/v1"
 experimental_bearer_token = "${CPA_PROXY_KEY}"
 responses_websockets = true
 responses_websockets_v2 = true
+
+TOMLEOF
+
+if [[ "$CODEX_CONTEXT_MODE" == "codex-1m" || "$CODEX_CONTEXT_MODE" == "custom" ]]; then
+  if ! [[ "$CODEX_CONTEXT_WINDOW" =~ ^[0-9]+$ ]]; then
+    CODEX_CONTEXT_WINDOW=1050000
+  fi
+  (( CODEX_CONTEXT_WINDOW < 1000 )) && CODEX_CONTEXT_WINDOW=1000
+  (( CODEX_CONTEXT_WINDOW > 1050000 )) && CODEX_CONTEXT_WINDOW=1050000
+  AUTO_COMPACT_LIMIT=$(( CODEX_CONTEXT_WINDOW * 9 / 10 ))
+  cat >> "$CODEX_CONFIG" << TOMLEOF
+model_context_window = ${CODEX_CONTEXT_WINDOW}
+model_auto_compact_token_limit = ${AUTO_COMPACT_LIMIT}
+
+TOMLEOF
+fi
+
+cat >> "$CODEX_CONFIG" << TOMLEOF
 
 # ── 功能开关 ──
 [features]
@@ -582,6 +615,14 @@ ${NO_PROXY_TOML}
 TOMLEOF
 
 log "  Codex 配置写入: $CODEX_CONFIG"
+cat > "$HOME/.codex/auth.json" << JSONEOF
+{
+  "auth_mode": "apikey",
+  "OPENAI_API_KEY": "${CPA_PROXY_KEY}"
+}
+JSONEOF
+chmod 600 "$HOME/.codex/auth.json" 2>/dev/null || true
+log "  Codex auth.json 写入: $HOME/.codex/auth.json"
 
 fi  # end should_skip "codex"
 
@@ -614,7 +655,15 @@ StandardError=append:/tmp/cpa.log
 # 确保不走系统代理访问本地
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
+Environment=CPA_PORT=${CPA_PORT}
+Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
+Environment=LISTEN_PORT=${COMPACT_PORT}
+Environment=CPA_KEY=${CPA_PROXY_KEY}
+Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}
 Environment=NO_PROXY=localhost,127.0.0.1,::1
+Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
+Environment=LISTEN_PORT=${COMPACT_PORT}
+Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}
 
 [Install]
 WantedBy=default.target
@@ -639,6 +688,9 @@ StandardError=append:/tmp/cpa-compact-proxy.log
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
 Environment=NO_PROXY=localhost,127.0.0.1,::1
+Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
+Environment=LISTEN_PORT=${COMPACT_PORT}
+Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}
 
 [Install]
 WantedBy=default.target
@@ -669,16 +721,16 @@ systemctl --user restart cpa-compact-proxy.service 2>/dev/null || {
 sleep 2
 
 # 验证
-if ss -tlnp 2>/dev/null | grep -q ':18795'; then
-  log "  ✅ CPA 运行在 127.0.0.1:18795"
+if ss -tlnp 2>/dev/null | grep -q ":${CPA_PORT}"; then
+  log "  ✅ CPA 运行在 127.0.0.1:${CPA_PORT}"
 else
-  warn "  CPA 端口 18795 未监听"
+  warn "  CPA 端口 ${CPA_PORT} 未监听"
 fi
 
-if ss -tlnp 2>/dev/null | grep -q ':18796'; then
-  log "  ✅ Compact Proxy 运行在 127.0.0.1:18796"
+if ss -tlnp 2>/dev/null | grep -q ":${COMPACT_PORT}"; then
+  log "  ✅ Compact Proxy 运行在 127.0.0.1:${COMPACT_PORT}"
 else
-  warn "  Compact Proxy 端口 18796 未监听"
+  warn "  Compact Proxy 端口 ${COMPACT_PORT} 未监听"
 fi
 
 fi  # end NO_START guard
@@ -719,7 +771,8 @@ ensure_active() {
 
 CPA_PORT="$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)"
 [[ -n "$CPA_PORT" ]] || CPA_PORT=18795
-COMPACT_PORT=18796
+COMPACT_PORT="$(grep '^base_url = ' "$HOME/.codex/config.toml" 2>/dev/null | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)"
+[[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
 
 ensure_active cli-proxy-api.service
 if ! curl -fsS --max-time 5 "http://127.0.0.1:${CPA_PORT}/healthz" >/dev/null 2>&1; then
@@ -810,7 +863,10 @@ level = "info"
 [[providers]]
 name = "cpa"
 api_key = "$CPA_PROXY_KEY"
-base_url = "http://127.0.0.1:18796/v1"
+# ── 模型配置 ──
+model = "${CODEX_MODEL}"
+openai_base_url = "http://127.0.0.1:${COMPACT_PORT}/v1"
+base_url = "http://127.0.0.1:${COMPACT_PORT}/v1"
 codex.env_key = "OPENAI_API_KEY"
 
 # ── 项目配置 ──
@@ -848,7 +904,7 @@ type = "codex"
 [projects.agent.options]
 work_dir = "$HOME/.openclaw"
 mode = "suggest"
-model = "kimi-k2.6"
+model = "${CODEX_MODEL}"
 
 [stream_preview]
 enabled = true
@@ -900,12 +956,15 @@ StandardError=append:/tmp/cc-connect.log
 
 # Include all possible binary paths so cc-connect can find codex CLI
 Environment=PATH=%h/.npm-global/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
-Environment=OPENAI_API_KEY=studio
+Environment=OPENAI_API_KEY=${CPA_PROXY_KEY}
 
 # 不走系统代理访问本地
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
 Environment=NO_PROXY=localhost,127.0.0.1,::1
+Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
+Environment=LISTEN_PORT=${COMPACT_PORT}
+Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}
 
 [Install]
 WantedBy=default.target
@@ -974,7 +1033,7 @@ log "运行健康检查："
 log "  bash ~/.openclaw/codex-docs-dmwork/resources/scripts/health-check.sh"
 echo ""
 log "启动 Codex："
-log "  codex                    # 默认模型 kimi-k2.6"
+log "  codex                    # 默认模型 ${CODEX_MODEL}"
 log "  codex --model glm-5.1   # 切换模型"
 echo ""
 log "管理服务："

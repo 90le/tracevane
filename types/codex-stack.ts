@@ -38,6 +38,8 @@ export type CodexStackInstallerSourceKind =
 
 export type CodexStackModelSource = "live" | "config" | "fallback";
 
+export type CodexStackContextMode = "default" | "codex-1m" | "custom";
+
 export interface CodexStackMaskedSecret {
   hasSecret: boolean;
   masked: string | null;
@@ -50,6 +52,9 @@ export interface CodexStackInstallerSource {
   kind: CodexStackInstallerSourceKind;
   root: string | null;
   version: string | null;
+  cpaVersion: string | null;
+  cpaLatestVersion: string | null;
+  ccConnectSource: string | null;
   scripts: {
     autoSetup: string | null;
     healthCheck: string | null;
@@ -93,6 +98,8 @@ export interface CodexStackProfile {
   cpaPort: number;
   compactPort: number;
   defaultModel: string;
+  contextMode?: CodexStackContextMode;
+  contextWindowTokens?: number | null;
   ccConnectProject: string;
   hasCpaProxyKey: boolean;
   upstreamOverride?: {
@@ -123,6 +130,7 @@ export interface CodexStackSummaryPayload {
   models: {
     current: string;
     defaultModel: string;
+    recommendedFrontier: string;
     available: string[];
     source: CodexStackModelSource;
     endpoint: string;
@@ -130,8 +138,21 @@ export interface CodexStackSummaryPayload {
     refreshedAt: string;
     error: string | null;
   };
+  context: {
+    mode: CodexStackContextMode;
+    tokens: number | null;
+    codexOneMillionEnabled: boolean;
+    recommendedTokens: number;
+    maxTokens: number;
+    source: string | null;
+  };
   secrets: {
     cpaProxyKey: CodexStackMaskedSecret;
+    codexAuth: CodexStackMaskedSecret & {
+      mode: string | null;
+      matchesProxyKey: boolean | null;
+    };
+    cpaManagementKey: CodexStackMaskedSecret;
     upstreamKeys: CodexStackMaskedSecret[];
   };
   ccConnect: {
@@ -145,6 +166,13 @@ export interface CodexStackSummaryPayload {
     finalizerAvailable: boolean;
     canFinalize: boolean;
   };
+  cpaManagement: {
+    dashboardUrl: string;
+    enabled: boolean;
+    controlPanelEnabled: boolean;
+    remoteAllowed: boolean;
+    secretConfigured: boolean;
+  };
   warnings: string[];
 }
 
@@ -154,6 +182,8 @@ export interface CodexStackInstallRequest {
     CPA_PORT?: number;
     COMPACT_PORT?: number;
     CPA_PROXY_KEY?: string;
+    CODEX_CONTEXT_MODE?: CodexStackContextMode;
+    CODEX_CONTEXT_WINDOW?: number;
     OPENCLAW_UPSTREAM_BASE_URL?: string;
     OPENCLAW_UPSTREAM_API_KEY?: string;
   };
@@ -174,6 +204,8 @@ export type CodexStackRepairAction =
   | "restart-compact-proxy"
   | "restart-watchdog"
   | "restart-cc-connect"
+  | "repair-auth-json"
+  | "repair-cpa-management"
   | "disable-conflicting-units"
   | "rerun-install-no-start";
 
@@ -183,6 +215,8 @@ export interface CodexStackRepairRequest {
 
 export interface CodexStackConfigPatchRequest {
   defaultModel?: string;
+  contextMode?: CodexStackContextMode;
+  contextWindowTokens?: number | null;
   cpaPort?: number;
   compactPort?: number;
   cpaProxyKey?: string;
