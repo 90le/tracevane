@@ -506,7 +506,8 @@
                       </label>
                       <label class="form-field">
                         <span class="form-label">{{ text("代理密钥", "Proxy Key") }}</span>
-                        <input v-model="installForm.cpaKey" class="form-input" type="password" />
+                        <input v-model="installForm.cpaKey" class="form-input" type="password" :maxlength="72" />
+                        <span class="form-hint">{{ text("建议使用 16-72 个字符", "Recommended 16-72 characters") }}</span>
                       </label>
                     </div>
                   </article>
@@ -1198,7 +1199,7 @@
                     <p class="cs-section-kicker">{{ text("目标服务", "Target Service") }}</p>
                     <div class="cs-log-service-list">
                       <button
-                        v-for="service in serviceCards"
+                        v-for="service in logServices"
                         :key="service.id"
                         type="button"
                         class="cs-log-service-button"
@@ -1382,6 +1383,29 @@ const activeSection = ref<SectionId>("dashboard");
 const activeAgentPane = ref<AgentPaneId>("projects");
 const selectedProjectDraftId = ref("");
 const selectedLogService = ref<CodexStackServiceId>("cli-proxy-api.service");
+const logServices = computed(() => {
+  const services: Array<{ id: CodexStackServiceId; label: string; tone: string; rawState: string }> = [
+    { id: "cli-proxy-api.service", label: text("CPA", "CPA"), tone: "neutral", rawState: "--" },
+    { id: "cpa-compact-proxy.service", label: text("Compact", "Compact"), tone: "neutral", rawState: "--" },
+    { id: "cc-connect.service", label: text("cc-connect", "cc-connect"), tone: "neutral", rawState: "--" },
+    { id: "codex-stack-watchdog.timer", label: text("Watchdog", "Watchdog"), tone: "neutral", rawState: "--" },
+  ];
+  
+  if (summary.value) {
+    return services.map((service) => {
+      const summaryService = summary.value!.services.find((s) => s.id === service.id);
+      if (summaryService) {
+        return {
+          ...service,
+          tone: summaryService.active ? "sage" : "danger",
+          rawState: `${summaryService.rawActiveState} / ${summaryService.rawEnabledState}`,
+        };
+      }
+      return service;
+    });
+  }
+  return services;
+});
 const logMeta = ref<CodexStackLogResponse | null>(null);
 const logLineMode = ref<LogLineMode>("balanced");
 const logAutoRefresh = ref(false);
@@ -2129,6 +2153,12 @@ function startPollingJob(job: CodexStackJob): void {
 
 async function installFullStack(): Promise<void> {
   if (!guardMutation()) return;
+  
+  if (installForm.cpaKey && installForm.cpaKey.length > 72) {
+    notice.value = { kind: "error", text: text("代理密钥长度不能超过 72 个字符。", "Proxy key length cannot exceed 72 characters.") };
+    return;
+  }
+  
   busy.value = true;
   try {
     const response = await startCodexStackInstall(buildInstallPayload(false));
@@ -2143,6 +2173,12 @@ async function installFullStack(): Promise<void> {
 
 async function installBaseOnly(): Promise<void> {
   if (!guardMutation()) return;
+  
+  if (installForm.cpaKey && installForm.cpaKey.length > 72) {
+    notice.value = { kind: "error", text: text("代理密钥长度不能超过 72 个字符。", "Proxy key length cannot exceed 72 characters.") };
+    return;
+  }
+  
   busy.value = true;
   try {
     const response = await startCodexStackInstall(buildInstallPayload(true));

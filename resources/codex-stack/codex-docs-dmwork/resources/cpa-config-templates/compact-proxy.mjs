@@ -16,6 +16,7 @@ const wsPaths = [
   process.env.WS_MODULE_PATH,
   require("path").join(os.homedir(), ".openclaw/node_modules/ws"),
   require("path").join(os.homedir(), ".local/lib/node_modules/ws"),
+  require("path").join(os.homedir(), ".npm-global/lib/node_modules/ws"),
 ].filter(Boolean);
 let wsMod = null;
 for (const p of wsPaths) {

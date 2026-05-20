@@ -5,6 +5,7 @@ import http from "node:http";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import type {
   CcConnectConfig,
@@ -558,6 +559,16 @@ function replaceFirstYamlListSecret(source: string, value: string): string {
 function replaceEnvLine(source: string, key: string, value: string | number): string {
   const pattern = new RegExp(`^(Environment=${key}=).*$`, "m");
   return pattern.test(source) ? source.replace(pattern, `$1${String(value)}`) : `${source.replace(/\s+$/g, "")}\nEnvironment=${key}=${String(value)}\n`;
+}
+
+function replaceYamlSecretKey(source: string, hashedValue: string): string {
+  const escaped = JSON.stringify(hashedValue);
+  const pattern = /^(\s*secret-key:\s*).+$/gm;
+  return pattern.test(source) ? source.replace(pattern, `$1${escaped}`) : source;
+}
+
+function hashPassword(plaintext: string): string {
+  return bcrypt.hashSync(plaintext, 10);
 }
 
 function resolveHomeDir(config: StudioServerConfig): string {
@@ -1615,7 +1626,18 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       }
       if (model) parsedCc.projects[0].agentOptions.model = model;
       if (ccProject) parsedCc.projects[0].name = ccProject;
-      const next = patchCcConnectStructuredToml(cc, { projects: parsedCc.projects });
+      if (cpaKey) {
+        // 更新 cc-connect 配置中的 cpa provider api_key
+        if (!parsedCc.providers) parsedCc.providers = [];
+        let cpaProvider = parsedCc.providers.find(p => p.name === "cpa");
+        if (!cpaProvider) {
+          cpaProvider = { name: "cpa", apiKey: cpaKey, baseUrl: "http://127.0.0.1:18796/v1", codexEnvKey: "OPENAI_API_KEY" };
+          parsedCc.providers.push(cpaProvider);
+        } else {
+          cpaProvider.apiKey = cpaKey;
+        }
+      }
+      const next = patchCcConnectStructuredToml(cc, { projects: parsedCc.projects, providers: parsedCc.providers });
       if (next !== cc) {
         backupAndWrite(currentPaths.ccConnectConfig, next);
         restartRequired.add("cc-connect.service");
@@ -1629,8 +1651,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         next = replaceYamlNumber(next, "port", cpaPort);
         restartRequired.add("cli-proxy-api.service");
       }
-      if (cpaKey) next = replaceFirstYamlListSecret(next, cpaKey);
+      if (cpaKey) {
+        next = replaceFirstYamlListSecret(next, cpaKey);
+        next = replaceYamlSecretKey(next, cpaKey);
+      }
       if (next !== cpa) backupAndWrite(currentPaths.cpaConfig, next);
+    }
+
+    if (cpaKey) {
+      const codexAuthPath = path.join(path.dirname(currentPaths.codexConfig), "auth.json");
+      fs.writeFileSync(codexAuthPath, JSON.stringify({ auth_mode: "apikey", OPENAI_API_KEY: cpaKey }, null, 2));
     }
 
     const compactUnit = readText(currentPaths.compactService);

@@ -84,7 +84,7 @@ CPA_PORT="$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME
 COMPACT_PORT="$(codex_value base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)"
 [[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
 CPA_KEY="$(codex_value experimental_bearer_token)"
-[[ -n "$CPA_KEY" ]] || CPA_KEY="openclaw-cpa-key"
+[[ -n "$CPA_KEY" ]] || CPA_KEY="studio"
 
 echo
 echo "--- Services ---"

@@ -1,6 +1,6 @@
 {
   "name": "@binbin/studio",
-  "version": "0.1.38",
+  "version": "0.1.58",
   "description": "OpenClaw Studio - Management Console Recovery",
   "private": true,
   "type": "module",
@@ -73,9 +73,11 @@
   },
   "dependencies": {
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
+    "bcryptjs": "^2.4.3",
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.13.14",
     "@types/ws": "^8.18.1",
     "typescript": "^5.3.0"

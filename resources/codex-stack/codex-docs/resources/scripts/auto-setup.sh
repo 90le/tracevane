@@ -117,7 +117,7 @@ CODEX_CONFIG="${CODEX_CONFIG:-$HOME/.codex/config.toml}"
 CC_CONFIG="${CC_CONNECT_CONFIG:-$HOME/.cc-connect/config.toml}"
 CPA_PORT="${CPA_PORT:-8317}"
 COMPACT_PORT="${COMPACT_PORT:-18796}"
-CPA_PROXY_KEY="${CPA_PROXY_KEY:-openclaw-cpa-key}"
+CPA_PROXY_KEY="${CPA_PROXY_KEY:-studio}"
 TS="$(date +%Y%m%d-%H%M%S)"
 
 # ── Dynamic port detection ────────────────────────────────────────
@@ -359,7 +359,6 @@ const openclawPath = env.OPENCLAW_JSON;
 const cpaConfig = env.CPA_CONFIG;
 const cpaPort = Number(env.CPA_PORT || 8317);
 const compactPort = Number(env.COMPACT_PORT || 18796);
-const proxyKey = env.CPA_PROXY_KEY || "openclaw-cpa-key";
 
 function sh(k, v) {
   fs.appendFileSync(env.META_FILE, `${k}=${JSON.stringify(String(v))}\n`);
@@ -389,6 +388,11 @@ try {
 
 const upstreamBase = env.OPENCLAW_UPSTREAM_BASE_URL || (openclaw.upstream && openclaw.upstream.baseUrl) || "";
 const upstreamKey  = env.OPENCLAW_UPSTREAM_API_KEY  || (openclaw.upstream && openclaw.upstream.apiKey)  || "";
+
+// proxyKey: 本地 cpa 代理认证密钥，与访问外部大模型的 key 无关
+// 优先使用环境变量，默认使用固定值
+const proxyKey = env.CPA_PROXY_KEY || "studio";
+
 const model = env.CODEX_MODEL || modelName(openclaw.defaultModel) || "glm-5.1";
 
 sh("OPENCLAW_UPSTREAM_BASE_URL", upstreamBase);
@@ -404,13 +408,29 @@ if (!upstreamBase || !upstreamKey) {
 }
 
 // ── CPA config.yaml ────────────────────────────────────────────────
+const apiKeysList = [proxyKey];
+if (upstreamKey && upstreamKey !== "null") apiKeysList.push(upstreamKey);
+
 const cpaYaml = [
+  `host: 127.0.0.1`,
   `port: ${cpaPort}`,
+  `auth-dir: ~/.cli-proxy-api`,
+  `api-keys:`,
+  ...apiKeysList.map(k => `  - ${q(k)}`),
+  `debug: false`,
+  `proxy-url: direct`,
+  `disable-cooling: true`,
+  `max-retry-credentials: 0`,
   `upstream_base_url: ${q(upstreamBase)}`,
   `upstream_api_key: ${q(upstreamKey)}`,
   `experimental_bearer_token: ${q(proxyKey)}`,
   `allowed_models:`,
   `  - "*"`,
+  ``,
+  `remote-management:`,
+  `  allow-remote: false`,
+  `  secret-key: "studio"`,
+  `  disable-control-panel: false`,
 ].join("\n") + "\n";
 
 const cpaDir = env.CPA_CONFIG ? require("path").dirname(env.CPA_CONFIG) : `${home}/.cli-proxy-api`;
@@ -566,7 +586,7 @@ codex_value() {
 }
 
 CPA_KEY="$(codex_value experimental_bearer_token)"
-[[ -n "$CPA_KEY" ]] || CPA_KEY="openclaw-cpa-key"
+[[ -n "$CPA_KEY" ]] || CPA_KEY="studio"
 CPA_PORT="$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)"
 [[ -n "$CPA_PORT" ]] || CPA_PORT=8317
 COMPACT_PORT="$(codex_value base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)"

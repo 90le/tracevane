@@ -47,8 +47,8 @@ echo "--- CPA (cli-proxy-api) ---"
 if [[ -x "$HOME/.local/bin/cli-proxy-api" ]] || command -v cli-proxy-api &>/dev/null; then
   ok "CPA 已安装"
   CPA_PORT=$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)
-CPA_PORT=${CPA_PORT:-18795}
-if ss -tlnp 2>/dev/null | grep -q ":${CPA_PORT}"; then
+  CPA_PORT=${CPA_PORT:-18795}
+  if ss -tlnp 2>/dev/null | grep -q ":${CPA_PORT}"; then
     ok "CPA 监听在 127.0.0.1:${CPA_PORT}"
   else
     fail "CPA 未在监听 (port ${CPA_PORT}) — 启动: systemctl --user start cli-proxy-api.service"
@@ -72,8 +72,8 @@ fi
 
 # ── cc-connect ──
 echo "--- cc-connect ---"
-if [[ -x "$HOME/.local/bin/cc-connect" ]]; then
-  ok "cc-connect 二进制已安装 ($(du -h "$HOME/.local/bin/cc-connect" | cut -f1))"
+if [[ -x "$HOME/.local/bin/cc-connect" ]] || command -v cc-connect &>/dev/null; then
+  ok "cc-connect 二进制已安装"
   if systemctl --user is-active cc-connect.service &>/dev/null; then
     ok "cc-connect 服务运行中 (systemd)"
   else
@@ -143,6 +143,12 @@ if [[ -f "$CODEX_CONFIG" ]]; then
   
   BASE=$(grep '^openai_base_url = ' "$CODEX_CONFIG" | head -1 | sed 's/openai_base_url = "\(.*\)"/\1/')
   ok "Base URL: ${BASE:-未设置}"
+  
+  # 读取 CPA key
+  CPA_KEY=$(grep '^experimental_bearer_token = ' "$CODEX_CONFIG" | head -1 | sed 's/experimental_bearer_token = "\(.*\)"/\1/')
+  if [[ -z "$CPA_KEY" ]]; then
+    CPA_KEY="studio"
+  fi
 else
   fail "config.toml 不存在"
 fi
@@ -150,7 +156,7 @@ fi
 # ── 连通性测试 ──
 echo "--- 连通性测试 ---"
 if ss -tlnp 2>/dev/null | grep -q ':18796'; then
-  RESP=$(curl -s --max-time 5 http://127.0.0.1:18796/v1/models 2>/dev/null | head -c 200)
+  RESP=$(curl -s --max-time 5 -H "Authorization: Bearer ${CPA_KEY}" http://127.0.0.1:18796/v1/models 2>/dev/null | head -c 200)
   if [[ -n "$RESP" && "$RESP" != *"error"* ]]; then
     ok "Compact Proxy → CPA → 网关 链路正常"
   else

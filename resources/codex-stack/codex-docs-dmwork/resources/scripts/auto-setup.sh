@@ -169,7 +169,16 @@ if [[ -z "$API_KEY" || "$API_KEY" == "null" ]]; then
 fi
 
 # CPA 代理认证 key（本地使用）
-CPA_PROXY_KEY="mlamp-proxy-key"
+# 这是访问本地 cpa 代理的认证密钥，与访问外部大模型的 key 无关
+# 默认使用固定值，可通过环境变量 CPA_PROXY_KEY 覆盖
+if [[ -n "${CPA_PROXY_KEY:-}" && "${CPA_PROXY_KEY:-}" != "null" ]]; then
+  : # 使用环境变量 CPA_PROXY_KEY
+elif [[ -n "$API_KEY" && "$API_KEY" != "null" ]]; then
+  # 兼容旧版本：优先使用 openclaw.json 中的 API Key
+  CPA_PROXY_KEY="$API_KEY"
+else
+  CPA_PROXY_KEY="studio"
+fi
 
 log "  主网关: $GATEWAY_URL"
 [[ -n "$MLAMP_URL" ]] && log "  mlamp 网关: $MLAMP_URL"
@@ -236,25 +245,27 @@ if [[ "$SKIP_CC_CONNECT" != true ]] && ! should_skip "cc-connect"; then
     rm -f "$HOME/.local/bin/cc-connect"
     log "  已移除旧版 cc-connect（强制重装）"
   fi
-  if [[ -f "$CC_BIN" ]]; then
-    cp "$CC_BIN" "$HOME/.local/bin/cc-connect"
-    chmod +x "$HOME/.local/bin/cc-connect"
-    log "  cc-connect 二进制已安装: $(du -h "$HOME/.local/bin/cc-connect" | cut -f1)"
-    # Verify dmwork support
-    if strings "$HOME/.local/bin/cc-connect" 2>/dev/null | grep -q dmwork; then
+
+  # 确保 dmwork 版本二进制存在
+  if [[ ! -f "$CC_BIN" ]]; then
+    warn "  ⚠️ dmwork 版本 cc-connect 二进制未找到！"
+  else
+    log "  dmwork 版本二进制存在: $(du -h "$CC_BIN" | cut -f1)"
+    
+    # 尝试复制到 ~/.local/bin/（可能受路径限制）
+    if cp "$CC_BIN" "$HOME/.local/bin/cc-connect" 2>/dev/null; then
+      chmod +x "$HOME/.local/bin/cc-connect"
+      log "  ✅ cc-connect dmwork 版本已安装到: $HOME/.local/bin/cc-connect"
+    else
+      warn "  ⚠️ 无法复制到 $HOME/.local/bin/（路径权限限制）"
+      warn "  ✅ 将直接使用 dmwork 目录下的二进制: $CC_BIN"
+    fi
+    
+    # 验证 dmwork 标识
+    if strings "$CC_BIN" 2>/dev/null | grep -q -E "dmwork|cc-connect-dmwork"; then
       log "  ✅ 已确认 dmwork 增强版"
     else
-      warn "  ⚠️ 安装的二进制可能不是 dmwork 版本"
-    fi
-  else
-    # Fallback: 从 tar.gz 提取
-    CC_TGZ="$RESOURCES_DIR/../cc-connect-dmwork-linux-x86_64.tar.gz"
-    if [[ -f "$CC_TGZ" ]]; then
-      tar xzf "$CC_TGZ" -C "$HOME/.local/bin/" 2>/dev/null
-      chmod +x "$HOME/.local/bin/cc-connect" 2>/dev/null
-      log "  cc-connect 从 tar.gz 安装"
-    else
-      warn "  cc-connect 二进制未找到，跳过。可手动安装到 ~/.local/bin/cc-connect"
+      warn "  ⚠️ dmwork 二进制文件标识检查失败，但可能是正常的"
     fi
   fi
   # Ensure PATH includes ~/.local/bin with PRIORITY over npm-global
@@ -375,16 +386,26 @@ mkdir -p "$HOME/.cli-proxy-api"
 CPA_CONFIG="$HOME/.cli-proxy-api/config.yaml"
 
 # 开始写入配置
+# 构建 api-keys 列表（包含本地代理key和所有上游provider的key）
+API_KEYS_LIST="- ${CPA_PROXY_KEY}"
+[[ -n "$MLAMP_KEY" && "$MLAMP_KEY" != "null" ]] && API_KEYS_LIST="$API_KEYS_LIST"$'\n'"- ${MLAMP_KEY}"
+[[ -n "$BIGMODEL_KEY" && "$BIGMODEL_KEY" != "null" ]] && API_KEYS_LIST="$API_KEYS_LIST"$'\n'"- ${BIGMODEL_KEY}"
+
 cat > "$CPA_CONFIG" << YAMLEOF
 host: 127.0.0.1
 port: 18795
 auth-dir: ~/.cli-proxy-api
 api-keys:
-- ${CPA_PROXY_KEY}
+${API_KEYS_LIST}
 debug: false
 proxy-url: direct
 disable-cooling: true
 max-retry-credentials: 0
+
+remote-management:
+  allow-remote: false
+  secret-key: "studio"
+  disable-control-panel: false
 YAMLEOF
 
 # 添加 openai-compatibility provider (mlamp gateway)
@@ -476,9 +497,9 @@ mkdir -p "$HOME/.codex"
 
 CODEX_CONFIG="$HOME/.codex/config.toml"
 
-# 备份现有配置
+# 备份现有配置（备份到 /tmp 目录以避免路径权限限制）
 if [[ -f "$CODEX_CONFIG" ]]; then
-  cp "$CODEX_CONFIG" "$CODEX_CONFIG.bak.$(date +%Y%m%d%H%M%S)"
+  cp "$CODEX_CONFIG" "/tmp/codex-config.toml.bak.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
   log "  已备份现有 config.toml"
 fi
 
@@ -769,7 +790,7 @@ if [[ "$SKIP_CC_CONNECT" != true ]]; then
     CC_CONFIG="$HOME/.cc-connect/config.toml"
     
     if [[ -f "$CC_CONFIG" ]]; then
-      cp "$CC_CONFIG" "$CC_CONFIG.bak.$(date +%Y%m%d%H%M%S)"
+      cp "$CC_CONFIG" "/tmp/cc-connect-config.toml.bak.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
       log "  已备份现有 cc-connect 配置"
     fi
 
@@ -847,15 +868,27 @@ CCEOF
 
     # ── systemd 守护进程 ──
     mkdir -p "$HOME/.config/systemd/user"
-    cat > "$HOME/.config/systemd/user/cc-connect.service" << 'SVCEOF'
+    # 确定要使用的 cc-connect 路径：优先检查 ~/.local/bin/ 是否为 dmwork 版本，否则直接使用 dmwork 目录下的
+    CC_EXEC_PATH="$HOME/.local/bin/cc-connect"
+    if [[ -f "$CC_BIN" ]]; then
+      if [[ ! -f "$CC_EXEC_PATH" ]] || ! strings "$CC_EXEC_PATH" 2>/dev/null | grep -q dmwork; then
+        CC_EXEC_PATH="$CC_BIN"
+        log "  systemd 将直接使用 dmwork 目录下的二进制: $CC_EXEC_PATH"
+      fi
+    fi
+
+    # 替换路径中的 $HOME 为 %h
+    CC_EXEC_PATH_ESCAPED=$(echo "$CC_EXEC_PATH" | sed "s|$HOME|%h|g")
+    
+    cat > "$HOME/.config/systemd/user/cc-connect.service" << SVCEOF
 [Unit]
-Description=cc-connect - AI Agent Chat Bridge
+Description=cc-connect - AI Agent Chat Bridge (dmwork)
 After=network-online.target cli-proxy-api.service cpa-compact-proxy.service
 Wants=cli-proxy-api.service
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/cc-connect --force --config %h/.cc-connect/config.toml
+ExecStart=$CC_EXEC_PATH_ESCAPED --force --config %h/.cc-connect/config.toml
 WorkingDirectory=%h/.cc-connect
 Restart=always
 RestartSec=5
@@ -867,7 +900,7 @@ StandardError=append:/tmp/cc-connect.log
 
 # Include all possible binary paths so cc-connect can find codex CLI
 Environment=PATH=%h/.npm-global/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
-Environment=OPENAI_API_KEY=mlamp-proxy-key
+Environment=OPENAI_API_KEY=studio
 
 # 不走系统代理访问本地
 Environment=HTTP_PROXY=
@@ -938,7 +971,7 @@ log "  ✅ 安装完成！"
 log "════════════════════════════════════════════════════════"
 echo ""
 log "运行健康检查："
-log "  bash ~/.openclaw/codex-docs/resources/scripts/health-check.sh"
+log "  bash ~/.openclaw/codex-docs-dmwork/resources/scripts/health-check.sh"
 echo ""
 log "启动 Codex："
 log "  codex                    # 默认模型 kimi-k2.6"
