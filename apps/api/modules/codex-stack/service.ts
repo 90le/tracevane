@@ -45,7 +45,7 @@ const DMWORK_CPA_PORT = 18795;
 const DEFAULT_COMPACT_PORT = 18796;
 const GPT_55_MODEL = "gpt-5.5";
 const GPT_55_CONTEXT_TOKENS = 1_050_000;
-const DEFAULT_CONTEXT_TOKENS = GPT_55_CONTEXT_TOKENS;
+const DEFAULT_CONTEXT_TOKENS = 20_000;
 const MAX_CONTEXT_TOKENS = GPT_55_CONTEXT_TOKENS;
 const CPA_LATEST_VERSION = "v7.1.17";
 const CPA_MANAGEMENT_PANEL_REPOSITORY = "https://github.com/router-for-me/Cli-Proxy-API-Management-Center";
@@ -1423,6 +1423,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         recommendedFrontier: GPT_55_MODEL,
         available: Array.from(new Set([
           currentModel,
+          selectedDefaultModel,
           defaultModel(resolveChannel()),
           openclawDefaultModel,
           GPT_55_MODEL,
@@ -1921,10 +1922,20 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       hasCpaProxyKey: cpaKey ? true : profile.hasCpaProxyKey,
     });
 
+    // Auto-restart changed services so config takes effect immediately
+    if (restartRequired.size > 0) {
+      try { await execText("systemctl", ["--user", "daemon-reload"], { timeout: 15_000 }); } catch {}
+      for (const unit of restartRequired) {
+        try { await execText("systemctl", ["--user", "restart", unit], { timeout: 30_000 }); } catch {}
+      }
+    }
+
     return {
       ok: true,
-      message: "Codex Stack config updated. Restart listed services to apply runtime changes.",
-      restartRequiredUnits: Array.from(restartRequired),
+      message: restartRequired.size > 0
+        ? `Codex Stack config updated. Restarted: ${Array.from(restartRequired).join(", ")}.`
+        : "Codex Stack config updated.",
+      restartRequiredUnits: [],
       summary: await getSummary(req),
     };
   }

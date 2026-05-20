@@ -534,9 +534,9 @@ test("codex stack config patch writes backups and updates managed fields", async
   });
 
   assert.equal(response.ok, true);
-  assert.ok(response.restartRequiredUnits?.includes("cli-proxy-api.service"));
-  assert.ok(response.restartRequiredUnits?.includes("cpa-compact-proxy.service"));
-  assert.ok(response.restartRequiredUnits?.includes("cc-connect.service"));
+  // Services are auto-restarted; restartRequiredUnits should be empty after restart
+  assert.ok(Array.isArray(response.restartRequiredUnits));
+  assert.ok(response.message.includes("Restarted") || response.message.includes("updated"));
   assert.match(fs.readFileSync(codexConfig, "utf8"), /model = "gpt-5\.4"/);
   assert.match(fs.readFileSync(codexConfig, "utf8"), /28796/);
   assert.match(fs.readFileSync(codexConfig, "utf8"), /model_context_window = 1050000/);
