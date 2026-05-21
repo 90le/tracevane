@@ -12,6 +12,7 @@ const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogCons
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
+const codexStackService = read("apps/api/modules/codex-stack/service.ts");
 
 test("codex stack logs panel is isolated from the main control page", () => {
   assert.match(controlPage, /import CodexStackLogConsole from "\.\/CodexStackLogConsole\.vue";/);
@@ -94,6 +95,8 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(controlPage, /runReadinessCheckTone\(check\.status\)/);
   assert.match(controlPage, /@click="activeSection = check\.section"/);
   assert.match(controlPage, /Codex 运行就绪/);
+  assert.match(codexStackService, /id: "cc-agent-task"/);
+  assert.match(codexStackService, /label: "CC\/IM Agent 任务"/);
 });
 
 test("codex stack attach action requires a fresh passing smoke matrix in the UI", () => {

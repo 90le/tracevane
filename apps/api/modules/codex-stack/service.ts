@@ -2179,16 +2179,41 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     profile: CodexStackProfile;
     context: ReturnType<typeof readCodexContext>;
     codexConfig: string;
+    ccParsed: CcConnectConfig;
+    ccBindingPresent: boolean;
+    ccConnectInstalled: boolean;
+    ccConnectConfigured: boolean;
+    compactPort: number;
   }): CodexStackSummaryPayload["runReadiness"] {
     const serviceById = new Map(params.services.map((service) => [service.id, service]));
     const cpaActive = serviceById.get("cli-proxy-api.service")?.active === true;
     const compactActive = serviceById.get("cpa-compact-proxy.service")?.active === true;
     const watchdogActive = serviceById.get("codex-stack-watchdog.timer")?.active === true;
+    const ccConnectActive = serviceById.get("cc-connect.service")?.active === true;
+    const expectedCcProviderBaseUrl = `http://127.0.0.1:${params.compactPort}/v1`;
+    const cpaProvider = params.ccParsed.providers.find((provider) => provider.name === "cpa");
+    const cpaProviderBaseOk = normalizeCcConnectBaseUrl(cpaProvider?.baseUrl || "") === expectedCcProviderBaseUrl;
+    const cpaProviderEnvOk = !cpaProvider?.codexEnvKey || cpaProvider.codexEnvKey === "OPENAI_API_KEY";
     const smokeMatrix = params.profile.lastSmokeMatrix;
     const smokeFresh = Boolean(smokeMatrix?.attachEligible && !isSmokeMatrixStale(smokeMatrix));
     const hasActiveJob = params.jobs.some((job) => job.status === "queued" || job.status === "running");
     const websocketEnabled = hasCodexResponsesWebSocketsEnabled(params.codexConfig);
     const compressionEnabled = hasCodexRequestCompressionEnabled(params.codexConfig);
+    const ccAgentTaskReady = params.ccConnectInstalled
+      && params.ccConnectConfigured
+      && params.ccBindingPresent
+      && ccConnectActive
+      && cpaProviderBaseOk
+      && cpaProviderEnvOk;
+    const ccAgentDetail = (() => {
+      if (ccAgentTaskReady) return "cc-connect 已安装、已绑定、服务 active，并且 cpa provider 指向本地 Compact。";
+      if (!params.ccConnectInstalled) return "cc-connect 未安装；IM/CC Agent 任务不可用，可执行完整安装或在安装页启用 cc-connect。";
+      if (!params.ccConnectConfigured) return "cc-connect 配置缺失；请在 Agent 面板生成 provider/project 配置。";
+      if (!params.ccBindingPresent) return "cc-connect 尚未完成 Feishu/Weixin QR 绑定；绑定后再运行 finalizer。";
+      if (!ccConnectActive) return "cc-connect.service 未 active；请按顺序恢复或重启 cc-connect。";
+      if (!cpaProviderBaseOk) return `cc-connect cpa provider 未指向本地 Compact ${expectedCcProviderBaseUrl}，Agent 任务可能绕过已验证链路。`;
+      return "cc-connect cpa provider 的 codex.env_key 不是 OPENAI_API_KEY，Codex Agent 可能拿不到本地 CPA key。";
+    })();
     const checks: CodexStackRunReadinessCheck[] = [
       {
         id: "service-order",
@@ -2243,6 +2268,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "最近一次 glm-5.1 与 kimi-k2.6 smoke matrix 通过，允许考虑 CPA attach。"
           : "尚无 24 小时内通过的 glm-5.1 / kimi-k2.6 smoke matrix；切换 Codex 前必须重新验证。",
         section: "install",
+      },
+      {
+        id: "cc-agent-route",
+        label: "cc-connect Agent 链路",
+        status: ccAgentTaskReady ? "pass" : "warn",
+        detail: ccAgentDetail,
+        section: "cc-connect",
       },
       {
         id: "context-window",
@@ -2300,6 +2332,12 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           label: "压缩上下文",
           ready: compactionReady,
           detail: compactionReady ? "Codex 请求压缩未启用，context 策略已显式配置。" : "需要禁用请求体压缩并确认 context 策略。",
+        },
+        {
+          id: "cc-agent-task",
+          label: "CC/IM Agent 任务",
+          ready: ccAgentTaskReady && chatReady,
+          detail: ccAgentTaskReady && chatReady ? "cc-connect 任务会走本地 Compact/CPA 链路。" : ccAgentDetail,
         },
       ],
     };
@@ -2436,6 +2474,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const jobs = listJobs();
     const overallStatus = classifyOverall(components, jobs, ccBindingPresent);
     const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy });
+    const ccConnectInstalled = Boolean(ccVersion) || pathExists(currentPaths.ccConnectConfig);
+    const ccConnectConfigured = pathExists(currentPaths.ccConnectConfig);
     const runReadiness = buildRunReadiness({
       services,
       jobs,
@@ -2446,6 +2486,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       profile,
       context,
       codexConfig,
+      ccParsed,
+      ccBindingPresent,
+      ccConnectInstalled,
+      ccConnectConfigured,
+      compactPort,
     });
     return {
       checkedAt: new Date().toISOString(),
@@ -2511,8 +2556,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         })),
       },
       ccConnect: {
-        installed: Boolean(ccVersion) || pathExists(currentPaths.ccConnectConfig),
-        configured: pathExists(currentPaths.ccConnectConfig),
+        installed: ccConnectInstalled,
+        configured: ccConnectConfigured,
         project: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
         bindingPresent: ccBindingPresent,
         socketPath: currentPaths.ccConnectSocket,

@@ -69,7 +69,7 @@ export type CodexStackContextMode = "default" | "codex-1m" | "custom";
 
 export type CodexStackRunReadinessLevel = "ready" | "attention" | "blocked";
 export type CodexStackRunReadinessCheckStatus = "pass" | "warn" | "fail";
-export type CodexStackRunReadinessModeId = "chat" | "long-task" | "compaction";
+export type CodexStackRunReadinessModeId = "chat" | "long-task" | "compaction" | "cc-agent-task";
 
 export interface CodexStackRunReadinessCheck {
   id: string;

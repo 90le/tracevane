@@ -578,6 +578,23 @@ test("codex stack summary exposes codex run readiness for chat long tasks and co
   createBundledInstaller(config, "official");
   createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
+  writeFile(path.join(root, ".cc-connect/config.toml"), `
+[[providers]]
+name = "cpa"
+api_key = "secret-cpa-key-123456"
+base_url = "http://127.0.0.1:18796/v1"
+codex.env_key = "OPENAI_API_KEY"
+
+[[projects]]
+name = "main"
+[projects.agent.options]
+model = "glm-5.1"
+
+[[projects.platforms]]
+type = "dmwork"
+[projects.platforms.options]
+account_id = "test"
+`);
 
   await withScriptedSystemctl(
     [
@@ -607,9 +624,11 @@ test("codex stack summary exposes codex run readiness for chat long tasks and co
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, true);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.ready, true);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "compaction")?.ready, true);
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.ready, true);
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "service-order")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-auth")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "pass");
+        assert.equal(summary.runReadiness.checks.find((check) => check.id === "cc-agent-route")?.status, "pass");
       });
     },
   );
