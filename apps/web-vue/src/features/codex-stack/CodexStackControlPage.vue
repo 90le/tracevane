@@ -181,95 +181,12 @@
                 @service-action="serviceAction"
               />
 
-              <div class="cs-dashboard-grid">
-                <article class="panel-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("速览", "Quick Info") }}</p>
-                      <h4>{{ text("运行摘要", "Runtime Summary") }}</h4>
-                    </div>
-                  </div>
-                  <dl class="cs-kv-list cs-kv-list-spacious">
-                    <div class="cs-kv-row">
-                      <span>{{ text("模型", "Model") }}</span>
-                      <code>{{ summary.models.current || summary.profile.defaultModel || "--" }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("渠道", "Channel") }}</span>
-                      <code>{{ channelLabel(summary.installer.channel) }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>CPA</span>
-                      <code>{{ portDisplay(summary.ports.cpa, summary.ports.detectedCpa) }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>Compact</span>
-                      <code>{{ portDisplay(summary.ports.compact, summary.ports.detectedCompact) }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("上游代理", "Upstream Proxy") }}</span>
-                      <code>{{ proxyPolicyLabel }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("模型矩阵", "Smoke Matrix") }}</span>
-                      <code>{{ smokeMatrixLabel }}</code>
-                    </div>
-                    <div v-if="summary.profile.lastSmokeMatrix" class="cs-smoke-matrix-detail">
-                      <div class="cs-smoke-matrix-head">
-                        <span>{{ text("必测模型", "Required Models") }}</span>
-                        <strong>{{ summary.profile.lastSmokeMatrix.requiredModels.join(", ") }}</strong>
-                      </div>
-                      <div class="cs-smoke-matrix-head">
-                        <span>{{ text("可切换", "Attach Eligible") }}</span>
-                        <strong>{{ summary.profile.lastSmokeMatrix.attachEligible ? text("是", "Yes") : text("否", "No") }}</strong>
-                      </div>
-                      <article v-for="model in summary.profile.lastSmokeMatrix.models" :key="model.model" class="cs-smoke-model-row">
-                        <div>
-                          <strong>{{ model.model }} · {{ model.status }}</strong>
-                          <p>{{ smokeModelChecksLabel(model) }}</p>
-                          <p v-if="model.error" class="cs-smoke-error">{{ model.error }}</p>
-                        </div>
-                      </article>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("cc-connect 项目", "cc-connect Project") }}</span>
-                      <code>{{ summary.ccConnect.project || "main" }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("安装器版本", "Installer Version") }}</span>
-                      <code>{{ summary.installer.version || "--" }}</code>
-                    </div>
-                  </dl>
-                </article>
-
-                <article class="panel-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("组件", "Components") }}</p>
-                      <h4>{{ text("组件健康", "Component Health") }}</h4>
-                    </div>
-                  </div>
-                  <div class="cs-component-list">
-                    <article v-for="component in summary.components" :key="component.id" class="cs-component-card">
-                      <div class="cs-component-head">
-                        <div>
-                          <strong>{{ component.label }}</strong>
-                          <p>{{ componentStatusLabel(component) }}</p>
-                        </div>
-                        <span class="cs-status-pill" :class="`tone-${componentTone(component.status)}`">
-                          {{ componentStatusLabel(component) }}
-                        </span>
-                      </div>
-                      <p class="cs-component-version">
-                        {{ text("版本", "Version") }} {{ component.version || (component.installed ? text("已安装", "Installed") : text("缺失", "Missing")) }}
-                      </p>
-                      <p v-if="component.notes.length" class="cs-component-notes">
-                        {{ component.notes.join(" · ") }}
-                      </p>
-                    </article>
-                  </div>
-                </article>
-              </div>
+              <CodexStackDashboardInsights
+                :labels="dashboardInsightsLabels"
+                :runtime-rows="runtimeSummaryRows"
+                :smoke-matrix="smokeMatrixCard"
+                :components="componentHealthCards"
+              />
 
               <div class="cs-dashboard-grid">
                 <article class="panel-card">
@@ -1417,7 +1334,6 @@ import type {
   CodexStackRepairAction,
   CodexStackServiceAction,
   CodexStackServiceId,
-  CodexStackSmokeModelResult,
   CodexStackSummaryPayload,
 } from "../../../../../types/codex-stack";
 import {
@@ -1441,6 +1357,12 @@ import {
   countActiveServices,
   isCodexStackJobRunning,
 } from "./codex-stack-view-model";
+import CodexStackDashboardInsights from "./CodexStackDashboardInsights.vue";
+import type {
+  CodexStackComponentHealthCard,
+  CodexStackRuntimeSummaryRow,
+  CodexStackSmokeMatrixCard,
+} from "./CodexStackDashboardInsights.vue";
 import CodexStackRecommendationCard from "./CodexStackRecommendationCard.vue";
 import CodexStackServiceGrid from "./CodexStackServiceGrid.vue";
 
@@ -1767,12 +1689,92 @@ const smokeMatrixLabel = computed(() => {
     ? text(`通过 ${models}`, `Passed ${models}`)
     : text(`失败 ${models}`, `Failed ${models}`);
 });
-
-function smokeModelChecksLabel(model: CodexStackSmokeModelResult): string {
-  const passed = model.checks.filter((check) => check.status === "passed").length;
-  const total = model.checks.length;
-  return text(`检查 ${passed}/${total} 通过`, `${passed}/${total} checks passed`);
-}
+const dashboardInsightsLabels = computed(() => ({
+  runtimeKicker: text("速览", "Quick Info"),
+  runtimeTitle: text("运行摘要", "Runtime Summary"),
+  componentsKicker: text("组件", "Components"),
+  componentsTitle: text("组件健康", "Component Health"),
+}));
+const runtimeSummaryRows = computed<CodexStackRuntimeSummaryRow[]>(() => {
+  const current = summary.value;
+  if (!current) return [];
+  return [
+    {
+      id: "model",
+      label: text("模型", "Model"),
+      value: current.models.current || current.profile.defaultModel || "--",
+    },
+    {
+      id: "channel",
+      label: text("渠道", "Channel"),
+      value: channelLabel(current.installer.channel),
+    },
+    {
+      id: "cpa",
+      label: "CPA",
+      value: portDisplay(current.ports.cpa, current.ports.detectedCpa),
+    },
+    {
+      id: "compact",
+      label: "Compact",
+      value: portDisplay(current.ports.compact, current.ports.detectedCompact),
+    },
+    {
+      id: "proxy",
+      label: text("上游代理", "Upstream Proxy"),
+      value: proxyPolicyLabel.value,
+    },
+    {
+      id: "smoke",
+      label: text("模型矩阵", "Smoke Matrix"),
+      value: smokeMatrixLabel.value,
+    },
+    {
+      id: "cc-connect",
+      label: text("cc-connect 项目", "cc-connect Project"),
+      value: current.ccConnect.project || "main",
+    },
+    {
+      id: "installer",
+      label: text("安装器版本", "Installer Version"),
+      value: current.installer.version || "--",
+    },
+  ];
+});
+const smokeMatrixCard = computed<CodexStackSmokeMatrixCard | null>(() => {
+  const matrix = summary.value?.profile.lastSmokeMatrix;
+  if (!matrix) return null;
+  return {
+    requiredModelsLabel: text("必测模型", "Required Models"),
+    requiredModels: matrix.requiredModels.join(", "),
+    attachEligibleLabel: text("可切换", "Attach Eligible"),
+    attachEligible: matrix.attachEligible ? text("是", "Yes") : text("否", "No"),
+    models: matrix.models.map((model) => {
+      const passed = model.checks.filter((check) => check.status === "passed").length;
+      const total = model.checks.length;
+      return {
+        model: model.model,
+        status: model.status,
+        checksLabel: text(`检查 ${passed}/${total} 通过`, `${passed}/${total} checks passed`),
+        error: model.error,
+      };
+    }),
+  };
+});
+const componentHealthCards = computed<CodexStackComponentHealthCard[]>(() => {
+  const current = summary.value;
+  if (!current) return [];
+  return current.components.map((component) => ({
+    id: component.id,
+    label: component.label,
+    statusLabel: componentStatusLabel(component),
+    versionLabel: `${text("版本", "Version")} ${
+      component.version || (component.installed ? text("已安装", "Installed") : text("缺失", "Missing"))
+    }`,
+    notes: component.notes.join(" · "),
+    tone: componentTone(component.status),
+  }));
+});
 const configContextTokensDisabled = computed(() => configForm.contextMode !== "custom");
 const installContextTokensDisabled = computed(() => installForm.contextMode !== "custom");
 const canonicalCcConnectProvider = computed(() => {
@@ -2822,9 +2824,7 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
 .cs-section-copy,
 .cs-field-hint,
 .cs-hero-description,
-.cs-service-blurb,
-.cs-component-version,
-.cs-component-notes {
+.cs-service-blurb {
   color: var(--text-soft);
 }
 
@@ -3140,10 +3140,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   gap: 10px;
 }
 
-.cs-kv-list-spacious {
-  gap: 14px;
-}
-
 .cs-kv-row {
   display: grid;
   grid-template-columns: minmax(120px, 180px) 1fr;
@@ -3164,40 +3160,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   word-break: break-word;
 }
 
-.cs-smoke-matrix-detail {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-}
-
-.cs-smoke-matrix-head,
-.cs-smoke-model-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.cs-smoke-matrix-head span,
-.cs-smoke-model-row p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.86rem;
-}
-
-.cs-smoke-model-row {
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-}
-
-.cs-smoke-error {
-  color: var(--danger) !important;
-  word-break: break-word;
-}
-
-.cs-component-list,
 .cs-component-mode-list,
 .cs-project-list {
   display: flex;
@@ -3205,7 +3167,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   gap: 12px;
 }
 
-.cs-component-card,
 .cs-component-mode-card,
 .cs-provider-card,
 .cs-platform-card,
@@ -3214,17 +3175,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   padding: 14px;
-}
-
-.cs-component-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.cs-component-head p {
-  margin: 4px 0 0;
 }
 
 .cs-warning-list {
