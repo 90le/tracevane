@@ -184,11 +184,12 @@
                     type="button"
                     class="cs-run-check"
                     :class="`tone-${runReadinessCheckTone(check.status)}`"
-                    @click="activeSection = check.section"
+                    @click="runReadinessCheckAction(check)"
                   >
                     <span>{{ check.label }}</span>
                     <strong>{{ runReadinessCheckLabel(check.status) }}</strong>
                     <small>{{ check.detail }}</small>
+                    <em>{{ check.actionHint.label }}</em>
                   </button>
                 </div>
               </article>
@@ -1345,6 +1346,7 @@ import type {
   CodexStackJobStatus,
   CodexStackLogResponse,
   CodexStackRepairAction,
+  CodexStackRunReadinessCheck,
   CodexStackRunReadinessCheckStatus,
   CodexStackRunReadinessLevel,
   CodexStackServiceAction,
@@ -2649,6 +2651,19 @@ function nextActionPrimary(): void {
   }
 }
 
+function runReadinessCheckAction(check: CodexStackRunReadinessCheck): void {
+  const action = check.actionHint;
+  if (action.kind === "run-check") {
+    void runCheck();
+    return;
+  }
+  if (action.kind === "repair" && action.repairActions?.length) {
+    void startRepairWithActions(action.repairActions, text("就绪检查修复任务已启动。", "Readiness repair job started."));
+    return;
+  }
+  activeSection.value = action.section || check.section;
+}
+
 function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): void {
   configForm.defaultModel = normalized.models.current || normalized.profile.defaultModel || normalized.models.defaultModel || "kimi-k2.6";
   configForm.contextMode = normalized.context.mode || "default";
@@ -3618,6 +3633,14 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 
 .cs-run-check:hover {
   transform: translateY(-1px);
+}
+
+.cs-run-check em {
+  display: inline-flex;
+  margin-top: 10px;
+  color: currentColor;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .cs-chip-row {

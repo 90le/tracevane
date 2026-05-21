@@ -70,6 +70,14 @@ export type CodexStackContextMode = "default" | "codex-1m" | "custom";
 export type CodexStackRunReadinessLevel = "ready" | "attention" | "blocked";
 export type CodexStackRunReadinessCheckStatus = "pass" | "warn" | "fail";
 export type CodexStackRunReadinessModeId = "chat" | "long-task" | "compaction" | "cc-agent-task";
+export type CodexStackRunReadinessActionKind = "open-section" | "repair" | "run-check";
+
+export interface CodexStackRunReadinessActionHint {
+  kind: CodexStackRunReadinessActionKind;
+  label: string;
+  section?: "dashboard" | "install" | "cc-connect" | "settings" | "logs";
+  repairActions?: CodexStackRepairAction[];
+}
 
 export interface CodexStackRunReadinessCheck {
   id: string;
@@ -77,6 +85,7 @@ export interface CodexStackRunReadinessCheck {
   status: CodexStackRunReadinessCheckStatus;
   detail: string;
   section: "dashboard" | "install" | "cc-connect" | "settings" | "logs";
+  actionHint: CodexStackRunReadinessActionHint;
 }
 
 export interface CodexStackRunReadinessMode {

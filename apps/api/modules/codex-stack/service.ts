@@ -2223,6 +2223,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "CPA、Compact 与 watchdog 均处于 active，长任务不会从已知暂停态开始。"
           : "CPA、Compact 或 watchdog 未全部 active；请使用 Resume CPA Stack 按顺序恢复。",
         section: "dashboard",
+        actionHint: cpaActive && compactActive && watchdogActive
+          ? { kind: "run-check", label: "运行健康检查" }
+          : { kind: "repair", label: "按顺序恢复 CPA 栈", repairActions: ["resume-stack"] },
       },
       {
         id: "local-compact",
@@ -2232,6 +2235,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "CPA healthz 与 Compact /v1/models 均可访问。"
           : "CPA healthz 或 Compact /v1/models 不可访问；普通请求、流式请求和模型选择都需要先修复。",
         section: "dashboard",
+        actionHint: params.cpaHealthy && params.compactHealthy
+          ? { kind: "open-section", label: "查看链路", section: "dashboard" }
+          : { kind: "repair", label: "重启 CPA/Compact", repairActions: ["restart-cpa", "restart-compact-proxy"] },
       },
       {
         id: "codex-auth",
@@ -2241,6 +2247,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "~/.codex/auth.json 与 CPA proxy key 匹配。"
           : "~/.codex/auth.json 未写入或与 CPA proxy key 不一致；Codex CLI 可能绕过本地 Compact。",
         section: "settings",
+        actionHint: params.codexAuthMatches === true
+          ? { kind: "open-section", label: "查看配置", section: "settings" }
+          : { kind: "repair", label: "修复 Codex auth", repairActions: ["repair-auth-json"] },
       },
       {
         id: "proxy-loopback",
@@ -2250,6 +2259,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "localhost、127.0.0.1 与 ::1 已绕过系统代理。"
           : `NO_PROXY 缺少 ${params.proxyPolicy.noProxyLoopbackMissing.join(", ")}；VPN 网卡/TUN 模式可能截获本机 CPA/Compact 请求。`,
         section: "settings",
+        actionHint: { kind: "open-section", label: params.proxyPolicy.noProxyLoopbackReady ? "查看网络策略" : "编辑 NO_PROXY", section: "settings" },
       },
       {
         id: "codex-transport",
@@ -2259,6 +2269,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "Codex WebSocket 或 request compression 仍启用；第三方兼容端点经 Compact 转发时应使用 HTTP/SSE 且禁用压缩请求体。"
           : "Codex 传输保持 HTTP/SSE，未启用压缩请求体。",
         section: "settings",
+        actionHint: websocketEnabled || compressionEnabled
+          ? { kind: "repair", label: "修复 Codex 传输", repairActions: ["repair-codex-transport"] }
+          : { kind: "open-section", label: "查看配置", section: "settings" },
       },
       {
         id: "smoke-matrix",
@@ -2268,6 +2281,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "最近一次 glm-5.1 与 kimi-k2.6 smoke matrix 通过，允许考虑 CPA attach。"
           : "尚无 24 小时内通过的 glm-5.1 / kimi-k2.6 smoke matrix；切换 Codex 前必须重新验证。",
         section: "install",
+        actionHint: smokeFresh
+          ? { kind: "open-section", label: "查看 smoke gate", section: "install" }
+          : { kind: "repair", label: "运行 smoke matrix", repairActions: ["run-smoke-matrix"] },
       },
       {
         id: "cc-agent-route",
@@ -2275,6 +2291,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         status: ccAgentTaskReady ? "pass" : "warn",
         detail: ccAgentDetail,
         section: "cc-connect",
+        actionHint: ccAgentTaskReady
+          ? { kind: "open-section", label: "查看 Agent 配置", section: "cc-connect" }
+          : !params.ccConnectInstalled
+            ? { kind: "open-section", label: "安装 cc-connect", section: "install" }
+            : !ccConnectActive && params.ccBindingPresent
+              ? { kind: "repair", label: "重启 cc-connect", repairActions: ["restart-cc-connect"] }
+              : { kind: "open-section", label: "修复 Agent 配置", section: "cc-connect" },
       },
       {
         id: "context-window",
@@ -2284,6 +2307,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? `当前上下文窗口 ${params.context.tokens} tokens 偏小，长任务和压缩上下文前建议调高。`
           : `当前上下文策略 ${params.context.mode}，推荐窗口 ${DEFAULT_CONTEXT_TOKENS} tokens。`,
         section: "settings",
+        actionHint: { kind: "open-section", label: "编辑上下文", section: "settings" },
       },
       {
         id: "job-lock",
@@ -2293,6 +2317,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "安装/修复任务仍在运行；先等待结束再判断 Codex 对话和长任务稳定性。"
           : "没有正在运行的安装/修复任务。",
         section: "logs",
+        actionHint: { kind: "open-section", label: hasActiveJob ? "查看任务日志" : "查看日志", section: "logs" },
       },
     ];
     const hasFail = checks.some((check) => check.status === "fail");

@@ -629,6 +629,8 @@ account_id = "test"
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-auth")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "cc-agent-route")?.status, "pass");
+        assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.actionHint.kind, "open-section");
+        assert.equal(summary.runReadiness.checks.find((check) => check.id === "cc-agent-route")?.actionHint.section, "cc-connect");
       });
     },
   );

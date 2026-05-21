@@ -93,10 +93,14 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(controlPage, /summary\.runReadiness\.checks/);
   assert.match(controlPage, /runReadinessLevelLabel\(summary\.runReadiness\.level\)/);
   assert.match(controlPage, /runReadinessCheckTone\(check\.status\)/);
-  assert.match(controlPage, /@click="activeSection = check\.section"/);
+  assert.match(controlPage, /@click="runReadinessCheckAction\(check\)"/);
+  assert.match(controlPage, /check\.actionHint\.label/);
+  assert.match(controlPage, /function runReadinessCheckAction\(check: CodexStackRunReadinessCheck\): void/);
+  assert.match(controlPage, /action\.kind === "repair"[\s\S]*startRepairWithActions\(action\.repairActions/);
   assert.match(controlPage, /Codex 运行就绪/);
   assert.match(codexStackService, /id: "cc-agent-task"/);
   assert.match(codexStackService, /label: "CC\/IM Agent 任务"/);
+  assert.match(codexStackService, /label: "运行 smoke matrix", repairActions: \["run-smoke-matrix"\]/);
 });
 
 test("codex stack attach action requires a fresh passing smoke matrix in the UI", () => {
