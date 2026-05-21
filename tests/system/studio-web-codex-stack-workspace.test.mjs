@@ -1,0 +1,40 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8");
+
+const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
+const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
+const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
+
+test("codex stack logs panel is isolated from the main control page", () => {
+  assert.match(controlPage, /import CodexStackLogConsole from "\.\/CodexStackLogConsole\.vue";/);
+  assert.match(controlPage, /<CodexStackLogConsole[\s\S]*v-model:selected-service="selectedLogService"[\s\S]*@load="loadLogs"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-log-console"/);
+
+  assert.match(logConsole, /export interface CodexStackLogServiceOption/);
+  assert.match(logConsole, /\.cs-log-service-button\s*\{/);
+  assert.match(logConsole, /\.cs-log\s*\{/);
+});
+
+test("codex stack log reads avoid overlapping auto-refresh requests", () => {
+  assert.match(controlPage, /let logRequestInFlight = false;/);
+  assert.match(controlPage, /let queuedLogRequest: \{ serviceId: CodexStackServiceId; silent: boolean \} \| null = null;/);
+  assert.match(
+    controlPage,
+    /if \(logRequestInFlight\) \{[\s\S]*queuedLogRequest = \{ serviceId, silent \};[\s\S]*return;[\s\S]*\}/,
+  );
+  assert.match(controlPage, /const nextRequest = queuedLogRequest;[\s\S]*queuedLogRequest = null;/);
+  assert.match(controlPage, /void loadLogs\(nextRequest\.serviceId, nextRequest\.silent\);/);
+});
+
+test("codex stack extracted panels own their scoped display styles", () => {
+  assert.match(dashboardInsights, /\.cs-section-kicker\s*\{/);
+  assert.match(dashboardInsights, /\.cs-status-pill\.tone-sage\s*\{/);
+  assert.match(logConsole, /\.cs-section-kicker\s*\{/);
+  assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
+});

@@ -1212,63 +1212,21 @@
                 </div>
               </article>
 
-              <article class="panel-card cs-log-console">
-                <div class="cs-log-control-grid">
-                  <div>
-                    <p class="cs-section-kicker">{{ text("目标服务", "Target Service") }}</p>
-                    <div class="cs-log-service-list">
-                      <button
-                        v-for="service in logServices"
-                        :key="service.id"
-                        type="button"
-                        class="cs-log-service-button"
-                        :class="{ 'cs-log-service-button-active': selectedLogService === service.id }"
-                        @click="selectedLogService = service.id"
-                      >
-                        <span :class="`cs-dot tone-${service.tone}`"></span>
-                        <strong>{{ service.label }}</strong>
-                        <small>{{ service.rawState }}</small>
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <p class="cs-section-kicker">{{ text("读取性能", "Read Performance") }}</p>
-                    <div class="cs-log-mode-list">
-                      <button
-                        v-for="option in logLineOptions"
-                        :key="option.id"
-                        type="button"
-                        class="cs-log-mode-button"
-                        :class="{ 'cs-log-mode-button-active': logLineMode === option.id }"
-                        @click="logLineMode = option.id"
-                      >
-                        <strong>{{ option.label }}</strong>
-                        <span>{{ option.lines }} {{ text("行", "lines") }}</span>
-                      </button>
-                    </div>
-                    <p class="cs-field-hint">{{ logModeHelp }}</p>
-                    <label class="cs-switch-row cs-log-auto">
-                      <input v-model="logAutoRefresh" type="checkbox" />
-                      {{ text("自动刷新当前服务", "Auto-refresh current service") }}
-                    </label>
-                  </div>
-                </div>
-                <div class="cs-log-toolbar">
-                  <div class="cs-chip-row">
-                    <span class="cs-info-chip">{{ text("请求行数", "Requested") }} {{ logLineLimit }}</span>
-                    <span v-if="logMeta" class="cs-info-chip">{{ text("返回行数", "Returned") }} {{ logMeta.returnedLines }}</span>
-                    <span v-if="logMeta" class="cs-info-chip">{{ text("来源", "Sources") }} {{ logMeta.sources.map((source) => source.label).join(" + ") }}</span>
-                    <span v-if="logMeta" class="cs-info-chip">{{ text("读取时间", "Fetched") }} {{ formatTimestamp(logMeta.fetchedAt) }}</span>
-                    <span v-if="logMeta?.truncated" class="cs-status-pill tone-accent">{{ text("内容已截断", "Output truncated") }}</span>
-                  </div>
-                  <div class="cs-actions">
-                    <button type="button" class="primary-button" :disabled="logRefreshing" @click="loadLogs(selectedLogService)">
-                      {{ logRefreshing ? text("读取中...", "Loading...") : text("读取日志", "Load Logs") }}
-                    </button>
-                  </div>
-                </div>
-                <pre class="cs-log">{{ logOutput || text("选择一个服务查看日志。", "Select a service to view logs.") }}</pre>
-              </article>
+              <CodexStackLogConsole
+                v-model:selected-service="selectedLogService"
+                v-model:mode="logLineMode"
+                v-model:auto-refresh="logAutoRefresh"
+                :services="logServices"
+                :options="logLineOptions"
+                :mode-help="logModeHelp"
+                :requested-lines="logLineLimit"
+                :meta="logMeta"
+                :fetched-at-label="logFetchedAtLabel"
+                :output="logOutput"
+                :refreshing="logRefreshing"
+                :labels="logConsoleLabels"
+                @load="loadLogs"
+              />
 
               <article v-if="activeJob" class="panel-card cs-job-output-card">
                 <div class="cs-card-header">
@@ -1363,6 +1321,12 @@ import type {
   CodexStackRuntimeSummaryRow,
   CodexStackSmokeMatrixCard,
 } from "./CodexStackDashboardInsights.vue";
+import CodexStackLogConsole from "./CodexStackLogConsole.vue";
+import type {
+  CodexStackLogLineMode,
+  CodexStackLogLineOption,
+  CodexStackLogServiceOption,
+} from "./CodexStackLogConsole.vue";
 import CodexStackRecommendationCard from "./CodexStackRecommendationCard.vue";
 import CodexStackServiceGrid from "./CodexStackServiceGrid.vue";
 
@@ -1370,7 +1334,7 @@ const { text } = useLocalePreference();
 
 type SectionId = "dashboard" | "install" | "cc-connect" | "settings" | "logs";
 type AgentPaneId = "projects" | "providers" | "setup" | "raw";
-type LogLineMode = "light" | "balanced" | "deep";
+type LogLineMode = CodexStackLogLineMode;
 type ComponentInstallMode = "default" | "skip" | "force";
 type AgentProjectPreset = "admin" | "worker";
 type PlatformTemplateId = "dmwork" | "octo" | "feishu" | "weixin";
@@ -1414,8 +1378,8 @@ const activeSection = ref<SectionId>("dashboard");
 const activeAgentPane = ref<AgentPaneId>("projects");
 const selectedProjectDraftId = ref("");
 const selectedLogService = ref<CodexStackServiceId>("cli-proxy-api.service");
-const logServices = computed(() => {
-  const services: Array<{ id: CodexStackServiceId; label: string; tone: string; rawState: string }> = [
+const logServices = computed<CodexStackLogServiceOption[]>(() => {
+  const services: CodexStackLogServiceOption[] = [
     { id: "cli-proxy-api.service", label: text("CPA", "CPA"), tone: "neutral", rawState: "--" },
     { id: "cli-proxy-api-healthcheck.timer", label: text("旧巡检", "Legacy Healthcheck"), tone: "neutral", rawState: "--" },
     { id: "cpa-compact-proxy.service", label: text("Compact", "Compact"), tone: "neutral", rawState: "--" },
@@ -1444,6 +1408,8 @@ const logAutoRefresh = ref(false);
 const logRefreshing = ref(false);
 let pollTimer: number | null = null;
 let logPollTimer: number | null = null;
+let logRequestInFlight = false;
+let queuedLogRequest: { serviceId: CodexStackServiceId; silent: boolean } | null = null;
 let draftIdCounter = 0;
 
 const navSections = computed(() => [
@@ -1899,13 +1865,28 @@ const installPlanHighlights = computed(() => {
     `${text("强制", "Force")}: ${force.length ? force.join(", ") : text("无", "None")}`,
   ];
 });
-const logLineOptions = computed<Array<{ id: LogLineMode; label: string; lines: number; help: string }>>(() => [
+const logLineOptions = computed<CodexStackLogLineOption[]>(() => [
   { id: "light", label: text("轻量", "Light"), lines: 80, help: text("最快，只看最近错误。", "Fastest, recent errors only.") },
   { id: "balanced", label: text("标准", "Balanced"), lines: 160, help: text("默认预览，适合日常排障。", "Default preview for daily diagnosis.") },
   { id: "deep", label: text("完整", "Deep"), lines: 500, help: text("更多上下文，读取更慢。", "More context, slower fetch.") },
 ]);
 const logLineLimit = computed(() => logLineOptions.value.find((option) => option.id === logLineMode.value)?.lines || 160);
 const logModeHelp = computed(() => logLineOptions.value.find((option) => option.id === logLineMode.value)?.help || "");
+const logFetchedAtLabel = computed(() => formatTimestamp(logMeta.value?.fetchedAt));
+const logConsoleLabels = computed(() => ({
+  targetService: text("目标服务", "Target Service"),
+  readPerformance: text("读取性能", "Read Performance"),
+  lines: text("行", "lines"),
+  autoRefresh: text("自动刷新当前服务", "Auto-refresh current service"),
+  requested: text("请求行数", "Requested"),
+  returned: text("返回行数", "Returned"),
+  sources: text("来源", "Sources"),
+  fetched: text("读取时间", "Fetched"),
+  truncated: text("内容已截断", "Output truncated"),
+  load: text("读取日志", "Load Logs"),
+  loading: text("读取中...", "Loading..."),
+  empty: text("选择一个服务查看日志。", "Select a service to view logs."),
+}));
 const jobProgressDefinitions = computed(() => {
   const kind = activeJob.value?.kind;
   if (kind === "repair") {
@@ -2742,6 +2723,11 @@ async function finalizeCcConnect(): Promise<void> {
 }
 
 async function loadLogs(serviceId: CodexStackServiceId, silent = false): Promise<void> {
+  if (logRequestInFlight) {
+    queuedLogRequest = { serviceId, silent };
+    return;
+  }
+  logRequestInFlight = true;
   selectedLogService.value = serviceId;
   logRefreshing.value = true;
   try {
@@ -2754,6 +2740,12 @@ async function loadLogs(serviceId: CodexStackServiceId, silent = false): Promise
     }
   } finally {
     logRefreshing.value = false;
+    logRequestInFlight = false;
+    const nextRequest = queuedLogRequest;
+    queuedLogRequest = null;
+    if (nextRequest) {
+      void loadLogs(nextRequest.serviceId, nextRequest.silent);
+    }
   }
 }
 
@@ -2944,8 +2936,7 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
 .cs-hero-actions,
 .cs-actions,
 .cs-install-cta-row,
-.cs-platform-badges,
-.cs-log-toolbar {
+.cs-platform-badges {
   display: flex;
   gap: 10px;
   align-items: center;
@@ -3621,9 +3612,7 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
 }
 
 .cs-agent-pane-button,
-.cs-agent-project-pill,
-.cs-log-service-button,
-.cs-log-mode-button {
+.cs-agent-project-pill {
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: var(--text-soft);
@@ -3639,9 +3628,7 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
 }
 
 .cs-agent-pane-button-active,
-.cs-agent-project-pill-active,
-.cs-log-service-button-active,
-.cs-log-mode-button-active {
+.cs-agent-project-pill-active {
   color: var(--text);
   border-color: color-mix(in srgb, var(--acc) 44%, var(--line));
   background:
@@ -3650,9 +3637,7 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
 }
 
 .cs-agent-pane-button:hover,
-.cs-agent-project-pill:hover,
-.cs-log-service-button:hover,
-.cs-log-mode-button:hover {
+.cs-agent-project-pill:hover {
   transform: translateY(-1px);
 }
 
@@ -3857,90 +3842,8 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-.cs-log-console {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.cs-log-control-grid {
-  display: grid;
-  grid-template-columns: minmax(260px, 0.9fr) minmax(260px, 1fr);
-  gap: 18px;
-}
-
-.cs-log-service-list,
-.cs-log-mode-list {
-  display: grid;
-  gap: 8px;
-}
-
-.cs-log-service-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.cs-log-mode-list {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.cs-log-service-button {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 6px 10px;
-  align-items: center;
-  border-radius: 16px;
-  padding: 12px;
-  text-align: left;
-}
-
-.cs-log-service-button .cs-dot {
-  margin: 0;
-}
-
-.cs-log-service-button small {
-  grid-column: 2;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cs-log-mode-button {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-  border-radius: 16px;
-  padding: 12px;
-  text-align: left;
-}
-
-.cs-log-mode-button span {
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.cs-log-auto {
-  margin-top: 12px;
-}
-
-.cs-log-toolbar {
-  justify-content: space-between;
-  margin-bottom: 0;
-}
-
 .cs-job-output-card {
   border-color: color-mix(in srgb, var(--acc) 22%, var(--line));
-}
-
-.cs-dot {
-  width: 10px;
-  height: 10px;
-  margin-top: 6px;
-  border-radius: 999px;
-  background: var(--muted);
-  box-shadow: 0 0 14px currentColor;
-  flex: 0 0 auto;
 }
 
 .tone-sage {
@@ -3989,26 +3892,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   color: #263241;
   border-color: #c5ced8;
   background: #eef2f6;
-}
-
-.cs-dot.tone-sage {
-  color: var(--success);
-  background: var(--success);
-}
-
-.cs-dot.tone-accent {
-  color: var(--acc);
-  background: var(--acc);
-}
-
-.cs-dot.tone-danger {
-  color: var(--danger);
-  background: var(--danger);
-}
-
-.cs-dot.tone-neutral {
-  color: var(--muted);
-  background: var(--muted);
 }
 
 .text-button {
@@ -4076,10 +3959,7 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   .cs-upstream-grid,
   .cs-agent-workbench,
   .cs-agent-editor-grid,
-  .cs-agent-template-row,
-  .cs-log-control-grid,
-  .cs-log-service-list,
-  .cs-log-mode-list {
+  .cs-agent-template-row {
     grid-template-columns: 1fr;
   }
 
@@ -4118,8 +3998,7 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   .cs-platform-head,
   .cs-project-head,
   .cs-agent-template-card,
-  .cs-subsection-header,
-  .cs-log-toolbar {
+  .cs-subsection-header {
     flex-direction: column;
     align-items: stretch;
   }

@@ -125,6 +125,51 @@ defineProps<{
   margin: 0;
 }
 
+.cs-section-kicker {
+  margin: 0 0 6px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+}
+
+.cs-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+.cs-status-pill.tone-sage {
+  color: #073b20;
+  border-color: #8fd8a6;
+  background: #dff8e7;
+}
+
+.cs-status-pill.tone-accent {
+  color: #17335f;
+  border-color: #9ec2ff;
+  background: #e4efff;
+}
+
+.cs-status-pill.tone-danger {
+  color: #651d19;
+  border-color: #f1a9a1;
+  background: #ffe4e0;
+}
+
+.cs-status-pill.tone-neutral {
+  color: #263241;
+  border-color: #c5ced8;
+  background: #eef2f6;
+}
+
 .cs-kv-list {
   display: grid;
   gap: 10px;
