@@ -8,6 +8,7 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.
 const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8");
 
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
+const ccConnectCommandBar = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectCommandBar.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
@@ -92,6 +93,10 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(runReadinessPanel, /class="panel-card cs-run-readiness-card"/);
   assert.match(runReadinessPanel, /\.cs-run-check-grid\s*\{/);
   assert.match(runReadinessPanel, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectCommandBar, /class="cs-cc-command-bar"/);
+  assert.match(ccConnectCommandBar, /\.cs-config-action-strip\s*\{/);
+  assert.match(ccConnectCommandBar, /\.cs-agent-savebar\s*\{/);
+  assert.match(ccConnectCommandBar, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
 });
@@ -214,6 +219,23 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(repairBoard, /glm-5\.1 与 kimi-k2\.6 都要通过普通、非流式、流式和压缩上下文/);
   assert.match(repairBoard, /:disabled="!canAttachCodexCpa"[\s\S]*@click="\$emit\('attach-codex-cpa'\)"/);
   assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*请先运行“只验证”/);
+});
+
+test("codex stack cc-connect page delegates command bar without moving config writes", () => {
+  assert.match(controlPage, /import CodexStackCcConnectCommandBar from "\.\/CodexStackCcConnectCommandBar\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackCcConnectCommandBar[\s\S]*:installed="summary\.ccConnect\.installed"[\s\S]*:configured="summary\.ccConnect\.configured"[\s\S]*:binding-present="summary\.ccConnect\.bindingPresent"[\s\S]*:finalizer-available="summary\.ccConnect\.finalizerAvailable"[\s\S]*:project-name="primaryCcConnectProjectName"[\s\S]*:provider-count="ccConnectProviderDraftCount"[\s\S]*:project-count="ccConnectProjectDraftCount"[\s\S]*:has-structured-changes="hasCcConnectStructuredChanges"[\s\S]*:has-raw-changes="hasCcConnectRawChanges"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*@save-structured="saveCcConnectStructured"[\s\S]*@save-raw="saveCcConnectRaw"/,
+  );
+  assert.doesNotMatch(controlPage, /class="panel-card cs-config-action-strip cs-agent-savebar"/);
+  assert.match(controlPage, /async function saveCcConnectStructured\(\): Promise<void>/);
+  assert.match(controlPage, /async function saveCcConnectRaw\(\): Promise<void>/);
+  assert.match(controlPage, /patchCcConnectConfig\(\{[\s\S]*providers: normalizeProviderDrafts\(\),[\s\S]*projects: normalizeProjectDrafts\(\)/);
+  assert.match(controlPage, /patchCcConnectConfig\(\{ raw: ccConnectRawDraft\.value \}\)/);
+  assert.match(ccConnectCommandBar, /defineEmits<[\s\S]*"save-structured": \[\];[\s\S]*"save-raw": \[\]/);
+  assert.match(ccConnectCommandBar, /@click="\$emit\('save-structured'\)"/);
+  assert.match(ccConnectCommandBar, /@click="\$emit\('save-raw'\)"/);
+  assert.doesNotMatch(ccConnectCommandBar, /patchCcConnectConfig|saveCcConnectStructured|saveCcConnectRaw|normalizeProviderDrafts|normalizeProjectDrafts/);
 });
 
 test("codex stack dashboard exposes a request chain safety map", () => {

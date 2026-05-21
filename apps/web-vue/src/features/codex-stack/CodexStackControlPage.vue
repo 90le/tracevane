@@ -255,58 +255,20 @@
 
           <template v-else-if="activeSection === 'cc-connect'">
             <section class="cs-section-stack">
-              <article class="panel-card cs-section-intro">
-                <div>
-                  <p class="cs-section-kicker">cc-connect</p>
-                  <h3>{{ text("Agent 工作台", "Agent Workbench") }}</h3>
-                  <p class="cs-section-copy">
-                    {{ text("项目、Provider、平台绑定和原始 TOML 分区管理。先选项目，再编辑 Agent 参数和渠道，避免多 Agent、多渠道配置挤在同一张表里。", "Projects, providers, platform binding, and raw TOML are separated. Pick a project first, then edit agent options and channels without crowding every multi-agent field into one table.") }}
-                  </p>
-                </div>
-                <div class="cs-chip-row">
-                  <span class="cs-info-chip">{{ text("已安装", "Installed") }} {{ yesNo(summary.ccConnect.installed) }}</span>
-                  <span class="cs-info-chip">{{ text("已配置", "Configured") }} {{ yesNo(summary.ccConnect.configured) }}</span>
-                  <span class="cs-info-chip">{{ text("已绑定", "Binding") }} {{ yesNo(summary.ccConnect.bindingPresent) }}</span>
-                  <span class="cs-info-chip">{{ text("收尾脚本", "Finalizer") }} {{ yesNo(summary.ccConnect.finalizerAvailable) }}</span>
-                  <span class="cs-info-chip">{{ text("项目", "Project") }} {{ primaryCcConnectProjectName }}</span>
-                  <span class="cs-info-chip">Provider {{ ccConnectProviderDraftCount }}</span>
-                  <span class="cs-info-chip">{{ text("项目数", "Projects") }} {{ ccConnectProjectDraftCount }}</span>
-                </div>
-              </article>
-
-              <article class="panel-card cs-config-action-strip cs-agent-savebar">
-                <div>
-                  <p class="cs-section-kicker">{{ text("保存与应用", "Save and Apply") }}</p>
-                  <h4>{{ text("配置保存入口固定在顶部", "Config Save Actions Stay Pinned") }}</h4>
-                  <p>
-                    {{ text("可视化配置负责 Provider、项目和平台；原始 TOML 负责高级字段。保存后如服务运行会自动重启。", "Visual config owns providers, projects, and platforms; raw TOML owns advanced fields. Saving restarts the service when it is running.") }}
-                  </p>
-                </div>
-                <div class="cs-actions">
-                  <span class="cs-status-pill" :class="hasCcConnectStructuredChanges ? 'tone-accent' : 'tone-sage'">
-                    {{ hasCcConnectStructuredChanges ? text("可视化有修改", "Visual unsaved") : text("可视化已同步", "Visual synced") }}
-                  </span>
-                  <span class="cs-status-pill" :class="hasCcConnectRawChanges ? 'tone-accent' : 'tone-sage'">
-                    {{ hasCcConnectRawChanges ? text("TOML 有修改", "TOML unsaved") : text("TOML 已同步", "TOML synced") }}
-                  </span>
-                  <button
-                    type="button"
-                    class="primary-button"
-                    :disabled="!canRunMutation || !hasCcConnectStructuredChanges"
-                    @click="saveCcConnectStructured"
-                  >
-                    {{ text("保存可视化配置", "Save Visual Config") }}
-                  </button>
-                  <button
-                    type="button"
-                    class="secondary-button"
-                    :disabled="!canRunMutation || !hasCcConnectRawChanges"
-                    @click="saveCcConnectRaw"
-                  >
-                    {{ text("保存 TOML", "Save TOML") }}
-                  </button>
-                </div>
-              </article>
+              <CodexStackCcConnectCommandBar
+                :installed="summary.ccConnect.installed"
+                :configured="summary.ccConnect.configured"
+                :binding-present="summary.ccConnect.bindingPresent"
+                :finalizer-available="summary.ccConnect.finalizerAvailable"
+                :project-name="primaryCcConnectProjectName"
+                :provider-count="ccConnectProviderDraftCount"
+                :project-count="ccConnectProjectDraftCount"
+                :has-structured-changes="hasCcConnectStructuredChanges"
+                :has-raw-changes="hasCcConnectRawChanges"
+                :can-run-mutation="canRunMutation"
+                @save-structured="saveCcConnectStructured"
+                @save-raw="saveCcConnectRaw"
+              />
 
               <div class="cs-agent-workbench">
                 <aside class="panel-card cs-agent-rail">
@@ -863,6 +825,7 @@ import type {
 import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
 import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
+import CodexStackCcConnectCommandBar from "./CodexStackCcConnectCommandBar.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
 import CodexStackInstallConfigPanel from "./CodexStackInstallConfigPanel.vue";
 import type {
@@ -3203,28 +3166,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   grid-column: 1 / -1;
 }
 
-.cs-config-action-strip {
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--success) 12%, transparent), transparent 34%),
-    linear-gradient(135deg, color-mix(in srgb, var(--surface) 92%, #101820 8%), var(--surface));
-}
-
-.cs-config-action-strip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.cs-config-action-strip h4 {
-  margin: 0;
-}
-
-.cs-config-action-strip p:not(.cs-section-kicker) {
-  margin: 6px 0 0;
-  color: var(--text-soft);
-}
-
 .cs-provider-grid,
 .cs-platform-grid {
   display: grid;
@@ -3237,12 +3178,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
-}
-
-.cs-agent-savebar {
-  position: sticky;
-  top: 14px;
-  z-index: 2;
 }
 
 .cs-agent-rail {
@@ -3560,8 +3495,7 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
     grid-template-columns: 1fr;
   }
 
-  .cs-agent-rail,
-  .cs-agent-savebar {
+  .cs-agent-rail {
     position: static;
   }
 
@@ -3576,7 +3510,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   .cs-lock-card,
   .cs-hero-card,
   .cs-model-ribbon,
-  .cs-config-action-strip,
   .cs-section-intro,
   .cs-card-header,
   .cs-provider-head,
