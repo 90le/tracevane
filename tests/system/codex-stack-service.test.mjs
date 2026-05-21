@@ -374,6 +374,39 @@ test("codex stack management guard blocks mutations until explicitly enabled", a
   assert.equal(summary.management.enabled, true);
 });
 
+test("codex stack service methods normalize missing payloads before reading fields", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createGeneratedStackFiles(root);
+  createBoundCcConnectConfig(root);
+
+  const service = createCodexStackService(config);
+  await assert.rejects(
+    () => service.startRepair(undefined, undefined),
+    (error) => isCodexStackServiceError(error)
+      && error.code === "codex_stack_empty_repair"
+      && error.statusCode === 400,
+  );
+
+  const response = await service.patchConfig(undefined, undefined);
+  assert.equal(response.ok, true);
+  assert.equal(response.restartRequiredUnits?.length, 0);
+});
+
 test("codex stack check runs bundled health script and redacts known secrets", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

@@ -2504,12 +2504,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
   async function startInstall(req: http.IncomingMessage | undefined, payload: CodexStackInstallRequest): Promise<CodexStackJobResponse> {
     requireManagement(req);
     requireNoActiveJob();
-    const channel = payload.flags?.channel || resolveChannel();
+    const installPayload: CodexStackInstallRequest = isRecord(payload) ? payload as CodexStackInstallRequest : {};
+    const channel = installPayload.flags?.channel || resolveChannel();
     const installer = resolveInstallerSource(channel);
     if (!installer.requiredFilesPresent || !installer.scripts.autoSetup || !installer.root) {
       throw new CodexStackServiceError("codex_stack_installer_missing", "Codex Stack installer assets are missing.", 404);
     }
-    const normalized = normalizeInstallPayload(payload || {}, channel);
+    const normalized = normalizeInstallPayload(installPayload, channel);
     const currentPaths = paths();
     const job = createJob("install", "bash auto-setup.sh");
     job.status = "running";
@@ -2589,7 +2590,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
   async function startRepair(req: http.IncomingMessage | undefined, payload: CodexStackRepairRequest): Promise<CodexStackJobResponse> {
     requireManagement(req);
     requireNoActiveJob();
-    const actions = Array.isArray(payload.actions) ? payload.actions : [];
+    const repairPayload: CodexStackRepairRequest = isRecord(payload) ? payload as CodexStackRepairRequest : { actions: [] };
+    const actions = Array.isArray(repairPayload.actions) ? repairPayload.actions : [];
     const unknown = actions.filter((action) => !(REPAIR_ACTIONS as readonly string[]).includes(action));
     if (unknown.length) {
       throw new CodexStackServiceError("codex_stack_invalid_repair_action", `Unsupported repair actions: ${unknown.join(", ")}`);
@@ -2753,6 +2755,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
   async function finalizeCcConnect(req: http.IncomingMessage | undefined, payload: CodexStackFinalizeRequest): Promise<CodexStackJobResponse> {
     requireManagement(req);
     requireNoActiveJob();
+    const finalizePayload: CodexStackFinalizeRequest = isRecord(payload) ? payload as CodexStackFinalizeRequest : {};
     const currentPaths = paths();
     const ccConfig = readText(currentPaths.ccConnectConfig);
     if (!detectCcConnectBinding(ccConfig)) {
@@ -2763,9 +2766,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!script || !pathExists(script)) {
       throw new CodexStackServiceError("codex_stack_finalizer_missing", "finish-cc-connect-setup.sh is not available.", 404);
     }
-    const project = normalizeString(payload.project, readCcConnectProject(ccConfig));
+    const project = normalizeString(finalizePayload.project, readCcConnectProject(ccConfig));
     const args = [script, "--project", project];
-    if (payload.noAdminAll === true) args.push("--no-admin-all");
+    if (finalizePayload.noAdminAll === true) args.push("--no-admin-all");
     return runNodeJob("finalize", "finish cc-connect setup", async (job) => {
       const result = await execText("bash", args, {
         timeout: 120_000,
@@ -2827,30 +2830,31 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (unknown.length) {
       throw new CodexStackServiceError("codex_stack_invalid_config_patch", `Unsupported config fields: ${unknown.join(", ")}`);
     }
+    const patch: CodexStackConfigPatchRequest = isRecord(payload) ? payload as CodexStackConfigPatchRequest : {};
     const currentPaths = paths();
     const restartRequired = new Set<CodexStackServiceId>();
-    const model = normalizeString(payload.defaultModel);
-    const hasContextPatch = Object.prototype.hasOwnProperty.call(payload, "contextMode")
-      || Object.prototype.hasOwnProperty.call(payload, "contextWindowTokens");
-    const contextMode = hasContextPatch ? normalizeContextMode(payload.contextMode, payload.contextWindowTokens === null ? "default" : "custom") : null;
+    const model = normalizeString(patch.defaultModel);
+    const hasContextPatch = Object.prototype.hasOwnProperty.call(patch, "contextMode")
+      || Object.prototype.hasOwnProperty.call(patch, "contextWindowTokens");
+    const contextMode = hasContextPatch ? normalizeContextMode(patch.contextMode, patch.contextWindowTokens === null ? "default" : "custom") : null;
     const contextTokens = hasContextPatch
-      ? (contextMode === "codex-1m" ? GPT_55_CONTEXT_TOKENS : normalizeContextTokens(payload.contextWindowTokens, DEFAULT_CONTEXT_TOKENS))
+      ? (contextMode === "codex-1m" ? GPT_55_CONTEXT_TOKENS : normalizeContextTokens(patch.contextWindowTokens, DEFAULT_CONTEXT_TOKENS))
       : null;
-    const ccProject = normalizeString(payload.ccConnectProject);
-    const cpaPort = payload.cpaPort === undefined ? null : normalizePort(payload.cpaPort, 0);
-    const compactPort = payload.compactPort === undefined ? null : normalizePort(payload.compactPort, 0);
-    const cpaKey = normalizeString(payload.cpaProxyKey);
-    const hasUpstreamBasePatch = Object.prototype.hasOwnProperty.call(payload, "upstreamBaseUrl");
-    const hasUpstreamKeyPatch = Object.prototype.hasOwnProperty.call(payload, "upstreamApiKey");
-    const hasProviderProxyPatch = Object.prototype.hasOwnProperty.call(payload, "providerProxyUrl");
-    const hasNoProxyPatch = Object.prototype.hasOwnProperty.call(payload, "noProxy");
-    const upstreamBaseUrl = hasUpstreamBasePatch ? normalizeString(payload.upstreamBaseUrl) : "";
-    const upstreamApiKey = hasUpstreamKeyPatch ? normalizeString(payload.upstreamApiKey) : "";
-    const providerProxyUrl = hasProviderProxyPatch ? normalizeString(payload.providerProxyUrl) : "";
+    const ccProject = normalizeString(patch.ccConnectProject);
+    const cpaPort = patch.cpaPort === undefined ? null : normalizePort(patch.cpaPort, 0);
+    const compactPort = patch.compactPort === undefined ? null : normalizePort(patch.compactPort, 0);
+    const cpaKey = normalizeString(patch.cpaProxyKey);
+    const hasUpstreamBasePatch = Object.prototype.hasOwnProperty.call(patch, "upstreamBaseUrl");
+    const hasUpstreamKeyPatch = Object.prototype.hasOwnProperty.call(patch, "upstreamApiKey");
+    const hasProviderProxyPatch = Object.prototype.hasOwnProperty.call(patch, "providerProxyUrl");
+    const hasNoProxyPatch = Object.prototype.hasOwnProperty.call(patch, "noProxy");
+    const upstreamBaseUrl = hasUpstreamBasePatch ? normalizeString(patch.upstreamBaseUrl) : "";
+    const upstreamApiKey = hasUpstreamKeyPatch ? normalizeString(patch.upstreamApiKey) : "";
+    const providerProxyUrl = hasProviderProxyPatch ? normalizeString(patch.providerProxyUrl) : "";
     const providerProxyConfigValue = hasProviderProxyPatch ? (providerProxyUrl || "direct") : "";
-    const noProxy = hasNoProxyPatch ? normalizeString(payload.noProxy, "localhost,127.0.0.1,::1") : "";
-    if (payload.cpaPort !== undefined && !cpaPort) throw new CodexStackServiceError("codex_stack_invalid_port", "cpaPort must be between 1 and 65535.");
-    if (payload.compactPort !== undefined && !compactPort) throw new CodexStackServiceError("codex_stack_invalid_port", "compactPort must be between 1 and 65535.");
+    const noProxy = hasNoProxyPatch ? normalizeString(patch.noProxy, "localhost,127.0.0.1,::1") : "";
+    if (patch.cpaPort !== undefined && !cpaPort) throw new CodexStackServiceError("codex_stack_invalid_port", "cpaPort must be between 1 and 65535.");
+    if (patch.compactPort !== undefined && !compactPort) throw new CodexStackServiceError("codex_stack_invalid_port", "compactPort must be between 1 and 65535.");
     requireNoActiveJob();
     const invalidatesSmokeMatrix = Boolean(
       model
