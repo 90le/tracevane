@@ -13,6 +13,7 @@ const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackAct
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
 const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackInstallPlanCard.vue");
+const repairBoard = read("apps/web-vue/src/features/codex-stack/CodexStackRepairBoard.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
@@ -50,6 +51,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(installPlanCard, /class="panel-card cs-install-plan-card"/);
   assert.match(installPlanCard, /\.cs-install-plan-list\s*\{/);
   assert.match(installPlanCard, /@media \(max-width: 960px\)/);
+  assert.match(repairBoard, /class="panel-card cs-repair-board"/);
+  assert.match(repairBoard, /\.cs-repair-grid\s*\{/);
+  assert.match(repairBoard, /@media \(max-width: 960px\)/);
   assert.match(dashboardInsights, /\.cs-section-kicker\s*\{/);
   assert.match(dashboardInsights, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(chainMap, /export interface CodexStackChainNode/);
@@ -91,6 +95,18 @@ test("codex stack install page delegates preflight plan without losing actions",
   assert.match(installPlanCard, /@click="\$emit\('install-full'\)"/);
   assert.match(installPlanCard, /@click="\$emit\('install-base'\)"/);
   assert.match(installPlanCard, /@click="\$emit\('repair'\)"/);
+});
+
+test("codex stack install page delegates repair board without weakening CPA attach gate", () => {
+  assert.match(controlPage, /import CodexStackRepairBoard from "\.\/CodexStackRepairBoard\.vue";/);
+  assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-help="attachCodexCpaHelp"/);
+  assert.match(controlPage, /@repair-recommended="repairRecommended"[\s\S]*@repair-conflicts="repairConflictingUnits"[\s\S]*@repair-config-only="repairConfigOnly"/);
+  assert.match(controlPage, /@pause-stack="pauseStack"[\s\S]*@resume-stack="resumeStack"[\s\S]*@run-smoke-matrix="runSmokeMatrix"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-repair-board"/);
+  assert.match(repairBoard, /运行模型矩阵/);
+  assert.match(repairBoard, /glm-5\.1 与 kimi-k2\.6 都要通过普通、非流式、流式和压缩上下文/);
+  assert.match(repairBoard, /:disabled="!canAttachCodexCpa"[\s\S]*@click="\$emit\('attach-codex-cpa'\)"/);
+  assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*请先运行“只验证”/);
 });
 
 test("codex stack dashboard exposes a request chain safety map", () => {
@@ -165,7 +181,8 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(controlPage, /const isSmokeMatrixAttachReady = computed\(\(\) => \{/);
   assert.match(controlPage, /matrix\?\.attachEligible && !isSmokeMatrixStale\(matrix\)/);
   assert.match(controlPage, /const canAttachCodexCpa = computed\(\(\) => canRunMutation\.value && isSmokeMatrixAttachReady\.value\);/);
-  assert.match(controlPage, /:disabled="!canAttachCodexCpa"[\s\S]*@click="applyCodexCpaAfterSmoke"/);
+  assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
+  assert.match(repairBoard, /:disabled="!canAttachCodexCpa"[\s\S]*@click="\$emit\('attach-codex-cpa'\)"/);
   assert.match(controlPage, /先运行“只验证”/);
   assert.match(controlPage, /已有新鲜通过矩阵；点击后仍会重新烟测/);
   assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*glm-5\.1 \/ kimi-k2\.6 矩阵在 24 小时内全部通过/);
