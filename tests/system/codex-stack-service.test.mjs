@@ -1334,6 +1334,45 @@ model = "glm-5.1"
   assert.doesNotMatch(patchedCc, /codex_env_key/);
 });
 
+test("codex stack summary warns when cc-connect bypasses local Compact provider", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {});
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const home = path.dirname(config.openclawRoot);
+  writeFile(path.join(home, ".cc-connect/config.toml"), `
+[[providers]]
+name = "cpa"
+api_key = "secret-cpa-key-123456"
+base_url = "https://remote.example.test/v1"
+codex.env_key = "REMOTE_API_KEY"
+
+[[projects]]
+name = "main"
+[projects.agent.options]
+model = "glm-5.1"
+`);
+
+  await withMockFetch(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/v1/models")) {
+      return new Response(JSON.stringify({ data: [{ id: "glm-5.1" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("ok", { status: 200 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.ok(summary.warnings.some((warning) => warning.includes("cc-connect cpa provider base_url")));
+    assert.ok(summary.warnings.some((warning) => warning.includes("cc-connect cpa provider codex.env_key")));
+  });
+});
+
 test("codex stack config patch updates upstream proxy policy and no-proxy service env", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

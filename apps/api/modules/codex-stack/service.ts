@@ -1320,6 +1320,10 @@ function readCcConnectProject(source: string): string {
   return parseCcConnectConfigSource(source).projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT;
 }
 
+function normalizeCcConnectBaseUrl(value: string): string {
+  return normalizeString(value).replace(/\/+$/, "");
+}
+
 async function execText(
   command: string,
   args: string[],
@@ -2186,6 +2190,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!managementSecret) warnings.push("CPA remote-management.secret-key is empty; the management dashboard/API is disabled.");
     if (!controlPanelEnabled) warnings.push("CPA management control panel is disabled; /management.html will not load.");
     if (!modelDiscovery.live && modelDiscovery.error) warnings.push(`模型列表未能从 /v1/models 读取，已使用本地配置回退：${modelDiscovery.error}`);
+    {
+      const expectedCcProviderBaseUrl = `http://127.0.0.1:${compactPort}/v1`;
+      const cpaProvider = ccParsed.providers.find((provider) => provider.name === "cpa");
+      if (cpaProvider?.baseUrl && normalizeCcConnectBaseUrl(cpaProvider.baseUrl) !== expectedCcProviderBaseUrl) {
+        warnings.push(`cc-connect cpa provider base_url (${cpaProvider.baseUrl}) does not match local Compact ${expectedCcProviderBaseUrl}; cc-connect Codex agents may bypass the verified CPA/Compact chain.`);
+      }
+      if (cpaProvider?.codexEnvKey && cpaProvider.codexEnvKey !== "OPENAI_API_KEY") {
+        warnings.push(`cc-connect cpa provider codex.env_key is ${cpaProvider.codexEnvKey}; Codex agents should receive OPENAI_API_KEY for the local Compact provider.`);
+      }
+    }
     {
       const legacyHealthcheck = services.find((service) => service.id === "cli-proxy-api-healthcheck.timer");
       if (legacyHealthcheck?.active || legacyHealthcheck?.enabled) {
