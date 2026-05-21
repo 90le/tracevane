@@ -1375,6 +1375,10 @@ type ApplySummaryOptions = {
   preserveDirtyInstallDraft?: boolean;
 };
 
+type CcConnectLoadOptions = {
+  preserveDirtyDrafts?: boolean;
+};
+
 const summary = ref<CodexStackSummaryPayload | null>(null);
 const ccConnectConfig = ref<CcConnectConfig | null>(null);
 const ccConnectRawDraft = ref("");
@@ -2529,13 +2533,20 @@ async function loadSummary(): Promise<void> {
   }
 }
 
-async function loadCcConnectConfig(silent = false): Promise<void> {
+async function loadCcConnectConfig(silent = false, options: CcConnectLoadOptions = {}): Promise<void> {
+  const preserveDirtyDrafts = options.preserveDirtyDrafts ?? true;
+  const keepRawDraft = preserveDirtyDrafts
+    && Boolean(ccConnectConfig.value)
+    && hasCcConnectRawChanges.value;
+  const keepStructuredDraft = preserveDirtyDrafts
+    && Boolean(ccConnectConfig.value)
+    && hasCcConnectStructuredChanges.value;
   ccConnectLoading.value = true;
   try {
     const config = await fetchCcConnectConfig();
     ccConnectConfig.value = config;
-    ccConnectRawDraft.value = config.raw;
-    hydrateCcConnectStructuredDraft(config);
+    if (!keepRawDraft) ccConnectRawDraft.value = config.raw;
+    if (!keepStructuredDraft) hydrateCcConnectStructuredDraft(config);
   } catch (error) {
     if (!silent) {
       notice.value = {
@@ -2548,8 +2559,8 @@ async function loadCcConnectConfig(silent = false): Promise<void> {
   }
 }
 
-async function loadAll(silent = false): Promise<void> {
-  await Promise.all([loadSummary(), loadCcConnectConfig(silent)]);
+async function loadAll(silent = false, ccConnectOptions: CcConnectLoadOptions = {}): Promise<void> {
+  await Promise.all([loadSummary(), loadCcConnectConfig(silent, ccConnectOptions)]);
 }
 
 async function enableManagement(): Promise<void> {
@@ -2925,7 +2936,7 @@ async function saveCcConnectStructured(): Promise<void> {
     });
     restartRequiredUnits.value = response.restartRequiredUnits || [];
     if (response.summary) applySummary(response.summary);
-    await loadCcConnectConfig(true);
+    await loadCcConnectConfig(true, { preserveDirtyDrafts: false });
     notice.value = { kind: "success", text: response.message };
   } catch (error) {
     notice.value = {
@@ -2960,7 +2971,7 @@ async function saveCcConnectRaw(): Promise<void> {
     const response = await patchCcConnectConfig({ raw: ccConnectRawDraft.value });
     restartRequiredUnits.value = response.restartRequiredUnits || [];
     if (response.summary) applySummary(response.summary);
-    await loadCcConnectConfig(true);
+    await loadCcConnectConfig(true, { preserveDirtyDrafts: false });
     notice.value = { kind: "success", text: response.message };
   } catch (error) {
     notice.value = {
