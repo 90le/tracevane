@@ -101,6 +101,9 @@
             :disabled="contextTokensDisabled"
             @input="updateNumberField('contextWindowTokens', $event)"
           />
+          <span v-if="contextTokensDisabled && contextTokensDisabledHelp" class="form-help">
+            {{ contextTokensDisabledHelp }}
+          </span>
         </label>
       </div>
     </article>
@@ -186,6 +189,7 @@ defineProps<{
   modelOptions: string[];
   modelSourceLabel: string;
   contextTokensDisabled: boolean;
+  contextTokensDisabledHelp: string;
 }>();
 
 const emit = defineEmits<{

@@ -56,6 +56,9 @@
         <button type="button" class="primary-button" :disabled="refreshing" @click="emit('load', selectedService)">
           {{ refreshing ? labels.loading : labels.load }}
         </button>
+        <p v-if="refreshing && refreshingDisabledHelp" class="cs-disabled-help">
+          {{ refreshingDisabledHelp }}
+        </p>
       </div>
     </div>
     <pre class="cs-log">{{ output || labels.empty }}</pre>
@@ -109,6 +112,7 @@ defineProps<{
   fetchedAtLabel: string;
   output: string;
   refreshing: boolean;
+  refreshingDisabledHelp: string;
   labels: CodexStackLogConsoleLabels;
 }>();
 
@@ -248,6 +252,13 @@ function onAutoRefreshChange(event: Event): void {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.cs-disabled-help {
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .cs-info-chip,

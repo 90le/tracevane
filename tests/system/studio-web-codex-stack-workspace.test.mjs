@@ -52,10 +52,12 @@ const codexStackTypes = read("types/codex-stack.ts");
 
 test("codex stack logs panel is isolated from the main control page", () => {
   assert.match(controlPage, /import CodexStackLogConsole from "\.\/CodexStackLogConsole\.vue";/);
-  assert.match(controlPage, /<CodexStackLogConsole[\s\S]*v-model:selected-service="selectedLogService"[\s\S]*@load="loadLogs"/);
+  assert.match(controlPage, /<CodexStackLogConsole[\s\S]*v-model:selected-service="selectedLogService"[\s\S]*:refreshing-disabled-help="logRefreshingDisabledHelp"[\s\S]*@load="loadLogs"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-log-console"/);
 
   assert.match(logConsole, /export interface CodexStackLogServiceOption/);
+  assert.match(logConsole, /refreshingDisabledHelp: string;/);
+  assert.match(logConsole, /v-if="refreshing && refreshingDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(logConsole, /\.cs-log-service-button\s*\{/);
   assert.match(logConsole, /\.cs-log\s*\{/);
 });
@@ -198,7 +200,7 @@ test("codex stack page chrome delegates refresh and management enable without mo
   );
   assert.match(
     controlPage,
-    /<CodexStackManagementLockCard[\s\S]*v-if="summary && !summary\.management\.enabled"[\s\S]*:busy="busy"[\s\S]*@enable="enableManagement"/,
+    /<CodexStackManagementLockCard[\s\S]*v-if="summary && !summary\.management\.enabled"[\s\S]*:busy="busy"[\s\S]*:busy-disabled-help="managementBusyDisabledHelp"[\s\S]*@enable="enableManagement"/,
   );
   assert.doesNotMatch(controlPage, /class="cs-page-subtitle"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-lock-card"/);
@@ -206,6 +208,8 @@ test("codex stack page chrome delegates refresh and management enable without mo
   assert.match(controlPage, /async function enableManagement/);
   assert.match(pageHeader, /refreshDisabledHelp: string;/);
   assert.match(pageHeader, /v-if="refreshDisabled && refreshDisabledHelp"[\s\S]*class="cs-disabled-help"/);
+  assert.match(managementLockCard, /busyDisabledHelp: string;/);
+  assert.match(managementLockCard, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(pageHeader, /defineEmits<\{[\s\S]*refresh: \[\];[\s\S]*\}>/);
   assert.match(pageHeader, /@click="\$emit\('refresh'\)"/);
   assert.doesNotMatch(pageHeader, /loadAll|summary|fetchCodexStackSummary|enableManagement|serviceAction|patchCodexStackConfig/);
@@ -447,8 +451,10 @@ test("codex stack install page delegates install config without moving install p
   assert.match(controlPage, /import CodexStackInstallConfigPanel from "\.\/CodexStackInstallConfigPanel\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackInstallConfigPanel[\s\S]*:form="installForm"[\s\S]*:model-options="modelOptions"[\s\S]*:model-source-label="modelSourceLabel"[\s\S]*:context-tokens-disabled="installContextTokensDisabled"[\s\S]*@update-field="updateInstallFormField"/,
+    /<CodexStackInstallConfigPanel[\s\S]*:form="installForm"[\s\S]*:model-options="modelOptions"[\s\S]*:model-source-label="modelSourceLabel"[\s\S]*:context-tokens-disabled="installContextTokensDisabled"[\s\S]*:context-tokens-disabled-help="installContextTokensDisabledHelp"[\s\S]*@update-field="updateInstallFormField"/,
   );
+  assert.match(controlPage, /function contextTokensDisabledHelp\(mode: ContextMode\): string/);
+  assert.match(controlPage, /默认上下文不会写 model_context_window；选择自定义 token 后可编辑/);
   assert.match(controlPage, /function updateInstallFormField\(field: CodexStackInstallConfigField, value: string \| number \| boolean\): void/);
   assert.match(controlPage, /function buildInstallPayload\(skipCcConnect = installForm\.skipCcConnect\)/);
   assert.match(controlPage, /async function installFullStack\(\): Promise<void>/);
@@ -457,6 +463,8 @@ test("codex stack install page delegates install config without moving install p
   assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(true\)\)/);
   assert.doesNotMatch(controlPage, /v-model(?:\.number)?="installForm\.(channel|model|cpaPort|compactPort|cpaKey|contextMode|contextWindowTokens|skipNpm|skipCcConnect|noStart|skipExisting|forceReinstall|upstreamBaseUrl|upstreamApiKey|providerProxyUrl|noProxy)"/);
   assert.match(installConfigPanel, /export interface CodexStackInstallConfigDraft/);
+  assert.match(installConfigPanel, /contextTokensDisabledHelp: string;/);
+  assert.match(installConfigPanel, /v-if="contextTokensDisabled && contextTokensDisabledHelp"[\s\S]*class="form-help"/);
   assert.match(installConfigPanel, /defineEmits<[\s\S]*updateField: \[field: CodexStackInstallConfigField, value: string \| number \| boolean\]/);
   assert.doesNotMatch(installConfigPanel, /startCodexStackInstall|buildInstallPayload|installFullStack|installBaseOnly/);
 });
@@ -906,7 +914,7 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(controlPage, /import CodexStackRuntimeConfigCard from "\.\/CodexStackRuntimeConfigCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"/,
+    /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:context-tokens-disabled-help="configContextTokensDisabledHelp"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"/,
   );
   assert.match(controlPage, /:impact-items="configImpactItems"/);
   assert.match(controlPage, /function updateConfigFormField\(field: CodexStackRuntimeConfigField, value: string \| number\): void/);
@@ -919,6 +927,8 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.doesNotMatch(controlPage, /v-model(?:\.number)?="configForm\.(defaultModel|contextMode|contextWindowTokens|cpaPort|compactPort|ccConnectProject|cpaProxyKey|upstreamBaseUrl|upstreamApiKey|providerProxyUrl|noProxy)"/);
   assert.match(runtimeConfigCard, /export interface CodexStackRuntimeConfigDraft/);
   assert.match(runtimeConfigCard, /export interface CodexStackRuntimeConfigImpactItem/);
+  assert.match(runtimeConfigCard, /contextTokensDisabledHelp: string;/);
+  assert.match(runtimeConfigCard, /v-if="contextTokensDisabled && contextTokensDisabledHelp"[\s\S]*class="form-help"/);
   assert.match(runtimeConfigCard, /v-if="impactItems\.length"/);
   assert.match(runtimeConfigCard, /item\.detail/);
   assert.match(runtimeConfigCard, /mutationDisabledHelp: string;/);

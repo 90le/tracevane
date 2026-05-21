@@ -35,6 +35,9 @@
           :disabled="contextTokensDisabled"
           @input="updateNumberField('contextWindowTokens', $event)"
         />
+        <span v-if="contextTokensDisabled && contextTokensDisabledHelp" class="form-help">
+          {{ contextTokensDisabledHelp }}
+        </span>
       </label>
       <label class="form-field">
         <span class="form-label">{{ text("CPA 端口", "CPA Port") }}</span>
@@ -160,6 +163,7 @@ defineProps<{
   form: CodexStackRuntimeConfigDraft;
   modelOptions: string[];
   contextTokensDisabled: boolean;
+  contextTokensDisabledHelp: string;
   restartRequiredUnits: string[];
   impactItems: CodexStackRuntimeConfigImpactItem[];
   canRunMutation: boolean;

@@ -24,6 +24,7 @@
       :copy="text('安装、修复、保存配置和服务控制需要显式启用。', 'Install, repair, config writes, and service control require explicit enablement.')"
       :action-label="text('启用管理', 'Enable Management')"
       :busy="busy"
+      :busy-disabled-help="managementBusyDisabledHelp"
       @enable="enableManagement"
     />
 
@@ -184,6 +185,7 @@
                 :model-options="modelOptions"
                 :model-source-label="modelSourceLabel"
                 :context-tokens-disabled="installContextTokensDisabled"
+                :context-tokens-disabled-help="installContextTokensDisabledHelp"
                 @update-field="updateInstallFormField"
               />
 
@@ -343,6 +345,7 @@
                 :form="configForm"
                 :model-options="modelOptions"
                 :context-tokens-disabled="configContextTokensDisabled"
+                :context-tokens-disabled-help="configContextTokensDisabledHelp"
                 :restart-required-units="restartRequiredUnits"
                 :impact-items="configImpactItems"
                 :can-run-mutation="canRunMutation"
@@ -393,6 +396,7 @@
               :output="logOutput"
               :refreshing="logRefreshing"
               :labels="logConsoleLabels"
+              :refreshing-disabled-help="logRefreshingDisabledHelp"
               @load="loadLogs"
             />
 
@@ -1018,6 +1022,12 @@ const busyDisabledHelp = computed(() => (
     ? text("当前操作仍在进行中，完成后再编辑 Agent 配置。", "The current action is still in progress; edit Agent config after it finishes.")
     : ""
 ));
+const managementBusyDisabledHelp = computed(() => (
+  busy.value ? text("正在启用或执行管理动作，请等待当前操作完成。", "A management action is running; wait for it to finish.") : ""
+));
+const logRefreshingDisabledHelp = computed(() => (
+  logRefreshing.value ? text("日志正在读取中，新的读取请求会排队执行。", "Logs are loading; the next read request will be queued.") : ""
+));
 const nextActionDisabledHelp = computed(() => {
   if (nextActionRequiresMutation.value) {
     return mutationDisabledHelp.value;
@@ -1395,6 +1405,21 @@ const componentHealthCards = computed<CodexStackComponentHealthCard[]>(() => {
 });
 const configContextTokensDisabled = computed(() => configForm.contextMode !== "custom");
 const installContextTokensDisabled = computed(() => installForm.contextMode !== "custom");
+function contextTokensDisabledHelp(mode: ContextMode): string {
+  if (mode === "default") {
+    return text("默认上下文不会写 model_context_window；选择自定义 token 后可编辑。", "Default context does not write model_context_window; choose custom tokens to edit this field.");
+  }
+  if (mode === "codex-1m") {
+    return text("1M 上下文会自动使用推荐窗口；选择自定义 token 后可手动输入。", "1M context uses the recommended window automatically; choose custom tokens to enter a value manually.");
+  }
+  return "";
+}
+const configContextTokensDisabledHelp = computed(() => (
+  configContextTokensDisabled.value ? contextTokensDisabledHelp(configForm.contextMode) : ""
+));
+const installContextTokensDisabledHelp = computed(() => (
+  installContextTokensDisabled.value ? contextTokensDisabledHelp(installForm.contextMode) : ""
+));
 const hasInstallDraftChanges = computed(() => {
   const current = summary.value;
   if (!current) return false;
