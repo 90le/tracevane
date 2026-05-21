@@ -40,6 +40,51 @@ codex_cpa_base_url() {
   codex_value openai_base_url
 }
 
+cc_connect_has_platform_binding() {
+  local file="$1"
+  awk -F '=' '
+    function clean(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      gsub(/^"|"$/, "", value)
+      return value
+    }
+    /^[[:space:]]*\[\[projects\.platforms\]\][[:space:]]*$/ {
+      if (type && option_count > 0) {
+        if (type == "feishu" && app_id && app_secret) found = 1
+        else if ((type == "weixin" || type == "wechat") && (app_id || token || webhook_url)) found = 1
+        else if (type != "feishu" && type != "weixin" && type != "wechat") found = 1
+      }
+      type = ""; option_count = 0; app_id = ""; app_secret = ""; token = ""; webhook_url = ""; in_platform = 1; next
+    }
+    /^[[:space:]]*\[projects\.platforms\.options\][[:space:]]*$/ { next }
+    /^[[:space:]]*\[/ {
+      if (type && option_count > 0) {
+        if (type == "feishu" && app_id && app_secret) found = 1
+        else if ((type == "weixin" || type == "wechat") && (app_id || token || webhook_url)) found = 1
+        else if (type != "feishu" && type != "weixin" && type != "wechat") found = 1
+      }
+      in_platform = 0
+    }
+    in_platform && /^[[:space:]]*type[[:space:]]*=/ { type = clean($2); next }
+    in_platform && /^[[:space:]]*[A-Za-z0-9_.-]+[[:space:]]*=/ {
+      key = clean($1); value = clean($2)
+      if (key != "type" && value != "") option_count++
+      if (key == "app_id") app_id = value
+      if (key == "app_secret") app_secret = value
+      if (key == "token") token = value
+      if (key == "webhook_url") webhook_url = value
+    }
+    END {
+      if (type && option_count > 0) {
+        if (type == "feishu" && app_id && app_secret) found = 1
+        else if ((type == "weixin" || type == "wechat") && (app_id || token || webhook_url)) found = 1
+        else if (type != "feishu" && type != "weixin" && type != "wechat") found = 1
+      }
+      exit(found ? 0 : 1)
+    }
+  ' "$file"
+}
+
 service_state() {
   local unit="$1"
   if systemctl --user list-unit-files "$unit" >/dev/null 2>&1; then
@@ -142,7 +187,7 @@ echo
 echo "--- cc-connect ---"
 if [[ -f "$HOME/.cc-connect/config.toml" ]]; then
   ok "~/.cc-connect/config.toml exists"
-  if grep -q 'projects\.platforms' "$HOME/.cc-connect/config.toml"; then
+  if cc_connect_has_platform_binding "$HOME/.cc-connect/config.toml"; then
     ok "cc-connect has at least one platform binding"
     if systemctl --user list-unit-files cc-connect.service >/dev/null 2>&1; then
       service_state cc-connect.service

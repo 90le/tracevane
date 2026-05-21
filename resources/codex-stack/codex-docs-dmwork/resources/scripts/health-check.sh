@@ -84,14 +84,17 @@ else
   fail "CPA 未安装 — 检查 ~/.local/bin/cli-proxy-api"
 fi
 
+COMPACT_PORT=$(codex_cpa_base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)
+[[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
+
 # ── Compact Proxy ──
 echo "--- Compact Proxy v5 ---"
 if [[ -f "$HOME/.local/bin/cpa-compact-proxy.mjs" ]]; then
   ok "Compact Proxy 脚本已安装"
-  if ss -tlnp 2>/dev/null | grep -q ':18796'; then
-    ok "Compact Proxy 监听在 127.0.0.1:18796"
+  if ss -tlnp 2>/dev/null | grep -q ":${COMPACT_PORT}"; then
+    ok "Compact Proxy 监听在 127.0.0.1:${COMPACT_PORT}"
   else
-    fail "Compact Proxy 未在监听 — 启动: systemctl --user start cpa-compact-proxy"
+    fail "Compact Proxy 未在监听 (port ${COMPACT_PORT}) — 启动: systemctl --user start cpa-compact-proxy.service"
   fi
 else
   fail "Compact Proxy 脚本未找到 — 检查 ~/.local/bin/cpa-compact-proxy.mjs"
@@ -192,8 +195,6 @@ fi
 
 CPA_PORT=$(grep '^port:' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null | head -1 | sed 's/[^0-9]//g')
 [[ -n "$CPA_PORT" ]] || CPA_PORT=18795
-COMPACT_PORT=$(codex_cpa_base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)
-[[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
 if [[ -f "$HOME/.cli-proxy-api/config.yaml" ]]; then
   grep -q 'remote-management:' "$HOME/.cli-proxy-api/config.yaml" && ok "CPA remote-management 已配置" || fail "CPA remote-management 缺失"
   grep -q 'disable-control-panel: false' "$HOME/.cli-proxy-api/config.yaml" && ok "CPA 管理看板已启用" || warn "CPA 管理看板未启用"

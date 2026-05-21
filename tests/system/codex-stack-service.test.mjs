@@ -1017,6 +1017,49 @@ test("codex stack rejects cc-connect finalizer until QR binding exists", async (
   );
 });
 
+test("codex stack does not treat official cc-connect platform stubs as bound", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  writeFile(path.join(root, ".cc-connect/config.toml"), `
+[[projects]]
+name = "main"
+default = true
+
+[[projects.platforms]]
+type = "feishu"
+
+[[projects.platforms]]
+type = "weixin"
+`);
+
+  const service = createCodexStackService(config);
+  const summary = await service.getSummary();
+
+  assert.equal(summary.ccConnect.bindingPresent, false);
+  assert.equal(summary.ccConnect.canFinalize, false);
+  assert.ok(summary.warnings.some((warning) => warning.includes("QR binding")));
+  await assert.rejects(
+    service.finalizeCcConnect(undefined, { project: "main" }),
+    (error) => isCodexStackServiceError(error) && error.code === "codex_stack_cc_connect_unbound",
+  );
+});
+
 test("codex stack summary hides finalizer when active channel has no finalizer script", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -1210,6 +1253,21 @@ test("bundled health check treats skipped cc-connect as warning only", () => {
   );
   assert.match(script, /cc-connect not found; skip this if you intentionally installed Codex\/CPA\/Compact only/);
   assert.doesNotMatch(script, /fail "cc-connect not found"/);
+  assert.match(script, /cc_connect_has_platform_binding/);
+  assert.doesNotMatch(script, /grep -q 'projects\\\.platforms'/);
+});
+
+test("bundled dmwork health check uses resolved Compact port consistently", () => {
+  const script = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/health-check.sh"),
+    "utf8",
+  );
+
+  assert.match(script, /COMPACT_PORT=\$\(codex_cpa_base_url/);
+  assert.match(script, /grep -q ":\$\{COMPACT_PORT\}"/);
+  assert.match(script, /Compact Proxy 监听在 127\.0\.0\.1:\$\{COMPACT_PORT\}/);
+  assert.doesNotMatch(script, /grep -q ':18796'/);
+  assert.doesNotMatch(script, /Compact Proxy 监听在 127\.0\.0\.1:18796/);
 });
 
 test("bundled codex stack installers keep Codex detached until smoke gate", () => {

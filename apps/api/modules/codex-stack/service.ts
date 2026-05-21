@@ -1133,7 +1133,18 @@ function chooseDefaultModel(models: string[], current = "", openclawDefault = ""
 }
 
 function detectCcConnectBinding(source: string): boolean {
-  return parseCcConnectConfigSource(source).projects.some((project) => project.platforms.length > 0);
+  return parseCcConnectConfigSource(source).projects.some((project) => project.platforms.some((platform) => {
+    const type = platform.type.trim().toLowerCase();
+    const values = Object.values(platform.options || {}).map((value) => value.trim()).filter(Boolean);
+    if (!type || !values.length) return false;
+    if (type === "feishu") {
+      return Boolean(platform.options.app_id?.trim() && platform.options.app_secret?.trim());
+    }
+    if (type === "weixin" || type === "wechat") {
+      return Boolean(platform.options.app_id?.trim() || platform.options.token?.trim() || platform.options.webhook_url?.trim());
+    }
+    return values.length > 0;
+  }));
 }
 
 function readCcConnectProject(source: string): string {
@@ -1848,7 +1859,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     ]);
     const compactHealthy = modelDiscovery.live;
     const selectedDefaultModel = chooseDefaultModel(modelDiscovery.available, configuredModel, openclawDefaultModel);
-    const ccBindingPresent = ccParsed.projects.some((project) => project.platforms.length > 0);
+    const ccBindingPresent = detectCcConnectBinding(ccConfig);
     const components = buildComponents({
       codexVersion,
       omxVersion,
