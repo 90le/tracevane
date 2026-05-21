@@ -154,19 +154,16 @@
                     {{ issueCount ? text(`还有 ${issueCount} 个组件需要处理。`, `${issueCount} components need attention.`) : text("组件和服务状态稳定。", "Components and services are stable.") }}
                   </p>
                 </article>
-                <article class="panel-card cs-next-card">
-                  <p class="cs-section-kicker">{{ text("建议下一步", "Suggested Next Step") }}</p>
-                  <h4>{{ nextActionTitle }}</h4>
-                  <p>{{ nextActionCopy }}</p>
-                  <div class="cs-actions">
-                    <button type="button" class="primary-button" :disabled="nextActionRequiresMutation ? !canRunMutation : busy" @click="nextActionPrimary">
-                      {{ nextActionButton }}
-                    </button>
-                    <button type="button" class="secondary-button" @click="activeSection = nextActionSection">
-                      {{ text("打开对应页面", "Open Section") }}
-                    </button>
-                  </div>
-                </article>
+                <CodexStackRecommendationCard
+                  :kicker="text('建议下一步', 'Suggested Next Step')"
+                  :title="nextActionTitle"
+                  :copy="nextActionCopy"
+                  :primary-label="nextActionButton"
+                  :secondary-label="text('打开对应页面', 'Open Section')"
+                  :primary-disabled="nextActionRequiresMutation ? !canRunMutation : busy"
+                  @primary="nextActionPrimary"
+                  @open-section="activeSection = nextActionSection"
+                />
                 <article class="panel-card cs-next-card">
                   <p class="cs-section-kicker">{{ text("模型来源", "Model Source") }}</p>
                   <h4>{{ modelSourceLabel }}</h4>
@@ -1495,6 +1492,7 @@ import {
   countActiveServices,
   isCodexStackJobRunning,
 } from "./codex-stack-view-model";
+import CodexStackRecommendationCard from "./CodexStackRecommendationCard.vue";
 
 const { text } = useLocalePreference();
 
