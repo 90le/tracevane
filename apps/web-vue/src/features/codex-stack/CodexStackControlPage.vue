@@ -1485,6 +1485,8 @@ const configForm = reactive({
   noProxy: "localhost,127.0.0.1,::1",
 });
 
+const DEFAULT_NO_PROXY = "localhost,127.0.0.1,::1";
+
 const serviceCatalog: Record<
   CodexStackServiceId,
   {
@@ -2283,6 +2285,49 @@ function portDisplay(port: number, live: number | null): string {
   return `:${port}`;
 }
 
+function findMissingNoProxyLoopback(noProxy: string): string[] {
+  const entries = new Set(noProxy
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .flatMap((entry) => [entry, entry.replace(/^\[(.*)\]$/, "$1")]));
+  if (entries.has("*")) return [];
+  const missing: string[] = [];
+  if (!entries.has("localhost") && !entries.has(".localhost")) missing.push("localhost");
+  if (!entries.has("127.0.0.1") && !entries.has("127.0.0.0/8")) missing.push("127.0.0.1");
+  if (!entries.has("::1")) missing.push("::1");
+  return missing;
+}
+
+function normalizeProxyPolicy(
+  policy: Partial<CodexStackSummaryPayload["proxyPolicy"]> | undefined,
+): CodexStackSummaryPayload["proxyPolicy"] {
+  const noProxy = policy?.noProxy || DEFAULT_NO_PROXY;
+  const missing = Array.isArray(policy?.noProxyLoopbackMissing)
+    ? policy.noProxyLoopbackMissing
+    : findMissingNoProxyLoopback(noProxy);
+  return {
+    providerMode: policy?.providerMode === "proxy" ? "proxy" : "direct",
+    providerProxyUrl: policy?.providerProxyUrl || null,
+    providerProxySource: policy?.providerProxySource || null,
+    noProxy,
+    noProxyLoopbackReady: typeof policy?.noProxyLoopbackReady === "boolean"
+      ? policy.noProxyLoopbackReady
+      : missing.length === 0,
+    noProxyLoopbackMissing: missing,
+    cpaConfigProxyUrls: Array.isArray(policy?.cpaConfigProxyUrls) ? policy.cpaConfigProxyUrls : [],
+    upstreamBaseUrl: policy?.upstreamBaseUrl || null,
+    upstreamApiKeyConfigured: Boolean(policy?.upstreamApiKeyConfigured),
+  };
+}
+
+function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackSummaryPayload {
+  return {
+    ...next,
+    proxyPolicy: normalizeProxyPolicy(next.proxyPolicy),
+  };
+}
+
 function serviceEndpointInfo(serviceId: CodexStackServiceId, currentSummary: CodexStackSummaryPayload) {
   if (serviceId === "cli-proxy-api.service") {
     return {
@@ -2381,25 +2426,26 @@ function nextActionPrimary(): void {
 }
 
 function applySummary(next: CodexStackSummaryPayload): void {
-  summary.value = next;
-  installForm.model = next.models.current || next.profile.defaultModel || next.models.defaultModel || "kimi-k2.6";
-  installForm.contextMode = next.context.mode || "default";
-  installForm.contextWindowTokens = next.context.tokens || next.context.recommendedTokens;
-  installForm.cpaPort = next.ports.cpa;
-  installForm.compactPort = next.ports.compact;
-  installForm.channel = next.installer.channel;
-  installForm.providerProxyUrl = next.proxyPolicy.providerProxyUrl || "";
-  installForm.noProxy = next.proxyPolicy.noProxy || "localhost,127.0.0.1,::1";
-  configForm.defaultModel = next.models.current || next.profile.defaultModel || next.models.defaultModel || "kimi-k2.6";
-  configForm.contextMode = next.context.mode || "default";
-  configForm.contextWindowTokens = next.context.tokens || next.context.recommendedTokens;
-  configForm.cpaPort = next.ports.cpa;
-  configForm.compactPort = next.ports.compact;
-  configForm.ccConnectProject = next.ccConnect.project || next.profile.ccConnectProject || "main";
-  configForm.upstreamBaseUrl = next.proxyPolicy.upstreamBaseUrl || "";
+  const normalized = normalizeCodexStackSummary(next);
+  summary.value = normalized;
+  installForm.model = normalized.models.current || normalized.profile.defaultModel || normalized.models.defaultModel || "kimi-k2.6";
+  installForm.contextMode = normalized.context.mode || "default";
+  installForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
+  installForm.cpaPort = normalized.ports.cpa;
+  installForm.compactPort = normalized.ports.compact;
+  installForm.channel = normalized.installer.channel;
+  installForm.providerProxyUrl = normalized.proxyPolicy.providerProxyUrl || "";
+  installForm.noProxy = normalized.proxyPolicy.noProxy || DEFAULT_NO_PROXY;
+  configForm.defaultModel = normalized.models.current || normalized.profile.defaultModel || normalized.models.defaultModel || "kimi-k2.6";
+  configForm.contextMode = normalized.context.mode || "default";
+  configForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
+  configForm.cpaPort = normalized.ports.cpa;
+  configForm.compactPort = normalized.ports.compact;
+  configForm.ccConnectProject = normalized.ccConnect.project || normalized.profile.ccConnectProject || "main";
+  configForm.upstreamBaseUrl = normalized.proxyPolicy.upstreamBaseUrl || "";
   configForm.upstreamApiKey = "";
-  configForm.providerProxyUrl = next.proxyPolicy.providerProxyUrl || "";
-  configForm.noProxy = next.proxyPolicy.noProxy || "localhost,127.0.0.1,::1";
+  configForm.providerProxyUrl = normalized.proxyPolicy.providerProxyUrl || "";
+  configForm.noProxy = normalized.proxyPolicy.noProxy || DEFAULT_NO_PROXY;
 }
 
 async function loadSummary(): Promise<void> {
