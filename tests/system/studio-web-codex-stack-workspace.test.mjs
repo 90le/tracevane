@@ -17,6 +17,7 @@ const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanne
 const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
 const repairBoard = read("apps/web-vue/src/features/codex-stack/CodexStackRepairBoard.vue");
+const upstreamMap = read("apps/web-vue/src/features/codex-stack/CodexStackUpstreamMap.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
@@ -66,6 +67,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(repairBoard, /class="panel-card cs-repair-board"/);
   assert.match(repairBoard, /\.cs-repair-grid\s*\{/);
   assert.match(repairBoard, /@media \(max-width: 960px\)/);
+  assert.match(upstreamMap, /class="panel-card cs-upstream-map"/);
+  assert.match(upstreamMap, /\.cs-upstream-grid\s*\{/);
+  assert.match(upstreamMap, /@media \(max-width: 960px\)/);
   assert.match(dashboardInsights, /\.cs-section-kicker\s*\{/);
   assert.match(dashboardInsights, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(chainMap, /export interface CodexStackChainNode/);
@@ -262,6 +266,21 @@ test("codex stack runtime config save sends only changed fields", () => {
   assert.match(controlPage, /:disabled="!canRunMutation \|\| !hasConfigPatchChanges"/);
   assert.match(controlPage, /const payload = configPatchPayload\.value;[\s\S]*if \(!Object\.keys\(payload\)\.length\)/);
   assert.doesNotMatch(controlPage, /const payload: CodexStackConfigPatchRequest = \{\s*defaultModel: configForm\.defaultModel,/);
+});
+
+test("codex stack settings page delegates upstream map without moving config writes", () => {
+  assert.match(controlPage, /import CodexStackUpstreamMap from "\.\/CodexStackUpstreamMap\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackUpstreamMap[\s\S]*:default-model="configForm\.defaultModel \|\| summary\.models\.current \|\| '--'"[\s\S]*:compact-proxy-base-url="compactProxyBaseUrl"[\s\S]*:provider-name="canonicalCcConnectProvider\.name"[\s\S]*:provider-base-url="canonicalCcConnectProvider\.baseUrl"[\s\S]*:provider-model="canonicalCcConnectProvider\.model"/,
+  );
+  assert.doesNotMatch(controlPage, /class="panel-card cs-upstream-map"/);
+  assert.match(controlPage, /const configPatchPayload = computed<CodexStackConfigPatchRequest>/);
+  assert.match(controlPage, /async function saveConfigPatch\(\): Promise<void>/);
+  assert.match(controlPage, /function normalizeProxyPolicy\([\s\S]*noProxyLoopbackReady: typeof policy\?\.noProxyLoopbackReady === "boolean"/);
+  assert.match(upstreamMap, /写入 ~\/\.codex\/config\.toml/);
+  assert.match(upstreamMap, /本地 OpenAI 兼容入口/);
+  assert.match(upstreamMap, /OPENAI_API_KEY \/ base_url/);
 });
 
 test("codex stack summary refresh preserves dirty runtime config drafts", () => {
