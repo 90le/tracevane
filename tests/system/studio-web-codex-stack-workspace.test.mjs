@@ -11,6 +11,7 @@ const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackContro
 const ccConnectCommandBar = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectCommandBar.vue");
 const ccConnectProviderPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProviderPanel.vue");
 const ccConnectProjectPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProjectPanel.vue");
+const ccConnectRawPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectRawPanel.vue");
 const ccConnectRail = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectRail.vue");
 const ccConnectSetupPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectSetupPanel.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
@@ -109,6 +110,10 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectProjectPanel, /\.cs-agent-template-row\s*\{/);
   assert.match(ccConnectProjectPanel, /\.cs-platform-grid\s*\{/);
   assert.match(ccConnectProjectPanel, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectRawPanel, /class="cs-cc-raw-panel"/);
+  assert.match(ccConnectRawPanel, /\.cs-raw-editor\s*\{/);
+  assert.match(ccConnectRawPanel, /\.cs-status-pill\.tone-accent\s*\{/);
+  assert.match(ccConnectRawPanel, /@media \(max-width: 960px\)/);
   assert.match(ccConnectRail, /class="panel-card cs-agent-rail"/);
   assert.match(ccConnectRail, /\.cs-agent-pane-switch\s*\{/);
   assert.match(ccConnectRail, /\.cs-agent-project-pill\s*\{/);
@@ -306,6 +311,24 @@ test("codex stack cc-connect page delegates project editor without moving projec
   assert.match(ccConnectProjectPanel, /@click="\$emit\('add-platform', template\.id\)"/);
   assert.match(ccConnectProjectPanel, /@input="\$emit\('update-platform-option', platform\.id, row\.id, 'value', inputValue\(\$event\)\)"/);
   assert.doesNotMatch(ccConnectProjectPanel, /ccConnectProjectDrafts|selectedProjectDraftId|normalizeProjectDrafts|patchCcConnectConfig|saveCcConnectStructured|saveCcConnectRaw/);
+});
+
+test("codex stack cc-connect page delegates raw TOML editor without moving raw save", () => {
+  assert.match(controlPage, /import CodexStackCcConnectRawPanel from "\.\/CodexStackCcConnectRawPanel\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackCcConnectRawPanel[\s\S]*:raw-draft="ccConnectRawDraft"[\s\S]*:has-raw-changes="hasCcConnectRawChanges"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*@update-raw="updateCcConnectRawDraft"[\s\S]*@save-raw="saveCcConnectRaw"/,
+  );
+  assert.match(controlPage, /function updateCcConnectRawDraft\(raw: string\): void/);
+  assert.match(controlPage, /async function saveCcConnectRaw\(\): Promise<void>/);
+  assert.match(controlPage, /patchCcConnectConfig\(\{ raw: ccConnectRawDraft\.value \}\)/);
+  assert.doesNotMatch(controlPage, /v-model="ccConnectRawDraft"/);
+  assert.doesNotMatch(controlPage, /class="cs-raw-editor"/);
+  assert.match(ccConnectRawPanel, /defineProps<\{[\s\S]*rawDraft: string;[\s\S]*hasRawChanges: boolean;[\s\S]*canRunMutation: boolean;[\s\S]*\}>/);
+  assert.match(ccConnectRawPanel, /defineEmits<\{[\s\S]*"update-raw": \[raw: string\];[\s\S]*"save-raw": \[\];[\s\S]*\}>/);
+  assert.match(ccConnectRawPanel, /@input="\$emit\('update-raw', textareaValue\(\$event\)\)"/);
+  assert.match(ccConnectRawPanel, /@click="\$emit\('save-raw'\)"/);
+  assert.doesNotMatch(ccConnectRawPanel, /ccConnectRawDraft|patchCcConnectConfig|saveCcConnectRaw|saveCcConnectStructured|normalizeProviderDrafts|normalizeProjectDrafts/);
 });
 
 test("codex stack cc-connect page delegates rail navigation without moving drafts", () => {

@@ -334,28 +334,13 @@
                   </template>
 
                   <template v-else>
-                    <div class="cs-card-header">
-                      <div>
-                        <p class="cs-section-kicker">{{ text("原始配置", "Raw Config") }}</p>
-                        <h4>{{ text("TOML 编辑器", "TOML Editor") }}</h4>
-                      </div>
-                    </div>
-                    <textarea
-                      v-model="ccConnectRawDraft"
-                      class="cs-raw-editor"
-                      spellcheck="false"
-                      :placeholder="text('cc-connect TOML 会显示在这里。', 'The cc-connect TOML will appear here.')"
+                    <CodexStackCcConnectRawPanel
+                      :raw-draft="ccConnectRawDraft"
+                      :has-raw-changes="hasCcConnectRawChanges"
+                      :can-run-mutation="canRunMutation"
+                      @update-raw="updateCcConnectRawDraft"
+                      @save-raw="saveCcConnectRaw"
                     />
-                    <div class="cs-actions">
-                      <button
-                        type="button"
-                        class="primary-button"
-                        :disabled="!canRunMutation || !hasCcConnectRawChanges"
-                        @click="saveCcConnectRaw"
-                      >
-                        {{ text("保存 TOML 配置", "Save TOML Config") }}
-                      </button>
-                    </div>
                   </template>
                 </section>
               </div>
@@ -620,6 +605,7 @@ import type {
   CodexStackCcConnectProjectPresetCard,
   CodexStackCcConnectProjectPresetId,
 } from "./CodexStackCcConnectProjectPanel.vue";
+import CodexStackCcConnectRawPanel from "./CodexStackCcConnectRawPanel.vue";
 import CodexStackCcConnectSetupPanel from "./CodexStackCcConnectSetupPanel.vue";
 import type { CodexStackCcConnectSetupPlatform } from "./CodexStackCcConnectSetupPanel.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
@@ -2318,6 +2304,10 @@ function updateCcConnectProviderField(providerId: string, field: CodexStackCcCon
   if (provider) provider[field] = value;
 }
 
+function updateCcConnectRawDraft(raw: string): void {
+  ccConnectRawDraft.value = raw;
+}
+
 function addCcConnectProject(): void {
   const project = createProjectDraft({
     name: `project-${ccConnectProjectDrafts.value.length + 1}`,
@@ -2984,19 +2974,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   opacity: 0.42;
 }
 
-.cs-raw-editor {
-  width: 100%;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 12px 14px;
-  background: var(--code-bg);
-  color: var(--text);
-  white-space: pre-wrap;
-  line-height: 1.55;
-  margin: 0;
-}
-
 .cs-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3024,12 +3001,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 
 .cs-project-head {
   align-items: flex-start;
-}
-
-.cs-raw-editor {
-  min-height: 420px;
-  resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .tone-sage {
