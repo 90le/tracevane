@@ -75,6 +75,7 @@
               :checked-at-label="formatTimestamp(summary.checkedAt)"
               :busy="actionBusy"
               :can-run-mutation="canRunMutation"
+              :mutation-disabled-help="mutationDisabledHelp"
               :sync-disabled="loading || ccConnectLoading"
               @run-check="runCheck"
               @repair="repairRecommended"
@@ -121,6 +122,7 @@
             <CodexStackServiceGrid
               :services="serviceCards"
               :can-run-mutation="canRunMutation"
+              :mutation-disabled-help="mutationDisabledHelp"
               :labels="serviceGridLabels"
               @service-action="serviceAction"
             />
@@ -192,6 +194,7 @@
 
               <CodexStackRepairBoard
                 :can-run-mutation="canRunMutation"
+                :mutation-disabled-help="mutationDisabledHelp"
                 :can-attach-codex-cpa="canAttachCodexCpa"
                 :attach-codex-cpa-help="attachCodexCpaHelp"
                 :attach-preflight-items="attachPreflightItems"
@@ -279,6 +282,7 @@
                   :commands="ccConnectSetupCommands"
                   :busy="busy"
                   :can-run-mutation="canRunMutation"
+                  :mutation-disabled-help="mutationDisabledHelp"
                   :can-finalize="summary.ccConnect.canFinalize"
                   @copy-setup="copySetupCommand"
                   @finalize="finalizeCcConnect"
@@ -290,6 +294,7 @@
                   :raw-draft="ccConnectRawDraft"
                   :has-raw-changes="hasCcConnectRawChanges"
                   :can-run-mutation="canRunMutation"
+                  :mutation-disabled-help="mutationDisabledHelp"
                   @update-raw="updateCcConnectRawDraft"
                   @save-raw="saveCcConnectRaw"
                 />

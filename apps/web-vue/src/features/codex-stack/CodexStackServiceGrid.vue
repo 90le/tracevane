@@ -53,6 +53,9 @@
         >
           {{ labels.restart }}
         </button>
+        <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+          {{ mutationDisabledHelp }}
+        </p>
       </div>
     </article>
   </div>
@@ -78,6 +81,7 @@ export interface CodexStackServiceCard {
 defineProps<{
   services: CodexStackServiceCard[];
   canRunMutation: boolean;
+  mutationDisabledHelp: string;
   labels: {
     running: string;
     stopped: string;
@@ -187,6 +191,14 @@ defineEmits<{
   gap: 8px;
   flex-wrap: wrap;
   margin-top: auto;
+}
+
+.cs-disabled-help {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .cs-dot {

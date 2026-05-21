@@ -25,6 +25,9 @@
       >
         {{ text("完成 cc-connect 安装", "Finalize cc-connect") }}
       </button>
+      <p v-if="canFinalize && !canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+        {{ mutationDisabledHelp }}
+      </p>
     </div>
     <pre class="cs-code">{{ commands.join("\n") }}</pre>
   </div>
@@ -39,6 +42,7 @@ defineProps<{
   commands: string[];
   busy: boolean;
   canRunMutation: boolean;
+  mutationDisabledHelp: string;
   canFinalize: boolean;
 }>();
 
@@ -81,6 +85,14 @@ const { text } = useLocalePreference();
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.cs-disabled-help {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .cs-code {

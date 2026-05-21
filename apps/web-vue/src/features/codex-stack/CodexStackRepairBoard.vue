@@ -49,6 +49,9 @@
           {{ text("只验证", "Verify Only") }}
         </button>
       </article>
+      <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+        {{ mutationDisabledHelp }}
+      </p>
       <article class="cs-repair-card">
         <strong>{{ text("通过验证后切 Codex", "Attach Codex After Smoke") }}</strong>
         <p>{{ text("会重新跑完整模型矩阵；全部通过才写入 Codex active provider，并在当前模型不是 glm/kimi 时切到安全的国内模型。", "Reruns the full model matrix and writes the active Codex provider only if every check passes; if the current model is not glm/kimi, it switches to a CPA-safe domestic model.") }}</p>
@@ -80,6 +83,7 @@ export interface CodexStackAttachPreflightItem {
 
 defineProps<{
   canRunMutation: boolean;
+  mutationDisabledHelp: string;
   canAttachCodexCpa: boolean;
   attachCodexCpaHelp: string;
   attachPreflightItems: CodexStackAttachPreflightItem[];
@@ -138,6 +142,14 @@ const { text } = useLocalePreference();
   border-left: 3px solid var(--warning);
   padding-left: 10px;
   font-size: 0.86rem;
+}
+
+.cs-disabled-help {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .cs-attach-preflight-list {

@@ -40,6 +40,9 @@
       <button type="button" class="secondary-button" :disabled="syncDisabled" @click="$emit('sync')">
         {{ text("重新同步", "Sync Now") }}
       </button>
+      <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+        {{ mutationDisabledHelp }}
+      </p>
     </div>
   </article>
 </template>
@@ -60,6 +63,7 @@ defineProps<{
   checkedAtLabel: string;
   busy: boolean;
   canRunMutation: boolean;
+  mutationDisabledHelp: string;
   syncDisabled: boolean;
 }>();
 
@@ -167,6 +171,13 @@ const { text } = useLocalePreference();
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.cs-disabled-help {
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 960px) {

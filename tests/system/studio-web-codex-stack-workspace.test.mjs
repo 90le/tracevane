@@ -43,6 +43,7 @@ const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStack
 const sectionIntro = read("apps/web-vue/src/features/codex-stack/CodexStackSectionIntro.vue");
 const sectionNav = read("apps/web-vue/src/features/codex-stack/CodexStackSectionNav.vue");
 const sectionStack = read("apps/web-vue/src/features/codex-stack/CodexStackSectionStack.vue");
+const serviceGrid = read("apps/web-vue/src/features/codex-stack/CodexStackServiceGrid.vue");
 const workspaceShell = read("apps/web-vue/src/features/codex-stack/CodexStackWorkspaceShell.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
 const readinessAction = read("apps/web-vue/src/features/codex-stack/readiness-action.ts");
@@ -359,7 +360,7 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.match(controlPage, /import CodexStackDashboardHeroCard from "\.\/CodexStackDashboardHeroCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="actionBusy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
+    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="actionBusy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
   );
   assert.match(controlPage, /const codexProviderCheck = computed\(\(\) => \(/);
   assert.match(controlPage, /if \(status === "pass"\) return text\("CPA 已接入", "CPA attached"\);/);
@@ -369,12 +370,23 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.doesNotMatch(controlPage, /class="panel-card cs-hero-card"/);
   assert.doesNotMatch(controlPage, /class="cs-hero-actions"/);
   assert.match(dashboardHeroCard, /Codex 路径/);
-  assert.match(dashboardHeroCard, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*syncDisabled: boolean;[\s\S]*\}>/);
+  assert.match(dashboardHeroCard, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*mutationDisabledHelp: string;[\s\S]*syncDisabled: boolean;[\s\S]*\}>/);
+  assert.match(dashboardHeroCard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(dashboardHeroCard, /defineEmits<\{[\s\S]*"run-check": \[\];[\s\S]*repair: \[\];[\s\S]*sync: \[\];[\s\S]*\}>/);
   assert.match(dashboardHeroCard, /@click="\$emit\('run-check'\)"/);
   assert.match(dashboardHeroCard, /@click="\$emit\('repair'\)"/);
   assert.match(dashboardHeroCard, /@click="\$emit\('sync'\)"/);
   assert.doesNotMatch(dashboardHeroCard, /runCodexStackCheck|startCodexStackRepair|fetchCodexStackSummary|fetchCcConnectConfig|loadAll|repairRecommended|runCheck/);
+});
+
+test("codex stack service grid explains global mutation locks without moving service actions", () => {
+  assert.match(controlPage, /<CodexStackServiceGrid[\s\S]*:services="serviceCards"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:labels="serviceGridLabels"[\s\S]*@service-action="serviceAction"/);
+  assert.match(serviceGrid, /mutationDisabledHelp: string;/);
+  assert.match(serviceGrid, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
+  assert.match(serviceGrid, /:disabled="!canRunMutation \|\| service\.active"/);
+  assert.match(serviceGrid, /:disabled="!canRunMutation \|\| !service\.active"/);
+  assert.match(serviceGrid, /:disabled="!canRunMutation"/);
+  assert.doesNotMatch(serviceGrid, /serviceAction\(|restartCodexStackService|fetchCodexStackSummary|repairRecommended|resumeStack/);
 });
 
 test("codex stack dashboard delegates action overview without losing actions", () => {
@@ -494,13 +506,15 @@ test("codex stack logs page delegates job output preview without losing polling 
 
 test("codex stack install page delegates repair board without weakening CPA attach gate", () => {
   assert.match(controlPage, /import CodexStackRepairBoard from "\.\/CodexStackRepairBoard\.vue";/);
-  assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-help="attachCodexCpaHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"/);
+  assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-help="attachCodexCpaHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"/);
   assert.match(controlPage, /@repair-recommended="repairRecommended"[\s\S]*@repair-conflicts="repairConflictingUnits"[\s\S]*@repair-config-only="repairConfigOnly"/);
   assert.match(controlPage, /@pause-stack="pauseStack"[\s\S]*@resume-stack="resumeStack"[\s\S]*@run-smoke-matrix="runSmokeMatrix"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-repair-board"/);
   assert.match(repairBoard, /运行模型矩阵/);
   assert.match(repairBoard, /glm-5\.1 与 kimi-k2\.6 都要通过普通、非流式、流式和压缩上下文/);
   assert.match(repairBoard, /export interface CodexStackAttachPreflightItem/);
+  assert.match(repairBoard, /mutationDisabledHelp: string;/);
+  assert.match(repairBoard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(repairBoard, /attachPreflightItems: CodexStackAttachPreflightItem\[\];/);
   assert.match(repairBoard, /v-for="item in attachPreflightItems"/);
   assert.match(repairBoard, /class="cs-attach-preflight-list"/);
@@ -582,14 +596,15 @@ test("codex stack cc-connect page delegates raw TOML editor without moving raw s
   assert.match(controlPage, /import CodexStackCcConnectRawPanel from "\.\/CodexStackCcConnectRawPanel\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackCcConnectRawPanel[\s\S]*:raw-draft="ccConnectRawDraft"[\s\S]*:has-raw-changes="hasCcConnectRawChanges"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*@update-raw="updateCcConnectRawDraft"[\s\S]*@save-raw="saveCcConnectRaw"/,
+    /<CodexStackCcConnectRawPanel[\s\S]*:raw-draft="ccConnectRawDraft"[\s\S]*:has-raw-changes="hasCcConnectRawChanges"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@update-raw="updateCcConnectRawDraft"[\s\S]*@save-raw="saveCcConnectRaw"/,
   );
   assert.match(controlPage, /function updateCcConnectRawDraft\(raw: string\): void/);
   assert.match(controlPage, /async function saveCcConnectRaw\(\): Promise<void>/);
   assert.match(controlPage, /patchCcConnectConfig\(\{ raw: ccConnectRawDraft\.value \}\)/);
   assert.doesNotMatch(controlPage, /v-model="ccConnectRawDraft"/);
   assert.doesNotMatch(controlPage, /class="cs-raw-editor"/);
-  assert.match(ccConnectRawPanel, /defineProps<\{[\s\S]*rawDraft: string;[\s\S]*hasRawChanges: boolean;[\s\S]*canRunMutation: boolean;[\s\S]*\}>/);
+  assert.match(ccConnectRawPanel, /defineProps<\{[\s\S]*rawDraft: string;[\s\S]*hasRawChanges: boolean;[\s\S]*canRunMutation: boolean;[\s\S]*mutationDisabledHelp: string;[\s\S]*\}>/);
+  assert.match(ccConnectRawPanel, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(ccConnectRawPanel, /defineEmits<\{[\s\S]*"update-raw": \[raw: string\];[\s\S]*"save-raw": \[\];[\s\S]*\}>/);
   assert.match(ccConnectRawPanel, /@input="\$emit\('update-raw', textareaValue\(\$event\)\)"/);
   assert.match(ccConnectRawPanel, /@click="\$emit\('save-raw'\)"/);
@@ -628,11 +643,13 @@ test("codex stack cc-connect page delegates setup actions without moving finaliz
   assert.match(controlPage, /import CodexStackCcConnectSetupPanel from "\.\/CodexStackCcConnectSetupPanel\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackCcConnectSetupPanel[\s\S]*:commands="ccConnectSetupCommands"[\s\S]*:busy="busy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:can-finalize="summary\.ccConnect\.canFinalize"[\s\S]*@copy-setup="copySetupCommand"[\s\S]*@finalize="finalizeCcConnect"/,
+    /<CodexStackCcConnectSetupPanel[\s\S]*:commands="ccConnectSetupCommands"[\s\S]*:busy="busy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:can-finalize="summary\.ccConnect\.canFinalize"[\s\S]*@copy-setup="copySetupCommand"[\s\S]*@finalize="finalizeCcConnect"/,
   );
   assert.match(controlPage, /async function copySetupCommand\(platform: CodexStackCcConnectSetupPlatform\): Promise<void>/);
   assert.match(controlPage, /async function finalizeCcConnect\(\): Promise<void>/);
   assert.match(controlPage, /finalizeCodexStackCcConnect\(\{ project: summary\.value\?\.ccConnect\.project \|\| "main" \}\)/);
+  assert.match(ccConnectSetupPanel, /mutationDisabledHelp: string;/);
+  assert.match(ccConnectSetupPanel, /v-if="canFinalize && !canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.doesNotMatch(controlPage, /复制 Feishu Setup/);
   assert.doesNotMatch(controlPage, /class="cs-actions cs-actions-wrap"[\s\S]*copySetupCommand\('feishu'\)/);
   assert.match(ccConnectSetupPanel, /export type CodexStackCcConnectSetupPlatform = "feishu" \| "weixin";/);

@@ -28,6 +28,9 @@
       >
         {{ text("保存 TOML 配置", "Save TOML Config") }}
       </button>
+      <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+        {{ mutationDisabledHelp }}
+      </p>
     </div>
   </div>
 </template>
@@ -39,6 +42,7 @@ defineProps<{
   rawDraft: string;
   hasRawChanges: boolean;
   canRunMutation: boolean;
+  mutationDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -126,6 +130,13 @@ function textareaValue(event: Event): string {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.cs-disabled-help {
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 960px) {
