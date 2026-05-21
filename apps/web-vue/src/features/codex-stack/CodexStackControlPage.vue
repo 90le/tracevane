@@ -620,34 +620,6 @@ let logRequestInFlight = false;
 let queuedLogRequest: { serviceId: CodexStackServiceId; silent: boolean } | null = null;
 let draftIdCounter = 0;
 
-const navSections = computed<CodexStackSectionNavItem[]>(() => [
-  {
-    id: "dashboard" as const,
-    label: text("控制台", "Console"),
-    icon: "M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z",
-  },
-  {
-    id: "install" as const,
-    label: text("安装/修复", "Install/Repair"),
-    icon: "M12 3 4 8v8c0 4.42 3.58 8 8 8s8-3.58 8-8V8l-8-5Zm1 13h3l-4 4-4-4h3V9h2v7Z",
-  },
-  {
-    id: "cc-connect" as const,
-    label: text("Agent", "Agents"),
-    icon: "M6 7h12v10H6zM4 5v14h16V5H4Zm4 4h8v2H8V9Zm0 4h5v2H8v-2Z",
-  },
-  {
-    id: "settings" as const,
-    label: text("模型上游", "Models"),
-    icon: "M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.49.49 0 0 0 13.9 2h-3.8a.49.49 0 0 0-.49.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z",
-  },
-  {
-    id: "logs" as const,
-    label: text("日志", "Logs"),
-    icon: "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm2 4v2h10V8H7Zm0 4v2h10v-2H7Z",
-  },
-]);
-
 const installForm = reactive<CodexStackInstallConfigDraft & { skipComponents: string[]; forceComponents: string[] }>({
   model: "kimi-k2.6",
   contextMode: "default" as ContextMode,
@@ -844,6 +816,87 @@ const settingsSectionIntroChips = computed<CodexStackSectionIntroChip[]>(() => [
   { label: summary.value?.models.endpoint || "--", variant: "info" },
 ]);
 const activeRecommendation = computed(() => summary.value?.recommendation || null);
+const navSections = computed<CodexStackSectionNavItem[]>(() => {
+  const current = summary.value;
+  const recommendedSection = activeRecommendation.value?.section || "dashboard";
+  const nextLabel = text("下一步", "Next");
+  const componentIssues = current?.components.filter((component) => component.status !== "ok").length || 0;
+  const warningsCount = current?.warnings.length || 0;
+  const policy = current ? normalizeProxyPolicy(current.proxyPolicy) : null;
+  const matrix = current?.profile.lastSmokeMatrix;
+  const settingsNeedsReview = Boolean(current && (
+    !current.models.live
+    || !policy?.noProxyLoopbackReady
+    || !isSmokeMatrixFreshAndComplete(matrix)
+  ));
+  const ccConnectNeedsReview = Boolean(current?.ccConnect.installed && (
+    !current.ccConnect.bindingPresent
+    || !current.ccConnect.configured
+    || !current.ccConnect.socketPresent
+  ));
+  return [
+    {
+      id: "dashboard" as const,
+      label: text("控制台", "Console"),
+      icon: "M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z",
+      meta: current ? statusLabel.value : text("读取中", "Loading"),
+      badge: current?.runReadiness.level === "ready" ? text("OK", "OK") : runReadinessLevelShortLabel(current?.runReadiness.level),
+      tone: runReadinessTone.value,
+      recommended: recommendedSection === "dashboard",
+      recommendedLabel: nextLabel,
+    },
+    {
+      id: "install" as const,
+      label: text("安装/修复", "Install/Repair"),
+      icon: "M12 3 4 8v8c0 4.42 3.58 8 8 8s8-3.58 8-8V8l-8-5Zm1 13h3l-4 4-4-4h3V9h2v7Z",
+      meta: componentIssues
+        ? text(`${componentIssues} 个组件待处理`, `${componentIssues} components need work`)
+        : text("组件完整", "Components complete"),
+      badge: componentIssues ? String(componentIssues) : text("OK", "OK"),
+      tone: componentIssues ? "accent" : "sage",
+      recommended: recommendedSection === "install",
+      recommendedLabel: nextLabel,
+    },
+    {
+      id: "cc-connect" as const,
+      label: text("Agent", "Agents"),
+      icon: "M6 7h12v10H6zM4 5v14h16V5H4Zm4 4h8v2H8V9Zm0 4h5v2H8v-2Z",
+      meta: current?.ccConnect.bindingPresent
+        ? text("平台已绑定", "Platform bound")
+        : current?.ccConnect.installed
+          ? text("等待绑定", "Binding pending")
+          : text("未安装", "Not installed"),
+      badge: current?.ccConnect.bindingPresent ? text("OK", "OK") : text("待", "Todo"),
+      tone: ccConnectNeedsReview ? "accent" : current?.ccConnect.bindingPresent ? "sage" : "neutral",
+      recommended: recommendedSection === "cc-connect",
+      recommendedLabel: nextLabel,
+    },
+    {
+      id: "settings" as const,
+      label: text("模型上游", "Models"),
+      icon: "M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.49.49 0 0 0 13.9 2h-3.8a.49.49 0 0 0-.49.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z",
+      meta: current?.models.live
+        ? text("模型目录在线", "Model catalog live")
+        : text("使用配置回退", "Using config fallback"),
+      badge: settingsNeedsReview ? text("查", "Check") : text("OK", "OK"),
+      tone: settingsNeedsReview ? "accent" : "sage",
+      recommended: recommendedSection === "settings",
+      recommendedLabel: nextLabel,
+    },
+    {
+      id: "logs" as const,
+      label: text("日志", "Logs"),
+      icon: "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm2 4v2h10V8H7Zm0 4v2h10v-2H7Z",
+      meta: activeJob.value
+        ? `${activeJob.value.commandLabel} · ${jobStatusLabel(activeJob.value.status)}`
+        : warningsCount ? text(`${warningsCount} 条告警`, `${warningsCount} warnings`) : text("轻量预览", "Light preview"),
+      badge: activeJob.value ? text("跑", "Run") : warningsCount ? String(warningsCount) : "",
+      tone: activeJob.value ? "accent" : warningsCount ? "accent" : "neutral",
+      recommended: recommendedSection === "logs",
+      recommendedLabel: nextLabel,
+    },
+  ];
+});
 const nextActionSection = computed<SectionId>(() => {
   return activeRecommendation.value?.section || "dashboard";
 });
@@ -1885,6 +1938,13 @@ function jobStatusLabel(status: CodexStackJob["status"]): string {
     interrupted: text("已中断", "Interrupted"),
   };
   return labels[status];
+}
+
+function runReadinessLevelShortLabel(level: CodexStackSummaryPayload["runReadiness"]["level"] | undefined): string {
+  if (level === "ready") return text("OK", "OK");
+  if (level === "attention") return text("复验", "Review");
+  if (level === "blocked") return text("阻断", "Block");
+  return text("...", "...");
 }
 
 function guardMutation(): boolean {

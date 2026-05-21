@@ -11,18 +11,34 @@
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path :d="section.icon" />
       </svg>
-      <span>{{ section.label }}</span>
+      <span class="cs-nav-copy">
+        <span class="cs-nav-label-row">
+          <span>{{ section.label }}</span>
+          <span v-if="section.recommended" class="cs-nav-recommended">{{ section.recommendedLabel }}</span>
+        </span>
+        <small v-if="section.meta">{{ section.meta }}</small>
+      </span>
+      <span v-if="section.badge" class="cs-nav-badge" :class="`tone-${section.tone}`">
+        {{ section.badge }}
+      </span>
     </button>
   </aside>
 </template>
 
 <script setup lang="ts">
+import type { CodexStackTone } from "./codex-stack-view-model";
+
 export type CodexStackSectionId = "dashboard" | "install" | "cc-connect" | "settings" | "logs";
 
 export interface CodexStackSectionNavItem {
   id: CodexStackSectionId;
   label: string;
   icon: string;
+  meta: string;
+  badge: string;
+  tone: CodexStackTone;
+  recommended: boolean;
+  recommendedLabel: string;
 }
 
 defineProps<{
@@ -51,7 +67,8 @@ defineEmits<{
 }
 
 .cs-nav-button {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   border: 1px solid transparent;
@@ -75,6 +92,73 @@ defineEmits<{
   text-align: left;
 }
 
+.cs-nav-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cs-nav-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cs-nav-label-row > span:first-child,
+.cs-nav-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-nav-copy small {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.cs-nav-recommended,
+.cs-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 0.68rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.cs-nav-recommended {
+  color: var(--acc);
+  border-color: color-mix(in srgb, var(--acc) 42%, var(--line));
+  background: color-mix(in srgb, var(--acc) 10%, transparent);
+}
+
+.cs-nav-badge {
+  color: var(--text-soft);
+  min-width: 10px;
+}
+
+.cs-nav-badge.tone-sage {
+  color: #073b20;
+  border-color: #8fd8a6;
+  background: #dff8e7;
+}
+
+.cs-nav-badge.tone-accent {
+  color: #17335f;
+  border-color: #9ec2ff;
+  background: #e4efff;
+}
+
+.cs-nav-badge.tone-danger {
+  color: #651d19;
+  border-color: #f1a9a1;
+  background: #ffe4e0;
+}
+
 .cs-nav-button:hover,
 .cs-nav-button-active {
   color: var(--text);
@@ -91,8 +175,7 @@ defineEmits<{
   }
 
   .cs-nav-button {
-    min-width: 92px;
-    justify-content: center;
+    min-width: 148px;
   }
 }
 </style>
