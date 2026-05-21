@@ -413,7 +413,7 @@ function parseCcConnectConfigSource(source: string): CcConnectConfig {
       if (key === "name") currentProvider.name = value;
       if (key === "api_key") currentProvider.apiKey = value;
       if (key === "base_url") currentProvider.baseUrl = value;
-      if (key === "codex_env_key") currentProvider.codexEnvKey = value;
+      if (key === "codex_env_key" || key === "codex.env_key") currentProvider.codexEnvKey = value;
       continue;
     }
     if (currentSection === "projects" && currentProject) {
@@ -451,7 +451,7 @@ function serializeCcConnectProviders(providers: CcConnectProvider[]): string {
         `name = "${escapeTomlString(provider.name || "")}"`,
         `api_key = "${escapeTomlString(provider.apiKey || "")}"`,
         `base_url = "${escapeTomlString(provider.baseUrl || "")}"`,
-        `codex_env_key = "${escapeTomlString(provider.codexEnvKey || "")}"`,
+        `codex.env_key = "${escapeTomlString(provider.codexEnvKey || "")}"`,
       ];
       return lines.join("\n");
     });
@@ -2432,9 +2432,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       if (hasContextPatch && contextMode) {
         next = applyCodexContext(next, contextMode, contextTokens);
       }
-      next = removeTopLevelLocalCompactBaseUrls(
-        removeTopLevelTomlStringValue(applyCodexStableTransport(next), "model_provider", "cpa"),
-      );
+      next = removeTopLevelLocalCompactBaseUrls(applyCodexStableTransport(next));
       const compactBaseUrl = `http://127.0.0.1:${effectiveCompactPort}/v1`;
       const effectiveProxyKey = cpaKey || extractTomlString(next, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
       next = applyCodexCpaProviderSection(next, compactBaseUrl, effectiveProxyKey);
@@ -2449,15 +2447,18 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       }
       if (model) parsedCc.projects[0].agentOptions.model = model;
       if (ccProject) parsedCc.projects[0].name = ccProject;
-      if (cpaKey) {
-        // 更新 cc-connect 配置中的 cpa provider api_key
+      if (cpaKey || compactPort) {
+        // 更新 cc-connect 配置中的 cpa provider，使 Codex 与 Agent 走同一个 Compact 入口。
         if (!parsedCc.providers) parsedCc.providers = [];
         let cpaProvider = parsedCc.providers.find(p => p.name === "cpa");
+        const providerBaseUrl = `http://127.0.0.1:${compactPort || readProfile().compactPort || DEFAULT_COMPACT_PORT}/v1`;
         if (!cpaProvider) {
-          cpaProvider = { name: "cpa", apiKey: cpaKey, baseUrl: `http://127.0.0.1:${compactPort || readProfile().compactPort || DEFAULT_COMPACT_PORT}/v1`, codexEnvKey: "OPENAI_API_KEY" };
+          cpaProvider = { name: "cpa", apiKey: cpaKey, baseUrl: providerBaseUrl, codexEnvKey: "OPENAI_API_KEY" };
           parsedCc.providers.push(cpaProvider);
         } else {
-          cpaProvider.apiKey = cpaKey;
+          if (cpaKey) cpaProvider.apiKey = cpaKey;
+          if (compactPort) cpaProvider.baseUrl = providerBaseUrl;
+          cpaProvider.codexEnvKey = cpaProvider.codexEnvKey || "OPENAI_API_KEY";
         }
       }
       const next = patchCcConnectStructuredToml(cc, { projects: parsedCc.projects, providers: parsedCc.providers });
@@ -2512,20 +2513,27 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       hasCpaProxyKey: cpaKey ? true : profile.hasCpaProxyKey,
     });
 
-    // Auto-restart changed services so config takes effect immediately
+    const restartPending = new Set(restartRequired);
     if (restartRequired.size > 0) {
-      try { await execText("systemctl", ["--user", "daemon-reload"], { timeout: 15_000 }); } catch {}
+      await execText("systemctl", ["--user", "daemon-reload"], { timeout: 15_000 });
       for (const unit of restartRequired) {
-        try { await execText("systemctl", ["--user", "restart", unit], { timeout: 30_000 }); } catch {}
+        const status = await readServiceStatus(unit);
+        if (!status.active) continue;
+        const result = await execText("systemctl", ["--user", "restart", unit], { timeout: 30_000 });
+        if (result.ok) restartPending.delete(unit);
       }
     }
 
     return {
       ok: true,
       message: restartRequired.size > 0
-        ? `Codex Stack config updated. Restarted: ${Array.from(restartRequired).join(", ")}.`
+        ? (
+          restartPending.size > 0
+            ? `Codex Stack config updated. Restart required when ready: ${Array.from(restartPending).join(", ")}.`
+            : `Codex Stack config updated. Restarted active services: ${Array.from(restartRequired).join(", ")}.`
+        )
         : "Codex Stack config updated.",
-      restartRequiredUnits: [],
+      restartRequiredUnits: Array.from(restartPending),
       summary: await getSummary(req),
     };
   }

@@ -1082,9 +1082,8 @@ test("codex stack config patch writes backups and updates managed fields", async
   });
 
   assert.equal(response.ok, true);
-  // Services are auto-restarted; restartRequiredUnits should be empty after restart
   assert.ok(Array.isArray(response.restartRequiredUnits));
-  assert.ok(response.message.includes("Restarted") || response.message.includes("updated"));
+  assert.ok(response.message.includes("Restarted") || response.message.includes("Restart required") || response.message.includes("updated"));
   assert.match(fs.readFileSync(codexConfig, "utf8"), /model = "gpt-5\.4"/);
   assert.match(fs.readFileSync(codexConfig, "utf8"), /28796/);
   assert.match(fs.readFileSync(codexConfig, "utf8"), /model_context_window = 1050000/);
@@ -1096,7 +1095,7 @@ test("codex stack config patch writes backups and updates managed fields", async
   assert.match(patchedCodex, /\[features\][\s\S]*enable_request_compression = false[\s\S]*responses_websockets_v2 = false[\s\S]*responses_websockets = false/);
   assert.doesNotMatch(tomlTopLevel(patchedCodex), /^base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/m);
   assert.doesNotMatch(tomlTopLevel(patchedCodex), /openai_base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/);
-  assert.doesNotMatch(tomlTopLevel(patchedCodex), /model_provider = "cpa"/);
+  assert.match(tomlTopLevel(patchedCodex), /model_provider = "cpa"/);
   assert.match(patchedCodex, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:28796\/v1"[\s\S]*wire_api = "responses"[\s\S]*supports_websockets = false[\s\S]*experimental_bearer_token = "replacement-cpa-key-123"/);
   assert.match(fs.readFileSync(cpaConfig, "utf8"), /port: 9317/);
   assert.match(fs.readFileSync(cpaConfig, "utf8"), /replacement-cpa-key-123/);
@@ -1107,6 +1106,101 @@ test("codex stack config patch writes backups and updates managed fields", async
   assert.ok(fs.readdirSync(path.dirname(codexConfig)).some((name) => name.startsWith("config.toml.bak.")));
   assert.ok(fs.readdirSync(path.dirname(cpaConfig)).some((name) => name.startsWith("config.yaml.bak.")));
   assert.ok(fs.readdirSync(path.dirname(ccConfig)).some((name) => name.startsWith("config.toml.bak.")));
+});
+
+test("codex stack config patch preserves active CPA and does not start paused services", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const home = path.dirname(config.openclawRoot);
+  const codexConfig = path.join(home, ".codex/config.toml");
+  fs.writeFileSync(codexConfig, `model_provider = "cpa"\n${fs.readFileSync(codexConfig, "utf8")}`);
+
+  await withFakeSystemctl(async ({ readCalls }) => {
+    const service = createCodexStackService(config);
+    const response = await service.patchConfig(undefined, {
+      defaultModel: "glm-5.1",
+      compactPort: 28796,
+    });
+
+    assert.equal(response.ok, true);
+    assert.ok(response.restartRequiredUnits.includes("cpa-compact-proxy.service"));
+    assert.ok(response.restartRequiredUnits.includes("cc-connect.service"));
+    assert.match(response.message, /Restart required/);
+    const calls = readCalls();
+    assert.ok(calls.includes("--user daemon-reload"));
+    assert.ok(!calls.includes("--user restart cpa-compact-proxy.service"));
+  });
+
+  const patchedCodex = fs.readFileSync(codexConfig, "utf8");
+  assert.match(tomlTopLevel(patchedCodex), /model_provider = "cpa"/);
+  assert.match(patchedCodex, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/);
+});
+
+test("codex stack config patch retargets existing cc-connect CPA provider on Compact port changes", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const home = path.dirname(config.openclawRoot);
+  const ccConfig = path.join(home, ".cc-connect/config.toml");
+  writeFile(ccConfig, `
+[[providers]]
+name = "cpa"
+api_key = "secret-cpa-key-123456"
+base_url = "http://127.0.0.1:18796/v1"
+codex.env_key = "OPENAI_API_KEY"
+
+[[projects]]
+name = "main"
+[projects.agent.options]
+model = "glm-5.1"
+`);
+
+  await withFakeSystemctl(async ({ readCalls }) => {
+    const service = createCodexStackService(config);
+    const response = await service.patchConfig(undefined, {
+      compactPort: 28796,
+    });
+
+    assert.equal(response.ok, true);
+    assert.ok(response.restartRequiredUnits.includes("cc-connect.service"));
+    assert.ok(!readCalls().includes("--user restart cc-connect.service"));
+  });
+
+  const patchedCc = fs.readFileSync(ccConfig, "utf8");
+  assert.match(patchedCc, /base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/);
+  assert.match(patchedCc, /codex\.env_key = "OPENAI_API_KEY"/);
+  assert.doesNotMatch(patchedCc, /codex_env_key/);
 });
 
 test("bundled health check treats skipped cc-connect as warning only", () => {

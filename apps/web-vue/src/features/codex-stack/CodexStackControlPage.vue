@@ -1233,8 +1233,14 @@
                       />
                     </label>
                   </div>
-                  <div v-if="restartRequiredUnits.length" class="cs-restart-hint">
-                    {{ text("需要重启:", "Restart required:") }} {{ restartRequiredUnits.join(", ") }}
+                  <div v-if="restartRequiredUnits.length" class="cs-restart-hint cs-restart-hint-block">
+                    <strong>{{ text("待应用重启", "Restart pending") }}</strong>
+                    <span>
+                      {{ restartRequiredUnits.join(", ") }}
+                    </span>
+                    <small>
+                      {{ text("保存配置不会拉起已暂停的 CPA 栈；需要启用时用“恢复 CPA 栈”按顺序启动。", "Saving config will not start a paused CPA stack; use Resume CPA Stack when you want to bring it back up in order.") }}
+                    </small>
                   </div>
                   <div class="cs-actions">
                     <button type="button" class="primary-button" :disabled="!canRunMutation" @click="saveConfigPatch">
@@ -1614,6 +1620,10 @@ const serviceCatalog: Record<
   "cli-proxy-api.service": {
     labelKey: ["CPA", "CPA"],
     blurbKey: ["Codex Proxy API 服务", "Codex Proxy API service"],
+  },
+  "cli-proxy-api-healthcheck.timer": {
+    labelKey: ["旧巡检", "Legacy Healthcheck"],
+    blurbKey: ["旧版 CPA 巡检定时器，应保持停用", "Legacy CPA healthcheck timer; should stay disabled"],
   },
   "cpa-compact-proxy.service": {
     labelKey: ["Compact", "Compact"],
@@ -3041,6 +3051,18 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
 .cs-status-pill {
   font-weight: 600;
   color: var(--text);
+}
+
+.cs-restart-hint-block {
+  align-items: flex-start;
+  flex-direction: column;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.cs-restart-hint-block small {
+  color: var(--text-muted);
+  line-height: 1.45;
 }
 
 .cs-service-grid {
