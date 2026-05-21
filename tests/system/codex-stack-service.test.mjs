@@ -130,6 +130,25 @@ function writeActiveCodexStackJob(config, id = "active-job") {
   });
 }
 
+function compactSmokeResponse(body) {
+  return {
+    id: "compact_ok",
+    status: "completed",
+    output: [
+      {
+        type: "message",
+        role: "assistant",
+        content: [
+          {
+            type: "output_text",
+            text: `stable compact summary preserving studio-compact-smoke-${body.model}`,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 async function withMockFetch(handler, task) {
   const original = globalThis.fetch;
   globalThis.fetch = handler;
@@ -681,7 +700,8 @@ test("codex stack refuses to attach Codex CPA when stream smoke emits response.f
       return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
     }
     if (requestUrl.endsWith("/v1/responses/compact")) {
-      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+      const body = JSON.parse(String(init.body || "{}"));
+      return new Response(JSON.stringify(compactSmokeResponse(body)), { status: 200 });
     }
     return new Response("not found", { status: 404 });
   }, async () => {
@@ -742,7 +762,7 @@ test("codex stack attaches Codex CPA only after the full smoke gate passes", asy
       return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
     }
     if (requestUrl.endsWith("/v1/responses/compact")) {
-      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+      return new Response(JSON.stringify(compactSmokeResponse(body)), { status: 200 });
     }
     return new Response("not found", { status: 404 });
   }, async () => {
@@ -807,7 +827,7 @@ test("codex stack switches official current model to CPA-safe domestic model bef
       return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
     }
     if (requestUrl.endsWith("/v1/responses/compact")) {
-      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+      return new Response(JSON.stringify(compactSmokeResponse(body)), { status: 200 });
     }
     return new Response("not found", { status: 404 });
   }, async () => {
@@ -872,7 +892,7 @@ test("codex stack smoke matrix validates glm and kimi without attaching Codex", 
     }
     if (requestUrl.endsWith("/v1/responses/compact")) {
       compactBodies.push(body);
-      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+      return new Response(JSON.stringify(compactSmokeResponse(body)), { status: 200 });
     }
     return new Response("not found", { status: 404 });
   }, async () => {
@@ -894,6 +914,67 @@ test("codex stack smoke matrix validates glm and kimi without attaching Codex", 
       assert.match(JSON.stringify(body.input), /watchdog must not restart/);
     }
     assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
+  });
+});
+
+test("codex stack smoke matrix rejects empty compact summaries", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withMockFetch(async (url, init = {}) => {
+    const requestUrl = String(url);
+    const body = init.body ? JSON.parse(String(init.body)) : {};
+    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (requestUrl.includes("/v1/chat/completions")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (requestUrl.endsWith("/v1/responses")) {
+      if (body.stream) {
+        return new Response([
+          "event: response.completed",
+          `data: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+      return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    if (requestUrl.endsWith("/v1/responses/compact")) {
+      return new Response(JSON.stringify({ id: "compact_empty", status: "completed", output: [] }), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["run-smoke-matrix"] });
+    const job = await waitForJob(service, response.job.id);
+    const summary = await service.getSummary();
+
+    assert.equal(job.status, "failed");
+    assert.match(job.error || "", /empty summary/);
+    assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, false);
+    assert.equal(
+      summary.profile.lastSmokeMatrix?.models[0]?.checks.find((check) => check.id === "compact-compact")?.status,
+      "failed",
+    );
   });
 });
 
@@ -946,7 +1027,7 @@ test("codex stack smoke matrix records kimi failure and blocks Codex attach", as
       return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
     }
     if (requestUrl.endsWith("/v1/responses/compact")) {
-      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+      return new Response(JSON.stringify(compactSmokeResponse(body)), { status: 200 });
     }
     return new Response("not found", { status: 404 });
   }, async () => {

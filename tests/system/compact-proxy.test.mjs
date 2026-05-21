@@ -399,6 +399,36 @@ test("compact proxy can override Codex auth with the local CPA key", async () =>
   }
 });
 
+test("compact proxy rejects empty compaction summaries", async () => {
+  const cpa = await startFakeCpa(async (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      id: "chatcmpl_empty_compact",
+      object: "chat.completion",
+      model: "test-model",
+      choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "stop" }],
+    }));
+  });
+  const proxy = await startProxy(cpa.port);
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses/compact`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: [{ role: "user", content: "important state" }],
+      }),
+    });
+    assert.equal(response.status, 502);
+    const payload = await response.json();
+    assert.match(payload.error.message, /empty summary/);
+  } finally {
+    await proxy.close();
+    await cpa.close();
+  }
+});
+
 test("codex-docs and dmwork compact proxy templates stay in sync", () => {
   assert.equal(fs.readFileSync(proxyScript, "utf8"), fs.readFileSync(dmworkProxyScript, "utf8"));
 });

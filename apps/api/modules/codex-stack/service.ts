@@ -1763,6 +1763,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         id: "compact-compact",
         label: "Compact compaction",
         run: async () => {
+        const sentinel = compactSmokeSentinel(model);
         const payload = await postSmokeJson("Compact compaction", `${compactBase}/v1/responses/compact`, token, {
           model,
           input: buildCompactSmokeInput(model),
@@ -1771,13 +1772,40 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         if (!isRecord(payload) || payload.status === "failed") {
           throw new Error(`Compact compaction returned failed response: ${JSON.stringify(payload).slice(0, 800)}`);
         }
+        const outputText = extractResponseOutputText(payload);
+        if (!outputText.trim()) {
+          throw new Error("Compact compaction returned an empty summary");
+        }
+        if (!outputText.includes(sentinel)) {
+          throw new Error(`Compact compaction did not preserve sentinel ${sentinel}`);
+        }
         },
       },
     ];
   }
 
+  function compactSmokeSentinel(model: string): string {
+    return `studio-compact-smoke-${model}`;
+  }
+
+  function extractResponseOutputText(payload: unknown): string {
+    if (!isRecord(payload)) return "";
+    const output = Array.isArray(payload.output) ? payload.output : [];
+    const chunks: string[] = [];
+    for (const item of output) {
+      if (!isRecord(item)) continue;
+      const content = Array.isArray(item.content) ? item.content : [];
+      for (const part of content) {
+        if (!isRecord(part)) continue;
+        const text = typeof part.text === "string" ? part.text : "";
+        if (text) chunks.push(text);
+      }
+    }
+    return chunks.join("\n");
+  }
+
   function buildCompactSmokeInput(model: string): Array<{ role: string; content: string }> {
-    const sentinel = `studio-compact-smoke-${model}`;
+    const sentinel = compactSmokeSentinel(model);
     return [
       {
         role: "system",

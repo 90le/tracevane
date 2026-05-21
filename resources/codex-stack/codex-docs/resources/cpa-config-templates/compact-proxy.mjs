@@ -816,6 +816,14 @@ async function handleCompact(req, res) {
 
     const chat = JSON.parse(upstream.body.toString("utf8"));
     const rawMsg = chat.choices?.[0]?.message; const summary = rawMsg?.content || rawMsg?.reasoning_content || "";
+    if (!String(summary).trim()) {
+      return json(res, 502, {
+        error: {
+          message: "compact upstream returned an empty summary",
+          body: upstream.body.toString("utf8").slice(0, 2000),
+        },
+      });
+    }
     log(`compact completed, ${summary.length} chars`);
     return json(res, 200, {
       id: `compact_${request.thread_id || "local"}`,
