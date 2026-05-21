@@ -1372,6 +1372,7 @@ type CcConnectProjectDraft = {
 
 type ApplySummaryOptions = {
   preserveDirtyConfigDraft?: boolean;
+  preserveDirtyInstallDraft?: boolean;
 };
 
 const summary = ref<CodexStackSummaryPayload | null>(null);
@@ -1867,6 +1868,30 @@ const componentHealthCards = computed<CodexStackComponentHealthCard[]>(() => {
 });
 const configContextTokensDisabled = computed(() => configForm.contextMode !== "custom");
 const installContextTokensDisabled = computed(() => installForm.contextMode !== "custom");
+const hasInstallDraftChanges = computed(() => {
+  const current = summary.value;
+  if (!current) return false;
+
+  const currentModel = current.models.current || current.profile.defaultModel || current.models.defaultModel || "kimi-k2.6";
+  if ((installForm.model || "") !== currentModel) return true;
+  if (installForm.contextMode !== (current.context.mode || "default")) return true;
+  if (installForm.contextMode === "custom" && Number(installForm.contextWindowTokens) !== (current.context.tokens || current.context.recommendedTokens)) return true;
+  if (Number(installForm.cpaPort) !== current.ports.cpa) return true;
+  if (Number(installForm.compactPort) !== current.ports.compact) return true;
+  if (installForm.channel !== current.installer.channel) return true;
+  if (installForm.cpaKey.trim()) return true;
+  if (installForm.upstreamBaseUrl.trim() !== (current.proxyPolicy.upstreamBaseUrl || "")) return true;
+  if (installForm.upstreamApiKey.trim()) return true;
+  if (installForm.providerProxyUrl.trim() !== (current.proxyPolicy.providerProxyUrl || "")) return true;
+  if ((installForm.noProxy.trim() || DEFAULT_NO_PROXY) !== (current.proxyPolicy.noProxy || DEFAULT_NO_PROXY)) return true;
+  return installForm.skipNpm
+    || installForm.skipCcConnect
+    || installForm.noStart
+    || installForm.skipExisting
+    || installForm.forceReinstall
+    || installForm.skipComponents.length > 0
+    || installForm.forceComponents.length > 0;
+});
 const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
   const current = summary.value;
   if (!current) return {};
@@ -2456,20 +2481,37 @@ function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): voi
   configForm.noProxy = normalized.proxyPolicy.noProxy || DEFAULT_NO_PROXY;
 }
 
-function applySummary(next: CodexStackSummaryPayload, options: ApplySummaryOptions = {}): void {
-  const keepConfigDraft = (options.preserveDirtyConfigDraft ?? true)
-    && Boolean(summary.value)
-    && hasConfigPatchChanges.value;
-  const normalized = normalizeCodexStackSummary(next);
-  summary.value = normalized;
+function hydrateInstallFormFromSummary(normalized: CodexStackSummaryPayload): void {
   installForm.model = normalized.models.current || normalized.profile.defaultModel || normalized.models.defaultModel || "kimi-k2.6";
   installForm.contextMode = normalized.context.mode || "default";
   installForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
   installForm.cpaPort = normalized.ports.cpa;
   installForm.compactPort = normalized.ports.compact;
   installForm.channel = normalized.installer.channel;
+  installForm.cpaKey = "";
+  installForm.upstreamBaseUrl = normalized.proxyPolicy.upstreamBaseUrl || "";
+  installForm.upstreamApiKey = "";
   installForm.providerProxyUrl = normalized.proxyPolicy.providerProxyUrl || "";
   installForm.noProxy = normalized.proxyPolicy.noProxy || DEFAULT_NO_PROXY;
+  installForm.skipNpm = false;
+  installForm.skipCcConnect = false;
+  installForm.noStart = false;
+  installForm.skipExisting = false;
+  installForm.forceReinstall = false;
+  installForm.skipComponents = [];
+  installForm.forceComponents = [];
+}
+
+function applySummary(next: CodexStackSummaryPayload, options: ApplySummaryOptions = {}): void {
+  const keepConfigDraft = (options.preserveDirtyConfigDraft ?? true)
+    && Boolean(summary.value)
+    && hasConfigPatchChanges.value;
+  const keepInstallDraft = (options.preserveDirtyInstallDraft ?? true)
+    && Boolean(summary.value)
+    && hasInstallDraftChanges.value;
+  const normalized = normalizeCodexStackSummary(next);
+  summary.value = normalized;
+  if (!keepInstallDraft) hydrateInstallFormFromSummary(normalized);
   if (!keepConfigDraft) hydrateConfigFormFromSummary(normalized);
 }
 
@@ -2584,6 +2626,9 @@ function startPollingJob(job: CodexStackJob): void {
         const finishedJob = response.job;
         stopPollingJob();
         await loadAll(true);
+        if (finishedJob.kind === "install" && finishedJob.status === "succeeded" && summary.value) {
+          hydrateInstallFormFromSummary(summary.value);
+        }
         if (finishedJob.kind === "install" && finishedJob.status === "succeeded") {
           notice.value = {
             kind: "success",
