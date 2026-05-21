@@ -1516,6 +1516,9 @@ test("codex stack smoke matrix records kimi failure and blocks Codex attach", as
     assert.match(job.error || "", /kimi-k2\.6/);
     assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, false);
     assert.equal(summary.profile.lastSmokeMatrix?.models.find((item) => item.model === "kimi-k2.6")?.status, "failed");
+    assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /kimi-k2\.6/);
+    assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /CPA chat/);
+    assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /kimi unavailable/);
     assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
   });
 });
@@ -2810,6 +2813,8 @@ account_id = "test"
           assert.equal(summary.recommendation.kind, "review-smoke");
           assert.ok(summary.recommendation.reasonCodes.includes("smoke-matrix-failed"));
           assert.ok(summary.recommendation.reasonCodes.includes("system-proxy-direct-provider"));
+          assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /kimi-k2\.6/);
+          assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /responses upstream failed with 500/);
         });
       },
     );

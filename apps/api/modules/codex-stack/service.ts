@@ -1259,6 +1259,25 @@ function isSmokeMatrixFreshAndComplete(matrix: CodexStackSmokeMatrixResult | nul
   return isSmokeMatrixComplete(matrix) && !isSmokeMatrixStale(matrix);
 }
 
+function smokeMatrixFailureDetail(matrix: CodexStackSmokeMatrixResult | null | undefined): string | null {
+  if (!matrix) return null;
+  const failures = matrix.models
+    .filter((model) => model.status === "failed" || model.checks.some((check) => check.status === "failed"))
+    .map((model) => {
+      const failedChecks = model.checks
+        .filter((check) => check.status === "failed")
+        .map((check) => check.label || check.id);
+      const parts = [
+        failedChecks.length ? `失败检查 ${failedChecks.join("、")}` : "",
+        model.error || "",
+      ].filter(Boolean);
+      return `${model.model}: ${parts.join("；") || "模型 smoke 未通过"}`;
+    });
+  if (!failures.length && matrix.status === "failed") return "上次 smoke matrix 失败，但未记录具体失败检查；请重新运行 glm-5.1 / kimi-k2.6 smoke matrix。";
+  if (!failures.length) return null;
+  return `上次 smoke matrix 失败：${failures.join("；")}。`;
+}
+
 function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSummaryPayload["proxyPolicy"] {
   const cpaConfigProxyUrls = collectCpaProxyUrls(cpaConfig);
   const configuredProxy = cpaConfigProxyUrls.find((value) => value !== "direct") || "";
@@ -2252,6 +2271,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const cpaProviderEnvOk = !cpaProvider?.codexEnvKey || cpaProvider.codexEnvKey === "OPENAI_API_KEY";
     const smokeMatrix = params.profile.lastSmokeMatrix;
     const smokeFresh = isSmokeMatrixFreshAndComplete(smokeMatrix);
+    const smokeFailureDetail = smokeMatrixFailureDetail(smokeMatrix);
     const hasActiveJob = params.jobs.some((job) => job.status === "queued" || job.status === "running");
     const websocketEnabled = hasCodexResponsesWebSocketsEnabled(params.codexConfig);
     const compressionEnabled = hasCodexRequestCompressionEnabled(params.codexConfig);
@@ -2354,7 +2374,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         status: smokeFresh ? "pass" : "warn",
         detail: smokeFresh
           ? "最近一次 glm-5.1 与 kimi-k2.6 smoke matrix 通过，允许考虑 CPA attach。"
-          : "尚无 24 小时内通过的 glm-5.1 / kimi-k2.6 smoke matrix；切换 Codex 前必须重新验证。",
+          : smokeFailureDetail || "尚无 24 小时内通过的 glm-5.1 / kimi-k2.6 smoke matrix；切换 Codex 前必须重新验证。",
         section: "install",
         actionHint: smokeFresh
           ? { kind: "open-section", label: "查看 smoke gate", section: "install" }
