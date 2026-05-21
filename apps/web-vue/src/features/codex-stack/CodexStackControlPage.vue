@@ -159,15 +159,11 @@
 
           <template v-else-if="activeSection === 'install'">
             <section class="cs-section-stack">
-              <article class="panel-card cs-section-intro">
-                <div>
-                  <p class="cs-section-kicker">{{ text("安装", "Install") }}</p>
-                  <h3>{{ text("安装/修复指挥台", "Install/Repair Command Center") }}</h3>
-                  <p class="cs-section-copy">
-                    {{ text("安装页按“计划确认、组件策略、执行进度、修复手册”组织。用户能先看清会改什么，再决定完整安装、基础安装或只修复。", "This page is organized as plan confirmation, component strategy, progress tracking, and repair playbook. Users can see what will change before choosing full install, base install, or repair-only.") }}
-                  </p>
-                </div>
-              </article>
+              <CodexStackSectionIntro
+                :kicker="text('安装', 'Install')"
+                :title="text('安装/修复指挥台', 'Install/Repair Command Center')"
+                :copy="text('安装页按“计划确认、组件策略、执行进度、修复手册”组织。用户能先看清会改什么，再决定完整安装、基础安装或只修复。', 'This page is organized as plan confirmation, component strategy, progress tracking, and repair playbook. Users can see what will change before choosing full install, base install, or repair-only.')"
+              />
 
               <CodexStackInstallPlanCard
                 :highlights="installPlanHighlights"
@@ -320,19 +316,12 @@
 
           <template v-else-if="activeSection === 'settings'">
             <section class="cs-section-stack">
-              <article class="panel-card cs-section-intro">
-                <div>
-                  <p class="cs-section-kicker">{{ text("模型与上游", "Models and Upstreams") }}</p>
-                  <h3>{{ text("统一模型、端口与上游配置", "Unified Model, Port, and Upstream Config") }}</h3>
-                  <p class="cs-section-copy">
-                    {{ text("这里是所有模型选择器的来源。优先读取本地 Compact /v1/models；不可达时显示配置回退列表。cc-connect Provider 推荐统一指向本地 Compact。", "This is the source for every model selector. It prefers local Compact /v1/models and falls back to parsed config when unavailable. cc-connect providers should point to local Compact.") }}
-                  </p>
-                </div>
-                <div class="cs-chip-row">
-                  <span class="cs-status-pill" :class="`tone-${modelSourceTone}`">{{ modelSourceLabel }}</span>
-                  <span class="cs-info-chip">{{ summary.models.endpoint }}</span>
-                </div>
-              </article>
+              <CodexStackSectionIntro
+                :kicker="text('模型与上游', 'Models and Upstreams')"
+                :title="text('统一模型、端口与上游配置', 'Unified Model, Port, and Upstream Config')"
+                :copy="text('这里是所有模型选择器的来源。优先读取本地 Compact /v1/models；不可达时显示配置回退列表。cc-connect Provider 推荐统一指向本地 Compact。', 'This is the source for every model selector. It prefers local Compact /v1/models and falls back to parsed config when unavailable. cc-connect providers should point to local Compact.')"
+                :chips="settingsSectionIntroChips"
+              />
 
               <CodexStackModelCatalogCard
                 :models="modelOptions"
@@ -384,15 +373,11 @@
 
           <template v-else-if="activeSection === 'logs'">
             <section class="cs-section-stack">
-              <article class="panel-card cs-section-intro">
-                <div>
-                  <p class="cs-section-kicker">{{ text("日志", "Logs") }}</p>
-                  <h3>{{ text("服务日志与任务输出预览", "Service Logs and Job Output Preview") }}</h3>
-                  <p class="cs-section-copy">
-                    {{ text("日志读取默认轻量预览，必要时再切到完整上下文。自动刷新默认关闭，避免大日志拖慢页面。", "Log reads default to lightweight preview. Switch to deeper context only when needed. Auto-refresh is off by default to avoid large logs slowing the page.") }}
-                  </p>
-                </div>
-              </article>
+              <CodexStackSectionIntro
+                :kicker="text('日志', 'Logs')"
+                :title="text('服务日志与任务输出预览', 'Service Logs and Job Output Preview')"
+                :copy="text('日志读取默认轻量预览，必要时再切到完整上下文。自动刷新默认关闭，避免大日志拖慢页面。', 'Log reads default to lightweight preview. Switch to deeper context only when needed. Auto-refresh is off by default to avoid large logs slowing the page.')"
+              />
 
               <CodexStackLogConsole
                 v-model:selected-service="selectedLogService"
@@ -557,6 +542,8 @@ import type {
   CodexStackLogServiceOption,
 } from "./CodexStackLogConsole.vue";
 import CodexStackRunReadinessPanel from "./CodexStackRunReadinessPanel.vue";
+import CodexStackSectionIntro from "./CodexStackSectionIntro.vue";
+import type { CodexStackSectionIntroChip } from "./CodexStackSectionIntro.vue";
 import CodexStackServiceGrid from "./CodexStackServiceGrid.vue";
 import CodexStackUpstreamMap from "./CodexStackUpstreamMap.vue";
 
@@ -803,7 +790,7 @@ const runReadinessTone = computed<CodexStackTone>(() => {
   if (level === "attention") return "accent";
   return "danger";
 });
-const modelSourceTone = computed(() => {
+const modelSourceTone = computed<CodexStackTone>(() => {
   if (summary.value?.models.live) return "sage";
   return summary.value?.models.source === "config" ? "accent" : "neutral";
 });
@@ -834,6 +821,10 @@ const modelOptions = computed(() => Array.from(new Set([
   "gpt-5.5",
 ])));
 const modelCatalogPreview = computed(() => modelOptions.value.slice(0, 6));
+const settingsSectionIntroChips = computed<CodexStackSectionIntroChip[]>(() => [
+  { label: modelSourceLabel.value, variant: "status", tone: modelSourceTone.value },
+  { label: summary.value?.models.endpoint || "--", variant: "info" },
+]);
 const activeRecommendation = computed(() => summary.value?.recommendation || null);
 const nextActionSection = computed<SectionId>(() => {
   return activeRecommendation.value?.section || "dashboard";
@@ -2560,7 +2551,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 .cs-lock-card p,
-.cs-section-copy,
 .cs-field-hint,
 .cs-service-blurb {
   color: var(--text-soft);
@@ -2628,14 +2618,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   min-width: 0;
 }
 
-.cs-section-kicker {
-  margin: 0 0 6px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
 .cs-actions,
 .cs-platform-badges {
   display: flex;
@@ -2649,20 +2631,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   font-size: 0.84rem;
 }
 
-.cs-section-intro h3 {
-  margin: 0;
-  font-size: clamp(1.35rem, 2vw, 1.8rem);
-}
-
-.cs-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.cs-info-chip,
-.cs-status-pill,
 .cs-progress-badge,
 .cs-chip,
 .cs-restart-hint {
@@ -2675,11 +2643,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   background: color-mix(in srgb, var(--surface) 82%, transparent);
   color: var(--text-soft);
   font-size: 0.85rem;
-}
-
-.cs-status-pill {
-  font-weight: 600;
-  color: var(--text);
 }
 
 .cs-restart-hint-block {
@@ -2750,13 +2713,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   gap: 18px;
 }
 
-.cs-section-intro {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  align-items: flex-start;
-}
-
 .cs-install-shell-busy > *:not(.cs-install-overlay) {
   opacity: 0.42;
 }
@@ -2788,54 +2744,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 
 .cs-project-head {
   align-items: flex-start;
-}
-
-.tone-sage {
-  color: var(--success);
-  border-color: color-mix(in srgb, var(--success) 34%, var(--line));
-  background: color-mix(in srgb, var(--success) 13%, var(--surface));
-}
-
-.tone-accent {
-  color: var(--acc);
-  border-color: color-mix(in srgb, var(--acc) 38%, var(--line));
-  background: color-mix(in srgb, var(--acc) 14%, var(--surface));
-}
-
-.tone-danger {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
-  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
-}
-
-.tone-neutral {
-  color: var(--text-soft);
-  border-color: color-mix(in srgb, var(--muted) 32%, var(--line));
-  background: color-mix(in srgb, var(--muted) 12%, var(--surface));
-}
-
-.cs-status-pill.tone-sage {
-  color: #073b20;
-  border-color: #8fd8a6;
-  background: #dff8e7;
-}
-
-.cs-status-pill.tone-accent {
-  color: #17335f;
-  border-color: #9ec2ff;
-  background: #e4efff;
-}
-
-.cs-status-pill.tone-danger {
-  color: #651d19;
-  border-color: #f1a9a1;
-  background: #ffe4e0;
-}
-
-.cs-status-pill.tone-neutral {
-  color: #263241;
-  border-color: #c5ced8;
-  background: #eef2f6;
 }
 
 .text-button {
@@ -2890,7 +2798,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   }
 
   .cs-lock-card,
-  .cs-section-intro,
   .cs-card-header,
   .cs-project-head {
     flex-direction: column;

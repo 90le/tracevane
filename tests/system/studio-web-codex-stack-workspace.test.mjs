@@ -33,6 +33,7 @@ const runtimeConfigCard = read("apps/web-vue/src/features/codex-stack/CodexStack
 const upstreamMap = read("apps/web-vue/src/features/codex-stack/CodexStackUpstreamMap.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
+const sectionIntro = read("apps/web-vue/src/features/codex-stack/CodexStackSectionIntro.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
 const readinessAction = read("apps/web-vue/src/features/codex-stack/readiness-action.ts");
 const codexStackService = read("apps/api/modules/codex-stack/service.ts");
@@ -120,6 +121,11 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(runReadinessPanel, /class="panel-card cs-run-readiness-card"/);
   assert.match(runReadinessPanel, /\.cs-run-check-grid\s*\{/);
   assert.match(runReadinessPanel, /@media \(max-width: 960px\)/);
+  assert.match(sectionIntro, /class="panel-card cs-section-intro"/);
+  assert.match(sectionIntro, /\.cs-section-copy\s*\{/);
+  assert.match(sectionIntro, /\.cs-chip-row\s*\{/);
+  assert.match(sectionIntro, /\.cs-status-pill\.tone-sage\s*\{/);
+  assert.match(sectionIntro, /@media \(max-width: 960px\)/);
   assert.match(ccConnectCommandBar, /class="cs-cc-command-bar"/);
   assert.match(ccConnectCommandBar, /\.cs-config-action-strip\s*\{/);
   assert.match(ccConnectCommandBar, /\.cs-agent-savebar\s*\{/);
@@ -147,6 +153,35 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
 });
 
+test("codex stack section intros delegate repeated page copy without moving derived chips", () => {
+  assert.match(controlPage, /import CodexStackSectionIntro from "\.\/CodexStackSectionIntro\.vue";/);
+  assert.match(controlPage, /import type \{ CodexStackSectionIntroChip \} from "\.\/CodexStackSectionIntro\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackSectionIntro[\s\S]*:kicker="text\('安装', 'Install'\)"[\s\S]*:title="text\('安装\/修复指挥台', 'Install\/Repair Command Center'\)"[\s\S]*:copy="text\('安装页按/ ,
+  );
+  assert.match(
+    controlPage,
+    /<CodexStackSectionIntro[\s\S]*:kicker="text\('模型与上游', 'Models and Upstreams'\)"[\s\S]*:title="text\('统一模型、端口与上游配置', 'Unified Model, Port, and Upstream Config'\)"[\s\S]*:chips="settingsSectionIntroChips"/,
+  );
+  assert.match(
+    controlPage,
+    /<CodexStackSectionIntro[\s\S]*:kicker="text\('日志', 'Logs'\)"[\s\S]*:title="text\('服务日志与任务输出预览', 'Service Logs and Job Output Preview'\)"[\s\S]*:copy="text\('日志读取默认轻量预览/ ,
+  );
+  assert.match(controlPage, /const settingsSectionIntroChips = computed<CodexStackSectionIntroChip\[\]>\(\(\) => \[/);
+  assert.match(controlPage, /\{ label: modelSourceLabel\.value, variant: "status", tone: modelSourceTone\.value \}/);
+  assert.match(controlPage, /\{ label: summary\.value\?\.models\.endpoint \|\| "--", variant: "info" \}/);
+  assert.match(controlPage, /const modelSourceTone = computed<CodexStackTone>\(\(\) => \{/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-section-intro"/);
+  assert.doesNotMatch(controlPage, /class="cs-section-copy"/);
+  assert.doesNotMatch(controlPage, /class="cs-chip-row"/);
+  assert.match(sectionIntro, /export interface CodexStackSectionIntroChip/);
+  assert.match(sectionIntro, /variant: "info" \| "status";/);
+  assert.match(sectionIntro, /withDefaults\(defineProps<\{/);
+  assert.match(sectionIntro, /chips: \(\) => \[\]/);
+  assert.doesNotMatch(sectionIntro, /summary\.|modelSourceLabel|modelSourceTone|modelOptions|loadSummary|patchCodexStackConfig|fetchCodexStackSummary/);
+});
+
 test("codex stack model ribbon delegates catalog refresh without moving model ownership", () => {
   assert.match(controlPage, /import CodexStackModelRibbon from "\.\/CodexStackModelRibbon\.vue";/);
   assert.match(
@@ -154,7 +189,7 @@ test("codex stack model ribbon delegates catalog refresh without moving model ow
     /<CodexStackModelRibbon[\s\S]*:current-model="summary\.models\.current \|\| summary\.profile\.defaultModel \|\| '--'"[\s\S]*:source-help="modelSourceHelp"[\s\S]*:source-tone="modelSourceTone"[\s\S]*:source-label="modelSourceLabel"[\s\S]*:model-count="modelOptions\.length"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:loading="loading"[\s\S]*@reload="loadSummary"/,
   );
   assert.match(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[/);
-  assert.match(controlPage, /const modelSourceTone = computed\(\(\) => \{/);
+  assert.match(controlPage, /const modelSourceTone = computed<CodexStackTone>\(\(\) => \{/);
   assert.match(controlPage, /async function loadSummary\(\): Promise<void>/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-model-ribbon"/);
   assert.doesNotMatch(controlPage, /class="cs-model-ribbon-side"/);
