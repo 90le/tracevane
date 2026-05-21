@@ -11,6 +11,7 @@ const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackContro
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
+const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
 const readinessAction = read("apps/web-vue/src/features/codex-stack/readiness-action.ts");
 const codexStackService = read("apps/api/modules/codex-stack/service.ts");
@@ -43,6 +44,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(chainMap, /\.cs-chain-line\s*\{/);
   assert.match(chainMap, /\.cs-chain-gates\s*\{/);
   assert.match(chainMap, /\.cs-chain-warning-strip\s*\{/);
+  assert.match(runReadinessPanel, /class="panel-card cs-run-readiness-card"/);
+  assert.match(runReadinessPanel, /\.cs-run-check-grid\s*\{/);
+  assert.match(runReadinessPanel, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
 });
@@ -88,14 +92,16 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
 });
 
 test("codex stack dashboard exposes codex run readiness as a first-screen contract", () => {
-  assert.match(controlPage, /class="panel-card cs-run-readiness-card"/);
-  assert.match(controlPage, /summary\.runReadiness\.title/);
-  assert.match(controlPage, /summary\.runReadiness\.modes/);
-  assert.match(controlPage, /summary\.runReadiness\.checks/);
-  assert.match(controlPage, /runReadinessLevelLabel\(summary\.runReadiness\.level\)/);
-  assert.match(controlPage, /runReadinessCheckTone\(check\.status\)/);
-  assert.match(controlPage, /@click="runReadinessCheckAction\(check\)"/);
-  assert.match(controlPage, /check\.actionHint\.label/);
+  assert.match(controlPage, /import CodexStackRunReadinessPanel from "\.\/CodexStackRunReadinessPanel\.vue";/);
+  assert.match(controlPage, /<CodexStackRunReadinessPanel[\s\S]*:readiness="summary\.runReadiness"[\s\S]*@check-action="runReadinessCheckAction"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-run-readiness-card"/);
+  assert.match(runReadinessPanel, /readiness\.title/);
+  assert.match(runReadinessPanel, /readiness\.modes/);
+  assert.match(runReadinessPanel, /readiness\.checks/);
+  assert.match(runReadinessPanel, /runReadinessLevelLabel\(readiness\.level\)/);
+  assert.match(runReadinessPanel, /runReadinessCheckTone\(check\.status\)/);
+  assert.match(runReadinessPanel, /@click="\$emit\('check-action', check\)"/);
+  assert.match(runReadinessPanel, /check\.actionHint\.label/);
   assert.match(controlPage, /normalizeCodexStackRunReadinessCheck/);
   assert.match(controlPage, /resolveCodexStackRunReadinessAction/);
   assert.match(controlPage, /function runReadinessCheckAction\(check: CodexStackRunReadinessCheck\): void/);
@@ -104,7 +110,7 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(readinessAction, /if \(check\.actionHint\) return check;/);
   assert.match(readinessAction, /export function resolveCodexStackRunReadinessAction/);
   assert.match(readinessAction, /action\.kind === "repair" && action\.repairActions\?\.length/);
-  assert.match(controlPage, /Codex 运行就绪/);
+  assert.match(runReadinessPanel, /Codex 运行就绪/);
   assert.match(codexStackService, /id: "cc-agent-task"/);
   assert.match(codexStackService, /label: "CC\/IM Agent 任务"/);
   assert.match(codexStackService, /label: "运行 smoke matrix", repairActions: \["run-smoke-matrix"\]/);
