@@ -53,6 +53,12 @@
         <strong>{{ text("通过验证后切 Codex", "Attach Codex After Smoke") }}</strong>
         <p>{{ text("会重新跑完整模型矩阵；全部通过才写入 Codex active provider，并在当前模型不是 glm/kimi 时切到安全的国内模型。", "Reruns the full model matrix and writes the active Codex provider only if every check passes; if the current model is not glm/kimi, it switches to a CPA-safe domestic model.") }}</p>
         <p class="cs-repair-card-note">{{ attachCodexCpaHelp }}</p>
+        <dl class="cs-attach-preflight-list">
+          <div v-for="item in attachPreflightItems" :key="item.id" class="cs-attach-preflight-row" :class="`tone-${item.tone}`">
+            <dt>{{ item.label }}</dt>
+            <dd>{{ item.value }}</dd>
+          </div>
+        </dl>
         <button type="button" class="secondary-button" :disabled="!canAttachCodexCpa" @click="$emit('attach-codex-cpa')">
           {{ text("验证并切换", "Smoke & Attach") }}
         </button>
@@ -63,11 +69,20 @@
 
 <script setup lang="ts">
 import { useLocalePreference } from "../../shared/locale";
+import type { CodexStackTone } from "./codex-stack-view-model";
+
+export interface CodexStackAttachPreflightItem {
+  id: string;
+  label: string;
+  value: string;
+  tone: CodexStackTone;
+}
 
 defineProps<{
   canRunMutation: boolean;
   canAttachCodexCpa: boolean;
   attachCodexCpaHelp: string;
+  attachPreflightItems: CodexStackAttachPreflightItem[];
 }>();
 
 defineEmits<{
@@ -123,6 +138,47 @@ const { text } = useLocalePreference();
   border-left: 3px solid var(--warning);
   padding-left: 10px;
   font-size: 0.86rem;
+}
+
+.cs-attach-preflight-list {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  margin: 0;
+}
+
+.cs-attach-preflight-row {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--code-bg) 28%, transparent);
+}
+
+.cs-attach-preflight-row dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.cs-attach-preflight-row dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.cs-attach-preflight-row.tone-sage {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--line));
+}
+
+.cs-attach-preflight-row.tone-accent {
+  border-color: color-mix(in srgb, var(--acc) 42%, var(--line));
+}
+
+.cs-attach-preflight-row.tone-danger {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
 }
 
 @media (max-width: 960px) {

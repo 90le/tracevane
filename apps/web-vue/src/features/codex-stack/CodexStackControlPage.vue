@@ -190,6 +190,7 @@
                 :can-run-mutation="canRunMutation"
                 :can-attach-codex-cpa="canAttachCodexCpa"
                 :attach-codex-cpa-help="attachCodexCpaHelp"
+                :attach-preflight-items="attachPreflightItems"
                 @repair-recommended="repairRecommended"
                 @repair-conflicts="repairConflictingUnits"
                 @repair-config-only="repairConfigOnly"
@@ -522,6 +523,7 @@ import CodexStackModelCatalogCard from "./CodexStackModelCatalogCard.vue";
 import CodexStackModelRibbon from "./CodexStackModelRibbon.vue";
 import CodexStackPageHeader from "./CodexStackPageHeader.vue";
 import CodexStackRepairBoard from "./CodexStackRepairBoard.vue";
+import type { CodexStackAttachPreflightItem } from "./CodexStackRepairBoard.vue";
 import CodexStackResponsiveGrid from "./CodexStackResponsiveGrid.vue";
 import CodexStackRuntimeConfigCard from "./CodexStackRuntimeConfigCard.vue";
 import type {
@@ -1042,6 +1044,45 @@ const attachCodexCpaHelp = computed(() => {
     return text("上次矩阵未全部通过，Codex 保持官方路径；修复后重新只验证。", "The last matrix did not fully pass, so Codex stays on the official path. Fix it and verify again.");
   }
   return text("已有新鲜通过矩阵；点击后仍会重新烟测，全部通过才写入 Codex。", "A fresh passing matrix exists; clicking still reruns smoke checks before writing Codex.");
+});
+const attachPreflightItems = computed<CodexStackAttachPreflightItem[]>(() => {
+  const matrix = summary.value?.profile.lastSmokeMatrix;
+  const requiredModels = REQUIRED_CPA_SMOKE_MODELS.join(", ");
+  const requiredChecks = REQUIRED_CPA_SMOKE_CHECKS.join(", ");
+  const matrixTone: CodexStackTone = isSmokeMatrixFreshAndComplete(matrix)
+    ? "sage"
+    : matrix?.attachEligible ? "accent" : "danger";
+  const matrixValue = matrix
+    ? `${smokeMatrixLabel.value} · ${formatTimestamp(matrix.checkedAt)}`
+    : text("尚未运行 glm-5.1 / kimi-k2.6 smoke matrix", "glm-5.1 / kimi-k2.6 smoke matrix has not run yet");
+  return [
+    {
+      id: "required-models",
+      label: text("必测模型", "Required models"),
+      value: requiredModels,
+      tone: "sage",
+    },
+    {
+      id: "required-checks",
+      label: text("必测检查", "Required checks"),
+      value: requiredChecks,
+      tone: "sage",
+    },
+    {
+      id: "last-matrix",
+      label: text("上次矩阵", "Last matrix"),
+      value: matrixValue,
+      tone: matrixTone,
+    },
+    {
+      id: "attach-action",
+      label: text("切换动作", "Attach action"),
+      value: isSmokeMatrixFreshAndComplete(matrix)
+        ? text("可点击；仍会重新烟测，全部通过才写 Codex。", "Enabled; still reruns smoke checks before writing Codex.")
+        : text("不可点击；先只验证，不会切换 Codex。", "Disabled; run Verify Only first without attaching Codex."),
+      tone: isSmokeMatrixFreshAndComplete(matrix) ? "sage" : "accent",
+    },
+  ];
 });
 const dashboardInsightsLabels = computed(() => ({
   runtimeKicker: text("速览", "Quick Info"),
