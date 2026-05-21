@@ -438,7 +438,9 @@ import {
   codexStackComponentTone,
   codexStackStatusTone,
   countActiveServices,
+  DEFAULT_NO_PROXY,
   isCodexStackJobRunning,
+  normalizeProxyPolicy,
 } from "./codex-stack-view-model";
 import type { CodexStackTone } from "./codex-stack-view-model";
 import {
@@ -643,7 +645,7 @@ const installForm = reactive<CodexStackInstallConfigDraft & { skipComponents: st
   upstreamBaseUrl: "",
   upstreamApiKey: "",
   providerProxyUrl: "",
-  noProxy: "localhost,127.0.0.1,::1",
+  noProxy: DEFAULT_NO_PROXY,
   skipNpm: false,
   skipCcConnect: false,
   noStart: false,
@@ -690,7 +692,7 @@ const configForm = reactive<CodexStackRuntimeConfigDraft>({
   upstreamBaseUrl: "",
   upstreamApiKey: "",
   providerProxyUrl: "",
-  noProxy: "localhost,127.0.0.1,::1",
+  noProxy: DEFAULT_NO_PROXY,
 });
 
 function updateConfigFormField(field: CodexStackRuntimeConfigField, value: string | number): void {
@@ -708,7 +710,6 @@ function updateConfigFormField(field: CodexStackRuntimeConfigField, value: strin
   }
 }
 
-const DEFAULT_NO_PROXY = "localhost,127.0.0.1,::1";
 const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const serviceCatalog: Record<
@@ -1253,8 +1254,8 @@ const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
     payload.providerProxyUrl = nextProviderProxyUrl;
   }
 
-  const nextNoProxy = configForm.noProxy.trim() || "localhost,127.0.0.1,::1";
-  if (nextNoProxy !== (policy.noProxy || "localhost,127.0.0.1,::1")) {
+  const nextNoProxy = configForm.noProxy.trim() || DEFAULT_NO_PROXY;
+  if (nextNoProxy !== (policy.noProxy || DEFAULT_NO_PROXY)) {
     payload.noProxy = nextNoProxy;
   }
 
@@ -1651,42 +1652,6 @@ function yesNo(value: boolean): string {
 function portDisplay(port: number, live: number | null): string {
   if (live && live !== port) return `:${port} (live :${live})`;
   return `:${port}`;
-}
-
-function findMissingNoProxyLoopback(noProxy: string): string[] {
-  const entries = new Set(noProxy
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean)
-    .flatMap((entry) => [entry, entry.replace(/^\[(.*)\]$/, "$1")]));
-  if (entries.has("*")) return [];
-  const missing: string[] = [];
-  if (!entries.has("localhost") && !entries.has(".localhost")) missing.push("localhost");
-  if (!entries.has("127.0.0.1") && !entries.has("127.0.0.0/8")) missing.push("127.0.0.1");
-  if (!entries.has("::1")) missing.push("::1");
-  return missing;
-}
-
-function normalizeProxyPolicy(
-  policy: Partial<CodexStackSummaryPayload["proxyPolicy"]> | undefined,
-): CodexStackSummaryPayload["proxyPolicy"] {
-  const noProxy = policy?.noProxy || DEFAULT_NO_PROXY;
-  const missing = Array.isArray(policy?.noProxyLoopbackMissing)
-    ? policy.noProxyLoopbackMissing
-    : findMissingNoProxyLoopback(noProxy);
-  return {
-    providerMode: policy?.providerMode === "proxy" ? "proxy" : "direct",
-    providerProxyUrl: policy?.providerProxyUrl || null,
-    providerProxySource: policy?.providerProxySource || null,
-    noProxy,
-    noProxyLoopbackReady: typeof policy?.noProxyLoopbackReady === "boolean"
-      ? policy.noProxyLoopbackReady
-      : missing.length === 0,
-    noProxyLoopbackMissing: missing,
-    cpaConfigProxyUrls: Array.isArray(policy?.cpaConfigProxyUrls) ? policy.cpaConfigProxyUrls : [],
-    upstreamBaseUrl: policy?.upstreamBaseUrl || null,
-    upstreamApiKeyConfigured: Boolean(policy?.upstreamApiKeyConfigured),
-  };
 }
 
 function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackSummaryPayload {

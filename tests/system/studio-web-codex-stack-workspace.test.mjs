@@ -623,11 +623,15 @@ test("codex stack dashboard exposes a request chain safety map", () => {
 });
 
 test("codex stack proxy policy displays tolerate legacy summaries without proxyPolicy", () => {
-  assert.match(controlPage, /function normalizeProxyPolicy\([\s\S]*policy: Partial<CodexStackSummaryPayload\["proxyPolicy"\]> \| undefined/);
-  assert.match(controlPage, /noProxyLoopbackReady: typeof policy\?\.noProxyLoopbackReady === "boolean"[\s\S]*\? policy\.noProxyLoopbackReady[\s\S]*: missing\.length === 0/);
+  assert.match(controlPage, /import \{[\s\S]*DEFAULT_NO_PROXY[\s\S]*normalizeProxyPolicy[\s\S]*\} from "\.\/codex-stack-view-model";/);
+  assert.match(viewModel, /export const DEFAULT_NO_PROXY = "localhost,127\.0\.0\.1,::1";/);
+  assert.match(viewModel, /export function findMissingNoProxyLoopback\(noProxy: string\): string\[\]/);
+  assert.match(viewModel, /export function normalizeProxyPolicy\([\s\S]*policy: Partial<CodexStackSummaryPayload\["proxyPolicy"\]> \| undefined/);
+  assert.match(viewModel, /noProxyLoopbackReady: typeof policy\?\.noProxyLoopbackReady === "boolean"[\s\S]*\? policy\.noProxyLoopbackReady[\s\S]*: missing\.length === 0/);
   assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*const directWithSystemProxy = policy\.providerMode === "direct"/);
   assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*if \(installForm\.upstreamBaseUrl\.trim\(\) !== \(policy\.upstreamBaseUrl \|\| ""\)\) return true;/);
-  assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*if \(nextNoProxy !== \(policy\.noProxy \|\| "localhost,127\.0\.0\.1,::1"\)\)/);
+  assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*if \(nextNoProxy !== \(policy\.noProxy \|\| DEFAULT_NO_PROXY\)\)/);
+  assert.doesNotMatch(controlPage, /function normalizeProxyPolicy|function findMissingNoProxyLoopback|const DEFAULT_NO_PROXY =/);
   assert.doesNotMatch(controlPage, /current\.proxyPolicy\.(providerMode|providerProxyUrl|upstreamBaseUrl|noProxy)/);
   assert.doesNotMatch(controlPage, /(?:summary|current|next)\.proxyPolicy\.noProxyLoopbackReady/);
 });
@@ -718,7 +722,7 @@ test("codex stack settings page delegates upstream map without moving config wri
   assert.doesNotMatch(controlPage, /class="panel-card cs-upstream-map"/);
   assert.match(controlPage, /const configPatchPayload = computed<CodexStackConfigPatchRequest>/);
   assert.match(controlPage, /async function saveConfigPatch\(\): Promise<void>/);
-  assert.match(controlPage, /function normalizeProxyPolicy\([\s\S]*noProxyLoopbackReady: typeof policy\?\.noProxyLoopbackReady === "boolean"/);
+  assert.match(viewModel, /export function normalizeProxyPolicy\([\s\S]*noProxyLoopbackReady: typeof policy\?\.noProxyLoopbackReady === "boolean"/);
   assert.match(upstreamMap, /写入 ~\/\.codex\/config\.toml/);
   assert.match(upstreamMap, /本地 OpenAI 兼容入口/);
   assert.match(upstreamMap, /OPENAI_API_KEY \/ base_url/);
