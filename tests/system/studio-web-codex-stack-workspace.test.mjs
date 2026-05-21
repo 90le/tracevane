@@ -521,7 +521,7 @@ test("codex stack logs page delegates job output preview without losing polling 
 
 test("codex stack install page delegates repair board without weakening CPA attach gate", () => {
   assert.match(controlPage, /import CodexStackRepairBoard from "\.\/CodexStackRepairBoard\.vue";/);
-  assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-help="attachCodexCpaHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"/);
+  assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-help="attachCodexCpaHelp"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"/);
   assert.match(controlPage, /@repair-recommended="repairRecommended"[\s\S]*@repair-conflicts="repairConflictingUnits"[\s\S]*@repair-config-only="repairConfigOnly"/);
   assert.match(controlPage, /@pause-stack="pauseStack"[\s\S]*@resume-stack="resumeStack"[\s\S]*@run-smoke-matrix="runSmokeMatrix"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-repair-board"/);
@@ -531,9 +531,11 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(repairBoard, /mutationDisabledHelp: string;/);
   assert.match(repairBoard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(repairBoard, /attachPreflightItems: CodexStackAttachPreflightItem\[\];/);
+  assert.match(repairBoard, /attachCodexCpaDisabledHelp: string;/);
   assert.match(repairBoard, /v-for="item in attachPreflightItems"/);
   assert.match(repairBoard, /class="cs-attach-preflight-list"/);
   assert.match(repairBoard, /:disabled="!canAttachCodexCpa"[\s\S]*@click="\$emit\('attach-codex-cpa'\)"/);
+  assert.match(repairBoard, /v-if="!canAttachCodexCpa && attachCodexCpaDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*请先运行“只验证”/);
 });
 
@@ -834,8 +836,9 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined\): boolean/);
   assert.match(controlPage, /matrix\.attachEligible && !isSmokeMatrixComplete\(matrix\)/);
   assert.match(controlPage, /const canAttachCodexCpa = computed\(\(\) => canRunMutation\.value && isSmokeMatrixAttachReady\.value\);/);
-  assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-preflight-items="attachPreflightItems"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
+  assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
   assert.match(controlPage, /const attachPreflightItems = computed<CodexStackAttachPreflightItem\[\]>/);
+  assert.match(controlPage, /const attachCodexCpaDisabledHelp = computed\(\(\) => \{/);
   assert.match(controlPage, /const requiredModels = REQUIRED_CPA_SMOKE_MODELS\.join\(", "\);/);
   assert.match(controlPage, /const requiredChecks = REQUIRED_CPA_SMOKE_CHECKS\.join\(", "\);/);
   assert.match(controlPage, /id: "last-matrix"/);

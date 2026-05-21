@@ -65,6 +65,9 @@
         <button type="button" class="secondary-button" :disabled="!canAttachCodexCpa" @click="$emit('attach-codex-cpa')">
           {{ text("验证并切换", "Smoke & Attach") }}
         </button>
+        <p v-if="!canAttachCodexCpa && attachCodexCpaDisabledHelp" class="cs-disabled-help">
+          {{ attachCodexCpaDisabledHelp }}
+        </p>
       </article>
     </div>
   </article>
@@ -86,6 +89,7 @@ defineProps<{
   mutationDisabledHelp: string;
   canAttachCodexCpa: boolean;
   attachCodexCpaHelp: string;
+  attachCodexCpaDisabledHelp: string;
   attachPreflightItems: CodexStackAttachPreflightItem[];
 }>();
 

@@ -204,6 +204,7 @@
                 :mutation-disabled-help="mutationDisabledHelp"
                 :can-attach-codex-cpa="canAttachCodexCpa"
                 :attach-codex-cpa-help="attachCodexCpaHelp"
+                :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
                 :attach-preflight-items="attachPreflightItems"
                 @repair-recommended="repairRecommended"
                 @repair-conflicts="repairConflictingUnits"
@@ -1110,6 +1111,11 @@ const attachCodexCpaHelp = computed(() => {
     return text("上次矩阵未全部通过，Codex 保持官方路径；修复后重新只验证。", "The last matrix did not fully pass, so Codex stays on the official path. Fix it and verify again.");
   }
   return text("已有新鲜通过矩阵；点击后仍会重新烟测，全部通过才写入 Codex。", "A fresh passing matrix exists; clicking still reruns smoke checks before writing Codex.");
+});
+const attachCodexCpaDisabledHelp = computed(() => {
+  if (canAttachCodexCpa.value) return "";
+  if (!canRunMutation.value) return mutationDisabledHelp.value;
+  return attachCodexCpaHelp.value;
 });
 const attachPreflightItems = computed<CodexStackAttachPreflightItem[]>(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
