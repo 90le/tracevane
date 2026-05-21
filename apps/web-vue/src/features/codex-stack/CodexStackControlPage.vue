@@ -234,6 +234,7 @@
               :projects="ccConnectProjectRailItems"
               :selected-project-id="selectedProjectDraft?.id || ''"
               :busy="busy"
+              :busy-disabled-help="busyDisabledHelp"
               @set-active-pane="setActiveAgentPane"
               @select-project="selectCcConnectProject"
               @add-project="addCcConnectProject"
@@ -247,6 +248,7 @@
                   :model-options="modelOptions"
                   :loading="ccConnectLoading && !ccConnectConfig"
                   :busy="busy"
+                  :busy-disabled-help="busyDisabledHelp"
                   @sync-default-model="applyDefaultModelToCcConnectProjects"
                   @remove-project="removeCcConnectProject"
                   @add-preset="addCcConnectProjectPreset"
@@ -269,6 +271,7 @@
                   :compact-proxy-base-url="compactProxyBaseUrl"
                   :loading="ccConnectLoading && !ccConnectConfig"
                   :busy="busy"
+                  :busy-disabled-help="busyDisabledHelp"
                   @update-language="updateCcConnectLanguage"
                   @update-provider-field="updateCcConnectProviderField"
                   @ensure-cpa-provider="ensureCpaProviderDraft"
@@ -281,6 +284,7 @@
                 <CodexStackCcConnectSetupPanel
                   :commands="ccConnectSetupCommands"
                   :busy="busy"
+                  :busy-disabled-help="busyDisabledHelp"
                   :can-run-mutation="canRunMutation"
                   :mutation-disabled-help="mutationDisabledHelp"
                   :can-finalize="summary.ccConnect.canFinalize"
@@ -989,6 +993,11 @@ const mutationDisabledHelp = computed(() => {
   if (busy.value) return text("当前操作仍在进行中。", "The current action is still in progress.");
   return "";
 });
+const busyDisabledHelp = computed(() => (
+  busy.value
+    ? text("当前操作仍在进行中，完成后再编辑 Agent 配置。", "The current action is still in progress; edit Agent config after it finishes.")
+    : ""
+));
 const nextActionDisabledHelp = computed(() => {
   if (nextActionRequiresMutation.value) {
     return mutationDisabledHelp.value;

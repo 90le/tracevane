@@ -6,6 +6,7 @@
       :projects="projects"
       :selected-project-id="selectedProjectId"
       :busy="busy"
+      :busy-disabled-help="busyDisabledHelp"
       @set-active-pane="$emit('set-active-pane', $event)"
       @select-project="$emit('select-project', $event)"
       @add-project="$emit('add-project')"
@@ -31,6 +32,7 @@ defineProps<{
   projects: CodexStackCcConnectProjectRailItem[];
   selectedProjectId: string;
   busy: boolean;
+  busyDisabledHelp: string;
 }>();
 
 defineEmits<{

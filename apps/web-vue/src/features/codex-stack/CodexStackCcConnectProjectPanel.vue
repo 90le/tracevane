@@ -19,6 +19,9 @@
         >
           {{ text("删除当前项目", "Delete Current Project") }}
         </button>
+        <p v-if="busy && busyDisabledHelp" class="cs-disabled-help">
+          {{ busyDisabledHelp }}
+        </p>
       </div>
     </div>
 
@@ -250,6 +253,7 @@ defineProps<{
   modelOptions: string[];
   loading: boolean;
   busy: boolean;
+  busyDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -478,6 +482,14 @@ function isSensitiveKey(key: string): boolean {
 .text-button:disabled {
   cursor: not-allowed;
   opacity: 0.54;
+}
+
+.cs-disabled-help {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .danger-text {

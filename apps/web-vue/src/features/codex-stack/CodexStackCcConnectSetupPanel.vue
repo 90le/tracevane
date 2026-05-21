@@ -16,6 +16,9 @@
       <button type="button" class="secondary-button" :disabled="busy" @click="$emit('copy-setup', 'weixin')">
         {{ text("复制 Weixin Setup", "Copy Weixin Setup") }}
       </button>
+      <p v-if="busy && busyDisabledHelp" class="cs-disabled-help">
+        {{ busyDisabledHelp }}
+      </p>
       <button
         v-if="canFinalize"
         type="button"
@@ -41,6 +44,7 @@ export type CodexStackCcConnectSetupPlatform = "feishu" | "weixin";
 defineProps<{
   commands: string[];
   busy: boolean;
+  busyDisabledHelp: string;
   canRunMutation: boolean;
   mutationDisabledHelp: string;
   canFinalize: boolean;

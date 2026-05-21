@@ -545,7 +545,7 @@ test("codex stack cc-connect page delegates provider editor without moving provi
   assert.match(controlPage, /import CodexStackCcConnectProviderPanel from "\.\/CodexStackCcConnectProviderPanel\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackCcConnectProviderPanel[\s\S]*:language="ccConnectLanguageDraft"[\s\S]*:providers="ccConnectProviderDrafts"[\s\S]*:compact-proxy-base-url="compactProxyBaseUrl"[\s\S]*:loading="ccConnectLoading && !ccConnectConfig"[\s\S]*:busy="busy"[\s\S]*@update-language="updateCcConnectLanguage"[\s\S]*@update-provider-field="updateCcConnectProviderField"[\s\S]*@ensure-cpa-provider="ensureCpaProviderDraft"[\s\S]*@add-provider="addCcConnectProvider"[\s\S]*@remove-provider="removeCcConnectProvider"/,
+    /<CodexStackCcConnectProviderPanel[\s\S]*:language="ccConnectLanguageDraft"[\s\S]*:providers="ccConnectProviderDrafts"[\s\S]*:compact-proxy-base-url="compactProxyBaseUrl"[\s\S]*:loading="ccConnectLoading && !ccConnectConfig"[\s\S]*:busy="busy"[\s\S]*:busy-disabled-help="busyDisabledHelp"[\s\S]*@update-language="updateCcConnectLanguage"[\s\S]*@update-provider-field="updateCcConnectProviderField"[\s\S]*@ensure-cpa-provider="ensureCpaProviderDraft"[\s\S]*@add-provider="addCcConnectProvider"[\s\S]*@remove-provider="removeCcConnectProvider"/,
   );
   assert.match(controlPage, /function updateCcConnectLanguage\(language: string\): void/);
   assert.match(controlPage, /function updateCcConnectProviderField\(providerId: string, field: CodexStackCcConnectProviderField, value: string\): void/);
@@ -557,6 +557,8 @@ test("codex stack cc-connect page delegates provider editor without moving provi
   assert.doesNotMatch(controlPage, /class="cs-provider-grid cs-provider-grid-roomy"/);
   assert.match(ccConnectProviderPanel, /export type CodexStackCcConnectProviderField = "name" \| "codexEnvKey" \| "baseUrl" \| "apiKey";/);
   assert.match(ccConnectProviderPanel, /export interface CodexStackCcConnectProviderDraft/);
+  assert.match(ccConnectProviderPanel, /busyDisabledHelp: string;/);
+  assert.match(ccConnectProviderPanel, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(ccConnectProviderPanel, /defineEmits<[\s\S]*"update-language": \[language: string\][\s\S]*"update-provider-field": \[providerId: string, field: CodexStackCcConnectProviderField, value: string\][\s\S]*"ensure-cpa-provider": \[\][\s\S]*"add-provider": \[\][\s\S]*"remove-provider": \[providerId: string\]/);
   assert.match(ccConnectProviderPanel, /@input="\$emit\('update-provider-field', provider\.id, 'baseUrl', inputValue\(\$event\)\)"/);
   assert.match(ccConnectProviderPanel, /@click="\$emit\('ensure-cpa-provider'\)"/);
@@ -568,7 +570,7 @@ test("codex stack cc-connect page delegates project editor without moving projec
   assert.match(controlPage, /import CodexStackCcConnectProjectPanel from "\.\/CodexStackCcConnectProjectPanel\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackCcConnectProjectPanel[\s\S]*:project="selectedProjectDraft"[\s\S]*:project-summary="selectedProjectSummary"[\s\S]*:presets="projectPresetCards"[\s\S]*:platform-templates="platformTemplates"[\s\S]*:model-options="modelOptions"[\s\S]*:loading="ccConnectLoading && !ccConnectConfig"[\s\S]*:busy="busy"[\s\S]*@sync-default-model="applyDefaultModelToCcConnectProjects"[\s\S]*@remove-project="removeCcConnectProject"[\s\S]*@add-preset="addCcConnectProjectPreset"[\s\S]*@add-project="addCcConnectProject"[\s\S]*@update-project-field="updateCcConnectProjectField"[\s\S]*@update-agent-option="updateCcConnectAgentOption"[\s\S]*@add-platform="addPlatformToSelectedProject"[\s\S]*@remove-platform="removePlatformFromSelectedProject"[\s\S]*@update-platform-type="updateCcConnectPlatformType"[\s\S]*@update-platform-option="updateCcConnectPlatformOption"[\s\S]*@add-platform-option="addCcConnectPlatformOptionById"[\s\S]*@remove-platform-option="removeCcConnectPlatformOptionById"/,
+    /<CodexStackCcConnectProjectPanel[\s\S]*:project="selectedProjectDraft"[\s\S]*:project-summary="selectedProjectSummary"[\s\S]*:presets="projectPresetCards"[\s\S]*:platform-templates="platformTemplates"[\s\S]*:model-options="modelOptions"[\s\S]*:loading="ccConnectLoading && !ccConnectConfig"[\s\S]*:busy="busy"[\s\S]*:busy-disabled-help="busyDisabledHelp"[\s\S]*@sync-default-model="applyDefaultModelToCcConnectProjects"[\s\S]*@remove-project="removeCcConnectProject"[\s\S]*@add-preset="addCcConnectProjectPreset"[\s\S]*@add-project="addCcConnectProject"[\s\S]*@update-project-field="updateCcConnectProjectField"[\s\S]*@update-agent-option="updateCcConnectAgentOption"[\s\S]*@add-platform="addPlatformToSelectedProject"[\s\S]*@remove-platform="removePlatformFromSelectedProject"[\s\S]*@update-platform-type="updateCcConnectPlatformType"[\s\S]*@update-platform-option="updateCcConnectPlatformOption"[\s\S]*@add-platform-option="addCcConnectPlatformOptionById"[\s\S]*@remove-platform-option="removeCcConnectPlatformOptionById"/,
   );
   assert.match(controlPage, /const platformTemplates = computed<CodexStackCcConnectPlatformTemplate\[\]>/);
   assert.match(controlPage, /const projectPresetCards = computed<CodexStackCcConnectProjectPresetCard\[\]>/);
@@ -584,6 +586,8 @@ test("codex stack cc-connect page delegates project editor without moving projec
   assert.match(ccConnectProjectPanel, /export interface CodexStackCcConnectProjectDraft/);
   assert.match(ccConnectProjectPanel, /export type CodexStackCcConnectProjectField = "name" \| "adminFrom" \| "agentType";/);
   assert.match(ccConnectProjectPanel, /export type CodexStackCcConnectAgentOptionField = "workDir" \| "mode" \| "model";/);
+  assert.match(ccConnectProjectPanel, /busyDisabledHelp: string;/);
+  assert.match(ccConnectProjectPanel, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(ccConnectProjectPanel, /defineEmits<[\s\S]*"update-project-field": \[projectId: string, field: CodexStackCcConnectProjectField, value: string\][\s\S]*"update-agent-option": \[projectId: string, field: CodexStackCcConnectAgentOptionField, value: string\][\s\S]*"add-platform": \[type: CodexStackCcConnectPlatformTemplateId\][\s\S]*"update-platform-option": \[platformId: string, optionId: string, field: CodexStackCcConnectPlatformOptionField, value: string\]/);
   assert.match(ccConnectProjectPanel, /@input="\$emit\('update-project-field', project\.id, 'name', inputValue\(\$event\)\)"/);
   assert.match(ccConnectProjectPanel, /@change="\$emit\('update-agent-option', project\.id, 'model', inputValue\(\$event\)\)"/);
@@ -615,10 +619,11 @@ test("codex stack cc-connect page delegates rail navigation without moving draft
   assert.match(controlPage, /import CodexStackCcConnectStage from "\.\/CodexStackCcConnectStage\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackCcConnectStage[\s\S]*:panes="agentPanes"[\s\S]*:active-pane="activeAgentPane"[\s\S]*:projects="ccConnectProjectRailItems"[\s\S]*:selected-project-id="selectedProjectDraft\?\.id \|\| ''"[\s\S]*:busy="busy"[\s\S]*@set-active-pane="setActiveAgentPane"[\s\S]*@select-project="selectCcConnectProject"[\s\S]*@add-project="addCcConnectProject"/,
+    /<CodexStackCcConnectStage[\s\S]*:panes="agentPanes"[\s\S]*:active-pane="activeAgentPane"[\s\S]*:projects="ccConnectProjectRailItems"[\s\S]*:selected-project-id="selectedProjectDraft\?\.id \|\| ''"[\s\S]*:busy="busy"[\s\S]*:busy-disabled-help="busyDisabledHelp"[\s\S]*@set-active-pane="setActiveAgentPane"[\s\S]*@select-project="selectCcConnectProject"[\s\S]*@add-project="addCcConnectProject"/,
   );
   assert.match(ccConnectStage, /import CodexStackCcConnectRail from "\.\/CodexStackCcConnectRail\.vue";/);
-  assert.match(ccConnectStage, /<CodexStackCcConnectRail[\s\S]*:panes="panes"[\s\S]*:active-pane="activePane"[\s\S]*:projects="projects"[\s\S]*:selected-project-id="selectedProjectId"[\s\S]*:busy="busy"/);
+  assert.match(ccConnectStage, /<CodexStackCcConnectRail[\s\S]*:panes="panes"[\s\S]*:active-pane="activePane"[\s\S]*:projects="projects"[\s\S]*:selected-project-id="selectedProjectId"[\s\S]*:busy="busy"[\s\S]*:busy-disabled-help="busyDisabledHelp"/);
+  assert.match(ccConnectStage, /busyDisabledHelp: string;/);
   assert.match(ccConnectStage, /<slot \/>/);
   assert.match(ccConnectStage, /defineEmits<[\s\S]*"set-active-pane": \[paneId: CodexStackCcConnectPaneId\][\s\S]*"select-project": \[projectId: string\][\s\S]*"add-project": \[\]/);
   assert.match(controlPage, /const ccConnectProjectRailItems = computed<CodexStackCcConnectProjectRailItem\[\]>/);
@@ -631,6 +636,8 @@ test("codex stack cc-connect page delegates rail navigation without moving draft
   assert.doesNotMatch(controlPage, /class="panel-card cs-agent-rail"/);
   assert.match(ccConnectRail, /export type CodexStackCcConnectPaneId = "projects" \| "providers" \| "setup" \| "raw";/);
   assert.match(ccConnectRail, /export interface CodexStackCcConnectProjectRailItem/);
+  assert.match(ccConnectRail, /busyDisabledHelp: string;/);
+  assert.match(ccConnectRail, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(ccConnectRail, /defineEmits<[\s\S]*"set-active-pane": \[paneId: CodexStackCcConnectPaneId\][\s\S]*"select-project": \[projectId: string\][\s\S]*"add-project": \[\]/);
   assert.match(ccConnectRail, /@click="\$emit\('set-active-pane', pane\.id\)"/);
   assert.match(ccConnectRail, /@click="\$emit\('select-project', project\.id\)"/);
@@ -643,11 +650,15 @@ test("codex stack cc-connect page delegates setup actions without moving finaliz
   assert.match(controlPage, /import CodexStackCcConnectSetupPanel from "\.\/CodexStackCcConnectSetupPanel\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackCcConnectSetupPanel[\s\S]*:commands="ccConnectSetupCommands"[\s\S]*:busy="busy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:can-finalize="summary\.ccConnect\.canFinalize"[\s\S]*@copy-setup="copySetupCommand"[\s\S]*@finalize="finalizeCcConnect"/,
+    /<CodexStackCcConnectSetupPanel[\s\S]*:commands="ccConnectSetupCommands"[\s\S]*:busy="busy"[\s\S]*:busy-disabled-help="busyDisabledHelp"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:can-finalize="summary\.ccConnect\.canFinalize"[\s\S]*@copy-setup="copySetupCommand"[\s\S]*@finalize="finalizeCcConnect"/,
   );
   assert.match(controlPage, /async function copySetupCommand\(platform: CodexStackCcConnectSetupPlatform\): Promise<void>/);
   assert.match(controlPage, /async function finalizeCcConnect\(\): Promise<void>/);
   assert.match(controlPage, /finalizeCodexStackCcConnect\(\{ project: summary\.value\?\.ccConnect\.project \|\| "main" \}\)/);
+  assert.match(controlPage, /const busyDisabledHelp = computed\(\(\) => \(/);
+  assert.match(controlPage, /当前操作仍在进行中，完成后再编辑 Agent 配置/);
+  assert.match(ccConnectSetupPanel, /busyDisabledHelp: string;/);
+  assert.match(ccConnectSetupPanel, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(ccConnectSetupPanel, /mutationDisabledHelp: string;/);
   assert.match(ccConnectSetupPanel, /v-if="canFinalize && !canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.doesNotMatch(controlPage, /复制 Feishu Setup/);

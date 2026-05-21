@@ -24,6 +24,9 @@
         <button type="button" class="secondary-button" :disabled="busy" @click="$emit('add-provider')">
           {{ text("新增 Provider", "Add Provider") }}
         </button>
+        <p v-if="busy && busyDisabledHelp" class="cs-disabled-help">
+          {{ busyDisabledHelp }}
+        </p>
       </div>
     </div>
 
@@ -113,6 +116,7 @@ defineProps<{
   compactProxyBaseUrl: string;
   loading: boolean;
   busy: boolean;
+  busyDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -227,6 +231,14 @@ function inputValue(event: Event): string {
 .text-button:disabled {
   cursor: not-allowed;
   opacity: 0.54;
+}
+
+.cs-disabled-help {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .danger-text {
