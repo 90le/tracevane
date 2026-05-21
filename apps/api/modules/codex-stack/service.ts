@@ -2759,6 +2759,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (payload.cpaPort !== undefined && !cpaPort) throw new CodexStackServiceError("codex_stack_invalid_port", "cpaPort must be between 1 and 65535.");
     if (payload.compactPort !== undefined && !compactPort) throw new CodexStackServiceError("codex_stack_invalid_port", "compactPort must be between 1 and 65535.");
     requireNoActiveJob();
+    const invalidatesSmokeMatrix = Boolean(
+      model
+      || hasContextPatch
+      || cpaPort
+      || compactPort
+      || cpaKey
+      || hasUpstreamBasePatch
+      || upstreamApiKey
+      || hasProviderProxyPatch
+      || hasNoProxyPatch,
+    );
 
     const codex = readText(currentPaths.codexConfig);
     if (codex) {
@@ -2898,6 +2909,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         url: hasProviderProxyPatch ? (providerProxyUrl || null) : (profile.providerProxy?.url || null),
         source: hasProviderProxyPatch ? (providerProxyUrl ? "studio-config" : null) : (profile.providerProxy?.source || null),
       },
+      lastSmokeMatrix: invalidatesSmokeMatrix ? null : profile.lastSmokeMatrix,
     });
 
     const restartPending = new Set(restartRequired);

@@ -1436,6 +1436,51 @@ Environment=NO_PROXY=localhost,127.0.0.1,::1
   assert.match(clearedCpa, /proxy-url: "direct"/);
 });
 
+test("codex stack config patch invalidates stale smoke matrix results", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const profilePath = path.join(config.openclawRoot, "studio/codex-stack/profile.json");
+  writeJson(profilePath, {
+    channel: "dmwork",
+    lastSmokeMatrix: {
+      status: "passed",
+      checkedAt: "2026-05-21T00:00:00.000Z",
+      requiredModels: ["glm-5.1", "kimi-k2.6"],
+      attachEligible: true,
+      models: [],
+    },
+  });
+
+  await withFakeSystemctl(async () => {
+    const service = createCodexStackService(config);
+    const response = await service.patchConfig(undefined, {
+      providerProxyUrl: "http://127.0.0.1:7897",
+    });
+
+    assert.equal(response.ok, true);
+    assert.equal(response.summary.profile.lastSmokeMatrix, null);
+  });
+
+  const storedProfile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
+  assert.equal(storedProfile.lastSmokeMatrix, null);
+});
+
 test("bundled health check treats skipped cc-connect as warning only", () => {
   const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
