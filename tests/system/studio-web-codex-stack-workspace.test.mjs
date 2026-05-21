@@ -10,6 +10,7 @@ const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8")
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
+const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 
 test("codex stack logs panel is isolated from the main control page", () => {
   assert.match(controlPage, /import CodexStackLogConsole from "\.\/CodexStackLogConsole\.vue";/);
@@ -35,8 +36,21 @@ test("codex stack log reads avoid overlapping auto-refresh requests", () => {
 test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(dashboardInsights, /\.cs-section-kicker\s*\{/);
   assert.match(dashboardInsights, /\.cs-status-pill\.tone-sage\s*\{/);
+  assert.match(chainMap, /export interface CodexStackChainNode/);
+  assert.match(chainMap, /\.cs-chain-line\s*\{/);
+  assert.match(chainMap, /\.cs-chain-gates\s*\{/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
+});
+
+test("codex stack dashboard exposes a request chain safety map", () => {
+  assert.match(controlPage, /import CodexStackChainMap from "\.\/CodexStackChainMap\.vue";/);
+  assert.match(controlPage, /<CodexStackChainMap[\s\S]*:nodes="chainNodes"[\s\S]*:gates="chainGates"/);
+  assert.match(controlPage, /const chainNodes = computed<CodexStackChainNode\[\]>/);
+  assert.match(controlPage, /id: "job-lock"/);
+  assert.match(controlPage, /id: "smoke"/);
+  assert.match(controlPage, /id: "watchdog"/);
+  assert.match(chainMap, /aria-label="Codex Stack request chain"/);
 });
 
 test("codex stack runtime config save sends only changed fields", () => {

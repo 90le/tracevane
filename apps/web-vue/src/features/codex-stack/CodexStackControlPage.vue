@@ -140,6 +140,13 @@
                 </div>
               </article>
 
+              <CodexStackChainMap
+                :labels="chainMapLabels"
+                :overall-tone="statusTone"
+                :nodes="chainNodes"
+                :gates="chainGates"
+              />
+
               <div class="cs-command-grid">
                 <article class="panel-card cs-readiness-card">
                   <p class="cs-section-kicker">{{ text("就绪度", "Readiness") }}</p>
@@ -1321,6 +1328,8 @@ import type {
   CodexStackRuntimeSummaryRow,
   CodexStackSmokeMatrixCard,
 } from "./CodexStackDashboardInsights.vue";
+import CodexStackChainMap from "./CodexStackChainMap.vue";
+import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";
 import type {
   CodexStackLogLineMode,
@@ -1704,6 +1713,94 @@ const runtimeSummaryRows = computed<CodexStackRuntimeSummaryRow[]>(() => {
       id: "installer",
       label: text("安装器版本", "Installer Version"),
       value: current.installer.version || "--",
+    },
+  ];
+});
+const chainMapLabels = computed(() => ({
+  kicker: text("链路", "Chain"),
+  title: text("CPA / Compact / Codex 请求链路", "CPA / Compact / Codex Request Chain"),
+  copy: text(
+    "把运行链路、代理策略、上下文和 smoke gate 放到同一张图里，避免安装、修改或长任务时误判当前 Codex 状态。",
+    "The runtime chain, proxy policy, context, and smoke gate stay in one view so install, edits, and long jobs do not hide the current Codex state.",
+  ),
+  status: jobRunning.value ? text("写操作锁定", "Writes locked") : statusLabel.value,
+}));
+const chainNodes = computed<CodexStackChainNode[]>(() => {
+  const current = summary.value;
+  if (!current) return [];
+  return [
+    {
+      id: "cpa",
+      label: "CPA",
+      value: portDisplay(current.ports.cpa, current.ports.detectedCpa),
+      meta: current.services.find((service) => service.id === "cli-proxy-api.service")?.active
+        ? text("OpenAI 兼容入口运行中", "OpenAI-compatible ingress is running")
+        : text("入口未运行或未安装", "Ingress is stopped or missing"),
+      tone: current.components.find((component) => component.id === "cpa")?.status === "ok" ? "sage" : "danger",
+    },
+    {
+      id: "compact",
+      label: "Compact",
+      value: `:${current.ports.compact}`,
+      meta: current.models.live
+        ? text("模型目录来自 /v1/models", "Model catalog comes from /v1/models")
+        : text("模型目录使用本地回退", "Model catalog is using fallback data"),
+      tone: current.models.live ? "sage" : "accent",
+    },
+    {
+      id: "codex",
+      label: "Codex CLI",
+      value: current.models.current || current.profile.defaultModel || "--",
+      meta: `${text("上下文", "Context")} ${contextTokensDisplay.value}`,
+      tone: current.secrets.codexAuth.matchesProxyKey === false ? "danger" : "sage",
+    },
+    {
+      id: "cc-connect",
+      label: "cc-connect",
+      value: current.ccConnect.project || "main",
+      meta: current.ccConnect.bindingPresent
+        ? text("平台绑定已检测", "Platform binding detected")
+        : text("等待平台绑定或 finalizer", "Waiting for binding or finalizer"),
+      tone: current.ccConnect.bindingPresent ? "sage" : "accent",
+    },
+  ];
+});
+const chainGates = computed<CodexStackChainGate[]>(() => {
+  const current = summary.value;
+  if (!current) return [];
+  const matrix = current.profile.lastSmokeMatrix;
+  return [
+    {
+      id: "proxy",
+      label: text("代理策略", "Proxy Policy"),
+      value: current.proxyPolicy.providerMode === "proxy" ? text("海外代理", "Foreign proxy") : text("国内直连", "Domestic direct"),
+      help: proxyPolicyLabel.value,
+      tone: current.proxyPolicy.providerMode === "proxy" ? "accent" : "sage",
+    },
+    {
+      id: "smoke",
+      label: text("Smoke Gate", "Smoke Gate"),
+      value: matrix ? (matrix.attachEligible ? text("可切 Codex", "Attach ready") : text("禁止切换", "Blocked")) : text("未验证", "Not verified"),
+      help: smokeMatrixLabel.value,
+      tone: matrix ? (matrix.attachEligible ? "sage" : "danger") : "accent",
+    },
+    {
+      id: "job-lock",
+      label: text("后台任务锁", "Job Lock"),
+      value: jobRunning.value ? text("锁定写操作", "Writes locked") : text("可操作", "Writable"),
+      help: activeJob.value
+        ? `${activeJob.value.commandLabel} · ${jobStatusLabel(activeJob.value.status)}`
+        : text("没有安装、修复或 finalizer 正在运行", "No install, repair, or finalizer is running"),
+      tone: jobRunning.value ? "accent" : "sage",
+    },
+    {
+      id: "watchdog",
+      label: "Watchdog",
+      value: current.services.find((service) => service.id === "codex-stack-watchdog.timer")?.active
+        ? text("巡检开启", "Enabled")
+        : text("巡检暂停", "Paused"),
+      help: text("暂停链路时应先停 watchdog，恢复时最后启用。", "Pause stops watchdog first; resume enables it last."),
+      tone: current.services.find((service) => service.id === "codex-stack-watchdog.timer")?.active ? "sage" : "neutral",
     },
   ];
 });
