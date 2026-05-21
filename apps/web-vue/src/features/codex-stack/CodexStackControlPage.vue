@@ -1672,8 +1672,9 @@ const contextTokensDisplay = computed(() => {
   return tokens >= 1000000 ? `${(tokens / 1000000).toFixed(tokens % 1000000 === 0 ? 0 : 2)}M` : `${Math.round(tokens / 1000)}K`;
 });
 const proxyPolicyLabel = computed(() => {
-  const policy = summary.value?.proxyPolicy;
-  if (!policy) return text("未知", "Unknown");
+  const current = summary.value;
+  if (!current) return text("未知", "Unknown");
+  const policy = normalizeProxyPolicy(current.proxyPolicy);
   if (!policy.noProxyLoopbackReady) {
     return text(
       `NO_PROXY 缺少 ${policy.noProxyLoopbackMissing.join(", ")}`,
@@ -1769,7 +1770,7 @@ const runtimeSummaryRows = computed<CodexStackRuntimeSummaryRow[]>(() => {
 const networkPolicyCard = computed<CodexStackNetworkPolicyCard | null>(() => {
   const current = summary.value;
   if (!current) return null;
-  const policy = current.proxyPolicy;
+  const policy = normalizeProxyPolicy(current.proxyPolicy);
   const directWithSystemProxy = policy.providerMode === "direct" && Boolean(policy.providerProxyUrl);
   const proxyMode = policy.providerMode === "proxy" && Boolean(policy.providerProxyUrl);
   const tone: CodexStackTone = !policy.noProxyLoopbackReady
@@ -1867,17 +1868,18 @@ const chainGates = computed<CodexStackChainGate[]>(() => {
   const current = summary.value;
   if (!current) return [];
   const matrix = current.profile.lastSmokeMatrix;
+  const policy = normalizeProxyPolicy(current.proxyPolicy);
   return [
     {
       id: "proxy",
       label: text("代理策略", "Proxy Policy"),
-      value: !current.proxyPolicy.noProxyLoopbackReady
+      value: !policy.noProxyLoopbackReady
         ? text("本地绕过缺失", "Loopback bypass missing")
-        : current.proxyPolicy.providerMode === "proxy" ? text("海外代理", "Foreign proxy") : text("国内直连", "Domestic direct"),
+        : policy.providerMode === "proxy" ? text("海外代理", "Foreign proxy") : text("国内直连", "Domestic direct"),
       help: proxyPolicyLabel.value,
-      tone: !current.proxyPolicy.noProxyLoopbackReady
+      tone: !policy.noProxyLoopbackReady
         ? "danger"
-        : current.proxyPolicy.providerMode === "proxy" ? "accent" : "sage",
+        : policy.providerMode === "proxy" ? "accent" : "sage",
     },
     {
       id: "smoke",
@@ -1947,6 +1949,7 @@ const installContextTokensDisabled = computed(() => installForm.contextMode !== 
 const hasInstallDraftChanges = computed(() => {
   const current = summary.value;
   if (!current) return false;
+  const policy = normalizeProxyPolicy(current.proxyPolicy);
 
   const currentModel = current.models.current || current.profile.defaultModel || current.models.defaultModel || "kimi-k2.6";
   if ((installForm.model || "") !== currentModel) return true;
@@ -1956,10 +1959,10 @@ const hasInstallDraftChanges = computed(() => {
   if (Number(installForm.compactPort) !== current.ports.compact) return true;
   if (installForm.channel !== current.installer.channel) return true;
   if (installForm.cpaKey.trim()) return true;
-  if (installForm.upstreamBaseUrl.trim() !== (current.proxyPolicy.upstreamBaseUrl || "")) return true;
+  if (installForm.upstreamBaseUrl.trim() !== (policy.upstreamBaseUrl || "")) return true;
   if (installForm.upstreamApiKey.trim()) return true;
-  if (installForm.providerProxyUrl.trim() !== (current.proxyPolicy.providerProxyUrl || "")) return true;
-  if ((installForm.noProxy.trim() || DEFAULT_NO_PROXY) !== (current.proxyPolicy.noProxy || DEFAULT_NO_PROXY)) return true;
+  if (installForm.providerProxyUrl.trim() !== (policy.providerProxyUrl || "")) return true;
+  if ((installForm.noProxy.trim() || DEFAULT_NO_PROXY) !== (policy.noProxy || DEFAULT_NO_PROXY)) return true;
   return installForm.skipNpm
     || installForm.skipCcConnect
     || installForm.noStart
@@ -1971,6 +1974,7 @@ const hasInstallDraftChanges = computed(() => {
 const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
   const current = summary.value;
   if (!current) return {};
+  const policy = normalizeProxyPolicy(current.proxyPolicy);
 
   const payload: CodexStackConfigPatchRequest = {};
   const nextModel = configForm.defaultModel.trim();
@@ -2011,7 +2015,7 @@ const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
   }
 
   const nextUpstreamBaseUrl = configForm.upstreamBaseUrl.trim();
-  if (nextUpstreamBaseUrl !== (current.proxyPolicy.upstreamBaseUrl || "")) {
+  if (nextUpstreamBaseUrl !== (policy.upstreamBaseUrl || "")) {
     payload.upstreamBaseUrl = nextUpstreamBaseUrl;
   }
 
@@ -2021,12 +2025,12 @@ const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
   }
 
   const nextProviderProxyUrl = configForm.providerProxyUrl.trim();
-  if (nextProviderProxyUrl !== (current.proxyPolicy.providerProxyUrl || "")) {
+  if (nextProviderProxyUrl !== (policy.providerProxyUrl || "")) {
     payload.providerProxyUrl = nextProviderProxyUrl;
   }
 
   const nextNoProxy = configForm.noProxy.trim() || "localhost,127.0.0.1,::1";
-  if (nextNoProxy !== (current.proxyPolicy.noProxy || "localhost,127.0.0.1,::1")) {
+  if (nextNoProxy !== (policy.noProxy || "localhost,127.0.0.1,::1")) {
     payload.noProxy = nextNoProxy;
   }
 
@@ -2492,6 +2496,10 @@ function serviceEndpointInfo(serviceId: CodexStackServiceId, currentSummary: Cod
   };
 }
 
+function isSummaryServiceActive(serviceId: CodexStackServiceId): boolean {
+  return summary.value?.services.find((service) => service.id === serviceId)?.active === true;
+}
+
 function componentStatusLabel(component: CodexStackComponentSummary): string {
   const statusLabels: Record<CodexStackComponentStatus, string> = {
     ok: text("健康", "Healthy"),
@@ -2882,6 +2890,16 @@ async function startRepairWithActions(actions: CodexStackRepairAction[], success
 
 async function serviceAction(serviceId: CodexStackServiceId, action: CodexStackServiceAction): Promise<void> {
   if (!guardMutation()) return;
+  if ((action === "start" || action === "restart") && serviceId === "cpa-compact-proxy.service" && !isSummaryServiceActive("cli-proxy-api.service")) {
+    await resumeStack();
+    return;
+  }
+  if ((action === "start" || action === "restart") && serviceId === "codex-stack-watchdog.timer" && (
+    !isSummaryServiceActive("cli-proxy-api.service") || !isSummaryServiceActive("cpa-compact-proxy.service")
+  )) {
+    await resumeStack();
+    return;
+  }
   busy.value = true;
   try {
     const response = await controlCodexStackService(serviceId, action);

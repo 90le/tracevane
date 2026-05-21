@@ -246,6 +246,13 @@ function readText(filePath: string): string {
   }
 }
 
+function systemctlOutputHasState(output: string, expected: string): boolean {
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .some((line) => line === expected);
+}
+
 function readFileTailLines(filePath: string, lines: number): string {
   try {
     const stat = fs.statSync(filePath);
@@ -1963,8 +1970,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     return {
       id,
       installed,
-      enabled: enabled.ok && enabled.output.includes("enabled"),
-      active: active.ok && active.output.includes("active"),
+      enabled: enabled.ok && systemctlOutputHasState(enabled.output, "enabled"),
+      active: active.ok && systemctlOutputHasState(active.output, "active"),
       rawEnabledState: enabled.output || (installed ? "unknown" : "missing"),
       rawActiveState: active.output || (installed ? "unknown" : "missing"),
     };
@@ -2797,6 +2804,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       throw new CodexStackServiceError("codex_stack_invalid_service_action", `Unsupported service action: ${action}`);
     }
     requireNoActiveJob();
+    if ((action === "start" || action === "restart") && serviceId === "cpa-compact-proxy.service") {
+      await requireActiveUnitForServiceAction("cli-proxy-api.service", "Start or resume CPA before starting Compact Proxy.");
+    }
+    if ((action === "start" || action === "restart") && serviceId === "codex-stack-watchdog.timer") {
+      await requireActiveUnitForServiceAction("cli-proxy-api.service", "Start or resume CPA before enabling watchdog.");
+      await requireActiveUnitForServiceAction("cpa-compact-proxy.service", "Start or resume Compact Proxy before enabling watchdog.");
+    }
     const result = await execText("systemctl", ["--user", action, serviceId], { timeout: 30_000 });
     if (!result.ok) {
       throw new CodexStackServiceError("codex_stack_service_action_failed", redact(result.output || `systemctl ${action} failed`), 500);
@@ -2806,6 +2820,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       message: `${serviceId} ${action} requested.`,
       summary: await getSummary(req),
     };
+  }
+
+  async function requireActiveUnitForServiceAction(unit: CodexStackServiceId, message: string): Promise<void> {
+    const active = await execText("systemctl", ["--user", "is-active", unit], { timeout: 4_000 });
+    if (!active.ok || !systemctlOutputHasState(active.output, "active")) {
+      throw new CodexStackServiceError(
+        "codex_stack_service_lifecycle_guard",
+        `${message} Use Resume CPA Stack so Studio starts CPA, waits for Compact, and enables watchdog in order.`,
+        409,
+      );
+    }
   }
 
   async function patchConfig(

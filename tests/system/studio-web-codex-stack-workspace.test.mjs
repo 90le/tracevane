@@ -59,9 +59,17 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /id: "smoke"/);
   assert.match(controlPage, /id: "watchdog"/);
   assert.match(controlPage, /NO_PROXY 缺少/);
-  assert.match(controlPage, /!current\.proxyPolicy\.noProxyLoopbackReady[\s\S]*\? "danger"/);
+  assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*!policy\.noProxyLoopbackReady[\s\S]*\? "danger"/);
+  assert.doesNotMatch(controlPage, /current\.proxyPolicy\.noProxyLoopbackReady/);
   assert.match(chainMap, /aria-label="Codex Stack request chain"/);
   assert.match(chainMap, /v-if="warnings\.length"/);
+});
+
+test("codex stack proxy policy displays tolerate legacy summaries without proxyPolicy", () => {
+  assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*const directWithSystemProxy = policy\.providerMode === "direct"/);
+  assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*if \(installForm\.upstreamBaseUrl\.trim\(\) !== \(policy\.upstreamBaseUrl \|\| ""\)\) return true;/);
+  assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*if \(nextNoProxy !== \(policy\.noProxy \|\| "localhost,127\.0\.0\.1,::1"\)\)/);
+  assert.doesNotMatch(controlPage, /current\.proxyPolicy\.(providerMode|providerProxyUrl|upstreamBaseUrl|noProxy)/);
 });
 
 test("codex stack dashboard exposes explicit network mode diagnostics", () => {
@@ -92,6 +100,12 @@ test("codex stack recommended repair resumes a deliberately paused stack in orde
   assert.match(viewModel, /const stackInstalled = cpa\?\.installed === true && compact\?\.installed === true && watchdog\?\.installed === true;/);
   assert.match(viewModel, /if \(stackInstalled && !cpaActive && !compactActive && !watchdogActive\) \{[\s\S]*return \["resume-stack"\];[\s\S]*\}/);
   assert.doesNotMatch(viewModel, /if \(!serviceActive\.get\("cli-proxy-api\.service"\)\) actions\.push\("restart-cpa"\);/);
+});
+
+test("codex stack service grid routes unsafe starts through ordered resume", () => {
+  assert.match(controlPage, /function isSummaryServiceActive\(serviceId: CodexStackServiceId\): boolean/);
+  assert.match(controlPage, /serviceId === "cpa-compact-proxy\.service" && !isSummaryServiceActive\("cli-proxy-api\.service"\)[\s\S]*await resumeStack\(\);/);
+  assert.match(controlPage, /serviceId === "codex-stack-watchdog\.timer"[\s\S]*!isSummaryServiceActive\("cli-proxy-api\.service"\) \|\| !isSummaryServiceActive\("cpa-compact-proxy\.service"\)[\s\S]*await resumeStack\(\);/);
 });
 
 test("codex stack background jobs resync cc-connect drafts after completion", () => {

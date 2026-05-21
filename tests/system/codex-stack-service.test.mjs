@@ -192,6 +192,38 @@ async function withFakeSystemctl(task) {
   }
 }
 
+async function withScriptedSystemctl(scriptBody, task) {
+  const root = makeTempRoot();
+  const bin = path.join(root, "bin");
+  const logFile = path.join(root, "systemctl.log");
+  fs.mkdirSync(bin, { recursive: true });
+  writeFile(
+    path.join(bin, "systemctl"),
+    [
+      "#!/usr/bin/env bash",
+      "printf '%s\\n' \"$*\" >> \"$FAKE_SYSTEMCTL_LOG\"",
+      scriptBody,
+      "",
+    ].join("\n"),
+    0o755,
+  );
+  const previousPath = process.env.PATH;
+  const previousLog = process.env.FAKE_SYSTEMCTL_LOG;
+  process.env.PATH = `${bin}${path.delimiter}${previousPath || ""}`;
+  process.env.FAKE_SYSTEMCTL_LOG = logFile;
+  try {
+    await task({
+      logFile,
+      readCalls: () => fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8").trim().split(/\r?\n/).filter(Boolean) : [],
+    });
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousLog === undefined) delete process.env.FAKE_SYSTEMCTL_LOG;
+    else process.env.FAKE_SYSTEMCTL_LOG = previousLog;
+  }
+}
+
 test("codex stack summary resolves bundled installer and masks secrets", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -460,6 +492,100 @@ test("codex stack rejects unknown service ids and actions before shell execution
   await assert.rejects(
     service.controlService(undefined, "cli-proxy-api.service", "reload-or-run-shell"),
     (error) => isCodexStackServiceError(error) && error.code === "codex_stack_invalid_service_action",
+  );
+});
+
+test("codex stack service status does not treat inactive as active", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withScriptedSystemctl(
+    [
+      "case \"$*\" in",
+      "  \"--user list-unit-files\"*) echo \"cli-proxy-api.service enabled\"; exit 0 ;;",
+      "  \"--user is-enabled\"*) echo \"enabled\"; exit 0 ;;",
+      "  \"--user is-active\"*) echo \"inactive\"; exit 3 ;;",
+      "esac",
+      "exit 0",
+    ].join("\n"),
+    async () => {
+      const service = createCodexStackService(config);
+      const summary = await service.getSummary();
+      const cpa = summary.services.find((item) => item.id === "cli-proxy-api.service");
+      const compact = summary.services.find((item) => item.id === "cpa-compact-proxy.service");
+      const watchdog = summary.services.find((item) => item.id === "codex-stack-watchdog.timer");
+
+      assert.equal(cpa?.active, false);
+      assert.equal(compact?.active, false);
+      assert.equal(watchdog?.active, false);
+    },
+  );
+});
+
+test("codex stack blocks lifecycle-unsafe direct service starts", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withScriptedSystemctl(
+    [
+      "case \"$*\" in",
+      "  \"--user is-active cli-proxy-api.service\") echo \"inactive\"; exit 3 ;;",
+      "  \"--user start cpa-compact-proxy.service\") echo \"should not start compact\"; exit 0 ;;",
+      "  \"--user restart codex-stack-watchdog.timer\") echo \"should not restart watchdog\"; exit 0 ;;",
+      "esac",
+      "exit 0",
+    ].join("\n"),
+    async ({ readCalls }) => {
+      const service = createCodexStackService(config);
+
+      await assert.rejects(
+        service.controlService(undefined, "cpa-compact-proxy.service", "start"),
+        (error) => isCodexStackServiceError(error)
+          && error.code === "codex_stack_service_lifecycle_guard"
+          && error.statusCode === 409,
+      );
+      await assert.rejects(
+        service.controlService(undefined, "codex-stack-watchdog.timer", "restart"),
+        (error) => isCodexStackServiceError(error)
+          && error.code === "codex_stack_service_lifecycle_guard"
+          && error.statusCode === 409,
+      );
+      const calls = readCalls();
+      assert.ok(!calls.includes("--user start cpa-compact-proxy.service"));
+      assert.ok(!calls.includes("--user restart codex-stack-watchdog.timer"));
+    },
   );
 });
 
