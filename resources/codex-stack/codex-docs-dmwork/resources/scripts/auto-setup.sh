@@ -153,6 +153,28 @@ const data = JSON.parse(fs.readFileSync('$OPENCLAW_JSON', 'utf8'));
 const providers = data.models?.providers || {};
 const entries = Object.entries(providers);
 const first = entries[0]?.[1] || {};
+const env = data.env || {};
+function envVal(keys) {
+  for (const key of keys) {
+    const value = data[key] || env[key] || env[key.toLowerCase()] || process.env[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+function isDomesticOrLocal(raw) {
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    if (!host || host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+    if (host.endsWith('.cn')) return true;
+    return ['bigmodel','zhipu','moonshot','kimi','mlamp','aliyun','dashscope','volces','doubao','deepseek','baidu','qianfan','tencent','hunyuan'].some((part) => host.includes(part));
+  } catch {
+    return true;
+  }
+}
+function providerProxy(raw) {
+  if (!raw || isDomesticOrLocal(raw)) return 'direct';
+  return envVal(['OPENAI_PROXY_URL', 'OPENCLAW_FOREIGN_PROXY_URL', 'HTTPS_PROXY', 'HTTP_PROXY']) || 'direct';
+}
 console.log('GATEWAY_URL=' + JSON.stringify(first.baseUrl || ''));
 console.log('API_KEY=' + JSON.stringify(first.apiKey || ''));
 const mlamp = providers['custom-llm-gateway-mlamp-cn'] || {};
@@ -163,8 +185,11 @@ console.log('BIGMODEL_URL=' + JSON.stringify(bigmodel.baseUrl || ''));
 console.log('BIGMODEL_KEY=' + JSON.stringify(bigmodel.apiKey || ''));
 const dm = data.defaultModel;
 console.log('OPENCLAW_DEFAULT_MODEL=' + JSON.stringify(typeof dm === 'string' ? dm : (dm?.id || dm?.name || dm?.model || '')));
-console.log('HTTP_PROXY_VAL=' + JSON.stringify(data.env?.http_proxy || ''));
-console.log('NO_PROXY_VAL=' + JSON.stringify(data.env?.no_proxy || ''));
+console.log('MLAMP_PROXY_URL=' + JSON.stringify(providerProxy(mlamp.baseUrl || '')));
+console.log('BIGMODEL_PROXY_URL=' + JSON.stringify(providerProxy(bigmodel.baseUrl || '')));
+console.log('GATEWAY_PROXY_URL=' + JSON.stringify(providerProxy(first.baseUrl || '')));
+console.log('HTTP_PROXY_VAL=' + JSON.stringify(envVal(['HTTPS_PROXY', 'HTTP_PROXY'])));
+console.log('NO_PROXY_VAL=' + JSON.stringify(envVal(['NO_PROXY']) || 'localhost,127.0.0.1,::1'));
 ")"
 
 if [[ -z "$GATEWAY_URL" || "$GATEWAY_URL" == "null" ]]; then
@@ -196,7 +221,7 @@ fi
 log "  主网关: $GATEWAY_URL"
 [[ -n "$MLAMP_URL" ]] && log "  mlamp 网关: $MLAMP_URL"
 [[ -n "$BIGMODEL_URL" ]] && log "  bigmodel 网关: $BIGMODEL_URL"
-[[ -n "$HTTP_PROXY_VAL" ]] && log "  系统代理: $HTTP_PROXY_VAL"
+[[ -n "$HTTP_PROXY_VAL" ]] && log "  海外上游代理候选: $HTTP_PROXY_VAL"
 
 # =============================================================================
 # Step 2: 安装 Codex CLI + oh-my-codex
@@ -431,7 +456,7 @@ openai-compatibility:
   base-url: ${MLAMP_URL}
   api-key-entries:
   - api-key: ${MLAMP_KEY}
-    proxy-url: direct
+    proxy-url: "${MLAMP_PROXY_URL:-direct}"
   models:
   - name: mlamp/kimi-k2.6
     alias: kimi-k2.6
@@ -463,7 +488,7 @@ openai-compatibility:
   base-url: ${GATEWAY_URL}
   api-key-entries:
   - api-key: ${API_KEY}
-    proxy-url: direct
+    proxy-url: "${GATEWAY_PROXY_URL:-direct}"
   models:
   - name: kimi-k2.6
 YAMLEOF
@@ -476,24 +501,11 @@ if [[ -n "$BIGMODEL_URL" && -n "$BIGMODEL_KEY" ]]; then
   base-url: ${BIGMODEL_URL}
   api-key-entries:
   - api-key: ${BIGMODEL_KEY}
-    proxy-url: direct
+    proxy-url: "${BIGMODEL_PROXY_URL:-direct}"
   models:
   - name: glm-5.1
   - name: glm-5
   - name: glm-5-turbo
-YAMLEOF
-
-  # Claude API 兼容层
-  cat >> "$CPA_CONFIG" << YAMLEOF
-
-claude-api-key:
-- name: zhipu-anthropic
-  api-key: ${BIGMODEL_KEY}
-  base-url: https://open.bigmodel.cn/api/anthropic
-  proxy-url: direct
-  models:
-  - name: glm-5.1
-  - name: kimi-k2.6
 YAMLEOF
 fi
 
@@ -539,11 +551,16 @@ developer_instructions = "You have oh-my-codex installed. AGENTS.md is the orche
 
 # ── 模型配置 ──
 model = "${CODEX_MODEL}"
-openai_base_url = "http://127.0.0.1:${COMPACT_PORT}/v1"
-base_url = "http://127.0.0.1:${COMPACT_PORT}/v1"
 experimental_bearer_token = "${CPA_PROXY_KEY}"
-responses_websockets = true
-responses_websockets_v2 = true
+responses_websockets = false
+responses_websockets_v2 = false
+
+[model_providers.cpa]
+name = "CPA"
+base_url = "http://127.0.0.1:${COMPACT_PORT}/v1"
+wire_api = "responses"
+supports_websockets = false
+experimental_bearer_token = "${CPA_PROXY_KEY}"
 
 TOMLEOF
 
@@ -565,8 +582,8 @@ cat >> "$CODEX_CONFIG" << TOMLEOF
 
 # ── 功能开关 ──
 [features]
-responses_websockets   = true
-responses_websockets_v2 = true
+responses_websockets   = false
+responses_websockets_v2 = false
 goals = true
 multi_agent_v2 = true
 multi_agent = true
@@ -579,7 +596,7 @@ builtin_mcp = true
 apply_patch_freeform = true
 apply_patch_streaming_events = true
 js_repl = true
-enable_request_compression = true
+enable_request_compression = false
 enable_fanout = true
 plugins = true
 plugin_hooks = true
@@ -636,6 +653,12 @@ else
   log "Step 7/8: 创建 systemd 进程守护..."
 
 mkdir -p "$HOME/.config/systemd/user"
+systemctl --user disable --now cli-proxy-api-healthcheck.timer >/dev/null 2>&1 || true
+rm -f "$HOME/.config/systemd/user/cli-proxy-api-healthcheck.timer" \
+      "$HOME/.config/systemd/user/cli-proxy-api-healthcheck.service" \
+      "$HOME/.local/bin/cli-proxy-api-healthcheck" \
+      "$HOME/.config/systemd/user/cli-proxy-api.service.d/10-always-on.conf" \
+      "$HOME/.config/systemd/user/cpa-compact-proxy.service.d/10-always-on.conf"
 
 # CPA service
 cat > "$HOME/.config/systemd/user/cli-proxy-api.service" << 'SVCEOF'
@@ -647,7 +670,7 @@ After=network.target
 Type=simple
 ExecStart=%h/.local/bin/cli-proxy-api --config %h/.cli-proxy-api/config.yaml
 WorkingDirectory=%h/.cli-proxy-api
-Restart=always
+Restart=on-failure
 RestartSec=5
 StandardOutput=append:/tmp/cpa.log
 StandardError=append:/tmp/cpa.log
@@ -655,14 +678,11 @@ StandardError=append:/tmp/cpa.log
 # 确保不走系统代理访问本地
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
-Environment=CPA_PORT=${CPA_PORT}
-Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
-Environment=LISTEN_PORT=${COMPACT_PORT}
-Environment=CPA_KEY=${CPA_PROXY_KEY}
-Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}
 Environment=NO_PROXY=localhost,127.0.0.1,::1
 Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
 Environment=LISTEN_PORT=${COMPACT_PORT}
+Environment=CPA_KEY=${CPA_PROXY_KEY}
+Environment=CPA_UPSTREAM_API_KEY=${CPA_PROXY_KEY}
 Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}
 
 [Install]
@@ -674,13 +694,13 @@ NODE_BIN="$(command -v node || echo /usr/bin/node)"
 cat > "$HOME/.config/systemd/user/cpa-compact-proxy.service" << SVCEOF
 [Unit]
 Description=CPA Compact Proxy v5 (Node.js)
-After=network.target cli-proxy-api.service
-Wants=cli-proxy-api.service
+After=network-online.target cli-proxy-api.service
+Wants=network-online.target cli-proxy-api.service
 
 [Service]
 Type=simple
 ExecStart=${NODE_BIN} %h/.local/bin/cpa-compact-proxy.mjs
-Restart=always
+Restart=on-failure
 RestartSec=3
 StandardOutput=append:/tmp/cpa-compact-proxy.log
 StandardError=append:/tmp/cpa-compact-proxy.log
@@ -769,9 +789,36 @@ ensure_active() {
   fi
 }
 
+codex_value() {
+  awk -F '"' -v key="$1" '/^[[:space:]]*\[/{ exit } $0 ~ key"[[:space:]]*=" { print $2; exit }' "$HOME/.codex/config.toml" 2>/dev/null
+}
+
+codex_cpa_provider_value() {
+  awk -F '"' -v key="$1" '
+    /^[[:space:]]*\[model_providers\.cpa\][[:space:]]*$/ { inside=1; next }
+    /^[[:space:]]*\[/ { inside=0 }
+    inside && $0 ~ key"[[:space:]]*=" { print $2; exit }
+  ' "$HOME/.codex/config.toml" 2>/dev/null
+}
+
+codex_cpa_base_url() {
+  local value
+  value="$(codex_cpa_provider_value base_url)"
+  if [[ -n "$value" ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  value="$(codex_value base_url)"
+  if [[ -n "$value" ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  codex_value openai_base_url
+}
+
 CPA_PORT="$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)"
 [[ -n "$CPA_PORT" ]] || CPA_PORT=18795
-COMPACT_PORT="$(grep '^base_url = ' "$HOME/.codex/config.toml" 2>/dev/null | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)"
+COMPACT_PORT="$(codex_cpa_base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)"
 [[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
 
 ensure_active cli-proxy-api.service

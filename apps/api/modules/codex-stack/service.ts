@@ -32,6 +32,10 @@ import type {
   CodexStackServiceAction,
   CodexStackServiceId,
   CodexStackServiceStatus,
+  CodexStackSmokeCheckId,
+  CodexStackSmokeCheckResult,
+  CodexStackSmokeMatrixResult,
+  CodexStackSmokeModelResult,
   CodexStackStatus,
   CodexStackSummaryPayload,
 } from "../../../../types/codex-stack.js";
@@ -51,6 +55,7 @@ const CPA_LATEST_VERSION = "v7.1.17";
 const CPA_MANAGEMENT_PANEL_REPOSITORY = "https://github.com/router-for-me/Cli-Proxy-API-Management-Center";
 const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
 const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
+const REQUIRED_CPA_SMOKE_MODELS = [OFFICIAL_DEFAULT_MODEL, DMWORK_DEFAULT_MODEL] as const;
 
 function isDmworkFamily(channel?: CodexStackChannel): boolean {
   return channel === "dmwork" || channel === "octo";
@@ -67,6 +72,7 @@ const JOB_TAIL_CHARS = 12_000;
 
 const SERVICE_IDS = [
   "cli-proxy-api.service",
+  "cli-proxy-api-healthcheck.timer",
   "cpa-compact-proxy.service",
   "cc-connect.service",
   "codex-stack-watchdog.timer",
@@ -76,6 +82,7 @@ const SERVICE_ACTIONS = ["restart", "start", "stop", "enable"] as const satisfie
 
 const FALLBACK_LOG_FILES: Record<CodexStackServiceId, string[]> = {
   "cli-proxy-api.service": ["/tmp/cpa.log"],
+  "cli-proxy-api-healthcheck.timer": [],
   "cpa-compact-proxy.service": ["/tmp/cpa-compact-proxy.log"],
   "cc-connect.service": ["/tmp/cc-connect.log"],
   "codex-stack-watchdog.timer": [],
@@ -130,15 +137,22 @@ const INSTALL_ENV_KEYS = [
   "CODEX_CONTEXT_WINDOW",
   "OPENCLAW_UPSTREAM_BASE_URL",
   "OPENCLAW_UPSTREAM_API_KEY",
+  "OPENCLAW_PROVIDER_PROXY_URL",
+  "OPENCLAW_NO_PROXY",
 ] as const;
 
 const REPAIR_ACTIONS = [
+  "pause-stack",
+  "resume-stack",
   "restart-cpa",
   "restart-compact-proxy",
   "restart-watchdog",
   "restart-cc-connect",
   "repair-auth-json",
   "repair-cpa-management",
+  "repair-codex-transport",
+  "run-smoke-matrix",
+  "apply-codex-cpa-after-smoke",
   "disable-conflicting-units",
   "rerun-install-no-start",
 ] as const;
@@ -560,6 +574,33 @@ function extractTomlString(source: string, key: string): string {
   return match?.[1]?.trim() || "";
 }
 
+function extractTopLevelTomlString(source: string, key: string): string {
+  const firstSection = source.search(/^\s*\[[^\]]+\]\s*$/m);
+  const topLevel = firstSection === -1 ? source : source.slice(0, firstSection);
+  return extractTomlString(topLevel, key);
+}
+
+function extractTomlSection(source: string, header: string): string {
+  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = source.match(new RegExp(`^\\s*\\[${escaped}\\]\\s*$`, "m"));
+  if (!match || match.index === undefined) return "";
+  const start = match.index + match[0].length;
+  const rest = source.slice(start);
+  const nextSection = rest.search(/^\s*\[[^\]]+\]\s*$/m);
+  return nextSection === -1 ? rest : rest.slice(0, nextSection);
+}
+
+function extractCpaProviderBaseUrl(source: string): string {
+  return extractTomlString(extractTomlSection(source, "model_providers.cpa"), "base_url")
+    || extractTopLevelTomlString(source, "base_url")
+    || extractTopLevelTomlString(source, "openai_base_url");
+}
+
+function extractLocalCompactPortFromCodexConfig(source: string): number | null {
+  const match = extractCpaProviderBaseUrl(source).match(/127\.0\.0\.1:(\d+)/);
+  return match?.[1] ? normalizePort(match[1], 0) || null : null;
+}
+
 function extractTomlNumber(source: string, key: string): number | null {
   const match = source.match(new RegExp(`^\\s*${key}\\s*=\\s*([0-9][0-9_]*)`, "m"));
   if (!match?.[1]) return null;
@@ -576,6 +617,16 @@ function replaceTomlString(source: string, key: string, value: string): string {
   return `${source.replace(/\s+$/g, "")}\n${key} = "${escaped}"\n`;
 }
 
+function upsertTopLevelTomlString(source: string, key: string, value: string): string {
+  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const firstSection = source.search(/^\s*\[[^\]]+\]\s*$/m);
+  const topLevel = firstSection === -1 ? source : source.slice(0, firstSection);
+  const rest = firstSection === -1 ? "" : source.slice(firstSection);
+  const pattern = new RegExp(`^(\\s*${key}\\s*=\\s*)"[^"]*"(\\s*)$`, "m");
+  if (pattern.test(topLevel)) return `${topLevel.replace(pattern, `$1"${escaped}"$2`)}${rest}`;
+  return `${topLevel.replace(/\s+$/g, "")}\n${key} = "${escaped}"\n\n${rest.replace(/^\s+/, "")}`;
+}
+
 function replaceTomlNumber(source: string, key: string, value: number): string {
   const pattern = new RegExp(`^(\\s*${key}\\s*=\\s*)[0-9][0-9_]*(\\s*)$`, "m");
   if (pattern.test(source)) {
@@ -587,6 +638,57 @@ function replaceTomlNumber(source: string, key: string, value: number): string {
 function removeTopLevelTomlKey(source: string, key: string): string {
   const pattern = new RegExp(`^\\s*${key}\\s*=.*\\n?`, "m");
   return source.replace(pattern, "");
+}
+
+function removeTopLevelTomlStringValue(source: string, key: string, value: string): string {
+  const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^\\s*${key}\\s*=\\s*"${escapedValue}"\\s*\\n?`, "m");
+  return source.replace(pattern, "");
+}
+
+function upsertTomlSection(source: string, header: string, body: string): string {
+  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^\\s*\\[${escaped}\\]\\s*$`, "m");
+  const rendered = `[${header}]\n${body.replace(/\s+$/g, "")}\n`;
+  const match = source.match(pattern);
+  if (match && match.index !== undefined) {
+    const start = match.index;
+    const sectionBodyStart = match.index + match[0].length;
+    const rest = source.slice(sectionBodyStart);
+    const nextSection = rest.search(/^\s*\[[^\]]+\]\s*$/m);
+    const end = nextSection === -1 ? source.length : sectionBodyStart + nextSection;
+    return `${source.slice(0, start).replace(/\s+$/g, "")}\n\n${rendered}\n${source.slice(end).replace(/^\s+/, "")}`.replace(/^\s+/, "");
+  }
+  const features = source.match(/^\s*\[features\]\s*$/m);
+  if (features?.index !== undefined) {
+    return `${source.slice(0, features.index).replace(/\s+$/g, "")}\n\n${rendered}\n${source.slice(features.index).replace(/^\s+/, "")}`;
+  }
+  return `${source.replace(/\s+$/g, "")}\n\n${rendered}`;
+}
+
+function applyCodexCpaProviderSection(source: string, baseUrl: string, proxyKey: string): string {
+  const managedKeys = new Set(["name", "base_url", "wire_api", "supports_websockets", "experimental_bearer_token"]);
+  const preserved = extractTomlSection(source, "model_providers.cpa")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const key = line.match(/^\s*([A-Za-z0-9_-]+)\s*=/)?.[1];
+      return key ? !managedKeys.has(key) : Boolean(line.trim());
+    });
+  return upsertTomlSection(source, "model_providers.cpa", [
+    'name = "CPA"',
+    `base_url = ${JSON.stringify(baseUrl)}`,
+    'wire_api = "responses"',
+    "supports_websockets = false",
+    `experimental_bearer_token = ${JSON.stringify(proxyKey)}`,
+    ...preserved,
+  ].join("\n"));
+}
+
+function applyCodexCpaActiveProvider(source: string, baseUrl: string, proxyKey: string, model: string): string {
+  let next = applyCodexCpaProviderSection(applyCodexStableTransport(source), baseUrl, proxyKey);
+  next = upsertTopLevelTomlString(next, "model_provider", "cpa");
+  next = upsertTopLevelTomlString(next, "model", model);
+  return removeTopLevelLocalCompactBaseUrls(next);
 }
 
 function replaceYamlNumber(source: string, key: string, value: number): string {
@@ -683,6 +785,69 @@ function applyCodexContext(
   const compactLimit = Math.floor(nextTokens * 0.9);
   next = replaceTomlNumber(next, "model_auto_compact_token_limit", compactLimit);
   return next;
+}
+
+function hasCodexResponsesWebSocketsEnabled(source: string): boolean {
+  return /^\s*responses_websockets(?:_v2)?\s*=\s*true\s*$/m.test(source);
+}
+
+function hasCodexRequestCompressionEnabled(source: string): boolean {
+  return /^\s*enable_request_compression\s*=\s*true\s*$/m.test(source);
+}
+
+function applyCodexStableTransport(source: string): string {
+  const setExistingBoolean = (input: string, key: string, value: boolean): string => {
+    const re = new RegExp(`^(\\s*${key}\\s*=\\s*)(true|false)(\\s*)$`, "gm");
+    return input.replace(re, `$1${value ? "true" : "false"}$3`);
+  };
+  const ensureTopLevelBoolean = (input: string, key: string, value: boolean): string => {
+    const rendered = `${key} = ${value ? "true" : "false"}`;
+    const firstSection = input.search(/^\s*\[[^\]]+\]\s*$/m);
+    if (firstSection === -1) return `${input.replace(/\s+$/g, "")}\n${rendered}\n`;
+    const topLevel = input.slice(0, firstSection);
+    const rest = input.slice(firstSection);
+    if (new RegExp(`^\\s*${key}\\s*=`, "m").test(topLevel)) return input;
+    return `${topLevel.replace(/\s+$/g, "")}\n${rendered}\n\n${rest.replace(/^\s+/, "")}`;
+  };
+  const ensureFeaturesBoolean = (input: string, key: string, value: boolean): string => {
+    const rendered = `${key} = ${value ? "true" : "false"}`;
+    const header = input.match(/^\s*\[features\]\s*$/m);
+    if (!header || header.index === undefined) return `${input.replace(/\s+$/g, "")}\n\n[features]\n${rendered}\n`;
+    const sectionStart = header.index + header[0].length;
+    const afterHeader = input.slice(sectionStart);
+    const nextSection = afterHeader.search(/^\s*\[[^\]]+\]\s*$/m);
+    const sectionEnd = nextSection === -1 ? input.length : sectionStart + nextSection;
+    const section = input.slice(sectionStart, sectionEnd);
+    if (new RegExp(`^\\s*${key}\\s*=`, "m").test(section)) return input;
+    return `${input.slice(0, sectionStart)}\n${rendered}${input.slice(sectionStart)}`;
+  };
+  let next = setExistingBoolean(source, "responses_websockets", false);
+  next = setExistingBoolean(next, "responses_websockets_v2", false);
+  next = setExistingBoolean(next, "enable_request_compression", false);
+  next = ensureTopLevelBoolean(next, "responses_websockets", false);
+  next = ensureTopLevelBoolean(next, "responses_websockets_v2", false);
+  next = ensureFeaturesBoolean(next, "responses_websockets", false);
+  next = ensureFeaturesBoolean(next, "responses_websockets_v2", false);
+  next = ensureFeaturesBoolean(next, "enable_request_compression", false);
+  return next;
+}
+
+function hasLocalCompactBaseUrl(source: string): boolean {
+  return /^\s*(?:base_url|openai_base_url)\s*=\s*"http:\/\/127\.0\.0\.1:\d+\/v1"\s*$/m.test(source);
+}
+
+function replaceLocalCompactBaseUrls(source: string, baseUrl: string): string {
+  return source.replace(
+    /^(\s*(?:base_url|openai_base_url)\s*=\s*")http:\/\/127\.0\.0\.1:\d+\/v1("\s*)$/gm,
+    `$1${baseUrl}$2`,
+  );
+}
+
+function removeTopLevelLocalCompactBaseUrls(source: string): string {
+  const firstSection = source.search(/^\s*\[[^\]]+\]\s*$/m);
+  const topLevel = firstSection === -1 ? source : source.slice(0, firstSection);
+  const rest = firstSection === -1 ? "" : source.slice(firstSection);
+  return `${topLevel.replace(/^\s*(?:base_url|openai_base_url)\s*=\s*"http:\/\/127\.0\.0\.1:\d+\/v1"\s*\n?/gm, "")}${rest}`;
 }
 
 function resolveHomeDir(config: StudioServerConfig): string {
@@ -839,6 +1004,52 @@ function readOpenclawPreferredModels(configPath: string): string[] {
   return Array.from(new Set(preferred));
 }
 
+function readOpenclawEnvValue(configPath: string, keys: string[]): { value: string; source: string | null } {
+  const openclaw = readJsonFile<Record<string, unknown>>(configPath, {});
+  const env = isRecord(openclaw.env) ? openclaw.env : {};
+  for (const key of keys) {
+    const direct = normalizeString(openclaw[key]);
+    if (direct) return { value: direct, source: `openclaw.${key}` };
+    const fromEnv = normalizeString(env[key]) || normalizeString(env[key.toLowerCase()]);
+    if (fromEnv) return { value: fromEnv, source: `openclaw.env.${key}` };
+  }
+  for (const key of keys) {
+    const value = normalizeString(process.env[key]);
+    if (value) return { value, source: `process.env.${key}` };
+  }
+  return { value: "", source: null };
+}
+
+function collectCpaProxyUrls(source: string): string[] {
+  const urls = new Set<string>();
+  const pattern = /^\s*proxy-url:\s*["']?([^"'\n]+)["']?\s*$/gm;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(source))) {
+    const value = normalizeString(match[1]);
+    if (value) urls.add(value);
+  }
+  return Array.from(urls);
+}
+
+function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSummaryPayload["proxyPolicy"] {
+  const cpaConfigProxyUrls = collectCpaProxyUrls(cpaConfig);
+  const configuredProxy = cpaConfigProxyUrls.find((value) => value !== "direct") || "";
+  const fallbackProxy = readOpenclawEnvValue(openclawPath, [
+    "OPENAI_PROXY_URL",
+    "OPENCLAW_FOREIGN_PROXY_URL",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+  ]);
+  const noProxy = readOpenclawEnvValue(openclawPath, ["NO_PROXY"]).value || "localhost,127.0.0.1,::1";
+  return {
+    providerMode: configuredProxy ? "proxy" : "direct",
+    providerProxyUrl: configuredProxy || fallbackProxy.value || null,
+    providerProxySource: configuredProxy ? "cpa-config" : fallbackProxy.source,
+    noProxy,
+    cpaConfigProxyUrls,
+  };
+}
+
 function parseModelListPayload(payload: unknown): string[] {
   const candidates: unknown[] = [];
   if (Array.isArray(payload)) {
@@ -971,6 +1182,30 @@ async function probeUrl(url: string, token = ""): Promise<boolean> {
   }
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 10_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseSseEvents(source: string): Array<{ event: string | null; data: string }> {
+  return source.split(/\r?\n\r?\n/)
+    .filter(Boolean)
+    .map((block) => {
+      const lines = block.split(/\r?\n/);
+      const event = lines.find((line) => line.startsWith("event:"))?.slice(6).trim() || null;
+      const data = lines
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      return { event, data };
+    });
+}
+
 export interface CodexStackService {
   getSummary(req?: http.IncomingMessage): Promise<CodexStackSummaryPayload>;
   getCcConnectConfig(): Promise<CcConnectConfig>;
@@ -1003,11 +1238,12 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const openclawDefaultModel = readOpenclawDefaultModel(currentPaths.openclawJson);
     const openclawPreferredModels = readOpenclawPreferredModels(currentPaths.openclawJson);
     const context = readCodexContext(codex);
+    const proxyPolicy = readProxyPolicy(cpa, currentPaths.openclawJson);
     return {
       updatedAt: new Date().toISOString(),
       cpaPort: parseCpaPort(cpa, defaultCpaPort(resolveChannel())),
       compactPort: normalizePort(
-        extractTomlString(codex, "base_url").match(/127\.0\.0\.1:(\d+)/)?.[1],
+        extractLocalCompactPortFromCodexConfig(codex),
         DEFAULT_COMPACT_PORT,
       ),
       defaultModel: chooseDefaultModel([...models, ...openclawPreferredModels], extractTomlString(codex, "model") || ccParsed.projects[0]?.agentOptions.model, openclawDefaultModel),
@@ -1015,6 +1251,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       contextWindowTokens: context.tokens,
       ccConnectProject: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
       hasCpaProxyKey: Boolean(extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key),
+      providerProxy: {
+        mode: proxyPolicy.providerMode,
+        url: proxyPolicy.providerProxyUrl,
+        source: proxyPolicy.providerProxySource,
+      },
       channel: "dmwork" as CodexStackChannel,
       ...readJsonFile<Partial<CodexStackProfile>>(profilePath(), {}),
     };
@@ -1199,6 +1440,233 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     writeJob(job);
   }
 
+  async function postSmokeJson(label: string, url: string, token: string, body: unknown): Promise<unknown> {
+    const response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    }, 20_000);
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`${label} failed with HTTP ${response.status}: ${text.slice(0, 800)}`);
+    }
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      if (isRecord(parsed) && isRecord(parsed.error)) {
+        throw new Error(`${label} returned error: ${JSON.stringify(parsed.error).slice(0, 800)}`);
+      }
+      return parsed;
+    } catch (error) {
+      if (error instanceof SyntaxError) throw new Error(`${label} returned invalid JSON: ${text.slice(0, 800)}`);
+      throw error;
+    }
+  }
+
+  function smokeChecks(ports: { cpa: number; compact: number }, token: string, model: string): Array<{
+    id: CodexStackSmokeCheckId;
+    label: string;
+    run: () => Promise<void>;
+  }> {
+    const cpaBase = `http://127.0.0.1:${ports.cpa}`;
+    const compactBase = `http://127.0.0.1:${ports.compact}`;
+    return [
+      {
+        id: "cpa-health",
+        label: "CPA health",
+        run: async () => {
+        if (!await probeUrl(`${cpaBase}/healthz`)) throw new Error("CPA /healthz is not reachable");
+        },
+      },
+      {
+        id: "compact-health",
+        label: "Compact health",
+        run: async () => {
+        if (!await probeUrl(`${compactBase}/healthz`)) throw new Error("Compact /healthz is not reachable");
+        },
+      },
+      {
+        id: "cpa-chat",
+        label: "CPA chat",
+        run: async () => {
+        await postSmokeJson("CPA chat", `${cpaBase}/v1/chat/completions`, token, {
+          model,
+          messages: [{ role: "user", content: "ping" }],
+          max_tokens: 8,
+          stream: false,
+        });
+        },
+      },
+      {
+        id: "compact-non-stream",
+        label: "Compact responses non-stream",
+        run: async () => {
+        const payload = await postSmokeJson("Compact responses non-stream", `${compactBase}/v1/responses`, token, {
+          model,
+          input: "ping",
+          max_output_tokens: 8,
+          stream: false,
+        });
+        if (!isRecord(payload) || payload.status === "failed") {
+          throw new Error(`Compact non-stream returned failed response: ${JSON.stringify(payload).slice(0, 800)}`);
+        }
+        },
+      },
+      {
+        id: "compact-stream",
+        label: "Compact responses stream",
+        run: async () => {
+        const response = await fetchWithTimeout(`${compactBase}/v1/responses`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            model,
+            input: "ping",
+            max_output_tokens: 8,
+            stream: true,
+          }),
+        }, 30_000);
+        const text = await response.text();
+        if (!response.ok) throw new Error(`Compact stream failed with HTTP ${response.status}: ${text.slice(0, 800)}`);
+        const events = parseSseEvents(text);
+        const failed = events.find((event) => event.event === "response.failed");
+        if (failed) throw new Error(`Compact stream emitted response.failed: ${failed.data.slice(0, 800)}`);
+        if (!events.some((event) => event.event === "response.completed")) {
+          throw new Error(`Compact stream did not emit response.completed: ${text.slice(0, 800)}`);
+        }
+        if (events.at(-1)?.data !== "[DONE]") throw new Error("Compact stream did not finish with [DONE]");
+        },
+      },
+      {
+        id: "compact-compact",
+        label: "Compact compaction",
+        run: async () => {
+        const payload = await postSmokeJson("Compact compaction", `${compactBase}/v1/responses/compact`, token, {
+          model,
+          input: [{ role: "user", content: "ping" }],
+          thread_id: "studio-smoke",
+        });
+        if (!isRecord(payload) || payload.status === "failed") {
+          throw new Error(`Compact compaction returned failed response: ${JSON.stringify(payload).slice(0, 800)}`);
+        }
+        },
+      },
+    ];
+  }
+
+  async function runSmokeChecksForModel(
+    job: CodexStackJob,
+    ports: { cpa: number; compact: number },
+    token: string,
+    model: string,
+  ): Promise<CodexStackSmokeModelResult> {
+    const startedAt = new Date().toISOString();
+    const checks: CodexStackSmokeCheckResult[] = [];
+    const errors: string[] = [];
+
+    for (const check of smokeChecks(ports, token, model)) {
+      const checkStartedAt = new Date().toISOString();
+      appendJobLog(job, `Smoke gate (${model}): ${check.label}...\n`, [token]);
+      try {
+        await check.run();
+        checks.push({
+          id: check.id,
+          label: check.label,
+          status: "passed",
+          startedAt: checkStartedAt,
+          finishedAt: new Date().toISOString(),
+          error: null,
+        });
+        appendJobLog(job, `Smoke gate (${model}): ${check.label} passed.\n`, [token]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`${check.label}: ${message}`);
+        checks.push({
+          id: check.id,
+          label: check.label,
+          status: "failed",
+          startedAt: checkStartedAt,
+          finishedAt: new Date().toISOString(),
+          error: message,
+        });
+        appendJobLog(job, `Smoke gate (${model}): ${check.label} failed: ${message}\n`, [token]);
+      }
+    }
+
+    if (errors.length) {
+      return {
+        model,
+        status: "failed",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        checks,
+        error: errors.join("; "),
+      };
+    }
+
+    return {
+      model,
+      status: "passed",
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      checks,
+      error: null,
+    };
+  }
+
+  function requiredSmokeModels(extraModels: string[] = []): string[] {
+    return Array.from(new Set([...REQUIRED_CPA_SMOKE_MODELS, ...extraModels].map((model) => model.trim()).filter(Boolean)));
+  }
+
+  function isRequiredCpaSmokeModel(model: string): boolean {
+    return (REQUIRED_CPA_SMOKE_MODELS as readonly string[]).includes(model);
+  }
+
+  function chooseCpaAttachModel(currentModel: string, profileDefault: string, channel: CodexStackChannel): string {
+    if (isRequiredCpaSmokeModel(currentModel)) return currentModel;
+    if (isRequiredCpaSmokeModel(profileDefault)) return profileDefault;
+    return defaultModel(channel);
+  }
+
+  async function runCodexCpaSmokeMatrix(
+    job: CodexStackJob,
+    ports: { cpa: number; compact: number },
+    token: string,
+    models: string[],
+  ): Promise<CodexStackSmokeMatrixResult> {
+    const requiredModels = requiredSmokeModels(models);
+    appendJobLog(job, `Smoke matrix: validating ${requiredModels.join(", ")} without switching Codex.\n`, [token]);
+    const results: CodexStackSmokeModelResult[] = [];
+    for (const model of requiredModels) {
+      results.push(await runSmokeChecksForModel(job, ports, token, model));
+    }
+    const status = results.every((result) => result.status === "passed") ? "passed" : "failed";
+    const matrix: CodexStackSmokeMatrixResult = {
+      status,
+      checkedAt: new Date().toISOString(),
+      requiredModels,
+      models: results,
+      attachEligible: status === "passed",
+    };
+    const profile = readProfile();
+    writeProfile({ ...profile, lastSmokeMatrix: matrix });
+    appendJobLog(job, `Smoke matrix ${status}; attachEligible=${matrix.attachEligible ? "true" : "false"}.\n`, [token]);
+    return matrix;
+  }
+
+  async function runCodexCpaSmokeGate(job: CodexStackJob, ports: { cpa: number; compact: number }, token: string, attachModel: string): Promise<void> {
+    const matrix = await runCodexCpaSmokeMatrix(job, ports, token, [attachModel]);
+    if (!matrix.attachEligible) {
+      const failed = matrix.models.find((result) => result.status === "failed");
+      throw new Error(`CPA smoke matrix failed${failed ? ` for ${failed.model}: ${failed.error}` : ""}`);
+    }
+  }
+
   function recoverJobs(): void {
     ensureDir(jobsDir());
     for (const entry of fs.readdirSync(jobsDir()).filter((name) => name.endsWith(".json"))) {
@@ -1334,7 +1802,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const ccConfig = readText(currentPaths.ccConnectConfig);
     const ccParsed = parseCcConnectConfigSource(ccConfig);
     const configCpaPort = parseCpaPort(cpaConfig, defaultCpaPort(resolveChannel()));
-    const configCompactPort = normalizePort(extractTomlString(codexConfig, "base_url").match(/127\.0\.0\.1:(\d+)/)?.[1], DEFAULT_COMPACT_PORT);
+    const configCompactPort = normalizePort(extractLocalCompactPortFromCodexConfig(codexConfig), DEFAULT_COMPACT_PORT);
     const [liveCpaPort, liveCompactPort] = await Promise.all([
       detectLivePort(["cli-proxy-api", "cpa"]),
       detectLivePort(["compact-proxy", "cpa-compact"]),
@@ -1353,6 +1821,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const controlPanelEnabled = !yamlBlockBoolean(cpaConfig, "remote-management", "disable-control-panel", true);
     const parsedModels = parseModels(`${cpaConfig}\n${codexConfig}\n${ccConfig}`);
     const profile = readProfile();
+    const proxyPolicy = readProxyPolicy(cpaConfig, currentPaths.openclawJson);
     const configuredModel = extractTomlString(codexConfig, "model") || ccParsed.projects[0]?.agentOptions.model;
     const currentModel = configuredModel;
     const fallbackModels = Array.from(new Set([
@@ -1397,9 +1866,21 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (ccConfig && !ccBindingPresent) warnings.push("cc-connect is installed/configured but still needs Feishu or Weixin QR binding.");
     if (!pathExists(currentPaths.codexAuth)) warnings.push("~/.codex/auth.json is missing; Codex CLI may not read the local CPA key.");
     if (codexAuthMatches === false) warnings.push("~/.codex/auth.json OPENAI_API_KEY does not match the configured CPA proxy key.");
+    if (hasCodexResponsesWebSocketsEnabled(codexConfig)) warnings.push("Codex Responses WebSocket transport is enabled; CPA-compatible providers should use HTTP/SSE to avoid slow reconnect fallback.");
+    if (hasCodexRequestCompressionEnabled(codexConfig)) warnings.push("Codex request compression is enabled; CPA-compatible providers should disable it unless the local proxy decodes compressed request bodies.");
     if (!managementSecret) warnings.push("CPA remote-management.secret-key is empty; the management dashboard/API is disabled.");
     if (!controlPanelEnabled) warnings.push("CPA management control panel is disabled; /management.html will not load.");
     if (!modelDiscovery.live && modelDiscovery.error) warnings.push(`模型列表未能从 /v1/models 读取，已使用本地配置回退：${modelDiscovery.error}`);
+    {
+      const legacyHealthcheck = services.find((service) => service.id === "cli-proxy-api-healthcheck.timer");
+      if (legacyHealthcheck?.active || legacyHealthcheck?.enabled) {
+        warnings.push("检测到旧 cli-proxy-api-healthcheck.timer；它会按旧端口巡检并重启 CPA，可能抵消暂停操作。请执行“暂停 CPA 栈”或重新安装以清理。");
+      }
+    }
+    if (proxyPolicy.providerMode === "direct" && proxyPolicy.providerProxyUrl) {
+      warnings.push("系统代理已设置，但 CPA provider proxy-url 全部为 direct；国内网关不会继承系统代理。若 direct smoke 出现 EOF/SSL_ERROR_SYSCALL，请关闭 VPN 网卡/TUN 模式或为国内网关配置 split tunnel 绕过。");
+    }
+    if (profile.lastSmokeMatrix?.status === "failed") warnings.push("CPA smoke matrix failed last run; Codex will not attach until glm-5.1 and kimi-k2.6 both pass.");
     return {
       checkedAt: new Date().toISOString(),
       overallStatus: classifyOverall(components, listJobs(), ccBindingPresent),
@@ -1420,6 +1901,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       components,
       services,
       ports: { cpa: cpaPort, compact: compactPort, detectedCpa: liveCpaPort, detectedCompact: liveCompactPort },
+      proxyPolicy,
       models: {
         current: currentModel || selectedDefaultModel,
         defaultModel: selectedDefaultModel,
@@ -1598,6 +2080,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           hasBaseUrl: Boolean(env.OPENCLAW_UPSTREAM_BASE_URL),
           hasApiKey: Boolean(env.OPENCLAW_UPSTREAM_API_KEY),
         },
+        providerProxy: {
+          mode: env.OPENCLAW_PROVIDER_PROXY_URL ? "proxy" : "direct",
+          url: env.OPENCLAW_PROVIDER_PROXY_URL || null,
+          source: env.OPENCLAW_PROVIDER_PROXY_URL ? "install-env" : null,
+        },
       },
     };
   }
@@ -1702,7 +2189,53 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         appendJobLog(job, `${result.output}\n`);
         if (!result.ok) throw new Error(`systemctl --user ${args.join(" ")} failed`);
       };
+      const runOptionalSystemctl = async (...args: string[]) => {
+        appendJobLog(job, `\n$ systemctl --user ${args.join(" ")}\n`);
+        const result = await execText("systemctl", ["--user", ...args], { timeout: 30_000 });
+        appendJobLog(job, `${result.output}\n`);
+      };
+      const waitForHealth = async (label: string, url: string): Promise<void> => {
+        appendJobLog(job, `Waiting for ${label}: ${url}\n`);
+        const deadline = Date.now() + 20_000;
+        while (Date.now() < deadline) {
+          if (await probeUrl(url)) {
+            appendJobLog(job, `${label} is healthy.\n`);
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 750));
+        }
+        throw new Error(`${label} did not become healthy: ${url}`);
+      };
+      const stackPorts = () => {
+        const codex = readText(currentPaths.codexConfig);
+        const cpa = readText(currentPaths.cpaConfig);
+        const profile = readProfile();
+        return {
+          cpa: parseCpaPort(cpa, profile.cpaPort || defaultCpaPort(resolveChannel())),
+          compact: normalizePort(extractLocalCompactPortFromCodexConfig(codex), profile.compactPort || DEFAULT_COMPACT_PORT),
+        };
+      };
       for (const action of actions as RepairAction[]) {
+        if (action === "pause-stack") {
+          await runOptionalSystemctl("disable", "--now", "cli-proxy-api-healthcheck.timer");
+          await runOptionalSystemctl("stop", "cli-proxy-api-healthcheck.service");
+          await runSystemctl("disable", "--now", "codex-stack-watchdog.timer");
+          await runSystemctl("disable", "--now", "cpa-compact-proxy.service");
+          await runSystemctl("disable", "--now", "cli-proxy-api.service");
+          await runSystemctl("stop", "cpa-compact-proxy.service");
+          await runSystemctl("stop", "cli-proxy-api.service");
+          appendJobLog(job, "Paused CPA stack; legacy healthcheck, CPA, Compact, and watchdog are disabled so they will not relaunch automatically.\n");
+        }
+        if (action === "resume-stack") {
+          const ports = stackPorts();
+          await runOptionalSystemctl("disable", "--now", "cli-proxy-api-healthcheck.timer");
+          await runSystemctl("enable", "--now", "cli-proxy-api.service");
+          await waitForHealth("CPA", `http://127.0.0.1:${ports.cpa}/healthz`);
+          await runSystemctl("enable", "--now", "cpa-compact-proxy.service");
+          await waitForHealth("Compact Proxy", `http://127.0.0.1:${ports.compact}/healthz`);
+          await runSystemctl("enable", "--now", "codex-stack-watchdog.timer");
+          appendJobLog(job, "Resumed CPA stack; watchdog enabled only after CPA and Compact became healthy.\n");
+        }
         if (action === "restart-cpa") await runSystemctl("restart", "cli-proxy-api.service");
         if (action === "restart-compact-proxy") await runSystemctl("restart", "cpa-compact-proxy.service");
         if (action === "restart-watchdog") await runSystemctl("restart", "codex-stack-watchdog.timer");
@@ -1721,6 +2254,56 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
             appendJobLog(job, "Repaired CPA remote-management block and enabled control panel.\n");
           } else {
             appendJobLog(job, "CPA remote-management block already matched Studio defaults.\n");
+          }
+        }
+        if (action === "repair-codex-transport") {
+          const codex = readText(currentPaths.codexConfig);
+          if (!codex) throw new Error("Codex config is missing");
+          const effectiveCompactPort = normalizePort(extractLocalCompactPortFromCodexConfig(codex), readProfile().compactPort || DEFAULT_COMPACT_PORT);
+          const compactBaseUrl = `http://127.0.0.1:${effectiveCompactPort}/v1`;
+          const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
+          const stableCodex = removeTopLevelLocalCompactBaseUrls(
+            removeTopLevelTomlStringValue(applyCodexStableTransport(codex), "model_provider", "cpa"),
+          );
+          const next = applyCodexCpaProviderSection(stableCodex, compactBaseUrl, effectiveProxyKey);
+          if (next !== codex) {
+            backupAndWrite(currentPaths.codexConfig, next);
+            appendJobLog(job, "Updated inactive Codex CPA provider settings and disabled WebSocket/compressed transport; active Codex provider was not switched.\n", [effectiveProxyKey]);
+          } else {
+            appendJobLog(job, "Codex CPA HTTP/SSE transport settings were already configured; active Codex provider was not switched.\n");
+          }
+        }
+        if (action === "apply-codex-cpa-after-smoke") {
+          const codex = readText(currentPaths.codexConfig);
+          if (!codex) throw new Error("Codex config is missing");
+          const ports = stackPorts();
+          const compactBaseUrl = `http://127.0.0.1:${ports.compact}/v1`;
+          const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
+          const profile = readProfile();
+          const currentModel = extractTomlString(codex, "model");
+          const attachModel = chooseCpaAttachModel(currentModel, profile.defaultModel, resolveChannel());
+          if (currentModel && currentModel !== attachModel) {
+            appendJobLog(job, `Current Codex model ${currentModel} is not CPA-safe for domestic routing; attach will switch Codex model to ${attachModel}.\n`);
+          }
+          await runCodexCpaSmokeGate(job, ports, effectiveProxyKey, attachModel);
+          const next = applyCodexCpaActiveProvider(codex, compactBaseUrl, effectiveProxyKey, attachModel);
+          if (next !== codex) {
+            backupAndWrite(currentPaths.codexConfig, next);
+            appendJobLog(job, `CPA smoke gate passed; Codex active provider switched to CPA using ${attachModel}.\n`, [effectiveProxyKey]);
+          } else {
+            appendJobLog(job, "CPA smoke gate passed; Codex active provider was already CPA.\n", [effectiveProxyKey]);
+          }
+        }
+        if (action === "run-smoke-matrix") {
+          const codex = readText(currentPaths.codexConfig);
+          const ports = stackPorts();
+          const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
+          const profile = readProfile();
+          const attachModel = chooseCpaAttachModel(extractTomlString(codex, "model"), profile.defaultModel, resolveChannel());
+          const matrix = await runCodexCpaSmokeMatrix(job, ports, effectiveProxyKey, [attachModel]);
+          if (!matrix.attachEligible) {
+            const failed = matrix.models.find((result) => result.status === "failed");
+            throw new Error(`CPA smoke matrix failed${failed ? ` for ${failed.model}: ${failed.error}` : ""}`);
           }
         }
         if (action === "disable-conflicting-units") {
@@ -1837,9 +2420,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         restartRequired.add("cpa-compact-proxy.service");
       }
       const effectiveCompactPort = compactPort || readProfile().compactPort || DEFAULT_COMPACT_PORT;
-      if (compactPort || /base_url\s*=\s*"http:\/\/127\.0\.0\.1:\d+\/v1"/.test(next)) {
-        next = replaceTomlString(next, "base_url", `http://127.0.0.1:${effectiveCompactPort}/v1`);
-        next = next.replace(/(base_url\s*=\s*")http:\/\/127\.0\.0\.1:\d+\/v1(")/g, `$1http://127.0.0.1:${effectiveCompactPort}/v1$2`);
+      const hasExistingLocalCompactBaseUrl = hasLocalCompactBaseUrl(next);
+      if (hasExistingLocalCompactBaseUrl) {
+        next = replaceLocalCompactBaseUrls(next, `http://127.0.0.1:${effectiveCompactPort}/v1`);
         restartRequired.add("cpa-compact-proxy.service");
       }
       if (cpaKey) {
@@ -1849,8 +2432,12 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       if (hasContextPatch && contextMode) {
         next = applyCodexContext(next, contextMode, contextTokens);
       }
-      next = removeTopLevelTomlKey(next, "model_provider");
-      next = replaceTomlString(next, "openai_base_url", `http://127.0.0.1:${effectiveCompactPort}/v1`);
+      next = removeTopLevelLocalCompactBaseUrls(
+        removeTopLevelTomlStringValue(applyCodexStableTransport(next), "model_provider", "cpa"),
+      );
+      const compactBaseUrl = `http://127.0.0.1:${effectiveCompactPort}/v1`;
+      const effectiveProxyKey = cpaKey || extractTomlString(next, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
+      next = applyCodexCpaProviderSection(next, compactBaseUrl, effectiveProxyKey);
       if (next !== codex) backupAndWrite(currentPaths.codexConfig, next);
     }
 

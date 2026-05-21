@@ -24,7 +24,7 @@ test('config editor exposes the workbench recipe framing blocks', () => {
   assert.match(configEditorPage, /class="config-active-tab-facts"/);
   assert.match(configEditorPage, /Image generation model/);
   assert.match(configEditorPage, /Model registry JSON/);
-  assert.match(configEditorPage, /LLM idle timeout seconds/);
+  assert.doesNotMatch(configEditorPage, /LLM idle timeout seconds/);
   assert.match(configEditorPage, /Embedded Pi project settings policy/);
 });
 

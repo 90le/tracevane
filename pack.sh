@@ -1,7 +1,7 @@
 #!/bin/bash
 # OpenClaw Studio 打包脚本
 # 用法: ./pack.sh [版本号]
-# 示例: ./pack.sh 0.1.21
+# 示例: ./pack.sh 0.1.63
 # 测试打包: ./pack.sh --no-source-sync --output-dir /tmp/openclaw-studio-release-test 0.1.26
 
 set -euo pipefail

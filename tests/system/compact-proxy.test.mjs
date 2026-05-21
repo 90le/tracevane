@@ -5,6 +5,8 @@ import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import test from "node:test";
+import * as zlib from "node:zlib";
+import { WebSocket } from "ws";
 
 const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const proxyScript = path.join(projectRoot, "resources/codex-stack/codex-docs/resources/cpa-config-templates/compact-proxy.mjs");
@@ -37,15 +39,16 @@ async function startFakeCpa(handler) {
   };
 }
 
-async function startProxy(cpaPort) {
+async function startProxy(cpaPort, options = {}) {
   const listenPort = await freePort();
   const child = spawn(process.execPath, [proxyScript], {
     cwd: projectRoot,
     env: {
       ...process.env,
-      CPA_BASE_URL: `http://127.0.0.1:${cpaPort}`,
+      CPA_BASE_URL: options.baseUrl || `http://127.0.0.1:${cpaPort}`,
       LISTEN_PORT: String(listenPort),
       LISTEN_HOST: "127.0.0.1",
+      ...(options.env || {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -180,6 +183,180 @@ test("compact proxy converts chat completion SSE into Responses SSE with tool ca
     assert.equal(JSON.parse(completed.data).response.status, "incomplete");
     assert.deepEqual(JSON.parse(completed.data).response.usage, { input_tokens: 2, output_tokens: 4, total_tokens: 6 });
     assert.equal(events.at(-1).data, "[DONE]");
+  } finally {
+    await proxy.close();
+    await cpa.close();
+  }
+});
+
+test("compact proxy marks stream failed when upstream ends before DONE", async () => {
+  const cpa = await startFakeCpa(async (req, res) => {
+    const body = await readJsonBody(req);
+    assert.equal(body.stream, true);
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    });
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "partial" } }] })}\n\n`);
+    res.end();
+  });
+  const proxy = await startProxy(cpa.port);
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "test-model", stream: true, input: "start" }),
+    });
+
+    assert.equal(response.status, 200);
+    const events = parseSse(await response.text());
+    assert.ok(events.some((entry) => entry.event === "response.output_text.delta" && JSON.parse(entry.data).delta === "partial"));
+    const failed = events.find((entry) => entry.event === "response.failed");
+    assert.ok(failed);
+    assert.equal(JSON.parse(failed.data).response.status, "failed");
+    assert.equal(JSON.parse(failed.data).response.error.code, "upstream_incomplete");
+    assert.equal(events.some((entry) => entry.event === "response.completed"), false);
+    assert.equal(events.at(-1).data, "[DONE]");
+  } finally {
+    await proxy.close();
+    await cpa.close();
+  }
+});
+
+test("compact proxy marks stream failed when upstream returns 500", async () => {
+  const cpa = await startFakeCpa(async (_req, res) => {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: { message: "upstream boom" } }));
+  });
+  const proxy = await startProxy(cpa.port);
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "test-model", stream: true, input: "start" }),
+    });
+
+    assert.equal(response.status, 200);
+    const events = parseSse(await response.text());
+    const failed = events.find((entry) => entry.event === "response.failed");
+    assert.ok(failed);
+    assert.equal(JSON.parse(failed.data).response.status, "failed");
+    assert.equal(JSON.parse(failed.data).response.error.code, "upstream_error");
+    assert.match(JSON.parse(failed.data).response.error.message, /upstream boom/);
+    assert.equal(events.some((entry) => entry.event === "response.completed"), false);
+    assert.equal(events.at(-1).data, "[DONE]");
+  } finally {
+    await proxy.close();
+    await cpa.close();
+  }
+});
+
+test("compact proxy rejects WebSocket upgrades by default so Codex falls back immediately to HTTP/SSE", async () => {
+  const cpa = await startFakeCpa((_req, res) => {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+  const proxy = await startProxy(cpa.port);
+
+  try {
+    const statusCode = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("websocket rejection timed out")), 1000);
+      const ws = new WebSocket(`ws://127.0.0.1:${proxy.port}/v1/responses`);
+      ws.on("unexpected-response", (_req, res) => {
+        clearTimeout(timer);
+        resolve(res.statusCode);
+      });
+      ws.on("open", () => {
+        clearTimeout(timer);
+        ws.close();
+        reject(new Error("websocket unexpectedly opened"));
+      });
+      ws.on("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+    assert.equal(statusCode, 426);
+  } finally {
+    await proxy.close();
+    await cpa.close();
+  }
+});
+
+test("compact proxy accepts HTTPS upstream base URLs for CPA", async () => {
+  const proxy = await startProxy(443, { baseUrl: "https://127.0.0.1:443" });
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/anything`, { method: "OPTIONS" });
+    assert.equal(response.status, 204);
+  } finally {
+    await proxy.close();
+  }
+});
+
+test("compact proxy decodes zstd-compressed Codex request bodies", async () => {
+  const cpa = await startFakeCpa(async (req, res) => {
+    const body = await readJsonBody(req);
+    assert.equal(body.messages[0].content, "compressed hello");
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      id: "chatcmpl_zstd",
+      object: "chat.completion",
+      model: body.model,
+      choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+    }));
+  });
+  const proxy = await startProxy(cpa.port);
+
+  try {
+    const body = Buffer.from(JSON.stringify({
+      model: "test-model",
+      input: "compressed hello",
+      max_output_tokens: 8,
+    }));
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Encoding": "zstd",
+      },
+      body: zlib.zstdCompressSync(body),
+    });
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.output[0].content[0].text, "ok");
+  } finally {
+    await proxy.close();
+    await cpa.close();
+  }
+});
+
+test("compact proxy can override Codex auth with the local CPA key", async () => {
+  const cpa = await startFakeCpa(async (req, res) => {
+    assert.equal(req.headers.authorization, "Bearer local-cpa-key");
+    await readJsonBody(req);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      id: "chatcmpl_auth",
+      object: "chat.completion",
+      model: "test-model",
+      choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+    }));
+  });
+  const proxy = await startProxy(cpa.port, { env: { CPA_KEY: "local-cpa-key" } });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer wrong-codex-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: "test-model", input: "hello" }),
+    });
+    assert.equal(response.status, 200);
   } finally {
     await proxy.close();
     await cpa.close();

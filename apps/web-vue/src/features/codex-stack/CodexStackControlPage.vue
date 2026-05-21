@@ -261,6 +261,31 @@
                       <code>{{ portDisplay(summary.ports.compact, summary.ports.detectedCompact) }}</code>
                     </div>
                     <div class="cs-kv-row">
+                      <span>{{ text("上游代理", "Upstream Proxy") }}</span>
+                      <code>{{ proxyPolicyLabel }}</code>
+                    </div>
+                    <div class="cs-kv-row">
+                      <span>{{ text("模型矩阵", "Smoke Matrix") }}</span>
+                      <code>{{ smokeMatrixLabel }}</code>
+                    </div>
+                    <div v-if="summary.profile.lastSmokeMatrix" class="cs-smoke-matrix-detail">
+                      <div class="cs-smoke-matrix-head">
+                        <span>{{ text("必测模型", "Required Models") }}</span>
+                        <strong>{{ summary.profile.lastSmokeMatrix.requiredModels.join(", ") }}</strong>
+                      </div>
+                      <div class="cs-smoke-matrix-head">
+                        <span>{{ text("可切换", "Attach Eligible") }}</span>
+                        <strong>{{ summary.profile.lastSmokeMatrix.attachEligible ? text("是", "Yes") : text("否", "No") }}</strong>
+                      </div>
+                      <article v-for="model in summary.profile.lastSmokeMatrix.models" :key="model.model" class="cs-smoke-model-row">
+                        <div>
+                          <strong>{{ model.model }} · {{ model.status }}</strong>
+                          <p>{{ smokeModelChecksLabel(model) }}</p>
+                          <p v-if="model.error" class="cs-smoke-error">{{ model.error }}</p>
+                        </div>
+                      </article>
+                    </div>
+                    <div class="cs-kv-row">
                       <span>{{ text("cc-connect 项目", "cc-connect Project") }}</span>
                       <code>{{ summary.ccConnect.project || "main" }}</code>
                     </div>
@@ -609,6 +634,15 @@
                         <span class="form-label">{{ text("上游 API Key", "Upstream API Key") }}</span>
                         <input v-model="installForm.upstreamApiKey" class="form-input" type="password" />
                       </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text("海外上游代理", "Foreign Provider Proxy") }}</span>
+                        <input v-model="installForm.providerProxyUrl" class="form-input" placeholder="http://127.0.0.1:7897" />
+                        <span class="form-help">{{ text("留空则自动读取 OpenAI/海外上游代理；国内网关默认直连。", "Leave empty to auto-detect proxy for OpenAI/foreign providers; domestic gateways stay direct.") }}</span>
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">NO_PROXY</span>
+                        <input v-model="installForm.noProxy" class="form-input" placeholder="localhost,127.0.0.1,::1" />
+                      </label>
                     </div>
                   </div>
                 </details>
@@ -640,6 +674,34 @@
                       <p>{{ text("重新跑安装器的配置阶段但不启动服务，适合修复损坏配置后手动启动。", "Rerun the installer config phase without starting services, then start manually.") }}</p>
                       <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="repairConfigOnly">
                         {{ text("只修复配置", "Repair Config Only") }}
+                      </button>
+                    </article>
+                    <article class="cs-repair-card">
+                      <strong>{{ text("暂停 CPA 栈", "Pause CPA Stack") }}</strong>
+                      <p>{{ text("先停 watchdog，再停 Compact 和 CPA，避免你手动停用后又被自动拉起。", "Stop watchdog first, then Compact and CPA so manual pause stays paused.") }}</p>
+                      <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="pauseStack">
+                        {{ text("暂停链路", "Pause Stack") }}
+                      </button>
+                    </article>
+                    <article class="cs-repair-card">
+                      <strong>{{ text("恢复 CPA 栈", "Resume CPA Stack") }}</strong>
+                      <p>{{ text("按 CPA → Compact → watchdog 顺序恢复，并等待健康检查通过。", "Resume in CPA, Compact, watchdog order after health checks pass.") }}</p>
+                      <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="resumeStack">
+                        {{ text("恢复链路", "Resume Stack") }}
+                      </button>
+                    </article>
+                    <article class="cs-repair-card">
+                      <strong>{{ text("运行模型矩阵", "Run Smoke Matrix") }}</strong>
+                      <p>{{ text("只验证不切换 Codex：glm-5.1 与 kimi-k2.6 都要通过普通、非流式、流式和压缩上下文。", "Verify without attaching Codex: glm-5.1 and kimi-k2.6 must pass chat, non-stream, stream, and compact checks.") }}</p>
+                      <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="runSmokeMatrix">
+                        {{ text("只验证", "Verify Only") }}
+                      </button>
+                    </article>
+                    <article class="cs-repair-card">
+                      <strong>{{ text("通过验证后切 Codex", "Attach Codex After Smoke") }}</strong>
+                      <p>{{ text("会重新跑完整模型矩阵；全部通过才写入 Codex active provider，并在当前模型不是 glm/kimi 时切到安全的国内模型。", "Reruns the full model matrix and writes the active Codex provider only if every check passes; if the current model is not glm/kimi, it switches to a CPA-safe domestic model.") }}</p>
+                      <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="applyCodexCpaAfterSmoke">
+                        {{ text("验证并切换", "Smoke & Attach") }}
                       </button>
                     </article>
                   </div>
@@ -1378,6 +1440,7 @@ import type {
   CodexStackRepairAction,
   CodexStackServiceAction,
   CodexStackServiceId,
+  CodexStackSmokeModelResult,
   CodexStackSummaryPayload,
 } from "../../../../../types/codex-stack";
 import {
@@ -1453,6 +1516,7 @@ const selectedLogService = ref<CodexStackServiceId>("cli-proxy-api.service");
 const logServices = computed(() => {
   const services: Array<{ id: CodexStackServiceId; label: string; tone: string; rawState: string }> = [
     { id: "cli-proxy-api.service", label: text("CPA", "CPA"), tone: "neutral", rawState: "--" },
+    { id: "cli-proxy-api-healthcheck.timer", label: text("旧巡检", "Legacy Healthcheck"), tone: "neutral", rawState: "--" },
     { id: "cpa-compact-proxy.service", label: text("Compact", "Compact"), tone: "neutral", rawState: "--" },
     { id: "cc-connect.service", label: text("cc-connect", "cc-connect"), tone: "neutral", rawState: "--" },
     { id: "codex-stack-watchdog.timer", label: text("Watchdog", "Watchdog"), tone: "neutral", rawState: "--" },
@@ -1518,6 +1582,8 @@ const installForm = reactive({
   cpaKey: "",
   upstreamBaseUrl: "",
   upstreamApiKey: "",
+  providerProxyUrl: "",
+  noProxy: "localhost,127.0.0.1,::1",
   skipNpm: false,
   skipCcConnect: false,
   noStart: false,
@@ -1675,6 +1741,28 @@ const contextTokensDisplay = computed(() => {
   const tokens = summary.value?.context.tokens || summary.value?.context.recommendedTokens || 1050000;
   return tokens >= 1000000 ? `${(tokens / 1000000).toFixed(tokens % 1000000 === 0 ? 0 : 2)}M` : `${Math.round(tokens / 1000)}K`;
 });
+const proxyPolicyLabel = computed(() => {
+  const policy = summary.value?.proxyPolicy;
+  if (!policy) return text("未知", "Unknown");
+  if (policy.providerMode === "proxy" && policy.providerProxyUrl) {
+    return text(`海外代理 ${policy.providerProxyUrl}`, `Foreign proxy ${policy.providerProxyUrl}`);
+  }
+  return text("国内网关直连", "Domestic gateways direct");
+});
+const smokeMatrixLabel = computed(() => {
+  const matrix = summary.value?.profile.lastSmokeMatrix;
+  if (!matrix) return text("未验证", "Not verified");
+  const models = matrix.models.map((item) => `${item.model}:${item.status}`).join(" ");
+  return matrix.attachEligible
+    ? text(`通过 ${models}`, `Passed ${models}`)
+    : text(`失败 ${models}`, `Failed ${models}`);
+});
+
+function smokeModelChecksLabel(model: CodexStackSmokeModelResult): string {
+  const passed = model.checks.filter((check) => check.status === "passed").length;
+  const total = model.checks.length;
+  return text(`检查 ${passed}/${total} 通过`, `${passed}/${total} checks passed`);
+}
 const configContextTokensDisabled = computed(() => configForm.contextMode !== "custom");
 const installContextTokensDisabled = computed(() => installForm.contextMode !== "custom");
 const canonicalCcConnectProvider = computed(() => {
@@ -1785,6 +1873,7 @@ const installPlanHighlights = computed(() => {
     `${text("模型", "Model")}: ${installForm.model || "--"}`,
     `${text("上下文", "Context")}: ${installForm.contextMode === "default" ? text("默认", "Default") : `${installForm.contextMode === "codex-1m" ? "1M" : installForm.contextWindowTokens} tokens`}`,
     `${text("端口", "Ports")}: CPA ${installForm.cpaPort} / Compact ${installForm.compactPort}`,
+    `${text("上游代理", "Upstream Proxy")}: ${installForm.providerProxyUrl ? installForm.providerProxyUrl : text("自动；国内直连", "Auto; domestic direct")}`,
     `${text("跳过", "Skip")}: ${skip.length ? skip.join(", ") : text("无", "None")}`,
     `${text("强制", "Force")}: ${force.length ? force.join(", ") : text("无", "None")}`,
   ];
@@ -2109,6 +2198,8 @@ function applySummary(next: CodexStackSummaryPayload): void {
   installForm.cpaPort = next.ports.cpa;
   installForm.compactPort = next.ports.compact;
   installForm.channel = next.installer.channel;
+  installForm.providerProxyUrl = next.proxyPolicy.providerProxyUrl || "";
+  installForm.noProxy = next.proxyPolicy.noProxy || "localhost,127.0.0.1,::1";
   configForm.defaultModel = next.models.current || next.profile.defaultModel || next.models.defaultModel || "kimi-k2.6";
   configForm.contextMode = next.context.mode || "default";
   configForm.contextWindowTokens = next.context.tokens || next.context.recommendedTokens;
@@ -2178,6 +2269,8 @@ function buildInstallPayload(skipCcConnect = installForm.skipCcConnect) {
       CPA_PROXY_KEY: installForm.cpaKey || undefined,
       OPENCLAW_UPSTREAM_BASE_URL: installForm.upstreamBaseUrl || undefined,
       OPENCLAW_UPSTREAM_API_KEY: installForm.upstreamApiKey || undefined,
+      OPENCLAW_PROVIDER_PROXY_URL: installForm.providerProxyUrl || undefined,
+      OPENCLAW_NO_PROXY: installForm.noProxy || undefined,
     },
     flags: {
       skipNpm: installForm.skipNpm,
@@ -2321,6 +2414,34 @@ async function repairConfigOnly(): Promise<void> {
   await startRepairWithActions(
     ["rerun-install-no-start"],
     text("配置修复任务已启动。", "Config repair job started."),
+  );
+}
+
+async function pauseStack(): Promise<void> {
+  await startRepairWithActions(
+    ["pause-stack"],
+    text("CPA 栈暂停任务已启动。", "CPA stack pause job started."),
+  );
+}
+
+async function resumeStack(): Promise<void> {
+  await startRepairWithActions(
+    ["resume-stack"],
+    text("CPA 栈恢复任务已启动。", "CPA stack resume job started."),
+  );
+}
+
+async function runSmokeMatrix(): Promise<void> {
+  await startRepairWithActions(
+    ["run-smoke-matrix"],
+    text("CPA 模型矩阵验证已启动；不会切换 Codex。", "CPA smoke matrix started; Codex will not be attached."),
+  );
+}
+
+async function applyCodexCpaAfterSmoke(): Promise<void> {
+  await startRepairWithActions(
+    ["apply-codex-cpa-after-smoke"],
+    text("CPA smoke matrix 任务已启动；全部通过后才会切换 Codex。", "CPA smoke matrix started; Codex will attach only if every check passes."),
   );
 }
 
@@ -3044,6 +3165,39 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   background: color-mix(in srgb, var(--code-bg) 84%, transparent);
   border-radius: 10px;
   padding: 6px 10px;
+  word-break: break-word;
+}
+
+.cs-smoke-matrix-detail {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+}
+
+.cs-smoke-matrix-head,
+.cs-smoke-model-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cs-smoke-matrix-head span,
+.cs-smoke-model-row p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.cs-smoke-model-row {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.cs-smoke-error {
+  color: var(--danger) !important;
   word-break: break-word;
 }
 

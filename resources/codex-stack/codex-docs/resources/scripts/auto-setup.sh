@@ -350,7 +350,7 @@ if should_skip cc-connect; then
 fi
 
 log "Generating CPA config from $OPENCLAW_JSON"
-export OPENCLAW_JSON CPA_CONFIG CPA_PORT COMPACT_PORT CPA_PROXY_KEY META_FILE CODEX_MODEL="${CODEX_MODEL:-}" CODEX_CONTEXT_MODE="${CODEX_CONTEXT_MODE:-default}" CODEX_CONTEXT_WINDOW="${CODEX_CONTEXT_WINDOW:-1050000}"
+export OPENCLAW_JSON CPA_CONFIG CPA_PORT COMPACT_PORT CPA_PROXY_KEY META_FILE CODEX_MODEL="${CODEX_MODEL:-}" CODEX_CONTEXT_MODE="${CODEX_CONTEXT_MODE:-default}" CODEX_CONTEXT_WINDOW="${CODEX_CONTEXT_WINDOW:-1050000}" OPENCLAW_PROVIDER_PROXY_URL="${OPENCLAW_PROVIDER_PROXY_URL:-}" OPENCLAW_NO_PROXY="${OPENCLAW_NO_PROXY:-}"
 node <<'NODE'
 const fs = require("fs");
 const os = require("os");
@@ -385,6 +385,53 @@ function configMentionsModel(openclaw, model) {
   return JSON.stringify(openclaw).includes(model);
 }
 
+function openclawEnv(openclaw, keys) {
+  const values = openclaw.env && typeof openclaw.env === "object" ? openclaw.env : {};
+  for (const key of keys) {
+    const value = openclaw[key] || values[key] || values[key.toLowerCase()];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function isDomesticOrLocalUrl(raw) {
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    if (!host || host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+    if (host.endsWith(".cn")) return true;
+    return [
+      "bigmodel",
+      "zhipu",
+      "moonshot",
+      "kimi",
+      "mlamp",
+      "aliyun",
+      "dashscope",
+      "volces",
+      "doubao",
+      "deepseek",
+      "baidu",
+      "qianfan",
+      "tencent",
+      "hunyuan",
+    ].some((part) => host.includes(part));
+  } catch {
+    return true;
+  }
+}
+
+function foreignProxyFor(raw, openclaw) {
+  if (!raw || isDomesticOrLocalUrl(raw)) return "direct";
+  const proxy = env.OPENCLAW_PROVIDER_PROXY_URL
+    || openclawEnv(openclaw, ["OPENAI_PROXY_URL", "OPENCLAW_FOREIGN_PROXY_URL", "HTTPS_PROXY", "HTTP_PROXY"])
+    || env.OPENAI_PROXY_URL
+    || env.OPENCLAW_FOREIGN_PROXY_URL
+    || env.HTTPS_PROXY
+    || env.HTTP_PROXY
+    || "";
+  return proxy || "direct";
+}
+
 function chooseDefaultModel(openclaw) {
   if (JSON.stringify(openclaw).includes("llm-gateway.mlamp.cn")) return "kimi-k2.6";
   if (configMentionsModel(openclaw, "kimi-k2.6")) return "kimi-k2.6";
@@ -414,6 +461,8 @@ try {
 
 const upstreamBase = env.OPENCLAW_UPSTREAM_BASE_URL || (openclaw.upstream && openclaw.upstream.baseUrl) || "";
 const upstreamKey  = env.OPENCLAW_UPSTREAM_API_KEY  || (openclaw.upstream && openclaw.upstream.apiKey)  || "";
+const providerProxyUrl = foreignProxyFor(upstreamBase, openclaw);
+const noProxy = env.OPENCLAW_NO_PROXY || openclawEnv(openclaw, ["NO_PROXY"]) || "localhost,127.0.0.1,::1";
 
 // proxyKey: 本地 cpa 代理认证密钥，与访问外部大模型的 key 无关
 // 优先使用环境变量，默认使用固定值
@@ -425,6 +474,8 @@ const codexContextTokens = contextTokens(env, codexContextMode);
 
 sh("OPENCLAW_UPSTREAM_BASE_URL", upstreamBase);
 sh("OPENCLAW_UPSTREAM_API_KEY", upstreamKey);
+sh("OPENCLAW_PROVIDER_PROXY_URL", providerProxyUrl);
+sh("OPENCLAW_NO_PROXY", noProxy);
 sh("CODEX_MODEL", model);
 sh("CPA_PORT", cpaPort);
 sh("COMPACT_PORT", compactPort);
@@ -448,7 +499,7 @@ const cpaYaml = [
   `api-keys:`,
   ...apiKeysList.map(k => `  - ${q(k)}`),
   `debug: false`,
-  `proxy-url: direct`,
+  `proxy-url: ${q(providerProxyUrl)}`,
   `disable-cooling: true`,
   `max-retry-credentials: 0`,
   `upstream_base_url: ${q(upstreamBase)}`,
@@ -487,10 +538,42 @@ function setKey(lines, key, value, existing) {
   return existing + `${key} = "${escaped}"\n`;
 }
 
+function upsertSection(source, header, body) {
+  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`^\\s*\\[${escaped}\\]\\s*$`, "m");
+  const rendered = `[${header}]\n${body.replace(/\s+$/g, "")}\n`;
+  const match = source.match(re);
+  if (match && match.index !== undefined) {
+    const start = match.index;
+    const sectionBodyStart = start + match[0].length;
+    const rest = source.slice(sectionBodyStart);
+    const nextSection = rest.search(/^\s*\[[^\]]+\]\s*$/m);
+    const end = nextSection === -1 ? source.length : sectionBodyStart + nextSection;
+    return `${source.slice(0, start).replace(/\s+$/g, "")}\n\n${rendered}\n${source.slice(end).replace(/^\s+/, "")}`.replace(/^\s+/, "");
+  }
+  const features = source.match(/^\s*\[features\]\s*$/m);
+  if (features && features.index !== undefined) {
+    return `${source.slice(0, features.index).replace(/\s+$/g, "")}\n\n${rendered}\n${source.slice(features.index).replace(/^\s+/, "")}`;
+  }
+  return `${source.replace(/\s+$/g, "")}\n\n${rendered}`;
+}
+
 codexToml = setKey(codexToml, "model", model, codexToml);
-codexToml = setKey(codexToml, "base_url", `http://127.0.0.1:${compactPort}/v1`, codexToml);
-codexToml = setKey(codexToml, "openai_base_url", `http://127.0.0.1:${compactPort}/v1`, codexToml);
 codexToml = setKey(codexToml, "experimental_bearer_token", proxyKey, codexToml);
+codexToml = codexToml.replace(/^\s*model_provider\s*=\s*"cpa"\s*\n?/m, "");
+{
+  const firstSection = codexToml.search(/^\s*\[[^\]]+\]\s*$/m);
+  const topLevel = firstSection === -1 ? codexToml : codexToml.slice(0, firstSection);
+  const rest = firstSection === -1 ? "" : codexToml.slice(firstSection);
+  codexToml = `${topLevel.replace(/^\s*(?:base_url|openai_base_url)\s*=\s*"http:\/\/127\.0\.0\.1:\d+\/v1"\s*\n?/gm, "")}${rest}`;
+}
+codexToml = upsertSection(codexToml, "model_providers.cpa", [
+  'name = "CPA"',
+  `base_url = "http://127.0.0.1:${compactPort}/v1"`,
+  'wire_api = "responses"',
+  'supports_websockets = false',
+  `experimental_bearer_token = "${proxyKey.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+].join("\n"));
 if (codexContextTokens) {
   const replaceNumber = (source, key, value) => {
     const re = new RegExp(`^(\\s*${key}\\s*=\\s*)[0-9][0-9_]*(\\s*)$`, "m");
@@ -503,8 +586,39 @@ if (codexContextTokens) {
   codexToml = codexToml.replace(/^\s*model_auto_compact_token_limit\s*=.*\n?/m, "");
 }
 
-if (!/responses_websockets\s*=/.test(codexToml)) codexToml += "responses_websockets = true\n";
-if (!/responses_websockets_v2\s*=/.test(codexToml)) codexToml += "responses_websockets_v2 = true\n";
+const setExistingBooleanKey = (source, key, value) => {
+  const re = new RegExp(`^(\\s*${key}\\s*=\\s*)(true|false)(\\s*)$`, "gm");
+  return source.replace(re, `$1${value}$3`);
+};
+const ensureTopLevelBooleanKey = (source, key, value) => {
+  const rendered = `${key} = ${value}`;
+  const firstSection = source.search(/^\s*\[[^\]]+\]\s*$/m);
+  if (firstSection === -1) return `${source.replace(/\s+$/g, "")}\n${rendered}\n`;
+  const topLevel = source.slice(0, firstSection);
+  const rest = source.slice(firstSection);
+  if (new RegExp(`^\\s*${key}\\s*=`, "m").test(topLevel)) return source;
+  return `${topLevel.replace(/\s+$/g, "")}\n${rendered}\n\n${rest.replace(/^\s+/, "")}`;
+};
+const ensureFeaturesBooleanKey = (source, key, value) => {
+  const rendered = `${key} = ${value}`;
+  const header = source.match(/^\s*\[features\]\s*$/m);
+  if (!header || header.index === undefined) return `${source.replace(/\s+$/g, "")}\n\n[features]\n${rendered}\n`;
+  const sectionStart = header.index + header[0].length;
+  const afterHeader = source.slice(sectionStart);
+  const nextSection = afterHeader.search(/^\s*\[[^\]]+\]\s*$/m);
+  const sectionEnd = nextSection === -1 ? source.length : sectionStart + nextSection;
+  const section = source.slice(sectionStart, sectionEnd);
+  if (new RegExp(`^\\s*${key}\\s*=`, "m").test(section)) return source;
+  return `${source.slice(0, sectionStart)}\n${rendered}${source.slice(sectionStart)}`;
+};
+codexToml = setExistingBooleanKey(codexToml, "responses_websockets", "false");
+codexToml = setExistingBooleanKey(codexToml, "responses_websockets_v2", "false");
+codexToml = setExistingBooleanKey(codexToml, "enable_request_compression", "false");
+codexToml = ensureTopLevelBooleanKey(codexToml, "responses_websockets", "false");
+codexToml = ensureTopLevelBooleanKey(codexToml, "responses_websockets_v2", "false");
+codexToml = ensureFeaturesBooleanKey(codexToml, "responses_websockets", "false");
+codexToml = ensureFeaturesBooleanKey(codexToml, "responses_websockets_v2", "false");
+codexToml = ensureFeaturesBooleanKey(codexToml, "enable_request_compression", "false");
 
 fs.writeFileSync(codexPath, codexToml);
 fs.writeFileSync(path.join(codexDir, "auth.json"), `${JSON.stringify({ auth_mode: "apikey", OPENAI_API_KEY: proxyKey }, null, 2)}\n`, { mode: 0o600 });
@@ -548,6 +662,12 @@ info "Compact port: $COMPACT_PORT"
 
 # ── systemd units ─────────────────────────────────────────────────
 log "Writing systemd user units"
+systemctl --user disable --now cli-proxy-api-healthcheck.timer >/dev/null 2>&1 || true
+rm -f "$HOME/.config/systemd/user/cli-proxy-api-healthcheck.timer" \
+      "$HOME/.config/systemd/user/cli-proxy-api-healthcheck.service" \
+      "$HOME/.local/bin/cli-proxy-api-healthcheck" \
+      "$HOME/.config/systemd/user/cli-proxy-api.service.d/10-always-on.conf" \
+      "$HOME/.config/systemd/user/cpa-compact-proxy.service.d/10-always-on.conf"
 
 cat > "$HOME/.config/systemd/user/cli-proxy-api.service" <<UNIT
 [Unit]
@@ -558,7 +678,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=$HOME/.local/bin/cli-proxy-api
+Environment=HTTP_PROXY=
+Environment=HTTPS_PROXY=
 Environment=NO_PROXY=localhost,127.0.0.1,::1
+Environment=OPENCLAW_NO_PROXY=$OPENCLAW_NO_PROXY
 Restart=on-failure
 RestartSec=5
 
@@ -571,7 +694,7 @@ cat > "$HOME/.config/systemd/user/cpa-compact-proxy.service" <<UNIT
 [Unit]
 Description=Compact Proxy for CPA
 After=network-online.target cli-proxy-api.service
-Wants=network-online.target
+Wants=network-online.target cli-proxy-api.service
 
 [Service]
 Type=simple
@@ -580,23 +703,16 @@ Environment=CPA_PORT=$CPA_PORT
 Environment=CPA_BASE_URL=http://127.0.0.1:$CPA_PORT
 Environment=LISTEN_PORT=$COMPACT_PORT
 Environment=CPA_KEY=$CPA_PROXY_KEY
+Environment=CPA_UPSTREAM_API_KEY=$CPA_PROXY_KEY
 Environment=COMPACT_DEFAULT_MODEL=$DEFAULT_MODEL
+Environment=HTTP_PROXY=
+Environment=HTTPS_PROXY=
 Environment=NO_PROXY=localhost,127.0.0.1,::1
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=default.target
-UNIT
-
-mkdir -p "$HOME/.config/systemd/user/cpa-compact-proxy.service.d"
-cat > "$HOME/.config/systemd/user/cpa-compact-proxy.service.d/10-always-on.conf" <<UNIT
-[Unit]
-StartLimitIntervalSec=0
-
-[Service]
-Restart=always
-RestartSec=3
 UNIT
 
 # ── Watchdog ──────────────────────────────────────────────────────
@@ -627,14 +743,37 @@ ensure_active() {
 }
 
 codex_value() {
-  awk -F '"' -v key="$1" '$0 ~ key"[[:space:]]*=" { print $2; exit }' "$HOME/.codex/config.toml" 2>/dev/null
+  awk -F '"' -v key="$1" '/^[[:space:]]*\[/{ exit } $0 ~ key"[[:space:]]*=" { print $2; exit }' "$HOME/.codex/config.toml" 2>/dev/null
+}
+
+codex_cpa_provider_value() {
+  awk -F '"' -v key="$1" '
+    /^[[:space:]]*\[model_providers\.cpa\][[:space:]]*$/ { inside=1; next }
+    /^[[:space:]]*\[/ { inside=0 }
+    inside && $0 ~ key"[[:space:]]*=" { print $2; exit }
+  ' "$HOME/.codex/config.toml" 2>/dev/null
+}
+
+codex_cpa_base_url() {
+  local value
+  value="$(codex_cpa_provider_value base_url)"
+  if [[ -n "$value" ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  value="$(codex_value base_url)"
+  if [[ -n "$value" ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  codex_value openai_base_url
 }
 
 CPA_KEY="$(codex_value experimental_bearer_token)"
 [[ -n "$CPA_KEY" ]] || CPA_KEY="studio"
 CPA_PORT="$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)"
 [[ -n "$CPA_PORT" ]] || CPA_PORT=8317
-COMPACT_PORT="$(codex_value base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)"
+COMPACT_PORT="$(codex_cpa_base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)"
 [[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
 
 ensure_active cli-proxy-api.service

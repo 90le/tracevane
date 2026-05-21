@@ -9,6 +9,7 @@ export type CodexStackComponentId =
 
 export type CodexStackServiceId =
   | "cli-proxy-api.service"
+  | "cli-proxy-api-healthcheck.timer"
   | "cpa-compact-proxy.service"
   | "cc-connect.service"
   | "codex-stack-watchdog.timer";
@@ -106,9 +107,51 @@ export interface CodexStackProfile {
     hasBaseUrl: boolean;
     hasApiKey: boolean;
   };
+  providerProxy?: {
+    mode: "direct" | "proxy";
+    url: string | null;
+    source: string | null;
+  };
+  lastSmokeMatrix?: CodexStackSmokeMatrixResult | null;
   lastInstallAt?: string | null;
   lastCheckAt?: string | null;
   lastRepairAt?: string | null;
+}
+
+export type CodexStackSmokeCheckId =
+  | "cpa-health"
+  | "compact-health"
+  | "cpa-chat"
+  | "compact-non-stream"
+  | "compact-stream"
+  | "compact-compact";
+
+export type CodexStackSmokeStatus = "passed" | "failed";
+
+export interface CodexStackSmokeCheckResult {
+  id: CodexStackSmokeCheckId;
+  label: string;
+  status: CodexStackSmokeStatus;
+  startedAt: string;
+  finishedAt: string;
+  error: string | null;
+}
+
+export interface CodexStackSmokeModelResult {
+  model: string;
+  status: CodexStackSmokeStatus;
+  startedAt: string;
+  finishedAt: string;
+  checks: CodexStackSmokeCheckResult[];
+  error: string | null;
+}
+
+export interface CodexStackSmokeMatrixResult {
+  status: CodexStackSmokeStatus;
+  checkedAt: string;
+  requiredModels: string[];
+  models: CodexStackSmokeModelResult[];
+  attachEligible: boolean;
 }
 
 export interface CodexStackSummaryPayload {
@@ -126,6 +169,13 @@ export interface CodexStackSummaryPayload {
     compact: number;
     detectedCpa: number | null;
     detectedCompact: number | null;
+  };
+  proxyPolicy: {
+    providerMode: "direct" | "proxy";
+    providerProxyUrl: string | null;
+    providerProxySource: string | null;
+    noProxy: string;
+    cpaConfigProxyUrls: string[];
   };
   models: {
     current: string;
@@ -186,6 +236,8 @@ export interface CodexStackInstallRequest {
     CODEX_CONTEXT_WINDOW?: number;
     OPENCLAW_UPSTREAM_BASE_URL?: string;
     OPENCLAW_UPSTREAM_API_KEY?: string;
+    OPENCLAW_PROVIDER_PROXY_URL?: string;
+    OPENCLAW_NO_PROXY?: string;
   };
   flags?: {
     skipNpm?: boolean;
@@ -200,12 +252,17 @@ export interface CodexStackInstallRequest {
 }
 
 export type CodexStackRepairAction =
+  | "pause-stack"
+  | "resume-stack"
   | "restart-cpa"
   | "restart-compact-proxy"
   | "restart-watchdog"
   | "restart-cc-connect"
   | "repair-auth-json"
   | "repair-cpa-management"
+  | "repair-codex-transport"
+  | "run-smoke-matrix"
+  | "apply-codex-cpa-after-smoke"
   | "disable-conflicting-units"
   | "rerun-install-no-start";
 

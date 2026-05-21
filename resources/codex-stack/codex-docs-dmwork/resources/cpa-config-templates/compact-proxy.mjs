@@ -18,6 +18,7 @@
 
 import http from "node:http";
 import https from "node:https";
+import * as zlib from "node:zlib";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
@@ -59,12 +60,17 @@ const DEFAULT_MODEL = process.env.COMPACT_DEFAULT_MODEL || "glm-5.1";
 const MAX_CONV_CHARS = Number(process.env.COMPACT_MAX_CONV_CHARS || 300000);
 const REQUEST_TIMEOUT_MS = Number(process.env.COMPACT_TIMEOUT_MS || 300000);
 const RESPONSES_MODE = (process.env.COMPACT_RESPONSES_MODE || "adapter").toLowerCase();
-const UPSTREAM_API_KEY = process.env.CPA_UPSTREAM_API_KEY || process.env.COMPACT_UPSTREAM_API_KEY || "";
+const UPSTREAM_API_KEY = process.env.CPA_UPSTREAM_API_KEY || process.env.COMPACT_UPSTREAM_API_KEY || process.env.CPA_KEY || "";
+const COMPACT_ENABLE_WEBSOCKETS = /^(1|true|yes)$/i.test(process.env.COMPACT_ENABLE_WEBSOCKETS || "");
 
 const upstreamBase = new URL(CPA_BASE_URL);
 if (!["http:", "https:"].includes(upstreamBase.protocol)) {
   throw new Error(`CPA_BASE_URL must use http or https, got: ${CPA_BASE_URL}`);
 }
+
+const upstreamAgent = upstreamBase.protocol === "https:"
+  ? new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16, timeout: REQUEST_TIMEOUT_MS })
+  : new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16, timeout: REQUEST_TIMEOUT_MS });
 
 const COMPACT_SYSTEM = `You are a context compaction assistant. Summarize the conversation into a concise but complete handoff that preserves:
 
@@ -171,12 +177,29 @@ async function readBody(req) {
   return Buffer.concat(chunks);
 }
 
+function decodeRequestBody(req, body) {
+  const encoding = String(req.headers["content-encoding"] || "identity").trim().toLowerCase();
+  if (!body.length || encoding === "" || encoding === "identity") return body;
+  if (encoding === "gzip" || encoding === "x-gzip") return zlib.gunzipSync(body);
+  if (encoding === "br") return zlib.brotliDecompressSync(body);
+  if (encoding === "deflate") return zlib.inflateSync(body);
+  if (encoding === "zstd" && typeof zlib.zstdDecompressSync === "function") return zlib.zstdDecompressSync(body);
+  throw new Error(`unsupported request content-encoding: ${encoding}`);
+}
+
+async function readJsonRequest(req) {
+  const body = await readBody(req);
+  const decoded = decodeRequestBody(req, body);
+  return JSON.parse(decoded.toString("utf8"));
+}
+
 function requestUpstream({ method, url, headers, body }) {
   return new Promise((resolve, reject) => {
     const upstream = requestModule().request({
       protocol: upstreamBase.protocol,
       hostname: upstreamBase.hostname,
       port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
+      agent: upstreamAgent,
       method,
       path: resolveUpstreamPath(url),
       headers,
@@ -549,14 +572,22 @@ async function handleResponsesStream(req, res, responseReq, chatBody) {
   const model = responseReq.model || chatBody.model;
   const body = Buffer.from(JSON.stringify({ ...chatBody, stream: true }));
   let finished = false;
+  let sawDone = false;
 
   writeSseHeaders(res);
   writeResponsesStreamStart(res, responseId, model, outputItemId);
+
+  function fail(message, code = "api_error") {
+    if (finished) return;
+    finished = true;
+    writeResponsesStreamFailure(res, responseId, model, message, code);
+  }
 
   const upstreamReq = requestModule().request({
     protocol: upstreamBase.protocol,
     hostname: upstreamBase.hostname,
     port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
+    agent: upstreamAgent,
     method: "POST",
     path: resolveUpstreamPath("/v1/chat/completions"),
     headers: {
@@ -571,10 +602,7 @@ async function handleResponsesStream(req, res, responseReq, chatBody) {
       const chunks = [];
       upstreamRes.on("data", (chunk) => chunks.push(chunk));
       upstreamRes.on("end", () => {
-        writeResponsesStreamFailure(
-          res,
-          responseId,
-          model,
+        fail(
           `responses upstream failed with ${upstreamRes.statusCode}: ${Buffer.concat(chunks).toString("utf8").slice(0, 2000)}`,
           "upstream_error",
         );
@@ -644,6 +672,7 @@ async function handleResponsesStream(req, res, responseReq, chatBody) {
     upstreamRes.on("data", (chunk) => {
       parseSseDataBlocks(parserState, chunk, (data) => {
         if (data === "[DONE]") {
+          sawDone = true;
           finalize();
           return;
         }
@@ -657,7 +686,7 @@ async function handleResponsesStream(req, res, responseReq, chatBody) {
         if (parsed.usage) finalUsage = parsed.usage;
         const choice = parsed.choices?.[0];
         const delta = choice?.delta || {};
-        const textDelta = typeof delta.content === "string" ? delta.content : "";
+        const textDelta = typeof delta.content === "string" ? delta.content : (typeof delta.reasoning_content === "string" ? delta.reasoning_content : "");
         if (textDelta) {
           accumulatedText += textDelta;
           writeSseEvent(res, {
@@ -674,16 +703,21 @@ async function handleResponsesStream(req, res, responseReq, chatBody) {
         }
       });
     });
-    upstreamRes.on("end", finalize);
+    upstreamRes.on("end", () => {
+      if (sawDone) finalize();
+      else fail("upstream stream ended before [DONE]", "upstream_incomplete");
+    });
+    upstreamRes.on("aborted", () => {
+      fail("upstream stream aborted before completion", "upstream_aborted");
+    });
     upstreamRes.on("error", (error) => {
-      if (!finished) writeResponsesStreamFailure(res, responseId, model, `upstream stream failed: ${error.message}`);
+      fail(`upstream stream failed: ${error.message}`, "upstream_error");
     });
   });
 
   upstreamReq.on("timeout", () => upstreamReq.destroy(new Error("upstream timeout")));
   upstreamReq.on("error", (error) => {
-    if (finished) return;
-    writeResponsesStreamFailure(res, responseId, model, `responses adapter failed: ${error.message}`);
+    fail(`responses adapter failed: ${error.message}`, "upstream_error");
   });
   res.on("close", () => {
     if (finished) return;
@@ -695,7 +729,7 @@ async function handleResponsesStream(req, res, responseReq, chatBody) {
 async function handleResponses(req, res) {
   let request;
   try {
-    request = JSON.parse((await readBody(req)).toString("utf8"));
+    request = await readJsonRequest(req);
   } catch (error) {
     return json(res, 400, responseError(`invalid JSON: ${error.message}`, "invalid_request_error"));
   }
@@ -708,7 +742,7 @@ async function handleResponses(req, res) {
 async function handleCompact(req, res) {
   let request;
   try {
-    request = JSON.parse((await readBody(req)).toString("utf8"));
+    request = await readJsonRequest(req);
   } catch (error) {
     return json(res, 400, { error: { message: `invalid JSON: ${error.message}` } });
   }
@@ -752,7 +786,7 @@ async function handleCompact(req, res) {
     }
 
     const chat = JSON.parse(upstream.body.toString("utf8"));
-    const summary = chat.choices?.[0]?.message?.content || "";
+    const rawMsg = chat.choices?.[0]?.message; const summary = rawMsg?.content || rawMsg?.reasoning_content || "";
     log(`compact completed, ${summary.length} chars`);
     return json(res, 200, {
       id: `compact_${request.thread_id || "local"}`,
@@ -785,6 +819,7 @@ async function forwardHttp(req, res) {
     protocol: upstreamBase.protocol,
     hostname: upstreamBase.hostname,
     port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
+    agent: upstreamAgent,
     method: req.method,
     path: resolveUpstreamPath(req.url),
     headers,
@@ -856,7 +891,27 @@ const server = http.createServer((req, res) => {
 const WS_IDLE_TIMEOUT_MS = Number(process.env.WS_IDLE_TIMEOUT_MS || 900000);
 const WS_PING_INTERVAL_MS = Number(process.env.WS_PING_INTERVAL_MS || 30000);
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ noServer: true });
+
+server.on("upgrade", (req, socket, head) => {
+  if (!COMPACT_ENABLE_WEBSOCKETS) {
+    log(`websocket rejected for CPA-compatible stable transport: ${req.url}`);
+    try {
+      socket.write(
+        "HTTP/1.1 426 Upgrade Required\r\n" +
+        "Connection: close\r\n" +
+        "Content-Type: text/plain; charset=utf-8\r\n" +
+        "\r\n" +
+        "Compact Proxy uses HTTP/SSE for CPA-compatible Responses transport. Set COMPACT_ENABLE_WEBSOCKETS=true to opt in.\n"
+      );
+    } catch {}
+    try { socket.destroy(); } catch {}
+    return;
+  }
+  wss.handleUpgrade(req, socket, head, (clientWs) => {
+    wss.emit("connection", clientWs, req);
+  });
+});
 
 wss.on("connection", (clientWs, req) => {
   const upstreamUrl = wsUpstreamUrl(req.url);
@@ -964,5 +1019,5 @@ wss.on("connection", (clientWs, req) => {
 });
 
 server.listen(LISTEN_PORT, LISTEN_HOST, () => {
-  log(`listening on ${LISTEN_HOST}:${LISTEN_PORT} -> ${upstreamBase.href} (responses ${RESPONSES_MODE})`);
+  log(`listening on ${LISTEN_HOST}:${LISTEN_PORT} -> ${upstreamBase.href} (responses ${RESPONSES_MODE}, websockets ${COMPACT_ENABLE_WEBSOCKETS ? "enabled" : "disabled"})`);
 });

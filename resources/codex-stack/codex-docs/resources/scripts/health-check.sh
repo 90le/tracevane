@@ -14,7 +14,30 @@ warn() { printf '  %bWARN%b %s\n' "$YELLOW" "$NC" "$*"; WARN=1; }
 fail() { printf '  %bFAIL%b %s\n' "$RED" "$NC" "$*"; FAIL=1; }
 
 codex_value() {
-  awk -F '"' -v key="$1" '$0 ~ key"[[:space:]]*=" { print $2; exit }' "$HOME/.codex/config.toml" 2>/dev/null
+  awk -F '"' -v key="$1" '/^[[:space:]]*\[/{ exit } $0 ~ key"[[:space:]]*=" { print $2; exit }' "$HOME/.codex/config.toml" 2>/dev/null
+}
+
+codex_cpa_provider_value() {
+  awk -F '"' -v key="$1" '
+    /^[[:space:]]*\[model_providers\.cpa\][[:space:]]*$/ { inside=1; next }
+    /^[[:space:]]*\[/ { inside=0 }
+    inside && $0 ~ key"[[:space:]]*=" { print $2; exit }
+  ' "$HOME/.codex/config.toml" 2>/dev/null
+}
+
+codex_cpa_base_url() {
+  local value
+  value="$(codex_cpa_provider_value base_url)"
+  if [[ -n "$value" ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  value="$(codex_value base_url)"
+  if [[ -n "$value" ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  codex_value openai_base_url
 }
 
 service_state() {
@@ -74,9 +97,15 @@ echo "--- Config files ---"
 [[ -f "$HOME/.local/bin/cpa-compact-proxy.mjs" ]] && ok "Compact Proxy script exists" || fail "Compact Proxy script missing"
 
 if [[ -f "$HOME/.codex/config.toml" ]]; then
-  [[ "$(codex_value model_provider)" == "cpa" ]] && ok "Codex model_provider = cpa" || fail "Codex model_provider is not cpa"
-  grep -q 'responses_websockets = true' "$HOME/.codex/config.toml" && ok "Codex responses_websockets enabled" || fail "responses_websockets is not enabled"
-  grep -q 'responses_websockets_v2 = true' "$HOME/.codex/config.toml" && ok "Codex responses_websockets_v2 enabled" || fail "responses_websockets_v2 is not enabled"
+  BASE_URL="$(codex_cpa_base_url)"
+  MODEL_PROVIDER="$(codex_value model_provider)"
+  if [[ "$MODEL_PROVIDER" == "cpa" ]]; then
+    [[ "$BASE_URL" == http://127.0.0.1:*/v1 ]] && ok "Codex active provider points to local Compact Proxy" || fail "Codex model_provider=cpa but base_url is not local Compact Proxy"
+  else
+    warn "Codex active provider is not CPA; this is expected until the CPA smoke gate passes"
+  fi
+  grep -Eq 'responses_websockets[[:space:]]*=[[:space:]]*false' "$HOME/.codex/config.toml" && ok "Codex Responses WebSocket disabled for CPA/SSE stability" || warn "responses_websockets is not disabled; Codex may reconnect before falling back to HTTPS/SSE"
+  grep -Eq 'responses_websockets_v2[[:space:]]*=[[:space:]]*false' "$HOME/.codex/config.toml" && ok "Codex Responses WebSocket v2 disabled for CPA/SSE stability" || warn "responses_websockets_v2 is not disabled; Codex may reconnect before falling back to HTTPS/SSE"
 fi
 [[ -f "$HOME/.codex/auth.json" ]] && ok "~/.codex/auth.json exists" || fail "~/.codex/auth.json missing"
 if [[ -f "$HOME/.cli-proxy-api/config.yaml" ]]; then
@@ -86,7 +115,7 @@ fi
 
 CPA_PORT="$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)"
 [[ -n "$CPA_PORT" ]] || CPA_PORT=8317
-COMPACT_PORT="$(codex_value base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)"
+COMPACT_PORT="$(codex_cpa_base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)"
 [[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
 CPA_KEY="$(codex_value experimental_bearer_token)"
 [[ -n "$CPA_KEY" ]] || CPA_KEY="studio"

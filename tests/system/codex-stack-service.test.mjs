@@ -19,6 +19,11 @@ function writeJson(file, value) {
   writeFile(file, `${JSON.stringify(value, null, 2)}\n`, 0o600);
 }
 
+function tomlTopLevel(source) {
+  const firstSection = source.search(/^\s*\[[^\]]+\]\s*$/m);
+  return firstSection === -1 ? source : source.slice(0, firstSection);
+}
+
 function createStudioConfig(root) {
   const openclawRoot = path.join(root, ".openclaw");
   fs.mkdirSync(openclawRoot, { recursive: true });
@@ -115,6 +120,38 @@ async function withMockFetch(handler, task) {
     await task();
   } finally {
     globalThis.fetch = original;
+  }
+}
+
+async function withFakeSystemctl(task) {
+  const root = makeTempRoot();
+  const bin = path.join(root, "bin");
+  const logFile = path.join(root, "systemctl.log");
+  fs.mkdirSync(bin, { recursive: true });
+  writeFile(
+    path.join(bin, "systemctl"),
+    [
+      "#!/usr/bin/env bash",
+      "printf '%s\\n' \"$*\" >> \"$FAKE_SYSTEMCTL_LOG\"",
+      "exit 0",
+      "",
+    ].join("\n"),
+    0o755,
+  );
+  const previousPath = process.env.PATH;
+  const previousLog = process.env.FAKE_SYSTEMCTL_LOG;
+  process.env.PATH = `${bin}${path.delimiter}${previousPath || ""}`;
+  process.env.FAKE_SYSTEMCTL_LOG = logFile;
+  try {
+    await task({
+      logFile,
+      readCalls: () => fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8").trim().split(/\r?\n/).filter(Boolean) : [],
+    });
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousLog === undefined) delete process.env.FAKE_SYSTEMCTL_LOG;
+    else process.env.FAKE_SYSTEMCTL_LOG = previousLog;
   }
 }
 
@@ -336,6 +373,508 @@ test("codex stack rejects unknown service ids and actions before shell execution
   );
 });
 
+test("codex stack pause action disables watchdog before Compact and CPA", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withFakeSystemctl(async ({ readCalls }) => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["pause-stack"] });
+    const job = await waitForJob(service, response.job.id);
+
+    assert.equal(job.status, "succeeded");
+    assert.deepEqual(readCalls(), [
+      "--user disable --now cli-proxy-api-healthcheck.timer",
+      "--user stop cli-proxy-api-healthcheck.service",
+      "--user disable --now codex-stack-watchdog.timer",
+      "--user disable --now cpa-compact-proxy.service",
+      "--user disable --now cli-proxy-api.service",
+      "--user stop cpa-compact-proxy.service",
+      "--user stop cli-proxy-api.service",
+    ]);
+    assert.match(job.logTail, /will not relaunch automatically/);
+  });
+});
+
+test("codex stack resume action starts CPA then Compact before watchdog", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withFakeSystemctl(async ({ readCalls }) => {
+    await withMockFetch(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+      return new Response("not found", { status: 404 });
+    }, async () => {
+      const service = createCodexStackService(config);
+      const response = await service.startRepair(undefined, { actions: ["resume-stack"] });
+      const job = await waitForJob(service, response.job.id);
+
+      assert.equal(job.status, "succeeded");
+      assert.deepEqual(readCalls(), [
+        "--user disable --now cli-proxy-api-healthcheck.timer",
+        "--user enable --now cli-proxy-api.service",
+        "--user enable --now cpa-compact-proxy.service",
+        "--user enable --now codex-stack-watchdog.timer",
+      ]);
+      assert.match(job.logTail, /Resumed CPA stack/);
+    });
+  });
+});
+
+test("codex stack resume uses the CPA provider base_url instead of the first provider base_url", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  writeFile(path.join(root, ".codex/config.toml"), `
+model = "kimi-k2.6"
+model_provider = "cpa"
+
+[model_providers.openai]
+base_url = "https://api.openai.example/v1"
+
+[model_providers.cpa]
+name = "CPA"
+base_url = "http://127.0.0.1:28796/v1"
+wire_api = "responses"
+supports_websockets = false
+experimental_bearer_token = "secret-cpa-key-123456"
+`);
+
+  const seenUrls = [];
+  await withFakeSystemctl(async () => {
+    await withMockFetch(async (url) => {
+      seenUrls.push(String(url));
+      if (String(url).endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+      return new Response("not found", { status: 404 });
+    }, async () => {
+      const service = createCodexStackService(config);
+      const response = await service.startRepair(undefined, { actions: ["resume-stack"] });
+      const job = await waitForJob(service, response.job.id);
+
+      assert.equal(job.status, "succeeded");
+      assert.ok(seenUrls.includes("http://127.0.0.1:28796/healthz"));
+      assert.ok(!seenUrls.includes("http://127.0.0.1:18796/healthz"));
+    });
+  });
+});
+
+test("codex stack detects and repairs slow WebSocket-first Codex transport for CPA", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+  fs.writeFileSync(codexConfig, `model_provider = "cpa"\n${fs.readFileSync(codexConfig, "utf8")}`);
+  fs.appendFileSync(codexConfig, `
+responses_websockets = true
+
+[features]
+responses_websockets = true
+responses_websockets_v2 = true
+enable_request_compression = true
+`);
+
+  const service = createCodexStackService(config);
+  const summary = await service.getSummary();
+  assert.ok(summary.warnings.some((warning) => warning.includes("Responses WebSocket transport is enabled")));
+  assert.ok(summary.warnings.some((warning) => warning.includes("request compression is enabled")));
+
+  const response = await service.startRepair(undefined, {
+    actions: ["repair-codex-transport"],
+  });
+  const job = await waitForJob(service, response.job.id);
+  assert.equal(job.status, "succeeded");
+
+  const repaired = fs.readFileSync(codexConfig, "utf8");
+  assert.doesNotMatch(repaired, /responses_websockets(?:_v2)?\s*=\s*true/);
+  assert.match(repaired, /responses_websockets\s*=\s*false/);
+  assert.match(repaired, /responses_websockets_v2\s*=\s*false/);
+  assert.match(repaired, /enable_request_compression\s*=\s*false/);
+  assert.doesNotMatch(tomlTopLevel(repaired), /^base_url\s*=\s*"http:\/\/127\.0\.0\.1:18796\/v1"/m);
+  assert.doesNotMatch(tomlTopLevel(repaired), /^openai_base_url\s*=\s*"http:\/\/127\.0\.0\.1:18796\/v1"/m);
+  assert.doesNotMatch(tomlTopLevel(repaired), /model_provider\s*=\s*"cpa"/);
+  assert.match(repaired, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"[\s\S]*wire_api = "responses"[\s\S]*supports_websockets = false/);
+});
+
+test("codex stack refuses to attach Codex CPA when stream smoke emits response.failed", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+
+  await withMockFetch(async (url, init = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (requestUrl.includes("/v1/chat/completions")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (requestUrl.endsWith("/v1/responses")) {
+      const body = JSON.parse(String(init.body || "{}"));
+      if (body.stream) {
+        return new Response([
+          "event: response.created",
+          `data: ${JSON.stringify({ type: "response.created", response: { status: "in_progress" } })}`,
+          "",
+          "event: response.failed",
+          `data: ${JSON.stringify({ type: "response.failed", response: { status: "failed", error: { code: "upstream_error", message: "boom" } } })}`,
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+      return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    if (requestUrl.endsWith("/v1/responses/compact")) {
+      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["apply-codex-cpa-after-smoke"] });
+    const job = await waitForJob(service, response.job.id);
+
+    assert.equal(job.status, "failed");
+    assert.match(job.error || "", /response\.failed/);
+    assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
+  });
+});
+
+test("codex stack attaches Codex CPA only after the full smoke gate passes", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+
+  await withMockFetch(async (url, init = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (requestUrl.includes("/v1/chat/completions")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (requestUrl.endsWith("/v1/responses")) {
+      const body = JSON.parse(String(init.body || "{}"));
+      if (body.stream) {
+        return new Response([
+          "event: response.created",
+          `data: ${JSON.stringify({ type: "response.created", response: { status: "in_progress" } })}`,
+          "",
+          "event: response.completed",
+          `data: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+      return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    if (requestUrl.endsWith("/v1/responses/compact")) {
+      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["apply-codex-cpa-after-smoke"] });
+    const job = await waitForJob(service, response.job.id);
+
+    assert.equal(job.status, "succeeded");
+    assert.match(job.logTail, /CPA smoke gate passed/);
+    const patched = fs.readFileSync(codexConfig, "utf8");
+    assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
+    assert.match(patched, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
+  });
+});
+
+test("codex stack switches official current model to CPA-safe domestic model before attach", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+  fs.writeFileSync(codexConfig, fs.readFileSync(codexConfig, "utf8").replace('model = "glm-5.1"', 'model = "gpt-5.5"'));
+  const requestedModels = [];
+
+  await withMockFetch(async (url, init = {}) => {
+    const requestUrl = String(url);
+    const body = init.body ? JSON.parse(String(init.body)) : {};
+    if (body.model) requestedModels.push(body.model);
+    if (body.model === "gpt-5.5") {
+      return new Response(JSON.stringify({ error: { message: "official model must not be smoke-tested for CPA attach" } }), { status: 500 });
+    }
+    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (requestUrl.includes("/v1/chat/completions")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (requestUrl.endsWith("/v1/responses")) {
+      if (body.stream) {
+        return new Response([
+          "event: response.completed",
+          `data: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+      return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    if (requestUrl.endsWith("/v1/responses/compact")) {
+      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["apply-codex-cpa-after-smoke"] });
+    const job = await waitForJob(service, response.job.id);
+
+    assert.equal(job.status, "succeeded");
+    assert.match(job.logTail, /switch Codex model to kimi-k2\.6/);
+    assert.equal(requestedModels.includes("gpt-5.5"), false);
+    const patched = fs.readFileSync(codexConfig, "utf8");
+    assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
+    assert.match(tomlTopLevel(patched), /model\s*=\s*"kimi-k2\.6"/);
+  });
+});
+
+test("codex stack smoke matrix validates glm and kimi without attaching Codex", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+
+  await withMockFetch(async (url, init = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (requestUrl.includes("/v1/chat/completions")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (requestUrl.endsWith("/v1/responses")) {
+      const body = JSON.parse(String(init.body || "{}"));
+      if (body.stream) {
+        return new Response([
+          "event: response.created",
+          `data: ${JSON.stringify({ type: "response.created", response: { status: "in_progress" } })}`,
+          "",
+          "event: response.completed",
+          `data: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+      return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    if (requestUrl.endsWith("/v1/responses/compact")) {
+      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["run-smoke-matrix"] });
+    const job = await waitForJob(service, response.job.id);
+    const summary = await service.getSummary();
+
+    assert.equal(job.status, "succeeded");
+    assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
+    assert.deepEqual(summary.profile.lastSmokeMatrix?.requiredModels, ["glm-5.1", "kimi-k2.6"]);
+    assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
+  });
+});
+
+test("codex stack smoke matrix records kimi failure and blocks Codex attach", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+
+  await withMockFetch(async (url, init = {}) => {
+    const requestUrl = String(url);
+    const body = init.body ? JSON.parse(String(init.body)) : {};
+    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (body.model === "kimi-k2.6" && requestUrl.includes("/v1/chat/completions")) {
+      return new Response(JSON.stringify({ error: { message: "kimi unavailable" } }), { status: 500 });
+    }
+    if (requestUrl.includes("/v1/chat/completions")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (requestUrl.endsWith("/v1/responses")) {
+      if (body.stream) {
+        return new Response([
+          "event: response.created",
+          `data: ${JSON.stringify({ type: "response.created", response: { status: "in_progress" } })}`,
+          "",
+          "event: response.completed",
+          `data: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+      return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    if (requestUrl.endsWith("/v1/responses/compact")) {
+      return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["apply-codex-cpa-after-smoke"] });
+    const job = await waitForJob(service, response.job.id);
+    const summary = await service.getSummary();
+
+    assert.equal(job.status, "failed");
+    assert.match(job.error || "", /kimi-k2\.6/);
+    assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, false);
+    assert.equal(summary.profile.lastSmokeMatrix?.models.find((item) => item.model === "kimi-k2.6")?.status, "failed");
+    assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
+  });
+});
+
 test("codex stack logs expose bounded preview metadata for UI performance controls", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -405,6 +944,8 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
 	      "echo cpa_key=$CPA_PROXY_KEY",
       "echo upstream_key=$OPENCLAW_UPSTREAM_API_KEY",
       "echo upstream_url=$OPENCLAW_UPSTREAM_BASE_URL",
+      "echo provider_proxy=$OPENCLAW_PROVIDER_PROXY_URL",
+      "echo no_proxy=$OPENCLAW_NO_PROXY",
       "",
     ].join("\n");
   writeFile(path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"), setupScriptContent, 0o755);
@@ -416,9 +957,11 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
 	      CODEX_MODEL: "glm-5.1",
 	      CODEX_CONTEXT_MODE: "custom",
 	      CODEX_CONTEXT_WINDOW: 320000,
-	      CPA_PROXY_KEY: "secret-cpa-key-for-job",
+      CPA_PROXY_KEY: "secret-cpa-key-for-job",
       OPENCLAW_UPSTREAM_BASE_URL: "https://upstream.example.test/v1",
       OPENCLAW_UPSTREAM_API_KEY: "secret-upstream-key-for-job",
+      OPENCLAW_PROVIDER_PROXY_URL: "http://127.0.0.1:7897",
+      OPENCLAW_NO_PROXY: "localhost,127.0.0.1,::1",
     },
     flags: {
       skipNpm: true,
@@ -433,12 +976,16 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   assert.match(job.logTail, /context_mode=custom/);
   assert.match(job.logTail, /context_window=320000/);
   assert.match(job.logTail, /upstream_url=https:\/\/upstream\.example\.test\/v1/);
+  assert.match(job.logTail, /provider_proxy=http:\/\/127\.0\.0\.1:7897/);
+  assert.match(job.logTail, /no_proxy=localhost,127\.0\.0\.1,::1/);
   assert.doesNotMatch(job.logTail, /secret-cpa-key-for-job/);
   assert.doesNotMatch(job.logTail, /secret-upstream-key-for-job/);
 
   const summary = await service.getSummary();
   assert.equal(summary.profile.upstreamOverride?.hasBaseUrl, true);
   assert.equal(summary.profile.upstreamOverride?.hasApiKey, true);
+  assert.equal(summary.profile.providerProxy?.mode, "proxy");
+  assert.equal(summary.profile.providerProxy?.url, "http://127.0.0.1:7897");
   const authJson = JSON.parse(fs.readFileSync(path.join(root, ".codex/auth.json"), "utf8"));
   assert.equal(authJson.OPENAI_API_KEY, "secret-cpa-key-for-job");
 });
@@ -522,6 +1069,7 @@ test("codex stack config patch writes backups and updates managed fields", async
   const codexConfig = path.join(home, ".codex/config.toml");
   const cpaConfig = path.join(home, ".cli-proxy-api/config.yaml");
   const ccConfig = path.join(home, ".cc-connect/config.toml");
+  fs.writeFileSync(codexConfig, `model_provider = "cpa"\n${fs.readFileSync(codexConfig, "utf8")}`);
 
   const service = createCodexStackService(config);
 	  const response = await service.patchConfig(undefined, {
@@ -540,6 +1088,16 @@ test("codex stack config patch writes backups and updates managed fields", async
   assert.match(fs.readFileSync(codexConfig, "utf8"), /model = "gpt-5\.4"/);
   assert.match(fs.readFileSync(codexConfig, "utf8"), /28796/);
   assert.match(fs.readFileSync(codexConfig, "utf8"), /model_context_window = 1050000/);
+  const patchedCodex = fs.readFileSync(codexConfig, "utf8");
+  assert.match(patchedCodex, /responses_websockets = false/);
+  assert.match(patchedCodex, /responses_websockets_v2 = false/);
+  assert.match(patchedCodex, /enable_request_compression = false/);
+  assert.ok(patchedCodex.indexOf("responses_websockets = false") < patchedCodex.indexOf("[model_providers.cpa]"));
+  assert.match(patchedCodex, /\[features\][\s\S]*enable_request_compression = false[\s\S]*responses_websockets_v2 = false[\s\S]*responses_websockets = false/);
+  assert.doesNotMatch(tomlTopLevel(patchedCodex), /^base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/m);
+  assert.doesNotMatch(tomlTopLevel(patchedCodex), /openai_base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/);
+  assert.doesNotMatch(tomlTopLevel(patchedCodex), /model_provider = "cpa"/);
+  assert.match(patchedCodex, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:28796\/v1"[\s\S]*wire_api = "responses"[\s\S]*supports_websockets = false[\s\S]*experimental_bearer_token = "replacement-cpa-key-123"/);
   assert.match(fs.readFileSync(cpaConfig, "utf8"), /port: 9317/);
   assert.match(fs.readFileSync(cpaConfig, "utf8"), /replacement-cpa-key-123/);
   assert.match(fs.readFileSync(cpaConfig, "utf8"), /secret-key: "studio"/);
@@ -558,4 +1116,106 @@ test("bundled health check treats skipped cc-connect as warning only", () => {
   );
   assert.match(script, /cc-connect not found; skip this if you intentionally installed Codex\/CPA\/Compact only/);
   assert.doesNotMatch(script, /fail "cc-connect not found"/);
+});
+
+test("bundled codex stack installers keep Codex detached until smoke gate", () => {
+  const official = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+  const dmwork = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+  const dmworkCodexConfig = dmwork.match(/cat > "\$CODEX_CONFIG" << TOMLEOF\n([\s\S]*?)\nTOMLEOF/)?.[1] || "";
+
+  assert.doesNotMatch(official, /^codexToml = setKey\(codexToml, "model_provider", "cpa"/m);
+  assert.doesNotMatch(dmworkCodexConfig, /^model_provider = "cpa"$/m);
+  assert.doesNotMatch(dmworkCodexConfig, /^openai_base_url = "http:\/\/127\.0\.0\.1:\$\{COMPACT_PORT\}\/v1"$/m);
+  assert.match(official, /model_providers\.cpa/);
+  assert.match(dmworkCodexConfig, /\[model_providers\.cpa\]/);
+});
+
+test("bundled dmwork installer keeps glm and kimi out of claude provider aliases", () => {
+  const dmwork = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(dmwork, /claude-api-key:/);
+  assert.match(dmwork, /name: mlamp\/kimi-k2\.6[\s\S]*alias: kimi-k2\.6/);
+  assert.match(dmwork, /name: glm-5\.1/);
+});
+
+test("bundled installers use provider-specific proxy policy", () => {
+  const official = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+  const dmwork = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+
+  assert.match(official, /function isDomesticOrLocalUrl/);
+  assert.match(official, /function foreignProxyFor/);
+  assert.match(official, /proxy-url: \$\{q\(providerProxyUrl\)\}/);
+  assert.match(dmwork, /function isDomesticOrLocal/);
+  assert.match(dmwork, /MLAMP_PROXY_URL=.*providerProxy/);
+  assert.match(dmwork, /BIGMODEL_PROXY_URL=.*providerProxy/);
+  assert.match(dmwork, /proxy-url: "\$\{MLAMP_PROXY_URL:-direct\}"/);
+  assert.match(dmwork, /proxy-url: "\$\{BIGMODEL_PROXY_URL:-direct\}"/);
+});
+
+test("bundled installers clean legacy CPA relaunch timers and avoid always-on CPA restarts", () => {
+  const official = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+  const dmwork = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+  const officialHealth = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
+    "utf8",
+  );
+  const dmworkHealth = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/health-check.sh"),
+    "utf8",
+  );
+
+  for (const script of [official, dmwork]) {
+    assert.match(script, /disable --now cli-proxy-api-healthcheck\.timer/);
+    assert.match(script, /cli-proxy-api\.service\.d\/10-always-on\.conf/);
+    assert.match(script, /cpa-compact-proxy\.service\.d\/10-always-on\.conf/);
+  }
+  assert.doesNotMatch(official, /cat > "\$HOME\/\.config\/systemd\/user\/cpa-compact-proxy\.service\.d\/10-always-on\.conf"/);
+  assert.match(official, /Restart=on-failure/);
+  assert.match(dmwork, /Description=CPA cli-proxy-api[\s\S]*Restart=on-failure/);
+  assert.match(dmwork, /Description=CPA Compact Proxy[\s\S]*Restart=on-failure/);
+  assert.match(officialHealth, /codex_cpa_provider_value/);
+  assert.match(dmworkHealth, /codex_cpa_provider_value/);
+});
+
+test("codex stack summary explains system proxy is ignored for direct domestic providers", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    env: {
+      HTTPS_PROXY: "http://127.0.0.1:7890",
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withMockFetch(async () => new Response("not found", { status: 404 }), async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.equal(summary.proxyPolicy.providerMode, "direct");
+    assert.equal(summary.proxyPolicy.providerProxyUrl, "http://127.0.0.1:7890");
+    assert.ok(summary.warnings.some((warning) => warning.includes("国内网关不会继承系统代理")));
+  });
 });

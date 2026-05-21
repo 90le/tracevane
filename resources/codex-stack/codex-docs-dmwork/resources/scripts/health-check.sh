@@ -15,6 +15,33 @@ fail() { echo -e "  ${RED}❌ $1${NC}"; FAIL=1; }
 warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; }
 FAIL=0
 
+codex_value() {
+  awk -F '"' -v key="$1" '/^[[:space:]]*\[/{ exit } $0 ~ key"[[:space:]]*=" { print $2; exit }' "$HOME/.codex/config.toml" 2>/dev/null
+}
+
+codex_cpa_provider_value() {
+  awk -F '"' -v key="$1" '
+    /^[[:space:]]*\[model_providers\.cpa\][[:space:]]*$/ { inside=1; next }
+    /^[[:space:]]*\[/ { inside=0 }
+    inside && $0 ~ key"[[:space:]]*=" { print $2; exit }
+  ' "$HOME/.codex/config.toml" 2>/dev/null
+}
+
+codex_cpa_base_url() {
+  local value
+  value="$(codex_cpa_provider_value base_url)"
+  if [[ -n "$value" ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  value="$(codex_value base_url)"
+  if [[ -n "$value" ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  codex_value openai_base_url
+}
+
 echo "=== 环境健康检查 ==="
 echo ""
 
@@ -132,20 +159,29 @@ echo "--- Codex 配置 ---"
 CODEX_CONFIG="$HOME/.codex/config.toml"
 if [[ -f "$CODEX_CONFIG" ]]; then
   ok "config.toml 存在"
-  MODEL=$(grep '^model = ' "$CODEX_CONFIG" | head -1 | sed 's/model = "\(.*\)"/\1/')
+  MODEL=$(codex_value model)
   ok "默认模型: ${MODEL:-未设置}"
   
-  if grep -q 'responses_websockets = true' "$CODEX_CONFIG"; then
-    ok "WebSocket 已启用"
+  if grep -Eq 'responses_websockets[[:space:]]*=[[:space:]]*false' "$CODEX_CONFIG"; then
+    ok "Codex Responses WebSocket 已关闭，CPA 链路使用稳定 SSE/HTTPS"
   else
-    fail "WebSocket 未启用 — 必须设置 responses_websockets = true"
+    warn "responses_websockets 未关闭，Codex 可能先重连 WebSocket 再回退到 HTTPS/SSE"
   fi
   
-  BASE=$(grep '^openai_base_url = ' "$CODEX_CONFIG" | head -1 | sed 's/openai_base_url = "\(.*\)"/\1/')
-  ok "Base URL: ${BASE:-未设置}"
+  MODEL_PROVIDER=$(codex_value model_provider)
+  BASE=$(codex_cpa_base_url)
+  if [[ "$MODEL_PROVIDER" == "cpa" ]]; then
+    if [[ "$BASE" == http://127.0.0.1:*/v1 ]]; then
+      ok "Codex 当前已指向本地 Compact Proxy"
+    else
+      fail "Codex model_provider=cpa 但 base_url 未指向本地 Compact Proxy"
+    fi
+  else
+    warn "Codex 当前未切换到 CPA；这是 smoke gate 通过前的预期状态"
+  fi
   
   # 读取 CPA key
-  CPA_KEY=$(grep '^experimental_bearer_token = ' "$CODEX_CONFIG" | head -1 | sed 's/experimental_bearer_token = "\(.*\)"/\1/')
+  CPA_KEY=$(codex_value experimental_bearer_token)
   if [[ -z "$CPA_KEY" ]]; then
     CPA_KEY="studio"
   fi
@@ -156,7 +192,7 @@ fi
 
 CPA_PORT=$(grep '^port:' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null | head -1 | sed 's/[^0-9]//g')
 [[ -n "$CPA_PORT" ]] || CPA_PORT=18795
-COMPACT_PORT=$(grep '^base_url = ' "$CODEX_CONFIG" 2>/dev/null | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)
+COMPACT_PORT=$(codex_cpa_base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)
 [[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
 if [[ -f "$HOME/.cli-proxy-api/config.yaml" ]]; then
   grep -q 'remote-management:' "$HOME/.cli-proxy-api/config.yaml" && ok "CPA remote-management 已配置" || fail "CPA remote-management 缺失"
