@@ -59,6 +59,7 @@ const LISTEN_PORT = Number(process.env.LISTEN_PORT || 18796);
 const DEFAULT_MODEL = process.env.COMPACT_DEFAULT_MODEL || "glm-5.1";
 const MAX_CONV_CHARS = Number(process.env.COMPACT_MAX_CONV_CHARS || 300000);
 const REQUEST_TIMEOUT_MS = Number(process.env.COMPACT_TIMEOUT_MS || 300000);
+const STREAM_KEEPALIVE_MS = Number(process.env.COMPACT_STREAM_KEEPALIVE_MS || 15000);
 const RESPONSES_MODE = (process.env.COMPACT_RESPONSES_MODE || "adapter").toLowerCase();
 const UPSTREAM_API_KEY = process.env.CPA_UPSTREAM_API_KEY || process.env.COMPACT_UPSTREAM_API_KEY || process.env.CPA_KEY || "";
 const COMPACT_ENABLE_WEBSOCKETS = /^(1|true|yes)$/i.test(process.env.COMPACT_ENABLE_WEBSOCKETS || "");
@@ -442,6 +443,11 @@ function writeSseDone(res) {
   res.write("data: [DONE]\n\n");
 }
 
+function writeSseKeepAlive(res) {
+  res.write(": keepalive\n\n");
+  res.flush?.();
+}
+
 function writeResponsesStreamStart(res, responseId, model, outputItemId) {
   const initial = createResponseResource({ id: responseId, model, status: "in_progress", output: [] });
   writeSseEvent(res, { type: "response.created", response: initial });
@@ -573,13 +579,34 @@ async function handleResponsesStream(req, res, responseReq, chatBody) {
   const body = Buffer.from(JSON.stringify({ ...chatBody, stream: true }));
   let finished = false;
   let sawDone = false;
+  let keepAliveTimer = null;
+
+  function stopKeepAlive() {
+    if (!keepAliveTimer) return;
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
+
+  function startKeepAlive() {
+    if (!Number.isFinite(STREAM_KEEPALIVE_MS) || STREAM_KEEPALIVE_MS <= 0) return;
+    keepAliveTimer = setInterval(() => {
+      if (finished) {
+        stopKeepAlive();
+        return;
+      }
+      writeSseKeepAlive(res);
+    }, STREAM_KEEPALIVE_MS);
+    keepAliveTimer.unref?.();
+  }
 
   writeSseHeaders(res);
   writeResponsesStreamStart(res, responseId, model, outputItemId);
+  startKeepAlive();
 
   function fail(message, code = "api_error") {
     if (finished) return;
     finished = true;
+    stopKeepAlive();
     writeResponsesStreamFailure(res, responseId, model, message, code);
   }
 
@@ -618,6 +645,7 @@ async function handleResponsesStream(req, res, responseReq, chatBody) {
     function finalize() {
       if (finished) return;
       finished = true;
+      stopKeepAlive();
       const normalizedToolCalls = toolCalls.values();
       writeSseEvent(res, {
         type: "response.output_text.done",
@@ -720,6 +748,7 @@ async function handleResponsesStream(req, res, responseReq, chatBody) {
     fail(`responses adapter failed: ${error.message}`, "upstream_error");
   });
   res.on("close", () => {
+    stopKeepAlive();
     if (finished) return;
     try { upstreamReq.destroy(); } catch {}
   });

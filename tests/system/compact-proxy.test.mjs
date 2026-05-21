@@ -189,6 +189,42 @@ test("compact proxy converts chat completion SSE into Responses SSE with tool ca
   }
 });
 
+test("compact proxy keeps long idle Responses streams alive", async () => {
+  const cpa = await startFakeCpa(async (req, res) => {
+    const body = await readJsonBody(req);
+    assert.equal(body.stream, true);
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "late" } }] })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  });
+  const proxy = await startProxy(cpa.port, { env: { COMPACT_STREAM_KEEPALIVE_MS: "40" } });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "test-model", stream: true, input: "wait" }),
+    });
+
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.match(text, /: keepalive\n\n/);
+    const events = parseSse(text);
+    assert.ok(events.some((entry) => entry.event === "response.output_text.delta" && JSON.parse(entry.data).delta === "late"));
+    assert.ok(events.some((entry) => entry.event === "response.completed"));
+    assert.equal(events.at(-1).data, "[DONE]");
+  } finally {
+    await proxy.close();
+    await cpa.close();
+  }
+});
+
 test("compact proxy marks stream failed when upstream ends before DONE", async () => {
   const cpa = await startFakeCpa(async (req, res) => {
     const body = await readJsonBody(req);
