@@ -40,28 +40,17 @@
     </div>
 
     <template v-else>
-      <article v-if="activeJob" class="panel-card cs-job-banner" :class="jobStateClass(activeJob.status)">
-        <div>
-          <p class="cs-job-eyebrow">{{ text("后台任务", "Background Job") }}</p>
-          <h3>{{ activeJobTitle }}</h3>
-          <p class="cs-job-meta">
-            {{ activeJob.commandLabel }} · {{ jobStatusLabel(activeJob.status) }} · {{ formatTimestamp(activeJob.updatedAt) }}
-          </p>
-        </div>
-        <div class="cs-job-actions">
-          <button type="button" class="secondary-button" @click="activeSection = 'logs'">
-            {{ text("查看输出", "View Output") }}
-          </button>
-          <button
-            v-if="!isCodexStackJobRunning(activeJob)"
-            type="button"
-            class="secondary-button"
-            @click="activeJob = null"
-          >
-            {{ text("关闭", "Dismiss") }}
-          </button>
-        </div>
-      </article>
+      <CodexStackJobBanner
+        v-if="activeJob"
+        :title="activeJobTitle"
+        :command-label="activeJob.commandLabel"
+        :status="activeJob.status"
+        :status-label="jobStatusLabel(activeJob.status)"
+        :updated-at-label="formatTimestamp(activeJob.updatedAt)"
+        :running="isCodexStackJobRunning(activeJob)"
+        @open-logs="activeSection = 'logs'"
+        @dismiss="activeJob = null"
+      />
 
       <article class="panel-card cs-model-ribbon">
         <div>
@@ -1127,7 +1116,6 @@ import type {
   CodexStackComponentSummary,
   CodexStackConfigPatchRequest,
   CodexStackJob,
-  CodexStackJobStatus,
   CodexStackLogResponse,
   CodexStackRepairAction,
   CodexStackRunReadinessCheck,
@@ -1174,6 +1162,7 @@ import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
 import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
+import CodexStackJobBanner from "./CodexStackJobBanner.vue";
 import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";
@@ -2367,14 +2356,8 @@ function componentStatusLabel(component: CodexStackComponentSummary): string {
   return statusLabels[component.status];
 }
 
-function jobStateClass(status: CodexStackJobStatus): string {
-  if (status === "succeeded") return "cs-job-banner-ok";
-  if (status === "failed" || status === "interrupted") return "cs-job-banner-fail";
-  return "cs-job-banner-live";
-}
-
-function jobStatusLabel(status: CodexStackJobStatus): string {
-  const labels: Record<CodexStackJobStatus, string> = {
+function jobStatusLabel(status: CodexStackJob["status"]): string {
+  const labels: Record<CodexStackJob["status"], string> = {
     queued: text("排队中", "Queued"),
     running: text("执行中", "Running"),
     succeeded: text("已完成", "Succeeded"),
@@ -3078,7 +3061,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 .cs-lock-card,
-.cs-job-banner,
 .cs-hero-card,
 .cs-model-ribbon {
   display: flex;
@@ -3088,7 +3070,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 .cs-lock-card p,
-.cs-job-meta,
 .cs-section-copy,
 .cs-field-hint,
 .cs-hero-description,
@@ -3158,14 +3139,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   min-width: 0;
 }
 
-.cs-job-banner {
-  border-color: color-mix(in srgb, var(--line) 72%, transparent);
-}
-
-.cs-job-banner-live {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 30%, transparent);
-}
-
 .cs-model-ribbon {
   align-items: flex-start;
   border-color: color-mix(in srgb, var(--acc) 22%, var(--line));
@@ -3191,15 +3164,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   flex-wrap: wrap;
 }
 
-.cs-job-banner-ok {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 34%, transparent);
-}
-
-.cs-job-banner-fail {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 34%, transparent);
-}
-
-.cs-job-eyebrow,
 .cs-section-kicker {
   margin: 0 0 6px;
   color: var(--muted);
@@ -3208,7 +3172,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   font-size: 0.72rem;
 }
 
-.cs-job-actions,
 .cs-hero-actions,
 .cs-actions,
 .cs-install-cta-row,
@@ -4017,7 +3980,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
     grid-template-columns: 1fr;
   }
 
-  .cs-job-banner,
   .cs-lock-card,
   .cs-hero-card,
   .cs-model-ribbon,

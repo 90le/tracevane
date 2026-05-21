@@ -13,6 +13,7 @@ const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackAct
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
 const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackInstallPlanCard.vue");
+const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanner.vue");
 const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
 const repairBoard = read("apps/web-vue/src/features/codex-stack/CodexStackRepairBoard.vue");
@@ -53,6 +54,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(installPlanCard, /class="panel-card cs-install-plan-card"/);
   assert.match(installPlanCard, /\.cs-install-plan-list\s*\{/);
   assert.match(installPlanCard, /@media \(max-width: 960px\)/);
+  assert.match(jobBanner, /class="panel-card cs-job-banner"/);
+  assert.match(jobBanner, /\.cs-job-banner-live\s*\{/);
+  assert.match(jobBanner, /@media \(max-width: 960px\)/);
   assert.match(jobOutputCard, /class="panel-card cs-job-output-card"/);
   assert.match(jobOutputCard, /\.cs-log\s*\{/);
   assert.match(jobOutputCard, /@media \(max-width: 960px\)/);
@@ -93,6 +97,18 @@ test("codex stack dashboard delegates diagnostics without losing run check", () 
   assert.match(diagnosticsPanel, /健康检查/);
   assert.match(diagnosticsPanel, /@click="\$emit\('run-check'\)"/);
   assert.match(diagnosticsPanel, /warnings\.length/);
+});
+
+test("codex stack delegates global job banner without losing navigation and dismiss actions", () => {
+  assert.match(controlPage, /import CodexStackJobBanner from "\.\/CodexStackJobBanner\.vue";/);
+  assert.match(controlPage, /<CodexStackJobBanner[\s\S]*v-if="activeJob"[\s\S]*:command-label="activeJob\.commandLabel"[\s\S]*:status="activeJob\.status"/);
+  assert.match(controlPage, /@open-logs="activeSection = 'logs'"[\s\S]*@dismiss="activeJob = null"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-job-banner"/);
+  assert.doesNotMatch(controlPage, /function jobStateClass/);
+  assert.match(jobBanner, /const jobStateClass = computed/);
+  assert.match(jobBanner, /props\.status === "succeeded"/);
+  assert.match(jobBanner, /@click="\$emit\('open-logs'\)"/);
+  assert.match(jobBanner, /v-if="!running"[\s\S]*@click="\$emit\('dismiss'\)"/);
 });
 
 test("codex stack install page delegates preflight plan without losing actions", () => {
