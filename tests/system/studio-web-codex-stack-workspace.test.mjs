@@ -39,18 +39,21 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(chainMap, /export interface CodexStackChainNode/);
   assert.match(chainMap, /\.cs-chain-line\s*\{/);
   assert.match(chainMap, /\.cs-chain-gates\s*\{/);
+  assert.match(chainMap, /\.cs-chain-warning-strip\s*\{/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
 });
 
 test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /import CodexStackChainMap from "\.\/CodexStackChainMap\.vue";/);
-  assert.match(controlPage, /<CodexStackChainMap[\s\S]*:nodes="chainNodes"[\s\S]*:gates="chainGates"/);
+  assert.match(controlPage, /<CodexStackChainMap[\s\S]*:nodes="chainNodes"[\s\S]*:gates="chainGates"[\s\S]*:warnings="chainWarnings"/);
   assert.match(controlPage, /const chainNodes = computed<CodexStackChainNode\[\]>/);
+  assert.match(controlPage, /const chainWarnings = computed\(\(\) => summary\.value\?\.warnings\.slice\(0, 3\) \|\| \[\]\);/);
   assert.match(controlPage, /id: "job-lock"/);
   assert.match(controlPage, /id: "smoke"/);
   assert.match(controlPage, /id: "watchdog"/);
   assert.match(chainMap, /aria-label="Codex Stack request chain"/);
+  assert.match(chainMap, /v-if="warnings\.length"/);
 });
 
 test("codex stack runtime config save sends only changed fields", () => {

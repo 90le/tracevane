@@ -145,6 +145,7 @@
                 :overall-tone="statusTone"
                 :nodes="chainNodes"
                 :gates="chainGates"
+                :warnings="chainWarnings"
               />
 
               <div class="cs-command-grid">
@@ -1724,7 +1725,10 @@ const chainMapLabels = computed(() => ({
     "The runtime chain, proxy policy, context, and smoke gate stay in one view so install, edits, and long jobs do not hide the current Codex state.",
   ),
   status: jobRunning.value ? text("写操作锁定", "Writes locked") : statusLabel.value,
+  warningKicker: text("风险", "Risks"),
+  warningTitle: text("需要先处理的链路告警", "Chain warnings to resolve first"),
 }));
+const chainWarnings = computed(() => summary.value?.warnings.slice(0, 3) || []);
 const chainNodes = computed<CodexStackChainNode[]>(() => {
   const current = summary.value;
   if (!current) return [];

@@ -29,6 +29,16 @@
         <small>{{ gate.help }}</small>
       </div>
     </div>
+
+    <div v-if="warnings.length" class="cs-chain-warning-strip">
+      <div class="cs-chain-warning-head">
+        <span>{{ labels.warningKicker }}</span>
+        <strong>{{ labels.warningTitle }}</strong>
+      </div>
+      <ul>
+        <li v-for="warning in warnings" :key="warning">{{ warning }}</li>
+      </ul>
+    </div>
   </article>
 </template>
 
@@ -56,6 +66,8 @@ export interface CodexStackChainMapLabels {
   title: string;
   copy: string;
   status: string;
+  warningKicker: string;
+  warningTitle: string;
 }
 
 defineProps<{
@@ -63,6 +75,7 @@ defineProps<{
   overallTone: CodexStackTone;
   nodes: CodexStackChainNode[];
   gates: CodexStackChainGate[];
+  warnings: string[];
 }>();
 </script>
 
@@ -166,6 +179,43 @@ defineProps<{
   background: color-mix(in srgb, var(--code-bg) 28%, transparent);
 }
 
+.cs-chain-warning-strip {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, var(--line));
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+
+.cs-chain-warning-head {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.cs-chain-warning-head span {
+  color: var(--warning);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cs-chain-warning-head strong {
+  color: var(--text);
+}
+
+.cs-chain-warning-strip ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-soft);
+}
+
+.cs-chain-warning-strip li + li {
+  margin-top: 6px;
+}
+
 .cs-status-pill {
   display: inline-flex;
   align-items: center;
@@ -221,6 +271,7 @@ defineProps<{
 
   .cs-chain-line,
   .cs-chain-gates,
+  .cs-chain-warning-strip,
   .cs-chain-node-wrap {
     grid-template-columns: 1fr;
   }
