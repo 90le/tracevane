@@ -410,7 +410,7 @@ test("codex stack rejects unknown service ids and actions before shell execution
   );
 });
 
-test("codex stack rejects concurrent install repair and finalize jobs", async () => {
+test("codex stack rejects concurrent mutating actions while a job is active", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -437,6 +437,9 @@ test("codex stack rejects concurrent install repair and finalize jobs", async ()
     () => service.startInstall(undefined, { flags: { channel: "official" } }),
     () => service.startRepair(undefined, { actions: ["run-smoke-matrix"] }),
     () => service.finalizeCcConnect(undefined, { project: "main" }),
+    () => service.controlService(undefined, "cli-proxy-api.service", "restart"),
+    () => service.patchConfig(undefined, { defaultModel: "kimi-k2.6" }),
+    () => service.patchCcConnectConfig(undefined, { raw: "language = \"zh\"\n" }),
   ]) {
     await assert.rejects(
       run(),

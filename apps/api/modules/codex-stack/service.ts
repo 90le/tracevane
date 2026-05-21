@@ -2073,7 +2073,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!job) return;
     throw new CodexStackServiceError(
       "codex_stack_job_already_running",
-      `Codex Stack job ${job.id} (${job.commandLabel}) is still ${job.status}. Wait for it to finish before starting another install, repair, or finalize action.`,
+      `Codex Stack job ${job.id} (${job.commandLabel}) is still ${job.status}. Wait for it to finish before starting another install, repair, finalize, service, or config action.`,
       409,
     );
   }
@@ -2673,6 +2673,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!(SERVICE_ACTIONS as readonly string[]).includes(action)) {
       throw new CodexStackServiceError("codex_stack_invalid_service_action", `Unsupported service action: ${action}`);
     }
+    requireNoActiveJob();
     const result = await execText("systemctl", ["--user", action, serviceId], { timeout: 30_000 });
     if (!result.ok) {
       throw new CodexStackServiceError("codex_stack_service_action_failed", redact(result.output || `systemctl ${action} failed`), 500);
@@ -2730,6 +2731,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const noProxy = hasNoProxyPatch ? normalizeString(payload.noProxy, "localhost,127.0.0.1,::1") : "";
     if (payload.cpaPort !== undefined && !cpaPort) throw new CodexStackServiceError("codex_stack_invalid_port", "cpaPort must be between 1 and 65535.");
     if (payload.compactPort !== undefined && !compactPort) throw new CodexStackServiceError("codex_stack_invalid_port", "compactPort must be between 1 and 65535.");
+    requireNoActiveJob();
 
     const codex = readText(currentPaths.codexConfig);
     if (codex) {
@@ -2918,6 +2920,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         "Provide either raw TOML or structured cc-connect patch fields, not both.",
       );
     }
+    requireNoActiveJob();
 
     let nextRaw = currentRaw;
     if (hasRawPatch) {
