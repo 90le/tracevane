@@ -219,110 +219,13 @@
                   @dismiss="activeJob = null"
                 />
 
-                <div class="cs-install-grid">
-                  <article class="panel-card">
-                    <div class="cs-card-header">
-                      <div>
-                        <p class="cs-section-kicker">{{ text("步骤 1", "Step 1") }}</p>
-                        <h4>{{ text("选择渠道", "Choose Channel") }}</h4>
-                      </div>
-                    </div>
-                    <p class="cs-field-hint">
-                      {{ text("DMWork / Octo 版本支持多渠道；官方版通过 npm 安装 cc-connect。", "DMWork / Octo supports multi-channel, while Official installs cc-connect from npm.") }}
-                    </p>
-                    <div class="cs-channel-grid">
-                      <label class="cs-channel-card" :class="{ 'cs-channel-card-active': installForm.channel === 'dmwork' }">
-                        <input v-model="installForm.channel" type="radio" value="dmwork" />
-                        <strong>DMWork</strong>
-                        <span>{{ text("增强版", "Enhanced") }}</span>
-                        <p>{{ text("自编译二进制，三渠道支持。", "Self-built binary with three-channel support.") }}</p>
-                      </label>
-                      <label class="cs-channel-card" :class="{ 'cs-channel-card-active': installForm.channel === 'octo' }">
-                        <input v-model="installForm.channel" type="radio" value="octo" />
-                        <strong>Octo</strong>
-                        <span>{{ text("增强版（推荐）", "Enhanced (Recommended)") }}</span>
-                        <p>{{ text("DMWork 品牌升级版，后续主力维护。", "Rebranded DMWork, the primary channel going forward.") }}</p>
-                      </label>
-                      <label class="cs-channel-card" :class="{ 'cs-channel-card-active': installForm.channel === 'official' }">
-                        <input v-model="installForm.channel" type="radio" value="official" />
-                        <strong>{{ text("官方版", "Official") }}</strong>
-                        <span>{{ text("走 npm 分发，适合标准环境。", "Distributed via npm for standard environments.") }}</span>
-                        <p>{{ text("支持飞书 / 微信。", "Supports Feishu / Weixin.") }}</p>
-                      </label>
-                    </div>
-                  </article>
-
-                  <article class="panel-card cs-flow-card">
-                    <div class="cs-card-header">
-                      <div>
-                        <p class="cs-section-kicker">{{ text("统一配置", "Unified Config") }}</p>
-                        <h4>{{ text("模型与上游链路", "Model and Upstream Chain") }}</h4>
-                      </div>
-                    </div>
-                    <p class="cs-field-hint">
-                    {{ text("默认选择遵循 kimi-k2.6 → glm-5.1 → openclaw.json 默认模型；用户仍可手动改成任何 CPA 支持的模型。上游 API 进入 CPA，再由 Compact 暴露给 Codex 和 cc-connect。", "The default follows kimi-k2.6 → glm-5.1 → the openclaw.json default model, while users can still choose any model supported by CPA. Upstream API enters CPA, then Compact exposes it to Codex and cc-connect.") }}
-                    </p>
-                    <div class="cs-flow-steps">
-                      <span>{{ text("上游 API", "Upstream API") }}</span>
-                      <span>CPA :{{ installForm.cpaPort }}</span>
-                      <span>Compact :{{ installForm.compactPort }}</span>
-                      <span>{{ installForm.model || "--" }}</span>
-                      <span>cc-connect</span>
-                    </div>
-                  </article>
-
-                  <article class="panel-card">
-                    <div class="cs-card-header">
-                      <div>
-                        <p class="cs-section-kicker">{{ text("步骤 2", "Step 2") }}</p>
-                        <h4>{{ text("基础参数", "Core Parameters") }}</h4>
-                      </div>
-                    </div>
-                    <div class="cs-form-grid">
-                      <label class="form-field">
-                        <span class="form-label">{{ text("默认模型", "Default Model") }}</span>
-                        <select v-model="installForm.model" class="form-input">
-                          <option v-for="model in modelOptions" :key="`install-${model}`" :value="model">{{ model }}</option>
-                        </select>
-                        <span class="form-help">{{ modelSourceLabel }}</span>
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("CPA 端口", "CPA Port") }}</span>
-                        <input v-model.number="installForm.cpaPort" class="form-input" type="number" min="1" />
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("Compact 端口", "Compact Port") }}</span>
-                        <input v-model.number="installForm.compactPort" class="form-input" type="number" min="1" />
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("代理密钥", "Proxy Key") }}</span>
-                        <input v-model="installForm.cpaKey" class="form-input" type="password" :maxlength="72" />
-                        <span class="form-hint">{{ text("建议使用 16-72 个字符", "Recommended 16-72 characters") }}</span>
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("Codex 上下文", "Codex Context") }}</span>
-                        <select v-model="installForm.contextMode" class="form-input">
-                          <option value="default">{{ text("默认上下文", "Default context") }}</option>
-                          <option value="codex-1m">{{ text("1M 上下文", "1M context") }}</option>
-                          <option value="custom">{{ text("自定义 token", "Custom tokens") }}</option>
-                        </select>
-                        <span class="form-help">{{ text("1M 适合支持大上下文的模型；默认模式不会写 model_context_window。", "1M is for large-context models; default mode does not write model_context_window.") }}</span>
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("上下文 tokens", "Context tokens") }}</span>
-                        <input
-                          v-model.number="installForm.contextWindowTokens"
-                          class="form-input"
-                          type="number"
-                          min="1000"
-                          max="1050000"
-                          step="1000"
-                          :disabled="installContextTokensDisabled"
-                        />
-                      </label>
-                    </div>
-                  </article>
-                </div>
+                <CodexStackInstallConfigPanel
+                  :form="installForm"
+                  :model-options="modelOptions"
+                  :model-source-label="modelSourceLabel"
+                  :context-tokens-disabled="installContextTokensDisabled"
+                  @update-field="updateInstallFormField"
+                />
 
                 <article class="panel-card">
                   <div class="cs-card-header">
@@ -369,38 +272,6 @@
                     </article>
                   </div>
                 </article>
-
-                <details class="panel-card cs-details">
-                  <summary>{{ text("高级选项", "Advanced Options") }}</summary>
-                  <div class="cs-details-body">
-                    <div class="cs-checkbox-grid">
-                      <label class="cs-switch-row"><input v-model="installForm.skipNpm" type="checkbox" /> {{ text("跳过 npm 更新", "Skip npm update") }}</label>
-                      <label class="cs-switch-row"><input v-model="installForm.skipCcConnect" type="checkbox" /> {{ text("跳过 cc-connect", "Skip cc-connect") }}</label>
-                      <label class="cs-switch-row"><input v-model="installForm.noStart" type="checkbox" /> {{ text("只写配置不启动服务", "Write config only") }}</label>
-                      <label class="cs-switch-row"><input v-model="installForm.skipExisting" type="checkbox" /> {{ text("自动跳过已安装组件", "Auto-skip installed") }}</label>
-                      <label class="cs-switch-row"><input v-model="installForm.forceReinstall" type="checkbox" /> {{ text("强制全部重新安装", "Force reinstall all") }}</label>
-                    </div>
-                    <div class="cs-form-grid">
-                      <label class="form-field">
-                        <span class="form-label">{{ text("上游 URL", "Upstream URL") }}</span>
-                        <input v-model="installForm.upstreamBaseUrl" class="form-input" placeholder="https://api.example.com/v1" />
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("上游 API Key", "Upstream API Key") }}</span>
-                        <input v-model="installForm.upstreamApiKey" class="form-input" type="password" />
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">{{ text("海外上游代理", "Foreign Provider Proxy") }}</span>
-                        <input v-model="installForm.providerProxyUrl" class="form-input" placeholder="http://127.0.0.1:7897" />
-                        <span class="form-help">{{ text("留空则自动读取 OpenAI/海外上游代理；国内网关默认直连。", "Leave empty to auto-detect proxy for OpenAI/foreign providers; domestic gateways stay direct.") }}</span>
-                      </label>
-                      <label class="form-field">
-                        <span class="form-label">NO_PROXY</span>
-                        <input v-model="installForm.noProxy" class="form-input" placeholder="localhost,127.0.0.1,::1" />
-                      </label>
-                    </div>
-                  </div>
-                </details>
 
                 <CodexStackRepairBoard
                   :can-run-mutation="canRunMutation"
@@ -1052,6 +923,11 @@ import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
 import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
+import CodexStackInstallConfigPanel from "./CodexStackInstallConfigPanel.vue";
+import type {
+  CodexStackInstallConfigDraft,
+  CodexStackInstallConfigField,
+} from "./CodexStackInstallConfigPanel.vue";
 import CodexStackJobBanner from "./CodexStackJobBanner.vue";
 import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
@@ -1191,7 +1067,7 @@ const navSections = computed(() => [
   },
 ]);
 
-const installForm = reactive({
+const installForm = reactive<CodexStackInstallConfigDraft & { skipComponents: string[]; forceComponents: string[] }>({
   model: "kimi-k2.6",
   contextMode: "default" as ContextMode,
   contextWindowTokens: 1050000,
@@ -1211,6 +1087,31 @@ const installForm = reactive({
   forceComponents: [] as string[],
   channel: "dmwork" as CodexStackChannel,
 });
+
+function updateInstallFormField(field: CodexStackInstallConfigField, value: string | number | boolean): void {
+  switch (field) {
+    case "contextWindowTokens":
+    case "cpaPort":
+    case "compactPort":
+      installForm[field] = Number(value) || 0;
+      return;
+    case "skipNpm":
+    case "skipCcConnect":
+    case "noStart":
+    case "skipExisting":
+    case "forceReinstall":
+      installForm[field] = Boolean(value);
+      return;
+    case "contextMode":
+      installForm.contextMode = value === "codex-1m" || value === "custom" ? value : "default";
+      return;
+    case "channel":
+      installForm.channel = value === "official" || value === "octo" ? value : "dmwork";
+      return;
+    default:
+      installForm[field] = String(value);
+  }
+}
 
 const configForm = reactive<CodexStackRuntimeConfigDraft>({
   defaultModel: "kimi-k2.6",
@@ -3224,8 +3125,7 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   color: var(--text-soft);
 }
 
-.cs-dashboard-grid,
-.cs-install-grid {
+.cs-dashboard-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
@@ -3344,40 +3244,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   margin: 0;
 }
 
-.cs-channel-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.cs-channel-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  cursor: pointer;
-  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
-}
-
-.cs-channel-card input {
-  display: none;
-}
-
-.cs-channel-card p,
-.cs-channel-card span {
-  margin: 0;
-  color: var(--text-soft);
-}
-
-.cs-channel-card-active {
-  border-color: color-mix(in srgb, var(--acc) 42%, var(--line));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 12%, transparent), color-mix(in srgb, var(--surface) 98%, transparent));
-  transform: translateY(-1px);
-}
-
 .cs-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3411,39 +3277,12 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   color: var(--text);
 }
 
-.cs-details summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.cs-details-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.cs-checkbox-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.cs-switch-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-soft);
-}
-
 .cs-install-cta-card {
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 16%, transparent), transparent 32%),
     var(--surface);
 }
 
-.cs-flow-card,
 .cs-config-action-strip {
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--success) 12%, transparent), transparent 34%),
@@ -3464,36 +3303,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 .cs-config-action-strip p:not(.cs-section-kicker) {
   margin: 6px 0 0;
   color: var(--text-soft);
-}
-
-.cs-flow-steps {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.cs-flow-steps span {
-  position: relative;
-  min-height: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--acc) 26%, var(--line));
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--acc) 10%, var(--surface));
-  color: var(--text);
-  font-weight: 650;
-  text-align: center;
-}
-
-.cs-flow-steps span:not(:last-child)::after {
-  content: ">";
-  position: absolute;
-  right: -10px;
-  color: var(--muted);
-  font-weight: 700;
 }
 
 .cs-big-button {
@@ -3826,13 +3635,9 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   }
 
   .cs-dashboard-grid,
-  .cs-install-grid,
-  .cs-channel-grid,
   .cs-form-grid,
   .cs-provider-grid,
   .cs-platform-grid,
-  .cs-checkbox-grid,
-  .cs-flow-steps,
   .cs-agent-workbench,
   .cs-agent-editor-grid,
   .cs-agent-template-row {
@@ -3842,12 +3647,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   .cs-agent-rail,
   .cs-agent-savebar {
     position: static;
-  }
-
-  .cs-flow-steps span:not(:last-child)::after {
-    content: "v";
-    right: auto;
-    bottom: -13px;
   }
 
   .cs-kv-row {

@@ -12,6 +12,7 @@ const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogCons
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
+const installConfigPanel = read("apps/web-vue/src/features/codex-stack/CodexStackInstallConfigPanel.vue");
 const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackInstallPlanCard.vue");
 const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanner.vue");
 const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
@@ -53,6 +54,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(diagnosticsPanel, /class="cs-diagnostics-grid"/);
   assert.match(diagnosticsPanel, /\.cs-warning-list\s*\{/);
   assert.match(diagnosticsPanel, /@media \(max-width: 960px\)/);
+  assert.match(installConfigPanel, /class="cs-install-config-panel"/);
+  assert.match(installConfigPanel, /\.cs-install-grid\s*\{/);
+  assert.match(installConfigPanel, /@media \(max-width: 960px\)/);
   assert.match(installPlanCard, /class="panel-card cs-install-plan-card"/);
   assert.match(installPlanCard, /\.cs-install-plan-list\s*\{/);
   assert.match(installPlanCard, /@media \(max-width: 960px\)/);
@@ -127,6 +131,24 @@ test("codex stack install page delegates preflight plan without losing actions",
   assert.match(installPlanCard, /@click="\$emit\('install-full'\)"/);
   assert.match(installPlanCard, /@click="\$emit\('install-base'\)"/);
   assert.match(installPlanCard, /@click="\$emit\('repair'\)"/);
+});
+
+test("codex stack install page delegates install config without moving install payload ownership", () => {
+  assert.match(controlPage, /import CodexStackInstallConfigPanel from "\.\/CodexStackInstallConfigPanel\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackInstallConfigPanel[\s\S]*:form="installForm"[\s\S]*:model-options="modelOptions"[\s\S]*:model-source-label="modelSourceLabel"[\s\S]*:context-tokens-disabled="installContextTokensDisabled"[\s\S]*@update-field="updateInstallFormField"/,
+  );
+  assert.match(controlPage, /function updateInstallFormField\(field: CodexStackInstallConfigField, value: string \| number \| boolean\): void/);
+  assert.match(controlPage, /function buildInstallPayload\(skipCcConnect = installForm\.skipCcConnect\)/);
+  assert.match(controlPage, /async function installFullStack\(\): Promise<void>/);
+  assert.match(controlPage, /async function installBaseOnly\(\): Promise<void>/);
+  assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(false\)\)/);
+  assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(true\)\)/);
+  assert.doesNotMatch(controlPage, /v-model(?:\.number)?="installForm\.(channel|model|cpaPort|compactPort|cpaKey|contextMode|contextWindowTokens|skipNpm|skipCcConnect|noStart|skipExisting|forceReinstall|upstreamBaseUrl|upstreamApiKey|providerProxyUrl|noProxy)"/);
+  assert.match(installConfigPanel, /export interface CodexStackInstallConfigDraft/);
+  assert.match(installConfigPanel, /defineEmits<[\s\S]*updateField: \[field: CodexStackInstallConfigField, value: string \| number \| boolean\]/);
+  assert.doesNotMatch(installConfigPanel, /startCodexStackInstall|buildInstallPayload|installFullStack|installBaseOnly/);
 });
 
 test("codex stack install page delegates long job progress without losing polling ownership", () => {
