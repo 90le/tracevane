@@ -121,6 +121,9 @@
       <button type="button" class="primary-button" :disabled="!canRunMutation || !hasChanges" @click="$emit('save')">
         {{ text("保存配置", "Save Config") }}
       </button>
+      <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+        {{ mutationDisabledHelp }}
+      </p>
     </div>
   </article>
 </template>
@@ -161,6 +164,7 @@ defineProps<{
   impactItems: CodexStackRuntimeConfigImpactItem[];
   canRunMutation: boolean;
   hasChanges: boolean;
+  mutationDisabledHelp: string;
 }>();
 
 const emit = defineEmits<{
@@ -229,6 +233,13 @@ function updateNumberField(field: CodexStackRuntimeConfigField, event: Event): v
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.cs-disabled-help {
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .cs-restart-hint {

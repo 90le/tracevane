@@ -67,6 +67,9 @@
           {{ text("执行推荐修复", "Run Recommended Repair") }}
         </button>
       </div>
+      <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+        {{ mutationDisabledHelp }}
+      </p>
     </article>
   </div>
 </template>
@@ -87,6 +90,7 @@ export interface CodexStackInstallComponentStrategy {
 defineProps<{
   components: CodexStackInstallComponentStrategy[];
   canRunMutation: boolean;
+  mutationDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -174,6 +178,13 @@ const { text } = useLocalePreference();
 
 .cs-big-button {
   min-width: 240px;
+}
+
+.cs-disabled-help {
+  margin: 10px 0 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 960px) {

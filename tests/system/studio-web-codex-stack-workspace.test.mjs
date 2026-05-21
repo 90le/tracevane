@@ -414,9 +414,11 @@ test("codex stack delegates global job banner without losing navigation and dism
 
 test("codex stack install page delegates preflight plan without losing actions", () => {
   assert.match(controlPage, /import CodexStackInstallPlanCard from "\.\/CodexStackInstallPlanCard\.vue";/);
-  assert.match(controlPage, /<CodexStackInstallPlanCard[\s\S]*:highlights="installPlanHighlights"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@repair="repairRecommended"/);
+  assert.match(controlPage, /<CodexStackInstallPlanCard[\s\S]*:highlights="installPlanHighlights"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@repair="repairRecommended"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-plan-card"/);
   assert.match(installPlanCard, /执行前确认/);
+  assert.match(installPlanCard, /mutationDisabledHelp: string;/);
+  assert.match(installPlanCard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(installPlanCard, /@click="\$emit\('install-full'\)"/);
   assert.match(installPlanCard, /@click="\$emit\('install-base'\)"/);
   assert.match(installPlanCard, /@click="\$emit\('repair'\)"/);
@@ -444,7 +446,7 @@ test("codex stack install page delegates component strategy and CTA without movi
   assert.match(controlPage, /import CodexStackInstallStrategyPanel from "\.\/CodexStackInstallStrategyPanel\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackInstallStrategyPanel[\s\S]*:components="installComponentStrategies"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*@set-component-mode="setComponentMode"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@repair="repairRecommended"/,
+    /<CodexStackInstallStrategyPanel[\s\S]*:components="installComponentStrategies"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@set-component-mode="setComponentMode"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@repair="repairRecommended"/,
   );
   assert.match(controlPage, /const installComponentStrategies = computed<CodexStackInstallComponentStrategy\[\]>/);
   assert.match(controlPage, /function setComponentMode\(componentId: CodexStackComponentId, mode: ComponentInstallMode\): void/);
@@ -456,6 +458,8 @@ test("codex stack install page delegates component strategy and CTA without movi
   assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(true\)\)/);
   assert.doesNotMatch(controlPage, /class="cs-component-mode-list"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-cta-card"/);
+  assert.match(installStrategyPanel, /mutationDisabledHelp: string;/);
+  assert.match(installStrategyPanel, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(installStrategyPanel, /defineEmits<[\s\S]*"set-component-mode": \[componentId: CodexStackComponentId, mode: CodexStackComponentInstallMode\]/);
   assert.match(installStrategyPanel, /@click="\$emit\('install-full'\)"/);
   assert.match(installStrategyPanel, /@click="\$emit\('install-base'\)"/);
@@ -508,13 +512,15 @@ test("codex stack cc-connect page delegates command bar without moving config wr
   assert.match(controlPage, /import CodexStackCcConnectCommandBar from "\.\/CodexStackCcConnectCommandBar\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackCcConnectCommandBar[\s\S]*:installed="summary\.ccConnect\.installed"[\s\S]*:configured="summary\.ccConnect\.configured"[\s\S]*:binding-present="summary\.ccConnect\.bindingPresent"[\s\S]*:finalizer-available="summary\.ccConnect\.finalizerAvailable"[\s\S]*:project-name="primaryCcConnectProjectName"[\s\S]*:provider-count="ccConnectProviderDraftCount"[\s\S]*:project-count="ccConnectProjectDraftCount"[\s\S]*:has-structured-changes="hasCcConnectStructuredChanges"[\s\S]*:has-raw-changes="hasCcConnectRawChanges"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*@save-structured="saveCcConnectStructured"[\s\S]*@save-raw="saveCcConnectRaw"/,
+    /<CodexStackCcConnectCommandBar[\s\S]*:installed="summary\.ccConnect\.installed"[\s\S]*:configured="summary\.ccConnect\.configured"[\s\S]*:binding-present="summary\.ccConnect\.bindingPresent"[\s\S]*:finalizer-available="summary\.ccConnect\.finalizerAvailable"[\s\S]*:project-name="primaryCcConnectProjectName"[\s\S]*:provider-count="ccConnectProviderDraftCount"[\s\S]*:project-count="ccConnectProjectDraftCount"[\s\S]*:has-structured-changes="hasCcConnectStructuredChanges"[\s\S]*:has-raw-changes="hasCcConnectRawChanges"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@save-structured="saveCcConnectStructured"[\s\S]*@save-raw="saveCcConnectRaw"/,
   );
   assert.doesNotMatch(controlPage, /class="panel-card cs-config-action-strip cs-agent-savebar"/);
   assert.match(controlPage, /async function saveCcConnectStructured\(\): Promise<void>/);
   assert.match(controlPage, /async function saveCcConnectRaw\(\): Promise<void>/);
   assert.match(controlPage, /patchCcConnectConfig\(\{[\s\S]*providers: normalizeProviderDrafts\(\),[\s\S]*projects: normalizeProjectDrafts\(\)/);
   assert.match(controlPage, /patchCcConnectConfig\(\{ raw: ccConnectRawDraft\.value \}\)/);
+  assert.match(ccConnectCommandBar, /mutationDisabledHelp: string;/);
+  assert.match(ccConnectCommandBar, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(ccConnectCommandBar, /defineEmits<[\s\S]*"save-structured": \[\];[\s\S]*"save-raw": \[\]/);
   assert.match(ccConnectCommandBar, /@click="\$emit\('save-structured'\)"/);
   assert.match(ccConnectCommandBar, /@click="\$emit\('save-raw'\)"/);
@@ -704,7 +710,9 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(controlPage, /import CodexStackRunReadinessPanel from "\.\/CodexStackRunReadinessPanel\.vue";/);
   assert.match(controlPage, /<CodexStackRunReadinessPanel[\s\S]*:readiness="summary\.runReadiness"[\s\S]*:actions-disabled="runReadinessActionsDisabled"[\s\S]*:disabled-label="runReadinessDisabledLabel"[\s\S]*@check-action="runReadinessCheckAction"[\s\S]*@mode-action="runReadinessModeAction"/);
   assert.match(controlPage, /const actionBusy = computed\(\(\) => busy\.value \|\| jobRunning\.value\);/);
+  assert.match(controlPage, /const mutationDisabledHelp = computed\(\(\) => \{/);
   assert.match(controlPage, /const nextActionDisabledHelp = computed\(\(\) => \{/);
+  assert.match(controlPage, /if \(nextActionRequiresMutation\.value\) \{[\s\S]*return mutationDisabledHelp\.value;/);
   assert.match(controlPage, /先启用管理动作，才能执行安装、修复或配置写入/);
   assert.match(controlPage, /已有后台任务执行中，先查看日志并等待完成/);
   assert.match(controlPage, /<CodexStackDashboardHeroCard[\s\S]*:busy="actionBusy"/);
@@ -857,7 +865,7 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(controlPage, /import CodexStackRuntimeConfigCard from "\.\/CodexStackRuntimeConfigCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"/,
+    /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"/,
   );
   assert.match(controlPage, /:impact-items="configImpactItems"/);
   assert.match(controlPage, /function updateConfigFormField\(field: CodexStackRuntimeConfigField, value: string \| number\): void/);
@@ -872,6 +880,8 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(runtimeConfigCard, /export interface CodexStackRuntimeConfigImpactItem/);
   assert.match(runtimeConfigCard, /v-if="impactItems\.length"/);
   assert.match(runtimeConfigCard, /item\.detail/);
+  assert.match(runtimeConfigCard, /mutationDisabledHelp: string;/);
+  assert.match(runtimeConfigCard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(runtimeConfigCard, /defineEmits<[\s\S]*updateField: \[field: CodexStackRuntimeConfigField, value: string \| number\]/);
   assert.match(runtimeConfigCard, /@click="\$emit\('save'\)"/);
   assert.doesNotMatch(runtimeConfigCard, /patchCodexStackConfig|configPatchPayload|saveConfigPatch/);

@@ -50,6 +50,9 @@
         >
           {{ text("保存 TOML", "Save TOML") }}
         </button>
+        <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+          {{ mutationDisabledHelp }}
+        </p>
       </div>
     </article>
   </div>
@@ -69,6 +72,7 @@ defineProps<{
   hasStructuredChanges: boolean;
   hasRawChanges: boolean;
   canRunMutation: boolean;
+  mutationDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -159,6 +163,14 @@ function yesNo(value: boolean): string {
   color: var(--acc);
   border-color: color-mix(in srgb, var(--acc) 34%, var(--line));
   background: color-mix(in srgb, var(--acc) 10%, transparent);
+}
+
+.cs-disabled-help {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .cs-config-action-strip {

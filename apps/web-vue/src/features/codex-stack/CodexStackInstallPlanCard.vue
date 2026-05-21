@@ -20,6 +20,9 @@
       <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('repair')">
         {{ text("推荐修复", "Recommended Repair") }}
       </button>
+      <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+        {{ mutationDisabledHelp }}
+      </p>
     </div>
   </article>
 </template>
@@ -30,6 +33,7 @@ import { useLocalePreference } from "../../shared/locale";
 defineProps<{
   highlights: string[];
   canRunMutation: boolean;
+  mutationDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -77,6 +81,13 @@ const { text } = useLocalePreference();
   flex-direction: column;
   gap: 10px;
   align-items: stretch;
+}
+
+.cs-disabled-help {
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 960px) {

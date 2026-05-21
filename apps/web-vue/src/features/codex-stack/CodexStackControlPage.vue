@@ -153,6 +153,7 @@
             <CodexStackInstallPlanCard
               :highlights="installPlanHighlights"
               :can-run-mutation="canRunMutation"
+              :mutation-disabled-help="mutationDisabledHelp"
               @install-full="installFullStack"
               @install-base="installBaseOnly"
               @repair="repairRecommended"
@@ -182,6 +183,7 @@
               <CodexStackInstallStrategyPanel
                 :components="installComponentStrategies"
                 :can-run-mutation="canRunMutation"
+                :mutation-disabled-help="mutationDisabledHelp"
                 @set-component-mode="setComponentMode"
                 @install-full="installFullStack"
                 @install-base="installBaseOnly"
@@ -218,6 +220,7 @@
               :has-structured-changes="hasCcConnectStructuredChanges"
               :has-raw-changes="hasCcConnectRawChanges"
               :can-run-mutation="canRunMutation"
+              :mutation-disabled-help="mutationDisabledHelp"
               @save-structured="saveCcConnectStructured"
               @save-raw="saveCcConnectRaw"
             />
@@ -329,6 +332,7 @@
                 :impact-items="configImpactItems"
                 :can-run-mutation="canRunMutation"
                 :has-changes="hasConfigPatchChanges"
+                :mutation-disabled-help="mutationDisabledHelp"
                 @update-field="updateConfigFormField"
                 @save="saveConfigPatch"
               />
@@ -974,12 +978,15 @@ const nextActionButton = computed(() => {
 const nextActionRequiresMutation = computed(() => {
   return activeRecommendation.value?.requiresManagement === true;
 });
+const mutationDisabledHelp = computed(() => {
+  if (!canMutate.value) return text("先启用管理动作，才能执行安装、修复或配置写入。", "Enable management actions before install, repair, or config writes.");
+  if (jobRunning.value) return text("已有后台任务执行中，先查看日志并等待完成。", "A background job is running; view logs and wait for it to finish.");
+  if (busy.value) return text("当前操作仍在进行中。", "The current action is still in progress.");
+  return "";
+});
 const nextActionDisabledHelp = computed(() => {
   if (nextActionRequiresMutation.value) {
-    if (!canMutate.value) return text("先启用管理动作，才能执行安装、修复或配置写入。", "Enable management actions before install, repair, or config writes.");
-    if (jobRunning.value) return text("已有后台任务执行中，先查看日志并等待完成。", "A background job is running; view logs and wait for it to finish.");
-    if (busy.value) return text("当前操作仍在进行中。", "The current action is still in progress.");
-    return "";
+    return mutationDisabledHelp.value;
   }
   if (actionBusy.value) return runReadinessDisabledLabel.value || text("当前操作仍在进行中。", "The current action is still in progress.");
   return "";
