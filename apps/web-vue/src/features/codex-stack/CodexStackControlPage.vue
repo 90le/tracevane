@@ -148,6 +148,51 @@
                 :warnings="chainWarnings"
               />
 
+              <article
+                v-if="summary.runReadiness"
+                class="panel-card cs-run-readiness-card"
+                :class="`tone-${runReadinessTone}`"
+              >
+                <div class="cs-run-readiness-head">
+                  <div>
+                    <p class="cs-section-kicker">{{ text("Codex 运行就绪", "Codex Run Readiness") }}</p>
+                    <h4>{{ summary.runReadiness.title }}</h4>
+                    <p>{{ summary.runReadiness.summary }}</p>
+                  </div>
+                  <span class="cs-status-pill" :class="`tone-${runReadinessTone}`">
+                    {{ runReadinessLevelLabel(summary.runReadiness.level) }}
+                  </span>
+                </div>
+                <div class="cs-run-mode-grid">
+                  <div
+                    v-for="mode in summary.runReadiness.modes"
+                    :key="mode.id"
+                    class="cs-run-mode"
+                    :class="mode.ready ? 'tone-sage' : 'tone-danger'"
+                  >
+                    <div>
+                      <strong>{{ mode.label }}</strong>
+                      <p>{{ mode.detail }}</p>
+                    </div>
+                    <span>{{ mode.ready ? text("可用", "Ready") : text("阻断", "Blocked") }}</span>
+                  </div>
+                </div>
+                <div class="cs-run-check-grid">
+                  <button
+                    v-for="check in summary.runReadiness.checks"
+                    :key="check.id"
+                    type="button"
+                    class="cs-run-check"
+                    :class="`tone-${runReadinessCheckTone(check.status)}`"
+                    @click="activeSection = check.section"
+                  >
+                    <span>{{ check.label }}</span>
+                    <strong>{{ runReadinessCheckLabel(check.status) }}</strong>
+                    <small>{{ check.detail }}</small>
+                  </button>
+                </div>
+              </article>
+
               <div class="cs-command-grid">
                 <article class="panel-card cs-readiness-card">
                   <p class="cs-section-kicker">{{ text("就绪度", "Readiness") }}</p>
@@ -1300,6 +1345,8 @@ import type {
   CodexStackJobStatus,
   CodexStackLogResponse,
   CodexStackRepairAction,
+  CodexStackRunReadinessCheckStatus,
+  CodexStackRunReadinessLevel,
   CodexStackServiceAction,
   CodexStackServiceId,
   CodexStackSmokeMatrixResult,
@@ -1556,6 +1603,12 @@ const issueCount = computed(
 const readinessPercent = computed(() => {
   const total = summary.value?.components.length || 1;
   return `${Math.round((readyComponentCount.value / total) * 100)}%`;
+});
+const runReadinessTone = computed<CodexStackTone>(() => {
+  const level = summary.value?.runReadiness.level || "blocked";
+  if (level === "ready") return "sage";
+  if (level === "attention") return "accent";
+  return "danger";
 });
 const modelSourceTone = computed(() => {
   if (summary.value?.models.live) return "sage";
@@ -2410,6 +2463,30 @@ function syncInstallChannelDefaults(nextChannel: CodexStackChannel, previousChan
   if (!Number(installForm.cpaPort) || Number(installForm.cpaPort) === previousDefaultPort) {
     installForm.cpaPort = installChannelDefaultCpaPort(nextChannel);
   }
+}
+
+function runReadinessLevelLabel(level: CodexStackRunReadinessLevel): string {
+  const labels: Record<CodexStackRunReadinessLevel, string> = {
+    ready: text("可运行", "Ready"),
+    attention: text("需复验", "Needs Review"),
+    blocked: text("暂不接入", "Blocked"),
+  };
+  return labels[level];
+}
+
+function runReadinessCheckTone(status: CodexStackRunReadinessCheckStatus): CodexStackTone {
+  if (status === "pass") return "sage";
+  if (status === "warn") return "accent";
+  return "danger";
+}
+
+function runReadinessCheckLabel(status: CodexStackRunReadinessCheckStatus): string {
+  const labels: Record<CodexStackRunReadinessCheckStatus, string> = {
+    pass: text("通过", "Pass"),
+    warn: text("关注", "Review"),
+    fail: text("阻断", "Fail"),
+  };
+  return labels[status];
 }
 
 function yesNo(value: boolean): string {
@@ -3462,6 +3539,87 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   font-size: clamp(1.35rem, 2vw, 1.8rem);
 }
 
+.cs-run-readiness-card {
+  display: grid;
+  gap: 16px;
+  border-color: color-mix(in srgb, currentColor 28%, var(--line));
+}
+
+.cs-run-readiness-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.cs-run-readiness-head h4,
+.cs-run-readiness-head p,
+.cs-run-mode p {
+  margin: 0;
+}
+
+.cs-run-readiness-head h4 {
+  color: var(--text);
+  font-size: clamp(1.15rem, 1.7vw, 1.45rem);
+}
+
+.cs-run-readiness-head p,
+.cs-run-mode p,
+.cs-run-check small {
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.cs-run-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cs-run-mode {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 92px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+}
+
+.cs-run-mode strong,
+.cs-run-check span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.cs-run-mode span,
+.cs-run-check strong {
+  flex: none;
+  color: currentColor;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.cs-run-check-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cs-run-check {
+  min-height: 118px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-run-check:hover {
+  transform: translateY(-1px);
+}
+
 .cs-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -4341,6 +4499,10 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   .cs-command-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .cs-run-check-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 960px) {
@@ -4361,6 +4523,8 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 
   .cs-dashboard-grid,
   .cs-command-grid,
+  .cs-run-mode-grid,
+  .cs-run-check-grid,
   .cs-install-plan-card,
   .cs-install-grid,
   .cs-channel-grid,
@@ -4405,6 +4569,7 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   .cs-lock-card,
   .cs-hero-card,
   .cs-model-ribbon,
+  .cs-run-readiness-head,
   .cs-config-action-strip,
   .cs-section-intro,
   .cs-card-header,

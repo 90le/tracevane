@@ -30,6 +30,7 @@ import type {
   CodexStackMutationResponse,
   CodexStackProfile,
   CodexStackRepairRequest,
+  CodexStackRunReadinessCheck,
   CodexStackServiceAction,
   CodexStackServiceId,
   CodexStackServiceStatus,
@@ -2168,6 +2169,142 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     };
   }
 
+  function buildRunReadiness(params: {
+    services: CodexStackServiceStatus[];
+    jobs: CodexStackJob[];
+    cpaHealthy: boolean;
+    compactHealthy: boolean;
+    codexAuthMatches: boolean | null;
+    proxyPolicy: CodexStackSummaryPayload["proxyPolicy"];
+    profile: CodexStackProfile;
+    context: ReturnType<typeof readCodexContext>;
+    codexConfig: string;
+  }): CodexStackSummaryPayload["runReadiness"] {
+    const serviceById = new Map(params.services.map((service) => [service.id, service]));
+    const cpaActive = serviceById.get("cli-proxy-api.service")?.active === true;
+    const compactActive = serviceById.get("cpa-compact-proxy.service")?.active === true;
+    const watchdogActive = serviceById.get("codex-stack-watchdog.timer")?.active === true;
+    const smokeMatrix = params.profile.lastSmokeMatrix;
+    const smokeFresh = Boolean(smokeMatrix?.attachEligible && !isSmokeMatrixStale(smokeMatrix));
+    const hasActiveJob = params.jobs.some((job) => job.status === "queued" || job.status === "running");
+    const websocketEnabled = hasCodexResponsesWebSocketsEnabled(params.codexConfig);
+    const compressionEnabled = hasCodexRequestCompressionEnabled(params.codexConfig);
+    const checks: CodexStackRunReadinessCheck[] = [
+      {
+        id: "service-order",
+        label: "CPA / Compact / watchdog",
+        status: cpaActive && compactActive && watchdogActive ? "pass" : "fail",
+        detail: cpaActive && compactActive && watchdogActive
+          ? "CPA、Compact 与 watchdog 均处于 active，长任务不会从已知暂停态开始。"
+          : "CPA、Compact 或 watchdog 未全部 active；请使用 Resume CPA Stack 按顺序恢复。",
+        section: "dashboard",
+      },
+      {
+        id: "local-compact",
+        label: "本机 Compact 模型目录",
+        status: params.cpaHealthy && params.compactHealthy ? "pass" : "fail",
+        detail: params.cpaHealthy && params.compactHealthy
+          ? "CPA healthz 与 Compact /v1/models 均可访问。"
+          : "CPA healthz 或 Compact /v1/models 不可访问；普通请求、流式请求和模型选择都需要先修复。",
+        section: "dashboard",
+      },
+      {
+        id: "codex-auth",
+        label: "Codex CLI 密钥",
+        status: params.codexAuthMatches === true ? "pass" : "fail",
+        detail: params.codexAuthMatches === true
+          ? "~/.codex/auth.json 与 CPA proxy key 匹配。"
+          : "~/.codex/auth.json 未写入或与 CPA proxy key 不一致；Codex CLI 可能绕过本地 Compact。",
+        section: "settings",
+      },
+      {
+        id: "proxy-loopback",
+        label: "NO_PROXY loopback",
+        status: params.proxyPolicy.noProxyLoopbackReady ? "pass" : "fail",
+        detail: params.proxyPolicy.noProxyLoopbackReady
+          ? "localhost、127.0.0.1 与 ::1 已绕过系统代理。"
+          : `NO_PROXY 缺少 ${params.proxyPolicy.noProxyLoopbackMissing.join(", ")}；VPN 网卡/TUN 模式可能截获本机 CPA/Compact 请求。`,
+        section: "settings",
+      },
+      {
+        id: "codex-transport",
+        label: "Codex 请求格式",
+        status: websocketEnabled || compressionEnabled ? "fail" : "pass",
+        detail: websocketEnabled || compressionEnabled
+          ? "Codex WebSocket 或 request compression 仍启用；第三方兼容端点经 Compact 转发时应使用 HTTP/SSE 且禁用压缩请求体。"
+          : "Codex 传输保持 HTTP/SSE，未启用压缩请求体。",
+        section: "settings",
+      },
+      {
+        id: "smoke-matrix",
+        label: "glm-5.1 / kimi-k2.6 smoke",
+        status: smokeFresh ? "pass" : "warn",
+        detail: smokeFresh
+          ? "最近一次 glm-5.1 与 kimi-k2.6 smoke matrix 通过，允许考虑 CPA attach。"
+          : "尚无 24 小时内通过的 glm-5.1 / kimi-k2.6 smoke matrix；切换 Codex 前必须重新验证。",
+        section: "install",
+      },
+      {
+        id: "context-window",
+        label: "上下文与压缩",
+        status: params.context.tokens && params.context.tokens < DEFAULT_CONTEXT_TOKENS ? "warn" : "pass",
+        detail: params.context.tokens && params.context.tokens < DEFAULT_CONTEXT_TOKENS
+          ? `当前上下文窗口 ${params.context.tokens} tokens 偏小，长任务和压缩上下文前建议调高。`
+          : `当前上下文策略 ${params.context.mode}，推荐窗口 ${DEFAULT_CONTEXT_TOKENS} tokens。`,
+        section: "settings",
+      },
+      {
+        id: "job-lock",
+        label: "后台任务锁",
+        status: hasActiveJob ? "warn" : "pass",
+        detail: hasActiveJob
+          ? "安装/修复任务仍在运行；先等待结束再判断 Codex 对话和长任务稳定性。"
+          : "没有正在运行的安装/修复任务。",
+        section: "logs",
+      },
+    ];
+    const hasFail = checks.some((check) => check.status === "fail");
+    const hasWarn = checks.some((check) => check.status === "warn");
+    const level = hasFail ? "blocked" : hasWarn ? "attention" : "ready";
+    const chatReady = !hasFail;
+    const longTaskReady = chatReady && !hasActiveJob && params.context.tokens !== null && params.context.tokens >= DEFAULT_CONTEXT_TOKENS;
+    const compactionReady = chatReady && !compressionEnabled && params.context.mode !== "default";
+    return {
+      level,
+      title: level === "ready"
+        ? "Codex CPA 链路可运行"
+        : level === "attention"
+          ? "Codex CPA 链路需要复验"
+          : "Codex CPA 链路暂不应接入",
+      summary: level === "ready"
+        ? "普通请求、流式请求、长任务和压缩上下文具备同一套已验证前置条件。"
+        : level === "attention"
+          ? "基础链路可用，但 smoke、上下文或后台任务状态需要处理后再执行长任务。"
+          : "存在会影响 Codex CLI、Compact 转发或 loopback 访问的阻断项，保持官方 Codex 路径直到修复。",
+      checks,
+      modes: [
+        {
+          id: "chat",
+          label: "普通/流式对话",
+          ready: chatReady,
+          detail: chatReady ? "基础 CPA/Compact 请求链路可用。" : "先修复失败检查项。",
+        },
+        {
+          id: "long-task",
+          label: "长任务",
+          ready: longTaskReady,
+          detail: longTaskReady ? "无后台安装锁且上下文窗口足够。" : "需要无后台任务并保持足够上下文窗口。",
+        },
+        {
+          id: "compaction",
+          label: "压缩上下文",
+          ready: compactionReady,
+          detail: compactionReady ? "Codex 请求压缩未启用，context 策略已显式配置。" : "需要禁用请求体压缩并确认 context 策略。",
+        },
+      ],
+    };
+  }
+
   function listJobs(): CodexStackJob[] {
     ensureDir(jobsDir());
     return fs.readdirSync(jobsDir())
@@ -2299,6 +2436,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const jobs = listJobs();
     const overallStatus = classifyOverall(components, jobs, ccBindingPresent);
     const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy });
+    const runReadiness = buildRunReadiness({
+      services,
+      jobs,
+      cpaHealthy,
+      compactHealthy,
+      codexAuthMatches,
+      proxyPolicy,
+      profile,
+      context,
+      codexConfig,
+    });
     return {
       checkedAt: new Date().toISOString(),
       overallStatus,
@@ -2383,6 +2531,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         remoteAllowed,
         secretConfigured: Boolean(managementSecret),
       },
+      runReadiness,
       recommendation,
       warnings,
     };

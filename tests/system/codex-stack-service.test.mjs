@@ -538,6 +538,83 @@ test("codex stack service status does not treat inactive as active", async () =>
   );
 });
 
+test("codex stack summary exposes codex run readiness for chat long tasks and compaction", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const checkedAt = new Date().toISOString();
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  writeJson(path.join(root, ".codex/auth.json"), {
+    auth_mode: "apikey",
+    OPENAI_API_KEY: "secret-cpa-key-123456",
+  });
+  writeJson(path.join(config.openclawRoot, "studio/codex-stack/profile.json"), {
+    lastSmokeMatrix: {
+      status: "passed",
+      checkedAt,
+      requiredModels: ["glm-5.1", "kimi-k2.6"],
+      attachEligible: true,
+      models: ["glm-5.1", "kimi-k2.6"].map((model) => ({
+        model,
+        status: "passed",
+        startedAt: checkedAt,
+        finishedAt: checkedAt,
+        checks: [],
+        error: null,
+      })),
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withScriptedSystemctl(
+    [
+      "case \"$*\" in",
+      "  \"--user list-unit-files\"*) echo \"${@: -1} enabled\"; exit 0 ;;",
+      "  \"--user is-enabled\"*) echo \"enabled\"; exit 0 ;;",
+      "  \"--user is-active\"*) echo \"active\"; exit 0 ;;",
+      "esac",
+      "exit 0",
+    ].join("\n"),
+    async () => {
+      await withMockFetch(async (input) => {
+        const url = String(input);
+        if (url.includes("/healthz")) return new Response("ok", { status: 200 });
+        if (url.includes("/v1/models")) {
+          return new Response(JSON.stringify({ data: [{ id: "glm-5.1" }, { id: "kimi-k2.6" }] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      }, async () => {
+        const service = createCodexStackService(config);
+        const summary = await service.getSummary();
+
+        assert.equal(summary.runReadiness.level, "ready");
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, true);
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.ready, true);
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "compaction")?.ready, true);
+        assert.equal(summary.runReadiness.checks.find((check) => check.id === "service-order")?.status, "pass");
+        assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-auth")?.status, "pass");
+        assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "pass");
+      });
+    },
+  );
+});
+
 test("codex stack blocks lifecycle-unsafe direct service starts", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

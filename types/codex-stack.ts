@@ -67,6 +67,33 @@ export interface CodexStackRecommendation {
 
 export type CodexStackContextMode = "default" | "codex-1m" | "custom";
 
+export type CodexStackRunReadinessLevel = "ready" | "attention" | "blocked";
+export type CodexStackRunReadinessCheckStatus = "pass" | "warn" | "fail";
+export type CodexStackRunReadinessModeId = "chat" | "long-task" | "compaction";
+
+export interface CodexStackRunReadinessCheck {
+  id: string;
+  label: string;
+  status: CodexStackRunReadinessCheckStatus;
+  detail: string;
+  section: "dashboard" | "install" | "cc-connect" | "settings" | "logs";
+}
+
+export interface CodexStackRunReadinessMode {
+  id: CodexStackRunReadinessModeId;
+  label: string;
+  ready: boolean;
+  detail: string;
+}
+
+export interface CodexStackRunReadiness {
+  level: CodexStackRunReadinessLevel;
+  title: string;
+  summary: string;
+  checks: CodexStackRunReadinessCheck[];
+  modes: CodexStackRunReadinessMode[];
+}
+
 export interface CodexStackMaskedSecret {
   hasSecret: boolean;
   masked: string | null;
@@ -253,6 +280,7 @@ export interface CodexStackSummaryPayload {
     remoteAllowed: boolean;
     secretConfigured: boolean;
   };
+  runReadiness: CodexStackRunReadiness;
   recommendation: CodexStackRecommendation;
   warnings: string[];
 }

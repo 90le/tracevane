@@ -85,6 +85,17 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(dashboardInsights, /networkPolicy\.upstreamValue/);
 });
 
+test("codex stack dashboard exposes codex run readiness as a first-screen contract", () => {
+  assert.match(controlPage, /class="panel-card cs-run-readiness-card"/);
+  assert.match(controlPage, /summary\.runReadiness\.title/);
+  assert.match(controlPage, /summary\.runReadiness\.modes/);
+  assert.match(controlPage, /summary\.runReadiness\.checks/);
+  assert.match(controlPage, /runReadinessLevelLabel\(summary\.runReadiness\.level\)/);
+  assert.match(controlPage, /runReadinessCheckTone\(check\.status\)/);
+  assert.match(controlPage, /@click="activeSection = check\.section"/);
+  assert.match(controlPage, /Codex 运行就绪/);
+});
+
 test("codex stack attach action requires a fresh passing smoke matrix in the UI", () => {
   assert.match(controlPage, /const isSmokeMatrixAttachReady = computed\(\(\) => \{/);
   assert.match(controlPage, /matrix\?\.attachEligible && !isSmokeMatrixStale\(matrix\)/);
