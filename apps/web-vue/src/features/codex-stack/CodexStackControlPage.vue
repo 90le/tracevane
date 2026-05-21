@@ -40,7 +40,7 @@
         :status-label="jobStatusLabel(activeJob.status)"
         :updated-at-label="formatTimestamp(activeJob.updatedAt)"
         :running="isCodexStackJobRunning(activeJob)"
-        @open-logs="activeSection = 'logs'"
+        @open-logs="setWorkspaceSection('logs', focusHintForAction(text('查看后台任务输出', 'Watch background job output'), text('安装、修复或配置动作正在执行；先跟踪日志和结果。', 'An install, repair, or config action is running; track logs and result first.')))"
         @dismiss="activeJob = null"
       />
 
@@ -58,7 +58,8 @@
       <CodexStackWorkspaceShell
         :sections="navSections"
         :active-section="activeSection"
-        @select="activeSection = $event"
+        :focus-hint="workspaceFocusHint"
+        @select="selectWorkspaceSection"
       >
         <template v-if="activeSection === 'dashboard'">
           <CodexStackSectionStack>
@@ -113,7 +114,7 @@
               :model-source-help="modelSourceHelp"
               :model-catalog-preview="modelCatalogPreview"
               @primary="nextActionPrimary"
-              @open-section="activeSection = nextActionSection"
+              @open-section="setWorkspaceSection(nextActionSection, focusHintForAction(nextActionTitle, nextActionCopy))"
             />
 
             <CodexStackServiceGrid
@@ -424,6 +425,7 @@ import type {
   CodexStackLogResponse,
   CodexStackRepairAction,
   CodexStackRunReadinessCheck,
+  CodexStackRunReadinessCheckStatus,
   CodexStackRunReadinessMode,
   CodexStackServiceAction,
   CodexStackServiceId,
@@ -545,6 +547,7 @@ import CodexStackSectionStack from "./CodexStackSectionStack.vue";
 import CodexStackServiceGrid from "./CodexStackServiceGrid.vue";
 import CodexStackUpstreamMap from "./CodexStackUpstreamMap.vue";
 import CodexStackWorkspaceShell from "./CodexStackWorkspaceShell.vue";
+import type { CodexStackWorkspaceFocusHint } from "./CodexStackWorkspaceShell.vue";
 
 const { text } = useLocalePreference();
 
@@ -585,6 +588,7 @@ const busy = ref(false);
 const restartRequiredUnits = ref<CodexStackServiceId[]>([]);
 const notice = ref<{ kind: "success" | "error"; text: string } | null>(null);
 const activeSection = ref<SectionId>("dashboard");
+const workspaceFocusHint = ref<CodexStackWorkspaceFocusHint | null>(null);
 const activeAgentPane = ref<AgentPaneId>("projects");
 const selectedProjectDraftId = ref("");
 const selectedLogService = ref<CodexStackServiceId>("cli-proxy-api.service");
@@ -1988,6 +1992,34 @@ function runReadinessLevelShortLabel(level: CodexStackSummaryPayload["runReadine
   return text("...", "...");
 }
 
+function runReadinessCheckTone(status: CodexStackRunReadinessCheckStatus): CodexStackTone {
+  if (status === "pass") return "sage";
+  if (status === "warn") return "accent";
+  return "danger";
+}
+
+function setWorkspaceSection(section: SectionId, focusHint: CodexStackWorkspaceFocusHint | null = null): void {
+  activeSection.value = section;
+  workspaceFocusHint.value = focusHint;
+}
+
+function selectWorkspaceSection(section: SectionId): void {
+  setWorkspaceSection(section, null);
+}
+
+function focusHintForAction(
+  title: string,
+  copy: string,
+  tone: CodexStackTone = "accent",
+): CodexStackWorkspaceFocusHint {
+  return {
+    kicker: text("导航焦点", "Navigation Focus"),
+    title,
+    copy,
+    tone,
+  };
+}
+
 function guardMutation(): boolean {
   if (!canMutate.value) {
     notice.value = {
@@ -1997,7 +2029,11 @@ function guardMutation(): boolean {
     return false;
   }
   if (jobRunning.value) {
-    activeSection.value = "logs";
+    setWorkspaceSection("logs", focusHintForAction(
+      text("已有后台任务正在执行", "Background job is running"),
+      text("先查看任务日志，等待安装、修复或配置动作结束后再继续操作。", "Open the job log first and wait for the install, repair, or config action to finish before continuing."),
+      "accent",
+    ));
     notice.value = {
       kind: "error",
       text: text("已有后台任务正在执行，请等待完成后再操作。", "A background job is already running. Wait for it to finish before making another change."),
@@ -2016,19 +2052,19 @@ function nextActionPrimary(): void {
       void repairRecommended();
       return;
     case "open-install":
-      activeSection.value = "install";
+      setWorkspaceSection("install", focusHintForAction(nextActionTitle.value, nextActionCopy.value));
       return;
     case "open-cc-connect":
-      activeSection.value = "cc-connect";
+      setWorkspaceSection("cc-connect", focusHintForAction(nextActionTitle.value, nextActionCopy.value));
       return;
     case "open-logs":
-      activeSection.value = "logs";
+      setWorkspaceSection("logs", focusHintForAction(nextActionTitle.value, nextActionCopy.value));
       return;
     case "open-settings":
-      activeSection.value = "settings";
+      setWorkspaceSection("settings", focusHintForAction(nextActionTitle.value, nextActionCopy.value));
       return;
     default:
-      activeSection.value = nextActionSection.value;
+      setWorkspaceSection(nextActionSection.value, focusHintForAction(nextActionTitle.value, nextActionCopy.value));
   }
 }
 
@@ -2042,7 +2078,11 @@ function runReadinessCheckAction(check: CodexStackRunReadinessCheck): void {
     void startRepairWithActions(command.actions, text("就绪检查修复任务已启动。", "Readiness repair job started."));
     return;
   }
-  activeSection.value = command.section;
+  setWorkspaceSection(command.section, focusHintForAction(
+    text(`检查项：${check.label}`, `Check: ${check.label}`),
+    check.detail,
+    runReadinessCheckTone(check.status),
+  ));
 }
 
 function runReadinessModeAction(mode: CodexStackRunReadinessMode): void {
@@ -2055,7 +2095,11 @@ function runReadinessModeAction(mode: CodexStackRunReadinessMode): void {
     void startRepairWithActions(command.actions, text("运行模式修复任务已启动。", "Run mode repair job started."));
     return;
   }
-  activeSection.value = command.section;
+  setWorkspaceSection(command.section, focusHintForAction(
+    text(`运行模式：${mode.label}`, `Run mode: ${mode.label}`),
+    mode.detail,
+    mode.ready ? "sage" : runReadinessTone.value,
+  ));
 }
 
 function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): void {
@@ -2287,7 +2331,11 @@ async function installBaseOnly(): Promise<void> {
 
 async function runCheck(): Promise<void> {
   if (jobRunning.value) {
-    activeSection.value = "logs";
+    setWorkspaceSection("logs", focusHintForAction(
+      text("已有后台任务正在执行", "Background job is running"),
+      text("先查看任务日志，等待当前任务结束后再运行健康检查。", "Open the job log first and wait for the current task to finish before running a health check."),
+      "accent",
+    ));
     notice.value = {
       kind: "error",
       text: text("已有后台任务正在执行，请等待完成后再运行健康检查。", "A background job is already running. Wait for it to finish before running a health check."),

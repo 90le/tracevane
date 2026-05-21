@@ -259,10 +259,14 @@ test("codex stack section nav delegates tab switching without moving content rou
   assert.match(controlPage, /import CodexStackWorkspaceShell from "\.\/CodexStackWorkspaceShell\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackWorkspaceShell[\s\S]*:sections="navSections"[\s\S]*:active-section="activeSection"[\s\S]*@select="activeSection = \$event"/,
+    /<CodexStackWorkspaceShell[\s\S]*:sections="navSections"[\s\S]*:active-section="activeSection"[\s\S]*:focus-hint="workspaceFocusHint"[\s\S]*@select="selectWorkspaceSection"/,
   );
   assert.match(controlPage, /type SectionId = CodexStackSectionId;/);
   assert.match(controlPage, /const activeSection = ref<SectionId>\("dashboard"\);/);
+  assert.match(controlPage, /const workspaceFocusHint = ref<CodexStackWorkspaceFocusHint \| null>\(null\);/);
+  assert.match(controlPage, /function setWorkspaceSection\(section: SectionId, focusHint: CodexStackWorkspaceFocusHint \| null = null\): void/);
+  assert.match(controlPage, /function selectWorkspaceSection\(section: SectionId\): void/);
+  assert.match(controlPage, /function focusHintForAction\(/);
   assert.match(controlPage, /const navSections = computed<CodexStackSectionNavItem\[\]>\(\(\) => \{/);
   assert.match(controlPage, /const recommendedSection = activeRecommendation\.value\?\.section \|\| "dashboard";/);
   assert.match(controlPage, /const componentIssues = current\?\.components\.filter\(\(component\) => component\.status !== "ok"\)\.length \|\| 0;/);
@@ -281,6 +285,10 @@ test("codex stack section nav delegates tab switching without moving content rou
   assert.doesNotMatch(controlPage, /class="cs-nav-button"/);
   assert.match(workspaceShell, /import CodexStackSectionNav from "\.\/CodexStackSectionNav\.vue";/);
   assert.match(workspaceShell, /<CodexStackSectionNav[\s\S]*:sections="sections"[\s\S]*:active-section="activeSection"[\s\S]*@select="\$emit\('select', \$event\)"/);
+  assert.match(workspaceShell, /export interface CodexStackWorkspaceFocusHint/);
+  assert.match(workspaceShell, /focusHint\?: CodexStackWorkspaceFocusHint \| null;/);
+  assert.match(workspaceShell, /v-if="focusHint"/);
+  assert.match(workspaceShell, /class="cs-workspace-focus"/);
   assert.match(workspaceShell, /<slot \/>/);
   assert.match(workspaceShell, /defineEmits<\{[\s\S]*select: \[sectionId: CodexStackSectionId\];[\s\S]*\}>/);
   assert.doesNotMatch(workspaceShell, /activeSection\.value|nextActionPrimary|runReadinessCheckAction|loadSummary|fetchCodexStackSummary|patchCodexStackConfig|serviceAction/);
@@ -370,7 +378,7 @@ test("codex stack dashboard delegates hero actions without moving service comman
 
 test("codex stack dashboard delegates action overview without losing actions", () => {
   assert.match(controlPage, /import CodexStackActionOverview from "\.\/CodexStackActionOverview\.vue";/);
-  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:ready-component-count="readyComponentCount"[\s\S]*:next-action-title="nextActionTitle"[\s\S]*:busy="actionBusy"[\s\S]*@primary="nextActionPrimary"[\s\S]*@open-section="activeSection = nextActionSection"/);
+  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:ready-component-count="readyComponentCount"[\s\S]*:next-action-title="nextActionTitle"[\s\S]*:busy="actionBusy"[\s\S]*@primary="nextActionPrimary"[\s\S]*@open-section="setWorkspaceSection\(nextActionSection, focusHintForAction\(nextActionTitle, nextActionCopy\)\)"/);
   assert.doesNotMatch(controlPage, /class="cs-command-grid"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-readiness-card"/);
   assert.match(actionOverview, /<CodexStackRecommendationCard/);
@@ -391,7 +399,7 @@ test("codex stack dashboard delegates diagnostics without losing run check", () 
 test("codex stack delegates global job banner without losing navigation and dismiss actions", () => {
   assert.match(controlPage, /import CodexStackJobBanner from "\.\/CodexStackJobBanner\.vue";/);
   assert.match(controlPage, /<CodexStackJobBanner[\s\S]*v-if="activeJob"[\s\S]*:command-label="activeJob\.commandLabel"[\s\S]*:status="activeJob\.status"/);
-  assert.match(controlPage, /@open-logs="activeSection = 'logs'"[\s\S]*@dismiss="activeJob = null"/);
+  assert.match(controlPage, /@open-logs="setWorkspaceSection\('logs', focusHintForAction\([\s\S]*查看后台任务输出[\s\S]*@dismiss="activeJob = null"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-job-banner"/);
   assert.doesNotMatch(controlPage, /function jobStateClass/);
   assert.match(jobBanner, /const jobStateClass = computed/);
@@ -716,6 +724,9 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(controlPage, /resolveCodexStackRunReadinessModeAction/);
   assert.match(controlPage, /function runReadinessCheckAction\(check: CodexStackRunReadinessCheck\): void/);
   assert.match(controlPage, /function runReadinessModeAction\(mode: CodexStackRunReadinessMode\): void/);
+  assert.match(controlPage, /setWorkspaceSection\(command\.section, focusHintForAction\([\s\S]*检查项：\$\{check\.label\}/);
+  assert.match(controlPage, /setWorkspaceSection\(command\.section, focusHintForAction\([\s\S]*运行模式：\$\{mode\.label\}/);
+  assert.match(controlPage, /runReadinessCheckTone\(check\.status\)/);
   assert.match(controlPage, /command\.type === "repair"[\s\S]*startRepairWithActions\(command\.actions/);
   assert.match(readinessAction, /export function normalizeCodexStackRunReadinessCheck/);
   assert.match(readinessAction, /export function normalizeCodexStackRunReadinessMode/);
