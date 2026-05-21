@@ -39,6 +39,18 @@ test("codex stack readiness action resolver dispatches repair hints", () => {
   assert.deepEqual(command, { type: "repair", actions: ["run-smoke-matrix"] });
 });
 
+test("codex stack readiness action resolver dispatches NO_PROXY repair hints", () => {
+  const command = resolveCodexStackRunReadinessAction(
+    checkWithAction({
+      kind: "repair",
+      label: "Fix NO_PROXY",
+      repairActions: ["repair-no-proxy-loopback"],
+    }),
+    "View details",
+  );
+  assert.deepEqual(command, { type: "repair", actions: ["repair-no-proxy-loopback"] });
+});
+
 test("codex stack readiness action resolver opens explicit or fallback sections", () => {
   assert.deepEqual(
     resolveCodexStackRunReadinessAction(

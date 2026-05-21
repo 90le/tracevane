@@ -2388,7 +2388,69 @@ test("codex stack summary warns when NO_PROXY no longer protects local loopback"
     assert.deepEqual(summary.proxyPolicy.noProxyLoopbackMissing, ["127.0.0.1", "::1"]);
     assert.ok(summary.warnings.some((warning) => warning.includes("NO_PROXY 缺少 127.0.0.1, ::1")));
     assert.ok(summary.recommendation.reasonCodes.includes("no-proxy-loopback-missing"));
+    assert.deepEqual(summary.runReadiness.checks.find((check) => check.id === "proxy-loopback")?.actionHint, {
+      kind: "repair",
+      label: "修复 NO_PROXY",
+      repairActions: ["repair-no-proxy-loopback"],
+    });
   });
+});
+
+test("codex stack repair can add NO_PROXY loopback bypass for TUN mode", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const cpaService = path.join(root, ".config/systemd/user/cli-proxy-api.service");
+  const compactService = path.join(root, ".config/systemd/user/cpa-compact-proxy.service");
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+    env: {
+      NO_PROXY: "localhost",
+      OPENCLAW_NO_PROXY: "localhost",
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  writeFile(cpaService, `
+[Service]
+Environment=NO_PROXY=localhost
+`);
+  writeFile(compactService, `
+[Service]
+Environment=NO_PROXY=localhost
+`);
+
+  await withFakeSystemctl(async ({ readCalls }) => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["repair-no-proxy-loopback"] });
+    const job = await waitForJob(service, response.job.id);
+
+    assert.equal(job.status, "succeeded");
+    assert.match(job.logTail, /Updated NO_PROXY loopback bypass to localhost,127\.0\.0\.1,::1/);
+    assert.deepEqual(readCalls(), [
+      "--user daemon-reload",
+      "--user try-restart cli-proxy-api.service",
+      "--user try-restart cpa-compact-proxy.service",
+    ]);
+  });
+
+  const openclaw = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  assert.equal(openclaw.env.NO_PROXY, "localhost,127.0.0.1,::1");
+  assert.equal(openclaw.env.OPENCLAW_NO_PROXY, "localhost,127.0.0.1,::1");
+  assert.match(fs.readFileSync(cpaService, "utf8"), /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1/);
+  assert.match(fs.readFileSync(cpaService, "utf8"), /Environment=OPENCLAW_NO_PROXY=localhost,127\.0\.0\.1,::1/);
+  assert.match(fs.readFileSync(compactService, "utf8"), /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1/);
+  assert.match(fs.readFileSync(compactService, "utf8"), /Environment=OPENCLAW_NO_PROXY=localhost,127\.0\.0\.1,::1/);
 });
 
 test("codex stack prioritizes NO_PROXY remediation before smoke retry when TUN can capture loopback", async () => {

@@ -677,6 +677,7 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(runReadinessPanel, /Codex 运行就绪/);
   assert.match(codexStackService, /id: "cc-agent-task"/);
   assert.match(codexStackService, /label: "CC\/IM Agent 任务"/);
+  assert.match(codexStackService, /label: "修复 NO_PROXY", repairActions: \["repair-no-proxy-loopback"\]/);
   assert.match(codexStackService, /label: "运行 smoke matrix", repairActions: \["run-smoke-matrix"\]/);
 });
 

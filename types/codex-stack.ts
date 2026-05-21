@@ -340,6 +340,7 @@ export type CodexStackRepairAction =
   | "repair-auth-json"
   | "repair-cpa-management"
   | "repair-codex-transport"
+  | "repair-no-proxy-loopback"
   | "run-smoke-matrix"
   | "apply-codex-cpa-after-smoke"
   | "disable-conflicting-units"

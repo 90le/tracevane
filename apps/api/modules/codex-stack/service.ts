@@ -159,6 +159,7 @@ const REPAIR_ACTIONS = [
   "repair-auth-json",
   "repair-cpa-management",
   "repair-codex-transport",
+  "repair-no-proxy-loopback",
   "run-smoke-matrix",
   "apply-codex-cpa-after-smoke",
   "disable-conflicting-units",
@@ -1031,6 +1032,7 @@ function resolvePaths(config: StudioServerConfig) {
     ccConnectSocket: path.join(homeDir, ".cc-connect", "run", "api.sock"),
     cliProxyApi: path.join(homeDir, ".local", "bin", "cli-proxy-api"),
     compactProxy: path.join(homeDir, ".local", "bin", "cpa-compact-proxy.mjs"),
+    cpaService: path.join(homeDir, ".config", "systemd", "user", "cli-proxy-api.service"),
     compactService: path.join(homeDir, ".config", "systemd", "user", "cpa-compact-proxy.service"),
     ccConnectSource: path.join(config.projectRoot, "resources", "codex-stack", "cc-connect-source"),
     profile: path.join(config.openclawRoot, "studio", "codex-stack", "profile.json"),
@@ -1216,6 +1218,13 @@ function noProxyLoopbackMissing(noProxy: string): string[] {
   if (!coversAll && !entries.has("127.0.0.1") && !entries.has("127.0.0.0/8")) missing.push("127.0.0.1");
   if (!coversAll && !entries.has("::1")) missing.push("::1");
   return missing;
+}
+
+function ensureNoProxyLoopback(noProxy: string): string {
+  const entries = noProxy.split(",").map((entry) => entry.trim()).filter(Boolean);
+  const missing = noProxyLoopbackMissing(noProxy);
+  if (!entries.length) return missing.join(",");
+  return [...entries, ...missing].join(",");
 }
 
 function isSmokeMatrixStale(matrix: CodexStackSmokeMatrixResult | null | undefined): boolean {
@@ -2292,7 +2301,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "localhost、127.0.0.1 与 ::1 已绕过系统代理。"
           : `NO_PROXY 缺少 ${params.proxyPolicy.noProxyLoopbackMissing.join(", ")}；VPN 网卡/TUN 模式可能截获本机 CPA/Compact 请求。`,
         section: "settings",
-        actionHint: { kind: "open-section", label: params.proxyPolicy.noProxyLoopbackReady ? "查看网络策略" : "编辑 NO_PROXY", section: "settings" },
+        actionHint: params.proxyPolicy.noProxyLoopbackReady
+          ? { kind: "open-section", label: "查看网络策略", section: "settings" }
+          : { kind: "repair", label: "修复 NO_PROXY", repairActions: ["repair-no-proxy-loopback"] },
       },
       {
         id: "codex-transport",
@@ -2959,6 +2970,40 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
             appendJobLog(job, "Updated inactive Codex CPA provider settings and disabled WebSocket/compressed transport; active Codex provider was not switched.\n", [effectiveProxyKey]);
           } else {
             appendJobLog(job, "Codex CPA HTTP/SSE transport settings were already configured; active Codex provider was not switched.\n");
+          }
+        }
+        if (action === "repair-no-proxy-loopback") {
+          const policy = readProxyPolicy(readText(currentPaths.cpaConfig), currentPaths.openclawJson);
+          const noProxy = ensureNoProxyLoopback(policy.noProxy);
+          const changedUnits: string[] = [];
+          if (noProxy !== policy.noProxy || !policy.noProxyLoopbackReady) {
+            patchOpenclawEnvValues(currentPaths.openclawJson, {
+              NO_PROXY: noProxy,
+              OPENCLAW_NO_PROXY: noProxy,
+            });
+            for (const [unitPath, unitName] of [
+              [currentPaths.cpaService, "cli-proxy-api.service"],
+              [currentPaths.compactService, "cpa-compact-proxy.service"],
+            ] as const) {
+              const unit = readText(unitPath);
+              if (!unit) continue;
+              let next = replaceEnvLine(unit, "NO_PROXY", noProxy);
+              next = replaceEnvLine(next, "OPENCLAW_NO_PROXY", noProxy);
+              if (next !== unit) {
+                backupAndWrite(unitPath, next);
+                changedUnits.push(unitName);
+              }
+            }
+            appendJobLog(job, `Updated NO_PROXY loopback bypass to ${noProxy}; VPN 网卡/TUN 模式不应再截获本机 CPA/Compact 请求。\n`);
+            if (changedUnits.length) {
+              await runSystemctl("daemon-reload");
+              for (const unitName of changedUnits) {
+                await runSystemctl("try-restart", unitName);
+              }
+              appendJobLog(job, `Reloaded systemd and try-restarted ${changedUnits.join(", ")} so active services pick up NO_PROXY.\n`);
+            }
+          } else {
+            appendJobLog(job, `NO_PROXY already contains localhost,127.0.0.1,::1 (${policy.noProxy}).\n`);
           }
         }
         if (action === "apply-codex-cpa-after-smoke") {
