@@ -1370,6 +1370,10 @@ type CcConnectProjectDraft = {
   platforms: CcConnectPlatformDraft[];
 };
 
+type ApplySummaryOptions = {
+  preserveDirtyConfigDraft?: boolean;
+};
+
 const summary = ref<CodexStackSummaryPayload | null>(null);
 const ccConnectConfig = ref<CcConnectConfig | null>(null);
 const ccConnectRawDraft = ref("");
@@ -2439,17 +2443,7 @@ function nextActionPrimary(): void {
   }
 }
 
-function applySummary(next: CodexStackSummaryPayload): void {
-  const normalized = normalizeCodexStackSummary(next);
-  summary.value = normalized;
-  installForm.model = normalized.models.current || normalized.profile.defaultModel || normalized.models.defaultModel || "kimi-k2.6";
-  installForm.contextMode = normalized.context.mode || "default";
-  installForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
-  installForm.cpaPort = normalized.ports.cpa;
-  installForm.compactPort = normalized.ports.compact;
-  installForm.channel = normalized.installer.channel;
-  installForm.providerProxyUrl = normalized.proxyPolicy.providerProxyUrl || "";
-  installForm.noProxy = normalized.proxyPolicy.noProxy || DEFAULT_NO_PROXY;
+function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): void {
   configForm.defaultModel = normalized.models.current || normalized.profile.defaultModel || normalized.models.defaultModel || "kimi-k2.6";
   configForm.contextMode = normalized.context.mode || "default";
   configForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
@@ -2460,6 +2454,23 @@ function applySummary(next: CodexStackSummaryPayload): void {
   configForm.upstreamApiKey = "";
   configForm.providerProxyUrl = normalized.proxyPolicy.providerProxyUrl || "";
   configForm.noProxy = normalized.proxyPolicy.noProxy || DEFAULT_NO_PROXY;
+}
+
+function applySummary(next: CodexStackSummaryPayload, options: ApplySummaryOptions = {}): void {
+  const keepConfigDraft = (options.preserveDirtyConfigDraft ?? true)
+    && Boolean(summary.value)
+    && hasConfigPatchChanges.value;
+  const normalized = normalizeCodexStackSummary(next);
+  summary.value = normalized;
+  installForm.model = normalized.models.current || normalized.profile.defaultModel || normalized.models.defaultModel || "kimi-k2.6";
+  installForm.contextMode = normalized.context.mode || "default";
+  installForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
+  installForm.cpaPort = normalized.ports.cpa;
+  installForm.compactPort = normalized.ports.compact;
+  installForm.channel = normalized.installer.channel;
+  installForm.providerProxyUrl = normalized.proxyPolicy.providerProxyUrl || "";
+  installForm.noProxy = normalized.proxyPolicy.noProxy || DEFAULT_NO_PROXY;
+  if (!keepConfigDraft) hydrateConfigFormFromSummary(normalized);
 }
 
 async function loadSummary(): Promise<void> {
@@ -2741,7 +2752,7 @@ async function saveConfigPatch(): Promise<void> {
     restartRequiredUnits.value = response.restartRequiredUnits || [];
     configForm.cpaProxyKey = "";
     configForm.upstreamApiKey = "";
-    if (response.summary) applySummary(response.summary);
+    if (response.summary) applySummary(response.summary, { preserveDirtyConfigDraft: false });
     notice.value = { kind: "success", text: response.message };
   } catch (error) {
     notice.value = { kind: "error", text: error instanceof Error ? error.message : text("配置保存失败", "Config save failed") };
