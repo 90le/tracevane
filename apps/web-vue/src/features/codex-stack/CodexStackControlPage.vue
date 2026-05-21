@@ -1130,7 +1130,7 @@
                     </small>
                   </div>
                   <div class="cs-actions">
-                    <button type="button" class="primary-button" :disabled="!canRunMutation" @click="saveConfigPatch">
+                    <button type="button" class="primary-button" :disabled="!canRunMutation || !hasConfigPatchChanges" @click="saveConfigPatch">
                       {{ text("保存配置", "Save Config") }}
                     </button>
                   </div>
@@ -1743,6 +1743,71 @@ const componentHealthCards = computed<CodexStackComponentHealthCard[]>(() => {
 });
 const configContextTokensDisabled = computed(() => configForm.contextMode !== "custom");
 const installContextTokensDisabled = computed(() => installForm.contextMode !== "custom");
+const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
+  const current = summary.value;
+  if (!current) return {};
+
+  const payload: CodexStackConfigPatchRequest = {};
+  const nextModel = configForm.defaultModel.trim();
+  const currentModel = current.models.current || current.profile.defaultModel || current.models.defaultModel || "";
+  if (nextModel && nextModel !== currentModel) {
+    payload.defaultModel = nextModel;
+  }
+
+  if (configForm.contextMode !== current.context.mode) {
+    payload.contextMode = configForm.contextMode;
+  }
+  if (configForm.contextMode === "custom") {
+    const nextTokens = Number(configForm.contextWindowTokens) || undefined;
+    if (nextTokens && nextTokens !== (current.context.tokens || undefined)) {
+      payload.contextMode = "custom";
+      payload.contextWindowTokens = nextTokens;
+    }
+  }
+
+  const nextCpaPort = Number(configForm.cpaPort) || undefined;
+  if (nextCpaPort && nextCpaPort !== current.ports.cpa) {
+    payload.cpaPort = nextCpaPort;
+  }
+  const nextCompactPort = Number(configForm.compactPort) || undefined;
+  if (nextCompactPort && nextCompactPort !== current.ports.compact) {
+    payload.compactPort = nextCompactPort;
+  }
+
+  const nextCcProject = configForm.ccConnectProject.trim();
+  const currentCcProject = current.ccConnect.project || current.profile.ccConnectProject || "main";
+  if (nextCcProject && nextCcProject !== currentCcProject) {
+    payload.ccConnectProject = nextCcProject;
+  }
+
+  const nextCpaProxyKey = configForm.cpaProxyKey.trim();
+  if (nextCpaProxyKey) {
+    payload.cpaProxyKey = nextCpaProxyKey;
+  }
+
+  const nextUpstreamBaseUrl = configForm.upstreamBaseUrl.trim();
+  if (nextUpstreamBaseUrl !== (current.proxyPolicy.upstreamBaseUrl || "")) {
+    payload.upstreamBaseUrl = nextUpstreamBaseUrl;
+  }
+
+  const nextUpstreamApiKey = configForm.upstreamApiKey.trim();
+  if (nextUpstreamApiKey) {
+    payload.upstreamApiKey = nextUpstreamApiKey;
+  }
+
+  const nextProviderProxyUrl = configForm.providerProxyUrl.trim();
+  if (nextProviderProxyUrl !== (current.proxyPolicy.providerProxyUrl || "")) {
+    payload.providerProxyUrl = nextProviderProxyUrl;
+  }
+
+  const nextNoProxy = configForm.noProxy.trim() || "localhost,127.0.0.1,::1";
+  if (nextNoProxy !== (current.proxyPolicy.noProxy || "localhost,127.0.0.1,::1")) {
+    payload.noProxy = nextNoProxy;
+  }
+
+  return payload;
+});
+const hasConfigPatchChanges = computed(() => Object.keys(configPatchPayload.value).length > 0);
 const canonicalCcConnectProvider = computed(() => {
   const provider = ccConnectProviderDrafts.value.find((item) => item.name === "cpa") || ccConnectProviderDrafts.value[0];
   return {
@@ -2494,30 +2559,13 @@ async function serviceAction(serviceId: CodexStackServiceId, action: CodexStackS
 
 async function saveConfigPatch(): Promise<void> {
   if (!guardMutation()) return;
+  const payload = configPatchPayload.value;
+  if (!Object.keys(payload).length) {
+    notice.value = { kind: "success", text: text("运行配置没有变化。", "Runtime config has no changes.") };
+    return;
+  }
   busy.value = true;
   try {
-    const policy = summary.value?.proxyPolicy;
-    const payload: CodexStackConfigPatchRequest = {
-      defaultModel: configForm.defaultModel,
-      contextMode: configForm.contextMode,
-      contextWindowTokens: configForm.contextMode === "custom" ? Number(configForm.contextWindowTokens) || undefined : undefined,
-      cpaPort: Number(configForm.cpaPort) || undefined,
-      compactPort: Number(configForm.compactPort) || undefined,
-      ccConnectProject: configForm.ccConnectProject || undefined,
-      cpaProxyKey: configForm.cpaProxyKey || undefined,
-    };
-    if (configForm.upstreamBaseUrl !== (policy?.upstreamBaseUrl || "")) {
-      payload.upstreamBaseUrl = configForm.upstreamBaseUrl.trim();
-    }
-    if (configForm.upstreamApiKey.trim()) {
-      payload.upstreamApiKey = configForm.upstreamApiKey.trim();
-    }
-    if (configForm.providerProxyUrl !== (policy?.providerProxyUrl || "")) {
-      payload.providerProxyUrl = configForm.providerProxyUrl.trim();
-    }
-    if (configForm.noProxy !== (policy?.noProxy || "localhost,127.0.0.1,::1")) {
-      payload.noProxy = configForm.noProxy.trim() || "localhost,127.0.0.1,::1";
-    }
     const response = await patchCodexStackConfig(payload);
     restartRequiredUnits.value = response.restartRequiredUnits || [];
     configForm.cpaProxyKey = "";
