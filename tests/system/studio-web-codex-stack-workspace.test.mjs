@@ -694,6 +694,10 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(runReadinessPanel, /readiness\.checks/);
   assert.match(runReadinessPanel, /actionsDisabled: boolean;/);
   assert.match(runReadinessPanel, /disabledLabel: string;/);
+  assert.match(runReadinessPanel, /mode\.dependencies\?\.length/);
+  assert.match(runReadinessPanel, /v-for="dependency in mode\.dependencies"/);
+  assert.match(runReadinessPanel, /class="cs-run-mode-deps"/);
+  assert.match(runReadinessPanel, /runReadinessCheckTone\(dependency\.status\)/);
   assert.match(runReadinessPanel, /:disabled="isActionDisabled\(mode\.actionHint\)"/);
   assert.match(runReadinessPanel, /:disabled="isActionDisabled\(check\.actionHint\)"/);
   assert.match(runReadinessPanel, /actionHint\.kind !== "open-section"/);
@@ -721,7 +725,12 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(readinessAction, /export function resolveCodexStackRunReadinessModeAction/);
   assert.match(readinessAction, /action\.kind === "repair" && action\.repairActions\?\.length/);
   assert.match(codexStackTypes, /actionHint\?: CodexStackRunReadinessActionHint;/);
+  assert.match(codexStackTypes, /export interface CodexStackRunReadinessModeDependency/);
+  assert.match(codexStackTypes, /dependencies\?: CodexStackRunReadinessModeDependency\[\];/);
   assert.match(runReadinessPanel, /Codex 运行就绪/);
+  assert.match(codexStackService, /const baseModeDependencies = \[/);
+  assert.match(codexStackService, /dependencies: dependenciesFor\(\[\.\.\.baseModeDependencies, "context-window", "job-lock"\]\)/);
+  assert.match(codexStackService, /dependencies: dependenciesFor\(\[\.\.\.baseModeDependencies, "cc-agent-route"\]\)/);
   assert.match(codexStackService, /id: "cc-agent-task"/);
   assert.match(codexStackService, /label: "CC\/IM Agent 任务"/);
   assert.match(codexStackService, /label: "修复 NO_PROXY", repairActions: \["repair-no-proxy-loopback"\]/);

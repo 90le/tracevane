@@ -23,6 +23,16 @@
         <div>
           <strong>{{ mode.label }}</strong>
           <p>{{ mode.detail }}</p>
+          <div v-if="mode.dependencies?.length" class="cs-run-mode-deps" :aria-label="text('依赖检查', 'Dependency checks')">
+            <span
+              v-for="dependency in mode.dependencies"
+              :key="dependency.checkId"
+              class="cs-run-mode-dep"
+              :class="`tone-${runReadinessCheckTone(dependency.status)}`"
+            >
+              {{ dependency.label }}
+            </span>
+          </div>
           <em v-if="mode.actionHint">{{ isActionDisabled(mode.actionHint) ? disabledLabel : mode.actionHint.label }}</em>
         </div>
         <span>{{ runReadinessModeLabel(mode.ready, readiness.level) }}</span>
@@ -225,6 +235,41 @@ function isActionDisabled(actionHint: CodexStackRunReadinessActionHint | undefin
   font-style: normal;
   font-weight: 700;
   font-size: 0.82rem;
+}
+
+.cs-run-mode-deps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.cs-run-mode-dep {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+.cs-run-mode-dep.tone-sage {
+  border-color: color-mix(in srgb, var(--success) 44%, var(--line));
+  color: var(--success);
+}
+
+.cs-run-mode-dep.tone-accent {
+  border-color: color-mix(in srgb, var(--acc) 44%, var(--line));
+  color: var(--acc);
+}
+
+.cs-run-mode-dep.tone-danger {
+  border-color: color-mix(in srgb, var(--danger) 44%, var(--line));
+  color: var(--danger);
 }
 
 .cs-run-check em {

@@ -641,6 +641,22 @@ account_id = "test"
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.actionHint?.kind, "run-check");
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.actionHint?.kind, "run-check");
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.actionHint?.section, "cc-connect");
+        assert.deepEqual(
+          summary.runReadiness.modes.find((mode) => mode.id === "chat")?.dependencies?.map((dependency) => dependency.checkId),
+          ["service-order", "local-compact", "codex-provider", "codex-auth", "proxy-loopback", "codex-transport", "smoke-matrix"],
+        );
+        assert.deepEqual(
+          summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.dependencies?.map((dependency) => dependency.checkId),
+          ["service-order", "local-compact", "codex-provider", "codex-auth", "proxy-loopback", "codex-transport", "smoke-matrix", "context-window", "job-lock"],
+        );
+        assert.deepEqual(
+          summary.runReadiness.modes.find((mode) => mode.id === "compaction")?.dependencies?.map((dependency) => dependency.checkId),
+          ["service-order", "local-compact", "codex-provider", "codex-auth", "proxy-loopback", "codex-transport", "smoke-matrix", "context-window"],
+        );
+        assert.deepEqual(
+          summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.dependencies?.map((dependency) => dependency.checkId),
+          ["service-order", "local-compact", "codex-provider", "codex-auth", "proxy-loopback", "codex-transport", "smoke-matrix", "cc-agent-route"],
+        );
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "service-order")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-provider")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-auth")?.status, "pass");

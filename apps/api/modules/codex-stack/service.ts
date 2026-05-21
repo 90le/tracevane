@@ -2434,6 +2434,22 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           : { kind: "run-check" as const, label: "运行健康检查" }
       : chatActionHint;
     const ccAgentActionHint = ccAgentTaskReady ? chatActionHint : checks.find((check) => check.id === "cc-agent-route")?.actionHint || chatActionHint;
+    const dependencyFor = (id: string) => {
+      const check = checks.find((item) => item.id === id);
+      return check ? { checkId: check.id, label: check.label, status: check.status } : null;
+    };
+    const dependenciesFor = (ids: string[]) => ids
+      .map((id) => dependencyFor(id))
+      .filter((item): item is NonNullable<ReturnType<typeof dependencyFor>> => Boolean(item));
+    const baseModeDependencies = [
+      "service-order",
+      "local-compact",
+      "codex-provider",
+      "codex-auth",
+      "proxy-loopback",
+      "codex-transport",
+      "smoke-matrix",
+    ];
     return {
       level,
       title: level === "ready"
@@ -2454,6 +2470,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ready: chatReady,
           detail: chatReady ? "基础 CPA/Compact 请求链路可用。" : chatBlockedDetail,
           actionHint: chatReady ? { kind: "run-check", label: "运行健康检查" } : chatActionHint,
+          dependencies: dependenciesFor(baseModeDependencies),
         },
         {
           id: "long-task",
@@ -2461,6 +2478,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ready: longTaskReady,
           detail: longTaskReady ? "无后台安装锁且上下文窗口足够。" : "需要新鲜 smoke、无后台任务并保持足够上下文窗口。",
           actionHint: longTaskActionHint,
+          dependencies: dependenciesFor([...baseModeDependencies, "context-window", "job-lock"]),
         },
         {
           id: "compaction",
@@ -2468,6 +2486,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ready: compactionReady,
           detail: compactionReady ? "Codex 请求压缩未启用，context 策略已显式配置。" : "需要新鲜 smoke、禁用请求体压缩并确认 context 策略。",
           actionHint: compactionActionHint,
+          dependencies: dependenciesFor([...baseModeDependencies, "context-window"]),
         },
         {
           id: "cc-agent-task",
@@ -2477,6 +2496,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
             ? "cc-connect 任务会走本地 Compact/CPA 链路。"
             : ccAgentTaskReady && !chatReady ? chatBlockedDetail : ccAgentDetail,
           actionHint: ccAgentModeReady ? { kind: "open-section", label: "查看 Agent 配置", section: "cc-connect" } : ccAgentActionHint,
+          dependencies: dependenciesFor([...baseModeDependencies, "cc-agent-route"]),
         },
       ],
     };

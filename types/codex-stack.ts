@@ -88,12 +88,19 @@ export interface CodexStackRunReadinessCheck {
   actionHint: CodexStackRunReadinessActionHint;
 }
 
+export interface CodexStackRunReadinessModeDependency {
+  checkId: string;
+  label: string;
+  status: CodexStackRunReadinessCheckStatus;
+}
+
 export interface CodexStackRunReadinessMode {
   id: CodexStackRunReadinessModeId;
   label: string;
   ready: boolean;
   detail: string;
   actionHint?: CodexStackRunReadinessActionHint;
+  dependencies?: CodexStackRunReadinessModeDependency[];
 }
 
 export interface CodexStackRunReadiness {
