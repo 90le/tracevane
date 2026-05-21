@@ -9,6 +9,7 @@ const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8")
 
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
 const ccConnectCommandBar = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectCommandBar.vue");
+const ccConnectRail = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectRail.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
@@ -97,6 +98,10 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectCommandBar, /\.cs-config-action-strip\s*\{/);
   assert.match(ccConnectCommandBar, /\.cs-agent-savebar\s*\{/);
   assert.match(ccConnectCommandBar, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectRail, /class="panel-card cs-agent-rail"/);
+  assert.match(ccConnectRail, /\.cs-agent-pane-switch\s*\{/);
+  assert.match(ccConnectRail, /\.cs-agent-project-pill\s*\{/);
+  assert.match(ccConnectRail, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
 });
@@ -236,6 +241,26 @@ test("codex stack cc-connect page delegates command bar without moving config wr
   assert.match(ccConnectCommandBar, /@click="\$emit\('save-structured'\)"/);
   assert.match(ccConnectCommandBar, /@click="\$emit\('save-raw'\)"/);
   assert.doesNotMatch(ccConnectCommandBar, /patchCcConnectConfig|saveCcConnectStructured|saveCcConnectRaw|normalizeProviderDrafts|normalizeProjectDrafts/);
+});
+
+test("codex stack cc-connect page delegates rail navigation without moving drafts", () => {
+  assert.match(controlPage, /import CodexStackCcConnectRail from "\.\/CodexStackCcConnectRail\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackCcConnectRail[\s\S]*:panes="agentPanes"[\s\S]*:active-pane="activeAgentPane"[\s\S]*:projects="ccConnectProjectRailItems"[\s\S]*:selected-project-id="selectedProjectDraft\?\.id \|\| ''"[\s\S]*:busy="busy"[\s\S]*@set-active-pane="setActiveAgentPane"[\s\S]*@select-project="selectCcConnectProject"[\s\S]*@add-project="addCcConnectProject"/,
+  );
+  assert.match(controlPage, /const ccConnectProjectRailItems = computed<CodexStackCcConnectProjectRailItem\[\]>/);
+  assert.match(controlPage, /function setActiveAgentPane\(paneId: AgentPaneId\): void/);
+  assert.match(controlPage, /function selectCcConnectProject\(projectId: string\): void/);
+  assert.match(controlPage, /function addCcConnectProject\(\): void/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-agent-rail"/);
+  assert.match(ccConnectRail, /export type CodexStackCcConnectPaneId = "projects" \| "providers" \| "setup" \| "raw";/);
+  assert.match(ccConnectRail, /export interface CodexStackCcConnectProjectRailItem/);
+  assert.match(ccConnectRail, /defineEmits<[\s\S]*"set-active-pane": \[paneId: CodexStackCcConnectPaneId\][\s\S]*"select-project": \[projectId: string\][\s\S]*"add-project": \[\]/);
+  assert.match(ccConnectRail, /@click="\$emit\('set-active-pane', pane\.id\)"/);
+  assert.match(ccConnectRail, /@click="\$emit\('select-project', project\.id\)"/);
+  assert.match(ccConnectRail, /@click="\$emit\('add-project'\)"/);
+  assert.doesNotMatch(ccConnectRail, /ccConnectProjectDrafts|selectedProjectDraft|addCcConnectProject|selectCcConnectProject|patchCcConnectConfig|saveCcConnect/);
 });
 
 test("codex stack dashboard exposes a request chain safety map", () => {

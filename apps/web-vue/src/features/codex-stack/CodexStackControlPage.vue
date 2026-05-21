@@ -271,39 +271,16 @@
               />
 
               <div class="cs-agent-workbench">
-                <aside class="panel-card cs-agent-rail">
-                  <div class="cs-agent-pane-switch">
-                    <button
-                      v-for="pane in agentPanes"
-                      :key="pane.id"
-                      type="button"
-                      class="cs-agent-pane-button"
-                      :class="{ 'cs-agent-pane-button-active': activeAgentPane === pane.id }"
-                      @click="activeAgentPane = pane.id"
-                    >
-                      {{ pane.label }}
-                    </button>
-                  </div>
-                  <div class="cs-agent-project-rail">
-                    <div class="cs-agent-rail-head">
-                      <strong>{{ text("项目列表", "Projects") }}</strong>
-                      <button type="button" class="text-button" :disabled="busy" @click="addCcConnectProject">
-                        {{ text("新增", "Add") }}
-                      </button>
-                    </div>
-                    <button
-                      v-for="project in ccConnectProjectDrafts"
-                      :key="project.id"
-                      type="button"
-                      class="cs-agent-project-pill"
-                      :class="{ 'cs-agent-project-pill-active': selectedProjectDraft?.id === project.id }"
-                      @click="selectCcConnectProject(project.id)"
-                    >
-                      <strong>{{ project.name || text("未命名项目", "Unnamed Project") }}</strong>
-                      <span>{{ project.agentOptions.model || "--" }} · {{ project.platforms.length }} {{ text("渠道", "channels") }}</span>
-                    </button>
-                  </div>
-                </aside>
+                <CodexStackCcConnectRail
+                  :panes="agentPanes"
+                  :active-pane="activeAgentPane"
+                  :projects="ccConnectProjectRailItems"
+                  :selected-project-id="selectedProjectDraft?.id || ''"
+                  :busy="busy"
+                  @set-active-pane="setActiveAgentPane"
+                  @select-project="selectCcConnectProject"
+                  @add-project="addCcConnectProject"
+                />
 
                 <section class="panel-card cs-agent-stage">
                   <template v-if="activeAgentPane === 'projects'">
@@ -826,6 +803,11 @@ import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
 import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
 import CodexStackCcConnectCommandBar from "./CodexStackCcConnectCommandBar.vue";
+import CodexStackCcConnectRail from "./CodexStackCcConnectRail.vue";
+import type {
+  CodexStackCcConnectPaneId,
+  CodexStackCcConnectProjectRailItem,
+} from "./CodexStackCcConnectRail.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
 import CodexStackInstallConfigPanel from "./CodexStackInstallConfigPanel.vue";
 import type {
@@ -860,7 +842,7 @@ import CodexStackUpstreamMap from "./CodexStackUpstreamMap.vue";
 const { text } = useLocalePreference();
 
 type SectionId = "dashboard" | "install" | "cc-connect" | "settings" | "logs";
-type AgentPaneId = "projects" | "providers" | "setup" | "raw";
+type AgentPaneId = CodexStackCcConnectPaneId;
 type LogLineMode = CodexStackLogLineMode;
 type ComponentInstallMode = CodexStackComponentInstallMode;
 type AgentProjectPreset = "admin" | "worker";
@@ -1661,6 +1643,12 @@ const agentPanes = computed(() => [
   { id: "setup" as const, label: text("绑定与动作", "Setup & Actions") },
   { id: "raw" as const, label: "TOML" },
 ]);
+const ccConnectProjectRailItems = computed<CodexStackCcConnectProjectRailItem[]>(() => ccConnectProjectDrafts.value.map((project) => ({
+  id: project.id,
+  name: project.name,
+  model: project.agentOptions.model,
+  platformCount: project.platforms.length,
+})));
 const platformTemplates = computed<Array<{ id: PlatformTemplateId; label: string; copy: string }>>(() => [
   {
     id: "dmwork",
@@ -2566,6 +2554,10 @@ function selectCcConnectProject(projectId: string): void {
   activeAgentPane.value = "projects";
 }
 
+function setActiveAgentPane(paneId: AgentPaneId): void {
+  activeAgentPane.value = paneId;
+}
+
 function removeCcConnectPlatform(project: CcConnectProjectDraft, platformId: string): void {
   project.platforms = project.platforms.filter((platform) => platform.id !== platformId);
 }
@@ -3180,78 +3172,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   align-items: start;
 }
 
-.cs-agent-rail {
-  position: sticky;
-  top: 92px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.cs-agent-pane-switch {
-  display: grid;
-  gap: 8px;
-}
-
-.cs-agent-pane-button,
-.cs-agent-project-pill {
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  color: var(--text-soft);
-  cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
-}
-
-.cs-agent-pane-button {
-  border-radius: 16px;
-  padding: 12px 14px;
-  text-align: left;
-  font-weight: 650;
-}
-
-.cs-agent-pane-button-active,
-.cs-agent-project-pill-active {
-  color: var(--text);
-  border-color: color-mix(in srgb, var(--acc) 44%, var(--line));
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--acc) 14%, transparent), color-mix(in srgb, var(--surface) 96%, transparent)),
-    var(--surface);
-}
-
-.cs-agent-pane-button:hover,
-.cs-agent-project-pill:hover {
-  transform: translateY(-1px);
-}
-
-.cs-agent-rail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.cs-agent-project-rail {
-  min-width: 0;
-}
-
-.cs-agent-project-pill {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  border-radius: 16px;
-  padding: 12px;
-  margin-top: 8px;
-  text-align: left;
-}
-
-.cs-agent-project-pill span {
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
 .cs-agent-stage {
   min-width: 0;
 }
@@ -3495,10 +3415,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
     grid-template-columns: 1fr;
   }
 
-  .cs-agent-rail {
-    position: static;
-  }
-
   .cs-kv-row {
     grid-template-columns: 1fr;
   }
@@ -3525,8 +3441,5 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
     justify-content: flex-start;
   }
 
-  .cs-agent-pane-switch {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 </style>
