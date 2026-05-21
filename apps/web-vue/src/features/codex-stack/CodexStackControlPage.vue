@@ -192,6 +192,7 @@
               <CodexStackDashboardInsights
                 :labels="dashboardInsightsLabels"
                 :runtime-rows="runtimeSummaryRows"
+                :network-policy="networkPolicyCard"
                 :smoke-matrix="smokeMatrixCard"
                 :components="componentHealthCards"
               />
@@ -1324,9 +1325,11 @@ import {
   countActiveServices,
   isCodexStackJobRunning,
 } from "./codex-stack-view-model";
+import type { CodexStackTone } from "./codex-stack-view-model";
 import CodexStackDashboardInsights from "./CodexStackDashboardInsights.vue";
 import type {
   CodexStackComponentHealthCard,
+  CodexStackNetworkPolicyCard,
   CodexStackRuntimeSummaryRow,
   CodexStackSmokeMatrixCard,
 } from "./CodexStackDashboardInsights.vue";
@@ -1743,6 +1746,51 @@ const runtimeSummaryRows = computed<CodexStackRuntimeSummaryRow[]>(() => {
       value: current.installer.version || "--",
     },
   ];
+});
+const networkPolicyCard = computed<CodexStackNetworkPolicyCard | null>(() => {
+  const current = summary.value;
+  if (!current) return null;
+  const policy = current.proxyPolicy;
+  const directWithSystemProxy = policy.providerMode === "direct" && Boolean(policy.providerProxyUrl);
+  const proxyMode = policy.providerMode === "proxy" && Boolean(policy.providerProxyUrl);
+  const tone: CodexStackTone = !policy.noProxyLoopbackReady
+    ? "danger"
+    : directWithSystemProxy || proxyMode ? "accent" : "sage";
+  const modeValue = !policy.noProxyLoopbackReady
+    ? text("本机绕过缺失", "Loopback bypass missing")
+    : proxyMode
+      ? text("海外代理", "Foreign proxy")
+      : directWithSystemProxy
+        ? text("国内直连 + 系统代理提示", "Domestic direct + system proxy noticed")
+        : text("国内网关直连", "Domestic gateway direct");
+  const modeHelp = !policy.noProxyLoopbackReady
+    ? text("网卡/TUN 模式或系统代理可能截获 CPA/Compact 的本机请求，先补齐 NO_PROXY 再跑 Codex 对话、长任务和压缩上下文。", "TUN mode or a system proxy can capture local CPA/Compact calls; fix NO_PROXY before Codex chats, long jobs, and compaction.")
+    : proxyMode
+      ? text(`CPA provider 使用 ${policy.providerProxyUrl}；仅海外/OpenAI 上游需要这样配置。`, `CPA providers use ${policy.providerProxyUrl}; keep this for foreign/OpenAI upstreams only.`)
+      : directWithSystemProxy
+        ? text("检测到系统代理，但 CPA provider 仍是 direct；国内网关不会继承系统代理，若 TUN 劫持流量请在 VPN 里为国内网关配置直连。", "A system proxy is present while CPA providers stay direct; domestic gateways will not inherit it, so configure direct routing for domestic gateways if TUN captures traffic.")
+        : text("国内兼容网关保持直连；OpenAI 官方 Codex 访问仍由 Codex/系统代理路径处理。", "Domestic compatible gateways stay direct; official OpenAI Codex access still follows the Codex/system proxy path.");
+  const loopbackValue = policy.noProxyLoopbackReady
+    ? text("localhost / 127.0.0.1 / ::1 已绕过", "localhost / 127.0.0.1 / ::1 bypassed")
+    : text(`缺少 ${policy.noProxyLoopbackMissing.join(", ")}`, `Missing ${policy.noProxyLoopbackMissing.join(", ")}`);
+  const loopbackHelp = policy.noProxyLoopbackReady
+    ? text(`NO_PROXY=${policy.noProxy}`, `NO_PROXY=${policy.noProxy}`)
+    : text("把 localhost,127.0.0.1,::1 写入 NO_PROXY，避免本机 CPA/Compact 请求被系统代理或 VPN 网卡模式转走。", "Add localhost,127.0.0.1,::1 to NO_PROXY so local CPA/Compact calls are not routed through a system proxy or VPN TUN mode.");
+  const upstreamValue = policy.upstreamBaseUrl
+    ? `${policy.upstreamBaseUrl} · ${policy.upstreamApiKeyConfigured ? text("密钥已配置", "key configured") : text("缺少密钥", "key missing")}`
+    : text("使用安装器默认上游", "Using installer default upstream");
+  return {
+    kicker: text("网络策略", "Network Policy"),
+    title: text("代理与直连诊断", "Proxy and Direct Routing"),
+    modeValue,
+    modeHelp,
+    loopbackLabel: "NO_PROXY",
+    loopbackValue,
+    loopbackHelp,
+    upstreamLabel: text("上游", "Upstream"),
+    upstreamValue,
+    tone,
+  };
 });
 const chainMapLabels = computed(() => ({
   kicker: text("链路", "Chain"),

@@ -63,6 +63,19 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(chainMap, /v-if="warnings\.length"/);
 });
 
+test("codex stack dashboard exposes explicit network mode diagnostics", () => {
+  assert.match(controlPage, /:network-policy="networkPolicyCard"/);
+  assert.match(controlPage, /const networkPolicyCard = computed<CodexStackNetworkPolicyCard \| null>/);
+  assert.match(controlPage, /国内网关直连/);
+  assert.match(controlPage, /国内直连 \+ 系统代理提示/);
+  assert.match(controlPage, /网卡\/TUN 模式或系统代理可能截获 CPA\/Compact 的本机请求/);
+  assert.match(controlPage, /OpenAI 官方 Codex 访问仍由 Codex\/系统代理路径处理/);
+  assert.match(dashboardInsights, /export interface CodexStackNetworkPolicyCard/);
+  assert.match(dashboardInsights, /class="cs-network-policy-strip"/);
+  assert.match(dashboardInsights, /networkPolicy\.loopbackValue/);
+  assert.match(dashboardInsights, /networkPolicy\.upstreamValue/);
+});
+
 test("codex stack background jobs resync cc-connect drafts after completion", () => {
   assert.match(controlPage, /async function loadAll\(silent = false, ccConnectOptions: CcConnectLoadOptions = \{\}\): Promise<void>/);
   assert.match(controlPage, /if \(!isCodexStackJobRunning\(response\.job\)\) \{[\s\S]*await loadAll\(true\);/);

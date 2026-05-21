@@ -12,6 +12,27 @@
           <span>{{ row.label }}</span>
           <code>{{ row.value }}</code>
         </div>
+        <div v-if="networkPolicy" class="cs-network-policy-strip" :class="`tone-${networkPolicy.tone}`">
+          <div class="cs-network-policy-head">
+            <div>
+              <span>{{ networkPolicy.kicker }}</span>
+              <strong>{{ networkPolicy.title }}</strong>
+            </div>
+            <strong>{{ networkPolicy.modeValue }}</strong>
+          </div>
+          <div class="cs-network-policy-grid">
+            <div>
+              <span>{{ networkPolicy.loopbackLabel }}</span>
+              <strong>{{ networkPolicy.loopbackValue }}</strong>
+              <p>{{ networkPolicy.loopbackHelp }}</p>
+            </div>
+            <div>
+              <span>{{ networkPolicy.upstreamLabel }}</span>
+              <strong>{{ networkPolicy.upstreamValue }}</strong>
+              <p>{{ networkPolicy.modeHelp }}</p>
+            </div>
+          </div>
+        </div>
         <div v-if="smokeMatrix" class="cs-smoke-matrix-detail">
           <div class="cs-smoke-matrix-head">
             <span>{{ smokeMatrix.requiredModelsLabel }}</span>
@@ -83,6 +104,19 @@ export interface CodexStackSmokeMatrixCard {
   models: CodexStackSmokeModelCard[];
 }
 
+export interface CodexStackNetworkPolicyCard {
+  kicker: string;
+  title: string;
+  modeValue: string;
+  modeHelp: string;
+  loopbackLabel: string;
+  loopbackValue: string;
+  loopbackHelp: string;
+  upstreamLabel: string;
+  upstreamValue: string;
+  tone: CodexStackTone;
+}
+
 export interface CodexStackComponentHealthCard {
   id: CodexStackComponentId;
   label: string;
@@ -102,6 +136,7 @@ export interface CodexStackDashboardInsightsLabels {
 defineProps<{
   labels: CodexStackDashboardInsightsLabels;
   runtimeRows: CodexStackRuntimeSummaryRow[];
+  networkPolicy: CodexStackNetworkPolicyCard | null;
   smokeMatrix: CodexStackSmokeMatrixCard | null;
   components: CodexStackComponentHealthCard[];
 }>();
@@ -199,6 +234,72 @@ defineProps<{
   word-break: break-word;
 }
 
+.cs-network-policy-strip {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0 2px;
+  border-top: 1px solid var(--line);
+}
+
+.cs-network-policy-strip.tone-sage {
+  --network-accent: #2f8b57;
+}
+
+.cs-network-policy-strip.tone-accent {
+  --network-accent: #3264b5;
+}
+
+.cs-network-policy-strip.tone-danger {
+  --network-accent: #c0392b;
+}
+
+.cs-network-policy-strip.tone-neutral {
+  --network-accent: #64748b;
+}
+
+.cs-network-policy-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cs-network-policy-head div {
+  display: grid;
+  gap: 3px;
+}
+
+.cs-network-policy-head span,
+.cs-network-policy-grid span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.cs-network-policy-head strong:last-child {
+  color: var(--network-accent);
+  white-space: nowrap;
+}
+
+.cs-network-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cs-network-policy-grid div {
+  display: grid;
+  gap: 4px;
+}
+
+.cs-network-policy-grid p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
 .cs-smoke-matrix-detail {
   display: grid;
   gap: 8px;
@@ -273,6 +374,14 @@ defineProps<{
 
   .cs-kv-row {
     grid-template-columns: 1fr;
+  }
+
+  .cs-network-policy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-network-policy-head {
+    flex-direction: column;
   }
 }
 </style>
