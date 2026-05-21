@@ -1577,7 +1577,12 @@ const modelSourceHelp = computed(() => {
     `Could not read ${models.endpoint}; using local config fallback. Reason: ${models.error || "unknown"}`,
   );
 });
-const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["kimi-k2.6", "glm-5.1", "gpt-5.5"]);
+const modelOptions = computed(() => Array.from(new Set([
+  ...(summary.value?.models.available || []),
+  "kimi-k2.6",
+  "glm-5.1",
+  "gpt-5.5",
+])));
 const modelCatalogPreview = computed(() => modelOptions.value.slice(0, 6));
 const activeRecommendation = computed(() => summary.value?.recommendation || null);
 const nextActionSection = computed<SectionId>(() => {
@@ -2314,6 +2319,26 @@ function channelLabel(channel: CodexStackChannel): string {
   if (channel === "dmwork") return "DMWork";
   if (channel === "octo") return "Octo";
   return text("官方版", "Official");
+}
+
+function installChannelDefaultModel(channel: CodexStackChannel): string {
+  return channel === "official" ? "glm-5.1" : "kimi-k2.6";
+}
+
+function installChannelDefaultCpaPort(channel: CodexStackChannel): number {
+  return channel === "official" ? 8317 : 18795;
+}
+
+function syncInstallChannelDefaults(nextChannel: CodexStackChannel, previousChannel: CodexStackChannel): void {
+  const previousDefaultModel = installChannelDefaultModel(previousChannel);
+  if (!installForm.model || installForm.model === previousDefaultModel) {
+    installForm.model = installChannelDefaultModel(nextChannel);
+  }
+
+  const previousDefaultPort = installChannelDefaultCpaPort(previousChannel);
+  if (!Number(installForm.cpaPort) || Number(installForm.cpaPort) === previousDefaultPort) {
+    installForm.cpaPort = installChannelDefaultCpaPort(nextChannel);
+  }
 }
 
 function yesNo(value: boolean): string {
@@ -3073,6 +3098,10 @@ onUnmounted(() => {
 watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   syncLogPolling();
   void loadLogs(selectedLogService.value, true);
+});
+
+watch(() => installForm.channel, (nextChannel, previousChannel) => {
+  syncInstallChannelDefaults(nextChannel, previousChannel);
 });
 </script>
 
