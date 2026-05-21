@@ -188,38 +188,12 @@
                 :components="componentHealthCards"
               />
 
-              <div class="cs-dashboard-grid">
-                <article class="panel-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("健康检查", "Health Check") }}</p>
-                      <h4>{{ text("检查输出", "Check Output") }}</h4>
-                    </div>
-                    <button type="button" class="secondary-button" :disabled="busy" @click="runCheck">
-                      {{ text("重新运行", "Run Again") }}
-                    </button>
-                  </div>
-                  <pre class="cs-code">{{ checkOutput || text("尚未运行健康检查。", "Health check output will appear here after you run it.") }}</pre>
-                </article>
-
-                <article class="panel-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("信号", "Signals") }}</p>
-                      <h4>{{ text("提醒与风险", "Warnings and Risks") }}</h4>
-                    </div>
-                  </div>
-                  <div v-if="summary.warnings.length" class="cs-warning-list">
-                    <div v-for="warning in summary.warnings" :key="warning" class="cs-warning-row">
-                      <span class="cs-warning-icon">!</span>
-                      <span>{{ warning }}</span>
-                    </div>
-                  </div>
-                  <div v-else class="cs-empty-lite">
-                    {{ text("当前没有额外告警。", "No additional warnings right now.") }}
-                  </div>
-                </article>
-              </div>
+              <CodexStackDiagnosticsPanel
+                :output="checkOutput"
+                :warnings="summary.warnings"
+                :busy="busy"
+                @run-check="runCheck"
+              />
             </section>
           </template>
 
@@ -1331,6 +1305,7 @@ import type {
   CodexStackRuntimeSummaryRow,
   CodexStackSmokeMatrixCard,
 } from "./CodexStackDashboardInsights.vue";
+import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
 import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";

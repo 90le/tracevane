@@ -11,6 +11,7 @@ const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackContro
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
+const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
@@ -42,6 +43,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(actionOverview, /class="cs-action-overview-grid"/);
   assert.match(actionOverview, /\.cs-readiness-bar\s*\{/);
   assert.match(actionOverview, /@media \(max-width: 1200px\)/);
+  assert.match(diagnosticsPanel, /class="cs-diagnostics-grid"/);
+  assert.match(diagnosticsPanel, /\.cs-warning-list\s*\{/);
+  assert.match(diagnosticsPanel, /@media \(max-width: 960px\)/);
   assert.match(dashboardInsights, /\.cs-section-kicker\s*\{/);
   assert.match(dashboardInsights, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(chainMap, /export interface CodexStackChainNode/);
@@ -63,6 +67,16 @@ test("codex stack dashboard delegates action overview without losing actions", (
   assert.match(actionOverview, /<CodexStackRecommendationCard/);
   assert.match(actionOverview, /nextActionRequiresMutation \? !props\.canRunMutation : props\.busy/);
   assert.match(actionOverview, /modelCatalogPreview/);
+});
+
+test("codex stack dashboard delegates diagnostics without losing run check", () => {
+  assert.match(controlPage, /import CodexStackDiagnosticsPanel from "\.\/CodexStackDiagnosticsPanel\.vue";/);
+  assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:output="checkOutput"[\s\S]*:warnings="summary\.warnings"[\s\S]*@run-check="runCheck"/);
+  assert.doesNotMatch(controlPage, /尚未运行健康检查。/);
+  assert.doesNotMatch(controlPage, /class="cs-diagnostics-grid"/);
+  assert.match(diagnosticsPanel, /健康检查/);
+  assert.match(diagnosticsPanel, /@click="\$emit\('run-check'\)"/);
+  assert.match(diagnosticsPanel, /warnings\.length/);
 });
 
 test("codex stack dashboard exposes a request chain safety map", () => {
