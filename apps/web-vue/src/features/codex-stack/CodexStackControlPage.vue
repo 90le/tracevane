@@ -1720,41 +1720,64 @@ const modelSourceHelp = computed(() => {
 });
 const modelOptions = computed(() => summary.value?.models.available.length ? summary.value.models.available : ["kimi-k2.6", "glm-5.1", "gpt-5.5"]);
 const modelCatalogPreview = computed(() => modelOptions.value.slice(0, 6));
+const activeRecommendation = computed(() => summary.value?.recommendation || null);
 const nextActionSection = computed<SectionId>(() => {
-  const status = summary.value?.overallStatus || "needs-setup";
-  if (status === "needs-setup") return "install";
-  if (status === "binding-required") return "cc-connect";
-  if (status === "running-action") return "logs";
-  if (status === "degraded" || status === "failed") return "dashboard";
-  return "logs";
+  return activeRecommendation.value?.section || "dashboard";
 });
 const nextActionTitle = computed(() => {
-  const status = summary.value?.overallStatus || "needs-setup";
-  if (status === "ready") return text("运行健康检查确认状态", "Run a health check to confirm");
-  if (status === "binding-required") return text("完成 cc-connect 绑定", "Complete cc-connect binding");
-  if (status === "running-action") return text("查看后台任务输出", "Watch background job output");
-  if (status === "degraded" || status === "failed") return text("执行推荐修复", "Run recommended repair");
-  return text("选择安装范围并开始", "Choose install scope and start");
+  switch (activeRecommendation.value?.kind) {
+    case "run-check":
+      return text("运行健康检查确认状态", "Run a health check to confirm");
+    case "bind-cc-connect":
+      return text("完成 cc-connect 绑定", "Complete cc-connect binding");
+    case "watch-job":
+      return text("查看后台任务输出", "Watch background job output");
+    case "repair":
+      return text("执行推荐修复", "Run recommended repair");
+    case "review-proxy":
+      return text("检查系统代理与国内直连", "Review proxy and domestic direct access");
+    case "review-smoke":
+      return text("重新验证模型矩阵", "Recheck the model smoke matrix");
+    default:
+      return text("选择安装范围并开始", "Choose install scope and start");
+  }
 });
 const nextActionCopy = computed(() => {
-  const status = summary.value?.overallStatus || "needs-setup";
-  if (status === "ready") return text("服务已就绪，建议定期运行健康检查或查看日志。", "Services are ready; run checks or inspect logs when needed.");
-  if (status === "binding-required") return text("cc-connect 已安装但还需要平台绑定或收尾。", "cc-connect is installed but still needs platform binding or finalization.");
-  if (status === "running-action") return text("安装或修复正在执行，先跟踪输出和结果。", "An install or repair is running; track output and result first.");
-  if (status === "degraded" || status === "failed") return text("有组件未运行或端点不可达，推荐先执行修复。", "Some components are stopped or unreachable; run repair first.");
-  return text("首次使用从 DMWork 增强版开始；已有环境可选择跳过或强制重装组件。", "Start with the DMWork enhanced channel; existing environments can skip or force reinstall components.");
+  switch (activeRecommendation.value?.kind) {
+    case "run-check":
+      return text("服务已就绪，建议定期运行健康检查或查看日志。", "Services are ready; run checks or inspect logs when needed.");
+    case "bind-cc-connect":
+      return text("cc-connect 已安装但还需要平台绑定或收尾。", "cc-connect is installed but still needs platform binding or finalization.");
+    case "watch-job":
+      return text("安装或修复正在执行，先跟踪输出和结果。", "An install or repair is running; track output and result first.");
+    case "repair":
+      return text("有组件未运行或端点不可达，推荐先执行修复。", "Some components are stopped or unreachable; run repair first.");
+    case "review-proxy":
+      return text("检测到系统代理，但 CPA provider 仍是 direct。国内网关应直连；若 TUN 模式劫持流量，请在模型上游页检查代理和 NO_PROXY。", "A system proxy is present while CPA providers are direct. Domestic gateways should stay direct; if TUN mode hijacks traffic, review proxy and NO_PROXY in Models.");
+    case "review-smoke":
+      return text("上次 glm-5.1 / kimi-k2.6 矩阵失败，Codex 不会自动切到 CPA。先在安装页重新跑 smoke gate。", "The last glm-5.1 / kimi-k2.6 matrix failed, so Codex will not attach to CPA. Re-run the smoke gate from Install.");
+    default:
+      return text("首次使用从 DMWork 增强版开始；已有环境可选择跳过或强制重装组件。", "Start with the DMWork enhanced channel; existing environments can skip or force reinstall components.");
+  }
 });
 const nextActionButton = computed(() => {
-  const status = summary.value?.overallStatus || "needs-setup";
-  if (status === "ready") return text("运行检查", "Run Check");
-  if (status === "binding-required") return text("去绑定", "Bind Now");
-  if (status === "running-action") return text("看日志", "View Logs");
-  if (status === "degraded" || status === "failed") return text("自动修复", "Auto Repair");
-  return text("开始安装", "Start Install");
+  switch (activeRecommendation.value?.primaryAction) {
+    case "run-check":
+      return text("运行检查", "Run Check");
+    case "open-cc-connect":
+      return text("去绑定", "Bind Now");
+    case "open-logs":
+      return text("看日志", "View Logs");
+    case "repair-recommended":
+      return text("自动修复", "Auto Repair");
+    case "open-settings":
+      return text("检查模型上游", "Review Models");
+    default:
+      return text("打开安装页", "Open Install");
+  }
 });
 const nextActionRequiresMutation = computed(() => {
-  const status = summary.value?.overallStatus || "needs-setup";
-  return status === "needs-setup" || status === "degraded" || status === "failed";
+  return activeRecommendation.value?.requiresManagement === true;
 });
 const activeJobTitle = computed(() => {
   if (!activeJob.value) return "";
@@ -2217,16 +2240,28 @@ function guardMutation(): boolean {
 }
 
 function nextActionPrimary(): void {
-  const status = summary.value?.overallStatus || "needs-setup";
-  if (status === "ready") {
-    void runCheck();
-    return;
+  switch (activeRecommendation.value?.primaryAction) {
+    case "run-check":
+      void runCheck();
+      return;
+    case "repair-recommended":
+      void repairRecommended();
+      return;
+    case "open-install":
+      activeSection.value = "install";
+      return;
+    case "open-cc-connect":
+      activeSection.value = "cc-connect";
+      return;
+    case "open-logs":
+      activeSection.value = "logs";
+      return;
+    case "open-settings":
+      activeSection.value = "settings";
+      return;
+    default:
+      activeSection.value = nextActionSection.value;
   }
-  if (status === "degraded" || status === "failed") {
-    void repairRecommended();
-    return;
-  }
-  activeSection.value = nextActionSection.value;
 }
 
 function applySummary(next: CodexStackSummaryPayload): void {

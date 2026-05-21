@@ -39,6 +39,32 @@ export type CodexStackInstallerSourceKind =
 
 export type CodexStackModelSource = "live" | "config" | "fallback";
 
+export type CodexStackRecommendationKind =
+  | "install"
+  | "bind-cc-connect"
+  | "watch-job"
+  | "repair"
+  | "review-proxy"
+  | "review-smoke"
+  | "run-check";
+
+export type CodexStackRecommendationAction =
+  | "open-install"
+  | "open-cc-connect"
+  | "open-logs"
+  | "repair-recommended"
+  | "open-settings"
+  | "run-check";
+
+export interface CodexStackRecommendation {
+  kind: CodexStackRecommendationKind;
+  severity: "info" | "success" | "warning" | "danger";
+  section: "dashboard" | "install" | "cc-connect" | "settings" | "logs";
+  primaryAction: CodexStackRecommendationAction;
+  requiresManagement: boolean;
+  reasonCodes: string[];
+}
+
 export type CodexStackContextMode = "default" | "codex-1m" | "custom";
 
 export interface CodexStackMaskedSecret {
@@ -225,6 +251,7 @@ export interface CodexStackSummaryPayload {
     remoteAllowed: boolean;
     secretConfigured: boolean;
   };
+  recommendation: CodexStackRecommendation;
   warnings: string[];
 }
 

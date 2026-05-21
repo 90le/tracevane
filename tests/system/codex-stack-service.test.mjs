@@ -298,6 +298,26 @@ test("codex stack summary falls back to config models when /v1/models is unavail
   });
 });
 
+test("codex stack summary recommends install when required stack files are missing", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {});
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+
+  await withMockFetch(async () => new Response("not found", { status: 404 }), async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.equal(summary.overallStatus, "needs-setup");
+    assert.equal(summary.recommendation.kind, "install");
+    assert.equal(summary.recommendation.section, "install");
+    assert.equal(summary.recommendation.primaryAction, "open-install");
+    assert.equal(summary.recommendation.requiresManagement, false);
+    assert.ok(summary.recommendation.reasonCodes.includes("needs-setup"));
+  });
+});
+
 test("codex stack management guard blocks mutations until explicitly enabled", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -1471,5 +1491,7 @@ test("codex stack summary explains system proxy is ignored for direct domestic p
     assert.equal(summary.proxyPolicy.providerMode, "direct");
     assert.equal(summary.proxyPolicy.providerProxyUrl, "http://127.0.0.1:7890");
     assert.ok(summary.warnings.some((warning) => warning.includes("国内网关不会继承系统代理")));
+    assert.equal(summary.recommendation.kind, "install");
+    assert.ok(summary.recommendation.reasonCodes.includes("system-proxy-direct-provider"));
   });
 });

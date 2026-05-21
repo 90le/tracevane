@@ -1969,6 +1969,92 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     return "ready";
   }
 
+  function buildRecommendation(params: {
+    overallStatus: CodexStackStatus;
+    warnings: string[];
+    profile: CodexStackProfile;
+    proxyPolicy: CodexStackSummaryPayload["proxyPolicy"];
+  }): CodexStackSummaryPayload["recommendation"] {
+    const warningReasons = params.warnings.map((warning) => {
+      if (warning.includes("国内网关不会继承系统代理")) return "system-proxy-direct-provider";
+      if (warning.includes("CPA smoke matrix failed")) return "smoke-matrix-failed";
+      if (warning.includes("WebSocket")) return "codex-websocket-transport";
+      if (warning.includes("request compression")) return "codex-request-compression";
+      if (warning.includes("auth.json")) return "codex-auth-mismatch";
+      if (warning.includes("cc-connect")) return "cc-connect-binding";
+      return "warning";
+    });
+    const baseReasons = Array.from(new Set([params.overallStatus, ...warningReasons]));
+    if (params.overallStatus === "running-action") {
+      return {
+        kind: "watch-job",
+        severity: "info",
+        section: "logs",
+        primaryAction: "open-logs",
+        requiresManagement: false,
+        reasonCodes: baseReasons,
+      };
+    }
+    if (params.overallStatus === "needs-setup") {
+      return {
+        kind: "install",
+        severity: "warning",
+        section: "install",
+        primaryAction: "open-install",
+        requiresManagement: false,
+        reasonCodes: baseReasons,
+      };
+    }
+    if (params.overallStatus === "binding-required") {
+      return {
+        kind: "bind-cc-connect",
+        severity: "warning",
+        section: "cc-connect",
+        primaryAction: "open-cc-connect",
+        requiresManagement: false,
+        reasonCodes: baseReasons,
+      };
+    }
+    if (params.overallStatus === "degraded" || params.overallStatus === "failed") {
+      return {
+        kind: "repair",
+        severity: params.overallStatus === "failed" ? "danger" : "warning",
+        section: "dashboard",
+        primaryAction: "repair-recommended",
+        requiresManagement: true,
+        reasonCodes: baseReasons,
+      };
+    }
+    if (params.proxyPolicy.providerMode === "direct" && params.proxyPolicy.providerProxyUrl) {
+      return {
+        kind: "review-proxy",
+        severity: "warning",
+        section: "settings",
+        primaryAction: "open-settings",
+        requiresManagement: false,
+        reasonCodes: Array.from(new Set([...baseReasons, "system-proxy-direct-provider"])),
+      };
+    }
+    if (params.profile.lastSmokeMatrix?.status === "failed") {
+      return {
+        kind: "review-smoke",
+        severity: "warning",
+        section: "install",
+        primaryAction: "open-install",
+        requiresManagement: false,
+        reasonCodes: Array.from(new Set([...baseReasons, "smoke-matrix-failed"])),
+      };
+    }
+    return {
+      kind: "run-check",
+      severity: "success",
+      section: "dashboard",
+      primaryAction: "run-check",
+      requiresManagement: false,
+      reasonCodes: baseReasons,
+    };
+  }
+
   function listJobs(): CodexStackJob[] {
     ensureDir(jobsDir());
     return fs.readdirSync(jobsDir())
@@ -2069,9 +2155,12 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       warnings.push("系统代理已设置，但 CPA provider proxy-url 全部为 direct；国内网关不会继承系统代理。若 direct smoke 出现 EOF/SSL_ERROR_SYSCALL，请关闭 VPN 网卡/TUN 模式或为国内网关配置 split tunnel 绕过。");
     }
     if (profile.lastSmokeMatrix?.status === "failed") warnings.push("CPA smoke matrix failed last run; Codex will not attach until glm-5.1 and kimi-k2.6 both pass.");
+    const jobs = listJobs();
+    const overallStatus = classifyOverall(components, jobs, ccBindingPresent);
+    const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy });
     return {
       checkedAt: new Date().toISOString(),
-      overallStatus: classifyOverall(components, listJobs(), ccBindingPresent),
+      overallStatus,
       homeDir: currentPaths.homeDir,
       profilePath: currentPaths.profile,
       profile: {
@@ -2153,6 +2242,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         remoteAllowed,
         secretConfigured: Boolean(managementSecret),
       },
+      recommendation,
       warnings,
     };
   }
