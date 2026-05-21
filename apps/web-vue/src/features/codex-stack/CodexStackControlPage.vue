@@ -63,15 +63,12 @@
         @reload="loadSummary"
       />
 
-      <div class="cs-workspace">
-        <CodexStackSectionNav
-          :sections="navSections"
-          :active-section="activeSection"
-          @select="activeSection = $event"
-        />
-
-        <div class="cs-content">
-          <template v-if="activeSection === 'dashboard'">
+      <CodexStackWorkspaceShell
+        :sections="navSections"
+        :active-section="activeSection"
+        @select="activeSection = $event"
+      >
+        <template v-if="activeSection === 'dashboard'">
             <section class="cs-section-stack">
               <CodexStackDashboardHeroCard
                 :status-label="statusLabel"
@@ -145,9 +142,9 @@
                 @run-check="runCheck"
               />
             </section>
-          </template>
+        </template>
 
-          <template v-else-if="activeSection === 'install'">
+        <template v-else-if="activeSection === 'install'">
             <section class="cs-section-stack">
               <CodexStackSectionIntro
                 :kicker="text('安装', 'Install')"
@@ -208,9 +205,9 @@
 
               </div>
             </section>
-          </template>
+        </template>
 
-          <template v-else-if="activeSection === 'cc-connect'">
+        <template v-else-if="activeSection === 'cc-connect'">
             <section class="cs-section-stack">
               <CodexStackCcConnectCommandBar
                 :installed="summary.ccConnect.installed"
@@ -298,9 +295,9 @@
                 </template>
               </CodexStackCcConnectStage>
             </section>
-          </template>
+        </template>
 
-          <template v-else-if="activeSection === 'settings'">
+        <template v-else-if="activeSection === 'settings'">
             <section class="cs-section-stack">
               <CodexStackSectionIntro
                 :kicker="text('模型与上游', 'Models and Upstreams')"
@@ -355,9 +352,9 @@
                 />
               </div>
             </section>
-          </template>
+        </template>
 
-          <template v-else-if="activeSection === 'logs'">
+        <template v-else-if="activeSection === 'logs'">
             <section class="cs-section-stack">
               <CodexStackSectionIntro
                 :kicker="text('日志', 'Logs')"
@@ -391,9 +388,8 @@
                 :empty-log="text('等待输出...', 'Waiting for output...')"
               />
             </section>
-          </template>
-        </div>
-      </div>
+        </template>
+      </CodexStackWorkspaceShell>
     </template>
 
     <datalist id="cc-platform-options">
@@ -531,10 +527,10 @@ import type {
 import CodexStackRunReadinessPanel from "./CodexStackRunReadinessPanel.vue";
 import CodexStackSectionIntro from "./CodexStackSectionIntro.vue";
 import type { CodexStackSectionIntroChip } from "./CodexStackSectionIntro.vue";
-import CodexStackSectionNav from "./CodexStackSectionNav.vue";
 import type { CodexStackSectionId, CodexStackSectionNavItem } from "./CodexStackSectionNav.vue";
 import CodexStackServiceGrid from "./CodexStackServiceGrid.vue";
 import CodexStackUpstreamMap from "./CodexStackUpstreamMap.vue";
+import CodexStackWorkspaceShell from "./CodexStackWorkspaceShell.vue";
 
 const { text } = useLocalePreference();
 
@@ -2545,14 +2541,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   color: var(--text-soft);
 }
 
-.cs-workspace {
-  display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.cs-content,
 .cs-section-stack {
   display: flex;
   flex-direction: column;
@@ -2707,10 +2695,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 @media (max-width: 960px) {
-  .cs-workspace {
-    grid-template-columns: 1fr;
-  }
-
   .cs-dashboard-grid,
   .cs-form-grid {
     grid-template-columns: 1fr;
