@@ -107,7 +107,7 @@ echo
 echo "--- Local APIs ---"
 http_ok "CPA health" "http://127.0.0.1:${CPA_PORT}/healthz"
 http_ok "CPA models" "http://127.0.0.1:${CPA_PORT}/v1/models" "$CPA_KEY"
-http_ok "Compact Proxy models" "http://127.0.0.1:${COMPACT_PORT}/v1/models" "$CPA_KEY"
+http_ok "Compact Proxy health" "http://127.0.0.1:${COMPACT_PORT}/healthz"
 
 echo
 echo "--- cc-connect ---"

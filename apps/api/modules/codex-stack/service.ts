@@ -1277,7 +1277,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         status: pathExists(currentPaths.compactProxy) && serviceById.get("cpa-compact-proxy.service")?.active && params.compactHealthy ? "ok" : "degraded",
         installed: pathExists(currentPaths.compactProxy),
         version: null,
-        notes: params.compactHealthy ? ["/v1/models ok"] : ["/v1/models not reachable"],
+        notes: params.compactHealthy ? ["healthz ok"] : ["healthz not reachable"],
         paths: { script: currentPaths.compactProxy },
       },
       {

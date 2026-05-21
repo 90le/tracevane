@@ -781,9 +781,9 @@ if ! curl -fsS --max-time 5 "http://127.0.0.1:${CPA_PORT}/healthz" >/dev/null 2>
 fi
 
 ensure_active cpa-compact-proxy.service
-if ! curl -fsS --max-time 8 "http://127.0.0.1:${COMPACT_PORT}/v1/models" >/dev/null 2>&1; then
+if ! curl -fsS --max-time 8 "http://127.0.0.1:${COMPACT_PORT}/healthz" >/dev/null 2>&1; then
   sleep 5
-  curl -fsS --max-time 8 "http://127.0.0.1:${COMPACT_PORT}/v1/models" >/dev/null 2>&1 || restart_unit cpa-compact-proxy.service "Compact Proxy /v1/models failed"
+  curl -fsS --max-time 8 "http://127.0.0.1:${COMPACT_PORT}/healthz" >/dev/null 2>&1 || restart_unit cpa-compact-proxy.service "Compact Proxy healthz failed"
 fi
 
 if unit_exists cc-connect.service; then

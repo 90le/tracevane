@@ -853,6 +853,9 @@ const server = http.createServer((req, res) => {
   forwardHttp(req, res).catch((error) => json(res, 500, { error: { message: error.message } }));
 });
 
+const WS_IDLE_TIMEOUT_MS = Number(process.env.WS_IDLE_TIMEOUT_MS || 900000);
+const WS_PING_INTERVAL_MS = Number(process.env.WS_PING_INTERVAL_MS || 30000);
+
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", (clientWs, req) => {
@@ -862,8 +865,44 @@ wss.on("connection", (clientWs, req) => {
   const upstreamWs = new WebSocket(upstreamUrl, { headers });
   const pendingClientMessages = [];
   let upstreamOpen = false;
+  let finished = false;
+  let lastActivity = Date.now();
+  let clientAlive = true;
+  let upstreamAlive = false;
+
+  function cleanup() {
+    if (finished) return;
+    finished = true;
+    clearInterval(pingTimer);
+    clearTimeout(idleTimer);
+  }
+
+  // Idle timeout: close if no data flows for too long
+  const idleTimer = setTimeout(() => {
+    if (!finished) {
+      log(`websocket idle timeout after ${WS_IDLE_TIMEOUT_MS}ms`);
+      cleanup();
+      try { clientWs.close(1000, "idle timeout"); } catch {}
+      try { upstreamWs.close(1000, "idle timeout"); } catch {}
+    }
+  }, WS_IDLE_TIMEOUT_MS);
+
+  // Periodic keepalive pings to both sides
+  const pingTimer = setInterval(() => {
+    if (finished) return;
+    // Check upstream idle: if upstream is open but no data for a long time, it may be stuck
+    if (upstreamAlive && (Date.now() - lastActivity) > WS_IDLE_TIMEOUT_MS / 2) {
+      try { upstreamWs.ping(); } catch {}
+    }
+    if (clientAlive && clientWs.readyState === WebSocket.OPEN) {
+      try { clientWs.ping(); } catch {}
+    }
+  }, WS_PING_INTERVAL_MS);
+
+  function markActive() { lastActivity = Date.now(); }
 
   clientWs.on("message", (data) => {
+    markActive();
     const payload = Buffer.isBuffer(data) ? data.toString("utf8") : data;
     if (!upstreamOpen) {
       pendingClientMessages.push(payload);
@@ -874,8 +913,12 @@ wss.on("connection", (clientWs, req) => {
     } catch {}
   });
 
+  clientWs.on("pong", () => { markActive(); });
+
   upstreamWs.on("open", () => {
     upstreamOpen = true;
+    upstreamAlive = true;
+    markActive();
     for (const payload of pendingClientMessages.splice(0)) {
       try {
         upstreamWs.send(payload, { binary: false });
@@ -884,22 +927,38 @@ wss.on("connection", (clientWs, req) => {
   });
 
   upstreamWs.on("message", (data) => {
+    markActive();
     try {
       clientWs.send(Buffer.isBuffer(data) ? data.toString("utf8") : data, { binary: false });
     } catch {}
   });
 
+  upstreamWs.on("pong", () => { markActive(); });
+
   upstreamWs.on("close", (code, reason) => {
+    upstreamAlive = false;
+    if (!finished) log(`websocket upstream closed: code=${code}`);
+    cleanup();
     try { clientWs.close(code, reason); } catch {}
   });
+
   upstreamWs.on("error", (error) => {
     log(`websocket upstream failed: ${error.message}`);
+    upstreamAlive = false;
+    cleanup();
     try { clientWs.close(1011, "upstream error"); } catch {}
   });
+
   clientWs.on("close", (code, reason) => {
+    clientAlive = false;
+    cleanup();
     try { upstreamWs.close(code, reason); } catch {}
   });
-  clientWs.on("error", () => {
+
+  clientWs.on("error", (error) => {
+    clientAlive = false;
+    log(`websocket client error: ${error.message}`);
+    cleanup();
     try { upstreamWs.close(); } catch {}
   });
 });
