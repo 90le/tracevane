@@ -6,6 +6,10 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
+import {
+  CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS,
+  CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS,
+} from "../../../../types/codex-stack.js";
 import type {
   CcConnectConfig,
   CcConnectPlatform,
@@ -57,15 +61,8 @@ const CPA_LATEST_VERSION = "v7.1.17";
 const CPA_MANAGEMENT_PANEL_REPOSITORY = "https://github.com/router-for-me/Cli-Proxy-API-Management-Center";
 const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
 const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
-const REQUIRED_CPA_SMOKE_MODELS = [OFFICIAL_DEFAULT_MODEL, DMWORK_DEFAULT_MODEL] as const;
-const REQUIRED_CPA_SMOKE_CHECKS: readonly CodexStackSmokeCheckId[] = [
-  "cpa-health",
-  "compact-health",
-  "cpa-chat",
-  "compact-non-stream",
-  "compact-stream",
-  "compact-compact",
-];
+const REQUIRED_CPA_SMOKE_MODELS = CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS;
+const REQUIRED_CPA_SMOKE_CHECKS = CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS;
 const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function isDmworkFamily(channel?: CodexStackChannel): boolean {

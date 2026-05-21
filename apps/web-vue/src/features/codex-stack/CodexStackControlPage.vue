@@ -400,6 +400,10 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { confirm } from "../../composables/useConfirmDialog";
 import { copyTextToClipboard } from "../../shared/clipboard";
 import { useLocalePreference } from "../../shared/locale";
+import {
+  CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS,
+  CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS,
+} from "../../../../../types/codex-stack";
 import type {
   CcConnectConfig,
   CcConnectPlatform,
@@ -711,15 +715,8 @@ function updateConfigFormField(field: CodexStackRuntimeConfigField, value: strin
 }
 
 const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const REQUIRED_CPA_SMOKE_MODELS = ["glm-5.1", "kimi-k2.6"] as const;
-const REQUIRED_CPA_SMOKE_CHECKS = [
-  "cpa-health",
-  "compact-health",
-  "cpa-chat",
-  "compact-non-stream",
-  "compact-stream",
-  "compact-compact",
-] as const;
+const REQUIRED_CPA_SMOKE_MODELS = CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS;
+const REQUIRED_CPA_SMOKE_CHECKS = CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS;
 
 const serviceCatalog: Record<
   CodexStackServiceId,

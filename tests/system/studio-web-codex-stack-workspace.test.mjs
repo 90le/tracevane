@@ -46,6 +46,7 @@ const workspaceShell = read("apps/web-vue/src/features/codex-stack/CodexStackWor
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
 const readinessAction = read("apps/web-vue/src/features/codex-stack/readiness-action.ts");
 const codexStackService = read("apps/api/modules/codex-stack/service.ts");
+const codexStackTypes = read("types/codex-stack.ts");
 
 test("codex stack logs panel is isolated from the main control page", () => {
   assert.match(controlPage, /import CodexStackLogConsole from "\.\/CodexStackLogConsole\.vue";/);
@@ -682,8 +683,12 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
 test("codex stack attach action requires a fresh passing smoke matrix in the UI", () => {
   assert.match(controlPage, /const isSmokeMatrixAttachReady = computed\(\(\) => \{/);
   assert.match(controlPage, /return isSmokeMatrixFreshAndComplete\(matrix\);/);
-  assert.match(controlPage, /const REQUIRED_CPA_SMOKE_MODELS = \["glm-5\.1", "kimi-k2\.6"\] as const;/);
-  assert.match(controlPage, /const REQUIRED_CPA_SMOKE_CHECKS = \[[\s\S]*"compact-non-stream"[\s\S]*"compact-stream"[\s\S]*"compact-compact"[\s\S]*\] as const;/);
+  assert.match(codexStackTypes, /export const CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS = \["glm-5\.1", "kimi-k2\.6"\] as const;/);
+  assert.match(codexStackTypes, /export const CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS = \[[\s\S]*"compact-non-stream"[\s\S]*"compact-stream"[\s\S]*"compact-compact"[\s\S]*\] as const satisfies readonly CodexStackSmokeCheckId\[\];/);
+  assert.match(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS/);
+  assert.match(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
+  assert.match(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS/);
+  assert.match(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
   assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined\): boolean/);
   assert.match(controlPage, /matrix\.attachEligible && !isSmokeMatrixComplete\(matrix\)/);
   assert.match(controlPage, /const canAttachCodexCpa = computed\(\(\) => canRunMutation\.value && isSmokeMatrixAttachReady\.value\);/);

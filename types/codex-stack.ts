@@ -188,6 +188,17 @@ export type CodexStackSmokeCheckId =
   | "compact-stream"
   | "compact-compact";
 
+export const CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS = ["glm-5.1", "kimi-k2.6"] as const;
+
+export const CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS = [
+  "cpa-health",
+  "compact-health",
+  "cpa-chat",
+  "compact-non-stream",
+  "compact-stream",
+  "compact-compact",
+] as const satisfies readonly CodexStackSmokeCheckId[];
+
 export type CodexStackSmokeStatus = "passed" | "failed";
 
 export interface CodexStackSmokeCheckResult {
