@@ -1520,6 +1520,44 @@ test("codex stack config patch invalidates stale smoke matrix results", async ()
   assert.equal(storedProfile.lastSmokeMatrix, null);
 });
 
+test("codex stack summary warns when a passed smoke matrix is older than 24 hours", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const profilePath = path.join(config.openclawRoot, "studio/codex-stack/profile.json");
+  writeJson(profilePath, {
+    channel: "dmwork",
+    lastSmokeMatrix: {
+      status: "passed",
+      checkedAt: "2020-01-01T00:00:00.000Z",
+      requiredModels: ["glm-5.1", "kimi-k2.6"],
+      attachEligible: true,
+      models: [],
+    },
+  });
+
+  await withMockFetch(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/v1/models")) {
+      return new Response(JSON.stringify({ data: [{ id: "glm-5.1" }, { id: "kimi-k2.6" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    return new Response("ok", { status: 200 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
+    assert.ok(summary.warnings.some((warning) => warning.includes("CPA smoke matrix is older than 24 hours")));
+    assert.ok(summary.recommendation.reasonCodes.includes("smoke-matrix-stale"));
+  });
+});
+
 test("bundled health check treats skipped cc-connect as warning only", () => {
   const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),

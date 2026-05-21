@@ -57,6 +57,7 @@ const CPA_MANAGEMENT_PANEL_REPOSITORY = "https://github.com/router-for-me/Cli-Pr
 const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
 const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
 const REQUIRED_CPA_SMOKE_MODELS = [OFFICIAL_DEFAULT_MODEL, DMWORK_DEFAULT_MODEL] as const;
+const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function isDmworkFamily(channel?: CodexStackChannel): boolean {
   return channel === "dmwork" || channel === "octo";
@@ -1204,6 +1205,13 @@ function noProxyLoopbackMissing(noProxy: string): string[] {
   return missing;
 }
 
+function isSmokeMatrixStale(matrix: CodexStackSmokeMatrixResult | null | undefined): boolean {
+  if (!matrix?.attachEligible) return false;
+  const checkedAt = Date.parse(matrix.checkedAt);
+  if (!Number.isFinite(checkedAt)) return true;
+  return Date.now() - checkedAt > SMOKE_MATRIX_MAX_AGE_MS;
+}
+
 function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSummaryPayload["proxyPolicy"] {
   const cpaConfigProxyUrls = collectCpaProxyUrls(cpaConfig);
   const configuredProxy = cpaConfigProxyUrls.find((value) => value !== "direct") || "";
@@ -2027,6 +2035,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       if (warning.includes("国内网关不会继承系统代理")) return "system-proxy-direct-provider";
       if (warning.includes("NO_PROXY")) return "no-proxy-loopback-missing";
       if (warning.includes("CPA smoke matrix failed")) return "smoke-matrix-failed";
+      if (warning.includes("CPA smoke matrix is older")) return "smoke-matrix-stale";
       if (warning.includes("WebSocket")) return "codex-websocket-transport";
       if (warning.includes("request compression")) return "codex-request-compression";
       if (warning.includes("auth.json")) return "codex-auth-mismatch";
@@ -2092,6 +2101,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         primaryAction: "open-install",
         requiresManagement: false,
         reasonCodes: Array.from(new Set([...baseReasons, "smoke-matrix-failed"])),
+      };
+    }
+    if (isSmokeMatrixStale(params.profile.lastSmokeMatrix)) {
+      return {
+        kind: "review-smoke",
+        severity: "warning",
+        section: "install",
+        primaryAction: "open-install",
+        requiresManagement: false,
+        reasonCodes: Array.from(new Set([...baseReasons, "smoke-matrix-stale"])),
       };
     }
     if (!params.proxyPolicy.noProxyLoopbackReady) {
@@ -2241,6 +2260,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       warnings.push(`NO_PROXY 缺少 ${proxyPolicy.noProxyLoopbackMissing.join(", ")}；系统代理或 VPN 网卡/TUN 模式可能截获本地 CPA/Compact loopback 请求。运行 Codex 对话、长任务或压缩上下文前，请保留 localhost,127.0.0.1,::1。`);
     }
     if (profile.lastSmokeMatrix?.status === "failed") warnings.push("CPA smoke matrix failed last run; Codex will not attach until glm-5.1 and kimi-k2.6 both pass.");
+    if (isSmokeMatrixStale(profile.lastSmokeMatrix)) warnings.push("CPA smoke matrix is older than 24 hours; re-run glm-5.1 / kimi-k2.6 checks before treating Codex CPA attach as ready.");
     const jobs = listJobs();
     const overallStatus = classifyOverall(components, jobs, ccBindingPresent);
     const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy });

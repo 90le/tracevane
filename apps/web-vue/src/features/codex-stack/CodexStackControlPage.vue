@@ -1300,6 +1300,7 @@ import type {
   CodexStackRepairAction,
   CodexStackServiceAction,
   CodexStackServiceId,
+  CodexStackSmokeMatrixResult,
   CodexStackSummaryPayload,
 } from "../../../../../types/codex-stack";
 import {
@@ -1486,6 +1487,7 @@ const configForm = reactive({
 });
 
 const DEFAULT_NO_PROXY = "localhost,127.0.0.1,::1";
+const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const serviceCatalog: Record<
   CodexStackServiceId,
@@ -1669,6 +1671,9 @@ const smokeMatrixLabel = computed(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
   if (!matrix) return text("未验证", "Not verified");
   const models = matrix.models.map((item) => `${item.model}:${item.status}`).join(" ");
+  if (isSmokeMatrixStale(matrix)) {
+    return text(`需复验 ${models}`, `Recheck ${models}`);
+  }
   return matrix.attachEligible
     ? text(`通过 ${models}`, `Passed ${models}`)
     : text(`失败 ${models}`, `Failed ${models}`);
@@ -1796,9 +1801,11 @@ const chainGates = computed<CodexStackChainGate[]>(() => {
     {
       id: "smoke",
       label: text("Smoke Gate", "Smoke Gate"),
-      value: matrix ? (matrix.attachEligible ? text("可切 Codex", "Attach ready") : text("禁止切换", "Blocked")) : text("未验证", "Not verified"),
+      value: matrix
+        ? (isSmokeMatrixStale(matrix) ? text("需复验", "Recheck") : matrix.attachEligible ? text("可切 Codex", "Attach ready") : text("禁止切换", "Blocked"))
+        : text("未验证", "Not verified"),
       help: smokeMatrixLabel.value,
-      tone: matrix ? (matrix.attachEligible ? "sage" : "danger") : "accent",
+      tone: matrix ? (isSmokeMatrixStale(matrix) ? "accent" : matrix.attachEligible ? "sage" : "danger") : "accent",
     },
     {
       id: "job-lock",
@@ -1827,7 +1834,7 @@ const smokeMatrixCard = computed<CodexStackSmokeMatrixCard | null>(() => {
     requiredModelsLabel: text("必测模型", "Required Models"),
     requiredModels: matrix.requiredModels.join(", "),
     attachEligibleLabel: text("可切换", "Attach Eligible"),
-    attachEligible: matrix.attachEligible ? text("是", "Yes") : text("否", "No"),
+    attachEligible: isSmokeMatrixStale(matrix) ? text("需复验", "Recheck") : matrix.attachEligible ? text("是", "Yes") : text("否", "No"),
     models: matrix.models.map((model) => {
       const passed = model.checks.filter((check) => check.status === "passed").length;
       const total = model.checks.length;
@@ -2326,6 +2333,13 @@ function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackS
     ...next,
     proxyPolicy: normalizeProxyPolicy(next.proxyPolicy),
   };
+}
+
+function isSmokeMatrixStale(matrix: CodexStackSmokeMatrixResult | null | undefined): boolean {
+  if (!matrix?.attachEligible) return false;
+  const checkedAt = Date.parse(matrix.checkedAt);
+  if (!Number.isFinite(checkedAt)) return true;
+  return Date.now() - checkedAt > SMOKE_MATRIX_MAX_AGE_MS;
 }
 
 function serviceEndpointInfo(serviceId: CodexStackServiceId, currentSummary: CodexStackSummaryPayload) {
