@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-20T06:47:19.914Z",
+  "generatedAt": "2026-05-21T19:34:21.133Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -116,6 +116,7 @@
     "tests/system/channels-field-alignment.test.ts",
     "tests/system/channels-service.test.mjs",
     "tests/system/channels-web-field-metadata.test.mjs",
+    "tests/system/codex-stack-readiness-action.test.ts",
     "tests/system/codex-stack-service.test.mjs",
     "tests/system/compact-proxy.test.mjs",
     "tests/system/config-audit-diff.test.mjs",
@@ -187,6 +188,7 @@
     "tests/system/studio-web-chat-slash-transport.test.mjs",
     "tests/system/studio-web-chat-sound-cues.test.mjs",
     "tests/system/studio-web-chat-upload-payload.test.mjs",
+    "tests/system/studio-web-codex-stack-workspace.test.mjs",
     "tests/system/studio-web-config-advanced-sheet.test.mjs",
     "tests/system/studio-web-config-gateway-patch.test.mjs",
     "tests/system/studio-web-config-workbench.test.mjs",

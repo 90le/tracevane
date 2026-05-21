@@ -9,6 +9,7 @@ const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8")
 
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
 const ccConnectCommandBar = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectCommandBar.vue");
+const ccConnectProviderPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProviderPanel.vue");
 const ccConnectRail = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectRail.vue");
 const ccConnectSetupPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectSetupPanel.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
@@ -99,6 +100,10 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectCommandBar, /\.cs-config-action-strip\s*\{/);
   assert.match(ccConnectCommandBar, /\.cs-agent-savebar\s*\{/);
   assert.match(ccConnectCommandBar, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectProviderPanel, /class="cs-cc-provider-panel"/);
+  assert.match(ccConnectProviderPanel, /\.cs-provider-grid\s*\{/);
+  assert.match(ccConnectProviderPanel, /\.cs-language-field\s*\{/);
+  assert.match(ccConnectProviderPanel, /@media \(max-width: 960px\)/);
   assert.match(ccConnectRail, /class="panel-card cs-agent-rail"/);
   assert.match(ccConnectRail, /\.cs-agent-pane-switch\s*\{/);
   assert.match(ccConnectRail, /\.cs-agent-project-pill\s*\{/);
@@ -245,6 +250,29 @@ test("codex stack cc-connect page delegates command bar without moving config wr
   assert.match(ccConnectCommandBar, /@click="\$emit\('save-structured'\)"/);
   assert.match(ccConnectCommandBar, /@click="\$emit\('save-raw'\)"/);
   assert.doesNotMatch(ccConnectCommandBar, /patchCcConnectConfig|saveCcConnectStructured|saveCcConnectRaw|normalizeProviderDrafts|normalizeProjectDrafts/);
+});
+
+test("codex stack cc-connect page delegates provider editor without moving provider drafts", () => {
+  assert.match(controlPage, /import CodexStackCcConnectProviderPanel from "\.\/CodexStackCcConnectProviderPanel\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackCcConnectProviderPanel[\s\S]*:language="ccConnectLanguageDraft"[\s\S]*:providers="ccConnectProviderDrafts"[\s\S]*:compact-proxy-base-url="compactProxyBaseUrl"[\s\S]*:loading="ccConnectLoading && !ccConnectConfig"[\s\S]*:busy="busy"[\s\S]*@update-language="updateCcConnectLanguage"[\s\S]*@update-provider-field="updateCcConnectProviderField"[\s\S]*@ensure-cpa-provider="ensureCpaProviderDraft"[\s\S]*@add-provider="addCcConnectProvider"[\s\S]*@remove-provider="removeCcConnectProvider"/,
+  );
+  assert.match(controlPage, /function updateCcConnectLanguage\(language: string\): void/);
+  assert.match(controlPage, /function updateCcConnectProviderField\(providerId: string, field: CodexStackCcConnectProviderField, value: string\): void/);
+  assert.match(controlPage, /function ensureCpaProviderDraft\(\): void/);
+  assert.match(controlPage, /function addCcConnectProvider\(\): void/);
+  assert.match(controlPage, /function removeCcConnectProvider\(providerId: string\): void/);
+  assert.match(controlPage, /function normalizeProviderDrafts\(\): CcConnectProvider\[\]/);
+  assert.doesNotMatch(controlPage, /v-model="provider\.(name|codexEnvKey|baseUrl|apiKey)"/);
+  assert.doesNotMatch(controlPage, /class="cs-provider-grid cs-provider-grid-roomy"/);
+  assert.match(ccConnectProviderPanel, /export type CodexStackCcConnectProviderField = "name" \| "codexEnvKey" \| "baseUrl" \| "apiKey";/);
+  assert.match(ccConnectProviderPanel, /export interface CodexStackCcConnectProviderDraft/);
+  assert.match(ccConnectProviderPanel, /defineEmits<[\s\S]*"update-language": \[language: string\][\s\S]*"update-provider-field": \[providerId: string, field: CodexStackCcConnectProviderField, value: string\][\s\S]*"ensure-cpa-provider": \[\][\s\S]*"add-provider": \[\][\s\S]*"remove-provider": \[providerId: string\]/);
+  assert.match(ccConnectProviderPanel, /@input="\$emit\('update-provider-field', provider\.id, 'baseUrl', inputValue\(\$event\)\)"/);
+  assert.match(ccConnectProviderPanel, /@click="\$emit\('ensure-cpa-provider'\)"/);
+  assert.match(ccConnectProviderPanel, /@click="\$emit\('remove-provider', provider\.id\)"/);
+  assert.doesNotMatch(ccConnectProviderPanel, /ccConnectProviderDrafts|normalizeProviderDrafts|patchCcConnectConfig|saveCcConnectStructured|saveCcConnectRaw/);
 });
 
 test("codex stack cc-connect page delegates rail navigation without moving drafts", () => {

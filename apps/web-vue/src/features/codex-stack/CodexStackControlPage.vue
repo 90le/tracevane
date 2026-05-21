@@ -438,75 +438,18 @@
                   </template>
 
                   <template v-else-if="activeAgentPane === 'providers'">
-                    <div class="cs-card-header">
-                      <div>
-                        <p class="cs-section-kicker">{{ text("Provider", "Provider") }}</p>
-                        <h4>{{ text("上游 Provider 可视化编辑", "Visual Upstream Provider Editor") }}</h4>
-                        <p class="cs-field-hint">
-                          {{ text("cc-connect 通常不需要单独配置上游，推荐统一指向本地 Compact Proxy。", "cc-connect usually does not need a separate upstream; point providers to the local Compact Proxy.") }}
-                        </p>
-                      </div>
-                      <div class="cs-actions">
-                        <label class="cs-language-field">
-                          <span>{{ text("语言", "Language") }}</span>
-                          <input v-model="ccConnectLanguageDraft" class="form-input" placeholder="zh" />
-                        </label>
-                        <button type="button" class="secondary-button" :disabled="busy" @click="ensureCpaProviderDraft">
-                          {{ text("补齐 CPA Provider", "Add CPA Provider") }}
-                        </button>
-                        <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectProvider">
-                          {{ text("新增 Provider", "Add Provider") }}
-                        </button>
-                      </div>
-                    </div>
-                    <div v-if="ccConnectLoading && !ccConnectConfig" class="cs-empty-lite">
-                      {{ text("正在读取 cc-connect 配置...", "Loading cc-connect config...") }}
-                    </div>
-                    <div v-else-if="!ccConnectProviderDrafts.length" class="cs-empty-lite">
-                      <p>
-                        {{ text("当前配置没有 providers。cc-connect 可以依赖环境变量运行，但建议显式新增 cpa provider，指向本地 Compact Proxy。", "No providers are declared. cc-connect can rely on environment variables, but adding an explicit cpa provider pointing to the local Compact Proxy is recommended.") }}
-                      </p>
-                      <button type="button" class="secondary-button" :disabled="busy" @click="ensureCpaProviderDraft">
-                        {{ text("创建推荐 Provider", "Create Recommended Provider") }}
-                      </button>
-                    </div>
-                    <div v-else class="cs-provider-grid cs-provider-grid-roomy">
-                      <article
-                        v-for="provider in ccConnectProviderDrafts"
-                        :key="provider.id"
-                        class="cs-provider-card"
-                      >
-                        <div class="cs-provider-head">
-                          <strong>{{ provider.name || text("未命名 Provider", "Unnamed Provider") }}</strong>
-                          <button type="button" class="text-button danger-text" :disabled="busy" @click="removeCcConnectProvider(provider.id)">
-                            {{ text("删除", "Delete") }}
-                          </button>
-                        </div>
-                        <div class="cs-form-grid cs-form-grid-compact">
-                          <label class="form-field">
-                            <span class="form-label">name</span>
-                            <input v-model="provider.name" class="form-input" placeholder="cpa" />
-                          </label>
-                          <label class="form-field">
-                            <span class="form-label">codex.env_key</span>
-                            <input v-model="provider.codexEnvKey" class="form-input" placeholder="OPENAI_API_KEY" />
-                          </label>
-                          <label class="form-field cs-form-span-2">
-                            <span class="form-label">base_url</span>
-                            <input v-model="provider.baseUrl" class="form-input" :placeholder="compactProxyBaseUrl" />
-                          </label>
-                          <label class="form-field cs-form-span-2">
-                            <span class="form-label">api_key</span>
-                            <input
-                              v-model="provider.apiKey"
-                              class="form-input"
-                              type="password"
-                              :placeholder="text('留空表示不写入或保留空值', 'Leave empty to write/keep an empty value')"
-                            />
-                          </label>
-                        </div>
-                      </article>
-                    </div>
+                    <CodexStackCcConnectProviderPanel
+                      :language="ccConnectLanguageDraft"
+                      :providers="ccConnectProviderDrafts"
+                      :compact-proxy-base-url="compactProxyBaseUrl"
+                      :loading="ccConnectLoading && !ccConnectConfig"
+                      :busy="busy"
+                      @update-language="updateCcConnectLanguage"
+                      @update-provider-field="updateCcConnectProviderField"
+                      @ensure-cpa-provider="ensureCpaProviderDraft"
+                      @add-provider="addCcConnectProvider"
+                      @remove-provider="removeCcConnectProvider"
+                    />
                   </template>
 
                   <template v-else-if="activeAgentPane === 'setup'">
@@ -789,6 +732,11 @@ import type {
   CodexStackCcConnectPaneId,
   CodexStackCcConnectProjectRailItem,
 } from "./CodexStackCcConnectRail.vue";
+import CodexStackCcConnectProviderPanel from "./CodexStackCcConnectProviderPanel.vue";
+import type {
+  CodexStackCcConnectProviderDraft,
+  CodexStackCcConnectProviderField,
+} from "./CodexStackCcConnectProviderPanel.vue";
 import CodexStackCcConnectSetupPanel from "./CodexStackCcConnectSetupPanel.vue";
 import type { CodexStackCcConnectSetupPlatform } from "./CodexStackCcConnectSetupPanel.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
@@ -831,7 +779,7 @@ type ComponentInstallMode = CodexStackComponentInstallMode;
 type AgentProjectPreset = "admin" | "worker";
 type PlatformTemplateId = "dmwork" | "octo" | "feishu" | "weixin";
 type ContextMode = CodexStackRuntimeContextMode;
-type CcConnectProviderDraft = CcConnectProvider & { id: string };
+type CcConnectProviderDraft = CodexStackCcConnectProviderDraft;
 type CcConnectPlatformOptionDraft = { id: string; key: string; value: string };
 type CcConnectPlatformDraft = {
   id: string;
@@ -2497,6 +2445,15 @@ function removeCcConnectProvider(providerId: string): void {
   ccConnectProviderDrafts.value = ccConnectProviderDrafts.value.filter((provider) => provider.id !== providerId);
 }
 
+function updateCcConnectLanguage(language: string): void {
+  ccConnectLanguageDraft.value = language;
+}
+
+function updateCcConnectProviderField(providerId: string, field: CodexStackCcConnectProviderField, value: string): void {
+  const provider = ccConnectProviderDrafts.value.find((item) => item.id === providerId);
+  if (provider) provider[field] = value;
+}
+
 function addCcConnectProject(): void {
   const project = createProjectDraft({
     name: `project-${ccConnectProjectDrafts.value.length + 1}`,
@@ -2991,7 +2948,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 .cs-card-header,
-.cs-provider-head,
 .cs-platform-head,
 .cs-project-head,
 .cs-progress-header {
@@ -3002,7 +2958,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 .cs-card-header h4,
-.cs-provider-head strong,
 .cs-platform-head strong,
 .cs-project-head h5,
 .cs-progress-header h4 {
@@ -3051,7 +3006,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   gap: 12px;
 }
 
-.cs-provider-card,
 .cs-platform-card,
 .cs-project-card {
   border: 1px solid var(--line);
@@ -3140,7 +3094,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   grid-column: 1 / -1;
 }
 
-.cs-provider-grid,
 .cs-platform-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3210,7 +3163,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   margin-top: 22px;
 }
 
-.cs-provider-grid-roomy,
 .cs-platform-grid-roomy {
   grid-template-columns: repeat(2, minmax(280px, 1fr));
   margin-top: 16px;
@@ -3218,18 +3170,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 
 .cs-form-grid-compact {
   margin-top: 12px;
-}
-
-.cs-language-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 0.86rem;
-}
-
-.cs-language-field .form-input {
-  width: 84px;
 }
 
 .cs-project-head {
@@ -3389,7 +3329,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 
   .cs-dashboard-grid,
   .cs-form-grid,
-  .cs-provider-grid,
   .cs-platform-grid,
   .cs-agent-workbench,
   .cs-agent-editor-grid,
@@ -3410,7 +3349,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   .cs-model-ribbon,
   .cs-section-intro,
   .cs-card-header,
-  .cs-provider-head,
   .cs-platform-head,
   .cs-project-head,
   .cs-agent-template-card,
