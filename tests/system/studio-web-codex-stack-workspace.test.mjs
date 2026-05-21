@@ -27,8 +27,10 @@ const installStrategyPanel = read("apps/web-vue/src/features/codex-stack/CodexSt
 const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanner.vue");
 const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
+const managementLockCard = read("apps/web-vue/src/features/codex-stack/CodexStackManagementLockCard.vue");
 const modelCatalogCard = read("apps/web-vue/src/features/codex-stack/CodexStackModelCatalogCard.vue");
 const modelRibbon = read("apps/web-vue/src/features/codex-stack/CodexStackModelRibbon.vue");
+const pageHeader = read("apps/web-vue/src/features/codex-stack/CodexStackPageHeader.vue");
 const repairBoard = read("apps/web-vue/src/features/codex-stack/CodexStackRepairBoard.vue");
 const runtimeConfigCard = read("apps/web-vue/src/features/codex-stack/CodexStackRuntimeConfigCard.vue");
 const upstreamMap = read("apps/web-vue/src/features/codex-stack/CodexStackUpstreamMap.vue");
@@ -63,6 +65,11 @@ test("codex stack log reads avoid overlapping auto-refresh requests", () => {
 });
 
 test("codex stack extracted panels own their scoped display styles", () => {
+  assert.match(pageHeader, /class="page-header-row cs-page-header"/);
+  assert.match(pageHeader, /class="cs-page-subtitle"/);
+  assert.match(managementLockCard, /class="panel-card cs-management-lock-card"/);
+  assert.match(managementLockCard, /\.cs-management-lock-card\s*\{/);
+  assert.match(managementLockCard, /@media \(max-width: 960px\)/);
   assert.match(actionOverview, /class="cs-action-overview-grid"/);
   assert.match(actionOverview, /\.cs-readiness-bar\s*\{/);
   assert.match(actionOverview, /@media \(max-width: 1200px\)/);
@@ -164,6 +171,29 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectStage, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
+});
+
+test("codex stack page chrome delegates refresh and management enable without moving actions", () => {
+  assert.match(controlPage, /import CodexStackPageHeader from "\.\/CodexStackPageHeader\.vue";/);
+  assert.match(controlPage, /import CodexStackManagementLockCard from "\.\/CodexStackManagementLockCard\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackPageHeader[\s\S]*:refresh-label="loading \? text\('刷新中\.\.\.', 'Refreshing\.\.\.'\) : text\('刷新状态', 'Refresh'\)"[\s\S]*:refresh-disabled="loading \|\| ccConnectLoading"[\s\S]*@refresh="loadAll"/,
+  );
+  assert.match(
+    controlPage,
+    /<CodexStackManagementLockCard[\s\S]*v-if="summary && !summary\.management\.enabled"[\s\S]*:busy="busy"[\s\S]*@enable="enableManagement"/,
+  );
+  assert.doesNotMatch(controlPage, /class="cs-page-subtitle"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-lock-card"/);
+  assert.match(controlPage, /async function loadAll/);
+  assert.match(controlPage, /async function enableManagement/);
+  assert.match(pageHeader, /defineEmits<\{[\s\S]*refresh: \[\];[\s\S]*\}>/);
+  assert.match(pageHeader, /@click="\$emit\('refresh'\)"/);
+  assert.doesNotMatch(pageHeader, /loadAll|summary|fetchCodexStackSummary|enableManagement|serviceAction|patchCodexStackConfig/);
+  assert.match(managementLockCard, /defineEmits<\{[\s\S]*enable: \[\];[\s\S]*\}>/);
+  assert.match(managementLockCard, /@click="\$emit\('enable'\)"/);
+  assert.doesNotMatch(managementLockCard, /loadAll|summary|fetchCodexStackSummary|enableManagement|serviceAction|patchCodexStackConfig/);
 });
 
 test("codex stack section nav delegates tab switching without moving content routing", () => {

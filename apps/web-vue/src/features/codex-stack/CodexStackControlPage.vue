@@ -1,19 +1,13 @@
 <template>
   <section class="page-shell codex-stack-page">
-    <header class="page-header-row">
-      <div>
-        <p class="eyebrow">{{ text("CODEX STACK", "CODEX STACK") }}</p>
-        <h2 class="page-title">{{ text("Codex Stack 管理中心", "Codex Stack Management Center") }}</h2>
-        <p class="cs-page-subtitle">
-          {{ text("按“状态判断 → 安装修复 → 模型上游 → Agent 管理 → 日志诊断”的顺序管理 codex-docs 服务。Studio 只做控制面，服务本身保持 systemd 独立运行。", "Manage codex-docs through status, install/repair, model upstreams, agent management, and diagnostics. Studio stays the control plane while services keep running independently under systemd.") }}
-        </p>
-      </div>
-      <div class="page-actions">
-        <button type="button" class="secondary-button" :disabled="loading || ccConnectLoading" @click="loadAll">
-          {{ loading ? text("刷新中...", "Refreshing...") : text("刷新状态", "Refresh") }}
-        </button>
-      </div>
-    </header>
+    <CodexStackPageHeader
+      :eyebrow="text('CODEX STACK', 'CODEX STACK')"
+      :title="text('Codex Stack 管理中心', 'Codex Stack Management Center')"
+      :subtitle="text('按“状态判断 → 安装修复 → 模型上游 → Agent 管理 → 日志诊断”的顺序管理 codex-docs 服务。Studio 只做控制面，服务本身保持 systemd 独立运行。', 'Manage codex-docs through status, install/repair, model upstreams, agent management, and diagnostics. Studio stays the control plane while services keep running independently under systemd.')"
+      :refresh-label="loading ? text('刷新中...', 'Refreshing...') : text('刷新状态', 'Refresh')"
+      :refresh-disabled="loading || ccConnectLoading"
+      @refresh="loadAll"
+    />
 
     <div
       v-if="notice"
@@ -23,17 +17,14 @@
       {{ notice.text }}
     </div>
 
-    <section v-if="summary && !summary.management.enabled" class="panel-card cs-lock-card">
-      <div>
-        <h3>{{ text("管理动作未启用", "Management actions are disabled") }}</h3>
-        <p>
-          {{ text("安装、修复、保存配置和服务控制需要显式启用。", "Install, repair, config writes, and service control require explicit enablement.") }}
-        </p>
-      </div>
-      <button type="button" class="primary-button" :disabled="busy" @click="enableManagement">
-        {{ text("启用管理", "Enable Management") }}
-      </button>
-    </section>
+    <CodexStackManagementLockCard
+      v-if="summary && !summary.management.enabled"
+      :title="text('管理动作未启用', 'Management actions are disabled')"
+      :copy="text('安装、修复、保存配置和服务控制需要显式启用。', 'Install, repair, config writes, and service control require explicit enablement.')"
+      :action-label="text('启用管理', 'Enable Management')"
+      :busy="busy"
+      @enable="enableManagement"
+    />
 
     <div v-if="!summary" class="panel-card cs-empty">
       {{ text("正在读取 Codex 栈状态...", "Loading Codex Stack status...") }}
@@ -510,8 +501,10 @@ import CodexStackJobBanner from "./CodexStackJobBanner.vue";
 import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";
+import CodexStackManagementLockCard from "./CodexStackManagementLockCard.vue";
 import CodexStackModelCatalogCard from "./CodexStackModelCatalogCard.vue";
 import CodexStackModelRibbon from "./CodexStackModelRibbon.vue";
+import CodexStackPageHeader from "./CodexStackPageHeader.vue";
 import CodexStackRepairBoard from "./CodexStackRepairBoard.vue";
 import CodexStackRuntimeConfigCard from "./CodexStackRuntimeConfigCard.vue";
 import type {
@@ -2522,20 +2515,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   gap: 18px;
 }
 
-.cs-page-subtitle {
-  margin: 6px 0 0;
-  color: var(--text-soft);
-  max-width: 980px;
-}
-
-.cs-lock-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.cs-lock-card p,
 .cs-field-hint,
 .cs-service-blurb {
   color: var(--text-soft);
@@ -2700,7 +2679,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
     grid-template-columns: 1fr;
   }
 
-  .cs-lock-card,
   .cs-card-header,
   .cs-project-head {
     flex-direction: column;
