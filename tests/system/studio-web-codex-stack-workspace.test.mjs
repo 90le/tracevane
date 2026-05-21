@@ -12,6 +12,7 @@ const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogCons
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
+const readinessAction = read("apps/web-vue/src/features/codex-stack/readiness-action.ts");
 const codexStackService = read("apps/api/modules/codex-stack/service.ts");
 
 test("codex stack logs panel is isolated from the main control page", () => {
@@ -95,8 +96,14 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(controlPage, /runReadinessCheckTone\(check\.status\)/);
   assert.match(controlPage, /@click="runReadinessCheckAction\(check\)"/);
   assert.match(controlPage, /check\.actionHint\.label/);
+  assert.match(controlPage, /normalizeCodexStackRunReadinessCheck/);
+  assert.match(controlPage, /resolveCodexStackRunReadinessAction/);
   assert.match(controlPage, /function runReadinessCheckAction\(check: CodexStackRunReadinessCheck\): void/);
-  assert.match(controlPage, /action\.kind === "repair"[\s\S]*startRepairWithActions\(action\.repairActions/);
+  assert.match(controlPage, /command\.type === "repair"[\s\S]*startRepairWithActions\(command\.actions/);
+  assert.match(readinessAction, /export function normalizeCodexStackRunReadinessCheck/);
+  assert.match(readinessAction, /if \(check\.actionHint\) return check;/);
+  assert.match(readinessAction, /export function resolveCodexStackRunReadinessAction/);
+  assert.match(readinessAction, /action\.kind === "repair" && action\.repairActions\?\.length/);
   assert.match(controlPage, /Codex 运行就绪/);
   assert.match(codexStackService, /id: "cc-agent-task"/);
   assert.match(codexStackService, /label: "CC\/IM Agent 任务"/);

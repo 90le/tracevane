@@ -1376,6 +1376,10 @@ import {
   isCodexStackJobRunning,
 } from "./codex-stack-view-model";
 import type { CodexStackTone } from "./codex-stack-view-model";
+import {
+  normalizeCodexStackRunReadinessCheck,
+  resolveCodexStackRunReadinessAction,
+} from "./readiness-action";
 import CodexStackDashboardInsights from "./CodexStackDashboardInsights.vue";
 import type {
   CodexStackComponentHealthCard,
@@ -2540,6 +2544,15 @@ function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackS
   return {
     ...next,
     proxyPolicy: normalizeProxyPolicy(next.proxyPolicy),
+    runReadiness: next.runReadiness
+      ? {
+        ...next.runReadiness,
+        checks: next.runReadiness.checks.map((check) => normalizeCodexStackRunReadinessCheck(
+          check,
+          text("查看详情", "View details"),
+        )),
+      }
+      : next.runReadiness,
   };
 }
 
@@ -2652,16 +2665,16 @@ function nextActionPrimary(): void {
 }
 
 function runReadinessCheckAction(check: CodexStackRunReadinessCheck): void {
-  const action = check.actionHint;
-  if (action.kind === "run-check") {
+  const command = resolveCodexStackRunReadinessAction(check, text("查看详情", "View details"));
+  if (command.type === "run-check") {
     void runCheck();
     return;
   }
-  if (action.kind === "repair" && action.repairActions?.length) {
-    void startRepairWithActions(action.repairActions, text("就绪检查修复任务已启动。", "Readiness repair job started."));
+  if (command.type === "repair") {
+    void startRepairWithActions(command.actions, text("就绪检查修复任务已启动。", "Readiness repair job started."));
     return;
   }
-  activeSection.value = action.section || check.section;
+  activeSection.value = command.section;
 }
 
 function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): void {
