@@ -284,157 +284,27 @@
 
                 <section class="panel-card cs-agent-stage">
                   <template v-if="activeAgentPane === 'projects'">
-                    <div class="cs-card-header">
-                      <div>
-                        <p class="cs-section-kicker">{{ text("Agent 项目", "Agent Projects") }}</p>
-                        <h4>{{ selectedProjectDraft?.name || text("选择或创建项目", "Select or Create a Project") }}</h4>
-                        <p class="cs-field-hint">{{ selectedProjectSummary }}</p>
-                      </div>
-                      <div class="cs-actions">
-                        <button type="button" class="secondary-button" :disabled="busy" @click="applyDefaultModelToCcConnectProjects">
-                          {{ text("同步默认模型到全部项目", "Sync Default Model to All") }}
-                        </button>
-                        <button
-                          v-if="selectedProjectDraft"
-                          type="button"
-                          class="text-button danger-text"
-                          :disabled="busy"
-                          @click="removeCcConnectProject(selectedProjectDraft.id)"
-                        >
-                          {{ text("删除当前项目", "Delete Current Project") }}
-                        </button>
-                      </div>
-                    </div>
-                    <div class="cs-agent-template-row">
-                      <article v-for="preset in projectPresetCards" :key="preset.id" class="cs-agent-template-card">
-                        <div>
-                          <strong>{{ preset.label }}</strong>
-                          <p>{{ preset.copy }}</p>
-                        </div>
-                        <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectProjectPreset(preset.id)">
-                          {{ preset.action }}
-                        </button>
-                      </article>
-                    </div>
-                    <div v-if="ccConnectLoading && !ccConnectConfig" class="cs-empty-lite">
-                      {{ text("正在读取项目配置...", "Loading project config...") }}
-                    </div>
-                    <div v-else-if="!selectedProjectDraft" class="cs-empty-lite">
-                      <p>{{ text("当前配置没有 projects。新增项目后选择工作目录、模型和平台即可。", "No projects are declared. Add a project, then choose work directory, model, and platforms.") }}</p>
-                      <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectProject">
-                        {{ text("创建第一个项目", "Create First Project") }}
-                      </button>
-                    </div>
-                    <div v-else class="cs-agent-editor-grid">
-                      <section class="cs-agent-editor-main">
-                        <div class="cs-form-grid cs-project-meta">
-                          <label class="form-field">
-                            <span class="form-label">{{ text("项目名", "Project Name") }}</span>
-                            <input v-model="selectedProjectDraft.name" class="form-input" placeholder="main" />
-                          </label>
-                          <label class="form-field">
-                            <span class="form-label">{{ text("Agent 类型", "Agent Type") }}</span>
-                            <input v-model="selectedProjectDraft.agentType" class="form-input" placeholder="codex" />
-                          </label>
-                          <label class="form-field">
-                            <span class="form-label">{{ text("模式", "Mode") }}</span>
-                            <select v-model="selectedProjectDraft.agentOptions.mode" class="form-input">
-                              <option value="suggest">suggest</option>
-                              <option value="yolo">yolo</option>
-                              <option value="read-only">read-only</option>
-                            </select>
-                          </label>
-                          <label class="form-field">
-                            <span class="form-label">{{ text("模型", "Model") }}</span>
-                            <select v-model="selectedProjectDraft.agentOptions.model" class="form-input">
-                              <option v-for="model in modelOptions" :key="`${selectedProjectDraft.id}-${model}`" :value="model">{{ model }}</option>
-                            </select>
-                            <span class="form-help">{{ text("模型列表来自 CPA /v1/models。", "Model list comes from CPA /v1/models.") }}</span>
-                          </label>
-                          <label class="form-field cs-form-span-2">
-                            <span class="form-label">{{ text("工作目录", "Work Directory") }}</span>
-                            <input v-model="selectedProjectDraft.agentOptions.workDir" class="form-input" placeholder="/home/user/.openclaw" />
-                          </label>
-                          <label class="form-field cs-form-span-2">
-                            <span class="form-label">{{ text("管理员来源", "Admin From") }}</span>
-                            <textarea
-                              v-model="selectedProjectDraft.adminFrom"
-                              class="form-input cs-inline-textarea"
-                              :placeholder="text('多个来源用逗号分隔；留空会禁用管理命令', 'Comma-separated sources; leave empty to disable privileged commands')"
-                            />
-                          </label>
-                        </div>
-                      </section>
-                      <aside class="cs-agent-editor-side">
-                        <p class="cs-section-kicker">{{ text("渠道预览", "Channel Preview") }}</p>
-                        <div class="cs-platform-badges">
-                          <span v-for="platform in selectedProjectDraft.platforms" :key="platform.id" class="cs-chip">
-                            {{ platform.type || text("未命名平台", "Unnamed Platform") }}
-                          </span>
-                          <span v-if="!selectedProjectDraft.platforms.length" class="cs-chip">
-                            {{ text("暂无平台", "No Platforms") }}
-                          </span>
-                        </div>
-                        <p class="cs-field-hint">
-                          {{ text("一个项目可以绑定多个平台。DMWork 通常手填 token，Feishu/Weixin 建议先保存项目再执行 setup。", "One project can bind multiple platforms. DMWork usually uses token fields; Feishu/Weixin should be saved before setup.") }}
-                        </p>
-                      </aside>
-                    </div>
-
-                    <div v-if="selectedProjectDraft" class="cs-subsection-header cs-subsection-header-tight">
-                      <div>
-                        <strong>{{ text("平台渠道", "Platform Channels") }}</strong>
-                        <p>{{ text("平台参数单独成卡片，避免和 Agent 基础参数挤在一起。", "Platform options are isolated cards instead of being crowded with base agent fields.") }}</p>
-                      </div>
-                      <div class="cs-platform-template-actions">
-                        <button
-                          v-for="template in platformTemplates"
-                          :key="template.id"
-                          type="button"
-                          class="secondary-button"
-                          :disabled="busy"
-                          :title="template.copy"
-                          @click="addPlatformToSelectedProject(template.id)"
-                        >
-                          {{ text("新增", "Add") }} {{ template.label }}
-                        </button>
-                      </div>
-                    </div>
-                    <div v-if="selectedProjectDraft" class="cs-platform-grid cs-platform-grid-roomy">
-                      <article
-                        v-for="platform in selectedProjectDraft.platforms"
-                        :key="platform.id"
-                        class="cs-platform-card"
-                      >
-                        <div class="cs-platform-head">
-                          <strong>{{ platform.type || text("未命名平台", "Unnamed Platform") }}</strong>
-                          <button type="button" class="text-button danger-text" :disabled="busy" @click="removePlatformFromSelectedProject(platform.id)">
-                            {{ text("删除平台", "Delete Platform") }}
-                          </button>
-                        </div>
-                        <label class="form-field">
-                          <span class="form-label">type</span>
-                          <input v-model="platform.type" class="form-input" list="cc-platform-options" placeholder="octo" />
-                        </label>
-                        <div class="cs-option-list">
-                          <div v-for="row in platform.optionRows" :key="row.id" class="cs-option-row">
-                            <input v-model="row.key" class="form-input" placeholder="key" />
-                            <input
-                              v-model="row.value"
-                              class="form-input"
-                              :type="isSensitiveKey(row.key) ? 'password' : 'text'"
-                              placeholder="value"
-                            />
-                            <button type="button" class="text-button danger-text" :disabled="busy" @click="removeCcConnectPlatformOption(platform, row.id)">
-                              {{ text("删除", "Delete") }}
-                            </button>
-                          </div>
-                          <button type="button" class="secondary-button" :disabled="busy" @click="addCcConnectPlatformOption(platform)">
-                            {{ text("新增参数", "Add Option") }}
-                          </button>
-                        </div>
-                      </article>
-                    </div>
+                    <CodexStackCcConnectProjectPanel
+                      :project="selectedProjectDraft"
+                      :project-summary="selectedProjectSummary"
+                      :presets="projectPresetCards"
+                      :platform-templates="platformTemplates"
+                      :model-options="modelOptions"
+                      :loading="ccConnectLoading && !ccConnectConfig"
+                      :busy="busy"
+                      @sync-default-model="applyDefaultModelToCcConnectProjects"
+                      @remove-project="removeCcConnectProject"
+                      @add-preset="addCcConnectProjectPreset"
+                      @add-project="addCcConnectProject"
+                      @update-project-field="updateCcConnectProjectField"
+                      @update-agent-option="updateCcConnectAgentOption"
+                      @add-platform="addPlatformToSelectedProject"
+                      @remove-platform="removePlatformFromSelectedProject"
+                      @update-platform-type="updateCcConnectPlatformType"
+                      @update-platform-option="updateCcConnectPlatformOption"
+                      @add-platform-option="addCcConnectPlatformOptionById"
+                      @remove-platform-option="removeCcConnectPlatformOptionById"
+                    />
                   </template>
 
                   <template v-else-if="activeAgentPane === 'providers'">
@@ -737,6 +607,19 @@ import type {
   CodexStackCcConnectProviderDraft,
   CodexStackCcConnectProviderField,
 } from "./CodexStackCcConnectProviderPanel.vue";
+import CodexStackCcConnectProjectPanel from "./CodexStackCcConnectProjectPanel.vue";
+import type {
+  CodexStackCcConnectAgentOptionField,
+  CodexStackCcConnectPlatformDraft,
+  CodexStackCcConnectPlatformOptionDraft,
+  CodexStackCcConnectPlatformOptionField,
+  CodexStackCcConnectPlatformTemplate,
+  CodexStackCcConnectPlatformTemplateId,
+  CodexStackCcConnectProjectDraft,
+  CodexStackCcConnectProjectField,
+  CodexStackCcConnectProjectPresetCard,
+  CodexStackCcConnectProjectPresetId,
+} from "./CodexStackCcConnectProjectPanel.vue";
 import CodexStackCcConnectSetupPanel from "./CodexStackCcConnectSetupPanel.vue";
 import type { CodexStackCcConnectSetupPlatform } from "./CodexStackCcConnectSetupPanel.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
@@ -776,28 +659,13 @@ type SectionId = "dashboard" | "install" | "cc-connect" | "settings" | "logs";
 type AgentPaneId = CodexStackCcConnectPaneId;
 type LogLineMode = CodexStackLogLineMode;
 type ComponentInstallMode = CodexStackComponentInstallMode;
-type AgentProjectPreset = "admin" | "worker";
-type PlatformTemplateId = "dmwork" | "octo" | "feishu" | "weixin";
+type AgentProjectPreset = CodexStackCcConnectProjectPresetId;
+type PlatformTemplateId = CodexStackCcConnectPlatformTemplateId;
 type ContextMode = CodexStackRuntimeContextMode;
 type CcConnectProviderDraft = CodexStackCcConnectProviderDraft;
-type CcConnectPlatformOptionDraft = { id: string; key: string; value: string };
-type CcConnectPlatformDraft = {
-  id: string;
-  type: string;
-  optionRows: CcConnectPlatformOptionDraft[];
-};
-type CcConnectProjectDraft = {
-  id: string;
-  name: string;
-  adminFrom: string;
-  agentType: string;
-  agentOptions: {
-    workDir: string;
-    mode: string;
-    model: string;
-  };
-  platforms: CcConnectPlatformDraft[];
-};
+type CcConnectPlatformOptionDraft = CodexStackCcConnectPlatformOptionDraft;
+type CcConnectPlatformDraft = CodexStackCcConnectPlatformDraft;
+type CcConnectProjectDraft = CodexStackCcConnectProjectDraft;
 
 type ApplySummaryOptions = {
   preserveDirtyConfigDraft?: boolean;
@@ -1580,7 +1448,7 @@ const ccConnectProjectRailItems = computed<CodexStackCcConnectProjectRailItem[]>
   model: project.agentOptions.model,
   platformCount: project.platforms.length,
 })));
-const platformTemplates = computed<Array<{ id: PlatformTemplateId; label: string; copy: string }>>(() => [
+const platformTemplates = computed<CodexStackCcConnectPlatformTemplate[]>(() => [
   {
     id: "dmwork",
     label: "DMWork",
@@ -1602,7 +1470,7 @@ const platformTemplates = computed<Array<{ id: PlatformTemplateId; label: string
     copy: text("setup 绑定后自动补齐", "Filled by setup binding"),
   },
 ]);
-const projectPresetCards = computed<Array<{ id: AgentProjectPreset; label: string; copy: string; action: string }>>(() => [
+const projectPresetCards = computed<CodexStackCcConnectProjectPresetCard[]>(() => [
   {
     id: "admin",
     label: text("管理员 Agent", "Admin Agent"),
@@ -1856,10 +1724,6 @@ function hydrateCcConnectStructuredDraft(config: CcConnectConfig): void {
 
 function componentTone(status: CodexStackComponentStatus) {
   return codexStackComponentTone(status);
-}
-
-function isSensitiveKey(key: string): boolean {
-  return /(api[_-]?key|bot[_-]?token|token|secret|password)/i.test(key);
 }
 
 function formatTimestamp(value: string | null | undefined): string {
@@ -2498,6 +2362,32 @@ function setActiveAgentPane(paneId: AgentPaneId): void {
   activeAgentPane.value = paneId;
 }
 
+function findCcConnectProjectDraft(projectId: string): CcConnectProjectDraft | undefined {
+  return ccConnectProjectDrafts.value.find((project) => project.id === projectId);
+}
+
+function findCcConnectPlatformDraft(platformId: string): CcConnectPlatformDraft | undefined {
+  return selectedProjectDraft.value?.platforms.find((platform) => platform.id === platformId);
+}
+
+function updateCcConnectProjectField(
+  projectId: string,
+  field: CodexStackCcConnectProjectField,
+  value: string,
+): void {
+  const project = findCcConnectProjectDraft(projectId);
+  if (project) project[field] = value;
+}
+
+function updateCcConnectAgentOption(
+  projectId: string,
+  field: CodexStackCcConnectAgentOptionField,
+  value: string,
+): void {
+  const project = findCcConnectProjectDraft(projectId);
+  if (project) project.agentOptions[field] = value;
+}
+
 function removeCcConnectPlatform(project: CcConnectProjectDraft, platformId: string): void {
   project.platforms = project.platforms.filter((platform) => platform.id !== platformId);
 }
@@ -2516,8 +2406,34 @@ function addCcConnectPlatformOption(platform: CcConnectPlatformDraft): void {
   platform.optionRows.push(createPlatformOptionDraft());
 }
 
+function addCcConnectPlatformOptionById(platformId: string): void {
+  const platform = findCcConnectPlatformDraft(platformId);
+  if (platform) addCcConnectPlatformOption(platform);
+}
+
 function removeCcConnectPlatformOption(platform: CcConnectPlatformDraft, optionId: string): void {
   platform.optionRows = platform.optionRows.filter((row) => row.id !== optionId);
+}
+
+function removeCcConnectPlatformOptionById(platformId: string, optionId: string): void {
+  const platform = findCcConnectPlatformDraft(platformId);
+  if (platform) removeCcConnectPlatformOption(platform, optionId);
+}
+
+function updateCcConnectPlatformType(platformId: string, value: string): void {
+  const platform = findCcConnectPlatformDraft(platformId);
+  if (platform) platform.type = value;
+}
+
+function updateCcConnectPlatformOption(
+  platformId: string,
+  optionId: string,
+  field: CodexStackCcConnectPlatformOptionField,
+  value: string,
+): void {
+  const platform = findCcConnectPlatformDraft(platformId);
+  const option = platform?.optionRows.find((row) => row.id === optionId);
+  if (option) option[field] = value;
 }
 
 function applyDefaultModelToCcConnectProjects(): void {
@@ -2948,7 +2864,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 .cs-card-header,
-.cs-platform-head,
 .cs-project-head,
 .cs-progress-header {
   display: flex;
@@ -2958,7 +2873,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 .cs-card-header h4,
-.cs-platform-head strong,
 .cs-project-head h5,
 .cs-progress-header h4 {
   margin: 0;
@@ -3006,7 +2920,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   gap: 12px;
 }
 
-.cs-platform-card,
 .cs-project-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -3094,12 +3007,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   grid-column: 1 / -1;
 }
 
-.cs-platform-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
 .cs-agent-workbench {
   display: grid;
   grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
@@ -3111,121 +3018,12 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   min-width: 0;
 }
 
-.cs-agent-template-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.cs-agent-template-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-  border: 1px solid color-mix(in srgb, var(--acc) 22%, var(--line));
-  border-radius: var(--radius-lg);
-  padding: 14px;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 10%, transparent), transparent 34%),
-    color-mix(in srgb, var(--surface) 94%, transparent);
-}
-
-.cs-agent-template-card p {
-  margin: 6px 0 0;
-  color: var(--text-soft);
-  font-size: 0.88rem;
-}
-
-.cs-agent-editor-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.32fr);
-  gap: 18px;
-  align-items: start;
-  margin-top: 16px;
-}
-
-.cs-agent-editor-main,
-.cs-agent-editor-side {
-  min-width: 0;
-}
-
-.cs-agent-editor-side {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 14px;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--sky) 14%, transparent), transparent 36%),
-    color-mix(in srgb, var(--surface) 94%, transparent);
-}
-
-.cs-subsection-header-tight {
-  margin-top: 22px;
-}
-
-.cs-platform-grid-roomy {
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
-  margin-top: 16px;
-}
-
 .cs-form-grid-compact {
   margin-top: 12px;
 }
 
 .cs-project-head {
   align-items: flex-start;
-}
-
-.cs-project-meta {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.cs-subsection-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 18px 0 12px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
-}
-
-.cs-subsection-header strong {
-  display: block;
-  color: var(--text);
-}
-
-.cs-subsection-header p {
-  margin: 4px 0 0;
-  color: var(--text-soft);
-}
-
-.cs-platform-template-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.cs-option-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.cs-option-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.cs-inline-textarea {
-  min-height: 86px;
-  resize: vertical;
 }
 
 .cs-raw-editor {
@@ -3329,18 +3127,11 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 
   .cs-dashboard-grid,
   .cs-form-grid,
-  .cs-platform-grid,
-  .cs-agent-workbench,
-  .cs-agent-editor-grid,
-  .cs-agent-template-row {
+  .cs-agent-workbench {
     grid-template-columns: 1fr;
   }
 
   .cs-kv-row {
-    grid-template-columns: 1fr;
-  }
-
-  .cs-option-row {
     grid-template-columns: 1fr;
   }
 
@@ -3349,10 +3140,7 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   .cs-model-ribbon,
   .cs-section-intro,
   .cs-card-header,
-  .cs-platform-head,
-  .cs-project-head,
-  .cs-agent-template-card,
-  .cs-subsection-header {
+  .cs-project-head {
     flex-direction: column;
     align-items: stretch;
   }

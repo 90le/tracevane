@@ -10,6 +10,7 @@ const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8")
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
 const ccConnectCommandBar = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectCommandBar.vue");
 const ccConnectProviderPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProviderPanel.vue");
+const ccConnectProjectPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProjectPanel.vue");
 const ccConnectRail = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectRail.vue");
 const ccConnectSetupPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectSetupPanel.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
@@ -104,6 +105,10 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectProviderPanel, /\.cs-provider-grid\s*\{/);
   assert.match(ccConnectProviderPanel, /\.cs-language-field\s*\{/);
   assert.match(ccConnectProviderPanel, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectProjectPanel, /class="cs-cc-project-panel"/);
+  assert.match(ccConnectProjectPanel, /\.cs-agent-template-row\s*\{/);
+  assert.match(ccConnectProjectPanel, /\.cs-platform-grid\s*\{/);
+  assert.match(ccConnectProjectPanel, /@media \(max-width: 960px\)/);
   assert.match(ccConnectRail, /class="panel-card cs-agent-rail"/);
   assert.match(ccConnectRail, /\.cs-agent-pane-switch\s*\{/);
   assert.match(ccConnectRail, /\.cs-agent-project-pill\s*\{/);
@@ -273,6 +278,34 @@ test("codex stack cc-connect page delegates provider editor without moving provi
   assert.match(ccConnectProviderPanel, /@click="\$emit\('ensure-cpa-provider'\)"/);
   assert.match(ccConnectProviderPanel, /@click="\$emit\('remove-provider', provider\.id\)"/);
   assert.doesNotMatch(ccConnectProviderPanel, /ccConnectProviderDrafts|normalizeProviderDrafts|patchCcConnectConfig|saveCcConnectStructured|saveCcConnectRaw/);
+});
+
+test("codex stack cc-connect page delegates project editor without moving project drafts", () => {
+  assert.match(controlPage, /import CodexStackCcConnectProjectPanel from "\.\/CodexStackCcConnectProjectPanel\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackCcConnectProjectPanel[\s\S]*:project="selectedProjectDraft"[\s\S]*:project-summary="selectedProjectSummary"[\s\S]*:presets="projectPresetCards"[\s\S]*:platform-templates="platformTemplates"[\s\S]*:model-options="modelOptions"[\s\S]*:loading="ccConnectLoading && !ccConnectConfig"[\s\S]*:busy="busy"[\s\S]*@sync-default-model="applyDefaultModelToCcConnectProjects"[\s\S]*@remove-project="removeCcConnectProject"[\s\S]*@add-preset="addCcConnectProjectPreset"[\s\S]*@add-project="addCcConnectProject"[\s\S]*@update-project-field="updateCcConnectProjectField"[\s\S]*@update-agent-option="updateCcConnectAgentOption"[\s\S]*@add-platform="addPlatformToSelectedProject"[\s\S]*@remove-platform="removePlatformFromSelectedProject"[\s\S]*@update-platform-type="updateCcConnectPlatformType"[\s\S]*@update-platform-option="updateCcConnectPlatformOption"[\s\S]*@add-platform-option="addCcConnectPlatformOptionById"[\s\S]*@remove-platform-option="removeCcConnectPlatformOptionById"/,
+  );
+  assert.match(controlPage, /const platformTemplates = computed<CodexStackCcConnectPlatformTemplate\[\]>/);
+  assert.match(controlPage, /const projectPresetCards = computed<CodexStackCcConnectProjectPresetCard\[\]>/);
+  assert.match(controlPage, /function updateCcConnectProjectField\([\s\S]*field: CodexStackCcConnectProjectField[\s\S]*\): void/);
+  assert.match(controlPage, /function updateCcConnectAgentOption\([\s\S]*field: CodexStackCcConnectAgentOptionField[\s\S]*\): void/);
+  assert.match(controlPage, /function updateCcConnectPlatformType\(platformId: string, value: string\): void/);
+  assert.match(controlPage, /function updateCcConnectPlatformOption\([\s\S]*field: CodexStackCcConnectPlatformOptionField[\s\S]*\): void/);
+  assert.match(controlPage, /function normalizeProjectDrafts\(\): CcConnectProject\[\]/);
+  assert.doesNotMatch(controlPage, /v-model="selectedProjectDraft\.(name|adminFrom|agentType|agentOptions)/);
+  assert.doesNotMatch(controlPage, /v-model="platform\.(type|optionRows)/);
+  assert.doesNotMatch(controlPage, /class="cs-agent-template-row"/);
+  assert.doesNotMatch(controlPage, /class="cs-platform-grid cs-platform-grid-roomy"/);
+  assert.match(ccConnectProjectPanel, /export interface CodexStackCcConnectProjectDraft/);
+  assert.match(ccConnectProjectPanel, /export type CodexStackCcConnectProjectField = "name" \| "adminFrom" \| "agentType";/);
+  assert.match(ccConnectProjectPanel, /export type CodexStackCcConnectAgentOptionField = "workDir" \| "mode" \| "model";/);
+  assert.match(ccConnectProjectPanel, /defineEmits<[\s\S]*"update-project-field": \[projectId: string, field: CodexStackCcConnectProjectField, value: string\][\s\S]*"update-agent-option": \[projectId: string, field: CodexStackCcConnectAgentOptionField, value: string\][\s\S]*"add-platform": \[type: CodexStackCcConnectPlatformTemplateId\][\s\S]*"update-platform-option": \[platformId: string, optionId: string, field: CodexStackCcConnectPlatformOptionField, value: string\]/);
+  assert.match(ccConnectProjectPanel, /@input="\$emit\('update-project-field', project\.id, 'name', inputValue\(\$event\)\)"/);
+  assert.match(ccConnectProjectPanel, /@change="\$emit\('update-agent-option', project\.id, 'model', inputValue\(\$event\)\)"/);
+  assert.match(ccConnectProjectPanel, /@click="\$emit\('add-platform', template\.id\)"/);
+  assert.match(ccConnectProjectPanel, /@input="\$emit\('update-platform-option', platform\.id, row\.id, 'value', inputValue\(\$event\)\)"/);
+  assert.doesNotMatch(ccConnectProjectPanel, /ccConnectProjectDrafts|selectedProjectDraftId|normalizeProjectDrafts|patchCcConnectConfig|saveCcConnectStructured|saveCcConnectRaw/);
 });
 
 test("codex stack cc-connect page delegates rail navigation without moving drafts", () => {
