@@ -218,72 +218,17 @@
               />
 
               <div class="cs-install-shell" :class="{ 'cs-install-shell-busy': activeJob && isCodexStackJobRunning(activeJob) }">
-                <div
-                  v-if="activeJob && isCodexStackJobRunning(activeJob)"
-                  class="cs-install-overlay"
-                >
-                  <article class="panel-card cs-install-progress">
-                    <div class="cs-card-header">
-                      <div>
-                        <p class="cs-section-kicker">{{ text("进度", "Progress") }}</p>
-                        <h4>{{ text("任务执行中", "Task Running") }}</h4>
-                      </div>
-                      <span class="cs-progress-badge cs-progress-running">{{ activeJobTitle }} · {{ jobStatusLabel(activeJob.status) }}</span>
-                    </div>
-                    <p class="cs-progress-hint">
-                      {{ text("安装或修复脚本正在后台执行，日志会持续刷新。", "The install or repair job is running in the background and the log tail is updating continuously.") }}
-                    </p>
-                    <div class="cs-job-progress-track" :style="{ '--progress': jobProgressPercent }">
-                      <span></span>
-                    </div>
-                    <div class="cs-job-step-list">
-                      <span
-                        v-for="step in jobProgressSteps"
-                        :key="step.label"
-                        class="cs-job-step"
-                        :class="`cs-job-step-${step.state}`"
-                      >
-                        {{ step.label }}
-                      </span>
-                    </div>
-                    <pre class="cs-progress-log">{{ activeJob.logTail || text("等待输出...", "Waiting for output...") }}</pre>
-                  </article>
-                </div>
-
-                <article
-                  v-if="activeJob && !isCodexStackJobRunning(activeJob)"
-                  class="panel-card"
-                  :class="activeJob.status === 'succeeded' ? 'cs-result-ok' : 'cs-result-fail'"
-                >
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("结果", "Result") }}</p>
-                      <h4>{{ activeJob.status === "succeeded" ? text("任务完成", "Task Succeeded") : text("任务失败", "Task Failed") }}</h4>
-                    </div>
-                    <span class="cs-progress-badge" :class="activeJob.status === 'succeeded' ? 'cs-progress-ok' : 'cs-progress-fail'">
-                      {{ activeJobTitle }} · {{ jobStatusLabel(activeJob.status) }}
-                    </span>
-                  </div>
-                  <div class="cs-job-progress-track" :style="{ '--progress': jobProgressPercent }">
-                    <span></span>
-                  </div>
-                  <div class="cs-job-step-list">
-                    <span
-                      v-for="step in jobProgressSteps"
-                      :key="step.label"
-                      class="cs-job-step"
-                      :class="`cs-job-step-${step.state}`"
-                    >
-                      {{ step.label }}
-                    </span>
-                  </div>
-                  <pre v-if="activeJob.error || activeJob.logTail" class="cs-progress-log">{{ activeJob.error || activeJob.logTail }}</pre>
-                  <div class="cs-actions">
-                    <button type="button" class="secondary-button" @click="activeJob = null">
-                      {{ text("关闭摘要", "Dismiss Summary") }}
-                    </button>
-                  </div>
-                </article>
+                <CodexStackJobProgressPanel
+                  v-if="activeJob"
+                  :job="activeJob"
+                  :title="activeJobTitle"
+                  :status-label="jobStatusLabel(activeJob.status)"
+                  :steps="jobProgressSteps"
+                  :progress-percent="jobProgressPercent"
+                  :running="isCodexStackJobRunning(activeJob)"
+                  :empty-log="text('等待输出...', 'Waiting for output...')"
+                  @dismiss="activeJob = null"
+                />
 
                 <div class="cs-install-grid">
                   <article class="panel-card">
@@ -1245,6 +1190,7 @@ import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
 import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
+import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";
 import CodexStackRepairBoard from "./CodexStackRepairBoard.vue";
 import type {
@@ -3524,44 +3470,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   opacity: 0.42;
 }
 
-.cs-install-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: color-mix(in srgb, #081018 56%, transparent);
-  backdrop-filter: blur(6px);
-  border-radius: calc(var(--radius-lg) + 8px);
-}
-
-.cs-install-progress {
-  width: min(920px, 100%);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
-}
-
-.cs-progress-running {
-  background: var(--acc);
-  color: #fff;
-  border-color: transparent;
-  animation: cs-pulse 1.5s infinite;
-}
-
-.cs-progress-ok {
-  background: var(--success);
-  color: #fff;
-  border-color: transparent;
-}
-
-.cs-progress-fail {
-  background: var(--danger);
-  color: #fff;
-  border-color: transparent;
-}
-
-.cs-progress-log,
 .cs-code,
 .cs-log,
 .cs-raw-editor {
@@ -3580,10 +3488,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 .cs-log {
   min-height: 340px;
   max-height: 520px;
-}
-
-.cs-progress-log {
-  max-height: 320px;
 }
 
 .cs-job-progress-track {
@@ -3796,14 +3700,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 
 .cs-big-button {
   min-width: 240px;
-}
-
-.cs-result-ok {
-  border-color: color-mix(in srgb, var(--success) 38%, var(--line));
-}
-
-.cs-result-fail {
-  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
 }
 
 .cs-provider-grid,
