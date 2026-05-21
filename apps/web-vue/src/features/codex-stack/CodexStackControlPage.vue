@@ -237,80 +237,76 @@
                 @save-raw="saveCcConnectRaw"
               />
 
-              <div class="cs-agent-workbench">
-                <CodexStackCcConnectRail
-                  :panes="agentPanes"
-                  :active-pane="activeAgentPane"
-                  :projects="ccConnectProjectRailItems"
-                  :selected-project-id="selectedProjectDraft?.id || ''"
-                  :busy="busy"
-                  @set-active-pane="setActiveAgentPane"
-                  @select-project="selectCcConnectProject"
-                  @add-project="addCcConnectProject"
-                />
+              <CodexStackCcConnectStage
+                :panes="agentPanes"
+                :active-pane="activeAgentPane"
+                :projects="ccConnectProjectRailItems"
+                :selected-project-id="selectedProjectDraft?.id || ''"
+                :busy="busy"
+                @set-active-pane="setActiveAgentPane"
+                @select-project="selectCcConnectProject"
+                @add-project="addCcConnectProject"
+              >
+                <template v-if="activeAgentPane === 'projects'">
+                  <CodexStackCcConnectProjectPanel
+                    :project="selectedProjectDraft"
+                    :project-summary="selectedProjectSummary"
+                    :presets="projectPresetCards"
+                    :platform-templates="platformTemplates"
+                    :model-options="modelOptions"
+                    :loading="ccConnectLoading && !ccConnectConfig"
+                    :busy="busy"
+                    @sync-default-model="applyDefaultModelToCcConnectProjects"
+                    @remove-project="removeCcConnectProject"
+                    @add-preset="addCcConnectProjectPreset"
+                    @add-project="addCcConnectProject"
+                    @update-project-field="updateCcConnectProjectField"
+                    @update-agent-option="updateCcConnectAgentOption"
+                    @add-platform="addPlatformToSelectedProject"
+                    @remove-platform="removePlatformFromSelectedProject"
+                    @update-platform-type="updateCcConnectPlatformType"
+                    @update-platform-option="updateCcConnectPlatformOption"
+                    @add-platform-option="addCcConnectPlatformOptionById"
+                    @remove-platform-option="removeCcConnectPlatformOptionById"
+                  />
+                </template>
 
-                <section class="panel-card cs-agent-stage">
-                  <template v-if="activeAgentPane === 'projects'">
-                    <CodexStackCcConnectProjectPanel
-                      :project="selectedProjectDraft"
-                      :project-summary="selectedProjectSummary"
-                      :presets="projectPresetCards"
-                      :platform-templates="platformTemplates"
-                      :model-options="modelOptions"
-                      :loading="ccConnectLoading && !ccConnectConfig"
-                      :busy="busy"
-                      @sync-default-model="applyDefaultModelToCcConnectProjects"
-                      @remove-project="removeCcConnectProject"
-                      @add-preset="addCcConnectProjectPreset"
-                      @add-project="addCcConnectProject"
-                      @update-project-field="updateCcConnectProjectField"
-                      @update-agent-option="updateCcConnectAgentOption"
-                      @add-platform="addPlatformToSelectedProject"
-                      @remove-platform="removePlatformFromSelectedProject"
-                      @update-platform-type="updateCcConnectPlatformType"
-                      @update-platform-option="updateCcConnectPlatformOption"
-                      @add-platform-option="addCcConnectPlatformOptionById"
-                      @remove-platform-option="removeCcConnectPlatformOptionById"
-                    />
-                  </template>
+                <template v-else-if="activeAgentPane === 'providers'">
+                  <CodexStackCcConnectProviderPanel
+                    :language="ccConnectLanguageDraft"
+                    :providers="ccConnectProviderDrafts"
+                    :compact-proxy-base-url="compactProxyBaseUrl"
+                    :loading="ccConnectLoading && !ccConnectConfig"
+                    :busy="busy"
+                    @update-language="updateCcConnectLanguage"
+                    @update-provider-field="updateCcConnectProviderField"
+                    @ensure-cpa-provider="ensureCpaProviderDraft"
+                    @add-provider="addCcConnectProvider"
+                    @remove-provider="removeCcConnectProvider"
+                  />
+                </template>
 
-                  <template v-else-if="activeAgentPane === 'providers'">
-                    <CodexStackCcConnectProviderPanel
-                      :language="ccConnectLanguageDraft"
-                      :providers="ccConnectProviderDrafts"
-                      :compact-proxy-base-url="compactProxyBaseUrl"
-                      :loading="ccConnectLoading && !ccConnectConfig"
-                      :busy="busy"
-                      @update-language="updateCcConnectLanguage"
-                      @update-provider-field="updateCcConnectProviderField"
-                      @ensure-cpa-provider="ensureCpaProviderDraft"
-                      @add-provider="addCcConnectProvider"
-                      @remove-provider="removeCcConnectProvider"
-                    />
-                  </template>
+                <template v-else-if="activeAgentPane === 'setup'">
+                  <CodexStackCcConnectSetupPanel
+                    :commands="ccConnectSetupCommands"
+                    :busy="busy"
+                    :can-run-mutation="canRunMutation"
+                    :can-finalize="summary.ccConnect.canFinalize"
+                    @copy-setup="copySetupCommand"
+                    @finalize="finalizeCcConnect"
+                  />
+                </template>
 
-                  <template v-else-if="activeAgentPane === 'setup'">
-                    <CodexStackCcConnectSetupPanel
-                      :commands="ccConnectSetupCommands"
-                      :busy="busy"
-                      :can-run-mutation="canRunMutation"
-                      :can-finalize="summary.ccConnect.canFinalize"
-                      @copy-setup="copySetupCommand"
-                      @finalize="finalizeCcConnect"
-                    />
-                  </template>
-
-                  <template v-else>
-                    <CodexStackCcConnectRawPanel
-                      :raw-draft="ccConnectRawDraft"
-                      :has-raw-changes="hasCcConnectRawChanges"
-                      :can-run-mutation="canRunMutation"
-                      @update-raw="updateCcConnectRawDraft"
-                      @save-raw="saveCcConnectRaw"
-                    />
-                  </template>
-                </section>
-              </div>
+                <template v-else>
+                  <CodexStackCcConnectRawPanel
+                    :raw-draft="ccConnectRawDraft"
+                    :has-raw-changes="hasCcConnectRawChanges"
+                    :can-run-mutation="canRunMutation"
+                    @update-raw="updateCcConnectRawDraft"
+                    @save-raw="saveCcConnectRaw"
+                  />
+                </template>
+              </CodexStackCcConnectStage>
             </section>
           </template>
 
@@ -486,11 +482,12 @@ import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
 import CodexStackEnvironmentReferenceCard from "./CodexStackEnvironmentReferenceCard.vue";
 import CodexStackCcConnectCommandBar from "./CodexStackCcConnectCommandBar.vue";
-import CodexStackCcConnectRail from "./CodexStackCcConnectRail.vue";
 import type {
   CodexStackCcConnectPaneId,
+  CodexStackCcConnectPaneOption,
   CodexStackCcConnectProjectRailItem,
 } from "./CodexStackCcConnectRail.vue";
+import CodexStackCcConnectStage from "./CodexStackCcConnectStage.vue";
 import CodexStackCcConnectProviderPanel from "./CodexStackCcConnectProviderPanel.vue";
 import type {
   CodexStackCcConnectProviderDraft,
@@ -1339,7 +1336,7 @@ const installComponentStrategies = computed<CodexStackInstallComponentStrategy[]
   mode: installMode(component.id),
   modeLabel: installModeLabel(component.id),
 })));
-const agentPanes = computed(() => [
+const agentPanes = computed<CodexStackCcConnectPaneOption[]>(() => [
   { id: "projects" as const, label: text("Agent 项目", "Agent Projects") },
   { id: "providers" as const, label: "Provider" },
   { id: "setup" as const, label: text("绑定与动作", "Setup & Actions") },
@@ -2727,17 +2724,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   grid-column: 1 / -1;
 }
 
-.cs-agent-workbench {
-  display: grid;
-  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-}
-
-.cs-agent-stage {
-  min-width: 0;
-}
-
 .cs-form-grid-compact {
   margin-top: 12px;
 }
@@ -2792,8 +2778,7 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   }
 
   .cs-dashboard-grid,
-  .cs-form-grid,
-  .cs-agent-workbench {
+  .cs-form-grid {
     grid-template-columns: 1fr;
   }
 

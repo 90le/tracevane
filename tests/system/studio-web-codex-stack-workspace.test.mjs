@@ -14,6 +14,7 @@ const ccConnectProjectPanel = read("apps/web-vue/src/features/codex-stack/CodexS
 const ccConnectRawPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectRawPanel.vue");
 const ccConnectRail = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectRail.vue");
 const ccConnectSetupPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectSetupPanel.vue");
+const ccConnectStage = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectStage.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
 const dashboardHeroCard = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardHeroCard.vue");
@@ -149,6 +150,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectSetupPanel, /class="cs-cc-setup-panel"/);
   assert.match(ccConnectSetupPanel, /\.cs-code\s*\{/);
   assert.match(ccConnectSetupPanel, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectStage, /class="cs-agent-workbench"/);
+  assert.match(ccConnectStage, /class="panel-card cs-agent-stage"/);
+  assert.match(ccConnectStage, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
 });
@@ -425,15 +429,22 @@ test("codex stack cc-connect page delegates raw TOML editor without moving raw s
 });
 
 test("codex stack cc-connect page delegates rail navigation without moving drafts", () => {
-  assert.match(controlPage, /import CodexStackCcConnectRail from "\.\/CodexStackCcConnectRail\.vue";/);
+  assert.match(controlPage, /import CodexStackCcConnectStage from "\.\/CodexStackCcConnectStage\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackCcConnectRail[\s\S]*:panes="agentPanes"[\s\S]*:active-pane="activeAgentPane"[\s\S]*:projects="ccConnectProjectRailItems"[\s\S]*:selected-project-id="selectedProjectDraft\?\.id \|\| ''"[\s\S]*:busy="busy"[\s\S]*@set-active-pane="setActiveAgentPane"[\s\S]*@select-project="selectCcConnectProject"[\s\S]*@add-project="addCcConnectProject"/,
+    /<CodexStackCcConnectStage[\s\S]*:panes="agentPanes"[\s\S]*:active-pane="activeAgentPane"[\s\S]*:projects="ccConnectProjectRailItems"[\s\S]*:selected-project-id="selectedProjectDraft\?\.id \|\| ''"[\s\S]*:busy="busy"[\s\S]*@set-active-pane="setActiveAgentPane"[\s\S]*@select-project="selectCcConnectProject"[\s\S]*@add-project="addCcConnectProject"/,
   );
+  assert.match(ccConnectStage, /import CodexStackCcConnectRail from "\.\/CodexStackCcConnectRail\.vue";/);
+  assert.match(ccConnectStage, /<CodexStackCcConnectRail[\s\S]*:panes="panes"[\s\S]*:active-pane="activePane"[\s\S]*:projects="projects"[\s\S]*:selected-project-id="selectedProjectId"[\s\S]*:busy="busy"/);
+  assert.match(ccConnectStage, /<slot \/>/);
+  assert.match(ccConnectStage, /defineEmits<[\s\S]*"set-active-pane": \[paneId: CodexStackCcConnectPaneId\][\s\S]*"select-project": \[projectId: string\][\s\S]*"add-project": \[\]/);
   assert.match(controlPage, /const ccConnectProjectRailItems = computed<CodexStackCcConnectProjectRailItem\[\]>/);
+  assert.match(controlPage, /const agentPanes = computed<CodexStackCcConnectPaneOption\[\]>/);
   assert.match(controlPage, /function setActiveAgentPane\(paneId: AgentPaneId\): void/);
   assert.match(controlPage, /function selectCcConnectProject\(projectId: string\): void/);
   assert.match(controlPage, /function addCcConnectProject\(\): void/);
+  assert.doesNotMatch(controlPage, /class="cs-agent-workbench"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-agent-stage"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-agent-rail"/);
   assert.match(ccConnectRail, /export type CodexStackCcConnectPaneId = "projects" \| "providers" \| "setup" \| "raw";/);
   assert.match(ccConnectRail, /export interface CodexStackCcConnectProjectRailItem/);
@@ -442,6 +453,7 @@ test("codex stack cc-connect page delegates rail navigation without moving draft
   assert.match(ccConnectRail, /@click="\$emit\('select-project', project\.id\)"/);
   assert.match(ccConnectRail, /@click="\$emit\('add-project'\)"/);
   assert.doesNotMatch(ccConnectRail, /ccConnectProjectDrafts|selectedProjectDraft|addCcConnectProject|selectCcConnectProject|patchCcConnectConfig|saveCcConnect/);
+  assert.doesNotMatch(ccConnectStage, /ccConnectProjectDrafts|selectedProjectDraft|addCcConnectProject\(|selectCcConnectProject|patchCcConnectConfig|saveCcConnect|activeAgentPane/);
 });
 
 test("codex stack cc-connect page delegates setup actions without moving finalizer", () => {
