@@ -84,7 +84,11 @@ export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload):
   if (stackInstalled && !cpaActive && !compactActive && !watchdogActive) {
     return ["resume-stack"];
   }
-  if (!summary.secrets.codexAuth.hasSecret || summary.secrets.codexAuth.matchesProxyKey === false) {
+  const codexAuthCheck = summary.runReadiness?.checks.find((check) => check.id === "codex-auth");
+  const shouldRepairCodexAuth = codexAuthCheck
+    ? codexAuthCheck.status === "fail"
+    : (!summary.secrets.codexAuth.hasSecret || summary.secrets.codexAuth.matchesProxyKey === false);
+  if (shouldRepairCodexAuth) {
     actions.push("repair-auth-json");
   }
   if (!summary.cpaManagement.enabled || !summary.cpaManagement.controlPanelEnabled) {

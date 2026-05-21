@@ -335,14 +335,17 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.match(controlPage, /import CodexStackDashboardHeroCard from "\.\/CodexStackDashboardHeroCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="busy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
+    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="busy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
   );
+  assert.match(controlPage, /const codexProviderCheck = computed\(\(\) => \(/);
+  assert.match(controlPage, /if \(status === "pass"\) return text\("CPA 已接入", "CPA attached"\);/);
   assert.match(controlPage, /async function runCheck\(\): Promise<void>/);
   assert.match(controlPage, /async function repairRecommended\(\): Promise<void>/);
   assert.match(controlPage, /async function loadAll\(silent = false, ccConnectOptions: CcConnectLoadOptions = \{\}\): Promise<void>/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-hero-card"/);
   assert.doesNotMatch(controlPage, /class="cs-hero-actions"/);
-  assert.match(dashboardHeroCard, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*syncDisabled: boolean;[\s\S]*\}>/);
+  assert.match(dashboardHeroCard, /Codex 路径/);
+  assert.match(dashboardHeroCard, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*syncDisabled: boolean;[\s\S]*\}>/);
   assert.match(dashboardHeroCard, /defineEmits<\{[\s\S]*"run-check": \[\];[\s\S]*repair: \[\];[\s\S]*sync: \[\];[\s\S]*\}>/);
   assert.match(dashboardHeroCard, /@click="\$emit\('run-check'\)"/);
   assert.match(dashboardHeroCard, /@click="\$emit\('repair'\)"/);
@@ -707,6 +710,8 @@ test("codex stack recommended repair resumes a deliberately paused stack in orde
   assert.match(viewModel, /const services = new Map\(summary\.services\.map\(\(service\) => \[service\.id, service\]\)\);/);
   assert.match(viewModel, /const stackInstalled = cpa\?\.installed === true && compact\?\.installed === true && watchdog\?\.installed === true;/);
   assert.match(viewModel, /if \(stackInstalled && !cpaActive && !compactActive && !watchdogActive\) \{[\s\S]*return \["resume-stack"\];[\s\S]*\}/);
+  assert.match(viewModel, /const codexAuthCheck = summary\.runReadiness\?\.checks\.find\(\(check\) => check\.id === "codex-auth"\);/);
+  assert.match(viewModel, /codexAuthCheck\.status === "fail"/);
   assert.doesNotMatch(viewModel, /if \(!serviceActive\.get\("cli-proxy-api\.service"\)\) actions\.push\("restart-cpa"\);/);
 });
 

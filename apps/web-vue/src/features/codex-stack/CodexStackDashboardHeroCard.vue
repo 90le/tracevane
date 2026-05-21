@@ -17,6 +17,9 @@
           {{ text("当前模型", "Current model") }} {{ currentModel || "--" }}
         </span>
         <span class="cs-info-chip">
+          {{ text("Codex 路径", "Codex route") }} {{ codexRouteLabel }}
+        </span>
+        <span class="cs-info-chip">
           {{ text("Codex 上下文", "Codex context") }} {{ contextTokensDisplay }}
         </span>
         <span class="cs-info-chip">
@@ -51,6 +54,7 @@ defineProps<{
   activeServiceCount: number;
   serviceCount: number;
   currentModel: string;
+  codexRouteLabel: string;
   contextTokensDisplay: string;
   channelLabel: string;
   checkedAtLabel: string;

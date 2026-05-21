@@ -68,6 +68,7 @@
               :active-service-count="activeServiceCount"
               :service-count="summary.services.length"
               :current-model="summary.models.current"
+              :codex-route-label="codexRouteLabel"
               :context-tokens-display="contextTokensDisplay"
               :channel-label="channelLabel(summary.installer.channel)"
               :checked-at-label="formatTimestamp(summary.checkedAt)"
@@ -810,6 +811,15 @@ const modelOptions = computed(() => Array.from(new Set([
   "gpt-5.5",
 ])));
 const modelCatalogPreview = computed(() => modelOptions.value.slice(0, 6));
+const codexProviderCheck = computed(() => (
+  summary.value?.runReadiness.checks.find((check) => check.id === "codex-provider") || null
+));
+const codexRouteLabel = computed(() => {
+  const status = codexProviderCheck.value?.status;
+  if (status === "pass") return text("CPA 已接入", "CPA attached");
+  if (status === "fail") return text("CPA 接入异常", "CPA route blocked");
+  return text("官方 GPT 路径", "Official GPT route");
+});
 const settingsSectionIntroChips = computed<CodexStackSectionIntroChip[]>(() => [
   { label: modelSourceLabel.value, variant: "status", tone: modelSourceTone.value },
   { label: summary.value?.models.endpoint || "--", variant: "info" },

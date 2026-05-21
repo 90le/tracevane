@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CodexStackRunReadinessCheck } from "../../types/codex-stack";
+import type {
+  CodexStackRunReadinessCheck,
+  CodexStackSummaryPayload,
+} from "../../types/codex-stack";
 import {
   normalizeCodexStackRunReadinessCheck,
   resolveCodexStackRunReadinessAction,
 } from "../../apps/web-vue/src/features/codex-stack/readiness-action";
+import { buildCodexStackRepairActions as buildRepairActions } from "../../apps/web-vue/src/features/codex-stack/codex-stack-view-model";
 
 function checkWithAction(
   actionHint: CodexStackRunReadinessCheck["actionHint"],
@@ -86,4 +90,79 @@ test("codex stack readiness action resolver tolerates legacy checks without acti
     resolveCodexStackRunReadinessAction(legacyCheck, "View details"),
     { type: "open-section", section: "settings" },
   );
+});
+
+function summaryForRepairAction(
+  codexAuthStatus: CodexStackRunReadinessCheck["status"],
+  matchesProxyKey: boolean | null,
+): CodexStackSummaryPayload {
+  return {
+    services: [
+      {
+        id: "cli-proxy-api.service",
+        installed: true,
+        enabled: true,
+        active: true,
+        rawActiveState: "active",
+        rawEnabledState: "enabled",
+      },
+      {
+        id: "cpa-compact-proxy.service",
+        installed: true,
+        enabled: true,
+        active: true,
+        rawActiveState: "active",
+        rawEnabledState: "enabled",
+      },
+      {
+        id: "codex-stack-watchdog.timer",
+        installed: true,
+        enabled: true,
+        active: true,
+        rawActiveState: "active",
+        rawEnabledState: "enabled",
+      },
+    ],
+    secrets: {
+      codexAuth: {
+        hasSecret: true,
+        masked: "off...",
+        source: "/tmp/auth.json",
+        length: 12,
+        mode: "apikey",
+        matchesProxyKey,
+      },
+    },
+    cpaManagement: {
+      enabled: true,
+      controlPanelEnabled: true,
+    },
+    ccConnect: {
+      bindingPresent: false,
+    },
+    runReadiness: {
+      checks: [
+        {
+          id: "codex-auth",
+          label: "Codex CLI key",
+          status: codexAuthStatus,
+          detail: "Codex auth state.",
+          section: "settings",
+          actionHint: { kind: "open-section", label: "View config", section: "settings" },
+        },
+      ],
+    },
+  } as CodexStackSummaryPayload;
+}
+
+test("codex stack recommended repair does not rewrite official Codex auth while CPA is only pending attach", () => {
+  const actions = buildRepairActions(summaryForRepairAction("warn", false));
+
+  assert.ok(!actions.includes("repair-auth-json"));
+});
+
+test("codex stack recommended repair still rewrites auth when an attached CPA path fails auth readiness", () => {
+  const actions = buildRepairActions(summaryForRepairAction("fail", false));
+
+  assert.ok(actions.includes("repair-auth-json"));
 });
