@@ -2352,3 +2352,114 @@ account_id = "test"
     else process.env.PATH = previousPath;
   }
 });
+
+test("codex stack prioritizes failed smoke retry before informational direct-provider proxy notice", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const checkedAt = new Date().toISOString();
+  writeJson(config.openclawConfigFile, {
+    env: {
+      HTTPS_PROXY: "http://127.0.0.1:7890",
+      NO_PROXY: "localhost,127.0.0.1,::1",
+    },
+  });
+  writeJson(path.join(root, ".codex/auth.json"), {
+    auth_mode: "apikey",
+    OPENAI_API_KEY: "secret-cpa-key-123456",
+  });
+  writeJson(path.join(config.openclawRoot, "studio/codex-stack/profile.json"), {
+    lastSmokeMatrix: {
+      status: "failed",
+      checkedAt,
+      requiredModels: ["glm-5.1", "kimi-k2.6"],
+      attachEligible: false,
+      models: [
+        {
+          model: "glm-5.1",
+          status: "passed",
+          startedAt: checkedAt,
+          finishedAt: checkedAt,
+          checks: [],
+          error: null,
+        },
+        {
+          model: "kimi-k2.6",
+          status: "failed",
+          startedAt: checkedAt,
+          finishedAt: checkedAt,
+          checks: [],
+          error: "responses upstream failed with 500",
+        },
+      ],
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  writeFile(path.join(root, ".local/bin/cli-proxy-api"), "#!/usr/bin/env bash\necho cpa\n", 0o755);
+  writeFile(path.join(root, ".local/bin/cpa-compact-proxy.mjs"), "#!/usr/bin/env node\nconsole.log('compact')\n", 0o755);
+  writeFile(path.join(root, ".cc-connect/config.toml"), `
+[[providers]]
+name = "cpa"
+api_key = "secret-cpa-key-123456"
+base_url = "http://127.0.0.1:18796/v1"
+codex.env_key = "OPENAI_API_KEY"
+
+[[projects]]
+name = "main"
+[projects.agent.options]
+model = "glm-5.1"
+
+[[projects.platforms]]
+type = "dmwork"
+[projects.platforms.options]
+account_id = "test"
+`);
+  const commandBin = path.join(root, "fake-bin");
+  writeFile(path.join(commandBin, "codex"), "#!/usr/bin/env bash\necho 'codex 1.0.0'\n", 0o755);
+  writeFile(path.join(commandBin, "omx"), "#!/usr/bin/env bash\necho 'omx 1.0.0'\n", 0o755);
+  writeFile(path.join(commandBin, "cc-connect"), "#!/usr/bin/env bash\necho 'cc-connect 1.0.0'\n", 0o755);
+
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${commandBin}${path.delimiter}${previousPath || ""}`;
+  try {
+    await withScriptedSystemctl(
+      [
+        "case \"$*\" in",
+        "  \"--user list-unit-files\"*) echo \"${@: -1} enabled\"; exit 0 ;;",
+        "  \"--user is-enabled\"*) echo \"enabled\"; exit 0 ;;",
+        "  \"--user is-active\"*) echo \"active\"; exit 0 ;;",
+        "esac",
+        "exit 0",
+      ].join("\n"),
+      async () => {
+        await withMockFetch(async (input) => {
+          const url = String(input);
+          if (url.includes("/healthz")) return new Response("ok", { status: 200 });
+          if (url.includes("/v1/models")) {
+            return new Response(JSON.stringify({ data: [{ id: "glm-5.1" }, { id: "kimi-k2.6" }] }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          return new Response("not found", { status: 404 });
+        }, async () => {
+          const service = createCodexStackService(config);
+          const summary = await service.getSummary();
+
+          assert.equal(summary.overallStatus, "ready");
+          assert.equal(summary.proxyPolicy.providerMode, "direct");
+          assert.equal(summary.proxyPolicy.providerProxyUrl, "http://127.0.0.1:7890");
+          assert.equal(summary.proxyPolicy.noProxyLoopbackReady, true);
+          assert.equal(summary.profile.lastSmokeMatrix?.status, "failed");
+          assert.equal(summary.recommendation.kind, "review-smoke");
+          assert.ok(summary.recommendation.reasonCodes.includes("smoke-matrix-failed"));
+          assert.ok(summary.recommendation.reasonCodes.includes("system-proxy-direct-provider"));
+        });
+      },
+    );
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+  }
+});

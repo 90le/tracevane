@@ -2129,16 +2129,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         reasonCodes: Array.from(new Set([...baseReasons, "no-proxy-loopback-missing"])),
       };
     }
-    if (params.proxyPolicy.providerMode === "direct" && params.proxyPolicy.providerProxyUrl) {
-      return {
-        kind: "review-proxy",
-        severity: "warning",
-        section: "settings",
-        primaryAction: "open-settings",
-        requiresManagement: false,
-        reasonCodes: Array.from(new Set([...baseReasons, "system-proxy-direct-provider"])),
-      };
-    }
     if (params.profile.lastSmokeMatrix?.status === "failed") {
       return {
         kind: "review-smoke",
@@ -2157,6 +2147,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         primaryAction: "open-install",
         requiresManagement: false,
         reasonCodes: Array.from(new Set([...baseReasons, "smoke-matrix-stale"])),
+      };
+    }
+    if (params.proxyPolicy.providerMode === "direct" && params.proxyPolicy.providerProxyUrl) {
+      return {
+        kind: "review-proxy",
+        severity: "warning",
+        section: "settings",
+        primaryAction: "open-settings",
+        requiresManagement: false,
+        reasonCodes: Array.from(new Set([...baseReasons, "system-proxy-direct-provider"])),
       };
     }
     return {
