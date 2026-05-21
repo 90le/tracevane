@@ -718,6 +718,7 @@ test("codex stack attaches Codex CPA only after the full smoke gate passes", asy
 
   await withMockFetch(async (url, init = {}) => {
     const requestUrl = String(url);
+    const body = JSON.parse(String(init.body || "{}"));
     if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
     if (requestUrl.includes("/v1/chat/completions")) {
       return new Response(JSON.stringify({
@@ -726,7 +727,6 @@ test("codex stack attaches Codex CPA only after the full smoke gate passes", asy
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (requestUrl.endsWith("/v1/responses")) {
-      const body = JSON.parse(String(init.body || "{}"));
       if (body.stream) {
         return new Response([
           "event: response.created",
@@ -844,9 +844,11 @@ test("codex stack smoke matrix validates glm and kimi without attaching Codex", 
   createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
   const codexConfig = path.join(root, ".codex/config.toml");
+  const compactBodies = [];
 
   await withMockFetch(async (url, init = {}) => {
     const requestUrl = String(url);
+    const body = init.body ? JSON.parse(String(init.body)) : {};
     if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
     if (requestUrl.includes("/v1/chat/completions")) {
       return new Response(JSON.stringify({
@@ -854,7 +856,6 @@ test("codex stack smoke matrix validates glm and kimi without attaching Codex", 
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (requestUrl.endsWith("/v1/responses")) {
-      const body = JSON.parse(String(init.body || "{}"));
       if (body.stream) {
         return new Response([
           "event: response.created",
@@ -870,6 +871,7 @@ test("codex stack smoke matrix validates glm and kimi without attaching Codex", 
       return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
     }
     if (requestUrl.endsWith("/v1/responses/compact")) {
+      compactBodies.push(body);
       return new Response(JSON.stringify({ id: "compact_ok", status: "completed", output: [] }), { status: 200 });
     }
     return new Response("not found", { status: 404 });
@@ -882,6 +884,15 @@ test("codex stack smoke matrix validates glm and kimi without attaching Codex", 
     assert.equal(job.status, "succeeded");
     assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
     assert.deepEqual(summary.profile.lastSmokeMatrix?.requiredModels, ["glm-5.1", "kimi-k2.6"]);
+    assert.equal(compactBodies.length, 2);
+    assert.deepEqual(compactBodies.map((body) => body.model), ["glm-5.1", "kimi-k2.6"]);
+    for (const body of compactBodies) {
+      assert.equal(body.thread_id, "studio-smoke");
+      assert.equal(Array.isArray(body.input), true);
+      assert.ok(body.input.length >= 4);
+      assert.match(JSON.stringify(body.input), new RegExp(`studio-compact-smoke-${body.model.replace(".", "\\.")}`));
+      assert.match(JSON.stringify(body.input), /watchdog must not restart/);
+    }
     assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
   });
 });

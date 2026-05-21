@@ -1736,13 +1736,40 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         run: async () => {
         const payload = await postSmokeJson("Compact compaction", `${compactBase}/v1/responses/compact`, token, {
           model,
-          input: [{ role: "user", content: "ping" }],
+          input: buildCompactSmokeInput(model),
           thread_id: "studio-smoke",
         });
         if (!isRecord(payload) || payload.status === "failed") {
           throw new Error(`Compact compaction returned failed response: ${JSON.stringify(payload).slice(0, 800)}`);
         }
         },
+      },
+    ];
+  }
+
+  function buildCompactSmokeInput(model: string): Array<{ role: string; content: string }> {
+    const sentinel = `studio-compact-smoke-${model}`;
+    return [
+      {
+        role: "system",
+        content: "Compress this Codex CLI conversation into durable project state. Preserve model, routing, and failure markers.",
+      },
+      {
+        role: "user",
+        content: [
+          `Model under test: ${model}.`,
+          "CPA routes OpenAI-compatible requests.",
+          "Compact adapts /v1/responses and /v1/responses/compact for Codex.",
+          "watchdog must not restart a deliberately paused stack.",
+        ].join(" "),
+      },
+      {
+        role: "assistant",
+        content: "Noted: preserve direct domestic gateway routing, proxy policy, context-window settings, and active job lock state.",
+      },
+      {
+        role: "user",
+        content: `Summarize the stable facts and include sentinel ${sentinel}.`,
       },
     ];
   }
