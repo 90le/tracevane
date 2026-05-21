@@ -2119,6 +2119,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         reasonCodes: baseReasons,
       };
     }
+    if (!params.proxyPolicy.noProxyLoopbackReady) {
+      return {
+        kind: "review-proxy",
+        severity: "warning",
+        section: "settings",
+        primaryAction: "open-settings",
+        requiresManagement: false,
+        reasonCodes: Array.from(new Set([...baseReasons, "no-proxy-loopback-missing"])),
+      };
+    }
     if (params.proxyPolicy.providerMode === "direct" && params.proxyPolicy.providerProxyUrl) {
       return {
         kind: "review-proxy",
@@ -2147,16 +2157,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         primaryAction: "open-install",
         requiresManagement: false,
         reasonCodes: Array.from(new Set([...baseReasons, "smoke-matrix-stale"])),
-      };
-    }
-    if (!params.proxyPolicy.noProxyLoopbackReady) {
-      return {
-        kind: "review-proxy",
-        severity: "warning",
-        section: "settings",
-        primaryAction: "open-settings",
-        requiresManagement: false,
-        reasonCodes: Array.from(new Set([...baseReasons, "no-proxy-loopback-missing"])),
       };
     }
     return {

@@ -642,6 +642,8 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(controlPage, /国内网关直连/);
   assert.match(controlPage, /国内直连 \+ 系统代理提示/);
   assert.match(controlPage, /网卡\/TUN 模式或系统代理可能截获 CPA\/Compact 的本机请求/);
+  assert.match(controlPage, /activeRecommendation\.value\?\.reasonCodes\.includes\("no-proxy-loopback-missing"\)/);
+  assert.match(controlPage, /先补齐 NO_PROXY 的 localhost、127\.0\.0\.1 和 ::1/);
   assert.match(controlPage, /OpenAI 官方 Codex 访问仍由 Codex\/系统代理路径处理/);
   assert.match(dashboardInsights, /export interface CodexStackNetworkPolicyCard/);
   assert.match(dashboardInsights, /class="cs-network-policy-strip"/);

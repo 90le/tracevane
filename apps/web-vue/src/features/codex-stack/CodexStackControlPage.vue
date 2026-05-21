@@ -841,6 +841,12 @@ const nextActionCopy = computed(() => {
     case "repair":
       return text("有组件未运行或端点不可达，推荐先执行修复。", "Some components are stopped or unreachable; run repair first.");
     case "review-proxy":
+      if (activeRecommendation.value?.reasonCodes.includes("no-proxy-loopback-missing")) {
+        return text(
+          "先补齐 NO_PROXY 的 localhost、127.0.0.1 和 ::1，避免系统代理或 VPN 网卡/TUN 模式截获本机 CPA/Compact 请求。",
+          "First add localhost, 127.0.0.1, and ::1 to NO_PROXY so a system proxy or VPN TUN mode cannot capture local CPA/Compact calls.",
+        );
+      }
       return text("检测到系统代理，但 CPA provider 仍是 direct。国内网关应直连；若 TUN 模式劫持流量，请在模型上游页检查代理和 NO_PROXY。", "A system proxy is present while CPA providers are direct. Domestic gateways should stay direct; if TUN mode hijacks traffic, review proxy and NO_PROXY in Models.");
     case "review-smoke":
       return text("上次 glm-5.1 / kimi-k2.6 矩阵失败，Codex 不会自动切到 CPA。先在安装页重新跑 smoke gate。", "The last glm-5.1 / kimi-k2.6 matrix failed, so Codex will not attach to CPA. Re-run the smoke gate from Install.");
