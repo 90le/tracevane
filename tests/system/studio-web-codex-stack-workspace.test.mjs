@@ -13,6 +13,7 @@ const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackAct
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
 const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackInstallPlanCard.vue");
+const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
 const repairBoard = read("apps/web-vue/src/features/codex-stack/CodexStackRepairBoard.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
@@ -52,6 +53,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(installPlanCard, /class="panel-card cs-install-plan-card"/);
   assert.match(installPlanCard, /\.cs-install-plan-list\s*\{/);
   assert.match(installPlanCard, /@media \(max-width: 960px\)/);
+  assert.match(jobOutputCard, /class="panel-card cs-job-output-card"/);
+  assert.match(jobOutputCard, /\.cs-log\s*\{/);
+  assert.match(jobOutputCard, /@media \(max-width: 960px\)/);
   assert.match(jobProgressPanel, /class="cs-install-overlay"/);
   assert.match(jobProgressPanel, /\.cs-job-progress-track\s*\{/);
   assert.match(jobProgressPanel, /@media \(max-width: 960px\)/);
@@ -112,6 +116,18 @@ test("codex stack install page delegates long job progress without losing pollin
   assert.match(jobProgressPanel, /安装或修复脚本正在后台执行，日志会持续刷新。/);
   assert.match(jobProgressPanel, /job\.logTail \|\| emptyLog/);
   assert.match(jobProgressPanel, /@click="\$emit\('dismiss'\)"/);
+});
+
+test("codex stack logs page delegates job output preview without losing polling ownership", () => {
+  assert.match(controlPage, /import CodexStackJobOutputCard from "\.\/CodexStackJobOutputCard\.vue";/);
+  assert.match(controlPage, /<CodexStackJobOutputCard[\s\S]*v-if="activeJob"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
+  assert.match(controlPage, /:empty-log="text\('等待输出\.\.\.', 'Waiting for output\.\.\.'\)"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-job-output-card"/);
+  assert.match(controlPage, /function startPollingJob\(job: CodexStackJob\): void/);
+  assert.match(controlPage, /fetchCodexStackJob\(activeJob\.value\.id\)[\s\S]*activeJob\.value = response\.job/);
+  assert.match(jobOutputCard, /任务输出/);
+  assert.match(jobOutputCard, /job\.logTail \|\| emptyLog/);
+  assert.match(jobOutputCard, /props\.job\.status === "succeeded"/);
 });
 
 test("codex stack install page delegates repair board without weakening CPA attach gate", () => {

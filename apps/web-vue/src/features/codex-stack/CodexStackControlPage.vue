@@ -1084,31 +1084,15 @@
                 @load="loadLogs"
               />
 
-              <article v-if="activeJob" class="panel-card cs-job-output-card">
-                <div class="cs-card-header">
-                  <div>
-                    <p class="cs-section-kicker">{{ text("任务输出", "Job Output") }}</p>
-                    <h4>{{ activeJobTitle }} · {{ jobStatusLabel(activeJob.status) }}</h4>
-                  </div>
-                  <span class="cs-status-pill" :class="activeJob.status === 'succeeded' ? 'tone-sage' : activeJob.status === 'failed' ? 'tone-danger' : 'tone-accent'">
-                    {{ jobStatusLabel(activeJob.status) }}
-                  </span>
-                </div>
-                <div class="cs-job-progress-track" :style="{ '--progress': jobProgressPercent }">
-                  <span></span>
-                </div>
-                <div class="cs-job-step-list">
-                  <span
-                    v-for="step in jobProgressSteps"
-                    :key="step.label"
-                    class="cs-job-step"
-                    :class="`cs-job-step-${step.state}`"
-                  >
-                    {{ step.label }}
-                  </span>
-                </div>
-                <pre class="cs-log">{{ activeJob.logTail || text("等待输出...", "Waiting for output...") }}</pre>
-              </article>
+              <CodexStackJobOutputCard
+                v-if="activeJob"
+                :job="activeJob"
+                :title="activeJobTitle"
+                :status-label="jobStatusLabel(activeJob.status)"
+                :steps="jobProgressSteps"
+                :progress-percent="jobProgressPercent"
+                :empty-log="text('等待输出...', 'Waiting for output...')"
+              />
             </section>
           </template>
         </div>
@@ -1190,6 +1174,7 @@ import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
 import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
+import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";
 import CodexStackRepairBoard from "./CodexStackRepairBoard.vue";
@@ -3471,7 +3456,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 .cs-code,
-.cs-log,
 .cs-raw-editor {
   width: 100%;
   overflow: auto;
@@ -3483,66 +3467,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   white-space: pre-wrap;
   line-height: 1.55;
   margin: 0;
-}
-
-.cs-log {
-  min-height: 340px;
-  max-height: 520px;
-}
-
-.cs-job-progress-track {
-  --progress: 0%;
-  height: 10px;
-  overflow: hidden;
-  margin: 12px 0;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  background: color-mix(in srgb, var(--code-bg) 58%, transparent);
-}
-
-.cs-job-progress-track span {
-  display: block;
-  width: var(--progress);
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--acc), color-mix(in srgb, var(--success) 72%, var(--acc)));
-  transition: width 0.28s ease;
-}
-
-.cs-job-step-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.cs-job-step {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 8px 10px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  font-size: 0.82rem;
-}
-
-.cs-job-step-done {
-  color: #073b20;
-  border-color: #8fd8a6;
-  background: #dff8e7;
-}
-
-.cs-job-step-active {
-  color: #17335f;
-  border-color: #9ec2ff;
-  background: #e4efff;
-  font-weight: 700;
-}
-
-.cs-job-step-failed {
-  color: #651d19;
-  border-color: #f1a9a1;
-  background: #ffe4e0;
-  font-weight: 700;
 }
 
 .cs-channel-grid {
@@ -3964,10 +3888,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   min-height: 420px;
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-.cs-job-output-card {
-  border-color: color-mix(in srgb, var(--acc) 22%, var(--line));
 }
 
 .tone-sage {
