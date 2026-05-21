@@ -9,6 +9,7 @@ const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8")
 
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
+const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
@@ -38,6 +39,9 @@ test("codex stack log reads avoid overlapping auto-refresh requests", () => {
 });
 
 test("codex stack extracted panels own their scoped display styles", () => {
+  assert.match(actionOverview, /class="cs-action-overview-grid"/);
+  assert.match(actionOverview, /\.cs-readiness-bar\s*\{/);
+  assert.match(actionOverview, /@media \(max-width: 1200px\)/);
   assert.match(dashboardInsights, /\.cs-section-kicker\s*\{/);
   assert.match(dashboardInsights, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(chainMap, /export interface CodexStackChainNode/);
@@ -49,6 +53,16 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(runReadinessPanel, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
+});
+
+test("codex stack dashboard delegates action overview without losing actions", () => {
+  assert.match(controlPage, /import CodexStackActionOverview from "\.\/CodexStackActionOverview\.vue";/);
+  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:ready-component-count="readyComponentCount"[\s\S]*:next-action-title="nextActionTitle"[\s\S]*@primary="nextActionPrimary"[\s\S]*@open-section="activeSection = nextActionSection"/);
+  assert.doesNotMatch(controlPage, /class="cs-command-grid"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-readiness-card"/);
+  assert.match(actionOverview, /<CodexStackRecommendationCard/);
+  assert.match(actionOverview, /nextActionRequiresMutation \? !props\.canRunMutation : props\.busy/);
+  assert.match(actionOverview, /modelCatalogPreview/);
 });
 
 test("codex stack dashboard exposes a request chain safety map", () => {
