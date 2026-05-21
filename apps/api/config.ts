@@ -9,7 +9,7 @@ import type { StudioExposureKind, StudioServerConfig, StudioTransportConfig } fr
 const DEFAULT_PORT = 3760;
 const DEFAULT_GATEWAY_PORT = 18789;
 const DEFAULT_GATEWAY_BASE_PATH = '/studio';
-const STUDIO_VERSION_FALLBACK = '0.1.60';
+const STUDIO_VERSION_FALLBACK = '0.1.61';
 
 let cachedStudioVersion: string | null = null;
 
