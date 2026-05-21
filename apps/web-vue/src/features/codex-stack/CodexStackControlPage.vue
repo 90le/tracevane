@@ -1293,11 +1293,15 @@ const smokeMatrixCard = computed<CodexStackSmokeMatrixCard | null>(() => {
     attachEligible: isSmokeMatrixFreshAndComplete(matrix) ? text("是", "Yes") : matrix.attachEligible ? text("需复验", "Recheck") : text("否", "No"),
     models: matrix.models.map((model) => {
       const passed = model.checks.filter((check) => check.status === "passed").length;
+      const failedChecks = model.checks.filter((check) => check.status === "failed").map((check) => check.label || check.id);
       const total = model.checks.length;
       return {
         model: model.model,
         status: model.status,
         checksLabel: text(`检查 ${passed}/${total} 通过`, `${passed}/${total} checks passed`),
+        failedChecks: failedChecks.length
+          ? text(`失败检查：${failedChecks.join("、")}`, `Failed checks: ${failedChecks.join(", ")}`)
+          : "",
         error: model.error,
       };
     }),

@@ -679,10 +679,14 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(controlPage, /activeRecommendation\.value\?\.reasonCodes\.includes\("smoke-matrix-stale"\)/);
   assert.match(controlPage, /上次 glm-5\.1 \/ kimi-k2\.6 矩阵已超过 24 小时/);
   assert.match(controlPage, /上次 glm-5\.1 \/ kimi-k2\.6 矩阵失败/);
+  assert.match(controlPage, /const failedChecks = model\.checks\.filter\(\(check\) => check\.status === "failed"\)/);
+  assert.match(controlPage, /失败检查/);
   assert.match(dashboardInsights, /export interface CodexStackNetworkPolicyCard/);
   assert.match(dashboardInsights, /class="cs-network-policy-strip"/);
   assert.match(dashboardInsights, /networkPolicy\.loopbackValue/);
   assert.match(dashboardInsights, /networkPolicy\.upstreamValue/);
+  assert.match(dashboardInsights, /model\.failedChecks/);
+  assert.match(dashboardInsights, /class="cs-smoke-failed-checks"/);
 });
 
 test("codex stack dashboard exposes codex run readiness as a first-screen contract", () => {

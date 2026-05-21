@@ -46,6 +46,7 @@
             <div>
               <strong>{{ model.model }} · {{ model.status }}</strong>
               <p>{{ model.checksLabel }}</p>
+              <p v-if="model.failedChecks" class="cs-smoke-failed-checks">{{ model.failedChecks }}</p>
               <p v-if="model.error" class="cs-smoke-error">{{ model.error }}</p>
             </div>
           </article>
@@ -93,6 +94,7 @@ export interface CodexStackSmokeModelCard {
   model: string;
   status: string;
   checksLabel: string;
+  failedChecks: string;
   error: string | null;
 }
 
@@ -331,6 +333,10 @@ defineProps<{
 .cs-smoke-error {
   color: var(--danger) !important;
   word-break: break-word;
+}
+
+.cs-smoke-failed-checks {
+  color: var(--warning) !important;
 }
 
 .cs-component-list {
