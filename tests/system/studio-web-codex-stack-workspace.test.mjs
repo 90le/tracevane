@@ -611,7 +611,7 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /proxyPolicy: normalizeProxyPolicy\(next\.proxyPolicy\)/);
   assert.match(controlPage, /const normalized = normalizeCodexStackSummary\(next\);/);
   assert.match(controlPage, /function isSmokeMatrixStale\(matrix: CodexStackSmokeMatrixResult \| null \| undefined\): boolean/);
-  assert.match(controlPage, /isSmokeMatrixStale\(matrix\) \? text\("需复验", "Recheck"\)/);
+  assert.match(controlPage, /isSmokeMatrixFreshAndComplete\(matrix\) \? text\("可切 Codex", "Attach ready"\)/);
   assert.match(controlPage, /id: "job-lock"/);
   assert.match(controlPage, /id: "smoke"/);
   assert.match(controlPage, /id: "watchdog"/);
@@ -681,11 +681,16 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
 
 test("codex stack attach action requires a fresh passing smoke matrix in the UI", () => {
   assert.match(controlPage, /const isSmokeMatrixAttachReady = computed\(\(\) => \{/);
-  assert.match(controlPage, /matrix\?\.attachEligible && !isSmokeMatrixStale\(matrix\)/);
+  assert.match(controlPage, /return isSmokeMatrixFreshAndComplete\(matrix\);/);
+  assert.match(controlPage, /const REQUIRED_CPA_SMOKE_MODELS = \["glm-5\.1", "kimi-k2\.6"\] as const;/);
+  assert.match(controlPage, /const REQUIRED_CPA_SMOKE_CHECKS = \[[\s\S]*"compact-non-stream"[\s\S]*"compact-stream"[\s\S]*"compact-compact"[\s\S]*\] as const;/);
+  assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined\): boolean/);
+  assert.match(controlPage, /matrix\.attachEligible && !isSmokeMatrixComplete\(matrix\)/);
   assert.match(controlPage, /const canAttachCodexCpa = computed\(\(\) => canRunMutation\.value && isSmokeMatrixAttachReady\.value\);/);
   assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
   assert.match(repairBoard, /:disabled="!canAttachCodexCpa"[\s\S]*@click="\$emit\('attach-codex-cpa'\)"/);
   assert.match(controlPage, /先运行“只验证”/);
+  assert.match(controlPage, /上次矩阵记录不完整/);
   assert.match(controlPage, /已有新鲜通过矩阵；点击后仍会重新烟测/);
   assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*glm-5\.1 \/ kimi-k2\.6 矩阵在 24 小时内全部通过/);
 });

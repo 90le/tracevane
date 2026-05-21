@@ -711,6 +711,15 @@ function updateConfigFormField(field: CodexStackRuntimeConfigField, value: strin
 }
 
 const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const REQUIRED_CPA_SMOKE_MODELS = ["glm-5.1", "kimi-k2.6"] as const;
+const REQUIRED_CPA_SMOKE_CHECKS = [
+  "cpa-health",
+  "compact-health",
+  "cpa-chat",
+  "compact-non-stream",
+  "compact-stream",
+  "compact-compact",
+] as const;
 
 const serviceCatalog: Record<
   CodexStackServiceId,
@@ -927,7 +936,7 @@ const smokeMatrixLabel = computed(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
   if (!matrix) return text("未验证", "Not verified");
   const models = matrix.models.map((item) => `${item.model}:${item.status}`).join(" ");
-  if (isSmokeMatrixStale(matrix)) {
+  if (matrix.attachEligible && !isSmokeMatrixFreshAndComplete(matrix)) {
     return text(`需复验 ${models}`, `Recheck ${models}`);
   }
   return matrix.attachEligible
@@ -936,7 +945,7 @@ const smokeMatrixLabel = computed(() => {
 });
 const isSmokeMatrixAttachReady = computed(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
-  return Boolean(matrix?.attachEligible && !isSmokeMatrixStale(matrix));
+  return isSmokeMatrixFreshAndComplete(matrix);
 });
 const canAttachCodexCpa = computed(() => canRunMutation.value && isSmokeMatrixAttachReady.value);
 const attachCodexCpaHelp = computed(() => {
@@ -946,6 +955,9 @@ const attachCodexCpaHelp = computed(() => {
   }
   if (isSmokeMatrixStale(matrix)) {
     return text("上次矩阵已超过 24 小时，先重新只验证；切换动作仍会再次烟测。", "The last matrix is older than 24 hours; verify again first. The attach action will still rerun smoke checks.");
+  }
+  if (matrix.attachEligible && !isSmokeMatrixComplete(matrix)) {
+    return text("上次矩阵记录不完整，先重新只验证；必须覆盖 glm-5.1、kimi-k2.6、普通请求、流式、非流式和压缩上下文。", "The last matrix record is incomplete. Run Verify Only again; it must cover glm-5.1, kimi-k2.6, ordinary, streaming, non-streaming, and compaction checks.");
   }
   if (!matrix.attachEligible) {
     return text("上次矩阵未全部通过，Codex 保持官方路径；修复后重新只验证。", "The last matrix did not fully pass, so Codex stays on the official path. Fix it and verify again.");
@@ -1122,10 +1134,10 @@ const chainGates = computed<CodexStackChainGate[]>(() => {
       id: "smoke",
       label: text("Smoke Gate", "Smoke Gate"),
       value: matrix
-        ? (isSmokeMatrixStale(matrix) ? text("需复验", "Recheck") : matrix.attachEligible ? text("可切 Codex", "Attach ready") : text("禁止切换", "Blocked"))
+        ? (isSmokeMatrixFreshAndComplete(matrix) ? text("可切 Codex", "Attach ready") : matrix.attachEligible ? text("需复验", "Recheck") : text("禁止切换", "Blocked"))
         : text("未验证", "Not verified"),
       help: smokeMatrixLabel.value,
-      tone: matrix ? (isSmokeMatrixStale(matrix) ? "accent" : matrix.attachEligible ? "sage" : "danger") : "accent",
+      tone: matrix ? (isSmokeMatrixFreshAndComplete(matrix) ? "sage" : matrix.attachEligible ? "accent" : "danger") : "accent",
     },
     {
       id: "job-lock",
@@ -1154,7 +1166,7 @@ const smokeMatrixCard = computed<CodexStackSmokeMatrixCard | null>(() => {
     requiredModelsLabel: text("必测模型", "Required Models"),
     requiredModels: matrix.requiredModels.join(", "),
     attachEligibleLabel: text("可切换", "Attach Eligible"),
-    attachEligible: isSmokeMatrixStale(matrix) ? text("需复验", "Recheck") : matrix.attachEligible ? text("是", "Yes") : text("否", "No"),
+    attachEligible: isSmokeMatrixFreshAndComplete(matrix) ? text("是", "Yes") : matrix.attachEligible ? text("需复验", "Recheck") : text("否", "No"),
     models: matrix.models.map((model) => {
       const passed = model.checks.filter((check) => check.status === "passed").length;
       const total = model.checks.length;
@@ -1687,6 +1699,23 @@ function isSmokeMatrixStale(matrix: CodexStackSmokeMatrixResult | null | undefin
   const checkedAt = Date.parse(matrix.checkedAt);
   if (!Number.isFinite(checkedAt)) return true;
   return Date.now() - checkedAt > SMOKE_MATRIX_MAX_AGE_MS;
+}
+
+function isSmokeMatrixComplete(matrix: CodexStackSmokeMatrixResult | null | undefined): boolean {
+  if (!matrix?.attachEligible || matrix.status !== "passed") return false;
+  const declaredRequired = new Set(matrix.requiredModels.map((model) => model.trim()).filter(Boolean));
+  const results = new Map(matrix.models.map((result) => [result.model.trim(), result]));
+  return REQUIRED_CPA_SMOKE_MODELS.every((model) => {
+    if (!declaredRequired.has(model)) return false;
+    const result = results.get(model);
+    if (result?.status !== "passed") return false;
+    const passedChecks = new Set(result.checks.filter((check) => check.status === "passed").map((check) => check.id));
+    return REQUIRED_CPA_SMOKE_CHECKS.every((checkId) => passedChecks.has(checkId));
+  });
+}
+
+function isSmokeMatrixFreshAndComplete(matrix: CodexStackSmokeMatrixResult | null | undefined): boolean {
+  return isSmokeMatrixComplete(matrix) && !isSmokeMatrixStale(matrix);
 }
 
 function serviceEndpointInfo(serviceId: CodexStackServiceId, currentSummary: CodexStackSummaryPayload) {

@@ -150,6 +150,17 @@ function compactSmokeResponse(body) {
   };
 }
 
+function passedSmokeChecks(checkedAt) {
+  return ["cpa-health", "compact-health", "cpa-chat", "compact-non-stream", "compact-stream", "compact-compact"].map((id) => ({
+    id,
+    label: id,
+    status: "passed",
+    startedAt: checkedAt,
+    finishedAt: checkedAt,
+    error: null,
+  }));
+}
+
 async function withMockFetch(handler, task) {
   const original = globalThis.fetch;
   globalThis.fetch = handler;
@@ -570,7 +581,7 @@ test("codex stack summary exposes codex run readiness for chat long tasks and co
         status: "passed",
         startedAt: checkedAt,
         finishedAt: checkedAt,
-        checks: [],
+        checks: passedSmokeChecks(checkedAt),
         error: null,
       })),
     },
@@ -578,6 +589,8 @@ test("codex stack summary exposes codex run readiness for chat long tasks and co
   createBundledInstaller(config, "official");
   createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
+  writeFile(path.join(root, ".local/bin/cli-proxy-api"), "#!/usr/bin/env bash\necho cpa\n", 0o755);
+  writeFile(path.join(root, ".local/bin/cpa-compact-proxy.mjs"), "#!/usr/bin/env node\nconsole.log('compact')\n", 0o755);
   writeFile(path.join(root, ".cc-connect/config.toml"), `
 [[providers]]
 name = "cpa"
@@ -2105,6 +2118,99 @@ account_id = "test"
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "warn");
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, false);
         assert.match(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.detail || "", /重新运行 glm-5\.1 \/ kimi-k2\.6 smoke matrix/);
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.ready, false);
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "compaction")?.ready, false);
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.ready, false);
+      });
+    },
+  );
+});
+
+test("codex stack summary refuses fresh but incomplete smoke matrix records", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const checkedAt = new Date().toISOString();
+  writeJson(config.openclawConfigFile, {
+    env: {
+      NO_PROXY: "localhost,127.0.0.1,::1",
+    },
+  });
+  writeJson(path.join(root, ".codex/auth.json"), {
+    auth_mode: "apikey",
+    OPENAI_API_KEY: "secret-cpa-key-123456",
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  writeFile(path.join(root, ".local/bin/cli-proxy-api"), "#!/usr/bin/env bash\necho cpa\n", 0o755);
+  writeFile(path.join(root, ".local/bin/cpa-compact-proxy.mjs"), "#!/usr/bin/env node\nconsole.log('compact')\n", 0o755);
+  writeFile(path.join(root, ".cc-connect/config.toml"), `
+[[providers]]
+name = "cpa"
+api_key = "secret-cpa-key-123456"
+base_url = "http://127.0.0.1:18796/v1"
+codex.env_key = "OPENAI_API_KEY"
+
+[[projects]]
+name = "main"
+[projects.agent.options]
+model = "glm-5.1"
+
+[[projects.platforms]]
+type = "dmwork"
+[projects.platforms.options]
+account_id = "test"
+`);
+  writeJson(path.join(config.openclawRoot, "studio/codex-stack/profile.json"), {
+    channel: "dmwork",
+    lastSmokeMatrix: {
+      status: "passed",
+      checkedAt,
+      requiredModels: ["glm-5.1"],
+      attachEligible: true,
+      models: [
+        {
+          model: "glm-5.1",
+          status: "passed",
+          startedAt: checkedAt,
+          finishedAt: checkedAt,
+          checks: [],
+          error: null,
+        },
+      ],
+    },
+  });
+
+  await withScriptedSystemctl(
+    [
+      "case \"$*\" in",
+      "  \"--user list-unit-files\"*) echo \"${@: -1} enabled\"; exit 0 ;;",
+      "  \"--user is-enabled\"*) echo \"enabled\"; exit 0 ;;",
+      "  \"--user is-active\"*) echo \"active\"; exit 0 ;;",
+      "esac",
+      "exit 0",
+    ].join("\n"),
+    async () => {
+      await withMockFetch(async (url) => {
+        const requestUrl = String(url);
+        if (requestUrl.endsWith("/v1/models")) {
+          return new Response(JSON.stringify({ data: [{ id: "glm-5.1" }, { id: "kimi-k2.6" }] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+        return new Response("ok", { status: 200 });
+      }, async () => {
+        const service = createCodexStackService(config);
+        const summary = await service.getSummary();
+
+        assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
+        assert.ok(summary.warnings.some((warning) => warning.includes("CPA smoke matrix is incomplete")));
+        assert.equal(summary.recommendation.kind, "review-smoke");
+        assert.ok(summary.recommendation.reasonCodes.includes("smoke-matrix-incomplete"));
+        assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "warn");
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, false);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.ready, false);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "compaction")?.ready, false);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.ready, false);
