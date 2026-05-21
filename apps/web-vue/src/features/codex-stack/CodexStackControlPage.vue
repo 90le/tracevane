@@ -93,6 +93,7 @@
               :readiness="summary.runReadiness"
               :tone="runReadinessTone"
               @check-action="runReadinessCheckAction"
+              @mode-action="runReadinessModeAction"
             />
 
             <CodexStackActionOverview
@@ -419,6 +420,7 @@ import type {
   CodexStackLogResponse,
   CodexStackRepairAction,
   CodexStackRunReadinessCheck,
+  CodexStackRunReadinessMode,
   CodexStackServiceAction,
   CodexStackServiceId,
   CodexStackSmokeMatrixResult,
@@ -450,7 +452,9 @@ import {
 import type { CodexStackTone } from "./codex-stack-view-model";
 import {
   normalizeCodexStackRunReadinessCheck,
+  normalizeCodexStackRunReadinessMode,
   resolveCodexStackRunReadinessAction,
+  resolveCodexStackRunReadinessModeAction,
 } from "./readiness-action";
 import CodexStackActionOverview from "./CodexStackActionOverview.vue";
 import CodexStackDashboardInsights from "./CodexStackDashboardInsights.vue";
@@ -1696,6 +1700,10 @@ function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackS
           check,
           text("查看详情", "View details"),
         )),
+        modes: next.runReadiness.modes.map((mode) => normalizeCodexStackRunReadinessMode(
+          mode,
+          text("查看详情", "View details"),
+        )),
       }
       : next.runReadiness,
   };
@@ -1828,6 +1836,19 @@ function runReadinessCheckAction(check: CodexStackRunReadinessCheck): void {
   }
   if (command.type === "repair") {
     void startRepairWithActions(command.actions, text("就绪检查修复任务已启动。", "Readiness repair job started."));
+    return;
+  }
+  activeSection.value = command.section;
+}
+
+function runReadinessModeAction(mode: CodexStackRunReadinessMode): void {
+  const command = resolveCodexStackRunReadinessModeAction(mode, text("查看详情", "View details"));
+  if (command.type === "run-check") {
+    void runCheck();
+    return;
+  }
+  if (command.type === "repair") {
+    void startRepairWithActions(command.actions, text("运行模式修复任务已启动。", "Run mode repair job started."));
     return;
   }
   activeSection.value = command.section;

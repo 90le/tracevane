@@ -1,6 +1,7 @@
 import type {
   CodexStackRepairAction,
   CodexStackRunReadinessCheck,
+  CodexStackRunReadinessMode,
 } from "../../../../../types/codex-stack";
 
 export type CodexStackSectionId = "dashboard" | "install" | "cc-connect" | "settings" | "logs";
@@ -25,6 +26,21 @@ export function normalizeCodexStackRunReadinessCheck(
   };
 }
 
+export function normalizeCodexStackRunReadinessMode(
+  mode: CodexStackRunReadinessMode,
+  fallbackLabel: string,
+): CodexStackRunReadinessMode {
+  if (mode.actionHint) return mode;
+  return {
+    ...mode,
+    actionHint: {
+      kind: "open-section",
+      label: fallbackLabel,
+      section: "dashboard",
+    },
+  };
+}
+
 export function resolveCodexStackRunReadinessAction(
   check: CodexStackRunReadinessCheck,
   fallbackLabel: string,
@@ -38,4 +54,23 @@ export function resolveCodexStackRunReadinessAction(
     return { type: "repair", actions: action.repairActions };
   }
   return { type: "open-section", section: action.section || normalized.section };
+}
+
+export function resolveCodexStackRunReadinessModeAction(
+  mode: CodexStackRunReadinessMode,
+  fallbackLabel: string,
+): CodexStackReadinessUiCommand {
+  const normalized = normalizeCodexStackRunReadinessMode(mode, fallbackLabel);
+  const action = normalized.actionHint || {
+    kind: "open-section" as const,
+    label: fallbackLabel,
+    section: "dashboard" as const,
+  };
+  if (action.kind === "run-check") {
+    return { type: "run-check" };
+  }
+  if (action.kind === "repair" && action.repairActions?.length) {
+    return { type: "repair", actions: action.repairActions };
+  }
+  return { type: "open-section", section: action.section || "dashboard" };
 }

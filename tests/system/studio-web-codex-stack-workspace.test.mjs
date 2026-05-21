@@ -660,7 +660,7 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
 
 test("codex stack dashboard exposes codex run readiness as a first-screen contract", () => {
   assert.match(controlPage, /import CodexStackRunReadinessPanel from "\.\/CodexStackRunReadinessPanel\.vue";/);
-  assert.match(controlPage, /<CodexStackRunReadinessPanel[\s\S]*:readiness="summary\.runReadiness"[\s\S]*@check-action="runReadinessCheckAction"/);
+  assert.match(controlPage, /<CodexStackRunReadinessPanel[\s\S]*:readiness="summary\.runReadiness"[\s\S]*@check-action="runReadinessCheckAction"[\s\S]*@mode-action="runReadinessModeAction"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-run-readiness-card"/);
   assert.match(runReadinessPanel, /readiness\.title/);
   assert.match(runReadinessPanel, /readiness\.modes/);
@@ -668,17 +668,26 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(runReadinessPanel, /runReadinessLevelLabel\(readiness\.level\)/);
   assert.match(runReadinessPanel, /runReadinessModeTone\(mode\.ready, readiness\.level\)/);
   assert.match(runReadinessPanel, /runReadinessModeLabel\(mode\.ready, readiness\.level\)/);
+  assert.match(runReadinessPanel, /@click="\$emit\('mode-action', mode\)"/);
+  assert.match(runReadinessPanel, /mode\.actionHint\.label/);
   assert.match(runReadinessPanel, /runReadinessCheckTone\(check\.status\)/);
   assert.match(runReadinessPanel, /@click="\$emit\('check-action', check\)"/);
   assert.match(runReadinessPanel, /check\.actionHint\.label/);
   assert.match(controlPage, /normalizeCodexStackRunReadinessCheck/);
+  assert.match(controlPage, /normalizeCodexStackRunReadinessMode/);
   assert.match(controlPage, /resolveCodexStackRunReadinessAction/);
+  assert.match(controlPage, /resolveCodexStackRunReadinessModeAction/);
   assert.match(controlPage, /function runReadinessCheckAction\(check: CodexStackRunReadinessCheck\): void/);
+  assert.match(controlPage, /function runReadinessModeAction\(mode: CodexStackRunReadinessMode\): void/);
   assert.match(controlPage, /command\.type === "repair"[\s\S]*startRepairWithActions\(command\.actions/);
   assert.match(readinessAction, /export function normalizeCodexStackRunReadinessCheck/);
+  assert.match(readinessAction, /export function normalizeCodexStackRunReadinessMode/);
   assert.match(readinessAction, /if \(check\.actionHint\) return check;/);
+  assert.match(readinessAction, /if \(mode\.actionHint\) return mode;/);
   assert.match(readinessAction, /export function resolveCodexStackRunReadinessAction/);
+  assert.match(readinessAction, /export function resolveCodexStackRunReadinessModeAction/);
   assert.match(readinessAction, /action\.kind === "repair" && action\.repairActions\?\.length/);
+  assert.match(codexStackTypes, /actionHint\?: CodexStackRunReadinessActionHint;/);
   assert.match(runReadinessPanel, /Codex 运行就绪/);
   assert.match(codexStackService, /id: "cc-agent-task"/);
   assert.match(codexStackService, /label: "CC\/IM Agent 任务"/);

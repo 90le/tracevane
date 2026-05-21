@@ -11,18 +11,21 @@
       </span>
     </div>
     <div class="cs-run-mode-grid">
-      <div
+      <button
         v-for="mode in readiness.modes"
         :key="mode.id"
+        type="button"
         class="cs-run-mode"
         :class="runReadinessModeTone(mode.ready, readiness.level)"
+        @click="$emit('mode-action', mode)"
       >
         <div>
           <strong>{{ mode.label }}</strong>
           <p>{{ mode.detail }}</p>
+          <em v-if="mode.actionHint">{{ mode.actionHint.label }}</em>
         </div>
         <span>{{ runReadinessModeLabel(mode.ready, readiness.level) }}</span>
-      </div>
+      </button>
     </div>
     <div class="cs-run-check-grid">
       <button
@@ -49,6 +52,7 @@ import type {
   CodexStackRunReadinessCheck,
   CodexStackRunReadinessCheckStatus,
   CodexStackRunReadinessLevel,
+  CodexStackRunReadinessMode,
 } from "../../../../../types/codex-stack";
 import type { CodexStackTone } from "./codex-stack-view-model";
 
@@ -59,6 +63,7 @@ defineProps<{
 
 defineEmits<{
   "check-action": [check: CodexStackRunReadinessCheck];
+  "mode-action": [mode: CodexStackRunReadinessMode];
 }>();
 
 const { text } = useLocalePreference();
@@ -144,6 +149,9 @@ function runReadinessModeLabel(ready: boolean, level: CodexStackRunReadinessLeve
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 12px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: inherit;
+  font: inherit;
 }
 
 .cs-run-mode strong,
@@ -178,6 +186,24 @@ function runReadinessModeLabel(ready: boolean, level: CodexStackRunReadinessLeve
 
 .cs-run-check:hover {
   transform: translateY(-1px);
+}
+
+.cs-run-mode {
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-run-mode:hover {
+  transform: translateY(-1px);
+}
+
+.cs-run-mode em {
+  display: inline-flex;
+  margin-top: 8px;
+  color: currentColor;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 0.82rem;
 }
 
 .cs-run-check em {

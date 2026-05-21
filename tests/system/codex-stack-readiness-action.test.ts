@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   CodexStackRunReadinessCheck,
+  CodexStackRunReadinessMode,
   CodexStackSummaryPayload,
 } from "../../types/codex-stack";
 import {
   normalizeCodexStackRunReadinessCheck,
+  normalizeCodexStackRunReadinessMode,
   resolveCodexStackRunReadinessAction,
+  resolveCodexStackRunReadinessModeAction,
 } from "../../apps/web-vue/src/features/codex-stack/readiness-action";
 import { buildCodexStackRepairActions as buildRepairActions } from "../../apps/web-vue/src/features/codex-stack/codex-stack-view-model";
 
@@ -89,6 +92,47 @@ test("codex stack readiness action resolver tolerates legacy checks without acti
   assert.deepEqual(
     resolveCodexStackRunReadinessAction(legacyCheck, "View details"),
     { type: "open-section", section: "settings" },
+  );
+});
+
+function modeWithAction(actionHint: CodexStackRunReadinessMode["actionHint"]): CodexStackRunReadinessMode {
+  return {
+    id: "long-task",
+    label: "Long task",
+    ready: false,
+    detail: "Needs a larger context window.",
+    actionHint,
+  };
+}
+
+test("codex stack readiness action resolver dispatches run mode repair hints", () => {
+  const command = resolveCodexStackRunReadinessModeAction(
+    modeWithAction({
+      kind: "repair",
+      label: "Attach CPA after smoke",
+      repairActions: ["apply-codex-cpa-after-smoke"],
+    }),
+    "View details",
+  );
+
+  assert.deepEqual(command, { type: "repair", actions: ["apply-codex-cpa-after-smoke"] });
+});
+
+test("codex stack readiness action resolver opens legacy run modes on the dashboard", () => {
+  const legacyMode = {
+    id: "chat",
+    label: "Chat",
+    ready: false,
+    detail: "Needs verification.",
+  } as CodexStackRunReadinessMode;
+
+  assert.deepEqual(
+    normalizeCodexStackRunReadinessMode(legacyMode, "View details").actionHint,
+    { kind: "open-section", label: "View details", section: "dashboard" },
+  );
+  assert.deepEqual(
+    resolveCodexStackRunReadinessModeAction(legacyMode, "View details"),
+    { type: "open-section", section: "dashboard" },
   );
 });
 

@@ -93,6 +93,7 @@ export interface CodexStackRunReadinessMode {
   label: string;
   ready: boolean;
   detail: string;
+  actionHint?: CodexStackRunReadinessActionHint;
 }
 
 export interface CodexStackRunReadiness {

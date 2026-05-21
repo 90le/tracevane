@@ -2411,6 +2411,29 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "先重新运行 glm-5.1 / kimi-k2.6 smoke matrix，确认 CPA 普通和流式链路仍新鲜可用。"
           : "先修复失败检查项。";
     const ccAgentModeReady = ccAgentTaskReady && chatReady;
+    const firstFailedCheck = checks.find((check) => check.status === "fail");
+    const chatActionHint = !params.codexCpaActive
+      ? { kind: "repair" as const, label: "验证后接入 CPA", repairActions: ["apply-codex-cpa-after-smoke" as const] }
+      : !codexAuthReady
+        ? { kind: "repair" as const, label: "修复 Codex auth", repairActions: ["repair-auth-json" as const] }
+        : firstFailedCheck?.actionHint || (!smokeFresh
+          ? { kind: "repair" as const, label: "运行 smoke matrix", repairActions: ["run-smoke-matrix" as const] }
+          : { kind: "run-check" as const, label: "运行健康检查" });
+    const longTaskActionHint = chatReady
+      ? hasActiveJob
+        ? { kind: "open-section" as const, label: "查看任务日志", section: "logs" as const }
+        : params.context.tokens === null || params.context.tokens < DEFAULT_CONTEXT_TOKENS
+          ? { kind: "open-section" as const, label: "编辑上下文", section: "settings" as const }
+          : { kind: "run-check" as const, label: "运行健康检查" }
+      : chatActionHint;
+    const compactionActionHint = chatReady
+      ? compressionEnabled
+        ? { kind: "repair" as const, label: "修复 Codex 传输", repairActions: ["repair-codex-transport" as const] }
+        : params.context.mode === "default"
+          ? { kind: "open-section" as const, label: "编辑上下文", section: "settings" as const }
+          : { kind: "run-check" as const, label: "运行健康检查" }
+      : chatActionHint;
+    const ccAgentActionHint = ccAgentTaskReady ? chatActionHint : checks.find((check) => check.id === "cc-agent-route")?.actionHint || chatActionHint;
     return {
       level,
       title: level === "ready"
@@ -2430,18 +2453,21 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           label: "普通/流式对话",
           ready: chatReady,
           detail: chatReady ? "基础 CPA/Compact 请求链路可用。" : chatBlockedDetail,
+          actionHint: chatReady ? { kind: "run-check", label: "运行健康检查" } : chatActionHint,
         },
         {
           id: "long-task",
           label: "长任务",
           ready: longTaskReady,
           detail: longTaskReady ? "无后台安装锁且上下文窗口足够。" : "需要新鲜 smoke、无后台任务并保持足够上下文窗口。",
+          actionHint: longTaskActionHint,
         },
         {
           id: "compaction",
           label: "压缩上下文",
           ready: compactionReady,
           detail: compactionReady ? "Codex 请求压缩未启用，context 策略已显式配置。" : "需要新鲜 smoke、禁用请求体压缩并确认 context 策略。",
+          actionHint: compactionActionHint,
         },
         {
           id: "cc-agent-task",
@@ -2450,6 +2476,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           detail: ccAgentModeReady
             ? "cc-connect 任务会走本地 Compact/CPA 链路。"
             : ccAgentTaskReady && !chatReady ? chatBlockedDetail : ccAgentDetail,
+          actionHint: ccAgentModeReady ? { kind: "open-section", label: "查看 Agent 配置", section: "cc-connect" } : ccAgentActionHint,
         },
       ],
     };

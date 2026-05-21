@@ -638,6 +638,9 @@ account_id = "test"
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.ready, true);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "compaction")?.ready, true);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.ready, true);
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.actionHint?.kind, "run-check");
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.actionHint?.kind, "run-check");
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.actionHint?.section, "cc-connect");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "service-order")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-provider")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-auth")?.status, "pass");
@@ -756,6 +759,11 @@ account_id = "test"
           assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-auth")?.status, "warn");
           assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, false);
           assert.match(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.detail || "", /官方 GPT 路径/);
+          assert.deepEqual(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.actionHint, {
+            kind: "repair",
+            label: "验证后接入 CPA",
+            repairActions: ["apply-codex-cpa-after-smoke"],
+          });
         });
       },
     );
