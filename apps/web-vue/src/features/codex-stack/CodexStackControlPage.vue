@@ -849,6 +849,12 @@ const nextActionCopy = computed(() => {
       }
       return text("检测到系统代理，但 CPA provider 仍是 direct。国内网关应直连；若 TUN 模式劫持流量，请在模型上游页检查代理和 NO_PROXY。", "A system proxy is present while CPA providers are direct. Domestic gateways should stay direct; if TUN mode hijacks traffic, review proxy and NO_PROXY in Models.");
     case "review-smoke":
+      if (activeRecommendation.value?.reasonCodes.includes("smoke-matrix-stale")) {
+        return text(
+          "上次 glm-5.1 / kimi-k2.6 矩阵已超过 24 小时；先重新只验证，避免把过期结果当成当前 CPA 可用状态。",
+          "The last glm-5.1 / kimi-k2.6 matrix is older than 24 hours. Run Verify Only again so stale results are not treated as current CPA readiness.",
+        );
+      }
       return text("上次 glm-5.1 / kimi-k2.6 矩阵失败，Codex 不会自动切到 CPA。先在安装页重新跑 smoke gate。", "The last glm-5.1 / kimi-k2.6 matrix failed, so Codex will not attach to CPA. Re-run the smoke gate from Install.");
     default:
       return text("首次使用从 DMWork 增强版开始；已有环境可选择跳过或强制重装组件。", "Start with the DMWork enhanced channel; existing environments can skip or force reinstall components.");

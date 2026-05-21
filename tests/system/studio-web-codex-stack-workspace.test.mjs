@@ -645,6 +645,9 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(controlPage, /activeRecommendation\.value\?\.reasonCodes\.includes\("no-proxy-loopback-missing"\)/);
   assert.match(controlPage, /先补齐 NO_PROXY 的 localhost、127\.0\.0\.1 和 ::1/);
   assert.match(controlPage, /OpenAI 官方 Codex 访问仍由 Codex\/系统代理路径处理/);
+  assert.match(controlPage, /activeRecommendation\.value\?\.reasonCodes\.includes\("smoke-matrix-stale"\)/);
+  assert.match(controlPage, /上次 glm-5\.1 \/ kimi-k2\.6 矩阵已超过 24 小时/);
+  assert.match(controlPage, /上次 glm-5\.1 \/ kimi-k2\.6 矩阵失败/);
   assert.match(dashboardInsights, /export interface CodexStackNetworkPolicyCard/);
   assert.match(dashboardInsights, /class="cs-network-policy-strip"/);
   assert.match(dashboardInsights, /networkPolicy\.loopbackValue/);
