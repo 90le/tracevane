@@ -2572,7 +2572,7 @@ function startPollingJob(job: CodexStackJob): void {
       if (!isCodexStackJobRunning(response.job)) {
         const finishedJob = response.job;
         stopPollingJob();
-        await loadSummary();
+        await loadAll(true);
         if (finishedJob.kind === "install" && finishedJob.status === "succeeded") {
           notice.value = {
             kind: "success",

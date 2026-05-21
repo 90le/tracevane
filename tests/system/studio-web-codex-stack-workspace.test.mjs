@@ -63,6 +63,12 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(chainMap, /v-if="warnings\.length"/);
 });
 
+test("codex stack background jobs resync cc-connect drafts after completion", () => {
+  assert.match(controlPage, /async function loadAll\(silent = false\): Promise<void>/);
+  assert.match(controlPage, /if \(!isCodexStackJobRunning\(response\.job\)\) \{[\s\S]*await loadAll\(true\);/);
+  assert.doesNotMatch(controlPage, /if \(!isCodexStackJobRunning\(response\.job\)\) \{[\s\S]*await loadSummary\(\);[\s\S]*if \(finishedJob\.kind === "install"/);
+});
+
 test("codex stack runtime config save sends only changed fields", () => {
   assert.match(controlPage, /const configPatchPayload = computed<CodexStackConfigPatchRequest>\(\(\) => \{/);
   assert.match(controlPage, /const hasConfigPatchChanges = computed\(\(\) => Object\.keys\(configPatchPayload\.value\)\.length > 0\);/);
