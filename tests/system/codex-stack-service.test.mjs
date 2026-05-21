@@ -1225,6 +1225,67 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   assert.equal(authJson.OPENAI_API_KEY, "secret-cpa-key-for-job");
 });
 
+test("codex stack failed install does not persist optimistic profile state", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createGeneratedStackFiles(root);
+  writeFile(
+    path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "echo failing setup for $CODEX_MODEL",
+      "exit 17",
+      "",
+    ].join("\n"),
+    0o755,
+  );
+
+  const service = createCodexStackService(config);
+  const response = await service.startInstall(undefined, {
+    env: {
+      CODEX_MODEL: "kimi-k2.6",
+      CPA_PORT: 18417,
+      COMPACT_PORT: 18777,
+      CPA_PROXY_KEY: "failed-install-secret",
+      OPENCLAW_PROVIDER_PROXY_URL: "http://127.0.0.1:7897",
+    },
+    flags: {
+      channel: "official",
+    },
+  });
+
+  const job = await waitForJob(service, response.job.id);
+  assert.equal(job.status, "failed");
+  assert.match(job.error || "", /Installer exited with code 17/);
+  assert.match(job.logTail, /failing setup for kimi-k2\.6/);
+  assert.doesNotMatch(job.logTail, /failed-install-secret/);
+  assert.equal(fs.existsSync(path.join(root, ".codex/auth.json")), false);
+  assert.equal(fs.existsSync(path.join(config.openclawRoot, "studio/codex-stack/profile.json")), false);
+
+  const summary = await service.getSummary();
+  assert.equal(summary.profile.lastInstallAt, undefined);
+  assert.equal(summary.profile.installerSource, undefined);
+  assert.notEqual(summary.profile.defaultModel, "kimi-k2.6");
+  assert.notEqual(summary.profile.cpaPort, 18417);
+  assert.notEqual(summary.profile.compactPort, 18777);
+  assert.notEqual(summary.profile.providerProxy?.source, "install-env");
+});
+
 test("codex stack rejects cc-connect finalizer until QR binding exists", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

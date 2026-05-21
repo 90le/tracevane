@@ -2543,16 +2543,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       if (code === 0) {
         const proxyKey = normalized.env.CPA_PROXY_KEY || extractTomlString(readText(currentPaths.codexConfig), "experimental_bearer_token") || DEFAULT_CPA_PROXY_KEY;
         writeCodexAuth(currentPaths.codexAuth, proxyKey);
+        const profile = readProfile();
+        writeProfile({
+          ...profile,
+          ...normalized.profilePatch,
+          installerSource: installer.root,
+          ccConnectProject: profile.ccConnectProject || DEFAULT_CC_CONNECT_PROJECT,
+          channel: installer.channel,
+          lastInstallAt: new Date().toISOString(),
+        });
       }
-      const profile = readProfile();
-      writeProfile({
-        ...profile,
-        ...normalized.profilePatch,
-        installerSource: installer.root,
-        ccConnectProject: profile.ccConnectProject || DEFAULT_CC_CONNECT_PROJECT,
-        channel: installer.channel,
-        lastInstallAt: new Date().toISOString(),
-      });
       job.status = finalStatus;
       job.error = finalError;
       writeJob(job);
