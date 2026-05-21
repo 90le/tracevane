@@ -17,6 +17,7 @@ const ccConnectSetupPanel = read("apps/web-vue/src/features/codex-stack/CodexSta
 const ccConnectStage = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectStage.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
+const recommendationCard = read("apps/web-vue/src/features/codex-stack/CodexStackRecommendationCard.vue");
 const dashboardHeroCard = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardHeroCard.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
@@ -378,12 +379,15 @@ test("codex stack dashboard delegates hero actions without moving service comman
 
 test("codex stack dashboard delegates action overview without losing actions", () => {
   assert.match(controlPage, /import CodexStackActionOverview from "\.\/CodexStackActionOverview\.vue";/);
-  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:ready-component-count="readyComponentCount"[\s\S]*:next-action-title="nextActionTitle"[\s\S]*:busy="actionBusy"[\s\S]*@primary="nextActionPrimary"[\s\S]*@open-section="setWorkspaceSection\(nextActionSection, focusHintForAction\(nextActionTitle, nextActionCopy\)\)"/);
+  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:ready-component-count="readyComponentCount"[\s\S]*:next-action-title="nextActionTitle"[\s\S]*:next-action-disabled-help="nextActionDisabledHelp"[\s\S]*:busy="actionBusy"[\s\S]*@primary="nextActionPrimary"[\s\S]*@open-section="setWorkspaceSection\(nextActionSection, focusHintForAction\(nextActionTitle, nextActionCopy\)\)"/);
   assert.doesNotMatch(controlPage, /class="cs-command-grid"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-readiness-card"/);
   assert.match(actionOverview, /<CodexStackRecommendationCard/);
+  assert.match(actionOverview, /:disabled-help="nextActionDisabledHelp"/);
   assert.match(actionOverview, /nextActionRequiresMutation \? !props\.canRunMutation : props\.busy/);
   assert.match(actionOverview, /modelCatalogPreview/);
+  assert.match(recommendationCard, /v-if="primaryDisabled && disabledHelp"/);
+  assert.match(recommendationCard, /class="cs-disabled-help"/);
 });
 
 test("codex stack dashboard delegates diagnostics without losing run check", () => {
@@ -700,6 +704,9 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(controlPage, /import CodexStackRunReadinessPanel from "\.\/CodexStackRunReadinessPanel\.vue";/);
   assert.match(controlPage, /<CodexStackRunReadinessPanel[\s\S]*:readiness="summary\.runReadiness"[\s\S]*:actions-disabled="runReadinessActionsDisabled"[\s\S]*:disabled-label="runReadinessDisabledLabel"[\s\S]*@check-action="runReadinessCheckAction"[\s\S]*@mode-action="runReadinessModeAction"/);
   assert.match(controlPage, /const actionBusy = computed\(\(\) => busy\.value \|\| jobRunning\.value\);/);
+  assert.match(controlPage, /const nextActionDisabledHelp = computed\(\(\) => \{/);
+  assert.match(controlPage, /先启用管理动作，才能执行安装、修复或配置写入/);
+  assert.match(controlPage, /已有后台任务执行中，先查看日志并等待完成/);
   assert.match(controlPage, /<CodexStackDashboardHeroCard[\s\S]*:busy="actionBusy"/);
   assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:busy="actionBusy"/);
   assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:busy="actionBusy"/);

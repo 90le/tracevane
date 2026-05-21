@@ -21,6 +21,7 @@
       :primary-label="nextActionButton"
       :secondary-label="text('打开对应页面', 'Open Section')"
       :primary-disabled="nextActionPrimaryDisabled"
+      :disabled-help="nextActionDisabledHelp"
       @primary="$emit('primary')"
       @open-section="$emit('open-section')"
     />
@@ -50,6 +51,7 @@ const props = defineProps<{
   nextActionCopy: string;
   nextActionButton: string;
   nextActionRequiresMutation: boolean;
+  nextActionDisabledHelp: string;
   canRunMutation: boolean;
   busy: boolean;
   modelSourceLabel: string;

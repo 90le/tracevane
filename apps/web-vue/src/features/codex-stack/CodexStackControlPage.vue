@@ -108,6 +108,7 @@
               :next-action-copy="nextActionCopy"
               :next-action-button="nextActionButton"
               :next-action-requires-mutation="nextActionRequiresMutation"
+              :next-action-disabled-help="nextActionDisabledHelp"
               :can-run-mutation="canRunMutation"
               :busy="actionBusy"
               :model-source-label="modelSourceLabel"
@@ -972,6 +973,16 @@ const nextActionButton = computed(() => {
 });
 const nextActionRequiresMutation = computed(() => {
   return activeRecommendation.value?.requiresManagement === true;
+});
+const nextActionDisabledHelp = computed(() => {
+  if (nextActionRequiresMutation.value) {
+    if (!canMutate.value) return text("先启用管理动作，才能执行安装、修复或配置写入。", "Enable management actions before install, repair, or config writes.");
+    if (jobRunning.value) return text("已有后台任务执行中，先查看日志并等待完成。", "A background job is running; view logs and wait for it to finish.");
+    if (busy.value) return text("当前操作仍在进行中。", "The current action is still in progress.");
+    return "";
+  }
+  if (actionBusy.value) return runReadinessDisabledLabel.value || text("当前操作仍在进行中。", "The current action is still in progress.");
+  return "";
 });
 const activeJobTitle = computed(() => {
   if (!activeJob.value) return "";

@@ -3,6 +3,7 @@
     <p class="cs-section-kicker">{{ kicker }}</p>
     <h4>{{ title }}</h4>
     <p>{{ copy }}</p>
+    <p v-if="primaryDisabled && disabledHelp" class="cs-disabled-help">{{ disabledHelp }}</p>
     <div class="cs-actions">
       <button type="button" class="primary-button" :disabled="primaryDisabled" @click="$emit('primary')">
         {{ primaryLabel }}
@@ -22,6 +23,7 @@ defineProps<{
   primaryLabel: string;
   secondaryLabel: string;
   primaryDisabled: boolean;
+  disabledHelp: string;
 }>();
 
 defineEmits<{
@@ -52,6 +54,11 @@ defineEmits<{
 
 .cs-recommendation-card p {
   color: var(--text-soft);
+}
+
+.cs-disabled-help {
+  color: var(--warning) !important;
+  font-weight: 600;
 }
 
 .cs-actions {
