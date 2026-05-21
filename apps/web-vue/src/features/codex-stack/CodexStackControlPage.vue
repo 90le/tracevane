@@ -174,63 +174,12 @@
                 </article>
               </div>
 
-              <div class="cs-service-grid">
-                <article v-for="service in serviceCards" :key="service.id" class="panel-card cs-service-card">
-                  <div class="cs-service-card-head">
-                    <div class="cs-service-title">
-                      <span :class="`cs-dot tone-${service.tone}`"></span>
-                      <div>
-                        <h4>{{ service.label }}</h4>
-                        <p>{{ service.stateLabel }}</p>
-                      </div>
-                    </div>
-                    <span class="cs-service-badge" :class="service.active ? 'cs-service-badge-live' : 'cs-service-badge-off'">
-                      {{ service.active ? text("运行中", "Running") : text("已停止", "Stopped") }}
-                    </span>
-                  </div>
-                  <p class="cs-service-blurb">{{ service.blurb }}</p>
-                  <dl class="cs-stat-list">
-                    <div>
-                      <dt>{{ service.endpointLabel }}</dt>
-                      <dd>{{ service.endpointValue }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ text("启用状态", "Enabled") }}</dt>
-                      <dd>{{ service.enabledLabel }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ text("systemd 状态", "Systemd") }}</dt>
-                      <dd>{{ service.rawState }}</dd>
-                    </div>
-                  </dl>
-                  <div class="cs-service-card-actions">
-                    <button
-                      type="button"
-                      class="secondary-button"
-                      :disabled="!canRunMutation || service.active"
-                      @click="serviceAction(service.id, 'start')"
-                    >
-                      {{ text("启动", "Start") }}
-                    </button>
-                    <button
-                      type="button"
-                      class="secondary-button"
-                      :disabled="!canRunMutation || !service.active"
-                      @click="serviceAction(service.id, 'stop')"
-                    >
-                      {{ text("停止", "Stop") }}
-                    </button>
-                    <button
-                      type="button"
-                      class="secondary-button"
-                      :disabled="!canRunMutation"
-                      @click="serviceAction(service.id, 'restart')"
-                    >
-                      {{ text("重启", "Restart") }}
-                    </button>
-                  </div>
-                </article>
-              </div>
+              <CodexStackServiceGrid
+                :services="serviceCards"
+                :can-run-mutation="canRunMutation"
+                :labels="serviceGridLabels"
+                @service-action="serviceAction"
+              />
 
               <div class="cs-dashboard-grid">
                 <article class="panel-card">
@@ -1493,6 +1442,7 @@ import {
   isCodexStackJobRunning,
 } from "./codex-stack-view-model";
 import CodexStackRecommendationCard from "./CodexStackRecommendationCard.vue";
+import CodexStackServiceGrid from "./CodexStackServiceGrid.vue";
 
 const { text } = useLocalePreference();
 
@@ -1863,6 +1813,15 @@ const serviceCards = computed(() => {
     };
   });
 });
+const serviceGridLabels = computed(() => ({
+  running: text("运行中", "Running"),
+  stopped: text("已停止", "Stopped"),
+  enabled: text("启用状态", "Enabled"),
+  systemd: text("systemd 状态", "Systemd"),
+  start: text("启动", "Start"),
+  stop: text("停止", "Stop"),
+  restart: text("重启", "Restart"),
+}));
 const componentOptions = computed(() => [
   { id: "codex" as const, label: text("Codex CLI", "Codex CLI") },
   { id: "cpa" as const, label: text("CPA 代理", "CPA Proxy") },
@@ -3114,7 +3073,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
 
 .cs-info-chip,
 .cs-status-pill,
-.cs-service-badge,
 .cs-progress-badge,
 .cs-chip,
 .cs-restart-hint {
@@ -3146,24 +3104,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   line-height: 1.45;
 }
 
-.cs-service-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.cs-service-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-height: 100%;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--code-bg) 22%, transparent)),
-    var(--surface);
-}
-
-.cs-service-card-head,
-.cs-service-title,
 .cs-card-header,
 .cs-provider-head,
 .cs-platform-head,
@@ -3175,11 +3115,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   gap: 12px;
 }
 
-.cs-service-title {
-  justify-content: flex-start;
-}
-
-.cs-service-title h4,
 .cs-card-header h4,
 .cs-provider-head strong,
 .cs-platform-head strong,
@@ -3188,51 +3123,9 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
   margin: 0;
 }
 
-.cs-service-title p,
 .cs-project-head p {
   margin: 4px 0 0;
   color: var(--text-soft);
-}
-
-.cs-service-badge-live {
-  border-color: color-mix(in srgb, var(--success) 36%, var(--line));
-}
-
-.cs-service-badge-off {
-  border-color: color-mix(in srgb, var(--danger) 36%, var(--line));
-}
-
-.cs-stat-list {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-}
-
-.cs-stat-list div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding-top: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
-}
-
-.cs-stat-list dt {
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.cs-stat-list dd {
-  margin: 0;
-  color: var(--text);
-  text-align: right;
-  word-break: break-word;
-}
-
-.cs-service-card-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: auto;
 }
 
 .cs-dashboard-grid,
@@ -4198,7 +4091,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
 }
 
 @media (max-width: 1200px) {
-  .cs-service-grid,
   .cs-command-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4284,10 +4176,6 @@ watch([logAutoRefresh, logLineMode, selectedLogService], () => {
 
   .cs-model-ribbon-side {
     justify-content: flex-start;
-  }
-
-  .cs-service-grid {
-    grid-template-columns: 1fr;
   }
 
   .cs-agent-pane-switch {
