@@ -2323,9 +2323,14 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const hasFail = checks.some((check) => check.status === "fail");
     const hasWarn = checks.some((check) => check.status === "warn");
     const level = hasFail ? "blocked" : hasWarn ? "attention" : "ready";
-    const chatReady = !hasFail;
+    const baseChatReady = !hasFail;
+    const chatReady = baseChatReady && smokeFresh;
     const longTaskReady = chatReady && !hasActiveJob && params.context.tokens !== null && params.context.tokens >= DEFAULT_CONTEXT_TOKENS;
     const compactionReady = chatReady && !compressionEnabled && params.context.mode !== "default";
+    const chatBlockedDetail = baseChatReady
+      ? "先重新运行 glm-5.1 / kimi-k2.6 smoke matrix，确认 CPA 普通和流式链路仍新鲜可用。"
+      : "先修复失败检查项。";
+    const ccAgentModeReady = ccAgentTaskReady && chatReady;
     return {
       level,
       title: level === "ready"
@@ -2344,25 +2349,27 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           id: "chat",
           label: "普通/流式对话",
           ready: chatReady,
-          detail: chatReady ? "基础 CPA/Compact 请求链路可用。" : "先修复失败检查项。",
+          detail: chatReady ? "基础 CPA/Compact 请求链路可用。" : chatBlockedDetail,
         },
         {
           id: "long-task",
           label: "长任务",
           ready: longTaskReady,
-          detail: longTaskReady ? "无后台安装锁且上下文窗口足够。" : "需要无后台任务并保持足够上下文窗口。",
+          detail: longTaskReady ? "无后台安装锁且上下文窗口足够。" : "需要新鲜 smoke、无后台任务并保持足够上下文窗口。",
         },
         {
           id: "compaction",
           label: "压缩上下文",
           ready: compactionReady,
-          detail: compactionReady ? "Codex 请求压缩未启用，context 策略已显式配置。" : "需要禁用请求体压缩并确认 context 策略。",
+          detail: compactionReady ? "Codex 请求压缩未启用，context 策略已显式配置。" : "需要新鲜 smoke、禁用请求体压缩并确认 context 策略。",
         },
         {
           id: "cc-agent-task",
           label: "CC/IM Agent 任务",
-          ready: ccAgentTaskReady && chatReady,
-          detail: ccAgentTaskReady && chatReady ? "cc-connect 任务会走本地 Compact/CPA 链路。" : ccAgentDetail,
+          ready: ccAgentModeReady,
+          detail: ccAgentModeReady
+            ? "cc-connect 任务会走本地 Compact/CPA 链路。"
+            : ccAgentTaskReady && !chatReady ? chatBlockedDetail : ccAgentDetail,
         },
       ],
     };
