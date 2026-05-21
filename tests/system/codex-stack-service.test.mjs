@@ -113,6 +113,23 @@ account_id = "test"
 `);
 }
 
+function writeActiveCodexStackJob(config, id = "active-job") {
+  const jobsDir = path.join(config.openclawRoot, "studio/codex-stack/jobs");
+  writeJson(path.join(jobsDir, `${id}.json`), {
+    id,
+    kind: "repair",
+    status: "running",
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    finishedAt: null,
+    pid: null,
+    commandLabel: "repair: run-smoke-matrix",
+    logPath: path.join(jobsDir, `${id}.log`),
+    logTail: "",
+    error: null,
+  });
+}
+
 async function withMockFetch(handler, task) {
   const original = globalThis.fetch;
   globalThis.fetch = handler;
@@ -391,6 +408,43 @@ test("codex stack rejects unknown service ids and actions before shell execution
     service.controlService(undefined, "cli-proxy-api.service", "reload-or-run-shell"),
     (error) => isCodexStackServiceError(error) && error.code === "codex_stack_invalid_service_action",
   );
+});
+
+test("codex stack rejects concurrent install repair and finalize jobs", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createGeneratedStackFiles(root);
+  createBoundCcConnectConfig(root);
+
+  const service = createCodexStackService(config);
+  writeActiveCodexStackJob(config);
+
+  for (const run of [
+    () => service.startInstall(undefined, { flags: { channel: "official" } }),
+    () => service.startRepair(undefined, { actions: ["run-smoke-matrix"] }),
+    () => service.finalizeCcConnect(undefined, { project: "main" }),
+  ]) {
+    await assert.rejects(
+      run(),
+      (error) => isCodexStackServiceError(error)
+        && error.code === "codex_stack_job_already_running"
+        && error.statusCode === 409,
+    );
+  }
 });
 
 test("codex stack pause action disables watchdog before Compact and CPA", async () => {

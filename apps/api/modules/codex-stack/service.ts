@@ -2064,6 +2064,20 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   }
 
+  function activeJob(): CodexStackJob | null {
+    return listJobs().find((job) => job.status === "queued" || job.status === "running") || null;
+  }
+
+  function requireNoActiveJob(): void {
+    const job = activeJob();
+    if (!job) return;
+    throw new CodexStackServiceError(
+      "codex_stack_job_already_running",
+      `Codex Stack job ${job.id} (${job.commandLabel}) is still ${job.status}. Wait for it to finish before starting another install, repair, or finalize action.`,
+      409,
+    );
+  }
+
   async function getCcConnectConfig(): Promise<CcConnectConfig> {
     const currentPaths = paths();
     return parseCcConnectConfigSource(readText(currentPaths.ccConnectConfig));
@@ -2369,6 +2383,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
 
   async function startInstall(req: http.IncomingMessage | undefined, payload: CodexStackInstallRequest): Promise<CodexStackJobResponse> {
     requireManagement(req);
+    requireNoActiveJob();
     const channel = payload.flags?.channel || resolveChannel();
     const installer = resolveInstallerSource(channel);
     if (!installer.requiredFilesPresent || !installer.scripts.autoSetup || !installer.root) {
@@ -2430,6 +2445,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     commandLabel: string,
     task: (job: CodexStackJob) => Promise<void>,
   ): Promise<CodexStackJobResponse> {
+    requireNoActiveJob();
     const job = createJob(kind, commandLabel);
     job.status = "running";
     writeJob(job);
@@ -2452,6 +2468,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
 
   async function startRepair(req: http.IncomingMessage | undefined, payload: CodexStackRepairRequest): Promise<CodexStackJobResponse> {
     requireManagement(req);
+    requireNoActiveJob();
     const actions = Array.isArray(payload.actions) ? payload.actions : [];
     const unknown = actions.filter((action) => !(REPAIR_ACTIONS as readonly string[]).includes(action));
     if (unknown.length) {
@@ -2615,6 +2632,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
 
   async function finalizeCcConnect(req: http.IncomingMessage | undefined, payload: CodexStackFinalizeRequest): Promise<CodexStackJobResponse> {
     requireManagement(req);
+    requireNoActiveJob();
     const currentPaths = paths();
     const ccConfig = readText(currentPaths.ccConnectConfig);
     if (!detectCcConnectBinding(ccConfig)) {
