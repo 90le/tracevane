@@ -40,6 +40,12 @@
       <button type="button" class="secondary-button" :disabled="syncDisabled" @click="$emit('sync')">
         {{ text("重新同步", "Sync Now") }}
       </button>
+      <p v-if="busy && busyDisabledHelp" class="cs-disabled-help">
+        {{ busyDisabledHelp }}
+      </p>
+      <p v-else-if="syncDisabled && syncDisabledHelp" class="cs-disabled-help">
+        {{ syncDisabledHelp }}
+      </p>
       <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
         {{ mutationDisabledHelp }}
       </p>
@@ -62,9 +68,11 @@ defineProps<{
   channelLabel: string;
   checkedAtLabel: string;
   busy: boolean;
+  busyDisabledHelp: string;
   canRunMutation: boolean;
   mutationDisabledHelp: string;
   syncDisabled: boolean;
+  syncDisabledHelp: string;
 }>();
 
 defineEmits<{

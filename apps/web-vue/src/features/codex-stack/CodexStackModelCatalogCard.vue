@@ -9,6 +9,9 @@
         {{ text("重新读取", "Reload") }}
       </button>
     </div>
+    <p v-if="loading && loadingDisabledHelp" class="cs-disabled-help">
+      {{ loadingDisabledHelp }}
+    </p>
     <p class="cs-field-hint">{{ sourceHelp }}</p>
     <div class="cs-model-list">
       <span v-for="model in models" :key="`catalog-${model}`" :class="{ 'cs-model-current': model === currentModel }">
@@ -26,6 +29,7 @@ defineProps<{
   currentModel: string;
   sourceHelp: string;
   loading: boolean;
+  loadingDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -64,6 +68,13 @@ const { text } = useLocalePreference();
 .cs-field-hint {
   color: var(--text-soft);
   font-size: 0.84rem;
+}
+
+.cs-disabled-help {
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .cs-model-list {

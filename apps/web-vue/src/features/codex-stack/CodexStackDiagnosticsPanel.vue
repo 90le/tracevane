@@ -10,6 +10,9 @@
           {{ text("重新运行", "Run Again") }}
         </button>
       </div>
+      <p v-if="busy && busyDisabledHelp" class="cs-disabled-help">
+        {{ busyDisabledHelp }}
+      </p>
       <pre class="cs-code">{{ output || text("尚未运行健康检查。", "Health check output will appear here after you run it.") }}</pre>
     </article>
 
@@ -40,6 +43,7 @@ defineProps<{
   output: string;
   warnings: string[];
   busy: boolean;
+  busyDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -60,6 +64,13 @@ const { text } = useLocalePreference();
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.cs-disabled-help {
+  margin: 0 0 10px;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .cs-warning-row {

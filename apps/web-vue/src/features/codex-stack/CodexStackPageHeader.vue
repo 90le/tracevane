@@ -11,6 +11,9 @@
       <button type="button" class="secondary-button" :disabled="refreshDisabled" @click="$emit('refresh')">
         {{ refreshLabel }}
       </button>
+      <p v-if="refreshDisabled && refreshDisabledHelp" class="cs-disabled-help">
+        {{ refreshDisabledHelp }}
+      </p>
     </div>
   </header>
 </template>
@@ -22,6 +25,7 @@ defineProps<{
   subtitle: string;
   refreshLabel: string;
   refreshDisabled: boolean;
+  refreshDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -34,5 +38,21 @@ defineEmits<{
   margin: 6px 0 0;
   color: var(--text-soft);
   max-width: 980px;
+}
+
+.page-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.cs-disabled-help {
+  max-width: 280px;
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  text-align: right;
 }
 </style>

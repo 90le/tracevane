@@ -12,6 +12,9 @@
       <button type="button" class="secondary-button" :disabled="loading" @click="$emit('reload')">
         {{ text("刷新模型列表", "Refresh Models") }}
       </button>
+      <p v-if="loading && loadingDisabledHelp" class="cs-disabled-help">
+        {{ loadingDisabledHelp }}
+      </p>
     </div>
   </article>
 </template>
@@ -28,6 +31,7 @@ defineProps<{
   modelCount: number;
   contextTokensDisplay: string;
   loading: boolean;
+  loadingDisabledHelp: string;
 }>();
 
 defineEmits<{
@@ -64,6 +68,15 @@ const { text } = useLocalePreference();
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.cs-disabled-help {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  text-align: right;
 }
 
 .cs-section-kicker {

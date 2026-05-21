@@ -6,6 +6,7 @@
       :subtitle="text('按“状态判断 → 安装修复 → 模型上游 → Agent 管理 → 日志诊断”的顺序管理 codex-docs 服务。Studio 只做控制面，服务本身保持 systemd 独立运行。', 'Manage codex-docs through status, install/repair, model upstreams, agent management, and diagnostics. Studio stays the control plane while services keep running independently under systemd.')"
       :refresh-label="loading ? text('刷新中...', 'Refreshing...') : text('刷新状态', 'Refresh')"
       :refresh-disabled="loading || ccConnectLoading"
+      :refresh-disabled-help="refreshDisabledHelp"
       @refresh="loadAll"
     />
 
@@ -52,6 +53,7 @@
         :model-count="modelOptions.length"
         :context-tokens-display="contextTokensDisplay"
         :loading="loading"
+        :loading-disabled-help="summaryRefreshDisabledHelp"
         @reload="loadSummary"
       />
 
@@ -74,9 +76,11 @@
               :channel-label="channelLabel(summary.installer.channel)"
               :checked-at-label="formatTimestamp(summary.checkedAt)"
               :busy="actionBusy"
+              :busy-disabled-help="actionBusyDisabledHelp"
               :can-run-mutation="canRunMutation"
               :mutation-disabled-help="mutationDisabledHelp"
               :sync-disabled="loading || ccConnectLoading"
+              :sync-disabled-help="refreshDisabledHelp"
               @run-check="runCheck"
               @repair="repairRecommended"
               @sync="loadAll"
@@ -139,6 +143,7 @@
               :output="checkOutput"
               :warnings="summary.warnings"
               :busy="actionBusy"
+              :busy-disabled-help="actionBusyDisabledHelp"
               @run-check="runCheck"
             />
           </CodexStackSectionStack>
@@ -321,6 +326,7 @@
               :current-model="summary.models.current"
               :source-help="modelSourceHelp"
               :loading="loading"
+              :loading-disabled-help="summaryRefreshDisabledHelp"
               @reload="loadSummary"
             />
 
@@ -791,6 +797,20 @@ const runReadinessDisabledLabel = computed(() => {
   }
   return "";
 });
+const actionBusyDisabledHelp = computed(() => {
+  if (jobRunning.value) return text("已有后台任务执行中，先查看日志并等待完成。", "A background job is running; view logs and wait for it to finish.");
+  if (busy.value) return text("当前操作仍在进行中。", "The current action is still in progress.");
+  return "";
+});
+const summaryRefreshDisabledHelp = computed(() => (
+  loading.value ? text("状态正在刷新中，请等待本轮读取完成。", "Status is refreshing; wait for this read to finish.") : ""
+));
+const refreshDisabledHelp = computed(() => {
+  if (loading.value && ccConnectLoading.value) return text("状态和 Agent 配置正在同步，请等待完成后再刷新。", "Status and Agent config are syncing; wait for them to finish before refreshing.");
+  if (loading.value) return summaryRefreshDisabledHelp.value;
+  if (ccConnectLoading.value) return text("Agent 配置正在同步，请等待完成后再刷新。", "Agent config is syncing; wait for it to finish before refreshing.");
+  return "";
+});
 const modelSourceTone = computed<CodexStackTone>(() => {
   if (summary.value?.models.live) return "sage";
   return summary.value?.models.source === "config" ? "accent" : "neutral";
@@ -1002,7 +1022,7 @@ const nextActionDisabledHelp = computed(() => {
   if (nextActionRequiresMutation.value) {
     return mutationDisabledHelp.value;
   }
-  if (actionBusy.value) return runReadinessDisabledLabel.value || text("当前操作仍在进行中。", "The current action is still in progress.");
+  if (actionBusy.value) return actionBusyDisabledHelp.value;
   return "";
 });
 const activeJobTitle = computed(() => {

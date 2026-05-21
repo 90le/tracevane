@@ -194,7 +194,7 @@ test("codex stack page chrome delegates refresh and management enable without mo
   assert.match(controlPage, /import CodexStackManagementLockCard from "\.\/CodexStackManagementLockCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackPageHeader[\s\S]*:refresh-label="loading \? text\('刷新中\.\.\.', 'Refreshing\.\.\.'\) : text\('刷新状态', 'Refresh'\)"[\s\S]*:refresh-disabled="loading \|\| ccConnectLoading"[\s\S]*@refresh="loadAll"/,
+    /<CodexStackPageHeader[\s\S]*:refresh-label="loading \? text\('刷新中\.\.\.', 'Refreshing\.\.\.'\) : text\('刷新状态', 'Refresh'\)"[\s\S]*:refresh-disabled="loading \|\| ccConnectLoading"[\s\S]*:refresh-disabled-help="refreshDisabledHelp"[\s\S]*@refresh="loadAll"/,
   );
   assert.match(
     controlPage,
@@ -204,6 +204,8 @@ test("codex stack page chrome delegates refresh and management enable without mo
   assert.doesNotMatch(controlPage, /class="panel-card cs-lock-card"/);
   assert.match(controlPage, /async function loadAll/);
   assert.match(controlPage, /async function enableManagement/);
+  assert.match(pageHeader, /refreshDisabledHelp: string;/);
+  assert.match(pageHeader, /v-if="refreshDisabled && refreshDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(pageHeader, /defineEmits<\{[\s\S]*refresh: \[\];[\s\S]*\}>/);
   assert.match(pageHeader, /@click="\$emit\('refresh'\)"/);
   assert.doesNotMatch(pageHeader, /loadAll|summary|fetchCodexStackSummary|enableManagement|serviceAction|patchCodexStackConfig/);
@@ -343,14 +345,15 @@ test("codex stack model ribbon delegates catalog refresh without moving model ow
   assert.match(controlPage, /import CodexStackModelRibbon from "\.\/CodexStackModelRibbon\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackModelRibbon[\s\S]*:current-model="summary\.models\.current \|\| summary\.profile\.defaultModel \|\| '--'"[\s\S]*:source-help="modelSourceHelp"[\s\S]*:source-tone="modelSourceTone"[\s\S]*:source-label="modelSourceLabel"[\s\S]*:model-count="modelOptions\.length"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:loading="loading"[\s\S]*@reload="loadSummary"/,
+    /<CodexStackModelRibbon[\s\S]*:current-model="summary\.models\.current \|\| summary\.profile\.defaultModel \|\| '--'"[\s\S]*:source-help="modelSourceHelp"[\s\S]*:source-tone="modelSourceTone"[\s\S]*:source-label="modelSourceLabel"[\s\S]*:model-count="modelOptions\.length"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:loading="loading"[\s\S]*:loading-disabled-help="summaryRefreshDisabledHelp"[\s\S]*@reload="loadSummary"/,
   );
   assert.match(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[/);
   assert.match(controlPage, /const modelSourceTone = computed<CodexStackTone>\(\(\) => \{/);
   assert.match(controlPage, /async function loadSummary\(\): Promise<void>/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-model-ribbon"/);
   assert.doesNotMatch(controlPage, /class="cs-model-ribbon-side"/);
-  assert.match(modelRibbon, /defineProps<\{[\s\S]*currentModel: string;[\s\S]*sourceHelp: string;[\s\S]*sourceTone: CodexStackTone;[\s\S]*modelCount: number;[\s\S]*loading: boolean;[\s\S]*\}>/);
+  assert.match(modelRibbon, /defineProps<\{[\s\S]*currentModel: string;[\s\S]*sourceHelp: string;[\s\S]*sourceTone: CodexStackTone;[\s\S]*modelCount: number;[\s\S]*loading: boolean;[\s\S]*loadingDisabledHelp: string;[\s\S]*\}>/);
+  assert.match(modelRibbon, /v-if="loading && loadingDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(modelRibbon, /defineEmits<\{[\s\S]*reload: \[\];[\s\S]*\}>/);
   assert.match(modelRibbon, /@click="\$emit\('reload'\)"/);
   assert.doesNotMatch(modelRibbon, /fetchCodexStackSummary|loadSummary|summary\.models|modelOptions|modelSourceTone|modelSourceLabel/);
@@ -360,7 +363,7 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.match(controlPage, /import CodexStackDashboardHeroCard from "\.\/CodexStackDashboardHeroCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="actionBusy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
+    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="actionBusy"[\s\S]*:busy-disabled-help="actionBusyDisabledHelp"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*:sync-disabled-help="refreshDisabledHelp"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
   );
   assert.match(controlPage, /const codexProviderCheck = computed\(\(\) => \(/);
   assert.match(controlPage, /if \(status === "pass"\) return text\("CPA 已接入", "CPA attached"\);/);
@@ -370,7 +373,9 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.doesNotMatch(controlPage, /class="panel-card cs-hero-card"/);
   assert.doesNotMatch(controlPage, /class="cs-hero-actions"/);
   assert.match(dashboardHeroCard, /Codex 路径/);
-  assert.match(dashboardHeroCard, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*mutationDisabledHelp: string;[\s\S]*syncDisabled: boolean;[\s\S]*\}>/);
+  assert.match(dashboardHeroCard, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*busyDisabledHelp: string;[\s\S]*mutationDisabledHelp: string;[\s\S]*syncDisabled: boolean;[\s\S]*syncDisabledHelp: string;[\s\S]*\}>/);
+  assert.match(dashboardHeroCard, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
+  assert.match(dashboardHeroCard, /v-else-if="syncDisabled && syncDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(dashboardHeroCard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(dashboardHeroCard, /defineEmits<\{[\s\S]*"run-check": \[\];[\s\S]*repair: \[\];[\s\S]*sync: \[\];[\s\S]*\}>/);
   assert.match(dashboardHeroCard, /@click="\$emit\('run-check'\)"/);
@@ -404,7 +409,9 @@ test("codex stack dashboard delegates action overview without losing actions", (
 
 test("codex stack dashboard delegates diagnostics without losing run check", () => {
   assert.match(controlPage, /import CodexStackDiagnosticsPanel from "\.\/CodexStackDiagnosticsPanel\.vue";/);
-  assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:output="checkOutput"[\s\S]*:warnings="summary\.warnings"[\s\S]*:busy="actionBusy"[\s\S]*@run-check="runCheck"/);
+  assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:output="checkOutput"[\s\S]*:warnings="summary\.warnings"[\s\S]*:busy="actionBusy"[\s\S]*:busy-disabled-help="actionBusyDisabledHelp"[\s\S]*@run-check="runCheck"/);
+  assert.match(diagnosticsPanel, /busyDisabledHelp: string;/);
+  assert.match(diagnosticsPanel, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.doesNotMatch(controlPage, /尚未运行健康检查。/);
   assert.doesNotMatch(controlPage, /class="cs-diagnostics-grid"/);
   assert.match(diagnosticsPanel, /健康检查/);
@@ -738,11 +745,16 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(controlPage, /import CodexStackRunReadinessPanel from "\.\/CodexStackRunReadinessPanel\.vue";/);
   assert.match(controlPage, /<CodexStackRunReadinessPanel[\s\S]*:readiness="summary\.runReadiness"[\s\S]*:actions-disabled="runReadinessActionsDisabled"[\s\S]*:disabled-label="runReadinessDisabledLabel"[\s\S]*@check-action="runReadinessCheckAction"[\s\S]*@mode-action="runReadinessModeAction"/);
   assert.match(controlPage, /const actionBusy = computed\(\(\) => busy\.value \|\| jobRunning\.value\);/);
+  assert.match(controlPage, /const actionBusyDisabledHelp = computed\(\(\) => \{/);
+  assert.match(controlPage, /const summaryRefreshDisabledHelp = computed\(\(\) => \(/);
+  assert.match(controlPage, /const refreshDisabledHelp = computed\(\(\) => \{/);
   assert.match(controlPage, /const mutationDisabledHelp = computed\(\(\) => \{/);
   assert.match(controlPage, /const nextActionDisabledHelp = computed\(\(\) => \{/);
   assert.match(controlPage, /if \(nextActionRequiresMutation\.value\) \{[\s\S]*return mutationDisabledHelp\.value;/);
   assert.match(controlPage, /先启用管理动作，才能执行安装、修复或配置写入/);
   assert.match(controlPage, /已有后台任务执行中，先查看日志并等待完成/);
+  assert.match(controlPage, /状态正在刷新中，请等待本轮读取完成/);
+  assert.match(controlPage, /Agent 配置正在同步，请等待完成后再刷新/);
   assert.match(controlPage, /<CodexStackDashboardHeroCard[\s\S]*:busy="actionBusy"/);
   assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:busy="actionBusy"/);
   assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:busy="actionBusy"/);
@@ -877,13 +889,14 @@ test("codex stack settings page delegates model catalog without moving summary r
   assert.match(controlPage, /import CodexStackModelCatalogCard from "\.\/CodexStackModelCatalogCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackModelCatalogCard[\s\S]*:models="modelOptions"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:source-help="modelSourceHelp"[\s\S]*:loading="loading"[\s\S]*@reload="loadSummary"/,
+    /<CodexStackModelCatalogCard[\s\S]*:models="modelOptions"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:source-help="modelSourceHelp"[\s\S]*:loading="loading"[\s\S]*:loading-disabled-help="summaryRefreshDisabledHelp"[\s\S]*@reload="loadSummary"/,
   );
   assert.match(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[/);
   assert.match(controlPage, /async function loadSummary\(\): Promise<void>/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-model-catalog-card"/);
   assert.doesNotMatch(controlPage, /class="cs-model-list"/);
-  assert.match(modelCatalogCard, /defineProps<\{[\s\S]*models: string\[\];[\s\S]*currentModel: string;[\s\S]*sourceHelp: string;[\s\S]*loading: boolean;[\s\S]*\}>/);
+  assert.match(modelCatalogCard, /defineProps<\{[\s\S]*models: string\[\];[\s\S]*currentModel: string;[\s\S]*sourceHelp: string;[\s\S]*loading: boolean;[\s\S]*loadingDisabledHelp: string;[\s\S]*\}>/);
+  assert.match(modelCatalogCard, /v-if="loading && loadingDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(modelCatalogCard, /defineEmits<\{[\s\S]*reload: \[\];[\s\S]*\}>/);
   assert.match(modelCatalogCard, /@click="\$emit\('reload'\)"/);
   assert.doesNotMatch(modelCatalogCard, /fetchCodexStackSummary|loadSummary|summary\.models|modelOptions/);
