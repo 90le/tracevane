@@ -321,6 +321,7 @@
                 :model-options="modelOptions"
                 :context-tokens-disabled="configContextTokensDisabled"
                 :restart-required-units="restartRequiredUnits"
+                :impact-items="configImpactItems"
                 :can-run-mutation="canRunMutation"
                 :has-changes="hasConfigPatchChanges"
                 @update-field="updateConfigFormField"
@@ -524,6 +525,7 @@ import CodexStackRuntimeConfigCard from "./CodexStackRuntimeConfigCard.vue";
 import type {
   CodexStackRuntimeConfigDraft,
   CodexStackRuntimeConfigField,
+  CodexStackRuntimeConfigImpactItem,
   CodexStackRuntimeContextMode,
 } from "./CodexStackRuntimeConfigCard.vue";
 import type {
@@ -1297,6 +1299,94 @@ const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
   return payload;
 });
 const hasConfigPatchChanges = computed(() => Object.keys(configPatchPayload.value).length > 0);
+const configImpactItems = computed<CodexStackRuntimeConfigImpactItem[]>(() => {
+  const payload = configPatchPayload.value;
+  const items: CodexStackRuntimeConfigImpactItem[] = [];
+  const hasServiceRouteChange = Boolean(
+    payload.defaultModel
+    || payload.cpaPort
+    || payload.compactPort
+    || payload.cpaProxyKey
+    || Object.prototype.hasOwnProperty.call(payload, "upstreamBaseUrl")
+    || payload.upstreamApiKey
+    || Object.prototype.hasOwnProperty.call(payload, "providerProxyUrl")
+    || Object.prototype.hasOwnProperty.call(payload, "noProxy")
+  );
+
+  if (hasServiceRouteChange) {
+    items.push({
+      id: "smoke-invalidated",
+      label: text("保存后需要重新 smoke", "Smoke recheck required after save"),
+      detail: text(
+        "模型、端口、密钥、上游、代理或 NO_PROXY 变化会清空旧的 glm-5.1 / kimi-k2.6 smoke 结果；重新验证前不会把 CPA 当作可接入状态。",
+        "Model, port, key, upstream, proxy, or NO_PROXY changes clear the old glm-5.1 / kimi-k2.6 smoke result; CPA will not be treated as attach-ready until rechecked.",
+      ),
+      tone: "warning",
+    });
+  }
+
+  if (payload.cpaPort || payload.compactPort || payload.defaultModel || payload.cpaProxyKey) {
+    items.push({
+      id: "service-restart",
+      label: text("影响本地服务路由", "Local service route changes"),
+      detail: text(
+        "保存会更新 CPA/Compact、Codex provider 或 cc-connect 配置；仅重启当前 active 的服务，已暂停的栈不会被自动拉起。",
+        "Saving updates CPA/Compact, the Codex provider, or cc-connect config; only currently active services restart, and a paused stack is not started automatically.",
+      ),
+      tone: "info",
+    });
+  }
+
+  if (payload.cpaProxyKey) {
+    items.push({
+      id: "auth-key",
+      label: text("会写入本地 CPA key", "Local CPA key will be written"),
+      detail: text(
+        "新的 proxy key 会同步到 Codex auth、CPA 配置和 cc-connect provider；官方 GPT 路径仍需显式 smoke gate 才会切到 CPA。",
+        "The new proxy key is synced to Codex auth, CPA config, and the cc-connect provider; the official GPT route still switches to CPA only through the explicit smoke gate.",
+      ),
+      tone: "danger",
+    });
+  }
+
+  if (payload.contextMode || payload.contextWindowTokens) {
+    items.push({
+      id: "context",
+      label: text("影响长任务和压缩上下文", "Affects long tasks and compaction"),
+      detail: text(
+        "上下文变化会写入 ~/.codex/config.toml，并影响长任务与压缩上下文就绪判断。",
+        "Context changes are written to ~/.codex/config.toml and affect long-task and compaction readiness.",
+      ),
+      tone: "info",
+    });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "providerProxyUrl") || Object.prototype.hasOwnProperty.call(payload, "noProxy")) {
+    items.push({
+      id: "network",
+      label: text("影响系统代理和 TUN 绕过", "Affects proxy and TUN bypass"),
+      detail: text(
+        "国内网关建议 direct；NO_PROXY 必须保留 localhost,127.0.0.1,::1，避免本机 CPA/Compact 请求被系统代理或 VPN 网卡模式截获。",
+        "Domestic gateways should stay direct; NO_PROXY must keep localhost,127.0.0.1,::1 so local CPA/Compact calls are not captured by a system proxy or VPN TUN mode.",
+      ),
+      tone: "warning",
+    });
+  }
+
+  if (payload.ccConnectProject) {
+    items.push({
+      id: "cc-connect",
+      label: text("影响 cc-connect Agent 项目", "Affects cc-connect agent project"),
+      detail: text(
+        "保存会更新 cc-connect 项目名；绑定与 finalizer 仍在 Agent 面板处理。",
+        "Saving updates the cc-connect project name; binding and finalizer steps still run from the Agent panel.",
+      ),
+      tone: "info",
+    });
+  }
+
+  return items;
+});
 const canonicalCcConnectProvider = computed(() => {
   const provider = ccConnectProviderDrafts.value.find((item) => item.name === "cpa") || ccConnectProviderDrafts.value[0];
   return {

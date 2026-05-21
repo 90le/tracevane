@@ -782,11 +782,19 @@ test("codex stack settings page delegates runtime config form without moving pat
     controlPage,
     /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"/,
   );
+  assert.match(controlPage, /:impact-items="configImpactItems"/);
   assert.match(controlPage, /function updateConfigFormField\(field: CodexStackRuntimeConfigField, value: string \| number\): void/);
   assert.match(controlPage, /const configPatchPayload = computed<CodexStackConfigPatchRequest>/);
+  assert.match(controlPage, /const configImpactItems = computed<CodexStackRuntimeConfigImpactItem\[\]>/);
+  assert.match(controlPage, /Smoke recheck required after save/);
+  assert.match(controlPage, /official GPT route still switches to CPA only through the explicit smoke gate/);
+  assert.match(controlPage, /NO_PROXY must keep localhost,127\.0\.0\.1,::1/);
   assert.match(controlPage, /async function saveConfigPatch\(\): Promise<void>/);
   assert.doesNotMatch(controlPage, /v-model(?:\.number)?="configForm\.(defaultModel|contextMode|contextWindowTokens|cpaPort|compactPort|ccConnectProject|cpaProxyKey|upstreamBaseUrl|upstreamApiKey|providerProxyUrl|noProxy)"/);
   assert.match(runtimeConfigCard, /export interface CodexStackRuntimeConfigDraft/);
+  assert.match(runtimeConfigCard, /export interface CodexStackRuntimeConfigImpactItem/);
+  assert.match(runtimeConfigCard, /v-if="impactItems\.length"/);
+  assert.match(runtimeConfigCard, /item\.detail/);
   assert.match(runtimeConfigCard, /defineEmits<[\s\S]*updateField: \[field: CodexStackRuntimeConfigField, value: string \| number\]/);
   assert.match(runtimeConfigCard, /@click="\$emit\('save'\)"/);
   assert.doesNotMatch(runtimeConfigCard, /patchCodexStackConfig|configPatchPayload|saveConfigPatch/);

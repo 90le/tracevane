@@ -106,6 +106,17 @@
         {{ text("保存配置不会拉起已暂停的 CPA 栈；需要启用时用“恢复 CPA 栈”按顺序启动。", "Saving config will not start a paused CPA stack; use Resume CPA Stack when you want to bring it back up in order.") }}
       </small>
     </div>
+    <div v-if="impactItems.length" class="cs-impact-list">
+      <div
+        v-for="item in impactItems"
+        :key="item.id"
+        class="cs-impact-item"
+        :class="`tone-${item.tone}`"
+      >
+        <strong>{{ item.label }}</strong>
+        <span>{{ item.detail }}</span>
+      </div>
+    </div>
     <div class="cs-actions">
       <button type="button" class="primary-button" :disabled="!canRunMutation || !hasChanges" @click="$emit('save')">
         {{ text("保存配置", "Save Config") }}
@@ -133,6 +144,13 @@ export interface CodexStackRuntimeConfigDraft {
   noProxy: string;
 }
 
+export interface CodexStackRuntimeConfigImpactItem {
+  id: string;
+  label: string;
+  detail: string;
+  tone: "info" | "warning" | "danger";
+}
+
 export type CodexStackRuntimeConfigField = keyof CodexStackRuntimeConfigDraft;
 
 defineProps<{
@@ -140,6 +158,7 @@ defineProps<{
   modelOptions: string[];
   contextTokensDisabled: boolean;
   restartRequiredUnits: string[];
+  impactItems: CodexStackRuntimeConfigImpactItem[];
   canRunMutation: boolean;
   hasChanges: boolean;
 }>();
@@ -234,6 +253,39 @@ function updateNumberField(field: CodexStackRuntimeConfigField, event: Event): v
 .cs-restart-hint-block small {
   color: var(--text-muted);
   line-height: 1.45;
+}
+
+.cs-impact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cs-impact-item {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+
+.cs-impact-item strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.cs-impact-item span {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.cs-impact-item.tone-warning {
+  border-color: color-mix(in srgb, #f59e0b 42%, var(--line));
+}
+
+.cs-impact-item.tone-danger {
+  border-color: color-mix(in srgb, #ef4444 46%, var(--line));
 }
 
 @media (max-width: 960px) {
