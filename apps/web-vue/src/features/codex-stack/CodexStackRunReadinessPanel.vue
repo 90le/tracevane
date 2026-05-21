@@ -15,13 +15,13 @@
         v-for="mode in readiness.modes"
         :key="mode.id"
         class="cs-run-mode"
-        :class="mode.ready ? 'tone-sage' : 'tone-danger'"
+        :class="runReadinessModeTone(mode.ready, readiness.level)"
       >
         <div>
           <strong>{{ mode.label }}</strong>
           <p>{{ mode.detail }}</p>
         </div>
-        <span>{{ mode.ready ? text("可用", "Ready") : text("阻断", "Blocked") }}</span>
+        <span>{{ runReadinessModeLabel(mode.ready, readiness.level) }}</span>
       </div>
     </div>
     <div class="cs-run-check-grid">
@@ -85,6 +85,16 @@ function runReadinessCheckLabel(status: CodexStackRunReadinessCheckStatus): stri
     fail: text("阻断", "Fail"),
   };
   return labels[status];
+}
+
+function runReadinessModeTone(ready: boolean, level: CodexStackRunReadinessLevel): string {
+  if (ready) return "tone-sage";
+  return level === "blocked" ? "tone-danger" : "tone-accent";
+}
+
+function runReadinessModeLabel(ready: boolean, level: CodexStackRunReadinessLevel): string {
+  if (ready) return text("可用", "Ready");
+  return level === "blocked" ? text("阻断", "Blocked") : text("待处理", "Pending");
 }
 </script>
 

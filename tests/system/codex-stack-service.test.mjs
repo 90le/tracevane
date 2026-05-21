@@ -639,6 +639,7 @@ account_id = "test"
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "compaction")?.ready, true);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.ready, true);
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "service-order")?.status, "pass");
+        assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-provider")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-auth")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "pass");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "cc-agent-route")?.status, "pass");
@@ -647,6 +648,121 @@ account_id = "test"
       });
     },
   );
+});
+
+test("codex stack keeps restored official Codex provider out of CPA repair state", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const checkedAt = new Date().toISOString();
+  writeJson(config.openclawConfigFile, {
+    env: {
+      NO_PROXY: "localhost,127.0.0.1,::1",
+    },
+  });
+  writeJson(path.join(root, ".codex/auth.json"), {
+    auth_mode: "apikey",
+    OPENAI_API_KEY: "official-chatgpt-key",
+  });
+  writeJson(path.join(config.openclawRoot, "studio/codex-stack/profile.json"), {
+    lastSmokeMatrix: {
+      status: "passed",
+      checkedAt,
+      requiredModels: ["glm-5.1", "kimi-k2.6"],
+      attachEligible: true,
+      models: ["glm-5.1", "kimi-k2.6"].map((model) => ({
+        model,
+        status: "passed",
+        startedAt: checkedAt,
+        finishedAt: checkedAt,
+        checks: passedSmokeChecks(checkedAt),
+        error: null,
+      })),
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  writeFile(path.join(root, ".codex/config.toml"), `
+model = "gpt-5.5"
+model_context_window = 1050000
+model_auto_compact_token_limit = 945000
+responses_websockets = false
+enable_request_compression = false
+
+[model_providers.cpa]
+base_url = "http://127.0.0.1:18796/v1"
+wire_api = "responses"
+supports_websockets = false
+experimental_bearer_token = "secret-cpa-key-123456"
+`);
+  writeFile(path.join(root, ".local/bin/cli-proxy-api"), "#!/usr/bin/env bash\necho cpa\n", 0o755);
+  writeFile(path.join(root, ".local/bin/cpa-compact-proxy.mjs"), "#!/usr/bin/env node\nconsole.log('compact')\n", 0o755);
+  writeFile(path.join(root, ".cc-connect/config.toml"), `
+[[providers]]
+name = "cpa"
+api_key = "secret-cpa-key-123456"
+base_url = "http://127.0.0.1:18796/v1"
+codex.env_key = "OPENAI_API_KEY"
+
+[[projects]]
+name = "main"
+[projects.agent.options]
+model = "glm-5.1"
+
+[[projects.platforms]]
+type = "dmwork"
+[projects.platforms.options]
+account_id = "test"
+`);
+  const commandBin = path.join(root, "fake-bin");
+  writeFile(path.join(commandBin, "codex"), "#!/usr/bin/env bash\necho 'codex 1.0.0'\n", 0o755);
+  writeFile(path.join(commandBin, "omx"), "#!/usr/bin/env bash\necho 'omx 1.0.0'\n", 0o755);
+  writeFile(path.join(commandBin, "cc-connect"), "#!/usr/bin/env bash\necho 'cc-connect 1.0.0'\n", 0o755);
+
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${commandBin}${path.delimiter}${previousPath || ""}`;
+  try {
+    await withScriptedSystemctl(
+      [
+        "case \"$*\" in",
+        "  \"--user list-unit-files\"*) echo \"${@: -1} enabled\"; exit 0 ;;",
+        "  \"--user is-enabled\"*) echo \"enabled\"; exit 0 ;;",
+        "  \"--user is-active\"*) echo \"active\"; exit 0 ;;",
+        "esac",
+        "exit 0",
+      ].join("\n"),
+      async () => {
+        await withMockFetch(async (input) => {
+          const url = String(input);
+          if (url.includes("/healthz")) return new Response("ok", { status: 200 });
+          if (url.includes("/v1/models")) {
+            return new Response(JSON.stringify({ data: [{ id: "glm-5.1" }, { id: "kimi-k2.6" }] }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          return new Response("not found", { status: 404 });
+        }, async () => {
+          const service = createCodexStackService(config);
+          const summary = await service.getSummary();
+
+          assert.equal(summary.overallStatus, "ready");
+          assert.notEqual(summary.recommendation.kind, "repair");
+          assert.ok(!summary.recommendation.reasonCodes.includes("codex-auth-mismatch"));
+          assert.ok(!summary.warnings.some((warning) => warning.includes("auth.json OPENAI_API_KEY")));
+          assert.equal(summary.models.current, "gpt-5.5");
+          assert.equal(summary.runReadiness.level, "attention");
+          assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-provider")?.status, "warn");
+          assert.equal(summary.runReadiness.checks.find((check) => check.id === "codex-auth")?.status, "warn");
+          assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, false);
+          assert.match(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.detail || "", /官方 GPT 路径/);
+        });
+      },
+    );
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+  }
 });
 
 test("codex stack blocks lifecycle-unsafe direct service starts", async () => {

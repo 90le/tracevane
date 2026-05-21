@@ -617,6 +617,14 @@ function extractLocalCompactPortFromCodexConfig(source: string): number | null {
   return match?.[1] ? normalizePort(match[1], 0) || null : null;
 }
 
+function codexConfigUsesLocalCompact(source: string, compactPort: number): boolean {
+  if (extractTopLevelTomlString(source, "model_provider") === "cpa") return true;
+  const topLevelBaseUrl = extractTopLevelTomlString(source, "base_url")
+    || extractTopLevelTomlString(source, "openai_base_url");
+  if (!topLevelBaseUrl) return false;
+  return new RegExp(`^(?:https?://)?(?:127\\.0\\.0\\.1|localhost):${compactPort}(?:/|$)`).test(topLevelBaseUrl);
+}
+
 function extractTomlNumber(source: string, key: string): number | null {
   const match = source.match(new RegExp(`^\\s*${key}\\s*=\\s*([0-9][0-9_]*)`, "m"));
   if (!match?.[1]) return null;
@@ -2022,6 +2030,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     cpaHealthy: boolean;
     compactHealthy: boolean;
     codexAuthOk: boolean;
+    codexCpaActive: boolean;
   }): CodexStackComponentSummary[] {
     const currentPaths = paths();
     const serviceById = new Map(params.services.map((service) => [service.id, service]));
@@ -2032,12 +2041,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       {
         id: "codex",
         label: "Codex CLI",
-        status: params.codexVersion && codexConfigExists ? (params.codexAuthOk ? "ok" : "degraded") : "missing",
+        status: params.codexVersion && codexConfigExists
+          ? (!params.codexCpaActive || params.codexAuthOk ? "ok" : "degraded")
+          : "missing",
         installed: Boolean(params.codexVersion),
         version: params.codexVersion,
         notes: [
           params.omxVersion ? `omx ${params.omxVersion}` : "omx not detected",
-          params.codexAuthOk ? "auth.json ok" : "auth.json missing or mismatched",
+          params.codexCpaActive
+            ? (params.codexAuthOk ? "auth.json ok" : "auth.json missing or mismatched")
+            : "official provider active; CPA auth checked before attach",
         ].filter(Boolean),
         paths: { config: currentPaths.codexConfig, auth: currentPaths.codexAuth },
       },
@@ -2217,6 +2230,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     cpaHealthy: boolean;
     compactHealthy: boolean;
     codexAuthMatches: boolean | null;
+    codexCpaActive: boolean;
     proxyPolicy: CodexStackSummaryPayload["proxyPolicy"];
     profile: CodexStackProfile;
     context: ReturnType<typeof readCodexContext>;
@@ -2241,6 +2255,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const hasActiveJob = params.jobs.some((job) => job.status === "queued" || job.status === "running");
     const websocketEnabled = hasCodexResponsesWebSocketsEnabled(params.codexConfig);
     const compressionEnabled = hasCodexRequestCompressionEnabled(params.codexConfig);
+    const codexAuthReady = params.codexAuthMatches === true;
     const ccAgentTaskReady = params.ccConnectInstalled
       && params.ccConnectConfigured
       && params.ccBindingPresent
@@ -2282,16 +2297,32 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           : { kind: "repair", label: "重启 CPA/Compact", repairActions: ["restart-cpa", "restart-compact-proxy"] },
       },
       {
+        id: "codex-provider",
+        label: "Codex active provider",
+        status: params.codexCpaActive ? "pass" : "warn",
+        detail: params.codexCpaActive
+          ? "Codex 当前 active provider 指向本地 Compact/CPA 链路。"
+          : "Codex 当前保持官方 GPT 路径；只有通过 smoke gate 的接入动作才会切换到 CPA。",
+        section: params.codexCpaActive ? "settings" : "install",
+        actionHint: params.codexCpaActive
+          ? { kind: "open-section", label: "查看配置", section: "settings" }
+          : { kind: "repair", label: "验证后接入 CPA", repairActions: ["apply-codex-cpa-after-smoke"] },
+      },
+      {
         id: "codex-auth",
         label: "Codex CLI 密钥",
-        status: params.codexAuthMatches === true ? "pass" : "fail",
-        detail: params.codexAuthMatches === true
+        status: codexAuthReady ? "pass" : (params.codexCpaActive ? "fail" : "warn"),
+        detail: codexAuthReady
           ? "~/.codex/auth.json 与 CPA proxy key 匹配。"
-          : "~/.codex/auth.json 未写入或与 CPA proxy key 不一致；Codex CLI 可能绕过本地 Compact。",
+          : params.codexCpaActive
+            ? "~/.codex/auth.json 未写入或与 CPA proxy key 不一致；Codex CLI 可能绕过本地 Compact。"
+            : "当前 Codex 未接入 CPA；接入动作会在 smoke gate 通过后再写入本地 CPA key。",
         section: "settings",
-        actionHint: params.codexAuthMatches === true
+        actionHint: codexAuthReady
           ? { kind: "open-section", label: "查看配置", section: "settings" }
-          : { kind: "repair", label: "修复 Codex auth", repairActions: ["repair-auth-json"] },
+          : params.codexCpaActive
+            ? { kind: "repair", label: "修复 Codex auth", repairActions: ["repair-auth-json"] }
+            : { kind: "repair", label: "验证后接入 CPA", repairActions: ["apply-codex-cpa-after-smoke"] },
       },
       {
         id: "proxy-loopback",
@@ -2367,13 +2398,18 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const hasFail = checks.some((check) => check.status === "fail");
     const hasWarn = checks.some((check) => check.status === "warn");
     const level = hasFail ? "blocked" : hasWarn ? "attention" : "ready";
-    const baseChatReady = !hasFail;
-    const chatReady = baseChatReady && smokeFresh;
+    const baseChecksReady = !hasFail;
+    const codexAttachedReady = params.codexCpaActive && codexAuthReady;
+    const chatReady = baseChecksReady && codexAttachedReady && smokeFresh;
     const longTaskReady = chatReady && !hasActiveJob && params.context.tokens !== null && params.context.tokens >= DEFAULT_CONTEXT_TOKENS;
     const compactionReady = chatReady && !compressionEnabled && params.context.mode !== "default";
-    const chatBlockedDetail = baseChatReady
-      ? "先重新运行 glm-5.1 / kimi-k2.6 smoke matrix，确认 CPA 普通和流式链路仍新鲜可用。"
-      : "先修复失败检查项。";
+    const chatBlockedDetail = !params.codexCpaActive
+      ? "当前 Codex 保持官方 GPT 路径；通过 smoke gate 接入 CPA 后再运行本地 Compact 对话。"
+      : !codexAuthReady
+        ? "先修复 Codex auth，确保 CLI 使用本地 CPA proxy key。"
+        : baseChecksReady
+          ? "先重新运行 glm-5.1 / kimi-k2.6 smoke matrix，确认 CPA 普通和流式链路仍新鲜可用。"
+          : "先修复失败检查项。";
     const ccAgentModeReady = ccAgentTaskReady && chatReady;
     return {
       level,
@@ -2465,6 +2501,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const codexAuth = readCodexAuth(currentPaths.codexAuth);
     const cpaProxyKey = codexToken || codexAuth.key;
     const codexAuthMatches = cpaProxyKey ? codexAuth.key === cpaProxyKey : null;
+    const codexCpaActive = codexConfigUsesLocalCompact(codexConfig, compactPort);
     const context = readCodexContext(codexConfig);
     const openclawDefaultModel = readOpenclawDefaultModel(currentPaths.openclawJson);
     const openclawPreferredModels = readOpenclawPreferredModels(currentPaths.openclawJson);
@@ -2509,6 +2546,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       cpaHealthy,
       compactHealthy,
       codexAuthOk: pathExists(currentPaths.codexAuth) && codexAuthMatches === true,
+      codexCpaActive,
     });
     const warnings: string[] = [];
     const installer = resolveInstallerSource();
@@ -2516,8 +2554,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (installer.kind === "development-fallback") warnings.push("Using development codex-docs checkout as installer source.");
     if (installer.kind === "missing") warnings.push("Bundled Codex Stack installer assets are missing.");
     if (ccConfig && !ccBindingPresent) warnings.push("cc-connect is installed/configured but still needs Feishu or Weixin QR binding.");
-    if (!pathExists(currentPaths.codexAuth)) warnings.push("~/.codex/auth.json is missing; Codex CLI may not read the local CPA key.");
-    if (codexAuthMatches === false) warnings.push("~/.codex/auth.json OPENAI_API_KEY does not match the configured CPA proxy key.");
+    if (codexCpaActive && !pathExists(currentPaths.codexAuth)) warnings.push("~/.codex/auth.json is missing; Codex CLI may not read the local CPA key.");
+    if (codexCpaActive && codexAuthMatches === false) warnings.push("~/.codex/auth.json OPENAI_API_KEY does not match the configured CPA proxy key.");
     if (hasCodexResponsesWebSocketsEnabled(codexConfig)) warnings.push("Codex Responses WebSocket transport is enabled; CPA-compatible providers should use HTTP/SSE to avoid slow reconnect fallback.");
     if (hasCodexRequestCompressionEnabled(codexConfig)) warnings.push("Codex request compression is enabled; CPA-compatible providers should disable it unless the local proxy decodes compressed request bodies.");
     if (!managementSecret) warnings.push("CPA remote-management.secret-key is empty; the management dashboard/API is disabled.");
@@ -2561,6 +2599,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       cpaHealthy,
       compactHealthy,
       codexAuthMatches,
+      codexCpaActive,
       proxyPolicy,
       profile,
       context,

@@ -663,6 +663,8 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(runReadinessPanel, /readiness\.modes/);
   assert.match(runReadinessPanel, /readiness\.checks/);
   assert.match(runReadinessPanel, /runReadinessLevelLabel\(readiness\.level\)/);
+  assert.match(runReadinessPanel, /runReadinessModeTone\(mode\.ready, readiness\.level\)/);
+  assert.match(runReadinessPanel, /runReadinessModeLabel\(mode\.ready, readiness\.level\)/);
   assert.match(runReadinessPanel, /runReadinessCheckTone\(check\.status\)/);
   assert.match(runReadinessPanel, /@click="\$emit\('check-action', check\)"/);
   assert.match(runReadinessPanel, /check\.actionHint\.label/);
