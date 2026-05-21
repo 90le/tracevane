@@ -27,6 +27,7 @@ const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanne
 const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
 const modelCatalogCard = read("apps/web-vue/src/features/codex-stack/CodexStackModelCatalogCard.vue");
+const modelRibbon = read("apps/web-vue/src/features/codex-stack/CodexStackModelRibbon.vue");
 const repairBoard = read("apps/web-vue/src/features/codex-stack/CodexStackRepairBoard.vue");
 const runtimeConfigCard = read("apps/web-vue/src/features/codex-stack/CodexStackRuntimeConfigCard.vue");
 const upstreamMap = read("apps/web-vue/src/features/codex-stack/CodexStackUpstreamMap.vue");
@@ -97,6 +98,10 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(modelCatalogCard, /\.cs-model-list\s*\{/);
   assert.match(modelCatalogCard, /\.cs-model-current\s*\{/);
   assert.match(modelCatalogCard, /@media \(max-width: 960px\)/);
+  assert.match(modelRibbon, /class="panel-card cs-model-ribbon"/);
+  assert.match(modelRibbon, /\.cs-model-ribbon-side\s*\{/);
+  assert.match(modelRibbon, /\.cs-status-pill\.tone-sage\s*\{/);
+  assert.match(modelRibbon, /@media \(max-width: 960px\)/);
   assert.match(repairBoard, /class="panel-card cs-repair-board"/);
   assert.match(repairBoard, /\.cs-repair-grid\s*\{/);
   assert.match(repairBoard, /@media \(max-width: 960px\)/);
@@ -140,6 +145,23 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectSetupPanel, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
+});
+
+test("codex stack model ribbon delegates catalog refresh without moving model ownership", () => {
+  assert.match(controlPage, /import CodexStackModelRibbon from "\.\/CodexStackModelRibbon\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackModelRibbon[\s\S]*:current-model="summary\.models\.current \|\| summary\.profile\.defaultModel \|\| '--'"[\s\S]*:source-help="modelSourceHelp"[\s\S]*:source-tone="modelSourceTone"[\s\S]*:source-label="modelSourceLabel"[\s\S]*:model-count="modelOptions\.length"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:loading="loading"[\s\S]*@reload="loadSummary"/,
+  );
+  assert.match(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[/);
+  assert.match(controlPage, /const modelSourceTone = computed\(\(\) => \{/);
+  assert.match(controlPage, /async function loadSummary\(\): Promise<void>/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-model-ribbon"/);
+  assert.doesNotMatch(controlPage, /class="cs-model-ribbon-side"/);
+  assert.match(modelRibbon, /defineProps<\{[\s\S]*currentModel: string;[\s\S]*sourceHelp: string;[\s\S]*sourceTone: CodexStackTone;[\s\S]*modelCount: number;[\s\S]*loading: boolean;[\s\S]*\}>/);
+  assert.match(modelRibbon, /defineEmits<\{[\s\S]*reload: \[\];[\s\S]*\}>/);
+  assert.match(modelRibbon, /@click="\$emit\('reload'\)"/);
+  assert.doesNotMatch(modelRibbon, /fetchCodexStackSummary|loadSummary|summary\.models|modelOptions|modelSourceTone|modelSourceLabel/);
 });
 
 test("codex stack dashboard delegates hero actions without moving service commands", () => {

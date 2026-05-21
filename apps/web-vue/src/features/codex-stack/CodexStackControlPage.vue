@@ -52,21 +52,16 @@
         @dismiss="activeJob = null"
       />
 
-      <article class="panel-card cs-model-ribbon">
-        <div>
-          <p class="cs-section-kicker">{{ text("模型目录", "Model Catalog") }}</p>
-          <h3>{{ summary.models.current || summary.profile.defaultModel || "--" }}</h3>
-          <p>{{ modelSourceHelp }}</p>
-        </div>
-        <div class="cs-model-ribbon-side">
-          <span class="cs-status-pill" :class="`tone-${modelSourceTone}`">{{ modelSourceLabel }}</span>
-          <span class="cs-info-chip">{{ text("可选模型", "Available models") }} {{ modelOptions.length }}</span>
-          <span class="cs-info-chip">{{ text("上下文", "Context") }} {{ contextTokensDisplay }}</span>
-          <button type="button" class="secondary-button" :disabled="loading" @click="loadSummary">
-            {{ text("刷新模型列表", "Refresh Models") }}
-          </button>
-        </div>
-      </article>
+      <CodexStackModelRibbon
+        :current-model="summary.models.current || summary.profile.defaultModel || '--'"
+        :source-help="modelSourceHelp"
+        :source-tone="modelSourceTone"
+        :source-label="modelSourceLabel"
+        :model-count="modelOptions.length"
+        :context-tokens-display="contextTokensDisplay"
+        :loading="loading"
+        @reload="loadSummary"
+      />
 
       <div class="cs-workspace">
         <aside class="cs-sidebar">
@@ -548,6 +543,7 @@ import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";
 import CodexStackModelCatalogCard from "./CodexStackModelCatalogCard.vue";
+import CodexStackModelRibbon from "./CodexStackModelRibbon.vue";
 import CodexStackRepairBoard from "./CodexStackRepairBoard.vue";
 import CodexStackRuntimeConfigCard from "./CodexStackRuntimeConfigCard.vue";
 import type {
@@ -2556,8 +2552,7 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   max-width: 980px;
 }
 
-.cs-lock-card,
-.cs-model-ribbon {
+.cs-lock-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2631,31 +2626,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   flex-direction: column;
   gap: 18px;
   min-width: 0;
-}
-
-.cs-model-ribbon {
-  align-items: flex-start;
-  border-color: color-mix(in srgb, var(--acc) 22%, var(--line));
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--sky) 16%, transparent), transparent 34%),
-    linear-gradient(135deg, color-mix(in srgb, var(--surface) 94%, #132132 6%), var(--surface));
-}
-
-.cs-model-ribbon h3 {
-  margin: 0;
-  font-size: clamp(1.25rem, 2vw, 1.8rem);
-}
-
-.cs-model-ribbon p {
-  margin: 8px 0 0;
-  color: var(--text-soft);
-}
-
-.cs-model-ribbon-side {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
 .cs-section-kicker {
@@ -2920,17 +2890,11 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   }
 
   .cs-lock-card,
-  .cs-model-ribbon,
   .cs-section-intro,
   .cs-card-header,
   .cs-project-head {
     flex-direction: column;
     align-items: stretch;
   }
-
-  .cs-model-ribbon-side {
-    justify-content: flex-start;
-  }
-
 }
 </style>
