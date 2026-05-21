@@ -88,46 +88,22 @@
         <div class="cs-content">
           <template v-if="activeSection === 'dashboard'">
             <section class="cs-section-stack">
-              <article class="panel-card cs-hero-card">
-                <div class="cs-hero-copy">
-                  <p class="cs-section-kicker">{{ text("概览", "Dashboard") }}</p>
-                  <div class="cs-hero-title-row">
-                    <h3>{{ statusLabel }}</h3>
-                    <span class="cs-status-pill" :class="`tone-${statusTone}`">{{ statusLabel }}</span>
-                  </div>
-                  <p class="cs-hero-description">
-                    {{ text("先看当前状态，再按建议执行安装、修复或配置。CPA、Compact、cc-connect 与 watchdog 由 systemd 托管，Studio 负责观测与操作入口。", "Start from the current state, then follow suggested install, repair, or config actions. CPA, Compact, cc-connect, and watchdog are managed by systemd; Studio provides the control surface.") }}
-                  </p>
-                  <div class="cs-chip-row">
-                    <span class="cs-info-chip">
-                      {{ text("在线服务", "Active services") }} {{ activeServiceCount }}/{{ summary.services.length }}
-                    </span>
-                    <span class="cs-info-chip">
-                      {{ text("当前模型", "Current model") }} {{ summary.models.current || "--" }}
-                    </span>
-                    <span class="cs-info-chip">
-                      {{ text("Codex 上下文", "Codex context") }} {{ contextTokensDisplay }}
-                    </span>
-                    <span class="cs-info-chip">
-                      {{ text("安装渠道", "Channel") }} {{ channelLabel(summary.installer.channel) }}
-                    </span>
-                    <span class="cs-info-chip">
-                      {{ text("检查时间", "Checked") }} {{ formatTimestamp(summary.checkedAt) }}
-                    </span>
-                  </div>
-                </div>
-                <div class="cs-hero-actions">
-                  <button type="button" class="primary-button" :disabled="busy" @click="runCheck">
-                    {{ text("运行健康检查", "Run Health Check") }}
-                  </button>
-                  <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="repairRecommended">
-                    {{ text("自动修复", "Auto Repair") }}
-                  </button>
-                  <button type="button" class="secondary-button" :disabled="loading || ccConnectLoading" @click="loadAll">
-                    {{ text("重新同步", "Sync Now") }}
-                  </button>
-                </div>
-              </article>
+              <CodexStackDashboardHeroCard
+                :status-label="statusLabel"
+                :status-tone="statusTone"
+                :active-service-count="activeServiceCount"
+                :service-count="summary.services.length"
+                :current-model="summary.models.current"
+                :context-tokens-display="contextTokensDisplay"
+                :channel-label="channelLabel(summary.installer.channel)"
+                :checked-at-label="formatTimestamp(summary.checkedAt)"
+                :busy="busy"
+                :can-run-mutation="canRunMutation"
+                :sync-disabled="loading || ccConnectLoading"
+                @run-check="runCheck"
+                @repair="repairRecommended"
+                @sync="loadAll"
+              />
 
               <CodexStackChainMap
                 :labels="chainMapLabels"
@@ -518,6 +494,7 @@ import {
 } from "./readiness-action";
 import CodexStackActionOverview from "./CodexStackActionOverview.vue";
 import CodexStackDashboardInsights from "./CodexStackDashboardInsights.vue";
+import CodexStackDashboardHeroCard from "./CodexStackDashboardHeroCard.vue";
 import type {
   CodexStackComponentHealthCard,
   CodexStackNetworkPolicyCard,
@@ -2580,7 +2557,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 }
 
 .cs-lock-card,
-.cs-hero-card,
 .cs-model-ribbon {
   display: flex;
   align-items: center;
@@ -2591,7 +2567,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 .cs-lock-card p,
 .cs-section-copy,
 .cs-field-hint,
-.cs-hero-description,
 .cs-service-blurb {
   color: var(--text-soft);
 }
@@ -2691,7 +2666,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   font-size: 0.72rem;
 }
 
-.cs-hero-actions,
 .cs-actions,
 .cs-platform-badges {
   display: flex;
@@ -2700,32 +2674,11 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   flex-wrap: wrap;
 }
 
-.cs-hero-card {
-  align-items: flex-start;
-  padding: 24px;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 18%, transparent), transparent 36%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, #071018 8%), var(--surface));
-}
-
 .form-help {
   color: var(--text-soft);
   font-size: 0.84rem;
 }
 
-.cs-hero-copy {
-  min-width: 0;
-}
-
-.cs-hero-title-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.cs-hero-title-row h3,
 .cs-section-intro h3 {
   margin: 0;
   font-size: clamp(1.35rem, 2vw, 1.8rem);
@@ -2967,7 +2920,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   }
 
   .cs-lock-card,
-  .cs-hero-card,
   .cs-model-ribbon,
   .cs-section-intro,
   .cs-card-header,

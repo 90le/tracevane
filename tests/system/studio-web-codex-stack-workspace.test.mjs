@@ -16,6 +16,7 @@ const ccConnectRail = read("apps/web-vue/src/features/codex-stack/CodexStackCcCo
 const ccConnectSetupPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectSetupPanel.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
+const dashboardHeroCard = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardHeroCard.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
 const environmentReferenceCard = read("apps/web-vue/src/features/codex-stack/CodexStackEnvironmentReferenceCard.vue");
@@ -60,6 +61,11 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(actionOverview, /class="cs-action-overview-grid"/);
   assert.match(actionOverview, /\.cs-readiness-bar\s*\{/);
   assert.match(actionOverview, /@media \(max-width: 1200px\)/);
+  assert.match(dashboardHeroCard, /class="panel-card cs-dashboard-hero-card"/);
+  assert.match(dashboardHeroCard, /\.cs-hero-title-row\s*\{/);
+  assert.match(dashboardHeroCard, /\.cs-hero-actions\s*\{/);
+  assert.match(dashboardHeroCard, /\.cs-status-pill\.tone-sage\s*\{/);
+  assert.match(dashboardHeroCard, /@media \(max-width: 960px\)/);
   assert.match(diagnosticsPanel, /class="cs-diagnostics-grid"/);
   assert.match(diagnosticsPanel, /\.cs-warning-list\s*\{/);
   assert.match(diagnosticsPanel, /@media \(max-width: 960px\)/);
@@ -134,6 +140,25 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectSetupPanel, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
+});
+
+test("codex stack dashboard delegates hero actions without moving service commands", () => {
+  assert.match(controlPage, /import CodexStackDashboardHeroCard from "\.\/CodexStackDashboardHeroCard\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="busy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
+  );
+  assert.match(controlPage, /async function runCheck\(\): Promise<void>/);
+  assert.match(controlPage, /async function repairRecommended\(\): Promise<void>/);
+  assert.match(controlPage, /async function loadAll\(silent = false, ccConnectOptions: CcConnectLoadOptions = \{\}\): Promise<void>/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-hero-card"/);
+  assert.doesNotMatch(controlPage, /class="cs-hero-actions"/);
+  assert.match(dashboardHeroCard, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*syncDisabled: boolean;[\s\S]*\}>/);
+  assert.match(dashboardHeroCard, /defineEmits<\{[\s\S]*"run-check": \[\];[\s\S]*repair: \[\];[\s\S]*sync: \[\];[\s\S]*\}>/);
+  assert.match(dashboardHeroCard, /@click="\$emit\('run-check'\)"/);
+  assert.match(dashboardHeroCard, /@click="\$emit\('repair'\)"/);
+  assert.match(dashboardHeroCard, /@click="\$emit\('sync'\)"/);
+  assert.doesNotMatch(dashboardHeroCard, /runCodexStackCheck|startCodexStackRepair|fetchCodexStackSummary|fetchCcConnectConfig|loadAll|repairRecommended|runCheck/);
 });
 
 test("codex stack dashboard delegates action overview without losing actions", () => {
