@@ -335,7 +335,7 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.match(controlPage, /import CodexStackDashboardHeroCard from "\.\/CodexStackDashboardHeroCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="busy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
+    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="actionBusy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
   );
   assert.match(controlPage, /const codexProviderCheck = computed\(\(\) => \(/);
   assert.match(controlPage, /if \(status === "pass"\) return text\("CPA 已接入", "CPA attached"\);/);
@@ -355,7 +355,7 @@ test("codex stack dashboard delegates hero actions without moving service comman
 
 test("codex stack dashboard delegates action overview without losing actions", () => {
   assert.match(controlPage, /import CodexStackActionOverview from "\.\/CodexStackActionOverview\.vue";/);
-  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:ready-component-count="readyComponentCount"[\s\S]*:next-action-title="nextActionTitle"[\s\S]*@primary="nextActionPrimary"[\s\S]*@open-section="activeSection = nextActionSection"/);
+  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:ready-component-count="readyComponentCount"[\s\S]*:next-action-title="nextActionTitle"[\s\S]*:busy="actionBusy"[\s\S]*@primary="nextActionPrimary"[\s\S]*@open-section="activeSection = nextActionSection"/);
   assert.doesNotMatch(controlPage, /class="cs-command-grid"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-readiness-card"/);
   assert.match(actionOverview, /<CodexStackRecommendationCard/);
@@ -365,7 +365,7 @@ test("codex stack dashboard delegates action overview without losing actions", (
 
 test("codex stack dashboard delegates diagnostics without losing run check", () => {
   assert.match(controlPage, /import CodexStackDiagnosticsPanel from "\.\/CodexStackDiagnosticsPanel\.vue";/);
-  assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:output="checkOutput"[\s\S]*:warnings="summary\.warnings"[\s\S]*@run-check="runCheck"/);
+  assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:output="checkOutput"[\s\S]*:warnings="summary\.warnings"[\s\S]*:busy="actionBusy"[\s\S]*@run-check="runCheck"/);
   assert.doesNotMatch(controlPage, /尚未运行健康检查。/);
   assert.doesNotMatch(controlPage, /class="cs-diagnostics-grid"/);
   assert.match(diagnosticsPanel, /健康检查/);
@@ -660,11 +660,25 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
 
 test("codex stack dashboard exposes codex run readiness as a first-screen contract", () => {
   assert.match(controlPage, /import CodexStackRunReadinessPanel from "\.\/CodexStackRunReadinessPanel\.vue";/);
-  assert.match(controlPage, /<CodexStackRunReadinessPanel[\s\S]*:readiness="summary\.runReadiness"[\s\S]*@check-action="runReadinessCheckAction"[\s\S]*@mode-action="runReadinessModeAction"/);
+  assert.match(controlPage, /<CodexStackRunReadinessPanel[\s\S]*:readiness="summary\.runReadiness"[\s\S]*:actions-disabled="runReadinessActionsDisabled"[\s\S]*:disabled-label="runReadinessDisabledLabel"[\s\S]*@check-action="runReadinessCheckAction"[\s\S]*@mode-action="runReadinessModeAction"/);
+  assert.match(controlPage, /const actionBusy = computed\(\(\) => busy\.value \|\| jobRunning\.value\);/);
+  assert.match(controlPage, /<CodexStackDashboardHeroCard[\s\S]*:busy="actionBusy"/);
+  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:busy="actionBusy"/);
+  assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:busy="actionBusy"/);
+  assert.match(controlPage, /const runReadinessActionsDisabled = computed\(\(\) => busy\.value \|\| jobRunning\.value\);/);
+  assert.match(controlPage, /任务执行中，先看日志/);
+  assert.match(controlPage, /已有后台任务正在执行，请等待完成后再运行健康检查/);
+  assert.match(controlPage, /async function runCheck\(\): Promise<void> \{[\s\S]*if \(jobRunning\.value\)/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-run-readiness-card"/);
   assert.match(runReadinessPanel, /readiness\.title/);
   assert.match(runReadinessPanel, /readiness\.modes/);
   assert.match(runReadinessPanel, /readiness\.checks/);
+  assert.match(runReadinessPanel, /actionsDisabled: boolean;/);
+  assert.match(runReadinessPanel, /disabledLabel: string;/);
+  assert.match(runReadinessPanel, /:disabled="isActionDisabled\(mode\.actionHint\)"/);
+  assert.match(runReadinessPanel, /:disabled="isActionDisabled\(check\.actionHint\)"/);
+  assert.match(runReadinessPanel, /actionHint\.kind !== "open-section"/);
+  assert.match(runReadinessPanel, /props\.actionsDisabled/);
   assert.match(runReadinessPanel, /runReadinessLevelLabel\(readiness\.level\)/);
   assert.match(runReadinessPanel, /runReadinessModeTone\(mode\.ready, readiness\.level\)/);
   assert.match(runReadinessPanel, /runReadinessModeLabel\(mode\.ready, readiness\.level\)/);

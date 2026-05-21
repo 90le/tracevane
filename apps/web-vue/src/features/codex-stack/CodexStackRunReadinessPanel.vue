@@ -17,12 +17,13 @@
         type="button"
         class="cs-run-mode"
         :class="runReadinessModeTone(mode.ready, readiness.level)"
+        :disabled="isActionDisabled(mode.actionHint)"
         @click="$emit('mode-action', mode)"
       >
         <div>
           <strong>{{ mode.label }}</strong>
           <p>{{ mode.detail }}</p>
-          <em v-if="mode.actionHint">{{ mode.actionHint.label }}</em>
+          <em v-if="mode.actionHint">{{ isActionDisabled(mode.actionHint) ? disabledLabel : mode.actionHint.label }}</em>
         </div>
         <span>{{ runReadinessModeLabel(mode.ready, readiness.level) }}</span>
       </button>
@@ -34,12 +35,13 @@
         type="button"
         class="cs-run-check"
         :class="`tone-${runReadinessCheckTone(check.status)}`"
+        :disabled="isActionDisabled(check.actionHint)"
         @click="$emit('check-action', check)"
       >
         <span>{{ check.label }}</span>
         <strong>{{ runReadinessCheckLabel(check.status) }}</strong>
         <small>{{ check.detail }}</small>
-        <em>{{ check.actionHint.label }}</em>
+        <em>{{ isActionDisabled(check.actionHint) ? disabledLabel : check.actionHint.label }}</em>
       </button>
     </div>
   </article>
@@ -49,6 +51,7 @@
 import { useLocalePreference } from "../../shared/locale";
 import type {
   CodexStackRunReadiness,
+  CodexStackRunReadinessActionHint,
   CodexStackRunReadinessCheck,
   CodexStackRunReadinessCheckStatus,
   CodexStackRunReadinessLevel,
@@ -56,9 +59,11 @@ import type {
 } from "../../../../../types/codex-stack";
 import type { CodexStackTone } from "./codex-stack-view-model";
 
-defineProps<{
+const props = defineProps<{
   readiness: CodexStackRunReadiness;
   tone: CodexStackTone;
+  actionsDisabled: boolean;
+  disabledLabel: string;
 }>();
 
 defineEmits<{
@@ -100,6 +105,10 @@ function runReadinessModeTone(ready: boolean, level: CodexStackRunReadinessLevel
 function runReadinessModeLabel(ready: boolean, level: CodexStackRunReadinessLevel): string {
   if (ready) return text("可用", "Ready");
   return level === "blocked" ? text("阻断", "Blocked") : text("待处理", "Pending");
+}
+
+function isActionDisabled(actionHint: CodexStackRunReadinessActionHint | undefined): boolean {
+  return Boolean(actionHint && actionHint.kind !== "open-section" && props.actionsDisabled);
 }
 </script>
 
@@ -186,6 +195,18 @@ function runReadinessModeLabel(ready: boolean, level: CodexStackRunReadinessLeve
 
 .cs-run-check:hover {
   transform: translateY(-1px);
+}
+
+.cs-run-mode:disabled,
+.cs-run-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  transform: none;
+}
+
+.cs-run-mode:disabled em,
+.cs-run-check:disabled em {
+  color: var(--muted);
 }
 
 .cs-run-mode {

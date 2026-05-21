@@ -72,7 +72,7 @@
               :context-tokens-display="contextTokensDisplay"
               :channel-label="channelLabel(summary.installer.channel)"
               :checked-at-label="formatTimestamp(summary.checkedAt)"
-              :busy="busy"
+              :busy="actionBusy"
               :can-run-mutation="canRunMutation"
               :sync-disabled="loading || ccConnectLoading"
               @run-check="runCheck"
@@ -92,6 +92,8 @@
               v-if="summary.runReadiness"
               :readiness="summary.runReadiness"
               :tone="runReadinessTone"
+              :actions-disabled="runReadinessActionsDisabled"
+              :disabled-label="runReadinessDisabledLabel"
               @check-action="runReadinessCheckAction"
               @mode-action="runReadinessModeAction"
             />
@@ -106,7 +108,7 @@
               :next-action-button="nextActionButton"
               :next-action-requires-mutation="nextActionRequiresMutation"
               :can-run-mutation="canRunMutation"
-              :busy="busy"
+              :busy="actionBusy"
               :model-source-label="modelSourceLabel"
               :model-source-help="modelSourceHelp"
               :model-catalog-preview="modelCatalogPreview"
@@ -132,7 +134,7 @@
             <CodexStackDiagnosticsPanel
               :output="checkOutput"
               :warnings="summary.warnings"
-              :busy="busy"
+              :busy="actionBusy"
               @run-check="runCheck"
             />
           </CodexStackSectionStack>
@@ -756,6 +758,7 @@ const serviceCatalog: Record<
 
 const canMutate = computed(() => summary.value?.management.enabled === true);
 const jobRunning = computed(() => activeJob.value ? isCodexStackJobRunning(activeJob.value) : false);
+const actionBusy = computed(() => busy.value || jobRunning.value);
 const canRunMutation = computed(() => canMutate.value && !busy.value && !jobRunning.value);
 const statusTone = computed(() => codexStackStatusTone(summary.value?.overallStatus || "needs-setup"));
 const statusLabel = computed(() => {
@@ -785,6 +788,16 @@ const runReadinessTone = computed<CodexStackTone>(() => {
   if (level === "ready") return "sage";
   if (level === "attention") return "accent";
   return "danger";
+});
+const runReadinessActionsDisabled = computed(() => busy.value || jobRunning.value);
+const runReadinessDisabledLabel = computed(() => {
+  if (jobRunning.value) {
+    return text("任务执行中，先看日志", "Job running; view logs first");
+  }
+  if (busy.value) {
+    return text("操作进行中", "Action in progress");
+  }
+  return "";
 });
 const modelSourceTone = computed<CodexStackTone>(() => {
   if (summary.value?.models.live) return "sage";
@@ -2172,6 +2185,15 @@ async function installBaseOnly(): Promise<void> {
 }
 
 async function runCheck(): Promise<void> {
+  if (jobRunning.value) {
+    activeSection.value = "logs";
+    notice.value = {
+      kind: "error",
+      text: text("已有后台任务正在执行，请等待完成后再运行健康检查。", "A background job is already running. Wait for it to finish before running a health check."),
+    };
+    return;
+  }
+  if (busy.value) return;
   busy.value = true;
   try {
     const response = await runCodexStackCheck();
