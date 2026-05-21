@@ -363,23 +363,13 @@
                 </div>
               </article>
 
-              <article class="panel-card cs-model-catalog-card">
-                <div class="cs-card-header">
-                  <div>
-                    <p class="cs-section-kicker">{{ text("CPA 模型列表", "CPA Model List") }}</p>
-                    <h4>{{ text("从 /v1/models 读取的可用模型", "Models discovered from /v1/models") }}</h4>
-                  </div>
-                  <button type="button" class="secondary-button" :disabled="loading" @click="loadSummary">
-                    {{ text("重新读取", "Reload") }}
-                  </button>
-                </div>
-                <p class="cs-field-hint">{{ modelSourceHelp }}</p>
-                <div class="cs-model-list">
-                  <span v-for="model in modelOptions" :key="`catalog-${model}`" :class="{ 'cs-model-current': model === summary.models.current }">
-                    {{ model }}
-                  </span>
-                </div>
-              </article>
+              <CodexStackModelCatalogCard
+                :models="modelOptions"
+                :current-model="summary.models.current"
+                :source-help="modelSourceHelp"
+                :loading="loading"
+                @reload="loadSummary"
+              />
 
               <CodexStackUpstreamMap
                 :default-model="configForm.defaultModel || summary.models.current || '--'"
@@ -401,66 +391,22 @@
                   @save="saveConfigPatch"
                 />
 
-                <article class="panel-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("参考信息", "Reference") }}</p>
-                      <h4>{{ text("环境与安装器信息", "Environment and Installer Info") }}</h4>
-                    </div>
-                  </div>
-                  <div class="cs-kv-list">
-                    <div class="cs-kv-row">
-                      <span>{{ text("Home 目录", "Home Directory") }}</span>
-                      <code>{{ summary.homeDir }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("Profile 路径", "Profile Path") }}</span>
-                      <code>{{ summary.profilePath }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("安装器根目录", "Installer Root") }}</span>
-                      <code>{{ summary.installer.root || "--" }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("来源类型", "Source Kind") }}</span>
-                      <code>{{ summary.installer.kind }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("自动安装脚本", "Auto Setup") }}</span>
-                      <code>{{ summary.installer.scripts.autoSetup || "--" }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("健康检查脚本", "Health Check") }}</span>
-                      <code>{{ summary.installer.scripts.healthCheck || "--" }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("收尾脚本", "Finalizer") }}</span>
-                      <code>{{ summary.installer.scripts.ccConnectFinalizer || "--" }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("代理密钥", "Proxy Key") }}</span>
-                      <code>{{ summary.secrets.cpaProxyKey.masked || text("未设置", "Not set") }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("Codex auth.json", "Codex auth.json") }}</span>
-                      <code>{{ summary.secrets.codexAuth.hasSecret ? (summary.secrets.codexAuth.matchesProxyKey ? "ok" : "mismatch") : text("缺失", "Missing") }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("上下文", "Context") }}</span>
-                      <code>{{ summary.context.mode }} · {{ contextTokensDisplay }}</code>
-                    </div>
-                    <div class="cs-kv-row">
-                      <span>{{ text("CPA 看板", "CPA Dashboard") }}</span>
-                      <code>{{ summary.cpaManagement.controlPanelEnabled ? summary.cpaManagement.dashboardUrl : text("未启用", "Disabled") }}</code>
-                    </div>
-                  </div>
-                  <div v-if="summary.installer.missingFiles.length" class="cs-warning-list">
-                    <div v-for="missingFile in summary.installer.missingFiles" :key="missingFile" class="cs-warning-row">
-                      <span class="cs-warning-icon">!</span>
-                      <span>{{ missingFile }}</span>
-                    </div>
-                  </div>
-                </article>
+                <CodexStackEnvironmentReferenceCard
+                  :home-dir="summary.homeDir"
+                  :profile-path="summary.profilePath"
+                  :installer-root="summary.installer.root"
+                  :installer-kind="summary.installer.kind"
+                  :auto-setup-script="summary.installer.scripts.autoSetup"
+                  :health-check-script="summary.installer.scripts.healthCheck"
+                  :finalizer-script="summary.installer.scripts.ccConnectFinalizer"
+                  :proxy-key-masked="summary.secrets.cpaProxyKey.masked"
+                  :codex-auth-status="codexAuthStatus"
+                  :context-mode="summary.context.mode"
+                  :context-tokens-display="contextTokensDisplay"
+                  :cpa-dashboard-enabled="summary.cpaManagement.controlPanelEnabled"
+                  :cpa-dashboard-url="summary.cpaManagement.dashboardUrl"
+                  :missing-files="summary.installer.missingFiles"
+                />
               </div>
             </section>
           </template>
@@ -581,6 +527,7 @@ import type {
 import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
 import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
+import CodexStackEnvironmentReferenceCard from "./CodexStackEnvironmentReferenceCard.vue";
 import CodexStackCcConnectCommandBar from "./CodexStackCcConnectCommandBar.vue";
 import CodexStackCcConnectRail from "./CodexStackCcConnectRail.vue";
 import type {
@@ -623,6 +570,7 @@ import CodexStackJobBanner from "./CodexStackJobBanner.vue";
 import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";
+import CodexStackModelCatalogCard from "./CodexStackModelCatalogCard.vue";
 import CodexStackRepairBoard from "./CodexStackRepairBoard.vue";
 import CodexStackRuntimeConfigCard from "./CodexStackRuntimeConfigCard.vue";
 import type {
@@ -995,6 +943,11 @@ const contextTokensDisplay = computed(() => {
   }
   const tokens = summary.value?.context.tokens || summary.value?.context.recommendedTokens || 1050000;
   return tokens >= 1000000 ? `${(tokens / 1000000).toFixed(tokens % 1000000 === 0 ? 0 : 2)}M` : `${Math.round(tokens / 1000)}K`;
+});
+const codexAuthStatus = computed(() => {
+  const auth = summary.value?.secrets.codexAuth;
+  if (!auth?.hasSecret) return text("缺失", "Missing");
+  return auth.matchesProxyKey ? "ok" : "mismatch";
 });
 const proxyPolicyLabel = computed(() => {
   const current = summary.value;
@@ -2756,44 +2709,9 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
     linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, #071018 8%), var(--surface));
 }
 
-.cs-model-catalog-card {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
-    var(--surface);
-}
-
 .form-help {
   color: var(--text-soft);
   font-size: 0.84rem;
-}
-
-.cs-model-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.cs-model-list span {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 7px 10px;
-  background: color-mix(in srgb, var(--code-bg) 42%, transparent);
-  color: var(--text);
-  font-size: 0.84rem;
-}
-
-.cs-model-list {
-  margin-top: 14px;
-  max-height: 220px;
-  overflow: auto;
-}
-
-.cs-model-list .cs-model-current {
-  border-color: color-mix(in srgb, var(--success) 48%, var(--line));
-  background: color-mix(in srgb, var(--success) 18%, var(--surface));
-  font-weight: 700;
 }
 
 .cs-hero-copy {
@@ -2879,31 +2797,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   gap: 18px;
 }
 
-.cs-kv-list {
-  display: grid;
-  gap: 10px;
-}
-
-.cs-kv-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 180px) 1fr;
-  gap: 12px;
-  align-items: start;
-}
-
-.cs-kv-row span {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.cs-kv-row code {
-  color: var(--text);
-  background: color-mix(in srgb, var(--code-bg) 84%, transparent);
-  border-radius: 10px;
-  padding: 6px 10px;
-  word-break: break-word;
-}
-
 .cs-project-list {
   display: flex;
   flex-direction: column;
@@ -2915,35 +2808,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   padding: 14px;
-}
-
-.cs-warning-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.cs-warning-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--line));
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
-}
-
-.cs-warning-icon {
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--warning) 18%, transparent);
-  color: var(--warning);
-  font-weight: 700;
-  flex: 0 0 auto;
 }
 
 .cs-empty,
@@ -3099,10 +2963,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   .cs-dashboard-grid,
   .cs-form-grid,
   .cs-agent-workbench {
-    grid-template-columns: 1fr;
-  }
-
-  .cs-kv-row {
     grid-template-columns: 1fr;
   }
 

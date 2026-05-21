@@ -18,12 +18,14 @@ const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogCons
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
+const environmentReferenceCard = read("apps/web-vue/src/features/codex-stack/CodexStackEnvironmentReferenceCard.vue");
 const installConfigPanel = read("apps/web-vue/src/features/codex-stack/CodexStackInstallConfigPanel.vue");
 const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackInstallPlanCard.vue");
 const installStrategyPanel = read("apps/web-vue/src/features/codex-stack/CodexStackInstallStrategyPanel.vue");
 const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanner.vue");
 const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
+const modelCatalogCard = read("apps/web-vue/src/features/codex-stack/CodexStackModelCatalogCard.vue");
 const repairBoard = read("apps/web-vue/src/features/codex-stack/CodexStackRepairBoard.vue");
 const runtimeConfigCard = read("apps/web-vue/src/features/codex-stack/CodexStackRuntimeConfigCard.vue");
 const upstreamMap = read("apps/web-vue/src/features/codex-stack/CodexStackUpstreamMap.vue");
@@ -61,6 +63,10 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(diagnosticsPanel, /class="cs-diagnostics-grid"/);
   assert.match(diagnosticsPanel, /\.cs-warning-list\s*\{/);
   assert.match(diagnosticsPanel, /@media \(max-width: 960px\)/);
+  assert.match(environmentReferenceCard, /class="panel-card cs-environment-reference-card"/);
+  assert.match(environmentReferenceCard, /\.cs-kv-list\s*\{/);
+  assert.match(environmentReferenceCard, /\.cs-warning-list\s*\{/);
+  assert.match(environmentReferenceCard, /@media \(max-width: 960px\)/);
   assert.match(installConfigPanel, /class="cs-install-config-panel"/);
   assert.match(installConfigPanel, /\.cs-install-grid\s*\{/);
   assert.match(installConfigPanel, /@media \(max-width: 960px\)/);
@@ -80,6 +86,11 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(jobProgressPanel, /class="cs-install-overlay"/);
   assert.match(jobProgressPanel, /\.cs-job-progress-track\s*\{/);
   assert.match(jobProgressPanel, /@media \(max-width: 960px\)/);
+  assert.match(modelCatalogCard, /class="panel-card cs-model-catalog-card"/);
+  assert.match(modelCatalogCard, /\.cs-field-hint\s*\{/);
+  assert.match(modelCatalogCard, /\.cs-model-list\s*\{/);
+  assert.match(modelCatalogCard, /\.cs-model-current\s*\{/);
+  assert.match(modelCatalogCard, /@media \(max-width: 960px\)/);
   assert.match(repairBoard, /class="panel-card cs-repair-board"/);
   assert.match(repairBoard, /\.cs-repair-grid\s*\{/);
   assert.match(repairBoard, /@media \(max-width: 960px\)/);
@@ -492,6 +503,22 @@ test("codex stack settings page delegates upstream map without moving config wri
   assert.match(upstreamMap, /OPENAI_API_KEY \/ base_url/);
 });
 
+test("codex stack settings page delegates model catalog without moving summary refresh", () => {
+  assert.match(controlPage, /import CodexStackModelCatalogCard from "\.\/CodexStackModelCatalogCard\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackModelCatalogCard[\s\S]*:models="modelOptions"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:source-help="modelSourceHelp"[\s\S]*:loading="loading"[\s\S]*@reload="loadSummary"/,
+  );
+  assert.match(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[/);
+  assert.match(controlPage, /async function loadSummary\(\): Promise<void>/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-model-catalog-card"/);
+  assert.doesNotMatch(controlPage, /class="cs-model-list"/);
+  assert.match(modelCatalogCard, /defineProps<\{[\s\S]*models: string\[\];[\s\S]*currentModel: string;[\s\S]*sourceHelp: string;[\s\S]*loading: boolean;[\s\S]*\}>/);
+  assert.match(modelCatalogCard, /defineEmits<\{[\s\S]*reload: \[\];[\s\S]*\}>/);
+  assert.match(modelCatalogCard, /@click="\$emit\('reload'\)"/);
+  assert.doesNotMatch(modelCatalogCard, /fetchCodexStackSummary|loadSummary|summary\.models|modelOptions/);
+});
+
 test("codex stack settings page delegates runtime config form without moving patch ownership", () => {
   assert.match(controlPage, /import CodexStackRuntimeConfigCard from "\.\/CodexStackRuntimeConfigCard\.vue";/);
   assert.match(
@@ -506,6 +533,22 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(runtimeConfigCard, /defineEmits<[\s\S]*updateField: \[field: CodexStackRuntimeConfigField, value: string \| number\]/);
   assert.match(runtimeConfigCard, /@click="\$emit\('save'\)"/);
   assert.doesNotMatch(runtimeConfigCard, /patchCodexStackConfig|configPatchPayload|saveConfigPatch/);
+});
+
+test("codex stack settings page delegates environment reference without moving summary ownership", () => {
+  assert.match(controlPage, /import CodexStackEnvironmentReferenceCard from "\.\/CodexStackEnvironmentReferenceCard\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackEnvironmentReferenceCard[\s\S]*:home-dir="summary\.homeDir"[\s\S]*:profile-path="summary\.profilePath"[\s\S]*:installer-root="summary\.installer\.root"[\s\S]*:installer-kind="summary\.installer\.kind"[\s\S]*:auto-setup-script="summary\.installer\.scripts\.autoSetup"[\s\S]*:health-check-script="summary\.installer\.scripts\.healthCheck"[\s\S]*:finalizer-script="summary\.installer\.scripts\.ccConnectFinalizer"[\s\S]*:proxy-key-masked="summary\.secrets\.cpaProxyKey\.masked"[\s\S]*:codex-auth-status="codexAuthStatus"[\s\S]*:context-mode="summary\.context\.mode"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:cpa-dashboard-enabled="summary\.cpaManagement\.controlPanelEnabled"[\s\S]*:cpa-dashboard-url="summary\.cpaManagement\.dashboardUrl"[\s\S]*:missing-files="summary\.installer\.missingFiles"/,
+  );
+  assert.match(controlPage, /const codexAuthStatus = computed\(\(\) => \{/);
+  assert.match(controlPage, /const contextTokensDisplay = computed\(\(\) => \{/);
+  assert.doesNotMatch(controlPage, /class="cs-kv-list"/);
+  assert.doesNotMatch(controlPage, /class="cs-warning-row"/);
+  assert.match(environmentReferenceCard, /defineProps<\{[\s\S]*homeDir: string;[\s\S]*profilePath: string;[\s\S]*installerRoot: string;[\s\S]*codexAuthStatus: string;[\s\S]*missingFiles: string\[\];[\s\S]*\}>/);
+  assert.match(environmentReferenceCard, /Home 目录/);
+  assert.match(environmentReferenceCard, /Codex auth\.json/);
+  assert.doesNotMatch(environmentReferenceCard, /summary\.|fetchCodexStackSummary|loadSummary|patchCodexStackConfig|saveConfigPatch/);
 });
 
 test("codex stack summary refresh preserves dirty runtime config drafts", () => {
