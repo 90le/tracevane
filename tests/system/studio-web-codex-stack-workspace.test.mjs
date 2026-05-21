@@ -11,6 +11,7 @@ const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackContro
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
+const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
 
 test("codex stack logs panel is isolated from the main control page", () => {
   assert.match(controlPage, /import CodexStackLogConsole from "\.\/CodexStackLogConsole\.vue";/);
@@ -84,6 +85,13 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(controlPage, /先运行“只验证”/);
   assert.match(controlPage, /已有新鲜通过矩阵；点击后仍会重新烟测/);
   assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*glm-5\.1 \/ kimi-k2\.6 矩阵在 24 小时内全部通过/);
+});
+
+test("codex stack recommended repair resumes a deliberately paused stack in order", () => {
+  assert.match(viewModel, /const services = new Map\(summary\.services\.map\(\(service\) => \[service\.id, service\]\)\);/);
+  assert.match(viewModel, /const stackInstalled = cpa\?\.installed === true && compact\?\.installed === true && watchdog\?\.installed === true;/);
+  assert.match(viewModel, /if \(stackInstalled && !cpaActive && !compactActive && !watchdogActive\) \{[\s\S]*return \["resume-stack"\];[\s\S]*\}/);
+  assert.doesNotMatch(viewModel, /if \(!serviceActive\.get\("cli-proxy-api\.service"\)\) actions\.push\("restart-cpa"\);/);
 });
 
 test("codex stack background jobs resync cc-connect drafts after completion", () => {

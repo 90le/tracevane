@@ -35,16 +35,26 @@ export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload):
   CodexStackRepairAction
 > {
   const actions: CodexStackRepairAction[] = [];
-  const serviceActive = new Map(summary.services.map((service) => [service.id, service.active]));
+  const services = new Map(summary.services.map((service) => [service.id, service]));
+  const cpa = services.get("cli-proxy-api.service");
+  const compact = services.get("cpa-compact-proxy.service");
+  const watchdog = services.get("codex-stack-watchdog.timer");
+  const cpaActive = cpa?.active === true;
+  const compactActive = compact?.active === true;
+  const watchdogActive = watchdog?.active === true;
+  const stackInstalled = cpa?.installed === true && compact?.installed === true && watchdog?.installed === true;
+  if (stackInstalled && !cpaActive && !compactActive && !watchdogActive) {
+    return ["resume-stack"];
+  }
   if (!summary.secrets.codexAuth.hasSecret || summary.secrets.codexAuth.matchesProxyKey === false) {
     actions.push("repair-auth-json");
   }
   if (!summary.cpaManagement.enabled || !summary.cpaManagement.controlPanelEnabled) {
     actions.push("repair-cpa-management");
   }
-  if (!serviceActive.get("cli-proxy-api.service")) actions.push("restart-cpa");
-  if (!serviceActive.get("cpa-compact-proxy.service")) actions.push("restart-compact-proxy");
-  if (!serviceActive.get("codex-stack-watchdog.timer")) actions.push("restart-watchdog");
-  if (summary.ccConnect.bindingPresent && !serviceActive.get("cc-connect.service")) actions.push("restart-cc-connect");
+  if (!cpaActive) actions.push("restart-cpa");
+  if (!compactActive) actions.push("restart-compact-proxy");
+  if (!watchdogActive) actions.push("restart-watchdog");
+  if (summary.ccConnect.bindingPresent && services.get("cc-connect.service")?.active !== true) actions.push("restart-cc-connect");
   return actions.length ? actions : ["restart-cpa", "restart-compact-proxy", "restart-watchdog"];
 }
