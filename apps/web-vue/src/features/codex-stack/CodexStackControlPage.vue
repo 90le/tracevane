@@ -227,51 +227,14 @@
                   @update-field="updateInstallFormField"
                 />
 
-                <article class="panel-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("步骤 3", "Step 3") }}</p>
-                      <h4>{{ text("组件策略", "Component Strategy") }}</h4>
-                    </div>
-                  </div>
-                  <p class="cs-field-hint">
-                    {{ text("每个组件都可以保持默认、跳过，或强制重装。", "Each component can stay default, be skipped, or be force reinstalled.") }}
-                  </p>
-                  <div class="cs-component-mode-list">
-                    <article v-for="component in componentOptions" :key="component.id" class="cs-component-mode-card">
-                      <div>
-                        <strong>{{ component.label }}</strong>
-                        <p>{{ installModeLabel(component.id) }}</p>
-                      </div>
-                      <div class="cs-segmented">
-                        <button
-                          type="button"
-                          class="cs-segmented-button"
-                          :class="{ 'cs-segmented-button-active': installMode(component.id) === 'default' }"
-                          @click="setComponentMode(component.id, 'default')"
-                        >
-                          {{ text("默认", "Default") }}
-                        </button>
-                        <button
-                          type="button"
-                          class="cs-segmented-button"
-                          :class="{ 'cs-segmented-button-active': installMode(component.id) === 'skip' }"
-                          @click="setComponentMode(component.id, 'skip')"
-                        >
-                          {{ text("跳过", "Skip") }}
-                        </button>
-                        <button
-                          type="button"
-                          class="cs-segmented-button"
-                          :class="{ 'cs-segmented-button-active': installMode(component.id) === 'force' }"
-                          @click="setComponentMode(component.id, 'force')"
-                        >
-                          {{ text("强制", "Force") }}
-                        </button>
-                      </div>
-                    </article>
-                  </div>
-                </article>
+                <CodexStackInstallStrategyPanel
+                  :components="installComponentStrategies"
+                  :can-run-mutation="canRunMutation"
+                  @set-component-mode="setComponentMode"
+                  @install-full="installFullStack"
+                  @install-base="installBaseOnly"
+                  @repair="repairRecommended"
+                />
 
                 <CodexStackRepairBoard
                   :can-run-mutation="canRunMutation"
@@ -286,28 +249,6 @@
                   @attach-codex-cpa="applyCodexCpaAfterSmoke"
                 />
 
-                <article class="panel-card cs-install-cta-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("步骤 4", "Step 4") }}</p>
-                      <h4>{{ text("执行安装", "Run Install") }}</h4>
-                    </div>
-                  </div>
-                  <p class="cs-field-hint">
-                    {{ text("完整安装会同时部署 cc-connect；基础安装只保留 Codex / CPA / Compact / watchdog。", "Full install includes cc-connect; base install keeps Codex / CPA / Compact / watchdog only.") }}
-                  </p>
-                  <div class="cs-install-cta-row">
-                    <button type="button" class="primary-button cs-big-button" :disabled="!canRunMutation" @click="installFullStack">
-                      {{ text("一键安装全部组件", "Install Full Stack") }}
-                    </button>
-                    <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="installBaseOnly">
-                      {{ text("仅安装基础组件", "Install Base Only") }}
-                    </button>
-                    <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="repairRecommended">
-                      {{ text("执行推荐修复", "Run Recommended Repair") }}
-                    </button>
-                  </div>
-                </article>
               </div>
             </section>
           </template>
@@ -928,6 +869,11 @@ import type {
   CodexStackInstallConfigDraft,
   CodexStackInstallConfigField,
 } from "./CodexStackInstallConfigPanel.vue";
+import CodexStackInstallStrategyPanel from "./CodexStackInstallStrategyPanel.vue";
+import type {
+  CodexStackComponentInstallMode,
+  CodexStackInstallComponentStrategy,
+} from "./CodexStackInstallStrategyPanel.vue";
 import CodexStackJobBanner from "./CodexStackJobBanner.vue";
 import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
@@ -953,7 +899,7 @@ const { text } = useLocalePreference();
 type SectionId = "dashboard" | "install" | "cc-connect" | "settings" | "logs";
 type AgentPaneId = "projects" | "providers" | "setup" | "raw";
 type LogLineMode = CodexStackLogLineMode;
-type ComponentInstallMode = "default" | "skip" | "force";
+type ComponentInstallMode = CodexStackComponentInstallMode;
 type AgentProjectPreset = "admin" | "worker";
 type PlatformTemplateId = "dmwork" | "octo" | "feishu" | "weixin";
 type ContextMode = CodexStackRuntimeContextMode;
@@ -1740,6 +1686,12 @@ const componentOptions = computed(() => [
   { id: "cc-connect" as const, label: "cc-connect" },
   { id: "watchdog" as const, label: text("看门狗", "Watchdog") },
 ]);
+const installComponentStrategies = computed<CodexStackInstallComponentStrategy[]>(() => componentOptions.value.map((component) => ({
+  id: component.id,
+  label: component.label,
+  mode: installMode(component.id),
+  modeLabel: installModeLabel(component.id),
+})));
 const agentPanes = computed(() => [
   { id: "projects" as const, label: text("Agent 项目", "Agent Projects") },
   { id: "providers" as const, label: "Provider" },
@@ -2987,7 +2939,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 
 .cs-hero-actions,
 .cs-actions,
-.cs-install-cta-row,
 .cs-platform-badges {
   display: flex;
   gap: 10px;
@@ -3156,14 +3107,12 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   word-break: break-word;
 }
 
-.cs-component-mode-list,
 .cs-project-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.cs-component-mode-card,
 .cs-provider-card,
 .cs-platform-card,
 .cs-project-card {
@@ -3254,35 +3203,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   grid-column: 1 / -1;
 }
 
-.cs-segmented {
-  display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--code-bg) 36%, transparent);
-  padding: 4px;
-}
-
-.cs-segmented-button {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  border-radius: 999px;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 0.88rem;
-}
-
-.cs-segmented-button-active {
-  background: color-mix(in srgb, var(--acc) 18%, transparent);
-  color: var(--text);
-}
-
-.cs-install-cta-card {
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 16%, transparent), transparent 32%),
-    var(--surface);
-}
-
 .cs-config-action-strip {
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--success) 12%, transparent), transparent 34%),
@@ -3303,10 +3223,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
 .cs-config-action-strip p:not(.cs-section-kicker) {
   margin: 6px 0 0;
   color: var(--text-soft);
-}
-
-.cs-big-button {
-  min-width: 240px;
 }
 
 .cs-provider-grid,

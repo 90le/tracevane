@@ -14,6 +14,7 @@ const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStack
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
 const installConfigPanel = read("apps/web-vue/src/features/codex-stack/CodexStackInstallConfigPanel.vue");
 const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackInstallPlanCard.vue");
+const installStrategyPanel = read("apps/web-vue/src/features/codex-stack/CodexStackInstallStrategyPanel.vue");
 const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanner.vue");
 const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
@@ -60,6 +61,10 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(installPlanCard, /class="panel-card cs-install-plan-card"/);
   assert.match(installPlanCard, /\.cs-install-plan-list\s*\{/);
   assert.match(installPlanCard, /@media \(max-width: 960px\)/);
+  assert.match(installStrategyPanel, /class="cs-install-strategy-panel"/);
+  assert.match(installStrategyPanel, /\.cs-component-mode-list\s*\{/);
+  assert.match(installStrategyPanel, /\.cs-install-cta-card\s*\{/);
+  assert.match(installStrategyPanel, /@media \(max-width: 960px\)/);
   assert.match(jobBanner, /class="panel-card cs-job-banner"/);
   assert.match(jobBanner, /\.cs-job-banner-live\s*\{/);
   assert.match(jobBanner, /@media \(max-width: 960px\)/);
@@ -149,6 +154,29 @@ test("codex stack install page delegates install config without moving install p
   assert.match(installConfigPanel, /export interface CodexStackInstallConfigDraft/);
   assert.match(installConfigPanel, /defineEmits<[\s\S]*updateField: \[field: CodexStackInstallConfigField, value: string \| number \| boolean\]/);
   assert.doesNotMatch(installConfigPanel, /startCodexStackInstall|buildInstallPayload|installFullStack|installBaseOnly/);
+});
+
+test("codex stack install page delegates component strategy and CTA without moving actions", () => {
+  assert.match(controlPage, /import CodexStackInstallStrategyPanel from "\.\/CodexStackInstallStrategyPanel\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackInstallStrategyPanel[\s\S]*:components="installComponentStrategies"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*@set-component-mode="setComponentMode"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@repair="repairRecommended"/,
+  );
+  assert.match(controlPage, /const installComponentStrategies = computed<CodexStackInstallComponentStrategy\[\]>/);
+  assert.match(controlPage, /function setComponentMode\(componentId: CodexStackComponentId, mode: ComponentInstallMode\): void/);
+  assert.match(controlPage, /async function installFullStack\(\): Promise<void>/);
+  assert.match(controlPage, /async function installBaseOnly\(\): Promise<void>/);
+  assert.match(controlPage, /async function repairRecommended\(\): Promise<void>/);
+  assert.match(controlPage, /function buildInstallPayload\(skipCcConnect = installForm\.skipCcConnect\)/);
+  assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(false\)\)/);
+  assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(true\)\)/);
+  assert.doesNotMatch(controlPage, /class="cs-component-mode-list"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-install-cta-card"/);
+  assert.match(installStrategyPanel, /defineEmits<[\s\S]*"set-component-mode": \[componentId: CodexStackComponentId, mode: CodexStackComponentInstallMode\]/);
+  assert.match(installStrategyPanel, /@click="\$emit\('install-full'\)"/);
+  assert.match(installStrategyPanel, /@click="\$emit\('install-base'\)"/);
+  assert.match(installStrategyPanel, /@click="\$emit\('repair'\)"/);
+  assert.doesNotMatch(installStrategyPanel, /startCodexStackInstall|buildInstallPayload|installFullStack|installBaseOnly|repairRecommended\(\)/);
 });
 
 test("codex stack install page delegates long job progress without losing polling ownership", () => {
