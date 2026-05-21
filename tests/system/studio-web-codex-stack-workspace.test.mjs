@@ -52,6 +52,8 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /id: "job-lock"/);
   assert.match(controlPage, /id: "smoke"/);
   assert.match(controlPage, /id: "watchdog"/);
+  assert.match(controlPage, /NO_PROXY 缺少/);
+  assert.match(controlPage, /!current\.proxyPolicy\.noProxyLoopbackReady[\s\S]*\? "danger"/);
   assert.match(chainMap, /aria-label="Codex Stack request chain"/);
   assert.match(chainMap, /v-if="warnings\.length"/);
 });

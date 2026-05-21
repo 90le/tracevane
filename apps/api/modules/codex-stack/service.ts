@@ -1190,6 +1190,20 @@ function collectCpaProxyUrls(source: string): string[] {
   return Array.from(urls);
 }
 
+function noProxyLoopbackMissing(noProxy: string): string[] {
+  const entries = new Set(noProxy
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .flatMap((entry) => [entry, entry.replace(/^\[(.*)\]$/, "$1")]));
+  const coversAll = entries.has("*");
+  const missing: string[] = [];
+  if (!coversAll && !entries.has("localhost") && !entries.has(".localhost")) missing.push("localhost");
+  if (!coversAll && !entries.has("127.0.0.1") && !entries.has("127.0.0.0/8")) missing.push("127.0.0.1");
+  if (!coversAll && !entries.has("::1")) missing.push("::1");
+  return missing;
+}
+
 function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSummaryPayload["proxyPolicy"] {
   const cpaConfigProxyUrls = collectCpaProxyUrls(cpaConfig);
   const configuredProxy = cpaConfigProxyUrls.find((value) => value !== "direct") || "";
@@ -1208,11 +1222,14 @@ function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSum
     "HTTP_PROXY",
   ]);
   const noProxy = readOpenclawEnvValue(openclawPath, ["NO_PROXY", "OPENCLAW_NO_PROXY"]).value || "localhost,127.0.0.1,::1";
+  const missingLoopback = noProxyLoopbackMissing(noProxy);
   return {
     providerMode: configuredProxy ? "proxy" : "direct",
     providerProxyUrl: configuredProxy || fallbackProxy.value || null,
     providerProxySource: configuredProxy ? "cpa-config" : fallbackProxy.source,
     noProxy,
+    noProxyLoopbackReady: missingLoopback.length === 0,
+    noProxyLoopbackMissing: missingLoopback,
     cpaConfigProxyUrls,
     upstreamBaseUrl: upstreamBaseUrl || null,
     upstreamApiKeyConfigured: Boolean(upstreamApiKey),
@@ -2008,6 +2025,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
   }): CodexStackSummaryPayload["recommendation"] {
     const warningReasons = params.warnings.map((warning) => {
       if (warning.includes("国内网关不会继承系统代理")) return "system-proxy-direct-provider";
+      if (warning.includes("NO_PROXY")) return "no-proxy-loopback-missing";
       if (warning.includes("CPA smoke matrix failed")) return "smoke-matrix-failed";
       if (warning.includes("WebSocket")) return "codex-websocket-transport";
       if (warning.includes("request compression")) return "codex-request-compression";
@@ -2074,6 +2092,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         primaryAction: "open-install",
         requiresManagement: false,
         reasonCodes: Array.from(new Set([...baseReasons, "smoke-matrix-failed"])),
+      };
+    }
+    if (!params.proxyPolicy.noProxyLoopbackReady) {
+      return {
+        kind: "review-proxy",
+        severity: "warning",
+        section: "settings",
+        primaryAction: "open-settings",
+        requiresManagement: false,
+        reasonCodes: Array.from(new Set([...baseReasons, "no-proxy-loopback-missing"])),
       };
     }
     return {
@@ -2208,6 +2236,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     }
     if (proxyPolicy.providerMode === "direct" && proxyPolicy.providerProxyUrl) {
       warnings.push("系统代理已设置，但 CPA provider proxy-url 全部为 direct；国内网关不会继承系统代理。若 direct smoke 出现 EOF/SSL_ERROR_SYSCALL，请关闭 VPN 网卡/TUN 模式或为国内网关配置 split tunnel 绕过。");
+    }
+    if (!proxyPolicy.noProxyLoopbackReady) {
+      warnings.push(`NO_PROXY 缺少 ${proxyPolicy.noProxyLoopbackMissing.join(", ")}；系统代理或 VPN 网卡/TUN 模式可能截获本地 CPA/Compact loopback 请求。运行 Codex 对话、长任务或压缩上下文前，请保留 localhost,127.0.0.1,::1。`);
     }
     if (profile.lastSmokeMatrix?.status === "failed") warnings.push("CPA smoke matrix failed last run; Codex will not attach until glm-5.1 and kimi-k2.6 both pass.");
     const jobs = listJobs();

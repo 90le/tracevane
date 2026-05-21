@@ -1647,3 +1647,27 @@ test("codex stack summary explains system proxy is ignored for direct domestic p
     assert.ok(summary.recommendation.reasonCodes.includes("system-proxy-direct-provider"));
   });
 });
+
+test("codex stack summary warns when NO_PROXY no longer protects local loopback", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    env: {
+      NO_PROXY: "localhost",
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withMockFetch(async () => new Response("not found", { status: 404 }), async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.equal(summary.proxyPolicy.noProxy, "localhost");
+    assert.equal(summary.proxyPolicy.noProxyLoopbackReady, false);
+    assert.deepEqual(summary.proxyPolicy.noProxyLoopbackMissing, ["127.0.0.1", "::1"]);
+    assert.ok(summary.warnings.some((warning) => warning.includes("NO_PROXY 缺少 127.0.0.1, ::1")));
+    assert.ok(summary.recommendation.reasonCodes.includes("no-proxy-loopback-missing"));
+  });
+});

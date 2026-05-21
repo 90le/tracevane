@@ -1652,6 +1652,12 @@ const contextTokensDisplay = computed(() => {
 const proxyPolicyLabel = computed(() => {
   const policy = summary.value?.proxyPolicy;
   if (!policy) return text("未知", "Unknown");
+  if (!policy.noProxyLoopbackReady) {
+    return text(
+      `NO_PROXY 缺少 ${policy.noProxyLoopbackMissing.join(", ")}`,
+      `NO_PROXY missing ${policy.noProxyLoopbackMissing.join(", ")}`,
+    );
+  }
   if (policy.providerMode === "proxy" && policy.providerProxyUrl) {
     return text(`海外代理 ${policy.providerProxyUrl}`, `Foreign proxy ${policy.providerProxyUrl}`);
   }
@@ -1777,9 +1783,13 @@ const chainGates = computed<CodexStackChainGate[]>(() => {
     {
       id: "proxy",
       label: text("代理策略", "Proxy Policy"),
-      value: current.proxyPolicy.providerMode === "proxy" ? text("海外代理", "Foreign proxy") : text("国内直连", "Domestic direct"),
+      value: !current.proxyPolicy.noProxyLoopbackReady
+        ? text("本地绕过缺失", "Loopback bypass missing")
+        : current.proxyPolicy.providerMode === "proxy" ? text("海外代理", "Foreign proxy") : text("国内直连", "Domestic direct"),
       help: proxyPolicyLabel.value,
-      tone: current.proxyPolicy.providerMode === "proxy" ? "accent" : "sage",
+      tone: !current.proxyPolicy.noProxyLoopbackReady
+        ? "danger"
+        : current.proxyPolicy.providerMode === "proxy" ? "accent" : "sage",
     },
     {
       id: "smoke",

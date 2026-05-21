@@ -201,6 +201,8 @@ export interface CodexStackSummaryPayload {
     providerProxyUrl: string | null;
     providerProxySource: string | null;
     noProxy: string;
+    noProxyLoopbackReady: boolean;
+    noProxyLoopbackMissing: string[];
     cpaConfigProxyUrls: string[];
     upstreamBaseUrl: string | null;
     upstreamApiKeyConfigured: boolean;
