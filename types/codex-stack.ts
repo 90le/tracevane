@@ -176,6 +176,8 @@ export interface CodexStackSummaryPayload {
     providerProxySource: string | null;
     noProxy: string;
     cpaConfigProxyUrls: string[];
+    upstreamBaseUrl: string | null;
+    upstreamApiKeyConfigured: boolean;
   };
   models: {
     current: string;
@@ -278,6 +280,10 @@ export interface CodexStackConfigPatchRequest {
   compactPort?: number;
   cpaProxyKey?: string;
   ccConnectProject?: string;
+  upstreamBaseUrl?: string | null;
+  upstreamApiKey?: string | null;
+  providerProxyUrl?: string | null;
+  noProxy?: string | null;
 }
 
 export interface CodexStackFinalizeRequest {

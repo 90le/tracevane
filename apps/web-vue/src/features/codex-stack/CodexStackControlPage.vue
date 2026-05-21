@@ -1232,6 +1232,30 @@
                         :placeholder="text('留空不修改', 'Leave empty to keep current value')"
                       />
                     </label>
+                    <label class="form-field cs-form-span-2">
+                      <span class="form-label">{{ text("上游 Base URL", "Upstream Base URL") }}</span>
+                      <input v-model="configForm.upstreamBaseUrl" class="form-input" placeholder="https://api.example.com/v1" />
+                      <span class="form-help">{{ text("glm-5.1 / kimi-k2.6 等第三方兼容端点写这里；国内网关建议保持直连。", "Use this for third-party compatible endpoints such as glm-5.1 / kimi-k2.6; domestic gateways should stay direct.") }}</span>
+                    </label>
+                    <label class="form-field cs-form-span-2">
+                      <span class="form-label">{{ text("上游 API Key", "Upstream API Key") }}</span>
+                      <input
+                        v-model="configForm.upstreamApiKey"
+                        class="form-input"
+                        type="password"
+                        :placeholder="text('留空不修改现有上游密钥', 'Leave empty to keep the existing upstream key')"
+                      />
+                    </label>
+                    <label class="form-field cs-form-span-2">
+                      <span class="form-label">{{ text("海外上游代理", "Foreign Provider Proxy") }}</span>
+                      <input v-model="configForm.providerProxyUrl" class="form-input" placeholder="http://127.0.0.1:7890" />
+                      <span class="form-help">{{ text("仅 OpenAI/海外上游需要代理；清空后 CPA provider proxy-url 会写回 direct。", "Only OpenAI/foreign upstreams need a proxy; clearing this writes CPA provider proxy-url back to direct.") }}</span>
+                    </label>
+                    <label class="form-field cs-form-span-2">
+                      <span class="form-label">NO_PROXY</span>
+                      <input v-model="configForm.noProxy" class="form-input" placeholder="localhost,127.0.0.1,::1" />
+                      <span class="form-help">{{ text("网卡/TUN 模式可能劫持国内网关；这里用于服务环境绕过本机和内网地址。", "TUN mode can hijack domestic gateways; this keeps local and intranet addresses bypassed in service env.") }}</span>
+                    </label>
                   </div>
                   <div v-if="restartRequiredUnits.length" class="cs-restart-hint cs-restart-hint-block">
                     <strong>{{ text("待应用重启", "Restart pending") }}</strong>
@@ -1440,6 +1464,7 @@ import type {
   CodexStackComponentId,
   CodexStackComponentStatus,
   CodexStackComponentSummary,
+  CodexStackConfigPatchRequest,
   CodexStackJob,
   CodexStackJobStatus,
   CodexStackLogResponse,
@@ -1608,6 +1633,10 @@ const configForm = reactive({
   compactPort: 18796,
   ccConnectProject: "main",
   cpaProxyKey: "",
+  upstreamBaseUrl: "",
+  upstreamApiKey: "",
+  providerProxyUrl: "",
+  noProxy: "localhost,127.0.0.1,::1",
 });
 
 const serviceCatalog: Record<
@@ -2216,6 +2245,10 @@ function applySummary(next: CodexStackSummaryPayload): void {
   configForm.cpaPort = next.ports.cpa;
   configForm.compactPort = next.ports.compact;
   configForm.ccConnectProject = next.ccConnect.project || next.profile.ccConnectProject || "main";
+  configForm.upstreamBaseUrl = next.proxyPolicy.upstreamBaseUrl || "";
+  configForm.upstreamApiKey = "";
+  configForm.providerProxyUrl = next.proxyPolicy.providerProxyUrl || "";
+  configForm.noProxy = next.proxyPolicy.noProxy || "localhost,127.0.0.1,::1";
 }
 
 async function loadSummary(): Promise<void> {
@@ -2488,7 +2521,8 @@ async function saveConfigPatch(): Promise<void> {
   if (!guardMutation()) return;
   busy.value = true;
   try {
-    const response = await patchCodexStackConfig({
+    const policy = summary.value?.proxyPolicy;
+    const payload: CodexStackConfigPatchRequest = {
       defaultModel: configForm.defaultModel,
       contextMode: configForm.contextMode,
       contextWindowTokens: configForm.contextMode === "custom" ? Number(configForm.contextWindowTokens) || undefined : undefined,
@@ -2496,9 +2530,23 @@ async function saveConfigPatch(): Promise<void> {
       compactPort: Number(configForm.compactPort) || undefined,
       ccConnectProject: configForm.ccConnectProject || undefined,
       cpaProxyKey: configForm.cpaProxyKey || undefined,
-    });
+    };
+    if (configForm.upstreamBaseUrl !== (policy?.upstreamBaseUrl || "")) {
+      payload.upstreamBaseUrl = configForm.upstreamBaseUrl.trim();
+    }
+    if (configForm.upstreamApiKey.trim()) {
+      payload.upstreamApiKey = configForm.upstreamApiKey.trim();
+    }
+    if (configForm.providerProxyUrl !== (policy?.providerProxyUrl || "")) {
+      payload.providerProxyUrl = configForm.providerProxyUrl.trim();
+    }
+    if (configForm.noProxy !== (policy?.noProxy || "localhost,127.0.0.1,::1")) {
+      payload.noProxy = configForm.noProxy.trim() || "localhost,127.0.0.1,::1";
+    }
+    const response = await patchCodexStackConfig(payload);
     restartRequiredUnits.value = response.restartRequiredUnits || [];
     configForm.cpaProxyKey = "";
+    configForm.upstreamApiKey = "";
     if (response.summary) applySummary(response.summary);
     notice.value = { kind: "success", text: response.message };
   } catch (error) {

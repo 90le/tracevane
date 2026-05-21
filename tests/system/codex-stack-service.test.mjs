@@ -1246,6 +1246,108 @@ model = "glm-5.1"
   assert.doesNotMatch(patchedCc, /codex_env_key/);
 });
 
+test("codex stack config patch updates upstream proxy policy and no-proxy service env", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const home = path.dirname(config.openclawRoot);
+  const cpaConfig = path.join(home, ".cli-proxy-api/config.yaml");
+  const compactService = path.join(home, ".config/systemd/user/cpa-compact-proxy.service");
+  writeFile(cpaConfig, `
+port: 8317
+api-keys:
+- "secret-cpa-key-123456"
+debug: false
+proxy-url: "direct"
+upstream_base_url: "https://old.example.test/v1"
+upstream_api_key: "old-upstream-key"
+openai-compatibility:
+- name: gateway
+  base-url: "https://old.example.test/v1"
+  api-key-entries:
+  - api-key: "old-upstream-key"
+    proxy-url: "direct"
+  models:
+  - name: "glm-5.1"
+  - name: "kimi-k2.6"
+`);
+  writeFile(compactService, `
+[Service]
+Environment=CPA_PORT=8317
+Environment=CPA_BASE_URL=http://127.0.0.1:8317
+Environment=LISTEN_PORT=18796
+Environment=NO_PROXY=localhost,127.0.0.1,::1
+`);
+
+  await withFakeSystemctl(async () => {
+    const service = createCodexStackService(config);
+    const response = await service.patchConfig(undefined, {
+      upstreamBaseUrl: "https://new.example.test/v1",
+      upstreamApiKey: "new-upstream-key",
+      providerProxyUrl: "http://127.0.0.1:7897",
+      noProxy: "localhost,127.0.0.1,::1,.local",
+    });
+
+    assert.equal(response.ok, true);
+    assert.ok(response.restartRequiredUnits.includes("cli-proxy-api.service"));
+    assert.ok(response.restartRequiredUnits.includes("cpa-compact-proxy.service"));
+    assert.equal(response.summary.proxyPolicy.providerMode, "proxy");
+    assert.equal(response.summary.proxyPolicy.providerProxyUrl, "http://127.0.0.1:7897");
+    assert.equal(response.summary.proxyPolicy.upstreamBaseUrl, "https://new.example.test/v1");
+    assert.equal(response.summary.proxyPolicy.upstreamApiKeyConfigured, true);
+    assert.equal(response.summary.proxyPolicy.noProxy, "localhost,127.0.0.1,::1,.local");
+  });
+
+  const patchedCpa = fs.readFileSync(cpaConfig, "utf8");
+  assert.match(patchedCpa, /upstream_base_url: "https:\/\/new\.example\.test\/v1"/);
+  assert.match(patchedCpa, /upstream_api_key: "new-upstream-key"/);
+  assert.match(patchedCpa, /- "secret-cpa-key-123456"/);
+  assert.match(patchedCpa, /- "new-upstream-key"/);
+  assert.match(patchedCpa, /base-url: "https:\/\/new\.example\.test\/v1"/);
+  assert.match(patchedCpa, /api-key: "new-upstream-key"/);
+  assert.match(patchedCpa, /proxy-url: "http:\/\/127\.0\.0\.1:7897"/);
+  const patchedCompact = fs.readFileSync(compactService, "utf8");
+  assert.match(patchedCompact, /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1,\.local/);
+  assert.match(patchedCompact, /Environment=OPENCLAW_NO_PROXY=localhost,127\.0\.0\.1,::1,\.local/);
+  const openclaw = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  assert.equal(openclaw.env.OPENCLAW_UPSTREAM_BASE_URL, "https://new.example.test/v1");
+  assert.equal(openclaw.env.OPENCLAW_PROVIDER_PROXY_URL, "http://127.0.0.1:7897");
+  assert.equal(openclaw.env.NO_PROXY, "localhost,127.0.0.1,::1,.local");
+
+  await withFakeSystemctl(async () => {
+    const service = createCodexStackService(config);
+    const response = await service.patchConfig(undefined, {
+      upstreamBaseUrl: "",
+      providerProxyUrl: "",
+    });
+
+    assert.equal(response.ok, true);
+    assert.equal(response.summary.proxyPolicy.providerMode, "direct");
+    assert.ok(response.summary.proxyPolicy.cpaConfigProxyUrls.every((value) => value === "direct"));
+    assert.equal(response.summary.proxyPolicy.upstreamBaseUrl, null);
+  });
+
+  const clearedCpa = fs.readFileSync(cpaConfig, "utf8");
+  assert.match(clearedCpa, /upstream_base_url: ""/);
+  assert.match(clearedCpa, /base-url: ""/);
+  assert.match(clearedCpa, /proxy-url: "direct"/);
+});
+
 test("bundled health check treats skipped cc-connect as warning only", () => {
   const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
