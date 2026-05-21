@@ -680,7 +680,7 @@ Type=simple
 ExecStart=$HOME/.local/bin/cli-proxy-api
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
-Environment=NO_PROXY=localhost,127.0.0.1,::1
+Environment=NO_PROXY=$OPENCLAW_NO_PROXY
 Environment=OPENCLAW_NO_PROXY=$OPENCLAW_NO_PROXY
 Restart=on-failure
 RestartSec=5
@@ -707,7 +707,8 @@ Environment=CPA_UPSTREAM_API_KEY=$CPA_PROXY_KEY
 Environment=COMPACT_DEFAULT_MODEL=$DEFAULT_MODEL
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
-Environment=NO_PROXY=localhost,127.0.0.1,::1
+Environment=NO_PROXY=$OPENCLAW_NO_PROXY
+Environment=OPENCLAW_NO_PROXY=$OPENCLAW_NO_PROXY
 Restart=on-failure
 RestartSec=5
 

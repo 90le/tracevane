@@ -1712,6 +1712,26 @@ test("bundled installers use provider-specific proxy policy", () => {
   assert.match(dmwork, /proxy-url: "\$\{BIGMODEL_PROXY_URL:-direct\}"/);
 });
 
+test("bundled installers propagate configured no-proxy into systemd units", () => {
+  const official = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+  const dmwork = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+
+  assert.match(official, /const noProxy = env\.OPENCLAW_NO_PROXY \|\| openclawEnv\(openclaw, \["NO_PROXY"\]\)/);
+  assert.match(official, /Environment=NO_PROXY=\$OPENCLAW_NO_PROXY/);
+  assert.match(official, /Environment=OPENCLAW_NO_PROXY=\$OPENCLAW_NO_PROXY/);
+  assert.doesNotMatch(official, /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1/);
+
+  assert.match(dmwork, /envVal\(\['OPENCLAW_NO_PROXY', 'NO_PROXY'\]\)/);
+  assert.match(dmwork, /Environment=NO_PROXY=\$\{NO_PROXY_VAL\}/);
+  assert.doesNotMatch(dmwork, /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1/);
+});
+
 test("bundled installers clean legacy CPA relaunch timers and avoid always-on CPA restarts", () => {
   const official = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),

@@ -189,7 +189,7 @@ console.log('MLAMP_PROXY_URL=' + JSON.stringify(providerProxy(mlamp.baseUrl || '
 console.log('BIGMODEL_PROXY_URL=' + JSON.stringify(providerProxy(bigmodel.baseUrl || '')));
 console.log('GATEWAY_PROXY_URL=' + JSON.stringify(providerProxy(first.baseUrl || '')));
 console.log('HTTP_PROXY_VAL=' + JSON.stringify(envVal(['HTTPS_PROXY', 'HTTP_PROXY'])));
-console.log('NO_PROXY_VAL=' + JSON.stringify(envVal(['NO_PROXY']) || 'localhost,127.0.0.1,::1'));
+console.log('NO_PROXY_VAL=' + JSON.stringify(envVal(['OPENCLAW_NO_PROXY', 'NO_PROXY']) || 'localhost,127.0.0.1,::1'));
 ")"
 
 if [[ -z "$GATEWAY_URL" || "$GATEWAY_URL" == "null" ]]; then
@@ -678,7 +678,7 @@ StandardError=append:/tmp/cpa.log
 # 确保不走系统代理访问本地
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
-Environment=NO_PROXY=localhost,127.0.0.1,::1
+Environment=NO_PROXY=${NO_PROXY_VAL}
 Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
 Environment=LISTEN_PORT=${COMPACT_PORT}
 Environment=CPA_KEY=${CPA_PROXY_KEY}
@@ -707,7 +707,7 @@ StandardError=append:/tmp/cpa-compact-proxy.log
 
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
-Environment=NO_PROXY=localhost,127.0.0.1,::1
+Environment=NO_PROXY=${NO_PROXY_VAL}
 Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
 Environment=LISTEN_PORT=${COMPACT_PORT}
 Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}
@@ -1008,7 +1008,7 @@ Environment=OPENAI_API_KEY=${CPA_PROXY_KEY}
 # 不走系统代理访问本地
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
-Environment=NO_PROXY=localhost,127.0.0.1,::1
+Environment=NO_PROXY=${NO_PROXY_VAL}
 Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
 Environment=LISTEN_PORT=${COMPACT_PORT}
 Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}
