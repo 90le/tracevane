@@ -860,103 +860,16 @@
               />
 
               <div class="cs-dashboard-grid">
-                <article class="panel-card">
-                  <div class="cs-card-header">
-                    <div>
-                      <p class="cs-section-kicker">{{ text("运行时", "Runtime") }}</p>
-                      <h4>{{ text("运行配置", "Runtime Config") }}</h4>
-                    </div>
-                  </div>
-                  <div class="cs-form-grid">
-                    <label class="form-field">
-                      <span class="form-label">{{ text("默认模型", "Default Model") }}</span>
-                      <select v-model="configForm.defaultModel" class="form-input">
-                        <option v-for="model in modelOptions" :key="`config-${model}`" :value="model">{{ model }}</option>
-                      </select>
-                      <span class="form-help">{{ text("保存后会写入 Codex，并可同步到 cc-connect Agent。", "Saving writes to Codex and can be synced to cc-connect agents.") }}</span>
-                    </label>
-                    <label class="form-field">
-                      <span class="form-label">{{ text("Codex 上下文", "Codex Context") }}</span>
-                      <select v-model="configForm.contextMode" class="form-input">
-                        <option value="default">{{ text("默认上下文", "Default context") }}</option>
-                        <option value="codex-1m">{{ text("1M 上下文", "1M context") }}</option>
-                        <option value="custom">{{ text("自定义 token", "Custom tokens") }}</option>
-                      </select>
-                      <span class="form-help">{{ text("保存后会更新 ~/.codex/config.toml。", "Saving updates ~/.codex/config.toml.") }}</span>
-                    </label>
-                    <label class="form-field">
-                      <span class="form-label">{{ text("上下文 tokens", "Context tokens") }}</span>
-                      <input
-                        v-model.number="configForm.contextWindowTokens"
-                        class="form-input"
-                        type="number"
-                        min="1000"
-                        max="1050000"
-                        step="1000"
-                        :disabled="configContextTokensDisabled"
-                      />
-                    </label>
-                    <label class="form-field">
-                      <span class="form-label">{{ text("CPA 端口", "CPA Port") }}</span>
-                      <input v-model.number="configForm.cpaPort" class="form-input" type="number" min="1" />
-                    </label>
-                    <label class="form-field">
-                      <span class="form-label">{{ text("Compact 端口", "Compact Port") }}</span>
-                      <input v-model.number="configForm.compactPort" class="form-input" type="number" min="1" />
-                    </label>
-                    <label class="form-field">
-                      <span class="form-label">{{ text("cc-connect 项目", "cc-connect Project") }}</span>
-                      <input v-model="configForm.ccConnectProject" class="form-input" />
-                    </label>
-                    <label class="form-field cs-form-span-2">
-                      <span class="form-label">{{ text("代理密钥", "Proxy Key") }}</span>
-                      <input
-                        v-model="configForm.cpaProxyKey"
-                        class="form-input"
-                        type="password"
-                        :placeholder="text('留空不修改', 'Leave empty to keep current value')"
-                      />
-                    </label>
-                    <label class="form-field cs-form-span-2">
-                      <span class="form-label">{{ text("上游 Base URL", "Upstream Base URL") }}</span>
-                      <input v-model="configForm.upstreamBaseUrl" class="form-input" placeholder="https://api.example.com/v1" />
-                      <span class="form-help">{{ text("glm-5.1 / kimi-k2.6 等第三方兼容端点写这里；国内网关建议保持直连。", "Use this for third-party compatible endpoints such as glm-5.1 / kimi-k2.6; domestic gateways should stay direct.") }}</span>
-                    </label>
-                    <label class="form-field cs-form-span-2">
-                      <span class="form-label">{{ text("上游 API Key", "Upstream API Key") }}</span>
-                      <input
-                        v-model="configForm.upstreamApiKey"
-                        class="form-input"
-                        type="password"
-                        :placeholder="text('留空不修改现有上游密钥', 'Leave empty to keep the existing upstream key')"
-                      />
-                    </label>
-                    <label class="form-field cs-form-span-2">
-                      <span class="form-label">{{ text("海外上游代理", "Foreign Provider Proxy") }}</span>
-                      <input v-model="configForm.providerProxyUrl" class="form-input" placeholder="http://127.0.0.1:7890" />
-                      <span class="form-help">{{ text("仅 OpenAI/海外上游需要代理；清空后 CPA provider proxy-url 会写回 direct。", "Only OpenAI/foreign upstreams need a proxy; clearing this writes CPA provider proxy-url back to direct.") }}</span>
-                    </label>
-                    <label class="form-field cs-form-span-2">
-                      <span class="form-label">NO_PROXY</span>
-                      <input v-model="configForm.noProxy" class="form-input" placeholder="localhost,127.0.0.1,::1" />
-                      <span class="form-help">{{ text("网卡/TUN 模式可能劫持国内网关；这里用于服务环境绕过本机和内网地址。", "TUN mode can hijack domestic gateways; this keeps local and intranet addresses bypassed in service env.") }}</span>
-                    </label>
-                  </div>
-                  <div v-if="restartRequiredUnits.length" class="cs-restart-hint cs-restart-hint-block">
-                    <strong>{{ text("待应用重启", "Restart pending") }}</strong>
-                    <span>
-                      {{ restartRequiredUnits.join(", ") }}
-                    </span>
-                    <small>
-                      {{ text("保存配置不会拉起已暂停的 CPA 栈；需要启用时用“恢复 CPA 栈”按顺序启动。", "Saving config will not start a paused CPA stack; use Resume CPA Stack when you want to bring it back up in order.") }}
-                    </small>
-                  </div>
-                  <div class="cs-actions">
-                    <button type="button" class="primary-button" :disabled="!canRunMutation || !hasConfigPatchChanges" @click="saveConfigPatch">
-                      {{ text("保存配置", "Save Config") }}
-                    </button>
-                  </div>
-                </article>
+                <CodexStackRuntimeConfigCard
+                  :form="configForm"
+                  :model-options="modelOptions"
+                  :context-tokens-disabled="configContextTokensDisabled"
+                  :restart-required-units="restartRequiredUnits"
+                  :can-run-mutation="canRunMutation"
+                  :has-changes="hasConfigPatchChanges"
+                  @update-field="updateConfigFormField"
+                  @save="saveConfigPatch"
+                />
 
                 <article class="panel-card">
                   <div class="cs-card-header">
@@ -1144,6 +1057,12 @@ import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";
 import CodexStackRepairBoard from "./CodexStackRepairBoard.vue";
+import CodexStackRuntimeConfigCard from "./CodexStackRuntimeConfigCard.vue";
+import type {
+  CodexStackRuntimeConfigDraft,
+  CodexStackRuntimeConfigField,
+  CodexStackRuntimeContextMode,
+} from "./CodexStackRuntimeConfigCard.vue";
 import type {
   CodexStackLogLineMode,
   CodexStackLogLineOption,
@@ -1161,7 +1080,7 @@ type LogLineMode = CodexStackLogLineMode;
 type ComponentInstallMode = "default" | "skip" | "force";
 type AgentProjectPreset = "admin" | "worker";
 type PlatformTemplateId = "dmwork" | "octo" | "feishu" | "weixin";
-type ContextMode = "default" | "codex-1m" | "custom";
+type ContextMode = CodexStackRuntimeContextMode;
 type CcConnectProviderDraft = CcConnectProvider & { id: string };
 type CcConnectPlatformOptionDraft = { id: string; key: string; value: string };
 type CcConnectPlatformDraft = {
@@ -1293,9 +1212,9 @@ const installForm = reactive({
   channel: "dmwork" as CodexStackChannel,
 });
 
-const configForm = reactive({
+const configForm = reactive<CodexStackRuntimeConfigDraft>({
   defaultModel: "kimi-k2.6",
-  contextMode: "default" as ContextMode,
+  contextMode: "default",
   contextWindowTokens: 1050000,
   cpaPort: 18795,
   compactPort: 18796,
@@ -1306,6 +1225,21 @@ const configForm = reactive({
   providerProxyUrl: "",
   noProxy: "localhost,127.0.0.1,::1",
 });
+
+function updateConfigFormField(field: CodexStackRuntimeConfigField, value: string | number): void {
+  switch (field) {
+    case "contextWindowTokens":
+    case "cpaPort":
+    case "compactPort":
+      configForm[field] = Number(value) || 0;
+      return;
+    case "contextMode":
+      configForm.contextMode = value === "codex-1m" || value === "custom" ? value : "default";
+      return;
+    default:
+      configForm[field] = String(value);
+  }
+}
 
 const DEFAULT_NO_PROXY = "localhost,127.0.0.1,::1";
 const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;

@@ -17,6 +17,7 @@ const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanne
 const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
 const repairBoard = read("apps/web-vue/src/features/codex-stack/CodexStackRepairBoard.vue");
+const runtimeConfigCard = read("apps/web-vue/src/features/codex-stack/CodexStackRuntimeConfigCard.vue");
 const upstreamMap = read("apps/web-vue/src/features/codex-stack/CodexStackUpstreamMap.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
@@ -67,6 +68,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(repairBoard, /class="panel-card cs-repair-board"/);
   assert.match(repairBoard, /\.cs-repair-grid\s*\{/);
   assert.match(repairBoard, /@media \(max-width: 960px\)/);
+  assert.match(runtimeConfigCard, /class="panel-card cs-runtime-config-card"/);
+  assert.match(runtimeConfigCard, /\.cs-form-grid\s*\{/);
+  assert.match(runtimeConfigCard, /@media \(max-width: 960px\)/);
   assert.match(upstreamMap, /class="panel-card cs-upstream-map"/);
   assert.match(upstreamMap, /\.cs-upstream-grid\s*\{/);
   assert.match(upstreamMap, /@media \(max-width: 960px\)/);
@@ -263,7 +267,8 @@ test("codex stack background jobs resync cc-connect drafts after completion", ()
 test("codex stack runtime config save sends only changed fields", () => {
   assert.match(controlPage, /const configPatchPayload = computed<CodexStackConfigPatchRequest>\(\(\) => \{/);
   assert.match(controlPage, /const hasConfigPatchChanges = computed\(\(\) => Object\.keys\(configPatchPayload\.value\)\.length > 0\);/);
-  assert.match(controlPage, /:disabled="!canRunMutation \|\| !hasConfigPatchChanges"/);
+  assert.match(controlPage, /:has-changes="hasConfigPatchChanges"/);
+  assert.match(runtimeConfigCard, /:disabled="!canRunMutation \|\| !hasChanges"/);
   assert.match(controlPage, /const payload = configPatchPayload\.value;[\s\S]*if \(!Object\.keys\(payload\)\.length\)/);
   assert.doesNotMatch(controlPage, /const payload: CodexStackConfigPatchRequest = \{\s*defaultModel: configForm\.defaultModel,/);
 });
@@ -281,6 +286,22 @@ test("codex stack settings page delegates upstream map without moving config wri
   assert.match(upstreamMap, /写入 ~\/\.codex\/config\.toml/);
   assert.match(upstreamMap, /本地 OpenAI 兼容入口/);
   assert.match(upstreamMap, /OPENAI_API_KEY \/ base_url/);
+});
+
+test("codex stack settings page delegates runtime config form without moving patch ownership", () => {
+  assert.match(controlPage, /import CodexStackRuntimeConfigCard from "\.\/CodexStackRuntimeConfigCard\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"/,
+  );
+  assert.match(controlPage, /function updateConfigFormField\(field: CodexStackRuntimeConfigField, value: string \| number\): void/);
+  assert.match(controlPage, /const configPatchPayload = computed<CodexStackConfigPatchRequest>/);
+  assert.match(controlPage, /async function saveConfigPatch\(\): Promise<void>/);
+  assert.doesNotMatch(controlPage, /v-model(?:\.number)?="configForm\.(defaultModel|contextMode|contextWindowTokens|cpaPort|compactPort|ccConnectProject|cpaProxyKey|upstreamBaseUrl|upstreamApiKey|providerProxyUrl|noProxy)"/);
+  assert.match(runtimeConfigCard, /export interface CodexStackRuntimeConfigDraft/);
+  assert.match(runtimeConfigCard, /defineEmits<[\s\S]*updateField: \[field: CodexStackRuntimeConfigField, value: string \| number\]/);
+  assert.match(runtimeConfigCard, /@click="\$emit\('save'\)"/);
+  assert.doesNotMatch(runtimeConfigCard, /patchCodexStackConfig|configPatchPayload|saveConfigPatch/);
 });
 
 test("codex stack summary refresh preserves dirty runtime config drafts", () => {
