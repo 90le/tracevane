@@ -530,6 +530,22 @@ const STATIC_CHANNEL_CATALOG: Record<string, ChannelCatalogEntry> = {
       textareaField('historyPromptTemplate', 'History Prompt Template'),
     ],
   }),
+  octo: makeCatalogEntry('octo', 'Octo', {
+    icon: '●',
+    credentialFields: [secretField('botToken', 'Bot Token')],
+    accountFields: [
+      textField('apiUrl', 'API URL'),
+      textField('wsUrl', 'WebSocket URL'),
+      textField('cdnUrl', 'CDN URL'),
+      numberField('pollIntervalMs', 'Poll Interval (ms)'),
+      numberField('heartbeatIntervalMs', 'Heartbeat Interval (ms)'),
+      booleanField('requireMention', 'Require Mention'),
+      booleanField('ignoreMentionAll', 'Ignore Mention All'),
+      textField('botUid', 'Bot UID'),
+      numberField('historyLimit', 'History Limit'),
+      textareaField('historyPromptTemplate', 'History Prompt Template'),
+    ],
+  }),
   feishu: makeCatalogEntry('feishu', 'Feishu', {
     icon: '◉',
     pairingSupported: true,

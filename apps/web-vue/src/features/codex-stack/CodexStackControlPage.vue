@@ -448,14 +448,20 @@
                       </div>
                     </div>
                     <p class="cs-field-hint">
-                      {{ text("DMWork 版本支持 DMWork / 飞书 / 微信；官方版通过 npm 安装 cc-connect。", "DMWork supports DMWork / Feishu / Weixin, while Official installs cc-connect from npm.") }}
+                      {{ text("DMWork / Octo 版本支持多渠道；官方版通过 npm 安装 cc-connect。", "DMWork / Octo supports multi-channel, while Official installs cc-connect from npm.") }}
                     </p>
                     <div class="cs-channel-grid">
                       <label class="cs-channel-card" :class="{ 'cs-channel-card-active': installForm.channel === 'dmwork' }">
                         <input v-model="installForm.channel" type="radio" value="dmwork" />
                         <strong>DMWork</strong>
-                        <span>{{ text("增强版（推荐）", "Enhanced (Recommended)") }}</span>
+                        <span>{{ text("增强版", "Enhanced") }}</span>
                         <p>{{ text("自编译二进制，三渠道支持。", "Self-built binary with three-channel support.") }}</p>
+                      </label>
+                      <label class="cs-channel-card" :class="{ 'cs-channel-card-active': installForm.channel === 'octo' }">
+                        <input v-model="installForm.channel" type="radio" value="octo" />
+                        <strong>Octo</strong>
+                        <span>{{ text("增强版（推荐）", "Enhanced (Recommended)") }}</span>
+                        <p>{{ text("DMWork 品牌升级版，后续主力维护。", "Rebranded DMWork, the primary channel going forward.") }}</p>
                       </label>
                       <label class="cs-channel-card" :class="{ 'cs-channel-card-active': installForm.channel === 'official' }">
                         <input v-model="installForm.channel" type="radio" value="official" />
@@ -887,7 +893,7 @@
                         </div>
                         <label class="form-field">
                           <span class="form-label">type</span>
-                          <input v-model="platform.type" class="form-input" list="cc-platform-options" placeholder="dmwork" />
+                          <input v-model="platform.type" class="form-input" list="cc-platform-options" placeholder="octo" />
                         </label>
                         <div class="cs-option-list">
                           <div v-for="row in platform.optionRows" :key="row.id" class="cs-option-row">
@@ -1342,6 +1348,7 @@
 
     <datalist id="cc-platform-options">
       <option value="dmwork">dmwork</option>
+      <option value="octo">octo</option>
       <option value="feishu">feishu</option>
       <option value="weixin">weixin</option>
       <option value="wecom">wecom</option>
@@ -1361,6 +1368,7 @@ import type {
   CcConnectPlatform,
   CcConnectProject,
   CcConnectProvider,
+  CodexStackChannel,
   CodexStackComponentId,
   CodexStackComponentStatus,
   CodexStackComponentSummary,
@@ -1401,7 +1409,7 @@ type AgentPaneId = "projects" | "providers" | "setup" | "raw";
 type LogLineMode = "light" | "balanced" | "deep";
 type ComponentInstallMode = "default" | "skip" | "force";
 type AgentProjectPreset = "admin" | "worker";
-type PlatformTemplateId = "dmwork" | "feishu" | "weixin";
+type PlatformTemplateId = "dmwork" | "octo" | "feishu" | "weixin";
 type ContextMode = "default" | "codex-1m" | "custom";
 type CcConnectProviderDraft = CcConnectProvider & { id: string };
 type CcConnectPlatformOptionDraft = { id: string; key: string; value: string };
@@ -1517,7 +1525,7 @@ const installForm = reactive({
   forceReinstall: false,
   skipComponents: [] as string[],
   forceComponents: [] as string[],
-  channel: "dmwork" as "official" | "dmwork",
+  channel: "dmwork" as CodexStackChannel,
 });
 
 const configForm = reactive({
@@ -1727,6 +1735,11 @@ const platformTemplates = computed<Array<{ id: PlatformTemplateId; label: string
     copy: text("token / api_url / account_id", "token / api_url / account_id"),
   },
   {
+    id: "octo",
+    label: "Octo",
+    copy: text("token / api_url / account_id", "token / api_url / account_id"),
+  },
+  {
     id: "feishu",
     label: text("飞书", "Feishu"),
     copy: text("app_id / app_secret", "app_id / app_secret"),
@@ -1886,7 +1899,7 @@ function defaultPlatformOptionRows(type: string): CcConnectPlatformOptionDraft[]
   ];
 }
 
-function createPlatformDraft(platform?: Partial<CcConnectPlatform>, preferredType: PlatformTemplateId = "dmwork"): CcConnectPlatformDraft {
+function createPlatformDraft(platform?: Partial<CcConnectPlatform>, preferredType: PlatformTemplateId = "octo"): CcConnectPlatformDraft {
   const options = Object.entries(platform?.options || {});
   const type = platform?.type || preferredType;
   return {
@@ -1988,8 +2001,10 @@ function formatTimestamp(value: string | null | undefined): string {
   return parsed.toLocaleString();
 }
 
-function channelLabel(channel: "official" | "dmwork"): string {
-  return channel === "dmwork" ? "DMWork" : text("官方版", "Official");
+function channelLabel(channel: CodexStackChannel): string {
+  if (channel === "dmwork") return "DMWork";
+  if (channel === "octo") return "Octo";
+  return text("官方版", "Official");
 }
 
 function yesNo(value: boolean): string {
@@ -2395,7 +2410,7 @@ function addCcConnectProjectPreset(preset: AgentProjectPreset): void {
       mode: preset === "admin" ? "suggest" : "yolo",
       model: configForm.defaultModel || installForm.model || summary.value?.models.current || "kimi-k2.6",
     },
-    platforms: [{ type: "dmwork", options: { api_url: "https://im.deepminer.com.cn/api" } }],
+    platforms: [{ type: installForm.channel === "official" ? "dmwork" : (installForm.channel === "octo" ? "octo" : "dmwork"), options: { api_url: "https://im.deepminer.com.cn/api" } }],
   });
   ccConnectProjectDrafts.value.push(project);
   selectedProjectDraftId.value = project.id;
@@ -2418,7 +2433,7 @@ function removeCcConnectPlatform(project: CcConnectProjectDraft, platformId: str
   project.platforms = project.platforms.filter((platform) => platform.id !== platformId);
 }
 
-function addPlatformToSelectedProject(type: PlatformTemplateId = "dmwork"): void {
+function addPlatformToSelectedProject(type: PlatformTemplateId = "octo"): void {
   if (!selectedProjectDraft.value) return;
   selectedProjectDraft.value.platforms.push(createPlatformDraft(undefined, type));
 }

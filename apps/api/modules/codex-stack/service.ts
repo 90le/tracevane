@@ -52,11 +52,14 @@ const CPA_MANAGEMENT_PANEL_REPOSITORY = "https://github.com/router-for-me/Cli-Pr
 const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
 const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
 
+function isDmworkFamily(channel?: CodexStackChannel): boolean {
+  return channel === "dmwork" || channel === "octo";
+}
 function defaultCpaPort(channel?: CodexStackChannel): number {
-  return channel === "dmwork" ? DMWORK_CPA_PORT : OFFICIAL_CPA_PORT;
+  return isDmworkFamily(channel) ? DMWORK_CPA_PORT : OFFICIAL_CPA_PORT;
 }
 function defaultModel(channel?: CodexStackChannel): string {
-  return channel === "dmwork" ? DMWORK_DEFAULT_MODEL : OFFICIAL_DEFAULT_MODEL;
+  return isDmworkFamily(channel) ? DMWORK_DEFAULT_MODEL : OFFICIAL_DEFAULT_MODEL;
 }
 const DEFAULT_CPA_PROXY_KEY = "studio";
 const DEFAULT_CC_CONNECT_PROJECT = "main";
@@ -1026,7 +1029,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
 
   function resolveChannel(): CodexStackChannel {
     const profile = readJsonFile<Partial<CodexStackProfile>>(profilePath(), {});
-    return profile.channel || "dmwork";
+    return profile.channel || "dmwork";  // octo also valid; falls back to dmwork
   }
 
   function resolveInstallerSource(channel?: CodexStackChannel): CodexStackInstallerSource {
@@ -1036,7 +1039,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const candidates: Array<{ kind: CodexStackInstallerSource["kind"]; root: string }> = [];
     if (configured) candidates.push({ kind: "configured", root: configured });
 
-    const subDir = activeChannel === "dmwork" ? "codex-docs-dmwork" : "codex-docs";
+    const subDir = isDmworkFamily(activeChannel) ? "codex-docs-dmwork" : "codex-docs";
     candidates.push({ kind: "bundled", root: path.join(config.projectRoot, "resources", "codex-stack", subDir) });
     candidates.push({ kind: "development-fallback", root: path.join(config.openclawRoot, "codex-docs") });
 
@@ -1053,7 +1056,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       "resources/bin/cli-proxy-api",
       "resources/cpa-config-templates/compact-proxy.mjs",
     ];
-    const required = activeChannel === "dmwork" ? requiredDmwork : requiredOfficial;
+    const required = isDmworkFamily(activeChannel) ? requiredDmwork : requiredOfficial;
 
     for (const candidate of candidates) {
       const missing = required.filter((relative) => !pathExists(path.join(candidate.root, relative)));

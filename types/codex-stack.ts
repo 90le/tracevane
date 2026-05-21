@@ -1,4 +1,4 @@
-export type CodexStackChannel = "official" | "dmwork";
+export type CodexStackChannel = "official" | "dmwork" | "octo";
 
 export type CodexStackComponentId =
   | "codex"
