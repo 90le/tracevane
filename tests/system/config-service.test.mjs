@@ -525,7 +525,7 @@ test("config save writes canonical plugin and browser fields without legacy alia
   assert.deepEqual(nextConfig.agents.defaults.blockStreamingCoalesce, {
     enabled: false,
   });
-  assert.equal(nextConfig.agents.defaults.llm.idleTimeoutSeconds, 75);
+  assert.equal(nextConfig.agents.defaults.llm, undefined);
   assert.equal(
     nextConfig.agents.defaults.embeddedPi.projectSettingsPolicy,
     "ignore",

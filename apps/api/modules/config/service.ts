@@ -611,7 +611,7 @@ function buildSummary(
         Number(defaults.llm?.idleTimeoutSeconds),
       )
         ? Number(defaults.llm.idleTimeoutSeconds)
-        : 60,
+        : null,
       embeddedPiProjectSettingsPolicy: String(
         defaults.embeddedPi?.projectSettingsPolicy || "sanitize",
       ).trim(),
@@ -1670,13 +1670,10 @@ function applyConfigUpdate(
     "pdfMaxPages",
     payload.defaults.pdfMaxPages,
   );
-  defaults.llm = ensureRecordObject(defaults, "llm");
-  setOptionalNonNegativeNumberField(
-    defaults.llm,
-    "idleTimeoutSeconds",
-    payload.defaults.llmIdleTimeoutSeconds,
-  );
-  deleteRecordFieldIfEmpty(defaults, "llm");
+  // llm.idleTimeoutSeconds is a legacy OpenClaw field (agents.defaults.llm)
+  // that current OpenClaw versions flag as legacy and doctor --fix removes.
+  // Always strip it during save to prevent gateway restart errors.
+  delete defaults.llm;
   defaults.embeddedPi = ensureRecordObject(defaults, "embeddedPi");
   setOptionalStringField(
     defaults.embeddedPi,

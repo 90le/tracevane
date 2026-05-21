@@ -393,10 +393,6 @@
               </div>
               <div class="config-guard-summary-grid">
                 <article class="config-guard-summary">
-                  <span>{{ text('LLM 空闲超时秒', 'LLM idle timeout seconds') }}</span>
-                  <strong>{{ form.defaults.llmIdleTimeoutSeconds ?? '—' }}</strong>
-                </article>
-                <article class="config-guard-summary">
                   <span>{{ text('Embedded Pi 项目设置策略', 'Embedded Pi project settings policy') }}</span>
                   <strong>{{ form.defaults.embeddedPiProjectSettingsPolicy || text('未设置', 'Unset') }}</strong>
                 </article>
@@ -1805,10 +1801,6 @@
                     <input v-model.number="form.defaults.bootstrapTotalMaxChars" class="form-input" type="number" min="1" :placeholder="text('例如 150000', 'For example 150000')" />
                   </label>
                   <label class="form-field">
-                    <span class="form-label">{{ text('LLM 空闲超时秒', 'LLM idle timeout seconds') }}</span>
-                    <input v-model.number="form.defaults.llmIdleTimeoutSeconds" class="form-input" type="number" min="0" :placeholder="text('例如 60', 'For example 60')" />
-                  </label>
-                  <label class="form-field">
                     <span class="form-label">{{ text('Embedded Pi 项目设置策略', 'Embedded Pi project settings policy') }}</span>
                     <GlassSelect v-model="form.defaults.embeddedPiProjectSettingsPolicy" :options="choiceToSelectOptions(embeddedPiPolicyOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
@@ -1974,7 +1966,6 @@ interface ConfigFormState {
       typingIntervalSeconds: number | null;
       pdfMaxBytesMb: number | null;
       pdfMaxPages: number | null;
-      llmIdleTimeoutSeconds: number | null;
       embeddedPiProjectSettingsPolicy: string;
       memorySearchJson: string;
       humanDelayJson: string;
@@ -2562,7 +2553,6 @@ const form = reactive<ConfigFormState>({
     typingIntervalSeconds: null,
     pdfMaxBytesMb: null,
     pdfMaxPages: null,
-    llmIdleTimeoutSeconds: 60,
     embeddedPiProjectSettingsPolicy: 'sanitize',
     memorySearchJson: '',
     humanDelayJson: '',
@@ -3164,7 +3154,6 @@ function hydrateForm(summary: ConfigSummaryPayload) {
   form.defaults.typingIntervalSeconds = summary.defaults.typingIntervalSeconds ?? null;
   form.defaults.pdfMaxBytesMb = summary.defaults.pdfMaxBytesMb ?? null;
   form.defaults.pdfMaxPages = summary.defaults.pdfMaxPages ?? null;
-  form.defaults.llmIdleTimeoutSeconds = summary.defaults.llmIdleTimeoutSeconds ?? 60;
   form.defaults.embeddedPiProjectSettingsPolicy = summary.defaults.embeddedPiProjectSettingsPolicy || 'sanitize';
   form.defaults.memorySearchJson = formatJsonEditor(summary.defaults.memorySearch);
   form.defaults.humanDelayJson = formatJsonEditor(summary.defaults.humanDelay);
@@ -3413,9 +3402,6 @@ function buildPayload(): ConfigUpdatePayload {
       typingIntervalSeconds: form.defaults.typingIntervalSeconds != null && Number(form.defaults.typingIntervalSeconds) > 0 ? Number(form.defaults.typingIntervalSeconds) : null,
       pdfMaxBytesMb: form.defaults.pdfMaxBytesMb != null && Number(form.defaults.pdfMaxBytesMb) > 0 ? Number(form.defaults.pdfMaxBytesMb) : null,
       pdfMaxPages: form.defaults.pdfMaxPages != null && Number(form.defaults.pdfMaxPages) > 0 ? Number(form.defaults.pdfMaxPages) : null,
-      llmIdleTimeoutSeconds: form.defaults.llmIdleTimeoutSeconds != null && Number(form.defaults.llmIdleTimeoutSeconds) >= 0
-        ? Number(form.defaults.llmIdleTimeoutSeconds)
-        : null,
       embeddedPiProjectSettingsPolicy: form.defaults.embeddedPiProjectSettingsPolicy,
       memorySearch,
       humanDelay,
