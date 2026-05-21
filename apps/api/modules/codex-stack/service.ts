@@ -2444,7 +2444,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     };
   }
 
-  function normalizeInstallPayload(payload: CodexStackInstallRequest): {
+  function normalizeInstallPayload(payload: CodexStackInstallRequest, channel: CodexStackChannel): {
     env: Record<string, string>;
     flags: string[];
     secrets: string[];
@@ -2482,9 +2482,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       flags,
       secrets,
       profilePatch: {
-        cpaPort: normalizePort(env.CPA_PORT, defaultCpaPort(resolveChannel())),
+        cpaPort: normalizePort(env.CPA_PORT, defaultCpaPort(channel)),
         compactPort: normalizePort(env.COMPACT_PORT, DEFAULT_COMPACT_PORT),
-        defaultModel: normalizeString(env.CODEX_MODEL, defaultModel(resolveChannel())),
+        defaultModel: normalizeString(env.CODEX_MODEL, defaultModel(channel)),
         contextMode,
         contextWindowTokens: contextTokens,
         hasCpaProxyKey: true,
@@ -2509,7 +2509,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!installer.requiredFilesPresent || !installer.scripts.autoSetup || !installer.root) {
       throw new CodexStackServiceError("codex_stack_installer_missing", "Codex Stack installer assets are missing.", 404);
     }
-    const normalized = normalizeInstallPayload(payload || {});
+    const normalized = normalizeInstallPayload(payload || {}, channel);
     const currentPaths = paths();
     const job = createJob("install", "bash auto-setup.sh");
     job.status = "running";

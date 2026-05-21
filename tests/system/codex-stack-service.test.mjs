@@ -1225,6 +1225,51 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   assert.equal(authJson.OPENAI_API_KEY, "secret-cpa-key-for-job");
 });
 
+test("codex stack install defaults follow the requested channel", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  writeJson(path.join(config.openclawRoot, "studio/codex-stack/profile.json"), {
+    channel: "dmwork",
+    cpaPort: 18795,
+    compactPort: 18796,
+    defaultModel: "kimi-k2.6",
+    ccConnectProject: "main",
+    hasCpaProxyKey: false,
+  });
+
+  const service = createCodexStackService(config);
+  const response = await service.startInstall(undefined, {
+    flags: {
+      channel: "official",
+      noStart: true,
+    },
+  });
+
+  const job = await waitForJob(service, response.job.id);
+  assert.equal(job.status, "succeeded");
+
+  const profile = JSON.parse(fs.readFileSync(path.join(config.openclawRoot, "studio/codex-stack/profile.json"), "utf8"));
+  assert.equal(profile.channel, "official");
+  assert.equal(profile.defaultModel, "glm-5.1");
+  assert.equal(profile.cpaPort, 8317);
+});
+
 test("codex stack failed install does not persist optimistic profile state", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
