@@ -26,9 +26,10 @@
       @enable="enableManagement"
     />
 
-    <div v-if="!summary" class="panel-card cs-empty">
-      {{ text("正在读取 Codex 栈状态...", "Loading Codex Stack status...") }}
-    </div>
+    <CodexStackLoadingCard
+      v-if="!summary"
+      :message="text('正在读取 Codex 栈状态...', 'Loading Codex Stack status...')"
+    />
 
     <template v-else>
       <CodexStackJobBanner
@@ -151,7 +152,7 @@
               @repair="repairRecommended"
             />
 
-            <div class="cs-install-shell" :class="{ 'cs-install-shell-busy': activeJob && isCodexStackJobRunning(activeJob) }">
+            <CodexStackInstallShell :busy="Boolean(activeJob && isCodexStackJobRunning(activeJob))">
               <CodexStackJobProgressPanel
                 v-if="activeJob"
                 :job="activeJob"
@@ -193,7 +194,7 @@
                 @run-smoke-matrix="runSmokeMatrix"
                 @attach-codex-cpa="applyCodexCpaAfterSmoke"
               />
-            </div>
+            </CodexStackInstallShell>
           </CodexStackSectionStack>
         </template>
 
@@ -492,6 +493,7 @@ import type {
   CodexStackInstallConfigField,
 } from "./CodexStackInstallConfigPanel.vue";
 import CodexStackInstallStrategyPanel from "./CodexStackInstallStrategyPanel.vue";
+import CodexStackInstallShell from "./CodexStackInstallShell.vue";
 import type {
   CodexStackComponentInstallMode,
   CodexStackInstallComponentStrategy,
@@ -499,6 +501,7 @@ import type {
 import CodexStackJobBanner from "./CodexStackJobBanner.vue";
 import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
+import CodexStackLoadingCard from "./CodexStackLoadingCard.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";
 import CodexStackManagementLockCard from "./CodexStackManagementLockCard.vue";
 import CodexStackModelCatalogCard from "./CodexStackModelCatalogCard.vue";
@@ -2516,19 +2519,4 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   gap: 18px;
 }
 
-.cs-empty {
-  padding: 20px;
-  color: var(--text-soft);
-}
-
-.cs-install-shell {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.cs-install-shell-busy > *:not(.cs-install-overlay) {
-  opacity: 0.42;
-}
 </style>

@@ -23,10 +23,12 @@ const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackD
 const environmentReferenceCard = read("apps/web-vue/src/features/codex-stack/CodexStackEnvironmentReferenceCard.vue");
 const installConfigPanel = read("apps/web-vue/src/features/codex-stack/CodexStackInstallConfigPanel.vue");
 const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackInstallPlanCard.vue");
+const installShell = read("apps/web-vue/src/features/codex-stack/CodexStackInstallShell.vue");
 const installStrategyPanel = read("apps/web-vue/src/features/codex-stack/CodexStackInstallStrategyPanel.vue");
 const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanner.vue");
 const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
+const loadingCard = read("apps/web-vue/src/features/codex-stack/CodexStackLoadingCard.vue");
 const managementLockCard = read("apps/web-vue/src/features/codex-stack/CodexStackManagementLockCard.vue");
 const modelCatalogCard = read("apps/web-vue/src/features/codex-stack/CodexStackModelCatalogCard.vue");
 const modelRibbon = read("apps/web-vue/src/features/codex-stack/CodexStackModelRibbon.vue");
@@ -98,6 +100,8 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(installPlanCard, /class="panel-card cs-install-plan-card"/);
   assert.match(installPlanCard, /\.cs-install-plan-list\s*\{/);
   assert.match(installPlanCard, /@media \(max-width: 960px\)/);
+  assert.match(installShell, /class="cs-install-shell"/);
+  assert.match(installShell, /\.cs-install-shell-busy > \*:not\(\.cs-install-overlay\)\s*\{/);
   assert.match(installStrategyPanel, /class="cs-install-strategy-panel"/);
   assert.match(installStrategyPanel, /\.cs-component-mode-list\s*\{/);
   assert.match(installStrategyPanel, /\.cs-install-cta-card\s*\{/);
@@ -111,6 +115,8 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(jobProgressPanel, /class="cs-install-overlay"/);
   assert.match(jobProgressPanel, /\.cs-job-progress-track\s*\{/);
   assert.match(jobProgressPanel, /@media \(max-width: 960px\)/);
+  assert.match(loadingCard, /class="panel-card cs-loading-card"/);
+  assert.match(loadingCard, /\.cs-loading-card\s*\{/);
   assert.match(modelCatalogCard, /class="panel-card cs-model-catalog-card"/);
   assert.match(modelCatalogCard, /\.cs-field-hint\s*\{/);
   assert.match(modelCatalogCard, /\.cs-model-list\s*\{/);
@@ -221,6 +227,29 @@ test("codex stack section layout wrappers own repeated layout without moving act
   assert.doesNotMatch(responsiveGrid, /activeSection|loadAll|fetchCodexStackSummary|patchCodexStackConfig|serviceAction|enableManagement/);
   assert.match(controlPage, /async function loadAll/);
   assert.match(controlPage, /async function enableManagement/);
+  assert.match(controlPage, /async function serviceAction/);
+});
+
+test("codex stack loading and install shell wrappers preserve display-only boundaries", () => {
+  assert.match(controlPage, /import CodexStackLoadingCard from "\.\/CodexStackLoadingCard\.vue";/);
+  assert.match(controlPage, /import CodexStackInstallShell from "\.\/CodexStackInstallShell\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackLoadingCard[\s\S]*v-if="!summary"[\s\S]*:message="text\('正在读取 Codex 栈状态\.\.\.', 'Loading Codex Stack status\.\.\.'\)"/,
+  );
+  assert.match(
+    controlPage,
+    /<CodexStackInstallShell :busy="Boolean\(activeJob && isCodexStackJobRunning\(activeJob\)\)">[\s\S]*<CodexStackJobProgressPanel[\s\S]*<CodexStackRepairBoard[\s\S]*<\/CodexStackInstallShell>/,
+  );
+  assert.doesNotMatch(controlPage, /class="panel-card cs-empty"/);
+  assert.doesNotMatch(controlPage, /class="cs-install-shell"/);
+  assert.doesNotMatch(controlPage, /\.cs-empty|\.cs-install-shell/);
+  assert.match(loadingCard, /defineProps<\{[\s\S]*message: string;[\s\S]*\}>/);
+  assert.match(installShell, /defineProps<\{[\s\S]*busy: boolean;[\s\S]*\}>/);
+  assert.match(installShell, /<slot \/>/);
+  assert.doesNotMatch(loadingCard, /summary|activeJob|loadAll|fetchCodexStackSummary|patchCodexStackConfig|serviceAction|enableManagement/);
+  assert.doesNotMatch(installShell, /activeJob|isCodexStackJobRunning|loadAll|fetchCodexStackSummary|patchCodexStackConfig|serviceAction|enableManagement/);
+  assert.match(controlPage, /async function loadAll/);
   assert.match(controlPage, /async function serviceAction/);
 });
 
