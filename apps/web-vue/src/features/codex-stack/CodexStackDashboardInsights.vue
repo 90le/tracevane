@@ -42,6 +42,18 @@
             <span>{{ smokeMatrix.attachEligibleLabel }}</span>
             <strong>{{ smokeMatrix.attachEligible }}</strong>
           </div>
+          <div class="cs-smoke-matrix-head">
+            <span>{{ smokeMatrix.statusLabel }}</span>
+            <strong>{{ smokeMatrix.statusValue }}</strong>
+          </div>
+          <div class="cs-smoke-matrix-head">
+            <span>{{ smokeMatrix.checkedAtLabel }}</span>
+            <strong>{{ smokeMatrix.checkedAt }}</strong>
+          </div>
+          <div class="cs-smoke-matrix-head" :class="`tone-${smokeMatrix.freshnessTone}`">
+            <span>{{ smokeMatrix.freshnessLabel }}</span>
+            <strong>{{ smokeMatrix.freshness }}</strong>
+          </div>
           <article v-for="model in smokeMatrix.models" :key="model.model" class="cs-smoke-model-row">
             <div>
               <strong>{{ model.model }} · {{ model.status }}</strong>
@@ -103,6 +115,13 @@ export interface CodexStackSmokeMatrixCard {
   requiredModels: string;
   attachEligibleLabel: string;
   attachEligible: string;
+  statusLabel: string;
+  statusValue: string;
+  checkedAtLabel: string;
+  checkedAt: string;
+  freshnessLabel: string;
+  freshness: string;
+  freshnessTone: CodexStackTone;
   models: CodexStackSmokeModelCard[];
 }
 
@@ -323,6 +342,18 @@ defineProps<{
   margin: 0;
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+.cs-smoke-matrix-head.tone-sage strong {
+  color: #2f8b57;
+}
+
+.cs-smoke-matrix-head.tone-accent strong {
+  color: #3264b5;
+}
+
+.cs-smoke-matrix-head.tone-danger strong {
+  color: var(--danger);
 }
 
 .cs-smoke-model-row {

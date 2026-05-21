@@ -681,12 +681,19 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(controlPage, /上次 glm-5\.1 \/ kimi-k2\.6 矩阵失败/);
   assert.match(controlPage, /const failedChecks = model\.checks\.filter\(\(check\) => check\.status === "failed"\)/);
   assert.match(controlPage, /失败检查/);
+  assert.match(controlPage, /const smokeFresh = isSmokeMatrixFreshAndComplete\(matrix\);/);
+  assert.match(controlPage, /const smokeStale = isSmokeMatrixStale\(matrix\);/);
+  assert.match(controlPage, /checkedAt: formatTimestamp\(matrix\.checkedAt\)/);
+  assert.match(controlPage, /24 小时内完整通过/);
   assert.match(dashboardInsights, /export interface CodexStackNetworkPolicyCard/);
   assert.match(dashboardInsights, /class="cs-network-policy-strip"/);
   assert.match(dashboardInsights, /networkPolicy\.loopbackValue/);
   assert.match(dashboardInsights, /networkPolicy\.upstreamValue/);
   assert.match(dashboardInsights, /model\.failedChecks/);
   assert.match(dashboardInsights, /class="cs-smoke-failed-checks"/);
+  assert.match(dashboardInsights, /smokeMatrix\.checkedAt/);
+  assert.match(dashboardInsights, /smokeMatrix\.freshness/);
+  assert.match(dashboardInsights, /tone-\$\{smokeMatrix\.freshnessTone\}/);
 });
 
 test("codex stack dashboard exposes codex run readiness as a first-screen contract", () => {

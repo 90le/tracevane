@@ -1286,11 +1286,31 @@ const chainGates = computed<CodexStackChainGate[]>(() => {
 const smokeMatrixCard = computed<CodexStackSmokeMatrixCard | null>(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
   if (!matrix) return null;
+  const smokeFresh = isSmokeMatrixFreshAndComplete(matrix);
+  const smokeComplete = isSmokeMatrixComplete(matrix);
+  const smokeStale = isSmokeMatrixStale(matrix);
+  const freshnessTone: CodexStackTone = smokeFresh ? "sage" : matrix.attachEligible ? "accent" : "danger";
+  const freshness = smokeFresh
+    ? text("24 小时内完整通过", "Fresh complete pass within 24h")
+    : smokeStale
+      ? text("已超过 24 小时，需复验", "Older than 24h; recheck")
+      : matrix.attachEligible && !smokeComplete
+        ? text("记录不完整，需复验", "Incomplete record; recheck")
+        : matrix.attachEligible
+          ? text("需复验", "Recheck")
+          : text("未通过，禁止切换", "Failed; blocked");
   return {
     requiredModelsLabel: text("必测模型", "Required Models"),
     requiredModels: matrix.requiredModels.join(", "),
     attachEligibleLabel: text("可切换", "Attach Eligible"),
-    attachEligible: isSmokeMatrixFreshAndComplete(matrix) ? text("是", "Yes") : matrix.attachEligible ? text("需复验", "Recheck") : text("否", "No"),
+    attachEligible: smokeFresh ? text("是", "Yes") : matrix.attachEligible ? text("需复验", "Recheck") : text("否", "No"),
+    statusLabel: text("矩阵状态", "Matrix Status"),
+    statusValue: matrix.status === "passed" ? text("通过", "Passed") : text("失败", "Failed"),
+    checkedAtLabel: text("验证时间", "Checked At"),
+    checkedAt: formatTimestamp(matrix.checkedAt),
+    freshnessLabel: text("时效", "Freshness"),
+    freshness,
+    freshnessTone,
     models: matrix.models.map((model) => {
       const passed = model.checks.filter((check) => check.status === "passed").length;
       const failedChecks = model.checks.filter((check) => check.status === "failed").map((check) => check.label || check.id);
