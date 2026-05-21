@@ -12,6 +12,7 @@ const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogCons
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
+const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackInstallPlanCard.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
@@ -46,6 +47,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(diagnosticsPanel, /class="cs-diagnostics-grid"/);
   assert.match(diagnosticsPanel, /\.cs-warning-list\s*\{/);
   assert.match(diagnosticsPanel, /@media \(max-width: 960px\)/);
+  assert.match(installPlanCard, /class="panel-card cs-install-plan-card"/);
+  assert.match(installPlanCard, /\.cs-install-plan-list\s*\{/);
+  assert.match(installPlanCard, /@media \(max-width: 960px\)/);
   assert.match(dashboardInsights, /\.cs-section-kicker\s*\{/);
   assert.match(dashboardInsights, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(chainMap, /export interface CodexStackChainNode/);
@@ -79,6 +83,16 @@ test("codex stack dashboard delegates diagnostics without losing run check", () 
   assert.match(diagnosticsPanel, /warnings\.length/);
 });
 
+test("codex stack install page delegates preflight plan without losing actions", () => {
+  assert.match(controlPage, /import CodexStackInstallPlanCard from "\.\/CodexStackInstallPlanCard\.vue";/);
+  assert.match(controlPage, /<CodexStackInstallPlanCard[\s\S]*:highlights="installPlanHighlights"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@repair="repairRecommended"/);
+  assert.doesNotMatch(controlPage, /class="panel-card cs-install-plan-card"/);
+  assert.match(installPlanCard, /执行前确认/);
+  assert.match(installPlanCard, /@click="\$emit\('install-full'\)"/);
+  assert.match(installPlanCard, /@click="\$emit\('install-base'\)"/);
+  assert.match(installPlanCard, /@click="\$emit\('repair'\)"/);
+});
+
 test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /import CodexStackChainMap from "\.\/CodexStackChainMap\.vue";/);
   assert.match(controlPage, /<CodexStackChainMap[\s\S]*:nodes="chainNodes"[\s\S]*:gates="chainGates"[\s\S]*:warnings="chainWarnings"/);
@@ -100,10 +114,13 @@ test("codex stack dashboard exposes a request chain safety map", () => {
 });
 
 test("codex stack proxy policy displays tolerate legacy summaries without proxyPolicy", () => {
+  assert.match(controlPage, /function normalizeProxyPolicy\([\s\S]*policy: Partial<CodexStackSummaryPayload\["proxyPolicy"\]> \| undefined/);
+  assert.match(controlPage, /noProxyLoopbackReady: typeof policy\?\.noProxyLoopbackReady === "boolean"[\s\S]*\? policy\.noProxyLoopbackReady[\s\S]*: missing\.length === 0/);
   assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*const directWithSystemProxy = policy\.providerMode === "direct"/);
   assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*if \(installForm\.upstreamBaseUrl\.trim\(\) !== \(policy\.upstreamBaseUrl \|\| ""\)\) return true;/);
   assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*if \(nextNoProxy !== \(policy\.noProxy \|\| "localhost,127\.0\.0\.1,::1"\)\)/);
   assert.doesNotMatch(controlPage, /current\.proxyPolicy\.(providerMode|providerProxyUrl|upstreamBaseUrl|noProxy)/);
+  assert.doesNotMatch(controlPage, /(?:summary|current|next)\.proxyPolicy\.noProxyLoopbackReady/);
 });
 
 test("codex stack dashboard exposes explicit network mode diagnostics", () => {
