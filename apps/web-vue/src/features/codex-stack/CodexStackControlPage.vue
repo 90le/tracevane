@@ -572,7 +572,8 @@
                     <article class="cs-repair-card">
                       <strong>{{ text("通过验证后切 Codex", "Attach Codex After Smoke") }}</strong>
                       <p>{{ text("会重新跑完整模型矩阵；全部通过才写入 Codex active provider，并在当前模型不是 glm/kimi 时切到安全的国内模型。", "Reruns the full model matrix and writes the active Codex provider only if every check passes; if the current model is not glm/kimi, it switches to a CPA-safe domestic model.") }}</p>
-                      <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="applyCodexCpaAfterSmoke">
+                      <p class="cs-repair-card-note">{{ attachCodexCpaHelp }}</p>
+                      <button type="button" class="secondary-button" :disabled="!canAttachCodexCpa" @click="applyCodexCpaAfterSmoke">
                         {{ text("验证并切换", "Smoke & Attach") }}
                       </button>
                     </article>
@@ -1694,6 +1695,24 @@ const smokeMatrixLabel = computed(() => {
   return matrix.attachEligible
     ? text(`通过 ${models}`, `Passed ${models}`)
     : text(`失败 ${models}`, `Failed ${models}`);
+});
+const isSmokeMatrixAttachReady = computed(() => {
+  const matrix = summary.value?.profile.lastSmokeMatrix;
+  return Boolean(matrix?.attachEligible && !isSmokeMatrixStale(matrix));
+});
+const canAttachCodexCpa = computed(() => canRunMutation.value && isSmokeMatrixAttachReady.value);
+const attachCodexCpaHelp = computed(() => {
+  const matrix = summary.value?.profile.lastSmokeMatrix;
+  if (!matrix) {
+    return text("先运行“只验证”，让 glm-5.1 和 kimi-k2.6 完成完整矩阵。", "Run Verify Only first so glm-5.1 and kimi-k2.6 complete the full matrix.");
+  }
+  if (isSmokeMatrixStale(matrix)) {
+    return text("上次矩阵已超过 24 小时，先重新只验证；切换动作仍会再次烟测。", "The last matrix is older than 24 hours; verify again first. The attach action will still rerun smoke checks.");
+  }
+  if (!matrix.attachEligible) {
+    return text("上次矩阵未全部通过，Codex 保持官方路径；修复后重新只验证。", "The last matrix did not fully pass, so Codex stays on the official path. Fix it and verify again.");
+  }
+  return text("已有新鲜通过矩阵；点击后仍会重新烟测，全部通过才写入 Codex。", "A fresh passing matrix exists; clicking still reruns smoke checks before writing Codex.");
 });
 const dashboardInsightsLabels = computed(() => ({
   runtimeKicker: text("速览", "Quick Info"),
@@ -2833,6 +2852,13 @@ async function runSmokeMatrix(): Promise<void> {
 }
 
 async function applyCodexCpaAfterSmoke(): Promise<void> {
+  if (!canAttachCodexCpa.value) {
+    notice.value = {
+      kind: "error",
+      text: text("请先运行“只验证”，并确认 glm-5.1 / kimi-k2.6 矩阵在 24 小时内全部通过。", "Run Verify Only first and make sure the glm-5.1 / kimi-k2.6 matrix fully passed within 24 hours."),
+    };
+    return;
+  }
   await startRepairWithActions(
     ["apply-codex-cpa-after-smoke"],
     text("CPA smoke matrix 任务已启动；全部通过后才会切换 Codex。", "CPA smoke matrix started; Codex will attach only if every check passes."),
@@ -3873,6 +3899,13 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   flex: 1;
   margin: 0;
   color: var(--text-soft);
+}
+
+.cs-repair-card-note {
+  flex: 0 !important;
+  border-left: 3px solid var(--warning);
+  padding-left: 10px;
+  font-size: 0.86rem;
 }
 
 .cs-flow-card,

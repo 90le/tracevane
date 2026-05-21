@@ -76,6 +76,16 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(dashboardInsights, /networkPolicy\.upstreamValue/);
 });
 
+test("codex stack attach action requires a fresh passing smoke matrix in the UI", () => {
+  assert.match(controlPage, /const isSmokeMatrixAttachReady = computed\(\(\) => \{/);
+  assert.match(controlPage, /matrix\?\.attachEligible && !isSmokeMatrixStale\(matrix\)/);
+  assert.match(controlPage, /const canAttachCodexCpa = computed\(\(\) => canRunMutation\.value && isSmokeMatrixAttachReady\.value\);/);
+  assert.match(controlPage, /:disabled="!canAttachCodexCpa"[\s\S]*@click="applyCodexCpaAfterSmoke"/);
+  assert.match(controlPage, /先运行“只验证”/);
+  assert.match(controlPage, /已有新鲜通过矩阵；点击后仍会重新烟测/);
+  assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*glm-5\.1 \/ kimi-k2\.6 矩阵在 24 小时内全部通过/);
+});
+
 test("codex stack background jobs resync cc-connect drafts after completion", () => {
   assert.match(controlPage, /async function loadAll\(silent = false, ccConnectOptions: CcConnectLoadOptions = \{\}\): Promise<void>/);
   assert.match(controlPage, /if \(!isCodexStackJobRunning\(response\.job\)\) \{[\s\S]*await loadAll\(true\);/);
