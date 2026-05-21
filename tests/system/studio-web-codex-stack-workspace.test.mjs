@@ -10,6 +10,7 @@ const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8")
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
 const ccConnectCommandBar = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectCommandBar.vue");
 const ccConnectRail = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectRail.vue");
+const ccConnectSetupPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectSetupPanel.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
 const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
@@ -102,6 +103,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectRail, /\.cs-agent-pane-switch\s*\{/);
   assert.match(ccConnectRail, /\.cs-agent-project-pill\s*\{/);
   assert.match(ccConnectRail, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectSetupPanel, /class="cs-cc-setup-panel"/);
+  assert.match(ccConnectSetupPanel, /\.cs-code\s*\{/);
+  assert.match(ccConnectSetupPanel, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
 });
@@ -261,6 +265,25 @@ test("codex stack cc-connect page delegates rail navigation without moving draft
   assert.match(ccConnectRail, /@click="\$emit\('select-project', project\.id\)"/);
   assert.match(ccConnectRail, /@click="\$emit\('add-project'\)"/);
   assert.doesNotMatch(ccConnectRail, /ccConnectProjectDrafts|selectedProjectDraft|addCcConnectProject|selectCcConnectProject|patchCcConnectConfig|saveCcConnect/);
+});
+
+test("codex stack cc-connect page delegates setup actions without moving finalizer", () => {
+  assert.match(controlPage, /import CodexStackCcConnectSetupPanel from "\.\/CodexStackCcConnectSetupPanel\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackCcConnectSetupPanel[\s\S]*:commands="ccConnectSetupCommands"[\s\S]*:busy="busy"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:can-finalize="summary\.ccConnect\.canFinalize"[\s\S]*@copy-setup="copySetupCommand"[\s\S]*@finalize="finalizeCcConnect"/,
+  );
+  assert.match(controlPage, /async function copySetupCommand\(platform: CodexStackCcConnectSetupPlatform\): Promise<void>/);
+  assert.match(controlPage, /async function finalizeCcConnect\(\): Promise<void>/);
+  assert.match(controlPage, /finalizeCodexStackCcConnect\(\{ project: summary\.value\?\.ccConnect\.project \|\| "main" \}\)/);
+  assert.doesNotMatch(controlPage, /复制 Feishu Setup/);
+  assert.doesNotMatch(controlPage, /class="cs-actions cs-actions-wrap"[\s\S]*copySetupCommand\('feishu'\)/);
+  assert.match(ccConnectSetupPanel, /export type CodexStackCcConnectSetupPlatform = "feishu" \| "weixin";/);
+  assert.match(ccConnectSetupPanel, /defineEmits<[\s\S]*"copy-setup": \[platform: CodexStackCcConnectSetupPlatform\][\s\S]*finalize: \[\]/);
+  assert.match(ccConnectSetupPanel, /@click="\$emit\('copy-setup', 'feishu'\)"/);
+  assert.match(ccConnectSetupPanel, /@click="\$emit\('copy-setup', 'weixin'\)"/);
+  assert.match(ccConnectSetupPanel, /@click="\$emit\('finalize'\)"/);
+  assert.doesNotMatch(ccConnectSetupPanel, /copySetupCommand|finalizeCcConnect|finalizeCodexStackCcConnect|patchCcConnectConfig|saveCcConnect/);
 });
 
 test("codex stack dashboard exposes a request chain safety map", () => {

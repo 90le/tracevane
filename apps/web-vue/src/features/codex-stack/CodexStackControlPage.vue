@@ -510,33 +510,14 @@
                   </template>
 
                   <template v-else-if="activeAgentPane === 'setup'">
-                    <div class="cs-card-header">
-                      <div>
-                        <p class="cs-section-kicker">{{ text("绑定与动作", "Setup and Actions") }}</p>
-                        <h4>{{ text("快速绑定命令", "Quick Setup Commands") }}</h4>
-                      </div>
-                    </div>
-                    <p class="cs-field-hint">
-                      {{ text("保存 TOML 后，如果 cc-connect.service 正在运行会自动重启。绑定完成后可直接执行 finalizer。", "Saving TOML restarts cc-connect.service if it is running. After binding, you can immediately run the finalizer.") }}
-                    </p>
-                    <div class="cs-actions cs-actions-wrap">
-                      <button type="button" class="secondary-button" :disabled="busy" @click="copySetupCommand('feishu')">
-                        {{ text("复制 Feishu Setup", "Copy Feishu Setup") }}
-                      </button>
-                      <button type="button" class="secondary-button" :disabled="busy" @click="copySetupCommand('weixin')">
-                        {{ text("复制 Weixin Setup", "Copy Weixin Setup") }}
-                      </button>
-                      <button
-                        v-if="summary.ccConnect.canFinalize"
-                        type="button"
-                        class="primary-button"
-                        :disabled="!canRunMutation"
-                        @click="finalizeCcConnect"
-                      >
-                        {{ text("完成 cc-connect 安装", "Finalize cc-connect") }}
-                      </button>
-                    </div>
-                    <pre class="cs-code">{{ ccConnectSetupCommands.join("\n") }}</pre>
+                    <CodexStackCcConnectSetupPanel
+                      :commands="ccConnectSetupCommands"
+                      :busy="busy"
+                      :can-run-mutation="canRunMutation"
+                      :can-finalize="summary.ccConnect.canFinalize"
+                      @copy-setup="copySetupCommand"
+                      @finalize="finalizeCcConnect"
+                    />
                   </template>
 
                   <template v-else>
@@ -808,6 +789,8 @@ import type {
   CodexStackCcConnectPaneId,
   CodexStackCcConnectProjectRailItem,
 } from "./CodexStackCcConnectRail.vue";
+import CodexStackCcConnectSetupPanel from "./CodexStackCcConnectSetupPanel.vue";
+import type { CodexStackCcConnectSetupPlatform } from "./CodexStackCcConnectSetupPanel.vue";
 import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
 import CodexStackInstallConfigPanel from "./CodexStackInstallConfigPanel.vue";
 import type {
@@ -2672,7 +2655,7 @@ async function saveCcConnectRaw(): Promise<void> {
   }
 }
 
-async function copySetupCommand(platform: "feishu" | "weixin"): Promise<void> {
+async function copySetupCommand(platform: CodexStackCcConnectSetupPlatform): Promise<void> {
   const command = `cc-connect ${platform} setup --project ${primaryCcConnectProjectName.value}`;
   const copied = await copyTextToClipboard(command);
   notice.value = copied
@@ -3134,7 +3117,6 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   opacity: 0.42;
 }
 
-.cs-code,
 .cs-raw-editor {
   width: 100%;
   overflow: auto;
