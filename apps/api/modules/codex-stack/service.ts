@@ -1944,7 +1944,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     for (const entry of fs.readdirSync(jobsDir()).filter((name) => name.endsWith(".json"))) {
       const filePath = path.join(jobsDir(), entry);
       const job = readJsonFile<CodexStackJob | null>(filePath, null);
-      if (!job || job.status !== "running") continue;
+      if (!job || (job.status !== "queued" && job.status !== "running")) continue;
       const next: CodexStackJob = {
         ...job,
         status: "interrupted",

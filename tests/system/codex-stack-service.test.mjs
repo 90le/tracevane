@@ -113,7 +113,7 @@ account_id = "test"
 `);
 }
 
-function writeActiveCodexStackJob(config, id = "active-job") {
+function writeActiveCodexStackJob(config, id = "active-job", overrides = {}) {
   const jobsDir = path.join(config.openclawRoot, "studio/codex-stack/jobs");
   writeJson(path.join(jobsDir, `${id}.json`), {
     id,
@@ -127,6 +127,7 @@ function writeActiveCodexStackJob(config, id = "active-job") {
     logPath: path.join(jobsDir, `${id}.log`),
     logTail: "",
     error: null,
+    ...overrides,
   });
 }
 
@@ -467,6 +468,71 @@ test("codex stack rejects concurrent mutating actions while a job is active", as
         && error.statusCode === 409,
     );
   }
+});
+
+test("codex stack recovers queued startup jobs so stale locks do not block later actions", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createGeneratedStackFiles(root);
+  createBoundCcConnectConfig(root);
+  writeActiveCodexStackJob(config, "queued-before-restart", {
+    status: "queued",
+    commandLabel: "bash auto-setup.sh",
+  });
+
+  const service = createCodexStackService(config);
+  const recovered = service.getJob("queued-before-restart");
+  assert.equal(recovered?.status, "interrupted");
+  assert.match(recovered?.error || "", /Studio restarted before this job reported completion/);
+
+  const response = await service.patchConfig(undefined, { defaultModel: "kimi-k2.6" });
+  assert.equal(response.ok, true);
+  assert.equal(response.summary?.models.current, "kimi-k2.6");
+});
+
+test("codex stack recovers running startup jobs so stale locks do not block later actions", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createGeneratedStackFiles(root);
+  createBoundCcConnectConfig(root);
+  writeActiveCodexStackJob(config, "running-before-restart");
+
+  const service = createCodexStackService(config);
+  const recovered = service.getJob("running-before-restart");
+  assert.equal(recovered?.status, "interrupted");
+  assert.match(recovered?.error || "", /Studio restarted before this job reported completion/);
+
+  const response = await service.patchConfig(undefined, { defaultModel: "kimi-k2.6" });
+  assert.equal(response.ok, true);
+  assert.equal(response.summary?.models.current, "kimi-k2.6");
 });
 
 test("codex stack pause action disables watchdog before Compact and CPA", async () => {
