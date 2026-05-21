@@ -32,12 +32,14 @@ const modelCatalogCard = read("apps/web-vue/src/features/codex-stack/CodexStackM
 const modelRibbon = read("apps/web-vue/src/features/codex-stack/CodexStackModelRibbon.vue");
 const pageHeader = read("apps/web-vue/src/features/codex-stack/CodexStackPageHeader.vue");
 const repairBoard = read("apps/web-vue/src/features/codex-stack/CodexStackRepairBoard.vue");
+const responsiveGrid = read("apps/web-vue/src/features/codex-stack/CodexStackResponsiveGrid.vue");
 const runtimeConfigCard = read("apps/web-vue/src/features/codex-stack/CodexStackRuntimeConfigCard.vue");
 const upstreamMap = read("apps/web-vue/src/features/codex-stack/CodexStackUpstreamMap.vue");
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
 const sectionIntro = read("apps/web-vue/src/features/codex-stack/CodexStackSectionIntro.vue");
 const sectionNav = read("apps/web-vue/src/features/codex-stack/CodexStackSectionNav.vue");
+const sectionStack = read("apps/web-vue/src/features/codex-stack/CodexStackSectionStack.vue");
 const workspaceShell = read("apps/web-vue/src/features/codex-stack/CodexStackWorkspaceShell.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
 const readinessAction = read("apps/web-vue/src/features/codex-stack/readiness-action.ts");
@@ -70,6 +72,11 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(managementLockCard, /class="panel-card cs-management-lock-card"/);
   assert.match(managementLockCard, /\.cs-management-lock-card\s*\{/);
   assert.match(managementLockCard, /@media \(max-width: 960px\)/);
+  assert.match(sectionStack, /class="cs-section-stack"/);
+  assert.match(sectionStack, /\.cs-section-stack\s*\{/);
+  assert.match(responsiveGrid, /class="cs-responsive-grid"/);
+  assert.match(responsiveGrid, /\.cs-responsive-grid\s*\{/);
+  assert.match(responsiveGrid, /@media \(max-width: 960px\)/);
   assert.match(actionOverview, /class="cs-action-overview-grid"/);
   assert.match(actionOverview, /\.cs-readiness-bar\s*\{/);
   assert.match(actionOverview, /@media \(max-width: 1200px\)/);
@@ -194,6 +201,27 @@ test("codex stack page chrome delegates refresh and management enable without mo
   assert.match(managementLockCard, /defineEmits<\{[\s\S]*enable: \[\];[\s\S]*\}>/);
   assert.match(managementLockCard, /@click="\$emit\('enable'\)"/);
   assert.doesNotMatch(managementLockCard, /loadAll|summary|fetchCodexStackSummary|enableManagement|serviceAction|patchCodexStackConfig/);
+});
+
+test("codex stack section layout wrappers own repeated layout without moving actions", () => {
+  assert.match(controlPage, /import CodexStackSectionStack from "\.\/CodexStackSectionStack\.vue";/);
+  assert.match(controlPage, /import CodexStackResponsiveGrid from "\.\/CodexStackResponsiveGrid\.vue";/);
+  assert.equal((controlPage.match(/<CodexStackSectionStack>/g) || []).length, 5);
+  assert.equal((controlPage.match(/<CodexStackResponsiveGrid>/g) || []).length, 1);
+  assert.match(
+    controlPage,
+    /<CodexStackResponsiveGrid>[\s\S]*<CodexStackRuntimeConfigCard[\s\S]*<CodexStackEnvironmentReferenceCard[\s\S]*<\/CodexStackResponsiveGrid>/,
+  );
+  assert.doesNotMatch(controlPage, /class="cs-section-stack"/);
+  assert.doesNotMatch(controlPage, /class="cs-dashboard-grid"/);
+  assert.doesNotMatch(controlPage, /\.cs-section-stack|\.cs-dashboard-grid|\.cs-card-header|\.cs-form-grid|\.cs-chip|\.cs-actions/);
+  assert.match(sectionStack, /<slot \/>/);
+  assert.match(responsiveGrid, /<slot \/>/);
+  assert.doesNotMatch(sectionStack, /activeSection|loadAll|fetchCodexStackSummary|patchCodexStackConfig|serviceAction|enableManagement/);
+  assert.doesNotMatch(responsiveGrid, /activeSection|loadAll|fetchCodexStackSummary|patchCodexStackConfig|serviceAction|enableManagement/);
+  assert.match(controlPage, /async function loadAll/);
+  assert.match(controlPage, /async function enableManagement/);
+  assert.match(controlPage, /async function serviceAction/);
 });
 
 test("codex stack section nav delegates tab switching without moving content routing", () => {
