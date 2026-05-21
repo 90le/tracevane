@@ -679,6 +679,7 @@ StandardError=append:/tmp/cpa.log
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
 Environment=NO_PROXY=${NO_PROXY_VAL}
+Environment=OPENCLAW_NO_PROXY=${NO_PROXY_VAL}
 Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
 Environment=LISTEN_PORT=${COMPACT_PORT}
 Environment=CPA_KEY=${CPA_PROXY_KEY}
@@ -708,6 +709,7 @@ StandardError=append:/tmp/cpa-compact-proxy.log
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
 Environment=NO_PROXY=${NO_PROXY_VAL}
+Environment=OPENCLAW_NO_PROXY=${NO_PROXY_VAL}
 Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
 Environment=LISTEN_PORT=${COMPACT_PORT}
 Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}
@@ -1009,6 +1011,7 @@ Environment=OPENAI_API_KEY=${CPA_PROXY_KEY}
 Environment=HTTP_PROXY=
 Environment=HTTPS_PROXY=
 Environment=NO_PROXY=${NO_PROXY_VAL}
+Environment=OPENCLAW_NO_PROXY=${NO_PROXY_VAL}
 Environment=CPA_BASE_URL=http://127.0.0.1:${CPA_PORT}
 Environment=LISTEN_PORT=${COMPACT_PORT}
 Environment=COMPACT_DEFAULT_MODEL=${CODEX_MODEL}

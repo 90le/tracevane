@@ -2309,6 +2309,8 @@ test("bundled installers propagate configured no-proxy into systemd units", () =
 
   assert.match(dmwork, /envVal\(\['OPENCLAW_NO_PROXY', 'NO_PROXY'\]\)/);
   assert.match(dmwork, /Environment=NO_PROXY=\$\{NO_PROXY_VAL\}/);
+  assert.match(dmwork, /Environment=OPENCLAW_NO_PROXY=\$\{NO_PROXY_VAL\}/);
+  assert.equal((dmwork.match(/Environment=OPENCLAW_NO_PROXY=\$\{NO_PROXY_VAL\}/g) || []).length, 3);
   assert.doesNotMatch(dmwork, /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1/);
 });
 
