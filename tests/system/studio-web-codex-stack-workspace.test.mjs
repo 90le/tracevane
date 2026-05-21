@@ -35,6 +35,7 @@ const upstreamMap = read("apps/web-vue/src/features/codex-stack/CodexStackUpstre
 const chainMap = read("apps/web-vue/src/features/codex-stack/CodexStackChainMap.vue");
 const runReadinessPanel = read("apps/web-vue/src/features/codex-stack/CodexStackRunReadinessPanel.vue");
 const sectionIntro = read("apps/web-vue/src/features/codex-stack/CodexStackSectionIntro.vue");
+const sectionNav = read("apps/web-vue/src/features/codex-stack/CodexStackSectionNav.vue");
 const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-model.ts");
 const readinessAction = read("apps/web-vue/src/features/codex-stack/readiness-action.ts");
 const codexStackService = read("apps/api/modules/codex-stack/service.ts");
@@ -127,6 +128,10 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(sectionIntro, /\.cs-chip-row\s*\{/);
   assert.match(sectionIntro, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(sectionIntro, /@media \(max-width: 960px\)/);
+  assert.match(sectionNav, /class="cs-sidebar"/);
+  assert.match(sectionNav, /class="cs-nav-button"/);
+  assert.match(sectionNav, /\.cs-nav-button-active\s*\{/);
+  assert.match(sectionNav, /@media \(max-width: 960px\)/);
   assert.match(ccConnectCommandBar, /class="cs-cc-command-bar"/);
   assert.match(ccConnectCommandBar, /\.cs-config-action-strip\s*\{/);
   assert.match(ccConnectCommandBar, /\.cs-agent-savebar\s*\{/);
@@ -155,6 +160,30 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectStage, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
+});
+
+test("codex stack section nav delegates tab switching without moving content routing", () => {
+  assert.match(controlPage, /import CodexStackSectionNav from "\.\/CodexStackSectionNav\.vue";/);
+  assert.match(controlPage, /import type \{ CodexStackSectionId, CodexStackSectionNavItem \} from "\.\/CodexStackSectionNav\.vue";/);
+  assert.match(
+    controlPage,
+    /<CodexStackSectionNav[\s\S]*:sections="navSections"[\s\S]*:active-section="activeSection"[\s\S]*@select="activeSection = \$event"/,
+  );
+  assert.match(controlPage, /type SectionId = CodexStackSectionId;/);
+  assert.match(controlPage, /const activeSection = ref<SectionId>\("dashboard"\);/);
+  assert.match(controlPage, /const navSections = computed<CodexStackSectionNavItem\[\]>\(\(\) => \[/);
+  assert.match(controlPage, /<template v-if="activeSection === 'dashboard'">/);
+  assert.match(controlPage, /<template v-else-if="activeSection === 'install'">/);
+  assert.match(controlPage, /<template v-else-if="activeSection === 'cc-connect'">/);
+  assert.match(controlPage, /<template v-else-if="activeSection === 'settings'">/);
+  assert.match(controlPage, /<template v-else-if="activeSection === 'logs'">/);
+  assert.doesNotMatch(controlPage, /class="cs-sidebar"/);
+  assert.doesNotMatch(controlPage, /class="cs-nav-button"/);
+  assert.match(sectionNav, /export type CodexStackSectionId = "dashboard" \| "install" \| "cc-connect" \| "settings" \| "logs";/);
+  assert.match(sectionNav, /export interface CodexStackSectionNavItem/);
+  assert.match(sectionNav, /defineEmits<\{[\s\S]*select: \[sectionId: CodexStackSectionId\];[\s\S]*\}>/);
+  assert.match(sectionNav, /@click="\$emit\('select', section\.id\)"/);
+  assert.doesNotMatch(sectionNav, /activeSection\.value|nextActionPrimary|runReadinessCheckAction|loadSummary|fetchCodexStackSummary|patchCodexStackConfig|serviceAction/);
 });
 
 test("codex stack section intros delegate repeated page copy without moving derived chips", () => {
