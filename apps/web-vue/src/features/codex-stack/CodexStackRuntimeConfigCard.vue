@@ -124,14 +124,15 @@
       <button type="button" class="primary-button" :disabled="!canRunMutation || !hasChanges" @click="$emit('save')">
         {{ text("保存配置", "Save Config") }}
       </button>
-      <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
-        {{ mutationDisabledHelp }}
+      <p v-if="saveDisabledHelp" class="cs-disabled-help">
+        {{ saveDisabledHelp }}
       </p>
     </div>
   </article>
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { useLocalePreference } from "../../shared/locale";
 
 export type CodexStackRuntimeContextMode = "default" | "codex-1m" | "custom";
@@ -159,7 +160,7 @@ export interface CodexStackRuntimeConfigImpactItem {
 
 export type CodexStackRuntimeConfigField = keyof CodexStackRuntimeConfigDraft;
 
-defineProps<{
+const props = defineProps<{
   form: CodexStackRuntimeConfigDraft;
   modelOptions: string[];
   contextTokensDisabled: boolean;
@@ -177,6 +178,12 @@ const emit = defineEmits<{
 }>();
 
 const { text } = useLocalePreference();
+
+const saveDisabledHelp = computed(() => {
+  if (!props.canRunMutation) return props.mutationDisabledHelp;
+  if (!props.hasChanges) return text("当前运行配置没有变化；修改后才能保存。", "Runtime config has no changes; edit a field before saving.");
+  return "";
+});
 
 function eventValue(event: Event): string {
   return event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement

@@ -552,6 +552,9 @@ test("codex stack cc-connect page delegates command bar without moving config wr
   assert.match(controlPage, /patchCcConnectConfig\(\{ raw: ccConnectRawDraft\.value \}\)/);
   assert.match(ccConnectCommandBar, /mutationDisabledHelp: string;/);
   assert.match(ccConnectCommandBar, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
+  assert.match(ccConnectCommandBar, /const saveDisabledHelp = computed\(\(\) => \{/);
+  assert.match(ccConnectCommandBar, /可视化配置和 TOML 均已同步；修改后才能保存/);
+  assert.match(ccConnectCommandBar, /v-else-if="saveDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(ccConnectCommandBar, /defineEmits<[\s\S]*"save-structured": \[\];[\s\S]*"save-raw": \[\]/);
   assert.match(ccConnectCommandBar, /@click="\$emit\('save-structured'\)"/);
   assert.match(ccConnectCommandBar, /@click="\$emit\('save-raw'\)"/);
@@ -626,6 +629,9 @@ test("codex stack cc-connect page delegates raw TOML editor without moving raw s
   assert.doesNotMatch(controlPage, /class="cs-raw-editor"/);
   assert.match(ccConnectRawPanel, /defineProps<\{[\s\S]*rawDraft: string;[\s\S]*hasRawChanges: boolean;[\s\S]*canRunMutation: boolean;[\s\S]*mutationDisabledHelp: string;[\s\S]*\}>/);
   assert.match(ccConnectRawPanel, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
+  assert.match(ccConnectRawPanel, /const saveDisabledHelp = computed\(\(\) => \(/);
+  assert.match(ccConnectRawPanel, /TOML 已同步；修改原始配置后才能保存/);
+  assert.match(ccConnectRawPanel, /v-else-if="saveDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(ccConnectRawPanel, /defineEmits<\{[\s\S]*"update-raw": \[raw: string\];[\s\S]*"save-raw": \[\];[\s\S]*\}>/);
   assert.match(ccConnectRawPanel, /@input="\$emit\('update-raw', textareaValue\(\$event\)\)"/);
   assert.match(ccConnectRawPanel, /@click="\$emit\('save-raw'\)"/);
@@ -935,7 +941,9 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(runtimeConfigCard, /v-if="impactItems\.length"/);
   assert.match(runtimeConfigCard, /item\.detail/);
   assert.match(runtimeConfigCard, /mutationDisabledHelp: string;/);
-  assert.match(runtimeConfigCard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
+  assert.match(runtimeConfigCard, /const saveDisabledHelp = computed\(\(\) => \{/);
+  assert.match(runtimeConfigCard, /当前运行配置没有变化；修改后才能保存/);
+  assert.match(runtimeConfigCard, /v-if="saveDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(runtimeConfigCard, /defineEmits<[\s\S]*updateField: \[field: CodexStackRuntimeConfigField, value: string \| number\]/);
   assert.match(runtimeConfigCard, /@click="\$emit\('save'\)"/);
   assert.doesNotMatch(runtimeConfigCard, /patchCodexStackConfig|configPatchPayload|saveConfigPatch/);

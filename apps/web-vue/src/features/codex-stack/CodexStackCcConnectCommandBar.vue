@@ -53,15 +53,19 @@
         <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
           {{ mutationDisabledHelp }}
         </p>
+        <p v-else-if="saveDisabledHelp" class="cs-disabled-help">
+          {{ saveDisabledHelp }}
+        </p>
       </div>
     </article>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { useLocalePreference } from "../../shared/locale";
 
-defineProps<{
+const props = defineProps<{
   installed: boolean;
   configured: boolean;
   bindingPresent: boolean;
@@ -81,6 +85,19 @@ defineEmits<{
 }>();
 
 const { text } = useLocalePreference();
+
+const saveDisabledHelp = computed(() => {
+  if (!props.hasStructuredChanges && !props.hasRawChanges) {
+    return text("可视化配置和 TOML 均已同步；修改后才能保存。", "Visual config and TOML are synced; edit them before saving.");
+  }
+  if (!props.hasStructuredChanges) {
+    return text("可视化配置已同步；修改项目、Provider 或平台后才能保存。", "Visual config is synced; edit projects, providers, or platforms before saving.");
+  }
+  if (!props.hasRawChanges) {
+    return text("TOML 已同步；修改原始配置后才能保存。", "TOML is synced; edit the raw config before saving.");
+  }
+  return "";
+});
 
 function yesNo(value: boolean): string {
   return value ? text("是", "Yes") : text("否", "No");

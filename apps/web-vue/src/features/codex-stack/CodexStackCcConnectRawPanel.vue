@@ -31,14 +31,18 @@
       <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
         {{ mutationDisabledHelp }}
       </p>
+      <p v-else-if="saveDisabledHelp" class="cs-disabled-help">
+        {{ saveDisabledHelp }}
+      </p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { useLocalePreference } from "../../shared/locale";
 
-defineProps<{
+const props = defineProps<{
   rawDraft: string;
   hasRawChanges: boolean;
   canRunMutation: boolean;
@@ -51,6 +55,10 @@ defineEmits<{
 }>();
 
 const { text } = useLocalePreference();
+
+const saveDisabledHelp = computed(() => (
+  props.hasRawChanges ? "" : text("TOML 已同步；修改原始配置后才能保存。", "TOML is synced; edit the raw config before saving.")
+));
 
 function textareaValue(event: Event): string {
   return (event.target as HTMLTextAreaElement).value;
