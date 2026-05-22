@@ -12,8 +12,26 @@
         <select :value="form.defaultModel" class="form-input" @change="updateSelectField('defaultModel', $event)">
           <option v-for="model in modelOptions" :key="`config-${model}`" :value="model">{{ model }}</option>
         </select>
-        <span class="form-help">{{ text("保存后会写入 Codex，并可同步到 cc-connect Agent。", "Saving writes to Codex and can be synced to cc-connect agents.") }}</span>
+        <span class="form-help">{{ text("这是 CPA 目标模型；保存配置不会自动把 Codex 切到 CPA。", "This is the CPA target model; saving config does not automatically switch Codex to CPA.") }}</span>
       </label>
+      <section class="form-field cs-form-span-2 cs-route-selector" aria-labelledby="codex-route-title">
+        <div>
+          <span id="codex-route-title" class="form-label">{{ text("Codex 使用路径", "Codex Route") }}</span>
+          <strong>{{ routeLabel }}</strong>
+          <span class="form-help">{{ routeDetail }}</span>
+        </div>
+        <div class="cs-route-actions">
+          <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('restore-official-chatgpt')">
+            {{ text("用官方 ChatGPT", "Use Official ChatGPT") }}
+          </button>
+          <button type="button" class="primary-button" :disabled="attachCpaDisabled" @click="$emit('attach-codex-cpa')">
+            {{ text("验证后用 CPA", "Verify and Use CPA") }}
+          </button>
+        </div>
+        <p v-if="routeActionHelp" class="cs-disabled-help">
+          {{ routeActionHelp }}
+        </p>
+      </section>
       <label class="form-field">
         <span class="form-label">{{ text("Codex 上下文", "Codex Context") }}</span>
         <select :value="form.contextMode" class="form-input" @change="updateSelectField('contextMode', $event)">
@@ -136,6 +154,7 @@ import { computed } from "vue";
 import { useLocalePreference } from "../../shared/locale";
 
 export type CodexStackRuntimeContextMode = "default" | "codex-1m" | "custom";
+export type CodexStackRouteActive = "official-chatgpt" | "cpa";
 
 export interface CodexStackRuntimeConfigDraft {
   defaultModel: string;
@@ -167,6 +186,12 @@ const props = defineProps<{
   contextTokensDisabledHelp: string;
   restartRequiredUnits: string[];
   impactItems: CodexStackRuntimeConfigImpactItem[];
+  codexRouteActive: CodexStackRouteActive;
+  codexRouteCurrentModel: string;
+  codexRouteCpaTargetModel: string;
+  codexRouteOfficialModel: string;
+  canAttachCodexCpa: boolean;
+  attachCodexCpaDisabledHelp: string;
   canRunMutation: boolean;
   hasChanges: boolean;
   mutationDisabledHelp: string;
@@ -175,6 +200,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   save: [];
   updateField: [field: CodexStackRuntimeConfigField, value: string | number];
+  "attach-codex-cpa": [];
+  "restore-official-chatgpt": [];
 }>();
 
 const { text } = useLocalePreference();
@@ -183,6 +210,34 @@ const saveDisabledHelp = computed(() => {
   if (!props.canRunMutation) return props.mutationDisabledHelp;
   if (!props.hasChanges) return text("当前运行配置没有变化；修改后才能保存。", "Runtime config has no changes; edit a field before saving.");
   return "";
+});
+
+const routeLabel = computed(() => props.codexRouteActive === "cpa"
+  ? text("当前使用 CPA / Compact 兼容端点", "Currently using CPA / Compact compatible endpoint")
+  : text("当前使用官方 ChatGPT 登录", "Currently using official ChatGPT login"));
+
+const routeDetail = computed(() => props.codexRouteActive === "cpa"
+  ? text(
+    `Codex 会走本地 CPA，当前模型为 ${props.codexRouteCurrentModel || "--"}；运行配置里的模型和上游会影响这条路径。`,
+    `Codex uses local CPA with ${props.codexRouteCurrentModel || "--"}; the model and upstream fields affect this route.`,
+  )
+  : text(
+    `Codex 走官方账户登录，建议模型为 ${props.codexRouteOfficialModel || "gpt-5.5"}；运行配置里的第三方上游只作为 CPA 目标。`,
+    `Codex uses the official account login, recommended model ${props.codexRouteOfficialModel || "gpt-5.5"}; third-party upstream settings are only CPA targets.`,
+  ));
+
+const attachCpaDisabled = computed(() => !props.canRunMutation || props.hasChanges || !props.canAttachCodexCpa);
+
+const routeActionHelp = computed(() => {
+  if (!props.canRunMutation) return props.mutationDisabledHelp;
+  if (props.hasChanges) {
+    return text("先保存当前模型/上游配置，再运行验证并切到 CPA。", "Save the current model/upstream config before verifying and switching to CPA.");
+  }
+  if (!props.canAttachCodexCpa) return props.attachCodexCpaDisabledHelp;
+  return text(
+    `CPA 将使用目标模型 ${props.codexRouteCpaTargetModel || props.form.defaultModel || "--"}；点击后会重新 smoke，通过后才切换。`,
+    `CPA will use target model ${props.codexRouteCpaTargetModel || props.form.defaultModel || "--"}; clicking reruns smoke and switches only after it passes.`,
+  );
 });
 
 function eventValue(event: Event): string {
@@ -237,6 +292,34 @@ function updateNumberField(field: CodexStackRuntimeConfigField, event: Event): v
 .form-help {
   color: var(--text-soft);
   font-size: 0.84rem;
+}
+
+.cs-route-selector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.cs-route-selector strong {
+  display: block;
+  margin: 2px 0 4px;
+  color: var(--text);
+}
+
+.cs-route-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.cs-route-selector .cs-disabled-help {
+  grid-column: 1 / -1;
 }
 
 .cs-actions {
@@ -313,6 +396,14 @@ function updateNumberField(field: CodexStackRuntimeConfigField, event: Event): v
 @media (max-width: 960px) {
   .cs-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .cs-route-selector {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-route-actions {
+    justify-content: flex-start;
   }
 }
 </style>

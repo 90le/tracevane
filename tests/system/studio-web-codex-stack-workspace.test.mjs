@@ -1027,7 +1027,7 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(controlPage, /import CodexStackRuntimeConfigCard from "\.\/CodexStackRuntimeConfigCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:context-tokens-disabled-help="configContextTokensDisabledHelp"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"/,
+    /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:context-tokens-disabled-help="configContextTokensDisabledHelp"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:codex-route-active="summary\.codexRoute\.active"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"[\s\S]*@restore-official-chatgpt="restoreOfficialChatGpt"/,
   );
   assert.match(controlPage, /:impact-items="configImpactItems"/);
   assert.match(controlPage, /function updateConfigFormField\(field: CodexStackRuntimeConfigField, value: string \| number\): void/);
@@ -1042,6 +1042,13 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(runtimeConfigCard, /export interface CodexStackRuntimeConfigImpactItem/);
   assert.match(runtimeConfigCard, /contextTokensDisabledHelp: string;/);
   assert.match(runtimeConfigCard, /v-if="contextTokensDisabled && contextTokensDisabledHelp"[\s\S]*class="form-help"/);
+  assert.match(runtimeConfigCard, /Codex 使用路径/);
+  assert.match(runtimeConfigCard, /这是 CPA 目标模型；保存配置不会自动把 Codex 切到 CPA/);
+  assert.match(runtimeConfigCard, /用官方 ChatGPT/);
+  assert.match(runtimeConfigCard, /验证后用 CPA/);
+  assert.match(runtimeConfigCard, /先保存当前模型\/上游配置，再运行验证并切到 CPA/);
+  assert.match(runtimeConfigCard, /@click="\$emit\('attach-codex-cpa'\)"/);
+  assert.match(runtimeConfigCard, /@click="\$emit\('restore-official-chatgpt'\)"/);
   assert.match(runtimeConfigCard, /v-if="impactItems\.length"/);
   assert.match(runtimeConfigCard, /item\.detail/);
   assert.match(runtimeConfigCard, /mutationDisabledHelp: string;/);

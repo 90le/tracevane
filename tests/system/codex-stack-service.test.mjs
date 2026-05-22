@@ -1294,6 +1294,9 @@ test("codex stack attaches Codex CPA only after the full smoke gate passes", asy
     const patched = fs.readFileSync(codexConfig, "utf8");
     assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
     assert.match(patched, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
+    const summary = await service.getSummary();
+    assert.equal(summary.codexRoute.active, "cpa");
+    assert.equal(summary.codexRoute.cpaTargetModel, "glm-5.1");
   });
 });
 
@@ -1341,6 +1344,9 @@ experimental_bearer_token = "secret-cpa-key-123456"
   assert.doesNotMatch(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
   assert.doesNotMatch(tomlTopLevel(patched), /^base_url\s*=\s*"http:\/\/127\.0\.0\.1:18796\/v1"/m);
   assert.match(patched, /\[model_providers\.cpa\]/);
+  const summary = await service.getSummary();
+  assert.equal(summary.codexRoute.active, "official-chatgpt");
+  assert.equal(summary.codexRoute.currentModel, "gpt-5.5");
 });
 
 test("codex stack can attach the user-selected GPT model through CPA", async () => {

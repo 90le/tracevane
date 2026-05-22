@@ -390,11 +390,19 @@
                 :context-tokens-disabled-help="configContextTokensDisabledHelp"
                 :restart-required-units="restartRequiredUnits"
                 :impact-items="configImpactItems"
+                :codex-route-active="summary.codexRoute.active"
+                :codex-route-current-model="summary.codexRoute.currentModel"
+                :codex-route-cpa-target-model="summary.codexRoute.cpaTargetModel"
+                :codex-route-official-model="summary.codexRoute.officialModel"
+                :can-attach-codex-cpa="canAttachCodexCpa"
+                :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
                 :can-run-mutation="canRunMutation"
                 :has-changes="hasConfigPatchChanges"
                 :mutation-disabled-help="mutationDisabledHelp"
                 @update-field="updateConfigFormField"
                 @save="saveConfigPatch"
+                @attach-codex-cpa="applyCodexCpaAfterSmoke"
+                @restore-official-chatgpt="restoreOfficialChatGpt"
               />
 
               <CodexStackEnvironmentReferenceCard
@@ -897,6 +905,9 @@ const codexProviderCheck = computed(() => (
   summary.value?.runReadiness.checks.find((check) => check.id === "codex-provider") || null
 ));
 const codexRouteLabel = computed(() => {
+  const route = summary.value?.codexRoute.active;
+  if (route === "cpa") return text("CPA 已接入", "CPA attached");
+  if (route === "official-chatgpt") return text("官方 GPT 路径", "Official GPT route");
   const status = codexProviderCheck.value?.status;
   if (status === "pass") return text("CPA 已接入", "CPA attached");
   if (status === "fail") return text("CPA 接入异常", "CPA route blocked");
@@ -2091,8 +2102,16 @@ function portDisplay(port: number, live: number | null): string {
 }
 
 function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackSummaryPayload {
+  const cpaAttached = next.codexRoute?.active === "cpa"
+    || next.runReadiness?.checks.some((check) => check.id === "codex-provider" && check.status === "pass");
   return {
     ...next,
+    codexRoute: next.codexRoute || {
+      active: cpaAttached ? "cpa" : "official-chatgpt",
+      currentModel: next.models.current || next.models.defaultModel || "gpt-5.5",
+      cpaTargetModel: next.profile.defaultModel || next.models.current || next.models.defaultModel || "",
+      officialModel: next.models.recommendedFrontier || "gpt-5.5",
+    },
     proxyPolicy: normalizeProxyPolicy(next.proxyPolicy),
     runReadiness: next.runReadiness
       ? {

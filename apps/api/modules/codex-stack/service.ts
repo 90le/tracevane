@@ -2791,6 +2791,12 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         refreshedAt: modelDiscovery.refreshedAt,
         error: modelDiscovery.error,
       },
+      codexRoute: {
+        active: codexCpaActive ? "cpa" : "official-chatgpt",
+        currentModel: currentModel || selectedDefaultModel,
+        cpaTargetModel,
+        officialModel: GPT_55_MODEL,
+      },
       context: {
         mode: context.mode,
         tokens: context.tokens,

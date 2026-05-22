@@ -274,6 +274,12 @@ export interface CodexStackSummaryPayload {
     refreshedAt: string;
     error: string | null;
   };
+  codexRoute: {
+    active: "official-chatgpt" | "cpa";
+    currentModel: string;
+    cpaTargetModel: string;
+    officialModel: string;
+  };
   context: {
     mode: CodexStackContextMode;
     tokens: number | null;
