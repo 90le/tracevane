@@ -21,11 +21,14 @@
           <span class="form-help">{{ routeDetail }}</span>
         </div>
         <div class="cs-route-actions">
-          <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('restore-official-chatgpt')">
-            {{ text("用官方 ChatGPT", "Use Official ChatGPT") }}
+          <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('save-and-use-official')">
+            {{ hasChanges ? text("保存并用官方 ChatGPT", "Save and Use Official ChatGPT") : text("用官方 ChatGPT", "Use Official ChatGPT") }}
           </button>
-          <button type="button" class="primary-button" :disabled="attachCpaDisabled" @click="$emit('attach-codex-cpa')">
-            {{ text("验证后用 CPA", "Verify and Use CPA") }}
+          <button type="button" class="primary-button" :disabled="!canRunMutation" @click="$emit('save-and-attach-cpa')">
+            {{ hasChanges ? text("保存并验证 CPA", "Save and Verify CPA") : text("验证后用 CPA", "Verify and Use CPA") }}
+          </button>
+          <button type="button" class="primary-button is-danger" :disabled="!canRunMutation" @click="$emit('save-and-force-cpa')">
+            {{ hasChanges ? text("保存并强制 CPA", "Save and Force CPA") : text("强制用 CPA", "Force CPA") }}
           </button>
         </div>
         <p v-if="routeActionHelp" class="cs-disabled-help">
@@ -140,7 +143,7 @@
     </div>
     <div class="cs-actions">
       <button type="button" class="primary-button" :disabled="!canRunMutation || !hasChanges" @click="$emit('save')">
-        {{ text("保存配置", "Save Config") }}
+        {{ text("只保存配置", "Save Config Only") }}
       </button>
       <p v-if="saveDisabledHelp" class="cs-disabled-help">
         {{ saveDisabledHelp }}
@@ -200,8 +203,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   save: [];
   updateField: [field: CodexStackRuntimeConfigField, value: string | number];
-  "attach-codex-cpa": [];
-  "restore-official-chatgpt": [];
+  "save-and-attach-cpa": [];
+  "save-and-force-cpa": [];
+  "save-and-use-official": [];
 }>();
 
 const { text } = useLocalePreference();
@@ -226,14 +230,17 @@ const routeDetail = computed(() => props.codexRouteActive === "cpa"
     `Codex uses the official account login, recommended model ${props.codexRouteOfficialModel || "gpt-5.5"}; third-party upstream settings are only CPA targets.`,
   ));
 
-const attachCpaDisabled = computed(() => !props.canRunMutation || props.hasChanges || !props.canAttachCodexCpa);
-
 const routeActionHelp = computed(() => {
   if (!props.canRunMutation) return props.mutationDisabledHelp;
   if (props.hasChanges) {
-    return text("先保存当前模型/上游配置，再运行验证并切到 CPA。", "Save the current model/upstream config before verifying and switching to CPA.");
+    return text("推荐用上方“保存并验证 CPA”或“保存并用官方 ChatGPT”，避免保存后再去其它页面切换。", "Use Save and Verify CPA or Save and Use Official ChatGPT above so you do not need to switch pages after saving.");
   }
-  if (!props.canAttachCodexCpa) return props.attachCodexCpaDisabledHelp;
+  if (!props.canAttachCodexCpa) {
+    return text(
+      `${props.attachCodexCpaDisabledHelp} 仍可强制 CPA，但 Codex 普通请求、流式、长任务或压缩上下文可能失败。`,
+      `${props.attachCodexCpaDisabledHelp} You can still force CPA, but ordinary, streaming, long-task, or compaction requests may fail.`,
+    );
+  }
   return text(
     `CPA 将使用目标模型 ${props.codexRouteCpaTargetModel || props.form.defaultModel || "--"}；点击后会重新 smoke，通过后才切换。`,
     `CPA will use target model ${props.codexRouteCpaTargetModel || props.form.defaultModel || "--"}; clicking reruns smoke and switches only after it passes.`,

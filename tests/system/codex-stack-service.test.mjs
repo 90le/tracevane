@@ -1254,6 +1254,13 @@ test("codex stack attaches Codex CPA only after the full smoke gate passes", asy
   createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
   const codexConfig = path.join(root, ".codex/config.toml");
+  const codexAuth = path.join(root, ".codex/auth.json");
+  const officialAuthBackup = path.join(root, ".codex/auth.chatgpt.backup.json");
+  writeJson(codexAuth, {
+    auth_mode: "chatgpt",
+    refresh_token: "chatgpt-refresh-token",
+    account_id: "chatgpt-account",
+  });
 
   await withMockFetch(async (url, init = {}) => {
     const requestUrl = String(url);
@@ -1294,6 +1301,11 @@ test("codex stack attaches Codex CPA only after the full smoke gate passes", asy
     const patched = fs.readFileSync(codexConfig, "utf8");
     assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
     assert.match(patched, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
+    const cpaAuth = JSON.parse(fs.readFileSync(codexAuth, "utf8"));
+    assert.equal(cpaAuth.auth_mode, "apikey");
+    assert.equal(cpaAuth.OPENAI_API_KEY, "secret-cpa-key-123456");
+    assert.equal(cpaAuth.refresh_token, "chatgpt-refresh-token");
+    assert.equal(JSON.parse(fs.readFileSync(officialAuthBackup, "utf8")).auth_mode, "chatgpt");
     const summary = await service.getSummary();
     assert.equal(summary.codexRoute.active, "cpa");
     assert.equal(summary.codexRoute.cpaTargetModel, "glm-5.1");
@@ -1320,6 +1332,8 @@ test("codex stack can restore official ChatGPT route from a third-party model", 
   createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
   const codexConfig = path.join(root, ".codex/config.toml");
+  const codexAuth = path.join(root, ".codex/auth.json");
+  const officialAuthBackup = path.join(root, ".codex/auth.chatgpt.backup.json");
   fs.writeFileSync(codexConfig, `
 model = "kimi-k2.6"
 model_provider = "cpa"
@@ -1332,6 +1346,15 @@ wire_api = "responses"
 supports_websockets = false
 experimental_bearer_token = "secret-cpa-key-123456"
 `);
+  writeJson(codexAuth, {
+    auth_mode: "apikey",
+    OPENAI_API_KEY: "secret-cpa-key-123456",
+  });
+  writeJson(officialAuthBackup, {
+    auth_mode: "chatgpt",
+    refresh_token: "restored-chatgpt-refresh",
+    account_id: "official-account",
+  });
 
   const service = createCodexStackService(config);
   const response = await service.startRepair(undefined, { actions: ["restore-official-chatgpt"] });
@@ -1344,9 +1367,54 @@ experimental_bearer_token = "secret-cpa-key-123456"
   assert.doesNotMatch(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
   assert.doesNotMatch(tomlTopLevel(patched), /^base_url\s*=\s*"http:\/\/127\.0\.0\.1:18796\/v1"/m);
   assert.match(patched, /\[model_providers\.cpa\]/);
+  const restoredAuth = JSON.parse(fs.readFileSync(codexAuth, "utf8"));
+  assert.equal(restoredAuth.auth_mode, "chatgpt");
+  assert.equal(restoredAuth.refresh_token, "restored-chatgpt-refresh");
+  assert.equal(restoredAuth.OPENAI_API_KEY, undefined);
   const summary = await service.getSummary();
   assert.equal(summary.codexRoute.active, "official-chatgpt");
   assert.equal(summary.codexRoute.currentModel, "gpt-5.5");
+});
+
+test("codex stack can force attach CPA while warning and preserving ChatGPT auth", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+  const codexAuth = path.join(root, ".codex/auth.json");
+  const officialAuthBackup = path.join(root, ".codex/auth.chatgpt.backup.json");
+  writeJson(codexAuth, {
+    auth_mode: "chatgpt",
+    refresh_token: "force-chatgpt-refresh",
+  });
+
+  const service = createCodexStackService(config);
+  const response = await service.startRepair(undefined, { actions: ["force-apply-codex-cpa"] });
+  const job = await waitForJob(service, response.job.id);
+
+  assert.equal(job.status, "succeeded");
+  assert.match(job.logTail, /WARNING: Forced CPA attach requested without a passing smoke gate/);
+  const patched = fs.readFileSync(codexConfig, "utf8");
+  assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
+  const cpaAuth = JSON.parse(fs.readFileSync(codexAuth, "utf8"));
+  assert.equal(cpaAuth.auth_mode, "apikey");
+  assert.equal(cpaAuth.OPENAI_API_KEY, "secret-cpa-key-123456");
+  assert.equal(JSON.parse(fs.readFileSync(officialAuthBackup, "utf8")).refresh_token, "force-chatgpt-refresh");
 });
 
 test("codex stack can attach the user-selected GPT model through CPA", async () => {

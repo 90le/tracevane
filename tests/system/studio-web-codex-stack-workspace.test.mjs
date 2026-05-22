@@ -605,9 +605,9 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(repairBoard, /class="cs-attach-preflight-list"/);
   assert.match(repairBoard, /:disabled="!canAttachCodexCpa"[\s\S]*@click="\$emit\('attach-codex-cpa'\)"/);
   assert.match(repairBoard, /v-if="!canAttachCodexCpa && attachCodexCpaDisabledHelp"[\s\S]*class="cs-disabled-help"/);
-  assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*请先运行“只验证”/);
   assert.match(controlPage, /async function restoreOfficialChatGpt\(\): Promise<void>/);
   assert.match(controlPage, /\["restore-official-chatgpt"\]/);
+  assert.match(controlPage, /\["force-apply-codex-cpa"\]/);
 });
 
 test("codex stack cc-connect page delegates command bar without moving config writes", () => {
@@ -929,7 +929,9 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.doesNotMatch(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS/);
   assert.match(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
   assert.match(codexStackTypes, /"restore-official-chatgpt"/);
+  assert.match(codexStackTypes, /"force-apply-codex-cpa"/);
   assert.match(codexStackService, /"restore-official-chatgpt"/);
+  assert.match(codexStackService, /"force-apply-codex-cpa"/);
   assert.match(controlPage, /function smokeMatrixCoversTarget\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
   assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
   assert.match(controlPage, /matrix\.attachEligible && !smokeMatrixCoversTarget\(matrix, currentCpaTargetModel\.value\)/);
@@ -950,7 +952,9 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(controlPage, /未覆盖当前目标模型，需复验/);
   assert.match(controlPage, /上次矩阵记录不完整/);
   assert.match(controlPage, /已有新鲜通过矩阵；点击后仍会重新烟测/);
-  assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*目标模型矩阵在 24 小时内全部通过/);
+  assert.match(controlPage, /只有普通请求、非流式、流式和压缩上下文全部通过，才会把 Codex 切到 CPA/);
+  assert.match(controlPage, /失败时保持当前路径不变/);
+  assert.match(controlPage, /不等待 smoke 通过，直接把 Codex 切到 CPA/);
 });
 
 test("codex stack recommended repair resumes a deliberately paused stack in order", () => {
@@ -1027,7 +1031,7 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(controlPage, /import CodexStackRuntimeConfigCard from "\.\/CodexStackRuntimeConfigCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:context-tokens-disabled-help="configContextTokensDisabledHelp"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:codex-route-active="summary\.codexRoute\.active"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"[\s\S]*@restore-official-chatgpt="restoreOfficialChatGpt"/,
+    /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:context-tokens-disabled-help="configContextTokensDisabledHelp"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:codex-route-active="summary\.codexRoute\.active"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"[\s\S]*@save-and-attach-cpa="saveConfigThenAttachCpa"[\s\S]*@save-and-force-cpa="saveConfigThenForceCpa"[\s\S]*@save-and-use-official="saveConfigThenUseOfficial"/,
   );
   assert.match(controlPage, /:impact-items="configImpactItems"/);
   assert.match(controlPage, /function updateConfigFormField\(field: CodexStackRuntimeConfigField, value: string \| number\): void/);
@@ -1045,10 +1049,19 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(runtimeConfigCard, /Codex 使用路径/);
   assert.match(runtimeConfigCard, /这是 CPA 目标模型；保存配置不会自动把 Codex 切到 CPA/);
   assert.match(runtimeConfigCard, /用官方 ChatGPT/);
+  assert.match(runtimeConfigCard, /保存并用官方 ChatGPT/);
   assert.match(runtimeConfigCard, /验证后用 CPA/);
-  assert.match(runtimeConfigCard, /先保存当前模型\/上游配置，再运行验证并切到 CPA/);
-  assert.match(runtimeConfigCard, /@click="\$emit\('attach-codex-cpa'\)"/);
-  assert.match(runtimeConfigCard, /@click="\$emit\('restore-official-chatgpt'\)"/);
+  assert.match(runtimeConfigCard, /保存并验证 CPA/);
+  assert.match(runtimeConfigCard, /强制用 CPA/);
+  assert.match(runtimeConfigCard, /保存并强制 CPA/);
+  assert.match(runtimeConfigCard, /仍可强制 CPA，但 Codex 普通请求、流式、长任务或压缩上下文可能失败/);
+  assert.match(runtimeConfigCard, /@click="\$emit\('save-and-attach-cpa'\)"/);
+  assert.match(runtimeConfigCard, /@click="\$emit\('save-and-force-cpa'\)"/);
+  assert.match(runtimeConfigCard, /@click="\$emit\('save-and-use-official'\)"/);
+  assert.match(controlPage, /async function saveConfigThenAttachCpa\(\): Promise<void>/);
+  assert.match(controlPage, /async function saveConfigThenForceCpa\(\): Promise<void>/);
+  assert.match(controlPage, /async function saveConfigThenUseOfficial\(\): Promise<void>/);
+  assert.match(controlPage, /async function confirmRouteChange\(kind: "official" \| "cpa" \| "force-cpa"\): Promise<boolean>/);
   assert.match(runtimeConfigCard, /v-if="impactItems\.length"/);
   assert.match(runtimeConfigCard, /item\.detail/);
   assert.match(runtimeConfigCard, /mutationDisabledHelp: string;/);

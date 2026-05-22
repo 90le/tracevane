@@ -401,8 +401,9 @@
                 :mutation-disabled-help="mutationDisabledHelp"
                 @update-field="updateConfigFormField"
                 @save="saveConfigPatch"
-                @attach-codex-cpa="applyCodexCpaAfterSmoke"
-                @restore-official-chatgpt="restoreOfficialChatGpt"
+                @save-and-attach-cpa="saveConfigThenAttachCpa"
+                @save-and-force-cpa="saveConfigThenForceCpa"
+                @save-and-use-official="saveConfigThenUseOfficial"
               />
 
               <CodexStackEnvironmentReferenceCard
@@ -2667,16 +2668,16 @@ async function runSmokeMatrix(): Promise<void> {
 }
 
 async function applyCodexCpaAfterSmoke(): Promise<void> {
-  if (!canAttachCodexCpa.value) {
-    notice.value = {
-      kind: "error",
-      text: text("请先运行“只验证”，并确认目标模型矩阵在 24 小时内全部通过。", "Run Verify Only first and make sure the target-model matrix fully passed within 24 hours."),
-    };
-    return;
-  }
   await startRepairWithActions(
     ["apply-codex-cpa-after-smoke"],
     text("CPA smoke matrix 任务已启动；全部通过后才会切换 Codex。", "CPA smoke matrix started; Codex will attach only if every check passes."),
+  );
+}
+
+async function forceAttachCodexCpa(): Promise<void> {
+  await startRepairWithActions(
+    ["force-apply-codex-cpa"],
+    text("已启动强制 CPA 切换；未通过 smoke 时 Codex 请求可能失败。", "Forced CPA attach started; Codex requests may fail without a passing smoke gate."),
   );
 }
 
@@ -2728,10 +2729,14 @@ async function serviceAction(serviceId: CodexStackServiceId, action: CodexStackS
 
 async function saveConfigPatch(): Promise<void> {
   if (!guardMutation()) return;
+  await saveConfigPatchInternal();
+}
+
+async function saveConfigPatchInternal(): Promise<boolean> {
   const payload = configPatchPayload.value;
   if (!Object.keys(payload).length) {
     notice.value = { kind: "success", text: text("运行配置没有变化。", "Runtime config has no changes.") };
-    return;
+    return true;
   }
   busy.value = true;
   try {
@@ -2741,11 +2746,72 @@ async function saveConfigPatch(): Promise<void> {
     configForm.upstreamApiKey = "";
     if (response.summary) applySummary(response.summary, { preserveDirtyConfigDraft: false });
     notice.value = { kind: "success", text: response.message };
+    return true;
   } catch (error) {
     notice.value = { kind: "error", text: error instanceof Error ? error.message : text("配置保存失败", "Config save failed") };
+    return false;
   } finally {
     busy.value = false;
   }
+}
+
+async function confirmRouteChange(kind: "official" | "cpa" | "force-cpa"): Promise<boolean> {
+  const targetModel = configForm.defaultModel || currentCpaTargetModel.value || "--";
+  if (kind === "official") {
+    return confirm({
+      title: text("保存并使用官方 ChatGPT", "Save and use Official ChatGPT"),
+      message: text(
+        "将先保存当前运行配置，然后把 Codex 切回官方 ChatGPT 登录路径。CPA 上游配置会保留，但不会作为当前 Codex 路径；如果之前备份过 ChatGPT 登录态，会自动恢复。",
+        "Studio will save the current runtime config, then switch Codex back to the official ChatGPT login route. CPA upstream config remains saved but inactive; a preserved ChatGPT login is restored when available.",
+      ),
+      confirmText: text("保存并切回官方", "Save and switch official"),
+      cancelText: text("取消", "Cancel"),
+      tone: "safe",
+    });
+  }
+  if (kind === "force-cpa") {
+    return confirm({
+      title: text("强制使用 CPA", "Force CPA"),
+      message: text(
+        `将先保存配置，然后不等待 smoke 通过，直接把 Codex 切到 CPA 目标模型 ${targetModel}。如果上游、代理、流式或压缩上下文不稳定，Codex 普通请求、长任务和压缩上下文可能失败。`,
+        `Studio will save config, then switch Codex directly to CPA target model ${targetModel} without waiting for smoke to pass. If upstream, proxy, streaming, or compaction is unstable, ordinary Codex requests, long tasks, and compaction may fail.`,
+      ),
+      confirmText: text("知道风险，强制切换", "Force switch"),
+      cancelText: text("取消", "Cancel"),
+      tone: "danger",
+    });
+  }
+  return confirm({
+    title: text("保存并验证 CPA", "Save and verify CPA"),
+    message: text(
+      `将先保存模型/上游配置，然后用目标模型 ${targetModel} 运行 CPA smoke。只有普通请求、非流式、流式和压缩上下文全部通过，才会把 Codex 切到 CPA；失败时保持当前路径不变。`,
+      `Studio will save the model/upstream config, then run CPA smoke with target model ${targetModel}. Codex switches to CPA only if ordinary, non-streaming, streaming, and compaction checks all pass; failures leave the current route unchanged.`,
+    ),
+    confirmText: text("保存并验证切换", "Save and verify"),
+    cancelText: text("取消", "Cancel"),
+    tone: "safe",
+  });
+}
+
+async function saveConfigThenAttachCpa(): Promise<void> {
+  if (!guardMutation()) return;
+  if (!await confirmRouteChange("cpa")) return;
+  if (!await saveConfigPatchInternal()) return;
+  await applyCodexCpaAfterSmoke();
+}
+
+async function saveConfigThenForceCpa(): Promise<void> {
+  if (!guardMutation()) return;
+  if (!await confirmRouteChange("force-cpa")) return;
+  if (!await saveConfigPatchInternal()) return;
+  await forceAttachCodexCpa();
+}
+
+async function saveConfigThenUseOfficial(): Promise<void> {
+  if (!guardMutation()) return;
+  if (!await confirmRouteChange("official")) return;
+  if (!await saveConfigPatchInternal()) return;
+  await restoreOfficialChatGpt();
 }
 
 function addCcConnectProvider(): void {

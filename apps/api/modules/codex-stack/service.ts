@@ -161,6 +161,7 @@ const REPAIR_ACTIONS = [
   "disable-legacy-healthcheck",
   "run-smoke-matrix",
   "apply-codex-cpa-after-smoke",
+  "force-apply-codex-cpa",
   "restore-official-chatgpt",
   "disable-conflicting-units",
   "rerun-install-no-start",
@@ -934,20 +935,51 @@ function yamlBlockBoolean(source: string, blockKey: string, key: string, fallbac
   return fallback;
 }
 
+function readCodexAuthRecord(authPath: string): Record<string, unknown> {
+  return readJsonFile<Record<string, unknown>>(authPath, {});
+}
+
 function readCodexAuth(authPath: string): { mode: string | null; key: string } {
-  const auth = readJsonFile<Record<string, unknown>>(authPath, {});
+  const auth = readCodexAuthRecord(authPath);
   return {
     mode: typeof auth.auth_mode === "string" ? auth.auth_mode : null,
     key: typeof auth.OPENAI_API_KEY === "string" ? auth.OPENAI_API_KEY.trim() : "",
   };
 }
 
-function writeCodexAuth(authPath: string, apiKey: string): void {
+function codexAuthHasMeaningfulLogin(auth: Record<string, unknown>): boolean {
+  return Object.keys(auth).some((key) => key !== "OPENAI_API_KEY" || typeof auth[key] === "string" && auth[key].trim());
+}
+
+function isApiKeyOnlyCodexAuth(auth: Record<string, unknown>): boolean {
+  return auth.auth_mode === "apikey" && typeof auth.OPENAI_API_KEY === "string" && auth.OPENAI_API_KEY.trim().length > 0;
+}
+
+function preserveOfficialCodexAuth(authPath: string, backupPath: string, cpaKey: string): void {
+  if (!pathExists(authPath) || pathExists(backupPath)) return;
+  const auth = readCodexAuthRecord(authPath);
+  if (!codexAuthHasMeaningfulLogin(auth)) return;
+  if (isApiKeyOnlyCodexAuth(auth) && auth.OPENAI_API_KEY === cpaKey) return;
+  writeJsonSecure(backupPath, auth);
+}
+
+function writeCodexAuth(authPath: string, apiKey: string, backupPath?: string): void {
   if (!apiKey) return;
+  if (backupPath) preserveOfficialCodexAuth(authPath, backupPath, apiKey);
+  const current = readCodexAuthRecord(authPath);
   writeJsonSecure(authPath, {
+    ...current,
     auth_mode: "apikey",
     OPENAI_API_KEY: apiKey,
   });
+}
+
+function restoreOfficialCodexAuth(authPath: string, backupPath: string): boolean {
+  if (!pathExists(backupPath)) return false;
+  const backup = readCodexAuthRecord(backupPath);
+  if (!codexAuthHasMeaningfulLogin(backup)) return false;
+  writeJsonSecure(authPath, backup);
+  return true;
 }
 
 function readCodexContext(source: string): {
@@ -1056,6 +1088,7 @@ function resolvePaths(config: StudioServerConfig) {
     openclawJson: config.openclawConfigFile,
     codexConfig: path.join(homeDir, ".codex", "config.toml"),
     codexAuth: path.join(homeDir, ".codex", "auth.json"),
+    codexOfficialAuthBackup: path.join(homeDir, ".codex", "auth.chatgpt.backup.json"),
     cpaConfig: path.join(homeDir, ".cli-proxy-api", "config.yaml"),
     ccConnectConfig: path.join(homeDir, ".cc-connect", "config.toml"),
     ccConnectSocket: path.join(homeDir, ".cc-connect", "run", "api.sock"),
@@ -3010,7 +3043,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       appendJobLog(job, `\n[studio] install ${finalStatus}\n`, normalized.secrets);
       if (code === 0) {
         const proxyKey = normalized.env.CPA_PROXY_KEY || extractTomlString(readText(currentPaths.codexConfig), "experimental_bearer_token") || DEFAULT_CPA_PROXY_KEY;
-        writeCodexAuth(currentPaths.codexAuth, proxyKey);
+        writeCodexAuth(currentPaths.codexAuth, proxyKey, currentPaths.codexOfficialAuthBackup);
         const profile = readProfile();
         writeProfile({
           ...profile,
@@ -3128,7 +3161,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         if (action === "restart-cc-connect") await runSystemctl("restart", "cc-connect.service");
         if (action === "repair-auth-json") {
           const proxyKey = extractTomlString(readText(currentPaths.codexConfig), "experimental_bearer_token") || DEFAULT_CPA_PROXY_KEY;
-          writeCodexAuth(currentPaths.codexAuth, proxyKey);
+          writeCodexAuth(currentPaths.codexAuth, proxyKey, currentPaths.codexOfficialAuthBackup);
           appendJobLog(job, `Rewrote ${currentPaths.codexAuth}.\n`, [proxyKey]);
         }
         if (action === "repair-cpa-management") {
@@ -3231,6 +3264,28 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           } else {
             appendJobLog(job, "CPA smoke gate passed; Codex active provider was already CPA.\n", [effectiveProxyKey]);
           }
+          writeCodexAuth(currentPaths.codexAuth, effectiveProxyKey, currentPaths.codexOfficialAuthBackup);
+          appendJobLog(job, "Updated Codex auth.json for the local CPA proxy key and preserved any prior official ChatGPT auth backup.\n", [effectiveProxyKey]);
+        }
+        if (action === "force-apply-codex-cpa") {
+          const codex = readText(currentPaths.codexConfig);
+          if (!codex) throw new Error("Codex config is missing");
+          const ports = stackPorts();
+          const compactBaseUrl = `http://127.0.0.1:${ports.compact}/v1`;
+          const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
+          const profile = readProfile();
+          const currentModel = extractTomlString(codex, "model");
+          const attachModel = chooseCpaAttachModel(currentModel, profile.defaultModel, resolveChannel());
+          appendJobLog(job, "WARNING: Forced CPA attach requested without a passing smoke gate. Codex may fail ordinary, streaming, long-task, or compaction requests until the upstream model and network path are repaired.\n");
+          const next = applyCodexCpaActiveProvider(codex, compactBaseUrl, effectiveProxyKey, attachModel);
+          if (next !== codex) {
+            backupAndWrite(currentPaths.codexConfig, next);
+            appendJobLog(job, `Forced Codex active provider to CPA using ${attachModel}.\n`, [effectiveProxyKey]);
+          } else {
+            appendJobLog(job, "Codex active provider was already CPA; forced attach left config unchanged.\n", [effectiveProxyKey]);
+          }
+          writeCodexAuth(currentPaths.codexAuth, effectiveProxyKey, currentPaths.codexOfficialAuthBackup);
+          appendJobLog(job, "Updated Codex auth.json for the local CPA proxy key and preserved any prior official ChatGPT auth backup.\n", [effectiveProxyKey]);
         }
         if (action === "restore-official-chatgpt") {
           const codex = readText(currentPaths.codexConfig);
@@ -3241,6 +3296,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
             appendJobLog(job, `Restored official ChatGPT Codex route using ${GPT_55_MODEL}; CPA provider remains configured but inactive.\n`);
           } else {
             appendJobLog(job, `Official ChatGPT Codex route already uses ${GPT_55_MODEL}.\n`);
+          }
+          if (restoreOfficialCodexAuth(currentPaths.codexAuth, currentPaths.codexOfficialAuthBackup)) {
+            appendJobLog(job, "Restored preserved official ChatGPT auth.json backup.\n");
+          } else {
+            appendJobLog(job, "No preserved official ChatGPT auth backup found; Codex official route may require a fresh ChatGPT login.\n");
           }
         }
         if (action === "run-smoke-matrix") {
@@ -3504,7 +3564,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     }
 
     if (cpaKey) {
-      writeCodexAuth(currentPaths.codexAuth, cpaKey);
+      writeCodexAuth(currentPaths.codexAuth, cpaKey, currentPaths.codexOfficialAuthBackup);
     }
 
     const openclawEnvPatch: Record<string, string> = {};
