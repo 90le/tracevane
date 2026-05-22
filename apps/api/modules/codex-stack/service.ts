@@ -8,7 +8,6 @@ import { randomUUID } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
   CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS,
-  CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS,
 } from "../../../../types/codex-stack.js";
 import type {
   CcConnectConfig,
@@ -61,7 +60,6 @@ const CPA_LATEST_VERSION = "v7.1.17";
 const CPA_MANAGEMENT_PANEL_REPOSITORY = "https://github.com/router-for-me/Cli-Proxy-API-Management-Center";
 const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
 const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
-const REQUIRED_CPA_SMOKE_MODELS = CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS;
 const REQUIRED_CPA_SMOKE_CHECKS = CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS;
 const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -1244,9 +1242,11 @@ function isSmokeMatrixStale(matrix: CodexStackSmokeMatrixResult | null | undefin
 
 function isSmokeMatrixComplete(matrix: CodexStackSmokeMatrixResult | null | undefined): boolean {
   if (!matrix?.attachEligible || matrix.status !== "passed") return false;
-  const declaredRequired = new Set(matrix.requiredModels.map((model) => model.trim()).filter(Boolean));
+  const requiredModels = matrix.requiredModels.map((model) => model.trim()).filter(Boolean);
+  if (!requiredModels.length) return false;
+  const declaredRequired = new Set(requiredModels);
   const results = new Map(matrix.models.map((result) => [result.model.trim(), result]));
-  return REQUIRED_CPA_SMOKE_MODELS.every((model) => {
+  return requiredModels.every((model) => {
     if (!declaredRequired.has(model)) return false;
     const result = results.get(model);
     if (result?.status !== "passed") return false;
@@ -1273,7 +1273,7 @@ function smokeMatrixFailureDetail(matrix: CodexStackSmokeMatrixResult | null | u
       ].filter(Boolean);
       return `${model.model}: ${parts.join("；") || "模型 smoke 未通过"}`;
     });
-  if (!failures.length && matrix.status === "failed") return "上次 smoke matrix 失败，但未记录具体失败检查；请重新运行 glm-5.1 / kimi-k2.6 smoke matrix。";
+  if (!failures.length && matrix.status === "failed") return "上次 smoke matrix 失败，但未记录具体失败检查；请重新运行当前默认 CPA 模型 smoke matrix。";
   if (!failures.length) return null;
   return `上次 smoke matrix 失败：${failures.join("；")}。`;
 }
@@ -1903,25 +1903,30 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     token: string,
     model: string,
   ): Promise<CodexStackSmokeModelResult> {
+    const modelStartedMs = Date.now();
     const startedAt = new Date().toISOString();
     const checks: CodexStackSmokeCheckResult[] = [];
     const errors: string[] = [];
 
     for (const check of smokeChecks(ports, token, model)) {
+      const checkStartedMs = Date.now();
       const checkStartedAt = new Date().toISOString();
       appendJobLog(job, `Smoke gate (${model}): ${check.label}...\n`, [token]);
       try {
         await check.run();
+        const checkFinishedMs = Date.now();
         checks.push({
           id: check.id,
           label: check.label,
           status: "passed",
           startedAt: checkStartedAt,
-          finishedAt: new Date().toISOString(),
+          finishedAt: new Date(checkFinishedMs).toISOString(),
+          durationMs: Math.max(0, checkFinishedMs - checkStartedMs),
           error: null,
         });
         appendJobLog(job, `Smoke gate (${model}): ${check.label} passed.\n`, [token]);
       } catch (error) {
+        const checkFinishedMs = Date.now();
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`${check.label}: ${message}`);
         checks.push({
@@ -1929,19 +1934,22 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           label: check.label,
           status: "failed",
           startedAt: checkStartedAt,
-          finishedAt: new Date().toISOString(),
+          finishedAt: new Date(checkFinishedMs).toISOString(),
+          durationMs: Math.max(0, checkFinishedMs - checkStartedMs),
           error: message,
         });
         appendJobLog(job, `Smoke gate (${model}): ${check.label} failed: ${message}\n`, [token]);
       }
     }
 
+    const modelFinishedMs = Date.now();
     if (errors.length) {
       return {
         model,
         status: "failed",
         startedAt,
-        finishedAt: new Date().toISOString(),
+        finishedAt: new Date(modelFinishedMs).toISOString(),
+        durationMs: Math.max(0, modelFinishedMs - modelStartedMs),
         checks,
         error: errors.join("; "),
       };
@@ -1951,24 +1959,15 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       model,
       status: "passed",
       startedAt,
-      finishedAt: new Date().toISOString(),
+      finishedAt: new Date(modelFinishedMs).toISOString(),
+      durationMs: Math.max(0, modelFinishedMs - modelStartedMs),
       checks,
       error: null,
     };
   }
 
-  function requiredSmokeModels(extraModels: string[] = []): string[] {
-    return Array.from(new Set([...REQUIRED_CPA_SMOKE_MODELS, ...extraModels].map((model) => model.trim()).filter(Boolean)));
-  }
-
-  function isRequiredCpaSmokeModel(model: string): boolean {
-    return (REQUIRED_CPA_SMOKE_MODELS as readonly string[]).includes(model);
-  }
-
   function chooseCpaAttachModel(currentModel: string, profileDefault: string, channel: CodexStackChannel): string {
-    if (isRequiredCpaSmokeModel(currentModel)) return currentModel;
-    if (isRequiredCpaSmokeModel(profileDefault)) return profileDefault;
-    return defaultModel(channel);
+    return profileDefault.trim() || currentModel.trim() || defaultModel(channel);
   }
 
   async function runCodexCpaSmokeMatrix(
@@ -1977,16 +1976,21 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     token: string,
     models: string[],
   ): Promise<CodexStackSmokeMatrixResult> {
-    const requiredModels = requiredSmokeModels(models);
+    const matrixStartedMs = Date.now();
+    const fallbackModel = defaultModel(resolveChannel());
+    const requiredModels = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean)));
+    if (!requiredModels.length) requiredModels.push(fallbackModel);
     appendJobLog(job, `Smoke matrix: validating ${requiredModels.join(", ")} without switching Codex.\n`, [token]);
     const results: CodexStackSmokeModelResult[] = [];
     for (const model of requiredModels) {
       results.push(await runSmokeChecksForModel(job, ports, token, model));
     }
+    const matrixFinishedMs = Date.now();
     const status = results.every((result) => result.status === "passed") ? "passed" : "failed";
     const matrix: CodexStackSmokeMatrixResult = {
       status,
-      checkedAt: new Date().toISOString(),
+      checkedAt: new Date(matrixFinishedMs).toISOString(),
+      durationMs: Math.max(0, matrixFinishedMs - matrixStartedMs),
       requiredModels,
       models: results,
       attachEligible: status === "passed",
@@ -2370,11 +2374,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       },
       {
         id: "smoke-matrix",
-        label: "glm-5.1 / kimi-k2.6 smoke",
+        label: "CPA 目标模型 smoke",
         status: smokeFresh ? "pass" : "warn",
         detail: smokeFresh
-          ? "最近一次 glm-5.1 与 kimi-k2.6 smoke matrix 通过，允许考虑 CPA attach。"
-          : smokeFailureDetail || "尚无 24 小时内通过的 glm-5.1 / kimi-k2.6 smoke matrix；切换 Codex 前必须重新验证。",
+          ? "最近一次目标 CPA 模型 smoke matrix 通过，允许考虑 CPA attach。"
+          : smokeFailureDetail || "尚无 24 小时内通过的目标 CPA 模型 smoke matrix；切换 Codex 前必须重新验证。",
         section: "install",
         actionHint: smokeFresh
           ? { kind: "open-section", label: "查看 smoke gate", section: "install" }
@@ -2428,7 +2432,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       : !codexAuthReady
         ? "先修复 Codex auth，确保 CLI 使用本地 CPA proxy key。"
         : baseChecksReady
-          ? "先重新运行 glm-5.1 / kimi-k2.6 smoke matrix，确认 CPA 普通和流式链路仍新鲜可用。"
+          ? "先重新运行目标 CPA 模型 smoke matrix，确认 CPA 普通和流式链路仍新鲜可用。"
           : "先修复失败检查项。";
     const ccAgentModeReady = ccAgentTaskReady && chatReady;
     const firstFailedCheck = checks.find((check) => check.status === "fail");
@@ -2650,10 +2654,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!proxyPolicy.noProxyLoopbackReady) {
       warnings.push(`NO_PROXY 缺少 ${proxyPolicy.noProxyLoopbackMissing.join(", ")}；系统代理或 VPN 网卡/TUN 模式可能截获本地 CPA/Compact loopback 请求。运行 Codex 对话、长任务或压缩上下文前，请保留 localhost,127.0.0.1,::1。`);
     }
-    if (profile.lastSmokeMatrix?.status === "failed") warnings.push("CPA smoke matrix failed last run; Codex will not attach until glm-5.1 and kimi-k2.6 both pass.");
-    if (isSmokeMatrixStale(profile.lastSmokeMatrix)) warnings.push("CPA smoke matrix is older than 24 hours; re-run glm-5.1 / kimi-k2.6 checks before treating Codex CPA attach as ready.");
+    if (profile.lastSmokeMatrix?.status === "failed") warnings.push("CPA smoke matrix failed last run; Codex will not attach until the selected target model passes.");
+    if (isSmokeMatrixStale(profile.lastSmokeMatrix)) warnings.push("CPA smoke matrix is older than 24 hours; re-run the selected target model checks before treating Codex CPA attach as ready.");
     if (profile.lastSmokeMatrix?.attachEligible && !isSmokeMatrixStale(profile.lastSmokeMatrix) && !isSmokeMatrixComplete(profile.lastSmokeMatrix)) {
-      warnings.push("CPA smoke matrix is incomplete; re-run glm-5.1 / kimi-k2.6 checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
+      warnings.push("CPA smoke matrix is incomplete; re-run the selected target model checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
     }
     const jobs = listJobs();
     const overallStatus = classifyOverall(components, jobs, ccBindingPresent);

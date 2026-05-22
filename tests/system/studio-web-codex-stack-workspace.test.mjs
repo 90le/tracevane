@@ -526,7 +526,8 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(controlPage, /@pause-stack="pauseStack"[\s\S]*@resume-stack="resumeStack"[\s\S]*@run-smoke-matrix="runSmokeMatrix"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-repair-board"/);
   assert.match(repairBoard, /运行模型矩阵/);
-  assert.match(repairBoard, /glm-5\.1 与 kimi-k2\.6 都要通过普通、非流式、流式和压缩上下文/);
+  assert.match(repairBoard, /当前默认 CPA 模型必须通过普通、非流式、流式和压缩上下文/);
+  assert.match(repairBoard, /用户可选择官方 GPT 登录路径，也可选择 GPT 或国内兼容模型走 CPA/);
   assert.match(repairBoard, /export interface CodexStackAttachPreflightItem/);
   assert.match(repairBoard, /mutationDisabledHelp: string;/);
   assert.match(repairBoard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
@@ -738,9 +739,15 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(controlPage, /先补齐 NO_PROXY 的 localhost、127\.0\.0\.1 和 ::1/);
   assert.match(controlPage, /OpenAI 官方 Codex 访问仍由 Codex\/系统代理路径处理/);
   assert.match(controlPage, /activeRecommendation\.value\?\.reasonCodes\.includes\("smoke-matrix-stale"\)/);
-  assert.match(controlPage, /上次 glm-5\.1 \/ kimi-k2\.6 矩阵已超过 24 小时/);
-  assert.match(controlPage, /上次 glm-5\.1 \/ kimi-k2\.6 矩阵失败/);
+  assert.match(controlPage, /上次目标模型矩阵已超过 24 小时/);
+  assert.match(controlPage, /上次目标模型矩阵失败/);
   assert.match(controlPage, /const failedChecks = model\.checks\.filter\(\(check\) => check\.status === "failed"\)/);
+  assert.match(controlPage, /durationLabel: text\(`耗时 \$\{formatDurationMs\(model\.durationMs\)\}`/);
+  assert.match(controlPage, /slowestCheck: slowestCheck/);
+  assert.match(controlPage, /最慢：\$\{slowestCheck\.label \|\| slowestCheck\.id\}/);
+  assert.match(controlPage, /function formatDurationMs\(value: number \| null \| undefined\): string/);
+  assert.match(controlPage, /耗时未记录/);
+  assert.match(controlPage, /durationLabel: text\("矩阵耗时", "Matrix Duration"\)/);
   assert.match(controlPage, /失败检查/);
   assert.match(controlPage, /const smokeFresh = isSmokeMatrixFreshAndComplete\(matrix\);/);
   assert.match(controlPage, /const smokeStale = isSmokeMatrixStale\(matrix\);/);
@@ -751,6 +758,10 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(dashboardInsights, /networkPolicy\.loopbackValue/);
   assert.match(dashboardInsights, /networkPolicy\.upstreamValue/);
   assert.match(dashboardInsights, /model\.failedChecks/);
+  assert.match(dashboardInsights, /model\.durationLabel/);
+  assert.match(dashboardInsights, /model\.slowestCheck/);
+  assert.match(dashboardInsights, /class="cs-smoke-slowest-check"/);
+  assert.match(dashboardInsights, /smokeMatrix\.duration/);
   assert.match(dashboardInsights, /class="cs-smoke-failed-checks"/);
   assert.match(dashboardInsights, /smokeMatrix\.checkedAt/);
   assert.match(dashboardInsights, /smokeMatrix\.freshness/);
@@ -833,11 +844,11 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
 test("codex stack attach action requires a fresh passing smoke matrix in the UI", () => {
   assert.match(controlPage, /const isSmokeMatrixAttachReady = computed\(\(\) => \{/);
   assert.match(controlPage, /return isSmokeMatrixFreshAndComplete\(matrix\);/);
-  assert.match(codexStackTypes, /export const CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS = \["glm-5\.1", "kimi-k2\.6"\] as const;/);
+  assert.doesNotMatch(codexStackTypes, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS/);
   assert.match(codexStackTypes, /export const CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS = \[[\s\S]*"compact-non-stream"[\s\S]*"compact-stream"[\s\S]*"compact-compact"[\s\S]*\] as const satisfies readonly CodexStackSmokeCheckId\[\];/);
-  assert.match(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS/);
+  assert.doesNotMatch(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS/);
   assert.match(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
-  assert.match(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS/);
+  assert.doesNotMatch(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS/);
   assert.match(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
   assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined\): boolean/);
   assert.match(controlPage, /matrix\.attachEligible && !isSmokeMatrixComplete\(matrix\)/);
@@ -845,7 +856,8 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
   assert.match(controlPage, /const attachPreflightItems = computed<CodexStackAttachPreflightItem\[\]>/);
   assert.match(controlPage, /const attachCodexCpaDisabledHelp = computed\(\(\) => \{/);
-  assert.match(controlPage, /const requiredModels = REQUIRED_CPA_SMOKE_MODELS\.join\(", "\);/);
+  assert.match(controlPage, /const targetModel = summary\.value\?\.profile\.defaultModel/);
+  assert.match(controlPage, /const requiredModels = matrix\?\.requiredModels\.length \? matrix\.requiredModels\.join\(", "\) : targetModel;/);
   assert.match(controlPage, /const requiredChecks = REQUIRED_CPA_SMOKE_CHECKS\.join\(", "\);/);
   assert.match(controlPage, /id: "last-matrix"/);
   assert.match(controlPage, /id: "attach-action"/);
@@ -854,7 +866,7 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(controlPage, /先运行“只验证”/);
   assert.match(controlPage, /上次矩阵记录不完整/);
   assert.match(controlPage, /已有新鲜通过矩阵；点击后仍会重新烟测/);
-  assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*glm-5\.1 \/ kimi-k2\.6 矩阵在 24 小时内全部通过/);
+  assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*目标模型矩阵在 24 小时内全部通过/);
 });
 
 test("codex stack recommended repair resumes a deliberately paused stack in order", () => {

@@ -44,7 +44,7 @@
       </article>
       <article class="cs-repair-card">
         <strong>{{ text("运行模型矩阵", "Run Smoke Matrix") }}</strong>
-        <p>{{ text("只验证不切换 Codex：glm-5.1 与 kimi-k2.6 都要通过普通、非流式、流式和压缩上下文。", "Verify without attaching Codex: glm-5.1 and kimi-k2.6 must pass chat, non-stream, stream, and compact checks.") }}</p>
+        <p>{{ text("只验证不切换 Codex：当前默认 CPA 模型必须通过普通、非流式、流式和压缩上下文。", "Verify without attaching Codex: the current default CPA model must pass chat, non-stream, stream, and compact checks.") }}</p>
         <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('run-smoke-matrix')">
           {{ text("只验证", "Verify Only") }}
         </button>
@@ -54,7 +54,7 @@
       </p>
       <article class="cs-repair-card">
         <strong>{{ text("通过验证后切 Codex", "Attach Codex After Smoke") }}</strong>
-        <p>{{ text("会重新跑完整模型矩阵；全部通过才写入 Codex active provider，并在当前模型不是 glm/kimi 时切到安全的国内模型。", "Reruns the full model matrix and writes the active Codex provider only if every check passes; if the current model is not glm/kimi, it switches to a CPA-safe domestic model.") }}</p>
+        <p>{{ text("会重新跑目标模型完整矩阵；全部通过才写入 Codex active provider。用户可选择官方 GPT 登录路径，也可选择 GPT 或国内兼容模型走 CPA。", "Reruns the full target-model matrix and writes the active Codex provider only if every check passes. Users can keep the official GPT login path or route GPT/domestic-compatible models through CPA.") }}</p>
         <p class="cs-repair-card-note">{{ attachCodexCpaHelp }}</p>
         <dl class="cs-attach-preflight-list">
           <div v-for="item in attachPreflightItems" :key="item.id" class="cs-attach-preflight-row" :class="`tone-${item.tone}`">

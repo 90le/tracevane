@@ -434,7 +434,6 @@ import { copyTextToClipboard } from "../../shared/clipboard";
 import { useLocalePreference } from "../../shared/locale";
 import {
   CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS,
-  CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS,
 } from "../../../../../types/codex-stack";
 import type {
   CcConnectConfig,
@@ -727,7 +726,6 @@ function updateConfigFormField(field: CodexStackRuntimeConfigField, value: strin
 }
 
 const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const REQUIRED_CPA_SMOKE_MODELS = CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS;
 const REQUIRED_CPA_SMOKE_CHECKS = CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS;
 
 const serviceCatalog: Record<
@@ -984,11 +982,11 @@ const nextActionCopy = computed(() => {
     case "review-smoke":
       if (activeRecommendation.value?.reasonCodes.includes("smoke-matrix-stale")) {
         return text(
-          "上次 glm-5.1 / kimi-k2.6 矩阵已超过 24 小时；先重新只验证，避免把过期结果当成当前 CPA 可用状态。",
-          "The last glm-5.1 / kimi-k2.6 matrix is older than 24 hours. Run Verify Only again so stale results are not treated as current CPA readiness.",
+          "上次目标模型矩阵已超过 24 小时；先重新只验证，避免把过期结果当成当前 CPA 可用状态。",
+          "The last target-model matrix is older than 24 hours. Run Verify Only again so stale results are not treated as current CPA readiness.",
         );
       }
-      return text("上次 glm-5.1 / kimi-k2.6 矩阵失败，Codex 不会自动切到 CPA。先在安装页重新跑 smoke gate。", "The last glm-5.1 / kimi-k2.6 matrix failed, so Codex will not attach to CPA. Re-run the smoke gate from Install.");
+      return text("上次目标模型矩阵失败，Codex 不会自动切到 CPA。先在安装页重新跑 smoke gate。", "The last target-model matrix failed, so Codex will not attach to CPA. Re-run the smoke gate from Install.");
     default:
       return text("首次使用从 DMWork 增强版开始；已有环境可选择跳过或强制重装组件。", "Start with the DMWork enhanced channel; existing environments can skip or force reinstall components.");
   }
@@ -1099,13 +1097,13 @@ const canAttachCodexCpa = computed(() => canRunMutation.value && isSmokeMatrixAt
 const attachCodexCpaHelp = computed(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
   if (!matrix) {
-    return text("先运行“只验证”，让 glm-5.1 和 kimi-k2.6 完成完整矩阵。", "Run Verify Only first so glm-5.1 and kimi-k2.6 complete the full matrix.");
+    return text("先运行“只验证”，让当前默认 CPA 模型完成完整矩阵。", "Run Verify Only first so the current default CPA model completes the full matrix.");
   }
   if (isSmokeMatrixStale(matrix)) {
     return text("上次矩阵已超过 24 小时，先重新只验证；切换动作仍会再次烟测。", "The last matrix is older than 24 hours; verify again first. The attach action will still rerun smoke checks.");
   }
   if (matrix.attachEligible && !isSmokeMatrixComplete(matrix)) {
-    return text("上次矩阵记录不完整，先重新只验证；必须覆盖 glm-5.1、kimi-k2.6、普通请求、流式、非流式和压缩上下文。", "The last matrix record is incomplete. Run Verify Only again; it must cover glm-5.1, kimi-k2.6, ordinary, streaming, non-streaming, and compaction checks.");
+    return text("上次矩阵记录不完整，先重新只验证；必须覆盖目标模型、普通请求、流式、非流式和压缩上下文。", "The last matrix record is incomplete. Run Verify Only again; it must cover the target model, ordinary, streaming, non-streaming, and compaction checks.");
   }
   if (!matrix.attachEligible) {
     return text("上次矩阵未全部通过，Codex 保持官方路径；修复后重新只验证。", "The last matrix did not fully pass, so Codex stays on the official path. Fix it and verify again.");
@@ -1119,14 +1117,15 @@ const attachCodexCpaDisabledHelp = computed(() => {
 });
 const attachPreflightItems = computed<CodexStackAttachPreflightItem[]>(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
-  const requiredModels = REQUIRED_CPA_SMOKE_MODELS.join(", ");
+  const targetModel = summary.value?.profile.defaultModel || summary.value?.models.current || summary.value?.models.defaultModel || "--";
+  const requiredModels = matrix?.requiredModels.length ? matrix.requiredModels.join(", ") : targetModel;
   const requiredChecks = REQUIRED_CPA_SMOKE_CHECKS.join(", ");
   const matrixTone: CodexStackTone = isSmokeMatrixFreshAndComplete(matrix)
     ? "sage"
     : matrix?.attachEligible ? "accent" : "danger";
   const matrixValue = matrix
     ? `${smokeMatrixLabel.value} · ${formatTimestamp(matrix.checkedAt)}`
-    : text("尚未运行 glm-5.1 / kimi-k2.6 smoke matrix", "glm-5.1 / kimi-k2.6 smoke matrix has not run yet");
+    : text(`尚未运行 ${targetModel} smoke matrix`, `${targetModel} smoke matrix has not run yet`);
   return [
     {
       id: "required-models",
@@ -1376,17 +1375,31 @@ const smokeMatrixCard = computed<CodexStackSmokeMatrixCard | null>(() => {
     statusValue: matrix.status === "passed" ? text("通过", "Passed") : text("失败", "Failed"),
     checkedAtLabel: text("验证时间", "Checked At"),
     checkedAt: formatTimestamp(matrix.checkedAt),
+    durationLabel: text("矩阵耗时", "Matrix Duration"),
+    duration: formatDurationMs(matrix.durationMs),
     freshnessLabel: text("时效", "Freshness"),
     freshness,
     freshnessTone,
     models: matrix.models.map((model) => {
       const passed = model.checks.filter((check) => check.status === "passed").length;
       const failedChecks = model.checks.filter((check) => check.status === "failed").map((check) => check.label || check.id);
+      const timedChecks = model.checks.filter((check) => typeof check.durationMs === "number");
+      const slowestCheck = timedChecks.reduce<(typeof timedChecks)[number] | null>(
+        (slowest, check) => (slowest && (slowest.durationMs || 0) >= (check.durationMs || 0) ? slowest : check),
+        null,
+      );
       const total = model.checks.length;
       return {
         model: model.model,
         status: model.status,
         checksLabel: text(`检查 ${passed}/${total} 通过`, `${passed}/${total} checks passed`),
+        durationLabel: text(`耗时 ${formatDurationMs(model.durationMs)}`, `Duration ${formatDurationMs(model.durationMs)}`),
+        slowestCheck: slowestCheck
+          ? text(
+            `最慢：${slowestCheck.label || slowestCheck.id} ${formatDurationMs(slowestCheck.durationMs)}`,
+            `Slowest: ${slowestCheck.label || slowestCheck.id} ${formatDurationMs(slowestCheck.durationMs)}`,
+          )
+          : "",
         failedChecks: failedChecks.length
           ? text(`失败检查：${failedChecks.join("、")}`, `Failed checks: ${failedChecks.join(", ")}`)
           : "",
@@ -1536,8 +1549,8 @@ const configImpactItems = computed<CodexStackRuntimeConfigImpactItem[]>(() => {
       id: "smoke-invalidated",
       label: text("保存后需要重新 smoke", "Smoke recheck required after save"),
       detail: text(
-        "模型、端口、密钥、上游、代理或 NO_PROXY 变化会清空旧的 glm-5.1 / kimi-k2.6 smoke 结果；重新验证前不会把 CPA 当作可接入状态。",
-        "Model, port, key, upstream, proxy, or NO_PROXY changes clear the old glm-5.1 / kimi-k2.6 smoke result; CPA will not be treated as attach-ready until rechecked.",
+        "模型、端口、密钥、上游、代理或 NO_PROXY 变化会清空旧的目标模型 smoke 结果；重新验证前不会把 CPA 当作可接入状态。",
+        "Model, port, key, upstream, proxy, or NO_PROXY changes clear the old target-model smoke result; CPA will not be treated as attach-ready until rechecked.",
       ),
       tone: "warning",
     });
@@ -1962,6 +1975,14 @@ function formatTimestamp(value: string | null | undefined): string {
   return parsed.toLocaleString();
 }
 
+function formatDurationMs(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return text("耗时未记录", "Duration not recorded");
+  const ms = Math.max(0, Math.round(value));
+  if (ms < 1000) return `${ms} ms`;
+  const seconds = ms / 1000;
+  return `${seconds >= 10 ? seconds.toFixed(0) : seconds.toFixed(1)} s`;
+}
+
 function channelLabel(channel: CodexStackChannel): string {
   if (channel === "dmwork") return "DMWork";
   if (channel === "octo") return "Octo";
@@ -2026,9 +2047,11 @@ function isSmokeMatrixStale(matrix: CodexStackSmokeMatrixResult | null | undefin
 
 function isSmokeMatrixComplete(matrix: CodexStackSmokeMatrixResult | null | undefined): boolean {
   if (!matrix?.attachEligible || matrix.status !== "passed") return false;
-  const declaredRequired = new Set(matrix.requiredModels.map((model) => model.trim()).filter(Boolean));
+  const requiredModels = matrix.requiredModels.map((model) => model.trim()).filter(Boolean);
+  if (!requiredModels.length) return false;
+  const declaredRequired = new Set(requiredModels);
   const results = new Map(matrix.models.map((result) => [result.model.trim(), result]));
-  return REQUIRED_CPA_SMOKE_MODELS.every((model) => {
+  return requiredModels.every((model) => {
     if (!declaredRequired.has(model)) return false;
     const result = results.get(model);
     if (result?.status !== "passed") return false;
@@ -2513,7 +2536,7 @@ async function applyCodexCpaAfterSmoke(): Promise<void> {
   if (!canAttachCodexCpa.value) {
     notice.value = {
       kind: "error",
-      text: text("请先运行“只验证”，并确认 glm-5.1 / kimi-k2.6 矩阵在 24 小时内全部通过。", "Run Verify Only first and make sure the glm-5.1 / kimi-k2.6 matrix fully passed within 24 hours."),
+      text: text("请先运行“只验证”，并确认目标模型矩阵在 24 小时内全部通过。", "Run Verify Only first and make sure the target-model matrix fully passed within 24 hours."),
     };
     return;
   }

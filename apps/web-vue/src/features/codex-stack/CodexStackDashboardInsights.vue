@@ -50,6 +50,10 @@
             <span>{{ smokeMatrix.checkedAtLabel }}</span>
             <strong>{{ smokeMatrix.checkedAt }}</strong>
           </div>
+          <div class="cs-smoke-matrix-head">
+            <span>{{ smokeMatrix.durationLabel }}</span>
+            <strong>{{ smokeMatrix.duration }}</strong>
+          </div>
           <div class="cs-smoke-matrix-head" :class="`tone-${smokeMatrix.freshnessTone}`">
             <span>{{ smokeMatrix.freshnessLabel }}</span>
             <strong>{{ smokeMatrix.freshness }}</strong>
@@ -58,6 +62,8 @@
             <div>
               <strong>{{ model.model }} · {{ model.status }}</strong>
               <p>{{ model.checksLabel }}</p>
+              <p>{{ model.durationLabel }}</p>
+              <p v-if="model.slowestCheck" class="cs-smoke-slowest-check">{{ model.slowestCheck }}</p>
               <p v-if="model.failedChecks" class="cs-smoke-failed-checks">{{ model.failedChecks }}</p>
               <p v-if="model.error" class="cs-smoke-error">{{ model.error }}</p>
             </div>
@@ -106,6 +112,8 @@ export interface CodexStackSmokeModelCard {
   model: string;
   status: string;
   checksLabel: string;
+  durationLabel: string;
+  slowestCheck: string;
   failedChecks: string;
   error: string | null;
 }
@@ -119,6 +127,8 @@ export interface CodexStackSmokeMatrixCard {
   statusValue: string;
   checkedAtLabel: string;
   checkedAt: string;
+  durationLabel: string;
+  duration: string;
   freshnessLabel: string;
   freshness: string;
   freshnessTone: CodexStackTone;
@@ -368,6 +378,10 @@ defineProps<{
 
 .cs-smoke-failed-checks {
   color: var(--warning) !important;
+}
+
+.cs-smoke-slowest-check {
+  color: var(--text-soft) !important;
 }
 
 .cs-component-list {

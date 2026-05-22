@@ -196,8 +196,6 @@ export type CodexStackSmokeCheckId =
   | "compact-stream"
   | "compact-compact";
 
-export const CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS = ["glm-5.1", "kimi-k2.6"] as const;
-
 export const CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS = [
   "cpa-health",
   "compact-health",
@@ -215,6 +213,7 @@ export interface CodexStackSmokeCheckResult {
   status: CodexStackSmokeStatus;
   startedAt: string;
   finishedAt: string;
+  durationMs?: number;
   error: string | null;
 }
 
@@ -223,6 +222,7 @@ export interface CodexStackSmokeModelResult {
   status: CodexStackSmokeStatus;
   startedAt: string;
   finishedAt: string;
+  durationMs?: number;
   checks: CodexStackSmokeCheckResult[];
   error: string | null;
 }
@@ -230,6 +230,7 @@ export interface CodexStackSmokeModelResult {
 export interface CodexStackSmokeMatrixResult {
   status: CodexStackSmokeStatus;
   checkedAt: string;
+  durationMs?: number;
   requiredModels: string[];
   models: CodexStackSmokeModelResult[];
   attachEligible: boolean;

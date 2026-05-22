@@ -1254,7 +1254,7 @@ test("codex stack attaches Codex CPA only after the full smoke gate passes", asy
   });
 });
 
-test("codex stack switches official current model to CPA-safe domestic model before attach", async () => {
+test("codex stack can attach the user-selected GPT model through CPA", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -1281,9 +1281,6 @@ test("codex stack switches official current model to CPA-safe domestic model bef
     const requestUrl = String(url);
     const body = init.body ? JSON.parse(String(init.body)) : {};
     if (body.model) requestedModels.push(body.model);
-    if (body.model === "gpt-5.5") {
-      return new Response(JSON.stringify({ error: { message: "official model must not be smoke-tested for CPA attach" } }), { status: 500 });
-    }
     if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
     if (requestUrl.includes("/v1/chat/completions")) {
       return new Response(JSON.stringify({
@@ -1312,15 +1309,14 @@ test("codex stack switches official current model to CPA-safe domestic model bef
     const job = await waitForJob(service, response.job.id);
 
     assert.equal(job.status, "succeeded");
-    assert.match(job.logTail, /switch Codex model to kimi-k2\.6/);
-    assert.equal(requestedModels.includes("gpt-5.5"), false);
+    assert.equal(requestedModels.includes("gpt-5.5"), true);
     const patched = fs.readFileSync(codexConfig, "utf8");
     assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
-    assert.match(tomlTopLevel(patched), /model\s*=\s*"kimi-k2\.6"/);
+    assert.match(tomlTopLevel(patched), /model\s*=\s*"gpt-5\.5"/);
   });
 });
 
-test("codex stack smoke matrix validates glm and kimi without attaching Codex", async () => {
+test("codex stack smoke matrix validates the selected default model without attaching Codex", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -1379,9 +1375,19 @@ test("codex stack smoke matrix validates glm and kimi without attaching Codex", 
 
     assert.equal(job.status, "succeeded");
     assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
-    assert.deepEqual(summary.profile.lastSmokeMatrix?.requiredModels, ["glm-5.1", "kimi-k2.6"]);
-    assert.equal(compactBodies.length, 2);
-    assert.deepEqual(compactBodies.map((body) => body.model), ["glm-5.1", "kimi-k2.6"]);
+    assert.deepEqual(summary.profile.lastSmokeMatrix?.requiredModels, ["glm-5.1"]);
+    assert.equal(typeof summary.profile.lastSmokeMatrix?.durationMs, "number");
+    assert.ok(summary.profile.lastSmokeMatrix.durationMs >= 0);
+    for (const model of summary.profile.lastSmokeMatrix.models) {
+      assert.equal(typeof model.durationMs, "number");
+      assert.ok(model.durationMs >= 0);
+      for (const check of model.checks) {
+        assert.equal(typeof check.durationMs, "number");
+        assert.ok(check.durationMs >= 0);
+      }
+    }
+    assert.equal(compactBodies.length, 1);
+    assert.deepEqual(compactBodies.map((body) => body.model), ["glm-5.1"]);
     for (const body of compactBodies) {
       assert.equal(body.thread_id, "studio-smoke");
       assert.equal(Array.isArray(body.input), true);
@@ -1454,7 +1460,7 @@ test("codex stack smoke matrix rejects empty compact summaries", async () => {
   });
 });
 
-test("codex stack smoke matrix records kimi failure and blocks Codex attach", async () => {
+test("codex stack smoke matrix records selected target failure and blocks Codex attach", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -1479,8 +1485,8 @@ test("codex stack smoke matrix records kimi failure and blocks Codex attach", as
     const requestUrl = String(url);
     const body = init.body ? JSON.parse(String(init.body)) : {};
     if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
-    if (body.model === "kimi-k2.6" && requestUrl.includes("/v1/chat/completions")) {
-      return new Response(JSON.stringify({ error: { message: "kimi unavailable" } }), { status: 500 });
+    if (body.model === "glm-5.1" && requestUrl.includes("/v1/chat/completions")) {
+      return new Response(JSON.stringify({ error: { message: "target unavailable" } }), { status: 500 });
     }
     if (requestUrl.includes("/v1/chat/completions")) {
       return new Response(JSON.stringify({
@@ -1513,12 +1519,13 @@ test("codex stack smoke matrix records kimi failure and blocks Codex attach", as
     const summary = await service.getSummary();
 
     assert.equal(job.status, "failed");
-    assert.match(job.error || "", /kimi-k2\.6/);
+    assert.match(job.error || "", /glm-5\.1/);
     assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, false);
-    assert.equal(summary.profile.lastSmokeMatrix?.models.find((item) => item.model === "kimi-k2.6")?.status, "failed");
-    assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /kimi-k2\.6/);
+    assert.deepEqual(summary.profile.lastSmokeMatrix?.requiredModels, ["glm-5.1"]);
+    assert.equal(summary.profile.lastSmokeMatrix?.models.find((item) => item.model === "glm-5.1")?.status, "failed");
+    assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /glm-5\.1/);
     assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /CPA chat/);
-    assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /kimi unavailable/);
+    assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /target unavailable/);
     assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
   });
 });
@@ -2260,7 +2267,7 @@ account_id = "test"
         assert.equal(summary.runReadiness.level, "attention");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "warn");
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, false);
-        assert.match(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.detail || "", /重新运行 glm-5\.1 \/ kimi-k2\.6 smoke matrix/);
+        assert.match(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.detail || "", /重新运行目标 CPA 模型 smoke matrix/);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.ready, false);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "compaction")?.ready, false);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.ready, false);
