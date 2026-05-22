@@ -75,14 +75,16 @@ export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload):
   const actions: CodexStackRepairAction[] = [];
   const services = new Map(summary.services.map((service) => [service.id, service]));
   const cpa = services.get("cli-proxy-api.service");
+  const legacyHealthcheck = services.get("cli-proxy-api-healthcheck.timer");
   const compact = services.get("cpa-compact-proxy.service");
   const watchdog = services.get("codex-stack-watchdog.timer");
   const cpaActive = cpa?.active === true;
   const compactActive = compact?.active === true;
   const watchdogActive = watchdog?.active === true;
+  const shouldDisableLegacyHealthcheck = legacyHealthcheck?.active === true || legacyHealthcheck?.enabled === true;
   const stackInstalled = cpa?.installed === true && compact?.installed === true && watchdog?.installed === true;
   if (stackInstalled && !cpaActive && !compactActive && !watchdogActive) {
-    return ["resume-stack"];
+    return shouldDisableLegacyHealthcheck ? ["disable-legacy-healthcheck", "resume-stack"] : ["resume-stack"];
   }
   const codexAuthCheck = summary.runReadiness?.checks.find((check) => check.id === "codex-auth");
   const shouldRepairCodexAuth = codexAuthCheck
@@ -90,6 +92,9 @@ export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload):
     : (!summary.secrets.codexAuth.hasSecret || summary.secrets.codexAuth.matchesProxyKey === false);
   if (shouldRepairCodexAuth) {
     actions.push("repair-auth-json");
+  }
+  if (shouldDisableLegacyHealthcheck) {
+    actions.push("disable-legacy-healthcheck");
   }
   if (!summary.cpaManagement.enabled || !summary.cpaManagement.controlPanelEnabled) {
     actions.push("repair-cpa-management");

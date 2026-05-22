@@ -158,6 +158,7 @@ const REPAIR_ACTIONS = [
   "repair-cpa-management",
   "repair-codex-transport",
   "repair-no-proxy-loopback",
+  "disable-legacy-healthcheck",
   "run-smoke-matrix",
   "apply-codex-cpa-after-smoke",
   "disable-conflicting-units",
@@ -240,6 +241,16 @@ function writeJsonSecure(filePath: string, value: unknown): void {
     fs.chmodSync(filePath, 0o600);
   } catch {
     // Best effort on filesystems that do not support chmod.
+  }
+}
+
+function removeFileIfExists(filePath: string): boolean {
+  try {
+    if (!fs.existsSync(filePath)) return false;
+    fs.rmSync(filePath, { force: true });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1038,8 +1049,13 @@ function resolvePaths(config: StudioServerConfig) {
     ccConnectSocket: path.join(homeDir, ".cc-connect", "run", "api.sock"),
     cliProxyApi: path.join(homeDir, ".local", "bin", "cli-proxy-api"),
     compactProxy: path.join(homeDir, ".local", "bin", "cpa-compact-proxy.mjs"),
+    legacyHealthcheckBin: path.join(homeDir, ".local", "bin", "cli-proxy-api-healthcheck"),
     cpaService: path.join(homeDir, ".config", "systemd", "user", "cli-proxy-api.service"),
     compactService: path.join(homeDir, ".config", "systemd", "user", "cpa-compact-proxy.service"),
+    legacyHealthcheckService: path.join(homeDir, ".config", "systemd", "user", "cli-proxy-api-healthcheck.service"),
+    legacyHealthcheckTimer: path.join(homeDir, ".config", "systemd", "user", "cli-proxy-api-healthcheck.timer"),
+    legacyCpaAlwaysOnDropIn: path.join(homeDir, ".config", "systemd", "user", "cli-proxy-api.service.d", "10-always-on.conf"),
+    legacyCompactAlwaysOnDropIn: path.join(homeDir, ".config", "systemd", "user", "cpa-compact-proxy.service.d", "10-always-on.conf"),
     ccConnectSource: path.join(config.projectRoot, "resources", "codex-stack", "cc-connect-source"),
     profile: path.join(config.openclawRoot, "studio", "codex-stack", "profile.json"),
     jobsDir: path.join(config.openclawRoot, "studio", "codex-stack", "jobs"),
@@ -2675,7 +2691,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     {
       const legacyHealthcheck = services.find((service) => service.id === "cli-proxy-api-healthcheck.timer");
       if (legacyHealthcheck?.active || legacyHealthcheck?.enabled) {
-        warnings.push("检测到旧 cli-proxy-api-healthcheck.timer；它会按旧端口巡检并重启 CPA，可能抵消暂停操作。请执行“暂停 CPA 栈”或重新安装以清理。");
+        warnings.push("检测到旧 cli-proxy-api-healthcheck.timer；它会按旧端口巡检并重启 CPA，可能抵消暂停操作。推荐修复会自动停用并删除旧巡检。");
       }
     }
     if (proxyPolicy.providerMode === "direct" && proxyPolicy.providerProxyUrl) {
@@ -3155,6 +3171,24 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           } else {
             appendJobLog(job, `NO_PROXY already contains localhost,127.0.0.1,::1 (${policy.noProxy}).\n`);
           }
+        }
+        if (action === "disable-legacy-healthcheck") {
+          await runOptionalSystemctl("disable", "--now", "cli-proxy-api-healthcheck.timer");
+          await runOptionalSystemctl("stop", "cli-proxy-api-healthcheck.service");
+          const removed = [
+            currentPaths.legacyHealthcheckTimer,
+            currentPaths.legacyHealthcheckService,
+            currentPaths.legacyHealthcheckBin,
+            currentPaths.legacyCpaAlwaysOnDropIn,
+            currentPaths.legacyCompactAlwaysOnDropIn,
+          ].filter((filePath) => removeFileIfExists(filePath));
+          await runOptionalSystemctl("daemon-reload");
+          appendJobLog(
+            job,
+            removed.length
+              ? `Removed legacy CPA healthcheck artifacts: ${removed.join(", ")}.\n`
+              : "Legacy CPA healthcheck was already absent after systemd cleanup.\n",
+          );
         }
         if (action === "apply-codex-cpa-after-smoke") {
           const codex = readText(currentPaths.codexConfig);

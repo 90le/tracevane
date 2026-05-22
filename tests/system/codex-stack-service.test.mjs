@@ -984,6 +984,49 @@ test("codex stack pause action disables watchdog before Compact and CPA", async 
   });
 });
 
+test("codex stack repair removes legacy CPA healthcheck artifacts", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createGeneratedStackFiles(root);
+  const staleFiles = [
+    path.join(root, ".config/systemd/user/cli-proxy-api-healthcheck.timer"),
+    path.join(root, ".config/systemd/user/cli-proxy-api-healthcheck.service"),
+    path.join(root, ".local/bin/cli-proxy-api-healthcheck"),
+    path.join(root, ".config/systemd/user/cli-proxy-api.service.d/10-always-on.conf"),
+    path.join(root, ".config/systemd/user/cpa-compact-proxy.service.d/10-always-on.conf"),
+  ];
+  for (const file of staleFiles) writeFile(file, "legacy\n", 0o755);
+
+  await withFakeSystemctl(async ({ readCalls }) => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["disable-legacy-healthcheck"] });
+    const job = await waitForJob(service, response.job.id);
+
+    assert.equal(job.status, "succeeded");
+    assert.deepEqual(readCalls(), [
+      "--user disable --now cli-proxy-api-healthcheck.timer",
+      "--user stop cli-proxy-api-healthcheck.service",
+      "--user daemon-reload",
+    ]);
+    assert.ok(staleFiles.every((file) => !fs.existsSync(file)));
+    assert.match(job.logTail, /Removed legacy CPA healthcheck artifacts/);
+  });
+});
+
 test("codex stack resume action starts CPA then Compact before watchdog", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

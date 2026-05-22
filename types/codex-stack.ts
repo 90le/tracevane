@@ -350,6 +350,7 @@ export type CodexStackRepairAction =
   | "repair-cpa-management"
   | "repair-codex-transport"
   | "repair-no-proxy-loopback"
+  | "disable-legacy-healthcheck"
   | "run-smoke-matrix"
   | "apply-codex-cpa-after-smoke"
   | "disable-conflicting-units"

@@ -914,10 +914,13 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
 
 test("codex stack recommended repair resumes a deliberately paused stack in order", () => {
   assert.match(viewModel, /const services = new Map\(summary\.services\.map\(\(service\) => \[service\.id, service\]\)\);/);
+  assert.match(viewModel, /const legacyHealthcheck = services\.get\("cli-proxy-api-healthcheck\.timer"\);/);
+  assert.match(viewModel, /const shouldDisableLegacyHealthcheck = legacyHealthcheck\?\.active === true \|\| legacyHealthcheck\?\.enabled === true;/);
   assert.match(viewModel, /const stackInstalled = cpa\?\.installed === true && compact\?\.installed === true && watchdog\?\.installed === true;/);
-  assert.match(viewModel, /if \(stackInstalled && !cpaActive && !compactActive && !watchdogActive\) \{[\s\S]*return \["resume-stack"\];[\s\S]*\}/);
+  assert.match(viewModel, /if \(stackInstalled && !cpaActive && !compactActive && !watchdogActive\) \{[\s\S]*\["disable-legacy-healthcheck", "resume-stack"\][\s\S]*\["resume-stack"\];[\s\S]*\}/);
   assert.match(viewModel, /const codexAuthCheck = summary\.runReadiness\?\.checks\.find\(\(check\) => check\.id === "codex-auth"\);/);
   assert.match(viewModel, /codexAuthCheck\.status === "fail"/);
+  assert.match(viewModel, /actions\.push\("disable-legacy-healthcheck"\);/);
   assert.doesNotMatch(viewModel, /if \(!serviceActive\.get\("cli-proxy-api\.service"\)\) actions\.push\("restart-cpa"\);/);
 });
 
