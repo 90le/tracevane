@@ -66,6 +66,9 @@
         <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('repair')">
           {{ text("执行推荐修复", "Run Recommended Repair") }}
         </button>
+        <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('reinstall-full')">
+          {{ text("重新安装全部组件", "Reinstall Full Stack") }}
+        </button>
       </div>
       <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
         {{ mutationDisabledHelp }}
@@ -96,6 +99,7 @@ defineProps<{
 defineEmits<{
   "install-full": [];
   "install-base": [];
+  "reinstall-full": [];
   repair: [];
   "set-component-mode": [componentId: CodexStackComponentId, mode: CodexStackComponentInstallMode];
 }>();

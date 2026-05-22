@@ -452,7 +452,7 @@ test("codex stack delegates global job banner without losing navigation and dism
 
 test("codex stack install page delegates preflight plan without losing actions", () => {
   assert.match(controlPage, /import CodexStackInstallPlanCard from "\.\/CodexStackInstallPlanCard\.vue";/);
-  assert.match(controlPage, /<CodexStackInstallPlanCard[\s\S]*:highlights="installPlanHighlights"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@repair="repairRecommended"/);
+  assert.match(controlPage, /<CodexStackInstallPlanCard[\s\S]*:highlights="installPlanHighlights"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@reinstall-full="reinstallFullStack"[\s\S]*@repair="repairRecommended"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-plan-card"/);
   assert.match(installPlanCard, /新手入口/);
   assert.match(installPlanCard, /不用先理解所有组件/);
@@ -466,6 +466,7 @@ test("codex stack install page delegates preflight plan without losing actions",
   assert.match(installPlanCard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(installPlanCard, /@click="\$emit\('install-full'\)"/);
   assert.match(installPlanCard, /@click="\$emit\('install-base'\)"/);
+  assert.match(installPlanCard, /@click="\$emit\('reinstall-full'\)"/);
   assert.match(installPlanCard, /@click="\$emit\('repair'\)"/);
 });
 
@@ -478,11 +479,13 @@ test("codex stack install page delegates install config without moving install p
   assert.match(controlPage, /function contextTokensDisabledHelp\(mode: ContextMode\): string/);
   assert.match(controlPage, /默认上下文不会写 model_context_window；选择自定义 token 后可编辑/);
   assert.match(controlPage, /function updateInstallFormField\(field: CodexStackInstallConfigField, value: string \| number \| boolean\): void/);
-  assert.match(controlPage, /function buildInstallPayload\(skipCcConnect = installForm\.skipCcConnect\)/);
+  assert.match(controlPage, /function buildInstallPayload\([\s\S]*skipCcConnect = installForm\.skipCcConnect/);
   assert.match(controlPage, /async function installFullStack\(\): Promise<void>/);
   assert.match(controlPage, /async function installBaseOnly\(\): Promise<void>/);
+  assert.match(controlPage, /async function reinstallFullStack\(\): Promise<void>/);
   assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(false\)\)/);
   assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(true\)\)/);
+  assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(false, \{[\s\S]*forceReinstall: true,[\s\S]*skipExisting: false/);
   assert.doesNotMatch(controlPage, /v-model(?:\.number)?="installForm\.(channel|model|cpaPort|compactPort|cpaKey|contextMode|contextWindowTokens|skipNpm|skipCcConnect|noStart|skipExisting|forceReinstall|upstreamBaseUrl|upstreamApiKey|providerProxyUrl|noProxy)"/);
   assert.match(installConfigPanel, /export interface CodexStackInstallConfigDraft/);
   assert.match(installConfigPanel, /contextTokensDisabledHelp: string;/);
@@ -495,14 +498,15 @@ test("codex stack install page delegates component strategy and CTA without movi
   assert.match(controlPage, /import CodexStackInstallStrategyPanel from "\.\/CodexStackInstallStrategyPanel\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackInstallStrategyPanel[\s\S]*:components="installComponentStrategies"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@set-component-mode="setComponentMode"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@repair="repairRecommended"/,
+    /<CodexStackInstallStrategyPanel[\s\S]*:components="installComponentStrategies"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@set-component-mode="setComponentMode"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@reinstall-full="reinstallFullStack"[\s\S]*@repair="repairRecommended"/,
   );
   assert.match(controlPage, /const installComponentStrategies = computed<CodexStackInstallComponentStrategy\[\]>/);
   assert.match(controlPage, /function setComponentMode\(componentId: CodexStackComponentId, mode: ComponentInstallMode\): void/);
   assert.match(controlPage, /async function installFullStack\(\): Promise<void>/);
   assert.match(controlPage, /async function installBaseOnly\(\): Promise<void>/);
+  assert.match(controlPage, /async function reinstallFullStack\(\): Promise<void>/);
   assert.match(controlPage, /async function repairRecommended\(\): Promise<void>/);
-  assert.match(controlPage, /function buildInstallPayload\(skipCcConnect = installForm\.skipCcConnect\)/);
+  assert.match(controlPage, /function buildInstallPayload\([\s\S]*skipCcConnect = installForm\.skipCcConnect/);
   assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(false\)\)/);
   assert.match(controlPage, /startCodexStackInstall\(buildInstallPayload\(true\)\)/);
   assert.doesNotMatch(controlPage, /class="cs-component-mode-list"/);
@@ -512,6 +516,7 @@ test("codex stack install page delegates component strategy and CTA without movi
   assert.match(installStrategyPanel, /defineEmits<[\s\S]*"set-component-mode": \[componentId: CodexStackComponentId, mode: CodexStackComponentInstallMode\]/);
   assert.match(installStrategyPanel, /@click="\$emit\('install-full'\)"/);
   assert.match(installStrategyPanel, /@click="\$emit\('install-base'\)"/);
+  assert.match(installStrategyPanel, /@click="\$emit\('reinstall-full'\)"/);
   assert.match(installStrategyPanel, /@click="\$emit\('repair'\)"/);
   assert.doesNotMatch(installStrategyPanel, /startCodexStackInstall|buildInstallPayload|installFullStack|installBaseOnly|repairRecommended\(\)/);
 });
@@ -921,6 +926,8 @@ test("codex stack recommended repair resumes a deliberately paused stack in orde
   assert.match(viewModel, /const codexAuthCheck = summary\.runReadiness\?\.checks\.find\(\(check\) => check\.id === "codex-auth"\);/);
   assert.match(viewModel, /codexAuthCheck\.status === "fail"/);
   assert.match(viewModel, /actions\.push\("disable-legacy-healthcheck"\);/);
+  assert.match(viewModel, /actions\.push\("repair-no-proxy-loopback"\);/);
+  assert.match(viewModel, /actions\.push\("repair-codex-transport"\);/);
   assert.doesNotMatch(viewModel, /if \(!serviceActive\.get\("cli-proxy-api\.service"\)\) actions\.push\("restart-cpa"\);/);
 });
 

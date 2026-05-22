@@ -177,6 +177,7 @@
               :mutation-disabled-help="mutationDisabledHelp"
               @install-full="installFullStack"
               @install-base="installBaseOnly"
+              @reinstall-full="reinstallFullStack"
               @repair="repairRecommended"
             />
 
@@ -232,6 +233,7 @@
                     @set-component-mode="setComponentMode"
                     @install-full="installFullStack"
                     @install-base="installBaseOnly"
+                    @reinstall-full="reinstallFullStack"
                     @repair="repairRecommended"
                   />
                 </div>
@@ -2389,7 +2391,13 @@ async function enableManagement(): Promise<void> {
   }
 }
 
-function buildInstallPayload(skipCcConnect = installForm.skipCcConnect) {
+function buildInstallPayload(
+  skipCcConnect = installForm.skipCcConnect,
+  flagOverrides: Partial<{
+    skipExisting: boolean;
+    forceReinstall: boolean;
+  }> = {},
+) {
   return {
     env: {
       CODEX_MODEL: installForm.model || undefined,
@@ -2407,8 +2415,8 @@ function buildInstallPayload(skipCcConnect = installForm.skipCcConnect) {
       skipNpm: installForm.skipNpm,
       skipCcConnect,
       noStart: installForm.noStart,
-      skipExisting: installForm.skipExisting,
-      forceReinstall: installForm.forceReinstall,
+      skipExisting: flagOverrides.skipExisting ?? installForm.skipExisting,
+      forceReinstall: flagOverrides.forceReinstall ?? installForm.forceReinstall,
       skipComponents: installForm.skipComponents.length ? installForm.skipComponents : undefined,
       forceReinstallComponents: installForm.forceComponents.length ? installForm.forceComponents : undefined,
       channel: installForm.channel,
@@ -2507,6 +2515,29 @@ async function installBaseOnly(): Promise<void> {
     notice.value = { kind: "success", text: text("基础安装任务已启动。", "Base install job started.") };
   } catch (error) {
     notice.value = { kind: "error", text: error instanceof Error ? error.message : text("安装启动失败", "Install failed to start") };
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function reinstallFullStack(): Promise<void> {
+  if (!guardMutation()) return;
+
+  if (installForm.cpaKey && installForm.cpaKey.length > 72) {
+    notice.value = { kind: "error", text: text("代理密钥长度不能超过 72 个字符。", "Proxy key length cannot exceed 72 characters.") };
+    return;
+  }
+
+  busy.value = true;
+  try {
+    const response = await startCodexStackInstall(buildInstallPayload(false, {
+      forceReinstall: true,
+      skipExisting: false,
+    }));
+    startPollingJob(response.job);
+    notice.value = { kind: "success", text: text("重新安装任务已启动。", "Reinstall job started.") };
+  } catch (error) {
+    notice.value = { kind: "error", text: error instanceof Error ? error.message : text("重新安装启动失败", "Reinstall failed to start") };
   } finally {
     busy.value = false;
   }

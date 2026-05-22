@@ -96,6 +96,12 @@ export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload):
   if (shouldDisableLegacyHealthcheck) {
     actions.push("disable-legacy-healthcheck");
   }
+  if (!normalizeProxyPolicy(summary.proxyPolicy).noProxyLoopbackReady) {
+    actions.push("repair-no-proxy-loopback");
+  }
+  if (summary.warnings.some((warning) => warning.includes("WebSocket") || warning.includes("request compression"))) {
+    actions.push("repair-codex-transport");
+  }
   if (!summary.cpaManagement.enabled || !summary.cpaManagement.controlPanelEnabled) {
     actions.push("repair-cpa-management");
   }

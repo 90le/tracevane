@@ -24,6 +24,9 @@
         <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('repair')">
           {{ text("推荐修复", "Recommended Repair") }}
         </button>
+        <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('reinstall-full')">
+          {{ text("重新安装", "Reinstall") }}
+        </button>
         <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('install-base')">
           {{ text("仅基础组件", "Base Only") }}
         </button>
@@ -47,6 +50,7 @@ defineProps<{
 defineEmits<{
   "install-full": [];
   "install-base": [];
+  "reinstall-full": [];
   repair: [];
 }>();
 
