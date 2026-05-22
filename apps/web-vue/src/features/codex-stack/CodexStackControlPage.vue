@@ -18,6 +18,15 @@
       {{ notice.text }}
     </div>
 
+    <CodexStackCheckOutputDialog
+      v-if="checkDialogOpen"
+      :output="checkOutput"
+      :running="healthCheckRunning"
+      :busy-disabled-help="actionBusyDisabledHelp"
+      @rerun="runCheck"
+      @close="checkDialogOpen = false"
+    />
+
     <CodexStackManagementLockCard
       v-if="summary && !summary.management.enabled"
       :title="text('管理动作未启用', 'Management actions are disabled')"
@@ -122,7 +131,7 @@
             <details class="cs-dashboard-details-panel">
               <summary>
                 <span>{{ text('高级状态详情', 'Advanced Status Details') }}</span>
-                <small>{{ text('技术链路、服务单元、组件健康和健康检查输出默认收起；排障时再打开。', 'Technical chain, service units, component health, and health-check output stay collapsed until troubleshooting.') }}</small>
+                <small>{{ text('技术链路、服务单元、组件健康和健康检查入口默认收起；检查结果会用悬浮窗口展示。', 'Technical chain, service units, component health, and the health-check entry stay collapsed; check results open in a floating dialog.') }}</small>
               </summary>
               <div class="cs-dashboard-details-body">
                 <CodexStackRunReadinessPanel
@@ -160,7 +169,6 @@
                 />
 
                 <CodexStackDiagnosticsPanel
-                  :output="checkOutput"
                   :warnings="summary.warnings"
                   :busy="actionBusy"
                   :busy-disabled-help="actionBusyDisabledHelp"
@@ -530,6 +538,7 @@ import type {
 import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
 import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
+import CodexStackCheckOutputDialog from "./CodexStackCheckOutputDialog.vue";
 import CodexStackEnvironmentReferenceCard from "./CodexStackEnvironmentReferenceCard.vue";
 import CodexStackCcConnectCommandBar from "./CodexStackCcConnectCommandBar.vue";
 import type {
@@ -637,6 +646,8 @@ const ccConnectProjectDrafts = ref<CcConnectProjectDraft[]>([]);
 const ccConnectStructuredBaseline = ref("");
 const activeJob = ref<CodexStackJob | null>(null);
 const checkOutput = ref("");
+const checkDialogOpen = ref(false);
+const healthCheckRunning = ref(false);
 const logOutput = ref("");
 const loading = ref(false);
 const ccConnectLoading = ref(false);
@@ -2573,6 +2584,8 @@ async function runCheck(): Promise<void> {
     return;
   }
   if (busy.value) return;
+  checkDialogOpen.value = true;
+  healthCheckRunning.value = true;
   busy.value = true;
   try {
     const response = await runCodexStackCheck();
@@ -2585,6 +2598,7 @@ async function runCheck(): Promise<void> {
   } catch (error) {
     notice.value = { kind: "error", text: error instanceof Error ? error.message : text("检查失败", "Check failed") };
   } finally {
+    healthCheckRunning.value = false;
     busy.value = false;
   }
 }

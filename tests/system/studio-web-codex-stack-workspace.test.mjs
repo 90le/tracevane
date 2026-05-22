@@ -21,6 +21,7 @@ const recommendationCard = read("apps/web-vue/src/features/codex-stack/CodexStac
 const dashboardHeroCard = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardHeroCard.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
+const checkOutputDialog = read("apps/web-vue/src/features/codex-stack/CodexStackCheckOutputDialog.vue");
 const environmentReferenceCard = read("apps/web-vue/src/features/codex-stack/CodexStackEnvironmentReferenceCard.vue");
 const installConfigPanel = read("apps/web-vue/src/features/codex-stack/CodexStackInstallConfigPanel.vue");
 const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackInstallPlanCard.vue");
@@ -100,9 +101,11 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(dashboardHeroCard, /\.cs-hero-actions\s*\{/);
   assert.match(dashboardHeroCard, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(dashboardHeroCard, /@media \(max-width: 960px\)/);
-  assert.match(diagnosticsPanel, /class="cs-diagnostics-grid"/);
+  assert.match(diagnosticsPanel, /class="panel-card cs-diagnostics-panel"/);
   assert.match(diagnosticsPanel, /\.cs-warning-list\s*\{/);
-  assert.match(diagnosticsPanel, /@media \(max-width: 960px\)/);
+  assert.match(checkOutputDialog, /class="cs-check-dialog-backdrop"/);
+  assert.match(checkOutputDialog, /role="dialog"/);
+  assert.match(checkOutputDialog, /function stripAnsi\(value: string\): string/);
   assert.match(environmentReferenceCard, /class="panel-card cs-environment-reference-card"/);
   assert.match(environmentReferenceCard, /\.cs-kv-list\s*\{/);
   assert.match(environmentReferenceCard, /\.cs-warning-list\s*\{/);
@@ -440,11 +443,21 @@ test("codex stack dashboard delegates action overview without losing actions", (
 
 test("codex stack dashboard delegates diagnostics without losing run check", () => {
   assert.match(controlPage, /import CodexStackDiagnosticsPanel from "\.\/CodexStackDiagnosticsPanel\.vue";/);
-  assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:output="checkOutput"[\s\S]*:warnings="summary\.warnings"[\s\S]*:busy="actionBusy"[\s\S]*:busy-disabled-help="actionBusyDisabledHelp"[\s\S]*@run-check="runCheck"/);
+  assert.match(controlPage, /import CodexStackCheckOutputDialog from "\.\/CodexStackCheckOutputDialog\.vue";/);
+  assert.match(controlPage, /<CodexStackCheckOutputDialog[\s\S]*v-if="checkDialogOpen"[\s\S]*:output="checkOutput"[\s\S]*:running="healthCheckRunning"[\s\S]*@rerun="runCheck"[\s\S]*@close="checkDialogOpen = false"/);
+  assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:warnings="summary\.warnings"[\s\S]*:busy="actionBusy"[\s\S]*:busy-disabled-help="actionBusyDisabledHelp"[\s\S]*@run-check="runCheck"/);
+  assert.doesNotMatch(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:output="checkOutput"/);
+  assert.match(controlPage, /const checkDialogOpen = ref\(false\);/);
+  assert.match(controlPage, /const healthCheckRunning = ref\(false\);/);
+  assert.match(controlPage, /checkDialogOpen\.value = true;[\s\S]*healthCheckRunning\.value = true;/);
+  assert.match(controlPage, /healthCheckRunning\.value = false;/);
   assert.match(diagnosticsPanel, /busyDisabledHelp: string;/);
   assert.match(diagnosticsPanel, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.doesNotMatch(controlPage, /尚未运行健康检查。/);
   assert.doesNotMatch(controlPage, /class="cs-diagnostics-grid"/);
+  assert.doesNotMatch(diagnosticsPanel, /<pre/);
+  assert.match(diagnosticsPanel, /检查结果会以悬浮窗口展示/);
+  assert.match(checkOutputDialog, /<pre class="cs-check-output">/);
   assert.match(diagnosticsPanel, /健康检查/);
   assert.match(diagnosticsPanel, /@click="\$emit\('run-check'\)"/);
   assert.match(diagnosticsPanel, /warnings\.length/);
@@ -751,7 +764,7 @@ test("codex stack cc-connect page delegates setup actions without moving finaliz
 test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /import CodexStackChainMap from "\.\/CodexStackChainMap\.vue";/);
   assert.match(controlPage, /<details class="cs-dashboard-details-panel">[\s\S]*高级状态详情/);
-  assert.match(controlPage, /技术链路、服务单元、组件健康和健康检查输出默认收起/);
+  assert.match(controlPage, /技术链路、服务单元、组件健康和健康检查入口默认收起/);
   assert.match(controlPage, /<CodexStackChainMap[\s\S]*:nodes="chainNodes"[\s\S]*:gates="chainGates"[\s\S]*:warnings="chainWarnings"/);
   assert.match(controlPage, /const chainNodes = computed<CodexStackChainNode\[\]>/);
   assert.match(controlPage, /const chainWarnings = computed\(\(\) => summary\.value\?\.warnings\.slice\(0, 3\) \|\| \[\]\);/);
