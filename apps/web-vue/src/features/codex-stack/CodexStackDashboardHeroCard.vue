@@ -7,7 +7,7 @@
         <span class="cs-status-pill" :class="`tone-${statusTone}`">{{ statusLabel }}</span>
       </div>
       <p class="cs-hero-description">
-        {{ text("先看当前状态，再按建议执行安装、修复或配置。主界面只保留 CPA、Compact、cc-connect 三个核心服务；旧巡检和后台守护由推荐修复自动处理。", "Start from the current state, then follow suggested install, repair, or config actions. The main view focuses on CPA, Compact, and cc-connect; legacy checks and background watchdog are handled by Recommended Repair.") }}
+        {{ text("只保留当前状态、推荐动作和关键运行参数。健康检查与日志用悬浮窗口展开，避免首屏变成卡片墙。", "Keep current state, recommended action, and key runtime parameters only. Health checks and logs open as floating views so the first screen does not become a card wall.") }}
       </p>
       <div class="cs-chip-row">
         <span class="cs-info-chip">
@@ -31,15 +31,15 @@
       </div>
     </div>
     <div class="cs-hero-actions">
-      <button type="button" class="primary-button" :disabled="busy" @click="$emit('run-check')">
+      <UButton type="button" color="primary" size="lg" :disabled="busy" @click="$emit('run-check')">
         {{ text("运行健康检查", "Run Health Check") }}
-      </button>
-      <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('repair')">
+      </UButton>
+      <UButton type="button" color="neutral" variant="soft" :disabled="!canRunMutation" @click="$emit('repair')">
         {{ text("自动修复", "Auto Repair") }}
-      </button>
-      <button type="button" class="secondary-button" :disabled="syncDisabled" @click="$emit('sync')">
+      </UButton>
+      <UButton type="button" color="neutral" variant="ghost" :disabled="syncDisabled" @click="$emit('sync')">
         {{ text("重新同步", "Sync Now") }}
-      </button>
+      </UButton>
       <p v-if="busy && busyDisabledHelp" class="cs-disabled-help">
         {{ busyDisabledHelp }}
       </p>
@@ -86,15 +86,16 @@ const { text } = useLocalePreference();
 
 <style scoped>
 .cs-dashboard-hero-card {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
-  padding: 24px;
+  gap: 20px;
+  padding: 22px;
   overflow: hidden;
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 18%, transparent), transparent 36%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, #071018 8%), var(--surface));
+    linear-gradient(100deg, color-mix(in srgb, var(--accent-soft) 62%, transparent), transparent 44%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, #071018 6%), var(--surface));
 }
 
 .cs-hero-copy {
@@ -122,7 +123,9 @@ const { text } = useLocalePreference();
 }
 
 .cs-hero-description {
+  max-width: 780px;
   color: var(--text-soft);
+  line-height: 1.55;
 }
 
 .cs-chip-row {
@@ -175,10 +178,11 @@ const { text } = useLocalePreference();
 }
 
 .cs-hero-actions {
-  display: flex;
+  display: grid;
   gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
+  align-items: stretch;
+  justify-items: stretch;
+  min-width: 156px;
 }
 
 .cs-disabled-help {
@@ -190,8 +194,7 @@ const { text } = useLocalePreference();
 
 @media (max-width: 960px) {
   .cs-dashboard-hero-card {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 }
 </style>

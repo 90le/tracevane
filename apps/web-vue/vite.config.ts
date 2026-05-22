@@ -31,18 +31,33 @@ const studioPackageVersion = (() => {
   }
 })();
 
-const studioDevContext = createStudioContext({
-  config: createStandaloneStudioConfig({
-    port: studioApiPort,
-  }),
-  logger: console,
-});
-const studioDevRequestHandler = createStudioRequestHandler(studioDevContext);
+let studioDevContext: ReturnType<typeof createStudioContext> | null = null;
+let studioDevRequestHandler: ReturnType<typeof createStudioRequestHandler> | null = null;
+
+function getStudioDevContext(): ReturnType<typeof createStudioContext> {
+  if (!studioDevContext) {
+    studioDevContext = createStudioContext({
+      config: createStandaloneStudioConfig({
+        port: studioApiPort,
+      }),
+      logger: console,
+    });
+  }
+  return studioDevContext;
+}
+
+function getStudioDevRequestHandler(): ReturnType<typeof createStudioRequestHandler> {
+  if (!studioDevRequestHandler) {
+    studioDevRequestHandler = createStudioRequestHandler(getStudioDevContext());
+  }
+  return studioDevRequestHandler;
+}
 
 function syncStudioDevConfig(reason: string): void {
-  const previousGatewayPort = studioDevContext.config.gatewayPort;
-  const changed = syncStandaloneStudioConfig(studioDevContext.config);
-  const nextGatewayPort = studioDevContext.config.gatewayPort;
+  const context = getStudioDevContext();
+  const previousGatewayPort = context.config.gatewayPort;
+  const changed = syncStandaloneStudioConfig(context.config);
+  const nextGatewayPort = context.config.gatewayPort;
 
   if (changed) {
     console.info(
@@ -55,8 +70,6 @@ function syncStudioDevConfig(reason: string): void {
     `[openclaw-studio-dev-api] ${reason}: gateway port ${nextGatewayPort}`
   );
 }
-
-syncStudioDevConfig('startup');
 
 function studioManualChunk(id: string): string | undefined {
   if (!id.includes('node_modules')) return undefined;
@@ -154,7 +167,9 @@ export default defineConfig({
     !useExternalApi && {
       name: 'openclaw-studio-dev-api',
       configureServer(server) {
-        const openclawConfigFile = studioDevContext.config.openclawConfigFile;
+        const context = getStudioDevContext();
+        syncStudioDevConfig('startup');
+        const openclawConfigFile = context.config.openclawConfigFile;
         const handleOpenClawConfigChange = (file: string) => {
           if (file !== openclawConfigFile) return;
           syncStudioDevConfig('openclaw.json changed');
@@ -166,8 +181,9 @@ export default defineConfig({
         server.watcher.on('unlink', handleOpenClawConfigChange);
 
         server.httpServer?.on('upgrade', (req, socket, head) => {
-          const handled = studioDevContext.services.chat.handleUpgrade(req, socket, head)
-            || studioDevContext.services.terminal.handleUpgrade(req, socket, head);
+          const currentContext = getStudioDevContext();
+          const handled = currentContext.services.chat.handleUpgrade(req, socket, head)
+            || currentContext.services.terminal.handleUpgrade(req, socket, head);
           if (!handled) return;
         });
 
@@ -178,7 +194,7 @@ export default defineConfig({
             return;
           }
 
-          const handled = await studioDevRequestHandler(
+          const handled = await getStudioDevRequestHandler()(
             req as IncomingMessage,
             res as ServerResponse
           );

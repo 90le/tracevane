@@ -69,6 +69,7 @@
       />
 
       <CodexStackModelRibbon
+        v-if="activeSection !== 'dashboard'"
         :current-model="summary.models.current || summary.profile.defaultModel || '--'"
         :source-help="modelSourceHelp"
         :source-tone="modelSourceTone"
