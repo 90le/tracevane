@@ -1,4 +1,5 @@
 <template>
+  <UApp>
   <TooltipProvider :delay-duration="140" :skip-delay-duration="80" :disable-hoverable-content="true">
     <div
       class="app-container"
@@ -152,6 +153,7 @@
       />
     </div>
   </TooltipProvider>
+  </UApp>
 </template>
 
 <script setup lang="ts">

@@ -10,6 +10,10 @@ build/
 out/
 coverage/
 *.tsbuildinfo
+auto-imports.d.ts
+components.d.ts
+apps/web-vue/auto-imports.d.ts
+apps/web-vue/components.d.ts
 
 # Local runtime and cache state
 .tmp/

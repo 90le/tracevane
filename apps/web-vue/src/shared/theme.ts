@@ -12,7 +12,7 @@ let initialized = false;
 let mediaQueryList: MediaQueryList | null = null;
 
 function readStoredThemeMode(): ThemeMode {
-  if (typeof window === "undefined") return "system";
+  if (typeof window === "undefined") return "dark";
   try {
     const value = window.localStorage.getItem(THEME_STORAGE_KEY);
     if (value === "light" || value === "dark" || value === "system")
@@ -20,7 +20,7 @@ function readStoredThemeMode(): ThemeMode {
   } catch {
     // ignore storage issues
   }
-  return "system";
+  return "dark";
 }
 
 function persistThemeMode(value: ThemeMode): void {

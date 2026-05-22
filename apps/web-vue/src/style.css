@@ -1,3 +1,6 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
 :root {
   --shell-bg-start: #06101a;
   --shell-bg-mid: #0f2133;
@@ -6196,5 +6199,229 @@ html[data-theme="light"] .capability-chip {
 @media (max-width: 560px) {
   .channel-summary-strip {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Studio Design System v1: quiet command-center skin over legacy surfaces. */
+:root {
+  --studio-bg: #080b10;
+  --studio-bg-soft: #0d1218;
+  --studio-rail: rgba(8, 12, 18, 0.92);
+  --studio-panel: rgba(15, 20, 28, 0.74);
+  --studio-panel-strong: rgba(18, 24, 33, 0.88);
+  --studio-elevated: rgba(22, 29, 39, 0.94);
+  --studio-line: rgba(210, 226, 242, 0.1);
+  --studio-line-strong: rgba(210, 226, 242, 0.17);
+  --studio-text: #eef5f8;
+  --studio-text-soft: #aebdc8;
+  --studio-text-muted: #788895;
+  --studio-cyan: #4fd4e8;
+  --studio-green: #72dfbd;
+  --studio-amber: #e8bd6b;
+  --studio-red: #ff7b8a;
+  --studio-focus: rgba(79, 212, 232, 0.22);
+  --shell-bg-start: var(--studio-bg);
+  --shell-bg-mid: var(--studio-bg-soft);
+  --shell-bg-end: #111922;
+  --shell-stage-fill: linear-gradient(180deg, rgba(11, 15, 21, 0.96), rgba(12, 17, 24, 0.9));
+  --shell-stage-fill-strong: linear-gradient(180deg, rgba(12, 17, 24, 0.98), rgba(13, 19, 27, 0.94));
+  --shell-rail-fill: linear-gradient(180deg, rgba(8, 12, 18, 0.98), rgba(10, 15, 22, 0.92));
+  --shell-dock-fill: rgba(13, 18, 26, 0.82);
+  --shell-panel-fill: linear-gradient(180deg, rgba(23, 30, 40, 0.82), rgba(15, 21, 29, 0.72));
+  --shell-panel-fill-strong: linear-gradient(180deg, rgba(28, 36, 48, 0.92), rgba(17, 24, 33, 0.84));
+  --shell-subtle-fill: rgba(25, 33, 43, 0.68);
+  --shell-stage-border: var(--studio-line-strong);
+  --shell-panel-border: var(--studio-line);
+  --shell-highlight: rgba(232, 246, 255, 0.12);
+  --modal-backdrop: rgba(3, 6, 10, 0.7);
+  --modal-panel-bg: #101721;
+  --modal-panel-bg-strong: #141d29;
+  --modal-row-bg: #151f2a;
+  --modal-row-hover-bg: #1a2633;
+  --modal-border: var(--studio-line-strong);
+  --bg-app: var(--studio-bg);
+  --bg-subtle: var(--studio-bg-soft);
+  --surface-base: var(--shell-panel-fill);
+  --surface-raised: var(--shell-panel-fill-strong);
+  --surface-overlay: rgba(15, 21, 29, 0.98);
+  --surface-danger: rgba(84, 24, 34, 0.38);
+  --text-primary: var(--studio-text);
+  --text-secondary: var(--studio-text-soft);
+  --text-muted: var(--studio-text-muted);
+  --border-subtle: var(--studio-line);
+  --border-strong: var(--studio-line-strong);
+  --shadow-popover: 0 28px 80px rgba(0, 0, 0, 0.42);
+  --accent-primary: var(--studio-cyan);
+  --accent-soft: rgba(79, 212, 232, 0.12);
+  --focus-ring: var(--studio-focus);
+  --mint: var(--studio-green);
+  --peach: #d79a63;
+  --coral: var(--studio-red);
+  --sky: var(--studio-cyan);
+  --gold: var(--studio-amber);
+  --violet: #9d95ff;
+  --text: var(--studio-text);
+  --text-soft: #d6e2e8;
+  --muted: var(--studio-text-soft);
+  --muted-soft: var(--studio-text-muted);
+  --acc: var(--studio-cyan);
+  --card: var(--studio-panel);
+  --line: var(--studio-line);
+  --line-strong: var(--studio-line-strong);
+  --surface: var(--studio-panel);
+  --surface-strong: var(--studio-panel-strong);
+  --shadow: 0 30px 90px rgba(0, 0, 0, 0.36);
+  --shadow-soft: 0 14px 36px rgba(0, 0, 0, 0.18);
+  --body-glow-a: rgba(79, 212, 232, 0.08);
+  --body-glow-b: rgba(114, 223, 189, 0.055);
+  --body-glow-c: rgba(232, 189, 107, 0.045);
+  --body-grid-a: rgba(255, 255, 255, 0.026);
+  --body-grid-b: rgba(255, 255, 255, 0.016);
+  --body-grid-c: rgba(255, 255, 255, 0.012);
+  --body-center-glow: rgba(79, 212, 232, 0.02);
+  --brand-gradient: linear-gradient(92deg, #e9f5f7 0%, #80dcea 34%, #72dfbd 70%, #e8bd6b 100%);
+  --sidebar-gradient: var(--shell-rail-fill);
+  --sidebar-accent: linear-gradient(180deg, rgba(79, 212, 232, 0.06), transparent 26%);
+  --glass-bg: linear-gradient(180deg, rgba(13, 18, 26, 0.94), rgba(10, 14, 20, 0.9));
+  --glass-accent:
+    linear-gradient(90deg, rgba(79, 212, 232, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 42%);
+  --topbar-bg: rgba(12, 17, 24, 0.82);
+  --topbar-accent: linear-gradient(90deg, rgba(79, 212, 232, 0.07), transparent 42%);
+  --button-primary-bg: linear-gradient(135deg, #65e3f0, #72dfbd);
+  --button-primary-text: #061216;
+  --button-secondary-bg: rgba(21, 28, 38, 0.82);
+  --button-secondary-text: var(--studio-text);
+  --tab-bg: rgba(18, 25, 34, 0.78);
+  --tab-active-bg: rgba(79, 212, 232, 0.13);
+  --nav-hover-bg: rgba(255, 255, 255, 0.055);
+  --nav-active-bg: rgba(79, 212, 232, 0.12);
+  --icon-surface: rgba(21, 28, 38, 0.84);
+  --field-bg: rgba(8, 12, 18, 0.66);
+  --field-bg-focus: rgba(12, 18, 26, 0.9);
+  --field-border: var(--studio-line);
+  --field-border-focus: rgba(79, 212, 232, 0.44);
+  --code-bg: rgba(6, 10, 15, 0.92);
+  --danger: var(--studio-red);
+  --success: var(--studio-green);
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --studio-bg: #eef3f6;
+  --studio-bg-soft: #f7fafb;
+  --studio-rail: rgba(247, 250, 251, 0.94);
+  --studio-panel: rgba(255, 255, 255, 0.78);
+  --studio-panel-strong: rgba(255, 255, 255, 0.94);
+  --studio-elevated: #ffffff;
+  --studio-line: rgba(25, 43, 58, 0.11);
+  --studio-line-strong: rgba(25, 43, 58, 0.18);
+  --studio-text: #14202a;
+  --studio-text-soft: #506271;
+  --studio-text-muted: #7a8b97;
+  --studio-cyan: #0b92a5;
+  --studio-green: #0f9f75;
+  --studio-amber: #bd812f;
+  --studio-red: #d94b5b;
+  --studio-focus: rgba(11, 146, 165, 0.18);
+  color-scheme: light;
+}
+
+body {
+  background:
+    linear-gradient(135deg, rgba(79, 212, 232, 0.045), transparent 26%),
+    linear-gradient(180deg, var(--studio-bg-soft), var(--studio-bg));
+}
+
+.ambient-orb,
+.pointer-glow,
+.app-container::before,
+.app-container::after {
+  opacity: 0 !important;
+}
+
+.app-container {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px),
+    linear-gradient(180deg, var(--studio-bg-soft), var(--studio-bg));
+  background-size: 48px 48px, 48px 48px, auto;
+}
+
+.sidebar {
+  border-right: 1px solid var(--studio-line);
+  box-shadow: none;
+}
+
+.shell-main-stage,
+.shell-route-stage {
+  background: transparent;
+}
+
+.panel-card,
+.metric-card,
+.subpanel-card {
+  background: var(--studio-panel);
+  border: 1px solid var(--studio-line);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(18px) saturate(108%);
+}
+
+.panel-card::before,
+.metric-card::before {
+  background: linear-gradient(90deg, transparent, rgba(79, 212, 232, 0.22), transparent);
+  opacity: 0.36;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 36px;
+  border-radius: 8px;
+  border-color: var(--studio-line-strong);
+  letter-spacing: 0;
+  box-shadow: none;
+}
+
+.primary-button {
+  background: var(--button-primary-bg);
+  color: var(--button-primary-text);
+}
+
+.secondary-button {
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+}
+
+.primary-button:hover,
+.secondary-button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--studio-cyan) 42%, var(--studio-line-strong));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+  filter: none;
+}
+
+.primary-button.is-danger {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--studio-red) 92%, white), var(--studio-red));
+  color: #fff;
+  border-color: color-mix(in srgb, var(--studio-red) 56%, var(--studio-line));
+  box-shadow: none;
+}
+
+.primary-button.is-safe {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--studio-green) 86%, white), var(--studio-green));
+  color: #05130f;
+  border-color: color-mix(in srgb, var(--studio-green) 52%, var(--studio-line));
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }

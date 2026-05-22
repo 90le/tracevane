@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import ui from '@nuxt/ui/vite';
 import { createStandaloneStudioConfig, createStudioContext, createStudioRequestHandler, syncStandaloneStudioConfig } from '../api/index.js';
 
 function normalizePort(value: string | undefined, fallback: number): number {
@@ -135,6 +136,21 @@ export default defineConfig({
   plugins: [
     createKatexOptimizedDepFallbackPlugin(),
     vue(),
+    ui({
+      ui: {
+        colors: {
+          primary: 'cyan',
+          neutral: 'slate',
+        },
+      },
+      theme: {
+        colors: ['primary', 'secondary', 'success', 'info', 'warning', 'error'],
+        defaultVariants: {
+          color: 'neutral',
+          size: 'sm',
+        },
+      },
+    }),
     !useExternalApi && {
       name: 'openclaw-studio-dev-api',
       configureServer(server) {
