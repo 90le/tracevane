@@ -156,6 +156,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(chainMap, /\.cs-chain-gates\s*\{/);
   assert.match(chainMap, /\.cs-chain-warning-strip\s*\{/);
   assert.match(runReadinessPanel, /class="panel-card cs-run-readiness-card"/);
+  assert.match(runReadinessPanel, /\.cs-run-focus\s*\{/);
+  assert.match(runReadinessPanel, /\.cs-run-mode-strip\s*\{/);
+  assert.match(runReadinessPanel, /\.cs-run-check-details\s*\{/);
   assert.match(runReadinessPanel, /\.cs-run-check-grid\s*\{/);
   assert.match(runReadinessPanel, /@media \(max-width: 960px\)/);
   assert.match(sectionIntro, /class="panel-card cs-section-intro"/);
@@ -168,6 +171,8 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(sectionNav, /\.cs-tab-button-active\s*\{/);
   assert.match(sectionNav, /@media \(max-width: 960px\)/);
   assert.match(workspaceShell, /class="cs-workspace"/);
+  assert.match(controlPage, /\.cs-dashboard-details-panel\s*\{/);
+  assert.match(controlPage, /\.cs-dashboard-details-body\s*\{/);
   assert.match(workspaceShell, /class="cs-content"/);
   assert.doesNotMatch(workspaceShell, /@media \(max-width: 960px\)/);
   assert.match(ccConnectCommandBar, /class="cs-cc-command-bar"/);
@@ -745,6 +750,8 @@ test("codex stack cc-connect page delegates setup actions without moving finaliz
 
 test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /import CodexStackChainMap from "\.\/CodexStackChainMap\.vue";/);
+  assert.match(controlPage, /<details class="cs-dashboard-details-panel">[\s\S]*高级状态详情/);
+  assert.match(controlPage, /技术链路、服务单元、组件健康和健康检查输出默认收起/);
   assert.match(controlPage, /<CodexStackChainMap[\s\S]*:nodes="chainNodes"[\s\S]*:gates="chainGates"[\s\S]*:warnings="chainWarnings"/);
   assert.match(controlPage, /const chainNodes = computed<CodexStackChainNode\[\]>/);
   assert.match(controlPage, /const chainWarnings = computed\(\(\) => summary\.value\?\.warnings\.slice\(0, 3\) \|\| \[\]\);/);
@@ -846,10 +853,12 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(runReadinessPanel, /readiness\.checks/);
   assert.match(runReadinessPanel, /actionsDisabled: boolean;/);
   assert.match(runReadinessPanel, /disabledLabel: string;/);
-  assert.match(runReadinessPanel, /mode\.dependencies\?\.length/);
-  assert.match(runReadinessPanel, /v-for="dependency in mode\.dependencies"/);
-  assert.match(runReadinessPanel, /class="cs-run-mode-deps"/);
-  assert.match(runReadinessPanel, /runReadinessCheckTone\(dependency\.status\)/);
+  assert.match(runReadinessPanel, /text\("当前结论", "Current Result"\)/);
+  assert.match(runReadinessPanel, /text\("下一步", "Next Step"\)/);
+  assert.match(runReadinessPanel, /text\("技术检查", "Technical Checks"\)/);
+  assert.match(runReadinessPanel, /const blockingChecks = computed/);
+  assert.match(runReadinessPanel, /const primaryActionTarget = computed/);
+  assert.match(runReadinessPanel, /function runPrimaryAction\(\): void/);
   assert.match(runReadinessPanel, /:disabled="isActionDisabled\(mode\.actionHint\)"/);
   assert.match(runReadinessPanel, /:disabled="isActionDisabled\(check\.actionHint\)"/);
   assert.match(runReadinessPanel, /actionHint\.kind !== "open-section"/);

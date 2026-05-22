@@ -100,24 +100,6 @@
               @sync="loadAll"
             />
 
-            <CodexStackChainMap
-              :labels="chainMapLabels"
-              :overall-tone="statusTone"
-              :nodes="chainNodes"
-              :gates="chainGates"
-              :warnings="chainWarnings"
-            />
-
-            <CodexStackRunReadinessPanel
-              v-if="summary.runReadiness"
-              :readiness="summary.runReadiness"
-              :tone="runReadinessTone"
-              :actions-disabled="runReadinessActionsDisabled"
-              :disabled-label="runReadinessDisabledLabel"
-              @check-action="runReadinessCheckAction"
-              @mode-action="runReadinessModeAction"
-            />
-
             <CodexStackActionOverview
               :ready-component-count="readyComponentCount"
               :component-count="summary.components.length"
@@ -137,29 +119,55 @@
               @open-section="setWorkspaceSection(nextActionSection, focusHintForAction(nextActionTitle, nextActionCopy))"
             />
 
-            <CodexStackServiceGrid
-              :services="serviceCards"
-              :can-run-mutation="canRunMutation"
-              :mutation-disabled-help="mutationDisabledHelp"
-              :labels="serviceGridLabels"
-              @service-action="serviceAction"
-            />
+            <details class="cs-dashboard-details-panel">
+              <summary>
+                <span>{{ text('高级状态详情', 'Advanced Status Details') }}</span>
+                <small>{{ text('技术链路、服务单元、组件健康和健康检查输出默认收起；排障时再打开。', 'Technical chain, service units, component health, and health-check output stay collapsed until troubleshooting.') }}</small>
+              </summary>
+              <div class="cs-dashboard-details-body">
+                <CodexStackRunReadinessPanel
+                  v-if="summary.runReadiness"
+                  :readiness="summary.runReadiness"
+                  :tone="runReadinessTone"
+                  :actions-disabled="runReadinessActionsDisabled"
+                  :disabled-label="runReadinessDisabledLabel"
+                  @check-action="runReadinessCheckAction"
+                  @mode-action="runReadinessModeAction"
+                />
 
-            <CodexStackDashboardInsights
-              :labels="dashboardInsightsLabels"
-              :runtime-rows="runtimeSummaryRows"
-              :network-policy="networkPolicyCard"
-              :smoke-matrix="smokeMatrixCard"
-              :components="componentHealthCards"
-            />
+                <CodexStackChainMap
+                  :labels="chainMapLabels"
+                  :overall-tone="statusTone"
+                  :nodes="chainNodes"
+                  :gates="chainGates"
+                  :warnings="chainWarnings"
+                />
 
-            <CodexStackDiagnosticsPanel
-              :output="checkOutput"
-              :warnings="summary.warnings"
-              :busy="actionBusy"
-              :busy-disabled-help="actionBusyDisabledHelp"
-              @run-check="runCheck"
-            />
+                <CodexStackServiceGrid
+                  :services="serviceCards"
+                  :can-run-mutation="canRunMutation"
+                  :mutation-disabled-help="mutationDisabledHelp"
+                  :labels="serviceGridLabels"
+                  @service-action="serviceAction"
+                />
+
+                <CodexStackDashboardInsights
+                  :labels="dashboardInsightsLabels"
+                  :runtime-rows="runtimeSummaryRows"
+                  :network-policy="networkPolicyCard"
+                  :smoke-matrix="smokeMatrixCard"
+                  :components="componentHealthCards"
+                />
+
+                <CodexStackDiagnosticsPanel
+                  :output="checkOutput"
+                  :warnings="summary.warnings"
+                  :busy="actionBusy"
+                  :busy-disabled-help="actionBusyDisabledHelp"
+                  @run-check="runCheck"
+                />
+              </div>
+            </details>
           </CodexStackSectionStack>
         </template>
 
@@ -3042,7 +3050,24 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   background: color-mix(in srgb, var(--surface) 78%, transparent);
 }
 
+.cs-dashboard-details-panel {
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+}
+
 .cs-install-options-panel summary {
+  display: flex;
+  gap: 8px 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.cs-dashboard-details-panel summary {
   display: flex;
   gap: 8px 14px;
   align-items: center;
@@ -3062,6 +3087,15 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   text-align: right;
 }
 
+.cs-dashboard-details-panel summary small {
+  max-width: 640px;
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: right;
+}
+
 .cs-install-options-body {
   display: flex;
   flex-direction: column;
@@ -3070,13 +3104,23 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   padding: 18px;
 }
 
+.cs-dashboard-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border-top: 1px solid var(--line);
+  padding: 18px;
+}
+
 @media (max-width: 760px) {
-  .cs-install-options-panel summary {
+  .cs-install-options-panel summary,
+  .cs-dashboard-details-panel summary {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .cs-install-options-panel summary small {
+  .cs-install-options-panel summary small,
+  .cs-dashboard-details-panel summary small {
     text-align: left;
   }
 }
