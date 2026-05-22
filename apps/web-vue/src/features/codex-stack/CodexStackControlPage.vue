@@ -83,7 +83,7 @@
               :status-label="statusLabel"
               :status-tone="statusTone"
               :active-service-count="activeServiceCount"
-              :service-count="summary.services.length"
+              :service-count="serviceCount"
               :current-model="summary.models.current"
               :codex-route-label="codexRouteLabel"
               :context-tokens-display="contextTokensDisplay"
@@ -640,13 +640,17 @@ const workspaceFocusHint = ref<CodexStackWorkspaceFocusHint | null>(null);
 const activeAgentPane = ref<AgentPaneId>("projects");
 const selectedProjectDraftId = ref("");
 const selectedLogService = ref<CodexStackServiceId>("cli-proxy-api.service");
+const primaryServiceIds: CodexStackServiceId[] = [
+  "cli-proxy-api.service",
+  "cpa-compact-proxy.service",
+  "cc-connect.service",
+];
 const logServices = computed<CodexStackLogServiceOption[]>(() => {
   const services: CodexStackLogServiceOption[] = [
     { id: "cli-proxy-api.service", label: text("CPA", "CPA"), tone: "neutral", rawState: "--" },
-    { id: "cli-proxy-api-healthcheck.timer", label: text("旧巡检", "Legacy Healthcheck"), tone: "neutral", rawState: "--" },
     { id: "cpa-compact-proxy.service", label: text("Compact", "Compact"), tone: "neutral", rawState: "--" },
     { id: "cc-connect.service", label: text("cc-connect", "cc-connect"), tone: "neutral", rawState: "--" },
-    { id: "codex-stack-watchdog.timer", label: text("Watchdog", "Watchdog"), tone: "neutral", rawState: "--" },
+    { id: "codex-stack-watchdog.timer", label: text("后台守护", "Background Watchdog"), tone: "neutral", rawState: "--" },
   ];
   
   if (summary.value) {
@@ -1068,7 +1072,9 @@ const activeJobTitle = computed(() => {
   };
   return labels[activeJob.value.kind];
 });
-const activeServiceCount = computed(() => countActiveServices(summary.value?.services || []));
+const primaryServices = computed(() => summary.value?.services.filter((service) => primaryServiceIds.includes(service.id)) || []);
+const activeServiceCount = computed(() => countActiveServices(primaryServices.value));
+const serviceCount = computed(() => primaryServices.value.length);
 const ccConnectProjects = computed(() => ccConnectConfig.value?.projects || []);
 const ccConnectProviderDraftCount = computed(() => ccConnectProviderDrafts.value.length);
 const ccConnectProjectDraftCount = computed(() => ccConnectProjectDrafts.value.length);
@@ -1216,6 +1222,17 @@ const runtimeSummaryRows = computed<CodexStackRuntimeSummaryRow[]>(() => {
       id: "compact",
       label: "Compact",
       value: portDisplay(current.ports.compact, current.ports.detectedCompact),
+    },
+    {
+      id: "watchdog",
+      label: text("后台守护", "Background Watchdog"),
+      value: (() => {
+        const watchdog = current.services.find((service) => service.id === "codex-stack-watchdog.timer");
+        if (!watchdog?.installed) return text("未安装；安装/修复会补齐", "Not installed; install/repair will add it");
+        return watchdog.active
+          ? text("已启用；异常自动恢复", "Enabled; auto-recovers issues")
+          : text("已暂停；推荐修复会恢复", "Paused; Recommended Repair will resume it");
+      })(),
     },
     {
       id: "proxy",
@@ -1372,15 +1389,6 @@ const chainGates = computed<CodexStackChainGate[]>(() => {
         ? `${activeJob.value.commandLabel} · ${jobStatusLabel(activeJob.value.status)}`
         : text("没有安装、修复或 finalizer 正在运行", "No install, repair, or finalizer is running"),
       tone: jobRunning.value ? "accent" : "sage",
-    },
-    {
-      id: "watchdog",
-      label: "Watchdog",
-      value: current.services.find((service) => service.id === "codex-stack-watchdog.timer")?.active
-        ? text("巡检开启", "Enabled")
-        : text("巡检暂停", "Paused"),
-      help: text("暂停链路时应先停 watchdog，恢复时最后启用。", "Pause stops watchdog first; resume enables it last."),
-      tone: current.services.find((service) => service.id === "codex-stack-watchdog.timer")?.active ? "sage" : "neutral",
     },
   ];
 });
@@ -1677,7 +1685,7 @@ const hasCcConnectStructuredChanges = computed(
 );
 const serviceCards = computed(() => {
   if (!summary.value) return [];
-  return summary.value.services.map((service) => {
+  return primaryServices.value.map((service) => {
     const serviceMeta = serviceCatalog[service.id];
     const label = text(serviceMeta.labelKey[0], serviceMeta.labelKey[1]);
     const blurb = text(serviceMeta.blurbKey[0], serviceMeta.blurbKey[1]);

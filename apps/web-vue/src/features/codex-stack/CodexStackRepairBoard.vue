@@ -14,7 +14,7 @@
         <article class="cs-repair-card cs-repair-card-primary">
           <span class="cs-step-number">1</span>
           <strong>{{ text("推荐修复", "Recommended Repair") }}</strong>
-          <p>{{ text("根据当前状态自动处理未运行的 CPA、Compact、watchdog 或 cc-connect。", "Automatically handle inactive CPA, Compact, watchdog, or cc-connect based on current status.") }}</p>
+          <p>{{ text("自动处理代理链路、后台守护、NO_PROXY/TUN 绕过、旧巡检清理和常见配置漂移。", "Automatically handles the proxy chain, background watchdog, NO_PROXY/TUN bypass, legacy check cleanup, and common config drift.") }}</p>
           <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('repair-recommended')">
             {{ text("执行推荐修复", "Run Recommended") }}
           </button>

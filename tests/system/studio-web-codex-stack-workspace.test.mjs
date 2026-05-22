@@ -382,8 +382,11 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.match(controlPage, /import CodexStackDashboardHeroCard from "\.\/CodexStackDashboardHeroCard\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="summary\.services\.length"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="actionBusy"[\s\S]*:busy-disabled-help="actionBusyDisabledHelp"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*:sync-disabled-help="refreshDisabledHelp"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
+    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="serviceCount"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="actionBusy"[\s\S]*:busy-disabled-help="actionBusyDisabledHelp"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*:sync-disabled-help="refreshDisabledHelp"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
   );
+  assert.match(controlPage, /const primaryServiceIds: CodexStackServiceId\[\] = \[[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"[\s\S]*"cc-connect\.service"[\s\S]*\];/);
+  assert.match(controlPage, /const activeServiceCount = computed\(\(\) => countActiveServices\(primaryServices\.value\)\);/);
+  assert.match(controlPage, /const serviceCount = computed\(\(\) => primaryServices\.value\.length\);/);
   assert.match(controlPage, /const codexProviderCheck = computed\(\(\) => \(/);
   assert.match(controlPage, /if \(status === "pass"\) return text\("CPA 已接入", "CPA attached"\);/);
   assert.match(controlPage, /async function runCheck\(\): Promise<void>/);
@@ -392,6 +395,8 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.doesNotMatch(controlPage, /class="panel-card cs-hero-card"/);
   assert.doesNotMatch(controlPage, /class="cs-hero-actions"/);
   assert.match(dashboardHeroCard, /Codex 路径/);
+  assert.match(dashboardHeroCard, /核心服务/);
+  assert.match(dashboardHeroCard, /旧巡检和后台守护由推荐修复自动处理/);
   assert.match(dashboardHeroCard, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*busyDisabledHelp: string;[\s\S]*mutationDisabledHelp: string;[\s\S]*syncDisabled: boolean;[\s\S]*syncDisabledHelp: string;[\s\S]*\}>/);
   assert.match(dashboardHeroCard, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(dashboardHeroCard, /v-else-if="syncDisabled && syncDisabledHelp"[\s\S]*class="cs-disabled-help"/);
@@ -405,6 +410,8 @@ test("codex stack dashboard delegates hero actions without moving service comman
 
 test("codex stack service grid explains global mutation locks without moving service actions", () => {
   assert.match(controlPage, /<CodexStackServiceGrid[\s\S]*:services="serviceCards"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:labels="serviceGridLabels"[\s\S]*@service-action="serviceAction"/);
+  assert.match(controlPage, /return primaryServices\.value\.map\(\(service\) => \{/);
+  assert.doesNotMatch(controlPage, /return summary\.value\.services\.map\(\(service\) => \{/);
   assert.match(serviceGrid, /mutationDisabledHelp: string;/);
   assert.match(serviceGrid, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(serviceGrid, /:disabled="!canRunMutation \|\| service\.active"/);
@@ -749,7 +756,8 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /matrixFresh \? text\("可切 Codex", "Attach ready"\)/);
   assert.match(controlPage, /id: "job-lock"/);
   assert.match(controlPage, /id: "smoke"/);
-  assert.match(controlPage, /id: "watchdog"/);
+  assert.match(controlPage, /id: "watchdog"[\s\S]*label: text\("后台守护", "Background Watchdog"\)/);
+  assert.doesNotMatch(controlPage, /label: "Watchdog"[\s\S]*暂停链路时应先停 watchdog/);
   assert.match(controlPage, /NO_PROXY 缺少/);
   assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*!policy\.noProxyLoopbackReady[\s\S]*\? "danger"/);
   assert.doesNotMatch(controlPage, /current\.proxyPolicy\.noProxyLoopbackReady/);

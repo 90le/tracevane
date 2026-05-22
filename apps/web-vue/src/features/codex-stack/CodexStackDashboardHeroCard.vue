@@ -7,11 +7,11 @@
         <span class="cs-status-pill" :class="`tone-${statusTone}`">{{ statusLabel }}</span>
       </div>
       <p class="cs-hero-description">
-        {{ text("先看当前状态，再按建议执行安装、修复或配置。CPA、Compact、cc-connect 与 watchdog 由 systemd 托管，Studio 负责观测与操作入口。", "Start from the current state, then follow suggested install, repair, or config actions. CPA, Compact, cc-connect, and watchdog are managed by systemd; Studio provides the control surface.") }}
+        {{ text("先看当前状态，再按建议执行安装、修复或配置。主界面只保留 CPA、Compact、cc-connect 三个核心服务；旧巡检和后台守护由推荐修复自动处理。", "Start from the current state, then follow suggested install, repair, or config actions. The main view focuses on CPA, Compact, and cc-connect; legacy checks and background watchdog are handled by Recommended Repair.") }}
       </p>
       <div class="cs-chip-row">
         <span class="cs-info-chip">
-          {{ text("在线服务", "Active services") }} {{ activeServiceCount }}/{{ serviceCount }}
+          {{ text("核心服务", "Core services") }} {{ activeServiceCount }}/{{ serviceCount }}
         </span>
         <span class="cs-info-chip">
           {{ text("当前模型", "Current model") }} {{ currentModel || "--" }}

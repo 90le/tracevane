@@ -54,7 +54,7 @@
         </div>
       </div>
       <p class="cs-field-hint">
-        {{ text("完整安装会同时部署 cc-connect；基础安装只保留 Codex / CPA / Compact / watchdog。", "Full install includes cc-connect; base install keeps Codex / CPA / Compact / watchdog only.") }}
+        {{ text("完整安装会同时部署 cc-connect；基础安装只保留 Codex、CPA、Compact 和后台守护。", "Full install includes cc-connect; base install keeps Codex, CPA, Compact, and the background watchdog only.") }}
       </p>
       <div class="cs-install-cta-row">
         <button type="button" class="primary-button cs-big-button" :disabled="!canRunMutation" @click="$emit('install-full')">
