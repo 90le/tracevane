@@ -1240,12 +1240,23 @@ function isSmokeMatrixStale(matrix: CodexStackSmokeMatrixResult | null | undefin
   return Date.now() - checkedAt > SMOKE_MATRIX_MAX_AGE_MS;
 }
 
-function isSmokeMatrixComplete(matrix: CodexStackSmokeMatrixResult | null | undefined): boolean {
+function normalizeSmokeModel(model: string | null | undefined): string {
+  return (model || "").trim();
+}
+
+function smokeMatrixCoversTarget(matrix: CodexStackSmokeMatrixResult | null | undefined, targetModel = ""): boolean {
+  const target = normalizeSmokeModel(targetModel);
+  if (!target) return true;
+  return Boolean(matrix?.requiredModels.some((model) => normalizeSmokeModel(model) === target));
+}
+
+function isSmokeMatrixComplete(matrix: CodexStackSmokeMatrixResult | null | undefined, targetModel = ""): boolean {
   if (!matrix?.attachEligible || matrix.status !== "passed") return false;
-  const requiredModels = matrix.requiredModels.map((model) => model.trim()).filter(Boolean);
+  const requiredModels = matrix.requiredModels.map((model) => normalizeSmokeModel(model)).filter(Boolean);
   if (!requiredModels.length) return false;
+  if (!smokeMatrixCoversTarget(matrix, targetModel)) return false;
   const declaredRequired = new Set(requiredModels);
-  const results = new Map(matrix.models.map((result) => [result.model.trim(), result]));
+  const results = new Map(matrix.models.map((result) => [normalizeSmokeModel(result.model), result]));
   return requiredModels.every((model) => {
     if (!declaredRequired.has(model)) return false;
     const result = results.get(model);
@@ -1255,8 +1266,15 @@ function isSmokeMatrixComplete(matrix: CodexStackSmokeMatrixResult | null | unde
   });
 }
 
-function isSmokeMatrixFreshAndComplete(matrix: CodexStackSmokeMatrixResult | null | undefined): boolean {
-  return isSmokeMatrixComplete(matrix) && !isSmokeMatrixStale(matrix);
+function isSmokeMatrixFreshAndComplete(matrix: CodexStackSmokeMatrixResult | null | undefined, targetModel = ""): boolean {
+  return isSmokeMatrixComplete(matrix, targetModel) && !isSmokeMatrixStale(matrix);
+}
+
+function smokeMatrixTargetMismatchDetail(matrix: CodexStackSmokeMatrixResult | null | undefined, targetModel = ""): string | null {
+  const target = normalizeSmokeModel(targetModel);
+  if (!target || !matrix?.attachEligible || smokeMatrixCoversTarget(matrix, target)) return null;
+  const covered = matrix.requiredModels.map((model) => normalizeSmokeModel(model)).filter(Boolean).join("、") || "未记录模型";
+  return `上次 smoke matrix 覆盖 ${covered}，但当前目标模型是 ${target}；请重新运行目标模型 smoke matrix。`;
 }
 
 function smokeMatrixFailureDetail(matrix: CodexStackSmokeMatrixResult | null | undefined): string | null {
@@ -2133,12 +2151,14 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     warnings: string[];
     profile: CodexStackProfile;
     proxyPolicy: CodexStackSummaryPayload["proxyPolicy"];
+    targetModel: string;
   }): CodexStackSummaryPayload["recommendation"] {
     const warningReasons = params.warnings.map((warning) => {
       if (warning.includes("国内网关不会继承系统代理")) return "system-proxy-direct-provider";
       if (warning.includes("NO_PROXY")) return "no-proxy-loopback-missing";
       if (warning.includes("CPA smoke matrix failed")) return "smoke-matrix-failed";
       if (warning.includes("CPA smoke matrix is older")) return "smoke-matrix-stale";
+      if (warning.includes("does not cover selected target model")) return "smoke-matrix-target-mismatch";
       if (warning.includes("CPA smoke matrix is incomplete")) return "smoke-matrix-incomplete";
       if (warning.includes("WebSocket")) return "codex-websocket-transport";
       if (warning.includes("request compression")) return "codex-request-compression";
@@ -2217,14 +2237,22 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         reasonCodes: Array.from(new Set([...baseReasons, "smoke-matrix-stale"])),
       };
     }
-    if (params.profile.lastSmokeMatrix?.attachEligible && !isSmokeMatrixComplete(params.profile.lastSmokeMatrix)) {
+    if (
+      params.profile.lastSmokeMatrix?.attachEligible
+      && !isSmokeMatrixComplete(params.profile.lastSmokeMatrix, params.targetModel)
+    ) {
       return {
         kind: "review-smoke",
         severity: "warning",
         section: "install",
         primaryAction: "open-install",
         requiresManagement: false,
-        reasonCodes: Array.from(new Set([...baseReasons, "smoke-matrix-incomplete"])),
+        reasonCodes: Array.from(new Set([
+          ...baseReasons,
+          smokeMatrixCoversTarget(params.profile.lastSmokeMatrix, params.targetModel)
+            ? "smoke-matrix-incomplete"
+            : "smoke-matrix-target-mismatch",
+        ])),
       };
     }
     if (params.proxyPolicy.providerMode === "direct" && params.proxyPolicy.providerProxyUrl) {
@@ -2263,6 +2291,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     ccConnectInstalled: boolean;
     ccConnectConfigured: boolean;
     compactPort: number;
+    targetModel: string;
   }): CodexStackSummaryPayload["runReadiness"] {
     const serviceById = new Map(params.services.map((service) => [service.id, service]));
     const cpaActive = serviceById.get("cli-proxy-api.service")?.active === true;
@@ -2274,8 +2303,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const cpaProviderBaseOk = normalizeCcConnectBaseUrl(cpaProvider?.baseUrl || "") === expectedCcProviderBaseUrl;
     const cpaProviderEnvOk = !cpaProvider?.codexEnvKey || cpaProvider.codexEnvKey === "OPENAI_API_KEY";
     const smokeMatrix = params.profile.lastSmokeMatrix;
-    const smokeFresh = isSmokeMatrixFreshAndComplete(smokeMatrix);
-    const smokeFailureDetail = smokeMatrixFailureDetail(smokeMatrix);
+    const smokeFresh = isSmokeMatrixFreshAndComplete(smokeMatrix, params.targetModel);
+    const smokeFailureDetail = smokeMatrixTargetMismatchDetail(smokeMatrix, params.targetModel) || smokeMatrixFailureDetail(smokeMatrix);
     const hasActiveJob = params.jobs.some((job) => job.status === "queued" || job.status === "running");
     const websocketEnabled = hasCodexResponsesWebSocketsEnabled(params.codexConfig);
     const compressionEnabled = hasCodexRequestCompressionEnabled(params.codexConfig);
@@ -2608,6 +2637,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     ]);
     const compactHealthy = modelDiscovery.live;
     const selectedDefaultModel = chooseDefaultModel(modelDiscovery.available, configuredModel, openclawDefaultModel);
+    const targetModel = currentModel || selectedDefaultModel;
     const ccBindingPresent = detectCcConnectBinding(ccConfig);
     const components = buildComponents({
       codexVersion,
@@ -2656,12 +2686,20 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     }
     if (profile.lastSmokeMatrix?.status === "failed") warnings.push("CPA smoke matrix failed last run; Codex will not attach until the selected target model passes.");
     if (isSmokeMatrixStale(profile.lastSmokeMatrix)) warnings.push("CPA smoke matrix is older than 24 hours; re-run the selected target model checks before treating Codex CPA attach as ready.");
-    if (profile.lastSmokeMatrix?.attachEligible && !isSmokeMatrixStale(profile.lastSmokeMatrix) && !isSmokeMatrixComplete(profile.lastSmokeMatrix)) {
-      warnings.push("CPA smoke matrix is incomplete; re-run the selected target model checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
+    if (
+      profile.lastSmokeMatrix?.attachEligible
+      && !isSmokeMatrixStale(profile.lastSmokeMatrix)
+      && !isSmokeMatrixComplete(profile.lastSmokeMatrix, targetModel)
+    ) {
+      if (!smokeMatrixCoversTarget(profile.lastSmokeMatrix, targetModel)) {
+        warnings.push(`CPA smoke matrix does not cover selected target model ${targetModel}; re-run the selected target model checks before treating Codex CPA attach as ready.`);
+      } else {
+        warnings.push("CPA smoke matrix is incomplete; re-run the selected target model checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
+      }
     }
     const jobs = listJobs();
     const overallStatus = classifyOverall(components, jobs, ccBindingPresent);
-    const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy });
+    const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy, targetModel });
     const ccConnectInstalled = Boolean(ccVersion) || pathExists(currentPaths.ccConnectConfig);
     const ccConnectConfigured = pathExists(currentPaths.ccConnectConfig);
     const runReadiness = buildRunReadiness({
@@ -2680,6 +2718,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ccConnectInstalled,
       ccConnectConfigured,
       compactPort,
+      targetModel,
     });
     return {
       checkedAt: new Date().toISOString(),
@@ -2690,7 +2729,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         ...profile,
         cpaPort,
         compactPort,
-        defaultModel: currentModel || selectedDefaultModel,
+        defaultModel: targetModel,
         contextMode: context.mode,
         contextWindowTokens: context.tokens,
         ccConnectProject: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
@@ -2703,7 +2742,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ports: { cpa: cpaPort, compact: compactPort, detectedCpa: liveCpaPort, detectedCompact: liveCompactPort },
       proxyPolicy,
       models: {
-        current: currentModel || selectedDefaultModel,
+        current: targetModel,
         defaultModel: selectedDefaultModel,
         recommendedFrontier: GPT_55_MODEL,
         available: Array.from(new Set([

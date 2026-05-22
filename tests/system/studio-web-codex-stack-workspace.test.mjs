@@ -279,7 +279,8 @@ test("codex stack section nav delegates tab switching without moving content rou
   assert.match(controlPage, /const recommendedSection = activeRecommendation\.value\?\.section \|\| "dashboard";/);
   assert.match(controlPage, /const componentIssues = current\?\.components\.filter\(\(component\) => component\.status !== "ok"\)\.length \|\| 0;/);
   assert.match(controlPage, /const settingsNeedsReview = Boolean\(current && \(/);
-  assert.match(controlPage, /!isSmokeMatrixFreshAndComplete\(matrix\)/);
+  assert.match(controlPage, /const targetModel = current\?\.profile\.defaultModel \|\| current\?\.models\.current \|\| current\?\.models\.defaultModel \|\| "";/);
+  assert.match(controlPage, /!isSmokeMatrixFreshAndComplete\(matrix, targetModel\)/);
   assert.match(controlPage, /recommended: recommendedSection === "settings"/);
   assert.match(controlPage, /runReadinessLevelShortLabel/);
   assert.match(controlPage, /<template v-if="activeSection === 'dashboard'">/);
@@ -704,7 +705,8 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /proxyPolicy: normalizeProxyPolicy\(next\.proxyPolicy\)/);
   assert.match(controlPage, /const normalized = normalizeCodexStackSummary\(next\);/);
   assert.match(controlPage, /function isSmokeMatrixStale\(matrix: CodexStackSmokeMatrixResult \| null \| undefined\): boolean/);
-  assert.match(controlPage, /isSmokeMatrixFreshAndComplete\(matrix\) \? text\("可切 Codex", "Attach ready"\)/);
+  assert.match(controlPage, /const matrixFresh = isSmokeMatrixFreshAndComplete\(matrix, targetModel\);/);
+  assert.match(controlPage, /matrixFresh \? text\("可切 Codex", "Attach ready"\)/);
   assert.match(controlPage, /id: "job-lock"/);
   assert.match(controlPage, /id: "smoke"/);
   assert.match(controlPage, /id: "watchdog"/);
@@ -749,7 +751,8 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(controlPage, /耗时未记录/);
   assert.match(controlPage, /durationLabel: text\("矩阵耗时", "Matrix Duration"\)/);
   assert.match(controlPage, /失败检查/);
-  assert.match(controlPage, /const smokeFresh = isSmokeMatrixFreshAndComplete\(matrix\);/);
+  assert.match(controlPage, /const targetModel = currentCpaTargetModel\.value;/);
+  assert.match(controlPage, /const smokeFresh = isSmokeMatrixFreshAndComplete\(matrix, targetModel\);/);
   assert.match(controlPage, /const smokeStale = isSmokeMatrixStale\(matrix\);/);
   assert.match(controlPage, /checkedAt: formatTimestamp\(matrix\.checkedAt\)/);
   assert.match(controlPage, /24 小时内完整通过/);
@@ -843,20 +846,23 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
 
 test("codex stack attach action requires a fresh passing smoke matrix in the UI", () => {
   assert.match(controlPage, /const isSmokeMatrixAttachReady = computed\(\(\) => \{/);
-  assert.match(controlPage, /return isSmokeMatrixFreshAndComplete\(matrix\);/);
+  assert.match(controlPage, /const currentCpaTargetModel = computed\(\(\) => summary\.value\?\.profile\.defaultModel \|\| summary\.value\?\.models\.current \|\| summary\.value\?\.models\.defaultModel \|\| ""\);/);
+  assert.match(controlPage, /return isSmokeMatrixFreshAndComplete\(matrix, currentCpaTargetModel\.value\);/);
   assert.doesNotMatch(codexStackTypes, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS/);
   assert.match(codexStackTypes, /export const CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS = \[[\s\S]*"compact-non-stream"[\s\S]*"compact-stream"[\s\S]*"compact-compact"[\s\S]*\] as const satisfies readonly CodexStackSmokeCheckId\[\];/);
   assert.doesNotMatch(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS/);
   assert.match(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
   assert.doesNotMatch(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS/);
   assert.match(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
-  assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined\): boolean/);
-  assert.match(controlPage, /matrix\.attachEligible && !isSmokeMatrixComplete\(matrix\)/);
+  assert.match(controlPage, /function smokeMatrixCoversTarget\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
+  assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
+  assert.match(controlPage, /matrix\.attachEligible && !smokeMatrixCoversTarget\(matrix, currentCpaTargetModel\.value\)/);
+  assert.match(controlPage, /matrix\.attachEligible && !isSmokeMatrixComplete\(matrix, currentCpaTargetModel\.value\)/);
   assert.match(controlPage, /const canAttachCodexCpa = computed\(\(\) => canRunMutation\.value && isSmokeMatrixAttachReady\.value\);/);
   assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
   assert.match(controlPage, /const attachPreflightItems = computed<CodexStackAttachPreflightItem\[\]>/);
   assert.match(controlPage, /const attachCodexCpaDisabledHelp = computed\(\(\) => \{/);
-  assert.match(controlPage, /const targetModel = summary\.value\?\.profile\.defaultModel/);
+  assert.match(controlPage, /const targetModel = currentCpaTargetModel\.value \|\| "--";/);
   assert.match(controlPage, /const requiredModels = matrix\?\.requiredModels\.length \? matrix\.requiredModels\.join\(", "\) : targetModel;/);
   assert.match(controlPage, /const requiredChecks = REQUIRED_CPA_SMOKE_CHECKS\.join\(", "\);/);
   assert.match(controlPage, /id: "last-matrix"/);
@@ -864,6 +870,8 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(controlPage, /仍会重新烟测，全部通过才写 Codex/);
   assert.match(repairBoard, /:disabled="!canAttachCodexCpa"[\s\S]*@click="\$emit\('attach-codex-cpa'\)"/);
   assert.match(controlPage, /先运行“只验证”/);
+  assert.match(controlPage, /上次矩阵未覆盖当前目标模型/);
+  assert.match(controlPage, /未覆盖当前目标模型，需复验/);
   assert.match(controlPage, /上次矩阵记录不完整/);
   assert.match(controlPage, /已有新鲜通过矩阵；点击后仍会重新烟测/);
   assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*目标模型矩阵在 24 小时内全部通过/);
