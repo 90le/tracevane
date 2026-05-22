@@ -3,12 +3,12 @@
     <article class="panel-card">
       <div class="cs-card-header">
         <div>
-          <p class="cs-section-kicker">{{ text("步骤 3", "Step 3") }}</p>
+          <p class="cs-section-kicker">{{ text("可选策略", "Optional Strategy") }}</p>
           <h4>{{ text("组件策略", "Component Strategy") }}</h4>
         </div>
       </div>
       <p class="cs-field-hint">
-        {{ text("每个组件都可以保持默认、跳过，或强制重装。", "Each component can stay default, be skipped, or be force reinstalled.") }}
+        {{ text("小白用户保持默认即可。只有组件损坏、版本不一致或需要保留现状时，再改跳过或强制。", "New users can keep defaults. Change skip or force only for damaged components, version mismatch, or preserving the current state.") }}
       </p>
       <div class="cs-component-mode-list">
         <article v-for="component in components" :key="component.id" class="cs-component-mode-card">
@@ -49,8 +49,8 @@
     <article class="panel-card cs-install-cta-card">
       <div class="cs-card-header">
         <div>
-          <p class="cs-section-kicker">{{ text("步骤 4", "Step 4") }}</p>
-          <h4>{{ text("执行安装", "Run Install") }}</h4>
+          <p class="cs-section-kicker">{{ text("改完后执行", "Run After Editing") }}</p>
+          <h4>{{ text("安装入口", "Install Entry") }}</h4>
         </div>
       </div>
       <p class="cs-field-hint">

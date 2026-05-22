@@ -56,6 +56,14 @@ test("codex stack logs panel is isolated from the main control page", () => {
   assert.doesNotMatch(controlPage, /class="panel-card cs-log-console"/);
 
   assert.match(logConsole, /export interface CodexStackLogServiceOption/);
+  assert.match(logConsole, /class="cs-log-guide-panel"/);
+  assert.match(logConsole, /class="cs-log-guide"/);
+  assert.match(logConsole, /class="cs-log-workbench"/);
+  assert.match(logConsole, /guideLabel: string;/);
+  assert.match(logConsole, /guideService: string;/);
+  assert.match(controlPage, /guideService: text\("选服务", "Pick Service"\)/);
+  assert.match(controlPage, /guideScope: text\("定范围", "Choose Scope"\)/);
+  assert.match(controlPage, /guideRead: text\("读输出", "Read Output"\)/);
   assert.match(logConsole, /refreshingDisabledHelp: string;/);
   assert.match(logConsole, /v-if="refreshing && refreshingDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(logConsole, /\.cs-log-service-button\s*\{/);
@@ -328,7 +336,7 @@ test("codex stack section intros delegate repeated page copy without moving deri
   assert.match(controlPage, /import type \{ CodexStackSectionIntroChip \} from "\.\/CodexStackSectionIntro\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackSectionIntro[\s\S]*:kicker="text\('安装', 'Install'\)"[\s\S]*:title="text\('安装\/修复指挥台', 'Install\/Repair Command Center'\)"[\s\S]*:copy="text\('安装页按/ ,
+    /<CodexStackSectionIntro[\s\S]*:kicker="text\('安装', 'Install'\)"[\s\S]*:title="text\('安装\/修复指挥台', 'Install\/Repair Command Center'\)"[\s\S]*:copy="text\('第一次使用先走新手入口/ ,
   );
   assert.match(
     controlPage,
@@ -336,7 +344,7 @@ test("codex stack section intros delegate repeated page copy without moving deri
   );
   assert.match(
     controlPage,
-    /<CodexStackSectionIntro[\s\S]*:kicker="text\('日志', 'Logs'\)"[\s\S]*:title="text\('服务日志与任务输出预览', 'Service Logs and Job Output Preview'\)"[\s\S]*:copy="text\('日志读取默认轻量预览/ ,
+    /<CodexStackSectionIntro[\s\S]*:kicker="text\('日志', 'Logs'\)"[\s\S]*:title="text\('控制台与日志诊断', 'Console and Log Diagnostics'\)"[\s\S]*:copy="text\('按“选服务/ ,
   );
   assert.match(controlPage, /const settingsSectionIntroChips = computed<CodexStackSectionIntroChip\[\]>\(\(\) => \[/);
   assert.match(controlPage, /\{ label: modelSourceLabel\.value, variant: "status", tone: modelSourceTone\.value \}/);
@@ -446,7 +454,14 @@ test("codex stack install page delegates preflight plan without losing actions",
   assert.match(controlPage, /import CodexStackInstallPlanCard from "\.\/CodexStackInstallPlanCard\.vue";/);
   assert.match(controlPage, /<CodexStackInstallPlanCard[\s\S]*:highlights="installPlanHighlights"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@repair="repairRecommended"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-plan-card"/);
-  assert.match(installPlanCard, /执行前确认/);
+  assert.match(installPlanCard, /新手入口/);
+  assert.match(installPlanCard, /不用先理解所有组件/);
+  assert.match(installPlanCard, /class="cs-entry-action"/);
+  assert.match(installPlanCard, /第一次使用/);
+  assert.match(installPlanCard, /已经安装/);
+  assert.match(controlPage, /class="cs-install-options-panel"/);
+  assert.match(controlPage, /安装参数和高级安装策略/);
+  assert.match(controlPage, /一般不用改；需要换模型、端口、上游或强制重装时再打开/);
   assert.match(installPlanCard, /mutationDisabledHelp: string;/);
   assert.match(installPlanCard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(installPlanCard, /@click="\$emit\('install-full'\)"/);
@@ -527,6 +542,7 @@ test("codex stack logs page delegates job output preview without losing polling 
   assert.match(controlPage, /function startPollingJob\(job: CodexStackJob\): void/);
   assert.match(controlPage, /fetchCodexStackJob\(activeJob\.value\.id\)[\s\S]*activeJob\.value = response\.job/);
   assert.match(jobOutputCard, /任务输出/);
+  assert.match(jobOutputCard, /先看进度条和失败步骤/);
   assert.match(jobOutputCard, /job\.logTail \|\| emptyLog/);
   assert.match(jobOutputCard, /props\.job\.status === "succeeded"/);
 });
@@ -538,6 +554,14 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(controlPage, /@pause-stack="pauseStack"[\s\S]*@resume-stack="resumeStack"[\s\S]*@run-smoke-matrix="runSmokeMatrix"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-repair-board"/);
   assert.match(repairBoard, /运行模型矩阵/);
+  assert.match(repairBoard, /先修复，再验证，最后切换/);
+  assert.match(repairBoard, /大多数情况下只需要按下面 3 步走/);
+  assert.match(repairBoard, /class="cs-repair-guide-layout"/);
+  assert.match(repairBoard, /class="cs-repair-flow"/);
+  assert.match(repairBoard, /class="cs-step-number"/);
+  assert.match(repairBoard, /class="cs-attach-summary"/);
+  assert.match(repairBoard, /class="cs-advanced-repair"/);
+  assert.match(repairBoard, /高级操作：冲突、重写配置、暂停\/恢复/);
   assert.match(repairBoard, /当前默认 CPA 模型必须通过普通、非流式、流式和压缩上下文/);
   assert.match(repairBoard, /用户可选择官方 GPT 登录路径，也可选择 GPT 或国内兼容模型走 CPA/);
   assert.match(repairBoard, /export interface CodexStackAttachPreflightItem/);

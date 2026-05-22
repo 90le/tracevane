@@ -4,6 +4,9 @@
       <div>
         <p class="cs-section-kicker">{{ text("任务输出", "Job Output") }}</p>
         <h4>{{ title }} · {{ statusLabel }}</h4>
+        <p class="cs-output-hint">
+          {{ text("先看进度条和失败步骤，再看日志尾部；如果日志不够，下面控制台切到完整上下文。", "Check progress and failed steps first, then the log tail. If it is not enough, switch the console below to deeper context.") }}
+        </p>
       </div>
       <span class="cs-status-pill" :class="`tone-${statusTone}`">
         {{ statusLabel }}
@@ -65,6 +68,13 @@ const statusTone = computed<CodexStackTone>(() => {
 
 .cs-card-header h4 {
   margin: 0;
+}
+
+.cs-output-hint {
+  max-width: 680px;
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  line-height: 1.45;
 }
 
 .cs-section-kicker {

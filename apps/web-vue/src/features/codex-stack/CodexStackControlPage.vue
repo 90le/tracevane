@@ -168,7 +168,7 @@
             <CodexStackSectionIntro
               :kicker="text('安装', 'Install')"
               :title="text('安装/修复指挥台', 'Install/Repair Command Center')"
-              :copy="text('安装页按“计划确认、组件策略、执行进度、修复手册”组织。用户能先看清会改什么，再决定完整安装、基础安装或只修复。', 'This page is organized as plan confirmation, component strategy, progress tracking, and repair playbook. Users can see what will change before choosing full install, base install, or repair-only.')"
+              :copy="text('第一次使用先走新手入口；日常异常只按“推荐修复 → 只验证 → 验证并切换”三步。安装参数和高级维护默认收起，只有需要改模型、端口或处理冲突时再打开。', 'First-time users start with the beginner entry. Daily recovery follows Recommended Repair, Verify Only, then Smoke & Attach. Install parameters and advanced maintenance stay collapsed until a model, port, or conflict needs manual handling.')"
             />
 
             <CodexStackInstallPlanCard
@@ -194,25 +194,6 @@
                 @dismiss="activeJob = null"
               />
 
-              <CodexStackInstallConfigPanel
-                :form="installForm"
-                :model-options="modelOptions"
-                :model-source-label="modelSourceLabel"
-                :context-tokens-disabled="installContextTokensDisabled"
-                :context-tokens-disabled-help="installContextTokensDisabledHelp"
-                @update-field="updateInstallFormField"
-              />
-
-              <CodexStackInstallStrategyPanel
-                :components="installComponentStrategies"
-                :can-run-mutation="canRunMutation"
-                :mutation-disabled-help="mutationDisabledHelp"
-                @set-component-mode="setComponentMode"
-                @install-full="installFullStack"
-                @install-base="installBaseOnly"
-                @repair="repairRecommended"
-              />
-
               <CodexStackRepairBoard
                 :can-run-mutation="canRunMutation"
                 :mutation-disabled-help="mutationDisabledHelp"
@@ -228,6 +209,33 @@
                 @run-smoke-matrix="runSmokeMatrix"
                 @attach-codex-cpa="applyCodexCpaAfterSmoke"
               />
+
+              <details class="cs-install-options-panel">
+                <summary>
+                  <span>{{ text('安装参数和高级安装策略', 'Install Parameters and Advanced Strategy') }}</span>
+                  <small>{{ text('一般不用改；需要换模型、端口、上游或强制重装时再打开。', 'Usually leave this closed; open only for model, port, upstream, or reinstall changes.') }}</small>
+                </summary>
+                <div class="cs-install-options-body">
+                  <CodexStackInstallConfigPanel
+                    :form="installForm"
+                    :model-options="modelOptions"
+                    :model-source-label="modelSourceLabel"
+                    :context-tokens-disabled="installContextTokensDisabled"
+                    :context-tokens-disabled-help="installContextTokensDisabledHelp"
+                    @update-field="updateInstallFormField"
+                  />
+
+                  <CodexStackInstallStrategyPanel
+                    :components="installComponentStrategies"
+                    :can-run-mutation="canRunMutation"
+                    :mutation-disabled-help="mutationDisabledHelp"
+                    @set-component-mode="setComponentMode"
+                    @install-full="installFullStack"
+                    @install-base="installBaseOnly"
+                    @repair="repairRecommended"
+                  />
+                </div>
+              </details>
             </CodexStackInstallShell>
           </CodexStackSectionStack>
         </template>
@@ -394,8 +402,8 @@
           <CodexStackSectionStack>
             <CodexStackSectionIntro
               :kicker="text('日志', 'Logs')"
-              :title="text('服务日志与任务输出预览', 'Service Logs and Job Output Preview')"
-              :copy="text('日志读取默认轻量预览，必要时再切到完整上下文。自动刷新默认关闭，避免大日志拖慢页面。', 'Log reads default to lightweight preview. Switch to deeper context only when needed. Auto-refresh is off by default to avoid large logs slowing the page.')"
+              :title="text('控制台与日志诊断', 'Console and Log Diagnostics')"
+              :copy="text('按“选服务 → 定范围 → 读取日志”排查。任务执行时先看上方任务输出，再决定是否切到完整上下文。', 'Debug with Pick Service, Choose Scope, then Load Logs. When a job is running, read the job output first before switching to deeper context.')"
             />
 
             <CodexStackLogConsole
@@ -1788,6 +1796,13 @@ const logLineLimit = computed(() => logLineOptions.value.find((option) => option
 const logModeHelp = computed(() => logLineOptions.value.find((option) => option.id === logLineMode.value)?.help || "");
 const logFetchedAtLabel = computed(() => formatTimestamp(logMeta.value?.fetchedAt));
 const logConsoleLabels = computed(() => ({
+  guideLabel: text("日志查看流程", "Log reading flow"),
+  guideService: text("选服务", "Pick Service"),
+  guideServiceCopy: text("先看正在失败或刚执行任务的服务。", "Start with the service that failed or just ran a job."),
+  guideScope: text("定范围", "Choose Scope"),
+  guideScopeCopy: text("默认轻量；只有排查长错误时再用完整上下文。", "Use light by default; switch deeper only for long failures."),
+  guideRead: text("读输出", "Read Output"),
+  guideReadCopy: text("点击读取日志；任务执行中会持续展示最新尾部。", "Click Load Logs; running jobs show their latest tail."),
   targetService: text("目标服务", "Target Service"),
   readPerformance: text("读取性能", "Read Performance"),
   lines: text("行", "lines"),
@@ -2982,4 +2997,48 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   gap: 18px;
 }
 
+.cs-install-options-panel {
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+}
+
+.cs-install-options-panel summary {
+  display: flex;
+  gap: 8px 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.cs-install-options-panel summary small {
+  max-width: 560px;
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.cs-install-options-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border-top: 1px solid var(--line);
+  padding: 18px;
+}
+
+@media (max-width: 760px) {
+  .cs-install-options-panel summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cs-install-options-panel summary small {
+    text-align: left;
+  }
+}
 </style>

@@ -4,7 +4,7 @@
     <article class="panel-card">
       <div class="cs-card-header">
         <div>
-          <p class="cs-section-kicker">{{ text("步骤 1", "Step 1") }}</p>
+          <p class="cs-section-kicker">{{ text("可选参数", "Optional Setup") }}</p>
           <h4>{{ text("选择渠道", "Choose Channel") }}</h4>
         </div>
       </div>
@@ -55,7 +55,7 @@
     <article class="panel-card">
       <div class="cs-card-header">
         <div>
-          <p class="cs-section-kicker">{{ text("步骤 2", "Step 2") }}</p>
+          <p class="cs-section-kicker">{{ text("连接参数", "Connection") }}</p>
           <h4>{{ text("基础参数", "Core Parameters") }}</h4>
         </div>
       </div>

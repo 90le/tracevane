@@ -1,7 +1,27 @@
 <template>
   <article class="panel-card cs-log-console">
-    <div class="cs-log-control-grid">
+    <header class="cs-log-guide-panel">
       <div>
+        <p class="cs-section-kicker">{{ labels.guideLabel }}</p>
+        <h4>{{ labels.guideService }} → {{ labels.guideScope }} → {{ labels.guideRead }}</h4>
+      </div>
+      <ol class="cs-log-guide" :aria-label="labels.guideLabel">
+        <li>
+          <strong>{{ labels.guideService }}</strong>
+          <span>{{ labels.guideServiceCopy }}</span>
+        </li>
+        <li>
+          <strong>{{ labels.guideScope }}</strong>
+          <span>{{ labels.guideScopeCopy }}</span>
+        </li>
+        <li>
+          <strong>{{ labels.guideRead }}</strong>
+          <span>{{ labels.guideReadCopy }}</span>
+        </li>
+      </ol>
+    </header>
+    <div class="cs-log-workbench">
+      <section class="cs-log-pane cs-log-service-pane">
         <p class="cs-section-kicker">{{ labels.targetService }}</p>
         <div class="cs-log-service-list">
           <button
@@ -17,8 +37,8 @@
             <small>{{ service.rawState }}</small>
           </button>
         </div>
-      </div>
-      <div>
+      </section>
+      <section class="cs-log-pane cs-log-read-pane">
         <p class="cs-section-kicker">{{ labels.readPerformance }}</p>
         <div class="cs-log-mode-list">
           <button
@@ -42,24 +62,24 @@
           />
           {{ labels.autoRefresh }}
         </label>
-      </div>
-    </div>
-    <div class="cs-log-toolbar">
-      <div class="cs-chip-row">
-        <span class="cs-info-chip">{{ labels.requested }} {{ requestedLines }}</span>
-        <span v-if="meta" class="cs-info-chip">{{ labels.returned }} {{ meta.returnedLines }}</span>
-        <span v-if="meta" class="cs-info-chip">{{ labels.sources }} {{ meta.sources.map((source) => source.label).join(" + ") }}</span>
-        <span v-if="meta" class="cs-info-chip">{{ labels.fetched }} {{ fetchedAtLabel }}</span>
-        <span v-if="meta?.truncated" class="cs-status-pill tone-accent">{{ labels.truncated }}</span>
-      </div>
-      <div class="cs-actions">
-        <button type="button" class="primary-button" :disabled="refreshing" @click="emit('load', selectedService)">
-          {{ refreshing ? labels.loading : labels.load }}
-        </button>
-        <p v-if="refreshing && refreshingDisabledHelp" class="cs-disabled-help">
-          {{ refreshingDisabledHelp }}
-        </p>
-      </div>
+        <div class="cs-log-toolbar">
+          <div class="cs-chip-row">
+            <span class="cs-info-chip">{{ labels.requested }} {{ requestedLines }}</span>
+            <span v-if="meta" class="cs-info-chip">{{ labels.returned }} {{ meta.returnedLines }}</span>
+            <span v-if="meta" class="cs-info-chip">{{ labels.sources }} {{ meta.sources.map((source) => source.label).join(" + ") }}</span>
+            <span v-if="meta" class="cs-info-chip">{{ labels.fetched }} {{ fetchedAtLabel }}</span>
+            <span v-if="meta?.truncated" class="cs-status-pill tone-accent">{{ labels.truncated }}</span>
+          </div>
+          <div class="cs-actions">
+            <button type="button" class="primary-button" :disabled="refreshing" @click="emit('load', selectedService)">
+              {{ refreshing ? labels.loading : labels.load }}
+            </button>
+            <p v-if="refreshing && refreshingDisabledHelp" class="cs-disabled-help">
+              {{ refreshingDisabledHelp }}
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
     <pre class="cs-log">{{ output || labels.empty }}</pre>
   </article>
@@ -86,6 +106,13 @@ export interface CodexStackLogLineOption {
 }
 
 export interface CodexStackLogConsoleLabels {
+  guideLabel: string;
+  guideService: string;
+  guideServiceCopy: string;
+  guideScope: string;
+  guideScopeCopy: string;
+  guideRead: string;
+  guideReadCopy: string;
   targetService: string;
   readPerformance: string;
   lines: string;
@@ -135,6 +162,51 @@ function onAutoRefreshChange(event: Event): void {
   gap: 16px;
 }
 
+.cs-log-guide-panel {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.42fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, var(--acc) 24%, var(--line));
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--acc) 10%, transparent), transparent 32%),
+    color-mix(in srgb, var(--surface) 90%, transparent);
+}
+
+.cs-log-guide-panel h4 {
+  margin: 0;
+  color: var(--text);
+}
+
+.cs-log-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cs-log-guide li {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid color-mix(in srgb, var(--acc) 42%, var(--line));
+  padding: 2px 10px;
+}
+
+.cs-log-guide strong {
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.cs-log-guide span {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .cs-section-kicker {
   margin: 0 0 6px;
   color: var(--muted);
@@ -154,10 +226,18 @@ function onAutoRefreshChange(event: Event): void {
   color: var(--text-soft);
 }
 
-.cs-log-control-grid {
+.cs-log-workbench {
   display: grid;
-  grid-template-columns: minmax(260px, 0.9fr) minmax(260px, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(260px, 0.46fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.cs-log-pane {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
 }
 
 .cs-log-service-list,
@@ -167,11 +247,11 @@ function onAutoRefreshChange(event: Event): void {
 }
 
 .cs-log-service-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .cs-log-mode-list {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(90px, 1fr));
 }
 
 .cs-log-service-button,
@@ -243,7 +323,9 @@ function onAutoRefreshChange(event: Event): void {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 0;
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 14px;
 }
 
 .cs-chip-row,
@@ -330,7 +412,9 @@ function onAutoRefreshChange(event: Event): void {
 }
 
 @media (max-width: 980px) {
-  .cs-log-control-grid,
+  .cs-log-guide-panel,
+  .cs-log-guide,
+  .cs-log-workbench,
   .cs-log-service-list,
   .cs-log-mode-list {
     grid-template-columns: 1fr;
