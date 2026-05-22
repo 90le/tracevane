@@ -225,6 +225,7 @@
                 @resume-stack="resumeStack"
                 @run-smoke-matrix="runSmokeMatrix"
                 @attach-codex-cpa="applyCodexCpaAfterSmoke"
+                @restore-official-chatgpt="restoreOfficialChatGpt"
               />
 
               <details class="cs-install-options-panel">
@@ -2657,6 +2658,13 @@ async function applyCodexCpaAfterSmoke(): Promise<void> {
   await startRepairWithActions(
     ["apply-codex-cpa-after-smoke"],
     text("CPA smoke matrix 任务已启动；全部通过后才会切换 Codex。", "CPA smoke matrix started; Codex will attach only if every check passes."),
+  );
+}
+
+async function restoreOfficialChatGpt(): Promise<void> {
+  await startRepairWithActions(
+    ["restore-official-chatgpt"],
+    text("已启动切回官方 ChatGPT 路径。", "Official ChatGPT route restore started."),
   );
 }
 

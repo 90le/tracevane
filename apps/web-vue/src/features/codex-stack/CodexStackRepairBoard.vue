@@ -52,6 +52,14 @@
         <p v-if="!canAttachCodexCpa && attachCodexCpaDisabledHelp" class="cs-disabled-help">
           {{ attachCodexCpaDisabledHelp }}
         </p>
+        <div class="cs-attach-route-actions">
+          <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('restore-official-chatgpt')">
+            {{ text("切回官方 ChatGPT", "Use Official ChatGPT") }}
+          </button>
+        </div>
+        <p class="cs-repair-card-note">
+          {{ text("官方 ChatGPT 路径会使用 GPT 官方模型；CPA 路径可使用 GPT 或国内兼容模型，但必须先通过 smoke gate。", "The official ChatGPT route uses an official GPT model. The CPA route can use GPT or domestic-compatible models, but must pass the smoke gate first.") }}
+        </p>
       </aside>
     </div>
     <details class="cs-advanced-repair">
@@ -118,6 +126,7 @@ defineEmits<{
   "resume-stack": [];
   "run-smoke-matrix": [];
   "attach-codex-cpa": [];
+  "restore-official-chatgpt": [];
 }>();
 
 const { text } = useLocalePreference();
@@ -147,6 +156,12 @@ const { text } = useLocalePreference();
 .cs-repair-flow {
   display: grid;
   gap: 10px;
+}
+
+.cs-attach-route-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .cs-repair-grid {

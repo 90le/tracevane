@@ -1297,6 +1297,52 @@ test("codex stack attaches Codex CPA only after the full smoke gate passes", asy
   });
 });
 
+test("codex stack can restore official ChatGPT route from a third-party model", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+  fs.writeFileSync(codexConfig, `
+model = "kimi-k2.6"
+model_provider = "cpa"
+base_url = "http://127.0.0.1:18796/v1"
+
+[model_providers.cpa]
+name = "CPA"
+base_url = "http://127.0.0.1:18796/v1"
+wire_api = "responses"
+supports_websockets = false
+experimental_bearer_token = "secret-cpa-key-123456"
+`);
+
+  const service = createCodexStackService(config);
+  const response = await service.startRepair(undefined, { actions: ["restore-official-chatgpt"] });
+  const job = await waitForJob(service, response.job.id);
+
+  assert.equal(job.status, "succeeded");
+  assert.match(job.logTail, /Restored official ChatGPT Codex route using gpt-5\.5/);
+  const patched = fs.readFileSync(codexConfig, "utf8");
+  assert.match(tomlTopLevel(patched), /model\s*=\s*"gpt-5\.5"/);
+  assert.doesNotMatch(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
+  assert.doesNotMatch(tomlTopLevel(patched), /^base_url\s*=\s*"http:\/\/127\.0\.0\.1:18796\/v1"/m);
+  assert.match(patched, /\[model_providers\.cpa\]/);
+});
+
 test("codex stack can attach the user-selected GPT model through CPA", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

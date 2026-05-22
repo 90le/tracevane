@@ -353,6 +353,7 @@ export type CodexStackRepairAction =
   | "disable-legacy-healthcheck"
   | "run-smoke-matrix"
   | "apply-codex-cpa-after-smoke"
+  | "restore-official-chatgpt"
   | "disable-conflicting-units"
   | "rerun-install-no-start";
 

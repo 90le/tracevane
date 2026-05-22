@@ -161,6 +161,7 @@ const REPAIR_ACTIONS = [
   "disable-legacy-healthcheck",
   "run-smoke-matrix",
   "apply-codex-cpa-after-smoke",
+  "restore-official-chatgpt",
   "disable-conflicting-units",
   "rerun-install-no-start",
 ] as const;
@@ -722,6 +723,17 @@ function applyCodexCpaActiveProvider(source: string, baseUrl: string, proxyKey: 
   next = upsertTopLevelTomlString(next, "model_provider", "cpa");
   next = upsertTopLevelTomlString(next, "model", model);
   return removeTopLevelLocalCompactBaseUrls(next);
+}
+
+function applyOfficialChatGptRoute(source: string): string {
+  let next = removeTopLevelTomlStringValue(source, "model_provider", "cpa");
+  next = upsertTopLevelTomlString(next, "model", GPT_55_MODEL);
+  return removeTopLevelLocalCompactBaseUrls(next);
+}
+
+function isOfficialChatGptModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return normalized.startsWith("gpt-") || normalized.startsWith("o1") || normalized.startsWith("o3") || normalized.startsWith("o4");
 }
 
 function replaceYamlNumber(source: string, key: string, value: number): string {
@@ -2671,6 +2683,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (installer.kind === "development-fallback") warnings.push("Using development codex-docs checkout as installer source.");
     if (installer.kind === "missing") warnings.push("Bundled Codex Stack installer assets are missing.");
     if (ccConfig && !ccBindingPresent) warnings.push("cc-connect is installed/configured but still needs Feishu or Weixin QR binding.");
+    if (!codexCpaActive && currentModel && !isOfficialChatGptModel(currentModel)) {
+      warnings.push(`Codex is using the official ChatGPT route with unsupported model ${currentModel}; switch to official GPT or attach CPA before running Codex.`);
+    }
     if (codexCpaActive && !pathExists(currentPaths.codexAuth)) warnings.push("~/.codex/auth.json is missing; Codex CLI may not read the local CPA key.");
     if (codexCpaActive && codexAuthMatches === false) warnings.push("~/.codex/auth.json OPENAI_API_KEY does not match the configured CPA proxy key.");
     if (hasCodexResponsesWebSocketsEnabled(codexConfig)) warnings.push("Codex Responses WebSocket transport is enabled; CPA-compatible providers should use HTTP/SSE to avoid slow reconnect fallback.");
@@ -3209,6 +3224,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
             appendJobLog(job, `CPA smoke gate passed; Codex active provider switched to CPA using ${attachModel}.\n`, [effectiveProxyKey]);
           } else {
             appendJobLog(job, "CPA smoke gate passed; Codex active provider was already CPA.\n", [effectiveProxyKey]);
+          }
+        }
+        if (action === "restore-official-chatgpt") {
+          const codex = readText(currentPaths.codexConfig);
+          if (!codex) throw new Error("Codex config is missing");
+          const next = applyOfficialChatGptRoute(codex);
+          if (next !== codex) {
+            backupAndWrite(currentPaths.codexConfig, next);
+            appendJobLog(job, `Restored official ChatGPT Codex route using ${GPT_55_MODEL}; CPA provider remains configured but inactive.\n`);
+          } else {
+            appendJobLog(job, `Official ChatGPT Codex route already uses ${GPT_55_MODEL}.\n`);
           }
         }
         if (action === "run-smoke-matrix") {

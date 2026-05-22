@@ -581,7 +581,7 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(controlPage, /import CodexStackRepairBoard from "\.\/CodexStackRepairBoard\.vue";/);
   assert.match(controlPage, /<CodexStackRepairBoard[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-help="attachCodexCpaHelp"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"/);
   assert.match(controlPage, /@repair-recommended="repairRecommended"[\s\S]*@repair-conflicts="repairConflictingUnits"[\s\S]*@repair-config-only="repairConfigOnly"/);
-  assert.match(controlPage, /@pause-stack="pauseStack"[\s\S]*@resume-stack="resumeStack"[\s\S]*@run-smoke-matrix="runSmokeMatrix"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"/);
+  assert.match(controlPage, /@pause-stack="pauseStack"[\s\S]*@resume-stack="resumeStack"[\s\S]*@run-smoke-matrix="runSmokeMatrix"[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"[\s\S]*@restore-official-chatgpt="restoreOfficialChatGpt"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-repair-board"/);
   assert.match(repairBoard, /运行模型矩阵/);
   assert.match(repairBoard, /先修复，再验证，最后切换/);
@@ -594,6 +594,8 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(repairBoard, /高级操作：冲突、重写配置、暂停\/恢复/);
   assert.match(repairBoard, /当前默认 CPA 模型必须通过普通、非流式、流式和压缩上下文/);
   assert.match(repairBoard, /用户可选择官方 GPT 登录路径，也可选择 GPT 或国内兼容模型走 CPA/);
+  assert.match(repairBoard, /官方 ChatGPT 路径会使用 GPT 官方模型；CPA 路径可使用 GPT 或国内兼容模型/);
+  assert.match(repairBoard, /@click="\$emit\('restore-official-chatgpt'\)"/);
   assert.match(repairBoard, /export interface CodexStackAttachPreflightItem/);
   assert.match(repairBoard, /mutationDisabledHelp: string;/);
   assert.match(repairBoard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
@@ -604,6 +606,8 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(repairBoard, /:disabled="!canAttachCodexCpa"[\s\S]*@click="\$emit\('attach-codex-cpa'\)"/);
   assert.match(repairBoard, /v-if="!canAttachCodexCpa && attachCodexCpaDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(controlPage, /if \(!canAttachCodexCpa\.value\) \{[\s\S]*请先运行“只验证”/);
+  assert.match(controlPage, /async function restoreOfficialChatGpt\(\): Promise<void>/);
+  assert.match(controlPage, /\["restore-official-chatgpt"\]/);
 });
 
 test("codex stack cc-connect page delegates command bar without moving config writes", () => {
@@ -924,6 +928,8 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
   assert.doesNotMatch(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS/);
   assert.match(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
+  assert.match(codexStackTypes, /"restore-official-chatgpt"/);
+  assert.match(codexStackService, /"restore-official-chatgpt"/);
   assert.match(controlPage, /function smokeMatrixCoversTarget\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
   assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
   assert.match(controlPage, /matrix\.attachEligible && !smokeMatrixCoversTarget\(matrix, currentCpaTargetModel\.value\)/);
