@@ -1,5 +1,8 @@
 <template>
-  <div v-if="running" class="cs-install-overlay">
+  <div
+    v-if="running"
+    :class="surface === 'overlay' ? 'cs-install-overlay' : 'cs-job-progress-surface'"
+  >
     <article class="panel-card cs-install-progress">
       <div class="cs-card-header">
         <div>
@@ -81,6 +84,7 @@ defineProps<{
   progressPercent: string;
   running: boolean;
   emptyLog: string;
+  surface?: "overlay" | "panel";
 }>();
 
 defineEmits<{
@@ -104,9 +108,19 @@ const { text } = useLocalePreference();
   border-radius: calc(var(--radius-lg) + 8px);
 }
 
+.cs-job-progress-surface {
+  position: relative;
+  display: block;
+}
+
 .cs-install-progress {
   width: min(920px, 100%);
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+}
+
+.cs-job-progress-surface .cs-install-progress {
+  width: 100%;
+  box-shadow: 0 14px 32px rgba(12, 23, 36, 0.14);
 }
 
 .cs-card-header {

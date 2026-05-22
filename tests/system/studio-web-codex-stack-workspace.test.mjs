@@ -117,7 +117,8 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(jobOutputCard, /class="panel-card cs-job-output-card"/);
   assert.match(jobOutputCard, /\.cs-log\s*\{/);
   assert.match(jobOutputCard, /@media \(max-width: 960px\)/);
-  assert.match(jobProgressPanel, /class="cs-install-overlay"/);
+  assert.match(jobProgressPanel, /cs-install-overlay/);
+  assert.match(jobProgressPanel, /cs-job-progress-surface/);
   assert.match(jobProgressPanel, /\.cs-job-progress-track\s*\{/);
   assert.match(jobProgressPanel, /@media \(max-width: 960px\)/);
   assert.match(loadingCard, /class="panel-card cs-loading-card"/);
@@ -154,13 +155,13 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(sectionIntro, /\.cs-chip-row\s*\{/);
   assert.match(sectionIntro, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(sectionIntro, /@media \(max-width: 960px\)/);
-  assert.match(sectionNav, /class="cs-sidebar"/);
-  assert.match(sectionNav, /class="cs-nav-button"/);
-  assert.match(sectionNav, /\.cs-nav-button-active\s*\{/);
+  assert.match(sectionNav, /class="cs-section-tabs"/);
+  assert.match(sectionNav, /class="cs-tab-button"/);
+  assert.match(sectionNav, /\.cs-tab-button-active\s*\{/);
   assert.match(sectionNav, /@media \(max-width: 960px\)/);
   assert.match(workspaceShell, /class="cs-workspace"/);
   assert.match(workspaceShell, /class="cs-content"/);
-  assert.match(workspaceShell, /@media \(max-width: 960px\)/);
+  assert.doesNotMatch(workspaceShell, /@media \(max-width: 960px\)/);
   assert.match(ccConnectCommandBar, /class="cs-cc-command-bar"/);
   assert.match(ccConnectCommandBar, /\.cs-config-action-strip\s*\{/);
   assert.match(ccConnectCommandBar, /\.cs-agent-savebar\s*\{/);
@@ -299,8 +300,10 @@ test("codex stack section nav delegates tab switching without moving content rou
   assert.match(workspaceShell, /v-if="focusHint"/);
   assert.match(workspaceShell, /class="cs-workspace-focus"/);
   assert.match(workspaceShell, /<slot \/>/);
+  assert.match(workspaceShell, /grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(workspaceShell, /defineEmits<\{[\s\S]*select: \[sectionId: CodexStackSectionId\];[\s\S]*\}>/);
   assert.doesNotMatch(workspaceShell, /activeSection\.value|nextActionPrimary|runReadinessCheckAction|loadSummary|fetchCodexStackSummary|patchCodexStackConfig|serviceAction/);
+  assert.match(sectionNav, /<nav class="cs-section-tabs" aria-label="Codex Stack sections">/);
   assert.match(sectionNav, /export type CodexStackSectionId = "dashboard" \| "install" \| "cc-connect" \| "settings" \| "logs";/);
   assert.match(sectionNav, /export interface CodexStackSectionNavItem/);
   assert.match(sectionNav, /meta: string;/);
@@ -310,10 +313,13 @@ test("codex stack section nav delegates tab switching without moving content rou
   assert.match(sectionNav, /section\.recommended/);
   assert.match(sectionNav, /section\.meta/);
   assert.match(sectionNav, /section\.badge/);
+  assert.match(sectionNav, /cs-section-tabs/);
+  assert.match(sectionNav, /cs-tab-button/);
   assert.match(sectionNav, /cs-nav-recommended/);
   assert.match(sectionNav, /cs-nav-badge/);
   assert.match(sectionNav, /defineEmits<\{[\s\S]*select: \[sectionId: CodexStackSectionId\];[\s\S]*\}>/);
   assert.match(sectionNav, /@click="\$emit\('select', section\.id\)"/);
+  assert.doesNotMatch(sectionNav, /cs-sidebar|cs-nav-button/);
   assert.doesNotMatch(sectionNav, /activeSection\.value|nextActionPrimary|runReadinessCheckAction|loadSummary|fetchCodexStackSummary|patchCodexStackConfig|serviceAction/);
 });
 
@@ -497,12 +503,17 @@ test("codex stack install page delegates component strategy and CTA without movi
 
 test("codex stack install page delegates long job progress without losing polling ownership", () => {
   assert.match(controlPage, /import CodexStackJobProgressPanel from "\.\/CodexStackJobProgressPanel\.vue";/);
+  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob && activeSection !== 'install'"[\s\S]*surface="panel"[\s\S]*:job="activeJob"/);
+  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob"[\s\S]*surface="overlay"[\s\S]*:job="activeJob"/);
   assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
   assert.match(controlPage, /:running="isCodexStackJobRunning\(activeJob\)"[\s\S]*@dismiss="activeJob = null"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-progress"/);
   assert.doesNotMatch(controlPage, /class="cs-install-overlay"/);
   assert.match(controlPage, /function startPollingJob\(job: CodexStackJob\): void/);
   assert.match(controlPage, /fetchCodexStackJob\(activeJob\.value\.id\)[\s\S]*activeJob\.value = response\.job/);
+  assert.match(jobProgressPanel, /surface\?: "overlay" \| "panel";/);
+  assert.match(jobProgressPanel, /surface === 'overlay' \? 'cs-install-overlay' : 'cs-job-progress-surface'/);
+  assert.match(jobProgressPanel, /\.cs-job-progress-surface/);
   assert.match(jobProgressPanel, /安装或修复脚本正在后台执行，日志会持续刷新。/);
   assert.match(jobProgressPanel, /job\.logTail \|\| emptyLog/);
   assert.match(jobProgressPanel, /@click="\$emit\('dismiss'\)"/);
@@ -903,6 +914,9 @@ test("codex stack runtime config save sends only changed fields", () => {
   assert.match(controlPage, /const hasConfigPatchChanges = computed\(\(\) => Object\.keys\(configPatchPayload\.value\)\.length > 0\);/);
   assert.match(controlPage, /:has-changes="hasConfigPatchChanges"/);
   assert.match(runtimeConfigCard, /:disabled="!canRunMutation \|\| !hasChanges"/);
+  assert.match(controlPage, /const currentModel = current\.profile\.defaultModel \|\| current\.models\.current \|\| current\.models\.defaultModel \|\| "";/);
+  assert.match(controlPage, /configForm\.defaultModel = normalized\.profile\.defaultModel \|\| normalized\.models\.current \|\| normalized\.models\.defaultModel \|\| "kimi-k2\.6";/);
+  assert.match(controlPage, /installForm\.model = normalized\.profile\.defaultModel \|\| normalized\.models\.current \|\| normalized\.models\.defaultModel \|\| "kimi-k2\.6";/);
   assert.match(controlPage, /const payload = configPatchPayload\.value;[\s\S]*if \(!Object\.keys\(payload\)\.length\)/);
   assert.doesNotMatch(controlPage, /const payload: CodexStackConfigPatchRequest = \{\s*defaultModel: configForm\.defaultModel,/);
 });

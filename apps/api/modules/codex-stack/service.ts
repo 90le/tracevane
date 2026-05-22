@@ -2637,7 +2637,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     ]);
     const compactHealthy = modelDiscovery.live;
     const selectedDefaultModel = chooseDefaultModel(modelDiscovery.available, configuredModel, openclawDefaultModel);
-    const targetModel = currentModel || selectedDefaultModel;
+    const cpaTargetModel = chooseCpaAttachModel(currentModel, profile.defaultModel, resolveChannel());
     const ccBindingPresent = detectCcConnectBinding(ccConfig);
     const components = buildComponents({
       codexVersion,
@@ -2689,17 +2689,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (
       profile.lastSmokeMatrix?.attachEligible
       && !isSmokeMatrixStale(profile.lastSmokeMatrix)
-      && !isSmokeMatrixComplete(profile.lastSmokeMatrix, targetModel)
+      && !isSmokeMatrixComplete(profile.lastSmokeMatrix, cpaTargetModel)
     ) {
-      if (!smokeMatrixCoversTarget(profile.lastSmokeMatrix, targetModel)) {
-        warnings.push(`CPA smoke matrix does not cover selected target model ${targetModel}; re-run the selected target model checks before treating Codex CPA attach as ready.`);
+      if (!smokeMatrixCoversTarget(profile.lastSmokeMatrix, cpaTargetModel)) {
+        warnings.push(`CPA smoke matrix does not cover selected target model ${cpaTargetModel}; re-run the selected target model checks before treating Codex CPA attach as ready.`);
       } else {
         warnings.push("CPA smoke matrix is incomplete; re-run the selected target model checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
       }
     }
     const jobs = listJobs();
     const overallStatus = classifyOverall(components, jobs, ccBindingPresent);
-    const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy, targetModel });
+    const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy, targetModel: cpaTargetModel });
     const ccConnectInstalled = Boolean(ccVersion) || pathExists(currentPaths.ccConnectConfig);
     const ccConnectConfigured = pathExists(currentPaths.ccConnectConfig);
     const runReadiness = buildRunReadiness({
@@ -2718,7 +2718,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ccConnectInstalled,
       ccConnectConfigured,
       compactPort,
-      targetModel,
+      targetModel: cpaTargetModel,
     });
     return {
       checkedAt: new Date().toISOString(),
@@ -2729,7 +2729,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         ...profile,
         cpaPort,
         compactPort,
-        defaultModel: targetModel,
+        defaultModel: cpaTargetModel,
         contextMode: context.mode,
         contextWindowTokens: context.tokens,
         ccConnectProject: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
@@ -2742,10 +2742,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ports: { cpa: cpaPort, compact: compactPort, detectedCpa: liveCpaPort, detectedCompact: liveCompactPort },
       proxyPolicy,
       models: {
-        current: targetModel,
+        current: currentModel || selectedDefaultModel,
         defaultModel: selectedDefaultModel,
         recommendedFrontier: GPT_55_MODEL,
         available: Array.from(new Set([
+          cpaTargetModel,
           currentModel,
           selectedDefaultModel,
           defaultModel(resolveChannel()),

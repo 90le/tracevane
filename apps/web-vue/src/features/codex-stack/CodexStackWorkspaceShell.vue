@@ -43,8 +43,8 @@ defineEmits<{
 <style scoped>
 .cs-workspace {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
 }
 
@@ -95,9 +95,4 @@ defineEmits<{
   border-color: color-mix(in srgb, var(--danger) 46%, var(--line));
 }
 
-@media (max-width: 960px) {
-  .cs-workspace {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

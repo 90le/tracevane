@@ -1,11 +1,11 @@
 <template>
-  <aside class="cs-sidebar">
+  <nav class="cs-section-tabs" aria-label="Codex Stack sections">
     <button
       v-for="section in sections"
       :key="section.id"
       type="button"
-      class="cs-nav-button"
-      :class="{ 'cs-nav-button-active': activeSection === section.id }"
+      class="cs-tab-button"
+      :class="{ 'cs-tab-button-active': activeSection === section.id }"
       @click="$emit('select', section.id)"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -22,7 +22,7 @@
         {{ section.badge }}
       </span>
     </button>
-  </aside>
+  </nav>
 </template>
 
 <script setup lang="ts">
@@ -52,12 +52,13 @@ defineEmits<{
 </script>
 
 <style scoped>
-.cs-sidebar {
+.cs-section-tabs {
   position: sticky;
   top: 14px;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: calc(var(--radius-lg) + 4px);
@@ -66,27 +67,29 @@ defineEmits<{
     var(--surface);
 }
 
-.cs-nav-button {
+.cs-tab-button {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   border: 1px solid transparent;
-  border-radius: 18px;
-  padding: 12px 10px;
+  border-radius: 14px;
+  min-width: 168px;
+  padding: 10px 12px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+  flex: 1 0 168px;
   transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
 }
 
-.cs-nav-button svg {
+.cs-tab-button svg {
   width: 20px;
   height: 20px;
   fill: currentColor;
 }
 
-.cs-nav-button span {
+.cs-tab-button span {
   font-size: 0.82rem;
   line-height: 1.2;
   text-align: left;
@@ -159,8 +162,8 @@ defineEmits<{
   background: #ffe4e0;
 }
 
-.cs-nav-button:hover,
-.cs-nav-button-active {
+.cs-tab-button:hover,
+.cs-tab-button-active {
   color: var(--text);
   border-color: color-mix(in srgb, var(--acc) 40%, var(--line));
   background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 14%, transparent), color-mix(in srgb, var(--surface) 92%, transparent));
@@ -168,14 +171,13 @@ defineEmits<{
 }
 
 @media (max-width: 960px) {
-  .cs-sidebar {
+  .cs-section-tabs {
     position: static;
-    flex-direction: row;
-    overflow: auto;
   }
 
-  .cs-nav-button {
-    min-width: 148px;
+  .cs-tab-button {
+    min-width: 154px;
+    flex-basis: 154px;
   }
 }
 </style>

@@ -2479,6 +2479,116 @@ account_id = "test"
   );
 });
 
+test("codex stack summary accepts a fresh smoke matrix for the selected CPA target while official Codex stays on GPT", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const checkedAt = new Date().toISOString();
+  writeJson(config.openclawConfigFile, {
+    env: {
+      NO_PROXY: "localhost,127.0.0.1,::1",
+    },
+  });
+  writeJson(path.join(root, ".codex/auth.json"), {
+    auth_mode: "apikey",
+    OPENAI_API_KEY: "secret-cpa-key-123456",
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  writeFile(path.join(root, ".codex/config.toml"), `
+model = "gpt-5.5"
+model_context_window = 1050000
+model_auto_compact_token_limit = 945000
+responses_websockets = false
+enable_request_compression = false
+
+[model_providers.cpa]
+base_url = "http://127.0.0.1:18796/v1"
+wire_api = "responses"
+supports_websockets = false
+experimental_bearer_token = "secret-cpa-key-123456"
+`);
+  writeFile(path.join(root, ".local/bin/cli-proxy-api"), "#!/usr/bin/env bash\necho cpa\n", 0o755);
+  writeFile(path.join(root, ".local/bin/cpa-compact-proxy.mjs"), "#!/usr/bin/env node\nconsole.log('compact')\n", 0o755);
+  writeFile(path.join(root, ".cc-connect/config.toml"), `
+[[providers]]
+name = "cpa"
+api_key = "secret-cpa-key-123456"
+base_url = "http://127.0.0.1:18796/v1"
+codex.env_key = "OPENAI_API_KEY"
+
+[[projects]]
+name = "main"
+[projects.agent.options]
+model = "glm-5.1"
+
+[[projects.platforms]]
+type = "dmwork"
+[projects.platforms.options]
+account_id = "test"
+`);
+  writeJson(path.join(config.openclawRoot, "studio/codex-stack/profile.json"), {
+    channel: "dmwork",
+    defaultModel: "glm-5.1",
+    lastSmokeMatrix: {
+      status: "passed",
+      checkedAt,
+      requiredModels: ["glm-5.1"],
+      attachEligible: true,
+      models: [
+        {
+          model: "glm-5.1",
+          status: "passed",
+          startedAt: checkedAt,
+          finishedAt: checkedAt,
+          checks: passedSmokeChecks(checkedAt),
+          error: null,
+        },
+      ],
+    },
+  });
+
+  await withScriptedSystemctl(
+    [
+      "case \"$*\" in",
+      "  \"--user list-unit-files\"*) echo \"${@: -1} enabled\"; exit 0 ;;",
+      "  \"--user is-enabled\"*) echo \"enabled\"; exit 0 ;;",
+      "  \"--user is-active\"*) echo \"active\"; exit 0 ;;",
+      "esac",
+      "exit 0",
+    ].join("\n"),
+    async () => {
+      await withMockFetch(async (url) => {
+        const requestUrl = String(url);
+        if (requestUrl.endsWith("/v1/models")) {
+          return new Response(JSON.stringify({ data: [{ id: "gpt-5.5" }, { id: "glm-5.1" }] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+        return new Response("ok", { status: 200 });
+      }, async () => {
+        const service = createCodexStackService(config);
+        const summary = await service.getSummary();
+
+        assert.equal(summary.profile.defaultModel, "glm-5.1");
+        assert.equal(summary.models.current, "gpt-5.5");
+        assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
+        assert.ok(!summary.warnings.some((warning) => warning.includes("does not cover selected target model")));
+        assert.ok(!summary.recommendation.reasonCodes.includes("smoke-matrix-target-mismatch"));
+        assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "pass");
+        assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, false);
+        assert.deepEqual(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.actionHint, {
+          kind: "repair",
+          label: "验证后接入 CPA",
+          repairActions: ["apply-codex-cpa-after-smoke"],
+        });
+      });
+    },
+  );
+});
+
 test("bundled health check treats skipped cc-connect as warning only", () => {
   const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),

@@ -46,6 +46,19 @@
         @dismiss="activeJob = null"
       />
 
+      <CodexStackJobProgressPanel
+        v-if="activeJob && activeSection !== 'install'"
+        surface="panel"
+        :job="activeJob"
+        :title="activeJobTitle"
+        :status-label="jobStatusLabel(activeJob.status)"
+        :steps="jobProgressSteps"
+        :progress-percent="jobProgressPercent"
+        :running="isCodexStackJobRunning(activeJob)"
+        :empty-log="text('等待输出...', 'Waiting for output...')"
+        @dismiss="activeJob = null"
+      />
+
       <CodexStackModelRibbon
         :current-model="summary.models.current || summary.profile.defaultModel || '--'"
         :source-help="modelSourceHelp"
@@ -170,6 +183,7 @@
             <CodexStackInstallShell :busy="Boolean(activeJob && isCodexStackJobRunning(activeJob))">
               <CodexStackJobProgressPanel
                 v-if="activeJob"
+                surface="overlay"
                 :job="activeJob"
                 :title="activeJobTitle"
                 :status-label="jobStatusLabel(activeJob.status)"
@@ -1457,7 +1471,7 @@ const hasInstallDraftChanges = computed(() => {
   if (!current) return false;
   const policy = normalizeProxyPolicy(current.proxyPolicy);
 
-  const currentModel = current.models.current || current.profile.defaultModel || current.models.defaultModel || "kimi-k2.6";
+  const currentModel = current.profile.defaultModel || current.models.current || current.models.defaultModel || "kimi-k2.6";
   if ((installForm.model || "") !== currentModel) return true;
   if (installForm.contextMode !== (current.context.mode || "default")) return true;
   if (installForm.contextMode === "custom" && Number(installForm.contextWindowTokens) !== (current.context.tokens || current.context.recommendedTokens)) return true;
@@ -1484,7 +1498,7 @@ const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
 
   const payload: CodexStackConfigPatchRequest = {};
   const nextModel = configForm.defaultModel.trim();
-  const currentModel = current.models.current || current.profile.defaultModel || current.models.defaultModel || "";
+  const currentModel = current.profile.defaultModel || current.models.current || current.models.defaultModel || "";
   if (nextModel && nextModel !== currentModel) {
     payload.defaultModel = nextModel;
   }
@@ -2257,7 +2271,7 @@ function runReadinessModeAction(mode: CodexStackRunReadinessMode): void {
 }
 
 function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): void {
-  configForm.defaultModel = normalized.models.current || normalized.profile.defaultModel || normalized.models.defaultModel || "kimi-k2.6";
+  configForm.defaultModel = normalized.profile.defaultModel || normalized.models.current || normalized.models.defaultModel || "kimi-k2.6";
   configForm.contextMode = normalized.context.mode || "default";
   configForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
   configForm.cpaPort = normalized.ports.cpa;
@@ -2270,7 +2284,7 @@ function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): voi
 }
 
 function hydrateInstallFormFromSummary(normalized: CodexStackSummaryPayload): void {
-  installForm.model = normalized.models.current || normalized.profile.defaultModel || normalized.models.defaultModel || "kimi-k2.6";
+  installForm.model = normalized.profile.defaultModel || normalized.models.current || normalized.models.defaultModel || "kimi-k2.6";
   installForm.contextMode = normalized.context.mode || "default";
   installForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
   installForm.cpaPort = normalized.ports.cpa;
