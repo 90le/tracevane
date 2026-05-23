@@ -24,7 +24,8 @@ test("dashboard view exposes a simplified home recipe with clear focus order", (
     "home-control-surface",
     "home-stage-rhythm",
     "home-situation-band",
-    "home-risk-stage",
+    "home-workspace-entry",
+    "home-entry-grid",
     "home-compact-visual-strip",
     "home-system-snapshot",
   ];
@@ -35,7 +36,7 @@ test("dashboard view exposes a simplified home recipe with clear focus order", (
 
   const zones = [
     'data-home-zone="situation"',
-    'data-home-zone="risk"',
+    'data-home-zone="entry"',
     'data-home-zone="visual"',
     'data-home-zone="snapshot"',
   ];
@@ -46,15 +47,18 @@ test("dashboard view exposes a simplified home recipe with clear focus order", (
 
   assert.doesNotMatch(dashboardView, /data-home-zone="trend"/);
   assert.doesNotMatch(dashboardView, /data-home-zone="recent"/);
+  assert.doesNotMatch(dashboardView, /data-home-zone="risk"/);
   assert.doesNotMatch(dashboardView, /home-risk-chip-strip/);
+  assert.doesNotMatch(dashboardView, /home-risk-stage|home-risk-row/);
+  assert.doesNotMatch(dashboardView, /等待风险汇总|Waiting for risk summary/);
   assert.doesNotMatch(dashboardView, /home-recent-stream/);
 });
 
 test("dashboard view derives compact layout data from dedicated computed collections", () => {
   assert.match(dashboardView, /const homeSituationMetrics = computed\(/);
-  assert.match(dashboardView, /const dashboardQuickActions = computed\(/);
-  assert.match(dashboardView, /const dashboardRiskStageCards = computed\(/);
-  assert.match(dashboardView, /const dashboardContextSummary = computed\(/);
+  assert.match(dashboardView, /const dashboardWorkspaceActions = computed\(/);
+  assert.doesNotMatch(dashboardView, /const dashboardRiskStageCards = computed\(/);
+  assert.doesNotMatch(dashboardView, /const dashboardContextSummary = computed\(/);
   assert.match(dashboardView, /const dashboardSystemSignals = computed\(/);
   assert.match(dashboardView, /const dashboardCoverageBars = computed\(/);
   assert.doesNotMatch(dashboardView, /const dashboardStatusChips = computed\(/);
@@ -65,11 +69,13 @@ test("dashboard view derives compact layout data from dedicated computed collect
 test("dashboard view owns scoped page styling for the simplified home control surface", () => {
   assert.match(dashboardView, /<style scoped>/);
   assert.match(dashboardView, /\.home-control-surface\s*\{/);
-  assert.match(dashboardView, /\.home-risk-stage\s*\{/);
+  assert.match(dashboardView, /\.home-entry-grid\s*\{/);
+  assert.match(dashboardView, /\.home-workspace-entry[,\\s]/);
   assert.match(dashboardView, /\.home-compact-visual-strip\s*\{/);
   assert.match(dashboardView, /\.home-system-snapshot\s*\{/);
   assert.match(dashboardView, /\.home-system-snapshot\s*\{/);
   assert.doesNotMatch(dashboardView, /\.home-recent-stream\s*\{/);
+  assert.doesNotMatch(dashboardView, /\.home-risk-stage\s*\{/);
 });
 
 test("dashboard recipe removes the old split workboard and hero vocabulary", () => {

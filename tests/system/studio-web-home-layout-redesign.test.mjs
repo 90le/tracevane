@@ -23,7 +23,8 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
     "home-control-surface",
     "home-stage-rhythm",
     "home-situation-band",
-    "home-risk-stage",
+    "home-workspace-entry",
+    "home-entry-grid",
     "home-compact-visual-strip",
     "home-system-snapshot",
     "home-quick-action",
@@ -36,7 +37,7 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
 
   const zoneOrder = [
     'data-home-zone="situation"',
-    'data-home-zone="risk"',
+    'data-home-zone="entry"',
     'data-home-zone="visual"',
     'data-home-zone="snapshot"',
   ];
@@ -52,17 +53,9 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
     previousIndex = nextIndex;
   }
 
-  for (const builderName of [
-    "buildDashboardRiskStage",
-    "buildDashboardContextSummary",
-  ]) {
-    assert.match(dashboardView, new RegExp(`\\b${builderName}\\b`));
-  }
-
-  assert.match(
-    dashboardView,
-    /const\s+dashboardRiskStageCards\s*=\s*computed\s*\(/,
-  );
+  assert.doesNotMatch(dashboardView, /\bbuildDashboardRiskStage\b/);
+  assert.doesNotMatch(dashboardView, /\bbuildDashboardContextSummary\b/);
+  assert.doesNotMatch(dashboardView, /const\s+dashboardRiskStageCards\s*=\s*computed\s*\(/);
   assert.doesNotMatch(
     dashboardView,
     /const\s+dashboardRecoveryItems\s*=\s*computed\s*\(/,
@@ -75,17 +68,17 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
     dashboardView,
     /const\s+dashboardTrendPoints\s*=\s*computed\s*\(/,
   );
-  assert.match(
-    dashboardView,
-    /const\s+dashboardContextSummary\s*=\s*computed\s*\(/,
-  );
+  assert.doesNotMatch(dashboardView, /const\s+dashboardContextSummary\s*=\s*computed\s*\(/);
+  assert.match(dashboardView, /const\s+dashboardWorkspaceActions\s*=\s*computed\s*\(/);
   assert.match(
     dashboardView,
     /const\s+dashboardCoverageBars\s*=\s*computed\s*\(/,
   );
-  assert.match(dashboardView, /home-risk-row\.tone-high/);
-  assert.match(dashboardView, /home-risk-row\.tone-medium/);
-  assert.match(dashboardView, /home-risk-row\.tone-low/);
+  assert.doesNotMatch(dashboardView, /home-risk-row\.tone-high/);
+  assert.doesNotMatch(dashboardView, /home-risk-row\.tone-medium/);
+  assert.doesNotMatch(dashboardView, /home-risk-row\.tone-low/);
+  assert.doesNotMatch(dashboardView, /home-risk-stage|home-risk-row/);
+  assert.doesNotMatch(dashboardView, /等待风险汇总|Waiting for risk summary/);
   assert.doesNotMatch(dashboardView, /\bhome-risk-chip-strip\b/);
   assert.match(dashboardView, /\bhome-quick-action\b/);
   assert.doesNotMatch(dashboardView, /\bhome-track-list\b/);
@@ -96,7 +89,7 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
   );
   for (const selector of [
     ".home-situation-band",
-    ".home-risk-stage",
+    ".home-workspace-entry",
     ".home-system-snapshot",
   ]) {
     assert.ok(
@@ -138,7 +131,7 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
   );
   assert.doesNotMatch(dashboardView, /dashboardRecoveryItems\.length === 0/);
   assert.doesNotMatch(dashboardView, /dashboardTrendPanels\.length === 0/);
-  assert.match(dashboardView, /localizedRiskStageLabel/);
+  assert.doesNotMatch(dashboardView, /localizedRiskStageLabel/);
   assert.doesNotMatch(dashboardView, /localizedSeverityLabel/);
   assert.doesNotMatch(
     dashboardView,

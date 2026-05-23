@@ -22,50 +22,20 @@
       </div>
     </motion.header>
 
-    <section class="home-risk-stage" data-home-zone="risk">
-      <div class="home-risk-stage__main">
-        <div class="home-section-heading home-section-heading-row home-section-marker">
-          <div>
-            <p class="eyebrow">{{ text('Risk First', 'Risk First') }}</p>
-            <h3>{{ text('风险优先总览', 'Risk-first overview') }}</h3>
-          </div>
-          <p class="home-section-copy">
-            {{ text('优先展示风险等级与关键信号，先判断态势，再进入对应模块。', 'Show risk stage and key signals first so teams can assess posture before navigating to modules.') }}
-          </p>
+    <section class="home-workspace-entry" data-home-zone="entry">
+      <div class="home-section-heading home-section-heading-row home-section-marker">
+        <div>
+          <p class="eyebrow">{{ text('Start Here', 'Start Here') }}</p>
+          <h3>{{ text('常用工作入口', 'Common workspace entries') }}</h3>
         </div>
-
-        <div class="home-risk-stream">
-          <RouterLink
-            v-for="card in dashboardRiskStageCards"
-            :key="card.key"
-            :to="card.to"
-            class="home-risk-row"
-            :class="`tone-${dashboardContextSummary.riskStage}`"
-          >
-            <div class="home-risk-row__lead">
-              <span class="home-risk-row__eyebrow">{{ card.key }}</span>
-              <h4>{{ card.title }}</h4>
-            </div>
-            <strong class="home-risk-row__value">{{ card.value }}</strong>
-            <p class="home-risk-row__note">{{ card.summary }}</p>
-            <span class="home-risk-row__state">{{ localizedRiskStageLabel(dashboardContextSummary.riskStage) }}</span>
-          </RouterLink>
-          <article v-if="dashboardRiskStageCards.length === 0" class="home-risk-row tone-planned">
-            <div class="home-risk-row__lead">
-              <span class="home-risk-row__eyebrow">--</span>
-              <h4>{{ text('等待风险汇总', 'Waiting for risk summary') }}</h4>
-            </div>
-            <strong class="home-risk-row__value">--</strong>
-            <p class="home-risk-row__note">{{ text('尚未收到 contextSummary 与恢复统计。', 'No context summary and recovery totals yet.') }}</p>
-            <span class="home-risk-row__state">{{ text('等待', 'Waiting') }}</span>
-          </article>
-        </div>
+        <p class="home-section-copy">
+          {{ text('把安装修复、会话和系统检查放在同一行动区，避免首页显示空风险与等待占位。', 'Keep setup, chat, and system checks in one action area instead of showing empty risk and waiting placeholders.') }}
+        </p>
       </div>
 
-      <aside class="home-risk-stage__side">
-        <h4>{{ text('概览入口', 'Overview links') }}</h4>
+      <div class="home-entry-grid">
         <RouterLink
-          v-for="action in dashboardQuickActions"
+          v-for="action in dashboardWorkspaceActions"
           :key="action.to"
           :to="action.to"
           class="home-quick-action"
@@ -76,7 +46,7 @@
           </div>
           <span class="home-quick-action__note">{{ action.copy }}</span>
         </RouterLink>
-      </aside>
+      </div>
     </section>
 
     <section class="home-compact-visual-strip" data-home-zone="visual">
@@ -156,11 +126,8 @@ import { useLocalePreference } from '../shared/locale';
 import { useDashboardSummary } from '../features/dashboard/use-dashboard-summary';
 import { pageMastheadReveal, pageSurfaceReveal } from '../shared/motion';
 import {
-  buildDashboardContextSummary,
   buildDashboardOverviewSignals,
-  buildDashboardRiskStage,
 } from '../features/dashboard/overview-recipe';
-import type { DashboardContextSummary } from '../../../../types/dashboard';
 
 
 const { text } = useLocalePreference();
@@ -215,7 +182,13 @@ const homeSituationMetrics = computed(() => {
   ];
 });
 
-const dashboardQuickActions = computed(() => [
+const dashboardWorkspaceActions = computed(() => [
+  {
+    to: '/codex-stack',
+    eyebrow: 'Setup',
+    label: text('安装 / 修复', 'Install / Repair'),
+    copy: text('配置 Codex Stack、CPA 与健康检查', 'Configure Codex Stack, CPA, and health checks'),
+  },
   {
     to: '/chat',
     eyebrow: 'Chat',
@@ -235,16 +208,6 @@ const dashboardQuickActions = computed(() => [
     copy: text('查看系统运行概览', 'View system overview'),
   },
 ]);
-
-const dashboardRiskStageCards = computed(() => buildDashboardRiskStage({
-  payload: summary.value,
-  text,
-}));
-
-const dashboardContextSummary = computed(() => buildDashboardContextSummary({
-  payload: summary.value,
-  text,
-}));
 
 const dashboardSystemSignals = computed(() => buildDashboardOverviewSignals({
   payload: summary.value,
@@ -349,12 +312,6 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
   ];
 });
 
-function localizedRiskStageLabel(riskStage: DashboardContextSummary['riskStage']): string {
-  if (riskStage === 'high') return text('高风险', 'High');
-  if (riskStage === 'medium') return text('中风险', 'Medium');
-  return text('低风险', 'Low');
-}
-
 function formatUptime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0m';
   const total = Math.floor(seconds);
@@ -391,7 +348,7 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 }
 
 .home-situation-band,
-.home-risk-stage,
+.home-workspace-entry,
 .home-compact-visual-strip,
 .home-system-snapshot {
   position: relative;
@@ -452,7 +409,6 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 }
 
 .home-situation-meter__eyebrow,
-.home-risk-row__eyebrow,
 .home-fact span,
 .home-resource-signal span {
   color: var(--muted-soft);
@@ -462,8 +418,7 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
   text-transform: uppercase;
 }
 
-.home-situation-meter__value,
-.home-risk-row__value {
+.home-situation-meter__value {
   color: var(--text);
   font-size: 28px;
   line-height: 1;
@@ -479,32 +434,10 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 
 .home-situation-meter__note,
 .home-quick-action__note,
-.home-risk-row__note,
 .home-resource-signal p {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
-}
-
-.home-risk-stage {
-  grid-template-columns: minmax(0, 1.24fr) minmax(300px, 0.76fr);
-  align-items: stretch;
-}
-
-.home-risk-stage__main,
-.home-risk-stage__side {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  align-content: start;
-  border-left: 1px solid color-mix(in srgb, var(--shell-panel-border) 74%, transparent);
-  padding-left: 18px;
-}
-
-.home-risk-stage__side h4 {
-  margin: 0;
-  font-size: 16px;
-  color: var(--text);
 }
 
 .home-section-heading {
@@ -533,45 +466,37 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
   text-align: right;
 }
 
-.home-risk-row h4,
 .home-quick-action strong,
 .home-resource-signal strong,
 .home-mini-chart__head strong {
   color: var(--text);
 }
 
-.home-risk-stream,
 .home-fact-tape,
-.home-risk-stage__side,
+.home-entry-grid,
 .home-mini-chart-grid {
   display: grid;
   gap: 10px;
 }
 
-.home-risk-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 0.9fr) auto;
-  gap: 16px;
-  align-items: center;
-  padding: 16px 0;
-  border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--shell-panel-border) 78%, transparent);
-  border-radius: 0;
-  background: transparent;
-  color: var(--text);
-  text-decoration: none;
-  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+.home-entry-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--shell-panel-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--shell-panel-border) 80%, transparent);
 }
 
 .home-quick-action {
   display: grid;
   gap: 8px;
   min-width: 0;
-  padding: 14px 0;
+  padding: 14px 16px;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--shell-panel-border) 78%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--shell-panel-border) 78%, transparent);
   border-radius: 0;
-  background: transparent;
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
   color: var(--text);
   text-align: left;
   text-decoration: none;
@@ -579,15 +504,17 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
   transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
-.home-quick-action:hover,
-.home-risk-row:hover {
+.home-quick-action:last-child {
+  border-right: 0;
+}
+
+.home-quick-action:hover {
   transform: translateX(2px);
   border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-subtle));
   background: color-mix(in srgb, var(--surface-raised) 44%, transparent);
 }
 
-.home-quick-action__copy,
-.home-risk-row__lead {
+.home-quick-action__copy {
   display: grid;
   gap: 6px;
 }
@@ -598,52 +525,6 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-}
-
-.home-risk-row__state {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-soft);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.home-risk-row.tone-high {
-  border-color: rgba(255, 154, 154, 0.28);
-  background: linear-gradient(90deg, rgba(255, 154, 154, 0.09), transparent 46%);
-}
-
-.home-risk-row.tone-medium {
-  border-color: rgba(255, 214, 165, 0.26);
-  background: linear-gradient(90deg, rgba(255, 214, 165, 0.09), transparent 46%);
-}
-
-.home-risk-row.tone-low {
-  border-color: rgba(127, 255, 212, 0.24);
-  background: linear-gradient(90deg, rgba(127, 255, 212, 0.08), transparent 46%);
-}
-
-.home-risk-row.tone-high .home-risk-row__state {
-  background: rgba(255, 154, 154, 0.14);
-  color: #ffd8d8;
-}
-
-.home-risk-row.tone-medium .home-risk-row__state {
-  background: rgba(255, 214, 165, 0.16);
-  color: #ffe6bf;
-}
-
-.home-risk-row.tone-low .home-risk-row__state,
-.home-risk-row.tone-ready .home-risk-row__state {
-  background: rgba(127, 255, 212, 0.12);
-  color: var(--mint);
 }
 
 .home-compact-visual-strip {
@@ -761,30 +642,20 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 
 @media (max-width: 1180px) {
   .home-situation-meters,
+  .home-entry-grid,
   .home-fact-tape,
   .home-mini-chart-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .home-risk-stage {
     grid-template-columns: 1fr;
   }
 
   .home-situation-band {
     grid-template-columns: 1fr;
   }
-
-  .home-risk-stage__side {
-    border-left: 0;
-    border-top: 1px solid color-mix(in srgb, var(--shell-panel-border) 74%, transparent);
-    padding-top: 16px;
-    padding-left: 0;
-  }
 }
 
 @media (max-width: 920px) {
   .home-situation-band,
-  .home-risk-stage,
+  .home-workspace-entry,
   .home-system-snapshot {
     padding: 18px;
   }
@@ -798,19 +669,11 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
     max-width: none;
     text-align: left;
   }
-
-  .home-risk-row {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 720px) {
   .home-resource-signals {
     grid-template-columns: 1fr;
-  }
-
-  .home-risk-row__state {
-    white-space: normal;
   }
 }
 </style>

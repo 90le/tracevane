@@ -1984,8 +1984,8 @@ button.page-command-link {
   opacity: 0.86;
 }
 
-.home-stage-rhythm > [data-home-zone='risk']::before {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 34%, transparent), transparent 74%);
+.home-stage-rhythm > [data-home-zone='entry']::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mint) 32%, transparent), transparent 74%);
 }
 
 .home-stage-rhythm > [data-home-zone='resource']::before {
@@ -1996,13 +1996,12 @@ button.page-command-link {
   background: linear-gradient(90deg, color-mix(in srgb, var(--violet) 32%, transparent), transparent 74%);
 }
 
-.home-risk-stage,
 .home-recent-stream {
   min-width: 0;
 }
 
 .home-situation-band,
-.home-risk-stage,
+.home-workspace-entry,
 .home-system-snapshot,
 .home-recent-stream {
   border: 1px solid var(--border-subtle);
@@ -2015,8 +2014,7 @@ button.page-command-link {
     var(--surface-raised);
 }
 
-.home-quick-action:hover,
-.home-risk-row:hover {
+.home-quick-action:hover {
   border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-subtle));
   background: var(--surface-raised);
 }
@@ -7400,7 +7398,6 @@ body::before {
 .agents-session-card,
 .terminal-binary-row,
 .terminal-missing-deps__item,
-.home-risk-row,
 .home-resource-signal,
 .home-quick-action,
 .plugins-critical-card,
@@ -7430,7 +7427,6 @@ body::before {
 .channel-account-card.active,
 .channel-rail-item:hover,
 .channel-rail-item.active,
-.home-risk-row:hover,
 .home-quick-action:hover,
 .agent-rail-item:hover,
 .agent-rail-item.active {
