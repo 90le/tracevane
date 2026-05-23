@@ -33,6 +33,7 @@
 
 <script setup lang="ts">
 import { useLocalePreference } from "../../shared/locale";
+import "./codex-stack-settings.css";
 
 defineProps<{
   defaultModel: string;
@@ -44,68 +45,3 @@ defineProps<{
 
 const { text } = useLocalePreference();
 </script>
-
-<style scoped>
-.cs-upstream-map {
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--success) 12%, transparent), transparent 34%),
-    linear-gradient(135deg, color-mix(in srgb, var(--surface) 92%, #101820 8%), var(--surface));
-}
-
-.cs-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.cs-card-header h4 {
-  margin: 0;
-}
-
-.cs-section-kicker {
-  margin: 0 0 6px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
-.cs-upstream-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.cs-upstream-grid > div {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 14px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-}
-
-.cs-upstream-grid span {
-  display: block;
-  color: var(--muted);
-  font-size: 0.8rem;
-  margin-bottom: 8px;
-}
-
-.cs-upstream-grid strong {
-  display: block;
-  color: var(--text);
-  word-break: break-word;
-}
-
-.cs-upstream-grid p {
-  margin: 8px 0 0;
-  color: var(--text-soft);
-  font-size: 0.88rem;
-}
-
-@media (max-width: 960px) {
-  .cs-upstream-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

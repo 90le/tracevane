@@ -22,6 +22,7 @@
 <script setup lang="ts">
 import { useLocalePreference } from "../../shared/locale";
 import type { CodexStackTone } from "./codex-stack-view-model";
+import "./codex-stack-dashboard.css";
 
 defineProps<{
   currentModel: string;
@@ -40,103 +41,3 @@ defineEmits<{
 
 const { text } = useLocalePreference();
 </script>
-
-<style scoped>
-.cs-model-ribbon {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  border-color: color-mix(in srgb, var(--acc) 22%, var(--line));
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--sky) 16%, transparent), transparent 34%),
-    linear-gradient(135deg, color-mix(in srgb, var(--surface) 94%, #132132 6%), var(--surface));
-}
-
-.cs-model-ribbon h3 {
-  margin: 0;
-  font-size: clamp(1.25rem, 2vw, 1.8rem);
-}
-
-.cs-model-ribbon p {
-  margin: 8px 0 0;
-  color: var(--text-soft);
-}
-
-.cs-model-ribbon-side {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.cs-disabled-help {
-  flex-basis: 100%;
-  margin: 0;
-  color: var(--warning);
-  font-size: 0.84rem;
-  line-height: 1.45;
-  text-align: right;
-}
-
-.cs-section-kicker {
-  margin: 0 0 6px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
-.cs-info-chip,
-.cs-status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 12px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
-  color: var(--text-soft);
-  font-size: 0.85rem;
-}
-
-.cs-status-pill {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.cs-status-pill.tone-sage {
-  color: #073b20;
-  border-color: #8fd8a6;
-  background: #dff8e7;
-}
-
-.cs-status-pill.tone-accent {
-  color: #17335f;
-  border-color: #9ec2ff;
-  background: #e4efff;
-}
-
-.cs-status-pill.tone-danger {
-  color: #651d19;
-  border-color: #f1a9a1;
-  background: #ffe4e0;
-}
-
-.cs-status-pill.tone-neutral {
-  color: #263241;
-  border-color: #c5ced8;
-  background: #eef2f6;
-}
-
-@media (max-width: 960px) {
-  .cs-model-ribbon {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .cs-model-ribbon-side {
-    justify-content: flex-start;
-  }
-}
-</style>

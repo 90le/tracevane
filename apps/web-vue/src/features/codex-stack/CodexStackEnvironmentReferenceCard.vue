@@ -63,6 +63,7 @@
 
 <script setup lang="ts">
 import { useLocalePreference } from "../../shared/locale";
+import "./codex-stack-settings.css";
 
 defineProps<{
   homeDir: string;
@@ -83,90 +84,3 @@ defineProps<{
 
 const { text } = useLocalePreference();
 </script>
-
-<style scoped>
-.cs-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.cs-card-header h4 {
-  margin: 0;
-}
-
-.cs-section-kicker {
-  margin: 0 0 6px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
-.cs-kv-list {
-  display: grid;
-  gap: 10px;
-}
-
-.cs-kv-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 180px) 1fr;
-  gap: 12px;
-  align-items: start;
-}
-
-.cs-kv-row span {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.cs-kv-row code {
-  color: var(--text);
-  background: color-mix(in srgb, var(--code-bg) 84%, transparent);
-  border-radius: 10px;
-  padding: 6px 10px;
-  word-break: break-word;
-}
-
-.cs-warning-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.cs-warning-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--line));
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
-}
-
-.cs-warning-icon {
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--warning) 18%, transparent);
-  color: var(--warning);
-  font-weight: 700;
-  flex: 0 0 auto;
-}
-
-@media (max-width: 960px) {
-  .cs-card-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .cs-kv-row {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

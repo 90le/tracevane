@@ -1,0 +1,250 @@
+.cs-model-catalog-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
+    var(--surface);
+}
+
+.cs-upstream-map {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--success) 12%, transparent), transparent 34%),
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 92%, #101820 8%), var(--surface));
+}
+
+.cs-model-catalog-card .cs-card-header,
+.cs-upstream-map .cs-card-header,
+.cs-environment-reference-card .cs-card-header,
+.cs-runtime-config-card .cs-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cs-model-catalog-card .cs-card-header h4,
+.cs-upstream-map .cs-card-header h4,
+.cs-environment-reference-card .cs-card-header h4,
+.cs-runtime-config-card .cs-card-header h4 {
+  margin: 0;
+}
+
+.cs-model-catalog-card .cs-field-hint {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.cs-model-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.cs-model-list span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--code-bg) 42%, transparent);
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.cs-model-list .cs-model-current {
+  border-color: color-mix(in srgb, var(--success) 48%, var(--line));
+  background: color-mix(in srgb, var(--success) 18%, var(--surface));
+  font-weight: 700;
+}
+
+.cs-upstream-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cs-upstream-grid > div {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+.cs-upstream-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+}
+
+.cs-upstream-grid strong {
+  display: block;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.cs-upstream-grid p {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
+.cs-kv-list {
+  display: grid;
+  gap: 10px;
+}
+
+.cs-kv-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.cs-kv-row span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.cs-kv-row code {
+  color: var(--text);
+  background: color-mix(in srgb, var(--code-bg) 84%, transparent);
+  border-radius: 10px;
+  padding: 6px 10px;
+  word-break: break-word;
+}
+
+.cs-runtime-config-card .cs-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cs-runtime-config-card .cs-form-span-2 {
+  grid-column: 1 / -1;
+}
+
+.cs-runtime-config-card .form-help {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.cs-route-selector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.cs-route-selector strong {
+  display: block;
+  margin: 2px 0 4px;
+  color: var(--text);
+}
+
+.cs-route-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.cs-route-selector .cs-disabled-help {
+  grid-column: 1 / -1;
+}
+
+.cs-runtime-config-card .cs-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cs-model-catalog-card .cs-disabled-help,
+.cs-runtime-config-card .cs-disabled-help {
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.cs-restart-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--text-soft);
+  font-size: 0.85rem;
+}
+
+.cs-restart-hint-block {
+  align-items: flex-start;
+  flex-direction: column;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.cs-restart-hint-block small {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.cs-impact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cs-impact-item {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+
+.cs-impact-item strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.cs-impact-item span {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.cs-impact-item.tone-warning {
+  border-color: color-mix(in srgb, #f59e0b 42%, var(--line));
+}
+
+.cs-impact-item.tone-danger {
+  border-color: color-mix(in srgb, #ef4444 46%, var(--line));
+}
+
+@media (max-width: 960px) {
+  .cs-model-catalog-card .cs-card-header,
+  .cs-environment-reference-card .cs-card-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cs-upstream-grid,
+  .cs-runtime-config-card .cs-form-grid,
+  .cs-route-selector,
+  .cs-kv-row {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-route-actions {
+    justify-content: flex-start;
+  }
+}
