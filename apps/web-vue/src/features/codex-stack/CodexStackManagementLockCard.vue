@@ -1,10 +1,10 @@
 <template>
-  <section class="cs-surface cs-management-lock-card">
+  <section class="cs-management-lock-rail">
     <div>
       <h3>{{ title }}</h3>
       <p>{{ copy }}</p>
     </div>
-    <div class="cs-actions">
+    <div class="cs-lock-actions">
       <button type="button" class="primary-button" :disabled="busy" @click="$emit('enable')">
         {{ actionLabel }}
       </button>
@@ -16,6 +16,8 @@
 </template>
 
 <script setup lang="ts">
+import "./codex-stack-workspace.css";
+
 defineProps<{
   title: string;
   copy: string;
@@ -28,48 +30,3 @@ defineEmits<{
   enable: [];
 }>();
 </script>
-
-<style scoped>
-.cs-management-lock-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.cs-management-lock-card p {
-  color: var(--text-soft);
-}
-
-.cs-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.cs-disabled-help {
-  max-width: 280px;
-  margin: 0;
-  color: var(--warning);
-  font-size: 0.84rem;
-  line-height: 1.45;
-  text-align: right;
-}
-
-@media (max-width: 960px) {
-  .cs-management-lock-card {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .cs-actions {
-    align-items: stretch;
-  }
-
-  .cs-disabled-help {
-    max-width: none;
-    text-align: left;
-  }
-}
-</style>

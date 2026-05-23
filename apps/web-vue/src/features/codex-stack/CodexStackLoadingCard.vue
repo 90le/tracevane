@@ -1,18 +1,13 @@
 <template>
-  <div class="cs-surface cs-loading-card">
+  <div class="cs-loading-state">
     {{ message }}
   </div>
 </template>
 
 <script setup lang="ts">
+import "./codex-stack-workspace.css";
+
 defineProps<{
   message: string;
 }>();
 </script>
-
-<style scoped>
-.cs-loading-card {
-  padding: 20px;
-  color: var(--text-soft);
-}
-</style>

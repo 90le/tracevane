@@ -90,9 +90,13 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.doesNotMatch(pageHeader, /<style scoped>/);
   assert.match(codexStackWorkspaceCss, /\.cs-page-subtitle\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.page-actions\s*\{/);
-  assert.match(managementLockCard, /class="[^\"]*cs-management-lock-card"/);
-  assert.match(managementLockCard, /\.cs-management-lock-card\s*\{/);
-  assert.match(managementLockCard, /@media \(max-width: 960px\)/);
+  assert.match(managementLockCard, /class="[^\"]*cs-management-lock-rail"/);
+  assert.match(managementLockCard, /class="cs-lock-actions"/);
+  assert.match(managementLockCard, /import "\.\/codex-stack-workspace\.css";/);
+  assert.doesNotMatch(managementLockCard, /<style scoped>|cs-management-lock-card|class="cs-actions"/);
+  assert.match(codexStackWorkspaceCss, /\.cs-management-lock-rail\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-lock-actions\s*\{/);
+  assert.match(codexStackWorkspaceCss, /@media \(max-width: 760px\)/);
   assert.match(sectionStack, /class="cs-section-stack"/);
   assert.match(sectionStack, /import "\.\/codex-stack-workspace\.css";/);
   assert.doesNotMatch(sectionStack, /<style scoped>/);
@@ -157,8 +161,11 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(jobProgressPanel, /cs-job-progress-dock/);
   assert.match(jobProgressPanel, /\.cs-job-progress-track\s*\{/);
   assert.match(jobProgressPanel, /@media \(max-width: 960px\)/);
-  assert.match(loadingCard, /class="[^\"]*cs-loading-card"/);
-  assert.match(loadingCard, /\.cs-loading-card\s*\{/);
+  assert.match(loadingCard, /class="[^\"]*cs-loading-state"/);
+  assert.match(loadingCard, /import "\.\/codex-stack-workspace\.css";/);
+  assert.doesNotMatch(loadingCard, /<style scoped>|cs-loading-card|cs-surface/);
+  assert.match(codexStackWorkspaceCss, /\.cs-loading-state\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-loading-state::before\s*\{/);
   assert.match(modelCatalogCard, /class="[^\"]*cs-model-catalog-card"/);
   assert.match(modelCatalogCard, /\.cs-field-hint\s*\{/);
   assert.match(modelCatalogCard, /\.cs-model-list\s*\{/);
@@ -514,6 +521,13 @@ test("codex stack dashboard delegates command center without losing actions", ()
   assert.match(dashboardCommandCenter, /modelCatalogPreview/);
   assert.match(recommendationCard, /v-if="primaryDisabled && disabledHelp"/);
   assert.match(recommendationCard, /class="cs-disabled-help"/);
+  assert.match(recommendationCard, /class="cs-recommendation-prompt"/);
+  assert.match(recommendationCard, /class="cs-recommendation-actions"/);
+  assert.match(recommendationCard, /import "\.\/codex-stack-dashboard\.css";/);
+  assert.doesNotMatch(recommendationCard, /<style scoped>|cs-recommendation-card|cs-surface|class="cs-actions"/);
+  assert.match(codexStackDashboardCss, /\.cs-recommendation-prompt\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-recommendation-prompt::before\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-recommendation-actions\s*\{/);
 });
 
 test("codex stack dashboard delegates diagnostics without losing run check", () => {
