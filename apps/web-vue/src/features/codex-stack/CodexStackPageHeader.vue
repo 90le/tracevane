@@ -19,6 +19,8 @@
 </template>
 
 <script setup lang="ts">
+import "./codex-stack-workspace.css";
+
 defineProps<{
   eyebrow: string;
   title: string;
@@ -32,27 +34,3 @@ defineEmits<{
   refresh: [];
 }>();
 </script>
-
-<style scoped>
-.cs-page-subtitle {
-  margin: 6px 0 0;
-  color: var(--text-soft);
-  max-width: 980px;
-}
-
-.page-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.cs-disabled-help {
-  max-width: 280px;
-  margin: 0;
-  color: var(--warning);
-  font-size: 0.84rem;
-  line-height: 1.45;
-  text-align: right;
-}
-</style>

@@ -86,6 +86,10 @@ test("codex stack log reads avoid overlapping auto-refresh requests", () => {
 test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(pageHeader, /class="page-header-row cs-page-header"/);
   assert.match(pageHeader, /class="cs-page-subtitle"/);
+  assert.match(pageHeader, /import "\.\/codex-stack-workspace\.css";/);
+  assert.doesNotMatch(pageHeader, /<style scoped>/);
+  assert.match(codexStackWorkspaceCss, /\.cs-page-subtitle\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.page-actions\s*\{/);
   assert.match(managementLockCard, /class="[^\"]*cs-management-lock-card"/);
   assert.match(managementLockCard, /\.cs-management-lock-card\s*\{/);
   assert.match(managementLockCard, /@media \(max-width: 960px\)/);
@@ -193,14 +197,20 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(runReadinessPanel, /\.cs-run-check-grid\s*\{/);
   assert.match(runReadinessPanel, /@media \(max-width: 960px\)/);
   assert.match(sectionIntro, /class="[^\"]*cs-section-intro"/);
-  assert.match(sectionIntro, /\.cs-section-copy\s*\{/);
-  assert.match(sectionIntro, /\.cs-chip-row\s*\{/);
-  assert.match(sectionIntro, /\.cs-status-pill\.tone-sage\s*\{/);
-  assert.match(sectionIntro, /@media \(max-width: 960px\)/);
+  assert.match(sectionIntro, /import "\.\/codex-stack-workspace\.css";/);
+  assert.doesNotMatch(sectionIntro, /<style scoped>/);
+  assert.match(codexStackWorkspaceCss, /\.cs-section-intro\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-section-copy\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-chip-row\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(sectionNav, /class="cs-section-tabs"/);
   assert.match(sectionNav, /class="cs-tab-button"/);
-  assert.match(sectionNav, /\.cs-tab-button-active\s*\{/);
-  assert.match(sectionNav, /@media \(max-width: 960px\)/);
+  assert.match(sectionNav, /import "\.\/codex-stack-workspace\.css";/);
+  assert.doesNotMatch(sectionNav, /<style scoped>/);
+  assert.match(codexStackWorkspaceCss, /\.cs-section-tabs\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-section-tabs::before\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-tab-button-active\s*\{/);
+  assert.match(codexStackWorkspaceCss, /@media \(max-width: 760px\)/);
   assert.match(workspaceShell, /class="cs-workspace"/);
   assert.match(controlPage, /import "\.\/codex-stack-workspace\.css";/);
   assert.doesNotMatch(controlPage, /<style scoped>/);
