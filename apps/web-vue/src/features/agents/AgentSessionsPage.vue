@@ -14,10 +14,10 @@
       </div>
     </div>
 
-    <article v-if="noticeMessage" class="panel-card">{{ noticeMessage }}</article>
-    <article v-if="errorMessage" class="panel-card">{{ errorMessage }}</article>
+    <div v-if="noticeMessage" class="status-banner">{{ noticeMessage }}</div>
+    <div v-if="errorMessage" class="status-banner status-banner-error">{{ errorMessage }}</div>
 
-    <article class="panel-card agents-stage-panel">
+    <article class="agents-stage-panel">
       <div class="agents-section-head">
         <div>
           <h3>{{ text('最近会话', 'Recent Sessions') }}</h3>

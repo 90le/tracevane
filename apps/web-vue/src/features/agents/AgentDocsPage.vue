@@ -14,15 +14,15 @@
       </div>
     </div>
 
-    <article v-if="noticeMessage" class="panel-card">
+    <div v-if="noticeMessage" class="status-banner">
       {{ noticeMessage }}
-    </article>
-    <article v-if="errorMessage" class="panel-card">
+    </div>
+    <div v-if="errorMessage" class="status-banner status-banner-error">
       {{ errorMessage }}
-    </article>
+    </div>
 
     <div class="agents-docs-layout">
-      <nav class="panel-card agents-docs-nav">
+      <nav class="agents-docs-nav">
         <button
           v-for="doc in visibleDocs"
           :key="doc.name"
@@ -36,7 +36,7 @@
         </button>
       </nav>
 
-      <article class="panel-card agents-stage-panel">
+      <article class="agents-stage-panel">
         <div class="agents-section-head">
           <div>
             <h3>{{ activeDoc?.title || selectedDocName }}</h3>

@@ -1,6 +1,6 @@
 <template>
   <section v-if="detail && agentId" class="agents-overview-page">
-    <article v-if="overviewMessage" class="panel-card">{{ overviewMessage }}</article>
+    <div v-if="overviewMessage" class="status-banner">{{ overviewMessage }}</div>
 
     <div class="agents-overview-grid">
       <article class="agents-command-center agents-overview-card agents-overview-card--primary">
@@ -129,19 +129,19 @@
         </div>
 
         <div class="agents-metrics-grid compact">
-          <div class="metric-card compact">
+          <div class="agents-stat-cell">
             <span>{{ text('会话数', 'Sessions') }}</span>
             <strong>{{ detail.sessions.count }}</strong>
           </div>
-          <div class="metric-card compact">
+          <div class="agents-stat-cell">
             <span>{{ text('输入 Tokens', 'Input tokens') }}</span>
             <strong>{{ detail.sessions.inputTokens }}</strong>
           </div>
-          <div class="metric-card compact">
+          <div class="agents-stat-cell">
             <span>{{ text('输出 Tokens', 'Output tokens') }}</span>
             <strong>{{ detail.sessions.outputTokens }}</strong>
           </div>
-          <div class="metric-card compact">
+          <div class="agents-stat-cell">
             <span>{{ text('最后路由', 'Last Route') }}</span>
             <strong>{{ detail.sessions.lastRoute || text('暂无', 'None yet') }}</strong>
           </div>
@@ -224,7 +224,7 @@
     </div>
   </section>
 
-  <article v-else class="panel-card agents-stage-empty-card">
+  <article v-else class="empty-inline agents-stage-empty-card">
     <strong>{{ text('请选择一个 Agent', 'Select an agent') }}</strong>
     <p>{{ text('左侧 rail 会持续保留。选中后，右侧会切换到对应的概览和工作区标签。', 'The left rail stays persistent. After selection, the right stage switches to the matching overview and workspace tabs.') }}</p>
   </article>

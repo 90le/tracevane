@@ -14,8 +14,8 @@
       </div>
     </div>
 
-    <article v-if="noticeMessage" class="panel-card">{{ noticeMessage }}</article>
-    <article v-if="errorMessage" class="panel-card">{{ errorMessage }}</article>
+    <div v-if="noticeMessage" class="status-banner">{{ noticeMessage }}</div>
+    <div v-if="errorMessage" class="status-banner status-banner-error">{{ errorMessage }}</div>
     <div v-if="loading" class="empty-inline">{{ text('正在读取 Agent 详情…', 'Loading agent details...') }}</div>
 
     <template v-else>
@@ -26,7 +26,7 @@
         <span class="agents-summary-pill">{{ draft.toolsProfile || text('完整工具集', 'Full tools profile') }}</span>
       </div>
 
-      <article class="panel-card agents-stage-panel">
+      <article class="agents-stage-panel">
         <div class="agents-stage-task-head operate-stage-task-head">
           <div>
             <p class="eyebrow">{{ text('CORE', 'CORE') }}</p>
@@ -55,7 +55,7 @@
         </div>
       </article>
 
-      <article class="panel-card agents-stage-panel">
+      <article class="agents-stage-panel">
         <div class="agents-stage-task-head operate-stage-task-head">
           <div>
             <p class="eyebrow">{{ text('IDENTITY', 'IDENTITY') }}</p>
@@ -95,7 +95,7 @@
         </div>
       </article>
 
-      <details class="panel-card agents-stage-panel agents-advanced-collapsible" open>
+      <details class="agents-stage-panel agents-advanced-collapsible" open>
         <summary class="agents-stage-task-head agents-advanced-summary">
           <div>
             <p class="eyebrow">{{ text('RUNTIME', 'RUNTIME') }}</p>
@@ -183,7 +183,7 @@
         </div>
       </details>
 
-      <details class="panel-card agents-stage-panel agents-advanced-collapsible">
+      <details class="agents-stage-panel agents-advanced-collapsible">
         <summary class="agents-stage-task-head agents-advanced-summary">
           <div>
             <p class="eyebrow">{{ text('OVERRIDES', 'OVERRIDES') }}</p>
@@ -205,7 +205,7 @@
         </div>
       </details>
 
-      <details class="panel-card agents-stage-panel agents-advanced-collapsible">
+      <details class="agents-stage-panel agents-advanced-collapsible">
         <summary class="agents-stage-task-head agents-advanced-summary">
           <div>
             <p class="eyebrow">{{ text('ADVANCED JSON', 'ADVANCED JSON') }}</p>

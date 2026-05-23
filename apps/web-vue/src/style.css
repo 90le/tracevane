@@ -4886,14 +4886,22 @@ html:not([data-theme="light"]) .chat-shell-page {
 .agents-docs-layout {
   display: grid;
   grid-template-columns: minmax(220px, 0.38fr) minmax(0, 1fr);
-  gap: 12px;
+  gap: 0;
   min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 44%, transparent);
 }
 
 .agents-docs-nav {
   display: grid;
   gap: 8px;
   align-content: start;
+  padding: 16px;
+  border-right: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 46%, transparent), color-mix(in srgb, var(--surface-base) 14%, transparent));
 }
 
 .agents-summary-strip {
@@ -4925,10 +4933,11 @@ html:not([data-theme="light"]) .chat-shell-page {
 .agents-doc-nav-item {
   display: grid;
   gap: 5px;
-  padding: 11px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--shell-stage-fill) 92%, transparent);
+  padding: 11px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
   color: var(--text-soft);
   text-align: left;
   cursor: pointer;
@@ -4951,16 +4960,19 @@ html:not([data-theme="light"]) .chat-shell-page {
 }
 
 .agents-doc-nav-item.active {
+  padding-inline: 11px;
   border-color: color-mix(in srgb, var(--sky) 38%, var(--line));
   background: linear-gradient(145deg, rgba(91, 150, 255, 0.16), rgba(255, 199, 128, 0.06));
-  box-shadow: 0 12px 24px rgba(8, 19, 32, 0.08);
+  box-shadow: none;
 }
 
 .agents-stage-panel {
-  background:
-    radial-gradient(320px 120px at 0% 0%, color-mix(in srgb, var(--shell-highlight) 14%, transparent), transparent 70%),
-    radial-gradient(240px 110px at 100% 0%, color-mix(in srgb, var(--sky) 10%, transparent), transparent 70%),
-    linear-gradient(180deg, color-mix(in srgb, var(--shell-panel-fill) 95%, transparent), color-mix(in srgb, var(--shell-stage-fill) 94%, transparent));
+  padding: 18px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .agents-stage-task-head,
@@ -5440,6 +5452,11 @@ html:not([data-theme="light"]) .chat-shell-page {
     padding-right: 10px;
   }
 
+  .agents-docs-nav {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
   .agents-quick-config-content,
   .agents-quick-config-dialog {
     width: min(100vw - 20px, 860px);
@@ -5720,29 +5737,38 @@ html:not([data-theme="light"]) .chat-shell-page {
 .agents-overview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 42%, transparent);
 }
 
 .agents-command-center,
 .agents-stream-pane {
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background:
-    radial-gradient(620px 260px at 0% 0%, color-mix(in srgb, var(--acc) 10%, transparent), transparent 64%),
-    color-mix(in srgb, var(--surface-base) 88%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--shell-highlight) 10%, transparent),
-    0 12px 30px rgba(8, 18, 29, 0.08);
-  backdrop-filter: blur(18px) saturate(122%);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .agents-command-center {
   overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--acc) 7%, transparent), transparent 56%),
+    color-mix(in srgb, var(--surface-base) 32%, transparent);
 }
 
 .agents-stream-pane {
   padding: 20px;
+  border-right: 1px solid var(--line);
+}
+
+.agents-stream-pane:last-child {
+  border-right: 0;
 }
 
 .agents-overview-card {
@@ -5839,11 +5865,24 @@ html:not([data-theme="light"]) .chat-shell-page {
   background: color-mix(in srgb, var(--line) 68%, transparent);
 }
 
-.agents-stream-pane .metric-card.compact {
+.agents-stream-pane .agents-stat-cell {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
   border: 0;
   border-radius: 0;
   background: color-mix(in srgb, var(--surface-base) 88%, transparent);
   box-shadow: none;
+}
+
+.agents-stat-cell span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.agents-stat-cell strong {
+  color: var(--text);
+  word-break: break-word;
 }
 
 .agents-stream-pane .agents-binding-row,
@@ -5855,7 +5894,6 @@ html:not([data-theme="light"]) .chat-shell-page {
   box-shadow: none;
 }
 
-html[data-theme="light"] .agents-stage-panel,
 html[data-theme="light"] .agents-overview-identity,
 html[data-theme="light"] .agents-overview-quick-edit,
 html[data-theme="light"] .agents-binding-row,
@@ -5864,7 +5902,7 @@ html[data-theme="light"] .agents-session-row {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 255, 0.9));
   border-color: rgba(18, 34, 56, 0.09);
-  box-shadow: 0 10px 24px rgba(20, 35, 53, 0.06);
+  box-shadow: none;
 }
 
 html[data-theme="light"] .agents-binding-main__facts span,
@@ -5933,6 +5971,15 @@ html[data-theme="light"] .capability-chip {
 
   .agents-overview-identity {
     border-right: 0;
+  }
+
+  .agents-stream-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .agents-stream-pane:last-child {
+    border-bottom: 0;
   }
 
   .agents-stage-header__body {
