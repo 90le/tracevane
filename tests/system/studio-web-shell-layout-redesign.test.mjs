@@ -17,6 +17,10 @@ const shellNavigationSource = read(
 const routeManifestSource = read(
   "apps/web-vue/src/features/shell/route-manifest.ts",
 );
+const legacyUiContentPath = path.join(
+  rootDir,
+  "apps/web-vue/src/data/mock.ts",
+);
 
 test("shell redesign keeps one topbar navigation model and no global context panel", () => {
   assert.match(appVue, /StudioShellTopbar/);
@@ -36,6 +40,7 @@ test("shell redesign keeps one topbar navigation model and no global context pan
   assert.doesNotMatch(appVue, /shell-context-panel|contextPanel|contextToggle/);
   assert.doesNotMatch(appVue, /riskSummaryValue|pendingSummaryValue/);
   assert.doesNotMatch(appVue, /useUiContent/);
+  assert.equal(fs.existsSync(legacyUiContentPath), false);
 });
 
 test("router consumes the shell route manifest without context-panel metadata", () => {

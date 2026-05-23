@@ -17,6 +17,11 @@ const navPath = path.join(
 );
 const routerPath = path.join(rootDir, "apps/web-vue/src/router.ts");
 const appPath = path.join(rootDir, "apps/web-vue/src/App.vue");
+const legacyMockPath = path.join(rootDir, "apps/web-vue/src/data/mock.ts");
+const legacySessionsViewPath = path.join(
+  rootDir,
+  "apps/web-vue/src/views/SessionsView.vue",
+);
 
 test("shell route manifest defines grouped current routes and future placeholders", () => {
   assert.equal(fs.existsSync(manifestPath), true);
@@ -65,4 +70,6 @@ test("router and app consume shell route metadata instead of local mock navigati
   assert.match(app, /isFilesSurface/);
   assert.match(app, /!isChatSurface && !isFilesSurface/);
   assert.doesNotMatch(app, /useUiContent/);
+  assert.equal(fs.existsSync(legacyMockPath), false);
+  assert.equal(fs.existsSync(legacySessionsViewPath), false);
 });
