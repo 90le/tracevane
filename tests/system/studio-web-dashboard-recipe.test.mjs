@@ -125,17 +125,14 @@ test("dashboard api normalizes collection fields and threads locale for summary 
   );
 });
 
-test("dashboard recipe helpers always return arrays from payload-derived collections", () => {
-  assert.match(
-    dashboardRecipe,
-    /return Array\.isArray\(options\.payload\?\.recovery\?\.items\)\s*\?\s*options\.payload\.recovery\.items\s*:\s*\[\]/,
-  );
-  assert.match(
-    dashboardRecipe,
-    /return Array\.isArray\(payload\?\.trends\?\.panels\)\s*\?\s*payload\.trends\.panels\s*:\s*\[\]/,
-  );
-  assert.match(
-    dashboardRecipe,
-    /return Array\.isArray\(payload\?\.trends\?\.points\)\s*\?\s*payload\.trends\.points\s*:\s*\[\]/,
-  );
+test("dashboard recipe no longer exports removed home risk and trend helpers", () => {
+  assert.match(dashboardRecipe, /export function buildDashboardOverviewSignals/);
+  assert.doesNotMatch(dashboardRecipe, /buildDashboardQuickActions/);
+  assert.doesNotMatch(dashboardRecipe, /buildDashboardPriorityAction/);
+  assert.doesNotMatch(dashboardRecipe, /buildDashboardRiskStage/);
+  assert.doesNotMatch(dashboardRecipe, /buildDashboardContextSummary/);
+  assert.doesNotMatch(dashboardRecipe, /buildDashboardTrendPanels/);
+  assert.doesNotMatch(dashboardRecipe, /buildDashboardTrendPoints/);
+  assert.doesNotMatch(dashboardRecipe, /buildDashboardRecoveryItems/);
+  assert.doesNotMatch(dashboardRecipe, /route-manifest/);
 });

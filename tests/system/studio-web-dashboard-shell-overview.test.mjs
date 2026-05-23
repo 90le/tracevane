@@ -14,7 +14,6 @@ const recipePath = path.join(
 const recipeModule =
   await import("../../apps/web-vue/src/features/dashboard/overview-recipe.ts");
 
-const zhText = (zh, _en) => zh;
 const enText = (_zh, en) => en;
 
 function createPayload() {
@@ -220,22 +219,18 @@ function createPayload() {
   };
 }
 
-test("dashboard overview recipe derives quick actions from the shell foundation", () => {
+test("dashboard overview recipe only keeps compact signal derivation", () => {
   assert.equal(fs.existsSync(recipePath), true);
   const recipe = fs.readFileSync(recipePath, "utf8");
-  assert.match(recipe, /from ['"]\.\.\/shell\/route-manifest['"]/);
-
-  const actions = recipeModule.buildDashboardQuickActions(enText);
-  assert.deepEqual(
-    actions.map((item) => item.to),
-    ["/chat", "/agents", "/config", "/cron", "/dreaming", "/system"],
-  );
-  assert.equal(actions[0]?.label, "Open chat entry");
-  assert.equal(actions[1]?.eyebrow, "Agents");
-
-  const zhActions = recipeModule.buildDashboardQuickActions(zhText);
-  assert.equal(zhActions[0]?.label, "进入私聊入口");
-  assert.equal(zhActions[5]?.label, "打开系统诊断");
+  assert.match(recipe, /export function buildDashboardOverviewSignals/);
+  assert.doesNotMatch(recipe, /from ['"]\.\.\/shell\/route-manifest['"]/);
+  assert.doesNotMatch(recipe, /buildDashboardQuickActions/);
+  assert.doesNotMatch(recipe, /buildDashboardPriorityAction/);
+  assert.doesNotMatch(recipe, /buildDashboardRiskStage/);
+  assert.doesNotMatch(recipe, /buildDashboardContextSummary/);
+  assert.doesNotMatch(recipe, /buildDashboardTrendPanels/);
+  assert.doesNotMatch(recipe, /buildDashboardTrendPoints/);
+  assert.doesNotMatch(recipe, /buildDashboardRecoveryItems/);
 });
 
 test("buildDashboardOverviewSignals returns fallback and payload-backed values", () => {
@@ -275,164 +270,4 @@ test("buildDashboardOverviewSignals returns fallback and payload-backed values",
       detail: "Device trust requests awaiting approval",
     },
   ]);
-});
-
-test("buildDashboardPriorityAction returns the strongest live next step", () => {
-  const payload = createPayload();
-  assert.deepEqual(
-    recipeModule.buildDashboardPriorityAction({ payload, text: enText }),
-    {
-      id: "summary-recent-failures",
-      to: "/system/events",
-      title: "Investigate recent failures",
-      detail: "Gateway token missing",
-    },
-  );
-
-  const recoveryFirst = createPayload();
-  recoveryFirst.events.recentFailures = 0;
-  assert.equal(
-    recipeModule.buildDashboardPriorityAction({
-      payload: recoveryFirst,
-      text: enText,
-    })?.id,
-    "recovery-bootstrap:gateway-auth-token",
-  );
-
-  const terminalFirst = createPayload();
-  terminalFirst.events.recentFailures = 0;
-  terminalFirst.recovery.items = [];
-  assert.equal(
-    recipeModule.buildDashboardPriorityAction({
-      payload: terminalFirst,
-      text: enText,
-    })?.id,
-    "summary-recoverable-sessions",
-  );
-
-  const auditFirst = createPayload();
-  auditFirst.events.recentFailures = 0;
-  auditFirst.recovery.items = [];
-  auditFirst.terminalWorkspace.recoverableSessions = 0;
-  assert.equal(
-    recipeModule.buildDashboardPriorityAction({
-      payload: auditFirst,
-      text: enText,
-    })?.id,
-    "summary-pending-audit",
-  );
-
-  assert.equal(
-    recipeModule.buildDashboardPriorityAction({ payload: null, text: enText }),
-    null,
-  );
-});
-
-test("buildDashboardRiskStage returns representative cards and empty state", () => {
-  const payload = createPayload();
-  const withPayload = recipeModule.buildDashboardRiskStage({
-    payload,
-    text: enText,
-  });
-  const withoutPayload = recipeModule.buildDashboardRiskStage({
-    payload: null,
-    text: enText,
-  });
-
-  assert.deepEqual(withPayload, [
-    {
-      key: "recovery",
-      title: "Recovery backlog",
-      value: "3",
-      summary: "3 项恢复与处理项待跟进",
-      to: "/system",
-    },
-    {
-      key: "risk",
-      title: "Risk stage",
-      value: "high",
-      summary: "最近恢复：Recovered detached terminal workspace",
-      to: "/system/events",
-    },
-  ]);
-  assert.deepEqual(withoutPayload, []);
-
-  const zhLabels = recipeModule.buildDashboardRiskStage({
-    payload,
-    text: zhText,
-  });
-  assert.equal(zhLabels[0]?.title, "恢复待处理");
-  assert.equal(zhLabels[1]?.title, "当前风险等级");
-});
-
-test("buildDashboardRecoveryItems passes through recovery items unchanged", () => {
-  const payload = createPayload();
-  const items = recipeModule.buildDashboardRecoveryItems({
-    payload,
-    text: enText,
-  });
-
-  assert.equal(items, payload.recovery.items);
-  assert.deepEqual(
-    items.map((item) => item.id),
-    ["bootstrap:gateway-auth-token", "event:failure:0"],
-  );
-  assert.deepEqual(
-    recipeModule.buildDashboardRecoveryItems({ payload: null, text: enText }),
-    [],
-  );
-});
-
-test("buildDashboardTrendPanels returns payload panels in original order", () => {
-  const payload = createPayload();
-  const panels = recipeModule.buildDashboardTrendPanels({
-    payload,
-    text: enText,
-  });
-
-  assert.equal(panels, payload.trends.panels);
-  assert.deepEqual(
-    panels.map((panel) => panel.key),
-    ["risk", "recovery", "trend"],
-  );
-  assert.deepEqual(
-    panels[0]?.points.map((point) => point.key),
-    ["eventFailures", "bootstrapFixable"],
-  );
-  assert.equal(panels[2]?.title, "System trend");
-  assert.deepEqual(
-    recipeModule.buildDashboardTrendPanels({ payload: null, text: enText }),
-    [],
-  );
-});
-
-test("buildDashboardTrendPoints and buildDashboardContextSummary provide fallback and payload-backed collections", () => {
-  const payload = createPayload();
-
-  const trendPoints = recipeModule.buildDashboardTrendPoints({
-    payload,
-    text: enText,
-  });
-  assert.equal(trendPoints, payload.trends.points);
-  assert.deepEqual(
-    recipeModule.buildDashboardTrendPoints({ payload: null, text: enText }),
-    [],
-  );
-
-  assert.deepEqual(
-    recipeModule.buildDashboardContextSummary({ payload, text: enText }),
-    {
-      riskStage: "high",
-      primaryHint: "3 项恢复与处理项待跟进",
-      secondaryHint: "最近恢复：Recovered detached terminal workspace",
-    },
-  );
-  assert.deepEqual(
-    recipeModule.buildDashboardContextSummary({ payload: null, text: enText }),
-    {
-      riskStage: "low",
-      primaryHint: "Waiting for context summary.",
-      secondaryHint: "Waiting for recovery summary.",
-    },
-  );
 });
