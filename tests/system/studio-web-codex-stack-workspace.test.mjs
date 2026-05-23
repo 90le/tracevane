@@ -16,9 +16,8 @@ const ccConnectRail = read("apps/web-vue/src/features/codex-stack/CodexStackCcCo
 const ccConnectSetupPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectSetupPanel.vue");
 const ccConnectStage = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectStage.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
-const actionOverview = read("apps/web-vue/src/features/codex-stack/CodexStackActionOverview.vue");
+const dashboardCommandCenter = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardCommandCenter.vue");
 const recommendationCard = read("apps/web-vue/src/features/codex-stack/CodexStackRecommendationCard.vue");
-const dashboardHeroCard = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardHeroCard.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
 const checkOutputDialog = read("apps/web-vue/src/features/codex-stack/CodexStackCheckOutputDialog.vue");
@@ -28,7 +27,6 @@ const installPlanCard = read("apps/web-vue/src/features/codex-stack/CodexStackIn
 const installShell = read("apps/web-vue/src/features/codex-stack/CodexStackInstallShell.vue");
 const installStrategyPanel = read("apps/web-vue/src/features/codex-stack/CodexStackInstallStrategyPanel.vue");
 const jobBanner = read("apps/web-vue/src/features/codex-stack/CodexStackJobBanner.vue");
-const jobOutputCard = read("apps/web-vue/src/features/codex-stack/CodexStackJobOutputCard.vue");
 const jobProgressPanel = read("apps/web-vue/src/features/codex-stack/CodexStackJobProgressPanel.vue");
 const loadingCard = read("apps/web-vue/src/features/codex-stack/CodexStackLoadingCard.vue");
 const managementLockCard = read("apps/web-vue/src/features/codex-stack/CodexStackManagementLockCard.vue");
@@ -85,7 +83,7 @@ test("codex stack log reads avoid overlapping auto-refresh requests", () => {
 test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(pageHeader, /class="page-header-row cs-page-header"/);
   assert.match(pageHeader, /class="cs-page-subtitle"/);
-  assert.match(managementLockCard, /class="panel-card cs-management-lock-card"/);
+  assert.match(managementLockCard, /class="[^\"]*cs-management-lock-card"/);
   assert.match(managementLockCard, /\.cs-management-lock-card\s*\{/);
   assert.match(managementLockCard, /@media \(max-width: 960px\)/);
   assert.match(sectionStack, /class="cs-section-stack"/);
@@ -93,27 +91,27 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(responsiveGrid, /class="cs-responsive-grid"/);
   assert.match(responsiveGrid, /\.cs-responsive-grid\s*\{/);
   assert.match(responsiveGrid, /@media \(max-width: 960px\)/);
-  assert.match(actionOverview, /class="cs-action-overview-grid"/);
-  assert.match(actionOverview, /\.cs-readiness-bar\s*\{/);
-  assert.match(actionOverview, /@media \(max-width: 1200px\)/);
-  assert.match(dashboardHeroCard, /class="panel-card cs-dashboard-hero-card"/);
-  assert.match(dashboardHeroCard, /\.cs-hero-title-row\s*\{/);
-  assert.match(dashboardHeroCard, /\.cs-hero-actions\s*\{/);
-  assert.match(dashboardHeroCard, /\.cs-status-pill\.tone-sage\s*\{/);
-  assert.match(dashboardHeroCard, /@media \(max-width: 960px\)/);
-  assert.match(diagnosticsPanel, /class="panel-card cs-diagnostics-panel"/);
+  assert.match(dashboardCommandCenter, /class="cs-command-center"/);
+  assert.match(dashboardCommandCenter, /\.cs-readiness-bar\s*\{/);
+  assert.match(dashboardCommandCenter, /@media \(max-width: 1180px\)/);
+  assert.match(dashboardCommandCenter, /class="cs-command-center"/);
+  assert.match(dashboardCommandCenter, /\.cs-command-status-row\s*\{/);
+  assert.match(dashboardCommandCenter, /\.cs-command-actions\s*\{/);
+  assert.match(dashboardCommandCenter, /\.cs-status-pill\s*\{/);
+  assert.match(dashboardCommandCenter, /@media \(max-width: 1180px\)/);
+  assert.match(diagnosticsPanel, /class="[^\"]*cs-diagnostics-panel"/);
   assert.match(diagnosticsPanel, /\.cs-warning-list\s*\{/);
   assert.match(checkOutputDialog, /class="cs-check-dialog-backdrop"/);
   assert.match(checkOutputDialog, /role="dialog"/);
   assert.match(checkOutputDialog, /function stripAnsi\(value: string\): string/);
-  assert.match(environmentReferenceCard, /class="panel-card cs-environment-reference-card"/);
+  assert.match(environmentReferenceCard, /class="[^\"]*cs-environment-reference-card"/);
   assert.match(environmentReferenceCard, /\.cs-kv-list\s*\{/);
   assert.match(environmentReferenceCard, /\.cs-warning-list\s*\{/);
   assert.match(environmentReferenceCard, /@media \(max-width: 960px\)/);
   assert.match(installConfigPanel, /class="cs-install-config-panel"/);
   assert.match(installConfigPanel, /\.cs-install-grid\s*\{/);
   assert.match(installConfigPanel, /@media \(max-width: 960px\)/);
-  assert.match(installPlanCard, /class="panel-card cs-install-plan-card"/);
+  assert.match(installPlanCard, /class="[^\"]*cs-install-plan-card"/);
   assert.match(installPlanCard, /\.cs-install-plan-list\s*\{/);
   assert.match(installPlanCard, /@media \(max-width: 960px\)/);
   assert.match(installShell, /class="cs-install-shell"/);
@@ -122,34 +120,34 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(installStrategyPanel, /\.cs-component-mode-list\s*\{/);
   assert.match(installStrategyPanel, /\.cs-install-cta-card\s*\{/);
   assert.match(installStrategyPanel, /@media \(max-width: 960px\)/);
-  assert.match(jobBanner, /class="panel-card cs-job-banner"/);
+  assert.match(jobBanner, /class="[^\"]*cs-job-banner"/);
   assert.match(jobBanner, /\.cs-job-banner-live\s*\{/);
   assert.match(jobBanner, /@media \(max-width: 960px\)/);
-  assert.match(jobOutputCard, /class="panel-card cs-job-output-card"/);
-  assert.match(jobOutputCard, /\.cs-log\s*\{/);
-  assert.match(jobOutputCard, /@media \(max-width: 960px\)/);
+  assert.match(jobProgressPanel, /cs-progress-log-shell/);
+  assert.match(jobProgressPanel, /\.cs-progress-log\s*\{/);
+  assert.match(jobProgressPanel, /@media \(max-width: 960px\)/);
   assert.match(jobProgressPanel, /cs-install-overlay/);
-  assert.match(jobProgressPanel, /cs-job-progress-surface/);
+  assert.match(jobProgressPanel, /cs-job-progress-dock/);
   assert.match(jobProgressPanel, /\.cs-job-progress-track\s*\{/);
   assert.match(jobProgressPanel, /@media \(max-width: 960px\)/);
-  assert.match(loadingCard, /class="panel-card cs-loading-card"/);
+  assert.match(loadingCard, /class="[^\"]*cs-loading-card"/);
   assert.match(loadingCard, /\.cs-loading-card\s*\{/);
-  assert.match(modelCatalogCard, /class="panel-card cs-model-catalog-card"/);
+  assert.match(modelCatalogCard, /class="[^\"]*cs-model-catalog-card"/);
   assert.match(modelCatalogCard, /\.cs-field-hint\s*\{/);
   assert.match(modelCatalogCard, /\.cs-model-list\s*\{/);
   assert.match(modelCatalogCard, /\.cs-model-current\s*\{/);
   assert.match(modelCatalogCard, /@media \(max-width: 960px\)/);
-  assert.match(modelRibbon, /class="panel-card cs-model-ribbon"/);
+  assert.match(modelRibbon, /class="[^\"]*cs-model-ribbon"/);
   assert.match(modelRibbon, /\.cs-model-ribbon-side\s*\{/);
   assert.match(modelRibbon, /\.cs-status-pill\.tone-sage\s*\{/);
   assert.match(modelRibbon, /@media \(max-width: 960px\)/);
-  assert.match(repairBoard, /class="panel-card cs-repair-board"/);
+  assert.match(repairBoard, /class="[^\"]*cs-repair-board"/);
   assert.match(repairBoard, /\.cs-repair-grid\s*\{/);
   assert.match(repairBoard, /@media \(max-width: 960px\)/);
-  assert.match(runtimeConfigCard, /class="panel-card cs-runtime-config-card"/);
+  assert.match(runtimeConfigCard, /class="[^\"]*cs-runtime-config-card"/);
   assert.match(runtimeConfigCard, /\.cs-form-grid\s*\{/);
   assert.match(runtimeConfigCard, /@media \(max-width: 960px\)/);
-  assert.match(upstreamMap, /class="panel-card cs-upstream-map"/);
+  assert.match(upstreamMap, /class="[^\"]*cs-upstream-map"/);
   assert.match(upstreamMap, /\.cs-upstream-grid\s*\{/);
   assert.match(upstreamMap, /@media \(max-width: 960px\)/);
   assert.match(dashboardInsights, /\.cs-section-kicker\s*\{/);
@@ -158,13 +156,13 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(chainMap, /\.cs-chain-line\s*\{/);
   assert.match(chainMap, /\.cs-chain-gates\s*\{/);
   assert.match(chainMap, /\.cs-chain-warning-strip\s*\{/);
-  assert.match(runReadinessPanel, /class="panel-card cs-run-readiness-card"/);
+  assert.match(runReadinessPanel, /class="[^\"]*cs-run-readiness-card"/);
   assert.match(runReadinessPanel, /\.cs-run-focus\s*\{/);
   assert.match(runReadinessPanel, /\.cs-run-mode-strip\s*\{/);
   assert.match(runReadinessPanel, /\.cs-run-check-details\s*\{/);
   assert.match(runReadinessPanel, /\.cs-run-check-grid\s*\{/);
   assert.match(runReadinessPanel, /@media \(max-width: 960px\)/);
-  assert.match(sectionIntro, /class="panel-card cs-section-intro"/);
+  assert.match(sectionIntro, /class="[^\"]*cs-section-intro"/);
   assert.match(sectionIntro, /\.cs-section-copy\s*\{/);
   assert.match(sectionIntro, /\.cs-chip-row\s*\{/);
   assert.match(sectionIntro, /\.cs-status-pill\.tone-sage\s*\{/);
@@ -194,7 +192,7 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectRawPanel, /\.cs-raw-editor\s*\{/);
   assert.match(ccConnectRawPanel, /\.cs-status-pill\.tone-accent\s*\{/);
   assert.match(ccConnectRawPanel, /@media \(max-width: 960px\)/);
-  assert.match(ccConnectRail, /class="panel-card cs-agent-rail"/);
+  assert.match(ccConnectRail, /class="[^\"]*cs-agent-rail"/);
   assert.match(ccConnectRail, /\.cs-agent-pane-switch\s*\{/);
   assert.match(ccConnectRail, /\.cs-agent-project-pill\s*\{/);
   assert.match(ccConnectRail, /@media \(max-width: 960px\)/);
@@ -202,7 +200,7 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectSetupPanel, /\.cs-code\s*\{/);
   assert.match(ccConnectSetupPanel, /@media \(max-width: 960px\)/);
   assert.match(ccConnectStage, /class="cs-agent-workbench"/);
-  assert.match(ccConnectStage, /class="panel-card cs-agent-stage"/);
+  assert.match(ccConnectStage, /class="[^\"]*cs-agent-stage"/);
   assert.match(ccConnectStage, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /\.cs-section-kicker\s*\{/);
   assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
@@ -387,11 +385,26 @@ test("codex stack model ribbon delegates catalog refresh without moving model ow
 });
 
 test("codex stack dashboard delegates hero actions without moving service commands", () => {
-  assert.match(controlPage, /import CodexStackDashboardHeroCard from "\.\/CodexStackDashboardHeroCard\.vue";/);
-  assert.match(
-    controlPage,
-    /<CodexStackDashboardHeroCard[\s\S]*:status-label="statusLabel"[\s\S]*:status-tone="statusTone"[\s\S]*:active-service-count="activeServiceCount"[\s\S]*:service-count="serviceCount"[\s\S]*:current-model="summary\.models\.current"[\s\S]*:codex-route-label="codexRouteLabel"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:channel-label="channelLabel\(summary\.installer\.channel\)"[\s\S]*:checked-at-label="formatTimestamp\(summary\.checkedAt\)"[\s\S]*:busy="actionBusy"[\s\S]*:busy-disabled-help="actionBusyDisabledHelp"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:sync-disabled="loading \|\| ccConnectLoading"[\s\S]*:sync-disabled-help="refreshDisabledHelp"[\s\S]*@run-check="runCheck"[\s\S]*@repair="repairRecommended"[\s\S]*@sync="loadAll"/,
-  );
+  assert.match(controlPage, /import CodexStackDashboardCommandCenter from "\.\/CodexStackDashboardCommandCenter\.vue";/);
+  assert.match(controlPage, /<CodexStackDashboardCommandCenter/);
+  assert.match(controlPage, /:status-label="statusLabel"/);
+  assert.match(controlPage, /:status-tone="statusTone"/);
+  assert.match(controlPage, /:active-service-count="activeServiceCount"/);
+  assert.match(controlPage, /:service-count="serviceCount"/);
+  assert.match(controlPage, /:current-model="summary\.models\.current"/);
+  assert.match(controlPage, /:codex-route-label="codexRouteLabel"/);
+  assert.match(controlPage, /:context-tokens-display="contextTokensDisplay"/);
+  assert.match(controlPage, /:channel-label="channelLabel\(summary\.installer\.channel\)"/);
+  assert.match(controlPage, /:checked-at-label="formatTimestamp\(summary\.checkedAt\)"/);
+  assert.match(controlPage, /:busy="actionBusy"/);
+  assert.match(controlPage, /:busy-disabled-help="actionBusyDisabledHelp"/);
+  assert.match(controlPage, /:can-run-mutation="canRunMutation"/);
+  assert.match(controlPage, /:mutation-disabled-help="mutationDisabledHelp"/);
+  assert.match(controlPage, /:sync-disabled="loading \|\| ccConnectLoading"/);
+  assert.match(controlPage, /:sync-disabled-help="refreshDisabledHelp"/);
+  assert.match(controlPage, /@run-check="runCheck"/);
+  assert.match(controlPage, /@repair="repairRecommended"/);
+  assert.match(controlPage, /@sync="loadAll"/);
   assert.match(controlPage, /const primaryServiceIds: CodexStackServiceId\[\] = \[[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"[\s\S]*"cc-connect\.service"[\s\S]*\];/);
   assert.match(controlPage, /const activeServiceCount = computed\(\(\) => countActiveServices\(primaryServices\.value\)\);/);
   assert.match(controlPage, /const serviceCount = computed\(\(\) => primaryServices\.value\.length\);/);
@@ -402,18 +415,18 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.match(controlPage, /async function loadAll\(silent = false, ccConnectOptions: CcConnectLoadOptions = \{\}\): Promise<void>/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-hero-card"/);
   assert.doesNotMatch(controlPage, /class="cs-hero-actions"/);
-  assert.match(dashboardHeroCard, /Codex 路径/);
-  assert.match(dashboardHeroCard, /核心服务/);
-  assert.match(dashboardHeroCard, /旧巡检和后台守护由推荐修复自动处理/);
-  assert.match(dashboardHeroCard, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*busyDisabledHelp: string;[\s\S]*mutationDisabledHelp: string;[\s\S]*syncDisabled: boolean;[\s\S]*syncDisabledHelp: string;[\s\S]*\}>/);
-  assert.match(dashboardHeroCard, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
-  assert.match(dashboardHeroCard, /v-else-if="syncDisabled && syncDisabledHelp"[\s\S]*class="cs-disabled-help"/);
-  assert.match(dashboardHeroCard, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
-  assert.match(dashboardHeroCard, /defineEmits<\{[\s\S]*"run-check": \[\];[\s\S]*repair: \[\];[\s\S]*sync: \[\];[\s\S]*\}>/);
-  assert.match(dashboardHeroCard, /@click="\$emit\('run-check'\)"/);
-  assert.match(dashboardHeroCard, /@click="\$emit\('repair'\)"/);
-  assert.match(dashboardHeroCard, /@click="\$emit\('sync'\)"/);
-  assert.doesNotMatch(dashboardHeroCard, /runCodexStackCheck|startCodexStackRepair|fetchCodexStackSummary|fetchCcConnectConfig|loadAll|repairRecommended|runCheck/);
+  assert.match(dashboardCommandCenter, /路径/);
+  assert.match(dashboardCommandCenter, /服务/);
+  assert.match(dashboardCommandCenter, /健康检查/);
+  assert.match(dashboardCommandCenter, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*busyDisabledHelp: string;[\s\S]*mutationDisabledHelp: string;[\s\S]*syncDisabled: boolean;[\s\S]*syncDisabledHelp: string;[\s\S]*\}>/);
+  assert.match(dashboardCommandCenter, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-command-footer-help"/);
+  assert.match(dashboardCommandCenter, /v-else-if="syncDisabled && syncDisabledHelp"[\s\S]*class="cs-command-footer-help"/);
+  assert.match(dashboardCommandCenter, /v-else-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-command-footer-help"/);
+  assert.match(dashboardCommandCenter, /defineEmits<\{[\s\S]*"run-check": \[\];[\s\S]*repair: \[\];[\s\S]*sync: \[\];[\s\S]*\}>/);
+  assert.match(dashboardCommandCenter, /@click="\$emit\('run-check'\)"/);
+  assert.match(dashboardCommandCenter, /@click="\$emit\('repair'\)"/);
+  assert.match(dashboardCommandCenter, /@click="\$emit\('sync'\)"/);
+  assert.doesNotMatch(dashboardCommandCenter, /runCodexStackCheck|startCodexStackRepair|fetchCodexStackSummary|fetchCcConnectConfig|loadAll|repairRecommended|runCheck/);
 });
 
 test("codex stack service grid explains global mutation locks without moving service actions", () => {
@@ -428,15 +441,21 @@ test("codex stack service grid explains global mutation locks without moving ser
   assert.doesNotMatch(serviceGrid, /serviceAction\(|restartCodexStackService|fetchCodexStackSummary|repairRecommended|resumeStack/);
 });
 
-test("codex stack dashboard delegates action overview without losing actions", () => {
-  assert.match(controlPage, /import CodexStackActionOverview from "\.\/CodexStackActionOverview\.vue";/);
-  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:ready-component-count="readyComponentCount"[\s\S]*:next-action-title="nextActionTitle"[\s\S]*:next-action-disabled-help="nextActionDisabledHelp"[\s\S]*:busy="actionBusy"[\s\S]*@primary="nextActionPrimary"[\s\S]*@open-section="setWorkspaceSection\(nextActionSection, focusHintForAction\(nextActionTitle, nextActionCopy\)\)"/);
+test("codex stack dashboard delegates command center without losing actions", () => {
+  assert.match(controlPage, /import CodexStackDashboardCommandCenter from "\.\/CodexStackDashboardCommandCenter\.vue";/);
+  assert.match(controlPage, /<CodexStackDashboardCommandCenter/);
+  assert.match(controlPage, /:busy="actionBusy"/);
+  assert.match(controlPage, /:ready-component-count="readyComponentCount"/);
+  assert.match(controlPage, /:next-action-title="nextActionTitle"/);
+  assert.match(controlPage, /:next-action-disabled-help="nextActionDisabledHelp"/);
+  assert.match(controlPage, /@primary="nextActionPrimary"/);
+  assert.match(controlPage, /@open-section="setWorkspaceSection\(nextActionSection, focusHintForAction\(nextActionTitle, nextActionCopy\)\)"/);
   assert.doesNotMatch(controlPage, /class="cs-command-grid"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-readiness-card"/);
-  assert.match(actionOverview, /<CodexStackRecommendationCard/);
-  assert.match(actionOverview, /:disabled-help="nextActionDisabledHelp"/);
-  assert.match(actionOverview, /nextActionRequiresMutation \? !props\.canRunMutation : props\.busy/);
-  assert.match(actionOverview, /modelCatalogPreview/);
+  assert.match(dashboardCommandCenter, /cs-next-action-pane/);
+  assert.match(dashboardCommandCenter, /nextActionDisabledHelp/);
+  assert.match(dashboardCommandCenter, /props\.nextActionRequiresMutation \? !props\.canRunMutation : props\.busy/);
+  assert.match(dashboardCommandCenter, /modelCatalogPreview/);
   assert.match(recommendationCard, /v-if="primaryDisabled && disabledHelp"/);
   assert.match(recommendationCard, /class="cs-disabled-help"/);
 });
@@ -557,24 +576,24 @@ test("codex stack install page delegates long job progress without losing pollin
   assert.match(controlPage, /function startPollingJob\(job: CodexStackJob\): void/);
   assert.match(controlPage, /fetchCodexStackJob\(activeJob\.value\.id\)[\s\S]*activeJob\.value = response\.job/);
   assert.match(jobProgressPanel, /surface\?: "overlay" \| "panel";/);
-  assert.match(jobProgressPanel, /surface === 'overlay' \? 'cs-install-overlay' : 'cs-job-progress-surface'/);
-  assert.match(jobProgressPanel, /\.cs-job-progress-surface/);
+  assert.match(jobProgressPanel, /surface === 'overlay' \? 'cs-install-overlay' : 'cs-job-progress-dock'/);
+  assert.match(jobProgressPanel, /\.cs-job-progress-dock/);
   assert.match(jobProgressPanel, /安装或修复脚本正在后台执行，日志会持续刷新。/);
   assert.match(jobProgressPanel, /job\.logTail \|\| emptyLog/);
   assert.match(jobProgressPanel, /@click="\$emit\('dismiss'\)"/);
 });
 
 test("codex stack logs page delegates job output preview without losing polling ownership", () => {
-  assert.match(controlPage, /import CodexStackJobOutputCard from "\.\/CodexStackJobOutputCard\.vue";/);
-  assert.match(controlPage, /<CodexStackJobOutputCard[\s\S]*v-if="activeJob"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
+  assert.match(controlPage, /import CodexStackJobProgressPanel from "\.\/CodexStackJobProgressPanel\.vue";/);
+  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
   assert.match(controlPage, /:empty-log="text\('等待输出\.\.\.', 'Waiting for output\.\.\.'\)"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-job-output-card"/);
   assert.match(controlPage, /function startPollingJob\(job: CodexStackJob\): void/);
   assert.match(controlPage, /fetchCodexStackJob\(activeJob\.value\.id\)[\s\S]*activeJob\.value = response\.job/);
-  assert.match(jobOutputCard, /任务输出/);
-  assert.match(jobOutputCard, /先看进度条和失败步骤/);
-  assert.match(jobOutputCard, /job\.logTail \|\| emptyLog/);
-  assert.match(jobOutputCard, /props\.job\.status === "succeeded"/);
+  assert.match(jobProgressPanel, /安装或修复脚本正在后台执行/);
+  assert.match(jobProgressPanel, /cs-job-step-list/);
+  assert.match(jobProgressPanel, /job\.logTail \|\| emptyLog/);
+  assert.match(jobProgressPanel, /job\.status === "succeeded"/);
 });
 
 test("codex stack install page delegates repair board without weakening CPA attach gate", () => {
@@ -857,8 +876,7 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(controlPage, /已有后台任务执行中，先查看日志并等待完成/);
   assert.match(controlPage, /状态正在刷新中，请等待本轮读取完成/);
   assert.match(controlPage, /Agent 配置正在同步，请等待完成后再刷新/);
-  assert.match(controlPage, /<CodexStackDashboardHeroCard[\s\S]*:busy="actionBusy"/);
-  assert.match(controlPage, /<CodexStackActionOverview[\s\S]*:busy="actionBusy"/);
+  assert.match(controlPage, /<CodexStackDashboardCommandCenter[\s\S]*:busy="actionBusy"/);
   assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:busy="actionBusy"/);
   assert.match(controlPage, /const runReadinessActionsDisabled = computed\(\(\) => busy\.value \|\| jobRunning\.value\);/);
   assert.match(controlPage, /任务执行中，先看日志/);

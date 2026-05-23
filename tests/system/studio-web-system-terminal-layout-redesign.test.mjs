@@ -59,11 +59,11 @@ test("system and terminal pages keep dedicated surface contracts", () => {
   );
   assert.match(
     systemControlPage,
-    /\.system-sidebar-panel,[\s\S]*\.system-topic-rail,[\s\S]*\.system-stage-panel[\s\S]*background:\s*var\(--surface-base\);[\s\S]*border:\s*1px\s+solid\s+var\(--border-subtle\);/,
+    /\.system-sidebar-panel,[\s\S]*\.system-topic-rail,[\s\S]*\.system-stage-panel[\s\S]*background:\s*transparent;[\s\S]*border:\s*0;/,
   );
   assert.match(
     systemControlPage,
-    /\.system-stage-tabs\.mobile-stage-tabs\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--surface-raised\)\s*88%,\s*transparent\);/,
+    /\.system-stage-tabs\.mobile-stage-tabs\s*\{[\s\S]*background:\s*transparent;/,
   );
   assert.match(
     systemControlPage,

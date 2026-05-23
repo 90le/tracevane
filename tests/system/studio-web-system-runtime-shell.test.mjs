@@ -27,13 +27,13 @@ const sectionRail = fs.readFileSync(sectionRailPath, 'utf8');
 test('system control page keeps a diagnostics summary rail and focused workspace stage', () => {
   assert.match(systemControlPage, /class="system-control-grid"/);
   assert.match(systemControlPage, /class="system-health-strip system-control-tower-rail"/);
-  assert.match(systemControlPage, /class="panel-card system-sidebar-panel"/);
+  assert.match(systemControlPage, /class="system-sidebar-panel"/);
   assert.match(systemControlPage, /class="system-quick-links"/);
   assert.match(systemControlPage, /router\.push\('\/system\/events'\)/);
   assert.match(systemControlPage, /router\.push\('\/terminal'\)/);
   assert.match(systemControlPage, /router\.push\('\/cron'\)/);
   assert.match(systemControlPage, /class="system-main-stage"/);
-  assert.match(systemControlPage, /class="panel-card system-topic-rail"/);
+  assert.match(systemControlPage, /class="system-topic-rail"/);
 });
 
 test('system control page exposes five explicit system seams centered on diagnostics work', () => {
@@ -41,11 +41,11 @@ test('system control page exposes five explicit system seams centered on diagnos
     systemControlPage,
     /type SystemTab = 'overview' \| 'bootstrap' \| 'release' \| 'gateway' \| 'diagnostics'/,
   );
-  assert.match(systemControlPage, /\{ id: 'bootstrap' as const, icon: '⚑', label: text\('引导', 'Bootstrap'\) \}/);
-  assert.match(systemControlPage, /\{ id: 'overview' as const, icon: '◉', label: text\('概览', 'Overview'\) \}/);
-  assert.match(systemControlPage, /\{ id: 'release' as const, icon: '⭮', label: text\('升级', 'Release'\) \}/);
-  assert.match(systemControlPage, /\{ id: 'gateway' as const, icon: '⛭', label: text\('Gateway', 'Gateway'\) \}/);
-  assert.match(systemControlPage, /\{ id: 'diagnostics' as const, icon: '⌘', label: text\('诊断输出', 'Diagnostics'\) \}/);
+  assert.match(systemControlPage, /\{ id: 'bootstrap' as const, icon: Flag, label: text\('引导', 'Bootstrap'\) \}/);
+  assert.match(systemControlPage, /\{ id: 'overview' as const, icon: Gauge, label: text\('概览', 'Overview'\) \}/);
+  assert.match(systemControlPage, /\{ id: 'release' as const, icon: RefreshCw, label: text\('升级', 'Release'\) \}/);
+  assert.match(systemControlPage, /\{ id: 'gateway' as const, icon: Network, label: text\('Gateway', 'Gateway'\) \}/);
+  assert.match(systemControlPage, /\{ id: 'diagnostics' as const, icon: ClipboardList, label: text\('诊断输出', 'Diagnostics'\) \}/);
   assert.match(systemControlPage, /v-if="activeTab === 'overview'"/);
   assert.match(systemControlPage, /v-else-if="activeTab === 'release'"/);
   assert.match(systemControlPage, /v-else-if="activeTab === 'gateway'"/);
@@ -66,7 +66,7 @@ test('new system shell helper components keep dedicated template seams', () => {
   assert.match(overviewPanel, /v-for="card in healthCards"/);
   assert.match(overviewPanel, /v-for="card in runtimeCards"/);
 
-  assert.match(sectionRail, /<article class="panel-card system-sidebar-panel">/);
+  assert.match(sectionRail, /<article class="system-sidebar-panel">/);
   assert.match(sectionRail, /<StatusPill/);
   assert.match(sectionRail, /v-for="action in quickActions"/);
 });

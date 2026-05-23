@@ -31,7 +31,8 @@ test('shared motion presets exist for shell and page-stage reveals', () => {
   assert.match(motionModule, /export const shellRouteReveal/);
   assert.match(motionModule, /export const pageMastheadReveal/);
   assert.match(motionModule, /export const pageSurfaceReveal/);
-  assert.doesNotMatch(motionModule, /initial:\s*\{\s*opacity:\s*0/);
+  assert.match(motionModule, /filter:\s*"blur\(8px\)"/);
+  assert.match(motionModule, /scale:\s*0\.992/);
   assert.doesNotMatch(motionModule, /y:\s*(14|18|22|-10|-12)/);
   assert.match(motionModule, /duration:\s*0/);
 });

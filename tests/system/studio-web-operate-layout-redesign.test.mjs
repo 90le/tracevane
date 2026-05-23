@@ -49,7 +49,7 @@ test("operate pages keep shared workspace language hooks", () => {
 
   assert.match(
     globalStyle,
-    /\.operate-workspace-shell\s+\.panel-card,[\s\S]*\.operate-resource-rail,[\s\S]*\.operate-stage\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
+    /\.operate-workspace-shell\s+\.operate-resource-rail,[\s\S]*\.operate-stage\s*\{[\s\S]*min-width:\s*0;[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
   );
   assert.match(
     globalStyle,
@@ -70,6 +70,6 @@ test("cron page keeps one create failure alert watcher and shared surface tokens
   assert.equal(createFailureAlertWatcherMatches.length, 1);
   assert.match(
     cronControlPage,
-    /\.cron-sidebar-panel,[\s\S]*\.cron-stage-header,[\s\S]*\.cron-stage-panel\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
+    /\.cron-sidebar-panel,[\s\S]*\.cron-stage-header,[\s\S]*\.cron-stage-panel\s*\{[\s\S]*background:\s*transparent;[\s\S]*border:\s*0;/,
   );
 });

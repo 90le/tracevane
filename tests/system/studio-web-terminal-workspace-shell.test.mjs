@@ -688,10 +688,11 @@ test("terminal workspace maps inspector action triggers to real terminal command
 });
 
 test("terminal workspace restores richer cli and skills inspector with command-injection install UX", () => {
-  assert.match(inspectorContent, /terminal-inspector-summary-card/);
+  assert.match(inspectorContent, /terminal-inspector-summary-grid/);
+  assert.match(inspectorContent, /terminal-summary-stat/);
   assert.match(inspectorContent, /terminal-inspector-switcher/);
   assert.match(inspectorContent, /terminal-inspector-tooling/);
-  assert.match(inspectorContent, /terminal-binary-grid/);
+  assert.match(inspectorContent, /terminal-binary-list/);
   assert.match(inspectorContent, /terminal-missing-deps/);
   assert.match(inspectorContent, /\$emit\('launchCli', 'claude'\)/);
   assert.match(inspectorContent, /\$emit\('launchCli', 'bash'\)/);

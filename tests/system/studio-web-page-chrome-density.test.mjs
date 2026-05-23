@@ -14,20 +14,15 @@ function read(filePath) {
 const styleCss = read("apps/web-vue/src/style.css");
 
 test("shared primitives consume semantic aliases for surfaces and action accents", () => {
-  assert.match(
-    styleCss,
-    /\.panel-card,\s*\.metric-card\s*\{[^}]*background:\s*var\(--surface-base\);/,
-  );
-  assert.match(
-    styleCss,
-    /\.panel-card,\s*\.metric-card\s*\{[^}]*border:\s*1px solid var\(--border-subtle\);/,
-  );
+  assert.doesNotMatch(styleCss, /\.panel-card,\s*\.metric-card\s*\{/);
+  assert.match(styleCss, /\.cs-surface\s*\{[\s\S]*background:[\s\S]*var\(--surface-base\)/);
+  assert.match(styleCss, /\.cs-surface\s*\{[\s\S]*border:\s*1px solid var\(--border-subtle\);/);
   assert.match(
     styleCss,
     /\.primary-button\s*\{[^}]*background:\s*var\(--accent-primary\);/,
   );
   assert.match(
     styleCss,
-    /\.status-banner\s*\{[^}]*background:\s*var\(--surface-raised\);/,
+    /\.status-banner\s*\{[\s\S]*background:\s*var\(--surface-raised\);/,
   );
 });

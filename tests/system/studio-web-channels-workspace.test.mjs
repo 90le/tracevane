@@ -72,8 +72,9 @@ test("channels workspace keeps a persistent stage header with top tabs and accou
 
 test("channels overview is a thin provider-first surface with summary, quick edits, issues, and account index", () => {
   assert.match(channelsControlPage, /ChannelProviderOverview/);
-  assert.match(providerOverview, /ChannelSummaryStrip/);
-  assert.match(providerOverview, /channel-provider-overview__quick-edit/);
+  assert.match(providerOverview, /channel-command-center/);
+  assert.match(providerOverview, /channel-command-facts/);
+  assert.match(providerOverview, /channel-command-center__edit/);
   assert.match(providerOverview, /ChannelIssueList/);
   assert.match(providerOverview, /ChannelAccountIndex/);
   assert.match(providerOverview, /update-provider-enabled/);

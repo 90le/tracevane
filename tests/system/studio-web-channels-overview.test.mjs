@@ -15,7 +15,6 @@ const channelProviderOverview = read('apps/web-vue/src/features/channels/Channel
 const channelAccountCard = read('apps/web-vue/src/features/channels/ChannelAccountCard.vue');
 const channelAccountIndex = read('apps/web-vue/src/features/channels/ChannelAccountIndex.vue');
 const channelIssueList = read('apps/web-vue/src/features/channels/ChannelIssueList.vue');
-const channelSummaryStrip = read('apps/web-vue/src/features/channels/ChannelSummaryStrip.vue');
 const channelBindingsPage = read('apps/web-vue/src/features/channels/ChannelBindingsPage.vue');
 const channelBindingEditorPanel = read('apps/web-vue/src/features/channels/ChannelBindingEditorPanel.vue');
 
@@ -36,8 +35,9 @@ test('channels control page no longer acts as the all-in-one workbench container
 });
 
 test('provider overview composes summary and index surfaces while stage actions stay in the workspace shell', () => {
-  assert.match(channelProviderOverview, /ChannelSummaryStrip/);
-  assert.match(channelProviderOverview, /channel-provider-overview__quick-edit/);
+  assert.match(channelProviderOverview, /channel-command-center/);
+  assert.match(channelProviderOverview, /channel-command-facts/);
+  assert.match(channelProviderOverview, /channel-command-center__edit/);
   assert.match(channelProviderOverview, /ChannelIssueList/);
   assert.match(channelProviderOverview, /ChannelAccountIndex/);
   assert.match(channelProviderOverview, /update-provider-enabled/);
@@ -100,9 +100,10 @@ test('issue list routes operators to the relevant workflow instead of only openi
   assert.doesNotMatch(channelIssueList, /查看账号/);
 });
 
-test('channel summary strip exposes connection mode in the landing-state snapshot', () => {
-  assert.match(channelSummaryStrip, /Connection Mode|连接模式/);
-  assert.match(channelSummaryStrip, /channel\.connectionMode/);
+test('provider command facts expose connection mode in the landing-state snapshot', () => {
+  assert.match(channelProviderOverview, /Connection|连接/);
+  assert.match(channelProviderOverview, /channel\.connectionMode/);
+  assert.match(channelProviderOverview, /channel-command-fact/);
 });
 
 test('bindings page can preserve account context when opened from an account card shortcut', () => {
