@@ -1,0 +1,325 @@
+.cs-install-entry {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.78fr) minmax(420px, 1.22fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 74%, transparent) 1px, transparent 1px) 0 0 / 22px 22px,
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 82%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
+  backdrop-filter: blur(16px) saturate(1.04);
+}
+
+.cs-install-entry-copy,
+.cs-install-action-rail {
+  min-width: 0;
+  padding: 18px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+}
+
+.cs-install-entry-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cs-install-entry h4,
+.cs-repair-workflow h4 {
+  margin: 0;
+  font-size: 1.16rem;
+}
+
+.cs-install-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cs-install-highlights span {
+  display: inline-flex;
+  border: 1px solid color-mix(in srgb, var(--acc) 24%, var(--line));
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--code-bg) 36%, transparent);
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.cs-install-action-rail {
+  display: grid;
+  gap: 1px;
+  padding: 0;
+  background: color-mix(in srgb, var(--line) 76%, transparent);
+}
+
+.cs-install-action-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+.cs-install-action-primary {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 12%, transparent), transparent 36%),
+    color-mix(in srgb, var(--surface) 78%, transparent);
+}
+
+.cs-install-step-mark,
+.cs-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--acc) 30%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--acc) 15%, transparent);
+  color: var(--acc);
+  font-weight: 800;
+}
+
+.cs-install-action-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cs-install-action-row strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.cs-install-action-row p {
+  margin: 5px 0 0;
+  color: var(--text-soft);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.cs-install-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cs-field-hint {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.cs-repair-workflow {
+  display: grid;
+  gap: 14px;
+  overflow: hidden;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--warning) 8%, transparent), transparent 34%),
+    color-mix(in srgb, var(--shell-panel-fill) 88%, transparent);
+}
+
+.cs-repair-brief {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cs-repair-workflow-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.cs-repair-timeline,
+.cs-repair-grid {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 46%, transparent);
+}
+
+.cs-repair-grid {
+  grid-template-columns: 1fr;
+  background: color-mix(in srgb, var(--surface) 42%, transparent);
+}
+
+.cs-repair-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: start;
+  padding: 15px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  background: transparent;
+}
+
+.cs-repair-step:last-child {
+  border-bottom: none;
+}
+
+.cs-repair-step-primary {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--acc) 8%, transparent), transparent 72%);
+}
+
+.cs-step-number {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.cs-repair-step strong {
+  padding-right: 30px;
+  color: var(--text);
+}
+
+.cs-repair-step p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.cs-repair-step button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.cs-repair-card-note {
+  border-left: 3px solid var(--warning);
+  padding-left: 10px;
+  font-size: 0.86rem;
+}
+
+.cs-disabled-help {
+  margin: 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.cs-advanced-repair {
+  margin-top: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--code-bg) 20%, transparent);
+}
+
+.cs-attach-summary {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--acc) 28%, var(--line));
+  border-radius: 10px;
+  padding: 14px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 12%, transparent), transparent 34%),
+    color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+.cs-attach-summary strong {
+  color: var(--text);
+}
+
+.cs-attach-route-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cs-advanced-repair summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.cs-advanced-repair .cs-repair-grid {
+  margin-top: 12px;
+}
+
+.cs-attach-preflight-list {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  margin: 0;
+}
+
+.cs-attach-preflight-row {
+  display: grid;
+  gap: 3px;
+  padding: 8px 0;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background: transparent;
+}
+
+.cs-attach-preflight-row:last-child {
+  border-bottom: none;
+}
+
+.cs-attach-preflight-row dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.cs-attach-preflight-row dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.cs-attach-preflight-row.tone-sage {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--line));
+}
+
+.cs-attach-preflight-row.tone-accent {
+  border-color: color-mix(in srgb, var(--acc) 42%, var(--line));
+}
+
+.cs-attach-preflight-row.tone-danger {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
+}
+
+@media (max-width: 960px) {
+  .cs-install-entry,
+  .cs-repair-workflow-grid,
+  .cs-repair-timeline,
+  .cs-repair-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-install-action-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .cs-install-action-row > button,
+  .cs-install-secondary-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .cs-repair-step {
+    grid-template-columns: 1fr;
+  }
+}

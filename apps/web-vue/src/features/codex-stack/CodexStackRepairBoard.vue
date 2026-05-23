@@ -1,16 +1,16 @@
 <template>
-  <article class="cs-repair-board">
-    <div class="cs-card-header">
+  <section class="cs-repair-workflow" aria-labelledby="cs-repair-workflow-title">
+    <div class="cs-repair-brief">
       <div>
         <p class="cs-section-kicker">{{ text("推荐路径", "Recommended Path") }}</p>
-        <h4>{{ text("先修复，再验证，最后切换", "Repair, Verify, Then Attach") }}</h4>
+        <h4 id="cs-repair-workflow-title">{{ text("先修复，再验证，最后切换", "Repair, Verify, Then Attach") }}</h4>
         <p class="cs-field-hint">
           {{ text("大多数情况下只需要按下面 3 步走。高级操作只在端口冲突、配置损坏或需要手动暂停时使用。", "Most cases only need the three steps below. Advanced actions are for port conflicts, damaged config, or manual pause/resume.") }}
         </p>
       </div>
     </div>
-    <div class="cs-repair-guide-layout">
-      <div class="cs-repair-flow">
+    <div class="cs-repair-workflow-grid">
+      <div class="cs-repair-timeline">
         <article class="cs-repair-step cs-repair-step-primary">
           <span class="cs-step-number">1</span>
           <strong>{{ text("推荐修复", "Recommended Repair") }}</strong>
@@ -95,10 +95,11 @@
         </article>
       </div>
     </details>
-  </article>
+  </section>
 </template>
 
 <script setup lang="ts">
+import "./codex-stack-install.css";
 import { useLocalePreference } from "../../shared/locale";
 import type { CodexStackTone } from "./codex-stack-view-model";
 
@@ -131,207 +132,3 @@ defineEmits<{
 
 const { text } = useLocalePreference();
 </script>
-
-<style scoped>
-.cs-repair-board {
-  display: grid;
-  gap: 14px;
-  overflow: hidden;
-  padding: 16px;
-  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-  border-radius: 12px;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--warning) 8%, transparent), transparent 34%),
-    color-mix(in srgb, var(--shell-panel-fill) 88%, transparent);
-}
-
-.cs-field-hint {
-  max-width: 760px;
-  margin: 6px 0 0;
-  color: var(--text-soft);
-  line-height: 1.45;
-}
-
-.cs-repair-guide-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
-  gap: 14px;
-  align-items: stretch;
-}
-
-.cs-repair-flow {
-  display: grid;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 46%, transparent);
-}
-
-.cs-attach-route-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.cs-repair-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 42%, transparent);
-}
-
-.cs-repair-step {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 12px;
-  align-items: start;
-  padding: 15px 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  background: transparent;
-}
-
-.cs-repair-step:last-child {
-  border-bottom: none;
-}
-
-.cs-repair-step-primary {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--acc) 8%, transparent), transparent 72%);
-}
-
-.cs-step-number {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--acc) 15%, transparent);
-  color: var(--acc);
-  font-weight: 800;
-}
-
-.cs-repair-step strong {
-  padding-right: 30px;
-  color: var(--text);
-}
-
-.cs-repair-step p {
-  grid-column: 1 / -1;
-  margin: 0;
-  color: var(--text-soft);
-}
-
-.cs-repair-step button {
-  grid-column: 1 / -1;
-  justify-self: start;
-}
-
-.cs-repair-card-note {
-  border-left: 3px solid var(--warning);
-  padding-left: 10px;
-  font-size: 0.86rem;
-}
-
-.cs-disabled-help {
-  margin: 0;
-  color: var(--warning);
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
-.cs-advanced-repair {
-  margin-top: 14px;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 10px;
-  padding: 12px;
-  background: color-mix(in srgb, var(--code-bg) 20%, transparent);
-}
-
-.cs-attach-summary {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 10px;
-  border: 1px solid color-mix(in srgb, var(--acc) 28%, var(--line));
-  border-radius: 10px;
-  padding: 14px;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 12%, transparent), transparent 34%),
-    color-mix(in srgb, var(--surface) 92%, transparent);
-}
-
-.cs-attach-summary strong {
-  color: var(--text);
-}
-
-.cs-advanced-repair summary {
-  cursor: pointer;
-  color: var(--text);
-  font-weight: 700;
-}
-
-.cs-advanced-repair .cs-repair-grid {
-  margin-top: 12px;
-}
-
-.cs-attach-preflight-list {
-  display: grid;
-  gap: 7px;
-  width: 100%;
-  margin: 0;
-}
-
-.cs-attach-preflight-row {
-  display: grid;
-  gap: 3px;
-  padding: 8px 0;
-  border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  background: transparent;
-}
-
-.cs-attach-preflight-row:last-child {
-  border-bottom: none;
-}
-
-.cs-attach-preflight-row dt {
-  color: var(--muted);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-}
-
-.cs-attach-preflight-row dd {
-  margin: 0;
-  color: var(--text);
-  font-size: 0.84rem;
-  line-height: 1.35;
-}
-
-.cs-attach-preflight-row.tone-sage {
-  border-color: color-mix(in srgb, var(--success) 42%, var(--line));
-}
-
-.cs-attach-preflight-row.tone-accent {
-  border-color: color-mix(in srgb, var(--acc) 42%, var(--line));
-}
-
-.cs-attach-preflight-row.tone-danger {
-  border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
-}
-
-@media (max-width: 960px) {
-  .cs-repair-guide-layout,
-  .cs-repair-flow,
-  .cs-repair-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
