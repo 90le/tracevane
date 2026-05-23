@@ -17,6 +17,11 @@ const skillsControlPage = fs.readFileSync(
   "utf8",
 );
 
+const skillsWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/skills/skills-workspace.css"),
+  "utf8",
+);
+
 const skillsOverviewRecipe = fs.readFileSync(
   path.join(
     rootDir,
@@ -63,6 +68,14 @@ test("skills control page consumes recipe content for workspace copy", () => {
   assert.match(skillsControlPage, /overviewRecipe\.value\.installedHeadline/);
   assert.match(skillsControlPage, /overviewRecipe\.value\.marketplaceHeadline/);
   assert.match(skillsControlPage, /overviewRecipe\.value\.uploadHeadline/);
+  assert.match(skillsControlPage, /skills-command-panel/);
+  assert.match(skillsControlPage, /activeModeTitle/);
+  assert.match(skillsControlPage, /activeModeSummary/);
+  assert.match(skillsControlPage, /import '\.\/skills-workspace\.css';/);
+  assert.doesNotMatch(skillsControlPage, /<style scoped>/);
+  assert.doesNotMatch(skillsControlPage, /只关注本地技能、依赖缺口和维护动作/);
+  assert.match(skillsWorkspaceCss, /\.skills-command-panel/);
+  assert.match(skillsWorkspaceCss, /\.skills-command-copy/);
   assert.doesNotMatch(skillsControlPage, /DEFAULT_SKILLS_OVERVIEW_RECIPE/);
 });
 
