@@ -24,6 +24,9 @@ const cronControlPage = read(
 const systemControlPage = read(
   "apps/web-vue/src/features/system/SystemControlPage.vue",
 );
+const systemWorkspaceCss = read(
+  "apps/web-vue/src/features/system/system-workspace.css",
+);
 
 test("mobile chat keeps dedicated rail drawer and inspector sheet contracts", () => {
   assert.match(
@@ -45,7 +48,7 @@ test("mobile operate and system side areas use sheet, tabs, drawer, or accordion
   assert.match(cronControlPage, mobileDownshiftContract);
   assert.match(systemControlPage, mobileDownshiftContract);
   assert.match(
-    systemControlPage,
+    systemWorkspaceCss,
     /@media \(max-width: 880px\) \{[\s\S]*\.system-stage-tabs\.mobile-stage-tabs \{[\s\S]*overflow-x:\s*auto/,
   );
 });

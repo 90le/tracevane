@@ -62,17 +62,32 @@
             </div>
           </div>
 
-          <div class="system-quick-links">
-            <button type="button" class="secondary-button compact-button" @click="router.push('/system/events')">
-              {{ text('事件中心', 'Event Center') }}
+          <nav class="system-command-list" :aria-label="text('系统工作入口', 'System workspace entries')">
+            <button type="button" class="system-command-row" @click="router.push('/system/events')">
+              <span class="system-command-row__index">01</span>
+              <span class="system-command-row__copy">
+                <strong>{{ text('事件中心', 'Event Center') }}</strong>
+                <span>{{ text('查看配置、修复和运行事件', 'Review config, repair, and runtime events') }}</span>
+              </span>
+              <span class="system-command-row__verb">{{ text('打开', 'Open') }}</span>
             </button>
-            <button type="button" class="secondary-button compact-button" @click="router.push('/terminal')">
-              {{ text('去终端', 'Open Terminal') }}
+            <button type="button" class="system-command-row" @click="router.push('/terminal')">
+              <span class="system-command-row__index">02</span>
+              <span class="system-command-row__copy">
+                <strong>{{ text('去终端', 'Open Terminal') }}</strong>
+                <span>{{ text('进入恢复会话和命令执行台', 'Open recovery sessions and command execution') }}</span>
+              </span>
+              <span class="system-command-row__verb">{{ text('打开', 'Open') }}</span>
             </button>
-            <button type="button" class="secondary-button compact-button" @click="router.push('/cron')">
-              {{ text('去定时任务', 'Open Cron') }}
+            <button type="button" class="system-command-row" @click="router.push('/cron')">
+              <span class="system-command-row__index">03</span>
+              <span class="system-command-row__copy">
+                <strong>{{ text('去定时任务', 'Open Cron') }}</strong>
+                <span>{{ text('检查计划任务和后台动作', 'Inspect schedules and background actions') }}</span>
+              </span>
+              <span class="system-command-row__verb">{{ text('打开', 'Open') }}</span>
             </button>
-          </div>
+          </nav>
         </article>
       </aside>
 
@@ -604,6 +619,7 @@ import {
   repairSystemDeviceTrustHelper,
   startStudioUpgrade,
 } from './api';
+import './system-workspace.css';
 import { isStudioUpgradeEffectivelyFailed } from './studio-release-state';
 
 type SystemTab = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics';
@@ -1203,352 +1219,3 @@ function activateSystemPage(): void {
 onMounted(activateSystemPage);
 onActivated(activateSystemPage);
 </script>
-
-<style scoped>
-.system-page,
-.system-control-surface,
-.system-control-tower-surface {
-  gap: 18px;
-  position: relative;
-}
-
-.system-control-tower-surface::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(520px 200px at 8% 0%, var(--system-control-tower-glow), transparent 64%),
-    linear-gradient(180deg, transparent, color-mix(in srgb, var(--system-control-tower-glow) 18%, transparent));
-  opacity: 0.82;
-}
-
-.system-control-grid {
-  display: grid;
-  grid-template-columns: minmax(260px, 310px) minmax(0, 1fr);
-  gap: 0;
-  align-items: start;
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-base) 56%, transparent);
-}
-
-.system-health-strip,
-.system-main-stage {
-  min-width: 0;
-  position: relative;
-  z-index: 1;
-}
-
-.system-sidebar-panel,
-.system-topic-rail,
-.system-stage-panel {
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.system-sidebar-panel,
-.system-stage-panel {
-  padding: 18px;
-}
-
-.system-sidebar-panel {
-  min-height: 100%;
-  border-right: 1px solid var(--border-subtle);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 52%, transparent), color-mix(in srgb, var(--surface-base) 18%, transparent));
-}
-
-.system-sidebar-head,
-.system-section-head,
-.system-stage-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-.system-sidebar-title,
-.system-stage-title,
-.system-section-head h3 {
-  margin: 0;
-  color: var(--text);
-}
-
-.system-section-head p,
-.system-sidebar-head p,
-.system-stage-head p {
-  margin: 6px 0 0 0;
-  color: var(--text-soft);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.system-section-head-tight {
-  margin-top: 18px;
-}
-
-.system-inline-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.system-pending-request {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-  padding: 12px 0;
-  border-top: 1px solid var(--line);
-}
-
-.system-pending-request:first-of-type {
-  border-top: 0;
-}
-
-.system-pending-request p {
-  margin: 4px 0 0 0;
-  color: var(--text-soft);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.system-status-stack,
-.system-sidebar-summary,
-.system-quick-links,
-.system-overview-grid,
-.system-detail-list,
-.system-callout-list {
-  display: grid;
-  gap: 10px;
-}
-
-.system-status-row,
-.system-stage-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.system-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-soft);
-  font-size: 12px;
-}
-
-.system-sidebar-summary {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-
-.system-summary-item,
-.system-detail-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-}
-
-.system-summary-item span,
-.system-detail-row span,
-.system-stage-fact span,
-.system-overview-item span {
-  color: var(--text-soft);
-  font-size: 12px;
-}
-
-.system-summary-item strong,
-.system-detail-row strong,
-.system-stage-fact strong,
-.system-overview-item strong {
-  color: var(--text);
-}
-
-.system-stage-header,
-.system-topic-rail {
-  padding: 18px 18px 0 18px;
-  border-bottom: 1px solid var(--border-subtle);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 58%, transparent), color-mix(in srgb, var(--surface-base) 12%, transparent));
-}
-
-.system-stage-facts {
-  justify-content: flex-end;
-}
-
-.system-stage-fact,
-.system-overview-item,
-.system-callout,
-.system-code-block {
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
-  border-radius: 12px;
-}
-
-.system-stage-fact,
-.system-overview-item {
-  min-width: 128px;
-  padding: 12px 14px;
-  display: grid;
-  gap: 6px;
-}
-
-.system-stage-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 16px 0 18px 0;
-  margin-top: 16px;
-  border-top: 1px solid var(--line);
-}
-
-.system-stage-tabs.mobile-stage-tabs {
-  background: transparent;
-}
-
-.system-stage-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-soft);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.system-stage-tab.active {
-  color: var(--text);
-  border-color: rgba(120, 185, 255, 0.38);
-  background: linear-gradient(135deg, rgba(120, 185, 255, 0.18), rgba(126, 217, 194, 0.16));
-}
-
-.system-stage-panel,
-.system-section {
-  display: grid;
-  gap: 16px;
-}
-
-.system-stage-panel {
-  padding: 18px;
-}
-
-.system-section + .system-section {
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
-}
-
-.system-overview-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.system-callout {
-  padding: 14px 16px;
-}
-
-.system-callout strong {
-  color: var(--text);
-}
-
-.system-callout p {
-  margin: 10px 0 0 0;
-  color: var(--text-soft);
-  line-height: 1.6;
-}
-
-.system-callout-error {
-  background: var(--surface-danger);
-  border-color: color-mix(in srgb, var(--danger) 28%, var(--border-subtle));
-}
-
-.system-callout-list {
-  margin: 10px 0 0 18px;
-  color: var(--text-soft);
-}
-
-.system-code-block {
-  padding: 14px;
-  white-space: pre-wrap;
-  line-height: 1.7;
-  font-size: 12px;
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
-  overflow: auto;
-}
-
-@media (max-width: 1180px) {
-  .system-control-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .system-sidebar-panel {
-    border-right: 0;
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  .system-main-stage {
-    order: -1;
-  }
-
-  .system-health-strip {
-    order: 1;
-  }
-
-  .system-topic-rail {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-  }
-}
-
-@media (max-width: 880px) {
-  .system-overview-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .system-stage-head,
-  .system-summary-item,
-  .system-detail-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .system-stage-facts {
-    justify-content: flex-start;
-  }
-
-  .system-stage-tabs.mobile-stage-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    padding-bottom: 12px;
-    margin-inline: -4px;
-    padding-inline: 4px;
-    scrollbar-width: thin;
-  }
-
-  .system-stage-tabs.mobile-stage-tabs::-webkit-scrollbar {
-    height: 6px;
-  }
-
-  .system-stage-tabs.mobile-stage-tabs::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.18);
-    border-radius: 999px;
-  }
-
-  .system-stage-tab {
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-}
-</style>

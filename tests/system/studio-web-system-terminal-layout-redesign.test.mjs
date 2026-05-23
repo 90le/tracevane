@@ -12,6 +12,9 @@ const read = (filePath) =>
 const systemControlPage = read(
   "apps/web-vue/src/features/system/SystemControlPage.vue",
 );
+const systemWorkspaceCss = read(
+  "apps/web-vue/src/features/system/system-workspace.css",
+);
 const terminalConsolePage = read(
   "apps/web-vue/src/features/terminal/TerminalConsolePage.vue",
 );
@@ -31,7 +34,11 @@ test("system and terminal pages keep dedicated surface contracts", () => {
   assert.match(systemControlPage, /system-control-grid/);
   assert.match(systemControlPage, /system-main-stage/);
   assert.match(systemControlPage, /system-raw-inspector/);
-  assert.match(systemControlPage, /system-stage-tabs\.mobile-stage-tabs/);
+  assert.match(systemControlPage, /class="system-stage-tabs mobile-stage-tabs"/);
+  assert.match(systemControlPage, /system-command-list/);
+  assert.match(systemControlPage, /system-command-row/);
+  assert.match(systemControlPage, /import '\.\/system-workspace\.css';/);
+  assert.doesNotMatch(systemControlPage, /<style scoped>/);
   assert.match(systemControlPage, /router\.push\('\/system\/events'\)/);
   assert.match(
     systemControlPage,
@@ -46,27 +53,27 @@ test("system and terminal pages keep dedicated surface contracts", () => {
     /\{\{ text\('去定时任务', 'Open Cron'\) \}\}/,
   );
   assert.match(
-    systemControlPage,
+    systemWorkspaceCss,
     /@media \(max-width: 1180px\) \{[\s\S]*\.system-main-stage \{[\s\S]*order:\s*-1;/,
   );
   assert.match(
-    systemControlPage,
+    systemWorkspaceCss,
     /\.system-main-stage\s*\{[\s\S]*order:\s*-1;/,
   );
   assert.match(
-    systemControlPage,
+    systemWorkspaceCss,
     /@media \(max-width: 880px\) \{[\s\S]*\.system-stage-tabs\.mobile-stage-tabs \{[\s\S]*overflow-x:\s*auto/,
   );
   assert.match(
-    systemControlPage,
+    systemWorkspaceCss,
     /\.system-sidebar-panel,[\s\S]*\.system-topic-rail,[\s\S]*\.system-stage-panel[\s\S]*background:\s*transparent;[\s\S]*border:\s*0;/,
   );
   assert.match(
-    systemControlPage,
+    systemWorkspaceCss,
     /\.system-stage-tabs\.mobile-stage-tabs\s*\{[\s\S]*background:\s*transparent;/,
   );
   assert.match(
-    systemControlPage,
+    systemWorkspaceCss,
     /\.system-callout-error\s*\{[\s\S]*background:\s*var\(--surface-danger\);[\s\S]*border-color:\s*color-mix\(in srgb,\s*var\(--danger\)\s*28%,\s*var\(--border-subtle\)\);/,
   );
 
@@ -92,7 +99,7 @@ test("system and terminal pages keep dedicated surface contracts", () => {
 test("system control tower and terminal workspace expressions stay explicit", () => {
   assert.match(systemControlPage, /system-control-tower-surface/);
   assert.match(systemControlPage, /system-control-tower-rail/);
-  assert.match(systemControlPage, /var\(--system-control-tower-glow\)/);
+  assert.match(systemWorkspaceCss, /var\(--system-control-tower-glow\)/);
 
   assert.match(terminalConsolePage, /terminal-console-surface/);
   assert.match(terminalConsolePage, /terminal-console-main/);

@@ -13,17 +13,27 @@ const systemControlPagePath = path.join(
 );
 
 const systemControlPage = fs.readFileSync(systemControlPagePath, 'utf8');
+const systemWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/system/system-workspace.css'),
+  'utf8',
+);
 
 test('system control page keeps a diagnostics summary rail and focused workspace stage', () => {
   assert.match(systemControlPage, /class="system-control-grid"/);
   assert.match(systemControlPage, /class="system-health-strip system-control-tower-rail"/);
   assert.match(systemControlPage, /class="system-sidebar-panel"/);
-  assert.match(systemControlPage, /class="system-quick-links"/);
+  assert.match(systemControlPage, /class="system-command-list"/);
+  assert.match(systemControlPage, /class="system-command-row"/);
+  assert.doesNotMatch(systemControlPage, /class="system-quick-links"/);
   assert.match(systemControlPage, /router\.push\('\/system\/events'\)/);
   assert.match(systemControlPage, /router\.push\('\/terminal'\)/);
   assert.match(systemControlPage, /router\.push\('\/cron'\)/);
   assert.match(systemControlPage, /class="system-main-stage"/);
   assert.match(systemControlPage, /class="system-topic-rail"/);
+  assert.match(systemControlPage, /import '\.\/system-workspace\.css';/);
+  assert.doesNotMatch(systemControlPage, /<style scoped>/);
+  assert.match(systemWorkspaceCss, /\.system-command-list\s*\{/);
+  assert.match(systemWorkspaceCss, /\.system-command-row\s*\{/);
 });
 
 test('system control page exposes five explicit system seams centered on diagnostics work', () => {
