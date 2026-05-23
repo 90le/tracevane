@@ -468,68 +468,8 @@ button {
   transition: grid-template-columns 0.26s ease;
 }
 
-.ambient-orb {
-  position: fixed;
-  width: 380px;
-  height: 380px;
-  border-radius: 999px;
-  pointer-events: none;
-  z-index: 0;
-  filter: blur(72px);
-  opacity: 0.16;
-  will-change: transform;
-  transition: transform 0.24s ease-out, opacity 0.24s ease-out;
-}
-
-.ambient-orb-a {
-  background: radial-gradient(circle, var(--body-glow-a) 0%, transparent 74%);
-}
-
-.ambient-orb-b {
-  background: radial-gradient(circle, var(--body-glow-b) 0%, transparent 72%);
-}
-
-.ambient-orb-c {
-  background: radial-gradient(circle, var(--body-glow-c) 0%, transparent 70%);
-}
-
-.app-container::before,
-.app-container::after {
-  content: "";
-  position: fixed;
-  pointer-events: none;
-  z-index: 0;
-  border-radius: 999px;
-  filter: blur(80px);
-  opacity: 0.1;
-}
-
-.app-container::before {
-  width: 360px;
-  height: 360px;
-  top: -80px;
-  right: -40px;
-  background: color-mix(in srgb, var(--body-glow-a) 70%, transparent);
-  transform: translate3d(0, 0, 0);
-}
-
-.app-container::after {
-  width: 300px;
-  height: 300px;
-  bottom: 24px;
-  right: 10%;
-  background: color-mix(in srgb, var(--body-glow-b) 56%, transparent);
-  transform: translate3d(0, 0, 0);
-}
-
 .app-container.sidebar-collapsed {
   --sidebar-width: var(--sidebar-collapsed-width);
-}
-
-.app-container.files-shell .ambient-orb,
-.app-container.files-shell::before,
-.app-container.files-shell::after {
-  display: none;
 }
 
 .sidebar {
@@ -1622,7 +1562,6 @@ button {
   grid-template-columns: minmax(300px, 0.7fr) minmax(0, 1.3fr);
 }
 
-.panel-card,
 .metric-card {
   position: relative;
   background: var(--surface-base);
@@ -1633,11 +1572,6 @@ button {
   overflow: visible;
 }
 
-.panel-card {
-  padding: 15px;
-}
-
-.panel-card::before,
 .metric-card::before {
   content: "";
   position: absolute;
@@ -3695,8 +3629,7 @@ html[data-theme="light"] .docs-link-icon {
   gap: 16px;
 }
 
-.operate-workspace-shell .panel-card,
-.operate-resource-rail,
+.operate-workspace-shell .operate-resource-rail,
 .operate-stage {
   background: var(--surface-base);
   border: 1px solid var(--border-subtle);
@@ -4323,7 +4256,6 @@ html[data-theme="light"] .docs-link-icon {
   line-height: 1.55;
 }
 
-.subpanel-card,
 .binding-item,
 .request-item {
   padding: 14px;
@@ -6200,12 +6132,6 @@ body {
     linear-gradient(180deg, var(--studio-bg-soft), var(--studio-bg));
 }
 
-.ambient-orb,
-.app-container::before,
-.app-container::after {
-  opacity: 0 !important;
-}
-
 .app-container {
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
@@ -6224,9 +6150,7 @@ body {
   background: transparent;
 }
 
-.panel-card,
-.metric-card,
-.subpanel-card {
+.metric-card {
   background: var(--studio-panel);
   border: 1px solid var(--studio-line);
   border-radius: 10px;
@@ -6234,7 +6158,6 @@ body {
   backdrop-filter: blur(18px) saturate(108%);
 }
 
-.panel-card::before,
 .metric-card::before {
   background: linear-gradient(90deg, transparent, rgba(79, 212, 232, 0.22), transparent);
   opacity: 0.36;
@@ -6490,48 +6413,26 @@ html[data-theme="light"] {
 
 body {
   background:
-    radial-gradient(1180px 760px at 10% 8%, var(--body-glow-a) 0%, transparent 45%),
-    radial-gradient(1020px 700px at 84% 4%, var(--body-glow-b) 0%, transparent 44%),
-    radial-gradient(860px 620px at 70% 100%, var(--body-glow-c) 0%, transparent 48%),
     linear-gradient(135deg, var(--studio-bg), var(--studio-bg-soft) 48%, var(--studio-bg-high));
   background-attachment: fixed;
-  background-size: 140% 140%;
-  animation: studioAuroraDrift 18s ease-in-out infinite alternate;
 }
 
 .app-container {
   background:
     linear-gradient(90deg, var(--body-grid-b) 1px, transparent 1px),
     linear-gradient(180deg, var(--body-grid-c) 1px, transparent 1px),
-    radial-gradient(820px 460px at 12% 0%, rgba(127, 255, 212, 0.06), transparent 62%),
-    radial-gradient(940px 600px at 100% 12%, rgba(189, 224, 254, 0.09), transparent 60%),
+    linear-gradient(118deg, rgba(255, 255, 255, 0.025), transparent 32% 68%, rgba(255, 255, 255, 0.018)),
     linear-gradient(135deg, rgba(11, 32, 51, 0.98), rgba(24, 50, 77, 0.94), rgba(66, 99, 126, 0.84));
-  background-size: 72px 72px, 72px 72px, auto, auto, auto;
+  background-size: 72px 72px, 72px 72px, auto, auto;
 }
 
 html[data-theme="light"] .app-container {
   background:
     linear-gradient(90deg, var(--body-grid-b) 1px, transparent 1px),
     linear-gradient(180deg, var(--body-grid-c) 1px, transparent 1px),
-    radial-gradient(860px 480px at 10% 0%, rgba(10, 156, 150, 0.11), transparent 62%),
-    radial-gradient(980px 620px at 100% 14%, rgba(76, 201, 240, 0.14), transparent 60%),
-    radial-gradient(780px 560px at 52% 100%, rgba(255, 214, 165, 0.1), transparent 64%),
+    linear-gradient(118deg, rgba(10, 156, 150, 0.05), transparent 34% 70%, rgba(76, 201, 240, 0.05)),
     linear-gradient(135deg, rgba(234, 246, 248, 0.98), rgba(248, 253, 255, 0.94), rgba(215, 235, 241, 0.84));
-  background-size: 72px 72px, 72px 72px, auto, auto, auto, auto;
-}
-
-.ambient-orb,
-.app-container::before,
-.app-container::after {
-  opacity: 0.1 !important;
-}
-
-.app-container::before {
-  animation: studioFloatGlow 16s ease-in-out infinite alternate;
-}
-
-.app-container::after {
-  animation: studioFloatGlow 19s ease-in-out infinite alternate-reverse;
+  background-size: 72px 72px, 72px 72px, auto, auto;
 }
 
 .sidebar {
@@ -6612,9 +6513,7 @@ html[data-theme="light"] .studio-shell-topbar {
     0 14px 30px rgba(61, 102, 124, 0.08);
 }
 
-.panel-card,
-.metric-card,
-.subpanel-card {
+.metric-card {
   background: var(--shell-panel-fill);
   border-color: rgba(226, 247, 255, 0.18);
   border-radius: 12px;
@@ -6624,9 +6523,7 @@ html[data-theme="light"] .studio-shell-topbar {
     0 16px 38px rgba(8, 18, 29, 0.12);
 }
 
-html[data-theme="light"] .panel-card,
-html[data-theme="light"] .metric-card,
-html[data-theme="light"] .subpanel-card {
+html[data-theme="light"] .metric-card {
   color: var(--studio-text);
   background: var(--shell-panel-fill);
   border-color: rgba(20, 72, 92, 0.13);
@@ -6635,15 +6532,12 @@ html[data-theme="light"] .subpanel-card {
     0 14px 34px rgba(61, 102, 124, 0.1);
 }
 
-.panel-card::before,
 .metric-card::before {
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--mint) 34%, white 18%), transparent);
   opacity: 0.3;
 }
 
-.panel-card:hover,
-.metric-card:hover,
-.subpanel-card:hover {
+.metric-card:hover {
   border-color: color-mix(in srgb, var(--mint) 34%, var(--line));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.09),
@@ -6724,22 +6618,7 @@ html[data-theme="light"] .cs-nav-badge.tone-accent {
   border-color: rgba(76, 157, 198, 0.22);
 }
 
-.shell-main::before {
-  content: "";
-  position: fixed;
-  inset: 0 0 0 var(--sidebar-width);
-  z-index: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(118deg, transparent 0 28%, rgba(255, 255, 255, 0.035) 38%, transparent 50% 100%),
-    radial-gradient(680px 360px at 82% 8%, rgba(189, 224, 254, 0.12), transparent 62%);
-  opacity: 0.72;
-  animation: studioLightSheet 22s ease-in-out infinite alternate;
-}
-
-.panel-card,
 .metric-card,
-.subpanel-card,
 .studio-shell-topbar,
 .sidebar-tool-button,
 .primary-button,
@@ -6749,27 +6628,6 @@ html[data-theme="light"] .cs-nav-badge.tone-accent {
     border-color 0.24s ease,
     box-shadow 0.24s ease,
     transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes studioAuroraDrift {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 100% 18%; }
-}
-
-@keyframes studioFloatGlow {
-  0% { transform: translate3d(0, 0, 0) scale(1); }
-  100% { transform: translate3d(-18px, 16px, 0) scale(1.06); }
-}
-
-@keyframes studioLightSheet {
-  0% {
-    opacity: 0.48;
-    transform: translate3d(-18px, -10px, 0);
-  }
-  100% {
-    opacity: 0.78;
-    transform: translate3d(22px, 18px, 0);
-  }
 }
 
 @keyframes studioLogoBreath {
@@ -6842,18 +6700,14 @@ html[data-theme="dark"] .app-container {
     linear-gradient(135deg, rgba(7, 21, 34, 0.99), rgba(14, 39, 61, 0.97), rgba(47, 82, 110, 0.88));
 }
 
-.panel-card,
-.metric-card,
-.subpanel-card {
+.metric-card {
   border-radius: 10px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 12px 28px rgba(8, 18, 29, 0.1);
 }
 
-.panel-card:hover,
-.metric-card:hover,
-.subpanel-card:hover {
+.metric-card:hover {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.09),
     0 14px 34px rgba(8, 18, 29, 0.12);
@@ -7712,14 +7566,11 @@ body::before {
 .agents-stage-header,
 .cron-stage-header,
 .channels-stage-header,
-.plugins-stage > .panel-card,
 .cron-stage-panel,
 .system-stage-panel,
 .channels-stage-panel,
 .config-sheet,
-.panel-card,
-.metric-card,
-.subpanel-card {
+.metric-card {
   border: 0;
   border-bottom: 1px solid var(--atlas-line);
   border-radius: 0;

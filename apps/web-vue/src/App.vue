@@ -5,10 +5,6 @@
       class="app-container"
       :class="{ mobile: isMobile, 'sidebar-collapsed': !isMobile && sidebarCollapsed, 'chat-shell': isChatSurface, 'files-shell': isFilesSurface }"
     >
-      <div class="ambient-orb ambient-orb-a" aria-hidden="true" :style="ambientStyles[0]"></div>
-      <div class="ambient-orb ambient-orb-b" aria-hidden="true" :style="ambientStyles[1]"></div>
-      <div class="ambient-orb ambient-orb-c" aria-hidden="true" :style="ambientStyles[2]"></div>
-
       <DialogRoot v-if="isMobile" v-model:open="mobileSidebarOpen">
         <DialogPortal>
           <DialogOverlay class="mobile-sidebar-mask" />
@@ -176,13 +172,6 @@ const buildVersion = typeof import.meta.env.STUDIO_APP_VERSION === 'string'
   ? import.meta.env.STUDIO_APP_VERSION
   : '';
 
-const ambientStyles = [
-  ref<Record<string, string>>({}),
-  ref<Record<string, string>>({}),
-  ref<Record<string, string>>({}),
-];
-const ambientPointer = { x: 0, y: 0, frame: 0 };
-
 const { locale, setLocale, text } = useLocalePreference();
 const {
   navGroups,
@@ -244,33 +233,6 @@ const canPreloadExtendedRouteChunks = () => {
   return true;
 };
 
-const visualMotionEnabled = () => {
-  if (typeof window === 'undefined') return false;
-  if (isMobile.value) return false;
-  return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-};
-
-const updateAmbientVisuals = (x: number, y: number) => {
-  if (!visualMotionEnabled()) return;
-  const { innerWidth, innerHeight } = window;
-  const centeredX = innerWidth ? (x / innerWidth - 0.5) : 0;
-  const centeredY = innerHeight ? (y / innerHeight - 0.5) : 0;
-  ambientStyles[0].value = { transform: `translate3d(${centeredX * 42}px, ${centeredY * 32}px, 0)` };
-  ambientStyles[1].value = { transform: `translate3d(${-centeredX * 34}px, ${centeredY * 24}px, 0)` };
-  ambientStyles[2].value = { transform: `translate3d(${centeredX * 22}px, ${-centeredY * 28}px, 0)` };
-};
-
-const handlePointerMove = (event: PointerEvent) => {
-  if (event.pointerType !== 'mouse') return;
-  ambientPointer.x = event.clientX;
-  ambientPointer.y = event.clientY;
-  if (ambientPointer.frame) return;
-  ambientPointer.frame = window.requestAnimationFrame(() => {
-    ambientPointer.frame = 0;
-    updateAmbientVisuals(ambientPointer.x, ambientPointer.y);
-  });
-};
-
 const scheduleNonChatRoutePreload = () => {
   if (typeof window === 'undefined' || !canPreloadRouteChunks()) return;
 
@@ -307,14 +269,11 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown);
-  window.addEventListener('pointermove', handlePointerMove, { passive: true });
   scheduleNonChatRoutePreload();
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown);
-  window.removeEventListener('pointermove', handlePointerMove);
-  if (ambientPointer.frame) window.cancelAnimationFrame(ambientPointer.frame);
 });
 
 watch(() => route.fullPath, () => {
