@@ -54,12 +54,16 @@ test('sidebar rail no longer duplicates topbar theme and locale controls', () =>
   assert.match(appVue, /<StudioShellTopbar[\s\S]*:locale-switch-label/);
 });
 
-test('sidebar rail copy presents the surface as tools rather than a second navigation menu', () => {
+test('sidebar rail owns the single primary navigation without duplicating theme controls', () => {
   const sidebarRail = fs.readFileSync(sidebarRailPath, 'utf8');
   assert.match(appVue, /text\('展开工具栏', 'Expand tools'\)/);
   assert.match(appVue, /text\('收起工具栏', 'Collapse tools'\)/);
+  assert.match(sidebarRail, /class="sidebar-navigation"/);
+  assert.match(sidebarRail, /v-for="group in navGroups"/);
+  assert.match(sidebarRail, /v-for="item in group\.items"/);
+  assert.match(sidebarRail, /isActiveRoute\(item\.to\)/);
   assert.doesNotMatch(appVue, /展开侧边栏|折叠侧边栏|Expand sidebar|Collapse sidebar/);
-  assert.doesNotMatch(sidebarRail, /v-for=\".*nav|navGroups|sidebar-nav|sidebar-menu/);
+  assert.doesNotMatch(sidebarRail, /themeSwitchLabel|localeSwitchLabel|set-theme-mode|set-locale/);
 });
 
 test('shell styles define a dedicated tooltip surface for the collapsed sidebar rail', () => {

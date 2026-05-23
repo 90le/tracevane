@@ -22,10 +22,13 @@ const legacyUiContentPath = path.join(
   "apps/web-vue/src/data/mock.ts",
 );
 
-test("shell redesign keeps one topbar navigation model and no global context panel", () => {
+test("shell redesign keeps one sidebar navigation model and no global context panel", () => {
   assert.match(appVue, /StudioShellTopbar/);
   assert.match(appVue, /StudioSidebarRail/);
   assert.match(appVue, /StudioCommandPalette/);
+  assert.match(appVue, /:nav-groups="navGroups"/);
+  assert.match(appVue, /:current-title="activeNavItem\?\.label/);
+  assert.match(appVue, /:command-label="text\('打开命令面板', 'Open command palette'\)"/);
   assert.match(appVue, /shell-layout/);
   assert.match(appVue, /shell-main-stage/);
   assert.match(appVue, /class="shell-route-stage"/);
@@ -53,7 +56,7 @@ test("router consumes the shell route manifest without context-panel metadata", 
   assert.doesNotMatch(routeManifestSource, /contextPanel/);
 });
 
-test("shell navigation only builds grouped route labels for the topbar", () => {
+test("shell navigation only builds grouped route labels for the sidebar", () => {
   assert.match(shellNavigationSource, /shellNavGroups\.map/);
   assert.match(shellNavigationSource, /items:\s*group\.items/);
   assert.match(shellNavigationSource, /\.filter\(\(item\) => !item\.future\)/);

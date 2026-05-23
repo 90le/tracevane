@@ -16,6 +16,7 @@
                 :subtitle="text('管理控制台', 'Management Console')"
                 :docs-label="text('官方文档', 'Official docs')"
                 :command-label="text('命令面板', 'Command palette')"
+                :nav-groups="navGroups"
                 :toggle-title="text('收起工具栏', 'Collapse tools')"
                 :version-info-class="versionInfoClass"
                 :version-title="versionTitle"
@@ -47,6 +48,7 @@
           :subtitle="text('管理控制台', 'Management Console')"
           :docs-label="text('官方文档', 'Official docs')"
           :command-label="text('命令面板', 'Command palette')"
+          :nav-groups="navGroups"
           :toggle-title="sidebarCollapsed ? text('展开工具栏', 'Expand tools') : text('收起工具栏', 'Collapse tools')"
           :version-info-class="versionInfoClass"
           :version-title="versionTitle"
@@ -91,9 +93,10 @@
               v-if="!isChatSurface && !isFilesSurface"
               :is-mobile="isMobile"
               :mobile-nav-open="mobileSidebarOpen"
-              :switchboard-label="text('主工作区切换', 'Primary workspace switchboard')"
-              :section-switchboard-label="text('当前工作区页面', 'Current workspace pages')"
-              :nav-groups="navGroups"
+              :current-title="activeNavItem?.label || text('工作台', 'Workspace')"
+              :current-group-title="activeNavGroupTitle"
+              :current-path-label="route.path"
+              :command-label="text('打开命令面板', 'Open command palette')"
               :mobile-nav-label="text('打开工具栏', 'Open tools')"
               :theme-switch-label="text('主题模式', 'Theme mode')"
               :locale-switch-label="text('语言模式', 'Language mode')"
@@ -102,6 +105,7 @@
               :locale="locale"
               :locale-options="localeOptions"
               @toggle-mobile-nav="toggleSidebar"
+              @open-command-palette="openCommandPalette"
               @set-theme-mode="setThemeMode"
               @set-locale="setLocale"
             />
@@ -175,6 +179,14 @@ const { locale, setLocale, text } = useLocalePreference();
 const {
   navGroups,
 } = useShellNavigation();
+
+const activeNavGroup = computed(() => navGroups.value.find((group) =>
+  group.items.some((item) => route.path === item.to || route.path.startsWith(`${item.to}/`)),
+));
+const activeNavItem = computed(() => activeNavGroup.value?.items.find((item) =>
+  route.path === item.to || route.path.startsWith(`${item.to}/`),
+));
+const activeNavGroupTitle = computed(() => activeNavGroup.value?.title || text('Studio', 'Studio'));
 
 const isChatSurface = computed(() => route.path === '/chat' || route.path.startsWith('/chat/'));
 const isTerminalSurface = computed(() => route.path === '/terminal' || route.path.startsWith('/terminal/'));

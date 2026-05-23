@@ -23,7 +23,11 @@ test("standard mobile shell pages expose the global navigation control", () => {
   );
   assert.match(
     styleCss,
-    /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*?\.studio-shell-topbar\s*\{[\s\S]*?grid-template-columns:\s*34px minmax\(0,\s*1fr\);/,
+    /@media\s*\(max-width:\s*980px\)\s*\{[\s\S]*?\.studio-shell-topbar\s*\{[\s\S]*?grid-template-columns:\s*34px minmax\(0,\s*1fr\) auto;/,
+  );
+  assert.match(
+    styleCss,
+    /@media\s*\(max-width:\s*980px\)\s*\{[\s\S]*?\.studio-shell-topbar__command\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1;/,
   );
   assert.match(
     styleCss,

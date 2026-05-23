@@ -12,30 +12,23 @@
       <Menu class="studio-shell-topbar__icon" aria-hidden="true" />
     </button>
 
-    <nav class="studio-shell-topbar__groups" :aria-label="switchboardLabel">
-      <RouterLink
-        v-for="group in primaryGroups"
-        :key="group.key"
-        :to="group.entry.to"
-        class="studio-shell-topbar__group"
-        :class="{ active: group.key === activeGroup?.key }"
-      >
-        <span>{{ group.title }}</span>
-      </RouterLink>
-    </nav>
+    <div class="studio-shell-topbar__identity" aria-live="polite">
+      <span class="studio-shell-topbar__group-label">{{ currentGroupTitle }}</span>
+      <strong>{{ currentTitle }}</strong>
+      <small>{{ currentPathLabel }}</small>
+    </div>
 
-    <nav class="studio-shell-topbar__switchboard" :aria-label="sectionSwitchboardLabel">
-      <RouterLink
-        v-for="item in sectionItems"
-        :key="item.to"
-        :to="item.to"
-        class="studio-shell-topbar__switch"
-        :class="{ active: isActiveRoute(item.to) }"
-      >
-        <SidebarIcon :name="item.icon" />
-        <span>{{ item.label }}</span>
-      </RouterLink>
-    </nav>
+    <button
+      type="button"
+      class="studio-shell-topbar__command"
+      :aria-label="commandLabel"
+      :title="commandLabel"
+      @click="$emit('open-command-palette')"
+    >
+      <Command class="studio-shell-topbar__command-icon" aria-hidden="true" />
+      <span>{{ commandLabel }}</span>
+      <kbd>Ctrl K</kbd>
+    </button>
 
     <div class="studio-shell-topbar__controls">
       <div class="theme-switch" role="group" :aria-label="themeSwitchLabel">
@@ -73,12 +66,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { Monitor, Moon, Sun, Menu } from '@lucide/vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { Command, Monitor, Moon, Sun, Menu } from '@lucide/vue';
 import type { Locale } from '../shared/locale';
 import type { ThemeMode } from '../shared/theme';
-import SidebarIcon from './SidebarIcon.vue';
 
 type ThemeOption = {
   value: ThemeMode;
@@ -92,37 +82,13 @@ type LocaleOption = {
   shortLabel: string;
 };
 
-type ShellNavIconName =
-  | 'dashboard'
-  | 'agents'
-  | 'chat'
-  | 'channels'
-  | 'cron'
-  | 'dreaming'
-  | 'skills'
-  | 'files'
-  | 'plugins'
-  | 'terminal'
-  | 'config'
-  | 'system';
-
-type ShellNavGroup = {
-  key: string;
-  title: string;
-  items: Array<{
-    key: string;
-    to: string;
-    label: string;
-    icon: ShellNavIconName;
-  }>;
-};
-
-const props = defineProps<{
+defineProps<{
   isMobile: boolean;
   mobileNavOpen: boolean;
-  switchboardLabel: string;
-  sectionSwitchboardLabel: string;
-  navGroups: ShellNavGroup[];
+  currentTitle: string;
+  currentGroupTitle: string;
+  currentPathLabel: string;
+  commandLabel: string;
   mobileNavLabel: string;
   themeSwitchLabel: string;
   localeSwitchLabel: string;
@@ -134,6 +100,7 @@ const props = defineProps<{
 
 defineEmits<{
   (event: 'toggle-mobile-nav'): void;
+  (event: 'open-command-palette'): void;
   (event: 'set-theme-mode', value: ThemeMode): void;
   (event: 'set-locale', value: Locale): void;
 }>();
@@ -143,27 +110,4 @@ const resolveThemeIcon = (value: ThemeMode) => {
   if (value === 'dark') return Moon;
   return Monitor;
 };
-
-const route = useRoute();
-
-const primaryGroups = computed(() =>
-  props.navGroups
-    .map((group) => ({
-      ...group,
-      entry: group.items[0],
-    }))
-    .filter((group): group is ShellNavGroup & { entry: ShellNavGroup['items'][number] } => Boolean(group.entry)),
-);
-
-const activeGroup = computed(() => (
-  primaryGroups.value.find((group) =>
-    group.items.some((item) => isActiveRoute(item.to)),
-  ) || primaryGroups.value[0]
-));
-
-const sectionItems = computed(() =>
-  (activeGroup.value?.items || []).filter((item) => item.to !== '/dashboard' || isActiveRoute('/dashboard')),
-);
-
-const isActiveRoute = (target: string) => route.path === target || route.path.startsWith(`${target}/`);
 </script>

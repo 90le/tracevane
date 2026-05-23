@@ -31,6 +31,18 @@ Avoid:
 - Decorative blobs/orbs as standalone styling.
 - Cyberpunk, neo-brutalism, neumorphism, or novelty themes for core admin UI.
 
+## Frontend Stack
+
+The release stack is Vue 3 + Vite + Nuxt UI v4 + Tailwind CSS v4 + Motion for Vue + Reka UI + lucide icons.
+
+Implementation notes:
+
+- Nuxt UI is loaded through the Vite plugin and `UApp`.
+- Tailwind CSS v4 is loaded from `style.css`.
+- Reka UI owns low-level dialog, tooltip, and accessible overlay primitives.
+- Motion is allowed for state-driven page and panel transitions, not decorative noise.
+- Use `@lucide/vue` for source imports. The old `lucide-vue-next` npm package is deprecated and currently points users back to `@lucide/vue`.
+
 ## Color Tokens
 
 Dark mode:
@@ -57,6 +69,8 @@ Light mode:
 ## Layout Rules
 
 - First screen should answer: current state, recommended action, important route/model facts.
+- Primary navigation has exactly one visible owner: the left Studio rail. The topbar is only for current workspace identity, command access, theme, and language.
+- The command palette is for commands and global preferences, not a second page-navigation menu.
 - Health checks, install logs, and command output should open in floating dialogs, not become permanent card walls.
 - Installation/repair pages should act like a guided wizard: status, next action, advanced details collapsed.
 - Dashboard surfaces may be dense only after the user opens details.

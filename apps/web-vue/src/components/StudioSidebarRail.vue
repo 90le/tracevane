@@ -50,6 +50,27 @@
   </div>
 
   <div class="sidebar-tool-zone">
+    <nav class="sidebar-navigation" :aria-label="subtitle">
+      <section
+        v-for="group in navGroups"
+        :key="group.key"
+        class="sidebar-navigation__group"
+      >
+        <h2 class="sidebar-navigation__heading">{{ group.title }}</h2>
+        <RouterLink
+          v-for="item in group.items"
+          :key="item.key"
+          :to="item.to"
+          class="sidebar-navigation__item"
+          :class="{ active: isActiveRoute(item.to) }"
+          @click="$emit('navigate')"
+        >
+          <SidebarIcon :name="item.icon" />
+          <span class="sidebar-navigation__label">{{ item.label }}</span>
+        </RouterLink>
+      </section>
+    </nav>
+
     <TooltipRoot :disabled="!showRailTooltips">
       <TooltipTrigger as-child>
         <button
@@ -131,10 +152,36 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute } from 'vue-router';
 import { Command, ExternalLink, PanelLeftClose, PanelLeftOpen } from '@lucide/vue';
 import { TooltipContent, TooltipPortal, TooltipRoot, TooltipTrigger } from 'reka-ui';
 import LogoMark from './LogoMark.vue';
+import SidebarIcon from './SidebarIcon.vue';
+
+type ShellNavIconName =
+  | 'dashboard'
+  | 'agents'
+  | 'chat'
+  | 'channels'
+  | 'cron'
+  | 'dreaming'
+  | 'skills'
+  | 'files'
+  | 'plugins'
+  | 'terminal'
+  | 'config'
+  | 'system';
+
+type ShellNavGroup = {
+  key: string;
+  title: string;
+  items: Array<{
+    key: string;
+    to: string;
+    label: string;
+    icon: ShellNavIconName;
+  }>;
+};
 
 const props = defineProps<{
   isMobile: boolean;
@@ -142,6 +189,7 @@ const props = defineProps<{
   subtitle: string;
   docsLabel: string;
   commandLabel: string;
+  navGroups: ShellNavGroup[];
   toggleTitle: string;
   versionInfoClass: Record<string, boolean>;
   versionTitle: string;
@@ -162,4 +210,7 @@ defineEmits<{
 }>();
 
 const showRailTooltips = computed(() => !props.isMobile && props.sidebarCollapsed);
+const route = useRoute();
+
+const isActiveRoute = (target: string) => route.path === target || route.path.startsWith(`${target}/`);
 </script>
