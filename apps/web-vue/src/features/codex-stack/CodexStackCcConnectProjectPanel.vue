@@ -130,7 +130,7 @@
       <div class="cs-subsection-header cs-subsection-header-tight">
         <div>
           <strong>{{ text("平台渠道", "Platform Channels") }}</strong>
-          <p>{{ text("平台参数单独成卡片，避免和 Agent 基础参数挤在一起。", "Platform options are isolated cards instead of being crowded with base agent fields.") }}</p>
+          <p>{{ text("平台参数单独成区块，避免和 Agent 基础参数挤在一起。", "Platform options are isolated sections instead of being crowded with base agent fields.") }}</p>
         </div>
         <div class="cs-platform-template-actions">
           <button

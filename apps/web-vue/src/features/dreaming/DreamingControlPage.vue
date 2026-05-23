@@ -21,7 +21,7 @@
           <p class="page-copy">
             {{
               text(
-                '把 dreaming 从配置卡片里解放出来。这里先看状态、阶段和日记，再决定是否修复、启停或继续扩展。',
+                '把 dreaming 从原始配置页里解放出来。这里先看状态、阶段和日记，再决定是否修复、启停或继续扩展。',
                 'Pull dreaming out of raw config editing. Start with state, phases, and the diary, then decide whether to repair, toggle, or extend it.'
               )
             }}
@@ -532,8 +532,8 @@
               <p>
                 {{
                   text(
-                    '这里直接读取宿主 `doctor.memory.dreamDiary`。保留时间流视角，而不是把条目继续塞回表格或卡片。',
-                    'This reads the host `doctor.memory.dreamDiary` directly, keeping the diary as a time-flow surface instead of another table or card stack.'
+                    '这里直接读取宿主 `doctor.memory.dreamDiary`。保留时间流视角，而不是把条目继续塞回表格或静态格子。',
+                    'This reads the host `doctor.memory.dreamDiary` directly, keeping the diary as a time-flow surface instead of another table or static grid.'
                   )
                 }}
               </p>
@@ -928,8 +928,8 @@ const activeTabTitle = computed(() => {
 const activeTabCopy = computed(() => {
   if (activeTab.value === 'diary') {
     return text(
-      '把 Dream Diary 当成一条时间流来阅读，而不是另一组静态记录卡。',
-      'Read the Dream Diary as a time-flow surface instead of another grid of static cards.'
+      '把 Dream Diary 当成一条时间流来阅读，而不是另一组静态记录格子。',
+      'Read the Dream Diary as a time-flow surface instead of another static grid.'
     );
   }
   if (activeTab.value === 'readiness') {

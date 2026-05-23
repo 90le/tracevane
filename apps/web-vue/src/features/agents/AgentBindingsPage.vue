@@ -95,7 +95,7 @@
           <header class="agents-modal-head">
             <div>
               <h3>{{ editingBindingId ? text('修改绑定', 'Edit binding') : text('新增绑定', 'Add binding') }}</h3>
-              <p>{{ text('在弹窗中完成绑定编辑，避免表单和下拉选项被页面卡片裁切。', 'Edit bindings in a modal so forms and dropdown menus are no longer clipped by neighboring cards.') }}</p>
+              <p>{{ text('在弹窗中完成绑定编辑，避免表单和下拉选项被页面容器裁切。', 'Edit bindings in a modal so forms and dropdown menus are no longer clipped by neighboring panes.') }}</p>
             </div>
             <button type="button" class="agents-modal-close" :aria-label="text('关闭', 'Close')" @click="closeBindingDialog">
               <X class="drawer-close-icon" aria-hidden="true" />

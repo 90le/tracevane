@@ -750,7 +750,7 @@
             <aside class="plugins-preflight-card" :class="pluginPreflight ? `is-${pluginPreflight.level}` : ''">
               <div class="plugins-section-head compact">
                 <h4>{{ text('高级来源预检', 'Advanced-source preflight') }}</h4>
-                <p>{{ text('这里只有高级来源的预检结论；本地上传的预检在左侧单独展示。', 'This panel only shows advanced-source preflight results. Uploaded archive validation is shown in the left card.') }}</p>
+                <p>{{ text('这里只有高级来源的预检结论；本地上传的预检在左侧单独展示。', 'This panel only shows advanced-source preflight results. Uploaded archive validation is shown in the left pane.') }}</p>
               </div>
               <template v-if="pluginPreflight">
                 <strong>{{ pluginPreflight.summary }}</strong>

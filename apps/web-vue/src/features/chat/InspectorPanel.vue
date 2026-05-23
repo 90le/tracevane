@@ -90,7 +90,7 @@
           <pre v-if="tool.resultPreview">{{ tool.resultPreview }}</pre>
         </article>
       </div>
-      <div v-else class="empty-inline">{{ text('当前还没有 tool card。', 'No tool cards yet.') }}</div>
+      <div v-else class="empty-inline">{{ text('当前还没有工具事件。', 'No tool events yet.') }}</div>
     </div>
 
     <div v-else-if="tab === 'activity'" class="chat-inspector-body">

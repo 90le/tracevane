@@ -318,7 +318,7 @@ export function buildConnectionModeOptions(text: ChannelTextFn): ChannelSelectOp
 export function buildRenderModeOptions(text: ChannelTextFn): ChannelSelectOption[] {
   return [
     { value: '', label: text('未指定', 'Unset') },
-    { value: 'card', label: text('卡片', 'Card') },
+    { value: 'card', label: text('富文本块', 'Rich block') },
     { value: 'text', label: text('纯文本', 'Text') },
     { value: 'markdown', label: 'Markdown' },
     { value: 'interactive', label: text('交互式', 'Interactive') },

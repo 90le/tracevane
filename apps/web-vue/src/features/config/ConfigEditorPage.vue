@@ -1258,7 +1258,7 @@
                 <span class="panel-heading-mark" aria-hidden="true"></span>
                 <div>
                   <h3>{{ resolveProviderDisplayName(activeProvider.id, activeProviderIndex) }}</h3>
-                  <p class="panel-muted">{{ text('右侧只编辑当前选中的供应商，减少并排供应商卡片带来的噪音。', 'Only the selected provider is edited on the right to reduce the noise of multiple provider cards.') }}</p>
+                  <p class="panel-muted">{{ text('右侧只编辑当前选中的供应商，减少并排供应商区块带来的噪音。', 'Only the selected provider is edited on the right to reduce the noise of multiple provider sections.') }}</p>
                 </div>
               </div>
               <button class="danger-link" type="button" @click="removeProvider(activeProviderIndex)">{{ text('移除供应商', 'Remove provider') }}</button>

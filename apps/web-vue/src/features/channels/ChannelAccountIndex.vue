@@ -4,7 +4,7 @@
       <div>
         <p class="eyebrow">{{ text('ACCOUNTS', 'ACCOUNTS') }}</p>
         <h3>{{ text('账号', 'Accounts') }}</h3>
-        <p class="panel-muted">{{ text('这里创建账号，并从账号卡进入凭据、权限、配对和绑定。', 'Create accounts here, then open credentials, access, pairing, and bindings from each account card.') }}</p>
+        <p class="panel-muted">{{ text('这里创建账号，并从账号入口进入凭据、权限、配对和绑定。', 'Create accounts here, then open credentials, access, pairing, and bindings from each account entry.') }}</p>
       </div>
       <button type="button" class="primary-button compact-button" @click="$emit('create-account')">
         {{ text('新建账号', 'Create account') }}
