@@ -77,6 +77,14 @@ Light mode:
 - Use top tabs for major Codex Stack sections; avoid left tab stacks inside already side-nav-heavy views.
 - Cards are for repeated items or framed tools. Use panes, strips, and inline command rows for workflow steps.
 
+## CSS Ownership
+
+- `apps/web-vue/src/style.css` is the shared design-system boundary: Tailwind import, semantic tokens, app shell, and reusable primitives only.
+- Page-specific selectors should not be added to the global Atlas layer when touching a page. Move them into a feature stylesheet or the owning component and delete stale global duplicates.
+- Large feature pages should graduate to feature CSS files when the local style block becomes hard to scan or when selectors are shared across sibling components. Preferred names are domain based, for example `plugins-workspace.css`, `dashboard-workspace.css`, or `codex-stack-workspace.css`.
+- Scoped Vue styles are acceptable for compact, single-component states. They are not the long-term home for a whole page design system.
+- New UI slices should keep behavior, markup, tests, and styles owned by the same feature directory unless the style is a genuine shared primitive.
+
 ## Component Rules
 
 - Use Nuxt UI and shared CSS tokens before inventing ad hoc controls.

@@ -5,7 +5,7 @@
         <p class="eyebrow">{{ pageEyebrow }}</p>
         <h2 class="page-title">{{ text('插件控制中心', 'Plugin Control Center') }}</h2>
         <p class="page-copy">
-          {{ text('管理 OpenClaw 宿主运行时扩展：插件发现、能力、策略、配置、安装记录和诊断。', 'Manage OpenClaw host runtime extensions: discovery, capabilities, policy, config, install records, and diagnostics.') }}
+          {{ text('先看运行态势，再处理发现、策略、安装和诊断。', 'Read runtime posture first, then handle discovery, policy, installs, and diagnostics.') }}
         </p>
       </div>
 
@@ -56,38 +56,36 @@
     </nav>
 
     <section v-if="activeTab === 'overview'" class="plugins-overview">
-      <article class="plugins-posture-strip plugins-stage-card--wide">
+      <section class="plugins-overview-command">
         <div class="plugins-section-head">
           <div>
             <p class="eyebrow">{{ text('HEALTH', 'HEALTH') }}</p>
             <h3>{{ text('运行态势', 'Runtime posture') }}</h3>
-            <p>{{ text('按配置、发现结果和诊断汇总插件运行风险。', 'Summarizes plugin runtime risk from config, discovery, and diagnostics.') }}</p>
           </div>
         </div>
-        <div class="plugins-summary-grid">
-          <article class="plugins-summary-card">
+        <div class="plugins-summary-list">
+          <div class="plugins-summary-cell">
             <span>{{ text('插件系统', 'Plugin system') }}</span>
             <strong>{{ form.enabled ? text('启用', 'Enabled') : text('关闭', 'Off') }}</strong>
-          </article>
-          <article class="plugins-summary-card">
+          </div>
+          <div class="plugins-summary-cell">
             <span>{{ text('Load Paths', 'Load Paths') }}</span>
             <strong>{{ form.loadPaths.length }}</strong>
-          </article>
-          <article class="plugins-summary-card">
+          </div>
+          <div class="plugins-summary-cell">
             <span>{{ text('Manifests', 'Manifests') }}</span>
             <strong>{{ counts.manifests }}</strong>
-          </article>
-          <article class="plugins-summary-card">
+          </div>
+          <div class="plugins-summary-cell">
             <span>{{ text('Diagnostics', 'Diagnostics') }}</span>
             <strong>{{ counts.diagnostics }}</strong>
-          </article>
+          </div>
         </div>
-      </article>
+      </section>
 
-      <article class="plugins-side-pane plugins-stage-card">
+      <section class="plugins-overview-side plugins-overview-side-capability">
         <div class="plugins-section-head compact">
           <h3>{{ text('能力索引', 'Capability index') }}</h3>
-          <p>{{ text('根据 manifest kind、skills、configSchema 和插件 ID 推导。', 'Derived from manifest kind, skills, configSchema, and plugin id.') }}</p>
         </div>
         <div class="plugins-capability-grid">
           <span v-for="entry in capabilityEntries" :key="entry.key">
@@ -95,32 +93,33 @@
             <em>{{ entry.ids.length }}</em>
           </span>
         </div>
-      </article>
+      </section>
 
-      <article class="plugins-side-pane plugins-stage-card">
+      <section class="plugins-overview-critical">
         <div class="plugins-section-head compact">
           <h3>{{ text('关键插件', 'Critical plugins') }}</h3>
-          <p>{{ text('这些插件决定 Studio、memory、browser、模型路由等核心能力是否正常。', 'These plugins control Studio, memory, browser, and model-routing critical paths.') }}</p>
         </div>
-        <div class="plugins-critical-grid">
-          <article
+        <div class="plugins-critical-list">
+          <div
             v-for="card in criticalPluginCards"
             :key="card.id"
-            class="plugins-critical-card"
+            class="plugins-critical-row"
             :class="{ danger: card.status !== 'enabled' && card.status !== 'available' }"
           >
-            <div class="plugins-section-head compact">
-              <h4>{{ card.label }}</h4>
-              <span class="plugins-status-pill" :class="`is-${card.status}`">{{ card.statusLabel }}</span>
+            <div class="plugins-critical-main">
+              <strong>{{ card.label }}</strong>
+              <span>{{ card.id }} · {{ card.source }}</span>
             </div>
-            <p class="field-hint">{{ card.id }} · {{ card.source }}</p>
-            <div class="plugins-chip-row">
-              <span v-for="capability in card.capabilities" :key="`${card.id}-${capability}`">{{ capability }}</span>
+            <div class="plugins-critical-meta">
+              <span class="plugins-status-pill" :class="`is-${card.status}`">{{ card.statusLabel }}</span>
               <span>{{ text('影响项', 'Impacts') }} {{ card.impacts }}</span>
             </div>
-          </article>
+            <div class="plugins-critical-capabilities">
+              <span v-for="capability in card.capabilities" :key="`${card.id}-${capability}`">{{ capability }}</span>
+            </div>
+          </div>
         </div>
-      </article>
+      </section>
     </section>
 
     <section v-else-if="activeTab === 'inventory'" class="plugins-layout">
@@ -2461,7 +2460,6 @@ onActivated(activatePluginsPage);
 .plugins-hero-metrics,
 .plugins-tabs,
 .plugins-chip-row,
-.plugins-critical-list,
 .plugins-inline-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2471,8 +2469,7 @@ onActivated(activatePluginsPage);
   display: grid;
   gap: 10px;
 }
-.plugins-install-stack,
-.plugins-critical-grid {
+.plugins-install-stack {
   display: grid;
   gap: 14px;
 }
@@ -2700,32 +2697,40 @@ onActivated(activatePluginsPage);
   box-shadow: none;
 }
 .plugins-overview {
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: color-mix(in srgb, var(--surface-base) 44%, transparent);
   gap: 0;
 }
-.plugins-posture-strip,
-.plugins-side-pane {
+.plugins-overview-command,
+.plugins-overview-side,
+.plugins-overview-critical {
   display: grid;
   gap: 14px;
   min-width: 0;
-  padding: 20px;
+  padding: 18px 20px;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
-.plugins-side-pane {
+.plugins-overview-command {
+  border-right: 1px solid var(--line);
+}
+.plugins-overview-side,
+.plugins-overview-critical {
   align-content: start;
-  border-left: 1px solid var(--line);
+}
+.plugins-overview-side {
+  border-bottom: 1px solid var(--line);
+}
+.plugins-overview-critical {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
 }
 .plugins-policy-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.plugins-critical-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .plugins-stage-card--wide { grid-column: 1 / -1; }
@@ -2744,19 +2749,24 @@ onActivated(activatePluginsPage);
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
-.plugins-posture-strip .plugins-summary-grid,
+.plugins-summary-list,
 .plugins-capability-grid {
+  display: grid;
   gap: 1px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
   border-radius: 10px;
   background: color-mix(in srgb, var(--line) 72%, transparent);
 }
+.plugins-summary-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .plugins-capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .plugins-facts-grid--compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .plugins-summary-grid--compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .plugins-summary-card,
 .plugins-fact,
+.plugins-summary-cell,
 .plugins-capability-grid span {
   display: grid;
   gap: 6px;
@@ -2765,13 +2775,14 @@ onActivated(activatePluginsPage);
   border-radius: 12px;
   background: var(--surface);
 }
-.plugins-posture-strip .plugins-summary-card,
+.plugins-summary-cell,
 .plugins-capability-grid span {
   border: 0;
   border-radius: 0;
   background: color-mix(in srgb, var(--surface-base) 90%, transparent);
 }
 .plugins-summary-card span,
+.plugins-summary-cell span,
 .plugins-fact span,
 .plugins-rail-head p,
 .plugins-section-head p,
@@ -2783,23 +2794,66 @@ onActivated(activatePluginsPage);
   line-height: 1.55;
 }
 .plugins-summary-card strong,
+.plugins-summary-cell strong,
 .plugins-fact strong,
 .plugins-capability-grid strong {
   color: var(--text);
   word-break: break-word;
 }
-.plugins-critical-card {
+.plugins-critical-list {
   display: grid;
-  gap: 10px;
-  padding: 14px 0;
+  gap: 0;
+}
+.plugins-critical-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(170px, 0.5fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
   border-radius: 0;
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   background: transparent;
 }
-.plugins-critical-card.danger {
+.plugins-critical-row:last-child {
+  border-bottom: 0;
+}
+.plugins-critical-row.danger {
   border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
   background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 10%, transparent), transparent 58%);
+}
+.plugins-critical-main,
+.plugins-critical-meta,
+.plugins-critical-capabilities {
+  min-width: 0;
+}
+.plugins-critical-main {
+  display: grid;
+  gap: 4px;
+}
+.plugins-critical-main strong {
+  color: var(--text);
+}
+.plugins-critical-main span,
+.plugins-critical-meta span,
+.plugins-critical-capabilities span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.plugins-critical-meta,
+.plugins-critical-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.plugins-critical-capabilities {
+  justify-content: flex-end;
+}
+.plugins-critical-capabilities span {
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 999px;
 }
 .plugins-layout {
   display: grid;
@@ -2927,7 +2981,9 @@ onActivated(activatePluginsPage);
   .plugins-filter-grid,
   .plugins-rail-row,
   .plugins-install-row,
-  .plugins-critical-grid,
+  .plugins-critical-list,
+  .plugins-critical-row,
+  .plugins-summary-list,
   .plugins-summary-grid,
   .plugins-facts-grid,
   .plugins-guided-grid,
@@ -2947,9 +3003,15 @@ onActivated(activatePluginsPage);
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
-  .plugins-side-pane {
-    border-left: 0;
-    border-top: 1px solid var(--line);
+  .plugins-overview-command {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .plugins-overview-critical {
+    grid-column: auto;
+  }
+  .plugins-critical-capabilities {
+    justify-content: flex-start;
   }
   .plugins-guided-toolbar,
   .plugins-guided-group-head {

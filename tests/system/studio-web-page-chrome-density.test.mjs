@@ -12,6 +12,7 @@ function read(filePath) {
 }
 
 const styleCss = read("apps/web-vue/src/style.css");
+const designContract = read("DESIGN.md");
 
 test("shared primitives consume semantic aliases for surfaces and action accents", () => {
   assert.doesNotMatch(styleCss, /\.panel-card,\s*\.metric-card\s*\{/);
@@ -25,4 +26,11 @@ test("shared primitives consume semantic aliases for surfaces and action accents
     styleCss,
     /\.status-banner\s*\{[\s\S]*background:\s*var\(--surface-raised\);/,
   );
+});
+
+test("design contract keeps global CSS narrow and feature CSS owned by domains", () => {
+  assert.match(designContract, /## CSS Ownership/);
+  assert.match(designContract, /style\.css` is the shared design-system boundary/);
+  assert.match(designContract, /Large feature pages should graduate to feature CSS files/);
+  assert.match(designContract, /Scoped Vue styles are acceptable for compact, single-component states/);
 });

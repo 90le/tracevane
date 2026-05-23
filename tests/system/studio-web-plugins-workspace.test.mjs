@@ -29,6 +29,12 @@ test("plugins page owns plugin policy, slots, entries, installs, and diagnostics
   assert.match(pluginsControlPage, /Plugin Control Center|插件控制中心/);
   assert.match(pluginsControlPage, /pageTabs/);
   assert.match(pluginsControlPage, /Capability index|能力索引/);
+  assert.match(pluginsControlPage, /plugins-overview-command/);
+  assert.match(pluginsControlPage, /plugins-summary-list/);
+  assert.match(pluginsControlPage, /plugins-critical-row/);
+  assert.doesNotMatch(pluginsControlPage, /class="plugins-posture-strip plugins-stage-card--wide"/);
+  assert.doesNotMatch(pluginsControlPage, /class="plugins-side-pane plugins-stage-card"/);
+  assert.doesNotMatch(pluginsControlPage, /class="plugins-critical-card"/);
   assert.match(pluginsControlPage, /Plugin controls|插件控制/);
   assert.match(pluginsControlPage, /Quick activate|快速接管/);
   assert.match(pluginsControlPage, /adoptDiscoveredPlugin/);

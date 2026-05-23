@@ -6909,7 +6909,6 @@ html[data-theme="light"] .page-header-row {
 
 .cron-list-item,
 .channel-account-card,
-.plugins-critical-card,
 .agents-session-card {
   box-shadow: none;
 }
@@ -7345,7 +7344,6 @@ body::before {
 .agents-session-card,
 .terminal-binary-row,
 .terminal-missing-deps__item,
-.plugins-critical-card,
 .plugins-diagnostic,
 .plugins-impact-card,
 .plugins-install-card,
