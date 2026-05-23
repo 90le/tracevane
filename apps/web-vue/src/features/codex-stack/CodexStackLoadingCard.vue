@@ -1,5 +1,5 @@
 <template>
-  <div class="panel-card cs-loading-card">
+  <div class="cs-surface cs-loading-card">
     {{ message }}
   </div>
 </template>

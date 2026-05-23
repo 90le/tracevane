@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-recommendation-card">
+  <article class="cs-surface cs-recommendation-card">
     <p class="cs-section-kicker">{{ kicker }}</p>
     <h4>{{ title }}</h4>
     <p>{{ copy }}</p>

@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-model-ribbon">
+  <article class="cs-surface cs-model-ribbon">
     <div>
       <p class="cs-section-kicker">{{ text("模型目录", "Model Catalog") }}</p>
       <h3>{{ currentModel || "--" }}</h3>

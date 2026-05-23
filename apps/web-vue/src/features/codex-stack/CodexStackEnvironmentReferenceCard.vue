@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-environment-reference-card">
+  <article class="cs-surface cs-environment-reference-card">
     <div class="cs-card-header">
       <div>
         <p class="cs-section-kicker">{{ text("参考信息", "Reference") }}</p>

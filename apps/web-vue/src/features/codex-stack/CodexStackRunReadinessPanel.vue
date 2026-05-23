@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-run-readiness-card" :class="`tone-${tone}`">
+  <article class="cs-surface cs-run-readiness-card" :class="`tone-${tone}`">
     <div class="cs-run-readiness-head">
       <div>
         <p class="cs-section-kicker">{{ text("Codex 运行就绪", "Codex Run Readiness") }}</p>

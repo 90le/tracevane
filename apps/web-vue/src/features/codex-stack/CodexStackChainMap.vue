@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-chain-map">
+  <article class="cs-surface cs-chain-map">
     <div class="cs-chain-head">
       <div>
         <p class="cs-section-kicker">{{ labels.kicker }}</p>

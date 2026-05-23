@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-model-catalog-card">
+  <article class="cs-surface cs-model-catalog-card">
     <div class="cs-card-header">
       <div>
         <p class="cs-section-kicker">{{ text("CPA 模型列表", "CPA Model List") }}</p>

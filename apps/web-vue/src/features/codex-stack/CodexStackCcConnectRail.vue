@@ -1,5 +1,5 @@
 <template>
-  <aside class="panel-card cs-agent-rail">
+  <aside class="cs-surface cs-agent-rail">
     <div class="cs-agent-pane-switch">
       <button
         v-for="pane in panes"

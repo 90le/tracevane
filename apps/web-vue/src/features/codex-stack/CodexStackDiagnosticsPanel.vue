@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-diagnostics-panel">
+  <article class="cs-surface cs-diagnostics-panel">
     <div class="cs-card-header">
       <div>
         <p class="cs-section-kicker">{{ text("诊断", "Diagnostics") }}</p>

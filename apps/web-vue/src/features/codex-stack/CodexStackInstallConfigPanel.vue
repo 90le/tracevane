@@ -1,7 +1,7 @@
 <template>
   <div class="cs-install-config-panel">
     <div class="cs-install-grid">
-    <article class="panel-card">
+    <article class="cs-surface">
       <div class="cs-card-header">
         <div>
           <p class="cs-section-kicker">{{ text("可选参数", "Optional Setup") }}</p>
@@ -33,7 +33,7 @@
       </div>
     </article>
 
-    <article class="panel-card cs-flow-card">
+    <article class="cs-surface cs-flow-card">
       <div class="cs-card-header">
         <div>
           <p class="cs-section-kicker">{{ text("统一配置", "Unified Config") }}</p>
@@ -52,7 +52,7 @@
       </div>
     </article>
 
-    <article class="panel-card">
+    <article class="cs-surface">
       <div class="cs-card-header">
         <div>
           <p class="cs-section-kicker">{{ text("连接参数", "Connection") }}</p>
@@ -109,7 +109,7 @@
     </article>
     </div>
 
-    <details class="panel-card cs-details">
+    <details class="cs-surface cs-details">
       <summary>{{ text("高级选项", "Advanced Options") }}</summary>
       <div class="cs-details-body">
         <div class="cs-checkbox-grid">

@@ -6859,6 +6859,22 @@ html[data-theme="dark"] .app-container {
     0 14px 34px rgba(8, 18, 29, 0.12);
 }
 
+.cs-surface {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 50%, transparent), color-mix(in srgb, var(--surface-base) 28%, transparent));
+  box-shadow: none;
+}
+
+html[data-theme="light"] .cs-surface {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 250, 254, 0.62));
+  border-color: rgba(18, 34, 56, 0.09);
+}
+
 /* Anti card-wall pass: operational pages use command panes, strips, and rows. */
 .page-header-row {
   position: relative;

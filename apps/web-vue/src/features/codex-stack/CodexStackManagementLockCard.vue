@@ -1,5 +1,5 @@
 <template>
-  <section class="panel-card cs-management-lock-card">
+  <section class="cs-surface cs-management-lock-card">
     <div>
       <h3>{{ title }}</h3>
       <p>{{ copy }}</p>

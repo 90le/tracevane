@@ -1,6 +1,6 @@
 <template>
   <div class="cs-dashboard-grid">
-    <article class="panel-card">
+    <article class="cs-surface">
       <div class="cs-card-header">
         <div>
           <p class="cs-section-kicker">{{ labels.runtimeKicker }}</p>
@@ -72,7 +72,7 @@
       </dl>
     </article>
 
-    <article class="panel-card">
+    <article class="cs-surface">
       <div class="cs-card-header">
         <div>
           <p class="cs-section-kicker">{{ labels.componentsKicker }}</p>

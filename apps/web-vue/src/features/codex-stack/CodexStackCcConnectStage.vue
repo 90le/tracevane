@@ -12,7 +12,7 @@
       @add-project="$emit('add-project')"
     />
 
-    <section class="panel-card cs-agent-stage">
+    <section class="cs-surface cs-agent-stage">
       <slot />
     </section>
   </div>

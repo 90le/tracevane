@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-runtime-config-card">
+  <article class="cs-surface cs-runtime-config-card">
     <div class="cs-card-header">
       <div>
         <p class="cs-section-kicker">{{ text("运行时", "Runtime") }}</p>

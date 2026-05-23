@@ -1,6 +1,6 @@
 <template>
   <div class="cs-cc-command-bar">
-    <article class="panel-card cs-section-intro">
+    <article class="cs-surface cs-section-intro">
       <div>
         <p class="cs-section-kicker">cc-connect</p>
         <h3>{{ text("Agent 工作台", "Agent Workbench") }}</h3>
@@ -19,7 +19,7 @@
       </div>
     </article>
 
-    <article class="panel-card cs-config-action-strip cs-agent-savebar">
+    <article class="cs-surface cs-config-action-strip cs-agent-savebar">
       <div>
         <p class="cs-section-kicker">{{ text("保存与应用", "Save and Apply") }}</p>
         <h4>{{ text("配置保存入口固定在顶部", "Config Save Actions Stay Pinned") }}</h4>

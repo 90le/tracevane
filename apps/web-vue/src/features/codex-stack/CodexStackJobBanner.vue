@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-job-banner" :class="jobStateClass">
+  <article class="cs-surface cs-job-banner" :class="jobStateClass">
     <div>
       <p class="cs-job-eyebrow">{{ text("后台任务", "Background Job") }}</p>
       <h3>{{ title }}</h3>
