@@ -192,8 +192,8 @@ const dashboardWorkspaceActions = computed(() => [
   {
     to: '/chat',
     eyebrow: 'Chat',
-    label: text('Chat', 'Chat'),
-    copy: text('查看私聊上下文', 'View private chat context'),
+    label: text('会话工作台', 'Chat workspace'),
+    copy: text('新建、继续会话并检索历史记录', 'Start, continue, and search conversation records'),
   },
   {
     to: '/agents',
@@ -345,6 +345,53 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 <style scoped>
 .home-control-surface {
   display: grid;
+  min-width: 0;
+}
+
+.home-stage-rhythm {
+  gap: 20px;
+}
+
+.home-stage-rhythm > [data-home-zone] {
+  position: relative;
+}
+
+.home-stage-rhythm > [data-home-zone]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sky) 32%, transparent), transparent 72%);
+  opacity: 0.68;
+  pointer-events: none;
+}
+
+.home-stage-rhythm > [data-home-zone='situation']::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 44%, transparent), transparent 74%);
+  opacity: 0.86;
+}
+
+.home-stage-rhythm > [data-home-zone='entry']::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mint) 32%, transparent), transparent 74%);
+}
+
+.home-section-marker {
+  position: relative;
+  padding-top: 3px;
+}
+
+.home-section-marker::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 48px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--acc), color-mix(in srgb, var(--sky) 44%, transparent));
+  opacity: 0.8;
 }
 
 .home-situation-band,
@@ -654,6 +701,10 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 }
 
 @media (max-width: 920px) {
+  .home-stage-rhythm {
+    gap: 16px;
+  }
+
   .home-situation-band,
   .home-workspace-entry,
   .home-system-snapshot {

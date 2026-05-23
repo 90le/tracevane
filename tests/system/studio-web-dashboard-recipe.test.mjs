@@ -57,6 +57,9 @@ test("dashboard view exposes a simplified home recipe with clear focus order", (
 test("dashboard view derives compact layout data from dedicated computed collections", () => {
   assert.match(dashboardView, /const homeSituationMetrics = computed\(/);
   assert.match(dashboardView, /const dashboardWorkspaceActions = computed\(/);
+  assert.match(dashboardView, /label: text\('会话工作台', 'Chat workspace'\)/);
+  assert.match(dashboardView, /copy: text\('新建、继续会话并检索历史记录', 'Start, continue, and search conversation records'\)/);
+  assert.doesNotMatch(dashboardView, /查看私聊上下文|View private chat context/);
   assert.doesNotMatch(dashboardView, /const dashboardRiskStageCards = computed\(/);
   assert.doesNotMatch(dashboardView, /const dashboardContextSummary = computed\(/);
   assert.match(dashboardView, /const dashboardSystemSignals = computed\(/);

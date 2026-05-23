@@ -81,34 +81,24 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
   assert.doesNotMatch(dashboardView, /等待风险汇总|Waiting for risk summary/);
   assert.doesNotMatch(dashboardView, /\bhome-risk-chip-strip\b/);
   assert.match(dashboardView, /\bhome-quick-action\b/);
+  assert.doesNotMatch(dashboardView, /查看私聊上下文|View private chat context/);
   assert.doesNotMatch(dashboardView, /\bhome-track-list\b/);
   assert.match(dashboardView, /v-if="errorMessage && !hasSummary"/);
   assert.match(
     dashboardView,
     /const \{ summary, hasSummary, loading, errorMessage \} = useDashboardSummary\(\)/,
   );
-  for (const selector of [
-    ".home-situation-band",
-    ".home-workspace-entry",
-    ".home-system-snapshot",
-  ]) {
-    assert.ok(
-      styleSource.includes(selector),
-      `missing global home selector: ${selector}`,
-    );
-  }
-  assert.ok(styleSource.includes("border: 1px solid var(--border-subtle);"));
-  assert.ok(styleSource.includes("background: var(--surface-base);"));
-  assert.match(styleSource, /\.home-stage-rhythm\s*\{[\s\S]*?gap:\s*20px;/);
+  assert.match(dashboardView, /\.home-stage-rhythm\s*\{[\s\S]*?gap:\s*20px;/);
   assert.doesNotMatch(dashboardView, /\.home-control-surface\s*\{[^}]*gap\s*:/);
-  assert.match(styleSource, /\.home-situation-band\s*\{/);
-  assert.ok(styleSource.includes("var(--accent-soft) 70%"));
-  assert.ok(styleSource.includes("var(--surface-raised)"));
+  assert.match(dashboardView, /\.home-situation-band\s*\{/);
+  assert.ok(dashboardView.includes("var(--accent-soft) 58%"));
+  assert.ok(dashboardView.includes("var(--surface-raised)"));
   assert.ok(
-    styleSource.includes(
+    dashboardView.includes(
       "border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-subtle));",
     ),
   );
+  assert.doesNotMatch(styleSource, /\.home-(control-surface|situation-band|workspace-entry|quick-action|stage-rhythm|section-marker)\b/);
   assert.match(
     dashboardSummarySource,
     /const hasSummary = computed\([\s\S]*summary\.value !== null && summary\.value\.summaryReady !== false,[\s\S]*\)/,
