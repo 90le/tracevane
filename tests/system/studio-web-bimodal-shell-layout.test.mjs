@@ -67,12 +67,14 @@ test("style foundation defines mirrored light theme shell surfaces", () => {
 test("dashboard adopts the new home control surface vocabulary", () => {
   assert.match(dashboardView, /class="home-control-surface home-stage-rhythm"/);
   assert.match(dashboardView, /class="home-situation-band"/);
-  assert.match(dashboardView, /class="home-workspace-entry"/);
-  assert.match(dashboardView, /class="home-entry-grid"/);
+  assert.match(dashboardView, /class="home-command-panel"/);
+  assert.match(dashboardView, /class="home-command-list"/);
+  assert.match(dashboardView, /class="home-command-row"/);
   assert.match(dashboardView, /class="home-compact-visual-strip"/);
   assert.match(dashboardView, /class="home-mini-chart-grid"/);
   assert.match(dashboardView, /class="home-system-snapshot"/);
   assert.match(dashboardView, /class="home-resource-signals"/);
+  assert.doesNotMatch(dashboardView, /home-workspace-entry|home-entry-grid|home-quick-action/);
   assert.doesNotMatch(dashboardView, /home-risk-stage|home-risk-row/);
   assert.doesNotMatch(dashboardView, /class="dashboard-hero-stage"/);
   assert.doesNotMatch(dashboardView, /class="dashboard-overview-river"/);

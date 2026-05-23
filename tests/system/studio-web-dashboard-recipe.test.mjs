@@ -10,6 +10,10 @@ const dashboardView = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/views/DashboardView.vue"),
   "utf8",
 );
+const dashboardWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/dashboard/dashboard-workspace.css"),
+  "utf8",
+);
 const dashboardApi = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/dashboard/api.ts"),
   "utf8",
@@ -24,8 +28,9 @@ test("dashboard view exposes a simplified home recipe with clear focus order", (
     "home-control-surface",
     "home-stage-rhythm",
     "home-situation-band",
-    "home-workspace-entry",
-    "home-entry-grid",
+    "home-command-panel",
+    "home-command-list",
+    "home-command-row",
     "home-compact-visual-strip",
     "home-system-snapshot",
   ];
@@ -69,16 +74,17 @@ test("dashboard view derives compact layout data from dedicated computed collect
   assert.doesNotMatch(dashboardView, /const dashboardTrendPoints = computed\(/);
 });
 
-test("dashboard view owns scoped page styling for the simplified home control surface", () => {
-  assert.match(dashboardView, /<style scoped>/);
-  assert.match(dashboardView, /\.home-control-surface\s*\{/);
-  assert.match(dashboardView, /\.home-entry-grid\s*\{/);
-  assert.match(dashboardView, /\.home-workspace-entry[,\\s]/);
-  assert.match(dashboardView, /\.home-compact-visual-strip\s*\{/);
-  assert.match(dashboardView, /\.home-system-snapshot\s*\{/);
-  assert.match(dashboardView, /\.home-system-snapshot\s*\{/);
-  assert.doesNotMatch(dashboardView, /\.home-recent-stream\s*\{/);
-  assert.doesNotMatch(dashboardView, /\.home-risk-stage\s*\{/);
+test("dashboard view owns feature CSS for the simplified home control surface", () => {
+  assert.match(dashboardView, /import '\.\.\/features\/dashboard\/dashboard-workspace\.css';/);
+  assert.doesNotMatch(dashboardView, /<style scoped>/);
+  assert.match(dashboardWorkspaceCss, /\.home-control-surface\s*\{/);
+  assert.match(dashboardWorkspaceCss, /\.home-command-panel\s*\{/);
+  assert.match(dashboardWorkspaceCss, /\.home-command-list\s*\{/);
+  assert.match(dashboardWorkspaceCss, /\.home-compact-visual-strip\s*\{/);
+  assert.match(dashboardWorkspaceCss, /\.home-system-snapshot\s*\{/);
+  assert.doesNotMatch(dashboardWorkspaceCss, /\.home-recent-stream\s*\{/);
+  assert.doesNotMatch(dashboardWorkspaceCss, /\.home-risk-stage\s*\{/);
+  assert.doesNotMatch(dashboardView, /home-entry-grid|home-quick-action|home-workspace-entry/);
 });
 
 test("dashboard recipe removes the old split workboard and hero vocabulary", () => {
