@@ -723,6 +723,354 @@
   color: var(--text-soft);
 }
 
+.cs-chain-map {
+  display: grid;
+  gap: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 96%, #0f1c1f 4%), var(--surface)),
+    var(--surface);
+}
+
+.cs-chain-head,
+.cs-run-readiness-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cs-chain-head h4,
+.cs-run-readiness-head h4 {
+  margin: 0;
+}
+
+.cs-chain-head p:not(.cs-section-kicker) {
+  margin: 6px 0 0;
+  color: var(--text-soft);
+}
+
+.cs-chain-line,
+.cs-chain-gates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cs-chain-line {
+  align-items: stretch;
+}
+
+.cs-chain-node-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.cs-chain-node {
+  min-height: 118px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cs-chain-node span,
+.cs-chain-gate span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.cs-chain-node strong,
+.cs-chain-gate strong {
+  color: var(--text);
+  word-break: break-word;
+}
+
+.cs-chain-node small,
+.cs-chain-gate small {
+  color: var(--text-soft);
+  line-height: 1.4;
+}
+
+.cs-chain-arrow {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.cs-chain-gate {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: color-mix(in srgb, var(--code-bg) 28%, transparent);
+}
+
+.cs-chain-warning-strip {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, var(--line));
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+
+.cs-chain-warning-head {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.cs-chain-warning-head span {
+  color: var(--warning);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cs-chain-warning-head strong {
+  color: var(--text);
+}
+
+.cs-chain-warning-strip ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-soft);
+}
+
+.cs-chain-warning-strip li + li {
+  margin-top: 6px;
+}
+
+.cs-chain-map .cs-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  flex: 0 0 auto;
+}
+
+.cs-chain-map .tone-sage,
+.cs-run-readiness-card .tone-sage {
+  border-color: color-mix(in srgb, var(--success) 50%, var(--line));
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+}
+
+.cs-chain-map .tone-accent,
+.cs-run-readiness-card .tone-accent {
+  border-color: color-mix(in srgb, var(--acc) 50%, var(--line));
+  background: color-mix(in srgb, var(--acc) 10%, var(--surface));
+}
+
+.cs-chain-map .tone-danger,
+.cs-run-readiness-card .tone-danger {
+  border-color: color-mix(in srgb, var(--danger) 48%, var(--line));
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+}
+
+.cs-chain-map .tone-neutral,
+.cs-run-readiness-card .tone-neutral {
+  border-color: var(--line);
+}
+
+.cs-run-readiness-card {
+  display: grid;
+  gap: 16px;
+  border-color: color-mix(in srgb, currentColor 28%, var(--line));
+}
+
+.cs-run-readiness-head h4 {
+  color: var(--text);
+  font-size: clamp(1.15rem, 1.7vw, 1.45rem);
+}
+
+.cs-run-readiness-head p,
+.cs-run-mode p,
+.cs-run-check small {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.cs-run-focus {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+  gap: 12px;
+}
+
+.cs-run-focus-summary,
+.cs-run-focus-action {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.cs-run-focus-summary strong,
+.cs-run-focus-action strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.cs-run-focus-summary p,
+.cs-run-focus-action p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.cs-run-blockers,
+.cs-run-mode-strip,
+.cs-run-check-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.cs-run-blockers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cs-run-blockers span {
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line));
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.cs-run-mode-strip,
+.cs-run-check-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cs-run-mode {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-run-mode:hover,
+.cs-run-check:hover {
+  transform: translateY(-1px);
+}
+
+.cs-run-mode:disabled,
+.cs-run-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  transform: none;
+}
+
+.cs-run-mode:disabled em,
+.cs-run-check:disabled em {
+  color: var(--muted);
+}
+
+.cs-run-mode strong,
+.cs-run-check span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.cs-run-mode-copy {
+  min-width: 0;
+}
+
+.cs-run-mode span,
+.cs-run-check strong {
+  flex: none;
+  color: currentColor;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.cs-run-check-details {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--code-bg) 20%, transparent);
+}
+
+.cs-run-check-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.cs-run-check-details summary span {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.cs-run-check-details summary strong {
+  color: var(--text-soft);
+  font-size: 0.86rem;
+}
+
+.cs-run-check-grid {
+  padding: 0 12px 12px;
+}
+
+.cs-run-check {
+  min-height: 118px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-run-mode em,
+.cs-run-check em {
+  display: inline-flex;
+  color: currentColor;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.cs-run-mode em {
+  margin-top: 8px;
+  font-size: 0.82rem;
+}
+
+.cs-run-check em {
+  margin-top: 10px;
+}
+
 @media (max-width: 1180px) {
   .cs-command-center,
   .cs-command-footer {
@@ -748,6 +1096,11 @@
     grid-template-columns: 1fr;
   }
 
+  .cs-run-mode-strip,
+  .cs-run-check-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .cs-service-card {
     grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1fr);
     align-items: start;
@@ -759,14 +1112,36 @@
   }
 }
 
+@media (max-width: 1100px) {
+  .cs-chain-line,
+  .cs-chain-gates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cs-chain-node-wrap:nth-child(2n) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cs-chain-node-wrap:nth-child(2n) .cs-chain-arrow {
+    display: none;
+  }
+}
+
 @media (max-width: 960px) {
-  .cs-model-ribbon {
+  .cs-model-ribbon,
+  .cs-run-readiness-head {
     flex-direction: column;
     align-items: stretch;
   }
 
   .cs-model-ribbon-side {
     justify-content: flex-start;
+  }
+
+  .cs-run-focus,
+  .cs-run-mode-strip,
+  .cs-run-check-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -777,6 +1152,21 @@
 
   .cs-service-card-actions {
     justify-content: flex-start;
+  }
+
+  .cs-chain-head {
+    flex-direction: column;
+  }
+
+  .cs-chain-line,
+  .cs-chain-gates,
+  .cs-chain-warning-strip,
+  .cs-chain-node-wrap {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-chain-arrow {
+    display: none;
   }
 }
 
