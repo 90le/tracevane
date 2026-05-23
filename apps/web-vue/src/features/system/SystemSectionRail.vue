@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card system-sidebar-panel">
+  <article class="system-sidebar-panel">
     <div class="system-sidebar-head">
       <div>
         <p class="eyebrow">{{ title }}</p>

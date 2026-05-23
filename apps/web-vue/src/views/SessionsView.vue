@@ -13,7 +13,7 @@
       <MetricCard eyebrow="TOKENS" value="41k" label="Token 汇总" note="estimated" />
     </section>
 
-    <section class="panel-card">
+    <section class="sessions-list-section">
       <div class="panel-head">
         <h3>会话列表</h3>
       </div>
@@ -47,3 +47,15 @@
 import MetricCard from '../components/MetricCard.vue';
 import { sessions } from '../data/mock';
 </script>
+
+<style scoped>
+.sessions-list-section {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 44%, transparent);
+}
+</style>
