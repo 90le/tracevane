@@ -1153,88 +1153,6 @@ button {
   overflow: hidden;
 }
 
-.studio-shell-topbar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--shell-panel-border);
-  background:
-    radial-gradient(180px 80px at 0% 0%, color-mix(in srgb, var(--shell-highlight) 16%, transparent), transparent 74%),
-    color-mix(in srgb, var(--shell-panel-fill) 92%, transparent);
-  box-shadow: var(--shadow-soft);
-}
-
-.studio-shell-topbar__groups,
-.studio-shell-topbar__switchboard {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.studio-shell-topbar__groups::-webkit-scrollbar,
-.studio-shell-topbar__switchboard::-webkit-scrollbar {
-  display: none;
-}
-
-.studio-shell-topbar__group,
-.studio-shell-topbar__switch {
-  min-width: max-content;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  color: var(--muted);
-  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
-}
-
-.studio-shell-topbar__group {
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.studio-shell-topbar__switch {
-  gap: 7px;
-  height: 36px;
-  padding: 0 10px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.studio-shell-topbar__group:hover,
-.studio-shell-topbar__switch:hover {
-  color: var(--text);
-  border-color: color-mix(in srgb, var(--sky) 18%, var(--shell-panel-border));
-  background: var(--nav-hover-bg);
-}
-
-.studio-shell-topbar__group.active,
-.studio-shell-topbar__switch.active {
-  color: var(--nav-active-text);
-  border-color: color-mix(in srgb, var(--sky) 24%, var(--shell-panel-border));
-  background: var(--nav-active-bg);
-}
-
-.studio-shell-topbar__switch .sidebar-svg-icon {
-  width: 15px;
-  height: 15px;
-}
-
-.studio-shell-topbar__controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .sr-only {
   position: absolute;
   width: 1px;
@@ -7195,6 +7113,7 @@ body::before {
 
 .studio-shell-topbar__groups {
   display: flex;
+  align-items: center;
   min-width: 0;
   gap: 3px;
   overflow-x: auto;
@@ -7206,6 +7125,7 @@ body::before {
 
 .studio-shell-topbar__switchboard {
   display: flex;
+  align-items: center;
   min-width: 0;
   gap: 3px;
   overflow-x: auto;
@@ -7223,6 +7143,7 @@ body::before {
   position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-width: max-content;
   border: 1px solid transparent;
   border-radius: 11px;
@@ -7280,6 +7201,9 @@ body::before {
 }
 
 .studio-shell-topbar__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: nowrap;
   min-width: max-content;
 }
