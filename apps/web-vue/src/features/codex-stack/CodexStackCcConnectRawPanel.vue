@@ -41,6 +41,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useLocalePreference } from "../../shared/locale";
+import "./codex-stack-cc-connect.css";
 
 const props = defineProps<{
   rawDraft: string;
@@ -64,97 +65,3 @@ function textareaValue(event: Event): string {
   return (event.target as HTMLTextAreaElement).value;
 }
 </script>
-
-<style scoped>
-.cs-cc-raw-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.cs-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.cs-card-header h4 {
-  margin: 0;
-}
-
-.cs-section-kicker {
-  margin: 0 0 6px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
-.cs-status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 12px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
-  color: var(--text);
-  font-size: 0.85rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.cs-status-pill.tone-accent {
-  color: var(--acc);
-  border-color: color-mix(in srgb, var(--acc) 38%, var(--line));
-  background: color-mix(in srgb, var(--acc) 14%, var(--surface));
-}
-
-.cs-status-pill.tone-neutral {
-  color: var(--text-soft);
-  border-color: color-mix(in srgb, var(--muted) 32%, var(--line));
-  background: color-mix(in srgb, var(--muted) 12%, var(--surface));
-}
-
-.cs-raw-editor {
-  width: 100%;
-  min-height: 420px;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 12px 14px;
-  background: var(--code-bg);
-  color: var(--text);
-  white-space: pre-wrap;
-  line-height: 1.55;
-  margin: 0;
-  resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-.cs-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.cs-disabled-help {
-  margin: 0;
-  color: var(--warning);
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
-@media (max-width: 960px) {
-  .cs-card-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .cs-status-pill {
-    width: fit-content;
-  }
-}
-</style>

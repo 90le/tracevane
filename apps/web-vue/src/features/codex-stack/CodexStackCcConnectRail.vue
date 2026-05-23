@@ -39,6 +39,7 @@
 
 <script setup lang="ts">
 import { useLocalePreference } from "../../shared/locale";
+import "./codex-stack-cc-connect.css";
 
 export type CodexStackCcConnectPaneId = "projects" | "providers" | "setup" | "raw";
 
@@ -71,109 +72,3 @@ defineEmits<{
 
 const { text } = useLocalePreference();
 </script>
-
-<style scoped>
-.cs-agent-rail {
-  position: sticky;
-  top: 92px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.cs-agent-pane-switch {
-  display: grid;
-  gap: 8px;
-}
-
-.cs-agent-pane-button,
-.cs-agent-project-pill {
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  color: var(--text-soft);
-  cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
-}
-
-.cs-agent-pane-button {
-  border-radius: 16px;
-  padding: 12px 14px;
-  text-align: left;
-  font-weight: 650;
-}
-
-.cs-agent-pane-button-active,
-.cs-agent-project-pill-active {
-  color: var(--text);
-  border-color: color-mix(in srgb, var(--acc) 44%, var(--line));
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--acc) 14%, transparent), color-mix(in srgb, var(--surface) 96%, transparent)),
-    var(--surface);
-}
-
-.cs-agent-pane-button:hover,
-.cs-agent-project-pill:hover {
-  transform: translateY(-1px);
-}
-
-.cs-agent-project-rail {
-  min-width: 0;
-}
-
-.cs-agent-rail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.cs-agent-project-pill {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  border-radius: 16px;
-  padding: 12px;
-  margin-top: 8px;
-  text-align: left;
-}
-
-.cs-agent-project-pill span {
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.text-button {
-  border: none;
-  background: transparent;
-  color: var(--acc);
-  cursor: pointer;
-  padding: 4px 0;
-  font: inherit;
-  font-size: 0.86rem;
-}
-
-.text-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.54;
-}
-
-.cs-disabled-help {
-  margin: 0 0 8px;
-  color: var(--warning);
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
-@media (max-width: 960px) {
-  .cs-agent-rail {
-    position: static;
-  }
-
-  .cs-agent-pane-switch {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-</style>

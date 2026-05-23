@@ -12,6 +12,7 @@ const codexStackWorkspaceCss = read("apps/web-vue/src/features/codex-stack/codex
 const codexStackDashboardCss = read("apps/web-vue/src/features/codex-stack/codex-stack-dashboard.css");
 const codexStackInstallCss = read("apps/web-vue/src/features/codex-stack/codex-stack-install.css");
 const codexStackSettingsCss = read("apps/web-vue/src/features/codex-stack/codex-stack-settings.css");
+const codexStackCcConnectCss = read("apps/web-vue/src/features/codex-stack/codex-stack-cc-connect.css");
 const ccConnectCommandBar = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectCommandBar.vue");
 const ccConnectProviderPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProviderPanel.vue");
 const ccConnectProjectPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProjectPanel.vue");
@@ -69,8 +70,10 @@ test("codex stack logs panel is isolated from the main control page", () => {
   assert.match(controlPage, /guideRead: text\("读输出", "Read Output"\)/);
   assert.match(logConsole, /refreshingDisabledHelp: string;/);
   assert.match(logConsole, /v-if="refreshing && refreshingDisabledHelp"[\s\S]*class="cs-disabled-help"/);
-  assert.match(logConsole, /\.cs-log-service-button\s*\{/);
-  assert.match(logConsole, /\.cs-log\s*\{/);
+  assert.match(logConsole, /import "\.\/codex-stack-workspace\.css";/);
+  assert.doesNotMatch(logConsole, /<style/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-service-button\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log\s*\{/);
 });
 
 test("codex stack log reads avoid overlapping auto-refresh requests", () => {
@@ -82,6 +85,41 @@ test("codex stack log reads avoid overlapping auto-refresh requests", () => {
   );
   assert.match(controlPage, /const nextRequest = queuedLogRequest;[\s\S]*queuedLogRequest = null;/);
   assert.match(controlPage, /void loadLogs\(nextRequest\.serviceId, nextRequest\.silent\);/);
+});
+
+test("codex stack remaining domain components use feature css instead of vue style blocks", () => {
+  const ccConnectComponents = [
+    ccConnectCommandBar,
+    ccConnectProviderPanel,
+    ccConnectProjectPanel,
+    ccConnectRawPanel,
+    ccConnectRail,
+    ccConnectSetupPanel,
+    ccConnectStage,
+  ];
+
+  for (const component of ccConnectComponents) {
+    assert.match(component, /import "\.\/codex-stack-cc-connect\.css";/);
+    assert.doesNotMatch(component, /<style/);
+  }
+
+  assert.match(codexStackCcConnectCss, /\.cs-cc-command-bar\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-project-panel\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-provider-panel\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-agent-workbench\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-agent-rail\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-raw-editor\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-setup-panel\s*\{/);
+
+  assert.match(installShell, /import "\.\/codex-stack-install\.css";/);
+  assert.doesNotMatch(installShell, /<style/);
+  assert.match(codexStackInstallCss, /\.cs-install-shell\s*\{/);
+  assert.match(codexStackInstallCss, /\.cs-install-guide-list\s*\{/);
+
+  assert.match(logConsole, /import "\.\/codex-stack-workspace\.css";/);
+  assert.doesNotMatch(logConsole, /<style/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-console\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-shell\s*\{/);
 });
 
 test("codex stack extracted panels own their scoped display styles", () => {
@@ -261,33 +299,36 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(codexStackWorkspaceCss, /@media \(max-width: 760px\)/);
   assert.match(workspaceShell, /class="cs-content"/);
   assert.match(ccConnectCommandBar, /class="cs-cc-command-bar"/);
-  assert.match(ccConnectCommandBar, /\.cs-config-action-strip\s*\{/);
-  assert.match(ccConnectCommandBar, /\.cs-agent-savebar\s*\{/);
-  assert.match(ccConnectCommandBar, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectCommandBar, /import "\.\/codex-stack-cc-connect\.css";/);
+  assert.match(codexStackCcConnectCss, /\.cs-config-action-strip\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-agent-savebar\s*\{/);
+  assert.match(codexStackCcConnectCss, /@media \(max-width: 960px\)/);
   assert.match(ccConnectProviderPanel, /class="cs-cc-provider-panel"/);
-  assert.match(ccConnectProviderPanel, /\.cs-provider-grid\s*\{/);
-  assert.match(ccConnectProviderPanel, /\.cs-language-field\s*\{/);
-  assert.match(ccConnectProviderPanel, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectProviderPanel, /import "\.\/codex-stack-cc-connect\.css";/);
+  assert.match(codexStackCcConnectCss, /\.cs-provider-grid\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-language-field\s*\{/);
   assert.match(ccConnectProjectPanel, /class="cs-cc-project-panel"/);
-  assert.match(ccConnectProjectPanel, /\.cs-agent-template-row\s*\{/);
-  assert.match(ccConnectProjectPanel, /\.cs-platform-grid\s*\{/);
-  assert.match(ccConnectProjectPanel, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectProjectPanel, /import "\.\/codex-stack-cc-connect\.css";/);
+  assert.match(codexStackCcConnectCss, /\.cs-agent-template-row\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-platform-grid\s*\{/);
   assert.match(ccConnectRawPanel, /class="cs-cc-raw-panel"/);
-  assert.match(ccConnectRawPanel, /\.cs-raw-editor\s*\{/);
-  assert.match(ccConnectRawPanel, /\.cs-status-pill\.tone-accent\s*\{/);
-  assert.match(ccConnectRawPanel, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectRawPanel, /import "\.\/codex-stack-cc-connect\.css";/);
+  assert.match(codexStackCcConnectCss, /\.cs-raw-editor\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-status-pill\.tone-accent\s*\{/);
   assert.match(ccConnectRail, /class="[^\"]*cs-agent-rail"/);
-  assert.match(ccConnectRail, /\.cs-agent-pane-switch\s*\{/);
-  assert.match(ccConnectRail, /\.cs-agent-project-pill\s*\{/);
-  assert.match(ccConnectRail, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectRail, /import "\.\/codex-stack-cc-connect\.css";/);
+  assert.match(codexStackCcConnectCss, /\.cs-agent-pane-switch\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-agent-project-pill\s*\{/);
   assert.match(ccConnectSetupPanel, /class="cs-cc-setup-panel"/);
-  assert.match(ccConnectSetupPanel, /\.cs-code\s*\{/);
-  assert.match(ccConnectSetupPanel, /@media \(max-width: 960px\)/);
+  assert.match(ccConnectSetupPanel, /import "\.\/codex-stack-cc-connect\.css";/);
+  assert.match(codexStackCcConnectCss, /\.cs-code\s*\{/);
   assert.match(ccConnectStage, /class="cs-agent-workbench"/);
   assert.match(ccConnectStage, /class="[^\"]*cs-agent-stage"/);
-  assert.match(ccConnectStage, /@media \(max-width: 960px\)/);
-  assert.match(logConsole, /\.cs-section-kicker\s*\{/);
-  assert.match(logConsole, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
+  assert.match(ccConnectStage, /import "\.\/codex-stack-cc-connect\.css";/);
+  assert.match(codexStackCcConnectCss, /@media \(max-width: 960px\)/);
+  assert.match(logConsole, /import "\.\/codex-stack-workspace\.css";/);
+  assert.match(codexStackWorkspaceCss, /\.cs-section-kicker\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
 });
 
 test("codex stack page chrome delegates refresh and management enable without moving actions", () => {

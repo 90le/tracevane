@@ -20,6 +20,7 @@
 
 <script setup lang="ts">
 import CodexStackCcConnectRail from "./CodexStackCcConnectRail.vue";
+import "./codex-stack-cc-connect.css";
 import type {
   CodexStackCcConnectPaneId,
   CodexStackCcConnectPaneOption,
@@ -41,22 +42,3 @@ defineEmits<{
   "add-project": [];
 }>();
 </script>
-
-<style scoped>
-.cs-agent-workbench {
-  display: grid;
-  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-}
-
-.cs-agent-stage {
-  min-width: 0;
-}
-
-@media (max-width: 960px) {
-  .cs-agent-workbench {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
