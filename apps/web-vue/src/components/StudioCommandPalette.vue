@@ -22,13 +22,13 @@
         <header class="studio-command-palette__header">
           <Command class="studio-command-palette__mark" aria-hidden="true" />
           <label class="studio-command-palette__search">
-            <span class="sr-only">{{ text('搜索页面或命令', 'Search pages or commands') }}</span>
+            <span class="sr-only">{{ text('搜索命令', 'Search commands') }}</span>
             <input
               ref="searchInput"
               v-model="query"
               type="search"
               autocomplete="off"
-              :placeholder="text('搜索页面和功能', 'Search pages and features')"
+              :placeholder="text('搜索全局命令', 'Search global commands')"
               @keydown.down.prevent="moveSelection(1)"
               @keydown.up.prevent="moveSelection(-1)"
               @keydown.enter.prevent="runSelectedCommand"
@@ -46,12 +46,12 @@
 
         <div class="studio-command-palette__body">
           <section
-            v-if="filteredNavigationCommands.length"
+            v-if="visibleCommands.length"
             class="studio-command-palette__section"
           >
-            <h2>{{ text('页面导航', 'Navigation') }}</h2>
+            <h2>{{ text('全局操作', 'Global actions') }}</h2>
             <button
-              v-for="command in filteredNavigationCommands"
+              v-for="command in visibleCommands"
               :key="command.id"
               type="button"
               class="studio-command-palette__item"
@@ -64,20 +64,20 @@
               </span>
               <span class="studio-command-palette__item-main">
                 <strong>{{ command.label }}</strong>
-                <small>{{ command.group }}</small>
+                <small>{{ command.detail }}</small>
               </span>
-              <span class="studio-command-palette__path">{{ command.to }}</span>
+              <span class="studio-command-palette__path">{{ command.category }}</span>
             </button>
           </section>
 
           <p v-if="!visibleCommands.length" class="studio-command-palette__empty">
-            {{ text('没有匹配的页面或命令。', 'No matching page or command.') }}
+            {{ text('没有匹配的命令。', 'No matching command.') }}
           </p>
         </div>
 
         <footer class="studio-command-palette__footer">
           <span>{{ text('↑↓ 选择', '↑↓ Select') }}</span>
-          <span>{{ text('Enter 打开', 'Enter Open') }}</span>
+          <span>{{ text('Enter 执行', 'Enter Run') }}</span>
           <span>Esc {{ text('关闭', 'Close') }}</span>
         </footer>
       </section>
@@ -88,86 +88,111 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import {
-  Bot,
-  Boxes,
-  CalendarClock,
   Command,
-  Compass,
-  FileText,
-  Gauge,
-  LayoutGrid,
-  MessageSquare,
-  MoonStar,
-  Network,
-  Settings2,
-  Terminal,
+  ExternalLink,
+  Languages,
+  Monitor,
+  Moon,
+  Sun,
   X,
 } from '@lucide/vue';
-import { useRouter } from 'vue-router';
 import { useLocalePreference } from '../shared/locale';
+import { useThemePreference, type ThemeMode } from '../shared/theme';
 
-type NavCommand = {
+type CommandIcon = 'sun' | 'moon' | 'monitor' | 'language' | 'external';
+
+type CommandItem = {
   id: string;
-  kind: 'navigation';
-  group: string;
-  icon: string;
+  category: string;
+  icon: CommandIcon;
   label: string;
   detail: string;
-  to: string;
+  run: () => void;
 };
-
-type CommandItem = NavCommand;
 
 const props = defineProps<{
   open: boolean;
-  navGroups: Array<{
-    title: string;
-    items: Array<{ to: string; icon: string; label: string }>;
-  }>;
 }>();
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void;
 }>();
 
-const router = useRouter();
-const { text } = useLocalePreference();
+const { locale, setLocale, text } = useLocalePreference();
+const { setThemeMode } = useThemePreference();
 const query = ref('');
 const activeCommandId = ref<string>('');
 const searchInput = ref<HTMLInputElement | null>(null);
 
 const normalizedQuery = computed(() => query.value.trim().toLocaleLowerCase());
 
-const navigationCommands = computed<NavCommand[]>(() =>
-  props.navGroups.flatMap((group) =>
-    group.items.map((item) => ({
-      id: `nav:${item.to}`,
-      kind: 'navigation',
-      group: group.title,
-      icon: item.icon,
-      label: item.label,
-      detail: `${group.title} · ${item.to}`,
-      to: item.to,
-    })),
-  ),
-);
+const actionCommands = computed<CommandItem[]>(() => {
+  const themeCategory = text('主题', 'Theme');
+  const languageCategory = text('语言', 'Language');
+  const supportCategory = text('支持', 'Support');
+
+  return [
+    buildThemeCommand('light', text('切换浅色模式', 'Switch to light theme'), text('使用明亮工作台配色', 'Use the light workspace palette'), 'sun', themeCategory),
+    buildThemeCommand('dark', text('切换深色模式', 'Switch to dark theme'), text('使用低眩光深色工作台配色', 'Use the low-glare dark workspace palette'), 'moon', themeCategory),
+    buildThemeCommand('system', text('跟随系统主题', 'Follow system theme'), text('按系统外观自动切换', 'Follow the operating system appearance'), 'monitor', themeCategory),
+    {
+      id: 'locale:zh',
+      category: languageCategory,
+      icon: 'language',
+      label: text('切换到中文', 'Switch to Chinese'),
+      detail: locale.value === 'zh' ? text('当前已是中文', 'Chinese is already active') : text('界面语言切换为中文', 'Change the interface language to Chinese'),
+      run: () => setLocale('zh'),
+    },
+    {
+      id: 'locale:en',
+      category: languageCategory,
+      icon: 'language',
+      label: text('切换到 English', 'Switch to English'),
+      detail: locale.value === 'en' ? text('当前已是 English', 'English is already active') : text('界面语言切换为 English', 'Change the interface language to English'),
+      run: () => setLocale('en'),
+    },
+    {
+      id: 'support:docs',
+      category: supportCategory,
+      icon: 'external',
+      label: text('打开官方文档', 'Open official docs'),
+      detail: 'studio.90le.cn',
+      run: () => {
+        if (typeof window !== 'undefined') {
+          window.open('https://studio.90le.cn', '_blank', 'noreferrer');
+        }
+      },
+    },
+  ];
+});
+
+function buildThemeCommand(
+  mode: ThemeMode,
+  label: string,
+  detail: string,
+  icon: CommandIcon,
+  category: string,
+): CommandItem {
+  return {
+    id: `theme:${mode}`,
+    category,
+    icon,
+    label,
+    detail,
+    run: () => setThemeMode(mode),
+  };
+}
 
 function matchesCommand(command: CommandItem): boolean {
   const queryText = normalizedQuery.value;
   if (!queryText) return true;
-  return [command.label, command.detail, command.group, command.to]
+  return [command.label, command.detail, command.category]
     .join(' ')
     .toLocaleLowerCase()
     .includes(queryText);
 }
 
-const filteredNavigationCommands = computed(() =>
-  navigationCommands.value.filter(matchesCommand).slice(0, 10),
-);
-
-const visibleCommands = computed<CommandItem[]>(() => [
-  ...filteredNavigationCommands.value,
-]);
+const visibleCommands = computed<CommandItem[]>(() => actionCommands.value.filter(matchesCommand).slice(0, 10));
 
 watch(visibleCommands, (commands) => {
   if (!commands.length) {
@@ -210,24 +235,17 @@ function runSelectedCommand() {
 
 function runCommand(command: CommandItem) {
   closePalette();
-  void router.push(command.to);
+  command.run();
 }
 
-function resolveCommandIcon(icon: string) {
+function resolveCommandIcon(icon: CommandIcon) {
   const icons = {
-    dashboard: LayoutGrid,
-    chat: MessageSquare,
-    skills: Compass,
-    files: FileText,
-    terminal: Terminal,
-    system: Gauge,
-    agents: Bot,
-    channels: Network,
-    cron: CalendarClock,
-    config: Settings2,
-    plugins: Boxes,
-    dreaming: MoonStar,
+    sun: Sun,
+    moon: Moon,
+    monitor: Monitor,
+    language: Languages,
+    external: ExternalLink,
   };
-  return icons[icon as keyof typeof icons] ?? Boxes;
+  return icons[icon] ?? Command;
 }
 </script>

@@ -129,7 +129,6 @@
 
       <StudioCommandPalette
         v-model:open="commandPaletteOpen"
-        :nav-groups="navGroups"
       />
     </div>
   </TooltipProvider>
