@@ -75,7 +75,7 @@
           :aria-label="t('关闭查找', 'Close search')"
           @click="hideSearch"
         >
-          ×
+          <X class="drawer-close-icon" aria-hidden="true" />
         </button>
       </div>
       <p v-if="searchError" class="code-file-editor__search-error">{{ searchError }}</p>
@@ -104,6 +104,7 @@ import { SearchQuery, findNext, findPrevious, highlightSelectionMatches, replace
 import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { X } from "@lucide/vue";
 
 const props = withDefaults(
   defineProps<{

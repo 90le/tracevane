@@ -25,7 +25,7 @@
               class="chat-slash-status-close"
               :aria-label="text('关闭当前状态', 'Close current status')"
             >
-              ×
+              <X class="drawer-close-icon" aria-hidden="true" />
             </button>
           </DialogClose>
         </header>
@@ -131,6 +131,7 @@
 
 <script setup lang="ts">
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import type { ChatRuntimeState } from '../../../../../types/chat';
 

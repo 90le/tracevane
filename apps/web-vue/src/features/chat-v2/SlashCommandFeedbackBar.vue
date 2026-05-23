@@ -24,13 +24,14 @@
       :aria-label="text('关闭命令状态', 'Dismiss command status')"
       @click="$emit('dismiss')"
     >
-      ×
+      <X class="drawer-close-icon" aria-hidden="true" />
     </button>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   describeStudioSlashExecutionFeedback,

@@ -12,9 +12,10 @@
         v-if="!inspectPinned"
         type="button"
         class="surface-drawer-close"
+        :aria-label="text('关闭', 'Close')"
         @click="$emit('close')"
       >
-        ✕
+        <X class="drawer-close-icon" aria-hidden="true" />
       </button>
     </header>
 
@@ -128,6 +129,7 @@
 </template>
 
 <script setup lang="ts">
+import { X } from '@lucide/vue';
 import type { ChatDiagnostics, ChatObservabilityState, ChatRuntimeState } from '../../../../../types/chat';
 import { useLocalePreference } from '../../shared/locale';
 

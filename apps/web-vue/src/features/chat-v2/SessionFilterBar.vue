@@ -216,7 +216,7 @@
           @click="$emit('clear-filter-chip', chip.id)"
         >
           <span>{{ chip.label }}</span>
-          <span aria-hidden="true">×</span>
+          <X class="drawer-close-icon" aria-hidden="true" />
         </button>
       </div>
 
@@ -234,6 +234,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { X } from '@lucide/vue';
 import type { ChatSessionFilterChip } from '../../../../../lib/chat-session-catalog';
 import { PopoverArrow, PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
 import { useLocalePreference } from '../../shared/locale';

@@ -3290,7 +3290,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 
 .config-collapsible-summary::after,
 .provider-summary::after {
-  content: "▾";
+  content: "";
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3299,7 +3299,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-soft);
-  font-size: 12px;
+  clip-path: polygon(28% 39%, 50% 61%, 72% 39%, 79% 47%, 50% 76%, 21% 47%);
   flex-shrink: 0;
   transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
 }
@@ -5552,7 +5552,7 @@ html:not([data-theme="light"]) .chat-shell-page {
 }
 
 .agents-advanced-summary::after {
-  content: "▾";
+  content: "";
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5562,7 +5562,7 @@ html:not([data-theme="light"]) .chat-shell-page {
   border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
   background: color-mix(in srgb, var(--shell-panel-fill) 82%, transparent);
   color: var(--text-soft);
-  font-size: 12px;
+  clip-path: polygon(28% 39%, 50% 61%, 72% 39%, 79% 47%, 50% 76%, 21% 47%);
   flex-shrink: 0;
 }
 
@@ -9206,6 +9206,44 @@ select.form-input,
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.drawer-close-icon,
+.button-inline-icon,
+.glass-select-chevron,
+.glass-select-check,
+.chat-record-browser__search-icon,
+.chat-agent-picker__search-icon,
+.cascade-menu__arrow {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  stroke-width: 2;
+}
+
+.drawer-close-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.glass-select-chevron,
+.glass-select-check {
+  width: 15px;
+  height: 15px;
+}
+
+.chat-record-browser__search-icon,
+.chat-agent-picker__search-icon {
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+  opacity: 0.72;
+}
+
+.cascade-menu__arrow {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
 }
 
 /* Workbench OS redesign pass 2: remove nested card feel. */

@@ -6,7 +6,9 @@
         <h3>{{ panelTitle }}</h3>
         <p>{{ panelSubtitle }}</p>
       </div>
-      <button type="button" class="chat-inspector-panel__close" @click="$emit('close')">✕</button>
+      <button type="button" class="chat-inspector-panel__close" :aria-label="text('关闭', 'Close')" @click="$emit('close')">
+        <X class="drawer-close-icon" aria-hidden="true" />
+      </button>
     </header>
 
     <TabsRoot :model-value="tab" class="chat-inspector-panel__workspace" @update:model-value="handleTabChange">
@@ -200,6 +202,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { X } from '@lucide/vue';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
 import type { ChatDiagnostics, ChatObservabilityState, ChatRuntimeState, ChatSessionRow, ChatToolCard } from '../../../../../types/chat';
 import { useLocalePreference } from '../../shared/locale';

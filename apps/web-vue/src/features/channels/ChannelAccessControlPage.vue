@@ -24,7 +24,9 @@
           <div v-if="draft.allowFrom.length" class="tag-grid">
             <span v-for="value in draft.allowFrom" :key="value" class="tag-chip">
               {{ value }}
-              <button type="button" class="danger-link" @click="removeEntry('allow', value)">×</button>
+              <button type="button" class="danger-link" :aria-label="text('移除', 'Remove')" @click="removeEntry('allow', value)">
+                <X class="drawer-close-icon" aria-hidden="true" />
+              </button>
             </span>
           </div>
           <div v-else class="empty-inline">
@@ -46,7 +48,9 @@
           <div v-if="draft.groupAllowFrom.length" class="tag-grid">
             <span v-for="value in draft.groupAllowFrom" :key="value" class="tag-chip">
               {{ value }}
-              <button type="button" class="danger-link" @click="removeEntry('group', value)">×</button>
+              <button type="button" class="danger-link" :aria-label="text('移除', 'Remove')" @click="removeEntry('group', value)">
+                <X class="drawer-close-icon" aria-hidden="true" />
+              </button>
             </span>
           </div>
           <div v-else class="empty-inline">
@@ -79,6 +83,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
+import { X } from '@lucide/vue';
 import { fetchChannelAccountAccess, saveChannelAccountAccess } from './api';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';

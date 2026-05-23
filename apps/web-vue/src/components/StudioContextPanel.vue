@@ -16,7 +16,7 @@
             :title="text('关闭上下文面板', 'Close context panel')"
             @click="emit('update:open', false)"
           >
-            ×
+            <X class="studio-context-panel__close-icon" aria-hidden="true" />
           </button>
         </header>
 
@@ -52,6 +52,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
+import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import StatusPill from './StatusPill.vue';
 import { useLocalePreference } from '../shared/locale';

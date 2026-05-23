@@ -456,7 +456,7 @@
               class="chat-image-preview-close"
               :aria-label="text('关闭资源预览', 'Close media preview')"
             >
-              ×
+              <X class="drawer-close-icon" aria-hidden="true" />
             </button>
           </DialogClose>
 
@@ -491,7 +491,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Braces, MoreHorizontal } from '@lucide/vue';
+import { Braces, MoreHorizontal, X } from '@lucide/vue';
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import { useLocalePreference } from '../../shared/locale';
 import type { ChatInlineResourceDisplay, ChatMessageItem, ChatProcessBlock, ChatRunOverlay, ChatToolStatus } from '../../../../../types/chat';

@@ -69,7 +69,9 @@
               <strong>{{ text('裁切头像', 'Crop Avatar') }}</strong>
               <span>{{ text('拖拽方形裁切框，确认后会自动压缩。', 'Drag the square crop box and the image will be compressed after you confirm.') }}</span>
             </div>
-            <button type="button" class="avatar-cropper-dialog__close" @click="cancelCropper">×</button>
+            <button type="button" class="avatar-cropper-dialog__close" :aria-label="text('关闭', 'Close')" @click="cancelCropper">
+              <X class="drawer-close-icon" aria-hidden="true" />
+            </button>
           </header>
 
           <div class="avatar-cropper-layout">
@@ -148,6 +150,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { X } from '@lucide/vue';
 import AgentAvatarContent from './AgentAvatarContent.vue';
 import { useLocalePreference } from '../locale';
 

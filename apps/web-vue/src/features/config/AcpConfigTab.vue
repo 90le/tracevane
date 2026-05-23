@@ -112,12 +112,15 @@
                   <span class="form-label">{{ text('Agent ID', 'Agent ID') }}</span>
                   <div class="agent-input-row">
                     <input v-model="form.allowedAgents[index]" class="form-input" type="text" :placeholder="text('输入 Agent ID', 'Enter Agent ID')" />
-                    <button type="button" class="agent-remove-btn" @click="removeAgent(index)" :title="text('移除', 'Remove')">✕</button>
+                    <button type="button" class="agent-remove-btn" @click="removeAgent(index)" :title="text('移除', 'Remove')" :aria-label="text('移除', 'Remove')">
+                      <X class="drawer-close-icon" aria-hidden="true" />
+                    </button>
                   </div>
                 </label>
               </div>
               <button type="button" class="agent-add-btn" @click="addAgent">
-                + {{ text('添加 Agent', 'Add Agent') }}
+                <Plus class="button-inline-icon" aria-hidden="true" />
+                {{ text('添加 Agent', 'Add Agent') }}
               </button>
             </div>
           </section>
@@ -129,6 +132,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { Plus, X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 

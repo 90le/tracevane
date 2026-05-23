@@ -148,7 +148,7 @@
                   class="chat-slash-sheet__close"
                   :aria-label="text('关闭命令菜单', 'Close slash menu')"
                 >
-                  ×
+                  <X class="drawer-close-icon" aria-hidden="true" />
                 </button>
               </DialogClose>
             </header>
@@ -310,7 +310,7 @@
               class="chat-composer-preview-close"
               :aria-label="text('关闭预览', 'Close preview')"
             >
-              ×
+              <X class="drawer-close-icon" aria-hidden="true" />
             </button>
           </DialogClose>
 

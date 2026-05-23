@@ -19,7 +19,7 @@
               :aria-label="text('关闭高级设置', 'Close advanced settings')"
               @click="emit('close')"
             >
-              ✕
+              <X class="drawer-close-icon" aria-hidden="true" />
             </button>
           </header>
 
@@ -46,6 +46,7 @@
 
 <script setup lang="ts">
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import type { ResolvedTheme } from '../../shared/theme';
 

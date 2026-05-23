@@ -11,7 +11,9 @@
               <h3>{{ channelLabel }}</h3>
               <p>{{ channelType }}</p>
             </div>
-            <button type="button" class="channels-drawer__close" @click="$emit('close')">✕</button>
+            <button type="button" class="channels-drawer__close" :aria-label="text('关闭', 'Close')" @click="$emit('close')">
+              <X class="drawer-close-icon" aria-hidden="true" />
+            </button>
           </header>
 
           <div class="channels-drawer__body">
@@ -67,6 +69,7 @@
 
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
+import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import type { ChannelSettingsInput } from '../../../../../types/channels';
 import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';

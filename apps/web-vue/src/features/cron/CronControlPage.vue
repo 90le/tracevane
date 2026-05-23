@@ -689,7 +689,9 @@
               <h3>{{ text('新增定时任务', 'Create Cron Job') }}</h3>
               <p>{{ text('先创建一个最小可用任务，再去右侧工作区补充更细的 delivery 和运行参数。', 'Create a minimum viable job first, then refine delivery and runtime details in the main workspace.') }}</p>
             </div>
-            <button type="button" class="cron-modal-close" @click="closeCreateModal">✕</button>
+            <button type="button" class="cron-modal-close" :aria-label="text('关闭', 'Close')" @click="closeCreateModal">
+              <X class="drawer-close-icon" aria-hidden="true" />
+            </button>
           </div>
 
           <div class="cron-modal-body">
@@ -820,7 +822,7 @@
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
-import { Activity, History, SlidersHorizontal } from '@lucide/vue';
+import { Activity, History, SlidersHorizontal, X } from '@lucide/vue';
 import type { CronDetailPayload, CronJobInput, CronRunSummary, CronSummaryPayload } from '../../../../../types/cron';
 import StatusPill from '../../components/StatusPill.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';

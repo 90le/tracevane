@@ -200,8 +200,8 @@
             <strong>{{ detailsItem.basename }}</strong>
             <span>{{ detailsItem.path }}</span>
           </div>
-          <button type="button" class="file-manager-details__close" @click="closeDetails">
-            ×
+          <button type="button" class="file-manager-details__close" :aria-label="text('关闭详情', 'Close details')" @click="closeDetails">
+            <X class="drawer-close-icon" aria-hidden="true" />
           </button>
         </header>
 
@@ -302,6 +302,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, provide, ref } from "vue";
+import { X } from "@lucide/vue";
 import { VueFinder, contextMenuItems as builtInContextMenuItems } from "vuefinder";
 import type { ConfigDefaults, DirEntry, FeaturesConfig, Item as VueFinderContextItem } from "vuefinder";
 import zhCN from "vuefinder/dist/locales/zhCN.js";

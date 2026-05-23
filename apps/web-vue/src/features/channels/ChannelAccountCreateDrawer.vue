@@ -11,7 +11,9 @@
               <h3>{{ channelLabel }}</h3>
               <p>{{ text('创建入口收成单页表单：上半部分填账号和凭据，下半部分补常用策略。', 'Creation now uses a single-page form: identity and credentials on top, common policies below.') }}</p>
             </div>
-            <button type="button" class="channels-drawer__close" @click="$emit('close')">✕</button>
+            <button type="button" class="channels-drawer__close" :aria-label="text('关闭', 'Close')" @click="$emit('close')">
+              <X class="drawer-close-icon" aria-hidden="true" />
+            </button>
           </header>
 
           <div class="channels-drawer__body">
@@ -117,6 +119,7 @@
 
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
+import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import type { ChannelAccountInput, ChannelCatalogEntry } from '../../../../../types/channels';
 import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';

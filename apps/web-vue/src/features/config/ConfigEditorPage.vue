@@ -1551,7 +1551,10 @@
           <span v-if="dirtyDomains.length > 4" class="config-change-chip muted">+{{ dirtyDomains.length - 4 }}</span>
         </div>
         <div class="config-save-dock__actions">
-          <span v-if="saveFeedbackVisible && !hasUnsavedChanges" class="config-save-dock__saved-pill">✓ {{ text('已保存', 'Saved') }}</span>
+          <span v-if="saveFeedbackVisible && !hasUnsavedChanges" class="config-save-dock__saved-pill">
+            <Check class="button-inline-icon" aria-hidden="true" />
+            {{ text('已保存', 'Saved') }}
+          </span>
           <button class="secondary-button compact-button" type="button" @click="refreshConfigWithDirtyCheck" :disabled="loading || saving">
             {{ text('放弃并刷新', 'Discard & refresh') }}
           </button>

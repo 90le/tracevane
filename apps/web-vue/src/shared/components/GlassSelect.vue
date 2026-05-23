@@ -8,7 +8,7 @@
       @click="toggleOpen"
     >
       <span class="glass-select-value">{{ selectedLabel || placeholder }}</span>
-      <span class="glass-select-chevron" aria-hidden="true">▾</span>
+      <ChevronDown class="glass-select-chevron" aria-hidden="true" />
     </button>
 
     <Teleport v-if="teleport" to="body">
@@ -23,7 +23,7 @@
           @click.prevent
         >
           <span>{{ option.label }}</span>
-          <span v-if="option.value === modelValue" class="glass-select-check" aria-hidden="true">✓</span>
+          <Check v-if="option.value === modelValue" class="glass-select-check" aria-hidden="true" />
         </button>
       </div>
     </Teleport>
@@ -39,7 +39,7 @@
         @click.prevent
       >
         <span>{{ option.label }}</span>
-        <span v-if="option.value === modelValue" class="glass-select-check" aria-hidden="true">✓</span>
+        <Check v-if="option.value === modelValue" class="glass-select-check" aria-hidden="true" />
       </button>
     </div>
   </div>
@@ -47,6 +47,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { Check, ChevronDown } from '@lucide/vue';
 
 export interface GlassSelectOption {
   value: string;

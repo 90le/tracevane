@@ -25,7 +25,7 @@
               class="chat-slash-help-close"
               :aria-label="text('关闭斜杠命令总览', 'Close slash command catalog')"
             >
-              ×
+              <X class="drawer-close-icon" aria-hidden="true" />
             </button>
           </DialogClose>
         </header>
@@ -113,6 +113,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   getStudioSlashCommandCategoryLabel,

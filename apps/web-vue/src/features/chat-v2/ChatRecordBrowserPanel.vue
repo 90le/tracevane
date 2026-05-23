@@ -21,7 +21,7 @@
                   class="chat-record-browser__close"
                   :aria-label="text('关闭聊天记录', 'Close chat records')"
                 >
-                  ×
+                  <X class="drawer-close-icon" aria-hidden="true" />
                 </button>
               </DialogClose>
             </div>
@@ -30,7 +30,7 @@
           <div class="chat-record-browser__controls">
             <form class="chat-record-browser__search" @submit.prevent="emitSearch">
               <label class="chat-record-browser__search-field">
-                <span aria-hidden="true">⌕</span>
+                <Search class="chat-record-browser__search-icon" aria-hidden="true" />
                 <input
                   ref="searchInput"
                   :value="query"
@@ -209,7 +209,7 @@
           :aria-label="text('关闭聊天记录', 'Close chat records')"
           @click="handleOpenChange(false)"
         >
-          ×
+          <X class="drawer-close-icon" aria-hidden="true" />
         </button>
       </div>
     </header>
@@ -217,7 +217,7 @@
     <div class="chat-record-browser__controls">
       <form class="chat-record-browser__search" @submit.prevent="emitSearch">
         <label class="chat-record-browser__search-field">
-          <span aria-hidden="true">⌕</span>
+          <Search class="chat-record-browser__search-icon" aria-hidden="true" />
           <input
             ref="searchInput"
             :value="query"
@@ -379,6 +379,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { Search, X } from '@lucide/vue';
 import type {
   ChatHistoryDateBucket,
   ChatHistorySearchContentFilter,

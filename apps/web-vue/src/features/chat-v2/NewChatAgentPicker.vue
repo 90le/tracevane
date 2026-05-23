@@ -18,13 +18,15 @@
             </p>
           </div>
           <DialogClose as-child>
-            <button type="button" class="chat-agent-picker__close">✕</button>
+            <button type="button" class="chat-agent-picker__close" :aria-label="text('关闭', 'Close')">
+              <X class="drawer-close-icon" aria-hidden="true" />
+            </button>
           </DialogClose>
         </header>
 
         <div class="chat-agent-picker__controls">
           <label class="chat-agent-picker__search">
-            <span aria-hidden="true">⌕</span>
+            <Search class="chat-agent-picker__search-icon" aria-hidden="true" />
             <input
               ref="searchInput"
               v-model.trim="searchText"
@@ -106,6 +108,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { Search, X } from '@lucide/vue';
 import type { AgentSummary } from '../../../../../types/agents';
 import AgentAvatarContent from '../../shared/components/AgentAvatarContent.vue';
 import { useLocalePreference } from '../../shared/locale';

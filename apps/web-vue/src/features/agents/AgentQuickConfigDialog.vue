@@ -17,7 +17,9 @@
               <h3>{{ draft.name || fallbackName || agentId }}</h3>
               <p>{{ agentId }}</p>
             </div>
-            <button type="button" class="agents-quick-config-dialog__close" :aria-label="text('关闭', 'Close')" @click="$emit('close')">✕</button>
+            <button type="button" class="agents-quick-config-dialog__close" :aria-label="text('关闭', 'Close')" @click="$emit('close')">
+              <X class="drawer-close-icon" aria-hidden="true" />
+            </button>
           </header>
 
           <div class="agents-quick-config-dialog__body">
@@ -127,6 +129,7 @@
 
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
+import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
 import GlassSelect from '../../shared/components/GlassSelect.vue';

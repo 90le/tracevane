@@ -11,7 +11,9 @@
               <h3>{{ text('配置账号凭据', 'Configure account credentials') }}</h3>
               <p>{{ text('凭据会写入当前频道账号；保存前请确认账号上下文。', 'Credentials are saved to the current channel account. Confirm the account context before saving.') }}</p>
             </div>
-            <button type="button" class="channels-drawer__close" @click="$emit('close')">✕</button>
+            <button type="button" class="channels-drawer__close" :aria-label="text('关闭', 'Close')" @click="$emit('close')">
+              <X class="drawer-close-icon" aria-hidden="true" />
+            </button>
           </header>
 
           <div class="channels-drawer__body credential-drawer__body">
@@ -76,6 +78,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue';
+import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import type { ChannelCatalogEntry } from '../../../../../types/channels';
 import { useLocalePreference } from '../../shared/locale';

@@ -12,7 +12,7 @@
           @click="handleBranchClick(item)"
         >
           <span>{{ item.label }}</span>
-          <span class="cascade-menu__arrow">›</span>
+          <ChevronRight class="cascade-menu__arrow" aria-hidden="true" />
         </DropdownMenuSubTrigger>
         <DropdownMenuPortal>
           <DropdownMenuSubContent
@@ -53,6 +53,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from 'reka-ui';
+import { ChevronRight } from '@lucide/vue';
 import type { CascadeMenuItem } from './cascade-menu.types';
 
 defineOptions({

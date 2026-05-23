@@ -159,7 +159,10 @@
               :role="activeToast.kind === 'error' ? 'alert' : 'status'"
               :aria-live="activeToast.kind === 'error' ? 'assertive' : 'polite'"
             >
-              <span class="chat-shell-toast-icon" aria-hidden="true">{{ activeToast.kind === 'error' ? '!' : '✓' }}</span>
+              <span class="chat-shell-toast-icon" aria-hidden="true">
+                <AlertTriangle v-if="activeToast.kind === 'error'" class="drawer-close-icon" />
+                <Check v-else class="drawer-close-icon" />
+              </span>
               <span class="chat-shell-toast-text">{{ activeToast.text }}</span>
               <button
                 type="button"
@@ -167,7 +170,7 @@
                 :aria-label="text('关闭提示', 'Dismiss notice')"
                 @click="dismissToast"
               >
-                ×
+                <X class="drawer-close-icon" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -295,7 +298,7 @@
                   class="chat-host-exec-confirm-close"
                   :aria-label="text('关闭确认窗口', 'Close confirmation dialog')"
                 >
-                  ×
+                  <X class="drawer-close-icon" aria-hidden="true" />
                 </button>
               </DialogClose>
             </header>
@@ -350,6 +353,7 @@ import {
   DialogTitle,
 } from 'reka-ui';
 import { useRoute, useRouter } from 'vue-router';
+import { AlertTriangle, Check, X } from '@lucide/vue';
 import type { AgentSummary } from '../../../../../types/agents';
 import type {
   ChatActivityItem,

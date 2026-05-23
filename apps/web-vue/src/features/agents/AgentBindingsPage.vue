@@ -97,7 +97,9 @@
               <h3>{{ editingBindingId ? text('修改绑定', 'Edit binding') : text('新增绑定', 'Add binding') }}</h3>
               <p>{{ text('在弹窗中完成绑定编辑，避免表单和下拉选项被页面卡片裁切。', 'Edit bindings in a modal so forms and dropdown menus are no longer clipped by neighboring cards.') }}</p>
             </div>
-            <button type="button" class="agents-modal-close" :aria-label="text('关闭', 'Close')" @click="closeBindingDialog">✕</button>
+            <button type="button" class="agents-modal-close" :aria-label="text('关闭', 'Close')" @click="closeBindingDialog">
+              <X class="drawer-close-icon" aria-hidden="true" />
+            </button>
           </header>
 
           <div class="agents-modal-body">
@@ -179,6 +181,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { X } from '@lucide/vue';
 import type { AgentBindingInput, AgentDetailPayload } from '../../../../../types/agents';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import GlassSelect from '../../shared/components/GlassSelect.vue';

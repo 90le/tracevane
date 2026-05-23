@@ -112,7 +112,7 @@
                 class="chat-live-preview-close"
                 aria-label="Close preview"
               >
-                ×
+                <X class="drawer-close-icon" aria-hidden="true" />
               </button>
             </DialogClose>
           </div>
@@ -168,6 +168,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { X } from '@lucide/vue';
 import type { ChatResourceItem } from '../../../../../types/chat';
 import {
   buildHtmlPreviewDocument,

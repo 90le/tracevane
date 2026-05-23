@@ -177,7 +177,9 @@
             <p>{{ selectedSkillSummary.slug }}</p>
           </div>
 
-          <button type="button" class="skills-drawer-close" @click="closeInstalledDrawer">✕</button>
+          <button type="button" class="skills-drawer-close" :aria-label="text('关闭', 'Close')" @click="closeInstalledDrawer">
+            <X class="drawer-close-icon" aria-hidden="true" />
+          </button>
         </div>
 
         <div class="skills-inline-stats">
@@ -714,7 +716,9 @@
             <p>{{ selectedMarketItem.slug }}</p>
           </div>
 
-          <button type="button" class="skills-drawer-close" @click="closeMarketDrawer">✕</button>
+          <button type="button" class="skills-drawer-close" :aria-label="text('关闭', 'Close')" @click="closeMarketDrawer">
+            <X class="drawer-close-icon" aria-hidden="true" />
+          </button>
         </div>
 
         <div class="skills-inline-stats">
@@ -1119,7 +1123,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { Compass, Globe2, PackageOpen } from '@lucide/vue';
+import { Compass, Globe2, PackageOpen, X } from '@lucide/vue';
 import type {
   SkillApiKeyMode,
   SkillInstallTargetScope,

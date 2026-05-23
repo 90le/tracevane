@@ -29,7 +29,7 @@
             @keydown.enter.stop.prevent="emit('close', tab.id)"
             @keydown.space.stop.prevent="emit('close', tab.id)"
           >
-            ×
+            <X class="drawer-close-icon" aria-hidden="true" />
           </span>
         </button>
       </div>
@@ -182,6 +182,7 @@
 
 <script setup lang="ts">
 import { defineAsyncComponent } from "vue";
+import { X } from "@lucide/vue";
 
 const AsyncCodeFileEditor = defineAsyncComponent(() => import("./CodeFileEditor.vue"));
 

@@ -8,7 +8,9 @@
             <h3>{{ text('选择 Agent', 'Choose an Agent') }}</h3>
             <p class="surface-note">{{ text('Agent 选择放在动作里，而不是占据主聊天页。', 'Agent selection happens inside the action instead of taking over the main chat surface.') }}</p>
           </div>
-          <button type="button" class="surface-drawer-close" @click="$emit('close')">✕</button>
+          <button type="button" class="surface-drawer-close" :aria-label="text('关闭', 'Close')" @click="$emit('close')">
+            <X class="drawer-close-icon" aria-hidden="true" />
+          </button>
         </header>
 
         <div v-if="!agents.length" class="empty-inline">{{ text('当前没有可用 Agent。', 'No agents are available.') }}</div>
@@ -42,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+import { X } from '@lucide/vue';
 import type { AgentSummary } from '../../../../../types/agents';
 import AgentAvatarContent from '../../shared/components/AgentAvatarContent.vue';
 import { useLocalePreference } from '../../shared/locale';

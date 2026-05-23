@@ -204,7 +204,9 @@
               <h3>{{ text('新增 Agent', 'Create Agent') }}</h3>
               <p>{{ text('先创建一个最小可用 Agent，再去右侧 stage 补全文档、绑定和高级配置。', 'Create a minimum viable agent first, then use the right stage to complete docs, bindings, and advanced settings.') }}</p>
             </div>
-            <button type="button" class="agents-modal-close" :aria-label="text('关闭', 'Close')" @click="closeOverlay">✕</button>
+            <button type="button" class="agents-modal-close" :aria-label="text('关闭', 'Close')" @click="closeOverlay">
+              <X class="drawer-close-icon" aria-hidden="true" />
+            </button>
           </div>
 
           <div class="agents-modal-body">
@@ -363,7 +365,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { BookOpen, Braces, Link2, MessageSquare, SlidersHorizontal } from '@lucide/vue';
+import { BookOpen, Braces, Link2, MessageSquare, SlidersHorizontal, X } from '@lucide/vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { AgentCreatePayload, AgentDetailPayload, AgentsSummaryPayload } from '../../../../../types/agents';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
