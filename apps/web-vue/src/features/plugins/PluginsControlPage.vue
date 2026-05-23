@@ -124,7 +124,7 @@
     </section>
 
     <section v-else-if="activeTab === 'inventory'" class="plugins-layout">
-      <aside class="panel-card plugins-rail">
+      <aside class="plugins-rail">
         <div class="plugins-rail-head">
           <h3>{{ text('插件清单', 'Plugin inventory') }}</h3>
           <p>{{ text('包含已配置条目和 manifest-only 发现项。', 'Includes configured entries and manifest-only discoveries.') }}</p>
@@ -247,7 +247,7 @@
       </aside>
 
       <main class="plugins-stage">
-        <article class="panel-card plugins-stage-card">
+        <article class="plugins-stage-card">
           <div class="plugins-section-head">
             <div>
               <p class="eyebrow">{{ selectedPlugin?.source || 'PLUGIN' }}</p>
@@ -282,7 +282,7 @@
           </template>
         </article>
 
-        <article v-if="selectedEntry" class="panel-card plugins-stage-card">
+        <article v-if="selectedEntry" class="plugins-stage-card">
           <div class="plugins-section-head compact">
             <h3>{{ text('插件控制', 'Plugin controls') }}</h3>
             <p>{{ text('配置只保存非敏感字段；token/secret/password 不会在摘要中回显。', 'Only non-sensitive config is shown; token/secret/password fields are redacted.') }}</p>
@@ -554,7 +554,7 @@
           </div>
         </article>
 
-        <article v-else-if="selectedPlugin" class="panel-card plugins-stage-card">
+        <article v-else-if="selectedPlugin" class="plugins-stage-card">
           <div class="plugins-section-head compact">
             <h3>{{ text('快速接管', 'Quick activate') }}</h3>
             <p>{{ text('这个插件已被发现，但还没有配置 entry。可以先把它加入配置并启用，再回到策略页细调。', 'This plugin is discovered but has no configured entry yet. Add it to config and enable it first, then refine policy later.') }}</p>
@@ -569,7 +569,7 @@
     </section>
 
     <section v-else-if="activeTab === 'policy'" class="plugins-policy-grid">
-      <article class="panel-card plugins-stage-card plugins-stage-card--wide">
+      <article class="plugins-stage-card plugins-stage-card--wide">
         <div class="plugins-section-head">
           <div>
             <p class="eyebrow">{{ text('POLICY', 'POLICY') }}</p>
@@ -612,7 +612,7 @@
         v-model="form.loadPaths"
       />
 
-      <article class="panel-card plugins-stage-card plugins-stage-card--wide">
+      <article class="plugins-stage-card plugins-stage-card--wide">
         <div class="plugins-section-head compact">
           <h3>{{ text('独占插槽', 'Exclusive slots') }}</h3>
           <p>{{ text('Memory 和 Context Engine 这类能力只能由一个插件提供。', 'Capabilities like Memory and Context Engine can be owned by one plugin at a time.') }}</p>
@@ -631,7 +631,7 @@
     </section>
 
     <section v-else-if="activeTab === 'installs'" class="plugins-overview">
-      <article class="panel-card plugins-stage-card plugins-stage-card--wide">
+      <article class="plugins-stage-card plugins-stage-card--wide">
         <div class="plugins-section-head">
           <div>
             <p class="eyebrow">{{ text('INSTALLS', 'INSTALLS') }}</p>
@@ -640,7 +640,7 @@
           </div>
         </div>
         <div class="plugins-install-stack">
-          <article class="panel-card plugins-stage-card">
+          <article class="plugins-stage-card">
             <div class="plugins-section-head compact">
               <h4>{{ text('上传本地插件包', 'Upload local plugin package') }}</h4>
               <p>{{ text('用户流程应从这里开始：上传 .zip，先检测结构，再安装。必须能定位唯一 openclaw.plugin.json。', 'This is the primary user flow: upload a .zip, validate its structure, then install it. Studio must locate exactly one openclaw.plugin.json.') }}</p>
@@ -706,7 +706,7 @@
 
           <div class="plugins-install-layout">
             <div class="plugins-stage">
-              <article class="panel-card plugins-stage-card">
+              <article class="plugins-stage-card">
                 <div class="plugins-section-head compact">
                   <h4>{{ text('高级来源安装', 'Advanced source install') }}</h4>
                   <p>{{ text('保留给 npm/path/clawhub spec、本地开发链接安装和排障使用。普通用户优先使用上面的上传入口。', 'Keep this for npm/path/clawhub specs, local dev links, and troubleshooting. Regular users should prefer the upload flow above.') }}</p>
@@ -877,7 +877,7 @@
     </section>
 
     <section v-else class="plugins-overview">
-      <article class="panel-card plugins-stage-card plugins-stage-card--wide">
+      <article class="plugins-stage-card plugins-stage-card--wide">
         <div class="plugins-section-head">
           <div>
             <p class="eyebrow">{{ text('DIAGNOSTICS', 'DIAGNOSTICS') }}</p>
@@ -996,7 +996,7 @@ const PolicyListEditor = defineComponent({
       emit('update:modelValue', next);
     };
     const add = () => emit('update:modelValue', [...props.modelValue, '']);
-    return () => h('article', { class: ['panel-card', 'plugins-stage-card', attrs.class] }, [
+    return () => h('article', { class: ['plugins-stage-card', attrs.class] }, [
       h('div', { class: 'plugins-section-head compact' }, [
         h('h3', props.title),
         h('p', props.description),

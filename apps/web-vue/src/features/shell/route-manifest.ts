@@ -32,10 +32,7 @@ const ChannelBindingsPage = () => import("../channels/ChannelBindingsPage.vue");
 const SystemEventCenterPage = () =>
   import("../system/SystemEventCenterPage.vue");
 
-export type ShellContextPanelMode = "default" | "chat-inspector" | "disabled";
-
 export type ShellRouteMeta = {
-  contextPanel: ShellContextPanelMode;
   keepAlive?: boolean;
 };
 
@@ -266,12 +263,10 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/dashboard",
     component: DashboardView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/agents",
     component: AgentsView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
     children: [
       { path: "", component: AgentsControlPage },
       { path: ":agentId", component: AgentsControlPage },
@@ -284,7 +279,7 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/chat",
     component: ChatView,
-    meta: { contextPanel: "chat-inspector", keepAlive: false } satisfies ShellRouteMeta,
+    meta: { keepAlive: false } satisfies ShellRouteMeta,
     children: [
       { path: "", component: ChatShellPage, props: { shellMode: "chat" } },
       { path: "new", redirect: "/chat" },
@@ -314,7 +309,6 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/channels",
     component: ChannelsView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
     children: [
       { path: "", component: ChannelsControlPage },
       { path: ":type", component: ChannelsControlPage },
@@ -337,56 +331,45 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/skills",
     component: SkillsView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/files",
     component: FilesView,
-    meta: { contextPanel: "disabled" } satisfies ShellRouteMeta,
   },
   {
     path: "/plugins",
     component: PluginsView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/cron",
     component: CronView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/codex-stack",
     component: CodexStackView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/dreaming",
     component: DreamingView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/terminal",
     component: TerminalView,
-    meta: { contextPanel: "disabled" } satisfies ShellRouteMeta,
   },
   {
     path: "/terminal/:sessionId",
     component: TerminalView,
-    meta: { contextPanel: "disabled" } satisfies ShellRouteMeta,
   },
   {
     path: "/config",
     component: ConfigView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/system/events",
     component: SystemEventCenterPage,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
   {
     path: "/system",
     component: SystemView,
-    meta: { contextPanel: "default" } satisfies ShellRouteMeta,
   },
 ];

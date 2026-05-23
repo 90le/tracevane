@@ -1278,7 +1278,7 @@ button {
 
 .studio-shell-topbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -1288,45 +1288,6 @@ button {
     radial-gradient(180px 80px at 0% 0%, color-mix(in srgb, var(--shell-highlight) 16%, transparent), transparent 74%),
     color-mix(in srgb, var(--shell-panel-fill) 92%, transparent);
   box-shadow: var(--shadow-soft);
-}
-
-.studio-shell-topbar__search {
-  min-height: 36px;
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  padding: 0 10px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--text-soft);
-  cursor: pointer;
-}
-
-.studio-shell-topbar__search-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.studio-shell-topbar__search-shortcut {
-  font-size: 10px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.studio-shell-topbar__context-toggle {
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  color: var(--text-soft);
-  font-size: 11px;
-  cursor: pointer;
 }
 
 .studio-shell-topbar__controls {
@@ -1526,126 +1487,6 @@ button {
   padding: 10px 12px;
   border-top: 1px solid var(--line);
   background: var(--modal-panel-bg-strong);
-}
-
-.shell-context-panel__overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--modal-backdrop);
-  backdrop-filter: blur(3px);
-  z-index: 120;
-}
-
-.shell-context-panel {
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  width: min(360px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
-  overflow: auto;
-  z-index: 121;
-}
-
-.studio-context-panel {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid var(--modal-border);
-  background:
-    radial-gradient(160px 80px at 100% 0%, color-mix(in srgb, var(--body-glow-b) 12%, transparent), transparent 74%),
-    linear-gradient(180deg, var(--modal-panel-bg), var(--modal-panel-bg-strong));
-  box-shadow: var(--modal-shadow);
-}
-
-.studio-context-panel__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.studio-context-panel__eyebrow {
-  margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.studio-context-panel__title {
-  margin: 4px 0 0;
-  font-size: 15px;
-  color: var(--text);
-}
-
-.studio-context-panel__description {
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--muted);
-}
-
-.studio-context-panel__close {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  border: 1px solid var(--modal-border);
-  background: var(--modal-row-bg);
-  color: var(--text-soft);
-  cursor: pointer;
-}
-
-.studio-context-panel__section {
-  display: grid;
-  gap: 8px;
-}
-
-.studio-context-panel__section h3 {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text);
-}
-
-.studio-context-panel__list,
-.studio-context-panel__pending-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 8px;
-}
-
-.studio-context-panel__pending-item {
-  display: grid;
-  padding: 0;
-  border-radius: 10px;
-  border: 1px solid var(--modal-border);
-  background: var(--modal-row-bg);
-  overflow: hidden;
-}
-
-.studio-context-panel__pending-link {
-  display: grid;
-  gap: 4px;
-  padding: 10px;
-  color: inherit;
-  text-decoration: none;
-}
-
-.studio-context-panel__pending-link:hover {
-  background: var(--modal-row-hover-bg);
-}
-
-.studio-context-panel__pending-item strong {
-  font-size: 12px;
-  color: var(--text);
-}
-
-.studio-context-panel__pending-item span {
-  font-size: 11px;
-  color: var(--muted);
 }
 
 .main-content.chat-surface-route .shell-route-stage {
@@ -4848,14 +4689,6 @@ html[data-theme="light"] .nav-link.router-link-active {
     grid-column: 1 / -1;
     flex-wrap: wrap;
   }
-
-  .shell-context-panel {
-    width: min(340px, calc(100vw - 20px));
-    top: 10px;
-    right: 10px;
-    max-height: calc(100dvh - 20px);
-  }
-
   .studio-command-palette {
     align-items: stretch;
     padding: max(12px, env(safe-area-inset-top, 0px)) 8px 8px;
@@ -6716,8 +6549,6 @@ html[data-theme="light"] .app-container {
 
 .nav-link .icon,
 .sidebar-toggle,
-.studio-shell-topbar__search,
-.studio-shell-topbar__context-toggle,
 .docs-link,
 .surface-tab {
   background: color-mix(in srgb, var(--icon-surface) 88%, transparent);
@@ -6837,8 +6668,7 @@ html[data-theme="dark"] .cs-nav-badge.tone-neutral {
 }
 
 html[data-theme="light"] .cs-status-pill,
-html[data-theme="light"] .cs-info-chip,
-html[data-theme="light"] .studio-shell-topbar__context-toggle {
+html[data-theme="light"] .cs-info-chip {
   color: var(--studio-text-soft);
   background: rgba(255, 255, 255, 0.68);
   border-color: rgba(20, 72, 92, 0.13);
@@ -7512,7 +7342,7 @@ body::before {
 
 .studio-shell-topbar {
   display: grid;
-  grid-template-columns: minmax(210px, 300px) minmax(260px, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: 56px;
   gap: 8px;
@@ -7523,14 +7353,6 @@ body::before {
   background: color-mix(in srgb, var(--atlas-panel-2) 82%, transparent);
   box-shadow: none;
   backdrop-filter: blur(22px) saturate(1.18);
-}
-
-.studio-shell-topbar__search {
-  min-width: 0;
-  height: 40px;
-  border-radius: 12px;
-  border-color: var(--atlas-line);
-  background: color-mix(in srgb, var(--atlas-panel-3) 84%, transparent);
 }
 
 .studio-shell-topbar__switchboard {
@@ -7598,7 +7420,6 @@ body::before {
   min-width: max-content;
 }
 
-.studio-shell-topbar__context-toggle,
 .theme-switch,
 .theme-switch-button {
   border-radius: 11px;
@@ -7922,7 +7743,7 @@ select.form-input,
 
 @media (max-width: 1260px) {
   .studio-shell-topbar {
-    grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
 }
@@ -7930,10 +7751,6 @@ select.form-input,
 @media (max-width: 980px) {
   .studio-shell-topbar {
     grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .studio-shell-topbar__search {
-    grid-column: 1 / -1;
   }
 
   .studio-shell-topbar__switchboard {

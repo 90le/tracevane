@@ -32,11 +32,11 @@
       </article>
     </motion.section>
 
-    <div v-if="loading" class="panel-card panel-muted">{{ text('正在加载配置...', 'Loading configuration...') }}</div>
+    <div v-if="loading" class="empty-inline panel-muted">{{ text('正在加载配置...', 'Loading configuration...') }}</div>
 
     <template v-else>
       <motion.div class="config-workbench" v-bind="pageSurfaceReveal">
-        <aside class="panel-card config-sidebar">
+        <aside class="config-sidebar">
           <div class="config-sidebar-head">
             <p class="eyebrow">{{ text('CONFIG DOMAINS', 'CONFIG DOMAINS') }}</p>
             <h3 class="config-sidebar-title">{{ text('从这里开始', 'Start Here') }}</h3>
@@ -79,7 +79,7 @@
         </aside>
 
         <div class="config-main">
-          <article class="panel-card config-active-tab-panel">
+          <article class="config-active-tab-panel">
             <div class="config-active-tab-head">
               <div class="panel-heading-emph">
                 <span aria-hidden="true">
@@ -111,7 +111,7 @@
           </article>
 
       <section v-if="activeTab === 'model'" id="global-config" class="page-shell config-section-grid config-section-grid-model">
-        <article class="panel-card config-sheet">
+        <article class="config-sheet">
           <section class="config-block">
           <div class="panel-head">
             <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('全局配置与 Agent 默认值', 'Global Config & Agent Defaults') }}</span></h3>
@@ -572,7 +572,7 @@
       </section>
 
       <section v-else-if="activeTab === 'security'" class="page-shell config-section-grid config-section-grid-security">
-        <article class="panel-card config-sheet">
+        <article class="config-sheet">
           <section class="config-block">
           <div class="panel-head">
             <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('Sandbox 策略', 'Sandbox Strategy') }}</span></h3>
@@ -1035,7 +1035,7 @@
       </section>
 
       <section v-else-if="activeTab === 'session'" class="page-shell config-section-grid config-section-grid-session">
-        <article class="panel-card config-sheet">
+        <article class="config-sheet">
           <section class="config-block">
           <div class="panel-head">
             <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('会话与消息行为', 'Sessions & Messaging') }}</span></h3>
@@ -1227,7 +1227,7 @@
 
       <section v-else-if="activeTab === 'providers'" class="page-shell config-section-grid config-section-grid-providers">
         <div class="config-provider-workbench">
-          <aside class="panel-card config-provider-sidebar">
+          <aside class="config-provider-sidebar">
             <div class="panel-head">
               <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('供应商列表', 'Provider List') }}</span></h3>
               <button class="secondary-button compact-button" type="button" @click="addProvider">{{ text('新增供应商', 'Add provider') }}</button>
@@ -1252,7 +1252,7 @@
             </div>
           </aside>
 
-          <article class="panel-card config-provider-editor" v-if="activeProvider">
+          <article class="config-provider-editor" v-if="activeProvider">
             <div class="panel-head">
               <div class="panel-heading-emph">
                 <span class="panel-heading-mark" aria-hidden="true"></span>
@@ -1390,7 +1390,7 @@
             </div>
           </article>
 
-          <article v-else class="panel-card panel-muted">
+          <article v-else class="empty-inline panel-muted">
             {{ text('先从左侧选择一个供应商。', 'Select a provider from the left first.') }}
           </article>
         </div>
@@ -1403,7 +1403,7 @@
       <AcpConfigTab v-else-if="activeTab === 'acp'" ref="acpTabRef" :summary="loadedSummary" :saving="saving" @quick-save="saveChanges" />
 
       <section v-else-if="activeTab === 'mcp-skills'" class="page-shell config-section-grid config-section-grid-mcp-skills">
-        <article class="panel-card config-sheet">
+        <article class="config-sheet">
           <section class="config-block">
             <div class="panel-head">
               <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('MCP 运行时', 'MCP Runtime') }}</span></h3>

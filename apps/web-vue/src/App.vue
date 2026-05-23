@@ -20,7 +20,7 @@
                 :subtitle="text('管理控制台', 'Management Console')"
                 :docs-label="text('官方文档', 'Official docs')"
                 :toggle-title="text('折叠侧边栏', 'Collapse sidebar')"
-                :nav-groups="navGroups"
+                :nav-groups="[]"
                 :version-info-class="versionInfoClass"
                 :version-title="versionTitle"
                 :version-label="versionLabel"
@@ -50,7 +50,7 @@
           :subtitle="text('管理控制台', 'Management Console')"
           :docs-label="text('官方文档', 'Official docs')"
           :toggle-title="sidebarCollapsed ? text('展开侧边栏', 'Expand sidebar') : text('折叠侧边栏', 'Collapse sidebar')"
-          :nav-groups="navGroups"
+          :nav-groups="[]"
           :version-info-class="versionInfoClass"
           :version-title="versionTitle"
           :version-label="versionLabel"
@@ -93,14 +93,9 @@
               v-if="!isChatSurface && !isFilesSurface"
               :is-mobile="isMobile"
               :mobile-nav-open="mobileSidebarOpen"
-              :search-label="text('搜索页面与命令', 'Search pages and commands')"
-              search-shortcut-label="Ctrl K"
               :switchboard-label="text('主工作区切换', 'Primary workspace switchboard')"
               :nav-groups="navGroups"
               :mobile-nav-label="text('打开导航', 'Open navigation')"
-              :show-context-toggle="canOpenContextPanel"
-              :context-panel-open="contextPanelOpen"
-              :context-toggle-label="contextToggleLabel"
               :theme-switch-label="text('主题模式', 'Theme mode')"
               :locale-switch-label="text('语言模式', 'Language mode')"
               :theme-mode="themeMode"
@@ -108,8 +103,6 @@
               :locale="locale"
               :locale-options="localeOptions"
               @toggle-mobile-nav="toggleSidebar"
-              @toggle-context-panel="toggleContextPanel"
-              @open-command-palette="openCommandPalette"
               @set-theme-mode="setThemeMode"
               @set-locale="setLocale"
             />
@@ -133,24 +126,11 @@
         </div>
       </main>
 
-      <StudioContextPanel
-        v-if="contextPanelEnabled"
-        class="shell-context-panel"
-        v-model:open="contextPanelOpen"
-        :title="contextPanelTitle"
-        :description="contextPanelDescription"
-        :alerts-title="text('提醒', 'Alerts')"
-        :pending-title="text('下一步', 'Next steps')"
-        :alerts="topStatus"
-        :pending-items="contextPendingItems"
-      />
-
       <ConfirmDialog />
 
       <StudioCommandPalette
         v-model:open="commandPaletteOpen"
         :nav-groups="navGroups"
-        :context-items="contextPendingItems"
       />
     </div>
   </TooltipProvider>
@@ -164,7 +144,6 @@ import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, TooltipProvider
 import { RouterView, useRoute, type RouteLocationNormalizedLoaded } from 'vue-router';
 import ConfirmDialog from './components/ConfirmDialog.vue';
 import StudioCommandPalette from './components/StudioCommandPalette.vue';
-import StudioContextPanel from './components/StudioContextPanel.vue';
 import StudioShellTopbar from './components/StudioShellTopbar.vue';
 import StudioSidebarRail from './components/StudioSidebarRail.vue';
 import { preloadNonChatShellRouteChunks } from './features/shell/route-manifest';
@@ -204,21 +183,11 @@ const ambientPointer = { x: 0, y: 0, frame: 0 };
 const { locale, setLocale, text } = useLocalePreference();
 const {
   navGroups,
-  contextPanelTitle,
-  contextPanelDescription,
-  topStatus,
-  contextPendingItems,
 } = useShellNavigation();
 
-const contextPanelMode = computed<'default' | 'chat-inspector' | 'disabled'>(() => {
-  const matched = [...route.matched].reverse();
-  const metaMode = matched.find((record) => typeof record.meta?.contextPanel === 'string')?.meta?.contextPanel;
-  return metaMode === 'chat-inspector' || metaMode === 'disabled' ? metaMode : 'default';
-});
-const isChatSurface = computed(() => contextPanelMode.value === 'chat-inspector');
+const isChatSurface = computed(() => route.path === '/chat' || route.path.startsWith('/chat/'));
 const isTerminalSurface = computed(() => route.path === '/terminal' || route.path.startsWith('/terminal/'));
 const isFilesSurface = computed(() => route.path === '/files' || route.path.startsWith('/files/'));
-const contextPanelEnabled = computed(() => contextPanelMode.value === 'default');
 const routeSurfaceClass = computed(() => {
   const firstSegment = route.path.split('/').filter(Boolean)[0] || 'dashboard';
   const normalized = firstSegment.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
@@ -229,13 +198,9 @@ const {
   sidebarCollapsed,
   isMobile,
   mobileSidebarOpen,
-  contextPanelOpen,
-  canOpenContextPanel,
   toggleSidebar,
   handleSidebarNavigate,
-  closeContextPanel,
-  toggleContextPanel,
-} = useShellChrome(contextPanelEnabled);
+} = useShellChrome();
 
 const {
   versionInfoClass,
@@ -250,11 +215,6 @@ const {
   handleStudioUpgradeAction,
 } = useShellRelease(buildVersion);
 
-const contextToggleLabel = computed(() => (
-  contextPanelOpen.value
-    ? text('关闭上下文', 'Hide context')
-    : text('打开上下文', 'Show context')
-));
 const commandPaletteOpen = ref(false);
 
 const openCommandPalette = () => {
@@ -355,7 +315,6 @@ onUnmounted(() => {
 });
 
 watch(() => route.fullPath, () => {
-  closeContextPanel();
   commandPaletteOpen.value = false;
 });
 

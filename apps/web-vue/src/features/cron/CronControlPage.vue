@@ -24,7 +24,7 @@
 
     <section class="cron-workbench">
       <aside class="cron-sidebar operate-resource-rail mobile-resource-drawer">
-        <article class="panel-card cron-sidebar-panel operate-workspace-surface">
+        <article class="cron-sidebar-panel operate-workspace-surface">
           <div class="cron-sidebar-head">
             <div>
               <p class="eyebrow">{{ text('SCHEDULER', 'SCHEDULER') }}</p>
@@ -100,10 +100,10 @@
       </aside>
 
       <section class="cron-stage operate-stage">
-        <div v-if="detailLoading" class="panel-card cron-empty-state">{{ text('正在读取任务详情…', 'Loading job details...') }}</div>
+        <div v-if="detailLoading" class="cron-empty-state">{{ text('正在读取任务详情…', 'Loading job details...') }}</div>
 
         <TabsRoot v-else-if="detail" v-model="activeTab" class="cron-stage-workspace">
-          <article class="panel-card cron-stage-header operate-workspace-surface">
+          <article class="cron-stage-header operate-workspace-surface">
             <div class="cron-stage-head operate-stage-task-head">
               <div>
                 <p class="eyebrow">{{ detail.job.id }}</p>
@@ -141,7 +141,7 @@
           </article>
 
           <TabsContent value="overview" as-child>
-            <article class="panel-card cron-stage-panel">
+            <article class="cron-stage-panel">
             <section class="cron-section">
               <div class="cron-section-head">
                 <div>
@@ -282,7 +282,7 @@
           </TabsContent>
 
           <TabsContent value="config" as-child>
-            <article class="panel-card cron-stage-panel">
+            <article class="cron-stage-panel">
             <section class="cron-section">
               <div class="cron-section-head">
                 <div>
@@ -599,7 +599,7 @@
           </TabsContent>
 
           <TabsContent value="runs" as-child>
-            <article class="panel-card cron-stage-panel">
+            <article class="cron-stage-panel">
             <section class="cron-section">
               <div class="cron-section-head">
                 <div>
@@ -675,7 +675,7 @@
           </TabsContent>
         </TabsRoot>
 
-        <div v-else class="panel-card cron-empty-state">
+        <div v-else class="cron-empty-state">
           {{ text('先在左侧选择一个任务，或者新建一个。', 'Pick a job on the left or create one to get started.') }}
         </div>
       </section>

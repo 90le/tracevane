@@ -12,18 +12,6 @@
       <Menu class="studio-shell-topbar__icon" aria-hidden="true" />
     </button>
 
-    <button
-      type="button"
-      class="studio-shell-topbar__search"
-      :title="searchLabel"
-      :aria-label="searchLabel"
-      @click="$emit('open-command-palette')"
-    >
-      <Search class="studio-shell-topbar__icon" aria-hidden="true" />
-      <span class="studio-shell-topbar__search-label">{{ searchLabel }}</span>
-      <span class="studio-shell-topbar__search-shortcut">{{ searchShortcutLabel }}</span>
-    </button>
-
     <nav class="studio-shell-topbar__switchboard" :aria-label="switchboardLabel">
       <RouterLink
         v-for="item in switchboardItems"
@@ -38,18 +26,6 @@
     </nav>
 
     <div class="studio-shell-topbar__controls">
-      <button
-        v-if="showContextToggle"
-        type="button"
-        class="studio-shell-topbar__context-toggle"
-        :aria-pressed="String(contextPanelOpen)"
-        :aria-label="contextToggleLabel"
-        :title="contextToggleLabel"
-        @click="$emit('toggle-context-panel')"
-      >
-        {{ contextToggleLabel }}
-      </button>
-
       <div class="theme-switch" role="group" :aria-label="themeSwitchLabel">
         <button
           v-for="option in themeOptions"
@@ -86,7 +62,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Monitor, Moon, Search, Sun, Menu } from '@lucide/vue';
+import { Monitor, Moon, Sun, Menu } from '@lucide/vue';
 import { RouterLink, useRoute } from 'vue-router';
 import type { Locale } from '../shared/locale';
 import type { ThemeMode } from '../shared/theme';
@@ -130,14 +106,9 @@ type ShellNavGroup = {
 const props = defineProps<{
   isMobile: boolean;
   mobileNavOpen: boolean;
-  searchLabel: string;
-  searchShortcutLabel: string;
   switchboardLabel: string;
   navGroups: ShellNavGroup[];
   mobileNavLabel: string;
-  showContextToggle: boolean;
-  contextPanelOpen: boolean;
-  contextToggleLabel: string;
   themeSwitchLabel: string;
   localeSwitchLabel: string;
   themeMode: ThemeMode;
@@ -148,8 +119,6 @@ const props = defineProps<{
 
 defineEmits<{
   (event: 'toggle-mobile-nav'): void;
-  (event: 'toggle-context-panel'): void;
-  (event: 'open-command-palette'): void;
   (event: 'set-theme-mode', value: ThemeMode): void;
   (event: 'set-locale', value: Locale): void;
 }>();

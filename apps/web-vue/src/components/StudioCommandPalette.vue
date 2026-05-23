@@ -28,7 +28,7 @@
               v-model="query"
               type="search"
               autocomplete="off"
-              :placeholder="text('搜索页面、功能和当前上下文动作', 'Search pages, features, and context actions')"
+              :placeholder="text('搜索页面和功能', 'Search pages and features')"
               @keydown.down.prevent="moveSelection(1)"
               @keydown.up.prevent="moveSelection(-1)"
               @keydown.enter.prevent="runSelectedCommand"
@@ -45,28 +45,6 @@
         </header>
 
         <div class="studio-command-palette__body">
-          <section
-            v-if="filteredContextCommands.length"
-            class="studio-command-palette__section"
-          >
-            <h2>{{ text('当前页面动作', 'Current page actions') }}</h2>
-            <button
-              v-for="command in filteredContextCommands"
-              :key="command.id"
-              type="button"
-              class="studio-command-palette__item"
-              :class="{ active: command.id === activeCommandId }"
-              @mouseenter="activeCommandId = command.id"
-              @click="runCommand(command)"
-            >
-              <span class="studio-command-palette__item-main">
-                <strong>{{ command.label }}</strong>
-                <small>{{ command.detail }}</small>
-              </span>
-              <span class="studio-command-palette__path">{{ command.to }}</span>
-            </button>
-          </section>
-
           <section
             v-if="filteredNavigationCommands.length"
             class="studio-command-palette__section"
@@ -138,17 +116,7 @@ type NavCommand = {
   to: string;
 };
 
-type ContextCommand = {
-  id: string;
-  kind: 'context';
-  group: string;
-  icon: string;
-  label: string;
-  detail: string;
-  to: string;
-};
-
-type CommandItem = NavCommand | ContextCommand;
+type CommandItem = NavCommand;
 
 const props = defineProps<{
   open: boolean;
@@ -156,7 +124,6 @@ const props = defineProps<{
     title: string;
     items: Array<{ to: string; icon: string; label: string }>;
   }>;
-  contextItems: Array<{ id: string; to: string; title: string; detail: string }>;
 }>();
 
 const emit = defineEmits<{
@@ -185,18 +152,6 @@ const navigationCommands = computed<NavCommand[]>(() =>
   ),
 );
 
-const contextCommands = computed<ContextCommand[]>(() =>
-  props.contextItems.map((item) => ({
-    id: `context:${item.id}`,
-    kind: 'context',
-    group: text('当前页面', 'Current page'),
-    icon: 'context',
-    label: item.title,
-    detail: item.detail,
-    to: item.to,
-  })),
-);
-
 function matchesCommand(command: CommandItem): boolean {
   const queryText = normalizedQuery.value;
   if (!queryText) return true;
@@ -206,16 +161,11 @@ function matchesCommand(command: CommandItem): boolean {
     .includes(queryText);
 }
 
-const filteredContextCommands = computed(() =>
-  contextCommands.value.filter(matchesCommand).slice(0, 4),
-);
-
 const filteredNavigationCommands = computed(() =>
   navigationCommands.value.filter(matchesCommand).slice(0, 10),
 );
 
 const visibleCommands = computed<CommandItem[]>(() => [
-  ...filteredContextCommands.value,
   ...filteredNavigationCommands.value,
 ]);
 
