@@ -24,6 +24,7 @@ const railPath = path.join(
   "apps/web-vue/src/components/StudioShellContextRail.vue",
 );
 const stylePath = path.join(rootDir, "apps/web-vue/src/style.css");
+const componentsPath = path.join(rootDir, "apps/web-vue/components.d.ts");
 const navigationPath = path.join(
   rootDir,
   "apps/web-vue/src/features/shell/use-shell-navigation.ts",
@@ -50,6 +51,14 @@ test("app shell extracts shell layout and release state into dedicated composabl
   assert.doesNotMatch(app, /let upgradePollTimer/);
   assert.doesNotMatch(app, /function updateViewportState\(/);
   assert.doesNotMatch(app, /function toggleSidebar\(/);
+});
+
+test("generated component declarations do not retain removed context panels", () => {
+  const components = fs.readFileSync(componentsPath, "utf8");
+  assert.match(components, /StudioCommandPalette/);
+  assert.match(components, /StudioShellTopbar/);
+  assert.match(components, /StudioSidebarRail/);
+  assert.doesNotMatch(components, /StudioContextPanel|StudioShellContextRail/);
 });
 
 test("release composable uses confirm dialog helper instead of window.confirm", () => {
