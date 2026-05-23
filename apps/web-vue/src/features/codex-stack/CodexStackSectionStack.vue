@@ -4,11 +4,6 @@
   </section>
 </template>
 
-<style scoped>
-.cs-section-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  min-width: 0;
-}
-</style>
+<script setup lang="ts">
+import "./codex-stack-workspace.css";
+</script>
