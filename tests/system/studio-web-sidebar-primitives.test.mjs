@@ -30,7 +30,7 @@ test('app shell uses reka dialog primitives for the mobile sidebar instead of a 
   assert.doesNotMatch(appVue, /v-if="isMobile && mobileSidebarOpen"\s+class="mobile-sidebar-mask"/);
 });
 
-test('sidebar rail component uses reka tooltip primitives for collapsed navigation affordances', () => {
+test('sidebar rail component uses reka tooltip primitives for collapsed tool affordances', () => {
   assert.equal(fs.existsSync(sidebarRailPath), true);
   const sidebarRail = fs.readFileSync(sidebarRailPath, 'utf8');
   assert.match(sidebarRail, /from 'reka-ui'/);
@@ -52,6 +52,14 @@ test('sidebar rail no longer duplicates topbar theme and locale controls', () =>
   assert.doesNotMatch(styleCss, /sidebar-utility-cluster/);
   assert.match(appVue, /<StudioShellTopbar[\s\S]*:theme-switch-label/);
   assert.match(appVue, /<StudioShellTopbar[\s\S]*:locale-switch-label/);
+});
+
+test('sidebar rail copy presents the surface as tools rather than a second navigation menu', () => {
+  const sidebarRail = fs.readFileSync(sidebarRailPath, 'utf8');
+  assert.match(appVue, /text\('展开工具栏', 'Expand tools'\)/);
+  assert.match(appVue, /text\('收起工具栏', 'Collapse tools'\)/);
+  assert.doesNotMatch(appVue, /展开侧边栏|折叠侧边栏|Expand sidebar|Collapse sidebar/);
+  assert.doesNotMatch(sidebarRail, /v-for=\".*nav|navGroups|sidebar-nav|sidebar-menu/);
 });
 
 test('shell styles define a dedicated tooltip surface for the collapsed sidebar rail', () => {
