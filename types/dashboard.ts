@@ -85,31 +85,6 @@ export interface DashboardRecoverySummary {
   items: DashboardRecoveryItem[];
 }
 
-export interface DashboardTrendPoint {
-  key: string;
-  label: string;
-  value: number;
-  note: string;
-}
-
-export interface DashboardTrendPanel {
-  key: string;
-  title: string;
-  stage: "risk" | "recovery" | "trend";
-  points: DashboardTrendPoint[];
-}
-
-export interface DashboardTrendSummary {
-  points: DashboardTrendPoint[];
-  panels: DashboardTrendPanel[];
-}
-
-export interface DashboardContextSummary {
-  riskStage: "low" | "medium" | "high";
-  primaryHint: string;
-  secondaryHint: string;
-}
-
 export interface DashboardSummaryPayload {
   checkedAt: string;
   summaryReady: boolean;
@@ -142,7 +117,5 @@ export interface DashboardSummaryPayload {
   events: DashboardEventSummary;
   terminalWorkspace: DashboardTerminalWorkspaceSummary;
   recovery: DashboardRecoverySummary;
-  trends: DashboardTrendSummary;
-  contextSummary: DashboardContextSummary;
   domains: DashboardDomainSummary[];
 }

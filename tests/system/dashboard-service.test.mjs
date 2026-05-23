@@ -254,10 +254,9 @@ test("dashboard service source keeps locale-aware summary builders instead of di
   assert.match(dashboardRoutesSource, /req\.headers\["accept-language"\]/);
   assert.match(dashboardRoutesSource, /searchParams\.get\("locale"\)/);
   assert.match(dashboardServiceSource, /localizeText\(acceptLanguage, value\)/);
-  assert.match(
-    dashboardServiceSource,
-    /recoveryPrimaryHint: \(count: number\)/,
-  );
+  assert.doesNotMatch(dashboardServiceSource, /recoveryPrimaryHint/);
+  assert.doesNotMatch(dashboardServiceSource, /trends:/);
+  assert.doesNotMatch(dashboardServiceSource, /contextSummary:/);
   assert.match(
     dashboardServiceSource,
     /domainSystemUpgradeNote: \(latestVersion: string, status: string\)/,
@@ -301,27 +300,11 @@ test("dashboard summary exposes transport, bootstrap, release, and device trust 
     ],
   );
   assert.equal(summary.recovery.total, 6);
-
-  assert.deepEqual(
-    summary.trends.points.map((point) => point.key),
-    [
-      "bootstrapFixable",
-      "pendingPairing",
-      "recoverableSessions",
-      "eventFailures",
-    ],
-  );
-  assert.equal(summary.trends.panels[0]?.stage, "risk");
-
-  assert.equal(summary.contextSummary.riskStage, "high");
-  assert.equal(summary.contextSummary.primaryHint, "6 项恢复与处理项待跟进");
-  assert.equal(
-    summary.contextSummary.secondaryHint,
-    "最近恢复：Recovered detached terminal workspace",
-  );
+  assert.equal("trends" in summary, false);
+  assert.equal("contextSummary" in summary, false);
 });
 
-test("dashboard summary switches recovery and context copy for english requests", async () => {
+test("dashboard summary switches recovery and domain copy for english requests", async () => {
   const dashboard = createDashboard();
 
   const summary = await dashboard.refreshSummary("en-US,en;q=0.9");
@@ -334,20 +317,8 @@ test("dashboard summary switches recovery and context copy for english requests"
     summary.recovery.items[0]?.note,
     "Blocking errors detected. Repair immediately.",
   );
-  assert.equal(summary.trends.points[0]?.label, "Bootstrap fixable");
-  assert.equal(
-    summary.trends.points[0]?.note,
-    "Current fixable bootstrap items",
-  );
-  assert.equal(summary.trends.panels[0]?.title, "Risk watch");
-  assert.equal(
-    summary.contextSummary.primaryHint,
-    "6 recovery and follow-up items need attention",
-  );
-  assert.equal(
-    summary.contextSummary.secondaryHint,
-    "Latest recovery: Recovered detached terminal workspace",
-  );
+  assert.equal("trends" in summary, false);
+  assert.equal("contextSummary" in summary, false);
   assert.equal(summary.domains[0]?.label, "System config");
   assert.equal(summary.domains[2]?.value, "2 recoverable");
   assert.equal(summary.domains[6]?.label, "System overview");
@@ -359,13 +330,10 @@ test("dashboard summary cache keeps independent localized snapshots", async () =
   const zhSummary = await dashboard.refreshSummary("zh-CN,zh;q=0.9");
   const enSummary = await dashboard.refreshSummary("en-US,en;q=0.9");
 
-  assert.equal(zhSummary.contextSummary.primaryHint, "6 项恢复与处理项待跟进");
-  assert.equal(
-    enSummary.contextSummary.primaryHint,
-    "6 recovery and follow-up items need attention",
-  );
   assert.equal(zhSummary.domains[0]?.label, "系统配置");
   assert.equal(enSummary.domains[0]?.label, "System config");
+  assert.equal("contextSummary" in zhSummary, false);
+  assert.equal("contextSummary" in enSummary, false);
 });
 
 test("dashboard service reuses cached summary across repeated reads", async () => {
@@ -634,7 +602,7 @@ test("dashboard first request returns quickly with placeholder snapshot then ref
 
   assert.ok(elapsedMs < 35);
   assert.equal(initial.summaryReady, false);
-  assert.equal(initial.contextSummary.primaryHint.length > 0, true);
+  assert.equal("contextSummary" in initial, false);
 
   releaseBarrier();
   await delay(20);
@@ -941,12 +909,6 @@ test("dashboard summary route does not rebuild when snapshot is fresh", async ()
               latestError: null,
             },
             recovery: { total: 0, items: [] },
-            trends: { points: [], panels: [] },
-            contextSummary: {
-              riskStage: "low",
-              primaryHint: "",
-              secondaryHint: "",
-            },
             domains: [],
           };
         },

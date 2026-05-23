@@ -39,62 +39,6 @@ const dashboardText = {
     zh: "存在可恢复终端会话，建议继续处理。",
     en: "Recoverable terminal session available for follow-up.",
   },
-  bootstrapFixableNote: {
-    zh: "当前 bootstrap 可修复项",
-    en: "Current fixable bootstrap items",
-  },
-  pendingPairingNote: {
-    zh: "待审批设备配对请求",
-    en: "Device pairing requests awaiting approval",
-  },
-  recoverableSessionsNote: {
-    zh: "可恢复终端会话数量",
-    en: "Recoverable terminal session count",
-  },
-  eventFailuresNote: {
-    zh: "最近失败事件数量",
-    en: "Recent failure count",
-  },
-  trendBootstrapFixableLabel: {
-    zh: "可修复 bootstrap",
-    en: "Bootstrap fixable",
-  },
-  trendPendingPairingLabel: {
-    zh: "待审批配对",
-    en: "Pending pairing",
-  },
-  trendRecoverableSessionsLabel: {
-    zh: "可恢复会话",
-    en: "Recoverable sessions",
-  },
-  trendEventFailuresLabel: {
-    zh: "失败事件",
-    en: "Event failures",
-  },
-  trendRiskPanelTitle: {
-    zh: "风险观察",
-    en: "Risk watch",
-  },
-  trendRecoveryPanelTitle: {
-    zh: "恢复脉冲",
-    en: "Recovery pulse",
-  },
-  trendSystemPanelTitle: {
-    zh: "系统趋势",
-    en: "System trend",
-  },
-  recoveryPrimaryHint: (count: number) => ({
-    zh: `${count} 项恢复与处理项待跟进`,
-    en: `${count} recovery and follow-up items need attention`,
-  }),
-  latestRecoveryHint: (title: string) => ({
-    zh: `最近恢复：${title}`,
-    en: `Latest recovery: ${title}`,
-  }),
-  noRecoveryHint: {
-    zh: "暂无新的恢复事件",
-    en: "No recent recoveries",
-  },
   domainConfigLabel: {
     zh: "系统配置",
     en: "System config",
@@ -373,38 +317,6 @@ export function createDashboardService(
         })),
     ];
     const recoveryTotal = recoveryItems.length;
-    const trendPoints = [
-      {
-        key: "bootstrapFixable",
-        label: t(dashboardText.trendBootstrapFixableLabel),
-        value: bootstrapFixable,
-        note: t(dashboardText.bootstrapFixableNote),
-      },
-      {
-        key: "pendingPairing",
-        label: t(dashboardText.trendPendingPairingLabel),
-        value: pendingDeviceTrustRequests,
-        note: t(dashboardText.pendingPairingNote),
-      },
-      {
-        key: "recoverableSessions",
-        label: t(dashboardText.trendRecoverableSessionsLabel),
-        value: persistedSessions.filter((session) => session.canResume).length,
-        note: t(dashboardText.recoverableSessionsNote),
-      },
-      {
-        key: "eventFailures",
-        label: t(dashboardText.trendEventFailuresLabel),
-        value: eventSummary.recentFailures.count,
-        note: t(dashboardText.eventFailuresNote),
-      },
-    ];
-    const riskStage: "low" | "medium" | "high" =
-      recoveryTotal >= 4 || eventSummary.recentFailures.count > 0
-        ? "high"
-        : recoveryTotal > 0 || eventSummary.pendingAuditItems.count > 0
-          ? "medium"
-          : "low";
 
     return {
       checkedAt: new Date().toISOString(),
@@ -501,48 +413,6 @@ export function createDashboardService(
       recovery: {
         total: recoveryTotal,
         items: recoveryItems,
-      },
-      trends: {
-        points: trendPoints,
-        panels: [
-          {
-            key: "risk",
-            title: t(dashboardText.trendRiskPanelTitle),
-            stage: "risk",
-            points: trendPoints.filter(
-              (point) =>
-                point.key === "eventFailures" ||
-                point.key === "bootstrapFixable",
-            ),
-          },
-          {
-            key: "recovery",
-            title: t(dashboardText.trendRecoveryPanelTitle),
-            stage: "recovery",
-            points: trendPoints.filter(
-              (point) =>
-                point.key === "recoverableSessions" ||
-                point.key === "pendingPairing",
-            ),
-          },
-          {
-            key: "trend",
-            title: t(dashboardText.trendSystemPanelTitle),
-            stage: "trend",
-            points: trendPoints,
-          },
-        ],
-      },
-      contextSummary: {
-        riskStage,
-        primaryHint: t(dashboardText.recoveryPrimaryHint(recoveryTotal)),
-        secondaryHint: eventSummary.recentRecoveries.items[0]?.title
-          ? t(
-              dashboardText.latestRecoveryHint(
-                eventSummary.recentRecoveries.items[0].title,
-              ),
-            )
-          : t(dashboardText.noRecoveryHint),
       },
       domains: [
         {
@@ -748,15 +618,6 @@ export function createDashboardService(
       recovery: {
         total: 0,
         items: [],
-      },
-      trends: {
-        points: [],
-        panels: [],
-      },
-      contextSummary: {
-        riskStage: "low",
-        primaryHint: t(dashboardText.noRecoveryHint),
-        secondaryHint: t(dashboardText.noRecoveryHint),
       },
       domains: [],
     };

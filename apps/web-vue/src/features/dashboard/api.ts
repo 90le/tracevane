@@ -15,15 +15,6 @@ function normalizeDashboardSummary(
         ? payload.recovery.items
         : [],
     },
-    trends: {
-      ...payload.trends,
-      points: Array.isArray(payload.trends?.points)
-        ? payload.trends.points
-        : [],
-      panels: Array.isArray(payload.trends?.panels)
-        ? payload.trends.panels
-        : [],
-    },
     domains: Array.isArray(payload.domains) ? payload.domains : [],
   } as DashboardSummaryPayload;
 }

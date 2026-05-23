@@ -98,14 +98,8 @@ test("dashboard api normalizes collection fields and threads locale for summary 
     dashboardApi,
     /recovery:\s*\{[\s\S]*items:\s*Array\.isArray\(payload\.recovery\?\.items\)\s*\?\s*payload\.recovery\.items\s*:\s*\[\]/,
   );
-  assert.match(
-    dashboardApi,
-    /trends:\s*\{[\s\S]*points:\s*Array\.isArray\(payload\.trends\?\.points\)\s*\?\s*payload\.trends\.points\s*:\s*\[\]/,
-  );
-  assert.match(
-    dashboardApi,
-    /panels:\s*Array\.isArray\(payload\.trends\?\.panels\)\s*\?\s*payload\.trends\.panels\s*:\s*\[\]/,
-  );
+  assert.doesNotMatch(dashboardApi, /trends:/);
+  assert.doesNotMatch(dashboardApi, /contextSummary/);
   assert.match(
     dashboardApi,
     /domains:\s*Array\.isArray\(payload\.domains\)\s*\?\s*payload\.domains\s*:\s*\[\]/,

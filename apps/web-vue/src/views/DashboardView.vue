@@ -8,7 +8,7 @@
         <p class="eyebrow">Home</p>
         <h2 class="page-title">{{ text('Studio 总控首页', 'Studio Home Control Surface') }}</h2>
         <p class="home-page-copy">
-          {{ text('把运行态与风险信号收束在同一主舞台，先看态势再进入对应域。', 'Bring runtime posture and risk signals into one primary stage so teams can read the situation first, then navigate by domain.') }}
+          {{ text('把运行态、安装修复和系统入口收束在同一主舞台，先看状态再进入对应工作区。', 'Bring runtime state, setup repair, and system entry points into one primary stage so users can read status first, then navigate to the right workspace.') }}
         </p>
       </div>
 
@@ -29,7 +29,7 @@
           <h3>{{ text('常用工作入口', 'Common workspace entries') }}</h3>
         </div>
         <p class="home-section-copy">
-          {{ text('把安装修复、会话和系统检查放在同一行动区，避免首页显示空风险与等待占位。', 'Keep setup, chat, and system checks in one action area instead of showing empty risk and waiting placeholders.') }}
+          {{ text('把安装修复、会话和系统检查放在同一行动区，减少首页上的空占位和重复提示。', 'Keep setup, chat, and system checks in one action area with fewer empty placeholders and repeated prompts.') }}
         </p>
       </div>
 
@@ -267,10 +267,10 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
   const cliExpected = Math.max(payload.runtime.expectedCliCount, 1);
   const cliPercent = clampPercent((payload.runtime.installedCliCount / cliExpected) * 100);
 
-  const bootstrapBase = payload.bootstrap.pending + payload.bootstrap.fixable;
+  const bootstrapBase = payload.bootstrap.errors + payload.bootstrap.warnings + payload.bootstrap.fixable;
   const bootstrapPercent = clampPercent((payload.bootstrap.fixable / Math.max(bootstrapBase, 1)) * 100);
 
-  const pairingQueueBase = payload.deviceTrust.pendingRequests + payload.deviceTrust.approvedDevices;
+  const pairingQueueBase = payload.deviceTrust.pendingRequests + (payload.deviceTrust.helperPaired ? 1 : 0);
   const pairingPercent = clampPercent((payload.deviceTrust.pendingRequests / Math.max(pairingQueueBase, 1)) * 100);
 
   const eventTotal = payload.events.recentFailures + payload.events.pendingAuditItems;
