@@ -8,6 +8,10 @@ const configEditorPage = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/config/ConfigEditorPage.vue'),
   'utf8',
 );
+const configWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/config/config-workspace.css'),
+  'utf8',
+);
 const heartbeatConfig = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/shared/heartbeat-config.ts'),
   'utf8',
@@ -19,13 +23,16 @@ const viteConfig = fs.readFileSync(
 
 test('config editor exposes the workbench recipe framing blocks', () => {
   assert.match(configEditorPage, /class="page-shell config-page-shell"/);
-  assert.match(configEditorPage, /class="config-overview-ribbon"/);
-  assert.match(configEditorPage, /class="config-sidebar-callout"/);
+  assert.match(configEditorPage, /class="config-command-panel"/);
+  assert.match(configEditorPage, /class="config-signal-strip"/);
+  assert.match(configEditorPage, /class="config-signal-row"/);
   assert.match(configEditorPage, /class="config-active-tab-facts"/);
   assert.match(configEditorPage, /Image generation model/);
   assert.match(configEditorPage, /Model registry JSON/);
   assert.doesNotMatch(configEditorPage, /LLM idle timeout seconds/);
   assert.match(configEditorPage, /Embedded Pi project settings policy/);
+  assert.doesNotMatch(configEditorPage, /class="config-overview-card"/);
+  assert.doesNotMatch(configEditorPage, /class="config-sidebar-callout"/);
 });
 
 test('config editor derives overview and active-tab fact collections in computed state', () => {
@@ -34,16 +41,17 @@ test('config editor derives overview and active-tab fact collections in computed
   assert.match(configEditorPage, /const activeTabFacts = computed\(/);
 });
 
-test('config editor owns scoped page styling for workbench framing', () => {
-  assert.match(configEditorPage, /<style scoped>/);
-  assert.match(configEditorPage, /\.config-overview-ribbon\s*\{/);
-  assert.match(configEditorPage, /\.config-sidebar-callout\s*\{/);
-  assert.match(configEditorPage, /\.config-active-tab-facts\s*\{/);
+test('config editor owns feature CSS for workbench framing', () => {
+  assert.match(configEditorPage, /import '\.\/config-workspace\.css';/);
+  assert.doesNotMatch(configEditorPage, /<style scoped>/);
+  assert.match(configWorkspaceCss, /\.config-command-panel\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-signal-strip\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-active-tab-facts\s*\{/);
 });
 
 test('config workbench uses restrained neutral framing instead of accent-heavy gradients', () => {
-  assert.doesNotMatch(configEditorPage, /\.config-sidebar-callout\s*\{[\s\S]*255,\s*190,\s*122/);
-  assert.doesNotMatch(configEditorPage, /\.config-page-shell :deep\(\.config-sheet\)\s*\{[\s\S]*111,\s*211,\s*255/);
+  assert.doesNotMatch(configWorkspaceCss, /\.config-command-panel\s*\{[\s\S]*255,\s*190,\s*122/);
+  assert.doesNotMatch(configWorkspaceCss, /\.config-page-shell :deep\(\.config-sheet\)\s*\{[\s\S]*111,\s*211,\s*255/);
 });
 
 test('config workbench exposes the advanced sheet entrypoint instead of keeping it inline', () => {
@@ -117,9 +125,9 @@ test('config workbench exposes persistent global HEARTBEAT controls', () => {
 
 test('config workbench tracks unsaved domains and protects refresh', () => {
   assert.match(configEditorPage, /class="config-save-dock"/);
-  assert.match(configEditorPage, /width: min\(780px, calc\(100% - 8px\)\)/);
-  assert.match(configEditorPage, /grid-template-areas:\s*"status actions"\s*"changes actions"/);
-  assert.match(configEditorPage, /var\(--modal-panel-bg\)/);
+  assert.match(configWorkspaceCss, /width: min\(780px, calc\(100% - 8px\)\)/);
+  assert.match(configWorkspaceCss, /grid-template-areas:\s*"status actions"\s*"changes actions"/);
+  assert.match(configWorkspaceCss, /var\(--modal-panel-bg\)/);
   assert.match(configEditorPage, /const dirtyDomains = computed<ConfigDirtyDomain\[\]>/);
   assert.match(configEditorPage, /function captureConfigBaseline\(\): void/);
   assert.match(configEditorPage, /function normalizeLoggingDraft\(summary: ConfigSummaryPayload \| null\)/);

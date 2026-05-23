@@ -1,0 +1,550 @@
+.config-page-shell {
+  gap: 16px;
+}
+
+.config-command-panel {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.2fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background:
+    linear-gradient(120deg, color-mix(in srgb, var(--surface-base) 88%, transparent), color-mix(in srgb, var(--code-bg) 12%, transparent)),
+    color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.config-command-copy {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 18px 20px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--acc) 10%, transparent), transparent 58%),
+    color-mix(in srgb, var(--surface-base) 74%, transparent);
+}
+
+.config-command-copy h3,
+.config-command-copy p {
+  margin: 0;
+}
+
+.config-command-copy h3 {
+  color: var(--text);
+  font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+  line-height: 1.18;
+}
+
+.config-command-copy p {
+  max-width: 58ch;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.config-signal-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  min-width: 0;
+  background: color-mix(in srgb, var(--line) 76%, transparent);
+}
+
+.config-signal-row {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  min-height: 96px;
+  min-width: 0;
+  padding: 13px 15px;
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
+}
+
+.config-signal-row span {
+  color: var(--muted-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.config-signal-row strong {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.config-page-shell .config-workbench {
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.config-page-shell .config-sidebar {
+  position: sticky;
+  top: 0;
+  gap: 14px;
+  padding: 16px;
+  align-self: start;
+}
+
+.config-tabs-grouped {
+  gap: 12px;
+}
+
+.config-tab-group {
+  display: grid;
+  gap: 7px;
+}
+
+.config-tab-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted-soft);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.config-tab-group__head strong {
+  min-width: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.config-page-shell .config-tab {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: center;
+  padding: 10px 11px;
+}
+
+.config-page-shell .config-tab-icon {
+  grid-row: span 2;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  border-radius: 9px;
+  font-size: 15px;
+}
+
+.config-page-shell .config-tab-title,
+.config-page-shell .config-tab-copy {
+  min-width: 0;
+}
+
+.config-page-shell .config-tab-title {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-page-shell .config-tab-copy {
+  min-height: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.config-page-shell .config-main {
+  gap: 16px;
+}
+
+.config-page-shell .config-active-tab-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.config-advanced-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 15px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+}
+
+.config-advanced-entry__copy {
+  display: grid;
+  gap: 5px;
+}
+
+.config-advanced-entry__eyebrow {
+  color: var(--muted-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.config-advanced-entry__copy strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.config-advanced-entry__copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.config-active-tab-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.config-active-tab-fact {
+  display: grid;
+  gap: 4px;
+  padding: 12px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.config-active-tab-fact span {
+  color: var(--muted-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.config-active-tab-fact strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.config-save-dock {
+  position: sticky;
+  bottom: 16px;
+  z-index: 12;
+  display: grid;
+  grid-template-areas:
+    "status actions"
+    "changes actions";
+  grid-template-columns: minmax(240px, 1fr) auto;
+  align-items: center;
+  gap: 10px 14px;
+  width: min(780px, calc(100% - 8px));
+  margin: 6px 0 0 auto;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 72%, var(--modal-border));
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--modal-panel-bg-strong) 92%, var(--acc) 8%), var(--modal-panel-bg));
+  box-shadow:
+    0 18px 48px color-mix(in srgb, black 24%, transparent),
+    0 2px 10px color-mix(in srgb, black 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  isolation: isolate;
+}
+
+.config-save-dock.is-dirty {
+  border-color: color-mix(in srgb, var(--acc) 48%, var(--line-strong));
+  background:
+    radial-gradient(220px 80px at 0% 0%, color-mix(in srgb, var(--acc) 16%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--modal-panel-bg-strong) 88%, var(--acc) 12%), var(--modal-panel-bg));
+  box-shadow:
+    0 20px 54px color-mix(in srgb, black 26%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--acc) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+}
+
+.config-save-dock.is-saved {
+  border-color: color-mix(in srgb, #26d69a 55%, var(--line-strong));
+  background:
+    radial-gradient(240px 90px at 0% 0%, color-mix(in srgb, #26d69a 18%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--modal-panel-bg-strong) 90%, #26d69a 10%), var(--modal-panel-bg));
+  box-shadow:
+    0 20px 54px color-mix(in srgb, black 24%, transparent),
+    0 0 0 1px color-mix(in srgb, #26d69a 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+}
+
+.config-save-dock__status {
+  grid-area: status;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+
+.config-save-dock__indicator {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted-soft);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--muted-soft) 12%, transparent);
+}
+
+.config-save-dock__indicator.active {
+  background: var(--acc);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--acc) 16%, transparent);
+}
+
+.config-save-dock__indicator.saved {
+  background: #26d69a;
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, #26d69a 18%, transparent),
+    0 0 18px color-mix(in srgb, #26d69a 44%, transparent);
+}
+
+.config-save-dock__status strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.config-save-dock__status p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.config-save-dock__changes,
+.config-save-dock__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.config-save-dock__changes {
+  grid-area: changes;
+  justify-content: flex-start;
+}
+
+.config-save-dock__actions {
+  grid-area: actions;
+  justify-content: flex-end;
+  padding-left: 4px;
+}
+
+.config-save-dock__saved-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, #26d69a 38%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, #26d69a 13%, var(--modal-panel-bg));
+  color: color-mix(in srgb, #26d69a 78%, var(--text));
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.primary-button.is-saved {
+  border-color: color-mix(in srgb, #26d69a 62%, var(--acc-strong));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, #26d69a 92%, #ffffff 8%), color-mix(in srgb, #12a876 82%, #07111f 18%));
+  color: #04120d;
+  box-shadow:
+    0 12px 26px color-mix(in srgb, #26d69a 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 32%, transparent);
+}
+
+.config-change-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 140px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--acc) 32%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--acc) 12%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-change-chip.muted {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
+  color: var(--muted);
+}
+
+.config-page-shell :deep(.config-sheet) {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+}
+
+.config-page-shell :deep(.config-sheet > .config-block) {
+  padding: 20px 20px 22px;
+}
+
+.config-page-shell :deep(.config-sheet > .config-block + .config-block) {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.config-page-shell :deep(.config-subsection) {
+  border-radius: 10px;
+}
+
+.config-page-shell :deep(.config-subsection-head h4) {
+  font-size: 15px;
+}
+
+.config-core-baseline {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.config-core-baseline__item,
+.config-guard-summary {
+  display: grid;
+  gap: 4px;
+  padding: 12px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.config-core-baseline__item span,
+.config-guard-summary span {
+  color: var(--muted-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.config-core-baseline__item strong,
+.config-guard-summary strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.config-core-baseline__item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.config-core-hint {
+  margin: 0;
+}
+
+.config-guard-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.config-advanced-sheet-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.config-advanced-sheet-block {
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
+}
+
+.config-advanced-sheet-block + .config-advanced-sheet-block {
+  border-top: 1px solid var(--line);
+}
+
+.config-advanced-sheet-block :deep(.config-subsection-grid) {
+  gap: 14px;
+}
+
+@media (max-width: 1180px) {
+  .config-command-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .config-signal-strip,
+  .config-active-tab-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .config-core-baseline,
+  .config-guard-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .config-save-dock {
+    width: min(680px, 100%);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "status"
+      "changes"
+      "actions";
+  }
+
+  .config-save-dock__changes,
+  .config-save-dock__actions {
+    justify-content: flex-start;
+  }
+
+  .config-page-shell .config-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .config-page-shell .config-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .config-signal-strip,
+  .config-active-tab-facts,
+  .config-core-baseline,
+  .config-guard-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .config-signal-row {
+    min-height: 64px;
+  }
+
+  .config-advanced-entry {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .config-save-dock {
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    width: 100%;
+    padding: 10px;
+    border-radius: 15px;
+  }
+
+  .config-save-dock__actions .compact-button {
+    flex: 1 1 140px;
+  }
+}
