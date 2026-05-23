@@ -3,7 +3,7 @@
     <article class="panel-card config-sheet">
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🧩</span><span>{{ text('ACPX 运行时状态', 'ACPX Runtime Status') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('ACPX 运行时状态', 'ACPX Runtime Status') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection" :class="{ 'is-risk': acpxExplicitlyDisabled, 'is-primary': !acpxExplicitlyDisabled }">
@@ -34,7 +34,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🔗</span><span>{{ text('ACP 基础设置', 'ACP Basic Settings') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('ACP 基础设置', 'ACP Basic Settings') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection is-primary">
@@ -72,7 +72,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>📤</span><span>{{ text('ACP 调度', 'ACP Dispatch') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('ACP 调度', 'ACP Dispatch') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -95,7 +95,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🤖</span><span>{{ text('允许的 Agent', 'Allowed Agents') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('允许的 Agent', 'Allowed Agents') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">

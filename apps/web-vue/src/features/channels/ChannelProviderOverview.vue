@@ -1,28 +1,58 @@
 <template>
   <section class="channel-provider-overview">
-    <ChannelSummaryStrip :channel="channel" :binding-count="bindings.length" />
+    <article class="channel-command-center">
+      <section class="channel-command-center__main">
+        <header class="channel-provider-overview__quick-head">
+          <div>
+            <p class="eyebrow">{{ text('CHANNEL COMMAND', 'CHANNEL COMMAND') }}</p>
+            <h3>{{ channel.type }}</h3>
+            <p>{{ text('先处理启用状态、默认账号和待办；高级策略留在专门设置页。', 'Handle enablement, default account, and attention items first; keep advanced policy in dedicated settings.') }}</p>
+          </div>
 
-    <article class="panel-card channel-provider-overview__quick-edit">
-      <header class="channel-provider-overview__quick-head">
-        <div>
-          <p class="eyebrow">{{ text('QUICK EDIT', 'QUICK EDIT') }}</p>
-          <h3>{{ text('高频快改', 'High-frequency quick edits') }}</h3>
-          <p>{{ text('概览页只保留 provider 启用状态和默认账号，复杂策略继续进入设置页。', 'The overview keeps only provider enabled state and default account, while complex policy stays in Settings.') }}</p>
+          <StatusPill
+            :label="channel.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled')"
+            :tone="channel.enabled ? 'sage' : 'neutral'"
+          />
+        </header>
+
+        <div class="channel-command-facts" :aria-label="text('频道摘要', 'Provider summary')">
+          <div class="channel-command-fact">
+            <span>{{ text('默认账号', 'Default account') }}</span>
+            <strong>{{ channel.defaultAccount || text('未指定', 'Unset') }}</strong>
+          </div>
+          <div class="channel-command-fact">
+            <span>{{ text('账号', 'Accounts') }}</span>
+            <strong>{{ channel.accountCount }}</strong>
+          </div>
+          <div class="channel-command-fact">
+            <span>{{ text('绑定', 'Bindings') }}</span>
+            <strong>{{ bindings.length }}</strong>
+          </div>
+          <div class="channel-command-fact">
+            <span>{{ text('策略', 'Policy') }}</span>
+            <strong>{{ policyLabel(channel.dmPolicy, 'dm', text) }} / {{ policyLabel(channel.groupPolicy, 'group', text) }}</strong>
+          </div>
+          <div class="channel-command-fact">
+            <span>{{ text('连接', 'Connection') }}</span>
+            <strong>{{ channel.connectionMode || text('未指定', 'Unset') }}</strong>
+          </div>
         </div>
+      </section>
 
-        <div class="channel-provider-overview__quick-actions">
+      <aside class="channel-command-center__edit" :aria-label="text('高频快改', 'High-frequency quick edits')">
+        <div class="channel-command-edit-head">
+          <p class="eyebrow">{{ text('FAST PATH', 'FAST PATH') }}</p>
           <button type="button" class="secondary-button compact-button channel-danger-button" :disabled="quickEditBusy" @click="$emit('delete-channel')">
             {{ text('删除频道', 'Delete provider') }}
           </button>
         </div>
-      </header>
 
-      <div class="channel-provider-overview__quick-grid">
-        <label class="toggle-card">
+        <div class="channel-provider-overview__quick-grid">
+          <label class="toggle-card channel-command-toggle">
           <input :checked="channel.enabled" class="form-checkbox" type="checkbox" :disabled="quickEditBusy" @change="emitEnabledChange" />
           <div>
             <strong>{{ text('频道启用状态', 'Provider enabled') }}</strong>
-            <span>{{ text('这里只保留最常用的启停操作，避免概览页变成第二个设置页。', 'Only the most common enable/disable control stays here so the overview does not turn into a second settings page.') }}</span>
+            <span>{{ text('关闭后该渠道不会接收和发送任务。', 'When disabled, this provider will not receive or send work.') }}</span>
           </div>
         </label>
 
@@ -36,6 +66,7 @@
           </select>
         </div>
       </div>
+      </aside>
     </article>
 
     <ChannelIssueList :issues="issues" @activate-issue="$emit('activate-issue', $event)" />
@@ -59,11 +90,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { ChannelBindingSummary, ChannelSummary } from '../../../../../types/channels';
+import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import ChannelAccountIndex from './ChannelAccountIndex.vue';
 import ChannelIssueList from './ChannelIssueList.vue';
-import ChannelSummaryStrip from './ChannelSummaryStrip.vue';
-import type { ChannelIssue } from './channel-ui';
+import { policyLabel, type ChannelIssue } from './channel-ui';
 
 defineOptions({ name: 'ChannelProviderOverview' });
 
@@ -127,10 +158,42 @@ watch(
   gap: 14px;
 }
 
-.channel-provider-overview__quick-edit {
+.channel-command-center {
+  position: relative;
   display: grid;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
   border-radius: 12px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--sky) 10%, transparent), transparent 44%),
+    color-mix(in srgb, var(--shell-panel-fill) 92%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 14px 32px rgba(8, 18, 29, 0.1);
+}
+
+.channel-command-center::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--mint) 40%, white 10%), transparent);
+  opacity: 0.48;
+}
+
+.channel-command-center__main,
+.channel-command-center__edit {
+  min-width: 0;
+  padding: 18px;
+}
+
+.channel-command-center__edit {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  border-left: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 66%, transparent);
 }
 
 .channel-provider-overview__quick-head {
@@ -143,6 +206,8 @@ watch(
 .channel-provider-overview__quick-head h3 {
   margin: 4px 0 6px;
   color: var(--text);
+  font-size: 26px;
+  line-height: 1.05;
 }
 
 .channel-provider-overview__quick-head p:last-child {
@@ -152,17 +217,65 @@ watch(
   line-height: 1.6;
 }
 
-.channel-provider-overview__quick-grid {
+.channel-command-facts {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 18px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+}
+
+.channel-command-fact {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 13px 14px;
+  border-right: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+}
+
+.channel-command-fact:last-child {
+  border-right: none;
+}
+
+.channel-command-fact span,
+.channel-command-edit-head .eyebrow {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.channel-command-fact strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.channel-command-edit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
-.channel-provider-overview__quick-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+.channel-command-edit-head .eyebrow {
+  margin: 0;
+}
+
+.channel-provider-overview__quick-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.channel-command-toggle {
+  margin: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
 }
 
 .channel-danger-button {
@@ -171,16 +284,30 @@ watch(
 }
 
 @media (max-width: 920px) {
+  .channel-command-center {
+    grid-template-columns: 1fr;
+  }
+
+  .channel-command-center__edit {
+    border-left: none;
+    border-top: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  }
+
   .channel-provider-overview__quick-head {
     flex-direction: column;
   }
 
-  .channel-provider-overview__quick-grid {
+  .channel-command-facts {
     grid-template-columns: 1fr;
   }
 
-  .channel-provider-overview__quick-actions {
-    justify-content: flex-start;
+  .channel-command-fact {
+    border-right: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  }
+
+  .channel-command-fact:last-child {
+    border-bottom: none;
   }
 }
 </style>

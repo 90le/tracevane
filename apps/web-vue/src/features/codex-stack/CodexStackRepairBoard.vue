@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-repair-board">
+  <article class="cs-repair-board">
     <div class="cs-card-header">
       <div>
         <p class="cs-section-kicker">{{ text("推荐路径", "Recommended Path") }}</p>
@@ -11,7 +11,7 @@
     </div>
     <div class="cs-repair-guide-layout">
       <div class="cs-repair-flow">
-        <article class="cs-repair-card cs-repair-card-primary">
+        <article class="cs-repair-step cs-repair-step-primary">
           <span class="cs-step-number">1</span>
           <strong>{{ text("推荐修复", "Recommended Repair") }}</strong>
           <p>{{ text("自动处理代理链路、后台守护、NO_PROXY/TUN 绕过、旧巡检清理和常见配置漂移。", "Automatically handles the proxy chain, background watchdog, NO_PROXY/TUN bypass, legacy check cleanup, and common config drift.") }}</p>
@@ -19,7 +19,7 @@
             {{ text("执行推荐修复", "Run Recommended") }}
           </button>
         </article>
-        <article class="cs-repair-card cs-repair-card-primary">
+        <article class="cs-repair-step cs-repair-step-primary">
           <span class="cs-step-number">2</span>
           <strong>{{ text("运行模型矩阵", "Run Smoke Matrix") }}</strong>
           <p>{{ text("只验证不切换 Codex：当前默认 CPA 模型必须通过普通、非流式、流式和压缩上下文。", "Verify without attaching Codex: the current default CPA model must pass chat, non-stream, stream, and compact checks.") }}</p>
@@ -27,7 +27,7 @@
             {{ text("只验证", "Verify Only") }}
           </button>
         </article>
-        <article class="cs-repair-card cs-repair-card-primary">
+        <article class="cs-repair-step cs-repair-step-primary">
           <span class="cs-step-number">3</span>
           <strong>{{ text("验证并切换 Codex", "Smoke and Attach Codex") }}</strong>
           <p>{{ text("重新跑目标模型完整矩阵；全部通过才写入 Codex active provider。用户可选择官方 GPT 登录路径，也可选择 GPT 或国内兼容模型走 CPA。", "Rerun the full target-model matrix and write the active Codex provider only if every check passes. Users can keep the official GPT login path or route GPT/domestic-compatible models through CPA.") }}</p>
@@ -65,28 +65,28 @@
     <details class="cs-advanced-repair">
       <summary>{{ text("高级操作：冲突、重写配置、暂停/恢复", "Advanced: conflicts, config rewrite, pause/resume") }}</summary>
       <div class="cs-repair-grid">
-        <article class="cs-repair-card">
+        <article class="cs-repair-step">
           <strong>{{ text("清理旧守护", "Clean Old Daemons") }}</strong>
           <p>{{ text("禁用可能抢端口的旧 cpa.service / cliproxyapi.service，再让当前服务接管。", "Disable old cpa.service / cliproxyapi.service units that may occupy ports.") }}</p>
           <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('repair-conflicts')">
             {{ text("清理冲突服务", "Clean Conflicts") }}
           </button>
         </article>
-        <article class="cs-repair-card">
+        <article class="cs-repair-step">
           <strong>{{ text("重写配置不启动", "Rewrite Config Only") }}</strong>
           <p>{{ text("重新跑安装器的配置阶段但不启动服务，适合修复损坏配置后手动启动。", "Rerun the installer config phase without starting services, then start manually.") }}</p>
           <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('repair-config-only')">
             {{ text("只修复配置", "Repair Config Only") }}
           </button>
         </article>
-        <article class="cs-repair-card">
+        <article class="cs-repair-step">
           <strong>{{ text("暂停 CPA 栈", "Pause CPA Stack") }}</strong>
           <p>{{ text("先停 watchdog，再停 Compact 和 CPA，避免你手动停用后又被自动拉起。", "Stop watchdog first, then Compact and CPA so manual pause stays paused.") }}</p>
           <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('pause-stack')">
             {{ text("暂停链路", "Pause Stack") }}
           </button>
         </article>
-        <article class="cs-repair-card">
+        <article class="cs-repair-step">
           <strong>{{ text("恢复 CPA 栈", "Resume CPA Stack") }}</strong>
           <p>{{ text("按 CPA → Compact → watchdog 顺序恢复，并等待健康检查通过。", "Resume in CPA, Compact, watchdog order after health checks pass.") }}</p>
           <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('resume-stack')">
@@ -134,9 +134,15 @@ const { text } = useLocalePreference();
 
 <style scoped>
 .cs-repair-board {
+  display: grid;
+  gap: 14px;
+  overflow: hidden;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 12px;
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--warning) 12%, transparent), transparent 34%),
-    var(--surface);
+    radial-gradient(circle at top right, color-mix(in srgb, var(--warning) 8%, transparent), transparent 34%),
+    color-mix(in srgb, var(--shell-panel-fill) 88%, transparent);
 }
 
 .cs-field-hint {
@@ -155,7 +161,11 @@ const { text } = useLocalePreference();
 
 .cs-repair-flow {
   display: grid;
-  gap: 10px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 46%, transparent);
 }
 
 .cs-attach-route-actions {
@@ -166,24 +176,31 @@ const { text } = useLocalePreference();
 
 .cs-repair-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 42%, transparent);
 }
 
-.cs-repair-card {
+.cs-repair-step {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px 12px;
   align-items: start;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 14px;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  padding: 15px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  background: transparent;
 }
 
-.cs-repair-card-primary {
-  border-color: color-mix(in srgb, var(--acc) 34%, var(--line));
+.cs-repair-step:last-child {
+  border-bottom: none;
+}
+
+.cs-repair-step-primary {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--acc) 8%, transparent), transparent 72%);
 }
 
 .cs-step-number {
@@ -201,18 +218,18 @@ const { text } = useLocalePreference();
   font-weight: 800;
 }
 
-.cs-repair-card strong {
+.cs-repair-step strong {
   padding-right: 30px;
   color: var(--text);
 }
 
-.cs-repair-card p {
+.cs-repair-step p {
   grid-column: 1 / -1;
   margin: 0;
   color: var(--text-soft);
 }
 
-.cs-repair-card button {
+.cs-repair-step button {
   grid-column: 1 / -1;
   justify-self: start;
 }
@@ -233,7 +250,7 @@ const { text } = useLocalePreference();
 .cs-advanced-repair {
   margin-top: 14px;
   border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: var(--radius-lg);
+  border-radius: 10px;
   padding: 12px;
   background: color-mix(in srgb, var(--code-bg) 20%, transparent);
 }
@@ -244,7 +261,7 @@ const { text } = useLocalePreference();
   flex-direction: column;
   gap: 10px;
   border: 1px solid color-mix(in srgb, var(--acc) 28%, var(--line));
-  border-radius: var(--radius-lg);
+  border-radius: 10px;
   padding: 14px;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 12%, transparent), transparent 34%),
@@ -275,10 +292,14 @@ const { text } = useLocalePreference();
 .cs-attach-preflight-row {
   display: grid;
   gap: 3px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--code-bg) 28%, transparent);
+  padding: 8px 0;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background: transparent;
+}
+
+.cs-attach-preflight-row:last-child {
+  border-bottom: none;
 }
 
 .cs-attach-preflight-row dt {

@@ -1,6 +1,6 @@
 <template>
   <div class="terminal-inspector-content">
-    <section class="terminal-inspector-summary-card">
+    <section class="terminal-inspector-command-pane">
       <div class="terminal-inspector-section-header">
         <div>
           <h3>{{ text('终端控制塔', 'Terminal Control Tower') }}</h3>
@@ -22,30 +22,30 @@
       </div>
 
       <div v-if="showExpandedSummary" class="terminal-inspector-summary-grid">
-        <article class="terminal-summary-stat">
+        <div class="terminal-summary-stat">
           <span class="terminal-summary-stat__label">{{ text('当前会话', 'Current Session') }}</span>
           <strong>{{ activeSessionTitle }}</strong>
-        </article>
-        <article class="terminal-summary-stat">
+        </div>
+        <div class="terminal-summary-stat">
           <span class="terminal-summary-stat__label">{{ text('运行实例', 'Live Instances') }}</span>
           <strong>{{ sessionCount }}</strong>
-        </article>
-        <article class="terminal-summary-stat">
+        </div>
+        <div class="terminal-summary-stat">
           <span class="terminal-summary-stat__label">{{ text('缺失依赖', 'Missing Deps') }}</span>
           <strong>{{ missingBinaryCount }}</strong>
-        </article>
-        <article class="terminal-summary-stat">
+        </div>
+        <div class="terminal-summary-stat">
           <span class="terminal-summary-stat__label">{{ text('待配置技能', 'Needs Setup') }}</span>
           <strong>{{ needsSetupCount }}</strong>
-        </article>
-        <article class="terminal-summary-stat">
+        </div>
+        <div class="terminal-summary-stat">
           <span class="terminal-summary-stat__label">{{ text('阻塞技能', 'Blocked Skills') }}</span>
           <strong>{{ blockedCount }}</strong>
-        </article>
-        <article class="terminal-summary-stat">
+        </div>
+        <div class="terminal-summary-stat">
           <span class="terminal-summary-stat__label">{{ text('默认模型', 'Default Model') }}</span>
           <strong>{{ runtimeModelLabel }}</strong>
-        </article>
+        </div>
       </div>
       <div v-else class="terminal-summary-inline">
         <span class="terminal-summary-inline__chip">{{ text('会话', 'Session') }} {{ activeSessionTitle }}</span>
@@ -83,31 +83,31 @@
         </div>
       </div>
 
-      <div v-if="visibleBinaries.length" class="terminal-binary-grid">
-        <article
+      <div v-if="visibleBinaries.length" class="terminal-binary-list">
+        <section
           v-for="binary in visibleBinaries"
           :key="binary.id"
-          class="terminal-binary-card"
+          class="terminal-binary-row"
           :data-installed="binary.installed ? 'true' : 'false'"
         >
-          <div class="terminal-binary-card__head">
-            <div class="terminal-binary-card__title-wrap">
+          <div class="terminal-binary-row__head">
+            <div class="terminal-binary-row__title-wrap">
               <strong>{{ binary.label }}</strong>
-              <span class="terminal-binary-card__category">{{ resolveBinaryCategoryLabel(binary.category) }}</span>
+              <span class="terminal-binary-row__category">{{ resolveBinaryCategoryLabel(binary.category) }}</span>
             </div>
             <span class="terminal-tooling-status-chip" :data-installed="binary.installed ? 'true' : 'false'">
               {{ binary.installed ? text('已安装', 'Installed') : text('未安装', 'Missing') }}
             </span>
           </div>
 
-          <div class="terminal-binary-card__meta">
+          <div class="terminal-binary-row__meta">
             <span v-if="binary.path">{{ text('路径', 'Path') }}: {{ binary.path }}</span>
             <span v-else>{{ text('命令', 'Command') }}: {{ binary.binary }}</span>
             <span v-if="binary.version">{{ text('版本', 'Version') }}: {{ binary.version }}</span>
             <span v-if="binary.packageName">{{ text('包', 'Package') }}: {{ binary.packageName }}</span>
           </div>
 
-          <div class="terminal-binary-card__actions">
+          <div class="terminal-binary-row__actions">
             <button
               type="button"
               class="secondary-button compact-button"
@@ -125,7 +125,7 @@
               {{ text('注入安装命令', 'Inject Install Command') }}
             </button>
           </div>
-        </article>
+        </section>
       </div>
 
       <div v-else class="terminal-empty-state">{{ text('尚未检测到可展示的 CLI 工具状态。', 'No CLI tool status is available yet.') }}</div>

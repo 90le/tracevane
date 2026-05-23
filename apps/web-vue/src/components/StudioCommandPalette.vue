@@ -20,7 +20,7 @@
         :aria-label="text('命令面板', 'Command palette')"
       >
         <header class="studio-command-palette__header">
-          <span class="studio-command-palette__mark" aria-hidden="true">⌘</span>
+          <Command class="studio-command-palette__mark" aria-hidden="true" />
           <label class="studio-command-palette__search">
             <span class="sr-only">{{ text('搜索页面或命令', 'Search pages or commands') }}</span>
             <input
@@ -40,7 +40,7 @@
             :aria-label="text('关闭', 'Close')"
             @click="closePalette"
           >
-            ×
+            <X class="studio-command-palette__close-icon" aria-hidden="true" />
           </button>
         </header>
 
@@ -80,9 +80,9 @@
               :class="{ active: command.id === activeCommandId }"
               @mouseenter="activeCommandId = command.id"
               @click="runCommand(command)"
-            >
+          >
               <span class="studio-command-palette__item-icon" aria-hidden="true">
-                {{ iconLabel(command.icon) }}
+                <component :is="resolveCommandIcon(command.icon)" />
               </span>
               <span class="studio-command-palette__item-main">
                 <strong>{{ command.label }}</strong>
@@ -109,6 +109,22 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
+import {
+  Bot,
+  Boxes,
+  CalendarClock,
+  Command,
+  Compass,
+  FileText,
+  Gauge,
+  LayoutGrid,
+  MessageSquare,
+  MoonStar,
+  Network,
+  Settings2,
+  Terminal,
+  X,
+} from '@lucide/vue';
 import { useRouter } from 'vue-router';
 import { useLocalePreference } from '../shared/locale';
 
@@ -247,21 +263,21 @@ function runCommand(command: CommandItem) {
   void router.push(command.to);
 }
 
-function iconLabel(icon: string): string {
-  const labels: Record<string, string> = {
-    dashboard: '⌂',
-    chat: '●',
-    skills: '✦',
-    files: '▣',
-    terminal: '>',
-    system: '◎',
-    agents: 'A',
-    channels: '◇',
-    cron: '◷',
-    config: '⚙',
-    plugins: '◆',
-    dreaming: '◌',
+function resolveCommandIcon(icon: string) {
+  const icons = {
+    dashboard: LayoutGrid,
+    chat: MessageSquare,
+    skills: Compass,
+    files: FileText,
+    terminal: Terminal,
+    system: Gauge,
+    agents: Bot,
+    channels: Network,
+    cron: CalendarClock,
+    config: Settings2,
+    plugins: Boxes,
+    dreaming: MoonStar,
   };
-  return labels[icon] ?? '•';
+  return icons[icon as keyof typeof icons] ?? Boxes;
 }
 </script>

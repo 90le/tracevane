@@ -64,7 +64,7 @@
           :title="showToolPreviews ? text('隐藏工具过程', 'Hide tool previews') : text('显示工具过程', 'Show tool previews')"
           @click="$emit('toggle-tool-previews')"
         >
-          ⌘
+          <Braces class="chat-conversation-pane__button-icon" aria-hidden="true" />
         </button>
 
         <button
@@ -74,7 +74,7 @@
           :title="showThinkingBlocks ? text('隐藏思考块', 'Hide thinking blocks') : text('显示思考块', 'Show thinking blocks')"
           @click="$emit('toggle-thinking-blocks')"
         >
-          ⋯
+          <MoreHorizontal class="chat-conversation-pane__button-icon" aria-hidden="true" />
         </button>
 
         <button
@@ -86,7 +86,7 @@
           :disabled="!canRefresh"
           @click="$emit('refresh-session')"
         >
-          ↻
+          <RefreshCcw class="chat-conversation-pane__button-icon" aria-hidden="true" />
         </button>
 
         <button
@@ -97,7 +97,7 @@
           :title="text('聊天记录', 'Chat records')"
           @click="$emit('open-record-browser')"
         >
-          ☰
+          <List class="chat-conversation-pane__button-icon" aria-hidden="true" />
         </button>
 
         <DropdownMenuRoot v-model:open="conversationMenuOpen">
@@ -161,21 +161,21 @@
                   class="chat-conversation-pane__mobile-sheet-close"
                   :aria-label="text('关闭更多操作', 'Close more actions')"
                 >
-                  ×
+                  <X class="chat-conversation-pane__close-icon" aria-hidden="true" />
                 </button>
               </DialogClose>
             </header>
 
             <div class="chat-conversation-pane__mobile-sheet-grid">
               <button type="button" class="chat-conversation-pane__mobile-sheet-action" @click="triggerMenuAction('new-chat')">
-                <span class="chat-conversation-pane__mobile-sheet-action-icon">＋</span>
+                <Plus class="chat-conversation-pane__mobile-sheet-action-icon" aria-hidden="true" />
                 <span class="chat-conversation-pane__mobile-sheet-action-copy">
                   <strong>{{ text('新建会话', 'New chat') }}</strong>
                   <span>{{ text('立即开始新的对话线程。', 'Start a new conversation thread right away.') }}</span>
                 </span>
               </button>
               <button type="button" class="chat-conversation-pane__mobile-sheet-action" @click="triggerMenuAction('toggle-inspect')">
-                <span class="chat-conversation-pane__mobile-sheet-action-icon">⌘</span>
+                <Braces class="chat-conversation-pane__mobile-sheet-action-icon" aria-hidden="true" />
                 <span class="chat-conversation-pane__mobile-sheet-action-copy">
                   <strong>{{ inspectPinned ? text('关闭调试台', 'Close workbench') : text('打开调试台', 'Open workbench') }}</strong>
                   <span>{{ text('查看运行细节和调试信息。', 'Open runtime details and diagnostics.') }}</span>
@@ -187,14 +187,14 @@
                 class="chat-conversation-pane__mobile-sheet-action"
                 @click="triggerMenuAction('open-record-browser')"
               >
-                <span class="chat-conversation-pane__mobile-sheet-action-icon">☰</span>
+                <List class="chat-conversation-pane__mobile-sheet-action-icon" aria-hidden="true" />
                 <span class="chat-conversation-pane__mobile-sheet-action-copy">
                   <strong>{{ text('聊天记录', 'Chat records') }}</strong>
                   <span>{{ text('打开当前会话的独立记录浏览器。', 'Open the dedicated record browser for this chat.') }}</span>
                 </span>
               </button>
               <button type="button" class="chat-conversation-pane__mobile-sheet-action" @click="openRenderingSettings">
-                <span class="chat-conversation-pane__mobile-sheet-action-icon">◫</span>
+                <Columns2 class="chat-conversation-pane__mobile-sheet-action-icon" aria-hidden="true" />
                 <span class="chat-conversation-pane__mobile-sheet-action-copy">
                   <strong>{{ text('渲染设置', 'Rendering settings') }}</strong>
                   <span>{{ text('调整 Mermaid / HTML / SVG 的默认渲染方式。', 'Adjust Mermaid / HTML / SVG defaults.') }}</span>
@@ -206,7 +206,7 @@
                 :disabled="!canReset"
                 @click="triggerMenuAction('reset')"
               >
-                <span class="chat-conversation-pane__mobile-sheet-action-icon">↺</span>
+                <RotateCcw class="chat-conversation-pane__mobile-sheet-action-icon" aria-hidden="true" />
                 <span class="chat-conversation-pane__mobile-sheet-action-copy">
                   <strong>{{ text('重置 Session', 'Reset Session') }}</strong>
                   <span>{{ text('清理当前会话状态并重新开始。', 'Reset the current session state and start clean.') }}</span>
@@ -335,7 +335,7 @@
           @click="jumpToBottom"
         >
           <span v-if="viewingHistoricalPosition" class="chat-conversation-thread__jump-text">{{ text('返回最新', 'Return to latest') }}</span>
-          <span class="chat-conversation-thread__jump-arrow">↓</span>
+          <ArrowDown class="chat-conversation-thread__jump-arrow" aria-hidden="true" />
           <span
             v-if="pendingUnreadCount > 0 && !viewingHistoricalPosition"
             class="chat-conversation-thread__jump-badge"
@@ -354,7 +354,7 @@
             :aria-label="text('打开会话列表', 'Open session list')"
             @click="$emit('open-session-list')"
           >
-            <span class="chat-conversation-pane__mobile-dock-icon">☰</span>
+            <List class="chat-conversation-pane__mobile-dock-icon" aria-hidden="true" />
             <span class="chat-conversation-pane__mobile-dock-label">{{ text('会话', 'Chats') }}</span>
           </button>
           <button
@@ -363,7 +363,7 @@
             :disabled="!canRefresh"
             @click="$emit('refresh-session')"
           >
-            <span class="chat-conversation-pane__mobile-dock-icon">↻</span>
+            <RefreshCcw class="chat-conversation-pane__mobile-dock-icon" aria-hidden="true" />
             <span class="chat-conversation-pane__mobile-dock-label">{{ text('刷新', 'Refresh') }}</span>
           </button>
           <button
@@ -387,7 +387,7 @@
             :title="showToolPreviews ? text('隐藏工具过程', 'Hide tool previews') : text('显示工具过程', 'Show tool previews')"
             @click="$emit('toggle-tool-previews')"
           >
-            <span class="chat-conversation-pane__mobile-dock-icon">⌘</span>
+            <Braces class="chat-conversation-pane__mobile-dock-icon" aria-hidden="true" />
             <span class="chat-conversation-pane__mobile-dock-label">{{ text('工具', 'Tools') }}</span>
           </button>
           <button
@@ -397,7 +397,7 @@
             :title="showThinkingBlocks ? text('隐藏思考块', 'Hide thinking blocks') : text('显示思考块', 'Show thinking blocks')"
             @click="$emit('toggle-thinking-blocks')"
           >
-            <span class="chat-conversation-pane__mobile-dock-icon">⋯</span>
+            <MoreHorizontal class="chat-conversation-pane__mobile-dock-icon" aria-hidden="true" />
             <span class="chat-conversation-pane__mobile-dock-label">{{ text('思考', 'Thinking') }}</span>
           </button>
           <button
@@ -407,7 +407,7 @@
             :aria-expanded="String(mobileActionSheetOpen)"
             @click="mobileActionSheetOpen = true"
           >
-            <span class="chat-conversation-pane__mobile-dock-icon">＋</span>
+            <Plus class="chat-conversation-pane__mobile-dock-icon" aria-hidden="true" />
             <span class="chat-conversation-pane__mobile-dock-label">{{ text('更多', 'More') }}</span>
           </button>
         </div>
@@ -472,7 +472,7 @@
                 class="chat-conversation-pane__queue-sheet-close"
                 :aria-label="text('关闭待发送队列', 'Close queued messages')"
               >
-                ×
+                <X class="chat-conversation-pane__close-icon" aria-hidden="true" />
               </button>
             </DialogClose>
           </header>
@@ -514,7 +514,7 @@
               class="chat-rendering-settings-close"
               :aria-label="text('关闭渲染设置', 'Close rendering settings')"
             >
-              ×
+              <X class="chat-conversation-pane__close-icon" aria-hidden="true" />
             </button>
           </DialogClose>
         </header>
@@ -724,6 +724,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, onUpdated, reactive, ref, watch } from 'vue';
+import { ArrowDown, Braces, Columns2, List, MoreHorizontal, Plus, RefreshCcw, RotateCcw, X } from '@lucide/vue';
 import {
   DialogClose,
   DialogContent,

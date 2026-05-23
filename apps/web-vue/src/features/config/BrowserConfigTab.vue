@@ -3,7 +3,7 @@
     <article class="panel-card config-sheet">
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🌐</span><span>{{ text('浏览器配置', 'Browser Configuration') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('浏览器配置', 'Browser Configuration') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -164,7 +164,7 @@
             </div>
             <div class="page-actions">
               <button type="button" class="secondary-button compact-button" @click="addProfile">
-                ＋ {{ text('新增 Profile', 'Add Profile') }}
+                {{ text('新增 Profile', 'Add Profile') }}
               </button>
             </div>
             <div v-if="form.profiles.length" class="settings-stack settings-stack-spaced">

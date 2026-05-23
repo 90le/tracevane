@@ -9,7 +9,7 @@
       :aria-expanded="String(mobileNavOpen)"
       @click="$emit('toggle-mobile-nav')"
     >
-      ☰
+      <Menu class="studio-shell-topbar__icon" aria-hidden="true" />
     </button>
 
     <button
@@ -19,6 +19,7 @@
       :aria-label="searchLabel"
       @click="$emit('open-command-palette')"
     >
+      <Search class="studio-shell-topbar__icon" aria-hidden="true" />
       <span class="studio-shell-topbar__search-label">{{ searchLabel }}</span>
       <span class="studio-shell-topbar__search-shortcut">{{ searchShortcutLabel }}</span>
     </button>
@@ -55,7 +56,7 @@
           :aria-pressed="String(themeMode === option.value)"
           @click="$emit('set-theme-mode', option.value)"
         >
-          <span class="theme-switch-emoji" aria-hidden="true">{{ option.icon }}</span>
+          <component :is="resolveThemeIcon(option.value)" class="theme-switch-icon" aria-hidden="true" />
           <span>{{ option.shortLabel }}</span>
         </button>
       </div>
@@ -79,12 +80,12 @@
 </template>
 
 <script setup lang="ts">
+import { Monitor, Moon, Search, Sun, Menu } from '@lucide/vue';
 import type { Locale } from '../shared/locale';
 import type { ThemeMode } from '../shared/theme';
 
 type ThemeOption = {
   value: ThemeMode;
-  icon: string;
   label: string;
   shortLabel: string;
 };
@@ -123,5 +124,11 @@ defineEmits<{
   (event: 'set-theme-mode', value: ThemeMode): void;
   (event: 'set-locale', value: Locale): void;
 }>();
+
+const resolveThemeIcon = (value: ThemeMode) => {
+  if (value === 'light') return Sun;
+  if (value === 'dark') return Moon;
+  return Monitor;
+};
 
 </script>

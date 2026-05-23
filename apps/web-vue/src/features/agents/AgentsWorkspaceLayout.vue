@@ -162,7 +162,7 @@
               :class="{ active: activeSection === tab.value }"
               @click="openAgent(routeAgentId, tab.value)"
             >
-              <span aria-hidden="true">{{ tab.icon }}</span>
+              <component :is="tab.icon" class="agents-stage-tab-icon" aria-hidden="true" />
               <span>{{ tab.label }}</span>
             </button>
           </nav>
@@ -227,7 +227,7 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('Emoji', 'Emoji') }}</label>
-                <input v-model="createForm.identityEmoji" class="form-input" :placeholder="text('例如 🤖', 'For example 🤖')" />
+                <input v-model="createForm.identityEmoji" class="form-input" :placeholder="text('例如 agent-mark', 'For example agent-mark')" />
               </div>
 
               <AvatarFieldEditor
@@ -363,6 +363,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { BookOpen, Braces, Link2, MessageSquare, SlidersHorizontal } from '@lucide/vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { AgentCreatePayload, AgentDetailPayload, AgentsSummaryPayload } from '../../../../../types/agents';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
@@ -439,11 +440,11 @@ const activeSection = computed<'overview' | 'docs' | 'bindings' | 'sessions' | '
 });
 
 const stageTabs = computed(() => [
-  { value: 'overview' as const, label: text('概览', 'Overview'), icon: '◌' },
-  { value: 'docs' as const, label: text('文档', 'Docs'), icon: '✎' },
-  { value: 'bindings' as const, label: text('绑定', 'Bindings'), icon: '⇄' },
-  { value: 'sessions' as const, label: text('会话', 'Sessions'), icon: '◍' },
-  { value: 'advanced' as const, label: text('高级', 'Advanced'), icon: '⋯' },
+  { value: 'overview' as const, label: text('概览', 'Overview'), icon: SlidersHorizontal },
+  { value: 'docs' as const, label: text('文档', 'Docs'), icon: BookOpen },
+  { value: 'bindings' as const, label: text('绑定', 'Bindings'), icon: Link2 },
+  { value: 'sessions' as const, label: text('会话', 'Sessions'), icon: MessageSquare },
+  { value: 'advanced' as const, label: text('高级', 'Advanced'), icon: Braces },
 ]);
 
 const selectedAgent = computed(() => {

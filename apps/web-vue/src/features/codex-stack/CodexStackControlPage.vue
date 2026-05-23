@@ -89,7 +89,7 @@
       >
         <template v-if="activeSection === 'dashboard'">
           <CodexStackSectionStack>
-            <CodexStackDashboardHeroCard
+            <CodexStackDashboardCommandCenter
               :status-label="statusLabel"
               :status-tone="statusTone"
               :active-service-count="activeServiceCount"
@@ -105,12 +105,6 @@
               :mutation-disabled-help="mutationDisabledHelp"
               :sync-disabled="loading || ccConnectLoading"
               :sync-disabled-help="refreshDisabledHelp"
-              @run-check="runCheck"
-              @repair="repairRecommended"
-              @sync="loadAll"
-            />
-
-            <CodexStackActionOverview
               :ready-component-count="readyComponentCount"
               :component-count="summary.components.length"
               :issue-count="issueCount"
@@ -120,13 +114,14 @@
               :next-action-button="nextActionButton"
               :next-action-requires-mutation="nextActionRequiresMutation"
               :next-action-disabled-help="nextActionDisabledHelp"
-              :can-run-mutation="canRunMutation"
-              :busy="actionBusy"
               :model-source-label="modelSourceLabel"
               :model-source-help="modelSourceHelp"
               :model-catalog-preview="modelCatalogPreview"
               @primary="nextActionPrimary"
               @open-section="setWorkspaceSection(nextActionSection, focusHintForAction(nextActionTitle, nextActionCopy))"
+              @run-check="runCheck"
+              @repair="repairRecommended"
+              @sync="loadAll"
             />
 
             <details class="cs-dashboard-details-panel">
@@ -537,9 +532,8 @@ import {
   resolveCodexStackRunReadinessAction,
   resolveCodexStackRunReadinessModeAction,
 } from "./readiness-action";
-import CodexStackActionOverview from "./CodexStackActionOverview.vue";
 import CodexStackDashboardInsights from "./CodexStackDashboardInsights.vue";
-import CodexStackDashboardHeroCard from "./CodexStackDashboardHeroCard.vue";
+import CodexStackDashboardCommandCenter from "./CodexStackDashboardCommandCenter.vue";
 import type {
   CodexStackComponentHealthCard,
   CodexStackNetworkPolicyCard,

@@ -1,6 +1,6 @@
 <template>
   <div class="cs-install-strategy-panel">
-    <article class="panel-card">
+    <article class="cs-install-command-pane">
       <div class="cs-card-header">
         <div>
           <p class="cs-section-kicker">{{ text("可选策略", "Optional Strategy") }}</p>
@@ -11,7 +11,7 @@
         {{ text("小白用户保持默认即可。只有组件损坏、版本不一致或需要保留现状时，再改跳过或强制。", "New users can keep defaults. Change skip or force only for damaged components, version mismatch, or preserving the current state.") }}
       </p>
       <div class="cs-component-mode-list">
-        <article v-for="component in components" :key="component.id" class="cs-component-mode-card">
+        <article v-for="component in components" :key="component.id" class="cs-component-mode-row">
           <div>
             <strong>{{ component.label }}</strong>
             <p>{{ component.modeLabel }}</p>
@@ -46,7 +46,7 @@
       </div>
     </article>
 
-    <article class="panel-card cs-install-cta-card">
+    <article class="cs-install-command-pane cs-install-cta-card">
       <div class="cs-card-header">
         <div>
           <p class="cs-section-kicker">{{ text("改完后执行", "Run After Editing") }}</p>
@@ -109,7 +109,8 @@ const { text } = useLocalePreference();
 
 <style scoped>
 .cs-install-strategy-panel {
-  display: contents;
+  display: grid;
+  gap: 12px;
 }
 
 .cs-card-header {
@@ -123,6 +124,28 @@ const { text } = useLocalePreference();
   margin: 0;
 }
 
+.cs-install-command-pane {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--acc) 7%, transparent), transparent 48%),
+    color-mix(in srgb, var(--shell-panel-fill) 88%, transparent);
+}
+
+.cs-install-command-pane::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--mint) 38%, white 10%), transparent);
+  opacity: 0.45;
+}
+
 .cs-section-kicker {
   margin: 0 0 6px;
   color: var(--muted);
@@ -132,16 +155,35 @@ const { text } = useLocalePreference();
 }
 
 .cs-component-mode-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 46%, transparent);
 }
 
-.cs-component-mode-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  padding: 14px;
+.cs-component-mode-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+}
+
+.cs-component-mode-row:last-child {
+  border-bottom: none;
+}
+
+.cs-component-mode-row strong {
+  color: var(--text);
+}
+
+.cs-component-mode-row p {
+  margin: 4px 0 0;
+  color: var(--text-soft);
+  font-size: 0.84rem;
 }
 
 .cs-segmented {
@@ -169,8 +211,8 @@ const { text } = useLocalePreference();
 
 .cs-install-cta-card {
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 16%, transparent), transparent 32%),
-    var(--surface);
+    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 12%, transparent), transparent 34%),
+    color-mix(in srgb, var(--shell-panel-fill-strong) 82%, transparent);
 }
 
 .cs-install-cta-row {
@@ -192,6 +234,10 @@ const { text } = useLocalePreference();
 }
 
 @media (max-width: 960px) {
+  .cs-component-mode-row {
+    grid-template-columns: 1fr;
+  }
+
   .cs-segmented {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

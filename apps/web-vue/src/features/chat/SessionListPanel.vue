@@ -87,7 +87,7 @@
             :title="text('更多操作', 'More actions')"
             @click.stop="toggleInlineMenu(session.key)"
           >
-            ⋯
+            <MoreHorizontal class="chat-shell-session-more-icon" aria-hidden="true" />
           </button>
 
           <div v-if="inlineMenuKey === session.key" class="chat-session-list__inline-menu" @click.stop>
@@ -128,6 +128,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { MoreHorizontal } from '@lucide/vue';
 import type { AgentSummary } from '../../../../../types/agents';
 import type { ChatSessionRow } from '../../../../../types/chat';
 import { useLocalePreference } from '../../shared/locale';

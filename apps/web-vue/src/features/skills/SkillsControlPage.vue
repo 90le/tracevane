@@ -21,7 +21,9 @@
         :class="{ active: mode === 'installed' }"
         @click="mode = 'installed'"
       >
-        <span class="skills-mode-icon" aria-hidden="true">🧩</span>
+        <span class="skills-mode-icon" aria-hidden="true">
+          <component :is="modeIconInstalled" :size="18" :stroke-width="1.8" />
+        </span>
         <span>
           <strong>{{ text('已安装技能', 'Installed Skills') }}</strong>
           <span>{{ text('只关注本地技能、依赖缺口和维护动作', 'Focus on local skills, dependency gaps, and maintenance') }}</span>
@@ -34,7 +36,9 @@
         :class="{ active: mode === 'marketplace' }"
         @click="mode = 'marketplace'"
       >
-        <span class="skills-mode-icon" aria-hidden="true">🌐</span>
+        <span class="skills-mode-icon" aria-hidden="true">
+          <component :is="modeIconMarketplace" :size="18" :stroke-width="1.8" />
+        </span>
         <span>
           <strong>{{ text('技能市场', 'Marketplace') }}</strong>
           <span>{{ text('市场浏览、风险预检和安装都在一个面板里完成', 'Browse, preflight, and install from one panel') }}</span>
@@ -47,7 +51,9 @@
         :class="{ active: mode === 'local-install' }"
         @click="mode = 'local-install'"
       >
-        <span class="skills-mode-icon" aria-hidden="true">📦</span>
+        <span class="skills-mode-icon" aria-hidden="true">
+          <component :is="modeIconLocalInstall" :size="18" :stroke-width="1.8" />
+        </span>
         <span>
           <strong>{{ text('本地安装', 'Local Install') }}</strong>
           <span>{{ text('上传压缩包、结构检测、选择安装目标', 'Upload archive, validate structure, choose target') }}</span>
@@ -1113,6 +1119,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { Compass, Globe2, PackageOpen } from '@lucide/vue';
 import type {
   SkillApiKeyMode,
   SkillInstallTargetScope,
@@ -1220,6 +1227,9 @@ const uploadHeadline = computed(() => overviewRecipe.value.uploadHeadline);
 const uploadCopy = computed(() => overviewRecipe.value.uploadCopy);
 
 const mode = ref<PageMode>('installed');
+const modeIconInstalled = Compass;
+const modeIconMarketplace = Globe2;
+const modeIconLocalInstall = PackageOpen;
 const summary = ref<SkillsSummaryPayload | null>(null);
 const summaryLoading = ref(false);
 const summaryError = ref('');
@@ -2425,19 +2435,28 @@ onBeforeUnmount(clearMarketSearchTimer);
 
 .skills-mode-switch {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background:
+    radial-gradient(560px 220px at 0% 0%, color-mix(in srgb, var(--acc) 10%, transparent), transparent 66%),
+    color-mix(in srgb, var(--line) 72%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--shell-highlight) 10%, transparent),
+    0 10px 26px rgba(8, 18, 29, 0.07);
 }
 
 .skills-mode-button {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px 16px;
-  background: var(--surface);
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border: 0;
+  border-radius: 0;
+  padding: 13px 16px;
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
   color: var(--muted);
   cursor: pointer;
   text-align: left;
@@ -2445,14 +2464,15 @@ onBeforeUnmount(clearMarketSearchTimer);
 }
 
 .skills-mode-button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 190, 122, 0.22);
+  transform: translateX(2px);
   color: var(--text);
+  background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
 }
 
 .skills-mode-button.active {
-  border-color: rgba(255, 190, 122, 0.3);
-  background: var(--tab-active-bg);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--acc) 12%, transparent), transparent 64%),
+    color-mix(in srgb, var(--surface-raised) 78%, transparent);
   color: var(--text);
 }
 
@@ -2460,12 +2480,12 @@ onBeforeUnmount(clearMarketSearchTimer);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  background: var(--icon-surface);
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--icon-surface) 84%, transparent);
   border: 1px solid var(--line);
-  font-size: 20px;
+  color: var(--acc);
 }
 
 .skills-mode-button strong,
@@ -2491,11 +2511,14 @@ onBeforeUnmount(clearMarketSearchTimer);
 }
 
 .skills-board {
-  padding: 16px;
+  padding: 20px;
   border-radius: 12px;
-  background: var(--glass-bg), var(--glass-accent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--surface-base) 88%, transparent), color-mix(in srgb, var(--code-bg) 10%, transparent));
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-soft);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--shell-highlight) 10%, transparent),
+    0 12px 30px rgba(8, 18, 29, 0.07);
 }
 
 .skills-board {

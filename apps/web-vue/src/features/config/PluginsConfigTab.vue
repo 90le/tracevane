@@ -3,7 +3,7 @@
     <article class="panel-card config-sheet">
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🧭</span><span>{{ text('全局插件策略', 'Global Plugin Policy') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('全局插件策略', 'Global Plugin Policy') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection is-primary">
@@ -23,7 +23,7 @@
       <!-- Plugin Allowlist -->
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🧩</span><span>{{ text('插件白名单', 'Plugin Allowlist') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('插件白名单', 'Plugin Allowlist') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -51,7 +51,7 @@
               {{ text('未配置插件白名单', 'No plugin allowlist configured') }}
             </div>
             <button type="button" class="secondary-button compact-button" style="margin-top: 0.5rem;" @click="addAllow">
-              {{ text('＋ 添加', '＋ Add') }}
+              {{ text('添加', 'Add') }}
             </button>
           </section>
         </div>
@@ -59,7 +59,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>⛔</span><span>{{ text('插件黑名单', 'Plugin Denylist') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('插件黑名单', 'Plugin Denylist') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -87,7 +87,7 @@
               {{ text('未配置插件黑名单', 'No plugin denylist configured') }}
             </div>
             <button type="button" class="secondary-button compact-button" style="margin-top: 0.5rem;" @click="addDeny">
-              {{ text('＋ 添加', '＋ Add') }}
+              {{ text('添加', 'Add') }}
             </button>
           </section>
         </div>
@@ -96,7 +96,7 @@
       <!-- Load Paths -->
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>📁</span><span>{{ text('加载路径', 'Load Paths') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('加载路径', 'Load Paths') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -124,7 +124,7 @@
               {{ text('未配置额外加载路径', 'No extra load paths configured') }}
             </div>
             <button type="button" class="secondary-button compact-button" style="margin-top: 0.5rem;" @click="addLoadPath">
-              {{ text('＋ 添加', '＋ Add') }}
+              {{ text('添加', 'Add') }}
             </button>
           </section>
         </div>
@@ -132,7 +132,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🎯</span><span>{{ text('独占插槽', 'Exclusive Slots') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('独占插槽', 'Exclusive Slots') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -157,7 +157,7 @@
       <!-- Registered Plugins -->
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>📦</span><span>{{ text('已注册插件', 'Registered Plugins') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('已注册插件', 'Registered Plugins') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -209,7 +209,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🗂️</span><span>{{ text('已跟踪安装记录', 'Tracked Install Records') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('已跟踪安装记录', 'Tracked Install Records') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">

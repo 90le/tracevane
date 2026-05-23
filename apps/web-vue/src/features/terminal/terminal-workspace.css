@@ -849,12 +849,12 @@
 .terminal-inspector-tooling,
 .terminal-action-panel,
 .terminal-session-explorer,
-.terminal-inspector-summary-card,
+.terminal-inspector-command-pane,
 .terminal-tooling-status-item {
   min-width: 0;
 }
 
-.terminal-inspector-summary-card,
+.terminal-inspector-command-pane,
 .terminal-inspector-tooling,
 .terminal-missing-deps-panel,
 .terminal-action-panel,
@@ -863,9 +863,11 @@
 .terminal-install-feedback {
   flex: 0 0 auto;
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 10px;
-  background: var(--surface-base);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-primary, #7c5cff) 7%, transparent), transparent 48%),
+    color-mix(in srgb, var(--surface-base) 92%, transparent);
 }
 
 .terminal-inspector-switcher {
@@ -936,7 +938,7 @@
   font-size: 13px;
 }
 
-.terminal-inspector-summary-card h3,
+.terminal-inspector-command-pane h3,
 .terminal-inspector-section-header h3,
 .terminal-inspector-tooling h3,
 .terminal-action-panel h3,
@@ -944,7 +946,7 @@
   margin-bottom: 4px;
 }
 
-.terminal-inspector-summary-card p,
+.terminal-inspector-command-pane p,
 .terminal-inspector-section-header p,
 .terminal-action-layer__description,
 .terminal-empty-state {
@@ -957,8 +959,12 @@
 .terminal-inspector-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
   margin-top: 12px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 86%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-raised) 48%, transparent);
 }
 
 .terminal-inspector-summary-actions {
@@ -994,10 +1000,14 @@
   display: grid;
   gap: 4px;
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
+  padding: 10px 12px;
+  border-right: 1px solid color-mix(in srgb, var(--border-subtle) 72%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 72%, transparent);
+  background: transparent;
+}
+
+.terminal-summary-stat:nth-child(2n) {
+  border-right: none;
 }
 
 .terminal-summary-stat__label {
@@ -1160,45 +1170,52 @@ html[data-theme="light"] .terminal-inspector-switcher {
   margin-top: 12px;
 }
 
-.terminal-binary-grid {
+.terminal-binary-list {
   display: grid;
-  gap: 8px;
+  gap: 0;
   margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 86%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-raised) 46%, transparent);
 }
 
-.terminal-binary-card {
+.terminal-binary-row {
   display: grid;
   gap: 8px;
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  padding: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 72%, transparent);
+  background: transparent;
 }
 
-.terminal-binary-card[data-installed='false'] {
-  border-color: color-mix(in srgb, var(--accent-primary, #d97706) 30%, var(--border-subtle));
+.terminal-binary-row:last-child {
+  border-bottom: none;
 }
 
-.terminal-binary-card__head {
+.terminal-binary-row[data-installed='false'] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent-primary, #d97706) 8%, transparent), transparent 74%);
+}
+
+.terminal-binary-row__head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
 }
 
-.terminal-binary-card__title-wrap {
+.terminal-binary-row__title-wrap {
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
-.terminal-binary-card__category {
+.terminal-binary-row__category {
   font-size: 11px;
   color: var(--muted);
 }
 
-.terminal-binary-card__meta {
+.terminal-binary-row__meta {
   display: grid;
   gap: 4px;
   font-size: 11px;
@@ -1206,7 +1223,7 @@ html[data-theme="light"] .terminal-inspector-switcher {
   overflow-wrap: anywhere;
 }
 
-.terminal-binary-card__actions {
+.terminal-binary-row__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -1266,12 +1283,13 @@ html[data-theme="light"] .terminal-inspector-switcher {
   display: grid;
   gap: 6px;
   margin-top: 10px;
-  padding: 10px;
-  border: 1px solid var(--border-subtle);
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 86%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 46%, transparent);
   font-size: 12px;
   color: var(--muted);
+  overflow: hidden;
 }
 
 .terminal-missing-deps--ok {
@@ -1289,10 +1307,13 @@ html[data-theme="light"] .terminal-inspector-switcher {
 .terminal-missing-deps__item {
   display: grid;
   gap: 6px;
-  padding: 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 72%, transparent);
+  background: transparent;
+}
+
+.terminal-missing-deps__item:last-child {
+  border-bottom: none;
 }
 
 .terminal-missing-deps__head {
@@ -1557,7 +1578,7 @@ html[data-theme="light"] .terminal-desktop-inspector-trigger strong {
     height: 100%;
   }
 
-  .terminal-binary-grid,
+  .terminal-binary-list,
   .terminal-inspector-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1654,7 +1675,7 @@ html[data-theme="light"] .terminal-desktop-inspector-trigger strong {
   }
 
   .terminal-inspector-summary-grid,
-  .terminal-binary-grid,
+  .terminal-binary-list,
   .terminal-session-item-row {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1672,7 +1693,7 @@ html[data-theme="light"] .terminal-desktop-inspector-trigger strong {
   .terminal-inspector-section-header,
   .terminal-action-item__title-row,
   .terminal-missing-deps__head,
-  .terminal-binary-card__head {
+  .terminal-binary-row__head {
     flex-direction: column;
     align-items: flex-start;
   }

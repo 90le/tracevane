@@ -134,7 +134,7 @@
                 :value="tab.id"
                 class="cron-stage-tab"
               >
-                <span aria-hidden="true">{{ tab.icon }}</span>
+                <component :is="tab.icon" class="cron-stage-tab-icon" aria-hidden="true" />
                 <span>{{ tab.label }}</span>
               </TabsTrigger>
             </TabsList>
@@ -820,6 +820,7 @@
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
+import { Activity, History, SlidersHorizontal } from '@lucide/vue';
 import type { CronDetailPayload, CronJobInput, CronRunSummary, CronSummaryPayload } from '../../../../../types/cron';
 import StatusPill from '../../components/StatusPill.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
@@ -976,9 +977,9 @@ const filterOptions = computed(() => [
 ]);
 
 const workspaceTabs = computed(() => [
-  { id: 'overview' as const, icon: '◉', label: overviewRecipe.value.workspaceTabs.overview },
-  { id: 'config' as const, icon: '⚙', label: overviewRecipe.value.workspaceTabs.config },
-  { id: 'runs' as const, icon: '↺', label: overviewRecipe.value.workspaceTabs.runs },
+  { id: 'overview' as const, icon: Activity, label: overviewRecipe.value.workspaceTabs.overview },
+  { id: 'config' as const, icon: SlidersHorizontal, label: overviewRecipe.value.workspaceTabs.config },
+  { id: 'runs' as const, icon: History, label: overviewRecipe.value.workspaceTabs.runs },
 ]);
 
 const scheduleKindOptions = computed(() => [

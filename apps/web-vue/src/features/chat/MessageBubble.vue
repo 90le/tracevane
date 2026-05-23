@@ -25,7 +25,7 @@
         >
           <details v-if="displayFor(message).toolHints.length" class="chat-message-tools-collapse">
             <summary class="chat-message-tools-summary">
-              <span class="chat-message-tools-icon">⌘</span>
+              <Braces class="chat-message-tools-icon" aria-hidden="true" />
               <span>{{ toolSummary(message) }}</span>
             </summary>
             <div class="chat-message-tool-row">
@@ -59,6 +59,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { Braces } from '@lucide/vue';
 import type { ChatMessageGroup } from './message-groups';
 import { renderChatMarkdown } from './markdown';
 import { useLocalePreference } from '../../shared/locale';

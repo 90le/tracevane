@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card system-stage-panel">
+  <article class="system-stage-panel system-overview-command-panel">
     <section class="system-section">
       <div class="system-section-head">
         <div>
@@ -54,6 +54,15 @@ defineProps<{
   gap: 16px;
 }
 
+.system-overview-command-panel {
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--sky) 8%, transparent), transparent 48%),
+    color-mix(in srgb, var(--shell-panel-fill) 82%, transparent);
+}
+
 .system-section + .system-section {
   padding-top: 18px;
   border-top: 1px solid var(--line);
@@ -68,18 +77,28 @@ defineProps<{
 
 .system-overview-grid {
   display: grid;
-  gap: 10px;
+  gap: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 48%, transparent);
 }
 
 .system-overview-item {
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
-  border-radius: 12px;
+  border: none;
+  border-right: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  background: transparent;
+  border-radius: 0;
   min-width: 128px;
   padding: 12px 14px;
   display: grid;
   gap: 6px;
+}
+
+.system-overview-item:nth-child(3n) {
+  border-right: none;
 }
 
 .system-overview-item span {

@@ -82,6 +82,13 @@ function buildCandidateApiBases(): string[] {
     .filter((value, index, list) => list.indexOf(value) === index);
 }
 
+function shouldUseSameOriginDevApi(): boolean {
+  return typeof window !== 'undefined'
+    && import.meta.env.DEV
+    && window.location.protocol !== 'file:'
+    && window.location.port === '5176';
+}
+
 async function probeApiBase(base: string): Promise<string> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), API_DISCOVERY_TIMEOUT_MS);
@@ -115,6 +122,11 @@ async function resolveApiBase(): Promise<string> {
   if (stored) {
     resolvedApiBase = stored;
     return stored;
+  }
+
+  if (shouldUseSameOriginDevApi()) {
+    resolvedApiBase = '';
+    return '';
   }
 
   if (resolveApiBasePromise) return resolveApiBasePromise;

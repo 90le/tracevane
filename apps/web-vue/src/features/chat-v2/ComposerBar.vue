@@ -21,7 +21,7 @@
             :title="text('上传文件', 'Upload files')"
             @click="openFilePicker"
           >
-            📎
+            <Paperclip class="chat-composer-attachment-icon" aria-hidden="true" />
           </button>
 
           <input
@@ -247,7 +247,7 @@
             @mousedown.prevent="prepareToolbarAction"
             @click="handleRetryAttachment(attachment.id)"
           >
-            ↻
+            <RefreshCcw class="chat-composer-action-icon" aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -257,7 +257,7 @@
             @mousedown.prevent="prepareToolbarAction"
             @click="insertAttachmentReference(attachment)"
           >
-            ＋
+            <Plus class="chat-composer-action-icon" aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -267,7 +267,7 @@
             @mousedown.prevent="prepareToolbarAction"
             @click="handleRemoveAttachment(attachment.id)"
           >
-            ×
+            <X class="chat-composer-action-icon" aria-hidden="true" />
           </button>
         </div>
 
@@ -336,6 +336,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { Paperclip, Plus, RefreshCcw, X } from '@lucide/vue';
 import {
   DialogClose,
   DialogContent,
@@ -1601,23 +1602,23 @@ function handlePaste(event: ClipboardEvent): void {
 }
 
 function getFileIcon(attachment: { type: ChatAttachmentKind; mimeType: string; fileName?: string }): string {
-  if (attachment.type === 'image') return '🖼';
-  if (attachment.type === 'video') return '🎬';
+  if (attachment.type === 'image') return 'IMG';
+  if (attachment.type === 'video') return 'VID';
 
   const mime = attachment.mimeType.toLowerCase();
   const ext = attachment.fileName?.split('.').pop()?.toLowerCase() || '';
 
-  if (mime.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(ext)) return '🎵';
-  if (mime === 'application/pdf' || ext === 'pdf') return '📄';
-  if (mime.includes('word') || mime.includes('document') || ['doc', 'docx'].includes(ext)) return '📝';
-  if (mime.includes('excel') || mime.includes('spreadsheet') || ['xls', 'xlsx', 'csv'].includes(ext)) return '📊';
-  if (mime.includes('powerpoint') || mime.includes('presentation') || ['ppt', 'pptx'].includes(ext)) return '📽';
+  if (mime.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(ext)) return 'AUD';
+  if (mime === 'application/pdf' || ext === 'pdf') return 'PDF';
+  if (mime.includes('word') || mime.includes('document') || ['doc', 'docx'].includes(ext)) return 'DOC';
+  if (mime.includes('excel') || mime.includes('spreadsheet') || ['xls', 'xlsx', 'csv'].includes(ext)) return 'XLS';
+  if (mime.includes('powerpoint') || mime.includes('presentation') || ['ppt', 'pptx'].includes(ext)) return 'PPT';
   if (mime.includes('zip') || mime.includes('rar') || mime.includes('tar') || mime.includes('7z') ||
-      ['zip', 'rar', 'tar', 'gz', '7z'].includes(ext)) return '📦';
-  if (mime.startsWith('text/') || ['txt', 'md', 'json', 'xml', 'yaml', 'yml'].includes(ext)) return '📃';
-  if (mime.includes('code') || ['js', 'ts', 'py', 'java', 'cpp', 'c', 'go', 'rs', 'rb'].includes(ext)) return '💻';
+      ['zip', 'rar', 'tar', 'gz', '7z'].includes(ext)) return 'ZIP';
+  if (mime.startsWith('text/') || ['txt', 'md', 'json', 'xml', 'yaml', 'yml'].includes(ext)) return 'TXT';
+  if (mime.includes('code') || ['js', 'ts', 'py', 'java', 'cpp', 'c', 'go', 'rs', 'rb'].includes(ext)) return 'DEV';
 
-  return '📎';
+  return 'FILE';
 }
 
 watch(

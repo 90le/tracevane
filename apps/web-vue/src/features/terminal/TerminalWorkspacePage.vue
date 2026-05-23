@@ -119,7 +119,7 @@
                 :aria-label="text('关闭终端面板', 'Close terminal panel')"
                 @click="mobileInspectorOpen = false"
               >
-                ×
+                <X class="terminal-mobile-sheet__close-icon" aria-hidden="true" />
               </button>
             </header>
 
@@ -168,6 +168,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { X } from '@lucide/vue';
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { useRoute, useRouter } from 'vue-router';
 import type {

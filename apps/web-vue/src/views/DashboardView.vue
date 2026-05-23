@@ -397,18 +397,23 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
   position: relative;
   display: grid;
   gap: 16px;
-  padding: 22px;
+  padding: 24px;
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
   background: var(--surface-base);
-  box-shadow: var(--shadow-soft);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--shell-highlight) 12%, transparent),
+    0 12px 30px rgba(8, 18, 29, 0.08);
   overflow: hidden;
 }
 
 .home-situation-band {
-  gap: 18px;
+  grid-template-columns: minmax(0, 0.9fr) minmax(460px, 1.1fr);
+  align-items: end;
+  gap: 28px;
   background:
-    radial-gradient(560px 240px at 12% 0%, color-mix(in srgb, var(--accent-soft) 70%, transparent), transparent 58%),
+    radial-gradient(620px 260px at 12% 0%, color-mix(in srgb, var(--accent-soft) 58%, transparent), transparent 58%),
+    linear-gradient(135deg, color-mix(in srgb, var(--surface-raised) 84%, transparent), color-mix(in srgb, var(--code-bg) 12%, transparent)),
     var(--surface-raised);
 }
 
@@ -429,7 +434,11 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 .home-situation-meters {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--shell-panel-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--shell-panel-border) 80%, transparent);
 }
 
 .home-situation-meter {
@@ -437,9 +446,9 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
   gap: 6px;
   min-width: 0;
   padding: 14px 15px 16px;
-  border-radius: 10px;
-  border: 1px solid var(--shell-panel-border);
-  background: var(--shell-panel-fill);
+  border-radius: 0;
+  border: 0;
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
 }
 
 .home-situation-meter__eyebrow,
@@ -478,8 +487,8 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 }
 
 .home-risk-stage {
-  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 1.24fr) minmax(300px, 0.76fr);
+  align-items: stretch;
 }
 
 .home-risk-stage__main,
@@ -487,6 +496,9 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
   display: grid;
   gap: 12px;
   min-width: 0;
+  align-content: start;
+  border-left: 1px solid color-mix(in srgb, var(--shell-panel-border) 74%, transparent);
+  padding-left: 18px;
 }
 
 .home-risk-stage__side h4 {
@@ -541,10 +553,11 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
   grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 0.9fr) auto;
   gap: 16px;
   align-items: center;
-  padding: 16px 18px;
-  border-radius: 10px;
-  border: 1px solid var(--shell-panel-border);
-  background: var(--shell-panel-fill);
+  padding: 16px 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--shell-panel-border) 78%, transparent);
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
   text-decoration: none;
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
@@ -554,22 +567,23 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
   display: grid;
   gap: 8px;
   min-width: 0;
-  padding: 15px 16px;
-  border: 1px solid var(--shell-panel-border);
-  border-radius: 10px;
-  background: var(--shell-panel-fill);
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--shell-panel-border) 78%, transparent);
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
   text-align: left;
   text-decoration: none;
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
   transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
 .home-quick-action:hover,
 .home-risk-row:hover {
-  transform: translateY(-1px);
+  transform: translateX(2px);
   border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-subtle));
-  background: var(--surface-raised);
+  background: color-mix(in srgb, var(--surface-raised) 44%, transparent);
 }
 
 .home-quick-action__copy,
@@ -603,17 +617,17 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 
 .home-risk-row.tone-high {
   border-color: rgba(255, 154, 154, 0.28);
-  background: linear-gradient(135deg, rgba(255, 154, 154, 0.12), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(90deg, rgba(255, 154, 154, 0.09), transparent 46%);
 }
 
 .home-risk-row.tone-medium {
   border-color: rgba(255, 214, 165, 0.26);
-  background: linear-gradient(135deg, rgba(255, 214, 165, 0.12), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(90deg, rgba(255, 214, 165, 0.09), transparent 46%);
 }
 
 .home-risk-row.tone-low {
   border-color: rgba(127, 255, 212, 0.24);
-  background: linear-gradient(135deg, rgba(127, 255, 212, 0.1), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(90deg, rgba(127, 255, 212, 0.08), transparent 46%);
 }
 
 .home-risk-row.tone-high .home-risk-row__state {
@@ -638,16 +652,21 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 }
 
 .home-mini-chart-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--shell-panel-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--shell-panel-border) 80%, transparent);
 }
 
 .home-mini-chart {
   display: grid;
   gap: 8px;
   padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--shell-panel-border);
-  background: var(--shell-panel-fill);
+  border-radius: 0;
+  border: 0;
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
 }
 
 .home-mini-chart__head {
@@ -709,9 +728,10 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 
 .home-fact,
 .home-resource-signal {
-  border-radius: 10px;
-  border: 1px solid var(--shell-panel-border);
-  background: var(--shell-panel-fill);
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--shell-panel-border) 78%, transparent);
+  background: transparent;
 }
 
 .home-fact {
@@ -730,7 +750,7 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 .home-resource-signals {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 1px 18px;
 }
 
 .home-resource-signal {
@@ -748,6 +768,17 @@ function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
 
   .home-risk-stage {
     grid-template-columns: 1fr;
+  }
+
+  .home-situation-band {
+    grid-template-columns: 1fr;
+  }
+
+  .home-risk-stage__side {
+    border-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--shell-panel-border) 74%, transparent);
+    padding-top: 16px;
+    padding-left: 0;
   }
 }
 

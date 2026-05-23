@@ -1,5 +1,5 @@
 <template>
-  <section v-if="issues.length" class="channel-issue-list panel-card">
+  <section v-if="issues.length" class="channel-issue-list">
     <header class="channel-issue-list__head">
       <div>
         <p class="eyebrow">{{ text('ATTENTION', 'ATTENTION') }}</p>
@@ -69,6 +69,8 @@ watch(
 .channel-issue-list {
   display: grid;
   gap: 12px;
+  padding: 14px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
 }
 
 .channel-issue-list__head {
@@ -101,10 +103,9 @@ watch(
   justify-content: space-between;
   gap: 14px;
   align-items: center;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 190, 122, 0.18);
-  background: color-mix(in srgb, var(--surface) 92%, rgba(255, 190, 122, 0.06));
+  padding: 13px 0;
+  border-bottom: 1px solid color-mix(in srgb, rgba(255, 190, 122, 0.2) 70%, var(--line));
+  background: transparent;
 }
 
 .channel-issue-list__item strong {

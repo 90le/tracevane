@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card system-handoff-panel">
+  <article class="system-handoff-panel">
     <div class="system-handoff-head">
       <div>
         <p class="eyebrow">System → Terminal</p>
@@ -35,9 +35,11 @@ defineProps<{
 <style scoped>
 .system-handoff-panel {
   padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface-soft);
+  border: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--mint) 8%, transparent), transparent 68%),
+    color-mix(in srgb, var(--surface) 50%, transparent);
 }
 
 .system-handoff-head {

@@ -75,7 +75,7 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('Emoji', 'Emoji') }}</label>
-                <input v-model="draft.emoji" class="form-input" :placeholder="text('例如 🧩', 'For example 🧩')" />
+                <input v-model="draft.emoji" class="form-input" :placeholder="text('例如 agent-mark', 'For example agent-mark')" />
               </div>
 
               <AvatarFieldEditor

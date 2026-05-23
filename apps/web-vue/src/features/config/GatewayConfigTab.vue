@@ -3,7 +3,7 @@
     <article class="panel-card config-sheet">
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🌐</span><span>{{ text('基础网关设置', 'Basic Gateway Settings') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('基础网关设置', 'Basic Gateway Settings') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection is-primary">
@@ -60,7 +60,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🔑</span><span>{{ text('认证设置', 'Authentication Settings') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('认证设置', 'Authentication Settings') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection is-risk">
@@ -147,7 +147,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🧭</span><span>{{ text('Control UI / 反向代理', 'Control UI / Reverse Proxy') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('Control UI / 反向代理', 'Control UI / Reverse Proxy') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -197,7 +197,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>⏱️</span><span>{{ text('速率限制', 'Rate Limiting') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('速率限制', 'Rate Limiting') }}</span></h3>
         </div>
         <details class="config-collapsible" :open="form.rateLimitMaxAttempts !== 10 || form.rateLimitWindowMs !== 60000 || form.rateLimitLockoutMs !== 600000">
           <summary class="config-collapsible-summary">
@@ -241,7 +241,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🧪</span><span>{{ text('Webchat / 工具', 'Webchat / Tools') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('Webchat / 工具', 'Webchat / Tools') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">

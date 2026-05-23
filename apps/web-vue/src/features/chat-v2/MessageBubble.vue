@@ -46,7 +46,7 @@
               :open="shouldOpenProcessDetails(message, messageIndex)"
             >
               <summary class="chat-inline-thinking-summary">
-                <span class="chat-inline-thinking-pill">⋯</span>
+                <MoreHorizontal class="chat-inline-thinking-pill" aria-hidden="true" />
                 <span>{{ processSummary(messageIndex) }}</span>
                 <span v-if="isProcessStreaming(message)" class="chat-inline-thinking-summary-meta">
                   {{ text('正在思考', 'Thinking') }}
@@ -284,7 +284,7 @@
               :open="message.source === 'stream'"
             >
               <summary class="chat-inline-process-summary">
-                <span class="chat-inline-process-pill">⌘</span>
+                <Braces class="chat-inline-process-pill" aria-hidden="true" />
                 <span>{{ toolSummary() }}</span>
                 <span class="chat-inline-process-summary-meta">
                   <span v-if="toolCounts().running">{{ text('进行中', 'Running') }} {{ toolCounts().running }}</span>
@@ -491,6 +491,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { Braces, MoreHorizontal } from '@lucide/vue';
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import { useLocalePreference } from '../../shared/locale';
 import type { ChatInlineResourceDisplay, ChatMessageItem, ChatProcessBlock, ChatRunOverlay, ChatToolStatus } from '../../../../../types/chat';
@@ -653,7 +654,7 @@ const senderLabel = computed(() => {
 const avatarLabel = computed(() => {
   if (displayGroup.value.role === 'assistant') return props.agentInitial;
   if (displayGroup.value.role === 'user') return '你';
-  if (displayGroup.value.role === 'tool') return '⌘';
+  if (displayGroup.value.role === 'tool') return 'T';
   if (displayGroup.value.role === 'system') return 'S';
   return '·';
 });
@@ -2193,7 +2194,7 @@ onBeforeUnmount(() => {
 }
 
 .chat-inline-process-thinking__head::before {
-  content: '⋯';
+  content: '...';
   width: 18px;
   height: 18px;
   display: inline-grid;

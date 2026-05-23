@@ -157,7 +157,7 @@
               :class="{ active: activeTopTab === tab.id }"
               @click="openStageTab(tab.id)"
             >
-              <span class="channels-top-tab-icon" aria-hidden="true">{{ tab.icon }}</span>
+              <component :is="tab.icon" class="channels-top-tab-icon" aria-hidden="true" />
               <span>{{ tab.label }}</span>
             </button>
           </nav>
@@ -236,6 +236,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
+import { LayoutDashboard, MoreHorizontal, Repeat2 } from '@lucide/vue';
 import type { ChannelAccountInput } from '../../../../../types/channels';
 import StatusPill from '../../components/StatusPill.vue';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
@@ -314,9 +315,9 @@ const activeAccountTab = computed<'account' | 'access' | 'pairing'>(() => {
 });
 
 const topTabs = computed(() => [
-  { id: 'overview' as const, label: text('概览', 'Overview'), icon: '◌' },
-  { id: 'settings' as const, label: text('设置', 'Settings'), icon: '⋯' },
-  { id: 'bindings' as const, label: text('绑定', 'Bindings'), icon: '⇄' },
+  { id: 'overview' as const, label: text('概览', 'Overview'), icon: LayoutDashboard },
+  { id: 'settings' as const, label: text('设置', 'Settings'), icon: MoreHorizontal },
+  { id: 'bindings' as const, label: text('绑定', 'Bindings'), icon: Repeat2 },
 ]);
 
 const accountTabs = computed(() => [

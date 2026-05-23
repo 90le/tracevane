@@ -3,7 +3,7 @@
     <article class="panel-card config-sheet">
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>📝</span><span>{{ text('日志级别', 'Log Levels') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('日志级别', 'Log Levels') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection is-primary">
@@ -34,7 +34,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>📄</span><span>{{ text('日志文件', 'Log File') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('日志文件', 'Log File') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -59,7 +59,7 @@
 
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🔒</span><span>{{ text('数据脱敏', 'Data Redaction') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('数据脱敏', 'Data Redaction') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">

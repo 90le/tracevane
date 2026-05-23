@@ -106,7 +106,7 @@
           :title="text('会话操作', 'Session actions')"
           @click="$emit('toggle-row-menu', $event, session)"
         >
-          ⋯
+          <MoreHorizontal class="chat-shell-session-more-icon" aria-hidden="true" />
         </button>
       </article>
       <button
@@ -226,7 +226,7 @@
           :title="text('会话操作', 'Session actions')"
           @click="$emit('toggle-row-menu', $event, session)"
         >
-          ⋯
+          <MoreHorizontal class="chat-shell-session-more-icon" aria-hidden="true" />
         </button>
       </article>
       <button
@@ -294,6 +294,7 @@
 </template>
 
 <script setup lang="ts">
+import { MoreHorizontal } from '@lucide/vue';
 import type { ChatSessionRow } from '../../../../../types/chat';
 import AgentAvatarContent from '../../shared/components/AgentAvatarContent.vue';
 import { useLocalePreference } from '../../shared/locale';

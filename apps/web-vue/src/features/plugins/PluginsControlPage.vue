@@ -26,7 +26,7 @@
       {{ noticeMessage.text }}
     </div>
 
-    <section class="plugins-hero panel-card">
+    <section class="plugins-command-center">
       <div>
         <p class="eyebrow">{{ text('RUNTIME EXTENSIONS', 'RUNTIME EXTENSIONS') }}</p>
         <h3>{{ form.enabled ? text('插件运行时已启用', 'Plugin runtime enabled') : text('插件运行时已关闭', 'Plugin runtime disabled') }}</h3>
@@ -50,13 +50,13 @@
         :class="{ active: activeTab === tab.value }"
         @click="activeTab = tab.value"
       >
-        <span>{{ tab.icon }}</span>
+        <component :is="tab.icon" class="plugins-tab-icon" aria-hidden="true" />
         <strong>{{ tab.label }}</strong>
       </button>
     </nav>
 
     <section v-if="activeTab === 'overview'" class="plugins-overview">
-      <article class="panel-card plugins-stage-card plugins-stage-card--wide">
+      <article class="plugins-posture-strip plugins-stage-card--wide">
         <div class="plugins-section-head">
           <div>
             <p class="eyebrow">{{ text('HEALTH', 'HEALTH') }}</p>
@@ -84,7 +84,7 @@
         </div>
       </article>
 
-      <article class="panel-card plugins-stage-card">
+      <article class="plugins-side-pane plugins-stage-card">
         <div class="plugins-section-head compact">
           <h3>{{ text('能力索引', 'Capability index') }}</h3>
           <p>{{ text('根据 manifest kind、skills、configSchema 和插件 ID 推导。', 'Derived from manifest kind, skills, configSchema, and plugin id.') }}</p>
@@ -97,7 +97,7 @@
         </div>
       </article>
 
-      <article class="panel-card plugins-stage-card">
+      <article class="plugins-side-pane plugins-stage-card">
         <div class="plugins-section-head compact">
           <h3>{{ text('关键插件', 'Critical plugins') }}</h3>
           <p>{{ text('这些插件决定 Studio、memory、browser、模型路由等核心能力是否正常。', 'These plugins control Studio, memory, browser, and model-routing critical paths.') }}</p>
@@ -898,6 +898,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onActivated, onMounted, reactive, ref, watch, type PropType } from 'vue';
+import { AlertTriangle, Boxes, Download, Gauge, SlidersHorizontal } from '@lucide/vue';
 import { useRoute } from 'vue-router';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 import type {
@@ -1009,7 +1010,7 @@ const PolicyListEditor = defineComponent({
         }),
         h('button', { type: 'button', class: 'danger-link compact-button', onClick: () => remove(index) }, '移除'),
       ])),
-      h('button', { type: 'button', class: 'secondary-button compact-button', onClick: add }, '＋ Add'),
+      h('button', { type: 'button', class: 'secondary-button compact-button', onClick: add }, 'Add'),
     ]);
   },
 });
@@ -1266,11 +1267,11 @@ const counts = computed(() => summary.value?.counts || {
   diagnostics: 0,
 });
 const pageTabs = computed(() => [
-  { value: 'overview' as const, icon: '◌', label: text('总览', 'Overview') },
-  { value: 'inventory' as const, icon: '▦', label: text('清单', 'Inventory') },
-  { value: 'policy' as const, icon: '⚙', label: text('策略', 'Policy') },
-  { value: 'installs' as const, icon: '↓', label: text('安装', 'Installs') },
-  { value: 'diagnostics' as const, icon: '!', label: text('诊断', 'Diagnostics') },
+  { value: 'overview' as const, icon: Gauge, label: text('总览', 'Overview') },
+  { value: 'inventory' as const, icon: Boxes, label: text('清单', 'Inventory') },
+  { value: 'policy' as const, icon: SlidersHorizontal, label: text('策略', 'Policy') },
+  { value: 'installs' as const, icon: Download, label: text('安装', 'Installs') },
+  { value: 'diagnostics' as const, icon: AlertTriangle, label: text('诊断', 'Diagnostics') },
 ]);
 const allPluginItems = computed<PluginEntrySummary[]>(() => summary.value?.entries || []);
 const pluginEntryIds = computed(() => Object.keys(form.entries).sort());
@@ -2439,17 +2440,26 @@ onActivated(activatePluginsPage);
 
 <style scoped>
 .plugins-page { gap: 18px; }
-.plugins-hero {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  align-items: flex-start;
+.plugins-command-center {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(420px, 1.18fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   background:
-    radial-gradient(420px 180px at 0% 0%, color-mix(in srgb, var(--sky) 16%, transparent), transparent 72%),
-    var(--surface-base);
+    radial-gradient(620px 260px at 0% 0%, color-mix(in srgb, var(--acc) 11%, transparent), transparent 66%),
+    color-mix(in srgb, var(--surface-base) 88%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--shell-highlight) 12%, transparent),
+    0 12px 30px rgba(8, 18, 29, 0.08);
 }
-.plugins-hero h3 { margin: 0; color: var(--text); font-size: 22px; }
-.plugins-hero p { margin: 8px 0 0; color: var(--muted); line-height: 1.6; }
+.plugins-command-center > div {
+  min-width: 0;
+  padding: 22px;
+}
+.plugins-command-center h3 { margin: 0; color: var(--text); font-size: clamp(1.3rem, 2vw, 1.9rem); }
+.plugins-command-center p { margin: 8px 0 0; color: var(--muted); line-height: 1.6; }
 .plugins-hero-metrics,
 .plugins-tabs,
 .plugins-chip-row,
@@ -2622,6 +2632,15 @@ onActivated(activatePluginsPage);
   font-size: 12px;
   line-height: 1.55;
 }
+.plugins-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  align-self: stretch;
+  padding: 0 !important;
+  border-left: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+}
 .plugins-hero-metrics span,
 .plugins-chip-row span,
 .plugins-critical-list span {
@@ -2631,6 +2650,16 @@ onActivated(activatePluginsPage);
   background: var(--surface);
   color: var(--text-soft);
   font-size: 12px;
+}
+.plugins-hero-metrics span {
+  display: grid;
+  align-content: center;
+  min-height: 92px;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
+  color: var(--text);
+  font-weight: 750;
 }
 .plugins-critical-list span.disabled {
   color: var(--danger);
@@ -2666,6 +2695,23 @@ onActivated(activatePluginsPage);
 .plugins-overview {
   grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.8fr);
 }
+.plugins-posture-strip,
+.plugins-side-pane {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--surface-base) 90%, transparent), color-mix(in srgb, var(--code-bg) 12%, transparent));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--shell-highlight) 10%, transparent),
+    0 12px 30px rgba(8, 18, 29, 0.07);
+}
+.plugins-side-pane {
+  align-content: start;
+}
 .plugins-policy-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -2688,6 +2734,14 @@ onActivated(activatePluginsPage);
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
+.plugins-posture-strip .plugins-summary-grid,
+.plugins-capability-grid {
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--line) 72%, transparent);
+}
 .plugins-capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .plugins-facts-grid--compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .plugins-summary-grid--compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -2700,6 +2754,12 @@ onActivated(activatePluginsPage);
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
+}
+.plugins-posture-strip .plugins-summary-card,
+.plugins-capability-grid span {
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
 }
 .plugins-summary-card span,
 .plugins-fact span,
@@ -2721,14 +2781,15 @@ onActivated(activatePluginsPage);
 .plugins-critical-card {
   display: grid;
   gap: 10px;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  padding: 14px 0;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  background: transparent;
 }
 .plugins-critical-card.danger {
-  border-color: color-mix(in srgb, var(--danger) 32%, var(--line));
-  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 10%, transparent), transparent 58%);
 }
 .plugins-layout {
   display: grid;
@@ -2832,7 +2893,7 @@ onActivated(activatePluginsPage);
 .plugins-preflight-card.is-danger { border-color: color-mix(in srgb, var(--danger) 34%, var(--line)); }
 .plugins-preflight-card.is-warn { border-color: color-mix(in srgb, var(--peach) 34%, var(--line)); }
 @media (max-width: 980px) {
-  .plugins-hero,
+  .plugins-command-center,
   .plugins-overview,
   .plugins-policy-grid,
   .plugins-layout,
@@ -2850,6 +2911,11 @@ onActivated(activatePluginsPage);
   .plugins-capability-grid {
     display: grid;
     grid-template-columns: 1fr;
+  }
+  .plugins-hero-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   }
   .plugins-rail { position: static; max-height: none; }
   .plugins-guided-toolbar,

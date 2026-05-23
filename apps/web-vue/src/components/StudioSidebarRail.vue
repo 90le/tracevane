@@ -33,7 +33,8 @@
           :aria-label="toggleTitle"
           :aria-expanded="String(!sidebarCollapsed)"
         >
-          <span class="toggle-icon">{{ sidebarCollapsed ? '›' : '‹' }}</span>
+          <PanelLeftOpen v-if="sidebarCollapsed" class="toggle-icon-svg" aria-hidden="true" />
+          <PanelLeftClose v-else class="toggle-icon-svg" aria-hidden="true" />
         </button>
       </TooltipTrigger>
       <TooltipPortal>
@@ -92,7 +93,7 @@
         :title="docsLabel"
         :aria-label="docsLabel"
       >
-        <span class="docs-link-icon" aria-hidden="true">↗</span>
+        <ExternalLink class="docs-link-icon" aria-hidden="true" />
         <span>{{ docsLabel }}</span>
       </a>
       <div class="sidebar-footer-main">
@@ -139,6 +140,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
+import { ExternalLink, PanelLeftClose, PanelLeftOpen } from '@lucide/vue';
 import { TooltipContent, TooltipPortal, TooltipRoot, TooltipTrigger } from 'reka-ui';
 import LogoMark from './LogoMark.vue';
 import SidebarIcon from './SidebarIcon.vue';

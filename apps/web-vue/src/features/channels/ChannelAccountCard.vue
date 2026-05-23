@@ -93,9 +93,11 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
   display: grid;
   gap: 12px;
   padding: 16px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 74%, transparent), color-mix(in srgb, var(--surface-soft) 58%, transparent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .channel-account-card.disabled {
@@ -151,9 +153,9 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
   gap: 6px;
   min-width: 0;
   padding: 8px;
-  border-radius: 12px;
+  border-radius: 9px;
   border: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
-  background: color-mix(in srgb, var(--shell-panel-fill) 78%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
 }
 
 .channel-account-card__task-label {
@@ -183,9 +185,9 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
   align-items: center;
   min-height: 28px;
   padding: 0 10px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.032);
   color: var(--text-soft);
   font-size: 11px;
 }
@@ -196,9 +198,9 @@ const configuredCredentialCount = computed(() => props.account.credentialStates.
   justify-content: center;
   min-height: 34px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
   color: var(--text);
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;

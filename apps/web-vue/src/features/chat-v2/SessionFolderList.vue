@@ -87,7 +87,7 @@
         :title="text('文件夹操作', 'Folder actions')"
         @click="$emit('toggle-folder-menu', $event, entry)"
       >
-        ⋯
+        <MoreHorizontal class="chat-shell-session-more-icon" aria-hidden="true" />
       </button>
     </article>
   </div>
@@ -169,13 +169,14 @@
         :title="text('文件夹操作', 'Folder actions')"
         @click="$emit('toggle-folder-menu', $event, folder)"
       >
-        ⋯
+        <MoreHorizontal class="chat-shell-session-more-icon" aria-hidden="true" />
       </button>
     </article>
   </div>
 </template>
 
 <script setup lang="ts">
+import { MoreHorizontal } from '@lucide/vue';
 import type { ChatBuiltInOrganizerEntry } from '../../../../../lib/chat-session-organizer';
 import type { ChatSessionFolder } from '../../../../../types/chat';
 import { useLocalePreference } from '../../shared/locale';

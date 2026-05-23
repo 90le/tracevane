@@ -84,7 +84,7 @@
           :title="text('打开导航', 'Open navigation')"
           @click="toggleSidebar"
         >
-          ☰
+          <Menu class="mobile-nav-trigger__icon" aria-hidden="true" />
         </button>
 
         <div class="shell-layout" :class="{ 'shell-layout-chat': isChatSurface, 'shell-layout-files': isFilesSurface }">
@@ -120,7 +120,10 @@
               <section
                 class="shell-route-stage"
                 :theme-mode="themeMode"
-                :class="{ 'shell-route-stage-chat': isChatSurface, 'shell-route-stage-files': isFilesSurface }"
+                :class="[
+                  routeSurfaceClass,
+                  { 'shell-route-stage-chat': isChatSurface, 'shell-route-stage-files': isFilesSurface },
+                ]"
               >
                 <KeepAlive v-if="Component && shouldKeepRouteAlive(routedView)" :max="16">
                   <component :is="Component" />
@@ -158,6 +161,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { Menu } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, TooltipProvider } from 'reka-ui';
 import { RouterView, useRoute, type RouteLocationNormalizedLoaded } from 'vue-router';
 import ConfirmDialog from './components/ConfirmDialog.vue';
@@ -197,6 +201,7 @@ const ambientStyles = [
   ref<Record<string, string>>({}),
   ref<Record<string, string>>({}),
 ];
+const ambientPointer = { x: 0, y: 0, frame: 0 };
 
 const { locale, setLocale, text } = useLocalePreference();
 const {
@@ -218,6 +223,11 @@ const isChatSurface = computed(() => contextPanelMode.value === 'chat-inspector'
 const isTerminalSurface = computed(() => route.path === '/terminal' || route.path.startsWith('/terminal/'));
 const isFilesSurface = computed(() => route.path === '/files' || route.path.startsWith('/files/'));
 const contextPanelEnabled = computed(() => contextPanelMode.value === 'default');
+const routeSurfaceClass = computed(() => {
+  const firstSegment = route.path.split('/').filter(Boolean)[0] || 'dashboard';
+  const normalized = firstSegment.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+  return `route-surface-${normalized}`;
+});
 
 const {
   sidebarCollapsed,
@@ -275,6 +285,33 @@ const canPreloadExtendedRouteChunks = () => {
   return true;
 };
 
+const visualMotionEnabled = () => {
+  if (typeof window === 'undefined') return false;
+  if (isMobile.value) return false;
+  return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+};
+
+const updateAmbientVisuals = (x: number, y: number) => {
+  if (!visualMotionEnabled()) return;
+  const { innerWidth, innerHeight } = window;
+  const centeredX = innerWidth ? (x / innerWidth - 0.5) : 0;
+  const centeredY = innerHeight ? (y / innerHeight - 0.5) : 0;
+  ambientStyles[0].value = { transform: `translate3d(${centeredX * 42}px, ${centeredY * 32}px, 0)` };
+  ambientStyles[1].value = { transform: `translate3d(${-centeredX * 34}px, ${centeredY * 24}px, 0)` };
+  ambientStyles[2].value = { transform: `translate3d(${centeredX * 22}px, ${-centeredY * 28}px, 0)` };
+};
+
+const handlePointerMove = (event: PointerEvent) => {
+  if (event.pointerType !== 'mouse') return;
+  ambientPointer.x = event.clientX;
+  ambientPointer.y = event.clientY;
+  if (ambientPointer.frame) return;
+  ambientPointer.frame = window.requestAnimationFrame(() => {
+    ambientPointer.frame = 0;
+    updateAmbientVisuals(ambientPointer.x, ambientPointer.y);
+  });
+};
+
 const scheduleNonChatRoutePreload = () => {
   if (typeof window === 'undefined' || !canPreloadRouteChunks()) return;
 
@@ -311,11 +348,14 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown);
+  window.addEventListener('pointermove', handlePointerMove, { passive: true });
   scheduleNonChatRoutePreload();
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown);
+  window.removeEventListener('pointermove', handlePointerMove);
+  if (ambientPointer.frame) window.cancelAnimationFrame(ambientPointer.frame);
 });
 
 watch(() => route.fullPath, () => {
@@ -324,10 +364,10 @@ watch(() => route.fullPath, () => {
 });
 
 const { themeMode, setThemeMode } = useThemePreference();
-const themeOptions = computed<Array<{ value: ThemeMode; icon: string; label: string; shortLabel: string }>>(() => [
-  { value: 'light', icon: '☀️', label: text('浅色模式', 'Light theme'), shortLabel: text('浅色', 'Light') },
-  { value: 'dark', icon: '🌙', label: text('深色模式', 'Dark theme'), shortLabel: text('深色', 'Dark') },
-  { value: 'system', icon: '🖥️', label: text('跟随系统', 'Follow system'), shortLabel: text('系统', 'System') },
+const themeOptions = computed<Array<{ value: ThemeMode; label: string; shortLabel: string }>>(() => [
+  { value: 'light', label: text('浅色模式', 'Light theme'), shortLabel: text('浅色', 'Light') },
+  { value: 'dark', label: text('深色模式', 'Dark theme'), shortLabel: text('深色', 'Dark') },
+  { value: 'system', label: text('跟随系统', 'Follow system'), shortLabel: text('系统', 'System') },
 ]);
 const localeOptions: Array<{ value: Locale; icon: string; label: string; shortLabel: string }> = [
   { value: 'zh', icon: '中', label: '中文', shortLabel: '中' },

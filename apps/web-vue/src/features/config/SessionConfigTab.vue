@@ -5,7 +5,7 @@
       <!-- 1. Global reset strategy -->
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🔄</span><span>{{ text('全局重置策略', 'Global Reset Strategy') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('全局重置策略', 'Global Reset Strategy') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection is-primary">
@@ -42,7 +42,7 @@
       <!-- 2. Per-type overrides -->
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>📋</span><span>{{ text('按类型覆盖', 'Per-Type Overrides') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('按类型覆盖', 'Per-Type Overrides') }}</span></h3>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -73,8 +73,8 @@
       <!-- 3. Per-channel overrides -->
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>📡</span><span>{{ text('按频道覆盖', 'Per-Channel Overrides') }}</span></h3>
-          <button class="secondary-button compact-button" type="button" @click="addChannelOverride">＋ {{ text('添加频道覆盖', 'Add channel override') }}</button>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('按频道覆盖', 'Per-Channel Overrides') }}</span></h3>
+          <button class="secondary-button compact-button" type="button" @click="addChannelOverride">{{ text('添加频道覆盖', 'Add channel override') }}</button>
         </div>
         <div class="config-subsection-grid">
           <section class="config-subsection">
@@ -118,7 +118,7 @@
       <!-- 4. DM scope -->
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🔒</span><span>{{ text('DM 作用域', 'DM Scope') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('DM 作用域', 'DM Scope') }}</span></h3>
         </div>
         <div class="settings-stack">
           <div class="setting-block">
@@ -143,7 +143,7 @@
       <!-- 5. Thread bindings -->
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>🧵</span><span>{{ text('线程绑定', 'Thread Bindings') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('线程绑定', 'Thread Bindings') }}</span></h3>
         </div>
         <div class="settings-stack">
           <div class="settings-inline-grid">
@@ -173,7 +173,7 @@
       <!-- Summary -->
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>📎</span><span>{{ text('当前行为摘要', 'Current behavior summary') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('当前行为摘要', 'Current behavior summary') }}</span></h3>
         </div>
         <div class="config-fact-list">
           <div class="config-fact">

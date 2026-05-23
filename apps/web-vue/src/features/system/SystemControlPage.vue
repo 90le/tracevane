@@ -121,7 +121,7 @@
               :class="{ active: activeTab === tab.id }"
               @click="activeTab = tab.id"
             >
-              <span aria-hidden="true">{{ tab.icon }}</span>
+              <component :is="tab.icon" class="system-stage-tab-icon" aria-hidden="true" />
               <span>{{ tab.label }}</span>
             </button>
           </nav>
@@ -595,6 +595,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { ClipboardList, Flag, Gauge, Network, RefreshCw } from '@lucide/vue';
 import type {
   SystemDiagnosticsPayload,
   SystemHealthPayload,
@@ -677,11 +678,11 @@ const studioUpgradeActionLabel = computed(() => {
 });
 
 const tabs = computed(() => [
-  { id: 'bootstrap' as const, icon: '⚑', label: text('引导', 'Bootstrap') },
-  { id: 'overview' as const, icon: '◉', label: text('概览', 'Overview') },
-  { id: 'release' as const, icon: '⭮', label: text('升级', 'Release') },
-  { id: 'gateway' as const, icon: '⛭', label: text('Gateway', 'Gateway') },
-  { id: 'diagnostics' as const, icon: '⌘', label: text('诊断输出', 'Diagnostics') },
+  { id: 'bootstrap' as const, icon: Flag, label: text('引导', 'Bootstrap') },
+  { id: 'overview' as const, icon: Gauge, label: text('概览', 'Overview') },
+  { id: 'release' as const, icon: RefreshCw, label: text('升级', 'Release') },
+  { id: 'gateway' as const, icon: Network, label: text('Gateway', 'Gateway') },
+  { id: 'diagnostics' as const, icon: ClipboardList, label: text('诊断输出', 'Diagnostics') },
 ]);
 
 function formatBytes(bytes: number): string {

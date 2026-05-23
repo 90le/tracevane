@@ -2,7 +2,7 @@
   <div class="chat-composer-shell">
     <div class="chat-composer-frame">
       <button type="button" class="chat-composer-side-action" disabled :title="text('附件入口预留，当前未开放。', 'Attachment entry is reserved but not open yet.')">
-        ＋
+        <span class="chat-composer-side-action-mark" aria-hidden="true"></span>
       </button>
       <textarea
         :value="modelValue"

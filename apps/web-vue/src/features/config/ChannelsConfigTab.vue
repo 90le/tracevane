@@ -3,7 +3,7 @@
     <article class="panel-card config-sheet">
       <section class="config-block">
         <div class="panel-head">
-          <h3 class="panel-heading-emph"><span>📡</span><span>{{ text('频道管理', 'Channel Management') }}</span></h3>
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('频道管理', 'Channel Management') }}</span></h3>
         </div>
 
         <div v-if="!channelIds.length" class="empty-inline">

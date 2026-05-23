@@ -10,9 +10,13 @@
         <button class="secondary-button" type="button" @click="openGlobalConfig">
           {{ text('全局配置', 'Global Config') }}
         </button>
-        <button class="secondary-button" type="button" @click="refreshConfigWithDirtyCheck" :disabled="loading || saving">↻ {{ text('刷新', 'Refresh') }}</button>
+        <button class="secondary-button" type="button" @click="refreshConfigWithDirtyCheck" :disabled="loading || saving">
+          <RefreshCw class="button-inline-icon" aria-hidden="true" />
+          {{ text('刷新', 'Refresh') }}
+        </button>
         <button class="primary-button" :class="{ 'is-saved': saveFeedbackVisible && !hasUnsavedChanges }" type="button" @click="saveChanges" :disabled="loading || saving || !saveReadiness.canSave">
-          {{ saving ? text('保存中...', 'Saving...') : saveFeedbackVisible && !hasUnsavedChanges ? `✓ ${text('已保存', 'Saved')}` : `✦ ${text('保存配置', 'Save Config')}` }}
+          <Check v-if="saveFeedbackVisible && !hasUnsavedChanges" class="button-inline-icon" aria-hidden="true" />
+          {{ saving ? text('保存中...', 'Saving...') : saveFeedbackVisible && !hasUnsavedChanges ? text('已保存', 'Saved') : text('保存配置', 'Save Config') }}
         </button>
       </div>
     </motion.header>
@@ -64,7 +68,9 @@
                 :class="{ active: activeTab === tab.id }"
                 @click="setActiveTab(tab.id)"
               >
-                <span class="config-tab-icon">{{ tab.icon }}</span>
+                <span class="config-tab-icon">
+                  <component :is="resolveConfigTabIcon(tab.id)" aria-hidden="true" />
+                </span>
                 <span class="config-tab-title">{{ tab.label }}</span>
                 <span class="config-tab-copy">{{ tab.copy }}</span>
               </button>
@@ -76,7 +82,9 @@
           <article class="panel-card config-active-tab-panel">
             <div class="config-active-tab-head">
               <div class="panel-heading-emph">
-                <span aria-hidden="true">{{ activeTabMeta.icon }}</span>
+                <span aria-hidden="true">
+                  <component :is="resolveConfigTabIcon(activeTabMeta.id)" class="config-heading-icon" />
+                </span>
                 <div>
                   <h3>{{ activeTabMeta.label }}</h3>
                   <p class="panel-muted">{{ activeTabMeta.copy }}</p>
@@ -106,7 +114,7 @@
         <article class="panel-card config-sheet">
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>🧠</span><span>{{ text('全局配置与 Agent 默认值', 'Global Config & Agent Defaults') }}</span></h3>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('全局配置与 Agent 默认值', 'Global Config & Agent Defaults') }}</span></h3>
           </div>
           <div class="config-subsection-grid">
             <section class="config-subsection is-primary">
@@ -225,7 +233,7 @@
 
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>🧭</span><span>{{ text('生成模型与运行守卫', 'Generation Models & Runtime Guards') }}</span></h3>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('生成模型与运行守卫', 'Generation Models & Runtime Guards') }}</span></h3>
           </div>
           <div class="config-subsection-grid">
             <section class="config-subsection is-primary">
@@ -241,7 +249,7 @@
                         <h4>{{ text('图像生成模型', 'Image generation model') }}</h4>
                         <p>{{ text('共享图像生成链路默认使用的模型。', 'Default model for the shared image-generation path.') }}</p>
                       </div>
-                      <button class="secondary-button compact-button" type="button" @click="addFallback('imageGeneration')" :disabled="!modelOptions.length">＋ {{ text('添加回退', 'Add fallback') }}</button>
+                      <button class="secondary-button compact-button" type="button" @click="addFallback('imageGeneration')" :disabled="!modelOptions.length">{{ text('添加回退', 'Add fallback') }}</button>
                     </div>
                   </div>
                   <div class="form-grid">
@@ -276,7 +284,7 @@
                         <h4>{{ text('视频生成模型', 'Video generation model') }}</h4>
                         <p>{{ text('共享视频生成链路默认使用的模型。', 'Default model for the shared video-generation path.') }}</p>
                       </div>
-                      <button class="secondary-button compact-button" type="button" @click="addFallback('videoGeneration')" :disabled="!modelOptions.length">＋ {{ text('添加回退', 'Add fallback') }}</button>
+                      <button class="secondary-button compact-button" type="button" @click="addFallback('videoGeneration')" :disabled="!modelOptions.length">{{ text('添加回退', 'Add fallback') }}</button>
                     </div>
                   </div>
                   <div class="form-grid">
@@ -311,7 +319,7 @@
                         <h4>{{ text('音乐生成模型', 'Music generation model') }}</h4>
                         <p>{{ text('共享音乐生成链路默认使用的模型。', 'Default model for the shared music-generation path.') }}</p>
                       </div>
-                      <button class="secondary-button compact-button" type="button" @click="addFallback('musicGeneration')" :disabled="!modelOptions.length">＋ {{ text('添加回退', 'Add fallback') }}</button>
+                      <button class="secondary-button compact-button" type="button" @click="addFallback('musicGeneration')" :disabled="!modelOptions.length">{{ text('添加回退', 'Add fallback') }}</button>
                     </div>
                   </div>
                   <div class="form-grid">
@@ -346,7 +354,7 @@
                         <h4>{{ text('PDF 模型', 'PDF model') }}</h4>
                         <p>{{ text('PDF 处理默认使用的模型。', 'Default model for PDF processing.') }}</p>
                       </div>
-                      <button class="secondary-button compact-button" type="button" @click="addFallback('pdf')" :disabled="!modelOptions.length">＋ {{ text('添加回退', 'Add fallback') }}</button>
+                      <button class="secondary-button compact-button" type="button" @click="addFallback('pdf')" :disabled="!modelOptions.length">{{ text('添加回退', 'Add fallback') }}</button>
                     </div>
                   </div>
                   <div class="form-grid">
@@ -410,8 +418,8 @@
 
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>🪜</span><span>{{ text('文本模型回退链', 'Text model fallback chain') }}</span></h3>
-            <button class="secondary-button compact-button" type="button" @click="addFallback('model')" :disabled="!modelOptions.length">＋ {{ text('添加回退', 'Add fallback') }}</button>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('文本模型回退链', 'Text model fallback chain') }}</span></h3>
+            <button class="secondary-button compact-button" type="button" @click="addFallback('model')" :disabled="!modelOptions.length">{{ text('添加回退', 'Add fallback') }}</button>
           </div>
           <details class="config-collapsible" :open="form.defaults.modelFallback.length > 0">
             <summary class="config-collapsible-summary">
@@ -435,8 +443,8 @@
 
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>🖼️</span><span>{{ text('图片模型回退链', 'Image model fallback chain') }}</span></h3>
-            <button class="secondary-button compact-button" type="button" @click="addFallback('image')" :disabled="!imageModelOptions.length">＋ {{ text('添加回退', 'Add fallback') }}</button>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('图片模型回退链', 'Image model fallback chain') }}</span></h3>
+            <button class="secondary-button compact-button" type="button" @click="addFallback('image')" :disabled="!imageModelOptions.length">{{ text('添加回退', 'Add fallback') }}</button>
           </div>
           <details class="config-collapsible" :open="form.defaults.imageModelFallback.length > 0">
             <summary class="config-collapsible-summary">
@@ -460,7 +468,7 @@
 
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>🧺</span><span>{{ text('压缩与记忆刷新', 'Compaction & Memory Flush') }}</span></h3>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('压缩与记忆刷新', 'Compaction & Memory Flush') }}</span></h3>
           </div>
           <details class="config-collapsible" :open="form.compaction.mode !== 'safeguard' || Boolean(form.compaction.model)">
             <summary class="config-collapsible-summary">
@@ -567,7 +575,7 @@
         <article class="panel-card config-sheet">
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>🛡️</span><span>{{ text('Sandbox 策略', 'Sandbox Strategy') }}</span></h3>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('Sandbox 策略', 'Sandbox Strategy') }}</span></h3>
           </div>
           <div class="config-subsection-grid">
             <section class="config-subsection is-risk">
@@ -660,7 +668,7 @@
 
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>⚙️</span><span>{{ text('工具与执行安全', 'Tools & Execution Safety') }}</span></h3>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('工具与执行安全', 'Tools & Execution Safety') }}</span></h3>
           </div>
           <div class="config-subsection-grid">
             <section class="config-subsection is-risk config-subsection-spotlight">
@@ -823,7 +831,7 @@
 
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>🧾</span><span>{{ text('Exec 审批默认策略', 'Exec approval defaults') }}</span></h3>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('Exec 审批默认策略', 'Exec approval defaults') }}</span></h3>
           </div>
           <div class="settings-stack">
             <div class="settings-inline-grid">
@@ -897,7 +905,7 @@
               <div class="settings-stack settings-stack-spaced">
                 <div class="panel-head">
                   <button class="secondary-button compact-button" type="button" @click="addApprovalAgent()" :disabled="!missingApprovalAgents.length">
-                    ＋ {{ text('添加 Agent 覆盖', 'Add agent override') }}
+                    {{ text('添加 Agent 覆盖', 'Add agent override') }}
                   </button>
                 </div>
 
@@ -988,7 +996,7 @@
                     <div class="provider-model-section">
                       <div class="provider-model-toolbar">
                         <h4>{{ text('Allowlist 模式列表', 'Allowlist Patterns') }}</h4>
-                        <button class="secondary-button compact-button" type="button" @click="addAllowlistEntry(agentIndex)">＋ {{ text('添加 Pattern', 'Add pattern') }}</button>
+                        <button class="secondary-button compact-button" type="button" @click="addAllowlistEntry(agentIndex)">{{ text('添加 Pattern', 'Add pattern') }}</button>
                       </div>
                       <div v-if="agent.allowlist.length" class="provider-model-list">
                         <article
@@ -1030,7 +1038,7 @@
         <article class="panel-card config-sheet">
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>💬</span><span>{{ text('会话与消息行为', 'Sessions & Messaging') }}</span></h3>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('会话与消息行为', 'Sessions & Messaging') }}</span></h3>
           </div>
           <div class="settings-stack">
             <div class="setting-block">
@@ -1130,7 +1138,7 @@
               <div class="provider-model-section settings-stack-spaced">
                 <div class="provider-model-toolbar">
                   <h4>{{ text('按渠道队列模式', 'Per-channel queue mode') }}</h4>
-                  <button class="secondary-button compact-button" type="button" @click="addQueueChannelMode()">＋ {{ text('添加渠道覆盖', 'Add channel override') }}</button>
+                  <button class="secondary-button compact-button" type="button" @click="addQueueChannelMode()">{{ text('添加渠道覆盖', 'Add channel override') }}</button>
                 </div>
                 <div v-if="form.messages.queue.byChannel.length" class="provider-model-list">
                   <article
@@ -1187,7 +1195,7 @@
 
           <section class="config-block">
           <div class="panel-head">
-            <h3 class="panel-heading-emph"><span>📎</span><span>{{ text('当前行为摘要', 'Current behavior summary') }}</span></h3>
+            <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('当前行为摘要', 'Current behavior summary') }}</span></h3>
           </div>
           <div class="config-fact-list">
             <div class="config-fact">
@@ -1221,8 +1229,8 @@
         <div class="config-provider-workbench">
           <aside class="panel-card config-provider-sidebar">
             <div class="panel-head">
-              <h3 class="panel-heading-emph"><span>🏗️</span><span>{{ text('供应商列表', 'Provider List') }}</span></h3>
-              <button class="secondary-button compact-button" type="button" @click="addProvider">＋ {{ text('新增供应商', 'Add provider') }}</button>
+              <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('供应商列表', 'Provider List') }}</span></h3>
+              <button class="secondary-button compact-button" type="button" @click="addProvider">{{ text('新增供应商', 'Add provider') }}</button>
             </div>
 
             <div v-if="form.providers.length" class="provider-index-list">
@@ -1247,7 +1255,7 @@
           <article class="panel-card config-provider-editor" v-if="activeProvider">
             <div class="panel-head">
               <div class="panel-heading-emph">
-                <span>🧩</span>
+                <span class="panel-heading-mark" aria-hidden="true"></span>
                 <div>
                   <h3>{{ resolveProviderDisplayName(activeProvider.id, activeProviderIndex) }}</h3>
                   <p class="panel-muted">{{ text('右侧只编辑当前选中的供应商，减少并排供应商卡片带来的噪音。', 'Only the selected provider is edited on the right to reduce the noise of multiple provider cards.') }}</p>
@@ -1259,7 +1267,7 @@
             <div class="config-sheet">
               <section class="config-block">
                 <div class="panel-head">
-                  <h3 class="panel-heading-emph"><span>🔑</span><span>{{ text('供应商基础配置', 'Provider Basics') }}</span></h3>
+                  <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('供应商基础配置', 'Provider Basics') }}</span></h3>
                 </div>
                 <div class="config-fact-list config-fact-list-compact">
                   <div class="config-fact">
@@ -1334,7 +1342,7 @@
               <section class="config-block">
                 <div class="provider-model-toolbar">
                   <h4>{{ text('模型矩阵', 'Model matrix') }}</h4>
-                  <button class="secondary-button compact-button" type="button" @click="addProviderModel(activeProviderIndex)">＋ {{ text('新增模型', 'Add model') }}</button>
+                  <button class="secondary-button compact-button" type="button" @click="addProviderModel(activeProviderIndex)">{{ text('新增模型', 'Add model') }}</button>
                 </div>
 
                 <div v-if="activeProvider.models.length" class="provider-model-list">
@@ -1398,7 +1406,7 @@
         <article class="panel-card config-sheet">
           <section class="config-block">
             <div class="panel-head">
-              <h3 class="panel-heading-emph"><span>🧰</span><span>{{ text('MCP 运行时', 'MCP Runtime') }}</span></h3>
+              <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('MCP 运行时', 'MCP Runtime') }}</span></h3>
             </div>
             <div class="config-subsection-grid">
               <section class="config-subsection is-primary">
@@ -1424,7 +1432,7 @@
 
           <section class="config-block">
             <div class="panel-head">
-              <h3 class="panel-heading-emph"><span>🧩</span><span>{{ text('技能加载与安装', 'Skill Loading & Install') }}</span></h3>
+              <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('技能加载与安装', 'Skill Loading & Install') }}</span></h3>
             </div>
             <div class="config-subsection-grid">
               <section class="config-subsection">
@@ -1565,7 +1573,7 @@
         <div v-if="activeTab === 'model'" class="config-advanced-sheet-layout">
           <section class="config-block config-advanced-sheet-block">
             <div class="panel-head">
-              <h3 class="panel-heading-emph"><span>🧩</span><span>{{ text('Agent 注入与默认覆盖', 'Agent injection & overrides') }}</span></h3>
+              <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('Agent 注入与默认覆盖', 'Agent injection & overrides') }}</span></h3>
             </div>
             <div class="config-subsection-grid">
               <section class="config-subsection">
@@ -1632,7 +1640,7 @@
 
           <section class="config-block config-advanced-sheet-block">
             <div class="panel-head">
-              <h3 class="panel-heading-emph"><span>🧱</span><span>{{ text('运行时细分默认值', 'Fine-grained runtime defaults') }}</span></h3>
+              <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('运行时细分默认值', 'Fine-grained runtime defaults') }}</span></h3>
             </div>
             <div class="config-subsection-grid">
               <section class="config-subsection">
@@ -1705,7 +1713,7 @@
 
           <section class="config-block config-advanced-sheet-block">
             <div class="panel-head">
-              <h3 class="panel-heading-emph"><span>🧾</span><span>{{ text('高级 JSON 入口', 'Advanced JSON entries') }}</span></h3>
+              <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('高级 JSON 入口', 'Advanced JSON entries') }}</span></h3>
             </div>
             <div class="config-subsection-grid">
               <section class="config-subsection">
@@ -1772,7 +1780,7 @@
 
           <section class="config-block config-advanced-sheet-block">
             <div class="panel-head">
-              <h3 class="panel-heading-emph"><span>🛡️</span><span>{{ text('启动与运行时守卫', 'Bootstrap & runtime guards') }}</span></h3>
+              <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('启动与运行时守卫', 'Bootstrap & runtime guards') }}</span></h3>
             </div>
             <div class="config-subsection-grid">
               <section class="config-subsection">
@@ -1843,6 +1851,21 @@
 import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { motion } from 'motion-v';
 import { useRoute, useRouter } from 'vue-router';
+import {
+  Blocks,
+  Bolt,
+  BrainCircuit,
+  Cable,
+  Check,
+  FileText,
+  Globe2,
+  Hammer,
+  MessagesSquare,
+  Monitor,
+  Network,
+  RefreshCw,
+  ShieldCheck,
+} from '@lucide/vue';
 import { fetchConfigChannelSummary, fetchConfigSummary, fetchProviderSecret, saveConfig } from './api';
 import { useLocalePreference } from '../../shared/locale';
 import { useThemePreference } from '../../shared/theme';
@@ -2162,6 +2185,36 @@ const groupedTabs = computed<ConfigTabGroup[]>(() => {
     .filter((group) => group.items.length > 0);
 });
 const activeTabMeta = computed(() => tabs.value.find((tab) => tab.id === activeTab.value) || tabs.value[0]);
+
+function resolveConfigTabIcon(id: ConfigTabId) {
+  switch (id) {
+    case 'model':
+      return BrainCircuit;
+    case 'providers':
+      return Blocks;
+    case 'security':
+      return ShieldCheck;
+    case 'session':
+      return MessagesSquare;
+    case 'session-policy':
+      return RefreshCw;
+    case 'gateway':
+      return Network;
+    case 'acp':
+      return Cable;
+    case 'mcp-skills':
+      return Hammer;
+    case 'commands-hooks':
+      return Bolt;
+    case 'browser':
+      return Monitor;
+    case 'logging':
+      return FileText;
+    default:
+      return Globe2;
+  }
+}
+
 const activeAdvancedSheetMeta = computed(() => {
   if (activeTab.value !== 'model') return null;
   return {

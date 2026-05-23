@@ -1,5 +1,5 @@
 <template>
-  <section class="channel-account-index panel-card">
+  <section class="channel-account-index">
     <header class="channel-account-index__head">
       <div>
         <p class="eyebrow">{{ text('ACCOUNTS', 'ACCOUNTS') }}</p>
@@ -101,6 +101,8 @@ const namedAccounts = computed(() => props.accounts.filter((account) => account.
 .channel-account-index {
   display: grid;
   gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
 }
 
 .channel-account-index__head {

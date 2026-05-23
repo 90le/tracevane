@@ -61,10 +61,12 @@
               :aria-label="text('关闭标签', 'Close tab')"
               @click="$emit('close', tab.sessionId)"
             >
-              ×
+              <X class="terminal-tab-action-icon" aria-hidden="true" />
             </button>
             <details class="terminal-tab-menu">
-              <summary class="terminal-tab-menu__trigger" :aria-label="text('标签操作', 'Tab actions')">⋯</summary>
+              <summary class="terminal-tab-menu__trigger" :aria-label="text('标签操作', 'Tab actions')">
+                <MoreHorizontal class="terminal-tab-action-icon" aria-hidden="true" />
+              </summary>
               <div class="terminal-tab-menu__panel">
                 <button type="button" @click="startRename(tab)">
                   {{ text('重命名', 'Rename') }}
@@ -129,6 +131,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { MoreHorizontal, X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
 import {

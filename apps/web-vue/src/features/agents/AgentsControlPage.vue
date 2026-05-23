@@ -3,7 +3,7 @@
     <article v-if="overviewMessage" class="panel-card">{{ overviewMessage }}</article>
 
     <div class="agents-overview-grid">
-      <article class="panel-card agents-overview-card agents-overview-card--primary">
+      <article class="agents-command-center agents-overview-card agents-overview-card--primary">
         <div class="agents-section-head">
           <div>
             <h3>{{ text('当前 Agent', 'Current agent') }}</h3>
@@ -115,7 +115,7 @@
 
       </article>
 
-      <article class="panel-card agents-overview-card">
+      <article class="agents-stream-pane agents-overview-card">
         <div class="agents-section-head">
           <div>
             <h3>{{ text('会话热度', 'Session Heat') }}</h3>
@@ -168,7 +168,7 @@
         </div>
       </article>
 
-      <article class="panel-card agents-overview-card">
+      <article class="agents-stream-pane agents-overview-card">
         <div class="agents-section-head">
           <div>
             <h3>{{ text('绑定总览', 'Bindings Summary') }}</h3>
