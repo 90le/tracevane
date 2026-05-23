@@ -8,6 +8,7 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.
 const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8");
 
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
+const codexStackWorkspaceCss = read("apps/web-vue/src/features/codex-stack/codex-stack-workspace.css");
 const ccConnectCommandBar = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectCommandBar.vue");
 const ccConnectProviderPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProviderPanel.vue");
 const ccConnectProjectPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProjectPanel.vue");
@@ -174,8 +175,12 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(sectionNav, /\.cs-tab-button-active\s*\{/);
   assert.match(sectionNav, /@media \(max-width: 960px\)/);
   assert.match(workspaceShell, /class="cs-workspace"/);
-  assert.match(controlPage, /\.cs-dashboard-details-panel\s*\{/);
-  assert.match(controlPage, /\.cs-dashboard-details-body\s*\{/);
+  assert.match(controlPage, /import "\.\/codex-stack-workspace\.css";/);
+  assert.doesNotMatch(controlPage, /<style scoped>/);
+  assert.match(codexStackWorkspaceCss, /\.codex-stack-page\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-dashboard-details-panel\s*,\s*\n\.cs-install-options-panel|\.cs-install-options-panel,\s*\n\.cs-dashboard-details-panel/);
+  assert.match(codexStackWorkspaceCss, /\.cs-dashboard-details-body\s*\{/);
+  assert.match(codexStackWorkspaceCss, /@media \(max-width: 760px\)/);
   assert.match(workspaceShell, /class="cs-content"/);
   assert.doesNotMatch(workspaceShell, /@media \(max-width: 960px\)/);
   assert.match(ccConnectCommandBar, /class="cs-cc-command-bar"/);

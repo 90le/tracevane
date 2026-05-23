@@ -594,6 +594,7 @@ import CodexStackServiceGrid from "./CodexStackServiceGrid.vue";
 import CodexStackUpstreamMap from "./CodexStackUpstreamMap.vue";
 import CodexStackWorkspaceShell from "./CodexStackWorkspaceShell.vue";
 import type { CodexStackWorkspaceFocusHint } from "./CodexStackWorkspaceShell.vue";
+import "./codex-stack-workspace.css";
 
 const { text } = useLocalePreference();
 
@@ -3116,90 +3117,3 @@ watch(() => installForm.channel, (nextChannel, previousChannel) => {
   syncInstallChannelDefaults(nextChannel, previousChannel);
 });
 </script>
-
-<style scoped>
-.codex-stack-page {
-  gap: 18px;
-}
-
-.cs-install-options-panel {
-  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 78%, transparent);
-}
-
-.cs-dashboard-details-panel {
-  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 78%, transparent);
-}
-
-.cs-install-options-panel summary {
-  display: flex;
-  gap: 8px 14px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  cursor: pointer;
-  color: var(--text);
-  font-weight: 700;
-}
-
-.cs-dashboard-details-panel summary {
-  display: flex;
-  gap: 8px 14px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  cursor: pointer;
-  color: var(--text);
-  font-weight: 700;
-}
-
-.cs-install-options-panel summary small {
-  max-width: 560px;
-  color: var(--text-soft);
-  font-size: 0.84rem;
-  font-weight: 500;
-  line-height: 1.4;
-  text-align: right;
-}
-
-.cs-dashboard-details-panel summary small {
-  max-width: 640px;
-  color: var(--text-soft);
-  font-size: 0.84rem;
-  font-weight: 500;
-  line-height: 1.4;
-  text-align: right;
-}
-
-.cs-install-options-body {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  border-top: 1px solid var(--line);
-  padding: 18px;
-}
-
-.cs-dashboard-details-body {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  border-top: 1px solid var(--line);
-  padding: 18px;
-}
-
-@media (max-width: 760px) {
-  .cs-install-options-panel summary,
-  .cs-dashboard-details-panel summary {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .cs-install-options-panel summary small,
-  .cs-dashboard-details-panel summary small {
-    text-align: left;
-  }
-}
-</style>
