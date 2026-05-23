@@ -95,10 +95,8 @@
               :mobile-nav-open="mobileSidebarOpen"
               :search-label="text('搜索页面与命令', 'Search pages and commands')"
               search-shortcut-label="Ctrl K"
-              :risk-summary-label="text('风险', 'Risk')"
-              :risk-summary-value="riskSummaryValue"
-              :pending-summary-label="text('待办', 'Pending')"
-              :pending-summary-value="pendingSummaryValue"
+              :switchboard-label="text('主工作区切换', 'Primary workspace switchboard')"
+              :nav-groups="navGroups"
               :mobile-nav-label="text('打开导航', 'Open navigation')"
               :show-context-toggle="canOpenContextPanel"
               :context-panel-open="contextPanelOpen"
@@ -210,8 +208,6 @@ const {
   contextPanelDescription,
   topStatus,
   contextPendingItems,
-  riskSummaryValue,
-  pendingSummaryValue,
 } = useShellNavigation();
 
 const contextPanelMode = computed<'default' | 'chat-inspector' | 'disabled'>(() => {

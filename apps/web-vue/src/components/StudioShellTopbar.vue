@@ -24,13 +24,20 @@
       <span class="studio-shell-topbar__search-shortcut">{{ searchShortcutLabel }}</span>
     </button>
 
-    <div class="studio-shell-topbar__summary" aria-live="polite">
-      <span class="studio-shell-topbar__badge">
-        {{ riskSummaryLabel }} · {{ riskSummaryValue }}
-      </span>
-      <span class="studio-shell-topbar__badge">
-        {{ pendingSummaryLabel }} · {{ pendingSummaryValue }}
-      </span>
+    <nav class="studio-shell-topbar__switchboard" :aria-label="switchboardLabel">
+      <RouterLink
+        v-for="item in switchboardItems"
+        :key="item.to"
+        :to="item.to"
+        class="studio-shell-topbar__switch"
+        :class="{ active: isActiveRoute(item.to) }"
+      >
+        <SidebarIcon :name="item.icon" />
+        <span>{{ item.label }}</span>
+      </RouterLink>
+    </nav>
+
+    <div class="studio-shell-topbar__controls">
       <button
         v-if="showContextToggle"
         type="button"
@@ -42,9 +49,7 @@
       >
         {{ contextToggleLabel }}
       </button>
-    </div>
 
-    <div class="studio-shell-topbar__controls">
       <div class="theme-switch" role="group" :aria-label="themeSwitchLabel">
         <button
           v-for="option in themeOptions"
@@ -80,9 +85,12 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { Monitor, Moon, Search, Sun, Menu } from '@lucide/vue';
+import { RouterLink, useRoute } from 'vue-router';
 import type { Locale } from '../shared/locale';
 import type { ThemeMode } from '../shared/theme';
+import SidebarIcon from './SidebarIcon.vue';
 
 type ThemeOption = {
   value: ThemeMode;
@@ -96,15 +104,36 @@ type LocaleOption = {
   shortLabel: string;
 };
 
-defineProps<{
+type ShellNavIconName =
+  | 'dashboard'
+  | 'agents'
+  | 'chat'
+  | 'channels'
+  | 'cron'
+  | 'dreaming'
+  | 'skills'
+  | 'files'
+  | 'plugins'
+  | 'terminal'
+  | 'config'
+  | 'system';
+
+type ShellNavGroup = {
+  title: string;
+  items: Array<{
+    to: string;
+    label: string;
+    icon: ShellNavIconName;
+  }>;
+};
+
+const props = defineProps<{
   isMobile: boolean;
   mobileNavOpen: boolean;
   searchLabel: string;
   searchShortcutLabel: string;
-  riskSummaryLabel: string;
-  riskSummaryValue: string;
-  pendingSummaryLabel: string;
-  pendingSummaryValue: string;
+  switchboardLabel: string;
+  navGroups: ShellNavGroup[];
   mobileNavLabel: string;
   showContextToggle: boolean;
   contextPanelOpen: boolean;
@@ -131,4 +160,11 @@ const resolveThemeIcon = (value: ThemeMode) => {
   return Monitor;
 };
 
+const route = useRoute();
+
+const switchboardItems = computed(() =>
+  props.navGroups.flatMap((group) => group.items).filter((item) => item.to !== '/dashboard'),
+);
+
+const isActiveRoute = (target: string) => route.path === target || route.path.startsWith(`${target}/`);
 </script>

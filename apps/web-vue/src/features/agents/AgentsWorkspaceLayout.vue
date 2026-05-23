@@ -29,7 +29,7 @@
     </div>
 
     <div class="agents-workspace-layout">
-      <aside class="panel-card agents-workspace-sidebar operate-resource-rail operate-workspace-surface mobile-resource-drawer">
+      <aside class="agents-workspace-sidebar operate-resource-rail operate-workspace-surface operate-resource-panel mobile-resource-drawer">
         <div class="agents-workspace-sidebar__head">
           <div>
             <p class="eyebrow">{{ text('ROSTER', 'ROSTER') }}</p>
@@ -107,7 +107,7 @@
       </aside>
 
       <section class="agents-workspace-stage operate-stage">
-        <article class="panel-card agents-stage-header operate-workspace-surface">
+        <section class="agents-stage-header operate-workspace-surface operate-command-panel">
           <div v-if="selectedAgent" class="agents-stage-header__body operate-stage-task-head">
             <div class="agents-stage-header__identity">
               <span class="agents-stage-header__avatar" aria-hidden="true">
@@ -166,7 +166,7 @@
               <span>{{ tab.label }}</span>
             </button>
           </nav>
-        </article>
+        </section>
 
         <RouterView v-slot="{ Component, route: childRoute }">
           <component

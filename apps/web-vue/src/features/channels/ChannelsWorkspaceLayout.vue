@@ -24,7 +24,7 @@
 
     <section class="channels-workbench">
       <aside class="channels-sidebar operate-resource-rail mobile-resource-drawer">
-        <article class="panel-card channels-sidebar-panel operate-workspace-surface">
+        <section class="channels-sidebar-panel operate-workspace-surface operate-resource-panel">
           <div class="channels-sidebar-head">
             <div>
               <p class="eyebrow">{{ text('PROVIDERS', 'PROVIDERS') }}</p>
@@ -94,7 +94,9 @@
                 @click="workspace.selectChannel(channel.type)"
               >
                 <div class="channel-rail-head">
-                  <span class="channel-rail-icon" aria-hidden="true">{{ workspace.channelIcon(channel.type) }}</span>
+                  <span class="channel-rail-icon" aria-hidden="true">
+                    <MessageSquare class="channel-rail-svg" />
+                  </span>
                   <div>
                     <strong>{{ workspace.channelLabel(channel.type) }}</strong>
                     <p>{{ channel.type }}</p>
@@ -114,14 +116,16 @@
               {{ text('当前还没有任何频道入口。先创建一个 provider。', 'No providers exist yet. Create one to get started.') }}
             </div>
           </div>
-        </article>
+        </section>
       </aside>
 
       <section class="channels-stage operate-stage">
-        <article v-if="workspace.selectedChannel.value" class="panel-card channels-stage-header operate-workspace-surface">
+        <section v-if="workspace.selectedChannel.value" class="channels-stage-header operate-workspace-surface operate-command-panel">
           <div class="channels-stage-head operate-stage-task-head">
             <div class="channels-stage-ident">
-              <span class="channels-stage-icon" aria-hidden="true">{{ workspace.channelIcon(workspace.selectedChannel.value.type) }}</span>
+              <span class="channels-stage-icon" aria-hidden="true">
+                <MessageSquare class="channels-stage-svg" />
+              </span>
               <div>
                 <p class="eyebrow">{{ selectedAccount ? `${workspace.selectedChannel.value.type} · ${selectedAccount.id}` : workspace.selectedChannel.value.type }}</p>
                 <h3 class="channels-stage-title">{{ workspace.channelLabel(workspace.selectedChannel.value.type) }}</h3>
@@ -197,7 +201,7 @@
               <span>{{ tab.label }}</span>
             </button>
           </nav>
-        </article>
+        </section>
 
         <RouterView />
       </section>
@@ -236,7 +240,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
-import { LayoutDashboard, MoreHorizontal, Repeat2 } from '@lucide/vue';
+import { LayoutDashboard, MessageSquare, MoreHorizontal, Repeat2 } from '@lucide/vue';
 import type { ChannelAccountInput } from '../../../../../types/channels';
 import StatusPill from '../../components/StatusPill.vue';
 import GlassSelect from '../../shared/components/GlassSelect.vue';

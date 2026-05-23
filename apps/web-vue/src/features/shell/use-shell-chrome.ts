@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'openclaw-studio.sidebar-collapsed';
 
 export function useShellChrome(contextPanelEnabled: Ref<boolean>) {
-  const sidebarCollapsed = ref(false);
+  const sidebarCollapsed = ref(true);
   const isMobile = ref(false);
   const mobileSidebarOpen = ref(false);
   const contextPanelOpen = ref(false);
@@ -20,7 +20,7 @@ export function useShellChrome(contextPanelEnabled: Ref<boolean>) {
   const syncSidebarPreference = () => {
     if (typeof window === 'undefined') return;
     const saved = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
-    sidebarCollapsed.value = saved === 'true';
+    sidebarCollapsed.value = saved === null ? true : saved === 'true';
   };
 
   const persistSidebarPreference = (value: boolean) => {

@@ -485,8 +485,6 @@ export function useShellNavigation() {
       routeContextConfigs[routeContextConfigs.length - 1],
   );
 
-  const localizedRiskStage = computed(() => text("等待", "Waiting"));
-
   const riskTone = computed<StatusTone>(() => "neutral");
 
   const contextPanelTitle = computed(() =>
@@ -496,10 +494,6 @@ export function useShellNavigation() {
   const contextPanelDescription = computed(() =>
     text(activeContext.value.descriptionZh, activeContext.value.descriptionEn),
   );
-
-  const riskSummaryValue = computed(() => localizedRiskStage.value);
-
-  const pendingSummaryValue = computed(() => text("等待", "Waiting"));
 
   const liveNextStep = computed(() => null);
 
@@ -549,7 +543,5 @@ export function useShellNavigation() {
     contextPanelDescription,
     topStatus,
     contextPendingItems,
-    riskSummaryValue,
-    pendingSummaryValue,
   };
 }
