@@ -11,70 +11,59 @@ const read = (filePath) =>
 
 const appVue = read("apps/web-vue/src/App.vue");
 const routerSource = read("apps/web-vue/src/router.ts");
+const shellNavigationSource = read(
+  "apps/web-vue/src/features/shell/use-shell-navigation.ts",
+);
+const routeManifestSource = read(
+  "apps/web-vue/src/features/shell/route-manifest.ts",
+);
 
-test("shell redesign uses on-demand context panel and manifest-driven router", () => {
+test("shell redesign keeps one topbar navigation model and no global context panel", () => {
   assert.match(appVue, /StudioShellTopbar/);
-  assert.match(appVue, /StudioContextPanel/);
-  assert.doesNotMatch(appVue, /StudioShellContextRail/);
+  assert.match(appVue, /StudioSidebarRail/);
+  assert.match(appVue, /StudioCommandPalette/);
   assert.match(appVue, /shell-layout/);
   assert.match(appVue, /shell-main-stage/);
-  assert.match(appVue, /shell-context-panel/);
-  assert.match(appVue, /<ConfirmDialog\b/);
-  assert.match(
-    appVue,
-    /const \{ themeMode, setThemeMode \} = useThemePreference\(\);/,
-  );
   assert.match(appVue, /class="shell-route-stage"/);
   assert.match(appVue, /:theme-mode="themeMode"/);
   assert.match(appVue, /from '\.\/features\/shell\/use-shell-navigation'/);
-  assert.doesNotMatch(appVue, /useUiContent/);
+  assert.match(
+    appVue,
+    /<StudioCommandPalette\s+v-model:open="commandPaletteOpen"\s*\/>/,
+  );
 
+  assert.doesNotMatch(appVue, /StudioContextPanel|StudioShellContextRail/);
+  assert.doesNotMatch(appVue, /shell-context-panel|contextPanel|contextToggle/);
+  assert.doesNotMatch(appVue, /riskSummaryValue|pendingSummaryValue/);
+  assert.doesNotMatch(appVue, /useUiContent/);
+});
+
+test("router consumes the shell route manifest without context-panel metadata", () => {
   assert.match(
     routerSource,
     /from "\.\/features\/shell\/route-manifest"|from '\.\/features\/shell\/route-manifest'/,
   );
   assert.match(routerSource, /routes:\s*shellRoutes/);
+  assert.match(routeManifestSource, /export const shellRoutes/);
+  assert.doesNotMatch(routeManifestSource, /contextPanel/);
 });
 
-const dashboardSummarySource = read(
-  "apps/web-vue/src/features/dashboard/use-dashboard-summary.ts",
-);
-
-test("shell app reuses shared dashboard summary for topbar counts", () => {
-  assert.match(appVue, /riskSummaryValue/);
-  assert.match(appVue, /pendingSummaryValue/);
-  assert.match(dashboardSummarySource, /subscribeDashboardSummary/);
-  assert.match(dashboardSummarySource, /consumerCount/);
-  assert.match(dashboardSummarySource, /startDashboardSummary/);
-});
-
-const shellNavigationSource = read(
-  "apps/web-vue/src/features/shell/use-shell-navigation.ts",
-);
-
-test("shell context panel keeps route-context summary lightweight", () => {
-  assert.match(shellNavigationSource, /const routeContextConfigs: ShellContextConfig\[\] = \[/);
-  assert.match(
-    shellNavigationSource,
-    /routeContextConfigs\.find\(\(config\) => config\.match\(route\.path\)\)/,
-  );
-  assert.match(shellNavigationSource, /const liveNextStep = computed\(\(\) => null\);/);
-  assert.match(
-    shellNavigationSource,
-    /activeContext\.value\.actions[\s\S]*?\.slice\(0, 2\)/,
-  );
-  assert.doesNotMatch(
-    shellNavigationSource,
-    /const livePendingItems = computed\(\(\) => \{/,
-  );
+test("shell navigation only builds grouped route labels for the topbar", () => {
+  assert.match(shellNavigationSource, /shellNavGroups\.map/);
+  assert.match(shellNavigationSource, /items:\s*group\.items/);
+  assert.match(shellNavigationSource, /\.filter\(\(item\) => !item\.future\)/);
+  assert.doesNotMatch(shellNavigationSource, /routeContextConfigs/);
+  assert.doesNotMatch(shellNavigationSource, /liveNextStep/);
+  assert.doesNotMatch(shellNavigationSource, /activeContext/);
 });
 
 test("app locale-dependent shell labels stay reactive", () => {
   assert.match(
     appVue,
-    /const themeOptions = computed<Array<\{ value: ThemeMode; icon: string; label: string; shortLabel: string \}>>\(\(\) => \[/,
+    /const themeOptions = computed<Array<\{ value: ThemeMode; label: string; shortLabel: string \}>>\(\(\) => \[/,
   );
-  assert.match(appVue, /const contextToggleLabel = computed\(\(\) => \(/);
-  assert.match(appVue, /contextPanelTitle/);
-  assert.match(appVue, /contextPanelDescription/);
+  assert.match(appVue, /const localeOptions: Array<\{ value: Locale;/);
+  assert.match(appVue, /:theme-switch-label="text\('主题模式', 'Theme mode'\)"/);
+  assert.match(appVue, /:locale-switch-label="text\('语言模式', 'Language mode'\)"/);
+  assert.doesNotMatch(appVue, /contextPanelTitle|contextPanelDescription/);
 });

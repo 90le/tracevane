@@ -30,14 +30,10 @@ test("shell route manifest defines grouped current routes and future placeholder
   assert.doesNotMatch(manifest, /Legacy test sentinel/);
 });
 
-test("manifest exports shell route records with route-aware context policy", () => {
+test("manifest exports shell route records without context panel policy", () => {
   const manifest = fs.readFileSync(manifestPath, "utf8");
   assert.match(manifest, /export const shellRoutes/);
-
-  assert.match(manifest, /path:\s*"\/chat"[\s\S]*?contextPanel:\s*"chat-inspector"/);
-  assert.match(manifest, /path:\s*"\/terminal"[\s\S]*?contextPanel:\s*"disabled"/);
-  assert.match(manifest, /path:\s*"\/terminal\/:sessionId"[\s\S]*?contextPanel:\s*"disabled"/);
-  assert.match(manifest, /path:\s*"\/files"[\s\S]*?contextPanel:\s*"disabled"/);
+  assert.doesNotMatch(manifest, /contextPanel/);
 
   for (const routePath of [
     "/dashboard",
@@ -54,7 +50,7 @@ test("manifest exports shell route records with route-aware context policy", () 
   ]) {
     assert.match(
       manifest,
-      new RegExp(`path:\\s*\"${routePath.replace(/\//g, "\\/")}\"[\\s\\S]*?contextPanel:\\s*\"default\"`),
+      new RegExp(`path:\\s*\"${routePath.replace(/\//g, "\\/")}\"`),
     );
   }
 });

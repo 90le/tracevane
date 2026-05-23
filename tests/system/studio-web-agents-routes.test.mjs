@@ -32,7 +32,7 @@ test("agents router keeps a persistent workspace layout with an overview route p
   assert.match(routerSource, /routes:\s*shellRoutes/);
   assert.match(routeManifestSource, /path:\s*"\/agents"/);
   assert.match(routeManifestSource, /component:\s*AgentsView/);
-  assert.match(routeManifestSource, /meta:\s*\{\s*contextPanel:\s*"default"/);
+  assert.doesNotMatch(routeManifestSource, /contextPanel/);
   assert.match(
     routeManifestSource,
     /\{ path:\s*"", component:\s*AgentsControlPage \}/,

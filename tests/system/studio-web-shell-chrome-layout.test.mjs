@@ -19,20 +19,30 @@ const panelPath = path.join(
   rootDir,
   "apps/web-vue/src/components/StudioContextPanel.vue",
 );
+const railPath = path.join(
+  rootDir,
+  "apps/web-vue/src/components/StudioShellContextRail.vue",
+);
 const stylePath = path.join(rootDir, "apps/web-vue/src/style.css");
+const navigationPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/shell/use-shell-navigation.ts",
+);
 
 test("app shell extracts shell layout and release state into dedicated composables", () => {
   assert.equal(fs.existsSync(chromePath), true);
   assert.equal(fs.existsSync(releasePath), true);
-  assert.equal(fs.existsSync(panelPath), true);
+  assert.equal(fs.existsSync(panelPath), false);
+  assert.equal(fs.existsSync(railPath), false);
   const app = fs.readFileSync(appPath, "utf8");
   assert.match(app, /from '\.\/features\/shell\/use-shell-chrome'/);
   assert.match(app, /from '\.\/features\/shell\/use-shell-release'/);
-  assert.match(app, /StudioContextPanel/);
-  assert.doesNotMatch(app, /StudioShellContextRail/);
+  assert.match(app, /StudioSidebarRail/);
+  assert.match(app, /StudioShellTopbar/);
   assert.match(app, /shell-layout/);
   assert.match(app, /shell-main-stage/);
-  assert.match(app, /shell-context-panel/);
+  assert.doesNotMatch(app, /StudioContextPanel|StudioShellContextRail/);
+  assert.doesNotMatch(app, /shell-context-panel|contextPanel|show-context-toggle/);
   assert.doesNotMatch(app, /async function refreshStudioReleaseState\(/);
   assert.doesNotMatch(app, /async function refreshStudioUpgradeState\(/);
   assert.doesNotMatch(app, /async function handleStudioUpgradeAction\(/);
@@ -50,91 +60,39 @@ test("release composable uses confirm dialog helper instead of window.confirm", 
   assert.doesNotMatch(release, /window\.confirm\(/);
 });
 
-test("context panel scaffold localizes copy through locale preference helper", () => {
-  const panel = fs.readFileSync(panelPath, "utf8");
-  assert.match(panel, /useLocalePreference/);
-  assert.match(panel, /RouterLink/);
-  assert.match(panel, /description\?: string/);
-  assert.match(panel, /to: string/);
-  assert.match(panel, /'neutral' \| 'accent' \| 'sage' \| 'danger'/);
-  assert.match(
-    panel,
-    /const panelLabel = computed\(\(\) => text\('上下文面板', 'Studio context panel'\)\)/,
-  );
-  assert.match(
-    panel,
-    /const panelEyebrow = computed\(\(\) => text\('上下文', 'Context'\)\)/,
-  );
-  assert.match(
-    panel,
-    /const panelTitle = computed\(\(\) => text\('工作台上下文', 'Studio Context'\)\)/,
-  );
-});
-
-test("shell chrome allows mobile context panel on eligible routes and resets by policy", () => {
+test("shell chrome only owns viewport and tool rail state", () => {
   const chrome = fs.readFileSync(chromePath, "utf8");
   const app = fs.readFileSync(appPath, "utf8");
 
-  assert.match(
-    chrome,
-    /const canOpenContextPanel = computed\(\(\) => contextPanelEnabled\.value\)/,
-  );
-  assert.doesNotMatch(chrome, /!isMobile\.value/);
-  assert.doesNotMatch(chrome, /if \(mobile\) contextPanelOpen\.value = false;/);
-  assert.match(chrome, /watch\(contextPanelEnabled, \(enabled\) => \{/);
-  assert.match(chrome, /if \(!enabled\) \{\s*contextPanelOpen\.value = false;/);
+  assert.match(chrome, /const sidebarCollapsed = ref\(true\)/);
+  assert.match(chrome, /const mobileSidebarOpen = ref\(false\)/);
+  assert.match(chrome, /const toggleSidebar = \(\) => \{/);
+  assert.match(chrome, /const handleSidebarNavigate = \(\) => \{/);
+  assert.match(app, /@toggle-sidebar="toggleSidebar"/);
+  assert.match(app, /@open-command-palette="openCommandPalette"/);
 
-  assert.match(
-    app,
-    /const contextPanelEnabled = computed\(\(\) => contextPanelMode\.value === 'default'\)/,
-  );
-  assert.match(
-    app,
-    /const contextPanelMode = computed<'default' \| 'chat-inspector' \| 'disabled'>/,
-  );
-  assert.match(app, /:show-context-toggle="canOpenContextPanel"/);
-  assert.match(
-    app,
-    /watch\(\(\) => route\.fullPath, \(\) => \{\s*closeContextPanel\(\);\s*commandPaletteOpen\.value = false;\s*\}\);/,
-  );
+  assert.doesNotMatch(chrome, /contextPanel/);
+  assert.doesNotMatch(app, /contextPanel|show-context-toggle|closeContextPanel/);
 });
 
-const navigationPath = path.join(
-  rootDir,
-  "apps/web-vue/src/features/shell/use-shell-navigation.ts",
-);
-const dashboardSummaryPath = path.join(
-  rootDir,
-  "apps/web-vue/src/features/dashboard/use-dashboard-summary.ts",
-);
-
-test("shell navigation keeps route-context summary lightweight", () => {
+test("shell navigation stays route-label only", () => {
   const navigation = fs.readFileSync(navigationPath, "utf8");
-  const dashboardSummary = fs.readFileSync(dashboardSummaryPath, "utf8");
 
+  assert.match(navigation, /shellNavGroups\.map/);
+  assert.match(navigation, /label:\s*text\(item\.labelZh, item\.labelEn\)/);
   assert.doesNotMatch(navigation, /useDashboardSummary/);
   assert.doesNotMatch(navigation, /from ['"]\.\.\/dashboard\/overview-recipe['"]/);
   assert.doesNotMatch(navigation, /buildDashboardPriorityAction/);
-  assert.match(navigation, /const liveNextStep = computed\(/);
-  assert.match(
-    navigation,
-    /activeContext\.value\.actions[\s\S]*?\.slice\(0, 2\)/,
-  );
-  assert.doesNotMatch(
-    navigation,
-    /const livePendingItems = computed\(\(\) => \{/,
-  );
-  assert.match(navigation, /riskSummaryValue/);
-  assert.match(navigation, /pendingSummaryValue/);
-  assert.match(dashboardSummary, /consumerCount/);
-  assert.match(dashboardSummary, /subscribeDashboardSummary/);
-  assert.match(dashboardSummary, /onDeactivated/);
+  assert.doesNotMatch(navigation, /liveNextStep|activeContext|routeContextConfigs/);
+  assert.doesNotMatch(navigation, /riskSummaryValue|pendingSummaryValue/);
 });
 
-test("shell styles define a three-region layout and context panel surface", () => {
+test("shell styles define two-region layout without context panel surface", () => {
   const css = fs.readFileSync(stylePath, "utf8");
   assert.match(css, /\.shell-layout\s*\{/);
-  assert.match(css, /\.shell-context-panel\s*\{/);
   assert.match(css, /\.shell-main-stage\s*\{/);
+  assert.match(css, /\.studio-shell-topbar\s*\{/);
+  assert.doesNotMatch(css, /\.shell-context-panel\s*\{/);
   assert.doesNotMatch(css, /\.studio-shell-context-rail\s*\{/);
+  assert.doesNotMatch(css, /\.studio-context-panel\s*\{/);
 });
