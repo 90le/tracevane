@@ -12,6 +12,7 @@ function read(filePath) {
 
 const pluginsView = read("apps/web-vue/src/views/PluginsView.vue");
 const pluginsControlPage = read("apps/web-vue/src/features/plugins/PluginsControlPage.vue");
+const pluginsWorkspaceCss = read("apps/web-vue/src/features/plugins/plugins-workspace.css");
 const pluginsApi = read("apps/web-vue/src/features/plugins/api.ts");
 const routeManifest = read("apps/web-vue/src/features/shell/route-manifest.ts");
 const skillsControlPage = read("apps/web-vue/src/features/skills/SkillsControlPage.vue");
@@ -27,6 +28,8 @@ test("plugins route and view are wired as a dedicated management surface", () =>
 
 test("plugins page owns plugin policy, slots, entries, installs, and diagnostics", () => {
   assert.match(pluginsControlPage, /Plugin Control Center|插件控制中心/);
+  assert.match(pluginsControlPage, /import '\.\/plugins-workspace\.css';/);
+  assert.doesNotMatch(pluginsControlPage, /<style scoped>/);
   assert.match(pluginsControlPage, /pageTabs/);
   assert.match(pluginsControlPage, /Capability index|能力索引/);
   assert.match(pluginsControlPage, /plugins-overview-command/);
@@ -85,6 +88,9 @@ test("plugins page owns plugin policy, slots, entries, installs, and diagnostics
   assert.match(pluginsControlPage, /criticalPluginIds/);
   assert.match(pluginsControlPage, /预检结论|Preflight verdict/);
   assert.match(pluginsControlPage, /installBlockedByPreflight/);
+  assert.match(pluginsWorkspaceCss, /\.plugins-overview-command/);
+  assert.match(pluginsWorkspaceCss, /\.plugins-summary-list/);
+  assert.match(pluginsWorkspaceCss, /\.plugins-critical-row/);
   assert.match(pluginsApi, /fetchPluginsSummary/);
   assert.match(pluginsApi, /\/api\/plugins\/summary/);
   assert.match(pluginsApi, /togglePluginEntry/);
