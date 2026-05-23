@@ -11,18 +11,8 @@ const systemControlPagePath = path.join(
   rootDir,
   'apps/web-vue/src/features/system/SystemControlPage.vue',
 );
-const overviewPanelPath = path.join(
-  rootDir,
-  'apps/web-vue/src/features/system/SystemOverviewPanel.vue',
-);
-const sectionRailPath = path.join(
-  rootDir,
-  'apps/web-vue/src/features/system/SystemSectionRail.vue',
-);
 
 const systemControlPage = fs.readFileSync(systemControlPagePath, 'utf8');
-const overviewPanel = fs.readFileSync(overviewPanelPath, 'utf8');
-const sectionRail = fs.readFileSync(sectionRailPath, 'utf8');
 
 test('system control page keeps a diagnostics summary rail and focused workspace stage', () => {
   assert.match(systemControlPage, /class="system-control-grid"/);
@@ -61,12 +51,21 @@ test('system control page keeps raw diagnostic output snapshots for gateway stat
   assert.match(systemControlPage, /class="system-code-block"/);
 });
 
-test('new system shell helper components keep dedicated template seams', () => {
-  assert.match(overviewPanel, /<section class="system-section">/);
-  assert.match(overviewPanel, /v-for="card in healthCards"/);
-  assert.match(overviewPanel, /v-for="card in runtimeCards"/);
-
-  assert.match(sectionRail, /<article class="system-sidebar-panel">/);
-  assert.match(sectionRail, /<StatusPill/);
-  assert.match(sectionRail, /v-for="action in quickActions"/);
+test('system shell does not retain disconnected helper components', () => {
+  assert.equal(
+    fs.existsSync(path.join(rootDir, 'apps/web-vue/src/features/system/SystemOverviewPanel.vue')),
+    false,
+  );
+  assert.equal(
+    fs.existsSync(path.join(rootDir, 'apps/web-vue/src/features/system/SystemSectionRail.vue')),
+    false,
+  );
+  assert.equal(
+    fs.existsSync(path.join(rootDir, 'apps/web-vue/src/features/system/system-stage-selectors.ts')),
+    false,
+  );
+  assert.equal(
+    fs.existsSync(path.join(rootDir, 'apps/web-vue/src/features/system/system-overview-recipe.ts')),
+    false,
+  );
 });

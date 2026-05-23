@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-21T19:34:21.133Z",
+  "generatedAt": "2026-05-23T11:26:30.720Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -230,11 +230,9 @@
     "tests/system/system-event-summary.test.mjs",
     "tests/system/system-event-timeline.test.mjs",
     "tests/system/system-event-writer.test.mjs",
-    "tests/system/system-overview-recipe.test.mjs",
     "tests/system/system-runtime-domain-manifest.test.mjs",
     "tests/system/system-runtime-summary.test.mjs",
     "tests/system/system-service-persisted-events.test.mjs",
-    "tests/system/system-stage-selectors.test.mjs",
     "tests/system/system-terminal-handoff.test.mjs",
     "tests/terminal/terminal-action-catalog.test.mjs",
     "tests/terminal/terminal-session-descriptor-store.test.mjs",

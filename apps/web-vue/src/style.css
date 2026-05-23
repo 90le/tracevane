@@ -6582,8 +6582,7 @@ html[data-theme="light"] .page-header-row {
 }
 
 .channels-overview-surface,
-.cron-workbench,
-.system-control-grid {
+.cron-workbench {
   isolation: isolate;
 }
 
@@ -6687,38 +6686,30 @@ html[data-theme="light"] .page-header-row {
 .cron-sidebar-panel,
 .cron-stage-header,
 .cron-stage-panel,
-.cron-empty-state,
-.system-sidebar-panel,
-.system-topic-rail,
-.system-stage-panel {
+.cron-empty-state {
   border-radius: 10px;
   box-shadow: none;
 }
 
 .cron-sidebar-panel,
-.channels-sidebar-panel,
-.system-sidebar-panel,
-.system-topic-rail {
+.channels-sidebar-panel {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface) 74%, transparent), color-mix(in srgb, var(--surface-soft) 48%, transparent));
 }
 
 .cron-stage-header,
-.channels-stage-header,
-.system-topic-rail {
+.channels-stage-header {
   overflow: hidden;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--sky) 9%, transparent), transparent 48%),
     color-mix(in srgb, var(--shell-panel-fill) 90%, transparent);
 }
 
-.cron-stage-panel,
-.system-stage-panel {
+.cron-stage-panel {
   background: color-mix(in srgb, var(--shell-panel-fill) 68%, transparent);
 }
 
-.cron-stage-tabs,
-.system-stage-tabs {
+.cron-stage-tabs {
   gap: 0;
   overflow: hidden;
   width: fit-content;
@@ -6729,8 +6720,7 @@ html[data-theme="light"] .page-header-row {
   background: color-mix(in srgb, var(--surface) 58%, transparent);
 }
 
-.cron-stage-tab,
-.system-stage-tab {
+.cron-stage-tab {
   min-height: 36px;
   border: none;
   border-radius: 8px;
@@ -6739,15 +6729,13 @@ html[data-theme="light"] .page-header-row {
   box-shadow: none;
 }
 
-.cron-stage-tab:hover,
-.system-stage-tab:hover {
+.cron-stage-tab:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--surface) 78%, transparent);
   transform: none;
 }
 
-.cron-stage-tab[data-state='active'],
-.system-stage-tab.active {
+.cron-stage-tab[data-state='active'] {
   color: var(--text);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--mint) 12%, transparent), color-mix(in srgb, var(--sky) 10%, transparent)),
@@ -6757,7 +6745,6 @@ html[data-theme="light"] .page-header-row {
 }
 
 .cron-stage-tab-icon,
-.system-stage-tab-icon,
 .channels-top-tab-icon {
   width: 15px;
   height: 15px;
@@ -6985,10 +6972,7 @@ html[data-theme="light"] .page-header-row {
 }
 
 .cron-stage-facts,
-.system-stage-facts,
-.cron-overview-grid,
-.system-overview-grid,
-.system-sidebar-summary {
+.cron-overview-grid {
   overflow: hidden;
   gap: 0;
   border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
@@ -6997,10 +6981,7 @@ html[data-theme="light"] .page-header-row {
 }
 
 .cron-stage-fact,
-.cron-overview-item,
-.system-stage-fact,
-.system-overview-item,
-.system-summary-item {
+.cron-overview-item {
   min-width: 142px;
   border: none;
   border-right: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
@@ -7009,10 +6990,7 @@ html[data-theme="light"] .page-header-row {
 }
 
 .cron-stage-fact:last-child,
-.cron-overview-item:last-child,
-.system-stage-fact:last-child,
-.system-overview-item:last-child,
-.system-summary-item:last-child {
+.cron-overview-item:last-child {
   border-right: none;
 }
 
@@ -7044,7 +7022,6 @@ html[data-theme="light"] .page-header-row {
 }
 
 html[data-theme="light"] .cron-stage-panel,
-html[data-theme="light"] .system-stage-panel,
 html[data-theme="light"] .cron-payload-card,
 html[data-theme="light"] .cron-run-item,
 html[data-theme="light"] .cron-run-detail,
@@ -7053,13 +7030,11 @@ html[data-theme="light"] .cron-scheduler-callout {
 }
 
 @media (max-width: 920px) {
-  .cron-stage-tabs,
-  .system-stage-tabs {
+  .cron-stage-tabs {
     width: 100%;
   }
 
-  .cron-stage-tab,
-  .system-stage-tab {
+  .cron-stage-tab {
     flex: 1 1 auto;
   }
 }
@@ -7346,7 +7321,6 @@ body::before {
 .agents-workspace-layout,
 .channels-workbench,
 .plugins-layout,
-.system-control-grid,
 .cs-workspace-grid {
   display: grid;
   grid-template-columns: minmax(248px, 324px) minmax(0, 1fr);
@@ -7363,8 +7337,6 @@ body::before {
 .cron-sidebar-panel,
 .agents-workspace-sidebar,
 .channels-sidebar-panel,
-.system-sidebar-panel,
-.system-topic-rail,
 .operate-resource-rail {
   position: relative;
   top: auto;
@@ -7397,7 +7369,6 @@ body::before {
 .cron-stage-header,
 .channels-stage-header,
 .cron-stage-panel,
-.system-stage-panel,
 .channels-stage-panel,
 .config-sheet {
   border: 0;
@@ -7430,9 +7401,6 @@ body::before {
 .config-core-baseline,
 .cron-stage-facts,
 .cron-overview-grid,
-.system-stage-facts,
-.system-overview-grid,
-.system-sidebar-summary,
 .home-fact-tape,
 .home-situation-meters,
 .agents-binding-main__facts,
@@ -7453,9 +7421,6 @@ body::before {
 .config-core-baseline__item,
 .cron-stage-fact,
 .cron-overview-item,
-.system-stage-fact,
-.system-overview-item,
-.system-summary-item,
 .home-fact,
 .home-situation-meter,
 .terminal-summary-stat,
@@ -7468,7 +7433,6 @@ body::before {
 .plugins-rail-row,
 .plugins-install-row,
 .cron-list-item,
-.system-topic-button,
 .provider-index-item,
 .provider-model-row,
 .channel-account-card,
@@ -7497,8 +7461,6 @@ body::before {
 .plugins-rail-item.active,
 .cron-list-item:hover,
 .cron-list-item.active,
-.system-topic-button:hover,
-.system-topic-button.active,
 .provider-index-item:hover,
 .provider-index-item.active,
 .channel-account-card:hover,
@@ -7555,7 +7517,6 @@ select.form-input,
 .surface-tab,
 .plugins-tab,
 .cron-stage-tab,
-.system-stage-tab,
 .channels-top-tab,
 .agents-stage-tab,
 .channels-subtab,
@@ -7626,7 +7587,6 @@ select.form-input,
   .agents-workspace-layout,
   .channels-workbench,
   .plugins-layout,
-  .system-control-grid,
   .cs-workspace-grid {
     grid-template-columns: 1fr;
   }
@@ -7636,8 +7596,6 @@ select.form-input,
   .cron-sidebar-panel,
   .agents-workspace-sidebar,
   .channels-sidebar-panel,
-  .system-sidebar-panel,
-  .system-topic-rail,
   .operate-resource-rail {
     border-right: 0;
     border-bottom: 1px solid var(--atlas-line);

@@ -3,15 +3,7 @@
     <header class="page-header-row">
       <div>
         <p class="eyebrow">System</p>
-        <h2 class="page-title">{{ text('系统诊断', 'System Diagnostics') }}</h2>
-        <p class="page-copy">
-          {{
-            text(
-              '把系统页改成真实诊断台：左侧只看当前运行态摘要，右侧按主题查看 gateway、runtime、doctor 和原始输出。',
-              'The system page is now a real diagnostics workspace: the left side keeps the live summary, while the right side breaks gateway, runtime, doctor, and raw output into focused views.'
-            )
-          }}
-        </p>
+        <h2 class="page-title">{{ text('系统控制台', 'System Console') }}</h2>
       </div>
 
       <div class="page-actions">
@@ -37,7 +29,6 @@
             <div>
               <p class="eyebrow">{{ text('HEALTH', 'HEALTH') }}</p>
               <h3 class="system-sidebar-title">{{ text('当前状态', 'Current Status') }}</h3>
-              <p class="panel-muted">{{ text('优先看 Gateway、systemd、Node、内存和诊断摘要。', 'Start with Gateway, systemd, Node, memory, and the current diagnostic summary.') }}</p>
             </div>
           </div>
 
@@ -90,10 +81,7 @@
           <div class="system-stage-head">
             <div>
               <p class="eyebrow">{{ diagnostics?.config.pluginId || 'studio' }}</p>
-              <h3 class="system-stage-title">{{ text('系统工作区', 'System Workspace') }}</h3>
-              <p class="panel-muted">
-                {{ text('右侧不再是文案占位，而是直接查看运行态、Gateway 和 doctor 输出。', 'The right side is no longer placeholder copy; it now shows live runtime, Gateway, and doctor output directly.') }}
-              </p>
+              <h3 class="system-stage-title">{{ text('诊断指挥台', 'Diagnostics Command') }}</h3>
             </div>
 
             <div class="system-stage-facts" v-if="health">
