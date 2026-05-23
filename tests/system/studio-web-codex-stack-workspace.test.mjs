@@ -9,6 +9,7 @@ const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8")
 
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
 const codexStackWorkspaceCss = read("apps/web-vue/src/features/codex-stack/codex-stack-workspace.css");
+const codexStackDashboardCss = read("apps/web-vue/src/features/codex-stack/codex-stack-dashboard.css");
 const ccConnectCommandBar = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectCommandBar.vue");
 const ccConnectProviderPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProviderPanel.vue");
 const ccConnectProjectPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectProjectPanel.vue");
@@ -93,13 +94,14 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(responsiveGrid, /\.cs-responsive-grid\s*\{/);
   assert.match(responsiveGrid, /@media \(max-width: 960px\)/);
   assert.match(dashboardCommandCenter, /class="cs-command-center"/);
-  assert.match(dashboardCommandCenter, /\.cs-readiness-bar\s*\{/);
-  assert.match(dashboardCommandCenter, /@media \(max-width: 1180px\)/);
+  assert.match(dashboardCommandCenter, /import "\.\/codex-stack-dashboard\.css";/);
+  assert.doesNotMatch(dashboardCommandCenter, /<style scoped>/);
+  assert.match(codexStackDashboardCss, /\.cs-readiness-bar\s*\{/);
+  assert.match(codexStackDashboardCss, /@media \(max-width: 1180px\)/);
   assert.match(dashboardCommandCenter, /class="cs-command-center"/);
-  assert.match(dashboardCommandCenter, /\.cs-command-status-row\s*\{/);
-  assert.match(dashboardCommandCenter, /\.cs-command-actions\s*\{/);
-  assert.match(dashboardCommandCenter, /\.cs-status-pill\s*\{/);
-  assert.match(dashboardCommandCenter, /@media \(max-width: 1180px\)/);
+  assert.match(codexStackDashboardCss, /\.cs-command-status-row\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-command-actions\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-command-center \.cs-status-pill/);
   assert.match(diagnosticsPanel, /class="[^\"]*cs-diagnostics-panel"/);
   assert.match(diagnosticsPanel, /\.cs-warning-list\s*\{/);
   assert.match(checkOutputDialog, /class="cs-check-dialog-backdrop"/);
@@ -153,8 +155,16 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(upstreamMap, /class="[^\"]*cs-upstream-map"/);
   assert.match(upstreamMap, /\.cs-upstream-grid\s*\{/);
   assert.match(upstreamMap, /@media \(max-width: 960px\)/);
-  assert.match(dashboardInsights, /\.cs-section-kicker\s*\{/);
-  assert.match(dashboardInsights, /\.cs-status-pill\.tone-sage\s*\{/);
+  assert.match(dashboardInsights, /class="cs-dashboard-insights"/);
+  assert.match(dashboardInsights, /class="cs-dashboard-runtime"/);
+  assert.match(dashboardInsights, /class="cs-component-row"/);
+  assert.match(dashboardInsights, /import "\.\/codex-stack-dashboard\.css";/);
+  assert.doesNotMatch(dashboardInsights, /<style scoped>/);
+  assert.doesNotMatch(dashboardInsights, /cs-dashboard-grid|cs-card-header|cs-component-card/);
+  assert.match(codexStackDashboardCss, /\.cs-dashboard-insights\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-runtime-ledger\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-component-row\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-dashboard-insights \.cs-status-pill\.tone-sage\s*\{/);
   assert.match(chainMap, /export interface CodexStackChainNode/);
   assert.match(chainMap, /\.cs-chain-line\s*\{/);
   assert.match(chainMap, /\.cs-chain-gates\s*\{/);
