@@ -30,6 +30,7 @@
 
 <script setup lang="ts">
 import { useLocalePreference } from "../../shared/locale";
+import "./codex-stack-workspace.css";
 
 defineProps<{
   warnings: string[];
@@ -43,71 +44,3 @@ defineEmits<{
 
 const { text } = useLocalePreference();
 </script>
-
-<style scoped>
-.cs-diagnostics-panel {
-  display: grid;
-  gap: 12px;
-}
-
-.cs-warning-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.cs-disabled-help {
-  margin: 0;
-  color: var(--warning);
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
-.cs-warning-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--line));
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
-}
-
-.cs-warning-icon {
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--warning) 18%, transparent);
-  color: var(--warning);
-  font-weight: 700;
-  flex: 0 0 auto;
-}
-
-.cs-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.cs-card-header h4 {
-  margin: 0;
-}
-
-.cs-section-kicker {
-  margin: 0 0 6px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
-.cs-field-hint {
-  margin: 0;
-  color: var(--text-soft);
-  line-height: 1.45;
-}
-</style>

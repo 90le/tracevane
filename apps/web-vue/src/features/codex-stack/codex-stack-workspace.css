@@ -470,6 +470,383 @@
   padding: 18px;
 }
 
+.cs-job-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.cs-job-banner-live {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 30%, transparent);
+}
+
+.cs-job-banner-ok {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 34%, transparent);
+}
+
+.cs-job-banner-fail {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 34%, transparent);
+}
+
+.cs-job-eyebrow {
+  margin: 0 0 6px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+}
+
+.cs-job-meta {
+  color: var(--text-soft);
+}
+
+.cs-job-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cs-job-progress-dock {
+  position: fixed;
+  right: clamp(16px, 2.5vw, 30px);
+  bottom: clamp(16px, 2.5vw, 30px);
+  z-index: 70;
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 32px));
+}
+
+.cs-job-console {
+  width: min(920px, 100%);
+  display: grid;
+  gap: 13px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 22px;
+  padding: 16px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--surface) 78%, transparent), color-mix(in srgb, var(--code-bg) 22%, transparent)),
+    var(--surface);
+  box-shadow:
+    0 26px 72px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 color-mix(in srgb, #fff 15%, transparent);
+  backdrop-filter: blur(18px) saturate(1.08);
+}
+
+.cs-job-progress-dock .cs-job-console {
+  width: 100%;
+  max-height: inherit;
+  box-shadow:
+    0 28px 78px rgba(0, 0, 0, 0.38),
+    0 0 0 1px color-mix(in srgb, var(--acc) 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 16%, transparent);
+}
+
+.cs-console-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cs-console-header h4 {
+  margin: 0;
+}
+
+.cs-progress-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cs-progress-running {
+  background: var(--acc);
+  color: #fff;
+  border-color: transparent;
+  animation: csPulse 1.5s infinite;
+}
+
+.cs-progress-ok {
+  background: var(--success);
+  color: #fff;
+  border-color: transparent;
+}
+
+.cs-progress-fail {
+  background: var(--danger);
+  color: #fff;
+  border-color: transparent;
+}
+
+.cs-progress-log {
+  width: 100%;
+  max-height: min(360px, 42vh);
+  overflow: auto;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.cs-progress-log-shell {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 5%, transparent), transparent 22%),
+    var(--code-bg);
+}
+
+.cs-progress-log-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  padding: 9px 12px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cs-job-progress-track {
+  --progress: 0%;
+  height: 10px;
+  overflow: hidden;
+  margin: 12px 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  background: color-mix(in srgb, var(--code-bg) 58%, transparent);
+}
+
+.cs-job-progress-track span {
+  display: block;
+  width: var(--progress);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--acc), color-mix(in srgb, var(--success) 72%, var(--acc)));
+  transition: width 0.28s ease;
+}
+
+.cs-job-step-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cs-job-step {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 10px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  font-size: 0.82rem;
+}
+
+.cs-job-step-done {
+  color: color-mix(in srgb, var(--success) 72%, var(--text));
+  border-color: color-mix(in srgb, var(--success) 48%, var(--line));
+  background: color-mix(in srgb, var(--success) 14%, var(--surface));
+}
+
+.cs-job-step-active {
+  color: color-mix(in srgb, var(--acc) 72%, var(--text));
+  border-color: color-mix(in srgb, var(--acc) 48%, var(--line));
+  background: color-mix(in srgb, var(--acc) 14%, var(--surface));
+  font-weight: 700;
+}
+
+.cs-job-step-failed {
+  color: color-mix(in srgb, var(--danger) 74%, var(--text));
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--line));
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface));
+  font-weight: 700;
+}
+
+.cs-result-ok {
+  border-color: color-mix(in srgb, var(--success) 38%, var(--line));
+}
+
+.cs-result-fail {
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+}
+
+.cs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cs-diagnostics-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.cs-diagnostics-panel .cs-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cs-diagnostics-panel .cs-card-header h4 {
+  margin: 0;
+}
+
+.cs-diagnostics-panel .cs-field-hint {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.cs-warning-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cs-warning-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--line));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+
+.cs-warning-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.cs-check-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--acc) 18%, transparent), transparent 28%),
+    color-mix(in srgb, #061018 58%, transparent);
+  backdrop-filter: blur(12px) saturate(1.06);
+}
+
+.cs-check-dialog {
+  width: min(980px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  border-radius: 24px;
+  padding: 18px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--surface) 80%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
+    var(--surface);
+  box-shadow:
+    0 28px 84px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent);
+  backdrop-filter: blur(18px) saturate(1.05);
+}
+
+.cs-check-dialog .cs-section-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cs-check-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.cs-check-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cs-check-hint {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.cs-check-terminal {
+  flex: 1 1 auto;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 5%, transparent), transparent 20%),
+    var(--code-bg);
+}
+
+.cs-check-terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cs-check-terminal-bar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cs-check-output {
+  min-height: 360px;
+  max-height: 560px;
+  overflow: auto;
+  border: 0;
+  padding: 14px 16px;
+  background: transparent;
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.55;
+  margin: 0;
+}
+
 @media (max-width: 760px) {
   .cs-responsive-grid {
     grid-template-columns: 1fr;
@@ -532,8 +909,50 @@
   }
 }
 
+@media (max-width: 720px) {
+  .cs-check-dialog-backdrop {
+    padding: 12px;
+  }
+
+  .cs-check-actions {
+    justify-content: flex-start;
+  }
+
+  .cs-check-output {
+    min-height: 260px;
+  }
+}
+
+@media (max-width: 960px) {
+  .cs-job-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cs-job-progress-dock {
+    inset: auto 10px 10px;
+    width: auto;
+  }
+
+  .cs-console-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 @keyframes csSpin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes csPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
   }
 }
