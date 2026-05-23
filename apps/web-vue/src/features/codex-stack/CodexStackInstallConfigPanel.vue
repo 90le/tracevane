@@ -1,8 +1,8 @@
 <template>
-  <div class="cs-install-config-panel">
-    <div class="cs-install-grid">
-    <article class="cs-surface">
-      <div class="cs-card-header">
+  <div class="cs-install-config-workbench">
+    <div class="cs-install-config-grid">
+    <section class="cs-install-config-section">
+      <div class="cs-config-section-head">
         <div>
           <p class="cs-section-kicker">{{ text("可选参数", "Optional Setup") }}</p>
           <h4>{{ text("选择渠道", "Choose Channel") }}</h4>
@@ -12,29 +12,29 @@
         {{ text("DMWork / Octo 版本支持多渠道；官方版通过 npm 安装 cc-connect。", "DMWork / Octo supports multi-channel, while Official installs cc-connect from npm.") }}
       </p>
       <div class="cs-channel-grid">
-        <label class="cs-channel-card" :class="{ 'cs-channel-card-active': form.channel === 'dmwork' }">
+        <label class="cs-channel-choice" :class="{ 'cs-channel-choice-active': form.channel === 'dmwork' }">
           <input :checked="form.channel === 'dmwork'" type="radio" value="dmwork" @change="updateStringField('channel', $event)" />
           <strong>DMWork</strong>
           <span>{{ text("增强版", "Enhanced") }}</span>
           <p>{{ text("自编译二进制，三渠道支持。", "Self-built binary with three-channel support.") }}</p>
         </label>
-        <label class="cs-channel-card" :class="{ 'cs-channel-card-active': form.channel === 'octo' }">
+        <label class="cs-channel-choice" :class="{ 'cs-channel-choice-active': form.channel === 'octo' }">
           <input :checked="form.channel === 'octo'" type="radio" value="octo" @change="updateStringField('channel', $event)" />
           <strong>Octo</strong>
           <span>{{ text("增强版（推荐）", "Enhanced (Recommended)") }}</span>
           <p>{{ text("DMWork 品牌升级版，后续主力维护。", "Rebranded DMWork, the primary channel going forward.") }}</p>
         </label>
-        <label class="cs-channel-card" :class="{ 'cs-channel-card-active': form.channel === 'official' }">
+        <label class="cs-channel-choice" :class="{ 'cs-channel-choice-active': form.channel === 'official' }">
           <input :checked="form.channel === 'official'" type="radio" value="official" @change="updateStringField('channel', $event)" />
           <strong>{{ text("官方版", "Official") }}</strong>
           <span>{{ text("走 npm 分发，适合标准环境。", "Distributed via npm for standard environments.") }}</span>
           <p>{{ text("支持飞书 / 微信。", "Supports Feishu / Weixin.") }}</p>
         </label>
       </div>
-    </article>
+    </section>
 
-    <article class="cs-surface cs-flow-card">
-      <div class="cs-card-header">
+    <section class="cs-install-flow-strip">
+      <div class="cs-config-section-head">
         <div>
           <p class="cs-section-kicker">{{ text("统一配置", "Unified Config") }}</p>
           <h4>{{ text("模型与上游链路", "Model and Upstream Chain") }}</h4>
@@ -50,10 +50,10 @@
         <span>{{ form.model || "--" }}</span>
         <span>cc-connect</span>
       </div>
-    </article>
+    </section>
 
-    <article class="cs-surface">
-      <div class="cs-card-header">
+    <section class="cs-install-config-section">
+      <div class="cs-config-section-head">
         <div>
           <p class="cs-section-kicker">{{ text("连接参数", "Connection") }}</p>
           <h4>{{ text("基础参数", "Core Parameters") }}</h4>
@@ -106,10 +106,10 @@
           </span>
         </label>
       </div>
-    </article>
+    </section>
     </div>
 
-    <details class="cs-surface cs-details">
+    <details class="cs-install-advanced-drawer">
       <summary>{{ text("高级选项", "Advanced Options") }}</summary>
       <div class="cs-details-body">
         <div class="cs-checkbox-grid">
@@ -160,6 +160,7 @@
 
 <script setup lang="ts">
 import type { CodexStackChannel } from "../../../../../types/codex-stack";
+import "./codex-stack-install.css";
 import { useLocalePreference } from "../../shared/locale";
 import type { CodexStackRuntimeContextMode } from "./CodexStackRuntimeConfigCard.vue";
 
@@ -220,156 +221,3 @@ function updateBooleanField(field: CodexStackInstallConfigField, event: Event): 
   emit("updateField", field, eventChecked(event));
 }
 </script>
-
-<style scoped>
-.cs-install-config-panel {
-  display: contents;
-}
-
-.cs-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.cs-card-header h4 {
-  margin: 0;
-}
-
-.cs-section-kicker {
-  margin: 0 0 6px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
-.cs-install-grid,
-.cs-channel-grid,
-.cs-form-grid,
-.cs-checkbox-grid,
-.cs-flow-steps {
-  display: grid;
-}
-
-.cs-install-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.cs-channel-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.cs-channel-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  cursor: pointer;
-  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
-}
-
-.cs-channel-card input {
-  display: none;
-}
-
-.cs-channel-card p,
-.cs-channel-card span {
-  margin: 0;
-  color: var(--text-soft);
-}
-
-.cs-channel-card-active {
-  border-color: color-mix(in srgb, var(--acc) 42%, var(--line));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 12%, transparent), color-mix(in srgb, var(--surface) 98%, transparent));
-  transform: translateY(-1px);
-}
-
-.cs-flow-card {
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--success) 12%, transparent), transparent 34%),
-    linear-gradient(135deg, color-mix(in srgb, var(--surface) 92%, #101820 8%), var(--surface));
-}
-
-.cs-flow-steps {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.cs-flow-steps span {
-  position: relative;
-  min-height: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--acc) 26%, var(--line));
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--acc) 10%, var(--surface));
-  color: var(--text);
-  font-weight: 650;
-  text-align: center;
-}
-
-.cs-flow-steps span:not(:last-child)::after {
-  content: ">";
-  position: absolute;
-  right: -10px;
-  color: var(--muted);
-  font-weight: 700;
-}
-
-.cs-form-grid,
-.cs-checkbox-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.form-help {
-  color: var(--text-soft);
-  font-size: 0.84rem;
-}
-
-.cs-details summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.cs-details-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.cs-switch-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-soft);
-}
-
-@media (max-width: 960px) {
-  .cs-channel-grid,
-  .cs-install-grid,
-  .cs-form-grid,
-  .cs-checkbox-grid,
-  .cs-flow-steps {
-    grid-template-columns: 1fr;
-  }
-
-  .cs-flow-steps span:not(:last-child)::after {
-    content: "v";
-    right: auto;
-    bottom: -13px;
-  }
-}
-</style>

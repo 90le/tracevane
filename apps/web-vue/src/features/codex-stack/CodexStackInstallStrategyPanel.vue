@@ -1,7 +1,7 @@
 <template>
-  <div class="cs-install-strategy-panel">
-    <article class="cs-install-command-pane">
-      <div class="cs-card-header">
+  <div class="cs-install-strategy-workbench">
+    <section class="cs-install-strategy-editor">
+      <div class="cs-config-section-head">
         <div>
           <p class="cs-section-kicker">{{ text("可选策略", "Optional Strategy") }}</p>
           <h4>{{ text("组件策略", "Component Strategy") }}</h4>
@@ -44,10 +44,10 @@
           </div>
         </article>
       </div>
-    </article>
+    </section>
 
-    <article class="cs-install-command-pane cs-install-cta-card">
-      <div class="cs-card-header">
+    <section class="cs-install-run-panel">
+      <div class="cs-config-section-head">
         <div>
           <p class="cs-section-kicker">{{ text("改完后执行", "Run After Editing") }}</p>
           <h4>{{ text("安装入口", "Install Entry") }}</h4>
@@ -56,7 +56,7 @@
       <p class="cs-field-hint">
         {{ text("完整安装会同时部署 cc-connect；基础安装只保留 Codex、CPA、Compact 和后台守护。", "Full install includes cc-connect; base install keeps Codex, CPA, Compact, and the background watchdog only.") }}
       </p>
-      <div class="cs-install-cta-row">
+      <div class="cs-install-run-actions">
         <button type="button" class="primary-button cs-big-button" :disabled="!canRunMutation" @click="$emit('install-full')">
           {{ text("一键安装全部组件", "Install Full Stack") }}
         </button>
@@ -73,12 +73,13 @@
       <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
         {{ mutationDisabledHelp }}
       </p>
-    </article>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { CodexStackComponentId } from "../../../../../types/codex-stack";
+import "./codex-stack-install.css";
 import { useLocalePreference } from "../../shared/locale";
 
 export type CodexStackComponentInstallMode = "default" | "skip" | "force";
@@ -106,151 +107,3 @@ defineEmits<{
 
 const { text } = useLocalePreference();
 </script>
-
-<style scoped>
-.cs-install-strategy-panel {
-  display: grid;
-  gap: 12px;
-}
-
-.cs-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.cs-card-header h4 {
-  margin: 0;
-}
-
-.cs-install-command-pane {
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  gap: 14px;
-  padding: 16px;
-  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-  border-radius: 12px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--acc) 7%, transparent), transparent 48%),
-    color-mix(in srgb, var(--shell-panel-fill) 88%, transparent);
-}
-
-.cs-install-command-pane::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--mint) 38%, white 10%), transparent);
-  opacity: 0.45;
-}
-
-.cs-section-kicker {
-  margin: 0 0 6px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
-.cs-component-mode-list {
-  display: grid;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 46%, transparent);
-}
-
-.cs-component-mode-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 13px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-}
-
-.cs-component-mode-row:last-child {
-  border-bottom: none;
-}
-
-.cs-component-mode-row strong {
-  color: var(--text);
-}
-
-.cs-component-mode-row p {
-  margin: 4px 0 0;
-  color: var(--text-soft);
-  font-size: 0.84rem;
-}
-
-.cs-segmented {
-  display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--code-bg) 36%, transparent);
-  padding: 4px;
-}
-
-.cs-segmented-button {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  border-radius: 999px;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 0.88rem;
-}
-
-.cs-segmented-button-active {
-  background: color-mix(in srgb, var(--acc) 18%, transparent);
-  color: var(--text);
-}
-
-.cs-install-cta-card {
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 12%, transparent), transparent 34%),
-    color-mix(in srgb, var(--shell-panel-fill-strong) 82%, transparent);
-}
-
-.cs-install-cta-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.cs-big-button {
-  min-width: 240px;
-}
-
-.cs-disabled-help {
-  margin: 10px 0 0;
-  color: var(--warning);
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
-@media (max-width: 960px) {
-  .cs-component-mode-row {
-    grid-template-columns: 1fr;
-  }
-
-  .cs-segmented {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
-  }
-
-  .cs-segmented-button {
-    padding: 8px 6px;
-  }
-
-  .cs-big-button {
-    min-width: 0;
-    width: 100%;
-  }
-}
-</style>
