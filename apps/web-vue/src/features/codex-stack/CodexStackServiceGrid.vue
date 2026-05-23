@@ -1,6 +1,6 @@
 <template>
   <div class="cs-service-grid">
-    <article v-for="service in services" :key="service.id" class="panel-card cs-service-card">
+    <article v-for="service in services" :key="service.id" class="cs-service-card">
       <div class="cs-service-card-head">
         <div class="cs-service-title">
           <span :class="`cs-dot tone-${service.tone}`"></span>
@@ -101,18 +101,27 @@ defineEmits<{
 <style scoped>
 .cs-service-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
 }
 
 .cs-service-card {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(250px, 0.72fr) minmax(260px, 1fr) minmax(220px, 0.72fr) auto;
   gap: 14px;
-  min-height: 100%;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--code-bg) 22%, transparent)),
-    var(--surface);
+  align-items: center;
+  min-height: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  background: transparent;
+}
+
+.cs-service-card:last-child {
+  border-bottom: 0;
 }
 
 .cs-service-card-head,
@@ -157,12 +166,13 @@ defineEmits<{
 }
 
 .cs-service-blurb {
+  margin: 0;
   color: var(--text-soft);
 }
 
 .cs-stat-list {
   display: grid;
-  gap: 10px;
+  gap: 6px;
   margin: 0;
 }
 
@@ -170,8 +180,8 @@ defineEmits<{
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
+  padding: 0;
+  border-top: 0;
 }
 
 .cs-stat-list dt {
@@ -188,9 +198,10 @@ defineEmits<{
 
 .cs-service-card-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: auto;
+  margin-top: 0;
 }
 
 .cs-disabled-help {
@@ -233,13 +244,27 @@ defineEmits<{
 
 @media (max-width: 1200px) {
   .cs-service-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+  }
+
+  .cs-service-card {
+    grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .cs-stat-list,
+  .cs-service-card-actions {
+    grid-column: 1 / -1;
   }
 }
 
 @media (max-width: 720px) {
-  .cs-service-grid {
+  .cs-service-card {
     grid-template-columns: 1fr;
+  }
+
+  .cs-service-card-actions {
+    justify-content: flex-start;
   }
 }
 </style>

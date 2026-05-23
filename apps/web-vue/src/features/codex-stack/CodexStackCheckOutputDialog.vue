@@ -1,16 +1,21 @@
 <template>
   <div class="cs-check-dialog-backdrop" role="dialog" aria-modal="true" :aria-label="text('健康检查结果', 'Health Check Result')">
-    <article class="panel-card cs-check-dialog">
-      <div class="cs-card-header">
+    <section class="cs-check-dialog">
+      <div class="cs-console-header">
         <div>
-          <p class="cs-section-kicker">{{ text("健康检查", "Health Check") }}</p>
-          <h4>{{ running ? text("正在运行检查", "Running Check") : text("检查结果", "Check Result") }}</h4>
+          <p class="cs-section-kicker">
+            <Activity :size="14" aria-hidden="true" />
+            {{ text("健康检查", "Health Check") }}
+          </p>
+          <h4>{{ running ? text("正在运行检查", "Running Check") : text("检查输出", "Check Output") }}</h4>
         </div>
         <div class="cs-check-actions">
           <button type="button" class="secondary-button" :disabled="running" @click="$emit('rerun')">
+            <RefreshCw :size="15" aria-hidden="true" />
             {{ text("重新运行", "Run Again") }}
           </button>
           <button type="button" class="secondary-button" @click="$emit('close')">
+            <X :size="15" aria-hidden="true" />
             {{ text("关闭", "Close") }}
           </button>
         </div>
@@ -21,12 +26,22 @@
       <p v-else-if="busyDisabledHelp" class="cs-disabled-help">
         {{ busyDisabledHelp }}
       </p>
-      <pre class="cs-check-output">{{ displayOutput }}</pre>
-    </article>
+      <section class="cs-check-terminal">
+        <header class="cs-check-terminal-bar">
+          <span>
+            <Terminal :size="14" aria-hidden="true" />
+            {{ text("检查输出", "Check Output") }}
+          </span>
+          <span>{{ running ? text("运行中", "Running") : text("已完成", "Finished") }}</span>
+        </header>
+        <pre class="cs-check-output">{{ displayOutput }}</pre>
+      </section>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
+import { Activity, RefreshCw, Terminal, X } from "@lucide/vue";
 import { computed } from "vue";
 import { useLocalePreference } from "../../shared/locale";
 
@@ -61,8 +76,10 @@ function stripAnsi(value: string): string {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: color-mix(in srgb, #071018 52%, transparent);
-  backdrop-filter: blur(6px);
+  background:
+    radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--acc) 18%, transparent), transparent 28%),
+    color-mix(in srgb, #061018 58%, transparent);
+  backdrop-filter: blur(12px) saturate(1.06);
 }
 
 .cs-check-dialog {
@@ -71,21 +88,34 @@ function stripAnsi(value: string): string {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  border-radius: 24px;
+  padding: 18px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--surface) 80%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
+    var(--surface);
+  box-shadow:
+    0 28px 84px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent);
+  backdrop-filter: blur(18px) saturate(1.05);
 }
 
-.cs-card-header {
+.cs-console-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
-.cs-card-header h4 {
+.cs-console-header h4 {
   margin: 0;
 }
 
 .cs-section-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   margin: 0 0 6px;
   color: var(--muted);
   text-transform: uppercase;
@@ -100,6 +130,12 @@ function stripAnsi(value: string): string {
   justify-content: flex-end;
 }
 
+.cs-check-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
 .cs-check-hint,
 .cs-disabled-help {
   margin: 0;
@@ -112,15 +148,43 @@ function stripAnsi(value: string): string {
   color: var(--warning);
 }
 
-.cs-check-output {
+.cs-check-terminal {
   flex: 1 1 auto;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 5%, transparent), transparent 20%),
+    var(--code-bg);
+}
+
+.cs-check-terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cs-check-terminal-bar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cs-check-output {
   min-height: 360px;
   max-height: 560px;
   overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border: 0;
   padding: 14px 16px;
-  background: var(--code-bg);
+  background: transparent;
   color: var(--text);
   white-space: pre-wrap;
   line-height: 1.55;
@@ -132,7 +196,7 @@ function stripAnsi(value: string): string {
     padding: 12px;
   }
 
-  .cs-card-header {
+  .cs-console-header {
     flex-direction: column;
     align-items: stretch;
   }

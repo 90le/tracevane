@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-install-plan-card">
+  <section class="cs-install-plan-card">
     <div class="cs-install-plan-copy">
       <p class="cs-section-kicker">{{ text("当前计划", "Current Plan") }}</p>
       <h4>{{ text("新手入口", "Beginner Entry") }}</h4>
@@ -35,7 +35,7 @@
         {{ mutationDisabledHelp }}
       </p>
     </div>
-  </article>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -63,9 +63,17 @@ const { text } = useLocalePreference();
   grid-template-columns: minmax(260px, 0.85fr) minmax(420px, 1.15fr);
   gap: 20px;
   align-items: stretch;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 24px;
+  padding: 18px;
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--acc) 14%, transparent), transparent 35%),
-    linear-gradient(135deg, color-mix(in srgb, var(--surface) 94%, #0c1d20 6%), var(--surface));
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 82%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
+    color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent),
+    0 22px 64px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(16px) saturate(1.04);
 }
 
 .cs-install-plan-copy {
@@ -89,7 +97,7 @@ const { text } = useLocalePreference();
 .cs-install-plan-list span {
   display: inline-flex;
   border: 1px solid color-mix(in srgb, var(--acc) 24%, var(--line));
-  border-radius: 14px;
+  border-radius: 999px;
   padding: 8px 10px;
   background: color-mix(in srgb, var(--code-bg) 36%, transparent);
   color: var(--text);
@@ -108,9 +116,9 @@ const { text } = useLocalePreference();
   flex-direction: column;
   gap: 10px;
   border: 1px solid color-mix(in srgb, var(--acc) 24%, var(--line));
-  border-radius: var(--radius-lg);
+  border-radius: 18px;
   padding: 14px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
 }
 
 .cs-entry-action span {

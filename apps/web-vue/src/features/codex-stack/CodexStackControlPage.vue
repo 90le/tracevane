@@ -55,19 +55,6 @@
         @dismiss="activeJob = null"
       />
 
-      <CodexStackJobProgressPanel
-        v-if="activeJob && activeSection !== 'install'"
-        surface="panel"
-        :job="activeJob"
-        :title="activeJobTitle"
-        :status-label="jobStatusLabel(activeJob.status)"
-        :steps="jobProgressSteps"
-        :progress-percent="jobProgressPercent"
-        :running="isCodexStackJobRunning(activeJob)"
-        :empty-log="text('等待输出...', 'Waiting for output...')"
-        @dismiss="activeJob = null"
-      />
-
       <CodexStackModelRibbon
         v-if="activeSection !== 'dashboard'"
         :current-model="summary.models.current || summary.profile.defaultModel || '--'"
@@ -446,19 +433,22 @@
               :refreshing-disabled-help="logRefreshingDisabledHelp"
               @load="loadLogs"
             />
-
-            <CodexStackJobOutputCard
-              v-if="activeJob"
-              :job="activeJob"
-              :title="activeJobTitle"
-              :status-label="jobStatusLabel(activeJob.status)"
-              :steps="jobProgressSteps"
-              :progress-percent="jobProgressPercent"
-              :empty-log="text('等待输出...', 'Waiting for output...')"
-            />
           </CodexStackSectionStack>
         </template>
       </CodexStackWorkspaceShell>
+
+      <CodexStackJobProgressPanel
+        v-if="activeJob && activeSection !== 'install'"
+        surface="panel"
+        :job="activeJob"
+        :title="activeJobTitle"
+        :status-label="jobStatusLabel(activeJob.status)"
+        :steps="jobProgressSteps"
+        :progress-percent="jobProgressPercent"
+        :running="isCodexStackJobRunning(activeJob)"
+        :empty-log="text('等待输出...', 'Waiting for output...')"
+        @dismiss="activeJob = null"
+      />
     </template>
 
     <datalist id="cc-platform-options">
@@ -586,7 +576,6 @@ import type {
   CodexStackInstallComponentStrategy,
 } from "./CodexStackInstallStrategyPanel.vue";
 import CodexStackJobBanner from "./CodexStackJobBanner.vue";
-import CodexStackJobOutputCard from "./CodexStackJobOutputCard.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
 import CodexStackLoadingCard from "./CodexStackLoadingCard.vue";
 import CodexStackLogConsole from "./CodexStackLogConsole.vue";

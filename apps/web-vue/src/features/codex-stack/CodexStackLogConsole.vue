@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-log-console">
+  <section class="cs-log-console">
     <header class="cs-log-guide-panel">
       <div>
         <p class="cs-section-kicker">{{ labels.guideLabel }}</p>
@@ -81,8 +81,17 @@
         </div>
       </section>
     </div>
-    <pre class="cs-log">{{ output || labels.empty }}</pre>
-  </article>
+    <section class="cs-log-output-shell">
+      <header class="cs-log-output-bar">
+        <div>
+          <p class="cs-section-kicker">{{ labels.readPerformance }}</p>
+          <strong>{{ services.find((service) => service.id === selectedService)?.label || selectedService }}</strong>
+        </div>
+        <span>{{ requestedLines }} {{ labels.lines }}</span>
+      </header>
+      <pre class="cs-log">{{ output || labels.empty }}</pre>
+    </section>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -157,9 +166,18 @@ function onAutoRefreshChange(event: Event): void {
 
 <style scoped>
 .cs-log-console {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 16px;
+  padding: clamp(14px, 2vw, 20px);
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 82%, transparent), color-mix(in srgb, var(--code-bg) 12%, transparent)),
+    color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow:
+    0 24px 68px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
+  backdrop-filter: blur(16px) saturate(1.04);
 }
 
 .cs-log-guide-panel {
@@ -167,12 +185,11 @@ function onAutoRefreshChange(event: Event): void {
   grid-template-columns: minmax(210px, 0.42fr) minmax(0, 1fr);
   gap: 14px;
   align-items: stretch;
-  border: 1px solid color-mix(in srgb, var(--acc) 24%, var(--line));
-  border-radius: var(--radius-lg);
-  padding: 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  padding: 0 0 14px;
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--acc) 10%, transparent), transparent 32%),
-    color-mix(in srgb, var(--surface) 90%, transparent);
+    radial-gradient(circle at top left, color-mix(in srgb, var(--acc) 8%, transparent), transparent 34%),
+    transparent;
 }
 
 .cs-log-guide-panel h4 {
@@ -192,8 +209,8 @@ function onAutoRefreshChange(event: Event): void {
 .cs-log-guide li {
   display: grid;
   gap: 4px;
-  border-left: 3px solid color-mix(in srgb, var(--acc) 42%, var(--line));
-  padding: 2px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--acc) 42%, var(--line));
+  padding: 1px 10px;
 }
 
 .cs-log-guide strong {
@@ -228,16 +245,24 @@ function onAutoRefreshChange(event: Event): void {
 
 .cs-log-workbench {
   display: grid;
-  grid-template-columns: minmax(260px, 0.46fr) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
+  gap: 0;
   align-items: start;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
 }
 
 .cs-log-pane {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 14px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  min-height: 100%;
+  padding: 16px;
+  background: transparent;
+}
+
+.cs-log-service-pane {
+  border-right: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  background: color-mix(in srgb, var(--code-bg) 16%, transparent);
 }
 
 .cs-log-service-list,
@@ -256,8 +281,8 @@ function onAutoRefreshChange(event: Event): void {
 
 .cs-log-service-button,
 .cs-log-mode-button {
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
   color: var(--text-soft);
   cursor: pointer;
   transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
@@ -268,7 +293,7 @@ function onAutoRefreshChange(event: Event): void {
   color: var(--text);
   border-color: color-mix(in srgb, var(--acc) 44%, var(--line));
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--acc) 14%, transparent), color-mix(in srgb, var(--surface) 96%, transparent)),
+    linear-gradient(180deg, color-mix(in srgb, var(--acc) 16%, transparent), color-mix(in srgb, var(--surface) 74%, transparent)),
     var(--surface);
 }
 
@@ -323,7 +348,7 @@ function onAutoRefreshChange(event: Event): void {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   margin-top: 14px;
   padding-top: 14px;
 }
@@ -348,10 +373,10 @@ function onAutoRefreshChange(event: Event): void {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   border-radius: 999px;
   padding: 6px 12px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
   color: var(--text-soft);
   font-size: 0.85rem;
 }
@@ -372,14 +397,40 @@ function onAutoRefreshChange(event: Event): void {
   min-height: 340px;
   max-height: 520px;
   overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
   padding: 12px 14px;
-  background: var(--code-bg);
+  border: 0;
+  background: transparent;
   color: var(--text);
   white-space: pre-wrap;
   line-height: 1.55;
   margin: 0;
+}
+
+.cs-log-output-shell {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 5%, transparent), transparent 20%),
+    var(--code-bg);
+}
+
+.cs-log-output-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  padding: 11px 14px;
+  color: var(--muted);
+}
+
+.cs-log-output-bar p {
+  margin-bottom: 2px;
+}
+
+.cs-log-output-bar strong {
+  color: var(--text);
 }
 
 .cs-dot {
@@ -423,6 +474,11 @@ function onAutoRefreshChange(event: Event): void {
   .cs-log-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .cs-log-service-pane {
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   }
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card cs-section-intro">
+  <section class="cs-section-intro">
     <div>
       <p class="cs-section-kicker">{{ kicker }}</p>
       <h3>{{ title }}</h3>
@@ -14,7 +14,7 @@
         {{ chip.label }}
       </span>
     </div>
-  </article>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -42,6 +42,9 @@ withDefaults(defineProps<{
   justify-content: space-between;
   gap: 18px;
   align-items: flex-start;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  padding: 2px 0 16px;
+  background: transparent;
 }
 
 .cs-section-kicker {
@@ -87,27 +90,27 @@ withDefaults(defineProps<{
 }
 
 .cs-status-pill.tone-sage {
-  color: #073b20;
-  border-color: #8fd8a6;
-  background: #dff8e7;
+  color: color-mix(in srgb, var(--success) 72%, var(--text));
+  border-color: color-mix(in srgb, var(--success) 46%, var(--line));
+  background: color-mix(in srgb, var(--success) 14%, var(--surface));
 }
 
 .cs-status-pill.tone-accent {
-  color: #17335f;
-  border-color: #9ec2ff;
-  background: #e4efff;
+  color: color-mix(in srgb, var(--acc) 72%, var(--text));
+  border-color: color-mix(in srgb, var(--acc) 46%, var(--line));
+  background: color-mix(in srgb, var(--acc) 14%, var(--surface));
 }
 
 .cs-status-pill.tone-danger {
-  color: #651d19;
-  border-color: #f1a9a1;
-  background: #ffe4e0;
+  color: color-mix(in srgb, var(--danger) 72%, var(--text));
+  border-color: color-mix(in srgb, var(--danger) 46%, var(--line));
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface));
 }
 
 .cs-status-pill.tone-neutral {
-  color: #263241;
-  border-color: #c5ced8;
-  background: #eef2f6;
+  color: var(--text-soft);
+  border-color: color-mix(in srgb, var(--line) 86%, transparent);
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
 }
 
 @media (max-width: 960px) {
