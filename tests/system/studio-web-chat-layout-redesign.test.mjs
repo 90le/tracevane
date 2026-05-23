@@ -12,6 +12,9 @@ const read = (filePath) =>
 const chatShellPage = read(
   "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
 );
+const chatShellWorkspaceCss = read(
+  "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css",
+);
 const styleCss = read("apps/web-vue/src/style.css");
 
 test("chat page redesign keeps stage contracts and removes equal three-way blocks", () => {
@@ -36,11 +39,13 @@ test("chat page redesign keeps stage contracts and removes equal three-way block
 });
 
 test("chat page redesign keeps layered workspace hierarchy tokens", () => {
-  assert.match(chatShellPage, /--chat-layer-stage:\s*1/);
-  assert.match(chatShellPage, /--chat-layer-toast:\s*35/);
-  assert.match(chatShellPage, /--chat-layer-overlay:\s*1400/);
-  assert.match(chatShellPage, /--chat-layer-inspector:\s*1421/);
-  assert.match(chatShellPage, /--chat-layer-dialog:\s*1431/);
+  assert.match(chatShellPage, /import '\.\/chat-shell-workspace\.css';/);
+  assert.doesNotMatch(chatShellPage, /<style scoped>/);
+  assert.match(chatShellWorkspaceCss, /--chat-layer-stage:\s*1/);
+  assert.match(chatShellWorkspaceCss, /--chat-layer-toast:\s*35/);
+  assert.match(chatShellWorkspaceCss, /--chat-layer-overlay:\s*1400/);
+  assert.match(chatShellWorkspaceCss, /--chat-layer-inspector:\s*1421/);
+  assert.match(chatShellWorkspaceCss, /--chat-layer-dialog:\s*1431/);
 });
 
 test("chat shell visual tokens align calmer stage and secondary surfaces", () => {

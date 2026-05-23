@@ -20,6 +20,10 @@ const chatShellPage = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
   "utf8",
 );
+const chatShellWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  "utf8",
+);
 const sessionFilterBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
   "utf8",
@@ -43,14 +47,15 @@ test("chat portal overlays are backed by unscoped style blocks so teleported nod
     conversationPane,
     /<style>[\s\S]*\.chat-rendering-settings-dialog\s*\{/,
   );
-  assert.match(chatShellPage, /<style scoped>/);
+  assert.match(chatShellPage, /import '\.\/chat-shell-workspace\.css';/);
+  assert.doesNotMatch(chatShellPage, /<style scoped>/);
   assert.match(
-    chatShellPage,
-    /<style scoped>[\s\S]*\.chat-mobile-drawer-mask\s*\{/,
+    chatShellWorkspaceCss,
+    /\.chat-mobile-drawer-mask\s*\{/,
   );
   assert.match(
-    chatShellPage,
-    /<style scoped>[\s\S]*\.chat-inspector-sheet\s*\{/,
+    chatShellWorkspaceCss,
+    /\.chat-inspector-sheet\s*\{/,
   );
   assert.match(
     sessionFilterBar,

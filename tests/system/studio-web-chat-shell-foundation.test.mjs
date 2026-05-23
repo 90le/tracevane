@@ -10,6 +10,10 @@ const chatShellPage = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
   "utf8",
 );
+const chatShellWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  "utf8",
+);
 const sessionRowList = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionRowList.vue"),
   "utf8",
@@ -104,73 +108,75 @@ function assertInOrder(source, parts) {
 }
 
 test("chat shell dark theme uses lifted blue-gray surfaces instead of near-black slabs", () => {
+  assert.match(chatShellPage, /import '\.\/chat-shell-workspace\.css';/);
+  assert.doesNotMatch(chatShellPage, /<style scoped>/);
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-v2-shell\.theme-dark,\s*\.chat-mobile-drawer-mask\.theme-dark\s*\{/,
   );
-  assert.match(chatShellPage, /--chat-shell-bg:\s*#0e1926;/);
-  assert.match(chatShellPage, /--chat-thread-bg:\s*#101d2d;/);
+  assert.match(chatShellWorkspaceCss, /--chat-shell-bg:\s*#0e1926;/);
+  assert.match(chatShellWorkspaceCss, /--chat-thread-bg:\s*#101d2d;/);
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-shell-frame:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.98\),\s*rgba\(11,\s*22,\s*35,\s*0\.94\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-sidebar-bg:\s*linear-gradient\(180deg,\s*rgba\(11,\s*22,\s*35,\s*0\.985\),\s*rgba\(8,\s*18,\s*29,\s*0\.955\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-sidebar-row:\s*rgba\(24,\s*40,\s*58,\s*0\.965\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-sidebar-row-hover:\s*rgba\(31,\s*49,\s*70,\s*0\.99\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-sidebar-row-active:\s*rgba\(71,\s*135,\s*255,\s*0\.26\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-shell-layout\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-shell-layout\s*\{[\s\S]*background:\s*var\(--chat-shell-frame\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-inspector-sheet\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-shell-toast\s*\{[\s\S]*border-radius:\s*12px;/,
   );
 });
 
 test("light theme sidebar surfaces stay opaque enough for drawer readability", () => {
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-v2-shell\.theme-light,\s*\.chat-mobile-drawer-mask\.theme-light\s*\{/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-shell-frame:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.97\),\s*rgba\(245,\s*249,\s*253,\s*0\.94\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-sidebar-bg:\s*linear-gradient\(180deg,\s*rgba\(254,\s*255,\s*255,\s*0\.98\),\s*rgba\(246,\s*250,\s*254,\s*0\.95\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-sidebar-row:\s*rgba\(255,\s*255,\s*255,\s*0\.965\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-sidebar-row-hover:\s*rgba\(255,\s*255,\s*255,\s*0\.994\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-sidebar-row-active:\s*rgba\(62,\s*121,\s*235,\s*0\.18\);/,
   );
 });
@@ -330,15 +336,15 @@ test("chat composer and picker keep the flatter density pass instead of oversize
 
 test("chat notifications keep the flatter chrome and close control sizing", () => {
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-shell-toast\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-shell-toast-icon\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-shell-toast-close\s*\{[\s\S]*border-radius:\s*8px;/,
   );
 });
@@ -780,11 +786,11 @@ test("conversation utility pills and live preview chrome avoid oversized capsule
   assert.match(conversationPane, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(markdownBlock, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-mobile-drawer\s*\{[\s\S]*z-index:\s*calc\(var\(--chat-layer-overlay\) \+ 1\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-inspector-sheet\s*\{[\s\S]*z-index:\s*var\(--chat-layer-inspector\);/,
   );
 });

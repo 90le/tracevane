@@ -10,6 +10,10 @@ const chatShellPage = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
   "utf8",
 );
+const chatShellWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  "utf8",
+);
 const sessionContextMenu = fs.readFileSync(
   path.join(
     rootDir,
@@ -71,22 +75,24 @@ test("mobile drawer and inspector use reka dialog primitives while preserving ov
     chatShellPage,
     /<DialogContent as-child @open-auto-focus\.prevent @close-auto-focus\.prevent>/,
   );
-  assert.match(chatShellPage, /--chat-layer-overlay:\s*1400;/);
-  assert.match(chatShellPage, /--chat-layer-inspector:\s*1421;/);
+  assert.match(chatShellPage, /import '\.\/chat-shell-workspace\.css';/);
+  assert.doesNotMatch(chatShellPage, /<style scoped>/);
+  assert.match(chatShellWorkspaceCss, /--chat-layer-overlay:\s*1400;/);
+  assert.match(chatShellWorkspaceCss, /--chat-layer-inspector:\s*1421;/);
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-mobile-drawer-mask\s*\{[\s\S]*z-index:\s*var\(--chat-layer-overlay\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-mobile-drawer\s*\{[\s\S]*z-index:\s*calc\(var\(--chat-layer-overlay\) \+ 1\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-inspector-mask\s*\{[\s\S]*z-index:\s*calc\(var\(--chat-layer-inspector\) - 1\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-inspector-sheet\s*\{[\s\S]*z-index:\s*var\(--chat-layer-inspector\);/,
   );
   assert.match(sessionContextMenu, /:z-index="1605"/);

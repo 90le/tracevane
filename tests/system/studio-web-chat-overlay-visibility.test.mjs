@@ -12,6 +12,10 @@ const chatShellPage = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
   "utf8",
 );
+const chatShellWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  "utf8",
+);
 const conversationPane = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
   "utf8",
@@ -45,44 +49,46 @@ const newChatAgentPicker = fs.readFileSync(
 );
 
 test("chat theme tokens are exposed on html so portal overlays inherit visible surfaces", () => {
+  assert.match(chatShellPage, /import '\.\/chat-shell-workspace\.css';/);
+  assert.doesNotMatch(chatShellPage, /<style scoped>/);
   assert.match(
-    chatShellPage,
-    /:global\(html\[data-theme="light"\]\),\s*\.chat-v2-shell\.theme-light,\s*\.chat-mobile-drawer-mask\.theme-light\s*\{/,
+    chatShellWorkspaceCss,
+    /html\[data-theme="light"\],\s*\.chat-v2-shell\.theme-light,\s*\.chat-mobile-drawer-mask\.theme-light\s*\{/,
   );
   assert.match(
-    chatShellPage,
-    /:global\(html:not\(\[data-theme="light"\]\)\),\s*\.chat-v2-shell\.theme-dark,\s*\.chat-mobile-drawer-mask\.theme-dark\s*\{/,
+    chatShellWorkspaceCss,
+    /html:not\(\[data-theme="light"\]\),\s*\.chat-v2-shell\.theme-dark,\s*\.chat-mobile-drawer-mask\.theme-dark\s*\{/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-menu-surface:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.995\),\s*rgba\(246,\s*249,\s*253,\s*0\.992\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-dialog-surface:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.998\),\s*rgba\(244,\s*248,\s*252,\s*0\.994\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-drawer-surface:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.998\),\s*rgba\(243,\s*247,\s*251,\s*0\.992\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-inspector-surface:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.998\),\s*rgba\(241,\s*246,\s*251,\s*0\.992\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-menu-surface:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.996\),\s*rgba\(10,\s*21,\s*34,\s*0\.992\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-dialog-surface:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.998\),\s*rgba\(10,\s*21,\s*34,\s*0\.994\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-drawer-surface:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.998\),\s*rgba\(8,\s*18,\s*29,\s*0\.994\)\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /--chat-inspector-surface:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.998\),\s*rgba\(9,\s*20,\s*31,\s*0\.994\)\);/,
   );
 });
@@ -137,23 +143,23 @@ test("chat portal overlays render on surfaced backgrounds instead of transparent
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*z-index:\s*1261;/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-mobile-drawer\s*\{[\s\S]*background:\s*var\(--chat-drawer-surface\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-mobile-drawer\s*\{[\s\S]*border-right:\s*1px solid var\(--chat-line-strong\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-mobile-drawer\s*\{[\s\S]*z-index:\s*calc\(var\(--chat-layer-overlay\) \+ 1\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-inspector-sheet\s*\{[\s\S]*background:\s*var\(--chat-inspector-surface\);/,
   );
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-inspector-sheet\s*\{[\s\S]*z-index:\s*var\(--chat-layer-inspector\);/,
   );
   assert.match(

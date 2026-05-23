@@ -20,6 +20,10 @@ const chatShellPage = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
   "utf8",
 );
+const chatShellWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  "utf8",
+);
 const sessionListPanel = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionListPanel.vue"),
   "utf8",
@@ -81,7 +85,7 @@ test("chat route shell establishes an unbroken full-height chain without centere
 
 test("chat page keeps independent list and thread scrollers inside the full-height shell", () => {
   assert.match(
-    chatShellPage,
+    chatShellWorkspaceCss,
     /\.chat-shell-layout\s*\{[\s\S]*height:\s*100%;[\s\S]*overflow:\s*hidden;/,
   );
   assert.match(
