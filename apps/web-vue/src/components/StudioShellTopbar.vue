@@ -12,9 +12,21 @@
       <Menu class="studio-shell-topbar__icon" aria-hidden="true" />
     </button>
 
-    <nav class="studio-shell-topbar__switchboard" :aria-label="switchboardLabel">
+    <nav class="studio-shell-topbar__groups" :aria-label="switchboardLabel">
       <RouterLink
-        v-for="item in switchboardItems"
+        v-for="group in primaryGroups"
+        :key="group.key"
+        :to="group.entry.to"
+        class="studio-shell-topbar__group"
+        :class="{ active: group.key === activeGroup?.key }"
+      >
+        <span>{{ group.title }}</span>
+      </RouterLink>
+    </nav>
+
+    <nav class="studio-shell-topbar__switchboard" :aria-label="sectionSwitchboardLabel">
+      <RouterLink
+        v-for="item in sectionItems"
         :key="item.to"
         :to="item.to"
         class="studio-shell-topbar__switch"
@@ -95,8 +107,10 @@ type ShellNavIconName =
   | 'system';
 
 type ShellNavGroup = {
+  key: string;
   title: string;
   items: Array<{
+    key: string;
     to: string;
     label: string;
     icon: ShellNavIconName;
@@ -107,6 +121,7 @@ const props = defineProps<{
   isMobile: boolean;
   mobileNavOpen: boolean;
   switchboardLabel: string;
+  sectionSwitchboardLabel: string;
   navGroups: ShellNavGroup[];
   mobileNavLabel: string;
   themeSwitchLabel: string;
@@ -131,8 +146,23 @@ const resolveThemeIcon = (value: ThemeMode) => {
 
 const route = useRoute();
 
-const switchboardItems = computed(() =>
-  props.navGroups.flatMap((group) => group.items).filter((item) => item.to !== '/dashboard'),
+const primaryGroups = computed(() =>
+  props.navGroups
+    .map((group) => ({
+      ...group,
+      entry: group.items[0],
+    }))
+    .filter((group): group is ShellNavGroup & { entry: ShellNavGroup['items'][number] } => Boolean(group.entry)),
+);
+
+const activeGroup = computed(() => (
+  primaryGroups.value.find((group) =>
+    group.items.some((item) => isActiveRoute(item.to)),
+  ) || primaryGroups.value[0]
+));
+
+const sectionItems = computed(() =>
+  (activeGroup.value?.items || []).filter((item) => item.to !== '/dashboard' || isActiveRoute('/dashboard')),
 );
 
 const isActiveRoute = (target: string) => route.path === target || route.path.startsWith(`${target}/`);

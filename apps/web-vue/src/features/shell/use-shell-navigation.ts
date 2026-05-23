@@ -7,10 +7,12 @@ export function useShellNavigation() {
 
   const navGroups = computed(() =>
     shellNavGroups.map((group) => ({
+      key: group.key,
       title: text(group.titleZh, group.titleEn),
       items: group.items
         .filter((item) => !item.future)
         .map((item) => ({
+          key: item.key,
           to: item.to,
           icon: item.icon,
           label: text(item.labelZh, item.labelEn),

@@ -19,8 +19,8 @@
                 :sidebar-collapsed="false"
                 :subtitle="text('管理控制台', 'Management Console')"
                 :docs-label="text('官方文档', 'Official docs')"
+                :command-label="text('命令面板', 'Command palette')"
                 :toggle-title="text('折叠侧边栏', 'Collapse sidebar')"
-                :nav-groups="[]"
                 :version-info-class="versionInfoClass"
                 :version-title="versionTitle"
                 :version-label="versionLabel"
@@ -32,6 +32,7 @@
                 :version-action-busy="versionActionBusy"
                 @navigate="handleSidebarNavigate"
                 @toggle-sidebar="toggleSidebar"
+                @open-command-palette="openCommandPalette"
                 @upgrade-action="handleStudioUpgradeAction"
               />
             </aside>
@@ -49,8 +50,8 @@
           :sidebar-collapsed="sidebarCollapsed"
           :subtitle="text('管理控制台', 'Management Console')"
           :docs-label="text('官方文档', 'Official docs')"
+          :command-label="text('命令面板', 'Command palette')"
           :toggle-title="sidebarCollapsed ? text('展开侧边栏', 'Expand sidebar') : text('折叠侧边栏', 'Collapse sidebar')"
-          :nav-groups="[]"
           :version-info-class="versionInfoClass"
           :version-title="versionTitle"
           :version-label="versionLabel"
@@ -62,6 +63,7 @@
           :version-action-busy="versionActionBusy"
           @navigate="handleSidebarNavigate"
           @toggle-sidebar="toggleSidebar"
+          @open-command-palette="openCommandPalette"
           @upgrade-action="handleStudioUpgradeAction"
         />
       </aside>
@@ -80,8 +82,8 @@
           v-if="isMobile && (isChatSurface || isFilesSurface) && !mobileSidebarOpen"
           type="button"
           class="mobile-nav-trigger"
-          :aria-label="text('打开导航', 'Open navigation')"
-          :title="text('打开导航', 'Open navigation')"
+          :aria-label="text('打开工具栏', 'Open tools')"
+          :title="text('打开工具栏', 'Open tools')"
           @click="toggleSidebar"
         >
           <Menu class="mobile-nav-trigger__icon" aria-hidden="true" />
@@ -94,8 +96,9 @@
               :is-mobile="isMobile"
               :mobile-nav-open="mobileSidebarOpen"
               :switchboard-label="text('主工作区切换', 'Primary workspace switchboard')"
+              :section-switchboard-label="text('当前工作区页面', 'Current workspace pages')"
               :nav-groups="navGroups"
-              :mobile-nav-label="text('打开导航', 'Open navigation')"
+              :mobile-nav-label="text('打开工具栏', 'Open tools')"
               :theme-switch-label="text('主题模式', 'Theme mode')"
               :locale-switch-label="text('语言模式', 'Language mode')"
               :theme-mode="themeMode"

@@ -49,39 +49,31 @@
     </TooltipRoot>
   </div>
 
-  <nav class="sidebar-nav" @click="$emit('navigate')">
-    <div v-for="group in navGroups" :key="group.title" class="sidebar-nav-group">
-      <div class="sidebar-section-title">{{ group.title }}</div>
-
-      <TooltipRoot
-        v-for="item in group.items"
-        :key="item.to"
-        :disabled="!showRailTooltips"
-      >
-        <TooltipTrigger as-child>
-          <RouterLink
-            :to="item.to"
-            class="nav-link"
-            active-class="active"
-          >
-            <span class="icon">
-              <SidebarIcon :name="item.icon" />
-            </span>
-            <span>{{ item.label }}</span>
-          </RouterLink>
-        </TooltipTrigger>
-        <TooltipPortal>
-          <TooltipContent
-            class="sidebar-rail-tooltip"
-            side="right"
-            :side-offset="12"
-          >
-            {{ item.label }}
-          </TooltipContent>
-        </TooltipPortal>
-      </TooltipRoot>
-    </div>
-  </nav>
+  <div class="sidebar-tool-zone">
+    <TooltipRoot :disabled="!showRailTooltips">
+      <TooltipTrigger as-child>
+        <button
+          type="button"
+          class="sidebar-tool-button"
+          :title="commandLabel"
+          :aria-label="commandLabel"
+          @click="$emit('open-command-palette')"
+        >
+          <Command class="sidebar-tool-button__icon" aria-hidden="true" />
+          <span>{{ commandLabel }}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipPortal>
+        <TooltipContent
+          class="sidebar-rail-tooltip"
+          side="right"
+          :side-offset="12"
+        >
+          {{ commandLabel }}
+        </TooltipContent>
+      </TooltipPortal>
+    </TooltipRoot>
+  </div>
 
   <div class="sidebar-footer">
     <div class="connection-status-bar">
@@ -140,29 +132,17 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
-import { ExternalLink, PanelLeftClose, PanelLeftOpen } from '@lucide/vue';
+import { Command, ExternalLink, PanelLeftClose, PanelLeftOpen } from '@lucide/vue';
 import { TooltipContent, TooltipPortal, TooltipRoot, TooltipTrigger } from 'reka-ui';
 import LogoMark from './LogoMark.vue';
-import SidebarIcon from './SidebarIcon.vue';
-
-type SidebarIconName = 'dashboard' | 'agents' | 'chat' | 'channels' | 'cron' | 'dreaming' | 'skills' | 'files' | 'plugins' | 'terminal' | 'config' | 'system';
-
-type NavGroup = {
-  title: string;
-  items: Array<{
-    to: string;
-    label: string;
-    icon: SidebarIconName;
-  }>;
-};
 
 const props = defineProps<{
   isMobile: boolean;
   sidebarCollapsed: boolean;
   subtitle: string;
   docsLabel: string;
+  commandLabel: string;
   toggleTitle: string;
-  navGroups: NavGroup[];
   versionInfoClass: Record<string, boolean>;
   versionTitle: string;
   versionLabel: string;
@@ -177,6 +157,7 @@ const props = defineProps<{
 defineEmits<{
   (event: 'toggle-sidebar'): void;
   (event: 'navigate'): void;
+  (event: 'open-command-palette'): void;
   (event: 'upgrade-action'): void;
 }>();
 
