@@ -1,5 +1,5 @@
 <template>
-  <article class="panel-card channels-form-panel channels-binding-editor" :class="{ 'channels-binding-editor--inline': inline }">
+  <article class="channels-form-panel channels-binding-editor" :class="{ 'channels-binding-editor--inline': inline }">
     <div class="channels-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ eyebrow }}</p>

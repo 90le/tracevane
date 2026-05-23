@@ -1,6 +1,6 @@
 <template>
   <section v-if="channel && account" class="channels-stage-view">
-    <article class="panel-card channels-form-panel">
+    <article class="channels-form-panel channels-stage-section">
       <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ channel.type }} · {{ account.id }}</p>

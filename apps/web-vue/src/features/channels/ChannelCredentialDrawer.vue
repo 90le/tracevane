@@ -17,8 +17,8 @@
           </header>
 
           <div class="channels-drawer__body credential-drawer__body">
-            <div class="credential-drawer__context-panel">
-              <div class="credential-drawer__account-context">
+            <div class="credential-drawer__account-summary">
+              <div class="credential-drawer__account-facts">
                 <span>
                   <strong>{{ text('频道', 'Provider') }}</strong>
                   {{ channelLabel || text('未选择频道', 'No provider selected') }}
@@ -229,7 +229,7 @@ function emitSave(): void {
   min-height: 40px;
 }
 
-.credential-drawer__context-panel {
+.credential-drawer__account-summary {
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -240,13 +240,13 @@ function emitSave(): void {
     color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
 }
 
-.credential-drawer__account-context {
+.credential-drawer__account-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.credential-drawer__account-context span {
+.credential-drawer__account-facts span {
   display: grid;
   min-width: 0;
   gap: 4px;
@@ -259,7 +259,7 @@ function emitSave(): void {
   overflow-wrap: anywhere;
 }
 
-.credential-drawer__account-context strong {
+.credential-drawer__account-facts strong {
   color: var(--muted);
   font-size: 10px;
   letter-spacing: 0.1em;
@@ -349,14 +349,14 @@ html[data-theme="light"] .channels-credential-summary span {
   border-color: rgba(19, 32, 49, 0.12);
 }
 
-html[data-theme="light"] .credential-drawer__context-panel {
+html[data-theme="light"] .credential-drawer__account-summary {
   background:
     linear-gradient(135deg, rgba(79, 132, 248, 0.08), transparent 58%),
     rgba(246, 250, 255, 0.9);
   border-color: rgba(19, 32, 49, 0.1);
 }
 
-html[data-theme="light"] .credential-drawer__account-context span,
+html[data-theme="light"] .credential-drawer__account-facts span,
 html[data-theme="light"] .credential-field-card {
   background: rgba(255, 255, 255, 0.84);
   border-color: rgba(19, 32, 49, 0.1);
@@ -389,7 +389,7 @@ html[data-theme="light"] .channels-drawer .form-input {
     grid-template-columns: 1fr;
   }
 
-  .credential-drawer__account-context {
+  .credential-drawer__account-facts {
     grid-template-columns: 1fr;
   }
 

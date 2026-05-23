@@ -1,6 +1,6 @@
 <template>
   <section v-if="channel" class="channels-stage-view">
-    <article v-if="focusedAccount" class="panel-card channels-focus-strip">
+    <article v-if="focusedAccount" class="channels-focus-strip">
       <div>
         <p class="eyebrow">{{ text('FOCUS', 'FOCUS') }}</p>
         <strong>{{ text('当前聚焦账号', 'Focused account') }} · {{ focusedAccount.id }}</strong>
@@ -10,7 +10,7 @@
       </button>
     </article>
 
-    <article class="panel-card binding-table">
+    <article class="channels-stage-section binding-table-shell">
       <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ focusedAccount ? `${channel.type} · ${focusedAccount.id}` : channel.type }}</p>

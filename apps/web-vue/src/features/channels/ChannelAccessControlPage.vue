@@ -1,6 +1,6 @@
 <template>
   <section v-if="channel && account" class="channels-stage-view">
-    <article class="panel-card channels-form-panel">
+    <article class="channels-form-panel channels-stage-section">
       <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ channel.type }} · {{ account.id }}</p>
@@ -65,7 +65,7 @@
       </div>
     </article>
 
-    <footer class="panel-card channels-save-bar" :class="{ dirty: hasUnsavedChanges, saving }">
+    <footer class="channels-save-bar" :class="{ dirty: hasUnsavedChanges, saving }">
       <div class="channels-save-bar__status">
         <strong>{{ saveStateTitle }}</strong>
         <p>{{ saveStateCopy }}</p>
@@ -237,6 +237,7 @@ async function save(): Promise<void> {
   justify-content: space-between;
   gap: 16px;
   align-items: center;
+  padding: 14px 16px;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 94%, rgba(255, 255, 255, 0.02));

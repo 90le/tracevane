@@ -19,7 +19,7 @@
       @activate-issue="activateIssue"
     />
   </section>
-  <article v-else class="panel-card channels-overview-empty">
+  <article v-else class="channels-overview-empty">
     <p class="eyebrow">{{ text('CHANNELS', 'CHANNELS') }}</p>
     <h3>{{ text('请选择一个频道', 'Select a provider') }}</h3>
     <p class="panel-muted">
