@@ -2442,17 +2442,15 @@ onActivated(activatePluginsPage);
 .plugins-page { gap: 18px; }
 .plugins-command-center {
   display: grid;
-  grid-template-columns: minmax(0, 0.82fr) minmax(420px, 1.18fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   background:
-    radial-gradient(620px 260px at 0% 0%, color-mix(in srgb, var(--acc) 11%, transparent), transparent 66%),
-    color-mix(in srgb, var(--surface-base) 88%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--shell-highlight) 12%, transparent),
-    0 12px 30px rgba(8, 18, 29, 0.08);
+    linear-gradient(90deg, color-mix(in srgb, var(--acc) 8%, transparent), transparent 52%),
+    color-mix(in srgb, var(--surface-base) 58%, transparent);
+  box-shadow: none;
 }
 .plugins-command-center > div {
   min-width: 0;
@@ -2657,7 +2655,7 @@ onActivated(activatePluginsPage);
   min-height: 92px;
   border: 0;
   border-radius: 0;
-  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 64%, transparent);
   color: var(--text);
   font-weight: 750;
 }
@@ -2692,8 +2690,22 @@ onActivated(activatePluginsPage);
   display: grid;
   gap: 12px;
 }
+
+.plugins-stage-card {
+  padding: 18px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .plugins-overview {
-  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.8fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 44%, transparent);
+  gap: 0;
 }
 .plugins-posture-strip,
 .plugins-side-pane {
@@ -2701,16 +2713,14 @@ onActivated(activatePluginsPage);
   gap: 14px;
   min-width: 0;
   padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--surface-base) 90%, transparent), color-mix(in srgb, var(--code-bg) 12%, transparent));
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--shell-highlight) 10%, transparent),
-    0 12px 30px rgba(8, 18, 29, 0.07);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .plugins-side-pane {
   align-content: start;
+  border-left: 1px solid var(--line);
 }
 .plugins-policy-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2794,16 +2804,27 @@ onActivated(activatePluginsPage);
 .plugins-layout {
   display: grid;
   grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
-  gap: 14px;
+  gap: 0;
   align-items: start;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 46%, transparent);
 }
 .plugins-rail {
   display: grid;
   gap: 10px;
   position: sticky;
-  top: 16px;
-  max-height: calc(100vh - 120px);
+  top: 0;
+  max-height: calc(100vh - 96px);
   overflow: auto;
+  padding: 16px;
+  border-right: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 46%, transparent), color-mix(in srgb, var(--surface-base) 14%, transparent));
+}
+.plugins-stage {
+  align-content: start;
 }
 .plugins-rail-head h3,
 .plugins-section-head h3,
@@ -2830,15 +2851,19 @@ onActivated(activatePluginsPage);
   display: grid;
   gap: 4px;
   width: 100%;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
   cursor: pointer;
   text-align: left;
 }
-.plugins-rail-item.active { background: var(--tab-active-bg); }
+.plugins-rail-item.active {
+  padding-inline: 12px;
+  background: var(--tab-active-bg);
+}
 .plugins-section-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .plugins-section-head.compact { display: grid; }
 .plugins-kv-row {
@@ -2918,6 +2943,14 @@ onActivated(activatePluginsPage);
     border-top: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   }
   .plugins-rail { position: static; max-height: none; }
+  .plugins-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .plugins-side-pane {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
   .plugins-guided-toolbar,
   .plugins-guided-group-head {
     position: static;

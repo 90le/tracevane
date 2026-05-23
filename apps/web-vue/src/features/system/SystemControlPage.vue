@@ -32,7 +32,7 @@
 
     <section class="system-control-grid">
       <aside class="system-health-strip system-control-tower-rail">
-        <article class="panel-card system-sidebar-panel">
+        <article class="system-sidebar-panel">
           <div class="system-sidebar-head">
             <div>
               <p class="eyebrow">{{ text('HEALTH', 'HEALTH') }}</p>
@@ -86,7 +86,7 @@
       </aside>
 
       <section class="system-main-stage">
-        <article class="panel-card system-topic-rail">
+        <article class="system-topic-rail">
           <div class="system-stage-head">
             <div>
               <p class="eyebrow">{{ diagnostics?.config.pluginId || 'studio' }}</p>
@@ -127,7 +127,7 @@
           </nav>
         </article>
 
-        <article v-if="activeTab === 'overview'" class="panel-card system-stage-panel">
+        <article v-if="activeTab === 'overview'" class="system-stage-panel">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -201,7 +201,7 @@
           </section>
         </article>
 
-        <article v-else-if="activeTab === 'release'" class="panel-card system-stage-panel">
+        <article v-else-if="activeTab === 'release'" class="system-stage-panel">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -292,7 +292,7 @@
           </section>
         </article>
 
-        <article v-else-if="activeTab === 'gateway'" class="panel-card system-stage-panel">
+        <article v-else-if="activeTab === 'gateway'" class="system-stage-panel">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -356,7 +356,7 @@
           </section>
         </article>
 
-        <article v-else-if="activeTab === 'bootstrap'" class="panel-card system-stage-panel">
+        <article v-else-if="activeTab === 'bootstrap'" class="system-stage-panel">
           <section class="system-section">
             <div v-if="diagnostics" class="system-section-head system-section-head-tight">
               <div>
@@ -553,7 +553,7 @@
           </section>
         </article>
 
-        <article v-else class="panel-card system-stage-panel system-raw-inspector">
+        <article v-else class="system-stage-panel system-raw-inspector">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -1237,9 +1237,13 @@ onActivated(activateSystemPage);
 
 .system-control-grid {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(260px, 310px) minmax(0, 1fr);
+  gap: 0;
   align-items: start;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 56%, transparent);
 }
 
 .system-health-strip,
@@ -1249,23 +1253,25 @@ onActivated(activateSystemPage);
   z-index: 1;
 }
 
-.system-control-tower-rail .system-sidebar-panel {
-  border-color: color-mix(in srgb, var(--system-control-tower-glow) 38%, var(--line));
-  box-shadow: 0 18px 38px color-mix(in srgb, var(--system-control-tower-glow) 18%, transparent);
-}
-
 .system-sidebar-panel,
 .system-topic-rail,
 .system-stage-panel {
-  background: var(--surface-base);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  box-shadow: var(--shadow-soft);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .system-sidebar-panel,
 .system-stage-panel {
   padding: 18px;
+}
+
+.system-sidebar-panel {
+  min-height: 100%;
+  border-right: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 52%, transparent), color-mix(in srgb, var(--surface-base) 18%, transparent));
 }
 
 .system-sidebar-head,
@@ -1382,6 +1388,9 @@ onActivated(activateSystemPage);
 .system-stage-header,
 .system-topic-rail {
   padding: 18px 18px 0 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 58%, transparent), color-mix(in srgb, var(--surface-base) 12%, transparent));
 }
 
 .system-stage-facts {
@@ -1408,14 +1417,14 @@ onActivated(activateSystemPage);
 .system-stage-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
   padding: 16px 0 18px 0;
   margin-top: 16px;
   border-top: 1px solid var(--line);
 }
 
 .system-stage-tabs.mobile-stage-tabs {
-  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  background: transparent;
 }
 
 .system-stage-tab {
@@ -1441,6 +1450,10 @@ onActivated(activateSystemPage);
 .system-section {
   display: grid;
   gap: 16px;
+}
+
+.system-stage-panel {
+  padding: 18px;
 }
 
 .system-section + .system-section {
@@ -1488,6 +1501,11 @@ onActivated(activateSystemPage);
 @media (max-width: 1180px) {
   .system-control-grid {
     grid-template-columns: 1fr;
+  }
+
+  .system-sidebar-panel {
+    border-right: 0;
+    border-top: 1px solid var(--border-subtle);
   }
 
   .system-main-stage {
