@@ -181,19 +181,6 @@
             />
 
             <CodexStackInstallShell :busy="Boolean(activeJob && isCodexStackJobRunning(activeJob))">
-              <CodexStackJobProgressPanel
-                v-if="activeJob"
-                surface="overlay"
-                :job="activeJob"
-                :title="activeJobTitle"
-                :status-label="jobStatusLabel(activeJob.status)"
-                :steps="jobProgressSteps"
-                :progress-percent="jobProgressPercent"
-                :running="isCodexStackJobRunning(activeJob)"
-                :empty-log="text('等待输出...', 'Waiting for output...')"
-                @dismiss="activeJob = null"
-              />
-
               <CodexStackRepairBoard
                 :can-run-mutation="canRunMutation"
                 :mutation-disabled-help="mutationDisabledHelp"
@@ -438,7 +425,7 @@
       </CodexStackWorkspaceShell>
 
       <CodexStackJobProgressPanel
-        v-if="activeJob && activeSection !== 'install'"
+        v-if="activeJob"
         surface="panel"
         :job="activeJob"
         :title="activeJobTitle"

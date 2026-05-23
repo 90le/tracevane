@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="running"
-    :class="surface === 'overlay' ? 'cs-install-overlay' : 'cs-job-progress-dock'"
+    class="cs-job-progress-dock"
   >
     <section class="cs-job-console">
       <div class="cs-console-header">
@@ -42,7 +42,7 @@
     class="cs-job-console cs-job-result-console"
     :class="[
       job.status === 'succeeded' ? 'cs-result-ok' : 'cs-result-fail',
-      surface === 'overlay' ? 'cs-job-result-inline' : 'cs-job-progress-dock'
+      'cs-job-progress-dock'
     ]"
   >
     <div class="cs-console-header">
@@ -99,7 +99,7 @@ defineProps<{
   progressPercent: string;
   running: boolean;
   emptyLog: string;
-  surface?: "overlay" | "panel";
+  surface?: "panel";
 }>();
 
 defineEmits<{
@@ -110,19 +110,6 @@ const { text } = useLocalePreference();
 </script>
 
 <style scoped>
-.cs-install-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: color-mix(in srgb, #081018 56%, transparent);
-  backdrop-filter: blur(6px);
-  border-radius: calc(var(--radius-lg) + 8px);
-}
-
 .cs-job-progress-dock {
   position: fixed;
   right: clamp(16px, 2.5vw, 30px);

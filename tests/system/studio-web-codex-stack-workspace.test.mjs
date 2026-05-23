@@ -115,7 +115,9 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(installPlanCard, /\.cs-install-plan-list\s*\{/);
   assert.match(installPlanCard, /@media \(max-width: 960px\)/);
   assert.match(installShell, /class="cs-install-shell"/);
-  assert.match(installShell, /\.cs-install-shell-busy > \*:not\(\.cs-install-overlay\)\s*\{/);
+  assert.match(installShell, /class="cs-install-guide"/);
+  assert.match(installShell, /class="cs-install-workflow"/);
+  assert.match(installShell, /执行日志会在右下角浮层展示/);
   assert.match(installStrategyPanel, /class="cs-install-strategy-panel"/);
   assert.match(installStrategyPanel, /\.cs-component-mode-list\s*\{/);
   assert.match(installStrategyPanel, /\.cs-install-cta-card\s*\{/);
@@ -126,7 +128,7 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(jobProgressPanel, /cs-progress-log-shell/);
   assert.match(jobProgressPanel, /\.cs-progress-log\s*\{/);
   assert.match(jobProgressPanel, /@media \(max-width: 960px\)/);
-  assert.match(jobProgressPanel, /cs-install-overlay/);
+  assert.doesNotMatch(jobProgressPanel, /cs-install-overlay/);
   assert.match(jobProgressPanel, /cs-job-progress-dock/);
   assert.match(jobProgressPanel, /\.cs-job-progress-track\s*\{/);
   assert.match(jobProgressPanel, /@media \(max-width: 960px\)/);
@@ -263,8 +265,9 @@ test("codex stack loading and install shell wrappers preserve display-only bound
   );
   assert.match(
     controlPage,
-    /<CodexStackInstallShell :busy="Boolean\(activeJob && isCodexStackJobRunning\(activeJob\)\)">[\s\S]*<CodexStackJobProgressPanel[\s\S]*<CodexStackRepairBoard[\s\S]*<\/CodexStackInstallShell>/,
+    /<CodexStackInstallShell :busy="Boolean\(activeJob && isCodexStackJobRunning\(activeJob\)\)">[\s\S]*<CodexStackRepairBoard[\s\S]*<\/CodexStackInstallShell>/,
   );
+  assert.doesNotMatch(controlPage, /surface="overlay"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-empty"/);
   assert.doesNotMatch(controlPage, /class="cs-install-shell"/);
   assert.doesNotMatch(controlPage, /\.cs-empty|\.cs-install-shell/);
@@ -567,16 +570,16 @@ test("codex stack install page delegates component strategy and CTA without movi
 
 test("codex stack install page delegates long job progress without losing polling ownership", () => {
   assert.match(controlPage, /import CodexStackJobProgressPanel from "\.\/CodexStackJobProgressPanel\.vue";/);
-  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob && activeSection !== 'install'"[\s\S]*surface="panel"[\s\S]*:job="activeJob"/);
-  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob"[\s\S]*surface="overlay"[\s\S]*:job="activeJob"/);
+  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob"[\s\S]*surface="panel"[\s\S]*:job="activeJob"/);
   assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
   assert.match(controlPage, /:running="isCodexStackJobRunning\(activeJob\)"[\s\S]*@dismiss="activeJob = null"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-progress"/);
   assert.doesNotMatch(controlPage, /class="cs-install-overlay"/);
+  assert.doesNotMatch(controlPage, /activeSection !== 'install'/);
   assert.match(controlPage, /function startPollingJob\(job: CodexStackJob\): void/);
   assert.match(controlPage, /fetchCodexStackJob\(activeJob\.value\.id\)[\s\S]*activeJob\.value = response\.job/);
-  assert.match(jobProgressPanel, /surface\?: "overlay" \| "panel";/);
-  assert.match(jobProgressPanel, /surface === 'overlay' \? 'cs-install-overlay' : 'cs-job-progress-dock'/);
+  assert.match(jobProgressPanel, /surface\?: "panel";/);
+  assert.doesNotMatch(jobProgressPanel, /surface === 'overlay'/);
   assert.match(jobProgressPanel, /\.cs-job-progress-dock/);
   assert.match(jobProgressPanel, /安装或修复脚本正在后台执行，日志会持续刷新。/);
   assert.match(jobProgressPanel, /job\.logTail \|\| emptyLog/);
