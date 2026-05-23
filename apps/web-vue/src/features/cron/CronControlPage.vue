@@ -1486,8 +1486,12 @@ onActivated(activateCronPage);
 .cron-workbench {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
-  gap: 18px;
+  gap: 0;
   align-items: start;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 44%, transparent);
 }
 
 .cron-sidebar,
@@ -1498,15 +1502,28 @@ onActivated(activateCronPage);
 .cron-sidebar-panel,
 .cron-stage-header,
 .cron-stage-panel {
-  background: var(--surface-base);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  box-shadow: var(--soft-shadow);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .cron-sidebar-panel,
 .cron-stage-panel {
   padding: 18px;
+}
+
+.cron-sidebar-panel {
+  min-height: 100%;
+  border-right: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 48%, transparent), color-mix(in srgb, var(--surface-base) 14%, transparent));
+}
+
+.cron-stage-header {
+  border-bottom: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 52%, transparent), color-mix(in srgb, var(--surface-base) 12%, transparent));
 }
 
 .cron-sidebar-head,
@@ -1567,17 +1584,18 @@ onActivated(activateCronPage);
 
 .cron-list {
   display: grid;
-  gap: 10px;
+  gap: 0;
   margin-top: 14px;
 }
 
 .cron-list-item {
   display: grid;
   gap: 12px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
+  padding: 14px 0;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
   text-align: left;
   transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
 }
@@ -1588,6 +1606,7 @@ onActivated(activateCronPage);
 }
 
 .cron-list-item.active {
+  padding-inline: 12px;
   border-color: rgba(126, 217, 194, 0.5);
   background: linear-gradient(145deg, rgba(126, 217, 194, 0.14), rgba(255, 255, 255, 0.04));
 }
@@ -1843,6 +1862,11 @@ onActivated(activateCronPage);
   .cron-workbench,
   .cron-runs-layout {
     grid-template-columns: 1fr;
+  }
+
+  .cron-sidebar-panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
   }
 }
 

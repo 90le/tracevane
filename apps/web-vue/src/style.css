@@ -2518,6 +2518,21 @@ html[data-theme="light"] .config-main .provider-card {
   border-top: 1px solid var(--line);
 }
 
+.browser-profile-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.browser-profile-card:last-child {
+  border-bottom: 0;
+}
+
 .config-sheet > .config-block > .panel-head {
   margin-bottom: 14px;
 }

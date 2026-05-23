@@ -1,6 +1,6 @@
 <template>
   <section class="page-shell config-section-grid">
-    <article class="panel-card config-sheet">
+    <article class="config-sheet">
       <section class="config-block">
         <div class="panel-head">
           <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('浏览器配置', 'Browser Configuration') }}</span></h3>
@@ -168,7 +168,7 @@
               </button>
             </div>
             <div v-if="form.profiles.length" class="settings-stack settings-stack-spaced">
-              <article v-for="(profile, index) in form.profiles" :key="profile.uid" class="panel-card browser-profile-card">
+              <article v-for="(profile, index) in form.profiles" :key="profile.uid" class="browser-profile-card">
                 <div class="panel-head">
                   <div>
                     <h5>{{ profile.id || text(`Profile ${index + 1}`, `Profile ${index + 1}`) }}</h5>

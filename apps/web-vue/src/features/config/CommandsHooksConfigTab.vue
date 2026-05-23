@@ -1,6 +1,6 @@
 <template>
   <section class="page-shell config-section-grid config-section-grid-commands-hooks">
-    <article class="panel-card config-sheet">
+    <article class="config-sheet">
       <!-- Commands Section -->
       <section class="config-block">
         <div class="panel-head">

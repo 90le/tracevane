@@ -1,6 +1,6 @@
 <template>
   <section class="page-shell config-section-grid config-section-grid-session-policy">
-    <article class="panel-card config-sheet">
+    <article class="config-sheet">
 
       <!-- 1. Global reset strategy -->
       <section class="config-block">

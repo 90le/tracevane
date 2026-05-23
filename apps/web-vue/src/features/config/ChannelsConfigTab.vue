@@ -1,6 +1,6 @@
 <template>
   <section class="page-shell config-section-grid">
-    <article class="panel-card config-sheet">
+    <article class="config-sheet">
       <section class="config-block">
         <div class="panel-head">
           <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('频道管理', 'Channel Management') }}</span></h3>
