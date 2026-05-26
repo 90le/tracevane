@@ -12,6 +12,10 @@ const configWorkspaceCss = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/config/config-workspace.css'),
   'utf8',
 );
+const globalStyleCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/style.css'),
+  'utf8',
+);
 const configComponentFiles = [
   'AcpConfigTab.vue',
   'CommandsHooksConfigTab.vue',
@@ -55,9 +59,11 @@ test('config editor derives overview and active-tab fact collections in computed
 test('config editor owns feature CSS for workbench framing', () => {
   assert.match(configEditorPage, /import '\.\/config-workspace\.css';/);
   assert.doesNotMatch(configEditorPage, /<style scoped>/);
+  assert.match(configWorkspaceCss, /Migrated Config workspace rules from global style\.css/);
   assert.match(configWorkspaceCss, /\.config-command-panel\s*\{/);
   assert.match(configWorkspaceCss, /\.config-signal-strip\s*\{/);
   assert.match(configWorkspaceCss, /\.config-active-tab-facts\s*\{/);
+  assert.doesNotMatch(globalStyleCss, /\.config[a-zA-Z0-9_-]*/);
 });
 
 test('config tabs and sheets keep CSS ownership centralized', () => {

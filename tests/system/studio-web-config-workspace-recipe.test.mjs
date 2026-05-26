@@ -21,6 +21,10 @@ const configWorkspaceCss = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/config/config-workspace.css"),
   "utf8",
 );
+const globalStyleCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/style.css"),
+  "utf8",
+);
 
 const workspaceSections = fs.readFileSync(
   path.join(
@@ -108,9 +112,11 @@ test("config editor page consumes unified tab source and built overview signals 
   assert.match(configEditorPage, /config-signal-strip/);
   assert.match(configEditorPage, /import '\.\/config-workspace\.css';/);
   assert.doesNotMatch(configEditorPage, /<style scoped>/);
+  assert.match(configWorkspaceCss, /Migrated Config workspace rules from global style\.css/);
   assert.doesNotMatch(configEditorPage, /config-overview-card/);
   assert.match(configWorkspaceCss, /\.config-command-panel/);
   assert.match(configWorkspaceCss, /\.config-signal-row/);
+  assert.doesNotMatch(globalStyleCss, /\.config[a-zA-Z0-9_-]*/);
   assert.doesNotMatch(configEditorPage, /signal\.key === 'defaultModel'/);
   assert.doesNotMatch(configEditorPage, /signal\.key === 'imageModel'/);
   assert.doesNotMatch(configEditorPage, /signal\.key === 'providers'/);

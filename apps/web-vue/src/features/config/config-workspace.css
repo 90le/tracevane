@@ -1,3 +1,794 @@
+/* Migrated Config workspace rules from global style.css. Keep Config chrome in feature CSS. */
+
+.config-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.config-tabs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.config-tab {
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 13px 14px;
+  background: var(--tab-bg);
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.config-tab:hover {
+  transform: translateY(-1px);
+  border-color: rgba(127, 255, 212, 0.18);
+  color: var(--text);
+}
+
+.config-tab.active {
+  border-color: rgba(255, 190, 122, 0.3);
+  background: var(--tab-active-bg);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.config-tab-title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.config-tab-copy {
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  min-height: 2.8em;
+}
+
+.config-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: var(--icon-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  font-size: 17px;
+}
+
+.config-page {
+  gap: 16px;
+}
+
+.config-workbench {
+  display: grid;
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.config-sidebar,
+.config-main {
+  min-width: 0;
+}
+
+.config-sidebar {
+  display: grid;
+  gap: 12px;
+}
+
+.config-sidebar-head {
+  display: grid;
+  gap: 6px;
+}
+
+.config-sidebar-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.config-main {
+  display: grid;
+  gap: 12px;
+}
+
+.config-active-tab-panel {
+  padding: 16px 18px;
+}
+
+.config-active-tab-head h3 {
+  margin: 0 0 6px 0;
+  color: var(--text);
+  font-size: 22px;
+}
+
+.config-section-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.config-section-grid-model,
+.config-section-grid-security,
+.config-section-grid-session,
+.config-section-grid-appearance {
+  grid-template-columns: 1fr;
+}
+
+.config-section-grid-providers {
+  grid-template-columns: 1fr;
+}
+
+.config-provider-workbench {
+  display: grid;
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.config-provider-sidebar,
+.config-provider-editor {
+  min-width: 0;
+}
+
+.config-main .config-section-grid {
+  gap: 18px;
+}
+
+.config-main .story-item,
+.config-main .toggle-card,
+.config-main .provider-model-row,
+.config-main .provider-card {
+  box-shadow: none;
+}
+
+.config-main .story-item,
+.config-main .toggle-card,
+.config-main .provider-model-row,
+.config-main .provider-card {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="light"] .config-main .story-item,
+html[data-theme="light"] .config-main .toggle-card,
+html[data-theme="light"] .config-main .provider-model-row,
+html[data-theme="light"] .config-main .provider-card {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(19, 32, 49, 0.08);
+}
+
+.config-sheet {
+  display: grid;
+  gap: 0;
+  padding: 0;
+}
+
+.config-sheet > .config-block {
+  padding: 18px 18px 20px;
+}
+
+.config-sheet > .config-block + .config-block {
+  border-top: 1px solid var(--line);
+}
+
+.config-sheet > .config-block > .panel-head {
+  margin-bottom: 14px;
+}
+
+.config-sheet > .config-block .panel-heading-emph > span:first-child {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  font-size: 14px;
+}
+
+.config-subsection-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.config-subsection {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.config-subsection.is-primary {
+  border-color: rgba(111, 211, 255, 0.2);
+  background: linear-gradient(135deg, rgba(111, 211, 255, 0.08), rgba(109, 240, 207, 0.05));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.config-subsection.is-risk {
+  border-color: rgba(255, 190, 122, 0.22);
+  background: linear-gradient(135deg, rgba(255, 190, 122, 0.08), rgba(255, 127, 143, 0.05));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.config-subsection-spotlight {
+  gap: 14px;
+  border-width: 1.5px;
+}
+
+.config-spotlight-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.config-spotlight-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 159, 82, 0.28);
+  background: rgba(255, 179, 71, 0.14);
+  color: #ffd38b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.config-spotlight-toggle-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border-color: rgba(255, 159, 82, 0.28);
+  background:
+    linear-gradient(135deg, rgba(255, 179, 71, 0.16), rgba(255, 99, 132, 0.08)),
+    rgba(255, 255, 255, 0.03);
+}
+
+.config-spotlight-toggle-card strong {
+  font-size: 14px;
+}
+
+.config-spotlight-toggle-card span {
+  font-size: 12px;
+}
+
+html[data-theme="light"] .config-subsection {
+  background: rgba(255, 255, 255, 0.74);
+  border-color: rgba(19, 32, 49, 0.08);
+}
+
+html[data-theme="light"] .config-subsection.is-primary {
+  border-color: rgba(58, 169, 232, 0.18);
+  background: linear-gradient(135deg, rgba(58, 169, 232, 0.11), rgba(22, 185, 150, 0.08));
+}
+
+html[data-theme="light"] .config-subsection.is-risk {
+  border-color: rgba(255, 159, 82, 0.18);
+  background: linear-gradient(135deg, rgba(255, 185, 88, 0.14), rgba(255, 109, 126, 0.08));
+}
+
+html[data-theme="light"] .config-spotlight-toggle-card {
+  border-color: rgba(255, 146, 43, 0.24);
+  background:
+    linear-gradient(135deg, rgba(255, 190, 92, 0.18), rgba(255, 111, 97, 0.1)),
+    rgba(255, 255, 255, 0.82);
+}
+
+html[data-theme="light"] .config-spotlight-badge {
+  border-color: rgba(255, 146, 43, 0.22);
+  background: rgba(255, 188, 86, 0.18);
+  color: #8a4600;
+}
+
+.config-subsection-head {
+  display: grid;
+  gap: 4px;
+}
+
+.config-subsection-head h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.config-subsection-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.config-provider-editor .provider-card {
+  background: transparent;
+}
+
+.config-provider-editor .provider-card.provider-card-collapsible {
+  padding-top: 0;
+}
+
+.config-provider-editor .provider-summary {
+  margin-bottom: 0;
+}
+
+.config-provider-editor .provider-card-head-visual {
+  margin-bottom: 14px;
+}
+
+.config-provider-editor .provider-model-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.config-hero-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.config-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.config-preference-list {
+  display: grid;
+  gap: 8px;
+}
+
+.config-preference-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.config-preference-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 190, 122, 0.22);
+  color: var(--text);
+}
+
+.config-preference-item.active {
+  border-color: rgba(255, 190, 122, 0.3);
+  background: var(--tab-active-bg);
+  color: var(--text);
+}
+
+.config-preference-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--icon-surface);
+  font-size: 16px;
+}
+
+.config-preference-item strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+.config-preference-item span:last-child {
+  display: block;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.config-fact-list {
+  display: grid;
+  gap: 10px;
+}
+
+.config-fact-list-compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.config-fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.config-fact span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.config-fact strong {
+  color: var(--text);
+  font-size: 12px;
+  text-align: right;
+  word-break: break-word;
+}
+
+.config-setting-grid {
+  align-items: start;
+}
+
+.config-setting-grid .setting-block {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+html[data-theme="light"] .config-setting-grid .setting-block {
+  background: rgba(255, 255, 255, 0.74);
+  border-color: rgba(19, 32, 49, 0.08);
+}
+
+.config-collapsible {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.config-collapsible-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+  list-style: none;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.config-collapsible-summary::-webkit-details-marker {
+  display: none;
+}
+
+.config-collapsible-summary::after {
+  content: "";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-soft);
+  clip-path: polygon(28% 39%, 50% 61%, 72% 39%, 79% 47%, 50% 76%, 21% 47%);
+  flex-shrink: 0;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.config-collapsible-summary:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 190, 122, 0.24);
+  box-shadow: var(--shadow-soft);
+}
+
+.config-collapsible[open] > .config-collapsible-summary {
+  border-color: rgba(255, 190, 122, 0.28);
+  background: var(--tab-active-bg);
+}
+
+.config-collapsible[open] > .config-collapsible-summary::after {
+  transform: rotate(180deg);
+  color: var(--text);
+}
+
+.config-collapsible-summary strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.config-collapsible-meta {
+  color: var(--muted-soft);
+  font-size: 11px;
+  margin-left: auto;
+  padding-right: 2px;
+}
+
+.config-hero-grid,
+  .config-tabs {
+    grid-template-columns: 1fr;
+  }
+
+.config-workbench {
+    grid-template-columns: 1fr;
+  }
+
+.config-workbench,
+  .config-provider-workbench {
+    grid-template-columns: 1fr;
+  }
+
+.config-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+.config-fact-list-compact {
+    grid-template-columns: 1fr;
+  }
+
+.config-fact {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+.config-overview-ribbon {
+  overflow: hidden;
+  gap: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--shell-panel-fill) 72%, transparent);
+}
+
+.config-overview-card {
+  border: none;
+  border-right: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.config-overview-card:last-child {
+  border-right: none;
+}
+
+.config-sidebar,
+.config-active-tab-panel,
+.config-provider-sidebar,
+.config-provider-editor,
+.config-sheet {
+  box-shadow: none;
+}
+
+.config-tabs-grouped,
+.config-tab-group {
+  gap: 0;
+}
+
+.config-tab-group {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 48%, transparent);
+}
+
+.config-tab-group + .config-tab-group {
+  margin-top: 10px;
+}
+
+.config-tab-group__head {
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  background: color-mix(in srgb, var(--surface) 44%, transparent);
+}
+
+.config-tab {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: center;
+  padding: 12px;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.config-tab:last-child {
+  border-bottom: none;
+}
+
+.config-tab:hover {
+  transform: none;
+  background: color-mix(in srgb, var(--surface) 66%, transparent);
+  box-shadow: none;
+}
+
+.config-tab.active {
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--mint) 12%, transparent), transparent 78%),
+    color-mix(in srgb, var(--surface) 70%, transparent);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--mint) 68%, var(--sky));
+}
+
+.config-tab-icon {
+  grid-row: 1 / span 2;
+  margin-bottom: 0;
+}
+
+.config-tab-icon svg,
+.config-heading-icon {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.8;
+}
+
+.config-tab-copy {
+  min-height: 0;
+}
+
+.config-active-tab-facts,
+.config-fact-list,
+.config-core-baseline {
+  overflow: hidden;
+  gap: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 48%, transparent);
+}
+
+.config-active-tab-fact,
+.config-fact,
+.config-core-baseline__item {
+  border: none;
+  border-right: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.config-active-tab-fact:last-child,
+.config-fact:last-child,
+.config-core-baseline__item:last-child {
+  border-right: none;
+}
+
+.config-subsection {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.config-page-shell .panel-heading-emph > span:first-child,
+.config-sheet .panel-heading-emph > span:first-child {
+  position: relative;
+  overflow: hidden;
+  flex: 0 0 auto;
+  color: transparent;
+  font-size: 0 !important;
+}
+
+.config-page-shell .panel-heading-emph > span:first-child::before,
+.config-sheet .panel-heading-emph > span:first-child::before {
+  content: "";
+  display: block;
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--mint) 48%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mint) 45%, transparent), color-mix(in srgb, var(--sky) 24%, transparent)),
+    color-mix(in srgb, var(--surface) 68%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.config-page-shell {
+  width: 100%;
+  max-width: none;
+  gap: 14px;
+}
+
+.config-workbench {
+  display: grid;
+  grid-template-columns: minmax(248px, 324px) minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--atlas-line);
+  border-radius: var(--atlas-radius-lg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel) 70%, transparent), color-mix(in srgb, var(--atlas-panel) 42%, transparent));
+}
+
+.config-sidebar {
+  position: relative;
+  top: auto;
+  max-height: none;
+  border: 0;
+  border-right: 1px solid var(--atlas-line);
+  border-radius: 0;
+  padding: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel-2) 58%, transparent), color-mix(in srgb, var(--atlas-panel) 24%, transparent));
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.config-main {
+  min-width: 0;
+  display: grid;
+  gap: 0;
+  border: 0;
+  background: transparent;
+}
+
+.config-active-tab-panel,
+.config-sheet {
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.config-active-tab-panel {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 16px 18px;
+  background: color-mix(in srgb, var(--atlas-panel-2) 64%, transparent);
+  backdrop-filter: blur(18px) saturate(1.12);
+}
+
+.config-overview-ribbon,
+.config-active-tab-facts,
+.config-fact-list,
+.config-core-baseline {
+  border: 1px solid var(--atlas-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--atlas-panel-3) 66%, transparent);
+}
+
+.config-overview-card,
+.config-active-tab-fact,
+.config-fact,
+.config-core-baseline__item {
+  border-radius: 0;
+  background: transparent;
+  border-right: 1px solid var(--atlas-line);
+}
+
+.config-subsection,
+.config-collapsible {
+  border: 1px solid var(--atlas-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--atlas-panel-3) 60%, transparent);
+  box-shadow: none;
+}
+
+.config-tab {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.config-workbench {
+    grid-template-columns: 1fr;
+  }
+
+.config-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--atlas-line);
+  }
+
 .config-page-shell {
   gap: 16px;
 }
