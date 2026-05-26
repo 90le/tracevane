@@ -635,17 +635,34 @@ test("codex stack delegates global job banner without losing navigation and dism
 
 test("codex stack install page delegates preflight plan without losing actions", () => {
   assert.match(controlPage, /import CodexStackInstallPlanCard from "\.\/CodexStackInstallPlanCard\.vue";/);
-  assert.match(controlPage, /<CodexStackInstallPlanCard[\s\S]*:highlights="installPlanHighlights"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@reinstall-full="reinstallFullStack"[\s\S]*@repair="repairRecommended"/);
+  assert.match(controlPage, /<CodexStackInstallPlanCard[\s\S]*:highlights="installPlanHighlights"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:recommended-title="installPlanRecommendedTitle"[\s\S]*:recommended-copy="installPlanRecommendedCopy"[\s\S]*:recommended-button="installPlanRecommendedButton"[\s\S]*:recommended-disabled="installPlanRecommendedDisabled"[\s\S]*:recommended-disabled-help="installPlanRecommendedDisabledHelp"[\s\S]*:recommended-tone="installPlanRecommendedTone"[\s\S]*@run-recommended="runInstallPlanRecommendation"[\s\S]*@install-full="installFullStack"[\s\S]*@install-base="installBaseOnly"[\s\S]*@reinstall-full="reinstallFullStack"[\s\S]*@repair="repairRecommended"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-plan-card"/);
   assert.match(installPlanCard, /新手入口/);
   assert.match(installPlanCard, /不用先理解所有组件/);
+  assert.match(installPlanCard, /现在先做/);
+  assert.match(installPlanCard, /recommendedTitle/);
+  assert.match(installPlanCard, /recommendedCopy/);
+  assert.match(installPlanCard, /recommendedButton/);
+  assert.match(installPlanCard, /@click="\$emit\('run-recommended'\)"/);
+  assert.match(installPlanCard, /class="cs-install-decision"/);
+  assert.match(installPlanCard, /class="cs-install-secondary-drawer"/);
+  assert.match(installPlanCard, /其它入口/);
+  assert.match(installPlanCard, /仅在推荐动作不适合时使用/);
   assert.match(installPlanCard, /class="cs-install-action-rail"/);
-  assert.match(installPlanCard, /class="cs-install-action-row cs-install-action-primary"/);
+  assert.doesNotMatch(installPlanCard, /class="cs-install-action-row cs-install-action-primary"/);
   assert.match(installPlanCard, /class="cs-install-secondary-actions"/);
   assert.match(installPlanCard, /安装日志会进入浮层/);
   assert.match(installPlanCard, /第一次使用/);
   assert.match(installPlanCard, /已经安装/);
   assert.doesNotMatch(installPlanCard, /cs-install-plan-card|cs-entry-action|<style scoped>/);
+  assert.match(controlPage, /const installPlanRecommendedTitle = computed/);
+  assert.match(controlPage, /const installPlanRecommendedDisabled = computed/);
+  assert.match(controlPage, /function runInstallPlanRecommendation\(\): void/);
+  assert.match(controlPage, /case "install":[\s\S]*void installFullStack\(\);/);
+  assert.match(controlPage, /case "repair":[\s\S]*void repairRecommended\(\);/);
+  assert.match(controlPage, /case "review-smoke":[\s\S]*void runSmokeMatrix\(\);/);
+  assert.match(codexStackInstallCss, /\.cs-install-decision\s*\{/);
+  assert.match(codexStackInstallCss, /\.cs-install-secondary-drawer\s*\{/);
   assert.match(codexStackInstallCss, /\.cs-install-action-row\s*\{/);
   assert.match(codexStackInstallCss, /\.cs-install-step-mark/);
   assert.match(controlPage, /class="cs-install-options-panel"/);

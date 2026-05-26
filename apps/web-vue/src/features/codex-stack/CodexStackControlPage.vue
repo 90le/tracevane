@@ -174,6 +174,13 @@
               :highlights="installPlanHighlights"
               :can-run-mutation="canRunMutation"
               :mutation-disabled-help="mutationDisabledHelp"
+              :recommended-title="installPlanRecommendedTitle"
+              :recommended-copy="installPlanRecommendedCopy"
+              :recommended-button="installPlanRecommendedButton"
+              :recommended-disabled="installPlanRecommendedDisabled"
+              :recommended-disabled-help="installPlanRecommendedDisabledHelp"
+              :recommended-tone="installPlanRecommendedTone"
+              @run-recommended="runInstallPlanRecommendation"
               @install-full="installFullStack"
               @install-base="installBaseOnly"
               @reinstall-full="reinstallFullStack"
@@ -1072,6 +1079,87 @@ const nextActionDisabledHelp = computed(() => {
   }
   if (actionBusy.value) return actionBusyDisabledHelp.value;
   return "";
+});
+const installPlanRecommendationRequiresMutation = computed(() => {
+  const kind = activeRecommendation.value?.kind;
+  return kind === "install" || kind === "repair" || kind === "review-smoke";
+});
+const installPlanRecommendedTitle = computed(() => {
+  switch (activeRecommendation.value?.kind) {
+    case "install":
+      return text("一键完成首次安装", "Install the first-use route");
+    case "repair":
+      return text("先执行推荐修复", "Run the recommended repair first");
+    case "review-smoke":
+      return text("先复验当前目标模型", "Recheck the current target model first");
+    case "watch-job":
+      return text("先查看后台任务", "Watch the background job first");
+    case "bind-cc-connect":
+      return text("先完成 Agent 绑定", "Complete Agent binding first");
+    case "review-proxy":
+      return text("先检查网络策略", "Review network policy first");
+    case "run-check":
+      return text("当前可运行健康检查", "Run a health check now");
+    default:
+      return nextActionTitle.value;
+  }
+});
+const installPlanRecommendedCopy = computed(() => {
+  if (activeRecommendation.value?.kind === "install") {
+    return text(
+      "Studio 会按当前模型、端口和直连策略安装 CPA、Compact、cc-connect 与必要守护；日志会在浮层里输出。",
+      "Studio installs CPA, Compact, cc-connect, and required guards with the current model, ports, and direct-access policy; logs open in the floating output panel.",
+    );
+  }
+  if (activeRecommendation.value?.kind === "review-smoke") {
+    return text(
+      "只验证当前目标模型，不切换 Codex。普通、非流式、流式和压缩上下文全部通过后，再考虑接入 CPA。",
+      "Verify the current target model without switching Codex. Only consider CPA attach after chat, non-stream, stream, and compaction all pass.",
+    );
+  }
+  return nextActionCopy.value;
+});
+const installPlanRecommendedButton = computed(() => {
+  switch (activeRecommendation.value?.kind) {
+    case "install":
+      return text("一键安装全部组件", "Install Full Stack");
+    case "repair":
+      return text("执行推荐修复", "Run Recommended Repair");
+    case "review-smoke":
+      return text("只验证模型", "Verify Model Only");
+    case "watch-job":
+      return text("查看日志", "View Logs");
+    case "bind-cc-connect":
+      return text("去 Agent 绑定", "Bind Agent");
+    case "review-proxy":
+      return text("检查模型上游", "Review Models");
+    case "run-check":
+      return text("运行健康检查", "Run Health Check");
+    default:
+      return nextActionButton.value;
+  }
+});
+const installPlanRecommendedDisabled = computed(() => {
+  if (installPlanRecommendationRequiresMutation.value) return !canRunMutation.value;
+  if (activeRecommendation.value?.kind === "run-check") return actionBusy.value;
+  return false;
+});
+const installPlanRecommendedDisabledHelp = computed(() => {
+  if (installPlanRecommendationRequiresMutation.value) return mutationDisabledHelp.value;
+  if (activeRecommendation.value?.kind === "run-check") return actionBusyDisabledHelp.value;
+  return "";
+});
+const installPlanRecommendedTone = computed<CodexStackTone>(() => {
+  switch (activeRecommendation.value?.severity) {
+    case "danger":
+      return "danger";
+    case "warning":
+      return "accent";
+    case "success":
+      return "sage";
+    default:
+      return "neutral";
+  }
 });
 const activeJobTitle = computed(() => {
   if (!activeJob.value) return "";
@@ -2272,6 +2360,34 @@ function nextActionPrimary(): void {
       return;
     default:
       setWorkspaceSection(nextActionSection.value, focusHintForAction(nextActionTitle.value, nextActionCopy.value));
+  }
+}
+
+function runInstallPlanRecommendation(): void {
+  switch (activeRecommendation.value?.kind) {
+    case "install":
+      void installFullStack();
+      return;
+    case "repair":
+      void repairRecommended();
+      return;
+    case "review-smoke":
+      void runSmokeMatrix();
+      return;
+    case "watch-job":
+      setWorkspaceSection("logs", focusHintForAction(installPlanRecommendedTitle.value, installPlanRecommendedCopy.value));
+      return;
+    case "bind-cc-connect":
+      setWorkspaceSection("cc-connect", focusHintForAction(installPlanRecommendedTitle.value, installPlanRecommendedCopy.value));
+      return;
+    case "review-proxy":
+      setWorkspaceSection("settings", focusHintForAction(installPlanRecommendedTitle.value, installPlanRecommendedCopy.value));
+      return;
+    case "run-check":
+      void runCheck();
+      return;
+    default:
+      nextActionPrimary();
   }
 }
 

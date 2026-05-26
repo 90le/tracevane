@@ -13,7 +13,7 @@
 }
 
 .cs-install-entry-copy,
-.cs-install-action-rail {
+.cs-install-decision {
   min-width: 0;
   padding: 18px;
   background: color-mix(in srgb, var(--surface) 58%, transparent);
@@ -47,9 +47,90 @@
   font-size: 0.86rem;
 }
 
+.cs-install-decision {
+  display: grid;
+  gap: 16px;
+  align-content: center;
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--acc) 16%, transparent), transparent 38%),
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 78%, transparent), color-mix(in srgb, var(--shell-panel-fill-strong) 82%, transparent));
+}
+
+.cs-install-decision.tone-danger {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--danger) 16%, transparent), transparent 38%),
+    color-mix(in srgb, var(--surface) 78%, transparent);
+}
+
+.cs-install-decision.tone-accent {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--warning) 16%, transparent), transparent 38%),
+    color-mix(in srgb, var(--surface) 78%, transparent);
+}
+
+.cs-install-decision.tone-sage {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--success) 14%, transparent), transparent 38%),
+    color-mix(in srgb, var(--surface) 78%, transparent);
+}
+
+.cs-install-decision-copy {
+  max-width: 760px;
+}
+
+.cs-install-decision-copy h4 {
+  margin: 4px 0 0;
+  font-size: clamp(1.18rem, 1.4vw, 1.55rem);
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.cs-install-decision-copy p {
+  margin: 10px 0 0;
+  color: var(--text-soft);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.cs-install-decision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.cs-install-primary-action {
+  min-width: 210px;
+}
+
+.cs-install-secondary-drawer {
+  border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  padding-top: 12px;
+}
+
+.cs-install-secondary-drawer summary {
+  display: flex;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  font-weight: 760;
+}
+
+.cs-install-secondary-drawer summary small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .cs-install-action-rail {
   display: grid;
   gap: 1px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 10px;
   padding: 0;
   background: color-mix(in srgb, var(--line) 76%, transparent);
 }
@@ -61,12 +142,6 @@
   align-items: center;
   padding: 16px;
   background: color-mix(in srgb, var(--surface) 72%, transparent);
-}
-
-.cs-install-action-primary {
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--acc) 12%, transparent), transparent 36%),
-    color-mix(in srgb, var(--surface) 78%, transparent);
 }
 
 .cs-install-step-mark,
@@ -556,6 +631,14 @@
 
   .cs-install-action-row {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .cs-install-decision-actions {
+    align-items: stretch;
+  }
+
+  .cs-install-primary-action {
+    width: 100%;
   }
 
   .cs-install-action-row > button,
