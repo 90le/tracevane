@@ -12,6 +12,7 @@ function read(filePath) {
 }
 
 const styleCss = read("apps/web-vue/src/style.css");
+const codexStackWorkspaceCss = read("apps/web-vue/src/features/codex-stack/codex-stack-workspace.css");
 const designContract = read("DESIGN.md");
 
 function collectFiles(dir, suffix) {
@@ -58,8 +59,11 @@ function contrastRatio(foreground, background) {
 
 test("shared primitives consume semantic aliases for surfaces and action accents", () => {
   assert.doesNotMatch(styleCss, /\.panel-card,\s*\.metric-card\s*\{/);
-  assert.match(styleCss, /\.cs-surface\s*\{[\s\S]*background:[\s\S]*var\(--surface-base\)/);
-  assert.match(styleCss, /\.cs-surface\s*\{[\s\S]*border:\s*1px solid var\(--border-subtle\);/);
+  assert.match(codexStackWorkspaceCss, /\.cs-surface\s*\{[\s\S]*background:[\s\S]*var\(--surface-base\)/);
+  assert.match(
+    codexStackWorkspaceCss,
+    /\.cs-surface\s*\{[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
+  );
   assert.match(
     styleCss,
     /\.primary-button\s*\{[^}]*background:\s*var\(--accent-primary\);/,

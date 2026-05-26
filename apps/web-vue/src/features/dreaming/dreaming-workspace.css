@@ -1,3 +1,11 @@
+/* Migrated Dreaming workspace rules from global style.css. Keep Dreaming chrome in feature CSS. */
+
+.dreaming-page {
+  width: 100%;
+  max-width: none;
+  gap: 14px;
+}
+
 /* DreamingControlPage.vue */
 .dreaming-page {
   --dream-stage-bg:

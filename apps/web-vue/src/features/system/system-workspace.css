@@ -1,3 +1,24 @@
+/* Migrated System workspace rules from global style.css. Keep System chrome in feature CSS. */
+
+.system-page {
+  width: 100%;
+  max-width: none;
+  gap: 14px;
+}
+
+.system-overview-command-panel {
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-left: 2px solid color-mix(in srgb, var(--atlas-primary) 65%, transparent);
+  border-radius: 0;
+  padding: 14px 16px 14px 18px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--atlas-primary) 9%, transparent), transparent 58%),
+    transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 .system-page,
 .system-control-surface,
 .system-control-tower-surface {

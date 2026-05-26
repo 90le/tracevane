@@ -1,3 +1,16 @@
+/* Migrated Skills workspace rules from global style.css. Keep Skills chrome in feature CSS. */
+
+.skills-page {
+  width: 100%;
+  max-width: none;
+  gap: 14px;
+}
+
+.skills-mode-button {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
 .skills-page {
   gap: 18px;
 }

@@ -1,3 +1,113 @@
+/* Migrated Codex Stack workspace rules from global style.css. Keep Codex Stack chrome in feature CSS. */
+
+.cs-info-chip,
+.cs-status-pill {
+  background: rgba(255, 255, 255, 0.075);
+  border-color: rgba(226, 247, 255, 0.2);
+}
+
+html[data-theme="dark"] .cs-status-pill.tone-sage,
+html[data-theme="dark"] .cs-nav-badge.tone-sage {
+  color: #bff5d7 !important;
+  border-color: color-mix(in srgb, var(--studio-green) 46%, var(--studio-line)) !important;
+  background: color-mix(in srgb, var(--studio-green) 14%, transparent) !important;
+}
+
+html[data-theme="dark"] .cs-status-pill.tone-accent,
+html[data-theme="dark"] .cs-nav-badge.tone-accent {
+  color: #cfe3ff !important;
+  border-color: color-mix(in srgb, var(--sky) 42%, var(--studio-line)) !important;
+  background: color-mix(in srgb, var(--sky) 12%, transparent) !important;
+}
+
+html[data-theme="dark"] .cs-status-pill.tone-danger,
+html[data-theme="dark"] .cs-nav-badge.tone-danger {
+  color: #ffd1d6 !important;
+  border-color: color-mix(in srgb, var(--studio-red) 46%, var(--studio-line)) !important;
+  background: color-mix(in srgb, var(--studio-red) 14%, transparent) !important;
+}
+
+html[data-theme="dark"] .cs-status-pill.tone-neutral,
+html[data-theme="dark"] .cs-nav-badge.tone-neutral {
+  color: var(--studio-text-soft) !important;
+  border-color: var(--studio-line) !important;
+  background: color-mix(in srgb, var(--studio-elevated) 46%, transparent) !important;
+}
+
+html[data-theme="light"] .cs-status-pill,
+html[data-theme="light"] .cs-info-chip {
+  color: var(--studio-text-soft);
+  background: rgba(255, 255, 255, 0.68);
+  border-color: rgba(20, 72, 92, 0.13);
+}
+
+html[data-theme="light"] .cs-status-pill.tone-sage,
+html[data-theme="light"] .cs-nav-badge.tone-sage {
+  color: #0c684f;
+  background: rgba(211, 250, 232, 0.78);
+  border-color: rgba(15, 144, 104, 0.22);
+}
+
+html[data-theme="light"] .cs-status-pill.tone-accent,
+html[data-theme="light"] .cs-nav-badge.tone-accent {
+  color: #15526d;
+  background: rgba(221, 244, 255, 0.82);
+  border-color: rgba(76, 157, 198, 0.22);
+}
+
+.cs-surface {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-raised) 42%, var(--surface-base));
+  box-shadow: none;
+}
+
+html[data-theme="light"] .cs-surface {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(18, 34, 56, 0.09);
+}
+
+.cs-dashboard-command-center,
+.cs-install-command-pane,
+.cs-repair-board {
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-left: 2px solid color-mix(in srgb, var(--atlas-primary) 65%, transparent);
+  border-radius: 0;
+  padding: 14px 16px 14px 18px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--atlas-primary) 9%, transparent), transparent 58%),
+    transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.cs-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(248px, 324px) minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--atlas-line);
+  border-radius: var(--atlas-radius-lg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel) 70%, transparent), color-mix(in srgb, var(--atlas-panel) 42%, transparent));
+}
+
+.cs-repair-step,
+.cs-component-mode-row {
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cs-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
 .codex-stack-page {
   gap: 18px;
 }
