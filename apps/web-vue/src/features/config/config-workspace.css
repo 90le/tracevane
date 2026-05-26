@@ -145,14 +145,12 @@
   gap: 18px;
 }
 
-.config-main .story-item,
 .config-main .toggle-card,
 .config-main .provider-model-row,
 .config-main .provider-card {
   box-shadow: none;
 }
 
-.config-main .story-item,
 .config-main .toggle-card,
 .config-main .provider-model-row,
 .config-main .provider-card {
@@ -160,7 +158,6 @@
   border-color: rgba(255, 255, 255, 0.08);
 }
 
-html[data-theme="light"] .config-main .story-item,
 html[data-theme="light"] .config-main .toggle-card,
 html[data-theme="light"] .config-main .provider-model-row,
 html[data-theme="light"] .config-main .provider-card {

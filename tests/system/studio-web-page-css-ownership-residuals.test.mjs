@@ -10,6 +10,26 @@ function read(filePath) {
   return fs.readFileSync(path.join(rootDir, filePath), "utf8");
 }
 
+function readFilesUnder(relativeDir, predicate) {
+  const startDir = path.join(rootDir, relativeDir);
+  const chunks = [];
+  const stack = [startDir];
+  while (stack.length) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(entryPath);
+        continue;
+      }
+      if (predicate(entryPath)) {
+        chunks.push(fs.readFileSync(entryPath, "utf8"));
+      }
+    }
+  }
+  return chunks.join("\n");
+}
+
 const globalStyleCss = read("apps/web-vue/src/style.css");
 const codexStackWorkspaceCss = read("apps/web-vue/src/features/codex-stack/codex-stack-workspace.css");
 const terminalWorkspaceCss = read("apps/web-vue/src/features/terminal/terminal-workspace.css");
@@ -17,12 +37,22 @@ const skillsWorkspaceCss = read("apps/web-vue/src/features/skills/skills-workspa
 const systemWorkspaceCss = read("apps/web-vue/src/features/system/system-workspace.css");
 const dreamingWorkspaceCss = read("apps/web-vue/src/features/dreaming/dreaming-workspace.css");
 const operateWorkspaceCss = read("apps/web-vue/src/features/operate/operate-workspace.css");
+const webSourceText = readFilesUnder("apps/web-vue/src", (entryPath) => /\.(?:vue|ts|js|css)$/.test(entryPath));
 
 test("global style no longer owns remaining page-family selectors", () => {
   assert.doesNotMatch(
     globalStyleCss,
     /\.(?:cs-[a-zA-Z0-9_-]*|terminal[a-zA-Z0-9_-]*|skills[a-zA-Z0-9_-]*|system[a-zA-Z0-9_-]*|dreaming[a-zA-Z0-9_-]*|operate-[a-zA-Z0-9_-]*|account-tile|binding-item|request-item|tag-chip|capability-chip)/,
   );
+});
+
+test("dead legacy dashboard and page-helper selectors stay deleted", () => {
+  const deadSelectorPattern =
+    /(?<![a-zA-Z0-9_-])(?:story-list|story-item|check-grid|check-item|activity-table|activity-row|agent-roster|agent-roster-card|agent-roster-top|agent-status|agent-roster-meta|state-online|state-ready|state-designing|table-card|table-card-inner|data-table|code-block|shell-utility-bar|page-header-stage|page-header-copy|page-header-rail|page-metric-strip|page-metric|page-metric-label|page-command-ribbon|page-command-link)(?![a-zA-Z0-9_-])/;
+
+  assert.doesNotMatch(globalStyleCss, /\.subtle\s*\{/);
+  assert.doesNotMatch(globalStyleCss, deadSelectorPattern);
+  assert.doesNotMatch(webSourceText, deadSelectorPattern);
 });
 
 test("remaining page-family CSS lives in feature-owned stylesheets", () => {
