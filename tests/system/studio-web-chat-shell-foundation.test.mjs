@@ -96,6 +96,13 @@ const chatRecordBrowserPanel = fs.readFileSync(
   ),
   "utf8",
 );
+const chatRecordBrowserCss = fs.readFileSync(
+  path.join(
+    rootDir,
+    "apps/web-vue/src/features/chat-v2/chat-record-browser.css",
+  ),
+  "utf8",
+);
 const composerBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ComposerBar.vue"),
   "utf8",
@@ -919,12 +926,14 @@ test("mobile record browser uses a dedicated sheet instead of permanently occupy
     /compactViewportMediaQuery = window\.matchMedia\('\(max-width: 920px\)'\)/,
   );
   assert.match(chatRecordBrowserPanel, /chat-record-browser--sheet/);
+  assert.match(chatRecordBrowserPanel, /import '\.\/chat-record-browser\.css';/);
+  assert.doesNotMatch(chatRecordBrowserPanel, /<style scoped>/);
   assert.match(
-    chatRecordBrowserPanel,
+    chatRecordBrowserCss,
     /\.chat-record-browser--sheet\s*\{[\s\S]*position:\s*fixed;/,
   );
   assert.match(
-    chatRecordBrowserPanel,
+    chatRecordBrowserCss,
     /\.chat-record-browser__filter-actions\s*\{[\s\S]*justify-content:\s*space-between;/,
   );
 });

@@ -17,6 +17,10 @@ const chatRecordBrowserPanel = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatRecordBrowserPanel.vue'),
   'utf8',
 );
+const chatRecordBrowserCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/chat-record-browser.css'),
+  'utf8',
+);
 const chatRecordBrowserState = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/chat-record-browser-state.ts'),
   'utf8',
@@ -70,6 +74,8 @@ test('record browser search invalidates stale responses and keeps role/content/d
 });
 
 test('record browser panel exposes loading, empty, error, and ready surfaces on desktop and mobile', () => {
+  assert.match(chatRecordBrowserPanel, /import '\.\/chat-record-browser\.css';/);
+  assert.doesNotMatch(chatRecordBrowserPanel, /<style scoped>/);
   assert.match(chatRecordBrowserPanel, /DialogRoot/);
   assert.match(chatRecordBrowserPanel, /DialogPortal/);
   assert.match(chatRecordBrowserPanel, /type="date"/);
@@ -92,8 +98,17 @@ test('record browser panel exposes loading, empty, error, and ready surfaces on 
   assert.match(chatRecordBrowserPanel, /const searchDisabled = computed\(\(\) => props\.loading \|\| !hasSearchCriteria\.value\)/);
   assert.match(chatRecordBrowserPanel, /v-else-if="!hasSearchCriteria"/);
   assert.match(chatRecordBrowserPanel, /v-else-if="!hasQuery && !hasNonQueryFilters && selectedDay"/);
-  assert.match(chatRecordBrowserPanel, /:global\(\.chat-record-browser\.theme-light\)/);
-  assert.match(chatRecordBrowserPanel, /:global\(\.chat-record-browser\.theme-dark\)/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser-mask\s*\{/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser--sheet\s*\{/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser--dock\s*\{/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser__surface--loading\s*\{/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser__surface--empty\s*\{/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser__surface--error\s*\{/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser\.theme-light/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser\.theme-dark/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser-mask\.theme-light/);
+  assert.match(chatRecordBrowserCss, /\.chat-record-browser-mask\.theme-dark/);
+  assert.doesNotMatch(chatRecordBrowserCss, /:global|:deep/);
 });
 
 test('chat record browser state keeps the browser state isolated from the main timeline', () => {
