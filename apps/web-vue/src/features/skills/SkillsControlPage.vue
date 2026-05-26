@@ -145,10 +145,7 @@
               </span>
 
               <span>
-                <span class="status-pill" :class="skillTone(skill.status)">
-                  <span class="status-pill-dot"></span>
-                  <span>{{ skillStatusLabel(skill.status) }}</span>
-                </span>
+                <StatusPill :label="skillStatusLabel(skill.status)" :tone="skillTone(skill.status)" />
               </span>
 
               <span class="skills-table-subtle">{{ sourceCategoryLabel(skill.sourceCategory) }}</span>
@@ -1145,6 +1142,7 @@ import type {
   SkillsUploadPreflightResult,
 } from '../../../../../types/skills';
 import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
+import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   fetchMarketplaceSkills,
@@ -1375,13 +1373,13 @@ function skillStatusLabel(value: SkillSummary['status']): string {
   }
 }
 
-function skillTone(value: SkillSummary['status']): string {
+function skillTone(value: SkillSummary['status']): 'neutral' | 'accent' | 'sage' {
   switch (value) {
-    case 'ready': return 'tone-sage';
-    case 'needs-setup': return 'tone-accent';
-    case 'disabled': return 'tone-neutral';
-    case 'blocked': return 'tone-neutral';
-    default: return 'tone-neutral';
+    case 'ready': return 'sage';
+    case 'needs-setup': return 'accent';
+    case 'disabled': return 'neutral';
+    case 'blocked': return 'neutral';
+    default: return 'neutral';
   }
 }
 

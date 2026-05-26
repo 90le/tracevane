@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-26T10:07:36.630Z",
+  "generatedAt": "2026-05-26T10:13:40.774Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -215,6 +215,7 @@
     "tests/system/studio-web-premium-motion-foundation.test.mjs",
     "tests/system/studio-web-shared-avatar-components.test.mjs",
     "tests/system/studio-web-shared-glass-select.test.mjs",
+    "tests/system/studio-web-shared-status-pill.test.mjs",
     "tests/system/studio-web-shell-chrome-layout.test.mjs",
     "tests/system/studio-web-shell-layout-redesign.test.mjs",
     "tests/system/studio-web-shell-route-manifest.test.mjs",

@@ -12,10 +12,10 @@
     <section class="terminal-console-main">
       <header v-if="props.showToolbar" class="terminal-console-header">
         <div class="terminal-console-header-left">
-          <span class="status-pill" :class="connected ? 'tone-sage' : 'tone-neutral'">
-            <span class="status-pill-dot"></span>
-            <span>{{ connected ? text('终端已连接', 'Terminal connected') : text('终端未连接', 'Terminal disconnected') }}</span>
-          </span>
+          <StatusPill
+            :label="connected ? text('终端已连接', 'Terminal connected') : text('终端未连接', 'Terminal disconnected')"
+            :tone="connected ? 'sage' : 'neutral'"
+          />
           <span class="terminal-console-header-chip">{{ terminalRendererLabel }}</span>
           <span v-if="terminalScreenModeLabel" class="terminal-console-header-chip terminal-console-header-chip--mode">{{ terminalScreenModeLabel }}</span>
           <span class="terminal-console-header-chip">{{ text('当前终端', 'Active shell') }} · {{ activeCliLabel }}</span>
@@ -103,6 +103,7 @@ import {
 } from '../../../../../types/terminal';
 import { useLocalePreference } from '../../shared/locale';
 import { getWebSocketBasePath, resolveStudioGatewayClientAuth } from '../../shared/api';
+import StatusPill from '../../components/StatusPill.vue';
 import { GatewayBrowserClient, type GatewayEventFrame } from '../../shared/gateway-client';
 import {
   getStudioRealtimeTransport,

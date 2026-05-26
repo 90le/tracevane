@@ -1707,48 +1707,6 @@ select.form-input option {
   font-size: 15px;
 }
 
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--text-soft);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.status-pill-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: currentColor;
-  opacity: 0.9;
-}
-
-.status-pill.tone-accent {
-  background: linear-gradient(135deg, rgba(255, 190, 122, 0.16), rgba(255, 127, 143, 0.12));
-  color: var(--status-pill-accent-text);
-}
-
-.status-pill.tone-sage {
-  background: linear-gradient(135deg, rgba(109, 240, 207, 0.16), rgba(111, 211, 255, 0.1));
-  color: var(--status-pill-sage-text);
-}
-
-.status-pill.tone-neutral {
-  background: linear-gradient(135deg, rgba(111, 211, 255, 0.14), rgba(255, 255, 255, 0.05));
-  color: var(--status-pill-neutral-text);
-}
-
-.status-pill.tone-danger {
-  background: linear-gradient(135deg, rgba(255, 154, 154, 0.18), rgba(255, 127, 143, 0.12));
-  color: var(--status-pill-danger-text);
-}
-
 .topbar-actions {
   display: flex;
   align-items: center;

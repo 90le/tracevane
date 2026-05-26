@@ -6,6 +6,8 @@
 </template>
 
 <script setup lang="ts">
+import './status-pill.css';
+
 withDefaults(defineProps<{
   label: string;
   tone?: 'neutral' | 'accent' | 'sage' | 'danger';
