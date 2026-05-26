@@ -13,6 +13,10 @@ const slashHelpDialog = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashCommandHelpDialog.vue'),
   'utf8',
 );
+const slashCommandCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/slash-command.css'),
+  'utf8',
+);
 
 test('chat shell wires a local slash help dialog for /help and /commands', () => {
   assert.match(chatShellPage, /defineAsyncComponent\(\(\) => import\('\.\/SlashCommandHelpDialog\.vue'\)\)/);
@@ -34,15 +38,17 @@ test('slash help dialog uses reka dialog primitives for the command catalog surf
   assert.match(slashHelpDialog, /<DialogContent as-child @open-auto-focus\.prevent @close-auto-focus\.prevent>/);
   assert.match(slashHelpDialog, /Insert command/);
   assert.match(slashHelpDialog, /getStudioSlashCommandDescription/);
-  assert.match(slashHelpDialog, /\.chat-slash-help-dialog\s*\{[\s\S]*border-radius:\s*12px;/);
-  assert.match(slashHelpDialog, /\.chat-slash-help-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-slash-help-mask-in 0\.2s ease;/);
-  assert.match(slashHelpDialog, /\.chat-slash-help-dialog\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-slash-help-dialog-in 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/);
-  assert.match(slashHelpDialog, /\.chat-slash-help-row\s*\{[\s\S]*border-radius:\s*12px;/);
-  assert.match(slashHelpDialog, /\.chat-slash-help-badge\s*\{[\s\S]*border-radius:\s*8px;/);
-  assert.match(slashHelpDialog, /@keyframes chat-slash-help-mask-in/);
-  assert.match(slashHelpDialog, /@keyframes chat-slash-help-dialog-in/);
-  assert.match(slashHelpDialog, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(slashHelpDialog, /border-radius:\s*12px 12px 10px 10px;/);
+  assert.match(slashHelpDialog, /import '\.\/slash-command\.css';/);
+  assert.doesNotMatch(slashHelpDialog, /<style scoped>/);
+  assert.match(slashCommandCss, /\.chat-slash-help-dialog\s*\{[\s\S]*border-radius:\s*12px;/);
+  assert.match(slashCommandCss, /\.chat-slash-help-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-slash-help-mask-in 0\.2s ease;/);
+  assert.match(slashCommandCss, /\.chat-slash-help-dialog\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-slash-help-dialog-in 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/);
+  assert.match(slashCommandCss, /\.chat-slash-help-row\s*\{[\s\S]*border-radius:\s*12px;/);
+  assert.match(slashCommandCss, /\.chat-slash-help-badge\s*\{[\s\S]*border-radius:\s*8px;/);
+  assert.match(slashCommandCss, /@keyframes chat-slash-help-mask-in/);
+  assert.match(slashCommandCss, /@keyframes chat-slash-help-dialog-in/);
+  assert.match(slashCommandCss, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(slashCommandCss, /border-radius:\s*12px 12px 10px 10px;/);
   assert.doesNotMatch(slashHelpDialog, /<Teleport to="body">/);
   assert.doesNotMatch(slashHelpDialog, /role="dialog"/);
   assert.doesNotMatch(slashHelpDialog, /@click\.self="\$emit\('close'\)"/);

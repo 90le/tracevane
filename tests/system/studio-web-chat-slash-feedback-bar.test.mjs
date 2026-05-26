@@ -13,6 +13,14 @@ const conversationPane = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ConversationPane.vue'),
   'utf8',
 );
+const slashFeedbackBar = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashCommandFeedbackBar.vue'),
+  'utf8',
+);
+const slashCommandCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/slash-command.css'),
+  'utf8',
+);
 
 test('chat shell tracks a selected slash feedback state and passes it into the conversation pane', () => {
   assert.match(chatShellPage, /selectedSlashFeedback/);
@@ -24,4 +32,15 @@ test('conversation pane renders a dedicated slash feedback bar above the thread 
   assert.match(conversationPane, /SlashCommandFeedbackBar/);
   assert.match(conversationPane, /chat-conversation-pane__slash-feedback/);
   assert.match(conversationPane, /@dismiss="\$emit\('dismiss-slash-feedback'\)"/);
+});
+
+test('slash feedback bar owns behavior while shared css owns presentation', () => {
+  assert.match(slashFeedbackBar, /describeStudioSlashExecutionFeedback/);
+  assert.match(slashFeedbackBar, /phase === 'running'/);
+  assert.match(slashFeedbackBar, /phase === 'accepted'/);
+  assert.match(slashFeedbackBar, /import '\.\/slash-command\.css';/);
+  assert.doesNotMatch(slashFeedbackBar, /<style scoped>/);
+  assert.match(slashCommandCss, /\.chat-slash-feedback\s*\{[\s\S]*border-radius:\s*14px;/);
+  assert.match(slashCommandCss, /\.chat-slash-feedback__dismiss\s*\{[\s\S]*border-radius:\s*10px;/);
+  assert.match(slashCommandCss, /@keyframes chat-slash-feedback-progress/);
 });

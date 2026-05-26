@@ -13,6 +13,23 @@ const slashCommandMenu = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashCommandMenu.vue'),
   'utf8',
 );
+const slashCommandFeedbackBar = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashCommandFeedbackBar.vue'),
+  'utf8',
+);
+const slashCommandHelpDialog = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashCommandHelpDialog.vue'),
+  'utf8',
+);
+const slashStatusDialog = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashStatusDialog.vue'),
+  'utf8',
+);
+const slashCommandCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/slash-command.css'),
+  'utf8',
+);
+const slashCommandMenuCss = slashCommandCss.split('/* Slash command feedback */')[0];
 
 test('composer bar wires a slash command menu with bilingual discoverability', () => {
   assert.match(composerBar, /import SlashCommandMenu from '\.\/SlashCommandMenu\.vue'/);
@@ -44,8 +61,27 @@ test('slash command menu exposes accessible command and argument listboxes', () 
   assert.match(slashCommandMenu, /argumentMode/);
   assert.match(slashCommandMenu, /item\.description/);
   assert.match(slashCommandMenu, /item\.label/);
-  assert.match(slashCommandMenu, /\.chat-slash-menu\s*\{[\s\S]*border-radius:\s*12px;/);
-  assert.match(slashCommandMenu, /\.chat-slash-menu-item\s*\{[\s\S]*border-radius:\s*12px;/);
-  assert.match(slashCommandMenu, /\.chat-slash-menu-badge\s*\{[\s\S]*border-radius:\s*8px;/);
-  assert.doesNotMatch(slashCommandMenu, /position:\s*absolute;/);
+  assert.match(slashCommandMenuCss, /\.chat-slash-menu\s*\{[\s\S]*border-radius:\s*12px;/);
+  assert.match(slashCommandMenuCss, /\.chat-slash-menu-item\s*\{[\s\S]*border-radius:\s*12px;/);
+  assert.match(slashCommandMenuCss, /\.chat-slash-menu-badge\s*\{[\s\S]*border-radius:\s*8px;/);
+  assert.doesNotMatch(slashCommandMenuCss, /position:\s*absolute;/);
+});
+
+test('slash command surfaces share one dedicated css module', () => {
+  for (const source of [
+    slashCommandMenu,
+    slashCommandFeedbackBar,
+    slashCommandHelpDialog,
+    slashStatusDialog,
+  ]) {
+    assert.match(source, /import '\.\/slash-command\.css';/);
+    assert.doesNotMatch(source, /<style scoped>/);
+  }
+
+  assert.match(slashCommandCss, /\.chat-slash-menu\b/);
+  assert.match(slashCommandCss, /\.chat-slash-feedback\b/);
+  assert.match(slashCommandCss, /\.chat-slash-feedback__dismiss\b/);
+  assert.match(slashCommandCss, /\.chat-slash-help-dialog\b/);
+  assert.match(slashCommandCss, /\.chat-slash-status-dialog\b/);
+  assert.doesNotMatch(slashCommandCss, /:deep|:global/);
 });
