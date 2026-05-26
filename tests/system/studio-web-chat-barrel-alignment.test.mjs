@@ -29,6 +29,16 @@ const chatV2Index = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/index.ts'),
   'utf8',
 );
+const removedLegacyImplementationFiles = [
+  'ComposerBar.vue',
+  'ConversationPane.vue',
+  'NewChatAgentPicker.vue',
+  'MessageBubble.vue',
+  'InspectorPanel.vue',
+  'SessionListPanel.vue',
+  'display-adapter.ts',
+  'message-groups.ts',
+];
 
 test('legacy chat barrel re-exports the canonical chat-v2 surface instead of local duplicate pages', () => {
   assert.match(chatV2Index, /export \{ default as ChatShellPage \} from '\.\/ChatShellPage\.vue';/);
@@ -45,4 +55,14 @@ test('legacy chat page files proxy into chat-v2 so old imports cannot drift onto
   assert.match(legacyChatHomePage, /<ChatShellPageV2 shell-mode="chat" \/>/);
   assert.match(legacyChatSessionPage, /<ChatShellPageV2 shell-mode="chat" \/>/);
   assert.match(legacyChatWorkbenchPage, /<ChatShellPageV2 shell-mode="inspect" \/>/);
+});
+
+test('legacy chat keeps only compatibility wrappers and shared runtime helpers', () => {
+  for (const fileName of removedLegacyImplementationFiles) {
+    assert.equal(
+      fs.existsSync(path.join(rootDir, 'apps/web-vue/src/features/chat', fileName)),
+      false,
+      `${fileName} should not return as a stale legacy implementation`,
+    );
+  }
 });
