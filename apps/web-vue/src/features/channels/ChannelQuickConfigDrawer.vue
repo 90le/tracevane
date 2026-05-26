@@ -74,6 +74,7 @@ import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui'
 import type { ChannelSettingsInput } from '../../../../../types/channels';
 import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
+import './channels-drawer.css';
 
 defineOptions({ name: 'ChannelQuickConfigDrawer' });
 
@@ -134,75 +135,3 @@ function emitSave(): void {
   });
 }
 </script>
-
-<style scoped>
-.channels-drawer-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(8, 16, 24, 0.66);
-  backdrop-filter: blur(6px);
-  z-index: 1200;
-}
-
-.channels-drawer {
-  position: fixed;
-  top: 24px;
-  right: 24px;
-  bottom: 24px;
-  width: min(560px, calc(100vw - 32px));
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 16px;
-  padding: 22px;
-  border-radius: 24px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  box-shadow: var(--shadow-soft);
-  z-index: 1201;
-}
-
-.channels-drawer__head {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-.channels-drawer__head h3 {
-  margin: 4px 0 6px 0;
-  color: var(--text);
-}
-
-.channels-drawer__head p:last-child {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.channels-drawer__close {
-  border: none;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font-size: 18px;
-}
-
-.channels-drawer__body {
-  overflow: auto;
-  display: grid;
-  gap: 16px;
-}
-
-.channels-drawer__foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-@media (max-width: 920px) {
-  .channels-drawer {
-    inset: 10px;
-    width: auto;
-  }
-}
-</style>

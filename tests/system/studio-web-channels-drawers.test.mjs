@@ -13,6 +13,7 @@ const quickConfigDrawer = read('apps/web-vue/src/features/channels/ChannelQuickC
 const accountCreateDrawer = read('apps/web-vue/src/features/channels/ChannelAccountCreateDrawer.vue');
 const credentialDrawer = read('apps/web-vue/src/features/channels/ChannelCredentialDrawer.vue');
 const accountDetailPage = read('apps/web-vue/src/features/channels/ChannelAccountDetailPage.vue');
+const channelsDrawerCss = read('apps/web-vue/src/features/channels/channels-drawer.css');
 
 test('provider quick config drawer only exposes common provider defaults', () => {
   assert.match(quickConfigDrawer, /default account/i);
@@ -35,7 +36,11 @@ test('account create drawer stays focused on creation intent and required creden
   assert.match(accountCreateDrawer, /channels-drawer-section/);
   assert.match(accountCreateDrawer, /create-account-drawer/);
   assert.match(accountCreateDrawer, /没有单独名称字段|separate display-name field/);
-  assert.match(accountCreateDrawer, /html\[data-theme="light"\]\s+\.channels-drawer/);
+  assert.match(accountCreateDrawer, /import '\.\/channels-drawer\.css';/);
+  assert.doesNotMatch(accountCreateDrawer, /<style scoped>/);
+  assert.match(channelsDrawerCss, /html\[data-theme="light"\]\s+\.channels-drawer/);
+  assert.match(channelsDrawerCss, /\.create-account-drawer\s*\{/);
+  assert.match(channelsDrawerCss, /\.channels-drawer-section\s*\{/);
   assert.doesNotMatch(accountCreateDrawer, /var\(--panel\)/);
   assert.doesNotMatch(accountCreateDrawer, /access/i);
   assert.doesNotMatch(accountCreateDrawer, /binding/i);
@@ -54,16 +59,30 @@ test('credential drawer stays credential-only instead of mixing in deep account 
   assert.match(credentialDrawer, /credential-field-card/);
   assert.match(credentialDrawer, /credential-drawer__account-summary/);
   assert.match(credentialDrawer, /credential-drawer__account-facts/);
-  assert.match(credentialDrawer, /align-content:\s*start/);
+  assert.match(credentialDrawer, /import '\.\/channels-drawer\.css';/);
+  assert.doesNotMatch(credentialDrawer, /<style scoped>/);
+  assert.match(channelsDrawerCss, /align-content:\s*start/);
   assert.match(credentialDrawer, /channelLabel/);
-  assert.match(credentialDrawer, /shell-stage-fill-strong/);
-  assert.match(credentialDrawer, /html\[data-theme="light"\]\s+\.channels-drawer/);
-  assert.match(credentialDrawer, /@media\s*\(max-width:\s*640px\)/);
-  assert.match(credentialDrawer, /\.channels-drawer\s+\.form-grid\s*\{\s*grid-template-columns:\s*1fr;/);
+  assert.match(channelsDrawerCss, /shell-stage-fill-strong/);
+  assert.match(channelsDrawerCss, /html\[data-theme="light"\]\s+\.channels-drawer/);
+  assert.match(channelsDrawerCss, /@media\s*\(max-width:\s*640px\)/);
+  assert.match(channelsDrawerCss, /\.channels-drawer\s+\.form-grid\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
   assert.doesNotMatch(credentialDrawer, /var\(--panel\)/);
   assert.doesNotMatch(credentialDrawer, /group policy/i);
   assert.doesNotMatch(credentialDrawer, /render mode/i);
   assert.doesNotMatch(credentialDrawer, /groupedAccountFields/);
+});
+
+test('channels drawer surfaces share a feature stylesheet instead of scoped style blocks', () => {
+  assert.match(quickConfigDrawer, /import '\.\/channels-drawer\.css';/);
+  assert.match(accountCreateDrawer, /import '\.\/channels-drawer\.css';/);
+  assert.match(credentialDrawer, /import '\.\/channels-drawer\.css';/);
+  assert.doesNotMatch(quickConfigDrawer, /<style scoped>/);
+  assert.doesNotMatch(accountCreateDrawer, /<style scoped>/);
+  assert.doesNotMatch(credentialDrawer, /<style scoped>/);
+  assert.match(channelsDrawerCss, /\.channels-drawer-mask\s*\{/);
+  assert.match(channelsDrawerCss, /\.channels-drawer\s*\{/);
+  assert.match(channelsDrawerCss, /\.channels-drawer__foot\s+\.primary-button/);
 });
 
 test('account detail delegates credential editing to the credential drawer', () => {
