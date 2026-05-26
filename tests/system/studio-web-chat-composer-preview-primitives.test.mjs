@@ -9,8 +9,14 @@ const composerBar = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ComposerBar.vue'),
   'utf8',
 );
+const composerBarCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/composer-bar.css'),
+  'utf8',
+);
 
 test('composer attachment preview uses reka dialog primitives instead of a hand-rolled teleported mask', () => {
+  assert.match(composerBar, /import '\.\/composer-bar\.css';/);
+  assert.doesNotMatch(composerBar, /<style scoped>/);
   assert.match(composerBar, /from 'reka-ui'/);
   assert.match(composerBar, /DialogRoot/);
   assert.match(composerBar, /DialogPortal/);
@@ -31,7 +37,8 @@ test('composer attachment preview closes through a controlled open handler', () 
 });
 
 test('composer attachment preview content is layered above its mask', () => {
-  assert.match(composerBar, /\.chat-composer-preview-mask\s*\{[\s\S]*z-index:\s*80;/);
-  assert.match(composerBar, /\.chat-composer-preview-dialog\s*\{[\s\S]*position:\s*fixed;/);
-  assert.match(composerBar, /\.chat-composer-preview-dialog\s*\{[\s\S]*z-index:\s*81;/);
+  assert.match(composerBarCss, /\.chat-composer-preview-mask\s*\{[\s\S]*z-index:\s*80;/);
+  assert.match(composerBarCss, /\.chat-composer-preview-dialog\s*\{[\s\S]*position:\s*fixed;/);
+  assert.match(composerBarCss, /\.chat-composer-preview-dialog\s*\{[\s\S]*z-index:\s*81;/);
+  assert.doesNotMatch(composerBarCss, /:global|:deep/);
 });

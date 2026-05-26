@@ -40,6 +40,10 @@ const composerBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ComposerBar.vue"),
   "utf8",
 );
+const composerBarCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/composer-bar.css"),
+  "utf8",
+);
 const slashCommandMenu = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SlashCommandMenu.vue"),
   "utf8",
@@ -203,7 +207,7 @@ test("chat portal overlays render on surfaced backgrounds instead of transparent
     /\.cascade-menu\s*\{[\s\S]*box-shadow:\s*0 18px 44px rgba\(3,\s*8,\s*14,\s*0\.28\);/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-slash-menu-popover\s*\{[\s\S]*background:\s*transparent;/,
   );
   assert.match(

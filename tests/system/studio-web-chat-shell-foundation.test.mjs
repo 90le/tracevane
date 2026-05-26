@@ -115,6 +115,10 @@ const composerBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ComposerBar.vue"),
   "utf8",
 );
+const composerBarCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/composer-bar.css"),
+  "utf8",
+);
 const newChatAgentPicker = fs.readFileSync(
   path.join(
     rootDir,
@@ -325,20 +329,22 @@ test("session list chrome adopts a softened IM rail while leaving folder and fil
 
 test("chat composer and picker keep the flatter density pass instead of oversized capsules", () => {
   assert.match(newChatAgentPicker, /DialogRoot/);
+  assert.match(composerBar, /import '\.\/composer-bar\.css';/);
+  assert.doesNotMatch(composerBar, /<style scoped>/);
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-frame\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-attachment\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-stop,\s*[\s\S]*\.chat-composer-send\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-pool-item\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
@@ -650,48 +656,48 @@ test("composer, picker, and queue utilities keep the flatter control language", 
     /\.chat-agent-picker\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-agent-picker-enter 190ms cubic-bezier\(0\.2,\s*0\.8,\s*0\.2,\s*1\);/,
   );
   assert.match(
-    composerBar,
-    /\.chat-composer-editor :deep\(\.chat-composer-token\)\s*\{[\s\S]*border-radius:\s*10px;/,
+    composerBarCss,
+    /\.chat-composer-editor \.chat-composer-token\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    composerBar,
-    /\.chat-composer-editor :deep\(\.chat-composer-token-media\)\s*\{[\s\S]*border-radius:\s*8px;/,
+    composerBarCss,
+    /\.chat-composer-editor \.chat-composer-token-media\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    composerBar,
-    /\.chat-composer-editor :deep\(\.chat-composer-token-badge\)\s*\{[\s\S]*border-radius:\s*8px;/,
+    composerBarCss,
+    /\.chat-composer-editor \.chat-composer-token-badge\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-pool-preview\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-preview-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-composer-preview-mask-in 180ms ease;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-preview-dialog\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-composer-preview-enter 180ms cubic-bezier\(0\.2,\s*0\.8,\s*0\.2,\s*1\);/,
   );
-  assert.match(composerBar, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(composerBarCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-pool-chip:focus-visible\s*\{[^}]*border-radius:\s*10px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-pool-refcount\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-pool-status\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-pool-insert\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-attachment-remove\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
@@ -919,15 +925,15 @@ test("mobile conversation header and composer prioritize visible controls over h
     /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__summary-chip\s*\{[\s\S]*min-height:\s*21px;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-composer-resource-pool\s*\{[\s\S]*flex-wrap:\s*nowrap;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-composer-resource-pool\s*\{[\s\S]*overflow-x:\s*auto;/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-composer-resource-pool\s*\{[\s\S]*scroll-snap-type:\s*x proximity;/,
   );
 });
@@ -1037,7 +1043,7 @@ test("mobile composer tracks visual viewport keyboard changes so the input can r
     /:style="\{ '--chat-composer-keyboard-offset': composerKeyboardOffsetStyle \}"/,
   );
   assert.match(
-    composerBar,
+    composerBarCss,
     /\.chat-composer-shell\s*\{[\s\S]*margin-bottom:\s*var\(--chat-composer-keyboard-offset,\s*0px\);/,
   );
 });
