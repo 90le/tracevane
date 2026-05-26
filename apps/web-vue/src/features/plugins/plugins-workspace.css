@@ -1,3 +1,112 @@
+/* Migrated Plugins workspace rules from global style.css. Keep Plugins chrome in feature CSS. */
+
+.plugins-page {
+  width: 100%;
+  max-width: none;
+  gap: 14px;
+}
+
+.plugins-command-center {
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-left: 2px solid color-mix(in srgb, var(--atlas-primary) 65%, transparent);
+  border-radius: 0;
+  padding: 14px 16px 14px 18px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--atlas-primary) 9%, transparent), transparent 58%),
+    transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.plugins-layout {
+  display: grid;
+  grid-template-columns: minmax(248px, 324px) minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--atlas-line);
+  border-radius: var(--atlas-radius-lg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel) 70%, transparent), color-mix(in srgb, var(--atlas-panel) 42%, transparent));
+}
+
+.plugins-rail {
+  position: relative;
+  top: auto;
+  max-height: none;
+  border: 0;
+  border-right: 1px solid var(--atlas-line);
+  border-radius: 0;
+  padding: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel-2) 58%, transparent), color-mix(in srgb, var(--atlas-panel) 24%, transparent));
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.plugins-stage {
+  min-width: 0;
+  display: grid;
+  gap: 0;
+  border: 0;
+  background: transparent;
+}
+
+.plugins-summary-grid,
+.plugins-facts-grid,
+.plugins-capability-grid {
+  border: 1px solid var(--atlas-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--atlas-panel-3) 66%, transparent);
+}
+
+.plugins-summary-card,
+.plugins-fact,
+.plugins-capability-grid span {
+  border-radius: 0;
+  background: transparent;
+  border-right: 1px solid var(--atlas-line);
+}
+
+.plugins-rail-row,
+.plugins-install-row,
+.plugins-diagnostic,
+.plugins-impact-card,
+.plugins-install-card {
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.plugins-rail-item:hover,
+.plugins-rail-item.active {
+  transform: none;
+  background: color-mix(in srgb, var(--atlas-primary) 9%, var(--atlas-panel-3));
+}
+
+.plugins-guided-field {
+  border: 1px solid var(--atlas-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--atlas-panel-3) 60%, transparent);
+  box-shadow: none;
+}
+
+.plugins-tab {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.plugins-layout {
+    grid-template-columns: 1fr;
+  }
+
+.plugins-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--atlas-line);
+  }
+
 .plugins-page { gap: 18px; }
 .plugins-command-center {
   display: grid;

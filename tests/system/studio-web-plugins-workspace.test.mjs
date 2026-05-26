@@ -13,6 +13,7 @@ function read(filePath) {
 const pluginsView = read("apps/web-vue/src/views/PluginsView.vue");
 const pluginsControlPage = read("apps/web-vue/src/features/plugins/PluginsControlPage.vue");
 const pluginsWorkspaceCss = read("apps/web-vue/src/features/plugins/plugins-workspace.css");
+const globalStyleCss = read("apps/web-vue/src/style.css");
 const pluginsApi = read("apps/web-vue/src/features/plugins/api.ts");
 const routeManifest = read("apps/web-vue/src/features/shell/route-manifest.ts");
 const skillsControlPage = read("apps/web-vue/src/features/skills/SkillsControlPage.vue");
@@ -30,6 +31,8 @@ test("plugins page owns plugin policy, slots, entries, installs, and diagnostics
   assert.match(pluginsControlPage, /Plugin Control Center|插件控制中心/);
   assert.match(pluginsControlPage, /import '\.\/plugins-workspace\.css';/);
   assert.doesNotMatch(pluginsControlPage, /<style scoped>/);
+  assert.match(pluginsWorkspaceCss, /Migrated Plugins workspace rules from global style\.css/);
+  assert.doesNotMatch(globalStyleCss, /\.plugins[a-zA-Z0-9_-]*/);
   assert.match(pluginsControlPage, /pageTabs/);
   assert.match(pluginsControlPage, /Capability index|能力索引/);
   assert.match(pluginsControlPage, /plugins-overview-command/);

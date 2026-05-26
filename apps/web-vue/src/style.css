@@ -4429,7 +4429,6 @@ body::before {
 
 .page-shell,
 .operate-workspace-shell,
-.plugins-page,
 .skills-page,
 .system-page,
 .dreaming-page {
@@ -4439,7 +4438,6 @@ body::before {
 }
 
 .page-header-row,
-.plugins-command-center,
 .cs-dashboard-command-center,
 .system-overview-command-panel,
 .cs-install-command-pane,
@@ -4468,7 +4466,6 @@ body::before {
   letter-spacing: 0.1em;
 }
 
-.plugins-layout,
 .cs-workspace-grid {
   display: grid;
   grid-template-columns: minmax(248px, 324px) minmax(0, 1fr);
@@ -4480,7 +4477,6 @@ body::before {
     linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel) 70%, transparent), color-mix(in srgb, var(--atlas-panel) 42%, transparent));
 }
 
-.plugins-rail,
 .operate-resource-rail {
   position: relative;
   top: auto;
@@ -4495,7 +4491,6 @@ body::before {
   backdrop-filter: none;
 }
 
-.plugins-stage,
 .operate-stage {
   min-width: 0;
   display: grid;
@@ -4504,9 +4499,6 @@ body::before {
   background: transparent;
 }
 
-.plugins-summary-grid,
-.plugins-facts-grid,
-.plugins-capability-grid,
 .terminal-inspector-summary-grid,
 .terminal-binary-list,
 .operate-fact-strip {
@@ -4515,9 +4507,6 @@ body::before {
   background: color-mix(in srgb, var(--atlas-panel-3) 66%, transparent);
 }
 
-.plugins-summary-card,
-.plugins-fact,
-.plugins-capability-grid span,
 .terminal-summary-stat,
 .operate-summary-pill {
   border-radius: 0;
@@ -4525,15 +4514,10 @@ body::before {
   border-right: 1px solid var(--atlas-line);
 }
 
-.plugins-rail-row,
-.plugins-install-row,
 .provider-index-item,
 .provider-model-row,
 .terminal-binary-row,
 .terminal-missing-deps__item,
-.plugins-diagnostic,
-.plugins-impact-card,
-.plugins-install-card,
 .cs-repair-step,
 .cs-component-mode-row {
   border: 0;
@@ -4543,8 +4527,6 @@ body::before {
   box-shadow: none;
 }
 
-.plugins-rail-item:hover,
-.plugins-rail-item.active,
 .provider-index-item:hover,
 .provider-index-item.active {
   transform: none;
@@ -4553,7 +4535,6 @@ body::before {
 
 .form-field,
 .toggle-card,
-.plugins-guided-field,
 .setting-block,
 .fallback-row,
 .provider-model-row {
@@ -4587,7 +4568,6 @@ select.form-input,
 .danger-link,
 .compact-button,
 .surface-tab,
-.plugins-tab,
 .skills-mode-button {
   border-radius: 10px;
   box-shadow: none;
@@ -4647,12 +4627,10 @@ select.form-input,
     justify-self: end;
   }
 
-  .plugins-layout,
   .cs-workspace-grid {
     grid-template-columns: 1fr;
   }
 
-  .plugins-rail,
   .operate-resource-rail {
     border-right: 0;
     border-bottom: 1px solid var(--atlas-line);
