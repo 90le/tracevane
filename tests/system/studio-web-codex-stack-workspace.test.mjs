@@ -420,7 +420,7 @@ test("codex stack section nav delegates tab switching without moving content rou
   assert.match(controlPage, /const recommendedSection = activeRecommendation\.value\?\.section \|\| "dashboard";/);
   assert.match(controlPage, /const componentIssues = current\?\.components\.filter\(\(component\) => component\.status !== "ok"\)\.length \|\| 0;/);
   assert.match(controlPage, /const settingsNeedsReview = Boolean\(current && \(/);
-  assert.match(controlPage, /const targetModel = current\?\.profile\.defaultModel \|\| current\?\.models\.current \|\| current\?\.models\.defaultModel \|\| "";/);
+  assert.match(controlPage, /const targetModel = summaryTargetModel\(current\);/);
   assert.match(controlPage, /!isSmokeMatrixFreshAndComplete\(matrix, targetModel\)/);
   assert.match(controlPage, /recommended: recommendedSection === "settings"/);
   assert.match(controlPage, /runReadinessLevelShortLabel/);
@@ -1097,7 +1097,7 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
 
 test("codex stack attach action requires a fresh passing smoke matrix in the UI", () => {
   assert.match(controlPage, /const isSmokeMatrixAttachReady = computed\(\(\) => \{/);
-  assert.match(controlPage, /const currentCpaTargetModel = computed\(\(\) => summary\.value\?\.profile\.defaultModel \|\| summary\.value\?\.models\.current \|\| summary\.value\?\.models\.defaultModel \|\| ""\);/);
+  assert.match(controlPage, /const currentCpaTargetModel = computed\(\(\) => summaryTargetModel\(summary\.value\)\);/);
   assert.match(controlPage, /return isSmokeMatrixFreshAndComplete\(matrix, currentCpaTargetModel\.value\);/);
   assert.doesNotMatch(codexStackTypes, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS/);
   assert.match(codexStackTypes, /export const CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS = \[[\s\S]*"compact-non-stream"[\s\S]*"compact-stream"[\s\S]*"compact-compact"[\s\S]*\] as const satisfies readonly CodexStackSmokeCheckId\[\];/);
@@ -1165,9 +1165,11 @@ test("codex stack runtime config save sends only changed fields", () => {
   assert.match(controlPage, /const hasConfigPatchChanges = computed\(\(\) => Object\.keys\(configPatchPayload\.value\)\.length > 0\);/);
   assert.match(controlPage, /:has-changes="hasConfigPatchChanges"/);
   assert.match(runtimeConfigCard, /:disabled="!canRunMutation \|\| !hasChanges"/);
-  assert.match(controlPage, /const currentModel = current\.profile\.defaultModel \|\| current\.models\.current \|\| current\.models\.defaultModel \|\| "";/);
-  assert.match(controlPage, /configForm\.defaultModel = normalized\.profile\.defaultModel \|\| normalized\.models\.current \|\| normalized\.models\.defaultModel \|\| "kimi-k2\.6";/);
-  assert.match(controlPage, /installForm\.model = normalized\.profile\.defaultModel \|\| normalized\.models\.current \|\| normalized\.models\.defaultModel \|\| "kimi-k2\.6";/);
+  assert.match(controlPage, /function summaryTargetModel\(current: CodexStackSummaryPayload \| null \| undefined\): string \{/);
+  assert.match(controlPage, /const currentModel = summaryTargetModel\(current\);/);
+  assert.match(controlPage, /configForm\.defaultModel = summaryTargetModel\(normalized\);/);
+  assert.match(controlPage, /installForm\.model = summaryTargetModel\(normalized\);/);
+  assert.doesNotMatch(controlPage, /normalized\.profile\.defaultModel \|\| normalized\.models\.current \|\| normalized\.models\.defaultModel \|\| "kimi-k2\.6"/);
   assert.match(controlPage, /const payload = configPatchPayload\.value;[\s\S]*if \(!Object\.keys\(payload\)\.length\)/);
   assert.doesNotMatch(controlPage, /const payload: CodexStackConfigPatchRequest = \{\s*defaultModel: configForm\.defaultModel,/);
 });
@@ -1176,7 +1178,7 @@ test("codex stack settings page delegates upstream map without moving config wri
   assert.match(controlPage, /import CodexStackUpstreamMap from "\.\/CodexStackUpstreamMap\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackUpstreamMap[\s\S]*:default-model="configForm\.defaultModel \|\| summary\.models\.current \|\| '--'"[\s\S]*:compact-proxy-base-url="compactProxyBaseUrl"[\s\S]*:provider-name="canonicalCcConnectProvider\.name"[\s\S]*:provider-base-url="canonicalCcConnectProvider\.baseUrl"[\s\S]*:provider-model="canonicalCcConnectProvider\.model"/,
+    /<CodexStackUpstreamMap[\s\S]*:default-model="configForm\.defaultModel \|\| summaryTargetModel\(summary\) \|\| '--'"[\s\S]*:compact-proxy-base-url="compactProxyBaseUrl"[\s\S]*:provider-name="canonicalCcConnectProvider\.name"[\s\S]*:provider-base-url="canonicalCcConnectProvider\.baseUrl"[\s\S]*:provider-model="canonicalCcConnectProvider\.model"/,
   );
   assert.doesNotMatch(controlPage, /class="panel-card cs-upstream-map"/);
   assert.match(controlPage, /const configPatchPayload = computed<CodexStackConfigPatchRequest>/);
@@ -1284,15 +1286,33 @@ test("codex stack summary refresh preserves dirty install drafts", () => {
 });
 
 test("codex stack install channel changes sync channel defaults conservatively", () => {
-  assert.match(controlPage, /function installChannelDefaultModel\(channel: CodexStackChannel\): string \{/);
-  assert.match(controlPage, /return channel === "official" \? "glm-5\.1" : "kimi-k2\.6";/);
+  assert.doesNotMatch(controlPage, /function installChannelDefaultModel\(channel: CodexStackChannel\): string \{/);
+  assert.doesNotMatch(controlPage, /return channel === "official" \? "glm-5\.1" : "kimi-k2\.6";/);
   assert.match(controlPage, /function installChannelDefaultCpaPort\(channel: CodexStackChannel\): number \{/);
   assert.match(controlPage, /return channel === "official" \? 8317 : 18795;/);
   assert.match(controlPage, /function syncInstallChannelDefaults\(nextChannel: CodexStackChannel, previousChannel: CodexStackChannel\): void \{/);
-  assert.match(controlPage, /installForm\.model === previousDefaultModel[\s\S]*installForm\.model = installChannelDefaultModel\(nextChannel\);/);
+  assert.match(controlPage, /const currentTargetModel = summaryTargetModel\(summary\.value\);[\s\S]*if \(!installForm\.model && currentTargetModel\) \{[\s\S]*installForm\.model = currentTargetModel;/);
   assert.match(controlPage, /Number\(installForm\.cpaPort\) === previousDefaultPort[\s\S]*installForm\.cpaPort = installChannelDefaultCpaPort\(nextChannel\);/);
   assert.match(controlPage, /watch\(\(\) => installForm\.channel, \(nextChannel, previousChannel\) => \{[\s\S]*syncInstallChannelDefaults\(nextChannel, previousChannel\);/);
-  assert.match(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[[\s\S]*"kimi-k2\.6"[\s\S]*"glm-5\.1"[\s\S]*"gpt-5\.5"/);
+  assert.match(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[[\s\S]*summary\.value\?\.models\.available[\s\S]*configForm\.defaultModel[\s\S]*installForm\.model/);
+  assert.doesNotMatch(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[[\s\S]*"kimi-k2\.6"[\s\S]*"glm-5\.1"[\s\S]*"gpt-5\.5"/);
+  assert.match(controlPage, /model: configForm\.defaultModel \|\| installForm\.model \|\| summaryTargetModel\(summary\.value\) \|\| "--"/);
+  assert.match(controlPage, /const nextModel = configForm\.defaultModel \|\| installForm\.model \|\| summaryTargetModel\(summary\.value\);/);
+});
+
+test("codex stack backend selects user configured models before channel fallbacks", () => {
+  assert.match(codexStackService, /function chooseDefaultModel\(models: string\[\], current = "", openclawDefault = ""\): string \{/);
+  assert.match(codexStackService, /if \(current\) return current;/);
+  assert.match(codexStackService, /const envOverride = normalizeString\(process\.env\.CODEX_MODEL\);[\s\S]*if \(envOverride\) return envOverride;/);
+  assert.match(codexStackService, /if \(openclawDefault\) return openclawDefault;/);
+  assert.doesNotMatch(codexStackService, /for \(const preferred of \[DMWORK_DEFAULT_MODEL, OFFICIAL_DEFAULT_MODEL, openclawDefault/);
+  assert.match(codexStackService, /function chooseCpaAttachModel\(currentModel: string, profileDefault: string, channel: CodexStackChannel, openclawDefault = ""\): string \{/);
+  assert.match(codexStackService, /return profileDefault\.trim\(\) \|\| currentModel\.trim\(\) \|\| openclawDefault\.trim\(\) \|\| defaultModel\(channel\);/);
+  assert.match(codexStackService, /const cpaTargetModel = chooseCpaAttachModel\(currentModel, profile\.defaultModel, resolveChannel\(\), openclawDefaultModel\);/);
+  assert.match(codexStackService, /const attachModel = chooseCpaAttachModel\(currentModel, profile\.defaultModel, resolveChannel\(\), readOpenclawDefaultModel\(currentPaths\.openclawJson\)\);/);
+  assert.match(codexStackService, /const fallbackModel = readOpenclawDefaultModel\(paths\(\)\.openclawJson\) \|\| defaultModel\(resolveChannel\(\)\);/);
+  assert.doesNotMatch(codexStackService, /const requiredModels = Array\.from\(new Set\(\[\s*"glm-5\.1",\s*"kimi-k2\.6"/);
+  assert.match(codexStackService, /const installDefaultModel = normalizeString\(env\.CODEX_MODEL\) \|\| openclawDefaultModel \|\| defaultModel\(channel\);/);
 });
 
 test("codex stack cc-connect refresh preserves dirty config drafts", () => {

@@ -90,7 +90,7 @@
           placeholder="https://api.example.com/v1"
           @input="updateStringField('upstreamBaseUrl', $event)"
         />
-        <span class="form-help">{{ text("glm-5.1 / kimi-k2.6 等第三方兼容端点写这里；国内网关建议保持直连。", "Use this for third-party compatible endpoints such as glm-5.1 / kimi-k2.6; domestic gateways should stay direct.") }}</span>
+        <span class="form-help">{{ text("第三方兼容端点写这里；国内网关建议保持直连，OpenAI/ChatGPT 路径再按需走代理。", "Use this for third-party compatible endpoints; domestic gateways should stay direct, while OpenAI/ChatGPT routes can use a proxy when needed.") }}</span>
       </label>
       <label class="form-field cs-form-span-2">
         <span class="form-label">{{ text("上游 API Key", "Upstream API Key") }}</span>
@@ -227,8 +227,8 @@ const routeDetail = computed(() => props.codexRouteActive === "cpa"
     `Codex uses local CPA with ${props.codexRouteCurrentModel || "--"}; the model and upstream fields affect this route.`,
   )
   : text(
-    `Codex 走官方账户登录，建议模型为 ${props.codexRouteOfficialModel || "gpt-5.5"}；运行配置里的第三方上游只作为 CPA 目标。`,
-    `Codex uses the official account login, recommended model ${props.codexRouteOfficialModel || "gpt-5.5"}; third-party upstream settings are only CPA targets.`,
+    `Codex 走官方账户登录，建议模型为 ${props.codexRouteOfficialModel || "官方账户可用模型"}；运行配置里的第三方上游只作为 CPA 目标。`,
+    `Codex uses the official account login, recommended model ${props.codexRouteOfficialModel || "an official-account model"}; third-party upstream settings are only CPA targets.`,
   ));
 
 const routeActionHelp = computed(() => {

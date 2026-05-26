@@ -345,7 +345,7 @@
             />
 
             <CodexStackUpstreamMap
-              :default-model="configForm.defaultModel || summary.models.current || '--'"
+              :default-model="configForm.defaultModel || summaryTargetModel(summary) || '--'"
               :compact-proxy-base-url="compactProxyBaseUrl"
               :provider-name="canonicalCcConnectProvider.name"
               :provider-base-url="canonicalCcConnectProvider.baseUrl"
@@ -680,7 +680,7 @@ let queuedLogRequest: { serviceId: CodexStackServiceId; silent: boolean } | null
 let draftIdCounter = 0;
 
 const installForm = reactive<CodexStackInstallConfigDraft & { skipComponents: string[]; forceComponents: string[] }>({
-  model: "kimi-k2.6",
+  model: "",
   contextMode: "default" as ContextMode,
   contextWindowTokens: 1050000,
   cpaPort: 18795,
@@ -726,7 +726,7 @@ function updateInstallFormField(field: CodexStackInstallConfigField, value: stri
 }
 
 const configForm = reactive<CodexStackRuntimeConfigDraft>({
-  defaultModel: "kimi-k2.6",
+  defaultModel: "",
   contextMode: "default",
   contextWindowTokens: 1050000,
   cpaPort: 18795,
@@ -867,12 +867,18 @@ const modelSourceHelp = computed(() => {
     `Could not read ${models.endpoint}; using local config fallback. Reason: ${models.error || "unknown"}`,
   );
 });
+function summaryTargetModel(current: CodexStackSummaryPayload | null | undefined): string {
+  return current?.profile.defaultModel || current?.models.current || current?.models.defaultModel || "";
+}
+
 const modelOptions = computed(() => Array.from(new Set([
   ...(summary.value?.models.available || []),
-  "kimi-k2.6",
-  "glm-5.1",
-  "gpt-5.5",
-])));
+  summary.value?.profile.defaultModel || "",
+  summary.value?.models.current || "",
+  summary.value?.models.defaultModel || "",
+  configForm.defaultModel || "",
+  installForm.model || "",
+].map((model) => model.trim()).filter(Boolean))));
 const modelCatalogPreview = computed(() => modelOptions.value.slice(0, 6));
 const codexProviderCheck = computed(() => (
   summary.value?.runReadiness.checks.find((check) => check.id === "codex-provider") || null
@@ -899,7 +905,7 @@ const navSections = computed<CodexStackSectionNavItem[]>(() => {
   const warningsCount = current?.warnings.length || 0;
   const policy = current ? normalizeProxyPolicy(current.proxyPolicy) : null;
   const matrix = current?.profile.lastSmokeMatrix;
-  const targetModel = current?.profile.defaultModel || current?.models.current || current?.models.defaultModel || "";
+  const targetModel = summaryTargetModel(current);
   const settingsNeedsReview = Boolean(current && (
     !current.models.live
     || !policy?.noProxyLoopbackReady
@@ -1124,7 +1130,7 @@ const smokeMatrixLabel = computed(() => {
     ? text(`通过 ${models}`, `Passed ${models}`)
     : text(`失败 ${models}`, `Failed ${models}`);
 });
-const currentCpaTargetModel = computed(() => summary.value?.profile.defaultModel || summary.value?.models.current || summary.value?.models.defaultModel || "");
+const currentCpaTargetModel = computed(() => summaryTargetModel(summary.value));
 const isSmokeMatrixAttachReady = computed(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
   return isSmokeMatrixFreshAndComplete(matrix, currentCpaTargetModel.value);
@@ -1361,7 +1367,7 @@ const chainGates = computed<CodexStackChainGate[]>(() => {
   const current = summary.value;
   if (!current) return [];
   const matrix = current.profile.lastSmokeMatrix;
-  const targetModel = current.profile.defaultModel || current.models.current || current.models.defaultModel;
+  const targetModel = summaryTargetModel(current);
   const matrixFresh = isSmokeMatrixFreshAndComplete(matrix, targetModel);
   const policy = normalizeProxyPolicy(current.proxyPolicy);
   return [
@@ -1493,7 +1499,7 @@ const hasInstallDraftChanges = computed(() => {
   if (!current) return false;
   const policy = normalizeProxyPolicy(current.proxyPolicy);
 
-  const currentModel = current.profile.defaultModel || current.models.current || current.models.defaultModel || "kimi-k2.6";
+  const currentModel = summaryTargetModel(current);
   if ((installForm.model || "") !== currentModel) return true;
   if (installForm.contextMode !== (current.context.mode || "default")) return true;
   if (installForm.contextMode === "custom" && Number(installForm.contextWindowTokens) !== (current.context.tokens || current.context.recommendedTokens)) return true;
@@ -1520,7 +1526,7 @@ const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
 
   const payload: CodexStackConfigPatchRequest = {};
   const nextModel = configForm.defaultModel.trim();
-  const currentModel = current.profile.defaultModel || current.models.current || current.models.defaultModel || "";
+  const currentModel = summaryTargetModel(current);
   if (nextModel && nextModel !== currentModel) {
     payload.defaultModel = nextModel;
   }
@@ -1672,7 +1678,7 @@ const canonicalCcConnectProvider = computed(() => {
   return {
     name: provider?.name || "cpa",
     baseUrl: provider?.baseUrl || compactProxyBaseUrl.value,
-    model: configForm.defaultModel || installForm.model || summary.value?.models.current || "--",
+    model: configForm.defaultModel || installForm.model || summaryTargetModel(summary.value) || "--",
   };
 });
 const ccConnectSetupCommands = computed(() => {
@@ -1954,7 +1960,7 @@ function createProjectDraft(project?: Partial<CcConnectProject>): CcConnectProje
     agentOptions: {
       workDir: project?.agentOptions?.workDir || summary.value?.homeDir || "",
       mode: project?.agentOptions?.mode || "suggest",
-      model: project?.agentOptions?.model || configForm.defaultModel || "kimi-k2.6",
+      model: project?.agentOptions?.model || configForm.defaultModel || summaryTargetModel(summary.value),
     },
     platforms: project?.platforms?.length
       ? project.platforms.map((platform) => createPlatformDraft(platform))
@@ -2045,18 +2051,14 @@ function channelLabel(channel: CodexStackChannel): string {
   return text("官方版", "Official");
 }
 
-function installChannelDefaultModel(channel: CodexStackChannel): string {
-  return channel === "official" ? "glm-5.1" : "kimi-k2.6";
-}
-
 function installChannelDefaultCpaPort(channel: CodexStackChannel): number {
   return channel === "official" ? 8317 : 18795;
 }
 
 function syncInstallChannelDefaults(nextChannel: CodexStackChannel, previousChannel: CodexStackChannel): void {
-  const previousDefaultModel = installChannelDefaultModel(previousChannel);
-  if (!installForm.model || installForm.model === previousDefaultModel) {
-    installForm.model = installChannelDefaultModel(nextChannel);
+  const currentTargetModel = summaryTargetModel(summary.value);
+  if (!installForm.model && currentTargetModel) {
+    installForm.model = currentTargetModel;
   }
 
   const previousDefaultPort = installChannelDefaultCpaPort(previousChannel);
@@ -2081,9 +2083,9 @@ function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackS
     ...next,
     codexRoute: next.codexRoute || {
       active: cpaAttached ? "cpa" : "official-chatgpt",
-      currentModel: next.models.current || next.models.defaultModel || "gpt-5.5",
+      currentModel: next.models.current || next.models.defaultModel || next.profile.defaultModel || "",
       cpaTargetModel: next.profile.defaultModel || next.models.current || next.models.defaultModel || "",
-      officialModel: next.models.recommendedFrontier || "gpt-5.5",
+      officialModel: next.models.recommendedFrontier || "",
     },
     proxyPolicy: normalizeProxyPolicy(next.proxyPolicy),
     runReadiness: next.runReadiness
@@ -2308,7 +2310,7 @@ function runReadinessModeAction(mode: CodexStackRunReadinessMode): void {
 }
 
 function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): void {
-  configForm.defaultModel = normalized.profile.defaultModel || normalized.models.current || normalized.models.defaultModel || "kimi-k2.6";
+  configForm.defaultModel = summaryTargetModel(normalized);
   configForm.contextMode = normalized.context.mode || "default";
   configForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
   configForm.cpaPort = normalized.ports.cpa;
@@ -2321,7 +2323,7 @@ function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): voi
 }
 
 function hydrateInstallFormFromSummary(normalized: CodexStackSummaryPayload): void {
-  installForm.model = normalized.profile.defaultModel || normalized.models.current || normalized.models.defaultModel || "kimi-k2.6";
+  installForm.model = summaryTargetModel(normalized);
   installForm.contextMode = normalized.context.mode || "default";
   installForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
   installForm.cpaPort = normalized.ports.cpa;
@@ -2830,7 +2832,7 @@ function addCcConnectProjectPreset(preset: AgentProjectPreset): void {
     agentOptions: {
       workDir: preset === "admin" ? `${homeDir}/.openclaw` : `${homeDir}/.openclaw/workspace/${preset}-agent-${index}`,
       mode: preset === "admin" ? "suggest" : "yolo",
-      model: configForm.defaultModel || installForm.model || summary.value?.models.current || "kimi-k2.6",
+      model: configForm.defaultModel || installForm.model || summaryTargetModel(summary.value),
     },
     platforms: [{ type: installForm.channel === "official" ? "dmwork" : (installForm.channel === "octo" ? "octo" : "dmwork"), options: { api_url: "https://im.deepminer.com.cn/api" } }],
   });
@@ -2930,7 +2932,7 @@ function updateCcConnectPlatformOption(
 }
 
 function applyDefaultModelToCcConnectProjects(): void {
-  const nextModel = configForm.defaultModel || installForm.model || summary.value?.models.current || "";
+  const nextModel = configForm.defaultModel || installForm.model || summaryTargetModel(summary.value);
   if (!nextModel) return;
   for (const project of ccConnectProjectDrafts.value) {
     project.agentOptions.model = nextModel;

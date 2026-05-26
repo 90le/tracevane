@@ -1465,10 +1465,11 @@ function chooseDefaultModel(models: string[], current = "", openclawDefault = ""
   if (current) return current;
   const envOverride = normalizeString(process.env.CODEX_MODEL);
   if (envOverride) return envOverride;
-  for (const preferred of [DMWORK_DEFAULT_MODEL, OFFICIAL_DEFAULT_MODEL, openclawDefault, GPT_55_MODEL, "gpt-5.4", "deepseek-v4-flash"]) {
+  if (openclawDefault) return openclawDefault;
+  for (const preferred of [GPT_55_MODEL, "gpt-5.4", "deepseek-v4-flash"]) {
     if (models.includes(preferred)) return preferred;
   }
-  return models[0] || openclawDefault || DMWORK_DEFAULT_MODEL;
+  return models[0] || DMWORK_DEFAULT_MODEL;
 }
 
 function detectCcConnectBinding(source: string): boolean {
@@ -2045,8 +2046,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     };
   }
 
-  function chooseCpaAttachModel(currentModel: string, profileDefault: string, channel: CodexStackChannel): string {
-    return profileDefault.trim() || currentModel.trim() || defaultModel(channel);
+  function chooseCpaAttachModel(currentModel: string, profileDefault: string, channel: CodexStackChannel, openclawDefault = ""): string {
+    return profileDefault.trim() || currentModel.trim() || openclawDefault.trim() || defaultModel(channel);
   }
 
   async function runCodexCpaSmokeMatrix(
@@ -2056,7 +2057,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     models: string[],
   ): Promise<CodexStackSmokeMatrixResult> {
     const matrixStartedMs = Date.now();
-    const fallbackModel = defaultModel(resolveChannel());
+    const fallbackModel = readOpenclawDefaultModel(paths().openclawJson) || defaultModel(resolveChannel());
     const requiredModels = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean)));
     if (!requiredModels.length) requiredModels.push(fallbackModel);
     appendJobLog(job, `Smoke matrix: validating ${requiredModels.join(", ")} without switching Codex.\n`, [token]);
@@ -2676,7 +2677,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const currentModel = configuredModel;
     const fallbackModels = Array.from(new Set([
       currentModel,
-      defaultModel(resolveChannel()),
       profile.defaultModel,
       openclawDefaultModel,
       ...openclawPreferredModels,
@@ -2698,7 +2698,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     ]);
     const compactHealthy = modelDiscovery.live;
     const selectedDefaultModel = chooseDefaultModel(modelDiscovery.available, configuredModel, openclawDefaultModel);
-    const cpaTargetModel = chooseCpaAttachModel(currentModel, profile.defaultModel, resolveChannel());
+    const cpaTargetModel = chooseCpaAttachModel(currentModel, profile.defaultModel, resolveChannel(), openclawDefaultModel);
     const ccBindingPresent = detectCcConnectBinding(ccConfig);
     const components = buildComponents({
       codexVersion,
@@ -2813,7 +2813,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           cpaTargetModel,
           currentModel,
           selectedDefaultModel,
-          defaultModel(resolveChannel()),
           openclawDefaultModel,
           GPT_55_MODEL,
           ...modelDiscovery.available,
@@ -2967,6 +2966,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const contextTokens = contextMode === "default"
       ? null
       : (contextMode === "codex-1m" ? GPT_55_CONTEXT_TOKENS : normalizeContextTokens(env.CODEX_CONTEXT_WINDOW, DEFAULT_CONTEXT_TOKENS));
+    const openclawDefaultModel = readOpenclawDefaultModel(paths().openclawJson);
+    const installDefaultModel = normalizeString(env.CODEX_MODEL) || openclawDefaultModel || defaultModel(channel);
     const flags: string[] = [];
     if (payload.flags?.skipNpm === true) flags.push("--skip-npm");
     if (payload.flags?.skipCcConnect === true) flags.push("--skip-cc-connect");
@@ -2984,7 +2985,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       profilePatch: {
         cpaPort: normalizePort(env.CPA_PORT, defaultCpaPort(channel)),
         compactPort: normalizePort(env.COMPACT_PORT, DEFAULT_COMPACT_PORT),
-        defaultModel: normalizeString(env.CODEX_MODEL, defaultModel(channel)),
+        defaultModel: installDefaultModel,
         contextMode,
         contextWindowTokens: contextTokens,
         hasCpaProxyKey: true,
@@ -3252,7 +3253,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
           const profile = readProfile();
           const currentModel = extractTomlString(codex, "model");
-          const attachModel = chooseCpaAttachModel(currentModel, profile.defaultModel, resolveChannel());
+          const attachModel = chooseCpaAttachModel(currentModel, profile.defaultModel, resolveChannel(), readOpenclawDefaultModel(currentPaths.openclawJson));
           if (currentModel && currentModel !== attachModel) {
             appendJobLog(job, `Current Codex model ${currentModel} is not CPA-safe for domestic routing; attach will switch Codex model to ${attachModel}.\n`);
           }
@@ -3275,7 +3276,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
           const profile = readProfile();
           const currentModel = extractTomlString(codex, "model");
-          const attachModel = chooseCpaAttachModel(currentModel, profile.defaultModel, resolveChannel());
+          const attachModel = chooseCpaAttachModel(currentModel, profile.defaultModel, resolveChannel(), readOpenclawDefaultModel(currentPaths.openclawJson));
           appendJobLog(job, "WARNING: Forced CPA attach requested without a passing smoke gate. Codex may fail ordinary, streaming, long-task, or compaction requests until the upstream model and network path are repaired.\n");
           const next = applyCodexCpaActiveProvider(codex, compactBaseUrl, effectiveProxyKey, attachModel);
           if (next !== codex) {
@@ -3308,7 +3309,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           const ports = stackPorts();
           const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
           const profile = readProfile();
-          const attachModel = chooseCpaAttachModel(extractTomlString(codex, "model"), profile.defaultModel, resolveChannel());
+          const attachModel = chooseCpaAttachModel(extractTomlString(codex, "model"), profile.defaultModel, resolveChannel(), readOpenclawDefaultModel(currentPaths.openclawJson));
           const matrix = await runCodexCpaSmokeMatrix(job, ports, effectiveProxyKey, [attachModel]);
           if (!matrix.attachEligible) {
             const failed = matrix.models.find((result) => result.status === "failed");
