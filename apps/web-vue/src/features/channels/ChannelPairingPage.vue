@@ -87,6 +87,7 @@ import { approveChannelPairing, fetchChannelPairing } from './api';
 import { formatDate } from './channel-ui';
 import { useLocalePreference } from '../../shared/locale';
 import { useChannelsWorkspace } from './workspace';
+import './channels-pages.css';
 
 defineOptions({ name: 'ChannelPairingPage' });
 
@@ -143,48 +144,3 @@ watch(
   { immediate: true },
 );
 </script>
-
-<style scoped>
-.channels-pairing-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.channels-pairing-summary span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
-  background: color-mix(in srgb, var(--surface) 84%, transparent);
-  color: var(--text-soft);
-  font-size: 11px;
-}
-
-.channels-pairing-card {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-  background: color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
-}
-
-.channels-pairing-card__head {
-  display: grid;
-  gap: 4px;
-}
-
-.channels-pairing-card__head strong {
-  color: var(--text);
-  font-size: 13px;
-}
-
-.channels-pairing-card__head span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-</style>

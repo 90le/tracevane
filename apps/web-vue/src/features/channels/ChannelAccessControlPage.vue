@@ -89,6 +89,7 @@ import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';
 import { stableStringify } from './channel-ui';
 import { useChannelsWorkspace } from './workspace';
+import './channels-pages.css';
 
 defineOptions({ name: 'ChannelAccessControlPage' });
 
@@ -194,97 +195,3 @@ async function save(): Promise<void> {
   }
 }
 </script>
-
-<style scoped>
-.channels-access-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.channels-access-card {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  min-width: 0;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-  background: color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
-}
-
-.channels-access-card__head {
-  display: grid;
-  gap: 4px;
-}
-
-.channels-access-card__head strong {
-  color: var(--text);
-  font-size: 13px;
-}
-
-.channels-access-card__head span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.channels-save-bar {
-  position: sticky;
-  bottom: 16px;
-  z-index: 4;
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 94%, rgba(255, 255, 255, 0.02));
-}
-
-.channels-save-bar.dirty {
-  border-color: rgba(255, 190, 122, 0.3);
-}
-
-.channels-save-bar__status {
-  display: grid;
-  gap: 4px;
-}
-
-.channels-save-bar__status strong {
-  color: var(--text);
-}
-
-.channels-save-bar__status p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.channels-save-bar__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-@media (max-width: 920px) {
-  .channels-access-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .channels-save-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .channels-save-bar__actions {
-    width: 100%;
-  }
-
-  .channels-save-bar__actions > * {
-    flex: 1 1 0;
-  }
-}
-</style>

@@ -29,6 +29,9 @@ const bindingsPage = read(
 const bindingEditorPanel = read(
   "apps/web-vue/src/features/channels/ChannelBindingEditorPanel.vue",
 );
+const channelsPagesCss = read(
+  "apps/web-vue/src/features/channels/channels-pages.css",
+);
 
 test("channels deep pages use single-task heads and avoid page-level header rows", () => {
   assert.match(providerSettingsPage, /channels-stage-task-head/);
@@ -70,6 +73,24 @@ test("access and pairing pages expose task cards and useful empty states", () =>
     pairingPage,
     /当前频道或账号不支持配对审批|does not support pairing approval/,
   );
+});
+
+test("channels deep pages keep page styles in the shared feature stylesheet", () => {
+  for (const pageSource of [
+    providerSettingsPage,
+    accountDetailPage,
+    accessControlPage,
+    pairingPage,
+  ]) {
+    assert.match(pageSource, /import '\.\/channels-pages\.css';/);
+    assert.doesNotMatch(pageSource, /<style scoped>/);
+  }
+
+  assert.match(channelsPagesCss, /\.channels-provider-settings-section/);
+  assert.match(channelsPagesCss, /\.channels-account-detail-section/);
+  assert.match(channelsPagesCss, /\.channels-access-grid\s*\{/);
+  assert.match(channelsPagesCss, /\.channels-pairing-card/);
+  assert.match(channelsPagesCss, /\.channels-save-bar\s*\{/);
 });
 
 test("provider settings exposes provider defaults and thread binding runtime fields", () => {

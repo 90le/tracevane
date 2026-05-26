@@ -29,6 +29,9 @@ const providerSettingsPage = read(
 const accountDetailPage = read(
   "apps/web-vue/src/features/channels/ChannelAccountDetailPage.vue",
 );
+const channelsPagesCss = read(
+  "apps/web-vue/src/features/channels/channels-pages.css",
+);
 
 test("channels workspace keeps a persistent stage header with top tabs and account subtabs", () => {
   assert.match(channelsWorkspaceLayout, /channels-stage-header/);
@@ -87,6 +90,16 @@ test("channels overview is a thin provider-first surface with summary, quick edi
   assert.doesNotMatch(providerOverview, /channels-stage-actions/);
   assert.doesNotMatch(providerOverview, /频道主页/);
   assert.doesNotMatch(providerOverview, /landing surface/i);
+});
+
+test("channels overview page styles are owned by the feature stylesheet", () => {
+  assert.match(channelsControlPage, /import '\.\/channels-pages\.css';/);
+  assert.match(providerOverview, /import '\.\/channels-pages\.css';/);
+  assert.doesNotMatch(channelsControlPage, /<style scoped>/);
+  assert.doesNotMatch(providerOverview, /<style scoped>/);
+  assert.match(channelsPagesCss, /\.channels-overview-surface\s*\{/);
+  assert.match(channelsPagesCss, /\.channel-command-center\s*\{/);
+  assert.match(channelsPagesCss, /\.channel-command-facts\s*\{/);
 });
 
 test("channel provider and account editors track and save config write toggles", () => {

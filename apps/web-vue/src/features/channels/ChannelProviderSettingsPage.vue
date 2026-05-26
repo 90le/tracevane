@@ -170,6 +170,7 @@ import {
   stableStringify,
 } from './channel-ui';
 import { useChannelsWorkspace } from './workspace';
+import './channels-pages.css';
 
 defineOptions({ name: 'ChannelProviderSettingsPage' });
 
@@ -299,91 +300,3 @@ async function save(): Promise<void> {
   }
 }
 </script>
-
-<style scoped>
-.channels-provider-settings-section {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-  background: color-mix(in srgb, var(--shell-panel-fill) 84%, transparent);
-}
-
-.channels-provider-settings-section--primary {
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--sky) 8%, transparent), transparent 58%),
-    color-mix(in srgb, var(--shell-panel-fill) 88%, transparent);
-}
-
-.channels-provider-settings-section__head {
-  display: grid;
-  gap: 4px;
-}
-
-.channels-provider-settings-section__head strong {
-  color: var(--text);
-  font-size: 13px;
-}
-
-.channels-provider-settings-section__head span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.channels-save-bar {
-  position: sticky;
-  bottom: 16px;
-  z-index: 4;
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 94%, rgba(255, 255, 255, 0.02));
-}
-
-.channels-save-bar.dirty {
-  border-color: rgba(255, 190, 122, 0.3);
-}
-
-.channels-save-bar__status {
-  display: grid;
-  gap: 4px;
-}
-
-.channels-save-bar__status strong {
-  color: var(--text);
-}
-
-.channels-save-bar__status p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.channels-save-bar__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-@media (max-width: 920px) {
-  .channels-save-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .channels-save-bar__actions {
-    width: 100%;
-  }
-
-  .channels-save-bar__actions > * {
-    flex: 1 1 0;
-  }
-}
-</style>

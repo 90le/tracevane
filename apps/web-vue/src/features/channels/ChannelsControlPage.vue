@@ -38,6 +38,7 @@ import { buildAccountMutationInput, buildChannelIssues } from './channel-ui';
 import type { ChannelIssue } from './channel-ui';
 import ChannelProviderOverview from './ChannelProviderOverview.vue';
 import { useChannelsWorkspace } from './workspace';
+import './channels-pages.css';
 
 defineOptions({ name: 'ChannelsControlPage' });
 
@@ -258,20 +259,3 @@ async function updateProviderDefaultAccount(defaultAccount: string | null): Prom
   }
 }
 </script>
-
-<style scoped>
-.channels-overview-surface {
-  display: grid;
-  gap: 14px;
-}
-
-.channels-overview-empty {
-  display: grid;
-  gap: 10px;
-}
-
-.channels-overview-empty h3 {
-  margin: 0;
-  color: var(--text);
-}
-</style>
