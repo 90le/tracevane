@@ -43,6 +43,16 @@ test("design contract keeps global CSS narrow and feature CSS owned by domains",
 test("studio atlas shell stays quiet instead of rebuilding gradient card chrome", () => {
   assert.match(styleCss, /Studio Atlas: release redesign layer/);
 
+  const atlasRootBlock = ruleBlock(":root");
+  assert.match(atlasRootBlock, /--atlas-bg:\s*#18232a;/);
+  assert.match(atlasRootBlock, /--atlas-panel:\s*rgba\(38,\s*52,\s*61,\s*0\.58\);/);
+  assert.doesNotMatch(atlasRootBlock, /--atlas-bg:\s*#0|--atlas-panel:\s*rgba\(255,\s*255,\s*255/);
+
+  const atlasLightBlock = ruleBlock('html[data-theme="light"]');
+  assert.match(atlasLightBlock, /--atlas-bg:\s*#eef1ed;/);
+  assert.match(atlasLightBlock, /--atlas-panel:\s*rgba\(248,\s*247,\s*240,\s*0\.62\);/);
+  assert.doesNotMatch(atlasLightBlock, /--atlas-bg:\s*#fff|--atlas-panel:\s*rgba\(255,\s*255,\s*255/);
+
   const bodyBlock = ruleBlock("body");
   assert.match(bodyBlock, /background:[\s\S]*var\(--atlas-bg\);/);
   assert.doesNotMatch(bodyBlock, /linear-gradient\(110deg|linear-gradient\(145deg/);
@@ -56,6 +66,6 @@ test("studio atlas shell stays quiet instead of rebuilding gradient card chrome"
   assert.doesNotMatch(shellRouteBlock, /radial-gradient/);
 
   const primaryButtonBlock = ruleBlock(".primary-button");
-  assert.match(primaryButtonBlock, /background:\s*color-mix\(in srgb, var\(--atlas-primary\) 78%, white\);/);
+  assert.match(primaryButtonBlock, /background:\s*color-mix\(in srgb, var\(--atlas-primary\) 78%, var\(--atlas-bg-2\)\);/);
   assert.doesNotMatch(primaryButtonBlock, /linear-gradient/);
 });

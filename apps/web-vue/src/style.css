@@ -6195,8 +6195,8 @@ body {
   background:
     linear-gradient(90deg, var(--body-grid-b) 1px, transparent 1px),
     linear-gradient(180deg, var(--body-grid-c) 1px, transparent 1px),
-    linear-gradient(118deg, rgba(255, 255, 255, 0.025), transparent 32% 68%, rgba(255, 255, 255, 0.018)),
-    linear-gradient(135deg, rgba(11, 32, 51, 0.98), rgba(24, 50, 77, 0.94), rgba(66, 99, 126, 0.84));
+    radial-gradient(920px 580px at 78% 6%, rgba(139, 207, 194, 0.09), transparent 58%),
+    linear-gradient(135deg, rgba(24, 38, 50, 0.96), rgba(34, 50, 63, 0.92), rgba(49, 70, 84, 0.82));
   background-size: 72px 72px, 72px 72px, auto, auto;
 }
 
@@ -6204,8 +6204,8 @@ html[data-theme="light"] .app-container {
   background:
     linear-gradient(90deg, var(--body-grid-b) 1px, transparent 1px),
     linear-gradient(180deg, var(--body-grid-c) 1px, transparent 1px),
-    linear-gradient(118deg, rgba(10, 156, 150, 0.05), transparent 34% 70%, rgba(76, 201, 240, 0.05)),
-    linear-gradient(135deg, rgba(234, 246, 248, 0.98), rgba(248, 253, 255, 0.94), rgba(215, 235, 241, 0.84));
+    radial-gradient(940px 560px at 78% 4%, rgba(46, 129, 117, 0.07), transparent 60%),
+    linear-gradient(135deg, rgba(238, 241, 237, 0.98), rgba(246, 244, 236, 0.94), rgba(221, 230, 225, 0.84));
   background-size: 72px 72px, 72px 72px, auto, auto;
 }
 
@@ -6398,37 +6398,39 @@ html[data-theme="light"] .cs-nav-badge.tone-accent {
 
 /* Studio redesign override: darker command canvas, clearer grid, flatter workflow panes. */
 html[data-theme="dark"] {
-  --studio-bg: #071522;
-  --studio-bg-soft: #10283f;
-  --studio-bg-high: #2f526e;
-  --studio-rail: rgba(5, 17, 29, 0.82);
-  --studio-panel: rgba(16, 42, 64, 0.54);
-  --studio-panel-strong: rgba(24, 55, 82, 0.66);
-  --studio-elevated: rgba(11, 31, 50, 0.94);
-  --body-glow-a: rgba(76, 201, 240, 0.13);
-  --body-glow-b: rgba(127, 255, 212, 0.11);
-  --body-grid-b: rgba(255, 255, 255, 0.046);
-  --body-grid-c: rgba(255, 255, 255, 0.036);
-  --shell-rail-fill: rgba(5, 17, 29, 0.96);
-  --shell-panel-fill: rgba(13, 35, 55, 0.58);
-  --shell-panel-fill-strong: rgba(18, 48, 72, 0.68);
+  --studio-bg: #182632;
+  --studio-bg-soft: #22323f;
+  --studio-bg-high: #314654;
+  --studio-rail: rgba(18, 30, 40, 0.78);
+  --studio-panel: rgba(35, 50, 61, 0.5);
+  --studio-panel-strong: rgba(42, 59, 70, 0.64);
+  --studio-elevated: rgba(31, 47, 59, 0.88);
+  --body-glow-a: rgba(126, 196, 218, 0.1);
+  --body-glow-b: rgba(139, 207, 194, 0.085);
+  --body-grid-b: rgba(236, 247, 247, 0.034);
+  --body-grid-c: rgba(236, 247, 247, 0.026);
+  --shell-rail-fill: rgba(18, 30, 40, 0.84);
+  --shell-panel-fill: rgba(35, 50, 61, 0.52);
+  --shell-panel-fill-strong: rgba(42, 59, 70, 0.66);
 }
 
 html[data-theme="light"] {
-  --studio-bg: #e5f2f6;
-  --studio-bg-soft: #f7fbfc;
-  --studio-bg-high: #cfe4ed;
-  --studio-panel: rgba(255, 255, 255, 0.82);
-  --studio-panel-strong: rgba(255, 255, 255, 0.94);
-  --body-grid-b: rgba(28, 84, 106, 0.05);
-  --body-grid-c: rgba(28, 84, 106, 0.04);
+  --studio-bg: #eef1ed;
+  --studio-bg-soft: #f6f4ec;
+  --studio-bg-high: #dde6e1;
+  --studio-panel: rgba(248, 247, 240, 0.78);
+  --studio-panel-strong: rgba(249, 248, 242, 0.9);
+  --studio-elevated: rgba(249, 248, 242, 0.92);
+  --body-grid-b: rgba(48, 74, 72, 0.035);
+  --body-grid-c: rgba(48, 74, 72, 0.028);
 }
 
 html[data-theme="dark"] .app-container {
   background:
     linear-gradient(90deg, var(--body-grid-b) 1px, transparent 1px),
     linear-gradient(180deg, var(--body-grid-c) 1px, transparent 1px),
-    #071522;
+    radial-gradient(920px 580px at 78% 6%, rgba(139, 207, 194, 0.09), transparent 58%),
+    var(--studio-bg);
 }
 
 .cs-surface {
@@ -6926,24 +6928,24 @@ html[data-theme="light"] .cron-scheduler-callout {
 
 /* Studio Atlas: release redesign layer. This is the new product workbench contract. */
 :root {
-  --atlas-ink: #eff6f8;
-  --atlas-ink-2: #c6d4dc;
-  --atlas-ink-3: #8799a5;
-  --atlas-bg: #121b22;
-  --atlas-bg-2: #17242d;
-  --atlas-bg-3: #21313c;
-  --atlas-panel: rgba(25, 37, 46, 0.7);
-  --atlas-panel-2: rgba(31, 45, 55, 0.84);
-  --atlas-panel-3: rgba(239, 246, 248, 0.055);
-  --atlas-line: rgba(213, 228, 233, 0.14);
-  --atlas-line-2: rgba(213, 228, 233, 0.24);
-  --atlas-primary: #8fd3c7;
-  --atlas-primary-2: #d5af72;
-  --atlas-blue: #89aee8;
-  --atlas-danger: #e58b98;
+  --atlas-ink: #f2f7f6;
+  --atlas-ink-2: #d0dedb;
+  --atlas-ink-3: #95a7a5;
+  --atlas-bg: #18232a;
+  --atlas-bg-2: #202f38;
+  --atlas-bg-3: #2b3d47;
+  --atlas-panel: rgba(38, 52, 61, 0.58);
+  --atlas-panel-2: rgba(45, 61, 71, 0.72);
+  --atlas-panel-3: rgba(236, 247, 244, 0.075);
+  --atlas-line: rgba(221, 237, 233, 0.16);
+  --atlas-line-2: rgba(221, 237, 233, 0.26);
+  --atlas-primary: #8fcfc3;
+  --atlas-primary-2: #d4b16f;
+  --atlas-blue: #9bb6d7;
+  --atlas-danger: #e08d99;
   --atlas-radius: 10px;
   --atlas-radius-lg: 16px;
-  --atlas-shadow: 0 24px 72px rgba(3, 9, 14, 0.28);
+  --atlas-shadow: 0 24px 68px rgba(13, 22, 28, 0.24);
   --wb-bg-0: var(--atlas-bg);
   --wb-bg-1: var(--atlas-bg-2);
   --wb-bg-2: var(--atlas-bg-3);
@@ -6959,35 +6961,40 @@ html[data-theme="light"] .cron-scheduler-callout {
   --wb-accent-2: var(--atlas-primary-2);
   --wb-accent-3: var(--atlas-blue);
   --wb-danger: var(--atlas-danger);
-  --field-bg: rgba(12, 22, 29, 0.72);
-  --field-bg-focus: rgba(15, 27, 36, 0.92);
-  --field-border: rgba(213, 228, 233, 0.16);
-  --field-border-focus: rgba(143, 211, 199, 0.46);
+  --field-bg: rgba(27, 42, 51, 0.56);
+  --field-bg-focus: rgba(32, 49, 59, 0.74);
+  --field-border: rgba(221, 237, 233, 0.18);
+  --field-border-focus: rgba(143, 207, 195, 0.5);
 }
 
 html[data-theme="light"] {
-  --atlas-ink: #17232b;
-  --atlas-ink-2: #435764;
-  --atlas-ink-3: #70828e;
-  --atlas-bg: #f4f1eb;
-  --atlas-bg-2: #e9eef1;
-  --atlas-bg-3: #dce6ea;
-  --atlas-panel: rgba(255, 255, 255, 0.68);
-  --atlas-panel-2: rgba(255, 255, 255, 0.88);
-  --atlas-panel-3: rgba(37, 58, 67, 0.052);
-  --atlas-line: rgba(31, 49, 58, 0.13);
-  --atlas-line-2: rgba(31, 49, 58, 0.23);
-  --atlas-primary: #287f72;
-  --atlas-primary-2: #a06e30;
-  --atlas-blue: #496fae;
-  --atlas-danger: #bb5261;
-  --atlas-shadow: 0 24px 70px rgba(48, 69, 78, 0.13);
+  --atlas-ink: #1e2b2d;
+  --atlas-ink-2: #506164;
+  --atlas-ink-3: #7c8b8b;
+  --atlas-bg: #eef1ed;
+  --atlas-bg-2: #f6f4ec;
+  --atlas-bg-3: #dde6e1;
+  --atlas-panel: rgba(248, 247, 240, 0.62);
+  --atlas-panel-2: rgba(246, 245, 238, 0.82);
+  --atlas-panel-3: rgba(58, 73, 70, 0.055);
+  --atlas-line: rgba(38, 55, 54, 0.13);
+  --atlas-line-2: rgba(38, 55, 54, 0.22);
+  --atlas-primary: #2e8175;
+  --atlas-primary-2: #9c7134;
+  --atlas-blue: #596f9a;
+  --atlas-danger: #ad5864;
+  --atlas-shadow: 0 24px 70px rgba(65, 78, 78, 0.12);
+  --field-bg: rgba(244, 242, 234, 0.76);
+  --field-bg-focus: rgba(249, 247, 240, 0.92);
+  --field-border: rgba(38, 55, 54, 0.16);
+  --field-border-focus: rgba(46, 129, 117, 0.42);
 }
 
 body {
   color: var(--atlas-ink);
   background:
-    radial-gradient(980px 520px at 12% -10%, color-mix(in srgb, var(--atlas-blue) 10%, transparent), transparent 62%),
+    radial-gradient(960px 540px at 12% -10%, color-mix(in srgb, var(--atlas-blue) 12%, transparent), transparent 64%),
+    radial-gradient(780px 520px at 88% 10%, color-mix(in srgb, var(--atlas-primary) 8%, transparent), transparent 60%),
     var(--atlas-bg);
 }
 
@@ -6998,7 +7005,7 @@ body::before {
     linear-gradient(color-mix(in srgb, var(--atlas-ink) 5%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in srgb, var(--atlas-ink) 5%, transparent) 1px, transparent 1px);
   background-size: 72px 72px, 72px 72px, 18px 18px, 18px 18px;
-  opacity: 0.42;
+  opacity: 0.34;
 }
 
 .app-container {
@@ -7011,7 +7018,7 @@ body::before {
   border-radius: 18px;
   border-color: var(--atlas-line);
   background: color-mix(in srgb, var(--atlas-panel-2) 88%, transparent);
-  box-shadow: 0 18px 48px rgba(3, 9, 14, 0.2);
+  box-shadow: 0 18px 48px rgba(13, 22, 28, 0.16);
 }
 
 .shell-main {
@@ -7389,7 +7396,7 @@ select.form-input,
 
 .primary-button {
   border-color: color-mix(in srgb, var(--atlas-primary) 45%, var(--atlas-line));
-  background: color-mix(in srgb, var(--atlas-primary) 78%, white);
+  background: color-mix(in srgb, var(--atlas-primary) 78%, var(--atlas-bg-2));
   color: #102028;
 }
 
