@@ -79,12 +79,17 @@ test("codex stack logs panel is isolated from the main control page", () => {
 test("codex stack log reads avoid overlapping auto-refresh requests", () => {
   assert.match(controlPage, /let logRequestInFlight = false;/);
   assert.match(controlPage, /let queuedLogRequest: \{ serviceId: CodexStackServiceId; silent: boolean \} \| null = null;/);
+  assert.doesNotMatch(controlPage, /onMounted\(\(\) => \{[\s\S]*void loadLogs\(selectedLogService\.value\);[\s\S]*\}\);/);
+  assert.match(controlPage, /function syncLogPolling\(\): void \{[\s\S]*if \(activeSection\.value !== "logs"\) return;[\s\S]*if \(!logAutoRefresh\.value\) return;/);
+  assert.match(controlPage, /async function loadLogs\(serviceId: CodexStackServiceId, silent = false\): Promise<void> \{[\s\S]*if \(activeSection\.value !== "logs"\) return;/);
+  assert.match(controlPage, /const response = await fetchCodexStackLogs\(serviceId, logLineLimit\.value\);[\s\S]*if \(activeSection\.value !== "logs"\) return;[\s\S]*logOutput\.value = response\.output;/);
   assert.match(
     controlPage,
     /if \(logRequestInFlight\) \{[\s\S]*queuedLogRequest = \{ serviceId, silent \};[\s\S]*return;[\s\S]*\}/,
   );
   assert.match(controlPage, /const nextRequest = queuedLogRequest;[\s\S]*queuedLogRequest = null;/);
-  assert.match(controlPage, /void loadLogs\(nextRequest\.serviceId, nextRequest\.silent\);/);
+  assert.match(controlPage, /if \(nextRequest && activeSection\.value === "logs"\) \{[\s\S]*void loadLogs\(nextRequest\.serviceId, nextRequest\.silent\);/);
+  assert.match(controlPage, /watch\(\[logAutoRefresh, logLineMode, selectedLogService, activeSection\], \(\) => \{[\s\S]*syncLogPolling\(\);[\s\S]*if \(activeSection\.value !== "logs"\) return;[\s\S]*void loadLogs\(selectedLogService\.value, true\);/);
 });
 
 test("codex stack remaining domain components use feature css instead of vue style blocks", () => {

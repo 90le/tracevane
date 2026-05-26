@@ -2578,6 +2578,7 @@ function stopLogPolling(): void {
 
 function syncLogPolling(): void {
   stopLogPolling();
+  if (activeSection.value !== "logs") return;
   if (!logAutoRefresh.value) return;
   logPollTimer = window.setInterval(() => {
     void loadLogs(selectedLogService.value, true);
@@ -3165,6 +3166,7 @@ async function finalizeCcConnect(): Promise<void> {
 }
 
 async function loadLogs(serviceId: CodexStackServiceId, silent = false): Promise<void> {
+  if (activeSection.value !== "logs") return;
   if (logRequestInFlight) {
     queuedLogRequest = { serviceId, silent };
     return;
@@ -3174,6 +3176,7 @@ async function loadLogs(serviceId: CodexStackServiceId, silent = false): Promise
   logRefreshing.value = true;
   try {
     const response = await fetchCodexStackLogs(serviceId, logLineLimit.value);
+    if (activeSection.value !== "logs") return;
     logOutput.value = response.output;
     logMeta.value = response;
   } catch (error) {
@@ -3185,7 +3188,7 @@ async function loadLogs(serviceId: CodexStackServiceId, silent = false): Promise
     logRequestInFlight = false;
     const nextRequest = queuedLogRequest;
     queuedLogRequest = null;
-    if (nextRequest) {
+    if (nextRequest && activeSection.value === "logs") {
       void loadLogs(nextRequest.serviceId, nextRequest.silent);
     }
   }
@@ -3218,7 +3221,6 @@ function removeFromArray(list: string[], value: string): void {
 
 onMounted(() => {
   void loadAll(true);
-  void loadLogs(selectedLogService.value);
 });
 
 onUnmounted(() => {
@@ -3226,8 +3228,9 @@ onUnmounted(() => {
   stopLogPolling();
 });
 
-watch([logAutoRefresh, logLineMode, selectedLogService], () => {
+watch([logAutoRefresh, logLineMode, selectedLogService, activeSection], () => {
   syncLogPolling();
+  if (activeSection.value !== "logs") return;
   void loadLogs(selectedLogService.value, true);
 });
 
