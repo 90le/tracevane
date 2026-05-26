@@ -16,6 +16,14 @@ const chatShellWorkspaceCss = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
   "utf8",
 );
+const overlaySurfacesCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/overlay-surfaces.css"),
+  "utf8",
+);
+const slashCommandCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/slash-command.css"),
+  "utf8",
+);
 const conversationPane = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
   "utf8",
@@ -163,35 +171,35 @@ test("chat portal overlays render on surfaced backgrounds instead of transparent
     /\.chat-inspector-sheet\s*\{[\s\S]*z-index:\s*var\(--chat-layer-inspector\);/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker-mask\s*\{[\s\S]*z-index:\s*1500;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\s*\{[\s\S]*position:\s*fixed;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\s*\{[\s\S]*z-index:\s*1501;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\s*\{[\s\S]*background:\s*var\(--chat-modal-bg\);/,
   );
   assert.match(
-    cascadeMenu,
+    overlaySurfacesCss,
     /\.cascade-menu\s*\{[\s\S]*border:\s*1px solid var\(--chat-line-strong\);/,
   );
   assert.match(
-    cascadeMenu,
+    overlaySurfacesCss,
     /\.cascade-menu\s*\{[\s\S]*background:\s*var\(--chat-menu-surface\);/,
   );
   assert.match(
-    cascadeMenu,
+    overlaySurfacesCss,
     /\.cascade-menu\s*\{[\s\S]*backdrop-filter:\s*blur\(24px\)\s*saturate\(140%\);/,
   );
   assert.match(
-    cascadeMenu,
+    overlaySurfacesCss,
     /\.cascade-menu\s*\{[\s\S]*box-shadow:\s*0 18px 44px rgba\(3,\s*8,\s*14,\s*0\.28\);/,
   );
   assert.match(
@@ -199,11 +207,11 @@ test("chat portal overlays render on surfaced backgrounds instead of transparent
     /\.chat-slash-menu-popover\s*\{[\s\S]*background:\s*transparent;/,
   );
   assert.match(
-    slashCommandMenu,
+    slashCommandCss,
     /\.chat-slash-menu\s*\{[\s\S]*border:\s*1px solid var\(--chat-line-strong\);/,
   );
   assert.match(
-    slashCommandMenu,
+    slashCommandCss,
     /\.chat-slash-menu\s*\{[\s\S]*background:\s*var\(--chat-menu-surface\);/,
   );
 });

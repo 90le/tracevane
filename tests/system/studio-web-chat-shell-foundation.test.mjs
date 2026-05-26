@@ -36,6 +36,13 @@ const sessionListShared = fs.readFileSync(
   ),
   "utf8",
 );
+const overlaySurfacesCss = fs.readFileSync(
+  path.join(
+    rootDir,
+    "apps/web-vue/src/features/chat-v2/overlay-surfaces.css",
+  ),
+  "utf8",
+);
 const sessionBatchBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionBatchBar.vue"),
   "utf8",
@@ -183,69 +190,69 @@ test("light theme sidebar surfaces stay opaque enough for drawer readability", (
 
 test("session rows use surfaced list blocks instead of fully transparent rows", () => {
   assert.match(
-    sessionRowList,
+    sessionListShared,
     /\.chat-shell-session-row\s*\{[\s\S]*background:\s*[\s\S]*chat-sidebar-row/,
   );
   assert.match(
-    sessionRowList,
+    sessionListShared,
     /\.chat-shell-session-row\.active,[\s\S]*background:\s*[\s\S]*chat-sidebar-row-active/,
   );
   assert.match(
-    sessionRowList,
+    sessionListShared,
     /\.chat-shell-session-row\s*\{[\s\S]*backdrop-filter:\s*blur\(12px\);/,
   );
 });
 
 test("folder rows use the same surfaced sidebar treatment for readability", () => {
   assert.match(
-    sessionFolderList,
+    sessionListShared,
     /\.chat-shell-folder-row\s*\{[\s\S]*background:\s*[\s\S]*chat-sidebar-row/,
   );
   assert.match(
-    sessionFolderList,
+    sessionListShared,
     /\.chat-shell-folder-row:hover\s*\{[\s\S]*background:\s*var\(--chat-sidebar-row-hover\);/,
   );
   assert.match(
-    sessionFolderList,
+    sessionListShared,
     /\.chat-shell-folder-row\.active,[\s\S]*background:\s*[\s\S]*chat-sidebar-row-active/,
   );
 });
 
 test("session list chrome adopts a softened IM rail while leaving folder and filter affordances intact", () => {
   assert.match(
-    sessionRowList,
+    sessionListShared,
     /\.chat-shell-session-row\s*\{[\s\S]*border-radius:\s*14px;/,
   );
   assert.match(
-    sessionRowList,
+    sessionListShared,
     /\.chat-shell-session-row\s*\{[\s\S]*overflow:\s*hidden;/,
   );
-  assert.match(sessionRowList, /\.chat-shell-session-row::before\s*\{/);
+  assert.match(sessionListShared, /\.chat-shell-session-row::before\s*\{/);
   assert.match(
-    sessionRowList,
+    sessionListShared,
     /\.chat-shell-session-item\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    sessionRowList,
+    sessionListShared,
     /\.chat-shell-session-item\s*\{[\s\S]*border:\s*0;/,
   );
   assert.match(
-    sessionRowList,
+    sessionListShared,
     /\.chat-shell-session-item\s*\{[\s\S]*background:\s*transparent;/,
   );
   assert.match(
-    sessionRowList,
+    sessionListShared,
     /\.chat-shell-session-item\s*\{[\s\S]*box-shadow:\s*none;/,
   );
   assert.match(sessionRowList, /chat-shell-session-preview-line/);
   assert.match(sessionRowList, /chat-shell-session-preview-badge/);
   assert.match(sessionRowList, /chat-shell-session-source/);
   assert.match(
-    sessionFolderList,
+    sessionListShared,
     /\.chat-shell-folder-row\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    sessionFolderList,
+    sessionListShared,
     /\.chat-shell-folder-item\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
@@ -253,15 +260,15 @@ test("session list chrome adopts a softened IM rail while leaving folder and fil
     /\.chat-shell-session-more\s*\{[\s\S]*border-radius:\s*999px;/,
   );
   assert.match(
-    sessionFolderList,
+    sessionListShared,
     /\.chat-shell-folder-tag\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    sessionFolderHeader,
+    sessionListShared,
     /\.chat-shell-session-subheader\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    sessionFolderHeader,
+    sessionListShared,
     /\.chat-shell-session-subheader__badge\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(sessionFilterBar, /PopoverRoot/);
@@ -285,7 +292,7 @@ test("session list chrome adopts a softened IM rail while leaving folder and fil
   assert.match(sessionFilterBar, /@keyframes chat-session-filter-popover-in/);
   assert.match(sessionFilterBar, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(
-    sessionBatchBar,
+    sessionListShared,
     /\.chat-shell-session-batchbar__toggle-all\s*\{[\s\S]*border-radius:\s*10px;/,
   );
 });
@@ -309,27 +316,27 @@ test("chat composer and picker keep the flatter density pass instead of oversize
     /\.chat-composer-pool-item\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-agent-picker-mask-in 160ms ease;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-agent-picker-enter 190ms cubic-bezier\(0\.2,\s*0\.8,\s*0\.2,\s*1\);/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker__search\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker__filter\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker-option\s*\{[\s\S]*border-radius:\s*12px;/,
   );
 });
@@ -583,33 +590,33 @@ test("resource cards and inspector chrome stay aligned with the flatter chat den
   );
   assert.match(inspectorPanel, /@keyframes chat-inspector-panel-in/);
   assert.match(inspectorPanel, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(cascadeMenu, /\.cascade-menu\s*\{[\s\S]*border-radius:\s*12px;/);
+  assert.match(overlaySurfacesCss, /\.cascade-menu\s*\{[\s\S]*border-radius:\s*12px;/);
 });
 
 test("composer, picker, and queue utilities keep the flatter control language", () => {
   assert.match(composerBar, /DialogRoot/);
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-agent-picker-mask-in 160ms ease;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\s*\{[\s\S]*position:\s*fixed;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\s*\{[\s\S]*top:\s*50%;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\s*\{[\s\S]*left:\s*50%;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\s*\{[\s\S]*z-index:\s*1501;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-agent-picker-enter 190ms cubic-bezier\(0\.2,\s*0\.8,\s*0\.2,\s*1\);/,
   );
   assert.match(
@@ -658,7 +665,7 @@ test("composer, picker, and queue utilities keep the flatter control language", 
     /\.chat-composer-attachment-remove\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    newChatAgentPicker,
+    overlaySurfacesCss,
     /\.chat-agent-picker-option__tag\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(

@@ -24,6 +24,10 @@ const chatShellWorkspaceCss = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
   "utf8",
 );
+const overlaySurfacesCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/overlay-surfaces.css"),
+  "utf8",
+);
 const sessionFilterBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
   "utf8",
@@ -36,9 +40,11 @@ const newChatAgentPicker = fs.readFileSync(
   "utf8",
 );
 
-test("chat portal overlays are backed by unscoped style blocks so teleported nodes keep their surfaces", () => {
-  assert.match(cascadeMenu, /<style>\s*\.cascade-menu-anchor\s*\{/);
-  assert.match(cascadeMenu, /<style>[\s\S]*\.cascade-menu\s*\{/);
+test("chat portal overlays are backed by global css modules so teleported nodes keep their surfaces", () => {
+  assert.match(cascadeMenu, /import '\.\/overlay-surfaces\.css';/);
+  assert.doesNotMatch(cascadeMenu, /<style(?: scoped)?>/);
+  assert.match(overlaySurfacesCss, /\.cascade-menu-anchor\s*\{/);
+  assert.match(overlaySurfacesCss, /\.cascade-menu\s*\{/);
   assert.match(
     conversationPane,
     /<style>[\s\S]*\.chat-session-menu-popover\s*\{/,
@@ -63,6 +69,11 @@ test("chat portal overlays are backed by unscoped style blocks so teleported nod
   );
   assert.match(
     newChatAgentPicker,
-    /<style>[\s\S]*\.chat-agent-picker-mask\s*\{/,
+    /import '\.\/overlay-surfaces\.css';/,
+  );
+  assert.doesNotMatch(newChatAgentPicker, /<style(?: scoped)?>/);
+  assert.match(
+    overlaySurfacesCss,
+    /\.chat-agent-picker-mask\s*\{/,
   );
 });
