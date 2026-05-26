@@ -1,3 +1,248 @@
+/* Migrated Cron workspace rules from global style.css. Keep Cron chrome in feature CSS. */
+
+.cron-stage-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cron-chip {
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent);
+}
+
+.cron-workbench {
+  isolation: isolate;
+}
+
+.cron-sidebar-panel,
+.cron-stage-header,
+.cron-stage-panel,
+.cron-empty-state {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.cron-sidebar-panel {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 74%, transparent), color-mix(in srgb, var(--surface-soft) 48%, transparent));
+}
+
+.cron-stage-header {
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--sky) 9%, transparent), transparent 48%),
+    color-mix(in srgb, var(--shell-panel-fill) 90%, transparent);
+}
+
+.cron-stage-panel {
+  background: color-mix(in srgb, var(--shell-panel-fill) 68%, transparent);
+}
+
+.cron-stage-tabs {
+  gap: 0;
+  overflow: hidden;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+}
+
+.cron-stage-tab {
+  min-height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.cron-stage-tab:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  transform: none;
+}
+
+.cron-stage-tab[data-state='active'] {
+  color: var(--text);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mint) 12%, transparent), color-mix(in srgb, var(--sky) 10%, transparent)),
+    color-mix(in srgb, var(--surface) 82%, transparent);
+  border: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.cron-stage-tab-icon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+
+.cron-stage-facts,
+.cron-overview-grid {
+  overflow: hidden;
+  gap: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 52%, transparent);
+}
+
+.cron-stage-fact,
+.cron-overview-item {
+  min-width: 142px;
+  border: none;
+  border-right: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 0;
+  background: transparent;
+}
+
+.cron-stage-fact:last-child,
+.cron-overview-item:last-child {
+  border-right: none;
+}
+
+.cron-list-item {
+  box-shadow: none;
+}
+
+.cron-list-item {
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface) 56%, transparent);
+}
+
+.cron-list-item.active {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--mint) 13%, transparent), transparent 70%),
+    color-mix(in srgb, var(--surface) 68%, transparent);
+}
+
+.cron-payload-card,
+.cron-run-item,
+.cron-run-detail,
+.cron-scheduler-callout {
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 52%, transparent);
+  box-shadow: none;
+}
+
+html[data-theme="light"] .cron-stage-panel,
+html[data-theme="light"] .cron-payload-card,
+html[data-theme="light"] .cron-run-item,
+html[data-theme="light"] .cron-run-detail,
+html[data-theme="light"] .cron-scheduler-callout {
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.cron-stage-tabs {
+    width: 100%;
+  }
+
+.cron-stage-tab {
+    flex: 1 1 auto;
+  }
+
+.cron-page {
+  width: 100%;
+  max-width: none;
+  gap: 14px;
+}
+
+.cron-workbench {
+  display: grid;
+  grid-template-columns: minmax(248px, 324px) minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--atlas-line);
+  border-radius: var(--atlas-radius-lg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel) 70%, transparent), color-mix(in srgb, var(--atlas-panel) 42%, transparent));
+}
+
+.cron-sidebar-panel {
+  position: relative;
+  top: auto;
+  max-height: none;
+  border: 0;
+  border-right: 1px solid var(--atlas-line);
+  border-radius: 0;
+  padding: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel-2) 58%, transparent), color-mix(in srgb, var(--atlas-panel) 24%, transparent));
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.cron-stage {
+  min-width: 0;
+  display: grid;
+  gap: 0;
+  border: 0;
+  background: transparent;
+}
+
+.cron-stage-header,
+.cron-stage-panel {
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.cron-stage-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 16px 18px;
+  background: color-mix(in srgb, var(--atlas-panel-2) 64%, transparent);
+  backdrop-filter: blur(18px) saturate(1.12);
+}
+
+.cron-stage-facts,
+.cron-overview-grid {
+  border: 1px solid var(--atlas-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--atlas-panel-3) 66%, transparent);
+}
+
+.cron-stage-fact,
+.cron-overview-item {
+  border-radius: 0;
+  background: transparent;
+  border-right: 1px solid var(--atlas-line);
+}
+
+.cron-list-item {
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cron-list-item:hover,
+.cron-list-item.active {
+  transform: none;
+  background: color-mix(in srgb, var(--atlas-primary) 9%, var(--atlas-panel-3));
+}
+
+.cron-stage-tab {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.cron-workbench {
+    grid-template-columns: 1fr;
+  }
+
+.cron-sidebar-panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--atlas-line);
+  }
+
 /* CronControlPage.vue */
 .cron-page {
   gap: 18px;

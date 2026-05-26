@@ -3459,8 +3459,7 @@ html[data-theme="light"] .docs-link-icon {
   min-width: 0;
 }
 
-.operate-stage-task-head,
-.cron-stage-facts {
+.operate-stage-task-head {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -3496,11 +3495,6 @@ html[data-theme="light"] .docs-link-icon {
   font-size: 11px;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--shell-highlight) 14%, transparent);
   white-space: nowrap;
-}
-
-.cron-chip {
-  border: 1px solid var(--border-subtle);
-  background: color-mix(in srgb, var(--surface-raised) 90%, transparent);
 }
 
 .operate-badge {
@@ -4688,75 +4682,6 @@ html[data-theme="light"] .page-header-row {
   border-color: rgba(20, 72, 92, 0.12);
 }
 
-.cron-workbench {
-  isolation: isolate;
-}
-
-.cron-sidebar-panel,
-.cron-stage-header,
-.cron-stage-panel,
-.cron-empty-state {
-  border-radius: 10px;
-  box-shadow: none;
-}
-
-.cron-sidebar-panel {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 74%, transparent), color-mix(in srgb, var(--surface-soft) 48%, transparent));
-}
-
-.cron-stage-header {
-  overflow: hidden;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--sky) 9%, transparent), transparent 48%),
-    color-mix(in srgb, var(--shell-panel-fill) 90%, transparent);
-}
-
-.cron-stage-panel {
-  background: color-mix(in srgb, var(--shell-panel-fill) 68%, transparent);
-}
-
-.cron-stage-tabs {
-  gap: 0;
-  overflow: hidden;
-  width: fit-content;
-  max-width: 100%;
-  padding: 4px;
-  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 58%, transparent);
-}
-
-.cron-stage-tab {
-  min-height: 36px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  box-shadow: none;
-}
-
-.cron-stage-tab:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--surface) 78%, transparent);
-  transform: none;
-}
-
-.cron-stage-tab[data-state='active'] {
-  color: var(--text);
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--mint) 12%, transparent), color-mix(in srgb, var(--sky) 10%, transparent)),
-    color-mix(in srgb, var(--surface) 82%, transparent);
-  border: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-.cron-stage-tab-icon {
-  width: 15px;
-  height: 15px;
-  stroke-width: 1.8;
-}
-
 .config-overview-ribbon {
   overflow: hidden;
   gap: 0;
@@ -4913,71 +4838,6 @@ html[data-theme="light"] .page-header-row {
     linear-gradient(135deg, color-mix(in srgb, var(--mint) 45%, transparent), color-mix(in srgb, var(--sky) 24%, transparent)),
     color-mix(in srgb, var(--surface) 68%, transparent);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.cron-stage-facts,
-.cron-overview-grid {
-  overflow: hidden;
-  gap: 0;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 52%, transparent);
-}
-
-.cron-stage-fact,
-.cron-overview-item {
-  min-width: 142px;
-  border: none;
-  border-right: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  border-radius: 0;
-  background: transparent;
-}
-
-.cron-stage-fact:last-child,
-.cron-overview-item:last-child {
-  border-right: none;
-}
-
-.cron-list-item {
-  box-shadow: none;
-}
-
-.cron-list-item {
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--surface) 56%, transparent);
-}
-
-.cron-list-item.active {
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--mint) 13%, transparent), transparent 70%),
-    color-mix(in srgb, var(--surface) 68%, transparent);
-}
-
-.cron-payload-card,
-.cron-run-item,
-.cron-run-detail,
-.cron-scheduler-callout {
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 52%, transparent);
-  box-shadow: none;
-}
-
-html[data-theme="light"] .cron-stage-panel,
-html[data-theme="light"] .cron-payload-card,
-html[data-theme="light"] .cron-run-item,
-html[data-theme="light"] .cron-run-detail,
-html[data-theme="light"] .cron-scheduler-callout {
-  background: rgba(255, 255, 255, 0.62);
-}
-
-@media (max-width: 920px) {
-  .cron-stage-tabs {
-    width: 100%;
-  }
-
-  .cron-stage-tab {
-    flex: 1 1 auto;
-  }
 }
 
 /* Studio Atlas: release redesign layer. This is the new product workbench contract. */
@@ -5209,7 +5069,6 @@ body::before {
 .plugins-page,
 .skills-page,
 .system-page,
-.cron-page,
 .dreaming-page {
   width: 100%;
   max-width: none;
@@ -5247,7 +5106,6 @@ body::before {
 }
 
 .config-workbench,
-.cron-workbench,
 .plugins-layout,
 .cs-workspace-grid {
   display: grid;
@@ -5262,7 +5120,6 @@ body::before {
 
 .config-sidebar,
 .plugins-rail,
-.cron-sidebar-panel,
 .operate-resource-rail {
   position: relative;
   top: auto;
@@ -5278,7 +5135,6 @@ body::before {
 }
 
 .plugins-stage,
-.cron-stage,
 .config-main,
 .operate-stage {
   min-width: 0;
@@ -5289,8 +5145,6 @@ body::before {
 }
 
 .config-active-tab-panel,
-.cron-stage-header,
-.cron-stage-panel,
 .config-sheet {
   border: 0;
   border-bottom: 1px solid var(--atlas-line);
@@ -5300,8 +5154,7 @@ body::before {
   backdrop-filter: none;
 }
 
-.config-active-tab-panel,
-.cron-stage-header {
+.config-active-tab-panel {
   position: sticky;
   top: 0;
   z-index: 5;
@@ -5317,8 +5170,6 @@ body::before {
 .config-active-tab-facts,
 .config-fact-list,
 .config-core-baseline,
-.cron-stage-facts,
-.cron-overview-grid,
 .terminal-inspector-summary-grid,
 .terminal-binary-list,
 .operate-fact-strip {
@@ -5334,8 +5185,6 @@ body::before {
 .config-active-tab-fact,
 .config-fact,
 .config-core-baseline__item,
-.cron-stage-fact,
-.cron-overview-item,
 .terminal-summary-stat,
 .operate-summary-pill {
   border-radius: 0;
@@ -5345,7 +5194,6 @@ body::before {
 
 .plugins-rail-row,
 .plugins-install-row,
-.cron-list-item,
 .provider-index-item,
 .provider-model-row,
 .terminal-binary-row,
@@ -5364,8 +5212,6 @@ body::before {
 
 .plugins-rail-item:hover,
 .plugins-rail-item.active,
-.cron-list-item:hover,
-.cron-list-item.active,
 .provider-index-item:hover,
 .provider-index-item.active {
   transform: none;
@@ -5411,7 +5257,6 @@ select.form-input,
 .compact-button,
 .surface-tab,
 .plugins-tab,
-.cron-stage-tab,
 .skills-mode-button,
 .config-tab {
   border-radius: 10px;
@@ -5473,7 +5318,6 @@ select.form-input,
   }
 
   .config-workbench,
-  .cron-workbench,
   .plugins-layout,
   .cs-workspace-grid {
     grid-template-columns: 1fr;
@@ -5481,7 +5325,6 @@ select.form-input,
 
   .config-sidebar,
   .plugins-rail,
-  .cron-sidebar-panel,
   .operate-resource-rail {
     border-right: 0;
     border-bottom: 1px solid var(--atlas-line);
