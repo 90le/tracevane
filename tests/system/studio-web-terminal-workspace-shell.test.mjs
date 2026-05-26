@@ -90,7 +90,19 @@ test("terminal view mounts workspace page instead of console placeholder", () =>
     terminalView,
     /import\s*\{\s*TerminalWorkspacePage\s*\}\s*from\s*['"]\.\.\/features\/terminal['"]/,
   );
+  assert.match(terminalView, /import\s+['"]\.\.\/features\/terminal\/terminal-workspace\.css['"];/);
+  assert.doesNotMatch(terminalView, /<style scoped>/);
   assert.doesNotMatch(terminalView, /<TerminalConsolePage\s*\/>/);
+});
+
+test("terminal console styles are owned by terminal workspace css", () => {
+  assert.match(terminalConsole, /import '\.\/terminal-workspace\.css';/);
+  assert.doesNotMatch(terminalConsole, /<style scoped>/);
+  assert.match(workspaceCss, /\.terminal-view-route\s*\{/);
+  assert.match(workspaceCss, /\.terminal-console-surface\s*\{/);
+  assert.match(workspaceCss, /\.terminal-console-main\s*\{/);
+  assert.match(workspaceCss, /\.terminal-container \.xterm/);
+  assert.doesNotMatch(workspaceCss, /:deep|:global/);
 });
 
 test("terminal service wires descriptor and ledger persistence for session recovery", () => {
@@ -402,8 +414,8 @@ test("terminal console surfaces compact telemetry chips even when toolbar is hid
   assert.match(terminalConsole, /terminal-console-cli-progress/);
   assert.match(terminalConsole, /terminal-console-link-state/);
   assert.match(terminalConsole, /terminal-console-header-chip--mode/);
-  assert.match(terminalConsole, /terminal-console-header-chip--progress-running/);
-  assert.match(terminalConsole, /terminal-console-header-chip--progress-error/);
+  assert.match(workspaceCss, /terminal-console-header-chip--progress-running/);
+  assert.match(workspaceCss, /terminal-console-header-chip--progress-error/);
   assert.match(terminalConsole, /terminal-console-header-chip--status/);
 });
 

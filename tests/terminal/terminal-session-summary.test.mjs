@@ -142,10 +142,14 @@ test("terminal service applies a conservative native worker budget for web termi
   const previousRayon = process.env.RAYON_NUM_THREADS;
   const previousTokio = process.env.TOKIO_WORKER_THREADS;
   const previousBudget = process.env.OPENCLAW_TERMINAL_NATIVE_WORKERS;
+  const previousLang = process.env.LANG;
+  const previousLcCtype = process.env.LC_CTYPE;
 
   delete process.env.RAYON_NUM_THREADS;
   delete process.env.TOKIO_WORKER_THREADS;
   delete process.env.OPENCLAW_TERMINAL_NATIVE_WORKERS;
+  delete process.env.LANG;
+  delete process.env.LC_CTYPE;
 
   try {
     const env = terminalService.buildTerminalEnv({
@@ -169,6 +173,8 @@ test("terminal service applies a conservative native worker budget for web termi
     restoreEnv("RAYON_NUM_THREADS", previousRayon);
     restoreEnv("TOKIO_WORKER_THREADS", previousTokio);
     restoreEnv("OPENCLAW_TERMINAL_NATIVE_WORKERS", previousBudget);
+    restoreEnv("LANG", previousLang);
+    restoreEnv("LC_CTYPE", previousLcCtype);
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

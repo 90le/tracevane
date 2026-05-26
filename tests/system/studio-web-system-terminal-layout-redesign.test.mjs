@@ -91,9 +91,11 @@ test("system and terminal pages keep dedicated surface contracts", () => {
     /context-rail|context rail|right rail/,
   );
   assert.match(
-    terminalConsolePage,
+    terminalWorkspaceCss,
     /\.terminal-console-main\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*border:\s*1px\s+solid\s+var\(--border-subtle\);/,
   );
+  assert.match(terminalConsolePage, /import '\.\/terminal-workspace\.css';/);
+  assert.doesNotMatch(terminalConsolePage, /<style scoped>/);
 });
 
 test("system control tower and terminal workspace expressions stay explicit", () => {
@@ -103,7 +105,7 @@ test("system control tower and terminal workspace expressions stay explicit", ()
 
   assert.match(terminalConsolePage, /terminal-console-surface/);
   assert.match(terminalConsolePage, /terminal-console-main/);
-  assert.match(terminalConsolePage, /var\(--surface-base\)/);
+  assert.match(terminalWorkspaceCss, /var\(--surface-base\)/);
   assert.doesNotMatch(terminalConsolePage, /terminal-maintenance-workspace/);
   assert.doesNotMatch(terminalConsolePage, /terminal-immersive-canvas/);
   assert.doesNotMatch(terminalConsolePage, /terminal-workspace-glow/);
@@ -233,27 +235,27 @@ test("terminal workspace keeps strong shell-relative height chain for stage and 
     /\.terminal-session-pane\s*>\s*\.terminal-console-surface\s*\{[\s\S]*min-height:\s*0;/,
   );
   assert.match(
-    terminalConsolePage,
+    terminalWorkspaceCss,
     /\.terminal-console-surface\s*\{[\s\S]*min-height:\s*0;/,
   );
   assert.match(
-    terminalConsolePage,
+    terminalWorkspaceCss,
     /\.terminal-console-surface\s*\{[\s\S]*height:\s*100%;/,
   );
   assert.match(
-    terminalConsolePage,
+    terminalWorkspaceCss,
     /\.terminal-console-main\s*\{[\s\S]*min-height:\s*0;/,
   );
   assert.match(
-    terminalConsolePage,
+    terminalWorkspaceCss,
     /\.terminal-console-main\s*\{[\s\S]*height:\s*100%;/,
   );
   assert.match(
-    terminalConsolePage,
+    terminalWorkspaceCss,
     /\.terminal-container\s*\{[\s\S]*display:\s*grid;/,
   );
   assert.match(
-    terminalConsolePage,
+    terminalWorkspaceCss,
     /\.terminal-container\s*\{[\s\S]*grid-template-rows:\s*minmax\(0,\s*1fr\);/,
   );
 });
@@ -301,11 +303,11 @@ test("terminal workspace embeds console in flush stage mode", () => {
     /'terminal-console-surface-embedded':\s*props\.embedded/,
   );
   assert.match(
-    terminalConsolePage,
+    terminalWorkspaceCss,
     /\.terminal-console-surface-embedded\s+\.terminal-console-main\s*\{[\s\S]*border:\s*0;/,
   );
   assert.match(
-    terminalConsolePage,
+    terminalWorkspaceCss,
     /\.terminal-console-surface-embedded\s+\.terminal-console-main\s*\{[\s\S]*border-radius:\s*0;/,
   );
 });
