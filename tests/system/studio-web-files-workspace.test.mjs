@@ -16,6 +16,7 @@ const filesView = read("apps/web-vue/src/views/FilesView.vue");
 const filesControlPage = read("apps/web-vue/src/features/files/FilesControlPage.vue");
 const fileEditorWorkspace = read("apps/web-vue/src/features/files/FileEditorWorkspace.vue");
 const codeFileEditor = read("apps/web-vue/src/features/files/CodeFileEditor.vue");
+const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.css");
 const filesApi = read("apps/web-vue/src/features/files/api.ts");
 const filesDriver = read("apps/web-vue/src/features/files/vuefinder-driver.ts");
 const filesRoutes = read("apps/api/modules/files/routes.ts");
@@ -70,7 +71,7 @@ test("files workspace exposes explorer layout, tree, listing, editor, upload, an
   assert.match(fileEditorWorkspace, /editorFileIconForName/);
   assert.match(filesControlPage, /resolvedTheme/);
   assert.match(filesControlPage, /theme:\s*resolvedTheme\.value === "light" \? "silver" : "midnight"/);
-  assert.match(filesControlPage, /html\[data-theme="dark"\] \.file-manager-page/);
+  assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.file-manager-page/);
   assert.match(filesControlPage, /handleFileDclick/);
   assert.match(filesControlPage, /handleExplorerPathChange/);
   assert.match(filesControlPage, /openEditorForItem/);
@@ -149,7 +150,7 @@ test("files workspace exposes explorer layout, tree, listing, editor, upload, an
   assert.match(codeFileEditor, /indentWithTab/);
   assert.match(codeFileEditor, /key:\s*"Mod-s"/);
   assert.match(codeFileEditor, /emit\("save"\)/);
-  assert.match(codeFileEditor, /scrollbar-width:\s*thin/);
+  assert.match(filesWorkspaceCss, /scrollbar-width:\s*thin/);
   assert.match(codeFileEditor, /oneDark/);
   assert.match(filesControlPage, /provide\("VueFinderOptions"/);
   assert.match(filesControlPage, /vuefinder\/dist\/locales\/zhCN\.js/);
@@ -157,6 +158,20 @@ test("files workspace exposes explorer layout, tree, listing, editor, upload, an
   assert.match(filesControlPage, /vuefinder\/dist\/vuefinder\.css/);
   assert.doesNotMatch(main, /VueFinderPlugin/);
   assert.doesNotMatch(main, /vuefinder\/dist\/vuefinder\.css/);
+});
+
+test("files feature keeps workspace styles in shared CSS instead of Vue scoped blocks", () => {
+  for (const source of [filesControlPage, fileEditorWorkspace, codeFileEditor]) {
+    assert.match(source, /import "\.\/files-workspace\.css";/);
+    assert.doesNotMatch(source, /<style scoped>/);
+  }
+
+  assert.match(filesWorkspaceCss, /\.file-manager-page\s*\{/);
+  assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.file-manager-page/);
+  assert.match(filesWorkspaceCss, /\.file-manager-editor-drawer\s*\{/);
+  assert.match(filesWorkspaceCss, /\.code-file-editor\s*\{/);
+  assert.match(filesWorkspaceCss, /\.code-file-editor \.cm-scroller/);
+  assert.doesNotMatch(filesWorkspaceCss, /:deep|:global/);
 });
 
 test("files api and server routes cover browse, tree, read, search, mutate, upload, and download", () => {
