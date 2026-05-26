@@ -8,6 +8,10 @@ const dreamingPage = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/dreaming/DreamingControlPage.vue'),
   'utf8',
 );
+const dreamingWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/dreaming/dreaming-workspace.css'),
+  'utf8',
+);
 
 test('dreaming page exposes a rem-harness preview action in the operations strip', () => {
   assert.match(dreamingPage, /Preview REM/);
@@ -20,4 +24,14 @@ test('dreaming page renders a dedicated rem-harness preview surface instead of h
   assert.match(dreamingPage, /dreaming-rem-preview__markdown/);
   assert.match(dreamingPage, /Create Daily Aliases/);
   assert.match(dreamingPage, /@click="applyCompatibilityAliases"/);
+});
+
+test('dreaming page keeps workspace styling in feature CSS', () => {
+  assert.match(dreamingPage, /import '\.\/dreaming-workspace\.css';/);
+  assert.doesNotMatch(dreamingPage, /<style scoped>/);
+  assert.match(dreamingWorkspaceCss, /\.dreaming-stage\s*\{/);
+  assert.match(dreamingWorkspaceCss, /html\[data-theme='light'\] \.dreaming-page\s*\{/);
+  assert.match(dreamingWorkspaceCss, /\.dreaming-stage__copy \.page-copy\s*\{/);
+  assert.match(dreamingWorkspaceCss, /\.dreaming-stage__star\.star-1\s*\{/);
+  assert.doesNotMatch(dreamingWorkspaceCss, /:deep|:global/);
 });
