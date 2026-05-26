@@ -1806,31 +1806,6 @@ select.form-input option {
   transform: translateY(-1px);
 }
 
-.topbar-actions-chat-route {
-  width: 100%;
-  gap: 8px;
-  padding: 8px 12px;
-  align-self: center;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.topbar-actions-chat-route::-webkit-scrollbar {
-  display: none;
-}
-
-.topbar-actions-chat-route .theme-switch {
-  padding: 3px;
-  gap: 4px;
-  background: color-mix(in srgb, var(--surface) 78%, transparent 22%);
-}
-
-.topbar-actions-chat-route .theme-switch-button {
-  min-height: 26px;
-  padding: 0 7px;
-  font-size: 11px;
-}
-
 .theme-switch {
   display: inline-flex;
   align-items: center;
@@ -2269,35 +2244,6 @@ html[data-theme="light"] .docs-link-icon {
   }
 }
 
-
-html[data-theme="light"] .chat-shell-page {
-  color-scheme: light;
-}
-
-html:not([data-theme="light"]) .chat-shell-page {
-  color-scheme: dark;
-}
-
-.chat-shell-page,
-.chat-shell-page * {
-  scrollbar-color: rgba(120, 137, 160, 0.45) transparent;
-}
-
-.chat-shell-sidebar,
-.chat-side-inspector,
-.chat-host-exec-confirm-dialog,
-.chat-shell-toast {
-  background: var(--surface-base);
-  border: 1px solid var(--border-subtle);
-}
-
-.chat-main-stage {
-  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
-}
-
-.chat-host-exec-confirm-primary {
-  background: var(--accent-primary);
-}
 
 /* Studio Design System v1: quiet command-center skin over legacy surfaces. */
 :root {
@@ -3169,8 +3115,7 @@ select.form-input,
 }
 
 .status-banner,
-.empty-inline,
-.file-manager-loading {
+.empty-inline {
   border: 1px solid var(--atlas-line);
   border-radius: 12px;
   background: color-mix(in srgb, var(--atlas-panel-3) 78%, transparent);

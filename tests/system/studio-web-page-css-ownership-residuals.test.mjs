@@ -37,6 +37,8 @@ const skillsWorkspaceCss = read("apps/web-vue/src/features/skills/skills-workspa
 const systemWorkspaceCss = read("apps/web-vue/src/features/system/system-workspace.css");
 const dreamingWorkspaceCss = read("apps/web-vue/src/features/dreaming/dreaming-workspace.css");
 const operateWorkspaceCss = read("apps/web-vue/src/features/operate/operate-workspace.css");
+const chatShellWorkspaceCss = read("apps/web-vue/src/features/chat-v2/chat-shell-workspace.css");
+const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.css");
 const webSourceText = readFilesUnder("apps/web-vue/src", (entryPath) => /\.(?:vue|ts|js|css)$/.test(entryPath));
 
 test("global style no longer owns remaining page-family selectors", () => {
@@ -55,6 +57,13 @@ test("dead legacy dashboard and page-helper selectors stay deleted", () => {
   assert.doesNotMatch(webSourceText, deadSelectorPattern);
 });
 
+test("global style does not own chat or files component selectors", () => {
+  assert.doesNotMatch(
+    globalStyleCss,
+    /\.(?:topbar-actions-chat-route|chat-shell-page|chat-shell-sidebar|chat-side-inspector|chat-host-exec-confirm-dialog|chat-host-exec-confirm-primary|chat-main-stage|file-manager-loading)(?![a-zA-Z0-9_-])/,
+  );
+});
+
 test("remaining page-family CSS lives in feature-owned stylesheets", () => {
   assert.match(codexStackWorkspaceCss, /Migrated Codex Stack workspace rules from global style\.css/);
   assert.match(codexStackWorkspaceCss, /\.cs-status-pill/);
@@ -68,4 +77,7 @@ test("remaining page-family CSS lives in feature-owned stylesheets", () => {
   assert.match(dreamingWorkspaceCss, /\.dreaming-page/);
   assert.match(operateWorkspaceCss, /Migrated Operate workspace shared rules from global style\.css/);
   assert.match(operateWorkspaceCss, /\.operate-workspace-shell/);
+  assert.match(chatShellWorkspaceCss, /\.chat-shell-sidebar/);
+  assert.match(chatShellWorkspaceCss, /\.chat-host-exec-confirm-dialog/);
+  assert.match(filesWorkspaceCss, /\.file-manager-loading/);
 });

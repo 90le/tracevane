@@ -15,7 +15,6 @@ const chatShellPage = read(
 const chatShellWorkspaceCss = read(
   "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css",
 );
-const styleCss = read("apps/web-vue/src/style.css");
 
 test("chat page redesign keeps stage contracts and removes equal three-way blocks", () => {
   assert.match(chatShellPage, /chat-session-rail/);
@@ -50,15 +49,27 @@ test("chat page redesign keeps layered workspace hierarchy tokens", () => {
 
 test("chat shell visual tokens align calmer stage and secondary surfaces", () => {
   assert.match(
-    styleCss,
-    /\.chat-shell-sidebar,\s*\n\.chat-side-inspector,\s*\n\.chat-host-exec-confirm-dialog,\s*\n\.chat-shell-toast\s*\{[^}]*background:\s*var\(--surface-base\);[^}]*border:\s*1px\s+solid\s+var\(--border-subtle\);/s,
+    chatShellWorkspaceCss,
+    /\.chat-shell-sidebar\s*\{[^}]*background:\s*var\(--surface-base\);/s,
   );
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
+    /\.chat-inspector-sheet\s*\{[^}]*background:\s*var\(--chat-inspector-surface\);[^}]*border:\s*1px\s+solid\s+var\(--chat-line-strong\);/s,
+  );
+  assert.match(
+    chatShellWorkspaceCss,
+    /\.chat-host-exec-confirm-dialog\s*\{[^}]*border:\s*1px\s+solid\s+var\(--border-subtle\);[^}]*background:\s*var\(--surface-base\);/s,
+  );
+  assert.match(
+    chatShellWorkspaceCss,
+    /\.chat-shell-toast\s*\{[^}]*border:\s*1px\s+solid\s+var\(--border-subtle\);[^}]*background:\s*var\(--surface-base\);/s,
+  );
+  assert.match(
+    chatShellWorkspaceCss,
     /\.chat-main-stage\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--surface-raised\) 92%, transparent\);/s,
   );
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
     /\.chat-host-exec-confirm-primary\s*\{[^}]*background:\s*var\(--accent-primary\);/s,
   );
 });

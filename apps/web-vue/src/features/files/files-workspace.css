@@ -54,6 +54,9 @@ html[data-theme="dark"] .file-manager-page {
   display: grid;
   place-items: center;
   height: 100%;
+  border: 1px solid var(--file-manager-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--file-manager-panel-strong) 78%, transparent);
   color: var(--muted);
   font-size: 13px;
 }
