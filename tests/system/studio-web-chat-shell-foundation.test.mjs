@@ -97,7 +97,11 @@ const conversationPane = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
   "utf8",
 );
-const chatRecordBrowserPanel = fs.readFileSync(
+
+const conversationPaneCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  "utf8",
+);const chatRecordBrowserPanel = fs.readFileSync(
   path.join(
     rootDir,
     "apps/web-vue/src/features/chat-v2/ChatRecordBrowserPanel.vue",
@@ -394,31 +398,31 @@ test("chat notifications keep the flatter chrome and close control sizing", () =
 
 test("conversation pane keeps large empty and history surfaces in the restrained-corner range", () => {
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__notice\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__blocked\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-thread__history-banner\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-thread__history-banner-action\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-thread__jump-fab\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-empty\s*\{[\s\S]*border-radius:\s*12px;/,
   );
 });
@@ -725,64 +729,64 @@ test("conversation utility pills and live preview chrome avoid oversized capsule
   assert.doesNotMatch(conversationPane, /triggerMenuAction\('refresh-session'\)/);
   assert.doesNotMatch(conversationPane, /toggleHostManagementExecFromMenu/);
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-rendering-settings-mask-in 0\.2s ease;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-rendering-settings-dialog-in 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*position:\s*fixed;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*top:\s*50%;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*left:\s*50%;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*transform:\s*translate\(-50%,\s*-50%\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-scope-btn\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-chip\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-warn-badge\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(conversationPane, /DropdownMenuRoot/);
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-session-menu-popover\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-session-menu-popover-in 0\.2s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-session-menu-item\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__status\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__exec-toggle\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-thread__history-banner-icon\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-thread__jump-badge\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(markdownBlock, /DialogRoot/);
@@ -824,15 +828,15 @@ test("conversation utility pills and live preview chrome avoid oversized capsule
     messageBubbleCss,
     /\.chat-image-preview-dialog\s*\{[\s\S]*box-sizing:\s*border-box;/,
   );
-  assert.match(conversationPane, /@keyframes chat-session-menu-popover-in/);
-  assert.match(conversationPane, /@keyframes chat-rendering-settings-mask-in/);
+  assert.match(conversationPaneCss, /@keyframes chat-session-menu-popover-in/);
+  assert.match(conversationPaneCss, /@keyframes chat-rendering-settings-mask-in/);
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@keyframes chat-rendering-settings-dialog-in/,
   );
   assert.match(markdownBlockCss, /@keyframes chat-live-preview-mask-in/);
   assert.match(markdownBlockCss, /@keyframes chat-live-preview-dialog-in/);
-  assert.match(conversationPane, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(conversationPaneCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(markdownBlockCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(
     chatShellWorkspaceCss,
@@ -852,15 +856,15 @@ test("mobile conversation header and composer prioritize visible controls over h
     /class="chat-conversation-pane__summary-chip"/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__header\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__header\s*\{[\s\S]*padding:\s*8px 10px 6px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__summary\s*\{[\s\S]*display:\s*flex;/,
   );
   assert.match(conversationPane, /class="chat-conversation-pane__mobile-dock"/);
@@ -885,47 +889,47 @@ test("mobile conversation header and composer prioritize visible controls over h
     /class="chat-conversation-pane__mobile-dock-btn chat-conversation-pane__mobile-dock-btn--thinking"/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__actions\s*\{[\s\S]*display:\s*none;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__mobile-dock\s*\{[\s\S]*grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__mobile-dock\s*\{[\s\S]*border-radius:\s*14px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__mobile-dock-btn\s*\{[\s\S]*min-height:\s*48px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__mobile-dock-btn--refresh\s*\{[\s\S]*box-shadow:\s*0 14px 28px rgba\(44,\s*120,\s*255,\s*0\.16\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__mobile-dock-btn--tools\.active\s*\{[\s\S]*border-color:\s*color-mix\(in srgb,\s*#0f766e 40%, var\(--chat-line\)\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__mobile-dock-btn--thinking\.active\s*\{[\s\S]*border-color:\s*color-mix\(in srgb,\s*#b45309 40%, var\(--chat-line\)\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__composer\s*\{[\s\S]*padding:\s*6px 10px 8px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__avatar\s*\{[\s\S]*width:\s*34px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__mobile-dock-btn\s*\{[\s\S]*min-height:\s*40px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__summary-chip\s*\{[\s\S]*min-height:\s*21px;/,
   );
   assert.match(
@@ -970,19 +974,19 @@ test("mobile action sheet keeps secondary actions compact instead of oversized s
     /class="chat-conversation-pane__mobile-sheet-action-icon"/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__mobile-sheet\s*\{[\s\S]*padding:\s*12px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__mobile-sheet-grid\s*\{[\s\S]*gap:\s*8px;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__mobile-sheet-action\s*\{[\s\S]*grid-template-columns:\s*32px minmax\(0,\s*1fr\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-pane__mobile-sheet-action\s*\{[\s\S]*padding:\s*10px;/,
   );
 });
@@ -1151,7 +1155,7 @@ test("conversation pane virtualizes the timeline shell so only viewport-adjacent
   assert.match(conversationPane, /const showActiveRunPlaceholder = computed\(\(\) => \{/);
   assert.match(conversationPane, /正在处理中，等待实时消息或工具过程返回。/);
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-thread__live-placeholder-dot\s*\{[\s\S]*animation:\s*chat-thread-live-placeholder-pulse/,
   );
   assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_MIN_ITEMS = 160;/);
@@ -1189,7 +1193,7 @@ test("conversation pane virtualizes the timeline shell so only viewport-adjacent
   assert.match(conversationPane, /class="chat-conversation-thread__loading-indicator chat-conversation-thread__loading-indicator--before"/);
   assert.match(conversationPane, /class="chat-conversation-thread__loading-indicator chat-conversation-thread__loading-indicator--after"/);
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-thread__loading-indicator\s*\{[\s\S]*height:\s*0;[\s\S]*position:\s*sticky;/,
   );
 });
@@ -1247,7 +1251,7 @@ test("history prepend restores against the newest loaded message boundary instea
   assert.match(conversationPane, /if \(bottomDistance <= 40 && !settling\) \{/);
   assert.match(conversationPane, /if \(\s*!props\.selectedSession[\s\S]*\|\| props\.hasMoreAfter[\s\S]*\|\| scrollState\.value\.autoScrollLockedByUser[\s\S]*\|\| isHistoryBrowseGuardActive\(\)/);
   assert.match(conversationPane, /props\.hasMoreAfter[\s\S]*\|\| historyPrependMutationPending[\s\S]*\|\| scrollState\.value\.prependAnchor/);
-  assert.match(conversationPane, /overflow-anchor:\s*none;/);
+  assert.match(conversationPaneCss, /overflow-anchor:\s*none;/);
   assert.match(conversationPane, /scrollToBottom\('auto'\);/);
   assert.match(chatShellPage, /const shouldShowLoadingState = !prefetchedPayload;/);
   assert.match(chatShellPage, /if \(shouldShowLoadingState\) \{\s*historyLoadingBefore\.value = true;\s*\}/);

@@ -28,11 +28,19 @@ const sessionListPanel = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionListPanel.vue"),
   "utf8",
 );
+const sessionListSharedCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-list-shared.css"),
+  "utf8",
+);
 const conversationPane = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
   "utf8",
 );
 
+const conversationPaneCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  "utf8",
+);
 test("app shell uses a direct route host so chat is not boxed inside extra shell wrappers", () => {
   assert.match(
     appVue,
@@ -89,11 +97,11 @@ test("chat page keeps independent list and thread scrollers inside the full-heig
     /\.chat-shell-layout\s*\{[\s\S]*height:\s*100%;[\s\S]*overflow:\s*hidden;/,
   );
   assert.match(
-    sessionListPanel,
+    sessionListSharedCss,
     /\.chat-shell-session-list__body\s*\{[\s\S]*overflow:\s*auto;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-conversation-thread\s*\{[\s\S]*overflow:\s*auto;/,
   );
 });

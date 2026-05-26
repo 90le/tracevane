@@ -16,7 +16,11 @@ const conversationPane = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
   "utf8",
 );
-const chatShellPage = fs.readFileSync(
+
+const conversationPaneCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  "utf8",
+);const chatShellPage = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
   "utf8",
 );
@@ -45,14 +49,10 @@ test("chat portal overlays are backed by global css modules so teleported nodes 
   assert.doesNotMatch(cascadeMenu, /<style(?: scoped)?>/);
   assert.match(overlaySurfacesCss, /\.cascade-menu-anchor\s*\{/);
   assert.match(overlaySurfacesCss, /\.cascade-menu\s*\{/);
-  assert.match(
-    conversationPane,
-    /<style>[\s\S]*\.chat-session-menu-popover\s*\{/,
-  );
-  assert.match(
-    conversationPane,
-    /<style>[\s\S]*\.chat-rendering-settings-dialog\s*\{/,
-  );
+  assert.match(conversationPane, /import '\.\/conversation-pane\.css';/);
+  assert.doesNotMatch(conversationPane, /<style(?: scoped)?>/);
+  assert.match(conversationPaneCss, /\.chat-session-menu-popover\s*\{/);
+  assert.match(conversationPaneCss, /\.chat-rendering-settings-dialog\s*\{/);
   assert.match(chatShellPage, /import '\.\/chat-shell-workspace\.css';/);
   assert.doesNotMatch(chatShellPage, /<style scoped>/);
   assert.match(

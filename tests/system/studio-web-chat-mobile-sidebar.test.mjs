@@ -37,7 +37,11 @@ const conversationPane = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
   "utf8",
 );
-const sessionListFilters = fs.readFileSync(
+
+const conversationPaneCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  "utf8",
+);const sessionListFilters = fs.readFileSync(
   path.join(
     rootDir,
     "apps/web-vue/src/features/chat-v2/session-list-filters.ts",
@@ -266,15 +270,15 @@ test("mobile conversation moves the session-list trigger into the first mobile d
     /<div class="chat-conversation-pane__mobile-dock">[\s\S]*?@click="\$emit\('open-session-list'\)"[\s\S]*?@click="\$emit\('refresh-session'\)"/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__header\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__head\s*\{[\s\S]*padding-left:\s*max\(calc\(env\(safe-area-inset-left,\s*0px\) \+ 48px\),\s*56px\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__mobile-dock\s*\{[\s\S]*grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\);/,
   );
 });

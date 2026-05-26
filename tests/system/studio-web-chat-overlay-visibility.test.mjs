@@ -28,7 +28,11 @@ const conversationPane = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
   "utf8",
 );
-const sessionFilterBar = fs.readFileSync(
+
+const conversationPaneCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  "utf8",
+);const sessionFilterBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
   "utf8",
 );
@@ -123,35 +127,35 @@ test("chat portal overlays render on surfaced backgrounds instead of transparent
     /\.chat-shell-session-filter-popover\s*\{[\s\S]*box-shadow:\s*0 18px 44px rgba\(3,\s*8,\s*14,\s*0\.28\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-session-menu-popover\s*\{[\s\S]*border:\s*1px solid var\(--chat-line-strong\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-session-menu-popover\s*\{[\s\S]*background:\s*var\(--chat-menu-surface\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-session-menu-popover\s*\{[\s\S]*backdrop-filter:\s*blur\(24px\)\s*saturate\(140%\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-session-menu-popover\s*\{[\s\S]*box-shadow:\s*0 18px 44px rgba\(3,\s*8,\s*14,\s*0\.28\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*border:\s*1px solid var\(--chat-line-strong\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*background:\s*var\(--chat-dialog-surface\);/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*position:\s*fixed;/,
   );
   assert.match(
-    conversationPane,
+    conversationPaneCss,
     /\.chat-rendering-settings-dialog\s*\{[\s\S]*z-index:\s*1261;/,
   );
   assert.match(

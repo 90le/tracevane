@@ -9,7 +9,11 @@ const conversationPane = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ConversationPane.vue'),
   'utf8',
 );
-const chatShellPage = fs.readFileSync(
+
+const conversationPaneCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/conversation-pane.css'),
+  'utf8',
+);const chatShellPage = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatShellPage.vue'),
   'utf8',
 );
@@ -22,14 +26,14 @@ test('rendering settings dialog separates toolbar chrome from scrollable content
 });
 
 test('rendering settings dialog constrains height and scrolls internally', () => {
-  assert.match(conversationPane, /\.chat-rendering-settings-dialog\s*\{[\s\S]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\);/);
-  assert.match(conversationPane, /\.chat-rendering-settings-dialog\s*\{[\s\S]*overflow:\s*hidden;/);
-  assert.match(conversationPane, /\.chat-rendering-settings-body\s*\{[\s\S]*min-height:\s*0;/);
-  assert.match(conversationPane, /\.chat-rendering-settings-body\s*\{[\s\S]*overflow-y:\s*auto;/);
+  assert.match(conversationPaneCss, /\.chat-rendering-settings-dialog\s*\{[\s\S]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\);/);
+  assert.match(conversationPaneCss, /\.chat-rendering-settings-dialog\s*\{[\s\S]*overflow:\s*hidden;/);
+  assert.match(conversationPaneCss, /\.chat-rendering-settings-body\s*\{[\s\S]*min-height:\s*0;/);
+  assert.match(conversationPaneCss, /\.chat-rendering-settings-body\s*\{[\s\S]*overflow-y:\s*auto;/);
 });
 
 test('rendering settings dialog keeps safe bottom space on narrow screens', () => {
-  assert.match(conversationPane, /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-rendering-settings-body\s*\{[\s\S]*safe-area-inset-bottom/);
+  assert.match(conversationPaneCss, /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-rendering-settings-body\s*\{[\s\S]*safe-area-inset-bottom/);
 });
 
 test('rendering settings dialog exposes message sound cues with bilingual copy', () => {
