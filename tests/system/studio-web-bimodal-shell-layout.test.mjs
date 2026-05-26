@@ -36,19 +36,19 @@ test("app shell now uses a lighter rail-plus-route layout instead of a boxed top
 test("style foundation defines mirrored light theme shell surfaces", () => {
   assert.match(
     styleCss,
-    /html\[data-theme="light"\]\s*\{[\s\S]*--shell-bg-start:\s*#f5f7fb;/,
+    /html\[data-theme="light"\]\s*\{[\s\S]*--shell-bg-start:\s*#edf2f6;/,
   );
   assert.match(
     styleCss,
-    /html\[data-theme="light"\]\s*\{[\s\S]*--shell-bg-end:\s*#dce5ef;/,
+    /html\[data-theme="light"\]\s*\{[\s\S]*--shell-bg-end:\s*#dbe5ee;/,
   );
   assert.match(
     styleCss,
-    /html\[data-theme="light"\]\s*\{[\s\S]*--shell-stage-fill:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.92\),\s*rgba\(243,\s*247,\s*251,\s*0\.84\)\);/,
+    /html\[data-theme="light"\]\s*\{[\s\S]*--shell-stage-fill:\s*rgba\(255,\s*255,\s*255,\s*0\.86\);/,
   );
   assert.match(
     styleCss,
-    /html\[data-theme="light"\]\s*\{[\s\S]*--shell-rail-fill:\s*linear-gradient\(180deg,\s*rgba\(253,\s*254,\s*255,\s*0\.97\),\s*rgba\(240,\s*245,\s*250,\s*0\.9\)\);/,
+    /html\[data-theme="light"\]\s*\{[\s\S]*--shell-rail-fill:\s*rgba\(248,\s*251,\s*253,\s*0\.94\);/,
   );
   assert.match(styleCss, /\.app-container\s*\{[\s\S]*gap:\s*0;/);
   assert.match(styleCss, /\.mobile-nav-trigger\s*\{/);

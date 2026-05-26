@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-23T11:26:30.720Z",
+  "generatedAt": "2026-05-26T09:06:41.566Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -137,6 +137,7 @@
     "tests/system/studio-domain-inventory.test.mjs",
     "tests/system/studio-management-coverage.test.mjs",
     "tests/system/studio-management-domain-manifest.test.mjs",
+    "tests/system/studio-release-goal-contract.test.mjs",
     "tests/system/studio-release-state.test.mjs",
     "tests/system/studio-web-agent-bindings-channel-links.test.mjs",
     "tests/system/studio-web-agents-deep-pages.test.mjs",
@@ -207,9 +208,11 @@
     "tests/system/studio-web-mobile-navigation.test.mjs",
     "tests/system/studio-web-operate-layout-redesign.test.mjs",
     "tests/system/studio-web-page-chrome-density.test.mjs",
+    "tests/system/studio-web-page-css-ownership-residuals.test.mjs",
     "tests/system/studio-web-performance-foundation.test.mjs",
     "tests/system/studio-web-plugins-workspace.test.mjs",
     "tests/system/studio-web-premium-motion-foundation.test.mjs",
+    "tests/system/studio-web-shared-avatar-components.test.mjs",
     "tests/system/studio-web-shell-chrome-layout.test.mjs",
     "tests/system/studio-web-shell-layout-redesign.test.mjs",
     "tests/system/studio-web-shell-route-manifest.test.mjs",
