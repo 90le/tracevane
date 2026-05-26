@@ -96,7 +96,6 @@
               :current-title="activeNavItem?.label || text('工作台', 'Workspace')"
               :current-group-title="activeNavGroupTitle"
               :current-path-label="route.path"
-              :command-label="text('打开命令面板', 'Open command palette')"
               :mobile-nav-label="text('打开工具栏', 'Open tools')"
               :theme-switch-label="text('主题模式', 'Theme mode')"
               :locale-switch-label="text('语言模式', 'Language mode')"
@@ -105,7 +104,6 @@
               :locale="locale"
               :locale-options="localeOptions"
               @toggle-mobile-nav="toggleSidebar"
-              @open-command-palette="openCommandPalette"
               @set-theme-mode="setThemeMode"
               @set-locale="setLocale"
             />

@@ -18,18 +18,6 @@
       <small>{{ currentPathLabel }}</small>
     </div>
 
-    <button
-      type="button"
-      class="studio-shell-topbar__command"
-      :aria-label="commandLabel"
-      :title="commandLabel"
-      @click="$emit('open-command-palette')"
-    >
-      <Command class="studio-shell-topbar__command-icon" aria-hidden="true" />
-      <span>{{ commandLabel }}</span>
-      <kbd>Ctrl K</kbd>
-    </button>
-
     <div class="studio-shell-topbar__controls">
       <div class="theme-switch" role="group" :aria-label="themeSwitchLabel">
         <button
@@ -66,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { Command, Monitor, Moon, Sun, Menu } from '@lucide/vue';
+import { Monitor, Moon, Sun, Menu } from '@lucide/vue';
 import type { Locale } from '../shared/locale';
 import type { ThemeMode } from '../shared/theme';
 
@@ -88,7 +76,6 @@ defineProps<{
   currentTitle: string;
   currentGroupTitle: string;
   currentPathLabel: string;
-  commandLabel: string;
   mobileNavLabel: string;
   themeSwitchLabel: string;
   localeSwitchLabel: string;
@@ -100,7 +87,6 @@ defineProps<{
 
 defineEmits<{
   (event: 'toggle-mobile-nav'): void;
-  (event: 'open-command-palette'): void;
   (event: 'set-theme-mode', value: ThemeMode): void;
   (event: 'set-locale', value: Locale): void;
 }>();

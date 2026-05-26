@@ -28,7 +28,6 @@ test("shell redesign keeps one sidebar navigation model and no global context pa
   assert.match(appVue, /StudioCommandPalette/);
   assert.match(appVue, /:nav-groups="navGroups"/);
   assert.match(appVue, /:current-title="activeNavItem\?\.label/);
-  assert.match(appVue, /:command-label="text\('打开命令面板', 'Open command palette'\)"/);
   assert.match(appVue, /shell-layout/);
   assert.match(appVue, /shell-main-stage/);
   assert.match(appVue, /class="shell-route-stage"/);
@@ -41,6 +40,7 @@ test("shell redesign keeps one sidebar navigation model and no global context pa
 
   assert.doesNotMatch(appVue, /StudioContextPanel|StudioShellContextRail/);
   assert.doesNotMatch(appVue, /shell-context-panel|contextPanel|contextToggle/);
+  assert.doesNotMatch(appVue, /:command-label="text\('打开命令面板', 'Open command palette'\)"/);
   assert.doesNotMatch(appVue, /riskSummaryValue|pendingSummaryValue/);
   assert.doesNotMatch(appVue, /useUiContent/);
   assert.equal(fs.existsSync(legacyUiContentPath), false);

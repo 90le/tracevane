@@ -98,6 +98,7 @@ import {
 } from '@lucide/vue';
 import { useLocalePreference } from '../shared/locale';
 import { useThemePreference, type ThemeMode } from '../shared/theme';
+import './studio-command-palette.css';
 
 type CommandIcon = 'sun' | 'moon' | 'monitor' | 'language' | 'external';
 
