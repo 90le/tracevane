@@ -28,6 +28,8 @@ test("confirm dialog foundation exposes shared component/composable path contrac
 
 test("confirm dialog foundation defines shared tone and structure contracts", () => {
   const dialogVue = read("apps/web-vue/src/components/ConfirmDialog.vue");
+  const dialogCss = read("apps/web-vue/src/components/confirm-dialog.css");
+  const globalStyleCss = read("apps/web-vue/src/style.css");
   const composableSource = read(
     "apps/web-vue/src/composables/useConfirmDialog.ts",
   );
@@ -52,6 +54,21 @@ test("confirm dialog foundation defines shared tone and structure contracts", ()
   );
   assert.match(
     dialogVue,
+    /import\s+["']\.\/confirm-dialog\.css["']/,
+    "expected ConfirmDialog to own its CSS through an explicit component import",
+  );
+  assert.doesNotMatch(
+    dialogVue,
+    /<style scoped>/,
+    "expected ConfirmDialog to avoid Vue scoped style blocks",
+  );
+  assert.match(dialogCss, /\.confirm-dialog-mask\s*\{/);
+  assert.match(dialogCss, /\.confirm-dialog__surface\s*\{/);
+  assert.match(dialogCss, /\.confirm-dialog__actions\s*\{/);
+  assert.doesNotMatch(dialogCss, /:deep|:global/);
+  assert.doesNotMatch(globalStyleCss, /\.confirm-dialog/);
+  assert.match(
+    dialogVue,
     /activeConfirmDialog\.tone\s*===\s*['"]danger['"]|activeConfirmDialog\.value\.tone\s*===\s*['"]danger['"]/,
     "expected ConfirmDialog to check danger tone explicitly",
   );
@@ -59,6 +76,16 @@ test("confirm dialog foundation defines shared tone and structure contracts", ()
     dialogVue,
     /activeConfirmDialog\.tone\s*===\s*['"]safe['"]|activeConfirmDialog\.value\.tone\s*===\s*['"]safe['"]/,
     "expected ConfirmDialog to check safe tone explicitly",
+  );
+  assert.match(
+    dialogVue,
+    /event\.key\s*===\s*['"]Escape['"]/,
+    "expected ConfirmDialog to close on Escape",
+  );
+  assert.match(
+    dialogVue,
+    /event\.target\s*===\s*event\.currentTarget/,
+    "expected ConfirmDialog to close only for mask clicks",
   );
   assert.match(
     chatShellPage,

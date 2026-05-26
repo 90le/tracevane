@@ -48,6 +48,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue';
+import './confirm-dialog.css';
 import {
   activeConfirmDialog,
   confirmAccept,
