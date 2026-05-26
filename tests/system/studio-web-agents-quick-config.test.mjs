@@ -25,6 +25,17 @@ const stylePath = path.join(rootDir, "apps/web-vue/src/style.css");
 const styleContent = fs.existsSync(stylePath)
   ? fs.readFileSync(stylePath, "utf8")
   : "";
+const agentsStylePath = path.join(rootDir, "apps/web-vue/src/features/agents/agents-workspace.css");
+const agentsStyleContent = fs.existsSync(agentsStylePath)
+  ? fs.readFileSync(agentsStylePath, "utf8")
+  : "";
+const agentsWorkspaceLayoutPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue",
+);
+const agentsWorkspaceLayoutContent = fs.existsSync(agentsWorkspaceLayoutPath)
+  ? fs.readFileSync(agentsWorkspaceLayoutPath, "utf8")
+  : "";
 
 test("agent quick config stays compact after the ledger rebuild", () => {
   assert.match(quickConfigDialogContent, /Display Name/);
@@ -62,21 +73,28 @@ test("agents overview exposes fast per-agent HEARTBEAT controls without opening 
 
 test("agents polish keeps mobile action groups stacked for thumb reach", () => {
   assert.match(
-    styleContent,
+    agentsStyleContent,
     /@media \(max-width: 720px\)[\s\S]*\.agents-stage-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
   );
   assert.match(
-    styleContent,
+    agentsStyleContent,
     /@media \(max-width: 720px\)[\s\S]*\.agent-rail-list\s*\{[\s\S]*max-height:/,
   );
   assert.match(
-    styleContent,
+    agentsStyleContent,
     /@media \(max-width: 960px\)[\s\S]*\.agents-workspace-shell[\s\S]*grid-template-columns:\s*1fr/,
   );
   assert.match(
-    styleContent,
+    agentsStyleContent,
     /\.agents-stage-header__actions\s*\{[\s\S]*justify-content:\s*flex-end;/,
   );
-  assert.match(styleContent, /\.agents-stage-tabs/);
-  assert.match(styleContent, /\.agent-rail-item/);
+  assert.match(agentsStyleContent, /\.agents-stage-tabs/);
+  assert.match(agentsStyleContent, /\.agent-rail-item/);
+  assert.match(agentsStyleContent, /\.agent-filter-chip/);
+});
+
+test("agents workspace css is owned by the agents feature", () => {
+  assert.match(agentsWorkspaceLayoutContent, /import ['"]\.\/agents-workspace\.css['"]/);
+  assert.match(agentsStyleContent, /Agents workspace surfaces live with the Agents feature/);
+  assert.doesNotMatch(styleContent, /\.(?:agents|agent-(?:rail|filter))[a-zA-Z0-9_-]*/);
 });
