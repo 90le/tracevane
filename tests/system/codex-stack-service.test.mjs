@@ -608,10 +608,13 @@ test("codex stack service status does not treat inactive as active", async () =>
       const cpa = summary.services.find((item) => item.id === "cli-proxy-api.service");
       const compact = summary.services.find((item) => item.id === "cpa-compact-proxy.service");
       const watchdog = summary.services.find((item) => item.id === "codex-stack-watchdog.timer");
+      const watchdogComponent = summary.components.find((item) => item.id === "watchdog");
 
       assert.equal(cpa?.active, false);
       assert.equal(compact?.active, false);
       assert.equal(watchdog?.active, false);
+      assert.equal(watchdogComponent?.label, "Background Watchdog");
+      assert.deepEqual(watchdogComponent?.notes, ["use Resume CPA Stack or Recommended Repair; do not start directly"]);
     },
   );
 });
@@ -2978,6 +2981,33 @@ test("bundled dmwork health check uses resolved Compact port consistently", () =
   assert.match(script, /Compact Proxy 监听在 127\.0\.0\.1:\$\{COMPACT_PORT\}/);
   assert.doesNotMatch(script, /grep -q ':18796'/);
   assert.doesNotMatch(script, /Compact Proxy 监听在 127\.0\.0\.1:18796/);
+});
+
+test("bundled health checks present watchdog as ordered auto-managed recovery", () => {
+  const official = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
+    "utf8",
+  );
+  const dmwork = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/health-check.sh"),
+    "utf8",
+  );
+
+  assert.match(official, /watchdog_state\(\)/);
+  assert.match(official, /Use Studio Resume CPA Stack or Recommended Repair/);
+  assert.match(official, /do not start the timer directly/);
+  assert.match(official, /Install\/repair or Resume CPA Stack will enable it after the proxy chain is healthy/);
+
+  assert.match(dmwork, /后台守护未运行；请用 Studio 的“恢复 CPA 栈”或推荐修复按 CPA → Compact → 后台守护顺序恢复/);
+  assert.match(dmwork, /不要直接手动启动 timer/);
+  assert.match(dmwork, /后台守护未启用；安装\/修复或恢复 CPA 栈会在链路健康后自动启用/);
+  assert.match(dmwork, /关键检查通过，但存在提示项/);
+
+  for (const script of [official, dmwork]) {
+    assert.doesNotMatch(script, /启动: systemctl --user start codex-stack-watchdog\.timer/);
+    assert.doesNotMatch(script, /启用: systemctl --user enable codex-stack-watchdog\.timer/);
+    assert.doesNotMatch(script, /systemctl --user (?:start|enable) codex-stack-watchdog\.timer/);
+  }
 });
 
 test("bundled codex stack installers keep Codex detached until smoke gate", () => {

@@ -102,6 +102,24 @@ service_state() {
   fi
 }
 
+watchdog_state() {
+  local unit="codex-stack-watchdog.timer"
+  if systemctl --user list-unit-files "$unit" >/dev/null 2>&1; then
+    if systemctl --user is-active --quiet "$unit" 2>/dev/null; then
+      ok "$unit active; background recovery is managed after CPA and Compact are healthy"
+    else
+      warn "$unit is not active. Use Studio Resume CPA Stack or Recommended Repair so CPA and Compact start first; do not start the timer directly."
+    fi
+    if systemctl --user is-enabled --quiet "$unit" 2>/dev/null; then
+      ok "$unit enabled"
+    else
+      warn "$unit is not enabled. Install/repair or Resume CPA Stack will enable it after the proxy chain is healthy; do not enable it directly."
+    fi
+  else
+    warn "$unit is not installed. Install/repair can add the background watchdog when this machine should keep CPA/Compact running."
+  fi
+}
+
 http_ok() {
   local name="$1" url="$2" auth="${3:-}"
   if [[ -n "$auth" ]]; then
@@ -169,7 +187,7 @@ echo
 echo "--- Services ---"
 service_state cli-proxy-api.service
 service_state cpa-compact-proxy.service
-service_state codex-stack-watchdog.timer
+watchdog_state
 
 if command -v loginctl >/dev/null 2>&1; then
   loginctl show-user "$USER" -p Linger 2>/dev/null | grep -q '=yes' \

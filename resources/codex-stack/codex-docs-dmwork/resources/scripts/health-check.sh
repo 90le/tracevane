@@ -12,8 +12,9 @@ NC='\033[0m'
 
 ok() { echo -e "  ${GREEN}✅ $1${NC}"; }
 fail() { echo -e "  ${RED}❌ $1${NC}"; FAIL=1; }
-warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; }
+warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; WARN=1; }
 FAIL=0
+WARN=0
 
 codex_value() {
   awk -F '"' -v key="$1" '/^[[:space:]]*\[/{ exit } $0 ~ key"[[:space:]]*=" { print $2; exit }' "$HOME/.codex/config.toml" 2>/dev/null
@@ -127,17 +128,17 @@ done
 echo "--- Codex Stack Watchdog ---"
 if systemctl --user list-unit-files codex-stack-watchdog.timer &>/dev/null; then
   if systemctl --user is-active codex-stack-watchdog.timer &>/dev/null; then
-    ok "Watchdog 定时器运行中"
+    ok "后台守护运行中（由 Resume/修复流程在 CPA 与 Compact 健康后管理）"
   else
-    warn "Watchdog 定时器未运行 — 启动: systemctl --user start codex-stack-watchdog.timer"
+    warn "后台守护未运行；请用 Studio 的“恢复 CPA 栈”或推荐修复按 CPA → Compact → 后台守护顺序恢复，不要直接手动启动 timer"
   fi
   if systemctl --user is-enabled codex-stack-watchdog.timer &>/dev/null; then
-    ok "Watchdog 已启用"
+    ok "后台守护已启用"
   else
-    warn "Watchdog 未启用 — 启用: systemctl --user enable codex-stack-watchdog.timer"
+    warn "后台守护未启用；安装/修复或恢复 CPA 栈会在链路健康后自动启用，不要直接手动 enable"
   fi
 else
-  warn "Watchdog 未安装"
+  warn "后台守护未安装；需要保持 CPA/Compact 后台稳定时，安装/修复会自动补齐"
 fi
 
 # ── openclaw.json ──
@@ -215,7 +216,11 @@ fi
 
 echo ""
 if [[ $FAIL -eq 0 ]]; then
-  echo -e "${GREEN}═══ 所有检查通过 ═══${NC}"
+  if [[ $WARN -eq 0 ]]; then
+    echo -e "${GREEN}═══ 所有检查通过 ═══${NC}"
+  else
+    echo -e "${YELLOW}═══ 关键检查通过，但存在提示项 ═══${NC}"
+  fi
 else
   echo -e "${RED}═══ 存在问题，请根据上述提示修复 ═══${NC}"
 fi

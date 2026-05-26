@@ -2225,11 +2225,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       },
       {
         id: "watchdog",
-        label: "Codex Stack Watchdog",
+        label: "Background Watchdog",
         status: serviceById.get("codex-stack-watchdog.timer")?.active ? "ok" : "degraded",
         installed: serviceById.get("codex-stack-watchdog.timer")?.installed === true,
         version: null,
-        notes: [],
+        notes: serviceById.get("codex-stack-watchdog.timer")?.active
+          ? ["managed after CPA and Compact are healthy"]
+          : ["use Resume CPA Stack or Recommended Repair; do not start directly"],
         paths: { unit: "codex-stack-watchdog.timer" },
       },
     ];

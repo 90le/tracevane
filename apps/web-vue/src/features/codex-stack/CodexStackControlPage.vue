@@ -788,8 +788,8 @@ const serviceCatalog: Record<
     blurbKey: ["即时通讯桥接服务", "Instant messaging bridge service"],
   },
   "codex-stack-watchdog.timer": {
-    labelKey: ["Watchdog", "Watchdog"],
-    blurbKey: ["周期巡检定时器", "Periodic watchdog timer"],
+    labelKey: ["后台守护", "Background Watchdog"],
+    blurbKey: ["由恢复/暂停流程自动管理，不直接手动启动", "Managed by resume/pause flows; do not start directly"],
   },
 };
 
@@ -1813,7 +1813,7 @@ const componentOptions = computed(() => [
   { id: "cpa" as const, label: text("CPA 代理", "CPA Proxy") },
   { id: "compact-proxy" as const, label: text("Compact 代理", "Compact Proxy") },
   { id: "cc-connect" as const, label: "cc-connect" },
-  { id: "watchdog" as const, label: text("看门狗", "Watchdog") },
+  { id: "watchdog" as const, label: text("后台守护", "Background Watchdog") },
 ]);
 const installComponentStrategies = computed<CodexStackInstallComponentStrategy[]>(() => componentOptions.value.map((component) => ({
   id: component.id,

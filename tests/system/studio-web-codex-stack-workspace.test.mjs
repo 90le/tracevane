@@ -981,6 +981,10 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /id: "job-lock"/);
   assert.match(controlPage, /id: "smoke"/);
   assert.match(controlPage, /id: "watchdog"[\s\S]*label: text\("后台守护", "Background Watchdog"\)/);
+  assert.match(controlPage, /"codex-stack-watchdog\.timer": \{[\s\S]*labelKey: \["后台守护", "Background Watchdog"\][\s\S]*Managed by resume\/pause flows; do not start directly/);
+  assert.match(controlPage, /id: "watchdog" as const, label: text\("后台守护", "Background Watchdog"\)/);
+  assert.doesNotMatch(controlPage, /labelKey: \["Watchdog", "Watchdog"\]/);
+  assert.doesNotMatch(controlPage, /label: text\("看门狗", "Watchdog"\)/);
   assert.doesNotMatch(controlPage, /label: "Watchdog"[\s\S]*暂停链路时应先停 watchdog/);
   assert.match(controlPage, /NO_PROXY 缺少/);
   assert.match(controlPage, /const policy = normalizeProxyPolicy\(current\.proxyPolicy\);[\s\S]*!policy\.noProxyLoopbackReady[\s\S]*\? "danger"/);
