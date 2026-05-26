@@ -32,8 +32,14 @@ const conversationPane = fs.readFileSync(
 const conversationPaneCss = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
   "utf8",
-);const sessionFilterBar = fs.readFileSync(
+);
+const sessionFilterBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
+  "utf8",
+);
+
+const sessionFilterCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-filter.css"),
   "utf8",
 );
 const sessionListPanel = fs.readFileSync(
@@ -111,19 +117,19 @@ test("chat theme tokens are exposed on html so portal overlays inherit visible s
 
 test("chat portal overlays render on surfaced backgrounds instead of transparent wrappers", () => {
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-popover\s*\{[\s\S]*border:\s*1px solid var\(--chat-line-strong\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-popover\s*\{[\s\S]*background:\s*var\(--chat-menu-surface\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-popover\s*\{[\s\S]*backdrop-filter:\s*blur\(24px\)\s*saturate\(140%\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-popover\s*\{[\s\S]*box-shadow:\s*0 18px 44px rgba\(3,\s*8,\s*14,\s*0\.28\);/,
   );
   assert.match(
@@ -236,11 +242,11 @@ test("session filter portal carries explicit theme classes so teleported overlay
     /<PopoverArrow[\s\S]*:class="\['chat-shell-session-filter-arrow',\s*theme === 'light' \? 'theme-light' : 'theme-dark'\]"/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-popover\.theme-light,\s*\.chat-shell-session-filter-mobile-sheet\.theme-light,\s*\.chat-shell-session-filter-arrow\.theme-light\s*\{/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-popover\.theme-dark,\s*\.chat-shell-session-filter-mobile-sheet\.theme-dark,\s*\.chat-shell-session-filter-arrow\.theme-dark\s*\{/,
   );
 });

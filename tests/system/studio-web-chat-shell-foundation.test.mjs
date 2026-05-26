@@ -51,6 +51,11 @@ const sessionFilterBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
   "utf8",
 );
+
+const sessionFilterCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-filter.css"),
+  "utf8",
+);
 const messageResourceList = fs.readFileSync(
   path.join(
     rootDir,
@@ -101,7 +106,8 @@ const conversationPane = fs.readFileSync(
 const conversationPaneCss = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
   "utf8",
-);const chatRecordBrowserPanel = fs.readFileSync(
+);
+const chatRecordBrowserPanel = fs.readFileSync(
   path.join(
     rootDir,
     "apps/web-vue/src/features/chat-v2/ChatRecordBrowserPanel.vue",
@@ -312,23 +318,23 @@ test("session list chrome adopts a softened IM rail while leaving folder and fil
   assert.match(sessionFilterBar, /PopoverRoot/);
   assert.match(sessionFilterBar, /PopoverPortal/);
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-chip\s*\{[\s\S]*border-radius:\s*999px;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-popover\s*\{[\s\S]*border-radius:\s*16px;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-popover\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-session-filter-popover-in 0\.2s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-agent-list\s*\{[\s\S]*border-radius:\s*14px;/,
   );
-  assert.match(sessionFilterBar, /@keyframes chat-session-filter-popover-in/);
-  assert.match(sessionFilterBar, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(sessionFilterCss, /@keyframes chat-session-filter-popover-in/);
+  assert.match(sessionFilterCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(
     sessionListShared,
     /\.chat-shell-session-batchbar__toggle-all\s*\{[\s\S]*border-radius:\s*10px;/,

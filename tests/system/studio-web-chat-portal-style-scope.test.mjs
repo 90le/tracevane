@@ -20,7 +20,8 @@ const conversationPane = fs.readFileSync(
 const conversationPaneCss = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
   "utf8",
-);const chatShellPage = fs.readFileSync(
+);
+const chatShellPage = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
   "utf8",
 );
@@ -34,6 +35,11 @@ const overlaySurfacesCss = fs.readFileSync(
 );
 const sessionFilterBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
+  "utf8",
+);
+
+const sessionFilterCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-filter.css"),
   "utf8",
 );
 const newChatAgentPicker = fs.readFileSync(
@@ -63,10 +69,9 @@ test("chat portal overlays are backed by global css modules so teleported nodes 
     chatShellWorkspaceCss,
     /\.chat-inspector-sheet\s*\{/,
   );
-  assert.match(
-    sessionFilterBar,
-    /<style>[\s\S]*\.chat-shell-session-filter-popover\s*\{/,
-  );
+  assert.match(sessionFilterBar, /import '\.\/session-filter\.css';/);
+  assert.doesNotMatch(sessionFilterBar, /<style(?:\s|>)/);
+  assert.match(sessionFilterCss, /\.chat-shell-session-filter-popover\s*\{/);
   assert.match(
     newChatAgentPicker,
     /import '\.\/overlay-surfaces\.css';/,

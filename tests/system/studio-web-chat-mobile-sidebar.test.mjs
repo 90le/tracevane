@@ -29,6 +29,11 @@ const sessionFilterBar = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
   "utf8",
 );
+
+const sessionFilterCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-filter.css"),
+  "utf8",
+);
 const sessionListPanel = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionListPanel.vue"),
   "utf8",
@@ -41,7 +46,8 @@ const conversationPane = fs.readFileSync(
 const conversationPaneCss = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
   "utf8",
-);const sessionListFilters = fs.readFileSync(
+);
+const sessionListFilters = fs.readFileSync(
   path.join(
     rootDir,
     "apps/web-vue/src/features/chat-v2/session-list-filters.ts",
@@ -126,66 +132,66 @@ test("mobile filter panel escapes drawer clipping and stays tappable", () => {
   assert.match(sessionFilterBar, /Search title, agent, preview, source/);
   assert.match(sessionFilterBar, /selectedSourceFilter/);
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-popover\s*\{[\s\S]*z-index:\s*1600;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-mobile-sheet\s*\{/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-mobile-sheet\s*\{[\s\S]*background:\s*var\(--chat-menu-surface\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /@media \(max-width:\s*1040px\)\s*\{[\s\S]*\.chat-shell-session-filter-popover\s*\{[\s\S]*max-height:\s*calc\(100dvh - 108px\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /@media \(max-width:\s*1040px\)\s*\{[\s\S]*\.chat-shell-session-filter-popover\s*\{[\s\S]*width:\s*calc\(100vw - 24px\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /@media \(max-width:\s*1040px\)\s*\{[\s\S]*\.chat-shell-session-filter-popover\s*\{[\s\S]*overflow:\s*hidden;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /@media \(max-width:\s*1040px\)\s*\{[\s\S]*\.chat-shell-session-filter-layer\s*\{[\s\S]*background:\s*color-mix\(in srgb, var\(--chat-sidebar-bg\) 99%, transparent 1%\);/,
   );
 });
 
 test("mobile session filter sheet keeps a compact density pass instead of oversized blocks", () => {
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-mobile-sheet\s*\{[\s\S]*gap:\s*8px;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-mobile-sheet\s*\{[\s\S]*padding:\s*10px;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-mobile-sheet \.chat-shell-session-filter-agent-list\s*\{[\s\S]*max-height:\s*min\(38dvh,\s*260px\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-mobile-sheet \.chat-shell-session-filter-agent-option\s*\{[\s\S]*min-height:\s*38px;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-mobile-sheet \.chat-shell-session-filter-popover__actions\s*\{[\s\S]*gap:\s*6px;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /@media \(max-width:\s*1040px\)\s*\{[\s\S]*\.chat-shell-session-filter-layer\s*\{[\s\S]*padding-left:\s*14px;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /@media \(max-width:\s*1040px\)\s*\{[\s\S]*\.chat-shell-session-filter-button\s*\{[\s\S]*min-height:\s*36px;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /@media \(max-width:\s*1040px\)\s*\{[\s\S]*\.chat-shell-session-filter-chip\s*\{[\s\S]*min-height:\s*28px;/,
   );
 });
@@ -209,31 +215,31 @@ test("agent filter uses Studio-owned option buttons instead of native select dro
     /class="chat-shell-session-filter-agent-option"/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-agent-list\s*\{[\s\S]*max-height:\s*240px;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-agent-list\s*\{[\s\S]*overflow:\s*auto;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-agent-list\s*\{[\s\S]*border:\s*1px solid color-mix\(in srgb, var\(--chat-line-strong\) 84%, transparent 16%\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-agent-list\s*\{[\s\S]*background:\s*[\s\S]*var\(--chat-menu-surface\)/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-agent-option\s*\{[\s\S]*background:\s*color-mix\(in srgb, var\(--chat-menu-surface\) 92%, var\(--chat-modal-row\) 8%\);/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-agent-option\s*\{[\s\S]*touch-action:\s*manipulation;/,
   );
   assert.match(
-    sessionFilterBar,
+    sessionFilterCss,
     /\.chat-shell-session-filter-agent-option\.active\s*\{[\s\S]*color:\s*var\(--chat-text\);/,
   );
 });

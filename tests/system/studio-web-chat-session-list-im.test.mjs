@@ -21,6 +21,12 @@ const sessionFilterBar = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionFilterBar.vue'),
   'utf8',
 );
+
+const sessionFilterCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/session-filter.css'),
+  'utf8',
+);
+
 const sessionRowList = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionRowList.vue'),
   'utf8',
@@ -175,6 +181,10 @@ test('session list components keep styling in the shared feature stylesheet', ()
   assert.match(sessionListSharedCss, /\.chat-shell-session-row\s*\{/);
   assert.match(sessionListSharedCss, /\.chat-shell-session-batchbar\s*\{/);
   assert.doesNotMatch(sessionListSharedCss, /:deep|:global/);
+  assert.match(sessionFilterBar, /import '\.\/session-filter\.css';/);
+  assert.doesNotMatch(sessionFilterBar, /<style(?:\s|>)/);
+  assert.match(sessionFilterCss, /\.chat-shell-session-filter-layer\s*\{/);
+  assert.doesNotMatch(sessionFilterCss, /:deep|:global/);
 });
 
 test('folder scope keeps agent/source filter options from descendant sessions and archived mode stays isolated', () => {
