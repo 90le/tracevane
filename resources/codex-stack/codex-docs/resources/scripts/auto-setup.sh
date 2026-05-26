@@ -38,7 +38,7 @@ Environment overrides:
   CPA_PORT=8317
   COMPACT_PORT=18796
   CPA_PROXY_KEY=studio
-  CODEX_MODEL=kimi-k2.6
+  CODEX_MODEL=<read from OpenClaw default/provider models>
   CODEX_CONTEXT_MODE=default|codex-1m|custom
   CODEX_CONTEXT_WINDOW=1050000
   OPENCLAW_UPSTREAM_BASE_URL=https://...
@@ -385,6 +385,19 @@ function configMentionsModel(openclaw, model) {
   return JSON.stringify(openclaw).includes(model);
 }
 
+function openclawModelCatalog(openclaw) {
+  const providers = openclaw.models?.providers || {};
+  const ids = [];
+  for (const provider of Object.values(providers)) {
+    const models = Array.isArray(provider?.models) ? provider.models : [];
+    for (const model of models) {
+      const id = modelName(model);
+      if (id) ids.push(id);
+    }
+  }
+  return Array.from(new Set(ids));
+}
+
 function openclawEnv(openclaw, keys) {
   const values = openclaw.env && typeof openclaw.env === "object" ? openclaw.env : {};
   for (const key of keys) {
@@ -433,10 +446,11 @@ function foreignProxyFor(raw, openclaw) {
 }
 
 function chooseDefaultModel(openclaw) {
-  if (JSON.stringify(openclaw).includes("llm-gateway.mlamp.cn")) return "kimi-k2.6";
-  if (configMentionsModel(openclaw, "kimi-k2.6")) return "kimi-k2.6";
-  if (configMentionsModel(openclaw, "glm-5.1")) return "glm-5.1";
-  return modelName(openclaw.defaultModel) || "kimi-k2.6";
+  return modelName(openclaw.defaultModel)
+    || modelName(openclaw.models?.defaultModel)
+    || modelName(openclaw.models?.default)
+    || openclawModelCatalog(openclaw)[0]
+    || "";
 }
 
 function contextMode(env) {
@@ -654,7 +668,10 @@ fi
 
 # ── Source metadata from node script ──────────────────────────────
 source "$META_FILE"
-DEFAULT_MODEL="${CODEX_MODEL:-glm-5.1}"
+DEFAULT_MODEL="${CODEX_MODEL:-}"
+if [[ -z "$DEFAULT_MODEL" ]]; then
+  die "未能从 OpenClaw 配置确定默认模型；请在 Studio 安装/运行配置中选择本机可用模型，或设置 CODEX_MODEL 后重试。"
+fi
 info "Model: $DEFAULT_MODEL"
 info "Upstream base URL: ${OPENCLAW_UPSTREAM_BASE_URL:-(none)}"
 info "CPA port: $CPA_PORT"

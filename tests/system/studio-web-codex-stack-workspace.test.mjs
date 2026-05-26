@@ -1322,19 +1322,23 @@ test("codex stack install channel changes sync channel defaults conservatively",
   assert.match(controlPage, /const nextModel = configForm\.defaultModel \|\| installForm\.model \|\| summaryTargetModel\(summary\.value\);/);
 });
 
-test("codex stack backend selects user configured models before channel fallbacks", () => {
+test("codex stack backend requires user configured target models instead of channel model fallbacks", () => {
   assert.match(codexStackService, /function chooseDefaultModel\(models: string\[\], current = "", openclawDefault = ""\): string \{/);
   assert.match(codexStackService, /if \(current\) return current;/);
   assert.match(codexStackService, /const envOverride = normalizeString\(process\.env\.CODEX_MODEL\);[\s\S]*if \(envOverride\) return envOverride;/);
   assert.match(codexStackService, /if \(openclawDefault\) return openclawDefault;/);
   assert.doesNotMatch(codexStackService, /for \(const preferred of \[DMWORK_DEFAULT_MODEL, OFFICIAL_DEFAULT_MODEL, openclawDefault/);
-  assert.match(codexStackService, /function chooseCpaAttachModel\(currentModel: string, profileDefault: string, channel: CodexStackChannel, openclawDefault = ""\): string \{/);
-  assert.match(codexStackService, /return profileDefault\.trim\(\) \|\| currentModel\.trim\(\) \|\| openclawDefault\.trim\(\) \|\| defaultModel\(channel\);/);
-  assert.match(codexStackService, /const cpaTargetModel = chooseCpaAttachModel\(currentModel, profile\.defaultModel, resolveChannel\(\), openclawDefaultModel\);/);
-  assert.match(codexStackService, /const attachModel = chooseCpaAttachModel\(currentModel, profile\.defaultModel, resolveChannel\(\), readOpenclawDefaultModel\(currentPaths\.openclawJson\)\);/);
-  assert.match(codexStackService, /const fallbackModel = readOpenclawDefaultModel\(paths\(\)\.openclawJson\) \|\| defaultModel\(resolveChannel\(\)\);/);
+  assert.match(codexStackService, /return models\[0\] \|\| "";/);
+  assert.match(codexStackService, /function readOpenclawProviderModels\(configPath: string\): string\[\] \{/);
+  assert.match(codexStackService, /function chooseCpaAttachModel\(currentModel: unknown, profileDefault: unknown, openclawDefault: unknown = ""\): string \{/);
+  assert.match(codexStackService, /return normalizeString\(profileDefault\) \|\| normalizeString\(currentModel\) \|\| normalizeString\(openclawDefault\);/);
+  assert.match(codexStackService, /function requireCpaTargetModel\(model: string\): string \{/);
+  assert.match(codexStackService, /const cpaTargetModel = chooseCpaAttachModel\(currentModel, profile\.defaultModel, openclawDefaultModel\);/);
+  assert.match(codexStackService, /requireCpaTargetModel\(chooseCpaAttachModel\(/);
+  assert.match(codexStackService, /const fallbackModel = readOpenclawDefaultModel\(paths\(\)\.openclawJson\) \|\| readOpenclawPreferredModels\(paths\(\)\.openclawJson\)\[0\] \|\| "";/);
   assert.doesNotMatch(codexStackService, /const requiredModels = Array\.from\(new Set\(\[\s*"glm-5\.1",\s*"kimi-k2\.6"/);
-  assert.match(codexStackService, /const installDefaultModel = normalizeString\(env\.CODEX_MODEL\) \|\| openclawDefaultModel \|\| defaultModel\(channel\);/);
+  assert.doesNotMatch(codexStackService, /defaultModel\(channel\)/);
+  assert.match(codexStackService, /const installDefaultModel = normalizeString\(env\.CODEX_MODEL\)[\s\S]*\|\| normalizeString\(storedProfile\.defaultModel\)[\s\S]*\|\| currentCodexModel/);
 });
 
 test("codex stack cc-connect refresh preserves dirty config drafts", () => {

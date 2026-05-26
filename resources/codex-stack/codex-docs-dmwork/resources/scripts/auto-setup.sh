@@ -154,6 +154,22 @@ const providers = data.models?.providers || {};
 const entries = Object.entries(providers);
 const first = entries[0]?.[1] || {};
 const env = data.env || {};
+function modelName(model) {
+  if (!model) return '';
+  if (typeof model === 'string') return model;
+  return model.id || model.name || model.model || model.value || '';
+}
+function providerModelCatalog() {
+  const ids = [];
+  for (const provider of Object.values(providers)) {
+    const models = Array.isArray(provider?.models) ? provider.models : [];
+    for (const model of models) {
+      const id = modelName(model);
+      if (id) ids.push(id);
+    }
+  }
+  return Array.from(new Set(ids));
+}
 function envVal(keys) {
   for (const key of keys) {
     const value = data[key] || env[key] || env[key.toLowerCase()] || process.env[key];
@@ -183,8 +199,8 @@ console.log('MLAMP_KEY=' + JSON.stringify(mlamp.apiKey || ''));
 const bigmodel = providers['bigmodel'] || {};
 console.log('BIGMODEL_URL=' + JSON.stringify(bigmodel.baseUrl || ''));
 console.log('BIGMODEL_KEY=' + JSON.stringify(bigmodel.apiKey || ''));
-const dm = data.defaultModel;
-console.log('OPENCLAW_DEFAULT_MODEL=' + JSON.stringify(typeof dm === 'string' ? dm : (dm?.id || dm?.name || dm?.model || '')));
+const dm = modelName(data.defaultModel) || modelName(data.models?.defaultModel) || modelName(data.models?.default) || providerModelCatalog()[0] || '';
+console.log('OPENCLAW_DEFAULT_MODEL=' + JSON.stringify(dm));
 console.log('MLAMP_PROXY_URL=' + JSON.stringify(providerProxy(mlamp.baseUrl || '')));
 console.log('BIGMODEL_PROXY_URL=' + JSON.stringify(providerProxy(bigmodel.baseUrl || '')));
 console.log('GATEWAY_PROXY_URL=' + JSON.stringify(providerProxy(first.baseUrl || '')));
@@ -210,12 +226,14 @@ fi
 
 if [[ -n "${CODEX_MODEL:-}" && "${CODEX_MODEL:-}" != "null" ]]; then
   : # 使用环境变量 CODEX_MODEL
+elif [[ -n "$OPENCLAW_DEFAULT_MODEL" && "$OPENCLAW_DEFAULT_MODEL" != "null" ]]; then
+  CODEX_MODEL="$OPENCLAW_DEFAULT_MODEL"
 elif [[ -n "$MLAMP_URL" && "$MLAMP_URL" != "null" ]]; then
   CODEX_MODEL="kimi-k2.6"
 elif [[ -n "$BIGMODEL_URL" && "$BIGMODEL_URL" != "null" ]]; then
   CODEX_MODEL="glm-5.1"
 else
-  CODEX_MODEL="${OPENCLAW_DEFAULT_MODEL:-kimi-k2.6}"
+  err "无法确定默认模型。请在 Studio 安装/运行配置中选择本机可用模型，或设置 CODEX_MODEL 后重试。"
 fi
 
 log "  主网关: $GATEWAY_URL"
@@ -490,7 +508,7 @@ openai-compatibility:
   - api-key: ${API_KEY}
     proxy-url: "${GATEWAY_PROXY_URL:-direct}"
   models:
-  - name: kimi-k2.6
+  - name: ${CODEX_MODEL}
 YAMLEOF
 fi
 
@@ -1084,7 +1102,7 @@ log "  bash ~/.openclaw/codex-docs-dmwork/resources/scripts/health-check.sh"
 echo ""
 log "启动 Codex："
 log "  codex                    # 默认模型 ${CODEX_MODEL}"
-log "  codex --model glm-5.1   # 切换模型"
+log "  codex --model <模型ID>   # 切换到其它已配置模型"
 echo ""
 log "管理服务："
 log "  systemctl --user status cli-proxy-api.service"

@@ -352,6 +352,45 @@ test("codex stack default model follows the user/openclaw default before live ca
   });
 });
 
+test("codex stack can derive the target model from OpenClaw provider model catalog", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    models: {
+      providers: {
+        custom: {
+          baseUrl: "https://gateway.example.test/v1",
+          models: [
+            { id: "custom-coder-pro", name: "Custom Coder Pro" },
+            "custom-fast",
+          ],
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+
+  await withMockFetch(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/v1/models")) {
+      return new Response("unavailable", { status: 503 });
+    }
+    return new Response("ok", { status: 200 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const summary = await service.getSummary();
+
+    assert.equal(summary.models.source, "config");
+    assert.equal(summary.models.current, "custom-coder-pro");
+    assert.equal(summary.models.defaultModel, "custom-coder-pro");
+    assert.equal(summary.profile.defaultModel, "custom-coder-pro");
+    assert.ok(summary.models.available.includes("custom-fast"));
+    assert.ok(!summary.models.available.includes("kimi-k2.6"));
+    assert.ok(!summary.models.available.includes("glm-5.1"));
+  });
+});
+
 test("codex stack summary falls back to config models when /v1/models is unavailable", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -415,6 +454,34 @@ test("codex stack management guard blocks mutations until explicitly enabled", a
   assert.equal(response.ok, true);
   const summary = await service.getSummary();
   assert.equal(summary.management.enabled, true);
+});
+
+test("codex stack refuses smoke matrix when no target model is selected", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+
+  const service = createCodexStackService(config);
+  const response = await service.startRepair(undefined, { actions: ["run-smoke-matrix"] });
+  const job = await waitForJob(service, response.job.id);
+
+  assert.equal(job.status, "failed");
+  assert.match(job.error || "", /选择 CPA 目标模型/);
+  assert.doesNotMatch(job.logTail, /glm-5\.1|kimi-k2\.6/);
 });
 
 test("codex stack service methods normalize missing payloads before reading fields", async () => {
@@ -1945,7 +2012,7 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   assert.equal(authJson.OPENAI_API_KEY, "secret-cpa-key-for-job");
 });
 
-test("codex stack install defaults follow the requested channel", async () => {
+test("codex stack install keeps the selected target model when channel changes", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -1986,7 +2053,7 @@ test("codex stack install defaults follow the requested channel", async () => {
 
   const profile = JSON.parse(fs.readFileSync(path.join(config.openclawRoot, "studio/codex-stack/profile.json"), "utf8"));
   assert.equal(profile.channel, "official");
-  assert.equal(profile.defaultModel, "glm-5.1");
+  assert.equal(profile.defaultModel, "kimi-k2.6");
   assert.equal(profile.cpaPort, 8317);
 });
 

@@ -56,7 +56,7 @@ const CPA_PORT = Number(process.env.CPA_PORT || 8317);
 const CPA_BASE_URL = process.env.CPA_BASE_URL || process.env.CPA_UPSTREAM_BASE_URL || `http://${CPA_HOST}:${CPA_PORT}`;
 const LISTEN_HOST = process.env.LISTEN_HOST || "127.0.0.1";
 const LISTEN_PORT = Number(process.env.LISTEN_PORT || 18796);
-const DEFAULT_MODEL = process.env.COMPACT_DEFAULT_MODEL || "glm-5.1";
+const DEFAULT_MODEL = process.env.COMPACT_DEFAULT_MODEL || process.env.CODEX_MODEL || "";
 const MAX_CONV_CHARS = Number(process.env.COMPACT_MAX_CONV_CHARS || 300000);
 const REQUEST_TIMEOUT_MS = Number(process.env.COMPACT_TIMEOUT_MS || 300000);
 const STREAM_KEEPALIVE_MS = Number(process.env.COMPACT_STREAM_KEEPALIVE_MS || 15000);
@@ -330,9 +330,17 @@ function responsesToolChoiceToChatToolChoice(toolChoice) {
   return undefined;
 }
 
+function resolveRequestModel(model) {
+  const value = String(model || DEFAULT_MODEL || "").trim();
+  if (!value) {
+    throw new Error("model is required because Compact Proxy has no COMPACT_DEFAULT_MODEL/CODEX_MODEL fallback");
+  }
+  return value;
+}
+
 function responsesBodyToChatBody(body) {
   const chatBody = {
-    model: body.model || DEFAULT_MODEL,
+    model: resolveRequestModel(body.model),
     messages: responseInputToChatMessages(body),
     stream: Boolean(body.stream),
   };
@@ -763,7 +771,12 @@ async function handleResponses(req, res) {
     return json(res, 400, responseError(`invalid JSON: ${error.message}`, "invalid_request_error"));
   }
 
-  const chatBody = responsesBodyToChatBody(request);
+  let chatBody;
+  try {
+    chatBody = responsesBodyToChatBody(request);
+  } catch (error) {
+    return json(res, 400, responseError(error.message, "invalid_request_error"));
+  }
   if (request.stream) return handleResponsesStream(req, res, request, chatBody);
   return handleResponsesNonStream(req, res, request, chatBody);
 }
@@ -776,7 +789,12 @@ async function handleCompact(req, res) {
     return json(res, 400, { error: { message: `invalid JSON: ${error.message}` } });
   }
 
-  const model = request.model || DEFAULT_MODEL;
+  let model;
+  try {
+    model = resolveRequestModel(request.model);
+  } catch (error) {
+    return json(res, 400, { error: { message: error.message, type: "invalid_request_error" } });
+  }
   let conversation = JSON.stringify(request.input || [], null, 2);
   if (conversation.length > MAX_CONV_CHARS) {
     log(`truncating compact input ${conversation.length} -> ${MAX_CONV_CHARS}`);

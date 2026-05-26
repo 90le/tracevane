@@ -138,6 +138,32 @@ test("compact proxy adapts non-streaming Responses requests to chat completions"
   }
 });
 
+test("compact proxy rejects model-less Responses requests when no default model is configured", async () => {
+  let upstreamCalls = 0;
+  const cpa = await startFakeCpa(async (_req, res) => {
+    upstreamCalls += 1;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const proxy = await startProxy(cpa.port);
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input: "missing model" }),
+    });
+
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.match(body.error.message, /model is required/);
+    assert.equal(upstreamCalls, 0);
+  } finally {
+    await proxy.close();
+    await cpa.close();
+  }
+});
+
 test("compact proxy converts chat completion SSE into Responses SSE with tool calls", async () => {
   const cpa = await startFakeCpa(async (req, res) => {
     const body = await readJsonBody(req);
