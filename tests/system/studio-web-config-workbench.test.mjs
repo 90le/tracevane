@@ -60,10 +60,16 @@ test('config editor owns feature CSS for workbench framing', () => {
   assert.match(configEditorPage, /import '\.\/config-workspace\.css';/);
   assert.doesNotMatch(configEditorPage, /<style scoped>/);
   assert.match(configWorkspaceCss, /Migrated Config workspace rules from global style\.css/);
+  assert.match(configWorkspaceCss, /Migrated Config workbench internals from global style\.css/);
   assert.match(configWorkspaceCss, /\.config-command-panel\s*\{/);
   assert.match(configWorkspaceCss, /\.config-signal-strip\s*\{/);
   assert.match(configWorkspaceCss, /\.config-active-tab-facts\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-page-shell \.provider-index-item\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-page-shell \.provider-model-row\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-page-shell \.fallback-row\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-page-shell \.browser-profile-card\s*\{/);
   assert.doesNotMatch(globalStyleCss, /\.config[a-zA-Z0-9_-]*/);
+  assert.doesNotMatch(globalStyleCss, /\.(?:provider-index|provider-model|provider-card|provider-stack|fallback-|browser-profile|allowlist-preview|mini-stat|micro-badge|hero-copy)[a-zA-Z0-9_-]*/);
 });
 
 test('config tabs and sheets keep CSS ownership centralized', () => {

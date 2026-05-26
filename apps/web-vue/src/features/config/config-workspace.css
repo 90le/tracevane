@@ -315,10 +315,6 @@ html[data-theme="light"] .config-spotlight-badge {
   padding-top: 0;
 }
 
-.config-provider-editor .provider-summary {
-  margin-bottom: 0;
-}
-
 .config-provider-editor .provider-card-head-visual {
   margin-bottom: 14px;
 }
@@ -1626,4 +1622,239 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 .config-page-shell .config-reset-type-label {
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+/* Migrated Config workbench internals from global style.css. */
+
+.config-page-shell .provider-index-list {
+  display: grid;
+  gap: 8px;
+}
+
+.config-page-shell .provider-index-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--surface) 52%, transparent);
+  box-shadow: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.config-page-shell .provider-index-item:hover,
+.config-page-shell .provider-index-item.active {
+  transform: none;
+  background: color-mix(in srgb, var(--atlas-primary) 9%, var(--atlas-panel-3));
+}
+
+.config-page-shell .provider-index-item.active {
+  border-color: color-mix(in srgb, var(--atlas-primary-2) 34%, var(--atlas-line));
+}
+
+.config-page-shell .provider-index-item strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.config-page-shell .provider-index-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.config-page-shell .browser-profile-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.config-page-shell .browser-profile-card:last-child {
+  border-bottom: 0;
+}
+
+.config-page-shell .fallback-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.config-page-shell .fallback-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.config-page-shell .fallback-header h4,
+.config-page-shell .provider-model-toolbar h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.config-page-shell .fallback-list {
+  display: grid;
+  gap: 8px;
+}
+
+.config-page-shell .fallback-list-spaced {
+  margin-top: 12px;
+}
+
+.config-page-shell .fallback-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--atlas-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--atlas-panel-3) 60%, transparent);
+  box-shadow: none;
+}
+
+.config-page-shell .fallback-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(127, 255, 212, 0.08);
+  color: var(--mint);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.config-page-shell .provider-card {
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--glass-bg), var(--glass-accent);
+  border: 1px solid var(--line);
+}
+
+.config-page-shell .provider-card-collapsible {
+  padding-top: 12px;
+}
+
+.config-page-shell .provider-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.config-page-shell .provider-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.config-page-shell .provider-card-head strong {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.config-page-shell .provider-card-head-visual {
+  margin-bottom: 16px;
+}
+
+.config-page-shell .provider-caption {
+  margin: 6px 0 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.config-page-shell .provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.config-page-shell .provider-grid-compact {
+  align-items: start;
+}
+
+.config-page-shell .provider-model-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.config-page-shell .provider-model-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.config-page-shell .provider-model-list {
+  display: grid;
+  gap: 10px;
+}
+
+.config-page-shell .provider-model-row {
+  padding: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--atlas-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.config-page-shell .provider-model-row-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.config-page-shell .provider-model-row-head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.config-page-shell .allowlist-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.config-page-shell .allowlist-preview code {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text-soft);
+  font-size: 11px;
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+}
+
+@media (max-width: 1240px) {
+  .config-page-shell .provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .config-page-shell .fallback-row {
+    grid-template-columns: 1fr;
+  }
 }
