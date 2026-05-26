@@ -58,6 +58,13 @@ const messageResourceList = fs.readFileSync(
   ),
   "utf8",
 );
+const messageResourcesCss = fs.readFileSync(
+  path.join(
+    rootDir,
+    "apps/web-vue/src/features/chat-v2/message-resources.css",
+  ),
+  "utf8",
+);
 const inspectorPanel = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/InspectorPanel.vue"),
   "utf8",
@@ -556,24 +563,26 @@ test("message preview chrome stays in the restrained-corner range", () => {
 });
 
 test("resource cards and inspector chrome stay aligned with the flatter chat density pass", () => {
+  assert.match(messageResourceList, /import '\.\/message-resources\.css';/);
+  assert.doesNotMatch(messageResourceList, /<style scoped>/);
   assert.match(
-    messageResourceList,
+    messageResourcesCss,
     /\.chat-resource-card\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    messageResourceList,
+    messageResourcesCss,
     /\.chat-resource-image\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    messageResourceList,
+    messageResourcesCss,
     /\.chat-resource-video\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    messageResourceList,
+    messageResourcesCss,
     /\.chat-resource-file-badge\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    messageResourceList,
+    messageResourcesCss,
     /\.chat-resource-file-actions a\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
