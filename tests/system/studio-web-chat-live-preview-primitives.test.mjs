@@ -9,12 +9,18 @@ const markdownBlock = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/MarkdownBlock.vue'),
   'utf8',
 );
+const markdownBlockCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/markdown-block.css'),
+  'utf8',
+);
 const markdownRenderer = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat/markdown.ts'),
   'utf8',
 );
 
 test('markdown live preview uses reka dialog primitives instead of a hand-rolled teleported mask', () => {
+  assert.match(markdownBlock, /import '\.\/markdown-block\.css';/);
+  assert.doesNotMatch(markdownBlock, /<style scoped>/);
   assert.match(markdownBlock, /from 'reka-ui'/);
   assert.match(markdownBlock, /DialogRoot/);
   assert.match(markdownBlock, /DialogPortal/);
@@ -35,9 +41,10 @@ test('markdown live preview closes through a controlled open handler', () => {
 });
 
 test('markdown live preview content is layered above its mask', () => {
-  assert.match(markdownBlock, /\.chat-live-preview-mask\s*\{[\s\S]*z-index:\s*1250;/);
-  assert.match(markdownBlock, /\.chat-live-preview-dialog\s*\{[\s\S]*position:\s*fixed;/);
-  assert.match(markdownBlock, /\.chat-live-preview-dialog\s*\{[\s\S]*z-index:\s*1251;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-mask\s*\{[\s\S]*z-index:\s*1250;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-dialog\s*\{[\s\S]*position:\s*fixed;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-dialog\s*\{[\s\S]*z-index:\s*1251;/);
+  assert.doesNotMatch(markdownBlockCss, /:global|:deep/);
 });
 
 test('markdown live preview pans by scrolling the viewport instead of a dead offset transform', () => {

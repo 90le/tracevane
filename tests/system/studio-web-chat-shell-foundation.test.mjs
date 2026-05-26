@@ -77,6 +77,10 @@ const markdownBlock = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/MarkdownBlock.vue"),
   "utf8",
 );
+const markdownBlockCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/markdown-block.css"),
+  "utf8",
+);
 const queuedMessageRail = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/QueuedMessageRail.vue"),
   "utf8",
@@ -772,36 +776,38 @@ test("conversation utility pills and live preview chrome avoid oversized capsule
     /\.chat-conversation-thread__jump-badge\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(markdownBlock, /DialogRoot/);
+  assert.match(markdownBlock, /import '\.\/markdown-block\.css';/);
+  assert.doesNotMatch(markdownBlock, /<style scoped>/);
   assert.match(
-    markdownBlock,
-    /\.chat-markdown :deep\(\.chat-inline-preview-trigger\)\s*\{[\s\S]*border-radius:\s*8px;/,
+    markdownBlockCss,
+    /\.chat-markdown \.chat-inline-preview-trigger\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    markdownBlock,
+    markdownBlockCss,
     /\.chat-live-preview-dialog\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    markdownBlock,
+    markdownBlockCss,
     /\.chat-live-preview-dialog\s*\{[\s\S]*box-sizing:\s*border-box;/,
   );
   assert.match(
-    markdownBlock,
+    markdownBlockCss,
     /\.chat-live-preview-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-live-preview-mask-in 0\.2s ease;/,
   );
   assert.match(
-    markdownBlock,
+    markdownBlockCss,
     /\.chat-live-preview-dialog\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-live-preview-dialog-in 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/,
   );
   assert.match(
-    markdownBlock,
+    markdownBlockCss,
     /\.chat-live-preview-ghost\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    markdownBlock,
+    markdownBlockCss,
     /\.chat-live-preview-close\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    markdownBlock,
+    markdownBlockCss,
     /\.chat-live-preview-body\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
@@ -814,10 +820,10 @@ test("conversation utility pills and live preview chrome avoid oversized capsule
     conversationPane,
     /@keyframes chat-rendering-settings-dialog-in/,
   );
-  assert.match(markdownBlock, /@keyframes chat-live-preview-mask-in/);
-  assert.match(markdownBlock, /@keyframes chat-live-preview-dialog-in/);
+  assert.match(markdownBlockCss, /@keyframes chat-live-preview-mask-in/);
+  assert.match(markdownBlockCss, /@keyframes chat-live-preview-dialog-in/);
   assert.match(conversationPane, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(markdownBlock, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(markdownBlockCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(
     chatShellWorkspaceCss,
     /\.chat-mobile-drawer\s*\{[\s\S]*z-index:\s*calc\(var\(--chat-layer-overlay\) \+ 1\);/,

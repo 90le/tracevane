@@ -13,6 +13,10 @@ const markdownBlock = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/MarkdownBlock.vue'),
   'utf8',
 );
+const markdownBlockCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/markdown-block.css'),
+  'utf8',
+);
 
 function cssBlock(source, selector) {
   const match = source.match(selector);
@@ -89,15 +93,15 @@ test('message bubbles constrain inline html/svg content and wrap control bars on
 });
 
 test('fullscreen preview dialog uses bounded mobile viewport and touch scrolling', () => {
-  assert.match(markdownBlock, /\.chat-live-preview-dialog\s*\{[\s\S]*overflow:\s*hidden;/);
-  assert.match(markdownBlock, /\.chat-live-preview-dialog\s*\{[\s\S]*box-sizing:\s*border-box;/);
-  assert.match(markdownBlock, /\.chat-live-preview-dialog\s*\{[\s\S]*min-width:\s*0;/);
-  assert.match(markdownBlock, /\.chat-live-preview-body\s*\{[\s\S]*overscroll-behavior:\s*contain;/);
-  assert.match(markdownBlock, /\.chat-live-preview-body\s*\{[\s\S]*-webkit-overflow-scrolling:\s*touch;/);
-  assert.match(markdownBlock, /\.chat-live-preview-frame\s*\{[\s\S]*box-sizing:\s*border-box;/);
-  assert.match(markdownBlock, /\.chat-live-preview-scale-wrap\s*\{[\s\S]*min-width:\s*max-content;/);
-  assert.match(markdownBlock, /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-live-preview-dialog\s*\{[\s\S]*max-height:\s*calc\(100dvh - 24px\);/);
-  assert.match(markdownBlock, /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-live-preview-dialog\s*\{[\s\S]*box-sizing:\s*border-box;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-dialog\s*\{[\s\S]*overflow:\s*hidden;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-dialog\s*\{[\s\S]*box-sizing:\s*border-box;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-dialog\s*\{[\s\S]*min-width:\s*0;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-body\s*\{[\s\S]*overscroll-behavior:\s*contain;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-body\s*\{[\s\S]*-webkit-overflow-scrolling:\s*touch;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-frame\s*\{[\s\S]*box-sizing:\s*border-box;/);
+  assert.match(markdownBlockCss, /\.chat-live-preview-scale-wrap\s*\{[\s\S]*min-width:\s*max-content;/);
+  assert.match(markdownBlockCss, /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-live-preview-dialog\s*\{[\s\S]*max-height:\s*calc\(100dvh - 24px\);/);
+  assert.match(markdownBlockCss, /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-live-preview-dialog\s*\{[\s\S]*box-sizing:\s*border-box;/);
 });
 
 test('touch devices keep inline preview actions discoverable without hover', () => {
@@ -119,7 +123,7 @@ test('touch devices keep inline preview actions discoverable without hover', () 
   assert.match(markdownBlock, /new IntersectionObserver\(/);
   assert.match(markdownBlock, /rootMargin: MARKDOWN_LAZY_RENDER_ROOT_MARGIN,/);
   assert.match(markdownBlock, /class="chat-markdown-deferred-card"/);
-  assert.match(markdownBlock, /\.chat-markdown-deferred-card\s*\{/);
+  assert.match(markdownBlockCss, /\.chat-markdown-deferred-card\s*\{/);
   assert.match(markdownBlock, /function buildInlineOverflowViewport\(kind:\s*'html'\s*\|\s*'svg'\): HTMLDivElement \{/);
   assert.match(markdownBlock, /viewport\.className = `chat-inline-overflow-viewport kind-\$\{kind\}`;/);
   assert.match(markdownBlock, /function installTableOverflowGuards\(container: HTMLElement\): void \{/);
@@ -129,23 +133,23 @@ test('touch devices keep inline preview actions discoverable without hover', () 
   assert.match(markdownBlock, /const source = serializeInlinePreviewMarkup\(previewTarget\);/);
   assert.match(markdownBlock, /shell\.append\(viewport, buildInlinePreviewToolbar\('html'\)\);[\s\S]*viewport\.append\(target\);/);
   assert.match(markdownBlock, /shell\.append\(viewport, buildInlinePreviewToolbar\('svg'\)\);[\s\S]*viewport\.append\(target\);/);
-  const shellBlock = cssBlock(markdownBlock, /\.chat-markdown :deep\(\.chat-inline-preview-shell\)\s*\{[\s\S]*?\n\}/);
-  const viewportBlock = cssBlock(markdownBlock, /\.chat-markdown :deep\(\.chat-inline-overflow-viewport\)\s*\{[\s\S]*?\n\}/);
+  const shellBlock = cssBlock(markdownBlockCss, /\.chat-markdown \.chat-inline-preview-shell\s*\{[\s\S]*?\n\}/);
+  const viewportBlock = cssBlock(markdownBlockCss, /\.chat-markdown \.chat-inline-overflow-viewport\s*\{[\s\S]*?\n\}/);
   assert.doesNotMatch(shellBlock, /margin:/);
   assert.match(viewportBlock, /max-width:\s*100%;/);
   assert.match(viewportBlock, /min-width:\s*0;/);
-  assert.match(markdownBlock, /@media \(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{/);
-  assert.match(markdownBlock, /@media \(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.chat-markdown :deep\(\.chat-inline-preview-toolbar\)\s*\{[\s\S]*position:\s*static;/);
-  assert.match(markdownBlock, /@media \(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.chat-markdown :deep\(\.chat-inline-preview-toolbar\)\s*\{[\s\S]*opacity:\s*1;/);
-  assert.match(markdownBlock, /@media \(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.chat-markdown :deep\(\.chat-inline-preview-toolbar\)\s*\{[\s\S]*pointer-events:\s*auto;/);
+  assert.match(markdownBlockCss, /@media \(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{/);
+  assert.match(markdownBlockCss, /@media \(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.chat-markdown \.chat-inline-preview-toolbar\s*\{[\s\S]*position:\s*static;/);
+  assert.match(markdownBlockCss, /@media \(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.chat-markdown \.chat-inline-preview-toolbar\s*\{[\s\S]*opacity:\s*1;/);
+  assert.match(markdownBlockCss, /@media \(hover:\s*none\),\s*\(pointer:\s*coarse\)\s*\{[\s\S]*\.chat-markdown \.chat-inline-preview-toolbar\s*\{[\s\S]*pointer-events:\s*auto;/);
 });
 
 test('code block and live preview layout keep overflow inside dedicated viewports', () => {
   const codeBlock = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.code-block-wrapper\)\s*\{[\s\S]*?\n\}/);
-  const previewFrame = cssBlock(markdownBlock, /\.chat-live-preview-frame\s*\{[\s\S]*?\n\}/);
-  const previewBody = cssBlock(markdownBlock, /\.chat-live-preview-body\s*\{[\s\S]*?\n\}/);
-  const previewCanvas = cssBlock(markdownBlock, /\.chat-live-preview-canvas\s*\{[\s\S]*?\n\}/);
-  const previewScaleWrap = cssBlock(markdownBlock, /\.chat-live-preview-scale-wrap\s*\{[\s\S]*?\n\}/);
+  const previewFrame = cssBlock(markdownBlockCss, /\.chat-live-preview-frame\s*\{[\s\S]*?\n\}/);
+  const previewBody = cssBlock(markdownBlockCss, /\.chat-live-preview-body\s*\{[\s\S]*?\n\}/);
+  const previewCanvas = cssBlock(markdownBlockCss, /\.chat-live-preview-canvas\s*\{[\s\S]*?\n\}/);
+  const previewScaleWrap = cssBlock(markdownBlockCss, /\.chat-live-preview-scale-wrap\s*\{[\s\S]*?\n\}/);
 
   assert.match(codeBlock, /max-width:\s*100%;/);
   assert.match(codeBlock, /min-width:\s*0;/);
