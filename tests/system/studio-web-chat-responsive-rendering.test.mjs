@@ -9,6 +9,10 @@ const messageBubble = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/MessageBubble.vue'),
   'utf8',
 );
+const messageBubbleCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/message-bubble.css'),
+  'utf8',
+);
 const markdownBlock = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/MarkdownBlock.vue'),
   'utf8',
@@ -41,18 +45,18 @@ test('message bubbles constrain inline html/svg content and wrap control bars on
   assert.match(messageBubble, /function bindBubbleVisibilityObserver\(\): void \{/);
   assert.match(messageBubble, /new IntersectionObserver\(/);
   assert.match(messageBubble, /class="chat-message-bubble chat-message-bubble-deferred"/);
-  assert.match(messageBubble, /\.chat-message-bubble-deferred\s*\{/);
+  assert.match(messageBubbleCss, /\.chat-message-bubble-deferred\s*\{/);
   assert.match(messageBubble, /loading="lazy"/);
   assert.match(messageBubble, /decoding="async"/);
   assert.match(messageBubble, /fetchpriority="low"/);
   assert.match(messageBubble, /preload="none"/);
-  const groupBlock = cssBlock(messageBubble, /\.chat-message-group\s*\{[\s\S]*?\n\}/);
-  const tableWrap = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.chat-markdown-table-wrap\)\s*\{[\s\S]*?\n\}/);
-  const htmlShell = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.chat-inline-preview-shell\.kind-html\),[\s\S]*?\.chat-message-bubble-body :deep\(\.chat-inline-preview-shell\.kind-svg\)\s*\{[\s\S]*?\n\}/);
-  const overflowViewport = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.chat-inline-overflow-viewport\)\s*\{[\s\S]*?\n\}/);
-  const tableBlock = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(table\)\s*\{[\s\S]*?\n\}/);
-  const mermaidShell = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.chat-mermaid-svg\)\s*\{[\s\S]*?\n\}/);
-  const livePreviewSvg = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.chat-live-preview-svg\)\s*\{[\s\S]*?\n\}/);
+  const groupBlock = cssBlock(messageBubbleCss, /\.chat-message-group\s*\{[\s\S]*?\n\}/);
+  const tableWrap = cssBlock(messageBubbleCss, /\.chat-message-bubble-body \.chat-markdown-table-wrap\s*\{[\s\S]*?\n\}/);
+  const htmlShell = cssBlock(messageBubbleCss, /\.chat-message-bubble-body \.chat-inline-preview-shell\.kind-html,[\s\S]*?\.chat-message-bubble-body \.chat-inline-preview-shell\.kind-svg\s*\{[\s\S]*?\n\}/);
+  const overflowViewport = cssBlock(messageBubbleCss, /\.chat-message-bubble-body \.chat-inline-overflow-viewport\s*\{[\s\S]*?\n\}/);
+  const tableBlock = cssBlock(messageBubbleCss, /\.chat-message-bubble-body table\s*\{[\s\S]*?\n\}/);
+  const mermaidShell = cssBlock(messageBubbleCss, /\.chat-message-bubble-body \.chat-mermaid-svg\s*\{[\s\S]*?\n\}/);
+  const livePreviewSvg = cssBlock(messageBubbleCss, /\.chat-message-bubble-body \.chat-live-preview-svg\s*\{[\s\S]*?\n\}/);
 
   assert.match(tableWrap, /width:\s*100%;/);
   assert.match(tableWrap, /overflow-x:\s*auto;/);
@@ -60,10 +64,10 @@ test('message bubbles constrain inline html/svg content and wrap control bars on
   assert.doesNotMatch(tableWrap, /border:/);
   assert.doesNotMatch(tableWrap, /background:/);
 
-  assert.doesNotMatch(messageBubble, /\.chat-message-bubble-body :deep\(\[data-inline-html-root="1"\]\)\s*\{/);
-  assert.doesNotMatch(messageBubble, /\.chat-message-bubble-body :deep\(\.chat-inline-preview-shell\.kind-html > \[data-inline-html-root="1"\]\)\s*\{/);
-  assert.doesNotMatch(messageBubble, /\.chat-message-bubble-body :deep\(\[data-inline-html-root="1"\] > \*\)\s*\{/);
-  assert.doesNotMatch(messageBubble, /\.chat-message-bubble-body :deep\(\[data-inline-html-root="1"\] svg\),/);
+  assert.doesNotMatch(messageBubbleCss, /\.chat-message-bubble-body \[data-inline-html-root="1"\]\s*\{/);
+  assert.doesNotMatch(messageBubbleCss, /\.chat-message-bubble-body \.chat-inline-preview-shell\.kind-html > \[data-inline-html-root="1"\]\s*\{/);
+  assert.doesNotMatch(messageBubbleCss, /\.chat-message-bubble-body \[data-inline-html-root="1"\] > \*\s*\{/);
+  assert.doesNotMatch(messageBubbleCss, /\.chat-message-bubble-body \[data-inline-html-root="1"\] svg,/);
 
   assert.match(htmlShell, /display:\s*block;/);
   assert.match(htmlShell, /width:\s*100%;/);
@@ -79,17 +83,17 @@ test('message bubbles constrain inline html/svg content and wrap control bars on
 
   assert.doesNotMatch(tableBlock, /width:\s*max-content;/);
   assert.doesNotMatch(tableBlock, /max-width:\s*100%;/);
-  assert.doesNotMatch(messageBubble, /\.chat-message-bubble-body :deep\(th\),/);
-  assert.doesNotMatch(messageBubble, /\.chat-message-bubble-body :deep\(td\)\s*\{/);
+  assert.doesNotMatch(messageBubbleCss, /\.chat-message-bubble-body th,/);
+  assert.doesNotMatch(messageBubbleCss, /\.chat-message-bubble-body td\s*\{/);
   assert.match(mermaidShell, /width:\s*100%;/);
   assert.match(mermaidShell, /overflow-x:\s*auto;/);
   assert.match(livePreviewSvg, /width:\s*100%;/);
   assert.match(livePreviewSvg, /overflow-x:\s*auto;/);
-  assert.doesNotMatch(messageBubble, /content-visibility:\s*auto;/);
-  assert.doesNotMatch(messageBubble, /contain-intrinsic-size:/);
+  assert.doesNotMatch(messageBubbleCss, /content-visibility:\s*auto;/);
+  assert.doesNotMatch(messageBubbleCss, /contain-intrinsic-size:/);
   assert.match(messageBubble, /if \(bubbleBodyReady\.value\) \{\s*return;\s*\}/);
   assert.match(groupBlock, /display:\s*flex;/);
-  assert.match(messageBubble, /\.chat-message-bubble-body :deep\(\.code-block-header\),[\s\S]*flex-wrap:\s*wrap;/);
+  assert.match(messageBubbleCss, /\.chat-message-bubble-body \.code-block-header,[\s\S]*flex-wrap:\s*wrap;/);
 });
 
 test('fullscreen preview dialog uses bounded mobile viewport and touch scrolling', () => {
@@ -145,7 +149,7 @@ test('touch devices keep inline preview actions discoverable without hover', () 
 });
 
 test('code block and live preview layout keep overflow inside dedicated viewports', () => {
-  const codeBlock = cssBlock(messageBubble, /\.chat-message-bubble-body :deep\(\.code-block-wrapper\)\s*\{[\s\S]*?\n\}/);
+  const codeBlock = cssBlock(messageBubbleCss, /\.chat-message-bubble-body \.code-block-wrapper\s*\{[\s\S]*?\n\}/);
   const previewFrame = cssBlock(markdownBlockCss, /\.chat-live-preview-frame\s*\{[\s\S]*?\n\}/);
   const previewBody = cssBlock(markdownBlockCss, /\.chat-live-preview-body\s*\{[\s\S]*?\n\}/);
   const previewCanvas = cssBlock(markdownBlockCss, /\.chat-live-preview-canvas\s*\{[\s\S]*?\n\}/);
@@ -155,8 +159,8 @@ test('code block and live preview layout keep overflow inside dedicated viewport
   assert.match(codeBlock, /min-width:\s*0;/);
   assert.match(codeBlock, /overflow:\s*hidden;/);
   assert.match(
-    messageBubble,
-    /\.chat-message-bubble-body :deep\(\.code-block-actions\),[\s\S]*?\.chat-message-bubble-body :deep\(\.chat-mermaid-actions\)\s*\{[\s\S]*flex-wrap:\s*wrap;/,
+    messageBubbleCss,
+    /\.chat-message-bubble-body \.code-block-actions,[\s\S]*?\.chat-message-bubble-body \.chat-mermaid-actions\s*\{[\s\S]*flex-wrap:\s*wrap;/,
   );
 
   assert.match(previewFrame, /overflow:\s*hidden;/);

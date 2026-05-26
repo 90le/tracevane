@@ -9,8 +9,14 @@ const messageBubble = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/MessageBubble.vue'),
   'utf8',
 );
+const messageBubbleCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/message-bubble.css'),
+  'utf8',
+);
 
 test('message media preview uses reka dialog primitives instead of a hand-rolled teleported mask', () => {
+  assert.match(messageBubble, /import '\.\/message-bubble\.css';/);
+  assert.doesNotMatch(messageBubble, /<style scoped>/);
   assert.match(messageBubble, /from 'reka-ui'/);
   assert.match(messageBubble, /DialogRoot/);
   assert.match(messageBubble, /DialogPortal/);
@@ -31,7 +37,8 @@ test('message media preview closes through a controlled open handler', () => {
 });
 
 test('message media preview content is layered above its mask', () => {
-  assert.match(messageBubble, /\.chat-image-preview-mask\s*\{[\s\S]*z-index:\s*1200;/);
-  assert.match(messageBubble, /\.chat-image-preview-dialog\s*\{[\s\S]*position:\s*fixed;/);
-  assert.match(messageBubble, /\.chat-image-preview-dialog\s*\{[\s\S]*z-index:\s*1201;/);
+  assert.match(messageBubbleCss, /\.chat-image-preview-mask\s*\{[\s\S]*z-index:\s*1200;/);
+  assert.match(messageBubbleCss, /\.chat-image-preview-dialog\s*\{[\s\S]*position:\s*fixed;/);
+  assert.match(messageBubbleCss, /\.chat-image-preview-dialog\s*\{[\s\S]*z-index:\s*1201;/);
+  assert.doesNotMatch(messageBubbleCss, /:global|:deep/);
 });

@@ -130,6 +130,10 @@ const messageBubble = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/MessageBubble.vue"),
   "utf8",
 );
+const messageBubbleCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/message-bubble.css"),
+  "utf8",
+);
 const cascadeMenu = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/CascadeMenu.vue"),
   "utf8",
@@ -421,35 +425,35 @@ test("conversation pane keeps large empty and history surfaces in the restrained
 
 test("message bubbles and inline resources avoid returning to capsule-heavy chat chrome", () => {
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-message-bubble\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-resource\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-break-resource\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-chip\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    messageBubble,
-    /\.chat-message-bubble-body :deep\(\.chat-markdown-image-fallback\)\s*\{[^}]*border-radius:\s*10px;/,
+    messageBubbleCss,
+    /\.chat-message-bubble-body \.chat-markdown-image-fallback\s*\{[^}]*border-radius:\s*10px;/,
   );
   assert.match(
-    messageBubble,
-    /\.chat-message-bubble-body :deep\(\.chat-resource-file-badge\)\s*\{[\s\S]*border-radius:\s*8px;/,
+    messageBubbleCss,
+    /\.chat-message-bubble-body \.chat-resource-file-badge\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    messageBubble,
-    /\.chat-message-bubble-body :deep\(\.chat-resource-file-actions a\)\s*\{[\s\S]*border-radius:\s*10px;/,
+    messageBubbleCss,
+    /\.chat-message-bubble-body \.chat-resource-file-actions a\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-thinking-pill\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(messageBubble, /:open="shouldOpenProcessDetails\(message, messageIndex\)"/);
@@ -459,27 +463,27 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   assert.match(messageBubble, /正在思考，回复会在下方继续生成。/);
   assert.match(messageBubble, /正在推理，工具步骤会继续更新。/);
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-thinking-body\s*\{[\s\S]*max-height:\s*min\(220px,\s*36vh\);[\s\S]*overflow:\s*auto;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-thinking__item-body\s*\{[\s\S]*max-height:\s*min\(220px,\s*36vh\);[\s\S]*overflow:\s*auto;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-pill\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-thinking__head::before\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-step\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-head-state\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(messageBubble, /class="chat-inline-process-live"/);
@@ -500,55 +504,55 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   assert.match(messageBubble, /function shouldOpenToolDetails\(tool: ChatDisplayToolHint, _index: number\): boolean \{/);
   assert.match(messageBubble, /return tool\.status === 'error';/);
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-live-dot\s*\{[\s\S]*animation:\s*chat-tool-live-pulse/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-copy\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-block pre\s*\{[\s\S]*max-height:\s*min\(260px,\s*42vh\);/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;[\s\S]*overflow-wrap:\s*anywhere;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-item\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;[\s\S]*box-sizing:\s*border-box;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-head-summary\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;[\s\S]*overflow-wrap:\s*anywhere;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-detail\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-block\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-block-head\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-inline-process-block pre\s*\{[\s\S]*overscroll-behavior:\s*contain;[\s\S]*max-width:\s*100%;[\s\S]*min-width:\s*0;[\s\S]*box-sizing:\s*border-box;[\s\S]*overflow-wrap:\s*anywhere;/,
   );
   assert.match(
-    messageBubble,
-    /\.chat-message-bubble-body :deep\(\.chat-resource-card\)\s*\{[\s\S]*border-radius:\s*12px;/,
+    messageBubbleCss,
+    /\.chat-message-bubble-body \.chat-resource-card\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    messageBubble,
-    /\.chat-message-bubble-body :deep\(\.chat-mermaid-block\[data-seamless="1"\] \.chat-mermaid-header\)\s*\{[^}]*border-radius:\s*10px;/,
+    messageBubbleCss,
+    /\.chat-message-bubble-body \.chat-mermaid-block\[data-seamless="1"\] \.chat-mermaid-header\s*\{[^}]*border-radius:\s*10px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-bubble-copy\s*\{[\s\S]*border-radius:\s*8px;/,
   );
 });
@@ -556,31 +560,31 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
 test("message preview chrome stays in the restrained-corner range", () => {
   assert.match(messageBubble, /DialogRoot/);
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-image-preview-dialog\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-image-preview-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-image-preview-mask-in 0\.2s ease;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-image-preview-dialog\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-image-preview-dialog-in 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-image-preview-close\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-image-preview-image\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-image-preview-video\s*\{[\s\S]*border-radius:\s*12px;/,
   );
-  assert.match(messageBubble, /@keyframes chat-image-preview-mask-in/);
-  assert.match(messageBubble, /@keyframes chat-image-preview-dialog-in/);
+  assert.match(messageBubbleCss, /@keyframes chat-image-preview-mask-in/);
+  assert.match(messageBubbleCss, /@keyframes chat-image-preview-dialog-in/);
 });
 
 test("resource cards and inspector chrome stay aligned with the flatter chat density pass", () => {
@@ -817,7 +821,7 @@ test("conversation utility pills and live preview chrome avoid oversized capsule
     /\.chat-live-preview-body\s*\{[\s\S]*border-radius:\s*12px;/,
   );
   assert.match(
-    messageBubble,
+    messageBubbleCss,
     /\.chat-image-preview-dialog\s*\{[\s\S]*box-sizing:\s*border-box;/,
   );
   assert.match(conversationPane, /@keyframes chat-session-menu-popover-in/);
