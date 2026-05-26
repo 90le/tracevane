@@ -11,6 +11,7 @@ function read(filePath) {
 
 const channelAccountCard = read('apps/web-vue/src/features/channels/ChannelAccountCard.vue');
 const channelAccountIndex = read('apps/web-vue/src/features/channels/ChannelAccountIndex.vue');
+const channelsAccountCss = read('apps/web-vue/src/features/channels/channels-account.css');
 
 test('channel account card stays an index card with concise facts and routed task actions', () => {
   assert.match(channelAccountCard, /channel-account-card__summary/);
@@ -27,6 +28,11 @@ test('channel account card stays an index card with concise facts and routed tas
   assert.match(channelAccountCard, /bindings/);
   assert.match(channelAccountCard, /account\.kind !== 'default'/);
   assert.match(channelAccountCard, /ghost-action-delete/);
+  assert.match(channelAccountCard, /import '\.\/channels-account\.css';/);
+  assert.doesNotMatch(channelAccountCard, /<style scoped>/);
+  assert.match(channelsAccountCss, /\.channel-account-card\s*\{/);
+  assert.match(channelsAccountCss, /\.channel-account-card__task-actions\s*\{/);
+  assert.match(channelsAccountCss, /\.ghost-action-delete\s*\{/);
   assert.match(channelAccountCard, /\(event: 'delete'\): void/);
   assert.doesNotMatch(channelAccountCard, /channel-account-card__secondary-actions/);
   assert.doesNotMatch(channelAccountCard, /grid-template-columns:\s*minmax\(180px,\s*0\.75fr\)\s*minmax\(0,\s*1\.45fr\)\s*auto/);
@@ -44,7 +50,9 @@ test('account index renders account cards instead of embedding account form cont
   assert.match(channelAccountIndex, /默认账号|Default account/);
   assert.match(channelAccountIndex, /命名账号|Named accounts/);
   assert.match(channelAccountIndex, /delete-account/);
-  assert.match(channelAccountIndex, /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(320px,\s*1fr\)\)/);
+  assert.match(channelAccountIndex, /import '\.\/channels-account\.css';/);
+  assert.doesNotMatch(channelAccountIndex, /<style scoped>/);
+  assert.match(channelsAccountCss, /\.channel-account-index__list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(320px,\s*1fr\)\)/);
   assert.doesNotMatch(channelAccountIndex, /form-input/);
   assert.doesNotMatch(channelAccountIndex, /form-textarea/);
   assert.doesNotMatch(channelAccountIndex, /<textarea/);

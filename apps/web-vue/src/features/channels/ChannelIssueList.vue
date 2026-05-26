@@ -39,6 +39,7 @@
 import { computed, ref, watch } from 'vue';
 import type { ChannelIssue } from './channel-ui';
 import { useLocalePreference } from '../../shared/locale';
+import './channels-account.css';
 
 defineOptions({ name: 'ChannelIssueList' });
 
@@ -64,75 +65,3 @@ watch(
   },
 );
 </script>
-
-<style scoped>
-.channel-issue-list {
-  display: grid;
-  gap: 12px;
-  padding: 14px 0 0;
-  border-top: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-}
-
-.channel-issue-list__head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-end;
-}
-
-.channel-issue-list__controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.channel-issue-list__head h3 {
-  margin: 4px 0 0 0;
-  color: var(--text);
-}
-
-.channel-issue-list__head strong {
-  color: var(--text);
-  font-size: 24px;
-}
-
-.channel-issue-list__item {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  align-items: center;
-  padding: 13px 0;
-  border-bottom: 1px solid color-mix(in srgb, rgba(255, 190, 122, 0.2) 70%, var(--line));
-  background: transparent;
-}
-
-.channel-issue-list__item strong {
-  display: block;
-  color: var(--text);
-  font-size: 14px;
-}
-
-.channel-issue-list__item p {
-  margin: 6px 0 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-@media (max-width: 920px) {
-  .channel-issue-list__head {
-    align-items: flex-start;
-  }
-
-  .channel-issue-list__controls {
-    justify-content: flex-start;
-  }
-
-  .channel-issue-list__item {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-</style>

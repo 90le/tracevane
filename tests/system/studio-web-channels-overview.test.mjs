@@ -17,6 +17,7 @@ const channelAccountIndex = read('apps/web-vue/src/features/channels/ChannelAcco
 const channelIssueList = read('apps/web-vue/src/features/channels/ChannelIssueList.vue');
 const channelBindingsPage = read('apps/web-vue/src/features/channels/ChannelBindingsPage.vue');
 const channelBindingEditorPanel = read('apps/web-vue/src/features/channels/ChannelBindingEditorPanel.vue');
+const channelsAccountCss = read('apps/web-vue/src/features/channels/channels-account.css');
 
 test('channels workspace shell uses RouterView for the right-side workspace outlet', () => {
   assert.match(channelsWorkspaceLayout, /import\s+\{[^}]*RouterView[^}]*\}\s+from\s+'vue-router';/);
@@ -83,6 +84,15 @@ test('account cards are concise index cards instead of inline form editors', () 
   assert.match(channelAccountCard, /Credentials|凭据/);
   assert.match(channelAccountCard, /Access|权限/);
   assert.match(channelAccountCard, /Pairing|配对/);
+  assert.match(channelAccountCard, /import '\.\/channels-account\.css';/);
+  assert.match(channelAccountIndex, /import '\.\/channels-account\.css';/);
+  assert.match(channelIssueList, /import '\.\/channels-account\.css';/);
+  assert.doesNotMatch(channelAccountCard, /<style scoped>/);
+  assert.doesNotMatch(channelAccountIndex, /<style scoped>/);
+  assert.doesNotMatch(channelIssueList, /<style scoped>/);
+  assert.match(channelsAccountCss, /\.channel-account-card\s*\{/);
+  assert.match(channelsAccountCss, /\.channel-account-index\s*\{/);
+  assert.match(channelsAccountCss, /\.channel-issue-list\s*\{/);
   assert.doesNotMatch(channelAccountCard, /channel-account-card__secondary-actions/);
   assert.doesNotMatch(channelAccountCard, /grid-template-columns:\s*minmax\(180px,\s*0\.75fr\)\s*minmax\(0,\s*1\.45fr\)\s*auto/);
   assert.doesNotMatch(channelAccountCard, /form-input/);

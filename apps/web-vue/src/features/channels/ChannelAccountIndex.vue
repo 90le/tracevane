@@ -71,6 +71,7 @@ import { computed } from 'vue';
 import type { ChannelAccountSummary } from '../../../../../types/channels';
 import { useLocalePreference } from '../../shared/locale';
 import ChannelAccountCard from './ChannelAccountCard.vue';
+import './channels-account.css';
 
 defineOptions({ name: 'ChannelAccountIndex' });
 
@@ -96,66 +97,3 @@ const { text } = useLocalePreference();
 const defaultAccounts = computed(() => props.accounts.filter((account) => account.kind === 'default' || account.id === 'default'));
 const namedAccounts = computed(() => props.accounts.filter((account) => account.kind !== 'default' && account.id !== 'default'));
 </script>
-
-<style scoped>
-.channel-account-index {
-  display: grid;
-  gap: 14px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-}
-
-.channel-account-index__head {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  align-items: flex-start;
-}
-
-.channel-account-index__head h3 {
-  margin: 4px 0 6px 0;
-  color: var(--text);
-}
-
-.channel-account-index__groups {
-  display: grid;
-  gap: 14px;
-}
-
-.channel-account-index__group {
-  display: grid;
-  gap: 10px;
-}
-
-.channel-account-index__group-head {
-  display: grid;
-  gap: 4px;
-}
-
-.channel-account-index__group-head strong {
-  color: var(--text);
-  font-size: 13px;
-}
-
-.channel-account-index__group-head span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.channel-account-index__list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 12px;
-}
-
-@media (max-width: 920px) {
-  .channel-account-index__head {
-    flex-direction: column;
-  }
-
-  .channel-account-index__list {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
