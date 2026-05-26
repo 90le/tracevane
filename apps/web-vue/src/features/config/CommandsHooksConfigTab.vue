@@ -168,6 +168,7 @@ import { computed } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
+import './config-workspace.css';
 
 type CommandsForm = ConfigSummaryPayload['commands'];
 type HooksForm = ConfigSummaryPayload['hooks'];
@@ -283,20 +284,3 @@ function onHookExtraJsonChange(hookId: string, jsonStr: string) {
   }
 }
 </script>
-
-<style scoped>
-.config-hook-no-extra {
-  padding: 0.5rem 0;
-  font-size: 0.85rem;
-}
-.toggle-inline {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-.toggle-inline .form-checkbox {
-  margin: 0;
-}
-</style>

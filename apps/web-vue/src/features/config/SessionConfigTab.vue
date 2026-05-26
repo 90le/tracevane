@@ -208,6 +208,7 @@ import { computed } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
 import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
 import { createUuid } from '../../shared/uuid';
+import './config-workspace.css';
 
 interface ChoiceOption {
   value: string;
@@ -290,42 +291,3 @@ function removeChannelOverride(index: number) {
   props.form.sessionReset.resetByChannelList.splice(index, 1);
 }
 </script>
-
-<style scoped>
-.config-reset-type-table {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius, 8px);
-  overflow: hidden;
-}
-.config-reset-type-header {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 12px;
-  padding: 8px 12px;
-  background: var(--surface-muted, rgba(255,255,255,0.03));
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-}
-.config-reset-type-row {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 12px;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-}
-.config-reset-type-row:last-child {
-  border-bottom: none;
-}
-.config-reset-type-label {
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-</style>

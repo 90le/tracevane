@@ -392,23 +392,23 @@
   color: var(--muted);
 }
 
-.config-page-shell :deep(.config-sheet) {
+.config-page-shell .config-sheet {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
 }
 
-.config-page-shell :deep(.config-sheet > .config-block) {
+.config-page-shell .config-sheet > .config-block {
   padding: 20px 20px 22px;
 }
 
-.config-page-shell :deep(.config-sheet > .config-block + .config-block) {
+.config-page-shell .config-sheet > .config-block + .config-block {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.config-page-shell :deep(.config-subsection) {
+.config-page-shell .config-subsection {
   border-radius: 10px;
 }
 
-.config-page-shell :deep(.config-subsection-head h4) {
+.config-page-shell .config-subsection-head h4 {
   font-size: 15px;
 }
 
@@ -478,7 +478,7 @@
   border-top: 1px solid var(--line);
 }
 
-.config-advanced-sheet-block :deep(.config-subsection-grid) {
+.config-advanced-sheet-block .config-subsection-grid {
   gap: 14px;
 }
 
@@ -547,4 +547,292 @@
   .config-save-dock__actions .compact-button {
     flex: 1 1 140px;
   }
+}
+
+/* Config tab and sheet components */
+/* AcpConfigTab.vue */
+.config-page-shell .acpx-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.config-page-shell .agent-entry {
+  margin-bottom: 0.25rem;
+}
+
+.config-page-shell .agent-field {
+  flex: 1;
+}
+
+.config-page-shell .agent-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.config-page-shell .agent-input-row .form-input {
+  flex: 1;
+}
+
+.config-page-shell .agent-remove-btn {
+  background: none;
+  border: 1px solid var(--border-muted, rgba(255, 255, 255, 0.12));
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.55rem;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  color: inherit;
+}
+
+.config-page-shell .agent-remove-btn:hover {
+  opacity: 1;
+}
+
+.config-page-shell .agent-add-btn {
+  background: none;
+  border: 1px dashed var(--border-muted, rgba(255, 255, 255, 0.18));
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  color: inherit;
+  width: 100%;
+  text-align: center;
+}
+
+.config-page-shell .agent-add-btn:hover {
+  opacity: 1;
+}
+
+/* CommandsHooksConfigTab.vue */
+.config-page-shell .config-hook-no-extra {
+  padding: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.config-page-shell .toggle-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.config-page-shell .toggle-inline .form-checkbox {
+  margin: 0;
+}
+
+/* ConfigDomainAdvancedSheet.vue */
+.config-domain-advanced-sheet-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--config-domain-advanced-mask-bg);
+  backdrop-filter: blur(14px);
+}
+
+.config-domain-advanced-sheet {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 3101;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(980px, calc(100vw - 28px));
+  max-height: min(88vh, 900px);
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--config-domain-advanced-border);
+  background: var(--config-domain-advanced-surface);
+  box-shadow: var(--config-domain-advanced-shadow);
+}
+
+.config-domain-advanced-sheet-mask.theme-light {
+  --config-domain-advanced-mask-bg: rgba(225, 234, 245, 0.74);
+}
+
+.config-domain-advanced-sheet-mask.theme-dark {
+  --config-domain-advanced-mask-bg: rgba(7, 12, 18, 0.54);
+}
+
+.config-domain-advanced-sheet.theme-light {
+  --config-domain-advanced-border: rgba(25, 50, 77, 0.14);
+  --config-domain-advanced-divider: rgba(25, 50, 77, 0.08);
+  --config-domain-advanced-surface:
+    radial-gradient(circle at top right, rgba(77, 129, 247, 0.09), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(243, 247, 252, 0.98));
+  --config-domain-advanced-shadow: 0 28px 80px rgba(61, 85, 112, 0.24);
+  --config-domain-advanced-notice: linear-gradient(180deg, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0.03));
+  --config-domain-advanced-close-border: rgba(25, 50, 77, 0.12);
+  --config-domain-advanced-close-bg: rgba(37, 99, 235, 0.06);
+}
+
+.config-domain-advanced-sheet.theme-dark {
+  --config-domain-advanced-border: rgba(255, 255, 255, 0.12);
+  --config-domain-advanced-divider: rgba(255, 255, 255, 0.08);
+  --config-domain-advanced-surface:
+    radial-gradient(circle at top right, rgba(255, 199, 128, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(9, 18, 29, 0.98), rgba(11, 22, 35, 0.94));
+  --config-domain-advanced-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
+  --config-domain-advanced-notice: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
+  --config-domain-advanced-close-border: rgba(255, 255, 255, 0.1);
+  --config-domain-advanced-close-bg: rgba(255, 255, 255, 0.04);
+}
+
+.config-domain-advanced-sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--config-domain-advanced-divider);
+}
+
+.config-domain-advanced-sheet__copy {
+  display: grid;
+  gap: 8px;
+}
+
+.config-domain-advanced-sheet__copy h3 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.config-domain-advanced-sheet__copy p:last-child {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.config-domain-advanced-sheet__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--config-domain-advanced-close-border);
+  border-radius: 999px;
+  background: var(--config-domain-advanced-close-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.config-domain-advanced-sheet__notice {
+  display: grid;
+  gap: 6px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--config-domain-advanced-divider);
+  background: var(--config-domain-advanced-notice);
+}
+
+.config-domain-advanced-sheet__notice strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.config-domain-advanced-sheet__notice span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.config-domain-advanced-sheet__body {
+  overflow: auto;
+  padding: 20px 24px 24px;
+}
+
+@media (max-width: 720px) {
+  .config-domain-advanced-sheet {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+
+  .config-domain-advanced-sheet__head,
+  .config-domain-advanced-sheet__notice,
+  .config-domain-advanced-sheet__body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* GatewayConfigTab.vue */
+.config-page-shell .token-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+}
+
+.config-page-shell .token-input {
+  flex: 1;
+  padding-right: 2.5rem;
+}
+
+.config-page-shell .token-toggle-btn {
+  position: absolute;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.config-page-shell .token-toggle-btn:hover {
+  opacity: 1;
+}
+
+/* SessionConfigTab.vue */
+.config-page-shell .config-reset-type-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  overflow: hidden;
+}
+
+.config-page-shell .config-reset-type-header {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface-muted, rgba(255,255,255,0.03));
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.config-page-shell .config-reset-type-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-page-shell .config-reset-type-row:last-child {
+  border-bottom: none;
+}
+
+.config-page-shell .config-reset-type-label {
+  font-size: 0.875rem;
+  font-weight: 500;
 }

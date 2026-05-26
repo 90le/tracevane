@@ -275,6 +275,7 @@ import { reactive, ref, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
 import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
+import './config-workspace.css';
 
 const props = defineProps<{
   summary: ConfigSummaryPayload | null;
@@ -427,30 +428,3 @@ watch(form, () => {
 
 defineExpose({ hydrateFromSummary });
 </script>
-
-<style scoped>
-.token-input-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  position: relative;
-}
-.token-input {
-  flex: 1;
-  padding-right: 2.5rem;
-}
-.token-toggle-btn {
-  position: absolute;
-  right: 0.5rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0.25rem;
-  opacity: 0.7;
-  transition: opacity 0.15s;
-}
-.token-toggle-btn:hover {
-  opacity: 1;
-}
-</style>

@@ -135,6 +135,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { Plus, X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
+import './config-workspace.css';
 
 const props = defineProps<{
   summary: ConfigSummaryPayload | null;
@@ -266,55 +267,3 @@ watch(() => props.summary, (summary) => {
 
 defineExpose({ hydrateFromSummary, buildAcpPayload, buildPluginsPayload });
 </script>
-
-<style scoped>
-.acpx-actions {
-  display: flex;
-  justify-content: flex-start;
-}
-
-.agent-entry {
-  margin-bottom: 0.25rem;
-}
-.agent-field {
-  flex: 1;
-}
-.agent-input-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.agent-input-row .form-input {
-  flex: 1;
-}
-.agent-remove-btn {
-  background: none;
-  border: 1px solid var(--border-muted, rgba(255, 255, 255, 0.12));
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  padding: 0.35rem 0.55rem;
-  opacity: 0.7;
-  transition: opacity 0.15s;
-  color: inherit;
-}
-.agent-remove-btn:hover {
-  opacity: 1;
-}
-.agent-add-btn {
-  background: none;
-  border: 1px dashed var(--border-muted, rgba(255, 255, 255, 0.18));
-  border-radius: 6px;
-  cursor: pointer;
-  padding: 0.5rem 1rem;
-  font-size: 0.85rem;
-  opacity: 0.7;
-  transition: opacity 0.15s;
-  color: inherit;
-  width: 100%;
-  text-align: center;
-}
-.agent-add-btn:hover {
-  opacity: 1;
-}
-</style>

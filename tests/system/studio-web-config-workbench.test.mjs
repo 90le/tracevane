@@ -12,6 +12,17 @@ const configWorkspaceCss = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/config/config-workspace.css'),
   'utf8',
 );
+const configComponentFiles = [
+  'AcpConfigTab.vue',
+  'CommandsHooksConfigTab.vue',
+  'ConfigDomainAdvancedSheet.vue',
+  'GatewayConfigTab.vue',
+  'SessionConfigTab.vue',
+];
+const configComponentSources = new Map(configComponentFiles.map((file) => [
+  file,
+  fs.readFileSync(path.join(rootDir, 'apps/web-vue/src/features/config', file), 'utf8'),
+]));
 const heartbeatConfig = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/shared/heartbeat-config.ts'),
   'utf8',
@@ -49,9 +60,22 @@ test('config editor owns feature CSS for workbench framing', () => {
   assert.match(configWorkspaceCss, /\.config-active-tab-facts\s*\{/);
 });
 
+test('config tabs and sheets keep CSS ownership centralized', () => {
+  for (const [file, source] of configComponentSources) {
+    assert.match(source, /import '\.\/config-workspace\.css';/, `${file} imports shared config CSS`);
+    assert.doesNotMatch(source, /<style scoped>/, `${file} does not keep local scoped CSS`);
+  }
+  assert.doesNotMatch(configWorkspaceCss, /:deep|:global/);
+  assert.match(configWorkspaceCss, /\.acpx-actions\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-hook-no-extra\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-domain-advanced-sheet-mask\s*\{/);
+  assert.match(configWorkspaceCss, /\.token-input-wrapper\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-reset-type-table\s*\{/);
+});
+
 test('config workbench uses restrained neutral framing instead of accent-heavy gradients', () => {
   assert.doesNotMatch(configWorkspaceCss, /\.config-command-panel\s*\{[\s\S]*255,\s*190,\s*122/);
-  assert.doesNotMatch(configWorkspaceCss, /\.config-page-shell :deep\(\.config-sheet\)\s*\{[\s\S]*111,\s*211,\s*255/);
+  assert.doesNotMatch(configWorkspaceCss, /\.config-page-shell \.config-sheet\s*\{[\s\S]*111,\s*211,\s*255/);
 });
 
 test('config workbench exposes the advanced sheet entrypoint instead of keeping it inline', () => {
