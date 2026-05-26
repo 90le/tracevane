@@ -69,6 +69,10 @@ const inspectorPanel = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/InspectorPanel.vue"),
   "utf8",
 );
+const inspectorPanelCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/inspector-panel.css"),
+  "utf8",
+);
 const markdownBlock = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/MarkdownBlock.vue"),
   "utf8",
@@ -593,23 +597,25 @@ test("resource cards and inspector chrome stay aligned with the flatter chat den
     /\.chat-resource-file-actions a\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    inspectorPanel,
+    inspectorPanelCss,
     /\.chat-inspector-panel\s*\{[\s\S]*animation:\s*chat-inspector-panel-in 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/,
   );
   assert.match(
-    inspectorPanel,
+    inspectorPanelCss,
     /\.chat-inspector-panel__close\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    inspectorPanel,
+    inspectorPanelCss,
     /\.chat-inspector-panel__tab\s*\{[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
-    inspectorPanel,
+    inspectorPanelCss,
     /\.chat-inspector-summary-card,[\s\S]*\.chat-inspector-empty\s*\{[\s\S]*border-radius:\s*12px;/,
   );
-  assert.match(inspectorPanel, /@keyframes chat-inspector-panel-in/);
-  assert.match(inspectorPanel, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(inspectorPanel, /import '\.\/inspector-panel\.css';/);
+  assert.doesNotMatch(inspectorPanel, /<style scoped>/);
+  assert.match(inspectorPanelCss, /@keyframes chat-inspector-panel-in/);
+  assert.match(inspectorPanelCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(overlaySurfacesCss, /\.cascade-menu\s*\{[\s\S]*border-radius:\s*12px;/);
 });
 

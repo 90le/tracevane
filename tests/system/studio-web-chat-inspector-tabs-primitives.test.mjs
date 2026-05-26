@@ -9,8 +9,14 @@ const inspectorPanel = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/InspectorPanel.vue'),
   'utf8',
 );
+const inspectorPanelCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/inspector-panel.css'),
+  'utf8',
+);
 
 test('chat inspector panel uses reka tabs primitives for the inspect workbench switcher', () => {
+  assert.match(inspectorPanel, /import '\.\/inspector-panel\.css';/);
+  assert.doesNotMatch(inspectorPanel, /<style scoped>/);
   assert.match(inspectorPanel, /from 'reka-ui'/);
   assert.match(inspectorPanel, /TabsRoot/);
   assert.match(inspectorPanel, /TabsList/);
@@ -25,4 +31,8 @@ test('chat inspector panel uses reka tabs primitives for the inspect workbench s
   assert.match(inspectorPanel, /<TabsContent value="activity"/);
   assert.match(inspectorPanel, /<TabsContent value="diagnostics"/);
   assert.doesNotMatch(inspectorPanel, /:class="\{ active: tab === item\.value \}"/);
+  assert.match(inspectorPanelCss, /\.chat-inspector-panel__tabs\s*\{/);
+  assert.match(inspectorPanelCss, /\.chat-inspector-panel__tab\s*\{/);
+  assert.match(inspectorPanelCss, /@keyframes chat-inspector-panel-in/);
+  assert.doesNotMatch(inspectorPanelCss, /:global|:deep/);
 });
