@@ -32,6 +32,10 @@ const accountDetailPage = read(
 const channelsPagesCss = read(
   "apps/web-vue/src/features/channels/channels-pages.css",
 );
+const channelsWorkspaceCss = read(
+  "apps/web-vue/src/features/channels/channels-workspace.css",
+);
+const globalStyleCss = read("apps/web-vue/src/style.css");
 
 test("channels workspace keeps a persistent stage header with top tabs and account subtabs", () => {
   assert.match(channelsWorkspaceLayout, /channels-stage-header/);
@@ -100,6 +104,18 @@ test("channels overview page styles are owned by the feature stylesheet", () => 
   assert.match(channelsPagesCss, /\.channels-overview-surface\s*\{/);
   assert.match(channelsPagesCss, /\.channel-command-center\s*\{/);
   assert.match(channelsPagesCss, /\.channel-command-facts\s*\{/);
+});
+
+test("channels workspace chrome styles are owned by the channels feature", () => {
+  assert.match(channelsWorkspaceLayout, /import ['"]\.\/channels-workspace\.css['"]/);
+  assert.match(channelsWorkspaceCss, /Channels workspace surfaces live with the Channels feature/);
+  assert.match(channelsWorkspaceCss, /\.channels-workbench\s*\{/);
+  assert.match(channelsWorkspaceCss, /\.channel-rail-item\s*\{/);
+  assert.match(channelsWorkspaceCss, /\.binding-table\s*\{/);
+  assert.doesNotMatch(
+    globalStyleCss,
+    /\.(?:channels[a-zA-Z0-9_-]*|channel-[a-zA-Z0-9_-]*|binding-table[a-zA-Z0-9_-]*)/,
+  );
 });
 
 test("channel provider and account editors track and save config write toggles", () => {
