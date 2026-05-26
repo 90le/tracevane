@@ -9,6 +9,10 @@ const queuedMessageRail = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/QueuedMessageRail.vue'),
   'utf8',
 );
+const queueRailCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/queue-rail.css'),
+  'utf8',
+);
 const chatShellPage = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatShellPage.vue'),
   'utf8',
@@ -45,10 +49,15 @@ test('conversation pane keeps inline rail ownership separate from the mobile she
 });
 
 test('queued message rail hides empty queues and switches to a dedicated sheet presentation mode', () => {
+  assert.match(queuedMessageRail, /import '\.\/queue-rail\.css';/);
+  assert.doesNotMatch(queuedMessageRail, /<style scoped>/);
   assert.match(queuedMessageRail, /<section v-if="items\.length" class="chat-queue-rail"/);
   assert.match(queuedMessageRail, /presentationMode\?: 'rail' \| 'sheet';/);
   assert.match(queuedMessageRail, /v-if="presentationMode === 'rail'"/);
   assert.match(queuedMessageRail, /v-if="summaryExpanded \|\| presentationMode === 'sheet'"/);
+  assert.match(queueRailCss, /\.chat-queue-rail\s*\{[\s\S]*border-radius:\s*12px;/);
+  assert.match(queueRailCss, /\.chat-queue-rail__summary-trigger\s*\{[\s\S]*border-radius:\s*10px;/);
+  assert.match(queueRailCss, /\.chat-queue-rail__position,[\s\S]*\.chat-queue-rail__asset-count\s*\{[\s\S]*border-radius:\s*8px;/);
 });
 
 test('queued message rail collapsed summary exposes the next queued item instead of generic copy only', () => {

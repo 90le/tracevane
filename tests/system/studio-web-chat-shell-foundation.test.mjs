@@ -70,6 +70,10 @@ const queuedMessageRail = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat-v2/QueuedMessageRail.vue"),
   "utf8",
 );
+const queueRailCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/queue-rail.css"),
+  "utf8",
+);
 const chatApi = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat/api.ts"),
   "utf8",
@@ -669,7 +673,7 @@ test("composer, picker, and queue utilities keep the flatter control language", 
     /\.chat-agent-picker-option__tag\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
-    queuedMessageRail,
+    queueRailCss,
     /\.chat-queue-rail__position,[\s\S]*\.chat-queue-rail__asset-count\s*\{[\s\S]*border-radius:\s*8px;/,
   );
 });
