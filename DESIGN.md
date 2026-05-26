@@ -225,13 +225,13 @@ Implementation notes:
 
 Dark mode:
 
-- Canvas: `#18232a`, `#202f38`, `#2b3d47`
-- Primary text: `#f2f7f6`
-- Secondary text: `#d0dedb`
-- Muted text: `#95a7a5`
-- Mint accent: `#8fcfc3`
-- Soft blue: `#9bb6d7`
-- Warm accent: `#d4b16f`
+- Canvas: `#1b2930`, `#23343d`, `#304752`
+- Primary text: `#f4faf8`
+- Secondary text: `#d9e8e4`
+- Muted text: `#a6b9b4`
+- Mint accent: `#9bd8cb`
+- Soft blue: `#a8bfdc`
+- Warm accent: `#d6ba7a`
 - Panel: translucent charcoal-teal around 52-72%
 - Soft surface: translucent mist around 6-8%
 - Border: mist-teal around 16-26%
@@ -239,12 +239,12 @@ Dark mode:
 
 Light mode:
 
-- Canvas: `#eef1ed`, `#f6f4ec`, `#dde6e1`
+- Canvas: `#edf1ec`, `#f4f2e9`, `#dae6dd`
 - Primary text: `#1e2b2d`
-- Secondary text: `#506164`
-- Muted text: `#7c8b8b`
-- Mint accent: `#2e8175`
-- Soft blue: `#596f9a`
+- Secondary text: `#526465`
+- Muted text: `#788b8a`
+- Mint accent: `#2f8177`
+- Soft blue: `#5b7198`
 - Warm accent: `#9c7134`
 - Panel: warm off-white around 62-82%
 - Soft surface: muted ink around 5-6%
@@ -278,7 +278,7 @@ Color rules:
 - `apps/web-vue/src/style.css` is the shared design-system boundary: Tailwind import, semantic tokens, app shell, and reusable primitives only.
 - Page-specific selectors should not be added to the global Atlas layer when touching a page. Move them into a feature stylesheet or the owning component and delete stale global duplicates.
 - Large feature pages should graduate to feature CSS files when the local style block becomes hard to scan or when selectors are shared across sibling components. Preferred names are domain based, for example `plugins-workspace.css`, `dashboard-workspace.css`, or `codex-stack-workspace.css`.
-- Scoped Vue styles are acceptable for compact, single-component states. They are not the long-term home for a whole page design system.
+- New Vue single-file component style blocks are not allowed for page or feature work. Use feature CSS files first; compact one-off component styles need an explicit cleanup reason and must not become the default.
 - New UI slices should keep behavior, markup, tests, and styles owned by the same feature directory unless the style is a genuine shared primitive.
 
 ## Component Rules

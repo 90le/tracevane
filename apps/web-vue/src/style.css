@@ -6928,21 +6928,21 @@ html[data-theme="light"] .cron-scheduler-callout {
 
 /* Studio Atlas: release redesign layer. This is the new product workbench contract. */
 :root {
-  --atlas-ink: #f2f7f6;
-  --atlas-ink-2: #d0dedb;
-  --atlas-ink-3: #95a7a5;
-  --atlas-bg: #18232a;
-  --atlas-bg-2: #202f38;
-  --atlas-bg-3: #2b3d47;
-  --atlas-panel: rgba(38, 52, 61, 0.58);
-  --atlas-panel-2: rgba(45, 61, 71, 0.72);
-  --atlas-panel-3: rgba(236, 247, 244, 0.075);
-  --atlas-line: rgba(221, 237, 233, 0.16);
-  --atlas-line-2: rgba(221, 237, 233, 0.26);
-  --atlas-primary: #8fcfc3;
-  --atlas-primary-2: #d4b16f;
-  --atlas-blue: #9bb6d7;
-  --atlas-danger: #e08d99;
+  --atlas-ink: #f4faf8;
+  --atlas-ink-2: #d9e8e4;
+  --atlas-ink-3: #a6b9b4;
+  --atlas-bg: #1b2930;
+  --atlas-bg-2: #23343d;
+  --atlas-bg-3: #304752;
+  --atlas-panel: rgba(44, 60, 69, 0.56);
+  --atlas-panel-2: rgba(52, 69, 79, 0.68);
+  --atlas-panel-3: rgba(236, 247, 244, 0.085);
+  --atlas-line: rgba(221, 237, 233, 0.18);
+  --atlas-line-2: rgba(221, 237, 233, 0.28);
+  --atlas-primary: #9bd8cb;
+  --atlas-primary-2: #d6ba7a;
+  --atlas-blue: #a8bfdc;
+  --atlas-danger: #e49aa4;
   --atlas-radius: 10px;
   --atlas-radius-lg: 16px;
   --atlas-shadow: 0 24px 68px rgba(13, 22, 28, 0.24);
@@ -6961,33 +6961,33 @@ html[data-theme="light"] .cron-scheduler-callout {
   --wb-accent-2: var(--atlas-primary-2);
   --wb-accent-3: var(--atlas-blue);
   --wb-danger: var(--atlas-danger);
-  --field-bg: rgba(27, 42, 51, 0.56);
-  --field-bg-focus: rgba(32, 49, 59, 0.74);
-  --field-border: rgba(221, 237, 233, 0.18);
-  --field-border-focus: rgba(143, 207, 195, 0.5);
+  --field-bg: rgba(31, 47, 56, 0.58);
+  --field-bg-focus: rgba(38, 57, 67, 0.76);
+  --field-border: rgba(221, 237, 233, 0.2);
+  --field-border-focus: rgba(155, 216, 203, 0.52);
 }
 
 html[data-theme="light"] {
   --atlas-ink: #1e2b2d;
-  --atlas-ink-2: #506164;
-  --atlas-ink-3: #7c8b8b;
-  --atlas-bg: #eef1ed;
-  --atlas-bg-2: #f6f4ec;
-  --atlas-bg-3: #dde6e1;
-  --atlas-panel: rgba(248, 247, 240, 0.62);
-  --atlas-panel-2: rgba(246, 245, 238, 0.82);
-  --atlas-panel-3: rgba(58, 73, 70, 0.055);
-  --atlas-line: rgba(38, 55, 54, 0.13);
-  --atlas-line-2: rgba(38, 55, 54, 0.22);
-  --atlas-primary: #2e8175;
+  --atlas-ink-2: #526465;
+  --atlas-ink-3: #788b8a;
+  --atlas-bg: #edf1ec;
+  --atlas-bg-2: #f4f2e9;
+  --atlas-bg-3: #dae6dd;
+  --atlas-panel: rgba(246, 244, 236, 0.68);
+  --atlas-panel-2: rgba(244, 242, 232, 0.84);
+  --atlas-panel-3: rgba(50, 70, 67, 0.062);
+  --atlas-line: rgba(38, 55, 54, 0.14);
+  --atlas-line-2: rgba(38, 55, 54, 0.24);
+  --atlas-primary: #2f8177;
   --atlas-primary-2: #9c7134;
-  --atlas-blue: #596f9a;
+  --atlas-blue: #5b7198;
   --atlas-danger: #ad5864;
   --atlas-shadow: 0 24px 70px rgba(65, 78, 78, 0.12);
-  --field-bg: rgba(244, 242, 234, 0.76);
-  --field-bg-focus: rgba(249, 247, 240, 0.92);
+  --field-bg: rgba(242, 240, 232, 0.78);
+  --field-bg-focus: rgba(248, 246, 238, 0.94);
   --field-border: rgba(38, 55, 54, 0.16);
-  --field-border-focus: rgba(46, 129, 117, 0.42);
+  --field-border-focus: rgba(47, 129, 119, 0.42);
 }
 
 body {
