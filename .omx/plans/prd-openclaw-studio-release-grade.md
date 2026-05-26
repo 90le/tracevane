@@ -6,6 +6,16 @@ Bring `openclaw-studio` to a release-grade extension that can be delivered to no
 
 This goal covers frontend, backend, feature behavior, performance, compatibility, Codex Stack, CPA/Compact/GPT routing, model and gateway configuration, health checks, logs, installation repair, CSS ownership, old feature cleanup, and release evidence.
 
+## Continuous Optimization Objective
+
+Optimize the Studio extension end to end until it is safe to publish for real users:
+
+- Align the extension with the latest OpenClaw behavior while keeping low-version compatibility through capability detection, defensive fallbacks, and clear upgrade/repair paths.
+- Redesign the frontend as a calm operational workbench instead of a dense card wall, using `DESIGN.md` and the installed design skills as the product/UI contract.
+- Make first install, reinstall/update, repair, health check, model validation, CPA/Compact route selection, and official ChatGPT route restore work as one guided workflow.
+- Keep backend APIs resilient under refresh, duplicate clicks, paused services, missing config, TUN/VPN proxy interception, and heterogeneous customer model catalogs.
+- Remove stale or confusing surfaces, consolidate CSS ownership into shared/feature stylesheets, and preserve automated verification evidence for every slice.
+
 ## Non-negotiable Principles
 
 - Treat the current worktree and runtime behavior as authoritative; do not assume older conversation context is correct.
@@ -63,10 +73,25 @@ This goal covers frontend, backend, feature behavior, performance, compatibility
 
 Start with Codex Stack because it blocks safe customer use:
 
-1. Remove unsafe hardcoded model fallbacks from UI defaults and smoke target selection.
+1. Keep unsafe hardcoded model fallbacks out of UI defaults and smoke target selection.
 2. Make install/repair/control pages match Setup / Repair Wizard and Runtime Console patterns.
 3. Make CPA/GPT switching state explicit and recoverable.
 4. Keep smoke gate conservative and force path explicit.
+
+## Verified Progress
+
+- `0c63098` removed channel-based GLM/Kimi fallback from CPA smoke/attach target selection. Target model now comes from user/profile/current Codex/OpenClaw default/provider catalog, and missing target model blocks smoke/attach with actionable guidance.
+- `0c63098` updated bundled install scripts and Compact Proxy templates so installs derive `CODEX_MODEL` from OpenClaw/user configuration and model-less Compact requests fail clearly instead of silently using a stale model.
+- `7023bbc`, `bc033c7`, and prior CSS cleanup commits removed the last real Vue component `<style>` blocks from `chat-v2` and deleted stale legacy Chat implementation files.
+- Health check output is represented by `CodexStackCheckOutputDialog`, and background job output is represented by `CodexStackJobProgressPanel`, matching the floating/docked output requirement instead of permanent inline output cards.
+
+## Remaining High-Risk Work
+
+- Continue simplifying Codex Stack install/control/settings pages so first-time users see one recommended action before technical detail.
+- Verify official ChatGPT route restore and CPA route attach against real user auth files without losing backups.
+- Keep removing page-level CSS accumulation and card-wall layout from remaining modules outside Chat/Codex Stack.
+- Add compatibility evidence against latest OpenClaw plus at least one lower-version fixture or mocked capability matrix.
+- Run targeted live CPA smoke only when the selected target model, gateway, and proxy mode are safe to exercise.
 
 ## Acceptance
 

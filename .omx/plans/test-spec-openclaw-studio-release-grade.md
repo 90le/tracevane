@@ -12,6 +12,8 @@
 
 - No required smoke model list may hardcode `glm-5.1`, `kimi-k2.6`, or any two-model assumption.
 - UI default model fields must hydrate from `profile.defaultModel`, current Codex model, OpenClaw/default model discovery, or user selection.
+- If no target model is known, smoke matrix and CPA attach must fail with a clear "choose target model" error instead of choosing a historical default.
+- Compact Proxy must require a request model or explicit `COMPACT_DEFAULT_MODEL`/`CODEX_MODEL`; it must not silently inject a stale provider-specific model.
 - CPA attach requires a fresh passing smoke matrix for the current target model and all required checks.
 - Force CPA path must remain explicit and warn about ordinary, streaming, long-task, and compaction risks.
 - Official ChatGPT route restore must preserve CPA provider configuration and restore official auth backup when present.
@@ -57,3 +59,16 @@ Any completion claim must record:
 - Runtime smoke evidence if applicable.
 - Known unverified areas.
 - Residual release risks.
+
+## Verified Regression Set
+
+Keep these checks green for the current release-grade effort:
+
+- `npm run build:api`
+- `node --test --test-reporter=dot tests/system/codex-stack-service.test.mjs`
+- `node --test --test-reporter=dot tests/system/compact-proxy.test.mjs tests/system/studio-web-codex-stack-workspace.test.mjs`
+- `bash -n resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh && bash -n resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh`
+- `node --check resources/codex-stack/codex-docs/resources/cpa-config-templates/compact-proxy.mjs && node --check resources/codex-stack/codex-docs-dmwork/resources/cpa-config-templates/compact-proxy.mjs`
+- `npm run typecheck:web`
+- `npm run build:web`
+- Live preview checks for `http://127.0.0.1:3761/api/system/health` and `http://127.0.0.1:5176/`.
