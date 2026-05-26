@@ -17,6 +17,11 @@ const cronControlPage = fs.readFileSync(
   "utf8",
 );
 
+const cronWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/cron/cron-workspace.css"),
+  "utf8",
+);
+
 const cronOverviewRecipe = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/cron/cron-overview-recipe.ts"),
   "utf8",
@@ -65,6 +70,14 @@ test("cron control page consumes recipe content for stage copy", () => {
   assert.match(cronControlPage, /overviewRecipe\.value\.workspaceTabs\.config/);
   assert.match(cronControlPage, /overviewRecipe\.value\.workspaceTabs\.runs/);
   assert.doesNotMatch(cronControlPage, /DEFAULT_CRON_OVERVIEW_RECIPE/);
+});
+
+test("cron control page keeps workspace styling outside the Vue page file", () => {
+  assert.match(cronControlPage, /import '\.\/cron-workspace\.css';/);
+  assert.doesNotMatch(cronControlPage, /<style scoped>/);
+  assert.match(cronWorkspaceCss, /\.cron-workbench\s*\{/);
+  assert.match(cronWorkspaceCss, /\.cron-sidebar-panel\s*\{/);
+  assert.match(cronWorkspaceCss, /\.cron-modal-mask\s*\{/);
 });
 
 test("cron overview recipe exports typed default recipe builder", () => {

@@ -12,6 +12,10 @@ const cronControlPage = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/cron/CronControlPage.vue"),
   "utf8",
 );
+const cronWorkspaceCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/cron/cron-workspace.css"),
+  "utf8",
+);
 
 test("cron control page uses reka tabs primitives for the stage workspace switcher", () => {
   assert.match(cronControlPage, /from 'reka-ui'/);
@@ -41,4 +45,12 @@ test("cron control page uses reka tabs primitives for the stage workspace switch
     cronControlPage,
     /:class="\{ active: activeTab === tab\.id \}"/,
   );
+});
+
+test("cron control page keeps stage tab CSS in feature stylesheet", () => {
+  assert.match(cronControlPage, /import '\.\/cron-workspace\.css';/);
+  assert.doesNotMatch(cronControlPage, /<style scoped>/);
+  assert.match(cronWorkspaceCss, /\.cron-stage-tabs\s*\{/);
+  assert.match(cronWorkspaceCss, /\.cron-stage-tab\[data-state='active'\]\s*\{/);
+  assert.doesNotMatch(cronWorkspaceCss, /:deep|:global/);
 });
