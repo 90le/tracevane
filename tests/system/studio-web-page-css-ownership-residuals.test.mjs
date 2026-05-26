@@ -38,6 +38,7 @@ const systemWorkspaceCss = read("apps/web-vue/src/features/system/system-workspa
 const dreamingWorkspaceCss = read("apps/web-vue/src/features/dreaming/dreaming-workspace.css");
 const operateWorkspaceCss = read("apps/web-vue/src/features/operate/operate-workspace.css");
 const chatShellWorkspaceCss = read("apps/web-vue/src/features/chat-v2/chat-shell-workspace.css");
+const chatOverlaySurfacesCss = read("apps/web-vue/src/features/chat-v2/overlay-surfaces.css");
 const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.css");
 const webSourceText = readFilesUnder("apps/web-vue/src", (entryPath) => /\.(?:vue|ts|js|css)$/.test(entryPath));
 
@@ -62,6 +63,7 @@ test("global style does not own chat or files component selectors", () => {
     globalStyleCss,
     /\.(?:topbar-actions-chat-route|chat-shell-page|chat-shell-sidebar|chat-side-inspector|chat-host-exec-confirm-dialog|chat-host-exec-confirm-primary|chat-main-stage|file-manager-loading)(?![a-zA-Z0-9_-])/,
   );
+  assert.doesNotMatch(globalStyleCss, /--chat-/);
 });
 
 test("remaining page-family CSS lives in feature-owned stylesheets", () => {
@@ -79,5 +81,9 @@ test("remaining page-family CSS lives in feature-owned stylesheets", () => {
   assert.match(operateWorkspaceCss, /\.operate-workspace-shell/);
   assert.match(chatShellWorkspaceCss, /\.chat-shell-sidebar/);
   assert.match(chatShellWorkspaceCss, /\.chat-host-exec-confirm-dialog/);
+  assert.match(chatShellWorkspaceCss, /--chat-modal-bg:/);
+  assert.match(chatShellWorkspaceCss, /--chat-avatar-bg:/);
+  assert.match(chatOverlaySurfacesCss, /--chat-picker-mask:/);
+  assert.match(chatOverlaySurfacesCss, /--chat-picker-chip-active-bg:/);
   assert.match(filesWorkspaceCss, /\.file-manager-loading/);
 });
