@@ -948,24 +948,33 @@ function readCodexAuth(authPath: string): { mode: string | null; key: string } {
 }
 
 function codexAuthHasMeaningfulLogin(auth: Record<string, unknown>): boolean {
-  return Object.keys(auth).some((key) => key !== "OPENAI_API_KEY" || typeof auth[key] === "string" && auth[key].trim());
+  return Object.entries(auth).some(([key, value]) => {
+    if (key === "auth_mode") return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (value && typeof value === "object") return Object.keys(value).length > 0;
+    return value !== undefined && value !== null;
+  });
 }
 
-function isApiKeyOnlyCodexAuth(auth: Record<string, unknown>): boolean {
-  return auth.auth_mode === "apikey" && typeof auth.OPENAI_API_KEY === "string" && auth.OPENAI_API_KEY.trim().length > 0;
+function isOfficialChatGptCodexAuth(auth: Record<string, unknown>): boolean {
+  const mode = typeof auth.auth_mode === "string" ? auth.auth_mode.trim().toLowerCase() : "";
+  if (mode === "apikey") return false;
+  if (mode === "chatgpt") return codexAuthHasMeaningfulLogin(auth);
+  return ["refresh_token", "access_token", "id_token", "account_id"].some((key) => (
+    typeof auth[key] === "string" && auth[key].trim().length > 0
+  ));
 }
 
-function preserveOfficialCodexAuth(authPath: string, backupPath: string, cpaKey: string): void {
-  if (!pathExists(authPath) || pathExists(backupPath)) return;
+function preserveOfficialCodexAuth(authPath: string, backupPath: string): void {
+  if (!pathExists(authPath)) return;
   const auth = readCodexAuthRecord(authPath);
-  if (!codexAuthHasMeaningfulLogin(auth)) return;
-  if (isApiKeyOnlyCodexAuth(auth) && auth.OPENAI_API_KEY === cpaKey) return;
+  if (!isOfficialChatGptCodexAuth(auth)) return;
   writeJsonSecure(backupPath, auth);
 }
 
 function writeCodexAuth(authPath: string, apiKey: string, backupPath?: string): void {
   if (!apiKey) return;
-  if (backupPath) preserveOfficialCodexAuth(authPath, backupPath, apiKey);
+  if (backupPath) preserveOfficialCodexAuth(authPath, backupPath);
   const current = readCodexAuthRecord(authPath);
   writeJsonSecure(authPath, {
     ...current,
@@ -977,7 +986,7 @@ function writeCodexAuth(authPath: string, apiKey: string, backupPath?: string): 
 function restoreOfficialCodexAuth(authPath: string, backupPath: string): boolean {
   if (!pathExists(backupPath)) return false;
   const backup = readCodexAuthRecord(backupPath);
-  if (!codexAuthHasMeaningfulLogin(backup)) return false;
+  if (!isOfficialChatGptCodexAuth(backup)) return false;
   writeJsonSecure(authPath, backup);
   return true;
 }

@@ -306,7 +306,7 @@ test("codex stack summary uses live Compact /v1/models as model catalog", async 
   });
 });
 
-test("codex stack default model prefers live supported kimi then glm then openclaw default", async () => {
+test("codex stack default model follows the user/openclaw default before live catalog fallbacks", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, { defaultModel: "openclaw-default-model" });
@@ -328,8 +328,8 @@ test("codex stack default model prefers live supported kimi then glm then opencl
     const service = createCodexStackService(config);
     const summary = await service.getSummary();
 
-    assert.equal(summary.models.current, "kimi-k2.6");
-    assert.equal(summary.models.defaultModel, "kimi-k2.6");
+    assert.equal(summary.models.current, "openclaw-default-model");
+    assert.equal(summary.models.defaultModel, "openclaw-default-model");
   });
 
   await withMockFetch(async (url) => {
@@ -347,8 +347,8 @@ test("codex stack default model prefers live supported kimi then glm then opencl
     const service = createCodexStackService(config);
     const summary = await service.getSummary();
 
-    assert.equal(summary.models.current, "glm-5.1");
-    assert.equal(summary.models.defaultModel, "glm-5.1");
+    assert.equal(summary.models.current, "openclaw-default-model");
+    assert.equal(summary.models.defaultModel, "openclaw-default-model");
   });
 });
 
@@ -1415,6 +1415,105 @@ test("codex stack can force attach CPA while warning and preserving ChatGPT auth
   assert.equal(cpaAuth.auth_mode, "apikey");
   assert.equal(cpaAuth.OPENAI_API_KEY, "secret-cpa-key-123456");
   assert.equal(JSON.parse(fs.readFileSync(officialAuthBackup, "utf8")).refresh_token, "force-chatgpt-refresh");
+});
+
+test("codex stack refreshes stale ChatGPT auth backup before switching to CPA", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexAuth = path.join(root, ".codex/auth.json");
+  const officialAuthBackup = path.join(root, ".codex/auth.chatgpt.backup.json");
+  writeJson(codexAuth, {
+    auth_mode: "chatgpt",
+    refresh_token: "current-chatgpt-refresh",
+    account_id: "current-chatgpt-account",
+  });
+  writeJson(officialAuthBackup, {
+    auth_mode: "chatgpt",
+    refresh_token: "stale-chatgpt-refresh",
+    account_id: "stale-chatgpt-account",
+  });
+
+  const service = createCodexStackService(config);
+  const response = await service.startRepair(undefined, { actions: ["force-apply-codex-cpa"] });
+  const job = await waitForJob(service, response.job.id);
+
+  assert.equal(job.status, "succeeded");
+  const refreshedBackup = JSON.parse(fs.readFileSync(officialAuthBackup, "utf8"));
+  assert.equal(refreshedBackup.auth_mode, "chatgpt");
+  assert.equal(refreshedBackup.refresh_token, "current-chatgpt-refresh");
+  assert.equal(refreshedBackup.account_id, "current-chatgpt-account");
+  const cpaAuth = JSON.parse(fs.readFileSync(codexAuth, "utf8"));
+  assert.equal(cpaAuth.auth_mode, "apikey");
+  assert.equal(cpaAuth.OPENAI_API_KEY, "secret-cpa-key-123456");
+});
+
+test("codex stack refuses to restore non-ChatGPT auth backups as official login", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+  const codexAuth = path.join(root, ".codex/auth.json");
+  const officialAuthBackup = path.join(root, ".codex/auth.chatgpt.backup.json");
+  fs.writeFileSync(codexConfig, `
+model = "kimi-k2.6"
+model_provider = "cpa"
+
+[model_providers.cpa]
+base_url = "http://127.0.0.1:18796/v1"
+experimental_bearer_token = "secret-cpa-key-123456"
+`);
+  writeJson(codexAuth, {
+    auth_mode: "apikey",
+    OPENAI_API_KEY: "secret-cpa-key-123456",
+  });
+  writeJson(officialAuthBackup, {
+    auth_mode: "apikey",
+    OPENAI_API_KEY: "stale-third-party-key",
+  });
+
+  const service = createCodexStackService(config);
+  const response = await service.startRepair(undefined, { actions: ["restore-official-chatgpt"] });
+  const job = await waitForJob(service, response.job.id);
+
+  assert.equal(job.status, "succeeded");
+  assert.match(job.logTail, /No preserved official ChatGPT auth backup found/);
+  const authAfterRestore = JSON.parse(fs.readFileSync(codexAuth, "utf8"));
+  assert.equal(authAfterRestore.auth_mode, "apikey");
+  assert.equal(authAfterRestore.OPENAI_API_KEY, "secret-cpa-key-123456");
+  const patched = fs.readFileSync(codexConfig, "utf8");
+  assert.match(tomlTopLevel(patched), /model\s*=\s*"gpt-5\.5"/);
+  assert.doesNotMatch(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
 });
 
 test("codex stack can attach the user-selected GPT model through CPA", async () => {
