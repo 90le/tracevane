@@ -13,6 +13,10 @@ const sessionListPanel = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionListPanel.vue'),
   'utf8',
 );
+const sessionListSharedCss = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/session-list-shared.css'),
+  'utf8',
+);
 const sessionFilterBar = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionFilterBar.vue'),
   'utf8',
@@ -21,6 +25,18 @@ const sessionRowList = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionRowList.vue'),
   'utf8',
 );
+const sessionListComponentFiles = [
+  'SessionListPanel.vue',
+  'SessionPanelHeader.vue',
+  'SessionFolderHeader.vue',
+  'SessionFolderList.vue',
+  'SessionRowList.vue',
+  'SessionBatchBar.vue',
+];
+const sessionListComponentSources = new Map(sessionListComponentFiles.map((file) => [
+  file,
+  fs.readFileSync(path.join(rootDir, 'apps/web-vue/src/features/chat-v2', file), 'utf8'),
+]));
 const sessionListFilters = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat-v2/session-list-filters.ts'),
   'utf8',
@@ -144,6 +160,21 @@ test('session list exposes all folders archived scope tabs and metadata search',
   assert.match(sessionListScopeTabs, /全部/);
   assert.match(sessionListScopeTabs, /文件夹/);
   assert.match(sessionListScopeTabs, /归档/);
+});
+
+test('session list components keep styling in the shared feature stylesheet', () => {
+  for (const [file, source] of sessionListComponentSources) {
+    assert.match(source, /import '\.\/session-list-shared\.css';/, `${file} imports session-list-shared.css`);
+    assert.doesNotMatch(source, /<style scoped>/, `${file} does not keep local scoped CSS`);
+  }
+
+  assert.match(sessionListSharedCss, /\.chat-shell-session-list\s*\{/);
+  assert.match(sessionListSharedCss, /\.chat-shell-session-list__header\s*\{/);
+  assert.match(sessionListSharedCss, /\.chat-shell-session-subheader\s*\{/);
+  assert.match(sessionListSharedCss, /\.chat-shell-folder-row\s*\{/);
+  assert.match(sessionListSharedCss, /\.chat-shell-session-row\s*\{/);
+  assert.match(sessionListSharedCss, /\.chat-shell-session-batchbar\s*\{/);
+  assert.doesNotMatch(sessionListSharedCss, /:deep|:global/);
 });
 
 test('folder scope keeps agent/source filter options from descendant sessions and archived mode stays isolated', () => {

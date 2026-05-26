@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import { useLocalePreference } from '../../shared/locale';
+import './session-list-shared.css';
 
 defineProps<{
   inspectMode: boolean;
@@ -88,98 +89,3 @@ defineEmits<{
 
 const { text } = useLocalePreference();
 </script>
-
-<style scoped>
-.chat-shell-session-list__header {
-  display: grid;
-  gap: 10px;
-  padding: 14px 18px 10px;
-  border-bottom: 1px solid var(--chat-line);
-}
-
-.chat-shell-session-list__copy {
-  display: grid;
-  gap: 3px;
-}
-
-.chat-shell-session-list__eyebrow {
-  margin: 0;
-  color: var(--chat-text-soft);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.chat-shell-session-list__title {
-  color: var(--chat-text);
-  font-size: 16px;
-  line-height: 1.25;
-}
-
-.chat-shell-session-list__summary {
-  color: var(--chat-text-soft);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.chat-shell-session-list__actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  align-items: center;
-  width: 100%;
-}
-
-.chat-shell-session-list__ghost-action,
-.chat-shell-session-list__soft-action,
-.chat-shell-session-list__primary-action {
-  min-height: 34px;
-  border-radius: 999px;
-}
-
-.chat-shell-session-list__actions :deep(.compact-button),
-.chat-shell-session-list__actions :deep(.chat-shell-link-button) {
-  min-height: 34px;
-  padding-inline: 12px;
-  font-size: 12px;
-  border-radius: 999px;
-}
-
-.chat-shell-session-list__actions :deep(.primary-button.compact-button) {
-  padding-inline: 14px;
-}
-
-.chat-shell-session-createbar {
-  padding: 10px 18px 0;
-}
-
-.chat-shell-folder-create-form {
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--chat-line);
-  background: color-mix(in srgb, var(--chat-hover) 72%, transparent 28%);
-}
-
-@media (max-width: 1040px) {
-  .chat-shell-session-list__header {
-    padding: 14px 14px 10px;
-  }
-
-  .chat-shell-session-createbar {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .chat-shell-session-list__actions {
-    gap: 6px;
-  }
-
-  .chat-shell-session-list__actions :deep(.compact-button),
-  .chat-shell-session-list__actions :deep(.chat-shell-link-button) {
-    min-height: 32px;
-    padding-inline: 10px;
-  }
-}
-</style>

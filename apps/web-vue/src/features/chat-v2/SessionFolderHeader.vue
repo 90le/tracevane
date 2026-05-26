@@ -94,6 +94,7 @@
 <script setup lang="ts">
 import type { ChatSessionFolder } from '../../../../../types/chat';
 import { useLocalePreference } from '../../shared/locale';
+import './session-list-shared.css';
 
 defineProps<{
   archiveViewOpen: boolean;
@@ -117,78 +118,3 @@ defineEmits<{
 
 const { text } = useLocalePreference();
 </script>
-
-<style scoped>
-.chat-shell-session-subheader {
-  display: grid;
-  gap: 10px;
-  margin: 2px 8px 0;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--chat-line);
-  background: color-mix(in srgb, var(--chat-hover) 74%, transparent 26%);
-}
-
-.chat-shell-session-subheader__topline,
-.chat-shell-session-subheader__main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.chat-shell-session-list__breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--chat-text-soft);
-}
-
-.chat-shell-session-list__breadcrumb strong {
-  color: var(--chat-text);
-}
-
-.chat-shell-session-subheader__copy {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.chat-shell-session-subheader__copy h3 {
-  margin: 0;
-  font-size: 20px;
-  line-height: 1.05;
-  color: var(--chat-text);
-}
-
-.chat-shell-session-subheader__copy p {
-  margin: 0;
-  color: var(--chat-text-soft);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.chat-shell-session-subheader__badge {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 9px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--chat-accent) 14%, transparent 86%);
-  color: var(--chat-accent);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.chat-shell-session-subheader__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-</style>
