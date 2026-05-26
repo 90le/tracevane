@@ -48,6 +48,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Check, ChevronDown } from '@lucide/vue';
+import './glass-select.css';
 
 export interface GlassSelectOption {
   value: string;
