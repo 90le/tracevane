@@ -13,6 +13,32 @@ Before changing frontend UI, read this file plus the installed skills:
 
 Use skills as review lenses, not as a reason to mix unrelated aesthetics. For Studio, prefer product-console clarity over marketing-page spectacle.
 
+## Redesign Mandate
+
+The current Studio UI is not the target design. Existing screens may be used for behavior discovery, API wiring, and regression comparison, but not as the visual or layout reference.
+
+The redesign must replace these inherited problems:
+
+- Card stacking as the default answer to every state.
+- Repeated navigation across sidebar, topbar, search, command palette, and local tabs.
+- Dense first screens that show internal implementation facts before user intent.
+- Dark mode that feels heavy, flat, or hard to read.
+- Light mode that feels glaring, white, or visually tiring.
+- Decorative effects without operational meaning.
+- Page-local CSS accumulation that makes every module drift into a different product.
+
+The new target is **Calm Ops OS**:
+
+- A command-center product UI, not a marketing dashboard.
+- Warm off-white light mode and translucent charcoal dark mode designed together.
+- Split panes, docked inspectors, guided wizards, floating logs, and inline command rows.
+- One obvious next action per screen.
+- Advanced details available, but collapsed until needed.
+- Less chrome, fewer borders, fewer boxes, stronger hierarchy.
+- Real loading, empty, disabled, error, retry, and success states.
+
+Behavior can be preserved. Layout, visual grouping, copy density, and component composition may be replaced.
+
 ## Aesthetic Direction
 
 Primary direction: soft glass operations console with restrained product chrome.
@@ -48,13 +74,13 @@ External design resources are inspiration catalogs, not templates to copy wholes
 
 Useful lessons for Studio:
 
-- Frontend Design Pro Demo: use style families to break generic AI defaults, but keep only patterns that serve product-console clarity.
-- UI UX Pro Max: accessibility, touch targets, loading/error states, and responsive behavior outrank decorative style.
-- Awesome Claude Design and Awesome DESIGN.md: describe UI through reusable tokens, component rules, previewable examples, and do/don't constraints.
+- Frontend Design Pro Demo: use style families to break generic AI defaults. For Studio, borrow Swiss grid discipline, controlled glass layering, and organic warmth; reject neon cyberpunk, pure OLED luxury, and loud maximalism for core flows.
+- UI UX Pro Max: accessibility, touch targets, loading/error states, and responsive behavior outrank decorative style. Treat WCAG, keyboard access, and clear feedback as release gates.
+- Awesome Claude Design and Awesome DESIGN.md: describe UI through reusable tokens, component rules, previewable examples, and do/don't constraints. Studio should have one design brain, not scattered component taste.
 - Anthropic warm editorial: useful for warmth and calmness, not for turning the app into a marketing page.
 - Bencium Controlled mode: default for production; Innovative mode only for isolated prototypes.
 - Taste Skill sliders: use explicit variance, density, and motion budgets before redesigning.
-- SuperDesign: useful for producing alternate concepts, but final Studio UI must be implemented in the existing Vue/Nuxt UI stack.
+- SuperDesign: useful for producing alternate concepts and wireframes in parallel, but final Studio UI must be implemented in the existing Vue/Nuxt UI stack.
 - Neumorphism: not a core direction; only subtle inset/raised state hints are allowed.
 - Neo-brutalism: not a core direction; only strong hierarchy and direct labels are allowed, not thick borders or loud color blocks.
 
@@ -72,6 +98,116 @@ Rules:
 - Advanced users can opt into dense detail panes; density should not be the default landing state.
 - Motion must communicate cause and effect. Avoid mouse trails, custom cursors, ornamental particle effects, or permanent animation loops in core workflows.
 - Glass is allowed only when it improves layering. It must include readable contrast, hairline borders, and subtle inner refraction, not just blur.
+- For concept exploration, generate at least two alternatives before committing to a major page redesign: Controlled Ops and Warm Editorial Ops. Keep the better structure; do not merge both aesthetics.
+
+## Page Architecture
+
+Every page should map to one of these patterns. If a page does not fit, redesign the information architecture before styling it.
+
+### Setup / Repair Wizard
+
+Use for Codex Stack install, reinstall, repair, smoke validation, CPA/GPT switching, and gateway recovery.
+
+- Header: current state and one recommended next action.
+- Body: stepper or vertical command sequence with clear pass/fail state.
+- Details: collapsed diagnostics, service output, raw logs, and manual commands.
+- Output: floating log sheet with copy, retry, and close controls.
+- Forbidden: permanent log cards, service-card walls, watchdog controls without context.
+
+### Command Center
+
+Use for dashboard and high-level operational status.
+
+- Header: ready / needs action / blocked state, not generic metrics.
+- Primary area: one focused action lane.
+- Secondary area: recent changes, warnings, and route facts.
+- Details: drill-in panes, not same-level cards.
+- Forbidden: equal cards for everything, duplicate risk labels, decorative stats.
+
+### Split Inspector
+
+Use for models, gateways, accounts, channels, config, files, agents, and queues.
+
+- Left pane: searchable object list or grouped navigation.
+- Right pane: selected object detail, editor, or runbook.
+- Footer or top strip: save/apply/test actions.
+- Details: advanced fields behind disclosure.
+- Forbidden: nested cards inside cards, multiple unrelated edit panels visible at once.
+
+### Runtime Console
+
+Use for terminal, service logs, health output, and long-running jobs.
+
+- Main pane: streaming output with readable monospace scale.
+- Side or top strip: filters, copy, retry, stop, and scope.
+- Output should be visually separate from setup content but not become a page wall.
+- Forbidden: tiny low-contrast logs, output hidden behind dense cards, decorative terminal chrome.
+
+### Data Review
+
+Use for history, events, jobs, and records.
+
+- Table/list first, inspector second.
+- Density may rise to 6/10, but row height and contrast must remain readable.
+- Bulk actions must be explicit and reversible when possible.
+- Forbidden: metric cards replacing actual searchable records.
+
+## Component Composition
+
+Primitive hierarchy:
+
+1. Shell: sidebar rail, top identity bar, route stage.
+2. Workflow surfaces: wizard, command center, split inspector, runtime console.
+3. Action rows: primary action, secondary actions, risk note.
+4. Disclosure: advanced detail, raw output, manual commands.
+5. Repeated items: rows, strips, tables, compact repeated cards only when repetition is the data model.
+
+Rules:
+
+- A page may have one hero-level command surface, not several competing panels.
+- Cards are allowed only for repeated entities or a genuinely framed tool.
+- Replace status-card clusters with compact state strips or rows.
+- Replace "learn how this works" copy with inline labels, helper text, and progressive disclosure.
+- Avoid local nav when the shell already provides route navigation.
+- Keep controls near the thing they affect.
+
+## Interaction Model
+
+- Primary actions must show loading and completion feedback.
+- Failed actions must state what failed, why it matters, and what to do next.
+- Dangerous actions must describe the consequence before execution.
+- Health checks and repair jobs must keep the user on the same page and show output in a floating sheet.
+- Saving a model/gateway route should offer immediate validation and a clear choice between CPA route and official ChatGPT/Codex account route when relevant.
+- Disabled controls must explain the condition that blocks them.
+- Keyboard users must be able to reach every primary action, dialog, tab, and command.
+
+## Visual Language
+
+- Use generous negative space in first-use flows, not empty decoration.
+- Use hairline dividers, section rhythm, and alignment before adding containers.
+- Use tinted shadows only for elevated overlays, not every surface.
+- Use one accent per screen, preferably mint/teal. Warm amber is for warnings or secondary emphasis.
+- Use icons as quick recognition aids, not as decoration.
+- Use tabular/monospace figures for ports, timings, versions, checks, and process IDs.
+- Use off-white, charcoal, mist, and warm slate as the neutral system.
+- Use animation only for state transition, progress, focus, or hierarchy.
+
+## Redesign Execution Order
+
+1. Codex Stack install/repair/control: first-use workflow, CPA/GPT route clarity, smoke validation, floating logs.
+2. Dashboard: one current-state command center, no metric/card wall.
+3. Config/model/gateway pages: split inspector with save-and-validate flow.
+4. Channels/accounts: list-detail inspector and clear binding state.
+5. Terminal/logs/events: runtime console and data review patterns.
+6. Chat/files/agents: migrate remaining local styles and align shells after core operations are coherent.
+
+For each page:
+
+1. Identify the page architecture pattern.
+2. Delete redundant cards, copy, nav, and stale context panels first.
+3. Move CSS into the feature stylesheet before visual work grows.
+4. Implement loading/error/disabled states together with the layout.
+5. Verify dark and light mode together.
 
 ## Frontend Stack
 

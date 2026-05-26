@@ -34,6 +34,17 @@ test("shared primitives consume semantic aliases for surfaces and action accents
 });
 
 test("design contract keeps global CSS narrow and feature CSS owned by domains", () => {
+  assert.match(designContract, /## Redesign Mandate/);
+  assert.match(designContract, /The current Studio UI is not the target design/);
+  assert.match(designContract, /\*\*Calm Ops OS\*\*/);
+  assert.match(designContract, /## Page Architecture/);
+  assert.match(designContract, /### Setup \/ Repair Wizard/);
+  assert.match(designContract, /### Command Center/);
+  assert.match(designContract, /### Split Inspector/);
+  assert.match(designContract, /### Runtime Console/);
+  assert.match(designContract, /## Component Composition/);
+  assert.match(designContract, /## Interaction Model/);
+  assert.match(designContract, /## Redesign Execution Order/);
   assert.match(designContract, /## CSS Ownership/);
   assert.match(designContract, /style\.css` is the shared design-system boundary/);
   assert.match(designContract, /Large feature pages should graduate to feature CSS files/);
