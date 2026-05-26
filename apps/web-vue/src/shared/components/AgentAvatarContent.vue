@@ -11,6 +11,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import './avatar-components.css';
 
 const props = withDefaults(defineProps<{
   avatar?: string | null;
@@ -79,31 +80,3 @@ function handleImageError(): void {
   imageFailed.value = true;
 }
 </script>
-
-<style scoped>
-.agent-avatar-content {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  border-radius: inherit;
-}
-
-.agent-avatar-content-image {
-  display: block;
-  object-fit: cover;
-}
-
-.agent-avatar-content-text {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  overflow: hidden;
-  font: inherit;
-  color: inherit;
-  line-height: 1;
-  text-align: center;
-  white-space: nowrap;
-}
-</style>
