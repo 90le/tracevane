@@ -238,6 +238,7 @@
 </template>
 
 <script setup lang="ts">
+import '../operate/operate-workspace.css';
 import './channels-workspace.css';
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';

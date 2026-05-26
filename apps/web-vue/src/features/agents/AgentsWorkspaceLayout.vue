@@ -364,6 +364,7 @@
 </template>
 
 <script setup lang="ts">
+import '../operate/operate-workspace.css';
 import './agents-workspace.css';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { BookOpen, Braces, Link2, MessageSquare, SlidersHorizontal, X } from '@lucide/vue';

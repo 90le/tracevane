@@ -16,11 +16,12 @@ const terminalWorkspaceCss = read("apps/web-vue/src/features/terminal/terminal-w
 const skillsWorkspaceCss = read("apps/web-vue/src/features/skills/skills-workspace.css");
 const systemWorkspaceCss = read("apps/web-vue/src/features/system/system-workspace.css");
 const dreamingWorkspaceCss = read("apps/web-vue/src/features/dreaming/dreaming-workspace.css");
+const operateWorkspaceCss = read("apps/web-vue/src/features/operate/operate-workspace.css");
 
 test("global style no longer owns remaining page-family selectors", () => {
   assert.doesNotMatch(
     globalStyleCss,
-    /\.(?:cs-[a-zA-Z0-9_-]*|terminal[a-zA-Z0-9_-]*|skills[a-zA-Z0-9_-]*|system[a-zA-Z0-9_-]*|dreaming[a-zA-Z0-9_-]*)/,
+    /\.(?:cs-[a-zA-Z0-9_-]*|terminal[a-zA-Z0-9_-]*|skills[a-zA-Z0-9_-]*|system[a-zA-Z0-9_-]*|dreaming[a-zA-Z0-9_-]*|operate-[a-zA-Z0-9_-]*|account-tile|binding-item|request-item|tag-chip|capability-chip)/,
   );
 });
 
@@ -35,4 +36,6 @@ test("remaining page-family CSS lives in feature-owned stylesheets", () => {
   assert.match(systemWorkspaceCss, /\.system-page/);
   assert.match(dreamingWorkspaceCss, /Migrated Dreaming workspace rules from global style\.css/);
   assert.match(dreamingWorkspaceCss, /\.dreaming-page/);
+  assert.match(operateWorkspaceCss, /Migrated Operate workspace shared rules from global style\.css/);
+  assert.match(operateWorkspaceCss, /\.operate-workspace-shell/);
 });

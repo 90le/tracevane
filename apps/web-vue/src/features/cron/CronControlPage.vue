@@ -841,6 +841,7 @@ import {
   buildDefaultCronOverviewRecipe,
   type CronOverviewRecipe,
 } from './cron-overview-recipe';
+import '../operate/operate-workspace.css';
 import './cron-workspace.css';
 
 type CronTab = 'overview' | 'config' | 'runs';

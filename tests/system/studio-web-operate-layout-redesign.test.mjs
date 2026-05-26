@@ -19,6 +19,7 @@ const cronControlPage = read(
   "apps/web-vue/src/features/cron/CronControlPage.vue",
 );
 const globalStyle = read("apps/web-vue/src/style.css");
+const operateWorkspaceCss = read("apps/web-vue/src/features/operate/operate-workspace.css");
 const agentsWorkspaceCss = read("apps/web-vue/src/features/agents/agents-workspace.css");
 const channelsWorkspaceCss = read("apps/web-vue/src/features/channels/channels-workspace.css");
 const cronWorkspaceCss = read("apps/web-vue/src/features/cron/cron-workspace.css");
@@ -42,6 +43,10 @@ test("cron exposes operate shell, task head, and mobile stage tabs", () => {
 });
 
 test("operate pages keep shared workspace language hooks", () => {
+  assert.match(agentsWorkspaceLayout, /import '\.\.\/operate\/operate-workspace\.css';/);
+  assert.match(channelsWorkspaceLayout, /import '\.\.\/operate\/operate-workspace\.css';/);
+  assert.match(cronControlPage, /import '\.\.\/operate\/operate-workspace\.css';/);
+
   assert.match(agentsWorkspaceLayout, /operate-resource-rail/);
   assert.match(channelsWorkspaceLayout, /operate-resource-rail/);
   assert.match(cronControlPage, /operate-resource-rail/);
@@ -51,13 +56,14 @@ test("operate pages keep shared workspace language hooks", () => {
   assert.match(cronControlPage, /operate-stage/);
 
   assert.match(
-    globalStyle,
+    operateWorkspaceCss,
     /\.operate-workspace-shell\s+\.operate-resource-rail,[\s\S]*\.operate-stage\s*\{[\s\S]*min-width:\s*0;[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
   );
   assert.match(
-    globalStyle,
+    operateWorkspaceCss,
     /\.operate-stage-task-head\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-wrap:\s*wrap;[\s\S]*gap:\s*10px;/,
   );
+  assert.doesNotMatch(globalStyle, /\.operate-[a-zA-Z0-9_-]*/);
   assert.match(channelsWorkspaceCss, /\.channels-stage-badges\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-wrap:\s*wrap;[\s\S]*gap:\s*10px;/);
   assert.match(cronWorkspaceCss, /\.cron-stage-facts\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-wrap:\s*wrap;[\s\S]*gap:\s*10px;/);
   assert.match(agentsWorkspaceCss, /\.agents-stage-header__facts\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-wrap:\s*wrap;[\s\S]*gap:\s*8px;/);

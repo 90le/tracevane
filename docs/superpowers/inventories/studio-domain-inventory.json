@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-26T09:06:41.566Z",
+  "generatedAt": "2026-05-26T09:18:14.166Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -44,6 +44,7 @@
     "dreaming",
     "files",
     "management",
+    "operate",
     "plugins",
     "shell",
     "skills",
