@@ -85,6 +85,7 @@ const SERVICE_IDS = [
 ] as const satisfies readonly CodexStackServiceId[];
 
 const SERVICE_ACTIONS = ["restart", "start", "stop", "enable"] as const satisfies readonly CodexStackServiceAction[];
+const LEGACY_HEALTHCHECK_TIMER = "cli-proxy-api-healthcheck.timer";
 
 const FALLBACK_LOG_FILES: Record<CodexStackServiceId, string[]> = {
   "cli-proxy-api.service": ["/tmp/cpa.log"],
@@ -3397,6 +3398,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       throw new CodexStackServiceError("codex_stack_invalid_service_action", `Unsupported service action: ${action}`);
     }
     requireNoActiveJob();
+    if (
+      serviceId === LEGACY_HEALTHCHECK_TIMER
+      && (action === "start" || action === "restart" || action === "enable")
+    ) {
+      throw new CodexStackServiceError(
+        "codex_stack_legacy_healthcheck_blocked",
+        "Legacy CPA healthcheck must stay disabled. Use Recommended Repair so Studio disables and removes the old timer safely.",
+        409,
+      );
+    }
     if ((action === "start" || action === "restart") && serviceId === "cpa-compact-proxy.service") {
       await requireActiveUnitForServiceAction("cli-proxy-api.service", "Start or resume CPA before starting Compact Proxy.");
     }

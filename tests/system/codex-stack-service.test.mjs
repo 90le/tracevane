@@ -840,6 +840,44 @@ test("codex stack blocks lifecycle-unsafe direct service starts", async () => {
   );
 });
 
+test("codex stack blocks legacy healthcheck from being restarted by service control", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  await withScriptedSystemctl(
+    [
+      "case \"$*\" in",
+      "  \"--user restart cli-proxy-api-healthcheck.timer\") echo \"should not restart legacy healthcheck\"; exit 0 ;;",
+      "esac",
+      "exit 0",
+    ].join("\n"),
+    async ({ readCalls }) => {
+      const service = createCodexStackService(config);
+
+      await assert.rejects(
+        service.controlService(undefined, "cli-proxy-api-healthcheck.timer", "restart"),
+        (error) => isCodexStackServiceError(error)
+          && error.code === "codex_stack_legacy_healthcheck_blocked"
+          && error.statusCode === 409,
+      );
+      assert.ok(!readCalls().includes("--user restart cli-proxy-api-healthcheck.timer"));
+    },
+  );
+});
+
 test("codex stack rejects concurrent mutating actions while a job is active", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
