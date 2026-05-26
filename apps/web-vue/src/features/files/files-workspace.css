@@ -1,4 +1,87 @@
 /* FilesControlPage.vue */
+.main-content.file-surface-route {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.shell-layout-files {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+}
+
+.main-content.file-surface-route .shell-main-stage {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.shell-route-stage-files {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  align-content: stretch;
+}
+
+.shell-route-stage-files > * {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+
+@media (max-width: 920px) {
+  .shell-layout-files {
+    min-height: 100dvh;
+    height: 100dvh;
+    padding: 0;
+  }
+
+  .main-content.file-surface-route .shell-layout {
+    min-height: 0;
+    height: 100dvh;
+    padding: 46px 0 0;
+  }
+
+  .main-content.file-surface-route .shell-main-stage,
+  .main-content.file-surface-route .shell-route-stage,
+  .main-content.file-surface-route .shell-route-stage-files {
+    min-height: 0;
+    height: 100%;
+    padding: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-content.file-surface-route .shell-layout,
+  .main-content.file-surface-route .shell-layout-files {
+    min-height: 0;
+    height: 100dvh;
+    padding: 46px 0 0;
+  }
+
+  .main-content.file-surface-route .shell-main-stage,
+  .main-content.file-surface-route .shell-route-stage,
+  .main-content.file-surface-route .shell-route-stage-files {
+    min-height: 0;
+    height: 100%;
+    padding: 0;
+  }
+}
+
 .file-manager-page {
   --file-manager-bg: #f8fafc;
   --file-manager-panel: #ffffff;

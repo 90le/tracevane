@@ -1101,25 +1101,6 @@ button {
   overflow: visible;
 }
 
-.main-content.chat-surface-route {
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  min-height: 100vh;
-  min-height: 100dvh;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
-}
-
-.main-content.file-surface-route {
-  min-height: 100vh;
-  min-height: 100dvh;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
-}
-
 .main-content::before {
   content: "";
   position: absolute;
@@ -1146,32 +1127,12 @@ button {
   padding: 12px 14px 16px;
 }
 
-.shell-layout-chat {
-  padding: 0;
-}
-
-.shell-layout-files {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-  padding: 0;
-}
-
 .shell-main-stage {
   min-width: 0;
   min-height: 0;
   display: grid;
   gap: 12px;
   align-content: start;
-}
-
-.main-content.file-surface-route .shell-main-stage {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
 }
 
 .sr-only {
@@ -1186,38 +1147,6 @@ button {
   border: 0;
 }
 
-.main-content.chat-surface-route .shell-route-stage {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  padding: 0;
-  overflow: hidden;
-  align-content: stretch;
-}
-
-.main-content.chat-surface-route .shell-layout {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-}
-
-.main-content.chat-surface-route .shell-main-stage {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.main-content.chat-surface-route .shell-route-stage > * {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  width: 100%;
-}
-
 .shell-route-stage {
   position: relative;
   z-index: 1;
@@ -1228,30 +1157,6 @@ button {
   min-height: 100%;
   align-content: start;
   padding: 4px 6px 10px;
-}
-
-.shell-route-stage-chat {
-  padding: 0;
-}
-
-.shell-route-stage-files {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  padding: 0;
-  gap: 0;
-  overflow: hidden;
-  align-content: stretch;
-}
-
-.shell-route-stage-files > * {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  width: 100%;
 }
 
 .page-shell {
@@ -1917,37 +1822,8 @@ html[data-theme="light"] .docs-link-icon {
     padding: 0;
   }
 
-  .main-content.chat-surface-route {
-    min-height: 100dvh;
-    height: 100dvh;
-  }
-
   .shell-layout {
     padding: 58px 10px 12px;
-  }
-
-  .shell-layout-chat {
-    padding: 0;
-  }
-
-  .shell-layout-files {
-    min-height: 100dvh;
-    height: 100dvh;
-    padding: 0;
-  }
-
-  .main-content.file-surface-route .shell-layout {
-    min-height: 0;
-    height: 100dvh;
-    padding: 46px 0 0;
-  }
-
-  .main-content.file-surface-route .shell-main-stage,
-  .main-content.file-surface-route .shell-route-stage,
-  .main-content.file-surface-route .shell-route-stage-files {
-    min-height: 0;
-    height: 100%;
-    padding: 0;
   }
 
   .studio-shell-topbar {
@@ -1968,11 +1844,6 @@ html[data-theme="light"] .docs-link-icon {
     padding: 0 2px 6px;
   }
 
-  .shell-route-stage-chat {
-    min-height: 0;
-    height: 100%;
-    padding: 0;
-  }
 }
 
 @media (max-width: 768px) {
@@ -1996,22 +1867,7 @@ html[data-theme="light"] .docs-link-icon {
     padding: 54px 8px 10px;
   }
 
-  .main-content.file-surface-route .shell-layout,
-  .main-content.file-surface-route .shell-layout-files {
-    min-height: 0;
-    height: 100dvh;
-    padding: 46px 0 0;
-  }
-
   .shell-route-stage {
-    padding: 0;
-  }
-
-  .main-content.file-surface-route .shell-main-stage,
-  .main-content.file-surface-route .shell-route-stage,
-  .main-content.file-surface-route .shell-route-stage-files {
-    min-height: 0;
-    height: 100%;
     padding: 0;
   }
 }

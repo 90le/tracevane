@@ -166,6 +166,23 @@ test("files feature keeps workspace styles in shared CSS instead of Vue scoped b
     assert.doesNotMatch(source, /<style scoped>/);
   }
 
+  assert.match(
+    filesWorkspaceCss,
+    /\.main-content\.file-surface-route\s*\{[\s\S]*height:\s*100dvh;[\s\S]*overflow:\s*hidden;/,
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /\.shell-layout-files\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*height:\s*100%;/,
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /\.shell-route-stage-files\s*\{[\s\S]*display:\s*flex;[\s\S]*overflow:\s*hidden;/,
+  );
+  assert.doesNotMatch(
+    read("apps/web-vue/src/style.css"),
+    /\.main-content\.file-surface-route\s*\{|\.shell-layout-files\s*\{|\.shell-route-stage-files\s*\{/,
+    "files route shell rules should live with the files feature CSS instead of global style.css",
+  );
   assert.match(filesWorkspaceCss, /\.file-manager-page\s*\{/);
   assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.file-manager-page/);
   assert.match(filesWorkspaceCss, /\.file-manager-editor-drawer\s*\{/);

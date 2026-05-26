@@ -63,6 +63,10 @@ test("global style does not own chat or files component selectors", () => {
     globalStyleCss,
     /\.(?:topbar-actions-chat-route|chat-shell-page|chat-shell-sidebar|chat-side-inspector|chat-host-exec-confirm-dialog|chat-host-exec-confirm-primary|chat-main-stage|file-manager-loading)(?![a-zA-Z0-9_-])/,
   );
+  assert.doesNotMatch(
+    globalStyleCss,
+    /\.main-content\.chat-surface-route\s*\{|\.main-content\.file-surface-route\s*\{|\.shell-layout-chat\s*\{|\.shell-layout-files\s*\{|\.shell-route-stage-chat\s*\{|\.shell-route-stage-files\s*\{/,
+  );
   assert.doesNotMatch(globalStyleCss, /--chat-/);
 });
 
@@ -81,9 +85,14 @@ test("remaining page-family CSS lives in feature-owned stylesheets", () => {
   assert.match(operateWorkspaceCss, /\.operate-workspace-shell/);
   assert.match(chatShellWorkspaceCss, /\.chat-shell-sidebar/);
   assert.match(chatShellWorkspaceCss, /\.chat-host-exec-confirm-dialog/);
+  assert.match(chatShellWorkspaceCss, /\.main-content\.chat-surface-route/);
+  assert.match(chatShellWorkspaceCss, /\.shell-layout-chat/);
   assert.match(chatShellWorkspaceCss, /--chat-modal-bg:/);
   assert.match(chatShellWorkspaceCss, /--chat-avatar-bg:/);
   assert.match(chatOverlaySurfacesCss, /--chat-picker-mask:/);
   assert.match(chatOverlaySurfacesCss, /--chat-picker-chip-active-bg:/);
+  assert.match(filesWorkspaceCss, /\.main-content\.file-surface-route/);
+  assert.match(filesWorkspaceCss, /\.shell-layout-files/);
+  assert.match(filesWorkspaceCss, /\.shell-route-stage-files/);
   assert.match(filesWorkspaceCss, /\.file-manager-loading/);
 });

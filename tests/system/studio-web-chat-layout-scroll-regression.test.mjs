@@ -56,36 +56,46 @@ test("app shell uses a direct route host so chat is not boxed inside extra shell
 
 test("chat route shell establishes an unbroken full-height chain without centered boxed canvases", () => {
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;/,
   );
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s*\{[\s\S]*height:\s*100dvh;/,
   );
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s*\{[\s\S]*overflow:\s*hidden;/,
   );
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s+\.shell-layout\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*0;[\s\S]*height:\s*100%;/,
   );
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s+\.shell-main-stage\s*\{[\s\S]*display:\s*flex;[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;[\s\S]*height:\s*100%;[\s\S]*overflow:\s*hidden;/,
   );
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*\{[\s\S]*display:\s*flex;[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;[\s\S]*height:\s*100%;/,
   );
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*\{[\s\S]*overflow:\s*hidden;[\s\S]*align-content:\s*stretch;/,
   );
   assert.match(
-    styleCss,
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*>\s*\*\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;[\s\S]*height:\s*100%;/,
+  );
+  assert.doesNotMatch(
+    styleCss,
+    /\.main-content\.chat-surface-route\s*\{/,
+    "chat route full-height shell rules should live with chat-v2 feature CSS",
+  );
+  assert.doesNotMatch(
+    styleCss,
+    /\.shell-layout-chat\s*\{/,
+    "chat shell layout reset should live with chat-v2 feature CSS",
   );
   assert.doesNotMatch(styleCss, /\.shell-stage-surface-chat\s*\{/);
   assert.doesNotMatch(styleCss, /\.shell-canvas-chat\s*\{/);
