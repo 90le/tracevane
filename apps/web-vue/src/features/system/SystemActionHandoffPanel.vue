@@ -19,6 +19,8 @@
 </template>
 
 <script setup lang="ts">
+import './system-workspace.css';
+
 const emit = defineEmits<{
   handoff: []
 }>();
@@ -31,33 +33,3 @@ defineProps<{
   routeTarget: string;
 }>();
 </script>
-
-<style scoped>
-.system-handoff-panel {
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
-  border-radius: 10px;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--mint) 8%, transparent), transparent 68%),
-    color-mix(in srgb, var(--surface) 50%, transparent);
-}
-
-.system-handoff-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.system-handoff-title {
-  margin: 0;
-  color: var(--text);
-}
-
-.system-handoff-route {
-  margin: 10px 0 0 0;
-  color: var(--text-soft);
-  font-size: 12px;
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
-}
-</style>

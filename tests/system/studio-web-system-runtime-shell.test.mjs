@@ -13,6 +13,10 @@ const systemControlPagePath = path.join(
 );
 
 const systemControlPage = fs.readFileSync(systemControlPagePath, 'utf8');
+const systemActionHandoffPanel = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/system/SystemActionHandoffPanel.vue'),
+  'utf8',
+);
 const systemWorkspaceCss = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/system/system-workspace.css'),
   'utf8',
@@ -34,6 +38,13 @@ test('system control page keeps a diagnostics summary rail and focused workspace
   assert.doesNotMatch(systemControlPage, /<style scoped>/);
   assert.match(systemWorkspaceCss, /\.system-command-list\s*\{/);
   assert.match(systemWorkspaceCss, /\.system-command-row\s*\{/);
+});
+
+test('system action handoff panel keeps styles in the system feature stylesheet', () => {
+  assert.match(systemActionHandoffPanel, /import '\.\/system-workspace\.css';/);
+  assert.doesNotMatch(systemActionHandoffPanel, /<style scoped>/);
+  assert.match(systemWorkspaceCss, /\.system-handoff-panel\s*\{/);
+  assert.match(systemWorkspaceCss, /\.system-handoff-route\s*\{/);
 });
 
 test('system control page exposes five explicit system seams centered on diagnostics work', () => {
