@@ -723,6 +723,20 @@ test("terminal workspace restores richer cli and skills inspector with command-i
   assert.doesNotMatch(workspacePage, /installTerminalCli\(/);
 });
 
+test("terminal install feedback opens logs in a floating sheet", () => {
+  assert.match(inspectorContent, /<Teleport v-if="installOutputOpen && installFeedback\.logs\.length" to="body">/);
+  assert.match(inspectorContent, /class="terminal-install-output-dock"/);
+  assert.match(inspectorContent, /class="terminal-install-output-sheet"/);
+  assert.match(inspectorContent, /copyTextToClipboard\(installOutputText\.value\)/);
+  assert.match(inspectorContent, /function openInstallOutputSheet\(\): void/);
+  assert.match(inspectorContent, /完整命令和输出已放入浮动窗口/);
+  assert.doesNotMatch(inspectorContent, /<pre v-if="installFeedback\.logs\.length"/);
+  assert.match(workspaceCss, /\.terminal-install-output-dock\s*\{/);
+  assert.match(workspaceCss, /\.terminal-install-output-log\s*\{/);
+  assert.match(workspaceCss, /\.terminal-install-feedback__summary\s*\{/);
+  assert.doesNotMatch(workspaceCss, /\.terminal-install-feedback pre/);
+});
+
 test("terminal workspace passes tab and active session state into integrated session pane", () => {
   const panePath = path.join(
     rootDir,

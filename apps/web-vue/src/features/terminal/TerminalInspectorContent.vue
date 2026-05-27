@@ -131,8 +131,28 @@
       <div v-else class="terminal-empty-state">{{ text('尚未检测到可展示的 CLI 工具状态。', 'No CLI tool status is available yet.') }}</div>
 
       <div v-if="installFeedback.message || installFeedback.logs.length" class="terminal-install-feedback" :data-kind="installFeedback.kind">
-        <strong>{{ installFeedback.message }}</strong>
-        <pre v-if="installFeedback.logs.length">{{ installFeedback.logs.join('\n') }}</pre>
+        <div class="terminal-install-feedback__summary">
+          <div>
+            <strong>{{ installFeedback.message || text('安装反馈', 'Install feedback') }}</strong>
+            <p>
+              {{
+                installFeedback.logs.length
+                  ? text('完整命令和输出已放入浮动窗口，避免终端面板被日志挤满。', 'Full commands and output are available in the floating window so the terminal panel stays focused.')
+                  : text('安装动作已记录。', 'Install action recorded.')
+              }}
+            </p>
+            <span v-if="installFeedback.logs.length">{{ installOutputMeta }}</span>
+          </div>
+          <button
+            v-if="installFeedback.logs.length"
+            type="button"
+            class="secondary-button compact-button"
+            @click="openInstallOutputSheet"
+          >
+            <Terminal class="terminal-install-output-button-icon" aria-hidden="true" />
+            {{ text('打开输出', 'Open output') }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -191,16 +211,49 @@
         @delete-session="$emit('deleteSession', $event)"
       />
     </section>
+
+    <Teleport v-if="installOutputOpen && installFeedback.logs.length" to="body">
+      <div class="terminal-install-output-dock">
+        <section
+          class="terminal-install-output-sheet"
+          role="dialog"
+          aria-live="polite"
+          aria-modal="false"
+          :aria-label="text('安装输出窗口', 'Install output window')"
+        >
+          <header class="terminal-install-output-head">
+            <div>
+              <p class="eyebrow">{{ text('安装输出', 'Install Output') }}</p>
+              <h3>{{ installFeedback.message || text('安装反馈', 'Install feedback') }}</h3>
+              <span>{{ installOutputMeta }}</span>
+            </div>
+            <div class="terminal-install-output-actions">
+              <button type="button" class="secondary-button compact-button" @click="copyInstallOutput">
+                <Copy class="terminal-install-output-button-icon" aria-hidden="true" />
+                {{ installOutputCopied ? text('已复制', 'Copied') : text('复制输出', 'Copy output') }}
+              </button>
+              <button type="button" class="secondary-button compact-button" @click="closeInstallOutputSheet">
+                <X class="terminal-install-output-button-icon" aria-hidden="true" />
+                {{ text('关闭', 'Close') }}
+              </button>
+            </div>
+          </header>
+          <pre class="terminal-install-output-log">{{ installOutputText }}</pre>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { Copy, Terminal, X } from '@lucide/vue';
 import type {
   TerminalBinaryId,
   TerminalBinaryStatus,
   TerminalLaunchCli,
 } from '../../../../../types/terminal';
+import { copyTextToClipboard } from '../../shared/clipboard';
 import { useLocalePreference } from '../../shared/locale';
 import TerminalActionPanel from './TerminalActionPanel.vue';
 import TerminalSessionExplorer from './TerminalSessionExplorer.vue';
@@ -264,4 +317,51 @@ const props = defineProps<{
 }>();
 
 const showExpandedSummary = computed(() => !props.compactMode || props.summaryExpanded);
+const installOutputOpen = ref(false);
+const installOutputCopied = ref(false);
+const installOutputText = computed(() => stripAnsi(props.installFeedback.logs.join('\n')));
+const installOutputMeta = computed(() => {
+  const lineCount = props.installFeedback.logs.length;
+  const charCount = installOutputText.value.length;
+  return text(
+    `${lineCount} 行 · ${charCount} 字符`,
+    `${lineCount} lines · ${charCount} chars`,
+  );
+});
+
+watch(
+  () => props.installFeedback.logs.join('\n'),
+  (next, previous) => {
+    installOutputCopied.value = false;
+    if (next && next !== previous) {
+      installOutputOpen.value = true;
+    } else if (!next) {
+      installOutputOpen.value = false;
+    }
+  },
+);
+
+function stripAnsi(value: string): string {
+  return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function openInstallOutputSheet(): void {
+  installOutputCopied.value = false;
+  installOutputOpen.value = true;
+}
+
+function closeInstallOutputSheet(): void {
+  installOutputOpen.value = false;
+}
+
+async function copyInstallOutput(): Promise<void> {
+  const copied = await copyTextToClipboard(installOutputText.value);
+  if (!copied) return;
+  installOutputCopied.value = true;
+  if (typeof window !== 'undefined') {
+    window.setTimeout(() => {
+      installOutputCopied.value = false;
+    }, 1400);
+  }
+}
 </script>
