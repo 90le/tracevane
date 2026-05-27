@@ -561,44 +561,77 @@
             <div class="system-section-head">
               <div>
                 <h3>{{ text('原始诊断输出', 'Raw Diagnostic Output') }}</h3>
-                <p>{{ text('这里直接保留 `openclaw gateway status --json`、`openclaw status --json` 和 `openclaw doctor` 的输出摘要。', 'This keeps the raw output snapshots from `openclaw gateway status --json`, `openclaw status --json`, and `openclaw doctor`.') }}</p>
+                <p>{{ text('保留关键命令状态，完整 stdout / stderr 进入浮动输出窗口，避免诊断页变成日志墙。', 'Keep command status here and move full stdout / stderr into a floating output window so diagnostics do not become a log wall.') }}</p>
               </div>
             </div>
 
-            <details class="config-collapsible" open>
-              <summary class="config-collapsible-summary">
-                <strong>openclaw gateway status --json</strong>
-                <span class="config-collapsible-meta">{{ diagnostics?.commands.gatewayStatus.ok ? text('读取成功', 'Loaded') : text('读取失败', 'Failed') }}</span>
-              </summary>
-              <pre class="system-code-block">{{ diagnostics?.commands.gatewayStatus.stdout || diagnostics?.commands.gatewayStatus.error || '' }}</pre>
-            </details>
-
-            <details class="config-collapsible">
-              <summary class="config-collapsible-summary">
-                <strong>openclaw status --json</strong>
-                <span class="config-collapsible-meta">{{ diagnostics?.commands.status.ok ? text('读取成功', 'Loaded') : text('读取失败', 'Failed') }}</span>
-              </summary>
-              <pre class="system-code-block">{{ diagnostics?.commands.status.stdout || diagnostics?.commands.status.error || '' }}</pre>
-            </details>
-
-            <details class="config-collapsible">
-              <summary class="config-collapsible-summary">
-                <strong>openclaw doctor</strong>
-                <span class="config-collapsible-meta">{{ diagnostics?.commands.doctor.ok ? text('读取成功', 'Loaded') : text('读取失败', 'Failed') }}</span>
-              </summary>
-              <pre class="system-code-block">{{ diagnostics?.commands.doctor.stdout || diagnostics?.commands.doctor.error || '' }}</pre>
-            </details>
+            <div class="system-diagnostic-command-list">
+              <article
+                v-for="command in diagnosticCommandItems"
+                :key="command.id"
+                class="system-diagnostic-command-row"
+              >
+                <div class="system-diagnostic-command-copy">
+                  <strong>{{ command.title }}</strong>
+                  <p>{{ command.description }}</p>
+                  <span>{{ command.snapshot.durationMs }}ms · {{ command.output.length }} chars</span>
+                </div>
+                <StatusPill
+                  :label="command.snapshot.ok ? text('读取成功', 'Loaded') : text('读取失败', 'Failed')"
+                  :tone="command.snapshot.ok ? 'sage' : 'accent'"
+                />
+                <button
+                  type="button"
+                  class="secondary-button compact-button"
+                  @click="openDiagnosticOutput(command.id)"
+                >
+                  <Terminal class="system-output-button-icon" aria-hidden="true" />
+                  {{ text('打开输出', 'Open output') }}
+                </button>
+              </article>
+            </div>
           </section>
         </article>
       </section>
     </section>
+
+    <Teleport v-if="diagnosticOutputOpen" to="body">
+      <div class="system-output-sheet-dock">
+        <section
+          class="system-output-sheet"
+          role="dialog"
+          aria-live="polite"
+          aria-modal="false"
+          :aria-label="text('诊断输出窗口', 'Diagnostic output window')"
+        >
+          <header class="system-output-sheet-head">
+            <div>
+              <p class="eyebrow">{{ text('诊断输出', 'Diagnostic Output') }}</p>
+              <h3>{{ activeDiagnosticCommand?.title || text('诊断输出', 'Diagnostic Output') }}</h3>
+              <span>{{ activeDiagnosticCommand?.snapshot.durationMs || 0 }}ms · {{ activeDiagnosticOutput.length }} chars</span>
+            </div>
+            <div class="system-output-sheet-actions">
+              <button type="button" class="secondary-button compact-button" @click="copyDiagnosticOutput">
+                <Copy class="system-output-button-icon" aria-hidden="true" />
+                {{ diagnosticOutputCopied ? text('已复制', 'Copied') : text('复制输出', 'Copy output') }}
+              </button>
+              <button type="button" class="secondary-button compact-button" @click="closeDiagnosticOutput">
+                <X class="system-output-button-icon" aria-hidden="true" />
+                {{ text('关闭', 'Close') }}
+              </button>
+            </div>
+          </header>
+          <pre class="system-output-sheet-log">{{ activeDiagnosticOutput }}</pre>
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onActivated, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ClipboardList, Flag, Gauge, Network, RefreshCw } from '@lucide/vue';
+import { ClipboardList, Copy, Flag, Gauge, Network, RefreshCw, Terminal, X } from '@lucide/vue';
 import type {
   SystemDiagnosticsPayload,
   SystemHealthPayload,
@@ -607,6 +640,7 @@ import type {
 } from '../../../../../types/system';
 import StatusPill from '../../components/StatusPill.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
+import { copyTextToClipboard } from '../../shared/clipboard';
 import { useLocalePreference } from '../../shared/locale';
 import {
   approveSystemDeviceTrust,
@@ -623,6 +657,7 @@ import './system-workspace.css';
 import { isStudioUpgradeEffectivelyFailed } from './studio-release-state';
 
 type SystemTab = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics';
+type SystemDiagnosticCommandId = 'gatewayStatus' | 'status' | 'doctor';
 
 interface NoticeLike {
   kind: 'success' | 'error';
@@ -658,6 +693,9 @@ const helperRepairRunning = ref(false);
 const bootstrapRepairRunning = ref(false);
 const releaseCheckRunning = ref(false);
 const releaseUpgradeRunning = ref(false);
+const diagnosticOutputOpen = ref(false);
+const diagnosticOutputCopied = ref(false);
+const activeDiagnosticCommandId = ref<SystemDiagnosticCommandId>('gatewayStatus');
 const studioUpgradeFailed = computed(() =>
   isStudioUpgradeEffectivelyFailed({
     studioRelease: studioRelease.value,
@@ -688,6 +726,37 @@ const tabs = computed(() => [
   { id: 'gateway' as const, icon: Network, label: text('Gateway', 'Gateway') },
   { id: 'diagnostics' as const, icon: ClipboardList, label: text('诊断输出', 'Diagnostics') },
 ]);
+
+const diagnosticCommandItems = computed(() => [
+  {
+    id: 'gatewayStatus' as const,
+    title: 'openclaw gateway status --json',
+    description: text('Gateway 绑定、RPC 与端口探测的原始快照。', 'Raw snapshot for Gateway bind, RPC, and port probe state.'),
+    snapshot: diagnostics.value.commands.gatewayStatus,
+    output: commandSnapshotOutput(diagnostics.value.commands.gatewayStatus),
+  },
+  {
+    id: 'status' as const,
+    title: 'openclaw status --json',
+    description: text('OpenClaw 运行态、Agent、会话、更新与安全摘要。', 'OpenClaw runtime, agent, session, update, and security summary.'),
+    snapshot: diagnostics.value.commands.status,
+    output: commandSnapshotOutput(diagnostics.value.commands.status),
+  },
+  {
+    id: 'doctor' as const,
+    title: 'openclaw doctor',
+    description: text('宿主环境、依赖和安装修复建议输出。', 'Host environment, dependency, and setup repair recommendation output.'),
+    snapshot: diagnostics.value.commands.doctor,
+    output: commandSnapshotOutput(diagnostics.value.commands.doctor),
+  },
+]);
+const activeDiagnosticCommand = computed(() =>
+  diagnosticCommandItems.value.find((command) => command.id === activeDiagnosticCommandId.value)
+  || diagnosticCommandItems.value[0],
+);
+const activeDiagnosticOutput = computed(() =>
+  stripAnsi(activeDiagnosticCommand.value?.output || text('没有可显示的诊断输出。', 'No diagnostic output to display.')),
+);
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -746,6 +815,35 @@ function bootstrapTone(level: 'ok' | 'warn' | 'error'): 'sage' | 'accent' | 'neu
       return 'accent';
     default:
       return 'neutral';
+  }
+}
+
+function commandSnapshotOutput(snapshot: { stdout: string; stderr: string; error: string }): string {
+  return snapshot.stdout || snapshot.stderr || snapshot.error || text('没有可显示的诊断输出。', 'No diagnostic output to display.');
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function openDiagnosticOutput(commandId: SystemDiagnosticCommandId): void {
+  activeDiagnosticCommandId.value = commandId;
+  diagnosticOutputCopied.value = false;
+  diagnosticOutputOpen.value = true;
+}
+
+function closeDiagnosticOutput(): void {
+  diagnosticOutputOpen.value = false;
+}
+
+async function copyDiagnosticOutput(): Promise<void> {
+  const copied = await copyTextToClipboard(activeDiagnosticOutput.value);
+  if (!copied) return;
+  diagnosticOutputCopied.value = true;
+  if (typeof window !== 'undefined') {
+    window.setTimeout(() => {
+      diagnosticOutputCopied.value = false;
+    }, 1400);
   }
 }
 

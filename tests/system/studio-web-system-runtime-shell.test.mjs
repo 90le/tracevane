@@ -65,11 +65,21 @@ test('system control page exposes five explicit system seams centered on diagnos
   assert.doesNotMatch(systemControlPage, /'environment'/);
 });
 
-test('system control page keeps raw diagnostic output snapshots for gateway status, status, and doctor', () => {
+test('system control page opens raw diagnostic output in a floating sheet', () => {
   assert.match(systemControlPage, /openclaw gateway status --json/);
   assert.match(systemControlPage, /openclaw status --json/);
   assert.match(systemControlPage, /openclaw doctor/);
-  assert.match(systemControlPage, /class="system-code-block"/);
+  assert.match(systemControlPage, /class="system-diagnostic-command-list"/);
+  assert.match(systemControlPage, /<Teleport v-if="diagnosticOutputOpen" to="body">/);
+  assert.match(systemControlPage, /class="system-output-sheet-dock"/);
+  assert.match(systemControlPage, /class="system-output-sheet"/);
+  assert.match(systemControlPage, /function openDiagnosticOutput\(commandId: SystemDiagnosticCommandId\): void/);
+  assert.match(systemControlPage, /copyTextToClipboard\(activeDiagnosticOutput\.value\)/);
+  assert.doesNotMatch(systemControlPage, /class="system-code-block"/);
+  assert.match(systemWorkspaceCss, /\.system-diagnostic-command-list\s*\{/);
+  assert.match(systemWorkspaceCss, /\.system-output-sheet-dock\s*\{/);
+  assert.match(systemWorkspaceCss, /\.system-output-sheet-log\s*\{/);
+  assert.doesNotMatch(systemWorkspaceCss, /\.system-code-block\s*\{/);
 });
 
 test('system shell does not retain disconnected helper components', () => {
