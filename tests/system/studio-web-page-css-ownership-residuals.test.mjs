@@ -67,6 +67,11 @@ test("global style does not own chat or files component selectors", () => {
     globalStyleCss,
     /\.main-content\.chat-surface-route\s*\{|\.main-content\.file-surface-route\s*\{|\.shell-layout-chat\s*\{|\.shell-layout-files\s*\{|\.shell-route-stage-chat\s*\{|\.shell-route-stage-files\s*\{/,
   );
+  assert.doesNotMatch(
+    globalStyleCss,
+    /\.shell-route-stage:not\(|\.route-surface-terminal/,
+    "global Atlas shell should use the generic standard-scroll-route host instead of feature-route exclusions",
+  );
   assert.doesNotMatch(globalStyleCss, /--chat-/);
 });
 

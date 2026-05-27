@@ -120,9 +120,15 @@ test("studio atlas shell stays quiet instead of rebuilding gradient card chrome"
   assert.match(sidebarBlock, /background:\s*color-mix\(in srgb, var\(--atlas-panel-2\) 88%, transparent\);/);
   assert.doesNotMatch(sidebarBlock, /radial-gradient|linear-gradient/);
 
-  const shellRouteBlock = ruleBlock(".shell-route-stage:not(.shell-route-stage-chat):not(.shell-route-stage-files):not(.route-surface-terminal)");
+  const shellRouteBlock = ruleBlock(".main-content.standard-scroll-route .shell-route-stage");
   assert.match(shellRouteBlock, /background-size:\s*44px 44px,\s*44px 44px,\s*auto;/);
   assert.doesNotMatch(shellRouteBlock, /radial-gradient/);
+  assert.match(styleCss, /--studio-route-inset:\s*10px;/);
+  assert.match(styleCss, /--studio-workspace-radius:\s*18px;/);
+  assert.doesNotMatch(
+    styleCss,
+    /\.shell-route-stage:not\(\.shell-route-stage-chat\):not\(\.shell-route-stage-files\):not\(\.route-surface-terminal\)/,
+  );
 
   const primaryButtonBlock = ruleBlock(".primary-button");
   assert.match(primaryButtonBlock, /background:\s*color-mix\(in srgb, var\(--atlas-primary\) 78%, var\(--atlas-bg-2\)\);/);

@@ -1590,7 +1590,7 @@ export interface CodexStackService {
   startRepair(req: http.IncomingMessage | undefined, payload: CodexStackRepairRequest): Promise<CodexStackJobResponse>;
   finalizeCcConnect(req: http.IncomingMessage | undefined, payload: CodexStackFinalizeRequest): Promise<CodexStackJobResponse>;
   controlService(req: http.IncomingMessage | undefined, serviceId: string, action: string): Promise<CodexStackMutationResponse>;
-  patchConfig(req: http.IncomingMessage | undefined, payload: CodexStackConfigPatchRequest): Promise<CodexStackMutationResponse>;
+  patchConfig(req: http.IncomingMessage | undefined, payload?: CodexStackConfigPatchRequest): Promise<CodexStackMutationResponse>;
   patchCcConnectConfig(req: http.IncomingMessage | undefined, payload: CodexStackCcConnectConfigPatchRequest): Promise<CodexStackMutationResponse>;
   getJob(jobId: string): CodexStackJob | null;
   readLogs(unitId: string, lines?: number): Promise<CodexStackLogResponse>;
@@ -3510,9 +3510,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
 
   async function patchConfig(
     req: http.IncomingMessage | undefined,
-    payload: CodexStackConfigPatchRequest,
+    payload: CodexStackConfigPatchRequest | undefined,
   ): Promise<CodexStackMutationResponse> {
     requireManagement(req);
+    const patch: CodexStackConfigPatchRequest = isRecord(payload) ? payload as CodexStackConfigPatchRequest : {};
     const allowed = [
       "defaultModel",
       "contextMode",
@@ -3526,11 +3527,18 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       "providerProxyUrl",
       "noProxy",
     ];
-    const unknown = Object.keys(payload || {}).filter((key) => !allowed.includes(key));
+    const unknown = Object.keys(patch).filter((key) => !allowed.includes(key));
     if (unknown.length) {
       throw new CodexStackServiceError("codex_stack_invalid_config_patch", `Unsupported config fields: ${unknown.join(", ")}`);
     }
-    const patch: CodexStackConfigPatchRequest = isRecord(payload) ? payload as CodexStackConfigPatchRequest : {};
+    if (Object.keys(patch).length === 0) {
+      return {
+        ok: true,
+        message: "Codex Stack config unchanged.",
+        restartRequiredUnits: [],
+        summary: await getSummary(req),
+      };
+    }
     const currentPaths = paths();
     const restartRequired = new Set<CodexStackServiceId>();
     const model = normalizeString(patch.defaultModel);

@@ -1,7 +1,7 @@
 .main-content.chat-surface-route {
   display: flex;
   flex-direction: column;
-  padding: 0;
+  padding: var(--studio-route-inset, 10px);
   min-height: 100vh;
   min-height: 100dvh;
   height: 100vh;
@@ -19,6 +19,7 @@
   min-height: 0;
   height: 100%;
   padding: 0;
+  border-radius: var(--studio-workspace-radius, 18px);
   overflow: hidden;
   align-content: stretch;
 }
@@ -47,6 +48,8 @@
 
 .shell-route-stage-chat {
   padding: 0;
+  border-radius: var(--studio-workspace-radius, 18px);
+  overflow: hidden;
 }
 
 .chat-v2-shell {
@@ -68,6 +71,7 @@
   .main-content.chat-surface-route {
     min-height: 100dvh;
     height: 100dvh;
+    padding: 0;
   }
 
   .shell-layout-chat {
@@ -78,6 +82,7 @@
     min-height: 0;
     height: 100%;
     padding: 0;
+    border-radius: 0;
   }
 }
 
@@ -182,7 +187,7 @@ html:not([data-theme="light"]),
   display: grid;
   grid-template-columns: 344px minmax(0, 1fr);
   border: 1px solid var(--chat-line-strong);
-  border-radius: 12px;
+  border-radius: var(--studio-workspace-radius, 18px);
   overflow: hidden;
   background: var(--chat-shell-frame);
   box-shadow: 0 20px 54px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.06);

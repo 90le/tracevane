@@ -2093,6 +2093,8 @@ body {
   --studio-amber: #ffd39a;
   --studio-red: #ff8e9b;
   --studio-focus: rgba(127, 255, 212, 0.25);
+  --studio-route-inset: 10px;
+  --studio-workspace-radius: 18px;
 
   --shell-bg-start: var(--studio-bg);
   --shell-bg-mid: var(--studio-bg-soft);
@@ -2584,7 +2586,7 @@ body::before {
   padding: 10px;
 }
 
-.shell-route-stage:not(.shell-route-stage-chat):not(.shell-route-stage-files):not(.route-surface-terminal) {
+.main-content.standard-scroll-route .shell-route-stage {
   min-height: calc(100dvh - 88px);
   border: 0;
   border-radius: 0;

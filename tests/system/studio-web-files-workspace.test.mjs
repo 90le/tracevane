@@ -172,11 +172,27 @@ test("files feature keeps workspace styles in shared CSS instead of Vue scoped b
   );
   assert.match(
     filesWorkspaceCss,
+    /\.main-content\.file-surface-route\s*\{[\s\S]*padding:\s*var\(--studio-route-inset,\s*10px\);/,
+  );
+  assert.match(
+    filesWorkspaceCss,
     /\.shell-layout-files\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*height:\s*100%;/,
   );
   assert.match(
     filesWorkspaceCss,
     /\.shell-route-stage-files\s*\{[\s\S]*display:\s*flex;[\s\S]*overflow:\s*hidden;/,
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /\.shell-route-stage-files\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /\.file-manager-page\s*\{[\s\S]*border:\s*1px solid var\(--file-manager-border\);[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.main-content\.file-surface-route\s*\{[\s\S]*padding:\s*0;/,
   );
   assert.doesNotMatch(
     read("apps/web-vue/src/style.css"),

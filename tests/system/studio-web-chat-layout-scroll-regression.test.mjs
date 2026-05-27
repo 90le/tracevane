@@ -61,6 +61,10 @@ test("chat route shell establishes an unbroken full-height chain without centere
   );
   assert.match(
     chatShellWorkspaceCss,
+    /\.main-content\.chat-surface-route\s*\{[\s\S]*padding:\s*var\(--studio-route-inset,\s*10px\);/,
+  );
+  assert.match(
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s*\{[\s\S]*height:\s*100dvh;/,
   );
   assert.match(
@@ -81,11 +85,23 @@ test("chat route shell establishes an unbroken full-height chain without centere
   );
   assert.match(
     chatShellWorkspaceCss,
+    /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+  );
+  assert.match(
+    chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*\{[\s\S]*overflow:\s*hidden;[\s\S]*align-content:\s*stretch;/,
   );
   assert.match(
     chatShellWorkspaceCss,
     /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*>\s*\*\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;[\s\S]*height:\s*100%;/,
+  );
+  assert.match(
+    chatShellWorkspaceCss,
+    /\.shell-route-stage-chat\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);[\s\S]*overflow:\s*hidden;/,
+  );
+  assert.match(
+    chatShellWorkspaceCss,
+    /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.main-content\.chat-surface-route\s*\{[\s\S]*padding:\s*0;/,
   );
   assert.doesNotMatch(
     styleCss,
@@ -105,6 +121,10 @@ test("chat page keeps independent list and thread scrollers inside the full-heig
   assert.match(
     chatShellWorkspaceCss,
     /\.chat-shell-layout\s*\{[\s\S]*height:\s*100%;[\s\S]*overflow:\s*hidden;/,
+  );
+  assert.match(
+    chatShellWorkspaceCss,
+    /\.chat-shell-layout\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
   );
   assert.match(
     sessionListSharedCss,

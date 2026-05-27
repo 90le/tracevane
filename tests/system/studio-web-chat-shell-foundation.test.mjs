@@ -189,7 +189,7 @@ test("chat shell dark theme uses lifted blue-gray surfaces instead of near-black
   );
   assert.match(
     chatShellWorkspaceCss,
-    /\.chat-shell-layout\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-shell-layout\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
