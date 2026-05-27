@@ -30,6 +30,11 @@ function ruleBlock(selector) {
   return [...styleCss.matchAll(new RegExp(`${escaped}\\s*\\{[\\s\\S]*?\\n\\}`, "g"))].at(-1)?.[0] || "";
 }
 
+function selectorBlocks(selector) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...styleCss.matchAll(new RegExp(`${escaped}\\s*\\{[\\s\\S]*?\\n\\}`, "g"))].map((match) => match[0]);
+}
+
 function cssVar(block, name) {
   const match = block.match(new RegExp(`${name}:\\s*([^;]+);`));
   assert.ok(match, `Missing ${name}`);
@@ -101,10 +106,14 @@ test("vue source keeps presentation out of single-file component style blocks", 
 
 test("studio atlas shell stays quiet instead of rebuilding gradient card chrome", () => {
   assert.match(styleCss, /Studio Atlas: release redesign layer/);
+  assert.doesNotMatch(styleCss, /Anti card-wall pass/);
+  assert.equal([...styleCss.matchAll(/@media \(prefers-reduced-motion: reduce\)/g)].length, 1);
 
   const atlasRootBlock = ruleBlock(":root");
   assert.match(atlasRootBlock, /--atlas-bg:\s*#1b2930;/);
   assert.match(atlasRootBlock, /--atlas-panel:\s*rgba\(44,\s*60,\s*69,\s*0\.56\);/);
+  assert.match(atlasRootBlock, /--studio-route-inset:\s*10px;/);
+  assert.match(atlasRootBlock, /--studio-workspace-radius:\s*18px;/);
   assert.doesNotMatch(atlasRootBlock, /--atlas-bg:\s*#0|--atlas-panel:\s*rgba\(255,\s*255,\s*255/);
 
   const atlasLightBlock = ruleBlock('html[data-theme="light"]');
@@ -123,11 +132,15 @@ test("studio atlas shell stays quiet instead of rebuilding gradient card chrome"
   const shellRouteBlock = ruleBlock(".main-content.standard-scroll-route .shell-route-stage");
   assert.match(shellRouteBlock, /background-size:\s*44px 44px,\s*44px 44px,\s*auto;/);
   assert.doesNotMatch(shellRouteBlock, /radial-gradient/);
-  assert.match(styleCss, /--studio-route-inset:\s*10px;/);
-  assert.match(styleCss, /--studio-workspace-radius:\s*18px;/);
   assert.doesNotMatch(
     styleCss,
     /\.shell-route-stage:not\(\.shell-route-stage-chat\):not\(\.shell-route-stage-files\):not\(\.route-surface-terminal\)/,
+  );
+
+  const pageHeaderBlocks = selectorBlocks(".page-header-row");
+  assert.equal(
+    pageHeaderBlocks.filter((block) => /radial-gradient\(420px 180px|0 14px 34px/.test(block)).length,
+    0,
   );
 
   const primaryButtonBlock = ruleBlock(".primary-button");
