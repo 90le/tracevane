@@ -54,3 +54,18 @@ test("cron control page keeps stage tab CSS in feature stylesheet", () => {
   assert.match(cronWorkspaceCss, /\.cron-stage-tab\[data-state='active'\]\s*\{/);
   assert.doesNotMatch(cronWorkspaceCss, /:deep|:global/);
 });
+
+test("cron run outputs use a floating sheet instead of inline pre blocks", () => {
+  assert.match(cronControlPage, /<Teleport v-if="cronOutputSheetOpen" to="body">/);
+  assert.match(cronControlPage, /class="cron-output-sheet-dock"/);
+  assert.match(cronControlPage, /class="cron-output-sheet"/);
+  assert.match(cronControlPage, /function openCronOutputSheet\(source: CronOutputSource\): void/);
+  assert.match(cronControlPage, /copyTextToClipboard\(activeCronOutputText\.value\)/);
+  assert.match(cronControlPage, /openCronOutputSheet\('manual'\)/);
+  assert.doesNotMatch(cronControlPage, /class="cron-manual-output"/);
+  assert.doesNotMatch(cronControlPage, /<pre>\{\{ selectedRun\.error \|\| selectedRun\.summary/);
+  assert.match(cronWorkspaceCss, /\.cron-output-sheet-dock\s*\{/);
+  assert.match(cronWorkspaceCss, /\.cron-output-sheet-log\s*\{/);
+  assert.doesNotMatch(cronWorkspaceCss, /\.cron-manual-output\s*\{/);
+  assert.doesNotMatch(cronWorkspaceCss, /\.cron-run-output pre/);
+});

@@ -614,8 +614,17 @@
               </div>
 
               <div v-if="manualRunOutput" class="cron-scheduler-callout">
-                <strong>{{ text('最近一次手动触发响应', 'Last manual run response') }}</strong>
-                <pre class="cron-manual-output">{{ manualRunOutput }}</pre>
+                <div class="cron-output-summary">
+                  <div>
+                    <strong>{{ text('最近一次手动触发响应', 'Last manual run response') }}</strong>
+                    <p>{{ text('任务已触发，完整响应保留在浮动输出窗口。', 'The job was triggered; the full response is available in the floating output window.') }}</p>
+                    <span>{{ manualRunOutput.length }} chars</span>
+                  </div>
+                  <button type="button" class="secondary-button compact-button" @click="openCronOutputSheet('manual')">
+                    <Terminal class="cron-output-button-icon" aria-hidden="true" />
+                    {{ text('打开输出', 'Open output') }}
+                  </button>
+                </div>
               </div>
 
               <div v-if="detail.runs.length" class="cron-runs-layout">
@@ -661,8 +670,17 @@
                   </div>
 
                   <div class="cron-run-output">
-                    <h4>{{ selectedRun.error ? text('错误 / 输出', 'Error / Output') : text('输出摘要', 'Output Summary') }}</h4>
-                    <pre>{{ selectedRun.error || selectedRun.summary || text('没有可显示的内容。', 'Nothing to display.') }}</pre>
+                    <div class="cron-output-summary">
+                      <div>
+                        <h4>{{ selectedRun.error ? text('错误 / 输出', 'Error / Output') : text('输出摘要', 'Output Summary') }}</h4>
+                        <p>{{ selectedRun.summaryPreview || selectedRun.error || text('没有摘要。', 'No summary.') }}</p>
+                        <span>{{ selectedRunOutput.length }} chars</span>
+                      </div>
+                      <button type="button" class="secondary-button compact-button" @click="openCronOutputSheet('selected-run')">
+                        <Terminal class="cron-output-button-icon" aria-hidden="true" />
+                        {{ text('打开输出', 'Open output') }}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -680,6 +698,37 @@
         </div>
       </section>
     </section>
+
+    <Teleport v-if="cronOutputSheetOpen" to="body">
+      <div class="cron-output-sheet-dock">
+        <section
+          class="cron-output-sheet"
+          role="dialog"
+          aria-live="polite"
+          aria-modal="false"
+          :aria-label="text('运行输出窗口', 'Run output window')"
+        >
+          <header class="cron-output-sheet-head">
+            <div>
+              <p class="eyebrow">{{ text('运行输出', 'Run Output') }}</p>
+              <h3>{{ activeCronOutputTitle }}</h3>
+              <span>{{ activeCronOutputMeta }}</span>
+            </div>
+            <div class="cron-output-sheet-actions">
+              <button type="button" class="secondary-button compact-button" @click="copyCronOutput">
+                <Copy class="cron-output-button-icon" aria-hidden="true" />
+                {{ cronOutputCopied ? text('已复制', 'Copied') : text('复制输出', 'Copy output') }}
+              </button>
+              <button type="button" class="secondary-button compact-button" @click="closeCronOutputSheet">
+                <X class="cron-output-button-icon" aria-hidden="true" />
+                {{ text('关闭', 'Close') }}
+              </button>
+            </div>
+          </header>
+          <pre class="cron-output-sheet-log">{{ activeCronOutputText }}</pre>
+        </section>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div v-if="createOpen" class="cron-modal-mask" @click.self="closeCreateModal">
@@ -822,10 +871,11 @@
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
-import { Activity, History, SlidersHorizontal, X } from '@lucide/vue';
+import { Activity, Copy, History, SlidersHorizontal, Terminal, X } from '@lucide/vue';
 import type { CronDetailPayload, CronJobInput, CronRunSummary, CronSummaryPayload } from '../../../../../types/cron';
 import StatusPill from '../../components/StatusPill.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
+import { copyTextToClipboard } from '../../shared/clipboard';
 import GlassSelect from '../../shared/components/GlassSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
@@ -845,6 +895,7 @@ import '../operate/operate-workspace.css';
 import './cron-workspace.css';
 
 type CronTab = 'overview' | 'config' | 'runs';
+type CronOutputSource = 'manual' | 'selected-run';
 
 interface NoticeMessage {
   kind: 'success' | 'error';
@@ -927,6 +978,9 @@ const createOpen = ref(false);
 const errorMessage = ref('');
 const noticeMessage = ref<NoticeMessage | null>(null);
 const manualRunOutput = ref('');
+const cronOutputSheetOpen = ref(false);
+const cronOutputCopied = ref(false);
+const activeCronOutputSource = ref<CronOutputSource>('selected-run');
 
 const editorForm = reactive<CronFormState>(createBlankForm());
 const createForm = reactive<CronFormState>(createBlankForm());
@@ -1056,6 +1110,34 @@ const selectedRun = computed<CronRunSummary | null>(() => {
   if (!detail.value?.runs.length) return null;
   return detail.value.runs[selectedRunIndex.value] || detail.value.runs[0] || null;
 });
+const selectedRunOutput = computed(() => (
+  selectedRun.value?.error
+  || selectedRun.value?.summary
+  || text('没有可显示的内容。', 'Nothing to display.')
+));
+const activeCronOutputTitle = computed(() => {
+  if (activeCronOutputSource.value === 'manual') {
+    return text('最近一次手动触发响应', 'Last manual run response');
+  }
+  return selectedRun.value?.error ? text('错误 / 输出', 'Error / Output') : text('输出摘要', 'Output Summary');
+});
+const activeCronOutputText = computed(() => stripAnsi(
+  activeCronOutputSource.value === 'manual'
+    ? (manualRunOutput.value || text('没有可显示的内容。', 'Nothing to display.'))
+    : selectedRunOutput.value,
+));
+const activeCronOutputMeta = computed(() => {
+  if (activeCronOutputSource.value === 'manual') {
+    return `${manualRunOutput.value.length} chars`;
+  }
+  const run = selectedRun.value;
+  const parts = [
+    run?.ts ? formatDate(run.ts) : text('未记录时间', 'No timestamp'),
+    run?.durationMs ? `${run.durationMs}ms` : '',
+    `${activeCronOutputText.value.length} chars`,
+  ].filter(Boolean);
+  return parts.join(' · ');
+});
 
 const agentOptions = computed(() => {
   return (summary.value?.agents || detail.value?.agents || []).map((agent) => ({
@@ -1131,6 +1213,31 @@ function deliveryModeLabel(mode: string): string {
 
 function payloadKindLabel(kind: string): string {
   return kind === 'systemEvent' ? text('系统事件', 'System event') : text('Agent 消息', 'Agent turn');
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function openCronOutputSheet(source: CronOutputSource): void {
+  activeCronOutputSource.value = source;
+  cronOutputCopied.value = false;
+  cronOutputSheetOpen.value = true;
+}
+
+function closeCronOutputSheet(): void {
+  cronOutputSheetOpen.value = false;
+}
+
+async function copyCronOutput(): Promise<void> {
+  const copied = await copyTextToClipboard(activeCronOutputText.value);
+  if (!copied) return;
+  cronOutputCopied.value = true;
+  if (typeof window !== 'undefined') {
+    window.setTimeout(() => {
+      cronOutputCopied.value = false;
+    }, 1400);
+  }
 }
 
 function msToDuration(ms: number | null): string {
@@ -1283,6 +1390,7 @@ async function selectJob(jobId: string): Promise<void> {
   selectedJobId.value = jobId;
   detailLoading.value = true;
   manualRunOutput.value = '';
+  cronOutputSheetOpen.value = false;
   try {
     const payload = await fetchCronDetail(jobId);
     if (!isCronRouteActive.value) return;
@@ -1356,6 +1464,7 @@ async function runSelectedJob(): Promise<void> {
     const response = await runCronJob(selectedJobId.value);
     await selectJob(selectedJobId.value);
     manualRunOutput.value = response.output;
+    openCronOutputSheet('manual');
     setNotice('success', response.message);
   } catch (error) {
     setNotice('error', error instanceof Error ? error.message : text('手动运行失败。', 'Failed to run cron job.'));
