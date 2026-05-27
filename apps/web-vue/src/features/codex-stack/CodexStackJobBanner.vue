@@ -8,7 +8,7 @@
       </p>
     </div>
     <div class="cs-job-actions">
-      <button type="button" class="secondary-button" @click="$emit('open-logs')">
+      <button type="button" class="secondary-button" @click="$emit('open-output')">
         {{ text("查看输出", "View Output") }}
       </button>
       <button
@@ -39,7 +39,7 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "open-logs": [];
+  "open-output": [];
   dismiss: [];
 }>();
 

@@ -51,8 +51,8 @@
         :status-label="jobStatusLabel(activeJob.status)"
         :updated-at-label="formatTimestamp(activeJob.updatedAt)"
         :running="isCodexStackJobRunning(activeJob)"
-        @open-logs="setWorkspaceSection('logs', focusHintForAction(text('查看后台任务输出', 'Watch background job output'), text('安装、修复或配置动作正在执行；先跟踪日志和结果。', 'An install, repair, or config action is running; track logs and result first.')))"
-        @dismiss="activeJob = null"
+        @open-output="openJobOutputSheet"
+        @dismiss="dismissActiveJob"
       />
 
       <CodexStackModelRibbon
@@ -434,8 +434,7 @@
       </CodexStackWorkspaceShell>
 
       <CodexStackJobProgressPanel
-        v-if="activeJob"
-        surface="panel"
+        v-if="activeJob && jobOutputOpen"
         :job="activeJob"
         :title="activeJobTitle"
         :status-label="jobStatusLabel(activeJob.status)"
@@ -443,7 +442,9 @@
         :progress-percent="jobProgressPercent"
         :running="isCodexStackJobRunning(activeJob)"
         :empty-log="text('等待输出...', 'Waiting for output...')"
-        @dismiss="activeJob = null"
+        @copy-output="copyActiveJobOutput"
+        @close="closeJobOutputSheet"
+        @dismiss="dismissActiveJob"
       />
     </template>
 
@@ -636,6 +637,7 @@ const ccConnectProviderDrafts = ref<CcConnectProviderDraft[]>([]);
 const ccConnectProjectDrafts = ref<CcConnectProjectDraft[]>([]);
 const ccConnectStructuredBaseline = ref("");
 const activeJob = ref<CodexStackJob | null>(null);
+const jobOutputOpen = ref(false);
 const checkOutput = ref("");
 const checkDialogOpen = ref(false);
 const healthCheckRunning = ref(false);
@@ -2326,11 +2328,7 @@ function guardMutation(): boolean {
     return false;
   }
   if (jobRunning.value) {
-    setWorkspaceSection("logs", focusHintForAction(
-      text("已有后台任务正在执行", "Background job is running"),
-      text("先查看任务日志，等待安装、修复或配置动作结束后再继续操作。", "Open the job log first and wait for the install, repair, or config action to finish before continuing."),
-      "accent",
-    ));
+    openJobOutputSheet();
     notice.value = {
       kind: "error",
       text: text("已有后台任务正在执行，请等待完成后再操作。", "A background job is already running. Wait for it to finish before making another change."),
@@ -2355,7 +2353,8 @@ function nextActionPrimary(): void {
       setWorkspaceSection("cc-connect", focusHintForAction(nextActionTitle.value, nextActionCopy.value));
       return;
     case "open-logs":
-      setWorkspaceSection("logs", focusHintForAction(nextActionTitle.value, nextActionCopy.value));
+      if (activeJob.value) openJobOutputSheet();
+      else setWorkspaceSection("logs", focusHintForAction(nextActionTitle.value, nextActionCopy.value));
       return;
     case "open-settings":
       setWorkspaceSection("settings", focusHintForAction(nextActionTitle.value, nextActionCopy.value));
@@ -2377,7 +2376,7 @@ function runInstallPlanRecommendation(): void {
       void runSmokeMatrix();
       return;
     case "watch-job":
-      setWorkspaceSection("logs", focusHintForAction(installPlanRecommendedTitle.value, installPlanRecommendedCopy.value));
+      openJobOutputSheet();
       return;
     case "bind-cc-connect":
       setWorkspaceSection("cc-connect", focusHintForAction(installPlanRecommendedTitle.value, installPlanRecommendedCopy.value));
@@ -2589,6 +2588,7 @@ function syncLogPolling(): void {
 
 function startPollingJob(job: CodexStackJob): void {
   activeJob.value = job;
+  jobOutputOpen.value = true;
   stopPollingJob();
   pollTimer = window.setInterval(async () => {
     if (!activeJob.value) return;
@@ -2619,6 +2619,31 @@ function startPollingJob(job: CodexStackJob): void {
       };
     }
   }, 2000);
+}
+
+function openJobOutputSheet(): void {
+  if (!activeJob.value) return;
+  jobOutputOpen.value = true;
+}
+
+function closeJobOutputSheet(): void {
+  jobOutputOpen.value = false;
+}
+
+function dismissActiveJob(): void {
+  activeJob.value = null;
+  jobOutputOpen.value = false;
+  stopPollingJob();
+}
+
+async function copyActiveJobOutput(): Promise<void> {
+  const job = activeJob.value;
+  if (!job) return;
+  const output = job.error || job.logTail || "";
+  const copied = await copyTextToClipboard(output);
+  notice.value = copied
+    ? { kind: "success", text: text("任务输出已复制。", "Job output copied.") }
+    : { kind: "error", text: text("当前没有可复制的任务输出。", "No job output is available to copy.") };
 }
 
 async function installFullStack(): Promise<void> {
@@ -2686,11 +2711,7 @@ async function reinstallFullStack(): Promise<void> {
 
 async function runCheck(): Promise<void> {
   if (jobRunning.value) {
-    setWorkspaceSection("logs", focusHintForAction(
-      text("已有后台任务正在执行", "Background job is running"),
-      text("先查看任务日志，等待当前任务结束后再运行健康检查。", "Open the job log first and wait for the current task to finish before running a health check."),
-      "accent",
-    ));
+    openJobOutputSheet();
     notice.value = {
       kind: "error",
       text: text("已有后台任务正在执行，请等待完成后再运行健康检查。", "A background job is already running. Wait for it to finish before running a health check."),

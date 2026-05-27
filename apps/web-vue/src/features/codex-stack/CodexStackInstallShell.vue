@@ -20,7 +20,7 @@
         </li>
       </ol>
       <p class="cs-install-guide-note">
-        {{ text("执行日志会在右下角浮层展示，当前页面只保留下一步动作。", "Execution logs open in the floating panel; this page keeps the next action in focus.") }}
+        {{ text("执行日志会在浮动输出窗口展示，隐藏窗口不会停止后台任务。", "Execution logs open in a floating output sheet; hiding it does not stop the background job.") }}
       </p>
     </aside>
     <div class="cs-install-workflow">

@@ -195,7 +195,7 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(installShell, /class="cs-install-shell"/);
   assert.match(installShell, /class="cs-install-guide"/);
   assert.match(installShell, /class="cs-install-workflow"/);
-  assert.match(installShell, /执行日志会在右下角浮层展示/);
+  assert.match(installShell, /执行日志会在浮动输出窗口展示/);
   assert.match(installStrategyPanel, /class="cs-install-strategy-workbench"/);
   assert.match(installStrategyPanel, /class="cs-install-strategy-editor"/);
   assert.match(installStrategyPanel, /class="cs-install-run-panel"/);
@@ -621,6 +621,9 @@ test("codex stack dashboard delegates diagnostics without losing run check", () 
   assert.doesNotMatch(diagnosticsPanel, /<pre/);
   assert.match(diagnosticsPanel, /检查结果会以悬浮窗口展示/);
   assert.match(checkOutputDialog, /<pre class="cs-check-output">/);
+  assert.match(checkOutputDialog, /import \{ copyTextToClipboard \} from "\.\.\/\.\.\/shared\/clipboard";/);
+  assert.match(checkOutputDialog, /复制输出/);
+  assert.match(checkOutputDialog, /async function copyOutput\(\): Promise<void>/);
   assert.match(diagnosticsPanel, /健康检查/);
   assert.match(diagnosticsPanel, /@click="\$emit\('run-check'\)"/);
   assert.match(diagnosticsPanel, /warnings\.length/);
@@ -629,12 +632,12 @@ test("codex stack dashboard delegates diagnostics without losing run check", () 
 test("codex stack delegates global job banner without losing navigation and dismiss actions", () => {
   assert.match(controlPage, /import CodexStackJobBanner from "\.\/CodexStackJobBanner\.vue";/);
   assert.match(controlPage, /<CodexStackJobBanner[\s\S]*v-if="activeJob"[\s\S]*:command-label="activeJob\.commandLabel"[\s\S]*:status="activeJob\.status"/);
-  assert.match(controlPage, /@open-logs="setWorkspaceSection\('logs', focusHintForAction\([\s\S]*查看后台任务输出[\s\S]*@dismiss="activeJob = null"/);
+  assert.match(controlPage, /@open-output="openJobOutputSheet"[\s\S]*@dismiss="dismissActiveJob"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-job-banner"/);
   assert.doesNotMatch(controlPage, /function jobStateClass/);
   assert.match(jobBanner, /const jobStateClass = computed/);
   assert.match(jobBanner, /props\.status === "succeeded"/);
-  assert.match(jobBanner, /@click="\$emit\('open-logs'\)"/);
+  assert.match(jobBanner, /@click="\$emit\('open-output'\)"/);
   assert.match(jobBanner, /v-if="!running"[\s\S]*@click="\$emit\('dismiss'\)"/);
 });
 
@@ -743,33 +746,43 @@ test("codex stack install page delegates component strategy and CTA without movi
 
 test("codex stack install page delegates long job progress without losing polling ownership", () => {
   assert.match(controlPage, /import CodexStackJobProgressPanel from "\.\/CodexStackJobProgressPanel\.vue";/);
-  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob"[\s\S]*surface="panel"[\s\S]*:job="activeJob"/);
-  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
-  assert.match(controlPage, /:running="isCodexStackJobRunning\(activeJob\)"[\s\S]*@dismiss="activeJob = null"/);
+  assert.match(controlPage, /const jobOutputOpen = ref\(false\);/);
+  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob && jobOutputOpen"[\s\S]*:job="activeJob"/);
+  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
+  assert.match(controlPage, /:running="isCodexStackJobRunning\(activeJob\)"[\s\S]*@copy-output="copyActiveJobOutput"[\s\S]*@close="closeJobOutputSheet"[\s\S]*@dismiss="dismissActiveJob"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-progress"/);
   assert.doesNotMatch(controlPage, /class="cs-install-overlay"/);
-  assert.doesNotMatch(controlPage, /activeSection !== 'install'/);
+  assert.doesNotMatch(controlPage, /surface="panel"|surface="overlay"/);
   assert.match(controlPage, /function startPollingJob\(job: CodexStackJob\): void/);
+  assert.match(controlPage, /jobOutputOpen\.value = true;[\s\S]*stopPollingJob\(\);/);
   assert.match(controlPage, /fetchCodexStackJob\(activeJob\.value\.id\)[\s\S]*activeJob\.value = response\.job/);
-  assert.match(jobProgressPanel, /surface\?: "panel";/);
-  assert.doesNotMatch(jobProgressPanel, /surface === 'overlay'/);
+  assert.match(controlPage, /function closeJobOutputSheet\(\): void/);
+  assert.match(controlPage, /function dismissActiveJob\(\): void[\s\S]*activeJob\.value = null;[\s\S]*jobOutputOpen\.value = false;[\s\S]*stopPollingJob\(\);/);
+  assert.match(controlPage, /async function copyActiveJobOutput\(\): Promise<void>/);
+  assert.doesNotMatch(jobProgressPanel, /surface\?:|surface ===/);
+  assert.match(jobProgressPanel, /<Teleport to="body">/);
+  assert.match(jobProgressPanel, /role="dialog"/);
+  assert.match(jobProgressPanel, /aria-live="polite"/);
   assert.match(jobProgressPanel, /cs-job-progress-dock/);
+  assert.match(jobProgressPanel, /cs-job-output-sheet/);
   assert.match(codexStackWorkspaceCss, /\.cs-job-progress-dock\s*\{/);
-  assert.match(jobProgressPanel, /安装或修复脚本正在后台执行，日志会持续刷新。/);
-  assert.match(jobProgressPanel, /job\.logTail \|\| emptyLog/);
+  assert.match(codexStackWorkspaceCss, /\.cs-job-sheet-actions\s*\{/);
+  assert.match(jobProgressPanel, /隐藏窗口不会停止任务/);
+  assert.match(jobProgressPanel, /复制输出/);
+  assert.match(jobProgressPanel, /progressOutput/);
   assert.match(jobProgressPanel, /@click="\$emit\('dismiss'\)"/);
 });
 
 test("codex stack logs page delegates job output preview without losing polling ownership", () => {
   assert.match(controlPage, /import CodexStackJobProgressPanel from "\.\/CodexStackJobProgressPanel\.vue";/);
-  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
+  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob && jobOutputOpen"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
   assert.match(controlPage, /:empty-log="text\('等待输出\.\.\.', 'Waiting for output\.\.\.'\)"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-job-output-card"/);
   assert.match(controlPage, /function startPollingJob\(job: CodexStackJob\): void/);
   assert.match(controlPage, /fetchCodexStackJob\(activeJob\.value\.id\)[\s\S]*activeJob\.value = response\.job/);
   assert.match(jobProgressPanel, /安装或修复脚本正在后台执行/);
   assert.match(jobProgressPanel, /cs-job-step-list/);
-  assert.match(jobProgressPanel, /job\.logTail \|\| emptyLog/);
+  assert.match(jobProgressPanel, /props\.running \? props\.job\.logTail \|\| props\.emptyLog : props\.job\.error \|\| props\.job\.logTail \|\| props\.emptyLog/);
   assert.match(jobProgressPanel, /job\.status === "succeeded"/);
 });
 

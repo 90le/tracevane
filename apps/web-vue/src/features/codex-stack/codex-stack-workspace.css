@@ -654,6 +654,10 @@ html[data-theme="light"] .cs-surface {
     inset 0 1px 0 color-mix(in srgb, #fff 16%, transparent);
 }
 
+.cs-job-output-sheet {
+  pointer-events: auto;
+}
+
 .cs-console-header {
   display: flex;
   align-items: flex-start;
@@ -678,6 +682,20 @@ html[data-theme="light"] .cs-surface {
   font-size: 0.82rem;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.cs-job-sheet-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cs-job-sheet-actions .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .cs-progress-running {
@@ -1047,6 +1065,10 @@ html[data-theme="light"] .cs-surface {
   .cs-console-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .cs-job-sheet-actions {
+    justify-content: flex-start;
   }
 }
 

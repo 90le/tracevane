@@ -10,6 +10,10 @@
           <h4>{{ running ? text("正在运行检查", "Running Check") : text("检查输出", "Check Output") }}</h4>
         </div>
         <div class="cs-check-actions">
+          <button type="button" class="secondary-button" @click="copyOutput">
+            <Copy :size="15" aria-hidden="true" />
+            {{ copied ? text("已复制", "Copied") : text("复制输出", "Copy Output") }}
+          </button>
           <button type="button" class="secondary-button" :disabled="running" @click="$emit('rerun')">
             <RefreshCw :size="15" aria-hidden="true" />
             {{ text("重新运行", "Run Again") }}
@@ -41,8 +45,9 @@
 </template>
 
 <script setup lang="ts">
-import { Activity, RefreshCw, Terminal, X } from "@lucide/vue";
-import { computed } from "vue";
+import { Activity, Copy, RefreshCw, Terminal, X } from "@lucide/vue";
+import { computed, ref } from "vue";
+import { copyTextToClipboard } from "../../shared/clipboard";
 import { useLocalePreference } from "../../shared/locale";
 import "./codex-stack-workspace.css";
 
@@ -58,10 +63,22 @@ defineEmits<{
 }>();
 
 const { text } = useLocalePreference();
+const copied = ref(false);
 
 const displayOutput = computed(() => (
   stripAnsi(props.output || text("等待健康检查输出...", "Waiting for health check output..."))
 ));
+
+async function copyOutput(): Promise<void> {
+  const ok = await copyTextToClipboard(displayOutput.value);
+  if (!ok) return;
+  copied.value = true;
+  if (typeof window !== "undefined") {
+    window.setTimeout(() => {
+      copied.value = false;
+    }, 1400);
+  }
+}
 
 function stripAnsi(value: string): string {
   return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
