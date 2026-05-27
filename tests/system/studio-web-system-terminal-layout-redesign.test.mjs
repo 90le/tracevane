@@ -190,6 +190,14 @@ test("terminal inspector drawer width and children are overflow-safe", () => {
 });
 
 test("terminal workspace keeps strong shell-relative height chain for stage and console expansion", () => {
+  assert.match(
+    terminalWorkspaceCss,
+    /\.main-content\.terminal-surface-route\s*\{[\s\S]*padding:\s*var\(--studio-route-inset,\s*10px\);/,
+  );
+  assert.match(
+    terminalWorkspaceCss,
+    /\.main-content\.terminal-surface-route\s+\.shell-route-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+  );
   assert.doesNotMatch(
     terminalWorkspaceCss,
     /\.terminal-workspace-shell\s*\{[\s\S]*min-height:\s*100dvh;/,
@@ -261,6 +269,10 @@ test("terminal workspace keeps strong shell-relative height chain for stage and 
 });
 
 test("terminal workspace theme uses unified surface tokens for stage and drawer", () => {
+  assert.match(
+    terminalWorkspaceCss,
+    /\.terminal-inspector-drawer,[\s\S]*\.terminal-workspace-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+  );
   assert.match(
     terminalWorkspaceCss,
     /\.terminal-workspace-stage[\s\S]*background:\s*var\(--surface-base\);/,

@@ -65,7 +65,7 @@ test("global style does not own chat or files component selectors", () => {
   );
   assert.doesNotMatch(
     globalStyleCss,
-    /\.main-content\.chat-surface-route\s*\{|\.main-content\.file-surface-route\s*\{|\.shell-layout-chat\s*\{|\.shell-layout-files\s*\{|\.shell-route-stage-chat\s*\{|\.shell-route-stage-files\s*\{/,
+    /\.main-content\.(?:chat|file|terminal)-surface-route\s*\{|\.shell-layout-chat\s*\{|\.shell-layout-files\s*\{|\.shell-route-stage-chat\s*\{|\.shell-route-stage-files\s*\{/,
   );
   assert.doesNotMatch(
     globalStyleCss,
@@ -80,6 +80,7 @@ test("remaining page-family CSS lives in feature-owned stylesheets", () => {
   assert.match(codexStackWorkspaceCss, /\.cs-status-pill/);
   assert.match(terminalWorkspaceCss, /Migrated Terminal workspace route rules from global style\.css/);
   assert.match(terminalWorkspaceCss, /\.terminal-surface-route/);
+  assert.match(terminalWorkspaceCss, /\.main-content\.terminal-surface-route/);
   assert.match(skillsWorkspaceCss, /Migrated Skills workspace rules from global style\.css/);
   assert.match(skillsWorkspaceCss, /\.skills-page/);
   assert.match(systemWorkspaceCss, /Migrated System workspace rules from global style\.css/);
