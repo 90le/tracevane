@@ -71,8 +71,12 @@
             <span v-if="meta?.truncated" class="cs-status-pill tone-accent">{{ labels.truncated }}</span>
           </div>
           <div class="cs-actions">
-            <button type="button" class="primary-button" :disabled="refreshing" @click="emit('load', selectedService)">
+            <button type="button" class="primary-button" :disabled="refreshing" @click="requestLoad">
               {{ refreshing ? labels.loading : labels.load }}
+            </button>
+            <button type="button" class="secondary-button" @click="openOutputSheet">
+              <Terminal :size="15" aria-hidden="true" />
+              {{ labels.openOutput }}
             </button>
             <p v-if="refreshing && refreshingDisabledHelp" class="cs-disabled-help">
               {{ refreshingDisabledHelp }}
@@ -81,21 +85,43 @@
         </div>
       </section>
     </div>
-    <section class="cs-log-output-shell">
-      <header class="cs-log-output-bar">
-        <div>
-          <p class="cs-section-kicker">{{ labels.readPerformance }}</p>
-          <strong>{{ services.find((service) => service.id === selectedService)?.label || selectedService }}</strong>
-        </div>
-        <span>{{ requestedLines }} {{ labels.lines }}</span>
-      </header>
-      <pre class="cs-log">{{ output || labels.empty }}</pre>
-    </section>
+    <Teleport v-if="outputSheetOpen" to="body">
+      <div class="cs-log-output-dock">
+        <section
+          class="cs-log-output-shell cs-log-output-sheet"
+          role="dialog"
+          aria-live="polite"
+          :aria-label="labels.outputWindow"
+        >
+          <header class="cs-log-output-bar">
+            <div>
+              <p class="cs-section-kicker">{{ labels.outputWindow }}</p>
+              <strong>{{ currentServiceLabel }}</strong>
+            </div>
+            <div class="cs-log-output-actions">
+              <span>{{ requestedLines }} {{ labels.lines }}</span>
+              <button type="button" class="secondary-button" @click="copyOutput">
+                <Copy :size="15" aria-hidden="true" />
+                {{ copied ? labels.copied : labels.copyOutput }}
+              </button>
+              <button type="button" class="secondary-button" @click="outputSheetOpen = false">
+                <X :size="15" aria-hidden="true" />
+                {{ labels.closeOutput }}
+              </button>
+            </div>
+          </header>
+          <pre class="cs-log">{{ displayOutput }}</pre>
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>
 
 <script setup lang="ts">
+import { Copy, Terminal, X } from "@lucide/vue";
+import { computed, ref } from "vue";
 import type { CodexStackLogResponse, CodexStackServiceId } from "../../../../../types/codex-stack";
+import { copyTextToClipboard } from "../../shared/clipboard";
 import type { CodexStackTone } from "./codex-stack-view-model";
 import "./codex-stack-workspace.css";
 
@@ -135,9 +161,14 @@ export interface CodexStackLogConsoleLabels {
   load: string;
   loading: string;
   empty: string;
+  openOutput: string;
+  outputWindow: string;
+  copyOutput: string;
+  copied: string;
+  closeOutput: string;
 }
 
-defineProps<{
+const props = defineProps<{
   services: CodexStackLogServiceOption[];
   selectedService: CodexStackServiceId;
   mode: CodexStackLogLineMode;
@@ -160,7 +191,39 @@ const emit = defineEmits<{
   load: [serviceId: CodexStackServiceId];
 }>();
 
+const outputSheetOpen = ref(false);
+const copied = ref(false);
+
+const currentServiceLabel = computed(() => (
+  props.services.find((service) => service.id === props.selectedService)?.label || props.selectedService
+));
+const displayOutput = computed(() => stripAnsi(props.output || props.labels.empty));
+
 function onAutoRefreshChange(event: Event): void {
   emit("update:autoRefresh", (event.target as HTMLInputElement).checked);
+}
+
+function requestLoad(): void {
+  outputSheetOpen.value = true;
+  emit("load", props.selectedService);
+}
+
+function openOutputSheet(): void {
+  outputSheetOpen.value = true;
+}
+
+async function copyOutput(): Promise<void> {
+  const ok = await copyTextToClipboard(displayOutput.value);
+  if (!ok) return;
+  copied.value = true;
+  if (typeof window !== "undefined") {
+    window.setTimeout(() => {
+      copied.value = false;
+    }, 1400);
+  }
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
 }
 </script>

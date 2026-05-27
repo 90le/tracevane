@@ -1330,6 +1330,16 @@ html[data-theme="light"] .cs-surface {
   margin: 0;
 }
 
+.cs-log-output-dock {
+  position: fixed;
+  right: clamp(16px, 2.5vw, 30px);
+  bottom: clamp(16px, 2.5vw, 30px);
+  z-index: 72;
+  width: min(780px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 32px));
+  pointer-events: none;
+}
+
 .cs-log-output-shell {
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
@@ -1337,6 +1347,18 @@ html[data-theme="light"] .cs-surface {
   background:
     linear-gradient(180deg, color-mix(in srgb, #fff 5%, transparent), transparent 20%),
     var(--code-bg);
+}
+
+.cs-log-output-sheet {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  max-height: inherit;
+  pointer-events: auto;
+  box-shadow:
+    0 28px 78px rgba(0, 0, 0, 0.38),
+    0 0 0 1px color-mix(in srgb, var(--acc) 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 16%, transparent);
+  backdrop-filter: blur(18px) saturate(1.08);
 }
 
 .cs-log-output-bar {
@@ -1347,6 +1369,19 @@ html[data-theme="light"] .cs-surface {
   border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   padding: 11px 14px;
   color: var(--muted);
+}
+
+.cs-log-output-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cs-log-output-dock .cs-log {
+  min-height: 260px;
+  max-height: min(560px, calc(100vh - 132px));
 }
 
 .cs-log-output-bar p {
@@ -1403,5 +1438,27 @@ html[data-theme="light"] .cs-surface {
   .cs-log-service-pane {
     border-right: 0;
     border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  }
+
+  .cs-log-output-dock {
+    right: 10px;
+    bottom: 10px;
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .cs-log-output-bar,
+  .cs-log-output-actions {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .cs-log-output-bar {
+    flex-direction: column;
+  }
+
+  .cs-log-output-dock .cs-log {
+    min-height: 220px;
+    max-height: calc(100vh - 170px);
   }
 }

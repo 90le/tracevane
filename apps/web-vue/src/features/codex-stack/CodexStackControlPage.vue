@@ -1927,6 +1927,11 @@ const logConsoleLabels = computed(() => ({
   load: text("读取日志", "Load Logs"),
   loading: text("读取中...", "Loading..."),
   empty: text("选择一个服务查看日志。", "Select a service to view logs."),
+  openOutput: text("打开输出窗口", "Open Output"),
+  outputWindow: text("日志输出窗口", "Log Output Window"),
+  copyOutput: text("复制输出", "Copy Output"),
+  copied: text("已复制", "Copied"),
+  closeOutput: text("关闭窗口", "Close Window"),
 }));
 const jobProgressDefinitions = computed(() => {
   const kind = activeJob.value?.kind;

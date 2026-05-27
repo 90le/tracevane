@@ -70,10 +70,18 @@ test("codex stack logs panel is isolated from the main control page", () => {
   assert.match(controlPage, /guideRead: text\("读输出", "Read Output"\)/);
   assert.match(logConsole, /refreshingDisabledHelp: string;/);
   assert.match(logConsole, /v-if="refreshing && refreshingDisabledHelp"[\s\S]*class="cs-disabled-help"/);
+  assert.match(logConsole, /<Teleport v-if="outputSheetOpen" to="body">/);
+  assert.match(logConsole, /class="cs-log-output-dock"/);
+  assert.match(logConsole, /class="cs-log-output-shell cs-log-output-sheet"/);
+  assert.match(logConsole, /function requestLoad\(\): void \{[\s\S]*outputSheetOpen\.value = true;[\s\S]*emit\("load", props\.selectedService\);/);
+  assert.match(logConsole, /function copyOutput\(\): Promise<void>/);
+  assert.match(logConsole, /copyTextToClipboard\(displayOutput\.value\)/);
   assert.match(logConsole, /import "\.\/codex-stack-workspace\.css";/);
   assert.doesNotMatch(logConsole, /<style/);
   assert.match(codexStackWorkspaceCss, /\.cs-log-service-button\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-log\s*\{/);
+  assert.match(controlPage, /openOutput: text\("打开输出窗口", "Open Output"\)/);
+  assert.match(controlPage, /outputWindow: text\("日志输出窗口", "Log Output Window"\)/);
 });
 
 test("codex stack log reads avoid overlapping auto-refresh requests", () => {
@@ -124,7 +132,10 @@ test("codex stack remaining domain components use feature css instead of vue sty
   assert.match(logConsole, /import "\.\/codex-stack-workspace\.css";/);
   assert.doesNotMatch(logConsole, /<style/);
   assert.match(codexStackWorkspaceCss, /\.cs-log-console\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-dock\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-log-output-shell\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-sheet\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-dock \.cs-log\s*\{/);
 });
 
 test("codex stack extracted panels own their scoped display styles", () => {
