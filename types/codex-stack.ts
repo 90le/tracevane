@@ -294,6 +294,10 @@ export interface CodexStackSummaryPayload {
       mode: string | null;
       matchesProxyKey: boolean | null;
     };
+    officialChatGptAuthBackup: CodexStackMaskedSecret & {
+      mode: string | null;
+      restorable: boolean;
+    };
     cpaManagementKey: CodexStackMaskedSecret;
     upstreamKeys: CodexStackMaskedSecret[];
   };

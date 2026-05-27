@@ -19,6 +19,16 @@
           <span id="codex-route-title" class="form-label">{{ text("Codex 使用路径", "Codex Route") }}</span>
           <strong>{{ routeLabel }}</strong>
           <span class="form-help">{{ routeDetail }}</span>
+          <dl class="cs-route-facts" aria-label="Codex route authentication status">
+            <div>
+              <dt>{{ text("当前 auth.json", "Current auth.json") }}</dt>
+              <dd>{{ codexAuthModeLabel }}</dd>
+            </div>
+            <div :class="officialAuthBackupReady ? 'tone-sage' : 'tone-warning'">
+              <dt>{{ text("官方登录备份", "Official login backup") }}</dt>
+              <dd>{{ officialBackupLabel }}</dd>
+            </div>
+          </dl>
         </div>
         <div class="cs-route-actions">
           <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('save-and-use-official')">
@@ -194,6 +204,8 @@ const props = defineProps<{
   codexRouteCurrentModel: string;
   codexRouteCpaTargetModel: string;
   codexRouteOfficialModel: string;
+  codexAuthMode: string | null;
+  officialAuthBackupReady: boolean;
   canAttachCodexCpa: boolean;
   attachCodexCpaDisabledHelp: string;
   canRunMutation: boolean;
@@ -227,12 +239,29 @@ const routeDetail = computed(() => props.codexRouteActive === "cpa"
     `Codex uses local CPA with ${props.codexRouteCurrentModel || "--"}; the model and upstream fields affect this route.`,
   )
   : text(
-    `Codex 走官方账户登录，建议模型为 ${props.codexRouteOfficialModel || "官方账户可用模型"}；运行配置里的第三方上游只作为 CPA 目标。`,
-    `Codex uses the official account login, recommended model ${props.codexRouteOfficialModel || "an official-account model"}; third-party upstream settings are only CPA targets.`,
+    `Codex 走官方账户登录，建议模型为 ${props.codexRouteOfficialModel || "官方账户可用模型"}；第三方上游只作为 CPA 目标，${props.officialAuthBackupReady ? "切回官方时可恢复已保存登录态" : "未检测到官方登录备份时可能需要重新登录"}。`,
+    `Codex uses the official account login, recommended model ${props.codexRouteOfficialModel || "an official-account model"}; third-party upstream settings are only CPA targets, and ${props.officialAuthBackupReady ? "the saved login can be restored when switching official" : "a fresh login may be required when no official backup exists"}.`,
   ));
+
+const codexAuthModeLabel = computed(() => {
+  if (!props.codexAuthMode) return text("未检测到认证文件", "No auth file detected");
+  if (props.codexAuthMode === "apikey") return text("CPA API Key", "CPA API key");
+  if (props.codexAuthMode === "chatgpt") return text("ChatGPT 登录", "ChatGPT login");
+  return props.codexAuthMode;
+});
+
+const officialBackupLabel = computed(() => props.officialAuthBackupReady
+  ? text("可无损切回官方", "Official restore ready")
+  : text("可能需要重新登录", "May require login"));
 
 const routeActionHelp = computed(() => {
   if (!props.canRunMutation) return props.mutationDisabledHelp;
+  if (props.codexRouteActive === "cpa" && !props.officialAuthBackupReady) {
+    return text(
+      "当前没有可恢复的官方 ChatGPT 登录备份；点击“用官方 ChatGPT”会切回官方模型，但 Codex 可能要求重新登录。",
+      "No restorable official ChatGPT login backup is available. Use Official ChatGPT switches the model route back, but Codex may require a fresh login.",
+    );
+  }
   if (props.hasChanges) {
     return text("推荐用上方“保存并验证 CPA”或“保存并用官方 ChatGPT”，避免保存后再去其它页面切换。", "Use Save and Verify CPA or Save and Use Official ChatGPT above so you do not need to switch pages after saving.");
   }

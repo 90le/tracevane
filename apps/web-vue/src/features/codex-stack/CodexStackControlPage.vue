@@ -371,6 +371,8 @@
                 :codex-route-current-model="summary.codexRoute.currentModel"
                 :codex-route-cpa-target-model="summary.codexRoute.cpaTargetModel"
                 :codex-route-official-model="summary.codexRoute.officialModel"
+                :codex-auth-mode="summary.secrets.codexAuth.mode"
+                :official-auth-backup-ready="summary.secrets.officialChatGptAuthBackup?.restorable === true"
                 :can-attach-codex-cpa="canAttachCodexCpa"
                 :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
                 :can-run-mutation="canRunMutation"

@@ -945,6 +945,18 @@ function readCodexAuth(authPath: string): { mode: string | null; key: string } {
   };
 }
 
+function authRecordMode(auth: Record<string, unknown>): string | null {
+  return typeof auth.auth_mode === "string" ? auth.auth_mode : null;
+}
+
+function representativeAuthSecret(auth: Record<string, unknown>): string {
+  for (const key of ["refresh_token", "access_token", "id_token", "account_id", "OPENAI_API_KEY"]) {
+    const value = auth[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
 function codexAuthHasMeaningfulLogin(auth: Record<string, unknown>): boolean {
   return Object.entries(auth).some(([key, value]) => {
     if (key === "auth_mode") return false;
@@ -2713,6 +2725,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const compactPort = liveCompactPort ?? configCompactPort;
     const codexToken = extractTomlString(codexConfig, "experimental_bearer_token");
     const codexAuth = readCodexAuth(currentPaths.codexAuth);
+    const officialAuthBackup = readCodexAuthRecord(currentPaths.codexOfficialAuthBackup);
+    const officialAuthBackupCredential = representativeAuthSecret(officialAuthBackup);
+    const officialAuthBackupRestorable = pathExists(currentPaths.codexOfficialAuthBackup)
+      && isOfficialChatGptCodexAuth(officialAuthBackup);
     const cpaProxyKey = codexToken || codexAuth.key;
     const codexAuthMatches = cpaProxyKey ? codexAuth.key === cpaProxyKey : null;
     const codexCpaActive = codexConfigUsesLocalCompact(codexConfig, compactPort);
@@ -2903,6 +2919,22 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         codexAuth: codexAuth.key
           ? { hasSecret: true, ...maskSecret(codexAuth.key), source: currentPaths.codexAuth, mode: codexAuth.mode, matchesProxyKey: codexAuthMatches }
           : { hasSecret: false, masked: null, source: pathExists(currentPaths.codexAuth) ? currentPaths.codexAuth : null, length: null, mode: codexAuth.mode, matchesProxyKey: codexAuthMatches },
+        officialChatGptAuthBackup: officialAuthBackupRestorable
+          ? {
+            hasSecret: true,
+            ...(officialAuthBackupCredential ? maskSecret(officialAuthBackupCredential) : { masked: "present", length: null }),
+            source: currentPaths.codexOfficialAuthBackup,
+            mode: authRecordMode(officialAuthBackup),
+            restorable: true,
+          }
+          : {
+            hasSecret: false,
+            masked: null,
+            source: pathExists(currentPaths.codexOfficialAuthBackup) ? currentPaths.codexOfficialAuthBackup : null,
+            length: null,
+            mode: authRecordMode(officialAuthBackup),
+            restorable: false,
+          },
         cpaManagementKey: managementSecret
           ? { hasSecret: true, ...maskSecret(managementSecret), source: currentPaths.cpaConfig }
           : { hasSecret: false, masked: null, source: pathExists(currentPaths.cpaConfig) ? currentPaths.cpaConfig : null, length: null },

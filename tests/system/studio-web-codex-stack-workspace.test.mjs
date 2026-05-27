@@ -1133,8 +1133,12 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
   assert.match(codexStackTypes, /"restore-official-chatgpt"/);
   assert.match(codexStackTypes, /"force-apply-codex-cpa"/);
+  assert.match(codexStackTypes, /officialChatGptAuthBackup: CodexStackMaskedSecret & \{/);
+  assert.match(codexStackTypes, /restorable: boolean;/);
   assert.match(codexStackService, /"restore-official-chatgpt"/);
   assert.match(codexStackService, /"force-apply-codex-cpa"/);
+  assert.match(codexStackService, /officialAuthBackupRestorable/);
+  assert.match(codexStackService, /officialChatGptAuthBackup: officialAuthBackupRestorable/);
   assert.match(controlPage, /function smokeMatrixCoversTarget\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
   assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
   assert.match(controlPage, /matrix\.attachEligible && !smokeMatrixCoversTarget\(matrix, currentCpaTargetModel\.value\)/);
@@ -1238,6 +1242,8 @@ test("codex stack settings page delegates runtime config form without moving pat
     controlPage,
     /<CodexStackRuntimeConfigCard[\s\S]*:form="configForm"[\s\S]*:model-options="modelOptions"[\s\S]*:context-tokens-disabled="configContextTokensDisabled"[\s\S]*:context-tokens-disabled-help="configContextTokensDisabledHelp"[\s\S]*:restart-required-units="restartRequiredUnits"[\s\S]*:codex-route-active="summary\.codexRoute\.active"[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:has-changes="hasConfigPatchChanges"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*@update-field="updateConfigFormField"[\s\S]*@save="saveConfigPatch"[\s\S]*@save-and-attach-cpa="saveConfigThenAttachCpa"[\s\S]*@save-and-force-cpa="saveConfigThenForceCpa"[\s\S]*@save-and-use-official="saveConfigThenUseOfficial"/,
   );
+  assert.match(controlPage, /:codex-auth-mode="summary\.secrets\.codexAuth\.mode"/);
+  assert.match(controlPage, /:official-auth-backup-ready="summary\.secrets\.officialChatGptAuthBackup\?\.restorable === true"/);
   assert.match(controlPage, /:impact-items="configImpactItems"/);
   assert.match(controlPage, /function updateConfigFormField\(field: CodexStackRuntimeConfigField, value: string \| number\): void/);
   assert.match(controlPage, /const configPatchPayload = computed<CodexStackConfigPatchRequest>/);
@@ -1252,6 +1258,14 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.match(runtimeConfigCard, /contextTokensDisabledHelp: string;/);
   assert.match(runtimeConfigCard, /v-if="contextTokensDisabled && contextTokensDisabledHelp"[\s\S]*class="form-help"/);
   assert.match(runtimeConfigCard, /Codex 使用路径/);
+  assert.match(runtimeConfigCard, /官方登录备份/);
+  assert.match(runtimeConfigCard, /当前 auth\.json/);
+  assert.match(runtimeConfigCard, /可无损切回官方/);
+  assert.match(runtimeConfigCard, /可能需要重新登录/);
+  assert.match(runtimeConfigCard, /No restorable official ChatGPT login backup is available/);
+  assert.match(runtimeConfigCard, /officialAuthBackupReady: boolean;/);
+  assert.match(runtimeConfigCard, /codexAuthMode: string \| null;/);
+  assert.match(codexStackSettingsCss, /\.cs-route-facts\s*\{/);
   assert.match(runtimeConfigCard, /这是 CPA 目标模型；保存配置不会自动把 Codex 切到 CPA/);
   assert.match(runtimeConfigCard, /用官方 ChatGPT/);
   assert.match(runtimeConfigCard, /保存并用官方 ChatGPT/);

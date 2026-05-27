@@ -1523,6 +1523,9 @@ test("codex stack can force attach CPA while warning and preserving ChatGPT auth
   assert.equal(cpaAuth.auth_mode, "apikey");
   assert.equal(cpaAuth.OPENAI_API_KEY, "secret-cpa-key-123456");
   assert.equal(JSON.parse(fs.readFileSync(officialAuthBackup, "utf8")).refresh_token, "force-chatgpt-refresh");
+  const summary = await service.getSummary();
+  assert.equal(summary.secrets.officialChatGptAuthBackup.restorable, true);
+  assert.equal(summary.secrets.officialChatGptAuthBackup.mode, "chatgpt");
 });
 
 test("codex stack refreshes stale ChatGPT auth backup before switching to CPA", async () => {
@@ -1569,6 +1572,9 @@ test("codex stack refreshes stale ChatGPT auth backup before switching to CPA", 
   const cpaAuth = JSON.parse(fs.readFileSync(codexAuth, "utf8"));
   assert.equal(cpaAuth.auth_mode, "apikey");
   assert.equal(cpaAuth.OPENAI_API_KEY, "secret-cpa-key-123456");
+  const summary = await service.getSummary();
+  assert.equal(summary.secrets.officialChatGptAuthBackup.restorable, true);
+  assert.equal(summary.secrets.officialChatGptAuthBackup.mode, "chatgpt");
 });
 
 test("codex stack refuses to restore non-ChatGPT auth backups as official login", async () => {
@@ -1622,6 +1628,9 @@ experimental_bearer_token = "secret-cpa-key-123456"
   const patched = fs.readFileSync(codexConfig, "utf8");
   assert.match(tomlTopLevel(patched), /model\s*=\s*"gpt-5\.5"/);
   assert.doesNotMatch(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
+  const summary = await service.getSummary();
+  assert.equal(summary.secrets.officialChatGptAuthBackup.restorable, false);
+  assert.equal(summary.secrets.officialChatGptAuthBackup.mode, "apikey");
 });
 
 test("codex stack can attach the user-selected GPT model through CPA", async () => {

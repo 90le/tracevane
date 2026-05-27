@@ -176,14 +176,34 @@ function summaryForRepairAction(
         mode: "apikey",
         matchesProxyKey,
       },
+      officialChatGptAuthBackup: {
+        hasSecret: false,
+        masked: null,
+        source: null,
+        length: null,
+        mode: null,
+        restorable: false,
+      },
     },
     cpaManagement: {
       enabled: true,
       controlPanelEnabled: true,
     },
+    proxyPolicy: {
+      providerMode: "direct",
+      providerProxyUrl: null,
+      providerProxySource: null,
+      noProxy: "localhost,127.0.0.1,::1",
+      noProxyLoopbackReady: true,
+      noProxyLoopbackMissing: [],
+      cpaConfigProxyUrls: [],
+      upstreamBaseUrl: null,
+      upstreamApiKeyConfigured: false,
+    },
     ccConnect: {
       bindingPresent: false,
     },
+    warnings: [],
     runReadiness: {
       checks: [
         {
