@@ -54,6 +54,12 @@ test("app shell uses a direct route host so chat is not boxed inside extra shell
   assert.doesNotMatch(appVue, /class="shell-canvas"/);
 });
 
+test("outer app route modifier does not reuse the chat feature root class", () => {
+  assert.match(appVue, /'chat-route-shell': isChatSurface/);
+  assert.doesNotMatch(appVue, /'chat-shell': isChatSurface/);
+  assert.match(chatShellPage, /class="chat-shell"/);
+});
+
 test("chat route shell establishes an unbroken full-height chain without centered boxed canvases", () => {
   assert.match(
     chatShellWorkspaceCss,

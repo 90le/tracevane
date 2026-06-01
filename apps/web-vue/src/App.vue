@@ -3,7 +3,7 @@
   <TooltipProvider :delay-duration="140" :skip-delay-duration="80" :disable-hoverable-content="true">
     <div
       class="app-container"
-      :class="{ mobile: isMobile, 'sidebar-collapsed': !isMobile && sidebarCollapsed, 'chat-shell': isChatSurface, 'files-shell': isFilesSurface }"
+      :class="{ mobile: isMobile, 'sidebar-collapsed': !isMobile && sidebarCollapsed, 'chat-route-shell': isChatSurface, 'files-shell': isFilesSurface }"
     >
       <DialogRoot v-if="isMobile" v-model:open="mobileSidebarOpen">
         <DialogPortal>
