@@ -10,7 +10,7 @@ const manifestFile = path.join(
   "web-vue",
   "src",
   "features",
-  "chat-v2",
+  "chat",
   "chat-runtime-domain-manifest.ts",
 );
 const chatTestsDir = path.join(root, "tests", "chat");

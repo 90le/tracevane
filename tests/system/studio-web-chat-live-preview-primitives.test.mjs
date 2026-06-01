@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const markdownBlock = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/MarkdownBlock.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/MarkdownBlock.vue'),
   'utf8',
 );
 const markdownBlockCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/markdown-block.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/markdown-block.css'),
   'utf8',
 );
 const markdownRenderer = fs.readFileSync(

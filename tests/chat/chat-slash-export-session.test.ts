@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildSlashSessionExportDocument } from '../../apps/web-vue/src/features/chat-v2/slash-export-session';
+import { buildSlashSessionExportDocument } from '../../apps/web-vue/src/features/chat/slash-export-session';
 import type { ChatMessageItem, ChatSessionRow } from '../../types/chat';
 
 function createSession(): ChatSessionRow {

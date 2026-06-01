@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const inspectorPanel = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/InspectorPanel.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/InspectorPanel.vue'),
   'utf8',
 );
 const inspectorPanelCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/inspector-panel.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/inspector-panel.css'),
   'utf8',
 );
 

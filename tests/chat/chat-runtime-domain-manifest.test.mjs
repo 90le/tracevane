@@ -18,7 +18,7 @@ const manifestFile = path.join(
   "web-vue",
   "src",
   "features",
-  "chat-v2",
+  "chat",
   "chat-runtime-domain-manifest.ts",
 );
 const manifestSource = fs.readFileSync(manifestFile, "utf8");
@@ -96,7 +96,7 @@ test("chat runtime coverage script matches committed baseline inventory", () => 
   assert.ok(parsed.sections.includes("shell"));
   assert.ok(
     parsed.frontendFiles.includes(
-      "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
+      "apps/web-vue/src/features/chat/ChatShellPage.vue",
     ),
   );
   assert.ok(parsed.backendFiles.includes("apps/api/modules/chat/service.ts"));

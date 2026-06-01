@@ -10,25 +10,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '../..');
 const sessionListPanel = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionListPanel.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SessionListPanel.vue'),
   'utf8',
 );
 const sessionListSharedCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/session-list-shared.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/session-list-shared.css'),
   'utf8',
 );
 const sessionFilterBar = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionFilterBar.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SessionFilterBar.vue'),
   'utf8',
 );
 
 const sessionFilterCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/session-filter.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/session-filter.css'),
   'utf8',
 );
 
 const sessionRowList = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionRowList.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SessionRowList.vue'),
   'utf8',
 );
 const sessionListComponentFiles = [
@@ -41,30 +41,30 @@ const sessionListComponentFiles = [
 ];
 const sessionListComponentSources = new Map(sessionListComponentFiles.map((file) => [
   file,
-  fs.readFileSync(path.join(rootDir, 'apps/web-vue/src/features/chat-v2', file), 'utf8'),
+  fs.readFileSync(path.join(rootDir, 'apps/web-vue/src/features/chat', file), 'utf8'),
 ]));
 const sessionListFilters = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/session-list-filters.ts'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/session-list-filters.ts'),
   'utf8',
 );
 const sessionListViewModel = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/session-list-view-model.ts'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/session-list-view-model.ts'),
   'utf8',
 );
 const sessionListScopeTabs = fs.existsSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionListScopeTabs.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SessionListScopeTabs.vue'),
 ) ? fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionListScopeTabs.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SessionListScopeTabs.vue'),
   'utf8',
 ) : '';
 const { deriveOrganizerChildFolders } = await import('../../dist/lib/chat-session-organizer.js');
 const {
   useSessionListFilters,
-} = await import('../../apps/web-vue/src/features/chat-v2/session-list-filters.ts');
+} = await import('../../apps/web-vue/src/features/chat/session-list-filters.ts');
 const {
   useSessionListViewModel,
   useSessionListWindows,
-} = await import('../../apps/web-vue/src/features/chat-v2/session-list-view-model.ts');
+} = await import('../../apps/web-vue/src/features/chat/session-list-view-model.ts');
 
 function createSession(key, agentId, source, overrides = {}) {
   return {

@@ -6,27 +6,27 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const composerBar = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ComposerBar.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ComposerBar.vue'),
   'utf8',
 );
 const slashCommandMenu = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashCommandMenu.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SlashCommandMenu.vue'),
   'utf8',
 );
 const slashCommandFeedbackBar = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashCommandFeedbackBar.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SlashCommandFeedbackBar.vue'),
   'utf8',
 );
 const slashCommandHelpDialog = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashCommandHelpDialog.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SlashCommandHelpDialog.vue'),
   'utf8',
 );
 const slashStatusDialog = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashStatusDialog.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SlashStatusDialog.vue'),
   'utf8',
 );
 const slashCommandCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/slash-command.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/slash-command.css'),
   'utf8',
 );
 const slashCommandMenuCss = slashCommandCss.split('/* Slash command feedback */')[0];

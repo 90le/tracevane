@@ -4,7 +4,7 @@ import type {
   ChatResourceResolveResponse,
 } from '../../../../../types/chat';
 import { parseStudioMarkdownMediaRef } from '../../../../../lib/studio-markdown-media';
-import { resolveChatResources } from '../chat/api';
+import { resolveChatResources } from './api';
 
 const MAX_STUDIO_RESOURCE_REFS_PER_MESSAGE = 48;
 const MAX_STUDIO_RESOURCE_REFS_PER_BATCH = 100;

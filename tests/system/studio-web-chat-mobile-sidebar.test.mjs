@@ -7,50 +7,50 @@ import { fileURLToPath } from "node:url";
 const testFileDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(testFileDir, "..", "..");
 const chatShellPage = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ChatShellPage.vue"),
   "utf8",
 );
 const chatShellWorkspaceCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/chat-shell-workspace.css"),
   "utf8",
 );
 const sessionContextMenu = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/SessionContextMenu.vue",
+    "apps/web-vue/src/features/chat/SessionContextMenu.vue",
   ),
   "utf8",
 );
 const folderPickerMenu = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/FolderPickerMenu.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/FolderPickerMenu.vue"),
   "utf8",
 );
 const sessionFilterBar = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionFilterBar.vue"),
   "utf8",
 );
 
 const sessionFilterCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-filter.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/session-filter.css"),
   "utf8",
 );
 const sessionListPanel = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionListPanel.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionListPanel.vue"),
   "utf8",
 );
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ConversationPane.vue"),
   "utf8",
 );
 
 const conversationPaneCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/conversation-pane.css"),
   "utf8",
 );
 const sessionListFilters = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/session-list-filters.ts",
+    "apps/web-vue/src/features/chat/session-list-filters.ts",
   ),
   "utf8",
 );

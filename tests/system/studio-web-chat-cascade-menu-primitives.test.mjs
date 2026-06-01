@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const cascadeMenu = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/CascadeMenu.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/CascadeMenu.vue'),
   'utf8',
 );
 const cascadeMenuNode = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/CascadeMenuNode.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/CascadeMenuNode.vue'),
   'utf8',
 );
 

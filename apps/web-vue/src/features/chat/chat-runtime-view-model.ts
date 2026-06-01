@@ -18,7 +18,7 @@ import type {
   ChatSessionRow,
 } from "../../../../../types/chat";
 import { isChatRealtimeEnabled } from "../../shared/runtime-config";
-import { deriveAgentIdFromChatSessionKey } from "../chat/session-ref";
+import { deriveAgentIdFromChatSessionKey } from "./session-ref";
 import { deriveChatSessionTitle } from "./display-adapter";
 import {
   buildChatOverlaySummary,

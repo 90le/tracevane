@@ -21,10 +21,10 @@
   "include": [
     "index.ts",
     "apps/api/**/*.ts",
-    "apps/web-vue/src/features/chat-v2/chat-shell-overview-recipe.ts",
-    "apps/web-vue/src/features/chat-v2/chat-session-runtime-machine.ts",
-    "apps/web-vue/src/features/chat-v2/chat-session-scroll-state.ts",
-    "apps/web-vue/src/features/chat-v2/chat-stage-selectors.ts",
+    "apps/web-vue/src/features/chat/chat-shell-overview-recipe.ts",
+    "apps/web-vue/src/features/chat/chat-session-runtime-machine.ts",
+    "apps/web-vue/src/features/chat/chat-session-scroll-state.ts",
+    "apps/web-vue/src/features/chat/chat-stage-selectors.ts",
     "lib/**/*.ts",
     "types/**/*.ts",
     "types/**/*.d.ts"

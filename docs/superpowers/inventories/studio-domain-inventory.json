@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-28T06:09:25.132Z",
+  "generatedAt": "2026-06-01T06:38:07.045Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -36,7 +36,6 @@
     "agents",
     "channels",
     "chat",
-    "chat-v2",
     "codex-stack",
     "config",
     "cron",

@@ -26,7 +26,7 @@ import {
   replaceChatSessionProcessLedger,
   syncChatSessionCanonicalMessageLedger,
   upsertChatSessionProcessLedgerOverlay,
-} from '../../dist/apps/web-vue/src/features/chat-v2/chat-session-runtime-machine.js';
+} from '../../dist/apps/web-vue/src/features/chat/chat-session-runtime-machine.js';
 
 function createMessage(id, overrides = {}) {
   return {

@@ -10,7 +10,7 @@ const read = (filePath) =>
   fs.readFileSync(path.join(rootDir, filePath), "utf8");
 
 const chatShellPage = read(
-  "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
+  "apps/web-vue/src/features/chat/ChatShellPage.vue",
 );
 const agentsWorkspaceLayout = read(
   "apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue",

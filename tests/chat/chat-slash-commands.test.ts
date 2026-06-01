@@ -9,9 +9,9 @@ import {
   getStudioSlashCommandArgOptionDetails,
   getStudioSlashCommandDescription,
   parseStudioSlashCommand,
-} from '../../apps/web-vue/src/features/chat-v2/slash-commands';
-import { resolveStudioBashSlashHandling } from '../../apps/web-vue/src/features/chat-v2/slash-bash-policy';
-import { executeStudioSlashLocalGatewayCommand } from '../../apps/web-vue/src/features/chat-v2/slash-local-executor';
+} from '../../apps/web-vue/src/features/chat/slash-commands';
+import { resolveStudioBashSlashHandling } from '../../apps/web-vue/src/features/chat/slash-bash-policy';
+import { executeStudioSlashLocalGatewayCommand } from '../../apps/web-vue/src/features/chat/slash-local-executor';
 
 function createGatewayClientMock(
   handler: (method: string, params: unknown) => unknown | Promise<unknown>,

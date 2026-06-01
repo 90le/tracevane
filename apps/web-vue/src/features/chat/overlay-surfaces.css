@@ -1,5 +1,5 @@
 html[data-theme="light"],
-.chat-v2-shell.theme-light,
+.chat-shell.theme-light,
 .chat-agent-picker-mask.theme-light {
   --chat-picker-mask: var(--modal-backdrop);
   --chat-picker-shadow: var(--modal-shadow);
@@ -8,7 +8,7 @@ html[data-theme="light"],
 }
 
 html:not([data-theme="light"]),
-.chat-v2-shell.theme-dark,
+.chat-shell.theme-dark,
 .chat-agent-picker-mask.theme-dark {
   --chat-picker-mask: var(--modal-backdrop);
   --chat-picker-shadow: var(--modal-shadow);

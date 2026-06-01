@@ -9,43 +9,43 @@ const rootDir = path.resolve(
   "../..",
 );
 const cascadeMenu = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/CascadeMenu.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/CascadeMenu.vue"),
   "utf8",
 );
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ConversationPane.vue"),
   "utf8",
 );
 
 const conversationPaneCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/conversation-pane.css"),
   "utf8",
 );
 const chatShellPage = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ChatShellPage.vue"),
   "utf8",
 );
 const chatShellWorkspaceCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/chat-shell-workspace.css"),
   "utf8",
 );
 const overlaySurfacesCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/overlay-surfaces.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/overlay-surfaces.css"),
   "utf8",
 );
 const sessionFilterBar = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionFilterBar.vue"),
   "utf8",
 );
 
 const sessionFilterCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-filter.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/session-filter.css"),
   "utf8",
 );
 const newChatAgentPicker = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/NewChatAgentPicker.vue",
+    "apps/web-vue/src/features/chat/NewChatAgentPicker.vue",
   ),
   "utf8",
 );

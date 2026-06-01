@@ -14,7 +14,7 @@ import {
   resolveChatSessionTimelineMutation,
   shouldObserveChatSessionBottomSentinel,
   shouldObserveChatSessionTopSentinel,
-} from '../../dist/apps/web-vue/src/features/chat-v2/chat-session-scroll-state.js';
+} from '../../dist/apps/web-vue/src/features/chat/chat-session-scroll-state.js';
 
 function metrics(overrides = {}) {
   return {

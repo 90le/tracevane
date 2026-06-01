@@ -6,10 +6,10 @@
     "inspector"
   ],
   "frontendFiles": [
-    "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
-    "apps/web-vue/src/features/chat-v2/InspectorPanel.vue",
-    "apps/web-vue/src/features/chat-v2/SessionListPanel.vue",
-    "apps/web-vue/src/features/chat-v2/chat-runtime-recovery.ts"
+    "apps/web-vue/src/features/chat/ChatShellPage.vue",
+    "apps/web-vue/src/features/chat/InspectorPanel.vue",
+    "apps/web-vue/src/features/chat/SessionListPanel.vue",
+    "apps/web-vue/src/features/chat/chat-runtime-recovery.ts"
   ],
   "backendFiles": [
     "apps/api/modules/chat/history-snapshot.ts",

@@ -7,91 +7,91 @@ import { fileURLToPath } from "node:url";
 const testFileDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(testFileDir, "..", "..");
 const chatShellPage = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ChatShellPage.vue"),
   "utf8",
 );
 const chatShellWorkspaceCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/chat-shell-workspace.css"),
   "utf8",
 );
 const sessionRowList = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionRowList.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionRowList.vue"),
   "utf8",
 );
 const sessionFolderList = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFolderList.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionFolderList.vue"),
   "utf8",
 );
 const sessionFolderHeader = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/SessionFolderHeader.vue",
+    "apps/web-vue/src/features/chat/SessionFolderHeader.vue",
   ),
   "utf8",
 );
 const sessionListShared = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/session-list-shared.css",
+    "apps/web-vue/src/features/chat/session-list-shared.css",
   ),
   "utf8",
 );
 const overlaySurfacesCss = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/overlay-surfaces.css",
+    "apps/web-vue/src/features/chat/overlay-surfaces.css",
   ),
   "utf8",
 );
 const sessionBatchBar = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionBatchBar.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionBatchBar.vue"),
   "utf8",
 );
 const sessionFilterBar = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionFilterBar.vue"),
   "utf8",
 );
 
 const sessionFilterCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-filter.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/session-filter.css"),
   "utf8",
 );
 const messageResourceList = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/MessageResourceList.vue",
+    "apps/web-vue/src/features/chat/MessageResourceList.vue",
   ),
   "utf8",
 );
 const messageResourcesCss = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/message-resources.css",
+    "apps/web-vue/src/features/chat/message-resources.css",
   ),
   "utf8",
 );
 const inspectorPanel = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/InspectorPanel.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/InspectorPanel.vue"),
   "utf8",
 );
 const inspectorPanelCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/inspector-panel.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/inspector-panel.css"),
   "utf8",
 );
 const markdownBlock = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/MarkdownBlock.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/MarkdownBlock.vue"),
   "utf8",
 );
 const markdownBlockCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/markdown-block.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/markdown-block.css"),
   "utf8",
 );
 const queuedMessageRail = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/QueuedMessageRail.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/QueuedMessageRail.vue"),
   "utf8",
 );
 const queueRailCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/queue-rail.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/queue-rail.css"),
   "utf8",
 );
 const chatApi = fs.readFileSync(
@@ -99,53 +99,53 @@ const chatApi = fs.readFileSync(
   "utf8",
 );
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ConversationPane.vue"),
   "utf8",
 );
 
 const conversationPaneCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/conversation-pane.css"),
   "utf8",
 );
 const chatRecordBrowserPanel = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/ChatRecordBrowserPanel.vue",
+    "apps/web-vue/src/features/chat/ChatRecordBrowserPanel.vue",
   ),
   "utf8",
 );
 const chatRecordBrowserCss = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/chat-record-browser.css",
+    "apps/web-vue/src/features/chat/chat-record-browser.css",
   ),
   "utf8",
 );
 const composerBar = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ComposerBar.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ComposerBar.vue"),
   "utf8",
 );
 const composerBarCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/composer-bar.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/composer-bar.css"),
   "utf8",
 );
 const newChatAgentPicker = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/NewChatAgentPicker.vue",
+    "apps/web-vue/src/features/chat/NewChatAgentPicker.vue",
   ),
   "utf8",
 );
 const messageBubble = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/MessageBubble.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/MessageBubble.vue"),
   "utf8",
 );
 const messageBubbleCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/message-bubble.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/message-bubble.css"),
   "utf8",
 );
 const cascadeMenu = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/CascadeMenu.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/CascadeMenu.vue"),
   "utf8",
 );
 
@@ -163,7 +163,7 @@ test("chat shell dark theme uses DuoYuan solid dark surfaces instead of gray gla
   assert.doesNotMatch(chatShellPage, /<style scoped>/);
   assert.match(
     chatShellWorkspaceCss,
-    /\.chat-v2-shell\.theme-dark,\s*\.chat-mobile-drawer-mask\.theme-dark\s*\{/,
+    /\.chat-shell\.theme-dark,\s*\.chat-mobile-drawer-mask\.theme-dark\s*\{/,
   );
   assert.match(chatShellWorkspaceCss, /--chat-shell-bg:\s*var\(--surface-base\);/);
   assert.match(chatShellWorkspaceCss, /--chat-thread-bg:\s*var\(--surface-raised\);/);
@@ -208,7 +208,7 @@ test("chat shell dark theme uses DuoYuan solid dark surfaces instead of gray gla
 test("light theme sidebar surfaces stay opaque enough for drawer readability", () => {
   assert.match(
     chatShellWorkspaceCss,
-    /\.chat-v2-shell\.theme-light,\s*\.chat-mobile-drawer-mask\.theme-light\s*\{/,
+    /\.chat-shell\.theme-light,\s*\.chat-mobile-drawer-mask\.theme-light\s*\{/,
   );
   assert.match(
     chatShellWorkspaceCss,
@@ -1367,7 +1367,7 @@ test("chat shell bootstraps the first session rail quickly and hydrates lower-pr
   assert.match(chatShellPage, /const exhaustedHistoryAfterCursorBySession = new Map<string, string>\(\);/);
   assert.match(
     fs.readFileSync(
-      path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-session-scroll-state.ts"),
+      path.join(rootDir, "apps/web-vue/src/features/chat/chat-session-scroll-state.ts"),
       "utf8",
     ),
     /&& params\.state\.autoScrollLockedByUser/,

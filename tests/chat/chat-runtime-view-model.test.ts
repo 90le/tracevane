@@ -11,11 +11,11 @@ const rootDir = path.resolve(
 );
 const viewModelPath = path.join(
   rootDir,
-  "apps/web-vue/src/features/chat-v2/chat-runtime-view-model.ts",
+  "apps/web-vue/src/features/chat/chat-runtime-view-model.ts",
 );
 const conversationPanePath = path.join(
   rootDir,
-  "apps/web-vue/src/features/chat-v2/ConversationPane.vue",
+  "apps/web-vue/src/features/chat/ConversationPane.vue",
 );
 
 test("chat runtime view model consumes runtime summary helpers", () => {

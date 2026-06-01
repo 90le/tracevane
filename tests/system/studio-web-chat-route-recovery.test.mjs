@@ -9,13 +9,13 @@ const rootDir = path.resolve(
   "../..",
 );
 const chatShellPage = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ChatShellPage.vue"),
   "utf8",
 );
 const chatRuntimeRecovery = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/chat-runtime-recovery.ts",
+    "apps/web-vue/src/features/chat/chat-runtime-recovery.ts",
   ),
   "utf8",
 );

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const picker = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/NewChatAgentPicker.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/NewChatAgentPicker.vue'),
   'utf8',
 );
 

@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const messageBubble = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/MessageBubble.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/MessageBubble.vue'),
   'utf8',
 );
 const messageBubbleCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/message-bubble.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/message-bubble.css'),
   'utf8',
 );
 

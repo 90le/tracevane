@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const soundPreferences = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/chat-sound-preferences.ts'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/chat-sound-preferences.ts'),
   'utf8',
 );
 

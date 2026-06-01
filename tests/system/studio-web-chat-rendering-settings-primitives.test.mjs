@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ConversationPane.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ConversationPane.vue'),
   'utf8',
 );
 

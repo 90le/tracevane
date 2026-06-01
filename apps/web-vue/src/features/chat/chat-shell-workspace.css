@@ -52,7 +52,7 @@
   overflow: hidden;
 }
 
-.chat-v2-shell {
+.chat-shell {
   --chat-layer-stage: 1;
   --chat-layer-toast: 35;
   --chat-layer-overlay: 1400;
@@ -87,7 +87,7 @@
 }
 
 html[data-theme="light"],
-.chat-v2-shell.theme-light,
+.chat-shell.theme-light,
 .chat-mobile-drawer-mask.theme-light {
   --chat-page-bg: var(--bg-app);
   --chat-shell-frame: var(--modal-panel-bg);
@@ -134,7 +134,7 @@ html[data-theme="light"],
 }
 
 html:not([data-theme="light"]),
-.chat-v2-shell.theme-dark,
+.chat-shell.theme-dark,
 .chat-mobile-drawer-mask.theme-dark {
   --chat-page-bg: var(--bg-app);
   --chat-shell-frame: var(--surface-base);
@@ -646,7 +646,7 @@ html:not([data-theme="light"]),
 }
 
 @media (max-width: 760px) {
-  .chat-v2-shell {
+  .chat-shell {
     gap: 0;
   }
 

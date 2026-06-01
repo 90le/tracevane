@@ -7,7 +7,7 @@ import type {
   ChatSessionRow,
 } from '../../../../../types/chat';
 import type { ChatSessionRuntimeMachineState } from './chat-session-runtime-machine';
-import { decodeChatSessionRef, encodeChatSessionRef } from '../chat/session-ref';
+import { decodeChatSessionRef, encodeChatSessionRef } from './session-ref';
 
 const CHAT_RUNTIME_SNAPSHOT_MAX_MESSAGES = 120;
 const CHAT_RUNTIME_SNAPSHOT_MAX_SETTLED_OVERLAYS = 24;

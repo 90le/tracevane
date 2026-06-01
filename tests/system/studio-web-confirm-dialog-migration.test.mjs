@@ -23,7 +23,7 @@ const migrationTargets = [
   "apps/web-vue/src/features/cron/CronControlPage.vue",
   "apps/web-vue/src/features/dreaming/DreamingControlPage.vue",
   "apps/web-vue/src/features/system/SystemControlPage.vue",
-  "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
+  "apps/web-vue/src/features/chat/ChatShellPage.vue",
 ];
 
 const composableTargets = [
@@ -37,7 +37,7 @@ const composableTargets = [
   "apps/web-vue/src/features/cron/CronControlPage.vue",
   "apps/web-vue/src/features/dreaming/DreamingControlPage.vue",
   "apps/web-vue/src/features/system/SystemControlPage.vue",
-  "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
+  "apps/web-vue/src/features/chat/ChatShellPage.vue",
 ];
 
 test("confirm dialog migration contract removes browser confirm from scoped surfaces", () => {

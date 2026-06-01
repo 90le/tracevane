@@ -13,7 +13,7 @@ function read(filePath) {
 
 const styleCss = read("apps/web-vue/src/style.css");
 const appVue = read("apps/web-vue/src/App.vue");
-const chatShellWorkspaceCss = read("apps/web-vue/src/features/chat-v2/chat-shell-workspace.css");
+const chatShellWorkspaceCss = read("apps/web-vue/src/features/chat/chat-shell-workspace.css");
 const codexStackWorkspaceCss = read("apps/web-vue/src/features/codex-stack/codex-stack-workspace.css");
 const designContract = read("DESIGN.md");
 const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.css");
@@ -236,11 +236,11 @@ test("vue source keeps static inline styles out of templates", () => {
 
 test("remaining dynamic style bindings are limited to runtime geometry and measured state", () => {
   const dynamicStyleRationales = {
-    "apps/web-vue/src/features/chat-v2/CascadeMenu.vue": "portal menu position and z-index arbitration",
-    "apps/web-vue/src/features/chat-v2/CascadeMenuNode.vue": "z-index arbitration for nested portal menus",
-    "apps/web-vue/src/features/chat-v2/ComposerBar.vue": "keyboard viewport CSS variable handoff",
-    "apps/web-vue/src/features/chat-v2/ConversationPane.vue": "virtualized timeline placeholder height and mobile composer lift",
-    "apps/web-vue/src/features/chat-v2/MarkdownBlock.vue": "user-controlled preview scale and measured rendered markup size",
+    "apps/web-vue/src/features/chat/CascadeMenu.vue": "portal menu position and z-index arbitration",
+    "apps/web-vue/src/features/chat/CascadeMenuNode.vue": "z-index arbitration for nested portal menus",
+    "apps/web-vue/src/features/chat/ComposerBar.vue": "keyboard viewport CSS variable handoff",
+    "apps/web-vue/src/features/chat/ConversationPane.vue": "virtualized timeline placeholder height and mobile composer lift",
+    "apps/web-vue/src/features/chat/MarkdownBlock.vue": "user-controlled preview scale and measured rendered markup size",
     "apps/web-vue/src/shared/components/AvatarFieldEditor.vue": "avatar crop coordinates and preview geometry",
     "apps/web-vue/src/shared/components/StudioSelect.vue": "portal menu position and width geometry",
   };

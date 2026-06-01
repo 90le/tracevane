@@ -24,7 +24,7 @@ import remarkGfm from 'remark-gfm';
 import remarkRehype from 'remark-rehype';
 import rehypeRaw from 'rehype-raw';
 import rehypeStringify from 'rehype-stringify';
-import type { SanitizeLevel } from '../chat-v2/inline-preview-preferences';
+import type { SanitizeLevel } from './inline-preview-preferences';
 import type { ChatResourceItem } from '../../../../../types/chat';
 import { joinApiPath } from '../../shared/api';
 import {

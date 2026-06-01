@@ -13,7 +13,7 @@ const TerminalView = () => import("../../views/TerminalView.vue");
 const ConfigView = () => import("../../views/ConfigView.vue");
 const SystemView = () => import("../../views/SystemView.vue");
 const DreamingView = () => import("../../views/DreamingView.vue");
-const ChatShellPage = () => import("../chat-v2/ChatShellPage.vue");
+const ChatShellPage = () => import("../chat/ChatShellPage.vue");
 const AgentsControlPage = () => import("../agents/AgentsControlPage.vue");
 import { encodeChatSessionRef, isChatSessionRef } from "../chat/session-ref";
 const AgentDocsPage = () => import("../agents/AgentDocsPage.vue");

@@ -6,7 +6,12 @@ import type {
 
 function normalizeBasePath(value: string): string {
   if (!value || value === '/') return '';
-  return value.startsWith('/') ? value : `/${value}`;
+  const withSlash = value.startsWith('/') ? value : `/${value}`;
+  return withSlash.replace(/\/{2,}/g, '/').replace(/\/+$/g, '');
+}
+
+function getStandaloneBasePath(): string {
+  return normalizeBasePath(process.env.STUDIO_BASE_PATH || '');
 }
 
 export function buildStudioClientRuntimeConfig(
@@ -31,11 +36,12 @@ export function buildStudioClientRuntimeConfig(
     };
   }
 
+  const basePath = getStandaloneBasePath();
   return {
     exposureKind,
-    appBasePath: '',
-    apiBasePath: '',
-    webSocketBasePath: '',
+    appBasePath: basePath,
+    apiBasePath: basePath,
+    webSocketBasePath: basePath,
     gatewayAuthStorageScopePath,
     terminalDirectWebSocketPort: null,
     realtimeTransport: 'raw-ws',

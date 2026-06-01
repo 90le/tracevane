@@ -6,23 +6,23 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ConversationPane.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ConversationPane.vue'),
   'utf8',
 );
 const chatShellPage = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatShellPage.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ChatShellPage.vue'),
   'utf8',
 );
 const chatRecordBrowserPanel = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatRecordBrowserPanel.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ChatRecordBrowserPanel.vue'),
   'utf8',
 );
 const chatRecordBrowserCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/chat-record-browser.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/chat-record-browser.css'),
   'utf8',
 );
 const chatRecordBrowserState = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/chat-record-browser-state.ts'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/chat-record-browser-state.ts'),
   'utf8',
 );
 const chatApi = fs.readFileSync(

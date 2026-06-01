@@ -179,7 +179,7 @@ import {
   renderHighlightedCodeHtml,
   sanitizeMermaidSvg,
   sanitizeSvgPreviewMarkup,
-} from '../chat/markdown.ts';
+} from './markdown.ts';
 import {
   listenInlinePreviewPreferenceChange,
   readGlobalSanitizeLevel,

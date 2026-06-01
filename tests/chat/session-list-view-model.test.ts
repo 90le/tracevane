@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { computed, ref } from 'vue';
-import { useSessionListWindows } from '../../apps/web-vue/src/features/chat-v2/session-list-view-model.ts';
+import { useSessionListWindows } from '../../apps/web-vue/src/features/chat/session-list-view-model.ts';
 import type { ChatSessionRow } from '../../types/chat.ts';
 
 function createSession(key: string): ChatSessionRow {

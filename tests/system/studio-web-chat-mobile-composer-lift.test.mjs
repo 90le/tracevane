@@ -6,16 +6,16 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const composerBar = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ComposerBar.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ComposerBar.vue'),
   'utf8',
 );
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ConversationPane.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ConversationPane.vue'),
   'utf8',
 );
 
 const conversationPaneCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/conversation-pane.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/conversation-pane.css'),
   'utf8',
 );
 test('composer bar tracks compact-viewport keyboard lift from visualViewport', () => {

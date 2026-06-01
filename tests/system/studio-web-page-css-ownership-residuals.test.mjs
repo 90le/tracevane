@@ -46,10 +46,10 @@ const systemEventsCss = read("apps/web-vue/src/features/system/system-events.css
 const dreamingWorkspaceCss = read("apps/web-vue/src/features/dreaming/dreaming-workspace.css");
 const operateWorkspaceCss = read("apps/web-vue/src/features/operate/operate-workspace.css");
 const agentsWorkspaceCss = read("apps/web-vue/src/features/agents/agents-workspace.css");
-const chatShellWorkspaceCss = read("apps/web-vue/src/features/chat-v2/chat-shell-workspace.css");
-const chatOverlaySurfacesCss = read("apps/web-vue/src/features/chat-v2/overlay-surfaces.css");
+const chatShellWorkspaceCss = read("apps/web-vue/src/features/chat/chat-shell-workspace.css");
+const chatOverlaySurfacesCss = read("apps/web-vue/src/features/chat/overlay-surfaces.css");
 const chatV2FeatureCss = readFilesUnder(
-  "apps/web-vue/src/features/chat-v2",
+  "apps/web-vue/src/features/chat",
   (entryPath) => entryPath.endsWith(".css"),
 );
 const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.css");
@@ -109,7 +109,7 @@ test("DuoYuan feature overlays use solid sheets instead of blurred glass", () =>
   assert.doesNotMatch(webSourceText, /backdrop-filter:\s*blur\(/);
 });
 
-test("Chat v2 feature CSS uses DuoYuan tokens instead of raw palettes", () => {
+test("Chat feature CSS uses DuoYuan tokens instead of raw palettes", () => {
   assert.doesNotMatch(
     chatV2FeatureCss,
     /rgba\(|#[0-9a-fA-F]{3,8}|linear-gradient|radial-gradient|--sky|--atlas|--glass|backdrop-filter:\s*blur|blur\(/,

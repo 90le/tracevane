@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildChatShellQuickActions,
   buildChatShellWarnings,
-} from "../../dist/apps/web-vue/src/features/chat-v2/chat-shell-overview-recipe.js";
+} from "../../dist/apps/web-vue/src/features/chat/chat-shell-overview-recipe.js";
 
 test("buildChatShellQuickActions summarizes record browser and stage toggles", () => {
   const summary = buildChatShellQuickActions({

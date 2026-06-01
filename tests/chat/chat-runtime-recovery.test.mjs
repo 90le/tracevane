@@ -11,7 +11,7 @@ const {
   resolveRequestedOrFallbackSessionKey,
   saveChatRuntimeSnapshot,
   readChatRuntimeSnapshot,
-} = await import('../../apps/web-vue/src/features/chat-v2/chat-runtime-recovery.ts');
+} = await import('../../apps/web-vue/src/features/chat/chat-runtime-recovery.ts');
 
 function createSession(key, overrides = {}) {
   return {

@@ -10,10 +10,10 @@ const read = (filePath) =>
   fs.readFileSync(path.join(rootDir, filePath), "utf8");
 
 const chatShellPage = read(
-  "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
+  "apps/web-vue/src/features/chat/ChatShellPage.vue",
 );
 const chatShellWorkspaceCss = read(
-  "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css",
+  "apps/web-vue/src/features/chat/chat-shell-workspace.css",
 );
 
 test("chat page redesign keeps stage contracts and removes equal three-way blocks", () => {

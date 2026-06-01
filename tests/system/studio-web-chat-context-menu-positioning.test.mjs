@@ -6,15 +6,15 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const cascadeMenu = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/CascadeMenu.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/CascadeMenu.vue'),
   'utf8',
 );
 const sessionContextMenu = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SessionContextMenu.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SessionContextMenu.vue'),
   'utf8',
 );
 const folderPickerMenu = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/FolderPickerMenu.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/FolderPickerMenu.vue'),
   'utf8',
 );
 

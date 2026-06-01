@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const composerBar = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ComposerBar.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ComposerBar.vue'),
   'utf8',
 );
 const composerBarCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/composer-bar.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/composer-bar.css'),
   'utf8',
 );
 

@@ -6,15 +6,15 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ConversationPane.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ConversationPane.vue'),
   'utf8',
 );
 
 const conversationPaneCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/conversation-pane.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/conversation-pane.css'),
   'utf8',
 );const chatShellPage = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatShellPage.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ChatShellPage.vue'),
   'utf8',
 );
 

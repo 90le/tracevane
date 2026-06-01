@@ -34,7 +34,7 @@ test("confirm dialog foundation defines shared tone and structure contracts", ()
     "apps/web-vue/src/composables/useConfirmDialog.ts",
   );
   const chatShellPage = read(
-    "apps/web-vue/src/features/chat-v2/ChatShellPage.vue",
+    "apps/web-vue/src/features/chat/ChatShellPage.vue",
   );
 
   assert.match(

@@ -9,7 +9,7 @@ import {
   resetChatResourceResolverForTest,
   resolveMissingStudioResourcesForMarkdown,
   setChatResourceResolveTransportForTest,
-} from '../../apps/web-vue/src/features/chat-v2/chat-resource-resolver.ts';
+} from '../../apps/web-vue/src/features/chat/chat-resource-resolver.ts';
 
 type MarkdownModule = typeof import('../../apps/web-vue/src/features/chat/markdown.ts');
 

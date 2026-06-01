@@ -5,7 +5,7 @@ import {
   applyRuntimeToStudioSlashExecutionFeedback,
   createStudioSlashExecutionFeedback,
   describeStudioSlashExecutionFeedback,
-} from '../../apps/web-vue/src/features/chat-v2/slash-feedback';
+} from '../../apps/web-vue/src/features/chat/slash-feedback';
 
 function createRuntime(overrides: Record<string, unknown> = {}) {
   return {

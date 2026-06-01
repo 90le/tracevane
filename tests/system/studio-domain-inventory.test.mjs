@@ -36,7 +36,7 @@ test("studio inventory script writes a machine-readable baseline for routes, api
   assert.ok(Array.isArray(payload.testSuites));
   assert.ok(payload.webRoutes.includes("/dashboard"));
   assert.ok(payload.apiModules.includes("config"));
-  assert.ok(payload.webFeatures.includes("chat-v2"));
+  assert.ok(payload.webFeatures.includes("chat"));
   assert.ok(
     payload.testSuites.includes("tests/system/config-service.test.mjs"),
   );

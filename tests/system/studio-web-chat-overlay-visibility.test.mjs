@@ -9,76 +9,76 @@ const rootDir = path.resolve(
   "../..",
 );
 const chatShellPage = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ChatShellPage.vue"),
   "utf8",
 );
 const chatShellWorkspaceCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/chat-shell-workspace.css"),
   "utf8",
 );
 const overlaySurfacesCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/overlay-surfaces.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/overlay-surfaces.css"),
   "utf8",
 );
 const slashCommandCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/slash-command.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/slash-command.css"),
   "utf8",
 );
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ConversationPane.vue"),
   "utf8",
 );
 
 const conversationPaneCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/conversation-pane.css"),
   "utf8",
 );
 const sessionFilterBar = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionFilterBar.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionFilterBar.vue"),
   "utf8",
 );
 
 const sessionFilterCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-filter.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/session-filter.css"),
   "utf8",
 );
 const sessionListPanel = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionListPanel.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionListPanel.vue"),
   "utf8",
 );
 const composerBar = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ComposerBar.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ComposerBar.vue"),
   "utf8",
 );
 const composerBarCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/composer-bar.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/composer-bar.css"),
   "utf8",
 );
 const slashCommandMenu = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SlashCommandMenu.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SlashCommandMenu.vue"),
   "utf8",
 );
 const cascadeMenu = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/CascadeMenu.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/CascadeMenu.vue"),
   "utf8",
 );
 const newChatAgentPicker = fs.readFileSync(
   path.join(
     rootDir,
-    "apps/web-vue/src/features/chat-v2/NewChatAgentPicker.vue",
+    "apps/web-vue/src/features/chat/NewChatAgentPicker.vue",
   ),
   "utf8",
 );
 const chatRecordBrowserCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-record-browser.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/chat-record-browser.css"),
   "utf8",
 );
 const markdownBlockCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/markdown-block.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/markdown-block.css"),
   "utf8",
 );
 const messageBubbleCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/message-bubble.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/message-bubble.css"),
   "utf8",
 );
 
@@ -87,11 +87,11 @@ test("chat theme tokens are exposed on html so portal overlays inherit visible s
   assert.doesNotMatch(chatShellPage, /<style scoped>/);
   assert.match(
     chatShellWorkspaceCss,
-    /html\[data-theme="light"\],\s*\.chat-v2-shell\.theme-light,\s*\.chat-mobile-drawer-mask\.theme-light\s*\{/,
+    /html\[data-theme="light"\],\s*\.chat-shell\.theme-light,\s*\.chat-mobile-drawer-mask\.theme-light\s*\{/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /html:not\(\[data-theme="light"\]\),\s*\.chat-v2-shell\.theme-dark,\s*\.chat-mobile-drawer-mask\.theme-dark\s*\{/,
+    /html:not\(\[data-theme="light"\]\),\s*\.chat-shell\.theme-dark,\s*\.chat-mobile-drawer-mask\.theme-dark\s*\{/,
   );
   assert.match(
     chatShellWorkspaceCss,

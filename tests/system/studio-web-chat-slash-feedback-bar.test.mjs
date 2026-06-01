@@ -6,19 +6,19 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const chatShellPage = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ChatShellPage.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ChatShellPage.vue'),
   'utf8',
 );
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/ConversationPane.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/ConversationPane.vue'),
   'utf8',
 );
 const slashFeedbackBar = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/SlashCommandFeedbackBar.vue'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/SlashCommandFeedbackBar.vue'),
   'utf8',
 );
 const slashCommandCss = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/chat-v2/slash-command.css'),
+  path.join(rootDir, 'apps/web-vue/src/features/chat/slash-command.css'),
   'utf8',
 );
 

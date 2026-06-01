@@ -17,28 +17,28 @@ const appVue = fs.readFileSync(
   "utf8",
 );
 const chatShellPage = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ChatShellPage.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ChatShellPage.vue"),
   "utf8",
 );
 const chatShellWorkspaceCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-shell-workspace.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/chat-shell-workspace.css"),
   "utf8",
 );
 const sessionListPanel = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/SessionListPanel.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionListPanel.vue"),
   "utf8",
 );
 const sessionListSharedCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/session-list-shared.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/session-list-shared.css"),
   "utf8",
 );
 const conversationPane = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/ConversationPane.vue"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/ConversationPane.vue"),
   "utf8",
 );
 
 const conversationPaneCss = fs.readFileSync(
-  path.join(rootDir, "apps/web-vue/src/features/chat-v2/conversation-pane.css"),
+  path.join(rootDir, "apps/web-vue/src/features/chat/conversation-pane.css"),
   "utf8",
 );
 test("app shell uses a direct route host so chat is not boxed inside extra shell wrappers", () => {
@@ -106,12 +106,12 @@ test("chat route shell establishes an unbroken full-height chain without centere
   assert.doesNotMatch(
     styleCss,
     /\.main-content\.chat-surface-route\s*\{/,
-    "chat route full-height shell rules should live with chat-v2 feature CSS",
+    "chat route full-height shell rules should live with chat feature CSS",
   );
   assert.doesNotMatch(
     styleCss,
     /\.shell-layout-chat\s*\{/,
-    "chat shell layout reset should live with chat-v2 feature CSS",
+    "chat shell layout reset should live with chat feature CSS",
   );
   assert.doesNotMatch(styleCss, /\.shell-stage-surface-chat\s*\{/);
   assert.doesNotMatch(styleCss, /\.shell-canvas-chat\s*\{/);

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildChatHistoryStateSummary,
   buildChatStageHeader,
-} from "../../dist/apps/web-vue/src/features/chat-v2/chat-stage-selectors.js";
+} from "../../dist/apps/web-vue/src/features/chat/chat-stage-selectors.js";
 
 function createSession(overrides = {}) {
   return {
