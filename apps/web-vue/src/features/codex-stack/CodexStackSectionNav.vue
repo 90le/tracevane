@@ -6,6 +6,9 @@
       type="button"
       class="cs-stack-task-step"
       :class="{ 'cs-stack-task-step-active': activeSection === section.id }"
+      :aria-current="activeSection === section.id ? 'step' : undefined"
+      :data-tone="section.tone"
+      :data-recommended="section.recommended ? 'true' : undefined"
       @click="$emit('select', section.id)"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">

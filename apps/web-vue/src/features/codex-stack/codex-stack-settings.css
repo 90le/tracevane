@@ -10,28 +10,6 @@
     linear-gradient(135deg, color-mix(in srgb, var(--surface-base) 92%, var(--code-bg) 8%), var(--surface-base));
 }
 
-.cs-model-catalog-card .cs-card-header,
-.cs-upstream-map .cs-card-header,
-.cs-environment-reference-card .cs-card-header,
-.cs-runtime-config-card .cs-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.cs-model-catalog-card .cs-card-header h4,
-.cs-upstream-map .cs-card-header h4,
-.cs-environment-reference-card .cs-card-header h4,
-.cs-runtime-config-card .cs-card-header h4 {
-  margin: 0;
-}
-
-.cs-model-catalog-card .cs-field-hint {
-  color: var(--text-soft);
-  font-size: 0.84rem;
-}
-
 .cs-model-list {
   display: flex;
   flex-wrap: wrap;
@@ -115,21 +93,6 @@
   word-break: break-word;
 }
 
-.cs-runtime-config-card .cs-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.cs-runtime-config-card .cs-form-span-2 {
-  grid-column: 1 / -1;
-}
-
-.cs-runtime-config-card .form-help {
-  color: var(--text-soft);
-  font-size: 0.84rem;
-}
-
 .cs-route-selector {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -195,33 +158,6 @@
 
 .cs-route-selector .cs-disabled-help {
   grid-column: 1 / -1;
-}
-
-.cs-runtime-config-card .cs-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.cs-model-catalog-card .cs-disabled-help,
-.cs-runtime-config-card .cs-disabled-help {
-  margin: 0;
-  color: var(--warning);
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
-.cs-restart-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 12px;
-  background: color-mix(in srgb, var(--surface-base) 82%, transparent);
-  color: var(--text-soft);
-  font-size: 0.85rem;
 }
 
 .cs-restart-hint-block {

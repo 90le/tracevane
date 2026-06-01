@@ -55,25 +55,28 @@
         @dismiss="dismissActiveJob"
       />
 
-      <CodexStackModelRibbon
-        v-if="activeSection !== 'dashboard'"
-        :current-model="summary.models.current || summary.profile.defaultModel || '--'"
-        :source-help="modelSourceHelp"
-        :source-tone="modelSourceTone"
-        :source-label="modelSourceLabel"
-        :model-count="modelOptions.length"
-        :context-tokens-display="contextTokensDisplay"
-        :loading="loading"
-        :loading-disabled-help="summaryRefreshDisabledHelp"
-        @reload="loadSummary"
-      />
-
       <CodexStackWorkspaceShell
         :sections="navSections"
         :active-section="activeSection"
         :focus-hint="workspaceFocusHint"
+        :draft-hint="workspaceDraftHint"
         @select="selectWorkspaceSection"
       >
+        <template #context>
+          <CodexStackModelRibbon
+            v-if="activeSection !== 'dashboard'"
+            :current-model="summary.models.current || summary.profile.defaultModel || '--'"
+            :source-help="modelSourceHelp"
+            :source-tone="modelSourceTone"
+            :source-label="modelSourceLabel"
+            :model-count="modelOptions.length"
+            :context-tokens-display="contextTokensDisplay"
+            :loading="loading"
+            :loading-disabled-help="summaryRefreshDisabledHelp"
+            @reload="loadSummary"
+          />
+        </template>
+
         <template v-if="activeSection === 'dashboard'">
           <CodexStackSectionStack>
             <CodexStackDashboardRuntimeStrip
@@ -607,6 +610,7 @@ import type { CodexStackServiceCard } from "./CodexStackServiceGrid.vue";
 import CodexStackUpstreamMap from "./CodexStackUpstreamMap.vue";
 import CodexStackWorkspaceShell from "./CodexStackWorkspaceShell.vue";
 import type { CodexStackWorkspaceFocusHint } from "./CodexStackWorkspaceShell.vue";
+import "./codex-stack-shared-primitives.css";
 import "./codex-stack-workspace.css";
 
 const { text } = useLocalePreference();
@@ -1787,6 +1791,24 @@ const hasCcConnectRawChanges = computed(() => ccConnectRawDraft.value !== (ccCon
 const hasCcConnectStructuredChanges = computed(
   () => serializeCcConnectStructuredDraft() !== ccConnectStructuredBaseline.value,
 );
+const workspaceDraftHint = computed<CodexStackWorkspaceFocusHint | null>(() => {
+  const protectedAreas: string[] = [];
+  if (hasInstallDraftChanges.value) protectedAreas.push(text("安装参数", "install parameters"));
+  if (hasConfigPatchChanges.value) protectedAreas.push(text("模型路由", "model routing"));
+  if (hasCcConnectStructuredChanges.value || hasCcConnectRawChanges.value) {
+    protectedAreas.push(text("Agent 桥接", "Agent Bridge"));
+  }
+  if (!protectedAreas.length) return null;
+  return {
+    kicker: text("草稿保护", "Draft Guard"),
+    title: text("刷新不会覆盖未保存改动", "Refresh preserves unsaved edits"),
+    copy: text(
+      `已检测到 ${protectedAreas.join("、")} 草稿；页面激活或刷新状态时只更新服务状态，保留本地输入直到保存或手动改回。`,
+      `Unsaved ${protectedAreas.join(", ")} drafts are present. Route activation and status refresh update service state while keeping local edits until they are saved or reverted.`,
+    ),
+    tone: "accent",
+  };
+});
 const serviceCards = computed<CodexStackServiceCard[]>(() => {
   if (!summary.value) return [];
   return primaryServices.value.map((service) => {
