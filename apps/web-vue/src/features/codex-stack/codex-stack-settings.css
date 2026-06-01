@@ -4,6 +4,18 @@
     var(--surface-base);
 }
 
+.cs-route-models-section {
+  container: cs-route-models / inline-size;
+}
+
+.cs-route-models-section .cs-responsive-grid,
+.cs-route-models-section .cs-surface,
+.cs-runtime-config-card,
+.cs-environment-reference-card,
+.cs-upstream-map {
+  min-width: 0;
+}
+
 .cs-upstream-map {
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--success) 12%, transparent), transparent 34%),
@@ -22,12 +34,15 @@
 .cs-model-list span {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 7px 10px;
   background: color-mix(in srgb, var(--code-bg) 42%, transparent);
   color: var(--text);
   font-size: 0.84rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .cs-model-list .cs-model-current {
@@ -98,10 +113,15 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px 14px;
   align-items: center;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
   background: color-mix(in srgb, var(--surface-base) 88%, transparent);
+}
+
+.cs-route-selector > * {
+  min-width: 0;
 }
 
 .cs-route-selector strong {
@@ -154,6 +174,14 @@
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
+}
+
+.cs-route-actions > button {
+  flex: 1 1 148px;
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
 }
 
 .cs-route-selector .cs-disabled-help {
@@ -195,6 +223,7 @@
   color: var(--text-soft);
   font-size: 0.84rem;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .cs-impact-item.tone-warning {
@@ -222,5 +251,33 @@
 
   .cs-route-actions {
     justify-content: flex-start;
+  }
+}
+
+@container cs-route-models (max-width: 1040px) {
+  .cs-route-models-section .cs-responsive-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-route-models-section .cs-upstream-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cs-route-models-section .cs-route-selector {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .cs-route-models-section .cs-route-actions {
+    justify-content: flex-start;
+  }
+}
+
+@container cs-route-models (max-width: 720px) {
+  .cs-route-models-section .cs-upstream-grid,
+  .cs-route-models-section .cs-runtime-config-card .cs-form-grid,
+  .cs-route-models-section .cs-route-facts,
+  .cs-route-models-section .cs-kv-row {
+    grid-template-columns: 1fr;
   }
 }

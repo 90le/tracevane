@@ -5,6 +5,11 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
+}
+
+.cs-card-header > div {
+  min-width: 0;
 }
 
 .cs-card-header h4,
@@ -169,6 +174,13 @@ html[data-theme="light"] .cs-task-badge.tone-accent {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.cs-form-grid > *,
+.cs-form-grid .form-field,
+.cs-form-grid .form-input,
+.cs-form-grid select.form-input {
+  min-width: 0;
 }
 
 .cs-form-span-2 {

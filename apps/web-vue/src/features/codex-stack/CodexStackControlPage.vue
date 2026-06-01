@@ -77,363 +77,198 @@
           />
         </template>
 
-        <template v-if="activeSection === 'dashboard'">
-          <CodexStackSectionStack>
-            <CodexStackDashboardRuntimeStrip
-              :status-label="statusLabel"
-              :status-tone="statusTone"
-              :active-service-count="activeServiceCount"
-              :service-count="serviceCount"
-              :current-model="summary.models.current"
-              :codex-route-label="codexRouteLabel"
-              :context-tokens-display="contextTokensDisplay"
-              :channel-label="channelLabel(summary.installer.channel)"
-              :checked-at-label="formatTimestamp(summary.checkedAt)"
-              :busy="actionBusy"
-              :busy-disabled-help="actionBusyDisabledHelp"
-              :can-run-mutation="canRunMutation"
-              :mutation-disabled-help="mutationDisabledHelp"
-              :sync-disabled="loading || ccConnectLoading"
-              :sync-disabled-help="refreshDisabledHelp"
-              :ready-component-count="readyComponentCount"
-              :component-count="summary.components.length"
-              :issue-count="issueCount"
-              :readiness-value="readinessValue"
-              :next-action-title="nextActionTitle"
-              :next-action-copy="nextActionCopy"
-              :next-action-button="nextActionButton"
-              :next-action-requires-mutation="nextActionRequiresMutation"
-              :next-action-disabled-help="nextActionDisabledHelp"
-              :model-source-label="modelSourceLabel"
-              :model-source-help="modelSourceHelp"
-              :model-catalog-preview="modelCatalogPreview"
-              @primary="nextActionPrimary"
-              @open-section="setWorkspaceSection(nextActionSection, focusHintForAction(nextActionTitle, nextActionCopy))"
-              @run-check="runCheck"
-              @repair="repairRecommended"
-              @sync="loadAll"
-            />
+        <CodexStackDashboardSection
+          v-if="activeSection === 'dashboard'"
+          :summary="summary"
+          :status-label="statusLabel"
+          :status-tone="statusTone"
+          :active-service-count="activeServiceCount"
+          :service-count="serviceCount"
+          :codex-route-label="codexRouteLabel"
+          :context-tokens-display="contextTokensDisplay"
+          :channel-label="channelLabel(summary.installer.channel)"
+          :checked-at-label="formatTimestamp(summary.checkedAt)"
+          :action-busy="actionBusy"
+          :action-busy-disabled-help="actionBusyDisabledHelp"
+          :can-run-mutation="canRunMutation"
+          :mutation-disabled-help="mutationDisabledHelp"
+          :sync-disabled="loading || ccConnectLoading"
+          :sync-disabled-help="refreshDisabledHelp"
+          :ready-component-count="readyComponentCount"
+          :issue-count="issueCount"
+          :readiness-value="readinessValue"
+          :next-action-title="nextActionTitle"
+          :next-action-copy="nextActionCopy"
+          :next-action-button="nextActionButton"
+          :next-action-requires-mutation="nextActionRequiresMutation"
+          :next-action-disabled-help="nextActionDisabledHelp"
+          :model-source-label="modelSourceLabel"
+          :model-source-help="modelSourceHelp"
+          :model-catalog-preview="modelCatalogPreview"
+          :run-readiness-tone="runReadinessTone"
+          :run-readiness-actions-disabled="runReadinessActionsDisabled"
+          :run-readiness-disabled-label="runReadinessDisabledLabel"
+          :chain-map-labels="chainMapLabels"
+          :chain-nodes="chainNodes"
+          :chain-gates="chainGates"
+          :chain-warnings="chainWarnings"
+          :service-cards="serviceCards"
+          :service-grid-labels="serviceGridLabels"
+          :dashboard-insights-labels="dashboardInsightsLabels"
+          :runtime-summary-rows="runtimeSummaryRows"
+          :network-policy-card="networkPolicyCard"
+          :smoke-matrix-card="smokeMatrixCard"
+          :component-health-cards="componentHealthCards"
+          @primary="nextActionPrimary"
+          @open-section="setWorkspaceSection(nextActionSection, focusHintForAction(nextActionTitle, nextActionCopy))"
+          @run-check="runCheck"
+          @repair="repairRecommended"
+          @sync="loadAll"
+          @readiness-check-action="runReadinessCheckAction"
+          @readiness-mode-action="runReadinessModeAction"
+          @service-action="serviceAction"
+        />
 
-            <details class="cs-dashboard-details-panel">
-              <summary>
-                <span>{{ text('高级状态详情', 'Advanced Status Details') }}</span>
-                <small>{{ text('技术链路、服务单元、组件健康和健康检查入口默认收起；检查结果会用悬浮窗口展示。', 'Technical chain, service units, component health, and the health-check entry stay collapsed; check results open in a floating dialog.') }}</small>
-              </summary>
-              <div class="cs-dashboard-details-body">
-                <CodexStackRunReadinessPanel
-                  v-if="summary.runReadiness"
-                  :readiness="summary.runReadiness"
-                  :tone="runReadinessTone"
-                  :actions-disabled="runReadinessActionsDisabled"
-                  :disabled-label="runReadinessDisabledLabel"
-                  @check-action="runReadinessCheckAction"
-                  @mode-action="runReadinessModeAction"
-                />
+        <CodexStackInstallSection
+          v-else-if="activeSection === 'install'"
+          :highlights="installPlanHighlights"
+          :can-run-mutation="canRunMutation"
+          :mutation-disabled-help="mutationDisabledHelp"
+          :recommended-title="installPlanRecommendedTitle"
+          :recommended-copy="installPlanRecommendedCopy"
+          :recommended-button="installPlanRecommendedButton"
+          :recommended-disabled="installPlanRecommendedDisabled"
+          :recommended-disabled-help="installPlanRecommendedDisabledHelp"
+          :recommended-tone="installPlanRecommendedTone"
+          :shell-busy="Boolean(activeJob && isCodexStackJobRunning(activeJob))"
+          :can-attach-codex-cpa="canAttachCodexCpa"
+          :attach-codex-cpa-help="attachCodexCpaHelp"
+          :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
+          :attach-preflight-items="attachPreflightItems"
+          :form="installForm"
+          :model-options="modelOptions"
+          :model-source-label="modelSourceLabel"
+          :context-tokens-disabled="installContextTokensDisabled"
+          :context-tokens-disabled-help="installContextTokensDisabledHelp"
+          :component-strategies="installComponentStrategies"
+          @run-recommended="runInstallPlanRecommendation"
+          @install-full="installFullStack"
+          @install-base="installBaseOnly"
+          @reinstall-full="reinstallFullStack"
+          @repair="repairRecommended"
+          @repair-recommended="repairRecommended"
+          @repair-conflicts="repairConflictingUnits"
+          @repair-config-only="repairConfigOnly"
+          @pause-stack="pauseStack"
+          @resume-stack="resumeStack"
+          @run-smoke-matrix="runSmokeMatrix"
+          @attach-codex-cpa="applyCodexCpaAfterSmoke"
+          @restore-official-chatgpt="restoreOfficialChatGpt"
+          @update-field="updateInstallFormField"
+          @set-component-mode="setComponentMode"
+        />
 
-                <CodexStackChainMap
-                  :labels="chainMapLabels"
-                  :overall-tone="statusTone"
-                  :nodes="chainNodes"
-                  :gates="chainGates"
-                  :warnings="chainWarnings"
-                />
+        <CodexStackAgentBridgeSection
+          v-else-if="activeSection === 'cc-connect'"
+          :summary="summary"
+          :project-name="primaryCcConnectProjectName"
+          :provider-count="ccConnectProviderDraftCount"
+          :project-count="ccConnectProjectDraftCount"
+          :has-structured-changes="hasCcConnectStructuredChanges"
+          :has-raw-changes="hasCcConnectRawChanges"
+          :can-run-mutation="canRunMutation"
+          :mutation-disabled-help="mutationDisabledHelp"
+          :panes="agentPanes"
+          :active-pane="activeAgentPane"
+          :rail-projects="ccConnectProjectRailItems"
+          :selected-project-id="selectedProjectDraft?.id || ''"
+          :busy="busy"
+          :busy-disabled-help="busyDisabledHelp"
+          :selected-project="selectedProjectDraft"
+          :selected-project-summary="selectedProjectSummary"
+          :presets="projectPresetCards"
+          :platform-templates="platformTemplates"
+          :model-options="modelOptions"
+          :loading="ccConnectLoading && !ccConnectConfig"
+          :language="ccConnectLanguageDraft"
+          :providers="ccConnectProviderDrafts"
+          :compact-proxy-base-url="compactProxyBaseUrl"
+          :commands="ccConnectSetupCommands"
+          :raw-draft="ccConnectRawDraft"
+          @save-structured="saveCcConnectStructured"
+          @save-raw="saveCcConnectRaw"
+          @set-active-pane="setActiveAgentPane"
+          @select-project="selectCcConnectProject"
+          @add-project="addCcConnectProject"
+          @sync-default-model="applyDefaultModelToCcConnectProjects"
+          @remove-project="removeCcConnectProject"
+          @add-preset="addCcConnectProjectPreset"
+          @update-project-field="updateCcConnectProjectField"
+          @update-agent-option="updateCcConnectAgentOption"
+          @add-platform="addPlatformToSelectedProject"
+          @remove-platform="removePlatformFromSelectedProject"
+          @update-platform-type="updateCcConnectPlatformType"
+          @update-platform-option="updateCcConnectPlatformOption"
+          @add-platform-option="addCcConnectPlatformOptionById"
+          @remove-platform-option="removeCcConnectPlatformOptionById"
+          @update-language="updateCcConnectLanguage"
+          @update-provider-field="updateCcConnectProviderField"
+          @ensure-cpa-provider="ensureCpaProviderDraft"
+          @add-provider="addCcConnectProvider"
+          @remove-provider="removeCcConnectProvider"
+          @copy-setup="copySetupCommand"
+          @finalize="finalizeCcConnect"
+          @update-raw="updateCcConnectRawDraft"
+        />
 
-                <CodexStackServiceGrid
-                  :services="serviceCards"
-                  :can-run-mutation="canRunMutation"
-                  :mutation-disabled-help="mutationDisabledHelp"
-                  :labels="serviceGridLabels"
-                  @service-action="serviceAction"
-                />
+        <CodexStackRouteModelsSection
+          v-else-if="activeSection === 'settings'"
+          :summary="summary"
+          :intro-chips="settingsSectionIntroChips"
+          :model-options="modelOptions"
+          :model-source-help="modelSourceHelp"
+          :loading="loading"
+          :summary-refresh-disabled-help="summaryRefreshDisabledHelp"
+          :default-model="configForm.defaultModel || summaryTargetModel(summary) || '--'"
+          :compact-proxy-base-url="compactProxyBaseUrl"
+          :canonical-provider="canonicalCcConnectProvider"
+          :form="configForm"
+          :context-tokens-disabled="configContextTokensDisabled"
+          :context-tokens-disabled-help="configContextTokensDisabledHelp"
+          :restart-required-units="restartRequiredUnits"
+          :impact-items="configImpactItems"
+          :can-attach-codex-cpa="canAttachCodexCpa"
+          :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
+          :can-run-mutation="canRunMutation"
+          :has-changes="hasConfigPatchChanges"
+          :mutation-disabled-help="mutationDisabledHelp"
+          :codex-auth-status="codexAuthStatus"
+          :context-tokens-display="contextTokensDisplay"
+          @reload="loadSummary"
+          @update-field="updateConfigFormField"
+          @save="saveConfigPatch"
+          @save-and-attach-cpa="saveConfigThenAttachCpa"
+          @save-and-force-cpa="saveConfigThenForceCpa"
+          @save-and-use-official="saveConfigThenUseOfficial"
+        />
 
-                <CodexStackDashboardInsights
-                  :labels="dashboardInsightsLabels"
-                  :runtime-rows="runtimeSummaryRows"
-                  :network-policy="networkPolicyCard"
-                  :smoke-matrix="smokeMatrixCard"
-                  :components="componentHealthCards"
-                />
-
-                <CodexStackDiagnosticsPanel
-                  :warnings="summary.warnings"
-                  :busy="actionBusy"
-                  :busy-disabled-help="actionBusyDisabledHelp"
-                  @run-check="runCheck"
-                />
-              </div>
-            </details>
-          </CodexStackSectionStack>
-        </template>
-
-        <template v-else-if="activeSection === 'install'">
-          <CodexStackSectionStack>
-            <CodexStackSectionIntro
-              :kicker="text('安装', 'Install')"
-              :title="text('一键安装与修复', 'One-click Install and Repair')"
-              :copy="text('第一次使用先走新手入口；日常异常只按“推荐修复 → 只验证 → 验证并切换”三步。安装参数和高级维护默认收起，只有需要改模型、端口或处理冲突时再打开。', 'First-time users start with the beginner entry. Daily recovery follows Recommended Repair, Verify Only, then Smoke & Attach. Install parameters and advanced maintenance stay collapsed until a model, port, or conflict needs manual handling.')"
-            />
-
-            <CodexStackInstallPlanCard
-              :highlights="installPlanHighlights"
-              :can-run-mutation="canRunMutation"
-              :mutation-disabled-help="mutationDisabledHelp"
-              :recommended-title="installPlanRecommendedTitle"
-              :recommended-copy="installPlanRecommendedCopy"
-              :recommended-button="installPlanRecommendedButton"
-              :recommended-disabled="installPlanRecommendedDisabled"
-              :recommended-disabled-help="installPlanRecommendedDisabledHelp"
-              :recommended-tone="installPlanRecommendedTone"
-              @run-recommended="runInstallPlanRecommendation"
-              @install-full="installFullStack"
-              @install-base="installBaseOnly"
-              @reinstall-full="reinstallFullStack"
-              @repair="repairRecommended"
-            />
-
-            <CodexStackInstallShell :busy="Boolean(activeJob && isCodexStackJobRunning(activeJob))">
-              <CodexStackRepairBoard
-                :can-run-mutation="canRunMutation"
-                :mutation-disabled-help="mutationDisabledHelp"
-                :can-attach-codex-cpa="canAttachCodexCpa"
-                :attach-codex-cpa-help="attachCodexCpaHelp"
-                :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
-                :attach-preflight-items="attachPreflightItems"
-                @repair-recommended="repairRecommended"
-                @repair-conflicts="repairConflictingUnits"
-                @repair-config-only="repairConfigOnly"
-                @pause-stack="pauseStack"
-                @resume-stack="resumeStack"
-                @run-smoke-matrix="runSmokeMatrix"
-                @attach-codex-cpa="applyCodexCpaAfterSmoke"
-                @restore-official-chatgpt="restoreOfficialChatGpt"
-              />
-
-              <details class="cs-install-options-panel">
-                <summary>
-                  <span>{{ text('安装参数和高级安装策略', 'Install Parameters and Advanced Strategy') }}</span>
-                  <small>{{ text('一般不用改；需要换模型、端口、上游或强制重装时再打开。', 'Usually leave this closed; open only for model, port, upstream, or reinstall changes.') }}</small>
-                </summary>
-                <div class="cs-install-options-body">
-                  <CodexStackInstallConfigPanel
-                    :form="installForm"
-                    :model-options="modelOptions"
-                    :model-source-label="modelSourceLabel"
-                    :context-tokens-disabled="installContextTokensDisabled"
-                    :context-tokens-disabled-help="installContextTokensDisabledHelp"
-                    @update-field="updateInstallFormField"
-                  />
-
-                  <CodexStackInstallStrategyPanel
-                    :components="installComponentStrategies"
-                    :can-run-mutation="canRunMutation"
-                    :mutation-disabled-help="mutationDisabledHelp"
-                    @set-component-mode="setComponentMode"
-                    @install-full="installFullStack"
-                    @install-base="installBaseOnly"
-                    @reinstall-full="reinstallFullStack"
-                    @repair="repairRecommended"
-                  />
-                </div>
-              </details>
-            </CodexStackInstallShell>
-          </CodexStackSectionStack>
-        </template>
-
-        <template v-else-if="activeSection === 'cc-connect'">
-          <CodexStackSectionStack>
-            <CodexStackCcConnectCommandBar
-              :installed="summary.ccConnect.installed"
-              :configured="summary.ccConnect.configured"
-              :binding-present="summary.ccConnect.bindingPresent"
-              :finalizer-available="summary.ccConnect.finalizerAvailable"
-              :project-name="primaryCcConnectProjectName"
-              :provider-count="ccConnectProviderDraftCount"
-              :project-count="ccConnectProjectDraftCount"
-              :has-structured-changes="hasCcConnectStructuredChanges"
-              :has-raw-changes="hasCcConnectRawChanges"
-              :can-run-mutation="canRunMutation"
-              :mutation-disabled-help="mutationDisabledHelp"
-              @save-structured="saveCcConnectStructured"
-              @save-raw="saveCcConnectRaw"
-            />
-
-            <CodexStackCcConnectStage
-              :panes="agentPanes"
-              :active-pane="activeAgentPane"
-              :projects="ccConnectProjectRailItems"
-              :selected-project-id="selectedProjectDraft?.id || ''"
-              :busy="busy"
-              :busy-disabled-help="busyDisabledHelp"
-              @set-active-pane="setActiveAgentPane"
-              @select-project="selectCcConnectProject"
-              @add-project="addCcConnectProject"
-            >
-              <template v-if="activeAgentPane === 'projects'">
-                <CodexStackCcConnectProjectPanel
-                  :project="selectedProjectDraft"
-                  :project-summary="selectedProjectSummary"
-                  :presets="projectPresetCards"
-                  :platform-templates="platformTemplates"
-                  :model-options="modelOptions"
-                  :loading="ccConnectLoading && !ccConnectConfig"
-                  :busy="busy"
-                  :busy-disabled-help="busyDisabledHelp"
-                  @sync-default-model="applyDefaultModelToCcConnectProjects"
-                  @remove-project="removeCcConnectProject"
-                  @add-preset="addCcConnectProjectPreset"
-                  @add-project="addCcConnectProject"
-                  @update-project-field="updateCcConnectProjectField"
-                  @update-agent-option="updateCcConnectAgentOption"
-                  @add-platform="addPlatformToSelectedProject"
-                  @remove-platform="removePlatformFromSelectedProject"
-                  @update-platform-type="updateCcConnectPlatformType"
-                  @update-platform-option="updateCcConnectPlatformOption"
-                  @add-platform-option="addCcConnectPlatformOptionById"
-                  @remove-platform-option="removeCcConnectPlatformOptionById"
-                />
-              </template>
-
-              <template v-else-if="activeAgentPane === 'providers'">
-                <CodexStackCcConnectProviderPanel
-                  :language="ccConnectLanguageDraft"
-                  :providers="ccConnectProviderDrafts"
-                  :compact-proxy-base-url="compactProxyBaseUrl"
-                  :loading="ccConnectLoading && !ccConnectConfig"
-                  :busy="busy"
-                  :busy-disabled-help="busyDisabledHelp"
-                  @update-language="updateCcConnectLanguage"
-                  @update-provider-field="updateCcConnectProviderField"
-                  @ensure-cpa-provider="ensureCpaProviderDraft"
-                  @add-provider="addCcConnectProvider"
-                  @remove-provider="removeCcConnectProvider"
-                />
-              </template>
-
-              <template v-else-if="activeAgentPane === 'setup'">
-                <CodexStackCcConnectSetupPanel
-                  :commands="ccConnectSetupCommands"
-                  :busy="busy"
-                  :busy-disabled-help="busyDisabledHelp"
-                  :can-run-mutation="canRunMutation"
-                  :mutation-disabled-help="mutationDisabledHelp"
-                  :can-finalize="summary.ccConnect.canFinalize"
-                  @copy-setup="copySetupCommand"
-                  @finalize="finalizeCcConnect"
-                />
-              </template>
-
-              <template v-else>
-                <CodexStackCcConnectRawPanel
-                  :raw-draft="ccConnectRawDraft"
-                  :has-raw-changes="hasCcConnectRawChanges"
-                  :can-run-mutation="canRunMutation"
-                  :mutation-disabled-help="mutationDisabledHelp"
-                  @update-raw="updateCcConnectRawDraft"
-                  @save-raw="saveCcConnectRaw"
-                />
-              </template>
-            </CodexStackCcConnectStage>
-          </CodexStackSectionStack>
-        </template>
-
-        <template v-else-if="activeSection === 'settings'">
-          <CodexStackSectionStack>
-            <CodexStackSectionIntro
-              :kicker="text('模型与上游', 'Models and Upstreams')"
-              :title="text('统一模型、端口与上游配置', 'Unified Model, Port, and Upstream Config')"
-              :copy="text('这里是所有模型选择器的来源。优先读取本地 Compact /v1/models；不可达时显示配置回退列表。cc-connect Provider 推荐统一指向本地 Compact。', 'This is the source for every model selector. It prefers local Compact /v1/models and falls back to parsed config when unavailable. cc-connect providers should point to local Compact.')"
-              :chips="settingsSectionIntroChips"
-            />
-
-            <CodexStackModelCatalogCard
-              :models="modelOptions"
-              :current-model="summary.models.current"
-              :source-help="modelSourceHelp"
-              :loading="loading"
-              :loading-disabled-help="summaryRefreshDisabledHelp"
-              @reload="loadSummary"
-            />
-
-            <CodexStackUpstreamMap
-              :default-model="configForm.defaultModel || summaryTargetModel(summary) || '--'"
-              :compact-proxy-base-url="compactProxyBaseUrl"
-              :provider-name="canonicalCcConnectProvider.name"
-              :provider-base-url="canonicalCcConnectProvider.baseUrl"
-              :provider-model="canonicalCcConnectProvider.model"
-            />
-
-            <CodexStackResponsiveGrid>
-              <CodexStackRuntimeConfigCard
-                :form="configForm"
-                :model-options="modelOptions"
-                :context-tokens-disabled="configContextTokensDisabled"
-                :context-tokens-disabled-help="configContextTokensDisabledHelp"
-                :restart-required-units="restartRequiredUnits"
-                :impact-items="configImpactItems"
-                :codex-route-active="summary.codexRoute.active"
-                :codex-route-current-model="summary.codexRoute.currentModel"
-                :codex-route-cpa-target-model="summary.codexRoute.cpaTargetModel"
-                :codex-route-official-model="summary.codexRoute.officialModel"
-                :codex-auth-mode="summary.secrets.codexAuth.mode"
-                :official-auth-backup-ready="summary.secrets.officialChatGptAuthBackup?.restorable === true"
-                :can-attach-codex-cpa="canAttachCodexCpa"
-                :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
-                :can-run-mutation="canRunMutation"
-                :has-changes="hasConfigPatchChanges"
-                :mutation-disabled-help="mutationDisabledHelp"
-                @update-field="updateConfigFormField"
-                @save="saveConfigPatch"
-                @save-and-attach-cpa="saveConfigThenAttachCpa"
-                @save-and-force-cpa="saveConfigThenForceCpa"
-                @save-and-use-official="saveConfigThenUseOfficial"
-              />
-
-              <CodexStackEnvironmentReferenceCard
-                :home-dir="summary.homeDir"
-                :profile-path="summary.profilePath"
-                :installer-root="summary.installer.root"
-                :installer-kind="summary.installer.kind"
-                :auto-setup-script="summary.installer.scripts.autoSetup"
-                :health-check-script="summary.installer.scripts.healthCheck"
-                :finalizer-script="summary.installer.scripts.ccConnectFinalizer"
-                :proxy-key-masked="summary.secrets.cpaProxyKey.masked"
-                :codex-auth-status="codexAuthStatus"
-                :context-mode="summary.context.mode"
-                :context-tokens-display="contextTokensDisplay"
-                :cpa-dashboard-enabled="summary.cpaManagement.controlPanelEnabled"
-                :cpa-dashboard-url="summary.cpaManagement.dashboardUrl"
-                :missing-files="summary.installer.missingFiles"
-              />
-            </CodexStackResponsiveGrid>
-          </CodexStackSectionStack>
-        </template>
-
-        <template v-else-if="activeSection === 'logs'">
-          <CodexStackSectionStack>
-            <CodexStackSectionIntro
-              :kicker="text('日志', 'Logs')"
-              :title="text('控制台与日志诊断', 'Console and Log Diagnostics')"
-              :copy="text('按“选服务 → 定范围 → 读取日志”排查。任务执行时先看上方任务输出，再决定是否切到完整上下文。', 'Debug with Pick Service, Choose Scope, then Load Logs. When a job is running, read the job output first before switching to deeper context.')"
-            />
-
-            <CodexStackLogConsole
-              v-model:selected-service="selectedLogService"
-              v-model:mode="logLineMode"
-              v-model:auto-refresh="logAutoRefresh"
-              :services="logServices"
-              :options="logLineOptions"
-              :mode-help="logModeHelp"
-              :requested-lines="logLineLimit"
-              :meta="logMeta"
-              :fetched-at-label="logFetchedAtLabel"
-              :output="logOutput"
-              :refreshing="logRefreshing"
-              :labels="logConsoleLabels"
-              :refreshing-disabled-help="logRefreshingDisabledHelp"
-              @load="loadLogs"
-            />
-          </CodexStackSectionStack>
-        </template>
+        <CodexStackLogsSection
+          v-else-if="activeSection === 'logs'"
+          v-model:selected-service="selectedLogService"
+          v-model:mode="logLineMode"
+          v-model:auto-refresh="logAutoRefresh"
+          :services="logServices"
+          :options="logLineOptions"
+          :mode-help="logModeHelp"
+          :requested-lines="logLineLimit"
+          :meta="logMeta"
+          :fetched-at-label="logFetchedAtLabel"
+          :output="logOutput"
+          :refreshing="logRefreshing"
+          :labels="logConsoleLabels"
+          :refreshing-disabled-help="logRefreshingDisabledHelp"
+          @load="loadLogs"
+        />
       </CodexStackWorkspaceShell>
 
       <CodexStackJobProgressPanel
@@ -524,32 +359,25 @@ import {
   resolveCodexStackRunReadinessAction,
   resolveCodexStackRunReadinessModeAction,
 } from "./readiness-action";
-import CodexStackDashboardInsights from "./CodexStackDashboardInsights.vue";
-import CodexStackDashboardRuntimeStrip from "./CodexStackDashboardRuntimeStrip.vue";
+import CodexStackAgentBridgeSection from "./CodexStackAgentBridgeSection.vue";
 import type {
   CodexStackComponentHealthCard,
   CodexStackNetworkPolicyCard,
   CodexStackRuntimeSummaryRow,
   CodexStackSmokeMatrixCard,
 } from "./CodexStackDashboardInsights.vue";
-import CodexStackDiagnosticsPanel from "./CodexStackDiagnosticsPanel.vue";
-import CodexStackChainMap from "./CodexStackChainMap.vue";
 import type { CodexStackChainGate, CodexStackChainNode } from "./CodexStackChainMap.vue";
 import CodexStackCheckOutputDialog from "./CodexStackCheckOutputDialog.vue";
-import CodexStackEnvironmentReferenceCard from "./CodexStackEnvironmentReferenceCard.vue";
-import CodexStackCcConnectCommandBar from "./CodexStackCcConnectCommandBar.vue";
+import CodexStackDashboardSection from "./CodexStackDashboardSection.vue";
 import type {
   CodexStackCcConnectPaneId,
   CodexStackCcConnectPaneOption,
   CodexStackCcConnectProjectRailItem,
 } from "./CodexStackCcConnectRail.vue";
-import CodexStackCcConnectStage from "./CodexStackCcConnectStage.vue";
-import CodexStackCcConnectProviderPanel from "./CodexStackCcConnectProviderPanel.vue";
 import type {
   CodexStackCcConnectProviderDraft,
   CodexStackCcConnectProviderField,
 } from "./CodexStackCcConnectProviderPanel.vue";
-import CodexStackCcConnectProjectPanel from "./CodexStackCcConnectProjectPanel.vue";
 import type {
   CodexStackCcConnectAgentOptionField,
   CodexStackCcConnectPlatformDraft,
@@ -562,17 +390,12 @@ import type {
   CodexStackCcConnectProjectPresetCard,
   CodexStackCcConnectProjectPresetId,
 } from "./CodexStackCcConnectProjectPanel.vue";
-import CodexStackCcConnectRawPanel from "./CodexStackCcConnectRawPanel.vue";
-import CodexStackCcConnectSetupPanel from "./CodexStackCcConnectSetupPanel.vue";
 import type { CodexStackCcConnectSetupPlatform } from "./CodexStackCcConnectSetupPanel.vue";
-import CodexStackInstallPlanCard from "./CodexStackInstallPlanCard.vue";
-import CodexStackInstallConfigPanel from "./CodexStackInstallConfigPanel.vue";
+import CodexStackInstallSection from "./CodexStackInstallSection.vue";
 import type {
   CodexStackInstallConfigDraft,
   CodexStackInstallConfigField,
 } from "./CodexStackInstallConfigPanel.vue";
-import CodexStackInstallStrategyPanel from "./CodexStackInstallStrategyPanel.vue";
-import CodexStackInstallShell from "./CodexStackInstallShell.vue";
 import type {
   CodexStackComponentInstallMode,
   CodexStackInstallComponentStrategy,
@@ -580,15 +403,12 @@ import type {
 import CodexStackJobBanner from "./CodexStackJobBanner.vue";
 import CodexStackJobProgressPanel from "./CodexStackJobProgressPanel.vue";
 import CodexStackLoadingCard from "./CodexStackLoadingCard.vue";
-import CodexStackLogConsole from "./CodexStackLogConsole.vue";
+import CodexStackLogsSection from "./CodexStackLogsSection.vue";
 import CodexStackManagementLockCard from "./CodexStackManagementLockCard.vue";
-import CodexStackModelCatalogCard from "./CodexStackModelCatalogCard.vue";
 import CodexStackModelRibbon from "./CodexStackModelRibbon.vue";
 import CodexStackPageHeader from "./CodexStackPageHeader.vue";
-import CodexStackRepairBoard from "./CodexStackRepairBoard.vue";
 import type { CodexStackAttachPreflightItem } from "./CodexStackRepairBoard.vue";
-import CodexStackResponsiveGrid from "./CodexStackResponsiveGrid.vue";
-import CodexStackRuntimeConfigCard from "./CodexStackRuntimeConfigCard.vue";
+import CodexStackRouteModelsSection from "./CodexStackRouteModelsSection.vue";
 import type {
   CodexStackRuntimeConfigDraft,
   CodexStackRuntimeConfigField,
@@ -600,14 +420,9 @@ import type {
   CodexStackLogLineOption,
   CodexStackLogServiceOption,
 } from "./CodexStackLogConsole.vue";
-import CodexStackRunReadinessPanel from "./CodexStackRunReadinessPanel.vue";
-import CodexStackSectionIntro from "./CodexStackSectionIntro.vue";
 import type { CodexStackSectionIntroChip } from "./CodexStackSectionIntro.vue";
 import type { CodexStackSectionId, CodexStackSectionNavItem } from "./CodexStackSectionNav.vue";
-import CodexStackSectionStack from "./CodexStackSectionStack.vue";
-import CodexStackServiceGrid from "./CodexStackServiceGrid.vue";
 import type { CodexStackServiceCard } from "./CodexStackServiceGrid.vue";
-import CodexStackUpstreamMap from "./CodexStackUpstreamMap.vue";
 import CodexStackWorkspaceShell from "./CodexStackWorkspaceShell.vue";
 import type { CodexStackWorkspaceFocusHint } from "./CodexStackWorkspaceShell.vue";
 import "./codex-stack-shared-primitives.css";

@@ -43,6 +43,7 @@ html[data-theme="light"] .cs-surface {
 }
 
 .cs-workbench-frame {
+  container: cs-workbench / inline-size;
   border-top: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
   padding-top: 14px;
 }
@@ -879,6 +880,35 @@ html[data-theme="light"] .cs-surface {
   .cs-install-options-panel summary small,
   .cs-dashboard-details-panel summary small {
     text-align: left;
+  }
+}
+
+@container cs-workbench (max-width: 1080px) {
+  .cs-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-stack-task-rail,
+  .cs-stack-task-nav {
+    position: static;
+  }
+
+  .cs-workbench-frame .cs-stack-task-rail > .cs-stack-task-nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  .cs-workbench-frame .cs-stack-task-rail > .cs-stack-task-nav .cs-stack-task-step {
+    flex: 0 0 168px;
+    min-width: 168px;
+    width: auto;
+  }
+
+  .cs-task-badge {
+    justify-self: end;
   }
 }
 
