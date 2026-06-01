@@ -174,6 +174,7 @@ import type { ChatResourceItem } from '../../../../../types/chat';
 import {
   buildHtmlPreviewDocument,
   type HtmlPreviewMessage,
+  type HtmlPreviewThemeTokens,
   renderChatMarkdownResult,
   renderHighlightedCodeHtml,
   sanitizeMermaidSvg,
@@ -432,6 +433,24 @@ const livePreviewRenderedMarkupStyle = computed<Record<string, string> | undefin
 
 function currentTheme(): 'light' | 'dark' {
   return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
+
+function readCssToken(names: string[], fallback: string): string {
+  const host = livePreviewDialog.value || root.value || document.documentElement;
+  const computed = getComputedStyle(host);
+  for (const name of names) {
+    const value = computed.getPropertyValue(name).trim();
+    if (value) return value;
+  }
+  return fallback;
+}
+
+function readHtmlPreviewThemeTokens(): HtmlPreviewThemeTokens {
+  return {
+    background: readCssToken(['--modal-panel-bg', '--chat-modal-bg', '--surface-base'], 'Canvas'),
+    text: readCssToken(['--text', '--mono-ink', '--text-primary'], 'CanvasText'),
+    border: readCssToken(['--line', '--mono-line', '--border-subtle'], 'ButtonBorder'),
+  };
 }
 
 function unbindMarkdownVisibilityObserver(): void {
@@ -898,7 +917,7 @@ function renderHtmlSrcdoc(source: string): HtmlPreviewPayload {
   if (!normalized) {
     throw new Error('Empty HTML preview result');
   }
-  return buildHtmlPreviewDocument(normalized, currentTheme());
+  return buildHtmlPreviewDocument(normalized, currentTheme(), readHtmlPreviewThemeTokens());
 }
 
 async function renderPreviewResult(kind: PreviewKind, source: string): Promise<PreviewRenderResult> {
@@ -1506,13 +1525,28 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+function readLivePreviewExportBackground(): string {
+  return readCssToken(['--modal-panel-bg', '--chat-modal-bg', '--surface-base'], 'Canvas');
+}
+
+function prepareOffscreenPreviewContainer(container: HTMLElement): void {
+  Object.assign(container.style, {
+    position: 'fixed',
+    left: '-9999px',
+    top: '0',
+    width: '800px',
+    background: readLivePreviewExportBackground(),
+    padding: '16px',
+  });
+}
+
 async function exportSvgToPng(svgElement: SVGSVGElement, filename: string): Promise<void> {
   // Primary: use html-to-image which handles foreignObject correctly
   try {
     const { toPng } = await import('html-to-image');
     const dataUrl = await toPng(svgElement, {
       pixelRatio: 2,
-      backgroundColor: '#ffffff',
+      backgroundColor: readLivePreviewExportBackground(),
     });
     const response = await fetch(dataUrl);
     const blob = await response.blob();
@@ -1532,7 +1566,7 @@ async function exportSvgToPng(svgElement: SVGSVGElement, filename: string): Prom
 async function exportHtmlToPng(htmlSource: string, filename: string): Promise<void> {
   const { toPng } = await import('html-to-image');
   const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:#fff;padding:16px;';
+  prepareOffscreenPreviewContainer(container);
   container.innerHTML = htmlSource;
   document.body.appendChild(container);
   try {

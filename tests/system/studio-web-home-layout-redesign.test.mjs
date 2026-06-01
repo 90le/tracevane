@@ -26,11 +26,12 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
     "home-control-surface",
     "home-stage-rhythm",
     "home-situation-band",
-    "home-command-panel",
-    "home-command-list",
-    "home-command-row",
-    "home-compact-visual-strip",
+    "home-workspace-strip",
+    "home-action-list",
+    "home-action-row",
     "home-system-snapshot",
+    "home-readiness-list",
+    "home-readiness-row",
     "home-section-marker",
   ];
 
@@ -41,7 +42,6 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
   const zoneOrder = [
     'data-home-zone="situation"',
     'data-home-zone="entry"',
-    'data-home-zone="visual"',
     'data-home-zone="snapshot"',
   ];
 
@@ -75,15 +75,21 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
   assert.match(dashboardView, /const\s+dashboardWorkspaceActions\s*=\s*computed\s*\(/);
   assert.match(
     dashboardView,
+    /const\s+dashboardReadinessSignals\s*=\s*computed\s*\(/,
+  );
+  assert.doesNotMatch(
+    dashboardView,
     /const\s+dashboardCoverageBars\s*=\s*computed\s*\(/,
   );
+  assert.doesNotMatch(dashboardView, /data-home-zone="visual"/);
+  assert.doesNotMatch(dashboardView, /Signal Mini Chart|Compact signal chart|轻量信号图/);
   assert.doesNotMatch(dashboardView, /home-risk-row\.tone-high/);
   assert.doesNotMatch(dashboardView, /home-risk-row\.tone-medium/);
   assert.doesNotMatch(dashboardView, /home-risk-row\.tone-low/);
   assert.doesNotMatch(dashboardView, /home-risk-stage|home-risk-row/);
   assert.doesNotMatch(dashboardView, /等待风险汇总|Waiting for risk summary/);
   assert.doesNotMatch(dashboardView, /\bhome-risk-chip-strip\b/);
-  assert.match(dashboardView, /\bhome-command-row\b/);
+  assert.match(dashboardView, /\bhome-action-row\b/);
   assert.doesNotMatch(dashboardView, /\bhome-quick-action\b/);
   assert.doesNotMatch(dashboardView, /\bhome-entry-grid\b/);
   assert.doesNotMatch(dashboardView, /\bhome-workspace-entry\b/);
@@ -99,9 +105,20 @@ test("home page redesign keeps zone order and overview builder contracts", () =>
   assert.match(dashboardWorkspaceCss, /\.home-stage-rhythm\s*\{[\s\S]*?gap:\s*20px;/);
   assert.doesNotMatch(dashboardWorkspaceCss, /\.home-control-surface\s*\{[^}]*gap\s*:/);
   assert.match(dashboardWorkspaceCss, /\.home-situation-band\s*\{/);
-  assert.match(dashboardWorkspaceCss, /\.home-command-panel\s*\{/);
-  assert.ok(dashboardWorkspaceCss.includes("var(--accent-soft) 58%"));
-  assert.ok(dashboardWorkspaceCss.includes("var(--surface-raised)"));
+  assert.match(dashboardWorkspaceCss, /\.home-workspace-strip\s*\{/);
+  assert.doesNotMatch(dashboardView, /home-command-panel|home-command-list|home-command-row|home-command-copy/);
+  assert.doesNotMatch(dashboardWorkspaceCss, /home-command-panel|home-command-list|home-command-row|home-command-copy/);
+  assert.match(
+    dashboardWorkspaceCss,
+    /\.home-stage-rhythm\s*\{[\s\S]*grid-template-areas:\s*"situation situation"[\s\S]*"entry snapshot";/,
+  );
+  assert.match(dashboardWorkspaceCss, /\.home-readiness-list\s*\{/);
+  assert.match(dashboardWorkspaceCss, /\.home-readiness-row\.tone-high\s*\{[\s\S]*inset 3px 0 0 var\(--danger\),/);
+  assert.doesNotMatch(dashboardWorkspaceCss, /home-compact-visual-strip|home-mini-chart/);
+  assert.match(dashboardWorkspaceCss, /\.home-situation-band\s*\{[\s\S]*border-left:\s*4px solid var\(--acc\);/);
+  assert.match(dashboardWorkspaceCss, /\.home-situation-band\s*\{[\s\S]*background:\s*var\(--surface-raised\);/);
+  assert.match(dashboardWorkspaceCss, /\.home-stage-rhythm > \[data-home-zone='snapshot'\]\s*\{[\s\S]*grid-area:\s*snapshot;/);
+  assert.doesNotMatch(dashboardWorkspaceCss, /var\(--accent-soft\) 58%/);
   assert.ok(
     dashboardWorkspaceCss.includes(
       "border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-subtle));",

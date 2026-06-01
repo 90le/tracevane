@@ -245,8 +245,8 @@ function themeExtension(dark: boolean) {
       backgroundColor: "color-mix(in srgb, var(--acc) 28%, transparent)",
     },
     ".cm-searchMatch": {
-      backgroundColor: "color-mix(in srgb, #f5c542 42%, transparent)",
-      outline: "1px solid color-mix(in srgb, #f5c542 70%, transparent)",
+      backgroundColor: "var(--code-editor-search-highlight)",
+      outline: "1px solid var(--code-editor-search-outline)",
     },
     ".cm-matchingBracket, .cm-nonmatchingBracket": {
       outline: "1px solid color-mix(in srgb, var(--acc) 70%, transparent)",
@@ -255,42 +255,42 @@ function themeExtension(dark: boolean) {
   });
   const lightTheme = EditorView.theme({
     "&": {
-      backgroundColor: "#fbfdff",
-      color: "#1f2937",
+      backgroundColor: "var(--code-editor-bg)",
+      color: "var(--code-editor-fg)",
     },
     ".cm-scroller": {
-      backgroundColor: "#fbfdff",
+      backgroundColor: "var(--code-editor-bg)",
     },
     ".cm-gutters": {
-      backgroundColor: "#f3f6fa",
-      color: "#7c8798",
+      backgroundColor: "var(--code-editor-gutter-bg)",
+      color: "var(--code-editor-gutter-fg)",
     },
     ".cm-cursor": {
-      borderLeftColor: "#1f6feb",
+      borderLeftColor: "var(--code-editor-cursor)",
     },
   });
   const darkTheme = EditorView.theme({
     "&": {
-      backgroundColor: "#0d1117",
-      color: "#dbe7f3",
+      backgroundColor: "var(--code-editor-bg)",
+      color: "var(--code-editor-fg)",
     },
     ".cm-scroller": {
-      backgroundColor: "#0d1117",
+      backgroundColor: "var(--code-editor-bg)",
     },
     ".cm-gutters": {
-      backgroundColor: "#0a0f16",
-      color: "#6b7c92",
-      borderRight: "1px solid rgba(148, 163, 184, 0.18)",
+      backgroundColor: "var(--code-editor-gutter-bg)",
+      color: "var(--code-editor-gutter-fg)",
+      borderRight: "1px solid var(--code-editor-border)",
     },
     ".cm-cursor": {
-      borderLeftColor: "#7dd3fc",
+      borderLeftColor: "var(--code-editor-cursor)",
     },
     ".cm-activeLine": {
-      backgroundColor: "rgba(59, 130, 246, 0.12)",
+      backgroundColor: "var(--code-editor-active-line)",
     },
     ".cm-activeLineGutter": {
-      backgroundColor: "rgba(59, 130, 246, 0.14)",
-      color: "#dbe7f3",
+      backgroundColor: "var(--code-editor-active-gutter)",
+      color: "var(--code-editor-fg)",
     },
   });
   return dark ? [oneDark, darkTheme, sharedTheme] : [lightTheme, sharedTheme];

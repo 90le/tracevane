@@ -24,8 +24,8 @@
     <div v-if="errorMessage" class="status-banner status-banner-error">{{ errorMessage }}</div>
     <div v-else-if="successMessage" class="status-banner status-banner-success">{{ successMessage }}</div>
 
-    <motion.section class="config-command-panel" v-bind="pageSurfaceReveal">
-      <div class="config-command-copy">
+    <motion.section class="config-workspace-strip" v-bind="pageSurfaceReveal">
+      <div class="config-workspace-copy">
         <p class="eyebrow">{{ text('CONFIG WORKBENCH', 'CONFIG WORKBENCH') }}</p>
         <h3>{{ configSidebarSummary.title }}</h3>
         <p>{{ configSidebarSummary.copy }}</p>
@@ -49,14 +49,14 @@
             <p class="panel-muted">{{ text('先改模型与供应商，再处理安全、会话和集成。日常管理能力不放在这里重复配置。', 'Configure models and providers first, then security, sessions, and integrations. Daily management workflows are not duplicated here.') }}</p>
           </div>
 
-          <nav class="config-tabs config-tabs-grouped" :aria-label="text('配置标签页', 'Configuration tabs')">
+          <nav class="config-rail config-rail-grouped" :aria-label="text('配置标签页', 'Configuration tabs')">
             <section
               v-for="group in groupedTabs"
               :key="group.id"
-              class="config-tab-group"
+              class="config-rail-group"
               :aria-label="group.label"
             >
-              <div class="config-tab-group__head">
+              <div class="config-rail-group__head">
                 <span>{{ group.label }}</span>
                 <strong>{{ group.items.length }}</strong>
               </div>
@@ -64,15 +64,15 @@
                 v-for="tab in group.items"
                 :key="tab.id"
                 type="button"
-                class="config-tab"
+                class="config-rail-item"
                 :class="{ active: activeTab === tab.id }"
                 @click="setActiveTab(tab.id)"
               >
-                <span class="config-tab-icon">
+                <span class="config-rail-item__icon">
                   <component :is="resolveConfigTabIcon(tab.id)" aria-hidden="true" />
                 </span>
-                <span class="config-tab-title">{{ tab.label }}</span>
-                <span class="config-tab-copy">{{ tab.copy }}</span>
+                <span class="config-rail-item__title">{{ tab.label }}</span>
+                <span class="config-rail-item__copy">{{ tab.copy }}</span>
               </button>
             </section>
           </nav>
@@ -91,8 +91,8 @@
                 </div>
               </div>
             </div>
-            <div class="config-active-tab-facts">
-              <article v-for="fact in activeTabFacts" :key="fact.label" class="config-active-tab-fact">
+            <div class="config-active-tab-matrix">
+              <article v-for="fact in activeTabFacts" :key="fact.label" class="config-active-tab-row">
                 <span>{{ fact.label }}</span>
                 <strong>{{ fact.value }}</strong>
               </article>
@@ -110,7 +110,7 @@
             </div>
           </article>
 
-      <section v-if="activeTab === 'model'" id="global-config" class="page-shell config-section-grid config-section-grid-model">
+      <section v-if="activeTab === 'model'" id="global-config" class="config-tab-stage config-section-grid config-section-grid-model">
         <article class="config-sheet">
           <section class="config-block">
           <div class="panel-head">
@@ -125,11 +125,11 @@
               <div class="form-grid">
                 <label class="form-field">
                   <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
-                  <GlassSelect v-model="form.defaults.model" :options="modelSelectOptions" :placeholder="text('选择默认模型', 'Select default model')" />
+                  <StudioSelect v-model="form.defaults.model" :options="modelSelectOptions" :placeholder="text('选择默认模型', 'Select default model')" />
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('默认图片模型', 'Default image model') }}</span>
-                  <GlassSelect v-model="form.defaults.imageModel" :options="imageModelSelectOptions" :placeholder="text('选择图片模型', 'Select image model')" />
+                  <StudioSelect v-model="form.defaults.imageModel" :options="imageModelSelectOptions" :placeholder="text('选择图片模型', 'Select image model')" />
                   <span class="field-hint">{{ text('优先从具备 `image` 能力的模型中选取，避免工具运行时临时降级。', 'Prefer models with image capability to avoid runtime downgrades.') }}</span>
                 </label>
               </div>
@@ -214,7 +214,7 @@
                 <div class="form-grid">
                   <label class="form-field">
                     <span class="form-label">{{ text('全局心跳策略', 'Global heartbeat policy') }}</span>
-                    <GlassSelect v-model="form.defaults.heartbeatMode" :options="choiceToSelectOptions(heartbeatModeOptions)" />
+                    <StudioSelect v-model="form.defaults.heartbeatMode" :options="choiceToSelectOptions(heartbeatModeOptions)" />
                     <span class="field-hint">{{ text('禁用会持久保存 every: "0m"；不覆盖会移除 every，但不等于关闭宿主默认心跳。', 'Disabled persists every: "0m"; no override removes every, but does not disable host defaults.') }}</span>
                   </label>
                   <label class="form-field">
@@ -255,7 +255,7 @@
                   <div class="form-grid">
                     <label class="form-field">
                       <span class="form-label">{{ text('主模型', 'Primary model') }}</span>
-                      <GlassSelect v-model="form.defaults.imageGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
+                      <StudioSelect v-model="form.defaults.imageGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
                     </label>
                   </div>
                   <details class="config-collapsible" :open="form.defaults.imageGenerationModelFallback.length > 0">
@@ -266,7 +266,7 @@
                     <div v-if="form.defaults.imageGenerationModelFallback.length" class="fallback-list fallback-list-spaced">
                       <div v-for="(model, index) in form.defaults.imageGenerationModelFallback" :key="`image-gen-${index}`" class="fallback-row">
                         <span class="fallback-index">{{ index + 1 }}</span>
-                        <GlassSelect
+                        <StudioSelect
                           v-model="form.defaults.imageGenerationModelFallback[index]"
                           :options="toSelectOptions(filteredFallbackOptions(form.defaults.imageGenerationModel, form.defaults.imageGenerationModelFallback, index, modelOptions))"
                           :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -290,7 +290,7 @@
                   <div class="form-grid">
                     <label class="form-field">
                       <span class="form-label">{{ text('主模型', 'Primary model') }}</span>
-                      <GlassSelect v-model="form.defaults.videoGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
+                      <StudioSelect v-model="form.defaults.videoGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
                     </label>
                   </div>
                   <details class="config-collapsible" :open="form.defaults.videoGenerationModelFallback.length > 0">
@@ -301,7 +301,7 @@
                     <div v-if="form.defaults.videoGenerationModelFallback.length" class="fallback-list fallback-list-spaced">
                       <div v-for="(model, index) in form.defaults.videoGenerationModelFallback" :key="`video-gen-${index}`" class="fallback-row">
                         <span class="fallback-index">{{ index + 1 }}</span>
-                        <GlassSelect
+                        <StudioSelect
                           v-model="form.defaults.videoGenerationModelFallback[index]"
                           :options="toSelectOptions(filteredFallbackOptions(form.defaults.videoGenerationModel, form.defaults.videoGenerationModelFallback, index, modelOptions))"
                           :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -325,7 +325,7 @@
                   <div class="form-grid">
                     <label class="form-field">
                       <span class="form-label">{{ text('主模型', 'Primary model') }}</span>
-                      <GlassSelect v-model="form.defaults.musicGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
+                      <StudioSelect v-model="form.defaults.musicGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
                     </label>
                   </div>
                   <details class="config-collapsible" :open="form.defaults.musicGenerationModelFallback.length > 0">
@@ -336,7 +336,7 @@
                     <div v-if="form.defaults.musicGenerationModelFallback.length" class="fallback-list fallback-list-spaced">
                       <div v-for="(model, index) in form.defaults.musicGenerationModelFallback" :key="`music-gen-${index}`" class="fallback-row">
                         <span class="fallback-index">{{ index + 1 }}</span>
-                        <GlassSelect
+                        <StudioSelect
                           v-model="form.defaults.musicGenerationModelFallback[index]"
                           :options="toSelectOptions(filteredFallbackOptions(form.defaults.musicGenerationModel, form.defaults.musicGenerationModelFallback, index, modelOptions))"
                           :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -360,7 +360,7 @@
                   <div class="form-grid">
                     <label class="form-field">
                       <span class="form-label">{{ text('主模型', 'Primary model') }}</span>
-                      <GlassSelect v-model="form.defaults.pdfModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
+                      <StudioSelect v-model="form.defaults.pdfModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
                     </label>
                   </div>
                   <details class="config-collapsible" :open="form.defaults.pdfModelFallback.length > 0">
@@ -371,7 +371,7 @@
                     <div v-if="form.defaults.pdfModelFallback.length" class="fallback-list fallback-list-spaced">
                       <div v-for="(model, index) in form.defaults.pdfModelFallback" :key="`pdf-${index}`" class="fallback-row">
                         <span class="fallback-index">{{ index + 1 }}</span>
-                        <GlassSelect
+                        <StudioSelect
                           v-model="form.defaults.pdfModelFallback[index]"
                           :options="toSelectOptions(filteredFallbackOptions(form.defaults.pdfModel, form.defaults.pdfModelFallback, index, modelOptions))"
                           :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -384,7 +384,7 @@
                 </section>
               </div>
               <div class="settings-inline-grid">
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.defaults.mediaGenerationAutoProviderFallback" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('媒体生成自动补充其他供应商', 'Auto-provider fallback for media generation') }}</strong>
@@ -429,7 +429,7 @@
             <div v-if="form.defaults.modelFallback.length" class="fallback-list fallback-list-spaced">
               <div v-for="(model, index) in form.defaults.modelFallback" :key="`model-${index}`" class="fallback-row">
                 <span class="fallback-index">{{ index + 1 }}</span>
-                <GlassSelect
+                <StudioSelect
                   v-model="form.defaults.modelFallback[index]"
                   :options="toSelectOptions(filteredFallbackOptions(form.defaults.model, form.defaults.modelFallback, index, modelOptions))"
                   :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -454,7 +454,7 @@
             <div v-if="form.defaults.imageModelFallback.length" class="fallback-list fallback-list-spaced">
               <div v-for="(model, index) in form.defaults.imageModelFallback" :key="`image-${index}`" class="fallback-row">
                 <span class="fallback-index">{{ index + 1 }}</span>
-                <GlassSelect
+                <StudioSelect
                   v-model="form.defaults.imageModelFallback[index]"
                   :options="toSelectOptions(filteredFallbackOptions(form.defaults.imageModel, form.defaults.imageModelFallback, index, imageModelOptions))"
                   :placeholder="text('选择图片回退模型', 'Select image fallback model')"
@@ -503,7 +503,7 @@
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('压缩专用模型', 'Compaction-only model') }}</span>
-                  <GlassSelect
+                  <StudioSelect
                     v-model="form.compaction.model"
                     :options="[{ value: '', label: text('跟随主模型', 'Follow primary model') }, ...modelSelectOptions]"
                     :placeholder="text('选择压缩专用模型', 'Select compaction model')"
@@ -534,7 +534,7 @@
                   </div>
                 </div>
                 <div class="toggle-grid">
-                  <label class="toggle-card">
+                  <label class="option-row">
                     <input v-model="form.compaction.memoryFlush.enabled" class="form-checkbox" type="checkbox" />
                     <div>
                       <strong>{{ text('压缩前记忆刷新', 'Pre-compaction memory flush') }}</strong>
@@ -571,7 +571,7 @@
         </article>
       </section>
 
-      <section v-else-if="activeTab === 'security'" class="page-shell config-section-grid config-section-grid-security">
+      <section v-else-if="activeTab === 'security'" class="config-tab-stage config-section-grid config-section-grid-security">
         <article class="config-sheet">
           <section class="config-block">
           <div class="panel-head">
@@ -687,7 +687,7 @@
                 </p>
               </div>
 
-              <label class="toggle-card config-spotlight-toggle-card">
+              <label class="option-row config-spotlight-toggle">
                 <input v-model="form.studioChat.allowHostManagementExecInStudioChat" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('允许在 Studio Chat 中启用宿主管理 Exec', 'Allow host-management Exec in Studio Chat') }}</strong>
@@ -810,14 +810,14 @@
                 <p>{{ text('控制是否允许提升权限，以及文件系统是否限制在工作区。', 'Control whether elevated mode is allowed and whether filesystem access stays within the workspace.') }}</p>
               </div>
               <div class="toggle-grid">
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.tools.elevatedEnabled" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('高权限模式', 'Elevated mode') }}</strong>
                     <span>{{ text('允许提升到更高风险的执行能力', 'Allows escalation into higher-risk execution capability.') }}</span>
                   </div>
                 </label>
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.tools.fsWorkspaceOnly" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('仅工作区文件系统', 'Workspace-only filesystem') }}</strong>
@@ -883,7 +883,7 @@
               </div>
             </div>
 
-            <label class="toggle-card">
+            <label class="option-row">
               <input v-model="form.execApprovals.autoAllowSkills" class="form-checkbox" type="checkbox" />
               <div>
                 <strong>{{ text('自动放行技能 CLI', 'Auto-allow skill CLIs') }}</strong>
@@ -925,9 +925,9 @@
                   <article
                     v-for="(agent, agentIndex) in form.execApprovals.agents"
                     :key="agent.uid"
-                    class="provider-card provider-card-visual"
+                    class="provider-entry provider-entry-visual"
                   >
-                    <div class="provider-card-head provider-card-head-visual">
+                    <div class="provider-entry-head provider-entry-head-visual">
                       <div>
                         <strong>{{ agent.agentId }}</strong>
                         <p class="provider-caption">{{ text('针对该 Agent 单独覆盖 exec 审批策略和 allowlist。', 'Override exec approval strategy and allowlist specifically for this agent.') }}</p>
@@ -985,7 +985,7 @@
                       </div>
                     </div>
 
-                    <label class="toggle-card">
+                    <label class="option-row">
                       <input v-model="agent.autoAllowSkills" class="form-checkbox" type="checkbox" />
                       <div>
                         <strong>{{ text('自动放行技能 CLI', 'Auto-allow skill CLIs') }}</strong>
@@ -1034,7 +1034,7 @@
         </article>
       </section>
 
-      <section v-else-if="activeTab === 'session'" class="page-shell config-section-grid config-section-grid-session">
+      <section v-else-if="activeTab === 'session'" class="config-tab-stage config-section-grid config-section-grid-session">
         <article class="config-sheet">
           <section class="config-block">
           <div class="panel-head">
@@ -1067,7 +1067,7 @@
                 <span class="form-label">{{ text('确认反应表情', 'Ack reaction emoji') }}</span>
                 <input v-model="form.messages.ackReaction" class="form-input" type="text" :placeholder="text('例如 👀，留空按官方默认', 'For example: 👀, leave empty to use the official default')" />
               </label>
-              <label class="toggle-card">
+              <label class="option-row">
                 <input v-model="form.messages.removeAckAfterReply" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('回复后移除确认反应', 'Remove ack reaction after reply') }}</strong>
@@ -1153,7 +1153,7 @@
                     <div class="settings-inline-grid">
                       <label class="form-field">
                         <span class="form-label">{{ text('渠道 ID', 'Channel ID') }}</span>
-                        <GlassSelect
+                        <StudioSelect
                           v-model="entry.channelId"
                           :options="queueChannelSelectOptions(entry.channelId)"
                           :placeholder="text('选择渠道', 'Select channel')"
@@ -1161,7 +1161,7 @@
                       </label>
                       <label class="form-field">
                         <span class="form-label">{{ text('队列模式', 'Queue mode') }}</span>
-                        <GlassSelect
+                        <StudioSelect
                           v-model="entry.mode"
                           :options="effectiveQueueModeOptions"
                           :placeholder="text('选择队列模式', 'Select queue mode')"
@@ -1174,7 +1174,7 @@
               </div>
             </details>
             <div class="settings-inline-grid">
-              <label class="toggle-card">
+              <label class="option-row">
                 <input v-model="form.session.threadBindings.enabled" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('启用线程绑定', 'Enable thread bindings') }}</strong>
@@ -1225,7 +1225,7 @@
         :dmScopeOptions="dmScopeOptions"
       />
 
-      <section v-else-if="activeTab === 'providers'" class="page-shell config-section-grid config-section-grid-providers">
+      <section v-else-if="activeTab === 'providers'" class="config-tab-stage config-section-grid config-section-grid-providers">
         <div class="config-provider-workbench">
           <aside class="config-provider-sidebar">
             <div class="panel-head">
@@ -1290,7 +1290,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('API 类型', 'API type') }}</span>
-                    <GlassSelect
+                    <StudioSelect
                       v-model="activeProvider.api"
                       :options="[{ value: '', label: text('未指定', 'Unset') }, ...providerApiOptions.map((option) => ({ value: option, label: option }))]"
                       :placeholder="text('选择 API 类型', 'Select API type')"
@@ -1396,13 +1396,13 @@
         </div>
       </section>
 
-      <section v-else-if="activeTab === 'gateway'" class="page-shell config-section-grid">
+      <section v-else-if="activeTab === 'gateway'" class="config-tab-stage config-section-grid">
         <GatewayConfigTab :summary="loadedSummary" @update:gateway="onGatewayUpdate" />
       </section>
 
       <AcpConfigTab v-else-if="activeTab === 'acp'" ref="acpTabRef" :summary="loadedSummary" :saving="saving" @quick-save="saveChanges" />
 
-      <section v-else-if="activeTab === 'mcp-skills'" class="page-shell config-section-grid config-section-grid-mcp-skills">
+      <section v-else-if="activeTab === 'mcp-skills'" class="config-tab-stage config-section-grid config-section-grid-mcp-skills">
         <article class="config-sheet">
           <section class="config-block">
             <div class="panel-head">
@@ -1454,14 +1454,14 @@
                     </label>
                   </div>
                   <div class="settings-inline-grid">
-                    <label class="toggle-card">
+                    <label class="option-row">
                       <input v-model="form.mcpSkills.skillsLoadWatch" class="form-checkbox" type="checkbox" />
                       <div>
                         <strong>{{ text('监听技能目录', 'Watch skill directories') }}</strong>
                         <span>{{ text('对应 skills.load.watch，适合开发环境热更新技能。', 'Maps to skills.load.watch; useful for skill hot reload in development.') }}</span>
                       </div>
                     </label>
-                    <label class="toggle-card">
+                    <label class="option-row">
                       <input v-model="form.mcpSkills.skillsPreferBrew" class="form-checkbox" type="checkbox" />
                       <div>
                         <strong>{{ text('优先使用 Brew', 'Prefer Brew') }}</strong>
@@ -1477,7 +1477,7 @@
                     </label>
                     <label class="form-field">
                       <span class="form-label">{{ text('Node 管理器', 'Node manager') }}</span>
-                      <GlassSelect v-model="form.mcpSkills.skillsNodeManager" :options="nodeManagerOptions" :placeholder="text('不覆盖', 'No override')" />
+                      <StudioSelect v-model="form.mcpSkills.skillsNodeManager" :options="nodeManagerOptions" :placeholder="text('不覆盖', 'No override')" />
                       <span class="field-hint">{{ text('对应 skills.install.nodeManager，只允许 npm / pnpm / yarn / bun。', 'Maps to skills.install.nodeManager; only npm / pnpm / yarn / bun are valid.') }}</span>
                     </label>
                     <label class="form-field">
@@ -1522,7 +1522,7 @@
         </article>
       </section>
 
-      <section v-else-if="activeTab === 'commands-hooks'" class="page-shell config-section-grid">
+      <section v-else-if="activeTab === 'commands-hooks'" class="config-tab-stage config-section-grid">
         <CommandsHooksConfigTab
           :commands="commandsFormData"
           :hooks="hooksFormData"
@@ -1606,11 +1606,11 @@
                 <div class="form-grid">
                   <label class="form-field">
                     <span class="form-label">{{ text('上下文注入策略', 'Context Injection') }}</span>
-                    <GlassSelect v-model="form.defaults.contextInjection" :options="choiceToSelectOptions(contextInjectionOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.contextInjection" :options="choiceToSelectOptions(contextInjectionOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('截断告警模式', 'Truncation Warning Mode') }}</span>
-                    <GlassSelect v-model="form.defaults.bootstrapPromptTruncationWarning" :options="choiceToSelectOptions(truncationWarningOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.bootstrapPromptTruncationWarning" :options="choiceToSelectOptions(truncationWarningOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('用户时区', 'User Timezone') }}</span>
@@ -1618,7 +1618,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('时间格式', 'Time Format') }}</span>
-                    <GlassSelect v-model="form.defaults.timeFormat" :options="choiceToSelectOptions(timeFormatOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.timeFormat" :options="choiceToSelectOptions(timeFormatOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('消息包络时区', 'Envelope Timezone') }}</span>
@@ -1626,11 +1626,11 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('绝对时间戳', 'Envelope Timestamp') }}</span>
-                    <GlassSelect v-model="form.defaults.envelopeTimestamp" :options="choiceToSelectOptions(envelopeToggleOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.envelopeTimestamp" :options="choiceToSelectOptions(envelopeToggleOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('耗时信息', 'Envelope Elapsed') }}</span>
-                    <GlassSelect v-model="form.defaults.envelopeElapsed" :options="choiceToSelectOptions(envelopeToggleOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.envelopeElapsed" :options="choiceToSelectOptions(envelopeToggleOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('上下文窗口 Token', 'Context Tokens') }}</span>
@@ -1654,11 +1654,11 @@
                 <div class="form-grid">
                   <label class="form-field">
                     <span class="form-label">{{ text('子 Agent 默认模型', 'Sub-agent default model') }}</span>
-                    <GlassSelect v-model="form.defaults.subagentModel" :options="[{ value: '', label: text('未设置', 'Unset') }, ...modelSelectOptions]" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.subagentModel" :options="[{ value: '', label: text('未设置', 'Unset') }, ...modelSelectOptions]" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('子 Agent 思考默认值', 'Sub-agent thinking default') }}</span>
-                    <GlassSelect v-model="form.defaults.subagentThinking" :options="choiceToSelectOptions(subagentThinkingOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.subagentThinking" :options="choiceToSelectOptions(subagentThinkingOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('子 Agent 运行超时秒', 'Sub-agent run timeout seconds') }}</span>
@@ -1666,7 +1666,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('输入中指示模式', 'Typing Mode') }}</span>
-                    <GlassSelect v-model="form.defaults.typingMode" :options="choiceToSelectOptions(typingModeOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.typingMode" :options="choiceToSelectOptions(typingModeOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('Typing 指示间隔秒', 'Typing Interval Seconds') }}</span>
@@ -1674,15 +1674,15 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('高权限默认值', 'Elevated Default') }}</span>
-                    <GlassSelect v-model="form.defaults.elevated" :options="choiceToSelectOptions(elevatedOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.elevated" :options="choiceToSelectOptions(elevatedOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('分块输出默认值', 'Block Streaming Default') }}</span>
-                    <GlassSelect v-model="form.defaults.blockStreaming" :options="choiceToSelectOptions(blockStreamingOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.blockStreaming" :options="choiceToSelectOptions(blockStreamingOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('分块边界', 'Block Streaming Break') }}</span>
-                    <GlassSelect v-model="form.defaults.blockStreamingBreak" :options="choiceToSelectOptions(blockStreamingBreakOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.blockStreamingBreak" :options="choiceToSelectOptions(blockStreamingBreakOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                 </div>
               </section>
@@ -1796,7 +1796,7 @@
                     <span class="form-label">{{ text('仓库根目录', 'Repository root') }}</span>
                     <input v-model="form.defaults.repoRoot" class="form-input" type="text" :placeholder="text('留空表示自动检测', 'Leave empty to auto-detect')" />
                   </label>
-                  <label class="toggle-card">
+                  <label class="option-row">
                     <input v-model="form.defaults.skipBootstrap" class="form-checkbox" type="checkbox" />
                     <div>
                       <strong>{{ text('跳过 Bootstrap', 'Skip bootstrap') }}</strong>
@@ -1813,7 +1813,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('Embedded Pi 项目设置策略', 'Embedded Pi project settings policy') }}</span>
-                    <GlassSelect v-model="form.defaults.embeddedPiProjectSettingsPolicy" :options="choiceToSelectOptions(embeddedPiPolicyOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <StudioSelect v-model="form.defaults.embeddedPiProjectSettingsPolicy" :options="choiceToSelectOptions(embeddedPiPolicyOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                 </div>
               </section>
@@ -1872,7 +1872,7 @@ import {
 import { fetchConfigChannelSummary, fetchConfigSummary, fetchProviderSecret, saveConfig } from './api';
 import { useLocalePreference } from '../../shared/locale';
 import { useThemePreference } from '../../shared/theme';
-import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
+import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
 import GatewayConfigTab from './GatewayConfigTab.vue';
 import AcpConfigTab from './AcpConfigTab.vue';
 import CommandsHooksConfigTab from './CommandsHooksConfigTab.vue';
@@ -2235,7 +2235,7 @@ const activeProvider = computed(() => form.providers[activeProviderIndex.value] 
 const { resolvedTheme } = useThemePreference();
 
 const providerApiOptions = ['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative', 'azure-openai'];
-const nodeManagerOptions = computed<GlassSelectOption[]>(() => [
+const nodeManagerOptions = computed<StudioSelectOption[]>(() => [
   { value: '', label: text('不覆盖', 'No override') },
   { value: 'npm', label: 'npm' },
   { value: 'pnpm', label: 'pnpm' },
@@ -3730,11 +3730,11 @@ const imageModelOptions = computed(() => {
   return Array.from(new Set([...imageCapableModels.value, ...modelOptions.value])).sort();
 });
 
-function toSelectOptions(values: string[]): GlassSelectOption[] {
+function toSelectOptions(values: string[]): StudioSelectOption[] {
   return values.map((value) => ({ value, label: value }));
 }
 
-function choiceToSelectOptions(options: ChoiceOption[]): GlassSelectOption[] {
+function choiceToSelectOptions(options: ChoiceOption[]): StudioSelectOption[] {
   return options.map((option) => ({
     value: option.value,
     label: option.label,
@@ -3779,7 +3779,7 @@ const missingApprovalAgents = computed(() => {
 });
 const modelSelectOptions = computed(() => toSelectOptions(modelOptions.value));
 const imageModelSelectOptions = computed(() => toSelectOptions(imageModelOptions.value));
-function queueChannelSelectOptions(currentValue = ''): GlassSelectOption[] {
+function queueChannelSelectOptions(currentValue = ''): StudioSelectOption[] {
   const base = Array.from(new Set([...loadedChannelIds.value, currentValue].filter(Boolean))).sort();
   return base.map((value) => ({
     value,

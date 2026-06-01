@@ -5,7 +5,7 @@
         <p class="eyebrow">{{ managementEntry?.label || 'Agents' }}</p>
         <h2 class="page-title">{{ text(`${managementEntry?.label || 'Agent'} 工作台`, `${managementEntry?.label || 'Agents'} Workspace`) }}</h2>
         <p class="page-copy">
-          {{ text('左侧持续保留 Agent rail，右侧切换概览、文档、绑定、会话和高级配置，避免页面跳转后丢失上下文。', 'Keep the agent rail persistent on the left while the right stage switches between overview, docs, bindings, sessions, and advanced settings.') }}
+          {{ text('先选 Agent，再在主工作区顶部切换人设、路由、会话和运行配置；页面只聚焦当前 Agent。', 'Pick an agent, then switch persona, routing, sessions, and runtime settings from the top of the workspace; the page stays focused on the current agent.') }}
         </p>
       </div>
 
@@ -28,8 +28,8 @@
       {{ noticeMessage.text }}
     </div>
 
-    <div class="agents-workspace-layout">
-      <aside class="agents-workspace-sidebar operate-resource-rail operate-workspace-surface operate-resource-panel mobile-resource-drawer">
+    <div class="agents-workspace-layout studio-workbench studio-workbench--object">
+      <aside class="agents-workspace-sidebar operate-resource-rail operate-workspace-surface operate-resource-panel mobile-resource-drawer studio-workbench-index">
         <div class="agents-workspace-sidebar__head">
           <div>
             <p class="eyebrow">{{ text('ROSTER', 'ROSTER') }}</p>
@@ -38,7 +38,7 @@
               {{
                 summary?.count
                   ? text(`共 ${summary.count} 个 Agent`, `${summary.count} agents`)
-                  : text('先选择一个 Agent 进入右侧工作台。', 'Select an agent to open the workspace.')
+                  : text('先选择一个 Agent 进入任务工作区。', 'Select an agent to open the task workspace.')
               }}
             </p>
           </div>
@@ -87,7 +87,7 @@
           <section v-if="regularRailAgents.length" class="agent-rail-group">
             <div class="agent-rail-group__head">
               <strong>{{ text('其它 Agent', 'Other agents') }}</strong>
-              <span>{{ text('按角色、频道绑定或手动选择进入。', 'Reached by role, channel binding, or manual selection.') }}</span>
+              <span>{{ text('按角色、频道路由或手动选择进入。', 'Reached by role, channel routing, or manual selection.') }}</span>
             </div>
             <AgentRailItem
               v-for="agent in regularRailAgents"
@@ -106,75 +106,82 @@
         </div>
       </aside>
 
-      <section class="agents-workspace-stage operate-stage">
-        <section class="agents-stage-header operate-workspace-surface operate-command-panel">
-          <div v-if="selectedAgent" class="agents-stage-header__body operate-stage-task-head">
-            <div class="agents-stage-header__identity">
-              <span class="agents-stage-header__avatar" aria-hidden="true">
-                <AgentAvatarContent
-                  :avatar="selectedAgent.identity.avatar"
-                  :emoji="selectedAgent.identity.emoji"
-                  :fallback="selectedAgent.identity.name || selectedAgent.name || selectedAgent.id"
-                  :alt="selectedAgent.identity.name || selectedAgent.name || selectedAgent.id"
-                />
-              </span>
+      <section class="agents-workspace-stage operate-stage studio-workbench-canvas">
+        <div class="agents-task-workbench studio-workbench-task-shell" :class="{ 'is-empty': !selectedAgent }">
+          <aside v-if="selectedAgent" class="agents-task-rail studio-workbench-task-rail" :aria-label="text('Agent 任务', 'Agent tasks')">
+            <p class="eyebrow">{{ text('任务', 'Tasks') }}</p>
+            <nav class="agents-task-nav studio-workbench-task-nav" :aria-label="text('Agent 任务页面', 'Agent task pages')">
+              <button
+                v-for="navItem in taskNavItems"
+                :key="navItem.value"
+                type="button"
+                class="agents-task-nav-button studio-workbench-task-nav-button"
+                :class="{ active: activeTaskSection === navItem.value }"
+                @click="openAgent(routeAgentId, navItem.value)"
+              >
+                <component :is="navItem.icon" class="agents-task-nav-icon" aria-hidden="true" />
+                <span>{{ navItem.label }}</span>
+              </button>
+            </nav>
+          </aside>
 
-              <div class="agents-stage-header__copy">
-                <p class="eyebrow">{{ selectedAgent.id }}</p>
-                <h3>{{ selectedAgent.identity.name || selectedAgent.name || selectedAgent.id }}</h3>
-                <p class="agents-stage-header__role">
-                  {{ selectedAgent.identity.role || text('这个 Agent 还没有填写角色说明。', 'This agent does not have a role description yet.') }}
-                </p>
-                <p v-if="selectedAgent.identity.mission" class="agents-stage-header__mission">
-                  {{ selectedAgent.identity.mission }}
-                </p>
+          <section class="agents-task-canvas studio-workbench-active-canvas">
+            <section class="agents-stage-header operate-workspace-surface operate-stage-strip">
+              <div v-if="selectedAgent" class="agents-stage-header__body operate-stage-task-head">
+                <div class="agents-stage-header__identity">
+                  <span class="agents-stage-header__avatar" aria-hidden="true">
+                    <AgentAvatarContent
+                      :avatar="selectedAgent.identity.avatar"
+                      :emoji="selectedAgent.identity.emoji"
+                      :fallback="selectedAgent.identity.name || selectedAgent.name || selectedAgent.id"
+                      :alt="selectedAgent.identity.name || selectedAgent.name || selectedAgent.id"
+                    />
+                  </span>
+
+                  <div class="agents-stage-header__copy">
+                    <p class="eyebrow">{{ selectedAgent.id }}</p>
+                    <h3>{{ selectedAgent.identity.name || selectedAgent.name || selectedAgent.id }}</h3>
+                    <p class="agents-stage-header__role">
+                      {{ selectedAgent.identity.role || text('这个 Agent 还没有填写角色说明。', 'This agent does not have a role description yet.') }}
+                    </p>
+                    <p v-if="selectedAgent.identity.mission" class="agents-stage-header__mission">
+                      {{ selectedAgent.identity.mission }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="agents-stage-header__actions">
+                  <button type="button" class="secondary-button compact-button" @click="openQuickConfig()">
+                    {{ text('快速配置', 'Quick Config') }}
+                  </button>
+                  <button type="button" class="primary-button compact-button" @click="startAgentSession(routeAgentId)">
+                    {{ text('发起会话', 'Start Session') }}
+                  </button>
+                </div>
+
+                <div class="agents-stage-header__facts operate-fact-strip studio-fact-tape">
+                  <span class="agents-summary-pill operate-summary-pill">{{ selectedAgent.model || text('系统默认模型', 'System model') }}</span>
+                  <span class="agents-summary-pill operate-summary-pill">{{ selectedAgent.runtime.type === 'acp' ? 'ACP' : text('默认运行时', 'Default runtime') }}</span>
+                  <span class="agents-summary-pill operate-summary-pill">{{ text(`${selectedAgent.sessionCount} 个会话`, `${selectedAgent.sessionCount} sessions`) }}</span>
+                  <span class="agents-summary-pill operate-summary-pill">{{ text(`${selectedAgent.bindingCount} 条路由`, `${selectedAgent.bindingCount} routes`) }}</span>
+                  <span class="agents-summary-pill operate-summary-pill operate-badge">{{ selectedAgent.workspace || text('未设置工作区', 'Workspace unset') }}</span>
+                </div>
               </div>
-            </div>
+              <div v-else class="agents-stage-empty">
+                <strong>{{ text('请选择一个 Agent', 'Select an agent') }}</strong>
+                <p>{{ text('先从左侧选择 Agent。顶部任务条会按人设、路由、会话和运行配置组织后续操作。', 'Select an agent from the left. The top task bar organizes the next steps by persona, routing, sessions, and runtime settings.') }}</p>
+              </div>
+            </section>
 
-            <div class="agents-stage-header__actions">
-              <button type="button" class="secondary-button compact-button" @click="openQuickConfig()">
-                {{ text('快速配置', 'Quick Config') }}
-              </button>
-              <button type="button" class="primary-button compact-button" @click="startAgentSession(routeAgentId)">
-                {{ text('发起会话', 'Start Session') }}
-              </button>
-            </div>
-
-            <div class="agents-stage-header__facts operate-fact-strip">
-              <span class="agents-summary-pill operate-summary-pill">{{ selectedAgent.model || text('系统默认模型', 'System model') }}</span>
-              <span class="agents-summary-pill operate-summary-pill">{{ selectedAgent.runtime.type === 'acp' ? 'ACP' : text('默认运行时', 'Default runtime') }}</span>
-              <span class="agents-summary-pill operate-summary-pill">{{ text(`${selectedAgent.sessionCount} 个会话`, `${selectedAgent.sessionCount} sessions`) }}</span>
-              <span class="agents-summary-pill operate-summary-pill">{{ text(`${selectedAgent.bindingCount} 条绑定`, `${selectedAgent.bindingCount} bindings`) }}</span>
-              <span class="agents-summary-pill operate-summary-pill operate-badge">{{ selectedAgent.workspace || text('未设置工作区', 'Workspace unset') }}</span>
-            </div>
-          </div>
-          <div v-else class="agents-stage-empty">
-            <strong>{{ text('请选择一个 Agent', 'Select an agent') }}</strong>
-                <p>{{ text('左侧 rail 会一直保留，右侧 stage 根据当前 Agent 切换概览和工作区标签。', 'The left rail stays persistent while the right stage switches between overview and workspace tabs for the selected agent.') }}</p>
-          </div>
-
-          <nav v-if="selectedAgent" class="agents-stage-tabs mobile-stage-tabs" :aria-label="text('Agent 页面', 'Agent pages')">
-            <button
-              v-for="tab in stageTabs"
-              :key="tab.value"
-              type="button"
-              class="agents-stage-tab"
-              :class="{ active: activeSection === tab.value }"
-              @click="openAgent(routeAgentId, tab.value)"
-            >
-              <component :is="tab.icon" class="agents-stage-tab-icon" aria-hidden="true" />
-              <span>{{ tab.label }}</span>
-            </button>
-          </nav>
-        </section>
-
-        <RouterView v-slot="{ Component, route: childRoute }">
-          <component
-            v-if="Component"
-            :is="Component"
-            :key="childRoute.path"
-          />
-        </RouterView>
+            <RouterView v-slot="{ Component, route: childRoute }">
+              <component
+                v-if="Component"
+                :is="Component"
+                :key="childRoute.path"
+              />
+            </RouterView>
+          </section>
+        </div>
       </section>
     </div>
 
@@ -202,7 +209,7 @@
           <div class="agents-modal-head">
             <div>
               <h3>{{ text('新增 Agent', 'Create Agent') }}</h3>
-              <p>{{ text('先创建一个最小可用 Agent，再去右侧 stage 补全文档、绑定和高级配置。', 'Create a minimum viable agent first, then use the right stage to complete docs, bindings, and advanced settings.') }}</p>
+              <p>{{ text('先创建一个最小可用 Agent，再在顶部任务条里补全人设、路由、会话和运行配置。', 'Create a minimum viable agent first, then complete persona, routing, sessions, and runtime settings from the top task bar.') }}</p>
             </div>
             <button type="button" class="agents-modal-close" :aria-label="text('关闭', 'Close')" @click="closeOverlay">
               <X class="drawer-close-icon" aria-hidden="true" />
@@ -224,7 +231,7 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('模型', 'Model') }}</label>
-                <GlassSelect v-model="createForm.model" :options="modelOptions" :placeholder="text('跟随系统默认', 'Inherit system default')" />
+                <StudioSelect v-model="createForm.model" :options="modelOptions" :placeholder="text('跟随系统默认', 'Inherit system default')" />
               </div>
 
               <div class="form-field">
@@ -268,31 +275,31 @@
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('沙盒模式', 'Sandbox Mode') }}</label>
-                    <GlassSelect v-model="createForm.sandboxMode" :options="sandboxModeOptions" />
+                    <StudioSelect v-model="createForm.sandboxMode" :options="sandboxModeOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('工作区访问', 'Workspace Access') }}</label>
-                    <GlassSelect v-model="createForm.workspaceAccess" :options="workspaceAccessOptions" />
+                    <StudioSelect v-model="createForm.workspaceAccess" :options="workspaceAccessOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('工具配置', 'Tools Profile') }}</label>
-                    <GlassSelect v-model="createForm.toolsProfile" :options="toolsProfileOptions" />
+                    <StudioSelect v-model="createForm.toolsProfile" :options="toolsProfileOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('Thinking 默认值', 'Thinking Default') }}</label>
-                    <GlassSelect v-model="createForm.thinkingDefault" :options="thinkingDefaultOptions" />
+                    <StudioSelect v-model="createForm.thinkingDefault" :options="thinkingDefaultOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('Verbose 默认值', 'Verbose Default') }}</label>
-                    <GlassSelect v-model="createForm.verboseDefault" :options="verboseDefaultOptions" />
+                    <StudioSelect v-model="createForm.verboseDefault" :options="verboseDefaultOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('Reasoning 默认值', 'Reasoning Default') }}</label>
-                    <GlassSelect v-model="createForm.reasoningDefault" :options="reasoningDefaultOptions" />
+                    <StudioSelect v-model="createForm.reasoningDefault" :options="reasoningDefaultOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('Fast Mode 默认值', 'Fast Mode Default') }}</label>
-                    <GlassSelect v-model="createForm.fastModeDefault" :options="fastModeDefaultOptions" />
+                    <StudioSelect v-model="createForm.fastModeDefault" :options="fastModeDefaultOptions" />
                   </div>
                   <div class="form-field form-field-full">
                     <label class="form-label">{{ text('使命说明', 'Mission') }}</label>
@@ -310,7 +317,7 @@
                     <label class="form-label">{{ text('模型 JSON 覆盖', 'Model JSON Override') }}</label>
                     <textarea v-model="createForm.modelRawText" class="form-textarea agents-json-textarea" rows="6" :placeholder="text('需要对象型模型配置时填写；留空则使用上方简单模型选择。', 'Use this when you need object-style model config; leave empty to use the simple model selector above.')" />
                   </div>
-                  <label class="toggle-card">
+                  <label class="option-row">
                     <input v-model="createForm.fsWorkspaceOnly" class="form-checkbox" type="checkbox" />
                     <div>
                       <strong>{{ text('仅限工作区文件访问', 'Workspace-only FS access') }}</strong>
@@ -319,16 +326,16 @@
                   </label>
                   <div class="form-field">
                     <label class="form-label">{{ text('运行时类型', 'Runtime Type') }}</label>
-                    <GlassSelect v-model="createForm.runtimeType" :options="runtimeTypeOptions" />
+                    <StudioSelect v-model="createForm.runtimeType" :options="runtimeTypeOptions" />
                   </div>
                   <template v-if="createForm.runtimeType === 'acp'">
                     <div class="form-field">
                       <label class="form-label">{{ text('ACP 后端', 'ACP Backend') }}</label>
-                      <GlassSelect v-model="createForm.runtimeBackend" :options="runtimeBackendOptions" />
+                      <StudioSelect v-model="createForm.runtimeBackend" :options="runtimeBackendOptions" />
                     </div>
                     <div class="form-field">
                       <label class="form-label">{{ text('ACP Agent', 'ACP Agent') }}</label>
-                      <GlassSelect
+                      <StudioSelect
                         v-model="createForm.runtimeAgent"
                         :options="createRuntimeAgentOptions"
                         :disabled="!hasConfiguredAcpAgents && !createForm.runtimeAgent"
@@ -337,7 +344,7 @@
                     </div>
                     <div class="form-field">
                       <label class="form-label">{{ text('模式', 'Mode') }}</label>
-                      <GlassSelect v-model="createForm.runtimeMode" :options="runtimeModeOptions" />
+                      <StudioSelect v-model="createForm.runtimeMode" :options="runtimeModeOptions" />
                     </div>
                     <div class="form-field form-field-full">
                       <label class="form-label">{{ text('运行目录', 'Runtime CWD') }}</label>
@@ -366,7 +373,8 @@
 <script setup lang="ts">
 import '../operate/operate-workspace.css';
 import './agents-workspace.css';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import '../../shared/styles/studio-workbench.css';
+import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
 import { BookOpen, Braces, Link2, MessageSquare, SlidersHorizontal, X } from '@lucide/vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { AgentCreatePayload, AgentDetailPayload, AgentsSummaryPayload } from '../../../../../types/agents';
@@ -374,7 +382,7 @@ import type { ConfigSummaryPayload } from '../../../../../types/config';
 import type { ManagementDomainDefinition } from '../management/management-domain-manifest';
 import AgentAvatarContent from '../../shared/components/AgentAvatarContent.vue';
 import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
-import GlassSelect from '../../shared/components/GlassSelect.vue';
+import StudioSelect from '../../shared/components/StudioSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createAgent, fetchAgentDetail, fetchAgentsSummary, updateAgent } from './api';
 import { buildAgentRosterSummary } from './agent-workspace-summary';
@@ -435,7 +443,7 @@ const activeOverlay = computed(() => {
   return typeof value === 'string' ? value : '';
 });
 
-const activeSection = computed<'overview' | 'docs' | 'bindings' | 'sessions' | 'advanced'>(() => {
+const activeTaskSection = computed<'overview' | 'docs' | 'bindings' | 'sessions' | 'advanced'>(() => {
   if (/\/docs$/.test(route.path)) return 'docs';
   if (/\/bindings$/.test(route.path)) return 'bindings';
   if (/\/sessions$/.test(route.path)) return 'sessions';
@@ -443,12 +451,12 @@ const activeSection = computed<'overview' | 'docs' | 'bindings' | 'sessions' | '
   return 'overview';
 });
 
-const stageTabs = computed(() => [
+const taskNavItems = computed(() => [
   { value: 'overview' as const, label: text('概览', 'Overview'), icon: SlidersHorizontal },
-  { value: 'docs' as const, label: text('文档', 'Docs'), icon: BookOpen },
-  { value: 'bindings' as const, label: text('绑定', 'Bindings'), icon: Link2 },
+  { value: 'docs' as const, label: text('人设', 'Persona'), icon: BookOpen },
+  { value: 'bindings' as const, label: text('路由', 'Routing'), icon: Link2 },
   { value: 'sessions' as const, label: text('会话', 'Sessions'), icon: MessageSquare },
-  { value: 'advanced' as const, label: text('高级', 'Advanced'), icon: Braces },
+  { value: 'advanced' as const, label: text('运行', 'Runtime'), icon: Braces },
 ]);
 
 const selectedAgent = computed(() => {
@@ -680,7 +688,7 @@ function parseOptionalJsonObject(label: string, value: string): Record<string, u
   return parsed as Record<string, unknown>;
 }
 
-function buildAgentPath(agentId: string, section: 'overview' | 'docs' | 'bindings' | 'sessions' | 'advanced' = activeSection.value): string {
+function buildAgentPath(agentId: string, section: 'overview' | 'docs' | 'bindings' | 'sessions' | 'advanced' = activeTaskSection.value): string {
   const encoded = encodeURIComponent(agentId);
   if (section === 'docs') return `/agents/${encoded}/docs`;
   if (section === 'bindings') return `/agents/${encoded}/bindings`;
@@ -862,7 +870,7 @@ async function refreshSummary(preferredAgentId = ''): Promise<void> {
 
     if (routeAgentId.value !== nextAgentId || route.path === '/agents') {
       const nextSection = routeAgentId.value === nextAgentId && route.path !== '/agents'
-        ? activeSection.value
+        ? activeTaskSection.value
         : 'overview';
       await router.replace({
         path: buildAgentPath(nextAgentId, nextSection),
@@ -989,6 +997,11 @@ watch(
 );
 
 onMounted(async () => {
+  if (!isAgentsRouteActive.value) return;
+  await refreshSummary(routeAgentId.value);
+});
+
+onActivated(async () => {
   if (!isAgentsRouteActive.value) return;
   await refreshSummary(routeAgentId.value);
 });

@@ -1,18 +1,22 @@
 <template>
-  <div class="cs-workspace">
-    <CodexStackSectionNav
-      :sections="sections"
-      :active-section="activeSection"
-      @select="$emit('select', $event)"
-    />
-
-    <div class="cs-content">
-      <aside v-if="focusHint" class="cs-workspace-focus" :class="`tone-${focusHint.tone}`">
-        <span>{{ focusHint.kicker }}</span>
-        <strong>{{ focusHint.title }}</strong>
-        <p>{{ focusHint.copy }}</p>
+  <div class="studio-workbench studio-workbench--guided">
+    <div class="cs-workspace">
+      <aside class="cs-stack-task-rail studio-workbench-task-rail" aria-label="Codex Stack task rail">
+        <CodexStackSectionNav
+          :sections="sections"
+          :active-section="activeSection"
+          @select="$emit('select', $event)"
+        />
       </aside>
-      <slot />
+
+      <div class="cs-content">
+        <aside v-if="focusHint" class="cs-workspace-focus" :class="`tone-${focusHint.tone}`">
+          <span>{{ focusHint.kicker }}</span>
+          <strong>{{ focusHint.title }}</strong>
+          <p>{{ focusHint.copy }}</p>
+        </aside>
+        <slot />
+      </div>
     </div>
   </div>
 </template>
@@ -22,6 +26,7 @@ import CodexStackSectionNav from "./CodexStackSectionNav.vue";
 import type { CodexStackTone } from "./codex-stack-view-model";
 import type { CodexStackSectionId, CodexStackSectionNavItem } from "./CodexStackSectionNav.vue";
 import "./codex-stack-workspace.css";
+import "../../shared/styles/studio-workbench.css";
 
 export interface CodexStackWorkspaceFocusHint {
   kicker: string;

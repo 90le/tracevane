@@ -32,8 +32,8 @@ export function buildChannelsOverviewRecipe(
   return {
     providerHeadline: text('Provider 工作区', 'Provider workspace'),
     providerCopy: text(
-      '当前 provider 的概览、设置和绑定会在这里切换；账号配置请从下方账号索引进入。',
-      'This stage switches between provider overview, settings, and bindings. Open account settings from the account index below.',
+      '当前 provider 的概览、设置和路由规则会在这里切换；账号配置请从下方账号索引进入。',
+      'This stage switches between provider overview, settings, and routing rules. Open account settings from the account index below.',
     ),
     accountCopy: {
       default: text(
@@ -49,7 +49,7 @@ export function buildChannelsOverviewRecipe(
       enabled: text('已启用', 'Enabled'),
       disabled: text('已禁用', 'Disabled'),
       accounts: (count: number) => text(`${count} 个账号`, `${count} accounts`),
-      bindings: (count: number) => text(`${count} 条绑定`, `${count} bindings`),
+      bindings: (count: number) => text(`${count} 条路由`, `${count} routes`),
       defaultAccount: (accountId: string) => text(`默认账号 ${accountId}`, `Default ${accountId}`),
     },
   };

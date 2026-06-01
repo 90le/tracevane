@@ -108,6 +108,20 @@ test('record browser panel exposes loading, empty, error, and ready surfaces on 
   assert.match(chatRecordBrowserCss, /\.chat-record-browser\.theme-dark/);
   assert.match(chatRecordBrowserCss, /\.chat-record-browser-mask\.theme-light/);
   assert.match(chatRecordBrowserCss, /\.chat-record-browser-mask\.theme-dark/);
+  assert.doesNotMatch(
+    chatRecordBrowserCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient|--sky|--atlas|--glass|backdrop-filter:\s*blur/,
+  );
+  assert.match(chatRecordBrowserCss, /--chat-record-browser-shadow:\s*var\(--modal-shadow\);/);
+  assert.match(chatRecordBrowserCss, /--chat-error:\s*var\(--danger\);/);
+  assert.match(
+    chatRecordBrowserCss,
+    /\.chat-record-browser-mask\.theme-light\s*\{[\s\S]*background:\s*var\(--modal-backdrop\);/,
+  );
+  assert.match(
+    chatRecordBrowserCss,
+    /\.chat-record-browser-mask\.theme-dark\s*\{[\s\S]*background:\s*var\(--modal-backdrop\);/,
+  );
   assert.doesNotMatch(chatRecordBrowserCss, /:global|:deep/);
 });
 

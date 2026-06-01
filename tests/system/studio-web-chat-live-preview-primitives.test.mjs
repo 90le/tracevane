@@ -86,6 +86,29 @@ test('markdown live preview scales rendered svg markup with explicit canvas boun
   assert.doesNotMatch(markdownBlock, /class="chat-live-preview-scale-wrap"[\s\S]*:style="livePreviewZoomFit \? undefined : livePreviewZoomStyle"/);
 });
 
+test('markdown live preview image export uses theme tokens instead of a hardcoded white canvas', () => {
+  assert.match(markdownBlock, /type HtmlPreviewThemeTokens/);
+  assert.match(markdownBlock, /function readCssToken\(names: string\[\], fallback: string\): string \{/);
+  assert.match(markdownBlock, /function readHtmlPreviewThemeTokens\(\): HtmlPreviewThemeTokens \{/);
+  assert.match(markdownBlock, /getPropertyValue\(name\)/);
+  assert.match(markdownBlock, /'--text'/);
+  assert.match(markdownBlock, /'--line'/);
+  assert.match(markdownBlock, /function readLivePreviewExportBackground\(\): string \{/);
+  assert.match(markdownBlock, /'--modal-panel-bg'/);
+  assert.match(markdownBlock, /'--chat-modal-bg'/);
+  assert.match(markdownBlock, /'--surface-base'/);
+  assert.match(markdownBlock, /buildHtmlPreviewDocument\(normalized, currentTheme\(\), readHtmlPreviewThemeTokens\(\)\)/);
+  assert.match(markdownBlock, /function prepareOffscreenPreviewContainer\(container: HTMLElement\): void \{/);
+  assert.match(markdownBlock, /backgroundColor:\s*readLivePreviewExportBackground\(\)/);
+  assert.match(markdownBlock, /prepareOffscreenPreviewContainer\(container\);/);
+  assert.doesNotMatch(markdownBlock, /backgroundColor:\s*['"]#ffffff['"]/);
+  assert.doesNotMatch(markdownBlock, /background:\s*#fff/);
+  assert.doesNotMatch(markdownBlock, /style\.cssText\s*=/);
+  assert.match(markdownRenderer, /interface HtmlPreviewThemeTokens/);
+  assert.match(markdownRenderer, /themeTokens\?: Partial<HtmlPreviewThemeTokens>/);
+  assert.doesNotMatch(markdownRenderer, /#08111c|#142235|rgba\(20,\s*34,\s*53|rgba\(255,\s*255,\s*255/);
+});
+
 test('markdown media markup defaults to lazy image decode and non-eager video preload', () => {
   assert.match(markdownRenderer, /loading="lazy"/);
   assert.match(markdownRenderer, /decoding="async"/);

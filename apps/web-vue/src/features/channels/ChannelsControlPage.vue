@@ -23,7 +23,7 @@
     <p class="eyebrow">{{ text('CHANNELS', 'CHANNELS') }}</p>
     <h3>{{ text('请选择一个频道', 'Select a provider') }}</h3>
     <p class="panel-muted">
-      {{ text('左侧索引只负责选对象。右侧会根据当前 provider 展示概览、快捷动作和专门编辑页入口。', 'The left rail selects the current object. The right workspace then shows overview, quick actions, and dedicated deep-edit entry points.') }}
+      {{ text('对象索引只负责选择 provider 或账号；顶部任务条会根据当前对象展示概览、快捷动作和专门编辑页入口。', 'The object index only selects the provider or account; the top task bar then shows overview, quick actions, and focused edit entry points for the current object.') }}
     </p>
   </article>
 </template>
@@ -103,8 +103,8 @@ async function deleteAccount(accountId: string): Promise<void> {
   const accepted = await confirm({
     title: text('确认删除账号', 'Confirm delete account'),
     message: text(
-      `确定删除账号 ${accountId} 吗？该账号相关绑定也会一起移除。`,
-      `Delete account ${accountId}? Related bindings for this account will also be removed.`
+      `确定删除账号 ${accountId} 吗？该账号相关路由也会一起移除。`,
+      `Delete account ${accountId}? Related routes for this account will also be removed.`
     ),
     confirmText: text('删除账号', 'Delete account'),
     cancelText: text('取消', 'Cancel'),
@@ -134,8 +134,8 @@ async function deleteProvider(): Promise<void> {
   const accepted = await confirm({
     title: text('确认删除频道', 'Confirm delete provider'),
     message: text(
-      `确定删除频道 ${channelType} 吗？该频道的账号和绑定也会一起移除。`,
-      `Delete provider ${channelType}? Its accounts and bindings will also be removed.`
+      `确定删除频道 ${channelType} 吗？该频道的账号和路由也会一起移除。`,
+      `Delete provider ${channelType}? Its accounts and routes will also be removed.`
     ),
     confirmText: text('删除频道', 'Delete provider'),
     cancelText: text('取消', 'Cancel'),

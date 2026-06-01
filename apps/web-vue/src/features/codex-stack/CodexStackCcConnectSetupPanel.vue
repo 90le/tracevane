@@ -32,17 +32,66 @@
         {{ mutationDisabledHelp }}
       </p>
     </div>
-    <pre class="cs-code">{{ commands.join("\n") }}</pre>
+    <div class="cs-cc-command-summary">
+      <div>
+        <strong>{{ text("绑定命令已准备", "Setup commands ready") }}</strong>
+        <p>{{ text("页面只保留复制入口；完整命令放在浮动窗口，避免配置页变成命令墙。", "This page keeps copy actions here; full commands are in a floating window so the config page does not become a command wall.") }}</p>
+        <span>{{ commandMeta }}</span>
+      </div>
+      <button type="button" class="secondary-button" :disabled="!commands.length" @click="openCommandSheet">
+        <Terminal :size="15" aria-hidden="true" />
+        {{ text("查看完整命令", "View commands") }}
+      </button>
+    </div>
+    <ul class="cs-cc-command-preview" aria-label="cc-connect setup command preview">
+      <li v-for="command in previewCommands" :key="command">
+        <code>{{ command }}</code>
+      </li>
+    </ul>
+
+    <Teleport v-if="commandSheetOpen" to="body">
+      <div class="floating-output-dock cs-cc-command-sheet-dock">
+        <section
+          class="floating-output-sheet cs-cc-command-sheet"
+          role="dialog"
+          aria-live="polite"
+          aria-modal="false"
+          :aria-label="text('cc-connect 绑定命令窗口', 'cc-connect setup command window')"
+        >
+          <header class="floating-output-sheet__head cs-cc-command-sheet-head">
+            <div>
+              <p class="cs-section-kicker">{{ text("绑定命令", "Setup Commands") }}</p>
+              <h3>{{ text("cc-connect 快速绑定", "cc-connect Quick Setup") }}</h3>
+              <span>{{ commandMeta }}</span>
+            </div>
+            <div class="floating-output-sheet__actions cs-cc-command-sheet-actions">
+              <button type="button" class="secondary-button" @click="copyAllCommands">
+                <Copy :size="15" aria-hidden="true" />
+                {{ commandCopied ? text("已复制", "Copied") : text("复制全部", "Copy all") }}
+              </button>
+              <button type="button" class="secondary-button" @click="closeCommandSheet">
+                <X :size="15" aria-hidden="true" />
+                {{ text("关闭", "Close") }}
+              </button>
+            </div>
+          </header>
+          <pre class="floating-output-sheet__log cs-cc-command-sheet-log">{{ commandText }}</pre>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from "vue";
+import { Copy, Terminal, X } from "@lucide/vue";
+import { copyTextToClipboard } from "../../shared/clipboard";
 import { useLocalePreference } from "../../shared/locale";
 import "./codex-stack-cc-connect.css";
 
 export type CodexStackCcConnectSetupPlatform = "feishu" | "weixin";
 
-defineProps<{
+const props = defineProps<{
   commands: string[];
   busy: boolean;
   busyDisabledHelp: string;
@@ -57,4 +106,32 @@ defineEmits<{
 }>();
 
 const { text } = useLocalePreference();
+const commandSheetOpen = ref(false);
+const commandCopied = ref(false);
+const commandText = computed(() => props.commands.join("\n"));
+const previewCommands = computed(() => props.commands.slice(0, 2));
+const commandMeta = computed(() => text(
+  `${props.commands.length} 条命令 · ${commandText.value.length} 字符`,
+  `${props.commands.length} commands · ${commandText.value.length} chars`,
+));
+
+function openCommandSheet(): void {
+  commandCopied.value = false;
+  commandSheetOpen.value = true;
+}
+
+function closeCommandSheet(): void {
+  commandSheetOpen.value = false;
+}
+
+async function copyAllCommands(): Promise<void> {
+  const copied = await copyTextToClipboard(commandText.value);
+  if (!copied) return;
+  commandCopied.value = true;
+  if (typeof window !== "undefined") {
+    window.setTimeout(() => {
+      commandCopied.value = false;
+    }, 1400);
+  }
+}
 </script>

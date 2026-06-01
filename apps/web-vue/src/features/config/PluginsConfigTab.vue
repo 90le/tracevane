@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell config-section-grid">
+  <section class="config-tab-stage config-section-grid">
     <article class="config-sheet">
       <section class="config-block">
         <div class="panel-head">
@@ -8,7 +8,7 @@
         <div class="config-subsection-grid">
           <section class="config-subsection is-primary">
             <div class="settings-stack">
-              <label class="toggle-card">
+              <label class="option-row">
                 <input v-model="form.enabled" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('全局启用插件系统', 'Enable plugin loading globally') }}</strong>
@@ -32,8 +32,8 @@
               <p>{{ text('作用：控制宿主只允许哪些插件被启用。配置方式：逐条填写插件 id；留空通常表示不强制限制。', 'Purpose: restricts which plugins the host is allowed to enable. How to configure: enter plugin ids one by one; leaving it empty usually means no hard allowlist is enforced.') }}</p>
             </div>
             <div v-if="form.allow.length" class="provider-stack">
-              <div v-for="(item, idx) in form.allow" :key="'allow-' + idx" class="form-grid" style="align-items: center;">
-                <label class="form-field" style="flex: 1;">
+              <div v-for="(item, idx) in form.allow" :key="'allow-' + idx" class="form-grid config-inline-form-grid">
+                <label class="form-field config-inline-field">
                   <input
                     :value="item"
                     @input="onAllowInput(idx, ($event.target as HTMLInputElement).value)"
@@ -50,7 +50,7 @@
             <div v-else class="empty-inline">
               {{ text('未配置插件白名单', 'No plugin allowlist configured') }}
             </div>
-            <button type="button" class="secondary-button compact-button" style="margin-top: 0.5rem;" @click="addAllow">
+            <button type="button" class="secondary-button compact-button config-add-button" @click="addAllow">
               {{ text('添加', 'Add') }}
             </button>
           </section>
@@ -68,8 +68,8 @@
               <p>{{ text('作用：无论白名单或扫描路径如何，黑名单里的插件都不会被加载。配置方式：逐条填写插件 id，用于紧急回滚或风险隔离。', 'Purpose: plugins in this list never load even if allowlists or scan paths would otherwise permit them. How to configure: enter plugin ids one by one for emergency rollback or risk isolation.') }}</p>
             </div>
             <div v-if="form.deny.length" class="provider-stack">
-              <div v-for="(item, idx) in form.deny" :key="'deny-' + idx" class="form-grid" style="align-items: center;">
-                <label class="form-field" style="flex: 1;">
+              <div v-for="(item, idx) in form.deny" :key="'deny-' + idx" class="form-grid config-inline-form-grid">
+                <label class="form-field config-inline-field">
                   <input
                     :value="item"
                     @input="onDenyInput(idx, ($event.target as HTMLInputElement).value)"
@@ -86,7 +86,7 @@
             <div v-else class="empty-inline">
               {{ text('未配置插件黑名单', 'No plugin denylist configured') }}
             </div>
-            <button type="button" class="secondary-button compact-button" style="margin-top: 0.5rem;" @click="addDeny">
+            <button type="button" class="secondary-button compact-button config-add-button" @click="addDeny">
               {{ text('添加', 'Add') }}
             </button>
           </section>
@@ -105,8 +105,8 @@
               <p>{{ text('作用：让宿主从额外目录加载插件。配置方式：填写绝对路径。不要把 `openclaw-studio.prev/.bak/.old` 这类备份目录留在扩展根下，否则会触发重复插件 ID。', 'Purpose: lets the host load plugins from additional directories. How to configure: use absolute paths. Do not leave backup folders like `openclaw-studio.prev/.bak/.old` under the extensions root, or duplicate plugin ids will be detected.') }}</p>
             </div>
             <div v-if="form.loadPaths.length" class="provider-stack">
-              <div v-for="(item, idx) in form.loadPaths" :key="'path-' + idx" class="form-grid" style="align-items: center;">
-                <label class="form-field" style="flex: 1;">
+              <div v-for="(item, idx) in form.loadPaths" :key="'path-' + idx" class="form-grid config-inline-form-grid">
+                <label class="form-field config-inline-field">
                   <input
                     :value="item"
                     @input="onLoadPathInput(idx, ($event.target as HTMLInputElement).value)"
@@ -123,7 +123,7 @@
             <div v-else class="empty-inline">
               {{ text('未配置额外加载路径', 'No extra load paths configured') }}
             </div>
-            <button type="button" class="secondary-button compact-button" style="margin-top: 0.5rem;" @click="addLoadPath">
+            <button type="button" class="secondary-button compact-button config-add-button" @click="addLoadPath">
               {{ text('添加', 'Add') }}
             </button>
           </section>
@@ -169,9 +169,9 @@
               <article
                 v-for="pluginId in pluginEntryIds"
                 :key="pluginId"
-                class="provider-card provider-card-visual"
+                class="provider-entry provider-entry-visual"
               >
-                <div class="provider-card-head provider-card-head-visual">
+                <div class="provider-entry-head provider-entry-head-visual">
                   <div>
                     <strong>{{ pluginId }}</strong>
                   </div>
@@ -218,8 +218,8 @@
               <p>{{ text('作用：展示 `openclaw plugins install/update` 记录的来源和安装位置。此区域只读，避免手工改坏 CLI 更新链路。', 'Purpose: shows the sources and install paths tracked by `openclaw plugins install/update`. This area is read-only to avoid breaking the CLI update chain by manual edits.') }}</p>
             </div>
             <div v-if="form.installs.length" class="provider-stack">
-              <article v-for="install in form.installs" :key="install.id" class="provider-card provider-card-visual">
-                <div class="provider-card-head provider-card-head-visual">
+              <article v-for="install in form.installs" :key="install.id" class="provider-entry provider-entry-visual">
+                <div class="provider-entry-head provider-entry-head-visual">
                   <div>
                     <strong>{{ install.id }}</strong>
                     <p class="provider-caption">{{ install.source || text('未知来源', 'Unknown source') }}</p>
@@ -256,6 +256,7 @@
 import { computed, reactive, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
+import './config-workspace.css';
 
 interface PluginEntry {
   enabled: boolean;

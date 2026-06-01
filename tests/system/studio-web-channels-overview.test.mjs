@@ -12,19 +12,20 @@ function read(filePath) {
 const channelsControlPage = read('apps/web-vue/src/features/channels/ChannelsControlPage.vue');
 const channelsWorkspaceLayout = read('apps/web-vue/src/features/channels/ChannelsWorkspaceLayout.vue');
 const channelProviderOverview = read('apps/web-vue/src/features/channels/ChannelProviderOverview.vue');
-const channelAccountCard = read('apps/web-vue/src/features/channels/ChannelAccountCard.vue');
+const channelAccountEntry = read('apps/web-vue/src/features/channels/ChannelAccountEntry.vue');
 const channelAccountIndex = read('apps/web-vue/src/features/channels/ChannelAccountIndex.vue');
 const channelIssueList = read('apps/web-vue/src/features/channels/ChannelIssueList.vue');
 const channelBindingsPage = read('apps/web-vue/src/features/channels/ChannelBindingsPage.vue');
 const channelBindingEditorPanel = read('apps/web-vue/src/features/channels/ChannelBindingEditorPanel.vue');
 const channelsAccountCss = read('apps/web-vue/src/features/channels/channels-account.css');
 
-test('channels workspace shell uses RouterView for the right-side workspace outlet', () => {
+test('channels workspace shell uses RouterView for the focused task outlet', () => {
   assert.match(channelsWorkspaceLayout, /import\s+\{[^}]*RouterView[^}]*\}\s+from\s+'vue-router';/);
   assert.match(channelsWorkspaceLayout, /channels-stage/);
   assert.match(channelsWorkspaceLayout, /<RouterView\s*\/>/);
   assert.match(channelsWorkspaceLayout, /showProviderRailBody/);
   assert.match(channelsWorkspaceLayout, /toggleMobileRail/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /right-side|右侧专门工作区|高密度索引/);
   assert.doesNotMatch(channelsWorkspaceLayout, /activeWorkspaceTab/);
 });
 
@@ -33,12 +34,14 @@ test('channels control page no longer acts as the all-in-one workbench container
   assert.doesNotMatch(channelsControlPage, /activeWorkspaceTab/);
   assert.doesNotMatch(channelsControlPage, /activeAccountTab/);
   assert.doesNotMatch(channelsControlPage, /workspaceTabs/);
+  assert.match(channelsControlPage, /对象索引只负责选择 provider 或账号/);
+  assert.doesNotMatch(channelsControlPage, /右侧会根据当前 provider|right workspace/);
 });
 
 test('provider overview composes summary and index surfaces while stage actions stay in the workspace shell', () => {
-  assert.match(channelProviderOverview, /channel-command-center/);
-  assert.match(channelProviderOverview, /channel-command-facts/);
-  assert.match(channelProviderOverview, /channel-command-center__edit/);
+  assert.match(channelProviderOverview, /channel-provider-strip/);
+  assert.match(channelProviderOverview, /channel-provider-facts/);
+  assert.match(channelProviderOverview, /channel-provider-strip__edit/);
   assert.match(channelProviderOverview, /ChannelIssueList/);
   assert.match(channelProviderOverview, /ChannelAccountIndex/);
   assert.match(channelProviderOverview, /update-provider-enabled/);
@@ -59,12 +62,12 @@ test('provider overview composes summary and index surfaces while stage actions 
   assert.match(channelsControlPage, /function openBindingsPage/);
   assert.match(channelsControlPage, /intent:\s*'create'/);
   assert.doesNotMatch(channelProviderOverview, /channels-stage-actions/);
-  assert.match(channelsWorkspaceLayout, /Binding rules|绑定规则/);
+  assert.match(channelsWorkspaceLayout, /Routing rules|路由规则/);
   assert.match(channelsWorkspaceLayout, /Provider settings|Provider 设置/);
   assert.match(channelsWorkspaceLayout, /Default account access|默认账号权限/);
   assert.doesNotMatch(channelsWorkspaceLayout, /先创建账号，再从账号卡进入凭据和策略。|Create an account first/);
   assert.match(channelAccountIndex, /Create account|新建账号/);
-  assert.match(channelAccountIndex, /这里创建账号，并从账号卡进入凭据、权限、配对和绑定。|Create accounts here/);
+  assert.match(channelAccountIndex, /这里创建账号，并从账号入口进入凭据、权限、配对和路由。|Create accounts here/);
   assert.match(channelsWorkspaceLayout, /channels-stage-actions/);
   assert.doesNotMatch(channelsWorkspaceLayout, /Quick configure provider|快捷配置频道/);
 });
@@ -75,28 +78,30 @@ test('workspace layout owns quick overlays instead of pushing them into the over
   assert.doesNotMatch(channelsWorkspaceLayout, /ChannelQuickConfigDrawer/);
 });
 
-test('account cards are concise index cards instead of inline form editors', () => {
-  assert.match(channelAccountCard, /channel-account-card/);
-  assert.match(channelAccountCard, /channel-account-card__footer/);
-  assert.match(channelAccountCard, /channel-account-card__action-row/);
-  assert.match(channelAccountCard, /channel-account-card__task-group/);
-  assert.match(channelAccountCard, /channel-account-card__manage-actions/);
-  assert.match(channelAccountCard, /Credentials|凭据/);
-  assert.match(channelAccountCard, /Access|权限/);
-  assert.match(channelAccountCard, /Pairing|配对/);
-  assert.match(channelAccountCard, /import '\.\/channels-account\.css';/);
+test('account entries stay as concise routed task rows instead of inline form editors', () => {
+  assert.match(channelAccountEntry, /channel-account-entry/);
+  assert.match(channelAccountEntry, /channel-account-entry__footer/);
+  assert.match(channelAccountEntry, /channel-account-entry__action-row/);
+  assert.match(channelAccountEntry, /channel-account-entry__task-group/);
+  assert.match(channelAccountEntry, /channel-account-entry__manage-actions/);
+  assert.match(channelAccountEntry, /Credentials|凭据/);
+  assert.match(channelAccountEntry, /Access|权限/);
+  assert.match(channelAccountEntry, /Pairing|配对/);
+  assert.match(channelAccountEntry, /import '\.\/channels-account\.css';/);
   assert.match(channelAccountIndex, /import '\.\/channels-account\.css';/);
   assert.match(channelIssueList, /import '\.\/channels-account\.css';/);
-  assert.doesNotMatch(channelAccountCard, /<style scoped>/);
+  assert.doesNotMatch(channelAccountEntry, /<style scoped>/);
   assert.doesNotMatch(channelAccountIndex, /<style scoped>/);
   assert.doesNotMatch(channelIssueList, /<style scoped>/);
-  assert.match(channelsAccountCss, /\.channel-account-card\s*\{/);
+  assert.match(channelsAccountCss, /\.channel-account-entry\s*\{/);
   assert.match(channelsAccountCss, /\.channel-account-index\s*\{/);
   assert.match(channelsAccountCss, /\.channel-issue-list\s*\{/);
-  assert.doesNotMatch(channelAccountCard, /channel-account-card__secondary-actions/);
-  assert.doesNotMatch(channelAccountCard, /grid-template-columns:\s*minmax\(180px,\s*0\.75fr\)\s*minmax\(0,\s*1\.45fr\)\s*auto/);
-  assert.doesNotMatch(channelAccountCard, /form-input/);
-  assert.doesNotMatch(channelAccountCard, /form-textarea/);
+  assert.doesNotMatch(channelAccountEntry, /channel-account-entry__secondary-actions/);
+  assert.doesNotMatch(channelAccountEntry, /grid-template-columns:\s*minmax\(180px,\s*0\.75fr\)\s*minmax\(0,\s*1\.45fr\)\s*auto/);
+  assert.doesNotMatch(channelAccountEntry, /form-input/);
+  assert.doesNotMatch(channelAccountEntry, /form-textarea/);
+  assert.doesNotMatch(channelAccountIndex, /ChannelAccountCard|ChannelAccountCard\.vue/);
+  assert.doesNotMatch(channelsAccountCss, /channel-account-card|linear-gradient|var\(--sky\)/);
 });
 
 test('issue list routes operators to the relevant workflow instead of only opening account detail', () => {
@@ -110,18 +115,19 @@ test('issue list routes operators to the relevant workflow instead of only openi
   assert.doesNotMatch(channelIssueList, /查看账号/);
 });
 
-test('provider command facts expose connection mode in the landing-state snapshot', () => {
+test('provider fact strip exposes connection mode in the landing-state snapshot', () => {
   assert.match(channelProviderOverview, /Connection|连接/);
   assert.match(channelProviderOverview, /channel\.connectionMode/);
-  assert.match(channelProviderOverview, /channel-command-fact/);
+  assert.match(channelProviderOverview, /channel-provider-fact/);
+  assert.doesNotMatch(channelProviderOverview, /channel-command-center|channel-command-facts|channel-command-fact/);
 });
 
-test('bindings page can preserve account context when opened from an account card shortcut', () => {
+test('bindings page can preserve account context when opened from an account entry shortcut', () => {
   assert.match(channelBindingsPage, /route\.query\.accountId/);
   assert.match(channelBindingsPage, /route\.query\.intent/);
   assert.match(channelBindingsPage, /draft\.accountId = focusedAccountId/);
   assert.match(channelBindingsPage, /bindingTaskTitle/);
-  assert.match(channelBindingsPage, /为账号 .* 新增绑定|Create binding for account/);
+  assert.match(channelBindingsPage, /为账号 .* 新增路由|Create route for account/);
   assert.match(channelBindingsPage, /isCreatingBinding/);
   assert.match(channelBindingsPage, /binding-table-item/);
   assert.match(channelBindingsPage, /binding-table-editor-row/);
@@ -142,7 +148,7 @@ test('bindings page keeps roles and acp fields round-trippable during edit/save'
   assert.match(channelBindingsPage, /acpLabel:\s*draft\.type === 'acp' \? draft\.acpLabel \|\| null : null/);
   assert.match(channelBindingsPage, /acpCwd:\s*draft\.type === 'acp' \? draft\.acpCwd \|\| null : null/);
   assert.match(channelBindingsPage, /acpBackend:\s*draft\.type === 'acp' \? draft\.acpBackend \|\| null : null/);
-  assert.match(channelBindingEditorPanel, /绑定角色|Binding roles/);
+  assert.match(channelBindingEditorPanel, /匹配角色|Matching roles/);
   assert.match(channelBindingEditorPanel, /ACP 模式|ACP mode/);
   assert.match(channelBindingEditorPanel, /ACP 标签|ACP label/);
   assert.match(channelBindingEditorPanel, /ACP 工作目录|ACP working directory/);

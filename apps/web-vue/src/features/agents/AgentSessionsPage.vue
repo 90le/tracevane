@@ -33,8 +33,8 @@
       </div>
 
       <div v-if="detail.recentSessions.length" class="agents-session-table">
-        <div class="agents-session-body agents-session-card-list">
-          <article v-for="session in detail.recentSessions" :key="session.id" class="agents-session-row agents-session-card">
+        <div class="agents-session-body agents-session-entry-list">
+          <article v-for="session in detail.recentSessions" :key="session.id" class="agents-session-row agents-session-entry">
             <div class="agents-session-primary">
               <strong>{{ session.sessionId || session.routeKey }}</strong>
               <p>{{ session.chatType || text('未标记类型', 'No chat type') }}</p>
@@ -69,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onActivated, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AgentDetailPayload, AgentSessionSummary } from '../../../../../types/agents';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
@@ -182,4 +182,13 @@ watch(
   },
   { immediate: true },
 );
+
+onActivated(async () => {
+  if (!agentId.value) return;
+  try {
+    await loadDetail();
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : text('读取 Agent 会话失败。', 'Failed to load agent sessions.');
+  }
+});
 </script>

@@ -36,3 +36,18 @@ test('chat inspector panel uses reka tabs primitives for the inspect workbench s
   assert.match(inspectorPanelCss, /@keyframes chat-inspector-panel-in/);
   assert.doesNotMatch(inspectorPanelCss, /:global|:deep/);
 });
+
+test('chat inspector overview uses compact fact rows instead of summary card walls', () => {
+  assert.match(inspectorPanel, /class="chat-inspector-fact-list"/);
+  assert.match(inspectorPanel, /class="chat-inspector-fact-row"/);
+  assert.match(inspectorPanel, /class="chat-inspector-context-strip"/);
+  assert.match(inspectorPanel, /class="chat-inspector-token-tape"/);
+  assert.match(inspectorPanelCss, /\.chat-inspector-fact-list\s*\{/);
+  assert.match(inspectorPanelCss, /\.chat-inspector-fact-row\s*\{/);
+  assert.match(inspectorPanelCss, /\.chat-inspector-context-strip\s*\{/);
+  assert.match(inspectorPanelCss, /\.chat-inspector-token-tape\s*\{/);
+  assert.doesNotMatch(inspectorPanel, /chat-inspector-summary-card/);
+  assert.doesNotMatch(inspectorPanel, /chat-inspector-diagnostics__item/);
+  assert.doesNotMatch(inspectorPanelCss, /chat-inspector-summary-card/);
+  assert.doesNotMatch(inspectorPanelCss, /chat-inspector-diagnostics__item/);
+});

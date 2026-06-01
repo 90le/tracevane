@@ -14,27 +14,31 @@ function read(filePath) {
 const styleCss = read("apps/web-vue/src/style.css");
 
 test("semantic token aliases map to shell primitives in dark theme", () => {
-  assert.match(styleCss, /--bg-app:\s*var\(--shell-bg-start\);/);
-  assert.match(styleCss, /--surface-base:\s*var\(--shell-panel-fill\);/);
-  assert.match(
-    styleCss,
-    /--surface-raised:\s*var\(--shell-panel-fill-strong\);/,
-  );
-  assert.match(
-    styleCss,
-    /--surface-overlay:\s*color-mix\(in srgb, var\(--shell-stage-fill-strong\) 96%, transparent\);/,
-  );
-  assert.match(styleCss, /--text-primary:\s*var\(--text\);/);
-  assert.match(styleCss, /--text-secondary:\s*var\(--muted\);/);
-  assert.match(styleCss, /--border-subtle:\s*var\(--shell-panel-border\);/);
-  assert.match(styleCss, /--border-strong:\s*var\(--shell-stage-border\);/);
-  assert.match(styleCss, /--accent-primary:\s*var\(--acc\);/);
-  assert.match(styleCss, /--focus-ring:\s*rgba\(91,\s*150,\s*255,\s*0\.24\);/);
+  assert.match(styleCss, /--bg-app:\s*var\(--mono-bg\);/);
+  assert.match(styleCss, /--surface-base:\s*var\(--mono-panel\);/);
+  assert.match(styleCss, /--surface-raised:\s*var\(--mono-panel-2\);/);
+  assert.match(styleCss, /--surface-soft:\s*var\(--mono-panel-3\);/);
+  assert.match(styleCss, /--surface-overlay:\s*var\(--mono-panel\);/);
+  assert.match(styleCss, /--text-primary:\s*var\(--mono-ink\);/);
+  assert.match(styleCss, /--text-secondary:\s*var\(--mono-ink-2\);/);
+  assert.match(styleCss, /--border-subtle:\s*var\(--mono-line\);/);
+  assert.match(styleCss, /--border-strong:\s*var\(--mono-line-2\);/);
+  assert.match(styleCss, /--accent-primary:\s*#0f766e;/);
+  assert.match(styleCss, /--warn:\s*var\(--warning\);/);
+  assert.match(styleCss, /--focus-ring:\s*var\(--mono-ring\);/);
 });
 
 test("light theme block keeps semantic aliases defined", () => {
-  assert.match(
-    styleCss,
-    /html\[data-theme="light"\]\s*\{[^}]*--surface-overlay:\s*color-mix\(in srgb, var\(--shell-stage-fill-strong\) 98%, transparent\);/,
-  );
+  const lightBlocks = [...styleCss.matchAll(/html\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/g)];
+  assert.equal(lightBlocks.length, 1);
+  const lightBlock = lightBlocks[0][1];
+
+  assert.match(lightBlock, /--surface-base:\s*var\(--mono-panel\);/);
+  assert.match(lightBlock, /--surface-raised:\s*var\(--mono-panel-2\);/);
+  assert.match(lightBlock, /--surface-soft:\s*var\(--mono-panel-3\);/);
+  assert.match(lightBlock, /--surface-overlay:\s*var\(--mono-panel\);/);
+  assert.match(lightBlock, /--text-primary:\s*var\(--mono-ink\);/);
+  assert.match(lightBlock, /--warn:\s*var\(--warning\);/);
+  assert.match(lightBlock, /--shell-panel-fill:\s*var\(--mono-panel\);/);
+  assert.match(lightBlock, /--field-border-focus:\s*var\(--control-border-focus\);/);
 });

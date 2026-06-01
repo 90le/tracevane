@@ -43,7 +43,7 @@
               <div
                 v-for="field in catalog?.credentialFields || []"
                 :key="field.key"
-                class="form-field credential-field-card"
+                class="form-field credential-field-panel"
               >
                 <label class="form-label">{{ field.label }}</label>
                 <input

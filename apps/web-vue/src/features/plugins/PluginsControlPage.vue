@@ -26,13 +26,13 @@
       {{ noticeMessage.text }}
     </div>
 
-    <section class="plugins-command-center">
-      <div>
+    <section class="plugins-workspace-strip">
+      <div class="plugins-workspace-copy">
         <p class="eyebrow">{{ text('RUNTIME EXTENSIONS', 'RUNTIME EXTENSIONS') }}</p>
         <h3>{{ form.enabled ? text('插件运行时已启用', 'Plugin runtime enabled') : text('插件运行时已关闭', 'Plugin runtime disabled') }}</h3>
         <p>{{ text('关键变更通常需要重启或新会话才能完全生效。先看诊断，再动策略。', 'Most critical changes require restart or new sessions. Check diagnostics before changing policy.') }}</p>
       </div>
-      <div class="plugins-hero-metrics">
+      <div class="plugins-runtime-strip">
         <span>{{ text('已配置', 'Configured') }} {{ counts.entries }}</span>
         <span>{{ text('已发现', 'Discovered') }} {{ counts.manifests }}</span>
         <span>{{ text('启用', 'Enabled') }} {{ counts.enabledEntries }}</span>
@@ -101,21 +101,21 @@
         </div>
         <div class="plugins-critical-list">
           <div
-            v-for="card in criticalPluginCards"
-            :key="card.id"
+            v-for="entry in criticalPluginEntries"
+            :key="entry.id"
             class="plugins-critical-row"
-            :class="{ danger: card.status !== 'enabled' && card.status !== 'available' }"
+            :class="{ danger: entry.status !== 'enabled' && entry.status !== 'available' }"
           >
             <div class="plugins-critical-main">
-              <strong>{{ card.label }}</strong>
-              <span>{{ card.id }} · {{ card.source }}</span>
+              <strong>{{ entry.label }}</strong>
+              <span>{{ entry.id }} · {{ entry.source }}</span>
             </div>
             <div class="plugins-critical-meta">
-              <span class="plugins-status-pill" :class="`is-${card.status}`">{{ card.statusLabel }}</span>
-              <span>{{ text('影响项', 'Impacts') }} {{ card.impacts }}</span>
+              <StatusPill :label="entry.statusLabel" :tone="pluginStatusTone(entry.status)" />
+              <span>{{ text('影响项', 'Impacts') }} {{ entry.impacts }}</span>
             </div>
             <div class="plugins-critical-capabilities">
-              <span v-for="capability in card.capabilities" :key="`${card.id}-${capability}`">{{ capability }}</span>
+              <span v-for="capability in entry.capabilities" :key="`${entry.id}-${capability}`">{{ capability }}</span>
             </div>
           </div>
         </div>
@@ -246,14 +246,18 @@
       </aside>
 
       <main class="plugins-stage">
-        <article class="plugins-stage-card">
+        <article class="plugins-stage-section">
           <div class="plugins-section-head">
             <div>
               <p class="eyebrow">{{ selectedPlugin?.source || 'PLUGIN' }}</p>
               <h3>{{ selectedPluginId || text('选择插件', 'Select a plugin') }}</h3>
               <p>{{ selectedPlugin?.manifest?.description || text('选择左侧插件查看 manifest、能力、配置和状态。', 'Select a plugin to inspect manifest, capabilities, config, and state.') }}</p>
             </div>
-            <span v-if="selectedPlugin" class="plugins-status-pill" :class="`is-${selectedPlugin.status}`">{{ pluginStatusLabel(selectedPlugin.status) }}</span>
+            <StatusPill
+              v-if="selectedPlugin"
+              :label="pluginStatusLabel(selectedPlugin.status)"
+              :tone="pluginStatusTone(selectedPlugin.status)"
+            />
           </div>
 
           <template v-if="selectedPlugin">
@@ -281,7 +285,7 @@
           </template>
         </article>
 
-        <article v-if="selectedEntry" class="plugins-stage-card">
+        <article v-if="selectedEntry" class="plugins-stage-section">
           <div class="plugins-section-head compact">
             <h3>{{ text('插件控制', 'Plugin controls') }}</h3>
             <p>{{ text('配置只保存非敏感字段；token/secret/password 不会在摘要中回显。', 'Only non-sensitive config is shown; token/secret/password fields are redacted.') }}</p>
@@ -300,7 +304,7 @@
               }}
             </button>
           </div>
-          <label class="toggle-card">
+          <label class="plugins-option-row">
             <input v-model="selectedEntry.enabled" class="form-checkbox" type="checkbox" />
             <div>
               <strong>{{ selectedEntry.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled') }}</strong>
@@ -454,7 +458,7 @@
                           :placeholder="field.placeholder || text('输入条目值', 'Enter item value')"
                           @input="updateGuidedArrayField(field, index, ($event.target as HTMLInputElement).value)"
                         />
-                        <label v-else class="toggle-card compact">
+                        <label v-else class="plugins-option-row compact">
                           <input
                             class="form-checkbox"
                             type="checkbox"
@@ -546,14 +550,14 @@
           </label>
           <p v-if="selectedPluginConfigError" class="plugins-error">{{ selectedPluginConfigError }}</p>
           <div v-if="selectedPlugin?.impacts?.length" class="plugins-impact-list">
-            <article v-for="impact in selectedPlugin.impacts" :key="impact.key" class="plugins-impact-card">
+            <article v-for="impact in selectedPlugin.impacts" :key="impact.key" class="plugins-impact-row">
               <strong>{{ impact.title }}</strong>
               <p>{{ impact.detail }}</p>
             </article>
           </div>
         </article>
 
-        <article v-else-if="selectedPlugin" class="plugins-stage-card">
+        <article v-else-if="selectedPlugin" class="plugins-stage-section">
           <div class="plugins-section-head compact">
             <h3>{{ text('快速接管', 'Quick activate') }}</h3>
             <p>{{ text('这个插件已被发现，但还没有配置 entry。可以先把它加入配置并启用，再回到策略页细调。', 'This plugin is discovered but has no configured entry yet. Add it to config and enable it first, then refine policy later.') }}</p>
@@ -568,7 +572,7 @@
     </section>
 
     <section v-else-if="activeTab === 'policy'" class="plugins-policy-grid">
-      <article class="plugins-stage-card plugins-stage-card--wide">
+      <article class="plugins-stage-section plugins-stage-section--wide">
         <div class="plugins-section-head">
           <div>
             <p class="eyebrow">{{ text('POLICY', 'POLICY') }}</p>
@@ -576,13 +580,13 @@
             <p>{{ text('先看策略摘要，再决定是调整安全边界、路径还是独占插槽。避免直接从原始配置入手。', 'Review the policy summary first, then adjust safety boundaries, paths, or exclusive slots instead of jumping straight into raw config.') }}</p>
           </div>
         </div>
-        <div class="plugins-summary-grid">
-          <article v-for="card in policySnapshotCards" :key="card.key" class="plugins-summary-card">
-            <span>{{ card.label }}</span>
-            <strong>{{ card.value }}</strong>
+        <div class="plugins-policy-matrix">
+          <article v-for="entry in policySnapshotEntries" :key="entry.key" class="plugins-policy-cell">
+            <span>{{ entry.label }}</span>
+            <strong>{{ entry.value }}</strong>
           </article>
         </div>
-        <label class="toggle-card">
+        <label class="plugins-option-row">
           <input v-model="form.enabled" class="form-checkbox" type="checkbox" />
           <div>
             <strong>{{ text('全局启用插件系统', 'Enable plugin loading globally') }}</strong>
@@ -604,14 +608,14 @@
         v-model="form.deny"
       />
       <PolicyListEditor
-        class="plugins-stage-card--wide"
+        class="plugins-stage-section--wide"
         :title="text('加载路径', 'Load paths')"
         :description="text('填写绝对路径；路径缺失会在诊断里提示。', 'Use absolute paths; missing paths are reported in diagnostics.')"
         :placeholder="text('插件加载路径', 'Plugin load path')"
         v-model="form.loadPaths"
       />
 
-      <article class="plugins-stage-card plugins-stage-card--wide">
+      <article class="plugins-stage-section plugins-stage-section--wide">
         <div class="plugins-section-head compact">
           <h3>{{ text('独占插槽', 'Exclusive slots') }}</h3>
           <p>{{ text('Memory 和 Context Engine 这类能力只能由一个插件提供。', 'Capabilities like Memory and Context Engine can be owned by one plugin at a time.') }}</p>
@@ -630,7 +634,7 @@
     </section>
 
     <section v-else-if="activeTab === 'installs'" class="plugins-overview">
-      <article class="plugins-stage-card plugins-stage-card--wide">
+      <article class="plugins-stage-section plugins-stage-section--wide">
         <div class="plugins-section-head">
           <div>
             <p class="eyebrow">{{ text('INSTALLS', 'INSTALLS') }}</p>
@@ -639,21 +643,21 @@
           </div>
         </div>
         <div class="plugins-install-stack">
-          <article class="plugins-stage-card">
+          <article class="plugins-stage-section">
             <div class="plugins-section-head compact">
               <h4>{{ text('上传本地插件包', 'Upload local plugin package') }}</h4>
               <p>{{ text('用户流程应从这里开始：上传 .zip，先检测结构，再安装。必须能定位唯一 openclaw.plugin.json。', 'This is the primary user flow: upload a .zip, validate its structure, then install it. Studio must locate exactly one openclaw.plugin.json.') }}</p>
             </div>
-            <div class="plugins-summary-grid plugins-summary-grid--compact">
-              <article class="plugins-summary-card">
+            <div class="plugins-policy-matrix plugins-policy-matrix--compact">
+              <article class="plugins-policy-cell">
                 <span>{{ text('推荐入口', 'Recommended entry') }}</span>
                 <strong>.zip</strong>
               </article>
-              <article class="plugins-summary-card">
+              <article class="plugins-policy-cell">
                 <span>{{ text('结构校验', 'Validation') }}</span>
                 <strong>openclaw.plugin.json</strong>
               </article>
-              <article class="plugins-summary-card">
+              <article class="plugins-policy-cell">
                 <span>{{ text('安装方式', 'Install mode') }}</span>
                 <strong>{{ text('官方 CLI', 'Official CLI') }}</strong>
               </article>
@@ -664,14 +668,14 @@
                 <input class="form-input" type="file" accept=".zip,application/zip" @change="handleUploadArchiveChange" />
                 <span v-if="uploadFileName" class="field-hint">{{ uploadFileName }}</span>
               </label>
-              <label class="toggle-card">
+              <label class="plugins-option-row">
                 <input v-model="pluginInstallForce" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('覆盖已有插件', 'Force overwrite') }}</strong>
                   <span>{{ text('上传安装会继承这个开关。', 'Uploaded installs inherit this switch.') }}</span>
                 </div>
               </label>
-              <label class="toggle-card">
+              <label class="plugins-option-row">
                 <input v-model="pluginInstallPin" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('固定版本记录', 'Pin install record') }}</strong>
@@ -687,7 +691,7 @@
                 {{ uploadBusy ? text('安装中…', 'Installing...') : text('安装上传插件', 'Install uploaded plugin') }}
               </button>
             </div>
-            <div v-if="uploadPreflight" class="plugins-preflight-card" :class="`is-${uploadPreflight.preflight.level}`">
+            <div v-if="uploadPreflight" class="plugins-preflight-panel" :class="`is-${uploadPreflight.preflight.level}`">
               <strong>{{ uploadPreflight.preflight.summary }}</strong>
               <div class="plugins-chip-row">
                 <span>{{ uploadPreflight.fileName }}</span>
@@ -705,7 +709,7 @@
 
           <div class="plugins-install-layout">
             <div class="plugins-stage">
-              <article class="plugins-stage-card">
+              <article class="plugins-stage-section">
                 <div class="plugins-section-head compact">
                   <h4>{{ text('高级来源安装', 'Advanced source install') }}</h4>
                   <p>{{ text('保留给 npm/path/clawhub spec、本地开发链接安装和排障使用。普通用户优先使用上面的上传入口。', 'Keep this for npm/path/clawhub specs, local dev links, and troubleshooting. Regular users should prefer the upload flow above.') }}</p>
@@ -719,7 +723,7 @@
                     <span class="form-label">{{ text('Marketplace 源', 'Marketplace source') }}</span>
                     <input v-model="pluginInstallMarketplace" class="form-input" placeholder="clawhub-fixtures / custom" />
                   </label>
-                  <label class="toggle-card">
+                  <label class="plugins-option-row">
                     <input v-model="pluginInstallLink" class="form-checkbox" type="checkbox" />
                     <div>
                       <strong>{{ text('本地链接安装', 'Link local path') }}</strong>
@@ -746,7 +750,7 @@
                 </div>
               </article>
             </div>
-            <aside class="plugins-preflight-card" :class="pluginPreflight ? `is-${pluginPreflight.level}` : ''">
+            <aside class="plugins-preflight-panel" :class="pluginPreflight ? `is-${pluginPreflight.level}` : ''">
               <div class="plugins-section-head compact">
                 <h4>{{ text('高级来源预检', 'Advanced-source preflight') }}</h4>
                 <p>{{ text('这里只有高级来源的预检结论；本地上传的预检在左侧单独展示。', 'This panel only shows advanced-source preflight results. Uploaded archive validation is shown in the left pane.') }}</p>
@@ -794,7 +798,7 @@
           </div>
         </div>
         <div v-if="form.installs.length" class="plugins-install-grid">
-          <div class="plugins-filter-grid plugins-stage-card--wide">
+          <div class="plugins-filter-grid plugins-stage-section--wide">
             <label class="form-field">
               <span class="form-label">{{ text('安装记录搜索', 'Install search') }}</span>
               <input
@@ -811,7 +815,7 @@
               </select>
             </label>
           </div>
-          <div class="plugins-bulk-toolbar plugins-stage-card--wide">
+          <div class="plugins-bulk-toolbar plugins-stage-section--wide">
             <div class="plugins-guided-group-meta">
               <span>{{ text('已选择安装记录', 'Selected install records') }} {{ selectedInstallIds.length }}</span>
               <span>{{ text('当前筛选结果', 'Filtered installs') }} {{ filteredInstallRecords.length }}</span>
@@ -858,7 +862,7 @@
               />
             </label>
             <article
-              class="plugins-install-card"
+              class="plugins-install-entry"
               :class="{ active: selectedPluginId === install.id }"
               @click="selectedPluginId = install.id"
             >
@@ -876,7 +880,7 @@
     </section>
 
     <section v-else class="plugins-overview">
-      <article class="plugins-stage-card plugins-stage-card--wide">
+      <article class="plugins-stage-section plugins-stage-section--wide">
         <div class="plugins-section-head">
           <div>
             <p class="eyebrow">{{ text('DIAGNOSTICS', 'DIAGNOSTICS') }}</p>
@@ -906,6 +910,7 @@ import type {
   PluginUploadPreflightResult,
   PluginsSummaryPayload,
 } from '../../../../../types/plugins';
+import StatusPill from '../../components/StatusPill.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { useLocalePreference } from '../../shared/locale';
 import './plugins-workspace.css';
@@ -934,6 +939,7 @@ type PluginsTab = 'overview' | 'inventory' | 'policy' | 'installs' | 'diagnostic
 type PluginConfigMode = 'guided' | 'json';
 type PluginSortMode = 'name' | 'status' | 'source' | 'critical' | 'capabilities';
 type GuidedSchemaFieldType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'unsupported';
+type StatusPillTone = 'neutral' | 'accent' | 'sage' | 'danger';
 
 interface GuidedSchemaField {
   path: string;
@@ -996,7 +1002,7 @@ const PolicyListEditor = defineComponent({
       emit('update:modelValue', next);
     };
     const add = () => emit('update:modelValue', [...props.modelValue, '']);
-    return () => h('article', { class: ['plugins-stage-card', attrs.class] }, [
+    return () => h('article', { class: ['plugins-stage-section', attrs.class] }, [
       h('div', { class: 'plugins-section-head compact' }, [
         h('h3', props.title),
         h('p', props.description),
@@ -1575,7 +1581,7 @@ const blockingSchemaIssueCount = computed(() =>
   selectedPluginSchemaValidationIssues.value.filter((issue) => issue.level === 'danger').length,
 );
 const capabilityEntries = computed(() => Object.entries(summary.value?.capabilityIndex || {}).map(([key, ids]) => ({ key, ids })));
-const criticalPluginCards = computed(() =>
+const criticalPluginEntries = computed(() =>
   criticalPluginList.map((id) => {
     const entry = allPluginItems.value.find((item) => item.id === id) || null;
     return {
@@ -1591,7 +1597,7 @@ const criticalPluginCards = computed(() =>
     };
   }),
 );
-const policySnapshotCards = computed(() => [
+const policySnapshotEntries = computed(() => [
   {
     key: 'enabled',
     label: text('插件运行时', 'Plugin runtime'),
@@ -1725,6 +1731,17 @@ function pluginStatusLabel(status: PluginEntrySummary['status']): string {
     case 'missing': return text('缺失', 'Missing');
     case 'available': return text('可配置', 'Available');
     default: return status;
+  }
+}
+
+function pluginStatusTone(status: PluginEntrySummary['status']): StatusPillTone {
+  switch (status) {
+    case 'enabled': return 'sage';
+    case 'available': return 'accent';
+    case 'blocked':
+    case 'missing': return 'danger';
+    case 'disabled': return 'neutral';
+    default: return 'neutral';
   }
 }
 

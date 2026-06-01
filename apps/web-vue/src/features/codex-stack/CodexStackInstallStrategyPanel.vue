@@ -10,6 +10,9 @@
       <p class="cs-field-hint">
         {{ text("小白用户保持默认即可。只有组件损坏、版本不一致或需要保留现状时，再改跳过或强制。", "New users can keep defaults. Change skip or force only for damaged components, version mismatch, or preserving the current state.") }}
       </p>
+      <p class="cs-install-managed-note">
+        {{ text("后台守护由安装、暂停和推荐修复流程自动托管，不在这里手动跳过或强制。", "The background watchdog is managed by install, pause, and recommended repair flows, so it is not skipped or forced manually here.") }}
+      </p>
       <div class="cs-component-mode-list">
         <article v-for="component in components" :key="component.id" class="cs-component-mode-row">
           <div>
@@ -54,7 +57,7 @@
         </div>
       </div>
       <p class="cs-field-hint">
-        {{ text("完整安装会同时部署 cc-connect；基础安装只保留 Codex、CPA、Compact 和后台守护。", "Full install includes cc-connect; base install keeps Codex, CPA, Compact, and the background watchdog only.") }}
+        {{ text("完整安装会同时部署 cc-connect；基础安装保留 Codex、CPA、Compact，并自动配置后台守护。", "Full install includes cc-connect; base install keeps Codex, CPA, Compact, and automatically configures the background watchdog.") }}
       </p>
       <div class="cs-install-run-actions">
         <button type="button" class="primary-button cs-big-button" :disabled="!canRunMutation" @click="$emit('install-full')">

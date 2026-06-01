@@ -56,11 +56,11 @@ test("agents polish keeps newcomer guidance and deep-page escape hatches visible
   );
   assert.match(
     quickConfigDialogContent,
-    /更完整的文档、绑定和高级设置都可以从当前工作区直接打开。/,
+    /更完整的人设、路由和运行配置都可以从当前工作区直接打开。/,
   );
-  assert.match(quickConfigDialogContent, /打开文档/);
-  assert.match(quickConfigDialogContent, /打开绑定/);
-  assert.match(quickConfigDialogContent, /打开高级配置/);
+  assert.match(quickConfigDialogContent, /打开人设/);
+  assert.match(quickConfigDialogContent, /打开路由/);
+  assert.match(quickConfigDialogContent, /打开运行/);
 });
 
 test("agents overview exposes fast per-agent HEARTBEAT controls without opening raw config", () => {
@@ -74,10 +74,6 @@ test("agents overview exposes fast per-agent HEARTBEAT controls without opening 
 test("agents polish keeps mobile action groups stacked for thumb reach", () => {
   assert.match(
     agentsStyleContent,
-    /@media \(max-width: 720px\)[\s\S]*\.agents-stage-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
-  );
-  assert.match(
-    agentsStyleContent,
     /@media \(max-width: 720px\)[\s\S]*\.agent-rail-list\s*\{[\s\S]*max-height:/,
   );
   assert.match(
@@ -88,7 +84,10 @@ test("agents polish keeps mobile action groups stacked for thumb reach", () => {
     agentsStyleContent,
     /\.agents-stage-header__actions\s*\{[\s\S]*justify-content:\s*flex-end;/,
   );
-  assert.match(agentsStyleContent, /\.agents-stage-tabs/);
+  assert.match(agentsWorkspaceLayoutContent, /class="agents-task-nav studio-workbench-task-nav"/);
+  assert.match(agentsWorkspaceLayoutContent, /class="agents-task-nav-button studio-workbench-task-nav-button"/);
+  assert.doesNotMatch(agentsStyleContent, /\.agents-task-nav-button\s*\{/);
+  assert.doesNotMatch(agentsStyleContent, /\.agents-stage-tabs|\.agents-stage-tab/);
   assert.match(agentsStyleContent, /\.agent-rail-item/);
   assert.match(agentsStyleContent, /\.agent-filter-chip/);
 });

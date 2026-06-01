@@ -15,6 +15,7 @@ const systemControlPage = read(
 const systemWorkspaceCss = read(
   "apps/web-vue/src/features/system/system-workspace.css",
 );
+const globalStyleCss = read("apps/web-vue/src/style.css");
 const terminalConsolePage = read(
   "apps/web-vue/src/features/terminal/TerminalConsolePage.vue",
 );
@@ -34,9 +35,16 @@ test("system and terminal pages keep dedicated surface contracts", () => {
   assert.match(systemControlPage, /system-control-grid/);
   assert.match(systemControlPage, /system-main-stage/);
   assert.match(systemControlPage, /system-raw-inspector/);
-  assert.match(systemControlPage, /class="system-stage-tabs mobile-stage-tabs"/);
-  assert.match(systemControlPage, /system-command-list/);
-  assert.match(systemControlPage, /system-command-row/);
+  assert.match(systemControlPage, /class="system-stage-nav mobile-task-nav"/);
+  assert.match(systemControlPage, /taskNavItems/);
+  assert.match(systemControlPage, /activeTaskId/);
+  assert.match(systemControlPage, /\{\{ text\('系统诊断', 'System Diagnostics'\) \}\}/);
+  assert.doesNotMatch(systemControlPage, /system-stage-tabs|mobile-stage-tabs/);
+  assert.doesNotMatch(systemControlPage, /诊断指挥台|Diagnostics Command|指挥台/);
+  assert.doesNotMatch(systemControlPage, /const tabs|activeTab|SystemTab|tab\./);
+  assert.match(systemControlPage, /system-action-list/);
+  assert.match(systemControlPage, /system-action-row/);
+  assert.doesNotMatch(systemControlPage, /system-command-list|system-command-row|system-overview-command-panel/);
   assert.match(systemControlPage, /import '\.\/system-workspace\.css';/);
   assert.doesNotMatch(systemControlPage, /<style scoped>/);
   assert.match(systemControlPage, /router\.push\('\/system\/events'\)/);
@@ -62,7 +70,7 @@ test("system and terminal pages keep dedicated surface contracts", () => {
   );
   assert.match(
     systemWorkspaceCss,
-    /@media \(max-width: 880px\) \{[\s\S]*\.system-stage-tabs\.mobile-stage-tabs \{[\s\S]*overflow-x:\s*auto/,
+    /@media \(max-width: 880px\) \{[\s\S]*\.system-stage-nav\.mobile-task-nav \{[\s\S]*overflow-x:\s*auto/,
   );
   assert.match(
     systemWorkspaceCss,
@@ -70,7 +78,7 @@ test("system and terminal pages keep dedicated surface contracts", () => {
   );
   assert.match(
     systemWorkspaceCss,
-    /\.system-stage-tabs\.mobile-stage-tabs\s*\{[\s\S]*background:\s*transparent;/,
+    /\.system-stage-nav\.mobile-task-nav\s*\{[\s\S]*background:\s*transparent;/,
   );
   assert.match(
     systemWorkspaceCss,
@@ -101,7 +109,10 @@ test("system and terminal pages keep dedicated surface contracts", () => {
 test("system control tower and terminal workspace expressions stay explicit", () => {
   assert.match(systemControlPage, /system-control-tower-surface/);
   assert.match(systemControlPage, /system-control-tower-rail/);
-  assert.match(systemWorkspaceCss, /var\(--system-control-tower-glow\)/);
+  assert.doesNotMatch(
+    systemWorkspaceCss,
+    /system-control-tower-surface::before|var\(--system-control-tower-glow\)|linear-gradient|radial-gradient/,
+  );
 
   assert.match(terminalConsolePage, /terminal-console-surface/);
   assert.match(terminalConsolePage, /terminal-console-main/);
@@ -196,7 +207,7 @@ test("terminal workspace keeps strong shell-relative height chain for stage and 
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.main-content\.terminal-surface-route\s+\.shell-route-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+    /\.main-content\.terminal-surface-route\s+\.shell-route-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
   );
   assert.doesNotMatch(
     terminalWorkspaceCss,
@@ -271,7 +282,7 @@ test("terminal workspace keeps strong shell-relative height chain for stage and 
 test("terminal workspace theme uses unified surface tokens for stage and drawer", () => {
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-inspector-drawer,[\s\S]*\.terminal-workspace-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+    /\.terminal-inspector-drawer,[\s\S]*\.terminal-workspace-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
   );
   assert.match(
     terminalWorkspaceCss,
@@ -284,6 +295,14 @@ test("terminal workspace theme uses unified surface tokens for stage and drawer"
   assert.match(
     terminalWorkspaceCss,
     /\.terminal-workspace-stage[\s\S]*border:\s*1px solid var\(--border-subtle\);/,
+  );
+  assert.match(
+    terminalWorkspaceCss,
+    /\.terminal-container\s*\{[\s\S]*background:\s*var\(--terminal-xterm-bg\);/,
+  );
+  assert.doesNotMatch(
+    terminalWorkspaceCss,
+    /linear-gradient\(180deg,\s*var\(--claw-navy-800\)|\.terminal-session-context\s*\{[\s\S]*linear-gradient\(135deg/,
   );
   assert.match(
     terminalWorkspaceCss,
@@ -301,6 +320,26 @@ test("terminal workspace theme uses unified surface tokens for stage and drawer"
     terminalWorkspaceCss,
     /html\[data-theme="light"\] \.terminal-stage-header/,
   );
+  assert.doesNotMatch(
+    terminalWorkspaceCss,
+    /rgba\(14,\s*21,\s*31|rgba\(15,\s*20,\s*25|rgba\(5,\s*10,\s*18|#112233|#0f1419/,
+  );
+  assert.doesNotMatch(
+    terminalWorkspaceCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient|var\(--claw-navy|var\(--sky|var\(--atlas|var\(--glass/,
+  );
+  assert.match(terminalWorkspaceCss, /\.terminal-mobile-sheet-mask[\s\S]*background:\s*var\(--modal-backdrop\);/);
+  assert.match(terminalWorkspaceCss, /\.terminal-install-output-sheet[\s\S]*box-shadow:[\s\S]*var\(--mono-shadow-md\),/);
+  assert.match(terminalWorkspaceCss, /\.terminal-install-output-log[\s\S]*background:\s*var\(--code-bg\);/);
+  assert.match(terminalWorkspaceCss, /\.terminal-tab-dot\[data-tone='warning'\][\s\S]*background:\s*var\(--warning\);/);
+  assert.match(terminalConsolePage, /theme:\s*buildTerminalTheme\(\)/);
+  assert.match(terminalConsolePage, /resolveTerminalThemeColor/);
+  assert.doesNotMatch(
+    terminalConsolePage,
+    /#[0-9a-fA-F]{3,6}|#0f1419|#e6e1cf|#7fdbca|#ffd580|#82aaff|#c792ea|#89ddff/,
+  );
+  assert.match(globalStyleCss, /--terminal-xterm-bg:\s*var\(--mono-bg\);/);
+  assert.match(globalStyleCss, /--terminal-xterm-bright-white:\s*var\(--mono-ink\);/);
 });
 
 test("terminal workspace embeds console in flush stage mode", () => {

@@ -2,19 +2,6 @@
   <motion.section class="page-shell dreaming-page" v-bind="pageSurfaceReveal">
     <motion.header class="dreaming-stage" v-bind="pageMastheadReveal">
       <section class="dreaming-stage__scene">
-        <div class="dreaming-stage__sky" aria-hidden="true">
-          <span class="dreaming-stage__star star-1"></span>
-          <span class="dreaming-stage__star star-2"></span>
-          <span class="dreaming-stage__star star-3"></span>
-          <span class="dreaming-stage__star star-4"></span>
-          <span class="dreaming-stage__star star-5"></span>
-          <span class="dreaming-stage__star star-6"></span>
-          <span class="dreaming-stage__moon"></span>
-          <span class="dreaming-stage__moon-ring"></span>
-          <span class="dreaming-stage__haze"></span>
-          <span class="dreaming-stage__tide"></span>
-        </div>
-
         <div class="dreaming-stage__copy">
           <p class="eyebrow">Dreaming</p>
           <h2 class="page-title">{{ text('梦境记忆工作台', 'Dreaming Memory Workbench') }}</h2>
@@ -107,49 +94,6 @@
           </button>
         </div>
 
-        <div class="dreaming-stage__action-well">
-          <div class="dreaming-pane__head compact">
-            <div>
-              <h4>{{ text('Grounded Replay', 'Grounded Replay') }}</h4>
-              <p>
-                {{
-                  text(
-                    '这里接的是 OpenClaw 4.9 官方 Dreams 动作：Backfill、Reset、Clear Grounded。',
-                    'These controls call the official OpenClaw 4.9 Dreams actions: Backfill, Reset, and Clear Grounded.'
-                  )
-                }}
-              </p>
-            </div>
-          </div>
-
-          <div class="dreaming-stage__action-grid">
-            <button
-              type="button"
-              class="secondary-button"
-              :disabled="busy"
-              @click="runGroundedAction('backfill')"
-            >
-              {{ groundedActionBusy === 'backfill' ? text('回填中...', 'Backfilling...') : text('Backfill 日记', 'Backfill Diary') }}
-            </button>
-            <button
-              type="button"
-              class="secondary-button"
-              :disabled="busy"
-              @click="runGroundedAction('reset-diary')"
-            >
-              {{ groundedActionBusy === 'reset-diary' ? text('重置中...', 'Resetting...') : text('Reset 回填', 'Reset Backfill') }}
-            </button>
-            <button
-              type="button"
-              class="secondary-button"
-              :disabled="busy"
-              @click="runGroundedAction('clear-grounded')"
-            >
-              {{ groundedActionBusy === 'clear-grounded' ? text('清理中...', 'Clearing...') : text('Clear Grounded', 'Clear Grounded') }}
-            </button>
-          </div>
-        </div>
-
         <div class="dreaming-stage__facts">
           <div class="dreaming-stage__fact">
             <span>{{ text('Memory Slot', 'Memory Slot') }}</span>
@@ -175,55 +119,23 @@
       </aside>
     </motion.header>
 
-    <section class="dreaming-ops-strip">
-      <article class="dreaming-inline-panel">
+    <section class="dreaming-review-board">
+      <article class="dreaming-inline-panel dreaming-grounded-actions">
         <div class="dreaming-pane__head compact">
           <div>
-            <h4>{{ text('功能操作区', 'Operations') }}</h4>
+            <h4>{{ text('Grounded Replay 操作', 'Grounded Replay Actions') }}</h4>
             <p>
               {{
                 text(
-                  '这里把当前页面能做的事情直接展开，不需要再去猜 tab 里有没有藏功能。',
-                  'All available actions on this page are listed here directly so nothing is hidden behind tabs.'
+                  '这里只放官方 4.9 grounded replay 操作；启停、修复和刷新留在上方运行区，避免重复入口。',
+                  'This lane only contains official 4.9 grounded replay actions. Enable, repair, and refresh stay in the runtime area above to avoid duplicate entry points.'
                 )
               }}
             </p>
           </div>
         </div>
 
-        <div class="dreaming-ops-strip__grid">
-          <button type="button" class="secondary-button" :disabled="busy" @click="refreshAll">
-            {{ busy ? text('刷新中...', 'Refreshing...') : text('刷新状态', 'Refresh State') }}
-          </button>
-          <button type="button" class="secondary-button" :disabled="busy" @click="refreshDiary">
-            {{ diaryBusy ? text('重载中...', 'Reloading...') : text('重载日记', 'Reload Diary') }}
-          </button>
-          <button type="button" class="secondary-button" :disabled="busy" @click="refreshRemHarnessPreview">
-            {{ remHarnessBusy ? text('预览中...', 'Previewing...') : text('Preview REM', 'Preview REM') }}
-          </button>
-          <button
-            type="button"
-            class="secondary-button"
-            :disabled="busy"
-            @click="toggleDreamingState(!dreamingEnabled)"
-          >
-            {{
-              toggleBusy
-                ? text('提交中...', 'Applying...')
-                : dreamingEnabled
-                  ? text('关闭 Dreaming', 'Disable Dreaming')
-                  : text('开启 Dreaming', 'Enable Dreaming')
-            }}
-          </button>
-          <button
-            v-if="canRepair"
-            type="button"
-            class="secondary-button"
-            :disabled="busy"
-            @click="repairConfig"
-          >
-            {{ repairBusy ? text('修复中...', 'Repairing...') : text('自动修复', 'Repair Mismatch') }}
-          </button>
+        <div class="dreaming-grounded-actions__grid">
           <button
             type="button"
             class="secondary-button"
@@ -427,11 +339,10 @@
           <section class="dreaming-river">
             <div class="dreaming-river__line" aria-hidden="true"></div>
             <article
-              v-for="(phase, index) in phaseCards"
+              v-for="phase in phaseEntries"
               :key="phase.id"
               class="dreaming-river__phase"
               :class="{ active: phase.enabled }"
-              :style="{ '--phase-index': String(index) }"
             >
               <div class="dreaming-river__phase-head">
                 <div>
@@ -468,7 +379,7 @@
 
           <section class="dreaming-signal-rack">
             <article
-              v-for="metric in metricCards"
+              v-for="metric in metricEntries"
               :key="metric.label"
               class="dreaming-signal-rack__item"
             >
@@ -968,7 +879,7 @@ const stageStats = computed(() => [
   },
 ]);
 
-const metricCards = computed(() => [
+const metricEntries = computed(() => [
   {
     label: text('Recall Signals', 'Recall Signals'),
     value: String(snapshot.value?.status?.recallSignalCount ?? 0),
@@ -996,7 +907,7 @@ const metricCards = computed(() => [
   },
 ]);
 
-const phaseCards = computed(() => {
+const phaseEntries = computed(() => {
   const status = snapshot.value?.status;
   return [
     {

@@ -22,8 +22,8 @@
       </div>
     </motion.header>
 
-    <section class="home-command-panel" data-home-zone="entry">
-      <div class="home-command-copy home-section-marker">
+    <section class="home-workspace-strip" data-home-zone="entry">
+      <div class="home-workspace-copy home-section-marker">
         <p class="eyebrow">{{ text('Start Here', 'Start Here') }}</p>
         <h3>{{ text('常用工作入口', 'Common workspace entries') }}</h3>
         <p class="home-section-copy">
@@ -31,51 +31,22 @@
         </p>
       </div>
 
-      <nav class="home-command-list" :aria-label="text('常用工作入口', 'Common workspace entries')">
+      <nav class="home-action-list" :aria-label="text('常用工作入口', 'Common workspace entries')">
         <RouterLink
           v-for="(action, index) in dashboardWorkspaceActions"
           :key="action.to"
           :to="action.to"
-          class="home-command-row"
+          class="home-action-row"
         >
-          <span class="home-command-row__index">{{ String(index + 1).padStart(2, '0') }}</span>
-          <span class="home-command-row__copy">
-            <span class="home-command-row__eyebrow">{{ action.eyebrow }}</span>
+          <span class="home-action-row__index">{{ String(index + 1).padStart(2, '0') }}</span>
+          <span class="home-action-row__copy">
+            <span class="home-action-row__eyebrow">{{ action.eyebrow }}</span>
             <strong>{{ action.label }}</strong>
-            <span class="home-command-row__note">{{ action.copy }}</span>
+            <span class="home-action-row__note">{{ action.copy }}</span>
           </span>
-          <span class="home-command-row__verb">{{ text('打开', 'Open') }}</span>
+          <span class="home-action-row__verb">{{ text('打开', 'Open') }}</span>
         </RouterLink>
       </nav>
-    </section>
-
-    <section class="home-compact-visual-strip" data-home-zone="visual">
-      <div class="home-section-heading home-section-heading-row home-section-marker">
-        <div>
-          <p class="eyebrow">{{ text('Signal Mini Chart', 'Signal Mini Chart') }}</p>
-          <h3>{{ text('轻量信号图', 'Compact signal chart') }}</h3>
-        </div>
-        <p class="home-section-copy">
-          {{ text('用简洁条形刻度呈现覆盖率与压力面，保持首页以态势阅读为主。', 'Use compact bars to show coverage and pressure while keeping the home view overview-first.') }}
-        </p>
-      </div>
-
-      <div class="home-mini-chart-grid">
-        <article
-          v-for="bar in dashboardCoverageBars"
-          :key="bar.key"
-          class="home-mini-chart"
-        >
-          <div class="home-mini-chart__head">
-            <span>{{ bar.label }}</span>
-            <strong>{{ bar.value }}</strong>
-          </div>
-          <div class="home-mini-chart__rail" :class="`tone-${bar.tone}`">
-            <span class="home-mini-chart__fill" :style="{ width: `${bar.percent}%` }" />
-          </div>
-          <p class="home-mini-chart__note">{{ bar.note }}</p>
-        </article>
-      </div>
     </section>
 
     <section class="home-system-snapshot" data-home-zone="snapshot">
@@ -105,6 +76,19 @@
         <div class="home-fact">
           <span>{{ text('升级状态', 'Upgrade state') }}</span>
           <strong>{{ releaseStatusLabel }}</strong>
+        </div>
+      </div>
+
+      <div class="home-readiness-list" :aria-label="text('首页运行信号', 'Home readiness signals')">
+        <div
+          v-for="signal in dashboardReadinessSignals"
+          :key="signal.key"
+          class="home-readiness-row"
+          :class="`tone-${signal.tone}`"
+        >
+          <span>{{ signal.label }}</span>
+          <strong>{{ signal.value }}</strong>
+          <p>{{ signal.note }}</p>
         </div>
       </div>
 
@@ -216,16 +200,15 @@ const dashboardSystemSignals = computed(() => buildDashboardOverviewSignals({
   formatUptime,
 }));
 
-type DashboardCoverageBar = {
+type DashboardReadinessSignal = {
   key: string;
   label: string;
   value: string;
   note: string;
-  percent: number;
   tone: 'low' | 'medium' | 'high';
 };
 
-const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
+const dashboardReadinessSignals = computed((): DashboardReadinessSignal[] => {
   const payload = summary.value;
 
   if (!payload) {
@@ -235,7 +218,6 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
         label: text('CLI 覆盖率', 'CLI coverage'),
         value: '--',
         note: text('等待数据', 'Waiting for data'),
-        percent: 0,
         tone: 'medium',
       },
       {
@@ -243,7 +225,6 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
         label: text('Bootstrap 可修复压力', 'Bootstrap fix pressure'),
         value: '--',
         note: text('等待数据', 'Waiting for data'),
-        percent: 0,
         tone: 'medium',
       },
       {
@@ -251,7 +232,6 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
         label: text('设备配对待处理', 'Pending pairing queue'),
         value: '--',
         note: text('等待数据', 'Waiting for data'),
-        percent: 0,
         tone: 'medium',
       },
       {
@@ -259,7 +239,6 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
         label: text('事件失败占比', 'Event failure share'),
         value: '--',
         note: text('等待数据', 'Waiting for data'),
-        percent: 0,
         tone: 'medium',
       },
     ];
@@ -283,7 +262,6 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
       label: text('CLI 覆盖率', 'CLI coverage'),
       value: `${payload.runtime.installedCliCount}/${payload.runtime.expectedCliCount}`,
       note: text('安装数量 / 期望数量', 'Installed / expected'),
-      percent: cliPercent,
       tone: toneForPositiveMetric(cliPercent),
     },
     {
@@ -291,7 +269,6 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
       label: text('Bootstrap 可修复压力', 'Bootstrap fix pressure'),
       value: String(payload.bootstrap.fixable),
       note: text('可自动修复项占当前 bootstrap 总量', 'Fixable share of current bootstrap total'),
-      percent: bootstrapPercent,
       tone: toneForInverseMetric(bootstrapPercent),
     },
     {
@@ -299,7 +276,6 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
       label: text('设备配对待处理', 'Pending pairing queue'),
       value: String(payload.deviceTrust.pendingRequests),
       note: text('待处理占设备信任总量', 'Pending share of device trust total'),
-      percent: pairingPercent,
       tone: toneForInverseMetric(pairingPercent),
     },
     {
@@ -307,7 +283,6 @@ const dashboardCoverageBars = computed((): DashboardCoverageBar[] => {
       label: text('事件失败占比', 'Event failure share'),
       value: String(payload.events.recentFailures),
       note: text('失败事件占近期事件总量', 'Failure share of recent event load'),
-      percent: eventPercent,
       tone: toneForInverseMetric(eventPercent),
     },
   ];
@@ -329,13 +304,13 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function toneForPositiveMetric(percent: number): DashboardCoverageBar['tone'] {
+function toneForPositiveMetric(percent: number): DashboardReadinessSignal['tone'] {
   if (percent >= 70) return 'low';
   if (percent >= 40) return 'medium';
   return 'high';
 }
 
-function toneForInverseMetric(percent: number): DashboardCoverageBar['tone'] {
+function toneForInverseMetric(percent: number): DashboardReadinessSignal['tone'] {
   if (percent >= 70) return 'high';
   if (percent >= 40) return 'medium';
   return 'low';

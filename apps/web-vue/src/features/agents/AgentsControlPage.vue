@@ -2,19 +2,19 @@
   <section v-if="detail && agentId" class="agents-overview-page">
     <div v-if="overviewMessage" class="status-banner">{{ overviewMessage }}</div>
 
-    <div class="agents-overview-grid">
-      <article class="agents-command-center agents-overview-card agents-overview-card--primary">
+    <div class="agents-overview-workbench">
+      <article class="agents-identity-strip agents-overview-block">
         <div class="agents-section-head">
           <div>
             <h3>{{ text('当前 Agent', 'Current agent') }}</h3>
-            <p>{{ text('先看清它是谁、负责什么，再决定是继续快速配置还是进入其它工作区标签。', 'Read who this agent is and what it owns first, then decide whether to stay in quick config or move into another workspace tab.') }}</p>
+            <p>{{ text('先看清它是谁、负责什么，再决定是继续快速配置还是切换顶部任务条。', 'Read who this agent is and what it owns first, then decide whether to stay in quick config or switch the top task bar.') }}</p>
           </div>
           <div class="page-actions">
             <button type="button" class="secondary-button compact-button" @click="openQuickConfig">
               {{ text('快速配置', 'Quick Config') }}
             </button>
             <button type="button" class="secondary-button compact-button" @click="openAdvanced">
-              {{ text('高级配置', 'Advanced') }}
+              {{ text('运行配置', 'Runtime') }}
             </button>
           </div>
         </div>
@@ -71,17 +71,17 @@
           </div>
 
           <div class="agents-form-grid">
-            <label class="toggle-card form-field-full">
+            <label class="option-row form-field-full">
               <input v-model="quickEdit.enabled" class="form-checkbox" type="checkbox" />
               <div>
                 <strong>{{ text('启用状态', 'Enabled') }}</strong>
-                <span>{{ text('高频启用切换保留在概览页，复杂运行策略继续留在高级配置。', 'High-frequency enablement stays on the overview, while complex runtime policy remains in Advanced.') }}</span>
+                <span>{{ text('高频启用切换保留在概览页，复杂运行策略继续留在运行配置。', 'High-frequency enablement stays on the overview, while complex runtime policy remains in Runtime.') }}</span>
               </div>
             </label>
 
             <div class="form-field">
               <label class="form-label">{{ text('模型', 'Model') }}</label>
-              <GlassSelect
+              <StudioSelect
                 v-model="quickEdit.model"
                 :options="modelOptions"
                 :placeholder="text('跟随系统默认', 'Inherit system default')"
@@ -101,7 +101,7 @@
               <div class="agents-form-grid">
                 <div class="form-field">
                   <label class="form-label">{{ text('心跳策略', 'Heartbeat policy') }}</label>
-                  <GlassSelect v-model="quickEdit.heartbeatMode" :options="heartbeatModeOptions" />
+                  <StudioSelect v-model="quickEdit.heartbeatMode" :options="heartbeatModeOptions" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('心跳周期', 'Heartbeat interval') }}</label>
@@ -115,7 +115,7 @@
 
       </article>
 
-      <article class="agents-stream-pane agents-overview-card">
+      <article class="agents-insight-pane agents-overview-block">
         <div class="agents-section-head">
           <div>
             <h3>{{ text('会话热度', 'Session Heat') }}</h3>
@@ -168,22 +168,22 @@
         </div>
       </article>
 
-      <article class="agents-stream-pane agents-overview-card">
+      <article class="agents-insight-pane agents-overview-block">
         <div class="agents-section-head">
           <div>
-            <h3>{{ text('绑定总览', 'Bindings Summary') }}</h3>
-            <p>{{ text('这里只看入口是否接对、接到了哪个频道和账号；真正的增删改继续放在绑定页。', 'This overview only confirms whether routes point to the right channels and accounts; actual create, edit, and delete work stays on the bindings page.') }}</p>
+            <h3>{{ text('路由总览', 'Routing Summary') }}</h3>
+            <p>{{ text('这里只看入口是否接对、接到了哪个频道和账号；真正的增删改继续放在路由页。', 'This overview only confirms whether routes point to the right channels and accounts; actual create, edit, and delete work stays on the routing page.') }}</p>
           </div>
           <div class="page-actions">
             <button type="button" class="secondary-button compact-button" @click="openBindings">
-              {{ text('打开绑定页', 'Open Bindings') }}
+              {{ text('打开路由页', 'Open Routing') }}
             </button>
           </div>
         </div>
 
         <div class="agents-overview-binding-stats">
           <span class="agents-summary-pill">
-            {{ text(`显式绑定 ${detail.bindings.length}`, `Explicit ${detail.bindings.length}`) }}
+            {{ text(`显式路由 ${detail.bindings.length}`, `Explicit routes ${detail.bindings.length}`) }}
           </span>
           <span class="agents-summary-pill">
             {{
@@ -218,23 +218,23 @@
           </article>
         </div>
         <div v-else class="empty-inline">
-          {{ text('当前没有显式绑定。', 'No explicit bindings yet.') }}
+          {{ text('当前没有显式路由。', 'No explicit routes yet.') }}
         </div>
       </article>
     </div>
   </section>
 
-  <article v-else class="empty-inline agents-stage-empty-card">
+  <article v-else class="empty-inline agents-empty-stage">
     <strong>{{ text('请选择一个 Agent', 'Select an agent') }}</strong>
-    <p>{{ text('左侧 rail 会持续保留。选中后，右侧会切换到对应的概览和工作区标签。', 'The left rail stays persistent. After selection, the right stage switches to the matching overview and workspace tabs.') }}</p>
+    <p>{{ text('对象列表会持续保留。选中后，顶部任务条会切换到概览、人设、路由、会话或运行任务。', 'The object list stays persistent. After selection, the top task bar switches to overview, persona, routing, sessions, or runtime tasks.') }}</p>
   </article>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, reactive } from 'vue';
+import { ref, watch, computed, reactive, onActivated } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AgentDetailPayload } from '../../../../../types/agents';
-import GlassSelect from '../../shared/components/GlassSelect.vue';
+import StudioSelect from '../../shared/components/StudioSelect.vue';
 import { buildAgentHeartbeatConfig, resolveHeartbeatEvery, resolveHeartbeatMode, type HeartbeatMode } from '../../shared/heartbeat-config';
 import { useLocalePreference } from '../../shared/locale';
 import { fetchAgentDetail, fetchAgentsSummary, updateAgent } from './api';
@@ -333,21 +333,29 @@ function openAdvanced(): void {
   void router.push(`/agents/${encodeURIComponent(agentId.value)}/advanced`);
 }
 
+async function loadOverviewDetail(): Promise<void> {
+  if (!agentId.value) {
+    detail.value = null;
+    return;
+  }
+  const [detailPayload, summaryPayload] = await Promise.all([
+    fetchAgentDetail(agentId.value),
+    fetchAgentsSummary(),
+  ]);
+  detail.value = detailPayload;
+  availableModels.value = summaryPayload.availableModels || [];
+  resetQuickEditFromDetail(detailPayload);
+}
+
 watch(
   () => route.params.agentId,
   async () => {
-    if (!agentId.value) {
-      detail.value = null;
-      return;
-    }
-    const [detailPayload, summaryPayload] = await Promise.all([
-      fetchAgentDetail(agentId.value),
-      fetchAgentsSummary(),
-    ]);
-    detail.value = detailPayload;
-    availableModels.value = summaryPayload.availableModels || [];
-    resetQuickEditFromDetail(detailPayload);
+    await loadOverviewDetail();
   },
   { immediate: true },
 );
+
+onActivated(async () => {
+  await loadOverviewDetail();
+});
 </script>

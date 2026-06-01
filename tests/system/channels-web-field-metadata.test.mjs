@@ -35,7 +35,7 @@ test('channel account detail page keeps grouped dynamic field rendering instead 
   assert.match(channelAccountDetailPage, /function isPrimaryAccountFieldGroup\(groupId: ChannelFieldGroupId \| ''\): boolean/);
   assert.match(channelAccountDetailPage, /field\.group \|\| ''/);
   assert.match(channelAccountDetailPage, /field\.semantic/);
-  assert.match(channelAccountDetailPage, /accountFieldOptions\(field: ChannelFieldDescriptor\): GlassSelectOption\[\]/);
+  assert.match(channelAccountDetailPage, /accountFieldOptions\(field: ChannelFieldDescriptor\): StudioSelectOption\[\]/);
   assert.match(channelAccountDetailPage, /accountFieldInputType\(field: ChannelFieldDescriptor\): 'text' \| 'url'/);
   assert.doesNotMatch(channelAccountDetailPage, /v-for="field in selectedCatalog\.accountFields"/);
 });

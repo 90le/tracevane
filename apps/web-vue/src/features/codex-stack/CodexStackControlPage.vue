@@ -2,8 +2,8 @@
   <section class="page-shell codex-stack-page">
     <CodexStackPageHeader
       :eyebrow="text('CODEX STACK', 'CODEX STACK')"
-      :title="text('Codex Stack 管理中心', 'Codex Stack Management Center')"
-      :subtitle="text('按“状态判断 → 安装修复 → 模型上游 → Agent 管理 → 日志诊断”的顺序管理 codex-docs 服务。Studio 只做控制面，服务本身保持 systemd 独立运行。', 'Manage codex-docs through status, install/repair, model upstreams, agent management, and diagnostics. Studio stays the control plane while services keep running independently under systemd.')"
+      :title="text('Codex Stack 链路管理', 'Codex Stack Route Management')"
+      :subtitle="text('先看运行状态，再按安装修复、模型上游、Agent 链路和日志诊断逐步处理。Studio 只做控制面，服务本身保持 systemd 独立运行。', 'Start with runtime status, then move through install/repair, model upstreams, agent routes, and diagnostics. Studio stays the control plane while services keep running independently under systemd.')"
       :refresh-label="loading ? text('刷新中...', 'Refreshing...') : text('刷新状态', 'Refresh')"
       :refresh-disabled="loading || ccConnectLoading"
       :refresh-disabled-help="refreshDisabledHelp"
@@ -76,7 +76,7 @@
       >
         <template v-if="activeSection === 'dashboard'">
           <CodexStackSectionStack>
-            <CodexStackDashboardCommandCenter
+            <CodexStackDashboardRuntimeStrip
               :status-label="statusLabel"
               :status-tone="statusTone"
               :active-service-count="activeServiceCount"
@@ -95,7 +95,7 @@
               :ready-component-count="readyComponentCount"
               :component-count="summary.components.length"
               :issue-count="issueCount"
-              :readiness-percent="readinessPercent"
+              :readiness-value="readinessValue"
               :next-action-title="nextActionTitle"
               :next-action-copy="nextActionCopy"
               :next-action-button="nextActionButton"
@@ -166,7 +166,7 @@
           <CodexStackSectionStack>
             <CodexStackSectionIntro
               :kicker="text('安装', 'Install')"
-              :title="text('安装/修复指挥台', 'Install/Repair Command Center')"
+              :title="text('一键安装与修复', 'One-click Install and Repair')"
               :copy="text('第一次使用先走新手入口；日常异常只按“推荐修复 → 只验证 → 验证并切换”三步。安装参数和高级维护默认收起，只有需要改模型、端口或处理冲突时再打开。', 'First-time users start with the beginner entry. Daily recovery follows Recommended Repair, Verify Only, then Smoke & Attach. Install parameters and advanced maintenance stay collapsed until a model, port, or conflict needs manual handling.')"
             />
 
@@ -439,7 +439,7 @@
         :title="activeJobTitle"
         :status-label="jobStatusLabel(activeJob.status)"
         :steps="jobProgressSteps"
-        :progress-percent="jobProgressPercent"
+        :progress-value="jobProgressValue"
         :running="isCodexStackJobRunning(activeJob)"
         :empty-log="text('等待输出...', 'Waiting for output...')"
         @copy-output="copyActiveJobOutput"
@@ -461,7 +461,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, onActivated, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { confirm } from "../../composables/useConfirmDialog";
 import { copyTextToClipboard } from "../../shared/clipboard";
 import { useLocalePreference } from "../../shared/locale";
@@ -480,12 +480,14 @@ import type {
   CodexStackConfigPatchRequest,
   CodexStackJob,
   CodexStackLogResponse,
+  CodexStackManualServiceId,
   CodexStackRepairAction,
   CodexStackRunReadinessCheck,
   CodexStackRunReadinessCheckStatus,
   CodexStackRunReadinessMode,
   CodexStackServiceAction,
   CodexStackServiceId,
+  CodexStackServiceStatus,
   CodexStackSmokeMatrixResult,
   CodexStackSummaryPayload,
 } from "../../../../../types/codex-stack";
@@ -520,7 +522,7 @@ import {
   resolveCodexStackRunReadinessModeAction,
 } from "./readiness-action";
 import CodexStackDashboardInsights from "./CodexStackDashboardInsights.vue";
-import CodexStackDashboardCommandCenter from "./CodexStackDashboardCommandCenter.vue";
+import CodexStackDashboardRuntimeStrip from "./CodexStackDashboardRuntimeStrip.vue";
 import type {
   CodexStackComponentHealthCard,
   CodexStackNetworkPolicyCard,
@@ -601,6 +603,7 @@ import type { CodexStackSectionIntroChip } from "./CodexStackSectionIntro.vue";
 import type { CodexStackSectionId, CodexStackSectionNavItem } from "./CodexStackSectionNav.vue";
 import CodexStackSectionStack from "./CodexStackSectionStack.vue";
 import CodexStackServiceGrid from "./CodexStackServiceGrid.vue";
+import type { CodexStackServiceCard } from "./CodexStackServiceGrid.vue";
 import CodexStackUpstreamMap from "./CodexStackUpstreamMap.vue";
 import CodexStackWorkspaceShell from "./CodexStackWorkspaceShell.vue";
 import type { CodexStackWorkspaceFocusHint } from "./CodexStackWorkspaceShell.vue";
@@ -645,18 +648,21 @@ const logOutput = ref("");
 const loading = ref(false);
 const ccConnectLoading = ref(false);
 const busy = ref(false);
-const restartRequiredUnits = ref<CodexStackServiceId[]>([]);
+const restartRequiredUnits = ref<CodexStackManualServiceId[]>([]);
 const notice = ref<{ kind: "success" | "error"; text: string } | null>(null);
 const activeSection = ref<SectionId>("dashboard");
 const workspaceFocusHint = ref<CodexStackWorkspaceFocusHint | null>(null);
 const activeAgentPane = ref<AgentPaneId>("projects");
 const selectedProjectDraftId = ref("");
 const selectedLogService = ref<CodexStackServiceId>("cli-proxy-api.service");
-const primaryServiceIds: CodexStackServiceId[] = [
+const primaryServiceIds = [
   "cli-proxy-api.service",
   "cpa-compact-proxy.service",
   "cc-connect.service",
-];
+] as const satisfies readonly CodexStackManualServiceId[];
+type PrimaryCodexStackServiceId = (typeof primaryServiceIds)[number];
+type PrimaryCodexStackServiceStatus = CodexStackServiceStatus & { id: PrimaryCodexStackServiceId };
+const primaryServiceIdSet = new Set<CodexStackServiceId>(primaryServiceIds);
 const logServices = computed<CodexStackLogServiceOption[]>(() => {
   const services: CodexStackLogServiceOption[] = [
     { id: "cli-proxy-api.service", label: text("CPA", "CPA"), tone: "neutral", rawState: "--" },
@@ -769,7 +775,7 @@ const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const REQUIRED_CPA_SMOKE_CHECKS = CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS;
 
 const serviceCatalog: Record<
-  CodexStackServiceId,
+  PrimaryCodexStackServiceId,
   {
     labelKey: [string, string];
     blurbKey: [string, string];
@@ -779,10 +785,6 @@ const serviceCatalog: Record<
     labelKey: ["CPA", "CPA"],
     blurbKey: ["Codex Proxy API 服务", "Codex Proxy API service"],
   },
-  "cli-proxy-api-healthcheck.timer": {
-    labelKey: ["旧巡检", "Legacy Healthcheck"],
-    blurbKey: ["旧版 CPA 巡检定时器，应保持停用", "Legacy CPA healthcheck timer; should stay disabled"],
-  },
   "cpa-compact-proxy.service": {
     labelKey: ["Compact", "Compact"],
     blurbKey: ["Compact 代理转发服务", "Compact proxy forwarding service"],
@@ -790,10 +792,6 @@ const serviceCatalog: Record<
   "cc-connect.service": {
     labelKey: ["cc-connect", "cc-connect"],
     blurbKey: ["即时通讯桥接服务", "Instant messaging bridge service"],
-  },
-  "codex-stack-watchdog.timer": {
-    labelKey: ["后台守护", "Background Watchdog"],
-    blurbKey: ["由恢复/暂停流程自动管理，不直接手动启动", "Managed by resume/pause flows; do not start directly"],
   },
 };
 
@@ -820,9 +818,9 @@ const readyComponentCount = computed(
 const issueCount = computed(
   () => summary.value?.components.filter((component) => component.status !== "ok").length || 0,
 );
-const readinessPercent = computed(() => {
+const readinessValue = computed(() => {
   const total = summary.value?.components.length || 1;
-  return `${Math.round((readyComponentCount.value / total) * 100)}%`;
+  return Math.round((readyComponentCount.value / total) * 100);
 });
 const runReadinessTone = computed<CodexStackTone>(() => {
   const level = summary.value?.runReadiness.level || "blocked";
@@ -930,7 +928,7 @@ const navSections = computed<CodexStackSectionNavItem[]>(() => {
   return [
     {
       id: "dashboard" as const,
-      label: text("控制台", "Console"),
+      label: text("状态", "Status"),
       icon: "M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z",
       meta: current ? statusLabel.value : text("读取中", "Loading"),
       badge: current?.runReadiness.level === "ready" ? text("OK", "OK") : runReadinessLevelShortLabel(current?.runReadiness.level),
@@ -952,7 +950,7 @@ const navSections = computed<CodexStackSectionNavItem[]>(() => {
     },
     {
       id: "cc-connect" as const,
-      label: text("Agent", "Agents"),
+      label: text("Agent 桥接", "Agent Bridge"),
       icon: "M6 7h12v10H6zM4 5v14h16V5H4Zm4 4h8v2H8V9Zm0 4h5v2H8v-2Z",
       meta: current?.ccConnect.bindingPresent
         ? text("平台已绑定", "Platform bound")
@@ -966,7 +964,7 @@ const navSections = computed<CodexStackSectionNavItem[]>(() => {
     },
     {
       id: "settings" as const,
-      label: text("模型上游", "Models"),
+      label: text("路由模型", "Route Models"),
       icon: "M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.49.49 0 0 0 13.9 2h-3.8a.49.49 0 0 0-.49.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z",
       meta: current?.models.live
         ? text("模型目录在线", "Model catalog live")
@@ -1099,7 +1097,7 @@ const installPlanRecommendedTitle = computed(() => {
     case "watch-job":
       return text("先查看后台任务", "Watch the background job first");
     case "bind-cc-connect":
-      return text("先完成 Agent 绑定", "Complete Agent binding first");
+      return text("先完成 Agent 路由", "Complete Agent routing first");
     case "review-proxy":
       return text("先检查网络策略", "Review network policy first");
     case "run-check":
@@ -1134,7 +1132,7 @@ const installPlanRecommendedButton = computed(() => {
     case "watch-job":
       return text("查看日志", "View Logs");
     case "bind-cc-connect":
-      return text("去 Agent 绑定", "Bind Agent");
+      return text("打开 Agent 路由", "Open Agent Routing");
     case "review-proxy":
       return text("检查模型上游", "Review Models");
     case "run-check":
@@ -1174,7 +1172,11 @@ const activeJobTitle = computed(() => {
   };
   return labels[activeJob.value.kind];
 });
-const primaryServices = computed(() => summary.value?.services.filter((service) => primaryServiceIds.includes(service.id)) || []);
+function isPrimaryServiceStatus(service: CodexStackServiceStatus): service is PrimaryCodexStackServiceStatus {
+  return primaryServiceIdSet.has(service.id);
+}
+
+const primaryServices = computed(() => summary.value?.services.filter(isPrimaryServiceStatus) || []);
 const activeServiceCount = computed(() => countActiveServices(primaryServices.value));
 const serviceCount = computed(() => primaryServices.value.length);
 const ccConnectProjects = computed(() => ccConnectConfig.value?.projects || []);
@@ -1756,8 +1758,8 @@ const configImpactItems = computed<CodexStackRuntimeConfigImpactItem[]>(() => {
       id: "cc-connect",
       label: text("影响 cc-connect Agent 项目", "Affects cc-connect agent project"),
       detail: text(
-        "保存会更新 cc-connect 项目名；绑定与 finalizer 仍在 Agent 面板处理。",
-        "Saving updates the cc-connect project name; binding and finalizer steps still run from the Agent panel.",
+        "保存会更新 cc-connect 项目名；平台接入与 finalizer 仍在 Agent 面板处理。",
+        "Saving updates the cc-connect project name; platform setup and finalizer steps still run from the Agent panel.",
       ),
       tone: "info",
     });
@@ -1785,7 +1787,7 @@ const hasCcConnectRawChanges = computed(() => ccConnectRawDraft.value !== (ccCon
 const hasCcConnectStructuredChanges = computed(
   () => serializeCcConnectStructuredDraft() !== ccConnectStructuredBaseline.value,
 );
-const serviceCards = computed(() => {
+const serviceCards = computed<CodexStackServiceCard[]>(() => {
   if (!summary.value) return [];
   return primaryServices.value.map((service) => {
     const serviceMeta = serviceCatalog[service.id];
@@ -1817,7 +1819,6 @@ const componentOptions = computed(() => [
   { id: "cpa" as const, label: text("CPA 代理", "CPA Proxy") },
   { id: "compact-proxy" as const, label: text("Compact 代理", "Compact Proxy") },
   { id: "cc-connect" as const, label: "cc-connect" },
-  { id: "watchdog" as const, label: text("后台守护", "Background Watchdog") },
 ]);
 const installComponentStrategies = computed<CodexStackInstallComponentStrategy[]>(() => componentOptions.value.map((component) => ({
   id: component.id,
@@ -1982,15 +1983,15 @@ const jobProgressSteps = computed(() => {
     return { ...step, state };
   });
 });
-const jobProgressPercent = computed(() => {
+const jobProgressValue = computed(() => {
   const steps = jobProgressSteps.value;
-  if (!steps.length) return "0%";
+  if (!steps.length) return 0;
   const score = steps.reduce((total, step) => {
     if (step.state === "done") return total + 1;
     if (step.state === "active") return total + 0.55;
     return total;
   }, 0);
-  return `${Math.max(6, Math.round((score / steps.length) * 100))}%`;
+  return Math.max(6, Math.round((score / steps.length) * 100));
 });
 
 function nextDraftId(prefix: string): string {
@@ -2542,6 +2543,8 @@ function buildInstallPayload(
     forceReinstall: boolean;
   }> = {},
 ) {
+  const skipComponents = filterEditableInstallComponents(installForm.skipComponents);
+  const forceReinstallComponents = filterEditableInstallComponents(installForm.forceComponents);
   return {
     env: {
       CODEX_MODEL: installForm.model || undefined,
@@ -2561,8 +2564,8 @@ function buildInstallPayload(
       noStart: installForm.noStart,
       skipExisting: flagOverrides.skipExisting ?? installForm.skipExisting,
       forceReinstall: flagOverrides.forceReinstall ?? installForm.forceReinstall,
-      skipComponents: installForm.skipComponents.length ? installForm.skipComponents : undefined,
-      forceReinstallComponents: installForm.forceComponents.length ? installForm.forceComponents : undefined,
+      skipComponents: skipComponents.length ? skipComponents : undefined,
+      forceReinstallComponents: forceReinstallComponents.length ? forceReinstallComponents : undefined,
       channel: installForm.channel,
     },
   };
@@ -2822,15 +2825,12 @@ async function startRepairWithActions(actions: CodexStackRepairAction[], success
   }
 }
 
-async function serviceAction(serviceId: CodexStackServiceId, action: CodexStackServiceAction): Promise<void> {
+async function serviceAction(
+  serviceId: CodexStackManualServiceId,
+  action: Extract<CodexStackServiceAction, "start" | "stop" | "restart">,
+): Promise<void> {
   if (!guardMutation()) return;
   if ((action === "start" || action === "restart") && serviceId === "cpa-compact-proxy.service" && !isSummaryServiceActive("cli-proxy-api.service")) {
-    await resumeStack();
-    return;
-  }
-  if ((action === "start" || action === "restart") && serviceId === "codex-stack-watchdog.timer" && (
-    !isSummaryServiceActive("cli-proxy-api.service") || !isSummaryServiceActive("cpa-compact-proxy.service")
-  )) {
     await resumeStack();
     return;
   }
@@ -3229,10 +3229,21 @@ function installMode(componentId: CodexStackComponentId): ComponentInstallMode {
 }
 
 function setComponentMode(componentId: CodexStackComponentId, mode: ComponentInstallMode): void {
+  if (!isEditableInstallComponent(componentId)) return;
   removeFromArray(installForm.skipComponents, componentId);
   removeFromArray(installForm.forceComponents, componentId);
   if (mode === "skip") installForm.skipComponents.push(componentId);
   if (mode === "force") installForm.forceComponents.push(componentId);
+}
+
+function isEditableInstallComponent(componentId: CodexStackComponentId): boolean {
+  return componentOptions.value.some((component) => component.id === componentId);
+}
+
+function filterEditableInstallComponents(componentIds: string[]): CodexStackComponentId[] {
+  return componentIds.filter((componentId): componentId is CodexStackComponentId => (
+    isEditableInstallComponent(componentId as CodexStackComponentId)
+  ));
 }
 
 function installModeLabel(componentId: CodexStackComponentId): string {
@@ -3248,6 +3259,11 @@ function removeFromArray(list: string[], value: string): void {
 }
 
 onMounted(() => {
+  void loadAll(true);
+});
+
+onActivated(() => {
+  if (loading.value || ccConnectLoading.value) return;
   void loadAll(true);
 });
 

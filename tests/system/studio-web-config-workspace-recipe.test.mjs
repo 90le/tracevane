@@ -108,14 +108,24 @@ test("config editor page consumes unified tab source and built overview signals 
   );
   assert.match(configEditorPage, /buildConfigOverviewSignals\(/);
   assert.match(configEditorPage, /buildConfigSidebarSummary\(/);
-  assert.match(configEditorPage, /config-command-panel/);
+  assert.match(configEditorPage, /config-workspace-strip/);
   assert.match(configEditorPage, /config-signal-strip/);
+  assert.match(configEditorPage, /config-rail config-rail-grouped/);
+  assert.match(configEditorPage, /config-tab-stage config-section-grid/);
   assert.match(configEditorPage, /import '\.\/config-workspace\.css';/);
   assert.doesNotMatch(configEditorPage, /<style scoped>/);
   assert.match(configWorkspaceCss, /Migrated Config workspace rules from global style\.css/);
-  assert.doesNotMatch(configEditorPage, /config-overview-card/);
-  assert.match(configWorkspaceCss, /\.config-command-panel/);
+  assert.doesNotMatch(configEditorPage, /config-overview-card|config-overview-cell/);
+  assert.doesNotMatch(configEditorPage, /page-shell config-section-grid|class="config-tabs|class="config-tab-group"|class="config-tab"/);
+  assert.match(configWorkspaceCss, /\.config-workspace-strip/);
   assert.match(configWorkspaceCss, /\.config-signal-row/);
+  assert.match(configWorkspaceCss, /\.config-rail-item/);
+  assert.doesNotMatch(configEditorPage, /config-command-panel|config-command-copy/);
+  assert.doesNotMatch(configWorkspaceCss, /config-command-panel|config-command-copy/);
+  assert.doesNotMatch(
+    configWorkspaceCss,
+    /provider-card|browser-profile-card|config-overview-card|config-overview-cell|config-hero-grid|config-tabs-grouped|\.config-tabs|\.config-tab(?:\s|\{|:|\.|,)|--shell-(?:panel|stage|highlight)|var\(--surface\)|linear-gradient|radial-gradient|var\(--sky\)|--atlas|--glass/,
+  );
   assert.doesNotMatch(globalStyleCss, /\.config[a-zA-Z0-9_-]*/);
   assert.doesNotMatch(configEditorPage, /signal\.key === 'defaultModel'/);
   assert.doesNotMatch(configEditorPage, /signal\.key === 'imageModel'/);

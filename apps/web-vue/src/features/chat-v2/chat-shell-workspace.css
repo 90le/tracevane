@@ -19,7 +19,7 @@
   min-height: 0;
   height: 100%;
   padding: 0;
-  border-radius: var(--studio-workspace-radius, 18px);
+  border-radius: var(--studio-workspace-radius, 12px);
   overflow: hidden;
   align-content: stretch;
 }
@@ -48,7 +48,7 @@
 
 .shell-route-stage-chat {
   padding: 0;
-  border-radius: var(--studio-workspace-radius, 18px);
+  border-radius: var(--studio-workspace-radius, 12px);
   overflow: hidden;
 }
 
@@ -89,95 +89,95 @@
 html[data-theme="light"],
 .chat-v2-shell.theme-light,
 .chat-mobile-drawer-mask.theme-light {
-  --chat-page-bg: #eef3f9;
-  --chat-shell-frame: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(245, 249, 253, 0.94));
-  --chat-shell-bg: #fbfdff;
-  --chat-sidebar-bg: linear-gradient(180deg, rgba(254, 255, 255, 0.98), rgba(246, 250, 254, 0.95));
-  --chat-thread-bg: #f9fbfe;
-  --chat-empty-bg: #edf3f8;
-  --chat-modal-bg: rgba(255, 255, 255, 0.985);
-  --chat-modal-row: rgba(23, 38, 56, 0.04);
-  --chat-popover-bg: rgba(255, 255, 255, 0.988);
-  --chat-menu-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(246, 249, 253, 0.992));
-  --chat-dialog-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.998), rgba(244, 248, 252, 0.994));
-  --chat-drawer-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.998), rgba(243, 247, 251, 0.992));
-  --chat-inspector-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.998), rgba(241, 246, 251, 0.992));
-  --chat-inspector-bg: #eef3f9;
-  --chat-inspector-card-bg: rgba(255, 255, 255, 0.96);
-  --chat-inspector-shadow: 0 24px 64px rgba(73, 93, 120, 0.18);
-  --chat-assistant-bubble: rgba(255, 255, 255, 0.97);
-  --chat-assistant-bubble-soft: #f3f7fc;
-  --chat-user-bubble: linear-gradient(135deg, #4d81f7, #73acff);
-  --chat-user-bubble-text: #f8fbff;
-  --chat-avatar-bg: #dde7f3;
-  --chat-avatar-text: #172638;
-  --chat-muted-chip: rgba(23, 38, 56, 0.06);
-  --chat-inline-tool-bg: rgba(243, 247, 251, 0.94);
-  --chat-tool-running: rgba(77, 129, 247, 0.08);
-  --chat-tool-success: rgba(24, 168, 138, 0.1);
-  --chat-tool-error: rgba(232, 104, 116, 0.1);
-  --chat-composer-bg: rgba(255, 255, 255, 0.94);
-  --chat-composer-shadow: 0 16px 42px rgba(73, 93, 120, 0.12);
-  --chat-line: rgba(23, 38, 56, 0.08);
-  --chat-line-strong: rgba(23, 38, 56, 0.14);
-  --chat-text: #172638;
-  --chat-text-soft: #5a7087;
-  --chat-accent: #4d81f7;
-  --chat-success: #18a88a;
-  --chat-hover: rgba(77, 129, 247, 0.06);
-  --chat-active-row: rgba(62, 121, 235, 0.1);
-  --chat-sidebar-row: rgba(255, 255, 255, 0.965);
-  --chat-sidebar-row-hover: rgba(255, 255, 255, 0.994);
-  --chat-sidebar-row-active: rgba(62, 121, 235, 0.18);
-  --chat-code-bg: #0f172a;
-  --chat-code-text: #e6edf8;
+  --chat-page-bg: var(--bg-app);
+  --chat-shell-frame: var(--modal-panel-bg);
+  --chat-shell-bg: var(--surface-base);
+  --chat-sidebar-bg: var(--modal-panel-bg);
+  --chat-thread-bg: var(--bg-app);
+  --chat-empty-bg: var(--modal-panel-bg-strong);
+  --chat-modal-bg: var(--modal-panel-bg);
+  --chat-modal-row: var(--modal-row-bg);
+  --chat-popover-bg: var(--modal-panel-bg);
+  --chat-menu-surface: var(--modal-panel-bg);
+  --chat-dialog-surface: var(--modal-panel-bg);
+  --chat-drawer-surface: var(--modal-panel-bg);
+  --chat-inspector-surface: var(--modal-panel-bg);
+  --chat-inspector-bg: var(--bg-app);
+  --chat-inspector-card-bg: var(--modal-panel-bg);
+  --chat-inspector-shadow: var(--shadow-soft);
+  --chat-assistant-bubble: var(--modal-panel-bg);
+  --chat-assistant-bubble-soft: var(--modal-panel-bg-strong);
+  --chat-user-bubble: var(--button-primary-bg);
+  --chat-user-bubble-text: var(--button-primary-text);
+  --chat-avatar-bg: var(--tab-active-bg);
+  --chat-avatar-text: var(--text);
+  --chat-muted-chip: color-mix(in srgb, var(--text) 6%, transparent);
+  --chat-inline-tool-bg: var(--modal-row-bg);
+  --chat-tool-running: color-mix(in srgb, var(--peach) 10%, transparent);
+  --chat-tool-success: var(--status-success-bg);
+  --chat-tool-error: var(--status-error-bg);
+  --chat-composer-bg: var(--modal-panel-bg);
+  --chat-composer-shadow: var(--shadow-soft);
+  --chat-line: var(--line);
+  --chat-line-strong: var(--line-strong);
+  --chat-text: var(--text);
+  --chat-text-soft: var(--muted);
+  --chat-accent: var(--acc);
+  --chat-success: var(--success);
+  --chat-hover: color-mix(in srgb, var(--acc) 8%, transparent);
+  --chat-active-row: color-mix(in srgb, var(--acc) 10%, transparent);
+  --chat-sidebar-row: var(--modal-panel-bg);
+  --chat-sidebar-row-hover: var(--modal-row-hover-bg);
+  --chat-sidebar-row-active: var(--tab-active-bg);
+  --chat-code-bg: var(--code-bg);
+  --chat-code-text: var(--text-soft);
 }
 
 html:not([data-theme="light"]),
 .chat-v2-shell.theme-dark,
 .chat-mobile-drawer-mask.theme-dark {
-  --chat-page-bg: #0a1420;
-  --chat-shell-frame: linear-gradient(180deg, rgba(14, 27, 42, 0.98), rgba(11, 22, 35, 0.94));
-  --chat-shell-bg: #0e1926;
-  --chat-sidebar-bg: linear-gradient(180deg, rgba(11, 22, 35, 0.985), rgba(8, 18, 29, 0.955));
-  --chat-thread-bg: #101d2d;
-  --chat-empty-bg: rgba(16, 29, 45, 0.68);
-  --chat-modal-bg: rgba(12, 23, 36, 0.98);
-  --chat-modal-row: rgba(255, 255, 255, 0.05);
-  --chat-popover-bg: rgba(11, 22, 35, 0.98);
-  --chat-menu-surface: linear-gradient(180deg, rgba(14, 27, 42, 0.996), rgba(10, 21, 34, 0.992));
-  --chat-dialog-surface: linear-gradient(180deg, rgba(14, 27, 42, 0.998), rgba(10, 21, 34, 0.994));
-  --chat-drawer-surface: linear-gradient(180deg, rgba(14, 27, 42, 0.998), rgba(8, 18, 29, 0.994));
-  --chat-inspector-surface: linear-gradient(180deg, rgba(14, 27, 42, 0.998), rgba(9, 20, 31, 0.994));
-  --chat-inspector-bg: #0e1a29;
-  --chat-inspector-card-bg: rgba(255, 255, 255, 0.05);
-  --chat-inspector-shadow: 0 26px 74px rgba(1, 5, 11, 0.44);
-  --chat-assistant-bubble: rgba(18, 33, 49, 0.92);
-  --chat-assistant-bubble-soft: rgba(22, 38, 56, 0.88);
-  --chat-user-bubble: linear-gradient(135deg, #4f86ff, #88bbff);
-  --chat-user-bubble-text: #eef4ff;
-  --chat-avatar-bg: rgba(255, 255, 255, 0.08);
-  --chat-avatar-text: #f5f8fc;
-  --chat-muted-chip: rgba(255, 255, 255, 0.07);
-  --chat-inline-tool-bg: rgba(255, 255, 255, 0.05);
-  --chat-tool-running: rgba(91, 150, 255, 0.14);
-  --chat-tool-success: rgba(133, 229, 211, 0.14);
-  --chat-tool-error: rgba(255, 141, 148, 0.16);
-  --chat-composer-bg: rgba(11, 22, 35, 0.92);
-  --chat-composer-shadow: 0 18px 48px rgba(1, 5, 11, 0.3);
-  --chat-line: rgba(255, 255, 255, 0.09);
-  --chat-line-strong: rgba(255, 255, 255, 0.14);
-  --chat-text: #f5f8fc;
-  --chat-text-soft: #c9d7e6;
-  --chat-accent: #5b96ff;
-  --chat-success: #85e5d3;
-  --chat-hover: rgba(255, 255, 255, 0.07);
-  --chat-active-row: rgba(91, 150, 255, 0.12);
-  --chat-sidebar-row: rgba(24, 40, 58, 0.965);
-  --chat-sidebar-row-hover: rgba(31, 49, 70, 0.99);
-  --chat-sidebar-row-active: rgba(71, 135, 255, 0.26);
-  --chat-code-bg: #04111d;
-  --chat-code-text: #d8e4f8;
+  --chat-page-bg: var(--bg-app);
+  --chat-shell-frame: var(--surface-base);
+  --chat-shell-bg: var(--surface-base);
+  --chat-sidebar-bg: var(--bg-subtle);
+  --chat-thread-bg: var(--surface-raised);
+  --chat-empty-bg: var(--modal-row-hover-bg);
+  --chat-modal-bg: var(--modal-panel-bg);
+  --chat-modal-row: var(--modal-row-bg);
+  --chat-popover-bg: var(--modal-panel-bg);
+  --chat-menu-surface: var(--modal-panel-bg);
+  --chat-dialog-surface: var(--modal-panel-bg);
+  --chat-drawer-surface: var(--bg-subtle);
+  --chat-inspector-surface: var(--modal-panel-bg);
+  --chat-inspector-bg: var(--bg-app);
+  --chat-inspector-card-bg: var(--modal-panel-bg-strong);
+  --chat-inspector-shadow: var(--shadow-soft);
+  --chat-assistant-bubble: var(--modal-panel-bg-strong);
+  --chat-assistant-bubble-soft: var(--modal-row-hover-bg);
+  --chat-user-bubble: var(--button-primary-bg);
+  --chat-user-bubble-text: var(--button-primary-text);
+  --chat-avatar-bg: var(--icon-surface);
+  --chat-avatar-text: var(--text);
+  --chat-muted-chip: color-mix(in srgb, var(--text) 7%, transparent);
+  --chat-inline-tool-bg: var(--modal-row-bg);
+  --chat-tool-running: color-mix(in srgb, var(--peach) 14%, transparent);
+  --chat-tool-success: var(--status-success-bg);
+  --chat-tool-error: var(--status-error-bg);
+  --chat-composer-bg: var(--modal-panel-bg);
+  --chat-composer-shadow: var(--shadow-soft);
+  --chat-line: var(--line);
+  --chat-line-strong: var(--line-strong);
+  --chat-text: var(--text);
+  --chat-text-soft: var(--muted);
+  --chat-accent: var(--acc);
+  --chat-success: var(--success);
+  --chat-hover: color-mix(in srgb, var(--text) 7%, transparent);
+  --chat-active-row: color-mix(in srgb, var(--acc) 14%, transparent);
+  --chat-sidebar-row: var(--surface-raised);
+  --chat-sidebar-row-hover: var(--modal-row-hover-bg);
+  --chat-sidebar-row-active: color-mix(in srgb, var(--acc) 16%, var(--surface-raised));
+  --chat-code-bg: var(--code-bg);
+  --chat-code-text: var(--text-soft);
 }
 
 .chat-shell-layout {
@@ -187,11 +187,11 @@ html:not([data-theme="light"]),
   display: grid;
   grid-template-columns: 344px minmax(0, 1fr);
   border: 1px solid var(--chat-line-strong);
-  border-radius: var(--studio-workspace-radius, 18px);
+  border-radius: var(--studio-workspace-radius, 12px);
   overflow: hidden;
   background: var(--chat-shell-frame);
-  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow);
+  backdrop-filter: none;
 }
 
 .chat-focused-workspace {
@@ -224,7 +224,7 @@ html:not([data-theme="light"]),
 }
 
 .chat-main-stage {
-  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  background: var(--chat-thread-bg);
 }
 
 .chat-main-stage-focus {
@@ -249,29 +249,29 @@ html:not([data-theme="light"]),
 }
 
 .chat-shell-toast-layer.theme-light {
-  --chat-toast-surface: rgba(255, 255, 255, 0.9);
-  --chat-toast-border: rgba(25, 50, 77, 0.12);
-  --chat-toast-shadow: 0 20px 48px rgba(24, 42, 68, 0.18);
-  --chat-toast-text: #132238;
-  --chat-toast-muted: rgba(19, 34, 56, 0.56);
-  --chat-toast-hover: rgba(19, 34, 56, 0.08);
-  --chat-toast-success-bg: rgba(16, 185, 129, 0.14);
-  --chat-toast-success-text: #0f8a64;
-  --chat-toast-error-bg: rgba(239, 68, 68, 0.14);
-  --chat-toast-error-text: #c2410c;
+  --chat-toast-surface: var(--modal-panel-bg);
+  --chat-toast-border: var(--modal-border);
+  --chat-toast-shadow: var(--modal-shadow);
+  --chat-toast-text: var(--text);
+  --chat-toast-muted: var(--muted);
+  --chat-toast-hover: var(--modal-row-hover-bg);
+  --chat-toast-success-bg: var(--status-success-bg);
+  --chat-toast-success-text: var(--success);
+  --chat-toast-error-bg: var(--status-error-bg);
+  --chat-toast-error-text: var(--danger);
 }
 
 .chat-shell-toast-layer.theme-dark {
-  --chat-toast-surface: rgba(10, 18, 28, 0.92);
-  --chat-toast-border: rgba(255, 255, 255, 0.1);
-  --chat-toast-shadow: 0 20px 52px rgba(0, 0, 0, 0.38);
-  --chat-toast-text: #edf4ff;
-  --chat-toast-muted: rgba(237, 244, 255, 0.6);
-  --chat-toast-hover: rgba(255, 255, 255, 0.08);
-  --chat-toast-success-bg: rgba(74, 222, 128, 0.18);
-  --chat-toast-success-text: #8ff1be;
-  --chat-toast-error-bg: rgba(248, 113, 113, 0.18);
-  --chat-toast-error-text: #ffc2c2;
+  --chat-toast-surface: var(--modal-panel-bg);
+  --chat-toast-border: var(--modal-border);
+  --chat-toast-shadow: var(--modal-shadow);
+  --chat-toast-text: var(--text);
+  --chat-toast-muted: var(--muted);
+  --chat-toast-hover: var(--modal-row-hover-bg);
+  --chat-toast-success-bg: var(--status-success-bg);
+  --chat-toast-success-text: var(--success);
+  --chat-toast-error-bg: var(--status-error-bg);
+  --chat-toast-error-text: var(--danger);
 }
 
 .chat-shell-toast {
@@ -285,7 +285,7 @@ html:not([data-theme="light"]),
   background: var(--surface-base);
   color: var(--chat-toast-text);
   box-shadow: var(--chat-toast-shadow);
-  backdrop-filter: blur(16px);
+  backdrop-filter: none;
   pointer-events: auto;
 }
 
@@ -355,8 +355,8 @@ html:not([data-theme="light"]),
   position: fixed;
   inset: 0;
   z-index: calc(var(--chat-layer-dialog) - 1);
-  background: rgba(6, 12, 22, 0.54);
-  backdrop-filter: blur(12px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .chat-host-exec-confirm-dialog {
@@ -371,7 +371,7 @@ html:not([data-theme="light"]),
   border-radius: 16px;
   border: 1px solid var(--border-subtle);
   background: var(--surface-base);
-  box-shadow: 0 30px 76px rgba(0, 0, 0, 0.32);
+  box-shadow: var(--modal-shadow);
   transform: translate(-50%, -50%);
 }
 
@@ -437,11 +437,11 @@ html:not([data-theme="light"]),
   height: 8px;
   flex: none;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--chat-accent) 78%, white);
+  background: color-mix(in srgb, var(--chat-accent) 78%, var(--button-primary-text));
 }
 
 .chat-host-exec-confirm-chip-dot.warn {
-  background: #f59e0b;
+  background: var(--peach);
 }
 
 .chat-host-exec-confirm-actions {
@@ -469,8 +469,8 @@ html:not([data-theme="light"]),
 .chat-host-exec-confirm-primary {
   border: 1px solid color-mix(in srgb, var(--accent-primary) 48%, transparent);
   background: var(--accent-primary);
-  color: #fff;
-  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.24);
+  color: var(--button-primary-text);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--acc) 22%, transparent);
 }
 
 .chat-host-exec-confirm-secondary:disabled,
@@ -484,8 +484,8 @@ html:not([data-theme="light"]),
   position: fixed;
   inset: 0;
   z-index: var(--chat-layer-overlay);
-  background: rgba(6, 10, 18, 0.42);
-  backdrop-filter: blur(10px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .chat-mobile-drawer-mask[data-state='open'] {
@@ -494,11 +494,11 @@ html:not([data-theme="light"]),
 }
 
 .chat-mobile-drawer-mask.theme-light {
-  background: rgba(229, 237, 246, 0.86);
+  background: var(--modal-backdrop);
 }
 
 .chat-mobile-drawer-mask.theme-dark {
-  background: rgba(6, 10, 18, 0.5);
+  background: var(--modal-backdrop);
 }
 
 .chat-mobile-drawer {
@@ -512,8 +512,8 @@ html:not([data-theme="light"]),
   border-radius: 0 12px 12px 0;
   background: var(--chat-drawer-surface);
   border-right: 1px solid var(--chat-line-strong);
-  box-shadow: 22px 0 56px rgba(0, 0, 0, 0.32);
-  backdrop-filter: blur(20px);
+  box-shadow: var(--modal-shadow);
+  backdrop-filter: none;
   color: var(--chat-text);
 }
 
@@ -526,8 +526,8 @@ html:not([data-theme="light"]),
   position: fixed;
   inset: 0;
   z-index: calc(var(--chat-layer-inspector) - 1);
-  background: rgba(6, 10, 18, 0.44);
-  backdrop-filter: blur(16px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .chat-inspector-mask[data-state='open'] {
@@ -536,28 +536,28 @@ html:not([data-theme="light"]),
 }
 
 .chat-inspector-mask.theme-light {
-  background: rgba(229, 237, 246, 0.72);
+  background: var(--modal-backdrop);
 }
 
 .chat-inspector-mask.theme-dark {
-  background: rgba(6, 10, 18, 0.44);
+  background: var(--modal-backdrop);
 }
 
 .chat-inspector-sheet {
-  --chat-inspector-bg: #0b1624;
-  --chat-inspector-card-bg: #101c2c;
-  --chat-inspector-shadow: 0 28px 88px rgba(0, 0, 0, 0.42);
-  --chat-line: rgba(255, 255, 255, 0.08);
-  --chat-line-strong: rgba(255, 255, 255, 0.16);
-  --chat-text: #edf4ff;
-  --chat-text-soft: #9cb0c8;
-  --chat-accent: #78a8ff;
-  --chat-muted-chip: #142235;
-  --chat-code-bg: #020817;
-  --chat-code-text: #d8e4f8;
-  --chat-tool-success: rgba(74, 222, 128, 0.14);
-  --chat-tool-error: rgba(248, 113, 113, 0.16);
-  --chat-tool-running: rgba(64, 135, 255, 0.14);
+  --chat-inspector-bg: var(--bg-app);
+  --chat-inspector-card-bg: var(--surface-raised);
+  --chat-inspector-shadow: var(--modal-shadow);
+  --chat-line: var(--line);
+  --chat-line-strong: var(--line-strong);
+  --chat-text: var(--text);
+  --chat-text-soft: var(--muted);
+  --chat-accent: var(--acc);
+  --chat-muted-chip: color-mix(in srgb, var(--text) 7%, transparent);
+  --chat-code-bg: var(--code-bg);
+  --chat-code-text: var(--text-soft);
+  --chat-tool-success: var(--status-success-bg);
+  --chat-tool-error: var(--status-error-bg);
+  --chat-tool-running: color-mix(in srgb, var(--peach) 14%, transparent);
   position: fixed;
   top: 12px;
   right: 12px;
@@ -569,7 +569,7 @@ html:not([data-theme="light"]),
   background: var(--chat-inspector-surface);
   border: 1px solid var(--chat-line-strong);
   box-shadow: var(--chat-inspector-shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: none;
 }
 
 .chat-inspector-sheet[data-state='open'] {
@@ -579,20 +579,20 @@ html:not([data-theme="light"]),
 }
 
 .chat-inspector-sheet.theme-light {
-  --chat-inspector-bg: #f3f7fc;
-  --chat-inspector-card-bg: #ffffff;
-  --chat-inspector-shadow: 0 28px 88px rgba(24, 42, 68, 0.18);
-  --chat-line: rgba(25, 50, 77, 0.1);
-  --chat-line-strong: rgba(25, 50, 77, 0.18);
-  --chat-text: #132238;
-  --chat-text-soft: #5c7088;
-  --chat-accent: #2563eb;
-  --chat-muted-chip: #e7edf5;
-  --chat-code-bg: #0f172a;
-  --chat-code-text: #e6edf8;
-  --chat-tool-success: rgba(16, 185, 129, 0.1);
-  --chat-tool-error: rgba(239, 68, 68, 0.1);
-  --chat-tool-running: rgba(37, 99, 235, 0.08);
+  --chat-inspector-bg: var(--bg-app);
+  --chat-inspector-card-bg: var(--modal-panel-bg);
+  --chat-inspector-shadow: var(--shadow-soft);
+  --chat-line: var(--line);
+  --chat-line-strong: var(--line-strong);
+  --chat-text: var(--text);
+  --chat-text-soft: var(--muted);
+  --chat-accent: var(--acc);
+  --chat-muted-chip: color-mix(in srgb, var(--text) 6%, transparent);
+  --chat-code-bg: var(--code-bg);
+  --chat-code-text: var(--text-soft);
+  --chat-tool-success: var(--status-success-bg);
+  --chat-tool-error: var(--status-error-bg);
+  --chat-tool-running: color-mix(in srgb, var(--peach) 10%, transparent);
 }
 
 @keyframes chat-mobile-drawer-mask-in {

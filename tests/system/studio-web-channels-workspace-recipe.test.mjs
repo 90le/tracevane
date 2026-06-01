@@ -64,26 +64,27 @@ test("channels view wires through workspace overview recipe seam", () => {
   );
 });
 
-test("channels workspace layout keeps a tabbed provider stage with account-specific branches", () => {
-  assert.match(workspaceLayout, /class="channels-workbench"/);
+test("channels workspace layout keeps a provider/account stage with a top task bar", () => {
+  assert.match(workspaceLayout, /class="channels-workbench studio-workbench studio-workbench--object"/);
   assert.match(
     workspaceLayout,
-    /class="channels-sidebar operate-resource-rail mobile-resource-drawer"/,
+    /class="channels-sidebar operate-resource-rail mobile-resource-drawer studio-workbench-index"/,
   );
-  assert.match(workspaceLayout, /class="channels-stage operate-stage"/);
-  assert.match(workspaceLayout, /class="channels-top-tabs mobile-stage-tabs"/);
+  assert.match(workspaceLayout, /class="channels-stage operate-stage studio-workbench-canvas"/);
+  assert.match(workspaceLayout, /class="channels-task-rail studio-workbench-task-rail"/);
+  assert.match(workspaceLayout, /class="channels-task-canvas studio-workbench-active-canvas"/);
+  assert.match(workspaceLayout, /class="channels-task-nav studio-workbench-task-nav"/);
+  assert.doesNotMatch(workspaceLayout, /channels-top-tabs|channels-task-tabs|mobile-stage-tabs/);
   assert.match(
     workspaceLayout,
-    /const activeTopTab = computed<'overview' \| 'settings' \| 'bindings' \| 'accounts'>\(\(\) =>/,
+    /const activeTaskNavId = computed<ChannelTaskNavId>\(\(\) =>/,
   );
-  assert.match(
-    workspaceLayout,
-    /const activeAccountTab = computed<'account' \| 'access' \| 'pairing'>\(\(\) =>/,
-  );
-  assert.match(workspaceLayout, /const topTabs = computed\(\(\) => \[/);
-  assert.match(workspaceLayout, /const accountTabs = computed\(\(\) => \[/);
-  assert.match(workspaceLayout, /openStageTab\(/);
-  assert.match(workspaceLayout, /openAccountStageTab\(/);
+  assert.match(workspaceLayout, /const providerTaskNavItems = computed<ChannelTaskNavItem\[\]>\(\(\) => \[/);
+  assert.match(workspaceLayout, /const accountTaskNavItems = computed<ChannelTaskNavItem\[\]>\(\(\) => \[/);
+  assert.match(workspaceLayout, /const taskNavItems = computed<ChannelTaskNavItem\[\]>/);
+  assert.match(workspaceLayout, /openTaskNav\(/);
+  assert.doesNotMatch(workspaceLayout, /taskTabs|activeTaskTab|openTaskTab|ChannelTaskTabId|ProviderTaskTabId|AccountTaskTabId/);
+  assert.doesNotMatch(workspaceLayout, /openAccountStageTab\(/);
   assert.match(workspaceLayout, /openPrimaryAccess\(/);
   assert.match(workspaceLayout, /openPrimaryPairing\(/);
   assert.match(workspaceLayout, /<RouterView \/>/);

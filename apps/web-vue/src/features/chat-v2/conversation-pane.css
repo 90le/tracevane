@@ -15,8 +15,8 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(3, 8, 15, 0.62);
-  backdrop-filter: blur(12px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .chat-rendering-settings-mask[data-state='open'] {
@@ -38,8 +38,8 @@
   border-radius: 12px;
   border: 1px solid var(--chat-line-strong);
   background: var(--chat-dialog-surface);
-  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(16px);
+  box-shadow: var(--modal-shadow);
+  backdrop-filter: none;
   overflow: hidden;
   transform: translate(-50%, -50%);
 }
@@ -157,12 +157,12 @@
 }
 
 .chat-rendering-settings-scope-btn.warn:not(:disabled) {
-  border-color: color-mix(in srgb, #f59e0b 36%, var(--chat-line));
-  color: #b45309;
+  border-color: color-mix(in srgb, var(--warning) 36%, var(--chat-line));
+  color: var(--warning);
 }
 
 html:not([data-theme='light']) .chat-rendering-settings-scope-btn.warn:not(:disabled) {
-  color: #fbbf24;
+  color: var(--warning);
 }
 
 .chat-rendering-settings-summary {
@@ -301,12 +301,12 @@ html:not([data-theme='light']) .chat-rendering-settings-scope-btn.warn:not(:disa
 }
 
 .chat-rendering-settings-chip.warn {
-  border-color: color-mix(in srgb, #f59e0b 36%, var(--chat-line));
-  color: #b45309;
+  border-color: color-mix(in srgb, var(--warning) 36%, var(--chat-line));
+  color: var(--warning);
 }
 
 html:not([data-theme='light']) .chat-rendering-settings-chip.warn {
-  color: #fbbf24;
+  color: var(--warning);
 }
 
 .chat-rendering-settings-warn-badge {
@@ -315,18 +315,18 @@ html:not([data-theme='light']) .chat-rendering-settings-chip.warn {
   width: fit-content;
   padding: 2px 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, #f59e0b 16%, transparent);
-  color: #b45309;
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
   font-size: 11px;
   font-weight: 700;
 }
 
 html:not([data-theme='light']) .chat-rendering-settings-warn-badge {
-  color: #fbbf24;
+  color: var(--warning);
 }
 
 .chat-rendering-settings-warn-text {
-  color: color-mix(in srgb, #f59e0b 78%, var(--chat-text-soft));
+  color: color-mix(in srgb, var(--warning) 78%, var(--chat-text-soft));
 }
 
 .chat-rendering-settings-role-group {
@@ -431,18 +431,14 @@ html:not([data-theme='light']) .chat-rendering-settings-warn-badge {
 
 .chat-conversation-pane__summary-chip.tone-identity {
   border-color: color-mix(in srgb, var(--chat-accent) 24%, var(--chat-line));
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--chat-accent) 12%, transparent),
-    color-mix(in srgb, var(--chat-modal-row) 74%, transparent)
-  );
+  background: color-mix(in srgb, var(--chat-accent) 12%, var(--chat-modal-row));
   color: var(--chat-text);
 }
 
 .chat-conversation-pane__summary-chip.tone-pending {
-  border-color: color-mix(in srgb, #f59e0b 24%, var(--chat-line));
-  background: color-mix(in srgb, #f59e0b 10%, transparent);
-  color: color-mix(in srgb, #f59e0b 78%, var(--chat-text));
+  border-color: color-mix(in srgb, var(--warning) 24%, var(--chat-line));
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  color: color-mix(in srgb, var(--warning) 78%, var(--chat-text));
 }
 
 .chat-conversation-pane__summary-chip.tone-muted {
@@ -652,8 +648,8 @@ html:not([data-theme='light']) .chat-rendering-settings-warn-badge {
   border-radius: 12px;
   border: 1px solid var(--chat-line-strong);
   background: var(--chat-menu-surface);
-  box-shadow: 0 18px 44px rgba(3, 8, 14, 0.28);
-  backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: var(--mono-shadow-md, var(--shadow-popover));
+  backdrop-filter: none;
   z-index: 1600;
   transform-origin: top right;
 }
@@ -730,12 +726,12 @@ html:not([data-theme='light']) .chat-rendering-settings-warn-badge {
 }
 
 .chat-conversation-pane__notice-error {
-  background: rgba(220, 38, 38, 0.12);
-  color: #b91c1c;
+  background: var(--status-error-bg);
+  color: var(--danger);
 }
 
 html:not([data-theme='light']) .chat-conversation-pane__notice-error {
-  color: #fecaca;
+  color: var(--danger);
 }
 
 .chat-conversation-pane__slash-feedback {
@@ -789,7 +785,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   gap: 18px;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: rgba(120, 144, 170, 0.42) transparent;
+  scrollbar-color: color-mix(in srgb, var(--chat-text-soft) 42%, transparent) transparent;
 }
 
 .chat-conversation-thread::-webkit-scrollbar {
@@ -803,13 +799,13 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
 .chat-conversation-thread::-webkit-scrollbar-thumb {
   border-radius: 999px;
   border: 3px solid transparent;
-  background: rgba(120, 144, 170, 0.22);
+  background: color-mix(in srgb, var(--chat-text-soft) 22%, transparent);
   background-clip: padding-box;
   transition: background 0.18s ease;
 }
 
 .chat-conversation-thread:hover::-webkit-scrollbar-thumb {
-  background: rgba(86, 122, 168, 0.52);
+  background: color-mix(in srgb, var(--chat-text-soft) 52%, transparent);
   background-clip: padding-box;
 }
 
@@ -856,11 +852,11 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
 .chat-conversation-thread__spinner {
   width: 22px;
   height: 22px;
-  background: color-mix(in srgb, var(--chat-panel-solid) 86%, transparent);
+  background: color-mix(in srgb, var(--chat-modal-bg) 86%, transparent);
   border: 2px solid color-mix(in srgb, var(--chat-accent) 22%, var(--chat-line));
   border-top-color: var(--chat-accent);
   border-radius: 999px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  box-shadow: var(--mono-shadow-sm, var(--shadow-soft));
   animation: spin-loader 0.7s linear infinite;
 }
 
@@ -910,7 +906,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   padding: 3px 10px;
   border-radius: 8px;
   background: var(--chat-accent);
-  color: #fff;
+  color: var(--button-primary-text);
   font-size: 11px;
   font-weight: 700;
   transition: opacity 0.18s ease;
@@ -964,7 +960,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
 
 @keyframes message-highlight-fade {
   0% {
-    background-color: rgba(255, 220, 100, 0.3);
+    background-color: color-mix(in srgb, var(--warning) 30%, transparent);
   }
   100% {
     background-color: transparent;
@@ -984,7 +980,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   border: 1px solid color-mix(in srgb, var(--chat-accent) 28%, var(--chat-line));
   background: var(--chat-thread-bg);
   color: var(--chat-accent);
-  box-shadow: 0 6px 20px rgba(8, 15, 26, 0.18);
+  box-shadow: var(--mono-shadow-sm, var(--shadow-soft));
   cursor: pointer;
   z-index: 2;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
@@ -992,7 +988,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
 
 .chat-conversation-thread__jump-fab:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 28px rgba(8, 15, 26, 0.22);
+  box-shadow: var(--mono-shadow-md, var(--shadow-popover));
 }
 
 .chat-conversation-thread__jump-fab.has-text {
@@ -1024,7 +1020,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   padding: 0 5px;
   border-radius: 8px;
   background: var(--chat-accent);
-  color: #fff;
+  color: var(--button-primary-text);
   font-size: 11px;
   font-weight: 700;
   display: inline-grid;
@@ -1071,7 +1067,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   display: grid;
   gap: 10px;
   padding: 12px 18px 18px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0), var(--chat-thread-bg) 30%);
+  background: color-mix(in srgb, var(--chat-thread-bg) 94%, transparent);
   transform: translateY(calc(var(--chat-mobile-composer-lift, 0px) * -1));
   transition: transform 180ms ease;
 }
@@ -1081,9 +1077,9 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   padding: 4px;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--chat-line) 78%, transparent);
-  background: color-mix(in srgb, var(--chat-menu-surface) 84%, transparent);
-  box-shadow: 0 12px 26px rgba(4, 12, 20, 0.1);
-  backdrop-filter: blur(12px);
+  background: var(--chat-menu-surface);
+  box-shadow: var(--mono-shadow-sm, var(--shadow-soft));
+  backdrop-filter: none;
 }
 
 .chat-conversation-pane__mobile-dock-btn {
@@ -1096,7 +1092,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   place-items: center;
   gap: 3px;
   padding: 6px 4px;
-  box-shadow: 0 10px 22px rgba(4, 12, 20, 0.12);
+  box-shadow: var(--mono-shadow-sm, var(--shadow-soft));
   transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
 
@@ -1130,13 +1126,9 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
 
 .chat-conversation-pane__mobile-dock-btn--refresh {
   border-color: color-mix(in srgb, var(--chat-accent) 42%, var(--chat-line));
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--chat-accent) 26%, transparent),
-    color-mix(in srgb, var(--chat-accent) 14%, transparent)
-  );
+  background: color-mix(in srgb, var(--chat-accent) 20%, var(--chat-menu-surface));
   color: var(--chat-text);
-  box-shadow: 0 14px 28px rgba(44, 120, 255, 0.16);
+  box-shadow: 0 14px 28px color-mix(in srgb, var(--chat-accent) 16%, transparent);
 }
 
 .chat-conversation-pane__mobile-dock-btn--refresh .chat-conversation-pane__mobile-dock-icon {
@@ -1144,42 +1136,26 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
 }
 
 .chat-conversation-pane__mobile-dock-btn--tools.active {
-  border-color: color-mix(in srgb, #0f766e 40%, var(--chat-line));
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, #14b8a6 16%, transparent),
-    color-mix(in srgb, #0f766e 10%, transparent)
-  );
-  color: color-mix(in srgb, #0f766e 62%, var(--chat-text));
+  border-color: color-mix(in srgb, var(--chat-accent) 40%, var(--chat-line));
+  background: color-mix(in srgb, var(--chat-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--chat-accent) 62%, var(--chat-text));
 }
 
 .chat-conversation-pane__mobile-dock-btn--thinking.active {
-  border-color: color-mix(in srgb, #b45309 40%, var(--chat-line));
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, #f59e0b 18%, transparent),
-    color-mix(in srgb, #d97706 10%, transparent)
-  );
-  color: color-mix(in srgb, #b45309 64%, var(--chat-text));
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--chat-line));
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: color-mix(in srgb, var(--warning) 64%, var(--chat-text));
 }
 
 .chat-conversation-pane__mobile-dock-btn--exec {
   border-color: color-mix(in srgb, var(--chat-accent) 26%, var(--chat-line));
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--chat-accent) 10%, transparent),
-    color-mix(in srgb, var(--chat-modal-row) 86%, transparent)
-  );
+  background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-modal-row));
   color: var(--chat-text);
 }
 
 .chat-conversation-pane__mobile-dock-btn--exec.active {
   border-color: color-mix(in srgb, var(--chat-accent) 52%, var(--chat-line));
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--chat-accent) 20%, transparent),
-    color-mix(in srgb, var(--chat-accent) 11%, transparent)
-  );
+  background: color-mix(in srgb, var(--chat-accent) 16%, transparent);
   color: var(--chat-accent);
 }
 
@@ -1210,8 +1186,8 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   position: fixed;
   inset: 0;
   z-index: 1264;
-  background: rgba(6, 12, 22, 0.5);
-  backdrop-filter: blur(10px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .chat-conversation-pane__mobile-sheet {
@@ -1226,7 +1202,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   border-radius: 16px;
   border: 1px solid var(--chat-line-strong);
   background: var(--chat-menu-surface);
-  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--modal-shadow);
 }
 
 .chat-conversation-pane__mobile-sheet-head {
@@ -1323,8 +1299,8 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   position: fixed;
   inset: 0;
   z-index: 1266;
-  background: rgba(6, 12, 22, 0.52);
-  backdrop-filter: blur(10px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .chat-conversation-pane__queue-sheet {
@@ -1339,7 +1315,7 @@ html:not([data-theme='light']) .chat-conversation-pane__notice-error {
   border-radius: 16px;
   border: 1px solid var(--chat-line-strong);
   background: var(--chat-dialog-surface);
-  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--modal-shadow);
 }
 
 .chat-conversation-pane__queue-sheet-head {

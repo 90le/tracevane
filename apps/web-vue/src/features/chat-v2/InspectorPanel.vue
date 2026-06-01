@@ -25,31 +25,31 @@
 
       <div class="chat-inspector-panel__body">
       <TabsContent value="overview" as-child>
-        <div class="chat-inspector-summary-grid">
-          <article class="chat-inspector-summary-card">
-            <span>{{ text('会话状态', 'Session state') }}</span>
-            <strong>{{ runtime?.state || text('未知', 'Unknown') }}</strong>
-          </article>
-          <article class="chat-inspector-summary-card">
-            <span>{{ text('连接状态', 'Gateway') }}</span>
-            <strong>{{ runtime?.gatewayConnected ? text('已连接', 'Connected') : text('未连接', 'Disconnected') }}</strong>
-          </article>
-          <article class="chat-inspector-summary-card">
-            <span>{{ text('可写状态', 'Writable') }}</span>
-            <strong>{{ runtime?.sessionWritable ? text('可写', 'Writable') : text('只读', 'Read-only') }}</strong>
-          </article>
-          <article class="chat-inspector-summary-card">
-            <span>{{ text('活跃 Run', 'Active run') }}</span>
-            <strong>{{ shortRunId(runtime?.activeRunId) }}</strong>
-          </article>
-        </div>
+        <dl class="chat-inspector-fact-list">
+          <div class="chat-inspector-fact-row">
+            <dt>{{ text('会话状态', 'Session state') }}</dt>
+            <dd>{{ runtime?.state || text('未知', 'Unknown') }}</dd>
+          </div>
+          <div class="chat-inspector-fact-row">
+            <dt>{{ text('连接状态', 'Gateway') }}</dt>
+            <dd>{{ runtime?.gatewayConnected ? text('已连接', 'Connected') : text('未连接', 'Disconnected') }}</dd>
+          </div>
+          <div class="chat-inspector-fact-row">
+            <dt>{{ text('可写状态', 'Writable') }}</dt>
+            <dd>{{ runtime?.sessionWritable ? text('可写', 'Writable') : text('只读', 'Read-only') }}</dd>
+          </div>
+          <div class="chat-inspector-fact-row">
+            <dt>{{ text('活跃 Run', 'Active run') }}</dt>
+            <dd>{{ shortRunId(runtime?.activeRunId) }}</dd>
+          </div>
+        </dl>
 
-        <article v-if="warningMessage" class="chat-inspector-spotlight is-warning">
+        <article v-if="warningMessage" class="chat-inspector-context-strip is-warning">
           <span>{{ text('当前提醒', 'Current warning') }}</span>
           <strong>{{ warningMessage }}</strong>
         </article>
 
-        <article class="chat-inspector-spotlight">
+        <article class="chat-inspector-context-strip">
           <span>{{ text('当前会话', 'Current session') }}</span>
           <strong>{{ sessionTitle }}</strong>
           <div class="chat-inspector-inline-meta">
@@ -59,7 +59,7 @@
           </div>
         </article>
 
-        <article v-if="observability.lifecycle" class="chat-inspector-spotlight">
+        <article v-if="observability.lifecycle" class="chat-inspector-context-strip">
           <span>{{ text('最近运行阶段', 'Latest lifecycle') }}</span>
           <strong>{{ lifecycleLabel }}</strong>
           <div class="chat-inspector-inline-meta">
@@ -73,24 +73,24 @@
             <span>{{ text('Token 使用', 'Token usage') }}</span>
             <strong>{{ observability.usage.totalTokens }}</strong>
           </header>
-          <div class="chat-inspector-usage-grid">
-            <div>
-              <span>Input</span>
-              <strong>{{ observability.usage.inputTokens }}</strong>
+          <dl class="chat-inspector-token-tape">
+            <div class="chat-inspector-token-row">
+              <dt>Input</dt>
+              <dd>{{ observability.usage.inputTokens }}</dd>
             </div>
-            <div>
-              <span>Output</span>
-              <strong>{{ observability.usage.outputTokens }}</strong>
+            <div class="chat-inspector-token-row">
+              <dt>Output</dt>
+              <dd>{{ observability.usage.outputTokens }}</dd>
             </div>
-            <div>
-              <span>Cache Read</span>
-              <strong>{{ observability.usage.cacheReadTokens }}</strong>
+            <div class="chat-inspector-token-row">
+              <dt>Cache Read</dt>
+              <dd>{{ observability.usage.cacheReadTokens }}</dd>
             </div>
-            <div>
-              <span>Cache Write</span>
-              <strong>{{ observability.usage.cacheWriteTokens }}</strong>
+            <div class="chat-inspector-token-row">
+              <dt>Cache Write</dt>
+              <dd>{{ observability.usage.cacheWriteTokens }}</dd>
             </div>
-          </div>
+          </dl>
         </article>
 
         <article v-if="topToolCards.length" class="chat-inspector-section">
@@ -164,24 +164,24 @@
       </TabsContent>
 
       <TabsContent value="diagnostics" as-child>
-        <div class="chat-inspector-diagnostics">
-          <article class="chat-inspector-diagnostics__item">
-            <span>Transport</span>
-            <strong>{{ diagnostics?.transport || text('未知', 'Unknown') }}</strong>
-          </article>
-          <article class="chat-inspector-diagnostics__item">
-            <span>Auth</span>
-            <strong>{{ diagnostics?.authMode || text('未知', 'Unknown') }}</strong>
-          </article>
-          <article class="chat-inspector-diagnostics__item">
-            <span>same-origin</span>
-            <strong>{{ diagnostics?.sameOriginRequired ? text('必需', 'Required') : text('否', 'No') }}</strong>
-          </article>
-          <article class="chat-inspector-diagnostics__item">
-            <span>{{ text('截断策略', 'Truncation') }}</span>
-            <strong>{{ diagnostics?.truncationMode || text('未知', 'Unknown') }}</strong>
-          </article>
-        </div>
+        <dl class="chat-inspector-fact-list chat-inspector-fact-list--diagnostics">
+          <div class="chat-inspector-fact-row">
+            <dt>Transport</dt>
+            <dd>{{ diagnostics?.transport || text('未知', 'Unknown') }}</dd>
+          </div>
+          <div class="chat-inspector-fact-row">
+            <dt>Auth</dt>
+            <dd>{{ diagnostics?.authMode || text('未知', 'Unknown') }}</dd>
+          </div>
+          <div class="chat-inspector-fact-row">
+            <dt>same-origin</dt>
+            <dd>{{ diagnostics?.sameOriginRequired ? text('必需', 'Required') : text('否', 'No') }}</dd>
+          </div>
+          <div class="chat-inspector-fact-row">
+            <dt>{{ text('截断策略', 'Truncation') }}</dt>
+            <dd>{{ diagnostics?.truncationMode || text('未知', 'Unknown') }}</dd>
+          </div>
+        </dl>
 
         <article v-if="diagnosticNotes.length" class="chat-inspector-section">
           <header class="chat-inspector-section__header">

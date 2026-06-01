@@ -62,12 +62,12 @@
 </template>
 
 <script setup lang="ts">
-import type { CodexStackServiceAction, CodexStackServiceId } from "../../../../../types/codex-stack";
+import type { CodexStackManualServiceId, CodexStackServiceAction } from "../../../../../types/codex-stack";
 import type { CodexStackTone } from "./codex-stack-view-model";
 import "./codex-stack-dashboard.css";
 
 export interface CodexStackServiceCard {
-  id: CodexStackServiceId;
+  id: CodexStackManualServiceId;
   active: boolean;
   label: string;
   blurb: string;
@@ -95,6 +95,6 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "service-action": [serviceId: CodexStackServiceId, action: Extract<CodexStackServiceAction, "start" | "stop" | "restart">];
+  "service-action": [serviceId: CodexStackManualServiceId, action: Extract<CodexStackServiceAction, "start" | "stop" | "restart">];
 }>();
 </script>

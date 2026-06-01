@@ -98,9 +98,14 @@ test("shell navigation stays route-label only", () => {
 
 test("shell styles define two-region layout without context panel surface", () => {
   const css = fs.readFileSync(stylePath, "utf8");
+  const app = fs.readFileSync(appPath, "utf8");
   assert.match(css, /\.shell-layout\s*\{/);
   assert.match(css, /\.shell-main-stage\s*\{/);
   assert.match(css, /\.studio-shell-topbar\s*\{/);
+  assert.match(css, /\.studio-shell-topbar__route-label\s*\{/);
+  assert.match(css, /\.studio-shell-topbar__path-label\s*\{/);
+  assert.doesNotMatch(css, /\.studio-shell-topbar__identity strong|\.studio-shell-topbar__group-label/);
+  assert.match(app, /:current-title=/);
   assert.doesNotMatch(css, /\.shell-context-panel\s*\{/);
   assert.doesNotMatch(css, /\.studio-shell-context-rail\s*\{/);
   assert.doesNotMatch(css, /\.studio-context-panel\s*\{/);

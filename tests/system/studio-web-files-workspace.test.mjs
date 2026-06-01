@@ -93,6 +93,8 @@ test("files workspace exposes explorer layout, tree, listing, editor, upload, an
   assert.match(filesControlPage, /studio_copy_chat_markdown/);
   assert.match(filesControlPage, /duplicateSelectedItems/);
   assert.match(filesControlPage, /file-manager-details/);
+  assert.match(filesControlPage, /aria-label="text\('文件详情检查器', 'File details inspector'\)"/);
+  assert.match(filesControlPage, /file-manager-details__panel file-manager-details__sheet/);
   assert.match(filesControlPage, /openDetailsForSelection/);
   assert.match(filesControlPage, /formatFileSize/);
   assert.match(filesControlPage, /studio_show_details/);
@@ -144,7 +146,8 @@ test("files workspace exposes explorer layout, tree, listing, editor, upload, an
   assert.match(codeFileEditor, /SearchQuery/);
   assert.match(codeFileEditor, /replaceAll/);
   assert.match(codeFileEditor, /searchRequest/);
-  assert.match(codeFileEditor, /backgroundColor:\s*"#0d1117"/);
+  assert.match(codeFileEditor, /backgroundColor:\s*"var\(--code-editor-bg\)"/);
+  assert.match(codeFileEditor, /borderLeftColor:\s*"var\(--code-editor-cursor\)"/);
   assert.match(codeFileEditor, /scrollPastEnd/);
   assert.match(codeFileEditor, /rectangularSelection/);
   assert.match(codeFileEditor, /indentWithTab/);
@@ -184,11 +187,45 @@ test("files feature keeps workspace styles in shared CSS instead of Vue scoped b
   );
   assert.match(
     filesWorkspaceCss,
-    /\.shell-route-stage-files\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+    /\.shell-route-stage-files\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
   );
   assert.match(
     filesWorkspaceCss,
-    /\.file-manager-page\s*\{[\s\S]*border:\s*1px solid var\(--file-manager-border\);[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+    /\.file-manager-page\s*\{[\s\S]*border:\s*1px solid var\(--file-manager-border\);[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /\.file-manager-page\s*\{[\s\S]*--file-manager-bg:\s*var\(--bg-app\);[\s\S]*--file-manager-panel-strong:\s*var\(--surface-raised\);[\s\S]*box-shadow:\s*var\(--mono-shadow-sm,/,
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /html\[data-theme="dark"\] \.file-manager-page\s*\{[\s\S]*--file-manager-bg:\s*var\(--bg-app\);[\s\S]*--file-manager-panel:\s*var\(--surface-base\);[\s\S]*--file-manager-panel-strong:\s*var\(--surface-raised\);/,
+  );
+  assert.doesNotMatch(
+    `${filesWorkspaceCss}\n${codeFileEditor}`,
+    /#f8fafc|#f1f5f9|#020617|#0f172a|#1e293b|#0d1117|#101a2b|#1f6feb|#7dd3fc|#3b82f6|#60a5fa/,
+  );
+  assert.doesNotMatch(
+    `${filesWorkspaceCss}\n${codeFileEditor}`,
+    /var\(--surface\)|rgba\(|#[0-9a-fA-F]{3,6}/,
+    "files workspace and editor theme should resolve colors through global DuoYuan/OpenClaw tokens",
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /\.file-manager-notice\s*\{[\s\S]*background:\s*var\(--surface-overlay\);/,
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /\.file-manager-page \.vuefinder__items--list \.vuefinder__item:hover\s*\{[\s\S]*var\(--file-manager-panel\)/,
+  );
+  assert.match(
+    filesWorkspaceCss,
+    /\.code-file-editor\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--surface-base\)/,
+  );
+  assert.doesNotMatch(
+    filesWorkspaceCss,
+    /linear-gradient|radial-gradient/,
+    "files workspace chrome should use solid DuoYuan/OpenClaw surfaces instead of local gradients",
   );
   assert.match(
     filesWorkspaceCss,
@@ -201,6 +238,12 @@ test("files feature keeps workspace styles in shared CSS instead of Vue scoped b
   );
   assert.match(filesWorkspaceCss, /\.file-manager-page\s*\{/);
   assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.file-manager-page/);
+  assert.match(
+    filesWorkspaceCss,
+    /\.file-manager-details\s*\{[\s\S]*align-items:\s*stretch;[\s\S]*justify-items:\s*end;/,
+  );
+  assert.match(filesWorkspaceCss, /\.file-manager-details__sheet\s*\{/);
+  assert.match(filesWorkspaceCss, /@keyframes file-manager-details-sheet-in/);
   assert.match(filesWorkspaceCss, /\.file-manager-editor-drawer\s*\{/);
   assert.match(filesWorkspaceCss, /\.code-file-editor\s*\{/);
   assert.match(filesWorkspaceCss, /\.code-file-editor \.cm-scroller/);

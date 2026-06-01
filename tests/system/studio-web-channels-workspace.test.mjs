@@ -35,16 +35,35 @@ const channelsPagesCss = read(
 const channelsWorkspaceCss = read(
   "apps/web-vue/src/features/channels/channels-workspace.css",
 );
+const channelsAccountCss = read(
+  "apps/web-vue/src/features/channels/channels-account.css",
+);
+const channelsDrawerCss = read(
+  "apps/web-vue/src/features/channels/channels-drawer.css",
+);
 const globalStyleCss = read("apps/web-vue/src/style.css");
 
-test("channels workspace keeps a persistent stage header with top tabs and account subtabs", () => {
+test("channels workspace keeps a persistent provider/account tree and top task bar", () => {
   assert.match(channelsWorkspaceLayout, /channels-stage-header/);
-  assert.match(channelsWorkspaceLayout, /channels-top-tabs/);
-  assert.match(channelsWorkspaceLayout, /activeTopTab/);
-  assert.match(channelsWorkspaceLayout, /openStageTab/);
+  assert.match(channelsWorkspaceLayout, /channel-rail-node/);
+  assert.match(channelsWorkspaceLayout, /channel-account-tree/);
+  assert.match(channelsWorkspaceLayout, /channel-account-node/);
+  assert.match(channelsWorkspaceLayout, /先选 provider 或账号，再在主工作区顶部切换概览、设置、路由、权限和配对/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /高密度索引|右侧专门工作区|right-side workspaces|dense index/);
+  assert.match(channelsWorkspaceLayout, /openAccountNode/);
+  assert.match(channelsWorkspaceLayout, /isAccountSelected/);
+  assert.match(channelsWorkspaceLayout, /channels-task-nav/);
+  assert.match(channelsWorkspaceLayout, /class="channels-task-nav studio-workbench-task-nav"/);
+  assert.match(channelsWorkspaceLayout, /class="channels-task-nav-button studio-workbench-task-nav-button"/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /channels-top-tabs|channels-task-tabs|mobile-stage-tabs/);
+  assert.match(channelsWorkspaceLayout, /activeTaskNavId/);
+  assert.match(channelsWorkspaceLayout, /taskNavItems/);
+  assert.match(channelsWorkspaceLayout, /openTaskNav/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /taskTabs|activeTaskTab|openTaskTab/);
   assert.match(channelsWorkspaceLayout, /selectedAccount/);
-  assert.match(channelsWorkspaceLayout, /channels-subtabs/);
-  assert.match(channelsWorkspaceLayout, /openAccountStageTab/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /channels-subtabs/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /openAccountStageTab/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /accountTabs/);
   assert.match(channelsWorkspaceLayout, /channels-stage-actions/);
   assert.match(channelsWorkspaceLayout, /mobileRailCollapsed/);
   assert.match(channelsWorkspaceLayout, /showMobileRailToggle/);
@@ -54,10 +73,11 @@ test("channels workspace keeps a persistent stage header with top tabs and accou
   assert.match(channelsWorkspaceLayout, /channels-sidebar-body/);
   assert.match(channelsWorkspaceLayout, /showProviderRailBody \? text\('收起列表', 'Hide providers'\) : text\('切换频道', 'Switch provider'\)/);
   assert.match(channelsWorkspaceLayout, /workspace\.createChannelExpanded\.value = false/);
-  assert.match(channelsWorkspaceLayout, /Binding rules|绑定规则/);
+  assert.match(channelsWorkspaceLayout, /Routing rules|路由规则/);
   assert.match(channelsWorkspaceLayout, /Provider settings|Provider 设置/);
   assert.match(channelsWorkspaceLayout, /Default account access|默认账号权限/);
-  assert.match(channelsWorkspaceLayout, /channels-stage-task-card/);
+  assert.match(channelsWorkspaceLayout, /channels-stage-task/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /channels-stage-task-card|channel-account-card/);
   assert.doesNotMatch(
     channelsWorkspaceLayout,
     /先创建账号，再从账号卡进入凭据和策略。|Create an account first/,
@@ -75,13 +95,20 @@ test("channels workspace keeps a persistent stage header with top tabs and accou
     channelsWorkspaceLayout,
     /Quick configure provider|快捷配置频道/,
   );
+  assert.match(channelsWorkspaceCss, /\.channel-account-tree\s*\{/);
+  assert.match(channelsWorkspaceCss, /\.channel-account-node\s*\{/);
+  assert.doesNotMatch(channelsWorkspaceCss, /\.channels-task-nav-button\s*\{/);
+  assert.match(channelsWorkspaceCss, /@media \(max-width: 980px\)[\s\S]*\.channel-rail-list\s*\{[\s\S]*grid-auto-flow:\s*column;/);
+  assert.match(channelsWorkspaceCss, /@media \(max-width: 980px\)[\s\S]*\.channel-rail-list > \.channel-rail-node\s*\{[\s\S]*scroll-snap-align:\s*start;/);
+  assert.doesNotMatch(channelsWorkspaceCss, /\.channel-rail-list > \.channel-rail-item\s*\{[\s\S]*scroll-snap-align/);
+  assert.doesNotMatch(channelsWorkspaceCss, /channel-account-card/);
 });
 
 test("channels overview is a thin provider-first surface with summary, quick edits, issues, and account index", () => {
   assert.match(channelsControlPage, /ChannelProviderOverview/);
-  assert.match(providerOverview, /channel-command-center/);
-  assert.match(providerOverview, /channel-command-facts/);
-  assert.match(providerOverview, /channel-command-center__edit/);
+  assert.match(providerOverview, /channel-provider-strip/);
+  assert.match(providerOverview, /channel-provider-facts/);
+  assert.match(providerOverview, /channel-provider-strip__edit/);
   assert.match(providerOverview, /ChannelIssueList/);
   assert.match(providerOverview, /ChannelAccountIndex/);
   assert.match(providerOverview, /update-provider-enabled/);
@@ -102,8 +129,10 @@ test("channels overview page styles are owned by the feature stylesheet", () => 
   assert.doesNotMatch(channelsControlPage, /<style scoped>/);
   assert.doesNotMatch(providerOverview, /<style scoped>/);
   assert.match(channelsPagesCss, /\.channels-overview-surface\s*\{/);
-  assert.match(channelsPagesCss, /\.channel-command-center\s*\{/);
-  assert.match(channelsPagesCss, /\.channel-command-facts\s*\{/);
+  assert.match(channelsPagesCss, /\.channel-provider-strip\s*\{/);
+  assert.match(channelsPagesCss, /\.channel-provider-facts\s*\{/);
+  assert.doesNotMatch(providerOverview, /channel-command-center|channel-command-facts|channel-command-fact/);
+  assert.doesNotMatch(channelsPagesCss, /channel-command-center|channel-command-facts|channel-command-fact/);
 });
 
 test("channels workspace chrome styles are owned by the channels feature", () => {
@@ -112,10 +141,32 @@ test("channels workspace chrome styles are owned by the channels feature", () =>
   assert.match(channelsWorkspaceCss, /\.channels-workbench\s*\{/);
   assert.match(channelsWorkspaceCss, /\.channel-rail-item\s*\{/);
   assert.match(channelsWorkspaceCss, /\.binding-table\s*\{/);
+  assert.match(channelsWorkspaceCss, /\.channels-stage-task\s*\{/);
+  assert.doesNotMatch(channelsWorkspaceCss, /channels-stage-task-card|channel-account-card|channel-tile|var\(--sky\)|linear-gradient|radial-gradient|--atlas|--glass/);
   assert.doesNotMatch(
     globalStyleCss,
     /\.(?:channels[a-zA-Z0-9_-]*|channel-[a-zA-Z0-9_-]*|binding-table[a-zA-Z0-9_-]*)/,
   );
+});
+
+test("channels feature surfaces use DuoYuan tokens instead of local color literals", () => {
+  for (const [name, source] of [
+    ["channels-workspace.css", channelsWorkspaceCss],
+    ["channels-pages.css", channelsPagesCss],
+    ["channels-account.css", channelsAccountCss],
+    ["channels-drawer.css", channelsDrawerCss],
+  ]) {
+    assert.doesNotMatch(
+      source,
+      /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient|--sky|--atlas|--glass/,
+      `expected ${name} to stay on shared DuoYuan/OpenClaw tokens`,
+    );
+    assert.doesNotMatch(
+      source,
+      /var\(--surface\)|--shell-(?:panel|stage|highlight)/,
+      `expected ${name} to avoid legacy surface aliases and shell-specific panel tokens`,
+    );
+  }
 });
 
 test("channel provider and account editors track and save config write toggles", () => {

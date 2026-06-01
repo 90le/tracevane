@@ -3,8 +3,8 @@
     <div class="agents-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ agentId }}</p>
-        <h3>{{ text('工作区文档', 'Workspace Docs') }}</h3>
-        <p>{{ text('当前页面只负责维护 Agent 文档，不再和其它配置任务混排。', 'This page only maintains agent documents and no longer mixes with other configuration tasks.') }}</p>
+        <h3>{{ text('人设文档', 'Persona docs') }}</h3>
+        <p>{{ text('维护身份、灵魂、协作、工具、心跳和记忆文档，不再和路由或运行配置混排。', 'Maintain identity, soul, collaboration, tools, heartbeat, and memory docs without mixing them with routing or runtime settings.') }}</p>
       </div>
 
       <div class="page-actions">
@@ -55,7 +55,7 @@
           v-model="docContent"
           class="form-textarea"
           rows="26"
-          :placeholder="text('在这里编辑当前 Agent 文档内容。', 'Edit the current agent document here.')"
+          :placeholder="text('在这里编辑当前 Agent 的人设文档内容。', 'Edit the current agent persona document here.')"
         />
       </article>
     </div>
@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onActivated, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { AgentDocName, AgentDocumentSummary } from '../../../../../types/agents';
 import { useLocalePreference } from '../../shared/locale';
@@ -80,6 +80,7 @@ const docs = ref<AgentDocumentSummary[]>([]);
 const docContent = ref('');
 const docLoading = ref(false);
 const docBusy = ref(false);
+const lastLoadedDocContent = ref('');
 const errorMessage = ref('');
 const noticeMessage = ref('');
 
@@ -161,6 +162,7 @@ async function loadCurrentDoc(): Promise<void> {
   try {
     const payload = await fetchAgentDocument(agentId.value, selectedDocName.value);
     docContent.value = payload.content;
+    lastLoadedDocContent.value = payload.content;
     const existingIndex = docs.value.findIndex((doc) => doc.name === payload.doc.name);
     if (existingIndex >= 0) {
       docs.value.splice(existingIndex, 1, payload.doc);
@@ -183,6 +185,7 @@ async function saveCurrentDoc(): Promise<void> {
     if (existingIndex >= 0) {
       docs.value.splice(existingIndex, 1, payload.doc);
     }
+    lastLoadedDocContent.value = docContent.value;
     noticeMessage.value = payload.message;
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : text('保存文档失败。', 'Failed to save document.');
@@ -196,6 +199,7 @@ watch(
   async () => {
     docs.value = [];
     docContent.value = '';
+    lastLoadedDocContent.value = '';
     if (!agentId.value) return;
     await loadDocList();
     await loadCurrentDoc();
@@ -210,4 +214,11 @@ watch(
     await loadCurrentDoc();
   },
 );
+
+onActivated(async () => {
+  if (!agentId.value || docLoading.value || docBusy.value) return;
+  if (docContent.value !== lastLoadedDocContent.value) return;
+  await loadDocList();
+  await loadCurrentDoc();
+});
 </script>

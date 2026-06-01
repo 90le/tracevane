@@ -51,12 +51,23 @@ test("tool rail command button opens a non-navigation command palette", () => {
 });
 
 test("shell popovers use solid theme-aware modal surfaces", () => {
-  assert.match(styleCss, /--modal-panel-bg:\s*#0c1725;/);
-  assert.match(styleCss, /html\[data-theme="light"\]\s*\{[\s\S]*--modal-panel-bg:\s*#fbfdff;/);
+  assert.match(styleCss, /--modal-panel-bg:\s*var\(--mono-panel\);/);
+  assert.match(styleCss, /html\[data-theme="light"\]\s*\{[\s\S]*--modal-panel-bg:\s*var\(--mono-panel\);/);
   assert.match(
     commandPaletteCss,
-    /\.studio-command-palette__panel\s*\{[\s\S]*linear-gradient\(180deg,\s*var\(--modal-panel-bg\),\s*var\(--modal-panel-bg-strong\)\)/,
+    /\.studio-command-palette__panel\s*\{[\s\S]*background:\s*var\(--modal-panel-bg\);/,
   );
+  assert.match(
+    commandPaletteCss,
+    /\.studio-command-palette__item:focus-visible\s*\{[\s\S]*box-shadow:\s*0 0 0 3px var\(--mono-ring\);/,
+    "expected command palette rows to expose the shared keyboard focus ring",
+  );
+  assert.doesNotMatch(
+    commandPaletteCss,
+    /var\(--acc\)|var\(--line\)|var\(--muted\)/,
+    "expected command palette chrome to use top-layer modal/control tokens instead of legacy aliases",
+  );
+  assert.doesNotMatch(commandPaletteCss, /radial-gradient|linear-gradient|backdrop-filter:\s*blur\(/);
   assert.doesNotMatch(styleCss, /\.studio-context-panel\s*\{/);
   assert.match(styleCss, /\.mobile-sidebar-mask\s*\{[\s\S]*background:\s*var\(--modal-backdrop\);/);
 });

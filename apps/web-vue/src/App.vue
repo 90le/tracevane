@@ -112,10 +112,7 @@
               <section
                 class="shell-route-stage"
                 :theme-mode="themeMode"
-                :class="[
-                  routeSurfaceClass,
-                  { 'shell-route-stage-chat': isChatSurface, 'shell-route-stage-files': isFilesSurface },
-                ]"
+                :class="{ 'shell-route-stage-chat': isChatSurface, 'shell-route-stage-files': isFilesSurface }"
               >
                 <KeepAlive v-if="Component && shouldKeepRouteAlive(routedView)" :max="16">
                   <component :is="Component" />
@@ -189,11 +186,6 @@ const activeNavGroupTitle = computed(() => activeNavGroup.value?.title || text('
 const isChatSurface = computed(() => route.path === '/chat' || route.path.startsWith('/chat/'));
 const isTerminalSurface = computed(() => route.path === '/terminal' || route.path.startsWith('/terminal/'));
 const isFilesSurface = computed(() => route.path === '/files' || route.path.startsWith('/files/'));
-const routeSurfaceClass = computed(() => {
-  const firstSegment = route.path.split('/').filter(Boolean)[0] || 'dashboard';
-  const normalized = firstSegment.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
-  return `route-surface-${normalized}`;
-});
 
 const {
   sidebarCollapsed,

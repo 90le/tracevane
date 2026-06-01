@@ -12,9 +12,9 @@
 .chat-markdown-deferred-card {
   display: block;
   width: 100%;
-  border: 1px dashed rgba(148, 163, 184, 0.36);
+  border: 1px dashed color-mix(in srgb, var(--chat-line-strong) 72%, transparent);
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.03);
+  background: color-mix(in srgb, var(--chat-modal-row) 70%, transparent);
   padding: 12px 14px;
   text-align: left;
   color: inherit;
@@ -58,7 +58,7 @@
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--chat-line) 58%, transparent);
   background: color-mix(in srgb, var(--chat-modal-bg) 92%, transparent);
-  backdrop-filter: blur(10px);
+  backdrop-filter: none;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -79,7 +79,7 @@
   font-weight: 700;
   cursor: pointer;
   transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-  backdrop-filter: blur(10px);
+  backdrop-filter: none;
 }
 
 .chat-markdown .chat-inline-preview-shell:hover > .chat-inline-preview-toolbar,
@@ -124,8 +124,8 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(3, 8, 15, 0.8);
-  backdrop-filter: blur(12px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .chat-live-preview-mask[data-state='open'] {
@@ -148,7 +148,7 @@
   border-radius: 12px;
   border: 1px solid var(--chat-line);
   background: var(--chat-modal-bg);
-  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--modal-shadow);
   overflow: hidden;
   transform: translate(-50%, -50%);
 }
@@ -281,15 +281,12 @@
   min-height: 48px;
   border: none;
   box-sizing: border-box;
-  background: #ffffff;
+  background: var(--modal-panel-bg);
   overflow: hidden;
 }
 
 .chat-live-preview-frame.is-loading {
-  background:
-    linear-gradient(90deg, rgba(148, 163, 184, 0.08), rgba(148, 163, 184, 0.18), rgba(148, 163, 184, 0.08)),
-    #ffffff;
-  background-size: 240px 100%, auto;
+  background: color-mix(in srgb, var(--chat-accent) 10%, var(--modal-panel-bg));
   animation: chat-preview-frame-shimmer 1.4s linear infinite;
 }
 
@@ -370,8 +367,8 @@
   overflow: auto;
   padding: 14px 16px;
   border-radius: 12px;
-  background: var(--chat-code-bg, #020817);
-  color: var(--chat-code-text, #d8e4f8);
+  background: var(--chat-code-bg);
+  color: var(--chat-code-text);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -432,9 +429,9 @@
 
 @keyframes chat-preview-frame-shimmer {
   from {
-    background-position: -240px 0, 0 0;
+    opacity: 0.72;
   }
   to {
-    background-position: 240px 0, 0 0;
+    opacity: 1;
   }
 }

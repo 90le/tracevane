@@ -14,14 +14,14 @@
       </div>
     </header>
 
-    <section class="skills-command-panel">
-      <div class="skills-command-copy">
+    <section class="skills-workspace-strip">
+      <div class="skills-workspace-copy">
         <p class="eyebrow">{{ text('SKILL WORKSPACE', 'SKILL WORKSPACE') }}</p>
         <h3>{{ activeModeTitle }}</h3>
         <p>{{ activeModeSummary }}</p>
       </div>
 
-      <div class="skills-mode-switch" role="tablist" :aria-label="text('技能视图切换', 'Skills mode switch')">
+      <div class="skills-mode-strip" role="tablist" :aria-label="text('技能视图切换', 'Skills mode switch')">
         <button
           type="button"
           class="skills-mode-button"
@@ -105,7 +105,7 @@
 
           <label class="form-field">
             <span class="form-label">{{ text('筛选集合', 'Filter set') }}</span>
-            <GlassSelect
+            <StudioSelect
               v-model="installedFilter"
               :options="installedFilterOptions"
               :placeholder="text('请选择筛选', 'Select filter')"
@@ -250,7 +250,7 @@
             </div>
 
             <div v-if="agentSkillMatrixRows.length" class="skills-agent-matrix-grid">
-              <article v-for="row in agentSkillMatrixRows" :key="row.agentId" class="skills-agent-matrix-card">
+              <article v-for="row in agentSkillMatrixRows" :key="row.agentId" class="skills-agent-matrix-row">
                 <div>
                   <strong>{{ row.agentName }}</strong>
                   <span>{{ row.agentId }}</span>
@@ -401,7 +401,7 @@
                     :placeholder="text('字段名，例如 endpoint', 'Field key, e.g. endpoint')"
                   />
 
-                  <GlassSelect
+                  <StudioSelect
                     v-model="field.type"
                     :options="configFieldTypeOptions"
                     :placeholder="text('字段类型', 'Field type')"
@@ -506,7 +506,7 @@
             <div class="skills-maintenance-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('目标位置 / Agent', 'Target location / Agent') }}</span>
-                <GlassSelect
+                <StudioSelect
                   v-model="lifecycleTargetId"
                   :options="skillTargetOptions"
                   :placeholder="text('选择目标', 'Select target')"
@@ -627,7 +627,7 @@
 
           <label class="form-field">
             <span class="form-label">{{ text('排序', 'Sort') }}</span>
-            <GlassSelect
+            <StudioSelect
               v-model="marketSort"
               :options="marketSortOptions"
               :placeholder="text('请选择排序', 'Select sort order')"
@@ -636,7 +636,7 @@
 
           <label class="form-field">
             <span class="form-label">{{ text('分类筛选', 'Category filter') }}</span>
-            <GlassSelect
+            <StudioSelect
               v-model="marketCategory"
               :options="marketCategoryOptions"
               :placeholder="text('全部分类', 'All categories')"
@@ -929,7 +929,7 @@
             <div class="skills-maintenance-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('目标', 'Target') }}</span>
-                <GlassSelect
+                <StudioSelect
                   v-model="marketInstallTargetId"
                   :options="skillTargetOptions"
                   :placeholder="text('选择安装目标', 'Select install target')"
@@ -1062,7 +1062,7 @@
             </label>
             <label class="form-field">
               <span class="form-label">{{ text('安装目标', 'Install target') }}</span>
-              <GlassSelect
+              <StudioSelect
                 v-model="uploadTargetId"
                 :options="skillTargetOptions"
                 :placeholder="text('默认共享目录', 'Default shared directory')"
@@ -1141,7 +1141,7 @@ import type {
   SkillsSummaryPayload,
   SkillsUploadPreflightResult,
 } from '../../../../../types/skills';
-import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
+import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
 import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
@@ -1544,7 +1544,7 @@ function lifecycleActionLabel(action: SkillsLifecycleAction): string {
   }
 }
 
-const installedFilterOptions = computed<GlassSelectOption[]>(() => [
+const installedFilterOptions = computed<StudioSelectOption[]>(() => [
   { value: 'all', label: text('全部技能', 'All skills') },
   { value: 'ready', label: text('可直接用', 'Ready') },
   { value: 'needs-setup', label: text('待补依赖', 'Needs setup') },
@@ -1554,7 +1554,7 @@ const installedFilterOptions = computed<GlassSelectOption[]>(() => [
   { value: 'bundled', label: text('内置技能', 'Bundled') },
 ]);
 
-const configFieldTypeOptions = computed<GlassSelectOption[]>(() => [
+const configFieldTypeOptions = computed<StudioSelectOption[]>(() => [
   { value: 'string', label: text('文本', 'String') },
   { value: 'number', label: text('数字', 'Number') },
   { value: 'boolean', label: text('布尔值', 'Boolean') },
@@ -1574,7 +1574,7 @@ const marketDetailTabs = computed(() => [
   { value: 'install', label: text('安装', 'Install') },
 ]);
 
-const marketSortOptions = computed<GlassSelectOption[]>(() => {
+const marketSortOptions = computed<StudioSelectOption[]>(() => {
   if (marketSourceId.value === 'skillhub-tencent') {
     return [
       { value: 'featured', label: text('精选推荐', 'Featured') },
@@ -1603,7 +1603,7 @@ const selectedSkillSummary = computed(() => {
   return summary.value?.skills.find((skill) => skill.slug === selectedSkillSlug.value) || null;
 });
 
-const skillTargetOptions = computed<GlassSelectOption[]>(() =>
+const skillTargetOptions = computed<StudioSelectOption[]>(() =>
   skillTargets.value.map((target) => ({
     value: target.id,
     label: `${target.label} · ${target.path}`,
@@ -1699,7 +1699,7 @@ const activeMarketSource = computed(() => {
   return marketSources.value.find((source) => source.id === marketSourceId.value) || null;
 });
 
-const marketCategoryOptions = computed<GlassSelectOption[]>(() => {
+const marketCategoryOptions = computed<StudioSelectOption[]>(() => {
   const categories = new Set<string>();
   for (const item of marketplace.value?.items || []) {
     if (item.category) categories.add(item.category);

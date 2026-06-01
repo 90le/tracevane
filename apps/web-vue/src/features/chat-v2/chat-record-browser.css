@@ -3,7 +3,7 @@
   position: fixed;
   inset: 0;
   z-index: 1430;
-  backdrop-filter: blur(14px);
+  backdrop-filter: none;
 }
 
 .chat-record-browser-mask[data-state='open'] {
@@ -18,7 +18,7 @@
   color: var(--chat-record-browser-text);
   border: 1px solid var(--chat-record-browser-line);
   box-shadow: var(--chat-record-browser-shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: none;
 }
 
 .chat-record-browser--dock {
@@ -187,7 +187,7 @@
   padding: 0 14px;
   border-radius: 12px;
   background: var(--chat-record-browser-accent);
-  color: white;
+  color: var(--button-primary-text);
   font-weight: 700;
 }
 
@@ -377,23 +377,16 @@
   --chat-record-browser-chip: color-mix(in srgb, var(--chat-modal-row) 86%, var(--chat-shell-bg) 14%);
   --chat-record-browser-accent: var(--chat-accent);
   --chat-record-browser-accent-soft: color-mix(in srgb, var(--chat-accent) 14%, transparent);
-  --chat-record-browser-shadow: 0 28px 88px rgba(3, 8, 14, 0.28);
-}
-
-.chat-record-browser.theme-dark {
-  --chat-error: #ff8b8b;
-}
-
-.chat-record-browser.theme-light {
-  --chat-error: #c62828;
+  --chat-record-browser-shadow: var(--modal-shadow);
+  --chat-error: var(--danger);
 }
 
 .chat-record-browser-mask.theme-dark {
-  background: rgba(6, 10, 18, 0.42);
+  background: var(--modal-backdrop);
 }
 
 .chat-record-browser-mask.theme-light {
-  background: rgba(229, 237, 247, 0.72);
+  background: var(--modal-backdrop);
 }
 
 @media (max-width: 760px) {

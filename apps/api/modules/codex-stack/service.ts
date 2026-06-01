@@ -29,6 +29,7 @@ import type {
   CodexStackJobStatus,
   CodexStackLogResponse,
   CodexStackManagementAccess,
+  CodexStackManualServiceId,
   CodexStackModelSource,
   CodexStackMutationResponse,
   CodexStackProfile,
@@ -81,8 +82,13 @@ const SERVICE_IDS = [
   "codex-stack-watchdog.timer",
 ] as const satisfies readonly CodexStackServiceId[];
 
+const MANUAL_SERVICE_IDS = [
+  "cli-proxy-api.service",
+  "cpa-compact-proxy.service",
+  "cc-connect.service",
+] as const satisfies readonly CodexStackManualServiceId[];
+
 const SERVICE_ACTIONS = ["restart", "start", "stop", "enable"] as const satisfies readonly CodexStackServiceAction[];
-const LEGACY_HEALTHCHECK_TIMER = "cli-proxy-api-healthcheck.timer";
 
 const FALLBACK_LOG_FILES: Record<CodexStackServiceId, string[]> = {
   "cli-proxy-api.service": ["/tmp/cpa.log"],
@@ -3500,23 +3506,16 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!(SERVICE_ACTIONS as readonly string[]).includes(action)) {
       throw new CodexStackServiceError("codex_stack_invalid_service_action", `Unsupported service action: ${action}`);
     }
-    requireNoActiveJob();
-    if (
-      serviceId === LEGACY_HEALTHCHECK_TIMER
-      && (action === "start" || action === "restart" || action === "enable")
-    ) {
+    if (!(MANUAL_SERVICE_IDS as readonly string[]).includes(serviceId)) {
       throw new CodexStackServiceError(
-        "codex_stack_legacy_healthcheck_blocked",
-        "Legacy CPA healthcheck must stay disabled. Use Recommended Repair so Studio disables and removes the old timer safely.",
+        "codex_stack_managed_service_control_blocked",
+        `${serviceId} is auto-managed. Use install, pause stack, resume stack, or recommended repair so Studio applies the ordered recovery flow.`,
         409,
       );
     }
+    requireNoActiveJob();
     if ((action === "start" || action === "restart") && serviceId === "cpa-compact-proxy.service") {
       await requireActiveUnitForServiceAction("cli-proxy-api.service", "Start or resume CPA before starting Compact Proxy.");
-    }
-    if ((action === "start" || action === "restart") && serviceId === "codex-stack-watchdog.timer") {
-      await requireActiveUnitForServiceAction("cli-proxy-api.service", "Start or resume CPA before enabling watchdog.");
-      await requireActiveUnitForServiceAction("cpa-compact-proxy.service", "Start or resume Compact Proxy before enabling watchdog.");
     }
     const result = await execText("systemctl", ["--user", action, serviceId], { timeout: 30_000 });
     if (!result.ok) {
@@ -3572,7 +3571,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       };
     }
     const currentPaths = paths();
-    const restartRequired = new Set<CodexStackServiceId>();
+    const restartRequired = new Set<CodexStackManualServiceId>();
     const model = normalizeString(patch.defaultModel);
     const hasContextPatch = Object.prototype.hasOwnProperty.call(patch, "contextMode")
       || Object.prototype.hasOwnProperty.call(patch, "contextWindowTokens");

@@ -33,46 +33,46 @@
         <div class="chat-slash-status-body">
           <section class="chat-slash-status-group">
             <div class="chat-slash-status-group-label">{{ text('会话', 'Session') }}</div>
-            <div class="chat-slash-status-grid">
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('标题', 'Title') }}</span>
-                <strong>{{ title || text('未命名会话', 'Untitled session') }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('Agent', 'Agent') }}</span>
-                <strong>{{ agentName || agentId || '—' }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('会话键', 'Session key') }}</span>
-                <strong class="mono">{{ sessionKey || '—' }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('可写', 'Writable') }}</span>
-                <strong>{{ writable ? text('是', 'Yes') : text('否', 'No') }}</strong>
-              </article>
-            </div>
+            <dl class="chat-slash-status-row-list">
+              <div class="chat-slash-status-row">
+                <dt>{{ text('标题', 'Title') }}</dt>
+                <dd>{{ title || text('未命名会话', 'Untitled session') }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('Agent', 'Agent') }}</dt>
+                <dd>{{ agentName || agentId || '—' }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('会话键', 'Session key') }}</dt>
+                <dd class="mono">{{ sessionKey || '—' }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('可写', 'Writable') }}</dt>
+                <dd>{{ writable ? text('是', 'Yes') : text('否', 'No') }}</dd>
+              </div>
+            </dl>
           </section>
 
           <section class="chat-slash-status-group">
             <div class="chat-slash-status-group-label">{{ text('Runtime', 'Runtime') }}</div>
-            <div class="chat-slash-status-grid">
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('运行状态', 'Run state') }}</span>
-                <strong>{{ runtime?.state || text('未知', 'Unknown') }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('活跃 Run', 'Active run') }}</span>
-                <strong class="mono">{{ runtime?.activeRunId || '—' }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('最后事件', 'Last event') }}</span>
-                <strong>{{ runtime?.lastEventAt || '—' }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('最后确认', 'Last ack') }}</span>
-                <strong>{{ runtime?.lastAckAt || '—' }}</strong>
-              </article>
-            </div>
+            <dl class="chat-slash-status-row-list">
+              <div class="chat-slash-status-row">
+                <dt>{{ text('运行状态', 'Run state') }}</dt>
+                <dd>{{ runtime?.state || text('未知', 'Unknown') }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('活跃 Run', 'Active run') }}</dt>
+                <dd class="mono">{{ runtime?.activeRunId || '—' }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('最后事件', 'Last event') }}</dt>
+                <dd>{{ runtime?.lastEventAt || '—' }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('最后确认', 'Last ack') }}</dt>
+                <dd>{{ runtime?.lastAckAt || '—' }}</dd>
+              </div>
+            </dl>
             <div v-if="runtime?.lastErrorMessage || gatewayWarning || accessError" class="chat-slash-status-warning">
               <strong>{{ text('最近告警', 'Recent warning') }}</strong>
               <span>{{ runtime?.lastErrorMessage || gatewayWarning || accessError }}</span>
@@ -81,46 +81,46 @@
 
           <section class="chat-slash-status-group">
             <div class="chat-slash-status-group-label">{{ text('Queue', 'Queue') }}</div>
-            <div class="chat-slash-status-grid">
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('待发送数量', 'Queued items') }}</span>
-                <strong>{{ queueLength }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('实时连接就绪', 'Realtime ready') }}</span>
-                <strong>{{ realtimeReady ? text('是', 'Yes') : text('否', 'No') }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('Gateway 已连接', 'Gateway connected') }}</span>
-                <strong>{{ runtime?.gatewayConnected ? text('是', 'Yes') : text('否', 'No') }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('正在查看历史位置', 'Viewing history') }}</span>
-                <strong>{{ viewingHistoricalPosition ? text('是', 'Yes') : text('否', 'No') }}</strong>
-              </article>
-            </div>
+            <dl class="chat-slash-status-row-list">
+              <div class="chat-slash-status-row">
+                <dt>{{ text('待发送数量', 'Queued items') }}</dt>
+                <dd>{{ queueLength }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('实时连接就绪', 'Realtime ready') }}</dt>
+                <dd>{{ realtimeReady ? text('是', 'Yes') : text('否', 'No') }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('Gateway 已连接', 'Gateway connected') }}</dt>
+                <dd>{{ runtime?.gatewayConnected ? text('是', 'Yes') : text('否', 'No') }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('正在查看历史位置', 'Viewing history') }}</dt>
+                <dd>{{ viewingHistoricalPosition ? text('是', 'Yes') : text('否', 'No') }}</dd>
+              </div>
+            </dl>
           </section>
 
           <section class="chat-slash-status-group">
             <div class="chat-slash-status-group-label">{{ text('Controls', 'Controls') }}</div>
-            <div class="chat-slash-status-grid">
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('全局宿主管理 Exec', 'Global host-management Exec') }}</span>
-                <strong>{{ globalHostManagementExecEnabled ? text('开启', 'Enabled') : text('关闭', 'Disabled') }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('本会话宿主管理 Exec', 'Session host-management Exec') }}</span>
-                <strong>{{ sessionHostManagementExecEnabled ? text('开启', 'Enabled') : text('关闭', 'Disabled') }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('更多历史向前', 'Has more before') }}</span>
-                <strong>{{ hasMoreBefore ? text('是', 'Yes') : text('否', 'No') }}</strong>
-              </article>
-              <article class="chat-slash-status-card">
-                <span class="chat-slash-status-card-label">{{ text('更多历史向后', 'Has more after') }}</span>
-                <strong>{{ hasMoreAfter ? text('是', 'Yes') : text('否', 'No') }}</strong>
-              </article>
-            </div>
+            <dl class="chat-slash-status-row-list">
+              <div class="chat-slash-status-row">
+                <dt>{{ text('全局宿主管理 Exec', 'Global host-management Exec') }}</dt>
+                <dd>{{ globalHostManagementExecEnabled ? text('开启', 'Enabled') : text('关闭', 'Disabled') }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('本会话宿主管理 Exec', 'Session host-management Exec') }}</dt>
+                <dd>{{ sessionHostManagementExecEnabled ? text('开启', 'Enabled') : text('关闭', 'Disabled') }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('更多历史向前', 'Has more before') }}</dt>
+                <dd>{{ hasMoreBefore ? text('是', 'Yes') : text('否', 'No') }}</dd>
+              </div>
+              <div class="chat-slash-status-row">
+                <dt>{{ text('更多历史向后', 'Has more after') }}</dt>
+                <dd>{{ hasMoreAfter ? text('是', 'Yes') : text('否', 'No') }}</dd>
+              </div>
+            </dl>
           </section>
         </div>
         </section>

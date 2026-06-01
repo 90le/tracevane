@@ -32,7 +32,7 @@
   height: 100%;
   padding: 0;
   gap: 0;
-  border-radius: var(--studio-workspace-radius, 18px);
+  border-radius: var(--studio-workspace-radius, 12px);
   overflow: hidden;
   align-content: stretch;
 }
@@ -91,9 +91,9 @@
 }
 
 .file-manager-page {
-  --file-manager-bg: #f8fafc;
-  --file-manager-panel: #ffffff;
-  --file-manager-panel-strong: #eef3f8;
+  --file-manager-bg: var(--bg-app);
+  --file-manager-panel: var(--surface-base);
+  --file-manager-panel-strong: var(--surface-raised);
   --file-manager-hover: color-mix(in srgb, var(--acc) 8%, var(--file-manager-panel));
   --file-manager-active: color-mix(in srgb, var(--acc) 15%, var(--file-manager-panel));
   --file-manager-border: color-mix(in srgb, var(--line) 88%, transparent);
@@ -104,9 +104,10 @@
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--file-manager-border);
-  border-radius: var(--studio-workspace-radius, 18px);
+  border-radius: var(--studio-workspace-radius, 12px);
   background: var(--file-manager-bg);
   color: var(--text);
+  box-shadow: var(--mono-shadow-sm, var(--shadow-soft));
   isolation: isolate;
 }
 
@@ -118,12 +119,12 @@
 }
 
 html[data-theme="dark"] .file-manager-page {
-  --file-manager-bg: #07111c;
-  --file-manager-panel: #0b1220;
-  --file-manager-panel-strong: #101a2b;
-  --file-manager-hover: #132238;
-  --file-manager-active: #173154;
-  --file-manager-border: rgba(148, 163, 184, 0.22);
+  --file-manager-bg: var(--bg-app);
+  --file-manager-panel: var(--surface-base);
+  --file-manager-panel-strong: var(--surface-raised);
+  --file-manager-hover: var(--modal-row-hover-bg);
+  --file-manager-active: color-mix(in srgb, var(--acc) 14%, var(--file-manager-panel));
+  --file-manager-border: color-mix(in srgb, var(--line) 92%, transparent);
 }
 
 .file-manager-notice {
@@ -135,9 +136,9 @@ html[data-theme="dark"] .file-manager-page {
   padding: 9px 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--surface-overlay);
   color: var(--text);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--mono-shadow-md);
   font-size: 13px;
 }
 
@@ -286,12 +287,10 @@ html[data-theme="dark"] .file-manager-page {
   height: 100%;
   border: 1px solid color-mix(in srgb, var(--studio-file-icon-accent) 42%, transparent);
   border-radius: 18% 18% 22% 22%;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, #ffffff 18%, transparent), transparent 42%),
-    var(--studio-file-icon-base);
+  background: color-mix(in srgb, var(--studio-file-icon-accent) 7%, var(--studio-file-icon-base));
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, #ffffff 13%, transparent),
-    0 1px 2px color-mix(in srgb, #000000 16%, transparent);
+    inset 0 0 0 1px var(--icon-highlight-strong),
+    0 1px 2px var(--icon-shadow);
   overflow: hidden;
 }
 
@@ -301,7 +300,7 @@ html[data-theme="dark"] .file-manager-page {
   right: 0;
   width: 36%;
   height: 36%;
-  background: color-mix(in srgb, var(--studio-file-icon-accent) 42%, #ffffff);
+  background: color-mix(in srgb, var(--studio-file-icon-accent) 42%, var(--icon-fold-mix));
   clip-path: polygon(100% 0, 0 0, 100% 100%);
   opacity: 0.86;
 }
@@ -313,7 +312,7 @@ html[data-theme="dark"] .file-manager-page {
   width: 48%;
   height: 22%;
   border-radius: 999px 999px 30% 30%;
-  background: color-mix(in srgb, var(--studio-file-icon-accent) 72%, #ffffff);
+  background: color-mix(in srgb, var(--studio-file-icon-accent) 72%, var(--icon-fold-mix));
 }
 
 .studio-file-icon__extension {
@@ -335,40 +334,40 @@ html[data-theme="dark"] .file-manager-page {
 }
 
 .studio-file-icon--folder {
-  --studio-file-icon-base: linear-gradient(145deg, #ffe7a3, #d9a341);
-  --studio-file-icon-accent: #c7831c;
-  --studio-file-icon-text: #5b3411;
+  --studio-file-icon-base: var(--file-icon-folder-base);
+  --studio-file-icon-accent: var(--file-icon-folder-accent);
+  --studio-file-icon-text: var(--file-icon-folder-text);
 }
 
 .studio-file-icon--code {
-  --studio-file-icon-base: color-mix(in srgb, #2dd4bf 18%, var(--file-manager-panel-strong));
-  --studio-file-icon-accent: #14b8a6;
-  --studio-file-icon-text: color-mix(in srgb, #2dd4bf 72%, var(--text));
+  --studio-file-icon-base: color-mix(in srgb, var(--file-icon-code-accent) 18%, var(--file-manager-panel-strong));
+  --studio-file-icon-accent: var(--file-icon-code-accent);
+  --studio-file-icon-text: color-mix(in srgb, var(--file-icon-code-accent) 72%, var(--text));
 }
 
 .studio-file-icon--image {
-  --studio-file-icon-base: color-mix(in srgb, #60a5fa 20%, var(--file-manager-panel-strong));
-  --studio-file-icon-accent: #3b82f6;
-  --studio-file-icon-text: color-mix(in srgb, #60a5fa 76%, var(--text));
+  --studio-file-icon-base: color-mix(in srgb, var(--file-icon-image-accent) 20%, var(--file-manager-panel-strong));
+  --studio-file-icon-accent: var(--file-icon-image-accent);
+  --studio-file-icon-text: color-mix(in srgb, var(--file-icon-image-accent) 76%, var(--text));
 }
 
 .studio-file-icon--archive {
-  --studio-file-icon-base: color-mix(in srgb, #f59e0b 18%, var(--file-manager-panel-strong));
-  --studio-file-icon-accent: #d97706;
-  --studio-file-icon-text: color-mix(in srgb, #fbbf24 78%, var(--text));
+  --studio-file-icon-base: color-mix(in srgb, var(--file-icon-archive-accent) 18%, var(--file-manager-panel-strong));
+  --studio-file-icon-accent: var(--file-icon-archive-accent);
+  --studio-file-icon-text: color-mix(in srgb, var(--file-icon-archive-accent) 78%, var(--text));
 }
 
 .studio-file-icon--media {
-  --studio-file-icon-base: color-mix(in srgb, #f472b6 18%, var(--file-manager-panel-strong));
-  --studio-file-icon-accent: #ec4899;
-  --studio-file-icon-text: color-mix(in srgb, #f472b6 76%, var(--text));
+  --studio-file-icon-base: color-mix(in srgb, var(--file-icon-media-accent) 18%, var(--file-manager-panel-strong));
+  --studio-file-icon-accent: var(--file-icon-media-accent);
+  --studio-file-icon-text: color-mix(in srgb, var(--file-icon-media-accent) 76%, var(--text));
 }
 
 .studio-file-icon--text,
 .studio-file-icon--document {
-  --studio-file-icon-base: color-mix(in srgb, #94a3b8 14%, var(--file-manager-panel-strong));
-  --studio-file-icon-accent: #64748b;
-  --studio-file-icon-text: color-mix(in srgb, #cbd5e1 70%, var(--text));
+  --studio-file-icon-base: color-mix(in srgb, var(--file-icon-document-accent) 14%, var(--file-manager-panel-strong));
+  --studio-file-icon-accent: var(--file-icon-document-accent);
+  --studio-file-icon-text: color-mix(in srgb, var(--file-icon-document-accent) 70%, var(--text));
 }
 
 .studio-file-icon--file {
@@ -381,23 +380,31 @@ html[data-theme="dark"] .file-manager-page {
   inset: 0;
   z-index: 1120;
   display: grid;
-  place-items: center;
-  padding: 24px;
-  background: color-mix(in srgb, #020617 28%, transparent);
+  align-items: stretch;
+  justify-items: end;
+  padding: 10px;
+  background: var(--overlay-backdrop);
 }
 
 .file-manager-details__panel {
   display: grid;
+  grid-template-rows: auto minmax(0, auto) auto;
+  align-self: stretch;
   gap: 14px;
-  width: min(560px, calc(100vw - 32px));
-  max-height: min(680px, calc(100vh - 48px));
-  padding: 14px;
+  width: min(460px, calc(100vw - 20px));
+  max-height: 100%;
+  padding: 16px;
   border: 1px solid var(--file-manager-border);
   border-radius: 12px;
   background: var(--file-manager-panel);
   color: var(--text);
-  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.24);
+  box-shadow: var(--shadow-modal);
   overflow: auto;
+  animation: file-manager-details-sheet-in var(--motion-duration-medium, 180ms) var(--ease-out, ease-out);
+}
+
+.file-manager-details__sheet {
+  min-height: 0;
 }
 
 .file-manager-details__head {
@@ -550,8 +557,7 @@ html[data-theme="dark"] .file-manager-page {
 .file-manager-page .vuefinder__toolbar,
 .file-manager-page .vuefinder__menubar {
   min-height: 36px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--file-manager-panel-strong) 88%, transparent), var(--file-manager-panel)) !important;
+  background: var(--file-manager-panel) !important;
 }
 
 .file-manager-page .vuefinder__toolbar-btn,
@@ -578,7 +584,7 @@ html[data-theme="dark"] .file-manager-page {
   border: 1px solid var(--file-manager-border);
   border-radius: 8px;
   background: var(--file-manager-panel) !important;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--shadow-popover);
   overflow: hidden;
 }
 
@@ -591,11 +597,11 @@ html[data-theme="dark"] .file-manager-page {
 }
 
 .file-manager-page .vuefinder__items--list .vuefinder__item:hover {
-  background: color-mix(in srgb, var(--surface) 72%, var(--acc) 7%);
+  background: color-mix(in srgb, var(--file-manager-panel) 72%, var(--acc) 7%);
 }
 
 .file-manager-page .vuefinder__items--list .vuefinder__item--selected {
-  background: color-mix(in srgb, var(--surface) 64%, var(--acc) 14%);
+  background: color-mix(in srgb, var(--file-manager-panel) 64%, var(--acc) 14%);
 }
 
 @media (max-width: 720px) {
@@ -630,6 +636,7 @@ html[data-theme="dark"] .file-manager-page {
 
   .file-manager-details {
     align-items: end;
+    justify-items: stretch;
     padding: 10px;
   }
 
@@ -644,6 +651,24 @@ html[data-theme="dark"] .file-manager-page {
   }
 }
 
+@keyframes file-manager-details-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-manager-details__panel {
+    animation: none;
+  }
+}
+
 /* FileEditorWorkspace.vue */
 .file-manager-editor-drawer {
   position: fixed;
@@ -655,7 +680,7 @@ html[data-theme="dark"] .file-manager-page {
   max-height: 100%;
   border-left: 1px solid var(--file-manager-border);
   background: var(--file-manager-bg);
-  box-shadow: -10px 0 28px rgba(15, 23, 42, 0.14);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
 }
 
@@ -757,7 +782,7 @@ html[data-theme="dark"] .file-manager-page {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--warning, #f59e0b) 78%, #f59e0b);
+  background: color-mix(in srgb, var(--warning) 78%, var(--peach));
 }
 
 .file-manager-editor-drawer__tab-close {
@@ -1132,7 +1157,7 @@ html[data-theme="dark"] .file-manager-page {
   border: 0;
   border-radius: 0;
   overflow: hidden;
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 96%, transparent);
 }
 
 .code-file-editor.has-search {
@@ -1140,7 +1165,7 @@ html[data-theme="dark"] .file-manager-page {
 }
 
 html[data-theme="dark"] .code-file-editor {
-  background: #0d1117;
+  background: var(--code-editor-bg);
 }
 
 .code-file-editor__searchbar {
@@ -1151,12 +1176,12 @@ html[data-theme="dark"] .code-file-editor {
   min-width: 0;
   padding: 7px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
-  background: color-mix(in srgb, var(--file-manager-panel-strong, var(--surface)) 94%, var(--file-manager-bg, var(--surface)));
-  box-shadow: 0 1px 0 color-mix(in srgb, #ffffff 40%, transparent) inset;
+  background: color-mix(in srgb, var(--file-manager-panel-strong, var(--surface-raised)) 94%, var(--file-manager-bg, var(--bg-app)));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--icon-fold-mix) 40%, transparent) inset;
 }
 
 html[data-theme="dark"] .code-file-editor__searchbar {
-  background: #101a2b;
+  background: var(--code-editor-gutter-bg);
   box-shadow: none;
 }
 
@@ -1280,15 +1305,15 @@ html[data-theme="dark"] .code-file-editor__searchbar {
 
 .code-file-editor .cm-panels {
   border-color: color-mix(in srgb, var(--line) 88%, transparent);
-  background: color-mix(in srgb, var(--surface) 92%, var(--bg-app) 8%);
+  background: color-mix(in srgb, var(--surface-base) 92%, var(--bg-app) 8%);
   color: var(--text);
   font-family: inherit;
-  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.1);
+  box-shadow: var(--mono-shadow-sm);
 }
 
 html[data-theme="dark"] .code-file-editor .cm-panels {
-  background: #101a2b;
-  color: #dbe7f3;
+  background: var(--code-editor-gutter-bg);
+  color: var(--code-editor-fg);
 }
 
 .code-file-editor .cm-panels-top {

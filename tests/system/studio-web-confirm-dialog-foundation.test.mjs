@@ -63,9 +63,30 @@ test("confirm dialog foundation defines shared tone and structure contracts", ()
     "expected ConfirmDialog to avoid Vue scoped style blocks",
   );
   assert.match(dialogCss, /\.confirm-dialog-mask\s*\{/);
+  assert.match(
+    dialogCss,
+    /\.confirm-dialog-mask\s*\{[\s\S]*background:\s*var\(--modal-backdrop\);/,
+    "expected ConfirmDialog mask to use the shared modal backdrop token",
+  );
   assert.match(dialogCss, /\.confirm-dialog__surface\s*\{/);
+  assert.match(
+    dialogCss,
+    /\.confirm-dialog__surface\s*\{[\s\S]*border:\s*1px solid var\(--modal-border\);[\s\S]*background:\s*var\(--modal-panel-bg\);[\s\S]*box-shadow:\s*var\(--modal-shadow\);/,
+    "expected ConfirmDialog surface to use shared modal panel tokens",
+  );
   assert.match(dialogCss, /\.confirm-dialog__actions\s*\{/);
   assert.doesNotMatch(dialogCss, /:deep|:global/);
+  assert.doesNotMatch(
+    dialogCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient/,
+    "expected ConfirmDialog chrome to avoid local color literals and gradients",
+  );
+  assert.doesNotMatch(dialogCss, /backdrop-filter:\s*blur\(/);
+  assert.doesNotMatch(
+    dialogCss,
+    /var\(--surface-overlay\)|var\(--border-strong\)|var\(--shadow-popover\)|var\(--muted\)|var\(--line\)/,
+    "expected ConfirmDialog to avoid legacy surface, border, shadow, and text aliases",
+  );
   assert.doesNotMatch(globalStyleCss, /\.confirm-dialog/);
   assert.match(
     dialogVue,

@@ -44,8 +44,13 @@ test('slash status dialog uses reka dialog primitives for the current-status sur
   assert.match(slashCommandCss, /\.chat-slash-status-dialog\s*\{[\s\S]*border-radius:\s*12px;/);
   assert.match(slashCommandCss, /\.chat-slash-status-mask\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-slash-status-mask-in 0\.2s ease;/);
   assert.match(slashCommandCss, /\.chat-slash-status-dialog\[data-state='open'\]\s*\{[\s\S]*animation:\s*chat-slash-status-dialog-in 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/);
-  assert.match(slashCommandCss, /\.chat-slash-status-card\s*\{[\s\S]*border-radius:\s*12px;/);
+  assert.match(slashStatusDialog, /class="chat-slash-status-row-list"/);
+  assert.match(slashStatusDialog, /class="chat-slash-status-row"/);
+  assert.match(slashCommandCss, /\.chat-slash-status-row-list\s*\{/);
+  assert.match(slashCommandCss, /\.chat-slash-status-row\s*\{[\s\S]*border-radius:\s*10px;/);
   assert.match(slashCommandCss, /\.chat-slash-status-warning\s*\{[\s\S]*border-radius:\s*10px;/);
+  assert.doesNotMatch(slashStatusDialog, /chat-slash-status-card/);
+  assert.doesNotMatch(slashCommandCss, /chat-slash-status-card/);
   assert.match(slashCommandCss, /@keyframes chat-slash-status-mask-in/);
   assert.match(slashCommandCss, /@keyframes chat-slash-status-dialog-in/);
   assert.match(slashCommandCss, /@media \(prefers-reduced-motion: reduce\)/);

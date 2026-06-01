@@ -1,72 +1,42 @@
 /* Migrated Dreaming workspace rules from global style.css. Keep Dreaming chrome in feature CSS. */
-
+/* DuoYuan P2 data-review contract: memory workbench over decorative dream scene. */
 .dreaming-page {
+  --dream-stage-border: var(--border-subtle);
+  --dream-surface: var(--surface-base);
+  --dream-surface-strong: var(--surface-raised);
+  --dream-surface-border: var(--line);
+  --dream-surface-border-strong: var(--border-subtle);
+  --dream-scene-text: var(--text);
+  --dream-scene-muted: var(--muted);
+  --dream-body-text: var(--text);
+  --dream-body-muted: var(--muted);
+  --dream-accent: var(--acc);
+  --dream-accent-strong: var(--peach, var(--acc));
+  --dream-success: var(--success);
+  --dream-warning: var(--warn, var(--peach));
+  --dream-danger: var(--danger);
+  --dream-paper-bg: var(--surface-base);
+  --dream-paper-border: var(--line);
   width: 100%;
   max-width: none;
-  gap: 14px;
-}
-
-/* DreamingControlPage.vue */
-.dreaming-page {
-  --dream-stage-bg:
-    radial-gradient(circle at 14% 8%, rgba(156, 191, 255, 0.24), transparent 28%),
-    radial-gradient(circle at 85% 14%, rgba(255, 220, 171, 0.12), transparent 26%),
-    linear-gradient(160deg, rgba(8, 14, 29, 0.98), rgba(13, 24, 43, 0.94) 44%, rgba(17, 31, 56, 0.9));
-  --dream-stage-border: rgba(171, 197, 235, 0.18);
-  --dream-dock-bg: linear-gradient(180deg, rgba(12, 21, 38, 0.78), rgba(10, 18, 30, 0.66));
-  --dream-surface: rgba(13, 23, 39, 0.72);
-  --dream-surface-strong: rgba(15, 28, 46, 0.86);
-  --dream-surface-border: rgba(176, 201, 239, 0.12);
-  --dream-surface-border-strong: rgba(176, 201, 239, 0.18);
-  --dream-scene-text: #f6fbff;
-  --dream-scene-muted: rgba(225, 236, 255, 0.72);
-  --dream-body-text: rgba(231, 240, 252, 0.92);
-  --dream-body-muted: rgba(189, 205, 227, 0.76);
-  --dream-accent: #a8c8ff;
-  --dream-accent-strong: #ffdaaa;
-  --dream-success: #99e8c8;
-  --dream-warning: #ffcf93;
-  --dream-danger: #ffaba0;
-  --dream-paper-bg: linear-gradient(180deg, rgba(15, 27, 43, 0.92), rgba(11, 20, 34, 0.86));
-  --dream-paper-border: rgba(186, 207, 239, 0.14);
   display: grid;
-  gap: 1.5rem;
+  gap: 18px;
 }
 
 html[data-theme='light'] .dreaming-page {
-  --dream-stage-bg:
-    radial-gradient(circle at 12% 10%, rgba(114, 157, 232, 0.18), transparent 30%),
-    radial-gradient(circle at 86% 12%, rgba(250, 205, 140, 0.14), transparent 26%),
-    linear-gradient(160deg, rgba(252, 254, 255, 0.96), rgba(241, 247, 253, 0.92) 46%, rgba(231, 240, 249, 0.88));
-  --dream-stage-border: rgba(56, 86, 122, 0.12);
-  --dream-dock-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(244, 248, 252, 0.74));
-  --dream-surface: rgba(255, 255, 255, 0.86);
-  --dream-surface-strong: rgba(255, 255, 255, 0.96);
-  --dream-surface-border: rgba(56, 86, 122, 0.1);
-  --dream-surface-border-strong: rgba(56, 86, 122, 0.16);
-  --dream-scene-text: #18324a;
-  --dream-scene-muted: rgba(41, 69, 97, 0.76);
-  --dream-body-text: rgba(23, 38, 56, 0.94);
-  --dream-body-muted: rgba(74, 95, 117, 0.78);
-  --dream-accent: #4f80eb;
-  --dream-accent-strong: #c9852b;
-  --dream-success: #1d9a78;
-  --dream-warning: #b96f1b;
-  --dream-danger: #ca5061;
-  --dream-paper-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(246, 249, 252, 0.92));
-  --dream-paper-border: rgba(56, 86, 122, 0.12);
+  --dream-paper-bg: var(--surface-base);
 }
 
 .dreaming-stage {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.92fr);
-  gap: 1rem;
-  padding: 1rem;
-  border-radius: 1.9rem;
+  grid-template-columns: minmax(0, 0.82fr) minmax(340px, 1.18fr);
+  gap: 0;
+  padding: 0;
+  border-radius: 12px;
   border: 1px solid var(--dream-stage-border);
-  background: var(--dream-stage-bg);
-  box-shadow: 0 30px 90px rgba(4, 8, 17, 0.18);
+  background: var(--surface-base);
+  box-shadow: var(--mono-shadow-sm, var(--shadow-soft));
   overflow: hidden;
 }
 
@@ -78,83 +48,15 @@ html[data-theme='light'] .dreaming-page {
 }
 
 .dreaming-stage__scene {
-  min-height: 24rem;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 1.45rem;
-  border-radius: 1.45rem;
+  padding: 20px 22px;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
   overflow: hidden;
 }
-
-.dreaming-stage__sky {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.dreaming-stage__moon,
-.dreaming-stage__moon-ring,
-.dreaming-stage__haze,
-.dreaming-stage__tide,
-.dreaming-stage__star {
-  position: absolute;
-}
-
-.dreaming-stage__moon {
-  top: 2rem;
-  right: 2.6rem;
-  width: 6.25rem;
-  height: 6.25rem;
-  border-radius: 999px;
-  background: radial-gradient(circle at 34% 32%, rgba(255, 251, 238, 0.98), rgba(181, 210, 251, 0.82));
-  box-shadow:
-    0 0 26px rgba(171, 205, 249, 0.3),
-    0 0 64px rgba(171, 205, 249, 0.18);
-  animation: dreaming-moon-glow 9s ease-in-out infinite alternate;
-}
-
-.dreaming-stage__moon-ring {
-  top: 1.25rem;
-  right: 1.85rem;
-  width: 7.7rem;
-  height: 7.7rem;
-  border-radius: 999px;
-  border: 1px solid rgba(223, 236, 255, 0.16);
-}
-
-.dreaming-stage__haze {
-  inset: auto auto 1.8rem -2rem;
-  width: 18rem;
-  height: 10rem;
-  background: radial-gradient(ellipse, rgba(157, 194, 255, 0.18), transparent 68%);
-  filter: blur(12px);
-  animation: dreaming-haze-drift 16s ease-in-out infinite alternate;
-}
-
-.dreaming-stage__tide {
-  inset: auto -5% -14% -5%;
-  height: 9rem;
-  background:
-    radial-gradient(circle at 25% 18%, rgba(255, 255, 255, 0.1), transparent 11%),
-    linear-gradient(180deg, transparent, rgba(82, 114, 170, 0.26));
-}
-
-.dreaming-stage__star {
-  width: 0.36rem;
-  height: 0.36rem;
-  border-radius: 999px;
-  background: rgba(244, 249, 255, 0.88);
-  box-shadow: 0 0 16px rgba(255, 255, 255, 0.3);
-  animation: dreaming-star-twinkle 3.2s ease-in-out infinite alternate;
-}
-
-.dreaming-stage__star.star-1 { top: 2.4rem; left: 2.4rem; }
-.dreaming-stage__star.star-2 { top: 4rem; left: 5.8rem; width: 0.24rem; height: 0.24rem; animation-delay: 0.5s; }
-.dreaming-stage__star.star-3 { top: 6rem; left: 4.4rem; width: 0.28rem; height: 0.28rem; animation-delay: 1.2s; }
-.dreaming-stage__star.star-4 { top: 3.5rem; right: 11.5rem; width: 0.22rem; height: 0.22rem; animation-delay: 0.8s; }
-.dreaming-stage__star.star-5 { top: 6.8rem; right: 9.6rem; animation-delay: 1.6s; }
-.dreaming-stage__star.star-6 { top: 9.2rem; left: 16rem; width: 0.22rem; height: 0.22rem; animation-delay: 0.2s; }
 
 .dreaming-stage__copy {
   position: relative;
@@ -181,11 +83,10 @@ html[data-theme='light'] .dreaming-page {
   width: fit-content;
   max-width: 100%;
   padding: 0.75rem 1rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: var(--dream-surface);
+  border: 1px solid var(--dream-surface-border);
   color: var(--dream-scene-muted);
-  backdrop-filter: blur(18px);
 }
 
 .dreaming-stage__statusline strong {
@@ -193,15 +94,15 @@ html[data-theme='light'] .dreaming-page {
 }
 
 .dreaming-stage__statusline.live {
-  background: rgba(147, 199, 255, 0.12);
+  background: color-mix(in srgb, var(--dream-success) 10%, var(--dream-surface));
 }
 
 .dreaming-stage__statusdot {
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 999px;
-  background: rgba(202, 214, 232, 0.72);
-  box-shadow: 0 0 0 0 rgba(202, 214, 232, 0.2);
+  background: color-mix(in srgb, var(--dream-body-muted) 72%, var(--dream-surface));
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--dream-body-muted) 20%, transparent);
 }
 
 .dreaming-stage__statusline.live .dreaming-stage__statusdot {
@@ -222,9 +123,8 @@ html[data-theme='light'] .dreaming-page {
   gap: 0.3rem;
   padding: 0.95rem 1rem;
   border-radius: 1.15rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(14px);
+  background: var(--dream-surface);
+  border: 1px solid var(--dream-surface-border);
 }
 
 .dreaming-band-stat span {
@@ -244,11 +144,10 @@ html[data-theme='light'] .dreaming-page {
   display: grid;
   gap: 1rem;
   align-content: start;
-  padding: 1.2rem 1.1rem;
-  border-radius: 1.45rem;
-  background: var(--dream-dock-bg);
+  padding: 18px 20px;
+  border-radius: 0;
+  background: var(--surface-raised);
   border: 1px solid var(--dream-surface-border);
-  backdrop-filter: blur(18px);
 }
 
 .dreaming-stage__dock-head {
@@ -268,7 +167,7 @@ html[data-theme='light'] .dreaming-page {
   align-items: center;
   padding: 0.42rem 0.8rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--dream-surface);
   border: 1px solid var(--dream-surface-border);
   color: var(--dream-body-text);
   font-size: 0.78rem;
@@ -313,7 +212,7 @@ html[data-theme='light'] .dreaming-page {
   padding: 0.75rem 1rem;
   border: 1px solid var(--dream-surface-border-strong);
   border-radius: 999px;
-  background: linear-gradient(135deg, rgba(255, 219, 166, 0.14), rgba(166, 199, 255, 0.12));
+  background: color-mix(in srgb, var(--dream-accent) 10%, var(--dream-surface));
   color: var(--dream-body-text);
   font: inherit;
   font-weight: 600;
@@ -327,7 +226,7 @@ html[data-theme='light'] .dreaming-page {
 .dreaming-toggle-button:hover:not(:disabled),
 .dreaming-toggle-button:focus-visible:not(:disabled) {
   transform: translateY(-1px);
-  border-color: rgba(209, 224, 249, 0.34);
+  border-color: color-mix(in srgb, var(--dream-accent) 30%, var(--dream-surface-border-strong));
 }
 
 .dreaming-toggle-button:disabled {
@@ -339,33 +238,18 @@ html[data-theme='light'] .dreaming-page {
   width: 0.62rem;
   height: 0.62rem;
   border-radius: 999px;
-  background: rgba(188, 203, 226, 0.8);
+  background: color-mix(in srgb, var(--dream-body-muted) 68%, var(--dream-surface));
 }
 
 .dreaming-toggle-button.active .dreaming-toggle-button__dot {
   background: var(--dream-success);
-  box-shadow: 0 0 14px rgba(73, 211, 158, 0.28);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--dream-success) 28%, transparent);
 }
 
 .dreaming-stage__controls {
   display: flex;
   gap: 0.7rem;
   flex-wrap: wrap;
-}
-
-.dreaming-stage__action-well {
-  display: grid;
-  gap: 0.8rem;
-  padding: 0.95rem 1rem;
-  border-radius: 1rem;
-  background: var(--dream-surface);
-  border: 1px solid var(--dream-surface-border);
-}
-
-.dreaming-stage__action-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.7rem;
 }
 
 .dreaming-stage__facts,
@@ -413,8 +297,8 @@ html[data-theme='light'] .dreaming-page {
 
 .dreaming-stage__notice.error,
 .dreaming-inline-panel.warning {
-  background: linear-gradient(180deg, rgba(255, 210, 176, 0.14), rgba(255, 182, 166, 0.08));
-  border-color: rgba(255, 184, 131, 0.26);
+  background: color-mix(in srgb, var(--dream-warning) 10%, var(--dream-surface));
+  border-color: color-mix(in srgb, var(--dream-warning) 30%, var(--dream-surface-border));
   color: var(--dream-body-text);
 }
 
@@ -422,25 +306,20 @@ html[data-theme='light'] .dreaming-page {
   display: grid;
   gap: 1rem;
   padding: 1rem;
-  border-radius: 1.7rem;
+  border-radius: 12px;
   border: 1px solid var(--dream-surface-border);
-  background: linear-gradient(180deg, var(--dream-surface-strong), rgba(11, 21, 36, 0.74));
-  backdrop-filter: blur(18px);
+  background: var(--dream-surface);
 }
 
-html[data-theme='light'] .dreaming-workbench {
-  background: linear-gradient(180deg, var(--dream-surface-strong), rgba(246, 249, 252, 0.88));
-}
-
-.dreaming-ops-strip {
+.dreaming-review-board {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  grid-template-columns: minmax(220px, 0.72fr) minmax(260px, 0.88fr) minmax(340px, 1.4fr);
   gap: 1rem;
+  align-items: start;
 }
 
-.dreaming-ops-strip__grid {
+.dreaming-grounded-actions__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.7rem;
 }
 
@@ -496,7 +375,7 @@ html[data-theme='light'] .dreaming-workbench {
   gap: 0.45rem;
   padding: 0.35rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--dream-surface);
   border: 1px solid var(--dream-surface-border);
 }
 
@@ -518,7 +397,7 @@ html[data-theme='light'] .dreaming-workbench {
 }
 
 .dreaming-workbench__tab[data-state='active'] {
-  background: linear-gradient(135deg, rgba(168, 200, 255, 0.18), rgba(255, 214, 164, 0.12));
+  background: color-mix(in srgb, var(--dream-accent) 12%, var(--dream-surface));
   color: var(--dream-body-text);
 }
 
@@ -529,11 +408,18 @@ html[data-theme='light'] .dreaming-workbench {
 
 .dreaming-workbench__panel {
   min-width: 0;
+  border-radius: 12px;
+  background: var(--dream-surface);
 }
 
 .dreaming-pane {
   display: grid;
   gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-base);
+  box-shadow: none;
 }
 
 .dreaming-pane__head {
@@ -560,7 +446,7 @@ html[data-theme='light'] .dreaming-workbench {
   left: 10%;
   right: 10%;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(183, 207, 242, 0.22), transparent);
+  background: var(--dream-surface-border);
   pointer-events: none;
 }
 
@@ -582,8 +468,8 @@ html[data-theme='light'] .dreaming-workbench {
   width: 0.85rem;
   height: 0.85rem;
   border-radius: 999px;
-  background: rgba(190, 207, 230, 0.82);
-  box-shadow: 0 0 0 0 rgba(190, 207, 230, 0.16);
+  background: color-mix(in srgb, var(--dream-body-muted) 70%, var(--dream-surface));
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--dream-body-muted) 18%, transparent);
 }
 
 .dreaming-river__phase.active::before {
@@ -603,7 +489,7 @@ html[data-theme='light'] .dreaming-workbench {
   align-items: center;
   padding: 0.35rem 0.72rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--dream-surface-strong) 72%, var(--dream-surface));
   border: 1px solid var(--dream-surface-border);
   color: var(--dream-body-muted);
   font-size: 0.78rem;
@@ -611,7 +497,7 @@ html[data-theme='light'] .dreaming-workbench {
 
 .dreaming-river__badge.active {
   color: var(--dream-success);
-  border-color: rgba(127, 235, 194, 0.24);
+  border-color: color-mix(in srgb, var(--dream-success) 28%, var(--dream-surface-border));
 }
 
 .dreaming-river__facts {
@@ -625,8 +511,8 @@ html[data-theme='light'] .dreaming-workbench {
   gap: 0.2rem;
   padding: 0.8rem 0.82rem;
   border-radius: 0.95rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--dream-surface);
+  border: 1px solid var(--dream-surface-border);
 }
 
 .dreaming-signal-rack {
@@ -640,7 +526,7 @@ html[data-theme='light'] .dreaming-workbench {
   gap: 0.35rem;
   padding: 1rem;
   border-radius: 1.15rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  background: var(--dream-surface);
   border: 1px solid var(--dream-surface-border);
 }
 
@@ -676,7 +562,7 @@ html[data-theme='light'] .dreaming-workbench {
   gap: 0.55rem;
   padding: 1rem;
   border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--dream-surface);
   border: 1px solid var(--dream-surface-border);
 }
 
@@ -692,7 +578,7 @@ html[data-theme='light'] .dreaming-workbench {
   align-items: center;
   padding: 0.35rem 0.72rem;
   border-radius: 999px;
-  background: rgba(168, 200, 255, 0.12);
+  background: color-mix(in srgb, var(--dream-accent) 10%, var(--dream-surface));
   border: 1px solid var(--dream-surface-border);
   color: var(--dream-body-text);
   font-size: 0.78rem;
@@ -726,13 +612,19 @@ html[data-theme='light'] .dreaming-workbench {
   grid-template-columns: minmax(260px, 0.85fr) minmax(0, 1.15fr);
   gap: 1rem;
   min-height: 25rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-base);
+  box-shadow: none;
 }
 
 .dreaming-diary-shell__rail {
   display: grid;
   gap: 0.7rem;
   align-content: start;
-  padding-right: 0.2rem;
+  padding: 0.8rem;
+  border-radius: 10px;
+  background: var(--surface-raised);
   max-height: 34rem;
   overflow: auto;
 }
@@ -742,9 +634,9 @@ html[data-theme='light'] .dreaming-workbench {
   gap: 0.35rem;
   width: 100%;
   padding: 0.95rem 1rem;
-  border-radius: 1rem;
+  border-radius: 8px;
   border: 1px solid var(--dream-surface-border);
-  background: var(--dream-surface);
+  background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -768,7 +660,7 @@ html[data-theme='light'] .dreaming-workbench {
 .dreaming-diary-shell__entry:hover {
   transform: translateY(-1px);
   border-color: var(--dream-surface-border-strong);
-  background: linear-gradient(135deg, rgba(168, 200, 255, 0.12), rgba(255, 214, 164, 0.06));
+  background: color-mix(in srgb, var(--dream-accent) 9%, var(--surface-base));
 }
 
 .dreaming-diary-sheet {
@@ -780,7 +672,7 @@ html[data-theme='light'] .dreaming-workbench {
   min-height: 25rem;
   background: var(--dream-paper-bg);
   border: 1px solid var(--dream-paper-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dream-paper-border) 40%, transparent);
 }
 
 .dreaming-diary-sheet__head {
@@ -834,53 +726,23 @@ html[data-theme='light'] .dreaming-workbench {
   color: var(--dream-body-text);
 }
 
-@keyframes dreaming-star-twinkle {
-  0% {
-    opacity: 0.22;
-    transform: scale(0.82);
-  }
-  100% {
-    opacity: 0.85;
-    transform: scale(1.16);
-  }
-}
-
-@keyframes dreaming-moon-glow {
-  0% {
-    transform: translateY(0);
-  }
-  100% {
-    transform: translateY(-4px);
-  }
-}
-
-@keyframes dreaming-haze-drift {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(24px);
-  }
-}
-
 @keyframes dreaming-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(130, 206, 179, 0.16);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--dream-success) 18%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(130, 206, 179, 0);
+    box-shadow: 0 0 0 8px transparent;
   }
 }
 
 @media (max-width: 1180px) {
   .dreaming-stage,
-  .dreaming-ops-strip,
+  .dreaming-review-board,
   .dreaming-readiness-grid,
   .dreaming-diary-shell,
   .dreaming-river,
-  .dreaming-signal-rack,
-  .dreaming-stage__action-grid {
+  .dreaming-signal-rack {
     grid-template-columns: 1fr;
   }
 
@@ -900,8 +762,7 @@ html[data-theme='light'] .dreaming-workbench {
   .dreaming-stage__facts,
   .dreaming-readiness-facts,
   .dreaming-river__facts,
-  .dreaming-stage__band,
-  .dreaming-ops-strip__grid {
+  .dreaming-stage__band {
     grid-template-columns: 1fr;
   }
 
@@ -910,24 +771,9 @@ html[data-theme='light'] .dreaming-workbench {
     align-items: flex-start;
   }
 
-  .dreaming-stage__moon {
-    width: 4.8rem;
-    height: 4.8rem;
-    right: 1.2rem;
-  }
-
-  .dreaming-stage__moon-ring {
-    width: 6rem;
-    height: 6rem;
-    right: 0.65rem;
-    top: 1.45rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dreaming-stage__moon,
-  .dreaming-stage__haze,
-  .dreaming-stage__star,
   .dreaming-stage__statusdot,
   .dreaming-river__phase::before {
     animation: none !important;

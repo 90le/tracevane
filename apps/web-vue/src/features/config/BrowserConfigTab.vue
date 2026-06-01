@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell config-section-grid">
+  <section class="config-tab-stage config-section-grid">
     <article class="config-sheet">
       <section class="config-block">
         <div class="panel-head">
@@ -52,41 +52,41 @@
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('默认快照模式', 'Default Snapshot Mode') }}</span>
-                <GlassSelect v-model="form.snapshotMode" :options="snapshotModeOptions" />
+                <StudioSelect v-model="form.snapshotMode" :options="snapshotModeOptions" />
                 <span class="field-hint">{{ text('对应 browser.snapshotDefaults.mode；留空表示跟随宿主默认。', 'Maps to browser.snapshotDefaults.mode. Leave empty to follow the host default.') }}</span>
               </label>
             </div>
             <div class="settings-stack">
               <div class="settings-inline-grid">
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.enabled" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('启用 Browser', 'Enable Browser') }}</strong>
                     <span>{{ text('关闭后相关 browser 工具不可用。', 'When disabled, browser tools are unavailable.') }}</span>
                   </div>
                 </label>
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.evaluateEnabled" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('启用 Evaluate', 'Enable Evaluate') }}</strong>
                     <span>{{ text('控制 act:evaluate / wait --fn 之类的动态执行能力。', 'Controls dynamic evaluation features such as act:evaluate / wait --fn.') }}</span>
                   </div>
                 </label>
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.headless" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('无头模式', 'Headless Mode') }}</strong>
                     <span>{{ text('不显示浏览器窗口', 'Run browser without visible window') }}</span>
                   </div>
                 </label>
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.noSandbox" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('禁用沙盒', 'Disable Sandbox') }}</strong>
                     <span>{{ text('禁用 Chrome 沙盒（某些环境需要）', 'Disable Chrome sandbox (required in some environments)') }}</span>
                   </div>
                 </label>
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.attachOnly" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('仅附着现有会话', 'Attach Only') }}</strong>
@@ -104,7 +104,7 @@
             </div>
             <div class="settings-stack">
               <div class="settings-inline-grid">
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.tabCleanupEnabled" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('启用自动清理', 'Enable cleanup') }}</strong>
@@ -136,7 +136,7 @@
             </div>
             <div class="settings-stack">
               <div class="settings-inline-grid">
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.allowPrivateNetwork" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('允许私网目标', 'Allow Private Networks') }}</strong>
@@ -168,7 +168,7 @@
               </button>
             </div>
             <div v-if="form.profiles.length" class="settings-stack settings-stack-spaced">
-              <article v-for="(profile, index) in form.profiles" :key="profile.uid" class="browser-profile-card">
+              <article v-for="(profile, index) in form.profiles" :key="profile.uid" class="browser-profile-entry">
                 <div class="panel-head">
                   <div>
                     <h5>{{ profile.id || text(`Profile ${index + 1}`, `Profile ${index + 1}`) }}</h5>
@@ -186,7 +186,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('Driver', 'Driver') }}</span>
-                    <GlassSelect v-model="profile.driver" :options="driverOptions" />
+                    <StudioSelect v-model="profile.driver" :options="driverOptions" />
                     <span class="field-hint">{{ text('`openclaw` 由宿主管理；`existing-session` 适合接管现有浏览器。', '`openclaw` is host-managed; `existing-session` is for attaching to an existing browser.') }}</span>
                   </label>
                   <label class="form-field">
@@ -208,7 +208,7 @@
                   </label>
                 </div>
                 <div class="toggle-grid">
-                  <label class="toggle-card">
+                  <label class="option-row">
                     <input v-model="profile.attachOnly" class="form-checkbox" type="checkbox" />
                     <div>
                       <strong>{{ text('仅附着', 'Attach Only') }}</strong>
@@ -231,9 +231,10 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
+import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
 import { createUuid } from '../../shared/uuid';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
+import './config-workspace.css';
 
 const props = defineProps<{
   summary: ConfigSummaryPayload | null;
@@ -275,12 +276,12 @@ const form = reactive({
   }>,
 });
 
-const snapshotModeOptions: GlassSelectOption[] = [
+const snapshotModeOptions: StudioSelectOption[] = [
   { value: '', label: text('跟随宿主默认', 'Follow host default') },
   { value: 'efficient', label: 'efficient' },
 ];
 
-const driverOptions: GlassSelectOption[] = [
+const driverOptions: StudioSelectOption[] = [
   { value: '', label: text('跟随宿主默认', 'Follow host default') },
   { value: 'openclaw', label: 'openclaw' },
   { value: 'clawd', label: 'clawd' },

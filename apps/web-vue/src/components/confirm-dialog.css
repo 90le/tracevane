@@ -5,30 +5,32 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: color-mix(in srgb, var(--surface-strong) 24%, rgba(7, 12, 20, 0.6));
-  backdrop-filter: blur(10px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .confirm-dialog__surface {
   width: min(420px, calc(100vw - 32px));
-  border: 1px solid var(--border-strong);
-  border-radius: 14px;
-  background: var(--surface-overlay);
-  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+  border: 1px solid var(--modal-border);
+  border-radius: 16px;
+  background: var(--modal-panel-bg);
+  box-shadow: var(--modal-shadow);
   color: var(--text);
 }
 
 .confirm-dialog.is-danger {
-  border-color: color-mix(in srgb, var(--danger) 34%, var(--border-strong));
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--modal-border));
 }
 
 .confirm-dialog.is-safe {
-  border-color: color-mix(in srgb, var(--success) 34%, var(--border-strong));
+  border-color: color-mix(in srgb, var(--success) 40%, var(--modal-border));
 }
 
 .confirm-dialog__head {
   padding: 18px 20px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-bottom: 1px solid var(--modal-border);
+  background: var(--modal-panel-bg-strong);
 }
 
 .confirm-dialog__head h3 {
@@ -41,7 +43,7 @@
 
 .confirm-dialog__head p {
   margin: 8px 0 0;
-  color: var(--muted);
+  color: var(--text-soft);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -51,4 +53,20 @@
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 20px 18px;
+  background: var(--modal-panel-bg);
+}
+
+@media (max-width: 560px) {
+  .confirm-dialog-mask {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .confirm-dialog__surface {
+    width: 100%;
+  }
+
+  .confirm-dialog__actions {
+    flex-direction: column-reverse;
+  }
 }

@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell config-section-grid">
+  <section class="config-tab-stage config-section-grid">
     <article class="config-sheet">
       <section class="config-block">
         <div class="panel-head">
@@ -44,7 +44,7 @@
             </div>
             <div class="form-grid">
               <div class="form-field">
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.enabled" class="form-checkbox" type="checkbox" />
                   <span class="form-label">{{ text('启用 ACP', 'Enable ACP') }}</span>
                 </label>
@@ -82,7 +82,7 @@
             </div>
             <div class="form-grid">
               <div class="form-field">
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.dispatchEnabled" class="form-checkbox" type="checkbox" />
                   <span class="form-label">{{ text('启用调度', 'Enable Dispatch') }}</span>
                 </label>

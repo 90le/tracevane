@@ -327,8 +327,8 @@ export function buildRenderModeOptions(text: ChannelTextFn): ChannelSelectOption
 
 export function buildBindingTypeOptions(text: ChannelTextFn): ChannelSelectOption[] {
   return [
-    { value: 'agent', label: text('普通 Agent 绑定', 'Standard agent binding') },
-    { value: 'acp', label: text('ACP 持久绑定', 'ACP binding') },
+    { value: 'agent', label: text('普通 Agent 路由', 'Standard agent route') },
+    { value: 'acp', label: text('ACP 持久路由', 'ACP route') },
   ];
 }
 

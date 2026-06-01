@@ -68,15 +68,72 @@ test("skills control page consumes recipe content for workspace copy", () => {
   assert.match(skillsControlPage, /overviewRecipe\.value\.installedHeadline/);
   assert.match(skillsControlPage, /overviewRecipe\.value\.marketplaceHeadline/);
   assert.match(skillsControlPage, /overviewRecipe\.value\.uploadHeadline/);
-  assert.match(skillsControlPage, /skills-command-panel/);
+  assert.match(skillsControlPage, /skills-workspace-strip/);
   assert.match(skillsControlPage, /activeModeTitle/);
   assert.match(skillsControlPage, /activeModeSummary/);
   assert.match(skillsControlPage, /import '\.\/skills-workspace\.css';/);
   assert.doesNotMatch(skillsControlPage, /<style scoped>/);
   assert.doesNotMatch(skillsControlPage, /只关注本地技能、依赖缺口和维护动作/);
-  assert.match(skillsWorkspaceCss, /\.skills-command-panel/);
-  assert.match(skillsWorkspaceCss, /\.skills-command-copy/);
+  assert.match(skillsWorkspaceCss, /\.skills-workspace-strip/);
+  assert.match(skillsWorkspaceCss, /\.skills-workspace-copy/);
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-workspace-strip\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*box-shadow:\s*none;/,
+  );
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-workspace-copy\s*\{[\s\S]*border-left:\s*3px solid var\(--acc\);/,
+  );
+  assert.match(skillsWorkspaceCss, /\.skills-mode-strip/);
+  assert.doesNotMatch(skillsControlPage, /skills-command-panel|skills-command-copy|skills-mode-switch/);
+  assert.doesNotMatch(skillsWorkspaceCss, /\.skills-command-panel|\.skills-command-copy|\.skills-mode-switch/);
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-board\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*box-shadow:\s*var\(--mono-shadow-sm,/,
+  );
+  assert.match(skillsControlPage, /skills-agent-matrix-row/);
+  assert.doesNotMatch(skillsControlPage, /skills-agent-matrix-card|skills-plugin-card/);
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-agent-matrix-grid\s*\{[\s\S]*gap:\s*0;[\s\S]*background:\s*var\(--surface-base\);/,
+  );
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-facts-grid,\s*\n\.skills-maintenance-grid\s*\{[\s\S]*gap:\s*0;[\s\S]*background:\s*var\(--surface-base\);/,
+  );
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-missing-grid\s*\{[\s\S]*gap:\s*0;[\s\S]*background:\s*var\(--surface-base\);/,
+  );
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-fact,\s*\n\.skills-fact-line\s*\{[\s\S]*border-radius:\s*0;[\s\S]*background:\s*transparent;[\s\S]*inset -1px 0 0 var\(--line\)/,
+  );
+  assert.doesNotMatch(skillsWorkspaceCss, /\.skills-workspace-strip\s*\{[\s\S]*linear-gradient/);
   assert.doesNotMatch(skillsControlPage, /DEFAULT_SKILLS_OVERVIEW_RECIPE/);
+});
+
+test("skills workspace surfaces inherit DuoYuan tokens instead of local glass colors", () => {
+  assert.doesNotMatch(
+    skillsWorkspaceCss,
+    /var\(--surface\)|rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient|--sky|--atlas|--glass/,
+  );
+  assert.match(skillsWorkspaceCss, /background:\s*var\(--modal-backdrop\);/);
+  assert.match(skillsWorkspaceCss, /box-shadow:\s*var\(--mono-shadow-md\);/);
+  assert.match(skillsWorkspaceCss, /\.skills-detail-tab\s*\{[\s\S]*background:\s*var\(--button-secondary-bg\);/);
+  assert.match(skillsWorkspaceCss, /\.skills-checkbox-row\s*\{[\s\S]*background:\s*var\(--surface-raised\);/);
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-preflight-group\.risk-high\s*\{[\s\S]*color-mix\(in srgb,\s*var\(--danger\)/,
+  );
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-preflight-group\.risk-medium\s*\{[\s\S]*color-mix\(in srgb,\s*var\(--peach\)/,
+  );
+  assert.match(
+    skillsWorkspaceCss,
+    /\.skills-preflight-group\.risk-low\s*\{[\s\S]*color-mix\(in srgb,\s*var\(--success\)/,
+  );
 });
 
 test("skills overview recipe exports typed default recipe builder", () => {

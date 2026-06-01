@@ -24,18 +24,18 @@
 
           <div class="agents-quick-config-dialog__body">
             <div class="status-banner">
-              {{ text('更完整的文档、绑定和高级设置都可以从当前工作区直接打开。', 'Open the full docs, bindings, and advanced settings directly from this workspace when you need more context.') }}
+              {{ text('更完整的人设、路由和运行配置都可以从当前工作区直接打开。', 'Open the full persona, routing, and runtime settings directly from this workspace when you need more context.') }}
             </div>
 
             <div class="page-actions">
               <button type="button" class="secondary-button compact-button" @click="$emit('open-docs')">
-                {{ text('打开文档', 'Open Docs') }}
+                {{ text('打开人设', 'Open Persona') }}
               </button>
               <button type="button" class="secondary-button compact-button" @click="$emit('open-bindings')">
-                {{ text('打开绑定', 'Open Bindings') }}
+                {{ text('打开路由', 'Open Routing') }}
               </button>
               <button type="button" class="secondary-button compact-button" @click="$emit('open-advanced')">
-                {{ text('打开高级配置', 'Open Advanced') }}
+                {{ text('打开运行', 'Open Runtime') }}
               </button>
             </div>
 
@@ -47,7 +47,7 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('模型覆盖', 'Model Override') }}</label>
-                <GlassSelect
+                <StudioSelect
                   v-model="draft.model"
                   :options="modelOptions"
                   :placeholder="text('跟随系统默认', 'Inherit system default')"
@@ -57,7 +57,7 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('运行时类型', 'Runtime Type') }}</label>
-                <GlassSelect
+                <StudioSelect
                   v-model="draft.runtimeType"
                   :options="runtimeTypeOptions"
                   :placeholder="text('默认运行时', 'Default runtime')"
@@ -90,20 +90,20 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('沙盒模式', 'Sandbox Mode') }}</label>
-                <GlassSelect v-model="draft.sandboxMode" :options="sandboxModeOptions" :teleport="false" />
+                <StudioSelect v-model="draft.sandboxMode" :options="sandboxModeOptions" :teleport="false" />
               </div>
 
               <div class="form-field">
                 <label class="form-label">{{ text('工作区访问', 'Workspace Access') }}</label>
-                <GlassSelect v-model="draft.workspaceAccess" :options="workspaceAccessOptions" :teleport="false" />
+                <StudioSelect v-model="draft.workspaceAccess" :options="workspaceAccessOptions" :teleport="false" />
               </div>
 
               <div class="form-field">
                 <label class="form-label">{{ text('工具配置', 'Tools Profile') }}</label>
-                <GlassSelect v-model="draft.toolsProfile" :options="toolsProfileOptions" :teleport="false" />
+                <StudioSelect v-model="draft.toolsProfile" :options="toolsProfileOptions" :teleport="false" />
               </div>
 
-              <label class="toggle-card form-field-full">
+              <label class="option-row form-field-full">
                 <input v-model="draft.fsWorkspaceOnly" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('仅限工作区文件访问', 'Workspace-only FS access') }}</strong>
@@ -132,7 +132,7 @@ import { reactive, watch } from 'vue';
 import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
-import GlassSelect from '../../shared/components/GlassSelect.vue';
+import StudioSelect from '../../shared/components/StudioSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 
 defineOptions({ name: 'AgentQuickConfigDialog' });
@@ -225,7 +225,7 @@ watch(
 
 function shouldIgnoreOutsideEvent(event: Event): boolean {
   const target = event.target as HTMLElement | null;
-  return Boolean(target?.closest('.glass-select-menu-portal'));
+  return Boolean(target?.closest('.studio-select-menu-portal'));
 }
 
 function handlePointerDownOutside(event: Event): void {

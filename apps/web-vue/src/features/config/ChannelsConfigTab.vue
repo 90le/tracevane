@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell config-section-grid">
+  <section class="config-tab-stage config-section-grid">
     <article class="config-sheet">
       <section class="config-block">
         <div class="panel-head">
@@ -10,11 +10,11 @@
           {{ text('当前未配置任何频道。', 'No channels configured.') }}
         </div>
 
-        <div v-for="channelId in channelIds" :key="channelId" class="config-subsection-grid" style="margin-bottom: 1.5rem;">
+        <div v-for="channelId in channelIds" :key="channelId" class="config-subsection-grid config-channel-block">
           <section class="config-subsection">
             <details class="config-collapsible" :open="expandedChannels.has(channelId)">
               <summary class="config-collapsible-summary" @click.prevent="toggleChannel(channelId)">
-                <span style="display: flex; align-items: center; gap: 0.75rem; flex: 1;">
+                <span class="config-collapsible-title-row config-collapsible-title-row-fill">
                   <strong>{{ channelId }}</strong>
                   <label class="toggle-inline" @click.stop>
                     <input
@@ -31,7 +31,7 @@
                 </span>
               </summary>
 
-              <div class="settings-stack" style="padding: 1rem 0;">
+              <div class="settings-stack config-collapsible-body">
                 <!-- Channel-level settings -->
                 <div class="config-subsection-head">
                   <h4>{{ text('频道级别设置', 'Channel Settings') }}</h4>
@@ -41,7 +41,7 @@
                 <div class="form-grid">
                   <label class="form-field">
                     <span class="form-label">{{ text('群组策略', 'Group Policy') }}</span>
-                    <GlassSelect
+                    <StudioSelect
                       v-model="getChannel(channelId).groupPolicy"
                       :options="groupPolicyOptions"
                       :placeholder="text('选择策略', 'Select policy')"
@@ -50,7 +50,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('流式输出', 'Streaming') }}</span>
-                    <GlassSelect
+                    <StudioSelect
                       v-model="getChannel(channelId).streaming"
                       :options="streamingOptions"
                       :placeholder="text('选择模式', 'Select mode')"
@@ -60,16 +60,16 @@
                 </div>
 
                 <!-- Thread Bindings -->
-                <details class="config-collapsible" style="margin-top: 1rem;">
+                <details class="config-collapsible config-collapsible-spaced">
                   <summary class="config-collapsible-summary">
                     <span>{{ text('线程绑定', 'Thread Bindings') }}</span>
                     <span class="config-collapsible-meta">
                       {{ getChannel(channelId).threadBindings.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled') }}
                     </span>
                   </summary>
-                  <div class="settings-stack" style="padding: 0.75rem 0;">
+                  <div class="settings-stack config-collapsible-body config-collapsible-body-compact">
                     <div class="toggle-grid">
-                      <label class="toggle-card">
+                      <label class="option-row">
                         <input v-model="getChannel(channelId).threadBindings.enabled" class="form-checkbox" type="checkbox" />
                         <div>
                           <strong>{{ text('启用线程绑定', 'Enable Thread Bindings') }}</strong>
@@ -89,14 +89,14 @@
                       </label>
                     </div>
                     <div class="toggle-grid">
-                      <label class="toggle-card">
+                      <label class="option-row">
                         <input v-model="getChannel(channelId).threadBindings.spawnSubagentSessions" class="form-checkbox" type="checkbox" />
                         <div>
                           <strong>{{ text('派生子代理会话', 'Spawn Subagent Sessions') }}</strong>
                           <span>{{ text('在线程中自动创建子代理会话', 'Automatically create subagent sessions in threads') }}</span>
                         </div>
                       </label>
-                      <label class="toggle-card">
+                      <label class="option-row">
                         <input v-model="getChannel(channelId).threadBindings.spawnAcpSessions" class="form-checkbox" type="checkbox" />
                         <div>
                           <strong>{{ text('派生 ACP 会话', 'Spawn ACP Sessions') }}</strong>
@@ -108,16 +108,16 @@
                 </details>
 
                 <!-- Accounts -->
-                <div style="margin-top: 1.5rem;">
+                <div class="config-account-section">
                   <div class="config-subsection-head">
                     <h4>{{ text('账号管理', 'Account Management') }}</h4>
                     <p>{{ text('管理此频道下的 Bot 账号配置。', 'Manage bot account configurations under this channel.') }}</p>
                   </div>
 
-                  <div v-for="accountId in getAccountIds(channelId)" :key="accountId" class="config-subsection" style="margin-top: 0.75rem;">
+                  <div v-for="accountId in getAccountIds(channelId)" :key="accountId" class="config-subsection config-account-block">
                     <details class="config-collapsible">
                       <summary class="config-collapsible-summary">
-                        <span style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="config-collapsible-title-row">
                           <strong>{{ accountId }}</strong>
                           <label class="toggle-inline" @click.stop>
                             <input
@@ -130,15 +130,14 @@
                           </label>
                         </span>
                       </summary>
-                      <div class="settings-stack" style="padding: 0.75rem 0;">
+                      <div class="settings-stack config-collapsible-body config-collapsible-body-compact">
                         <!-- Token -->
                         <label class="form-field">
                           <span class="form-label">Token</span>
-                          <div style="display: flex; gap: 0.5rem; align-items: center;">
+                          <div class="config-secret-field-row">
                             <input
                               :type="isTokenVisible(channelId, accountId) ? 'text' : 'password'"
-                              class="form-input"
-                              style="flex: 1;"
+                              class="form-input config-flex-input"
                               :value="tokenDisplay(channelId, accountId)"
                               :placeholder="text('未设置', 'Not set')"
                               @input="onTokenInput(channelId, accountId, ($event.target as HTMLInputElement).value)"
@@ -168,7 +167,7 @@
                         <div class="form-grid">
                           <label class="form-field">
                             <span class="form-label">{{ text('群组策略', 'Group Policy') }}</span>
-                            <GlassSelect
+                            <StudioSelect
                               v-model="getAccount(channelId, accountId).groupPolicy"
                               :options="groupPolicyOptions"
                               :placeholder="text('选择策略', 'Select policy')"
@@ -176,7 +175,7 @@
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('流式输出', 'Streaming') }}</span>
-                            <GlassSelect
+                            <StudioSelect
                               v-model="getAccount(channelId, accountId).streaming"
                               :options="streamingOptions"
                               :placeholder="text('选择模式', 'Select mode')"
@@ -184,7 +183,7 @@
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('私聊策略', 'DM Policy') }}</span>
-                            <GlassSelect
+                            <StudioSelect
                               v-model="getAccount(channelId, accountId).dmPolicy"
                               :options="dmPolicyOptions"
                               :placeholder="text('选择策略', 'Select policy')"
@@ -195,7 +194,7 @@
                     </details>
                   </div>
 
-                  <div v-if="!getAccountIds(channelId).length" class="empty-inline" style="margin-top: 0.5rem;">
+                  <div v-if="!getAccountIds(channelId).length" class="empty-inline config-empty-spaced">
                     {{ text('此频道下无账号配置。', 'No accounts configured for this channel.') }}
                   </div>
                 </div>
@@ -211,9 +210,10 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
+import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
 import { fetchChannelSecret } from './api';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
+import './config-workspace.css';
 
 interface ChannelFormAccount {
   enabled: boolean;
@@ -252,19 +252,19 @@ const { text } = useLocalePreference();
 const channelForm = reactive<Record<string, ChannelFormState>>({});
 const expandedChannels = reactive(new Set<string>());
 
-const groupPolicyOptions = computed<GlassSelectOption[]>(() => [
+const groupPolicyOptions = computed<StudioSelectOption[]>(() => [
   { value: 'allowlist', label: text('白名单', 'Allowlist') },
   { value: 'denylist', label: text('黑名单', 'Denylist') },
   { value: 'all', label: text('全部允许', 'All') },
 ]);
 
-const streamingOptions = computed<GlassSelectOption[]>(() => [
+const streamingOptions = computed<StudioSelectOption[]>(() => [
   { value: 'partial', label: text('分段推送', 'Partial') },
   { value: 'full', label: text('完整推送', 'Full') },
   { value: 'off', label: text('关闭', 'Off') },
 ]);
 
-const dmPolicyOptions = computed<GlassSelectOption[]>(() => [
+const dmPolicyOptions = computed<StudioSelectOption[]>(() => [
   { value: 'pairing', label: text('配对模式', 'Pairing') },
   { value: 'open', label: text('开放模式', 'Open') },
 ]);

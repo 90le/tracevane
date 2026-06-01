@@ -86,19 +86,19 @@
       </section>
     </div>
     <Teleport v-if="outputSheetOpen" to="body">
-      <div class="cs-log-output-dock">
+      <div class="floating-output-dock cs-log-output-dock">
         <section
-          class="cs-log-output-shell cs-log-output-sheet"
+          class="floating-output-sheet cs-log-output-shell cs-log-output-sheet"
           role="dialog"
           aria-live="polite"
           :aria-label="labels.outputWindow"
         >
-          <header class="cs-log-output-bar">
+          <header class="floating-output-sheet__head cs-log-output-bar">
             <div>
               <p class="cs-section-kicker">{{ labels.outputWindow }}</p>
               <strong>{{ currentServiceLabel }}</strong>
             </div>
-            <div class="cs-log-output-actions">
+            <div class="floating-output-sheet__actions cs-log-output-actions">
               <span>{{ requestedLines }} {{ labels.lines }}</span>
               <button type="button" class="secondary-button" @click="copyOutput">
                 <Copy :size="15" aria-hidden="true" />
@@ -110,7 +110,7 @@
               </button>
             </div>
           </header>
-          <pre class="cs-log">{{ displayOutput }}</pre>
+          <pre class="floating-output-sheet__log cs-log">{{ displayOutput }}</pre>
         </section>
       </div>
     </Teleport>

@@ -1,12 +1,20 @@
 /* Migrated Config workspace rules from global style.css. Keep Config chrome in feature CSS. */
 
-.config-hero-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+.config-page-shell {
+  --config-row-bg: color-mix(in srgb, var(--surface-raised) 76%, var(--surface-base));
+  --config-row-bg-soft: color-mix(in srgb, var(--surface-raised) 58%, var(--surface-base));
+  --config-row-hover-bg: color-mix(in srgb, var(--surface-raised) 82%, var(--surface-base));
+  --config-section-border: var(--border-subtle);
+  --config-section-divider: var(--border-subtle);
+  --config-accent-border: color-mix(in srgb, var(--acc) 34%, var(--border-subtle));
+  --config-accent-bg: color-mix(in srgb, var(--acc) 9%, var(--surface-base));
+  --config-warm-border: color-mix(in srgb, var(--peach) 38%, var(--border-subtle));
+  --config-warm-bg: color-mix(in srgb, var(--peach) 12%, var(--surface-base));
+  --config-status-ok: var(--success);
+  --config-inset-highlight: none;
 }
 
-.config-tabs {
+.config-rail {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
@@ -15,9 +23,9 @@
   background: transparent;
 }
 
-.config-tab {
+.config-rail-item {
   text-align: left;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--config-section-border);
   border-radius: 12px;
   padding: 13px 14px;
   background: var(--tab-bg);
@@ -26,34 +34,34 @@
   transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
-.config-tab:hover {
+.config-rail-item:hover {
   transform: translateY(-1px);
-  border-color: rgba(127, 255, 212, 0.18);
+  border-color: var(--config-accent-border);
   color: var(--text);
 }
 
-.config-tab.active {
-  border-color: rgba(255, 190, 122, 0.3);
+.config-rail-item.active {
+  border-color: var(--config-accent-border);
   background: var(--tab-active-bg);
   color: var(--text);
   box-shadow: var(--shadow-soft);
 }
 
-.config-tab-title {
+.config-rail-item__title {
   display: block;
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 700;
 }
 
-.config-tab-copy {
+.config-rail-item__copy {
   display: block;
   font-size: 11px;
   line-height: 1.5;
   min-height: 2.8em;
 }
 
-.config-tab-icon {
+.config-rail-item__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -62,7 +70,7 @@
   margin-bottom: 10px;
   border-radius: 10px;
   background: var(--icon-surface);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: var(--config-inset-highlight);
   font-size: 17px;
 }
 
@@ -118,10 +126,14 @@
   gap: 12px;
 }
 
+.config-tab-stage {
+  min-width: 0;
+  background: var(--surface-base);
+}
+
 .config-section-grid-model,
 .config-section-grid-security,
-.config-section-grid-session,
-.config-section-grid-appearance {
+.config-section-grid-session {
   grid-template-columns: 1fr;
 }
 
@@ -145,24 +157,24 @@
   gap: 18px;
 }
 
-.config-main .toggle-card,
+.config-main .option-row,
 .config-main .provider-model-row,
-.config-main .provider-card {
+.config-main .provider-entry {
   box-shadow: none;
 }
 
-.config-main .toggle-card,
+.config-main .option-row,
 .config-main .provider-model-row,
-.config-main .provider-card {
-  background: rgba(255, 255, 255, 0.035);
-  border-color: rgba(255, 255, 255, 0.08);
+.config-main .provider-entry {
+  background: var(--config-row-bg-soft);
+  border-color: var(--config-section-border);
 }
 
-html[data-theme="light"] .config-main .toggle-card,
+html[data-theme="light"] .config-main .option-row,
 html[data-theme="light"] .config-main .provider-model-row,
-html[data-theme="light"] .config-main .provider-card {
-  background: rgba(255, 255, 255, 0.72);
-  border-color: rgba(19, 32, 49, 0.08);
+html[data-theme="light"] .config-main .provider-entry {
+  background: var(--config-row-bg);
+  border-color: var(--config-section-border);
 }
 
 .config-sheet {
@@ -195,25 +207,50 @@ html[data-theme="light"] .config-main .provider-card {
   gap: 12px;
 }
 
+.config-channel-block {
+  margin-bottom: 24px;
+}
+
+.config-inline-form-grid {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.config-inline-field {
+  min-width: 0;
+}
+
+.config-flex-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.config-add-button,
+.config-empty-spaced {
+  margin-top: 8px;
+}
+
 .config-subsection {
   display: grid;
   gap: 12px;
   padding: 14px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--config-row-bg);
 }
 
 .config-subsection.is-primary {
-  border-color: rgba(111, 211, 255, 0.2);
-  background: linear-gradient(135deg, rgba(111, 211, 255, 0.08), rgba(109, 240, 207, 0.05));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border-color: color-mix(in srgb, var(--acc) 28%, var(--line));
+  border-left: 4px solid var(--acc);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+  box-shadow: var(--config-inset-highlight);
 }
 
 .config-subsection.is-risk {
-  border-color: rgba(255, 190, 122, 0.22);
-  background: linear-gradient(135deg, rgba(255, 190, 122, 0.08), rgba(255, 127, 143, 0.05));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border-color: color-mix(in srgb, var(--warn) 30%, var(--line));
+  border-left: 4px solid var(--warn);
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
+  box-shadow: var(--config-inset-highlight);
 }
 
 .config-subsection-spotlight {
@@ -233,57 +270,54 @@ html[data-theme="light"] .config-main .provider-card {
   align-items: center;
   padding: 4px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 159, 82, 0.28);
-  background: rgba(255, 179, 71, 0.14);
-  color: #ffd38b;
+  border: 1px solid var(--config-warm-border);
+  background: var(--config-warm-bg);
+  color: var(--peach);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
 }
 
-.config-spotlight-toggle-card {
+.config-spotlight-toggle {
   padding: 14px 16px;
   border-radius: 12px;
-  border-color: rgba(255, 159, 82, 0.28);
-  background:
-    linear-gradient(135deg, rgba(255, 179, 71, 0.16), rgba(255, 99, 132, 0.08)),
-    rgba(255, 255, 255, 0.03);
+  border-color: var(--config-warm-border);
+  border-left: 4px solid var(--warn);
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
 }
 
-.config-spotlight-toggle-card strong {
+.config-spotlight-toggle strong {
   font-size: 14px;
 }
 
-.config-spotlight-toggle-card span {
+.config-spotlight-toggle span {
   font-size: 12px;
 }
 
 html[data-theme="light"] .config-subsection {
-  background: rgba(255, 255, 255, 0.74);
-  border-color: rgba(19, 32, 49, 0.08);
+  background: var(--config-row-bg);
+  border-color: var(--config-section-border);
 }
 
 html[data-theme="light"] .config-subsection.is-primary {
-  border-color: rgba(58, 169, 232, 0.18);
-  background: linear-gradient(135deg, rgba(58, 169, 232, 0.11), rgba(22, 185, 150, 0.08));
+  border-color: var(--config-accent-border);
+  background: color-mix(in srgb, var(--acc) 7%, var(--surface-base));
 }
 
 html[data-theme="light"] .config-subsection.is-risk {
-  border-color: rgba(255, 159, 82, 0.18);
-  background: linear-gradient(135deg, rgba(255, 185, 88, 0.14), rgba(255, 109, 126, 0.08));
+  border-color: var(--config-warm-border);
+  background: var(--config-warm-bg);
 }
 
-html[data-theme="light"] .config-spotlight-toggle-card {
-  border-color: rgba(255, 146, 43, 0.24);
-  background:
-    linear-gradient(135deg, rgba(255, 190, 92, 0.18), rgba(255, 111, 97, 0.1)),
-    rgba(255, 255, 255, 0.82);
+html[data-theme="light"] .config-spotlight-toggle {
+  border-color: var(--config-warm-border);
+  background: var(--config-warm-bg);
 }
 
 html[data-theme="light"] .config-spotlight-badge {
-  border-color: rgba(255, 146, 43, 0.22);
-  background: rgba(255, 188, 86, 0.18);
-  color: #8a4600;
+  border-color: var(--config-warm-border);
+  background: var(--config-warm-bg);
+  color: color-mix(in srgb, var(--peach) 74%, var(--text));
 }
 
 .config-subsection-head {
@@ -304,15 +338,11 @@ html[data-theme="light"] .config-spotlight-badge {
   line-height: 1.55;
 }
 
-.config-provider-editor .provider-card {
+.config-provider-editor .provider-entry {
   background: transparent;
 }
 
-.config-provider-editor .provider-card.provider-card-collapsible {
-  padding-top: 0;
-}
-
-.config-provider-editor .provider-card-head-visual {
+.config-provider-editor .provider-entry-head-visual {
   margin-bottom: 14px;
 }
 
@@ -322,70 +352,10 @@ html[data-theme="light"] .config-spotlight-badge {
   border-top: none;
 }
 
-.config-hero-card {
-  position: relative;
-  overflow: hidden;
-}
-
 .config-choice-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-}
-
-.config-preference-list {
-  display: grid;
-  gap: 8px;
-}
-
-.config-preference-item {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--muted);
-  cursor: pointer;
-  text-align: left;
-  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
-}
-
-.config-preference-item:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 190, 122, 0.22);
-  color: var(--text);
-}
-
-.config-preference-item.active {
-  border-color: rgba(255, 190, 122, 0.3);
-  background: var(--tab-active-bg);
-  color: var(--text);
-}
-
-.config-preference-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: var(--icon-surface);
-  font-size: 16px;
-}
-
-.config-preference-item strong {
-  display: block;
-  margin-bottom: 5px;
-  font-size: 14px;
-}
-
-.config-preference-item span:last-child {
-  display: block;
-  font-size: 12px;
-  line-height: 1.55;
 }
 
 .config-fact-list {
@@ -406,7 +376,7 @@ html[data-theme="light"] .config-spotlight-badge {
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--config-row-bg);
 }
 
 .config-fact span {
@@ -429,12 +399,12 @@ html[data-theme="light"] .config-spotlight-badge {
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--config-row-bg);
 }
 
 html[data-theme="light"] .config-setting-grid .setting-block {
-  background: rgba(255, 255, 255, 0.74);
-  border-color: rgba(19, 32, 49, 0.08);
+  background: var(--config-row-bg);
+  border-color: var(--config-section-border);
 }
 
 .config-collapsible {
@@ -451,7 +421,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: var(--surface);
+  background: var(--surface-base);
   cursor: pointer;
   list-style: none;
   transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
@@ -469,7 +439,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   width: 26px;
   height: 26px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--icon-surface);
   color: var(--text-soft);
   clip-path: polygon(28% 39%, 50% 61%, 72% 39%, 79% 47%, 50% 76%, 21% 47%);
   flex-shrink: 0;
@@ -478,12 +448,12 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 
 .config-collapsible-summary:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 190, 122, 0.24);
+  border-color: var(--config-accent-border);
   box-shadow: var(--shadow-soft);
 }
 
 .config-collapsible[open] > .config-collapsible-summary {
-  border-color: rgba(255, 190, 122, 0.28);
+  border-color: var(--config-accent-border);
   background: var(--tab-active-bg);
 }
 
@@ -498,58 +468,46 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   font-weight: 700;
 }
 
+.config-collapsible-title-row,
+.config-secret-field-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.config-collapsible-title-row {
+  min-width: 0;
+}
+
+.config-collapsible-title-row-fill {
+  flex: 1;
+}
+
+.config-collapsible-body {
+  padding: 16px 0;
+}
+
+.config-collapsible-body-compact {
+  padding: 12px 0;
+}
+
+.config-collapsible-spaced {
+  margin-top: 16px;
+}
+
+.config-account-section {
+  margin-top: 24px;
+}
+
+.config-account-block {
+  margin-top: 12px;
+}
+
 .config-collapsible-meta {
   color: var(--muted-soft);
   font-size: 11px;
   margin-left: auto;
   padding-right: 2px;
-}
-
-.config-hero-grid,
-  .config-tabs {
-    grid-template-columns: 1fr;
-  }
-
-.config-workbench {
-    grid-template-columns: 1fr;
-  }
-
-.config-workbench,
-  .config-provider-workbench {
-    grid-template-columns: 1fr;
-  }
-
-.config-choice-grid {
-    grid-template-columns: 1fr;
-  }
-
-.config-fact-list-compact {
-    grid-template-columns: 1fr;
-  }
-
-.config-fact {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-.config-overview-ribbon {
-  overflow: hidden;
-  gap: 0;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--shell-panel-fill) 72%, transparent);
-}
-
-.config-overview-card {
-  border: none;
-  border-right: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.config-overview-card:last-child {
-  border-right: none;
 }
 
 .config-sidebar,
@@ -560,29 +518,29 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   box-shadow: none;
 }
 
-.config-tabs-grouped,
-.config-tab-group {
+.config-rail-grouped,
+.config-rail-group {
   gap: 0;
 }
 
-.config-tab-group {
+.config-rail-group {
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 48%, transparent);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
-.config-tab-group + .config-tab-group {
+.config-rail-group + .config-rail-group {
   margin-top: 10px;
 }
 
-.config-tab-group__head {
+.config-rail-group__head {
   padding: 10px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  background: color-mix(in srgb, var(--surface) 44%, transparent);
+  background: var(--surface-raised);
 }
 
-.config-tab {
+.config-rail-item {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 4px 10px;
@@ -595,52 +553,50 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   box-shadow: none;
 }
 
-.config-tab:last-child {
+.config-rail-item:last-child {
   border-bottom: none;
 }
 
-.config-tab:hover {
+.config-rail-item:hover {
   transform: none;
-  background: color-mix(in srgb, var(--surface) 66%, transparent);
+  background: var(--surface-raised);
   box-shadow: none;
 }
 
-.config-tab.active {
+.config-rail-item.active {
   border: none;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--mint) 12%, transparent), transparent 78%),
-    color-mix(in srgb, var(--surface) 70%, transparent);
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--mint) 68%, var(--sky));
+  background: color-mix(in srgb, var(--acc) 10%, var(--surface-base));
+  box-shadow: inset 3px 0 0 var(--acc);
 }
 
-.config-tab-icon {
+.config-rail-item__icon {
   grid-row: 1 / span 2;
   margin-bottom: 0;
 }
 
-.config-tab-icon svg,
+.config-rail-item__icon svg,
 .config-heading-icon {
   width: 17px;
   height: 17px;
   stroke-width: 1.8;
 }
 
-.config-tab-copy {
+.config-rail-item__copy {
   min-height: 0;
 }
 
-.config-active-tab-facts,
+.config-active-tab-matrix,
 .config-fact-list,
 .config-core-baseline {
   overflow: hidden;
   gap: 0;
   border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 48%, transparent);
+  background: var(--line);
 }
 
-.config-active-tab-fact,
+.config-active-tab-row,
 .config-fact,
 .config-core-baseline__item {
   border: none;
@@ -650,7 +606,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   box-shadow: none;
 }
 
-.config-active-tab-fact:last-child,
+.config-active-tab-row:last-child,
 .config-fact:last-child,
 .config-core-baseline__item:last-child {
   border-right: none;
@@ -677,11 +633,9 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   width: 13px;
   height: 13px;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--mint) 48%, var(--line));
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--mint) 45%, transparent), color-mix(in srgb, var(--sky) 24%, transparent)),
-    color-mix(in srgb, var(--surface) 68%, transparent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--acc) 48%, var(--line));
+  background: color-mix(in srgb, var(--acc) 24%, var(--surface-raised));
+  box-shadow: var(--config-inset-highlight);
 }
 
 .config-page-shell {
@@ -695,10 +649,10 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   grid-template-columns: minmax(248px, 324px) minmax(0, 1fr);
   gap: 0;
   overflow: hidden;
-  border: 1px solid var(--atlas-line);
-  border-radius: var(--atlas-radius-lg);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel) 70%, transparent), color-mix(in srgb, var(--atlas-panel) 42%, transparent));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-base);
+  box-shadow: var(--mono-shadow-sm, none);
 }
 
 .config-sidebar {
@@ -706,11 +660,10 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   top: auto;
   max-height: none;
   border: 0;
-  border-right: 1px solid var(--atlas-line);
+  border-right: 1px solid var(--border-subtle);
   border-radius: 0;
   padding: 16px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--atlas-panel-2) 58%, transparent), color-mix(in srgb, var(--atlas-panel) 24%, transparent));
+  background: var(--surface-raised);
   box-shadow: none;
   backdrop-filter: none;
 }
@@ -726,7 +679,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 .config-active-tab-panel,
 .config-sheet {
   border: 0;
-  border-bottom: 1px solid var(--atlas-line);
+  border-bottom: 1px solid var(--border-subtle);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -738,89 +691,75 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   top: 0;
   z-index: 5;
   padding: 16px 18px;
-  background: color-mix(in srgb, var(--atlas-panel-2) 64%, transparent);
-  backdrop-filter: blur(18px) saturate(1.12);
+  background: var(--surface-raised);
+  backdrop-filter: none;
 }
 
-.config-overview-ribbon,
-.config-active-tab-facts,
+.config-active-tab-matrix,
 .config-fact-list,
 .config-core-baseline {
-  border: 1px solid var(--atlas-line);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--atlas-panel-3) 66%, transparent);
+  background: var(--line);
 }
 
-.config-overview-card,
-.config-active-tab-fact,
+.config-active-tab-row,
 .config-fact,
 .config-core-baseline__item {
   border-radius: 0;
-  background: transparent;
-  border-right: 1px solid var(--atlas-line);
+  background: var(--surface-base);
+  border-right: 1px solid var(--border-subtle);
 }
 
 .config-subsection,
 .config-collapsible {
-  border: 1px solid var(--atlas-line);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--atlas-panel-3) 60%, transparent);
+  background: var(--surface-base);
   box-shadow: none;
 }
 
-.config-tab {
+.config-rail-item {
   border-radius: 10px;
   box-shadow: none;
 }
-
-.config-workbench {
-    grid-template-columns: 1fr;
-  }
-
-.config-sidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--atlas-line);
-  }
 
 .config-page-shell {
   gap: 16px;
 }
 
-.config-command-panel {
+.config-workspace-strip {
   display: grid;
   grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.2fr);
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background:
-    linear-gradient(120deg, color-mix(in srgb, var(--surface-base) 88%, transparent), color-mix(in srgb, var(--code-bg) 12%, transparent)),
-    color-mix(in srgb, var(--line) 72%, transparent);
+  background: var(--line);
+  box-shadow: var(--mono-shadow-sm, none);
 }
 
-.config-command-copy {
+.config-workspace-copy {
   display: grid;
   align-content: center;
   gap: 8px;
   min-width: 0;
   padding: 18px 20px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--acc) 10%, transparent), transparent 58%),
-    color-mix(in srgb, var(--surface-base) 74%, transparent);
+  background: var(--surface-raised);
 }
 
-.config-command-copy h3,
-.config-command-copy p {
+.config-workspace-copy h3,
+.config-workspace-copy p {
   margin: 0;
 }
 
-.config-command-copy h3 {
+.config-workspace-copy h3 {
   color: var(--text);
   font-size: clamp(1.15rem, 1.8vw, 1.55rem);
   line-height: 1.18;
 }
 
-.config-command-copy p {
+.config-workspace-copy p {
   max-width: 58ch;
   color: var(--muted);
   font-size: 12px;
@@ -832,7 +771,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   min-width: 0;
-  background: color-mix(in srgb, var(--line) 76%, transparent);
+  background: var(--line);
 }
 
 .config-signal-row {
@@ -842,7 +781,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   min-height: 96px;
   min-width: 0;
   padding: 13px 15px;
-  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
+  background: var(--surface-base);
 }
 
 .config-signal-row span {
@@ -874,16 +813,16 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   align-self: start;
 }
 
-.config-tabs-grouped {
+.config-rail-grouped {
   gap: 12px;
 }
 
-.config-tab-group {
+.config-rail-group {
   display: grid;
   gap: 7px;
 }
 
-.config-tab-group__head {
+.config-rail-group__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -895,7 +834,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   text-transform: uppercase;
 }
 
-.config-tab-group__head strong {
+.config-rail-group__head strong {
   min-width: 22px;
   padding: 2px 7px;
   border: 1px solid var(--line);
@@ -906,7 +845,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   text-align: center;
 }
 
-.config-page-shell .config-tab {
+.config-page-shell .config-rail-item {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   column-gap: 10px;
@@ -915,7 +854,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   padding: 10px 11px;
 }
 
-.config-page-shell .config-tab-icon {
+.config-page-shell .config-rail-item__icon {
   grid-row: span 2;
   width: 30px;
   height: 30px;
@@ -924,19 +863,19 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   font-size: 15px;
 }
 
-.config-page-shell .config-tab-title,
-.config-page-shell .config-tab-copy {
+.config-page-shell .config-rail-item__title,
+.config-page-shell .config-rail-item__copy {
   min-width: 0;
 }
 
-.config-page-shell .config-tab-title {
+.config-page-shell .config-rail-item__title {
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.config-page-shell .config-tab-copy {
+.config-page-shell .config-rail-item__copy {
   min-height: 0;
   display: -webkit-box;
   overflow: hidden;
@@ -962,7 +901,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   padding: 14px 15px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  background: var(--surface-base);
 }
 
 .config-advanced-entry__copy {
@@ -990,22 +929,26 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   line-height: 1.6;
 }
 
-.config-active-tab-facts {
+.config-active-tab-matrix {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--line);
 }
 
-.config-active-tab-fact {
+.config-active-tab-row {
   display: grid;
   gap: 4px;
   padding: 12px 13px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.06);
+  border: 0;
+  border-radius: 0;
+  background: var(--surface-base);
 }
 
-.config-active-tab-fact span {
+.config-active-tab-row span {
   color: var(--muted-soft);
   font-size: 10px;
   font-weight: 700;
@@ -1013,7 +956,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   text-transform: uppercase;
 }
 
-.config-active-tab-fact strong {
+.config-active-tab-row strong {
   color: var(--text);
   font-size: 14px;
   line-height: 1.45;
@@ -1035,36 +978,28 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   margin: 6px 0 0 auto;
   padding: 13px;
   border: 1px solid color-mix(in srgb, var(--line-strong) 72%, var(--modal-border));
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--modal-panel-bg-strong) 92%, var(--acc) 8%), var(--modal-panel-bg));
-  box-shadow:
-    0 18px 48px color-mix(in srgb, black 24%, transparent),
-    0 2px 10px color-mix(in srgb, black 10%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  border-radius: var(--studio-workspace-radius, 12px);
+  background: var(--surface-base);
+  box-shadow: var(--mono-shadow-md);
   isolation: isolate;
 }
 
 .config-save-dock.is-dirty {
   border-color: color-mix(in srgb, var(--acc) 48%, var(--line-strong));
-  background:
-    radial-gradient(220px 80px at 0% 0%, color-mix(in srgb, var(--acc) 16%, transparent), transparent 72%),
-    linear-gradient(180deg, color-mix(in srgb, var(--modal-panel-bg-strong) 88%, var(--acc) 12%), var(--modal-panel-bg));
+  background: color-mix(in srgb, var(--acc) 8%, var(--surface-base));
   box-shadow:
-    0 20px 54px color-mix(in srgb, black 26%, transparent),
+    var(--mono-shadow-md),
     0 0 0 1px color-mix(in srgb, var(--acc) 18%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+    inset 0 1px 0 var(--icon-highlight-strong);
 }
 
 .config-save-dock.is-saved {
-  border-color: color-mix(in srgb, #26d69a 55%, var(--line-strong));
-  background:
-    radial-gradient(240px 90px at 0% 0%, color-mix(in srgb, #26d69a 18%, transparent), transparent 72%),
-    linear-gradient(180deg, color-mix(in srgb, var(--modal-panel-bg-strong) 90%, #26d69a 10%), var(--modal-panel-bg));
+  border-color: color-mix(in srgb, var(--config-status-ok) 55%, var(--line-strong));
+  background: color-mix(in srgb, var(--config-status-ok) 8%, var(--surface-base));
   box-shadow:
-    0 20px 54px color-mix(in srgb, black 24%, transparent),
-    0 0 0 1px color-mix(in srgb, #26d69a 24%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+    var(--mono-shadow-md),
+    0 0 0 1px color-mix(in srgb, var(--config-status-ok) 24%, transparent),
+    inset 0 1px 0 var(--icon-highlight-strong);
 }
 
 .config-save-dock__status {
@@ -1090,10 +1025,10 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 }
 
 .config-save-dock__indicator.saved {
-  background: #26d69a;
+  background: var(--config-status-ok);
   box-shadow:
-    0 0 0 4px color-mix(in srgb, #26d69a 18%, transparent),
-    0 0 18px color-mix(in srgb, #26d69a 44%, transparent);
+    0 0 0 4px color-mix(in srgb, var(--config-status-ok) 18%, transparent),
+    0 0 18px color-mix(in srgb, var(--config-status-ok) 44%, transparent);
 }
 
 .config-save-dock__status strong {
@@ -1134,23 +1069,22 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   gap: 5px;
   min-height: 32px;
   padding: 0 11px;
-  border: 1px solid color-mix(in srgb, #26d69a 38%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--config-status-ok) 38%, var(--line));
   border-radius: 999px;
-  background: color-mix(in srgb, #26d69a 13%, var(--modal-panel-bg));
-  color: color-mix(in srgb, #26d69a 78%, var(--text));
+  background: color-mix(in srgb, var(--config-status-ok) 13%, var(--modal-panel-bg));
+  color: color-mix(in srgb, var(--config-status-ok) 78%, var(--text));
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.02em;
 }
 
 .primary-button.is-saved {
-  border-color: color-mix(in srgb, #26d69a 62%, var(--acc-strong));
-  background:
-    linear-gradient(135deg, color-mix(in srgb, #26d69a 92%, #ffffff 8%), color-mix(in srgb, #12a876 82%, #07111f 18%));
-  color: #04120d;
+  border-color: color-mix(in srgb, var(--config-status-ok) 62%, var(--acc));
+  background: color-mix(in srgb, var(--config-status-ok) 18%, var(--surface-base));
+  color: var(--text);
   box-shadow:
-    0 12px 26px color-mix(in srgb, #26d69a 24%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 32%, transparent);
+    0 12px 26px color-mix(in srgb, var(--config-status-ok) 18%, transparent),
+    inset 0 1px 0 var(--icon-highlight-strong);
 }
 
 .config-change-chip {
@@ -1177,7 +1111,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 }
 
 .config-page-shell .config-sheet {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  background: var(--surface-base);
 }
 
 .config-page-shell .config-sheet > .config-block {
@@ -1185,7 +1119,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 }
 
 .config-page-shell .config-sheet > .config-block + .config-block {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--config-section-divider);
 }
 
 .config-page-shell .config-subsection {
@@ -1210,7 +1144,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   padding: 12px 13px;
   border-radius: 10px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-base);
 }
 
 .config-core-baseline__item span,
@@ -1255,7 +1189,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   border: 1px solid var(--line);
   border-radius: 14px;
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
+  background: var(--surface-base);
 }
 
 .config-advanced-sheet-block + .config-advanced-sheet-block {
@@ -1267,12 +1201,12 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 }
 
 @media (max-width: 1180px) {
-  .config-command-panel {
+  .config-workspace-strip {
     grid-template-columns: 1fr;
   }
 
   .config-signal-strip,
-  .config-active-tab-facts {
+  .config-active-tab-matrix {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1306,7 +1240,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 
 @media (max-width: 720px) {
   .config-signal-strip,
-  .config-active-tab-facts,
+  .config-active-tab-matrix,
   .config-core-baseline,
   .config-guard-summary-grid {
     grid-template-columns: 1fr;
@@ -1325,7 +1259,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
     bottom: max(8px, env(safe-area-inset-bottom, 0px));
     width: 100%;
     padding: 10px;
-    border-radius: 15px;
+    border-radius: var(--studio-workspace-radius, 12px);
   }
 
   .config-save-dock__actions .compact-button {
@@ -1360,7 +1294,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 
 .config-page-shell .agent-remove-btn {
   background: none;
-  border: 1px solid var(--border-muted, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--config-section-border);
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.85rem;
@@ -1376,7 +1310,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 
 .config-page-shell .agent-add-btn {
   background: none;
-  border: 1px dashed var(--border-muted, rgba(255, 255, 255, 0.18));
+  border: 1px dashed var(--config-accent-border);
   border-radius: 6px;
   cursor: pointer;
   padding: 0.5rem 1rem;
@@ -1419,7 +1353,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   place-items: center;
   padding: 24px;
   background: var(--config-domain-advanced-mask-bg);
-  backdrop-filter: blur(14px);
+  backdrop-filter: none;
 }
 
 .config-domain-advanced-sheet {
@@ -1440,35 +1374,31 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 }
 
 .config-domain-advanced-sheet-mask.theme-light {
-  --config-domain-advanced-mask-bg: rgba(225, 234, 245, 0.74);
+  --config-domain-advanced-mask-bg: var(--modal-backdrop);
 }
 
 .config-domain-advanced-sheet-mask.theme-dark {
-  --config-domain-advanced-mask-bg: rgba(7, 12, 18, 0.54);
+  --config-domain-advanced-mask-bg: var(--modal-backdrop);
 }
 
 .config-domain-advanced-sheet.theme-light {
-  --config-domain-advanced-border: rgba(25, 50, 77, 0.14);
-  --config-domain-advanced-divider: rgba(25, 50, 77, 0.08);
-  --config-domain-advanced-surface:
-    radial-gradient(circle at top right, rgba(77, 129, 247, 0.09), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(243, 247, 252, 0.98));
-  --config-domain-advanced-shadow: 0 28px 80px rgba(61, 85, 112, 0.24);
-  --config-domain-advanced-notice: linear-gradient(180deg, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0.03));
-  --config-domain-advanced-close-border: rgba(25, 50, 77, 0.12);
-  --config-domain-advanced-close-bg: rgba(37, 99, 235, 0.06);
+  --config-domain-advanced-border: var(--modal-border);
+  --config-domain-advanced-divider: var(--modal-border);
+  --config-domain-advanced-surface: var(--modal-panel-bg);
+  --config-domain-advanced-shadow: var(--modal-shadow);
+  --config-domain-advanced-notice: var(--modal-panel-bg-strong);
+  --config-domain-advanced-close-border: var(--modal-border);
+  --config-domain-advanced-close-bg: var(--modal-row-bg);
 }
 
 .config-domain-advanced-sheet.theme-dark {
-  --config-domain-advanced-border: rgba(255, 255, 255, 0.12);
-  --config-domain-advanced-divider: rgba(255, 255, 255, 0.08);
-  --config-domain-advanced-surface:
-    radial-gradient(circle at top right, rgba(255, 199, 128, 0.08), transparent 28%),
-    linear-gradient(180deg, rgba(9, 18, 29, 0.98), rgba(11, 22, 35, 0.94));
-  --config-domain-advanced-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
-  --config-domain-advanced-notice: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
-  --config-domain-advanced-close-border: rgba(255, 255, 255, 0.1);
-  --config-domain-advanced-close-bg: rgba(255, 255, 255, 0.04);
+  --config-domain-advanced-border: var(--modal-border);
+  --config-domain-advanced-divider: var(--modal-border);
+  --config-domain-advanced-surface: var(--modal-panel-bg);
+  --config-domain-advanced-shadow: var(--modal-shadow);
+  --config-domain-advanced-notice: var(--modal-panel-bg-strong);
+  --config-domain-advanced-close-border: var(--modal-border);
+  --config-domain-advanced-close-bg: var(--modal-row-bg);
 }
 
 .config-domain-advanced-sheet__head {
@@ -1584,7 +1514,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   display: flex;
   flex-direction: column;
   gap: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--config-section-border);
   border-radius: var(--radius, 8px);
   overflow: hidden;
 }
@@ -1594,13 +1524,13 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   grid-template-columns: 160px 1fr;
   gap: 12px;
   padding: 8px 12px;
-  background: var(--surface-muted, rgba(255,255,255,0.03));
+  background: var(--config-row-bg-soft);
   font-size: 0.8rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--config-section-divider);
 }
 
 .config-page-shell .config-reset-type-row {
@@ -1609,7 +1539,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   gap: 12px;
   align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--config-section-divider);
 }
 
 .config-page-shell .config-reset-type-row:last-child {
@@ -1633,9 +1563,9 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   gap: 6px;
   padding: 12px 13px;
   border: 0;
-  border-bottom: 1px solid var(--atlas-line);
+  border-bottom: 1px solid var(--border-subtle);
   border-radius: 0;
-  background: color-mix(in srgb, var(--surface) 52%, transparent);
+  background: var(--surface-base);
   box-shadow: none;
   color: var(--text);
   text-align: left;
@@ -1646,11 +1576,11 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 .config-page-shell .provider-index-item:hover,
 .config-page-shell .provider-index-item.active {
   transform: none;
-  background: color-mix(in srgb, var(--atlas-primary) 9%, var(--atlas-panel-3));
+  background: color-mix(in srgb, var(--accent-primary) 9%, var(--surface-raised));
 }
 
 .config-page-shell .provider-index-item.active {
-  border-color: color-mix(in srgb, var(--atlas-primary-2) 34%, var(--atlas-line));
+  border-color: color-mix(in srgb, var(--wb-accent-2) 34%, var(--border-subtle));
 }
 
 .config-page-shell .provider-index-item strong {
@@ -1665,7 +1595,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   line-height: 1.5;
 }
 
-.config-page-shell .browser-profile-card {
+.config-page-shell .browser-profile-entry {
   display: grid;
   gap: 14px;
   padding: 16px 0;
@@ -1676,25 +1606,10 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   box-shadow: none;
 }
 
-.config-page-shell .browser-profile-card:last-child {
+.config-page-shell .browser-profile-entry:last-child {
   border-bottom: 0;
 }
 
-.config-page-shell .fallback-section {
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-.config-page-shell .fallback-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.config-page-shell .fallback-header h4,
 .config-page-shell .provider-model-toolbar h4 {
   margin: 0;
   color: var(--text);
@@ -1717,9 +1632,9 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
-  border: 1px solid var(--atlas-line);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--atlas-panel-3) 60%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 60%, transparent);
   box-shadow: none;
 }
 
@@ -1730,21 +1645,17 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: rgba(127, 255, 212, 0.08);
+  background: color-mix(in srgb, var(--acc) 11%, var(--surface-base));
   color: var(--mint);
   font-size: 11px;
   font-weight: 700;
 }
 
-.config-page-shell .provider-card {
+.config-page-shell .provider-entry {
   padding: 14px;
   border-radius: 12px;
-  background: var(--glass-bg), var(--glass-accent);
+  background: var(--surface-raised);
   border: 1px solid var(--line);
-}
-
-.config-page-shell .provider-card-collapsible {
-  padding-top: 12px;
 }
 
 .config-page-shell .provider-stack {
@@ -1752,7 +1663,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   gap: 12px;
 }
 
-.config-page-shell .provider-card-head {
+.config-page-shell .provider-entry-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1760,12 +1671,12 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   margin-bottom: 12px;
 }
 
-.config-page-shell .provider-card-head strong {
+.config-page-shell .provider-entry-head strong {
   font-size: 14px;
   color: var(--text);
 }
 
-.config-page-shell .provider-card-head-visual {
+.config-page-shell .provider-entry-head-visual {
   margin-bottom: 16px;
 }
 
@@ -1788,7 +1699,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 .config-page-shell .provider-model-section {
   margin-top: 18px;
   padding-top: 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid var(--config-section-divider);
 }
 
 .config-page-shell .provider-model-toolbar {
@@ -1807,7 +1718,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 .config-page-shell .provider-model-row {
   padding: 12px;
   border: 0;
-  border-bottom: 1px solid var(--atlas-line);
+  border-bottom: 1px solid var(--border-subtle);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -1824,26 +1735,6 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 .config-page-shell .provider-model-row-head strong {
   color: var(--text);
   font-size: 13px;
-}
-
-.config-page-shell .allowlist-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.config-page-shell .allowlist-preview code {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--text-soft);
-  font-size: 11px;
-  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
 }
 
 @media (max-width: 1240px) {

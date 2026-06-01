@@ -40,8 +40,8 @@
   overflow: hidden;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, rgba(255, 171, 117, 0.22), rgba(120, 185, 255, 0.18));
-  border: 1px solid var(--line);
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
   color: var(--text);
 }
 
@@ -61,7 +61,7 @@
 }
 
 .avatar-field-editor__uploaded span {
-  color: var(--muted);
+  color: var(--text-soft);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -82,17 +82,17 @@
   justify-content: center;
   padding: 7px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 145, 130, 0.34);
-  background: linear-gradient(180deg, rgba(255, 145, 130, 0.14), rgba(255, 145, 130, 0.08));
-  color: #ff8f82;
+  border: 1px solid var(--status-pill-danger-border);
+  background: var(--status-pill-danger-bg);
+  color: var(--status-pill-danger-text);
   font-size: 12px;
   font-weight: 700;
   transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
 }
 
 .avatar-field-editor__clear:hover:enabled {
-  border-color: rgba(255, 145, 130, 0.5);
-  background: linear-gradient(180deg, rgba(255, 145, 130, 0.2), rgba(255, 145, 130, 0.1));
+  border-color: color-mix(in srgb, var(--status-pill-danger-text) 48%, var(--status-pill-danger-border));
+  background: color-mix(in srgb, var(--status-pill-danger-text) 12%, var(--status-pill-danger-bg));
   transform: translateY(-1px);
 }
 
@@ -103,7 +103,7 @@
 }
 
 .avatar-field-editor__error {
-  color: var(--danger);
+  color: var(--status-pill-danger-text);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -111,8 +111,8 @@
 .avatar-cropper-mask {
   position: fixed;
   inset: 0;
-  background: rgba(8, 14, 22, 0.58);
-  backdrop-filter: blur(12px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -124,9 +124,9 @@
   max-height: min(92vh, 900px);
   overflow: auto;
   border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--surface-strong);
-  box-shadow: var(--shadow);
+  border: 1px solid var(--modal-border);
+  background: var(--modal-panel-bg);
+  box-shadow: var(--modal-shadow);
   display: grid;
   gap: 18px;
   padding: 20px;
@@ -151,7 +151,7 @@
 }
 
 .avatar-cropper-dialog__copy span {
-  color: var(--muted);
+  color: var(--text-soft);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -160,9 +160,9 @@
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-soft);
+  border: 1px solid var(--control-border);
+  background: var(--modal-row-bg);
+  color: var(--button-secondary-text);
 }
 
 .avatar-cropper-layout {
@@ -172,9 +172,9 @@
 }
 
 .avatar-cropper-stage-wrap {
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-strong) 72%, transparent 28%);
+  background: var(--modal-row-bg);
   padding: 16px;
 }
 
@@ -183,13 +183,7 @@
   display: grid;
   place-items: center;
   border-radius: 12px;
-  background:
-    linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(255,255,255,0.04) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.04) 75%),
-    linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.04) 75%);
-  background-size: 18px 18px;
-  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+  background: var(--control-bg);
 }
 
 .avatar-cropper-image {
@@ -210,10 +204,10 @@
   position: absolute;
   top: 0;
   left: 0;
-  border: 2px solid rgba(255, 255, 255, 0.92);
+  border: 2px solid var(--control-border-focus);
   border-radius: 12px;
   background: transparent;
-  box-shadow: 0 0 0 999px rgba(4, 10, 18, 0.42);
+  box-shadow: 0 0 0 999px var(--modal-backdrop);
   cursor: grab;
 }
 
@@ -225,9 +219,7 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background:
-    linear-gradient(to right, transparent 33%, rgba(255,255,255,0.28) 33%, rgba(255,255,255,0.28) 34%, transparent 34%, transparent 66%, rgba(255,255,255,0.28) 66%, rgba(255,255,255,0.28) 67%, transparent 67%),
-    linear-gradient(to bottom, transparent 33%, rgba(255,255,255,0.28) 33%, rgba(255,255,255,0.28) 34%, transparent 34%, transparent 66%, rgba(255,255,255,0.28) 66%, rgba(255,255,255,0.28) 67%, transparent 67%);
+  background: none;
 }
 
 .avatar-cropper-sidebar {
@@ -238,9 +230,9 @@
 
 .avatar-cropper-preview,
 .avatar-cropper-facts {
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-soft) 78%, transparent 22%);
+  background: var(--modal-row-bg);
   padding: 14px;
 }
 
@@ -251,7 +243,7 @@
 
 .avatar-cropper-preview > span,
 .avatar-cropper-fact span {
-  color: var(--muted);
+  color: var(--text-soft);
   font-size: 12px;
 }
 
@@ -260,8 +252,8 @@
   height: 84px;
   overflow: hidden;
   border-radius: 12px;
-  border: 1px solid var(--line);
-  background: linear-gradient(135deg, rgba(255, 171, 117, 0.22), rgba(120, 185, 255, 0.18));
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
   position: relative;
 }
 

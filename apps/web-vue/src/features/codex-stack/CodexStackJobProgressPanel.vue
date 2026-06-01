@@ -35,9 +35,14 @@
           {{ text("安装或修复脚本正在后台执行，日志会持续刷新；隐藏窗口不会停止任务。", "The install or repair job is running in the background; hiding this sheet does not stop the job.") }}
         </p>
 
-        <div class="cs-job-progress-track" :style="{ '--progress': progressPercent }">
-          <span></span>
-        </div>
+        <progress
+          class="cs-job-progress-track"
+          :value="progressValue"
+          max="100"
+          :aria-label="text('任务执行进度', 'Task progress')"
+        >
+          {{ progressValue }}%
+        </progress>
         <div class="cs-job-step-list">
           <span
             v-for="step in steps"
@@ -91,7 +96,7 @@ const props = defineProps<{
   title: string;
   statusLabel: string;
   steps: CodexStackJobProgressStep[];
-  progressPercent: string;
+  progressValue: number;
   running: boolean;
   emptyLog: string;
 }>();

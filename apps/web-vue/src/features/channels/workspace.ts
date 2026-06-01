@@ -1,4 +1,4 @@
-import { computed, inject, onMounted, provide, reactive, ref, type ComputedRef, type Ref } from 'vue';
+import { computed, inject, onActivated, onMounted, provide, reactive, ref, type ComputedRef, type Ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type {
   ChannelAgentOption,
@@ -265,6 +265,11 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
   onMounted(() => {
     if (!isChannelsRouteActive.value) return;
     void refreshSummary();
+  });
+
+  onActivated(() => {
+    if (!isChannelsRouteActive.value) return;
+    void refreshSummary(selectedChannelType.value);
   });
 
   return state;

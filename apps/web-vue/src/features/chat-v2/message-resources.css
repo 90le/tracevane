@@ -12,12 +12,12 @@
   border-radius: 12px;
   border: 1px solid var(--chat-line);
   background: color-mix(in srgb, var(--chat-assistant-bubble-soft) 88%, transparent);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--mono-shadow-sm);
 }
 
 .chat-resource-list.is-user .chat-resource-card {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: color-mix(in srgb, var(--chat-user-bubble-text) 10%, transparent);
+  border-color: color-mix(in srgb, var(--chat-user-bubble-text) 18%, transparent);
 }
 
 .chat-resource-card.image,
@@ -28,21 +28,15 @@
 }
 
 .chat-resource-card.image {
-  background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.08), transparent 42%),
-    linear-gradient(180deg, color-mix(in srgb, var(--chat-assistant-bubble-soft) 94%, white 4%), color-mix(in srgb, var(--chat-assistant-bubble-soft) 84%, transparent));
+  background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-assistant-bubble-soft));
 }
 
 .chat-resource-card.video {
-  background:
-    radial-gradient(circle at top right, rgba(236, 72, 153, 0.08), transparent 42%),
-    linear-gradient(180deg, color-mix(in srgb, var(--chat-assistant-bubble-soft) 94%, white 4%), color-mix(in srgb, var(--chat-assistant-bubble-soft) 84%, transparent));
+  background: color-mix(in srgb, var(--warning) 8%, var(--chat-assistant-bubble-soft));
 }
 
 .chat-resource-card.file {
-  background:
-    linear-gradient(135deg, rgba(245, 158, 11, 0.05), transparent 42%),
-    color-mix(in srgb, var(--chat-assistant-bubble-soft) 90%, transparent);
+  background: color-mix(in srgb, var(--warning) 5%, var(--chat-assistant-bubble-soft));
 }
 
 .chat-resource-card.image:hover,
@@ -51,17 +45,17 @@
 .chat-resource-card.video:focus-visible {
   outline: none;
   border-color: color-mix(in srgb, var(--chat-accent) 32%, var(--chat-line));
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.1);
+  box-shadow: var(--mono-shadow);
 }
 
 .chat-resource-card.missing {
   border-style: dashed;
-  background: color-mix(in srgb, #dc2626 8%, var(--chat-assistant-bubble-soft));
+  background: color-mix(in srgb, var(--danger) 8%, var(--chat-assistant-bubble-soft));
 }
 
 .chat-resource-list.is-user .chat-resource-card.missing {
-  background: rgba(220, 38, 38, 0.12);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--chat-user-bubble-text) 22%, transparent);
 }
 
 .chat-resource-image {
@@ -78,7 +72,7 @@
   width: 100%;
   max-height: 260px;
   border-radius: 12px;
-  background: #000;
+  background: var(--chat-code-bg);
   object-fit: cover;
 }
 
@@ -108,13 +102,13 @@
 
 .chat-resource-list.is-user .chat-resource-meta strong,
 .chat-resource-list.is-user .chat-resource-file-copy strong {
-  color: #fff;
+  color: var(--chat-user-bubble-text);
 }
 
 .chat-resource-list.is-user .chat-resource-meta span,
 .chat-resource-list.is-user .chat-resource-file-copy span,
 .chat-resource-list.is-user .chat-resource-missing-note {
-  color: rgba(248, 251, 255, 0.82);
+  color: color-mix(in srgb, var(--chat-user-bubble-text) 82%, transparent);
 }
 
 .chat-resource-file-badge {
@@ -124,7 +118,7 @@
   height: 22px;
   padding: 0 8px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(236, 72, 153, 0.12));
+  background: color-mix(in srgb, var(--chat-accent) 13%, var(--chat-modal-row));
   color: var(--chat-text);
   font-size: 11px;
   font-weight: 700;
@@ -158,12 +152,12 @@
 }
 
 .chat-resource-list.is-user .chat-resource-file-actions a {
-  border-color: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  border-color: color-mix(in srgb, var(--chat-user-bubble-text) 18%, transparent);
+  color: var(--chat-user-bubble-text);
 }
 
 .chat-resource-list.is-user .chat-resource-file-actions a:hover,
 .chat-resource-list.is-user .chat-resource-file-actions a:focus-visible {
-  border-color: rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.12);
+  border-color: color-mix(in srgb, var(--chat-user-bubble-text) 28%, transparent);
+  background: color-mix(in srgb, var(--chat-user-bubble-text) 12%, transparent);
 }

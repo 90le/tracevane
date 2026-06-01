@@ -8,6 +8,7 @@ import type {
   CodexStackInstallRequest,
   CodexStackJobResponse,
   CodexStackLogResponse,
+  CodexStackManualServiceId,
   CodexStackMutationResponse,
   CodexStackRepairRequest,
   CodexStackServiceAction,
@@ -52,7 +53,7 @@ export function fetchCodexStackJob(jobId: string): Promise<CodexStackJobResponse
 }
 
 export function controlCodexStackService(
-  serviceId: CodexStackServiceId,
+  serviceId: CodexStackManualServiceId,
   action: CodexStackServiceAction,
 ): Promise<CodexStackMutationResponse> {
   return requestJson<CodexStackMutationResponse>(

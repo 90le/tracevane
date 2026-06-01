@@ -69,6 +69,18 @@ const newChatAgentPicker = fs.readFileSync(
   ),
   "utf8",
 );
+const chatRecordBrowserCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/chat-record-browser.css"),
+  "utf8",
+);
+const markdownBlockCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/markdown-block.css"),
+  "utf8",
+);
+const messageBubbleCss = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat-v2/message-bubble.css"),
+  "utf8",
+);
 
 test("chat theme tokens are exposed on html so portal overlays inherit visible surfaces", () => {
   assert.match(chatShellPage, /import '\.\/chat-shell-workspace\.css';/);
@@ -83,35 +95,35 @@ test("chat theme tokens are exposed on html so portal overlays inherit visible s
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-menu-surface:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.995\),\s*rgba\(246,\s*249,\s*253,\s*0\.992\)\);/,
+    /--chat-menu-surface:\s*var\(--modal-panel-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-dialog-surface:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.998\),\s*rgba\(244,\s*248,\s*252,\s*0\.994\)\);/,
+    /--chat-dialog-surface:\s*var\(--modal-panel-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-drawer-surface:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.998\),\s*rgba\(243,\s*247,\s*251,\s*0\.992\)\);/,
+    /--chat-drawer-surface:\s*var\(--modal-panel-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-inspector-surface:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.998\),\s*rgba\(241,\s*246,\s*251,\s*0\.992\)\);/,
+    /--chat-inspector-surface:\s*var\(--modal-panel-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-menu-surface:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.996\),\s*rgba\(10,\s*21,\s*34,\s*0\.992\)\);/,
+    /--chat-menu-surface:\s*var\(--modal-panel-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-dialog-surface:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.998\),\s*rgba\(10,\s*21,\s*34,\s*0\.994\)\);/,
+    /--chat-dialog-surface:\s*var\(--modal-panel-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-drawer-surface:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.998\),\s*rgba\(8,\s*18,\s*29,\s*0\.994\)\);/,
+    /--chat-drawer-surface:\s*var\(--bg-subtle\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-inspector-surface:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.998\),\s*rgba\(9,\s*20,\s*31,\s*0\.994\)\);/,
+    /--chat-inspector-surface:\s*var\(--modal-panel-bg\);/,
   );
 });
 
@@ -126,11 +138,23 @@ test("chat portal overlays render on surfaced backgrounds instead of transparent
   );
   assert.match(
     sessionFilterCss,
-    /\.chat-shell-session-filter-popover\s*\{[\s\S]*backdrop-filter:\s*blur\(24px\)\s*saturate\(140%\);/,
+    /\.chat-shell-session-filter-popover\s*\{[\s\S]*backdrop-filter:\s*none;/,
   );
   assert.match(
     sessionFilterCss,
-    /\.chat-shell-session-filter-popover\s*\{[\s\S]*box-shadow:\s*0 18px 44px rgba\(3,\s*8,\s*14,\s*0\.28\);/,
+    /\.chat-shell-session-filter-popover\s*\{[\s\S]*box-shadow:\s*var\(--mono-shadow-md,/,
+  );
+  assert.match(
+    sessionFilterCss,
+    /\.chat-shell-session-filter-popover\.theme-dark,[\s\S]*\{[\s\S]*--chat-menu-surface:\s*var\(--modal-panel-bg\);/,
+  );
+  assert.match(
+    composerBarCss,
+    /\.chat-composer-preview-image,[\s\S]*\.chat-composer-preview-video\s*\{[\s\S]*background:\s*var\(--chat-code-bg\);/,
+  );
+  assert.doesNotMatch(
+    `${sessionFilterCss}\n${composerBarCss}`,
+    /#102033|#0d1b2a/,
   );
   assert.match(
     conversationPaneCss,
@@ -142,11 +166,11 @@ test("chat portal overlays render on surfaced backgrounds instead of transparent
   );
   assert.match(
     conversationPaneCss,
-    /\.chat-session-menu-popover\s*\{[\s\S]*backdrop-filter:\s*blur\(24px\)\s*saturate\(140%\);/,
+    /\.chat-session-menu-popover\s*\{[\s\S]*backdrop-filter:\s*none;/,
   );
   assert.match(
     conversationPaneCss,
-    /\.chat-session-menu-popover\s*\{[\s\S]*box-shadow:\s*0 18px 44px rgba\(3,\s*8,\s*14,\s*0\.28\);/,
+    /\.chat-session-menu-popover\s*\{[\s\S]*box-shadow:\s*var\(--mono-shadow-md,/,
   );
   assert.match(
     conversationPaneCss,
@@ -210,11 +234,11 @@ test("chat portal overlays render on surfaced backgrounds instead of transparent
   );
   assert.match(
     overlaySurfacesCss,
-    /\.cascade-menu\s*\{[\s\S]*backdrop-filter:\s*blur\(24px\)\s*saturate\(140%\);/,
+    /\.cascade-menu\s*\{[\s\S]*backdrop-filter:\s*none;/,
   );
   assert.match(
     overlaySurfacesCss,
-    /\.cascade-menu\s*\{[\s\S]*box-shadow:\s*0 18px 44px rgba\(3,\s*8,\s*14,\s*0\.28\);/,
+    /\.cascade-menu\s*\{[\s\S]*box-shadow:\s*var\(--mono-shadow-md\);/,
   );
   assert.match(
     composerBarCss,
@@ -227,6 +251,53 @@ test("chat portal overlays render on surfaced backgrounds instead of transparent
   assert.match(
     slashCommandCss,
     /\.chat-slash-menu\s*\{[\s\S]*background:\s*var\(--chat-menu-surface\);/,
+  );
+});
+
+test("chat floating overlays use dimmed solid surfaces instead of blurred glass", () => {
+  const chatOverlayCss = [
+    chatShellWorkspaceCss,
+    overlaySurfacesCss,
+    slashCommandCss,
+    conversationPaneCss,
+    composerBarCss,
+    chatRecordBrowserCss,
+    markdownBlockCss,
+    messageBubbleCss,
+  ].join("\n");
+
+  assert.doesNotMatch(chatOverlayCss, /backdrop-filter:\s*blur\(/);
+  assert.match(
+    chatShellWorkspaceCss,
+    /\.chat-mobile-drawer-mask\s*\{[\s\S]*backdrop-filter:\s*none;/,
+  );
+  assert.match(
+    chatShellWorkspaceCss,
+    /\.chat-inspector-mask\s*\{[\s\S]*backdrop-filter:\s*none;/,
+  );
+  assert.match(
+    conversationPaneCss,
+    /\.chat-rendering-settings-mask\s*\{[\s\S]*backdrop-filter:\s*none;/,
+  );
+  assert.match(
+    composerBarCss,
+    /\.chat-composer-preview-mask\s*\{[\s\S]*backdrop-filter:\s*none;/,
+  );
+  assert.match(
+    slashCommandCss,
+    /\.chat-slash-help-mask\s*\{[\s\S]*backdrop-filter:\s*none;/,
+  );
+  assert.match(
+    chatRecordBrowserCss,
+    /\.chat-record-browser-mask\s*\{[\s\S]*backdrop-filter:\s*none;/,
+  );
+  assert.match(
+    markdownBlockCss,
+    /\.chat-live-preview-mask\s*\{[\s\S]*backdrop-filter:\s*none;/,
+  );
+  assert.match(
+    messageBubbleCss,
+    /\.chat-image-preview-mask\s*\{[\s\S]*backdrop-filter:\s*none;/,
   );
 });
 

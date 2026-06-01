@@ -41,6 +41,9 @@ test('account create drawer stays focused on creation intent and required creden
   assert.match(channelsDrawerCss, /html\[data-theme="light"\]\s+\.channels-drawer/);
   assert.match(channelsDrawerCss, /\.create-account-drawer\s*\{/);
   assert.match(channelsDrawerCss, /\.channels-drawer-section\s*\{/);
+  assert.match(channelsDrawerCss, /\.channels-drawer-mask\s*\{[\s\S]*background:\s*var\(--modal-backdrop\);/);
+  assert.match(channelsDrawerCss, /\.channels-drawer\s*\{[\s\S]*background:\s*var\(--modal-panel-bg\);/);
+  assert.doesNotMatch(channelsDrawerCss, /credential-field-card|linear-gradient|radial-gradient|var\(--sky\)|rgba\(|#[0-9a-fA-F]{3,6}/);
   assert.doesNotMatch(accountCreateDrawer, /var\(--panel\)/);
   assert.doesNotMatch(accountCreateDrawer, /access/i);
   assert.doesNotMatch(accountCreateDrawer, /binding/i);
@@ -56,17 +59,19 @@ test('credential drawer stays credential-only instead of mixing in deep account 
   assert.match(credentialDrawer, /channels-drawer-mask/);
   assert.match(credentialDrawer, /credential-field-grid/);
   assert.match(credentialDrawer, /credential-field-grid--compact/);
-  assert.match(credentialDrawer, /credential-field-card/);
+  assert.match(credentialDrawer, /credential-field-panel/);
   assert.match(credentialDrawer, /credential-drawer__account-summary/);
   assert.match(credentialDrawer, /credential-drawer__account-facts/);
   assert.match(credentialDrawer, /import '\.\/channels-drawer\.css';/);
   assert.doesNotMatch(credentialDrawer, /<style scoped>/);
   assert.match(channelsDrawerCss, /align-content:\s*start/);
   assert.match(credentialDrawer, /channelLabel/);
-  assert.match(channelsDrawerCss, /shell-stage-fill-strong/);
+  assert.match(channelsDrawerCss, /--modal-panel-bg/);
   assert.match(channelsDrawerCss, /html\[data-theme="light"\]\s+\.channels-drawer/);
   assert.match(channelsDrawerCss, /@media\s*\(max-width:\s*640px\)/);
   assert.match(channelsDrawerCss, /\.channels-drawer\s+\.form-grid\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
+  assert.match(channelsDrawerCss, /\.channels-drawer\s+\.form-input\s*\{[\s\S]*background:\s*var\(--control-bg\);[\s\S]*border-color:\s*var\(--control-border\);/);
+  assert.doesNotMatch(channelsDrawerCss, /credential-field-card|linear-gradient|radial-gradient|var\(--sky\)|rgba\(|#[0-9a-fA-F]{3,6}/);
   assert.doesNotMatch(credentialDrawer, /var\(--panel\)/);
   assert.doesNotMatch(credentialDrawer, /group policy/i);
   assert.doesNotMatch(credentialDrawer, /render mode/i);
@@ -83,6 +88,7 @@ test('channels drawer surfaces share a feature stylesheet instead of scoped styl
   assert.match(channelsDrawerCss, /\.channels-drawer-mask\s*\{/);
   assert.match(channelsDrawerCss, /\.channels-drawer\s*\{/);
   assert.match(channelsDrawerCss, /\.channels-drawer__foot\s+\.primary-button/);
+  assert.match(channelsDrawerCss, /\.channels-drawer-section\s*\{[\s\S]*background:\s*var\(--modal-panel-bg-strong\);/);
 });
 
 test('account detail delegates credential editing to the credential drawer', () => {

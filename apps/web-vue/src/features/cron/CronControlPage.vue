@@ -57,7 +57,7 @@
 
             <label class="form-field">
               <span class="form-label">{{ text('筛选', 'Filter') }}</span>
-              <GlassSelect v-model="filterMode" :options="filterOptions" :placeholder="text('全部任务', 'All jobs')" />
+              <StudioSelect v-model="filterMode" :options="filterOptions" :placeholder="text('全部任务', 'All jobs')" />
             </label>
           </div>
 
@@ -194,7 +194,7 @@
                 </div>
               </div>
 
-              <div class="cron-payload-card">
+              <div class="cron-payload-block">
                 <div class="cron-payload-meta">
                   <span class="cron-chip operate-summary-pill">{{ payloadKindLabel(detail.job.payload.kind) }}</span>
                   <span v-if="detail.job.payload.thinking" class="cron-chip operate-summary-pill">{{ detail.job.payload.thinking }}</span>
@@ -306,13 +306,13 @@
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('Agent', 'Agent') }}</label>
-                  <GlassSelect v-model="editorForm.agentId" :options="agentOptions" :placeholder="text('选择 Agent', 'Select agent')" />
+                  <StudioSelect v-model="editorForm.agentId" :options="agentOptions" :placeholder="text('选择 Agent', 'Select agent')" />
                 </div>
                 <div class="form-field form-field-full">
                   <label class="form-label">{{ text('描述', 'Description') }}</label>
                   <input v-model="editorForm.description" class="form-input" :placeholder="text('说明这条任务解决什么问题', 'Describe what this job is for')" />
                 </div>
-                <label class="toggle-card form-field-full">
+                <label class="cron-option-row form-field-full">
                   <input v-model="editorForm.enabled" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('任务启用状态', 'Job enabled') }}</strong>
@@ -333,11 +333,11 @@
               <div class="cron-form-grid">
                 <div class="form-field">
                   <label class="form-label">{{ text('计划类型', 'Schedule Kind') }}</label>
-                  <GlassSelect v-model="editorForm.scheduleKind" :options="scheduleKindOptions" :placeholder="text('选择类型', 'Select kind')" />
+                  <StudioSelect v-model="editorForm.scheduleKind" :options="scheduleKindOptions" :placeholder="text('选择类型', 'Select kind')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('Wake 模式', 'Wake Mode') }}</label>
-                  <GlassSelect v-model="editorForm.wakeMode" :options="wakeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                  <StudioSelect v-model="editorForm.wakeMode" :options="wakeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
                 </div>
 
                 <template v-if="editorForm.scheduleKind === 'cron'">
@@ -383,19 +383,19 @@
               <div class="cron-form-grid">
                 <div class="form-field">
                   <label class="form-label">{{ text('Payload 类型', 'Payload Kind') }}</label>
-                  <GlassSelect v-model="editorForm.payloadKind" :options="payloadKindOptions" :placeholder="text('选择类型', 'Select kind')" />
+                  <StudioSelect v-model="editorForm.payloadKind" :options="payloadKindOptions" :placeholder="text('选择类型', 'Select kind')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('会话目标', 'Session Target') }}</label>
-                  <GlassSelect v-model="editorForm.sessionTargetMode" :options="sessionTargetOptions" :placeholder="text('选择会话', 'Select session target')" />
+                  <StudioSelect v-model="editorForm.sessionTargetMode" :options="sessionTargetOptions" :placeholder="text('选择会话', 'Select session target')" />
                 </div>
                 <div v-if="editorForm.sessionTargetMode === 'existing-session'" class="form-field form-field-full">
                   <label class="form-label">{{ text('已有会话', 'Existing Session') }}</label>
-                  <GlassSelect v-model="editorForm.sessionTargetRef" :options="sessionRefOptions" :placeholder="text('选择会话', 'Select session')" />
+                  <StudioSelect v-model="editorForm.sessionTargetRef" :options="sessionRefOptions" :placeholder="text('选择会话', 'Select session')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('思考级别', 'Thinking') }}</label>
-                  <GlassSelect v-model="editorForm.thinking" :options="thinkingOptions" :placeholder="text('默认', 'Default')" />
+                  <StudioSelect v-model="editorForm.thinking" :options="thinkingOptions" :placeholder="text('默认', 'Default')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('超时秒数', 'Timeout Seconds') }}</label>
@@ -405,21 +405,21 @@
                   <label class="form-label">{{ text('模型覆盖', 'Model Override') }}</label>
                   <input v-model="editorForm.model" class="form-input" :placeholder="text('可留空跟随 Agent 默认', 'Leave empty to inherit agent defaults')" />
                 </div>
-                <label class="toggle-card">
+                <label class="cron-option-row">
                   <input v-model="editorForm.lightContext" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('轻量上下文', 'Light context') }}</strong>
                     <span>{{ text('适合不需要完整 bootstrap 文档的后台任务。', 'Useful for background chores that do not need the full bootstrap document set.') }}</span>
                   </div>
                 </label>
-                <label class="toggle-card">
+                <label class="cron-option-row">
                   <input v-model="editorForm.expectFinal" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('等待最终响应', 'Expect final response') }}</strong>
                     <span>{{ text('适合希望等待完整 Agent 收敛结果的任务。', 'Useful when you want the scheduler to wait for the full final response.') }}</span>
                   </div>
                 </label>
-                <label class="toggle-card">
+                <label class="cron-option-row">
                   <input v-model="editorForm.deleteAfterRun" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('完成后删除', 'Delete after run') }}</strong>
@@ -449,18 +449,18 @@
               <div class="cron-form-grid">
                 <div class="form-field">
                   <label class="form-label">{{ text('投递模式', 'Delivery Mode') }}</label>
-                  <GlassSelect v-model="editorForm.deliveryMode" :options="deliveryModeOptions" :placeholder="text('选择投递模式', 'Select delivery mode')" />
+                  <StudioSelect v-model="editorForm.deliveryMode" :options="deliveryModeOptions" :placeholder="text('选择投递模式', 'Select delivery mode')" />
                 </div>
                 <template v-if="editorForm.deliveryMode === 'announce'">
                   <div class="form-field">
                     <label class="form-label">{{ text('目标类型', 'Target Type') }}</label>
-                    <GlassSelect v-model="editorForm.deliveryTargetType" :options="deliveryTargetTypeOptions" :placeholder="text('选择类型', 'Select type')" />
+                    <StudioSelect v-model="editorForm.deliveryTargetType" :options="deliveryTargetTypeOptions" :placeholder="text('选择类型', 'Select type')" />
                   </div>
                   <div class="form-field form-field-full">
                     <label class="form-label">{{ text('投递目标', 'Delivery Target') }}</label>
-                    <GlassSelect v-model="editorForm.deliveryTargetRef" :options="deliveryTargetOptions" :placeholder="text('选择目标', 'Select target')" />
+                    <StudioSelect v-model="editorForm.deliveryTargetRef" :options="deliveryTargetOptions" :placeholder="text('选择目标', 'Select target')" />
                   </div>
-                  <label class="toggle-card">
+                  <label class="cron-option-row">
                     <input v-model="editorForm.deliveryBestEffort" class="form-checkbox" type="checkbox" />
                     <div>
                       <strong>{{ text('尽力投递', 'Best-effort delivery') }}</strong>
@@ -490,7 +490,7 @@
                 </summary>
 
                 <div class="settings-stack settings-stack-spaced">
-                  <label class="toggle-card">
+                  <label class="cron-option-row">
                     <input v-model="editorForm.failureDestinationEnabled" class="form-checkbox" type="checkbox" />
                     <div>
                       <strong>{{ text('启用失败投递目标', 'Enable failure destination') }}</strong>
@@ -501,7 +501,7 @@
                   <div v-if="editorForm.failureDestinationEnabled" class="cron-form-grid">
                     <div class="form-field">
                       <label class="form-label">{{ text('目标模式', 'Destination Mode') }}</label>
-                      <GlassSelect v-model="editorForm.failureDestinationMode" :options="failureAlertModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                      <StudioSelect v-model="editorForm.failureDestinationMode" :options="failureAlertModeOptions" :placeholder="text('选择模式', 'Select mode')" />
                     </div>
 
                     <template v-if="editorForm.failureDestinationMode === 'announce'">
@@ -539,7 +539,7 @@
               </div>
 
               <div class="cron-form-grid">
-                <label class="toggle-card form-field-full">
+                <label class="cron-option-row form-field-full">
                   <input v-model="editorForm.failureAlertEnabled" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('启用失败告警', 'Enable failure alerts') }}</strong>
@@ -550,7 +550,7 @@
                 <template v-if="editorForm.failureAlertEnabled">
                   <div class="form-field">
                     <label class="form-label">{{ text('告警模式', 'Alert Mode') }}</label>
-                    <GlassSelect v-model="editorForm.failureAlertMode" :options="failureAlertModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                    <StudioSelect v-model="editorForm.failureAlertMode" :options="failureAlertModeOptions" :placeholder="text('选择模式', 'Select mode')" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('触发阈值', 'Trigger After') }}</label>
@@ -751,15 +751,15 @@
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('Agent', 'Agent') }}</label>
-                <GlassSelect v-model="createForm.agentId" :options="agentOptions" :placeholder="text('选择 Agent', 'Select agent')" />
+                <StudioSelect v-model="createForm.agentId" :options="agentOptions" :placeholder="text('选择 Agent', 'Select agent')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('计划类型', 'Schedule Kind') }}</label>
-                <GlassSelect v-model="createForm.scheduleKind" :options="scheduleKindOptions" :placeholder="text('选择类型', 'Select kind')" />
+                <StudioSelect v-model="createForm.scheduleKind" :options="scheduleKindOptions" :placeholder="text('选择类型', 'Select kind')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('Wake 模式', 'Wake Mode') }}</label>
-                <GlassSelect v-model="createForm.wakeMode" :options="wakeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                <StudioSelect v-model="createForm.wakeMode" :options="wakeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
               </div>
 
               <template v-if="createForm.scheduleKind === 'cron'">
@@ -803,15 +803,15 @@
                 <div class="cron-form-grid">
                   <div class="form-field">
                     <label class="form-label">{{ text('会话目标', 'Session Target') }}</label>
-                    <GlassSelect v-model="createForm.sessionTargetMode" :options="sessionTargetOptions" :placeholder="text('选择会话', 'Select session target')" />
+                    <StudioSelect v-model="createForm.sessionTargetMode" :options="sessionTargetOptions" :placeholder="text('选择会话', 'Select session target')" />
                   </div>
                   <div v-if="createForm.sessionTargetMode === 'existing-session'" class="form-field">
                     <label class="form-label">{{ text('已有会话', 'Existing Session') }}</label>
-                    <GlassSelect v-model="createForm.sessionTargetRef" :options="sessionRefOptions" :placeholder="text('选择会话', 'Select session')" />
+                    <StudioSelect v-model="createForm.sessionTargetRef" :options="sessionRefOptions" :placeholder="text('选择会话', 'Select session')" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('思考级别', 'Thinking') }}</label>
-                    <GlassSelect v-model="createForm.thinking" :options="thinkingOptions" :placeholder="text('默认', 'Default')" />
+                    <StudioSelect v-model="createForm.thinking" :options="thinkingOptions" :placeholder="text('默认', 'Default')" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('超时秒数', 'Timeout Seconds') }}</label>
@@ -823,16 +823,16 @@
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('投递模式', 'Delivery Mode') }}</label>
-                    <GlassSelect v-model="createForm.deliveryMode" :options="deliveryModeOptions" :placeholder="text('选择投递模式', 'Select delivery mode')" />
+                    <StudioSelect v-model="createForm.deliveryMode" :options="deliveryModeOptions" :placeholder="text('选择投递模式', 'Select delivery mode')" />
                   </div>
                   <template v-if="createForm.deliveryMode === 'announce'">
                     <div class="form-field">
                       <label class="form-label">{{ text('目标类型', 'Target Type') }}</label>
-                      <GlassSelect v-model="createForm.deliveryTargetType" :options="deliveryTargetTypeOptions" :placeholder="text('选择类型', 'Select type')" />
+                      <StudioSelect v-model="createForm.deliveryTargetType" :options="deliveryTargetTypeOptions" :placeholder="text('选择类型', 'Select type')" />
                     </div>
                     <div class="form-field form-field-full">
                       <label class="form-label">{{ text('投递目标', 'Delivery Target') }}</label>
-                      <GlassSelect v-model="createForm.deliveryTargetRef" :options="deliveryTargetOptionsForCreate" :placeholder="text('选择目标', 'Select target')" />
+                      <StudioSelect v-model="createForm.deliveryTargetRef" :options="deliveryTargetOptionsForCreate" :placeholder="text('选择目标', 'Select target')" />
                     </div>
                   </template>
                   <template v-else-if="createForm.deliveryMode === 'webhook'">
@@ -841,7 +841,7 @@
                       <input v-model="createForm.deliveryTargetRef" class="form-input" :placeholder="text('例如 https://example.com/webhook', 'For example https://example.com/webhook')" />
                     </div>
                   </template>
-                  <label class="toggle-card">
+                  <label class="cron-option-row">
                     <input v-model="createForm.failureAlertEnabled" class="form-checkbox" type="checkbox" />
                     <div>
                       <strong>{{ text('启用失败告警', 'Enable failure alerts') }}</strong>
@@ -876,7 +876,7 @@ import type { CronDetailPayload, CronJobInput, CronRunSummary, CronSummaryPayloa
 import StatusPill from '../../components/StatusPill.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { copyTextToClipboard } from '../../shared/clipboard';
-import GlassSelect from '../../shared/components/GlassSelect.vue';
+import StudioSelect from '../../shared/components/StudioSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   createCronJob,

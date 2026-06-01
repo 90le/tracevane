@@ -214,6 +214,15 @@ test("terminal workspace exposes shared inspector content and mobile bottom shee
   assert.match(workspacePage, /closeMobileInspectorIfCompact\(\)/);
   assert.match(inspectorContent, /terminal-inspector-switcher__button/);
   assert.match(inspectorContent, /terminal-summary-inline__chip/);
+  assert.doesNotMatch(workspaceCss, /var\(--atlas-|var\(--atlas/);
+  assert.match(
+    workspaceCss,
+    /\.terminal-inspector-summary-grid,[\s\S]*\.terminal-binary-list\s*\{[\s\S]*background:\s*var\(--line\);/,
+  );
+  assert.match(
+    workspaceCss,
+    /\.terminal-workspace-stage\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*box-shadow:\s*var\(--mono-shadow-sm,/,
+  );
 });
 
 test("terminal inspector does not duplicate persisted history beside the terminal", () => {
@@ -412,10 +421,14 @@ test("terminal console surfaces compact telemetry chips even when toolbar is hid
   assert.match(terminalConsole, /data-testid="terminal-console-workbench-bar"/);
   assert.match(terminalConsole, /terminal-console-cli-state/);
   assert.match(terminalConsole, /terminal-console-cli-progress/);
+  assert.match(terminalConsole, /<progress[\s\S]*class="terminal-console-cli-progress"[\s\S]*:value="terminalCliProgressValue \?\? undefined"/);
+  assert.doesNotMatch(terminalConsole, /terminalCliProgressStyle|terminalCliProgressClass|:style="terminalCliProgressStyle"/);
   assert.match(terminalConsole, /terminal-console-link-state/);
   assert.match(terminalConsole, /terminal-console-header-chip--mode/);
   assert.match(workspaceCss, /terminal-console-header-chip--progress-running/);
   assert.match(workspaceCss, /terminal-console-header-chip--progress-error/);
+  assert.match(workspaceCss, /\.terminal-console-cli-progress::-webkit-progress-value\s*\{/);
+  assert.doesNotMatch(workspaceCss, /\.terminal-console-cli-progress__fill\s*\{/);
   assert.match(terminalConsole, /terminal-console-header-chip--status/);
 });
 
@@ -584,7 +597,7 @@ test("terminal session pane hosts integrated tab controls and lifecycle affordan
   assert.match(workspaceCss, /\.terminal-tab-rail\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/);
   assert.match(workspaceCss, /\.terminal-tab-scroll\s*\{[\s\S]*overflow-x:\s*auto;[\s\S]*padding-bottom:\s*8px;/);
   assert.match(workspaceCss, /\.terminal-tab-rail-actions\s*\{[\s\S]*min-width:\s*max-content;/);
-  assert.match(workspaceCss, /\.terminal-shortcut-menu__panel\s*\{[\s\S]*z-index:\s*60;[\s\S]*backdrop-filter:\s*blur\(12px\);/);
+  assert.match(workspaceCss, /\.terminal-shortcut-menu__panel\s*\{[\s\S]*z-index:\s*60;[\s\S]*backdrop-filter:\s*none;/);
   assert.match(pane, /Ctrl\+C/);
   assert.match(pane, /Ctrl\+L/);
   assert.match(pane, /Ctrl\+D/);

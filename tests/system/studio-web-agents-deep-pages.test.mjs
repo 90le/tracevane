@@ -29,6 +29,8 @@ test("agents deep pages use task heads instead of repeating page-level chrome", 
   assert.match(bindingsPage, /agents-stage-task-head/);
   assert.match(sessionsPage, /agents-stage-task-head/);
   assert.match(advancedPage, /agents-stage-task-head/);
+  assert.match(docsPage, /人设文档|Persona docs/);
+  assert.match(advancedPage, /运行配置|Runtime/);
 
   assert.doesNotMatch(docsPage, /page-header-row/);
   assert.doesNotMatch(bindingsPage, /page-header-row/);
@@ -45,6 +47,18 @@ test("agents advanced page keeps grouped task sections inside a continuous edito
   assert.match(advancedPage, /agents-summary-strip/);
   assert.match(advancedPage, /agents-advanced-collapsible/);
   assert.match(advancedPage, /agents-advanced-summary/);
+});
+
+test("agents deep pages refresh on activation without discarding dirty drafts", () => {
+  assert.match(advancedPage, /import \{ computed, onActivated, reactive, ref, watch \} from 'vue';/);
+  assert.match(advancedPage, /const lastLoadedDraftSnapshot = ref\(''\);/);
+  assert.match(advancedPage, /function captureDraftSnapshot\(\): string \{[\s\S]*return JSON\.stringify\(draft\);[\s\S]*\}/);
+  assert.match(advancedPage, /onActivated\(async \(\) => \{[\s\S]*if \(!agentId\.value \|\| loading\.value \|\| saveBusy\.value\) return;[\s\S]*if \(captureDraftSnapshot\(\) !== lastLoadedDraftSnapshot\.value\) return;[\s\S]*await loadDetail\(\);[\s\S]*\}\);/);
+
+  assert.match(docsPage, /import \{ computed, onActivated, ref, watch \} from 'vue';/);
+  assert.match(docsPage, /const lastLoadedDocContent = ref\(''\);/);
+  assert.match(docsPage, /lastLoadedDocContent\.value = payload\.content;/);
+  assert.match(docsPage, /onActivated\(async \(\) => \{[\s\S]*if \(!agentId\.value \|\| docLoading\.value \|\| docBusy\.value\) return;[\s\S]*if \(docContent\.value !== lastLoadedDocContent\.value\) return;[\s\S]*await loadDocList\(\);[\s\S]*await loadCurrentDoc\(\);[\s\S]*\}\);/);
 });
 
 test("agents advanced page exposes per-agent HEARTBEAT persistence controls", () => {
@@ -73,10 +87,11 @@ test("agent bindings page stays focused on bindings instead of duplicating sessi
   assert.doesNotMatch(bindingsPage, /recentSessions/);
 });
 
-test("agent sessions page uses card rows with a compact summary strip", () => {
+test("agent sessions page uses section rows with a compact summary strip", () => {
   assert.match(sessionsPage, /agents-session-summary-strip/);
-  assert.match(sessionsPage, /agents-session-card-list/);
-  assert.match(sessionsPage, /agents-session-card/);
+  assert.match(sessionsPage, /agents-session-entry-list/);
+  assert.match(sessionsPage, /agents-session-entry/);
+  assert.doesNotMatch(sessionsPage, /agents-session-card/);
   assert.match(sessionsPage, /useConfirmDialog/);
   assert.match(sessionsPage, /const \{ confirm \} = useConfirmDialog\(\)/);
   assert.match(sessionsPage, /openChatSession\(/);

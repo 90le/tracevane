@@ -3,8 +3,8 @@
     <div class="agents-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ agentId }}</p>
-        <h3>{{ text('绑定管理', 'Bindings') }}</h3>
-        <p>{{ text('当前页面只负责入口绑定、目标账号和 ACP 路由。', 'This page only manages entry bindings, target accounts, and ACP routes.') }}</p>
+        <h3>{{ text('路由管理', 'Routing') }}</h3>
+        <p>{{ text('当前页面只负责入口路由、目标账号和 ACP 路由。', 'This page only manages entry routes, target accounts, and ACP routes.') }}</p>
       </div>
 
     </div>
@@ -15,19 +15,19 @@
     <article class="agents-stage-panel">
       <div class="agents-section-head">
         <div>
-          <h3>{{ text('现有绑定', 'Existing bindings') }}</h3>
+          <h3>{{ text('现有路由', 'Existing routes') }}</h3>
           <p>{{ text('这里直接查看和编辑当前 Agent 连接到哪些 channel / account。', 'Review and edit which channel or account routes into the current agent.') }}</p>
         </div>
         <div class="page-actions">
           <button type="button" class="secondary-button compact-button" :disabled="bindingBusy" @click="openCreateBindingDialog()">
-            {{ text('新增绑定', 'Add binding') }}
+            {{ text('新增路由', 'Add route') }}
           </button>
         </div>
       </div>
 
       <div class="agents-summary-strip agents-binding-summary-strip">
         <span class="agents-summary-pill">
-          {{ text(`绑定 ${detail.bindings.length}`, `${detail.bindings.length} bindings`) }}
+          {{ text(`路由 ${detail.bindings.length}`, `${detail.bindings.length} routes`) }}
         </span>
         <span class="agents-summary-pill">
           {{ text(`可选频道 ${detail.bindingTargets.length}`, `${detail.bindingTargets.length} target channels`) }}
@@ -51,7 +51,7 @@
             <strong>{{ binding.description || binding.label || binding.id }}</strong>
             <p>{{ binding.comment || text('没有额外备注。', 'No extra comment.') }}</p>
             <div class="agents-binding-main__facts">
-              <span>{{ text('绑定 ID', 'Binding ID') }}: {{ binding.id }}</span>
+              <span>{{ text('路由 ID', 'Route ID') }}: {{ binding.id }}</span>
               <span>{{ binding.type === 'acp' ? 'ACP' : text('普通路由', 'Standard') }}</span>
             </div>
           </div>
@@ -73,7 +73,7 @@
               {{ text('打开频道', 'Open Channel') }}
             </button>
             <button type="button" class="secondary-button compact-button" @click="openChannelBindings(binding)">
-              {{ text('频道绑定', 'Channel Bindings') }}
+              {{ text('频道路由', 'Channel Routes') }}
             </button>
             <button type="button" class="secondary-button compact-button" @click="openEditBindingDialog(binding.id)">
               {{ text('修改', 'Edit') }}
@@ -85,17 +85,17 @@
         </article>
       </div>
       <div v-else class="empty-inline">
-        {{ text('当前没有显式绑定。这个 Agent 可能只通过默认路由或手动指定进入。', 'No explicit bindings exist. This agent may only be reached through a default route or manual targeting.') }}
+        {{ text('当前没有显式路由。这个 Agent 可能只通过默认路由或手动指定进入。', 'No explicit routes exist. This agent may only be reached through a default route or manual targeting.') }}
       </div>
     </article>
 
     <Teleport to="body">
       <div v-if="bindingDialogOpen" class="agents-modal-mask" @click.self="closeBindingDialog">
-        <section class="agents-modal agents-binding-dialog" role="dialog" aria-modal="true" :aria-label="editingBindingId ? text('修改绑定', 'Edit binding') : text('新增绑定', 'Add binding')">
+        <section class="agents-modal agents-binding-dialog" role="dialog" aria-modal="true" :aria-label="editingBindingId ? text('修改路由', 'Edit route') : text('新增路由', 'Add route')">
           <header class="agents-modal-head">
             <div>
-              <h3>{{ editingBindingId ? text('修改绑定', 'Edit binding') : text('新增绑定', 'Add binding') }}</h3>
-              <p>{{ text('在弹窗中完成绑定编辑，避免表单和下拉选项被页面容器裁切。', 'Edit bindings in a modal so forms and dropdown menus are no longer clipped by neighboring panes.') }}</p>
+              <h3>{{ editingBindingId ? text('修改路由', 'Edit route') : text('新增路由', 'Add route') }}</h3>
+              <p>{{ text('在弹窗中完成路由编辑，避免表单和下拉选项被页面容器裁切。', 'Edit routes in a modal so forms and dropdown menus are no longer clipped by neighboring panes.') }}</p>
             </div>
             <button type="button" class="agents-modal-close" :aria-label="text('关闭', 'Close')" @click="closeBindingDialog">
               <X class="drawer-close-icon" aria-hidden="true" />
@@ -105,16 +105,16 @@
           <div class="agents-modal-body">
             <div class="agents-form-grid">
               <div class="form-field">
-                <label class="form-label">{{ text('绑定类型', 'Binding type') }}</label>
-                <GlassSelect v-model="bindingForm.type" :options="bindingTypeOptions" :placeholder="text('选择类型', 'Select type')" />
+                <label class="form-label">{{ text('路由类型', 'Route type') }}</label>
+                <StudioSelect v-model="bindingForm.type" :options="bindingTypeOptions" :placeholder="text('选择类型', 'Select type')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('频道', 'Channel') }}</label>
-                <GlassSelect v-model="bindingForm.channel" :options="bindingChannelOptions" :placeholder="text('选择频道', 'Select channel')" />
+                <StudioSelect v-model="bindingForm.channel" :options="bindingChannelOptions" :placeholder="text('选择频道', 'Select channel')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('账号', 'Account') }}</label>
-                <GlassSelect v-model="bindingForm.accountId" :options="bindingAccountOptions" :placeholder="text('默认账号 / 不指定', 'Default / unspecified')" />
+                <StudioSelect v-model="bindingForm.accountId" :options="bindingAccountOptions" :placeholder="text('默认账号 / 不指定', 'Default / unspecified')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('备注', 'Comment') }}</label>
@@ -122,7 +122,7 @@
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('匹配类型', 'Peer kind') }}</label>
-                <GlassSelect v-model="bindingForm.peerKind" :options="peerKindOptions" :placeholder="text('不指定', 'Unset')" />
+                <StudioSelect v-model="bindingForm.peerKind" :options="peerKindOptions" :placeholder="text('不指定', 'Unset')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('Peer ID', 'Peer ID') }}</label>
@@ -141,7 +141,7 @@
                 <input v-model="bindingForm.label" class="form-input" :placeholder="text('例如 frontend-codex-main', 'For example frontend-codex-main')" />
               </div>
               <div class="form-field form-field-full">
-                <label class="form-label">{{ text('绑定角色', 'Binding roles') }}</label>
+                <label class="form-label">{{ text('匹配角色', 'Matching roles') }}</label>
                 <textarea
                   v-model="bindingRolesText"
                   class="form-textarea"
@@ -151,11 +151,11 @@
               </div>
               <div class="form-field" v-if="bindingForm.type === 'acp'">
                 <label class="form-label">{{ text('后端', 'Backend') }}</label>
-                <GlassSelect v-model="bindingForm.backend" :options="runtimeBackendOptions" :placeholder="text('选择后端', 'Select backend')" />
+                <StudioSelect v-model="bindingForm.backend" :options="runtimeBackendOptions" :placeholder="text('选择后端', 'Select backend')" />
               </div>
               <div class="form-field" v-if="bindingForm.type === 'acp'">
                 <label class="form-label">{{ text('模式', 'Mode') }}</label>
-                <GlassSelect v-model="bindingForm.mode" :options="runtimeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                <StudioSelect v-model="bindingForm.mode" :options="runtimeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
               </div>
               <div class="form-field form-field-full" v-if="bindingForm.type === 'acp'">
                 <label class="form-label">{{ text('运行目录', 'CWD') }}</label>
@@ -169,7 +169,7 @@
               {{ text('取消', 'Cancel') }}
             </button>
             <button type="button" class="primary-button" :disabled="bindingBusy" @click="saveBinding">
-              {{ bindingBusy ? text('保存中...', 'Saving...') : editingBindingId ? text('保存修改', 'Save Changes') : text('新增绑定', 'Add binding') }}
+              {{ bindingBusy ? text('保存中...', 'Saving...') : editingBindingId ? text('保存修改', 'Save Changes') : text('新增路由', 'Add route') }}
             </button>
           </footer>
         </section>
@@ -179,12 +179,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onActivated, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { X } from '@lucide/vue';
 import type { AgentBindingInput, AgentDetailPayload } from '../../../../../types/agents';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
-import GlassSelect from '../../shared/components/GlassSelect.vue';
+import StudioSelect from '../../shared/components/StudioSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createAgentBinding, deleteAgentBinding, fetchAgentDetail, updateAgentBinding } from './api';
 
@@ -335,7 +335,7 @@ async function loadDetail(): Promise<void> {
 async function saveBinding(): Promise<void> {
   if (!agentId.value) return;
   if (!bindingForm.channel) {
-    errorMessage.value = text('请先选择绑定频道。', 'Please select a channel first.');
+    errorMessage.value = text('请先选择路由频道。', 'Please select a route channel first.');
     return;
   }
 
@@ -372,7 +372,7 @@ async function saveBinding(): Promise<void> {
     editingBindingId.value = '';
     noticeMessage.value = response.message;
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : text('保存绑定失败。', 'Failed to save binding.');
+    errorMessage.value = error instanceof Error ? error.message : text('保存路由失败。', 'Failed to save route.');
   } finally {
     bindingBusy.value = false;
   }
@@ -381,8 +381,8 @@ async function saveBinding(): Promise<void> {
 async function removeBinding(bindingId: string): Promise<void> {
   if (!agentId.value || !bindingId) return;
   const ok = await confirm({
-    title: text('确认删除绑定', 'Confirm delete binding'),
-    message: text('确定删除这条绑定吗？', 'Delete this binding?'),
+    title: text('确认删除路由', 'Confirm delete route'),
+    message: text('确定删除这条路由吗？', 'Delete this route?'),
     confirmText: text('删除', 'Delete'),
     cancelText: text('取消', 'Cancel'),
     tone: 'danger',
@@ -400,7 +400,7 @@ async function removeBinding(bindingId: string): Promise<void> {
     }
     noticeMessage.value = response.message;
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : text('删除绑定失败。', 'Failed to delete binding.');
+    errorMessage.value = error instanceof Error ? error.message : text('删除路由失败。', 'Failed to delete route.');
   } finally {
     bindingBusy.value = false;
   }
@@ -419,4 +419,13 @@ watch(
   },
   { immediate: true },
 );
+
+onActivated(async () => {
+  if (!agentId.value) return;
+  try {
+    await loadDetail();
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : text('读取 Agent 详情失败。', 'Failed to load agent detail.');
+  }
+});
 </script>

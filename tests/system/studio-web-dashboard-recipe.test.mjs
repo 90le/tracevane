@@ -23,16 +23,25 @@ const dashboardRecipe = fs.readFileSync(
   "utf8",
 );
 
+function cssRuleBlock(selector) {
+  const start = dashboardWorkspaceCss.indexOf(`${selector} {`);
+  assert.notEqual(start, -1, `Missing CSS rule for ${selector}`);
+  const end = dashboardWorkspaceCss.indexOf("\n}", start);
+  assert.notEqual(end, -1, `Missing CSS rule end for ${selector}`);
+  return dashboardWorkspaceCss.slice(start, end + 2);
+}
+
 test("dashboard view exposes a simplified home recipe with clear focus order", () => {
   const requiredClasses = [
     "home-control-surface",
     "home-stage-rhythm",
     "home-situation-band",
-    "home-command-panel",
-    "home-command-list",
-    "home-command-row",
-    "home-compact-visual-strip",
+    "home-workspace-strip",
+    "home-action-list",
+    "home-action-row",
     "home-system-snapshot",
+    "home-readiness-list",
+    "home-readiness-row",
   ];
 
   for (const className of requiredClasses) {
@@ -42,7 +51,6 @@ test("dashboard view exposes a simplified home recipe with clear focus order", (
   const zones = [
     'data-home-zone="situation"',
     'data-home-zone="entry"',
-    'data-home-zone="visual"',
     'data-home-zone="snapshot"',
   ];
 
@@ -53,6 +61,8 @@ test("dashboard view exposes a simplified home recipe with clear focus order", (
   assert.doesNotMatch(dashboardView, /data-home-zone="trend"/);
   assert.doesNotMatch(dashboardView, /data-home-zone="recent"/);
   assert.doesNotMatch(dashboardView, /data-home-zone="risk"/);
+  assert.doesNotMatch(dashboardView, /data-home-zone="visual"/);
+  assert.doesNotMatch(dashboardView, /Signal Mini Chart|Compact signal chart|轻量信号图/);
   assert.doesNotMatch(dashboardView, /home-risk-chip-strip/);
   assert.doesNotMatch(dashboardView, /home-risk-stage|home-risk-row/);
   assert.doesNotMatch(dashboardView, /等待风险汇总|Waiting for risk summary/);
@@ -68,7 +78,8 @@ test("dashboard view derives compact layout data from dedicated computed collect
   assert.doesNotMatch(dashboardView, /const dashboardRiskStageCards = computed\(/);
   assert.doesNotMatch(dashboardView, /const dashboardContextSummary = computed\(/);
   assert.match(dashboardView, /const dashboardSystemSignals = computed\(/);
-  assert.match(dashboardView, /const dashboardCoverageBars = computed\(/);
+  assert.match(dashboardView, /const dashboardReadinessSignals = computed\(/);
+  assert.doesNotMatch(dashboardView, /const dashboardCoverageBars = computed\(/);
   assert.doesNotMatch(dashboardView, /const dashboardStatusChips = computed\(/);
   assert.doesNotMatch(dashboardView, /const dashboardTrendPanels = computed\(/);
   assert.doesNotMatch(dashboardView, /const dashboardTrendPoints = computed\(/);
@@ -78,12 +89,34 @@ test("dashboard view owns feature CSS for the simplified home control surface", 
   assert.match(dashboardView, /import '\.\.\/features\/dashboard\/dashboard-workspace\.css';/);
   assert.doesNotMatch(dashboardView, /<style scoped>/);
   assert.match(dashboardWorkspaceCss, /\.home-control-surface\s*\{/);
-  assert.match(dashboardWorkspaceCss, /\.home-command-panel\s*\{/);
-  assert.match(dashboardWorkspaceCss, /\.home-command-list\s*\{/);
-  assert.match(dashboardWorkspaceCss, /\.home-compact-visual-strip\s*\{/);
+  assert.match(dashboardWorkspaceCss, /\.home-workspace-strip\s*\{/);
+  assert.match(dashboardWorkspaceCss, /\.home-action-list\s*\{/);
+  assert.doesNotMatch(dashboardView, /home-command-panel|home-command-list|home-command-row|home-command-copy/);
+  assert.doesNotMatch(dashboardWorkspaceCss, /home-command-panel|home-command-list|home-command-row|home-command-copy/);
   assert.match(dashboardWorkspaceCss, /\.home-system-snapshot\s*\{/);
+  assert.match(dashboardWorkspaceCss, /\.home-readiness-list\s*\{/);
+  assert.match(dashboardWorkspaceCss, /\.home-readiness-row\s*\{[\s\S]*grid-template-columns:\s*minmax\(120px,\s*0\.72fr\) minmax\(72px,\s*auto\) minmax\(0,\s*1\.28fr\);/);
+  assert.match(dashboardWorkspaceCss, /\.home-situation-meters\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit, minmax\(180px, 1fr\)\);[\s\S]*gap:\s*0;[\s\S]*background:\s*var\(--surface-base\);/);
+  assert.match(dashboardWorkspaceCss, /\.home-situation-meter\s*\{[\s\S]*background:\s*transparent;[\s\S]*box-shadow:[\s\S]*inset -1px 0 0 var\(--border-subtle\),[\s\S]*inset 0 -1px 0 var\(--border-subtle\);/);
+  assert.doesNotMatch(dashboardWorkspaceCss, /home-compact-visual-strip|home-mini-chart/);
+  assert.match(dashboardWorkspaceCss, /\.home-resource-signals\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit, minmax\(210px, 1fr\)\);[\s\S]*background:\s*var\(--surface-base\);/);
+  assert.doesNotMatch(
+    dashboardWorkspaceCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient|--sky|--atlas|--glass/,
+  );
+  assert.doesNotMatch(dashboardWorkspaceCss, /--shell-(?:panel|stage|highlight)|var\(--surface\)/);
+  assert.match(
+    dashboardWorkspaceCss,
+    /\.home-readiness-row\.tone-high\s*\{[\s\S]*inset 3px 0 0 var\(--danger\),/,
+  );
+  assert.match(
+    dashboardWorkspaceCss,
+    /\.home-readiness-row\.tone-medium\s*\{[\s\S]*inset 3px 0 0 var\(--warning\),/,
+  );
   assert.doesNotMatch(dashboardWorkspaceCss, /\.home-recent-stream\s*\{/);
   assert.doesNotMatch(dashboardWorkspaceCss, /\.home-risk-stage\s*\{/);
+  assert.doesNotMatch(cssRuleBlock(".home-situation-meters"), /gap:\s*1px/);
+  assert.doesNotMatch(cssRuleBlock(".home-readiness-list"), /background:\s*var\(--shell-panel-border\)/);
   assert.doesNotMatch(dashboardView, /home-entry-grid|home-quick-action|home-workspace-entry/);
 });
 

@@ -12,10 +12,9 @@
       <Menu class="studio-shell-topbar__icon" aria-hidden="true" />
     </button>
 
-    <div class="studio-shell-topbar__identity" aria-live="polite">
-      <span class="studio-shell-topbar__group-label">{{ currentGroupTitle }}</span>
-      <strong>{{ currentTitle }}</strong>
-      <small>{{ currentPathLabel }}</small>
+    <div class="studio-shell-topbar__identity" :aria-label="routeIdentityLabel" aria-live="polite">
+      <span class="studio-shell-topbar__route-label">{{ currentGroupTitle }}</span>
+      <code class="studio-shell-topbar__path-label">{{ currentPathLabel }}</code>
     </div>
 
     <div class="studio-shell-topbar__controls">
@@ -54,6 +53,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { Monitor, Moon, Sun, Menu } from '@lucide/vue';
 import type { Locale } from '../shared/locale';
 import type { ThemeMode } from '../shared/theme';
@@ -70,7 +70,7 @@ type LocaleOption = {
   shortLabel: string;
 };
 
-defineProps<{
+const props = defineProps<{
   isMobile: boolean;
   mobileNavOpen: boolean;
   currentTitle: string;
@@ -96,4 +96,8 @@ const resolveThemeIcon = (value: ThemeMode) => {
   if (value === 'dark') return Moon;
   return Monitor;
 };
+
+const routeIdentityLabel = computed(() =>
+  [props.currentGroupTitle, props.currentTitle, props.currentPathLabel].filter(Boolean).join(' / '),
+);
 </script>

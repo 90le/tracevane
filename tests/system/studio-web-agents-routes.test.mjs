@@ -76,7 +76,8 @@ test("agents workspace layout exists and owns the persistent stage shell", () =>
   assert.match(agentsWorkspaceLayoutSource, /agents-workspace-shell/);
   assert.match(agentsWorkspaceLayoutSource, /agent-rail-list/);
   assert.match(agentsWorkspaceLayoutSource, /agent-rail-group/);
-  assert.match(agentsWorkspaceLayoutSource, /agents-stage-tabs/);
+  assert.match(agentsWorkspaceLayoutSource, /agents-task-nav/);
+  assert.doesNotMatch(agentsWorkspaceLayoutSource, /agents-stage-tabs|mobile-stage-tabs/);
   assert.match(agentsWorkspaceLayoutSource, /openQuickConfig/);
   assert.match(agentsWorkspaceLayoutSource, /openCreateModal/);
 });
@@ -90,7 +91,7 @@ test("agents workspace navigation can leave advanced routes cleanly", () => {
     agentsWorkspaceLayoutSource,
     /function openAgent\(agentId: string, section: 'overview' \| 'docs' \| 'bindings' \| 'sessions' \| 'advanced' = 'overview'\)/,
   );
-  assert.match(agentsWorkspaceLayoutSource, /@click="openAgent\(routeAgentId, tab\.value\)"/);
+  assert.match(agentsWorkspaceLayoutSource, /@click="openAgent\(routeAgentId, navItem\.value\)"/);
   assert.match(agentsWorkspaceLayoutSource, /const nextSection = routeAgentId\.value === nextAgentId && route\.path !== '\/agents'/);
 });
 

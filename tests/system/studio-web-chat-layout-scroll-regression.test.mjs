@@ -85,7 +85,7 @@ test("chat route shell establishes an unbroken full-height chain without centere
   );
   assert.match(
     chatShellWorkspaceCss,
-    /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+    /\.main-content\.chat-surface-route\s+\.shell-route-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
@@ -97,7 +97,7 @@ test("chat route shell establishes an unbroken full-height chain without centere
   );
   assert.match(
     chatShellWorkspaceCss,
-    /\.shell-route-stage-chat\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);[\s\S]*overflow:\s*hidden;/,
+    /\.shell-route-stage-chat\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);[\s\S]*overflow:\s*hidden;/,
   );
   assert.match(
     chatShellWorkspaceCss,
@@ -124,7 +124,7 @@ test("chat page keeps independent list and thread scrollers inside the full-heig
   );
   assert.match(
     chatShellWorkspaceCss,
-    /\.chat-shell-layout\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+    /\.chat-shell-layout\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
   );
   assert.match(
     sessionListSharedCss,

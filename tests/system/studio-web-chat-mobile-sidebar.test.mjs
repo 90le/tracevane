@@ -157,7 +157,7 @@ test("mobile filter panel escapes drawer clipping and stays tappable", () => {
   );
   assert.match(
     sessionFilterCss,
-    /@media \(max-width:\s*1040px\)\s*\{[\s\S]*\.chat-shell-session-filter-layer\s*\{[\s\S]*background:\s*color-mix\(in srgb, var\(--chat-sidebar-bg\) 99%, transparent 1%\);/,
+    /@media \(max-width:\s*1040px\)\s*\{[\s\S]*\.chat-shell-session-filter-layer\s*\{[\s\S]*background:\s*var\(--chat-sidebar-bg\);/,
   );
 });
 

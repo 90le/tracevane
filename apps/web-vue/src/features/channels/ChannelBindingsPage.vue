@@ -6,7 +6,7 @@
         <strong>{{ text('当前聚焦账号', 'Focused account') }} · {{ focusedAccount.id }}</strong>
       </div>
       <button type="button" class="secondary-button compact-button" @click="clearAccountFocus">
-        {{ text('查看全部绑定', 'Show all bindings') }}
+        {{ text('查看全部路由', 'Show all routes') }}
       </button>
     </article>
 
@@ -14,12 +14,12 @@
       <div class="channels-stage-task-head operate-stage-task-head">
         <div>
           <p class="eyebrow">{{ focusedAccount ? `${channel.type} · ${focusedAccount.id}` : channel.type }}</p>
-          <h3>{{ text('绑定列表', 'Binding list') }}</h3>
-          <p>{{ text('先看已有命中规则，再决定是否新增。账号聚焦时这里只显示该账号相关绑定。', 'Review existing routing rules first, then decide whether to add another. When an account is focused, only bindings for that account are shown here.') }}</p>
+          <h3>{{ text('路由规则', 'Routing rules') }}</h3>
+          <p>{{ text('先看已有命中规则，再决定是否新增。账号聚焦时这里只显示该账号相关路由。', 'Review existing routing rules first, then decide whether to add another. When an account is focused, only routes for that account are shown here.') }}</p>
         </div>
 
         <div class="page-actions">
-          <button type="button" class="primary-button compact-button" @click="startCreate">{{ text('新增绑定', 'Create binding') }}</button>
+          <button type="button" class="primary-button compact-button" @click="startCreate">{{ text('新增路由', 'Create route') }}</button>
         </div>
       </div>
 
@@ -53,7 +53,7 @@
           >
             <div class="binding-table-cell">
               <strong>{{ binding.agentId }}</strong>
-              <p>{{ binding.type === 'acp' ? 'ACP' : text('普通绑定', 'Standard binding') }}</p>
+              <p>{{ binding.type === 'acp' ? 'ACP' : text('普通路由', 'Standard route') }}</p>
             </div>
             <div class="binding-table-cell">
               <strong>{{ binding.match.peerKind || '—' }}</strong>
@@ -89,8 +89,8 @@
       <div v-else class="empty-inline">
         {{
           focusedAccount
-            ? text('这个账号还没有绑定。', 'This account does not have any bindings yet.')
-            : text('当前 provider 还没有绑定。', 'This provider does not have any bindings yet.')
+            ? text('这个账号还没有路由。', 'This account does not have any routes yet.')
+            : text('当前 provider 还没有路由。', 'This provider does not have any routes yet.')
         }}
       </div>
     </article>
@@ -134,18 +134,18 @@ const visibleBindings = computed(() => {
 const bindingTaskTitle = computed(() => {
   if (editingBindingId.value) {
     return focusedAccount.value
-      ? text(`修改账号 ${focusedAccount.value.id} 的绑定`, `Edit binding for account ${focusedAccount.value.id}`)
-      : text('修改绑定', 'Edit binding');
+      ? text(`修改账号 ${focusedAccount.value.id} 的路由`, `Edit route for account ${focusedAccount.value.id}`)
+      : text('修改路由', 'Edit route');
   }
   return focusedAccount.value
-    ? text(`为账号 ${focusedAccount.value.id} 新增绑定`, `Create binding for account ${focusedAccount.value.id}`)
-    : text('新增绑定', 'Create binding');
+    ? text(`为账号 ${focusedAccount.value.id} 新增路由`, `Create route for account ${focusedAccount.value.id}`)
+    : text('新增路由', 'Create route');
 });
 const editorEyebrow = computed(() => {
   return focusedAccount.value ? `${channel.value?.type || ''} · ${focusedAccount.value.id}` : channel.value?.type || '';
 });
 const bindingEditorDescription = computed(() => {
-  return text('绑定编辑只保留匹配、账号和 ACP 路由字段，不再额外堆说明卡。', 'Binding editing now stays focused on match rules, target accounts, and ACP routing without extra explanatory cards.');
+  return text('路由编辑只保留匹配、账号和 ACP 路由字段，不再额外堆说明块。', 'Route editing now stays focused on match rules, target accounts, and ACP routing without extra explanatory blocks.');
 });
 const isCreatingBinding = computed(() => editing.value && !editingBindingId.value);
 
@@ -295,8 +295,8 @@ async function save(): Promise<void> {
 async function remove(bindingId: string): Promise<void> {
   if (!channel.value) return;
   const accepted = await confirm({
-    title: text('确认删除绑定', 'Confirm delete binding'),
-    message: text('确定删除这条 binding 吗？', 'Delete this binding?'),
+    title: text('确认删除路由', 'Confirm delete route'),
+    message: text('确定删除这条路由吗？', 'Delete this route?'),
     confirmText: text('删除', 'Delete'),
     cancelText: text('取消', 'Cancel'),
     tone: 'danger',

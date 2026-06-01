@@ -15,8 +15,8 @@
       </div>
 
       <div class="channels-access-grid">
-        <section class="channels-access-card">
-          <div class="channels-access-card__head">
+        <section class="channels-access-section">
+          <div class="channels-access-section__head">
             <strong>{{ text('私聊白名单', 'DM allowlist') }}</strong>
             <span>{{ text('允许这些用户或私聊来源触发当前账号。', 'Allow these users or direct-message sources to trigger this account.') }}</span>
           </div>
@@ -39,8 +39,8 @@
           </div>
         </section>
 
-        <section class="channels-access-card">
-          <div class="channels-access-card__head">
+        <section class="channels-access-section">
+          <div class="channels-access-section__head">
             <strong>{{ text('群组白名单', 'Group allowlist') }}</strong>
             <span>{{ text('允许这些群组、频道或发送者入口触发当前账号。', 'Allow these groups, channels, or sender entrypoints to trigger this account.') }}</span>
           </div>
@@ -81,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onActivated, reactive, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import { X } from '@lucide/vue';
 import { fetchChannelAccountAccess, saveChannelAccountAccess } from './api';
@@ -119,23 +119,32 @@ function captureDraftSnapshot(): string {
   });
 }
 
+async function loadAccessDraft(channelType?: string, accountId?: string): Promise<void> {
+  if (!channelType || !accountId) return;
+  try {
+    const payload = await fetchChannelAccountAccess(channelType, accountId);
+    draft.allowFrom = [...payload.allowFrom];
+    draft.groupAllowFrom = [...payload.groupAllowFrom];
+    lastSavedSnapshot.value = captureDraftSnapshot();
+  } catch (error) {
+    workspace.setErrorMessage(error instanceof Error ? error.message : text('未知错误', 'Unknown error'));
+  }
+}
+
 watch(
   () => [channel.value?.type, account.value?.id] as const,
-  async ([channelType, accountId]) => {
-    if (!channelType || !accountId) return;
-    try {
-      const payload = await fetchChannelAccountAccess(channelType, accountId);
-      draft.allowFrom = [...payload.allowFrom];
-      draft.groupAllowFrom = [...payload.groupAllowFrom];
-      lastSavedSnapshot.value = captureDraftSnapshot();
-    } catch (error) {
-      workspace.setErrorMessage(error instanceof Error ? error.message : text('未知错误', 'Unknown error'));
-    }
+  ([channelType, accountId]) => {
+    void loadAccessDraft(channelType, accountId);
   },
   { immediate: true },
 );
 
 const hasUnsavedChanges = computed(() => captureDraftSnapshot() !== lastSavedSnapshot.value);
+
+onActivated(() => {
+  if (saving.value || hasUnsavedChanges.value) return;
+  void loadAccessDraft(channel.value?.type, account.value?.id);
+});
 const saveStateTitle = computed(() => {
   if (saving.value) return text('保存中', 'Saving');
   if (hasUnsavedChanges.value) return text('有未保存更改', 'Unsaved changes');

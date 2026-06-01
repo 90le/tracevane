@@ -9,7 +9,7 @@
     </div>
 
     <div class="channels-binding-editor__summary">
-      <span>{{ draft.type === 'acp' ? 'ACP' : text('普通绑定', 'Standard binding') }}</span>
+      <span>{{ draft.type === 'acp' ? 'ACP' : text('普通路由', 'Standard route') }}</span>
       <span>{{ draft.accountId || text('整个渠道', 'Whole provider') }}</span>
       <span>{{ draft.agentId || text('未选择 Agent', 'Agent unset') }}</span>
     </div>
@@ -22,16 +22,16 @@
         </div>
         <div class="channels-binding-editor-section__grid">
           <div class="form-field">
-            <label class="form-label">{{ text('绑定类型', 'Binding type') }}</label>
-            <GlassSelect v-model="draft.type" :options="bindingTypeOptions" />
+            <label class="form-label">{{ text('路由类型', 'Route type') }}</label>
+            <StudioSelect v-model="draft.type" :options="bindingTypeOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">Agent</label>
-            <GlassSelect v-model="draft.agentId" :options="agentOptions" :placeholder="text('请选择 Agent', 'Select an agent')" />
+            <StudioSelect v-model="draft.agentId" :options="agentOptions" :placeholder="text('请选择 Agent', 'Select an agent')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('账户', 'Account') }}</label>
-            <GlassSelect v-model="draft.accountId" :options="accountOptions" :placeholder="text('未指定', 'Unset')" />
+            <StudioSelect v-model="draft.accountId" :options="accountOptions" :placeholder="text('未指定', 'Unset')" />
           </div>
         </div>
       </section>
@@ -44,7 +44,7 @@
         <div class="channels-binding-editor-section__grid">
           <div class="form-field">
             <label class="form-label">{{ text('匹配类型', 'Peer kind') }}</label>
-            <GlassSelect v-model="draft.peerKind" :options="peerKindOptions" :placeholder="text('未指定', 'Unset')" />
+            <StudioSelect v-model="draft.peerKind" :options="peerKindOptions" :placeholder="text('未指定', 'Unset')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Peer ID', 'Peer ID') }}</label>
@@ -55,7 +55,7 @@
             <input v-model="draft.guildId" class="form-input" />
           </div>
           <div class="form-field form-field-full">
-            <label class="form-label">{{ text('绑定角色', 'Binding roles') }}</label>
+            <label class="form-label">{{ text('匹配角色', 'Matching roles') }}</label>
             <textarea
               v-model="draft.roles"
               class="form-textarea"
@@ -63,7 +63,7 @@
               :placeholder="text('用逗号或换行分隔，例如：ops, triage', 'Use commas or new lines, for example: ops, triage')"
             />
             <span class="field-hint">
-              {{ text('只有匹配到这些角色时才会命中该绑定。留空表示不按角色过滤。', 'Only match this binding when one of these roles is present. Leave empty to avoid role filtering.') }}
+              {{ text('只有匹配到这些角色时才会命中该路由。留空表示不按角色过滤。', 'Only match this route when one of these roles is present. Leave empty to avoid role filtering.') }}
             </span>
           </div>
         </div>
@@ -72,7 +72,7 @@
       <section v-if="draft.type === 'acp'" class="channels-binding-editor-section form-field-full">
         <div class="channels-binding-editor-section__head">
           <strong>{{ text('ACP 路由', 'ACP routing') }}</strong>
-          <span>{{ text('仅 ACP 类型需要填写，普通绑定会忽略这些字段。', 'Only ACP bindings use these fields. Standard bindings ignore them.') }}</span>
+          <span>{{ text('仅 ACP 类型需要填写，普通路由会忽略这些字段。', 'Only ACP routes use these fields. Standard routes ignore them.') }}</span>
         </div>
         <div class="channels-binding-editor-section__grid">
           <div class="form-field">
@@ -119,7 +119,7 @@
     <div class="page-actions">
       <button type="button" class="secondary-button" @click="$emit('cancel')">{{ text('取消', 'Cancel') }}</button>
       <button type="button" class="primary-button" :disabled="saving" @click="$emit('save')">
-        {{ saving ? text('保存中...', 'Saving...') : text('保存绑定', 'Save binding') }}
+        {{ saving ? text('保存中...', 'Saving...') : text('保存路由', 'Save route') }}
       </button>
     </div>
   </article>
@@ -127,7 +127,7 @@
 
 <script setup lang="ts">
 import type { ChannelSelectOption } from './channel-ui';
-import GlassSelect from '../../shared/components/GlassSelect.vue';
+import StudioSelect from '../../shared/components/StudioSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 
 defineOptions({ name: 'ChannelBindingEditorPanel' });

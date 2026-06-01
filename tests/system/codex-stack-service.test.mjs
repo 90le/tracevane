@@ -884,7 +884,6 @@ test("codex stack blocks lifecycle-unsafe direct service starts", async () => {
       "case \"$*\" in",
       "  \"--user is-active cli-proxy-api.service\") echo \"inactive\"; exit 3 ;;",
       "  \"--user start cpa-compact-proxy.service\") echo \"should not start compact\"; exit 0 ;;",
-      "  \"--user restart codex-stack-watchdog.timer\") echo \"should not restart watchdog\"; exit 0 ;;",
       "esac",
       "exit 0",
     ].join("\n"),
@@ -897,20 +896,13 @@ test("codex stack blocks lifecycle-unsafe direct service starts", async () => {
           && error.code === "codex_stack_service_lifecycle_guard"
           && error.statusCode === 409,
       );
-      await assert.rejects(
-        service.controlService(undefined, "codex-stack-watchdog.timer", "restart"),
-        (error) => isCodexStackServiceError(error)
-          && error.code === "codex_stack_service_lifecycle_guard"
-          && error.statusCode === 409,
-      );
       const calls = readCalls();
       assert.ok(!calls.includes("--user start cpa-compact-proxy.service"));
-      assert.ok(!calls.includes("--user restart codex-stack-watchdog.timer"));
     },
   );
 });
 
-test("codex stack blocks legacy healthcheck from being restarted by service control", async () => {
+test("codex stack blocks auto-managed units from generic service control", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -930,20 +922,26 @@ test("codex stack blocks legacy healthcheck from being restarted by service cont
   await withScriptedSystemctl(
     [
       "case \"$*\" in",
-      "  \"--user restart cli-proxy-api-healthcheck.timer\") echo \"should not restart legacy healthcheck\"; exit 0 ;;",
+      "  *\"cli-proxy-api-healthcheck.timer\"*) echo \"should not touch legacy healthcheck\"; exit 0 ;;",
+      "  *\"codex-stack-watchdog.timer\"*) echo \"should not touch watchdog\"; exit 0 ;;",
       "esac",
       "exit 0",
     ].join("\n"),
     async ({ readCalls }) => {
       const service = createCodexStackService(config);
 
-      await assert.rejects(
-        service.controlService(undefined, "cli-proxy-api-healthcheck.timer", "restart"),
-        (error) => isCodexStackServiceError(error)
-          && error.code === "codex_stack_legacy_healthcheck_blocked"
-          && error.statusCode === 409,
-      );
-      assert.ok(!readCalls().includes("--user restart cli-proxy-api-healthcheck.timer"));
+      for (const unitId of ["cli-proxy-api-healthcheck.timer", "codex-stack-watchdog.timer"]) {
+        for (const action of ["start", "stop", "restart", "enable"]) {
+          await assert.rejects(
+            service.controlService(undefined, unitId, action),
+            (error) => isCodexStackServiceError(error)
+              && error.code === "codex_stack_managed_service_control_blocked"
+              && error.statusCode === 409,
+          );
+        }
+      }
+
+      assert.deepEqual(readCalls(), []);
     },
   );
 });

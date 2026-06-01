@@ -1,13 +1,13 @@
 .cs-model-catalog-card {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
-    var(--surface);
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-base) 96%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
+    var(--surface-base);
 }
 
 .cs-upstream-map {
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--success) 12%, transparent), transparent 34%),
-    linear-gradient(135deg, color-mix(in srgb, var(--surface) 92%, #101820 8%), var(--surface));
+    linear-gradient(135deg, color-mix(in srgb, var(--surface-base) 92%, var(--code-bg) 8%), var(--surface-base));
 }
 
 .cs-model-catalog-card .cs-card-header,
@@ -54,7 +54,7 @@
 
 .cs-model-list .cs-model-current {
   border-color: color-mix(in srgb, var(--success) 48%, var(--line));
-  background: color-mix(in srgb, var(--success) 18%, var(--surface));
+  background: color-mix(in srgb, var(--success) 18%, var(--surface-base));
   font-weight: 700;
 }
 
@@ -68,7 +68,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 14px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
 }
 
 .cs-upstream-grid span {
@@ -138,7 +138,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
 }
 
 .cs-route-selector strong {
@@ -219,7 +219,7 @@
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 6px 12px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 82%, transparent);
   color: var(--text-soft);
   font-size: 0.85rem;
 }
@@ -247,7 +247,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 86%, transparent);
 }
 
 .cs-impact-item strong {
@@ -262,11 +262,11 @@
 }
 
 .cs-impact-item.tone-warning {
-  border-color: color-mix(in srgb, #f59e0b 42%, var(--line));
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--line));
 }
 
 .cs-impact-item.tone-danger {
-  border-color: color-mix(in srgb, #ef4444 46%, var(--line));
+  border-color: color-mix(in srgb, var(--danger) 46%, var(--line));
 }
 
 @media (max-width: 960px) {

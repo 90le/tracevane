@@ -7,12 +7,16 @@ export type CodexStackComponentId =
   | "cc-connect"
   | "watchdog";
 
-export type CodexStackServiceId =
+export type CodexStackManualServiceId =
   | "cli-proxy-api.service"
-  | "cli-proxy-api-healthcheck.timer"
   | "cpa-compact-proxy.service"
-  | "cc-connect.service"
+  | "cc-connect.service";
+
+export type CodexStackManagedServiceId =
+  | "cli-proxy-api-healthcheck.timer"
   | "codex-stack-watchdog.timer";
+
+export type CodexStackServiceId = CodexStackManualServiceId | CodexStackManagedServiceId;
 
 export type CodexStackServiceAction = "restart" | "start" | "stop" | "enable";
 
@@ -474,7 +478,7 @@ export interface CodexStackMutationResponse {
   message: string;
   summary?: CodexStackSummaryPayload;
   job?: CodexStackJob;
-  restartRequiredUnits?: CodexStackServiceId[];
+  restartRequiredUnits?: CodexStackManualServiceId[];
 }
 
 export interface CodexStackLogResponse {

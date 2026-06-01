@@ -43,7 +43,7 @@
       <p class="cs-field-hint">
         {{ text("默认优先使用当前配置或 openclaw.json 里的默认模型；用户仍可手动改成任何 CPA 支持的模型。上游 API 进入 CPA，再由 Compact 暴露给 Codex 和 cc-connect。", "The default follows the current configuration or the openclaw.json default model first, while users can still choose any model supported by CPA. Upstream API enters CPA, then Compact exposes it to Codex and cc-connect.") }}
       </p>
-      <div class="cs-flow-steps">
+      <div class="cs-install-chain-steps">
         <span>{{ text("上游 API", "Upstream API") }}</span>
         <span>CPA :{{ form.cpaPort }}</span>
         <span>Compact :{{ form.compactPort }}</span>

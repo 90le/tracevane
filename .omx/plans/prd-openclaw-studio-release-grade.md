@@ -37,10 +37,10 @@ Optimize the Studio extension end to end until it is safe to publish for real us
 - TUN/VPN/loopback proxy risks are detected or explained with repair action.
 - Watchdog and legacy inspection state are hidden or auto-managed unless they are actionable.
 
-### M2. Calm Ops OS frontend
+### M2. DuoYuan Studio Ops frontend
 
 - Follow `DESIGN.md` as the canonical UI contract.
-- Replace card walls with setup/repair wizards, command centers, split inspectors, runtime consoles, data review panes, floating logs, and focused action rows.
+- Replace card walls with setup/repair wizards, runtime strips, health action lanes, split inspectors, runtime consoles, data review panes, floating logs, and focused action rows.
 - Remove duplicate navigation and non-actionable context panels.
 - Light and dark themes are tuned together and remain readable.
 

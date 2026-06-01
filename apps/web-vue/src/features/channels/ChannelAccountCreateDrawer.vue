@@ -35,7 +35,7 @@
                   </span>
                 </div>
 
-                <label class="toggle-card form-field-full">
+                <label class="option-row form-field-full">
                   <input v-model="draft.enabled" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('创建后立即启用', 'Enable after create') }}</strong>
@@ -68,27 +68,27 @@
               <div class="form-grid">
                 <div class="form-field">
                   <label class="form-label">{{ text('私聊策略', 'DM policy') }}</label>
-                  <GlassSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+                  <StudioSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('群组策略', 'Group policy') }}</label>
-                  <GlassSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+                  <StudioSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('上下文可见性', 'Context visibility') }}</label>
-                  <GlassSelect v-model="draft.contextVisibility" :options="contextVisibilityOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+                  <StudioSelect v-model="draft.contextVisibility" :options="contextVisibilityOptions" :placeholder="text('继承默认值', 'Inherit default')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('流式响应', 'Streaming') }}</label>
-                  <GlassSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+                  <StudioSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('连接模式', 'Connection mode') }}</label>
-                  <GlassSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" />
+                  <StudioSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('渲染模式', 'Render mode') }}</label>
-                  <GlassSelect v-model="draft.renderMode" :options="renderModeOptions" :placeholder="text('未指定', 'Unset')" />
+                  <StudioSelect v-model="draft.renderMode" :options="renderModeOptions" :placeholder="text('未指定', 'Unset')" />
                 </div>
                 <div class="form-field form-field-full">
                   <label class="form-label">{{ text('代理地址', 'Proxy URL') }}</label>
@@ -122,7 +122,7 @@ import { reactive, watch } from 'vue';
 import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import type { ChannelAccountInput, ChannelCatalogEntry } from '../../../../../types/channels';
-import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
+import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createBlankAccountDraft } from './channel-ui';
 import './channels-drawer.css';
@@ -135,12 +135,12 @@ const props = defineProps<{
   channelLabel: string;
   catalog: ChannelCatalogEntry | null;
   initial: ChannelAccountInput | null;
-  dmPolicyOptions: GlassSelectOption[];
-  groupPolicyOptions: GlassSelectOption[];
-  contextVisibilityOptions: GlassSelectOption[];
-  streamingOptions: GlassSelectOption[];
-  connectionModeOptions: GlassSelectOption[];
-  renderModeOptions: GlassSelectOption[];
+  dmPolicyOptions: StudioSelectOption[];
+  groupPolicyOptions: StudioSelectOption[];
+  contextVisibilityOptions: StudioSelectOption[];
+  streamingOptions: StudioSelectOption[];
+  connectionModeOptions: StudioSelectOption[];
+  renderModeOptions: StudioSelectOption[];
 }>();
 
 const emit = defineEmits<{

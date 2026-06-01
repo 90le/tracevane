@@ -15,7 +15,8 @@ const agentsControlPage = fs.readFileSync(
 );
 
 test("agents workspace lifts navigation into the persistent shell and removes the old temporary tray pattern", () => {
-  assert.match(agentsWorkspaceLayout, /agents-stage-tabs/);
+  assert.match(agentsWorkspaceLayout, /agents-task-nav/);
+  assert.doesNotMatch(agentsWorkspaceLayout, /agents-stage-tabs|mobile-stage-tabs/);
   assert.match(agentsWorkspaceLayout, /agent-rail-group/);
   assert.match(agentsWorkspaceLayout, /默认入口 Agent|Default entry agent/);
   assert.match(agentsWorkspaceLayout, /openQuickConfig/);

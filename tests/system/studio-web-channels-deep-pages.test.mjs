@@ -39,9 +39,9 @@ test("channels deep pages use single-task heads and avoid page-level header rows
   assert.match(accountDetailPage, /channels-stage-task-head/);
   assert.match(accountDetailPage, /channels-account-detail-section/);
   assert.match(accessControlPage, /channels-stage-task-head/);
-  assert.match(accessControlPage, /channels-access-card/);
+  assert.match(accessControlPage, /channels-access-section/);
   assert.match(pairingPage, /channels-stage-task-head/);
-  assert.match(pairingPage, /channels-pairing-card/);
+  assert.match(pairingPage, /channels-pairing-section/);
   assert.match(bindingsPage, /channels-stage-task-head/);
   assert.match(bindingsPage, /binding-table-editor-row/);
   assert.match(bindingsPage, /ChannelBindingEditorPanel/);
@@ -56,7 +56,7 @@ test("channels deep pages use single-task heads and avoid page-level header rows
   assert.doesNotMatch(bindingsPage, /page-header-row/);
 });
 
-test("access and pairing pages expose task cards and useful empty states", () => {
+test("access and pairing pages expose task sections and useful empty states", () => {
   assert.match(accessControlPage, /channels-access-grid/);
   assert.match(
     accessControlPage,
@@ -67,12 +67,21 @@ test("access and pairing pages expose task cards and useful empty states", () =>
     /当前没有群组白名单|No group allowlist entries yet/,
   );
   assert.match(pairingPage, /channels-pairing-summary/);
-  assert.match(pairingPage, /channels-pairing-card/);
+  assert.match(pairingPage, /channels-pairing-section/);
   assert.match(pairingPage, /不支持配对|Pairing unsupported/);
   assert.match(
     pairingPage,
     /当前频道或账号不支持配对审批|does not support pairing approval/,
   );
+});
+
+test("channels access and pairing pages refresh on activation without overwriting dirty edits", () => {
+  assert.match(accessControlPage, /import \{ computed, onActivated, reactive, ref, watch \} from 'vue';/);
+  assert.match(accessControlPage, /async function loadAccessDraft\(channelType\?: string, accountId\?: string\): Promise<void> \{/);
+  assert.match(accessControlPage, /onActivated\(\(\) => \{[\s\S]*if \(saving\.value \|\| hasUnsavedChanges\.value\) return;[\s\S]*void loadAccessDraft\(channel\.value\?\.type, account\.value\?\.id\);[\s\S]*\}\);/);
+
+  assert.match(pairingPage, /import \{ computed, onActivated, ref, watch \} from 'vue';/);
+  assert.match(pairingPage, /onActivated\(\(\) => \{[\s\S]*if \(loading\.value \|\| approving\.value\) return;[\s\S]*void loadPairing\(\);[\s\S]*\}\);/);
 });
 
 test("channels deep pages keep page styles in the shared feature stylesheet", () => {
@@ -89,11 +98,12 @@ test("channels deep pages keep page styles in the shared feature stylesheet", ()
   assert.match(channelsPagesCss, /\.channels-provider-settings-section/);
   assert.match(channelsPagesCss, /\.channels-account-detail-section/);
   assert.match(channelsPagesCss, /\.channels-access-grid\s*\{/);
-  assert.match(channelsPagesCss, /\.channels-pairing-card/);
+  assert.match(channelsPagesCss, /\.channels-pairing-section/);
   assert.match(channelsPagesCss, /\.channels-save-bar\s*\{/);
+  assert.doesNotMatch(channelsPagesCss, /channels-access-card|channels-pairing-card|linear-gradient|radial-gradient|var\(--sky\)/);
 });
 
-test("provider settings exposes provider defaults and thread binding runtime fields", () => {
+test("provider settings exposes provider defaults and thread routing runtime fields", () => {
   assert.match(providerSettingsPage, /configWritesMode/);
   assert.match(providerSettingsPage, /healthMonitorMode/);
   assert.match(

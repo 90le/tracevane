@@ -62,30 +62,30 @@
             </div>
           </div>
 
-          <nav class="system-command-list" :aria-label="text('系统工作入口', 'System workspace entries')">
-            <button type="button" class="system-command-row" @click="router.push('/system/events')">
-              <span class="system-command-row__index">01</span>
-              <span class="system-command-row__copy">
+          <nav class="system-action-list" :aria-label="text('系统工作入口', 'System workspace entries')">
+            <button type="button" class="system-action-row" @click="router.push('/system/events')">
+              <span class="system-action-row__index">01</span>
+              <span class="system-action-row__copy">
                 <strong>{{ text('事件中心', 'Event Center') }}</strong>
                 <span>{{ text('查看配置、修复和运行事件', 'Review config, repair, and runtime events') }}</span>
               </span>
-              <span class="system-command-row__verb">{{ text('打开', 'Open') }}</span>
+              <span class="system-action-row__verb">{{ text('打开', 'Open') }}</span>
             </button>
-            <button type="button" class="system-command-row" @click="router.push('/terminal')">
-              <span class="system-command-row__index">02</span>
-              <span class="system-command-row__copy">
+            <button type="button" class="system-action-row" @click="router.push('/terminal')">
+              <span class="system-action-row__index">02</span>
+              <span class="system-action-row__copy">
                 <strong>{{ text('去终端', 'Open Terminal') }}</strong>
                 <span>{{ text('进入恢复会话和命令执行台', 'Open recovery sessions and command execution') }}</span>
               </span>
-              <span class="system-command-row__verb">{{ text('打开', 'Open') }}</span>
+              <span class="system-action-row__verb">{{ text('打开', 'Open') }}</span>
             </button>
-            <button type="button" class="system-command-row" @click="router.push('/cron')">
-              <span class="system-command-row__index">03</span>
-              <span class="system-command-row__copy">
+            <button type="button" class="system-action-row" @click="router.push('/cron')">
+              <span class="system-action-row__index">03</span>
+              <span class="system-action-row__copy">
                 <strong>{{ text('去定时任务', 'Open Cron') }}</strong>
                 <span>{{ text('检查计划任务和后台动作', 'Inspect schedules and background actions') }}</span>
               </span>
-              <span class="system-command-row__verb">{{ text('打开', 'Open') }}</span>
+              <span class="system-action-row__verb">{{ text('打开', 'Open') }}</span>
             </button>
           </nav>
         </article>
@@ -96,7 +96,7 @@
           <div class="system-stage-head">
             <div>
               <p class="eyebrow">{{ diagnostics?.config.pluginId || 'studio' }}</p>
-              <h3 class="system-stage-title">{{ text('诊断指挥台', 'Diagnostics Command') }}</h3>
+              <h3 class="system-stage-title">{{ text('系统诊断', 'System Diagnostics') }}</h3>
             </div>
 
             <div class="system-stage-facts" v-if="health">
@@ -115,22 +115,22 @@
             </div>
           </div>
 
-          <nav class="system-stage-tabs mobile-stage-tabs">
+          <nav class="system-stage-nav mobile-task-nav" :aria-label="text('系统诊断任务', 'System diagnostics tasks')">
             <button
-              v-for="tab in tabs"
-              :key="tab.id"
+              v-for="navItem in taskNavItems"
+              :key="navItem.id"
               type="button"
-              class="system-stage-tab"
-              :class="{ active: activeTab === tab.id }"
-              @click="activeTab = tab.id"
+              class="system-stage-nav-button"
+              :class="{ active: activeTaskId === navItem.id }"
+              @click="activeTaskId = navItem.id"
             >
-              <component :is="tab.icon" class="system-stage-tab-icon" aria-hidden="true" />
-              <span>{{ tab.label }}</span>
+              <component :is="navItem.icon" class="system-stage-nav-icon" aria-hidden="true" />
+              <span>{{ navItem.label }}</span>
             </button>
           </nav>
         </article>
 
-        <article v-if="activeTab === 'overview'" class="system-stage-panel">
+        <article v-if="activeTaskId === 'overview'" class="system-stage-panel">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -204,7 +204,7 @@
           </section>
         </article>
 
-        <article v-else-if="activeTab === 'release'" class="system-stage-panel">
+        <article v-else-if="activeTaskId === 'release'" class="system-stage-panel">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -295,7 +295,7 @@
           </section>
         </article>
 
-        <article v-else-if="activeTab === 'gateway'" class="system-stage-panel">
+        <article v-else-if="activeTaskId === 'gateway'" class="system-stage-panel">
           <section class="system-section">
             <div class="system-section-head">
               <div>
@@ -359,7 +359,7 @@
           </section>
         </article>
 
-        <article v-else-if="activeTab === 'bootstrap'" class="system-stage-panel">
+        <article v-else-if="activeTaskId === 'bootstrap'" class="system-stage-panel">
           <section class="system-section">
             <div v-if="diagnostics" class="system-section-head system-section-head-tight">
               <div>
@@ -596,21 +596,21 @@
     </section>
 
     <Teleport v-if="diagnosticOutputOpen" to="body">
-      <div class="system-output-sheet-dock">
+      <div class="floating-output-dock system-output-sheet-dock">
         <section
-          class="system-output-sheet"
+          class="floating-output-sheet system-output-sheet"
           role="dialog"
           aria-live="polite"
           aria-modal="false"
           :aria-label="text('诊断输出窗口', 'Diagnostic output window')"
         >
-          <header class="system-output-sheet-head">
+          <header class="floating-output-sheet__head system-output-sheet-head">
             <div>
               <p class="eyebrow">{{ text('诊断输出', 'Diagnostic Output') }}</p>
               <h3>{{ activeDiagnosticCommand?.title || text('诊断输出', 'Diagnostic Output') }}</h3>
               <span>{{ activeDiagnosticCommand?.snapshot.durationMs || 0 }}ms · {{ activeDiagnosticOutput.length }} chars</span>
             </div>
-            <div class="system-output-sheet-actions">
+            <div class="floating-output-sheet__actions system-output-sheet-actions">
               <button type="button" class="secondary-button compact-button" @click="copyDiagnosticOutput">
                 <Copy class="system-output-button-icon" aria-hidden="true" />
                 {{ diagnosticOutputCopied ? text('已复制', 'Copied') : text('复制输出', 'Copy output') }}
@@ -621,7 +621,7 @@
               </button>
             </div>
           </header>
-          <pre class="system-output-sheet-log">{{ activeDiagnosticOutput }}</pre>
+          <pre class="floating-output-sheet__log system-output-sheet-log">{{ activeDiagnosticOutput }}</pre>
         </section>
       </div>
     </Teleport>
@@ -656,7 +656,7 @@ import {
 import './system-workspace.css';
 import { isStudioUpgradeEffectivelyFailed } from './studio-release-state';
 
-type SystemTab = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics';
+type SystemTaskId = 'overview' | 'bootstrap' | 'release' | 'gateway' | 'diagnostics';
 type SystemDiagnosticCommandId = 'gatewayStatus' | 'status' | 'doctor';
 
 interface NoticeLike {
@@ -686,7 +686,7 @@ const loading = ref(false);
 const diagnosticsLoading = ref(false);
 const errorMessage = ref('');
 const notice = ref<NoticeLike | null>(null);
-const activeTab = ref<SystemTab>('bootstrap');
+const activeTaskId = ref<SystemTaskId>('bootstrap');
 const autoApproveSaving = ref(false);
 const activeApproveRequestId = ref('');
 const helperRepairRunning = ref(false);
@@ -719,7 +719,7 @@ const studioUpgradeActionLabel = computed(() => {
   return text('刷新状态', 'Refresh status');
 });
 
-const tabs = computed(() => [
+const taskNavItems = computed(() => [
   { id: 'bootstrap' as const, icon: Flag, label: text('引导', 'Bootstrap') },
   { id: 'overview' as const, icon: Gauge, label: text('概览', 'Overview') },
   { id: 'release' as const, icon: RefreshCw, label: text('升级', 'Release') },

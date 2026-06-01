@@ -9,42 +9,44 @@ function read(filePath) {
   return fs.readFileSync(path.join(rootDir, filePath), 'utf8');
 }
 
-const channelAccountCard = read('apps/web-vue/src/features/channels/ChannelAccountCard.vue');
+const channelAccountEntry = read('apps/web-vue/src/features/channels/ChannelAccountEntry.vue');
 const channelAccountIndex = read('apps/web-vue/src/features/channels/ChannelAccountIndex.vue');
 const channelsAccountCss = read('apps/web-vue/src/features/channels/channels-account.css');
 
-test('channel account card stays an index card with concise facts and routed task actions', () => {
-  assert.match(channelAccountCard, /channel-account-card__summary/);
-  assert.match(channelAccountCard, /channel-account-card__footer/);
-  assert.match(channelAccountCard, /channel-account-card__action-row/);
-  assert.match(channelAccountCard, /channel-account-card__primary-action/);
-  assert.match(channelAccountCard, /channel-account-card__task-group/);
-  assert.match(channelAccountCard, /channel-account-card__task-actions/);
-  assert.match(channelAccountCard, /channel-account-card__manage-actions/);
-  assert.match(channelAccountCard, /open-account|edit/);
-  assert.match(channelAccountCard, /credentials/);
-  assert.match(channelAccountCard, /access/);
-  assert.match(channelAccountCard, /pairing/);
-  assert.match(channelAccountCard, /bindings/);
-  assert.match(channelAccountCard, /account\.kind !== 'default'/);
-  assert.match(channelAccountCard, /ghost-action-delete/);
-  assert.match(channelAccountCard, /import '\.\/channels-account\.css';/);
-  assert.doesNotMatch(channelAccountCard, /<style scoped>/);
-  assert.match(channelsAccountCss, /\.channel-account-card\s*\{/);
-  assert.match(channelsAccountCss, /\.channel-account-card__task-actions\s*\{/);
+test('channel account entry stays concise with routed task actions', () => {
+  assert.match(channelAccountEntry, /channel-account-entry__summary/);
+  assert.match(channelAccountEntry, /channel-account-entry__footer/);
+  assert.match(channelAccountEntry, /channel-account-entry__action-row/);
+  assert.match(channelAccountEntry, /channel-account-entry__primary-action/);
+  assert.match(channelAccountEntry, /channel-account-entry__task-group/);
+  assert.match(channelAccountEntry, /channel-account-entry__task-actions/);
+  assert.match(channelAccountEntry, /channel-account-entry__manage-actions/);
+  assert.match(channelAccountEntry, /open-account|edit/);
+  assert.match(channelAccountEntry, /credentials/);
+  assert.match(channelAccountEntry, /access/);
+  assert.match(channelAccountEntry, /pairing/);
+  assert.match(channelAccountEntry, /bindings/);
+  assert.match(channelAccountEntry, /account\.kind !== 'default'/);
+  assert.match(channelAccountEntry, /ghost-action-delete/);
+  assert.match(channelAccountEntry, /import '\.\/channels-account\.css';/);
+  assert.doesNotMatch(channelAccountEntry, /<style scoped>/);
+  assert.match(channelsAccountCss, /\.channel-account-entry\s*\{/);
+  assert.match(channelsAccountCss, /\.channel-account-entry__task-actions\s*\{/);
   assert.match(channelsAccountCss, /\.ghost-action-delete\s*\{/);
-  assert.match(channelAccountCard, /\(event: 'delete'\): void/);
-  assert.doesNotMatch(channelAccountCard, /channel-account-card__secondary-actions/);
-  assert.doesNotMatch(channelAccountCard, /grid-template-columns:\s*minmax\(180px,\s*0\.75fr\)\s*minmax\(0,\s*1\.45fr\)\s*auto/);
+  assert.match(channelAccountEntry, /\(event: 'delete'\): void/);
+  assert.doesNotMatch(channelAccountEntry, /channel-account-entry__secondary-actions/);
+  assert.doesNotMatch(channelAccountEntry, /grid-template-columns:\s*minmax\(180px,\s*0\.75fr\)\s*minmax\(0,\s*1\.45fr\)\s*auto/);
 
-  assert.doesNotMatch(channelAccountCard, /form-input/);
-  assert.doesNotMatch(channelAccountCard, /form-textarea/);
-  assert.doesNotMatch(channelAccountCard, /<textarea/);
-  assert.doesNotMatch(channelAccountCard, /GlassSelect/);
+  assert.doesNotMatch(channelAccountEntry, /form-input/);
+  assert.doesNotMatch(channelAccountEntry, /form-textarea/);
+  assert.doesNotMatch(channelAccountEntry, /<textarea/);
+  assert.doesNotMatch(channelAccountEntry, /StudioSelect/);
+  assert.doesNotMatch(channelsAccountCss, /channel-account-card|linear-gradient|var\(--sky\)/);
 });
 
-test('account index renders account cards instead of embedding account form controls inline', () => {
-  assert.match(channelAccountIndex, /ChannelAccountCard/);
+test('account index renders account entries instead of embedding account form controls inline', () => {
+  assert.match(channelAccountIndex, /ChannelAccountEntry/);
+  assert.doesNotMatch(channelAccountIndex, /ChannelAccountCard|ChannelAccountCard\.vue/);
   assert.match(channelAccountIndex, /defaultAccounts/);
   assert.match(channelAccountIndex, /namedAccounts/);
   assert.match(channelAccountIndex, /默认账号|Default account/);

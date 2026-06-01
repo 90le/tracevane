@@ -1,16 +1,16 @@
 <template>
-  <section class="cs-command-center">
-    <div class="cs-command-main">
+  <section class="cs-runtime-strip">
+    <div class="cs-runtime-main">
       <p class="cs-section-kicker">{{ text("控制台", "Console") }}</p>
-      <div class="cs-command-status-row">
+      <div class="cs-runtime-status-row">
         <h3>{{ statusLabel }}</h3>
         <span class="cs-status-pill" :class="`tone-${statusTone}`">{{ text("当前状态", "Current state") }}</span>
       </div>
-      <p class="cs-command-copy">
+      <p class="cs-runtime-copy">
         {{ text("先看运行状态和推荐动作；健康检查、日志和高级链路保持在浮层或折叠区里。", "Review state and the suggested action first; health checks, logs, and deep chain details stay in floating or collapsed views.") }}
       </p>
 
-      <div class="cs-command-facts" aria-label="Codex Stack facts">
+      <div class="cs-runtime-facts" aria-label="Codex Stack facts">
         <span>{{ text("服务", "Services") }} <strong>{{ activeServiceCount }}/{{ serviceCount }}</strong></span>
         <span>{{ text("模型", "Model") }} <strong>{{ currentModel || "--" }}</strong></span>
         <span>{{ text("路径", "Route") }} <strong>{{ codexRouteLabel }}</strong></span>
@@ -20,11 +20,18 @@
       </div>
     </div>
 
-    <div class="cs-command-side">
+    <div class="cs-runtime-side">
       <div class="cs-readiness-strip">
         <span>{{ text("就绪度", "Readiness") }}</span>
         <strong>{{ readyComponentCount }}/{{ componentCount }}</strong>
-        <div class="cs-readiness-bar"><i :style="{ width: readinessPercent }"></i></div>
+        <progress
+          class="cs-readiness-bar"
+          :value="readinessValue"
+          max="100"
+          :aria-label="text('Codex Stack 就绪度', 'Codex Stack readiness')"
+        >
+          {{ readinessValue }}%
+        </progress>
         <small>
           {{ issueCount ? text(`${issueCount} 个组件需要处理`, `${issueCount} components need attention`) : text("组件和服务稳定", "Components and services are stable") }}
         </small>
@@ -34,7 +41,7 @@
         <span class="cs-section-kicker">{{ text("下一步", "Next step") }}</span>
         <h4>{{ nextActionTitle }}</h4>
         <p>{{ nextActionCopy }}</p>
-        <div class="cs-command-actions">
+        <div class="cs-runtime-actions">
           <UButton type="button" color="primary" :disabled="nextActionPrimaryDisabled" @click="$emit('primary')">
             {{ nextActionButton }}
           </UButton>
@@ -46,7 +53,7 @@
       </div>
     </div>
 
-    <div class="cs-command-footer">
+    <div class="cs-runtime-footer">
       <div>
         <span>{{ text("模型来源", "Model source") }}</span>
         <strong>{{ modelSourceLabel }}</strong>
@@ -55,7 +62,7 @@
       <div class="cs-model-preview">
         <span v-for="model in modelCatalogPreview" :key="model">{{ model }}</span>
       </div>
-      <div class="cs-command-actions cs-command-actions-secondary">
+      <div class="cs-runtime-actions cs-runtime-actions-secondary">
         <UButton type="button" color="neutral" variant="soft" :disabled="busy" @click="$emit('run-check')">
           {{ text("健康检查", "Health Check") }}
         </UButton>
@@ -66,9 +73,9 @@
           {{ text("同步", "Sync") }}
         </UButton>
       </div>
-      <small v-if="busy && busyDisabledHelp" class="cs-command-footer-help">{{ busyDisabledHelp }}</small>
-      <small v-else-if="!canRunMutation && mutationDisabledHelp" class="cs-command-footer-help">{{ mutationDisabledHelp }}</small>
-      <small v-else-if="syncDisabled && syncDisabledHelp" class="cs-command-footer-help">{{ syncDisabledHelp }}</small>
+      <small v-if="busy && busyDisabledHelp" class="cs-runtime-footer-help">{{ busyDisabledHelp }}</small>
+      <small v-else-if="!canRunMutation && mutationDisabledHelp" class="cs-runtime-footer-help">{{ mutationDisabledHelp }}</small>
+      <small v-else-if="syncDisabled && syncDisabledHelp" class="cs-runtime-footer-help">{{ syncDisabledHelp }}</small>
     </div>
   </section>
 </template>
@@ -98,7 +105,7 @@ const props = defineProps<{
   readyComponentCount: number;
   componentCount: number;
   issueCount: number;
-  readinessPercent: string;
+  readinessValue: number;
   nextActionTitle: string;
   nextActionCopy: string;
   nextActionButton: string;

@@ -158,38 +158,38 @@ function assertInOrder(source, parts) {
   }
 }
 
-test("chat shell dark theme uses lifted blue-gray surfaces instead of near-black slabs", () => {
+test("chat shell dark theme uses DuoYuan solid dark surfaces instead of gray glass slabs", () => {
   assert.match(chatShellPage, /import '\.\/chat-shell-workspace\.css';/);
   assert.doesNotMatch(chatShellPage, /<style scoped>/);
   assert.match(
     chatShellWorkspaceCss,
     /\.chat-v2-shell\.theme-dark,\s*\.chat-mobile-drawer-mask\.theme-dark\s*\{/,
   );
-  assert.match(chatShellWorkspaceCss, /--chat-shell-bg:\s*#0e1926;/);
-  assert.match(chatShellWorkspaceCss, /--chat-thread-bg:\s*#101d2d;/);
+  assert.match(chatShellWorkspaceCss, /--chat-shell-bg:\s*var\(--surface-base\);/);
+  assert.match(chatShellWorkspaceCss, /--chat-thread-bg:\s*var\(--surface-raised\);/);
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-shell-frame:\s*linear-gradient\(180deg,\s*rgba\(14,\s*27,\s*42,\s*0\.98\),\s*rgba\(11,\s*22,\s*35,\s*0\.94\)\);/,
+    /--chat-shell-frame:\s*var\(--surface-base\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-sidebar-bg:\s*linear-gradient\(180deg,\s*rgba\(11,\s*22,\s*35,\s*0\.985\),\s*rgba\(8,\s*18,\s*29,\s*0\.955\)\);/,
+    /--chat-sidebar-bg:\s*var\(--bg-subtle\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-sidebar-row:\s*rgba\(24,\s*40,\s*58,\s*0\.965\);/,
+    /--chat-sidebar-row:\s*var\(--surface-raised\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-sidebar-row-hover:\s*rgba\(31,\s*49,\s*70,\s*0\.99\);/,
+    /--chat-sidebar-row-hover:\s*var\(--modal-row-hover-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-sidebar-row-active:\s*rgba\(71,\s*135,\s*255,\s*0\.26\);/,
+    /--chat-sidebar-row-active:\s*color-mix\(in srgb, var\(--acc\) 16%, var\(--surface-raised\)\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /\.chat-shell-layout\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*18px\);/,
+    /\.chat-shell-layout\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
@@ -212,23 +212,37 @@ test("light theme sidebar surfaces stay opaque enough for drawer readability", (
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-shell-frame:\s*linear-gradient\(180deg,\s*rgba\(255,\s*255,\s*255,\s*0\.97\),\s*rgba\(245,\s*249,\s*253,\s*0\.94\)\);/,
+    /--chat-shell-frame:\s*var\(--modal-panel-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-sidebar-bg:\s*linear-gradient\(180deg,\s*rgba\(254,\s*255,\s*255,\s*0\.98\),\s*rgba\(246,\s*250,\s*254,\s*0\.95\)\);/,
+    /--chat-sidebar-bg:\s*var\(--modal-panel-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-sidebar-row:\s*rgba\(255,\s*255,\s*255,\s*0\.965\);/,
+    /--chat-sidebar-row:\s*var\(--modal-panel-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-sidebar-row-hover:\s*rgba\(255,\s*255,\s*255,\s*0\.994\);/,
+    /--chat-sidebar-row-hover:\s*var\(--modal-row-hover-bg\);/,
   );
   assert.match(
     chatShellWorkspaceCss,
-    /--chat-sidebar-row-active:\s*rgba\(62,\s*121,\s*235,\s*0\.18\);/,
+    /--chat-sidebar-row-active:\s*var\(--tab-active-bg\);/,
+  );
+});
+
+test("chat theme tokens use OpenClaw mint instead of stale sky-blue accents", () => {
+  assert.match(chatShellWorkspaceCss, /--chat-user-bubble:\s*var\(--button-primary-bg\);/);
+  assert.match(chatShellWorkspaceCss, /--chat-accent:\s*var\(--acc\);/);
+  assert.doesNotMatch(chatShellWorkspaceCss, /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient/);
+  assert.doesNotMatch(
+    `${chatShellWorkspaceCss}\n${messageBubbleCss}\n${chatRecordBrowserCss}`,
+    /(?<![-\w])(?:white|black)(?![-\w])/,
+  );
+  assert.doesNotMatch(
+    `${chatShellWorkspaceCss}\n${sessionFilterCss}\n${sessionListShared}\n${overlaySurfacesCss}\n${messageResourcesCss}\n${messageBubbleCss}`,
+    /#0284c7|#0369a1|#e0f2fe|rgba\(91,\s*150,\s*255|rgba\(14,\s*165,\s*233|rgba\(2,\s*132,\s*199|rgba\(37,\s*99,\s*235|rgba\(99,\s*102,\s*241|rgba\(236,\s*72,\s*153/,
   );
 });
 
@@ -243,7 +257,7 @@ test("session rows use surfaced list blocks instead of fully transparent rows", 
   );
   assert.match(
     sessionListShared,
-    /\.chat-shell-session-row\s*\{[\s\S]*backdrop-filter:\s*blur\(12px\);/,
+    /\.chat-shell-session-row\s*\{[\s\S]*backdrop-filter:\s*none;/,
   );
 });
 
@@ -335,6 +349,11 @@ test("session list chrome adopts a softened IM rail while leaving folder and fil
   );
   assert.match(sessionFilterCss, /@keyframes chat-session-filter-popover-in/);
   assert.match(sessionFilterCss, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.doesNotMatch(
+    sessionFilterCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}/,
+    "session filter popovers should inherit chat/global tokens instead of local light/dark palettes",
+  );
   assert.match(
     sessionListShared,
     /\.chat-shell-session-batchbar__toggle-all\s*\{[\s\S]*border-radius:\s*10px;/,
@@ -361,6 +380,13 @@ test("chat composer and picker keep the flatter density pass instead of oversize
     composerBarCss,
     /\.chat-composer-pool-item\s*\{[\s\S]*border-radius:\s*12px;/,
   );
+  assert.match(
+    composerBar,
+    /<progress[\s\S]*class="chat-composer-progress-bar"[\s\S]*:value="attachmentProgressValue\(attachment\)"[\s\S]*max="100"/,
+  );
+  assert.doesNotMatch(composerBar, /chat-composer-progress-fill|:style="\{ width: `\$\{attachment\.progress\}%` \}"/);
+  assert.match(composerBarCss, /\.chat-composer-progress-bar::-webkit-progress-value\s*\{/);
+  assert.doesNotMatch(composerBarCss, /\.chat-composer-progress-fill\s*\{/);
   assert.match(
     overlaySurfacesCss,
     /\.chat-agent-picker\s*\{[\s\S]*border-radius:\s*12px;/,
@@ -434,6 +460,11 @@ test("conversation pane keeps large empty and history surfaces in the restrained
 });
 
 test("message bubbles and inline resources avoid returning to capsule-heavy chat chrome", () => {
+  assert.doesNotMatch(
+    messageBubbleCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient/,
+    "message bubble chrome should resolve color and depth through chat/global DuoYuan tokens",
+  );
   assert.match(
     messageBubbleCss,
     /\.chat-message-bubble\s*\{[\s\S]*border-radius:\s*12px;/,
@@ -634,8 +665,11 @@ test("resource cards and inspector chrome stay aligned with the flatter chat den
   );
   assert.match(
     inspectorPanelCss,
-    /\.chat-inspector-summary-card,[\s\S]*\.chat-inspector-empty\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-inspector-fact-row\s*\{[\s\S]*border-radius:\s*10px;/,
   );
+  assert.match(inspectorPanel, /chat-inspector-context-strip/);
+  assert.doesNotMatch(inspectorPanel, /chat-inspector-summary-card/);
+  assert.doesNotMatch(inspectorPanelCss, /chat-inspector-summary-card/);
   assert.match(inspectorPanel, /import '\.\/inspector-panel\.css';/);
   assert.doesNotMatch(inspectorPanel, /<style scoped>/);
   assert.match(inspectorPanelCss, /@keyframes chat-inspector-panel-in/);
@@ -714,6 +748,11 @@ test("composer, picker, and queue utilities keep the flatter control language", 
     composerBarCss,
     /\.chat-composer-attachment-remove\s*\{[\s\S]*border-radius:\s*8px;/,
   );
+  assert.doesNotMatch(
+    composerBarCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}/,
+    "composer chrome should resolve color through chat/global DuoYuan tokens",
+  );
   assert.match(
     overlaySurfacesCss,
     /\.chat-agent-picker-option__tag\s*\{[\s\S]*border-radius:\s*8px;/,
@@ -730,6 +769,11 @@ test("conversation utility pills and live preview chrome avoid oversized capsule
   assert.match(conversationPane, /@click="\$emit\('toggle-thinking-blocks'\)"/);
   assert.match(conversationPane, /@click="\$emit\('refresh-session'\)"/);
   assert.match(conversationPane, /@click="\$emit\('open-record-browser'\)"/);
+  assert.doesNotMatch(
+    conversationPaneCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient/,
+    "conversation pane chrome should resolve color and depth through chat/global DuoYuan tokens",
+  );
   assert.doesNotMatch(conversationPane, /triggerMenuAction\('toggle-tool-previews'\)/);
   assert.doesNotMatch(conversationPane, /triggerMenuAction\('toggle-thinking-blocks'\)/);
   assert.doesNotMatch(conversationPane, /triggerMenuAction\('refresh-session'\)/);
@@ -912,15 +956,15 @@ test("mobile conversation header and composer prioritize visible controls over h
   );
   assert.match(
     conversationPaneCss,
-    /\.chat-conversation-pane__mobile-dock-btn--refresh\s*\{[\s\S]*box-shadow:\s*0 14px 28px rgba\(44,\s*120,\s*255,\s*0\.16\);/,
+    /\.chat-conversation-pane__mobile-dock-btn--refresh\s*\{[\s\S]*box-shadow:\s*0 14px 28px color-mix\(in srgb, var\(--chat-accent\) 16%, transparent\);/,
   );
   assert.match(
     conversationPaneCss,
-    /\.chat-conversation-pane__mobile-dock-btn--tools\.active\s*\{[\s\S]*border-color:\s*color-mix\(in srgb,\s*#0f766e 40%, var\(--chat-line\)\);/,
+    /\.chat-conversation-pane__mobile-dock-btn--tools\.active\s*\{[\s\S]*border-color:\s*color-mix\(in srgb,\s*var\(--chat-accent\) 40%, var\(--chat-line\)\);/,
   );
   assert.match(
     conversationPaneCss,
-    /\.chat-conversation-pane__mobile-dock-btn--thinking\.active\s*\{[\s\S]*border-color:\s*color-mix\(in srgb,\s*#b45309 40%, var\(--chat-line\)\);/,
+    /\.chat-conversation-pane__mobile-dock-btn--thinking\.active\s*\{[\s\S]*border-color:\s*color-mix\(in srgb,\s*var\(--warning\) 40%, var\(--chat-line\)\);/,
   );
   assert.match(
     conversationPaneCss,

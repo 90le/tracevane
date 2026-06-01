@@ -68,9 +68,15 @@
             <span class="terminal-console-cli-state__label">{{ terminalCliStateLabel }}</span>
             <span v-if="terminalCliDetailLabel" class="terminal-console-cli-state__detail">{{ terminalCliDetailLabel }}</span>
           </div>
-          <div class="terminal-console-cli-progress" :class="`terminal-console-cli-progress--${terminalCliState.state}`">
-            <span :class="terminalCliProgressClass" :style="terminalCliProgressStyle"></span>
-          </div>
+          <progress
+            class="terminal-console-cli-progress"
+            :class="`terminal-console-cli-progress--${terminalCliState.state}`"
+            max="100"
+            :value="terminalCliProgressValue ?? undefined"
+            :aria-label="terminalCliDetailLabel || terminalCliStateLabel"
+          >
+            {{ terminalCliProgressValue ?? 100 }}%
+          </progress>
           <div class="terminal-console-link-state">
             <span>{{ terminalConnectionLabel }}</span>
             <span v-if="terminalLatencyLabel">{{ terminalLatencyLabel }}</span>
@@ -88,7 +94,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import type { IDisposable, Terminal as XTermTerminal } from '@xterm/xterm';
+import type { IDisposable, ITheme, Terminal as XTermTerminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type {
   TerminalGatewayAckResponse,
@@ -194,6 +200,57 @@ let terminalDirectSocketFailed = false;
 let terminalHttpStreamActive = false;
 let terminalHttpStreamFailed = false;
 
+type TerminalThemeColorProperty = 'color' | 'backgroundColor';
+
+function resolveTerminalThemeColor(
+  cssVariable: string,
+  fallback: string,
+  property: TerminalThemeColorProperty = 'color',
+): string {
+  const scope = termContainer.value || document.documentElement;
+  const probe = document.createElement('span');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.position = 'fixed';
+  probe.style.left = '-9999px';
+  probe.style.top = '-9999px';
+  probe.style.width = '1px';
+  probe.style.height = '1px';
+  probe.style.pointerEvents = 'none';
+  probe.style[property] = `var(${cssVariable}, ${fallback})`;
+  scope.appendChild(probe);
+  const resolved = window.getComputedStyle(probe)[property].trim();
+  probe.remove();
+  return resolved || fallback;
+}
+
+function buildTerminalTheme(): ITheme {
+  const color = (cssVariable: string, fallback: string) => resolveTerminalThemeColor(cssVariable, fallback);
+  const background = (cssVariable: string, fallback: string) => resolveTerminalThemeColor(cssVariable, fallback, 'backgroundColor');
+
+  return {
+    background: background('--terminal-xterm-bg', 'black'),
+    foreground: color('--terminal-xterm-fg', 'white'),
+    cursor: color('--terminal-xterm-cursor', 'white'),
+    selectionBackground: background('--terminal-xterm-selection', 'gray'),
+    black: color('--terminal-xterm-black', 'black'),
+    red: color('--terminal-xterm-red', 'red'),
+    green: color('--terminal-xterm-green', 'green'),
+    yellow: color('--terminal-xterm-yellow', 'yellow'),
+    blue: color('--terminal-xterm-blue', 'blue'),
+    magenta: color('--terminal-xterm-magenta', 'magenta'),
+    cyan: color('--terminal-xterm-cyan', 'cyan'),
+    white: color('--terminal-xterm-white', 'white'),
+    brightBlack: color('--terminal-xterm-bright-black', 'gray'),
+    brightRed: color('--terminal-xterm-bright-red', 'red'),
+    brightGreen: color('--terminal-xterm-bright-green', 'green'),
+    brightYellow: color('--terminal-xterm-bright-yellow', 'yellow'),
+    brightBlue: color('--terminal-xterm-bright-blue', 'blue'),
+    brightMagenta: color('--terminal-xterm-bright-magenta', 'magenta'),
+    brightCyan: color('--terminal-xterm-bright-cyan', 'cyan'),
+    brightWhite: color('--terminal-xterm-bright-white', 'white'),
+  };
+}
+
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
 const TERMINAL_IMMEDIATE_OUTPUT_LIMIT = 8 * 1024;
 const TERMINAL_BULK_OUTPUT_FLUSH_MS = 4;
@@ -289,14 +346,11 @@ const terminalCliDetailLabel = computed(() => {
   ].filter(Boolean);
   return parts.join(' · ');
 });
-const terminalCliProgressStyle = computed(() => {
+const terminalCliProgressValue = computed(() => {
   const ratio = terminalCliState.value.progressRatio;
-  if (ratio === null) return { width: '100%' };
-  return { width: `${Math.max(3, Math.min(100, Math.round(ratio * 100)))}%` };
+  if (ratio === null) return null;
+  return Math.max(0, Math.min(100, Math.round(ratio * 100)));
 });
-const terminalCliProgressClass = computed(() =>
-  `terminal-console-cli-progress__fill terminal-console-cli-progress__fill--${terminalCliState.value.state}`,
-);
 const hasTerminalWorkbenchTelemetry = computed(() =>
   Boolean(termReady.value || connected.value || terminalCliDetailLabel.value || terminalLatencyLabel.value || terminalScreenModeLabel.value),
 );
@@ -1645,28 +1699,7 @@ async function initTerminal(): Promise<void> {
     scrollback: 10000,
     smoothScrollDuration: 0,
     minimumContrastRatio: 1,
-    theme: {
-      background: '#0f1419',
-      foreground: '#e6e1cf',
-      cursor: '#7fdbca',
-      selectionBackground: '#1a3a4a',
-      black: '#0f1419',
-      red: '#ff6666',
-      green: '#7fdbca',
-      yellow: '#ffd580',
-      blue: '#82aaff',
-      magenta: '#c792ea',
-      cyan: '#89ddff',
-      white: '#e6e1cf',
-      brightBlack: '#575f66',
-      brightRed: '#ff6666',
-      brightGreen: '#7fdbca',
-      brightYellow: '#ffd580',
-      brightBlue: '#82aaff',
-      brightMagenta: '#c792ea',
-      brightCyan: '#89ddff',
-      brightWhite: '#ffffff',
-    },
+    theme: buildTerminalTheme(),
   });
 
   fitAddon = new FitAddon();

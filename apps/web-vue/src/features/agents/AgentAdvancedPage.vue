@@ -3,8 +3,8 @@
     <div class="agents-stage-task-head operate-stage-task-head">
       <div>
         <p class="eyebrow">{{ agentId }}</p>
-        <h3>{{ text('高级配置', 'Advanced') }}</h3>
-        <p>{{ text('当前页面只负责完整配置与高级 JSON。概览页只保留高频快改。', 'This page only handles full configuration and advanced JSON. The overview stays limited to high-frequency quick edits.') }}</p>
+        <h3>{{ text('运行配置', 'Runtime') }}</h3>
+        <p>{{ text('集中维护运行时、沙盒、工具、默认行为和低频 JSON。概览页只保留高频快改。', 'Manage runtime, sandbox, tools, behavior defaults, and low-frequency JSON here. The overview stays limited to high-frequency quick edits.') }}</p>
       </div>
 
       <div class="page-actions">
@@ -42,7 +42,7 @@
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('模型覆盖', 'Model Override') }}</label>
-            <GlassSelect
+            <StudioSelect
               v-model="draft.model"
               :options="modelOptions"
               :placeholder="text('留空表示跟随系统默认', 'Leave empty to inherit the system default')"
@@ -108,7 +108,7 @@
         <div class="agents-form-grid">
           <div class="form-field">
             <label class="form-label">{{ text('运行时类型', 'Runtime type') }}</label>
-            <GlassSelect v-model="draft.runtime.type" :options="runtimeTypeOptions" />
+            <StudioSelect v-model="draft.runtime.type" :options="runtimeTypeOptions" />
           </div>
           <template v-if="draft.runtime.type === 'acp'">
             <div class="form-field">
@@ -121,7 +121,7 @@
             </div>
             <div class="form-field">
               <label class="form-label">{{ text('模式', 'Mode') }}</label>
-              <GlassSelect v-model="draft.runtime.mode" :options="runtimeModeOptions" :placeholder="text('未设置', 'Unset')" />
+              <StudioSelect v-model="draft.runtime.mode" :options="runtimeModeOptions" :placeholder="text('未设置', 'Unset')" />
             </div>
             <div class="form-field form-field-full">
               <label class="form-label">{{ text('运行目录', 'CWD') }}</label>
@@ -130,33 +130,33 @@
           </template>
           <div class="form-field">
             <label class="form-label">{{ text('沙盒模式', 'Sandbox mode') }}</label>
-            <GlassSelect v-model="draft.sandboxMode" :options="sandboxModeOptions" />
+            <StudioSelect v-model="draft.sandboxMode" :options="sandboxModeOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('工作区访问', 'Workspace access') }}</label>
-            <GlassSelect v-model="draft.workspaceAccess" :options="workspaceAccessOptions" />
+            <StudioSelect v-model="draft.workspaceAccess" :options="workspaceAccessOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('工具配置', 'Tools profile') }}</label>
-            <GlassSelect v-model="draft.toolsProfile" :options="toolsProfileOptions" />
+            <StudioSelect v-model="draft.toolsProfile" :options="toolsProfileOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Thinking 默认值', 'Thinking default') }}</label>
-            <GlassSelect v-model="draft.thinkingDefault" :options="thinkingDefaultOptions" />
+            <StudioSelect v-model="draft.thinkingDefault" :options="thinkingDefaultOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Verbose 默认值', 'Verbose default') }}</label>
-            <GlassSelect v-model="draft.verboseDefault" :options="verboseDefaultOptions" />
+            <StudioSelect v-model="draft.verboseDefault" :options="verboseDefaultOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Reasoning 默认值', 'Reasoning default') }}</label>
-            <GlassSelect v-model="draft.reasoningDefault" :options="reasoningDefaultOptions" />
+            <StudioSelect v-model="draft.reasoningDefault" :options="reasoningDefaultOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Fast Mode 默认值', 'Fast Mode default') }}</label>
-            <GlassSelect v-model="draft.fastModeDefault" :options="fastModeDefaultOptions" />
+            <StudioSelect v-model="draft.fastModeDefault" :options="fastModeDefaultOptions" />
           </div>
-          <label class="toggle-card form-field-full">
+          <label class="option-row form-field-full">
             <input v-model="draft.fsWorkspaceOnly" class="form-checkbox" type="checkbox" />
             <div>
               <strong>{{ text('仅限工作区文件访问', 'Workspace-only FS access') }}</strong>
@@ -171,7 +171,7 @@
             <div class="agents-form-grid">
               <div class="form-field">
                 <label class="form-label">{{ text('心跳策略', 'Heartbeat policy') }}</label>
-                <GlassSelect v-model="draft.heartbeatMode" :options="heartbeatModeOptions" />
+                <StudioSelect v-model="draft.heartbeatMode" :options="heartbeatModeOptions" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('心跳周期', 'Heartbeat interval') }}</label>
@@ -244,11 +244,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onActivated, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { AgentDetailPayload } from '../../../../../types/agents';
 import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
-import GlassSelect from '../../shared/components/GlassSelect.vue';
+import StudioSelect from '../../shared/components/StudioSelect.vue';
 import { buildAgentHeartbeatConfig, resolveHeartbeatEvery, resolveHeartbeatMode, type HeartbeatMode } from '../../shared/heartbeat-config';
 import { useLocalePreference } from '../../shared/locale';
 import { fetchAgentDetail, fetchAgentsSummary, updateAgent } from './api';
@@ -265,6 +265,7 @@ const errorMessage = ref('');
 const noticeMessage = ref('');
 const detail = ref<AgentDetailPayload | null>(null);
 const availableModels = ref<string[]>([]);
+const lastLoadedDraftSnapshot = ref('');
 
 const draft = reactive({
   name: '',
@@ -303,6 +304,10 @@ const draft = reactive({
     mission: '',
   },
 });
+
+function captureDraftSnapshot(): string {
+  return JSON.stringify(draft);
+}
 
 const sandboxModeOptions = computed(() => [
   { value: 'off', label: text('关闭', 'Off') },
@@ -459,6 +464,7 @@ async function loadDetail(): Promise<void> {
     detail.value = payload;
     availableModels.value = summary.availableModels || [];
     resetDraftFromDetail(payload);
+    lastLoadedDraftSnapshot.value = captureDraftSnapshot();
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : text('读取 Agent 详情失败。', 'Failed to load agent detail.');
   } finally {
@@ -512,6 +518,7 @@ async function saveAgentChanges(): Promise<void> {
     if (payload.detail) {
       detail.value = payload.detail;
       resetDraftFromDetail(payload.detail);
+      lastLoadedDraftSnapshot.value = captureDraftSnapshot();
     }
     noticeMessage.value = payload.message;
   } catch (error) {
@@ -534,9 +541,16 @@ watch(
   () => route.params.agentId,
   async () => {
     detail.value = null;
+    lastLoadedDraftSnapshot.value = '';
     if (!agentId.value) return;
     await loadDetail();
   },
   { immediate: true },
 );
+
+onActivated(async () => {
+  if (!agentId.value || loading.value || saveBusy.value) return;
+  if (captureDraftSnapshot() !== lastLoadedDraftSnapshot.value) return;
+  await loadDetail();
+});
 </script>

@@ -565,6 +565,25 @@ export interface HtmlPreviewDocument {
   srcdoc: string;
 }
 
+export interface HtmlPreviewThemeTokens {
+  background: string;
+  text: string;
+  border: string;
+}
+
+const HTML_PREVIEW_FALLBACK_THEME_TOKENS: Record<'light' | 'dark', HtmlPreviewThemeTokens> = {
+  light: {
+    background: 'Canvas',
+    text: 'CanvasText',
+    border: 'ButtonBorder',
+  },
+  dark: {
+    background: 'Canvas',
+    text: 'CanvasText',
+    border: 'ButtonBorder',
+  },
+};
+
 function truncateText(
   value: string,
   max: number,
@@ -1662,11 +1681,22 @@ function buildFinalSanitizeOptions(options: ChatMarkdownRenderOptions) {
 // HTML preview document helpers and public render entrypoints
 // ---------------------------------------------------------------------------
 
-export function buildHtmlPreviewDocument(html: string, theme: 'light' | 'dark'): HtmlPreviewDocument {
+function cssColorValue(value: string | undefined, fallback: string): string {
+  const normalized = value?.trim();
+  if (!normalized) return fallback;
+  return /^[#a-zA-Z0-9(),.\s%/-]+$/.test(normalized) ? normalized : fallback;
+}
+
+export function buildHtmlPreviewDocument(
+  html: string,
+  theme: 'light' | 'dark',
+  themeTokens?: Partial<HtmlPreviewThemeTokens>,
+): HtmlPreviewDocument {
   const previewId = `html-preview-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`;
-  const background = theme === 'light' ? '#ffffff' : '#08111c';
-  const text = theme === 'light' ? '#142235' : '#e8f0fb';
-  const border = theme === 'light' ? 'rgba(20, 34, 53, 0.08)' : 'rgba(255, 255, 255, 0.08)';
+  const fallbackTokens = HTML_PREVIEW_FALLBACK_THEME_TOKENS[theme];
+  const background = cssColorValue(themeTokens?.background, fallbackTokens.background);
+  const text = cssColorValue(themeTokens?.text, fallbackTokens.text);
+  const border = cssColorValue(themeTokens?.border, fallbackTokens.border);
 
   return {
     previewId,

@@ -175,10 +175,14 @@
     <section
       v-if="detailsItem"
       class="file-manager-details"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="text('文件详情检查器', 'File details inspector')"
       aria-live="polite"
+      @keydown.escape="closeDetails"
       @click.self="closeDetails"
     >
-      <article class="file-manager-details__panel">
+      <aside class="file-manager-details__panel file-manager-details__sheet">
         <header class="file-manager-details__head">
           <span
             class="studio-file-icon studio-file-icon--grid"
@@ -267,7 +271,7 @@
             {{ text("下载", "Download") }}
           </button>
         </div>
-      </article>
+      </aside>
     </section>
 
     <FileEditorWorkspace

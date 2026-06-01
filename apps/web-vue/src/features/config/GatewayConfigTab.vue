@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell config-section-grid">
+  <section class="config-tab-stage config-section-grid">
     <article class="config-sheet">
       <section class="config-block">
         <div class="panel-head">
@@ -19,12 +19,12 @@
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('运行模式', 'Mode') }}</span>
-                <GlassSelect v-model="form.mode" :options="modeOptions" />
+                <StudioSelect v-model="form.mode" :options="modeOptions" />
                 <span class="field-hint">{{ text('local 仅本机访问，remote 支持远程连接', 'local for localhost only, remote for remote connections') }}</span>
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('绑定地址', 'Bind') }}</span>
-                <GlassSelect v-model="form.bind" :options="bindOptions" />
+                <StudioSelect v-model="form.bind" :options="bindOptions" />
                 <span class="field-hint">{{ text('loopback/lan/tailnet/custom 对应 OpenClaw 当前真实 bind 枚举。', 'loopback/lan/tailnet/custom map to the real current OpenClaw bind enums.') }}</span>
               </label>
               <label v-if="form.bind === 'custom'" class="form-field">
@@ -43,10 +43,10 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('Tailscale 模式', 'Tailscale Mode') }}</span>
-                <GlassSelect v-model="form.tailscaleMode" :options="tailscaleOptions" />
+                <StudioSelect v-model="form.tailscaleMode" :options="tailscaleOptions" />
                 <span class="field-hint">{{ text('serve 为 tailnet 内访问，funnel 为公网暴露且必须认证。', 'serve exposes to the tailnet; funnel exposes publicly and must stay authenticated.') }}</span>
               </label>
-              <label class="toggle-card">
+              <label class="option-row">
                 <input v-model="form.authAllowTailscale" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('允许 Tailscale 身份透传', 'Allow Tailscale identity auth') }}</strong>
@@ -71,7 +71,7 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('认证模式', 'Auth Mode') }}</span>
-                <GlassSelect v-model="form.authMode" :options="authModeOptions" />
+                <StudioSelect v-model="form.authMode" :options="authModeOptions" />
                 <span class="field-hint">{{ text('支持 token、password、trusted-proxy 和 none。非 loopback 绑定不应使用 none。', 'Supports token, password, trusted-proxy, and none. Non-loopback binds should not use none.') }}</span>
               </label>
               <div v-if="form.authMode === 'token'" class="form-field">
@@ -119,21 +119,21 @@
               </label>
             </div>
             <div class="settings-inline-grid">
-              <label class="toggle-card">
+              <label class="option-row">
                 <input v-model="form.hostHeaderOriginFallback" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('Host Header Origin Fallback', 'Host Header Origin Fallback') }}</strong>
                   <span>{{ text('危险模式，仅在明确依赖 Host 头作为 origin 策略时开启。', 'Dangerous mode. Enable only when you intentionally rely on Host-header origin policy.') }}</span>
                 </div>
               </label>
-              <label class="toggle-card">
+              <label class="option-row">
                 <input v-model="form.allowInsecureAuth" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('允许不安全认证', 'Allow Insecure Auth') }}</strong>
                   <span>{{ text('仅在受控内网或本地调试中使用。', 'Use only on trusted networks or for local debugging.') }}</span>
                 </div>
               </label>
-              <label class="toggle-card">
+              <label class="option-row">
                 <input v-model="form.allowRealIpFallback" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('允许 Real-IP Fallback', 'Allow Real-IP Fallback') }}</strong>
@@ -156,7 +156,7 @@
               <p>{{ text('用于 Control UI / WebSocket 的 allowedOrigins 和 trustedProxies。', 'Controls allowedOrigins and trustedProxies for Control UI / WebSocket access.') }}</p>
             </div>
             <div class="form-grid">
-              <label class="toggle-card">
+              <label class="option-row">
                 <input v-model="form.controlUiEnabled" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('启用 Control UI', 'Enable Control UI') }}</strong>
@@ -183,7 +183,7 @@
               </label>
             </div>
             <div class="settings-inline-grid">
-              <label class="toggle-card">
+              <label class="option-row">
                 <input v-model="form.dangerouslyDisableDeviceAuth" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('禁用设备认证', 'Disable Device Auth') }}</strong>
@@ -226,7 +226,7 @@
                   <input v-model.number="form.rateLimitLockoutMs" class="form-input" type="number" min="0" />
                   <span class="field-hint">{{ text('超出限制后的锁定时间（毫秒）', 'Lockout duration after exceeding limit (milliseconds)') }}</span>
                 </label>
-                <label class="toggle-card">
+                <label class="option-row">
                   <input v-model="form.rateLimitExemptLoopback" class="form-checkbox" type="checkbox" />
                   <div>
                     <strong>{{ text('loopback 免限速', 'Exempt Loopback') }}</strong>
@@ -273,7 +273,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
+import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 import './config-workspace.css';
 
@@ -356,12 +356,12 @@ const form = reactive<GatewayFormState>({
   tailscaleMode: 'off',
 });
 
-const modeOptions: GlassSelectOption[] = [
+const modeOptions: StudioSelectOption[] = [
   { value: 'local', label: 'local' },
   { value: 'remote', label: 'remote' },
 ];
 
-const bindOptions: GlassSelectOption[] = [
+const bindOptions: StudioSelectOption[] = [
   { value: 'auto', label: 'auto' },
   { value: 'loopback', label: 'loopback (127.0.0.1)' },
   { value: 'lan', label: 'lan' },
@@ -369,14 +369,14 @@ const bindOptions: GlassSelectOption[] = [
   { value: 'custom', label: 'custom' },
 ];
 
-const authModeOptions: GlassSelectOption[] = [
+const authModeOptions: StudioSelectOption[] = [
   { value: 'token', label: 'token' },
   { value: 'password', label: 'password' },
   { value: 'trusted-proxy', label: 'trusted-proxy' },
   { value: 'none', label: 'none' },
 ];
 
-const tailscaleOptions: GlassSelectOption[] = [
+const tailscaleOptions: StudioSelectOption[] = [
   { value: 'off', label: 'off' },
   { value: 'serve', label: 'serve' },
   { value: 'funnel', label: 'funnel' },

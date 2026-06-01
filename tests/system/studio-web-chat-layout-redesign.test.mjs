@@ -66,7 +66,7 @@ test("chat shell visual tokens align calmer stage and secondary surfaces", () =>
   );
   assert.match(
     chatShellWorkspaceCss,
-    /\.chat-main-stage\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--surface-raised\) 92%, transparent\);/s,
+    /\.chat-main-stage\s*\{[^}]*background:\s*var\(--chat-thread-bg\);/s,
   );
   assert.match(
     chatShellWorkspaceCss,

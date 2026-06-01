@@ -22,7 +22,7 @@
 
 ## UI Gates
 
-- Each major page maps to one architecture in `DESIGN.md`: Setup / Repair Wizard, Command Center, Split Inspector, Runtime Console, or Data Review.
+- Each major page maps to one architecture in `DESIGN.md`: Setup / Repair Wizard, Workspace Strip, Health Action Lane, Split Inspector, Runtime Console, Runtime Workspace, Conversation Workspace, or Data Review.
 - No page reintroduces duplicate topbar/sidebar/search navigation.
 - No global context panel returns unless it is an actionable editor or inspector.
 - Light and dark modes avoid pure white and pure black dominant canvases.

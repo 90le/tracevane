@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const read = (filePath) => fs.readFileSync(path.join(rootDir, filePath), "utf8");
 
+const designContract = read("DESIGN.md");
+const styleCss = read("apps/web-vue/src/style.css");
 const controlPage = read("apps/web-vue/src/features/codex-stack/CodexStackControlPage.vue");
 const codexStackWorkspaceCss = read("apps/web-vue/src/features/codex-stack/codex-stack-workspace.css");
 const codexStackDashboardCss = read("apps/web-vue/src/features/codex-stack/codex-stack-dashboard.css");
@@ -21,7 +23,7 @@ const ccConnectRail = read("apps/web-vue/src/features/codex-stack/CodexStackCcCo
 const ccConnectSetupPanel = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectSetupPanel.vue");
 const ccConnectStage = read("apps/web-vue/src/features/codex-stack/CodexStackCcConnectStage.vue");
 const logConsole = read("apps/web-vue/src/features/codex-stack/CodexStackLogConsole.vue");
-const dashboardCommandCenter = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardCommandCenter.vue");
+const dashboardRuntimeStrip = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardRuntimeStrip.vue");
 const recommendationCard = read("apps/web-vue/src/features/codex-stack/CodexStackRecommendationCard.vue");
 const dashboardInsights = read("apps/web-vue/src/features/codex-stack/CodexStackDashboardInsights.vue");
 const diagnosticsPanel = read("apps/web-vue/src/features/codex-stack/CodexStackDiagnosticsPanel.vue");
@@ -53,6 +55,87 @@ const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-m
 const readinessAction = read("apps/web-vue/src/features/codex-stack/readiness-action.ts");
 const codexStackService = read("apps/api/modules/codex-stack/service.ts");
 const codexStackTypes = read("types/codex-stack.ts");
+const rawVisibleColorPattern = /#[0-9a-fA-F]{3,8}|rgba\(|color-mix\([^;{}]*\b(?:white|black)\b|:\s*(?:white|black)\b/;
+const legacySurfaceTokenPattern = /var\(--surface\)|--shell-(?:panel|stage|highlight)/;
+const cssBlockCount = (source, selector) => {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...source.matchAll(new RegExp(`(^|\\n)${escaped}\\s*\\{`, "g"))].length;
+};
+const assertSingleCssOwners = (source, selectors) => {
+  for (const selector of selectors) {
+    assert.equal(cssBlockCount(source, selector), 1, `${selector} should have exactly one owner block`);
+  }
+};
+
+test("codex stack page header uses route-management wording instead of command-center wording", () => {
+  assert.match(controlPage, /Codex Stack 链路管理/);
+  assert.match(controlPage, /Codex Stack Route Management/);
+  assert.match(controlPage, /Agent 链路和日志诊断逐步处理/);
+  assert.doesNotMatch(controlPage, /Codex Stack 管理中心|Codex Stack Management Center|指挥台|Command Center/);
+});
+
+test("codex stack feature css keeps visible chrome on DuoYuan tokens", () => {
+  const codexFeatureCss = [
+    codexStackWorkspaceCss,
+    codexStackDashboardCss,
+    codexStackInstallCss,
+    codexStackSettingsCss,
+    codexStackCcConnectCss,
+  ];
+
+  for (const stylesheet of codexFeatureCss) {
+    assert.doesNotMatch(stylesheet, rawVisibleColorPattern);
+    assert.doesNotMatch(stylesheet, legacySurfaceTokenPattern);
+  }
+
+  assert.match(codexStackWorkspaceCss, /html\[data-theme="light"\] \.cs-status-pill\.tone-accent,[\s\S]*var\(--acc\)/);
+  assert.match(codexStackWorkspaceCss, /\.cs-job-console\s*\{[\s\S]*var\(--mono-shadow-md, var\(--shadow-soft\)\)/);
+  assert.match(codexStackSettingsCss, /\.cs-impact-item\.tone-warning\s*\{[\s\S]*var\(--warning\)/);
+  assert.match(codexStackCcConnectCss, /\.cs-config-action-strip\s*\{[\s\S]*var\(--code-bg\)/);
+  assert.match(designContract, /Codex Stack is now a token-only migrated feature family/);
+});
+
+test("codex stack extracted feature css keeps shared primitives single-owner", () => {
+  assertSingleCssOwners(codexStackDashboardCss, [
+    ".cs-runtime-side",
+    ".cs-runtime-footer",
+    ".cs-service-title",
+    ".cs-dashboard-components",
+    ".cs-smoke-model-row",
+    ".cs-run-mode-strip",
+    ".cs-run-check-grid",
+  ]);
+  assertSingleCssOwners(codexStackInstallCss, [
+    ".cs-install-entry-copy",
+    ".cs-install-decision",
+    ".cs-step-number",
+    ".cs-repair-grid",
+    ".cs-install-chain-steps",
+    ".cs-install-run-panel",
+    ".cs-install-guide-note",
+    ".cs-checkbox-grid",
+    ".cs-channel-grid",
+    ".cs-install-config-grid",
+  ]);
+  assertSingleCssOwners(codexStackCcConnectCss, [
+    ".cs-config-action-strip",
+    ".cs-card-header",
+    ".cs-section-kicker",
+    ".cs-actions",
+    ".cs-disabled-help",
+    ".cs-empty-lite",
+    ".cs-form-grid",
+    ".cs-form-span-2",
+    ".text-button",
+    ".danger-text",
+    ".cs-agent-editor-side",
+    ".cs-agent-project-pill",
+    ".cs-status-pill",
+    ".cs-status-pill.tone-accent",
+    ".cs-agent-pane-button",
+  ]);
+  assert.match(designContract, /Codex Stack extracted panel CSS keeps shared primitives single-owner/);
+});
 
 test("codex stack logs panel is isolated from the main control page", () => {
   assert.match(controlPage, /import CodexStackLogConsole from "\.\/CodexStackLogConsole\.vue";/);
@@ -71,8 +154,11 @@ test("codex stack logs panel is isolated from the main control page", () => {
   assert.match(logConsole, /refreshingDisabledHelp: string;/);
   assert.match(logConsole, /v-if="refreshing && refreshingDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(logConsole, /<Teleport v-if="outputSheetOpen" to="body">/);
-  assert.match(logConsole, /class="cs-log-output-dock"/);
-  assert.match(logConsole, /class="cs-log-output-shell cs-log-output-sheet"/);
+  assert.match(logConsole, /class="floating-output-dock cs-log-output-dock"/);
+  assert.match(logConsole, /class="floating-output-sheet cs-log-output-shell cs-log-output-sheet"/);
+  assert.match(logConsole, /class="floating-output-sheet__head cs-log-output-bar"/);
+  assert.match(logConsole, /class="floating-output-sheet__actions cs-log-output-actions"/);
+  assert.match(logConsole, /class="floating-output-sheet__log cs-log"/);
   assert.match(logConsole, /function requestLoad\(\): void \{[\s\S]*outputSheetOpen\.value = true;[\s\S]*emit\("load", props\.selectedService\);/);
   assert.match(logConsole, /function copyOutput\(\): Promise<void>/);
   assert.match(logConsole, /copyTextToClipboard\(displayOutput\.value\)/);
@@ -80,6 +166,15 @@ test("codex stack logs panel is isolated from the main control page", () => {
   assert.doesNotMatch(logConsole, /<style/);
   assert.match(codexStackWorkspaceCss, /\.cs-log-service-button\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-log\s*\{/);
+  assert.equal(cssBlockCount(codexStackWorkspaceCss, ".cs-section-kicker"), 1);
+  assert.equal(cssBlockCount(codexStackWorkspaceCss, ".cs-chip-row"), 1);
+  assert.equal(cssBlockCount(codexStackWorkspaceCss, ".cs-actions"), 1);
+  assert.equal(cssBlockCount(codexStackWorkspaceCss, ".cs-disabled-help"), 1);
+  assert.equal(cssBlockCount(codexStackWorkspaceCss, ".cs-info-chip"), 1);
+  assert.equal(cssBlockCount(codexStackWorkspaceCss, ".cs-status-pill"), 1);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-console \.cs-section-kicker\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-console \.cs-chip-row,\s*\n\.cs-log-console \.cs-actions\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-console \.cs-info-chip,\s*\n\.cs-log-console \.cs-status-pill\s*\{/);
   assert.match(controlPage, /openOutput: text\("打开输出窗口", "Open Output"\)/);
   assert.match(controlPage, /outputWindow: text\("日志输出窗口", "Log Output Window"\)/);
 });
@@ -132,10 +227,11 @@ test("codex stack remaining domain components use feature css instead of vue sty
   assert.match(logConsole, /import "\.\/codex-stack-workspace\.css";/);
   assert.doesNotMatch(logConsole, /<style/);
   assert.match(codexStackWorkspaceCss, /\.cs-log-console\s*\{/);
-  assert.match(codexStackWorkspaceCss, /\.cs-log-output-dock\s*\{/);
-  assert.match(codexStackWorkspaceCss, /\.cs-log-output-shell\s*\{/);
-  assert.match(codexStackWorkspaceCss, /\.cs-log-output-sheet\s*\{/);
-  assert.match(codexStackWorkspaceCss, /\.cs-log-output-dock \.cs-log\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-dock\s*\{[\s\S]*--floating-output-width:\s*780px;/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-shell\s*\{[\s\S]*--floating-output-radius:\s*16px;/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-dock \.cs-log\s*\{[\s\S]*--floating-output-log-min-height:\s*260px;/);
+  assert.match(styleCss, /\.floating-output-sheet\s*\{[\s\S]*background:\s*var\(--modal-panel-bg\);/);
+  assert.doesNotMatch(codexStackWorkspaceCss, /\.cs-log-output-sheet\s*\{[\s\S]*(?:background|box-shadow|backdrop-filter):/);
 });
 
 test("codex stack extracted panels own their scoped display styles", () => {
@@ -161,15 +257,23 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.doesNotMatch(responsiveGrid, /<style scoped>/);
   assert.match(codexStackWorkspaceCss, /\.cs-responsive-grid\s*\{/);
   assert.match(codexStackWorkspaceCss, /@media \(max-width: 760px\)/);
-  assert.match(dashboardCommandCenter, /class="cs-command-center"/);
-  assert.match(dashboardCommandCenter, /import "\.\/codex-stack-dashboard\.css";/);
-  assert.doesNotMatch(dashboardCommandCenter, /<style scoped>/);
+  assert.match(dashboardRuntimeStrip, /class="cs-runtime-strip"/);
+  assert.match(dashboardRuntimeStrip, /import "\.\/codex-stack-dashboard\.css";/);
+  assert.doesNotMatch(dashboardRuntimeStrip, /<style scoped>/);
+  assert.match(dashboardRuntimeStrip, /<progress[\s\S]*class="cs-readiness-bar"[\s\S]*:value="readinessValue"[\s\S]*max="100"/);
+  assert.doesNotMatch(dashboardRuntimeStrip, /:style="\{ width: readinessPercent \}"/);
   assert.match(codexStackDashboardCss, /\.cs-readiness-bar\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-readiness-bar::-webkit-progress-value\s*\{/);
+  assert.doesNotMatch(codexStackDashboardCss, /\.cs-readiness-bar i\s*\{/);
   assert.match(codexStackDashboardCss, /@media \(max-width: 1180px\)/);
-  assert.match(dashboardCommandCenter, /class="cs-command-center"/);
-  assert.match(codexStackDashboardCss, /\.cs-command-status-row\s*\{/);
-  assert.match(codexStackDashboardCss, /\.cs-command-actions\s*\{/);
-  assert.match(codexStackDashboardCss, /\.cs-command-center \.cs-status-pill/);
+  assert.match(dashboardRuntimeStrip, /class="cs-runtime-strip"/);
+  assert.match(codexStackDashboardCss, /\.cs-runtime-status-row\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-runtime-actions\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-runtime-strip \.cs-status-pill/);
+  assert.match(codexStackDashboardCss, /\.cs-runtime-strip\s*\{[\s\S]*background:\s*var\(--line\);[\s\S]*backdrop-filter:\s*none;/);
+  assert.match(codexStackDashboardCss, /\.cs-runtime-main\s*\{[\s\S]*background:\s*var\(--surface-base\);/);
+  assert.match(codexStackDashboardCss, /\.cs-runtime-side\s*\{[\s\S]*background:\s*var\(--surface-base\);/);
+  assert.match(codexStackDashboardCss, /\.cs-runtime-footer\s*\{[\s\S]*background:\s*var\(--surface-base\);/);
   assert.match(diagnosticsPanel, /class="[^\"]*cs-diagnostics-panel"/);
   assert.match(diagnosticsPanel, /import "\.\/codex-stack-workspace\.css";/);
   assert.doesNotMatch(diagnosticsPanel, /<style scoped>/);
@@ -207,6 +311,8 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(installShell, /class="cs-install-guide"/);
   assert.match(installShell, /class="cs-install-workflow"/);
   assert.match(installShell, /执行日志会在浮动输出窗口展示/);
+  assert.match(codexStackInstallCss, /\.cs-install-entry\s*\{[\s\S]*background:\s*var\(--line\);[\s\S]*backdrop-filter:\s*none;/);
+  assert.match(codexStackInstallCss, /\.cs-repair-workflow\s*\{[\s\S]*background:\s*var\(--surface-base\);/);
   assert.match(installStrategyPanel, /class="cs-install-strategy-workbench"/);
   assert.match(installStrategyPanel, /class="cs-install-strategy-editor"/);
   assert.match(installStrategyPanel, /class="cs-install-run-panel"/);
@@ -227,7 +333,11 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(codexStackWorkspaceCss, /@media \(max-width: 960px\)/);
   assert.doesNotMatch(jobProgressPanel, /cs-install-overlay/);
   assert.match(jobProgressPanel, /cs-job-progress-dock/);
+  assert.match(jobProgressPanel, /<progress[\s\S]*class="cs-job-progress-track"[\s\S]*:value="progressValue"[\s\S]*max="100"/);
+  assert.doesNotMatch(jobProgressPanel, /:style="\{ '--progress': progressPercent \}"/);
   assert.match(codexStackWorkspaceCss, /\.cs-job-progress-track\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-job-progress-track::-webkit-progress-value\s*\{/);
+  assert.doesNotMatch(codexStackWorkspaceCss, /\.cs-job-progress-track span\s*\{/);
   assert.match(loadingCard, /class="[^\"]*cs-loading-state"/);
   assert.match(loadingCard, /import "\.\/codex-stack-workspace\.css";/);
   assert.doesNotMatch(loadingCard, /<style scoped>|cs-loading-card|cs-surface/);
@@ -271,7 +381,11 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(codexStackDashboardCss, /\.cs-dashboard-insights\s*\{/);
   assert.match(codexStackDashboardCss, /\.cs-runtime-ledger\s*\{/);
   assert.match(codexStackDashboardCss, /\.cs-component-row\s*\{/);
-  assert.match(codexStackDashboardCss, /\.cs-dashboard-insights \.cs-status-pill\.tone-sage\s*\{/);
+  assert.match(codexStackDashboardCss, /\.cs-dashboard-insights \.cs-status-pill\.tone-sage,\s*\n\.cs-model-ribbon \.cs-status-pill\.tone-sage\s*\{/);
+  assert.doesNotMatch(codexStackDashboardCss, /#[0-9a-fA-F]{3,8}|rgba\(/);
+  assert.match(codexStackDashboardCss, /\.cs-dashboard-insights \.cs-status-pill\.tone-accent,\s*\n\.cs-model-ribbon \.cs-status-pill\.tone-accent\s*\{[\s\S]*var\(--acc\)/);
+  assert.match(codexStackDashboardCss, /\.cs-network-policy-strip\.tone-sage\s*\{[\s\S]*--network-accent:\s*var\(--success\);/);
+  assert.match(codexStackDashboardCss, /\.cs-smoke-matrix-head\.tone-accent strong\s*\{[\s\S]*var\(--acc\)/);
   assert.match(chainMap, /export interface CodexStackChainNode/);
   assert.match(chainMap, /import "\.\/codex-stack-dashboard\.css";/);
   assert.doesNotMatch(chainMap, /<style scoped>/);
@@ -282,7 +396,8 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(runReadinessPanel, /import "\.\/codex-stack-dashboard\.css";/);
   assert.doesNotMatch(runReadinessPanel, /<style scoped>/);
   assert.match(codexStackDashboardCss, /\.cs-run-focus\s*\{/);
-  assert.match(codexStackDashboardCss, /\.cs-run-mode-strip\s*,\s*\n\.cs-run-check-grid/);
+  assert.match(codexStackDashboardCss, /\.cs-run-mode-strip\s*\{[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/);
+  assert.match(codexStackDashboardCss, /\.cs-run-check-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/);
   assert.match(codexStackDashboardCss, /\.cs-run-check-details\s*\{/);
   assert.match(codexStackDashboardCss, /@media \(max-width: 960px\)/);
   assert.match(sectionIntro, /class="[^\"]*cs-section-intro"/);
@@ -292,13 +407,13 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(codexStackWorkspaceCss, /\.cs-section-copy\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-chip-row\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-status-pill\.tone-sage\s*\{/);
-  assert.match(sectionNav, /class="cs-section-tabs"/);
-  assert.match(sectionNav, /class="cs-tab-button"/);
+  assert.match(sectionNav, /class="cs-stack-task-nav"/);
+  assert.match(sectionNav, /class="cs-stack-task-step"/);
   assert.match(sectionNav, /import "\.\/codex-stack-workspace\.css";/);
   assert.doesNotMatch(sectionNav, /<style scoped>/);
-  assert.match(codexStackWorkspaceCss, /\.cs-section-tabs\s*\{/);
-  assert.match(codexStackWorkspaceCss, /\.cs-section-tabs::before\s*\{/);
-  assert.match(codexStackWorkspaceCss, /\.cs-tab-button-active\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-stack-task-nav\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-stack-task-nav::before\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-stack-task-step-active\s*\{/);
   assert.match(codexStackWorkspaceCss, /@media \(max-width: 760px\)/);
   assert.match(workspaceShell, /class="cs-workspace"/);
   assert.match(workspaceShell, /import "\.\/codex-stack-workspace\.css";/);
@@ -307,7 +422,8 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.doesNotMatch(controlPage, /<style scoped>/);
   assert.match(codexStackWorkspaceCss, /\.codex-stack-page\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-workspace\s*\{/);
-  assert.match(codexStackWorkspaceCss, /\.cs-content\s*,\s*\n\.cs-section-stack/);
+  assert.match(codexStackWorkspaceCss, /\.cs-content\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-section-stack\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-workspace-focus\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-workspace-focus::before\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-dashboard-details-panel\s*,\s*\n\.cs-install-options-panel|\.cs-install-options-panel,\s*\n\.cs-dashboard-details-panel/);
@@ -337,14 +453,17 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(codexStackCcConnectCss, /\.cs-agent-project-pill\s*\{/);
   assert.match(ccConnectSetupPanel, /class="cs-cc-setup-panel"/);
   assert.match(ccConnectSetupPanel, /import "\.\/codex-stack-cc-connect\.css";/);
-  assert.match(codexStackCcConnectCss, /\.cs-code\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-command-summary\s*\{/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-command-sheet-dock\s*\{[\s\S]*--floating-output-width:\s*780px;/);
+  assert.doesNotMatch(codexStackCcConnectCss, /\.cs-code\s*\{/);
   assert.match(ccConnectStage, /class="cs-agent-workbench"/);
   assert.match(ccConnectStage, /class="[^\"]*cs-agent-stage"/);
   assert.match(ccConnectStage, /import "\.\/codex-stack-cc-connect\.css";/);
   assert.match(codexStackCcConnectCss, /@media \(max-width: 960px\)/);
   assert.match(logConsole, /import "\.\/codex-stack-workspace\.css";/);
   assert.match(codexStackWorkspaceCss, /\.cs-section-kicker\s*\{/);
-  assert.match(codexStackWorkspaceCss, /\.cs-info-chip,\s*\n\.cs-status-pill\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-info-chip\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-status-pill\s*\{/);
 });
 
 test("codex stack page chrome delegates refresh and management enable without moving actions", () => {
@@ -374,6 +493,20 @@ test("codex stack page chrome delegates refresh and management enable without mo
   assert.doesNotMatch(managementLockCard, /loadAll|summary|fetchCodexStackSummary|enableManagement|serviceAction|patchCodexStackConfig/);
 });
 
+test("codex stack refreshes on route activation while preserving dirty form drafts", () => {
+  assert.match(controlPage, /import \{ computed, onActivated, onMounted, onUnmounted, reactive, ref, watch \} from "vue";/);
+  assert.match(controlPage, /onActivated\(\(\) => \{[\s\S]*if \(loading\.value \|\| ccConnectLoading\.value\) return;[\s\S]*void loadAll\(true\);[\s\S]*\}\);/);
+  assert.match(controlPage, /const keepConfigDraft = \(options\.preserveDirtyConfigDraft \?\? true\)[\s\S]*hasConfigPatchChanges\.value;/);
+  assert.match(controlPage, /const keepInstallDraft = \(options\.preserveDirtyInstallDraft \?\? true\)[\s\S]*hasInstallDraftChanges\.value;/);
+});
+
+test("codex stack dense workbench grids avoid fixed hard minimums inside the active canvas", () => {
+  assert.doesNotMatch(codexStackInstallCss, /minmax\(420px|minmax\(260px,\s*0\.78fr|minmax\(280px,\s*0\.42fr|minmax\(220px,\s*280px/);
+  assert.doesNotMatch(codexStackDashboardCss, /minmax\(340px|minmax\(320px|minmax\(280px,\s*0\.8fr|minmax\(250px|minmax\(260px,\s*1fr|minmax\(240px,\s*0\.7fr/);
+  assert.doesNotMatch(codexStackWorkspaceCss, /minmax\(240px,\s*0\.34fr/);
+  assert.doesNotMatch(codexStackCcConnectCss, /minmax\(280px,\s*1fr|minmax\(240px,\s*0\.34fr/);
+});
+
 test("codex stack section layout wrappers own repeated layout without moving actions", () => {
   assert.match(controlPage, /import CodexStackSectionStack from "\.\/CodexStackSectionStack\.vue";/);
   assert.match(controlPage, /import CodexStackResponsiveGrid from "\.\/CodexStackResponsiveGrid\.vue";/);
@@ -385,7 +518,9 @@ test("codex stack section layout wrappers own repeated layout without moving act
   );
   assert.doesNotMatch(controlPage, /class="cs-section-stack"/);
   assert.doesNotMatch(controlPage, /class="cs-dashboard-grid"/);
+  assert.doesNotMatch(controlPage, /class="cs-workspace-grid"/);
   assert.doesNotMatch(controlPage, /\.cs-section-stack|\.cs-dashboard-grid|\.cs-card-header|\.cs-form-grid|\.cs-chip|\.cs-actions/);
+  assert.doesNotMatch(codexStackWorkspaceCss, /\.cs-workspace-grid/);
   assert.match(sectionStack, /<slot \/>/);
   assert.match(responsiveGrid, /<slot \/>/);
   assert.doesNotMatch(sectionStack, /activeSection|loadAll|fetchCodexStackSummary|patchCodexStackConfig|serviceAction|enableManagement/);
@@ -419,7 +554,7 @@ test("codex stack loading and install shell wrappers preserve display-only bound
   assert.match(controlPage, /async function serviceAction/);
 });
 
-test("codex stack section nav delegates tab switching without moving content routing", () => {
+test("codex stack section nav delegates side task navigation without moving content routing", () => {
   assert.match(controlPage, /import type \{ CodexStackSectionId, CodexStackSectionNavItem \} from "\.\/CodexStackSectionNav\.vue";/);
   assert.match(controlPage, /import CodexStackWorkspaceShell from "\.\/CodexStackWorkspaceShell\.vue";/);
   assert.match(
@@ -433,6 +568,9 @@ test("codex stack section nav delegates tab switching without moving content rou
   assert.match(controlPage, /function selectWorkspaceSection\(section: SectionId\): void/);
   assert.match(controlPage, /function focusHintForAction\(/);
   assert.match(controlPage, /const navSections = computed<CodexStackSectionNavItem\[\]>\(\(\) => \{/);
+  assert.match(controlPage, /label: text\("状态", "Status"\)/);
+  assert.match(controlPage, /label: text\("Agent 桥接", "Agent Bridge"\)/);
+  assert.match(controlPage, /label: text\("路由模型", "Route Models"\)/);
   assert.match(controlPage, /const recommendedSection = activeRecommendation\.value\?\.section \|\| "dashboard";/);
   assert.match(controlPage, /const componentIssues = current\?\.components\.filter\(\(component\) => component\.status !== "ok"\)\.length \|\| 0;/);
   assert.match(controlPage, /const settingsNeedsReview = Boolean\(current && \(/);
@@ -457,11 +595,21 @@ test("codex stack section nav delegates tab switching without moving content rou
   assert.match(workspaceShell, /class="cs-workspace-focus"/);
   assert.match(workspaceShell, /<slot \/>/);
   assert.doesNotMatch(workspaceShell, /grid-template-columns: minmax\(0, 1fr\);/);
-  assert.match(codexStackWorkspaceCss, /\.cs-workspace\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(
+    codexStackWorkspaceCss,
+    /\.cs-workspace\s*\{[\s\S]*grid-template-columns: minmax\(236px, 292px\) minmax\(0, 1fr\);/,
+  );
+  assert.match(
+    codexStackWorkspaceCss,
+    /\.cs-stack-task-nav\s*\{[\s\S]*display:\s*grid;[\s\S]*background:\s*var\(--surface-raised\);[\s\S]*backdrop-filter:\s*none;/,
+  );
   assert.match(codexStackWorkspaceCss, /\.cs-workspace-focus\.tone-accent::before\s*\{/);
   assert.match(workspaceShell, /defineEmits<\{[\s\S]*select: \[sectionId: CodexStackSectionId\];[\s\S]*\}>/);
   assert.doesNotMatch(workspaceShell, /activeSection\.value|nextActionPrimary|runReadinessCheckAction|loadSummary|fetchCodexStackSummary|patchCodexStackConfig|serviceAction/);
-  assert.match(sectionNav, /<nav class="cs-section-tabs" aria-label="Codex Stack sections">/);
+  assert.match(workspaceShell, /class="cs-stack-task-rail studio-workbench-task-rail"/);
+  assert.match(workspaceShell, /aria-label="Codex Stack task rail"/);
+  assert.doesNotMatch(workspaceShell, /cs-flow-rail|Codex Stack flow/);
+  assert.match(sectionNav, /<nav class="cs-stack-task-nav" aria-label="Codex Stack task steps">/);
   assert.match(sectionNav, /export type CodexStackSectionId = "dashboard" \| "install" \| "cc-connect" \| "settings" \| "logs";/);
   assert.match(sectionNav, /export interface CodexStackSectionNavItem/);
   assert.match(sectionNav, /meta: string;/);
@@ -471,10 +619,13 @@ test("codex stack section nav delegates tab switching without moving content rou
   assert.match(sectionNav, /section\.recommended/);
   assert.match(sectionNav, /section\.meta/);
   assert.match(sectionNav, /section\.badge/);
-  assert.match(sectionNav, /cs-section-tabs/);
-  assert.match(sectionNav, /cs-tab-button/);
-  assert.match(sectionNav, /cs-nav-recommended/);
-  assert.match(sectionNav, /cs-nav-badge/);
+  assert.match(sectionNav, /cs-stack-task-nav/);
+  assert.match(sectionNav, /cs-stack-task-step/);
+  assert.match(sectionNav, /cs-task-recommended/);
+  assert.match(sectionNav, /cs-task-badge/);
+  assert.doesNotMatch(sectionNav, /cs-flow-nav|cs-flow-step|cs-nav-recommended|cs-nav-badge|flow steps/);
+  assert.doesNotMatch(installConfigPanel, /cs-flow-steps/);
+  assert.match(installConfigPanel, /cs-install-chain-steps/);
   assert.match(sectionNav, /defineEmits<\{[\s\S]*select: \[sectionId: CodexStackSectionId\];[\s\S]*\}>/);
   assert.match(sectionNav, /@click="\$emit\('select', section\.id\)"/);
   assert.doesNotMatch(sectionNav, /cs-sidebar|cs-nav-button/);
@@ -486,7 +637,7 @@ test("codex stack section intros delegate repeated page copy without moving deri
   assert.match(controlPage, /import type \{ CodexStackSectionIntroChip \} from "\.\/CodexStackSectionIntro\.vue";/);
   assert.match(
     controlPage,
-    /<CodexStackSectionIntro[\s\S]*:kicker="text\('安装', 'Install'\)"[\s\S]*:title="text\('安装\/修复指挥台', 'Install\/Repair Command Center'\)"[\s\S]*:copy="text\('第一次使用先走新手入口/ ,
+    /<CodexStackSectionIntro[\s\S]*:kicker="text\('安装', 'Install'\)"[\s\S]*:title="text\('一键安装与修复', 'One-click Install and Repair'\)"[\s\S]*:copy="text\('第一次使用先走新手入口/ ,
   );
   assert.match(
     controlPage,
@@ -529,8 +680,8 @@ test("codex stack model ribbon delegates catalog refresh without moving model ow
 });
 
 test("codex stack dashboard delegates hero actions without moving service commands", () => {
-  assert.match(controlPage, /import CodexStackDashboardCommandCenter from "\.\/CodexStackDashboardCommandCenter\.vue";/);
-  assert.match(controlPage, /<CodexStackDashboardCommandCenter/);
+  assert.match(controlPage, /import CodexStackDashboardRuntimeStrip from "\.\/CodexStackDashboardRuntimeStrip\.vue";/);
+  assert.match(controlPage, /<CodexStackDashboardRuntimeStrip/);
   assert.match(controlPage, /:status-label="statusLabel"/);
   assert.match(controlPage, /:status-tone="statusTone"/);
   assert.match(controlPage, /:active-service-count="activeServiceCount"/);
@@ -549,7 +700,7 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.match(controlPage, /@run-check="runCheck"/);
   assert.match(controlPage, /@repair="repairRecommended"/);
   assert.match(controlPage, /@sync="loadAll"/);
-  assert.match(controlPage, /const primaryServiceIds: CodexStackServiceId\[\] = \[[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"[\s\S]*"cc-connect\.service"[\s\S]*\];/);
+  assert.match(controlPage, /const primaryServiceIds = \[[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"[\s\S]*"cc-connect\.service"[\s\S]*\] as const satisfies readonly CodexStackManualServiceId\[\];/);
   assert.match(controlPage, /const activeServiceCount = computed\(\(\) => countActiveServices\(primaryServices\.value\)\);/);
   assert.match(controlPage, /const serviceCount = computed\(\(\) => primaryServices\.value\.length\);/);
   assert.match(controlPage, /const codexProviderCheck = computed\(\(\) => \(/);
@@ -559,25 +710,37 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.match(controlPage, /async function loadAll\(silent = false, ccConnectOptions: CcConnectLoadOptions = \{\}\): Promise<void>/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-hero-card"/);
   assert.doesNotMatch(controlPage, /class="cs-hero-actions"/);
-  assert.match(dashboardCommandCenter, /路径/);
-  assert.match(dashboardCommandCenter, /服务/);
-  assert.match(dashboardCommandCenter, /健康检查/);
-  assert.match(dashboardCommandCenter, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*busyDisabledHelp: string;[\s\S]*mutationDisabledHelp: string;[\s\S]*syncDisabled: boolean;[\s\S]*syncDisabledHelp: string;[\s\S]*\}>/);
-  assert.match(dashboardCommandCenter, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-command-footer-help"/);
-  assert.match(dashboardCommandCenter, /v-else-if="syncDisabled && syncDisabledHelp"[\s\S]*class="cs-command-footer-help"/);
-  assert.match(dashboardCommandCenter, /v-else-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-command-footer-help"/);
-  assert.match(dashboardCommandCenter, /defineEmits<\{[\s\S]*"run-check": \[\];[\s\S]*repair: \[\];[\s\S]*sync: \[\];[\s\S]*\}>/);
-  assert.match(dashboardCommandCenter, /@click="\$emit\('run-check'\)"/);
-  assert.match(dashboardCommandCenter, /@click="\$emit\('repair'\)"/);
-  assert.match(dashboardCommandCenter, /@click="\$emit\('sync'\)"/);
-  assert.doesNotMatch(dashboardCommandCenter, /runCodexStackCheck|startCodexStackRepair|fetchCodexStackSummary|fetchCcConnectConfig|loadAll|repairRecommended|runCheck/);
+  assert.match(dashboardRuntimeStrip, /路径/);
+  assert.match(dashboardRuntimeStrip, /服务/);
+  assert.match(dashboardRuntimeStrip, /健康检查/);
+  assert.match(dashboardRuntimeStrip, /defineProps<\{[\s\S]*statusLabel: string;[\s\S]*statusTone: CodexStackTone;[\s\S]*activeServiceCount: number;[\s\S]*codexRouteLabel: string;[\s\S]*busyDisabledHelp: string;[\s\S]*mutationDisabledHelp: string;[\s\S]*syncDisabled: boolean;[\s\S]*syncDisabledHelp: string;[\s\S]*\}>/);
+  assert.match(dashboardRuntimeStrip, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-runtime-footer-help"/);
+  assert.match(dashboardRuntimeStrip, /v-else-if="syncDisabled && syncDisabledHelp"[\s\S]*class="cs-runtime-footer-help"/);
+  assert.match(dashboardRuntimeStrip, /v-else-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-runtime-footer-help"/);
+  assert.match(dashboardRuntimeStrip, /defineEmits<\{[\s\S]*"run-check": \[\];[\s\S]*repair: \[\];[\s\S]*sync: \[\];[\s\S]*\}>/);
+  assert.match(dashboardRuntimeStrip, /@click="\$emit\('run-check'\)"/);
+  assert.match(dashboardRuntimeStrip, /@click="\$emit\('repair'\)"/);
+  assert.match(dashboardRuntimeStrip, /@click="\$emit\('sync'\)"/);
+  assert.doesNotMatch(dashboardRuntimeStrip, /runCodexStackCheck|startCodexStackRepair|fetchCodexStackSummary|fetchCcConnectConfig|loadAll|repairRecommended|runCheck/);
 });
 
 test("codex stack service grid explains global mutation locks without moving service actions", () => {
   assert.match(controlPage, /<CodexStackServiceGrid[\s\S]*:services="serviceCards"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:labels="serviceGridLabels"[\s\S]*@service-action="serviceAction"/);
+  assert.match(controlPage, /const primaryServiceIds = \[[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"[\s\S]*"cc-connect\.service"[\s\S]*\] as const satisfies readonly CodexStackManualServiceId\[\];/);
+  assert.match(controlPage, /type PrimaryCodexStackServiceId = \(typeof primaryServiceIds\)\[number\];/);
+  assert.match(controlPage, /const primaryServiceIdSet = new Set<CodexStackServiceId>\(primaryServiceIds\);/);
+  assert.match(controlPage, /function isPrimaryServiceStatus\(service: CodexStackServiceStatus\): service is PrimaryCodexStackServiceStatus/);
+  assert.match(controlPage, /const primaryServices = computed\(\(\) => summary\.value\?\.services\.filter\(isPrimaryServiceStatus\) \|\| \[\]\);/);
   assert.match(controlPage, /return primaryServices\.value\.map\(\(service\) => \{/);
+  assert.doesNotMatch(controlPage, /managedServiceIds|manualServiceIds|managedServiceHelp|isManagedService|managed:\s*isManagedService|actionHelp:\s*managedServiceHelp/);
   assert.doesNotMatch(controlPage, /return summary\.value\.services\.map\(\(service\) => \{/);
+  assert.doesNotMatch(controlPage, /serviceId === "codex-stack-watchdog\.timer"/);
   assert.match(serviceGrid, /mutationDisabledHelp: string;/);
+  assert.match(serviceGrid, /import type \{ CodexStackManualServiceId, CodexStackServiceAction \}/);
+  assert.match(serviceGrid, /id: CodexStackManualServiceId;/);
+  assert.match(serviceGrid, /"service-action": \[serviceId: CodexStackManualServiceId, action: Extract<CodexStackServiceAction, "start" \| "stop" \| "restart">\];/);
+  assert.doesNotMatch(serviceGrid, /managed\?: boolean|actionHelp\?: string|service\.managed|cs-managed-service-help|<template v-else>/);
+  assert.match(serviceGrid, /\$emit\('service-action', service\.id, 'start'\)[\s\S]*\$emit\('service-action', service\.id, 'stop'\)[\s\S]*\$emit\('service-action', service\.id, 'restart'\)/);
   assert.match(serviceGrid, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(serviceGrid, /:disabled="!canRunMutation \|\| service\.active"/);
   assert.match(serviceGrid, /:disabled="!canRunMutation \|\| !service\.active"/);
@@ -586,12 +749,28 @@ test("codex stack service grid explains global mutation locks without moving ser
   assert.doesNotMatch(serviceGrid, /<style scoped>/);
   assert.match(codexStackDashboardCss, /\.cs-service-grid\s*\{/);
   assert.match(codexStackDashboardCss, /\.cs-service-card-actions\s*\{/);
+  assert.doesNotMatch(codexStackDashboardCss, /\.cs-managed-service-help\s*\{/);
   assert.doesNotMatch(serviceGrid, /serviceAction\(|restartCodexStackService|fetchCodexStackSummary|repairRecommended|resumeStack/);
 });
 
-test("codex stack dashboard delegates command center without losing actions", () => {
-  assert.match(controlPage, /import CodexStackDashboardCommandCenter from "\.\/CodexStackDashboardCommandCenter\.vue";/);
-  assert.match(controlPage, /<CodexStackDashboardCommandCenter/);
+test("codex stack service-control helper accepts only manual service ids", () => {
+  const api = read("apps/web-vue/src/features/codex-stack/api.ts");
+
+  assert.match(codexStackTypes, /export type CodexStackManualServiceId =[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"[\s\S]*"cc-connect\.service";/);
+  assert.match(codexStackTypes, /export type CodexStackManagedServiceId =[\s\S]*"cli-proxy-api-healthcheck\.timer"[\s\S]*"codex-stack-watchdog\.timer";/);
+  assert.match(codexStackTypes, /export type CodexStackServiceId = CodexStackManualServiceId \| CodexStackManagedServiceId;/);
+  assert.match(codexStackTypes, /restartRequiredUnits\?: CodexStackManualServiceId\[\];/);
+  assert.match(api, /CodexStackManualServiceId/);
+  assert.match(api, /export function controlCodexStackService\(\s*serviceId: CodexStackManualServiceId,\s*action: CodexStackServiceAction,/);
+  assert.match(api, /export function fetchCodexStackLogs\(\s*serviceId: CodexStackServiceId,/);
+  assert.doesNotMatch(api, /controlCodexStackService\(\s*serviceId: CodexStackServiceId/);
+  assert.match(codexStackService, /const restartRequired = new Set<CodexStackManualServiceId>\(\);/);
+  assert.match(controlPage, /const restartRequiredUnits = ref<CodexStackManualServiceId\[\]>\(\[\]\);/);
+});
+
+test("codex stack dashboard delegates runtime strip without losing actions", () => {
+  assert.match(controlPage, /import CodexStackDashboardRuntimeStrip from "\.\/CodexStackDashboardRuntimeStrip\.vue";/);
+  assert.match(controlPage, /<CodexStackDashboardRuntimeStrip/);
   assert.match(controlPage, /:busy="actionBusy"/);
   assert.match(controlPage, /:ready-component-count="readyComponentCount"/);
   assert.match(controlPage, /:next-action-title="nextActionTitle"/);
@@ -600,10 +779,10 @@ test("codex stack dashboard delegates command center without losing actions", ()
   assert.match(controlPage, /@open-section="setWorkspaceSection\(nextActionSection, focusHintForAction\(nextActionTitle, nextActionCopy\)\)"/);
   assert.doesNotMatch(controlPage, /class="cs-command-grid"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-readiness-card"/);
-  assert.match(dashboardCommandCenter, /cs-next-action-pane/);
-  assert.match(dashboardCommandCenter, /nextActionDisabledHelp/);
-  assert.match(dashboardCommandCenter, /props\.nextActionRequiresMutation \? !props\.canRunMutation : props\.busy/);
-  assert.match(dashboardCommandCenter, /modelCatalogPreview/);
+  assert.match(dashboardRuntimeStrip, /cs-next-action-pane/);
+  assert.match(dashboardRuntimeStrip, /nextActionDisabledHelp/);
+  assert.match(dashboardRuntimeStrip, /props\.nextActionRequiresMutation \? !props\.canRunMutation : props\.busy/);
+  assert.match(dashboardRuntimeStrip, /modelCatalogPreview/);
   assert.match(recommendationCard, /v-if="primaryDisabled && disabledHelp"/);
   assert.match(recommendationCard, /class="cs-disabled-help"/);
   assert.match(recommendationCard, /class="cs-recommendation-prompt"/);
@@ -732,6 +911,11 @@ test("codex stack install page delegates component strategy and CTA without movi
   );
   assert.match(controlPage, /const installComponentStrategies = computed<CodexStackInstallComponentStrategy\[\]>/);
   assert.match(controlPage, /function setComponentMode\(componentId: CodexStackComponentId, mode: ComponentInstallMode\): void/);
+  assert.match(controlPage, /function isEditableInstallComponent\(componentId: CodexStackComponentId\): boolean/);
+  assert.match(controlPage, /function filterEditableInstallComponents\(componentIds: string\[\]\): CodexStackComponentId\[\]/);
+  assert.doesNotMatch(controlPage, /id: "watchdog" as const, label: text\("后台守护", "Background Watchdog"\)/);
+  assert.match(controlPage, /const skipComponents = filterEditableInstallComponents\(installForm\.skipComponents\);/);
+  assert.match(controlPage, /const forceReinstallComponents = filterEditableInstallComponents\(installForm\.forceComponents\);/);
   assert.match(controlPage, /async function installFullStack\(\): Promise<void>/);
   assert.match(controlPage, /async function installBaseOnly\(\): Promise<void>/);
   assert.match(controlPage, /async function reinstallFullStack\(\): Promise<void>/);
@@ -743,10 +927,13 @@ test("codex stack install page delegates component strategy and CTA without movi
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-cta-card"/);
   assert.match(installStrategyPanel, /mutationDisabledHelp: string;/);
   assert.match(installStrategyPanel, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
+  assert.match(installStrategyPanel, /class="cs-install-managed-note"/);
+  assert.match(installStrategyPanel, /后台守护由安装、暂停和推荐修复流程自动托管/);
   assert.match(installStrategyPanel, /class="cs-install-run-actions"/);
   assert.doesNotMatch(installStrategyPanel, /cs-install-command-pane|cs-install-cta-card|cs-card-header|<style scoped>/);
   assert.match(codexStackInstallCss, /\.cs-install-strategy-workbench\s*\{/);
   assert.match(codexStackInstallCss, /\.cs-install-run-actions\s*\{/);
+  assert.match(codexStackInstallCss, /\.cs-install-managed-note\s*\{/);
   assert.match(installStrategyPanel, /defineEmits<[\s\S]*"set-component-mode": \[componentId: CodexStackComponentId, mode: CodexStackComponentInstallMode\]/);
   assert.match(installStrategyPanel, /@click="\$emit\('install-full'\)"/);
   assert.match(installStrategyPanel, /@click="\$emit\('install-base'\)"/);
@@ -759,7 +946,7 @@ test("codex stack install page delegates long job progress without losing pollin
   assert.match(controlPage, /import CodexStackJobProgressPanel from "\.\/CodexStackJobProgressPanel\.vue";/);
   assert.match(controlPage, /const jobOutputOpen = ref\(false\);/);
   assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob && jobOutputOpen"[\s\S]*:job="activeJob"/);
-  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
+  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-value="jobProgressValue"/);
   assert.match(controlPage, /:running="isCodexStackJobRunning\(activeJob\)"[\s\S]*@copy-output="copyActiveJobOutput"[\s\S]*@close="closeJobOutputSheet"[\s\S]*@dismiss="dismissActiveJob"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-install-progress"/);
   assert.doesNotMatch(controlPage, /class="cs-install-overlay"/);
@@ -786,7 +973,7 @@ test("codex stack install page delegates long job progress without losing pollin
 
 test("codex stack logs page delegates job output preview without losing polling ownership", () => {
   assert.match(controlPage, /import CodexStackJobProgressPanel from "\.\/CodexStackJobProgressPanel\.vue";/);
-  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob && jobOutputOpen"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-percent="jobProgressPercent"/);
+  assert.match(controlPage, /<CodexStackJobProgressPanel[\s\S]*v-if="activeJob && jobOutputOpen"[\s\S]*:job="activeJob"[\s\S]*:steps="jobProgressSteps"[\s\S]*:progress-value="jobProgressValue"/);
   assert.match(controlPage, /:empty-log="text\('等待输出\.\.\.', 'Waiting for output\.\.\.'\)"/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-job-output-card"/);
   assert.match(controlPage, /function startPollingJob\(job: CodexStackJob\): void/);
@@ -964,6 +1151,25 @@ test("codex stack cc-connect page delegates rail navigation without moving draft
   assert.doesNotMatch(ccConnectStage, /ccConnectProjectDrafts|selectedProjectDraft|addCcConnectProject\(|selectCcConnectProject|patchCcConnectConfig|saveCcConnect|activeAgentPane/);
 });
 
+test("codex stack keeps Agent routing copy distinct from cc-connect platform binding", () => {
+  const staleAgentBindingCopy = new RegExp(
+    [
+      "Agent " + "绑定",
+      "Agent " + "binding",
+      "Bind " + "Agent",
+      "Complete Agent " + "binding",
+    ].join("|"),
+  );
+
+  assert.match(controlPage, /先完成 Agent 路由/);
+  assert.match(controlPage, /Open Agent Routing/);
+  assert.match(controlPage, /平台接入与 finalizer/);
+  assert.doesNotMatch(controlPage, staleAgentBindingCopy);
+  assert.match(controlPage, /等待 cc-connect 绑定/);
+  assert.match(controlPage, /平台绑定已检测/);
+  assert.match(controlPage, /Binding Required/);
+});
+
 test("codex stack cc-connect page delegates setup actions without moving finalizer", () => {
   assert.match(controlPage, /import CodexStackCcConnectSetupPanel from "\.\/CodexStackCcConnectSetupPanel\.vue";/);
   assert.match(
@@ -986,6 +1192,18 @@ test("codex stack cc-connect page delegates setup actions without moving finaliz
   assert.match(ccConnectSetupPanel, /@click="\$emit\('copy-setup', 'feishu'\)"/);
   assert.match(ccConnectSetupPanel, /@click="\$emit\('copy-setup', 'weixin'\)"/);
   assert.match(ccConnectSetupPanel, /@click="\$emit\('finalize'\)"/);
+  assert.match(ccConnectSetupPanel, /<Teleport v-if="commandSheetOpen" to="body">/);
+  assert.match(ccConnectSetupPanel, /class="floating-output-dock cs-cc-command-sheet-dock"/);
+  assert.match(ccConnectSetupPanel, /class="floating-output-sheet cs-cc-command-sheet"/);
+  assert.match(ccConnectSetupPanel, /class="floating-output-sheet__head cs-cc-command-sheet-head"/);
+  assert.match(ccConnectSetupPanel, /class="floating-output-sheet__actions cs-cc-command-sheet-actions"/);
+  assert.match(ccConnectSetupPanel, /class="floating-output-sheet__log cs-cc-command-sheet-log"/);
+  assert.match(ccConnectSetupPanel, /copyTextToClipboard\(commandText\.value\)/);
+  assert.match(ccConnectSetupPanel, /页面只保留复制入口/);
+  assert.doesNotMatch(ccConnectSetupPanel, /<pre class="cs-code"/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-command-sheet-log\s*\{[\s\S]*--floating-output-log-min-height:\s*220px;/);
+  assert.doesNotMatch(codexStackCcConnectCss, /\.cs-cc-command-sheet\s*\{[\s\S]*(?:background|box-shadow|backdrop-filter):/);
+  assert.doesNotMatch(codexStackCcConnectCss, /\.cs-code\s*\{/);
   assert.doesNotMatch(ccConnectSetupPanel, /copySetupCommand|finalizeCcConnect|finalizeCodexStackCcConnect|patchCcConnectConfig|saveCcConnect/);
 });
 
@@ -1005,8 +1223,9 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /id: "job-lock"/);
   assert.match(controlPage, /id: "smoke"/);
   assert.match(controlPage, /id: "watchdog"[\s\S]*label: text\("后台守护", "Background Watchdog"\)/);
-  assert.match(controlPage, /"codex-stack-watchdog\.timer": \{[\s\S]*labelKey: \["后台守护", "Background Watchdog"\][\s\S]*Managed by resume\/pause flows; do not start directly/);
-  assert.match(controlPage, /id: "watchdog" as const, label: text\("后台守护", "Background Watchdog"\)/);
+  assert.doesNotMatch(controlPage, /"codex-stack-watchdog\.timer": \{[\s\S]*labelKey: \["后台守护", "Background Watchdog"\]/);
+  assert.doesNotMatch(controlPage, /"cli-proxy-api-healthcheck\.timer": \{[\s\S]*labelKey: \["旧巡检", "Legacy Healthcheck"\]/);
+  assert.doesNotMatch(controlPage, /id: "watchdog" as const, label: text\("后台守护", "Background Watchdog"\)/);
   assert.doesNotMatch(controlPage, /labelKey: \["Watchdog", "Watchdog"\]/);
   assert.doesNotMatch(controlPage, /label: text\("看门狗", "Watchdog"\)/);
   assert.doesNotMatch(controlPage, /label: "Watchdog"[\s\S]*暂停链路时应先停 watchdog/);
@@ -1085,7 +1304,7 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
   assert.match(controlPage, /已有后台任务执行中，先查看日志并等待完成/);
   assert.match(controlPage, /状态正在刷新中，请等待本轮读取完成/);
   assert.match(controlPage, /Agent 配置正在同步，请等待完成后再刷新/);
-  assert.match(controlPage, /<CodexStackDashboardCommandCenter[\s\S]*:busy="actionBusy"/);
+  assert.match(controlPage, /<CodexStackDashboardRuntimeStrip[\s\S]*:busy="actionBusy"/);
   assert.match(controlPage, /<CodexStackDiagnosticsPanel[\s\S]*:busy="actionBusy"/);
   assert.match(controlPage, /const runReadinessActionsDisabled = computed\(\(\) => busy\.value \|\| jobRunning\.value\);/);
   assert.match(controlPage, /任务执行中，先看日志/);
@@ -1202,10 +1421,10 @@ test("codex stack recommended repair resumes a deliberately paused stack in orde
   assert.doesNotMatch(viewModel, /if \(!serviceActive\.get\("cli-proxy-api\.service"\)\) actions\.push\("restart-cpa"\);/);
 });
 
-test("codex stack service grid routes unsafe starts through ordered resume", () => {
+test("codex stack service grid routes compact unsafe starts through ordered resume without exposing watchdog controls", () => {
   assert.match(controlPage, /function isSummaryServiceActive\(serviceId: CodexStackServiceId\): boolean/);
   assert.match(controlPage, /serviceId === "cpa-compact-proxy\.service" && !isSummaryServiceActive\("cli-proxy-api\.service"\)[\s\S]*await resumeStack\(\);/);
-  assert.match(controlPage, /serviceId === "codex-stack-watchdog\.timer"[\s\S]*!isSummaryServiceActive\("cli-proxy-api\.service"\) \|\| !isSummaryServiceActive\("cpa-compact-proxy\.service"\)[\s\S]*await resumeStack\(\);/);
+  assert.doesNotMatch(controlPage, /serviceId === "codex-stack-watchdog\.timer"[\s\S]*await resumeStack\(\);/);
 });
 
 test("codex stack background jobs resync cc-connect drafts after completion", () => {

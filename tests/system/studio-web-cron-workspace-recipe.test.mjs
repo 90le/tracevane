@@ -84,6 +84,26 @@ test("cron control page keeps workspace styling outside the Vue page file", () =
   assert.match(cronWorkspaceCss, /\.cron-sidebar-panel\s*\{/);
   assert.match(cronWorkspaceCss, /\.cron-modal-mask\s*\{/);
   assert.doesNotMatch(globalStyleCss, /\.cron[a-zA-Z0-9_-]*/);
+  assert.doesNotMatch(
+    cronControlPage,
+    /toggle-card|cron-payload-card/,
+  );
+  assert.doesNotMatch(
+    cronWorkspaceCss,
+    /cron-payload-card|var\(--surface\)|linear-gradient|radial-gradient|var\(--sky\)|--atlas|--glass|rgba\(120,\s*185,\s*255|rgba\(79,\s*132,\s*248|rgba\(77,\s*129,\s*247|rgba\(37,\s*99,\s*235/,
+  );
+  assert.doesNotMatch(
+    cronWorkspaceCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}|--sky|--atlas|--glass/,
+  );
+  assert.match(cronWorkspaceCss, /background:\s*var\(--modal-backdrop\);/);
+  assert.match(cronWorkspaceCss, /background:\s*var\(--surface-raised\);/);
+  assert.match(cronWorkspaceCss, /\.cron-modal\s*\{[\s\S]*background:\s*var\(--modal-panel-bg\);/);
+  assert.match(cronWorkspaceCss, /box-shadow:\s*[\s\S]*var\(--mono-shadow-md\)/);
+  assert.match(
+    cronWorkspaceCss,
+    /\.cron-scheduler-callout\.danger\s*\{[\s\S]*border-color:\s*color-mix\(in srgb,\s*var\(--danger\)/,
+  );
 });
 
 test("cron overview recipe exports typed default recipe builder", () => {

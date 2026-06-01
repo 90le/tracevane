@@ -9,8 +9,8 @@
   border: 1px solid var(--chat-line-strong);
   border-radius: 12px;
   background: var(--chat-menu-surface);
-  box-shadow: 0 26px 64px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(14px);
+  box-shadow: var(--mono-shadow-md);
+  backdrop-filter: none;
   scrollbar-width: thin;
 }
 
@@ -137,9 +137,8 @@
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--chat-line) 82%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--chat-panel) 86%, transparent), color-mix(in srgb, var(--chat-panel) 96%, transparent));
-  box-shadow: 0 14px 28px rgba(11, 19, 32, 0.08);
+  background: color-mix(in srgb, var(--chat-modal-bg) 92%, transparent);
+  box-shadow: var(--mono-shadow-sm);
   overflow: hidden;
 }
 
@@ -159,21 +158,21 @@
   right: 0;
   bottom: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--chat-accent) 84%, white), transparent);
+  background: color-mix(in srgb, var(--chat-accent) 84%, var(--chat-text));
   transform: translateX(-100%);
   animation: chat-slash-feedback-progress 1.6s linear infinite;
 }
 
 .chat-slash-feedback.tone-success::before {
-  background: color-mix(in srgb, #1f9d68 78%, transparent);
+  background: color-mix(in srgb, var(--success) 78%, transparent);
 }
 
 .chat-slash-feedback.tone-warning::before {
-  background: color-mix(in srgb, #d5891c 80%, transparent);
+  background: color-mix(in srgb, var(--warning) 80%, transparent);
 }
 
 .chat-slash-feedback.tone-error::before {
-  background: color-mix(in srgb, #d14f5c 84%, transparent);
+  background: color-mix(in srgb, var(--danger) 84%, transparent);
 }
 
 .chat-slash-feedback__content {
@@ -281,8 +280,8 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(10, 14, 20, 0.42);
-  backdrop-filter: blur(12px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .chat-slash-help-mask[data-state='open'] {
@@ -298,7 +297,7 @@
   border: 1px solid var(--chat-line);
   border-radius: 12px;
   background: var(--chat-modal-bg);
-  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--modal-shadow);
 }
 
 .chat-slash-help-dialog[data-state='open'] {
@@ -557,8 +556,8 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(10, 14, 20, 0.42);
-  backdrop-filter: blur(12px);
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
 }
 
 .chat-slash-status-mask[data-state='open'] {
@@ -574,7 +573,7 @@
   border: 1px solid var(--chat-line);
   border-radius: 12px;
   background: var(--chat-modal-bg);
-  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--modal-shadow);
 }
 
 .chat-slash-status-dialog[data-state='open'] {
@@ -662,33 +661,38 @@
   color: var(--chat-text-soft);
 }
 
-.chat-slash-status-grid {
+.chat-slash-status-row-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
+  margin: 0;
 }
 
-.chat-slash-status-card {
+.chat-slash-status-row {
   display: grid;
-  gap: 6px;
-  padding: 13px 14px;
+  grid-template-columns: minmax(120px, 0.42fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--chat-line) 86%, transparent);
-  border-radius: 12px;
+  border-radius: 10px;
   background: color-mix(in srgb, var(--chat-modal-row) 82%, transparent);
 }
 
-.chat-slash-status-card-label {
+.chat-slash-status-row dt {
+  margin: 0;
   font-size: 11px;
   font-weight: 700;
   color: var(--chat-text-soft);
 }
 
-.chat-slash-status-card strong {
+.chat-slash-status-row dd {
+  margin: 0;
   font-size: 13px;
   color: var(--chat-text);
+  overflow-wrap: anywhere;
 }
 
-.chat-slash-status-card strong.mono {
+.chat-slash-status-row dd.mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   overflow-wrap: anywhere;
@@ -698,9 +702,9 @@
   display: grid;
   gap: 6px;
   padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, #d7825c 34%, var(--chat-line) 66%);
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, var(--chat-line) 66%);
   border-radius: 10px;
-  background: color-mix(in srgb, #d7825c 10%, transparent 90%);
+  background: color-mix(in srgb, var(--warning) 10%, transparent 90%);
 }
 
 .chat-slash-status-warning strong {
@@ -732,7 +736,7 @@
     padding-right: 16px;
   }
 
-  .chat-slash-status-grid {
+  .chat-slash-status-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }

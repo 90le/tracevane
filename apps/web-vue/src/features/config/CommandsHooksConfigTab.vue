@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell config-section-grid config-section-grid-commands-hooks">
+  <section class="config-tab-stage config-section-grid config-section-grid-commands-hooks">
     <article class="config-sheet">
       <!-- Commands Section -->
       <section class="config-block">
@@ -15,7 +15,7 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('原生命令', 'Native Commands') }}</span>
-                <GlassSelect
+                <StudioSelect
                   :modelValue="commands.native"
                   @update:modelValue="$emit('update:commands', { ...commands, native: $event })"
                   :options="nativeOptions"
@@ -25,7 +25,7 @@
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('原生技能', 'Native Skills') }}</span>
-                <GlassSelect
+                <StudioSelect
                   :modelValue="commands.nativeSkills"
                   @update:modelValue="$emit('update:commands', { ...commands, nativeSkills: $event })"
                   :options="nativeOptions"
@@ -35,7 +35,7 @@
               </label>
             </div>
             <div class="settings-inline-grid">
-              <label class="toggle-card">
+              <label class="option-row">
                 <input
                   :checked="commands.restart"
                   @change="$emit('update:commands', { ...commands, restart: ($event.target as HTMLInputElement).checked })"
@@ -49,7 +49,7 @@
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('管理者显示', 'Owner Display') }}</span>
-                <GlassSelect
+                <StudioSelect
                   :modelValue="commands.ownerDisplay"
                   @update:modelValue="$emit('update:commands', { ...commands, ownerDisplay: $event })"
                   :options="ownerDisplayOptions"
@@ -74,7 +74,7 @@
               <p>{{ text('管理内部钩子的启用状态和各钩子的独立配置。', 'Manage the internal hook system and individual hook settings.') }}</p>
             </div>
             <div class="toggle-grid">
-              <label class="toggle-card">
+              <label class="option-row">
                 <input
                   :checked="hooks.internal.enabled"
                   @change="onInternalEnabledChange(($event.target as HTMLInputElement).checked)"
@@ -98,9 +98,9 @@
               <article
                 v-for="entry in hookEntryList"
                 :key="entry.id"
-                class="provider-card provider-card-visual"
+                class="provider-entry provider-entry-visual"
               >
-                <div class="provider-card-head provider-card-head-visual">
+                <div class="provider-entry-head provider-entry-head-visual">
                   <div>
                     <strong>{{ entry.id }}</strong>
                     <p class="provider-caption">{{ hookDescription(entry.id) }}</p>
@@ -166,7 +166,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import GlassSelect from '../../shared/components/GlassSelect.vue';
+import StudioSelect from '../../shared/components/StudioSelect.vue';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 import './config-workspace.css';
 

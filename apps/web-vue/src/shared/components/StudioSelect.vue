@@ -1,45 +1,53 @@
 <template>
-  <div ref="rootRef" class="glass-select" :class="{ open: isOpen, disabled, 'open-up': openDirection === 'up' }">
+  <div ref="rootRef" class="studio-select" :class="{ open: isOpen, disabled, invalid, 'open-up': openDirection === 'up' }">
     <button
       type="button"
-      class="glass-select-trigger"
+      class="studio-select-trigger"
       :class="{ placeholder: !selectedLabel }"
       :disabled="disabled"
+      :aria-disabled="disabled ? 'true' : undefined"
+      :aria-expanded="isOpen ? 'true' : 'false'"
+      :aria-haspopup="'listbox'"
+      :aria-invalid="invalid ? 'true' : undefined"
       @click="toggleOpen"
     >
-      <span class="glass-select-value">{{ selectedLabel || placeholder }}</span>
-      <ChevronDown class="glass-select-chevron" aria-hidden="true" />
+      <span class="studio-select-value">{{ selectedLabel || placeholder }}</span>
+      <ChevronDown class="studio-select-chevron" aria-hidden="true" />
     </button>
 
     <Teleport v-if="teleport" to="body">
-      <div v-if="isOpen" ref="menuRef" class="glass-select-menu glass-select-menu-portal" :style="menuStyle" @pointerdown.stop>
+      <div v-if="isOpen" ref="menuRef" class="studio-select-menu studio-select-menu-portal" role="listbox" :style="menuStyle" @pointerdown.stop>
         <button
           v-for="option in options"
           :key="option.value"
           type="button"
-          class="glass-select-option"
+          class="studio-select-option"
           :class="{ active: option.value === modelValue }"
+          role="option"
+          :aria-selected="option.value === modelValue ? 'true' : 'false'"
           @pointerdown.prevent.stop="selectOption(option.value)"
           @click.prevent
         >
           <span>{{ option.label }}</span>
-          <Check v-if="option.value === modelValue" class="glass-select-check" aria-hidden="true" />
+          <Check v-if="option.value === modelValue" class="studio-select-check" aria-hidden="true" />
         </button>
       </div>
     </Teleport>
 
-    <div v-else-if="isOpen" ref="menuRef" class="glass-select-menu" @pointerdown.stop>
+    <div v-else-if="isOpen" ref="menuRef" class="studio-select-menu" role="listbox" @pointerdown.stop>
       <button
         v-for="option in options"
         :key="option.value"
         type="button"
-        class="glass-select-option"
+        class="studio-select-option"
         :class="{ active: option.value === modelValue }"
+        role="option"
+        :aria-selected="option.value === modelValue ? 'true' : 'false'"
         @pointerdown.prevent.stop="selectOption(option.value)"
         @click.prevent
       >
         <span>{{ option.label }}</span>
-        <Check v-if="option.value === modelValue" class="glass-select-check" aria-hidden="true" />
+        <Check v-if="option.value === modelValue" class="studio-select-check" aria-hidden="true" />
       </button>
     </div>
   </div>
@@ -48,22 +56,24 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Check, ChevronDown } from '@lucide/vue';
-import './glass-select.css';
+import './studio-select.css';
 
-export interface GlassSelectOption {
+export interface StudioSelectOption {
   value: string;
   label: string;
 }
 
 const props = withDefaults(defineProps<{
   modelValue: string;
-  options: GlassSelectOption[];
+  options: StudioSelectOption[];
   placeholder?: string;
   disabled?: boolean;
+  invalid?: boolean;
   teleport?: boolean;
 }>(), {
   placeholder: '请选择',
   disabled: false,
+  invalid: false,
   teleport: true,
 });
 

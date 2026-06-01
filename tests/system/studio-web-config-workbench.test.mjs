@@ -18,9 +18,13 @@ const globalStyleCss = fs.readFileSync(
 );
 const configComponentFiles = [
   'AcpConfigTab.vue',
+  'BrowserConfigTab.vue',
+  'ChannelsConfigTab.vue',
   'CommandsHooksConfigTab.vue',
   'ConfigDomainAdvancedSheet.vue',
   'GatewayConfigTab.vue',
+  'LoggingConfigTab.vue',
+  'PluginsConfigTab.vue',
   'SessionConfigTab.vue',
 ];
 const configComponentSources = new Map(configComponentFiles.map((file) => [
@@ -36,18 +40,32 @@ const viteConfig = fs.readFileSync(
   'utf8',
 );
 
+function cssRuleBlock(source, selector) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return source.match(new RegExp(`${escapedSelector}\\s*\\{[\\s\\S]*?\\n\\}`))?.[0] || '';
+}
+
+function cssRuleBlocks(source, selector) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [...source.matchAll(new RegExp(`${escapedSelector}\\s*\\{[\\s\\S]*?\\n\\}`, 'g'))].map((match) => match[0]);
+}
+
 test('config editor exposes the workbench recipe framing blocks', () => {
   assert.match(configEditorPage, /class="page-shell config-page-shell"/);
-  assert.match(configEditorPage, /class="config-command-panel"/);
+  assert.match(configEditorPage, /class="config-workspace-strip"/);
   assert.match(configEditorPage, /class="config-signal-strip"/);
   assert.match(configEditorPage, /class="config-signal-row"/);
-  assert.match(configEditorPage, /class="config-active-tab-facts"/);
+  assert.match(configEditorPage, /class="config-rail config-rail-grouped"/);
+  assert.match(configEditorPage, /class="config-tab-stage config-section-grid/);
+  assert.match(configEditorPage, /class="config-active-tab-matrix"/);
+  assert.match(configEditorPage, /class="config-active-tab-row"/);
   assert.match(configEditorPage, /Image generation model/);
   assert.match(configEditorPage, /Model registry JSON/);
   assert.doesNotMatch(configEditorPage, /LLM idle timeout seconds/);
   assert.match(configEditorPage, /Embedded Pi project settings policy/);
-  assert.doesNotMatch(configEditorPage, /class="config-overview-card"/);
+  assert.doesNotMatch(configEditorPage, /class="config-overview-cell"/);
   assert.doesNotMatch(configEditorPage, /class="config-sidebar-callout"/);
+  assert.doesNotMatch(configEditorPage, /page-shell config-section-grid|class="config-tabs|class="config-tab-group"|class="config-tab"/);
 });
 
 test('config editor derives overview and active-tab fact collections in computed state', () => {
@@ -61,21 +79,34 @@ test('config editor owns feature CSS for workbench framing', () => {
   assert.doesNotMatch(configEditorPage, /<style scoped>/);
   assert.match(configWorkspaceCss, /Migrated Config workspace rules from global style\.css/);
   assert.match(configWorkspaceCss, /Migrated Config workbench internals from global style\.css/);
-  assert.match(configWorkspaceCss, /\.config-command-panel\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-workspace-strip\s*\{/);
   assert.match(configWorkspaceCss, /\.config-signal-strip\s*\{/);
-  assert.match(configWorkspaceCss, /\.config-active-tab-facts\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-rail\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-rail-item\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-tab-stage\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-active-tab-matrix\s*\{/);
   assert.match(configWorkspaceCss, /\.config-page-shell \.provider-index-item\s*\{/);
   assert.match(configWorkspaceCss, /\.config-page-shell \.provider-model-row\s*\{/);
   assert.match(configWorkspaceCss, /\.config-page-shell \.fallback-row\s*\{/);
-  assert.match(configWorkspaceCss, /\.config-page-shell \.browser-profile-card\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-page-shell \.browser-profile-entry\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-page-shell \.provider-entry\s*\{/);
+  assert.doesNotMatch(
+    configWorkspaceCss,
+    /provider-card|browser-profile-card|config-overview-card|config-overview-cell|config-hero-card|config-hero-panel|config-spotlight-toggle-card|config-hero-grid|config-tabs-grouped|\.config-tabs|\.config-tab(?:\s|\{|:|\.|,)|--shell-(?:panel|stage|highlight)|var\(--surface\)|linear-gradient|radial-gradient|var\(--sky\)|--atlas|--glass|rgba\(77,\s*129,\s*247|rgba\(37,\s*99,\s*235/,
+  );
   assert.doesNotMatch(globalStyleCss, /\.config[a-zA-Z0-9_-]*/);
-  assert.doesNotMatch(globalStyleCss, /\.(?:provider-index|provider-model|provider-card|provider-stack|fallback-|browser-profile|allowlist-preview|mini-stat|micro-badge|hero-copy)[a-zA-Z0-9_-]*/);
+  assert.doesNotMatch(globalStyleCss, /\.(?:provider-index|provider-model|provider-entry|provider-stack|fallback-|browser-profile|allowlist-preview|mini-stat|micro-badge|hero-copy)[a-zA-Z0-9_-]*/);
 });
 
 test('config tabs and sheets keep CSS ownership centralized', () => {
   for (const [file, source] of configComponentSources) {
     assert.match(source, /import '\.\/config-workspace\.css';/, `${file} imports shared config CSS`);
     assert.doesNotMatch(source, /<style scoped>/, `${file} does not keep local scoped CSS`);
+    assert.doesNotMatch(source, /<[^>]*\sstyle\s*=/, `${file} does not keep inline layout styles`);
+    if (file.endsWith('ConfigTab.vue')) {
+      assert.match(source, /class="config-tab-stage config-section-grid/, `${file} uses the active-stage primitive`);
+      assert.doesNotMatch(source, /page-shell config-section-grid/, `${file} does not nest a page shell inside Config stage`);
+    }
   }
   assert.doesNotMatch(configWorkspaceCss, /:deep|:global/);
   assert.match(configWorkspaceCss, /\.acpx-actions\s*\{/);
@@ -83,11 +114,42 @@ test('config tabs and sheets keep CSS ownership centralized', () => {
   assert.match(configWorkspaceCss, /\.config-domain-advanced-sheet-mask\s*\{/);
   assert.match(configWorkspaceCss, /\.token-input-wrapper\s*\{/);
   assert.match(configWorkspaceCss, /\.config-reset-type-table\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-inline-form-grid\s*\{/);
+  assert.match(
+    configWorkspaceCss,
+    /\.config-inline-form-grid\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto;/,
+  );
+  assert.match(
+    configWorkspaceCss,
+    /\.config-inline-form-grid\s*\{[\s\S]*min-width:\s*0;/,
+  );
+  assert.match(configWorkspaceCss, /\.config-collapsible-title-row\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-secret-field-row\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-account-section\s*\{/);
 });
 
 test('config workbench uses restrained neutral framing instead of accent-heavy gradients', () => {
-  assert.doesNotMatch(configWorkspaceCss, /\.config-command-panel\s*\{[\s\S]*255,\s*190,\s*122/);
+  assert.doesNotMatch(configWorkspaceCss, /\.config-workspace-strip\s*\{[\s\S]*255,\s*190,\s*122/);
   assert.doesNotMatch(configWorkspaceCss, /\.config-page-shell \.config-sheet\s*\{[\s\S]*111,\s*211,\s*255/);
+  assert.doesNotMatch(
+    configWorkspaceCss,
+    /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient/,
+    'config workspace surfaces must use shared tokens instead of raw color literals',
+  );
+  assert.match(configWorkspaceCss, /\.config-workspace-strip\s*\{[\s\S]*background:\s*var\(--line\);/);
+  assert.doesNotMatch(configEditorPage, /config-command-panel|config-command-copy/);
+  assert.doesNotMatch(configWorkspaceCss, /config-command-panel|config-command-copy/);
+  assert.match(
+    configWorkspaceCss,
+    /\.config-page-shell \.config-workbench\s*\{[\s\S]*grid-template-columns:\s*minmax\(260px, 300px\) minmax\(0, 1fr\);/,
+  );
+  assert.match(configWorkspaceCss, /--config-row-bg:\s*color-mix\(in srgb, var\(--surface-raised\) 76%, var\(--surface-base\)\);/);
+  assert.match(configWorkspaceCss, /--config-accent-border:\s*color-mix\(in srgb, var\(--acc\) 34%, var\(--border-subtle\)\);/);
+  assert.match(configWorkspaceCss, /\.config-sidebar\s*\{[\s\S]*background:\s*var\(--surface-raised\);/);
+  assert.match(configWorkspaceCss, /\.config-active-tab-panel\s*\{[\s\S]*backdrop-filter:\s*none;/);
+  assert.match(configWorkspaceCss, /\.config-active-tab-matrix\s*\{[\s\S]*gap:\s*1px;[\s\S]*background:\s*var\(--line\);/);
+  assert.match(configWorkspaceCss, /\.config-active-tab-row\s*\{[\s\S]*border:\s*0;[\s\S]*background:\s*var\(--surface-base\);/);
+  assert.match(configWorkspaceCss, /\.config-page-shell \.config-sheet\s*\{[\s\S]*background:\s*var\(--surface-base\);/);
 });
 
 test('config workbench exposes the advanced sheet entrypoint instead of keeping it inline', () => {
@@ -108,10 +170,12 @@ test('config workbench makes global configuration discoverable', () => {
 
 test('config workbench keeps preferences out of system config navigation', () => {
   assert.match(configEditorPage, /const groupedTabs = computed<ConfigTabGroup\[\]>/);
-  assert.match(configEditorPage, /class="config-tabs config-tabs-grouped"/);
+  assert.match(configEditorPage, /class="config-rail config-rail-grouped"/);
   assert.match(configEditorPage, /Skills management for install, remove, migration, and sync workflows/);
   assert.doesNotMatch(configEditorPage, /activeTab === 'appearance'/);
   assert.doesNotMatch(configEditorPage, /界面主题/);
+  assert.doesNotMatch(configWorkspaceCss, /config-preference-|config-section-grid-appearance/);
+  assert.doesNotMatch(configWorkspaceCss, /fallback-section|fallback-header/);
 });
 
 test('config workbench persists active tab across save and reload', () => {
@@ -160,10 +224,24 @@ test('config workbench exposes persistent global HEARTBEAT controls', () => {
 });
 
 test('config workbench tracks unsaved domains and protects refresh', () => {
+  const saveDockBlocks = cssRuleBlocks(configWorkspaceCss, '.config-save-dock');
   assert.match(configEditorPage, /class="config-save-dock"/);
   assert.match(configWorkspaceCss, /width: min\(780px, calc\(100% - 8px\)\)/);
   assert.match(configWorkspaceCss, /grid-template-areas:\s*"status actions"\s*"changes actions"/);
-  assert.match(configWorkspaceCss, /var\(--modal-panel-bg\)/);
+  assert.match(configWorkspaceCss, /\.config-save-dock\s*\{[\s\S]*background:\s*var\(--surface-base\);/);
+  assert.match(cssRuleBlock(configWorkspaceCss, '.config-save-dock'), /border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/);
+  assert.ok(saveDockBlocks.length >= 2, 'config save dock has base and responsive rule blocks');
+  for (const block of saveDockBlocks) {
+    assert.doesNotMatch(block, /border-radius:\s*(?:15px|18px);/, 'save dock blocks keep the shared product radius');
+  }
+  assert.match(configWorkspaceCss, /\.config-save-dock\s*\{[\s\S]*box-shadow:\s*var\(--mono-shadow-md\);/);
+  assert.match(configWorkspaceCss, /\.config-save-dock\.is-dirty\s*\{[\s\S]*inset 0 1px 0 var\(--icon-highlight-strong\);/);
+  assert.match(configWorkspaceCss, /\.config-save-dock\.is-saved\s*\{[\s\S]*inset 0 1px 0 var\(--icon-highlight-strong\);/);
+  assert.doesNotMatch(
+    configWorkspaceCss,
+    /var\(--mono-shadow-md,\s*0|color-mix\(in srgb,\s*(?:black|white)\b/,
+    'config floating save chrome should use shared shadow/highlight tokens, not raw black/white fallbacks',
+  );
   assert.match(configEditorPage, /const dirtyDomains = computed<ConfigDirtyDomain\[\]>/);
   assert.match(configEditorPage, /function captureConfigBaseline\(\): void/);
   assert.match(configEditorPage, /function normalizeLoggingDraft\(summary: ConfigSummaryPayload \| null\)/);

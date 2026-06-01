@@ -271,12 +271,15 @@
           </button>
         </div>
 
-        <div
+        <progress
           v-if="attachment.progress !== undefined && attachment.progress < 100"
           class="chat-composer-progress-bar"
+          :value="attachmentProgressValue(attachment)"
+          max="100"
+          :aria-label="attachmentMetaLabel(attachment)"
         >
-          <div class="chat-composer-progress-fill" :style="{ width: `${attachment.progress}%` }"></div>
-        </div>
+          {{ attachmentProgressValue(attachment) }}%
+        </progress>
       </div>
     </div>
 
@@ -743,15 +746,19 @@ function attachmentState(attachment: ComposerAttachment): ChatComposerUploadStat
   return deriveComposerAttachmentUploadState(attachment);
 }
 
+function attachmentProgressValue(attachment: ComposerAttachment): number {
+  const progress = typeof attachment.progress === 'number' && Number.isFinite(attachment.progress)
+    ? attachment.progress
+    : 0;
+  return Math.max(0, Math.min(100, Math.round(progress)));
+}
+
 function attachmentMetaLabel(attachment: ComposerAttachment): string {
   const state = attachmentState(attachment);
   if (state === 'uploading') {
-    const progress = typeof attachment.progress === 'number' && Number.isFinite(attachment.progress)
-      ? Math.max(0, Math.min(100, Math.round(attachment.progress)))
-      : null;
-    return progress == null
+    return attachment.progress === undefined
       ? text('上传中', 'Uploading')
-      : text(`上传 ${progress}%`, `Uploading ${progress}%`);
+      : text(`上传 ${attachmentProgressValue(attachment)}%`, `Uploading ${attachmentProgressValue(attachment)}%`);
   }
   if (state === 'failed') {
     return text('上传失败', 'Upload failed');

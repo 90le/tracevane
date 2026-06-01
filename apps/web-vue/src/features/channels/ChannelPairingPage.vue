@@ -22,8 +22,8 @@
         <span v-if="pairing.error">{{ text('错误', 'Error') }} · {{ pairing.error }}</span>
       </div>
 
-      <section class="channels-pairing-card">
-        <div class="channels-pairing-card__head">
+      <section class="channels-pairing-section">
+        <div class="channels-pairing-section__head">
           <strong>{{ text('手动批准', 'Manual approval') }}</strong>
           <span>{{ text('如果用户提供了配对码，可以直接在这里批准。', 'If a user provides a pairing code, approve it directly here.') }}</span>
         </div>
@@ -36,8 +36,8 @@
         </div>
       </section>
 
-      <section class="channels-pairing-card">
-        <div class="channels-pairing-card__head">
+      <section class="channels-pairing-section">
+        <div class="channels-pairing-section__head">
           <strong>{{ text('待审批请求', 'Pending requests') }}</strong>
           <span>{{ text('来自设备或账号的 pairing 请求会集中显示在这里。', 'Pairing requests from devices or accounts are listed here.') }}</span>
         </div>
@@ -80,7 +80,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onActivated, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { ChannelPairingPayload } from '../../../../../types/channels';
 import { approveChannelPairing, fetchChannelPairing } from './api';
@@ -143,4 +143,9 @@ watch(
   },
   { immediate: true },
 );
+
+onActivated(() => {
+  if (loading.value || approving.value) return;
+  void loadPairing();
+});
 </script>

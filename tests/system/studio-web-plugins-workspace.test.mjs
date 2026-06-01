@@ -19,6 +19,13 @@ const routeManifest = read("apps/web-vue/src/features/shell/route-manifest.ts");
 const skillsControlPage = read("apps/web-vue/src/features/skills/SkillsControlPage.vue");
 const studioPluginManifest = JSON.parse(read("openclaw.plugin.json"));
 
+function cssBlock(selector) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = pluginsWorkspaceCss.match(new RegExp(`${escaped}\\s*\\{[\\s\\S]*?\\n\\}`));
+  assert.ok(match, `Missing CSS block: ${selector}`);
+  return match[0];
+}
+
 test("plugins route and view are wired as a dedicated management surface", () => {
   assert.match(routeManifest, /const PluginsView = \(\) => import\("\.\.\/\.\.\/views\/PluginsView\.vue"\)/);
   assert.match(routeManifest, /path:\s*"\/plugins"/);
@@ -35,11 +42,17 @@ test("plugins page owns plugin policy, slots, entries, installs, and diagnostics
   assert.doesNotMatch(globalStyleCss, /\.plugins[a-zA-Z0-9_-]*/);
   assert.match(pluginsControlPage, /pageTabs/);
   assert.match(pluginsControlPage, /Capability index|能力索引/);
+  assert.match(pluginsControlPage, /plugins-workspace-strip/);
   assert.match(pluginsControlPage, /plugins-overview-command/);
   assert.match(pluginsControlPage, /plugins-summary-list/);
   assert.match(pluginsControlPage, /plugins-critical-row/);
+  assert.match(pluginsControlPage, /import StatusPill from '..\/..\/components\/StatusPill\.vue';/);
+  assert.match(pluginsControlPage, /pluginStatusTone/);
+  assert.doesNotMatch(pluginsControlPage, /plugins-status-pill/);
+  assert.doesNotMatch(pluginsWorkspaceCss, /plugins-status-pill/);
   assert.doesNotMatch(pluginsControlPage, /class="plugins-posture-strip plugins-stage-card--wide"/);
   assert.doesNotMatch(pluginsControlPage, /class="plugins-side-pane plugins-stage-card"/);
+  assert.doesNotMatch(pluginsControlPage, /plugins-stage-card|plugins-hero-metrics|plugins-summary-card|plugins-preflight-card/);
   assert.doesNotMatch(pluginsControlPage, /class="plugins-critical-card"/);
   assert.match(pluginsControlPage, /Plugin controls|插件控制/);
   assert.match(pluginsControlPage, /Quick activate|快速接管/);
@@ -94,6 +107,74 @@ test("plugins page owns plugin policy, slots, entries, installs, and diagnostics
   assert.match(pluginsWorkspaceCss, /\.plugins-overview-command/);
   assert.match(pluginsWorkspaceCss, /\.plugins-summary-list/);
   assert.match(pluginsWorkspaceCss, /\.plugins-critical-row/);
+  assert.doesNotMatch(
+    pluginsControlPage,
+    /toggle-card|criticalPluginCards|policySnapshotCards/,
+  );
+  assert.doesNotMatch(
+    pluginsWorkspaceCss,
+    /toggle-card|var\(--surface\)|var\(--sky\)|var\(--atlas-|var\(--atlas|--glass|linear-gradient|radial-gradient|rgba\(79,\s*132,\s*248|rgba\(77,\s*129,\s*247|rgba\(37,\s*99,\s*235/,
+  );
+  assert.match(
+    pluginsWorkspaceCss,
+    /\.plugins-workspace-strip\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*box-shadow:\s*none;/,
+  );
+  assert.match(
+    pluginsWorkspaceCss,
+    /\.plugins-workspace-copy\s*\{[\s\S]*border-left:\s*3px solid var\(--acc\);/,
+  );
+  assert.doesNotMatch(pluginsControlPage, /plugins-command-center|plugins-runtime-matrix/);
+  assert.doesNotMatch(pluginsWorkspaceCss, /\.plugins-command-center|\.plugins-runtime-matrix/);
+  assert.match(
+    pluginsWorkspaceCss,
+    /\.plugins-layout\s*\{[\s\S]*background:\s*var\(--surface-base\);[\s\S]*box-shadow:\s*var\(--mono-shadow-sm,/,
+  );
+  assert.match(
+    pluginsWorkspaceCss,
+    /\.plugins-rail\s*\{[\s\S]*background:\s*var\(--surface-raised\);/,
+  );
+  assert.match(
+    pluginsWorkspaceCss,
+    /\.plugins-tab\s*\{[\s\S]*background:\s*var\(--button-secondary-bg\);/,
+  );
+  assert.match(
+    pluginsWorkspaceCss,
+    /\.plugins-diagnostic\s*\{[\s\S]*border:\s*1px solid var\(--control-border\);[\s\S]*background:\s*var\(--modal-row-bg\);/,
+  );
+  assert.match(
+    pluginsWorkspaceCss,
+    /\.plugins-preflight-panel\s*\{[\s\S]*border:\s*1px solid var\(--control-border\);[\s\S]*background:\s*var\(--modal-row-bg\);/,
+  );
+  assert.match(pluginsWorkspaceCss, /\.plugins-install-entry\s*\{[\s\S]*border:\s*1px solid var\(--control-border\);[\s\S]*background:\s*var\(--control-bg\);/);
+  assert.match(pluginsWorkspaceCss, /\.plugins-diagnostic\.is-danger\s*\{[\s\S]*border-color:\s*var\(--status-pill-danger-border\);/);
+  assert.match(pluginsWorkspaceCss, /\.plugins-diagnostic\.is-warn\s*\{[\s\S]*border-color:\s*var\(--status-pill-accent-border\);/);
+  assert.match(pluginsWorkspaceCss, /\.plugins-preflight-panel\.is-danger\s*\{[\s\S]*border-color:\s*var\(--status-pill-danger-border\);/);
+  assert.match(pluginsWorkspaceCss, /\.plugins-preflight-panel\.is-warn\s*\{[\s\S]*border-color:\s*var\(--status-pill-accent-border\);/);
+  [
+    ".plugins-diagnostic",
+    ".plugins-diagnostic p",
+    ".plugins-diagnostic.is-danger",
+    ".plugins-diagnostic.is-warn",
+    ".plugins-install-entry",
+    ".plugins-install-entry.active",
+    ".plugins-preflight-panel",
+    ".plugins-preflight-panel p",
+    ".plugins-preflight-panel.is-danger",
+    ".plugins-preflight-panel.is-warn",
+  ].forEach((selector) => {
+    assert.doesNotMatch(cssBlock(selector), /var\(--(?:surface(?:-[a-z-]+)?|line(?:-[a-z-]+)?|peach|danger|muted)\b/);
+  });
+  assert.match(pluginsControlPage, /plugins-runtime-strip/);
+  assert.match(pluginsControlPage, /plugins-policy-matrix/);
+  assert.match(pluginsControlPage, /plugins-preflight-panel/);
+  assert.match(
+    pluginsWorkspaceCss,
+    /\.plugins-policy-matrix,\s*\n\.plugins-facts-grid,\s*\n\.plugins-capability-grid\s*\{[\s\S]*gap:\s*0;[\s\S]*background:\s*var\(--surface-base\);/,
+  );
+  assert.match(
+    pluginsWorkspaceCss,
+    /\.plugins-policy-cell,\s*\n\.plugins-fact,\s*\n\.plugins-summary-cell,\s*\n\.plugins-capability-grid span\s*\{[\s\S]*border:\s*0;[\s\S]*border-radius:\s*0;[\s\S]*background:\s*transparent;[\s\S]*inset -1px 0 0/,
+  );
   assert.match(pluginsApi, /fetchPluginsSummary/);
   assert.match(pluginsApi, /\/api\/plugins\/summary/);
   assert.match(pluginsApi, /togglePluginEntry/);
@@ -113,7 +194,6 @@ test("plugins page owns plugin policy, slots, entries, installs, and diagnostics
   assert.match(pluginsApi, /\/api\/plugins\/bulk-uninstall/);
   assert.match(pluginsApi, /savePluginsConfig/);
   assert.match(pluginsControlPage, /Run preflight|安装前预检/);
-  assert.match(pluginsControlPage, /plugins-preflight-card/);
 });
 
 test("studio plugin manifest exposes uiHints for grouped plugin config rendering", () => {

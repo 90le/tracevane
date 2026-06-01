@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell config-section-grid">
+  <section class="config-tab-stage config-section-grid">
     <article class="config-sheet">
       <section class="config-block">
         <div class="panel-head">
@@ -14,17 +14,17 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('日志级别', 'Log Level') }}</span>
-                <GlassSelect v-model="form.level" :options="levelOptions" />
+                <StudioSelect v-model="form.level" :options="levelOptions" />
                 <span class="field-hint">{{ text('控制日志输出的最低级别', 'Minimum log level for output') }}</span>
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('控制台级别', 'Console Level') }}</span>
-                <GlassSelect v-model="form.consoleLevel" :options="levelOptions" />
+                <StudioSelect v-model="form.consoleLevel" :options="levelOptions" />
                 <span class="field-hint">{{ text('控制台输出的最低级别', 'Minimum level for console output') }}</span>
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('控制台样式', 'Console Style') }}</span>
-                <GlassSelect v-model="form.consoleStyle" :options="consoleStyleOptions" />
+                <StudioSelect v-model="form.consoleStyle" :options="consoleStyleOptions" />
                 <span class="field-hint">{{ text('控制台日志的显示格式', 'Display format for console logs') }}</span>
               </label>
             </div>
@@ -70,7 +70,7 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('脱敏模式', 'Redaction Mode') }}</span>
-                <GlassSelect v-model="form.redactSensitive" :options="redactOptions" />
+                <StudioSelect v-model="form.redactSensitive" :options="redactOptions" />
                 <span class="field-hint">{{ text('控制是否对敏感数据进行脱敏处理', 'Control whether sensitive data is redacted') }}</span>
               </label>
             </div>
@@ -84,8 +84,9 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import GlassSelect, { type GlassSelectOption } from '../../shared/components/GlassSelect.vue';
+import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
+import './config-workspace.css';
 
 const props = defineProps<{
   summary: ConfigSummaryPayload | null;
@@ -111,7 +112,7 @@ const form = reactive<LoggingFormState>({
   redactSensitive: 'off',
 });
 
-const levelOptions: GlassSelectOption[] = [
+const levelOptions: StudioSelectOption[] = [
   { value: 'silent', label: 'silent' },
   { value: 'fatal', label: 'fatal' },
   { value: 'error', label: 'error' },
@@ -121,13 +122,13 @@ const levelOptions: GlassSelectOption[] = [
   { value: 'trace', label: 'trace' },
 ];
 
-const consoleStyleOptions: GlassSelectOption[] = [
+const consoleStyleOptions: StudioSelectOption[] = [
   { value: 'pretty', label: 'pretty' },
   { value: 'compact', label: 'compact' },
   { value: 'json', label: 'json' },
 ];
 
-const redactOptions: GlassSelectOption[] = [
+const redactOptions: StudioSelectOption[] = [
   { value: 'off', label: 'off' },
   { value: 'tools', label: 'tools' },
 ];
