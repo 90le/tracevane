@@ -29,6 +29,10 @@
   border-color: color-mix(in srgb, var(--acc) 24%, var(--modal-border));
 }
 
+.create-provider-drawer {
+  border-color: color-mix(in srgb, var(--acc) 24%, var(--modal-border));
+}
+
 .credential-drawer {
   width: min(620px, calc(100vw - 32px));
   border-color: color-mix(in srgb, var(--acc) 24%, var(--modal-border));
@@ -202,6 +206,14 @@
   background: var(--modal-row-bg);
 }
 
+.create-provider-drawer__empty {
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px dashed var(--modal-border);
+  color: var(--muted);
+  background: var(--modal-row-bg);
+}
+
 .channels-drawer .form-grid {
   min-width: 0;
 }
@@ -237,7 +249,8 @@ html[data-theme="light"] .channels-drawer-section,
 html[data-theme="light"] .channels-drawer .option-row,
 html[data-theme="light"] .channels-credential-summary span,
 html[data-theme="light"] .credential-drawer__account-facts span,
-html[data-theme="light"] .credential-field-panel {
+html[data-theme="light"] .credential-field-panel,
+html[data-theme="light"] .create-provider-drawer__empty {
   background: var(--modal-panel-bg-strong);
   border-color: var(--modal-border);
 }

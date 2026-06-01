@@ -71,9 +71,12 @@ test("channels workspace layout keeps a provider/account stage with a top task b
     /class="channels-sidebar operate-resource-rail mobile-resource-drawer studio-workbench-index"/,
   );
   assert.match(workspaceLayout, /class="channels-stage operate-stage studio-workbench-canvas"/);
-  assert.match(workspaceLayout, /class="channels-task-rail studio-workbench-task-rail"/);
+  assert.match(workspaceLayout, /class="channels-task-bar studio-workbench-task-bar"/);
   assert.match(workspaceLayout, /class="channels-task-canvas studio-workbench-active-canvas"/);
   assert.match(workspaceLayout, /class="channels-task-nav studio-workbench-task-nav"/);
+  assert.doesNotMatch(workspaceLayout, /channels-task-rail|studio-workbench-task-rail/);
+  assert.match(workspaceLayout, /ChannelProviderCreateDrawer/);
+  assert.doesNotMatch(workspaceLayout, /channels-create-panel/);
   assert.doesNotMatch(workspaceLayout, /channels-top-tabs|channels-task-tabs|mobile-stage-tabs/);
   assert.match(
     workspaceLayout,

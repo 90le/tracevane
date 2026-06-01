@@ -1,9 +1,10 @@
-/* Shared Studio workbench primitives for object selectors, task bars, and active canvases. */
+/* Shared Studio workbench primitives for object selectors, top task bars, guided rails, and active canvases. */
 
 .studio-workbench,
 .studio-workbench-canvas,
 .studio-workbench-index,
 .studio-workbench-task-shell,
+.studio-workbench-task-bar,
 .studio-workbench-active-canvas,
 .studio-workbench-task-rail {
   min-width: 0;
@@ -32,6 +33,7 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.studio-workbench-task-bar,
 .studio-workbench-task-rail {
   position: sticky;
   top: 12px;
@@ -43,6 +45,19 @@
   border-radius: 12px;
   background: var(--surface-raised);
   box-shadow: var(--mono-shadow-sm, var(--shadow-soft));
+}
+
+.studio-workbench-task-bar {
+  top: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-width: 0 0 1px 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--surface-base) 92%, var(--surface-raised));
+  box-shadow: none;
 }
 
 .studio-workbench-task-shell > .studio-workbench-task-rail {
@@ -58,11 +73,13 @@
   box-shadow: none;
 }
 
+.studio-workbench-task-bar > .eyebrow,
 .studio-workbench-task-rail > .eyebrow {
   margin: 0 0 2px;
   color: var(--muted);
 }
 
+.studio-workbench-task-bar > .eyebrow,
 .studio-workbench-task-shell > .studio-workbench-task-rail > .eyebrow {
   flex: 0 0 auto;
   margin: 0;
@@ -72,6 +89,7 @@
 }
 
 .studio-workbench-task-nav,
+.studio-workbench-task-bar > nav,
 .studio-workbench-task-rail > nav {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -80,6 +98,7 @@
   min-width: 0;
 }
 
+.studio-workbench-task-bar > nav,
 .studio-workbench-task-shell > .studio-workbench-task-rail > nav,
 .studio-workbench-task-shell .studio-workbench-task-nav {
   display: flex;
@@ -89,11 +108,13 @@
 }
 
 .studio-workbench-task-nav-button,
+.studio-workbench-task-bar > nav button,
 .studio-workbench-task-rail > nav button {
   width: 100%;
   justify-content: flex-start;
 }
 
+.studio-workbench-task-bar > nav button,
 .studio-workbench-task-shell .studio-workbench-task-nav-button,
 .studio-workbench-task-shell > .studio-workbench-task-rail > nav button {
   width: auto;
@@ -166,17 +187,20 @@
     position: static;
   }
 
+  .studio-workbench-task-bar,
   .studio-workbench-task-shell > .studio-workbench-task-rail {
     align-items: stretch;
     overflow-x: auto;
     scrollbar-width: thin;
   }
 
+  .studio-workbench-task-bar > .eyebrow,
   .studio-workbench-task-shell > .studio-workbench-task-rail > .eyebrow {
     display: none;
   }
 
   .studio-workbench-task-nav,
+  .studio-workbench-task-bar > nav,
   .studio-workbench-task-rail > nav {
     display: flex;
     flex-wrap: nowrap;
@@ -185,6 +209,7 @@
   }
 
   .studio-workbench-task-nav-button,
+  .studio-workbench-task-bar > nav button,
   .studio-workbench-task-rail > nav button {
     width: auto;
     min-width: max-content;

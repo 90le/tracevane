@@ -10,6 +10,7 @@ function read(filePath) {
 }
 
 const quickConfigDrawer = read('apps/web-vue/src/features/channels/ChannelQuickConfigDrawer.vue');
+const providerCreateDrawer = read('apps/web-vue/src/features/channels/ChannelProviderCreateDrawer.vue');
 const accountCreateDrawer = read('apps/web-vue/src/features/channels/ChannelAccountCreateDrawer.vue');
 const credentialDrawer = read('apps/web-vue/src/features/channels/ChannelCredentialDrawer.vue');
 const accountDetailPage = read('apps/web-vue/src/features/channels/ChannelAccountDetailPage.vue');
@@ -52,6 +53,21 @@ test('account create drawer stays focused on creation intent and required creden
   assert.doesNotMatch(accountCreateDrawer, /Continue/);
 });
 
+test('provider create drawer keeps provider creation out of the object rail', () => {
+  assert.match(providerCreateDrawer, /create provider/i);
+  assert.match(providerCreateDrawer, /Provider type/i);
+  assert.match(providerCreateDrawer, /Enable after create/i);
+  assert.match(providerCreateDrawer, /channels-drawer-mask/);
+  assert.match(providerCreateDrawer, /create-provider-drawer/);
+  assert.match(providerCreateDrawer, /StudioSelect/);
+  assert.match(providerCreateDrawer, /import '\.\/channels-drawer\.css';/);
+  assert.doesNotMatch(providerCreateDrawer, /<style scoped>/);
+  assert.doesNotMatch(providerCreateDrawer, /credentialValues|accountId|ChannelAccountCreateDrawer/);
+  assert.match(channelsDrawerCss, /\.create-provider-drawer\s*\{/);
+  assert.match(channelsDrawerCss, /\.create-provider-drawer__empty\s*\{/);
+});
+
+
 test('credential drawer stays credential-only instead of mixing in deep account fields', () => {
   assert.match(credentialDrawer, /configured/i);
   assert.match(credentialDrawer, /unconfigured/i);
@@ -80,9 +96,11 @@ test('credential drawer stays credential-only instead of mixing in deep account 
 
 test('channels drawer surfaces share a feature stylesheet instead of scoped style blocks', () => {
   assert.match(quickConfigDrawer, /import '\.\/channels-drawer\.css';/);
+  assert.match(providerCreateDrawer, /import '\.\/channels-drawer\.css';/);
   assert.match(accountCreateDrawer, /import '\.\/channels-drawer\.css';/);
   assert.match(credentialDrawer, /import '\.\/channels-drawer\.css';/);
   assert.doesNotMatch(quickConfigDrawer, /<style scoped>/);
+  assert.doesNotMatch(providerCreateDrawer, /<style scoped>/);
   assert.doesNotMatch(accountCreateDrawer, /<style scoped>/);
   assert.doesNotMatch(credentialDrawer, /<style scoped>/);
   assert.match(channelsDrawerCss, /\.channels-drawer-mask\s*\{/);

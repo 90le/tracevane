@@ -89,8 +89,10 @@ test("agents workspace navigation can leave advanced routes cleanly", () => {
   assert.match(agentsWorkspaceLayoutSource, /:key="childRoute\.path"/);
   assert.match(
     agentsWorkspaceLayoutSource,
-    /function openAgent\(agentId: string, section: 'overview' \| 'docs' \| 'bindings' \| 'sessions' \| 'advanced' = 'overview'\)/,
+    /function openAgent\(agentId: string, section: AgentTaskSection = 'overview'\)/,
   );
+  assert.match(agentsWorkspaceLayoutSource, /type AgentTaskSection = 'overview' \| 'docs' \| 'bindings' \| 'sessions' \| 'runtime';/);
+  assert.match(agentsWorkspaceLayoutSource, /if \(section === 'runtime'\) return `\/agents\/\$\{encoded\}\/advanced`;/);
   assert.match(agentsWorkspaceLayoutSource, /@click="openAgent\(routeAgentId, navItem\.value\)"/);
   assert.match(agentsWorkspaceLayoutSource, /const nextSection = routeAgentId\.value === nextAgentId && route\.path !== '\/agents'/);
 });

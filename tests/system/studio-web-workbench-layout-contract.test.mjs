@@ -12,6 +12,7 @@ const agentsWorkspaceCss = read("apps/web-vue/src/features/agents/agents-workspa
 const channelsWorkspaceCss = read("apps/web-vue/src/features/channels/channels-workspace.css");
 const channelsWorkspaceBaseCss = channelsWorkspaceCss.split("@media (max-width: 980px)")[0];
 const codexStackWorkspaceCss = read("apps/web-vue/src/features/codex-stack/codex-stack-workspace.css");
+const codexStackSharedPrimitivesCss = read("apps/web-vue/src/features/codex-stack/codex-stack-shared-primitives.css");
 const agentsWorkspaceLayout = read("apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue");
 const channelsWorkspaceLayout = read("apps/web-vue/src/features/channels/ChannelsWorkspaceLayout.vue");
 const codexStackWorkspaceShell = read("apps/web-vue/src/features/codex-stack/CodexStackWorkspaceShell.vue");
@@ -23,13 +24,13 @@ const blockCount = (css, selector) => {
 };
 
 test("shared workbench primitives own object selector, top task bar, and active canvas layout", () => {
-  assert.match(workbenchCss, /Shared Studio workbench primitives for object selectors, task bars, and active canvases/);
+  assert.match(workbenchCss, /Shared Studio workbench primitives for object selectors, top task bars, guided rails, and active canvases/);
   assert.match(workbenchCss, /\.studio-workbench--object\s*\{[\s\S]*grid-template-columns:\s*minmax\(260px,\s*324px\) minmax\(0,\s*1fr\);/);
   assert.match(workbenchCss, /\.studio-workbench-task-shell\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
-  assert.match(workbenchCss, /\.studio-workbench-task-shell > \.studio-workbench-task-rail\s*\{[\s\S]*display:\s*flex;[\s\S]*border-width:\s*0 0 1px 0;/);
-  assert.match(workbenchCss, /\.studio-workbench-task-shell > \.studio-workbench-task-rail > nav,[\s\S]*\.studio-workbench-task-shell \.studio-workbench-task-nav\s*\{[\s\S]*display:\s*flex;/);
-  assert.match(workbenchCss, /\.studio-workbench-task-rail\s*\{[\s\S]*position:\s*sticky;[\s\S]*background:\s*var\(--surface-raised\);/);
-  assert.match(workbenchCss, /\.studio-workbench-task-nav,[\s\S]*\.studio-workbench-task-rail > nav\s*\{/);
+  assert.match(workbenchCss, /\.studio-workbench-task-bar\s*\{[\s\S]*display:\s*flex;[\s\S]*border-width:\s*0 0 1px 0;/);
+  assert.match(workbenchCss, /\.studio-workbench-task-bar > nav,[\s\S]*\.studio-workbench-task-shell > \.studio-workbench-task-rail > nav,[\s\S]*\.studio-workbench-task-shell \.studio-workbench-task-nav\s*\{[\s\S]*display:\s*flex;/);
+  assert.match(workbenchCss, /\.studio-workbench-task-bar,[\s\S]*\.studio-workbench-task-rail\s*\{[\s\S]*position:\s*sticky;[\s\S]*background:\s*var\(--surface-raised\);/);
+  assert.match(workbenchCss, /\.studio-workbench-task-nav,[\s\S]*\.studio-workbench-task-bar > nav,[\s\S]*\.studio-workbench-task-rail > nav\s*\{/);
   assert.match(workbenchCss, /\.studio-workbench-task-nav-button\s*\{[\s\S]*background:\s*transparent;[\s\S]*transition:/);
   assert.match(workbenchCss, /\.studio-workbench-task-nav-button\.active\s*\{[\s\S]*border-color:[\s\S]*var\(--acc\)/);
   assert.match(workbenchCss, /\.studio-workbench-active-canvas\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*14px;/);
@@ -40,20 +41,21 @@ test("shared workbench primitives own object selector, top task bar, and active 
 test("agents and channels use a top task bar instead of keeping local tabs inside the stage header", () => {
   assert.match(agentsWorkspaceLayout, /studio-workbench studio-workbench--object/);
   assert.match(agentsWorkspaceLayout, /class="agents-task-workbench studio-workbench-task-shell"/);
-  assert.match(agentsWorkspaceLayout, /class="agents-task-rail studio-workbench-task-rail"/);
+  assert.match(agentsWorkspaceLayout, /class="agents-task-bar studio-workbench-task-bar"/);
   assert.match(agentsWorkspaceLayout, /class="agents-task-canvas studio-workbench-active-canvas"/);
   assert.match(agentsWorkspaceLayout, /text\('人设', 'Persona'\)/);
   assert.match(agentsWorkspaceLayout, /text\('路由', 'Routing'\)/);
   assert.match(agentsWorkspaceLayout, /text\('运行', 'Runtime'\)/);
   assert.match(
     agentsWorkspaceLayout,
-    /<aside v-if="selectedAgent" class="agents-task-rail studio-workbench-task-rail"[\s\S]*?<nav class="agents-task-nav studio-workbench-task-nav"[\s\S]*?class="agents-task-nav-button studio-workbench-task-nav-button"[\s\S]*?<\/aside>[\s\S]*?<section class="agents-task-canvas studio-workbench-active-canvas">/,
+    /<div v-if="selectedAgent" class="agents-task-bar studio-workbench-task-bar"[\s\S]*?<nav class="agents-task-nav studio-workbench-task-nav"[\s\S]*?class="agents-task-nav-button studio-workbench-task-nav-button"[\s\S]*?<\/div>[\s\S]*?<section class="agents-task-canvas studio-workbench-active-canvas">/,
   );
+  assert.doesNotMatch(agentsWorkspaceLayout, /agents-task-rail|studio-workbench-task-rail/);
   assert.doesNotMatch(agentsWorkspaceLayout, /agents-stage-tabs|mobile-stage-tabs/);
 
   assert.match(channelsWorkspaceLayout, /studio-workbench studio-workbench--object/);
   assert.match(channelsWorkspaceLayout, /class="channels-task-workbench studio-workbench-task-shell"/);
-  assert.match(channelsWorkspaceLayout, /class="channels-task-rail studio-workbench-task-rail"/);
+  assert.match(channelsWorkspaceLayout, /class="channels-task-bar studio-workbench-task-bar"/);
   assert.match(channelsWorkspaceLayout, /class="channels-task-canvas studio-workbench-active-canvas"/);
   assert.match(channelsWorkspaceLayout, /class="channel-account-tree"/);
   assert.match(channelsWorkspaceLayout, /class="channel-account-node"/);
@@ -61,12 +63,13 @@ test("agents and channels use a top task bar instead of keeping local tabs insid
   assert.match(channelsWorkspaceLayout, /class="channels-task-nav studio-workbench-task-nav"/);
   assert.match(channelsWorkspaceLayout, /v-for="navItem in taskNavItems"/);
   assert.match(agentsWorkspaceLayout, /v-for="navItem in taskNavItems"/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /channels-task-rail|studio-workbench-task-rail/);
   assert.doesNotMatch(channelsWorkspaceLayout, /class="channels-subtabs"/);
   assert.doesNotMatch(channelsWorkspaceLayout, /channels-top-tabs|channels-task-tabs|mobile-stage-tabs|taskTabs|activeTaskTab|openTaskTab/);
   assert.doesNotMatch(agentsWorkspaceLayout, /v-for="tab in taskNavItems"|tab\.value|tab\.label|tab\.icon/);
   assert.match(
     channelsWorkspaceLayout,
-    /<aside v-if="workspace\.selectedChannel\.value" class="channels-task-rail studio-workbench-task-rail"[\s\S]*?<nav class="channels-task-nav studio-workbench-task-nav"[\s\S]*?class="channels-task-nav-button studio-workbench-task-nav-button"[\s\S]*?<\/aside>[\s\S]*?<section class="channels-task-canvas studio-workbench-active-canvas">/,
+    /<div v-if="workspace\.selectedChannel\.value" class="channels-task-bar studio-workbench-task-bar"[\s\S]*?<nav class="channels-task-nav studio-workbench-task-nav"[\s\S]*?class="channels-task-nav-button studio-workbench-task-nav-button"[\s\S]*?<\/div>[\s\S]*?<section class="channels-task-canvas studio-workbench-active-canvas">/,
   );
 });
 
@@ -124,12 +127,12 @@ test("agents and channels keep one final feature layout owner instead of cascade
   for (const selector of [
     ".cs-section-stack",
     ".cs-task-badge",
-    ".cs-status-pill",
     ".cs-log-mode-list",
     ".cs-log-mode-button",
   ]) {
     assert.equal(blockCount(codexStackWorkspaceCss, selector), 1, `${selector} should have one Codex Stack workspace owning block`);
   }
+  assert.equal(blockCount(codexStackSharedPrimitivesCss, ".cs-status-pill"), 1, ".cs-status-pill should have one shared Codex Stack primitive owner");
 
   assert.match(agentsWorkspaceCss, /\.agents-workspace-sidebar\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*14px;/);
   assert.match(agentsWorkspaceCss, /\.agents-stage-header\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*14px;/);
@@ -141,11 +144,12 @@ test("agents and channels keep one final feature layout owner instead of cascade
 });
 
 test("codex stack is marked as a guided task-rail workbench while preserving the existing section nav component", () => {
-  assert.match(codexStackWorkspaceShell, /class="studio-workbench studio-workbench--guided"/);
+  assert.match(codexStackWorkspaceShell, /class="studio-workbench studio-workbench--guided[^"]*"/);
   assert.match(codexStackWorkspaceShell, /class="cs-stack-task-rail studio-workbench-task-rail"/);
   assert.match(codexStackWorkspaceShell, /aria-label="Codex Stack task rail"/);
   assert.doesNotMatch(codexStackWorkspaceShell, /studio-workbench--flow|cs-flow-rail|Codex Stack flow/);
   assert.match(codexStackWorkspaceShell, /<CodexStackSectionNav[\s\S]*:sections="sections"[\s\S]*:active-section="activeSection"/);
+  assert.match(codexStackWorkspaceShell, /import "\.\/codex-stack-shared-primitives\.css";/);
   assert.match(codexStackWorkspaceShell, /import "\.\.\/\.\.\/shared\/styles\/studio-workbench\.css";/);
   assert.doesNotMatch(codexStackWorkspaceShell, /<style(?:\s|>)/);
 });

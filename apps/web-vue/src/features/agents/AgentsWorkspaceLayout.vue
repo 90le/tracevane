@@ -108,7 +108,7 @@
 
       <section class="agents-workspace-stage operate-stage studio-workbench-canvas">
         <div class="agents-task-workbench studio-workbench-task-shell" :class="{ 'is-empty': !selectedAgent }">
-          <aside v-if="selectedAgent" class="agents-task-rail studio-workbench-task-rail" :aria-label="text('Agent 任务', 'Agent tasks')">
+          <div v-if="selectedAgent" class="agents-task-bar studio-workbench-task-bar" :aria-label="text('Agent 任务', 'Agent tasks')">
             <p class="eyebrow">{{ text('任务', 'Tasks') }}</p>
             <nav class="agents-task-nav studio-workbench-task-nav" :aria-label="text('Agent 任务页面', 'Agent task pages')">
               <button
@@ -123,7 +123,7 @@
                 <span>{{ navItem.label }}</span>
               </button>
             </nav>
-          </aside>
+          </div>
 
           <section class="agents-task-canvas studio-workbench-active-canvas">
             <section class="agents-stage-header operate-workspace-surface operate-stage-strip">
@@ -200,7 +200,7 @@
       @save="saveQuickConfig"
       @open-docs="closeOverlay(); openAgent(routeAgentId, 'docs')"
       @open-bindings="closeOverlay(); openAgent(routeAgentId, 'bindings')"
-      @open-advanced="closeOverlay(); openAgent(routeAgentId, 'advanced')"
+      @open-advanced="closeOverlay(); openAgent(routeAgentId, 'runtime')"
     />
 
     <Teleport to="body">
@@ -443,11 +443,13 @@ const activeOverlay = computed(() => {
   return typeof value === 'string' ? value : '';
 });
 
-const activeTaskSection = computed<'overview' | 'docs' | 'bindings' | 'sessions' | 'advanced'>(() => {
+type AgentTaskSection = 'overview' | 'docs' | 'bindings' | 'sessions' | 'runtime';
+
+const activeTaskSection = computed<AgentTaskSection>(() => {
   if (/\/docs$/.test(route.path)) return 'docs';
   if (/\/bindings$/.test(route.path)) return 'bindings';
   if (/\/sessions$/.test(route.path)) return 'sessions';
-  if (/\/advanced$/.test(route.path)) return 'advanced';
+  if (/\/advanced$/.test(route.path)) return 'runtime';
   return 'overview';
 });
 
@@ -456,7 +458,7 @@ const taskNavItems = computed(() => [
   { value: 'docs' as const, label: text('人设', 'Persona'), icon: BookOpen },
   { value: 'bindings' as const, label: text('路由', 'Routing'), icon: Link2 },
   { value: 'sessions' as const, label: text('会话', 'Sessions'), icon: MessageSquare },
-  { value: 'advanced' as const, label: text('运行', 'Runtime'), icon: Braces },
+  { value: 'runtime' as const, label: text('运行', 'Runtime'), icon: Braces },
 ]);
 
 const selectedAgent = computed(() => {
@@ -688,12 +690,12 @@ function parseOptionalJsonObject(label: string, value: string): Record<string, u
   return parsed as Record<string, unknown>;
 }
 
-function buildAgentPath(agentId: string, section: 'overview' | 'docs' | 'bindings' | 'sessions' | 'advanced' = activeTaskSection.value): string {
+function buildAgentPath(agentId: string, section: AgentTaskSection = activeTaskSection.value): string {
   const encoded = encodeURIComponent(agentId);
   if (section === 'docs') return `/agents/${encoded}/docs`;
   if (section === 'bindings') return `/agents/${encoded}/bindings`;
   if (section === 'sessions') return `/agents/${encoded}/sessions`;
-  if (section === 'advanced') return `/agents/${encoded}/advanced`;
+  if (section === 'runtime') return `/agents/${encoded}/advanced`;
   return `/agents/${encoded}`;
 }
 
@@ -719,7 +721,7 @@ function openQuickConfig(): void {
   });
 }
 
-function openAgent(agentId: string, section: 'overview' | 'docs' | 'bindings' | 'sessions' | 'advanced' = 'overview'): void {
+function openAgent(agentId: string, section: AgentTaskSection = 'overview'): void {
   if (!agentId) return;
   const query = { ...route.query };
   delete query.overlay;

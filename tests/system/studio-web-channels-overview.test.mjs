@@ -74,8 +74,11 @@ test('provider overview composes summary and index surfaces while stage actions 
 
 test('workspace layout owns quick overlays instead of pushing them into the overview page', () => {
   assert.match(channelsWorkspaceLayout, /ChannelAccountCreateDrawer/);
+  assert.match(channelsWorkspaceLayout, /ChannelProviderCreateDrawer/);
+  assert.match(channelsWorkspaceLayout, /activeOverlay === 'new-provider'/);
   assert.match(channelsWorkspaceLayout, /ChannelCredentialDrawer/);
   assert.doesNotMatch(channelsWorkspaceLayout, /ChannelQuickConfigDrawer/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /channels-create-panel/);
 });
 
 test('account entries stay as concise routed task rows instead of inline form editors', () => {

@@ -18,7 +18,6 @@ export interface ChannelsWorkspaceState {
   busyKey: Ref<string>;
   errorMessage: Ref<string>;
   successMessage: Ref<string>;
-  createChannelExpanded: Ref<boolean>;
   createChannelDraft: { type: string; enabled: boolean };
   selectedChannelType: ComputedRef<string>;
   selectedChannel: ComputedRef<ChannelSummary | null>;
@@ -63,7 +62,6 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
   const busyKey = ref('');
   const errorMessage = ref('');
   const successMessage = ref('');
-  const createChannelExpanded = ref(false);
   const createChannelDraft = reactive({
     type: '',
     enabled: true,
@@ -198,7 +196,6 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
       summary.value = response.summary;
       createChannelDraft.type = '';
       createChannelDraft.enabled = true;
-      createChannelExpanded.value = false;
       setSuccessMessage(response.message);
       await ensureRouteAfterSummary(createdType);
     } catch (error) {
@@ -238,7 +235,6 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
     busyKey,
     errorMessage,
     successMessage,
-    createChannelExpanded,
     createChannelDraft,
     selectedChannelType,
     selectedChannel,

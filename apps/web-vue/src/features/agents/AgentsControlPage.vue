@@ -13,7 +13,7 @@
             <button type="button" class="secondary-button compact-button" @click="openQuickConfig">
               {{ text('快速配置', 'Quick Config') }}
             </button>
-            <button type="button" class="secondary-button compact-button" @click="openAdvanced">
+            <button type="button" class="secondary-button compact-button" @click="openRuntime">
               {{ text('运行配置', 'Runtime') }}
             </button>
           </div>
@@ -328,7 +328,7 @@ function openSessions(): void {
   void router.push(`/agents/${encodeURIComponent(agentId.value)}/sessions`);
 }
 
-function openAdvanced(): void {
+function openRuntime(): void {
   if (!agentId.value) return;
   void router.push(`/agents/${encodeURIComponent(agentId.value)}/advanced`);
 }

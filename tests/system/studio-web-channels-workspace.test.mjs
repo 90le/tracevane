@@ -55,6 +55,8 @@ test("channels workspace keeps a persistent provider/account tree and top task b
   assert.match(channelsWorkspaceLayout, /channels-task-nav/);
   assert.match(channelsWorkspaceLayout, /class="channels-task-nav studio-workbench-task-nav"/);
   assert.match(channelsWorkspaceLayout, /class="channels-task-nav-button studio-workbench-task-nav-button"/);
+  assert.match(channelsWorkspaceLayout, /class="channels-task-bar studio-workbench-task-bar"/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /channels-task-rail|studio-workbench-task-rail/);
   assert.doesNotMatch(channelsWorkspaceLayout, /channels-top-tabs|channels-task-tabs|mobile-stage-tabs/);
   assert.match(channelsWorkspaceLayout, /activeTaskNavId/);
   assert.match(channelsWorkspaceLayout, /taskNavItems/);
@@ -72,7 +74,10 @@ test("channels workspace keeps a persistent provider/account tree and top task b
   assert.match(channelsWorkspaceLayout, /channels-sidebar-current/);
   assert.match(channelsWorkspaceLayout, /channels-sidebar-body/);
   assert.match(channelsWorkspaceLayout, /showProviderRailBody \? text\('收起列表', 'Hide providers'\) : text\('切换频道', 'Switch provider'\)/);
-  assert.match(channelsWorkspaceLayout, /workspace\.createChannelExpanded\.value = false/);
+  assert.match(channelsWorkspaceLayout, /openCreateProviderDrawer/);
+  assert.match(channelsWorkspaceLayout, /ChannelProviderCreateDrawer/);
+  assert.match(channelsWorkspaceLayout, /activeOverlay === 'new-provider'/);
+  assert.doesNotMatch(channelsWorkspaceLayout, /channels-create-panel|toggleCreateChannelPanel/);
   assert.match(channelsWorkspaceLayout, /Routing rules|路由规则/);
   assert.match(channelsWorkspaceLayout, /Provider settings|Provider 设置/);
   assert.match(channelsWorkspaceLayout, /Default account access|默认账号权限/);

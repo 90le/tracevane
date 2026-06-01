@@ -26,6 +26,8 @@ test("agents workspace uses a persistent object list and top task bar instead of
   assert.match(agentsWorkspaceLayout, /agents-workspace-shell/);
   assert.match(agentsWorkspaceLayout, /agent-rail-list/);
   assert.match(agentsWorkspaceLayout, /agents-task-nav/);
+  assert.match(agentsWorkspaceLayout, /class="agents-task-bar studio-workbench-task-bar"/);
+  assert.doesNotMatch(agentsWorkspaceLayout, /agents-task-rail|studio-workbench-task-rail/);
   assert.doesNotMatch(agentsWorkspaceLayout, /agents-stage-tabs|mobile-stage-tabs/);
   assert.match(agentsWorkspaceLayout, /agent-rail-group/);
   assert.match(agentsWorkspaceLayout, /默认入口 Agent|Default entry agent/);

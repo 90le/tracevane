@@ -45,8 +45,8 @@
               >
                 {{ showProviderRailBody ? text('收起列表', 'Hide providers') : text('切换频道', 'Switch provider') }}
               </button>
-              <button type="button" class="secondary-button compact-button" @click="toggleCreateChannelPanel">
-                {{ workspace.createChannelExpanded.value ? text('收起', 'Hide') : text('新增频道', 'Add Provider') }}
+              <button type="button" class="secondary-button compact-button" @click="openCreateProviderDrawer">
+                {{ text('新增频道', 'Add Provider') }}
               </button>
             </div>
           </div>
@@ -56,34 +56,6 @@
           </p>
 
           <div v-if="showProviderRailBody" class="channels-sidebar-body">
-            <div v-if="workspace.createChannelExpanded.value" class="channels-create-panel">
-              <div class="form-field">
-                <label class="form-label">{{ text('渠道类型', 'Provider Type') }}</label>
-                <StudioSelect
-                  v-model="workspace.createChannelDraft.type"
-                  :options="workspace.availableCreateTypeOptions.value"
-                  :placeholder="text('请选择渠道类型', 'Select provider type')"
-                />
-              </div>
-
-              <label class="option-row">
-                <input v-model="workspace.createChannelDraft.enabled" class="form-checkbox" type="checkbox" />
-                <div>
-                  <strong>{{ text('创建后立即启用', 'Enable after create') }}</strong>
-                  <span>{{ text('这里仍保留轻量创建入口，但不会自动展开完整编辑器。', 'This keeps lightweight provider creation in the rail without opening a full editor immediately.') }}</span>
-                </div>
-              </label>
-
-              <button
-                type="button"
-                class="primary-button compact-button"
-                :disabled="!workspace.createChannelDraft.type || workspace.busyKey.value === 'create-channel'"
-                @click="workspace.submitCreateChannel()"
-              >
-                {{ workspace.busyKey.value === 'create-channel' ? text('创建中...', 'Creating...') : text('创建频道', 'Create Provider') }}
-              </button>
-            </div>
-
             <div v-if="workspace.summary.value?.channels.length" class="channel-rail-list" :aria-label="text('频道和账号树', 'Provider and account tree')">
               <article
                 v-for="channel in workspace.summary.value.channels"
@@ -147,7 +119,7 @@
 
       <section class="channels-stage operate-stage studio-workbench-canvas">
         <div class="channels-task-workbench studio-workbench-task-shell" :class="{ 'is-empty': !workspace.selectedChannel.value }">
-          <aside v-if="workspace.selectedChannel.value" class="channels-task-rail studio-workbench-task-rail" :aria-label="text('频道任务', 'Channel tasks')">
+          <div v-if="workspace.selectedChannel.value" class="channels-task-bar studio-workbench-task-bar" :aria-label="text('频道任务', 'Channel tasks')">
             <p class="eyebrow">{{ text('任务', 'Tasks') }}</p>
             <nav class="channels-task-nav studio-workbench-task-nav" :aria-label="text('频道任务页面', 'Channel task pages')">
               <button
@@ -162,7 +134,7 @@
                 <span>{{ navItem.label }}</span>
               </button>
             </nav>
-          </aside>
+          </div>
 
           <section class="channels-task-canvas studio-workbench-active-canvas">
             <section v-if="workspace.selectedChannel.value" class="channels-stage-header operate-workspace-surface operate-stage-strip">
@@ -239,6 +211,14 @@
       @save="createAccountQuickly"
     />
 
+    <ChannelProviderCreateDrawer
+      :open="activeOverlay === 'new-provider'"
+      :busy="workspace.busyKey.value === 'create-channel'"
+      :options="workspace.availableCreateTypeOptions.value"
+      @close="workspace.closeOverlay()"
+      @save="createProviderFromDrawer"
+    />
+
     <ChannelCredentialDrawer
       :open="activeOverlay === 'credentials' && Boolean(overlayAccount)"
       :busy="workspace.busyKey.value === 'save-credentials'"
@@ -262,7 +242,6 @@ import { RouterView, useRoute, useRouter } from 'vue-router';
 import { KeyRound, LayoutDashboard, MessageSquare, MoreHorizontal, Repeat2, ShieldCheck, UserRound } from '@lucide/vue';
 import type { ChannelAccountInput } from '../../../../../types/channels';
 import StatusPill from '../../components/StatusPill.vue';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   createChannelAccount,
@@ -271,6 +250,7 @@ import {
 } from './api';
 import ChannelAccountCreateDrawer from './ChannelAccountCreateDrawer.vue';
 import ChannelCredentialDrawer from './ChannelCredentialDrawer.vue';
+import ChannelProviderCreateDrawer from './ChannelProviderCreateDrawer.vue';
 import {
   buildConnectionModeOptions,
   buildContextVisibilityOptions,
@@ -375,7 +355,7 @@ const showMobileRailToggle = computed(() => {
 });
 
 const showProviderRailBody = computed(() => {
-  return !showMobileRailToggle.value || !mobileRailCollapsed.value || workspace.createChannelExpanded.value;
+  return !showMobileRailToggle.value || !mobileRailCollapsed.value;
 });
 
 const accountCreateSeed = computed<ChannelAccountInput | null>(() => {
@@ -474,27 +454,20 @@ function syncResponsiveRailState(): void {
     mobileRailCollapsed.value = false;
     return;
   }
-  mobileRailCollapsed.value = Boolean(workspace.selectedChannel.value) && !workspace.createChannelExpanded.value;
+  mobileRailCollapsed.value = Boolean(workspace.selectedChannel.value);
 }
 
 function toggleMobileRail(): void {
   if (!showMobileRailToggle.value) return;
   if (showProviderRailBody.value) {
-    workspace.createChannelExpanded.value = false;
     mobileRailCollapsed.value = true;
     return;
   }
   mobileRailCollapsed.value = false;
 }
 
-function toggleCreateChannelPanel(): void {
-  const nextExpanded = !workspace.createChannelExpanded.value;
-  workspace.createChannelExpanded.value = nextExpanded;
-  if (nextExpanded) {
-    mobileRailCollapsed.value = false;
-  } else {
-    syncResponsiveRailState();
-  }
+function openCreateProviderDrawer(): void {
+  void workspace.openOverlay('new-provider');
 }
 
 watch(
@@ -522,7 +495,7 @@ watch(
 );
 
 watch(
-  () => [workspace.selectedChannel.value?.type, workspace.createChannelExpanded.value] as const,
+  () => workspace.selectedChannel.value?.type,
   () => {
     if (!isChannelsRouteActive.value) return;
     syncResponsiveRailState();
@@ -583,6 +556,15 @@ async function createAccountQuickly(payload: ChannelAccountInput): Promise<void>
     workspace.setErrorMessage(error instanceof Error ? error.message : text('未知错误', 'Unknown error'));
   } finally {
     workspace.busyKey.value = '';
+  }
+}
+
+async function createProviderFromDrawer(payload: { type: string; enabled: boolean }): Promise<void> {
+  workspace.createChannelDraft.type = payload.type;
+  workspace.createChannelDraft.enabled = payload.enabled;
+  await workspace.submitCreateChannel();
+  if (!workspace.errorMessage.value) {
+    await workspace.closeOverlay();
   }
 }
 
