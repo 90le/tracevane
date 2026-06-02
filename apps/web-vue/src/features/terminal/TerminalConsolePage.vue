@@ -115,6 +115,7 @@ let gatewayInputRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let gatewayInputRecoverySeq = 0;
 let terminalStatusFrame: number | null = null;
 let terminalOutputTimer: ReturnType<typeof setTimeout> | null = null;
+let terminalOutputFrame: number | null = null;
 let terminalOutputQueue = '';
 let intentionalClose = false;
 const terminalSessionId = ref('');
@@ -250,8 +251,8 @@ function applyTerminalAppearance(options: { forceTheme?: boolean; postLayout?: b
 }
 
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
-const TERMINAL_IMMEDIATE_OUTPUT_LIMIT = 8 * 1024;
-const TERMINAL_BULK_OUTPUT_FLUSH_MS = 4;
+const TERMINAL_OUTPUT_FRAME_BATCH_LIMIT = 64 * 1024;
+const TERMINAL_OUTPUT_MAX_LATENCY_MS = 16;
 const TERMINAL_GATEWAY_COMMAND_RECOVERY_MS = 1_200;
 const TERMINAL_VISIBLE_MIN_SIZE = 8;
 const TERMINAL_LAYOUT_RETRY_MS = 80;
@@ -769,6 +770,14 @@ function clearGatewayInputRecovery(): void {
 
 function clearTerminalOutputQueue(): void {
   terminalOutputQueue = '';
+  cancelScheduledTerminalOutputFlush();
+}
+
+function cancelScheduledTerminalOutputFlush(): void {
+  if (terminalOutputFrame !== null) {
+    window.cancelAnimationFrame(terminalOutputFrame);
+    terminalOutputFrame = null;
+  }
   if (terminalOutputTimer !== null) {
     window.clearTimeout(terminalOutputTimer);
     terminalOutputTimer = null;
@@ -776,7 +785,7 @@ function clearTerminalOutputQueue(): void {
 }
 
 function flushTerminalOutputQueue(): void {
-  terminalOutputTimer = null;
+  cancelScheduledTerminalOutputFlush();
   if (!terminalOutputQueue || !termInstance) return;
   const output = terminalOutputQueue;
   terminalOutputQueue = '';
@@ -793,19 +802,21 @@ function enqueueTerminalOutput(data: string): void {
     terminalOutputQueue += data;
     return;
   }
-  if (!terminalOutputQueue && data.length <= TERMINAL_IMMEDIATE_OUTPUT_LIMIT) {
-    termInstance.write(data);
-    scheduleTerminalRenderRefresh();
-    scheduleTerminalStatusHint();
-    return;
-  }
   terminalOutputQueue += data;
-  if (terminalOutputQueue.length >= TERMINAL_IMMEDIATE_OUTPUT_LIMIT * 4) {
+  if (terminalOutputQueue.length >= TERMINAL_OUTPUT_FRAME_BATCH_LIMIT) {
     flushTerminalOutputQueue();
     return;
   }
-  if (terminalOutputTimer !== null) return;
-  terminalOutputTimer = window.setTimeout(flushTerminalOutputQueue, TERMINAL_BULK_OUTPUT_FLUSH_MS);
+  scheduleTerminalOutputFlush();
+}
+
+function scheduleTerminalOutputFlush(): void {
+  if (terminalOutputFrame === null && document.visibilityState === 'visible') {
+    terminalOutputFrame = window.requestAnimationFrame(flushTerminalOutputQueue);
+  }
+  if (terminalOutputTimer === null) {
+    terminalOutputTimer = window.setTimeout(flushTerminalOutputQueue, TERMINAL_OUTPUT_MAX_LATENCY_MS);
+  }
 }
 
 function handleGatewayAckResponse(

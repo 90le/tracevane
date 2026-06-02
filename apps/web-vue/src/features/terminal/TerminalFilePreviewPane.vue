@@ -145,8 +145,8 @@
           :aria-pressed="activePreviewMode !== 'edit'"
           @click.stop="toggleActivePreviewMode"
         >
-          <Code2 v-if="activePreviewMode === 'preview'" class="terminal-file-preview__icon" aria-hidden="true" />
-          <Columns v-else-if="activePreviewMode === 'split'" class="terminal-file-preview__icon" aria-hidden="true" />
+          <Code2 v-if="activePreviewMode === 'visual'" class="terminal-file-preview__icon" aria-hidden="true" />
+          <PencilLine v-else-if="activePreviewMode === 'preview'" class="terminal-file-preview__icon" aria-hidden="true" />
           <Eye v-else class="terminal-file-preview__icon" aria-hidden="true" />
           <span class="sr-only">{{ previewModeButtonLabel }}</span>
         </button>
@@ -429,6 +429,20 @@
       </figure>
       <section
         v-else-if="activePayload?.content != null && activePreviewMode === 'preview' && activeRichPreviewKind === 'markdown'"
+        class="terminal-file-preview__rendered terminal-file-preview__rendered--markdown"
+        :aria-label="text('Markdown 富文本预览', 'Markdown rich preview')"
+      >
+        <AsyncTerminalMarkdownPreview
+          class="terminal-file-preview__markdown"
+          :source="activeDraft"
+          :title="activePayload.name"
+          :dark="resolvedTheme === 'dark'"
+          :editable="false"
+          :read-only="true"
+        />
+      </section>
+      <section
+        v-else-if="activePayload?.content != null && activePreviewMode === 'visual' && activeRichPreviewKind === 'markdown'"
         class="terminal-file-preview__rendered terminal-file-preview__rendered--markdown terminal-file-preview__rendered--markdown-editable"
         :aria-label="text('Markdown 所见即所得编辑', 'Markdown visual editor')"
       >
@@ -440,31 +454,6 @@
           :editable="activeCanEdit"
           :read-only="!activeCanEdit || activeState?.saving"
           @save="saveActiveFile"
-        />
-      </section>
-      <section
-        v-else-if="activePayload?.content != null && activePreviewMode === 'split' && activeRichPreviewKind === 'markdown'"
-        ref="markdownSplitRef"
-        class="terminal-file-preview__split terminal-file-preview__split--markdown"
-        :aria-label="text('Markdown 分屏编辑预览', 'Markdown split editor preview')"
-      >
-        <div class="terminal-file-preview__split-pane terminal-file-preview__split-pane--editor">
-          <AsyncCodeFileEditor
-            class="terminal-file-preview__editor"
-            v-model="activeDraft"
-            :path="activePayload.path"
-            :read-only="!activeCanEdit || activeState?.saving"
-            :dark="resolvedTheme === 'dark'"
-            :search-request="searchRequest"
-            :text="text"
-            @save="saveActiveFile"
-          />
-        </div>
-        <AsyncTerminalMarkdownPreview
-          class="terminal-file-preview__split-pane terminal-file-preview__split-pane--preview terminal-file-preview__markdown"
-          :source="activeDraft"
-          :title="activePayload.name"
-          :dark="resolvedTheme === 'dark'"
         />
       </section>
       <section
@@ -553,6 +542,7 @@ import {
   Maximize2,
   Minimize2,
   MoreHorizontal,
+  PencilLine,
   RotateCcw,
   Save,
   Rows,
@@ -585,7 +575,7 @@ import {
 const AsyncCodeFileEditor = defineAsyncComponent(() => import('../files/CodeFileEditor.vue'));
 const AsyncTerminalMarkdownPreview = defineAsyncComponent(() => import('./TerminalMarkdownPreview.vue'));
 
-type TerminalFilePreviewMode = 'edit' | 'preview' | 'split';
+type TerminalFilePreviewMode = 'edit' | 'preview' | 'visual';
 type TerminalRichPreviewKind = 'markdown' | 'html';
 
 const props = defineProps<{
@@ -615,7 +605,6 @@ const searchRequest = ref(0);
 const previewSwitcherRef = ref<HTMLDetailsElement | null>(null);
 const previewActionMenuRef = ref<HTMLDetailsElement | null>(null);
 const previewTabContextMenuRef = ref<HTMLElement | null>(null);
-const markdownSplitRef = ref<HTMLElement | null>(null);
 const previewSwitcherOpen = ref(false);
 const previewActionMenuOpen = ref(false);
 const draggedPreviewTabId = ref('');
@@ -637,9 +626,6 @@ const FILE_PREVIEW_CONTEXT_MENU_HEIGHT = 360;
 const IMAGE_ZOOM_MIN = 0.2;
 const IMAGE_ZOOM_MAX = 4;
 const IMAGE_ZOOM_STEP = 0.2;
-let markdownSplitScrollCleanup: (() => void) | null = null;
-let markdownSplitScrollFrame: number | null = null;
-let markdownSplitScrollRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface TerminalFilePreviewState {
   loading: boolean;
@@ -697,7 +683,7 @@ const activeSupportsRichPreview = computed(() =>
 const activePreviewMode = computed<TerminalFilePreviewMode>(() => {
   if (!activeSupportsRichPreview.value) return 'edit';
   const mode = activeState.value?.previewMode || 'edit';
-  if (mode === 'split' && activeRichPreviewKind.value !== 'markdown') return 'preview';
+  if (mode === 'visual' && activeRichPreviewKind.value !== 'markdown') return 'preview';
   return mode;
 });
 const activeDirty = computed(() => {
@@ -743,10 +729,10 @@ const saveButtonLabel = computed(() => {
 });
 const previewModeButtonLabel = computed(() =>
   activePreviewMode.value === 'preview'
-    ? text('分屏同步预览', 'Split synchronized preview')
-    : activePreviewMode.value === 'split'
+    ? text('开启所见即所得编辑', 'Enable visual editing')
+    : activePreviewMode.value === 'visual'
       ? text('切回源码编辑', 'Back to source editing')
-      : text('所见即所得编辑', 'Visual Markdown editing'),
+      : text('预览渲染结果', 'Preview rendered output'),
 );
 const htmlPreviewSrcdoc = computed(() => {
   const tab = activeTab.value;
@@ -869,22 +855,6 @@ watch(
       pendingCloseTabIds.value = pendingCloseTabIds.value.filter((tabId) => activeIds.has(tabId));
     }
   },
-);
-
-watch(
-  () => [
-    activeTab.value?.id || '',
-    activePreviewMode.value,
-    activeRichPreviewKind.value || '',
-  ] as const,
-  () => {
-    if (activePreviewMode.value === 'split' && activeRichPreviewKind.value === 'markdown') {
-      scheduleMarkdownSplitScrollBinding();
-      return;
-    }
-    clearMarkdownSplitScrollBinding();
-  },
-  { flush: 'post' },
 );
 
 function ensurePreviewState(tabId: string): TerminalFilePreviewState {
@@ -1037,80 +1007,11 @@ function toggleActivePreviewMode(): void {
   if (state.previewMode === 'edit') {
     state.previewMode = 'preview';
   } else if (state.previewMode === 'preview' && activeRichPreviewKind.value === 'markdown' && activeCanEdit.value) {
-    state.previewMode = 'split';
+    state.previewMode = 'visual';
   } else {
     state.previewMode = 'edit';
   }
   closePreviewOverlays();
-}
-
-function scheduleMarkdownSplitScrollBinding(attempt = 0): void {
-  clearMarkdownSplitScrollBinding();
-  void nextTick(() => {
-    if (activePreviewMode.value !== 'split' || activeRichPreviewKind.value !== 'markdown') return;
-    const splitRoot = markdownSplitRef.value;
-    const editorScroller = splitRoot?.querySelector<HTMLElement>(
-      '.terminal-file-preview__split-pane--editor .cm-scroller',
-    ) || null;
-    const previewScroller = splitRoot?.querySelector<HTMLElement>(
-      '.terminal-file-preview__split-pane--preview.terminal-doc-preview',
-    ) || null;
-    if (!editorScroller || !previewScroller) {
-      if (attempt >= 8) return;
-      markdownSplitScrollRetryTimer = setTimeout(() => {
-        markdownSplitScrollRetryTimer = null;
-        scheduleMarkdownSplitScrollBinding(attempt + 1);
-      }, 80);
-      return;
-    }
-    bindMarkdownSplitScroll(editorScroller, previewScroller);
-  });
-}
-
-function bindMarkdownSplitScroll(editorScroller: HTMLElement, previewScroller: HTMLElement): void {
-  let activeSource: 'editor' | 'preview' | null = null;
-  const sync = (source: HTMLElement, target: HTMLElement, sourceName: 'editor' | 'preview') => {
-    if (activeSource && activeSource !== sourceName) return;
-    activeSource = sourceName;
-    if (markdownSplitScrollFrame !== null) {
-      cancelAnimationFrame(markdownSplitScrollFrame);
-    }
-    markdownSplitScrollFrame = requestAnimationFrame(() => {
-      markdownSplitScrollFrame = null;
-      syncMarkdownScrollRatio(source, target);
-      activeSource = null;
-    });
-  };
-  const syncFromEditor = () => sync(editorScroller, previewScroller, 'editor');
-  const syncFromPreview = () => sync(previewScroller, editorScroller, 'preview');
-  editorScroller.addEventListener('scroll', syncFromEditor, { passive: true });
-  previewScroller.addEventListener('scroll', syncFromPreview, { passive: true });
-  markdownSplitScrollCleanup = () => {
-    editorScroller.removeEventListener('scroll', syncFromEditor);
-    previewScroller.removeEventListener('scroll', syncFromPreview);
-  };
-  syncMarkdownScrollRatio(editorScroller, previewScroller);
-}
-
-function syncMarkdownScrollRatio(source: HTMLElement, target: HTMLElement): void {
-  const sourceMax = Math.max(0, source.scrollHeight - source.clientHeight);
-  const targetMax = Math.max(0, target.scrollHeight - target.clientHeight);
-  if (!targetMax) return;
-  const ratio = sourceMax ? source.scrollTop / sourceMax : 0;
-  target.scrollTop = Math.round(targetMax * ratio);
-}
-
-function clearMarkdownSplitScrollBinding(): void {
-  if (markdownSplitScrollRetryTimer !== null) {
-    clearTimeout(markdownSplitScrollRetryTimer);
-    markdownSplitScrollRetryTimer = null;
-  }
-  if (markdownSplitScrollFrame !== null) {
-    cancelAnimationFrame(markdownSplitScrollFrame);
-    markdownSplitScrollFrame = null;
-  }
-  markdownSplitScrollCleanup?.();
-  markdownSplitScrollCleanup = null;
 }
 
 function setActiveImageZoom(nextZoom: number, fit: boolean): void {
@@ -1659,7 +1560,6 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  clearMarkdownSplitScrollBinding();
   document.removeEventListener('pointerdown', closePreviewOverlaysFromOutside, true);
   window.removeEventListener('resize', closePreviewOverlays);
   window.removeEventListener('beforeunload', handlePreviewBeforeUnload);

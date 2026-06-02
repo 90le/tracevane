@@ -737,6 +737,9 @@ const resourceSearchError = ref('');
 const operationInput = ref<HTMLInputElement | null>(null);
 const uploadFeedback = ref('');
 const focusedResourcePayload = ref<TerminalResourceTransferPayload | null>(null);
+const resourceTreeDataRevision = ref(0);
+const resourceTreeExpansionRevision = ref(0);
+const resourceTreeLoadingRevision = ref(0);
 const contextMenu = ref<{
   path: string;
   left: number;
@@ -760,6 +763,8 @@ let resourceSearchSeq = 0;
 let workspaceDirectorySyncSeq = 0;
 let resourceLongPress: ResourceLongPressState | null = null;
 let suppressNextResourceClick = false;
+let visibleRowsCacheKey = '';
+let visibleRowsCache: ResourceTreeRow[] = [];
 
 const activeRoot = computed(() =>
   roots.value.find((root) => root.id === rootId.value) || null,
@@ -795,13 +800,7 @@ const resourceSearchRows = computed<ResourceTreeRow[]>(() =>
     loading: Boolean(loadingPaths.value[entry.path]),
   })),
 );
-const visibleRows = computed<ResourceTreeRow[]>(() =>
-  resourceFilterActive.value
-    ? resourceSearchRows.value.length
-      ? resourceSearchRows.value
-      : flattenFilteredTree(workspaceRootPath.value, 0, resourceFilterNeedle.value)
-    : flattenTree(workspaceRootPath.value, 0),
-);
+const visibleRows = computed<ResourceTreeRow[]>(() => resolveVisibleRows());
 const isWorkspaceRootSelected = computed(() =>
   normalizePath(selectedPath.value) === workspaceRootPath.value && selectedPaths.value.length === 0,
 );
@@ -1077,10 +1076,12 @@ async function loadDirectory(
       ...childrenByPath.value,
       [normalizedPath]: sortEntries(payload.entries || []),
     };
+    bumpResourceTreeDataRevision();
     expandedPaths.value = {
       ...expandedPaths.value,
       [normalizedPath]: true,
     };
+    bumpResourceTreeExpansionRevision();
   } catch {
     if (options.root && requestSeq !== rootLoadSeq) return;
     if (options.root) {
@@ -1160,6 +1161,9 @@ function resetTree(nextWorkspaceRootPath = workspaceRootPath.value): void {
   childrenByPath.value = {};
   expandedPaths.value = { [workspaceRootPath.value]: true };
   loadingPaths.value = {};
+  bumpResourceTreeDataRevision();
+  bumpResourceTreeExpansionRevision();
+  bumpResourceTreeLoadingRevision();
   selectedPath.value = workspaceRootPath.value;
   selectedPaths.value = [];
   closeResourceFilter();
@@ -1169,6 +1173,8 @@ function resetTree(nextWorkspaceRootPath = workspaceRootPath.value): void {
 function collapseAllDirectories(): void {
   expandedPaths.value = { [workspaceRootPath.value]: true };
   loadingPaths.value = {};
+  bumpResourceTreeExpansionRevision();
+  bumpResourceTreeLoadingRevision();
 }
 
 function readResourceExplorerSnapshot(): TerminalResourceExplorerSnapshot | null {
@@ -1239,6 +1245,43 @@ function flattenTree(path: string, level: number): ResourceTreeRow[] {
     }
   }
   return rows;
+}
+
+function resolveVisibleRows(): ResourceTreeRow[] {
+  const searchResultKey = resourceFilterActive.value && resourceSearchRows.value.length
+    ? resourceSearchRows.value.map((row) => row.entry.path).join('\u0000')
+    : '';
+  const cacheKey = [
+    workspaceRootPath.value,
+    resourceFilterActive.value ? 'filter' : 'tree',
+    resourceFilterNeedle.value,
+    resourceTreeDataRevision.value,
+    resourceTreeExpansionRevision.value,
+    resourceTreeLoadingRevision.value,
+    searchResultKey,
+  ].join('\u0001');
+  if (visibleRowsCacheKey === cacheKey) return visibleRowsCache;
+
+  const rows = resourceFilterActive.value
+    ? resourceSearchRows.value.length
+      ? resourceSearchRows.value
+      : flattenFilteredTree(workspaceRootPath.value, 0, resourceFilterNeedle.value)
+    : flattenTree(workspaceRootPath.value, 0);
+  visibleRowsCacheKey = cacheKey;
+  visibleRowsCache = rows;
+  return rows;
+}
+
+function bumpResourceTreeDataRevision(): void {
+  resourceTreeDataRevision.value += 1;
+}
+
+function bumpResourceTreeExpansionRevision(): void {
+  resourceTreeExpansionRevision.value += 1;
+}
+
+function bumpResourceTreeLoadingRevision(): void {
+  resourceTreeLoadingRevision.value += 1;
 }
 
 function flattenFilteredTree(path: string, level: number, needle: string): ResourceTreeRow[] {
@@ -1555,6 +1598,7 @@ function toggleDirectory(entry: FileEntrySummary): void {
     ...expandedPaths.value,
     [entry.path]: !expanded,
   };
+  bumpResourceTreeExpansionRevision();
   if (!expanded && !childrenByPath.value[entry.path]) {
     void loadDirectory(entry.path);
   }
@@ -1666,6 +1710,7 @@ async function revealDirectory(path: string): Promise<void> {
         ...expandedPaths.value,
         [current]: true,
       };
+      bumpResourceTreeExpansionRevision();
     }
   }
   selectedPath.value = normalized;
@@ -1689,6 +1734,7 @@ async function revealResourcePath(
         ...expandedPaths.value,
         [current]: true,
       };
+      bumpResourceTreeExpansionRevision();
     }
   }
   selectedPath.value = normalized;
@@ -2902,6 +2948,7 @@ function setPathLoading(path: string, value: boolean): void {
     ...loadingPaths.value,
     [path]: value,
   };
+  bumpResourceTreeLoadingRevision();
 }
 
 function normalizePath(path: string): string {
