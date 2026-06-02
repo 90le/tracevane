@@ -1,6 +1,6 @@
 {
   "name": "openclaw-studio-web",
-  "version": "0.1.66",
+  "version": "0.1.68",
   "private": true,
   "type": "module",
   "scripts": {
@@ -42,8 +42,7 @@
     "remark-rehype": "^11.1.2",
     "unified": "^11.0.5",
     "vue": "^3.5.13",
-    "vue-router": "^4.5.0",
-    "vuefinder": "^4.1.2"
+    "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",

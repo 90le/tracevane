@@ -1,5 +1,11 @@
 <template>
-  <section class="file-manager-page">
+  <section
+    class="file-manager-page studio-file-workbench"
+    :class="{ 'studio-file-workbench--grid': viewMode === 'grid' }"
+    @click="closeTransientSurfaces"
+    @keydown="handleWorkbenchKeydown"
+    @paste="handleWorkbenchPaste"
+  >
     <div
       v-if="noticeMessage"
       class="file-manager-notice"
@@ -8,331 +14,701 @@
       {{ noticeMessage.text }}
     </div>
 
-    <div v-if="loading && !driver" class="file-manager-loading">
-      {{ text("正在加载文件管理器…", "Loading file manager...") }}
+    <div v-if="loading && !summary" class="file-manager-loading">
+      {{ text("正在加载文件管理器...", "Loading file manager...") }}
     </div>
 
-    <VueFinder
-      v-else-if="driver"
-      :key="viewerKey"
-      :id="viewerId"
-      class="studio-file-explorer"
-      :driver="driver"
-      :locale="vueFinderLocale"
-      :features="explorerFeatures"
-      :config="explorerConfig"
-      :context-menu-items="explorerContextMenuItems"
-      @error="handleExplorerError"
-      @notify="handleNotify"
-      @select="handleExplorerSelect"
-      @path-change="handleExplorerPathChange"
-      @file-dclick="handleFileDclick"
-    >
-      <template #icon="{ item, view }">
-        <span
-          class="studio-file-icon"
-          :class="[
-            `studio-file-icon--${explorerItemIconKind(item)}`,
-            { 'studio-file-icon--grid': view === 'grid' },
-          ]"
-          :title="explorerItemIconLabel(item)"
-          :aria-label="explorerItemIconLabel(item)"
-        >
-          <span class="studio-file-icon__shape" aria-hidden="true">
-            <span class="studio-file-icon__fold"></span>
-            <span
-              v-if="item.type === 'dir'"
-              class="studio-file-icon__folder-tab"
-            ></span>
-            <span
-              v-else
-              class="studio-file-icon__extension"
-            >
-              {{ explorerItemIconText(item) }}
-            </span>
-          </span>
-        </span>
-      </template>
+    <template v-else-if="summary">
+      <input
+        ref="uploadInput"
+        class="studio-file-hidden-input"
+        type="file"
+        multiple
+        @change="handleUploadInputChange"
+      />
+      <input
+        ref="uploadDirectoryInput"
+        class="studio-file-hidden-input"
+        type="file"
+        multiple
+        webkitdirectory
+        @change="handleUploadDirectoryInputChange"
+      />
 
-      <template #status-bar>
-        <div class="file-manager-statusbar">
-          <span>{{ text(`已选 ${selectedItems.length} 项`, `${selectedItems.length} selected`) }}</span>
-          <button
-            v-if="selectedItems.length"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="copySelectedPathsToClipboard"
+      <header class="studio-file-tabs" aria-label="Open directories">
+        <button
+          v-for="tab in directoryTabs"
+          :key="tab.id"
+          type="button"
+          class="studio-file-tab"
+          :class="{ active: tab.id === activeDirectoryTabId }"
+          :title="tab.absolutePath"
+          @click.stop="activateDirectoryTab(tab.id)"
+        >
+          <span class="studio-file-tab__icon" aria-hidden="true"></span>
+          <span>{{ tab.label }}</span>
+          <small>{{ tab.rootLabel }}</small>
+          <span
+            v-if="directoryTabs.length > 1"
+            role="button"
+            tabindex="0"
+            class="studio-file-tab__close"
+            :aria-label="text('关闭目录标签', 'Close directory tab')"
+            @click.stop="closeDirectoryTab(tab.id)"
+            @keydown.enter.stop.prevent="closeDirectoryTab(tab.id)"
+            @keydown.space.stop.prevent="closeDirectoryTab(tab.id)"
           >
-            {{ text("复制路径", "Copy path") }}
+            <X class="studio-file-icon-button__icon" aria-hidden="true" />
+          </span>
+        </button>
+        <button
+          type="button"
+          class="studio-file-tab studio-file-tab--new"
+          :title="text('复制当前目录为新标签', 'Open current directory as a new tab')"
+          @click.stop="openCurrentDirectoryInNewTab"
+        >
+          <Plus class="studio-file-icon-button__icon" aria-hidden="true" />
+        </button>
+      </header>
+
+      <section class="studio-file-pathbar">
+        <div class="studio-file-pathbar__nav" aria-label="Directory history">
+          <button type="button" :disabled="!canGoBack" @click.stop="goBack">
+            <ChevronLeft class="studio-file-icon-button__icon" aria-hidden="true" />
+          </button>
+          <button type="button" :disabled="!canGoForward" @click.stop="goForward">
+            <ChevronRight class="studio-file-icon-button__icon" aria-hidden="true" />
+          </button>
+        </div>
+
+        <select
+          class="studio-file-root-select"
+          :value="activeRootId"
+          :aria-label="text('选择根目录', 'Select root')"
+          @change="handleRootSelect"
+          @click.stop
+        >
+          <option
+            v-for="root in visibleRoots"
+            :key="root.id"
+            :value="root.id"
+          >
+            {{ rootLabel(root) }}
+          </option>
+        </select>
+
+        <nav class="studio-file-breadcrumbs" aria-label="Breadcrumb">
+          <button
+            v-for="crumb in breadcrumbs"
+            :key="crumb.path || '__root__'"
+            type="button"
+            class="studio-file-breadcrumb"
+            :class="{ active: crumb.path === activeDirectoryPath }"
+            @click.stop="navigateToDirectory(crumb.path)"
+          >
+            {{ crumb.label }}
+          </button>
+        </nav>
+
+        <button
+          type="button"
+          class="studio-file-icon-button"
+          :title="text('刷新', 'Refresh')"
+          @click.stop="refreshCurrentDirectory"
+        >
+          <RefreshCw class="studio-file-icon-button__icon" aria-hidden="true" />
+        </button>
+
+        <form class="studio-file-search" @submit.prevent.stop="runSearch">
+          <Search class="studio-file-search__icon" aria-hidden="true" />
+          <input
+            v-model="searchQuery"
+            type="search"
+            :placeholder="text('搜索文件/目录', 'Search files or directories')"
+            @click.stop
+          />
+          <label class="studio-file-search__recursive">
+            <input v-model="recursiveSearch" type="checkbox" />
+            <span>{{ text("包含子目录", "Recursive") }}</span>
+          </label>
+        </form>
+      </section>
+
+      <section class="studio-file-toolbar" aria-label="File operations">
+        <div class="studio-file-toolbar__group">
+          <button type="button" @click.stop="uploadInput?.click()">
+            <Upload class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("上传文件", "Upload") }}</span>
+          </button>
+          <button type="button" @click.stop="uploadDirectoryInput?.click()">
+            <FolderUp class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("上传目录", "Upload folder") }}</span>
+          </button>
+          <button type="button" @click.stop="openOperationDialog('new-file')">
+            <FilePlus class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("新建文件", "New file") }}</span>
+          </button>
+          <button type="button" @click.stop="openOperationDialog('new-folder')">
+            <FolderPlus class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("新建目录", "New folder") }}</span>
+          </button>
+        </div>
+
+        <div class="studio-file-toolbar__group">
+          <button type="button" @click.stop="runSearch">
+            <Search class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("内容搜索", "Content search") }}</span>
+          </button>
+          <button type="button" @click.stop="copySelectedPathsToClipboard" :disabled="!selectedItems.length">
+            <Copy class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("复制路径", "Copy path") }}</span>
+          </button>
+          <button type="button" @click.stop="openTerminalHere">
+            <Terminal class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("终端", "Terminal") }}</span>
+          </button>
+        </div>
+
+        <div class="studio-file-toolbar__group">
+          <button type="button" :disabled="!selectedItems.length" @click.stop="downloadArchiveForItems(selectedItems)">
+            <Download class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("打包下载", "Download zip") }}</span>
+          </button>
+          <button type="button" :disabled="!selectedItems.length" @click.stop="openOperationDialog('archive')">
+            <Archive class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("创建压缩", "Create archive") }}</span>
+          </button>
+          <button type="button" :disabled="!selectedZipItems.length" @click.stop="unarchiveItems(selectedZipItems)">
+            <PackageOpen class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("解压", "Extract") }}</span>
+          </button>
+        </div>
+
+        <div class="studio-file-toolbar__spacer"></div>
+        <div class="studio-file-view-toggle" aria-label="View mode">
+          <button
+            type="button"
+            :class="{ active: viewMode === 'list' }"
+            :title="text('列表视图', 'List view')"
+            @click.stop="viewMode = 'list'"
+          >
+            <List class="studio-file-icon-button__icon" aria-hidden="true" />
           </button>
           <button
-            v-if="selectedItems.length"
             type="button"
-            class="file-manager-statusbar__button"
-            @click="copySelectedStudioRefsToClipboard"
+            :class="{ active: viewMode === 'grid' }"
+            :title="text('网格视图', 'Grid view')"
+            @click.stop="viewMode = 'grid'"
           >
-            {{ text("复制 Studio 引用", "Copy Studio ref") }}
+            <Grid2X2 class="studio-file-icon-button__icon" aria-hidden="true" />
           </button>
-          <button
-            v-if="selectedMarkdownRefItems.length"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="copySelectedStudioMarkdownRefsToClipboard"
-          >
-            {{ text("复制 Chat Markdown", "Copy Chat Markdown") }}
-          </button>
-          <button
-            v-if="selectedItems.length"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="duplicateSelectedItems"
-          >
-            {{ selectedItems.length > 1 ? text(`创建副本 ${selectedItems.length}`, `Duplicate ${selectedItems.length}`) : text("创建副本", "Duplicate") }}
-          </button>
-          <button
-            v-if="selectedSingleItem"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="openDetailsForSelection"
-          >
-            {{ text("详情", "Details") }}
-          </button>
-          <button
-            v-if="selectedCodeFiles.length"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="openEditorForItems(selectedCodeFiles)"
-          >
-            {{ selectedCodeFiles.length > 1 ? text(`编辑 ${selectedCodeFiles.length}`, `Edit ${selectedCodeFiles.length}`) : text("编辑", "Edit") }}
-          </button>
-          <button
-            v-if="selectedArchiveTarget"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="downloadArchiveForItems(selectedItems)"
-          >
-            {{ text("打包下载", "Zip") }}
-          </button>
-          <button
-            v-if="selectedZipFiles.length"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="unarchiveItems(selectedZipFiles)"
-          >
-            {{ selectedZipFiles.length > 1 ? text(`解压 ${selectedZipFiles.length}`, `Extract ${selectedZipFiles.length}`) : text("解压", "Extract") }}
-          </button>
-          <span class="file-manager-statusbar__spacer"></span>
-          <div class="file-manager-view-controls" :aria-label="text('显示选项', 'View options')">
-            <span class="file-manager-view-controls__label">{{ text("显示", "View") }}</span>
+        </div>
+      </section>
+
+      <div class="studio-file-body">
+        <aside class="studio-file-sidebar">
+          <section class="studio-file-sidebar__section">
+            <header>{{ text("根目录", "Roots") }}</header>
             <button
+              v-for="root in visibleRoots"
+              :key="root.id"
               type="button"
-              class="file-manager-view-controls__button"
-              :class="{ active: explorerUiPrefs.menuBar }"
-              @click="toggleExplorerUi('menuBar')"
+              class="studio-file-sidebar__item"
+              :class="{ active: root.id === activeRootId && !activeDirectoryPath }"
+              :title="root.absolutePath"
+              @click.stop="navigateToRoot(root.id)"
             >
-              {{ text("菜单", "Menu") }}
+              <FolderOpen class="studio-file-sidebar__icon" aria-hidden="true" />
+              <span>{{ rootLabel(root) }}</span>
+            </button>
+          </section>
+
+          <section class="studio-file-sidebar__section">
+            <header>{{ text("当前目录", "Current directory") }}</header>
+            <button
+              v-if="parentPath !== null"
+              type="button"
+              class="studio-file-sidebar__item"
+              @click.stop="navigateToDirectory(parentPath || '')"
+            >
+              <FolderOpen class="studio-file-sidebar__icon" aria-hidden="true" />
+              <span>..</span>
             </button>
             <button
+              v-for="node in childDirectoryNodes"
+              :key="node.path"
               type="button"
-              class="file-manager-view-controls__button"
-              :class="{ active: explorerUiPrefs.toolbar }"
-              @click="toggleExplorerUi('toolbar')"
+              class="studio-file-sidebar__item"
+              :title="node.path"
+              @click.stop="navigateToDirectory(node.path)"
             >
-              {{ text("工具栏", "Toolbar") }}
+              <FolderOpen class="studio-file-sidebar__icon" aria-hidden="true" />
+              <span>{{ node.name }}</span>
             </button>
+          </section>
+        </aside>
+
+        <main class="studio-file-main" @dragover.prevent @drop.prevent="handleDropUpload">
+          <div v-if="directoryLoading" class="studio-file-main__empty">
+            {{ text("正在读取目录...", "Loading directory...") }}
+          </div>
+          <div v-else-if="directoryError" class="studio-file-main__empty studio-file-main__empty--error">
+            {{ directoryError }}
+          </div>
+          <div v-else-if="!displayEntries.length" class="studio-file-main__empty">
+            {{ searchActive ? text("没有匹配的文件。", "No matching files.") : text("当前目录为空。", "This directory is empty.") }}
+          </div>
+
+          <div v-else-if="viewMode === 'grid'" class="studio-file-grid" role="list">
             <button
+              v-for="item in displayEntries"
+              :key="item.id"
               type="button"
-              class="file-manager-view-controls__button"
-              :class="{ active: explorerUiPrefs.treeView }"
-              @click="toggleExplorerUi('treeView')"
+              class="studio-file-grid-item"
+              :class="{ selected: selectedItemIds.has(item.id) }"
+              draggable="true"
+              @click.stop="toggleSelection(item, $event)"
+              @dblclick.stop="openItem(item)"
+              @contextmenu.prevent.stop="openContextMenu($event, item)"
+              @dragstart="handleItemDragStart($event, item)"
             >
-              {{ text("目录树", "Tree") }}
-            </button>
-            <button
-              type="button"
-              class="file-manager-view-controls__button"
-              :class="{ active: explorerUiPrefs.thumbnails }"
-              @click="toggleExplorerUi('thumbnails')"
-            >
-              {{ text("缩略图", "Thumbs") }}
-            </button>
-            <button
-              type="button"
-              class="file-manager-view-controls__button file-manager-view-controls__button--wide"
-              @click="cycleExplorerDensity"
-            >
-              {{ text("图标", "Icons") }} · {{ explorerDensityLabel }}
+              <span
+                class="studio-file-kind-icon studio-file-kind-icon--grid"
+                :class="`studio-file-kind-icon--${fileIconKind(item)}`"
+                aria-hidden="true"
+              >
+                {{ fileIconText(item) }}
+              </span>
+              <strong>{{ item.name }}</strong>
+              <small>{{ formatFileSize(item.size) }}</small>
             </button>
           </div>
-        </div>
-      </template>
-    </VueFinder>
+
+          <div v-else class="studio-file-table-wrap">
+            <table class="studio-file-table">
+              <thead>
+                <tr>
+                  <th class="studio-file-table__check">
+                    <input
+                      type="checkbox"
+                      :checked="allVisibleSelected"
+                      :aria-label="text('选择所有可见文件', 'Select all visible files')"
+                      @change="toggleAllVisible"
+                      @click.stop
+                    />
+                  </th>
+                  <th>
+                    <button type="button" class="studio-file-sort" @click.stop="setSort('name')">
+                      {{ text("文件名称", "Name") }}
+                      <span>{{ sortGlyph("name") }}</span>
+                    </button>
+                  </th>
+                  <th>{{ text("状态", "Status") }}</th>
+                  <th>{{ text("权限/所有者", "Perm / Owner") }}</th>
+                  <th>
+                    <button type="button" class="studio-file-sort" @click.stop="setSort('size')">
+                      {{ text("大小", "Size") }}
+                      <span>{{ sortGlyph("size") }}</span>
+                    </button>
+                  </th>
+                  <th>
+                    <button type="button" class="studio-file-sort" @click.stop="setSort('modifiedAt')">
+                      {{ text("修改时间", "Modified") }}
+                      <span>{{ sortGlyph("modifiedAt") }}</span>
+                    </button>
+                  </th>
+                  <th>{{ text("备注", "Remarks") }}</th>
+                  <th>{{ text("操作", "Actions") }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="item in displayEntries"
+                  :key="item.id"
+                  :class="{ selected: selectedItemIds.has(item.id) }"
+                  draggable="true"
+                  @click.stop="toggleSelection(item, $event)"
+                  @dblclick.stop="openItem(item)"
+                  @contextmenu.prevent.stop="openContextMenu($event, item)"
+                  @dragstart="handleItemDragStart($event, item)"
+                >
+                  <td class="studio-file-table__check">
+                    <input
+                      type="checkbox"
+                      :checked="selectedItemIds.has(item.id)"
+                      :aria-label="text(`选择 ${item.name}`, `Select ${item.name}`)"
+                      @change.stop="toggleSelection(item)"
+                      @click.stop
+                    />
+                  </td>
+                  <td class="studio-file-table__name">
+                    <span
+                      class="studio-file-kind-icon"
+                      :class="`studio-file-kind-icon--${fileIconKind(item)}`"
+                      aria-hidden="true"
+                    >
+                      {{ fileIconText(item) }}
+                    </span>
+                    <div>
+                      <strong>{{ item.name }}</strong>
+                      <small v-if="searchActive">{{ item.path }}</small>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="studio-file-status" :class="{ 'studio-file-status--hidden': item.hidden }">
+                      {{ item.hidden ? text("隐藏", "Hidden") : text("未保护", "Normal") }}
+                    </span>
+                  </td>
+                  <td>{{ filePermissionLabel(item) }}</td>
+                  <td>{{ formatFileSize(item.size) }}</td>
+                  <td>{{ formatIsoTimestamp(item.modifiedAt) }}</td>
+                  <td class="studio-file-table__remarks">{{ fileRemark(item) }}</td>
+                  <td class="studio-file-table__actions">
+                    <button type="button" @click.stop="openItem(item)">
+                      {{ item.kind === "directory" ? text("打开", "Open") : text("预览", "Preview") }}
+                    </button>
+                    <button type="button" @click.stop="openContextMenu($event, item)">
+                      {{ text("更多", "More") }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </main>
+
+        <aside v-if="detailsItem" class="studio-file-details" aria-label="File details">
+          <header class="studio-file-details__head">
+            <span
+              class="studio-file-kind-icon studio-file-kind-icon--large"
+              :class="`studio-file-kind-icon--${fileIconKind(detailsItem)}`"
+              aria-hidden="true"
+            >
+              {{ fileIconText(detailsItem) }}
+            </span>
+            <div>
+              <strong>{{ detailsItem.name }}</strong>
+              <span>{{ detailsItem.path || rootLabel(activeRoot) }}</span>
+            </div>
+            <button type="button" @click.stop="detailsItem = null">
+              <X class="studio-file-icon-button__icon" aria-hidden="true" />
+            </button>
+          </header>
+
+          <section v-if="detailsPreviewUrl && detailsItem.kind === 'file'" class="studio-file-preview">
+            <img
+              v-if="detailsItem.fileKind === 'image'"
+              :src="detailsPreviewUrl"
+              :alt="detailsItem.name"
+            />
+            <video
+              v-else-if="detailsItem.fileKind === 'video'"
+              :src="detailsPreviewUrl"
+              controls
+              preload="metadata"
+            ></video>
+            <audio
+              v-else-if="detailsItem.fileKind === 'audio'"
+              :src="detailsPreviewUrl"
+              controls
+              preload="metadata"
+            ></audio>
+            <div v-else-if="detailsItem.fileKind === 'pdf'" class="studio-file-preview__card">
+              <strong>{{ detailsItem.name }}</strong>
+              <span>PDF</span>
+              <a :href="detailsPreviewUrl" target="_blank" rel="noopener noreferrer">{{ text("打开预览", "Open preview") }}</a>
+            </div>
+            <div v-else class="studio-file-preview__card">
+              <strong>{{ fileKindLabel(detailsItem) }}</strong>
+              <span>{{ text("可在编辑器或浏览器中打开", "Open with the editor or browser") }}</span>
+            </div>
+          </section>
+
+          <dl class="studio-file-details__grid">
+            <div>
+              <dt>{{ text("类型", "Type") }}</dt>
+              <dd>{{ itemTypeLabel(detailsItem) }}</dd>
+            </div>
+            <div>
+              <dt>{{ text("大小", "Size") }}</dt>
+              <dd>{{ formatFileSize(detailsItem.size) }}</dd>
+            </div>
+            <div>
+              <dt>{{ text("修改时间", "Modified") }}</dt>
+              <dd>{{ formatIsoTimestamp(detailsItem.modifiedAt) }}</dd>
+            </div>
+            <div>
+              <dt>{{ text("权限/所有者", "Perm / Owner") }}</dt>
+              <dd>{{ filePermissionLabel(detailsItem) }}</dd>
+            </div>
+            <div>
+              <dt>{{ text("根目录", "Root") }}</dt>
+              <dd>{{ rootLabel(rootForId(detailsItem.rootId)) }}</dd>
+            </div>
+            <div>
+              <dt>{{ text("绝对路径", "Absolute path") }}</dt>
+              <dd :title="detailsItem.absolutePath">{{ detailsItem.absolutePath }}</dd>
+            </div>
+          </dl>
+
+          <div class="studio-file-details__actions">
+            <button type="button" @click.stop="copyPathsToClipboard([detailsItem])">{{ text("复制路径", "Copy path") }}</button>
+            <button v-if="isCodeEditableItem(detailsItem)" type="button" @click.stop="openEditorForItem(detailsItem)">{{ text("编辑", "Edit") }}</button>
+            <button type="button" @click.stop="openTerminalHere(detailsItem)">{{ text("终端", "Terminal") }}</button>
+            <button v-if="detailsItem.kind === 'file'" type="button" @click.stop="downloadItem(detailsItem)">{{ text("下载", "Download") }}</button>
+          </div>
+        </aside>
+      </div>
+
+      <footer class="studio-file-statusbar">
+        <span>{{ text(`共 ${directoryCounts.directories} 个目录，${directoryCounts.files} 个文件`, `${directoryCounts.directories} directories, ${directoryCounts.files} files`) }}</span>
+        <span>{{ text(`已选 ${selectedItems.length} 项`, `${selectedItems.length} selected`) }}</span>
+        <span>{{ currentAbsolutePath }}</span>
+        <span class="studio-file-statusbar__spacer"></span>
+        <span v-if="searchActive">{{ text(`搜索结果 ${displayEntries.length} 项`, `${displayEntries.length} search results`) }}</span>
+      </footer>
+
+      <section
+        v-if="contextMenu.open"
+        class="studio-file-context-menu"
+        role="menu"
+        :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+        @click.stop
+        @keydown.esc.stop.prevent="closeContextMenu"
+      >
+        <button type="button" role="menuitem" @click="openContextItem">
+          <FolderOpen class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ contextMenu.item?.kind === "directory" ? text("打开", "Open") : text("预览", "Preview") }}</span>
+        </button>
+        <button type="button" role="menuitem" :disabled="!contextMenu.item || !isCodeEditableItem(contextMenu.item)" @click="editContextItem">
+          <Pencil class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("编辑", "Edit") }}</span>
+        </button>
+        <button type="button" role="menuitem" @click="openTerminalHere(contextMenu.item || undefined)">
+          <Terminal class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("在终端打开", "Open in terminal") }}</span>
+        </button>
+        <button type="button" role="menuitem" :disabled="!contextMenu.item || contextMenu.item.kind !== 'file'" @click="downloadContextItem">
+          <Download class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("下载", "Download") }}</span>
+        </button>
+        <span class="studio-file-context-menu__divider" aria-hidden="true"></span>
+        <button type="button" role="menuitem" @click="copyContextPath">
+          <Copy class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("复制路径", "Copy path") }}</span>
+        </button>
+        <button type="button" role="menuitem" @click="copyContextRelativePath">
+          <Copy class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("复制相对路径", "Copy relative path") }}</span>
+        </button>
+        <button type="button" role="menuitem" @click="copyContextStudioRef">
+          <Link2 class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("复制 Studio 引用", "Copy Studio ref") }}</span>
+        </button>
+        <span class="studio-file-context-menu__divider" aria-hidden="true"></span>
+        <button type="button" role="menuitem" @click="copyContextItems">
+          <Copy class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("复制", "Copy") }}</span>
+        </button>
+        <button type="button" role="menuitem" @click="cutContextItems">
+          <Scissors class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("剪切", "Cut") }}</span>
+        </button>
+        <button type="button" role="menuitem" :disabled="!clipboardItems.length" @click="pasteClipboardItems">
+          <ClipboardPaste class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("粘贴", "Paste") }}</span>
+        </button>
+        <button type="button" role="menuitem" :disabled="!contextMenu.item" @click="openOperationDialog('rename', contextMenu.item || undefined)">
+          <Pencil class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("重命名", "Rename") }}</span>
+        </button>
+        <span class="studio-file-context-menu__divider" aria-hidden="true"></span>
+        <button type="button" role="menuitem" @click="openOperationDialog('archive', contextMenu.item || undefined)">
+          <Archive class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("创建压缩", "Create archive") }}</span>
+        </button>
+        <button type="button" role="menuitem" :disabled="!contextMenu.item || !isZipArchiveItem(contextMenu.item)" @click="unarchiveItems(contextMenu.item ? [contextMenu.item] : [])">
+          <PackageOpen class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("解压到当前目录", "Extract here") }}</span>
+        </button>
+        <button type="button" role="menuitem" :disabled="!contextMenu.item" @click="showContextDetails">
+          <Info class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("属性", "Properties") }}</span>
+        </button>
+        <button type="button" role="menuitem" class="studio-file-context-menu__danger" :disabled="!contextMenu.item" @click="openOperationDialog('delete', contextMenu.item || undefined)">
+          <Trash2 class="studio-file-context-menu__icon" aria-hidden="true" />
+          <span>{{ text("删除", "Delete") }}</span>
+        </button>
+      </section>
+
+      <section
+        v-if="operationDialog"
+        class="studio-file-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="operationDialogTitle"
+        @click.self="closeOperationDialog"
+      >
+        <form class="studio-file-dialog__panel" @submit.prevent="submitOperationDialog">
+          <header>
+            <strong>{{ operationDialogTitle }}</strong>
+            <button type="button" @click="closeOperationDialog">
+              <X class="studio-file-icon-button__icon" aria-hidden="true" />
+            </button>
+          </header>
+          <p>{{ operationDialogDescription }}</p>
+          <label v-if="operationDialogNeedsInput">
+            <span>{{ operationDialogInputLabel }}</span>
+            <input v-model="operationDialog.value" type="text" required autofocus />
+          </label>
+          <div class="studio-file-dialog__actions">
+            <button type="button" @click="closeOperationDialog">{{ text("取消", "Cancel") }}</button>
+            <button type="submit" class="studio-file-dialog__primary">{{ operationDialogConfirmLabel }}</button>
+          </div>
+        </form>
+      </section>
+
+      <FileEditorWorkspace
+        v-if="editorTabs.length"
+        v-model="editorDraft"
+        :tabs="editorTabs"
+        :active-tab-id="activeEditorId"
+        :maximized="editorMaximized"
+        :state="editorState"
+        :loading="editorLoading"
+        :saving="editorSaving"
+        :dirty="editorDirty"
+        :download-url="editorDownloadUrl"
+        :recent-files="recentEditorFiles"
+        :line-count="editorLineCount"
+        :character-count="editorCharacterCount"
+        :language-label="editorLanguageLabel"
+        :search-request="editorSearchRequest"
+        :theme="resolvedTheme"
+        :text="text"
+        @set-active="setActiveEditor"
+        @close="closeEditor"
+        @search="requestEditorSearch"
+        @download="downloadEditorFile"
+        @reset="resetEditor"
+        @save="saveEditor"
+        @open-recent="openRecentEditorFile"
+        @update:maximized="editorMaximized = $event"
+      />
+    </template>
 
     <div v-else class="file-manager-loading file-manager-loading--error">
       {{ text("文件管理器不可用", "File manager unavailable") }}
     </div>
-
-    <section
-      v-if="detailsItem"
-      class="file-manager-details"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="text('文件详情检查器', 'File details inspector')"
-      aria-live="polite"
-      @keydown.escape="closeDetails"
-      @click.self="closeDetails"
-    >
-      <aside class="file-manager-details__panel file-manager-details__sheet">
-        <header class="file-manager-details__head">
-          <span
-            class="studio-file-icon studio-file-icon--grid"
-            :class="`studio-file-icon--${explorerItemIconKind(detailsItem)}`"
-            aria-hidden="true"
-          >
-            <span class="studio-file-icon__shape">
-              <span class="studio-file-icon__fold"></span>
-              <span
-                v-if="detailsItem.type === 'dir'"
-                class="studio-file-icon__folder-tab"
-              ></span>
-              <span v-else class="studio-file-icon__extension">
-                {{ explorerItemIconText(detailsItem) }}
-              </span>
-            </span>
-          </span>
-          <div>
-            <strong>{{ detailsItem.basename }}</strong>
-            <span>{{ detailsItem.path }}</span>
-          </div>
-          <button type="button" class="file-manager-details__close" :aria-label="text('关闭详情', 'Close details')" @click="closeDetails">
-            <X class="drawer-close-icon" aria-hidden="true" />
-          </button>
-        </header>
-
-        <dl class="file-manager-details__grid">
-          <div>
-            <dt>{{ text("类型", "Type") }}</dt>
-            <dd>{{ detailsTypeLabel }}</dd>
-          </div>
-          <div>
-            <dt>{{ text("大小", "Size") }}</dt>
-            <dd>{{ formatFileSize(detailsItem.file_size) }}</dd>
-          </div>
-          <div>
-            <dt>{{ text("修改时间", "Modified") }}</dt>
-            <dd>{{ formatUnixTimestamp(detailsItem.last_modified) }}</dd>
-          </div>
-          <div>
-            <dt>{{ text("存储", "Storage") }}</dt>
-            <dd>{{ detailsItem.storage }}</dd>
-          </div>
-          <div>
-            <dt>{{ text("扩展名", "Extension") }}</dt>
-            <dd>{{ detailsItem.extension || "-" }}</dd>
-          </div>
-          <div>
-            <dt>MIME</dt>
-            <dd>{{ detailsItem.mime_type || "-" }}</dd>
-          </div>
-        </dl>
-
-        <div class="file-manager-details__actions">
-          <button type="button" class="file-manager-statusbar__button" @click="copyPathsToClipboard([detailsItem])">
-            {{ text("复制路径", "Copy path") }}
-          </button>
-          <button type="button" class="file-manager-statusbar__button" @click="copyStudioRefsToClipboard([detailsItem])">
-            {{ text("复制 Studio 引用", "Copy Studio ref") }}
-          </button>
-          <button
-            v-if="isChatMarkdownReferenceItem(detailsItem)"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="copyStudioMarkdownRefsToClipboard([detailsItem])"
-          >
-            {{ text("复制 Chat Markdown", "Copy Chat Markdown") }}
-          </button>
-          <button
-            v-if="isCodeEditableItem(detailsItem)"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="openDetailsItemInEditor"
-          >
-            {{ text("编辑", "Edit") }}
-          </button>
-          <button type="button" class="file-manager-statusbar__button" @click="duplicateItems([detailsItem])">
-            {{ text("创建副本", "Duplicate") }}
-          </button>
-          <button
-            v-if="detailsItem.type === 'file'"
-            type="button"
-            class="file-manager-statusbar__button"
-            @click="downloadDetailItem"
-          >
-            {{ text("下载", "Download") }}
-          </button>
-        </div>
-      </aside>
-    </section>
-
-    <FileEditorWorkspace
-      v-if="editorTabs.length"
-      v-model="editorDraft"
-      :tabs="editorTabs"
-      :active-tab-id="activeEditorId"
-      :maximized="editorMaximized"
-      :state="editorState"
-      :loading="editorLoading"
-      :saving="editorSaving"
-      :dirty="editorDirty"
-      :download-url="editorDownloadUrl"
-      :recent-files="recentEditorFiles"
-      :line-count="editorLineCount"
-      :character-count="editorCharacterCount"
-      :language-label="editorLanguageLabel"
-      :search-request="editorSearchRequest"
-      :theme="resolvedTheme"
-      :text="text"
-      @set-active="setActiveEditor"
-      @close="closeEditor"
-      @search="requestEditorSearch"
-      @download="downloadEditorFile"
-      @reset="resetEditor"
-      @save="saveEditor"
-      @open-recent="openRecentEditorFile"
-      @update:maximized="editorMaximized = $event"
-    />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, provide, ref } from "vue";
-import { X } from "@lucide/vue";
-import { VueFinder, contextMenuItems as builtInContextMenuItems } from "vuefinder";
-import type { ConfigDefaults, DirEntry, FeaturesConfig, Item as VueFinderContextItem } from "vuefinder";
-import zhCN from "vuefinder/dist/locales/zhCN.js";
-import en from "vuefinder/dist/locales/en.js";
-import "vuefinder/dist/vuefinder.css";
-import type { FilesReadPayload, FilesSummaryPayload, FileRootSummary } from "../../../../../types/files";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import {
+  Archive,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardPaste,
+  Copy,
+  Download,
+  FilePlus,
+  FolderOpen,
+  FolderPlus,
+  FolderUp,
+  Grid2X2,
+  Info,
+  Link2,
+  List,
+  PackageOpen,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Scissors,
+  Terminal,
+  Trash2,
+  Upload,
+  X,
+} from "@lucide/vue";
+import type {
+  FileEntryKind,
+  FileEntrySummary,
+  FileRootSummary,
+  FilesDirectoryPayload,
+  FilesReadPayload,
+  FilesSearchPayload,
+  FilesSummaryPayload,
+  FileTreeNodePayload,
+} from "../../../../../types/files";
 import { useLocalePreference } from "../../shared/locale";
 import { useThemePreference } from "../../shared/theme";
-import { buildArchiveDownloadUrl, buildFileDownloadUrl, copyPath, fetchFilesSummary, readFileContent, saveFileContent, unarchiveFile } from "./api";
+import {
+  archivePaths,
+  browseDirectory,
+  buildArchiveDownloadUrl,
+  buildFileDownloadUrl,
+  copyPath,
+  createDirectory,
+  createFile,
+  deletePaths,
+  fetchDirectoryTree,
+  fetchFilesSummary,
+  movePath,
+  readFileContent,
+  renamePath,
+  saveFileContent,
+  searchFiles,
+  unarchiveFile,
+  uploadFiles,
+} from "./api";
 import FileEditorWorkspace from "./FileEditorWorkspace.vue";
-import { StudioFilesVueFinderDriver, type StudioFileStorageRoot } from "./vuefinder-driver";
+import {
+  resolveTerminalFileKind,
+  type TerminalFileKind,
+} from "../terminal/terminal-file-kind";
+import {
+  TERMINAL_RESOURCE_DRAG_MIME,
+  serializeTerminalResourceTransfer,
+  shellQuoteTerminalPath,
+  type TerminalResourceTransferPayload,
+} from "../terminal/terminal-resource-transfer";
 import "./files-workspace.css";
 
 defineProps<{
   pageEyebrow: string;
 }>();
 
-const { locale, text } = useLocalePreference();
-const { resolvedTheme } = useThemePreference();
-provide("VueFinderOptions", {
-  locale: "zhCN",
-  i18n: {
-    zhCN,
-    en,
-  },
-});
+type ViewMode = "list" | "grid";
+type SortKey = "name" | "size" | "modifiedAt";
+type SortDirection = "asc" | "desc";
+type ClipboardMode = "copy" | "cut";
+type OperationDialogKind = "new-file" | "new-folder" | "rename" | "archive" | "delete";
+
+interface NativeFileItem extends FileEntrySummary {
+  id: string;
+  rootId: string;
+  directoryPath: string;
+  absolutePath: string;
+  fileKind: TerminalFileKind;
+  mimeType?: string | null;
+}
+
+interface DirectoryTab {
+  id: string;
+  rootId: string;
+  directoryPath: string;
+  label: string;
+  rootLabel: string;
+  absolutePath: string;
+}
+
+interface DirectoryHistoryEntry {
+  rootId: string;
+  directoryPath: string;
+}
 
 interface EditorFileTab {
   id: string;
@@ -358,117 +734,153 @@ interface RecentEditorFile {
   openedAt: string;
 }
 
-type ExplorerDensity = "compact" | "comfortable" | "visual";
-
-interface ExplorerUiPrefs {
-  menuBar: boolean;
-  toolbar: boolean;
-  treeView: boolean;
-  thumbnails: boolean;
-  density: ExplorerDensity;
+interface EditorStateSnapshot {
+  visible: boolean;
+  rootId: string;
+  apiPath: string;
+  path: string;
+  name: string;
+  readOnly: boolean;
+  truncated: boolean;
+  content: string | null;
+  error: string | null;
 }
 
-type ExplorerUiToggleKey = Exclude<keyof ExplorerUiPrefs, "density">;
+interface OperationDialogState {
+  kind: OperationDialogKind;
+  item: NativeFileItem | null;
+  items: NativeFileItem[];
+  value: string;
+}
 
-const FILE_MANAGER_UI_STORAGE_KEY = "openclaw-studio.files.ui";
+interface UploadFileCandidate {
+  file: File;
+  relativePath?: string;
+}
+
+interface BrowserFileSystemEntry {
+  isFile: boolean;
+  isDirectory: boolean;
+  name: string;
+  fullPath?: string;
+}
+
+interface BrowserFileSystemFileEntry extends BrowserFileSystemEntry {
+  file(success: (file: File) => void, error?: (error: unknown) => void): void;
+}
+
+interface BrowserFileSystemDirectoryEntry extends BrowserFileSystemEntry {
+  createReader(): BrowserFileSystemDirectoryReader;
+}
+
+interface BrowserFileSystemDirectoryReader {
+  readEntries(
+    success: (entries: BrowserFileSystemEntry[]) => void,
+    error?: (error: unknown) => void,
+  ): void;
+}
+
+const FILE_MANAGER_UI_STORAGE_KEY = "openclaw-studio.files.native.ui";
 const RECENT_EDITOR_FILES_STORAGE_KEY = "openclaw-studio.files.recent-editor";
-const DEFAULT_EXPLORER_UI_PREFS: ExplorerUiPrefs = {
-  menuBar: true,
-  toolbar: true,
-  treeView: true,
-  thumbnails: true,
-  density: "comfortable",
-};
-const EXPLORER_DENSITY_ORDER: ExplorerDensity[] = ["compact", "comfortable", "visual"];
+const TERMINAL_DESCRIPTORS_STORAGE_KEY = "openclaw-studio.terminal.descriptors";
+const TERMINAL_WORKSPACE_STORAGE_KEY = `${TERMINAL_DESCRIPTORS_STORAGE_KEY}.workspace`;
+const TERMINAL_PENDING_LAUNCH_STORAGE_KEY = "openclaw-studio.terminal.pendingLaunchMetadata";
+const MAX_UPLOAD_FILE_BYTES = 24 * 1024 * 1024;
+const MAX_UPLOAD_BATCH_BYTES = 96 * 1024 * 1024;
 
-function readExplorerUiPrefs(): ExplorerUiPrefs {
-  if (typeof window === "undefined") return { ...DEFAULT_EXPLORER_UI_PREFS };
-  try {
-    const raw = window.localStorage.getItem(FILE_MANAGER_UI_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) as Partial<ExplorerUiPrefs> : {};
-    const density = EXPLORER_DENSITY_ORDER.includes(parsed.density as ExplorerDensity)
-      ? parsed.density as ExplorerDensity
-      : DEFAULT_EXPLORER_UI_PREFS.density;
-    return {
-      menuBar: typeof parsed.menuBar === "boolean" ? parsed.menuBar : DEFAULT_EXPLORER_UI_PREFS.menuBar,
-      toolbar: typeof parsed.toolbar === "boolean" ? parsed.toolbar : DEFAULT_EXPLORER_UI_PREFS.toolbar,
-      treeView: typeof parsed.treeView === "boolean" ? parsed.treeView : DEFAULT_EXPLORER_UI_PREFS.treeView,
-      thumbnails: typeof parsed.thumbnails === "boolean" ? parsed.thumbnails : DEFAULT_EXPLORER_UI_PREFS.thumbnails,
-      density,
-    };
-  } catch {
-    return { ...DEFAULT_EXPLORER_UI_PREFS };
-  }
-}
-
-function persistExplorerUiPrefs(prefs: ExplorerUiPrefs): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(FILE_MANAGER_UI_STORAGE_KEY, JSON.stringify(prefs));
-  } catch {
-    // Ignore storage quota or privacy mode failures; the current session still updates.
-  }
-}
-
-function readRecentEditorFiles(): RecentEditorFile[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(RECENT_EDITOR_FILES_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) as RecentEditorFile[] : [];
-    return Array.isArray(parsed)
-      ? parsed
-          .filter((item) => item?.rootId && item.apiPath && item.name)
-          .slice(0, 12)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistRecentEditorFiles(items: RecentEditorFile[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(RECENT_EDITOR_FILES_STORAGE_KEY, JSON.stringify(items.slice(0, 12)));
-  } catch {
-    // Ignore storage failures; recent files are a convenience, not critical state.
-  }
-}
+const router = useRouter();
+const { locale, text } = useLocalePreference();
+const { resolvedTheme } = useThemePreference();
 
 const summary = ref<FilesSummaryPayload | null>(null);
 const loading = ref(false);
+const directoryLoading = ref(false);
+const directoryError = ref("");
 const noticeMessage = ref<{ kind: "success" | "error" | "info" | "warning"; text: string } | null>(null);
-const selectedItems = ref<DirEntry[]>([]);
-const detailsItem = ref<DirEntry | null>(null);
-const explorerUiPrefs = ref<ExplorerUiPrefs>(readExplorerUiPrefs());
+const activeRootId = ref("");
+const activeDirectoryPath = ref("");
+const activeDirectoryTabId = ref("");
+const directoryTabs = ref<DirectoryTab[]>([]);
+const directoryPayload = ref<FilesDirectoryPayload | null>(null);
+const directoryEntries = ref<NativeFileItem[]>([]);
+const childDirectoryNodes = ref<FileTreeNodePayload[]>([]);
+const directoryHistory = ref<DirectoryHistoryEntry[]>([]);
+const directoryHistoryIndex = ref(-1);
+const selectedItemIds = ref<Set<string>>(new Set());
+const clipboardMode = ref<ClipboardMode | null>(null);
+const clipboardItems = ref<NativeFileItem[]>([]);
+const viewMode = ref<ViewMode>(readStoredViewMode());
+const sortKey = ref<SortKey>("name");
+const sortDirection = ref<SortDirection>("asc");
+const searchQuery = ref("");
+const recursiveSearch = ref(false);
+const searchResults = ref<NativeFileItem[] | null>(null);
+const detailsItem = ref<NativeFileItem | null>(null);
+const operationDialog = ref<OperationDialogState | null>(null);
+const contextMenu = ref<{
+  open: boolean;
+  x: number;
+  y: number;
+  item: NativeFileItem | null;
+}>({
+  open: false,
+  x: 0,
+  y: 0,
+  item: null,
+});
+const uploadInput = ref<HTMLInputElement | null>(null);
+const uploadDirectoryInput = ref<HTMLInputElement | null>(null);
+
 const editorMaximized = ref(false);
 const editorTabs = ref<EditorFileTab[]>([]);
 const activeEditorId = ref("");
 const recentEditorFiles = ref<RecentEditorFile[]>(readRecentEditorFiles());
 const editorSearchRequest = ref(0);
-const viewerRefreshNonce = ref(0);
 
-const viewerId = "studio-files-viewer";
-const roots = computed(() => summary.value?.roots || []);
 const visibleRoots = computed(() =>
-  roots.value.filter((root) => root.id !== "project-root"),
+  (summary.value?.roots || []).filter((root) => root.id !== "project-root"),
 );
-const storageRoots = computed<StudioFileStorageRoot[]>(() =>
-  visibleRoots.value.map((root) => ({
-    id: root.id,
-    storage: storageNameForRoot(root),
-  })),
+const activeRoot = computed(() => rootForId(activeRootId.value));
+const parentPath = computed(() => directoryPayload.value?.parentPath ?? null);
+const breadcrumbs = computed(() => directoryPayload.value?.breadcrumbs || []);
+const currentAbsolutePath = computed(() =>
+  buildAbsolutePath(activeRoot.value, activeDirectoryPath.value),
 );
-const vueFinderLocale = computed(() => (locale.value === "zh" ? "zhCN" : "en"));
-const viewerKey = computed(
-  () => `${viewerId}:${storageRoots.value.map((root) => `${root.id}:${root.storage}`).join("|")}:${vueFinderLocale.value}:${resolvedTheme.value}:${viewerRefreshNonce.value}:${JSON.stringify(explorerUiPrefs.value)}`,
+const directoryCounts = computed(() =>
+  directoryPayload.value?.counts || {
+    directories: directoryEntries.value.filter((entry) => entry.kind === "directory").length,
+    files: directoryEntries.value.filter((entry) => entry.kind === "file").length,
+    hidden: directoryEntries.value.filter((entry) => entry.hidden).length,
+    total: directoryEntries.value.length,
+  },
 );
-const driver = computed(() => {
-  if (!storageRoots.value.length) return null;
-  return new StudioFilesVueFinderDriver(
-    storageRoots.value,
-    summary.value?.defaultRootId || "openclaw-root",
-    true,
-  );
+const searchActive = computed(() => Boolean(searchResults.value));
+const displayEntries = computed(() => {
+  const source = searchResults.value || directoryEntries.value;
+  const query = searchResults.value ? "" : searchQuery.value.trim().toLowerCase();
+  const filtered = query
+    ? source.filter((entry) =>
+        entry.name.toLowerCase().includes(query) ||
+        entry.path.toLowerCase().includes(query),
+      )
+    : source;
+  return sortNativeFileItems([...filtered], sortKey.value, sortDirection.value);
+});
+const selectedItems = computed(() =>
+  displayEntries.value.filter((entry) => selectedItemIds.value.has(entry.id)),
+);
+const selectedZipItems = computed(() => selectedItems.value.filter((item) => isZipArchiveItem(item)));
+const allVisibleSelected = computed(() =>
+  Boolean(displayEntries.value.length && displayEntries.value.every((entry) => selectedItemIds.value.has(entry.id))),
+);
+const canGoBack = computed(() => directoryHistoryIndex.value > 0);
+const canGoForward = computed(() =>
+  directoryHistoryIndex.value >= 0 && directoryHistoryIndex.value < directoryHistory.value.length - 1,
+);
+const detailsPreviewUrl = computed(() => {
+  const item = detailsItem.value;
+  if (!item || item.kind !== "file") return "";
+  return buildFileDownloadUrl(item.rootId, item.path);
 });
 const activeEditorTab = computed(
   () =>
@@ -476,7 +888,7 @@ const activeEditorTab = computed(
     || editorTabs.value[0]
     || null,
 );
-const editorState = computed(() => {
+const editorState = computed<EditorStateSnapshot>(() => {
   const tab = activeEditorTab.value;
   if (!tab) {
     return {
@@ -512,52 +924,13 @@ const editorDraft = computed({
 });
 const editorLoading = computed(() => activeEditorTab.value?.loading || false);
 const editorSaving = computed(() => activeEditorTab.value?.saving || false);
+const dirtyEditorTabs = computed(() => editorTabs.value.filter(isEditorTabDirty));
 const editorDirty = computed(
-  () =>
-    Boolean(activeEditorTab.value)
-    && activeEditorTab.value?.content !== null
-    && activeEditorTab.value?.draft !== activeEditorTab.value?.content,
+  () => Boolean(activeEditorTab.value && isEditorTabDirty(activeEditorTab.value)),
 );
 const editorDownloadUrl = computed(() => {
   if (!editorState.value.rootId || !editorState.value.apiPath) return "";
   return buildFileDownloadUrl(editorState.value.rootId, editorState.value.apiPath, { download: true });
-});
-const selectedArchiveTarget = computed(() => {
-  if (!selectedItems.value.length) return null;
-  const firstRootId = rootIdForStorage(selectedItems.value[0].storage);
-  if (!firstRootId) return null;
-  const paths = selectedItems.value.map((item) => ({
-    rootId: rootIdForStorage(item.storage),
-    path: relativePathFromVueFinderPath(item.path),
-  }));
-  if (paths.some((item) => !item.path || item.rootId !== firstRootId)) return null;
-  return {
-    rootId: firstRootId,
-    paths: paths.map((item) => item.path),
-  };
-});
-const selectedCodeFiles = computed(
-  () => selectedItems.value.filter((item) => isCodeEditableItem(item)),
-);
-const selectedMarkdownRefItems = computed(
-  () => selectedItems.value.filter((item) => isChatMarkdownReferenceItem(item)),
-);
-const selectedZipFiles = computed(
-  () => selectedItems.value.filter((item) => isZipArchiveItem(item)),
-);
-const selectedSingleItem = computed(() => selectedItems.value.length === 1 ? selectedItems.value[0] : null);
-const detailsTypeLabel = computed(() => {
-  const item = detailsItem.value;
-  if (!item) return "";
-  if (item.type === "dir") return text("文件夹", "Folder");
-  return item.extension
-    ? text(`${item.extension.toUpperCase()} 文件`, `${item.extension.toUpperCase()} file`)
-    : text("文件", "File");
-});
-const explorerDensityLabel = computed(() => {
-  if (explorerUiPrefs.value.density === "compact") return text("紧凑", "Compact");
-  if (explorerUiPrefs.value.density === "visual") return text("大图标", "Large");
-  return text("舒适", "Comfort");
 });
 const editorLineCount = computed(() => {
   if (!editorDraft.value) return 1;
@@ -598,232 +971,972 @@ const editorLanguageLabel = computed(() => {
   };
   return labels[ext] || text("纯文本", "Plain text");
 });
-const explorerContextMenuItems = computed<VueFinderContextItem[]>(() => [
-  ...builtInContextMenuItems,
-  {
-    id: "studio_show_details",
-    title: () => text("查看详情", "Show details"),
-    action: (_app, items) => {
-      const item = items[0] || selectedItems.value[0];
-      if (item) openDetailsForItem(item);
-    },
-    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
-    order: 51,
-  },
-  {
-    id: "studio_open_in_editor",
-    title: () => text("在代码编辑器中打开", "Open in code editor"),
-    action: (_app, items) => {
-      const codeItems = items.filter((entry) => isCodeEditableItem(entry));
-      const fallbackItems = selectedItems.value.filter((entry) => isCodeEditableItem(entry));
-      void openEditorForItems(codeItems.length ? codeItems : fallbackItems);
-    },
-    show: (_app, ctx) => {
-      const candidates = [
-        ctx.target,
-        ...(ctx.items || []),
-        ...selectedItems.value,
-      ].filter(Boolean) as DirEntry[];
-      return candidates.some((item) => isCodeEditableItem(item));
-    },
-    order: 52,
-  },
-  {
-    id: "studio_unarchive_current_directory",
-    title: () => text("解压到当前目录", "Extract here"),
-    action: (_app, items) => {
-      const zipItems = items.filter((entry) => isZipArchiveItem(entry));
-      const fallbackItems = selectedItems.value.filter((entry) => isZipArchiveItem(entry));
-      void unarchiveItems(zipItems.length ? zipItems : fallbackItems);
-    },
-    show: (_app, ctx) => {
-      const items = ctx.items?.length ? ctx.items : ctx.target ? [ctx.target] : [];
-      return items.length === 1 && isZipArchiveItem(items[0]);
-    },
-    order: 92,
-  },
-  {
-    id: "studio_duplicate",
-    title: () => text("创建副本", "Duplicate"),
-    action: (_app, items) => {
-      void duplicateItems(items.length ? items : selectedItems.value);
-    },
-    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
-    order: 115,
-  },
-  {
-    id: "studio_copy_path",
-    title: () => text("复制路径", "Copy path"),
-    action: (_app, items) => {
-      void copyPathsToClipboard(items);
-    },
-    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
-    order: 119,
-  },
-  {
-    id: "studio_copy_ref",
-    title: () => text("复制 Studio 引用", "Copy Studio ref"),
-    action: (_app, items) => {
-      void copyStudioRefsToClipboard(items);
-    },
-    show: (_app, ctx) => Boolean(ctx.target || ctx.items?.length),
-    order: 120,
-  },
-  {
-    id: "studio_copy_chat_markdown",
-    title: () => text("复制 Chat Markdown", "Copy Chat Markdown"),
-    action: (_app, items) => {
-      void copyStudioMarkdownRefsToClipboard(items);
-    },
-    show: (_app, ctx) => {
-      const items = ctx.items?.length ? ctx.items : ctx.target ? [ctx.target] : [];
-      return items.some((item) => isChatMarkdownReferenceItem(item));
-    },
-    order: 121,
-  },
-  {
-    id: "studio_download_archive",
-    title: () => text("下载为压缩包", "Download as zip"),
-    action: (_app, items) => {
-      if (!items.length) return;
-      downloadArchiveForItems(items);
-    },
-    show: (_app, ctx) => {
-      const items = ctx.items?.length ? ctx.items : ctx.target ? [ctx.target] : [];
-      if (!items.length) return false;
-      const firstRootId = rootIdForStorage(items[0].storage);
-      return Boolean(
-        firstRootId
-        && (items.length > 1 || items[0].type === "dir")
-        && items.every((item) => rootIdForStorage(item.storage) === firstRootId),
-      );
-    },
-    order: 91,
-  },
-]);
+const operationDialogTitle = computed(() => {
+  const dialog = operationDialog.value;
+  if (!dialog) return "";
+  if (dialog.kind === "new-file") return text("新建文件", "New file");
+  if (dialog.kind === "new-folder") return text("新建目录", "New folder");
+  if (dialog.kind === "rename") return text("重命名", "Rename");
+  if (dialog.kind === "archive") return text("创建压缩包", "Create archive");
+  return text("删除文件", "Delete files");
+});
+const operationDialogDescription = computed(() => {
+  const dialog = operationDialog.value;
+  if (!dialog) return "";
+  if (dialog.kind === "delete") {
+    return text(
+      `将删除 ${dialog.items.length || 1} 项。该操作不可撤销。`,
+      `Delete ${dialog.items.length || 1} item(s). This cannot be undone.`,
+    );
+  }
+  if (dialog.kind === "archive") {
+    return text("压缩包会创建在当前目录。", "The archive will be created in the current directory.");
+  }
+  return text("请输入名称。", "Enter a name.");
+});
+const operationDialogInputLabel = computed(() => {
+  const dialog = operationDialog.value;
+  if (!dialog) return "";
+  if (dialog.kind === "archive") return text("压缩包名称", "Archive name");
+  return text("名称", "Name");
+});
+const operationDialogNeedsInput = computed(() => operationDialog.value?.kind !== "delete");
+const operationDialogConfirmLabel = computed(() => {
+  const kind = operationDialog.value?.kind;
+  if (kind === "delete") return text("确认删除", "Delete");
+  if (kind === "archive") return text("创建", "Create");
+  return text("确认", "Confirm");
+});
 
-const explorerFeatures = computed<FeaturesConfig>(() => ({
-  archive: true,
-  unarchive: true,
-  language: false,
-  theme: false,
-  search: true,
-  rename: true,
-  upload: true,
-  delete: true,
-  preview: true,
-  edit: false,
-  newfile: true,
-  newfolder: true,
-  download: true,
-  move: true,
-  copy: true,
-  fullscreen: true,
-  history: true,
-  pinned: true,
-}));
+function readStoredViewMode(): ViewMode {
+  try {
+    const raw = globalThis.localStorage?.getItem(FILE_MANAGER_UI_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) as { viewMode?: unknown } : {};
+    return parsed.viewMode === "grid" ? "grid" : "list";
+  } catch {
+    return "list";
+  }
+}
 
-const explorerConfig = computed<ConfigDefaults>(() => ({
-  view: explorerUiPrefs.value.density === "visual" ? "grid" : "list",
-  showTreeView: explorerUiPrefs.value.treeView,
-  showMenuBar: explorerUiPrefs.value.menuBar,
-  showToolbar: explorerUiPrefs.value.toolbar,
-  showHiddenFiles: true,
-  expandTreeByDefault: false,
-  showThumbnails: explorerUiPrefs.value.thumbnails,
-  persist: true,
-  theme: resolvedTheme.value === "light" ? "silver" : "midnight",
-  loadingIndicator: "linear",
-  listItemHeight: explorerUiPrefs.value.density === "compact" ? 30 : 36,
-  listItemGap: explorerUiPrefs.value.density === "compact" ? 0 : 1,
-  listIconSize: explorerUiPrefs.value.density === "compact" ? 16 : 20,
-  gridItemWidth: explorerUiPrefs.value.density === "visual" ? 150 : 126,
-  gridItemHeight: explorerUiPrefs.value.density === "visual" ? 128 : 106,
-  gridItemGap: explorerUiPrefs.value.density === "visual" ? 10 : 8,
-  gridIconSize: explorerUiPrefs.value.density === "visual" ? 54 : 42,
-  notificationPosition: "top-right",
-  notificationDuration: 2400,
-  notificationVisibleToasts: 4,
-}));
+function persistViewMode(): void {
+  try {
+    globalThis.localStorage?.setItem(FILE_MANAGER_UI_STORAGE_KEY, JSON.stringify({ viewMode: viewMode.value }));
+  } catch {
+    // UI persistence is optional.
+  }
+}
 
-function updateExplorerUiPrefs(patch: Partial<ExplorerUiPrefs>): void {
-  explorerUiPrefs.value = {
-    ...explorerUiPrefs.value,
-    ...patch,
+function readRecentEditorFiles(): RecentEditorFile[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(RECENT_EDITOR_FILES_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) as RecentEditorFile[] : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((item) => item?.rootId && item.apiPath && item.name)
+          .slice(0, 12)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistRecentEditorFiles(items: RecentEditorFile[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RECENT_EDITOR_FILES_STORAGE_KEY, JSON.stringify(items.slice(0, 12)));
+  } catch {
+    // Recent files are best-effort.
+  }
+}
+
+function rootLabel(root: FileRootSummary | null | undefined): string {
+  if (!root) return text("根目录", "Root");
+  return locale.value === "zh" ? root.labelZh : root.labelEn;
+}
+
+function rootForId(rootId: string): FileRootSummary | null {
+  return visibleRoots.value.find((root) => root.id === rootId) || visibleRoots.value[0] || null;
+}
+
+function normalizePortableFilePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/\/+/g, "/");
+}
+
+function joinPortableFilePath(basePath: string, relativePath: string): string {
+  const base = normalizePortableFilePath(basePath).replace(/\/+$/g, "");
+  const relative = normalizePortableFilePath(relativePath).replace(/^\/+/g, "");
+  if (!relative) return base || "/";
+  return base === "/" ? `/${relative}` : `${base}/${relative}`;
+}
+
+function buildAbsolutePath(root: FileRootSummary | null | undefined, relativePath: string): string {
+  return root ? joinPortableFilePath(root.absolutePath, relativePath) : relativePath;
+}
+
+function createDirectoryTab(rootId: string, directoryPath: string): DirectoryTab {
+  const root = rootForId(rootId);
+  const normalizedPath = normalizePortableFilePath(directoryPath).replace(/^\/+|\/+$/g, "");
+  const label = normalizedPath.split("/").filter(Boolean).pop() || rootLabel(root);
+  return {
+    id: `${rootId}:${normalizedPath || "__root__"}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 6)}`,
+    rootId,
+    directoryPath: normalizedPath,
+    label,
+    rootLabel: rootLabel(root),
+    absolutePath: buildAbsolutePath(root, normalizedPath),
   };
-  persistExplorerUiPrefs(explorerUiPrefs.value);
 }
 
-function toggleExplorerUi(key: ExplorerUiToggleKey): void {
-  updateExplorerUiPrefs({ [key]: !explorerUiPrefs.value[key] });
+function updateActiveDirectoryTab(rootId: string, directoryPath: string): void {
+  const tab = directoryTabs.value.find((item) => item.id === activeDirectoryTabId.value);
+  if (!tab) return;
+  const next = createDirectoryTab(rootId, directoryPath);
+  tab.rootId = next.rootId;
+  tab.directoryPath = next.directoryPath;
+  tab.label = next.label;
+  tab.rootLabel = next.rootLabel;
+  tab.absolutePath = next.absolutePath;
 }
 
-function cycleExplorerDensity(): void {
-  const currentIndex = EXPLORER_DENSITY_ORDER.indexOf(explorerUiPrefs.value.density);
-  const nextDensity = EXPLORER_DENSITY_ORDER[(currentIndex + 1) % EXPLORER_DENSITY_ORDER.length];
-  updateExplorerUiPrefs({ density: nextDensity });
+function toNativeFileItem(entry: FileEntrySummary, rootId: string, directoryPath: string): NativeFileItem {
+  const root = rootForId(rootId);
+  const fileKind = entry.kind === "directory"
+    ? "text"
+    : resolveTerminalFileKind(entry);
+  return {
+    ...entry,
+    id: `${rootId}:${entry.path}`,
+    rootId,
+    directoryPath,
+    absolutePath: buildAbsolutePath(root, entry.path),
+    fileKind,
+  };
 }
 
-function explorerItemIconKind(item: DirEntry): string {
-  if (item.type === "dir") return "folder";
-  const ext = item.extension?.toLowerCase() || "";
-  if (["zip", "tar", "gz", "tgz", "rar", "7z", "xz", "bz2"].includes(ext)) return "archive";
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) return "image";
-  if (["mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac"].includes(ext)) return "media";
-  if (["ts", "tsx", "js", "jsx", "mjs", "cjs", "vue", "css", "scss", "less", "html", "json", "jsonl", "py", "sh", "sql", "yml", "yaml", "toml", "ini", "env"].includes(ext)) return "code";
-  if (["md", "txt", "log", "csv"].includes(ext)) return "text";
-  if (["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"].includes(ext)) return "document";
-  return "file";
+function sortNativeFileItems(items: NativeFileItem[], key: SortKey, direction: SortDirection): NativeFileItem[] {
+  const multiplier = direction === "asc" ? 1 : -1;
+  return items.sort((left, right) => {
+    if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+    if (key === "size") {
+      return ((left.size || 0) - (right.size || 0)) * multiplier;
+    }
+    if (key === "modifiedAt") {
+      return (Date.parse(left.modifiedAt || "") - Date.parse(right.modifiedAt || "")) * multiplier;
+    }
+    return left.name.localeCompare(right.name, undefined, { numeric: true }) * multiplier;
+  });
 }
 
-function explorerItemIconText(item: DirEntry): string {
-  const ext = item.extension?.replace(/^\./, "").toUpperCase() || "";
-  if (!ext) return "FILE";
+async function reloadSummary(): Promise<void> {
+  loading.value = true;
+  try {
+    summary.value = await fetchFilesSummary();
+    const defaultRootId = summary.value.defaultRootId || visibleRoots.value[0]?.id || "";
+    if (!activeRootId.value) {
+      activeRootId.value = defaultRootId;
+    }
+    if (!directoryTabs.value.length && activeRootId.value) {
+      const tab = createDirectoryTab(activeRootId.value, "");
+      directoryTabs.value = [tab];
+      activeDirectoryTabId.value = tab.id;
+      await loadDirectory(activeRootId.value, "", { pushHistory: true });
+    }
+  } catch (error) {
+    setNotice(
+      "error",
+      error instanceof Error
+        ? error.message
+        : text("文件资源管理器初始化失败", "Failed to initialize file explorer"),
+    );
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loadDirectory(
+  rootId: string,
+  directoryPath = "",
+  options: { pushHistory?: boolean; preserveSearch?: boolean } = {},
+): Promise<void> {
+  const normalizedPath = normalizePortableFilePath(directoryPath).replace(/^\/+|\/+$/g, "");
+  directoryLoading.value = true;
+  directoryError.value = "";
+  try {
+    const payload = await browseDirectory(rootId, normalizedPath, true);
+    directoryPayload.value = payload;
+    activeRootId.value = payload.rootId;
+    activeDirectoryPath.value = payload.directoryPath;
+    directoryEntries.value = payload.entries.map((entry) =>
+      toNativeFileItem(entry, payload.rootId, payload.directoryPath),
+    );
+    selectedItemIds.value = new Set();
+    detailsItem.value = null;
+    updateActiveDirectoryTab(payload.rootId, payload.directoryPath);
+    if (!options.preserveSearch) {
+      searchResults.value = null;
+    }
+    if (options.pushHistory !== false) {
+      pushDirectoryHistory(payload.rootId, payload.directoryPath);
+    }
+    await refreshTreeNodes(payload.rootId, payload.directoryPath);
+  } catch (error) {
+    directoryError.value = error instanceof Error ? error.message : text("目录读取失败", "Failed to read directory");
+  } finally {
+    directoryLoading.value = false;
+  }
+}
+
+async function refreshTreeNodes(rootId = activeRootId.value, directoryPath = activeDirectoryPath.value): Promise<void> {
+  try {
+    const tree = await fetchDirectoryTree(rootId, directoryPath, true);
+    childDirectoryNodes.value = tree.children || [];
+  } catch {
+    childDirectoryNodes.value = directoryEntries.value
+      .filter((entry) => entry.kind === "directory")
+      .map((entry) => ({ path: entry.path, name: entry.name }));
+  }
+}
+
+function pushDirectoryHistory(rootId: string, directoryPath: string): void {
+  const current = directoryHistory.value[directoryHistoryIndex.value];
+  if (current?.rootId === rootId && current.directoryPath === directoryPath) return;
+  const nextHistory = directoryHistory.value.slice(0, directoryHistoryIndex.value + 1);
+  nextHistory.push({ rootId, directoryPath });
+  directoryHistory.value = nextHistory.slice(-80);
+  directoryHistoryIndex.value = directoryHistory.value.length - 1;
+}
+
+function navigateToDirectory(pathValue: string): void {
+  void loadDirectory(activeRootId.value, pathValue, { pushHistory: true });
+}
+
+function navigateToRoot(rootId: string): void {
+  void loadDirectory(rootId, "", { pushHistory: true });
+}
+
+function handleRootSelect(event: Event): void {
+  const rootId = (event.target as HTMLSelectElement).value;
+  if (!rootId) return;
+  navigateToRoot(rootId);
+}
+
+function goBack(): void {
+  if (!canGoBack.value) return;
+  directoryHistoryIndex.value -= 1;
+  const entry = directoryHistory.value[directoryHistoryIndex.value];
+  if (entry) void loadDirectory(entry.rootId, entry.directoryPath, { pushHistory: false });
+}
+
+function goForward(): void {
+  if (!canGoForward.value) return;
+  directoryHistoryIndex.value += 1;
+  const entry = directoryHistory.value[directoryHistoryIndex.value];
+  if (entry) void loadDirectory(entry.rootId, entry.directoryPath, { pushHistory: false });
+}
+
+function refreshCurrentDirectory(): void {
+  void loadDirectory(activeRootId.value, activeDirectoryPath.value, {
+    pushHistory: false,
+    preserveSearch: true,
+  });
+}
+
+async function runSearch(): Promise<void> {
+  const query = searchQuery.value.trim();
+  if (!query) {
+    searchResults.value = null;
+    return;
+  }
+  directoryLoading.value = true;
+  try {
+    const payload: FilesSearchPayload = await searchFiles(
+      activeRootId.value,
+      query,
+      activeDirectoryPath.value,
+      recursiveSearch.value,
+      true,
+    );
+    searchResults.value = payload.results.map((entry) =>
+      toNativeFileItem(entry, payload.rootId, entry.directoryPath),
+    );
+  } catch (error) {
+    setNotice("error", error instanceof Error ? error.message : text("搜索失败", "Search failed"));
+  } finally {
+    directoryLoading.value = false;
+  }
+}
+
+function activateDirectoryTab(tabId: string): void {
+  const tab = directoryTabs.value.find((item) => item.id === tabId);
+  if (!tab) return;
+  activeDirectoryTabId.value = tab.id;
+  void loadDirectory(tab.rootId, tab.directoryPath, { pushHistory: true });
+}
+
+function openCurrentDirectoryInNewTab(): void {
+  const tab = createDirectoryTab(activeRootId.value, activeDirectoryPath.value);
+  directoryTabs.value = [...directoryTabs.value, tab].slice(-12);
+  activeDirectoryTabId.value = tab.id;
+}
+
+function closeDirectoryTab(tabId: string): void {
+  if (directoryTabs.value.length <= 1) return;
+  const index = directoryTabs.value.findIndex((tab) => tab.id === tabId);
+  if (index < 0) return;
+  const wasActive = activeDirectoryTabId.value === tabId;
+  directoryTabs.value.splice(index, 1);
+  if (wasActive) {
+    const next = directoryTabs.value[index] || directoryTabs.value[index - 1] || directoryTabs.value[0];
+    if (next) {
+      activeDirectoryTabId.value = next.id;
+      void loadDirectory(next.rootId, next.directoryPath, { pushHistory: true });
+    }
+  }
+}
+
+function setSort(key: SortKey): void {
+  if (sortKey.value === key) {
+    sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
+    return;
+  }
+  sortKey.value = key;
+  sortDirection.value = "asc";
+}
+
+function sortGlyph(key: SortKey): string {
+  if (sortKey.value !== key) return "↕";
+  return sortDirection.value === "asc" ? "↑" : "↓";
+}
+
+function toggleSelection(item: NativeFileItem, event?: MouseEvent): void {
+  const next = new Set(event?.shiftKey || event?.ctrlKey || event?.metaKey ? selectedItemIds.value : []);
+  if (next.has(item.id)) {
+    next.delete(item.id);
+  } else {
+    next.add(item.id);
+  }
+  selectedItemIds.value = next;
+  detailsItem.value = item;
+}
+
+function toggleAllVisible(event: Event): void {
+  const checked = (event.target as HTMLInputElement).checked;
+  selectedItemIds.value = checked
+    ? new Set(displayEntries.value.map((entry) => entry.id))
+    : new Set();
+}
+
+function selectedOrSingle(item: NativeFileItem | null | undefined): NativeFileItem[] {
+  if (!item) return selectedItems.value;
+  if (selectedItemIds.value.has(item.id)) return selectedItems.value;
+  return [item];
+}
+
+function openItem(item: NativeFileItem): void {
+  closeContextMenu();
+  if (item.kind === "directory") {
+    void loadDirectory(item.rootId, item.path, { pushHistory: true });
+    return;
+  }
+  detailsItem.value = item;
+  if (isCodeEditableItem(item)) {
+    void openEditorForItem(item);
+  }
+}
+
+function openContextMenu(event: MouseEvent, item: NativeFileItem): void {
+  if (!selectedItemIds.value.has(item.id)) {
+    selectedItemIds.value = new Set([item.id]);
+  }
+  detailsItem.value = item;
+  contextMenu.value = {
+    open: true,
+    x: Math.min(event.clientX, window.innerWidth - 260),
+    y: Math.min(event.clientY, window.innerHeight - 420),
+    item,
+  };
+}
+
+function closeContextMenu(): void {
+  contextMenu.value.open = false;
+}
+
+function closeTransientSurfaces(): void {
+  closeContextMenu();
+}
+
+function setNotice(kind: "success" | "error" | "info" | "warning", message: string): void {
+  noticeMessage.value = { kind, text: message };
+  window.setTimeout(() => {
+    if (noticeMessage.value?.text === message) {
+      noticeMessage.value = null;
+    }
+  }, 2600);
+}
+
+function openContextItem(): void {
+  const item = contextMenu.value.item;
+  if (item) openItem(item);
+}
+
+function editContextItem(): void {
+  const item = contextMenu.value.item;
+  if (item && isCodeEditableItem(item)) void openEditorForItem(item);
+  closeContextMenu();
+}
+
+function downloadContextItem(): void {
+  const item = contextMenu.value.item;
+  if (item) downloadItem(item);
+  closeContextMenu();
+}
+
+function copyContextPath(): void {
+  const item = contextMenu.value.item;
+  if (item) void copyPathsToClipboard([item]);
+  closeContextMenu();
+}
+
+function copyContextRelativePath(): void {
+  const item = contextMenu.value.item;
+  if (item) void writeTextToSystemClipboard(item.path);
+  closeContextMenu();
+}
+
+function copyContextStudioRef(): void {
+  const item = contextMenu.value.item;
+  if (item) void writeTextToSystemClipboard(studioRefForItem(item));
+  closeContextMenu();
+}
+
+function copyContextItems(): void {
+  clipboardMode.value = "copy";
+  clipboardItems.value = selectedOrSingle(contextMenu.value.item);
+  setNotice("success", text("已复制到文件剪贴板", "Copied to file clipboard"));
+  closeContextMenu();
+}
+
+function cutContextItems(): void {
+  clipboardMode.value = "cut";
+  clipboardItems.value = selectedOrSingle(contextMenu.value.item);
+  setNotice("success", text("已剪切到文件剪贴板", "Cut to file clipboard"));
+  closeContextMenu();
+}
+
+function showContextDetails(): void {
+  if (contextMenu.value.item) detailsItem.value = contextMenu.value.item;
+  closeContextMenu();
+}
+
+function openOperationDialog(kind: OperationDialogKind, item: NativeFileItem | null = null): void {
+  const items = kind === "delete" || kind === "archive"
+    ? selectedOrSingle(item)
+    : item
+      ? [item]
+      : selectedItems.value;
+  const defaultName =
+    kind === "rename" && item
+      ? item.name
+      : kind === "archive"
+        ? buildDefaultArchiveName(items)
+        : "";
+  operationDialog.value = {
+    kind,
+    item,
+    items,
+    value: defaultName,
+  };
+  closeContextMenu();
+}
+
+function closeOperationDialog(): void {
+  operationDialog.value = null;
+}
+
+async function submitOperationDialog(): Promise<void> {
+  const dialog = operationDialog.value;
+  if (!dialog) return;
+  try {
+    if (dialog.kind === "new-file") {
+      await createFile({
+        rootId: activeRootId.value,
+        directoryPath: activeDirectoryPath.value,
+        name: dialog.value,
+        content: "",
+      });
+      setNotice("success", text("文件已创建", "File created"));
+    } else if (dialog.kind === "new-folder") {
+      await createDirectory({
+        rootId: activeRootId.value,
+        directoryPath: activeDirectoryPath.value,
+        name: dialog.value,
+      });
+      setNotice("success", text("目录已创建", "Directory created"));
+    } else if (dialog.kind === "rename" && dialog.item) {
+      await renamePath({
+        rootId: dialog.item.rootId,
+        path: dialog.item.path,
+        nextName: dialog.value,
+      });
+      setNotice("success", text("已重命名", "Renamed"));
+    } else if (dialog.kind === "archive") {
+      const items = dialog.items.length ? dialog.items : selectedItems.value;
+      await createArchiveForItems(items, dialog.value);
+    } else if (dialog.kind === "delete") {
+      await deleteItems(dialog.items.length ? dialog.items : selectedItems.value);
+    }
+    closeOperationDialog();
+    refreshCurrentDirectory();
+  } catch (error) {
+    setNotice("error", error instanceof Error ? error.message : text("文件操作失败", "File operation failed"));
+  }
+}
+
+function buildDefaultArchiveName(items: NativeFileItem[]): string {
+  const base = items.length === 1 ? items[0].name.replace(/\.[^.]+$/, "") : "selected-items";
+  return `${base || "archive"}.zip`;
+}
+
+async function createArchiveForItems(items: NativeFileItem[], archiveName: string): Promise<void> {
+  if (!items.length) return;
+  const rootId = items[0].rootId;
+  if (items.some((item) => item.rootId !== rootId)) {
+    throw new Error(text("只能压缩同一根目录下的文件", "Only items from the same root can be archived"));
+  }
+  await archivePaths({
+    rootId,
+    directoryPath: activeDirectoryPath.value,
+    paths: items.map((item) => item.path).filter(Boolean),
+    name: archiveName,
+  });
+  setNotice("success", text("压缩包已创建", "Archive created"));
+}
+
+async function deleteItems(items: NativeFileItem[]): Promise<void> {
+  if (!items.length) return;
+  const byRoot = new Map<string, string[]>();
+  for (const item of items) {
+    const paths = byRoot.get(item.rootId) || [];
+    paths.push(item.path);
+    byRoot.set(item.rootId, paths);
+  }
+  for (const [rootId, paths] of byRoot.entries()) {
+    await deletePaths({ rootId, paths });
+  }
+  selectedItemIds.value = new Set();
+  detailsItem.value = null;
+  setNotice("success", text("文件已删除", "Deleted"));
+}
+
+async function pasteClipboardItems(): Promise<void> {
+  const mode = clipboardMode.value;
+  const items = clipboardItems.value;
+  if (!mode || !items.length) return;
+  try {
+    for (const item of items) {
+      const payload = {
+        sourceRootId: item.rootId,
+        sourcePath: item.path,
+        destinationRootId: activeRootId.value,
+        destinationDirectoryPath: activeDirectoryPath.value,
+      };
+      if (mode === "copy") {
+        await copyPath(payload);
+      } else {
+        await movePath(payload);
+      }
+    }
+    if (mode === "cut") {
+      clipboardItems.value = [];
+      clipboardMode.value = null;
+    }
+    setNotice("success", mode === "copy" ? text("已复制", "Copied") : text("已移动", "Moved"));
+    refreshCurrentDirectory();
+  } catch (error) {
+    setNotice("error", error instanceof Error ? error.message : text("粘贴失败", "Paste failed"));
+  } finally {
+    closeContextMenu();
+  }
+}
+
+function downloadItem(item: NativeFileItem): void {
+  if (item.kind !== "file") return;
+  triggerBrowserDownload(buildFileDownloadUrl(item.rootId, item.path, { download: true }), item.name);
+}
+
+function downloadArchiveForItems(items: NativeFileItem[]): void {
+  if (!items.length) return;
+  const rootId = items[0].rootId;
+  if (!rootId || items.some((item) => item.rootId !== rootId)) return;
+  const archiveName = items.length === 1 ? `${items[0].name}-archive` : "selected-items";
+  triggerBrowserDownload(buildArchiveDownloadUrl(rootId, items.map((item) => item.path), archiveName));
+}
+
+async function unarchiveItems(items: NativeFileItem[]): Promise<void> {
+  const zipItems = items.filter((item) => isZipArchiveItem(item));
+  if (!zipItems.length) return;
+  try {
+    for (const item of zipItems) {
+      await unarchiveFile({
+        rootId: item.rootId,
+        archivePath: item.path,
+        directoryPath: item.directoryPath || activeDirectoryPath.value,
+      });
+    }
+    setNotice(
+      "success",
+      zipItems.length > 1
+        ? text(`已解压 ${zipItems.length} 个压缩包`, `Extracted ${zipItems.length} archives`)
+        : text("压缩包已解压", "Archive extracted"),
+    );
+    refreshCurrentDirectory();
+  } catch (error) {
+    setNotice("error", error instanceof Error ? error.message : text("解压失败", "Failed to extract archive"));
+  } finally {
+    closeContextMenu();
+  }
+}
+
+function isZipArchiveItem(item: NativeFileItem): boolean {
+  if (item.kind !== "file") return false;
+  const extension = String(item.ext || "").replace(/^\./, "").toLowerCase();
+  return extension === "zip" || item.name.toLowerCase().endsWith(".zip");
+}
+
+function isCodeEditableItem(item: NativeFileItem): boolean {
+  if (item.kind !== "file") return false;
+  return Boolean(item.textLike || [
+    "code",
+    "config",
+    "data",
+    "log",
+    "markdown",
+    "package",
+    "script",
+    "style",
+    "test",
+    "text",
+  ].includes(item.fileKind));
+}
+
+function itemTypeLabel(item: NativeFileItem): string {
+  if (item.kind === "directory") return text("文件夹", "Folder");
+  return fileKindLabel(item);
+}
+
+function fileKindLabel(item: NativeFileItem): string {
+  const labels: Record<TerminalFileKind, string> = {
+    archive: text("压缩包", "Archive"),
+    audio: text("音频", "Audio"),
+    binary: text("二进制文件", "Binary"),
+    code: text("代码", "Code"),
+    config: text("配置文件", "Config"),
+    data: text("数据文件", "Data"),
+    database: text("数据库", "Database"),
+    document: text("文档", "Document"),
+    font: text("字体", "Font"),
+    image: text("图片", "Image"),
+    key: text("密钥/证书", "Key"),
+    lock: text("锁文件", "Lock"),
+    log: text("日志", "Log"),
+    markdown: "Markdown",
+    package: text("包管理文件", "Package"),
+    pdf: "PDF",
+    presentation: text("演示文稿", "Presentation"),
+    script: text("脚本", "Script"),
+    spreadsheet: text("表格", "Spreadsheet"),
+    style: text("样式文件", "Style"),
+    test: text("测试文件", "Test"),
+    text: text("文本", "Text"),
+    video: text("视频", "Video"),
+  };
+  return labels[item.fileKind] || text("文件", "File");
+}
+
+function fileIconKind(item: NativeFileItem): string {
+  if (item.kind === "directory") return "folder";
+  if (item.fileKind === "audio" || item.fileKind === "video") return "media";
+  if (item.fileKind === "pdf" || item.fileKind === "document" || item.fileKind === "spreadsheet" || item.fileKind === "presentation") return "document";
+  if (item.fileKind === "markdown" || item.fileKind === "text" || item.fileKind === "log") return "text";
+  if (item.fileKind === "code" || item.fileKind === "config" || item.fileKind === "script" || item.fileKind === "style" || item.fileKind === "test") return "code";
+  return item.fileKind;
+}
+
+function fileIconText(item: NativeFileItem): string {
+  if (item.kind === "directory") return "";
+  const ext = String(item.ext || "").replace(/^\./, "").toUpperCase();
+  if (!ext) return item.fileKind.slice(0, 3).toUpperCase();
   return ext.length > 4 ? ext.slice(0, 4) : ext;
 }
 
-function explorerItemIconLabel(item: DirEntry): string {
-  if (item.type === "dir") return text("文件夹", "Folder");
-  const ext = item.extension ? `.${item.extension.replace(/^\./, "")}` : "";
-  return ext ? text(`${ext} 文件`, `${ext} file`) : text("文件", "File");
+function filePermissionLabel(item: NativeFileItem): string {
+  if (item.kind === "directory") return text("目录", "Directory");
+  return fileKindLabel(item);
 }
 
-function storageNameForRoot(root: FileRootSummary): string {
-  if (root.id === "openclaw-root") return text("OpenClaw 根目录", "OpenClaw");
-  if (root.id === "home-root") return text("用户目录", "Home");
-  if (root.id === "system-root") return text("系统根目录", "System");
-  return root.id.replace(/[^a-z0-9_-]/gi, "-") || "Storage";
+function fileRemark(item: NativeFileItem): string {
+  if (item.kind === "directory") return text("目录", "Directory");
+  if (item.hidden) return text("隐藏项", "Hidden");
+  return fileKindLabel(item);
 }
 
-function rootIdForStorage(storage: string): string {
-  return storageRoots.value.find((root) => root.storage === storage)?.id || "";
-}
-
-function parseVueFinderPath(pathValue: string): { storage: string; relativePath: string } {
-  const marker = "://";
-  const markerIndex = pathValue.indexOf(marker);
-  if (markerIndex === -1) {
-    return {
-      storage: storageRoots.value[0]?.storage || "",
-      relativePath: pathValue.replace(/^\/+|\/+$/g, ""),
-    };
+function formatFileSize(size: number | null | undefined): string {
+  if (size == null) return "-";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = size;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
   }
-  return {
-    storage: pathValue.slice(0, markerIndex),
-    relativePath: pathValue.slice(markerIndex + marker.length).replace(/^\/+|\/+$/g, ""),
-  };
+  return `${unitIndex === 0 ? value : value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
 }
 
-function relativePathFromVueFinderPath(pathValue: string): string {
-  return parseVueFinderPath(pathValue).relativePath;
+function formatIsoTimestamp(value: string | null | undefined): string {
+  if (!value) return "-";
+  try {
+    return new Intl.DateTimeFormat(locale.value === "zh" ? "zh-CN" : "en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function triggerBrowserDownload(url: string, fileName?: string): void {
+  if (!url) return;
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  if (fileName) anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+}
+
+async function writeTextToSystemClipboard(content: string): Promise<void> {
+  const normalized = String(content || "");
+  if (!normalized) return;
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(normalized);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = normalized;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) throw new Error("Clipboard API is unavailable");
+}
+
+async function copyPathsToClipboard(items: NativeFileItem[]): Promise<void> {
+  const paths = items.map((item) => item.absolutePath).filter(Boolean);
+  if (!paths.length) return;
+  try {
+    await writeTextToSystemClipboard(paths.join("\n"));
+    setNotice(
+      "success",
+      paths.length > 1 ? text(`已复制 ${paths.length} 个路径`, `Copied ${paths.length} paths`) : text("路径已复制", "Path copied"),
+    );
+  } catch (error) {
+    setNotice("error", error instanceof Error ? error.message : text("复制失败", "Copy failed"));
+  }
+}
+
+function copySelectedPathsToClipboard(): void {
+  void copyPathsToClipboard(selectedItems.value);
+}
+
+function studioRefForItem(item: NativeFileItem): string {
+  return `studio-file:${item.absolutePath}`;
+}
+
+function handleItemDragStart(event: DragEvent, item: NativeFileItem): void {
+  const payload: TerminalResourceTransferPayload = {
+    rootId: item.rootId,
+    path: item.path,
+    absolutePath: item.absolutePath,
+    kind: item.kind,
+    name: item.name,
+  };
+  event.dataTransfer?.setData(TERMINAL_RESOURCE_DRAG_MIME, serializeTerminalResourceTransfer(payload));
+  event.dataTransfer?.setData("text/plain", shellQuoteTerminalPath(item.absolutePath));
+  event.dataTransfer?.setData("text/uri-list", `file://${item.absolutePath}`);
+}
+
+async function handleDropUpload(event: DragEvent): Promise<void> {
+  const candidates = await collectUploadCandidatesFromDataTransfer(event.dataTransfer);
+  if (!candidates.length) return;
+  await uploadFileCandidates(candidates);
+}
+
+async function handleUploadInputChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  await uploadFileList(Array.from(input.files || []));
+  input.value = "";
+}
+
+async function handleUploadDirectoryInputChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  await uploadFileList(Array.from(input.files || []), true);
+  input.value = "";
+}
+
+async function handleWorkbenchPaste(event: ClipboardEvent): Promise<void> {
+  if (isTextEditingEventTarget(event.target)) return;
+  const files = Array.from(event.clipboardData?.files || []);
+  if (!files.length) return;
+  event.preventDefault();
+  await uploadFileList(files);
+}
+
+async function uploadFileList(files: File[], preserveRelativePath = false): Promise<void> {
+  if (!files.length) return;
+  await uploadFileCandidates(files.map((file) => ({
+    file,
+    relativePath: preserveRelativePath
+      ? ((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name)
+      : undefined,
+  })));
+}
+
+async function uploadFileCandidates(candidates: UploadFileCandidate[]): Promise<void> {
+  if (!candidates.length) return;
+  const oversized = candidates.find((candidate) => candidate.file.size > MAX_UPLOAD_FILE_BYTES);
+  if (oversized) {
+    setNotice(
+      "error",
+      text(
+        `${oversized.file.name} 超过 ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}，请使用终端或分批上传。`,
+        `${oversized.file.name} exceeds ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}. Use terminal upload or split the batch.`,
+      ),
+    );
+    return;
+  }
+  const batchSize = candidates.reduce((total, candidate) => total + candidate.file.size, 0);
+  if (batchSize > MAX_UPLOAD_BATCH_BYTES) {
+    setNotice(
+      "error",
+      text(
+        `本次上传约 ${formatFileSize(batchSize)}，请分批上传。`,
+        `This upload is about ${formatFileSize(batchSize)}. Split it into smaller batches.`,
+      ),
+    );
+    return;
+  }
+  try {
+    const payloadFiles = [];
+    for (const candidate of candidates) {
+      payloadFiles.push({
+        fileName: candidate.file.name,
+        relativePath: candidate.relativePath,
+        dataBase64: await readFileAsDataUrl(candidate.file),
+      });
+    }
+    await uploadFiles({
+      rootId: activeRootId.value,
+      directoryPath: activeDirectoryPath.value,
+      files: payloadFiles,
+    });
+    setNotice(
+      "success",
+      candidates.length > 1 ? text(`已上传 ${candidates.length} 个文件`, `Uploaded ${candidates.length} files`) : text("文件已上传", "File uploaded"),
+    );
+    refreshCurrentDirectory();
+  } catch (error) {
+    setNotice("error", error instanceof Error ? error.message : text("上传失败", "Upload failed"));
+  }
+}
+
+async function collectUploadCandidatesFromDataTransfer(
+  dataTransfer: DataTransfer | null,
+): Promise<UploadFileCandidate[]> {
+  if (!dataTransfer) return [];
+  const items = Array.from(dataTransfer.items || []);
+  const candidates: UploadFileCandidate[] = [];
+  for (const item of items) {
+    if (item.kind !== "file") continue;
+    const entry = (item as DataTransferItem & {
+      webkitGetAsEntry?: () => BrowserFileSystemEntry | null;
+    }).webkitGetAsEntry?.();
+    if (entry) {
+      candidates.push(...await collectUploadCandidatesFromEntry(entry));
+      continue;
+    }
+    const file = item.getAsFile();
+    if (file) candidates.push({ file });
+  }
+  if (candidates.length) return candidates;
+  return Array.from(dataTransfer.files || []).map((file) => ({ file }));
+}
+
+async function collectUploadCandidatesFromEntry(
+  entry: BrowserFileSystemEntry,
+  basePath = "",
+): Promise<UploadFileCandidate[]> {
+  const safeName = normalizePortableFilePath(entry.name || "").replace(/^\/+|\/+$/g, "");
+  const relativePath = [basePath, safeName].filter(Boolean).join("/");
+  if (entry.isFile) {
+    const file = await readBrowserFileEntry(entry as BrowserFileSystemFileEntry);
+    return file ? [{ file, relativePath: relativePath || file.name }] : [];
+  }
+  if (!entry.isDirectory) return [];
+  const children = await readBrowserDirectoryEntries(entry as BrowserFileSystemDirectoryEntry);
+  const nested: UploadFileCandidate[] = [];
+  for (const child of children) {
+    nested.push(...await collectUploadCandidatesFromEntry(child, relativePath));
+  }
+  return nested;
+}
+
+function readBrowserFileEntry(entry: BrowserFileSystemFileEntry): Promise<File | null> {
+  return new Promise((resolve) => {
+    entry.file(
+      (file) => resolve(file),
+      () => resolve(null),
+    );
+  });
+}
+
+function readBrowserDirectoryEntries(
+  entry: BrowserFileSystemDirectoryEntry,
+): Promise<BrowserFileSystemEntry[]> {
+  const reader = entry.createReader();
+  const entries: BrowserFileSystemEntry[] = [];
+  return new Promise((resolve) => {
+    const readBatch = () => {
+      reader.readEntries(
+        (batch) => {
+          if (!batch.length) {
+            resolve(entries);
+            return;
+          }
+          entries.push(...batch);
+          readBatch();
+        },
+        () => resolve(entries),
+      );
+    };
+    readBatch();
+  });
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error || new Error("Failed to read upload file"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function createEditorTabId(rootId: string, apiPath: string): string {
   return `${rootId}:${apiPath}`;
-}
-
-function storageForRootId(rootId: string): string {
-  return storageRoots.value.find((root) => root.id === rootId)?.storage || "";
 }
 
 function recordRecentEditorFile(input: Omit<RecentEditorFile, "id" | "openedAt">): void {
@@ -841,9 +1954,7 @@ function recordRecentEditorFile(input: Omit<RecentEditorFile, "id" | "openedAt">
 }
 
 async function openRecentEditorFile(item: RecentEditorFile): Promise<void> {
-  const storage = storageForRootId(item.rootId);
-  const vuePath = storage ? `${storage}://${item.apiPath}` : item.path;
-  await openEditorForPath(item.rootId, item.apiPath, vuePath, item.name);
+  await openEditorForPath(item.rootId, item.apiPath, item.path, item.name);
 }
 
 function setActiveEditor(tabId: string): void {
@@ -862,368 +1973,12 @@ function requestEditorSearch(): void {
   editorSearchRequest.value += 1;
 }
 
-function setNotice(kind: "success" | "error" | "info" | "warning", message: string): void {
-  noticeMessage.value = { kind, text: message };
+async function openEditorForItem(item: NativeFileItem): Promise<void> {
+  if (!isCodeEditableItem(item)) return;
+  await openEditorForPath(item.rootId, item.path, item.absolutePath, item.name);
 }
 
-function refreshExplorer(): void {
-  viewerRefreshNonce.value += 1;
-  selectedItems.value = [];
-}
-
-async function writeTextToSystemClipboard(content: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(content);
-    return;
-  }
-  const textarea = document.createElement("textarea");
-  textarea.value = content;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  document.body.removeChild(textarea);
-  if (!copied) throw new Error("Clipboard API is unavailable");
-}
-
-async function copyPathsToClipboard(items: DirEntry[]): Promise<void> {
-  const paths = (items.length ? items : selectedItems.value)
-    .map((item) => item.path)
-    .filter(Boolean);
-  if (!paths.length) return;
-  try {
-    await writeTextToSystemClipboard(paths.join("\n"));
-    setNotice(
-      "success",
-      paths.length > 1 ? text(`已复制 ${paths.length} 个路径`, `Copied ${paths.length} paths`) : text("路径已复制", "Path copied"),
-    );
-  } catch (error) {
-    setNotice(
-      "error",
-      error instanceof Error ? error.message : text("复制路径失败", "Failed to copy path"),
-    );
-  }
-}
-
-function copySelectedPathsToClipboard(): void {
-  void copyPathsToClipboard(selectedItems.value);
-}
-
-function normalizePortableFilePath(value: string): string {
-  return value.replace(/\\/g, "/").replace(/\/+/g, "/");
-}
-
-function joinPortableFilePath(basePath: string, relativePath: string): string {
-  const base = normalizePortableFilePath(basePath).replace(/\/+$/g, "");
-  const relative = normalizePortableFilePath(relativePath).replace(/^\/+/g, "");
-  if (!relative) return base || "/";
-  return base === "/" ? `/${relative}` : `${base}/${relative}`;
-}
-
-function relativeWithinPortablePath(basePath: string, targetPath: string): string | null {
-  const base = normalizePortableFilePath(basePath).replace(/\/+$/g, "") || "/";
-  const target = normalizePortableFilePath(targetPath);
-  if (target === base) return "";
-  const prefix = base === "/" ? "/" : `${base}/`;
-  return target.startsWith(prefix) ? target.slice(prefix.length) : null;
-}
-
-function rootSummaryForItem(item: DirEntry): FileRootSummary | null {
-  const rootId = rootIdForStorage(item.storage);
-  return roots.value.find((root) => root.id === rootId) || null;
-}
-
-function absolutePathForItem(item: DirEntry): string {
-  const root = rootSummaryForItem(item);
-  const relativePath = relativePathFromVueFinderPath(item.path);
-  return root ? joinPortableFilePath(root.absolutePath, relativePath) : item.path;
-}
-
-function studioRefForItem(item: DirEntry): string {
-  const absolutePath = absolutePathForItem(item);
-  const openclawRoot = roots.value.find((root) => root.id === "openclaw-root")?.absolutePath || "";
-  if (openclawRoot) {
-    const workspaceRoot = joinPortableFilePath(openclawRoot, "workspace");
-    const uploadsRoot = joinPortableFilePath(workspaceRoot, "uploads");
-    const uploadRelativePath = relativeWithinPortablePath(uploadsRoot, absolutePath);
-    if (uploadRelativePath !== null) {
-      return `uploads:${uploadRelativePath}`;
-    }
-    const workspaceRelativePath = relativeWithinPortablePath(workspaceRoot, absolutePath);
-    if (workspaceRelativePath !== null) {
-      return `workspace:${workspaceRelativePath}`;
-    }
-  }
-  return `studio-file:${absolutePath}`;
-}
-
-function escapeMarkdownLabel(value: string): string {
-  return value.replace(/([\\[\]])/g, "\\$1").trim() || "file";
-}
-
-function markdownDestinationForStudioRef(ref: string): string {
-  if (/[\s()<>]/.test(ref)) {
-    return `<${ref.replace(/>/g, "%3E")}>`;
-  }
-  return ref;
-}
-
-function isChatMarkdownReferenceItem(item: DirEntry): boolean {
-  return item.type === "file";
-}
-
-function isImageMarkdownReferenceItem(item: DirEntry): boolean {
-  const mime = String(item.mime_type || "").toLowerCase();
-  const extension = String(item.extension || "").replace(/^\./, "").toLowerCase();
-  return mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(extension);
-}
-
-function isVideoMarkdownReferenceItem(item: DirEntry): boolean {
-  const mime = String(item.mime_type || "").toLowerCase();
-  const extension = String(item.extension || "").replace(/^\./, "").toLowerCase();
-  return mime.startsWith("video/") || ["mp4", "mov", "avi", "mkv", "webm"].includes(extension);
-}
-
-function studioMarkdownRefForItem(item: DirEntry): string {
-  const label = escapeMarkdownLabel(item.basename || "file");
-  const destination = markdownDestinationForStudioRef(studioRefForItem(item));
-  if (isImageMarkdownReferenceItem(item)) {
-    return `![${label}](${destination} "studio:break-image")`;
-  }
-  if (isVideoMarkdownReferenceItem(item)) {
-    return `[${label}](${destination} "studio:break-video")`;
-  }
-  return `[${label}](${destination} "studio:card")`;
-}
-
-async function copyStudioRefsToClipboard(items: DirEntry[]): Promise<void> {
-  const refs = (items.length ? items : selectedItems.value)
-    .map((item) => studioRefForItem(item))
-    .filter(Boolean);
-  if (!refs.length) return;
-  try {
-    await writeTextToSystemClipboard(refs.join("\n"));
-    setNotice(
-      "success",
-      refs.length > 1
-        ? text(`已复制 ${refs.length} 个 Studio 引用`, `Copied ${refs.length} Studio refs`)
-        : text("Studio 引用已复制", "Studio ref copied"),
-    );
-  } catch (error) {
-    setNotice(
-      "error",
-      error instanceof Error ? error.message : text("复制 Studio 引用失败", "Failed to copy Studio ref"),
-    );
-  }
-}
-
-function copySelectedStudioRefsToClipboard(): void {
-  void copyStudioRefsToClipboard(selectedItems.value);
-}
-
-async function copyStudioMarkdownRefsToClipboard(items: DirEntry[]): Promise<void> {
-  const refs = (items.length ? items : selectedItems.value)
-    .filter((item) => isChatMarkdownReferenceItem(item))
-    .map((item) => studioMarkdownRefForItem(item))
-    .filter(Boolean);
-  if (!refs.length) return;
-  try {
-    await writeTextToSystemClipboard(refs.join("\n"));
-    setNotice(
-      "success",
-      refs.length > 1
-        ? text(`已复制 ${refs.length} 个 Chat Markdown 引用`, `Copied ${refs.length} Chat Markdown refs`)
-        : text("Chat Markdown 引用已复制", "Chat Markdown ref copied"),
-    );
-  } catch (error) {
-    setNotice(
-      "error",
-      error instanceof Error ? error.message : text("复制 Chat Markdown 失败", "Failed to copy Chat Markdown"),
-    );
-  }
-}
-
-function copySelectedStudioMarkdownRefsToClipboard(): void {
-  void copyStudioMarkdownRefsToClipboard(selectedMarkdownRefItems.value);
-}
-
-function buildDuplicateName(name: string, index: number, total: number): string {
-  const dotIndex = name.lastIndexOf(".");
-  const copyId = Date.now().toString(36).slice(-4);
-  const suffix = total > 1 ? `-copy-${index + 1}-${copyId}` : `-copy-${copyId}`;
-  if (dotIndex > 0) {
-    return `${name.slice(0, dotIndex)}${suffix}${name.slice(dotIndex)}`;
-  }
-  return `${name}${suffix}`;
-}
-
-async function duplicateItems(items: DirEntry[]): Promise<void> {
-  const targets = (items.length ? items : selectedItems.value).filter(Boolean);
-  if (!targets.length) return;
-  try {
-    for (const [index, item] of targets.entries()) {
-      const sourceRootId = rootIdForStorage(item.storage);
-      const sourcePath = relativePathFromVueFinderPath(item.path);
-      const destinationDirectoryPath = relativePathFromVueFinderPath(item.dir);
-      if (!sourceRootId || !sourcePath) continue;
-      await copyPath({
-        sourceRootId,
-        sourcePath,
-        destinationRootId: sourceRootId,
-        destinationDirectoryPath,
-        nextName: buildDuplicateName(item.basename, index, targets.length),
-      });
-    }
-    refreshExplorer();
-    setNotice(
-      "success",
-      targets.length > 1 ? text(`已创建 ${targets.length} 个副本`, `Created ${targets.length} duplicates`) : text("副本已创建", "Duplicate created"),
-    );
-  } catch (error) {
-    setNotice("error", error instanceof Error ? error.message : text("创建副本失败", "Failed to duplicate item"));
-  }
-}
-
-function duplicateSelectedItems(): void {
-  void duplicateItems(selectedItems.value);
-}
-
-function formatFileSize(size: number | null | undefined): string {
-  if (size == null) return "-";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = size;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${unitIndex === 0 ? value : value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
-}
-
-function formatUnixTimestamp(timestamp: number | null | undefined): string {
-  if (!timestamp) return "-";
-  try {
-    return new Intl.DateTimeFormat(locale.value === "zh" ? "zh-CN" : "en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(timestamp * 1000));
-  } catch {
-    return new Date(timestamp * 1000).toLocaleString();
-  }
-}
-
-function openDetailsForItem(item: DirEntry): void {
-  detailsItem.value = item;
-}
-
-function openDetailsForSelection(): void {
-  const item = selectedItems.value.length === 1 ? selectedItems.value[0] : null;
-  if (item) openDetailsForItem(item);
-}
-
-function closeDetails(): void {
-  detailsItem.value = null;
-}
-
-function openDetailsItemInEditor(): void {
-  const item = detailsItem.value;
-  if (!item || !isCodeEditableItem(item)) return;
-  void openEditorForItem(item);
-  detailsItem.value = null;
-}
-
-function downloadDetailItem(): void {
-  const item = detailsItem.value;
-  if (!item || item.type !== "file") return;
-  const rootId = rootIdForStorage(item.storage);
-  const apiPath = relativePathFromVueFinderPath(item.path);
-  if (!rootId || !apiPath) return;
-  triggerBrowserDownload(buildFileDownloadUrl(rootId, apiPath, { download: true }), item.basename);
-}
-
-function isCodeEditableItem(item: DirEntry): boolean {
-  if (item.type !== "file") return false;
-  const mime = String(item.mime_type || "").toLowerCase();
-  if (mime.startsWith("text/")) return true;
-  const ext = String(item.extension || "").toLowerCase();
-  return [
-    "ts",
-    "tsx",
-    "js",
-    "jsx",
-    "json",
-    "jsonl",
-    "md",
-    "markdown",
-    "html",
-    "htm",
-    "vue",
-    "css",
-    "scss",
-    "less",
-    "py",
-    "yaml",
-    "yml",
-    "sql",
-    "sh",
-    "env",
-    "toml",
-    "ini",
-  ].includes(ext);
-}
-
-function isZipArchiveItem(item: DirEntry): boolean {
-  if (item.type !== "file") return false;
-  const mime = String(item.mime_type || "").toLowerCase();
-  const extension = String(item.extension || "").replace(/^\./, "").toLowerCase();
-  return mime === "application/zip" || extension === "zip" || item.basename.toLowerCase().endsWith(".zip");
-}
-
-async function reloadSummary(): Promise<void> {
-  loading.value = true;
-  try {
-    summary.value = await fetchFilesSummary();
-  } catch (error) {
-    setNotice(
-      "error",
-      error instanceof Error
-        ? error.message
-        : text("文件资源管理器初始化失败", "Failed to initialize file explorer"),
-    );
-  } finally {
-    loading.value = false;
-  }
-}
-
-function handleExplorerError(error: unknown): void {
-  setNotice(
-    "error",
-    error instanceof Error ? error.message : text("文件操作失败", "File operation failed"),
-  );
-}
-
-function handleNotify(payload: { type: string; message: string }): void {
-  setNotice(payload.type === "error" ? "error" : "success", payload.message);
-}
-
-function handleExplorerSelect(items: DirEntry[]): void {
-  selectedItems.value = Array.isArray(items) ? items : [];
-}
-
-function handleExplorerPathChange(_pathValue: string): void {
-  selectedItems.value = [];
-}
-
-async function openEditorForItem(item: DirEntry): Promise<void> {
-  const rootId = rootIdForStorage(item.storage);
-  const apiPath = relativePathFromVueFinderPath(item.path);
-  if (!rootId || !apiPath) return;
-  await openEditorForPath(rootId, apiPath, item.path, item.basename);
-}
-
-async function openEditorForPath(rootId: string, apiPath: string, vuePath: string, fallbackName: string): Promise<void> {
+async function openEditorForPath(rootId: string, apiPath: string, displayPath: string, fallbackName: string): Promise<void> {
   const tabId = createEditorTabId(rootId, apiPath);
   const existingTab = editorTabs.value.find((tab) => tab.id === tabId);
   if (existingTab) {
@@ -1231,7 +1986,7 @@ async function openEditorForPath(rootId: string, apiPath: string, vuePath: strin
     recordRecentEditorFile({
       rootId,
       apiPath,
-      path: vuePath,
+      path: displayPath,
       name: existingTab.name || fallbackName,
     });
     return;
@@ -1241,7 +1996,7 @@ async function openEditorForPath(rootId: string, apiPath: string, vuePath: strin
     id: tabId,
     rootId,
     apiPath,
-    path: vuePath,
+    path: displayPath,
     name: fallbackName,
     readOnly: false,
     truncated: false,
@@ -1258,7 +2013,7 @@ async function openEditorForPath(rootId: string, apiPath: string, vuePath: strin
     updateEditorTab(tabId, {
       rootId,
       apiPath: payload.path,
-      path: vuePath,
+      path: displayPath,
       name: payload.name,
       readOnly: !payload.editable,
       truncated: payload.truncated,
@@ -1270,7 +2025,7 @@ async function openEditorForPath(rootId: string, apiPath: string, vuePath: strin
     recordRecentEditorFile({
       rootId,
       apiPath: payload.path,
-      path: vuePath,
+      path: displayPath,
       name: payload.name,
     });
   } catch (error) {
@@ -1281,29 +2036,39 @@ async function openEditorForPath(rootId: string, apiPath: string, vuePath: strin
   }
 }
 
-async function openEditorForItems(items: DirEntry[]): Promise<void> {
-  const codeItems = items.filter((item) => isCodeEditableItem(item));
-  for (const item of codeItems) {
-    await openEditorForItem(item);
-  }
+function isEditorTabDirty(tab: EditorFileTab): boolean {
+  return tab.content !== null && tab.draft !== tab.content;
 }
 
-function handleFileDclick(event: { item: DirEntry; preventDefault: () => void }): void {
-  if (!event?.item || !isCodeEditableItem(event.item)) return;
-  event.preventDefault();
-  void openEditorForItem(event.item);
+function confirmDiscardEditorChanges(tabs: EditorFileTab[]): boolean {
+  const dirtyCount = tabs.filter(isEditorTabDirty).length;
+  if (!dirtyCount) return true;
+  return window.confirm(
+    text(
+      `有 ${dirtyCount} 个文件存在未保存修改，关闭后会丢失这些修改。继续关闭？`,
+      `${dirtyCount} file(s) have unsaved changes. Closing will discard them. Continue?`,
+    ),
+  );
 }
 
-function closeEditor(tabId = activeEditorId.value): void {
-  const index = editorTabs.value.findIndex((tab) => tab.id === tabId);
-  if (index === -1) return;
-  const wasActive = activeEditorId.value === tabId;
-  editorTabs.value.splice(index, 1);
-  if (wasActive) {
-    const nextTab = editorTabs.value[index] || editorTabs.value[index - 1] || null;
-    activeEditorId.value = nextTab?.id || "";
+function closeEditor(tabId?: string): void {
+  const targetTabs = tabId
+    ? editorTabs.value.filter((tab) => tab.id === tabId)
+    : [...editorTabs.value];
+  if (!targetTabs.length) return;
+  if (!confirmDiscardEditorChanges(targetTabs)) return;
+  for (const tab of targetTabs) {
+    const index = editorTabs.value.findIndex((candidate) => candidate.id === tab.id);
+    if (index === -1) continue;
+    const wasActive = activeEditorId.value === tab.id;
+    editorTabs.value.splice(index, 1);
+    if (wasActive) {
+      const nextTab = editorTabs.value[index] || editorTabs.value[index - 1] || null;
+      activeEditorId.value = nextTab?.id || "";
+    }
   }
   if (!editorTabs.value.length) {
+    activeEditorId.value = "";
     editorMaximized.value = false;
   }
 }
@@ -1329,24 +2094,12 @@ async function saveEditor(): Promise<void> {
       error: null,
     });
     setNotice("success", text("文件已保存", "File saved"));
+    refreshCurrentDirectory();
   } catch (error) {
-    setNotice(
-      "error",
-      error instanceof Error ? error.message : text("保存文件失败", "Failed to save file"),
-    );
+    setNotice("error", error instanceof Error ? error.message : text("保存文件失败", "Failed to save file"));
   } finally {
     updateEditorTab(tab.id, { saving: false });
   }
-}
-
-function triggerBrowserDownload(url: string, fileName?: string): void {
-  if (!url) return;
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  if (fileName) anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
 }
 
 function downloadEditorFile(): void {
@@ -1354,48 +2107,112 @@ function downloadEditorFile(): void {
   triggerBrowserDownload(editorDownloadUrl.value, editorState.value.name);
 }
 
-function downloadArchiveForItems(items: DirEntry[]): void {
-  if (!items.length) return;
-  const firstRootId = rootIdForStorage(items[0].storage);
-  if (!firstRootId || items.some((item) => rootIdForStorage(item.storage) !== firstRootId)) return;
-  const paths = items.map((item) => relativePathFromVueFinderPath(item.path)).filter(Boolean);
-  if (!paths.length) return;
-  const archiveName = items.length === 1 ? `${items[0].basename}-archive` : "selected-items";
-  triggerBrowserDownload(buildArchiveDownloadUrl(firstRootId, paths, archiveName));
+function openTerminalHere(item?: NativeFileItem | null): void {
+  const cwd = item
+    ? item.kind === "directory"
+      ? item.absolutePath
+      : buildAbsolutePath(rootForId(item.rootId), item.directoryPath)
+    : currentAbsolutePath.value;
+  if (!cwd) return;
+  const sessionId = globalThis.crypto?.randomUUID?.() || `files-${Date.now().toString(36)}`;
+  const now = new Date().toISOString();
+  const title = `${item?.name || activeDirectoryPath.value.split("/").pop() || rootLabel(activeRoot.value)} · ${text("终端", "Shell")}`;
+  const descriptor = {
+    sessionId,
+    title,
+    profileId: null,
+    targetKind: "local",
+    cwd,
+    pinned: false,
+    status: "running",
+    source: "manual",
+    canResume: true,
+    controlState: "controller",
+    updatedAt: now,
+    handoffContext: null,
+    recentOutputSummary: null,
+  };
+  try {
+    const raw = globalThis.localStorage?.getItem(TERMINAL_DESCRIPTORS_STORAGE_KEY);
+    const descriptors = raw ? JSON.parse(raw) as unknown[] : [];
+    const nextDescriptors = Array.isArray(descriptors)
+      ? [descriptor, ...descriptors.filter((entry) => (entry as { sessionId?: unknown })?.sessionId !== sessionId)]
+      : [descriptor];
+    globalThis.localStorage?.setItem(TERMINAL_DESCRIPTORS_STORAGE_KEY, JSON.stringify(nextDescriptors));
+    globalThis.localStorage?.setItem(TERMINAL_WORKSPACE_STORAGE_KEY, JSON.stringify({
+      tabOrder: [sessionId, ...nextDescriptors.map((entry) => String((entry as { sessionId?: unknown }).sessionId || "")).filter((id) => id && id !== sessionId)].slice(0, 24),
+      activeSessionId: sessionId,
+      activeProfileId: null,
+      paneSessionIds: [sessionId],
+      paneLayout: "single",
+    }));
+    const pendingRaw = globalThis.sessionStorage?.getItem(TERMINAL_PENDING_LAUNCH_STORAGE_KEY);
+    const pending = pendingRaw ? JSON.parse(pendingRaw) as Record<string, unknown> : {};
+    pending[sessionId] = { profileId: null, targetKind: "local", cwd };
+    globalThis.sessionStorage?.setItem(TERMINAL_PENDING_LAUNCH_STORAGE_KEY, JSON.stringify(pending));
+  } catch {
+    // Terminal storage bridge is best-effort; navigation still opens the terminal page.
+  }
+  void router.push({ path: `/terminal/${encodeURIComponent(sessionId)}` });
 }
 
-async function unarchiveItems(items: DirEntry[]): Promise<void> {
-  const zipItems = items.filter((item) => isZipArchiveItem(item));
-  if (!zipItems.length) return;
-  try {
-    for (const item of zipItems) {
-      const rootId = rootIdForStorage(item.storage);
-      const archivePath = relativePathFromVueFinderPath(item.path);
-      const directoryPath = relativePathFromVueFinderPath(item.dir);
-      if (!rootId || !archivePath) continue;
-      await unarchiveFile({
-        rootId,
-        archivePath,
-        directoryPath,
-      });
-    }
-    viewerRefreshNonce.value += 1;
-    selectedItems.value = [];
-    setNotice(
-      "success",
-      zipItems.length > 1
-        ? text(`已解压 ${zipItems.length} 个压缩包`, `Extracted ${zipItems.length} archives`)
-        : text("压缩包已解压", "Archive extracted"),
-    );
-  } catch (error) {
-    setNotice(
-      "error",
-      error instanceof Error ? error.message : text("解压失败", "Failed to extract archive"),
-    );
+function handleWorkbenchKeydown(event: KeyboardEvent): void {
+  if (isTextEditingEventTarget(event.target)) return;
+  const key = event.key.toLowerCase();
+  if (event.key === "F2" && selectedItems.value.length === 1) {
+    event.preventDefault();
+    openOperationDialog("rename", selectedItems.value[0]);
+  } else if (event.key === "Delete" && selectedItems.value.length) {
+    event.preventDefault();
+    openOperationDialog("delete");
+  } else if ((event.ctrlKey || event.metaKey) && key === "c" && selectedItems.value.length) {
+    event.preventDefault();
+    clipboardMode.value = "copy";
+    clipboardItems.value = selectedItems.value;
+  } else if ((event.ctrlKey || event.metaKey) && key === "x" && selectedItems.value.length) {
+    event.preventDefault();
+    clipboardMode.value = "cut";
+    clipboardItems.value = selectedItems.value;
+  } else if ((event.ctrlKey || event.metaKey) && key === "v" && clipboardItems.value.length) {
+    event.preventDefault();
+    void pasteClipboardItems();
   }
 }
 
+function isTextEditingEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest([
+    "input",
+    "textarea",
+    "select",
+    "[contenteditable='true']",
+    "[contenteditable='']",
+    ".cm-editor",
+    ".cm-content",
+    ".code-file-editor",
+    ".studio-file-dialog",
+  ].join(",")));
+}
+
+function handleGlobalClick(): void {
+  closeContextMenu();
+}
+
+function handleEditorBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!dirtyEditorTabs.value.length) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+
 onMounted(() => {
+  window.addEventListener("click", handleGlobalClick);
+  window.addEventListener("beforeunload", handleEditorBeforeUnload);
   void reloadSummary();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("click", handleGlobalClick);
+  window.removeEventListener("beforeunload", handleEditorBeforeUnload);
+  persistViewMode();
 });
 </script>

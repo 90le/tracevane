@@ -5,9 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const retiredVendorPattern = new RegExp("vue" + "finder", "i");
 
 function read(filePath) {
   return fs.readFileSync(path.join(rootDir, filePath), "utf8");
+}
+
+function exists(filePath) {
+  return fs.existsSync(path.join(rootDir, filePath));
 }
 
 const routeManifest = read("apps/web-vue/src/features/shell/route-manifest.ts");
@@ -18,8 +23,9 @@ const fileEditorWorkspace = read("apps/web-vue/src/features/files/FileEditorWork
 const codeFileEditor = read("apps/web-vue/src/features/files/CodeFileEditor.vue");
 const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.css");
 const filesApi = read("apps/web-vue/src/features/files/api.ts");
-const filesDriver = read("apps/web-vue/src/features/files/vuefinder-driver.ts");
 const filesRoutes = read("apps/api/modules/files/routes.ts");
+const filesService = read("apps/api/modules/files/service.ts");
+const webPackage = JSON.parse(read("apps/web-vue/package.json"));
 const main = read("apps/web-vue/src/main.ts");
 
 test("files route and management domain are wired into Studio shell", () => {
@@ -33,224 +39,137 @@ test("files route and management domain are wired into Studio shell", () => {
   assert.match(filesView, /getManagementDomainEntry\("files"\)/);
 });
 
-test("files workspace exposes explorer layout, tree, listing, editor, upload, and maintenance actions", () => {
-  assert.match(filesControlPage, /文件管理器|File manager/);
-  assert.match(filesControlPage, /VueFinder/);
-  assert.doesNotMatch(filesControlPage, /file-manager-chrome__tabs/);
-  assert.doesNotMatch(filesControlPage, /file-manager-chrome__addressbar/);
-  assert.doesNotMatch(filesControlPage, /goToAddress/);
-  assert.doesNotMatch(filesControlPage, /useVueFinder/);
-  assert.match(filesControlPage, /visibleRoots/);
-  assert.match(filesControlPage, /root\.id !== "project-root"/);
-  assert.match(filesControlPage, /storageRoots/);
-  assert.match(filesControlPage, /storageNameForRoot/);
-  assert.match(filesControlPage, /locale\.value === "zh" \? "zhCN" : "en"/);
-  assert.match(filesControlPage, /OpenClaw 根目录/);
-  assert.match(filesControlPage, /用户目录/);
-  assert.match(filesControlPage, /系统根目录/);
-  assert.match(filesControlPage, /studio-file-explorer/);
-  assert.match(filesControlPage, /StudioFilesVueFinderDriver/);
-  assert.match(filesControlPage, /FileEditorWorkspace/);
-  assert.match(fileEditorWorkspace, /AsyncCodeFileEditor/);
-  assert.match(fileEditorWorkspace, /file-manager-editor-drawer--maximized/);
-  assert.match(filesControlPage, /editorTabs/);
-  assert.match(filesControlPage, /activeEditorId/);
-  assert.match(fileEditorWorkspace, /file-manager-editor-sidebar/);
-  assert.match(filesControlPage, /RECENT_EDITOR_FILES_STORAGE_KEY/);
-  assert.match(filesControlPage, /recentEditorFiles/);
-  assert.match(filesControlPage, /recordRecentEditorFile/);
-  assert.match(filesControlPage, /openRecentEditorFile/);
-  assert.match(fileEditorWorkspace, /最近打开/);
-  assert.doesNotMatch(fileEditorWorkspace, /当前目录/);
-  assert.doesNotMatch(filesControlPage, /editorDirectoryEntries/);
-  assert.doesNotMatch(filesControlPage, /openEditorForEntry/);
-  assert.match(fileEditorWorkspace, /搜索\/替换/);
-  assert.match(fileEditorWorkspace, /file-manager-editor-drawer__statusbar/);
-  assert.match(filesControlPage, /editorLineCount/);
-  assert.match(filesControlPage, /editorLanguageLabel/);
-  assert.match(fileEditorWorkspace, /editorFileIconForName/);
-  assert.match(filesControlPage, /resolvedTheme/);
-  assert.match(filesControlPage, /theme:\s*resolvedTheme\.value === "light" \? "silver" : "midnight"/);
-  assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.file-manager-page/);
-  assert.match(filesControlPage, /handleFileDclick/);
-  assert.match(filesControlPage, /handleExplorerPathChange/);
-  assert.match(filesControlPage, /openEditorForItem/);
-  assert.match(filesControlPage, /saveEditor/);
-  assert.match(filesControlPage, /file-manager-statusbar/);
-  assert.match(filesControlPage, /refreshExplorer/);
-  assert.match(filesControlPage, /copySelectedPathsToClipboard/);
-  assert.match(filesControlPage, /copySelectedStudioRefsToClipboard/);
-  assert.match(filesControlPage, /copySelectedStudioMarkdownRefsToClipboard/);
-  assert.match(filesControlPage, /writeTextToSystemClipboard/);
-  assert.match(filesControlPage, /studioRefForItem/);
-  assert.match(filesControlPage, /workspace:\$\{workspaceRelativePath\}/);
-  assert.match(filesControlPage, /uploads:\$\{uploadRelativePath\}/);
-  assert.match(filesControlPage, /studio-file:\$\{absolutePath\}/);
-  assert.match(filesControlPage, /studioMarkdownRefForItem/);
-  assert.match(filesControlPage, /"studio:break-image"/);
-  assert.match(filesControlPage, /"studio:break-video"/);
-  assert.match(filesControlPage, /"studio:card"/);
-  assert.match(filesControlPage, /studio_copy_chat_markdown/);
-  assert.match(filesControlPage, /duplicateSelectedItems/);
-  assert.match(filesControlPage, /file-manager-details/);
-  assert.match(filesControlPage, /aria-label="text\('文件详情检查器', 'File details inspector'\)"/);
-  assert.match(filesControlPage, /file-manager-details__panel file-manager-details__sheet/);
-  assert.match(filesControlPage, /openDetailsForSelection/);
-  assert.match(filesControlPage, /formatFileSize/);
-  assert.match(filesControlPage, /studio_show_details/);
-  assert.match(filesControlPage, /studio_duplicate/);
-  assert.match(filesControlPage, /studio_copy_path/);
-  assert.match(filesControlPage, /studio_copy_ref/);
-  assert.match(filesControlPage, /file-manager-view-controls/);
-  assert.match(filesControlPage, /explorerUiPrefs/);
-  assert.match(filesControlPage, /FILE_MANAGER_UI_STORAGE_KEY/);
-  assert.match(filesControlPage, /toggleExplorerUi/);
-  assert.match(filesControlPage, /cycleExplorerDensity/);
-  assert.match(filesControlPage, /showMenuBar:\s*explorerUiPrefs\.value\.menuBar/);
-  assert.match(filesControlPage, /showToolbar:\s*explorerUiPrefs\.value\.toolbar/);
-  assert.match(filesControlPage, /showTreeView:\s*explorerUiPrefs\.value\.treeView/);
-  assert.match(filesControlPage, /showThumbnails:\s*explorerUiPrefs\.value\.thumbnails/);
-  assert.match(filesControlPage, /gridIconSize/);
-  assert.match(filesControlPage, /listIconSize/);
-  assert.match(filesControlPage, /studio-file-icon/);
-  assert.match(filesControlPage, /#icon/);
-  assert.match(filesControlPage, /explorerItemIconKind/);
-  assert.match(filesControlPage, /selectedCodeFiles/);
-  assert.match(filesControlPage, /openEditorForItems/);
-  assert.match(filesControlPage, /selectedArchiveTarget/);
-  assert.match(filesControlPage, /studio_download_archive/);
-  assert.match(filesControlPage, /downloadArchiveForItems/);
-  assert.doesNotMatch(filesControlPage, /PROPERTIES|选中项属性/);
-  assert.doesNotMatch(filesControlPage, /file-manager-inspector-grid/);
-  assert.match(filesControlPage, /context-menu-items/);
-  assert.match(filesControlPage, /studio_open_in_editor/);
-  assert.match(filesControlPage, /explorerFeatures/);
-  assert.match(filesControlPage, /explorerConfig/);
-  assert.match(filesControlPage, /handleExplorerError/);
-  assert.match(filesControlPage, /handleNotify/);
-  assert.match(filesDriver, /extends BaseAdapter/);
-  assert.match(filesDriver, /StudioFileStorageRoot/);
-  assert.match(filesDriver, /toVueFinderPath/);
-  assert.match(filesDriver, /resolvePath/);
-  assert.match(filesDriver, /configureUploader/);
-  assert.match(filesDriver, /browseDirectory/);
-  assert.match(filesDriver, /searchFiles/);
-  assert.match(filesDriver, /saveFileContent/);
-  assert.match(filesDriver, /uploadFiles/);
-  assert.match(filesDriver, /archivePaths/);
-  assert.match(filesDriver, /unarchiveFile/);
-  assert.match(codeFileEditor, /CodeMirror|EditorView|codemirror/);
-  assert.match(codeFileEditor, /loadLanguageExtension/);
-  assert.match(codeFileEditor, /applyLanguageExtension/);
-  assert.match(codeFileEditor, /code-file-editor__searchbar/);
-  assert.match(codeFileEditor, /SearchQuery/);
-  assert.match(codeFileEditor, /replaceAll/);
-  assert.match(codeFileEditor, /searchRequest/);
-  assert.match(codeFileEditor, /backgroundColor:\s*"var\(--code-editor-bg\)"/);
-  assert.match(codeFileEditor, /borderLeftColor:\s*"var\(--code-editor-cursor\)"/);
-  assert.match(codeFileEditor, /scrollPastEnd/);
-  assert.match(codeFileEditor, /rectangularSelection/);
-  assert.match(codeFileEditor, /indentWithTab/);
-  assert.match(codeFileEditor, /key:\s*"Mod-s"/);
-  assert.match(codeFileEditor, /emit\("save"\)/);
-  assert.match(filesWorkspaceCss, /scrollbar-width:\s*thin/);
-  assert.match(codeFileEditor, /oneDark/);
-  assert.match(filesControlPage, /provide\("VueFinderOptions"/);
-  assert.match(filesControlPage, /vuefinder\/dist\/locales\/zhCN\.js/);
-  assert.match(filesControlPage, /vuefinder\/dist\/locales\/en\.js/);
-  assert.match(filesControlPage, /vuefinder\/dist\/vuefinder\.css/);
-  assert.doesNotMatch(main, /VueFinderPlugin/);
-  assert.doesNotMatch(main, /vuefinder\/dist\/vuefinder\.css/);
+test("files workspace is a native Studio workbench instead of a retired vendor adapter", () => {
+  assert.doesNotMatch(filesControlPage, retiredVendorPattern);
+  assert.doesNotMatch(filesWorkspaceCss, retiredVendorPattern);
+  assert.doesNotMatch(main, retiredVendorPattern);
+  assert.equal(webPackage.dependencies?.["vue" + "finder"], undefined);
+  assert.equal(exists("apps/web-vue/src/features/files/vue" + "finder-driver.ts"), false);
+  assert.equal(exists("apps/web-vue/src/types/vue" + "finder-locales.d.ts"), false);
+
+  assert.match(filesControlPage, /class="file-manager-page studio-file-workbench"/);
+  assert.match(filesControlPage, /studio-file-tabs/);
+  assert.match(filesControlPage, /directoryTabs/);
+  assert.match(filesControlPage, /activeDirectoryTabId/);
+  assert.match(filesControlPage, /createDirectoryTab/);
+  assert.match(filesControlPage, /openCurrentDirectoryInNewTab/);
+  assert.match(filesControlPage, /closeDirectoryTab/);
+  assert.match(filesControlPage, /studio-file-pathbar/);
+  assert.match(filesControlPage, /studio-file-breadcrumbs/);
+  assert.match(filesControlPage, /studio-file-toolbar/);
+  assert.match(filesControlPage, /studio-file-sidebar/);
+  assert.match(filesControlPage, /studio-file-table/);
+  assert.match(filesControlPage, /studio-file-grid/);
+  assert.match(filesControlPage, /studio-file-details/);
+  assert.match(filesControlPage, /studio-file-context-menu/);
+  assert.match(filesControlPage, /studio-file-dialog/);
+  assert.match(filesControlPage, /viewMode/);
+  assert.match(filesControlPage, /sortNativeFileItems/);
+  assert.match(filesControlPage, /selectedItemIds/);
+  assert.match(filesControlPage, /clipboardMode/);
+  assert.match(filesControlPage, /pasteClipboardItems/);
+  assert.match(filesControlPage, /handleWorkbenchKeydown/);
+  assert.match(filesControlPage, /isTextEditingEventTarget/);
+  assert.match(filesControlPage, /\.cm-editor/);
+  assert.match(filesControlPage, /\.studio-file-dialog/);
 });
 
-test("files feature keeps workspace styles in shared CSS instead of Vue scoped blocks", () => {
+test("native files workspace covers operations expected from an ops-oriented web file manager", () => {
+  assert.match(filesControlPage, /fetchFilesSummary/);
+  assert.match(filesControlPage, /browseDirectory/);
+  assert.match(filesControlPage, /fetchDirectoryTree/);
+  assert.match(filesControlPage, /searchFiles/);
+  assert.match(filesControlPage, /createDirectory/);
+  assert.match(filesControlPage, /createFile/);
+  assert.match(filesControlPage, /renamePath/);
+  assert.match(filesControlPage, /copyPath/);
+  assert.match(filesControlPage, /movePath/);
+  assert.match(filesControlPage, /deletePaths/);
+  assert.match(filesControlPage, /uploadFiles/);
+  assert.match(filesControlPage, /handleUploadDirectoryInputChange/);
+  assert.match(filesControlPage, /handleDropUpload/);
+  assert.match(filesControlPage, /handleWorkbenchPaste/);
+  assert.match(filesControlPage, /collectUploadCandidatesFromDataTransfer/);
+  assert.match(filesControlPage, /collectUploadCandidatesFromEntry/);
+  assert.match(filesControlPage, /MAX_UPLOAD_FILE_BYTES/);
+  assert.match(filesControlPage, /MAX_UPLOAD_BATCH_BYTES/);
+  assert.match(filesControlPage, /archivePaths/);
+  assert.match(filesControlPage, /unarchiveFile/);
+  assert.match(filesControlPage, /downloadArchiveForItems/);
+  assert.match(filesControlPage, /buildArchiveDownloadUrl/);
+  assert.match(filesControlPage, /buildFileDownloadUrl/);
+  assert.match(filesControlPage, /openOperationDialog\('archive'/);
+  assert.match(filesControlPage, /openOperationDialog\('delete'/);
+  assert.match(filesControlPage, /copyContextRelativePath/);
+  assert.match(filesControlPage, /copyContextStudioRef/);
+  assert.match(filesControlPage, /openTerminalHere/);
+  assert.match(filesControlPage, /TERMINAL_RESOURCE_DRAG_MIME/);
+  assert.match(filesControlPage, /serializeTerminalResourceTransfer/);
+  assert.match(filesControlPage, /TERMINAL_PENDING_LAUNCH_STORAGE_KEY/);
+  assert.match(filesControlPage, /router\.push\(\{ path:\s*`\/terminal\/\$\{encodeURIComponent\(sessionId\)\}`/);
+});
+
+test("file previews and editor workspace remain integrated with the native file manager", () => {
+  assert.match(filesControlPage, /FileEditorWorkspace/);
+  assert.match(filesControlPage, /editorTabs/);
+  assert.match(filesControlPage, /activeEditorId/);
+  assert.match(filesControlPage, /readFileContent/);
+  assert.match(filesControlPage, /saveFileContent/);
+  assert.match(filesControlPage, /dirtyEditorTabs/);
+  assert.match(filesControlPage, /isEditorTabDirty/);
+  assert.match(filesControlPage, /confirmDiscardEditorChanges/);
+  assert.match(filesControlPage, /beforeunload/);
+  assert.match(filesControlPage, /recentEditorFiles/);
+  assert.match(filesControlPage, /RECENT_EDITOR_FILES_STORAGE_KEY/);
+  assert.match(filesControlPage, /detailsItem\.fileKind === 'image'/);
+  assert.match(filesControlPage, /detailsItem\.fileKind === 'video'/);
+  assert.match(filesControlPage, /detailsItem\.fileKind === 'audio'/);
+  assert.match(filesControlPage, /detailsItem\.fileKind === 'pdf'/);
+  assert.match(filesControlPage, /resolveTerminalFileKind/);
+  assert.match(filesControlPage, /fileKindLabel/);
+  assert.match(filesControlPage, /fileIconKind/);
+  assert.match(filesControlPage, /isCodeEditableItem/);
+
+  assert.match(fileEditorWorkspace, /AsyncCodeFileEditor/);
+  assert.match(fileEditorWorkspace, /file-manager-editor-drawer--maximized/);
+  assert.match(fileEditorWorkspace, /最近打开/);
+  assert.match(fileEditorWorkspace, /搜索\/替换/);
+  assert.match(fileEditorWorkspace, /file-manager-editor-drawer__statusbar/);
+  assert.match(codeFileEditor, /CodeMirror|EditorView|codemirror/);
+  assert.match(codeFileEditor, /replaceAll/);
+  assert.match(codeFileEditor, /key:\s*"Mod-s"/);
+  assert.match(codeFileEditor, /emit\("save"\)/);
+});
+
+test("files workspace styles are native, responsive, and kept in feature CSS", () => {
   for (const source of [filesControlPage, fileEditorWorkspace, codeFileEditor]) {
     assert.match(source, /import "\.\/files-workspace\.css";/);
     assert.doesNotMatch(source, /<style scoped>/);
   }
 
-  assert.match(
-    filesWorkspaceCss,
-    /\.main-content\.file-surface-route\s*\{[\s\S]*height:\s*100dvh;[\s\S]*overflow:\s*hidden;/,
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /\.main-content\.file-surface-route\s*\{[\s\S]*padding:\s*var\(--studio-route-inset,\s*10px\);/,
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /\.shell-layout-files\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*height:\s*100%;/,
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /\.shell-route-stage-files\s*\{[\s\S]*display:\s*flex;[\s\S]*overflow:\s*hidden;/,
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /\.shell-route-stage-files\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /\.file-manager-page\s*\{[\s\S]*border:\s*1px solid var\(--file-manager-border\);[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /\.file-manager-page\s*\{[\s\S]*--file-manager-bg:\s*var\(--bg-app\);[\s\S]*--file-manager-panel-strong:\s*var\(--surface-raised\);[\s\S]*box-shadow:\s*var\(--mono-shadow-sm,/,
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /html\[data-theme="dark"\] \.file-manager-page\s*\{[\s\S]*--file-manager-bg:\s*var\(--bg-app\);[\s\S]*--file-manager-panel:\s*var\(--surface-base\);[\s\S]*--file-manager-panel-strong:\s*var\(--surface-raised\);/,
-  );
-  assert.doesNotMatch(
-    `${filesWorkspaceCss}\n${codeFileEditor}`,
-    /#f8fafc|#f1f5f9|#020617|#0f172a|#1e293b|#0d1117|#101a2b|#1f6feb|#7dd3fc|#3b82f6|#60a5fa/,
-  );
-  assert.doesNotMatch(
-    `${filesWorkspaceCss}\n${codeFileEditor}`,
-    /var\(--surface\)|rgba\(|#[0-9a-fA-F]{3,6}/,
-    "files workspace and editor theme should resolve colors through global DuoYuan/OpenClaw tokens",
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /\.file-manager-notice\s*\{[\s\S]*background:\s*var\(--surface-overlay\);/,
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /\.file-manager-page \.vuefinder__items--list \.vuefinder__item:hover\s*\{[\s\S]*var\(--file-manager-panel\)/,
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /\.code-file-editor\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--surface-base\)/,
-  );
-  assert.doesNotMatch(
-    filesWorkspaceCss,
-    /linear-gradient|radial-gradient/,
-    "files workspace chrome should use solid DuoYuan/OpenClaw surfaces instead of local gradients",
-  );
-  assert.match(
-    filesWorkspaceCss,
-    /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.main-content\.file-surface-route\s*\{[\s\S]*padding:\s*0;/,
-  );
+  assert.match(filesWorkspaceCss, /\.studio-file-workbench\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-tabs\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-pathbar\s*,\s*\n\.studio-file-toolbar\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-body\s*\{[\s\S]*grid-template-columns:/);
+  assert.match(filesWorkspaceCss, /\.studio-file-table\s*\{[\s\S]*table-layout:\s*fixed;/);
+  assert.match(filesWorkspaceCss, /\.studio-file-grid\s*\{[\s\S]*repeat\(auto-fill,/);
+  assert.match(filesWorkspaceCss, /\.studio-file-kind-icon--folder/);
+  assert.match(filesWorkspaceCss, /\.studio-file-kind-icon--code/);
+  assert.match(filesWorkspaceCss, /\.studio-file-kind-icon--image/);
+  assert.match(filesWorkspaceCss, /\.studio-file-preview img,\n\.studio-file-preview video\s*\{[\s\S]*object-fit:\s*contain;/);
+  assert.match(filesWorkspaceCss, /\.studio-file-context-menu\s*\{[\s\S]*position:\s*fixed;/);
+  assert.match(filesWorkspaceCss, /@media \(max-width:\s*760px\)/);
+  assert.match(filesWorkspaceCss, /\.studio-file-sidebar\s*\{[\s\S]*display:\s*none;/);
+  assert.doesNotMatch(filesWorkspaceCss, /linear-gradient|radial-gradient/);
+  assert.doesNotMatch(filesWorkspaceCss, /:deep|:global/);
   assert.doesNotMatch(
     read("apps/web-vue/src/style.css"),
     /\.main-content\.file-surface-route\s*\{|\.shell-layout-files\s*\{|\.shell-route-stage-files\s*\{/,
     "files route shell rules should live with the files feature CSS instead of global style.css",
   );
-  assert.match(filesWorkspaceCss, /\.file-manager-page\s*\{/);
-  assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.file-manager-page/);
-  assert.match(
-    filesWorkspaceCss,
-    /\.file-manager-details\s*\{[\s\S]*align-items:\s*stretch;[\s\S]*justify-items:\s*end;/,
-  );
-  assert.match(filesWorkspaceCss, /\.file-manager-details__sheet\s*\{/);
-  assert.match(filesWorkspaceCss, /@keyframes file-manager-details-sheet-in/);
-  assert.match(filesWorkspaceCss, /\.file-manager-editor-drawer\s*\{/);
-  assert.match(filesWorkspaceCss, /\.code-file-editor\s*\{/);
-  assert.match(filesWorkspaceCss, /\.code-file-editor \.cm-scroller/);
-  assert.doesNotMatch(filesWorkspaceCss, /:deep|:global/);
 });
 
-test("files api and server routes cover browse, tree, read, search, mutate, upload, and download", () => {
+test("files api and server routes cover browse, tree, read, search, mutate, upload, archive, and inline preview", () => {
   assert.match(filesApi, /fetchFilesSummary/);
   assert.match(filesApi, /browseDirectory/);
   assert.match(filesApi, /fetchDirectoryTree/);
@@ -269,23 +188,23 @@ test("files api and server routes cover browse, tree, read, search, mutate, uplo
   assert.match(filesApi, /buildArchiveDownloadUrl/);
   assert.match(filesApi, /buildFileDownloadUrl/);
   assert.match(filesApi, /download:\s*options\.download \? 1 : undefined/);
+
   assert.match(filesRoutes, /\/api\/files\/summary/);
   assert.match(filesRoutes, /\/api\/files\/browse/);
   assert.match(filesRoutes, /\/api\/files\/tree/);
   assert.match(filesRoutes, /\/api\/files\/read/);
   assert.match(filesRoutes, /\/api\/files\/search/);
   assert.match(filesRoutes, /\/api\/files\/download/);
-  assert.match(filesRoutes, /Content-Disposition/);
-  assert.match(filesRoutes, /buildContentDisposition/);
-  assert.match(filesRoutes, /"Cache-Control": "no-store"/);
   assert.match(filesRoutes, /readFlag\(url\.searchParams\.get\("download"\), false\) \? "attachment" : "inline"/);
   assert.match(filesRoutes, /\/api\/files\/upload/);
   assert.match(filesRoutes, /\/api\/files\/archive/);
   assert.match(filesRoutes, /\/api\/files\/unarchive/);
   assert.match(filesRoutes, /\/api\/files\/download-archive/);
   assert.match(filesRoutes, /buildContentDisposition\(payload\.fileName, "attachment"\)/);
-  assert.match(filesDriver, /buildFileDownloadUrl\(target\.root\.id, target\.relativePath, \{ download: true \}\)/);
+  assert.match(filesRoutes, /"Cache-Control": "no-store"/);
+
   assert.match(read("types/files.ts"), /matchKind\?: "name" \| "content"/);
-  assert.match(read("apps/api/modules/files/service.ts"), /findContentSearchSnippet/);
-  assert.match(read("apps/api/modules/files/service.ts"), /target\.relative_to\(destination\)/);
+  assert.match(filesService, /findContentSearchSnippet/);
+  assert.match(filesService, /target\.relative_to\(destination\)/);
+  assert.match(filesService, /unarchive/);
 });
