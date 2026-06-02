@@ -158,6 +158,7 @@ export interface FilesUnarchivePayload {
   rootId: string;
   archivePath: string;
   directoryPath?: string;
+  destinationDirectoryPath?: string;
 }
 
 export interface FilesArchiveDownloadPayload {

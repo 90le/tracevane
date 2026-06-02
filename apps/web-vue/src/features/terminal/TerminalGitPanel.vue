@@ -633,9 +633,10 @@ watch(
 );
 
 onMounted(async () => {
+  document.addEventListener('pointerdown', closeGitContextMenuFromOutside, true);
+  document.addEventListener('focusin', closeGitContextMenuFromOutside, true);
   globalThis.addEventListener('keydown', handleGitPanelKeydown);
   globalThis.addEventListener('resize', closeGitContextMenu);
-  globalThis.addEventListener('scroll', closeGitContextMenu, true);
   await loadRoots();
   syncScopeFromWorkspace();
   await refresh();
@@ -643,9 +644,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   cancelGitLongPress();
+  document.removeEventListener('pointerdown', closeGitContextMenuFromOutside, true);
+  document.removeEventListener('focusin', closeGitContextMenuFromOutside, true);
   globalThis.removeEventListener('keydown', handleGitPanelKeydown);
   globalThis.removeEventListener('resize', closeGitContextMenu);
-  globalThis.removeEventListener('scroll', closeGitContextMenu, true);
 });
 
 async function loadRoots(): Promise<void> {
@@ -968,6 +970,13 @@ function handleGitPanelClick(event: MouseEvent): void {
 
 function closeGitContextMenu(): void {
   gitContextMenu.value = null;
+}
+
+function closeGitContextMenuFromOutside(event: Event): void {
+  if (!gitContextMenu.value) return;
+  const target = event.target;
+  if (target instanceof Element && target.closest('.terminal-git-context-menu')) return;
+  closeGitContextMenu();
 }
 
 function handleGitPanelKeydown(event: KeyboardEvent): void {

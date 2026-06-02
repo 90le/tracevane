@@ -1586,7 +1586,7 @@ function closePreviewOverlays(): void {
   closePreviewTabContextMenu();
 }
 
-function closePreviewOverlaysFromOutside(event: PointerEvent): void {
+function closePreviewOverlaysFromOutside(event: Event): void {
   const target = event.target;
   if (
     target instanceof Node &&
@@ -1715,12 +1715,14 @@ function handlePreviewBeforeUnload(event: BeforeUnloadEvent): void {
 
 onMounted(() => {
   document.addEventListener('pointerdown', closePreviewOverlaysFromOutside, true);
+  document.addEventListener('focusin', closePreviewOverlaysFromOutside, true);
   window.addEventListener('resize', closePreviewOverlays);
   window.addEventListener('beforeunload', handlePreviewBeforeUnload);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', closePreviewOverlaysFromOutside, true);
+  document.removeEventListener('focusin', closePreviewOverlaysFromOutside, true);
   window.removeEventListener('resize', closePreviewOverlays);
   window.removeEventListener('beforeunload', handlePreviewBeforeUnload);
 });

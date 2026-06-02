@@ -123,7 +123,7 @@ export function registerFilesRoutes(router: StudioRouter, ctx: StudioApiContext)
     res.on("finish", cleanup);
     sendFileStream(res, {
       filePath: payload.archivePath,
-      contentType: "application/zip",
+      contentType: payload.mimeType,
       headers: {
         "Cache-Control": "no-store",
         "Content-Disposition": buildContentDisposition(payload.fileName, "attachment"),

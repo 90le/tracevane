@@ -81,34 +81,83 @@
           </button>
         </div>
 
-        <select
-          class="studio-file-root-select"
-          :value="activeRootId"
-          :aria-label="text('选择根目录', 'Select root')"
-          @change="handleRootSelect"
-          @click.stop
+        <form
+          ref="addressFormRef"
+          class="studio-file-address"
+          :class="{ 'studio-file-address--editing': addressEditing }"
+          @submit.prevent.stop="submitAddressNavigation"
+          @focusin="cancelAddressEditingExit"
+          @focusout="scheduleAddressEditingExit"
         >
-          <option
-            v-for="root in visibleRoots"
-            :key="root.id"
-            :value="root.id"
+          <select
+            class="studio-file-root-select"
+            :value="activeRootId"
+            :aria-label="text('选择根目录', 'Select root')"
+            @change="handleRootSelect"
+            @click.stop
           >
-            {{ rootLabel(root) }}
-          </option>
-        </select>
-
-        <nav class="studio-file-breadcrumbs" aria-label="Breadcrumb">
-          <button
-            v-for="crumb in breadcrumbs"
-            :key="crumb.path || '__root__'"
-            type="button"
-            class="studio-file-breadcrumb"
-            :class="{ active: crumb.path === activeDirectoryPath }"
-            @click.stop="navigateToDirectory(crumb.path)"
-          >
-            {{ crumb.label }}
+            <option
+              v-for="root in visibleRoots"
+              :key="root.id"
+              :value="root.id"
+            >
+              {{ rootLabel(root) }}
+            </option>
+          </select>
+          <div class="studio-file-address-field" @click.stop>
+            <input
+              v-if="addressEditing"
+              ref="addressInputRef"
+              v-model="addressInput"
+              class="studio-file-address__input"
+              type="text"
+              spellcheck="false"
+              :aria-label="text('输入路径并打开', 'Enter path and open')"
+              :placeholder="currentAbsolutePath"
+              @focus="closeContextMenu"
+              @keydown.esc.stop.prevent="cancelAddressEditing"
+            />
+            <nav
+              v-else
+              class="studio-file-address-trail"
+              :aria-label="text('路径导航', 'Path navigation')"
+              @dblclick.stop="startAddressEditing"
+              @click.self.stop="startAddressEditing"
+            >
+              <button
+                type="button"
+                class="studio-file-address-crumb"
+                :class="{ active: !activeDirectoryPath }"
+                @click.stop="openAddressSegment('')"
+              >
+                {{ rootLabel(activeRoot) }}
+              </button>
+              <template v-for="segment in addressSegments" :key="segment.path || '__root__'">
+                <span class="studio-file-address-separator" aria-hidden="true">/</span>
+                <button
+                  type="button"
+                  class="studio-file-address-crumb"
+                  :class="{ active: segment.path === activeDirectoryPath }"
+                  :title="segment.path"
+                  @click.stop="openAddressSegment(segment.path)"
+                >
+                  {{ segment.label }}
+                </button>
+              </template>
+              <button
+                type="button"
+                class="studio-file-address-edit"
+                :title="text('编辑路径', 'Edit path')"
+                @click.stop="startAddressEditing"
+              >
+                <Pencil class="studio-file-icon-button__icon" aria-hidden="true" />
+              </button>
+            </nav>
+          </div>
+          <button v-if="addressEditing" type="submit" class="studio-file-address__go">
+            {{ text("打开", "Open") }}
           </button>
-        </nav>
+        </form>
 
         <button
           type="button"
@@ -136,13 +185,9 @@
 
       <section class="studio-file-toolbar" aria-label="File operations">
         <div class="studio-file-toolbar__group">
-          <button type="button" @click.stop="uploadInput?.click()">
+          <button type="button" @click.stop="openUploadPanel('files')">
             <Upload class="studio-file-toolbar__icon" aria-hidden="true" />
             <span>{{ text("上传文件", "Upload") }}</span>
-          </button>
-          <button type="button" @click.stop="uploadDirectoryInput?.click()">
-            <FolderUp class="studio-file-toolbar__icon" aria-hidden="true" />
-            <span>{{ text("上传目录", "Upload folder") }}</span>
           </button>
           <button type="button" @click.stop="openOperationDialog('new-file')">
             <FilePlus class="studio-file-toolbar__icon" aria-hidden="true" />
@@ -152,37 +197,48 @@
             <FolderPlus class="studio-file-toolbar__icon" aria-hidden="true" />
             <span>{{ text("新建目录", "New folder") }}</span>
           </button>
-        </div>
-
-        <div class="studio-file-toolbar__group">
-          <button type="button" @click.stop="runSearch">
-            <Search class="studio-file-toolbar__icon" aria-hidden="true" />
-            <span>{{ text("内容搜索", "Content search") }}</span>
-          </button>
-          <button type="button" @click.stop="copySelectedPathsToClipboard" :disabled="!selectedItems.length">
-            <Copy class="studio-file-toolbar__icon" aria-hidden="true" />
-            <span>{{ text("复制路径", "Copy path") }}</span>
-          </button>
           <button type="button" @click.stop="openTerminalHere">
             <Terminal class="studio-file-toolbar__icon" aria-hidden="true" />
             <span>{{ text("终端", "Terminal") }}</span>
           </button>
         </div>
 
-        <div class="studio-file-toolbar__group">
-          <button type="button" :disabled="!selectedItems.length" @click.stop="downloadArchiveForItems(selectedItems)">
-            <Download class="studio-file-toolbar__icon" aria-hidden="true" />
-            <span>{{ text("打包下载", "Download zip") }}</span>
-          </button>
-          <button type="button" :disabled="!selectedItems.length" @click.stop="openOperationDialog('archive')">
-            <Archive class="studio-file-toolbar__icon" aria-hidden="true" />
-            <span>{{ text("创建压缩", "Create archive") }}</span>
-          </button>
-          <button type="button" :disabled="!selectedZipItems.length" @click.stop="unarchiveItems(selectedZipItems)">
-            <PackageOpen class="studio-file-toolbar__icon" aria-hidden="true" />
-            <span>{{ text("解压", "Extract") }}</span>
-          </button>
-        </div>
+        <details class="studio-file-toolbar-more" @click.stop>
+          <summary>
+            <MoreHorizontal class="studio-file-toolbar__icon" aria-hidden="true" />
+            <span>{{ text("更多操作", "More") }}</span>
+          </summary>
+          <div class="studio-file-toolbar-more__panel" role="menu">
+            <button type="button" role="menuitem" @click="openUploadPanel('folder')">
+              <FolderUp class="studio-file-toolbar__icon" aria-hidden="true" />
+              <span>{{ text("上传目录", "Upload folder") }}</span>
+            </button>
+            <label class="studio-file-toolbar-more__check" role="menuitemcheckbox" :aria-checked="showHiddenFiles">
+              <input v-model="showHiddenFiles" type="checkbox" />
+              <span>{{ text("显示隐藏文件", "Show hidden files") }}</span>
+            </label>
+            <button type="button" role="menuitem" @click="runSearch">
+              <Search class="studio-file-toolbar__icon" aria-hidden="true" />
+              <span>{{ text("内容搜索", "Content search") }}</span>
+            </button>
+            <button type="button" role="menuitem" :disabled="!selectedItems.length" @click="copySelectedPathsToClipboard">
+              <Copy class="studio-file-toolbar__icon" aria-hidden="true" />
+              <span>{{ text("复制路径", "Copy path") }}</span>
+            </button>
+            <button type="button" role="menuitem" :disabled="!selectedItems.length" @click="downloadArchiveForItems(selectedItems)">
+              <Download class="studio-file-toolbar__icon" aria-hidden="true" />
+              <span>{{ text("打包下载", "Download zip") }}</span>
+            </button>
+            <button type="button" role="menuitem" :disabled="!selectedItems.length" @click="openOperationDialog('archive')">
+              <Archive class="studio-file-toolbar__icon" aria-hidden="true" />
+              <span>{{ text("创建压缩", "Create archive") }}</span>
+            </button>
+            <button type="button" role="menuitem" :disabled="!selectedArchiveItems.length" @click="openOperationDialog('unarchive')">
+              <PackageOpen class="studio-file-toolbar__icon" aria-hidden="true" />
+              <span>{{ text("解压", "Extract") }}</span>
+            </button>
+          </div>
+        </details>
 
         <div class="studio-file-toolbar__spacer"></div>
         <div class="studio-file-view-toggle" aria-label="View mode">
@@ -206,48 +262,6 @@
       </section>
 
       <div class="studio-file-body">
-        <aside class="studio-file-sidebar">
-          <section class="studio-file-sidebar__section">
-            <header>{{ text("根目录", "Roots") }}</header>
-            <button
-              v-for="root in visibleRoots"
-              :key="root.id"
-              type="button"
-              class="studio-file-sidebar__item"
-              :class="{ active: root.id === activeRootId && !activeDirectoryPath }"
-              :title="root.absolutePath"
-              @click.stop="navigateToRoot(root.id)"
-            >
-              <FolderOpen class="studio-file-sidebar__icon" aria-hidden="true" />
-              <span>{{ rootLabel(root) }}</span>
-            </button>
-          </section>
-
-          <section class="studio-file-sidebar__section">
-            <header>{{ text("当前目录", "Current directory") }}</header>
-            <button
-              v-if="parentPath !== null"
-              type="button"
-              class="studio-file-sidebar__item"
-              @click.stop="navigateToDirectory(parentPath || '')"
-            >
-              <FolderOpen class="studio-file-sidebar__icon" aria-hidden="true" />
-              <span>..</span>
-            </button>
-            <button
-              v-for="node in childDirectoryNodes"
-              :key="node.path"
-              type="button"
-              class="studio-file-sidebar__item"
-              :title="node.path"
-              @click.stop="navigateToDirectory(node.path)"
-            >
-              <FolderOpen class="studio-file-sidebar__icon" aria-hidden="true" />
-              <span>{{ node.name }}</span>
-            </button>
-          </section>
-        </aside>
-
         <main class="studio-file-main" @dragover.prevent @drop.prevent="handleDropUpload">
           <div v-if="directoryLoading" class="studio-file-main__empty">
             {{ text("正在读取目录...", "Loading directory...") }}
@@ -261,7 +275,7 @@
 
           <div v-else-if="viewMode === 'grid'" class="studio-file-grid" role="list">
             <button
-              v-for="item in displayEntries"
+              v-for="item in pagedDisplayEntries"
               :key="item.id"
               type="button"
               class="studio-file-grid-item"
@@ -296,18 +310,16 @@
                       @change="toggleAllVisible"
                       @click.stop
                     />
-                  </th>
-                  <th>
-                    <button type="button" class="studio-file-sort" @click.stop="setSort('name')">
-                      {{ text("文件名称", "Name") }}
-                      <span>{{ sortGlyph("name") }}</span>
-                    </button>
-                  </th>
-                  <th>{{ text("状态", "Status") }}</th>
-                  <th>{{ text("权限/所有者", "Perm / Owner") }}</th>
-                  <th>
-                    <button type="button" class="studio-file-sort" @click.stop="setSort('size')">
-                      {{ text("大小", "Size") }}
+	                  </th>
+	                  <th>
+	                    <button type="button" class="studio-file-sort" @click.stop="setSort('name')">
+	                      {{ text("文件名称", "Name") }}
+	                      <span>{{ sortGlyph("name") }}</span>
+	                    </button>
+	                  </th>
+	                  <th>
+	                    <button type="button" class="studio-file-sort" @click.stop="setSort('size')">
+	                      {{ text("大小", "Size") }}
                       <span>{{ sortGlyph("size") }}</span>
                     </button>
                   </th>
@@ -323,7 +335,7 @@
               </thead>
               <tbody>
                 <tr
-                  v-for="item in displayEntries"
+                  v-for="item in pagedDisplayEntries"
                   :key="item.id"
                   :class="{ selected: selectedItemIds.has(item.id) }"
                   draggable="true"
@@ -351,18 +363,12 @@
                     </span>
                     <div>
                       <strong>{{ item.name }}</strong>
-                      <small v-if="searchActive">{{ item.path }}</small>
-                    </div>
-                  </td>
-                  <td>
-                    <span class="studio-file-status" :class="{ 'studio-file-status--hidden': item.hidden }">
-                      {{ item.hidden ? text("隐藏", "Hidden") : text("未保护", "Normal") }}
-                    </span>
-                  </td>
-                  <td>{{ filePermissionLabel(item) }}</td>
-                  <td>{{ formatFileSize(item.size) }}</td>
-                  <td>{{ formatIsoTimestamp(item.modifiedAt) }}</td>
-                  <td class="studio-file-table__remarks">{{ fileRemark(item) }}</td>
+	                      <small v-if="searchActive">{{ item.path }}</small>
+	                    </div>
+	                  </td>
+	                  <td>{{ formatFileSize(item.size) }}</td>
+	                  <td>{{ formatIsoTimestamp(item.modifiedAt) }}</td>
+	                  <td class="studio-file-table__remarks">{{ fileRemark(item) }}</td>
                   <td class="studio-file-table__actions">
                     <button type="button" @click.stop="openItem(item)">
                       {{ item.kind === "directory" ? text("打开", "Open") : text("预览", "Preview") }}
@@ -376,88 +382,6 @@
             </table>
           </div>
         </main>
-
-        <aside v-if="detailsItem" class="studio-file-details" aria-label="File details">
-          <header class="studio-file-details__head">
-            <span
-              class="studio-file-kind-icon studio-file-kind-icon--large"
-              :class="`studio-file-kind-icon--${fileIconKind(detailsItem)}`"
-              aria-hidden="true"
-            >
-              {{ fileIconText(detailsItem) }}
-            </span>
-            <div>
-              <strong>{{ detailsItem.name }}</strong>
-              <span>{{ detailsItem.path || rootLabel(activeRoot) }}</span>
-            </div>
-            <button type="button" @click.stop="detailsItem = null">
-              <X class="studio-file-icon-button__icon" aria-hidden="true" />
-            </button>
-          </header>
-
-          <section v-if="detailsPreviewUrl && detailsItem.kind === 'file'" class="studio-file-preview">
-            <img
-              v-if="detailsItem.fileKind === 'image'"
-              :src="detailsPreviewUrl"
-              :alt="detailsItem.name"
-            />
-            <video
-              v-else-if="detailsItem.fileKind === 'video'"
-              :src="detailsPreviewUrl"
-              controls
-              preload="metadata"
-            ></video>
-            <audio
-              v-else-if="detailsItem.fileKind === 'audio'"
-              :src="detailsPreviewUrl"
-              controls
-              preload="metadata"
-            ></audio>
-            <div v-else-if="detailsItem.fileKind === 'pdf'" class="studio-file-preview__card">
-              <strong>{{ detailsItem.name }}</strong>
-              <span>PDF</span>
-              <a :href="detailsPreviewUrl" target="_blank" rel="noopener noreferrer">{{ text("打开预览", "Open preview") }}</a>
-            </div>
-            <div v-else class="studio-file-preview__card">
-              <strong>{{ fileKindLabel(detailsItem) }}</strong>
-              <span>{{ text("可在编辑器或浏览器中打开", "Open with the editor or browser") }}</span>
-            </div>
-          </section>
-
-          <dl class="studio-file-details__grid">
-            <div>
-              <dt>{{ text("类型", "Type") }}</dt>
-              <dd>{{ itemTypeLabel(detailsItem) }}</dd>
-            </div>
-            <div>
-              <dt>{{ text("大小", "Size") }}</dt>
-              <dd>{{ formatFileSize(detailsItem.size) }}</dd>
-            </div>
-            <div>
-              <dt>{{ text("修改时间", "Modified") }}</dt>
-              <dd>{{ formatIsoTimestamp(detailsItem.modifiedAt) }}</dd>
-            </div>
-            <div>
-              <dt>{{ text("权限/所有者", "Perm / Owner") }}</dt>
-              <dd>{{ filePermissionLabel(detailsItem) }}</dd>
-            </div>
-            <div>
-              <dt>{{ text("根目录", "Root") }}</dt>
-              <dd>{{ rootLabel(rootForId(detailsItem.rootId)) }}</dd>
-            </div>
-            <div>
-              <dt>{{ text("绝对路径", "Absolute path") }}</dt>
-              <dd :title="detailsItem.absolutePath">{{ detailsItem.absolutePath }}</dd>
-            </div>
-          </dl>
-
-          <div class="studio-file-details__actions">
-            <button type="button" @click.stop="copyPathsToClipboard([detailsItem])">{{ text("复制路径", "Copy path") }}</button>
-            <button v-if="isCodeEditableItem(detailsItem)" type="button" @click.stop="openEditorForItem(detailsItem)">{{ text("编辑", "Edit") }}</button>
-            <button type="button" @click.stop="openTerminalHere(detailsItem)">{{ text("终端", "Terminal") }}</button>
-            <button v-if="detailsItem.kind === 'file'" type="button" @click.stop="downloadItem(detailsItem)">{{ text("下载", "Download") }}</button>
-          </div>
-        </aside>
       </div>
 
       <footer class="studio-file-statusbar">
@@ -466,8 +390,104 @@
         <span>{{ currentAbsolutePath }}</span>
         <span class="studio-file-statusbar__spacer"></span>
         <span v-if="searchActive">{{ text(`搜索结果 ${displayEntries.length} 项`, `${displayEntries.length} search results`) }}</span>
+        <nav v-if="displayEntries.length" class="studio-file-pagination" :aria-label="text('文件分页', 'File pagination')">
+          <span>{{ text(`${pageStartIndex + 1}-${pageEndIndex} / ${displayEntries.length}`, `${pageStartIndex + 1}-${pageEndIndex} / ${displayEntries.length}`) }}</span>
+          <button type="button" :disabled="currentPage <= 1" @click.stop="setCurrentPage(currentPage - 1)">
+            {{ text("上一页", "Prev") }}
+          </button>
+          <strong>{{ currentPage }} / {{ totalPages }}</strong>
+          <button type="button" :disabled="currentPage >= totalPages" @click.stop="setCurrentPage(currentPage + 1)">
+            {{ text("下一页", "Next") }}
+          </button>
+          <select :value="pageSize" :aria-label="text('每页数量', 'Page size')" @change.stop="changePageSize">
+            <option v-for="size in PAGE_SIZE_OPTIONS" :key="size" :value="size">{{ size }}</option>
+          </select>
+        </nav>
       </footer>
 
+      <aside v-if="detailsItem" class="studio-file-details" aria-label="File details" @click.stop>
+        <header class="studio-file-details__head">
+          <span
+            class="studio-file-kind-icon studio-file-kind-icon--large"
+            :class="`studio-file-kind-icon--${fileIconKind(detailsItem)}`"
+            aria-hidden="true"
+          >
+            {{ fileIconText(detailsItem) }}
+          </span>
+          <div>
+            <strong>{{ detailsItem.name }}</strong>
+            <span>{{ detailsItem.path || rootLabel(activeRoot) }}</span>
+          </div>
+          <button type="button" @click.stop="detailsItem = null">
+            <X class="studio-file-icon-button__icon" aria-hidden="true" />
+          </button>
+        </header>
+
+        <section v-if="detailsPreviewUrl && detailsItem.kind === 'file'" class="studio-file-preview">
+          <img
+            v-if="detailsItem.fileKind === 'image'"
+            :src="detailsPreviewUrl"
+            :alt="detailsItem.name"
+          />
+          <video
+            v-else-if="detailsItem.fileKind === 'video'"
+            :src="detailsPreviewUrl"
+            controls
+            preload="metadata"
+          ></video>
+          <audio
+            v-else-if="detailsItem.fileKind === 'audio'"
+            :src="detailsPreviewUrl"
+            controls
+            preload="metadata"
+          ></audio>
+          <div v-else-if="detailsItem.fileKind === 'pdf'" class="studio-file-preview__card">
+            <strong>{{ detailsItem.name }}</strong>
+            <span>PDF</span>
+            <a :href="detailsPreviewUrl" target="_blank" rel="noopener noreferrer">{{ text("打开预览", "Open preview") }}</a>
+          </div>
+          <div v-else class="studio-file-preview__card">
+            <strong>{{ fileKindLabel(detailsItem) }}</strong>
+            <span>{{ text("可在编辑器或浏览器中打开", "Open with the editor or browser") }}</span>
+          </div>
+        </section>
+
+        <dl class="studio-file-details__grid">
+          <div>
+            <dt>{{ text("类型", "Type") }}</dt>
+            <dd>{{ itemTypeLabel(detailsItem) }}</dd>
+          </div>
+          <div>
+            <dt>{{ text("大小", "Size") }}</dt>
+            <dd>{{ formatFileSize(detailsItem.size) }}</dd>
+          </div>
+          <div>
+            <dt>{{ text("修改时间", "Modified") }}</dt>
+            <dd>{{ formatIsoTimestamp(detailsItem.modifiedAt) }}</dd>
+          </div>
+          <div>
+            <dt>{{ text("权限/所有者", "Perm / Owner") }}</dt>
+            <dd>{{ filePermissionLabel(detailsItem) }}</dd>
+          </div>
+          <div>
+            <dt>{{ text("根目录", "Root") }}</dt>
+            <dd>{{ rootLabel(rootForId(detailsItem.rootId)) }}</dd>
+          </div>
+          <div>
+            <dt>{{ text("绝对路径", "Absolute path") }}</dt>
+            <dd :title="detailsItem.absolutePath">{{ detailsItem.absolutePath }}</dd>
+          </div>
+        </dl>
+
+        <div class="studio-file-details__actions">
+          <button type="button" @click.stop="copyPathsToClipboard([detailsItem])">{{ text("复制路径", "Copy path") }}</button>
+          <button v-if="detailsItem.kind === 'file'" type="button" @click.stop="openSharedFilePreviewForItem(detailsItem)">{{ text("打开", "Open") }}</button>
+          <button type="button" @click.stop="openTerminalHere(detailsItem)">{{ text("终端", "Terminal") }}</button>
+          <button v-if="detailsItem.kind === 'file'" type="button" @click.stop="downloadItem(detailsItem)">{{ text("下载", "Download") }}</button>
+        </div>
+      </aside>
+
+      <Teleport to="body">
       <section
         v-if="contextMenu.open"
         class="studio-file-context-menu"
@@ -527,9 +547,9 @@
           <Archive class="studio-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("创建压缩", "Create archive") }}</span>
         </button>
-        <button type="button" role="menuitem" :disabled="!contextMenu.item || !isZipArchiveItem(contextMenu.item)" @click="unarchiveItems(contextMenu.item ? [contextMenu.item] : [])">
+        <button type="button" role="menuitem" :disabled="!contextMenu.item || !isExtractableArchiveItem(contextMenu.item)" @click="openOperationDialog('unarchive', contextMenu.item || undefined)">
           <PackageOpen class="studio-file-context-menu__icon" aria-hidden="true" />
-          <span>{{ text("解压到当前目录", "Extract here") }}</span>
+          <span>{{ text("解压...", "Extract...") }}</span>
         </button>
         <button type="button" role="menuitem" :disabled="!contextMenu.item" @click="showContextDetails">
           <Info class="studio-file-context-menu__icon" aria-hidden="true" />
@@ -540,7 +560,9 @@
           <span>{{ text("删除", "Delete") }}</span>
         </button>
       </section>
+      </Teleport>
 
+      <Teleport to="body">
       <section
         v-if="operationDialog"
         class="studio-file-dialog"
@@ -561,40 +583,106 @@
             <span>{{ operationDialogInputLabel }}</span>
             <input v-model="operationDialog.value" type="text" required autofocus />
           </label>
+          <label v-if="operationDialog?.kind === 'unarchive'">
+            <span>{{ text("目标目录", "Destination directory") }}</span>
+            <input
+              v-model="operationDialog.value"
+              type="text"
+              spellcheck="false"
+              :placeholder="currentAbsolutePath"
+              autofocus
+            />
+          </label>
           <div class="studio-file-dialog__actions">
             <button type="button" @click="closeOperationDialog">{{ text("取消", "Cancel") }}</button>
             <button type="submit" class="studio-file-dialog__primary">{{ operationDialogConfirmLabel }}</button>
           </div>
         </form>
       </section>
+      </Teleport>
 
-      <FileEditorWorkspace
-        v-if="editorTabs.length"
-        v-model="editorDraft"
-        :tabs="editorTabs"
-        :active-tab-id="activeEditorId"
-        :maximized="editorMaximized"
-        :state="editorState"
-        :loading="editorLoading"
-        :saving="editorSaving"
-        :dirty="editorDirty"
-        :download-url="editorDownloadUrl"
-        :recent-files="recentEditorFiles"
-        :line-count="editorLineCount"
-        :character-count="editorCharacterCount"
-        :language-label="editorLanguageLabel"
-        :search-request="editorSearchRequest"
-        :theme="resolvedTheme"
-        :text="text"
-        @set-active="setActiveEditor"
-        @close="closeEditor"
-        @search="requestEditorSearch"
-        @download="downloadEditorFile"
-        @reset="resetEditor"
-        @save="saveEditor"
-        @open-recent="openRecentEditorFile"
-        @update:maximized="editorMaximized = $event"
-      />
+      <Teleport to="body">
+      <section
+        v-if="uploadPanelOpen"
+        class="studio-file-upload-panel"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="uploadPanelTitle"
+        @click.self="closeUploadPanel"
+      >
+        <div class="studio-file-upload-panel__card" @click.stop>
+          <header class="studio-file-upload-panel__head">
+            <div>
+              <strong>{{ uploadPanelTitle }}</strong>
+              <span>{{ currentAbsolutePath }}</span>
+            </div>
+            <button type="button" :disabled="uploadBusy" @click="closeUploadPanel">
+              <X class="studio-file-icon-button__icon" aria-hidden="true" />
+            </button>
+          </header>
+          <div class="studio-file-upload-panel__actions">
+            <button type="button" :disabled="uploadBusy" @click="chooseUploadFiles">
+              <Upload class="studio-file-toolbar__icon" aria-hidden="true" />
+              <span>{{ text("选择文件", "Choose files") }}</span>
+            </button>
+            <button type="button" :disabled="uploadBusy" @click="chooseUploadFolder">
+              <FolderUp class="studio-file-toolbar__icon" aria-hidden="true" />
+              <span>{{ text("选择目录", "Choose folder") }}</span>
+            </button>
+            <span>
+              {{ text(`队列 ${uploadCompletedCount}/${uploadQueueItems.length}`, `${uploadCompletedCount}/${uploadQueueItems.length} done`) }}
+              <template v-if="uploadQueueItems.length"> · {{ formatFileSize(uploadTotalSize) }}</template>
+            </span>
+          </div>
+          <div v-if="uploadQueueItems.length" class="studio-file-upload-panel__queue" role="list">
+            <article
+              v-for="item in uploadQueueItems"
+              :key="item.id"
+              class="studio-file-upload-row"
+              :class="`studio-file-upload-row--${item.status}`"
+              role="listitem"
+            >
+              <span class="studio-file-upload-row__name" :title="item.relativePath">{{ item.relativePath }}</span>
+              <span class="studio-file-upload-row__meta">
+                {{ formatFileSize(item.size) }} · {{ uploadStatusLabel(item.status) }}
+              </span>
+              <span class="studio-file-upload-row__progress" aria-hidden="true">
+                <span :style="{ width: `${item.progress}%` }"></span>
+              </span>
+              <small v-if="item.error">{{ item.error }}</small>
+            </article>
+          </div>
+          <div v-else class="studio-file-upload-panel__empty">
+            {{ text("可以选择文件、目录，也可以拖拽或粘贴到文件管理器。", "Choose files, choose a folder, or drag and paste into the file manager.") }}
+          </div>
+        </div>
+      </section>
+      </Teleport>
+
+      <section
+        v-if="sharedFilePreviewTabs.length"
+        class="studio-file-shared-preview"
+        :class="{ 'studio-file-shared-preview--maximized': sharedFilePreviewMaximized }"
+        aria-label="Shared file preview"
+        @click.stop
+      >
+        <TerminalFilePreviewPane
+          :tabs="sharedFilePreviewTabs"
+          :active-tab-id="activeSharedFilePreviewId"
+          :placement="sharedFilePreviewPlacement"
+          :maximized="sharedFilePreviewMaximized"
+          :terminal-collapsed="false"
+          :workspace-fullscreen="sharedFilePreviewMaximized"
+          @select="activeSharedFilePreviewId = $event"
+          @close="closeSharedFilePreview"
+          @reorder="reorderSharedFilePreview"
+          @set-placement="sharedFilePreviewPlacement = $event"
+          @toggle-maximize="sharedFilePreviewMaximized = !sharedFilePreviewMaximized"
+          @toggle-workspace-fullscreen="sharedFilePreviewMaximized = !sharedFilePreviewMaximized"
+          @insert-terminal-paths="handleSharedPreviewInsertTerminalPaths"
+          @reveal-resource="handleSharedPreviewRevealResource"
+        />
+      </section>
     </template>
 
     <div v-else class="file-manager-loading file-manager-loading--error">
@@ -604,11 +692,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import {
   Archive,
-  Check,
   ChevronLeft,
   ChevronRight,
   ClipboardPaste,
@@ -622,6 +709,7 @@ import {
   Info,
   Link2,
   List,
+  MoreHorizontal,
   PackageOpen,
   Pencil,
   Plus,
@@ -641,7 +729,6 @@ import type {
   FilesReadPayload,
   FilesSearchPayload,
   FilesSummaryPayload,
-  FileTreeNodePayload,
 } from "../../../../../types/files";
 import { useLocalePreference } from "../../shared/locale";
 import { useThemePreference } from "../../shared/theme";
@@ -654,7 +741,6 @@ import {
   createDirectory,
   createFile,
   deletePaths,
-  fetchDirectoryTree,
   fetchFilesSummary,
   movePath,
   readFileContent,
@@ -664,7 +750,12 @@ import {
   unarchiveFile,
   uploadFiles,
 } from "./api";
-import FileEditorWorkspace from "./FileEditorWorkspace.vue";
+import TerminalFilePreviewPane from "../terminal/TerminalFilePreviewPane.vue";
+import {
+  createTerminalFilePreviewTab,
+  type TerminalFilePreviewTab,
+  type TerminalPreviewPlacement,
+} from "../terminal/terminal-file-preview";
 import {
   resolveTerminalFileKind,
   type TerminalFileKind,
@@ -675,6 +766,7 @@ import {
   shellQuoteTerminalPath,
   type TerminalResourceTransferPayload,
 } from "../terminal/terminal-resource-transfer";
+import "../terminal/terminal-workspace.css";
 import "./files-workspace.css";
 
 defineProps<{
@@ -685,7 +777,7 @@ type ViewMode = "list" | "grid";
 type SortKey = "name" | "size" | "modifiedAt";
 type SortDirection = "asc" | "desc";
 type ClipboardMode = "copy" | "cut";
-type OperationDialogKind = "new-file" | "new-folder" | "rename" | "archive" | "delete";
+type OperationDialogKind = "new-file" | "new-folder" | "rename" | "archive" | "unarchive" | "delete";
 
 interface NativeFileItem extends FileEntrySummary {
   id: string;
@@ -758,6 +850,19 @@ interface UploadFileCandidate {
   relativePath?: string;
 }
 
+type UploadPanelMode = "files" | "folder";
+type UploadQueueStatus = "queued" | "reading" | "uploading" | "done" | "error";
+
+interface UploadQueueItem {
+  id: string;
+  name: string;
+  relativePath: string;
+  size: number;
+  status: UploadQueueStatus;
+  progress: number;
+  error: string;
+}
+
 interface BrowserFileSystemEntry {
   isFile: boolean;
   isDirectory: boolean;
@@ -787,10 +892,22 @@ const TERMINAL_WORKSPACE_STORAGE_KEY = `${TERMINAL_DESCRIPTORS_STORAGE_KEY}.work
 const TERMINAL_PENDING_LAUNCH_STORAGE_KEY = "openclaw-studio.terminal.pendingLaunchMetadata";
 const MAX_UPLOAD_FILE_BYTES = 24 * 1024 * 1024;
 const MAX_UPLOAD_BATCH_BYTES = 96 * 1024 * 1024;
+const PAGE_SIZE_OPTIONS = [50, 100, 200] as const;
+const EXTRACTABLE_ARCHIVE_EXTENSIONS = [
+  ".zip",
+  ".tar",
+  ".tar.gz",
+  ".tgz",
+  ".tar.bz2",
+  ".tbz2",
+  ".tar.xz",
+  ".txz",
+];
 
 const router = useRouter();
 const { locale, text } = useLocalePreference();
 const { resolvedTheme } = useThemePreference();
+let addressEditingExitTimer: number | null = null;
 
 const summary = ref<FilesSummaryPayload | null>(null);
 const loading = ref(false);
@@ -803,7 +920,6 @@ const activeDirectoryTabId = ref("");
 const directoryTabs = ref<DirectoryTab[]>([]);
 const directoryPayload = ref<FilesDirectoryPayload | null>(null);
 const directoryEntries = ref<NativeFileItem[]>([]);
-const childDirectoryNodes = ref<FileTreeNodePayload[]>([]);
 const directoryHistory = ref<DirectoryHistoryEntry[]>([]);
 const directoryHistoryIndex = ref(-1);
 const selectedItemIds = ref<Set<string>>(new Set());
@@ -812,6 +928,13 @@ const clipboardItems = ref<NativeFileItem[]>([]);
 const viewMode = ref<ViewMode>(readStoredViewMode());
 const sortKey = ref<SortKey>("name");
 const sortDirection = ref<SortDirection>("asc");
+const currentPage = ref(1);
+const pageSize = ref<(typeof PAGE_SIZE_OPTIONS)[number]>(100);
+const addressInput = ref("");
+const addressFormRef = ref<HTMLFormElement | null>(null);
+const addressInputRef = ref<HTMLInputElement | null>(null);
+const addressEditing = ref(false);
+const showHiddenFiles = ref(true);
 const searchQuery = ref("");
 const recursiveSearch = ref(false);
 const searchResults = ref<NativeFileItem[] | null>(null);
@@ -830,6 +953,14 @@ const contextMenu = ref<{
 });
 const uploadInput = ref<HTMLInputElement | null>(null);
 const uploadDirectoryInput = ref<HTMLInputElement | null>(null);
+const uploadPanelOpen = ref(false);
+const uploadPanelMode = ref<UploadPanelMode>("files");
+const uploadQueueItems = ref<UploadQueueItem[]>([]);
+const uploadBusy = ref(false);
+const sharedFilePreviewTabs = ref<TerminalFilePreviewTab[]>([]);
+const activeSharedFilePreviewId = ref("");
+const sharedFilePreviewPlacement = ref<TerminalPreviewPlacement>("top");
+const sharedFilePreviewMaximized = ref(false);
 
 const editorMaximized = ref(false);
 const editorTabs = ref<EditorFileTab[]>([]);
@@ -841,8 +972,6 @@ const visibleRoots = computed(() =>
   (summary.value?.roots || []).filter((root) => root.id !== "project-root"),
 );
 const activeRoot = computed(() => rootForId(activeRootId.value));
-const parentPath = computed(() => directoryPayload.value?.parentPath ?? null);
-const breadcrumbs = computed(() => directoryPayload.value?.breadcrumbs || []);
 const currentAbsolutePath = computed(() =>
   buildAbsolutePath(activeRoot.value, activeDirectoryPath.value),
 );
@@ -866,13 +995,32 @@ const displayEntries = computed(() => {
     : source;
   return sortNativeFileItems([...filtered], sortKey.value, sortDirection.value);
 });
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(displayEntries.value.length / pageSize.value)),
+);
+const pageStartIndex = computed(() =>
+  Math.min(displayEntries.value.length, (currentPage.value - 1) * pageSize.value),
+);
+const pageEndIndex = computed(() =>
+  Math.min(displayEntries.value.length, pageStartIndex.value + pageSize.value),
+);
+const pagedDisplayEntries = computed(() =>
+  displayEntries.value.slice(pageStartIndex.value, pageEndIndex.value),
+);
 const selectedItems = computed(() =>
   displayEntries.value.filter((entry) => selectedItemIds.value.has(entry.id)),
 );
-const selectedZipItems = computed(() => selectedItems.value.filter((item) => isZipArchiveItem(item)));
+const selectedArchiveItems = computed(() => selectedItems.value.filter((item) => isExtractableArchiveItem(item)));
 const allVisibleSelected = computed(() =>
-  Boolean(displayEntries.value.length && displayEntries.value.every((entry) => selectedItemIds.value.has(entry.id))),
+  Boolean(pagedDisplayEntries.value.length && pagedDisplayEntries.value.every((entry) => selectedItemIds.value.has(entry.id))),
 );
+const addressSegments = computed(() => {
+  const segments = activeDirectoryPath.value.split("/").filter(Boolean);
+  return segments.map((label, index) => ({
+    label,
+    path: segments.slice(0, index + 1).join("/"),
+  }));
+});
 const canGoBack = computed(() => directoryHistoryIndex.value > 0);
 const canGoForward = computed(() =>
   directoryHistoryIndex.value >= 0 && directoryHistoryIndex.value < directoryHistory.value.length - 1,
@@ -978,6 +1126,7 @@ const operationDialogTitle = computed(() => {
   if (dialog.kind === "new-folder") return text("新建目录", "New folder");
   if (dialog.kind === "rename") return text("重命名", "Rename");
   if (dialog.kind === "archive") return text("创建压缩包", "Create archive");
+  if (dialog.kind === "unarchive") return text("解压压缩包", "Extract archive");
   return text("删除文件", "Delete files");
 });
 const operationDialogDescription = computed(() => {
@@ -992,21 +1141,42 @@ const operationDialogDescription = computed(() => {
   if (dialog.kind === "archive") {
     return text("压缩包会创建在当前目录。", "The archive will be created in the current directory.");
   }
+  if (dialog.kind === "unarchive") {
+    return text(
+      `将解压 ${dialog.items.length || 1} 个压缩包。留空表示当前目录。`,
+      `Extract ${dialog.items.length || 1} archive(s). Leave empty for the current directory.`,
+    );
+  }
   return text("请输入名称。", "Enter a name.");
 });
 const operationDialogInputLabel = computed(() => {
   const dialog = operationDialog.value;
   if (!dialog) return "";
   if (dialog.kind === "archive") return text("压缩包名称", "Archive name");
+  if (dialog.kind === "unarchive") return text("目标目录", "Destination directory");
   return text("名称", "Name");
 });
-const operationDialogNeedsInput = computed(() => operationDialog.value?.kind !== "delete");
+const operationDialogNeedsInput = computed(() =>
+  Boolean(operationDialog.value && operationDialog.value.kind !== "delete" && operationDialog.value.kind !== "unarchive"),
+);
 const operationDialogConfirmLabel = computed(() => {
   const kind = operationDialog.value?.kind;
   if (kind === "delete") return text("确认删除", "Delete");
   if (kind === "archive") return text("创建", "Create");
+  if (kind === "unarchive") return text("解压", "Extract");
   return text("确认", "Confirm");
 });
+const uploadCompletedCount = computed(() =>
+  uploadQueueItems.value.filter((item) => item.status === "done").length,
+);
+const uploadTotalSize = computed(() =>
+  uploadQueueItems.value.reduce((total, item) => total + item.size, 0),
+);
+const uploadPanelTitle = computed(() =>
+  uploadPanelMode.value === "folder"
+    ? text("上传目录", "Upload folder")
+    : text("上传文件", "Upload files"),
+);
 
 function readStoredViewMode(): ViewMode {
   try {
@@ -1060,7 +1230,7 @@ function rootForId(rootId: string): FileRootSummary | null {
 }
 
 function normalizePortableFilePath(value: string): string {
-  return value.replace(/\\/g, "/").replace(/\/+/g, "/");
+  return value.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
 }
 
 function joinPortableFilePath(basePath: string, relativePath: string): string {
@@ -1072,6 +1242,68 @@ function joinPortableFilePath(basePath: string, relativePath: string): string {
 
 function buildAbsolutePath(root: FileRootSummary | null | undefined, relativePath: string): string {
   return root ? joinPortableFilePath(root.absolutePath, relativePath) : relativePath;
+}
+
+function normalizePortableDirectoryPath(value: string): string {
+  const absolute = value.startsWith("/");
+  const segments: string[] = [];
+  for (const segment of normalizePortableFilePath(value).split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  const normalized = segments.join("/");
+  return absolute ? `/${normalized}`.replace(/\/+$/g, "") || "/" : normalized;
+}
+
+function normalizeAbsolutePathForCompare(value: string): string {
+  const normalized = normalizePortableDirectoryPath(value);
+  return normalized.replace(/\/+$/g, "") || "/";
+}
+
+function resolveAddressNavigationTarget(value: string): { rootId: string; directoryPath: string } | null {
+  const raw = normalizePortableFilePath(value);
+  if (!raw) return null;
+  const homeRoot = visibleRoots.value.find((root) => root.id === "home-root");
+  if ((raw === "~" || raw.startsWith("~/")) && homeRoot) {
+    return {
+      rootId: homeRoot.id,
+      directoryPath: normalizePortableDirectoryPath(raw.slice(2)).replace(/^\/+|\/+$/g, ""),
+    };
+  }
+  if (raw.startsWith("/") || /^[A-Za-z]:\//.test(raw)) {
+    const target = normalizeAbsolutePathForCompare(raw);
+    const candidates = [...visibleRoots.value].sort((left, right) =>
+      normalizeAbsolutePathForCompare(right.absolutePath).length - normalizeAbsolutePathForCompare(left.absolutePath).length,
+    );
+    for (const root of candidates) {
+      const base = normalizeAbsolutePathForCompare(root.absolutePath);
+      if (target === base) {
+        return { rootId: root.id, directoryPath: "" };
+      }
+      if (base === "/" && target.startsWith("/")) {
+        return { rootId: root.id, directoryPath: target.replace(/^\/+/g, "") };
+      }
+      if (target.startsWith(`${base}/`)) {
+        return {
+          rootId: root.id,
+          directoryPath: target.slice(base.length + 1).replace(/^\/+|\/+$/g, ""),
+        };
+      }
+    }
+    return null;
+  }
+  return {
+    rootId: activeRootId.value,
+    directoryPath: normalizePortableDirectoryPath(joinPortableFilePath(activeDirectoryPath.value, raw)).replace(/^\/+|\/+$/g, ""),
+  };
+}
+
+function syncAddressInput(rootId = activeRootId.value, directoryPath = activeDirectoryPath.value): void {
+  addressInput.value = buildAbsolutePath(rootForId(rootId), directoryPath);
 }
 
 function createDirectoryTab(rootId: string, directoryPath: string): DirectoryTab {
@@ -1163,15 +1395,17 @@ async function loadDirectory(
   directoryLoading.value = true;
   directoryError.value = "";
   try {
-    const payload = await browseDirectory(rootId, normalizedPath, true);
+    const payload = await browseDirectory(rootId, normalizedPath, showHiddenFiles.value);
     directoryPayload.value = payload;
     activeRootId.value = payload.rootId;
     activeDirectoryPath.value = payload.directoryPath;
     directoryEntries.value = payload.entries.map((entry) =>
       toNativeFileItem(entry, payload.rootId, payload.directoryPath),
     );
+    currentPage.value = 1;
     selectedItemIds.value = new Set();
     detailsItem.value = null;
+    syncAddressInput(payload.rootId, payload.directoryPath);
     updateActiveDirectoryTab(payload.rootId, payload.directoryPath);
     if (!options.preserveSearch) {
       searchResults.value = null;
@@ -1179,22 +1413,10 @@ async function loadDirectory(
     if (options.pushHistory !== false) {
       pushDirectoryHistory(payload.rootId, payload.directoryPath);
     }
-    await refreshTreeNodes(payload.rootId, payload.directoryPath);
   } catch (error) {
     directoryError.value = error instanceof Error ? error.message : text("目录读取失败", "Failed to read directory");
   } finally {
     directoryLoading.value = false;
-  }
-}
-
-async function refreshTreeNodes(rootId = activeRootId.value, directoryPath = activeDirectoryPath.value): Promise<void> {
-  try {
-    const tree = await fetchDirectoryTree(rootId, directoryPath, true);
-    childDirectoryNodes.value = tree.children || [];
-  } catch {
-    childDirectoryNodes.value = directoryEntries.value
-      .filter((entry) => entry.kind === "directory")
-      .map((entry) => ({ path: entry.path, name: entry.name }));
   }
 }
 
@@ -1207,10 +1429,6 @@ function pushDirectoryHistory(rootId: string, directoryPath: string): void {
   directoryHistoryIndex.value = directoryHistory.value.length - 1;
 }
 
-function navigateToDirectory(pathValue: string): void {
-  void loadDirectory(activeRootId.value, pathValue, { pushHistory: true });
-}
-
 function navigateToRoot(rootId: string): void {
   void loadDirectory(rootId, "", { pushHistory: true });
 }
@@ -1219,6 +1437,65 @@ function handleRootSelect(event: Event): void {
   const rootId = (event.target as HTMLSelectElement).value;
   if (!rootId) return;
   navigateToRoot(rootId);
+}
+
+function openAddressSegment(directoryPath: string): void {
+  addressEditing.value = false;
+  void loadDirectory(activeRootId.value, directoryPath, { pushHistory: true });
+}
+
+function submitAddressNavigation(): void {
+  const target = resolveAddressNavigationTarget(addressInput.value);
+  if (!target) {
+    setNotice("warning", text("路径不在可访问目录内", "Path is outside accessible roots"));
+    cancelAddressEditing();
+    return;
+  }
+  addressEditing.value = false;
+  void loadDirectory(target.rootId, target.directoryPath, { pushHistory: true });
+}
+
+function resetAddressInput(): void {
+  syncAddressInput();
+}
+
+function startAddressEditing(): void {
+  cancelAddressEditingExit();
+  addressEditing.value = true;
+  syncAddressInput();
+  closeContextMenu();
+  void nextTick(() => {
+    addressInputRef.value?.focus();
+    addressInputRef.value?.select();
+  });
+}
+
+function cancelAddressEditing(): void {
+  cancelAddressEditingExit();
+  resetAddressInput();
+  addressEditing.value = false;
+}
+
+function cancelAddressEditingExit(): void {
+  if (addressEditingExitTimer === null) return;
+  window.clearTimeout(addressEditingExitTimer);
+  addressEditingExitTimer = null;
+}
+
+function scheduleAddressEditingExit(): void {
+  if (!addressEditing.value) return;
+  cancelAddressEditingExit();
+  addressEditingExitTimer = window.setTimeout(() => {
+    addressEditingExitTimer = null;
+    const activeElement = document.activeElement;
+    if (
+      activeElement instanceof Node &&
+      addressFormRef.value?.contains(activeElement)
+    ) {
+      return;
+    }
+    cancelAddressEditing();
+  }, 80);
 }
 
 function goBack(): void {
@@ -1246,6 +1523,7 @@ async function runSearch(): Promise<void> {
   const query = searchQuery.value.trim();
   if (!query) {
     searchResults.value = null;
+    currentPage.value = 1;
     return;
   }
   directoryLoading.value = true;
@@ -1255,11 +1533,12 @@ async function runSearch(): Promise<void> {
       query,
       activeDirectoryPath.value,
       recursiveSearch.value,
-      true,
+      showHiddenFiles.value,
     );
     searchResults.value = payload.results.map((entry) =>
       toNativeFileItem(entry, payload.rootId, entry.directoryPath),
     );
+    currentPage.value = 1;
   } catch (error) {
     setNotice("error", error instanceof Error ? error.message : text("搜索失败", "Search failed"));
   } finally {
@@ -1298,10 +1577,12 @@ function closeDirectoryTab(tabId: string): void {
 function setSort(key: SortKey): void {
   if (sortKey.value === key) {
     sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
+    currentPage.value = 1;
     return;
   }
   sortKey.value = key;
   sortDirection.value = "asc";
+  currentPage.value = 1;
 }
 
 function sortGlyph(key: SortKey): string {
@@ -1317,14 +1598,32 @@ function toggleSelection(item: NativeFileItem, event?: MouseEvent): void {
     next.add(item.id);
   }
   selectedItemIds.value = next;
-  detailsItem.value = item;
 }
 
 function toggleAllVisible(event: Event): void {
   const checked = (event.target as HTMLInputElement).checked;
-  selectedItemIds.value = checked
-    ? new Set(displayEntries.value.map((entry) => entry.id))
-    : new Set();
+  const next = new Set(selectedItemIds.value);
+  for (const entry of pagedDisplayEntries.value) {
+    if (checked) {
+      next.add(entry.id);
+    } else {
+      next.delete(entry.id);
+    }
+  }
+  selectedItemIds.value = next;
+}
+
+function setCurrentPage(page: number): void {
+  const normalizedPage = Math.floor(Number(page) || 1);
+  currentPage.value = Math.max(1, Math.min(totalPages.value, normalizedPage));
+}
+
+function changePageSize(event: Event): void {
+  const nextSize = Number((event.target as HTMLSelectElement).value);
+  pageSize.value = PAGE_SIZE_OPTIONS.includes(nextSize as (typeof PAGE_SIZE_OPTIONS)[number])
+    ? (nextSize as (typeof PAGE_SIZE_OPTIONS)[number])
+    : 100;
+  currentPage.value = 1;
 }
 
 function selectedOrSingle(item: NativeFileItem | null | undefined): NativeFileItem[] {
@@ -1339,23 +1638,29 @@ function openItem(item: NativeFileItem): void {
     void loadDirectory(item.rootId, item.path, { pushHistory: true });
     return;
   }
-  detailsItem.value = item;
-  if (isCodeEditableItem(item)) {
-    void openEditorForItem(item);
-  }
+  openSharedFilePreviewForItem(item);
 }
 
 function openContextMenu(event: MouseEvent, item: NativeFileItem): void {
   if (!selectedItemIds.value.has(item.id)) {
     selectedItemIds.value = new Set([item.id]);
   }
-  detailsItem.value = item;
   contextMenu.value = {
     open: true,
-    x: Math.min(event.clientX, window.innerWidth - 260),
-    y: Math.min(event.clientY, window.innerHeight - 420),
+    x: clampContextMenuX(event.clientX),
+    y: clampContextMenuY(event.clientY),
     item,
   };
+}
+
+function clampContextMenuX(clientX: number): number {
+  const menuWidth = 280;
+  return Math.max(8, Math.min(clientX, window.innerWidth - menuWidth - 8));
+}
+
+function clampContextMenuY(clientY: number): number {
+  const maxMenuHeight = Math.min(560, window.innerHeight - 16);
+  return Math.max(8, Math.min(clientY, window.innerHeight - maxMenuHeight - 8));
 }
 
 function closeContextMenu(): void {
@@ -1382,7 +1687,7 @@ function openContextItem(): void {
 
 function editContextItem(): void {
   const item = contextMenu.value.item;
-  if (item && isCodeEditableItem(item)) void openEditorForItem(item);
+  if (item && item.kind === "file") openSharedFilePreviewForItem(item);
   closeContextMenu();
 }
 
@@ -1430,7 +1735,7 @@ function showContextDetails(): void {
 }
 
 function openOperationDialog(kind: OperationDialogKind, item: NativeFileItem | null = null): void {
-  const items = kind === "delete" || kind === "archive"
+  const items = kind === "delete" || kind === "archive" || kind === "unarchive"
     ? selectedOrSingle(item)
     : item
       ? [item]
@@ -1438,6 +1743,8 @@ function openOperationDialog(kind: OperationDialogKind, item: NativeFileItem | n
   const defaultName =
     kind === "rename" && item
       ? item.name
+      : kind === "unarchive"
+        ? currentAbsolutePath.value
       : kind === "archive"
         ? buildDefaultArchiveName(items)
         : "";
@@ -1483,6 +1790,9 @@ async function submitOperationDialog(): Promise<void> {
     } else if (dialog.kind === "archive") {
       const items = dialog.items.length ? dialog.items : selectedItems.value;
       await createArchiveForItems(items, dialog.value);
+    } else if (dialog.kind === "unarchive") {
+      const items = dialog.items.length ? dialog.items : selectedArchiveItems.value;
+      await unarchiveItems(items, dialog.value);
     } else if (dialog.kind === "delete") {
       await deleteItems(dialog.items.length ? dialog.items : selectedItems.value);
     }
@@ -1573,21 +1883,40 @@ function downloadArchiveForItems(items: NativeFileItem[]): void {
   triggerBrowserDownload(buildArchiveDownloadUrl(rootId, items.map((item) => item.path), archiveName));
 }
 
-async function unarchiveItems(items: NativeFileItem[]): Promise<void> {
-  const zipItems = items.filter((item) => isZipArchiveItem(item));
-  if (!zipItems.length) return;
+function resolveUnarchiveDestinationDirectory(
+  targetInput: string,
+  rootId: string,
+): string {
+  const normalizedInput = String(targetInput || "").trim();
+  if (!normalizedInput) return activeDirectoryPath.value;
+
+  const target = resolveAddressNavigationTarget(normalizedInput);
+  if (!target) {
+    throw new Error(text("目标目录不在可访问目录内", "Destination is outside accessible roots"));
+  }
+  if (target.rootId !== rootId) {
+    throw new Error(text("压缩包只能解压到同一根目录", "Archives can only be extracted within the same root"));
+  }
+  return target.directoryPath;
+}
+
+async function unarchiveItems(items: NativeFileItem[], targetInput = ""): Promise<void> {
+  const archiveItems = items.filter((item) => isExtractableArchiveItem(item));
+  if (!archiveItems.length) return;
   try {
-    for (const item of zipItems) {
+    for (const item of archiveItems) {
+      const destinationDirectoryPath = resolveUnarchiveDestinationDirectory(targetInput, item.rootId);
       await unarchiveFile({
         rootId: item.rootId,
         archivePath: item.path,
         directoryPath: item.directoryPath || activeDirectoryPath.value,
+        destinationDirectoryPath,
       });
     }
     setNotice(
       "success",
-      zipItems.length > 1
-        ? text(`已解压 ${zipItems.length} 个压缩包`, `Extracted ${zipItems.length} archives`)
+      archiveItems.length > 1
+        ? text(`已解压 ${archiveItems.length} 个压缩包`, `Extracted ${archiveItems.length} archives`)
         : text("压缩包已解压", "Archive extracted"),
     );
     refreshCurrentDirectory();
@@ -1598,10 +1927,10 @@ async function unarchiveItems(items: NativeFileItem[]): Promise<void> {
   }
 }
 
-function isZipArchiveItem(item: NativeFileItem): boolean {
+function isExtractableArchiveItem(item: NativeFileItem): boolean {
   if (item.kind !== "file") return false;
-  const extension = String(item.ext || "").replace(/^\./, "").toLowerCase();
-  return extension === "zip" || item.name.toLowerCase().endsWith(".zip");
+  const fileName = item.name.toLowerCase();
+  return EXTRACTABLE_ARCHIVE_EXTENSIONS.some((extension) => fileName.endsWith(extension));
 }
 
 function isCodeEditableItem(item: NativeFileItem): boolean {
@@ -1756,14 +2085,84 @@ function studioRefForItem(item: NativeFileItem): string {
   return `studio-file:${item.absolutePath}`;
 }
 
-function handleItemDragStart(event: DragEvent, item: NativeFileItem): void {
-  const payload: TerminalResourceTransferPayload = {
+function terminalResourcePayloadForItem(item: NativeFileItem): TerminalResourceTransferPayload {
+  return {
     rootId: item.rootId,
     path: item.path,
     absolutePath: item.absolutePath,
     kind: item.kind,
     name: item.name,
   };
+}
+
+function openSharedFilePreviewForItem(item: NativeFileItem): void {
+  if (item.kind !== "file") return;
+  const tab = createTerminalFilePreviewTab(terminalResourcePayloadForItem(item));
+  if (!tab) return;
+  const existingIndex = sharedFilePreviewTabs.value.findIndex((candidate) => candidate.id === tab.id);
+  if (existingIndex >= 0) {
+    sharedFilePreviewTabs.value.splice(existingIndex, 1, tab);
+  } else {
+    sharedFilePreviewTabs.value.push(tab);
+  }
+  activeSharedFilePreviewId.value = tab.id;
+  detailsItem.value = null;
+}
+
+function closeSharedFilePreview(tabId = activeSharedFilePreviewId.value): void {
+  const normalizedTabId = String(tabId || "").trim();
+  if (!normalizedTabId) return;
+  const index = sharedFilePreviewTabs.value.findIndex((tab) => tab.id === normalizedTabId);
+  if (index === -1) return;
+  const wasActive = activeSharedFilePreviewId.value === normalizedTabId;
+  sharedFilePreviewTabs.value.splice(index, 1);
+  if (wasActive) {
+    activeSharedFilePreviewId.value =
+      sharedFilePreviewTabs.value[index]?.id ||
+      sharedFilePreviewTabs.value[index - 1]?.id ||
+      "";
+  }
+  if (!sharedFilePreviewTabs.value.length) {
+    sharedFilePreviewMaximized.value = false;
+  }
+}
+
+function reorderSharedFilePreview(payload: { tabId: string; targetIndex: number }): void {
+  const tabId = String(payload?.tabId || "").trim();
+  if (!tabId) return;
+  const currentIndex = sharedFilePreviewTabs.value.findIndex((tab) => tab.id === tabId);
+  if (currentIndex === -1) return;
+  const [tab] = sharedFilePreviewTabs.value.splice(currentIndex, 1);
+  const targetIndex = Math.max(0, Math.min(sharedFilePreviewTabs.value.length, Math.floor(Number(payload.targetIndex) || 0)));
+  sharedFilePreviewTabs.value.splice(targetIndex, 0, tab);
+  activeSharedFilePreviewId.value = tabId;
+}
+
+function handleSharedPreviewInsertTerminalPaths(paths: string[]): void {
+  const normalizedPaths = Array.from(new Set(paths.map((entry) => String(entry || "").trim()).filter(Boolean)));
+  if (!normalizedPaths.length) return;
+  void writeTextToSystemClipboard(normalizedPaths.join(" ")).then(() => {
+    setNotice("success", text("路径已复制，可粘贴到终端", "Path copied for terminal paste"));
+  }).catch((error) => {
+    setNotice("error", error instanceof Error ? error.message : text("复制失败", "Copy failed"));
+  });
+}
+
+function handleSharedPreviewRevealResource(payload: TerminalResourceTransferPayload): void {
+  const rootId = String(payload?.rootId || "").trim();
+  const filePath = String(payload?.path || "").trim();
+  if (!rootId || !filePath) return;
+  const directoryPath = filePath.split("/").slice(0, -1).join("/");
+  void loadDirectory(rootId, directoryPath, { pushHistory: true }).then(() => {
+    const target = directoryEntries.value.find((entry) => entry.path === filePath) || null;
+    if (target) {
+      selectedItemIds.value = new Set([target.id]);
+    }
+  });
+}
+
+function handleItemDragStart(event: DragEvent, item: NativeFileItem): void {
+  const payload = terminalResourcePayloadForItem(item);
   event.dataTransfer?.setData(TERMINAL_RESOURCE_DRAG_MIME, serializeTerminalResourceTransfer(payload));
   event.dataTransfer?.setData("text/plain", shellQuoteTerminalPath(item.absolutePath));
   event.dataTransfer?.setData("text/uri-list", `file://${item.absolutePath}`);
@@ -1772,17 +2171,20 @@ function handleItemDragStart(event: DragEvent, item: NativeFileItem): void {
 async function handleDropUpload(event: DragEvent): Promise<void> {
   const candidates = await collectUploadCandidatesFromDataTransfer(event.dataTransfer);
   if (!candidates.length) return;
+  openUploadPanel("files");
   await uploadFileCandidates(candidates);
 }
 
 async function handleUploadInputChange(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
+  openUploadPanel("files");
   await uploadFileList(Array.from(input.files || []));
   input.value = "";
 }
 
 async function handleUploadDirectoryInputChange(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
+  openUploadPanel("folder");
   await uploadFileList(Array.from(input.files || []), true);
   input.value = "";
 }
@@ -1792,6 +2194,7 @@ async function handleWorkbenchPaste(event: ClipboardEvent): Promise<void> {
   const files = Array.from(event.clipboardData?.files || []);
   if (!files.length) return;
   event.preventDefault();
+  openUploadPanel("files");
   await uploadFileList(files);
 }
 
@@ -1805,51 +2208,138 @@ async function uploadFileList(files: File[], preserveRelativePath = false): Prom
   })));
 }
 
+function openUploadPanel(mode: UploadPanelMode = "files"): void {
+  uploadPanelMode.value = mode;
+  uploadPanelOpen.value = true;
+  closeContextMenu();
+}
+
+function closeUploadPanel(): void {
+  if (uploadBusy.value) return;
+  uploadPanelOpen.value = false;
+}
+
+function chooseUploadFiles(): void {
+  uploadPanelMode.value = "files";
+  uploadInput.value?.click();
+}
+
+function chooseUploadFolder(): void {
+  uploadPanelMode.value = "folder";
+  uploadDirectoryInput.value?.click();
+}
+
+function buildUploadQueue(candidates: UploadFileCandidate[]): UploadQueueItem[] {
+  const now = Date.now().toString(36);
+  return candidates.map((candidate, index) => {
+    const relativePath = normalizePortableFilePath(candidate.relativePath || candidate.file.name).replace(/^\/+/g, "");
+    return {
+      id: `${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+      name: candidate.file.name,
+      relativePath: relativePath || candidate.file.name,
+      size: candidate.file.size,
+      status: "queued",
+      progress: 0,
+      error: "",
+    };
+  });
+}
+
+function updateUploadQueueItem(id: string, patch: Partial<UploadQueueItem>): void {
+  uploadQueueItems.value = uploadQueueItems.value.map((item) =>
+    item.id === id ? { ...item, ...patch } : item,
+  );
+}
+
+function markUploadQueueError(candidates: UploadFileCandidate[], message: string, targetFileName?: string): void {
+  const queue = buildUploadQueue(candidates);
+  uploadQueueItems.value = queue.map((item) => {
+    const isTarget = !targetFileName || item.name === targetFileName;
+    return isTarget
+      ? { ...item, status: "error", progress: 100, error: message }
+      : item;
+  });
+  uploadPanelOpen.value = true;
+  uploadBusy.value = false;
+}
+
+function uploadStatusLabel(status: UploadQueueStatus): string {
+  if (status === "queued") return text("等待", "Queued");
+  if (status === "reading") return text("读取中", "Reading");
+  if (status === "uploading") return text("上传中", "Uploading");
+  if (status === "done") return text("完成", "Done");
+  return text("失败", "Failed");
+}
+
 async function uploadFileCandidates(candidates: UploadFileCandidate[]): Promise<void> {
   if (!candidates.length) return;
+  const queue = buildUploadQueue(candidates);
+  uploadQueueItems.value = queue;
+  uploadPanelOpen.value = true;
   const oversized = candidates.find((candidate) => candidate.file.size > MAX_UPLOAD_FILE_BYTES);
   if (oversized) {
-    setNotice(
-      "error",
-      text(
-        `${oversized.file.name} 超过 ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}，请使用终端或分批上传。`,
-        `${oversized.file.name} exceeds ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}. Use terminal upload or split the batch.`,
-      ),
+    const message = text(
+      `${oversized.file.name} 超过 ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}，请使用终端或分批上传。`,
+      `${oversized.file.name} exceeds ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}. Use terminal upload or split the batch.`,
     );
+    markUploadQueueError(candidates, message, oversized.file.name);
+    setNotice("error", message);
     return;
   }
   const batchSize = candidates.reduce((total, candidate) => total + candidate.file.size, 0);
   if (batchSize > MAX_UPLOAD_BATCH_BYTES) {
-    setNotice(
-      "error",
-      text(
-        `本次上传约 ${formatFileSize(batchSize)}，请分批上传。`,
-        `This upload is about ${formatFileSize(batchSize)}. Split it into smaller batches.`,
-      ),
+    const message = text(
+      `本次上传约 ${formatFileSize(batchSize)}，请分批上传。`,
+      `This upload is about ${formatFileSize(batchSize)}. Split it into smaller batches.`,
     );
+    markUploadQueueError(candidates, message);
+    setNotice("error", message);
     return;
   }
+  uploadBusy.value = true;
   try {
     const payloadFiles = [];
-    for (const candidate of candidates) {
+    for (const [index, candidate] of candidates.entries()) {
+      const queueItem = queue[index];
+      updateUploadQueueItem(queueItem.id, { status: "reading", progress: 8 });
       payloadFiles.push({
         fileName: candidate.file.name,
         relativePath: candidate.relativePath,
-        dataBase64: await readFileAsDataUrl(candidate.file),
+        dataBase64: await readFileAsDataUrl(candidate.file, (progress) =>
+          updateUploadQueueItem(queueItem.id, { status: "reading", progress }),
+        ),
       });
+      updateUploadQueueItem(queueItem.id, { status: "uploading", progress: 72 });
     }
+    uploadQueueItems.value = uploadQueueItems.value.map((item) => ({
+      ...item,
+      status: item.status === "error" ? item.status : "uploading",
+      progress: Math.max(item.progress, 88),
+    }));
     await uploadFiles({
       rootId: activeRootId.value,
       directoryPath: activeDirectoryPath.value,
       files: payloadFiles,
     });
+    uploadQueueItems.value = uploadQueueItems.value.map((item) => ({
+      ...item,
+      status: "done",
+      progress: 100,
+      error: "",
+    }));
     setNotice(
       "success",
       candidates.length > 1 ? text(`已上传 ${candidates.length} 个文件`, `Uploaded ${candidates.length} files`) : text("文件已上传", "File uploaded"),
     );
     refreshCurrentDirectory();
   } catch (error) {
-    setNotice("error", error instanceof Error ? error.message : text("上传失败", "Upload failed"));
+    const message = error instanceof Error ? error.message : text("上传失败", "Upload failed");
+    uploadQueueItems.value = uploadQueueItems.value.map((item) =>
+      item.status === "done" ? item : { ...item, status: "error", progress: 100, error: message },
+    );
+    setNotice("error", message);
+  } finally {
+    uploadBusy.value = false;
   }
 }
 
@@ -1926,10 +2416,15 @@ function readBrowserDirectoryEntries(
   });
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+function readFileAsDataUrl(file: File, onProgress?: (progress: number) => void): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const progress = 8 + Math.round((event.loaded / Math.max(1, event.total)) * 58);
+      onProgress?.(Math.min(66, progress));
+    };
     reader.onerror = () => reject(reader.error || new Error("Failed to read upload file"));
     reader.readAsDataURL(file);
   });
@@ -2135,8 +2630,20 @@ function openTerminalHere(item?: NativeFileItem | null): void {
   try {
     const raw = globalThis.localStorage?.getItem(TERMINAL_DESCRIPTORS_STORAGE_KEY);
     const descriptors = raw ? JSON.parse(raw) as unknown[] : [];
+    const reusableDescriptors = Array.isArray(descriptors)
+      ? descriptors.filter((entry) => {
+        const candidate = entry as { sessionId?: unknown; status?: unknown };
+        const status = String(candidate?.status || "").trim();
+        return (
+          candidate?.sessionId !== sessionId &&
+          status !== "completed" &&
+          status !== "failed" &&
+          status !== "lost"
+        );
+      })
+      : [];
     const nextDescriptors = Array.isArray(descriptors)
-      ? [descriptor, ...descriptors.filter((entry) => (entry as { sessionId?: unknown })?.sessionId !== sessionId)]
+      ? [descriptor, ...reusableDescriptors]
       : [descriptor];
     globalThis.localStorage?.setItem(TERMINAL_DESCRIPTORS_STORAGE_KEY, JSON.stringify(nextDescriptors));
     globalThis.localStorage?.setItem(TERMINAL_WORKSPACE_STORAGE_KEY, JSON.stringify({
@@ -2194,7 +2701,13 @@ function isTextEditingEventTarget(target: EventTarget | null): boolean {
   ].join(",")));
 }
 
-function handleGlobalClick(): void {
+function isInsideFileContextMenu(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest(".studio-file-context-menu"));
+}
+
+function handleGlobalTransientSurfaceEvent(event: Event): void {
+  if (!contextMenu.value.open) return;
+  if (isInsideFileContextMenu(event.target)) return;
   closeContextMenu();
 }
 
@@ -2204,14 +2717,37 @@ function handleEditorBeforeUnload(event: BeforeUnloadEvent): void {
   event.returnValue = "";
 }
 
+watch(showHiddenFiles, () => {
+  if (searchActive.value && searchQuery.value.trim()) {
+    void runSearch();
+    return;
+  }
+  refreshCurrentDirectory();
+});
+
+watch(searchQuery, () => {
+  currentPage.value = 1;
+});
+
+watch(totalPages, () => {
+  setCurrentPage(currentPage.value);
+});
+
 onMounted(() => {
-  window.addEventListener("click", handleGlobalClick);
+  document.addEventListener("pointerdown", handleGlobalTransientSurfaceEvent, true);
+  document.addEventListener("focusin", handleGlobalTransientSurfaceEvent, true);
+  window.addEventListener("resize", closeContextMenu);
+  window.addEventListener("blur", closeContextMenu);
   window.addEventListener("beforeunload", handleEditorBeforeUnload);
   void reloadSummary();
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener("click", handleGlobalClick);
+  cancelAddressEditingExit();
+  document.removeEventListener("pointerdown", handleGlobalTransientSurfaceEvent, true);
+  document.removeEventListener("focusin", handleGlobalTransientSurfaceEvent, true);
+  window.removeEventListener("resize", closeContextMenu);
+  window.removeEventListener("blur", closeContextMenu);
   window.removeEventListener("beforeunload", handleEditorBeforeUnload);
   persistViewMode();
 });

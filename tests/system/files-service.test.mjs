@@ -37,6 +37,21 @@ function writeZipEntry(zipPath, entryName, content) {
   );
 }
 
+function writeTarGzEntry(tarPath, entryName, content) {
+  fs.mkdirSync(path.dirname(tarPath), { recursive: true });
+  execFileSync(
+    "python3",
+    [
+      "-c",
+      "import io, pathlib, sys, tarfile; pathlib.Path(sys.argv[1]).parent.mkdir(parents=True, exist_ok=True); data=sys.argv[3].encode(); info=tarfile.TarInfo(sys.argv[2]); info.size=len(data); t=tarfile.open(sys.argv[1], 'w:gz'); t.addfile(info, io.BytesIO(data)); t.close()",
+      tarPath,
+      entryName,
+      content,
+    ],
+    { stdio: "ignore" },
+  );
+}
+
 function makeConfig(root) {
   const openclawRoot = path.join(root, ".openclaw");
   const projectRoot = path.join(root, "project");
@@ -225,7 +240,7 @@ test("files service exposes tree nodes and download payloads", () => {
   assert.equal(fontDownload.mimeType, "font/woff2");
 });
 
-test("files service can archive and unarchive zip bundles", () => {
+test("files service can archive and unarchive zip and tar bundles", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
   writeFile(path.join(config.projectRoot, "bundle", "a.txt"), "alpha\n");
@@ -266,6 +281,37 @@ test("files service can archive and unarchive zip bundles", () => {
   assert.equal(fs.existsSync(download.archivePath), true);
   assert.equal(download.fileName, "bundle-download.zip");
   fs.rmSync(download.cleanupDir, { recursive: true, force: true });
+
+  service.archivePaths({
+    rootId: "project-root",
+    directoryPath: "",
+    paths: ["bundle"],
+    name: "bundle-backup.tar.gz",
+  });
+  assert.equal(fs.existsSync(path.join(config.projectRoot, "bundle-backup.tar.gz")), true);
+
+  fs.mkdirSync(path.join(config.projectRoot, "restore-tar"), { recursive: true });
+  service.unarchiveFile({
+    rootId: "project-root",
+    archivePath: "bundle-backup.tar.gz",
+    directoryPath: "restore-tar",
+  });
+  assert.match(
+    fs.readFileSync(path.join(config.projectRoot, "restore-tar", "bundle", "nested", "b.txt"), "utf8"),
+    /beta/,
+  );
+
+  fs.mkdirSync(path.join(config.projectRoot, "restore-explicit"), { recursive: true });
+  service.unarchiveFile({
+    rootId: "project-root",
+    archivePath: "bundle-backup.tar.gz",
+    directoryPath: "",
+    destinationDirectoryPath: "restore-explicit",
+  });
+  assert.match(
+    fs.readFileSync(path.join(config.projectRoot, "restore-explicit", "bundle", "a.txt"), "utf8"),
+    /alpha/,
+  );
 });
 
 test("files service rejects zip entries that escape the extraction directory", () => {
@@ -283,6 +329,27 @@ test("files service rejects zip entries that escape the extraction directory", (
     service.unarchiveFile({
       rootId: "project-root",
       archivePath: "unsafe.zip",
+      directoryPath: "restore",
+    }),
+  );
+  assert.equal(fs.existsSync(escapedPath), false);
+});
+
+test("files service rejects tar entries that escape the extraction directory", () => {
+  const root = makeTempRoot();
+  const config = makeConfig(root);
+  const service = createFilesService(config);
+  const archivePath = path.join(config.projectRoot, "unsafe.tar.gz");
+  const restorePath = path.join(config.projectRoot, "restore");
+  const escapedPath = path.join(config.projectRoot, "restore-evil", "escape.txt");
+
+  fs.mkdirSync(restorePath, { recursive: true });
+  writeTarGzEntry(archivePath, "../restore-evil/escape.txt", "escaped\n");
+
+  assert.throws(() =>
+    service.unarchiveFile({
+      rootId: "project-root",
+      archivePath: "unsafe.tar.gz",
       directoryPath: "restore",
     }),
   );

@@ -43,6 +43,8 @@ type ResolvedPath = {
   absolutePath: string;
 };
 
+type ArchiveFormat = "zip" | "tar" | "gztar" | "bztar" | "xztar";
+
 const TEXT_FILE_EXTENSIONS = new Set([
   ".txt",
   ".md",
@@ -226,6 +228,17 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".zst": "application/zstd",
 };
 
+const SUPPORTED_ARCHIVE_FORMATS: Array<{ suffix: string; format: ArchiveFormat }> = [
+  { suffix: ".tar.gz", format: "gztar" },
+  { suffix: ".tgz", format: "gztar" },
+  { suffix: ".tar.bz2", format: "bztar" },
+  { suffix: ".tbz2", format: "bztar" },
+  { suffix: ".tar.xz", format: "xztar" },
+  { suffix: ".txz", format: "xztar" },
+  { suffix: ".zip", format: "zip" },
+  { suffix: ".tar", format: "tar" },
+];
+
 export interface FilesService {
   getSummary(): FilesSummaryPayload;
   listDirectory(rootId: string, directoryPath?: string, showHidden?: boolean): FilesDirectoryPayload;
@@ -245,6 +258,7 @@ export interface FilesService {
   prepareArchiveDownload(payload: FilesArchiveDownloadPayload): {
     archivePath: string;
     fileName: string;
+    mimeType: string;
     cleanupDir: string;
   };
   getDownloadFile(rootId: string, filePath: string): { absolutePath: string; fileName: string; mimeType: string };
@@ -312,7 +326,16 @@ function ensureSafeUploadRelativePath(value: unknown, fallbackName: unknown): st
 
 function ensureArchiveName(value: unknown): string {
   const baseName = ensureSafeName(value);
-  return baseName.toLowerCase().endsWith(".zip") ? baseName : `${baseName}.zip`;
+  return inferArchiveFormat(baseName) ? baseName : `${baseName}.zip`;
+}
+
+function inferArchiveFormat(fileName: string): ArchiveFormat | null {
+  const normalized = String(fileName || "").trim().toLowerCase();
+  return SUPPORTED_ARCHIVE_FORMATS.find((entry) => normalized.endsWith(entry.suffix))?.format || null;
+}
+
+function supportedArchiveFormatLabel(): string {
+  return ".zip, .tar, .tar.gz, .tgz, .tar.bz2, .tbz2, .tar.xz, .txz";
 }
 
 function findNearestExistingAncestor(targetPath: string): string {
@@ -696,6 +719,66 @@ with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
   );
 }
 
+function runPythonTarArchive(
+  archivePath: string,
+  baseDir: string,
+  sourcePaths: string[],
+  format: Exclude<ArchiveFormat, "zip">,
+): void {
+  execFileSync(
+    "python3",
+    [
+      "-c",
+      `
+import pathlib
+import sys
+import tarfile
+
+archive = pathlib.Path(sys.argv[1])
+base_dir = pathlib.Path(sys.argv[2]).resolve()
+archive_format = sys.argv[3]
+sources = [pathlib.Path(value).resolve() for value in sys.argv[4:]]
+mode_by_format = {
+    "tar": "w",
+    "gztar": "w:gz",
+    "bztar": "w:bz2",
+    "xztar": "w:xz",
+}
+mode = mode_by_format[archive_format]
+
+archive.parent.mkdir(parents=True, exist_ok=True)
+with tarfile.open(archive, mode) as tf:
+    for source in sources:
+        try:
+            relative = source.relative_to(base_dir)
+        except ValueError:
+            relative = pathlib.Path(source.name)
+        tf.add(source, arcname=relative.as_posix(), recursive=True)
+`,
+      archivePath,
+      baseDir,
+      format,
+      ...sourcePaths,
+    ],
+    {
+      stdio: "ignore",
+    },
+  );
+}
+
+function runArchiveCreate(
+  archivePath: string,
+  baseDir: string,
+  sourcePaths: string[],
+  format: ArchiveFormat,
+): void {
+  if (format === "zip") {
+    runPythonZipArchive(archivePath, baseDir, sourcePaths);
+    return;
+  }
+  runPythonTarArchive(archivePath, baseDir, sourcePaths, format);
+}
+
 function runPythonZipExtract(archivePath: string, destinationDir: string): void {
   execFileSync(
     "python3",
@@ -726,6 +809,66 @@ with zipfile.ZipFile(archive, "r") as zf:
       stdio: "ignore",
     },
   );
+}
+
+function runPythonTarExtract(
+  archivePath: string,
+  destinationDir: string,
+  format: Exclude<ArchiveFormat, "zip">,
+): void {
+  execFileSync(
+    "python3",
+    [
+      "-c",
+      `
+import pathlib
+import sys
+import tarfile
+
+archive = pathlib.Path(sys.argv[1]).resolve()
+destination = pathlib.Path(sys.argv[2]).resolve()
+archive_format = sys.argv[3]
+mode_by_format = {
+    "tar": "r:",
+    "gztar": "r:gz",
+    "bztar": "r:bz2",
+    "xztar": "r:xz",
+}
+mode = mode_by_format[archive_format]
+destination.mkdir(parents=True, exist_ok=True)
+
+with tarfile.open(archive, mode) as tf:
+    members = tf.getmembers()
+    for member in members:
+        target = (destination / member.name).resolve()
+        try:
+            target.relative_to(destination)
+        except ValueError:
+            raise RuntimeError(f"unsafe archive entry: {member.name}")
+        if member.issym() or member.islnk() or member.isdev():
+            raise RuntimeError(f"unsupported archive entry: {member.name}")
+    tf.extractall(destination, members=members)
+`,
+      archivePath,
+      destinationDir,
+      format,
+    ],
+    {
+      stdio: "ignore",
+    },
+  );
+}
+
+function runArchiveExtract(
+  archivePath: string,
+  destinationDir: string,
+  format: ArchiveFormat,
+): void {
+  if (format === "zip") {
+    runPythonZipExtract(archivePath, destinationDir);
+    return;
+  }
+  runPythonTarExtract(archivePath, destinationDir, format);
 }
 
 export function createFilesService(config: StudioServerConfig): FilesService {
@@ -1148,6 +1291,10 @@ export function createFilesService(config: StudioServerConfig): FilesService {
         }),
       );
       const archiveName = ensureArchiveName(payload.name);
+      const archiveFormat = inferArchiveFormat(archiveName);
+      if (!archiveFormat) {
+        throw new Error(`Unsupported archive format. Supported formats: ${supportedArchiveFormatLabel()}`);
+      }
       const destination = resolveTargetPath(
         config,
         payload.rootId,
@@ -1155,10 +1302,11 @@ export function createFilesService(config: StudioServerConfig): FilesService {
         { allowRoot: false },
       );
       ensureNotExists(destination.absolutePath);
-      runPythonZipArchive(
+      runArchiveCreate(
         destination.absolutePath,
         workingDirectory.absolutePath,
         sources.map((entry) => entry.absolutePath),
+        archiveFormat,
       );
       return {
         success: true,
@@ -1173,16 +1321,17 @@ export function createFilesService(config: StudioServerConfig): FilesService {
         allowRoot: false,
         kind: "file",
       });
-      if (!archive.absolutePath.toLowerCase().endsWith(".zip")) {
-        throw new Error("Only .zip archives are supported");
+      const archiveFormat = inferArchiveFormat(archive.absolutePath);
+      if (!archiveFormat) {
+        throw new Error(`Unsupported archive format. Supported formats: ${supportedArchiveFormatLabel()}`);
       }
       const destinationDirectory = resolveExistingPath(
         config,
         payload.rootId,
-        payload.directoryPath,
+        payload.destinationDirectoryPath || payload.directoryPath,
         { allowRoot: true, kind: "directory" },
       );
-      runPythonZipExtract(archive.absolutePath, destinationDirectory.absolutePath);
+      runArchiveExtract(archive.absolutePath, destinationDirectory.absolutePath, archiveFormat);
       return {
         success: true,
         action: "unarchive",
@@ -1211,15 +1360,18 @@ export function createFilesService(config: StudioServerConfig): FilesService {
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-files-download-"));
       const firstName = path.basename(sources[0].absolutePath);
       const archiveName = ensureArchiveName(payload.name || `${firstName}-download`);
+      const archiveFormat = inferArchiveFormat(archiveName) || "zip";
       const archivePath = path.join(tempDir, archiveName);
-      runPythonZipArchive(
+      runArchiveCreate(
         archivePath,
         root.absolutePath,
         sources.map((entry) => entry.absolutePath),
+        archiveFormat,
       );
       return {
         archivePath,
         fileName: archiveName,
+        mimeType: guessMimeType(archivePath),
         cleanupDir: tempDir,
       };
     },

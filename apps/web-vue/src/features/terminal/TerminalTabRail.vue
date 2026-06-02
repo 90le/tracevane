@@ -371,6 +371,8 @@ onMounted(() => {
     tabRailResizeObserver.observe(tabRailRef.value);
   }
   void nextTick(updateCompactMode);
+  document.addEventListener('pointerdown', closeContextMenuFromOutside, true);
+  document.addEventListener('focusin', closeContextMenuFromOutside, true);
   window.addEventListener('resize', updateCompactMode);
   window.addEventListener('resize', closeMenus);
   window.addEventListener('click', closeMenus);
@@ -380,6 +382,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   tabRailResizeObserver?.disconnect();
   tabRailResizeObserver = null;
+  document.removeEventListener('pointerdown', closeContextMenuFromOutside, true);
+  document.removeEventListener('focusin', closeContextMenuFromOutside, true);
   window.removeEventListener('resize', updateCompactMode);
   window.removeEventListener('resize', closeMenus);
   window.removeEventListener('click', closeMenus);
@@ -413,6 +417,13 @@ function saveRename(sessionId: string): void {
 
 function closeMenus(): void {
   contextMenu.value = null;
+}
+
+function closeContextMenuFromOutside(event: Event): void {
+  if (!contextMenu.value) return;
+  const target = event.target;
+  if (target instanceof Element && target.closest('.terminal-tab-context-menu')) return;
+  closeMenus();
 }
 
 function closeOverflowMenu(): void {

@@ -969,14 +969,16 @@ const resourceClipboardLabel = computed(() => {
 onMounted(() => {
   void loadRoots();
   document.addEventListener('pointerdown', closeResourceHeadMoreFromOutside, true);
-  window.addEventListener('resize', closeResourceHeadMore);
+  document.addEventListener('focusin', closeResourceHeadMoreFromOutside, true);
+  window.addEventListener('resize', closeResourceOverlays);
 });
 
 onBeforeUnmount(() => {
   clearResourceSearch();
   cancelResourceLongPress();
   document.removeEventListener('pointerdown', closeResourceHeadMoreFromOutside, true);
-  window.removeEventListener('resize', closeResourceHeadMore);
+  document.removeEventListener('focusin', closeResourceHeadMoreFromOutside, true);
+  window.removeEventListener('resize', closeResourceOverlays);
 });
 
 watch(rootId, (nextRootId, previousRootId) => {
@@ -1889,11 +1891,19 @@ function closeResourceHeadMore(): void {
   resourceHeadMoreRef.value?.removeAttribute('open');
 }
 
-function closeResourceHeadMoreFromOutside(event: PointerEvent): void {
-  if (!resourceHeadMoreOpen.value) return;
+function closeResourceHeadMoreFromOutside(event: Event): void {
   const target = event.target;
-  if (target instanceof Node && resourceHeadMoreRef.value?.contains(target)) return;
-  closeResourceHeadMore();
+  if (
+    target instanceof Element &&
+    (
+      resourceHeadMoreRef.value?.contains(target) ||
+      target.closest('.terminal-resource-context-menu')
+    )
+  ) {
+    return;
+  }
+  if (resourceHeadMoreOpen.value) closeResourceHeadMore();
+  if (contextMenu.value) closeContextMenu();
 }
 
 function closeResourceOverlays(): void {

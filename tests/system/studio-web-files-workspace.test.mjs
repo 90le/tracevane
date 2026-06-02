@@ -19,7 +19,7 @@ const routeManifest = read("apps/web-vue/src/features/shell/route-manifest.ts");
 const managementManifest = read("apps/web-vue/src/features/management/management-domain-manifest.ts");
 const filesView = read("apps/web-vue/src/views/FilesView.vue");
 const filesControlPage = read("apps/web-vue/src/features/files/FilesControlPage.vue");
-const fileEditorWorkspace = read("apps/web-vue/src/features/files/FileEditorWorkspace.vue");
+const terminalFilePreviewPane = read("apps/web-vue/src/features/terminal/TerminalFilePreviewPane.vue");
 const codeFileEditor = read("apps/web-vue/src/features/files/CodeFileEditor.vue");
 const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.css");
 const filesApi = read("apps/web-vue/src/features/files/api.ts");
@@ -55,14 +55,29 @@ test("files workspace is a native Studio workbench instead of a retired vendor a
   assert.match(filesControlPage, /openCurrentDirectoryInNewTab/);
   assert.match(filesControlPage, /closeDirectoryTab/);
   assert.match(filesControlPage, /studio-file-pathbar/);
-  assert.match(filesControlPage, /studio-file-breadcrumbs/);
+  assert.match(filesControlPage, /studio-file-address/);
+  assert.match(filesControlPage, /addressInput/);
+  assert.match(filesControlPage, /submitAddressNavigation/);
+  assert.match(filesControlPage, /resolveAddressNavigationTarget/);
+  assert.match(filesControlPage, /addressSegments/);
+  assert.match(filesControlPage, /openAddressSegment/);
+  assert.match(filesControlPage, /addressEditing/);
+  assert.match(filesControlPage, /scheduleAddressEditingExit/);
+  assert.match(filesControlPage, /@focusout="scheduleAddressEditingExit"/);
+  assert.match(filesControlPage, /showHiddenFiles/);
   assert.match(filesControlPage, /studio-file-toolbar/);
-  assert.match(filesControlPage, /studio-file-sidebar/);
+  assert.match(filesControlPage, /studio-file-toolbar-more/);
+  assert.doesNotMatch(filesControlPage, /studio-file-sidebar/);
   assert.match(filesControlPage, /studio-file-table/);
   assert.match(filesControlPage, /studio-file-grid/);
   assert.match(filesControlPage, /studio-file-details/);
   assert.match(filesControlPage, /studio-file-context-menu/);
+  assert.match(filesControlPage, /<Teleport to="body">/);
+  assert.match(filesControlPage, /document\.addEventListener\("pointerdown", handleGlobalTransientSurfaceEvent, true\)/);
+  assert.match(filesControlPage, /document\.addEventListener\("focusin", handleGlobalTransientSurfaceEvent, true\)/);
+  assert.doesNotMatch(filesControlPage, /window\.addEventListener\("scroll", closeContextMenu, true\)/);
   assert.match(filesControlPage, /studio-file-dialog/);
+  assert.match(filesControlPage, /studio-file-upload-panel/);
   assert.match(filesControlPage, /viewMode/);
   assert.match(filesControlPage, /sortNativeFileItems/);
   assert.match(filesControlPage, /selectedItemIds/);
@@ -77,7 +92,7 @@ test("files workspace is a native Studio workbench instead of a retired vendor a
 test("native files workspace covers operations expected from an ops-oriented web file manager", () => {
   assert.match(filesControlPage, /fetchFilesSummary/);
   assert.match(filesControlPage, /browseDirectory/);
-  assert.match(filesControlPage, /fetchDirectoryTree/);
+  assert.doesNotMatch(filesControlPage, /fetchDirectoryTree/);
   assert.match(filesControlPage, /searchFiles/);
   assert.match(filesControlPage, /createDirectory/);
   assert.match(filesControlPage, /createFile/);
@@ -86,6 +101,10 @@ test("native files workspace covers operations expected from an ops-oriented web
   assert.match(filesControlPage, /movePath/);
   assert.match(filesControlPage, /deletePaths/);
   assert.match(filesControlPage, /uploadFiles/);
+  assert.match(filesControlPage, /openUploadPanel/);
+  assert.match(filesControlPage, /uploadQueueItems/);
+  assert.match(filesControlPage, /uploadStatusLabel/);
+  assert.match(filesControlPage, /browseDirectory\(rootId, normalizedPath, showHiddenFiles\.value\)/);
   assert.match(filesControlPage, /handleUploadDirectoryInputChange/);
   assert.match(filesControlPage, /handleDropUpload/);
   assert.match(filesControlPage, /handleWorkbenchPaste/);
@@ -95,6 +114,11 @@ test("native files workspace covers operations expected from an ops-oriented web
   assert.match(filesControlPage, /MAX_UPLOAD_BATCH_BYTES/);
   assert.match(filesControlPage, /archivePaths/);
   assert.match(filesControlPage, /unarchiveFile/);
+  assert.match(filesControlPage, /EXTRACTABLE_ARCHIVE_EXTENSIONS/);
+  assert.match(filesControlPage, /isExtractableArchiveItem/);
+  assert.match(filesControlPage, /openOperationDialog\('unarchive'/);
+  assert.match(filesControlPage, /resolveUnarchiveDestinationDirectory/);
+  assert.match(filesControlPage, /destinationDirectoryPath/);
   assert.match(filesControlPage, /downloadArchiveForItems/);
   assert.match(filesControlPage, /buildArchiveDownloadUrl/);
   assert.match(filesControlPage, /buildFileDownloadUrl/);
@@ -103,21 +127,31 @@ test("native files workspace covers operations expected from an ops-oriented web
   assert.match(filesControlPage, /copyContextRelativePath/);
   assert.match(filesControlPage, /copyContextStudioRef/);
   assert.match(filesControlPage, /openTerminalHere/);
+  assert.match(filesControlPage, /PAGE_SIZE_OPTIONS = \[50, 100, 200\] as const/);
+  assert.match(filesControlPage, /pagedDisplayEntries/);
+  assert.match(filesControlPage, /setCurrentPage/);
+  assert.match(filesControlPage, /changePageSize/);
   assert.match(filesControlPage, /TERMINAL_RESOURCE_DRAG_MIME/);
   assert.match(filesControlPage, /serializeTerminalResourceTransfer/);
   assert.match(filesControlPage, /TERMINAL_PENDING_LAUNCH_STORAGE_KEY/);
   assert.match(filesControlPage, /router\.push\(\{ path:\s*`\/terminal\/\$\{encodeURIComponent\(sessionId\)\}`/);
 });
 
-test("file previews and editor workspace remain integrated with the native file manager", () => {
-  assert.match(filesControlPage, /FileEditorWorkspace/);
-  assert.match(filesControlPage, /editorTabs/);
-  assert.match(filesControlPage, /activeEditorId/);
-  assert.match(filesControlPage, /readFileContent/);
-  assert.match(filesControlPage, /saveFileContent/);
-  assert.match(filesControlPage, /dirtyEditorTabs/);
-  assert.match(filesControlPage, /isEditorTabDirty/);
-  assert.match(filesControlPage, /confirmDiscardEditorChanges/);
+test("file previews and editor workspace reuse the terminal preview engine", () => {
+  assert.match(filesControlPage, /TerminalFilePreviewPane/);
+  assert.match(filesControlPage, /createTerminalFilePreviewTab/);
+  assert.match(filesControlPage, /sharedFilePreviewTabs/);
+  assert.match(filesControlPage, /activeSharedFilePreviewId/);
+  assert.match(filesControlPage, /sharedFilePreviewPlacement/);
+  assert.match(filesControlPage, /sharedFilePreviewMaximized/);
+  assert.match(filesControlPage, /openSharedFilePreviewForItem/);
+  assert.match(filesControlPage, /terminalResourcePayloadForItem/);
+  assert.match(filesControlPage, /closeSharedFilePreview/);
+  assert.match(filesControlPage, /reorderSharedFilePreview/);
+  assert.match(filesControlPage, /handleSharedPreviewRevealResource/);
+  assert.match(filesControlPage, /handleSharedPreviewInsertTerminalPaths/);
+  assert.match(filesControlPage, /@toggle-workspace-fullscreen="sharedFilePreviewMaximized = !sharedFilePreviewMaximized"/);
+  assert.doesNotMatch(filesControlPage, /<FileEditorWorkspace/);
   assert.match(filesControlPage, /beforeunload/);
   assert.match(filesControlPage, /recentEditorFiles/);
   assert.match(filesControlPage, /RECENT_EDITOR_FILES_STORAGE_KEY/);
@@ -130,11 +164,12 @@ test("file previews and editor workspace remain integrated with the native file 
   assert.match(filesControlPage, /fileIconKind/);
   assert.match(filesControlPage, /isCodeEditableItem/);
 
-  assert.match(fileEditorWorkspace, /AsyncCodeFileEditor/);
-  assert.match(fileEditorWorkspace, /file-manager-editor-drawer--maximized/);
-  assert.match(fileEditorWorkspace, /最近打开/);
-  assert.match(fileEditorWorkspace, /搜索\/替换/);
-  assert.match(fileEditorWorkspace, /file-manager-editor-drawer__statusbar/);
+  assert.match(terminalFilePreviewPane, /AsyncCodeFileEditor/);
+  assert.match(terminalFilePreviewPane, /AsyncTerminalMarkdownPreview/);
+  assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'pdf'/);
+  assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'video'/);
+  assert.match(terminalFilePreviewPane, /imageZoomByTab/);
+  assert.match(terminalFilePreviewPane, /buildHtmlPreviewSrcdoc/);
   assert.match(codeFileEditor, /CodeMirror|EditorView|codemirror/);
   assert.match(codeFileEditor, /replaceAll/);
   assert.match(codeFileEditor, /key:\s*"Mod-s"/);
@@ -142,24 +177,38 @@ test("file previews and editor workspace remain integrated with the native file 
 });
 
 test("files workspace styles are native, responsive, and kept in feature CSS", () => {
-  for (const source of [filesControlPage, fileEditorWorkspace, codeFileEditor]) {
+  for (const source of [filesControlPage, codeFileEditor]) {
     assert.match(source, /import "\.\/files-workspace\.css";/);
     assert.doesNotMatch(source, /<style scoped>/);
   }
+  assert.match(filesControlPage, /import "\.\.\/terminal\/terminal-workspace\.css";/);
+  assert.doesNotMatch(terminalFilePreviewPane, /<style scoped>/);
 
   assert.match(filesWorkspaceCss, /\.studio-file-workbench\s*\{/);
   assert.match(filesWorkspaceCss, /\.studio-file-tabs\s*\{/);
   assert.match(filesWorkspaceCss, /\.studio-file-pathbar\s*,\s*\n\.studio-file-toolbar\s*\{/);
-  assert.match(filesWorkspaceCss, /\.studio-file-body\s*\{[\s\S]*grid-template-columns:/);
+  assert.match(filesWorkspaceCss, /\.studio-file-address\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-address-trail\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-address__input\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-toolbar-more__panel\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-upload-panel\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-upload-row__progress\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-shared-preview\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-shared-preview--maximized\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-shared-preview \.terminal-file-preview\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-pagination\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
   assert.match(filesWorkspaceCss, /\.studio-file-table\s*\{[\s\S]*table-layout:\s*fixed;/);
   assert.match(filesWorkspaceCss, /\.studio-file-grid\s*\{[\s\S]*repeat\(auto-fill,/);
+  assert.match(filesWorkspaceCss, /\.studio-file-grid-item strong\s*\{[\s\S]*-webkit-line-clamp:\s*2;/);
   assert.match(filesWorkspaceCss, /\.studio-file-kind-icon--folder/);
   assert.match(filesWorkspaceCss, /\.studio-file-kind-icon--code/);
   assert.match(filesWorkspaceCss, /\.studio-file-kind-icon--image/);
   assert.match(filesWorkspaceCss, /\.studio-file-preview img,\n\.studio-file-preview video\s*\{[\s\S]*object-fit:\s*contain;/);
-  assert.match(filesWorkspaceCss, /\.studio-file-context-menu\s*\{[\s\S]*position:\s*fixed;/);
+  assert.match(filesWorkspaceCss, /\.studio-file-details\s*\{[\s\S]*position:\s*absolute;/);
+  assert.match(filesWorkspaceCss, /\.studio-file-context-menu\s*\{[\s\S]*position:\s*fixed;[\s\S]*z-index:\s*1400;[\s\S]*max-height:/);
   assert.match(filesWorkspaceCss, /@media \(max-width:\s*760px\)/);
-  assert.match(filesWorkspaceCss, /\.studio-file-sidebar\s*\{[\s\S]*display:\s*none;/);
+  assert.doesNotMatch(filesWorkspaceCss, /\.studio-file-sidebar/);
   assert.doesNotMatch(filesWorkspaceCss, /linear-gradient|radial-gradient/);
   assert.doesNotMatch(filesWorkspaceCss, /:deep|:global/);
   assert.doesNotMatch(
@@ -207,4 +256,8 @@ test("files api and server routes cover browse, tree, read, search, mutate, uplo
   assert.match(filesService, /findContentSearchSnippet/);
   assert.match(filesService, /target\.relative_to\(destination\)/);
   assert.match(filesService, /unarchive/);
+  assert.match(filesService, /SUPPORTED_ARCHIVE_FORMATS/);
+  assert.match(filesService, /runPythonTarArchive/);
+  assert.match(filesService, /runPythonTarExtract/);
+  assert.match(filesService, /unsupported archive entry/);
 });

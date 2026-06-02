@@ -395,7 +395,10 @@ import {
   resolveProfileLaunchCli,
   resolveTerminalProfileTitle,
 } from './terminal-profiles';
-import { writePendingTerminalLaunchMetadata } from './terminal-launch-metadata';
+import {
+  readPendingTerminalLaunchMetadata,
+  writePendingTerminalLaunchMetadata,
+} from './terminal-launch-metadata';
 import { createTerminalWorkspaceState, type TerminalPaneLayout } from './terminal-workspace-state';
 import './terminal-workspace.css';
 
@@ -421,6 +424,7 @@ const RESOURCE_EXPLORER_RESIZE_STEP = 24;
 const TERMINAL_MAX_SPLIT_PANES = 4;
 
 const workspace = createTerminalWorkspaceState();
+const routeLockedSessionDrafts = new Map<string, TerminalSessionDescriptor>();
 const localActionLayers = buildTerminalActionLayers();
 const actionLayers = ref<TerminalActionLayer[]>(localActionLayers);
 const terminalStatus = ref<Awaited<ReturnType<typeof fetchTerminalStatus>> | null>(null);
@@ -846,6 +850,13 @@ function clearStoredTerminalSessionId(sessionId: string | null | undefined): voi
   }
 }
 
+function isOpenTerminalDescriptor(session: TerminalSessionDescriptor | null | undefined): boolean {
+  return Boolean(
+    session &&
+    (session.status === 'running' || session.status === 'detached'),
+  );
+}
+
 function buildTerminalRoutePath(sessionId: string | null | undefined): string {
   const normalizedSessionId = String(sessionId || '').trim();
   if (!normalizedSessionId) {
@@ -874,7 +885,14 @@ async function syncRouteLockedSession(sessionId: string | null | undefined): Pro
   const normalizedSessionId = String(sessionId || '').trim();
   if (!normalizedSessionId || !workspaceHydrated.value) return;
 
-  const fallbackSession = workspace.sessions.value[normalizedSessionId] || null;
+  const pendingMetadata = readPendingTerminalLaunchMetadata(
+    globalThis.sessionStorage,
+    normalizedSessionId,
+  );
+  const fallbackSession =
+    workspace.sessions.value[normalizedSessionId] ||
+    routeLockedSessionDrafts.get(normalizedSessionId) ||
+    null;
   let descriptor = fallbackSession;
   if (!descriptor || descriptor.title === normalizedSessionId) {
     try {
@@ -883,11 +901,39 @@ async function syncRouteLockedSession(sessionId: string | null | undefined): Pro
       descriptor = fallbackSession;
     }
   }
+  if (!descriptor && pendingMetadata) {
+    descriptor = {
+      sessionId: normalizedSessionId,
+      title: fallbackSession?.title || normalizedSessionId,
+      status: 'running',
+      source: 'manual',
+      profileId: pendingMetadata.profileId || fallbackSession?.profileId || null,
+      targetKind: pendingMetadata.targetKind || fallbackSession?.targetKind || 'local',
+      cwd: pendingMetadata.cwd || fallbackSession?.cwd || null,
+      pinned: typeof pendingMetadata.pinned === 'boolean'
+        ? pendingMetadata.pinned
+        : Boolean(fallbackSession?.pinned),
+      canResume: true,
+      controlState: 'controller',
+      updatedAt: fallbackSession?.updatedAt || new Date().toISOString(),
+      handoffContext: fallbackSession?.handoffContext || null,
+      recentOutputSummary: fallbackSession?.recentOutputSummary || null,
+    };
+  }
+
+  if (descriptor && !isOpenTerminalDescriptor(descriptor) && !pendingMetadata) {
+    workspace.deleteSession(normalizedSessionId);
+    await syncRouteToWorkspaceActiveSession();
+    return;
+  }
 
   if (descriptor) {
     workspace.registerSession({
       ...descriptor,
       sessionId: normalizedSessionId,
+      profileId: pendingMetadata?.profileId || descriptor.profileId || null,
+      targetKind: pendingMetadata?.targetKind || descriptor.targetKind || 'local',
+      cwd: pendingMetadata?.cwd || descriptor.cwd || null,
     });
   }
   workspace.setActiveSession(normalizedSessionId);
@@ -906,6 +952,10 @@ onMounted(async () => {
   const normalizedSessionId = String(route.params.sessionId || '').trim();
   if (normalizedSessionId && typeof globalThis.sessionStorage?.setItem === 'function') {
     globalThis.sessionStorage.setItem(TERMINAL_SESSION_STORAGE_KEY, normalizedSessionId);
+    const draft = workspace.sessions.value[normalizedSessionId] || null;
+    if (draft) {
+      routeLockedSessionDrafts.set(normalizedSessionId, { ...draft });
+    }
   }
 
   try {
@@ -1498,6 +1548,8 @@ async function endSession(sessionId: string): Promise<void> {
   }
 
   workspace.endSession(normalized);
+  routeLockedSessionDrafts.delete(normalized);
+  clearStoredTerminalSessionId(normalized);
   if (wasActive) {
     await syncRouteToWorkspaceActiveSession();
   }
@@ -1511,10 +1563,16 @@ async function deleteSession(sessionId: string): Promise<void> {
   try {
     await deleteTerminalSession(normalized);
   } catch {
-    return;
+    try {
+      await endTerminalSession({ sid: normalized });
+      await deleteTerminalSession(normalized);
+    } catch {
+      // The server may already have dropped the pty or descriptor; keep the local UI authoritative.
+    }
   }
 
   workspace.deleteSession(normalized);
+  routeLockedSessionDrafts.delete(normalized);
   clearStoredTerminalSessionId(normalized);
   if (wasActive) {
     await syncRouteToWorkspaceActiveSession();
@@ -1545,11 +1603,7 @@ async function handleSessionSelect(sessionId: string): Promise<void> {
 function handleSessionClose(sessionId: string): void {
   const normalized = String(sessionId || '').trim();
   if (!normalized) return;
-  const wasActive = workspace.activeSessionId.value === normalized;
-  workspace.closeTab(normalized);
-  if (wasActive) {
-    void syncRouteToWorkspaceActiveSession();
-  }
+  void endSession(normalized);
 }
 
 function handleCloseOtherSessions(sessionId: string): void {
@@ -1559,7 +1613,7 @@ function handleCloseOtherSessions(sessionId: string): void {
   if (!sessionIds.includes(normalized)) return;
   for (const candidateId of sessionIds) {
     if (candidateId !== normalized) {
-      workspace.closeTab(candidateId);
+      void endSession(candidateId);
     }
   }
   workspace.openTab(normalized);
@@ -1573,7 +1627,7 @@ function handleCloseSessionsToRight(sessionId: string): void {
   const sourceIndex = sessionIds.indexOf(normalized);
   if (sourceIndex < 0) return;
   for (const candidateId of sessionIds.slice(sourceIndex + 1)) {
-    workspace.closeTab(candidateId);
+    void endSession(candidateId);
   }
   const activeSessionStillOpen = workspace.tabs.value.some(
     (session) => session.sessionId === workspace.activeSessionId.value,

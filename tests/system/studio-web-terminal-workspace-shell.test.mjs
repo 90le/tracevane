@@ -467,10 +467,13 @@ test("terminal workspace page composes integrated shell sections and binds state
   assert.match(terminalResourceExplorer, /:aria-expanded="resourceHeadMoreOpen"/);
   assert.match(terminalResourceExplorer, /@click\.prevent\.stop="toggleResourceHeadMore"/);
   assert.match(terminalResourceExplorer, /document\.addEventListener\('pointerdown', closeResourceHeadMoreFromOutside, true\)/);
-  assert.match(terminalResourceExplorer, /window\.addEventListener\('resize', closeResourceHeadMore\)/);
+  assert.match(terminalResourceExplorer, /document\.addEventListener\('focusin', closeResourceHeadMoreFromOutside, true\)/);
+  assert.match(terminalResourceExplorer, /window\.addEventListener\('resize', closeResourceOverlays\)/);
+  assert.doesNotMatch(terminalResourceExplorer, /window\.addEventListener\('scroll', closeContextMenu, true\)/);
   assert.match(terminalResourceExplorer, /function uploadDirectoryFromMenu\(\): void/);
   assert.match(terminalResourceExplorer, /function syncResourceHeadMoreState\(\): void/);
-  assert.match(terminalResourceExplorer, /function closeResourceHeadMoreFromOutside\(event: PointerEvent\): void/);
+  assert.match(terminalResourceExplorer, /function closeResourceHeadMoreFromOutside\(event: Event\): void/);
+  assert.match(terminalResourceExplorer, /target\.closest\('\.terminal-resource-context-menu'\)/);
   assert.match(terminalResourceExplorer, /closeResourceHeadMore/);
   assert.match(terminalResourceExplorer, /closeResourceOverlays/);
   assert.match(terminalResourceExplorer, /@keydown\.esc\.stop\.prevent="closeResourceHeadMore"/);
@@ -730,7 +733,8 @@ test("terminal workspace page composes integrated shell sections and binds state
     /writeTerminalResourceDefaultDirectory\(globalThis\.localStorage, \{[\s\S]*rootId: rootId\.value,[\s\S]*path: payload\.path,[\s\S]*absolutePath: payload\.absolutePath,[\s\S]*\}, workspaceDefaultScopeId\.value\)/,
   );
   assert.doesNotMatch(workspacePage, /import \{ browseDirectory \} from '\.\.\/files\/api'/);
-  assert.match(workspacePage, /import \{ writePendingTerminalLaunchMetadata \} from '\.\/terminal-launch-metadata'/);
+  assert.match(workspacePage, /readPendingTerminalLaunchMetadata/);
+  assert.match(workspacePage, /writePendingTerminalLaunchMetadata/);
   assert.match(workspacePage, /readTerminalResourceDefaultDirectory/);
   assert.match(workspacePage, /TERMINAL_RESOURCE_DEFAULT_MAIN_SCOPE_ID/);
   assert.match(workspacePage, /TERMINAL_WORKSPACE_ALL_GROUP_ID/);
@@ -745,6 +749,10 @@ test("terminal workspace page composes integrated shell sections and binds state
   assert.match(workspacePage, /if \(targetKind && targetKind !== 'local'\) return null;/);
   assert.match(workspacePage, /resolveDefaultResourceTerminalCwd\(workspaceGroupId\) \|\|[\s\S]*String\(fallbackCwd \|\| ''\)\.trim\(\)/);
   assert.match(workspacePage, /writePendingTerminalLaunchMetadata\(globalThis\.sessionStorage, sessionId, \{[\s\S]*cwd,[\s\S]*\}\);/);
+  assert.match(workspacePage, /routeLockedSessionDrafts/);
+  assert.match(workspacePage, /const pendingMetadata = readPendingTerminalLaunchMetadata\([\s\S]*globalThis\.sessionStorage,[\s\S]*normalizedSessionId,[\s\S]*\);/);
+  assert.match(workspacePage, /if \(!descriptor && pendingMetadata\) \{/);
+  assert.match(workspacePage, /cwd: pendingMetadata\.cwd \|\| fallbackSession\?\.cwd \|\| null/);
   assert.match(terminalConsole, /readPendingTerminalLaunchMetadata/);
   assert.match(terminalConsole, /removePendingTerminalLaunchMetadata/);
   assert.match(terminalConsole, /function buildSessionAttachMetadata\(sessionId: string\)/);
@@ -986,7 +994,9 @@ test("terminal workspace side activity exposes real search and source control pa
   assert.match(terminalGitPanel, /copyTextToClipboard/);
   assert.match(terminalGitPanel, /globalThis\.addEventListener\('keydown', handleGitPanelKeydown\)/);
   assert.match(terminalGitPanel, /globalThis\.addEventListener\('resize', closeGitContextMenu\)/);
-  assert.match(terminalGitPanel, /globalThis\.addEventListener\('scroll', closeGitContextMenu, true\)/);
+  assert.match(terminalGitPanel, /document\.addEventListener\('pointerdown', closeGitContextMenuFromOutside, true\)/);
+  assert.match(terminalGitPanel, /document\.addEventListener\('focusin', closeGitContextMenuFromOutside, true\)/);
+  assert.doesNotMatch(terminalGitPanel, /globalThis\.addEventListener\('scroll', closeGitContextMenu, true\)/);
   assert.match(terminalGitPanel, /function handleGitPanelKeydown\(event: KeyboardEvent\): void/);
 
   assert.match(terminalGitApi, /\/api\/git\/status/);
@@ -2129,6 +2139,10 @@ test("terminal workspace state exposes explicit session lifecycle actions", () =
   );
   assert.match(stateSource, /endSession\(sessionId: string\): void/);
   assert.match(stateSource, /deleteSession\(sessionId: string\): void/);
+  assert.match(stateSource, /function isOpenTerminalSession\(session: TerminalSessionDescriptor\): boolean/);
+  assert.match(stateSource, /filter\(\(session\) => isOpenTerminalSession\(session\) && session\.canResume\)/);
+  assert.match(stateSource, /if \(!isOpenTerminalSession\(summary\)\) continue;/);
+  assert.match(stateSource, /function removeSessionFromWorkspace\(sessionId: string\): void/);
 });
 
 test("terminal registry exposes rename and delete helpers", () => {
@@ -2261,6 +2275,8 @@ test("terminal tab strip exposes inline rename edit controls and session actions
   assert.doesNotMatch(tabRail, /v-if="tab\.sessionId === activeSessionId" class="terminal-tab-actions"/);
   assert.match(tabRail, /@contextmenu\.prevent="openContextMenu\(\$event, tab\)"/);
   assert.match(tabRail, /terminal-tab-context-menu/);
+  assert.match(tabRail, /document\.addEventListener\('focusin', closeContextMenuFromOutside, true\)/);
+  assert.doesNotMatch(tabRail, /window\.addEventListener\('scroll', closeMenus, true\)/);
   assert.match(tabRail, /renameInputRef/);
   assert.match(tabRail, /ref="tabRailRef"/);
   assert.match(tabRail, /'terminal-tab-rail--compact': compactMode/);
@@ -2397,7 +2413,8 @@ test("terminal session pane hosts integrated tab controls and lifecycle affordan
   assert.match(workspacePage, /@close-sessions-to-right="handleCloseSessionsToRight"/);
   assert.match(workspacePage, /function handleCloseOtherSessions\(sessionId: string\): void/);
   assert.match(workspacePage, /function handleCloseSessionsToRight\(sessionId: string\): void/);
-  assert.match(workspacePage, /workspace\.closeTab\(candidateId\)/);
+  assert.match(workspacePage, /void endSession\(candidateId\)/);
+  assert.match(workspacePage, /function isOpenTerminalDescriptor\(session: TerminalSessionDescriptor \| null \| undefined\): boolean/);
   assert.doesNotMatch(pane, /terminal-session-context|Handoff Context|交接上下文|Source Module|Recommended Command|推荐命令/);
   assert.match(pane, /visiblePaneSessions/);
   assert.match(pane, /effectivePaneLayout/);

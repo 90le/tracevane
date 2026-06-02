@@ -60,6 +60,13 @@ function normalizePaneLayout(layout: unknown): TerminalPaneLayout {
   return "single";
 }
 
+function isOpenTerminalSession(session: TerminalSessionDescriptor): boolean {
+  return (
+    session.status === "running" ||
+    session.status === "detached"
+  );
+}
+
 function mergeTerminalSessionMetadata(
   existing: TerminalSessionDescriptor | null,
   incoming: TerminalSessionDescriptor,
@@ -182,22 +189,12 @@ export function createTerminalWorkspaceState(
 
   const recoverableSessions = computed(() =>
     Object.values(registry.sessionsById)
-      .filter(
-        (session) =>
-          session.canResume ||
-          (Boolean(session.recentOutputSummary?.tailText) &&
-            (session.status === "completed" || session.status === "failed")),
-      )
+      .filter((session) => isOpenTerminalSession(session) && session.canResume)
       .sort(sortTerminalSessionsByUpdatedAtDesc),
   );
 
   const openSessions = computed(() =>
-    tabs.value.filter(
-      (session) =>
-        session.status !== "completed" &&
-        session.status !== "failed" &&
-        session.status !== "lost",
-    ),
+    tabs.value.filter(isOpenTerminalSession),
   );
 
   const recentSessions = computed(() =>
@@ -205,9 +202,7 @@ export function createTerminalWorkspaceState(
       .filter(
         (session) =>
           !tabOrder.value.includes(session.sessionId) &&
-          session.status !== "completed" &&
-          session.status !== "failed" &&
-          session.status !== "lost",
+          isOpenTerminalSession(session),
       )
       .sort(sortTerminalSessionsByUpdatedAtDesc),
   );
@@ -332,6 +327,7 @@ export function createTerminalWorkspaceState(
     for (const summary of summaries) {
       const sessionId = normalizeSessionId(summary.sessionId);
       if (!sessionId) continue;
+      if (!isOpenTerminalSession(summary)) continue;
       persistedSessionIds.add(sessionId);
       const existing = registry.getSession(sessionId);
       registry.upsertSession(
@@ -362,12 +358,10 @@ export function createTerminalWorkspaceState(
     }
 
     const preferredSession = Object.values(registry.sessionsById)
-      .filter(
-        (session) =>
-          session.canResume || Boolean(session.recentOutputSummary?.tailText),
-      )
+      .filter((session) => isOpenTerminalSession(session) && session.canResume)
       .sort(sortTerminalSessionsByUpdatedAtDesc)[0]
       || Object.values(registry.sessionsById)
+        .filter(isOpenTerminalSession)
         .sort(sortTerminalSessionsByUpdatedAtDesc)[0]
       || null;
 
@@ -545,26 +539,12 @@ export function createTerminalWorkspaceState(
   }
 
   function endSession(sessionId: string): void {
-    const current = registry.getSession(sessionId);
-    if (!current) return;
-    registry.upsertSession({
-      ...current,
-      status: current.status === "failed" ? "failed" : "completed",
-      canResume: false,
-      updatedAt: new Date().toISOString(),
-    });
-    persistSessions();
+    removeSessionFromWorkspace(sessionId);
   }
 
-  function deleteSession(sessionId: string): void {
+  function removeSessionFromWorkspace(sessionId: string): void {
     const normalized = normalizeSessionId(sessionId);
-    const current = registry.getSession(normalized);
-    if (
-      current &&
-      (current.status === "running" || current.status === "detached")
-    ) {
-      throw new Error("terminal_session_delete_requires_ended_state");
-    }
+    if (!normalized) return;
 
     registry.removeSession(sessionId);
     tabOrder.value = tabOrder.value.filter((tabId) => tabId !== normalized);
@@ -574,6 +554,10 @@ export function createTerminalWorkspaceState(
     }
     syncPanesToActiveSession(activeSessionId.value);
     persistSessions();
+  }
+
+  function deleteSession(sessionId: string): void {
+    removeSessionFromWorkspace(sessionId);
   }
 
   function closeTab(sessionId: string): void {
