@@ -94,17 +94,10 @@
             <input v-model.number="draft.threadBindings.maxAgeHours" class="form-input" type="number" min="0" />
           </div>
           <label class="option-row">
-            <input v-model="draft.threadBindings.spawnSubagentSessions" class="form-checkbox" type="checkbox" />
+            <input v-model="draft.threadBindings.spawnSessions" class="form-checkbox" type="checkbox" />
             <div>
-              <strong>{{ text('生成子 Agent 会话', 'Spawn subagent sessions') }}</strong>
-              <span>{{ text('Thread 路由命中时允许创建子 Agent 会话。', 'Allow subagent sessions to be spawned when a thread route matches.') }}</span>
-            </div>
-          </label>
-          <label class="option-row">
-            <input v-model="draft.threadBindings.spawnAcpSessions" class="form-checkbox" type="checkbox" />
-            <div>
-              <strong>{{ text('生成 ACP 会话', 'Spawn ACP sessions') }}</strong>
-              <span>{{ text('Thread 路由命中时允许创建 ACP 会话。', 'Allow ACP sessions to be spawned when a thread route matches.') }}</span>
+              <strong>{{ text('生成绑定会话', 'Spawn bound sessions') }}</strong>
+              <span>{{ text('Thread 路由命中时允许创建 Agent 或 ACP 绑定会话。', 'Allow Agent or ACP bound sessions to be spawned when a thread route matches.') }}</span>
             </div>
           </label>
         </div>
@@ -207,8 +200,7 @@ function captureDraftSnapshot(): string {
       enabled: draft.threadBindings.enabled,
       idleHours: draft.threadBindings.idleHours,
       maxAgeHours: draft.threadBindings.maxAgeHours,
-      spawnSubagentSessions: draft.threadBindings.spawnSubagentSessions,
-      spawnAcpSessions: draft.threadBindings.spawnAcpSessions,
+      spawnSessions: draft.threadBindings.spawnSessions,
     },
   });
 }

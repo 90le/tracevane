@@ -25,7 +25,6 @@ export interface FileEntrySummary {
   hidden: boolean;
   textLike: boolean;
   imageLike: boolean;
-  childDirectoryCount: number | null;
 }
 
 export interface FilesSummaryPayload {
@@ -54,7 +53,6 @@ export interface FilesDirectoryPayload {
 export interface FileTreeNodePayload {
   path: string;
   name: string;
-  childDirectoryCount: number;
 }
 
 export interface FilesTreePayload {
@@ -138,6 +136,7 @@ export interface FilesDeletePayload {
 
 export interface FilesUploadItemPayload {
   fileName: string;
+  relativePath?: string;
   dataBase64: string;
   overwrite?: boolean;
 }

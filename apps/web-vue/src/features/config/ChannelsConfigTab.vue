@@ -90,17 +90,10 @@
                     </div>
                     <div class="toggle-grid">
                       <label class="option-row">
-                        <input v-model="getChannel(channelId).threadBindings.spawnSubagentSessions" class="form-checkbox" type="checkbox" />
+                        <input v-model="getChannel(channelId).threadBindings.spawnSessions" class="form-checkbox" type="checkbox" />
                         <div>
-                          <strong>{{ text('派生子代理会话', 'Spawn Subagent Sessions') }}</strong>
-                          <span>{{ text('在线程中自动创建子代理会话', 'Automatically create subagent sessions in threads') }}</span>
-                        </div>
-                      </label>
-                      <label class="option-row">
-                        <input v-model="getChannel(channelId).threadBindings.spawnAcpSessions" class="form-checkbox" type="checkbox" />
-                        <div>
-                          <strong>{{ text('派生 ACP 会话', 'Spawn ACP Sessions') }}</strong>
-                          <span>{{ text('在线程中自动创建 ACP 会话', 'Automatically create ACP sessions in threads') }}</span>
+                          <strong>{{ text('派生绑定会话', 'Spawn bound sessions') }}</strong>
+                          <span>{{ text('在线程中自动创建 Agent 或 ACP 绑定会话', 'Automatically create Agent or ACP bound sessions in threads') }}</span>
                         </div>
                       </label>
                     </div>
@@ -237,8 +230,7 @@ interface ChannelFormState {
     enabled: boolean;
     idleHours: number;
     maxAgeHours: number;
-    spawnSubagentSessions: boolean;
-    spawnAcpSessions: boolean;
+    spawnSessions: boolean;
   };
   accounts: Record<string, ChannelFormAccount>;
 }
@@ -303,8 +295,7 @@ function hydrateFromSummary(summary: ConfigSummaryPayload) {
         enabled: tb?.enabled === true,
         idleHours: tb?.idleHours ?? 24,
         maxAgeHours: tb?.maxAgeHours ?? 0,
-        spawnSubagentSessions: (tb as Record<string, unknown>)?.spawnSubagentSessions === true,
-        spawnAcpSessions: (tb as Record<string, unknown>)?.spawnAcpSessions === true,
+        spawnSessions: (tb as Record<string, unknown>)?.spawnSessions === true,
       },
       accounts,
     };
@@ -395,8 +386,7 @@ function buildChannelsPayload(): Record<string, Record<string, unknown>> {
         enabled: channel.threadBindings.enabled,
         idleHours: Number(channel.threadBindings.idleHours),
         maxAgeHours: Number(channel.threadBindings.maxAgeHours),
-        spawnSubagentSessions: channel.threadBindings.spawnSubagentSessions,
-        spawnAcpSessions: channel.threadBindings.spawnAcpSessions,
+        spawnSessions: channel.threadBindings.spawnSessions,
       },
       accounts,
     };

@@ -64,8 +64,10 @@ function formatFilterLabel(text: TextFn, kind: 'agent' | 'source', label: string
 export function useSessionListFilters(params: {
   baseActiveSessions: ReadonlyRef<ChatSessionRow[]>;
   baseArchivedSessions: ReadonlyRef<ChatSessionRow[]>;
+  archivedSessions: ReadonlyRef<ChatSessionRow[]>;
   baseObservedSessions: ReadonlyRef<ChatSessionRow[]>;
   orderedFolders: ReadonlyRef<ChatSessionFolder[]>;
+  archivedEntry: ReadonlyRef<OrganizerEntry | null>;
   currentFolder: ReadonlyRef<ChatSessionFolder | null>;
   listScope: ReadonlyRef<SessionListScope>;
   archiveViewOpen: ReadonlyRef<boolean>;
@@ -100,7 +102,11 @@ export function useSessionListFilters(params: {
 
       const rootFolders = params.orderedFolders.value.filter((folder) => !folder.parentId);
       const branchSessions = rootFolders.flatMap((folder) => params.collectFolderBranchSessions(folder.id));
-      return Array.from(new Map(branchSessions.map((session) => [session.key, session])).values());
+      return Array.from(new Map([
+        ...params.baseActiveSessions.value,
+        ...branchSessions,
+        ...params.archivedSessions.value,
+      ].map((session) => [session.key, session])).values());
     }
 
     return [
@@ -170,6 +176,15 @@ export function useSessionListFilters(params: {
   }
 
   function matchesSessionFilter(session: ChatSessionRow, observed: boolean): boolean {
+    if (selectedAgentFilter.value !== 'all' && session.agentId !== selectedAgentFilter.value) {
+      return false;
+    }
+    if (selectedSourceFilter.value !== 'all' && session.source.source !== selectedSourceFilter.value) {
+      return false;
+    }
+    if (!normalizedQuery.value) {
+      return true;
+    }
     return sessionMatchesListFilter({
       selectedAgentId: selectedAgentFilter.value,
       selectedSourceId: selectedSourceFilter.value,
@@ -206,6 +221,29 @@ export function useSessionListFilters(params: {
     return folderSessions.some((session) => matchesSessionFilter(session, false));
   }
 
+  function matchesArchivedEntryFilter(entry: OrganizerEntry): boolean {
+    const archivedSessions = params.archivedSessions.value;
+    if (
+      selectedAgentFilter.value !== 'all'
+      && !archivedSessions.some((session) => session.agentId === selectedAgentFilter.value)
+    ) {
+      return false;
+    }
+    if (
+      selectedSourceFilter.value !== 'all'
+      && !archivedSessions.some((session) => session.source.source === selectedSourceFilter.value)
+    ) {
+      return false;
+    }
+    if (!normalizedQuery.value) {
+      return true;
+    }
+    if (entry.title.toLowerCase().includes(normalizedQuery.value)) {
+      return true;
+    }
+    return archivedSessions.some((session) => matchesSessionFilter(session, false));
+  }
+
   const filteredFolders = computed(() => {
     if (params.listScope.value !== 'folders' || params.currentFolder.value || params.archiveViewOpen.value) {
       return [];
@@ -216,7 +254,11 @@ export function useSessionListFilters(params: {
     if (params.listScope.value !== 'folders' || params.currentFolder.value || params.archiveViewOpen.value) {
       return [];
     }
-    return filteredFolders.value;
+    const entries: OrganizerEntry[] = [...filteredFolders.value];
+    if (params.archivedEntry.value && matchesArchivedEntryFilter(params.archivedEntry.value)) {
+      entries.push(params.archivedEntry.value);
+    }
+    return entries;
   });
 
   const filteredActiveSessions = computed(() => params.baseActiveSessions.value

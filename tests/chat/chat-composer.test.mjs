@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   areComposerAttachmentsReady,
@@ -23,6 +26,14 @@ import {
   buildStudioResourceRefFromRelativePath,
   formatMarkdownResourceDestination,
 } from '../../dist/lib/studio-resource-refs.js';
+import {
+  buildPersistableComposerDraft,
+  parsePersistedComposerDraft,
+} from '../../dist/lib/chat-composer-draft.js';
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const chatComposerSource = fs.readFileSync(path.join(rootDir, 'lib/chat-composer.ts'), 'utf8');
+const composerModelSource = fs.readFileSync(path.join(rootDir, 'lib/composer-model.ts'), 'utf8');
 
 test('composer attachments block send while uploading or failed', () => {
   assert.equal(areComposerAttachmentsReady([]), true);
@@ -314,6 +325,73 @@ test('composer send plan centralizes markdown, file refs, resources, and payload
   ]);
 });
 
+test('composer send plan can reuse a normalized document without re-normalizing', () => {
+  const normalizedDocument = [
+    { type: 'text', id: 'text-1', text: '  hello ' },
+    { type: 'resource-ref', id: 'ref-1', attachmentId: 'doc-1', display: 'inline-chip' },
+    { type: 'text', id: 'text-2', text: ' world  ' },
+  ];
+  const plan = buildComposerSendPlan({
+    clientRequestId: 'ui-normalized-send-plan',
+    normalizedDocument: true,
+    document: normalizedDocument,
+    attachments: [
+      {
+        id: 'doc-1',
+        type: 'file',
+        fileName: 'brief.md',
+        mimeType: 'text/markdown',
+        content: '',
+        dataUrl: '/api/chat/sessions/demo/media/brief.md',
+        downloadUrl: '/api/chat/sessions/demo/media/brief.md?download=1',
+        relativePath: 'uploads/brief.md',
+        uploadState: 'ready',
+      },
+    ],
+  });
+
+  assert.equal(plan.document, normalizedDocument);
+  assert.equal(plan.payload.composerDocument, normalizedDocument);
+  assert.equal(plan.previewText, 'hello  world');
+  assert.equal(
+    plan.text,
+    '  hello [@brief.md](uploads:brief.md "studio:inline-chip") world  ',
+  );
+  assert.deepEqual(plan.payload.fileRefs, plan.fileRefs);
+});
+
+test('composer send plan forwards normalized document fast path into model builders', () => {
+  assert.match(chatComposerSource, /normalizedDocument\?: boolean;/);
+  assert.match(chatComposerSource, /input\.normalizedDocument\s*\?\s*\(input\.document \|\| \[\]\)\s*:\s*normalizeComposerDocument\(input\.document\)/);
+  assert.match(
+    chatComposerSource,
+    /serializeComposerDocumentToMarkdown\(document, attachments, \{ normalizedDocument: true \}\)/,
+  );
+  assert.match(
+    chatComposerSource,
+    /buildComposerMessageBlocks\(document, attachments, \{ normalizedDocument: true \}\)/,
+  );
+  assert.match(chatComposerSource, /previewText: extractNormalizedComposerPlainText\(document\)\.trim\(\)/);
+  assert.doesNotMatch(chatComposerSource, /extractComposerPlainText/);
+
+  const serializeStart = composerModelSource.indexOf('export function serializeComposerDocumentToMarkdown');
+  assert.notEqual(serializeStart, -1);
+  const serializeEnd = composerModelSource.indexOf('function buildParagraphSegments', serializeStart);
+  assert.notEqual(serializeEnd, -1);
+  const serializeSource = composerModelSource.slice(serializeStart, serializeEnd);
+  assert.match(serializeSource, /options: \{ normalizedDocument\?: boolean \} = \{\}/);
+  assert.match(serializeSource, /const nodes = options\.normalizedDocument \? \(document \|\| \[\]\) : normalizeComposerDocument\(document\);/);
+
+  const blocksStart = composerModelSource.indexOf('export function buildComposerMessageBlocks');
+  assert.notEqual(blocksStart, -1);
+  const blocksEnd = composerModelSource.indexOf('export function buildComposerFileRefs', blocksStart);
+  assert.notEqual(blocksEnd, -1);
+  const blocksSource = composerModelSource.slice(blocksStart, blocksEnd);
+  assert.match(blocksSource, /options: \{ normalizedDocument\?: boolean \} = \{\}/);
+  assert.match(blocksSource, /const normalized = options\.normalizedDocument \? \(document \|\| \[\]\) : normalizeComposerDocument\(document\);/);
+  assert.match(blocksSource, /serializeComposerDocumentToMarkdown\(normalized, attachments, \{ normalizedDocument: true \}\)/);
+});
+
 test('composer send plan keeps legacy inline image fallback isolated from uploaded file refs', () => {
   const plan = buildComposerSendPlan({
     clientRequestId: 'ui-legacy-image',
@@ -384,4 +462,84 @@ test('composer send plan preserves file refs when preparing queued flush payload
     },
   ]);
   assert.equal(plan.payload.attachments, undefined);
+});
+
+test('composer draft persistence keeps ready uploads and prunes volatile resource refs', () => {
+  const draft = buildPersistableComposerDraft({
+    updatedAt: '2026-06-01T10:00:00.000Z',
+    document: [
+      { type: 'text', id: 'text-1', text: '请看 ' },
+      { type: 'resource-ref', id: 'ref-ready', attachmentId: 'ready-doc', display: 'inline-chip' },
+      { type: 'text', id: 'text-2', text: ' 和 ' },
+      { type: 'resource-ref', id: 'ref-uploading', attachmentId: 'uploading-doc', display: 'inline-chip' },
+    ],
+    attachments: [
+      {
+        id: 'ready-doc',
+        type: 'file',
+        fileName: 'ready.pdf',
+        mimeType: 'application/pdf',
+        content: 'local-cache-is-not-persisted',
+        dataUrl: '/api/chat/sessions/demo/media/ready.pdf',
+        downloadUrl: '/api/chat/sessions/demo/media/ready.pdf?download=1',
+        relativePath: 'uploads/ready.pdf',
+        uploadState: 'ready',
+        size: 128,
+      },
+      {
+        id: 'uploading-doc',
+        type: 'file',
+        fileName: 'uploading.pdf',
+        mimeType: 'application/pdf',
+        content: 'base64',
+        dataUrl: 'data:application/pdf;base64,base64',
+        relativePath: null,
+        uploadState: 'uploading',
+      },
+    ],
+  });
+
+  assert.ok(draft);
+  assert.equal(draft.updatedAt, '2026-06-01T10:00:00.000Z');
+  assert.equal(draft.attachments.length, 1);
+  assert.equal(draft.attachments[0]?.id, 'ready-doc');
+  assert.equal('content' in draft.attachments[0], false);
+  assert.equal(
+    draft.document.some((node) => node.type === 'resource-ref' && node.attachmentId === 'uploading-doc'),
+    false,
+  );
+});
+
+test('composer persisted draft parser rejects broken drafts and restores ready attachment state', () => {
+  assert.equal(parsePersistedComposerDraft({ version: 2 }), null);
+  assert.equal(parsePersistedComposerDraft({ version: 1, document: [], attachments: [] }), null);
+
+  const parsed = parsePersistedComposerDraft({
+    version: 1,
+    updatedAt: '2026-06-01T11:00:00.000Z',
+    document: [
+      { type: 'text', id: 'text-1', text: 'draft with file ' },
+      { type: 'resource-ref', id: 'ref-1', attachmentId: 'doc-1', display: 'inline-chip' },
+      { type: 'resource-ref', id: 'ref-missing', attachmentId: 'missing-doc', display: 'inline-chip' },
+    ],
+    attachments: [
+      {
+        id: 'doc-1',
+        type: 'file',
+        fileName: 'notes.md',
+        mimeType: 'text/markdown',
+        dataUrl: '/api/chat/sessions/demo/media/notes.md',
+        downloadUrl: '/api/chat/sessions/demo/media/notes.md?download=1',
+        relativePath: 'uploads/notes.md',
+        uploadState: 'failed',
+      },
+    ],
+  });
+
+  assert.ok(parsed);
+  assert.equal(parsed.attachments[0]?.uploadState, 'ready');
+  assert.equal(
+    parsed.document.some((node) => node.type === 'resource-ref' && node.attachmentId === 'missing-doc'),
+    false,
+  );
 });

@@ -78,3 +78,59 @@ test("buildTerminalSessionDisplayTitle falls back to a short shell label", () =>
   assert.equal(summary.labelZh, "终端");
   assert.equal(summary.labelEn, "Shell");
 });
+
+test("resolveNextTerminalSessionTabId wraps across terminal sessions", () => {
+  const tabs = [
+    { sessionId: "term-a" },
+    { sessionId: "term-b" },
+    { sessionId: "term-c" },
+  ];
+
+  assert.equal(
+    selectors.resolveNextTerminalSessionTabId(tabs, "term-a", 1),
+    "term-b",
+  );
+  assert.equal(
+    selectors.resolveNextTerminalSessionTabId(tabs, "term-a", -1),
+    "term-c",
+  );
+  assert.equal(
+    selectors.resolveNextTerminalSessionTabId(tabs, "term-c", 1),
+    "term-a",
+  );
+  assert.equal(
+    selectors.resolveNextTerminalSessionTabId(tabs, "missing", 1),
+    "term-a",
+  );
+  assert.equal(
+    selectors.resolveNextTerminalSessionTabId(tabs, "missing", -1),
+    "term-c",
+  );
+});
+
+test("resolveNextTerminalSessionTabId ignores empty ids and single-tab sets", () => {
+  assert.equal(
+    selectors.resolveNextTerminalSessionTabId([], "term-a", 1),
+    "",
+  );
+  assert.equal(
+    selectors.resolveNextTerminalSessionTabId([{ sessionId: "term-a" }], "term-a", 1),
+    "",
+  );
+  assert.equal(
+    selectors.resolveNextTerminalSessionTabId(
+      [{ sessionId: "" }, { sessionId: "term-a" }, { sessionId: " " }],
+      "term-a",
+      -1,
+    ),
+    "",
+  );
+  assert.equal(
+    selectors.resolveNextTerminalSessionTabId(
+      [{ sessionId: "" }, { sessionId: "term-a" }, { sessionId: "term-b" }],
+      "term-a",
+      1,
+    ),
+    "term-b",
+  );
+});

@@ -588,6 +588,161 @@ test('run_overlay keeps tool-only runs visible while history stays canonical and
   }
 });
 
+test('websocket chat stream replays buffered events after the last seen stream sequence', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-stream-replay-'));
+  const workspace = path.join(root, 'workspace');
+  const primaryEvents = [];
+  const keeperEvents = [];
+  const replayEvents = [];
+
+  let gateway = null;
+  let studio = null;
+  let primaryWs = null;
+  let keeperWs = null;
+  let replayWs = null;
+
+  try {
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(root, 'openclaw.json'), JSON.stringify({
+      gateway: {
+        auth: {
+          token: 'gateway-token-test',
+        },
+      },
+      agents: {
+        defaults: { workspace },
+        list: [{ id: 'main', workspace, default: true }],
+      },
+    }, null, 2));
+    writeGatewayIdentity(root);
+
+    gateway = await startFakeGateway();
+    studio = await startStudio(root, gateway.port);
+
+    const created = await studio.context.services.chat.createSession('main', {});
+    const sessionKey = created.session.key;
+    const baseWsUrl = `ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}&bootstrapSnapshot=0`;
+
+    primaryWs = new WebSocket(baseWsUrl);
+    primaryWs.on('message', (raw) => {
+      primaryEvents.push(JSON.parse(String(raw)));
+    });
+    keeperWs = new WebSocket(baseWsUrl);
+    keeperWs.on('message', (raw) => {
+      keeperEvents.push(JSON.parse(String(raw)));
+    });
+    await Promise.all([
+      new Promise((resolve, reject) => {
+        primaryWs.once('open', resolve);
+        primaryWs.once('error', reject);
+      }),
+      new Promise((resolve, reject) => {
+        keeperWs.once('open', resolve);
+        keeperWs.once('error', reject);
+      }),
+    ]);
+    await gateway.waitForStudioConnection();
+
+    await waitFor(() => {
+      const attachEvents = primaryEvents.filter((entry) => (
+        entry.kind === 'runtime'
+        || entry.kind === 'queue.state'
+        || entry.kind === 'session.controls'
+      ));
+      assert.equal(attachEvents.length >= 3, true);
+      assert.ok(
+        attachEvents.every((entry) => Number.isFinite(entry.streamSeq) && entry.streamSeq > 0),
+        'expected websocket attach state to advance the replay stream sequence',
+      );
+    });
+
+    gateway.sendAgentEvent({
+      sessionKey,
+      runId: 'run-replay',
+      stream: 'tool',
+      ts: Date.parse('2026-06-01T08:00:00.000Z'),
+      data: {
+        phase: 'start',
+        toolCallId: 'tool-replay',
+        name: 'browser',
+        args: { url: 'https://example.com' },
+      },
+    });
+
+    const firstLiveEvent = await waitFor(() => {
+      const event = primaryEvents.find((entry) => entry.kind === 'temporary.tool' && entry.tool?.toolCallId === 'tool-replay');
+      assert.ok(event, 'expected live temporary.tool event');
+      assert.equal(event.streamSeq > 0, true);
+      return event;
+    });
+    const lastSeenSeq = firstLiveEvent.streamSeq;
+
+    try { primaryWs.close(); } catch {}
+    primaryWs = null;
+
+    gateway.sendAgentEvent({
+      sessionKey,
+      runId: 'run-replay',
+      stream: 'tool',
+      ts: Date.parse('2026-06-01T08:00:01.000Z'),
+      data: {
+        phase: 'update',
+        toolCallId: 'tool-replay',
+        name: 'browser',
+        partialResult: { status: 'reading', summary: '80%' },
+      },
+    });
+    gateway.sendAgentEvent({
+      sessionKey,
+      runId: 'run-replay',
+      stream: 'tool',
+      ts: Date.parse('2026-06-01T08:00:02.000Z'),
+      data: {
+        phase: 'result',
+        toolCallId: 'tool-replay',
+        name: 'browser',
+        result: { ok: true, summary: 'done after reconnect' },
+      },
+    });
+
+    await waitFor(() => {
+      const event = [...keeperEvents].reverse().find((entry) => entry.kind === 'temporary.tool' && entry.tool?.toolCallId === 'tool-replay');
+      assert.ok(event, 'expected keeper to receive missed live event');
+      assert.equal(event.tool.status, 'completed');
+    });
+
+    replayWs = new WebSocket(`${baseWsUrl}&lastStreamSeq=${lastSeenSeq}`);
+    replayWs.on('message', (raw) => {
+      replayEvents.push(JSON.parse(String(raw)));
+    });
+    await new Promise((resolve, reject) => {
+      replayWs.once('open', resolve);
+      replayWs.once('error', reject);
+    });
+
+    await waitFor(() => {
+      const replayedToolEvents = replayEvents.filter((entry) => entry.kind === 'temporary.tool' && entry.tool?.toolCallId === 'tool-replay');
+      assert.ok(replayedToolEvents.length >= 2, 'expected missed tool update/result replay');
+      assert.ok(replayedToolEvents.every((entry) => entry.streamSeq > lastSeenSeq), 'expected replayed events after last seen seq only');
+      assert.equal(replayedToolEvents[replayedToolEvents.length - 1].tool.status, 'completed');
+      assert.match(replayedToolEvents[replayedToolEvents.length - 1].tool.resultPreview || '', /done after reconnect/i);
+    });
+  } finally {
+    for (const socket of [primaryWs, keeperWs, replayWs]) {
+      if (socket) {
+        try { socket.close(); } catch {}
+      }
+    }
+    if (studio) {
+      await studio.close();
+    }
+    if (gateway) {
+      await gateway.close();
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('temporary.tool synthesizes a stable tool run id when gateway tool events omit runId', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-tool-stream-no-runid-'));
   const workspace = path.join(root, 'workspace');

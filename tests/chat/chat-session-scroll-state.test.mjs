@@ -202,6 +202,65 @@ test('manual upward scroll stops auto-follow until jump-to-bottom is requested',
   assert.equal(jumped.state.autoScrollLockedByUser, false);
 });
 
+test('streaming tail updates count as one unread item while browsing history', () => {
+  let state = createChatSessionScrollState();
+  state = {
+    ...state,
+    awaitingInitialBottomAnchor: false,
+  };
+  state = applyChatSessionManualScroll(state, metrics({
+    scrollTop: 100,
+    scrollHeight: 1400,
+    clientHeight: 300,
+  }));
+
+  const firstDelta = resolveChatSessionTimelineMutation(state, {
+    hasSignature: true,
+    hadPreviousSignature: true,
+    loadingBefore: false,
+    loadingAfter: false,
+    tailSignature: 'message:assistant-stream-1',
+    metrics: metrics({
+      scrollTop: 100,
+      scrollHeight: 1500,
+      clientHeight: 300,
+    }),
+  });
+  state = firstDelta.state;
+
+  const secondDelta = resolveChatSessionTimelineMutation(state, {
+    hasSignature: true,
+    hadPreviousSignature: true,
+    loadingBefore: false,
+    loadingAfter: false,
+    tailSignature: 'message:assistant-stream-1',
+    metrics: metrics({
+      scrollTop: 100,
+      scrollHeight: 1520,
+      clientHeight: 300,
+    }),
+  });
+  state = secondDelta.state;
+
+  const nextMessage = resolveChatSessionTimelineMutation(state, {
+    hasSignature: true,
+    hadPreviousSignature: true,
+    loadingBefore: false,
+    loadingAfter: false,
+    tailSignature: 'message:assistant-final-2',
+    metrics: metrics({
+      scrollTop: 100,
+      scrollHeight: 1640,
+      clientHeight: 300,
+    }),
+  });
+
+  assert.equal(firstDelta.state.pendingUnreadCount, 1);
+  assert.equal(secondDelta.state.pendingUnreadCount, 1);
+  assert.equal(nextMessage.state.pendingUnreadCount, 2);
+  assert.equal(resolveChatSessionJumpToBottom(nextMessage.state).state.pendingUnreadTailSignature, null);
+});
+
 test('explicit upward browse intent at the bottom suppresses pending bottom restore retries', () => {
   let state = createChatSessionScrollState();
   state = {

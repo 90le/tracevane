@@ -57,6 +57,7 @@ function buildPayload(summary) {
       api: provider.api,
       baseUrl: provider.baseUrl,
       models: provider.models,
+      extra: provider.extra,
     })),
   };
 }
@@ -109,7 +110,21 @@ test("config summary reads canonical plugin load paths and legacy browser SSRF a
         blockStreamingChunk: { maxChars: 256 },
         blockStreamingCoalesce: { enabled: true },
         llm: { idleTimeoutSeconds: 90 },
-        embeddedPi: { projectSettingsPolicy: "trusted" },
+        contextLimits: { memoryGetMaxChars: 24000 },
+        imageQuality: "high",
+        promptOverlays: { enabled: true },
+        reasoningDefault: "medium",
+        runRetries: { attempts: 2 },
+        silentReply: "never",
+        skipOptionalBootstrapFiles: true,
+        startupContext: { includeHostStatus: false },
+        toolProgressDetail: "full",
+        voiceModel: { primary: "openai/tts-1" },
+        unsupportedFutureKey: "ignored",
+        embeddedAgent: {
+          projectSettingsPolicy: "trusted",
+          executionContract: "strict-agentic",
+        },
         memorySearch: { enabled: true, topK: 8 },
         humanDelay: { mode: "natural", minMs: 800, maxMs: 2500 },
         heartbeat: { every: "30m" },
@@ -117,7 +132,10 @@ test("config summary reads canonical plugin load paths and legacy browser SSRF a
         cliBackends: { claude: { command: "claude" } },
         contextPruning: { mode: "cache-ttl", ttl: "30m" },
         models: {
-          "openai/gpt-5.4": { alias: "gpt" },
+          "openai/gpt-5.4": {
+            alias: "gpt",
+            agentRuntime: { id: "codex" },
+          },
           "anthropic/claude-sonnet-4-6": {
             alias: "",
             params: { cacheRetention: "long" },
@@ -270,8 +288,20 @@ test("config summary reads canonical plugin load paths and legacy browser SSRF a
   assert.equal(summary.defaults.bootstrapTotalMaxChars, 160000);
   assert.equal(summary.defaults.blockStreamingChunk?.maxChars, 256);
   assert.equal(summary.defaults.blockStreamingCoalesce?.enabled, true);
-  assert.equal(summary.defaults.llmIdleTimeoutSeconds, 90);
-  assert.equal(summary.defaults.embeddedPiProjectSettingsPolicy, "trusted");
+  assert.deepEqual(summary.defaults.extra, {
+    contextLimits: { memoryGetMaxChars: 24000 },
+    imageQuality: "high",
+    promptOverlays: { enabled: true },
+    reasoningDefault: "medium",
+    runRetries: { attempts: 2 },
+    silentReply: "never",
+    skipOptionalBootstrapFiles: true,
+    startupContext: { includeHostStatus: false },
+    toolProgressDetail: "full",
+    voiceModel: { primary: "openai/tts-1" },
+  });
+  assert.equal(summary.defaults.embeddedAgentProjectSettingsPolicy, "trusted");
+  assert.equal(summary.defaults.embeddedAgentExecutionContract, "strict-agentic");
   assert.deepEqual(summary.defaults.memorySearch, { enabled: true, topK: 8 });
   assert.deepEqual(summary.defaults.humanDelay, {
     mode: "natural",
@@ -291,7 +321,10 @@ test("config summary reads canonical plugin load paths and legacy browser SSRF a
     ttl: "30m",
   });
   assert.deepEqual(summary.defaults.models, {
-    "openai/gpt-5.4": { alias: "gpt" },
+    "openai/gpt-5.4": {
+      alias: "gpt",
+      agentRuntime: { id: "codex" },
+    },
     "anthropic/claude-sonnet-4-6": {
       alias: "",
       params: { cacheRetention: "long" },
@@ -372,8 +405,16 @@ test("config save writes canonical plugin and browser fields without legacy alia
       bootstrapTotalMaxChars: 180000,
       blockStreamingChunk: { maxChars: 300 },
       blockStreamingCoalesce: { enabled: false },
-      llmIdleTimeoutSeconds: 75,
-      embeddedPiProjectSettingsPolicy: "ignore",
+      extra: {
+        contextLimits: { memoryGetMaxChars: 12345 },
+        imageQuality: "low",
+        reasoningDefault: "low",
+        runRetries: { attempts: 3 },
+        voiceModel: { primary: "openai/tts-1" },
+        unsupportedFutureKey: "ignored",
+      },
+      embeddedAgentProjectSettingsPolicy: "ignore",
+      embeddedAgentExecutionContract: "strict-agentic",
       memorySearch: { enabled: true, topK: 16 },
       humanDelay: { mode: "custom", minMs: 300, maxMs: 900 },
       heartbeat: { every: "10m", includeReasoning: true },
@@ -384,6 +425,7 @@ test("config save writes canonical plugin and browser fields without legacy alia
         "openai/gpt-5.4": { alias: "gpt" },
         "openai/gpt-5.4-mini": {
           alias: "",
+          agentRuntime: { id: "codex" },
           params: { cacheRetention: "long" },
           streaming: true,
         },
@@ -526,9 +568,24 @@ test("config save writes canonical plugin and browser fields without legacy alia
     enabled: false,
   });
   assert.equal(nextConfig.agents.defaults.llm, undefined);
+  assert.deepEqual(nextConfig.agents.defaults.contextLimits, {
+    memoryGetMaxChars: 12345,
+  });
+  assert.equal(nextConfig.agents.defaults.imageQuality, "low");
+  assert.equal(nextConfig.agents.defaults.reasoningDefault, "low");
+  assert.deepEqual(nextConfig.agents.defaults.runRetries, { attempts: 3 });
+  assert.deepEqual(nextConfig.agents.defaults.voiceModel, {
+    primary: "openai/tts-1",
+  });
+  assert.equal(nextConfig.agents.defaults.unsupportedFutureKey, undefined);
+  assert.equal(nextConfig.agents.defaults.embeddedPi, undefined);
   assert.equal(
-    nextConfig.agents.defaults.embeddedPi.projectSettingsPolicy,
+    nextConfig.agents.defaults.embeddedAgent.projectSettingsPolicy,
     "ignore",
+  );
+  assert.equal(
+    nextConfig.agents.defaults.embeddedAgent.executionContract,
+    "strict-agentic",
   );
   assert.deepEqual(nextConfig.agents.defaults.memorySearch, {
     enabled: true,
@@ -558,6 +615,7 @@ test("config save writes canonical plugin and browser fields without legacy alia
     "openai/gpt-5.4": { alias: "gpt" },
     "openai/gpt-5.4-mini": {
       alias: "",
+      agentRuntime: { id: "codex" },
       params: { cacheRetention: "long" },
       streaming: true,
     },
@@ -618,7 +676,14 @@ test("config save clears optional default overrides when blank or null", () => {
         blockStreamingChunk: { maxChars: 256 },
         blockStreamingCoalesce: { enabled: true },
         llm: { idleTimeoutSeconds: 90 },
-        embeddedPi: { projectSettingsPolicy: "trusted" },
+        contextLimits: { memoryGetMaxChars: 24000 },
+        imageQuality: "high",
+        runRetries: { attempts: 2 },
+        voiceModel: { primary: "openai/tts-1" },
+        embeddedAgent: {
+          projectSettingsPolicy: "trusted",
+          executionContract: "strict-agentic",
+        },
         params: {
           cacheRetention: "long",
         },
@@ -680,8 +745,9 @@ test("config save clears optional default overrides when blank or null", () => {
       bootstrapTotalMaxChars: null,
       blockStreamingChunk: null,
       blockStreamingCoalesce: null,
-      llmIdleTimeoutSeconds: null,
-      embeddedPiProjectSettingsPolicy: "",
+      extra: null,
+      embeddedAgentProjectSettingsPolicy: "",
+      embeddedAgentExecutionContract: "",
       params: null,
       cliBackends: null,
       contextPruning: null,
@@ -739,7 +805,12 @@ test("config save clears optional default overrides when blank or null", () => {
   assert.equal(nextConfig.agents.defaults.blockStreamingChunk, undefined);
   assert.equal(nextConfig.agents.defaults.blockStreamingCoalesce, undefined);
   assert.equal(nextConfig.agents.defaults.llm, undefined);
+  assert.equal(nextConfig.agents.defaults.contextLimits, undefined);
+  assert.equal(nextConfig.agents.defaults.imageQuality, undefined);
+  assert.equal(nextConfig.agents.defaults.runRetries, undefined);
+  assert.equal(nextConfig.agents.defaults.voiceModel, undefined);
   assert.equal(nextConfig.agents.defaults.embeddedPi, undefined);
+  assert.equal(nextConfig.agents.defaults.embeddedAgent, undefined);
   assert.equal(nextConfig.agents.defaults.params, undefined);
   assert.equal(nextConfig.agents.defaults.cliBackends, undefined);
   assert.equal(nextConfig.agents.defaults.contextPruning, undefined);
@@ -815,10 +886,12 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
         extraDirs: ["~/.openclaw/shared-skills"],
         watch: true,
         watchDebounceMs: 250,
+        allowSymlinkTargets: true,
       },
       install: {
         preferBrew: true,
         nodeManager: "pnpm",
+        allowUploadedArchives: true,
       },
       limits: {
         maxCandidatesPerRoot: 100,
@@ -834,6 +907,9 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
       },
     },
     browser: {
+      localLaunchTimeoutMs: 30000,
+      localCdpReadyTimeoutMs: 12000,
+      actionTimeoutMs: 45000,
       tabCleanup: {
         enabled: true,
         idleMinutes: 30,
@@ -851,7 +927,9 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
   assert.deepEqual(summary.skills.load.extraDirs, ["~/.openclaw/shared-skills"]);
   assert.equal(summary.skills.load.watch, true);
   assert.equal(summary.skills.load.watchDebounceMs, 250);
+  assert.equal(summary.skills.load.allowSymlinkTargets, true);
   assert.equal(summary.skills.install.nodeManager, "pnpm");
+  assert.equal(summary.skills.install.allowUploadedArchives, true);
   assert.equal(summary.skills.limits.maxCandidatesPerRoot, 100);
   assert.equal(summary.skills.limits.maxSkillsLoadedPerSource, 30);
   assert.equal(summary.skills.limits.maxSkillsInPrompt, 12);
@@ -859,6 +937,9 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
   assert.equal(summary.skills.limits.maxSkillFileBytes, 200000);
   assert.equal(summary.browser.tabCleanup.enabled, true);
   assert.equal(summary.browser.tabCleanup.maxTabsPerSession, 12);
+  assert.equal(summary.browser.localLaunchTimeoutMs, 30000);
+  assert.equal(summary.browser.localCdpReadyTimeoutMs, 12000);
+  assert.equal(summary.browser.actionTimeoutMs, 45000);
 
   service.saveConfig({
     ...buildPayload(summary),
@@ -877,10 +958,12 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
         extraDirs: ["~/.openclaw/team-skills"],
         watch: false,
         watchDebounceMs: 500,
+        allowSymlinkTargets: false,
       },
       install: {
         preferBrew: false,
         nodeManager: "npm",
+        allowUploadedArchives: false,
       },
       limits: {
         maxCandidatesPerRoot: 120,
@@ -896,6 +979,9 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
       },
     },
     browser: {
+      localLaunchTimeoutMs: 35000,
+      localCdpReadyTimeoutMs: 15000,
+      actionTimeoutMs: 50000,
       tabCleanup: {
         enabled: false,
         idleMinutes: 45,
@@ -914,7 +1000,9 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
   assert.deepEqual(nextConfig.skills.load.extraDirs, ["~/.openclaw/team-skills"]);
   assert.equal(nextConfig.skills.load.watch, false);
   assert.equal(nextConfig.skills.load.watchDebounceMs, 500);
+  assert.equal(nextConfig.skills.load.allowSymlinkTargets, false);
   assert.equal(nextConfig.skills.install.nodeManager, "npm");
+  assert.equal(nextConfig.skills.install.allowUploadedArchives, false);
   assert.equal(nextConfig.skills.limits.maxCandidatesPerRoot, 120);
   assert.equal(nextConfig.skills.limits.maxSkillsLoadedPerSource, 40);
   assert.equal(nextConfig.skills.limits.maxSkillsInPrompt, 18);
@@ -923,6 +1011,397 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
   assert.equal(nextConfig.skills.entries["docs-search"].enabled, false);
   assert.equal(nextConfig.browser.tabCleanup.enabled, false);
   assert.equal(nextConfig.browser.tabCleanup.idleMinutes, 45);
+  assert.equal(nextConfig.browser.localLaunchTimeoutMs, 35000);
+  assert.equal(nextConfig.browser.localCdpReadyTimeoutMs, 15000);
+  assert.equal(nextConfig.browser.actionTimeoutMs, 50000);
+});
+
+test("config summary and save cover current gateway control-ui runtime fields", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    gateway: {
+      controlUi: {
+        embedSandbox: "scripts",
+        allowExternalEmbedUrls: true,
+        chatMessageMaxWidth: "78ch",
+      },
+      handshakeTimeoutMs: 15000,
+      channelStaleEventThresholdMinutes: 20,
+      channelMaxRestartsPerHour: 6,
+    },
+  });
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  assert.equal(summary.gateway.controlUi.embedSandbox, "scripts");
+  assert.equal(summary.gateway.controlUi.allowExternalEmbedUrls, true);
+  assert.equal(summary.gateway.controlUi.chatMessageMaxWidth, "78ch");
+  assert.equal(summary.gateway.handshakeTimeoutMs, 15000);
+  assert.equal(summary.gateway.channelStaleEventThresholdMinutes, 20);
+  assert.equal(summary.gateway.channelMaxRestartsPerHour, 6);
+
+  service.saveConfig({
+    ...buildPayload(summary),
+    gateway: {
+      controlUi: {
+        embedSandbox: "trusted",
+        allowExternalEmbedUrls: false,
+        chatMessageMaxWidth: "64rem",
+      },
+      handshakeTimeoutMs: 25000,
+      channelStaleEventThresholdMinutes: 30,
+      channelMaxRestartsPerHour: 8,
+    },
+  });
+
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+  assert.equal(nextConfig.gateway.controlUi.embedSandbox, "trusted");
+  assert.equal(nextConfig.gateway.controlUi.allowExternalEmbedUrls, false);
+  assert.equal(nextConfig.gateway.controlUi.chatMessageMaxWidth, "64rem");
+  assert.equal(nextConfig.gateway.handshakeTimeoutMs, 25000);
+  assert.equal(nextConfig.gateway.channelStaleEventThresholdMinutes, 30);
+  assert.equal(nextConfig.gateway.channelMaxRestartsPerHour, 8);
+});
+
+test("config summary and save cover current chat command gates", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    commands: {
+      native: true,
+      nativeSkills: false,
+      text: true,
+      bash: true,
+      bashForegroundMs: 1500,
+      config: true,
+      mcp: true,
+      plugins: true,
+      debug: true,
+      restart: false,
+      useAccessGroups: true,
+      ownerAllowFrom: ["telegram:123"],
+      ownerDisplay: "hash",
+      ownerDisplaySecret: "${OPENCLAW_OWNER_HASH_SECRET}",
+      allowFrom: {
+        telegram: ["123"],
+      },
+    },
+  });
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  assert.equal(summary.commands.native, "true");
+  assert.equal(summary.commands.nativeSkills, "false");
+  assert.equal(summary.commands.text, true);
+  assert.equal(summary.commands.bash, true);
+  assert.equal(summary.commands.bashForegroundMs, 1500);
+  assert.equal(summary.commands.config, true);
+  assert.equal(summary.commands.mcp, true);
+  assert.equal(summary.commands.plugins, true);
+  assert.equal(summary.commands.debug, true);
+  assert.equal(summary.commands.restart, false);
+  assert.equal(summary.commands.ownerDisplay, "hash");
+  assert.deepEqual(summary.commands.extra, {
+    useAccessGroups: true,
+    ownerAllowFrom: ["telegram:123"],
+    ownerDisplaySecret: "${OPENCLAW_OWNER_HASH_SECRET}",
+    allowFrom: {
+      telegram: ["123"],
+    },
+  });
+
+  service.saveConfig({
+    ...buildPayload(summary),
+    commands: {
+      ...summary.commands,
+      native: "auto",
+      nativeSkills: "true",
+      bashForegroundMs: 0,
+      debug: false,
+      ownerDisplay: "raw",
+      extra: {
+        useAccessGroups: false,
+        ownerAllowFrom: ["discord:456"],
+        allowFrom: {
+          discord: ["456"],
+        },
+        unsupportedFutureKey: true,
+      },
+    },
+  });
+
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+  assert.equal(nextConfig.commands.native, "auto");
+  assert.equal(nextConfig.commands.nativeSkills, true);
+  assert.equal(nextConfig.commands.text, true);
+  assert.equal(nextConfig.commands.bash, true);
+  assert.equal(nextConfig.commands.bashForegroundMs, 0);
+  assert.equal(nextConfig.commands.debug, false);
+  assert.equal(nextConfig.commands.ownerDisplay, "raw");
+  assert.equal(nextConfig.commands.useAccessGroups, false);
+  assert.deepEqual(nextConfig.commands.ownerAllowFrom, ["discord:456"]);
+  assert.deepEqual(nextConfig.commands.allowFrom, {
+    discord: ["456"],
+  });
+  assert.equal(nextConfig.commands.ownerDisplaySecret, undefined);
+  assert.equal(nextConfig.commands.unsupportedFutureKey, undefined);
+});
+
+test("config summary and save cover current low-frequency schema domains", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    tools: {
+      profile: "minimal",
+      exec: {
+        host: "auto",
+        mode: "ask",
+        ask: "always",
+        security: "allowlist",
+      },
+      allow: ["read"],
+      byProvider: { telegram: ["exec"] },
+      unsupportedToolsKey: true,
+    },
+    session: {
+      dmScope: "per-channel-peer",
+      scope: "global",
+      identityLinks: { enabled: true },
+      maintenance: { sweepMinutes: 60 },
+      unsupportedSessionKey: true,
+    },
+    messages: {
+      responsePrefix: "[oc]",
+      messagePrefix: "@oc",
+      groupChat: { mentionRequired: true },
+      tts: { enabled: false },
+      unsupportedMessagesKey: true,
+    },
+    gateway: {
+      remote: { enabled: true },
+      tls: { enabled: true },
+      nodes: { local: { url: "http://127.0.0.1:31879" } },
+      unsupportedGatewayKey: true,
+    },
+    acp: {
+      enabled: true,
+      fallbacks: { backend: "acpx" },
+      stream: { enabled: true },
+      runtime: { idleMs: 1000 },
+      unsupportedAcpKey: true,
+    },
+    commands: {
+      native: "auto",
+      text: true,
+      unsupportedCommandsKey: true,
+    },
+  });
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  assert.deepEqual(summary.tools.extra, {
+    allow: ["read"],
+    byProvider: { telegram: ["exec"] },
+  });
+  assert.equal(summary.tools.execHost, "auto");
+  assert.equal(summary.tools.execMode, "ask");
+  assert.equal(summary.tools.execAsk, "always");
+  assert.equal(summary.tools.execSecurity, "allowlist");
+  assert.deepEqual(summary.session.extra, {
+    identityLinks: { enabled: true },
+    maintenance: { sweepMinutes: 60 },
+    scope: "global",
+  });
+  assert.deepEqual(summary.messages.extra, {
+    groupChat: { mentionRequired: true },
+    messagePrefix: "@oc",
+    tts: { enabled: false },
+  });
+  assert.deepEqual(summary.gateway.extra, {
+    nodes: { local: { url: "http://127.0.0.1:31879" } },
+    remote: { enabled: true },
+    tls: { enabled: true },
+  });
+  assert.deepEqual(summary.acp.extra, {
+    fallbacks: { backend: "acpx" },
+    runtime: { idleMs: 1000 },
+    stream: { enabled: true },
+  });
+
+  service.saveConfig({
+    ...buildPayload(summary),
+    tools: {
+      ...summary.tools,
+      execMode: "full",
+      execSecurity: "full",
+      execAsk: "off",
+      extra: {
+        deny: ["exec"],
+        web: { enabled: false },
+        unsupportedFutureKey: true,
+      },
+    },
+    session: {
+      ...summary.session,
+      extra: {
+        scope: "workspace",
+        sendPolicy: { mode: "owner" },
+        unsupportedFutureKey: true,
+      },
+    },
+    messages: {
+      ...summary.messages,
+      extra: {
+        visibleReplies: 4,
+        suppressToolErrors: true,
+        unsupportedFutureKey: true,
+      },
+    },
+    gateway: {
+      extra: {
+        http: { cors: true },
+        reload: { enabled: true },
+        unsupportedFutureKey: true,
+      },
+    },
+    acp: {
+      extra: {
+        runtime: { idleMs: 2000 },
+        stream: { enabled: false },
+        unsupportedFutureKey: true,
+      },
+    },
+    commands: {
+      ...summary.commands,
+      extra: {
+        useAccessGroups: true,
+        unsupportedFutureKey: true,
+      },
+    },
+  });
+
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+  assert.deepEqual(nextConfig.tools.deny, ["exec"]);
+  assert.deepEqual(nextConfig.tools.web, { enabled: false });
+  assert.equal(nextConfig.tools.exec.host, "auto");
+  assert.equal(nextConfig.tools.exec.mode, "full");
+  assert.equal(nextConfig.tools.exec.ask, "off");
+  assert.equal(nextConfig.tools.exec.security, "full");
+  assert.equal(nextConfig.tools.allow, undefined);
+  assert.equal(nextConfig.tools.extra, undefined);
+  assert.equal(nextConfig.tools.unsupportedToolsKey, undefined);
+  assert.equal(nextConfig.tools.unsupportedFutureKey, undefined);
+  assert.equal(nextConfig.session.scope, "workspace");
+  assert.deepEqual(nextConfig.session.sendPolicy, { mode: "owner" });
+  assert.equal(nextConfig.session.identityLinks, undefined);
+  assert.equal(nextConfig.session.unsupportedSessionKey, undefined);
+  assert.equal(nextConfig.messages.visibleReplies, 4);
+  assert.equal(nextConfig.messages.suppressToolErrors, true);
+  assert.equal(nextConfig.messages.messagePrefix, undefined);
+  assert.equal(nextConfig.messages.unsupportedMessagesKey, undefined);
+  assert.deepEqual(nextConfig.gateway.http, { cors: true });
+  assert.deepEqual(nextConfig.gateway.reload, { enabled: true });
+  assert.equal(nextConfig.gateway.remote, undefined);
+  assert.equal(nextConfig.gateway.unsupportedGatewayKey, undefined);
+  assert.deepEqual(nextConfig.acp.runtime, { idleMs: 2000 });
+  assert.deepEqual(nextConfig.acp.stream, { enabled: false });
+  assert.equal(nextConfig.acp.fallbacks, undefined);
+  assert.equal(nextConfig.acp.unsupportedAcpKey, undefined);
+  assert.equal(nextConfig.commands.useAccessGroups, true);
+  assert.equal(nextConfig.commands.unsupportedCommandsKey, undefined);
+  assert.equal(nextConfig.commands.unsupportedFutureKey, undefined);
+});
+
+test("config summary and save cover unmodeled OpenClaw top-level schema domains", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    cron: {
+      enabled: true,
+      maxConcurrentRuns: 2,
+    },
+    diagnostics: {
+      enabled: true,
+      flags: ["cache"],
+    },
+    env: {
+      vars: {
+        OPENCLAW_PROFILE: "studio",
+      },
+    },
+    talk: {
+      provider: "openai",
+    },
+    unknownHistoricalRoot: {
+      stale: true,
+    },
+  });
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  assert.ok(summary.openclaw.extraDomainKeys.includes("cron"));
+  assert.ok(summary.openclaw.extraDomainKeys.includes("diagnostics"));
+  assert.deepEqual(summary.openclaw.extraDomains, {
+    cron: {
+      enabled: true,
+      maxConcurrentRuns: 2,
+    },
+    diagnostics: {
+      enabled: true,
+      flags: ["cache"],
+    },
+    env: {
+      vars: {
+        OPENCLAW_PROFILE: "studio",
+      },
+    },
+    talk: {
+      provider: "openai",
+    },
+  });
+
+  service.saveConfig({
+    ...buildPayload(summary),
+    openclaw: {
+      extraDomains: {
+        cron: {
+          enabled: false,
+        },
+        proxy: {
+          enabled: true,
+          proxyUrl: "http://127.0.0.1:8080",
+        },
+        update: {
+          channel: "stable",
+        },
+        unsupportedFutureDomain: {
+          enabled: true,
+        },
+      },
+    },
+  });
+
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+  assert.deepEqual(nextConfig.cron, { enabled: false });
+  assert.deepEqual(nextConfig.proxy, {
+    enabled: true,
+    proxyUrl: "http://127.0.0.1:8080",
+  });
+  assert.deepEqual(nextConfig.update, { channel: "stable" });
+  assert.equal(nextConfig.diagnostics, undefined);
+  assert.equal(nextConfig.env, undefined);
+  assert.equal(nextConfig.talk, undefined);
+  assert.equal(nextConfig.unknownHistoricalRoot, undefined);
+  assert.equal(nextConfig.unsupportedFutureDomain, undefined);
 });
 
 test("config save disables docker-backed sandbox modes when docker is unavailable and global mode is off", () => {
@@ -984,7 +1463,7 @@ test("config save disables docker-backed sandbox modes when docker is unavailabl
   assert.equal(nextConfig.agents.list[1].sandbox.mode, "agent");
 });
 
-test("config save self-heals strict provider/session fields to avoid host schema restart failures", () => {
+test("config save normalizes strict provider/session fields without inventing third-party endpoints", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -992,6 +1471,9 @@ test("config save self-heals strict provider/session fields to avoid host schema
       providers: {
         "custom-llm-gateway-mlamp-cn": {
           api: "openai-responses",
+        },
+        legacyGoogle: {
+          api: "google-generative",
         },
       },
     },
@@ -1019,11 +1501,97 @@ test("config save self-heals strict provider/session fields to avoid host schema
   );
   const customProvider =
     nextConfig.models.providers["custom-llm-gateway-mlamp-cn"];
-  assert.equal(typeof customProvider.baseUrl, "string");
-  assert.ok(customProvider.baseUrl.length > 0);
+  assert.equal(customProvider.baseUrl, undefined);
   assert.ok(Array.isArray(customProvider.models));
+  assert.equal(
+    nextConfig.models.providers.legacyGoogle.api,
+    "google-generative-ai",
+  );
+  assert.equal(
+    nextConfig.models.providers.legacyGoogle.baseUrl,
+    "https://generativelanguage.googleapis.com",
+  );
   assert.equal(nextConfig.session.reset.mode, "idle");
   assert.equal(nextConfig.session.reset.idleMinutes > 0, true);
+});
+
+test("config save preserves third-party provider and model extension fields", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    models: {
+      providers: {
+        bigmodel: {
+          api: "openai-responses",
+          auth: "api-key",
+          request: {
+            headers: {
+              "X-Tenant": "studio",
+            },
+          },
+          agentRuntime: { id: "openclaw" },
+          timeoutSeconds: 240,
+          models: [
+            {
+              id: "glm-5",
+              name: "GLM-5",
+              input: ["text", "video"],
+              contextTokens: 128000,
+              params: { temperature: 0.2 },
+              agentRuntime: { id: "codex" },
+              compat: { supportsTools: true },
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  const bigmodel = summary.providers.find((provider) => provider.id === "bigmodel");
+  assert.deepEqual(bigmodel?.extra, {
+    auth: "api-key",
+    request: {
+      headers: {
+        "X-Tenant": "studio",
+      },
+    },
+    agentRuntime: { id: "openclaw" },
+    timeoutSeconds: 240,
+  });
+  assert.deepEqual(bigmodel?.models[0]?.input, ["text", "video"]);
+  assert.deepEqual(bigmodel?.models[0]?.extra, {
+    name: "GLM-5",
+    contextTokens: 128000,
+    params: { temperature: 0.2 },
+    agentRuntime: { id: "codex" },
+    compat: { supportsTools: true },
+  });
+
+  service.saveConfig(buildPayload(summary));
+
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+  assert.deepEqual(nextConfig.models.providers.bigmodel.request, {
+    headers: {
+      "X-Tenant": "studio",
+    },
+  });
+  assert.equal(nextConfig.models.providers.bigmodel.timeoutSeconds, 240);
+  assert.equal(nextConfig.models.providers.bigmodel.models[0].name, "GLM-5");
+  assert.deepEqual(nextConfig.models.providers.bigmodel.models[0].input, [
+    "text",
+    "video",
+  ]);
+  assert.equal(
+    nextConfig.models.providers.bigmodel.models[0].contextTokens,
+    128000,
+  );
+  assert.deepEqual(nextConfig.models.providers.bigmodel.models[0].agentRuntime, {
+    id: "codex",
+  });
 });
 
 test("config save persists and applies the global Studio host-management exec switch", () => {

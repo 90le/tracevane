@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { exec, execFile } from "node:child_process";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import type http from "node:http";
@@ -10,7 +11,6 @@ import type { StudioServerConfig } from "../../../../types/api.js";
 import { isRecoverableTerminalStatus } from "../../../../types/terminal.js";
 import type { SkillsService } from "../skills/service.js";
 import { buildTerminalActionCatalog } from "./action-catalog.js";
-import { buildTerminalSessionSummary } from "./session-summary.js";
 import {
   buildTerminalRecentOutputSummary,
   type TerminalRecentOutputSummaryEvent,
@@ -42,10 +42,13 @@ import type {
   TerminalLaunchPayload,
   TerminalLaunchResponse,
   TerminalInstallStreamEvent,
+  TerminalProfileCatalogResponse,
+  TerminalProfileDescriptor,
   TerminalSessionDescriptor,
   TerminalSessionLedgerEvent,
   TerminalSessionSummaryResponse,
   TerminalStatusPayload,
+  TerminalTargetKind,
 } from "../../../../types/terminal.js";
 
 const require = createRequire(import.meta.url);
@@ -97,6 +100,9 @@ interface TerminalSession {
   lastRows: number;
   shell: string;
   cwd: string;
+  profileId: string | null;
+  targetKind: TerminalTargetKind;
+  pinned: boolean;
   source: "manual" | "system-handoff" | "linked_context";
   sourceModule: string;
   sourceAction: string;
@@ -107,6 +113,13 @@ interface TerminalSession {
   lastActivityAt: string;
   lastAttachedAt: string | null;
 }
+
+type TerminalSessionLaunchMetadata = Partial<
+  Pick<
+    TerminalGatewayAttachPayload,
+    "profileId" | "targetKind" | "cwd" | "pinned"
+  >
+>;
 
 interface TerminalCliSpec {
   id: TerminalBinaryId;
@@ -135,6 +148,12 @@ interface TerminalStreamRuntime {
   emit: (event: TerminalGatewayEvent) => boolean;
 }
 
+type TerminalControlPayload = {
+  type?: unknown;
+  cols?: unknown;
+  rows?: unknown;
+};
+
 const TERMINAL_SESSION_GRACE_MS = 30 * 60 * 1000;
 const TERMINAL_BUFFER_LIMIT = 256 * 1024;
 const TERMINAL_INSTALL_TIMEOUT_MS = 8 * 60 * 1000;
@@ -145,6 +164,8 @@ const TERMINAL_OUTPUT_LEDGER_FLUSH_MS = 250;
 const TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT = 64;
 const TERMINAL_RECENT_SUMMARY_EVENT_LIMIT = 512;
 const TERMINAL_GATEWAY_OUTPUT_BATCH_LIMIT = 16 * 1024;
+const TERMINAL_CONTROL_BATCH_LIMIT = 32;
+const TERMINAL_CONTROL_BATCH_MAX_LENGTH = 4096;
 const WS_PING_INTERVAL = 20_000;
 const WS_IDLE_TIMEOUT = 90_000;
 const DEFAULT_TERMINAL_NATIVE_WORKER_BUDGET = "1";
@@ -298,6 +319,13 @@ function normalizeOutputSeq(value: string | number | null | undefined): number {
   return Math.floor(parsed);
 }
 
+function normalizeTerminalDimension(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const normalized = Math.floor(parsed);
+  return normalized > 0 ? normalized : null;
+}
+
 function normalizeSkipReplay(value: unknown): boolean {
   if (typeof value === "boolean") return value;
   const normalized = String(value || "").trim().toLowerCase();
@@ -367,6 +395,7 @@ export function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv 
   if (!env.FORCE_COLOR?.trim()) {
     env.FORCE_COLOR = "1";
   }
+  delete env.NO_COLOR;
   if (!env.LANG?.trim()) {
     env.LANG = "C.UTF-8";
   }
@@ -431,6 +460,7 @@ export interface TerminalService {
     reason?: "session_active";
   }>;
   listSessionLedger(sessionId: string): Promise<TerminalSessionLedgerEvent[]>;
+  listWorkspaceProfiles(): Promise<TerminalProfileCatalogResponse>;
   listWorkspaceActions(): Promise<TerminalActionCatalogResponse>;
   installCli(
     target: TerminalInstallRequestId,
@@ -537,6 +567,40 @@ export function createTerminalService(
     );
   }
 
+  function normalizeTerminalTargetKind(
+    value: unknown,
+  ): TerminalTargetKind | null {
+    const normalized = String(value || "").trim();
+    if (
+      normalized === "local"
+      || normalized === "ssh"
+      || normalized === "container"
+      || normalized === "kubernetes"
+    ) {
+      return normalized;
+    }
+    return null;
+  }
+
+  function applySessionMetadata(
+    session: TerminalSession,
+    metadata: TerminalSessionLaunchMetadata,
+  ): void {
+    const profileId = String(metadata.profileId || "").trim();
+    if (profileId) {
+      session.profileId = profileId;
+    }
+
+    const targetKind = normalizeTerminalTargetKind(metadata.targetKind);
+    if (targetKind) {
+      session.targetKind = targetKind;
+    }
+
+    if (typeof metadata.pinned === "boolean") {
+      session.pinned = metadata.pinned;
+    }
+  }
+
   function clearCleanupTimer(session: TerminalSession): void {
     if (!session.cleanupTimer) return;
     clearTimeout(session.cleanupTimer);
@@ -556,6 +620,10 @@ export function createTerminalService(
     return {
       sessionId: session.id,
       title: `Terminal ${session.id}`,
+      profileId: session.profileId,
+      targetKind: session.targetKind,
+      cwd: session.cwd,
+      pinned: session.pinned,
       source: session.source,
       sourceModule: session.sourceModule,
       sourceAction: session.sourceAction,
@@ -713,6 +781,133 @@ export function createTerminalService(
     if (persistMode === "deferred") {
       scheduleDescriptorPersist(session);
     }
+  }
+
+  function parseTerminalControlPayloads(
+    rawPayload: string,
+  ): TerminalControlPayload[] | null {
+    const payload = String(rawPayload || "").trim();
+    if (
+      !payload.startsWith("{") ||
+      payload.length > TERMINAL_CONTROL_BATCH_MAX_LENGTH
+    ) {
+      return null;
+    }
+
+    const result: TerminalControlPayload[] = [];
+    let index = 0;
+    while (index < payload.length) {
+      while (/\s/.test(payload[index] || "")) index += 1;
+      if (index >= payload.length) break;
+      if (payload[index] !== "{") return null;
+
+      const endIndex = findTerminalControlPayloadEnd(payload, index);
+      if (endIndex <= index) return null;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(payload.slice(index, endIndex));
+      } catch {
+        return null;
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return null;
+      }
+      result.push(parsed as TerminalControlPayload);
+      if (result.length > TERMINAL_CONTROL_BATCH_LIMIT) return null;
+      index = endIndex;
+    }
+    return result.length ? result : null;
+  }
+
+  function findTerminalControlPayloadEnd(
+    payload: string,
+    startIndex: number,
+  ): number {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = startIndex; index < payload.length; index += 1) {
+      const char = payload[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === "\"") {
+        inString = true;
+      } else if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) return index + 1;
+        if (depth < 0) return -1;
+      }
+    }
+    return -1;
+  }
+
+  function isKnownTerminalControlPayload(
+    payload: TerminalControlPayload,
+  ): boolean {
+    return (
+      payload.type === "resize" ||
+      payload.type === "ping" ||
+      payload.type === "clear"
+    );
+  }
+
+  function consumeTerminalControlPayload(
+    session: TerminalSession,
+    rawPayload: string,
+    options: { actorClientId: string | null; socket?: TerminalSocket } = {
+      actorClientId: null,
+    },
+  ): boolean {
+    const payloads = parseTerminalControlPayloads(rawPayload);
+    if (!payloads?.length) return false;
+    if (!payloads.every(isKnownTerminalControlPayload)) return false;
+
+    for (const data of payloads) {
+      if (data.type === "resize") {
+        const cols = normalizeTerminalDimension(data.cols);
+        const rows = normalizeTerminalDimension(data.rows);
+        if (!cols || !rows) {
+          markSessionActivity(session, { persist: "deferred" });
+          continue;
+        }
+        session.lastCols = cols;
+        session.lastRows = rows;
+        markSessionActivity(session, { persist: "deferred" });
+        appendLedgerEvent(
+          session,
+          "resize",
+          { cols: session.lastCols, rows: session.lastRows },
+          options.actorClientId,
+        );
+        session.term.resize(session.lastCols, session.lastRows);
+        continue;
+      }
+
+      if (data.type === "ping") {
+        if (options.socket) {
+          sendEvent(options.socket, { type: "pong" });
+        }
+        markSessionActivity(session, { persist: "deferred" });
+        continue;
+      }
+
+      if (data.type === "clear") {
+        clearSessionDisplay(session, options.actorClientId);
+      }
+    }
+
+    return true;
   }
 
   function emitGatewayEvent(
@@ -1008,6 +1203,7 @@ export function createTerminalService(
         sid: session.id,
         instanceId: session.instanceId,
         outputSeq: session.outputSeq,
+        descriptor: buildSessionDescriptor(session, "running"),
       },
     ];
 
@@ -1188,7 +1384,48 @@ export function createTerminalService(
     return true;
   }
 
-  function createSession(sessionId: string): TerminalSession {
+  function resolveLaunchCwd(rawCwd: unknown): string {
+    const fallback = options.config.openclawRoot || process.cwd();
+    const requested = String(rawCwd || "").trim();
+    if (!requested) return fallback;
+
+    const candidate = path.isAbsolute(requested)
+      ? requested
+      : path.resolve(fallback, requested);
+    try {
+      const candidateStat = fs.statSync(candidate);
+      if (candidateStat.isDirectory()) {
+        return candidate;
+      }
+      if (candidateStat.isFile()) {
+        const parentDirectory = path.dirname(candidate);
+        if (fs.statSync(parentDirectory).isDirectory()) {
+          return parentDirectory;
+        }
+      }
+    } catch {
+      // Invalid launch directories fall back to the configured workspace root.
+    }
+    return fallback;
+  }
+
+  function buildLaunchMetadata(
+    metadata: TerminalSessionLaunchMetadata = {},
+  ): Required<Pick<TerminalSession, "cwd" | "targetKind" | "pinned">> & {
+    profileId: string | null;
+  } {
+    return {
+      cwd: resolveLaunchCwd(metadata.cwd),
+      profileId: String(metadata.profileId || "").trim() || null,
+      targetKind: normalizeTerminalTargetKind(metadata.targetKind) || "local",
+      pinned: typeof metadata.pinned === "boolean" ? metadata.pinned : false,
+    };
+  }
+
+  function createSession(
+    sessionId: string,
+    metadata: TerminalSessionLaunchMetadata = {},
+  ): TerminalSession {
     if (!pty) {
       throw new Error(
         "node-pty is not available; terminal sessions are disabled",
@@ -1196,7 +1433,8 @@ export function createTerminalService(
     }
 
     const shell = process.env.SHELL || "/bin/bash";
-    const cwd = options.config.openclawRoot || process.cwd();
+    const launchMetadata = buildLaunchMetadata(metadata);
+    const cwd = launchMetadata.cwd;
     const lastActivityAt = new Date().toISOString();
     const term = pty.spawn(shell, [], {
       name: "xterm-256color",
@@ -1226,6 +1464,9 @@ export function createTerminalService(
       lastRows: 30,
       shell,
       cwd,
+      profileId: launchMetadata.profileId,
+      targetKind: launchMetadata.targetKind,
+      pinned: launchMetadata.pinned,
       source: "manual",
       sourceModule: "terminal",
       sourceAction: "terminal.attach",
@@ -1285,6 +1526,8 @@ export function createTerminalService(
       source: session.source,
       shell: session.shell,
       cwd: session.cwd,
+      profileId: session.profileId,
+      targetKind: session.targetKind,
     });
     persistSessionDescriptor(session);
     return session;
@@ -1339,7 +1582,10 @@ export function createTerminalService(
 
   function getOrCreateSession(
     rawSessionId: string | null,
-    options: { resumePersisted?: boolean } = {},
+    options: {
+      resumePersisted?: boolean;
+      metadata?: TerminalSessionLaunchMetadata;
+    } = {},
   ): TerminalSession {
     const sessionId = normalizeSessionId(rawSessionId);
     const existing = sessions.get(sessionId);
@@ -1351,13 +1597,18 @@ export function createTerminalService(
       const persisted = descriptorStore.get(sessionId);
       if (persisted) {
         if (options.resumePersisted) {
-          return createSession(sessionId);
+          return createSession(sessionId, {
+            profileId: options.metadata?.profileId ?? persisted.profileId,
+            targetKind: options.metadata?.targetKind ?? persisted.targetKind,
+            cwd: options.metadata?.cwd ?? persisted.cwd,
+            pinned: options.metadata?.pinned ?? persisted.pinned,
+          });
         }
         reconcilePersistedDescriptor(persisted);
         throw new Error("terminal_session_unavailable");
       }
     }
-    return createSession(sessionId);
+    return createSession(sessionId, options.metadata);
   }
 
   function attachSocket(
@@ -1863,22 +2114,143 @@ export function createTerminalService(
     };
   }
 
+  function buildProfileCatalog(
+    status: TerminalStatusPayload,
+  ): TerminalProfileCatalogResponse {
+    const binaryById = new Map(status.binaries.map((binary) => [binary.id, binary]));
+    const profileSpecs: Array<{
+      id: string;
+      label: string;
+      labelZh: string;
+      description: string;
+      descriptionZh: string;
+      kind: TerminalProfileDescriptor["kind"];
+      targetKind: TerminalProfileDescriptor["targetKind"];
+      binaryId: TerminalProfileDescriptor["binaryId"];
+      command: string;
+      pinned: boolean;
+      color: string;
+    }> = [
+      {
+        id: "local-shell",
+        label: "Local Shell",
+        labelZh: "本地 Shell",
+        description: "Open a plain local shell in the OpenClaw workspace.",
+        descriptionZh: "在 OpenClaw 工作区打开普通本地 Shell。",
+        kind: "shell",
+        targetKind: "local",
+        binaryId: "bash",
+        command: "bash",
+        pinned: true,
+        color: "slate",
+      },
+      {
+        id: "agent-codex",
+        label: "Codex Agent",
+        labelZh: "Codex Agent",
+        description: "Launch Codex CLI with the configured default model.",
+        descriptionZh: "使用已配置默认模型启动 Codex CLI。",
+        kind: "agent",
+        targetKind: "local",
+        binaryId: "codex",
+        command: "codex",
+        pinned: true,
+        color: "emerald",
+      },
+      {
+        id: "agent-claude",
+        label: "Claude Agent",
+        labelZh: "Claude Agent",
+        description: "Launch Claude CLI with the configured default model.",
+        descriptionZh: "使用已配置默认模型启动 Claude CLI。",
+        kind: "agent",
+        targetKind: "local",
+        binaryId: "claude",
+        command: "claude",
+        pinned: true,
+        color: "violet",
+      },
+      {
+        id: "agent-opencode",
+        label: "OpenCode Agent",
+        labelZh: "OpenCode Agent",
+        description: "Launch OpenCode in a dedicated terminal tab.",
+        descriptionZh: "在独立终端标签中启动 OpenCode。",
+        kind: "agent",
+        targetKind: "local",
+        binaryId: "opencode",
+        command: "opencode",
+        pinned: false,
+        color: "cyan",
+      },
+      {
+        id: "marketplace-clawhub",
+        label: "ClawHub",
+        labelZh: "ClawHub",
+        description: "Run ClawHub marketplace CLI from the terminal workbench.",
+        descriptionZh: "从终端工作台运行 ClawHub 技能市场 CLI。",
+        kind: "marketplace",
+        targetKind: "local",
+        binaryId: "clawhub",
+        command: "clawhub",
+        pinned: false,
+        color: "amber",
+      },
+      {
+        id: "marketplace-skillhub",
+        label: "SkillHub",
+        labelZh: "SkillHub",
+        description: "Run SkillHub marketplace CLI from the terminal workbench.",
+        descriptionZh: "从终端工作台运行 SkillHub 技能市场 CLI。",
+        kind: "marketplace",
+        targetKind: "local",
+        binaryId: "skillhub",
+        command: "skillhub",
+        pinned: false,
+        color: "blue",
+      },
+      {
+        id: "remote-ssh",
+        label: "SSH Terminal",
+        labelZh: "SSH 终端",
+        description: "Reserved remote profile for cloud server terminal targets.",
+        descriptionZh: "为云服务器终端目标预留的远程 Profile。",
+        kind: "remote",
+        targetKind: "ssh",
+        binaryId: null,
+        command: "ssh",
+        pinned: false,
+        color: "rose",
+      },
+    ];
+
+    return {
+      profiles: profileSpecs.map((profile) => {
+        const binary = profile.binaryId ? binaryById.get(profile.binaryId) : null;
+        const installed = profile.binaryId === "bash"
+          ? true
+          : profile.binaryId
+            ? Boolean(binary?.installed)
+            : false;
+        return {
+          ...profile,
+          cwd: options.config.openclawRoot || null,
+          installed,
+          launchable: profile.targetKind === "local" && installed,
+        };
+      }),
+    };
+  }
+
   function buildSessionSummaryPayload(): TerminalSessionSummaryResponse {
     const summaries = Array.from(sessions.values())
       .filter((session) => !session.closed)
       .map((session) => {
-        const firstGatewayConnId =
-          Array.from(session.gatewaySubscribers.keys())[0] || null;
         const hasActiveAttach = getActiveClientCount(session) > 0;
-        return buildTerminalSessionSummary({
-          sid: session.id,
-          title: `Terminal ${session.id}`,
-          status: hasActiveAttach ? "running" : "detached",
-          source: session.source,
-          attachedClientId: firstGatewayConnId,
-          observerCount: session.gatewaySubscribers.size,
-          updatedAt: session.lastActivityAt,
-        });
+        return buildSessionDescriptor(
+          session,
+          hasActiveAttach ? "running" : "detached",
+        );
       })
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
@@ -1904,9 +2276,23 @@ export function createTerminalService(
 
     try {
       const url = new URL(req.url || "/", "http://127.0.0.1");
+      const pinnedParam = url.searchParams.get("pinned");
+      const attachMetadata: TerminalSessionLaunchMetadata = {
+        profileId: url.searchParams.get("profileId"),
+        targetKind: url.searchParams.get(
+          "targetKind",
+        ) as TerminalTargetKind | null,
+        cwd: url.searchParams.get("cwd"),
+        pinned:
+          pinnedParam === null
+            ? undefined
+            : pinnedParam === "1" || pinnedParam === "true",
+      };
       const session = getOrCreateSession(url.searchParams.get("sid"), {
         resumePersisted: normalizeResumeSession(url.searchParams.get("resume")),
+        metadata: attachMetadata,
       });
+      applySessionMetadata(session, attachMetadata);
       if (!attachSocket(session, ws, url.searchParams)) {
         try {
           ws.close();
@@ -1923,36 +2309,11 @@ export function createTerminalService(
         markSessionActivity(session, { persist: "deferred" });
         const payload = message.toString();
 
-        if (payload.startsWith("{")) {
-          try {
-            const data = JSON.parse(payload) as {
-              type?: string;
-              cols?: number;
-              rows?: number;
-            };
-            if (data.type === "resize" && data.cols && data.rows) {
-              session.lastCols = Math.max(1, data.cols);
-              session.lastRows = Math.max(1, data.rows);
-              appendLedgerEvent(
-                session,
-                "resize",
-                { cols: session.lastCols, rows: session.lastRows },
-                null,
-              );
-              session.term.resize(session.lastCols, session.lastRows);
-              return;
-            }
-            if (data.type === "ping") {
-              sendEvent(ws, { type: "pong" });
-              return;
-            }
-            if (data.type === "clear") {
-              clearSessionDisplay(session, null);
-              return;
-            }
-          } catch {
-            // fall through
-          }
+        if (consumeTerminalControlPayload(session, payload, {
+          actorClientId: null,
+          socket: ws,
+        })) {
+          return;
         }
 
         session.term.write(payload);
@@ -2060,6 +2421,10 @@ export function createTerminalService(
       return ledger.listBySession(sessionId);
     },
 
+    async listWorkspaceProfiles(): Promise<TerminalProfileCatalogResponse> {
+      return buildProfileCatalog(await buildStatusPayload());
+    },
+
     async listWorkspaceActions(): Promise<TerminalActionCatalogResponse> {
       return buildTerminalActionCatalog();
     },
@@ -2135,7 +2500,9 @@ export function createTerminalService(
       }
       const session = getOrCreateSession(payload.sid || null, {
         resumePersisted: normalizeResumeSession(payload.resume),
+        metadata: payload,
       });
+      applySessionMetadata(session, payload);
       if (payload.handoffContext) {
         session.source = "system-handoff";
         session.sourceModule = payload.handoffContext.fromModule || "system";
@@ -2151,6 +2518,7 @@ export function createTerminalService(
       persistSessionDescriptor(session);
       return {
         sid: session.id,
+        descriptor: buildSessionDescriptor(session, "running"),
         leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS,
         events: buildAttachEvents(session, payload),
       };
@@ -2166,10 +2534,12 @@ export function createTerminalService(
         );
       }
       const session = requireActiveSession(payload.sid);
+      applySessionMetadata(session, payload);
       registerStreamSubscriber(session, runtime);
       persistSessionDescriptor(session);
       return {
         sid: session.id,
+        descriptor: buildSessionDescriptor(session, "running"),
         leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS,
         events: buildAttachEvents(session, payload),
       };
@@ -2186,6 +2556,20 @@ export function createTerminalService(
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
       const inputData = String(payload.data || "");
+      if (consumeTerminalControlPayload(session, inputData, {
+        actorClientId: runtime.connId,
+      })) {
+        if (payload.ackMode === "none") {
+          return {
+            ok: true,
+            sid: session.id,
+            instanceId: session.instanceId,
+            outputSeq: session.outputSeq,
+            leaseTtlMs: TERMINAL_GATEWAY_LEASE_MS,
+          };
+        }
+        return createGatewayAck(session, payload);
+      }
       session.term.write(inputData);
       markSessionActivity(session, { persist: "deferred" });
       enqueueInputLedgerEvent(session, inputData, runtime.connId);
@@ -2207,9 +2591,14 @@ export function createTerminalService(
     ): TerminalGatewayAckResponse {
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
+      const cols = normalizeTerminalDimension(payload.cols);
+      const rows = normalizeTerminalDimension(payload.rows);
+      if (!cols || !rows) {
+        return createGatewayAck(session, payload);
+      }
       markSessionActivity(session);
-      session.lastCols = Math.max(1, Number(payload.cols || 0));
-      session.lastRows = Math.max(1, Number(payload.rows || 0));
+      session.lastCols = cols;
+      session.lastRows = rows;
       appendLedgerEvent(
         session,
         "resize",

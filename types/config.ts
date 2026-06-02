@@ -4,6 +4,7 @@ export interface ConfigProviderModelSummary {
   reasoning: boolean;
   contextWindow: number | null;
   maxTokens: number | null;
+  extra: Record<string, unknown> | null;
 }
 
 export interface ConfigProviderSummary {
@@ -13,6 +14,7 @@ export interface ConfigProviderSummary {
   hasApiKey: boolean;
   modelCount: number;
   models: ConfigProviderModelSummary[];
+  extra: Record<string, unknown> | null;
 }
 
 export interface ConfigProviderInput {
@@ -21,11 +23,15 @@ export interface ConfigProviderInput {
   baseUrl: string | null;
   apiKey?: string;
   models: ConfigProviderModelSummary[];
+  extra?: Record<string, unknown> | null;
 }
 
 export interface ConfigAgentDefaultModelSummary {
   alias?: string;
   params?: Record<string, unknown>;
+  agentRuntime?: {
+    id?: string;
+  };
   streaming?: boolean;
 }
 
@@ -83,8 +89,8 @@ export interface ConfigSummaryPayload {
     typingIntervalSeconds: number | null;
     pdfMaxBytesMb: number | null;
     pdfMaxPages: number | null;
-    llmIdleTimeoutSeconds: number | null;
-    embeddedPiProjectSettingsPolicy: string;
+    embeddedAgentProjectSettingsPolicy: string;
+    embeddedAgentExecutionContract: string;
     memorySearch: Record<string, unknown> | null;
     humanDelay: Record<string, unknown> | null;
     heartbeat: Record<string, unknown> | null;
@@ -92,6 +98,7 @@ export interface ConfigSummaryPayload {
     cliBackends: Record<string, unknown> | null;
     contextPruning: Record<string, unknown> | null;
     models: Record<string, ConfigAgentDefaultModelSummary>;
+    extra: Record<string, unknown> | null;
   };
   compaction: {
     mode: string;
@@ -119,11 +126,13 @@ export interface ConfigSummaryPayload {
     profile: string;
     elevatedEnabled: boolean;
     execHost: string;
+    execMode: string;
     execNode: string;
     execAsk: string;
     execSecurity: string;
     execTimeoutSec: number;
     fsWorkspaceOnly: boolean;
+    extra: Record<string, unknown> | null;
   };
   execApprovals: {
     socketPath: string;
@@ -156,6 +165,7 @@ export interface ConfigSummaryPayload {
       idleHours: number;
       maxAgeHours: number;
     };
+    extra: Record<string, unknown> | null;
   };
   messages: {
     responsePrefix: string;
@@ -169,6 +179,7 @@ export interface ConfigSummaryPayload {
       drop: string;
       byChannel: Record<string, string>;
     };
+    extra: Record<string, unknown> | null;
   };
   gateway: {
     port: number;
@@ -196,6 +207,9 @@ export interface ConfigSummaryPayload {
       enabled?: boolean;
       basePath?: string;
       root?: string;
+      embedSandbox?: string;
+      allowExternalEmbedUrls?: boolean;
+      chatMessageMaxWidth?: string;
       allowedOrigins: string[];
       dangerouslyAllowHostHeaderOriginFallback: boolean;
       allowInsecureAuth: boolean;
@@ -210,10 +224,14 @@ export interface ConfigSummaryPayload {
     webchat?: {
       chatHistoryMaxChars: number | null;
     };
+    handshakeTimeoutMs?: number | null;
     channelHealthCheckMinutes?: number | null;
+    channelStaleEventThresholdMinutes?: number | null;
+    channelMaxRestartsPerHour?: number | null;
     tailscale: {
       mode: string;
     };
+    extra: Record<string, unknown> | null;
   };
   channels: Record<string, ConfigChannelSummary>;
   sessionReset: {
@@ -232,8 +250,16 @@ export interface ConfigSummaryPayload {
   commands: {
     native: string;
     nativeSkills: string;
+    text: boolean;
+    bash: boolean;
+    bashForegroundMs: number | null;
+    config: boolean;
+    mcp: boolean;
+    plugins: boolean;
+    debug: boolean;
     restart: boolean;
     ownerDisplay: string;
+    extra: Record<string, unknown> | null;
   };
   mcp?: {
     sessionIdleTtlMs?: number | null;
@@ -245,10 +271,12 @@ export interface ConfigSummaryPayload {
       extraDirs?: string[];
       watch?: boolean;
       watchDebounceMs?: number | null;
+      allowSymlinkTargets?: boolean;
     };
     install?: {
       preferBrew?: boolean;
       nodeManager?: 'npm' | 'pnpm' | 'yarn' | 'bun' | '';
+      allowUploadedArchives?: boolean;
     };
     limits?: {
       maxCandidatesPerRoot?: number | null;
@@ -266,6 +294,7 @@ export interface ConfigSummaryPayload {
     defaultAgent?: string;
     allowedAgents?: string[];
     maxConcurrentSessions?: number;
+    extra?: Record<string, unknown> | null;
   };
   plugins?: {
     enabled?: boolean;
@@ -295,6 +324,9 @@ export interface ConfigSummaryPayload {
     cdpUrl?: string;
     remoteCdpTimeoutMs?: number | null;
     remoteCdpHandshakeTimeoutMs?: number | null;
+    localLaunchTimeoutMs?: number | null;
+    localCdpReadyTimeoutMs?: number | null;
+    actionTimeoutMs?: number | null;
     defaultProfile?: string;
     attachOnly?: boolean;
     cdpPortRangeStart?: number | null;
@@ -334,6 +366,10 @@ export interface ConfigSummaryPayload {
     consoleLevel?: string;
     consoleStyle?: string;
     redactSensitive?: string;
+  };
+  openclaw?: {
+    extraDomains: Record<string, unknown>;
+    extraDomainKeys: string[];
   };
   providers: ConfigProviderSummary[];
   pluginEntries: Array<{
@@ -391,6 +427,7 @@ export interface ConfigUpdatePayload {
   plugins?: Partial<ConfigSummaryPayload['plugins']>;
   browser?: Partial<ConfigSummaryPayload['browser']>;
   logging?: Partial<ConfigSummaryPayload['logging']>;
+  openclaw?: Partial<NonNullable<ConfigSummaryPayload['openclaw']>>;
 }
 
 export type ConfigPatchPayload = Partial<ConfigUpdatePayload>;

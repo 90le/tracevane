@@ -33,9 +33,13 @@ test('slash status dialog uses reka dialog primitives for the current-status sur
   assert.match(slashStatusDialog, /DialogOverlay/);
   assert.match(slashStatusDialog, /DialogContent/);
   assert.match(slashStatusDialog, /DialogClose/);
+  assert.match(slashStatusDialog, /DialogTitle/);
+  assert.match(slashStatusDialog, /DialogDescription/);
   assert.match(slashStatusDialog, /<DialogRoot :open="open" @update:open="handleOpenChange">/);
   assert.match(slashStatusDialog, /<DialogOverlay class="chat-slash-status-mask"\s*\/>/);
   assert.match(slashStatusDialog, /<DialogContent as-child @open-auto-focus\.prevent @close-auto-focus\.prevent>/);
+  assert.match(slashStatusDialog, /<DialogTitle as-child>[\s\S]*<span class="sr-only">\{\{ text\('当前状态', 'Current status'\) \}\}<\/span>/);
+  assert.match(slashStatusDialog, /<DialogDescription as-child>[\s\S]*<span class="sr-only">\{\{ text\('查看当前会话运行态、连接态和控制状态。', 'Review runtime, connection, and control state for the current session\.'\) \}\}<\/span>/);
   assert.match(slashStatusDialog, /Current status/);
   assert.match(slashStatusDialog, /Queue/);
   assert.match(slashStatusDialog, /Runtime/);

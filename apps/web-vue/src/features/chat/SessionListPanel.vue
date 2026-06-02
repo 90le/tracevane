@@ -7,12 +7,12 @@
       :creating-folder-open="actions.creatingFolderOpen.value"
       :create-folder-draft="actions.createFolderDraft.value"
       @toggle-inspect="$emit('toggle-inspect')"
-      @open-create-folder="actions.emitCreateFolder"
+      @open-create-folder="openCreateFolderFromHeader"
       @update:create-folder-draft="actions.createFolderDraft.value = $event"
       @cancel-create-folder="actions.cancelCreateFolder"
       @submit-create-folder="actions.submitCreateFolder"
       @toggle-selection-mode="selection.toggleSelectionMode"
-      @new-chat="$emit('new-chat')"
+      @new-chat="openNewChatFromHeader"
     />
 
     <SessionListScopeTabs
@@ -160,7 +160,7 @@
       :x="actions.contextMenu.value.x"
       :y="actions.contextMenu.value.y"
       :items="actions.contextMenuItems.value"
-      @close="actions.closeContextMenu"
+      @close="handleContextMenuClose"
       @action="actions.handleContextMenuAction"
     />
 
@@ -178,7 +178,7 @@
 <script setup lang="ts">
 import './session-list-shared.css';
 
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { shouldRevealMoreSessionRowsOnScroll } from '../../../../../lib/chat-session-catalog';
 import {
   canRenameOrganizerEntryId,
@@ -239,6 +239,7 @@ const emit = defineEmits<{
 const { locale, text } = useLocalePreference();
 const sessionListBodyRef = ref<HTMLElement | null>(null);
 let sessionListAutoRevealFrame = 0;
+const SESSION_DISPLAY_META_CACHE_LIMIT = 240;
 
 type SessionDisplayMeta = {
   agentName: string;
@@ -256,11 +257,10 @@ const agentById = computed(() => new Map(
   props.agents.map((agent) => [agent.id, agent]),
 ));
 
-const displaySessions = computed(() => [
-  ...props.activeSessions,
-  ...props.archivedSessions,
-  ...props.observedSessions,
-]);
+const sessionDisplayMetaCache = new Map<string, {
+  signature: string;
+  meta: SessionDisplayMeta;
+}>();
 
 function resolveAgent(session: ChatSessionRow): AgentSummary | null {
   return agentById.value.get(session.agentId) || null;
@@ -304,39 +304,47 @@ function deriveSessionStateTone(session: ChatSessionRow): string {
   return 'live';
 }
 
-const sessionDisplayMetaByKey = computed(() => {
-  const metaByKey = new Map<string, SessionDisplayMeta>();
-  // Explicitly depend on locale so cached labels update immediately after language changes.
-  void locale.value;
-  for (const session of displaySessions.value) {
-    if (metaByKey.has(session.key)) {
-      continue;
+function buildSessionDisplayMetaSignature(session: ChatSessionRow, agent: AgentSummary | null): string {
+  return [
+    locale.value,
+    session.key,
+    session.agentId,
+    agent?.name || '',
+    agent?.identity.name || '',
+    agent?.identity.avatar || '',
+    agent?.identity.emoji || '',
+    session.label,
+    session.derivedTitle || '',
+    session.lastMessagePreview || '',
+    session.presentation.customLabel || '',
+    session.presentation.autoLabel || '',
+    session.permissions.writable ? 'w' : 'r',
+    session.runtime.activeRunId || '',
+    session.runtime.state || '',
+  ].join('\u0001');
+}
+
+function rememberSessionDisplayMeta(sessionKey: string, signature: string, meta: SessionDisplayMeta): void {
+  sessionDisplayMetaCache.delete(sessionKey);
+  sessionDisplayMetaCache.set(sessionKey, { signature, meta });
+  while (sessionDisplayMetaCache.size > SESSION_DISPLAY_META_CACHE_LIMIT) {
+    const oldestKey = sessionDisplayMetaCache.keys().next().value;
+    if (!oldestKey) {
+      return;
     }
-    const agent = resolveAgent(session);
-    const agentName = deriveAgentName(session);
-    metaByKey.set(session.key, {
-      agentName,
-      agentAvatar: agent?.identity.avatar || '',
-      agentEmoji: agent?.identity.emoji || '',
-      agentInitial: agentName.trim().charAt(0).toUpperCase() || 'A',
-      title: deriveChatSessionTitle(session, agentName),
-      preview: deriveSessionPreviewText(session, false),
-      observedPreview: deriveSessionPreviewText(session, true),
-      stateLabel: deriveSessionStateLabel(session),
-      stateTone: deriveSessionStateTone(session),
-    });
+    sessionDisplayMetaCache.delete(oldestKey);
   }
-  return metaByKey;
-});
+}
 
 function sessionDisplayMeta(session: ChatSessionRow): SessionDisplayMeta {
-  const cached = sessionDisplayMetaByKey.value.get(session.key);
-  if (cached) {
-    return cached;
-  }
   const agent = resolveAgent(session);
+  const signature = buildSessionDisplayMetaSignature(session, agent);
+  const cached = sessionDisplayMetaCache.get(session.key);
+  if (cached?.signature === signature) {
+    return cached.meta;
+  }
   const agentName = deriveAgentName(session);
-  return {
+  const meta = {
     agentName,
     agentAvatar: agent?.identity.avatar || '',
     agentEmoji: agent?.identity.emoji || '',
@@ -347,6 +355,8 @@ function sessionDisplayMeta(session: ChatSessionRow): SessionDisplayMeta {
     stateLabel: deriveSessionStateLabel(session),
     stateTone: deriveSessionStateTone(session),
   };
+  rememberSessionDisplayMeta(session.key, signature, meta);
+  return meta;
 }
 
 function agentNameFor(session: ChatSessionRow): string {
@@ -444,8 +454,10 @@ const viewModel = useSessionListViewModel({
 const filters = useSessionListFilters({
   baseActiveSessions: viewModel.baseActiveSessions,
   baseArchivedSessions: viewModel.baseArchivedSessions,
+  archivedSessions: archivedSessionsRef,
   baseObservedSessions: viewModel.baseObservedSessions,
   orderedFolders: viewModel.orderedFolders,
+  archivedEntry: viewModel.archivedEntry,
   currentFolder: viewModel.currentFolder,
   listScope: viewModel.listScope,
   archiveViewOpen: viewModel.archiveViewOpen,
@@ -494,6 +506,7 @@ const actions = useSessionListActions({
   allOrganizerSessions: viewModel.allOrganizerSessions,
   archiveViewOpen: viewModel.archiveViewOpen,
   prunedOrganizer: viewModel.prunedOrganizer,
+  selectionMode: selection.selectionMode,
   selectedManageableSessionKeys: selection.selectedManageableSessionKeys,
   text,
   canManageSession,
@@ -523,10 +536,27 @@ function enterFolder(folderId: string): void {
   selection.clearSelection();
 }
 
+async function openCreateFolderFromHeader(): Promise<void> {
+  viewModel.setListScope('folders');
+  await nextTick();
+  actions.emitCreateFolder();
+}
+
 function leaveFolder(): void {
   viewModel.leaveFolder();
   actions.resetTransientState();
   selection.clearSelection();
+}
+
+function openNewChatFromHeader(): void {
+  if (viewModel.archiveViewOpen.value) {
+    viewModel.setListScope('all');
+  } else if (viewModel.currentFolder.value) {
+    viewModel.leaveFolder();
+  }
+  actions.resetTransientState();
+  selection.clearSelection();
+  emit('new-chat');
 }
 
 function handleSessionPrimaryClick(session: ChatSessionRow): void {
@@ -536,6 +566,56 @@ function handleSessionPrimaryClick(session: ChatSessionRow): void {
   }
   emit('select-session', session.key);
 }
+
+function focusSessionMoreTrigger(sessionKey: string): void {
+  const root = sessionListBodyRef.value;
+  if (!root) {
+    return;
+  }
+  const triggers = Array.from(
+    root.querySelectorAll<HTMLButtonElement>('.chat-shell-session-more[data-session-more-key]'),
+  );
+  const trigger = triggers.find((button) => button.dataset.sessionMoreKey === sessionKey);
+  trigger?.focus({ preventScroll: true });
+}
+
+function focusSessionRenameField(sessionKey: string): void {
+  const root = sessionListBodyRef.value;
+  if (!root) {
+    return;
+  }
+  const fields = Array.from(
+    root.querySelectorAll<HTMLInputElement>('.chat-shell-session-field[data-session-rename-key]'),
+  );
+  const field = fields.find((input) => input.dataset.sessionRenameKey === sessionKey);
+  if (!field) {
+    return;
+  }
+  field.focus({ preventScroll: true });
+  field.select();
+}
+
+function handleContextMenuClose(): void {
+  const sessionKey = actions.contextMenu.value.mode === 'session'
+    ? actions.contextMenu.value.session?.key || ''
+    : '';
+  actions.closeContextMenu();
+  if (!sessionKey) {
+    return;
+  }
+  void nextTick(() => {
+    focusSessionMoreTrigger(sessionKey);
+  });
+}
+
+watch(actions.renamingSessionKey, (sessionKey) => {
+  if (!sessionKey) {
+    return;
+  }
+  void nextTick(() => {
+    focusSessionRenameField(sessionKey);
+  });
+});
 
 function revealMoreSessionsNearRailBottom(element: HTMLElement | null): void {
   if (!element || !windows.hasHiddenRows.value || !shouldRevealMoreSessionRowsOnScroll({
@@ -586,6 +666,10 @@ watch(
     () => props.inspectMode,
   ],
   () => {
+    windows.resetVisibleCounts();
+    if (sessionListBodyRef.value) {
+      sessionListBodyRef.value.scrollTop = 0;
+    }
     actions.resetTransientState();
     selection.clearSelection();
   },

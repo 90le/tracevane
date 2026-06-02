@@ -138,32 +138,44 @@ test("system refresh preserves action notices", () => {
   );
 });
 
-test("terminal workspace uses integrated stage-drawer shell without dedicated explorer", () => {
+test("terminal workspace uses integrated IDE shell with resource explorer", () => {
   assert.match(terminalWorkspacePage, /terminal-workspace-body/);
+  assert.match(terminalWorkspacePage, /TerminalResourceExplorer/);
   assert.match(terminalWorkspacePage, /terminal-workspace-stage/);
   assert.doesNotMatch(terminalWorkspacePage, /terminal-session-explorer/);
   assert.match(terminalWorkspacePage, /terminal-inspector-drawer/);
   assert.match(terminalSessionPane, /terminal-stage-header/);
   assert.match(terminalSessionPane, /terminal-stage-header-main/);
-  assert.match(terminalSessionPane, /terminal-stage-header-actions/);
-  assert.match(terminalSessionPane, /terminal-stage-action--focus/);
-  assert.match(terminalSessionPane, /sendShortcut\('c'\)/);
+  assert.doesNotMatch(terminalSessionPane, /terminal-stage-header-actions/);
+  assert.match(terminalSessionPane, /<template #actions>/);
+  assert.doesNotMatch(terminalSessionPane, /terminal-stage-action--focus/);
+  assert.doesNotMatch(terminalSessionPane, /terminal-stage-action--split/);
+  assert.match(terminalSessionPane, /terminal-split-workbench/);
+  assert.match(terminalSessionPane, /<header v-if="visiblePaneSessions\.length > 1" class="terminal-split-pane__bar">/);
+  assert.doesNotMatch(terminalSessionPane, /sendShortcut\('c'\)/);
   assert.doesNotMatch(terminalSessionPane, /terminal-session-actions/);
-  assert.doesNotMatch(
-    terminalWorkspaceCss,
-    /grid-template-columns:\s*280px minmax\(0, 1fr\) auto/,
-  );
   assert.match(
     terminalWorkspaceCss,
-    /grid-template-columns:\s*minmax\(0, 1fr\)\s+clamp\(300px,\s*28vw,\s*380px\);/,
+    /\.terminal-workspace-body\s*\{[\s\S]*grid-template-columns:\s*44px minmax\(220px,\s*var\(--terminal-resource-width,\s*286px\)\) 7px minmax\(0,\s*1fr\);/,
   );
+  assert.match(terminalWorkspacePage, /TERMINAL_RESOURCE_EXPLORER_WIDTH_STORAGE_KEY/);
+  assert.match(terminalWorkspacePage, /startResourceExplorerResize/);
+  assert.match(terminalWorkspaceCss, /\.terminal-resource-sidebar-resizer\s*\{/);
+  assert.match(
+    terminalWorkspaceCss,
+    /\.terminal-split-workbench\[data-pane-count='1'\] \.terminal-split-pane\s*\{[\s\S]*grid-template-rows:\s*minmax\(0, 1fr\);/,
+  );
+  assert.match(terminalWorkspaceCss, /\.terminal-inspector-drawer--overlay\s*\{/);
+  assert.match(terminalWorkspaceCss, /\.terminal-resource-sidebar\s*\{/);
+  assert.doesNotMatch(terminalWorkspaceCss, /\.terminal-session-sidecar\s*\{/);
   assert.match(terminalWorkspaceCss, /\.terminal-stage-header\s*\{/);
+  assert.doesNotMatch(terminalWorkspaceCss, /\.terminal-stage-header-actions\s*\{/);
 });
 
 test("terminal inspector drawer width and children are overflow-safe", () => {
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-inspector-drawer\s*\{[\s\S]*width:\s*clamp\(300px,\s*28vw,\s*380px\);/,
+    /\.terminal-inspector-drawer\s*\{[\s\S]*width:\s*min\(420px,\s*calc\(100vw - 32px\)\);/,
   );
   assert.match(
     terminalWorkspaceCss,
@@ -180,34 +192,44 @@ test("terminal inspector drawer width and children are overflow-safe", () => {
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-inspector-tooling,[\s\S]*\.terminal-action-panel,[\s\S]*\.terminal-tooling-status-item\s*\{[\s\S]*min-width:\s*0;/,
+    /\.terminal-inspector-tooling\s*\{[\s\S]*min-width:\s*0;/,
+  );
+  assert.doesNotMatch(terminalWorkspaceCss, /\.terminal-action-panel\s*\{/);
+  assert.doesNotMatch(terminalWorkspaceCss, /\.terminal-session-explorer\s*\{/);
+  assert.match(
+    terminalWorkspaceCss,
+    /\.terminal-binary-row\s*\{[\s\S]*min-width:\s*0;/,
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-inspector-tooling-summary\s*\{[\s\S]*overflow-wrap:\s*anywhere;/,
+    /\.terminal-binary-row__meta\s*\{[\s\S]*overflow-wrap:\s*anywhere;/,
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-tooling-status-meta\s*\{[\s\S]*overflow-wrap:\s*anywhere;/,
+    /\.terminal-binary-row__actions\s*\{[\s\S]*gap:\s*6px;/,
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-tooling-status-list\s*\{[\s\S]*gap:\s*6px;/,
-  );
-  assert.match(
-    terminalWorkspaceCss,
-    /\.terminal-tooling-status-item\s*\{[\s\S]*padding:\s*6px;/,
+    /\.terminal-tooling-status-chip\s*\{[\s\S]*padding:\s*2px 8px;/,
   );
 });
 
 test("terminal workspace keeps strong shell-relative height chain for stage and console expansion", () => {
   assert.match(
     terminalWorkspaceCss,
-    /\.main-content\.terminal-surface-route\s*\{[\s\S]*padding:\s*var\(--studio-route-inset,\s*10px\);/,
+    /\.main-content\.terminal-surface-route\s*\{[\s\S]*padding:\s*8px;/,
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.main-content\.terminal-surface-route\s+\.shell-route-stage\s*\{[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
+    /\.main-content\.terminal-surface-route\s+\.shell-layout\s*\{[\s\S]*max-width:\s*none;[\s\S]*padding:\s*0;/,
+  );
+  assert.match(
+    terminalWorkspaceCss,
+    /\.main-content\.terminal-surface-route\s+\.shell-route-stage\s*\{[\s\S]*padding:\s*0;[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
+  );
+  assert.doesNotMatch(
+    terminalWorkspaceCss,
+    /\.main-content\.terminal-surface-route\s+\.studio-shell-topbar/,
   );
   assert.doesNotMatch(
     terminalWorkspaceCss,
@@ -247,11 +269,11 @@ test("terminal workspace keeps strong shell-relative height chain for stage and 
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-session-pane\s*>\s*\.terminal-console-surface\s*\{[\s\S]*height:\s*100%;/,
+    /\.terminal-split-pane\s*>\s*\.terminal-console-surface\s*\{[\s\S]*height:\s*100%;/,
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-session-pane\s*>\s*\.terminal-console-surface\s*\{[\s\S]*min-height:\s*0;/,
+    /\.terminal-split-pane\s*>\s*\.terminal-console-surface\s*\{[\s\S]*min-height:\s*0;/,
   );
   assert.match(
     terminalWorkspaceCss,
@@ -302,7 +324,7 @@ test("terminal workspace theme uses unified surface tokens for stage and drawer"
   );
   assert.doesNotMatch(
     terminalWorkspaceCss,
-    /linear-gradient\(180deg,\s*var\(--claw-navy-800\)|\.terminal-session-context\s*\{[\s\S]*linear-gradient\(135deg/,
+    /linear-gradient\(180deg,\s*var\(--claw-navy-800\)|\.terminal-session-context\s*\{/,
   );
   assert.match(
     terminalWorkspaceCss,
@@ -310,7 +332,7 @@ test("terminal workspace theme uses unified surface tokens for stage and drawer"
   );
   assert.match(
     terminalWorkspaceCss,
-    /\.terminal-tab-rename,[\s\S]*\.terminal-tab-close,[\s\S]*\.terminal-tab-end,[\s\S]*\.terminal-tab-delete/,
+    /\.terminal-tab-close,[\s\S]*\.terminal-tab-rename-save,[\s\S]*\.terminal-tab-rename-cancel/,
   );
   assert.match(
     terminalWorkspaceCss,
@@ -326,8 +348,11 @@ test("terminal workspace theme uses unified surface tokens for stage and drawer"
   );
   assert.doesNotMatch(
     terminalWorkspaceCss,
-    /rgba\(|#[0-9a-fA-F]{3,6}|linear-gradient|radial-gradient|var\(--claw-navy|var\(--sky|var\(--atlas|var\(--glass/,
+    /var\(--claw-navy|var\(--sky|var\(--atlas|var\(--glass/,
   );
+  assert.match(terminalWorkspaceCss, /\.terminal-workspace-shell\[data-terminal-theme='matrix'\][\s\S]*--terminal-xterm-bg:\s*#[0-9a-fA-F]{6};/);
+  assert.match(terminalWorkspaceCss, /\.terminal-workspace-shell\[data-terminal-theme='amber'\][\s\S]*--terminal-xterm-bg:\s*#[0-9a-fA-F]{6};/);
+  assert.match(terminalWorkspaceCss, /\.terminal-workspace-shell\[data-terminal-theme='midnight'\][\s\S]*--terminal-xterm-bg:\s*#[0-9a-fA-F]{6};/);
   assert.match(terminalWorkspaceCss, /\.terminal-mobile-sheet-mask[\s\S]*background:\s*var\(--modal-backdrop\);/);
   assert.match(terminalWorkspaceCss, /\.terminal-install-output-sheet[\s\S]*box-shadow:[\s\S]*var\(--mono-shadow-md\),/);
   assert.match(terminalWorkspaceCss, /\.terminal-install-output-log[\s\S]*background:\s*var\(--code-bg\);/);
@@ -366,7 +391,11 @@ test("terminal workspace embeds console in flush stage mode", () => {
 test("terminal console reruns fit after mount and attach for settled stage dimensions", () => {
   assert.match(
     terminalConsolePage,
-    /requestAnimationFrame\(\(\) => \{[\s\S]*requestAnimationFrame\(\(\) => \{[\s\S]*syncTerminalSize\(\);/,
+    /terminalPostLayoutFitFrame = window\.requestAnimationFrame\(\(\) => \{[\s\S]*terminalFitFrame = window\.requestAnimationFrame\(runFit\);/,
+  );
+  assert.match(
+    terminalConsolePage,
+    /const runFit = \(\) => \{[\s\S]*syncTerminalSize\(\);[\s\S]*scheduleTerminalRenderRefresh\(\);/,
   );
   assert.match(
     terminalConsolePage,
@@ -382,6 +411,6 @@ test("terminal console reruns fit after mount and attach for settled stage dimen
   );
   assert.match(
     terminalConsolePage,
-    /new ResizeObserver\(\(\) => [\s\S]*schedulePostLayoutFitSync\(\)\)/,
+    /resizeObserver = new ResizeObserver\(\(\) => \{[\s\S]*schedulePostLayoutFitSync\(\);[\s\S]*\}\);/,
   );
 });

@@ -26,6 +26,10 @@ export interface TerminalSessionDisplayTitle {
   labelEn: string;
 }
 
+export interface TerminalSessionTabNavigationTarget {
+  sessionId: string | null | undefined;
+}
+
 export function buildTerminalSessionStatusSummary(input: {
   status: TerminalSessionStatus;
   controlState: TerminalSessionControlState;
@@ -177,4 +181,23 @@ export function buildTerminalSessionDisplayTitle(input: {
     labelZh: title,
     labelEn: title,
   };
+}
+
+export function resolveNextTerminalSessionTabId(
+  tabs: readonly TerminalSessionTabNavigationTarget[],
+  activeSessionId: string | null | undefined,
+  direction: number,
+): string {
+  const ids = tabs
+    .map((tab) => String(tab.sessionId || "").trim())
+    .filter(Boolean);
+  if (ids.length <= 1) return "";
+
+  const activeIndex = ids.indexOf(String(activeSessionId || "").trim());
+  if (activeIndex < 0) {
+    return direction < 0 ? ids[ids.length - 1] || "" : ids[0] || "";
+  }
+
+  const offset = direction < 0 ? -1 : 1;
+  return ids[(activeIndex + offset + ids.length) % ids.length] || "";
 }

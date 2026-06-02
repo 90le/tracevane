@@ -109,8 +109,7 @@ export function buildDefaultThreadBindings(): ChannelThreadBindingSummary {
     enabled: false,
     idleHours: 24,
     maxAgeHours: 0,
-    spawnSubagentSessions: false,
-    spawnAcpSessions: false,
+    spawnSessions: false,
   };
 }
 
@@ -230,8 +229,7 @@ export function assignChannelDraft(draft: ChannelDraftState, channel: ChannelSum
       enabled: channel.threadBindings.enabled,
       idleHours: channel.threadBindings.idleHours,
       maxAgeHours: channel.threadBindings.maxAgeHours,
-      spawnSubagentSessions: channel.threadBindings.spawnSubagentSessions,
-      spawnAcpSessions: channel.threadBindings.spawnAcpSessions,
+      spawnSessions: channel.threadBindings.spawnSessions,
     }
     : buildDefaultThreadBindings();
 }

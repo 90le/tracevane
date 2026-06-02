@@ -71,8 +71,9 @@ export function toggleSelectAllVisibleSessionKeys(
   visibleSessionKeys: string[],
   allVisibleSelected: boolean,
 ): string[] {
+  const visibleSessionKeySet = new Set(visibleSessionKeys);
   if (allVisibleSelected) {
-    return selectedKeys.filter((key) => !visibleSessionKeys.includes(key));
+    return selectedKeys.filter((key) => !visibleSessionKeySet.has(key));
   }
   return Array.from(new Set([...selectedKeys, ...visibleSessionKeys]));
 }

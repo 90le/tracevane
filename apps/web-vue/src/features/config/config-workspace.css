@@ -1663,6 +1663,41 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   gap: 12px;
 }
 
+.config-page-shell .config-high-risk-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface-raised));
+}
+
+.config-page-shell .config-high-risk-box p {
+  margin: 6px 0 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.config-page-shell .config-risk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.config-page-shell .danger-button {
+  border: 1px solid color-mix(in srgb, var(--danger) 54%, var(--line));
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface-raised));
+  color: var(--danger);
+}
+
+.config-page-shell .danger-button:hover {
+  background: color-mix(in srgb, var(--danger) 20%, var(--surface-raised));
+}
+
 .config-page-shell .provider-entry-head {
   display: flex;
   align-items: center;
@@ -1738,6 +1773,14 @@ html[data-theme="light"] .config-setting-grid .setting-block {
 }
 
 @media (max-width: 1240px) {
+  .config-page-shell .config-high-risk-box {
+    grid-template-columns: 1fr;
+  }
+
+  .config-page-shell .config-risk-actions {
+    justify-content: flex-start;
+  }
+
   .config-page-shell .provider-grid {
     grid-template-columns: 1fr;
   }

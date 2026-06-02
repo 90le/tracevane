@@ -9,6 +9,12 @@
   display: block;
 }
 
+.chat-markdown-loading-fallback {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .chat-markdown-deferred-card {
   display: block;
   width: 100%;

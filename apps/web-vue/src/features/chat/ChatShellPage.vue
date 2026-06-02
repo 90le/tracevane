@@ -85,12 +85,13 @@
           :record-browser-open="recordBrowserOpen"
           :record-browser-has-active-filters="recordBrowserHasActiveFilters"
           :queue-mutating-entry-id="queueMutatingEntryId"
-          @update:composer-document="composerDocument = $event"
+          @update:composer-document="handleComposerDocumentUpdate"
           @send="sendMessage($event)"
           @abort="abortCurrentRun"
           @composer-files="handleComposerFiles"
           @composer-remove-attachment="removeComposerAttachment"
           @composer-retry-attachment="retryComposerAttachment"
+          @composer-draft-flush="flushComposerDraftSave($event)"
           @patch-queued-item="patchQueuedMessage"
           @retry-queued-item="retryQueuedMessage"
           @delete-queued-item="removeQueuedMessage"
@@ -184,8 +185,18 @@
           class="chat-mobile-drawer-mask"
           :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'"
         />
-        <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
+        <DialogContent
+          as-child
+          @open-auto-focus.prevent
+          @close-auto-focus.prevent
+        >
           <aside class="chat-mobile-drawer chat-mobile-session-rail" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
+          <DialogTitle as-child>
+            <span class="sr-only">{{ text('移动端会话列表', 'Mobile session list') }}</span>
+          </DialogTitle>
+          <DialogDescription as-child>
+            <span class="sr-only">{{ text('浏览、创建和管理聊天会话。', 'Browse, create, and manage chat sessions.') }}</span>
+          </DialogDescription>
           <SessionListPanel
             :organizer="organizerState"
             :active-sessions="activeStudioManagedSessions"
@@ -210,14 +221,29 @@
       </DialogPortal>
     </DialogRoot>
 
-    <DialogRoot :open="inspectPinned && inspectorDrawerOpen" @update:open="handleInspectorDrawerOpenChange">
+    <DialogRoot
+      :open="inspectPinned && inspectorDrawerOpen"
+      :modal="chatShellCompactViewport"
+      @update:open="handleInspectorDrawerOpenChange"
+    >
       <DialogPortal>
         <DialogOverlay
           class="chat-inspector-mask"
           :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'"
         />
-        <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
+        <DialogContent
+          as-child
+          @open-auto-focus.prevent
+          @close-auto-focus.prevent
+          @interact-outside="handleInspectorInteractOutside"
+        >
           <aside class="chat-inspector-sheet chat-side-inspector chat-mobile-inspector-sheet" :class="resolvedTheme === 'light' ? 'theme-light' : 'theme-dark'">
+          <DialogTitle as-child>
+            <span class="sr-only">{{ text('会话调试台', 'Session inspector') }}</span>
+          </DialogTitle>
+          <DialogDescription as-child>
+            <span class="sr-only">{{ text('查看当前聊天会话的运行状态、工具调用和诊断信息。', 'Review runtime state, tool calls, and diagnostics for the current chat session.') }}</span>
+          </DialogDescription>
           <InspectorPanel
             v-if="inspectPinned && inspectorDrawerOpen"
             :tab="inspectorTab"
@@ -407,9 +433,11 @@ import {
   type ChatComposerUploadState,
 } from '../../../../../lib/chat-composer';
 import {
+  buildPersistableComposerDraft,
+  type ChatComposerPersistedDraftAttachment,
+} from '../../../../../lib/chat-composer-draft';
+import {
   createEmptyComposerDocument,
-  extractComposerPlainText,
-  hasComposerDocumentContent,
   normalizeComposerDocument,
 } from '../../../../../lib/composer-model';
 import {
@@ -451,6 +479,9 @@ import {
   deriveRuntimeMessagePreview,
 } from '../../../../../lib/chat-runtime-state';
 import {
+  mergeCanonicalSnapshotPageInfo,
+} from '../../../../../lib/chat-history-page-info';
+import {
   applyDerivedAutoLabelToSessionRow,
   resolveSessionEditableLabel,
 } from '../../../../../lib/chat-session-auto-title';
@@ -465,7 +496,19 @@ import {
   removeSessionsFromOrganizer,
 } from '../../../../../lib/chat-session-organizer';
 import { deriveAgentIdFromChatSessionKey } from './session-ref';
-import { readLastChatAgentId, readLastChatSessionKey, rememberLastChatAgentId, rememberLastChatSessionKey } from './storage';
+import {
+  readChatComposerDraft,
+  readChatLastStreamSeq,
+  readChatSessionViewportSnapshot,
+  readLastChatAgentId,
+  readLastChatSessionKey,
+  clearChatLastStreamSeq,
+  rememberChatComposerDraft,
+  rememberChatLastStreamSeq,
+  rememberChatSessionViewportSnapshot,
+  rememberLastChatAgentId,
+  rememberLastChatSessionKey,
+} from './storage';
 import {
   cloneRuntimeObservability,
   createEmptyRuntimeObservability,
@@ -523,6 +566,12 @@ import {
   CHAT_PROCESS_VISIBILITY_STORAGE_KEYS,
 } from '../../../../../lib/chat-process-visibility';
 import { isSelectedChatSessionRealtimeReady } from '../../../../../lib/chat-realtime-ready';
+import {
+  clearChatRealtimeRecoveryState,
+  createChatRealtimeRecoveryState,
+  markChatRealtimeDisconnected,
+  resolveChatRealtimeRecoverySyncDecision,
+} from '../../../../../lib/chat-realtime-recovery';
 import ConversationPane from './ConversationPane.vue';
 import SessionListPanel from './SessionListPanel.vue';
 import { parseStudioSlashCommand, type StudioSlashCommandDef } from './slash-commands';
@@ -559,15 +608,56 @@ type ComposerImageAttachment = ChatSendAttachment & {
   downloadUrl?: string | null;
   size?: number;
   progress?: number;
-  relativePath?: string; // Workspace-relative path for @path reference
+  relativePath?: string | null; // Workspace-relative path for @path reference
   uploadState: ChatComposerUploadState;
+};
+
+type ComposerDraftAttachmentSnapshot = {
+  id: string;
+  type: ChatAttachmentKind;
+  fileName?: string;
+  mimeType: string;
+  content?: string;
+  dataUrl?: string;
+  downloadUrl?: string | null;
+  size?: number;
+  progress?: number;
+  relativePath?: string | null;
+  uploadState?: ChatComposerUploadState;
+};
+
+type ComposerDocumentUpdatePayload = {
+  sessionKey: string;
+  document: ChatComposerDocument;
+};
+
+type ComposerDraftLifecycleExitPayload = {
+  sessionKey: string;
+  document: ChatComposerDocument;
+  attachments?: ComposerDraftAttachmentSnapshot[];
 };
 
 type PreparedComposerUpload = {
   id: string;
   fileName: string;
   mimeType: string;
-  content: string;
+  file?: File;
+  content?: string;
+};
+
+type PendingComposerUpload = {
+  id: string;
+  file: File;
+  fileName: string;
+  mimeType: string;
+  kind: ChatAttachmentKind;
+  size: number;
+};
+
+type ChatComposerSessionDraft = {
+  document: ChatComposerDocument;
+  attachments: ComposerImageAttachment[];
+  updatedAt: string;
 };
 
 const COMPOSER_UPLOAD_CONCURRENCY = 3;
@@ -617,6 +707,7 @@ const hostManagementExecToggleBusy = ref(false);
 const queueMutatingEntryId = ref<string | null>(null);
 const composerDocument = ref<ChatComposerDocument>(createEmptyComposerDocument());
 const composerAttachments = ref<ComposerImageAttachment[]>([]);
+const composerUploadSourceFiles = new Map<string, File>();
 const queuedItemsBySession = ref<Record<string, ChatQueuedMessageItem[]>>({});
 const sessionControlsBySession = ref<Record<string, ChatSessionControlState>>({});
 const globalHostManagementExecEnabled = ref(false);
@@ -632,6 +723,7 @@ const queueRailExpanded = ref(false);
 const mobileQueueSheetOpen = ref(false);
 const inspectorTab = ref<'overview' | 'tools' | 'activity' | 'diagnostics'>('overview');
 const inspectorDrawerOpen = ref(true);
+const chatShellCompactViewport = ref(false);
 const hostManagementExecConfirmOpen = ref(false);
 const pendingHostManagementExecValue = ref<boolean | null>(null);
 const pendingHostManagementExecSessionKey = ref<string | null>(null);
@@ -649,6 +741,8 @@ let chatEventSource: EventSource | null = null;
 let chatEventSourceSessionKey = '';
 let gatewayClient: GatewayBrowserClient | null = null;
 let gatewayChatSessionKey = '';
+let chatShellCompactViewportMediaQuery: MediaQueryList | null = null;
+let chatShellCompactViewportListener: ((event: MediaQueryListEvent) => void) | null = null;
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let gatewayHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let wsReconnectAttempt = 0;
@@ -657,12 +751,16 @@ const WS_RECONNECT_BASE_MS = 1000;
 const WS_RECONNECT_MAX_MS = 30000;
 const WS_RECONNECT_MAX_ATTEMPTS = 20;
 const STANDALONE_EVENTSOURCE_FALLBACK_THRESHOLD = 2;
+const CHAT_REALTIME_RECOVERY_SYNC_DELAY_MS = 180;
+const CHAT_REALTIME_RECOVERY_SYNC_MIN_INTERVAL_MS = 1500;
 let historyLoadVersion = 0;
 let sessionsLoadVersion = 0;
 let recordBrowserSearchVersion = 0;
 let recordBrowserSearchController: AbortController | null = null;
 let liveHistorySyncTimer: number | null = null;
 let runSettlementSyncTimer: number | null = null;
+let realtimeRecoveryRetryTimer: number | null = null;
+let realtimeRecoveryRetrySessionKey = '';
 let deferredInitialHistoryLoadTimer: number | null = null;
 let deferredSessionHydrationTimer: number | null = null;
 let historyReplaceRequestController: AbortController | null = null;
@@ -681,6 +779,9 @@ let historyRenderStabilizeTimer: number | null = null;
 let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 const suppressedRunIds = new Set<string>();
 const terminalRunFenceBySession = new Map<string, Set<string>>();
+const locallyActiveRunIdBySession = new Map<string, string>();
+const lastStreamSeqBySession = new Map<string, number>();
+const lastStreamSeqLoadedFromStorageBySession = new Set<string>();
 const playedChatSentCueIds = new Set<string>();
 const playedChatReceivedCueIds = new Set<string>();
 const historyMode = ref<'history' | 'search'>('history');
@@ -720,6 +821,7 @@ const CHAT_DEBUG_TRACE_LIMIT = 300;
 const CHAT_SESSION_BOOTSTRAP_AGENT_LIMIT = 1;
 const CHAT_SESSION_DEFERRED_HYDRATION_DELAY_MS = 180;
 const CHAT_SESSION_BOOTSTRAP_ROW_LIMIT = 40;
+const CHAT_COMPOSER_DRAFT_SAVE_DELAY_MS = 320;
 const CHAT_SESSION_BOOTSTRAP_LOCAL_FETCH_OPTIONS = {
   limit: CHAT_SESSION_BOOTSTRAP_ROW_LIMIT,
   includeDerivedTitles: false,
@@ -794,6 +896,10 @@ const CHAT_SHELL_WARM_CACHE_STORAGE_KEY = 'openclaw-studio.chat.shell-warm-cache
 let chatShellWarmCache: ChatShellWarmCacheSnapshot | null = null;
 const exhaustedHistoryBeforeCursorBySession = new Map<string, string>();
 const exhaustedHistoryAfterCursorBySession = new Map<string, string>();
+const composerDraftsBySession = new Map<string, ChatComposerSessionDraft>();
+let composerDraftSaveTimer: number | null = null;
+const realtimeRecoveryState = createChatRealtimeRecoveryState();
+let shellViewportSnapshotInterval: number | null = null;
 
 declare global {
   interface Window {
@@ -955,13 +1061,255 @@ function inferAttachmentKind(mimeType: string, fileName: string): ChatAttachment
   return 'file';
 }
 
+function shouldReadComposerPreview(kind: ChatAttachmentKind, mimeType: string): boolean {
+  return kind === 'image' || kind === 'video' || mimeType.startsWith('image/') || mimeType.startsWith('video/');
+}
+
+function cloneComposerDocument(documentValue: ChatComposerDocument): ChatComposerDocument {
+  return normalizeComposerDocument(documentValue, { editorSurface: true })
+    .map((node) => ({ ...node }));
+}
+
+function firstComposerNonWhitespaceIndex(value: string): number {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index]?.trim()) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function normalizedComposerDocumentHasContent(documentValue: ChatComposerDocument): boolean {
+  for (const node of documentValue) {
+    if (node.type === 'resource-ref') {
+      return true;
+    }
+    if (firstComposerNonWhitespaceIndex(node.text || '') !== -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function readNormalizedSlashCommandText(documentValue: ChatComposerDocument): string {
+  let slashTextParts: string[] | null = null;
+  for (const node of documentValue) {
+    if (node.type === 'resource-ref') {
+      return '';
+    }
+    const textValue = node.text || '';
+    if (slashTextParts) {
+      slashTextParts.push(textValue);
+      continue;
+    }
+    const contentIndex = firstComposerNonWhitespaceIndex(textValue);
+    if (contentIndex === -1) {
+      continue;
+    }
+    if (textValue[contentIndex] !== '/') {
+      return '';
+    }
+    slashTextParts = [textValue.slice(contentIndex)];
+  }
+  return slashTextParts ? slashTextParts.join('').trimEnd() : '';
+}
+
+function cloneComposerAttachment(attachment: ComposerImageAttachment): ComposerImageAttachment {
+  return { ...attachment };
+}
+
+function normalizeComposerDraftAttachmentSnapshot(
+  attachment: ComposerDraftAttachmentSnapshot,
+): ComposerImageAttachment {
+  return {
+    id: attachment.id,
+    type: attachment.type,
+    mimeType: attachment.mimeType || 'application/octet-stream',
+    fileName: attachment.fileName,
+    content: attachment.content || '',
+    dataUrl: attachment.dataUrl || '',
+    downloadUrl: attachment.downloadUrl,
+    size: attachment.size,
+    progress: attachment.progress,
+    relativePath: attachment.relativePath,
+    uploadState: attachment.uploadState || 'uploading',
+  };
+}
+
+function restoreDraftAttachment(
+  attachment: ChatComposerPersistedDraftAttachment,
+): ComposerImageAttachment {
+  return {
+    ...attachment,
+    content: '',
+    progress: 100,
+    uploadState: 'ready',
+  };
+}
+
+function currentComposerDraftHasContent(
+  documentValue: ChatComposerDocument,
+  attachments: ComposerImageAttachment[],
+): boolean {
+  return normalizedComposerDocumentHasContent(documentValue) || attachments.length > 0;
+}
+
+function rememberComposerDraftNow(sessionKey: string | null | undefined = selectedSessionKey.value): void {
+  const normalizedSessionKey = typeof sessionKey === 'string' ? sessionKey.trim() : '';
+  if (!normalizedSessionKey) {
+    return;
+  }
+  const documentValue = cloneComposerDocument(composerDocument.value);
+  const attachments = composerAttachments.value.map(cloneComposerAttachment);
+  if (!currentComposerDraftHasContent(documentValue, attachments)) {
+    clearComposerDraftForSession(normalizedSessionKey);
+    return;
+  }
+
+  const updatedAt = new Date().toISOString();
+  composerDraftsBySession.set(normalizedSessionKey, {
+    document: documentValue,
+    attachments,
+    updatedAt,
+  });
+  rememberChatComposerDraft(
+    normalizedSessionKey,
+    buildPersistableComposerDraft({
+      document: documentValue,
+      attachments,
+      updatedAt,
+    }),
+  );
+}
+
+function clearComposerDraftForSession(sessionKey: string | null | undefined): void {
+  const normalizedSessionKey = typeof sessionKey === 'string' ? sessionKey.trim() : '';
+  if (!normalizedSessionKey) {
+    return;
+  }
+  composerDraftsBySession.delete(normalizedSessionKey);
+  rememberChatComposerDraft(normalizedSessionKey, null);
+}
+
+function clearLocalSessionCaches(sessionKey: string | null | undefined): void {
+  const normalizedSessionKey = typeof sessionKey === 'string' ? sessionKey.trim() : '';
+  if (!normalizedSessionKey) {
+    return;
+  }
+  clearComposerDraftForSession(normalizedSessionKey);
+  clearLastStreamSeqForSession(normalizedSessionKey);
+  clearChatRuntimeSnapshot(normalizedSessionKey);
+  rememberChatSessionViewportSnapshot(normalizedSessionKey, null);
+}
+
+function repairLastSessionPointerAfterDelete(sessionKeys: string[]): void {
+  const deleted = new Set(sessionKeys);
+  const rememberedSessionKey = readLastChatSessionKey();
+  if (!rememberedSessionKey || !deleted.has(rememberedSessionKey)) {
+    return;
+  }
+  const selectedSurvivor = selectedSessionKey.value && !deleted.has(selectedSessionKey.value)
+    ? selectedSessionKey.value
+    : '';
+  const nextSessionKey = selectedSurvivor || resolveNextSessionKeyAfterDeleteMany(sessionKeys);
+  rememberLastChatSessionKey(nextSessionKey || null);
+  rememberLastChatAgentId(nextSessionKey ? deriveAgentIdFromChatSessionKey(nextSessionKey) : null);
+}
+
+function handleComposerDocumentUpdate(payload: ComposerDocumentUpdatePayload): void {
+  const normalizedSessionKey = typeof payload.sessionKey === 'string' ? payload.sessionKey.trim() : '';
+  const documentValue = cloneComposerDocument(payload.document);
+  if (!normalizedSessionKey || normalizedSessionKey === selectedSessionKey.value) {
+    composerDocument.value = documentValue;
+    return;
+  }
+  const draft = composerDraftsBySession.get(normalizedSessionKey);
+  persistComposerDraftSnapshot(normalizedSessionKey, documentValue, draft?.attachments || []);
+}
+
+function persistComposerDraftLifecycleSnapshot(payload: ComposerDraftLifecycleExitPayload): void {
+  const normalizedSessionKey = typeof payload.sessionKey === 'string' ? payload.sessionKey.trim() : '';
+  if (!normalizedSessionKey) {
+    return;
+  }
+  const documentValue = cloneComposerDocument(payload.document);
+  const attachments = Array.isArray(payload.attachments)
+    ? payload.attachments.map(normalizeComposerDraftAttachmentSnapshot)
+    : (
+      normalizedSessionKey === selectedSessionKey.value
+        ? composerAttachments.value.map(cloneComposerAttachment)
+        : (composerDraftsBySession.get(normalizedSessionKey)?.attachments.map(cloneComposerAttachment) || [])
+    );
+  persistComposerDraftSnapshot(normalizedSessionKey, documentValue, attachments);
+  if (normalizedSessionKey === selectedSessionKey.value) {
+    composerDocument.value = documentValue;
+    composerAttachments.value = attachments.map(cloneComposerAttachment);
+  }
+}
+
+function clearComposerDraftSaveTimer(): void {
+  if (composerDraftSaveTimer === null || typeof window === 'undefined') {
+    composerDraftSaveTimer = null;
+    return;
+  }
+  window.clearTimeout(composerDraftSaveTimer);
+  composerDraftSaveTimer = null;
+}
+
+function flushComposerDraftSave(
+  sessionOrPayload: string | ComposerDraftLifecycleExitPayload | null | undefined = selectedSessionKey.value,
+): void {
+  clearComposerDraftSaveTimer();
+  if (typeof sessionOrPayload === 'object' && sessionOrPayload !== null) {
+    persistComposerDraftLifecycleSnapshot(sessionOrPayload);
+    return;
+  }
+  rememberComposerDraftNow(sessionOrPayload);
+}
+
+function scheduleComposerDraftSave(): void {
+  if (!selectedSessionKey.value || typeof window === 'undefined') {
+    rememberComposerDraftNow();
+    return;
+  }
+  clearComposerDraftSaveTimer();
+  composerDraftSaveTimer = window.setTimeout(() => {
+    composerDraftSaveTimer = null;
+    rememberComposerDraftNow();
+  }, CHAT_COMPOSER_DRAFT_SAVE_DELAY_MS);
+}
+
+function restoreComposerDraftForSession(sessionKey: string): void {
+  const memoryDraft = composerDraftsBySession.get(sessionKey);
+  if (memoryDraft) {
+    composerDocument.value = cloneComposerDocument(memoryDraft.document);
+    composerAttachments.value = memoryDraft.attachments.map(cloneComposerAttachment);
+    return;
+  }
+
+  const persistedDraft = readChatComposerDraft(sessionKey);
+  if (persistedDraft) {
+    composerDocument.value = cloneComposerDocument(persistedDraft.document);
+    composerAttachments.value = persistedDraft.attachments.map(restoreDraftAttachment);
+    composerDraftsBySession.set(sessionKey, {
+      document: cloneComposerDocument(persistedDraft.document),
+      attachments: composerAttachments.value.map(cloneComposerAttachment),
+      updatedAt: persistedDraft.updatedAt,
+    });
+    return;
+  }
+
+  composerDocument.value = createEmptyComposerDocument();
+  composerAttachments.value = [];
+}
+
 function patchComposerAttachment(
   attachmentId: string,
   update: (attachment: ComposerImageAttachment) => ComposerImageAttachment,
-): void {
+): boolean {
   const idx = composerAttachments.value.findIndex((attachment) => attachment.id === attachmentId);
   if (idx === -1) {
-    return;
+    return false;
   }
   const attachment = composerAttachments.value[idx] as ComposerImageAttachment;
   composerAttachments.value = [
@@ -969,6 +1317,98 @@ function patchComposerAttachment(
     update(attachment),
     ...composerAttachments.value.slice(idx + 1),
   ];
+  return true;
+}
+
+function hasComposerAttachment(attachmentId: string): boolean {
+  return composerAttachments.value.some((attachment) => attachment.id === attachmentId);
+}
+
+function persistComposerDraftSnapshot(
+  sessionKey: string,
+  documentValue: ChatComposerDocument,
+  attachments: ComposerImageAttachment[],
+  updatedAt = new Date().toISOString(),
+): void {
+  const normalizedSessionKey = sessionKey.trim();
+  if (!normalizedSessionKey) {
+    return;
+  }
+  const documentSnapshot = cloneComposerDocument(documentValue);
+  const attachmentSnapshots = attachments.map(cloneComposerAttachment);
+  if (!currentComposerDraftHasContent(documentSnapshot, attachmentSnapshots)) {
+    clearComposerDraftForSession(normalizedSessionKey);
+    return;
+  }
+  composerDraftsBySession.set(normalizedSessionKey, {
+    document: documentSnapshot,
+    attachments: attachmentSnapshots,
+    updatedAt,
+  });
+  rememberChatComposerDraft(
+    normalizedSessionKey,
+    buildPersistableComposerDraft({
+      document: documentSnapshot,
+      attachments: attachmentSnapshots,
+      updatedAt,
+    }),
+  );
+}
+
+function patchComposerAttachmentForSession(
+  sessionKey: string,
+  attachmentId: string,
+  update: (attachment: ComposerImageAttachment) => ComposerImageAttachment,
+): boolean {
+  if (selectedSessionKey.value === sessionKey) {
+    return patchComposerAttachment(attachmentId, update);
+  }
+
+  const draft = composerDraftsBySession.get(sessionKey);
+  if (!draft) {
+    return false;
+  }
+  let patched = false;
+  const nextAttachments = draft.attachments.map((attachment) => {
+    if (attachment.id !== attachmentId) {
+      return attachment;
+    }
+    patched = true;
+    return update(attachment);
+  });
+  if (!patched) {
+    return false;
+  }
+  persistComposerDraftSnapshot(sessionKey, draft.document, nextAttachments);
+  return true;
+}
+
+function hasComposerAttachmentForSession(sessionKey: string, attachmentId: string): boolean {
+  if (selectedSessionKey.value === sessionKey) {
+    return hasComposerAttachment(attachmentId);
+  }
+  return Boolean(composerDraftsBySession.get(sessionKey)?.attachments.some((attachment) => attachment.id === attachmentId));
+}
+
+async function prepareComposerUploadPayload(pendingUpload: PendingComposerUpload): Promise<PreparedComposerUpload & { dataUrl: string }> {
+  if (shouldReadComposerPreview(pendingUpload.kind, pendingUpload.mimeType)) {
+    const dataUrl = await readFileAsDataUrl(pendingUpload.file);
+    return {
+      id: pendingUpload.id,
+      fileName: pendingUpload.fileName,
+      mimeType: pendingUpload.mimeType,
+      file: pendingUpload.file,
+      dataUrl,
+    };
+  }
+
+  return {
+    id: pendingUpload.id,
+    fileName: pendingUpload.fileName,
+    mimeType: pendingUpload.mimeType,
+    file: pendingUpload.file,
+    dataUrl: '',
+  };
 }
 
 async function uploadPreparedComposerAttachment(
@@ -980,11 +1420,12 @@ async function uploadPreparedComposerAttachment(
       sessionKey,
       {
         fileName: prepared.fileName,
-        content: prepared.content,
+        content: prepared.content || '',
         mimeType: prepared.mimeType,
+        file: prepared.file,
       },
       (progress) => {
-        patchComposerAttachment(prepared.id, (attachment) => ({
+        patchComposerAttachmentForSession(sessionKey, prepared.id, (attachment) => ({
           ...attachment,
           progress,
           uploadState: 'uploading',
@@ -992,7 +1433,7 @@ async function uploadPreparedComposerAttachment(
       },
     );
 
-    patchComposerAttachment(prepared.id, (attachment) => {
+    patchComposerAttachmentForSession(sessionKey, prepared.id, (attachment) => {
       const resource = uploadResult.resource;
       return {
         ...attachment,
@@ -1004,20 +1445,79 @@ async function uploadPreparedComposerAttachment(
         uploadState: 'ready',
       };
     });
+    composerUploadSourceFiles.delete(prepared.id);
+    if (
+      selectedSessionKey.value === sessionKey
+      &&
+      noticeMessage.value?.kind === 'error'
+      && !composerAttachments.value.some((attachment) => attachment.uploadState === 'failed')
+    ) {
+      clearNotice();
+    }
   } catch (uploadError) {
+    if (!hasComposerAttachmentForSession(sessionKey, prepared.id)) {
+      return;
+    }
     console.warn('Failed to upload file to workspace:', uploadError);
-    patchComposerAttachment(prepared.id, (attachment) => ({
+    patchComposerAttachmentForSession(sessionKey, prepared.id, (attachment) => ({
       ...attachment,
       progress: undefined,
       relativePath: undefined,
       uploadState: 'failed',
     }));
-    setNotice(
-      'error',
-      uploadError instanceof Error
-        ? uploadError.message
-        : text('文件上传失败，可重试或移除。', 'File upload failed. Retry or remove it.'),
-    );
+    if (selectedSessionKey.value === sessionKey) {
+      setNotice(
+        'error',
+        uploadError instanceof Error
+          ? uploadError.message
+          : text('文件上传失败，可重试或移除。', 'File upload failed. Retry or remove it.'),
+      );
+    }
+  }
+}
+
+async function prepareAndUploadComposerAttachment(
+  sessionKey: string,
+  pendingUpload: PendingComposerUpload,
+): Promise<void> {
+  if (!hasComposerAttachmentForSession(sessionKey, pendingUpload.id)) {
+    return;
+  }
+
+  try {
+    const prepared = await prepareComposerUploadPayload(pendingUpload);
+    if (!hasComposerAttachmentForSession(sessionKey, pendingUpload.id)) {
+      return;
+    }
+
+    patchComposerAttachmentForSession(sessionKey, pendingUpload.id, (attachment) => ({
+      ...attachment,
+      content: '',
+      dataUrl: prepared.dataUrl || attachment.dataUrl,
+      progress: 0,
+      uploadState: 'uploading',
+    }));
+    await uploadPreparedComposerAttachment(sessionKey, prepared);
+  } catch (uploadError) {
+    if (!hasComposerAttachmentForSession(sessionKey, pendingUpload.id)) {
+      return;
+    }
+    console.warn('Failed to prepare file for upload:', uploadError);
+    patchComposerAttachmentForSession(sessionKey, pendingUpload.id, (attachment) => ({
+      ...attachment,
+      content: '',
+      progress: undefined,
+      relativePath: undefined,
+      uploadState: 'failed',
+    }));
+    if (selectedSessionKey.value === sessionKey) {
+      setNotice(
+        'error',
+        uploadError instanceof Error
+          ? uploadError.message
+          : text('文件上传失败，可重试或移除。', 'File upload failed. Retry or remove it.'),
+      );
+    }
   }
 }
 
@@ -1027,45 +1527,48 @@ async function handleComposerFiles(files: File[]): Promise<void> {
   }
 
   const sessionKey = selectedSessionKey.value;
-  const preparedUploads: PreparedComposerUpload[] = [];
-
-  for (const file of files) {
+  const pendingUploads: PendingComposerUpload[] = files.map((file) => {
     const id = `composer-file-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const dataUrl = await readFileAsDataUrl(file);
     const mimeType = file.type || 'application/octet-stream';
     const kind = inferAttachmentKind(mimeType, file.name);
-    const base64Content = dataUrl.replace(/^data:[^;]+;base64,/i, '');
-
-    const attachment: ComposerImageAttachment = {
+    return {
       id,
-      type: kind,
-      mimeType,
+      file,
       fileName: file.name,
-      content: base64Content,
-      dataUrl,
+      mimeType,
+      kind,
       size: file.size,
-      progress: 0,
-      relativePath: undefined,
-      uploadState: 'uploading',
     };
-
-    composerAttachments.value = [...composerAttachments.value, attachment];
-    preparedUploads.push({
-      id,
-      fileName: file.name,
-      mimeType,
-      content: base64Content,
-    });
+  });
+  for (const pendingUpload of pendingUploads) {
+    composerUploadSourceFiles.set(pendingUpload.id, pendingUpload.file);
   }
 
+  composerAttachments.value = [
+    ...composerAttachments.value,
+    ...pendingUploads.map((pendingUpload) => ({
+      id: pendingUpload.id,
+      type: pendingUpload.kind,
+      mimeType: pendingUpload.mimeType,
+      fileName: pendingUpload.fileName,
+      content: '',
+      dataUrl: '',
+      size: pendingUpload.size,
+      progress: 0,
+      relativePath: undefined,
+      uploadState: 'uploading' as const,
+    })),
+  ];
+
   await runLimitedComposerUploadQueue(
-    preparedUploads,
+    pendingUploads,
     COMPOSER_UPLOAD_CONCURRENCY,
-    (prepared) => uploadPreparedComposerAttachment(sessionKey, prepared),
+    (pendingUpload) => prepareAndUploadComposerAttachment(sessionKey, pendingUpload),
   );
 }
 
 function removeComposerAttachment(attachmentId: string): void {
+  composerUploadSourceFiles.delete(attachmentId);
   composerAttachments.value = composerAttachments.value.filter((attachment) => attachment.id !== attachmentId);
 }
 
@@ -1075,6 +1578,25 @@ async function retryComposerAttachment(attachmentId: string): Promise<void> {
   if (!sessionKey || !attachment || attachment.uploadState !== 'failed') {
     return;
   }
+  const sourceFile = composerUploadSourceFiles.get(attachmentId);
+  if (sourceFile) {
+    patchComposerAttachment(attachmentId, (current) => ({
+      ...current,
+      progress: 0,
+      relativePath: undefined,
+      uploadState: 'uploading',
+    }));
+    await prepareAndUploadComposerAttachment(sessionKey, {
+      id: attachment.id,
+      file: sourceFile,
+      fileName: attachment.fileName || sourceFile.name || `file-${attachment.id}`,
+      mimeType: attachment.mimeType || sourceFile.type || 'application/octet-stream',
+      kind: attachment.type,
+      size: attachment.size || sourceFile.size,
+    });
+    return;
+  }
+
   if (!attachment.content) {
     setNotice(
       'error',
@@ -1276,6 +1798,19 @@ function syncSessionRow(sessionKey: string, patch: Partial<ChatSessionRow>): voi
   rememberChatShellWarmCache();
 }
 
+function deriveHistoryBackedSessionRow(session: ChatSessionRow, messages: ChatMessageItem[]): ChatSessionRow {
+  const nextSession = applyDerivedAutoLabelToSessionRow(session, messages);
+  const lastMessage = messages[messages.length - 1] || null;
+  if (!lastMessage) {
+    return nextSession;
+  }
+  return {
+    ...nextSession,
+    updatedAt: lastMessage.createdAt || nextSession.updatedAt,
+    lastMessagePreview: deriveRuntimeMessagePreview(lastMessage, nextSession.lastMessagePreview),
+  };
+}
+
 function ensureSessionRow(row: ChatSessionRow): void {
   const index = sessionRows.value.findIndex((current) => current.key === row.key);
   if (index === -1) {
@@ -1285,6 +1820,23 @@ function ensureSessionRow(row: ChatSessionRow): void {
   }
   sessionRows.value[index] = row;
   rememberChatShellWarmCache();
+}
+
+function enrichIncomingSessionRowFromProtectedCurrent(row: ChatSessionRow, current: ChatSessionRow | null): ChatSessionRow {
+  if (!current || !isProtectedSessionRow(row.key)) {
+    return row;
+  }
+  return {
+    ...row,
+    derivedTitle: row.derivedTitle || current.derivedTitle,
+    lastMessagePreview: row.lastMessagePreview || current.lastMessagePreview,
+    updatedAt: row.updatedAt || current.updatedAt,
+    presentation: {
+      ...row.presentation,
+      customLabel: row.presentation.customLabel || current.presentation.customLabel,
+      autoLabel: row.presentation.autoLabel || current.presentation.autoLabel,
+    },
+  };
 }
 
 function applyQueueState(sessionKey: string, items: ChatQueuedMessageItem[]): void {
@@ -1886,6 +2438,7 @@ function clearConversationState(): void {
   clearTerminalRunFence();
   clearWsReconnectTimer();
   if (selectedSessionKey.value) {
+    clearRealtimeRecoveryState(selectedSessionKey.value);
     clearChatRuntimeSnapshot(selectedSessionKey.value);
     exhaustedHistoryBeforeCursorBySession.delete(selectedSessionKey.value);
     exhaustedHistoryAfterCursorBySession.delete(selectedSessionKey.value);
@@ -1958,6 +2511,111 @@ function persistHistorySnapshot(sessionKey: string | null | undefined = selected
   );
 }
 
+function resolveMessageIdFromViewportAnchorItemId(anchorItemId: string | null | undefined): string {
+  const normalized = typeof anchorItemId === 'string' ? anchorItemId.trim() : '';
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.startsWith('msg-')) {
+    return normalized.slice(4).trim();
+  }
+  const groupSuffixIndex = normalized.lastIndexOf(':');
+  if (groupSuffixIndex > 0 && /^\d+$/.test(normalized.slice(groupSuffixIndex + 1))) {
+    return normalized.slice(0, groupSuffixIndex).trim();
+  }
+  return '';
+}
+
+function resolvePersistedViewportAnchorMessageId(sessionKey: string): string {
+  if (
+    !sessionKey
+    || historyMode.value !== 'history'
+    || selectedHistoryDay.value
+    || searchQuery.value.trim()
+  ) {
+    return '';
+  }
+  const snapshot = readChatSessionViewportSnapshot(sessionKey);
+  return (
+    snapshot?.anchorMessageId?.trim()
+    || resolveMessageIdFromViewportAnchorItemId(snapshot?.anchorItemId)
+  );
+}
+
+function clearShellViewportSnapshotInterval(): void {
+  if (shellViewportSnapshotInterval != null && typeof window !== 'undefined') {
+    window.clearInterval(shellViewportSnapshotInterval);
+  }
+  shellViewportSnapshotInterval = null;
+}
+
+function readVisibleShellMessageAnchor(thread: HTMLElement): { itemId: string; messageId: string; offset: number } | null {
+  const threadRect = thread.getBoundingClientRect();
+  const elements = Array.from(thread.querySelectorAll<HTMLElement>('.chat-conversation-thread__item-shell[id^="msg-"]'));
+  let partiallyVisibleAnchor: { itemId: string; messageId: string; offset: number } | null = null;
+  for (const element of elements) {
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom <= threadRect.top || rect.top >= threadRect.bottom) {
+      continue;
+    }
+    const messageId = element.id.slice(4).trim();
+    if (!messageId) {
+      continue;
+    }
+    const anchor = {
+      itemId: element.id,
+      messageId,
+      offset: Math.round(rect.top - threadRect.top),
+    };
+    if (rect.top >= threadRect.top) {
+      return anchor;
+    }
+    partiallyVisibleAnchor = partiallyVisibleAnchor || anchor;
+  }
+  return partiallyVisibleAnchor;
+}
+
+function captureShellViewportSnapshot(): boolean {
+  if (typeof document === 'undefined') {
+    return false;
+  }
+  const sessionKey = selectedSessionKey.value;
+  if (!sessionKey) {
+    return false;
+  }
+  const thread = document.querySelector<HTMLElement>('.chat-conversation-thread');
+  if (!thread) {
+    return false;
+  }
+  const bottomDistance = Math.max(0, Math.round(thread.scrollHeight - thread.scrollTop - thread.clientHeight));
+  const shouldRememberViewport = Boolean(viewingHistoricalPosition.value || bottomDistance > 80);
+  if (!shouldRememberViewport) {
+    rememberChatSessionViewportSnapshot(sessionKey, null);
+    return false;
+  }
+  const anchor = readVisibleShellMessageAnchor(thread);
+  if (!anchor) {
+    return false;
+  }
+  rememberChatSessionViewportSnapshot(sessionKey, {
+    anchorItemId: anchor.itemId,
+    anchorMessageId: anchor.messageId,
+    anchorOffset: anchor.offset,
+    bottomDistance,
+    timelineItemCount: renderTimelineItems.value.length,
+    timelineVersion: timelineVersion.value,
+    capturedAtMs: Date.now(),
+  });
+  return true;
+}
+
+function startShellViewportSnapshotInterval(): void {
+  if (typeof window === 'undefined' || shellViewportSnapshotInterval != null) {
+    return;
+  }
+  shellViewportSnapshotInterval = window.setInterval(captureShellViewportSnapshot, 1200);
+}
+
 function collectCurrentRunIds(): string[] {
   const runIds = new Set<string>();
   if (activeRuntime.value?.activeRunId) runIds.add(activeRuntime.value.activeRunId);
@@ -1990,6 +2648,32 @@ function applyRuntime(runtime: ChatRuntimeState): void {
       },
     };
   }
+}
+
+function markSessionRunLocallyActive(sessionKey: string, runId: string | null | undefined): void {
+  const normalizedSessionKey = typeof sessionKey === 'string' ? sessionKey.trim() : '';
+  const normalizedRunId = typeof runId === 'string' ? runId.trim() : '';
+  if (!normalizedSessionKey || !normalizedRunId) {
+    return;
+  }
+  locallyActiveRunIdBySession.set(normalizedSessionKey, normalizedRunId);
+  markRunAsActive(normalizedSessionKey, normalizedRunId);
+}
+
+function clearSessionRunLocallyActive(sessionKey: string, runId?: string | null): void {
+  const normalizedSessionKey = typeof sessionKey === 'string' ? sessionKey.trim() : '';
+  if (!normalizedSessionKey) {
+    return;
+  }
+  const currentRunId = locallyActiveRunIdBySession.get(normalizedSessionKey);
+  const normalizedRunId = typeof runId === 'string' ? runId.trim() : '';
+  if (!normalizedRunId || !currentRunId || currentRunId === normalizedRunId) {
+    locallyActiveRunIdBySession.delete(normalizedSessionKey);
+  }
+}
+
+function hasSessionRunLocallyActive(sessionKey: string): boolean {
+  return Boolean(locallyActiveRunIdBySession.get(sessionKey));
 }
 
 function ensureObservabilityState(): ChatObservabilityState {
@@ -2152,6 +2836,7 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'ack') {
+    markSessionRunLocallyActive(event.sessionKey, event.runId || event.runtime.activeRunId);
     const queuedSlash = consumeQueuedSlashCommand(event.sessionKey, event.requestId);
     if (queuedSlash) {
       setSlashFeedbackState(event.sessionKey, buildSlashFeedback(
@@ -2183,6 +2868,7 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
 
   if (event.kind === 'delta') {
     flushPendingTemporaryToolEvents();
+    markSessionRunLocallyActive(event.sessionKey, event.runId);
     const currentRuntime = activeRuntime.value;
     const runtime = {
       ...(currentRuntime || {}),
@@ -2236,6 +2922,7 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
 
   if (event.kind === 'final') {
     flushPendingTemporaryToolEvents();
+    clearSessionRunLocallyActive(event.sessionKey, event.runId);
     syncSessionRow(event.sessionKey, {
       runtime: event.runtime,
       updatedAt: event.message.createdAt || event.emittedAt,
@@ -2270,6 +2957,7 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'aborted') {
+    clearSessionRunLocallyActive(event.sessionKey, event.runId);
     syncSessionRow(event.sessionKey, { runtime: event.runtime });
     updateSlashFeedbackFromRuntime(event.sessionKey, event.runtime, {
       runId: event.runId,
@@ -2288,6 +2976,7 @@ function handleLegacyStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'error') {
+    clearSessionRunLocallyActive(event.sessionKey, event.runId);
     syncSessionRow(event.sessionKey, { runtime: event.runtime });
     updateSlashFeedbackFromRuntime(event.sessionKey, event.runtime, {
       runId: event.runId,
@@ -2410,6 +3099,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
   }
 
   if (event.kind === 'ack') {
+    markSessionRunLocallyActive(event.sessionKey, event.runId || event.runtime.activeRunId);
     const queuedSlash = consumeQueuedSlashCommand(event.sessionKey, event.requestId);
     if (queuedSlash) {
       setSlashFeedbackState(event.sessionKey, buildSlashFeedback(
@@ -2442,6 +3132,12 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
   if (event.kind === 'canonical.snapshot') {
     const lastMessage = event.messages[event.messages.length - 1];
     const shouldApplySnapshotWindow = !viewingHistoricalPosition.value || event.messages.length === 0;
+    const currentPageInfo = historyPayload.value?.pageInfo || historyPageInfo.value;
+    const snapshotPageInfo = event.pageInfo && shouldApplySnapshotWindow
+      ? mergeCanonicalSnapshotPageInfo(currentPageInfo, event.pageInfo, {
+        snapshotMessageCount: event.messages.length,
+      })
+      : event.pageInfo || currentPageInfo;
     syncSessionRow(event.sessionKey, {
       runtime: event.runtime,
       updatedAt: lastMessage?.createdAt || event.emittedAt,
@@ -2449,7 +3145,6 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
     });
     if (isSelectedSession) {
       applyRuntime(event.runtime);
-      const snapshotPageInfo = event.pageInfo || historyPayload.value?.pageInfo || historyPageInfo.value;
       if (shouldApplySnapshotWindow) {
         runtimeMachineState.value = applyChatSessionCanonicalSnapshotEvent(runtimeMachineState.value, {
           version: event.version,
@@ -2465,7 +3160,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
           clearHistoryBeforePrefetch();
           clearHistoryAfterPrefetch();
         }
-        historyPageInfo.value = event.pageInfo;
+        historyPageInfo.value = snapshotPageInfo;
       }
       if (historyPayload.value?.session.key === event.sessionKey && shouldApplySnapshotWindow) {
         historyPayload.value = {
@@ -2530,6 +3225,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
 
   if (event.kind === 'temporary.assistant') {
     flushPendingTemporaryToolEvents();
+    markSessionRunLocallyActive(event.sessionKey, event.runId);
     markRunAsActive(event.sessionKey, event.runId);
     const currentRuntime = activeRuntime.value;
     const runtime = {
@@ -2584,6 +3280,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
           || event.runtime.state === 'error'
         )
       ) {
+        clearSessionRunLocallyActive(event.sessionKey, event.runId);
         markRunAsTerminal(event.sessionKey, event.runId);
         // Recovery safety net: ensure full history sync after run reaches terminal state.
         scheduleLiveHistorySync(event.sessionKey, 260);
@@ -2598,6 +3295,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
           || event.runtime.state === 'streaming'
         )
       ) {
+        markSessionRunLocallyActive(event.sessionKey, event.runId);
         markRunAsActive(event.sessionKey, event.runId);
       }
     }
@@ -2675,6 +3373,7 @@ function handleCanonicalStreamEvent(event: ChatStreamEvent): void {
 }
 
 function handleStreamEvent(event: ChatStreamEvent): void {
+  rememberStreamSeq(event);
   recordChatDebugTrace({
     at: new Date().toISOString(),
     source: 'stream',
@@ -2708,6 +3407,117 @@ function clearWsReconnectTimer(): void {
     clearTimeout(wsReconnectTimer);
     wsReconnectTimer = null;
   }
+}
+
+function clearRealtimeRecoveryRetryTimer(sessionKey: string | null | undefined = null): void {
+  const normalizedSessionKey = typeof sessionKey === 'string' ? sessionKey.trim() : '';
+  if (
+    normalizedSessionKey
+    && realtimeRecoveryRetrySessionKey
+    && realtimeRecoveryRetrySessionKey !== normalizedSessionKey
+  ) {
+    return;
+  }
+  if (realtimeRecoveryRetryTimer != null) {
+    window.clearTimeout(realtimeRecoveryRetryTimer);
+    realtimeRecoveryRetryTimer = null;
+  }
+  realtimeRecoveryRetrySessionKey = '';
+}
+
+function normalizeStreamSeq(value: unknown): number | null {
+  if (value == null || value === '') {
+    return null;
+  }
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return null;
+  }
+  return Math.floor(numeric);
+}
+
+function lastStreamSeqForSession(sessionKey: string): number | null {
+  const normalizedSessionKey = typeof sessionKey === 'string' ? sessionKey.trim() : '';
+  if (!normalizedSessionKey) {
+    return null;
+  }
+  const current = lastStreamSeqBySession.get(normalizedSessionKey);
+  if (current != null) {
+    return current;
+  }
+  const stored = readChatLastStreamSeq(normalizedSessionKey);
+  if (stored == null) {
+    return null;
+  }
+  lastStreamSeqBySession.set(normalizedSessionKey, stored);
+  lastStreamSeqLoadedFromStorageBySession.add(normalizedSessionKey);
+  return stored;
+}
+
+function clearLastStreamSeqForSession(sessionKey: string | null | undefined): void {
+  const normalizedSessionKey = typeof sessionKey === 'string' ? sessionKey.trim() : '';
+  if (!normalizedSessionKey) {
+    return;
+  }
+  lastStreamSeqBySession.delete(normalizedSessionKey);
+  lastStreamSeqLoadedFromStorageBySession.delete(normalizedSessionKey);
+  clearChatLastStreamSeq(normalizedSessionKey);
+}
+
+function rememberStreamSeq(event: ChatStreamEvent): void {
+  const sessionKey = typeof event.sessionKey === 'string' ? event.sessionKey.trim() : '';
+  const streamSeq = normalizeStreamSeq(event.streamSeq);
+  if (!sessionKey || streamSeq == null) {
+    return;
+  }
+  const current = lastStreamSeqForSession(sessionKey);
+  const loadedFromStorage = lastStreamSeqLoadedFromStorageBySession.has(sessionKey);
+  if (current == null || streamSeq > current || (streamSeq < current && loadedFromStorage)) {
+    lastStreamSeqBySession.set(sessionKey, streamSeq);
+    lastStreamSeqLoadedFromStorageBySession.delete(sessionKey);
+    rememberChatLastStreamSeq(sessionKey, streamSeq);
+    return;
+  }
+  if (streamSeq === current && loadedFromStorage) {
+    lastStreamSeqLoadedFromStorageBySession.delete(sessionKey);
+    rememberChatLastStreamSeq(sessionKey, streamSeq);
+  }
+}
+
+function markRealtimeDisconnectedForRecovery(sessionKey: string | null | undefined): void {
+  markChatRealtimeDisconnected(realtimeRecoveryState, sessionKey);
+}
+
+function clearRealtimeRecoveryState(sessionKey?: string | null): void {
+  clearRealtimeRecoveryRetryTimer(sessionKey);
+  clearChatRealtimeRecoveryState(realtimeRecoveryState, sessionKey);
+}
+
+function scheduleRealtimeRecoveryHistorySync(sessionKey: string | null | undefined): void {
+  if (!sessionKey || selectedSessionKey.value !== sessionKey || historyMode.value !== 'history') {
+    return;
+  }
+  const decision = resolveChatRealtimeRecoverySyncDecision(realtimeRecoveryState, {
+    sessionKey,
+    nowMs: Date.now(),
+    minIntervalMs: CHAT_REALTIME_RECOVERY_SYNC_MIN_INTERVAL_MS,
+  });
+  if (decision.shouldSync) {
+    clearRealtimeRecoveryRetryTimer(sessionKey);
+    scheduleLiveHistorySync(sessionKey, CHAT_REALTIME_RECOVERY_SYNC_DELAY_MS);
+    return;
+  }
+  if (decision.retryAfterMs == null || typeof window === 'undefined') {
+    return;
+  }
+  clearRealtimeRecoveryRetryTimer(sessionKey);
+  realtimeRecoveryRetrySessionKey = sessionKey;
+  realtimeRecoveryRetryTimer = window.setTimeout(() => {
+    realtimeRecoveryRetryTimer = null;
+    const retrySessionKey = realtimeRecoveryRetrySessionKey;
+    realtimeRecoveryRetrySessionKey = '';
+    scheduleRealtimeRecoveryHistorySync(retrySessionKey);
+  }, Math.max(CHAT_REALTIME_RECOVERY_SYNC_DELAY_MS, decision.retryAfterMs));
 }
 
 function cloneChatShellWarmValue<T>(value: T): T {
@@ -2863,6 +3673,7 @@ async function attachGatewayChat(sessionKey: string): Promise<void> {
     {
       sessionKey,
       bootstrapSnapshot: false,
+      lastStreamSeq: lastStreamSeqForSession(sessionKey),
     },
   );
   wsConnected.value = true;
@@ -2923,6 +3734,7 @@ function connectChatEventSource(sessionKey: string): void {
 
   const source = new EventSource(buildChatStreamUrl(sessionKey, {
     bootstrapSnapshot: false,
+    lastStreamSeq: lastStreamSeqForSession(sessionKey),
   }), {
     withCredentials: true,
   });
@@ -2933,10 +3745,12 @@ function connectChatEventSource(sessionKey: string): void {
     if (chatEventSource !== source) return;
     wsConnected.value = true;
     wsReconnectAttempt = 0;
+    scheduleRealtimeRecoveryHistorySync(sessionKey);
   };
   source.onerror = () => {
     if (chatEventSource !== source) return;
     wsConnected.value = false;
+    markRealtimeDisconnectedForRecovery(sessionKey);
   };
   source.addEventListener('chat-stream', (event) => {
     if (chatEventSource !== source) return;
@@ -2999,6 +3813,7 @@ function connectGatewayClient(sessionKey: string, options: { force?: boolean } =
         wsConnected.value = false;
         setNotice('error', error instanceof Error ? error.message : text('聊天附着失败。', 'Failed to attach chat.'));
       });
+      scheduleRealtimeRecoveryHistorySync(targetSessionKey);
     },
     onEvent: (event: GatewayEventFrame) => {
       if (gatewayClient !== client) return;
@@ -3009,6 +3824,7 @@ function connectGatewayClient(sessionKey: string, options: { force?: boolean } =
     onClose: () => {
       if (gatewayClient !== client) return;
       wsConnected.value = false;
+      markRealtimeDisconnectedForRecovery(gatewayChatSessionKey || selectedSessionKey.value);
       stopGatewayHeartbeat();
     },
     onGap: () => {
@@ -3076,8 +3892,12 @@ function connectChatSocket(sessionKey: string): void {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const basePath = getWebSocketBasePath();
   const wsPath = basePath ? `${basePath}/ws/chat` : '/ws/chat';
+  const lastStreamSeq = lastStreamSeqForSession(sessionKey);
+  const streamSeqParam = lastStreamSeq == null
+    ? ''
+    : `&lastStreamSeq=${encodeURIComponent(String(lastStreamSeq))}`;
   const socket = new WebSocket(
-    `${protocol}//${window.location.host}${wsPath}?sessionKey=${encodeURIComponent(sessionKey)}&bootstrapSnapshot=0`,
+    `${protocol}//${window.location.host}${wsPath}?sessionKey=${encodeURIComponent(sessionKey)}&bootstrapSnapshot=0${streamSeqParam}`,
   );
   chatSocket = socket;
   chatSocketSessionKey = sessionKey;
@@ -3087,15 +3907,18 @@ function connectChatSocket(sessionKey: string): void {
     clearStandaloneChatRealtimeFallback();
     wsConnected.value = true;
     wsReconnectAttempt = 0;
+    scheduleRealtimeRecoveryHistorySync(sessionKey);
   };
   socket.onclose = () => {
     if (chatSocket !== socket) return;
     wsConnected.value = false;
+    markRealtimeDisconnectedForRecovery(sessionKey);
     scheduleWsReconnect(sessionKey);
   };
   socket.onerror = () => {
     if (chatSocket !== socket) return;
     wsConnected.value = false;
+    markRealtimeDisconnectedForRecovery(sessionKey);
   };
   socket.onmessage = (raw) => {
     if (chatSocket !== socket) return;
@@ -3108,11 +3931,26 @@ function connectChatSocket(sessionKey: string): void {
 }
 
 function forceCloseChatSocketForTest(): void {
+  const sessionKey = selectedSessionKey.value;
+  markRealtimeDisconnectedForRecovery(sessionKey);
+  wsConnected.value = false;
+  if (sessionKey) {
+    setNotice(
+      'error',
+      text(
+        '实时连接正在恢复，消息和工具过程可能短暂延迟。',
+        'Realtime connection is recovering. Messages and tool progress may briefly lag.',
+      ),
+    );
+  }
   if (usesChatEventSource()) {
     disconnectChatEventSource();
     return;
   }
-  if (!chatSocket) return;
+  if (!chatSocket) {
+    chatSocketSessionKey = '';
+    return;
+  }
   clearWsReconnectTimer();
   try { chatSocket.close(); } catch {}
   chatSocket = null;
@@ -3176,6 +4014,8 @@ function applyBootstrapPayload(payload: ChatBootstrapPayload): void {
     }
     if (payload.history) {
       applyHistoryPagePayload(payload.history, 'replace');
+      historyLoadingInitial.value = false;
+      historyErrorMessage.value = '';
       bootstrapHistorySyncSkipSessionKeys.add(bootstrapSessionKey);
     }
     bootstrapPrimedSessionKey.value = (
@@ -3226,7 +4066,12 @@ async function loadSessionRowsForAgents(
         if (loadVersion !== sessionsLoadVersion) {
           return;
         }
-        const incomingRows = payload.sessions || [];
+        const incomingRows = (payload.sessions || []).map((row) => (
+          enrichIncomingSessionRowFromProtectedCurrent(
+            row,
+            mergedRows.find((current) => current.key === row.key) || null,
+          )
+        ));
         const preservedRows = collectPreservedAgentRows(mergedRows, agent.id, incomingRows, {
           preserveAllMissing: fetchOptions.localOnly === true,
         });
@@ -3330,8 +4175,11 @@ function applyHistoryPagePayload(
     preserveAfterCursor?: boolean;
   } = {},
 ): void {
-  const nextSession = applyDerivedAutoLabelToSessionRow(payload.session, payload.messages);
+  const nextSession = deriveHistoryBackedSessionRow(payload.session, payload.messages);
   ensureSessionRow(nextSession);
+  if (payload.messages.length) {
+    protectSessionRow(nextSession.key);
+  }
   if (optimisticStartupSessionKey.value === nextSession.key) {
     optimisticStartupSessionKey.value = '';
   }
@@ -3955,8 +4803,11 @@ function clearTerminalRunFence(sessionKey?: string): void {
 }
 
 function applyLiveHistorySyncPayload(payload: ChatHistoryPayload): void {
-  const nextSession = applyDerivedAutoLabelToSessionRow(payload.session, payload.messages);
+  const nextSession = deriveHistoryBackedSessionRow(payload.session, payload.messages);
   ensureSessionRow(nextSession);
+  if (payload.messages.length) {
+    protectSessionRow(nextSession.key);
+  }
   historyPayload.value = {
     ...payload,
     session: nextSession,
@@ -4103,8 +4954,10 @@ async function loadConversationWindowInitial(
   options: { limit?: number; force?: boolean } = {},
 ): Promise<void> {
   const requestedLimit = options.limit ?? CHAT_HISTORY_INITIAL_WINDOW_LIMIT;
+  const viewportAnchorMessageId = resolvePersistedViewportAnchorMessageId(sessionKey);
   const canReusePrimedWindow = (
     !options.force
+    && !viewportAnchorMessageId
     && historyMode.value === 'history'
     && !selectedHistoryDay.value
     && !searchQuery.value.trim()
@@ -4137,6 +4990,7 @@ async function loadConversationWindowInitial(
         historyPayload.value?.observability || createEmptyRuntimeObservability(),
       ))
       : await fetchChatHistoryPage(sessionKey, {
+        anchor: viewportAnchorMessageId || null,
         limit: requestedLimit,
         day: selectedHistoryDay.value,
         signal: controller?.signal,
@@ -4677,6 +5531,22 @@ function selectSessionKeyLocally(nextKey: string): void {
   }
 }
 
+function primeConversationForImmediateSessionSwitch(sessionKey: string): void {
+  if (!sessionKey || historyPayload.value?.session.key === sessionKey) {
+    return;
+  }
+  if (primeConversationStateFromSnapshot(sessionKey)) {
+    return;
+  }
+  const targetSession = sessionRows.value.find((row) => row.key === sessionKey) || null;
+  if (targetSession) {
+    primeEmptyConversationShell(targetSession, targetSession.runtime);
+    return;
+  }
+  historyPayload.value = null;
+  runtimeMachineState.value = resetChatSessionRuntimeMachine(sessionKey);
+}
+
 function buildChatRoute(sessionKey: string | null, mode: 'chat' | 'inspect' = props.shellMode): { path: string; query?: Record<string, string> } {
   return buildRuntimeChatRoute({
     currentPath: route.path,
@@ -4686,6 +5556,9 @@ function buildChatRoute(sessionKey: string | null, mode: 'chat' | 'inspect' = pr
 }
 
 function openSession(sessionKey: string, mode: 'chat' | 'inspect' = props.shellMode): void {
+  if (sessionKey !== selectedSessionKey.value) {
+    primeConversationForImmediateSessionSwitch(sessionKey);
+  }
   selectSessionKeyLocally(sessionKey);
   mobileSessionDrawerOpen.value = false;
   const target = buildChatRoute(sessionKey, mode);
@@ -4705,7 +5578,17 @@ function closeInspectorDrawer(): void {
 
 function handleInspectorDrawerOpenChange(nextOpen: boolean): void {
   if (!nextOpen) {
+    if (!chatShellCompactViewport.value) {
+      inspectorDrawerOpen.value = true;
+      return;
+    }
     closeInspectorDrawer();
+  }
+}
+
+function handleInspectorInteractOutside(event: Event): void {
+  if (!chatShellCompactViewport.value) {
+    event.preventDefault();
   }
 }
 
@@ -5320,13 +6203,19 @@ async function dispatchSlashCommandViaBackend(commandText: string): Promise<bool
 }
 
 async function sendMessage(documentOverride?: ChatComposerDocument): Promise<void> {
+  if (sendBusy.value) {
+    return;
+  }
   const session = selectedSession.value;
+  let sessionKeyForRollback = session?.key || selectedSessionKey.value || null;
+  let parsedSlashCommandForRollback: ReturnType<typeof parseStudioSlashCommand> = null;
   let rollbackHistoryPayload: ChatHistoryPayload | null = null;
   let rollbackRuntimeMachineState: ChatSessionRuntimeMachineState | null = null;
   let rollbackSessionRow: ChatSessionRow | null = null;
   let rollbackComposerDocument: ChatComposerDocument | null = null;
   let rollbackComposerAttachments: ComposerImageAttachment[] | null = null;
   let rollbackOptimisticQueueItem: { sessionKey: string; itemId: string } | null = null;
+  let directSendPendingRunId: string | null = null;
   let requestId: string | null = null;
   sendBusy.value = true;
   clearNotice();
@@ -5334,7 +6223,7 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
     const documentValue = normalizeComposerDocument(documentOverride || composerDocument.value);
     composerDocument.value = documentValue;
     const attachments = composerAttachments.value.slice();
-    if (!hasComposerDocumentContent(documentValue) && attachments.length === 0) {
+    if (!normalizedComposerDocumentHasContent(documentValue) && attachments.length === 0) {
       return;
     }
     if (!areComposerAttachmentsReady(attachments)) {
@@ -5342,9 +6231,9 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       return;
     }
 
-    const hasResourceRefs = normalizeComposerDocument(documentValue).some((node) => node.type === 'resource-ref');
-    const slashCommandText = !hasResourceRefs ? extractComposerPlainText(documentValue).trim() : '';
+    const slashCommandText = readNormalizedSlashCommandText(documentValue);
     const parsedSlashCommand = slashCommandText ? parseStudioSlashCommand(slashCommandText) : null;
+    parsedSlashCommandForRollback = parsedSlashCommand;
     if (parsedSlashCommand && attachments.length > 0) {
       setNotice(
         'error',
@@ -5422,17 +6311,19 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       return;
     }
     const sessionKey = session.key;
+    sessionKeyForRollback = sessionKey;
 
     requestId = `ui-${Date.now()}`;
     const sendPlan = buildComposerSendPlan({
       document: documentValue,
       attachments,
       clientRequestId: requestId,
+      normalizedDocument: true,
     });
 
     const createdAt = new Date().toISOString();
     const sendPayload = sendPlan.payload;
-    const hadActiveRun = Boolean(activeRuntime.value?.activeRunId);
+    const hadActiveRun = Boolean(activeRuntime.value?.activeRunId) || hasSessionRunLocallyActive(sessionKey);
     if (hadActiveRun) {
       const optimisticQueueItem = buildOptimisticQueuedMessageItem({
         sessionKey,
@@ -5450,12 +6341,11 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       applyOptimisticQueueItem(sessionKey, optimisticQueueItem);
       composerDocument.value = createEmptyComposerDocument();
       composerAttachments.value = [];
-      const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, buildComposerSendPlan({
-        document: sendPlan.document,
-        attachments,
-        clientRequestId: requestId,
+      const queuedSendPayload: ChatSendRequest = {
+        ...sendPayload,
         flushWhenIdle: true,
-      }).payload);
+      };
+      const queuePayload: ChatQueuePayload = await enqueueChatMessage(sessionKey, queuedSendPayload);
       applyQueueState(sessionKey, queuePayload.items);
       rollbackComposerDocument = null;
       rollbackComposerAttachments = null;
@@ -5543,7 +6433,16 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       });
     }
 
+    directSendPendingRunId = requestId;
+    markSessionRunLocallyActive(sessionKey, directSendPendingRunId);
     const ack: ChatSendAck = await sendChatMessage(sessionKey, sendPayload);
+    const ackActiveRunId = ack.runtime.activeRunId || (ack.status === 'duplicate_completed' ? null : ack.runId);
+    if (ackActiveRunId) {
+      markSessionRunLocallyActive(sessionKey, ackActiveRunId);
+    } else {
+      clearSessionRunLocallyActive(sessionKey, directSendPendingRunId);
+    }
+    directSendPendingRunId = null;
     applyRuntime(ack.runtime);
     playChatCueSafely('sent', requestId || ack.runId || null);
     if (parsedSlashCommand) {
@@ -5553,17 +6452,21 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
       });
     }
   } catch (error) {
+    if (directSendPendingRunId && sessionKeyForRollback) {
+      clearSessionRunLocallyActive(sessionKeyForRollback, directSendPendingRunId);
+      directSendPendingRunId = null;
+    }
     if (rollbackOptimisticQueueItem) {
       removeOptimisticQueueItem(rollbackOptimisticQueueItem.sessionKey, rollbackOptimisticQueueItem.itemId);
     }
-    if (rollbackHistoryPayload && historyPayload.value?.session.key === sessionKey) {
+    if (sessionKeyForRollback && rollbackHistoryPayload && historyPayload.value?.session.key === sessionKeyForRollback) {
       historyPayload.value = rollbackHistoryPayload;
     }
-    if (rollbackRuntimeMachineState && selectedSessionKey.value === sessionKey) {
+    if (sessionKeyForRollback && rollbackRuntimeMachineState && selectedSessionKey.value === sessionKeyForRollback) {
       runtimeMachineState.value = rollbackRuntimeMachineState;
     }
-    if (rollbackSessionRow) {
-      syncSessionRow(sessionKey, rollbackSessionRow);
+    if (sessionKeyForRollback && rollbackSessionRow) {
+      syncSessionRow(sessionKeyForRollback, rollbackSessionRow);
     }
     if (rollbackComposerDocument) {
       composerDocument.value = rollbackComposerDocument;
@@ -5571,9 +6474,9 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
     if (rollbackComposerAttachments) {
       composerAttachments.value = rollbackComposerAttachments;
     }
-    if (parsedSlashCommand) {
+    if (sessionKeyForRollback && parsedSlashCommandForRollback) {
       markSlashFeedbackError(
-        sessionKey,
+        sessionKeyForRollback,
         error instanceof Error ? error.message : text('发送失败。', 'Failed to send message.'),
         { requestId },
       );
@@ -5746,6 +6649,7 @@ async function abortCurrentRun(): Promise<boolean> {
   try {
     const payload: ChatAbortResponse = await abortChatRun(selectedSession.value.key);
     applyRuntime(payload.runtime);
+    clearSessionRunLocallyActive(selectedSession.value.key, payload.runtime.activeRunId);
     if (!payload.hadActiveRun) {
       setNotice('error', text('当前没有可中止的运行。', 'There is no active run to abort.'));
       return false;
@@ -5777,6 +6681,8 @@ async function resetCurrentSession(): Promise<boolean> {
   clearNotice();
   try {
     suppressRunIds(suppressedIds);
+    clearSessionRunLocallyActive(currentSession.key);
+    clearLastStreamSeqForSession(currentSession.key);
     const optimisticRuntime: ChatRuntimeState = {
       gatewayConnected: activeRuntime.value?.gatewayConnected ?? chatHealth.value?.gatewayReachable ?? false,
       sessionWritable: true,
@@ -5882,6 +6788,10 @@ async function applyDeleteSelectionFallback(sessionKeys: string[]): Promise<void
 
 function applyDeletedSessionsLocally(sessionKeys: string[]): void {
   const deleted = new Set(sessionKeys);
+  for (const sessionKey of deleted) {
+    clearLocalSessionCaches(sessionKey);
+  }
+  repairLastSessionPointerAfterDelete(sessionKeys);
   sessionRows.value = sessionRows.value.filter((row) => !deleted.has(row.key));
   queuedItemsBySession.value = Object.fromEntries(
     Object.entries(queuedItemsBySession.value).filter(([sessionKey]) => !deleted.has(sessionKey)),
@@ -6273,15 +7183,20 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
   abortHistoryDatesRequest();
   closeHostManagementExecConfirm();
   if (previousKey) {
+    if (sessionRows.value.some((row) => row.key === previousKey)) {
+      flushComposerDraftSave(previousKey);
+    } else {
+      clearComposerDraftForSession(previousKey);
+    }
     clearTerminalRunFence(previousKey);
     exhaustedHistoryBeforeCursorBySession.delete(previousKey);
   }
   historyPrependAnchorMessageId.value = null;
-  composerDocument.value = createEmptyComposerDocument();
-  composerAttachments.value = [];
   queueRailExpanded.value = false;
   mobileQueueSheetOpen.value = false;
   if (!sessionKey) {
+    composerDocument.value = createEmptyComposerDocument();
+    composerAttachments.value = [];
     const requestedSessionKey = routeSessionKey.value;
     if (requestedSessionKey) {
       selectSessionKeyLocally(requestedSessionKey);
@@ -6290,6 +7205,7 @@ watch(selectedSessionKey, async (sessionKey, previousKey) => {
     clearConversationState();
     return;
   }
+  restoreComposerDraftForSession(sessionKey);
   exhaustedHistoryBeforeCursorBySession.delete(sessionKey);
   const hasPrimedConversationState = (
     historyPayload.value?.session.key === sessionKey
@@ -6358,6 +7274,10 @@ watch(sessionRows, () => {
   );
 });
 
+watch([composerDocument, composerAttachments], () => {
+  scheduleComposerDraftSave();
+});
+
 function handleGlobalKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Escape') return;
   if (mobileSessionDrawerOpen.value) {
@@ -6367,6 +7287,45 @@ function handleGlobalKeydown(event: KeyboardEvent): void {
   if (inspectPinned.value && inspectorDrawerOpen.value) {
     closeInspectorDrawer();
   }
+}
+
+function syncChatShellCompactViewport(): void {
+  chatShellCompactViewport.value = Boolean(chatShellCompactViewportMediaQuery?.matches);
+}
+
+function bindChatShellCompactViewport(): void {
+  if (typeof window === 'undefined') {
+    chatShellCompactViewport.value = false;
+    return;
+  }
+  chatShellCompactViewportMediaQuery = window.matchMedia('(max-width: 920px)');
+  chatShellCompactViewportListener = () => {
+    syncChatShellCompactViewport();
+  };
+  syncChatShellCompactViewport();
+  if ('addEventListener' in chatShellCompactViewportMediaQuery) {
+    chatShellCompactViewportMediaQuery.addEventListener('change', chatShellCompactViewportListener);
+  } else {
+    chatShellCompactViewportMediaQuery.addListener(chatShellCompactViewportListener);
+  }
+}
+
+function unbindChatShellCompactViewport(): void {
+  if (chatShellCompactViewportMediaQuery && chatShellCompactViewportListener) {
+    if ('removeEventListener' in chatShellCompactViewportMediaQuery) {
+      chatShellCompactViewportMediaQuery.removeEventListener('change', chatShellCompactViewportListener);
+    } else {
+      chatShellCompactViewportMediaQuery.removeListener(chatShellCompactViewportListener);
+    }
+  }
+  chatShellCompactViewportMediaQuery = null;
+  chatShellCompactViewportListener = null;
+  chatShellCompactViewport.value = false;
+}
+
+function handleComposerDraftLifecycleExit(): void {
+  flushComposerDraftSave();
+  rememberChatShellWarmCache();
 }
 
 onMounted(async () => {
@@ -6381,6 +7340,10 @@ onMounted(async () => {
     soundCuesEnabled.value = readChatSoundCuesEnabled();
     window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE = forceCloseChatSocketForTest;
     window.addEventListener('keydown', handleGlobalKeydown);
+    window.addEventListener('pagehide', handleComposerDraftLifecycleExit);
+    window.addEventListener('beforeunload', handleComposerDraftLifecycleExit);
+    bindChatShellCompactViewport();
+    startShellViewportSnapshotInterval();
   }
   await bootstrapChatSurface();
 });
@@ -6404,6 +7367,7 @@ watch(soundCuesEnabled, (value) => {
 });
 
 onBeforeUnmount(() => {
+  flushComposerDraftSave();
   rememberChatShellWarmCache();
   clearDeferredInitialHistoryLoad();
   clearDeferredSessionHydration();
@@ -6416,14 +7380,20 @@ onBeforeUnmount(() => {
   clearHistoryBeforePrefetch();
   clearHistoryAfterPrefetch();
   clearHistoryBeforeMaterializeReleaseTimer();
+  clearShellViewportSnapshotInterval();
   clearPendingTemporaryToolEvents();
   clearTerminalRunFence();
   clearWsReconnectTimer();
+  clearRealtimeRecoveryRetryTimer();
+  clearRealtimeRecoveryState();
   if (typeof window !== 'undefined') {
     delete window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE;
     delete window.__OPENCLAW_STUDIO_CHAT_TRACE__;
     window.removeEventListener('keydown', handleGlobalKeydown);
+    window.removeEventListener('pagehide', handleComposerDraftLifecycleExit);
+    window.removeEventListener('beforeunload', handleComposerDraftLifecycleExit);
   }
+  unbindChatShellCompactViewport();
   if (chatSocket) {
     try { chatSocket.close(); } catch {}
     chatSocket = null;

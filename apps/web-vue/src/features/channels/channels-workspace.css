@@ -39,7 +39,12 @@
 
 .channels-sidebar-body {
   display: grid;
+  flex: 1 1 auto;
   gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
 }
 
 .channels-stage-head {
@@ -246,6 +251,7 @@
   display: grid;
   gap: 10px;
   margin-top: 14px;
+  min-height: 0;
 }
 
 .channel-rail-node {
@@ -600,12 +606,13 @@ html[data-theme="light"] .channels-credential-summary span {
 .channels-sidebar-panel {
   position: relative;
   top: auto;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  max-height: none;
-  min-height: 100%;
+  max-height: calc(100dvh - 190px);
+  min-height: 0;
   padding: 16px;
-  align-content: start;
+  overflow: hidden;
   border: 0;
   border-right: 1px solid var(--border-subtle);
   border-radius: 0;
@@ -715,6 +722,7 @@ html[data-theme="light"] .channels-credential-summary span {
     grid-auto-flow: column;
     grid-auto-columns: minmax(220px, 84vw);
     overflow-x: auto;
+    overflow-y: hidden;
     overscroll-behavior-x: contain;
     scroll-snap-type: x proximity;
     padding-bottom: 4px;
@@ -731,6 +739,16 @@ html[data-theme="light"] .channels-credential-summary span {
 
   .channels-stage-task {
     min-height: 0;
+  }
+
+  .channels-sidebar-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .channels-sidebar-body {
+    overflow: visible;
+    padding-right: 0;
   }
 }
 

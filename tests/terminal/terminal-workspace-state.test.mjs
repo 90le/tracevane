@@ -77,6 +77,41 @@ test("terminal workspace recomputes recoverable sessions after register", () => 
   );
 });
 
+test("terminal workspace makes resource cwd sessions the active terminal pane", () => {
+  const workspace = workspaceStateModule.createTerminalWorkspaceState();
+
+  workspace.registerSession({
+    sessionId: "term-default",
+    title: "Default Shell",
+    cwd: "/home/binbin/.openclaw",
+    status: "running",
+    source: "manual",
+    canResume: true,
+    controlState: "controller",
+    updatedAt: "2026-04-13T10:03:00.000Z",
+  });
+  workspace.setActiveSession("term-default");
+
+  workspace.registerSession({
+    sessionId: "term-resource-folder",
+    title: "web-vue · Shell",
+    cwd: "/home/binbin/.openclaw/extensions/openclaw-studio/apps/web-vue",
+    status: "running",
+    source: "manual",
+    canResume: true,
+    controlState: "controller",
+    updatedAt: "2026-04-13T10:04:00.000Z",
+  });
+  workspace.setActiveSession("term-resource-folder");
+
+  assert.equal(workspace.activeSessionId.value, "term-resource-folder");
+  assert.deepEqual(workspace.paneSessionIds.value, ["term-resource-folder"]);
+  assert.equal(
+    workspace.sessions.value["term-resource-folder"]?.cwd,
+    "/home/binbin/.openclaw/extensions/openclaw-studio/apps/web-vue",
+  );
+});
+
 test("terminal workspace queues commands for a specific session", () => {
   const workspace = workspaceStateModule.createTerminalWorkspaceState();
 
@@ -178,7 +213,6 @@ test("terminal workspace persists tab order and active session across refresh", 
   });
 
   workspace.hydrateSessions(descriptors);
-  workspace.openTab("term-a");
   workspace.openTab("term-b");
   workspace.setActiveSession("term-a");
 
@@ -193,6 +227,163 @@ test("terminal workspace persists tab order and active session across refresh", 
 
   assert.deepEqual(refreshedWorkspace.tabOrder.value, ["term-a", "term-b"]);
   assert.equal(refreshedWorkspace.activeSessionId.value, "term-a");
+});
+
+test("terminal workspace persists split pane layout across refresh", () => {
+  const memoryStorage = {
+    records: new Map(),
+    getItem(key) {
+      return this.records.has(key) ? this.records.get(key) : null;
+    },
+    setItem(key, value) {
+      this.records.set(key, value);
+    },
+    removeItem(key) {
+      this.records.delete(key);
+    },
+  };
+
+  const storageKey = "terminal.descriptors.persist-panes.test";
+  const descriptors = [
+    {
+      sessionId: "term-a",
+      title: "Session A",
+      status: "running",
+      source: "manual",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:05:00.000Z",
+    },
+    {
+      sessionId: "term-b",
+      title: "Session B",
+      status: "running",
+      source: "manual",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:06:00.000Z",
+    },
+  ];
+
+  const workspace = workspaceStateModule.createTerminalWorkspaceState({
+    storage: memoryStorage,
+    storageKey,
+  });
+  workspace.hydrateSessions(descriptors);
+  workspace.setPaneSessions(["term-a", "term-b"]);
+  workspace.setPaneLayout("rows");
+  workspace.setActiveSession("term-b");
+
+  const refreshedWorkspace = workspaceStateModule.createTerminalWorkspaceState({
+    storage: memoryStorage,
+    storageKey,
+  });
+  refreshedWorkspace.hydrateSessions(descriptors);
+
+  assert.deepEqual(refreshedWorkspace.paneSessionIds.value, [
+    "term-a",
+    "term-b",
+  ]);
+  assert.equal(refreshedWorkspace.paneLayout.value, "rows");
+  assert.equal(refreshedWorkspace.activeSessionId.value, "term-b");
+});
+
+test("terminal workspace closes split panes without closing tabs", () => {
+  const workspace = workspaceStateModule.createTerminalWorkspaceState();
+
+  workspace.hydrateSessions([
+    {
+      sessionId: "term-a",
+      title: "Session A",
+      status: "running",
+      source: "manual",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:05:00.000Z",
+    },
+    {
+      sessionId: "term-b",
+      title: "Session B",
+      status: "running",
+      source: "manual",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:06:00.000Z",
+    },
+  ]);
+
+  workspace.openTab("term-b");
+  workspace.setPaneSessions(["term-a", "term-b"]);
+  workspace.setPaneLayout("columns");
+  workspace.setActiveSession("term-b");
+  workspace.closePane("term-b");
+
+  assert.deepEqual(workspace.tabOrder.value, ["term-b", "term-a"]);
+  assert.deepEqual(workspace.paneSessionIds.value, ["term-a"]);
+  assert.equal(workspace.paneLayout.value, "single");
+  assert.equal(workspace.activeSessionId.value, "term-a");
+});
+
+test("terminal workspace hydrate filters missing split panes", () => {
+  const memoryStorage = {
+    records: new Map(),
+    getItem(key) {
+      return this.records.has(key) ? this.records.get(key) : null;
+    },
+    setItem(key, value) {
+      this.records.set(key, value);
+    },
+    removeItem(key) {
+      this.records.delete(key);
+    },
+  };
+
+  const storageKey = "terminal.descriptors.reconcile-panes.test";
+  const workspace = workspaceStateModule.createTerminalWorkspaceState({
+    storage: memoryStorage,
+    storageKey,
+  });
+  workspace.hydrateSessions([
+    {
+      sessionId: "term-a",
+      title: "Session A",
+      status: "running",
+      source: "manual",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:05:00.000Z",
+    },
+    {
+      sessionId: "term-b",
+      title: "Session B",
+      status: "running",
+      source: "manual",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:06:00.000Z",
+    },
+  ]);
+  workspace.setPaneSessions(["term-a", "term-b"]);
+  workspace.setPaneLayout("grid");
+
+  const refreshedWorkspace = workspaceStateModule.createTerminalWorkspaceState({
+    storage: memoryStorage,
+    storageKey,
+  });
+  refreshedWorkspace.hydrateSessions([
+    {
+      sessionId: "term-a",
+      title: "Session A",
+      status: "running",
+      source: "manual",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:07:00.000Z",
+    },
+  ]);
+
+  assert.deepEqual(refreshedWorkspace.paneSessionIds.value, ["term-a"]);
+  assert.equal(refreshedWorkspace.paneLayout.value, "single");
 });
 
 test("terminal workspace hydrate reconciles removed persisted sessions", () => {
@@ -236,6 +427,7 @@ test("terminal workspace hydrate reconciles removed persisted sessions", () => {
     },
   ]);
 
+  workspace.openTab("term-a");
   workspace.openTab("term-b");
   assert.deepEqual(workspace.tabOrder.value, ["term-a", "term-b"]);
   assert.equal(workspace.activeSessionId.value, "term-b");
@@ -497,6 +689,122 @@ test("terminal workspace delete rejects running and detached sessions", () => {
 
   assert.ok(workspace.sessions.value["term-running"]);
   assert.ok(workspace.sessions.value["term-detached"]);
+});
+
+test("terminal workspace persists profile selection and IDE tab metadata", () => {
+  const memoryStorage = {
+    records: new Map(),
+    getItem(key) {
+      return this.records.has(key) ? this.records.get(key) : null;
+    },
+    setItem(key, value) {
+      this.records.set(key, value);
+    },
+    removeItem(key) {
+      this.records.delete(key);
+    },
+  };
+  const storageKey = "terminal.descriptors.profile-tabs.test";
+  const workspace = workspaceStateModule.createTerminalWorkspaceState({
+    storage: memoryStorage,
+    storageKey,
+  });
+
+  workspace.hydrateSessions([
+    {
+      sessionId: "term-a",
+      title: "Codex",
+      profileId: "agent-codex",
+      targetKind: "local",
+      cwd: "/workspace",
+      status: "running",
+      source: "manual",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:12:00.000Z",
+    },
+    {
+      sessionId: "term-b",
+      title: "Shell",
+      profileId: "local-shell",
+      targetKind: "local",
+      status: "running",
+      source: "manual",
+      canResume: true,
+      controlState: "controller",
+      updatedAt: "2026-04-13T10:13:00.000Z",
+    },
+  ]);
+
+  workspace.openTab("term-a");
+  workspace.openTab("term-b");
+  workspace.setActiveProfile("agent-codex");
+  workspace.pinSession("term-b", true);
+  workspace.moveTab("term-b", 0);
+
+  assert.deepEqual(workspace.tabOrder.value, ["term-b", "term-a"]);
+  assert.equal(workspace.activeProfileId.value, "agent-codex");
+  assert.equal(workspace.sessions.value["term-b"]?.pinned, true);
+  assert.equal(workspace.sessions.value["term-a"]?.profileId, "agent-codex");
+
+  const refreshedWorkspace = workspaceStateModule.createTerminalWorkspaceState({
+    storage: memoryStorage,
+    storageKey,
+  });
+  refreshedWorkspace.hydrateSessions(Object.values(workspace.sessions.value));
+
+  assert.deepEqual(refreshedWorkspace.tabOrder.value, ["term-b", "term-a"]);
+  assert.equal(refreshedWorkspace.activeProfileId.value, "agent-codex");
+  assert.equal(refreshedWorkspace.sessions.value["term-b"]?.pinned, true);
+});
+
+test("terminal workspace preserves local profile metadata across attach and hydrate descriptors", () => {
+  const workspace = workspaceStateModule.createTerminalWorkspaceState();
+
+  workspace.registerSession({
+    sessionId: "term-meta",
+    title: "Codex",
+    profileId: "agent-codex",
+    targetKind: "local",
+    cwd: "/workspace",
+    pinned: true,
+    status: "running",
+    source: "manual",
+    canResume: true,
+    controlState: "controller",
+    updatedAt: "2026-04-13T10:12:00.000Z",
+  });
+
+  workspace.registerSession({
+    sessionId: "term-meta",
+    title: "Terminal term-meta",
+    status: "running",
+    source: "manual",
+    canResume: true,
+    controlState: "controller",
+    updatedAt: "2026-04-13T10:13:00.000Z",
+  });
+
+  assert.equal(workspace.sessions.value["term-meta"]?.profileId, "agent-codex");
+  assert.equal(workspace.sessions.value["term-meta"]?.cwd, "/workspace");
+  assert.equal(workspace.sessions.value["term-meta"]?.pinned, true);
+
+  workspace.hydrateSessions([
+    {
+      sessionId: "term-meta",
+      title: "Terminal term-meta",
+      status: "detached",
+      source: "manual",
+      canResume: true,
+      controlState: "observer",
+      updatedAt: "2026-04-13T10:14:00.000Z",
+    },
+  ]);
+
+  assert.equal(workspace.sessions.value["term-meta"]?.profileId, "agent-codex");
+  assert.equal(workspace.sessions.value["term-meta"]?.targetKind, "local");
+  assert.equal(workspace.sessions.value["term-meta"]?.cwd, "/workspace");
+  assert.equal(workspace.sessions.value["term-meta"]?.pinned, true);
 });
 
 test("terminal route sync exports bind function", () => {

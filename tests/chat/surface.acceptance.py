@@ -1,8 +1,11 @@
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+import atexit
 import json
 import re
 import time
+
+from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
 SCREENSHOT_ENTRY = Path('/tmp/openclaw-studio-chat-entry.png')
@@ -33,13 +36,7 @@ def create_session(page):
     session_key = ((payload.get('session') or {}).get('key') or '').strip()
     if not session_key:
         raise AssertionError(f'create session response missing session.key: {payload}')
-    page.wait_for_function(
-        """() => (
-            document.querySelector('.chat-shell-session-row.active')
-            && document.querySelector('.chat-composer-editor[contenteditable="true"]')
-        )""",
-        timeout=30000,
-    )
+    wait_for_active_session(page, session_key)
     page.wait_for_load_state('networkidle')
     return session_key
 
@@ -68,20 +65,34 @@ def session_row(page, title):
 
 
 def open_menu_from_row(page, row):
-    row.click(button='right')
+    more_button = row.locator('.chat-shell-session-more').first
+    if more_button.count() > 0 and more_button.is_visible():
+        click_enabled(page, more_button)
+    else:
+        row.click(button='right')
     menu = page.locator('.cascade-menu').first
     menu.wait_for(state='visible', timeout=10000)
     return menu
 
 
+def close_browser_safely(browser):
+    try:
+        browser.close()
+    except Exception:
+        pass
+
+
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
+    atexit.register(lambda: close_browser_safely(browser))
     page = browser.new_page(viewport={'width': 1600, 'height': 1400})
 
     result = {}
 
-    page.goto('http://127.0.0.1:5176/chat', wait_until='domcontentloaded')
-    page.wait_for_load_state('networkidle')
+    wait_for_chat_surface(page, 'http://127.0.0.1:5176/chat', (
+        '.chat-shell-session-list',
+        '.chat-conversation-pane',
+    ))
 
     entry_text = page.locator('body').inner_text()
     entry_ok = page.locator('.chat-shell-session-list').count() > 0 and page.locator('.chat-conversation-pane').count() > 0
@@ -113,10 +124,9 @@ with sync_playwright() as p:
     click_enabled(page, filter_button)
     filter_popover = page.locator('.chat-shell-session-filter-popover')
     filter_popover.wait_for(state='visible', timeout=10000)
-    options = filter_popover.locator('option')
-    if options.count() > 1:
-      selected_value = options.nth(1).get_attribute('value')
-      filter_popover.locator('select').select_option(selected_value)
+    agent_options = filter_popover.locator('.chat-shell-session-filter-field').first.locator('.chat-shell-session-filter-agent-option')
+    if agent_options.count() > 1:
+      click_enabled(page, agent_options.nth(1))
       page.wait_for_timeout(300)
       result['filter_chip_visible'] = page.locator('.chat-shell-session-filter-chip').count() > 0
       click_enabled(page, page.get_by_role('button', name=re.compile('清空全部|Clear all')).first)
@@ -129,7 +139,7 @@ with sync_playwright() as p:
     created_folder_row = folder_row(page, folder_title)
     folder_menu_btn = created_folder_row.locator('.chat-shell-session-more').first
     click_enabled(page, folder_menu_btn)
-    rename_folder_item = page.locator('.cascade-menu button').filter(has_text=re.compile('重命名|Rename')).first
+    rename_folder_item = page.locator('.cascade-menu-item').filter(has_text=re.compile('重命名|Rename')).first
     click_enabled(page, rename_folder_item)
     rename_folder_input = page.locator('.chat-shell-folder-row.renaming input').first
     rename_folder_input.fill(renamed_folder_title)
@@ -144,14 +154,14 @@ with sync_playwright() as p:
 
     active_row = page.locator('.chat-shell-session-row.active').first
     session_context_menu = open_menu_from_row(page, active_row)
-    move_item = session_context_menu.locator('button').filter(has_text=re.compile('移动到文件夹|Move to folder')).first
+    move_item = session_context_menu.locator('.cascade-menu-item').filter(has_text=re.compile('移动到文件夹|Move to folder')).first
     move_item.hover()
     page.wait_for_function(
-        "(title) => Array.from(document.querySelectorAll('.cascade-menu button')).some((el) => (el.textContent || '').includes(title))",
+        "(title) => Array.from(document.querySelectorAll('.cascade-menu-item')).some((el) => (el.textContent || '').includes(title))",
         arg=renamed_folder_title,
         timeout=10000,
     )
-    move_target = page.locator('.cascade-menu button').filter(has_text=renamed_folder_title).last
+    move_target = page.locator('.cascade-menu-item').filter(has_text=renamed_folder_title).last
     click_enabled(page, move_target)
     page.wait_for_timeout(400)
     result['move_to_folder_submenu_visible'] = True
@@ -164,7 +174,7 @@ with sync_playwright() as p:
 
     folder_session_row = page.locator('.chat-shell-session-row').first
     folder_session_menu = open_menu_from_row(page, folder_session_row)
-    archive_item = folder_session_menu.locator('button').filter(has_text=re.compile('归档|Archive')).first
+    archive_item = folder_session_menu.locator('.cascade-menu-item').filter(has_text=re.compile('归档|Archive')).first
     click_enabled(page, archive_item)
     page.wait_for_timeout(600)
 
@@ -189,7 +199,7 @@ with sync_playwright() as p:
 
     archived_session_row = page.locator('.chat-shell-session-row').first
     archived_menu = open_menu_from_row(page, archived_session_row)
-    rename_session_item = archived_menu.locator('button').filter(has_text=re.compile('重命名|Rename')).first
+    rename_session_item = archived_menu.locator('.cascade-menu-item').filter(has_text=re.compile('重命名|Rename')).first
     click_enabled(page, rename_session_item)
     renamed_session_title = f'Dir Smoke Session Renamed {suffix}'
     rename_session_input = page.locator('.chat-shell-session-row.renaming input').first
@@ -209,8 +219,11 @@ with sync_playwright() as p:
     is_session_route = '/chat/workbench' not in session_url and '/chat' in session_url
     diagnostics_absent = ('Diagnostics' not in session_text) and ('Gateway URL' not in session_text) and ('same-origin' not in session_text)
 
-    page.goto('http://127.0.0.1:5176/chat/workbench', wait_until='domcontentloaded')
-    page.wait_for_load_state('networkidle')
+    wait_for_chat_surface(page, 'http://127.0.0.1:5176/chat/workbench', (
+        '.chat-shell-session-list',
+        '.chat-conversation-pane',
+        '.chat-inspector-panel',
+    ))
     workbench_text = page.locator('body').inner_text()
     workbench_ok = page.locator('.chat-inspector-panel').count() > 0
     diagnostics_present = ('Diagnostics' in workbench_text) or ('DIAGNOSTICS' in workbench_text)

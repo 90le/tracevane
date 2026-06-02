@@ -10,6 +10,7 @@ import type {
   TerminalEndPayload,
   TerminalInstallRequestId,
   TerminalLaunchPayload,
+  TerminalTargetKind,
 } from "../../../../types/terminal.js";
 
 export function registerTerminalRoutes(
@@ -104,9 +105,19 @@ export function registerTerminalRoutes(
       res.on("close", cleanup);
 
       try {
+        const pinnedParam = url.searchParams.get("pinned");
         const attached = routeCtx.services.terminal.attachStreamClient(
           {
             sid: params.sessionId,
+            profileId: url.searchParams.get("profileId"),
+            targetKind: url.searchParams.get(
+              "targetKind",
+            ) as TerminalTargetKind | null,
+            cwd: url.searchParams.get("cwd"),
+            pinned:
+              pinnedParam === null
+                ? undefined
+                : pinnedParam === "1" || pinnedParam === "true",
             lastSeq: Number(url.searchParams.get("lastSeq") || 0) || null,
             instanceId: url.searchParams.get("instanceId"),
             skipReplay:
@@ -137,6 +148,10 @@ export function registerTerminalRoutes(
 
   router.get("/api/terminal/actions", async (_req, res, routeCtx) => {
     sendJson(res, 200, await routeCtx.services.terminal.listWorkspaceActions());
+  });
+
+  router.get("/api/terminal/profiles", async (_req, res, routeCtx) => {
+    sendJson(res, 200, await routeCtx.services.terminal.listWorkspaceProfiles());
   });
 
   router.post(

@@ -366,10 +366,14 @@ const heartbeatModeOptions = computed(() => [
   { value: 'enabled', label: text('启用', 'Enabled') },
   { value: 'disabled', label: text('禁用', 'Disabled') },
 ]);
-const modelOptions = computed(() => [
-  { value: '', label: text('跟随系统默认', 'Inherit system default') },
-  ...availableModels.value.map((model) => ({ value: model, label: model })),
-]);
+const modelOptions = computed(() => {
+  const models = new Set(availableModels.value);
+  if (draft.model.trim()) models.add(draft.model.trim());
+  return [
+    { value: '', label: text('跟随系统默认', 'Inherit system default') },
+    ...Array.from(models).sort().map((model) => ({ value: model, label: model })),
+  ];
+});
 
 function normalizeToolsProfile(value: string | null | undefined): string {
   const normalized = String(value || '').trim().toLowerCase();

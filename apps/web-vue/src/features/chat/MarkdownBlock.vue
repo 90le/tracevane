@@ -3,13 +3,13 @@
     ref="root"
     class="chat-markdown"
     :class="{
-      'has-mermaid': renderReady && rendered.hasMermaid,
-      'chat-markdown--deferred': !renderReady,
+      'has-mermaid': markdownBodyReady && rendered.hasMermaid,
+      'chat-markdown--deferred': shouldShowDeferredMarkdown,
     }"
     @click="handleClick"
   >
     <div
-      v-if="renderReady"
+      v-if="markdownBodyReady"
       v-html="rendered.html"
     ></div>
     <button
@@ -42,6 +42,12 @@
           :aria-label="livePreview?.title || 'Fullscreen preview'"
           tabindex="-1"
         >
+        <DialogTitle as-child>
+          <span class="sr-only">{{ livePreview?.title || 'Fullscreen preview' }}</span>
+        </DialogTitle>
+        <DialogDescription as-child>
+          <span class="sr-only">{{ livePreview?.loading ? 'Rendering fullscreen preview.' : 'Preview rendered Markdown content fullscreen.' }}</span>
+        </DialogDescription>
         <header class="chat-live-preview-head">
           <div class="chat-live-preview-copy">
             <strong>{{ livePreview?.title || 'Preview' }}</strong>
@@ -168,23 +174,25 @@
 <script setup lang="ts">
 import './markdown-block.css';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { X } from '@lucide/vue';
 import type { ChatResourceItem } from '../../../../../types/chat';
+import type {
+  ChatMarkdownRenderResult,
+  HtmlPreviewMessage,
+  HtmlPreviewThemeTokens,
+} from './markdown';
 import {
-  buildHtmlPreviewDocument,
-  type HtmlPreviewMessage,
-  type HtmlPreviewThemeTokens,
-  renderChatMarkdownResult,
-  renderHighlightedCodeHtml,
-  sanitizeMermaidSvg,
-  sanitizeSvgPreviewMarkup,
-} from './markdown.ts';
+  buildBoundedCollapsedPreview,
+  hasCollapsedPreviewContent,
+  hasTrimmedLineCountAtLeast,
+} from '../../../../../lib/chat-deferred-preview';
 import {
   listenInlinePreviewPreferenceChange,
   readGlobalSanitizeLevel,
   readEffectiveRoleAwareInlinePreviewPreferences,
   type InlinePreviewKind,
+  type InlinePreviewScope,
   type RenderingRole,
   type SanitizeLevel,
   writeGlobalInlinePreviewPreference,
@@ -243,6 +251,8 @@ type PreviewRenderResult = {
   previewId: string;
 };
 
+type MarkdownRendererModule = typeof import('./markdown');
+
 type LivePreviewState = {
   token: string;
   kind: PreviewKind;
@@ -261,57 +271,47 @@ const livePreviewBody = ref<HTMLElement | null>(null);
 const livePreviewScaleWrap = ref<HTMLElement | null>(null);
 const renderReady = ref(false);
 const renderReadyPending = ref(false);
+const EMPTY_MARKDOWN_RENDER: ChatMarkdownRenderResult = {
+  html: '',
+  hasMermaid: false,
+  hasMath: false,
+  hasPreviewBlocks: false,
+};
+
+const rendered = ref<ChatMarkdownRenderResult>(EMPTY_MARKDOWN_RENDER);
 function isHeavyMarkdownSource(value: string): boolean {
-  const normalized = value.trim();
-  if (!normalized) {
+  if (!hasCollapsedPreviewContent(value)) {
     return false;
   }
-  if (normalized.length >= MARKDOWN_LAZY_RENDER_MIN_CHARS) {
+  if (value.length >= MARKDOWN_LAZY_RENDER_MIN_CHARS) {
     return true;
   }
-  if (/```/.test(normalized)) {
+  if (/```/.test(value)) {
     return true;
   }
-  if (/<(?:table|svg|iframe|pre|code|details|summary|article|section|div)\b/i.test(normalized)) {
+  if (/<(?:table|svg|iframe|pre|code|details|summary|article|section|div)\b/i.test(value)) {
     return true;
   }
   if (
-    /^\s*\|.+\|\s*$/m.test(normalized)
-    && /^\s*\|?[\s:-]+\|[\s|:-]*$/m.test(normalized)
+    /^\s*\|.+\|\s*$/m.test(value)
+    && /^\s*\|?[\s:-]+\|[\s|:-]*$/m.test(value)
   ) {
     return true;
   }
-  return normalized.split(/\r?\n/).length >= MARKDOWN_LAZY_RENDER_HEAVY_LINE_COUNT;
+  return hasTrimmedLineCountAtLeast(value, MARKDOWN_LAZY_RENDER_HEAVY_LINE_COUNT);
 }
 const shouldLazyRender = computed(() => !props.forceEagerRender && isHeavyMarkdownSource(props.source));
+const markdownBodyReady = computed(() => renderReady.value || !shouldLazyRender.value);
+const shouldShowDeferredMarkdown = computed(() => shouldLazyRender.value && !renderReady.value);
 const deferredPreviewText = computed(() => {
-  const normalized = props.source.replace(/\s+/g, ' ').trim();
-  if (!normalized) {
+  const preview = buildBoundedCollapsedPreview(props.source, MARKDOWN_LAZY_RENDER_PREVIEW_LIMIT);
+  if (!preview) {
     return 'Tap to render';
   }
-  return normalized.length > MARKDOWN_LAZY_RENDER_PREVIEW_LIMIT
-    ? `${normalized.slice(0, MARKDOWN_LAZY_RENDER_PREVIEW_LIMIT - 1)}…`
-    : normalized;
+  return preview;
 });
 const resolvedStudioResources = ref<ChatResourceItem[]>([]);
 const effectiveRenderResources = computed(() => mergeChatResourceItems(props.resources, resolvedStudioResources.value));
-const rendered = computed(() =>
-  renderReady.value || !shouldLazyRender.value
-    ? renderChatMarkdownResult(props.source, {
-      interactive: true,
-      inlineHtml: inlinePreviewPrefs.value.inlineHtml,
-      inlineSvg: inlinePreviewPrefs.value.inlineSvg,
-      inlineScript: inlinePreviewPrefs.value.inlineScript,
-      sanitizeLevel: sanitizeLevel.value,
-      resources: effectiveRenderResources.value,
-    })
-    : {
-      html: '',
-      hasMermaid: false,
-      hasMath: false,
-      hasPreviewBlocks: false,
-    }
-);
 const livePreview = ref<LivePreviewState | null>(null);
 const livePreviewCopied = ref(false);
 const previewIsFullscreen = ref(false);
@@ -343,6 +343,9 @@ let mermaidLoader: Promise<MermaidModule> | null = null;
 let previewCopyTimer: number | null = null;
 let previousBodyOverflow = '';
 let bodyOverflowLocked = false;
+let livePreviewWindowEventsBound = false;
+let htmlPreviewMessageListenerBound = false;
+let inlinePreviewPrefListenerBound = false;
 let stopInlinePreviewPrefListener: (() => void) | null = null;
 let enhanceDebounceTimer: number | null = null;
 let livePreviewReturnFocusTarget: HTMLElement | null = null;
@@ -350,7 +353,96 @@ let renderVisibilityObserver: IntersectionObserver | null = null;
 let renderReadyTimer: number | null = null;
 let renderReadyIdleHandle: number | null = null;
 let katexLoader: Promise<KatexApi> | null = null;
+let markdownRendererLoader: Promise<MarkdownRendererModule> | null = null;
+let renderedSerial = 0;
+let renderedSource = '';
 let resourceResolveSerial = 0;
+let componentMounted = false;
+
+function loadMarkdownRenderer(): Promise<MarkdownRendererModule> {
+  if (!markdownRendererLoader) {
+    markdownRendererLoader = import('./markdown');
+  }
+  return markdownRendererLoader;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderPlainMarkdownFallback(value: string): ChatMarkdownRenderResult {
+  const source = value.trim();
+  if (!source) {
+    return EMPTY_MARKDOWN_RENDER;
+  }
+  return {
+    html: `<p class="chat-markdown-loading-fallback">${escapeHtml(source).replace(/\n/g, '<br>')}</p>`,
+    hasMermaid: false,
+    hasMath: false,
+    hasPreviewBlocks: false,
+  };
+}
+
+async function refreshRenderedMarkdown(): Promise<void> {
+  const serial = ++renderedSerial;
+  if (!markdownBodyReady.value) {
+    rendered.value = EMPTY_MARKDOWN_RENDER;
+    renderedSource = '';
+    return;
+  }
+
+  const fallback = renderPlainMarkdownFallback(props.source);
+  if (!rendered.value.html || shouldLazyRender.value || renderedSource !== props.source) {
+    rendered.value = fallback;
+    renderedSource = props.source;
+  }
+
+  if (!componentMounted) {
+    return;
+  }
+
+  let renderer: MarkdownRendererModule;
+  try {
+    renderer = await loadMarkdownRenderer();
+  } catch (error) {
+    if (serial === renderedSerial) {
+      rendered.value = fallback;
+      console.warn('[MarkdownBlock] Failed to load markdown renderer:', error);
+    }
+    return;
+  }
+
+  if (serial !== renderedSerial || !markdownBodyReady.value) {
+    return;
+  }
+
+  try {
+    const nextRendered = renderer.renderChatMarkdownResult(props.source, {
+      interactive: true,
+      inlineHtml: inlinePreviewPrefs.value.inlineHtml,
+      inlineSvg: inlinePreviewPrefs.value.inlineSvg,
+      inlineScript: inlinePreviewPrefs.value.inlineScript,
+      sanitizeLevel: sanitizeLevel.value,
+      resources: effectiveRenderResources.value,
+    });
+    if (serial !== renderedSerial) {
+      return;
+    }
+    rendered.value = nextRendered;
+    renderedSource = props.source;
+  } catch (error) {
+    if (serial === renderedSerial) {
+      rendered.value = fallback;
+      renderedSource = props.source;
+      console.warn('[MarkdownBlock] Failed to render markdown:', error);
+    }
+  }
+}
 
 function refreshInlinePreviewPrefs(): void {
   inlinePreviewPrefs.value = readEffectiveRoleAwareInlinePreviewPreferences(props.role, props.sessionKey);
@@ -481,6 +573,7 @@ function ensureMarkdownRenderReady(): void {
   clearScheduledMarkdownRenderReady();
   renderReady.value = true;
   unbindMarkdownVisibilityObserver();
+  void refreshRenderedMarkdown();
 }
 
 function scheduleMarkdownRenderReady(): void {
@@ -891,12 +984,13 @@ async function renderMathBlocks(container: HTMLElement): Promise<void> {
 
 async function renderMermaidSvg(source: string): Promise<string> {
   const mermaid = await getMermaid();
+  const renderer = await loadMarkdownRenderer();
   mermaid.initialize(mermaidRenderConfig());
 
   const renderId = nextMermaidRenderId();
   const renderResult = await withTimeout(mermaid.render(renderId, source), 8000);
   const svg = typeof renderResult === 'string' ? renderResult : renderResult.svg;
-  const sanitizedSvg = sanitizeMermaidSvg(svg).trim();
+  const sanitizedSvg = renderer.sanitizeMermaidSvg(svg).trim();
   if (!sanitizedSvg) {
     throw new Error('Empty Mermaid render result');
   }
@@ -904,20 +998,22 @@ async function renderMermaidSvg(source: string): Promise<string> {
   return sanitizedSvg;
 }
 
-function renderSvgMarkup(source: string): string {
-  const sanitized = sanitizeSvgPreviewMarkup(source).trim();
+async function renderSvgMarkup(source: string): Promise<string> {
+  const renderer = await loadMarkdownRenderer();
+  const sanitized = renderer.sanitizeSvgPreviewMarkup(source).trim();
   if (!sanitized) {
     throw new Error('Empty SVG preview result');
   }
   return `<div class="chat-live-preview-svg">${sanitized}</div>`;
 }
 
-function renderHtmlSrcdoc(source: string): HtmlPreviewPayload {
+async function renderHtmlSrcdoc(source: string): Promise<HtmlPreviewPayload> {
   const normalized = source.trim();
   if (!normalized) {
     throw new Error('Empty HTML preview result');
   }
-  return buildHtmlPreviewDocument(normalized, currentTheme(), readHtmlPreviewThemeTokens());
+  const renderer = await loadMarkdownRenderer();
+  return renderer.buildHtmlPreviewDocument(normalized, currentTheme(), readHtmlPreviewThemeTokens());
 }
 
 async function renderPreviewResult(kind: PreviewKind, source: string): Promise<PreviewRenderResult> {
@@ -931,13 +1027,13 @@ async function renderPreviewResult(kind: PreviewKind, source: string): Promise<P
 
   if (kind === 'svg') {
     return {
-      renderedMarkup: renderSvgMarkup(source),
+      renderedMarkup: await renderSvgMarkup(source),
       srcdoc: '',
       previewId: '',
     };
   }
 
-  const htmlPreview = renderHtmlSrcdoc(source);
+  const htmlPreview = await renderHtmlSrcdoc(source);
   return {
     renderedMarkup: '',
     srcdoc: htmlPreview.srcdoc,
@@ -984,7 +1080,7 @@ function applyPreviewToCanvas(block: HTMLElement, kind: PreviewKind, result: Pre
   canvas.appendChild(wrapper);
 }
 
-function applyCodeFallbackToCanvas(block: HTMLElement, kind: PreviewKind, source: string): void {
+async function applyCodeFallbackToCanvas(block: HTMLElement, kind: PreviewKind, source: string): Promise<void> {
   const canvas = block.querySelector<HTMLElement>('.chat-mermaid-canvas');
   if (!canvas) {
     return;
@@ -992,8 +1088,9 @@ function applyCodeFallbackToCanvas(block: HTMLElement, kind: PreviewKind, source
 
   canvas.replaceChildren();
   const wrapper = document.createElement('div');
+  const renderer = await loadMarkdownRenderer();
   wrapper.className = 'code-block-wrapper chat-inline-code-fallback';
-  wrapper.innerHTML = renderHighlightedCodeHtml(source, kind);
+  wrapper.innerHTML = renderer.renderHighlightedCodeHtml(source, kind);
   canvas.appendChild(wrapper);
 }
 
@@ -1014,7 +1111,7 @@ async function renderPreviewBlock(block: HTMLElement): Promise<void> {
     delete block.dataset.error;
     block.dataset.inlineDisabled = '1';
     if (kind === 'mermaid' || kind === 'html' || kind === 'svg') {
-      applyCodeFallbackToCanvas(block, kind, source);
+      await applyCodeFallbackToCanvas(block, kind, source);
     } else {
       resetPreviewCanvas(block, 'Inline preview off');
     }
@@ -1753,12 +1850,132 @@ function handleWindowMessage(event: MessageEvent<HtmlPreviewMessage>): void {
   applyHtmlFrameHeight(data.previewId, data.height);
 }
 
+function bindLivePreviewWindowEvents(): void {
+  if (livePreviewWindowEventsBound || typeof window === 'undefined') {
+    return;
+  }
+  window.addEventListener('keydown', handleWindowKeydown);
+  window.addEventListener('mousemove', handlePreviewMouseMove);
+  window.addEventListener('mouseup', handlePreviewMouseUp);
+  document.addEventListener('fullscreenchange', syncPreviewFullscreenState);
+  livePreviewWindowEventsBound = true;
+}
+
+function unbindLivePreviewWindowEvents(): void {
+  if (!livePreviewWindowEventsBound || typeof window === 'undefined') {
+    return;
+  }
+  window.removeEventListener('keydown', handleWindowKeydown);
+  window.removeEventListener('mousemove', handlePreviewMouseMove);
+  window.removeEventListener('mouseup', handlePreviewMouseUp);
+  document.removeEventListener('fullscreenchange', syncPreviewFullscreenState);
+  livePreviewWindowEventsBound = false;
+}
+
+function bindHtmlPreviewMessageListener(): void {
+  if (htmlPreviewMessageListenerBound || typeof window === 'undefined') {
+    return;
+  }
+  window.addEventListener('message', handleWindowMessage);
+  htmlPreviewMessageListenerBound = true;
+}
+
+function unbindHtmlPreviewMessageListener(): void {
+  if (!htmlPreviewMessageListenerBound || typeof window === 'undefined') {
+    return;
+  }
+  window.removeEventListener('message', handleWindowMessage);
+  htmlPreviewMessageListenerBound = false;
+}
+
+function handleInlinePreviewPreferenceChange({
+  scope,
+  sessionKey,
+}: {
+  scope: InlinePreviewScope;
+  sessionKey: string | null;
+}): void {
+  if (scope !== 'global' && sessionKey !== props.sessionKey) {
+    return;
+  }
+  refreshInlinePreviewPrefs();
+  if (root.value) {
+    syncInlinePreviewToggleButtons(root.value);
+  }
+  void refreshRenderedMarkdown();
+}
+
+function bindInlinePreviewPreferenceListener(): void {
+  if (inlinePreviewPrefListenerBound) {
+    return;
+  }
+  stopInlinePreviewPrefListener = listenInlinePreviewPreferenceChange(handleInlinePreviewPreferenceChange);
+  inlinePreviewPrefListenerBound = true;
+}
+
+function unbindInlinePreviewPreferenceListener(): void {
+  if (!inlinePreviewPrefListenerBound) {
+    return;
+  }
+  stopInlinePreviewPrefListener?.();
+  stopInlinePreviewPrefListener = null;
+  inlinePreviewPrefListenerBound = false;
+}
+
+function bindPreviewThemeObserver(): void {
+  if (
+    themeObserver
+    || typeof document === 'undefined'
+    || typeof MutationObserver === 'undefined'
+  ) {
+    return;
+  }
+  themeObserver = new MutationObserver((records) => {
+    const themeChanged = records.some((record) => record.attributeName === 'data-theme');
+    if (themeChanged) {
+      void rerenderPreviewBlocksForTheme();
+    }
+  });
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  });
+}
+
+function unbindPreviewThemeObserver(): void {
+  themeObserver?.disconnect();
+  themeObserver = null;
+}
+
+function syncPreviewRuntimeBindings(): void {
+  if (!componentMounted) {
+    return;
+  }
+  if (livePreview.value) {
+    bindLivePreviewWindowEvents();
+  } else {
+    unbindLivePreviewWindowEvents();
+  }
+
+  const needsPreviewRuntime = rendered.value.hasPreviewBlocks || livePreview.value;
+  if (needsPreviewRuntime) {
+    bindHtmlPreviewMessageListener();
+    bindPreviewThemeObserver();
+    bindInlinePreviewPreferenceListener();
+  } else {
+    unbindHtmlPreviewMessageListener();
+    unbindPreviewThemeObserver();
+    unbindInlinePreviewPreferenceListener();
+  }
+}
+
 watch(
   () => rendered.value.html,
   () => {
     if (!renderReady.value) {
       return;
     }
+    syncPreviewRuntimeBindings();
     void enhanceMarkdown();
   },
 );
@@ -1781,11 +1998,13 @@ watch(
         return;
       }
       resolvedStudioResources.value = nextResources;
+      void refreshRenderedMarkdown();
     } catch (error) {
       if (serial !== resourceResolveSerial) {
         return;
       }
       resolvedStudioResources.value = [];
+      void refreshRenderedMarkdown();
       console.warn('[MarkdownBlock] Failed to resolve studio resources:', error);
     }
   },
@@ -1799,6 +2018,7 @@ watch(
       return;
     }
     ensureMarkdownRenderReady();
+    void refreshRenderedMarkdown();
   },
 );
 
@@ -1808,38 +2028,48 @@ watch(
     clearScheduledMarkdownRenderReady();
     renderReady.value = !shouldLazyRender.value;
     if (!renderReady.value) {
+      rendered.value = EMPTY_MARKDOWN_RENDER;
       unbindMarkdownVisibilityObserver();
       void nextTick(() => {
         bindMarkdownVisibilityObserver();
       });
       return;
     }
-    void enhanceMarkdown();
+    void refreshRenderedMarkdown();
   },
 );
 
 watch(
   livePreview,
   (value) => {
-  if (typeof document === 'undefined') {
-    return;
-  }
-
-  if (value) {
-    if (!bodyOverflowLocked) {
-      previousBodyOverflow = document.body.style.overflow;
-      bodyOverflowLocked = true;
+    syncPreviewRuntimeBindings();
+    if (typeof document === 'undefined') {
+      return;
     }
-    document.body.style.overflow = 'hidden';
-    return;
-  }
 
-  if (bodyOverflowLocked) {
-    document.body.style.overflow = previousBodyOverflow;
-    previousBodyOverflow = '';
-    bodyOverflowLocked = false;
-  }
-});
+    if (value) {
+      if (!bodyOverflowLocked) {
+        previousBodyOverflow = document.body.style.overflow;
+        bodyOverflowLocked = true;
+      }
+      document.body.style.overflow = 'hidden';
+      return;
+    }
+
+    if (bodyOverflowLocked) {
+      document.body.style.overflow = previousBodyOverflow;
+      previousBodyOverflow = '';
+      bodyOverflowLocked = false;
+    }
+  },
+);
+
+watch(
+  () => rendered.value.hasPreviewBlocks,
+  () => {
+    syncPreviewRuntimeBindings();
+  },
+);
 
 watch(
   () => [
@@ -1857,35 +2087,12 @@ watch(
 );
 
 onMounted(() => {
+  componentMounted = true;
   renderReady.value = !shouldLazyRender.value;
   refreshInlinePreviewPrefs();
-  stopInlinePreviewPrefListener = listenInlinePreviewPreferenceChange(({ scope, sessionKey }) => {
-    if (scope !== 'global' && sessionKey !== props.sessionKey) {
-      return;
-    }
-    refreshInlinePreviewPrefs();
-    if (root.value) {
-      syncInlinePreviewToggleButtons(root.value);
-    }
-    debouncedEnhanceMarkdown();
-  });
-  themeObserver = new MutationObserver((records) => {
-    const themeChanged = records.some((record) => record.attributeName === 'data-theme');
-    if (themeChanged) {
-      void rerenderPreviewBlocksForTheme();
-    }
-  });
-  themeObserver.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['data-theme'],
-  });
-  window.addEventListener('keydown', handleWindowKeydown);
-  window.addEventListener('mousemove', handlePreviewMouseMove);
-  window.addEventListener('mouseup', handlePreviewMouseUp);
-  window.addEventListener('message', handleWindowMessage);
-  document.addEventListener('fullscreenchange', syncPreviewFullscreenState);
+  syncPreviewRuntimeBindings();
   if (renderReady.value) {
-    void enhanceMarkdown();
+    void refreshRenderedMarkdown();
     return;
   }
   void nextTick(() => {
@@ -1900,7 +2107,7 @@ watch(
     if (root.value) {
       syncInlinePreviewToggleButtons(root.value);
     }
-    void enhanceMarkdown();
+    void refreshRenderedMarkdown();
   },
 );
 
@@ -1911,11 +2118,12 @@ watch(
     if (root.value) {
       syncInlinePreviewToggleButtons(root.value);
     }
-    debouncedEnhanceMarkdown();
+    void refreshRenderedMarkdown();
   },
 );
 
 onBeforeUnmount(() => {
+  componentMounted = false;
   void exitPreviewFullscreen();
   resetPreviewCopyState();
   clearScheduledMarkdownRenderReady();
@@ -1924,14 +2132,10 @@ onBeforeUnmount(() => {
     window.clearTimeout(enhanceDebounceTimer);
     enhanceDebounceTimer = null;
   }
-  stopInlinePreviewPrefListener?.();
-  stopInlinePreviewPrefListener = null;
-  window.removeEventListener('keydown', handleWindowKeydown);
-  window.removeEventListener('mousemove', handlePreviewMouseMove);
-  window.removeEventListener('mouseup', handlePreviewMouseUp);
-  window.removeEventListener('message', handleWindowMessage);
-  document.removeEventListener('fullscreenchange', syncPreviewFullscreenState);
-  themeObserver?.disconnect();
+  unbindInlinePreviewPreferenceListener();
+  unbindLivePreviewWindowEvents();
+  unbindHtmlPreviewMessageListener();
+  unbindPreviewThemeObserver();
   if (bodyOverflowLocked && typeof document !== 'undefined') {
     document.body.style.overflow = previousBodyOverflow;
     previousBodyOverflow = '';

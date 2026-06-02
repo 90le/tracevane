@@ -153,6 +153,36 @@ test("files service supports search, read, write, create, rename, copy, move, de
   });
   assert.match(fs.readFileSync(path.join(config.projectRoot, "upload.txt"), "utf8"), /uploaded/);
 
+  service.uploadFiles({
+    rootId: "project-root",
+    directoryPath: "",
+    files: [
+      {
+        fileName: "nested.txt",
+        relativePath: "folder-upload/src/nested.txt",
+        dataBase64: Buffer.from("nested upload\n").toString("base64"),
+      },
+    ],
+  });
+  assert.match(
+    fs.readFileSync(path.join(config.projectRoot, "folder-upload", "src", "nested.txt"), "utf8"),
+    /nested upload/,
+  );
+  assert.throws(() =>
+    service.uploadFiles({
+      rootId: "project-root",
+      directoryPath: "",
+      files: [
+        {
+          fileName: "escape.txt",
+          relativePath: "../escape.txt",
+          dataBase64: Buffer.from("escape\n").toString("base64"),
+        },
+      ],
+    }),
+  );
+  assert.equal(fs.existsSync(path.join(config.projectRoot, "..", "escape.txt")), false);
+
   service.deletePaths({
     rootId: "project-root",
     paths: ["docs/archive"],
@@ -164,12 +194,19 @@ test("files service exposes tree nodes and download payloads", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
   writeFile(path.join(config.projectRoot, "src", "nested", "child.ts"), "export const child = true;\n");
+  fs.mkdirSync(path.join(config.projectRoot, "src", "nested", "deeper"), { recursive: true });
   const service = createFilesService(config);
 
+  const browse = service.listDirectory("project-root", "src", true);
   const tree = service.listTree("project-root", "src", true);
   const download = service.getDownloadFile("project-root", "src/nested/child.ts");
+  const nestedBrowseEntry = browse.entries.find((item) => item.path === "src/nested");
+  const nestedTreeEntry = tree.children.find((item) => item.path === "src/nested");
 
-  assert.equal(tree.children.some((item) => item.path === "src/nested"), true);
+  assert.equal(nestedBrowseEntry?.kind, "directory");
+  assert.equal(nestedTreeEntry?.name, "nested");
+  assert.equal(Object.hasOwn(nestedBrowseEntry ?? {}, "childDirectoryCount"), false);
+  assert.equal(Object.hasOwn(nestedTreeEntry ?? {}, "childDirectoryCount"), false);
   assert.equal(download.fileName, "child.ts");
   assert.match(download.mimeType, /text|typescript|javascript|application/);
 });

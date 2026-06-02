@@ -67,7 +67,7 @@ test("mobile drawer and inspector use reka dialog primitives while preserving ov
   );
   assert.match(
     chatShellPage,
-    /<DialogRoot :open="inspectPinned && inspectorDrawerOpen" @update:open="handleInspectorDrawerOpenChange">/,
+    /<DialogRoot[\s\S]*:open="inspectPinned && inspectorDrawerOpen"[\s\S]*:modal="chatShellCompactViewport"[\s\S]*@update:open="handleInspectorDrawerOpenChange"[\s\S]*>/,
   );
   assert.match(
     chatShellPage,
@@ -77,6 +77,16 @@ test("mobile drawer and inspector use reka dialog primitives while preserving ov
     chatShellPage,
     /<DialogOverlay[\s\S]*class="chat-inspector-mask"[\s\S]*:class="resolvedTheme === 'light' \? 'theme-light' : 'theme-dark'"/,
   );
+  assert.match(chatShellPage, /const chatShellCompactViewport = ref\(false\);/);
+  assert.match(chatShellPage, /window\.matchMedia\('\(max-width: 920px\)'\)/);
+  assert.match(chatShellPage, /bindChatShellCompactViewport\(\);/);
+  assert.match(chatShellPage, /unbindChatShellCompactViewport\(\);/);
+  assert.match(
+    chatShellPage,
+    /class="chat-inspector-mask"[\s\S]*\/>\s*<DialogContent[\s\S]*@interact-outside="handleInspectorInteractOutside"[\s\S]*<aside class="chat-inspector-sheet/,
+  );
+  assert.match(chatShellPage, /function handleInspectorDrawerOpenChange\(nextOpen: boolean\): void \{[\s\S]*if \(!nextOpen\) \{[\s\S]*if \(!chatShellCompactViewport\.value\) \{[\s\S]*inspectorDrawerOpen\.value = true;[\s\S]*return;[\s\S]*\}[\s\S]*closeInspectorDrawer\(\);/);
+  assert.match(chatShellPage, /function handleInspectorInteractOutside\(event: Event\): void \{[\s\S]*if \(!chatShellCompactViewport\.value\) \{[\s\S]*event\.preventDefault\(\);/);
   assert.match(
     chatShellPage,
     /<aside class="chat-mobile-drawer[^"]*" :class="resolvedTheme === 'light' \? 'theme-light' : 'theme-dark'">/,

@@ -7,6 +7,12 @@
           class="chat-slash-status-dialog"
           :aria-label="text('当前状态', 'Current status')"
         >
+        <DialogTitle as-child>
+          <span class="sr-only">{{ text('当前状态', 'Current status') }}</span>
+        </DialogTitle>
+        <DialogDescription as-child>
+          <span class="sr-only">{{ text('查看当前会话运行态、连接态和控制状态。', 'Review runtime, connection, and control state for the current session.') }}</span>
+        </DialogDescription>
         <header class="chat-slash-status-head">
           <div class="chat-slash-status-copy">
             <strong>{{ text('当前状态', 'Current status') }}</strong>
@@ -131,7 +137,7 @@
 
 <script setup lang="ts">
 import './slash-command.css';
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import type { ChatRuntimeState } from '../../../../../types/chat';

@@ -5,9 +5,22 @@ import {
   toggleSessionSelectionKeys,
 } from '../../../../../lib/chat-session-list-state';
 import type { ChatSessionOrganizerState, ChatSessionRow } from '../../../../../types/chat';
-import { buildSessionListSelectionSummary } from './chat-session-list-selection';
+import {
+  buildSessionListSelectionSummary,
+  type SessionListSelectionSummary,
+} from './chat-session-list-selection';
 
 type ReadonlyRef<T> = Ref<T> | ComputedRef<T>;
+
+const EMPTY_SELECTION_SUMMARY: SessionListSelectionSummary = {
+  manageableVisibleSessionKeys: [],
+  selectedManageableSessionKeys: [],
+  allVisibleSessionsSelected: false,
+  organizerFolderSummary: {
+    hasFolderMembership: false,
+    selectedInFolderCount: 0,
+  },
+};
 
 export function useSessionListSelection(params: {
   visibleActiveSessions: ReadonlyRef<ChatSessionRow[]>;
@@ -19,16 +32,21 @@ export function useSessionListSelection(params: {
   const selectionMode = ref(false);
   const selectedSessionKeys = ref<string[]>([]);
   const selectedSet = computed(() => new Set(selectedSessionKeys.value));
-  const selectionSummary = computed(() => buildSessionListSelectionSummary({
-    selectedKeys: selectedSessionKeys.value,
-    visibleSessions: [
-      ...params.visibleActiveSessions.value,
-      ...params.visibleArchivedSessions.value,
-    ],
-    organizerSessions: params.allOrganizerSessions.value,
-    organizer: params.organizer.value,
-    canManageSession: params.canManageSession,
-  }));
+  const selectionSummary = computed(() => {
+    if (!selectionMode.value) {
+      return EMPTY_SELECTION_SUMMARY;
+    }
+    return buildSessionListSelectionSummary({
+      selectedKeys: selectedSessionKeys.value,
+      visibleSessions: [
+        ...params.visibleActiveSessions.value,
+        ...params.visibleArchivedSessions.value,
+      ],
+      organizerSessions: params.allOrganizerSessions.value,
+      organizer: params.organizer.value,
+      canManageSession: params.canManageSession,
+    });
+  });
   const manageableVisibleSessionKeys = computed(() => selectionSummary.value.manageableVisibleSessionKeys);
   const selectedManageableSessionKeys = computed(() => selectionSummary.value.selectedManageableSessionKeys);
   const allVisibleSessionsSelected = computed(() => selectionSummary.value.allVisibleSessionsSelected);
@@ -62,6 +80,9 @@ export function useSessionListSelection(params: {
   }
 
   watch(() => params.allOrganizerSessions.value, (sessions) => {
+    if (!selectedSessionKeys.value.length) {
+      return;
+    }
     selectedSessionKeys.value = pruneSelectedSessionKeys(
       selectedSessionKeys.value,
       sessions.map((session) => session.key),

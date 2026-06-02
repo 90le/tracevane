@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.request
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -39,6 +40,114 @@ MATRIX: tuple[SmokeItem, ...] = (
         timeout_seconds=120,
     ),
     SmokeItem(
+        name="composer-upload-failure-browser",
+        category="upload-failure-recovery",
+        command=["python", "tests/chat/composer-upload-failure.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-upload-concurrency-browser",
+        category="upload-concurrency",
+        command=["python", "tests/chat/composer-upload-concurrency.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-upload-nonpreview-browser",
+        category="upload-nonpreview-performance",
+        command=["python", "tests/chat/composer-upload-nonpreview.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-upload-session-switch-browser",
+        category="upload-session-switch",
+        command=["python", "tests/chat/composer-upload-session-switch.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-upload-cancel-browser",
+        category="upload-cancel-recovery",
+        command=["python", "tests/chat/composer-upload-cancel.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-upload-remove-browser",
+        category="upload-remove-recovery",
+        command=["python", "tests/chat/composer-upload-remove.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-draft-attachment-browser",
+        category="draft-attachment-persistence",
+        command=["python", "tests/chat/composer-draft-attachment.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-draft-pagehide-browser",
+        category="draft-pagehide-persistence",
+        command=["python", "tests/chat/composer-draft-pagehide.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-draft-session-switch-race-browser",
+        category="draft-session-switch-race",
+        command=["python", "tests/chat/composer-draft-session-switch-race.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-autofocus-browser",
+        category="composer-autofocus",
+        command=["python", "tests/chat/composer-autofocus.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-paste-mixed-browser",
+        category="composer-paste-mixed",
+        command=["python", "tests/chat/composer-paste-mixed.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-keyboard-browser",
+        category="composer-keyboard",
+        command=["python", "tests/chat/composer-keyboard.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-ime-browser",
+        category="composer-ime",
+        command=["python", "tests/chat/composer-ime.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-send-failure-browser",
+        category="send-failure-recovery",
+        command=["python", "tests/chat/composer-send-failure.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-queue-failure-browser",
+        category="queue-failure-recovery",
+        command=["python", "tests/chat/composer-queue-failure.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-queue-retry-browser",
+        category="queue-retry-recovery",
+        command=["python", "tests/chat/composer-queue-retry.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="composer-pressure-browser",
+        category="composer-layout-pressure",
+        command=["python", "tests/chat/composer-pressure.acceptance.py"],
+        timeout_seconds=150,
+    ),
+    SmokeItem(
+        name="rich-markdown-layout-browser",
+        category="rich-markdown-layout",
+        command=["python", "tests/chat/rich-markdown-layout.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
         name="host-exec-state",
         category="host-exec",
         command=["python", "tests/chat/host-exec.acceptance.py"],
@@ -48,6 +157,18 @@ MATRIX: tuple[SmokeItem, ...] = (
         name="session-rail",
         category="session-list",
         command=["python", "tests/chat/session-rail.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="session-delete-cache-cleanup-browser",
+        category="session-delete-cache-cleanup",
+        command=["python", "tests/chat/session-delete-cache-cleanup.acceptance.py"],
+        timeout_seconds=120,
+    ),
+    SmokeItem(
+        name="session-viewport-restore",
+        category="history-session-switch",
+        command=["python", "tests/chat/session-viewport.acceptance.py"],
         timeout_seconds=120,
     ),
     SmokeItem(
@@ -132,6 +253,7 @@ def run_item(item: SmokeItem, env: dict[str, str]) -> dict[str, object]:
             text=True,
             capture_output=True,
             timeout=item.timeout_seconds,
+            start_new_session=True,
         )
     except subprocess.TimeoutExpired as error:
         return {
@@ -158,6 +280,43 @@ def run_item(item: SmokeItem, env: dict[str, str]) -> dict[str, object]:
         **({"skipReason": skip_reason} if skip_reason else {}),
         "stdoutTail": completed.stdout[-4000:],
         "stderrTail": completed.stderr[-4000:],
+    }
+
+
+def item_needs_browser_surface(item: SmokeItem) -> bool:
+    return (
+        len(item.command) >= 2
+        and item.command[0] == "python"
+        and item.command[1].startswith("tests/chat/")
+        and item.command[1].endswith(".acceptance.py")
+    )
+
+
+def warm_chat_surface(base_url: str = "http://127.0.0.1:5176") -> dict[str, object]:
+    started_at = time.monotonic()
+    deadline = time.monotonic() + 60
+    last_error = ""
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(f"{base_url}/chat", timeout=10) as response:
+                body = response.read(2048).decode("utf-8", errors="replace")
+                if response.status < 400 and "OpenClaw Studio" in body:
+                    return {
+                        "name": "chat-surface-warmup",
+                        "category": "preflight",
+                        "status": "passed",
+                        "durationSeconds": round(time.monotonic() - started_at, 2),
+                    }
+                last_error = f"unexpected status/body: {response.status}"
+        except Exception as error:
+            last_error = str(error)
+        time.sleep(1)
+    return {
+        "name": "chat-surface-warmup",
+        "category": "preflight",
+        "status": "failed",
+        "durationSeconds": round(time.monotonic() - started_at, 2),
+        "error": last_error,
     }
 
 
@@ -189,6 +348,24 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
 
+    preflight_results: list[dict[str, object]] = []
+    if any(item_needs_browser_surface(item) for item in items):
+        warmup = warm_chat_surface()
+        preflight_results.append(warmup)
+        if warmup["status"] == "failed":
+            summary = {
+                "profile": args.profile,
+                "status": "failed",
+                "total": len(items),
+                "passed": 0,
+                "skipped": 0,
+                "failed": 1,
+                "preflight": preflight_results,
+                "results": [],
+            }
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
+            return 1
+
     results = [run_item(item, env) for item in items]
     failed = [item for item in results if item["status"] == "failed"]
     summary = {
@@ -198,6 +375,7 @@ def main() -> int:
         "passed": sum(1 for item in results if item["status"] == "passed"),
         "skipped": sum(1 for item in results if item["status"] == "skipped"),
         "failed": len(failed),
+        **({"preflight": preflight_results} if preflight_results else {}),
         "results": results,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))

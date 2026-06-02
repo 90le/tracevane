@@ -92,6 +92,7 @@ test("config write success persists config_change event into system-events.jsonl
       api: provider.api,
       baseUrl: provider.baseUrl,
       models: provider.models,
+      extra: provider.extra,
     })),
     gateway: {
       controlUi: {

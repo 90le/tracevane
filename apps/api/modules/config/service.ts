@@ -27,17 +27,292 @@ import { requestGateway } from "../chat/gateway-request.js";
 
 const NON_DOCKER_SANDBOX_BACKENDS = new Set(["ssh", "openshell"]);
 const SKILL_NODE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
+const PROVIDER_MANAGED_KEYS = new Set(["api", "apiKey", "baseUrl", "models"]);
+const PROVIDER_MODEL_MANAGED_KEYS = new Set([
+  "contextWindow",
+  "id",
+  "input",
+  "maxTokens",
+  "reasoning",
+]);
+const AGENT_DEFAULT_MANAGED_KEYS = new Set([
+  "blockStreamingBreak",
+  "blockStreamingChunk",
+  "blockStreamingCoalesce",
+  "blockStreamingDefault",
+  "bootstrapMaxChars",
+  "bootstrapPromptTruncationWarning",
+  "bootstrapTotalMaxChars",
+  "cliBackends",
+  "compaction",
+  "contextInjection",
+  "contextPruning",
+  "contextTokens",
+  "elevatedDefault",
+  "embeddedAgent",
+  "embeddedPi",
+  "envelopeElapsed",
+  "envelopeTimestamp",
+  "envelopeTimezone",
+  "heartbeat",
+  "humanDelay",
+  "imageGenerationModel",
+  "imageMaxDimensionPx",
+  "imageModel",
+  "llm",
+  "maxConcurrent",
+  "mediaGenerationAutoProviderFallback",
+  "mediaMaxMb",
+  "memorySearch",
+  "model",
+  "models",
+  "musicGenerationModel",
+  "params",
+  "pdfMaxBytesMb",
+  "pdfMaxPages",
+  "pdfModel",
+  "repoRoot",
+  "sandbox",
+  "skills",
+  "skipBootstrap",
+  "subagents",
+  "systemPromptOverride",
+  "thinkingDefault",
+  "timeFormat",
+  "timeoutSeconds",
+  "typingIntervalSeconds",
+  "typingMode",
+  "userTimezone",
+  "verboseDefault",
+  "videoGenerationModel",
+  "workspace",
+]);
+const AGENT_DEFAULT_EXTRA_KEYS = new Set([
+  "contextLimits",
+  "experimental",
+  "imageQuality",
+  "promptOverlays",
+  "reasoningDefault",
+  "runRetries",
+  "silentReply",
+  "skipOptionalBootstrapFiles",
+  "startupContext",
+  "toolProgressDetail",
+  "voiceModel",
+]);
+const GATEWAY_EXTRA_KEYS = new Set([
+  "http",
+  "nodes",
+  "push",
+  "reload",
+  "remote",
+  "tls",
+]);
+const ACP_EXTRA_KEYS = new Set(["fallbacks", "runtime", "stream"]);
+const SESSION_EXTRA_KEYS = new Set([
+  "agentToAgent",
+  "idleMinutes",
+  "identityLinks",
+  "mainKey",
+  "maintenance",
+  "resetTriggers",
+  "scope",
+  "sendPolicy",
+  "store",
+  "typingIntervalSeconds",
+  "typingMode",
+  "writeLock",
+]);
+const MESSAGES_EXTRA_KEYS = new Set([
+  "groupChat",
+  "inbound",
+  "messagePrefix",
+  "statusReactions",
+  "suppressToolErrors",
+  "tts",
+  "visibleReplies",
+]);
+const TOOLS_EXTRA_KEYS = new Set([
+  "agentToAgent",
+  "allow",
+  "alsoAllow",
+  "byProvider",
+  "codeMode",
+  "deny",
+  "experimental",
+  "links",
+  "loopDetection",
+  "media",
+  "message",
+  "sandbox",
+  "sessions",
+  "sessions_spawn",
+  "subagents",
+  "toolSearch",
+  "toolsBySender",
+  "web",
+]);
+const COMMAND_EXTRA_KEYS = new Set([
+  "allowFrom",
+  "ownerAllowFrom",
+  "ownerDisplaySecret",
+  "useAccessGroups",
+]);
+const GATEWAY_SCHEMA_KEYS = new Set([
+  "allowRealIpFallback",
+  "auth",
+  "bind",
+  "channelHealthCheckMinutes",
+  "channelMaxRestartsPerHour",
+  "channelStaleEventThresholdMinutes",
+  "controlUi",
+  "customBindHost",
+  "handshakeTimeoutMs",
+  "mode",
+  "port",
+  "tailscale",
+  "tools",
+  "trustedProxies",
+  "webchat",
+  ...GATEWAY_EXTRA_KEYS,
+]);
+const ACP_SCHEMA_KEYS = new Set([
+  "allowedAgents",
+  "backend",
+  "defaultAgent",
+  "dispatch",
+  "enabled",
+  "maxConcurrentSessions",
+  ...ACP_EXTRA_KEYS,
+]);
+const SESSION_SCHEMA_KEYS = new Set([
+  "dmScope",
+  "reset",
+  "resetByChannel",
+  "resetByType",
+  "threadBindings",
+  ...SESSION_EXTRA_KEYS,
+]);
+const MESSAGES_SCHEMA_KEYS = new Set([
+  "ackReaction",
+  "ackReactionScope",
+  "queue",
+  "removeAckAfterReply",
+  "responsePrefix",
+  ...MESSAGES_EXTRA_KEYS,
+]);
+const TOOLS_SCHEMA_KEYS = new Set([
+  "elevated",
+  "exec",
+  "fs",
+  "profile",
+  ...TOOLS_EXTRA_KEYS,
+]);
+const COMMAND_SCHEMA_KEYS = new Set([
+  "bash",
+  "bashForegroundMs",
+  "config",
+  "debug",
+  "mcp",
+  "native",
+  "nativeSkills",
+  "ownerDisplay",
+  "plugins",
+  "restart",
+  "text",
+  ...COMMAND_EXTRA_KEYS,
+]);
+const ROOT_SCHEMA_KEYS = new Set([
+  "$schema",
+  "accessGroups",
+  "acp",
+  "agents",
+  "approvals",
+  "audio",
+  "auth",
+  "bindings",
+  "broadcast",
+  "browser",
+  "channels",
+  "cli",
+  "commands",
+  "commitments",
+  "crestodian",
+  "cron",
+  "diagnostics",
+  "discovery",
+  "env",
+  "gateway",
+  "hooks",
+  "logging",
+  "mcp",
+  "media",
+  "memory",
+  "messages",
+  "meta",
+  "models",
+  "nodeHost",
+  "plugins",
+  "proxy",
+  "secrets",
+  "security",
+  "session",
+  "skills",
+  "surfaces",
+  "talk",
+  "tools",
+  "transcripts",
+  "ui",
+  "update",
+  "web",
+  "wizard",
+]);
+const OPENCLAW_EXTRA_DOMAIN_KEYS = new Set([
+  "accessGroups",
+  "approvals",
+  "audio",
+  "auth",
+  "broadcast",
+  "cli",
+  "commitments",
+  "crestodian",
+  "cron",
+  "diagnostics",
+  "discovery",
+  "env",
+  "media",
+  "memory",
+  "nodeHost",
+  "proxy",
+  "secrets",
+  "security",
+  "surfaces",
+  "talk",
+  "transcripts",
+  "ui",
+  "update",
+  "web",
+  "wizard",
+]);
+
+const LEGACY_PROVIDER_API_ALIASES: Record<string, string> = {
+  "azure-openai": "azure-openai-responses",
+  "google-generative": "google-generative-ai",
+};
 
 const DEFAULT_PROVIDER_BASE_URL_BY_API: Record<string, string> = {
-  "openai-completions": "https://api.openai.com/v1",
-  "openai-responses": "https://api.openai.com/v1",
   "anthropic-messages": "https://api.anthropic.com",
-  "google-generative": "https://generativelanguage.googleapis.com",
-  "azure-openai": "https://example.openai.azure.com",
+  "google-generative-ai": "https://generativelanguage.googleapis.com",
+  ollama: "http://127.0.0.1:11434",
 };
 
 function normalizeString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
+}
+
+function normalizeProviderApi(value: unknown): string {
+  const normalized = normalizeString(value);
+  return LEGACY_PROVIDER_API_ALIASES[normalized] || normalized;
 }
 
 function normalizeStringList(value: unknown): string[] {
@@ -61,6 +336,137 @@ function normalizeSkillNodeManager(value: unknown): "" | "npm" | "pnpm" | "yarn"
 function cloneJsonObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function cloneJsonObjectWithoutKeys(
+  value: unknown,
+  managedKeys: Set<string>,
+): Record<string, unknown> | null {
+  const cloned = cloneJsonObject(value);
+  if (!cloned) return null;
+  for (const key of managedKeys) {
+    delete cloned[key];
+  }
+  return Object.keys(cloned).length ? cloned : null;
+}
+
+function cloneJsonValue(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value)) as unknown;
+}
+
+function cloneJsonObjectWithKeys(
+  value: unknown,
+  allowedKeys: Set<string>,
+): Record<string, unknown> | null {
+  const cloned = cloneJsonObject(value);
+  if (!cloned) return null;
+  for (const key of Object.keys(cloned)) {
+    if (!allowedKeys.has(key)) delete cloned[key];
+  }
+  return Object.keys(cloned).length ? cloned : null;
+}
+
+function readAgentDefaultExtra(
+  defaults: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const extra: Record<string, unknown> = {};
+  for (const key of AGENT_DEFAULT_EXTRA_KEYS) {
+    if (AGENT_DEFAULT_MANAGED_KEYS.has(key)) continue;
+    if (!Object.prototype.hasOwnProperty.call(defaults, key)) continue;
+    extra[key] = cloneJsonValue(defaults[key]);
+  }
+  return Object.keys(extra).length ? extra : null;
+}
+
+function applyAgentDefaultExtra(
+  defaults: Record<string, any>,
+  value: unknown,
+): void {
+  for (const key of AGENT_DEFAULT_EXTRA_KEYS) {
+    delete defaults[key];
+  }
+  const extra = cloneJsonObjectWithKeys(value, AGENT_DEFAULT_EXTRA_KEYS);
+  if (!extra) return;
+  for (const [key, entry] of Object.entries(extra)) {
+    if (AGENT_DEFAULT_MANAGED_KEYS.has(key)) continue;
+    defaults[key] = entry;
+  }
+}
+
+function readSchemaExtra(
+  value: unknown,
+  allowedKeys: Set<string>,
+): Record<string, unknown> | null {
+  const source = cloneJsonObject(value);
+  if (!source) return null;
+  const extra: Record<string, unknown> = {};
+  for (const key of allowedKeys) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+    extra[key] = cloneJsonValue(source[key]);
+  }
+  return Object.keys(extra).length ? extra : null;
+}
+
+function applySchemaExtra(
+  target: Record<string, any>,
+  value: unknown,
+  allowedKeys: Set<string>,
+): void {
+  for (const key of allowedKeys) {
+    delete target[key];
+  }
+  const extra = cloneJsonObjectWithKeys(value, allowedKeys);
+  if (!extra) return;
+  for (const [key, entry] of Object.entries(extra)) {
+    target[key] = entry;
+  }
+}
+
+function readOpenClawExtraDomains(
+  openclawConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  const extraDomains: Record<string, unknown> = {};
+  for (const key of OPENCLAW_EXTRA_DOMAIN_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(openclawConfig, key)) continue;
+    extraDomains[key] = cloneJsonValue(openclawConfig[key]);
+  }
+  return extraDomains;
+}
+
+function applyOpenClawExtraDomains(
+  openclawConfig: Record<string, any>,
+  value: unknown,
+): void {
+  for (const key of OPENCLAW_EXTRA_DOMAIN_KEYS) {
+    delete openclawConfig[key];
+  }
+  const extraDomains = cloneJsonObjectWithKeys(value, OPENCLAW_EXTRA_DOMAIN_KEYS);
+  if (!extraDomains) return;
+  for (const [key, entry] of Object.entries(extraDomains)) {
+    openclawConfig[key] = entry;
+  }
+}
+
+function pruneRecordToSchemaKeys(
+  value: unknown,
+  allowedKeys: Set<string>,
+): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const target = value as Record<string, unknown>;
+  for (const key of Object.keys(target)) {
+    if (!allowedKeys.has(key)) delete target[key];
+  }
+}
+
+function pruneCurrentSchemaDomains(openclawConfig: Record<string, any>): void {
+  pruneRecordToSchemaKeys(openclawConfig, ROOT_SCHEMA_KEYS);
+  pruneRecordToSchemaKeys(openclawConfig.gateway, GATEWAY_SCHEMA_KEYS);
+  pruneRecordToSchemaKeys(openclawConfig.acp, ACP_SCHEMA_KEYS);
+  pruneRecordToSchemaKeys(openclawConfig.session, SESSION_SCHEMA_KEYS);
+  pruneRecordToSchemaKeys(openclawConfig.messages, MESSAGES_SCHEMA_KEYS);
+  pruneRecordToSchemaKeys(openclawConfig.tools, TOOLS_SCHEMA_KEYS);
+  pruneRecordToSchemaKeys(openclawConfig.commands, COMMAND_SCHEMA_KEYS);
 }
 
 function ensureRecordObject(
@@ -92,6 +498,9 @@ function deleteRecordFieldIfEmpty(
 type AgentDefaultModelRegistryEntry = {
   alias?: string;
   params?: Record<string, unknown>;
+  agentRuntime?: {
+    id?: string;
+  };
   streaming?: boolean;
 };
 
@@ -112,6 +521,18 @@ function cloneAgentDefaultModelRegistry(
     }
     const params = cloneJsonObject(entry.params);
     if (params) nextEntry.params = params;
+    if (
+      entry.agentRuntime &&
+      typeof entry.agentRuntime === "object" &&
+      !Array.isArray(entry.agentRuntime)
+    ) {
+      const agentRuntimeId = normalizeString(
+        (entry.agentRuntime as Record<string, unknown>).id,
+      );
+      if (agentRuntimeId) {
+        nextEntry.agentRuntime = { id: agentRuntimeId };
+      }
+    }
     if (typeof entry.streaming === "boolean") {
       nextEntry.streaming = entry.streaming;
     }
@@ -273,20 +694,16 @@ function resolveProviderBaseUrl(
 ): string {
   const explicit = normalizeString(candidate);
   if (explicit) return explicit;
-  const apiKey = normalizeString(api).toLowerCase();
-  const byApi = DEFAULT_PROVIDER_BASE_URL_BY_API[apiKey];
-  if (byApi) return byApi;
-  if (providerId.toLowerCase().includes("anthropic"))
-    return "https://api.anthropic.com";
-  if (
-    providerId.toLowerCase().includes("google") ||
-    providerId.toLowerCase().includes("gemini")
-  ) {
+  const normalizedProviderId = providerId.toLowerCase();
+  if (normalizedProviderId === "openai") return "https://api.openai.com/v1";
+  if (normalizedProviderId === "anthropic") return "https://api.anthropic.com";
+  if (normalizedProviderId === "google" || normalizedProviderId === "gemini") {
     return "https://generativelanguage.googleapis.com";
   }
-  if (providerId.toLowerCase().includes("openai"))
-    return "https://api.openai.com/v1";
-  return `https://example.invalid/${providerId || "provider"}`;
+  const apiKey = normalizeProviderApi(api).toLowerCase();
+  const byApi = DEFAULT_PROVIDER_BASE_URL_BY_API[apiKey];
+  if (byApi) return byApi;
+  return "";
 }
 
 function normalizeBoolean(value: unknown, fallback = false): boolean {
@@ -297,6 +714,22 @@ function normalizeNumber(value: unknown, fallback: number, min = 0): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(min, Math.floor(parsed));
+}
+
+function summarizeBooleanOrAuto(value: unknown, fallback = "auto"): string {
+  if (value === true) return "true";
+  if (value === false) return "false";
+  const normalized = normalizeString(value, fallback);
+  if (normalized === "true" || normalized === "on") return "true";
+  if (normalized === "false" || normalized === "off") return "false";
+  return normalized === "auto" ? "auto" : fallback;
+}
+
+function normalizeBooleanOrAuto(value: unknown, existing: unknown): boolean | "auto" {
+  if (value === true || value === "true" || value === "on") return true;
+  if (value === false || value === "false" || value === "off") return false;
+  if (value === "auto") return "auto";
+  return normalizeBooleanOrAuto(existing, "auto");
 }
 
 function hasDockerCommand(): boolean {
@@ -422,6 +855,7 @@ function mapProviderModel(
       reasoning: false,
       contextWindow: null,
       maxTokens: null,
+      extra: null,
     };
   }
 
@@ -440,6 +874,7 @@ function mapProviderModel(
     maxTokens: Number.isFinite(Number(model.maxTokens))
       ? Number(model.maxTokens)
       : null,
+    extra: cloneJsonObjectWithoutKeys(model, PROVIDER_MODEL_MANAGED_KEYS),
   };
 }
 
@@ -463,6 +898,7 @@ function mapProvider(
       rawProvider.apiKey.trim().length > 0,
     modelCount: models.length,
     models,
+    extra: cloneJsonObjectWithoutKeys(rawProvider, PROVIDER_MANAGED_KEYS),
   };
 }
 
@@ -607,13 +1043,13 @@ function buildSummary(
       pdfMaxPages: Number.isFinite(Number(defaults.pdfMaxPages))
         ? Number(defaults.pdfMaxPages)
         : null,
-      llmIdleTimeoutSeconds: Number.isFinite(
-        Number(defaults.llm?.idleTimeoutSeconds),
-      )
-        ? Number(defaults.llm.idleTimeoutSeconds)
-        : null,
-      embeddedPiProjectSettingsPolicy: String(
-        defaults.embeddedPi?.projectSettingsPolicy || "sanitize",
+      embeddedAgentProjectSettingsPolicy: String(
+        defaults.embeddedAgent?.projectSettingsPolicy ||
+          defaults.embeddedPi?.projectSettingsPolicy ||
+          "sanitize",
+      ).trim(),
+      embeddedAgentExecutionContract: String(
+        defaults.embeddedAgent?.executionContract || "default",
       ).trim(),
       memorySearch: cloneJsonObject(defaults.memorySearch),
       humanDelay: cloneJsonObject(defaults.humanDelay),
@@ -622,6 +1058,7 @@ function buildSummary(
       cliBackends: cloneJsonObject(defaults.cliBackends),
       contextPruning: cloneJsonObject(defaults.contextPruning),
       models: cloneAgentDefaultModelRegistry(defaults.models) || {},
+      extra: readAgentDefaultExtra(defaults),
     },
     compaction: {
       mode: String(defaults.compaction?.mode || "safeguard").trim(),
@@ -662,7 +1099,8 @@ function buildSummary(
     tools: {
       profile: String(openclawConfig.tools?.profile || "full").trim(),
       elevatedEnabled: openclawConfig.tools?.elevated?.enabled !== false,
-      execHost: String(openclawConfig.tools?.exec?.host || "sandbox").trim(),
+      execHost: String(openclawConfig.tools?.exec?.host || "auto").trim(),
+      execMode: String(openclawConfig.tools?.exec?.mode || "auto").trim(),
       execNode: String(openclawConfig.tools?.exec?.node || "").trim(),
       execAsk: String(openclawConfig.tools?.exec?.ask || "off").trim(),
       execSecurity: String(
@@ -670,6 +1108,7 @@ function buildSummary(
       ).trim(),
       execTimeoutSec: Number(openclawConfig.tools?.exec?.timeoutSec || 45),
       fsWorkspaceOnly: openclawConfig.tools?.fs?.workspaceOnly === true,
+      extra: readSchemaExtra(openclawConfig.tools, TOOLS_EXTRA_KEYS),
     },
     execApprovals: {
       socketPath: String(execApprovals.socket?.path || "").trim(),
@@ -725,6 +1164,7 @@ function buildSummary(
           openclawConfig.session?.threadBindings?.maxAgeHours || 0,
         ),
       },
+      extra: readSchemaExtra(openclawConfig.session, SESSION_EXTRA_KEYS),
     },
     messages: {
       responsePrefix: String(
@@ -753,6 +1193,7 @@ function buildSummary(
               )
             : {},
       },
+      extra: readSchemaExtra(openclawConfig.messages, MESSAGES_EXTRA_KEYS),
     },
     providers,
     pluginEntries,
@@ -768,6 +1209,10 @@ function buildSummary(
     plugins: buildPluginsSummary(openclawConfig),
     browser: buildBrowserSummary(openclawConfig),
     logging: buildLoggingSummary(openclawConfig),
+    openclaw: {
+      extraDomains: readOpenClawExtraDomains(openclawConfig),
+      extraDomainKeys: Array.from(OPENCLAW_EXTRA_DOMAIN_KEYS).sort(),
+    },
   };
 }
 
@@ -811,6 +1256,13 @@ function buildGatewaySummary(
         controlUi.enabled != null ? controlUi.enabled !== false : undefined,
       basePath: normalizeString(controlUi.basePath) || undefined,
       root: normalizeString(controlUi.root) || undefined,
+      embedSandbox: normalizeString(controlUi.embedSandbox) || undefined,
+      allowExternalEmbedUrls:
+        controlUi.allowExternalEmbedUrls != null
+          ? controlUi.allowExternalEmbedUrls === true
+          : undefined,
+      chatMessageMaxWidth:
+        normalizeString(controlUi.chatMessageMaxWidth) || undefined,
       allowedOrigins: normalizeStringList(controlUi.allowedOrigins),
       dangerouslyAllowHostHeaderOriginFallback:
         controlUi.dangerouslyAllowHostHeaderOriginFallback === true,
@@ -839,13 +1291,26 @@ function buildGatewaySummary(
                 : null,
           }
         : undefined,
+    handshakeTimeoutMs:
+      gw.handshakeTimeoutMs != null
+        ? normalizeNumber(gw.handshakeTimeoutMs, 0, 1)
+        : null,
     channelHealthCheckMinutes:
       gw.channelHealthCheckMinutes != null
         ? normalizeNumber(gw.channelHealthCheckMinutes, 0, 0)
         : null,
+    channelStaleEventThresholdMinutes:
+      gw.channelStaleEventThresholdMinutes != null
+        ? normalizeNumber(gw.channelStaleEventThresholdMinutes, 0, 1)
+        : null,
+    channelMaxRestartsPerHour:
+      gw.channelMaxRestartsPerHour != null
+        ? normalizeNumber(gw.channelMaxRestartsPerHour, 0, 1)
+        : null,
     tailscale: {
       mode: normalizeString(gw.tailscale?.mode, "off"),
     },
+    extra: readSchemaExtra(gw, GATEWAY_EXTRA_KEYS),
   };
 }
 
@@ -865,11 +1330,41 @@ function buildChannelsSummary(
       }
     }
     const { accounts: _omitAccounts, ...channelRest } = ch;
+    const rawThreadBindings =
+      ch.threadBindings &&
+      typeof ch.threadBindings === "object" &&
+      !Array.isArray(ch.threadBindings)
+        ? (ch.threadBindings as Record<string, unknown>)
+        : null;
+    const threadBindingRest = rawThreadBindings
+      ? (() => {
+          const {
+            spawnSubagentSessions: _legacySubagent,
+            spawnAcpSessions: _legacyAcp,
+            ...rest
+          } = rawThreadBindings;
+          return rest;
+        })()
+      : null;
     result[channelId] = {
       ...channelRest,
       enabled: ch.enabled !== false,
       groupPolicy: normalizeString(ch.groupPolicy, "allowlist"),
       streaming: normalizeString(ch.streaming, "partial"),
+      ...(rawThreadBindings
+        ? {
+            threadBindings: {
+              ...(threadBindingRest || {}),
+              enabled: rawThreadBindings.enabled === true,
+              idleHours: normalizeNumber(rawThreadBindings.idleHours, 24, 1),
+              maxAgeHours: normalizeNumber(rawThreadBindings.maxAgeHours, 0, 0),
+              spawnSessions:
+                rawThreadBindings.spawnSessions === true ||
+                rawThreadBindings.spawnSubagentSessions === true ||
+                rawThreadBindings.spawnAcpSessions === true,
+            },
+          }
+        : {}),
       accounts,
     };
   }
@@ -922,10 +1417,20 @@ function buildCommandsSummary(
 ): ConfigSummaryPayload["commands"] {
   const commands = openclawConfig.commands || {};
   return {
-    native: normalizeString(commands.native, "auto"),
-    nativeSkills: normalizeString(commands.nativeSkills, "auto"),
+    native: summarizeBooleanOrAuto(commands.native, "auto"),
+    nativeSkills: summarizeBooleanOrAuto(commands.nativeSkills, "auto"),
+    text: commands.text === true,
+    bash: commands.bash === true,
+    bashForegroundMs: Number.isFinite(Number(commands.bashForegroundMs))
+      ? Number(commands.bashForegroundMs)
+      : null,
+    config: commands.config === true,
+    mcp: commands.mcp === true,
+    plugins: commands.plugins === true,
+    debug: commands.debug === true,
     restart: commands.restart !== false,
     ownerDisplay: normalizeString(commands.ownerDisplay, "raw"),
+    extra: readSchemaExtra(commands, COMMAND_EXTRA_KEYS),
   };
 }
 
@@ -967,11 +1472,19 @@ function buildSkillsSummary(
         load.watchDebounceMs != null
           ? normalizeNumber(load.watchDebounceMs, 0, 0)
           : null,
+      allowSymlinkTargets:
+        load.allowSymlinkTargets != null
+          ? load.allowSymlinkTargets === true
+          : undefined,
     },
     install: {
       preferBrew:
         install.preferBrew != null ? install.preferBrew === true : undefined,
       nodeManager: normalizeSkillNodeManager(install.nodeManager) || undefined,
+      allowUploadedArchives:
+        install.allowUploadedArchives != null
+          ? install.allowUploadedArchives === true
+          : undefined,
     },
     limits: {
       maxCandidatesPerRoot:
@@ -1021,6 +1534,7 @@ function buildAcpSummary(
       acp.maxConcurrentSessions != null
         ? normalizeNumber(acp.maxConcurrentSessions, 1, 1)
         : undefined,
+    extra: readSchemaExtra(acp, ACP_EXTRA_KEYS),
   };
 }
 
@@ -1137,6 +1651,18 @@ function buildBrowserSummary(
     remoteCdpHandshakeTimeoutMs:
       browser.remoteCdpHandshakeTimeoutMs != null
         ? normalizeNumber(browser.remoteCdpHandshakeTimeoutMs, 0, 0)
+        : null,
+    localLaunchTimeoutMs:
+      browser.localLaunchTimeoutMs != null
+        ? normalizeNumber(browser.localLaunchTimeoutMs, 0, 0)
+        : null,
+    localCdpReadyTimeoutMs:
+      browser.localCdpReadyTimeoutMs != null
+        ? normalizeNumber(browser.localCdpReadyTimeoutMs, 0, 0)
+        : null,
+    actionTimeoutMs:
+      browser.actionTimeoutMs != null
+        ? normalizeNumber(browser.actionTimeoutMs, 0, 0)
         : null,
     defaultProfile: normalizeString(browser.defaultProfile) || undefined,
     attachOnly:
@@ -1290,9 +1816,26 @@ function normalizeProviderInput(
                 normalizeString(candidate.id) === id,
             )
           : null;
-        const nextModel = cloneJsonObject(existingModel) || {};
+        const modelExtra =
+          cloneJsonObjectWithoutKeys(
+            (model as unknown as Record<string, unknown>).extra,
+            PROVIDER_MODEL_MANAGED_KEYS,
+          ) || {};
+        const nextModel = {
+          ...(cloneJsonObject(existingModel) || {}),
+          ...modelExtra,
+        };
         nextModel.id = id;
-        nextModel.name = normalizeString(existingModel?.name, id);
+        const name = normalizeString(nextModel.name, id);
+        nextModel.name = name || id;
+        if (nextModel.api != null) {
+          const normalizedModelApi = normalizeProviderApi(nextModel.api);
+          if (normalizedModelApi) nextModel.api = normalizedModelApi;
+          else delete nextModel.api;
+        }
+        if (nextModel.baseUrl != null && !normalizeString(nextModel.baseUrl)) {
+          delete nextModel.baseUrl;
+        }
         if (input.length > 0) nextModel.input = input;
         else delete nextModel.input;
         if (model.reasoning === true) nextModel.reasoning = true;
@@ -1311,20 +1854,26 @@ function normalizeProviderInput(
     : [];
 
   const apiKey = provider.apiKey;
+  const providerExtra =
+    cloneJsonObjectWithoutKeys(
+      (provider as unknown as Record<string, unknown>).extra,
+      PROVIDER_MANAGED_KEYS,
+    ) || {};
   const nextProvider: Record<string, unknown> = {
     ...existingProvider,
+    ...providerExtra,
   };
-  const normalizedApi = normalizeString(
-    provider.api,
-    normalizeString(existingProvider.api),
-  );
+  const normalizedApi =
+    normalizeProviderApi(provider.api) || normalizeProviderApi(existingProvider.api);
   if (normalizedApi) nextProvider.api = normalizedApi;
   else delete nextProvider.api;
-  nextProvider.baseUrl = resolveProviderBaseUrl(
+  const resolvedBaseUrl = resolveProviderBaseUrl(
     providerId,
     normalizedApi,
     normalizeString(provider.baseUrl) || existingProvider.baseUrl,
   );
+  if (resolvedBaseUrl) nextProvider.baseUrl = resolvedBaseUrl;
+  else delete nextProvider.baseUrl;
   nextProvider.models = nextModels;
 
   if (typeof apiKey === "string") {
@@ -1342,6 +1891,52 @@ function normalizeProviderInput(
 function sanitizeCriticalConfigForHostSchema(
   openclawConfig: Record<string, any>,
 ): void {
+  const defaults =
+    openclawConfig.agents?.defaults &&
+    typeof openclawConfig.agents.defaults === "object"
+      ? (openclawConfig.agents.defaults as Record<string, any>)
+      : null;
+  if (defaults) {
+    if (
+      defaults.embeddedPi &&
+      typeof defaults.embeddedPi === "object" &&
+      !Array.isArray(defaults.embeddedPi)
+    ) {
+      defaults.embeddedAgent =
+        defaults.embeddedAgent &&
+        typeof defaults.embeddedAgent === "object" &&
+        !Array.isArray(defaults.embeddedAgent)
+          ? { ...defaults.embeddedPi, ...defaults.embeddedAgent }
+          : { ...defaults.embeddedPi };
+    }
+    delete defaults.embeddedPi;
+    delete defaults.llm;
+  }
+
+  const channels =
+    openclawConfig.channels && typeof openclawConfig.channels === "object"
+      ? (openclawConfig.channels as Record<string, any>)
+      : {};
+  for (const channel of Object.values(channels)) {
+    if (!channel || typeof channel !== "object") continue;
+    const threadBindings = (channel as Record<string, any>).threadBindings;
+    if (
+      threadBindings &&
+      typeof threadBindings === "object" &&
+      !Array.isArray(threadBindings)
+    ) {
+      if (
+        threadBindings.spawnSessions === undefined &&
+        (threadBindings.spawnSubagentSessions === true ||
+          threadBindings.spawnAcpSessions === true)
+      ) {
+        threadBindings.spawnSessions = true;
+      }
+      delete threadBindings.spawnSubagentSessions;
+      delete threadBindings.spawnAcpSessions;
+    }
+  }
+
   const models =
     openclawConfig.models && typeof openclawConfig.models === "object"
       ? openclawConfig.models
@@ -1356,11 +1951,16 @@ function sanitizeCriticalConfigForHostSchema(
         ? (rawProvider as Record<string, any>)
         : {};
     providers[providerId] = provider;
-    provider.baseUrl = resolveProviderBaseUrl(
+    const normalizedProviderApi = normalizeProviderApi(provider.api);
+    if (normalizedProviderApi) provider.api = normalizedProviderApi;
+    else delete provider.api;
+    const resolvedBaseUrl = resolveProviderBaseUrl(
       normalizeString(providerId, "provider"),
       provider.api,
       provider.baseUrl,
     );
+    if (resolvedBaseUrl) provider.baseUrl = resolvedBaseUrl;
+    else delete provider.baseUrl;
     if (!Array.isArray(provider.models)) {
       provider.models = [];
     } else {
@@ -1375,11 +1975,20 @@ function sanitizeCriticalConfigForHostSchema(
           const model = rawModel as Record<string, unknown>;
           const id = normalizeString(model.id);
           if (!id) return null;
-          return {
+          const nextModel: Record<string, unknown> = {
             ...model,
             id,
             name: normalizeString(model.name, id),
           };
+          if (nextModel.api != null) {
+            const normalizedModelApi = normalizeProviderApi(nextModel.api);
+            if (normalizedModelApi) nextModel.api = normalizedModelApi;
+            else delete nextModel.api;
+          }
+          if (nextModel.baseUrl != null && !normalizeString(nextModel.baseUrl)) {
+            delete nextModel.baseUrl;
+          }
+          return nextModel;
         })
         .filter((model) => model !== null);
     }
@@ -1409,6 +2018,7 @@ function sanitizeCriticalConfigForHostSchema(
   session.resetByChannel = buildResetOverrideMap(
     summarizeResetOverrideMap(session.resetByChannel),
   );
+  pruneCurrentSchemaDomains(openclawConfig);
 }
 
 function applyConfigUpdate(
@@ -1674,13 +2284,27 @@ function applyConfigUpdate(
   // that current OpenClaw versions flag as legacy and doctor --fix removes.
   // Always strip it during save to prevent gateway restart errors.
   delete defaults.llm;
-  defaults.embeddedPi = ensureRecordObject(defaults, "embeddedPi");
+  delete defaults.embeddedPi;
+  defaults.embeddedAgent = ensureRecordObject(defaults, "embeddedAgent");
   setOptionalStringField(
-    defaults.embeddedPi,
+    defaults.embeddedAgent,
     "projectSettingsPolicy",
-    payload.defaults.embeddedPiProjectSettingsPolicy,
+    payload.defaults.embeddedAgentProjectSettingsPolicy,
   );
-  deleteRecordFieldIfEmpty(defaults, "embeddedPi");
+  {
+    const executionContract = normalizeString(
+      payload.defaults.embeddedAgentExecutionContract,
+    );
+    if (
+      executionContract === "default" ||
+      executionContract === "strict-agentic"
+    ) {
+      defaults.embeddedAgent.executionContract = executionContract;
+    } else {
+      delete defaults.embeddedAgent.executionContract;
+    }
+  }
+  deleteRecordFieldIfEmpty(defaults, "embeddedAgent");
   if (
     payload.defaults.memorySearch &&
     typeof payload.defaults.memorySearch === "object" &&
@@ -1742,6 +2366,9 @@ function applyConfigUpdate(
     defaults.models = normalizedModelRegistry;
   } else {
     delete defaults.models;
+  }
+  if (Object.hasOwn(payload.defaults as Record<string, unknown>, "extra")) {
+    applyAgentDefaultExtra(defaults, payload.defaults.extra);
   }
   defaults.compaction = ensureRecordObject(defaults, "compaction");
   defaults.compaction.mode = normalizeString(
@@ -1836,7 +2463,11 @@ function applyConfigUpdate(
   openclawConfig.tools.exec = openclawConfig.tools.exec || {};
   openclawConfig.tools.exec.host = normalizeString(
     payload.tools.execHost,
-    openclawConfig.tools.exec.host || "sandbox",
+    openclawConfig.tools.exec.host || "auto",
+  );
+  openclawConfig.tools.exec.mode = normalizeString(
+    payload.tools.execMode,
+    openclawConfig.tools.exec.mode || "auto",
   );
   openclawConfig.tools.exec.node = normalizeString(
     payload.tools.execNode,
@@ -1858,6 +2489,9 @@ function applyConfigUpdate(
   openclawConfig.tools.fs = openclawConfig.tools.fs || {};
   openclawConfig.tools.fs.workspaceOnly =
     payload.tools.fsWorkspaceOnly === true;
+  if (Object.hasOwn(payload.tools as Record<string, unknown>, "extra")) {
+    applySchemaExtra(openclawConfig.tools, payload.tools.extra, TOOLS_EXTRA_KEYS);
+  }
 
   openclawConfig.session = openclawConfig.session || {};
   openclawConfig.session.dmScope = normalizeString(
@@ -1878,6 +2512,13 @@ function applyConfigUpdate(
     openclawConfig.session.threadBindings.maxAgeHours || 0,
     0,
   );
+  if (Object.hasOwn(payload.session as Record<string, unknown>, "extra")) {
+    applySchemaExtra(
+      openclawConfig.session,
+      payload.session.extra,
+      SESSION_EXTRA_KEYS,
+    );
+  }
 
   openclawConfig.messages = openclawConfig.messages || {};
   openclawConfig.messages.responsePrefix = normalizeString(
@@ -1927,6 +2568,13 @@ function applyConfigUpdate(
       openclawConfig.messages.queue.byChannel[normalizedChannelId] =
         normalizedMode;
     }
+  }
+  if (Object.hasOwn(payload.messages as Record<string, unknown>, "extra")) {
+    applySchemaExtra(
+      openclawConfig.messages,
+      payload.messages.extra,
+      MESSAGES_EXTRA_KEYS,
+    );
   }
 
   const existingProviders = openclawConfig.models?.providers || {};
@@ -2043,6 +2691,34 @@ function applyConfigUpdate(
           (pg.controlUi as Record<string, unknown>).root,
           gw.controlUi.root || "",
         );
+      if ((pg.controlUi as Record<string, unknown>).embedSandbox != null) {
+        const embedSandbox = normalizeString(
+          (pg.controlUi as Record<string, unknown>).embedSandbox,
+        );
+        if (
+          embedSandbox === "strict" ||
+          embedSandbox === "scripts" ||
+          embedSandbox === "trusted"
+        ) {
+          gw.controlUi.embedSandbox = embedSandbox;
+        } else {
+          delete gw.controlUi.embedSandbox;
+        }
+      }
+      if ((pg.controlUi as Record<string, unknown>).allowExternalEmbedUrls != null)
+        gw.controlUi.allowExternalEmbedUrls =
+          (pg.controlUi as Record<string, unknown>)
+            .allowExternalEmbedUrls === true;
+      if ((pg.controlUi as Record<string, unknown>).chatMessageMaxWidth != null) {
+        const chatMessageMaxWidth = normalizeString(
+          (pg.controlUi as Record<string, unknown>).chatMessageMaxWidth,
+        );
+        if (chatMessageMaxWidth) {
+          gw.controlUi.chatMessageMaxWidth = chatMessageMaxWidth;
+        } else {
+          delete gw.controlUi.chatMessageMaxWidth;
+        }
+      }
       if (pg.controlUi.allowedOrigins != null)
         gw.controlUi.allowedOrigins = normalizeStringList(
           pg.controlUi.allowedOrigins,
@@ -2092,12 +2768,55 @@ function applyConfigUpdate(
           1,
         );
     }
+    if (Object.hasOwn(pg as Record<string, unknown>, "handshakeTimeoutMs")) {
+      if ((pg as Record<string, unknown>).handshakeTimeoutMs != null) {
+        gw.handshakeTimeoutMs = normalizeNumber(
+          (pg as Record<string, unknown>).handshakeTimeoutMs,
+          gw.handshakeTimeoutMs || 0,
+          1,
+        );
+      } else {
+        delete gw.handshakeTimeoutMs;
+      }
+    }
     if ((pg as Record<string, unknown>).channelHealthCheckMinutes != null)
       gw.channelHealthCheckMinutes = normalizeNumber(
         (pg as Record<string, unknown>).channelHealthCheckMinutes,
         gw.channelHealthCheckMinutes || 0,
         0,
       );
+    if (
+      Object.hasOwn(
+        pg as Record<string, unknown>,
+        "channelStaleEventThresholdMinutes",
+      )
+    ) {
+      if (
+        (pg as Record<string, unknown>).channelStaleEventThresholdMinutes !=
+        null
+      ) {
+        gw.channelStaleEventThresholdMinutes = normalizeNumber(
+          (pg as Record<string, unknown>).channelStaleEventThresholdMinutes,
+          gw.channelStaleEventThresholdMinutes || 0,
+          1,
+        );
+      } else {
+        delete gw.channelStaleEventThresholdMinutes;
+      }
+    }
+    if (
+      Object.hasOwn(pg as Record<string, unknown>, "channelMaxRestartsPerHour")
+    ) {
+      if ((pg as Record<string, unknown>).channelMaxRestartsPerHour != null) {
+        gw.channelMaxRestartsPerHour = normalizeNumber(
+          (pg as Record<string, unknown>).channelMaxRestartsPerHour,
+          gw.channelMaxRestartsPerHour || 0,
+          1,
+        );
+      } else {
+        delete gw.channelMaxRestartsPerHour;
+      }
+    }
     if (pg.tailscale) {
       gw.tailscale = gw.tailscale || {};
       if (pg.tailscale.mode != null)
@@ -2105,6 +2824,13 @@ function applyConfigUpdate(
           pg.tailscale.mode,
           gw.tailscale.mode || "off",
         );
+    }
+    if (Object.hasOwn(pg as Record<string, unknown>, "extra")) {
+      applySchemaExtra(
+        gw,
+        (pg as Record<string, unknown>).extra,
+        GATEWAY_EXTRA_KEYS,
+      );
     }
   }
 
@@ -2176,18 +2902,27 @@ function applyConfigUpdate(
     const cmd = openclawConfig.commands;
     const pc = payload.commands;
     if (pc.native != null)
-      cmd.native = normalizeString(pc.native, cmd.native || "auto");
+      cmd.native = normalizeBooleanOrAuto(pc.native, cmd.native);
     if (pc.nativeSkills != null)
-      cmd.nativeSkills = normalizeString(
-        pc.nativeSkills,
-        cmd.nativeSkills || "auto",
-      );
+      cmd.nativeSkills = normalizeBooleanOrAuto(pc.nativeSkills, cmd.nativeSkills);
+    if (pc.text != null) cmd.text = pc.text === true;
+    if (pc.bash != null) cmd.bash = pc.bash === true;
+    if (Object.hasOwn(pc as Record<string, unknown>, "bashForegroundMs")) {
+      setOptionalNonNegativeNumberField(cmd, "bashForegroundMs", pc.bashForegroundMs);
+    }
+    if (pc.config != null) cmd.config = pc.config === true;
+    if (pc.mcp != null) cmd.mcp = pc.mcp === true;
+    if (pc.plugins != null) cmd.plugins = pc.plugins === true;
+    if (pc.debug != null) cmd.debug = pc.debug === true;
     if (pc.restart != null) cmd.restart = pc.restart !== false;
     if (pc.ownerDisplay != null)
       cmd.ownerDisplay = normalizeString(
         pc.ownerDisplay,
         cmd.ownerDisplay || "raw",
       );
+    if (Object.hasOwn(pc as Record<string, unknown>, "extra")) {
+      applySchemaExtra(cmd, pc.extra, COMMAND_EXTRA_KEYS);
+    }
   }
 
   if (payload.mcp) {
@@ -2250,6 +2985,14 @@ function applyConfigUpdate(
           loadPayload.watchDebounceMs,
         );
       }
+      if (Object.hasOwn(loadPayload, "allowSymlinkTargets")) {
+        if (typeof loadPayload.allowSymlinkTargets === "boolean") {
+          openclawConfig.skills.load.allowSymlinkTargets =
+            loadPayload.allowSymlinkTargets;
+        } else {
+          delete openclawConfig.skills.load.allowSymlinkTargets;
+        }
+      }
       deleteRecordFieldIfEmpty(openclawConfig.skills, "load");
     }
     if (skillsPayload.install && typeof skillsPayload.install === "object") {
@@ -2263,6 +3006,14 @@ function applyConfigUpdate(
         const nodeManager = normalizeSkillNodeManager(installPayload.nodeManager);
         if (nodeManager) openclawConfig.skills.install.nodeManager = nodeManager;
         else delete openclawConfig.skills.install.nodeManager;
+      }
+      if (Object.hasOwn(installPayload, "allowUploadedArchives")) {
+        if (typeof installPayload.allowUploadedArchives === "boolean") {
+          openclawConfig.skills.install.allowUploadedArchives =
+            installPayload.allowUploadedArchives;
+        } else {
+          delete openclawConfig.skills.install.allowUploadedArchives;
+        }
       }
       deleteRecordFieldIfEmpty(openclawConfig.skills, "install");
     }
@@ -2322,7 +3073,12 @@ function applyConfigUpdate(
 
   if (payload.acp) {
     openclawConfig.acp = openclawConfig.acp || {};
-    deepMerge(openclawConfig.acp, payload.acp as Record<string, any>);
+    const acpPayload = payload.acp as Record<string, any>;
+    const { extra: acpExtra, ...acpPatch } = acpPayload;
+    deepMerge(openclawConfig.acp, acpPatch);
+    if (Object.hasOwn(acpPayload, "extra")) {
+      applySchemaExtra(openclawConfig.acp, acpExtra, ACP_EXTRA_KEYS);
+    }
   }
 
   if (payload.plugins) {
@@ -2412,6 +3168,27 @@ function applyConfigUpdate(
       openclawConfig.browser.remoteCdpHandshakeTimeoutMs = normalizeNumber(
         browserPayload.remoteCdpHandshakeTimeoutMs,
         openclawConfig.browser.remoteCdpHandshakeTimeoutMs || 0,
+        0,
+      );
+    }
+    if (browserPayload.localLaunchTimeoutMs != null) {
+      openclawConfig.browser.localLaunchTimeoutMs = normalizeNumber(
+        browserPayload.localLaunchTimeoutMs,
+        openclawConfig.browser.localLaunchTimeoutMs || 0,
+        0,
+      );
+    }
+    if (browserPayload.localCdpReadyTimeoutMs != null) {
+      openclawConfig.browser.localCdpReadyTimeoutMs = normalizeNumber(
+        browserPayload.localCdpReadyTimeoutMs,
+        openclawConfig.browser.localCdpReadyTimeoutMs || 0,
+        0,
+      );
+    }
+    if (browserPayload.actionTimeoutMs != null) {
+      openclawConfig.browser.actionTimeoutMs = normalizeNumber(
+        browserPayload.actionTimeoutMs,
+        openclawConfig.browser.actionTimeoutMs || 0,
         0,
       );
     }
@@ -2532,6 +3309,15 @@ function applyConfigUpdate(
     deepMerge(openclawConfig.logging, payload.logging as Record<string, any>);
   }
 
+  if (payload.openclaw) {
+    const openclawPayload = payload.openclaw as Record<string, unknown>;
+    if (Object.hasOwn(openclawPayload, "extraDomains")) {
+      applyOpenClawExtraDomains(openclawConfig, openclawPayload.extraDomains);
+    }
+  }
+
+  sanitizeCriticalConfigForHostSchema(openclawConfig);
+
   return openclawConfig;
 }
 
@@ -2567,6 +3353,7 @@ function buildConfigUpdatePayloadFromSummary(
       api: provider.api,
       baseUrl: provider.baseUrl,
       models: provider.models.map((model) => ({ ...model })),
+      extra: provider.extra,
     })),
   };
 }

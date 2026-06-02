@@ -9,7 +9,6 @@ import type {
 import {
   buildComposerFileRefs,
   buildComposerMessageBlocks,
-  extractComposerPlainText,
   normalizeComposerDocument,
   serializeComposerDocumentToMarkdown,
 } from './composer-model.js';
@@ -156,11 +155,14 @@ export function buildComposerSendPlan(input: {
   attachments: ChatComposerAttachmentLike[];
   clientRequestId: string;
   flushWhenIdle?: boolean;
+  normalizedDocument?: boolean;
 }): ChatComposerSendPlan {
-  const document = normalizeComposerDocument(input.document);
+  const document = input.normalizedDocument
+    ? (input.document || [])
+    : normalizeComposerDocument(input.document);
   const attachments = input.attachments.slice();
-  const text = serializeComposerDocumentToMarkdown(document, attachments);
-  const blocks = buildComposerMessageBlocks(document, attachments);
+  const text = serializeComposerDocumentToMarkdown(document, attachments, { normalizedDocument: true });
+  const blocks = buildComposerMessageBlocks(document, attachments, { normalizedDocument: true });
   const fileRefs = buildComposerFileRefs(attachments);
   const resources = attachments.length
     ? buildOptimisticResourcesFromComposerAttachments(attachments)
@@ -195,11 +197,21 @@ export function buildComposerSendPlan(input: {
   return {
     document,
     text,
-    previewText: extractComposerPlainText(document).trim(),
+    previewText: extractNormalizedComposerPlainText(document).trim(),
     blocks,
     fileRefs,
     resources,
     inlineAttachments,
     payload,
   };
+}
+
+function extractNormalizedComposerPlainText(document: ChatComposerDocument): string {
+  let result = '';
+  for (const node of document) {
+    if (node.type === 'text') {
+      result += node.text;
+    }
+  }
+  return result;
 }

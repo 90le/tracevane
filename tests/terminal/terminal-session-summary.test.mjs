@@ -144,12 +144,14 @@ test("terminal service applies a conservative native worker budget for web termi
   const previousBudget = process.env.OPENCLAW_TERMINAL_NATIVE_WORKERS;
   const previousLang = process.env.LANG;
   const previousLcCtype = process.env.LC_CTYPE;
+  const previousNoColor = process.env.NO_COLOR;
 
   delete process.env.RAYON_NUM_THREADS;
   delete process.env.TOKIO_WORKER_THREADS;
   delete process.env.OPENCLAW_TERMINAL_NATIVE_WORKERS;
   delete process.env.LANG;
   delete process.env.LC_CTYPE;
+  process.env.NO_COLOR = "1";
 
   try {
     const env = terminalService.buildTerminalEnv({
@@ -163,6 +165,7 @@ test("terminal service applies a conservative native worker budget for web termi
     assert.equal(env.COLORTERM, "truecolor");
     assert.equal(env.CLICOLOR, "1");
     assert.equal(env.FORCE_COLOR, "1");
+    assert.equal(env.NO_COLOR, undefined);
     assert.equal(env.LANG, "C.UTF-8");
     assert.equal(env.LC_CTYPE, "C.UTF-8");
     assert.equal(env.TERM_PROGRAM, "openclaw-studio");
@@ -175,6 +178,7 @@ test("terminal service applies a conservative native worker budget for web termi
     restoreEnv("OPENCLAW_TERMINAL_NATIVE_WORKERS", previousBudget);
     restoreEnv("LANG", previousLang);
     restoreEnv("LC_CTYPE", previousLcCtype);
+    restoreEnv("NO_COLOR", previousNoColor);
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

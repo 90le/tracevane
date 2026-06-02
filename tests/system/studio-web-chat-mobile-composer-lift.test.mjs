@@ -21,7 +21,17 @@ const conversationPaneCss = fs.readFileSync(
 test('composer bar tracks compact-viewport keyboard lift from visualViewport', () => {
   assert.match(composerBar, /window\.visualViewport/);
   assert.match(composerBar, /const keyboardLiftPx = ref\(0\)/);
+  assert.match(composerBar, /let pendingKeyboardLiftSyncFrame: number \| null = null;/);
   assert.match(composerBar, /function syncKeyboardLiftFromViewport\(\): void \{/);
+  assert.match(composerBar, /function scheduleKeyboardLiftSync\(\): void \{/);
+  assert.match(
+    composerBar,
+    /pendingKeyboardLiftSyncFrame = window\.requestAnimationFrame\(\(\) => \{[\s\S]*syncKeyboardLiftFromViewport\(\);[\s\S]*\}\);/,
+  );
+  assert.match(
+    composerBar,
+    /viewportKeyboardListener = \(\) => \{[\s\S]*scheduleKeyboardLiftSync\(\);[\s\S]*\};/,
+  );
   assert.match(composerBar, /emit\('viewport-lift', nextValue\)/);
   assert.match(composerBar, /@focus="handleEditorFocus"/);
   assert.match(composerBar, /--chat-composer-keyboard-offset/);

@@ -1,5 +1,12 @@
 <template>
-  <section v-if="items.length" class="chat-queue-rail" :class="{ expanded: summaryExpanded }">
+  <section
+    v-if="items.length"
+    ref="railRoot"
+    class="chat-queue-rail"
+    :class="{ expanded: summaryExpanded }"
+    :data-presentation-mode="presentationMode"
+    tabindex="-1"
+  >
     <header v-if="presentationMode === 'rail'" class="chat-queue-rail__summary">
       <button
         type="button"
@@ -63,6 +70,7 @@
                 type="button"
                 class="chat-queue-rail__ghost"
                 :disabled="mutatingEntryId === item.id"
+                :data-queue-edit-trigger-id="item.id"
                 @click="startEdit(item)"
               >
                 {{ text('编辑', 'Edit') }}
@@ -84,6 +92,8 @@
               class="chat-queue-rail__textarea"
               rows="4"
               :placeholder="text('编辑待发送内容', 'Edit queued message')"
+              :data-queue-edit-entry-id="item.id"
+              @keydown.escape.prevent="cancelEdit({ restoreFocus: true })"
             />
             <div class="chat-queue-rail__editor-actions">
               <button
@@ -98,7 +108,7 @@
                 type="button"
                 class="chat-queue-rail__ghost"
                 :disabled="mutatingEntryId === item.id"
-                @click="cancelEdit"
+                @click="cancelEdit({ restoreFocus: true })"
               >
                 {{ text('取消', 'Cancel') }}
               </button>
@@ -109,9 +119,9 @@
           </div>
 
           <div v-else class="chat-queue-rail__body">
-            <p class="chat-queue-rail__text">{{ item.previewText || item.text || text('无预览文本', 'No preview text') }}</p>
+            <p class="chat-queue-rail__text">{{ queuedItemPreview(item) || text('无预览文本', 'No preview text') }}</p>
             <p v-if="item.status === 'blocked' && item.blockedReason" class="chat-queue-rail__blocked-reason">
-              {{ item.blockedReason }}
+              {{ compactQueuePreview(item.blockedReason, QUEUE_ITEM_PREVIEW_LIMIT) }}
             </p>
           </div>
         </article>
@@ -122,7 +132,7 @@
 
 <script setup lang="ts">
 import './queue-rail.css';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { ChatQueuedMessageItem } from '../../../../../types/chat';
 import { useLocalePreference } from '../../shared/locale';
 
@@ -145,8 +155,11 @@ const emit = defineEmits<{
 }>();
 
 const { text } = useLocalePreference();
+const railRoot = ref<HTMLElement | null>(null);
 const editingId = ref('');
 const editingText = ref('');
+const QUEUE_SUMMARY_PREVIEW_LIMIT = 96;
+const QUEUE_ITEM_PREVIEW_LIMIT = 360;
 
 const summaryDetail = computed(() => {
   const firstItem = props.items[0] || null;
@@ -156,11 +169,11 @@ const summaryDetail = computed(() => {
   const assetCount = queuedAssetCount(firstItem);
   if (firstItem.status === 'blocked' && firstItem.blockedReason) {
     return text(
-      `首条阻塞：${compactQueuePreview(firstItem.blockedReason)}`,
-      `First blocked: ${compactQueuePreview(firstItem.blockedReason)}`,
+      `首条阻塞：${compactQueuePreview(firstItem.blockedReason, QUEUE_SUMMARY_PREVIEW_LIMIT)}`,
+      `First blocked: ${compactQueuePreview(firstItem.blockedReason, QUEUE_SUMMARY_PREVIEW_LIMIT)}`,
     );
   }
-  const preview = compactQueuePreview(firstItem.previewText || firstItem.text || '');
+  const preview = compactQueuePreview(firstItem.previewText || firstItem.text || '', QUEUE_SUMMARY_PREVIEW_LIMIT);
   if (preview && assetCount > 0) {
     return text(`首条：${preview} · 附件 ${assetCount}`, `Next: ${preview} · Assets ${assetCount}`);
   }
@@ -183,11 +196,11 @@ watch(
     }
     const current = items.find((item) => item.id === editingId.value) || null;
     if (!current) {
-      cancelEdit();
+      cancelEdit({ restoreFocus: true });
       return;
     }
     if (!mutatingEntryId && (current.text || '') === editingText.value) {
-      cancelEdit();
+      cancelEdit({ restoreFocus: true });
     }
   },
   { deep: true },
@@ -204,26 +217,108 @@ function handleSummaryClick(): void {
   emit('update:summary-expanded', !props.summaryExpanded);
 }
 
-function compactQueuePreview(value: string): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= 96) {
-    return normalized;
+function isQueuePreviewWhitespace(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13 || code === 12 || code === 11 || code === 160;
+}
+
+function compactQueuePreview(value: string, limit = QUEUE_SUMMARY_PREVIEW_LIMIT): string {
+  const outputLimit = Math.max(1, Math.floor(limit) || QUEUE_SUMMARY_PREVIEW_LIMIT);
+  const contentLimit = Math.max(1, outputLimit - 1);
+  let result = '';
+  let hasStarted = false;
+  let pendingSpace = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index] || '';
+    if (isQueuePreviewWhitespace(value.charCodeAt(index))) {
+      if (hasStarted) {
+        pendingSpace = true;
+      }
+      continue;
+    }
+    if (pendingSpace && result) {
+      if (result.length >= contentLimit) {
+        return `${result}…`;
+      }
+      result += ' ';
+      pendingSpace = false;
+    }
+    if (result.length >= contentLimit) {
+      return `${result}…`;
+    }
+    result += char;
+    hasStarted = true;
   }
-  return `${normalized.slice(0, 95)}…`;
+  return result;
+}
+
+function queuedItemPreview(item: ChatQueuedMessageItem): string {
+  return compactQueuePreview(item.previewText || item.text || '', QUEUE_ITEM_PREVIEW_LIMIT);
 }
 
 function queuedAssetCount(item: ChatQueuedMessageItem): number {
   return Number(item.fileRefs?.length || 0) + Number(item.attachments?.length || 0);
 }
 
+function focusQueueFallback(): void {
+  const summaryTrigger = railRoot.value?.querySelector<HTMLButtonElement>('.chat-queue-rail__summary-trigger') || null;
+  if (summaryTrigger) {
+    summaryTrigger.focus({ preventScroll: true });
+    return;
+  }
+  railRoot.value?.focus({ preventScroll: true });
+}
+
+function focusQueuedEditTrigger(entryId: string): void {
+  const normalizedEntryId = entryId.trim();
+  if (!normalizedEntryId) {
+    focusQueueFallback();
+    return;
+  }
+  const triggers = Array.from(
+    railRoot.value?.querySelectorAll<HTMLButtonElement>('[data-queue-edit-trigger-id]') || [],
+  );
+  const trigger = triggers.find((button) => button.dataset.queueEditTriggerId === normalizedEntryId);
+  if (trigger) {
+    trigger.focus({ preventScroll: true });
+    return;
+  }
+  focusQueueFallback();
+}
+
+function focusQueuedEditTextarea(entryId: string): void {
+  const normalizedEntryId = entryId.trim();
+  if (!normalizedEntryId) {
+    return;
+  }
+  const fields = Array.from(
+    railRoot.value?.querySelectorAll<HTMLTextAreaElement>('[data-queue-edit-entry-id]') || [],
+  );
+  const field = fields.find((item) => item.dataset.queueEditEntryId === normalizedEntryId);
+  if (!field) {
+    return;
+  }
+  field.focus({ preventScroll: true });
+  const textLength = field.value.length;
+  field.setSelectionRange(textLength, textLength);
+}
+
 function startEdit(item: ChatQueuedMessageItem): void {
   editingId.value = item.id;
   editingText.value = item.text || item.previewText || '';
+  void nextTick(() => {
+    focusQueuedEditTextarea(item.id);
+  });
 }
 
-function cancelEdit(): void {
+function cancelEdit(options: { restoreFocus?: boolean } = {}): void {
+  const entryId = editingId.value;
   editingId.value = '';
   editingText.value = '';
+  if (options.restoreFocus && entryId) {
+    void nextTick(() => {
+      focusQueuedEditTrigger(entryId);
+    });
+  }
 }
 
 function canSaveEdit(item: ChatQueuedMessageItem): boolean {

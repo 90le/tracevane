@@ -7,6 +7,30 @@ export type TerminalBinaryId =
   | "bash";
 export type TerminalInstallRequestId = TerminalBinaryId | "all" | "all-missing";
 export type TerminalLaunchCli = "claude" | "codex" | "opencode" | "bash";
+export type TerminalProfileKind =
+  | "shell"
+  | "agent"
+  | "marketplace"
+  | "task"
+  | "remote";
+export type TerminalTargetKind = "local" | "ssh" | "container" | "kubernetes";
+
+export interface TerminalProfileDescriptor {
+  id: string;
+  label: string;
+  labelZh?: string;
+  description: string;
+  descriptionZh?: string;
+  kind: TerminalProfileKind;
+  targetKind: TerminalTargetKind;
+  command: string;
+  cwd: string | null;
+  binaryId: TerminalBinaryId | null;
+  installed: boolean;
+  launchable: boolean;
+  pinned: boolean;
+  color: string;
+}
 
 export interface TerminalBinaryStatus {
   id: TerminalBinaryId;
@@ -139,6 +163,10 @@ export interface TerminalSessionLedgerEvent {
 export interface TerminalSessionDescriptor {
   sessionId: string;
   title: string;
+  profileId?: string | null;
+  targetKind?: TerminalTargetKind | null;
+  cwd?: string | null;
+  pinned?: boolean;
   source: TerminalSessionSource;
   sourceModule: string;
   sourceAction: string;
@@ -168,6 +196,10 @@ export interface TerminalSessionSummaryResponse {
   sessions: TerminalSessionDescriptor[];
 }
 
+export interface TerminalProfileCatalogResponse {
+  profiles: TerminalProfileDescriptor[];
+}
+
 export interface TerminalActionDescriptor {
   key: string;
   labelZh: string;
@@ -194,6 +226,7 @@ export interface TerminalActionCatalogResponse {
 
 export interface TerminalLaunchPayload {
   cli: TerminalLaunchCli;
+  profileId?: string | null;
   model?: string;
 }
 
@@ -228,6 +261,10 @@ export interface TerminalInstallStreamEvent {
 
 export interface TerminalGatewayAttachPayload {
   sid?: string | null;
+  profileId?: string | null;
+  targetKind?: TerminalTargetKind | null;
+  cwd?: string | null;
+  pinned?: boolean | null;
   lastSeq?: number | null;
   instanceId?: string | null;
   skipReplay?: boolean | null;
@@ -273,6 +310,7 @@ export interface TerminalGatewaySessionEvent {
   sid: string;
   instanceId: string;
   outputSeq: number;
+  descriptor?: TerminalSessionDescriptor;
 }
 
 export interface TerminalGatewayResetEvent {
@@ -319,6 +357,7 @@ export type TerminalGatewayEvent =
 
 export interface TerminalGatewayAttachResponse {
   sid: string;
+  descriptor?: TerminalSessionDescriptor;
   leaseTtlMs: number;
   events: TerminalGatewayEvent[];
 }

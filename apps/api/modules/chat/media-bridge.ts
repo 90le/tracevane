@@ -1202,6 +1202,23 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
     return { payload, verified: true };
   }
 
+  function saveBufferToWorkspaceImpl(sessionKey: string, fileName: string, buffer: Buffer): { relativePath: string; absolutePath: string } {
+    const agentId = deriveAgentIdFromSessionKey(sessionKey);
+    const workspaceDir = resolveAgentWorkspaceDir(config, agentId);
+    const uploadsDir = path.join(workspaceDir, 'uploads');
+    ensureDirSync(uploadsDir);
+
+    const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const timestamp = Date.now();
+    const uniqueName = `${timestamp}-${sanitized}`;
+    const absolutePath = path.join(uploadsDir, uniqueName);
+
+    fs.writeFileSync(absolutePath, buffer);
+
+    const relativePath = toPortableRelativePath(path.relative(workspaceDir, absolutePath));
+    return { relativePath, absolutePath };
+  }
+
   return {
     shouldAttemptAssistantMarkdownStreamPreview(markdown: string): boolean {
       const normalized = typeof markdown === 'string' ? markdown : '';
@@ -1611,22 +1628,13 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
       };
     },
 
+    saveBufferToWorkspace(sessionKey: string, fileName: string, buffer: Buffer): { relativePath: string; absolutePath: string } {
+      return saveBufferToWorkspaceImpl(sessionKey, fileName, buffer);
+    },
+
     saveFileToWorkspace(sessionKey: string, fileName: string, base64Content: string): { relativePath: string; absolutePath: string } {
-      const agentId = deriveAgentIdFromSessionKey(sessionKey);
-      const workspaceDir = resolveAgentWorkspaceDir(config, agentId);
-      const uploadsDir = path.join(workspaceDir, 'uploads');
-      ensureDirSync(uploadsDir);
-
-      const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const timestamp = Date.now();
-      const uniqueName = `${timestamp}-${sanitized}`;
-      const absolutePath = path.join(uploadsDir, uniqueName);
-
       const buffer = Buffer.from(base64Content.replace(/^data:[^;]+;base64,/i, ''), 'base64');
-      fs.writeFileSync(absolutePath, buffer);
-
-      const relativePath = toPortableRelativePath(path.relative(workspaceDir, absolutePath));
-      return { relativePath, absolutePath };
+      return saveBufferToWorkspaceImpl(sessionKey, fileName, buffer);
     },
   };
 }

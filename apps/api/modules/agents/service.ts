@@ -407,6 +407,22 @@ function deletePathIfRequested(
 
 function buildModelOptions(openclawConfig: Record<string, any>): string[] {
   const models: string[] = [];
+  const addModel = (value: unknown): void => {
+    const normalized = normalizeOptionalString(value);
+    if (normalized && !models.includes(normalized)) models.push(normalized);
+  };
+  const addModelConfig = (value: unknown): void => {
+    if (typeof value === "string") {
+      addModel(value);
+      return;
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const model = value as Record<string, any>;
+    addModel(model.primary);
+    if (Array.isArray(model.fallbacks)) {
+      for (const fallback of model.fallbacks) addModel(fallback);
+    }
+  };
 
   for (const [providerId, provider] of Object.entries(
     openclawConfig.models?.providers || {},
@@ -422,8 +438,28 @@ function buildModelOptions(openclawConfig: Record<string, any>): string[] {
       );
       if (!id) continue;
       const ref = `${providerId}/${id}`;
-      if (!models.includes(ref)) models.push(ref);
+      addModel(ref);
     }
+  }
+
+  const defaults = openclawConfig.agents?.defaults || {};
+  for (const key of [
+    "model",
+    "imageModel",
+    "imageGenerationModel",
+    "videoGenerationModel",
+    "musicGenerationModel",
+    "pdfModel",
+  ]) {
+    addModelConfig(defaults[key]);
+  }
+  for (const modelRef of Object.keys(defaults.models || {})) {
+    addModel(modelRef);
+  }
+  for (const agent of Array.isArray(openclawConfig.agents?.list)
+    ? openclawConfig.agents.list
+    : []) {
+    addModelConfig((agent as Record<string, any>).model);
   }
 
   return models.sort((left, right) => left.localeCompare(right));

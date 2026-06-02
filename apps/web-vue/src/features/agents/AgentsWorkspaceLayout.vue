@@ -533,7 +533,11 @@ const regularRailAgents = computed(() => rosterSummary.value.regularRailAgents);
 
 const modelOptions = computed(() => {
   const options = [{ value: '', label: text('跟随系统默认', 'Inherit system default') }];
-  for (const model of summary.value?.availableModels || []) {
+  const models = new Set(summary.value?.availableModels || []);
+  const currentModel = detail.value?.editor.model || detail.value?.agent.model || '';
+  if (currentModel) models.add(currentModel);
+  if (createForm.model.trim()) models.add(createForm.model.trim());
+  for (const model of Array.from(models).sort()) {
     options.push({ value: model, label: model });
   }
   return options;

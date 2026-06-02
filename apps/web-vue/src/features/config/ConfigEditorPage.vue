@@ -401,8 +401,8 @@
               </div>
               <div class="config-guard-summary-grid">
                 <article class="config-guard-summary">
-                  <span>{{ text('Embedded Pi 项目设置策略', 'Embedded Pi project settings policy') }}</span>
-                  <strong>{{ form.defaults.embeddedPiProjectSettingsPolicy || text('未设置', 'Unset') }}</strong>
+                  <span>{{ text('Embedded OpenClaw 项目设置策略', 'Embedded OpenClaw project settings policy') }}</span>
+                  <strong>{{ form.defaults.embeddedAgentProjectSettingsPolicy || text('未设置', 'Unset') }}</strong>
                 </article>
                 <article class="config-guard-summary">
                   <span>{{ text('Bootstrap 守卫', 'Bootstrap guard') }}</span>
@@ -739,10 +739,25 @@
               </div>
               <div class="settings-inline-grid config-setting-grid">
                 <div class="setting-block">
+                  <span class="form-label">{{ text('Exec 模式', 'Exec mode') }}</span>
+                  <div class="choice-group choice-group-tight">
+                    <button
+                      v-for="option in effectiveExecModeOptions"
+                      :key="option.value"
+                      type="button"
+                      class="choice-pill"
+                      :class="{ active: form.tools.execMode === option.value }"
+                      @click="form.tools.execMode = option.value"
+                    >
+                      {{ option.label }}
+                    </button>
+                  </div>
+                </div>
+                <div class="setting-block">
                   <span class="form-label">{{ text('命令确认策略', 'Exec ask policy') }}</span>
                   <div class="choice-group choice-group-tight">
                     <button
-                    v-for="option in effectiveExecAskOptions"
+                      v-for="option in effectiveExecAskOptions"
                       :key="option.value"
                       type="button"
                       class="choice-pill"
@@ -757,7 +772,7 @@
                   <span class="form-label">{{ text('执行安全级别', 'Exec security') }}</span>
                   <div class="choice-group choice-group-tight">
                     <button
-                    v-for="option in effectiveExecSecurityOptions"
+                      v-for="option in effectiveExecSecurityOptions"
                       :key="option.value"
                       type="button"
                       class="choice-pill"
@@ -798,9 +813,34 @@
                   <span class="field-hint">{{ text('仅在 `exec host=node` 时使用。', 'Used only when exec host = node.') }}</span>
                 </label>
               </div>
-              <label class="form-field">
-                <span class="form-label">{{ text('执行超时秒数', 'Exec timeout seconds') }}</span>
-                <input v-model.number="form.tools.execTimeoutSec" class="form-input" type="number" min="1" />
+                <label class="form-field">
+                  <span class="form-label">{{ text('执行超时秒数', 'Exec timeout seconds') }}</span>
+                  <input v-model.number="form.tools.execTimeoutSec" class="form-input" type="number" min="1" />
+                </label>
+                <div class="config-high-risk-box">
+                  <div>
+                    <strong>{{ text('临时强制放行 /bash', 'Temporarily force-allow /bash') }}</strong>
+                    <p>{{ text('开启后会同步启用跨渠道文本命令、/bash、tools.elevated，并把 exec mode/security/ask 调到完全放行。只在可信私聊或临时运维时使用，用完立即关闭。', 'This enables text commands, /bash, tools.elevated, and sets exec mode/security/ask to full/off. Use only in trusted private operator contexts and disable it when finished.') }}</p>
+                  </div>
+                  <div class="config-risk-actions">
+                    <button class="danger-button compact-button" type="button" @click="enableTemporaryBashBypass">
+                      {{ text('开启强制放行', 'Force allow') }}
+                    </button>
+                    <button class="secondary-button compact-button" type="button" @click="disableTemporaryBashBypass">
+                      {{ text('关闭 /bash 和高权限', 'Disable /bash and elevation') }}
+                    </button>
+                  </div>
+                </div>
+                <label class="form-field form-field-full">
+                  <span class="form-label">{{ text('工具额外 JSON', 'Tools Extra JSON') }}</span>
+                <textarea
+                  v-model="form.tools.extraJson"
+                  class="form-textarea code-textarea"
+                  rows="6"
+                  spellcheck="false"
+                  :placeholder="text('可选：allow、deny、byProvider、toolSearch、sandbox 等新版 tools 字段。', 'Optional: newer tools fields such as allow, deny, byProvider, toolSearch, and sandbox.')"
+                />
+                <span class="field-hint">{{ text('保存时只会写入 OpenClaw 当前 schema 支持的 tools 低频字段。', 'On save, only low-frequency tools fields supported by the current OpenClaw schema are written.') }}</span>
               </label>
             </section>
 
@@ -1190,6 +1230,30 @@
               <span class="form-label">{{ text('线程最大存活小时', 'Thread max age hours') }}</span>
               <input v-model.number="form.session.threadBindings.maxAgeHours" class="form-input" type="number" min="0" />
             </label>
+            <div class="settings-inline-grid">
+              <label class="form-field form-field-full">
+                <span class="form-label">{{ text('Session 额外 JSON', 'Session Extra JSON') }}</span>
+                <textarea
+                  v-model="form.session.extraJson"
+                  class="form-textarea code-textarea"
+                  rows="6"
+                  spellcheck="false"
+                  :placeholder="text('可选：scope、identityLinks、store、sendPolicy、writeLock、maintenance 等。', 'Optional: scope, identityLinks, store, sendPolicy, writeLock, maintenance, and similar fields.')"
+                />
+                <span class="field-hint">{{ text('用于当前 Studio 没有单独控件的 session 新版字段。', 'Use this for current session fields that do not have dedicated Studio controls yet.') }}</span>
+              </label>
+              <label class="form-field form-field-full">
+                <span class="form-label">{{ text('Messages 额外 JSON', 'Messages Extra JSON') }}</span>
+                <textarea
+                  v-model="form.messages.extraJson"
+                  class="form-textarea code-textarea"
+                  rows="6"
+                  spellcheck="false"
+                  :placeholder="text('可选：messagePrefix、visibleReplies、groupChat、inbound、statusReactions、tts 等。', 'Optional: messagePrefix, visibleReplies, groupChat, inbound, statusReactions, tts, and similar fields.')"
+                />
+                <span class="field-hint">{{ text('用于当前 Studio 没有单独控件的 messages 新版字段。', 'Use this for current messages fields that do not have dedicated Studio controls yet.') }}</span>
+              </label>
+            </div>
           </div>
           </section>
 
@@ -1336,6 +1400,11 @@
                       }}
                     </span>
                   </label>
+                  <label class="form-field form-field-full">
+                    <span class="form-label">{{ text('供应商 JSON', 'Provider JSON') }}</span>
+                    <textarea v-model="activeProvider.extraJson" class="form-textarea code-textarea" rows="6" spellcheck="false" placeholder="{\n  &quot;auth&quot;: &quot;api-key&quot;,\n  &quot;timeoutSeconds&quot;: 240\n}" />
+                    <span class="field-hint">{{ text('用于第三方供应商的 auth、headers、request、agentRuntime、localService 等低频字段；基础字段和模型列表由上方表单管理。', 'Use this for low-frequency third-party provider fields such as auth, headers, request, agentRuntime, and localService; basics and model lists are managed above.') }}</span>
+                  </label>
                 </div>
               </section>
 
@@ -1382,6 +1451,11 @@
                           </label>
                         </div>
                       </div>
+                      <label class="form-field form-field-full">
+                        <span class="form-label">{{ text('模型 JSON', 'Model JSON') }}</span>
+                        <textarea v-model="model.extraJson" class="form-textarea code-textarea" rows="5" spellcheck="false" placeholder="{\n  &quot;params&quot;: {},\n  &quot;agentRuntime&quot;: { &quot;id&quot;: &quot;codex&quot; }\n}" />
+                        <span class="field-hint">{{ text('用于 params、agentRuntime、headers、compat、cost、mediaInput、contextTokens、视频/音频 input 等模型元数据。', 'Use this for model metadata such as params, agentRuntime, headers, compat, cost, mediaInput, contextTokens, and video/audio input.') }}</span>
+                      </label>
                     </div>
                   </article>
                 </div>
@@ -1462,10 +1536,24 @@
                       </div>
                     </label>
                     <label class="option-row">
+                      <input v-model="form.mcpSkills.skillsAllowSymlinkTargets" class="form-checkbox" type="checkbox" />
+                      <div>
+                        <strong>{{ text('允许符号链接目标', 'Allow symlink targets') }}</strong>
+                        <span>{{ text('对应 skills.load.allowSymlinkTargets。', 'Maps to skills.load.allowSymlinkTargets.') }}</span>
+                      </div>
+                    </label>
+                    <label class="option-row">
                       <input v-model="form.mcpSkills.skillsPreferBrew" class="form-checkbox" type="checkbox" />
                       <div>
                         <strong>{{ text('优先使用 Brew', 'Prefer Brew') }}</strong>
                         <span>{{ text('对应 skills.install.preferBrew。', 'Maps to skills.install.preferBrew.') }}</span>
+                      </div>
+                    </label>
+                    <label class="option-row">
+                      <input v-model="form.mcpSkills.skillsAllowUploadedArchives" class="form-checkbox" type="checkbox" />
+                      <div>
+                        <strong>{{ text('允许上传归档', 'Allow uploaded archives') }}</strong>
+                        <span>{{ text('对应 skills.install.allowUploadedArchives。', 'Maps to skills.install.allowUploadedArchives.') }}</span>
                       </div>
                     </label>
                   </div>
@@ -1532,6 +1620,49 @@
       </section>
 
       <LoggingConfigTab v-else-if="activeTab === 'logging'" ref="loggingTabRef" :summary="loadedSummary" />
+      <section v-else-if="activeTab === 'openclaw-domains'" class="config-tab-stage config-section-grid">
+        <article class="config-sheet">
+          <section class="config-block">
+            <div class="panel-head">
+              <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('OpenClaw 顶层域', 'OpenClaw Top-Level Domains') }}</span></h3>
+            </div>
+            <div class="config-subsection-grid">
+              <section class="config-subsection is-primary">
+                <div class="config-subsection-head">
+                  <h4>{{ text('低频 schema 域 JSON', 'Low-frequency schema domain JSON') }}</h4>
+                  <p>{{ text('这里覆盖没有单独 Studio 页面的大部分 OpenClaw 顶层配置域；保存时只保留当前 schema 支持的域名。', 'This covers most OpenClaw top-level config domains without dedicated Studio pages; only domain keys supported by the current schema are kept on save.') }}</p>
+                </div>
+                <label class="form-field form-field-wide">
+                  <span class="form-label">{{ text('OpenClaw Domains JSON', 'OpenClaw Domains JSON') }}</span>
+                  <textarea
+                    v-model="form.openclaw.extraDomainsJson"
+                    class="form-textarea code-textarea"
+                    rows="18"
+                    spellcheck="false"
+                    :placeholder="openclawDomainsPlaceholder"
+                  />
+                  <span class="field-hint">{{ text('可编辑域包括 accessGroups、approvals、audio、auth、cron、diagnostics、discovery、env、media、memory、proxy、secrets、security、talk、transcripts、ui、update、web、wizard 等。', 'Editable domains include accessGroups, approvals, audio, auth, cron, diagnostics, discovery, env, media, memory, proxy, secrets, security, talk, transcripts, ui, update, web, wizard, and others.') }}</span>
+                </label>
+              </section>
+              <section class="config-subsection">
+                <div class="config-subsection-head">
+                  <h4>{{ text('当前 schema 白名单', 'Current schema allowlist') }}</h4>
+                  <p>{{ text('这些域由当前安装的 OpenClaw 支持，但还没有独立 Studio 控件。', 'These domains are supported by the installed OpenClaw but do not have dedicated Studio controls yet.') }}</p>
+                </div>
+                <div class="choice-group choice-group-tight">
+                  <span
+                    v-for="key in loadedSummary?.openclaw?.extraDomainKeys || []"
+                    :key="key"
+                    class="choice-pill is-static"
+                  >
+                    {{ key }}
+                  </span>
+                </div>
+              </section>
+            </div>
+          </section>
+        </article>
+      </section>
       <BrowserConfigTab v-else-if="activeTab === 'browser'" ref="browserTabRef" :summary="loadedSummary" />
         </div>
       </motion.div>
@@ -1732,6 +1863,10 @@
                   <span class="form-label">{{ text('全局模型参数 JSON', 'Global Model Params JSON') }}</span>
                   <textarea v-model="form.defaults.paramsJson" class="form-textarea" rows="5" :placeholder="text('可选：agents.defaults.params 默认配置。', 'Optional: default agents.defaults.params configuration.')" />
                 </label>
+                <label class="form-field form-field-span-2">
+                  <span class="form-label">{{ text('Agent Defaults Extra JSON', 'Agent Defaults Extra JSON') }}</span>
+                  <textarea v-model="form.defaults.extraJson" class="form-textarea" rows="6" :placeholder="text('可选：reasoningDefault、runRetries、contextLimits 等新版 defaults 字段。', 'Optional: newer defaults fields such as reasoningDefault, runRetries, and contextLimits.')" />
+                </label>
               </section>
 
               <section class="config-subsection">
@@ -1789,7 +1924,7 @@
               <section class="config-subsection">
                 <div class="config-subsection-head">
                   <h4>{{ text('Bootstrap 与仓库边界', 'Bootstrap & repository boundaries') }}</h4>
-                  <p>{{ text('这些字段主要影响提示词注入体量、仓库根目录判断和嵌入式 Pi 行为。', 'These fields mainly affect prompt injection size, repository-root detection, and Embedded Pi behavior.') }}</p>
+                  <p>{{ text('这些字段主要影响提示词注入体量、仓库根目录判断和嵌入式 OpenClaw 行为。', 'These fields mainly affect prompt injection size, repository-root detection, and embedded OpenClaw behavior.') }}</p>
                 </div>
                 <div class="form-grid">
                   <label class="form-field">
@@ -1812,8 +1947,12 @@
                     <input v-model.number="form.defaults.bootstrapTotalMaxChars" class="form-input" type="number" min="1" :placeholder="text('例如 150000', 'For example 150000')" />
                   </label>
                   <label class="form-field">
-                    <span class="form-label">{{ text('Embedded Pi 项目设置策略', 'Embedded Pi project settings policy') }}</span>
-                    <StudioSelect v-model="form.defaults.embeddedPiProjectSettingsPolicy" :options="choiceToSelectOptions(embeddedPiPolicyOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <span class="form-label">{{ text('Embedded OpenClaw 项目设置策略', 'Embedded OpenClaw project settings policy') }}</span>
+                    <StudioSelect v-model="form.defaults.embeddedAgentProjectSettingsPolicy" :options="choiceToSelectOptions(embeddedAgentPolicyOptions)" :placeholder="text('未设置', 'Unset')" />
+                  </label>
+                  <label class="form-field">
+                    <span class="form-label">{{ text('Embedded OpenClaw 执行契约', 'Embedded OpenClaw execution contract') }}</span>
+                    <StudioSelect v-model="form.defaults.embeddedAgentExecutionContract" :options="choiceToSelectOptions(embeddedAgentExecutionContractOptions)" />
                   </label>
                 </div>
               </section>
@@ -1907,6 +2046,8 @@ interface ProviderModelFormState {
   reasoning: boolean;
   contextWindow: number | null;
   maxTokens: number | null;
+  extraInput: string[];
+  extraJson: string;
 }
 
 interface ProviderFormState {
@@ -1920,6 +2061,7 @@ interface ProviderFormState {
   apiKeyVisible: boolean;
   apiKeyLoading: boolean;
   models: ProviderModelFormState[];
+  extraJson: string;
 }
 
 interface ApprovalAllowlistEntryFormState {
@@ -1993,7 +2135,8 @@ interface ConfigFormState {
       typingIntervalSeconds: number | null;
       pdfMaxBytesMb: number | null;
       pdfMaxPages: number | null;
-      embeddedPiProjectSettingsPolicy: string;
+      embeddedAgentProjectSettingsPolicy: string;
+      embeddedAgentExecutionContract: string;
       memorySearchJson: string;
       humanDelayJson: string;
       heartbeatMode: HeartbeatMode;
@@ -2003,6 +2146,7 @@ interface ConfigFormState {
       cliBackendsJson: string;
       contextPruningJson: string;
       modelsJson: string;
+      extraJson: string;
     };
   compaction: {
       mode: string;
@@ -2030,11 +2174,13 @@ interface ConfigFormState {
     profile: string;
     elevatedEnabled: boolean;
     execHost: string;
+    execMode: string;
     execNode: string;
     execAsk: string;
     execSecurity: string;
     execTimeoutSec: number;
     fsWorkspaceOnly: boolean;
+    extraJson: string;
   };
   studioChat: {
     allowHostManagementExecInStudioChat: boolean;
@@ -2053,6 +2199,7 @@ interface ConfigFormState {
       idleHours: number;
       maxAgeHours: number;
     };
+    extraJson: string;
   };
   messages: {
     responsePrefix: string;
@@ -2070,6 +2217,7 @@ interface ConfigFormState {
         mode: string;
       }>;
     };
+    extraJson: string;
   };
   providers: ProviderFormState[];
   mcpSkills: {
@@ -2078,8 +2226,10 @@ interface ConfigFormState {
     skillsAllowBundledText: string;
     skillsExtraDirsText: string;
     skillsLoadWatch: boolean;
+    skillsAllowSymlinkTargets: boolean;
     skillsWatchDebounceMs: number | null;
     skillsPreferBrew: boolean;
+    skillsAllowUploadedArchives: boolean;
     skillsNodeManager: string;
     skillsMaxCandidatesPerRoot: number | null;
     skillsMaxLoadedPerSource: number | null;
@@ -2098,6 +2248,9 @@ interface ConfigFormState {
       channelId: string;
       mode: string;
     }>;
+  };
+  openclaw: {
+    extraDomainsJson: string;
   };
 }
 
@@ -2171,6 +2324,10 @@ const loggingTabRef = ref<InstanceType<typeof LoggingConfigTab> | null>(null);
 const browserTabRef = ref<InstanceType<typeof BrowserConfigTab> | null>(null);
 const acpTabRef = ref<InstanceType<typeof AcpConfigTab> | null>(null);
 const { locale, text } = useLocalePreference();
+const openclawDomainsPlaceholder = computed(() => text(
+  '{\n  "cron": { "enabled": true },\n  "diagnostics": { "enabled": true }\n}',
+  '{\n  "cron": { "enabled": true },\n  "diagnostics": { "enabled": true }\n}',
+));
 const tabs = computed(() => props.workspaceSections?.length ? props.workspaceSections : DEFAULT_CONFIG_WORKSPACE_SECTIONS);
 const groupedTabs = computed<ConfigTabGroup[]>(() => {
   const byId = new Map(tabs.value.map((tab) => [tab.id, tab]));
@@ -2178,7 +2335,7 @@ const groupedTabs = computed<ConfigTabGroup[]>(() => {
     { id: 'core', label: text('基础', 'Core'), ids: ['model', 'providers'] },
     { id: 'runtime', label: text('运行与安全', 'Runtime & Security'), ids: ['security', 'session', 'session-policy'] },
     { id: 'integrations', label: text('集成', 'Integrations'), ids: ['gateway', 'acp', 'mcp-skills', 'commands-hooks', 'browser'] },
-    { id: 'maintenance', label: text('维护', 'Maintenance'), ids: ['logging'] },
+    { id: 'maintenance', label: text('维护', 'Maintenance'), ids: ['logging', 'openclaw-domains'] },
   ];
   return groupRecipe
     .map((group) => ({
@@ -2214,6 +2371,8 @@ function resolveConfigTabIcon(id: ConfigTabId) {
       return Monitor;
     case 'logging':
       return FileText;
+    case 'openclaw-domains':
+      return Globe2;
     default:
       return Globe2;
   }
@@ -2234,7 +2393,18 @@ const activeProviderIndex = computed(() => form.providers.findIndex((provider) =
 const activeProvider = computed(() => form.providers[activeProviderIndex.value] || null);
 const { resolvedTheme } = useThemePreference();
 
-const providerApiOptions = ['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative', 'azure-openai'];
+const providerApiOptions = [
+  'openai-completions',
+  'openai-responses',
+  'openai-codex-responses',
+  'anthropic-messages',
+  'google-generative-ai',
+  'google-vertex',
+  'github-copilot',
+  'bedrock-converse-stream',
+  'ollama',
+  'azure-openai-responses',
+];
 const nodeManagerOptions = computed<StudioSelectOption[]>(() => [
   { value: '', label: text('不覆盖', 'No override') },
   { value: 'npm', label: 'npm' },
@@ -2312,11 +2482,15 @@ const blockStreamingBreakOptions = computed<ChoiceOption[]>(() => [
   { value: 'text_end', label: text('文本块结尾', 'Text End') },
   { value: 'message_end', label: text('整条消息结尾', 'Message End') },
 ]);
-const embeddedPiPolicyOptions = computed<ChoiceOption[]>(() => [
+const embeddedAgentPolicyOptions = computed<ChoiceOption[]>(() => [
   { value: '', label: text('未设置', 'Unset') },
   { value: 'sanitize', label: text('清洗', 'Sanitize') },
   { value: 'ignore', label: text('忽略', 'Ignore') },
   { value: 'trusted', label: text('信任', 'Trusted') },
+]);
+const embeddedAgentExecutionContractOptions = computed<ChoiceOption[]>(() => [
+  { value: 'default', label: text('默认', 'Default') },
+  { value: 'strict-agentic', label: text('严格 Agentic', 'Strict agentic') },
 ]);
 const compactionOptions = computed<ChoiceOption[]>(() => [
   { value: 'default', label: text('标准', 'Default') },
@@ -2354,9 +2528,17 @@ const toolProfileOptions = computed<ChoiceOption[]>(() => [
   { value: 'minimal', label: text('极简', 'Minimal'), note: text('最少工具', 'Minimal tools') },
 ]);
 const execHostOptions = computed<ChoiceOption[]>(() => [
+  { value: 'auto', label: text('自动', 'Auto') },
   { value: 'sandbox', label: text('沙箱', 'Sandbox') },
   { value: 'gateway', label: text('网关', 'Gateway') },
   { value: 'node', label: text('节点', 'Node') },
+]);
+const execModeOptions = computed<ChoiceOption[]>(() => [
+  { value: 'deny', label: text('拒绝', 'Deny') },
+  { value: 'allowlist', label: text('允许列表', 'Allowlist') },
+  { value: 'ask', label: text('询问', 'Ask') },
+  { value: 'auto', label: text('自动审查', 'Auto') },
+  { value: 'full', label: text('完全放行', 'Full') },
 ]);
 const execAskOptions = computed<ChoiceOption[]>(() => [
   { value: 'off', label: text('不询问', 'Off') },
@@ -2414,8 +2596,16 @@ let saveFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 const commandsFormData = ref<ConfigSummaryPayload['commands']>({
   native: 'auto',
   nativeSkills: 'auto',
+  text: false,
+  bash: false,
+  bashForegroundMs: null,
+  config: false,
+  mcp: false,
+  plugins: false,
+  debug: false,
   restart: true,
   ownerDisplay: 'raw',
+  extra: null,
 });
 const hooksFormData = ref<ConfigSummaryPayload['hooks']>({
   internal: {
@@ -2452,7 +2642,12 @@ function normalizeGatewayTextList(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function buildGatewayPayloadFromFormData(data: Record<string, unknown>): ConfigUpdatePayload['gateway'] {
+function buildGatewayPayloadFromFormData(data: Record<string, unknown>, strictJson = false): ConfigUpdatePayload['gateway'] {
+  const gatewayExtra = parseOptionalJsonObjectForForm(
+    'Gateway Extra JSON',
+    String(data.gatewayExtraJson || ''),
+    strictJson,
+  );
   return {
     port: Number(data.port) || 31879,
     mode: String(data.mode || 'local'),
@@ -2483,6 +2678,9 @@ function buildGatewayPayloadFromFormData(data: Record<string, unknown>): ConfigU
       enabled: data.controlUiEnabled !== false,
       basePath: String(data.controlUiBasePath || '').trim(),
       root: String(data.controlUiRoot || '').trim(),
+      embedSandbox: String(data.controlUiEmbedSandbox || '').trim(),
+      allowExternalEmbedUrls: data.controlUiAllowExternalEmbedUrls === true,
+      chatMessageMaxWidth: String(data.controlUiChatMessageMaxWidth || '').trim(),
       allowedOrigins: normalizeGatewayTextList(data.allowedOriginsText),
       dangerouslyAllowHostHeaderOriginFallback: data.hostHeaderOriginFallback === true,
       allowInsecureAuth: data.allowInsecureAuth === true,
@@ -2497,10 +2695,14 @@ function buildGatewayPayloadFromFormData(data: Record<string, unknown>): ConfigU
     webchat: {
       chatHistoryMaxChars: Number(data.webchatChatHistoryMaxChars) || 200000,
     },
+    handshakeTimeoutMs: Number(data.handshakeTimeoutMs) || null,
     channelHealthCheckMinutes: Number(data.channelHealthCheckMinutes) || 0,
+    channelStaleEventThresholdMinutes: Number(data.channelStaleEventThresholdMinutes) || null,
+    channelMaxRestartsPerHour: Number(data.channelMaxRestartsPerHour) || null,
     tailscale: {
       mode: String(data.tailscaleMode || 'off'),
     },
+    extra: gatewayExtra,
   } as ConfigUpdatePayload['gateway'];
 }
 
@@ -2548,12 +2750,12 @@ function buildSparseGatewayPatchValue(current: unknown, baseline: unknown): unkn
   return isGatewayPatchValueEqual(current, baseline) ? undefined : current;
 }
 
-function buildSparseGatewayPatch(): ConfigUpdatePayload['gateway'] | null {
+function buildSparseGatewayPatch(strictJson = false): ConfigUpdatePayload['gateway'] | null {
   if (!gatewayFormData.value || !gatewayBaselineData.value) {
     return null;
   }
-  const current = buildGatewayPayloadFromFormData(gatewayFormData.value);
-  const baseline = buildGatewayPayloadFromFormData(gatewayBaselineData.value);
+  const current = buildGatewayPayloadFromFormData(gatewayFormData.value, strictJson);
+  const baseline = buildGatewayPayloadFromFormData(gatewayBaselineData.value, strictJson);
   const patch = buildSparseGatewayPatchValue(current, baseline);
   return isGatewayPatchRecord(patch) ? patch as ConfigUpdatePayload['gateway'] : null;
 }
@@ -2610,7 +2812,8 @@ const form = reactive<ConfigFormState>({
     typingIntervalSeconds: null,
     pdfMaxBytesMb: null,
     pdfMaxPages: null,
-    embeddedPiProjectSettingsPolicy: 'sanitize',
+    embeddedAgentProjectSettingsPolicy: 'sanitize',
+    embeddedAgentExecutionContract: 'default',
     memorySearchJson: '',
     humanDelayJson: '',
     heartbeatMode: 'inherit',
@@ -2620,6 +2823,7 @@ const form = reactive<ConfigFormState>({
     cliBackendsJson: '',
     contextPruningJson: '',
     modelsJson: '',
+    extraJson: '',
   },
   compaction: {
     mode: 'safeguard',
@@ -2646,12 +2850,14 @@ const form = reactive<ConfigFormState>({
   tools: {
     profile: 'full',
     elevatedEnabled: true,
-    execHost: 'sandbox',
+    execHost: 'auto',
+    execMode: 'auto',
     execNode: '',
     execAsk: 'off',
     execSecurity: 'full',
     execTimeoutSec: 45,
     fsWorkspaceOnly: false,
+    extraJson: '',
   },
   studioChat: {
     allowHostManagementExecInStudioChat: false,
@@ -2670,6 +2876,7 @@ const form = reactive<ConfigFormState>({
       idleHours: 24,
       maxAgeHours: 0,
     },
+    extraJson: '',
   },
   messages: {
     responsePrefix: '',
@@ -2683,6 +2890,7 @@ const form = reactive<ConfigFormState>({
       drop: 'summarize',
       byChannel: [],
     },
+    extraJson: '',
   },
   providers: [],
   mcpSkills: {
@@ -2691,8 +2899,10 @@ const form = reactive<ConfigFormState>({
     skillsAllowBundledText: '',
     skillsExtraDirsText: '',
     skillsLoadWatch: false,
+    skillsAllowSymlinkTargets: false,
     skillsWatchDebounceMs: null,
     skillsPreferBrew: false,
+    skillsAllowUploadedArchives: false,
     skillsNodeManager: '',
     skillsMaxCandidatesPerRoot: null,
     skillsMaxLoadedPerSource: null,
@@ -2707,6 +2917,9 @@ const form = reactive<ConfigFormState>({
     idleMinutes: 60,
     resetByType: {},
     resetByChannelList: [],
+  },
+  openclaw: {
+    extraDomainsJson: '',
   },
 });
 
@@ -2831,6 +3044,7 @@ function normalizeAcpDraft(summary: ConfigSummaryPayload | null) {
       ? acp.allowedAgents.filter((agent) => agent.trim() !== '')
       : [],
     maxConcurrentSessions: acp?.maxConcurrentSessions ?? 4,
+    extra: acp?.extra ?? null,
   };
 }
 
@@ -2900,6 +3114,7 @@ function currentDomainFingerprints(): Record<string, string> {
     logging: domainFingerprint({
       draft: loggingTabRef.value?.buildLoggingPayload() || normalizeLoggingDraft(loadedSummary.value),
     }),
+    'openclaw-domains': domainFingerprint(form.openclaw),
     browser: domainFingerprint({
       draft: browserTabRef.value?.buildBrowserPayload() || normalizeBrowserDraft(loadedSummary.value),
     }),
@@ -2941,8 +3156,18 @@ const activeTabFacts = computed(() => {
         { label: 'Sandbox', value: form.sandbox.mode || '--' },
         { label: text('工作区权限', 'Workspace access'), value: form.sandbox.workspaceAccess || '--' },
         { label: text('工具配置', 'Tool profile'), value: form.tools.profile || '--' },
+        { label: text('Exec 模式', 'Exec mode'), value: form.tools.execMode || '--' },
         { label: text('Exec 审批', 'Exec ask'), value: form.tools.execAsk || '--' },
       ];
+    case 'openclaw-domains': {
+      const domainCount = Object.keys(loadedSummary.value?.openclaw?.extraDomains || {}).length;
+      const supportedCount = loadedSummary.value?.openclaw?.extraDomainKeys?.length || 0;
+      return [
+        { label: text('已配置域', 'Configured domains'), value: String(domainCount) },
+        { label: text('可编辑域', 'Editable domains'), value: String(supportedCount) },
+        { label: text('保存策略', 'Save policy'), value: text('schema 白名单', 'schema allowlist') },
+      ];
+    }
     case 'session':
       return [
         { label: text('DM 范围', 'DM scope'), value: form.session.dmScope || '--' },
@@ -3089,6 +3314,8 @@ function toProviderModelForm(model: ConfigProviderSummary['models'][number]): Pr
     reasoning: model.reasoning,
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
+    extraInput: model.input.filter((input) => input !== 'text' && input !== 'image'),
+    extraJson: formatJsonEditor(model.extra),
   };
 }
 
@@ -3104,6 +3331,7 @@ function toProviderForm(provider: ConfigProviderSummary): ProviderFormState {
     apiKeyVisible: false,
     apiKeyLoading: false,
     models: provider.models.map((model) => toProviderModelForm(model)),
+    extraJson: formatJsonEditor(provider.extra),
   };
 }
 
@@ -3211,7 +3439,8 @@ function hydrateForm(summary: ConfigSummaryPayload) {
   form.defaults.typingIntervalSeconds = summary.defaults.typingIntervalSeconds ?? null;
   form.defaults.pdfMaxBytesMb = summary.defaults.pdfMaxBytesMb ?? null;
   form.defaults.pdfMaxPages = summary.defaults.pdfMaxPages ?? null;
-  form.defaults.embeddedPiProjectSettingsPolicy = summary.defaults.embeddedPiProjectSettingsPolicy || 'sanitize';
+  form.defaults.embeddedAgentProjectSettingsPolicy = summary.defaults.embeddedAgentProjectSettingsPolicy || 'sanitize';
+  form.defaults.embeddedAgentExecutionContract = summary.defaults.embeddedAgentExecutionContract || 'default';
   form.defaults.memorySearchJson = formatJsonEditor(summary.defaults.memorySearch);
   form.defaults.humanDelayJson = formatJsonEditor(summary.defaults.humanDelay);
   form.defaults.heartbeatMode = resolveHeartbeatMode(summary.defaults.heartbeat);
@@ -3221,6 +3450,7 @@ function hydrateForm(summary: ConfigSummaryPayload) {
   form.defaults.cliBackendsJson = formatJsonEditor(summary.defaults.cliBackends);
   form.defaults.contextPruningJson = formatJsonEditor(summary.defaults.contextPruning);
   form.defaults.modelsJson = formatJsonEditor(summary.defaults.models);
+  form.defaults.extraJson = formatJsonEditor(summary.defaults.extra);
   form.compaction.mode = summary.compaction.mode;
   form.compaction.reserveTokensFloor = summary.compaction.reserveTokensFloor;
   form.compaction.identifierPolicy = summary.compaction.identifierPolicy;
@@ -3238,11 +3468,13 @@ function hydrateForm(summary: ConfigSummaryPayload) {
   form.tools.profile = summary.tools.profile;
   form.tools.elevatedEnabled = summary.tools.elevatedEnabled;
   form.tools.execHost = summary.tools.execHost;
+  form.tools.execMode = summary.tools.execMode;
   form.tools.execNode = summary.tools.execNode;
   form.tools.execAsk = summary.tools.execAsk;
   form.tools.execSecurity = summary.tools.execSecurity;
   form.tools.execTimeoutSec = summary.tools.execTimeoutSec;
   form.tools.fsWorkspaceOnly = summary.tools.fsWorkspaceOnly;
+  form.tools.extraJson = formatJsonEditor(summary.tools.extra);
   form.studioChat.allowHostManagementExecInStudioChat = readStudioChatExecConfigFlag(summary);
   form.execApprovals.security = summary.execApprovals.defaults.security;
   form.execApprovals.ask = summary.execApprovals.defaults.ask;
@@ -3253,6 +3485,7 @@ function hydrateForm(summary: ConfigSummaryPayload) {
   form.session.threadBindings.enabled = summary.session.threadBindings.enabled;
   form.session.threadBindings.idleHours = summary.session.threadBindings.idleHours;
   form.session.threadBindings.maxAgeHours = summary.session.threadBindings.maxAgeHours;
+  form.session.extraJson = formatJsonEditor(summary.session.extra);
   form.messages.responsePrefix = summary.messages.responsePrefix;
   form.messages.ackReaction = summary.messages.ackReaction;
   form.messages.ackReactionScope = summary.messages.ackReactionScope;
@@ -3266,6 +3499,7 @@ function hydrateForm(summary: ConfigSummaryPayload) {
     channelId,
     mode,
   }));
+  form.messages.extraJson = formatJsonEditor(summary.messages.extra);
   form.providers = summary.providers.map((provider) => toProviderForm(provider));
   activeProviderUid.value = form.providers[0]?.uid || '';
   form.mcpSkills.mcpSessionIdleTtlMs = summary.mcp?.sessionIdleTtlMs ?? null;
@@ -3277,8 +3511,10 @@ function hydrateForm(summary: ConfigSummaryPayload) {
     ? summary.skills.load.extraDirs.join('\n')
     : '';
   form.mcpSkills.skillsLoadWatch = summary.skills?.load?.watch === true;
+  form.mcpSkills.skillsAllowSymlinkTargets = summary.skills?.load?.allowSymlinkTargets === true;
   form.mcpSkills.skillsWatchDebounceMs = summary.skills?.load?.watchDebounceMs ?? null;
   form.mcpSkills.skillsPreferBrew = summary.skills?.install?.preferBrew === true;
+  form.mcpSkills.skillsAllowUploadedArchives = summary.skills?.install?.allowUploadedArchives === true;
   form.mcpSkills.skillsNodeManager = summary.skills?.install?.nodeManager || '';
   form.mcpSkills.skillsMaxCandidatesPerRoot = summary.skills?.limits?.maxCandidatesPerRoot ?? null;
   form.mcpSkills.skillsMaxLoadedPerSource = summary.skills?.limits?.maxSkillsLoadedPerSource ?? null;
@@ -3295,6 +3531,7 @@ function hydrateForm(summary: ConfigSummaryPayload) {
     channelId,
     mode,
   }));
+  form.openclaw.extraDomainsJson = formatJsonEditor(summary.openclaw?.extraDomains || {});
   commandsFormData.value = { ...(summary.commands || { native: 'auto', nativeSkills: 'auto', restart: true, ownerDisplay: 'raw' }) };
   hooksFormData.value = {
     internal: {
@@ -3347,18 +3584,41 @@ function parseOptionalJsonObject(label: string, value: string): Record<string, u
   return parsed as Record<string, unknown>;
 }
 
+function parseOptionalJsonObjectForForm(label: string, value: string, strict: boolean): Record<string, unknown> | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // While editing, keep dirty-state calculation alive and defer the error to save.
+  }
+  if (strict) {
+    return parseOptionalJsonObject(label, value);
+  }
+  return { __invalidJsonDraft: trimmed };
+}
+
 function buildProviderModels(models: ProviderModelFormState[]) {
   return models.reduce<Array<Record<string, unknown>>>((items, model) => {
     const id = model.id.trim();
     if (!id) return items;
+    const extra = parseOptionalJsonObject(`Model "${id}" JSON`, model.extraJson) || {};
+    const extraInput = Array.isArray(extra.input)
+      ? extra.input.map((value) => String(value || '').trim()).filter(Boolean)
+      : model.extraInput;
     const input = [
+      ...extraInput.filter((value) => value !== 'text' && value !== 'image'),
       ...(model.capText ? ['text'] : []),
       ...(model.capImage ? ['image'] : []),
     ];
     items.push({
+      ...extra,
       id,
-      name: id,
-      ...(input.length ? { input } : {}),
+      name: typeof extra.name === 'string' && extra.name.trim() ? extra.name.trim() : id,
+      ...(input.length ? { input: Array.from(new Set(input)) } : {}),
       ...(model.reasoning ? { reasoning: true } : {}),
       ...(model.contextWindow && model.contextWindow > 0 ? { contextWindow: model.contextWindow } : {}),
       ...(model.maxTokens && model.maxTokens > 0 ? { maxTokens: model.maxTokens } : {}),
@@ -3378,13 +3638,18 @@ function buildPayload(): ConfigUpdatePayload {
   const cliBackends = parseOptionalJsonObject('CLI Backends JSON', form.defaults.cliBackendsJson);
   const contextPruning = parseOptionalJsonObject('Context Pruning JSON', form.defaults.contextPruningJson);
   const modelRegistry = parseOptionalJsonObject('Model Registry JSON', form.defaults.modelsJson);
+  const agentDefaultExtra = parseOptionalJsonObject('Agent Defaults Extra JSON', form.defaults.extraJson);
+  const toolsExtra = parseOptionalJsonObject('Tools Extra JSON', form.tools.extraJson);
+  const sessionExtra = parseOptionalJsonObject('Session Extra JSON', form.session.extraJson);
+  const messagesExtra = parseOptionalJsonObject('Messages Extra JSON', form.messages.extraJson);
+  const openclawExtraDomains = parseOptionalJsonObject('OpenClaw Domains JSON', form.openclaw.extraDomainsJson) || {};
   const mcpServers = parseOptionalJsonObject('MCP Servers JSON', form.mcpSkills.mcpServersJson) || {};
   const skillEntries = parseOptionalJsonObject('Skill Entries JSON', form.mcpSkills.skillsEntriesJson) || {};
   const providers: ConfigProviderInput[] = form.providers.map((provider) => {
     const providerId = provider.id.trim();
     if (!providerId) throw new Error(text('Provider ID 不能为空', 'Provider ID is required'));
     const models = buildProviderModels(provider.models);
-    if (!models.length) throw new Error(text(`Provider "${providerId}" 至少需要一个模型`, `Provider "${providerId}" must define at least one model`));
+    const extra = parseOptionalJsonObject(`Provider "${providerId}" JSON`, provider.extraJson);
 
     return {
       id: providerId,
@@ -3392,9 +3657,10 @@ function buildPayload(): ConfigUpdatePayload {
       baseUrl: provider.baseUrl.trim() || null,
       ...(provider.apiKeyLoaded && provider.apiKey.trim() ? { apiKey: provider.apiKey.trim() } : {}),
       models,
+      extra,
     };
   });
-  const gatewayPayload = buildSparseGatewayPatch();
+  const gatewayPayload = buildSparseGatewayPatch(true);
 
   const payload: ConfigUpdatePayload = {
     defaults: {
@@ -3459,7 +3725,8 @@ function buildPayload(): ConfigUpdatePayload {
       typingIntervalSeconds: form.defaults.typingIntervalSeconds != null && Number(form.defaults.typingIntervalSeconds) > 0 ? Number(form.defaults.typingIntervalSeconds) : null,
       pdfMaxBytesMb: form.defaults.pdfMaxBytesMb != null && Number(form.defaults.pdfMaxBytesMb) > 0 ? Number(form.defaults.pdfMaxBytesMb) : null,
       pdfMaxPages: form.defaults.pdfMaxPages != null && Number(form.defaults.pdfMaxPages) > 0 ? Number(form.defaults.pdfMaxPages) : null,
-      embeddedPiProjectSettingsPolicy: form.defaults.embeddedPiProjectSettingsPolicy,
+      embeddedAgentProjectSettingsPolicy: form.defaults.embeddedAgentProjectSettingsPolicy,
+      embeddedAgentExecutionContract: form.defaults.embeddedAgentExecutionContract,
       memorySearch,
       humanDelay,
       heartbeat,
@@ -3467,6 +3734,7 @@ function buildPayload(): ConfigUpdatePayload {
       cliBackends,
       contextPruning,
       models: modelRegistry,
+      extra: agentDefaultExtra,
     },
     compaction: {
       mode: form.compaction.mode,
@@ -3497,11 +3765,13 @@ function buildPayload(): ConfigUpdatePayload {
       profile: form.tools.profile,
       elevatedEnabled: form.tools.elevatedEnabled,
       execHost: form.tools.execHost,
+      execMode: form.tools.execMode,
       execNode: form.tools.execNode.trim(),
       execAsk: form.tools.execAsk,
       execSecurity: form.tools.execSecurity,
       execTimeoutSec: Number(form.tools.execTimeoutSec),
       fsWorkspaceOnly: form.tools.fsWorkspaceOnly,
+      extra: toolsExtra,
     },
     plugins: {
       entries: {
@@ -3546,6 +3816,7 @@ function buildPayload(): ConfigUpdatePayload {
         idleHours: Number(form.session.threadBindings.idleHours),
         maxAgeHours: Number(form.session.threadBindings.maxAgeHours),
       },
+      extra: sessionExtra,
     },
     messages: {
       responsePrefix: form.messages.responsePrefix.trim(),
@@ -3563,6 +3834,7 @@ function buildPayload(): ConfigUpdatePayload {
             .filter(([channelId, mode]) => Boolean(channelId) && Boolean(mode))
         ),
       },
+      extra: messagesExtra,
     },
     providers,
     ...(gatewayPayload ? {
@@ -3582,6 +3854,10 @@ function buildPayload(): ConfigUpdatePayload {
           .filter((entry) => entry.channelId.trim() && entry.mode)
           .map((entry) => [entry.channelId.trim(), entry.mode])
       ),
+    },
+    openclaw: {
+      extraDomains: openclawExtraDomains,
+      extraDomainKeys: loadedSummary.value?.openclaw?.extraDomainKeys || [],
     },
   };
 
@@ -3603,8 +3879,10 @@ function buildPayload(): ConfigUpdatePayload {
     || shouldSendAllowBundled
     || skillsExtraDirs.length > 0
     || form.mcpSkills.skillsLoadWatch === true
+    || form.mcpSkills.skillsAllowSymlinkTargets === true
     || skillsWatchDebounceMs != null
     || form.mcpSkills.skillsPreferBrew === true
+    || form.mcpSkills.skillsAllowUploadedArchives === true
     || Boolean(form.mcpSkills.skillsNodeManager.trim())
     || skillsMaxCandidatesPerRoot != null
     || skillsMaxLoadedPerSource != null
@@ -3633,8 +3911,14 @@ function buildPayload(): ConfigUpdatePayload {
     if (existingSkills?.load?.watchDebounceMs != null || skillsWatchDebounceMs != null) {
       loadPayload.watchDebounceMs = skillsWatchDebounceMs;
     }
+    if (existingSkills?.load?.allowSymlinkTargets != null || form.mcpSkills.skillsAllowSymlinkTargets === true) {
+      loadPayload.allowSymlinkTargets = form.mcpSkills.skillsAllowSymlinkTargets === true;
+    }
     if (existingSkills?.install?.preferBrew != null || form.mcpSkills.skillsPreferBrew === true) {
       installPayload.preferBrew = form.mcpSkills.skillsPreferBrew === true;
+    }
+    if (existingSkills?.install?.allowUploadedArchives != null || form.mcpSkills.skillsAllowUploadedArchives === true) {
+      installPayload.allowUploadedArchives = form.mcpSkills.skillsAllowUploadedArchives === true;
     }
     if (existingSkills?.install?.nodeManager || form.mcpSkills.skillsNodeManager.trim()) {
       installPayload.nodeManager = form.mcpSkills.skillsNodeManager.trim();
@@ -3673,7 +3957,7 @@ function buildPayload(): ConfigUpdatePayload {
     payload.browser = browserTabRef.value.buildBrowserPayload();
   }
   if (acpTabRef.value) {
-    payload.acp = acpTabRef.value.buildAcpPayload();
+    payload.acp = acpTabRef.value.buildAcpPayload(true);
     const pluginsPayload = acpTabRef.value.buildPluginsPayload?.();
     if (pluginsPayload) {
       payload.plugins = {
@@ -3690,6 +3974,30 @@ function buildPayload(): ConfigUpdatePayload {
   return payload;
 }
 
+function enableTemporaryBashBypass() {
+  commandsFormData.value = {
+    ...commandsFormData.value,
+    text: true,
+    bash: true,
+  };
+  form.tools.elevatedEnabled = true;
+  form.tools.execHost = 'auto';
+  form.tools.execMode = 'full';
+  form.tools.execSecurity = 'full';
+  form.tools.execAsk = 'off';
+}
+
+function disableTemporaryBashBypass() {
+  commandsFormData.value = {
+    ...commandsFormData.value,
+    bash: false,
+  };
+  form.tools.elevatedEnabled = false;
+  form.tools.execMode = 'auto';
+  form.tools.execSecurity = 'allowlist';
+  form.tools.execAsk = 'on-miss';
+}
+
 const modelOptions = computed(() => {
   const values = form.providers.flatMap((provider) =>
     provider.models
@@ -3697,9 +4005,13 @@ const modelOptions = computed(() => {
       .filter(Boolean)
       .map((modelId) => `${provider.id.trim()}/${modelId}`)
   );
+  const registryModels = Object.keys(
+    tryParseJsonObject(form.defaults.modelsJson) || loadedSummary.value?.defaults.models || {},
+  );
 
   const merged = [
     ...values,
+    ...registryModels,
     form.defaults.model,
     form.defaults.imageModel,
     form.defaults.imageGenerationModel,
@@ -3757,6 +4069,7 @@ function withCurrentOption(options: ChoiceOption[], current: string): ChoiceOpti
 }
 
 const effectiveExecAskOptions = computed(() => withCurrentOption(execAskOptions.value, form.tools.execAsk));
+const effectiveExecModeOptions = computed(() => withCurrentOption(execModeOptions.value, form.tools.execMode));
 const effectiveExecSecurityOptions = computed(() => withCurrentOption(execSecurityOptions.value, form.tools.execSecurity));
 const effectiveApprovalsSecurityOptions = computed(() => withCurrentOption(execSecurityOptions.value, form.execApprovals.security));
 const effectiveApprovalsAskOptions = computed(() => withCurrentOption(execAskOptions.value, form.execApprovals.ask));
@@ -3777,6 +4090,18 @@ const missingApprovalAgents = computed(() => {
   const configured = new Set(form.execApprovals.agents.map((agent) => agent.agentId));
   return (loadedSummary.value?.execApprovals.availableAgentIds || []).filter((agentId) => !configured.has(agentId));
 });
+
+function tryParseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 const modelSelectOptions = computed(() => toSelectOptions(modelOptions.value));
 const imageModelSelectOptions = computed(() => toSelectOptions(imageModelOptions.value));
 function queueChannelSelectOptions(currentValue = ''): StudioSelectOption[] {
@@ -3995,6 +4320,7 @@ function addProvider() {
     apiKeyVisible: false,
     apiKeyLoading: false,
     models: [],
+    extraJson: '',
   };
   form.providers.push(provider);
   activeProviderUid.value = provider.uid;
@@ -4017,6 +4343,8 @@ function addProviderModel(providerIndex: number) {
     reasoning: false,
     contextWindow: null,
     maxTokens: null,
+    extraInput: [],
+    extraJson: '',
   });
 }
 

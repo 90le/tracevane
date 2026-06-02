@@ -4,6 +4,12 @@
       <DialogOverlay class="chat-agent-picker-mask" />
       <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
         <section class="chat-agent-picker">
+        <DialogTitle as-child>
+          <span class="sr-only">{{ text('选择 Agent', 'Choose an agent') }}</span>
+        </DialogTitle>
+        <DialogDescription as-child>
+          <span class="sr-only">{{ text('为新聊天选择要使用的 Agent。', 'Choose the agent to use for a new chat.') }}</span>
+        </DialogDescription>
         <header class="chat-agent-picker__header">
           <div>
             <p class="chat-agent-picker__eyebrow">{{ text('NEW CHAT', 'NEW CHAT') }}</p>
@@ -108,7 +114,7 @@
 <script setup lang="ts">
 import './overlay-surfaces.css';
 import { computed, nextTick, ref, watch } from 'vue';
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { Search, X } from '@lucide/vue';
 import type { AgentSummary } from '../../../../../types/agents';
 import AgentAvatarContent from '../../shared/components/AgentAvatarContent.vue';

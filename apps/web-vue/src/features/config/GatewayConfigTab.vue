@@ -172,6 +172,14 @@
                 <input v-model="form.controlUiRoot" class="form-input" type="text" placeholder="/path/to/control-ui" />
               </label>
               <label class="form-field">
+                <span class="form-label">{{ text('controlUi.embedSandbox', 'controlUi.embedSandbox') }}</span>
+                <StudioSelect v-model="form.controlUiEmbedSandbox" :options="embedSandboxOptions" />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('controlUi.chatMessageMaxWidth', 'controlUi.chatMessageMaxWidth') }}</span>
+                <input v-model="form.controlUiChatMessageMaxWidth" class="form-input" type="text" placeholder="72ch" />
+              </label>
+              <label class="form-field">
                 <span class="form-label">{{ text('allowedOrigins', 'allowedOrigins') }}</span>
                 <textarea v-model="form.allowedOriginsText" class="form-textarea" rows="4" :placeholder="text('每行一个，例如：http://127.0.0.1:31879', 'One per line, e.g. http://127.0.0.1:31879')" />
                 <span class="field-hint">{{ text('非 loopback 浏览器来源必须显式列入。', 'Non-loopback browser origins must be explicitly listed here.') }}</span>
@@ -188,6 +196,13 @@
                 <div>
                   <strong>{{ text('禁用设备认证', 'Disable Device Auth') }}</strong>
                   <span>{{ text('极高风险，仅限完全受控的内网/调试环境。', 'Very high risk. Use only on fully controlled internal/debug environments.') }}</span>
+                </div>
+              </label>
+              <label class="option-row">
+                <input v-model="form.controlUiAllowExternalEmbedUrls" class="form-checkbox" type="checkbox" />
+                <div>
+                  <strong>{{ text('允许外部嵌入 URL', 'Allow external embed URLs') }}</strong>
+                  <span>{{ text('对应 controlUi.allowExternalEmbedUrls。', 'Maps to controlUi.allowExternalEmbedUrls.') }}</span>
                 </div>
               </label>
             </div>
@@ -251,8 +266,20 @@
                 <input v-model.number="form.webchatChatHistoryMaxChars" class="form-input" type="number" min="1" />
               </label>
               <label class="form-field">
+                <span class="form-label">{{ text('handshakeTimeoutMs', 'handshakeTimeoutMs') }}</span>
+                <input v-model.number="form.handshakeTimeoutMs" class="form-input" type="number" min="1" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+              </label>
+              <label class="form-field">
                 <span class="form-label">{{ text('channelHealthCheckMinutes', 'channelHealthCheckMinutes') }}</span>
                 <input v-model.number="form.channelHealthCheckMinutes" class="form-input" type="number" min="0" />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('channelStaleEventThresholdMinutes', 'channelStaleEventThresholdMinutes') }}</span>
+                <input v-model.number="form.channelStaleEventThresholdMinutes" class="form-input" type="number" min="1" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('channelMaxRestartsPerHour', 'channelMaxRestartsPerHour') }}</span>
+                <input v-model.number="form.channelMaxRestartsPerHour" class="form-input" type="number" min="1" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('gateway.tools.allow', 'gateway.tools.allow') }}</span>
@@ -261,6 +288,17 @@
               <label class="form-field">
                 <span class="form-label">{{ text('gateway.tools.deny', 'gateway.tools.deny') }}</span>
                 <textarea v-model="form.gatewayToolsDenyText" class="form-textarea" rows="3" :placeholder="text('每行一个工具名', 'One tool name per line')" />
+              </label>
+              <label class="form-field form-field-full">
+                <span class="form-label">{{ text('Gateway 额外 JSON', 'Gateway Extra JSON') }}</span>
+                <textarea
+                  v-model="form.gatewayExtraJson"
+                  class="form-textarea code-textarea"
+                  rows="6"
+                  spellcheck="false"
+                  :placeholder="text('可选：remote、reload、tls、http、push、nodes 等新版 gateway 字段。', 'Optional: newer gateway fields such as remote, reload, tls, http, push, and nodes.')"
+                />
+                <span class="field-hint">{{ text('保存时只会写入 OpenClaw 当前 schema 支持的 gateway 低频字段。', 'On save, only low-frequency gateway fields supported by the current OpenClaw schema are written.') }}</span>
               </label>
             </div>
           </section>
@@ -309,6 +347,9 @@ interface GatewayFormState {
   controlUiEnabled: boolean;
   controlUiBasePath: string;
   controlUiRoot: string;
+  controlUiEmbedSandbox: string;
+  controlUiAllowExternalEmbedUrls: boolean;
+  controlUiChatMessageMaxWidth: string;
   allowedOriginsText: string;
   hostHeaderOriginFallback: boolean;
   allowInsecureAuth: boolean;
@@ -318,8 +359,12 @@ interface GatewayFormState {
   gatewayToolsAllowText: string;
   gatewayToolsDenyText: string;
   webchatChatHistoryMaxChars: number;
+  handshakeTimeoutMs: number | null;
   channelHealthCheckMinutes: number;
+  channelStaleEventThresholdMinutes: number | null;
+  channelMaxRestartsPerHour: number | null;
   tailscaleMode: string;
+  gatewayExtraJson: string;
 }
 
 const form = reactive<GatewayFormState>({
@@ -343,6 +388,9 @@ const form = reactive<GatewayFormState>({
   controlUiEnabled: true,
   controlUiBasePath: '',
   controlUiRoot: '',
+  controlUiEmbedSandbox: '',
+  controlUiAllowExternalEmbedUrls: false,
+  controlUiChatMessageMaxWidth: '',
   allowedOriginsText: '',
   hostHeaderOriginFallback: false,
   allowInsecureAuth: false,
@@ -352,8 +400,12 @@ const form = reactive<GatewayFormState>({
   gatewayToolsAllowText: '',
   gatewayToolsDenyText: '',
   webchatChatHistoryMaxChars: 200000,
+  handshakeTimeoutMs: null,
   channelHealthCheckMinutes: 0,
+  channelStaleEventThresholdMinutes: null,
+  channelMaxRestartsPerHour: null,
   tailscaleMode: 'off',
+  gatewayExtraJson: '',
 });
 
 const modeOptions: StudioSelectOption[] = [
@@ -382,6 +434,18 @@ const tailscaleOptions: StudioSelectOption[] = [
   { value: 'funnel', label: 'funnel' },
 ];
 
+const embedSandboxOptions: StudioSelectOption[] = [
+  { value: '', label: 'unset' },
+  { value: 'strict', label: 'strict' },
+  { value: 'scripts', label: 'scripts' },
+  { value: 'trusted', label: 'trusted' },
+];
+
+function formatJsonEditor(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  return JSON.stringify(value, null, 2);
+}
+
 function hydrateFromSummary(summary: ConfigSummaryPayload) {
   const gw = summary.gateway;
   if (!gw) return;
@@ -405,6 +469,9 @@ function hydrateFromSummary(summary: ConfigSummaryPayload) {
   form.controlUiEnabled = gw.controlUi?.enabled !== false;
   form.controlUiBasePath = gw.controlUi?.basePath ?? '';
   form.controlUiRoot = gw.controlUi?.root ?? '';
+  form.controlUiEmbedSandbox = gw.controlUi?.embedSandbox ?? '';
+  form.controlUiAllowExternalEmbedUrls = gw.controlUi?.allowExternalEmbedUrls === true;
+  form.controlUiChatMessageMaxWidth = gw.controlUi?.chatMessageMaxWidth ?? '';
   form.allowedOriginsText = (gw.controlUi?.allowedOrigins || []).join('\n');
   form.hostHeaderOriginFallback = gw.controlUi?.dangerouslyAllowHostHeaderOriginFallback === true;
   form.allowInsecureAuth = gw.controlUi?.allowInsecureAuth === true;
@@ -414,8 +481,12 @@ function hydrateFromSummary(summary: ConfigSummaryPayload) {
   form.gatewayToolsAllowText = (gw.tools?.allow || []).join('\n');
   form.gatewayToolsDenyText = (gw.tools?.deny || []).join('\n');
   form.webchatChatHistoryMaxChars = gw.webchat?.chatHistoryMaxChars ?? 200000;
+  form.handshakeTimeoutMs = gw.handshakeTimeoutMs ?? null;
   form.channelHealthCheckMinutes = gw.channelHealthCheckMinutes ?? 0;
+  form.channelStaleEventThresholdMinutes = gw.channelStaleEventThresholdMinutes ?? null;
+  form.channelMaxRestartsPerHour = gw.channelMaxRestartsPerHour ?? null;
   form.tailscaleMode = gw.tailscale?.mode ?? 'off';
+  form.gatewayExtraJson = formatJsonEditor(gw.extra);
 }
 
 watch(() => props.summary, (summary) => {

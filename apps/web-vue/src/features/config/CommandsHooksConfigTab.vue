@@ -33,8 +33,93 @@
                 />
                 <span class="field-hint">{{ text('作用：控制宿主自带 skills 是否参与运行。配置方式：通常保持 `auto`，需要瘦身或排障时再关闭。', 'Purpose: controls whether host-bundled skills participate at runtime. How to configure: usually keep `auto`; disable only for slimming or diagnostics.') }}</span>
               </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('Bash 前台等待 (ms)', 'Bash foreground wait (ms)') }}</span>
+                <input
+                  :value="commands.bashForegroundMs ?? ''"
+                  @input="$emit('update:commands', { ...commands, bashForegroundMs: normalizeOptionalNumber(($event.target as HTMLInputElement).value) })"
+                  class="form-input"
+                  type="number"
+                  min="0"
+                  max="30000"
+                  :placeholder="text('默认 2000，0 表示立即后台', 'Default 2000; 0 backgrounds immediately')"
+                />
+                <span class="field-hint">{{ text('对应 commands.bashForegroundMs，限制 /bash 在前台等待多久。', 'Maps to commands.bashForegroundMs and controls how long /bash waits in foreground.') }}</span>
+              </label>
             </div>
             <div class="settings-inline-grid">
+              <label class="option-row">
+                <input
+                  :checked="commands.text"
+                  @change="$emit('update:commands', { ...commands, text: ($event.target as HTMLInputElement).checked })"
+                  class="form-checkbox"
+                  type="checkbox"
+                />
+                <div>
+                  <strong>{{ text('启用文本命令', 'Enable text commands') }}</strong>
+                  <span>{{ text('对应 commands.text；让不支持原生命令菜单的渠道也能解析 /command 文本。', 'Maps to commands.text; enables /command parsing on channels without native command menus.') }}</span>
+                </div>
+              </label>
+              <label class="option-row">
+                <input
+                  :checked="commands.bash"
+                  @change="$emit('update:commands', { ...commands, bash: ($event.target as HTMLInputElement).checked })"
+                  class="form-checkbox"
+                  type="checkbox"
+                />
+                <div>
+                  <strong>{{ text('允许 /bash 主机命令', 'Allow /bash host commands') }}</strong>
+                  <span>{{ text('对应 commands.bash；启用 `!` 和 `/bash`。仍需要 tools.elevated 和 allowlist/审批策略放行。', 'Maps to commands.bash; enables `!` and `/bash`. Still requires tools.elevated plus allowlist/approval policy.') }}</span>
+                </div>
+              </label>
+              <label class="option-row">
+                <input
+                  :checked="commands.config"
+                  @change="$emit('update:commands', { ...commands, config: ($event.target as HTMLInputElement).checked })"
+                  class="form-checkbox"
+                  type="checkbox"
+                />
+                <div>
+                  <strong>{{ text('允许 /config', 'Allow /config') }}</strong>
+                  <span>{{ text('允许聊天命令读写磁盘配置。', 'Allows chat commands to read/write config on disk.') }}</span>
+                </div>
+              </label>
+              <label class="option-row">
+                <input
+                  :checked="commands.mcp"
+                  @change="$emit('update:commands', { ...commands, mcp: ($event.target as HTMLInputElement).checked })"
+                  class="form-checkbox"
+                  type="checkbox"
+                />
+                <div>
+                  <strong>{{ text('允许 /mcp', 'Allow /mcp') }}</strong>
+                  <span>{{ text('允许聊天命令管理 mcp.servers。', 'Allows chat commands to manage mcp.servers.') }}</span>
+                </div>
+              </label>
+              <label class="option-row">
+                <input
+                  :checked="commands.plugins"
+                  @change="$emit('update:commands', { ...commands, plugins: ($event.target as HTMLInputElement).checked })"
+                  class="form-checkbox"
+                  type="checkbox"
+                />
+                <div>
+                  <strong>{{ text('允许 /plugins', 'Allow /plugins') }}</strong>
+                  <span>{{ text('允许聊天命令列出和切换插件。', 'Allows chat commands to list and toggle plugins.') }}</span>
+                </div>
+              </label>
+              <label class="option-row">
+                <input
+                  :checked="commands.debug"
+                  @change="$emit('update:commands', { ...commands, debug: ($event.target as HTMLInputElement).checked })"
+                  class="form-checkbox"
+                  type="checkbox"
+                />
+                <div>
+                  <strong>{{ text('允许 /debug', 'Allow /debug') }}</strong>
+                  <span>{{ text('允许运行时调试覆盖。', 'Allows runtime debug overrides.') }}</span>
+                </div>
+              </label>
               <label class="option-row">
                 <input
                   :checked="commands.restart"
@@ -55,7 +140,18 @@
                   :options="ownerDisplayOptions"
                   :placeholder="text('选择显示方式', 'Select display mode')"
                 />
-                <span class="field-hint">{{ text('作用：控制 owner/operator 身份在界面和输出里如何展示。配置方式：共享环境建议使用 `masked` 或 `hidden`。', 'Purpose: controls how owner/operator identity is shown in UI and outputs. How to configure: shared environments should usually use `masked` or `hidden`.') }}</span>
+                <span class="field-hint">{{ text('作用：控制 owner/operator 身份在界面和输出里如何展示。配置方式：共享环境建议使用 `hash`，并在额外 JSON 里配置 ownerDisplaySecret。', 'Purpose: controls how owner/operator identity is shown in UI and outputs. How to configure: shared environments should usually use `hash` and set ownerDisplaySecret in the extra JSON block.') }}</span>
+              </label>
+              <label class="form-field form-field-wide">
+                <span class="form-label">{{ text('命令额外 JSON', 'Command Extra JSON') }}</span>
+                <textarea
+                  :value="commandExtraJson(commands.extra)"
+                  @input="onCommandExtraJsonChange(($event.target as HTMLTextAreaElement).value)"
+                  class="form-textarea code-textarea"
+                  rows="6"
+                  placeholder="{&#10;  &quot;useAccessGroups&quot;: true,&#10;  &quot;ownerAllowFrom&quot;: [&quot;telegram:123&quot;]&#10;}"
+                />
+                <span class="field-hint">{{ text('用于 commands.useAccessGroups、ownerAllowFrom、ownerDisplaySecret、allowFrom 等低频字段。', 'Use this for low-frequency fields such as commands.useAccessGroups, ownerAllowFrom, ownerDisplaySecret, and allowFrom.') }}</span>
               </label>
             </div>
           </section>
@@ -193,14 +289,13 @@ const { text } = useLocalePreference();
 
 const nativeOptions = computed(() => [
   { value: 'auto', label: text('自动', 'Auto') },
-  { value: 'on', label: text('开启', 'On') },
-  { value: 'off', label: text('关闭', 'Off') },
+  { value: 'true', label: text('开启', 'On') },
+  { value: 'false', label: text('关闭', 'Off') },
 ]);
 
 const ownerDisplayOptions = computed(() => [
   { value: 'raw', label: text('原始显示', 'Raw') },
-  { value: 'masked', label: text('遮掩显示', 'Masked') },
-  { value: 'hidden', label: text('隐藏', 'Hidden') },
+  { value: 'hash', label: text('哈希显示', 'Hash') },
 ]);
 
 const hookEntryList = computed<HookEntry[]>(() => {
@@ -228,6 +323,34 @@ function hookExtraJson(entry: HookEntry): string {
     return Object.keys(rest).length ? JSON.stringify(rest, null, 2) : '';
   } catch {
     return '';
+  }
+}
+
+function normalizeOptionalNumber(value: string): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : null;
+}
+
+function commandExtraJson(value: Record<string, unknown> | null): string {
+  try {
+    return value && Object.keys(value).length ? JSON.stringify(value, null, 2) : '';
+  } catch {
+    return '';
+  }
+}
+
+function onCommandExtraJsonChange(jsonStr: string) {
+  const trimmed = jsonStr.trim();
+  if (!trimmed) {
+    emit('update:commands', { ...props.commands, extra: null });
+    return;
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+    emit('update:commands', { ...props.commands, extra: parsed as Record<string, unknown> });
+  } catch {
+    // Keep the last valid value until the user finishes editing.
   }
 }
 

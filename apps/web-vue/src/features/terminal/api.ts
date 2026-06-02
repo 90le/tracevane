@@ -8,9 +8,11 @@ import type {
   TerminalInstallStreamEvent,
   TerminalLaunchPayload,
   TerminalLaunchResponse,
+  TerminalProfileCatalogResponse,
   TerminalSessionLedgerEvent,
   TerminalSessionSummaryResponse,
   TerminalStatusPayload,
+  TerminalTargetKind,
 } from "../../../../../types/terminal";
 import type { TerminalSessionDescriptor } from "./terminal-session-registry";
 
@@ -45,6 +47,10 @@ export function fetchPersistedTerminalSessionLedger(
 export function buildTerminalStreamUrl(
   sessionId: string,
   params: {
+    profileId?: string | null;
+    targetKind?: TerminalTargetKind | null;
+    cwd?: string | null;
+    pinned?: boolean | null;
     lastSeq?: number;
     instanceId?: string;
     skipReplay?: boolean;
@@ -52,6 +58,18 @@ export function buildTerminalStreamUrl(
   } = {},
 ): string {
   const query = new URLSearchParams();
+  if (params.profileId) {
+    query.set("profileId", params.profileId);
+  }
+  if (params.targetKind) {
+    query.set("targetKind", params.targetKind);
+  }
+  if (params.cwd) {
+    query.set("cwd", params.cwd);
+  }
+  if (typeof params.pinned === "boolean") {
+    query.set("pinned", params.pinned ? "1" : "0");
+  }
   if (params.lastSeq && params.lastSeq > 0) {
     query.set("lastSeq", String(params.lastSeq));
   }
@@ -70,6 +88,10 @@ export function buildTerminalStreamUrl(
 
 export function fetchTerminalActions(): Promise<TerminalActionCatalogResponse> {
   return requestJson<TerminalActionCatalogResponse>("/api/terminal/actions");
+}
+
+export function fetchTerminalProfiles(): Promise<TerminalProfileCatalogResponse> {
+  return requestJson<TerminalProfileCatalogResponse>("/api/terminal/profiles");
 }
 
 export function installTerminalCli(

@@ -7,7 +7,10 @@
       <article
         v-for="session in activeSessions"
         :key="session.key"
+        v-memo="sessionRowMemoKey(session)"
         class="chat-shell-session-row"
+        :data-session-key="session.key"
+        :aria-current="session.key === selectedSessionKey ? 'true' : undefined"
         :class="{
           active: session.key === selectedSessionKey,
           'menu-open': isContextMenuOpenForSession(session),
@@ -34,6 +37,7 @@
               :value="sessionRenameDraft"
               class="chat-shell-session-field"
               type="text"
+              :data-session-rename-key="session.key"
               :placeholder="text('输入新的会话标题', 'Enter a new chat title')"
               @input="$emit('update:session-rename-draft', ($event.target as HTMLInputElement).value)"
               @keydown.escape.prevent="$emit('cancel-session-rename')"
@@ -57,8 +61,13 @@
           v-else
           type="button"
           class="chat-shell-session-item"
+          data-session-primary-button="true"
           :class="{ selecting: selectionMode && canManageSession(session) }"
           @click="$emit('session-primary-click', session)"
+          @keydown.down.prevent="focusRelativeSession($event, 1)"
+          @keydown.up.prevent="focusRelativeSession($event, -1)"
+          @keydown.home.prevent="focusSessionListEdge(false)"
+          @keydown.end.prevent="focusSessionListEdge(true)"
         >
           <label
             v-if="selectionMode && canManageSession(session)"
@@ -103,6 +112,10 @@
           type="button"
           class="chat-shell-session-more"
           :class="{ active: isContextMenuOpenForSession(session) }"
+          :aria-label="text('会话操作', 'Session actions')"
+          aria-haspopup="menu"
+          :aria-expanded="isContextMenuOpenForSession(session) ? 'true' : 'false'"
+          :data-session-more-key="session.key"
           :title="text('会话操作', 'Session actions')"
           @click="$emit('toggle-row-menu', $event, session)"
         >
@@ -127,7 +140,10 @@
       <article
         v-for="session in archivedSessions"
         :key="session.key"
+        v-memo="sessionRowMemoKey(session)"
         class="chat-shell-session-row"
+        :data-session-key="session.key"
+        :aria-current="session.key === selectedSessionKey ? 'true' : undefined"
         :class="{
           active: session.key === selectedSessionKey,
           'menu-open': isContextMenuOpenForSession(session),
@@ -154,6 +170,7 @@
               :value="sessionRenameDraft"
               class="chat-shell-session-field"
               type="text"
+              :data-session-rename-key="session.key"
               :placeholder="text('输入新的会话标题', 'Enter a new chat title')"
               @input="$emit('update:session-rename-draft', ($event.target as HTMLInputElement).value)"
               @keydown.escape.prevent="$emit('cancel-session-rename')"
@@ -177,8 +194,13 @@
           v-else
           type="button"
           class="chat-shell-session-item"
+          data-session-primary-button="true"
           :class="{ selecting: selectionMode && canManageSession(session) }"
           @click="$emit('session-primary-click', session)"
+          @keydown.down.prevent="focusRelativeSession($event, 1)"
+          @keydown.up.prevent="focusRelativeSession($event, -1)"
+          @keydown.home.prevent="focusSessionListEdge(false)"
+          @keydown.end.prevent="focusSessionListEdge(true)"
         >
           <label
             v-if="selectionMode && canManageSession(session)"
@@ -223,6 +245,10 @@
           type="button"
           class="chat-shell-session-more"
           :class="{ active: isContextMenuOpenForSession(session) }"
+          :aria-label="text('会话操作', 'Session actions')"
+          aria-haspopup="menu"
+          :aria-expanded="isContextMenuOpenForSession(session) ? 'true' : 'false'"
+          :data-session-more-key="session.key"
           :title="text('会话操作', 'Session actions')"
           @click="$emit('toggle-row-menu', $event, session)"
         >
@@ -247,13 +273,21 @@
       <article
         v-for="session in observedSessions"
         :key="session.key"
+        v-memo="sessionRowMemoKey(session, true)"
         class="chat-shell-session-row observed"
+        :data-session-key="session.key"
+        :aria-current="session.key === selectedSessionKey ? 'true' : undefined"
         :class="{ active: session.key === selectedSessionKey }"
       >
         <button
           type="button"
           class="chat-shell-session-item observed"
+          data-session-primary-button="true"
           @click="$emit('select-observed-session', session.key)"
+          @keydown.down.prevent="focusRelativeSession($event, 1)"
+          @keydown.up.prevent="focusRelativeSession($event, -1)"
+          @keydown.home.prevent="focusSessionListEdge(false)"
+          @keydown.end.prevent="focusSessionListEdge(true)"
         >
           <div class="chat-shell-session-avatar observed" aria-hidden="true">
             <AgentAvatarContent
@@ -300,7 +334,7 @@ import AgentAvatarContent from '../../shared/components/AgentAvatarContent.vue';
 import { useLocalePreference } from '../../shared/locale';
 import './session-list-shared.css';
 
-defineProps<{
+const props = defineProps<{
   activeSessions: ChatSessionRow[];
   archivedSessions: ChatSessionRow[];
   observedSessions: ChatSessionRow[];
@@ -342,7 +376,37 @@ defineEmits<{
   (event: 'select-observed-session', sessionKey: string): void;
 }>();
 
-const { text } = useLocalePreference();
+const { locale, text } = useLocalePreference();
+
+function sessionRowMemoKey(session: ChatSessionRow, observed = false): unknown[] {
+  const renaming = props.isRenamingSession(session.key);
+  const selectable = props.selectionMode && props.canManageSession(session);
+  return [
+    locale.value,
+    observed,
+    session.key === props.selectedSessionKey,
+    props.isContextMenuOpenForSession(session),
+    renaming,
+    renaming ? props.sessionRenameDraft : '',
+    selectable,
+    selectable ? props.isSessionSelected(session.key) : false,
+    props.agentNameFor(session),
+    props.agentAvatarFor(session),
+    props.agentEmojiFor(session),
+    props.agentInitialFor(session),
+    session.updatedAt,
+    session.label,
+    session.derivedTitle || '',
+    session.lastMessagePreview || '',
+    session.presentation.customLabel || '',
+    session.presentation.autoLabel || '',
+    session.permissions.writable,
+    session.runtime.activeRunId || '',
+    session.runtime.state || '',
+    session.runtime.lastErrorCode || '',
+    session.runtime.lastErrorMessage || '',
+  ];
+}
 
 function sessionSourceLabel(session: ChatSessionRow): string {
   if (session.source.source === 'studio') {
@@ -399,5 +463,46 @@ function sessionPreviewBadge(session: ChatSessionRow, observed = false): string 
     return text('新建', 'New');
   }
   return text('最近', 'Latest');
+}
+
+function visibleSessionPrimaryButtons(): HTMLButtonElement[] {
+  if (typeof document === 'undefined') {
+    return [];
+  }
+  return Array.from(
+    document.querySelectorAll<HTMLButtonElement>(
+      '.chat-shell-session-row .chat-shell-session-item[data-session-primary-button="true"]',
+    ),
+  ).filter((button) => (
+    !button.disabled
+    && button.offsetParent !== null
+  ));
+}
+
+function focusSessionButton(button: HTMLButtonElement): void {
+  button.focus({ preventScroll: true });
+  button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function focusRelativeSession(event: KeyboardEvent, delta: number): void {
+  const buttons = visibleSessionPrimaryButtons();
+  if (buttons.length < 2) {
+    return;
+  }
+  const currentButton = event.currentTarget instanceof HTMLButtonElement
+    ? event.currentTarget
+    : null;
+  const currentIndex = currentButton ? buttons.indexOf(currentButton) : -1;
+  const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+  const nextIndex = (baseIndex + delta + buttons.length) % buttons.length;
+  focusSessionButton(buttons[nextIndex]);
+}
+
+function focusSessionListEdge(focusLast: boolean): void {
+  const buttons = visibleSessionPrimaryButtons();
+  const nextButton = focusLast ? buttons.at(-1) : buttons[0];
+  if (nextButton) {
+    focusSessionButton(nextButton);
+  }
 }
 </script>

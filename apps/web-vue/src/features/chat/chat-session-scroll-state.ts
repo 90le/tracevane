@@ -8,6 +8,7 @@ export interface ChatSessionScrollState {
   isPinnedToBottom: boolean;
   autoScrollLockedByUser: boolean;
   pendingUnreadCount: number;
+  pendingUnreadTailSignature: string | null;
   awaitingInitialBottomAnchor: boolean;
   userBrowseLockUntil: number;
   lastScrollTop: number | null;
@@ -40,6 +41,7 @@ export function createChatSessionScrollState(): ChatSessionScrollState {
     isPinnedToBottom: true,
     autoScrollLockedByUser: false,
     pendingUnreadCount: 0,
+    pendingUnreadTailSignature: null,
     awaitingInitialBottomAnchor: true,
     userBrowseLockUntil: 0,
     lastScrollTop: null,
@@ -75,6 +77,7 @@ export function syncChatSessionPinnedState(
       isPinnedToBottom: true,
       autoScrollLockedByUser: false,
       pendingUnreadCount: 0,
+      pendingUnreadTailSignature: null,
       lastScrollTop: metrics.scrollTop,
     };
   }
@@ -102,6 +105,7 @@ export function applyChatSessionManualScroll(
       isPinnedToBottom: true,
       autoScrollLockedByUser: false,
       pendingUnreadCount: 0,
+      pendingUnreadTailSignature: null,
       userBrowseLockUntil: 0,
       lastScrollTop: metrics.scrollTop,
     };
@@ -215,6 +219,7 @@ export function resolveChatSessionTimelineMutation(
     loadingBefore: boolean;
     loadingAfter: boolean;
     metrics: ChatSessionScrollMetrics;
+    tailSignature?: string | null;
     nowMs?: number;
   },
 ): {
@@ -276,6 +281,7 @@ export function resolveChatSessionTimelineMutation(
         isPinnedToBottom: true,
         autoScrollLockedByUser: false,
         pendingUnreadCount: 0,
+        pendingUnreadTailSignature: null,
         userBrowseLockUntil: 0,
         lastScrollTop: params.metrics.scrollTop,
       },
@@ -290,16 +296,22 @@ export function resolveChatSessionTimelineMutation(
         isPinnedToBottom: true,
         autoScrollLockedByUser: false,
         pendingUnreadCount: 0,
+        pendingUnreadTailSignature: null,
         lastScrollTop: params.metrics.scrollTop,
       },
       resolution: { kind: 'scroll-bottom' },
     };
   }
 
+  const tailSignature = typeof params.tailSignature === 'string' && params.tailSignature.trim()
+    ? params.tailSignature.trim()
+    : null;
+  const shouldCountUnread = !tailSignature || tailSignature !== state.pendingUnreadTailSignature;
   return {
     state: {
       ...state,
-      pendingUnreadCount: state.pendingUnreadCount + 1,
+      pendingUnreadCount: state.pendingUnreadCount + (shouldCountUnread ? 1 : 0),
+      pendingUnreadTailSignature: tailSignature || state.pendingUnreadTailSignature,
       lastScrollTop: params.metrics.scrollTop,
     },
     resolution: { kind: 'none' },
@@ -319,6 +331,7 @@ export function resolveChatSessionJumpToBottom(
       isPinnedToBottom: true,
       autoScrollLockedByUser: false,
       pendingUnreadCount: 0,
+      pendingUnreadTailSignature: null,
     },
     resolution: { kind: 'scroll-bottom' },
   };

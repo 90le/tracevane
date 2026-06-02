@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import net from 'node:net';
 import type http from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -154,6 +155,13 @@ import {
 } from './history-snapshot.js';
 import { mergeCanonicalMessageLedger, normalizeMessageLedger } from '../../../../lib/chat-runtime-state.js';
 import {
+  clearChatStreamReplaySession,
+  createChatStreamReplayState,
+  listChatStreamEventsAfter,
+  normalizeChatStreamSeq,
+  rememberChatStreamEvent,
+} from '../../../../lib/chat-stream-replay.js';
+import {
   assignSessionsToFolderInOrganizer,
   createEmptyChatSessionOrganizerState,
   createFolderInOrganizer,
@@ -295,9 +303,11 @@ function formatGatewayFileRef(relativePath: string): string {
 const CHAT_GATEWAY_LEASE_MS = 35_000;
 const CHAT_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
 const CHAT_GATEWAY_HEALTH_CACHE_MS = 1_500;
+const CHAT_GATEWAY_CONNECT_TIMEOUT_MS = 800;
 const CHAT_CANONICAL_SNAPSHOT_WINDOW_LIMIT = 80;
 const CHAT_CANONICAL_STATE_ENTRY_LIMIT = CHAT_CANONICAL_SNAPSHOT_WINDOW_LIMIT * 4;
 const CHAT_CANONICAL_LOCAL_TAIL_RAW_LINE_LIMIT = 800;
+const CHAT_STREAM_REPLAY_EVENT_LIMIT = 240;
 
 function compileGatewayMessageText(text: string, fileRefs: ChatSendFileRef[]): string {
   const refs = fileRefs.map((item) => formatGatewayFileRef(item.relativePath));
@@ -745,6 +755,43 @@ function createBaseDiagnostics(config: StudioServerConfig, gatewayReachable: boo
   };
 }
 
+function resolveGatewayProbeTarget(config: StudioServerConfig): { host: string; port: number } {
+  try {
+    const url = new URL(config.gatewayWsUrl);
+    const parsedPort = Number(url.port);
+    return {
+      host: url.hostname || '127.0.0.1',
+      port: Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : config.gatewayPort,
+    };
+  } catch {
+    return {
+      host: '127.0.0.1',
+      port: config.gatewayPort,
+    };
+  }
+}
+
+async function probeGatewaySocket(config: StudioServerConfig): Promise<boolean> {
+  const target = resolveGatewayProbeTarget(config);
+  if (!Number.isFinite(target.port) || target.port <= 0) {
+    return false;
+  }
+
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: target.host, port: target.port });
+    const finish = (value: boolean) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(value);
+    };
+
+    socket.setTimeout(CHAT_GATEWAY_CONNECT_TIMEOUT_MS);
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+    socket.once('timeout', () => finish(false));
+  });
+}
+
 export interface ChatSlashGatewayRequest {
   method: string;
   params?: Record<string, unknown> | null;
@@ -807,6 +854,7 @@ export interface ChatService {
   abort(sessionKey: string): Promise<ChatAbortResponse>;
   reset(sessionKey: string): Promise<ChatResetResponse>;
   uploadFile(sessionKey: string, payload: ChatFileUploadRequest): Promise<ChatFileUploadResponse>;
+  uploadFileBytes(sessionKey: string, payload: { fileName: string; content: Buffer; mimeType?: string }): Promise<ChatFileUploadResponse>;
   attachGatewayClient(
     payload: ChatGatewayAttachPayload,
     runtime: ChatGatewayRuntime,
@@ -848,6 +896,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   const frontendSseSubscribers = new Map<string, Set<http.ServerResponse>>();
   const gatewaySubscribers = new Map<string, Map<string, ChatGatewaySubscriber>>();
   const sessionBridges = new Map<string, SessionGatewayBridge>();
+  const streamReplayState = createChatStreamReplayState();
   const queueFlushSessions = new Set<string>();
   const queueFlushRerunSessions = new Set<string>();
   const streamSnapshots = new Map<string, string>();
@@ -869,8 +918,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return gatewayConnectedCache.value;
     }
     try {
-      const health = await options.system.getHealth();
-      const value = health.gatewayConnected === true;
+      // Chat availability follows the effective Gateway socket check, not the
+      // full System diagnostics path. Local/dev runs can have an online Gateway
+      // while the user service unit is failed, bypassed, or slow to inspect.
+      const value = await probeGatewaySocket(options.config);
       gatewayConnectedCache = {
         value,
         checkedAt: now,
@@ -1626,6 +1677,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     clearStudioChatSessionHostManagementExecEnabled(sessionKey);
     canonicalStates.delete(sessionKey);
     suppressedGatewayRunIds.delete(sessionKey);
+    clearChatStreamReplaySession(streamReplayState, sessionKey, { resetSequence: true });
     disposeOfficialCanonicalStream(sessionKey);
     disposeSessionBridge(sessionKey);
   }
@@ -2062,10 +2114,68 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     syncBridgeSubscriberCount(sessionKey);
   }
 
+  function replayBufferedEventsToWebSocket(
+    socket: WebSocket,
+    sessionKey: string,
+    lastStreamSeq: number | null,
+  ): void {
+    for (const event of listChatStreamEventsAfter(streamReplayState, sessionKey, lastStreamSeq)) {
+      if (socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      socket.send(JSON.stringify(event));
+    }
+  }
+
+  function replayBufferedEventsToSse(
+    res: http.ServerResponse,
+    sessionKey: string,
+    lastStreamSeq: number | null,
+  ): void {
+    for (const event of listChatStreamEventsAfter(streamReplayState, sessionKey, lastStreamSeq)) {
+      if (res.writableEnded || res.destroyed) {
+        return;
+      }
+      sendSseEvent(res, 'chat-stream', event);
+    }
+  }
+
+  function sequenceChatStreamEvent(sessionKey: string, event: ChatStreamEvent): ChatStreamEvent {
+    return rememberChatStreamEvent(
+      streamReplayState,
+      sessionKey,
+      event,
+      CHAT_STREAM_REPLAY_EVENT_LIMIT,
+    );
+  }
+
+  function sendSequencedWebSocketEvent(
+    socket: WebSocket,
+    sessionKey: string,
+    event: ChatStreamEvent,
+  ): void {
+    if (socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    socket.send(JSON.stringify(sequenceChatStreamEvent(sessionKey, event)));
+  }
+
+  function sendSequencedSseEvent(
+    res: http.ServerResponse,
+    sessionKey: string,
+    event: ChatStreamEvent,
+  ): void {
+    if (res.writableEnded || res.destroyed) {
+      return;
+    }
+    sendSseEvent(res, 'chat-stream', sequenceChatStreamEvent(sessionKey, event));
+  }
+
   function broadcastToSession(sessionKey: string, event: ChatStreamEvent): void {
+    const sequencedEvent = sequenceChatStreamEvent(sessionKey, event);
     const targets = frontendSubscribers.get(sessionKey);
     if (targets?.size) {
-      const payload = JSON.stringify(event);
+      const payload = JSON.stringify(sequencedEvent);
       for (const socket of Array.from(targets)) {
         if (socket.readyState !== WebSocket.OPEN) {
           targets.delete(socket);
@@ -2086,14 +2196,14 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           sseTargets.delete(res);
           continue;
         }
-        sendSseEvent(res, 'chat-stream', event);
+        sendSseEvent(res, 'chat-stream', sequencedEvent);
       }
       if (sseTargets.size === 0) {
         frontendSseSubscribers.delete(sessionKey);
         syncBridgeSubscriberCount(sessionKey);
       }
     }
-    broadcastGatewaySubscribers(sessionKey, event);
+    broadcastGatewaySubscribers(sessionKey, sequencedEvent);
   }
 
   function updateRuntimeCache(sessionKey: string, nextRuntime: ChatRuntimeState): void {
@@ -4453,9 +4563,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return;
     }
     if (socket) {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(payload));
-      }
+      sendSequencedWebSocketEvent(socket, sessionKey, payload);
       return;
     }
     broadcastToSession(sessionKey, payload);
@@ -4471,7 +4579,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     const state = sessionKey ? await resolveSessionStateForAttachEvents(sessionKey) : null;
     const session = state?.row || null;
     const runtime = session?.runtime || buildRuntimeState(await isGatewayConnected(), Boolean(session?.permissions.writable));
-    sendSseEvent(res, 'chat-stream', {
+    sendSequencedSseEvent(res, sessionKey, {
       kind: 'runtime',
       sessionKey,
       runId: null,
@@ -4479,16 +4587,16 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       runtime,
     } satisfies ChatStreamEvent);
     const queueState = state?.pendingQueue || [];
-    sendSseEvent(res, 'chat-stream', {
+    sendSequencedSseEvent(res, sessionKey, {
       kind: 'queue.state',
       sessionKey,
       emittedAt: new Date().toISOString(),
       items: cloneChatQueuedMessageList(queueState),
     } satisfies ChatStreamEvent);
     const controls = state?.controls || createDefaultSessionControls();
-    sendSseEvent(res, 'chat-stream', buildSessionControlsEvent(sessionKey, controls));
+    sendSequencedSseEvent(res, sessionKey, buildSessionControlsEvent(sessionKey, controls));
     for (const overlay of listRunOverlaysForSession(sessionKey)) {
-      sendSseEvent(res, 'chat-stream', {
+      sendSequencedSseEvent(res, sessionKey, {
         kind: 'run_overlay',
         sessionKey,
         runId: overlay.runId,
@@ -4500,7 +4608,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (options.includeSnapshot !== false) {
       const snapshot = await buildCanonicalSnapshotEvent(sessionKey);
       if (snapshot) {
-        sendSseEvent(res, 'chat-stream', snapshot);
+        sendSequencedSseEvent(res, sessionKey, snapshot);
       }
     }
   }
@@ -4555,7 +4663,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         events.push(snapshotEvent);
       }
     }
-    return events;
+    return events.map((event) => sequenceChatStreamEvent(sessionKey, event));
   }
 
   async function syncLocalTranscriptCanonicalSource(sessionKey: string): Promise<void> {
@@ -6156,6 +6264,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         runShadowStore.clearSession(bridge.sessionKey);
         durableMirrorStore.clearSession(bridge.sessionKey);
         canonicalStates.delete(bridge.sessionKey);
+        clearChatStreamReplaySession(streamReplayState, bridge.sessionKey, {
+          resetSequence: reason === 'delete',
+        });
         if (shouldEmitCanonicalProtocol()) {
           broadcastToSession(bridge.sessionKey, {
             kind: 'canonical.snapshot',
@@ -6246,9 +6357,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     const sessionKey = url.searchParams.get('sessionKey') || '';
     const bootstrapSnapshotParam = url.searchParams.get('bootstrapSnapshot');
     const includeBootstrapSnapshot = bootstrapSnapshotParam === '1';
+    const lastStreamSeq = normalizeChatStreamSeq(url.searchParams.get('lastStreamSeq'));
     const subscribers = frontendSubscribers.get(sessionKey) || new Set<WebSocket>();
     subscribers.add(ws);
     frontendSubscribers.set(sessionKey, subscribers);
+    replayBufferedEventsToWebSocket(ws, sessionKey, lastStreamSeq);
     const existingBridge = sessionBridges.get(sessionKey) || createSessionGatewayBridge(sessionKey);
     sessionBridges.set(sessionKey, existingBridge);
     syncBridgeSubscriberCount(sessionKey);
@@ -6269,26 +6382,29 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         runtime,
       };
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(runtimeEvent));
-        ws.send(JSON.stringify({
+        const queueEvent: ChatStreamEvent = {
           kind: 'queue.state',
           sessionKey,
           emittedAt: runtimeEvent.emittedAt,
           items: cloneChatQueuedMessageList(state?.pendingQueue || []),
-        } satisfies ChatStreamEvent));
-        ws.send(JSON.stringify(buildSessionControlsEvent(
+        };
+        const controlsEvent = buildSessionControlsEvent(
           sessionKey,
           state?.controls || createDefaultSessionControls(),
           runtimeEvent.emittedAt,
-        )));
+        );
+        sendSequencedWebSocketEvent(ws, sessionKey, runtimeEvent);
+        sendSequencedWebSocketEvent(ws, sessionKey, queueEvent);
+        sendSequencedWebSocketEvent(ws, sessionKey, controlsEvent);
         if (shouldEmitCanonicalProtocol()) {
-          ws.send(JSON.stringify({
+          const runtimeStateEvent: ChatStreamEvent = {
             kind: 'runtime.state',
             sessionKey,
             runId: null,
             emittedAt: runtimeEvent.emittedAt,
             runtime,
-          } satisfies ChatStreamEvent));
+          };
+          sendSequencedWebSocketEvent(ws, sessionKey, runtimeStateEvent);
         }
         for (const overlay of listRunOverlaysForSession(sessionKey)) {
           const overlayEvent: ChatStreamEvent = {
@@ -6299,7 +6415,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             overlay,
             terminal: isRunProjectionTerminal(overlay.lifecycle),
           };
-          ws.send(JSON.stringify(overlayEvent));
+          sendSequencedWebSocketEvent(ws, sessionKey, overlayEvent);
         }
         if (
           shouldEmitCanonicalProtocol()
@@ -6500,6 +6616,38 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       runId: ackRunId,
       status,
       runtime,
+    };
+  }
+
+  async function uploadFileBytesImpl(
+    sessionKey: string,
+    payload: { fileName: string; content: Buffer; mimeType?: string },
+  ): Promise<ChatFileUploadResponse> {
+    const session = await requireSession(sessionKey);
+    requireWritable(session, 'send');
+
+    const { relativePath, absolutePath } = mediaBridge.saveBufferToWorkspace(
+      sessionKey,
+      payload.fileName,
+      payload.content,
+    );
+
+    const stat = safeStatSync(absolutePath);
+    if (!stat) {
+      throw new ChatServiceError(500, buildChatError('internal_error', 'Failed to save file'));
+    }
+    const resource = mediaBridge.buildUserUploadResource(sessionKey, relativePath);
+
+    return {
+      ok: true,
+      relativePath,
+      resourceRef: buildStudioResourceRefFromRelativePath(resource.relativePath || relativePath) || `workspace:${relativePath}`,
+      resource,
+      absolutePath,
+      fileName: payload.fileName,
+      mimeType: payload.mimeType || resource.mimeType,
+      kind: resource.kind,
+      size: stat.size,
     };
   }
 
@@ -7479,6 +7627,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       historyIndexStore.clearSession(sessionKey);
       clearRunProjections(sessionKey);
       canonicalStates.delete(sessionKey);
+      clearChatStreamReplaySession(streamReplayState, sessionKey);
       inMemory.row = {
         ...clearStudioAutoLabel(inMemory.row),
         updatedAt: new Date().toISOString(),
@@ -7549,32 +7698,15 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     },
 
     async uploadFile(sessionKey: string, payload: ChatFileUploadRequest): Promise<ChatFileUploadResponse> {
-      const session = await requireSession(sessionKey);
-      requireWritable(session, 'send');
-
-      const { relativePath, absolutePath } = mediaBridge.saveFileToWorkspace(
-        sessionKey,
-        payload.fileName,
-        payload.content
-      );
-
-      const stat = safeStatSync(absolutePath);
-      if (!stat) {
-        throw new ChatServiceError(500, buildChatError('internal_error', 'Failed to save file'));
-      }
-      const resource = mediaBridge.buildUserUploadResource(sessionKey, relativePath);
-
-      return {
-        ok: true,
-        relativePath,
-        resourceRef: buildStudioResourceRefFromRelativePath(resource.relativePath || relativePath) || `workspace:${relativePath}`,
-        resource,
-        absolutePath,
+      return uploadFileBytesImpl(sessionKey, {
         fileName: payload.fileName,
-        mimeType: resource.mimeType,
-        kind: resource.kind,
-        size: stat.size,
-      };
+        content: Buffer.from(payload.content.replace(/^data:[^;]+;base64,/i, ''), 'base64'),
+        mimeType: payload.mimeType,
+      });
+    },
+
+    async uploadFileBytes(sessionKey: string, payload: { fileName: string; content: Buffer; mimeType?: string }): Promise<ChatFileUploadResponse> {
+      return uploadFileBytesImpl(sessionKey, payload);
     },
 
     async attachGatewayClient(
@@ -7595,9 +7727,16 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return {
         sessionKey,
         leaseTtlMs: CHAT_GATEWAY_LEASE_MS,
-        events: await buildGatewayAttachEvents(sessionKey, {
-          includeSnapshot: payload.bootstrapSnapshot === true,
-        }),
+        events: [
+          ...listChatStreamEventsAfter(
+            streamReplayState,
+            sessionKey,
+            normalizeChatStreamSeq(payload.lastStreamSeq),
+          ),
+          ...await buildGatewayAttachEvents(sessionKey, {
+            includeSnapshot: payload.bootstrapSnapshot === true,
+          }),
+        ],
       };
     },
 
@@ -7654,6 +7793,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         connectedAt: new Date().toISOString(),
       });
       const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+      replayBufferedEventsToSse(
+        res,
+        normalizedSessionKey,
+        normalizeChatStreamSeq(url.searchParams.get('lastStreamSeq')),
+      );
       await emitBootstrapEventsToSse(normalizedSessionKey, res, {
         includeSnapshot: url.searchParams.get('bootstrapSnapshot') === '1',
       });

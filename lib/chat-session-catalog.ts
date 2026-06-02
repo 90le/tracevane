@@ -13,6 +13,8 @@ export const CHAT_SESSION_VISIBLE_LIMITS = {
   observed: 20,
 } as const;
 
+export const CHAT_SESSION_SEARCH_VISIBLE_LIMIT = 60;
+
 export const CHAT_SESSION_CONTEXT_MENU_SIZE = {
   width: 196,
   height: 164,
@@ -106,6 +108,7 @@ export function mergeSessionRowsForAgent(
   } = {},
 ): ChatSessionRow[] {
   const incomingKeys = new Set(incomingRows.map((row) => row.key));
+  const currentByKey = new Map(currentRows.map((row) => [row.key, row] as const));
   const merged = new Map<string, ChatSessionRow>();
   for (const row of currentRows) {
     if (row.agentId === agentId) {
@@ -123,9 +126,14 @@ export function mergeSessionRowsForAgent(
     merged.set(row.key, row);
   }
   for (const row of incomingRows) {
-    const existing = merged.get(row.key);
+    const existingCurrent = currentByKey.get(row.key);
+    const existing = existingCurrent?.agentId === agentId
+      ? existingCurrent
+      : merged.get(row.key);
     if (!existing || compareChatSessionFreshness(row, existing) < 0) {
       merged.set(row.key, row);
+    } else {
+      merged.set(row.key, existing);
     }
   }
   return [...merged.values()].sort(sortChatSessionsByUpdatedAt);
@@ -141,13 +149,10 @@ export function resolveSessionSectionWindow<T>(
   rows: T[];
   hiddenCount: number;
 } {
-  if (options.searchActive) {
-    return {
-      rows,
-      hiddenCount: 0,
-    };
-  }
-  const visibleCount = Math.max(0, Math.trunc(options.visibleCount));
+  const baseVisibleCount = Math.max(0, Math.trunc(options.visibleCount));
+  const visibleCount = options.searchActive
+    ? Math.max(baseVisibleCount, CHAT_SESSION_SEARCH_VISIBLE_LIMIT)
+    : baseVisibleCount;
   return {
     rows: rows.slice(0, visibleCount),
     hiddenCount: Math.max(0, rows.length - visibleCount),

@@ -638,8 +638,8 @@ export interface ChatSideResult {
   isError: boolean;
 }
 
-export type ChatStreamEvent =
-  | {
+export type ChatStreamEvent = (
+  {
     kind: 'queue.state';
     sessionKey: string;
     emittedAt: string;
@@ -800,11 +800,15 @@ export type ChatStreamEvent =
     emittedAt: string;
     partial: boolean;
     tool: ChatToolCard;
-  };
+  }
+) & {
+  streamSeq?: number;
+};
 
 export interface ChatGatewayAttachPayload {
   sessionKey: string;
   bootstrapSnapshot?: boolean;
+  lastStreamSeq?: number | null;
 }
 
 export interface ChatGatewayHeartbeatPayload {

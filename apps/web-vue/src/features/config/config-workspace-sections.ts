@@ -10,6 +10,7 @@ export const CONFIG_TAB_IDS = [
   "commands-hooks",
   "browser",
   "logging",
+  "openclaw-domains",
 ] as const;
 
 export type ConfigTabId = (typeof CONFIG_TAB_IDS)[number];
@@ -88,6 +89,12 @@ export const DEFAULT_CONFIG_WORKSPACE_SECTIONS = [
     label: "Logging",
     copy: "Log levels, file, and data redaction",
   },
+  {
+    id: "openclaw-domains",
+    icon: "openclaw-domains",
+    label: "OpenClaw Domains",
+    copy: "Low-frequency schema domains not modeled by dedicated Studio tabs",
+  },
 ] as const satisfies ReadonlyArray<ConfigWorkspaceSection>;
 
 export function buildConfigWorkspaceSections(
@@ -117,7 +124,9 @@ export function buildConfigWorkspaceSections(
                         ? text("命令与钩子", section.label)
                         : section.id === "browser"
                           ? text("浏览器", section.label)
-                          : text("日志设置", section.label),
+                          : section.id === "logging"
+                            ? text("日志设置", section.label)
+                            : text("OpenClaw 域", section.label),
     copy:
       section.id === "model"
         ? text("全局默认模型、工作区、HEARTBEAT 和 Agent 运行默认值", "Global model defaults, workspace, HEARTBEAT, and agent runtime defaults")
@@ -142,6 +151,8 @@ export function buildConfigWorkspaceSections(
                               "Chrome 路径、无头模式和沙盒配置",
                               section.copy,
                             )
-                          : text("日志级别、文件和数据脱敏", section.copy),
+                          : section.id === "logging"
+                            ? text("日志级别、文件和数据脱敏", section.copy)
+                            : text("未单独建模的低频 schema 顶层域", section.copy),
   }));
 }

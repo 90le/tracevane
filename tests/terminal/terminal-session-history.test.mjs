@@ -57,7 +57,7 @@ test("terminal session history keeps ended reason as a system entry", () => {
   assert.equal(entries[0].text, "runtime_unavailable");
 });
 
-test("terminal replay transcript keeps raw output chunks for xterm restoration", () => {
+test("terminal replay transcript keeps raw output chunks and hides lifecycle markers", () => {
   const transcript = historyModule.buildTerminalSessionReplayTranscript([
     makeEvent({
       eventId: "o1",
@@ -74,8 +74,26 @@ test("terminal replay transcript keeps raw output chunks for xterm restoration",
   ]);
 
   assert.match(transcript, /1: command not found/);
-  assert.match(transcript, /\[runtime_unavailable\]/);
+  assert.doesNotMatch(transcript, /\[runtime_unavailable\]/);
+  assert.doesNotMatch(transcript, /runtime_unavailable/);
   assert.match(transcript, /binbin@host:~\$/);
+});
+
+test("terminal replay transcript does not synthesize system-only lifecycle text", () => {
+  const transcript = historyModule.buildTerminalSessionReplayTranscript([
+    makeEvent({
+      eventId: "e1",
+      type: "ended",
+      detail: { reason: "session_ended" },
+    }),
+    makeEvent({
+      eventId: "x1",
+      type: "exit",
+      detail: { code: 0 },
+    }),
+  ]);
+
+  assert.equal(transcript, "");
 });
 test("terminal replay transcript starts after the latest clear marker", () => {
   const transcript = historyModule.buildTerminalSessionReplayTranscript([

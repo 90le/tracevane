@@ -65,6 +65,17 @@
                 <input v-model.number="form.maxConcurrentSessions" class="form-input" type="number" min="1" />
                 <span class="field-hint">{{ text('允许的最大并发会话数量', 'Maximum number of concurrent sessions allowed') }}</span>
               </label>
+              <label class="form-field form-field-full">
+                <span class="form-label">{{ text('ACP 额外 JSON', 'ACP Extra JSON') }}</span>
+                <textarea
+                  v-model="form.extraJson"
+                  class="form-textarea code-textarea"
+                  rows="6"
+                  spellcheck="false"
+                  :placeholder="text('可选：fallbacks、stream、runtime 等新版 acp 字段。', 'Optional: newer acp fields such as fallbacks, stream, and runtime.')"
+                />
+                <span class="field-hint">{{ text('保存时只会写入 OpenClaw 当前 schema 支持的 ACP 低频字段。', 'On save, only low-frequency ACP fields supported by the current OpenClaw schema are written.') }}</span>
+              </label>
             </div>
           </section>
         </div>
@@ -154,6 +165,7 @@ interface AcpFormState {
   maxConcurrentSessions: number;
   dispatchEnabled: boolean;
   allowedAgents: string[];
+  extraJson: string;
 }
 
 const form = reactive<AcpFormState>({
@@ -163,6 +175,7 @@ const form = reactive<AcpFormState>({
   maxConcurrentSessions: 4,
   dispatchEnabled: false,
   allowedAgents: [],
+  extraJson: '',
 });
 const actionMessage = ref('');
 
@@ -209,6 +222,28 @@ function removeAgent(index: number) {
   form.allowedAgents.splice(index, 1);
 }
 
+function formatJsonEditor(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  return JSON.stringify(value, null, 2);
+}
+
+function parseExtraJson(strict = false): Record<string, unknown> | null {
+  const trimmed = form.extraJson.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Keep dirty-state calculation alive while the user is still editing.
+  }
+  if (strict) {
+    throw new Error(text('ACP Extra JSON 不是合法 JSON 对象。', 'ACP Extra JSON must be a valid JSON object.'));
+  }
+  return { __invalidJsonDraft: trimmed };
+}
+
 function hydrateFromSummary(summary: ConfigSummaryPayload) {
   const acp = (summary as any).acp;
   if (!acp) return;
@@ -219,6 +254,7 @@ function hydrateFromSummary(summary: ConfigSummaryPayload) {
   form.maxConcurrentSessions = acp?.maxConcurrentSessions ?? 4;
   form.dispatchEnabled = acp?.dispatch?.enabled ?? false;
   form.allowedAgents = Array.isArray(acp?.allowedAgents) ? [...acp.allowedAgents] : [];
+  form.extraJson = formatJsonEditor(acp?.extra);
 }
 
 function useBundledAcpx() {
@@ -235,7 +271,7 @@ function applyBundledAcpxAndSave() {
   void nextTick(() => emit('quick-save'));
 }
 
-function buildAcpPayload() {
+function buildAcpPayload(strictJson = false) {
   return {
     enabled: form.enabled,
     dispatch: { enabled: form.dispatchEnabled },
@@ -243,6 +279,7 @@ function buildAcpPayload() {
     defaultAgent: form.defaultAgent,
     allowedAgents: form.allowedAgents.filter((a) => a.trim() !== ''),
     maxConcurrentSessions: form.maxConcurrentSessions,
+    extra: parseExtraJson(strictJson),
   };
 }
 

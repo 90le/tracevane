@@ -66,6 +66,22 @@ import type {
   ChatSessionsPayload,
 } from '../../../../../types/chat';
 
+type ChatFileUploadBrowserRequest = ChatFileUploadRequest & {
+  file?: File | Blob | null;
+};
+
+function buildChatUploadFormData(payload: ChatFileUploadBrowserRequest): FormData {
+  const form = new FormData();
+  form.append('fileName', payload.fileName);
+  if (payload.mimeType) {
+    form.append('mimeType', payload.mimeType);
+  }
+  if (payload.file) {
+    form.append('file', payload.file, payload.fileName);
+  }
+  return form;
+}
+
 export function fetchAgentsSummary(): Promise<AgentsSummaryPayload> {
   return requestChatJson<AgentsSummaryPayload>('/api/agents');
 }
@@ -181,10 +197,14 @@ export function buildChatStreamUrl(
   sessionKey: string,
   options: {
     bootstrapSnapshot?: boolean;
+    lastStreamSeq?: number | null;
   } = {},
 ): string {
   const url = new URL(`/api/chat/sessions/${encodeURIComponent(sessionKey)}/stream`, window.location.origin);
   url.searchParams.set('bootstrapSnapshot', options.bootstrapSnapshot ? '1' : '0');
+  if (typeof options.lastStreamSeq === 'number' && Number.isFinite(options.lastStreamSeq)) {
+    url.searchParams.set('lastStreamSeq', String(Math.max(0, Math.floor(options.lastStreamSeq))));
+  }
   return joinChatPath(`${url.pathname}${url.search}`);
 }
 
@@ -373,8 +393,17 @@ export function deleteChatSession(sessionKey: string): Promise<ChatDeleteSession
 
 export function uploadChatFile(
   sessionKey: string,
-  payload: ChatFileUploadRequest
+  payload: ChatFileUploadBrowserRequest
 ): Promise<ChatFileUploadResponse> {
+  if (payload.file) {
+    return requestChatJson<ChatFileUploadResponse>(
+      `/api/chat/sessions/${encodeURIComponent(sessionKey)}/upload`,
+      {
+        method: 'POST',
+        body: buildChatUploadFormData(payload),
+      },
+    );
+  }
   return requestChatJson<ChatFileUploadResponse>(
     `/api/chat/sessions/${encodeURIComponent(sessionKey)}/upload`,
     {
@@ -405,7 +434,7 @@ export function resolveChatResources(
 
 export function uploadChatFileWithProgress(
   sessionKey: string,
-  payload: ChatFileUploadRequest,
+  payload: ChatFileUploadBrowserRequest,
   onProgress: (progress: number) => void
 ): Promise<ChatFileUploadResponse> {
   return new Promise((resolve, reject) => {
@@ -447,6 +476,10 @@ export function uploadChatFileWithProgress(
     const authorization = resolveStudioAuthorizationHeader();
     if (authorization) {
       xhr.setRequestHeader('Authorization', authorization);
+    }
+    if (payload.file) {
+      xhr.send(buildChatUploadFormData(payload));
+      return;
     }
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.send(JSON.stringify(payload));

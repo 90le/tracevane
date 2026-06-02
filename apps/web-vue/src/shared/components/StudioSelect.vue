@@ -88,7 +88,7 @@ const openDirection = ref<'down' | 'up'>('down');
 const menuStyle = ref<Record<string, string>>({});
 
 const selectedLabel = computed(() => {
-  return props.options.find((option) => option.value === props.modelValue)?.label || '';
+  return props.options.find((option) => option.value === props.modelValue)?.label || props.modelValue || '';
 });
 
 function closeMenu() {

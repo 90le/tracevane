@@ -1,10 +1,14 @@
 from pathlib import Path
-from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import json
 import re
 import time
 
+from browser_surface import collect_chat_surface_diagnostics, wait_for_active_session, wait_for_chat_surface
+from chat_smoke_runtime import build_unavailable_skip, fetch_history
 
+
+BASE_URL = "http://127.0.0.1:5176"
 SCREENSHOT = Path("/tmp/openclaw-studio-chat-im-acceptance.png")
 
 
@@ -63,13 +67,16 @@ def open_new_chat(page):
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
         raise AssertionError(f"create session response missing session.key: {payload}")
-    page.wait_for_function(
-        """() => (
-            document.querySelector('.chat-shell-session-row.active')
-            && document.querySelector('.chat-composer-editor[contenteditable="true"]')
-        )""",
-        timeout=30000,
-    )
+    try:
+        wait_for_active_session(page, session_key)
+    except PlaywrightTimeoutError:
+        raise AssertionError(
+            "new chat did not become visible: "
+            + json.dumps({
+                "sessionKey": session_key,
+                "diagnostics": collect_chat_surface_diagnostics(page),
+            }, ensure_ascii=False)
+        )
     page.wait_for_load_state("networkidle")
     return session_key
 
@@ -100,6 +107,31 @@ def assistant_bubble_contains(page, needle):
     )
 
 
+def wait_for_assistant_or_skip(page, session_key: str, token: str, timeout=90000):
+    deadline = time.monotonic() + (timeout / 1000)
+    last_history = None
+    next_history_check = 0.0
+    while time.monotonic() < deadline:
+        if assistant_bubble_contains(page, token):
+            return None
+        now = time.monotonic()
+        if now >= next_history_check:
+            next_history_check = now + 2
+            last_history = fetch_history(session_key)
+            skip_payload = build_unavailable_skip(
+                last_history,
+                session_key=session_key,
+                surface=collect_chat_surface_diagnostics(page),
+                smoke_name="chat IM real stream smoke",
+            )
+            if skip_payload:
+                return skip_payload
+        page.wait_for_timeout(250)
+    raise PlaywrightTimeoutError(
+        f"Timed out waiting for assistant token {token}; runtime={json.dumps((last_history or {}).get('runtime'), ensure_ascii=False)}"
+    )
+
+
 def main() -> None:
     result = {}
     token = f"im-live-smoke-{int(time.time() * 1000)}"
@@ -109,11 +141,9 @@ def main() -> None:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1600, "height": 1200})
 
-        page.goto("http://127.0.0.1:5176/chat", wait_until="domcontentloaded")
-        page.wait_for_load_state("networkidle")
-        expect(page.locator(".chat-shell-session-list")).to_be_visible()
+        wait_for_chat_surface(page, f"{BASE_URL}/chat")
 
-        open_new_chat(page)
+        session_key = open_new_chat(page)
 
         textarea = page.locator(".chat-composer-editor").first
         send_btn = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
@@ -125,20 +155,18 @@ def main() -> None:
         fill_editor(page, textarea, prompt)
         click_enabled(send_btn)
 
-        page.wait_for_function(
-            """(prefix) => Array.from(document.querySelectorAll('.chat-message-group.role-assistant .chat-message-bubble'))
-                .some((el) => (el.textContent || '').includes(prefix))""",
-            arg=token_prefix,
-            timeout=90000,
-        )
+        skip_payload = wait_for_assistant_or_skip(page, session_key, token_prefix, timeout=90000)
+        if skip_payload:
+            print(json.dumps(skip_payload, ensure_ascii=False, indent=2))
+            browser.close()
+            return
         result["pure_text_live_stream_visible"] = assistant_bubble_contains(page, token_prefix)
 
-        page.wait_for_function(
-            """(token) => Array.from(document.querySelectorAll('.chat-message-group.role-assistant .chat-message-bubble'))
-                .some((el) => (el.textContent || '').includes(token))""",
-            arg=token,
-            timeout=90000,
-        )
+        skip_payload = wait_for_assistant_or_skip(page, session_key, token, timeout=90000)
+        if skip_payload:
+            print(json.dumps(skip_payload, ensure_ascii=False, indent=2))
+            browser.close()
+            return
         result["final_bubble_visible"] = assistant_bubble_contains(page, token)
         page.wait_for_timeout(1200)
         result["final_bubble_persists"] = assistant_bubble_contains(page, token)

@@ -51,6 +51,18 @@
                 <input v-model.number="form.remoteCdpHandshakeTimeoutMs" class="form-input" type="number" min="0" />
               </label>
               <label class="form-field">
+                <span class="form-label">{{ text('本地启动超时 (ms)', 'Local Launch Timeout (ms)') }}</span>
+                <input v-model.number="form.localLaunchTimeoutMs" class="form-input" type="number" min="0" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('本地 CDP 就绪超时 (ms)', 'Local CDP Ready Timeout (ms)') }}</span>
+                <input v-model.number="form.localCdpReadyTimeoutMs" class="form-input" type="number" min="0" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('浏览器动作超时 (ms)', 'Action Timeout (ms)') }}</span>
+                <input v-model.number="form.actionTimeoutMs" class="form-input" type="number" min="0" :placeholder="text('留空表示跟随宿主默认', 'Leave empty to follow host default')" />
+              </label>
+              <label class="form-field">
                 <span class="form-label">{{ text('默认快照模式', 'Default Snapshot Mode') }}</span>
                 <StudioSelect v-model="form.snapshotMode" :options="snapshotModeOptions" />
                 <span class="field-hint">{{ text('对应 browser.snapshotDefaults.mode；留空表示跟随宿主默认。', 'Maps to browser.snapshotDefaults.mode. Leave empty to follow the host default.') }}</span>
@@ -248,6 +260,9 @@ const form = reactive({
   cdpUrl: '',
   remoteCdpTimeoutMs: 0,
   remoteCdpHandshakeTimeoutMs: 0,
+  localLaunchTimeoutMs: null as number | null,
+  localCdpReadyTimeoutMs: null as number | null,
+  actionTimeoutMs: null as number | null,
   defaultProfile: '',
   attachOnly: false,
   cdpPortRangeStart: 0,
@@ -308,6 +323,9 @@ function hydrateFromSummary(summary: ConfigSummaryPayload) {
   form.cdpUrl = browser?.cdpUrl ?? '';
   form.remoteCdpTimeoutMs = browser?.remoteCdpTimeoutMs ?? 0;
   form.remoteCdpHandshakeTimeoutMs = browser?.remoteCdpHandshakeTimeoutMs ?? 0;
+  form.localLaunchTimeoutMs = browser?.localLaunchTimeoutMs ?? null;
+  form.localCdpReadyTimeoutMs = browser?.localCdpReadyTimeoutMs ?? null;
+  form.actionTimeoutMs = browser?.actionTimeoutMs ?? null;
   form.defaultProfile = browser?.defaultProfile ?? '';
   form.attachOnly = browser?.attachOnly === true;
   form.cdpPortRangeStart = browser?.cdpPortRangeStart ?? 0;
@@ -357,6 +375,9 @@ function buildBrowserPayload() {
     cdpUrl: form.cdpUrl.trim() || undefined,
     remoteCdpTimeoutMs: form.remoteCdpTimeoutMs > 0 ? form.remoteCdpTimeoutMs : undefined,
     remoteCdpHandshakeTimeoutMs: form.remoteCdpHandshakeTimeoutMs > 0 ? form.remoteCdpHandshakeTimeoutMs : undefined,
+    localLaunchTimeoutMs: form.localLaunchTimeoutMs != null && form.localLaunchTimeoutMs > 0 ? form.localLaunchTimeoutMs : undefined,
+    localCdpReadyTimeoutMs: form.localCdpReadyTimeoutMs != null && form.localCdpReadyTimeoutMs > 0 ? form.localCdpReadyTimeoutMs : undefined,
+    actionTimeoutMs: form.actionTimeoutMs != null && form.actionTimeoutMs > 0 ? form.actionTimeoutMs : undefined,
     defaultProfile: form.defaultProfile.trim() || undefined,
     attachOnly: form.attachOnly,
     cdpPortRangeStart: form.cdpPortRangeStart > 0 ? form.cdpPortRangeStart : undefined,

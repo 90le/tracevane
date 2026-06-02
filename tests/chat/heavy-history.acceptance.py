@@ -139,8 +139,10 @@ def main() -> None:
           const thread = document.querySelector('.chat-conversation-thread');
           const messageGroups = Array.from(document.querySelectorAll('.chat-message-group'));
           return {
+            shellCount: document.querySelectorAll('.chat-conversation-thread__item-shell').length,
             bubbleCount: document.querySelectorAll('.chat-message-bubble').length,
             placeholders: document.querySelectorAll('.chat-conversation-thread__item-placeholder').length,
+            virtualSpacerCount: document.querySelectorAll('.chat-conversation-thread__virtual-spacer').length,
             deferredBubbleCount: document.querySelectorAll('.chat-message-bubble-deferred').length,
             deferredMarkdownCount: document.querySelectorAll('.chat-markdown-deferred-card').length,
             contentVisibilityAutoGroups: messageGroups.filter((element) => window.getComputedStyle(element).contentVisibility === 'auto').length,
@@ -263,6 +265,10 @@ def main() -> None:
             scrollHeight: thread ? thread.scrollHeight : null,
             clientHeight: thread ? thread.clientHeight : null,
             bottomDistance: thread ? Math.max(0, thread.scrollHeight - thread.scrollTop - thread.clientHeight) : null,
+            bubbleCount: document.querySelectorAll('.chat-message-bubble').length,
+            placeholderCount: document.querySelectorAll('.chat-conversation-thread__item-placeholder').length,
+            shellCount: document.querySelectorAll('.chat-conversation-thread__item-shell').length,
+            virtualSpacerCount: document.querySelectorAll('.chat-conversation-thread__virtual-spacer').length,
             loadingIndicators,
             deferredBubbleCount: document.querySelectorAll('.chat-message-bubble-deferred').length,
             deferredMarkdownCount: document.querySelectorAll('.chat-markdown-deferred-card').length,
@@ -280,6 +286,24 @@ def main() -> None:
         result["initialUniqueBootstrapRequests"] = initial_unique_bootstrap_requests
         result["historyAfterRequests"] = history_after_requests
         result["consoleErrors"] = console_errors
+        visible_bubble_counts = [
+            count for count in (
+                result.get("bubbleCount"),
+                continued.get("bubbleCount"),
+                *[sample.get("bubbleCount") for sample in strict_wheel_samples],
+            )
+            if isinstance(count, (int, float))
+        ]
+        visible_shell_counts = [
+            count for count in (
+                result.get("shellCount"),
+                continued.get("shellCount"),
+                *[sample.get("shellCount") for sample in strict_wheel_samples],
+            )
+            if isinstance(count, (int, float))
+        ]
+        result["maxVisibleBubbleCountDuringBrowse"] = max(visible_bubble_counts) if visible_bubble_counts else None
+        result["maxVisibleShellCountDuringBrowse"] = max(visible_shell_counts) if visible_shell_counts else None
 
         page.screenshot(path=str(SCREENSHOT), full_page=True)
         result["screenshot"] = str(SCREENSHOT)
@@ -302,6 +326,8 @@ def main() -> None:
             "no_after_request_during_upward_browse": len(history_after_requests) == 0,
             "no_console_errors": len(console_errors) == 0,
             "strict_wheel_no_near_latest_jump": len(strict_wheel_failures) == 0,
+            "visible_bubble_count_bounded": isinstance(result.get("maxVisibleBubbleCountDuringBrowse"), (int, float)) and result.get("maxVisibleBubbleCountDuringBrowse") <= 72,
+            "visible_shell_count_bounded": isinstance(result.get("maxVisibleShellCountDuringBrowse"), (int, float)) and result.get("maxVisibleShellCountDuringBrowse") <= 160,
             "light_request_count": len(initial_unique_history_requests) <= 3 and len(initial_unique_bootstrap_requests) == 1,
             "continued_history_loading": len(unique_history_requests) >= 4 and (continued.get("scrollHeight") or 0) > initial_scroll_height,
             "prepend_anchor_restored": (

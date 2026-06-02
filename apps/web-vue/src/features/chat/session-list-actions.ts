@@ -34,6 +34,7 @@ export function useSessionListActions(params: {
   allOrganizerSessions: ReadonlyRef<ChatSessionRow[]>;
   archiveViewOpen: ReadonlyRef<boolean>;
   prunedOrganizer: ReadonlyRef<ChatSessionOrganizerState>;
+  selectionMode: ReadonlyRef<boolean>;
   selectedManageableSessionKeys: ReadonlyRef<string[]>;
   text: TextFn;
   canManageSession: (session: ChatSessionRow) => boolean;
@@ -114,6 +115,9 @@ export function useSessionListActions(params: {
   }
 
   const folderPickerTree = computed<CascadeMenuItem[]>(() => {
+    if (!params.selectionMode.value) {
+      return [];
+    }
     const sharedTarget = resolveSharedFolderTarget(params.selectedManageableSessionKeys.value);
     return buildChatSessionDestinationItemsFromOrganizer(params.prunedOrganizer.value, {
       rootId: '__root__',
@@ -256,6 +260,12 @@ export function useSessionListActions(params: {
     cancelFolderRename();
     cancelSessionRename();
   }
+
+  watch(() => params.selectionMode.value, (active) => {
+    if (!active) {
+      closeFolderPicker();
+    }
+  });
 
   function startCreateFolder(parentId: string | null): void {
     creatingFolderOpen.value = true;

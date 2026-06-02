@@ -102,6 +102,8 @@ test("channels workspace keeps a persistent provider/account tree and top task b
   );
   assert.match(channelsWorkspaceCss, /\.channel-account-tree\s*\{/);
   assert.match(channelsWorkspaceCss, /\.channel-account-node\s*\{/);
+  assert.match(channelsWorkspaceCss, /\.channels-sidebar-body\s*\{[\s\S]*overflow:\s*auto;/);
+  assert.match(channelsWorkspaceCss, /\.channels-sidebar-panel\s*\{[\s\S]*max-height:\s*calc\(100dvh - 190px\);[\s\S]*overflow:\s*hidden;/);
   assert.doesNotMatch(channelsWorkspaceCss, /\.channels-task-nav-button\s*\{/);
   assert.match(channelsWorkspaceCss, /@media \(max-width: 980px\)[\s\S]*\.channel-rail-list\s*\{[\s\S]*grid-auto-flow:\s*column;/);
   assert.match(channelsWorkspaceCss, /@media \(max-width: 980px\)[\s\S]*\.channel-rail-list > \.channel-rail-node\s*\{[\s\S]*scroll-snap-align:\s*start;/);

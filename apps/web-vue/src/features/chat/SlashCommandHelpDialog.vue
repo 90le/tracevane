@@ -7,6 +7,12 @@
           class="chat-slash-help-dialog"
           :aria-label="text('斜杠命令总览', 'Slash command catalog')"
         >
+        <DialogTitle as-child>
+          <span class="sr-only">{{ text('斜杠命令', 'Slash commands') }}</span>
+        </DialogTitle>
+        <DialogDescription as-child>
+          <span class="sr-only">{{ text('查看并插入 Studio Chat 支持的斜杠命令。', 'Review and insert slash commands supported by Studio Chat.') }}</span>
+        </DialogDescription>
         <header class="chat-slash-help-head">
           <div class="chat-slash-help-copy">
             <strong>{{ text('斜杠命令', 'Slash commands') }}</strong>
@@ -113,7 +119,7 @@
 <script setup lang="ts">
 import './slash-command.css';
 import { computed } from 'vue';
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import {

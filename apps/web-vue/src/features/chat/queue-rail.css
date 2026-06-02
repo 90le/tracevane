@@ -65,6 +65,29 @@
   gap: 0.68rem;
 }
 
+.chat-queue-rail[data-presentation-mode='rail'] .chat-queue-rail__panel {
+  max-height: min(30dvh, 280px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--chat-text-soft) 38%, transparent) transparent;
+}
+
+.chat-queue-rail[data-presentation-mode='rail'] .chat-queue-rail__panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-queue-rail[data-presentation-mode='rail'] .chat-queue-rail__panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-queue-rail[data-presentation-mode='rail'] .chat-queue-rail__panel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chat-text-soft) 26%, transparent);
+}
+
 .chat-queue-rail__list {
   display: grid;
   gap: 0.68rem;

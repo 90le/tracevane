@@ -138,6 +138,21 @@
   transform: translateY(-50%) scale(1.03);
 }
 
+.chat-shell-session-more:focus,
+.chat-shell-session-show-more:focus {
+  outline: none;
+}
+
+.chat-shell-session-more:focus-visible,
+.chat-shell-session-show-more:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--chat-accent) 62%, var(--chat-text) 18%);
+  outline-offset: 2px;
+  border-color: color-mix(in srgb, var(--chat-accent) 38%, var(--chat-line));
+  background: var(--chat-hover);
+  color: var(--chat-text);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--chat-accent) 18%, transparent);
+}
+
 .chat-shell-session-show-more {
   min-height: 36px;
   margin: 6px 8px 0;
@@ -393,47 +408,48 @@
 /* SessionFolderList.vue */
 .chat-shell-session-section {
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .chat-shell-folder-row {
   position: relative;
-  border: 1px solid transparent;
-  border-radius: 12px;
-  background: var(--chat-sidebar-row);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--chat-text) 3%, transparent);
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--chat-line) 72%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   backdrop-filter: none;
   transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .chat-shell-folder-row:hover {
   background: var(--chat-sidebar-row-hover);
-  border-color: var(--chat-line);
-  transform: translateY(-1px);
+  border-bottom-color: var(--chat-line);
+  transform: none;
 }
 
 .chat-shell-folder-row.active,
 .chat-shell-folder-row.menu-open,
 .chat-shell-folder-row.renaming {
-  background: var(--chat-sidebar-row-active);
-  border-color: color-mix(in srgb, var(--chat-accent) 18%, var(--chat-line));
-  box-shadow: var(--mono-shadow-sm), inset 0 0 0 1px color-mix(in srgb, var(--chat-accent) 12%, transparent);
+  background: color-mix(in srgb, var(--chat-sidebar-row-active) 72%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--chat-accent) 18%, var(--chat-line));
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--chat-accent) 82%, var(--chat-text) 18%);
 }
 
 .chat-shell-folder-row.system {
-  background: color-mix(in srgb, var(--chat-sidebar-row) 86%, var(--chat-accent) 14%);
-  border-color: color-mix(in srgb, var(--chat-accent) 18%, transparent 82%);
+  background: color-mix(in srgb, var(--chat-accent) 9%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--chat-accent) 18%, transparent 82%);
 }
 
 .chat-shell-folder-item {
   width: calc(100% - 52px);
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
-  padding: 12px 10px 12px 12px;
+  padding: 9px 10px 9px 10px;
   border: none;
-  border-radius: 12px;
+  border-radius: 0;
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -453,9 +469,9 @@
 }
 
 .chat-shell-folder-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--chat-line-strong) 58%, transparent 42%);
@@ -554,7 +570,7 @@
 .chat-shell-session-section,
 .chat-shell-observed-section {
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .chat-shell-session-row {
@@ -563,12 +579,11 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--chat-line) 84%, transparent);
-  border-radius: 14px;
-  background: var(--chat-sidebar-row);
-  box-shadow:
-    var(--mono-shadow-sm),
-    inset 0 1px 0 color-mix(in srgb, var(--chat-text) 3%, transparent);
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--chat-line) 72%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   overflow: hidden;
   backdrop-filter: none;
   transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
@@ -586,18 +601,16 @@
 
 .chat-shell-session-row:hover {
   background: var(--chat-sidebar-row-hover);
-  border-color: var(--chat-line);
-  transform: translateY(-1px);
+  border-bottom-color: var(--chat-line);
+  transform: none;
 }
 
 .chat-shell-session-row.active,
 .chat-shell-session-row.menu-open,
 .chat-shell-session-row.renaming {
-  background: color-mix(in srgb, var(--chat-sidebar-row-active) 84%, var(--chat-sidebar-row));
-  border-color: color-mix(in srgb, var(--chat-accent) 18%, var(--chat-line));
-  box-shadow:
-    var(--mono-shadow-sm),
-    inset 0 0 0 1px color-mix(in srgb, var(--chat-accent) 18%, transparent);
+  background: color-mix(in srgb, var(--chat-sidebar-row-active) 72%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--chat-accent) 18%, var(--chat-line));
+  box-shadow: none;
 }
 
 .chat-shell-session-row.active::before,
@@ -609,12 +622,12 @@
 .chat-shell-session-item {
   width: 100%;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
-  padding: 12px 48px 12px 14px;
+  padding: 9px 42px 9px 10px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
   text-align: left;
@@ -633,7 +646,7 @@
 }
 
 .chat-shell-session-item.selecting {
-  grid-template-columns: 24px 40px minmax(0, 1fr);
+  grid-template-columns: 22px 34px minmax(0, 1fr);
 }
 
 .chat-shell-session-item.observed {
@@ -642,6 +655,17 @@
 
 .chat-shell-session-item:hover {
   background: color-mix(in srgb, var(--chat-hover) 54%, transparent);
+}
+
+.chat-shell-session-item:focus {
+  outline: none;
+}
+
+.chat-shell-session-item:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--chat-accent) 62%, var(--chat-text) 18%);
+  outline-offset: -3px;
+  background: color-mix(in srgb, var(--chat-hover) 68%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chat-accent) 22%, transparent);
 }
 
 .chat-shell-session-check {
@@ -656,9 +680,9 @@
 }
 
 .chat-shell-session-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -676,7 +700,7 @@
 .chat-shell-session-content {
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .chat-shell-session-topline,
@@ -689,11 +713,14 @@
 
 .chat-shell-session-subline {
   flex-wrap: wrap;
-  row-gap: 6px;
+  row-gap: 4px;
 }
 
 .chat-shell-session-topline strong {
+  display: block;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -705,14 +732,14 @@
 .chat-shell-session-time {
   display: inline-flex;
   align-items: center;
-  padding: 0 8px;
-  min-height: 22px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--chat-muted-chip) 80%, transparent);
+  padding: 0;
+  min-height: 18px;
+  border-radius: 0;
+  background: transparent;
   color: var(--chat-text-soft);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-weight: 600;
+  letter-spacing: 0;
   flex-shrink: 0;
 }
 
@@ -732,12 +759,13 @@
 .chat-shell-session-agent {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
+  min-width: 0;
+  min-height: 18px;
   max-width: min(14rem, 100%);
-  padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--chat-line) 88%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--chat-muted-chip) 72%, transparent);
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--chat-line) 68%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chat-muted-chip) 46%, transparent);
   color: var(--chat-text);
   font-size: 11px;
   font-weight: 700;
@@ -749,11 +777,12 @@
 .chat-shell-session-source {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
+  min-width: 0;
+  min-height: 18px;
   max-width: min(12rem, 100%);
-  padding: 0 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--chat-hover) 70%, transparent 30%);
+  padding: 0 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chat-hover) 38%, transparent);
   color: var(--chat-text-soft);
   font-size: 11px;
   font-weight: 600;
@@ -765,10 +794,10 @@
 .chat-shell-session-state {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--chat-muted-chip) 72%, transparent);
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chat-muted-chip) 44%, transparent);
   color: var(--chat-text-soft);
   font-weight: 600;
   white-space: nowrap;
@@ -797,13 +826,13 @@
 }
 
 .chat-shell-session-preview-badge {
-  min-height: 22px;
+  min-height: 18px;
   display: inline-flex;
   align-items: center;
-  padding: 0 8px;
-  border: 1px solid var(--chat-line);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--chat-muted-chip) 84%, transparent);
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--chat-line) 76%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chat-muted-chip) 52%, transparent);
   color: var(--chat-text-soft);
   font-size: 10px;
   font-weight: 700;
@@ -838,34 +867,14 @@
   overflow: hidden;
 }
 
-.chat-shell-session-show-more {
-  min-height: 36px;
-  margin: 6px 8px 0;
-  border: 1px solid color-mix(in srgb, var(--chat-line) 88%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--chat-sidebar-row) 92%, transparent 8%);
-  color: var(--chat-text-soft);
-  font: inherit;
-  cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
-}
-
-.chat-shell-session-show-more:hover {
-  background: var(--chat-sidebar-row-hover);
-  color: var(--chat-text);
-  transform: translateY(-1px);
-}
-
 @media (max-width: 1040px) {
   .chat-shell-session-row {
     backdrop-filter: none;
-    box-shadow:
-      var(--mono-shadow-sm),
-      inset 0 1px 0 color-mix(in srgb, var(--chat-text) 3%, transparent);
+    box-shadow: none;
   }
 
   .chat-shell-session-item {
-    padding: 11px 44px 11px 11px;
+    padding: 9px 40px 9px 10px;
   }
 
   .chat-shell-session-time,

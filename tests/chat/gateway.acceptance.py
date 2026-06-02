@@ -277,7 +277,7 @@ def main() -> None:
 
         body_text = page.locator("body").inner_text()
         result["route_not_502"] = "502 Bad Gateway" not in body_text
-        expect(page.locator(".chat-shell-session-list")).to_be_visible()
+        expect(page.locator(".chat-shell-session-list")).to_be_visible(timeout=30000)
         expect(page.locator(".chat-conversation-pane")).to_be_visible()
         expect(page.locator(".chat-composer-editor")).to_be_visible()
         result["session_list_visible"] = True

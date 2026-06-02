@@ -191,6 +191,22 @@ function ensureSafeName(value: unknown): string {
   return name;
 }
 
+function ensureSafeUploadRelativePath(value: unknown, fallbackName: unknown): string {
+  const raw = normalizeString(value) || normalizeString(fallbackName);
+  if (!raw) {
+    throw new Error("A valid uploaded file path is required");
+  }
+  const portable = raw.replace(/\\/g, "/");
+  const segments = portable
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => ensureSafeName(segment));
+  if (!segments.length) {
+    throw new Error("A valid uploaded file path is required");
+  }
+  return segments.join("/");
+}
+
 function ensureArchiveName(value: unknown): string {
   const baseName = ensureSafeName(value);
   return baseName.toLowerCase().endsWith(".zip") ? baseName : `${baseName}.zip`;
@@ -401,25 +417,6 @@ function readBufferSlice(filePath: string, maxBytes: number): Buffer {
   }
 }
 
-function countChildDirectories(directoryPath: string, showHidden: boolean): number {
-  try {
-    return fs
-      .readdirSync(directoryPath, { withFileTypes: true })
-      .filter((entry) => {
-        if (!showHidden && entry.name.startsWith(".")) return false;
-        if (entry.isDirectory()) return true;
-        if (!entry.isSymbolicLink()) return false;
-        try {
-          return fs.statSync(path.join(directoryPath, entry.name)).isDirectory();
-        } catch {
-          return false;
-        }
-      }).length;
-  } catch {
-    return 0;
-  }
-}
-
 function summarizeEntry(
   directoryPath: string,
   directoryRelativePath: string,
@@ -459,10 +456,6 @@ function summarizeEntry(
     hidden,
     textLike: kind === "file" ? isTextLike(dirent.name, sample) : false,
     imageLike: kind === "file" ? isImageLike(dirent.name) : false,
-    childDirectoryCount:
-      kind === "directory"
-        ? countChildDirectories(absolutePath, showHidden)
-        : null,
   };
 }
 
@@ -687,18 +680,25 @@ export function createFilesService(config: StudioServerConfig): FilesService {
     },
 
     listTree(rootId: string, directoryPath = "", showHidden = true): FilesTreePayload {
-      const directory = this.listDirectory(rootId, directoryPath, showHidden);
-      const children: FileTreeNodePayload[] = directory.entries
+      const resolved = resolveExistingPath(config, rootId, directoryPath, {
+        allowRoot: true,
+        kind: "directory",
+      });
+      const entries = fs
+        .readdirSync(resolved.absolutePath, { withFileTypes: true })
+        .map((dirent) => summarizeEntry(resolved.absolutePath, resolved.relativePath, dirent, showHidden))
+        .filter((entry): entry is FileEntrySummary => Boolean(entry));
+      const visibleEntries = showHidden ? entries : entries.filter((entry) => !entry.hidden);
+      const children: FileTreeNodePayload[] = sortEntries(visibleEntries)
         .filter((entry) => entry.kind === "directory")
         .map((entry) => ({
           path: entry.path,
           name: entry.name,
-          childDirectoryCount: entry.childDirectoryCount || 0,
         }));
       return {
         checkedAt: new Date().toISOString(),
-        rootId: directory.rootId,
-        directoryPath: directory.directoryPath,
+        rootId: resolved.root.id,
+        directoryPath: resolved.relativePath,
         children,
       };
     },
@@ -1000,15 +1000,16 @@ export function createFilesService(config: StudioServerConfig): FilesService {
       }
       const affectedPaths: string[] = [];
       for (const item of files) {
-        const fileName = ensureSafeName(item.fileName);
+        const uploadRelativePath = ensureSafeUploadRelativePath(item.relativePath, item.fileName);
         const buffer = decodeUploadFile(item);
         const destination = resolveTargetPath(
           config,
           payload.rootId,
-          path.join(targetDirectory.relativePath || "", fileName),
+          path.join(targetDirectory.relativePath || "", uploadRelativePath),
           { allowRoot: false },
         );
         if (!item.overwrite) ensureNotExists(destination.absolutePath);
+        fs.mkdirSync(path.dirname(destination.absolutePath), { recursive: true });
         fs.writeFileSync(destination.absolutePath, buffer);
         affectedPaths.push(destination.relativePath);
       }

@@ -12,6 +12,10 @@ const configWorkspaceCss = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/config/config-workspace.css'),
   'utf8',
 );
+const configWorkspaceSections = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/config/config-workspace-sections.ts'),
+  'utf8',
+);
 const globalStyleCss = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/style.css'),
   'utf8',
@@ -62,7 +66,7 @@ test('config editor exposes the workbench recipe framing blocks', () => {
   assert.match(configEditorPage, /Image generation model/);
   assert.match(configEditorPage, /Model registry JSON/);
   assert.doesNotMatch(configEditorPage, /LLM idle timeout seconds/);
-  assert.match(configEditorPage, /Embedded Pi project settings policy/);
+  assert.match(configEditorPage, /Embedded OpenClaw project settings policy/);
   assert.doesNotMatch(configEditorPage, /class="config-overview-cell"/);
   assert.doesNotMatch(configEditorPage, /class="config-sidebar-callout"/);
   assert.doesNotMatch(configEditorPage, /page-shell config-section-grid|class="config-tabs|class="config-tab-group"|class="config-tab"/);
@@ -211,6 +215,37 @@ test('config workbench exposes current MCP and skills config fields', () => {
   assert.match(configEditorPage, /skillsMaxPromptChars/);
   assert.match(configEditorPage, /skillsAllowBundledText/);
   assert.match(configEditorPage, /skillsWatchDebounceMs/);
+});
+
+test('config workbench exposes current command and exec gates', () => {
+  const commandsHooksTab = configComponentSources.get('CommandsHooksConfigTab.vue') || '';
+  assert.match(commandsHooksTab, /commands\.bash/);
+  assert.match(commandsHooksTab, /enables `!` and `\/bash`/);
+  assert.match(configEditorPage, /const execHostOptions = computed<ChoiceOption\[\]>\(\(\) => \[/);
+  assert.match(configEditorPage, /\{ value: 'auto', label: text\('自动', 'Auto'\) \}/);
+  assert.match(configEditorPage, /const execModeOptions = computed<ChoiceOption\[\]>/);
+  assert.match(configEditorPage, /form\.tools\.execMode/);
+  assert.match(configEditorPage, /function enableTemporaryBashBypass\(\)/);
+  assert.match(configEditorPage, /commandsFormData\.value = \{[\s\S]*text: true,[\s\S]*bash: true,/);
+  assert.match(configEditorPage, /form\.tools\.execMode = 'full'/);
+  assert.match(configWorkspaceCss, /\.config-page-shell \.config-high-risk-box\s*\{/);
+  assert.match(configWorkspaceCss, /\.config-page-shell \.danger-button\s*\{/);
+});
+
+test('config workbench exposes schema-backed OpenClaw top-level domains', () => {
+  assert.match(configWorkspaceSections, /"openclaw-domains"/);
+  assert.match(configWorkspaceSections, /OpenClaw Domains/);
+  assert.match(configWorkspaceSections, /Low-frequency schema domains not modeled by dedicated Studio tabs/);
+  assert.match(configWorkspaceSections, /未单独建模的低频 schema 顶层域/);
+  assert.match(configEditorPage, /ids: \['logging', 'openclaw-domains'\]/);
+  assert.match(configEditorPage, /case 'openclaw-domains'/);
+  assert.match(configEditorPage, /OpenClaw Top-Level Domains/);
+  assert.match(configEditorPage, /OpenClaw Domains JSON/);
+  assert.match(configEditorPage, /form\.openclaw\.extraDomainsJson/);
+  assert.match(configEditorPage, /summary\.openclaw\?\.extraDomains/);
+  assert.match(configEditorPage, /parseOptionalJsonObject\('OpenClaw Domains JSON', form\.openclaw\.extraDomainsJson\)/);
+  assert.match(configEditorPage, /openclaw:\s*\{\s*extraDomains: openclawExtraDomains/);
+  assert.match(configEditorPage, /loadedSummary\?\.openclaw\?\.extraDomainKeys \|\| \[\]/);
 });
 
 test('config workbench exposes persistent global HEARTBEAT controls', () => {

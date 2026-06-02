@@ -80,6 +80,7 @@
               :disabled="!canActuallySend"
               :aria-label="sendControlLabel"
               :title="sendControlLabel"
+              @mousedown.prevent="prepareToolbarAction"
               @click="handleSendClick"
             >
               <span class="chat-composer-send-icon">↑</span>
@@ -191,18 +192,19 @@
           :class="[`kind-${attachment.type}`]"
           :title="previewTitle(attachment)"
           :disabled="attachmentState(attachment) === 'failed'"
+          :data-composer-attachment-preview-key="attachment.id"
           @mousedown.prevent="prepareToolbarAction"
           @click="openAttachmentPreview(attachment)"
         >
           <span class="chat-composer-pool-preview">
             <img
-              v-if="attachment.type === 'image'"
+              v-if="attachment.type === 'image' && attachment.dataUrl"
               class="chat-composer-pool-image"
               :src="attachment.dataUrl"
               :alt="attachment.fileName || text('图片', 'Image')"
             >
             <video
-              v-else-if="attachment.type === 'video'"
+              v-else-if="attachment.type === 'video' && attachment.dataUrl"
               class="chat-composer-pool-image"
               :src="attachment.dataUrl"
               muted
@@ -366,8 +368,6 @@ import {
   composerDocumentUnitLength,
   composeComposerAttachmentMentionLabel,
   createEmptyComposerDocument,
-  extractComposerPlainText,
-  hasComposerDocumentContent,
   insertComposerResourceNodeAtOffset,
   normalizeComposerDocument,
   removeComposerAttachmentReferences,
@@ -394,6 +394,7 @@ type ComposerAttachment = {
   type: ChatAttachmentKind;
   fileName?: string;
   mimeType: string;
+  content?: string;
   dataUrl: string;
   downloadUrl?: string | null;
   size?: number;
@@ -404,7 +405,19 @@ type ComposerAttachment = {
 
 const RESOURCE_DRAG_MIME = 'application/x-openclaw-studio-composer-resource';
 
+type ComposerDraftLifecycleExitPayload = {
+  sessionKey: string;
+  document: ChatComposerDocument;
+  attachments: ComposerAttachment[];
+};
+
+type ComposerFocusOptions = {
+  preventScroll?: boolean;
+  restoreSelection?: boolean;
+};
+
 const props = defineProps<{
+  sessionKey: string;
   document: ChatComposerDocument;
   attachments: ComposerAttachment[];
   placeholder: string;
@@ -425,6 +438,7 @@ const emit = defineEmits<{
   (event: 'retry-attachment', attachmentId: string): void;
   (event: 'keydown', payload: KeyboardEvent): void;
   (event: 'viewport-lift', value: number): void;
+  (event: 'draft-lifecycle-exit', payload: ComposerDraftLifecycleExitPayload): void;
 }>();
 
 const { locale, text } = useLocalePreference();
@@ -435,14 +449,15 @@ const isEditorResourceDragOver = ref(false);
 const pendingSelectionOffset = ref<number | null>(null);
 const isComposing = ref(false);
 const localDocument = shallowRef<ChatComposerDocument>(normalizeComposerDocument(props.document, { editorSurface: true }));
-const isEditorEmpty = ref(!hasComposerDocumentContent(localDocument.value));
-const hasLocalContent = ref(hasComposerDocumentContent(localDocument.value));
+const isEditorEmpty = ref(!normalizedComposerDocumentHasContent(localDocument.value));
+const hasLocalContent = ref(normalizedComposerDocumentHasContent(localDocument.value));
 const attachmentReferenceCounts = ref<Record<string, number>>({});
 const attachmentPreview = ref<null | {
   src: string;
   alt: string;
   kind: 'image' | 'video';
 }>(null);
+const attachmentPreviewSourceId = ref<string | null>(null);
 const slashMenuOpen = ref(false);
 const slashMenuMode = ref<'command' | 'args'>('command');
 const slashMenuItems = ref<StudioSlashCommandDef[]>([]);
@@ -458,12 +473,21 @@ let suppressNextBlurSync = false;
 let compactViewportMediaQuery: MediaQueryList | null = null;
 let compactViewportListener: ((event: MediaQueryListEvent) => void) | null = null;
 let viewportKeyboardListener: (() => void) | null = null;
+let pendingKeyboardLiftSyncFrame: number | null = null;
+let pendingParentDocumentSyncFrame: number | null = null;
+let pendingParentDocumentSync: ChatComposerDocument | null = null;
+let restoreFocusAfterSend = false;
+const recentlyEmittedDocumentSignatures: string[] = [];
 const attachmentUploadSummary = computed(() => summarizeComposerAttachmentUploadStates(props.attachments));
-const canActuallySend = computed(() => canSendComposerDraft({
-  canSend: props.canSend,
-  hasContent: hasLocalContent.value,
-  attachments: props.attachments,
-}));
+const canActuallySend = computed(() => (
+  !props.disabled
+  && !props.sendBusy
+  && canSendComposerDraft({
+    canSend: props.canSend,
+    hasContent: hasLocalContent.value,
+    attachments: props.attachments,
+  })
+));
 const sendControlLabel = computed(() => {
   if (props.sendBusy) {
     return text('发送中...', 'Sending...');
@@ -567,6 +591,38 @@ function editorHasFocus(): boolean {
   return typeof document !== 'undefined' && document.activeElement === editorRef.value;
 }
 
+function focusEditor(options: ComposerFocusOptions = {}): boolean {
+  const root = editorRef.value;
+  if (!root || props.disabled) {
+    return false;
+  }
+  const restoreOffset = options.restoreSelection === false
+    ? null
+    : (pendingSelectionOffset.value ?? composerDocumentUnitLength(localDocument.value));
+  root.focus({ preventScroll: options.preventScroll !== false });
+  restoreSelection(restoreOffset);
+  rememberSelection();
+  syncKeyboardLiftFromViewport();
+  return editorHasFocus();
+}
+
+function restoreFocusAfterSendIfReady(): void {
+  if (!restoreFocusAfterSend || props.disabled) {
+    return;
+  }
+  restoreFocusAfterSend = false;
+  focusEditor({ preventScroll: true });
+}
+
+function scheduleFocusAfterSendRestore(): void {
+  if (!restoreFocusAfterSend) {
+    return;
+  }
+  void nextTick(() => {
+    restoreFocusAfterSendIfReady();
+  });
+}
+
 function setKeyboardLift(nextValue: number): void {
   nextValue = Math.max(0, Math.round(nextValue));
   if (keyboardLiftPx.value === nextValue) {
@@ -594,12 +650,33 @@ function syncKeyboardLiftFromViewport(): void {
   setKeyboardLift(nextValue);
 }
 
+function cancelPendingKeyboardLiftSync(): void {
+  if (pendingKeyboardLiftSyncFrame !== null && typeof window !== 'undefined') {
+    window.cancelAnimationFrame(pendingKeyboardLiftSyncFrame);
+  }
+  pendingKeyboardLiftSyncFrame = null;
+}
+
+function scheduleKeyboardLiftSync(): void {
+  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+    syncKeyboardLiftFromViewport();
+    return;
+  }
+  if (pendingKeyboardLiftSyncFrame !== null) {
+    return;
+  }
+  pendingKeyboardLiftSyncFrame = window.requestAnimationFrame(() => {
+    pendingKeyboardLiftSyncFrame = null;
+    syncKeyboardLiftFromViewport();
+  });
+}
+
 function bindViewportKeyboard(): void {
   if (typeof window === 'undefined' || !window.visualViewport) {
     return;
   }
   viewportKeyboardListener = () => {
-    syncKeyboardLiftFromViewport();
+    scheduleKeyboardLiftSync();
   };
   window.visualViewport.addEventListener('resize', viewportKeyboardListener);
   window.visualViewport.addEventListener('scroll', viewportKeyboardListener);
@@ -607,6 +684,7 @@ function bindViewportKeyboard(): void {
 }
 
 function unbindViewportKeyboard(): void {
+  cancelPendingKeyboardLiftSync();
   if (typeof window === 'undefined' || !window.visualViewport || !viewportKeyboardListener) {
     return;
   }
@@ -616,8 +694,59 @@ function unbindViewportKeyboard(): void {
   viewportKeyboardListener = null;
 }
 
-function documentSupportsSlashMenu(document: ChatComposerDocument): boolean {
-  return !normalizeComposerDocument(document).some((node) => node.type === 'resource-ref');
+function firstNonWhitespaceIndex(value: string): number {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index]?.trim()) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function readSlashMenuPlainText(document: ChatComposerDocument): string | null {
+  let slashTextParts: string[] | null = null;
+  for (const node of document) {
+    if (node.type === 'resource-ref') {
+      return null;
+    }
+    const textValue = node.text || '';
+    if (slashTextParts) {
+      slashTextParts.push(textValue);
+      continue;
+    }
+
+    const contentIndex = firstNonWhitespaceIndex(textValue);
+    if (contentIndex === -1) {
+      continue;
+    }
+    if (textValue[contentIndex] !== '/') {
+      return '';
+    }
+    slashTextParts = [textValue.slice(contentIndex)];
+  }
+
+  return slashTextParts ? slashTextParts.join('').trimEnd() : '';
+}
+
+function normalizedComposerDocumentHasContent(document: ChatComposerDocument): boolean {
+  for (const node of document) {
+    if (node.type === 'resource-ref') {
+      return true;
+    }
+    if (firstNonWhitespaceIndex(node.text || '') !== -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizedComposerDocumentHasEditorValue(document: ChatComposerDocument): boolean {
+  for (const node of document) {
+    if (node.type === 'resource-ref' || Boolean(node.text)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function filteredSlashArgOptionDetails(command: StudioSlashCommandDef, filter: string): StudioSlashArgOptionDetail[] {
@@ -630,12 +759,16 @@ function filteredSlashArgOptionDetails(command: StudioSlashCommandDef, filter: s
 }
 
 function updateSlashMenu(documentValue: ChatComposerDocument = localDocument.value): void {
-  if (props.disabled || !documentSupportsSlashMenu(documentValue)) {
+  if (props.disabled) {
     clearSlashMenuState();
     return;
   }
 
-  const plainText = extractComposerPlainText(documentValue).trim();
+  const plainText = readSlashMenuPlainText(documentValue);
+  if (plainText === null) {
+    clearSlashMenuState();
+    return;
+  }
   if (!plainText.startsWith('/')) {
     clearSlashMenuState();
     return;
@@ -847,6 +980,7 @@ function openAttachmentPreview(attachment: ComposerAttachment): void {
   }
   const label = attachmentLabel(attachment, attachment.id);
   if (attachment.type === 'image') {
+    attachmentPreviewSourceId.value = attachment.id;
     attachmentPreview.value = {
       src: attachment.dataUrl,
       alt: label,
@@ -855,6 +989,7 @@ function openAttachmentPreview(attachment: ComposerAttachment): void {
     return;
   }
   if (attachment.type === 'video') {
+    attachmentPreviewSourceId.value = attachment.id;
     attachmentPreview.value = {
       src: attachment.dataUrl,
       alt: label,
@@ -867,8 +1002,31 @@ function openAttachmentPreview(attachment: ComposerAttachment): void {
   }
 }
 
+function focusAttachmentPreviewSource(sourceId: string | null): void {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  const normalizedSourceId = typeof sourceId === 'string' ? sourceId.trim() : '';
+  if (normalizedSourceId) {
+    const triggers = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.chat-composer-pool-chip[data-composer-attachment-preview-key]'),
+    );
+    const trigger = triggers.find((button) => button.dataset.composerAttachmentPreviewKey === normalizedSourceId);
+    if (trigger) {
+      trigger.focus({ preventScroll: true });
+      return;
+    }
+  }
+  focusEditor({ preventScroll: true });
+}
+
 function closeAttachmentPreview(): void {
+  const sourceId = attachmentPreviewSourceId.value;
   attachmentPreview.value = null;
+  attachmentPreviewSourceId.value = null;
+  void nextTick(() => {
+    focusAttachmentPreviewSource(sourceId);
+  });
 }
 
 function handleAttachmentPreviewOpenChange(nextOpen: boolean): void {
@@ -903,8 +1061,8 @@ function pushTextNode(
   });
 }
 
-function documentSignature(document: ChatComposerDocument | undefined | null): string {
-  return normalizeComposerDocument(document, { editorSurface: true })
+function normalizedDocumentSignature(document: ChatComposerDocument): string {
+  return document
     .map((node) => {
       if (node.type === 'text') {
         return `t:${node.id}:${node.text}`;
@@ -914,9 +1072,55 @@ function documentSignature(document: ChatComposerDocument | undefined | null): s
     .join('|');
 }
 
-function deriveAttachmentReferenceCounts(document: ChatComposerDocument): Record<string, number> {
+function normalizedComposerDocumentsEqual(left: ChatComposerDocument, right: ChatComposerDocument): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    const leftNode = left[index];
+    const rightNode = right[index];
+    if (!leftNode || !rightNode || leftNode.type !== rightNode.type) {
+      return false;
+    }
+    if (leftNode.type === 'text') {
+      if (rightNode.type !== 'text' || leftNode.id !== rightNode.id || leftNode.text !== rightNode.text) {
+        return false;
+      }
+      continue;
+    }
+    if (
+      rightNode.type !== 'resource-ref' ||
+      leftNode.id !== rightNode.id ||
+      leftNode.attachmentId !== rightNode.attachmentId ||
+      leftNode.display !== rightNode.display
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function rememberEmittedNormalizedDocumentSignature(documentValue: ChatComposerDocument): void {
+  const signature = normalizedDocumentSignature(documentValue);
+  if (!signature) {
+    return;
+  }
+  recentlyEmittedDocumentSignatures.push(signature);
+  while (recentlyEmittedDocumentSignatures.length > 8) {
+    recentlyEmittedDocumentSignatures.shift();
+  }
+}
+
+function isRecentlyEmittedDocument(documentValue: ChatComposerDocument): boolean {
+  const signature = normalizedDocumentSignature(documentValue);
+  return Boolean(signature && recentlyEmittedDocumentSignatures.includes(signature));
+}
+
+function deriveAttachmentReferenceCountsFromNormalized(document: ChatComposerDocument): Record<string, number> {
   const counts: Record<string, number> = {};
-  for (const node of normalizeComposerDocument(document)) {
+  for (const node of document) {
     if (node.type !== 'resource-ref') {
       continue;
     }
@@ -925,30 +1129,72 @@ function deriveAttachmentReferenceCounts(document: ChatComposerDocument): Record
   return counts;
 }
 
-function updateEditorDerivedState(document: ChatComposerDocument): void {
-  const normalized = normalizeComposerDocument(document, { editorSurface: true });
-  hasLocalContent.value = hasComposerDocumentContent(normalized);
-  isEditorEmpty.value = !normalized.some((node) => node.type === 'resource-ref' || Boolean(node.text));
-  attachmentReferenceCounts.value = deriveAttachmentReferenceCounts(normalized);
+function updateEditorDerivedStateFromNormalized(document: ChatComposerDocument): void {
+  hasLocalContent.value = normalizedComposerDocumentHasContent(document);
+  isEditorEmpty.value = !normalizedComposerDocumentHasEditorValue(document);
+  attachmentReferenceCounts.value = deriveAttachmentReferenceCountsFromNormalized(document);
 }
 
 function updateEditorVisualStateFromDom(): void {
   const root = editorRef.value;
   if (!root) {
-    hasLocalContent.value = hasComposerDocumentContent(localDocument.value);
+    hasLocalContent.value = normalizedComposerDocumentHasContent(localDocument.value);
     isEditorEmpty.value = !hasLocalContent.value;
     return;
   }
   const hasResource = Boolean(root.querySelector('[data-composer-node-type="resource"]'));
   const textValue = root.textContent || '';
-  hasLocalContent.value = hasResource || Boolean(textValue.trim());
+  hasLocalContent.value = hasResource || firstNonWhitespaceIndex(textValue) !== -1;
   isEditorEmpty.value = !hasResource && !textValue;
+}
+
+function cancelPendingParentDocumentSync(): void {
+  if (pendingParentDocumentSyncFrame !== null && typeof window !== 'undefined') {
+    window.cancelAnimationFrame(pendingParentDocumentSyncFrame);
+  }
+  pendingParentDocumentSyncFrame = null;
+  pendingParentDocumentSync = null;
+}
+
+function emitNormalizedDocumentUpdate(documentValue: ChatComposerDocument): void {
+  cancelPendingParentDocumentSync();
+  rememberEmittedNormalizedDocumentSignature(documentValue);
+  emit('update:document', documentValue);
+}
+
+function emitPendingNormalizedDocumentUpdate(documentValue: ChatComposerDocument): void {
+  rememberEmittedNormalizedDocumentSignature(documentValue);
+  emit('update:document', documentValue);
+}
+
+function flushPendingParentDocumentSync(): void {
+  const pending = pendingParentDocumentSync;
+  pendingParentDocumentSyncFrame = null;
+  pendingParentDocumentSync = null;
+  if (!pending) {
+    return;
+  }
+  emitPendingNormalizedDocumentUpdate(pending);
+}
+
+function scheduleParentDocumentSync(documentValue: ChatComposerDocument): void {
+  pendingParentDocumentSync = documentValue;
+  if (pendingParentDocumentSyncFrame !== null) {
+    return;
+  }
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    pendingParentDocumentSyncFrame = window.requestAnimationFrame(() => {
+      flushPendingParentDocumentSync();
+    });
+    return;
+  }
+  emitNormalizedDocumentUpdate(documentValue);
 }
 
 function snapshotDocumentFromEditorDom(): ChatComposerDocument {
   const nextDocument = parseEditorDom(editorRef.value);
   localDocument.value = nextDocument;
-  updateEditorDerivedState(nextDocument);
+  updateEditorDerivedStateFromNormalized(nextDocument);
   return nextDocument;
 }
 
@@ -1004,7 +1250,7 @@ function renderEditorDom(
 
   isSyncingEditorDom = true;
   root.replaceChildren();
-  for (const node of normalizeComposerDocument(documentValue, { editorSurface: true })) {
+  for (const node of documentValue) {
     if (node.type === 'text') {
       const element = document.createElement('span');
       element.className = 'chat-composer-editor-text';
@@ -1037,7 +1283,7 @@ function commitDocument(
 ): void {
   const normalized = normalizeComposerDocument(nextDocument, { editorSurface: true });
   localDocument.value = normalized;
-  updateEditorDerivedState(normalized);
+  updateEditorDerivedStateFromNormalized(normalized);
   if (options.render !== false) {
     renderEditorDom(normalized, {
       restoreOffset: options.restoreOffset ?? null,
@@ -1045,7 +1291,7 @@ function commitDocument(
     });
   }
   if (options.emitChange !== false) {
-    emit('update:document', normalized);
+    emitNormalizedDocumentUpdate(normalized);
   }
 }
 
@@ -1254,7 +1500,22 @@ function rememberSelection(): void {
 function syncDocumentToParent(): void {
   const documentValue = snapshotDocumentFromEditorDom();
   updateSlashMenu(documentValue);
-  emit('update:document', normalizeComposerDocument(documentValue, { editorSurface: true }));
+  emitNormalizedDocumentUpdate(documentValue);
+}
+
+function handleComposerLifecycleExit(): void {
+  if (isSyncingEditorDom) {
+    return;
+  }
+  const documentValue = editorRef.value
+    ? snapshotDocumentFromEditorDom()
+    : (pendingParentDocumentSync || localDocument.value);
+  cancelPendingParentDocumentSync();
+  emit('draft-lifecycle-exit', {
+    sessionKey: props.sessionKey,
+    document: documentValue,
+    attachments: props.attachments.map((attachment) => ({ ...attachment })),
+  });
 }
 
 function handleEditorInput(): void {
@@ -1267,6 +1528,7 @@ function handleEditorInput(): void {
   pendingSelectionOffset.value = resolveSelectionOffset(true);
   const documentValue = snapshotDocumentFromEditorDom();
   updateSlashMenu(documentValue);
+  scheduleParentDocumentSync(documentValue);
 }
 
 function insertPlainTextAtSelection(value: string): void {
@@ -1326,6 +1588,10 @@ function handleEditorFocus(): void {
 }
 
 function handleEditorKeydown(event: KeyboardEvent): void {
+  if (isComposing.value || event.isComposing) {
+    return;
+  }
+
   if (slashMenuOpen.value && slashMenuMode.value === 'args' && slashMenuArgItems.value.length > 0) {
     const total = slashMenuArgItems.value.length;
     if (event.key === 'ArrowDown') {
@@ -1401,6 +1667,7 @@ function handleCompositionEnd(): void {
   pendingSelectionOffset.value = resolveSelectionOffset(true);
   const documentValue = snapshotDocumentFromEditorDom();
   updateSlashMenu(documentValue);
+  emitNormalizedDocumentUpdate(documentValue);
   if (deferredExternalDocument) {
     const nextDocument = deferredExternalDocument;
     deferredExternalDocument = null;
@@ -1412,10 +1679,12 @@ function handleSendClick(): void {
   if (!canActuallySend.value) {
     return;
   }
+  restoreFocusAfterSend = editorHasFocus() || !isCompactViewport.value;
   const documentValue = snapshotDocumentFromEditorDom();
   clearSlashMenuState();
-  emit('update:document', normalizeComposerDocument(documentValue, { editorSurface: true }));
-  emit('send', normalizeComposerDocument(documentValue, { editorSurface: true }));
+  emitNormalizedDocumentUpdate(documentValue);
+  emit('send', documentValue);
+  scheduleFocusAfterSendRestore();
 }
 
 function scheduleEditorSelectionRestore(offset: number): void {
@@ -1539,6 +1808,8 @@ function handleEditorDragLeave(event: DragEvent): void {
 }
 
 function handleEditorDrop(event: DragEvent): void {
+  event.stopPropagation();
+  isFileDragOver.value = false;
   isEditorResourceDragOver.value = false;
   if (props.disabled) {
     return;
@@ -1596,16 +1867,15 @@ function handlePaste(event: ClipboardEvent): void {
     }
   }
 
-  if (clipboardFiles.length) {
-    event.preventDefault();
-    emit('select-files', clipboardFiles);
-    return;
-  }
-
   const textValue = event.clipboardData?.getData('text/plain') || '';
-  if (textValue) {
+  if (clipboardFiles.length || textValue) {
     event.preventDefault();
+  }
+  if (textValue) {
     insertPlainTextAtSelection(textValue);
+  }
+  if (clipboardFiles.length) {
+    emit('select-files', clipboardFiles);
   }
 }
 
@@ -1633,7 +1903,13 @@ watch(
   () => props.document,
   (value) => {
     const normalized = normalizeComposerDocument(value, { editorSurface: true });
-    if (documentSignature(normalized) === documentSignature(localDocument.value)) {
+    if (normalizedComposerDocumentsEqual(normalized, localDocument.value)) {
+      return;
+    }
+    if (editorHasFocus() && hasLocalContent.value && normalizedComposerDocumentHasContent(normalized)) {
+      return;
+    }
+    if (editorHasFocus() && isRecentlyEmittedDocument(normalized)) {
       return;
     }
     if (isComposing.value) {
@@ -1660,6 +1936,7 @@ watch(
       nextTick(() => {
         renderEditorDom(localDocument.value);
         updateSlashMenu(localDocument.value);
+        restoreFocusAfterSendIfReady();
       });
     }
   },
@@ -1668,15 +1945,29 @@ watch(
 onMounted(() => {
   bindCompactViewport();
   bindViewportKeyboard();
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', handleComposerLifecycleExit);
+    window.addEventListener('beforeunload', handleComposerLifecycleExit);
+  }
   pendingSelectionOffset.value = composerDocumentUnitLength(localDocument.value);
-  updateEditorDerivedState(localDocument.value);
+  updateEditorDerivedStateFromNormalized(localDocument.value);
   renderEditorDom(localDocument.value);
   updateSlashMenu(localDocument.value);
 });
 
 onBeforeUnmount(() => {
+  handleComposerLifecycleExit();
+  restoreFocusAfterSend = false;
   setKeyboardLift(0);
   unbindCompactViewport();
   unbindViewportKeyboard();
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('pagehide', handleComposerLifecycleExit);
+    window.removeEventListener('beforeunload', handleComposerLifecycleExit);
+  }
+});
+
+defineExpose({
+  focusEditor,
 });
 </script>

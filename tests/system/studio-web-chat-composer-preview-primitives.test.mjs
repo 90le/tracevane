@@ -32,6 +32,18 @@ test('composer attachment preview uses reka dialog primitives instead of a hand-
 });
 
 test('composer attachment preview closes through a controlled open handler', () => {
+  assert.match(composerBar, /:data-composer-attachment-preview-key="attachment\.id"/);
+  assert.match(composerBar, /const attachmentPreviewSourceId = ref<string \| null>\(null\);/);
+  assert.match(composerBar, /attachmentPreviewSourceId\.value = attachment\.id;[\s\S]*attachmentPreview\.value = \{[\s\S]*kind: 'image'/);
+  assert.match(composerBar, /attachmentPreviewSourceId\.value = attachment\.id;[\s\S]*attachmentPreview\.value = \{[\s\S]*kind: 'video'/);
+  assert.match(composerBar, /function focusAttachmentPreviewSource\(sourceId: string \| null\): void \{/);
+  assert.match(composerBar, /\.chat-composer-pool-chip\[data-composer-attachment-preview-key\]/);
+  assert.match(composerBar, /button\.dataset\.composerAttachmentPreviewKey === normalizedSourceId/);
+  assert.match(composerBar, /trigger\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(composerBar, /focusEditor\(\{ preventScroll: true \}\);/);
+  assert.match(composerBar, /const sourceId = attachmentPreviewSourceId\.value;/);
+  assert.match(composerBar, /attachmentPreviewSourceId\.value = null;/);
+  assert.match(composerBar, /void nextTick\(\(\) => \{[\s\S]*focusAttachmentPreviewSource\(sourceId\);/);
   assert.match(composerBar, /function handleAttachmentPreviewOpenChange\(nextOpen: boolean\): void \{/);
   assert.match(composerBar, /if \(!nextOpen\) \{\s*closeAttachmentPreview\(\);\s*\}/);
 });

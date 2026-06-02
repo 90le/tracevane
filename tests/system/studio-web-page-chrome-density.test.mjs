@@ -241,6 +241,11 @@ test("remaining dynamic style bindings are limited to runtime geometry and measu
     "apps/web-vue/src/features/chat/ComposerBar.vue": "keyboard viewport CSS variable handoff",
     "apps/web-vue/src/features/chat/ConversationPane.vue": "virtualized timeline placeholder height and mobile composer lift",
     "apps/web-vue/src/features/chat/MarkdownBlock.vue": "user-controlled preview scale and measured rendered markup size",
+    "apps/web-vue/src/features/terminal/TerminalFilePreviewPane.vue": "runtime geometry for preview tab context menu position",
+    "apps/web-vue/src/features/terminal/TerminalResourceExplorer.vue": "runtime geometry for tree indentation and resource context menu position",
+    "apps/web-vue/src/features/terminal/TerminalSessionPane.vue": "runtime geometry for split and preview pane sizing",
+    "apps/web-vue/src/features/terminal/TerminalTabRail.vue": "runtime geometry for terminal tab context menu position",
+    "apps/web-vue/src/features/terminal/TerminalWorkspacePage.vue": "runtime geometry for resource explorer width",
     "apps/web-vue/src/shared/components/AvatarFieldEditor.vue": "avatar crop coordinates and preview geometry",
     "apps/web-vue/src/shared/components/StudioSelect.vue": "portal menu position and width geometry",
   };
@@ -570,9 +575,14 @@ test("special full-height route shells stay feature-owned", () => {
     /\.main-content\.terminal-surface-route\s*\{[\s\S]*height:\s*100dvh;[\s\S]*overflow:\s*hidden;/,
   );
   assert.match(
-    terminalWorkspaceCss,
-    /\.main-content\.terminal-surface-route \.shell-route-stage\s*\{[\s\S]*display:\s*flex;[\s\S]*height:\s*100%;[\s\S]*padding:\s*0 2px 6px;[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
+    appVue,
+    /<StudioShellTopbar[\s\S]*v-if="!isChatSurface && !isFilesSurface && !isTerminalSurface"/,
   );
+  assert.match(
+    terminalWorkspaceCss,
+    /\.main-content\.terminal-surface-route \.shell-route-stage\s*\{[\s\S]*display:\s*flex;[\s\S]*height:\s*100%;[\s\S]*padding:\s*0;[\s\S]*border-radius:\s*var\(--studio-workspace-radius,\s*12px\);/,
+  );
+  assert.doesNotMatch(terminalWorkspaceCss, /\.main-content\.terminal-surface-route \.studio-shell-topbar/);
 });
 
 test("final DuoYuan token layer re-binds legacy root aliases", () => {

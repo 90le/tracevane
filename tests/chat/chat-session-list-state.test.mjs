@@ -129,6 +129,14 @@ test('selection helpers toggle, prune, and select visible sessions deterministic
     toggleSelectAllVisibleSessionKeys(['keep', 'a', 'b'], ['a', 'b'], true),
     ['keep'],
   );
+  assert.deepEqual(
+    toggleSelectAllVisibleSessionKeys(['keep', 'a', 'tail'], ['a', 'a', 'b'], false),
+    ['keep', 'a', 'tail', 'b'],
+  );
+  assert.deepEqual(
+    toggleSelectAllVisibleSessionKeys(['keep', 'a', 'tail', 'b'], ['a', 'a', 'b'], true),
+    ['keep', 'tail'],
+  );
 });
 
 test('deriveSessionSelectionState tracks current view batch affordances', () => {

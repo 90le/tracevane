@@ -8,6 +8,7 @@ import type { ConfigService } from '../modules/config/service.js';
 import type { CronService } from '../modules/cron/service.js';
 import type { DashboardService } from '../modules/dashboard/service.js';
 import type { FilesService } from '../modules/files/service.js';
+import type { GitService } from '../modules/git/service.js';
 import type { PluginsService } from '../modules/plugins/service.js';
 import type { SkillsService } from '../modules/skills/service.js';
 import type { SystemService } from '../modules/system/service.js';
@@ -22,6 +23,7 @@ export interface StudioServices {
   cron: CronService;
   dashboard: DashboardService;
   files: FilesService;
+  git: GitService;
   plugins: PluginsService;
   skills: SkillsService;
   system: SystemService;

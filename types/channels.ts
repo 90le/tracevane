@@ -44,8 +44,7 @@ export interface ChannelThreadBindingSummary {
   enabled: boolean;
   idleHours: number;
   maxAgeHours: number;
-  spawnSubagentSessions: boolean;
-  spawnAcpSessions: boolean;
+  spawnSessions: boolean;
 }
 
 export interface ChannelAccountSummary {

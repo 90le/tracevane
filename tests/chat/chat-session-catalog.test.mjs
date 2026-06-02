@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildChatSessionDestinationItems,
   buildChatSessionDestinationItemsFromOrganizer,
+  CHAT_SESSION_SEARCH_VISIBLE_LIMIT,
   CHAT_SESSION_VISIBLE_LIMITS,
   clampSessionContextMenuPosition,
   deriveSessionFilterChips,
@@ -127,6 +128,7 @@ test('session visible limits stay tightened to 20 for main and archive views', (
     archived: 20,
     observed: 20,
   });
+  assert.equal(CHAT_SESSION_SEARCH_VISIBLE_LIMIT, 60);
 });
 
 test('mergeSessionRowsForAgent replaces one agent slice without losing others', () => {
@@ -162,8 +164,30 @@ test('mergeSessionRowsForAgent can preserve explicitly protected missing rows du
   assert.deepEqual(merged.map((row) => row.key), ['alpha-new', 'alpha-pending', 'beta-keep']);
 });
 
-test('resolveSessionSectionWindow enforces initial caps but search bypasses them', () => {
-  const rows = Array.from({ length: CHAT_SESSION_VISIBLE_LIMITS.active + 5 }, (_, index) =>
+test('mergeSessionRowsForAgent preserves fresher local active runtime over stale incoming rows', () => {
+  const localActive = createSession('alpha-active', 'alpha', '2026-03-23T10:30:00.000Z', {
+    runtime: {
+      gatewayConnected: true,
+      sessionWritable: true,
+      activeRunId: 'run-active',
+      state: 'running',
+      lastEventAt: '2026-03-23T10:30:00.000Z',
+      lastAckAt: '2026-03-23T10:30:00.000Z',
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    },
+  });
+  const staleIncoming = createSession('alpha-active', 'alpha', '2026-03-23T10:00:00.000Z');
+
+  const merged = mergeSessionRowsForAgent([localActive], 'alpha', [staleIncoming]);
+
+  assert.equal(merged[0]?.key, 'alpha-active');
+  assert.equal(merged[0]?.runtime.activeRunId, 'run-active');
+  assert.equal(merged[0]?.runtime.state, 'running');
+});
+
+test('resolveSessionSectionWindow enforces initial caps and keeps large searches windowed', () => {
+  const rows = Array.from({ length: CHAT_SESSION_SEARCH_VISIBLE_LIMIT + 5 }, (_, index) =>
     createSession(`row-${index + 1}`, 'main', `2026-03-23T10:${String(index).padStart(2, '0')}:00.000Z`),
   );
 
@@ -172,14 +196,14 @@ test('resolveSessionSectionWindow enforces initial caps but search bypasses them
     searchActive: false,
   });
   assert.equal(limited.rows.length, CHAT_SESSION_VISIBLE_LIMITS.active);
-  assert.equal(limited.hiddenCount, 5);
+  assert.equal(limited.hiddenCount, rows.length - CHAT_SESSION_VISIBLE_LIMITS.active);
 
   const searched = resolveSessionSectionWindow(rows, {
     visibleCount: CHAT_SESSION_VISIBLE_LIMITS.active,
     searchActive: true,
   });
-  assert.equal(searched.rows.length, rows.length);
-  assert.equal(searched.hiddenCount, 0);
+  assert.equal(searched.rows.length, CHAT_SESSION_SEARCH_VISIBLE_LIMIT);
+  assert.equal(searched.hiddenCount, 5);
 });
 
 test('shouldRevealMoreSessionRowsOnScroll only triggers near the rail bottom', () => {

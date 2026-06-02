@@ -3,79 +3,138 @@
     <form
       v-if="searchVisible"
       class="code-file-editor__searchbar"
-      @submit.prevent="runFindNext"
+      role="search"
+      :aria-label="t('查找和替换', 'Find and replace')"
+      @submit.prevent.stop="runFindNext"
     >
-      <label class="code-file-editor__search-field">
-        <span>{{ t("查找", "Find") }}</span>
-        <input
-          ref="searchInputRef"
-          v-model="searchQuery"
-          type="search"
-          autocomplete="off"
-          :placeholder="t('输入关键字', 'Search text')"
-          @input="syncSearchQuery"
-          @keydown.escape.prevent="hideSearch"
-        />
-      </label>
-      <label class="code-file-editor__search-field">
-        <span>{{ t("替换", "Replace") }}</span>
-        <input
-          v-model="replaceQuery"
-          type="text"
-          autocomplete="off"
-          :disabled="readOnly"
-          :placeholder="readOnly ? t('只读文件', 'Read only') : t('替换为', 'Replace with')"
-          @input="syncSearchQuery"
-          @keydown.escape.prevent="hideSearch"
-        />
-      </label>
+      <div class="code-file-editor__search-stack">
+        <label class="code-file-editor__search-field code-file-editor__search-field--find">
+          <span>{{ t("查找", "Find") }}</span>
+          <input
+            ref="searchInputRef"
+            v-model="searchQuery"
+            type="search"
+            autocomplete="off"
+            :placeholder="t('输入关键字', 'Search text')"
+            @focus="activeSearchField = 'search'"
+            @input="syncSearchQuery()"
+            @keydown.enter.exact.prevent.stop="runFindNext"
+            @keydown.enter.shift.prevent.stop="runFindPrevious"
+            @keydown.escape.prevent.stop="hideSearch"
+          />
+          <output class="code-file-editor__search-status" aria-live="polite">
+            {{ searchStatusLabel }}
+          </output>
+        </label>
+        <label class="code-file-editor__search-field code-file-editor__search-field--replace">
+          <span>{{ t("替换", "Replace") }}</span>
+          <input
+            ref="replaceInputRef"
+            v-model="replaceQuery"
+            type="text"
+            autocomplete="off"
+            :disabled="readOnly"
+            :placeholder="readOnly ? t('只读文件', 'Read only') : t('替换为', 'Replace with')"
+            @focus="activeSearchField = 'replace'"
+            @input="syncSearchQuery()"
+            @keydown.enter.exact.prevent.stop="runFindNext"
+            @keydown.enter.shift.prevent.stop="runFindPrevious"
+            @keydown.escape.prevent.stop="hideSearch"
+          />
+        </label>
+      </div>
       <div class="code-file-editor__search-actions">
-        <button type="button" :disabled="!searchQuery" @click="runFindPrevious">
-          {{ t("上一个", "Prev") }}
-        </button>
-        <button type="submit" :disabled="!searchQuery">
-          {{ t("下一个", "Next") }}
-        </button>
-        <button type="button" :disabled="readOnly || !searchQuery" @click="runReplaceNext">
-          {{ t("替换", "Replace") }}
-        </button>
-        <button type="button" :disabled="readOnly || !searchQuery" @click="runReplaceAll">
-          {{ t("全部", "All") }}
+        <button
+          type="button"
+          class="code-file-editor__icon-button"
+          :disabled="!searchQuery"
+          :title="t('上一个结果 Shift+Enter', 'Previous result Shift+Enter')"
+          :aria-label="t('上一个结果', 'Previous result')"
+          @mousedown.prevent
+          @click="runFindPrevious"
+        >
+          <ChevronUp class="code-file-editor__icon" aria-hidden="true" />
         </button>
         <button
           type="button"
-          class="code-file-editor__toggle"
+          class="code-file-editor__icon-button"
+          :disabled="!searchQuery"
+          :title="t('下一个结果 Enter', 'Next result Enter')"
+          :aria-label="t('下一个结果', 'Next result')"
+          @mousedown.prevent
+          @click="runFindNext"
+        >
+          <ChevronDown class="code-file-editor__icon" aria-hidden="true" />
+        </button>
+        <span class="code-file-editor__search-divider" aria-hidden="true"></span>
+        <button
+          type="button"
+          class="code-file-editor__icon-button"
+          :disabled="readOnly || !searchQuery"
+          :title="t('替换当前结果', 'Replace current match')"
+          :aria-label="t('替换当前结果', 'Replace current match')"
+          @mousedown.prevent
+          @click="runReplaceNext"
+        >
+          <Replace class="code-file-editor__icon" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="code-file-editor__icon-button"
+          :disabled="readOnly || !searchQuery"
+          :title="t('全部替换', 'Replace all')"
+          :aria-label="t('全部替换', 'Replace all')"
+          @mousedown.prevent
+          @click="runReplaceAll"
+        >
+          <ReplaceAll class="code-file-editor__icon" aria-hidden="true" />
+        </button>
+        <span class="code-file-editor__search-divider" aria-hidden="true"></span>
+        <button
+          type="button"
+          class="code-file-editor__toggle code-file-editor__icon-button"
           :class="{ active: searchCaseSensitive }"
           :title="t('区分大小写', 'Case sensitive')"
+          :aria-label="t('区分大小写', 'Case sensitive')"
+          :aria-pressed="searchCaseSensitive"
+          @mousedown.prevent
           @click="toggleSearchOption('case')"
         >
-          Aa
+          <CaseSensitive class="code-file-editor__icon" aria-hidden="true" />
         </button>
         <button
           type="button"
-          class="code-file-editor__toggle"
+          class="code-file-editor__toggle code-file-editor__icon-button"
           :class="{ active: searchWholeWord }"
           :title="t('全词匹配', 'Whole word')"
+          :aria-label="t('全词匹配', 'Whole word')"
+          :aria-pressed="searchWholeWord"
+          @mousedown.prevent
           @click="toggleSearchOption('word')"
         >
-          W
+          <WholeWord class="code-file-editor__icon" aria-hidden="true" />
         </button>
         <button
           type="button"
-          class="code-file-editor__toggle"
+          class="code-file-editor__toggle code-file-editor__icon-button"
           :class="{ active: searchRegexp }"
           :title="t('正则表达式', 'Regular expression')"
+          :aria-label="t('正则表达式', 'Regular expression')"
+          :aria-pressed="searchRegexp"
+          @mousedown.prevent
           @click="toggleSearchOption('regexp')"
         >
-          .*
+          <Regex class="code-file-editor__icon" aria-hidden="true" />
         </button>
         <button
           type="button"
-          class="code-file-editor__close-search"
+          class="code-file-editor__close-search code-file-editor__icon-button"
           :aria-label="t('关闭查找', 'Close search')"
+          :title="t('关闭查找', 'Close search')"
+          @mousedown.prevent
           @click="hideSearch"
         >
-          <X class="drawer-close-icon" aria-hidden="true" />
+          <X class="code-file-editor__icon" aria-hidden="true" />
         </button>
       </div>
       <p v-if="searchError" class="code-file-editor__search-error">{{ searchError }}</p>
@@ -103,8 +162,17 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { SearchQuery, findNext, findPrevious, highlightSelectionMatches, replaceAll, replaceNext, search, setSearchQuery } from "@codemirror/search";
 import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { X } from "@lucide/vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  CaseSensitive,
+  ChevronDown,
+  ChevronUp,
+  Regex,
+  Replace,
+  ReplaceAll,
+  WholeWord,
+  X,
+} from "@lucide/vue";
 import "./files-workspace.css";
 
 const props = withDefaults(
@@ -131,6 +199,8 @@ const emit = defineEmits<{
 
 const hostRef = ref<HTMLDivElement | null>(null);
 const searchInputRef = ref<HTMLInputElement | null>(null);
+const replaceInputRef = ref<HTMLInputElement | null>(null);
+const activeSearchField = ref<"search" | "replace">("search");
 const searchVisible = ref(false);
 const searchQuery = ref("");
 const replaceQuery = ref("");
@@ -138,12 +208,25 @@ const searchCaseSensitive = ref(false);
 const searchWholeWord = ref(false);
 const searchRegexp = ref(false);
 const searchError = ref("");
+const searchMatchCount = ref(0);
+const searchCurrentIndex = ref(0);
+const searchMatchOverflow = ref(false);
 let view: EditorView | null = null;
 const editableCompartment = new Compartment();
 const languageCompartment = new Compartment();
 const themeCompartment = new Compartment();
 let syncingFromOutside = false;
 let languageLoadToken = 0;
+const SEARCH_MATCH_COUNT_LIMIT = 5000;
+
+const searchStatusLabel = computed(() => {
+  if (!searchVisible.value) return "";
+  if (searchError.value) return searchError.value;
+  if (!searchQuery.value) return t("输入内容开始查找", "Type to search");
+  if (!searchMatchCount.value) return t("无结果", "No results");
+  const total = searchMatchOverflow.value ? `${SEARCH_MATCH_COUNT_LIMIT}+` : String(searchMatchCount.value);
+  return `${searchCurrentIndex.value || 1} / ${total}`;
+});
 
 function t(zh: string, en: string): string {
   return props.text ? props.text(zh, en) : zh;
@@ -370,6 +453,7 @@ function createEditor(): void {
         EditorView.updateListener.of((update) => {
           if (!update.docChanged || syncingFromOutside) return;
           emit("update:modelValue", update.state.doc.toString());
+          if (searchVisible.value) updateSearchStats(buildSearchQuery(), update.view);
         }),
       ],
     }),
@@ -396,13 +480,54 @@ function syncSearchQuery(targetView = view): SearchQuery | null {
   targetView.dispatch({
     effects: setSearchQuery.of(query),
   });
+  updateSearchStats(query, targetView);
   return query;
 }
 
-async function focusSearchInput(): Promise<void> {
+function updateSearchStats(query = buildSearchQuery(), targetView = view): void {
+  if (!targetView || !query.search || !query.valid) {
+    searchMatchCount.value = 0;
+    searchCurrentIndex.value = 0;
+    searchMatchOverflow.value = false;
+    return;
+  }
+  const selection = targetView.state.selection.main;
+  let count = 0;
+  let currentIndex = 0;
+  let firstAfterCursor = 0;
+  const cursor = query.getCursor(targetView.state);
+  for (let next = cursor.next(); !next.done; next = cursor.next()) {
+    count += 1;
+    const match = next.value;
+    if (selection.from === match.from && selection.to === match.to) {
+      currentIndex = count;
+    } else if (!firstAfterCursor && match.from >= selection.head) {
+      firstAfterCursor = count;
+    }
+    if (count >= SEARCH_MATCH_COUNT_LIMIT) {
+      searchMatchOverflow.value = !cursor.next().done;
+      break;
+    }
+  }
+  searchMatchCount.value = count;
+  searchCurrentIndex.value = currentIndex || firstAfterCursor || (count ? 1 : 0);
+  if (count < SEARCH_MATCH_COUNT_LIMIT) {
+    searchMatchOverflow.value = false;
+  }
+}
+
+async function focusSearchInput(select = true): Promise<void> {
   await nextTick();
   searchInputRef.value?.focus();
-  searchInputRef.value?.select();
+  if (select) searchInputRef.value?.select();
+}
+
+async function focusActiveSearchField(): Promise<void> {
+  await nextTick();
+  const input = activeSearchField.value === "replace"
+    ? replaceInputRef.value
+    : searchInputRef.value;
+  input?.focus();
 }
 
 function showSearch(targetView = view): void {
@@ -415,6 +540,7 @@ function showSearch(targetView = view): void {
       searchQuery.value = selection;
     }
   }
+  activeSearchField.value = "search";
   searchVisible.value = true;
   syncSearchQuery(targetView);
   void focusSearchInput();
@@ -426,7 +552,10 @@ function hideSearch(): void {
   view?.focus();
 }
 
-function runFindNextCommand(targetView = view): boolean {
+function runFindNextCommand(
+  targetView = view,
+  options: { focusTarget?: "editor" | "widget" } = {},
+): boolean {
   if (!targetView) return false;
   searchVisible.value = true;
   const query = syncSearchQuery(targetView);
@@ -435,11 +564,19 @@ function runFindNextCommand(targetView = view): boolean {
     return true;
   }
   findNext(targetView);
-  targetView.focus();
+  updateSearchStats(query, targetView);
+  if (options.focusTarget === "widget") {
+    void focusActiveSearchField();
+  } else {
+    targetView.focus();
+  }
   return true;
 }
 
-function runFindPreviousCommand(targetView = view): boolean {
+function runFindPreviousCommand(
+  targetView = view,
+  options: { focusTarget?: "editor" | "widget" } = {},
+): boolean {
   if (!targetView) return false;
   searchVisible.value = true;
   const query = syncSearchQuery(targetView);
@@ -448,16 +585,21 @@ function runFindPreviousCommand(targetView = view): boolean {
     return true;
   }
   findPrevious(targetView);
-  targetView.focus();
+  updateSearchStats(query, targetView);
+  if (options.focusTarget === "widget") {
+    void focusActiveSearchField();
+  } else {
+    targetView.focus();
+  }
   return true;
 }
 
 function runFindNext(): void {
-  runFindNextCommand();
+  runFindNextCommand(view, { focusTarget: "widget" });
 }
 
 function runFindPrevious(): void {
-  runFindPreviousCommand();
+  runFindPreviousCommand(view, { focusTarget: "widget" });
 }
 
 function runReplaceNext(): void {
@@ -465,7 +607,8 @@ function runReplaceNext(): void {
   const query = syncSearchQuery(view);
   if (!query?.valid || !query.search) return;
   replaceNext(view);
-  view.focus();
+  updateSearchStats(query, view);
+  void focusActiveSearchField();
 }
 
 function runReplaceAll(): void {
@@ -473,7 +616,8 @@ function runReplaceAll(): void {
   const query = syncSearchQuery(view);
   if (!query?.valid || !query.search) return;
   replaceAll(view);
-  view.focus();
+  updateSearchStats(query, view);
+  void focusActiveSearchField();
 }
 
 function toggleSearchOption(option: "case" | "word" | "regexp"): void {

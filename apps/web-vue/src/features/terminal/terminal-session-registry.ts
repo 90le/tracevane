@@ -15,6 +15,10 @@ export interface TerminalSessionDescriptor extends Pick<
   SharedTerminalSessionDescriptor,
   | "sessionId"
   | "title"
+  | "profileId"
+  | "targetKind"
+  | "cwd"
+  | "pinned"
   | "status"
   | "source"
   | "canResume"
@@ -49,6 +53,10 @@ function normalizeSessionDescriptor(
   return {
     sessionId,
     title: String(session.title || sessionId).trim() || sessionId,
+    profileId: session.profileId ? String(session.profileId).trim() || null : null,
+    targetKind: session.targetKind || "local",
+    cwd: session.cwd ? String(session.cwd).trim() || null : null,
+    pinned: Boolean(session.pinned),
     status: session.status || "detached",
     source: session.source || "manual",
     canResume: Boolean(session.canResume),

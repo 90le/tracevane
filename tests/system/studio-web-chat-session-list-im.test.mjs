@@ -47,6 +47,10 @@ const sessionListFilters = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat/session-list-filters.ts'),
   'utf8',
 );
+const sessionListActions = fs.readFileSync(
+  path.join(rootDir, 'apps/web-vue/src/features/chat/session-list-actions.ts'),
+  'utf8',
+);
 const sessionListViewModel = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/chat/session-list-view-model.ts'),
   'utf8',
@@ -65,6 +69,9 @@ const {
   useSessionListViewModel,
   useSessionListWindows,
 } = await import('../../apps/web-vue/src/features/chat/session-list-view-model.ts');
+const {
+  useSessionListSelection,
+} = await import('../../apps/web-vue/src/features/chat/session-list-selection.ts');
 
 function createSession(key, agentId, source, overrides = {}) {
   return {
@@ -166,6 +173,28 @@ test('session list exposes all folders archived scope tabs and metadata search',
   assert.match(sessionListScopeTabs, /全部/);
   assert.match(sessionListScopeTabs, /文件夹/);
   assert.match(sessionListScopeTabs, /归档/);
+  assert.match(sessionListPanel, /@open-create-folder="openCreateFolderFromHeader"/);
+  assert.match(sessionListPanel, /async function openCreateFolderFromHeader\(\): Promise<void> \{[\s\S]*viewModel\.setListScope\('folders'\);[\s\S]*await nextTick\(\);[\s\S]*actions\.emitCreateFolder\(\);/);
+  assert.match(sessionListPanel, /@new-chat="openNewChatFromHeader"/);
+  assert.match(sessionListPanel, /function openNewChatFromHeader\(\): void \{[\s\S]*viewModel\.archiveViewOpen\.value[\s\S]*viewModel\.setListScope\('all'\);[\s\S]*emit\('new-chat'\);/);
+  assert.match(sessionListPanel, /const sessionDisplayMetaCache = new Map/);
+  assert.match(sessionListPanel, /const SESSION_DISPLAY_META_CACHE_LIMIT = 240;/);
+  assert.match(sessionListPanel, /function buildSessionDisplayMetaSignature/);
+  assert.doesNotMatch(sessionListPanel, /const sessionDisplayMetaByKey = computed/);
+  assert.doesNotMatch(sessionListPanel, /const displaySessions = computed/);
+  assert.match(sessionListPanel, /function agentNameFor\(session: ChatSessionRow\): string \{\n\s+return sessionDisplayMeta\(session\)\.agentName;/);
+  assert.match(sessionRowList, /const props = defineProps<\{/);
+  assert.match(sessionRowList, /v-memo="sessionRowMemoKey\(session\)"/);
+  assert.match(sessionRowList, /v-memo="sessionRowMemoKey\(session, true\)"/);
+  assert.match(sessionRowList, /function sessionRowMemoKey\(session: ChatSessionRow, observed = false\): unknown\[] \{/);
+  assert.match(sessionRowList, /locale\.value/);
+  assert.match(sessionRowList, /props\.agentNameFor\(session\)/);
+  assert.match(sessionRowList, /props\.agentAvatarFor\(session\)/);
+  assert.match(sessionRowList, /props\.isSessionSelected\(session\.key\)/);
+  assert.match(sessionListPanel, /selectionMode: selection\.selectionMode,/);
+  assert.match(sessionListActions, /selectionMode: ReadonlyRef<boolean>;/);
+  assert.match(sessionListActions, /if \(!params\.selectionMode\.value\) \{\n\s+return \[\];\n\s+\}/);
+  assert.match(sessionListActions, /watch\(\(\) => params\.selectionMode\.value, \(active\) => \{[\s\S]*if \(!active\) \{[\s\S]*closeFolderPicker\(\);/);
 });
 
 test('session list components keep styling in the shared feature stylesheet', () => {
@@ -230,8 +259,10 @@ test('folder scope keeps agent/source filter options from descendant sessions an
   const filters = useSessionListFilters({
     baseActiveSessions: viewModel.baseActiveSessions,
     baseArchivedSessions: viewModel.baseArchivedSessions,
+    archivedSessions,
     baseObservedSessions: viewModel.baseObservedSessions,
     orderedFolders: viewModel.orderedFolders,
+    archivedEntry: viewModel.archivedEntry,
     currentFolder: viewModel.currentFolder,
     listScope: viewModel.listScope,
     archiveViewOpen: viewModel.archiveViewOpen,
@@ -268,9 +299,10 @@ test('folder scope keeps agent/source filter options from descendant sessions an
   assert.deepEqual(viewModel.baseActiveSessions.value.map((session) => session.key), ['loose-root-session']);
 
   viewModel.setListScope('folders');
-  assert.deepEqual(filters.availableAgentOptions.value.map((option) => option.id), ['alpha', 'beta']);
-  assert.deepEqual(filters.availableSourceOptions.value.map((option) => option.id), ['external', 'studio']);
-  assert.deepEqual(filters.visibleFolderEntries.value.map((entry) => entry.id), ['folder-root', 'folder-child']);
+  assert.deepEqual(viewModel.baseActiveSessions.value.map((session) => session.key), ['loose-root-session']);
+  assert.deepEqual(filters.availableAgentOptions.value.map((option) => option.id), ['alpha', 'beta', 'delta', 'gamma']);
+  assert.deepEqual(filters.availableSourceOptions.value.map((option) => option.id), ['external', 'studio', 'system']);
+  assert.deepEqual(filters.visibleFolderEntries.value.map((entry) => entry.id), ['folder-root', 'folder-child', 'built-in:archived']);
   assert.equal(windows.hasVisibleContent.value, true);
   assert.equal(windows.currentViewSummary.value, '');
 
@@ -290,4 +322,79 @@ test('folder scope keeps agent/source filter options from descendant sessions an
   assert.deepEqual(filters.availableSourceOptions.value.map((option) => option.id), ['system']);
   assert.deepEqual(windows.visibleArchivedSessions.value.map((session) => session.key), ['archived-session']);
   assert.match(windows.currentViewSummary.value, /1 archived chats/);
+});
+
+test('session filtering avoids full searchable text construction until a query is present', () => {
+  const activeSessions = ref([
+    createSession('plain-session', 'alpha', 'studio'),
+  ]);
+  let titleCalls = 0;
+  let previewCalls = 0;
+
+  const filters = useSessionListFilters({
+    baseActiveSessions: activeSessions,
+    baseArchivedSessions: ref([]),
+    archivedSessions: ref([]),
+    baseObservedSessions: ref([]),
+    orderedFolders: ref([]),
+    archivedEntry: ref(null),
+    currentFolder: ref(null),
+    listScope: ref('all'),
+    archiveViewOpen: ref(false),
+    text: makeText,
+    agentNameFor: (session) => session.agentId,
+    sessionTitle: () => {
+      titleCalls += 1;
+      return 'Needle title';
+    },
+    sessionPreview: () => {
+      previewCalls += 1;
+      return 'Needle preview';
+    },
+    organizerFolderForSession: () => null,
+    collectFolderBranchSessions: () => [],
+    collectFolderBranchTitles: () => [],
+  });
+
+  assert.equal(filters.filteredActiveSessions.value.length, 1);
+  assert.equal(titleCalls, 0);
+  assert.equal(previewCalls, 0);
+
+  filters.searchText.value = 'needle';
+  assert.equal(filters.filteredActiveSessions.value.length, 1);
+  assert.equal(titleCalls > 0, true);
+  assert.equal(previewCalls > 0, true);
+});
+
+test('session selection summary stays cold until selection mode opens', () => {
+  const visibleSessions = ref([
+    createSession('selection-a', 'alpha', 'studio'),
+    createSession('selection-b', 'beta', 'studio'),
+  ]);
+  let canManageCalls = 0;
+  const selection = useSessionListSelection({
+    visibleActiveSessions: visibleSessions,
+    visibleArchivedSessions: ref([]),
+    allOrganizerSessions: visibleSessions,
+    organizer: ref({
+      folders: [],
+      folderOrder: [],
+      rootSessionOrder: [],
+      folderSessionOrder: {},
+      sessionFolderMap: {},
+    }),
+    canManageSession: (session) => {
+      canManageCalls += 1;
+      return session.permissions.writable;
+    },
+  });
+
+  assert.deepEqual(selection.manageableVisibleSessionKeys.value, []);
+  assert.deepEqual(selection.selectedManageableSessionKeys.value, []);
+  assert.equal(selection.allVisibleSessionsSelected.value, false);
+  assert.equal(canManageCalls, 0);
+
+  selection.setSelectionMode(true);
+  assert.deepEqual(selection.manageableVisibleSessionKeys.value, ['selection-a', 'selection-b']);
+  assert.equal(canManageCalls, 2);
 });

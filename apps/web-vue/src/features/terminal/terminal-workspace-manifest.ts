@@ -2,7 +2,9 @@ export type TerminalWorkspaceSectionKey =
   | "shell"
   | "tabs"
   | "actions"
-  | "recent";
+  | "profiles"
+  | "sessions"
+  | "transport";
 
 export interface TerminalWorkspaceSectionEntry {
   key: TerminalWorkspaceSectionKey;
@@ -46,23 +48,43 @@ export const TERMINAL_WORKSPACE_MANIFEST: ReadonlyArray<TerminalWorkspaceSection
     },
     {
       key: "actions",
-      label: "动作栏",
+      label: "命令菜单",
       routePath: "/terminal",
-      workspaceSurface: "terminal-actions",
+      workspaceSurface: "terminal-command-menu",
       frontendFile:
-        "apps/web-vue/src/features/terminal/TerminalActionPanel.vue",
+        "apps/web-vue/src/features/terminal/TerminalInspectorContent.vue",
       backendFile: "apps/api/modules/terminal/service.ts",
       testFile: "tests/terminal/terminal-action-catalog.test.mjs",
     },
     {
-      key: "recent",
-      label: "最近会话",
+      key: "profiles",
+      label: "启动配置",
       routePath: "/terminal",
-      workspaceSurface: "terminal-recent",
+      workspaceSurface: "terminal-profiles",
       frontendFile:
-        "apps/web-vue/src/features/terminal/TerminalRecentSessionRail.vue",
+        "apps/web-vue/src/features/terminal/TerminalInspectorContent.vue",
+      backendFile: "apps/api/modules/terminal/routes.ts",
+      testFile: "tests/terminal/terminal-profiles.test.mjs",
+    },
+    {
+      key: "sessions",
+      label: "会话管理",
+      routePath: "/terminal",
+      workspaceSurface: "terminal-sessions",
+      frontendFile:
+        "apps/web-vue/src/features/terminal/TerminalInspectorContent.vue",
       backendFile: "apps/api/modules/terminal/service.ts",
       testFile: "tests/terminal/terminal-workspace-state.test.mjs",
+    },
+    {
+      key: "transport",
+      label: "实时传输",
+      routePath: "/terminal",
+      workspaceSurface: "terminal-transport",
+      frontendFile:
+        "apps/web-vue/src/features/terminal/terminal-transport.ts",
+      backendFile: "apps/api/modules/terminal/service.ts",
+      testFile: "tests/terminal/terminal-transport.test.mjs",
     },
   ];
 

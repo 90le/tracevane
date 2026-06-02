@@ -170,6 +170,31 @@
         </div>
       </section>
 
+      <section class="config-block">
+        <div class="panel-head">
+          <h3 class="panel-heading-emph"><span class="panel-heading-mark" aria-hidden="true"></span><span>{{ text('Session 扩展字段', 'Session Extension Fields') }}</span></h3>
+        </div>
+        <div class="config-subsection-grid">
+          <section class="config-subsection">
+            <div class="config-subsection-head">
+              <h4>{{ text('低频 session 配置', 'Low-frequency session config') }}</h4>
+              <p>{{ text('用于 scope、identityLinks、store、sendPolicy、writeLock、maintenance 等当前没有独立控件的 OpenClaw 字段。', 'Use this for OpenClaw fields without dedicated controls yet, such as scope, identityLinks, store, sendPolicy, writeLock, and maintenance.') }}</p>
+            </div>
+            <label class="form-field form-field-full">
+              <span class="form-label">{{ text('Session 额外 JSON', 'Session Extra JSON') }}</span>
+              <textarea
+                v-model="form.session.extraJson"
+                class="form-textarea code-textarea"
+                rows="6"
+                spellcheck="false"
+                placeholder="{&#10;  &quot;sendPolicy&quot;: {},&#10;  &quot;maintenance&quot;: {}&#10;}"
+              />
+              <span class="field-hint">{{ text('保存时只会写入 OpenClaw 当前 schema 支持的 session 低频字段。', 'On save, only low-frequency session fields supported by the current OpenClaw schema are written.') }}</span>
+            </label>
+          </section>
+        </div>
+      </section>
+
       <!-- Summary -->
       <section class="config-block">
         <div class="panel-head">
@@ -235,6 +260,7 @@ export interface SessionFormState {
     idleHours: number;
     maxAgeHours: number;
   };
+  extraJson: string;
 }
 
 const props = defineProps<{

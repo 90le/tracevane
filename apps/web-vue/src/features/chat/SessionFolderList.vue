@@ -64,7 +64,12 @@
           </div>
           <div class="chat-shell-folder-subline">
             <span class="chat-shell-folder-count">
-              {{ text(`${folderSessionCount(entry.id)} 个会话`, `${folderSessionCount(entry.id)} chats`) }}
+              {{
+                text(
+                  `${isBuiltInArchivedEntry(entry) ? entry.sessionCount : folderSessionCount(entry.id)} 个会话`,
+                  `${isBuiltInArchivedEntry(entry) ? entry.sessionCount : folderSessionCount(entry.id)} chats`,
+                )
+              }}
             </span>
             <span class="chat-shell-folder-tag" :class="{ system: isBuiltInArchivedEntry(entry) }">
               {{

@@ -4,6 +4,8 @@ import json
 import re
 import time
 
+from browser_surface import wait_for_active_session, wait_for_chat_surface
+
 
 SCREENSHOT = Path("/tmp/openclaw-studio-chat-mvp-acceptance.png")
 
@@ -69,6 +71,23 @@ def bubble_signatures(page):
     )
 
 
+def wait_for_bubble_signatures_stable(page, timeout=8000):
+    deadline = time.monotonic() + (timeout / 1000)
+    previous = None
+    stable_ticks = 0
+    while time.monotonic() < deadline:
+        current = bubble_signatures(page)
+        if current and current == previous:
+            stable_ticks += 1
+            if stable_ticks >= 3:
+                return current
+        else:
+            stable_ticks = 0
+            previous = current
+        page.wait_for_timeout(250)
+    return bubble_signatures(page)
+
+
 def open_new_chat(page):
     button = page.locator(".chat-new-chat-trigger").first
     click_enabled(button)
@@ -81,13 +100,7 @@ def open_new_chat(page):
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
         raise AssertionError(f"create session response missing session.key: {payload}")
-    page.wait_for_function(
-        """() => (
-            document.querySelector('.chat-shell-session-row.active')
-            && document.querySelector('.chat-composer-editor[contenteditable="true"]')
-        )""",
-        timeout=30000,
-    )
+    wait_for_active_session(page, session_key)
     page.wait_for_load_state("networkidle")
     return session_key
 
@@ -172,10 +185,12 @@ def main() -> None:
                 seen_chat_urls.append(response.url)
 
         page.on("response", on_response)
-        page.goto("http://127.0.0.1:5176/chat/workbench", wait_until="domcontentloaded")
-        page.wait_for_load_state("networkidle")
-
-        expect(page.locator(".chat-shell-session-list")).to_be_visible()
+        wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench", (
+            ".chat-shell-session-list",
+            ".chat-conversation-pane",
+            ".chat-composer-editor",
+        ))
+        expect(page.locator(".chat-shell-session-list")).to_be_visible(timeout=30000)
         expect(page.locator(".chat-inspector-panel")).to_be_visible()
         expect(page.locator(".chat-conversation-pane")).to_be_visible()
         expect(page.locator(".chat-composer-editor")).to_be_visible()
@@ -246,10 +261,10 @@ def main() -> None:
                 "() => (document.querySelector('.chat-conversation-thread')?.textContent || '').trim().length > 0",
                 timeout=30000,
             )
+        bubble_signatures_before = wait_for_bubble_signatures_stable(page)
         result["initial_scroll_bottom"] = (not result["reload_target_has_history"]) or thread_bottom_distance(page) <= 100
         reload_target_url = page.url
         reload_thread_text_before = page.locator(".chat-conversation-thread").inner_text()
-        bubble_signatures_before = bubble_signatures(page)
 
         page.reload(wait_until="domcontentloaded")
         page.wait_for_load_state("networkidle")
@@ -258,12 +273,12 @@ def main() -> None:
                 "() => (document.querySelector('.chat-conversation-thread')?.textContent || '').trim().length > 0",
                 timeout=30000,
             )
+        bubble_signatures_after = wait_for_bubble_signatures_stable(page)
         reloaded_thread_text = page.locator(".chat-conversation-thread").inner_text()
         result["reload_restored_session"] = (
             page.url == reload_target_url
             and page.locator(".chat-shell-session-row.active").count() == 1
         )
-        bubble_signatures_after = bubble_signatures(page)
         result["reload_order_stable"] = (
             not result["reload_target_has_history"]
             or bubble_signatures_before == bubble_signatures_after

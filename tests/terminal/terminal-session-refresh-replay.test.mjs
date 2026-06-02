@@ -146,6 +146,182 @@ test("terminal service replays backlog for refresh-like reattach without lastSeq
   }
 });
 
+test("terminal service exposes launch profile catalog for IDE workspace launchers", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const service = createTestService(tempDir);
+
+  try {
+    const catalog = await service.listWorkspaceProfiles();
+    const byId = Object.fromEntries(
+      catalog.profiles.map((profile) => [profile.id, profile]),
+    );
+
+    assert.equal(byId["local-shell"]?.targetKind, "local");
+    assert.equal(byId["local-shell"]?.launchable, true);
+    assert.equal(byId["local-shell"]?.cwd, tempDir);
+    assert.equal(byId["agent-codex"]?.kind, "agent");
+    assert.equal(byId["marketplace-clawhub"]?.kind, "marketplace");
+    assert.equal(byId["marketplace-skillhub"]?.kind, "marketplace");
+    assert.equal(byId["remote-ssh"]?.targetKind, "ssh");
+    assert.equal(byId["remote-ssh"]?.launchable, false);
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal service attach responses include authoritative session descriptors", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const service = createTestService(tempDir);
+
+  try {
+    const attached = service.attachGatewayClient(
+      {
+        sid: "term-descriptor-contract",
+        profileId: "agent-codex",
+        targetKind: "local",
+        cwd: tempDir,
+        pinned: true,
+      },
+      { connId: "conn-live", emit: () => true },
+    );
+    const attachSessionEvent = attached.events.find(
+      (event) => event.type === "session",
+    );
+
+    assert.equal(attached.descriptor?.sessionId, attached.sid);
+    assert.equal(attached.descriptor?.status, "running");
+    assert.equal(attached.descriptor?.profileId, "agent-codex");
+    assert.equal(attached.descriptor?.targetKind, "local");
+    assert.equal(attached.descriptor?.cwd, tempDir);
+    assert.equal(attached.descriptor?.pinned, true);
+    assert.equal(attachSessionEvent?.descriptor?.sessionId, attached.sid);
+    assert.equal(attachSessionEvent?.descriptor?.profileId, "agent-codex");
+
+    const liveSessions = await service.listWorkspaceSessions();
+    const liveDescriptor = liveSessions.sessions.find(
+      (session) => session.sessionId === attached.sid,
+    );
+    assert.equal(liveDescriptor?.profileId, "agent-codex");
+
+    const streamed = service.attachStreamClient(
+      { sid: attached.sid },
+      {
+        streamId: "stream-live",
+        emit() {
+          return true;
+        },
+      },
+    );
+
+    assert.equal(streamed.descriptor?.sessionId, attached.sid);
+    assert.equal(streamed.descriptor?.status, "running");
+    assert.equal(streamed.descriptor?.profileId, "agent-codex");
+
+    const persisted = await service.listPersistedSessions();
+    const persistedDescriptor = persisted.sessions.find(
+      (session) => session.sessionId === attached.sid,
+    );
+    assert.equal(persistedDescriptor?.profileId, "agent-codex");
+    assert.equal(persistedDescriptor?.cwd, tempDir);
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal service starts new pty sessions in requested resource cwd", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const resourceDir = path.join(tempDir, "resource-folder");
+  fs.mkdirSync(resourceDir, { recursive: true });
+  const service = createTestService(tempDir);
+  const liveEvents = [];
+
+  try {
+    const attached = service.attachGatewayClient(
+      {
+        sid: "term-resource-cwd",
+        cwd: resourceDir,
+      },
+      {
+        connId: "conn-resource",
+        emit(event) {
+          liveEvents.push(event);
+          return true;
+        },
+      },
+    );
+
+    assert.equal(attached.descriptor?.cwd, resourceDir);
+
+    service.sendGatewayInput(
+      {
+        sid: attached.sid,
+        data: "pwd\r",
+        ackMode: "none",
+      },
+      { connId: "conn-resource" },
+    );
+
+    await waitFor(() =>
+      liveEvents.some(
+        (event) =>
+          event.type === "output"
+          && String(event.data || "").includes(resourceDir),
+      ));
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal service treats requested resource files as parent cwd", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const resourceDir = path.join(tempDir, "resource-folder");
+  const resourceFile = path.join(resourceDir, "notes.txt");
+  fs.mkdirSync(resourceDir, { recursive: true });
+  fs.writeFileSync(resourceFile, "open from file parent\n", "utf8");
+  const service = createTestService(tempDir);
+  const liveEvents = [];
+
+  try {
+    const attached = service.attachGatewayClient(
+      {
+        sid: "term-resource-file-cwd",
+        cwd: resourceFile,
+      },
+      {
+        connId: "conn-resource-file",
+        emit(event) {
+          liveEvents.push(event);
+          return true;
+        },
+      },
+    );
+
+    assert.equal(attached.descriptor?.cwd, resourceDir);
+
+    service.sendGatewayInput(
+      {
+        sid: attached.sid,
+        data: "pwd\r",
+        ackMode: "none",
+      },
+      { connId: "conn-resource-file" },
+    );
+
+    await waitFor(() =>
+      liveEvents.some(
+        (event) =>
+          event.type === "output"
+          && String(event.data || "").includes(resourceDir),
+      ));
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("terminal service requires explicit resume before reopening a persisted ended session id", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
   const service = createTestService(tempDir);
@@ -230,6 +406,96 @@ test("terminal service keeps fast gateway input off the full ack replay path", a
       ),
       true,
     );
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal service consumes leaked gateway resize controls before pty input", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const service = createTestService(tempDir);
+  const liveEvents = [];
+  const invalidResize = JSON.stringify({
+    type: "resize",
+    cols: null,
+    rows: null,
+  });
+  const validResize = JSON.stringify({
+    type: "resize",
+    cols: 120,
+    rows: 40,
+  });
+  const batchedResizeControls =
+    `${invalidResize}${invalidResize}\n${JSON.stringify({
+      type: "resize",
+      cols: 132,
+      rows: 44,
+    })}`;
+
+  try {
+    const attached = service.attachGatewayClient(
+      { sid: "term-leaked-gateway-resize" },
+      {
+        connId: "conn-live",
+        emit(event) {
+          liveEvents.push(event);
+          return true;
+        },
+      },
+    );
+
+    const invalidAck = service.sendGatewayInput(
+      {
+        sid: attached.sid,
+        data: invalidResize,
+        ackMode: "none",
+      },
+      { connId: "conn-live" },
+    );
+
+    assert.equal(invalidAck.ok, true);
+    assert.equal(invalidAck.events, undefined);
+
+    const resizeAck = service.sendGatewayInput(
+      {
+        sid: attached.sid,
+        data: validResize,
+      },
+      { connId: "conn-live" },
+    );
+
+    assert.equal(resizeAck.ok, true);
+
+    const batchedAck = service.sendGatewayInput(
+      {
+        sid: attached.sid,
+        data: batchedResizeControls,
+      },
+      { connId: "conn-live" },
+    );
+
+    assert.equal(batchedAck.ok, true);
+
+    const ledger = await service.listSessionLedger(attached.sid);
+    const inputPayloads = ledger
+      .filter((event) => event.type === "input")
+      .map((event) => String(event.detail?.data || ""));
+    const resizeEvents = ledger.filter((event) => event.type === "resize");
+
+    assert.equal(
+      inputPayloads.some((payload) => payload.includes('"type":"resize"')),
+      false,
+    );
+    assert.equal(
+      liveEvents.some(
+        (event) =>
+          event.type === "output"
+          && String(event.data || "").includes('"type":"resize"'),
+      ),
+      false,
+    );
+    assert.deepEqual(resizeEvents.at(-1)?.detail, { cols: 132, rows: 44 });
   } finally {
     service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });

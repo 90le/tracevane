@@ -114,11 +114,7 @@ test("provider settings exposes provider defaults and thread routing runtime fie
     providerSettingsPage,
     /fromBooleanSelectValue\(draft\.healthMonitorMode\)/,
   );
-  assert.match(
-    providerSettingsPage,
-    /draft\.threadBindings\.spawnSubagentSessions/,
-  );
-  assert.match(providerSettingsPage, /draft\.threadBindings\.spawnAcpSessions/);
+  assert.match(providerSettingsPage, /draft\.threadBindings\.spawnSessions/);
   assert.match(providerSettingsPage, /v-model="draft\.domain"/);
   assert.match(providerSettingsPage, /v-model="draft\.responsePrefix"/);
   assert.match(providerSettingsPage, /domain:\s*draft\.domain\s*\|\|\s*null/);

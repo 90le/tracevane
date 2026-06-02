@@ -42,13 +42,15 @@ function runCoverageScript() {
   return JSON.parse(stdout);
 }
 
-test("terminal workspace manifest covers shell tabs actions recent sections", () => {
+test("terminal workspace manifest covers shell tabs actions profiles sessions transport sections", () => {
   const manifestSource = fs.readFileSync(manifestFile, "utf8");
 
   assert.match(manifestSource, /key:\s*["']shell["']/);
   assert.match(manifestSource, /key:\s*["']tabs["']/);
   assert.match(manifestSource, /key:\s*["']actions["']/);
-  assert.match(manifestSource, /key:\s*["']recent["']/);
+  assert.match(manifestSource, /key:\s*["']profiles["']/);
+  assert.match(manifestSource, /key:\s*["']sessions["']/);
+  assert.match(manifestSource, /key:\s*["']transport["']/);
   assert.match(manifestSource, /workspaceSurface/);
 });
 
@@ -84,13 +86,23 @@ test("terminal workspace coverage script matches committed baseline inventory", 
     ),
   );
   assert.ok(
-    parsed.frontendFiles.includes(
+    !parsed.frontendFiles.includes(
       "apps/web-vue/src/features/terminal/TerminalActionPanel.vue",
     ),
   );
   assert.ok(
     parsed.frontendFiles.includes(
-      "apps/web-vue/src/features/terminal/TerminalRecentSessionRail.vue",
+      "apps/web-vue/src/features/terminal/TerminalInspectorContent.vue",
+    ),
+  );
+  assert.ok(
+    !parsed.frontendFiles.includes(
+      "apps/web-vue/src/features/terminal/TerminalSessionExplorer.vue",
+    ),
+  );
+  assert.ok(
+    parsed.frontendFiles.includes(
+      "apps/web-vue/src/features/terminal/terminal-transport.ts",
     ),
   );
   assert.ok(
@@ -102,4 +114,6 @@ test("terminal workspace coverage script matches committed baseline inventory", 
   assert.ok(
     parsed.tests.includes("tests/terminal/terminal-action-catalog.test.mjs"),
   );
+  assert.ok(parsed.tests.includes("tests/terminal/terminal-profiles.test.mjs"));
+  assert.ok(parsed.tests.includes("tests/terminal/terminal-transport.test.mjs"));
 });

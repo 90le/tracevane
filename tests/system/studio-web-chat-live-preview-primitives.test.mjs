@@ -27,9 +27,13 @@ test('markdown live preview uses reka dialog primitives instead of a hand-rolled
   assert.match(markdownBlock, /DialogOverlay/);
   assert.match(markdownBlock, /DialogContent/);
   assert.match(markdownBlock, /DialogClose/);
+  assert.match(markdownBlock, /DialogTitle/);
+  assert.match(markdownBlock, /DialogDescription/);
   assert.match(markdownBlock, /<DialogRoot :open="Boolean\(livePreview\)" @update:open="handleLivePreviewOpenChange">/);
   assert.match(markdownBlock, /<DialogOverlay[\s\S]*class="chat-live-preview-mask"[\s\S]*@mousemove="handlePreviewMouseMove"[\s\S]*@mouseup="handlePreviewMouseUp"[\s\S]*\/>/);
   assert.match(markdownBlock, /<DialogContent[\s\S]*as-child[\s\S]*@open-auto-focus="handleLivePreviewOpenAutoFocus"[\s\S]*@close-auto-focus="handleLivePreviewCloseAutoFocus"/);
+  assert.match(markdownBlock, /<DialogTitle as-child>[\s\S]*<span class="sr-only">\{\{ livePreview\?\.title \|\| 'Fullscreen preview' \}\}<\/span>/);
+  assert.match(markdownBlock, /<DialogDescription as-child>[\s\S]*<span class="sr-only">\{\{ livePreview\?\.loading \? 'Rendering fullscreen preview\.' : 'Preview rendered Markdown content fullscreen\.' \}\}<\/span>/);
   assert.doesNotMatch(markdownBlock, /<Teleport to="body">/);
   assert.doesNotMatch(markdownBlock, /role="dialog"/);
   assert.doesNotMatch(markdownBlock, /@click\.self="closeLivePreview"/);
@@ -87,7 +91,7 @@ test('markdown live preview scales rendered svg markup with explicit canvas boun
 });
 
 test('markdown live preview image export uses theme tokens instead of a hardcoded white canvas', () => {
-  assert.match(markdownBlock, /type HtmlPreviewThemeTokens/);
+  assert.match(markdownBlock, /HtmlPreviewThemeTokens/);
   assert.match(markdownBlock, /function readCssToken\(names: string\[\], fallback: string\): string \{/);
   assert.match(markdownBlock, /function readHtmlPreviewThemeTokens\(\): HtmlPreviewThemeTokens \{/);
   assert.match(markdownBlock, /getPropertyValue\(name\)/);
@@ -97,7 +101,7 @@ test('markdown live preview image export uses theme tokens instead of a hardcode
   assert.match(markdownBlock, /'--modal-panel-bg'/);
   assert.match(markdownBlock, /'--chat-modal-bg'/);
   assert.match(markdownBlock, /'--surface-base'/);
-  assert.match(markdownBlock, /buildHtmlPreviewDocument\(normalized, currentTheme\(\), readHtmlPreviewThemeTokens\(\)\)/);
+  assert.match(markdownBlock, /renderer\.buildHtmlPreviewDocument\(normalized, currentTheme\(\), readHtmlPreviewThemeTokens\(\)\)/);
   assert.match(markdownBlock, /function prepareOffscreenPreviewContainer\(container: HTMLElement\): void \{/);
   assert.match(markdownBlock, /backgroundColor:\s*readLivePreviewExportBackground\(\)/);
   assert.match(markdownBlock, /prepareOffscreenPreviewContainer\(container\);/);

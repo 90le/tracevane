@@ -262,10 +262,14 @@ const agentId = computed(() => {
   return typeof value === 'string' ? value : '';
 });
 
-const modelOptions = computed(() => [
-  { value: '', label: text('跟随系统默认', 'Inherit system default') },
-  ...availableModels.value.map((model) => ({ value: model, label: model })),
-]);
+const modelOptions = computed(() => {
+  const models = new Set(availableModels.value);
+  if (quickEdit.model.trim()) models.add(quickEdit.model.trim());
+  return [
+    { value: '', label: text('跟随系统默认', 'Inherit system default') },
+    ...Array.from(models).sort().map((model) => ({ value: model, label: model })),
+  ];
+});
 const heartbeatModeOptions = computed(() => [
   { value: 'inherit', label: text('继承全局', 'Inherit global') },
   { value: 'enabled', label: text('启用', 'Enabled') },

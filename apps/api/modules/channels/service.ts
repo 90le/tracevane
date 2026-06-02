@@ -833,8 +833,9 @@ function buildSummary(config: StudioServerConfig, openclawConfig: Record<string,
             enabled: channelConfig.threadBindings.enabled === true,
             idleHours: normalizeNumber(channelConfig.threadBindings.idleHours, 24, 1),
             maxAgeHours: normalizeNumber(channelConfig.threadBindings.maxAgeHours, 0, 0),
-            spawnSubagentSessions: channelConfig.threadBindings.spawnSubagentSessions === true,
-            spawnAcpSessions: channelConfig.threadBindings.spawnAcpSessions === true,
+            spawnSessions: channelConfig.threadBindings.spawnSessions === true
+              || channelConfig.threadBindings.spawnSubagentSessions === true
+              || channelConfig.threadBindings.spawnAcpSessions === true,
           }
           : null,
         accounts,
@@ -904,8 +905,7 @@ function writeThreadBindings(target: Record<string, any>, value: ChannelThreadBi
     enabled: value.enabled === true,
     idleHours: normalizeNumber(value.idleHours, 24, 1),
     maxAgeHours: normalizeNumber(value.maxAgeHours, 0, 0),
-    spawnSubagentSessions: value.spawnSubagentSessions === true,
-    spawnAcpSessions: value.spawnAcpSessions === true,
+    spawnSessions: value.spawnSessions === true,
   };
 }
 

@@ -11,6 +11,9 @@ from urllib.parse import unquote
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import expect, sync_playwright
 
+from browser_surface import wait_for_active_session, wait_for_chat_surface
+from upload_request import read_upload_payload
+
 
 SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-attachment-acceptance.png")
 
@@ -38,6 +41,11 @@ def fill_editor(page, locator, text):
     page.wait_for_timeout(150)
 
 
+def session_ref(session_key: str) -> str:
+    encoded = base64.urlsafe_b64encode(session_key.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"r1_{encoded}"
+
+
 def open_new_chat(page) -> str:
     click_enabled(page.locator(".chat-new-chat-trigger").first)
     picker = page.locator(".chat-agent-picker")
@@ -52,13 +60,15 @@ def open_new_chat(page) -> str:
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
         raise AssertionError(f"create session response missing session.key: {payload}")
-    page.wait_for_function(
-        """() => (
-            document.querySelector('.chat-shell-session-row.active')
-            && document.querySelector('.chat-composer-editor[contenteditable="true"]')
-        )""",
-        timeout=30000,
-    )
+    try:
+        wait_for_active_session(page, session_key, timeout=15000)
+    except PlaywrightTimeoutError:
+        page.goto(
+            f"http://127.0.0.1:5176/chat/s/{session_ref(session_key)}",
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        wait_for_active_session(page, session_key, timeout=60000)
     page.wait_for_load_state("networkidle")
     return session_key
 
@@ -137,12 +147,12 @@ def assert_file_ref_payload(payload: dict, file_name: str, label: str):
         raise AssertionError(f"{label} text must include a portable uploads: markdown ref: {text}")
 
 
-def wait_for_count(items: list[dict], count: int, label: str, timeout=10000):
+def wait_for_count(page, items: list[dict], count: int, label: str, timeout=10000):
     deadline = time.monotonic() + (timeout / 1000)
     while time.monotonic() < deadline:
         if len(items) >= count:
             return
-        time.sleep(0.05)
+        page.wait_for_timeout(50)
     raise AssertionError(f"timed out waiting for {label}; expected {count}, got {len(items)}")
 
 
@@ -161,7 +171,7 @@ def main() -> None:
         page = browser.new_page(viewport={"width": 1500, "height": 1000})
 
         def handle_send(route):
-            payload = route.request.post_data_json
+            payload = read_upload_payload(route.request)
             captured_send_payloads.append(payload)
             session_key = route_session_key(route.request.url, "/send")
             route.fulfill(
@@ -181,7 +191,7 @@ def main() -> None:
             )
 
         def handle_queue(route):
-            payload = route.request.post_data_json
+            payload = read_upload_payload(route.request)
             captured_queue_payloads.append(payload)
             session_key = route_session_key(route.request.url, "/queue")
             now = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
@@ -221,9 +231,7 @@ def main() -> None:
             else route.continue_(),
         )
 
-        page.goto("http://127.0.0.1:5176/chat/workbench", wait_until="domcontentloaded")
-        page.wait_for_load_state("networkidle")
-        expect(page.locator(".chat-shell-session-list")).to_be_visible()
+        wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
         open_new_chat(page)
 
         editor = page.locator(".chat-composer-editor[contenteditable='true']").first
@@ -244,11 +252,17 @@ def main() -> None:
             " && !document.querySelector('.chat-composer-editor[contenteditable=\"true\"]')?.textContent?.trim()",
             timeout=10000,
         )
+        page.wait_for_function(
+            "() => document.querySelector('.chat-composer-stop')"
+            " || /Streaming|运行中|生成中|回复生成中/i.test(document.querySelector('.chat-conversation-pane__status')?.textContent || '')"
+            " || /reply is still running|回复生成中|生成中/i.test(document.querySelector('.chat-composer-editor')?.getAttribute('data-placeholder') || '')",
+            timeout=30000,
+        )
 
         fill_editor(page, editor, f"{second_token} ")
         upload_file_and_insert(page, second_file)
         click_enabled(send_button)
-        wait_for_count(captured_queue_payloads, 1, "/queue POST")
+        wait_for_count(page, captured_queue_payloads, 1, "/queue POST")
         page.wait_for_function(
             "() => document.querySelector('.chat-queue-rail')"
             " && /附件 1|Assets 1/.test(document.querySelector('.chat-queue-rail')?.textContent || '')",

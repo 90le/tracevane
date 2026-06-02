@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import type http from "node:http";
 import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioApiContext } from "../../core/context.js";
 import type { StudioRouter } from "../../core/router.js";
@@ -46,6 +47,128 @@ function sendChatError(
       source: "studio",
     },
   });
+}
+
+type ChatMultipartUploadRequest = {
+  fileName: string;
+  mimeType?: string;
+  content: Buffer;
+};
+
+function requestContentType(req: http.IncomingMessage): string {
+  const value = req.headers["content-type"];
+  return Array.isArray(value) ? value.join("; ") : String(value || "");
+}
+
+function isMultipartFormData(req: http.IncomingMessage): boolean {
+  return requestContentType(req).toLowerCase().includes("multipart/form-data");
+}
+
+async function readRequestBuffer(req: http.IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+  return Buffer.concat(chunks);
+}
+
+function parseContentDisposition(value: string): Record<string, string> {
+  const parts = value.split(";").map((part) => part.trim()).filter(Boolean);
+  const result: Record<string, string> = {};
+  for (const part of parts.slice(1)) {
+    const equalsIndex = part.indexOf("=");
+    if (equalsIndex <= 0) {
+      continue;
+    }
+    const key = part.slice(0, equalsIndex).trim().toLowerCase();
+    let rawValue = part.slice(equalsIndex + 1).trim();
+    if (rawValue.startsWith('"') && rawValue.endsWith('"')) {
+      rawValue = rawValue.slice(1, -1).replace(/\\"/g, '"');
+    }
+    result[key] = rawValue;
+  }
+  return result;
+}
+
+function parseMultipartBoundary(contentType: string): string {
+  const match = /(?:^|;)\s*boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
+  const boundary = (match?.[1] || match?.[2] || "").trim();
+  if (!boundary) {
+    throw new Error("multipart boundary is required");
+  }
+  return boundary;
+}
+
+async function parseMultipartChatFileUpload(req: http.IncomingMessage): Promise<ChatMultipartUploadRequest> {
+  const contentType = requestContentType(req);
+  const boundary = parseMultipartBoundary(contentType);
+  const body = await readRequestBuffer(req);
+  const boundaryBuffer = Buffer.from(`--${boundary}`);
+  const headerTerminator = Buffer.from("\r\n\r\n");
+  const nextBoundaryPrefix = Buffer.from(`\r\n--${boundary}`);
+
+  let cursor = 0;
+  let fileName = "";
+  let mimeType = "";
+  let content: Buffer | null = null;
+
+  while (cursor < body.length) {
+    const boundaryIndex = body.indexOf(boundaryBuffer, cursor);
+    if (boundaryIndex < 0) {
+      break;
+    }
+    cursor = boundaryIndex + boundaryBuffer.length;
+    if (body[cursor] === 45 && body[cursor + 1] === 45) {
+      break;
+    }
+    if (body[cursor] === 13 && body[cursor + 1] === 10) {
+      cursor += 2;
+    }
+
+    const headerEnd = body.indexOf(headerTerminator, cursor);
+    if (headerEnd < 0) {
+      break;
+    }
+    const rawHeaders = body.slice(cursor, headerEnd).toString("utf8");
+    const headers = new Map<string, string>();
+    for (const line of rawHeaders.split(/\r\n/)) {
+      const colonIndex = line.indexOf(":");
+      if (colonIndex <= 0) {
+        continue;
+      }
+      headers.set(line.slice(0, colonIndex).trim().toLowerCase(), line.slice(colonIndex + 1).trim());
+    }
+
+    const dataStart = headerEnd + headerTerminator.length;
+    const dataEnd = body.indexOf(nextBoundaryPrefix, dataStart);
+    if (dataEnd < 0) {
+      break;
+    }
+
+    const disposition = parseContentDisposition(headers.get("content-disposition") || "");
+    const fieldName = disposition.name || "";
+    const fieldValue = body.slice(dataStart, dataEnd);
+    if (fieldName === "file") {
+      fileName = disposition.filename || fileName;
+      mimeType = headers.get("content-type") || mimeType;
+      content = fieldValue;
+    } else if (fieldName === "fileName") {
+      fileName = fieldValue.toString("utf8").trim() || fileName;
+    } else if (fieldName === "mimeType") {
+      mimeType = fieldValue.toString("utf8").trim() || mimeType;
+    }
+
+    cursor = dataEnd + 2;
+  }
+
+  if (!content || !content.length) {
+    throw new Error("multipart upload file is required");
+  }
+  return {
+    fileName: fileName || "upload.bin",
+    mimeType: mimeType || undefined,
+    content,
+  };
 }
 
 export function registerChatRoutes(
@@ -635,6 +758,16 @@ export function registerChatRoutes(
     "/api/chat/sessions/:sessionKey/upload",
     async (req, res, routeCtx, params) => {
       try {
+        if (isMultipartFormData(req)) {
+          const payload = await parseMultipartChatFileUpload(req);
+          sendJson(
+            res,
+            200,
+            await routeCtx.services.chat.uploadFileBytes(params.sessionKey, payload),
+          );
+          return;
+        }
+
         const payload = await parseJsonBody<ChatFileUploadRequest>(req);
         sendJson(
           res,

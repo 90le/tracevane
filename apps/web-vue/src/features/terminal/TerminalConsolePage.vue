@@ -5,86 +5,12 @@
     data-testid="terminal-console-surface"
     data-context-policy="none"
   >
-    <div v-if="noticeMessage" class="status-banner" :class="noticeMessage.kind === 'error' ? 'status-banner-error' : 'status-banner-success'">
-      {{ noticeMessage.text }}
-    </div>
-
     <section class="terminal-console-main">
-      <header v-if="props.showToolbar" class="terminal-console-header">
-        <div class="terminal-console-header-left">
-          <StatusPill
-            :label="connected ? text('终端已连接', 'Terminal connected') : text('终端未连接', 'Terminal disconnected')"
-            :tone="connected ? 'sage' : 'neutral'"
-          />
-          <span class="terminal-console-header-chip">{{ terminalRendererLabel }}</span>
-          <span v-if="terminalScreenModeLabel" class="terminal-console-header-chip terminal-console-header-chip--mode">{{ terminalScreenModeLabel }}</span>
-          <span class="terminal-console-header-chip">{{ text('当前终端', 'Active shell') }} · {{ activeCliLabel }}</span>
-          <span class="terminal-console-header-chip">{{ text('会话', 'Session') }} · {{ sessionPreview }}</span>
-          <span v-if="terminalTitleLabel" class="terminal-console-header-chip">{{ text('标题', 'Title') }} · {{ terminalTitleLabel }}</span>
-          <span v-if="terminalProgressLabel" class="terminal-console-header-chip" :class="terminalProgressChipClass">{{ terminalProgressLabel }}</span>
-          <span v-if="terminalStatusLabel" class="terminal-console-header-chip terminal-console-header-chip--status">{{ terminalStatusLabel }}</span>
-        </div>
-
-        <div class="terminal-console-header-actions">
-          <button type="button" class="secondary-button compact-button" :disabled="endingTerminal || !connected" @click="resetTerminal('terminal ended; new terminal ready')">
-            {{ endingTerminal ? text('处理中…', 'Processing...') : text('结束终端', 'End terminal') }}
-          </button>
-          <button type="button" class="secondary-button compact-button" :disabled="endingTerminal" @click="resetTerminal('new terminal created')">
-            {{ text('新建终端', 'New terminal') }}
-          </button>
-          <button type="button" class="secondary-button compact-button" :disabled="endingTerminal || !termReady" @click="reconnect">
-            {{ text('重连', 'Reconnect') }}
-          </button>
-          <button type="button" class="secondary-button compact-button" :disabled="!termReady" @click="clearTerminal">
-            {{ text('清屏', 'Clear') }}
-          </button>
-          <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('claude')" @click="launchCli('claude')">
-            Claude
-          </button>
-          <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('codex')" @click="launchCli('codex')">
-            Codex
-          </button>
-          <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('opencode')" @click="launchCli('opencode')">
-            OpenCode
-          </button>
-          <button type="button" class="secondary-button compact-button" :disabled="!canLaunch('bash')" @click="launchCli('bash')">
-            Shell
-          </button>
-        </div>
-      </header>
-
-      <div v-else-if="hasTerminalTelemetry" class="terminal-console-meta-strip">
-        <span class="terminal-console-header-chip">{{ terminalRendererLabel }}</span>
-        <span v-if="terminalScreenModeLabel" class="terminal-console-header-chip terminal-console-header-chip--mode">{{ terminalScreenModeLabel }}</span>
-        <span v-if="terminalTitleLabel" class="terminal-console-header-chip">{{ text('标题', 'Title') }} · {{ terminalTitleLabel }}</span>
-        <span v-if="terminalProgressLabel" class="terminal-console-header-chip" :class="terminalProgressChipClass">{{ terminalProgressLabel }}</span>
-        <span v-if="terminalStatusLabel" class="terminal-console-header-chip terminal-console-header-chip--status">{{ terminalStatusLabel }}</span>
-      </div>
-
-      <div class="terminal-console-frame">
-        <div v-if="hasTerminalWorkbenchTelemetry" class="terminal-console-workbench-bar" data-testid="terminal-console-workbench-bar">
-          <div class="terminal-console-cli-state">
-            <span class="terminal-console-cli-state__dot" :class="`terminal-console-cli-state__dot--${terminalCliState.state}`"></span>
-            <span class="terminal-console-cli-state__label">{{ terminalCliStateLabel }}</span>
-            <span v-if="terminalCliDetailLabel" class="terminal-console-cli-state__detail">{{ terminalCliDetailLabel }}</span>
-          </div>
-          <progress
-            class="terminal-console-cli-progress"
-            :class="`terminal-console-cli-progress--${terminalCliState.state}`"
-            max="100"
-            :value="terminalCliProgressValue ?? undefined"
-            :aria-label="terminalCliDetailLabel || terminalCliStateLabel"
-          >
-            {{ terminalCliProgressValue ?? 100 }}%
-          </progress>
-          <div class="terminal-console-link-state">
-            <span>{{ terminalConnectionLabel }}</span>
-            <span v-if="terminalLatencyLabel">{{ terminalLatencyLabel }}</span>
-            <span>{{ terminalRendererLabel }}</span>
-            <span v-if="terminalScreenModeLabel">{{ terminalScreenModeLabel }}</span>
-          </div>
-        </div>
-
+      <div
+        class="terminal-console-frame"
+        :aria-label="terminalConsoleFrameLabel"
+        :title="terminalConsoleFrameLabel"
+      >
         <div ref="termContainer" class="terminal-container"></div>
       </div>
     </section>
@@ -100,8 +26,6 @@ import type {
   TerminalGatewayAckResponse,
   TerminalGatewayAttachResponse,
   TerminalGatewayEvent,
-  TerminalLaunchCli,
-  TerminalStatusPayload,
 } from '../../../../../types/terminal';
 import {
   STUDIO_TERMINAL_GATEWAY_EVENT,
@@ -109,7 +33,6 @@ import {
 } from '../../../../../types/terminal';
 import { useLocalePreference } from '../../shared/locale';
 import { getWebSocketBasePath, resolveStudioGatewayClientAuth } from '../../shared/api';
-import StatusPill from '../../components/StatusPill.vue';
 import { GatewayBrowserClient, type GatewayEventFrame } from '../../shared/gateway-client';
 import {
   getStudioRealtimeTransport,
@@ -118,28 +41,39 @@ import {
 } from '../../shared/runtime-config';
 import {
   buildTerminalStreamUrl,
-  endTerminalSession,
   fetchPersistedTerminalSessionLedger,
-  fetchTerminalLaunch,
-  fetchTerminalStatus,
 } from './api';
 import type { TerminalSessionDescriptor } from './terminal-session-registry';
 import { buildTerminalSessionReplayTranscript } from './terminal-session-history';
+import {
+  buildTerminalSocketUrl,
+  resolveTerminalTransportPlan,
+} from './terminal-transport';
+import {
+  isResizeTerminalControlPayload,
+  parseTerminalControlPayloads,
+} from './terminal-control-payload';
+import {
+  readPendingTerminalLaunchMetadata,
+  removePendingTerminalLaunchMetadata,
+} from './terminal-launch-metadata';
 import './terminal-workspace.css';
 import type { TerminalQueuedCommand } from './terminal-workspace-state';
 
 const props = withDefaults(defineProps<{
   sessionId?: string;
   queuedCommand?: TerminalQueuedCommand | null;
-  showToolbar?: boolean;
+  sessionDescriptor?: TerminalSessionDescriptor | null;
   embedded?: boolean;
   restoreTranscript?: boolean;
+  terminalTheme?: string;
 }>(), {
   sessionId: '',
   queuedCommand: null,
-  showToolbar: true,
+  sessionDescriptor: null,
   embedded: false,
   restoreTranscript: true,
+  terminalTheme: 'default',
 });
 
 const route = useRoute();
@@ -151,13 +85,8 @@ const emit = defineEmits<{
 }>();
 
 const termContainer = ref<HTMLElement | null>(null);
-const status = ref<TerminalStatusPayload | null>(null);
 const connected = ref(false);
-const activeCliLabel = ref(text('普通 Shell', 'Plain shell'));
-const endingTerminal = ref(false);
-const noticeMessage = ref<{ kind: 'success' | 'error'; text: string } | null>(null);
 const terminalFocused = ref(false);
-const terminalTitle = ref('');
 const terminalProgress = ref<{ state: 'running' | 'error' | 'paused' | 'indeterminate'; value: number | null } | null>(null);
 const terminalStatusHint = ref('');
 const terminalScreenMode = ref<'normal' | 'alternate'>('normal');
@@ -177,13 +106,11 @@ let gatewayClient: GatewayBrowserClient | null = null;
 let terminalStreamSource: EventSource | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let termDataDisposable: IDisposable | null = null;
-let titleChangeDisposable: IDisposable | null = null;
 let writeParsedDisposable: IDisposable | null = null;
 let oscProgressDisposable: IDisposable | null = null;
 let bufferChangeDisposable: IDisposable | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let statusPollTimer: ReturnType<typeof setInterval> | null = null;
 let gatewayInputRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let gatewayInputRecoverySeq = 0;
 let terminalStatusFrame: number | null = null;
@@ -193,6 +120,18 @@ let intentionalClose = false;
 const terminalSessionId = ref('');
 let terminalInstanceId = '';
 let lastOutputSeq = 0;
+let lastSentResizeCols = 0;
+let lastSentResizeRows = 0;
+let terminalFitFrame: number | null = null;
+let terminalPostLayoutFitFrame: number | null = null;
+let terminalFitRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let terminalFitRetryAttempts = 0;
+let terminalResizeTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingTerminalResize: TerminalResizeDimensions | null = null;
+let terminalRenderRefreshFrame: number | null = null;
+let appliedTerminalTheme = '';
+let appliedTerminalFontSize: number | null = null;
+let appliedTerminalLineHeight: number | null = null;
 let transcriptRestoreAttemptedSessionId = '';
 let transcriptRestoreRequestSeq = 0;
 let terminalDirectSocketActive = false;
@@ -251,19 +190,75 @@ function buildTerminalTheme(): ITheme {
   };
 }
 
+function resolveTerminalViewportWidth(): number {
+  return termContainer.value?.getBoundingClientRect().width || window.innerWidth || 0;
+}
+
+function resolveTerminalFontSize(): number {
+  const width = resolveTerminalViewportWidth();
+  if (width > 0 && width <= 380) return 8.5;
+  if (width > 0 && width <= 430) return 9;
+  if (width > 0 && width <= 540) return 9.5;
+  if (width > 0 && width <= 720) return 10.5;
+  return 14;
+}
+
+function resolveTerminalLineHeight(): number {
+  const width = resolveTerminalViewportWidth();
+  if (width > 0 && width <= 430) return 1.04;
+  if (width > 0 && width <= 720) return 1.08;
+  return 1.15;
+}
+
+function isMobileTerminalRenderingEnvironment(): boolean {
+  const userAgent = navigator.userAgent || '';
+  if (/\b(Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini)\b/i.test(userAgent)) {
+    return true;
+  }
+  const coarsePointer = Boolean(window.matchMedia?.('(pointer: coarse)').matches);
+  return navigator.maxTouchPoints > 1 && coarsePointer;
+}
+
+function shouldUseTerminalWebglRenderer(): boolean {
+  return !isMobileTerminalRenderingEnvironment();
+}
+
+function applyTerminalFontSizeCss(fontSize: number): void {
+  termContainer.value?.style.setProperty('--terminal-xterm-font-size', `${fontSize}px`);
+}
+
+function applyTerminalAppearance(options: { forceTheme?: boolean; postLayout?: boolean } = {}): void {
+  if (!termInstance) return;
+  const fontSize = resolveTerminalFontSize();
+  const lineHeight = resolveTerminalLineHeight();
+  const themeKey = String(props.terminalTheme || 'default');
+  applyTerminalFontSizeCss(fontSize);
+  if (options.forceTheme || appliedTerminalTheme !== themeKey) {
+    termInstance.options.theme = buildTerminalTheme();
+    appliedTerminalTheme = themeKey;
+  }
+  if (appliedTerminalFontSize !== fontSize) {
+    termInstance.options.fontSize = fontSize;
+    appliedTerminalFontSize = fontSize;
+  }
+  if (appliedTerminalLineHeight !== lineHeight) {
+    termInstance.options.lineHeight = lineHeight;
+    appliedTerminalLineHeight = lineHeight;
+  }
+  scheduleTerminalFit({ postLayout: options.postLayout ?? true });
+  scheduleTerminalRenderRefresh({ postLayout: options.postLayout ?? true });
+}
+
 const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
 const TERMINAL_IMMEDIATE_OUTPUT_LIMIT = 8 * 1024;
 const TERMINAL_BULK_OUTPUT_FLUSH_MS = 4;
 const TERMINAL_GATEWAY_COMMAND_RECOVERY_MS = 1_200;
+const TERMINAL_VISIBLE_MIN_SIZE = 8;
+const TERMINAL_LAYOUT_RETRY_MS = 80;
+const TERMINAL_LAYOUT_RETRY_MAX = 10;
+const TERMINAL_RESIZE_SEND_DEBOUNCE_MS = 48;
 
 const termReady = ref(false);
-const sessionPreview = computed(() => {
-  if (!terminalSessionId.value) return text('未初始化', 'Uninitialized');
-  return terminalSessionId.value.length <= 18
-    ? terminalSessionId.value
-    : `${terminalSessionId.value.slice(0, 8)}...${terminalSessionId.value.slice(-6)}`;
-});
-const terminalTitleLabel = computed(() => terminalTitle.value.trim());
 const terminalStatusLabel = computed(() => terminalStatusHint.value.trim());
 const terminalScreenModeLabel = computed(() =>
   terminalScreenMode.value === 'alternate'
@@ -293,14 +288,6 @@ const terminalProgressLabel = computed(() => {
     ? text('进度 · 运行中', 'Progress · Running')
     : text(`进度 · ${progress.value}%`, `Progress · ${progress.value}%`);
 });
-const terminalProgressChipClass = computed(() => {
-  const progress = terminalProgress.value;
-  if (!progress) return '';
-  return `terminal-console-header-chip--progress-${progress.state}`;
-});
-const hasTerminalTelemetry = computed(() =>
-  Boolean(terminalTitleLabel.value || terminalProgressLabel.value || terminalStatusLabel.value),
-);
 const terminalConnectionLabel = computed(() => {
   if (!connected.value) {
     return terminalSyncState.value === 'reconnecting'
@@ -320,39 +307,17 @@ const terminalLatencyLabel = computed(() => {
   if (terminalOutputLatencyMs.value !== null) {
     parts.push(text(`输出 · ${terminalOutputLatencyMs.value}ms`, `Output · ${terminalOutputLatencyMs.value}ms`));
   }
-  if (terminalLastHeartbeatAt.value) {
-    parts.push(text('心跳 · 正常', 'Heartbeat · OK'));
-  }
   return parts.join(' · ');
 });
-const terminalCliState = computed(() => deriveTerminalCliState({
-  title: terminalTitle.value,
-  status: terminalStatusHint.value,
-  progress: terminalProgress.value,
-  screenMode: terminalScreenMode.value,
-  connected: connected.value,
-}));
-const terminalCliStateLabel = computed(() => {
-  const state = terminalCliState.value;
-  return text(`${state.tool} · ${state.labelZh}`, `${state.tool} · ${state.labelEn}`);
-});
-const terminalCliDetailLabel = computed(() => {
-  const state = terminalCliState.value;
-  const parts = [
-    state.detail,
-    state.progressLabel,
-    state.elapsedLabel,
-    state.interruptible ? text('Esc 可中断', 'Esc interrupts') : '',
-  ].filter(Boolean);
-  return parts.join(' · ');
-});
-const terminalCliProgressValue = computed(() => {
-  const ratio = terminalCliState.value.progressRatio;
-  if (ratio === null) return null;
-  return Math.max(0, Math.min(100, Math.round(ratio * 100)));
-});
-const hasTerminalWorkbenchTelemetry = computed(() =>
-  Boolean(termReady.value || connected.value || terminalCliDetailLabel.value || terminalLatencyLabel.value || terminalScreenModeLabel.value),
+const terminalConsoleFrameLabel = computed(() =>
+  [
+    terminalConnectionLabel.value,
+    terminalLatencyLabel.value,
+    terminalRendererLabel.value,
+    terminalScreenModeLabel.value,
+    terminalProgressLabel.value,
+    terminalStatusLabel.value,
+  ].filter(Boolean).join(' · '),
 );
 
 type TerminalProgressState = {
@@ -360,17 +325,10 @@ type TerminalProgressState = {
   value: number | null;
 };
 
-type TerminalCliState = {
-  tool: string;
-  state: 'idle' | 'starting' | 'running' | 'waiting' | 'error';
-  labelZh: string;
-  labelEn: string;
-  detail: string;
-  progressLabel: string;
-  elapsedLabel: string;
-  progressRatio: number | null;
-  interruptible: boolean;
-};
+interface TerminalResizeDimensions {
+  cols: number;
+  rows: number;
+}
 
 const TERMINAL_STATUS_KEYWORDS = [
   'starting',
@@ -392,161 +350,29 @@ const TERMINAL_STATUS_KEYWORDS = [
   '进度',
 ];
 
-const TELEMETRY_TOOL_LABELS: Array<{ pattern: RegExp; label: string }> = [
-  { pattern: /\bcodex\b/i, label: 'Codex' },
-  { pattern: /\bclaude\b/i, label: 'Claude' },
-  { pattern: /\bopencode\b/i, label: 'OpenCode' },
-];
-
-function parseProgressParts(value: string): {
-  current: number;
-  total: number;
-  label: string;
-  ratio: number | null;
-} | null {
-  const match = value.match(/\b(\d+)\s*\/\s*(\d+)\b/);
-  if (!match) return null;
-  const current = Number.parseInt(match[1], 10);
-  const total = Number.parseInt(match[2], 10);
-  if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) return null;
-  return {
-    current,
-    total,
-    label: `${current}/${total}`,
-    ratio: Math.max(0, Math.min(1, current / total)),
-  };
-}
-
-function parseElapsedLabel(value: string): string {
-  const secondsMatch = value.match(/\((\d+)s\b/i) || value.match(/\b(\d+)s\s*(?:•|$)/i);
-  if (secondsMatch) return `${secondsMatch[1]}s`;
-  const minutesMatch = value.match(/\((\d+)m\s*(\d+)?s?\b/i);
-  if (!minutesMatch) return '';
-  const minutes = Number.parseInt(minutesMatch[1], 10);
-  const seconds = Number.parseInt(minutesMatch[2] || '0', 10);
-  return `${minutes}m${seconds ? ` ${seconds}s` : ''}`;
-}
-
-function inferTelemetryTool(source: string): string {
-  const normalized = normalizeTerminalTelemetryText(source);
-  const match = TELEMETRY_TOOL_LABELS.find((item) => item.pattern.test(normalized));
-  return match?.label || activeCliLabel.value || text('普通 Shell', 'Plain shell');
-}
-
-function deriveTerminalCliState(params: {
-  title: string;
-  status: string;
-  progress: TerminalProgressState | null;
-  screenMode: 'normal' | 'alternate';
-  connected: boolean;
-}): TerminalCliState {
-  const source = normalizeTerminalTelemetryText(`${params.title} ${params.status}`);
-  const tool = inferTelemetryTool(source);
-  const progressParts = parseProgressParts(source);
-  const elapsedLabel = parseElapsedLabel(source);
-  const explicitProgressRatio =
-    params.progress?.value !== null && params.progress?.value !== undefined
-      ? Math.max(0, Math.min(1, params.progress.value / 100))
-      : null;
-  const progressRatio = progressParts?.ratio ?? explicitProgressRatio;
-  const progressLabel =
-    progressParts?.label ||
-    (params.progress?.value !== null && params.progress?.value !== undefined
-      ? `${params.progress.value}%`
-      : '');
-  const detail = params.status || params.title || '';
-  const interruptible = /esc to interrupt|ctrl\+c|interrupt|可中断/i.test(source);
-
-  if (!params.connected) {
-    return {
-      tool,
-      state: 'waiting',
-      labelZh: '等待连接',
-      labelEn: 'Waiting for link',
-      detail,
-      progressLabel,
-      elapsedLabel,
-      progressRatio,
-      interruptible: false,
-    };
-  }
-
-  if (/panic|panicked|crashed|failed|error|exception|失败|错误|崩溃/i.test(source)) {
-    return {
-      tool,
-      state: 'error',
-      labelZh: '异常',
-      labelEn: 'Error',
-      detail,
-      progressLabel,
-      elapsedLabel,
-      progressRatio,
-      interruptible,
-    };
-  }
-
-  if (/starting|loading|connecting|installing|indexing|启动|加载|连接|安装|索引|mcp/i.test(source)) {
-    return {
-      tool,
-      state: 'starting',
-      labelZh: '启动中',
-      labelEn: 'Starting',
-      detail,
-      progressLabel,
-      elapsedLabel,
-      progressRatio,
-      interruptible,
-    };
-  }
-
-  if (
-    params.progress ||
-    params.screenMode === 'alternate' ||
-    /thinking|running|processing|compacting|执行|处理中|思考|运行/i.test(source)
-  ) {
-    return {
-      tool,
-      state: 'running',
-      labelZh: '运行中',
-      labelEn: 'Running',
-      detail,
-      progressLabel,
-      elapsedLabel,
-      progressRatio,
-      interruptible,
-    };
-  }
-
-  return {
-    tool,
-    state: 'idle',
-    labelZh: '就绪',
-    labelEn: 'Ready',
-    detail,
-    progressLabel,
-    elapsedLabel,
-    progressRatio,
-    interruptible,
-  };
-}
-
 function normalizeSessionId(value: unknown): string {
   return String(value || '').trim();
 }
 
-function setNotice(kind: 'success' | 'error', message: string): void {
-  noticeMessage.value = { kind, text: message };
+function setTerminalStatusMessage(message: string): void {
+  terminalStatusHint.value = String(message || '').trim();
 }
 
-function inferCliLabel(source: string): void {
-  const textValue = normalizeTerminalTelemetryText(source);
-  if (!textValue) return;
-  const match = TELEMETRY_TOOL_LABELS.find((item) => item.pattern.test(textValue));
-  if (!match) return;
-  activeCliLabel.value = match.label;
+function refreshTerminalLayout(): void {
+  if (!termInstance) return;
+  terminalFitRetryAttempts = 0;
+  const fontSize = resolveTerminalFontSize();
+  const lineHeight = resolveTerminalLineHeight();
+  if (fontSize !== appliedTerminalFontSize || lineHeight !== appliedTerminalLineHeight) {
+    applyTerminalAppearance({ postLayout: true });
+    return;
+  }
+  schedulePostLayoutFitSync();
+  scheduleTerminalRenderRefresh({ postLayout: true });
 }
 
 function focusTerminal(): void {
+  refreshTerminalLayout();
   termInstance?.focus();
 }
 
@@ -562,9 +388,21 @@ function handleTerminalFocusOut(event: FocusEvent): void {
   terminalFocused.value = false;
 }
 
-function emitSessionAttached(sessionId: string): void {
+function emitSessionAttached(
+  sessionId: string,
+  descriptor?: TerminalSessionDescriptor | null,
+): void {
   const normalizedSessionId = normalizeSessionId(sessionId);
   if (!normalizedSessionId) return;
+
+  if (descriptor?.sessionId) {
+    emit('sessionAttached', {
+      ...descriptor,
+      sessionId: normalizedSessionId,
+      handoffContext: descriptor.handoffContext || readRouteHandoffContext(),
+    });
+    return;
+  }
 
   emit('sessionAttached', {
     sessionId: normalizedSessionId,
@@ -579,11 +417,85 @@ function emitSessionAttached(sessionId: string): void {
   });
 }
 
-function schedulePostLayoutFitSync(): void {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      syncTerminalSize();
+function cancelScheduledTerminalFit(): void {
+  if (terminalFitFrame !== null) {
+    window.cancelAnimationFrame(terminalFitFrame);
+    terminalFitFrame = null;
+  }
+  if (terminalPostLayoutFitFrame !== null) {
+    window.cancelAnimationFrame(terminalPostLayoutFitFrame);
+    terminalPostLayoutFitFrame = null;
+  }
+}
+
+function cancelScheduledTerminalRenderRefresh(): void {
+  if (terminalRenderRefreshFrame === null) return;
+  window.cancelAnimationFrame(terminalRenderRefreshFrame);
+  terminalRenderRefreshFrame = null;
+}
+
+function cancelScheduledTerminalResize(): void {
+  pendingTerminalResize = null;
+  if (terminalResizeTimer === null) return;
+  window.clearTimeout(terminalResizeTimer);
+  terminalResizeTimer = null;
+}
+
+function clearTerminalFitRetry(): void {
+  terminalFitRetryAttempts = 0;
+  if (terminalFitRetryTimer === null) return;
+  window.clearTimeout(terminalFitRetryTimer);
+  terminalFitRetryTimer = null;
+}
+
+function scheduleTerminalFitRetry(): void {
+  if (terminalFitRetryTimer !== null) return;
+  if (terminalFitRetryAttempts >= TERMINAL_LAYOUT_RETRY_MAX) return;
+  terminalFitRetryAttempts += 1;
+  terminalFitRetryTimer = window.setTimeout(() => {
+    terminalFitRetryTimer = null;
+    scheduleTerminalFit({ postLayout: true });
+  }, TERMINAL_LAYOUT_RETRY_MS);
+}
+
+function scheduleTerminalFit(options: { postLayout?: boolean } = {}): void {
+  if (terminalFitFrame !== null || terminalPostLayoutFitFrame !== null) return;
+  const runFit = () => {
+    terminalFitFrame = null;
+    syncTerminalSize();
+    scheduleTerminalRenderRefresh();
+  };
+  if (options.postLayout) {
+    terminalPostLayoutFitFrame = window.requestAnimationFrame(() => {
+      terminalPostLayoutFitFrame = null;
+      terminalFitFrame = window.requestAnimationFrame(runFit);
     });
+    return;
+  }
+  terminalFitFrame = window.requestAnimationFrame(runFit);
+}
+
+function schedulePostLayoutFitSync(): void {
+  scheduleTerminalFit({ postLayout: true });
+}
+
+function scheduleTerminalRenderRefresh(options: { postLayout?: boolean } = {}): void {
+  if (!termInstance || !isMobileTerminalRenderingEnvironment()) return;
+  if (terminalRenderRefreshFrame !== null) return;
+
+  const runRefresh = () => {
+    terminalRenderRefreshFrame = null;
+    const term = termInstance;
+    if (!term || !isTerminalContainerRenderable()) return;
+    term.refresh(0, Math.max(0, term.rows - 1));
+  };
+
+  terminalRenderRefreshFrame = window.requestAnimationFrame(() => {
+    if (options.postLayout) {
+      terminalRenderRefreshFrame = window.requestAnimationFrame(runRefresh);
+      return;
+    }
+    runRefresh();
   });
 }
 
@@ -607,9 +519,12 @@ function saveRuntime(): void {
 function clearRuntime(): void {
   terminalInstanceId = '';
   lastOutputSeq = 0;
+  lastSentResizeCols = 0;
+  lastSentResizeRows = 0;
+  cancelScheduledTerminalResize();
+  cancelScheduledTerminalRenderRefresh();
+  clearTerminalFitRetry();
   transcriptRestoreAttemptedSessionId = '';
-  activeCliLabel.value = text('普通 Shell', 'Plain shell');
-  terminalTitle.value = '';
   terminalProgress.value = null;
   terminalStatusHint.value = '';
   terminalScreenMode.value = 'normal';
@@ -630,6 +545,11 @@ function clearRuntime(): void {
 function restoreRuntime(): void {
   terminalInstanceId = '';
   lastOutputSeq = 0;
+  lastSentResizeCols = 0;
+  lastSentResizeRows = 0;
+  cancelScheduledTerminalResize();
+  cancelScheduledTerminalRenderRefresh();
+  clearTerminalFitRetry();
   transcriptRestoreAttemptedSessionId = '';
   terminalDirectSocketActive = false;
   terminalHttpStreamFailed = false;
@@ -666,7 +586,10 @@ async function restorePersistedTranscriptIfNeeded(sessionId: string): Promise<bo
 
 function setSessionId(
   nextId: string,
-  options: { emitAttached?: boolean } = {},
+  options: {
+    emitAttached?: boolean;
+    descriptor?: TerminalSessionDescriptor | null;
+  } = {},
 ): void {
   terminalSessionId.value = isInvalidSessionId(nextId) ? generateSessionId() : nextId;
   try {
@@ -675,7 +598,8 @@ function setSessionId(
     // ignore
   }
   if (options.emitAttached) {
-    emitSessionAttached(terminalSessionId.value);
+    removePendingTerminalLaunchMetadata(globalThis.sessionStorage, terminalSessionId.value);
+    emitSessionAttached(terminalSessionId.value, options.descriptor);
   }
 }
 
@@ -710,63 +634,68 @@ function getSessionId(): string {
   return terminalSessionId.value;
 }
 
-async function refreshStatus(): Promise<void> {
-  try {
-    status.value = await fetchTerminalStatus();
-  } catch (error) {
-    setNotice('error', error instanceof Error ? error.message : text('读取终端状态失败。', 'Failed to load terminal status.'));
-  }
-}
-
-function canLaunch(cli: TerminalLaunchCli): boolean {
-  if (cli === 'bash') return connected.value;
-  const binary = status.value?.binaries.find((item) => item.id === cli);
-  return connected.value && Boolean(binary?.installed);
-}
-
-async function launchCli(cli: TerminalLaunchCli): Promise<void> {
-  try {
-    const result = await fetchTerminalLaunch({ cli });
-    sendTerminalInput(`${result.command}\n`);
-    activeCliLabel.value = result.label;
-    saveRuntime();
-  } catch (error) {
-    setNotice('error', error instanceof Error ? error.message : text('启动终端命令失败。', 'Failed to launch CLI command.'));
-  }
+function isTerminalContainerRenderable(): boolean {
+  const container = termContainer.value;
+  if (!container?.isConnected) return false;
+  const rect = container.getBoundingClientRect();
+  return rect.width >= TERMINAL_VISIBLE_MIN_SIZE && rect.height >= TERMINAL_VISIBLE_MIN_SIZE;
 }
 
 function fitTerminal() {
-  if (!fitAddon) return null;
+  if (!fitAddon || !isTerminalContainerRenderable()) return null;
   try {
     fitAddon.fit();
-    return fitAddon.proposeDimensions();
+    const dimensions = fitAddon.proposeDimensions();
+    if (
+      !dimensions
+      || !normalizeTerminalDimension(dimensions.cols)
+      || !normalizeTerminalDimension(dimensions.rows)
+    ) {
+      return null;
+    }
+    return dimensions;
   } catch {
     return null;
   }
 }
 
 function usesGatewayRpc(): boolean {
-  return getStudioRealtimeTransport() === 'gateway-rpc' && !terminalDirectSocketActive;
+  return resolveCurrentTransportPlan().useGatewayRpc;
 }
 
 function canUseDirectTerminalSocket(): boolean {
-  return getStudioRealtimeTransport() === 'gateway-rpc'
-    && !terminalDirectSocketFailed
-    && Boolean(getStudioTerminalDirectWebSocketUrl());
+  return resolveCurrentTransportPlan().useDirectSocket;
 }
 
 function canUseTerminalHttpStream(): boolean {
-  return getStudioRealtimeTransport() === 'gateway-rpc' && !terminalHttpStreamFailed;
+  return resolveCurrentTransportPlan().useHttpStream;
+}
+
+function resolveCurrentTransportPlan() {
+  return resolveTerminalTransportPlan({
+    realtimeTransport: getStudioRealtimeTransport(),
+    realtimeEnabled: isTerminalRealtimeEnabled(),
+    directSocketUrl: getStudioTerminalDirectWebSocketUrl(),
+    directSocketActive: terminalDirectSocketActive,
+    directSocketFailed: terminalDirectSocketFailed,
+    httpStreamFailed: terminalHttpStreamFailed,
+  });
 }
 
 function handleTerminalRealtimeEvent(payload: Record<string, unknown> | TerminalGatewayEvent): void {
   if (payload.type === 'error') {
-    setNotice('error', String(payload.message || 'terminal_error'));
+    setTerminalStatusMessage(String(payload.message || 'terminal_error'));
     return;
   }
   if (payload.type === 'session') {
     if (typeof payload.sid === 'string' && payload.sid.trim()) {
-      setSessionId(payload.sid, { emitAttached: true });
+      const descriptor = payload.descriptor && typeof payload.descriptor === 'object'
+        ? payload.descriptor as TerminalSessionDescriptor
+        : null;
+      setSessionId(payload.sid, {
+        emitAttached: true,
+        descriptor,
+      });
     }
     terminalInstanceId = String(payload.instanceId || '');
     // Do not advance lastOutputSeq from the session summary. Attach responses
@@ -823,8 +752,7 @@ function handleTerminalRealtimeEvent(payload: Record<string, unknown> | Terminal
     connected.value = false;
     terminalSyncState.value = 'reconnecting';
     clearGatewayInputRecovery();
-    setNotice(
-      'error',
+    setTerminalStatusMessage(
       text(
         '终端会话已结束，请重新连接。',
         'Terminal session ended. Reconnect to continue.',
@@ -853,6 +781,7 @@ function flushTerminalOutputQueue(): void {
   const output = terminalOutputQueue;
   terminalOutputQueue = '';
   termInstance.write(output);
+  scheduleTerminalRenderRefresh();
   scheduleTerminalStatusHint();
 }
 
@@ -866,6 +795,7 @@ function enqueueTerminalOutput(data: string): void {
   }
   if (!terminalOutputQueue && data.length <= TERMINAL_IMMEDIATE_OUTPUT_LIMIT) {
     termInstance.write(data);
+    scheduleTerminalRenderRefresh();
     scheduleTerminalStatusHint();
     return;
   }
@@ -960,7 +890,6 @@ function updateTerminalStatusHint(): void {
   }
 
   terminalStatusHint.value = nextHint;
-  inferCliLabel(nextHint);
 }
 
 function scheduleTerminalStatusHint(): void {
@@ -1044,6 +973,27 @@ function readRouteHandoffContext() {
   };
 }
 
+function buildSessionAttachMetadata(sessionId: string) {
+  const normalizedSessionId = normalizeSessionId(sessionId);
+  const descriptor = normalizeSessionId(props.sessionDescriptor?.sessionId) === normalizedSessionId
+    ? props.sessionDescriptor
+    : null;
+  const pendingMetadata = readPendingTerminalLaunchMetadata(
+    globalThis.sessionStorage,
+    normalizedSessionId,
+  );
+  const pendingPinned =
+    typeof pendingMetadata?.pinned === 'boolean' ? pendingMetadata.pinned : null;
+  return {
+    profileId: pendingMetadata?.profileId || descriptor?.profileId || null,
+    targetKind: pendingMetadata?.targetKind || descriptor?.targetKind || null,
+    cwd: pendingMetadata?.cwd || descriptor?.cwd || null,
+    pinned: pendingPinned ?? (
+      typeof descriptor?.pinned === 'boolean' ? descriptor.pinned : null
+    ),
+  };
+}
+
 async function attachGatewayTerminal(): Promise<void> {
   if (!gatewayClient) return;
   const sid = getSessionId();
@@ -1055,6 +1005,7 @@ async function attachGatewayTerminal(): Promise<void> {
     STUDIO_TERMINAL_GATEWAY_METHODS.attach,
     {
       sid,
+      ...buildSessionAttachMetadata(sid),
       lastSeq: lastOutputSeq || undefined,
       instanceId: terminalInstanceId || undefined,
       skipReplay: useHttpStream ? true : skipReplay || undefined,
@@ -1066,7 +1017,10 @@ async function attachGatewayTerminal(): Promise<void> {
   connected.value = true;
   terminalSyncState.value = 'syncing';
   if (response.sid) {
-    setSessionId(response.sid, { emitAttached: true });
+    setSessionId(response.sid, {
+      emitAttached: true,
+      descriptor: response.descriptor,
+    });
   }
   const attachOutputSeq = response.events
     .filter((event) => event.type === 'session')
@@ -1083,9 +1037,10 @@ async function attachGatewayTerminal(): Promise<void> {
   }
   terminalSyncState.value = 'live';
   saveRuntime();
-  syncTerminalSize();
+  lastSentResizeCols = 0;
+  lastSentResizeRows = 0;
+  scheduleTerminalFit();
   schedulePostLayoutFitSync();
-  void refreshStatus();
 }
 
 function scheduleGatewayInputRecovery(lastSeenSeq: number, delayMs = 120): void {
@@ -1125,6 +1080,7 @@ function startTerminalHttpStream(options: { skipReplay?: boolean } = {}): void {
 
   const source = new EventSource(
     buildTerminalStreamUrl(sid, {
+      ...buildSessionAttachMetadata(sid),
       lastSeq: lastOutputSeq || undefined,
       instanceId: terminalInstanceId || undefined,
       skipReplay: options.skipReplay,
@@ -1185,8 +1141,7 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
   const auth = resolveStudioGatewayClientAuth();
   if (!auth.gatewayUrl) {
     connected.value = false;
-    setNotice(
-      'error',
+    setTerminalStatusMessage(
       text(
         '未找到 Gateway 鉴权配置，无法建立终端实时链路。',
         'No Gateway auth configuration was found for terminal realtime.',
@@ -1199,7 +1154,7 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
     if (gatewayClient.connected) {
       void attachGatewayTerminal().catch((error) => {
         connected.value = false;
-        setNotice('error', error instanceof Error ? error.message : text('终端重连失败。', 'Failed to reattach terminal.'));
+        setTerminalStatusMessage(error instanceof Error ? error.message : text('终端重连失败。', 'Failed to reattach terminal.'));
       });
     }
     return;
@@ -1222,7 +1177,7 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
       startHeartbeat();
       void attachGatewayTerminal().catch((error) => {
         connected.value = false;
-        setNotice('error', error instanceof Error ? error.message : text('终端附着失败。', 'Failed to attach terminal.'));
+        setTerminalStatusMessage(error instanceof Error ? error.message : text('终端附着失败。', 'Failed to attach terminal.'));
       });
     },
     onEvent: (event: GatewayEventFrame) => {
@@ -1252,15 +1207,25 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
   client.start();
 }
 
-function sendTerminalResize(cols: number, rows: number): void {
+function normalizeTerminalDimension(value: number): number | null {
+  if (!Number.isFinite(value)) return null;
+  const normalized = Math.floor(value);
+  return normalized > 0 ? normalized : null;
+}
+
+function sendTerminalResize(cols: number, rows: number): boolean {
+  const safeCols = normalizeTerminalDimension(cols);
+  const safeRows = normalizeTerminalDimension(rows);
+  if (!safeCols || !safeRows) return false;
+
   if (usesGatewayRpc()) {
-    if (!gatewayClient?.connected) return;
+    if (!gatewayClient?.connected) return false;
     void requestGatewayTerminal(
       STUDIO_TERMINAL_GATEWAY_METHODS.resize,
       {
         sid: getSessionId(),
-        cols,
-        rows,
+        cols: safeCols,
+        rows: safeRows,
         lastSeq: lastOutputSeq || undefined,
         instanceId: terminalInstanceId || undefined,
       },
@@ -1269,14 +1234,41 @@ function sendTerminalResize(cols: number, rows: number): void {
       .catch(() => {
         recoverGatewayAttachment();
       });
-    return;
+    return true;
   }
 
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify({ type: 'resize', cols: safeCols, rows: safeRows }));
+  return true;
+}
+
+function queueTerminalResize(cols: number, rows: number): boolean {
+  const safeCols = normalizeTerminalDimension(cols);
+  const safeRows = normalizeTerminalDimension(rows);
+  if (!safeCols || !safeRows) return false;
+  if (safeCols === lastSentResizeCols && safeRows === lastSentResizeRows) return true;
+  if (pendingTerminalResize?.cols === safeCols && pendingTerminalResize.rows === safeRows) return true;
+
+  pendingTerminalResize = { cols: safeCols, rows: safeRows };
+  if (terminalResizeTimer !== null) return true;
+  terminalResizeTimer = window.setTimeout(flushQueuedTerminalResize, TERMINAL_RESIZE_SEND_DEBOUNCE_MS);
+  return true;
+}
+
+function flushQueuedTerminalResize(): void {
+  terminalResizeTimer = null;
+  const pending = pendingTerminalResize;
+  pendingTerminalResize = null;
+  if (!pending) return;
+  if (pending.cols === lastSentResizeCols && pending.rows === lastSentResizeRows) return;
+  if (!sendTerminalResize(pending.cols, pending.rows)) return;
+  lastSentResizeCols = pending.cols;
+  lastSentResizeRows = pending.rows;
 }
 
 function sendTerminalInput(data: string): boolean {
+  if (isLeakedTerminalControlPayload(data)) return true;
+
   if (usesGatewayRpc()) {
     if (!gatewayClient?.connected) return false;
     const lastSeenSeq = lastOutputSeq;
@@ -1324,6 +1316,21 @@ function sendTerminalInput(data: string): boolean {
   return true;
 }
 
+function isLeakedTerminalControlPayload(data: string): boolean {
+  const payloads = parseTerminalControlPayloads(data);
+  if (!payloads?.length) return false;
+  if (!payloads.every(isResizeTerminalControlPayload)) return false;
+
+  for (const payload of payloads) {
+    const cols = normalizeTerminalDimension(Number(payload.cols));
+    const rows = normalizeTerminalDimension(Number(payload.rows));
+    if (!cols || !rows) continue;
+    sendTerminalResize(cols, rows);
+  }
+
+  return true;
+}
+
 function dispatchQueuedCommandIfReady(): void {
   const normalizedSessionId = normalizeSessionId(props.sessionId);
   const queuedCommand = props.queuedCommand;
@@ -1339,8 +1346,13 @@ function dispatchQueuedCommandIfReady(): void {
 
 function syncTerminalSize(): void {
   const dims = fitTerminal();
-  if (!dims) return;
-  sendTerminalResize(dims.cols, dims.rows);
+  if (!dims) {
+    scheduleTerminalFitRetry();
+    return;
+  }
+  clearTerminalFitRetry();
+  if (dims.cols === lastSentResizeCols && dims.rows === lastSentResizeRows) return;
+  queueTerminalResize(dims.cols, dims.rows);
 }
 
 function stopHeartbeat(): void {
@@ -1395,8 +1407,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   if (!isTerminalRealtimeEnabled()) {
     connected.value = false;
     terminalSyncState.value = 'degraded';
-    setNotice(
-      'error',
+    setTerminalStatusMessage(
       text(
         '当前部署模式已挂到 Gateway，但终端实时链路还未启用。',
         'This deployment is mounted behind the Gateway, but terminal realtime is not enabled yet.',
@@ -1412,22 +1423,22 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
   disconnectTerminalHttpStream();
   if (!options.force && ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const basePath = getWebSocketBasePath();
-  const wsPath = basePath ? `${basePath}/ws/terminal` : '/ws/terminal';
-  const params = new URLSearchParams({ sid });
-  if (lastOutputSeq > 0) params.set('lastSeq', String(lastOutputSeq));
-  if (terminalInstanceId) params.set('instanceId', terminalInstanceId);
-  if (skipReplay) params.set('skipReplay', '1');
-  if (props.embedded) params.set('resume', '1');
-
   terminalDirectSocketActive = useDirectTerminalSocket;
   const directSocketUrl = useDirectTerminalSocket
     ? getStudioTerminalDirectWebSocketUrl()
     : '';
-  const socketUrl = directSocketUrl
-    ? `${directSocketUrl}?${params.toString()}`
-    : `${protocol}//${window.location.host}${wsPath}?${params.toString()}`;
+  const socketUrl = buildTerminalSocketUrl({
+    protocol: window.location.protocol === 'https:' ? 'wss:' : 'ws:',
+    host: window.location.host,
+    webSocketBasePath: getWebSocketBasePath(),
+    directSocketUrl,
+    sid,
+    ...buildSessionAttachMetadata(sid),
+    lastSeq: lastOutputSeq,
+    instanceId: terminalInstanceId,
+    skipReplay,
+    resume: props.embedded,
+  });
   const socket = new WebSocket(socketUrl);
   ws = socket;
   let directFallbackStarted = false;
@@ -1451,9 +1462,10 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
       reconnectTimer = null;
     }
     startHeartbeat();
-    syncTerminalSize();
+    lastSentResizeCols = 0;
+    lastSentResizeRows = 0;
+    scheduleTerminalFit();
     schedulePostLayoutFitSync();
-    void refreshStatus();
   };
 
   socket.onmessage = (event) => {
@@ -1519,60 +1531,6 @@ function reconnect(): void {
   connectWs({ force: true });
 }
 
-async function resetTerminal(message: string): Promise<void> {
-  if (endingTerminal.value) return;
-  endingTerminal.value = true;
-  intentionalClose = true;
-  stopHeartbeat();
-  connected.value = false;
-  terminalSyncState.value = 'reconnecting';
-  clearReconnectTimer();
-
-  if (ws) {
-    try { ws.close(); } catch {
-      // ignore
-    }
-    ws = null;
-  }
-  if (gatewayClient?.connected) {
-    void requestGatewayTerminal(
-      STUDIO_TERMINAL_GATEWAY_METHODS.detach,
-      { sid: getSessionId() },
-    ).catch(() => {
-      // ignore
-    });
-  }
-  disconnectGatewayClient();
-
-  try {
-    await endTerminalSession({ sid: getSessionId() });
-  } catch {
-    // ignore
-  }
-
-  clearRuntime();
-  const lockedSessionId = normalizeSessionId(props.sessionId);
-  if (lockedSessionId && !isInvalidSessionId(lockedSessionId)) {
-    setSessionId(lockedSessionId);
-  } else {
-    setSessionId(generateSessionId());
-  }
-  clearTerminalOutputQueue();
-  termInstance?.clear();
-  if (message) {
-    termInstance?.write(`\r\n\x1b[33m[${message}]\x1b[0m\r\n`);
-  }
-
-  intentionalClose = false;
-  if (usesGatewayRpc()) {
-    connectGatewayClient({ force: true });
-  } else {
-    connectWs({ force: true });
-  }
-  void refreshStatus();
-  endingTerminal.value = false;
-}
-
 function clearTerminal(): void {
   clearTerminalOutputQueue();
   termInstance?.clear();
@@ -1627,6 +1585,13 @@ async function pasteClipboard(): Promise<boolean> {
   }
 }
 
+function insertTerminalText(value: string): boolean {
+  const normalized = String(value || '');
+  if (!normalized) return false;
+  focusTerminal();
+  return sendTerminalInput(formatTerminalPaste(normalized));
+}
+
 function formatTerminalPaste(value: string): string {
   if (!termInstance?.modes.bracketedPasteMode) {
     return value;
@@ -1676,7 +1641,7 @@ async function initTerminal(): Promise<void> {
   await import('@xterm/xterm/css/xterm.css');
 
   const term = new Terminal({
-    fontSize: 14,
+    fontSize: resolveTerminalFontSize(),
     fontFamily: '"Cascadia Code", "JetBrains Mono", Menlo, Monaco, monospace',
     cursorBlink: true,
     cursorStyle: 'bar',
@@ -1688,7 +1653,7 @@ async function initTerminal(): Promise<void> {
     drawBoldTextInBrightColors: true,
     fastScrollSensitivity: 8,
     ignoreBracketedPasteMode: false,
-    lineHeight: 1.15,
+    lineHeight: resolveTerminalLineHeight(),
     macOptionIsMeta: true,
     macOptionClickForcesSelection: true,
     reflowCursorLine: true,
@@ -1705,43 +1670,52 @@ async function initTerminal(): Promise<void> {
   fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
   term.loadAddon(new WebLinksAddon());
-  try {
-    const { WebglAddon } = await import('@xterm/addon-webgl');
-    const webglAddon = new WebglAddon();
-    term.loadAddon(webglAddon);
-    terminalRenderer.value = 'webgl';
-    webglAddon.onContextLoss(() => {
+  if (shouldUseTerminalWebglRenderer()) {
+    try {
+      const { WebglAddon } = await import('@xterm/addon-webgl');
+      const webglAddon = new WebglAddon();
+      term.loadAddon(webglAddon);
+      terminalRenderer.value = 'webgl';
+      webglAddon.onContextLoss(() => {
+        terminalRenderer.value = 'dom';
+        schedulePostLayoutFitSync();
+      });
+    } catch {
       terminalRenderer.value = 'dom';
-      schedulePostLayoutFitSync();
-    });
-  } catch {
+    }
+  } else {
     terminalRenderer.value = 'dom';
   }
 
   await nextTick();
   if (!termContainer.value) return;
   term.open(termContainer.value);
-  fitTerminal();
+  termInstance = term;
+  applyTerminalAppearance({ forceTheme: true, postLayout: true });
   schedulePostLayoutFitSync();
 
-  termInstance = term;
   termReady.value = true;
   flushTerminalOutputQueue();
   updateTerminalScreenMode(term);
-  resizeObserver = new ResizeObserver(() => schedulePostLayoutFitSync());
+  resizeObserver = new ResizeObserver(() => {
+    const fontSize = resolveTerminalFontSize();
+    const lineHeight = resolveTerminalLineHeight();
+    if (fontSize !== appliedTerminalFontSize || lineHeight !== appliedTerminalLineHeight) {
+      applyTerminalAppearance({ postLayout: true });
+      return;
+    }
+    schedulePostLayoutFitSync();
+  });
   resizeObserver.observe(termContainer.value);
 
   term.onResize(({ cols, rows }) => {
-    sendTerminalResize(cols, rows);
+    queueTerminalResize(cols, rows);
+    scheduleTerminalRenderRefresh();
     scheduleTerminalStatusHint();
   });
 
   termDataDisposable = term.onData((data) => {
     sendTerminalInput(data);
-  });
-  titleChangeDisposable = term.onTitleChange((title) => {
-    terminalTitle.value = normalizeTerminalTelemetryText(title);
-    inferCliLabel(title);
   });
   writeParsedDisposable = term.onWriteParsed(() => {
     scheduleTerminalStatusHint();
@@ -1760,13 +1734,20 @@ async function initTerminal(): Promise<void> {
 
 function handleVisibility(): void {
   if (document.visibilityState !== 'visible') return;
-  syncTerminalSize();
+  schedulePostLayoutFitSync();
+  scheduleTerminalRenderRefresh({ postLayout: true });
   if (!connected.value) connectWs();
 }
 
 function handleFocus(): void {
-  syncTerminalSize();
+  schedulePostLayoutFitSync();
+  scheduleTerminalRenderRefresh({ postLayout: true });
   if (!connected.value) connectWs();
+}
+
+function handleTerminalViewportChange(): void {
+  refreshTerminalLayout();
+  scheduleTerminalRenderRefresh({ postLayout: true });
 }
 
 watch(
@@ -1810,19 +1791,24 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => props.terminalTheme,
+  () => {
+    applyTerminalAppearance({ forceTheme: true, postLayout: true });
+  },
+);
+
 onMounted(async () => {
   intentionalClose = false;
   getSessionId();
   restoreRuntime();
-  void refreshStatus();
   await initTerminal();
   document.addEventListener('visibilitychange', handleVisibility);
   window.addEventListener('focus', handleFocus);
   window.addEventListener('online', handleFocus);
   window.addEventListener('keydown', handleTerminalKeydown, true);
-  statusPollTimer = window.setInterval(() => {
-    void refreshStatus();
-  }, 15_000);
+  window.visualViewport?.addEventListener('resize', handleTerminalViewportChange);
+  window.visualViewport?.addEventListener('scroll', handleTerminalViewportChange);
 });
 
 onBeforeUnmount(() => {
@@ -1835,12 +1821,14 @@ onBeforeUnmount(() => {
     window.cancelAnimationFrame(terminalStatusFrame);
     terminalStatusFrame = null;
   }
+  cancelScheduledTerminalFit();
+  cancelScheduledTerminalResize();
+  cancelScheduledTerminalRenderRefresh();
+  clearTerminalFitRetry();
   resizeObserver?.disconnect();
   resizeObserver = null;
   termDataDisposable?.dispose();
   termDataDisposable = null;
-  titleChangeDisposable?.dispose();
-  titleChangeDisposable = null;
   writeParsedDisposable?.dispose();
   writeParsedDisposable = null;
   oscProgressDisposable?.dispose();
@@ -1869,18 +1857,20 @@ onBeforeUnmount(() => {
   termInstance?.dispose();
   termInstance = null;
   termReady.value = false;
-  if (statusPollTimer) window.clearInterval(statusPollTimer);
-  statusPollTimer = null;
   document.removeEventListener('visibilitychange', handleVisibility);
   window.removeEventListener('focus', handleFocus);
   window.removeEventListener('online', handleFocus);
   window.removeEventListener('keydown', handleTerminalKeydown, true);
+  window.visualViewport?.removeEventListener('resize', handleTerminalViewportChange);
+  window.visualViewport?.removeEventListener('scroll', handleTerminalViewportChange);
 });
 
 defineExpose({
   clearTerminal,
   focusTerminal,
+  insertTerminalText,
   pasteClipboard,
+  refreshTerminalLayout,
   sendTerminalShortcut,
 });
 </script>

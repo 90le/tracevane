@@ -67,6 +67,13 @@ test('provider create drawer keeps provider creation out of the object rail', ()
   assert.match(channelsDrawerCss, /\.create-provider-drawer__empty\s*\{/);
 });
 
+test('channel drawer selects stay inside the dialog interaction boundary', () => {
+  assert.equal((providerCreateDrawer.match(/:teleport="false"/g) || []).length, 1);
+  assert.equal((quickConfigDrawer.match(/:teleport="false"/g) || []).length, 5);
+  assert.equal((accountCreateDrawer.match(/:teleport="false"/g) || []).length, 6);
+  assert.match(providerCreateDrawer, /syncDraftType/);
+  assert.match(providerCreateDrawer, /\(\) => props\.options/);
+});
 
 test('credential drawer stays credential-only instead of mixing in deep account fields', () => {
   assert.match(credentialDrawer, /configured/i);

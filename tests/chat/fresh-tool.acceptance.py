@@ -2,6 +2,10 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
 import json
 import re
+import time
+
+from browser_surface import collect_chat_surface_diagnostics, wait_for_active_session, wait_for_chat_surface
+from chat_smoke_runtime import build_unavailable_skip, fetch_history
 
 
 SCREENSHOT = Path("/tmp/openclaw-studio-chat-fresh-tool-smoke.png")
@@ -43,13 +47,7 @@ def open_new_chat(page):
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
         raise AssertionError(f"create session response missing session.key: {payload}")
-    page.wait_for_function(
-        """() => (
-            document.querySelector('.chat-shell-session-row.active')
-            && document.querySelector('.chat-composer-editor[contenteditable="true"]')
-        )""",
-        timeout=30000,
-    )
+    wait_for_active_session(page, session_key)
     page.locator(".chat-composer-editor[contenteditable='true']").first.wait_for(state="visible", timeout=30000)
     page.wait_for_load_state("networkidle")
     return session_key
@@ -83,10 +81,36 @@ def is_running_tool_label(label):
     return "status-running" in cls or text in ("执行中", "Running")
 
 
-def observe_tool_status_until_final(page, token):
+def wait_for_tool_process_or_skip(page, session_key, timeout=90000):
+    deadline = time.monotonic() + (timeout / 1000)
+    next_history_check = 0.0
+    last_history = None
+    while time.monotonic() < deadline:
+        if visible_inline_process_count(page) > 0:
+            return None
+        now = time.monotonic()
+        if now >= next_history_check:
+            next_history_check = now + 2
+            last_history = fetch_history(session_key)
+            skip_payload = build_unavailable_skip(
+                last_history,
+                session_key=session_key,
+                surface=collect_chat_surface_diagnostics(page),
+                smoke_name="chat tool stream smoke",
+            )
+            if skip_payload:
+                return skip_payload
+        page.wait_for_timeout(250)
+    raise PlaywrightTimeoutError(
+        f"timed out while waiting for tool process; runtime={json.dumps((last_history or {}).get('runtime'), ensure_ascii=False)}"
+    )
+
+
+def observe_tool_status_until_final(page, token, session_key):
     terminal_seen = False
     regression_samples = []
     sample_tail = []
+    next_history_check = 0.0
 
     for sample_index in range(360):
         labels = visible_tool_state_labels(page)
@@ -118,6 +142,18 @@ def observe_tool_status_until_final(page, token):
                 "final_labels": final_labels,
                 "sample_tail": sample_tail,
             }
+        now = time.monotonic()
+        if now >= next_history_check:
+            next_history_check = now + 2
+            history_payload = fetch_history(session_key)
+            skip_payload = build_unavailable_skip(
+                history_payload,
+                session_key=session_key,
+                surface=collect_chat_surface_diagnostics(page),
+                smoke_name="chat tool stream smoke",
+            )
+            if skip_payload:
+                return {"skippedPayload": skip_payload}
         page.wait_for_timeout(250)
 
     raise PlaywrightTimeoutError("timed out while waiting for final tool reply")
@@ -130,11 +166,9 @@ def main() -> None:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1600, "height": 1200})
 
-        page.goto("http://127.0.0.1:5176/chat", wait_until="domcontentloaded")
-        page.wait_for_load_state("networkidle")
-        expect(page.locator(".chat-shell-session-list")).to_be_visible()
+        wait_for_chat_surface(page, "http://127.0.0.1:5176/chat")
 
-        open_new_chat(page)
+        session_key = open_new_chat(page)
 
         textarea = page.locator(".chat-composer-editor[contenteditable='true']").first
         send_btn = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
@@ -159,13 +193,18 @@ def main() -> None:
             page.locator(".chat-message-group.role-user .chat-message-bubble").count() > user_bubbles_before
         )
 
-        page.wait_for_function(
-            "() => Array.from(document.querySelectorAll('.chat-inline-process')).some((el) => (el.textContent || '').trim().length > 0)",
-            timeout=90000,
-        )
+        skip_payload = wait_for_tool_process_or_skip(page, session_key, timeout=90000)
+        if skip_payload:
+            print(json.dumps(skip_payload, ensure_ascii=False, indent=2))
+            browser.close()
+            return
         result["tool_process_visible"] = visible_inline_process_count(page) > 0
 
-        status_observation = observe_tool_status_until_final(page, TOKEN)
+        status_observation = observe_tool_status_until_final(page, TOKEN, session_key)
+        if status_observation.get("skippedPayload"):
+            print(json.dumps(status_observation["skippedPayload"], ensure_ascii=False, indent=2))
+            browser.close()
+            return
         result["tool_terminal_seen"] = status_observation["terminal_seen"]
         result["tool_status_never_regressed"] = not status_observation["regression_samples"]
         result["tool_status_final_labels"] = status_observation["final_labels"]

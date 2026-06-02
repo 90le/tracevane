@@ -308,6 +308,50 @@ test('session queue and controls round-trip from in-memory service state', async
   }
 });
 
+test('chat health treats an online gateway as usable even when the system service unit is failed', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-chat-systemd-failed-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+    let systemHealthCalls = 0;
+    context.services.system.getHealth = async () => {
+      systemHealthCalls += 1;
+      return {
+        checkedAt: '2026-06-01T21:01:14.197Z',
+        gateway: 'online',
+        gatewayConnected: true,
+        pid: 12345,
+        port: context.config.port,
+        gatewayPort: 31879,
+        serviceState: 'failed',
+        serviceSubState: 'failed',
+      };
+    };
+
+    const health = await context.services.chat.getHealth();
+    assert.equal(health.gatewayReachable, true);
+    assert.equal(Object.prototype.hasOwnProperty.call(health, 'serviceState'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(health, 'serviceSubState'), false);
+
+    const bootstrap = await context.services.chat.getBootstrap({
+      recentLimit: 5,
+      historyLimit: 5,
+    });
+    assert.equal(bootstrap.diagnostics.gatewayReachable, true);
+
+    const created = await context.services.chat.createSession('main', {});
+    assert.equal(created.session.runtime.gatewayConnected, true);
+    assert.equal(created.session.permissions.canSend, true);
+    assert.equal(systemHealthCalls, 0);
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('session controls payload carries global host-management exec and survives rematerialization', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-controls-global-'));
   let gateway = null;

@@ -5,6 +5,7 @@
     :id="'msg-' + (group?.messages[0]?.id || '')"
     class="chat-message-group"
     :class="[`role-${displayGroup.role}`, { 'is-overlay-continuation': isOverlayContinuation }]"
+    tabindex="-1"
   >
     <div class="chat-message-avatar" aria-hidden="true">
       <AgentAvatarContent
@@ -120,7 +121,8 @@
                           type="button"
                           class="chat-inline-resource chat-inline-resource-image"
                           :title="inlineResourceTitle(segment.item)"
-                          @click="openInlineResourcePreview(segment.item)"
+                          :data-chat-media-preview-source-key="inlinePreviewSourceKey(segment.item)"
+                          @click="openInlineResourcePreview(segment.item, $event)"
                         >
                           <img
                             class="chat-inline-resource-media"
@@ -145,7 +147,8 @@
                           type="button"
                           class="chat-inline-resource chat-inline-resource-video"
                           :title="inlineResourceTitle(segment.item)"
-                          @click="openInlineResourcePreview(segment.item)"
+                          :data-chat-media-preview-source-key="inlinePreviewSourceKey(segment.item)"
+                          @click="openInlineResourcePreview(segment.item, $event)"
                         >
                           <video
                             class="chat-inline-resource-media"
@@ -197,7 +200,8 @@
                         type="button"
                         class="chat-inline-resource chat-inline-resource-image chat-break-resource"
                         :title="inlineResourceTitle(run.segment.item)"
-                        @click="openInlineResourcePreview(run.segment.item)"
+                        :data-chat-media-preview-source-key="inlinePreviewSourceKey(run.segment.item)"
+                        @click="openInlineResourcePreview(run.segment.item, $event)"
                       >
                         <img
                           class="chat-inline-resource-media"
@@ -222,7 +226,8 @@
                         type="button"
                         class="chat-inline-resource chat-inline-resource-video chat-break-resource"
                         :title="inlineResourceTitle(run.segment.item)"
-                        @click="openInlineResourcePreview(run.segment.item)"
+                        :data-chat-media-preview-source-key="inlinePreviewSourceKey(run.segment.item)"
+                        @click="openInlineResourcePreview(run.segment.item, $event)"
                       >
                         <video
                           class="chat-inline-resource-media"
@@ -450,6 +455,12 @@
       <DialogOverlay class="chat-image-preview-mask" />
       <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
         <div class="chat-image-preview-dialog" :aria-label="mediaPreview?.alt || text('资源预览', 'Media preview')">
+          <DialogTitle as-child>
+            <span class="sr-only">{{ mediaPreview?.alt || text('资源预览', 'Media preview') }}</span>
+          </DialogTitle>
+          <DialogDescription as-child>
+            <span class="sr-only">{{ text('预览当前聊天资源，可关闭后回到会话。', 'Preview the current chat media, then close to return to the conversation.') }}</span>
+          </DialogDescription>
           <DialogClose as-child>
             <button
               type="button"
@@ -493,7 +504,7 @@
 import './message-bubble.css';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Braces, MoreHorizontal, X } from '@lucide/vue';
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { useLocalePreference } from '../../shared/locale';
 import type { ChatInlineResourceDisplay, ChatMessageItem, ChatProcessBlock, ChatRunOverlay, ChatToolStatus } from '../../../../../types/chat';
 import type { ChatMessageGroup } from './message-groups';
@@ -506,6 +517,7 @@ import { joinApiPath } from '../../shared/api';
 import type { RenderingRole } from './inline-preview-preferences';
 import { deriveChatDisplayMessage } from './display-adapter';
 import { applyChatProcessVisibility } from '../../../../../lib/chat-process-visibility';
+import { buildBoundedCollapsedPreview } from '../../../../../lib/chat-deferred-preview';
 import { filterMainChatToolItems } from '../../../../../lib/chat-tool-visibility';
 import { isStudioMarkdownCompiledUrl, stripStudioMarkdownMediaMeta } from '../../../../../lib/studio-markdown-media';
 
@@ -542,32 +554,62 @@ const EMPTY_DISPLAY: ChatDisplayMessage = {
 };
 type ChatDisplayToolHint = ChatDisplayMessage['toolHints'][number];
 type ToolPreviewKind = 'input' | 'output';
+type MediaPreviewPayload = {
+  src: string;
+  alt: string;
+  kind: 'image' | 'video';
+  sourceKey?: string | null;
+};
 
 const messageDisplayCache = new WeakMap<ChatMessageItem, ChatDisplayMessage>();
 const bubbleCopyState = reactive<Record<string, 'copied' | 'error' | undefined>>({});
 const bubbleCopyTimers = new Map<string, number>();
 const toolCopyState = reactive<Record<string, 'copied' | 'error' | undefined>>({});
 const toolCopyTimers = new Map<string, number>();
-const mediaPreview = ref<{ src: string; alt: string; kind: 'image' | 'video' } | null>(null);
+const mediaPreview = ref<MediaPreviewPayload | null>(null);
+const mediaPreviewSourceKey = ref<string | null>(null);
 const bubbleRoot = ref<HTMLElement | null>(null);
 const bubbleBodyReady = ref(false);
 const bubbleBodyReadyPending = ref(false);
 let previousBodyOverflow = '';
 let bodyOverflowLocked = false;
+let mediaPreviewReturnFocusTarget: HTMLElement | null = null;
+let mediaPreviewKeydownBound = false;
 let bubbleVisibilityObserver: IntersectionObserver | null = null;
 let bubbleBodyReadyTimer: number | null = null;
 let bubbleBodyReadyIdleHandle: number | null = null;
 
 const MESSAGE_BUBBLE_DEFER_MIN_CHARS = 480;
+const MESSAGE_BUBBLE_DEFER_SUMMARY_LIMIT = 200;
+const MESSAGE_BUBBLE_DEFER_MESSAGE_PREVIEW_LIMIT = 120;
 const MESSAGE_BUBBLE_DEFER_ROOT_MARGIN = '1200px 0px';
 const MESSAGE_BUBBLE_DEFER_IDLE_TIMEOUT_MS = 220;
 
 function clipBubblePreview(value: string, limit = 220): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (!normalized) {
-    return '';
+  return buildBoundedCollapsedPreview(value, limit);
+}
+
+function appendDeferredBubbleSummaryChunk(summary: string, chunk: string, limit: number): string {
+  const next = summary ? `${summary} · ${chunk}` : chunk;
+  if (next.length <= limit) {
+    return next;
   }
-  return normalized.length > limit ? `${normalized.slice(0, limit - 1)}…` : normalized;
+  return `${next.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+}
+
+function buildDeferredBubbleTextSummary(messages: ChatMessageItem[]): string {
+  let summary = '';
+  for (const message of messages) {
+    const preview = clipBubblePreview(String(message.text || ''), MESSAGE_BUBBLE_DEFER_MESSAGE_PREVIEW_LIMIT);
+    if (!preview) {
+      continue;
+    }
+    summary = appendDeferredBubbleSummaryChunk(summary, preview, MESSAGE_BUBBLE_DEFER_SUMMARY_LIMIT);
+    if (summary.length >= MESSAGE_BUBBLE_DEFER_SUMMARY_LIMIT) {
+      return summary;
+    }
+  }
+  return summary;
 }
 
 function buildOverlayGroup(overlay: ChatRunOverlay | null | undefined): ChatMessageGroup {
@@ -756,7 +798,7 @@ const groupedProcessBlocks = computed(() => {
 
 const deferredBubbleSummary = computed(() => {
   if (props.overlay) {
-    const preview = clipBubblePreview(props.overlay.previewText || '', 200);
+    const preview = clipBubblePreview(props.overlay.previewText || '', MESSAGE_BUBBLE_DEFER_SUMMARY_LIMIT);
     if (preview) {
       return preview;
     }
@@ -765,10 +807,7 @@ const deferredBubbleSummary = computed(() => {
     }
     return text('离屏运行摘要已折叠，靠近视口时会自动展开。', 'Offscreen run details are collapsed and expand near the viewport.');
   }
-  const rawText = displayGroup.value.messages
-    .map((message) => clipBubblePreview(String(message.text || ''), 120))
-    .filter(Boolean)
-    .join(' · ');
+  const rawText = buildDeferredBubbleTextSummary(displayGroup.value.messages);
   if (rawText) {
     return rawText;
   }
@@ -1036,7 +1075,11 @@ function inlineResourceTitle(item: ChatDisplayResourceItem): string {
   return text(`预览视频 ${inlineDisplayLabel(item)}`, `Preview video ${inlineDisplayLabel(item)}`);
 }
 
-function openInlineResourcePreview(item: ChatDisplayResourceItem): void {
+function inlinePreviewSourceKey(item: ChatDisplayResourceItem): string {
+  return item.id || item.url || item.downloadUrl || item.fileName || item.relativePath || item.originalPath || '';
+}
+
+function openInlineResourcePreview(item: ChatDisplayResourceItem, event?: MouseEvent): void {
   if (!isInlinePreviewable(item)) {
     return;
   }
@@ -1044,7 +1087,8 @@ function openInlineResourcePreview(item: ChatDisplayResourceItem): void {
     src: inlinePreviewSrc(item),
     alt: item.alt,
     kind: item.kind === 'image' ? 'image' : 'video',
-  });
+    sourceKey: inlinePreviewSourceKey(item),
+  }, event?.currentTarget instanceof HTMLElement ? event.currentTarget : null);
 }
 
 function breakRunClass(segment: { display: ChatInlineResourceDisplay; item: ChatDisplayResourceItem }): Array<string> {
@@ -1072,7 +1116,8 @@ function handleBubbleBodyClick(event: MouseEvent): void {
       src,
       alt: studioPreviewTrigger.dataset.studioPreviewAlt?.trim() || text('资源预览', 'Media preview'),
       kind,
-    });
+      sourceKey: studioPreviewTrigger.dataset.chatMediaPreviewSourceKey?.trim() || null,
+    }, studioPreviewTrigger);
     return;
   }
 
@@ -1081,11 +1126,11 @@ function handleBubbleBodyClick(event: MouseEvent): void {
     const compiledMeta = stripStudioMarkdownMediaMeta(image.currentSrc || image.src || '');
     if (image.classList.contains('markdown-inline-image') || isStudioMarkdownCompiledUrl(compiledMeta.url)) {
       event.preventDefault();
-      mediaPreview.value = {
+      openResourcePreview({
         src: compiledMeta.url || image.currentSrc || image.src,
         alt: image.alt?.trim() || compiledMeta.fileName || text('图片预览', 'Image preview'),
         kind: 'image',
-      };
+      }, image);
       return;
     }
   }
@@ -1095,11 +1140,11 @@ function handleBubbleBodyClick(event: MouseEvent): void {
     const compiledMeta = stripStudioMarkdownMediaMeta(video.currentSrc || video.src || '');
     if (isStudioMarkdownCompiledUrl(compiledMeta.url)) {
       event.preventDefault();
-      mediaPreview.value = {
+      openResourcePreview({
         src: compiledMeta.url || video.currentSrc || video.src,
         alt: video.getAttribute('data-studio-preview-alt')?.trim() || compiledMeta.fileName || text('视频预览', 'Video preview'),
         kind: 'video',
-      };
+      }, video);
       return;
     }
   }
@@ -1109,12 +1154,57 @@ function handleBubbleBodyClick(event: MouseEvent): void {
   }
 }
 
-function openResourcePreview(payload: { src: string; alt: string; kind: 'image' | 'video' }): void {
-  mediaPreview.value = payload;
+function openResourcePreview(payload: MediaPreviewPayload, trigger?: HTMLElement | null): void {
+  const sourceKey = typeof payload.sourceKey === 'string' ? payload.sourceKey.trim() : '';
+  mediaPreviewSourceKey.value = sourceKey || null;
+  mediaPreviewReturnFocusTarget = trigger?.isConnected ? trigger : null;
+  mediaPreview.value = {
+    src: payload.src,
+    alt: payload.alt,
+    kind: payload.kind,
+  };
+}
+
+function focusMediaPreviewSource(sourceKey: string | null, trigger: HTMLElement | null): void {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  if (trigger?.isConnected) {
+    trigger.focus({ preventScroll: true });
+    if (document.activeElement === trigger) {
+      return;
+    }
+  }
+
+  const normalizedSourceKey = typeof sourceKey === 'string' ? sourceKey.trim() : '';
+  if (normalizedSourceKey) {
+    const triggers = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-chat-media-preview-source-key]'),
+    );
+    const matchedTrigger = triggers.find((item) => item.dataset.chatMediaPreviewSourceKey === normalizedSourceKey);
+    if (matchedTrigger) {
+      matchedTrigger.focus({ preventScroll: true });
+      if (document.activeElement === matchedTrigger) {
+        return;
+      }
+    }
+  }
+
+  bubbleRoot.value?.focus({ preventScroll: true });
 }
 
 function closeMediaPreview(): void {
+  if (!mediaPreview.value && !mediaPreviewSourceKey.value && !mediaPreviewReturnFocusTarget) {
+    return;
+  }
+  const sourceKey = mediaPreviewSourceKey.value;
+  const trigger = mediaPreviewReturnFocusTarget;
   mediaPreview.value = null;
+  mediaPreviewSourceKey.value = null;
+  mediaPreviewReturnFocusTarget = null;
+  void nextTick(() => {
+    focusMediaPreviewSource(sourceKey, trigger);
+  });
 }
 
 function handleMediaPreviewOpenChange(nextOpen: boolean): void {
@@ -1130,6 +1220,22 @@ function handleWindowKeydown(event: KeyboardEvent): void {
 
   event.preventDefault();
   closeMediaPreview();
+}
+
+function bindMediaPreviewKeydown(): void {
+  if (mediaPreviewKeydownBound || typeof window === 'undefined') {
+    return;
+  }
+  window.addEventListener('keydown', handleWindowKeydown);
+  mediaPreviewKeydownBound = true;
+}
+
+function unbindMediaPreviewKeydown(): void {
+  if (!mediaPreviewKeydownBound || typeof window === 'undefined') {
+    return;
+  }
+  window.removeEventListener('keydown', handleWindowKeydown);
+  mediaPreviewKeydownBound = false;
 }
 
 function shouldRenderFooter(message: ChatMessageGroup['messages'][number], index: number): boolean {
@@ -1271,6 +1377,7 @@ watch(mediaPreview, (value) => {
   }
 
   if (value) {
+    bindMediaPreviewKeydown();
     if (!bodyOverflowLocked) {
       previousBodyOverflow = document.body.style.overflow;
       bodyOverflowLocked = true;
@@ -1284,6 +1391,7 @@ watch(mediaPreview, (value) => {
     previousBodyOverflow = '';
     bodyOverflowLocked = false;
   }
+  unbindMediaPreviewKeydown();
 });
 
 onMounted(() => {
@@ -1291,7 +1399,6 @@ onMounted(() => {
   if (!bubbleBodyReady.value) {
     bindBubbleVisibilityObserver();
   }
-  window.addEventListener('keydown', handleWindowKeydown);
 });
 
 watch(
@@ -1323,7 +1430,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(timer);
   }
   toolCopyTimers.clear();
-  window.removeEventListener('keydown', handleWindowKeydown);
+  unbindMediaPreviewKeydown();
   if (bodyOverflowLocked && typeof document !== 'undefined') {
     document.body.style.overflow = previousBodyOverflow;
     previousBodyOverflow = '';

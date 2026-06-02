@@ -78,6 +78,10 @@ test('record browser panel exposes loading, empty, error, and ready surfaces on 
   assert.doesNotMatch(chatRecordBrowserPanel, /<style scoped>/);
   assert.match(chatRecordBrowserPanel, /DialogRoot/);
   assert.match(chatRecordBrowserPanel, /DialogPortal/);
+  assert.match(chatRecordBrowserPanel, /DialogTitle/);
+  assert.match(chatRecordBrowserPanel, /DialogDescription/);
+  assert.match(chatRecordBrowserPanel, /<DialogTitle as-child>[\s\S]*<span class="sr-only">\{\{ text\('聊天记录', 'Chat records'\) \}\}<\/span>/);
+  assert.match(chatRecordBrowserPanel, /<DialogDescription as-child>[\s\S]*<span class="sr-only">\{\{ sessionSubtitle \|\| text\('搜索和浏览当前会话的聊天记录。', 'Search and browse records for the current chat session\.'\) \}\}<\/span>/);
   assert.match(chatRecordBrowserPanel, /type="date"/);
   assert.match(chatRecordBrowserPanel, /selectedDay/);
   assert.match(chatRecordBrowserPanel, /jump-to-day/);

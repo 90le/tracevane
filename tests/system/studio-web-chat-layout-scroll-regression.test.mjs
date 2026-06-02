@@ -140,4 +140,8 @@ test("chat page keeps independent list and thread scrollers inside the full-heig
     conversationPaneCss,
     /\.chat-conversation-thread\s*\{[\s\S]*overflow:\s*auto;/,
   );
+  assert.match(
+    conversationPaneCss,
+    /\.chat-conversation-pane__composer\s*\{[\s\S]*max-height:\s*min\(48dvh,\s*460px\);[\s\S]*overflow-y:\s*auto;/,
+  );
 });

@@ -71,6 +71,17 @@ test('chat upload returns canonical resource ref and signed preview resource', a
     assert.match(payload.resource.downloadUrl, /download=1/);
     assert.equal(payload.kind, 'image');
     assert.equal(payload.mimeType, 'image/png');
+
+    const binaryContent = Buffer.from([0, 1, 2, 3, 254, 255]);
+    const binaryPayload = await context.services.chat.uploadFileBytes(sessionKey, {
+      fileName: 'raw.bin',
+      content: binaryContent,
+      mimeType: 'application/octet-stream',
+    });
+    assert.equal(binaryPayload.ok, true);
+    assert.equal(binaryPayload.resourceRef, `uploads:${binaryPayload.relativePath.slice('uploads/'.length)}`);
+    assert.equal(Buffer.compare(fs.readFileSync(binaryPayload.absolutePath), binaryContent), 0);
+    assert.equal(binaryPayload.size, binaryContent.length);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -363,11 +363,13 @@ export function removeComposerAttachmentReferences(
 export function serializeComposerDocumentToMarkdown(
   document: ChatComposerDocument | undefined | null,
   attachments: ChatComposerAttachmentRefLike[],
+  options: { normalizedDocument?: boolean } = {},
 ): string {
   const lookup = attachmentMap(attachments);
   let result = '';
 
-  for (const node of normalizeComposerDocument(document)) {
+  const nodes = options.normalizedDocument ? (document || []) : normalizeComposerDocument(document);
+  for (const node of nodes) {
     if (node.type === 'text') {
       result += node.text;
       continue;
@@ -392,7 +394,7 @@ function buildParagraphSegments(
   const lookup = attachmentMap(attachments);
   const segments: ChatInlineSegment[] = [];
 
-  for (const node of normalizeComposerDocument(document)) {
+  for (const node of document) {
     if (node.type === 'text') {
       if (node.text) {
         segments.push({
@@ -418,8 +420,9 @@ function buildParagraphSegments(
 export function buildComposerMessageBlocks(
   document: ChatComposerDocument | undefined | null,
   attachments: ChatComposerAttachmentRefLike[],
+  options: { normalizedDocument?: boolean } = {},
 ): ChatMessageBlock[] {
-  const normalized = normalizeComposerDocument(document);
+  const normalized = options.normalizedDocument ? (document || []) : normalizeComposerDocument(document);
   const lookup = attachmentMap(attachments);
   const referencedAttachmentIds = new Set(
     normalized
@@ -437,7 +440,7 @@ export function buildComposerMessageBlocks(
       } satisfies ChatMessageParagraphBlock);
     }
   } else {
-    const markdown = serializeComposerDocumentToMarkdown(normalized, attachments);
+    const markdown = serializeComposerDocumentToMarkdown(normalized, attachments, { normalizedDocument: true });
     if (markdown.trim()) {
       blocks.push({
         type: 'text',

@@ -33,9 +33,13 @@ test('slash help dialog uses reka dialog primitives for the command catalog surf
   assert.match(slashHelpDialog, /DialogOverlay/);
   assert.match(slashHelpDialog, /DialogContent/);
   assert.match(slashHelpDialog, /DialogClose/);
+  assert.match(slashHelpDialog, /DialogTitle/);
+  assert.match(slashHelpDialog, /DialogDescription/);
   assert.match(slashHelpDialog, /<DialogRoot :open="open" @update:open="handleOpenChange">/);
   assert.match(slashHelpDialog, /<DialogOverlay class="chat-slash-help-mask"\s*\/>/);
   assert.match(slashHelpDialog, /<DialogContent as-child @open-auto-focus\.prevent @close-auto-focus\.prevent>/);
+  assert.match(slashHelpDialog, /<DialogTitle as-child>[\s\S]*<span class="sr-only">\{\{ text\('斜杠命令', 'Slash commands'\) \}\}<\/span>/);
+  assert.match(slashHelpDialog, /<DialogDescription as-child>[\s\S]*<span class="sr-only">\{\{ text\('查看并插入 Studio Chat 支持的斜杠命令。', 'Review and insert slash commands supported by Studio Chat\.'\) \}\}<\/span>/);
   assert.match(slashHelpDialog, /Insert command/);
   assert.match(slashHelpDialog, /getStudioSlashCommandDescription/);
   assert.match(slashHelpDialog, /import '\.\/slash-command\.css';/);

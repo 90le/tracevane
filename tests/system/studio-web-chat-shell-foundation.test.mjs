@@ -18,6 +18,10 @@ const sessionRowList = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat/SessionRowList.vue"),
   "utf8",
 );
+const sessionListPanel = fs.readFileSync(
+  path.join(rootDir, "apps/web-vue/src/features/chat/SessionListPanel.vue"),
+  "utf8",
+);
 const sessionFolderList = fs.readFileSync(
   path.join(rootDir, "apps/web-vue/src/features/chat/SessionFolderList.vue"),
   "utf8",
@@ -246,10 +250,15 @@ test("chat theme tokens use OpenClaw mint instead of stale sky-blue accents", ()
   );
 });
 
-test("session rows use surfaced list blocks instead of fully transparent rows", () => {
+test("session rows use flat IM rail separators instead of card blocks", () => {
+  const sessionRowBlock = sessionListShared.match(/\.chat-shell-session-row\s*\{[^}]*\}/)?.[0] || "";
   assert.match(
     sessionListShared,
-    /\.chat-shell-session-row\s*\{[\s\S]*background:\s*[\s\S]*chat-sidebar-row/,
+    /\.chat-shell-session-row\s*\{[\s\S]*border:\s*0;[\s\S]*border-bottom:\s*1px solid color-mix\(in srgb,\s*var\(--chat-line\) 72%,\s*transparent\);/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-row\s*\{[\s\S]*border-radius:\s*0;[\s\S]*background:\s*transparent;[\s\S]*box-shadow:\s*none;/,
   );
   assert.match(
     sessionListShared,
@@ -259,12 +268,22 @@ test("session rows use surfaced list blocks instead of fully transparent rows", 
     sessionListShared,
     /\.chat-shell-session-row\s*\{[\s\S]*backdrop-filter:\s*none;/,
   );
+  assert.doesNotMatch(
+    sessionRowBlock,
+    /border:\s*1px solid/,
+    "session rows should not return to bordered card blocks",
+  );
 });
 
-test("folder rows use the same surfaced sidebar treatment for readability", () => {
+test("folder rows use the same flat IM rail treatment for readability", () => {
+  const folderRowBlock = sessionListShared.match(/\.chat-shell-folder-row\s*\{[^}]*\}/)?.[0] || "";
   assert.match(
     sessionListShared,
-    /\.chat-shell-folder-row\s*\{[\s\S]*background:\s*[\s\S]*chat-sidebar-row/,
+    /\.chat-shell-folder-row\s*\{[\s\S]*border:\s*0;[\s\S]*border-bottom:\s*1px solid color-mix\(in srgb,\s*var\(--chat-line\) 72%,\s*transparent\);/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-folder-row\s*\{[\s\S]*border-radius:\s*0;[\s\S]*background:\s*transparent;[\s\S]*box-shadow:\s*none;/,
   );
   assert.match(
     sessionListShared,
@@ -274,12 +293,21 @@ test("folder rows use the same surfaced sidebar treatment for readability", () =
     sessionListShared,
     /\.chat-shell-folder-row\.active,[\s\S]*background:\s*[\s\S]*chat-sidebar-row-active/,
   );
+  assert.doesNotMatch(
+    folderRowBlock,
+    /border-radius:\s*12px;/,
+    "folder rows should not return to rounded card blocks",
+  );
 });
 
 test("session list chrome adopts a softened IM rail while leaving folder and filter affordances intact", () => {
   assert.match(
     sessionListShared,
-    /\.chat-shell-session-row\s*\{[\s\S]*border-radius:\s*14px;/,
+    /\.chat-shell-session-section,[\s\S]*\.chat-shell-observed-section\s*\{[\s\S]*gap:\s*0;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-row:hover\s*\{[\s\S]*background:\s*var\(--chat-sidebar-row-hover\);[\s\S]*transform:\s*none;/,
   );
   assert.match(
     sessionListShared,
@@ -288,7 +316,11 @@ test("session list chrome adopts a softened IM rail while leaving folder and fil
   assert.match(sessionListShared, /\.chat-shell-session-row::before\s*\{/);
   assert.match(
     sessionListShared,
-    /\.chat-shell-session-item\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-shell-session-item\s*\{[\s\S]*grid-template-columns:\s*36px minmax\(0,\s*1fr\);[\s\S]*padding:\s*9px 42px 9px 10px;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-item\s*\{[\s\S]*border-radius:\s*0;/,
   );
   assert.match(
     sessionListShared,
@@ -302,20 +334,102 @@ test("session list chrome adopts a softened IM rail while leaving folder and fil
     sessionListShared,
     /\.chat-shell-session-item\s*\{[\s\S]*box-shadow:\s*none;/,
   );
-  assert.match(sessionRowList, /chat-shell-session-preview-line/);
-  assert.match(sessionRowList, /chat-shell-session-preview-badge/);
-  assert.match(sessionRowList, /chat-shell-session-source/);
   assert.match(
     sessionListShared,
-    /\.chat-shell-folder-row\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-shell-session-avatar\s*\{[\s\S]*width:\s*34px;[\s\S]*height:\s*34px;[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     sessionListShared,
-    /\.chat-shell-folder-item\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-shell-session-agent\s*\{[\s\S]*min-height:\s*18px;[\s\S]*border-radius:\s*6px;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-preview-badge\s*\{[\s\S]*min-height:\s*18px;[\s\S]*border-radius:\s*6px;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-item:focus\s*\{[\s\S]*outline:\s*none;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-item:focus-visible\s*\{[\s\S]*outline:\s*2px solid color-mix\(in srgb,\s*var\(--chat-accent\)[\s\S]*outline-offset:\s*-3px;[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--chat-hover\)[\s\S]*box-shadow:\s*inset 0 0 0 1px color-mix\(in srgb,\s*var\(--chat-accent\)/,
+  );
+  assert.match(sessionRowList, /chat-shell-session-preview-line/);
+  assert.match(sessionRowList, /chat-shell-session-preview-badge/);
+  assert.match(sessionRowList, /chat-shell-session-source/);
+  assert.equal(
+    [...sessionRowList.matchAll(/:aria-current="session\.key === selectedSessionKey \? 'true' : undefined"/g)].length,
+    3,
+  );
+  assert.equal(
+    [...sessionRowList.matchAll(/\n\s+data-session-primary-button="true"/g)].length,
+    3,
+  );
+  assert.match(sessionRowList, /@keydown\.down\.prevent="focusRelativeSession\(\$event, 1\)"/);
+  assert.match(sessionRowList, /@keydown\.up\.prevent="focusRelativeSession\(\$event, -1\)"/);
+  assert.match(sessionRowList, /@keydown\.home\.prevent="focusSessionListEdge\(false\)"/);
+  assert.match(sessionRowList, /@keydown\.end\.prevent="focusSessionListEdge\(true\)"/);
+  assert.match(sessionRowList, /function visibleSessionPrimaryButtons\(\): HTMLButtonElement\[\] \{/);
+  assert.match(sessionRowList, /\.chat-shell-session-row \.chat-shell-session-item\[data-session-primary-button="true"\]/);
+  assert.match(sessionRowList, /function focusRelativeSession\(event: KeyboardEvent, delta: number\): void \{/);
+  assert.equal(
+    [...sessionRowList.matchAll(/:aria-label="text\('会话操作', 'Session actions'\)"/g)].length,
+    2,
+  );
+  assert.equal([...sessionRowList.matchAll(/aria-haspopup="menu"/g)].length, 2);
+  assert.equal(
+    [...sessionRowList.matchAll(/:aria-expanded="isContextMenuOpenForSession\(session\) \? 'true' : 'false'"/g)].length,
+    2,
+  );
+  assert.equal([...sessionRowList.matchAll(/:data-session-more-key="session\.key"/g)].length, 2);
+  assert.equal([...sessionRowList.matchAll(/:data-session-rename-key="session\.key"/g)].length, 2);
+  assert.match(chatShellPage + sessionListPanel, /@close="handleContextMenuClose"/);
+  assert.match(sessionListPanel, /function focusSessionMoreTrigger\(sessionKey: string\): void \{/);
+  assert.match(sessionListPanel, /\.chat-shell-session-more\[data-session-more-key\]/);
+  assert.match(sessionListPanel, /button\.dataset\.sessionMoreKey === sessionKey/);
+  assert.match(sessionListPanel, /function handleContextMenuClose\(\): void \{/);
+  assert.match(sessionListPanel, /actions\.closeContextMenu\(\);[\s\S]*void nextTick\(\(\) => \{[\s\S]*focusSessionMoreTrigger\(sessionKey\);/);
+  assert.match(sessionListPanel, /function focusSessionRenameField\(sessionKey: string\): void \{/);
+  assert.match(sessionListPanel, /\.chat-shell-session-field\[data-session-rename-key\]/);
+  assert.match(sessionListPanel, /input\.dataset\.sessionRenameKey === sessionKey/);
+  assert.match(sessionListPanel, /field\.focus\(\{ preventScroll: true \}\);[\s\S]*field\.select\(\);/);
+  assert.match(sessionListPanel, /watch\(actions\.renamingSessionKey, \(sessionKey\) => \{/);
+  assert.match(sessionListPanel, /focusSessionRenameField\(sessionKey\);/);
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-topline strong\s*\{[\s\S]*display:\s*block;[\s\S]*flex:\s*1 1 auto;[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%;[\s\S]*text-overflow:\s*ellipsis;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-agent\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*min\(14rem,\s*100%\);[\s\S]*text-overflow:\s*ellipsis;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-source\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*min\(12rem,\s*100%\);[\s\S]*text-overflow:\s*ellipsis;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-folder-row\s*\{[\s\S]*border-radius:\s*0;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-folder-item\s*\{[\s\S]*grid-template-columns:\s*34px minmax\(0,\s*1fr\);[\s\S]*border-radius:\s*0;/,
   );
   assert.match(
     sessionListShared,
     /\.chat-shell-session-more\s*\{[\s\S]*border-radius:\s*999px;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-more:focus,[\s\S]*\.chat-shell-session-show-more:focus\s*\{[\s\S]*outline:\s*none;/,
+  );
+  assert.match(
+    sessionListShared,
+    /\.chat-shell-session-more:focus-visible,[\s\S]*\.chat-shell-session-show-more:focus-visible\s*\{[\s\S]*outline:\s*2px solid color-mix\(in srgb,\s*var\(--chat-accent\)[\s\S]*outline-offset:\s*2px;[\s\S]*border-color:\s*color-mix\(in srgb,\s*var\(--chat-accent\)[\s\S]*background:\s*var\(--chat-hover\);/,
+  );
+  assert.equal(
+    [...sessionListShared.matchAll(/\.chat-shell-session-show-more\s*\{/g)].length,
+    1,
   );
   assert.match(
     sessionListShared,
@@ -366,19 +480,36 @@ test("chat composer and picker keep the flatter density pass instead of oversize
   assert.doesNotMatch(composerBar, /<style scoped>/);
   assert.match(
     composerBarCss,
-    /\.chat-composer-frame\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-composer-frame\s*\{[\s\S]*gap:\s*8px;[\s\S]*padding:\s*8px 10px;[\s\S]*border-radius:\s*10px;/,
   );
   assert.match(
     composerBarCss,
-    /\.chat-composer-attachment\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.chat-composer-attachment\s*\{[\s\S]*width:\s*36px;[\s\S]*height:\s*36px;[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     composerBarCss,
-    /\.chat-composer-stop,\s*[\s\S]*\.chat-composer-send\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.chat-composer-editor\s*\{[\s\S]*min-height:\s*46px;[\s\S]*padding:\s*4px 0;/,
+  );
+  assert.match(
+    composerBarCss,
+    /\.chat-composer-stop,\s*[\s\S]*\.chat-composer-send\s*\{[\s\S]*width:\s*36px;[\s\S]*height:\s*36px;[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     composerBarCss,
     /\.chat-composer-pool-item\s*\{[\s\S]*border-radius:\s*12px;/,
+  );
+  assert.match(
+    composerBarCss,
+    /\.chat-composer-editor\s*\{[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*word-break:\s*break-word;[\s\S]*box-sizing:\s*border-box;/,
+  );
+  assert.doesNotMatch(
+    composerBarCss,
+    /\.chat-composer-frame\s*\{[\s\S]*padding:\s*10px 12px;[\s\S]*border-radius:\s*12px;/,
+    "composer frame should not return to the larger desktop card chrome",
+  );
+  assert.match(
+    composerBarCss,
+    /\.chat-composer-editor-text\s*\{[\s\S]*white-space:\s*pre-wrap;[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*word-break:\s*break-word;/,
   );
   assert.match(
     composerBar,
@@ -467,35 +598,35 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-message-bubble\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-message-bubble\s*\{[\s\S]*padding:\s*10px 12px;[\s\S]*border-radius:\s*10px;[\s\S]*box-shadow:\s*none;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-inline-resource\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.chat-inline-resource\s*\{[\s\S]*min-height:\s*30px;[\s\S]*padding:\s*3px 8px 3px 3px;[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-break-resource\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-break-resource\s*\{[\s\S]*width:\s*min\(280px,\s*100%\);[\s\S]*padding:\s*6px;[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-inline-chip\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.chat-inline-chip\s*\{[\s\S]*min-height:\s*30px;[\s\S]*padding:\s*0 9px;[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-message-bubble-body \.chat-markdown-image-fallback\s*\{[^}]*border-radius:\s*10px;/,
+    /\.chat-message-bubble-body \.chat-markdown-image-fallback\s*\{[\s\S]*min-height:\s*30px;[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-message-bubble-body \.chat-resource-file-badge\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.chat-message-bubble-body \.chat-resource-file-badge\s*\{[\s\S]*height:\s*20px;[\s\S]*border-radius:\s*6px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-message-bubble-body \.chat-resource-file-actions a\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.chat-message-bubble-body \.chat-resource-file-actions a\s*\{[\s\S]*height:\s*28px;[\s\S]*border-radius:\s*7px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-inline-thinking-pill\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.chat-inline-thinking-pill\s*\{[\s\S]*width:\s*17px;[\s\S]*height:\s*17px;[\s\S]*border-radius:\s*6px;/,
   );
   assert.match(messageBubble, /:open="shouldOpenProcessDetails\(message, messageIndex\)"/);
   assert.match(messageBubble, /function isProcessStreaming\(message: ChatMessageGroup\['messages'\]\[number\]\): boolean \{/);
@@ -513,19 +644,19 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-inline-process-pill\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.chat-inline-process-pill\s*\{[\s\S]*width:\s*17px;[\s\S]*height:\s*17px;[\s\S]*border-radius:\s*6px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-inline-process-thinking__head::before\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.chat-inline-process-thinking__head::before\s*\{[\s\S]*width:\s*17px;[\s\S]*height:\s*17px;[\s\S]*border-radius:\s*6px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-inline-process-step\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.chat-inline-process-step\s*\{[\s\S]*width:\s*20px;[\s\S]*height:\s*20px;[\s\S]*border-radius:\s*6px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-inline-process-head-state\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.chat-inline-process-head-state\s*\{[\s\S]*height:\s*22px;[\s\S]*border-radius:\s*6px;/,
   );
   assert.match(messageBubble, /class="chat-inline-process-live"/);
   assert.match(messageBubble, /正在执行，工具输出会实时更新。/);
@@ -550,7 +681,7 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-inline-process-copy\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.chat-inline-process-copy\s*\{[\s\S]*border-radius:\s*6px;/,
   );
   assert.match(
     messageBubbleCss,
@@ -586,15 +717,25 @@ test("message bubbles and inline resources avoid returning to capsule-heavy chat
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-message-bubble-body \.chat-resource-card\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-message-bubble-body \.chat-resource-card\s*\{[\s\S]*width:\s*min\(100%,\s*360px\);[\s\S]*padding:\s*8px;[\s\S]*border-radius:\s*8px;[\s\S]*box-shadow:\s*none;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-message-bubble-body \.chat-mermaid-block\[data-seamless="1"\] \.chat-mermaid-header\s*\{[^}]*border-radius:\s*10px;/,
+    /\.chat-message-bubble-body \.chat-mermaid-block\[data-seamless="1"\] \.chat-mermaid-header\s*\{[^}]*border-radius:\s*8px;/,
   );
   assert.match(
     messageBubbleCss,
-    /\.chat-bubble-copy\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.chat-bubble-copy\s*\{[\s\S]*border-radius:\s*7px;/,
+  );
+  assert.doesNotMatch(
+    messageBubbleCss,
+    /\.chat-message-bubble\s*\{[\s\S]*box-shadow:\s*0 2px 8px/,
+    "message bubbles should not return to card-like hover depth",
+  );
+  assert.doesNotMatch(
+    messageBubbleCss,
+    /\.chat-message-bubble-body \.chat-resource-card\s*\{[\s\S]*width:\s*min\(100%,\s*420px\);/,
+    "inline resource cards should not return to the wider attachment-card layout",
   );
 });
 
@@ -633,23 +774,27 @@ test("resource cards and inspector chrome stay aligned with the flatter chat den
   assert.doesNotMatch(messageResourceList, /<style scoped>/);
   assert.match(
     messageResourcesCss,
-    /\.chat-resource-card\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-resource-card\s*\{[\s\S]*width:\s*min\(100%,\s*360px\);[\s\S]*padding:\s*8px;[\s\S]*border-radius:\s*8px;[\s\S]*box-shadow:\s*none;/,
   );
   assert.match(
     messageResourcesCss,
-    /\.chat-resource-image\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-resource-image\s*\{[\s\S]*max-height:\s*220px;[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     messageResourcesCss,
-    /\.chat-resource-video\s*\{[\s\S]*border-radius:\s*12px;/,
+    /\.chat-resource-video\s*\{[\s\S]*max-height:\s*220px;[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     messageResourcesCss,
-    /\.chat-resource-file-badge\s*\{[\s\S]*border-radius:\s*8px;/,
+    /\.chat-resource-file-badge\s*\{[\s\S]*height:\s*20px;[\s\S]*border-radius:\s*6px;/,
   );
   assert.match(
     messageResourcesCss,
-    /\.chat-resource-file-actions a\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.chat-resource-file-actions a\s*\{[\s\S]*height:\s*28px;[\s\S]*border-radius:\s*7px;/,
+  );
+  assert.match(
+    messageResourcesCss,
+    /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-resource-card\s*\{[\s\S]*padding:\s*7px;/,
   );
   assert.match(
     inspectorPanelCss,
@@ -657,15 +802,40 @@ test("resource cards and inspector chrome stay aligned with the flatter chat den
   );
   assert.match(
     inspectorPanelCss,
-    /\.chat-inspector-panel__close\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.chat-inspector-panel__close\s*\{[\s\S]*border-radius:\s*8px;/,
   );
   assert.match(
     inspectorPanelCss,
-    /\.chat-inspector-panel__tab\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.chat-inspector-panel__workspace\s*\{[\s\S]*min-height:\s*0;[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\);/,
   );
   assert.match(
     inspectorPanelCss,
-    /\.chat-inspector-fact-row\s*\{[\s\S]*border-radius:\s*10px;/,
+    /\.chat-inspector-panel__tab\s*\{[\s\S]*min-height:\s*30px;[\s\S]*border-radius:\s*8px;/,
+  );
+  assert.match(
+    inspectorPanelCss,
+    /\.chat-inspector-panel__tab\[data-state='active'\]\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--chat-accent\) 10%,\s*transparent\);/,
+  );
+  assert.match(
+    inspectorPanelCss,
+    /\.chat-inspector-fact-row\s*\{[\s\S]*border-bottom:\s*1px solid var\(--chat-line\);[\s\S]*border-radius:\s*0;[\s\S]*background:\s*transparent;/,
+  );
+  assert.match(
+    inspectorPanelCss,
+    /\.chat-inspector-context-strip,[\s\S]*\.chat-inspector-empty\s*\{[\s\S]*border-top:\s*1px solid var\(--chat-line\);[\s\S]*border-radius:\s*0;[\s\S]*background:\s*transparent;/,
+  );
+  assert.match(
+    inspectorPanelCss,
+    /\.chat-inspector-tool-item\s*\{[\s\S]*border-left:\s*2px solid transparent;[\s\S]*overflow:\s*hidden;/,
+  );
+  assert.match(
+    inspectorPanelCss,
+    /\.chat-inspector-tool-item__detail-block pre\s*\{[\s\S]*max-height:\s*min\(260px,\s*42vh\);[\s\S]*border-radius:\s*8px;/,
+  );
+  assert.doesNotMatch(
+    inspectorPanelCss,
+    /\.chat-inspector-context-strip,[\s\S]*\.chat-inspector-empty\s*\{[\s\S]*border:\s*1px solid var\(--chat-line\);/,
+    "inspector support surfaces should stay list-like instead of returning to stacked cards",
   );
   assert.match(inspectorPanel, /chat-inspector-context-strip/);
   assert.doesNotMatch(inspectorPanel, /chat-inspector-summary-card/);
@@ -898,6 +1068,34 @@ test("conversation utility pills and live preview chrome avoid oversized capsule
   );
 });
 
+test("chat shell drawer dialogs expose accessible titles and descriptions", () => {
+  assert.match(
+    chatShellPage,
+    /class="chat-mobile-drawer chat-mobile-session-rail"[\s\S]*<DialogTitle as-child>[\s\S]*<span class="sr-only">\{\{ text\('移动端会话列表', 'Mobile session list'\) \}\}<\/span>[\s\S]*<DialogDescription as-child>[\s\S]*<span class="sr-only">\{\{ text\('浏览、创建和管理聊天会话。', 'Browse, create, and manage chat sessions\.'\) \}\}<\/span>/,
+  );
+  assert.match(
+    chatShellPage,
+    /class="chat-inspector-sheet chat-side-inspector chat-mobile-inspector-sheet"[\s\S]*<DialogTitle as-child>[\s\S]*<span class="sr-only">\{\{ text\('会话调试台', 'Session inspector'\) \}\}<\/span>[\s\S]*<DialogDescription as-child>[\s\S]*<span class="sr-only">\{\{ text\('查看当前聊天会话的运行状态、工具调用和诊断信息。', 'Review runtime state, tool calls, and diagnostics for the current chat session\.'\) \}\}<\/span>/,
+  );
+});
+
+test("desktop inspector stays non-modal so the IM rail remains interactive", () => {
+  assert.match(
+    chatShellPage,
+    /<DialogRoot[\s\S]*:open="inspectPinned && inspectorDrawerOpen"[\s\S]*:modal="chatShellCompactViewport"[\s\S]*@update:open="handleInspectorDrawerOpenChange"[\s\S]*>/,
+  );
+  assert.match(chatShellPage, /const chatShellCompactViewport = ref\(false\);/);
+  assert.match(chatShellPage, /window\.matchMedia\('\(max-width: 920px\)'\)/);
+  assert.match(chatShellPage, /chatShellCompactViewportMediaQuery\.addEventListener\('change', chatShellCompactViewportListener\)/);
+  assert.match(chatShellPage, /chatShellCompactViewportMediaQuery\.removeEventListener\('change', chatShellCompactViewportListener\)/);
+  assert.match(
+    chatShellPage,
+    /class="chat-inspector-mask"[\s\S]*\/>\s*<DialogContent[\s\S]*@interact-outside="handleInspectorInteractOutside"[\s\S]*<aside class="chat-inspector-sheet/,
+  );
+  assert.match(chatShellPage, /function handleInspectorDrawerOpenChange\(nextOpen: boolean\): void \{[\s\S]*if \(!nextOpen\) \{[\s\S]*if \(!chatShellCompactViewport\.value\) \{[\s\S]*inspectorDrawerOpen\.value = true;[\s\S]*return;[\s\S]*\}[\s\S]*closeInspectorDrawer\(\);/);
+  assert.match(chatShellPage, /function handleInspectorInteractOutside\(event: Event\): void \{[\s\S]*if \(!chatShellCompactViewport\.value\) \{[\s\S]*event\.preventDefault\(\);/);
+});
+
 test("mobile conversation header and composer prioritize visible controls over hidden horizontal rails", () => {
   assert.match(conversationPane, /headerSummaryItems/);
   assert.match(conversationPane, /class="chat-conversation-pane__summary"/);
@@ -911,7 +1109,7 @@ test("mobile conversation header and composer prioritize visible controls over h
   );
   assert.match(
     conversationPaneCss,
-    /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__header\s*\{[\s\S]*padding:\s*8px 10px 6px;/,
+    /@media \(max-width:\s*920px\)\s*\{[\s\S]*\.chat-conversation-pane__header\s*\{[\s\S]*padding:\s*7px 10px 5px;/,
   );
   assert.match(
     conversationPaneCss,
@@ -948,15 +1146,15 @@ test("mobile conversation header and composer prioritize visible controls over h
   );
   assert.match(
     conversationPaneCss,
-    /\.chat-conversation-pane__mobile-dock\s*\{[\s\S]*border-radius:\s*14px;/,
+    /\.chat-conversation-pane__mobile-dock\s*\{[\s\S]*padding:\s*2px;[\s\S]*border-radius:\s*10px;[\s\S]*box-shadow:\s*none;/,
   );
   assert.match(
     conversationPaneCss,
-    /\.chat-conversation-pane__mobile-dock-btn\s*\{[\s\S]*min-height:\s*48px;/,
+    /\.chat-conversation-pane__mobile-dock-btn\s*\{[\s\S]*min-height:\s*42px;[\s\S]*border-radius:\s*8px;[\s\S]*border:\s*1px solid transparent;[\s\S]*box-shadow:\s*none;/,
   );
   assert.match(
     conversationPaneCss,
-    /\.chat-conversation-pane__mobile-dock-btn--refresh\s*\{[\s\S]*box-shadow:\s*0 14px 28px color-mix\(in srgb, var\(--chat-accent\) 16%, transparent\);/,
+    /\.chat-conversation-pane__mobile-dock-btn--refresh\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--chat-accent\) 14%,\s*transparent\);[\s\S]*box-shadow:\s*none;/,
   );
   assert.match(
     conversationPaneCss,
@@ -968,19 +1166,23 @@ test("mobile conversation header and composer prioritize visible controls over h
   );
   assert.match(
     conversationPaneCss,
-    /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__composer\s*\{[\s\S]*padding:\s*6px 10px 8px;/,
+    /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__composer\s*\{[\s\S]*padding:\s*5px 10px 7px;/,
   );
   assert.match(
     conversationPaneCss,
-    /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__avatar\s*\{[\s\S]*width:\s*34px;/,
+    /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__avatar\s*\{[\s\S]*width:\s*30px;/,
   );
   assert.match(
     conversationPaneCss,
-    /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__mobile-dock-btn\s*\{[\s\S]*min-height:\s*40px;/,
+    /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__mobile-dock-btn\s*\{[\s\S]*min-height:\s*38px;/,
   );
   assert.match(
     conversationPaneCss,
     /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-conversation-pane__summary-chip\s*\{[\s\S]*min-height:\s*21px;/,
+  );
+  assert.match(
+    composerBarCss,
+    /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.chat-composer-frame\s*\{[\s\S]*gap:\s*6px;[\s\S]*padding:\s*6px 8px;[\s\S]*border-radius:\s*9px;/,
   );
   assert.match(
     composerBarCss,
@@ -1053,7 +1255,11 @@ test("session Exec enable flow uses a Studio dialog instead of the browser confi
 test("queued message rail stays hidden when empty and is controlled by compact summary state", () => {
   assert.match(
     queuedMessageRail,
-    /<section v-if="items\.length" class="chat-queue-rail"/,
+    /<section[\s\S]*v-if="items\.length"[\s\S]*class="chat-queue-rail"/,
+  );
+  assert.doesNotMatch(
+    queuedMessageRail,
+    /chat-queue-rail__blocked-reason[\s\S]*<\/p>\s*<\/p>/,
   );
   assert.match(queuedMessageRail, /presentationMode\?: 'rail' \| 'sheet';/);
   assertInOrder(chatShellPage, [
@@ -1112,6 +1318,7 @@ test("chat shell defers the root-route history window and loads date buckets on 
   assert.match(chatShellPage, /const CHAT_HISTORY_PAGE_LIMIT = 12;/);
   assert.match(chatShellPage, /const CHAT_HISTORY_AUTO_FILL_PAGE_LIMIT = 24;/);
   assert.match(chatShellPage, /const CHAT_HISTORY_DEFER_MS = 320;/);
+  assert.match(chatShellPage, /if \(payload\.history\) \{[\s\S]*applyHistoryPagePayload\(payload\.history, 'replace'\);[\s\S]*historyLoadingInitial\.value = false;[\s\S]*historyErrorMessage\.value = '';/);
   assert.match(chatShellPage, /let deferredInitialHistoryLoadTimer: number \| null = null;/);
   assert.match(chatShellPage, /let historyReplaceRequestController: AbortController \| null = null;/);
   assert.match(chatShellPage, /let historyDatesRequestController: AbortController \| null = null;/);
@@ -1192,8 +1399,15 @@ test("chat shell coalesces high-frequency tool partial output while keeping term
   assert.match(chatShellPage, /onBeforeUnmount\(\(\) => \{[\s\S]*clearPendingTemporaryToolEvents\(\);/);
 });
 
+test("chat shell keeps history cursors when realtime snapshots only cover the tail window", () => {
+  assert.match(chatShellPage, /mergeCanonicalSnapshotPageInfo/);
+  assert.match(chatShellPage, /const currentPageInfo = historyPayload\.value\?\.pageInfo \|\| historyPageInfo\.value;/);
+  assert.match(chatShellPage, /const snapshotPageInfo = event\.pageInfo && shouldApplySnapshotWindow[\s\S]*mergeCanonicalSnapshotPageInfo\(currentPageInfo, event\.pageInfo, \{[\s\S]*snapshotMessageCount: event\.messages\.length,/);
+  assert.match(chatShellPage, /historyPageInfo\.value = snapshotPageInfo;/);
+});
+
 test("conversation pane memoizes stable timeline subtrees so prepend and append updates do not repatch every bubble", () => {
-  assert.match(conversationPane, /<MessageBubble[\s\S]*v-memo="timelineItemMemoKey\(item\)"/);
+  assert.match(conversationPane, /<MessageBubble[\s\S]*v-memo="timelineItemMemoKey\(row\.item\)"/);
   assert.match(conversationPane, /:active-streaming-message-id="activeStreamingMessageId"/);
   assert.match(conversationPane, /function timelineItemMemoKey\(item: ChatRenderableItem\): unknown\[] \{/);
   assert.match(conversationPane, /item\.type === 'message_group'/);
@@ -1208,9 +1422,14 @@ test("conversation pane virtualizes the timeline shell so only viewport-adjacent
     conversationPaneCss,
     /\.chat-conversation-thread__live-placeholder-dot\s*\{[\s\S]*animation:\s*chat-thread-live-placeholder-pulse/,
   );
-  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_MIN_ITEMS = 160;/);
-  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_OVERSCAN_PX = 5200;/);
+  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_MIN_ITEMS = 96;/);
   assert.match(conversationPane, /const TIMELINE_ITEM_DEFAULT_HEIGHT = 280;/);
+  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_OVERSCAN_VIEWPORTS = 2\.75;/);
+  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_OVERSCAN_MIN_PX = 1400;/);
+  assert.match(conversationPane, /const TIMELINE_VIRTUALIZE_OVERSCAN_MAX_PX = 3200;/);
+  assert.match(conversationPane, /function resolveTimelineVirtualOverscanPx\(clientHeight: number\): number \{/);
+  assert.match(conversationPane, /overscanPx: resolveTimelineVirtualOverscanPx\(timelineViewport\.value\.clientHeight\),/);
+  assert.doesNotMatch(conversationPane, /TIMELINE_VIRTUALIZE_OVERSCAN_PX/);
   assert.match(conversationPane, /const HISTORY_PREPEND_ANCHOR_STABILIZE_MS = 2200;/);
   assert.match(conversationPane, /const HISTORY_LATEST_BOTTOM_ANCHOR_STABILIZE_MS = 3600;/);
   assert.match(conversationPane, /scrollState\.value\.isPinnedToBottom/);
@@ -1226,18 +1445,47 @@ test("conversation pane virtualizes the timeline shell so only viewport-adjacent
   assert.match(conversationPane, /let heightDeltaAboveViewport = 0;/);
   assert.match(conversationPane, /itemRect\.bottom <= containerRect\.top/);
   assert.match(conversationPane, /container\.scrollTop \+= heightDeltaAboveViewport;/);
+  assert.match(conversationPane, /function pruneTimelineMeasurementCache\(\): void \{/);
+  assert.match(conversationPane, /const activeItemIds = new Set\(props\.timelineItems\.map\(\(item\) => item\.id\)\);/);
+  assert.match(conversationPane, /delete timelineItemHeights\[itemId\];/);
+  assert.match(conversationPane, /unobserveTimelineItemShell\(itemId\);/);
+  assert.match(conversationPane, /\(\) => props\.timelineItems\.map\(\(item\) => item\.id\)/);
   assert.match(conversationPane, /function estimateTextBlockHeight\(text: string\): number \{/);
+  assert.match(conversationPane, /estimateChatTextBlockHeight\(String\(text \|\| ''\)\)/);
+  const textEstimateBlock = conversationPane.match(/function estimateTextBlockHeight\(text: string\): number \{[\s\S]*?\n\}/)?.[0] || "";
+  assert.ok(textEstimateBlock, "Missing text height estimate wrapper");
+  assert.doesNotMatch(textEstimateBlock, /\.trim\(/);
+  assert.doesNotMatch(textEstimateBlock, /\.split\(/);
+  assert.doesNotMatch(textEstimateBlock, /\.match\(/);
   assert.match(conversationPane, /function estimateMessageGroupHeight\(item: Extract<ChatRenderableItem, \{ type: 'message_group' \}>\): number \{/);
   assert.match(conversationPane, /const timelineVirtualWindow = computed\(\(\) => \{/);
   assert.match(conversationPane, /if \(props\.forceEagerHistoryRender \|\| total <= TIMELINE_VIRTUALIZE_MIN_ITEMS\) \{/);
+  assert.match(conversationPane, /const TIMELINE_ITEM_GAP = 18;/);
+  assert.match(conversationPane, /type RenderedTimelineRow = \{/);
+  assert.match(conversationPane, /dateLabel: string \| null;/);
+  assert.match(conversationPane, /estimatedHeight: number;/);
+  assert.match(conversationPane, /const renderedTimelineRows = computed<RenderedTimelineRow\[\]>\(\(\) => \{/);
+  assert.match(conversationPane, /for \(let index = start; index < end; index \+= 1\) \{/);
+  assert.match(conversationPane, /const layoutRow = timelineLayoutRows\.value\[index\];/);
+  assert.match(conversationPane, /dateLabel: layoutRow\?\.id === item\.id \? layoutRow\.dateLabel : computeTimelineItemDateLabel\(item, index\),/);
+  assert.match(conversationPane, /estimatedHeight: layoutRow\?\.id === item\.id \? layoutRow\.estimatedHeight : timelineItemEstimatedHeight\(item, index\),/);
+  assert.match(conversationPane, /function timelineVirtualSpacerHeight\(position: 'before' \| 'after'\): number \{/);
+  assert.match(conversationPane, /rawHeight - TIMELINE_ITEM_GAP/);
+  assert.match(conversationPane, /function timelineVirtualSpacerStyle\(position: 'before' \| 'after'\): Record<string, string> \{/);
   assert.match(conversationPane, /function isTimelineItemVisible\(index: number\): boolean \{/);
   assert.match(conversationPane, /function shouldForceEagerTimelineItem\(index: number\): boolean \{/);
-  assert.match(conversationPane, /:force-eager-render="shouldForceEagerTimelineItem\(itemIndex\)"/);
-  assert.match(conversationPane, /:id="timelineItemAnchorId\(item\) \|\| undefined"/);
+  assert.match(conversationPane, /v-for="row in renderedTimelineRows"/);
+  assert.match(conversationPane, /:force-eager-render="shouldForceEagerTimelineItem\(row\.index\)"/);
+  assert.match(conversationPane, /:id="timelineItemAnchorId\(row\.item\) \|\| undefined"/);
   assert.match(conversationPane, /class="chat-conversation-thread__item-shell"/);
-  assert.match(conversationPane, /:style="timelineItemShellStyle\(item, itemIndex\)"/);
-  assert.match(conversationPane, /v-if="isTimelineItemVisible\(itemIndex\)"/);
-  assert.match(conversationPane, /class="chat-conversation-thread__item-placeholder"/);
+  assert.match(conversationPane, /:style="timelineItemShellStyle\(row\)"/);
+  assert.match(conversationPane, /v-if="row\.dateLabel"/);
+  assert.match(conversationPane, /<span>\{\{ row\.dateLabel \}\}<\/span>/);
+  assert.match(conversationPane, /function timelineItemShellStyle\(row: RenderedTimelineRow\): Record<string, string> \| undefined \{/);
+  assert.match(conversationPane, /minHeight: `\$\{row\.estimatedHeight\}px`,/);
+  assert.match(conversationPane, /class="chat-conversation-thread__virtual-spacer"/);
+  assert.match(conversationPaneCss, /\.chat-conversation-thread__virtual-spacer\s*\{[\s\S]*contain:\s*strict;/);
+  assert.doesNotMatch(conversationPane, /class="chat-conversation-thread__item-placeholder"/);
   assert.match(conversationPane, /const showHistoryLoadingBeforeIndicator = ref\(false\);/);
   assert.match(conversationPane, /function scheduleHistoryLoadingIndicator\(kind: 'before' \| 'after', loading: boolean\): void \{/);
   assert.match(conversationPane, /class="chat-conversation-thread__loading-indicator chat-conversation-thread__loading-indicator--before"/);
@@ -1262,7 +1510,11 @@ test("history prepend restores against the newest loaded message boundary instea
   assert.match(conversationPane, /let prependRestoreBoundaryMessageId: string \| null = null;/);
   assert.match(conversationPane, /function resolveMessageBubbleElement\(messageId: string\): HTMLElement \| null \{/);
   assert.match(conversationPane, /function markThreadUserBrowseIntent\(\): void \{/);
-  assert.match(conversationPane, /function readVisibleTimelineAnchor\(\): \{ itemId: string; offset: number \} \| null \{/);
+  assert.match(conversationPane, /function currentTimelineAnchorCandidateRange\(\): \{ start: number; end: number \} \{/);
+  assert.match(conversationPane, /const virtualWindow = timelineVirtualWindow\.value;/);
+  assert.match(conversationPane, /function readVisibleTimelineAnchor\(\): \{ itemId: string; messageId: string \| null; offset: number \} \| null \{/);
+  assert.match(conversationPane, /const candidateRange = currentTimelineAnchorCandidateRange\(\);/);
+  assert.match(conversationPane, /for \(let index = candidateRange\.start; index < candidateRange\.end; index \+= 1\) \{/);
   assert.match(conversationPane, /const HISTORY_PREPEND_USER_SCROLL_GRACE_MS = 260;/);
   assert.match(conversationPane, /function isThreadUserScrollRecent\(nowMs = Date\.now\(\)\): boolean \{/);
   assert.match(conversationPane, /function updateStableRestoreAnchorFromCurrentViewport\(metrics: ChatSessionScrollMetrics \| null = readScrollMetrics\(\)\): boolean \{/);

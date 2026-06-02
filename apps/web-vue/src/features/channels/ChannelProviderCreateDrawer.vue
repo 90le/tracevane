@@ -30,6 +30,7 @@
                     v-model="draft.type"
                     :options="options"
                     :placeholder="text('请选择渠道类型', 'Select provider type')"
+                    :teleport="false"
                   />
                 </div>
 
@@ -94,14 +95,29 @@ const draft = reactive({
   enabled: true,
 });
 
+function syncDraftType(): void {
+  if (props.options.some((option) => option.value === draft.type)) return;
+  draft.type = props.options[0]?.value || '';
+}
+
 watch(
   () => props.open,
   (value) => {
     if (!value) return;
-    draft.type = props.options[0]?.value || '';
+    draft.type = '';
     draft.enabled = true;
+    syncDraftType();
   },
   { immediate: true },
+);
+
+watch(
+  () => props.options,
+  () => {
+    if (!props.open) return;
+    syncDraftType();
+  },
+  { deep: true },
 );
 
 function handleOpenChange(nextOpen: boolean): void {

@@ -15,6 +15,7 @@ import { createConfigService } from './modules/config/service.js';
 import { createCronService } from './modules/cron/service.js';
 import { createDashboardService } from './modules/dashboard/service.js';
 import { createFilesService } from './modules/files/service.js';
+import { createGitService } from './modules/git/service.js';
 import { createPluginsService } from './modules/plugins/service.js';
 import { createSkillsService } from './modules/skills/service.js';
 import { createSystemService } from './modules/system/service.js';
@@ -57,6 +58,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
     terminal,
   });
   const files = createFilesService(options.config);
+  const git = createGitService(options.config);
 
   const services: StudioServices = {
     agents,
@@ -67,6 +69,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
     cron,
     dashboard,
     files,
+    git,
     plugins,
     skills,
     system,

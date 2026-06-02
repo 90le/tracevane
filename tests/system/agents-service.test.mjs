@@ -322,6 +322,54 @@ test("agents summary and detail expose synthetic default agent when no agents li
   assert.equal(detail.agent.workspace, path.join(root, "workspace"));
 });
 
+test("agents summary includes configured third-party model refs outside provider catalogs", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    agents: {
+      defaults: {
+        model: {
+          primary: "bigmodel/glm-5",
+          fallbacks: ["custom/fallback-model"],
+        },
+        models: {
+          "unlisted/vendor-model": {
+            agentRuntime: { id: "openclaw" },
+          },
+        },
+      },
+      list: [
+        {
+          id: "main",
+          model: {
+            primary: "agent/local-primary",
+            fallbacks: ["agent/local-fallback"],
+          },
+        },
+      ],
+    },
+    models: {
+      providers: {
+        configured: {
+          models: [{ id: "known-model", name: "Known Model" }],
+        },
+      },
+    },
+  });
+
+  const service = createAgentsService(config);
+  const summary = service.getSummary();
+
+  assert.deepEqual(summary.availableModels, [
+    "agent/local-fallback",
+    "agent/local-primary",
+    "bigmodel/glm-5",
+    "configured/known-model",
+    "custom/fallback-model",
+    "unlisted/vendor-model",
+  ]);
+});
+
 test("agent delete is conservative by default and keeps workspace and agentDir", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

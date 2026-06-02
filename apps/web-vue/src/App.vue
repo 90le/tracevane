@@ -10,6 +10,12 @@
           <DialogOverlay class="mobile-sidebar-mask" />
           <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
             <aside class="sidebar sidebar-rail mobile mobile-open">
+              <DialogTitle as-child>
+                <h2 class="sr-only">{{ text('工具栏导航', 'Tool navigation') }}</h2>
+              </DialogTitle>
+              <DialogDescription as-child>
+                <p class="sr-only">{{ text('打开 OpenClaw Studio 的全局导航、命令入口和版本状态。', 'Open the global navigation, command entry, and version status for OpenClaw Studio.') }}</p>
+              </DialogDescription>
               <StudioSidebarRail
                 :is-mobile="true"
                 :sidebar-collapsed="false"
@@ -90,7 +96,7 @@
         <div class="shell-layout" :class="{ 'shell-layout-chat': isChatSurface, 'shell-layout-files': isFilesSurface }">
           <section class="shell-main-stage">
             <StudioShellTopbar
-              v-if="!isChatSurface && !isFilesSurface"
+              v-if="!isChatSurface && !isFilesSurface && !isTerminalSurface"
               :is-mobile="isMobile"
               :mobile-nav-open="mobileSidebarOpen"
               :current-title="activeNavItem?.label || text('工作台', 'Workspace')"
@@ -115,9 +121,9 @@
                 :class="{ 'shell-route-stage-chat': isChatSurface, 'shell-route-stage-files': isFilesSurface }"
               >
                 <KeepAlive v-if="Component && shouldKeepRouteAlive(routedView)" :max="16">
-                  <component :is="Component" />
+                  <component :is="Component" @request-shell-navigation="toggleSidebar" />
                 </KeepAlive>
-                <component v-else-if="Component" :is="Component" />
+                <component v-else-if="Component" :is="Component" @request-shell-navigation="toggleSidebar" />
               </section>
             </RouterView>
           </section>
@@ -137,7 +143,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { Menu } from '@lucide/vue';
-import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, TooltipProvider } from 'reka-ui';
+import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, TooltipProvider } from 'reka-ui';
 import { RouterView, useRoute, type RouteLocationNormalizedLoaded } from 'vue-router';
 import ConfirmDialog from './components/ConfirmDialog.vue';
 import StudioCommandPalette from './components/StudioCommandPalette.vue';

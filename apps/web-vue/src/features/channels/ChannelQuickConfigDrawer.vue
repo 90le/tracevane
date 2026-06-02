@@ -28,27 +28,27 @@
             <div class="form-grid">
               <div class="form-field">
                 <label class="form-label">{{ text('默认账号', 'Default account') }}</label>
-                <StudioSelect v-model="draft.defaultAccount" :options="defaultAccountOptions" :placeholder="text('未指定', 'Unset')" />
+                <StudioSelect v-model="draft.defaultAccount" :options="defaultAccountOptions" :placeholder="text('未指定', 'Unset')" :teleport="false" />
               </div>
 
               <div class="form-field">
                 <label class="form-label">{{ text('默认私聊策略', 'Default DM policy') }}</label>
-                <StudioSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+                <StudioSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
               </div>
 
               <div class="form-field">
                 <label class="form-label">{{ text('默认群组策略', 'Default group policy') }}</label>
-                <StudioSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+                <StudioSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
               </div>
 
               <div class="form-field">
                 <label class="form-label">{{ text('流式响应', 'Streaming') }}</label>
-                <StudioSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+                <StudioSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
               </div>
 
               <div class="form-field">
                 <label class="form-label">{{ text('连接模式', 'Connection mode') }}</label>
-                <StudioSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" />
+                <StudioSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" :teleport="false" />
               </div>
             </div>
           </div>

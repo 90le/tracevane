@@ -218,28 +218,6 @@ export function buildTerminalSessionReplayTranscript(
       pushTranscriptChunk(chunks, `\r\n${message}\r\n`, maxChars);
       continue;
     }
-
-    if (event.type === "exit") {
-      const detail = event.detail || {};
-      const summary =
-        typeof detail.code === "number"
-          ? `exit code ${detail.code}`
-          : typeof detail.signal === "string" && detail.signal.trim()
-            ? `exit signal ${detail.signal.trim()}`
-            : "";
-      if (!summary) continue;
-      pushTranscriptChunk(chunks, `\r\n[${summary}]\r\n`, maxChars);
-      continue;
-    }
-
-    if (event.type === "ended") {
-      const reason =
-        typeof event.detail?.reason === "string"
-          ? event.detail.reason.trim()
-          : "";
-      if (!reason) continue;
-      pushTranscriptChunk(chunks, `\r\n[${reason}]\r\n`, maxChars);
-    }
   }
 
   if (chunks.length) {
@@ -247,6 +225,7 @@ export function buildTerminalSessionReplayTranscript(
   }
 
   return buildTerminalSessionHistory(eventsSinceLastClear(events), { limit: 80 })
+    .filter((entry) => entry.kind !== "system")
     .map((entry) => `${entry.text}\r\n`)
     .join("");
 }

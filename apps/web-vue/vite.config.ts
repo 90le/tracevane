@@ -206,6 +206,7 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: studioWebPort,
+    strictPort: true,
     proxy: useExternalApi ? {
       '/api': {
         target: `http://127.0.0.1:${studioApiPort}`,

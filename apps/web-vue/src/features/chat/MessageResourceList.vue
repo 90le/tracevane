@@ -6,6 +6,7 @@
         type="button"
         class="chat-resource-card"
         :class="[item.kind, { missing: isMissing(item) }]"
+        :data-chat-media-preview-source-key="mediaPreviewSourceKey(item)"
         @click="emitPreview(item)"
       >
         <img
@@ -70,7 +71,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  preview: [{ src: string; alt: string; kind: 'image' | 'video' }];
+  preview: [{ src: string; alt: string; kind: 'image' | 'video'; sourceKey: string }];
 }>();
 
 const { text } = useLocalePreference();
@@ -95,6 +96,10 @@ function resourceAlt(item: ChatResourceItem): string {
   return item.fileName || (item.kind === 'image' ? text('图片预览', 'Image preview') : text('视频预览', 'Video preview'));
 }
 
+function mediaPreviewSourceKey(item: ChatResourceItem): string {
+  return item.id || item.url || item.downloadUrl || item.fileName || item.relativePath || item.originalPath || '';
+}
+
 function emitPreview(item: ChatResourceItem): void {
   if (!isPreviewable(item)) {
     return;
@@ -103,6 +108,7 @@ function emitPreview(item: ChatResourceItem): void {
     src: resourceUrl(item),
     alt: resourceAlt(item),
     kind: item.kind,
+    sourceKey: mediaPreviewSourceKey(item),
   });
 }
 

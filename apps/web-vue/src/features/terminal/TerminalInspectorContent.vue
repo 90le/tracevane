@@ -1,88 +1,129 @@
 <template>
   <div class="terminal-inspector-content">
-    <section class="terminal-inspector-command-pane">
-      <div class="terminal-inspector-section-header">
-        <div>
-          <h3>{{ text('终端控制塔', 'Terminal Control Tower') }}</h3>
-          <p>{{ text('快速启动 CLI、查看技能依赖缺口，并把常用动作落到独立终端标签里。', 'Launch CLIs quickly, inspect missing dependencies, and route common actions into dedicated terminal tabs.') }}</p>
-        </div>
-        <div class="terminal-inspector-summary-actions">
-          <button
-            v-if="compactMode"
-            type="button"
-            class="secondary-button compact-button"
-            @click="$emit('toggleSummary')"
+    <div class="terminal-inspector-commandbar">
+      <div class="terminal-inspector-commandbar__tools">
+        <details
+          v-if="profileItemCount"
+          ref="profileMenuRef"
+          class="terminal-inspector-profile-menu"
+          :open="activeInspectorMenu === 'profiles'"
+          @toggle="handleInspectorMenuToggle('profiles')"
+          @keydown.esc.stop.prevent="closeInspectorMenus"
+        >
+          <summary
+            class="secondary-button compact-button terminal-inspector-profile-menu__trigger"
+            :aria-label="text('打开终端配置菜单', 'Open terminal profile menu')"
+            :aria-expanded="activeInspectorMenu === 'profiles'"
+            :title="text('配置', 'Profiles')"
+            @click.prevent.stop="toggleInspectorMenu('profiles')"
           >
-            {{ summaryExpanded ? text('收起摘要', 'Collapse Summary') : text('展开摘要', 'Expand Summary') }}
-          </button>
-          <button type="button" class="secondary-button compact-button" :disabled="inspectorBusy" @click="$emit('refresh')">
-            {{ text('刷新状态', 'Refresh Status') }}
-          </button>
-        </div>
-      </div>
+            <SlidersHorizontal class="terminal-inspector-commandbar__icon" aria-hidden="true" />
+            <span class="sr-only">{{ text('配置', 'Profiles') }}</span>
+            <strong>{{ profileItemCount }}</strong>
+          </summary>
+          <div class="terminal-inspector-profile-menu__panel" role="menu" @click.stop>
+            <header class="terminal-inspector-menu-head">
+              <strong>{{ text('配置', 'Profiles') }}</strong>
+              <button
+                type="button"
+                class="terminal-inspector-menu-head__close"
+                :aria-label="text('关闭菜单', 'Close menu')"
+                @click="closeInspectorMenus"
+              >
+                <X class="terminal-inspector-commandbar__icon" aria-hidden="true" />
+              </button>
+            </header>
+            <button
+              v-for="profile in launchableTerminalProfiles"
+              :key="profile.id"
+              type="button"
+              role="menuitem"
+              class="terminal-inspector-profile-item"
+              :class="{ active: profile.id === activeProfileId }"
+              :data-kind="profile.kind"
+              :data-color="profile.color"
+              :title="text(profile.descriptionZh || profile.description, profile.description)"
+              @click="launchProfileFromMenu(profile.id)"
+            >
+              <span class="terminal-inspector-profile-item__dot" aria-hidden="true"></span>
+              <span class="terminal-inspector-profile-item__copy">
+                <strong>{{ text(profile.labelZh || profile.label, profile.label) }}</strong>
+                <small>{{ resolveProfileKindLabel(profile.kind) }}</small>
+              </span>
+            </button>
+          </div>
+        </details>
 
-      <div v-if="showExpandedSummary" class="terminal-inspector-summary-grid">
-        <div class="terminal-summary-stat">
-          <span class="terminal-summary-stat__label">{{ text('当前会话', 'Current Session') }}</span>
-          <strong>{{ activeSessionTitle }}</strong>
-        </div>
-        <div class="terminal-summary-stat">
-          <span class="terminal-summary-stat__label">{{ text('运行实例', 'Live Instances') }}</span>
-          <strong>{{ sessionCount }}</strong>
-        </div>
-        <div class="terminal-summary-stat">
-          <span class="terminal-summary-stat__label">{{ text('缺失依赖', 'Missing Deps') }}</span>
-          <strong>{{ missingBinaryCount }}</strong>
-        </div>
-        <div class="terminal-summary-stat">
-          <span class="terminal-summary-stat__label">{{ text('待配置技能', 'Needs Setup') }}</span>
-          <strong>{{ needsSetupCount }}</strong>
-        </div>
-        <div class="terminal-summary-stat">
-          <span class="terminal-summary-stat__label">{{ text('阻塞技能', 'Blocked Skills') }}</span>
-          <strong>{{ blockedCount }}</strong>
-        </div>
-        <div class="terminal-summary-stat">
-          <span class="terminal-summary-stat__label">{{ text('默认模型', 'Default Model') }}</span>
-          <strong>{{ runtimeModelLabel }}</strong>
-        </div>
-      </div>
-      <div v-else class="terminal-summary-inline">
-        <span class="terminal-summary-inline__chip">{{ text('会话', 'Session') }} {{ activeSessionTitle }}</span>
-        <span class="terminal-summary-inline__chip">{{ text('依赖', 'Deps') }} {{ missingBinaryCount }}</span>
-        <span class="terminal-summary-inline__chip">{{ text('实例', 'Instances') }} {{ sessionCount }}</span>
-      </div>
+        <details
+          v-if="actionItemCount"
+          ref="actionMenuRef"
+          class="terminal-inspector-command-menu"
+          :open="activeInspectorMenu === 'commands'"
+          @toggle="handleInspectorMenuToggle('commands')"
+          @keydown.esc.stop.prevent="closeInspectorMenus"
+        >
+          <summary
+            class="secondary-button compact-button terminal-inspector-command-menu__trigger"
+            :aria-label="text('打开终端命令菜单', 'Open terminal command menu')"
+            :aria-expanded="activeInspectorMenu === 'commands'"
+            :title="text('命令', 'Commands')"
+            @click.prevent.stop="toggleInspectorMenu('commands')"
+          >
+            <Command class="terminal-inspector-commandbar__icon" aria-hidden="true" />
+            <span class="sr-only">{{ text('命令', 'Commands') }}</span>
+            <strong>{{ actionItemCount }}</strong>
+          </summary>
+          <div class="terminal-inspector-command-menu__panel" role="menu" @click.stop>
+            <header class="terminal-inspector-menu-head">
+              <strong>{{ text('命令', 'Commands') }}</strong>
+              <button
+                type="button"
+                class="terminal-inspector-menu-head__close"
+                :aria-label="text('关闭菜单', 'Close menu')"
+                @click="closeInspectorMenus"
+              >
+                <X class="terminal-inspector-commandbar__icon" aria-hidden="true" />
+              </button>
+            </header>
+            <section
+              v-for="layer in actionLayers"
+              :key="layer.key"
+              class="terminal-inspector-command-group"
+            >
+              <p>{{ text(layer.titleZh, layer.titleEn) }}</p>
+              <button
+                v-for="item in layer.items"
+                :key="item.key"
+                type="button"
+                class="terminal-inspector-command-item"
+                role="menuitem"
+                @click="triggerActionFromMenu(item.key)"
+              >
+                <span class="terminal-inspector-command-item__copy">
+                  <strong>{{ text(item.labelZh, item.labelEn) }}</strong>
+                  <small>{{ text(item.descriptionZh, item.descriptionEn) }}</small>
+                </span>
+                <code>{{ item.command }}</code>
+              </button>
+            </section>
+          </div>
+        </details>
 
-      <div v-if="showExpandedSummary" class="terminal-inspector-tooling-actions">
-        <button type="button" class="secondary-button compact-button" :disabled="!launchableCliIds.includes('claude')" @click="$emit('launchCli', 'claude')">Claude</button>
-        <button type="button" class="secondary-button compact-button" :disabled="!launchableCliIds.includes('codex')" @click="$emit('launchCli', 'codex')">Codex</button>
-        <button type="button" class="secondary-button compact-button" :disabled="!launchableCliIds.includes('opencode')" @click="$emit('launchCli', 'opencode')">OpenCode</button>
-        <button type="button" class="secondary-button compact-button" :disabled="!launchableCliIds.includes('bash')" @click="$emit('launchCli', 'bash')">{{ text('终端', 'Shell') }}</button>
+        <button
+          type="button"
+          class="secondary-button compact-button terminal-inspector-refresh"
+          :disabled="inspectorBusy"
+          :aria-label="text('刷新终端工具状态', 'Refresh terminal tool state')"
+          :title="text('刷新', 'Refresh')"
+          @click="refreshInspectorFromCommandbar"
+        >
+          <RefreshCw class="terminal-inspector-commandbar__icon" aria-hidden="true" />
+          <span class="sr-only">{{ text('刷新', 'Refresh') }}</span>
+        </button>
       </div>
-    </section>
+    </div>
 
-    <nav class="terminal-inspector-switcher" aria-label="Terminal inspector sections">
-      <button
-        v-for="item in inspectorSections"
-        :key="item.key"
-        type="button"
-        class="terminal-inspector-switcher__button"
-        :class="{ active: inspectorSection === item.key }"
-        @click="$emit('selectSection', item.key)"
-      >
-        <span>{{ item.label }}</span>
-        <strong>{{ item.count }}</strong>
-      </button>
-    </nav>
-
-    <section v-if="inspectorSection === 'tools'" class="terminal-inspector-tooling">
-      <div class="terminal-inspector-section-header">
-        <div>
-          <h3>{{ text('Agent CLI / 技能', 'Agent CLI / Skills') }}</h3>
-          <p>{{ text('Agent CLI、技能市场工具和缺失技能依赖都在这里处理。', 'Manage agent CLIs, marketplace tools, and missing skill dependencies here.') }}</p>
-        </div>
-      </div>
-
+    <section class="terminal-inspector-tooling">
       <div v-if="visibleBinaries.length" class="terminal-binary-list">
         <section
           v-for="binary in visibleBinaries"
@@ -109,9 +150,9 @@
 
           <div class="terminal-binary-row__actions">
             <button
+              v-if="openableBinaryIds.includes(binary.id)"
               type="button"
               class="secondary-button compact-button"
-              :disabled="!openableBinaryIds.includes(binary.id)"
               @click="$emit('openBinary', binary.id)"
             >
               {{ text('新标签打开', 'Open In New Tab') }}
@@ -154,14 +195,11 @@
           </button>
         </div>
       </div>
-    </section>
 
-    <section v-else-if="inspectorSection === 'dependencies'" class="terminal-missing-deps-panel">
-      <div v-if="missingDependencyRows.length" class="terminal-missing-deps">
+      <section v-if="missingDependencyRows.length" class="terminal-missing-deps">
         <div class="terminal-inspector-section-header terminal-inspector-section-header--compact">
           <div>
             <h3>{{ text('缺失技能依赖', 'Missing Skill Dependencies') }}</h3>
-            <p>{{ text('下面列出具体缺失的二进制及受影响技能，不再只显示数量。', 'This panel lists each missing binary and the affected skills instead of only showing a count.') }}</p>
           </div>
         </div>
 
@@ -186,30 +224,7 @@
             </div>
           </li>
         </ul>
-      </div>
-
-      <section v-else class="terminal-missing-deps terminal-missing-deps--ok">
-        <strong>{{ text('技能依赖已就绪', 'Skill Dependencies Ready') }}</strong>
-        <div>{{ text('当前没有检测到缺失的技能二进制依赖。', 'No missing skill binaries were detected.') }}</div>
       </section>
-    </section>
-
-    <TerminalActionPanel
-      v-else-if="inspectorSection === 'actions'"
-      :action-layers="actionLayers"
-      @trigger="$emit('triggerAction', $event)"
-    />
-
-    <section v-else class="terminal-inspector-session-panel">
-      <TerminalSessionExplorer
-        :open-sessions="openSessions"
-        :recent-sessions="recentSessions"
-        :ended-sessions="endedSessions"
-        :active-session-id="activeSessionId"
-        @select="$emit('selectSession', $event)"
-        @end-session="$emit('endSession', $event)"
-        @delete-session="$emit('deleteSession', $event)"
-      />
     </section>
 
     <Teleport v-if="installOutputOpen && installFeedback.logs.length" to="body">
@@ -246,34 +261,33 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import { Copy, Terminal, X } from '@lucide/vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  Command,
+  Copy,
+  RefreshCw,
+  SlidersHorizontal,
+  Terminal,
+  X,
+} from '@lucide/vue';
 import type {
   TerminalBinaryId,
   TerminalBinaryStatus,
-  TerminalLaunchCli,
+  TerminalProfileDescriptor,
 } from '../../../../../types/terminal';
 import { copyTextToClipboard } from '../../shared/clipboard';
 import { useLocalePreference } from '../../shared/locale';
-import TerminalActionPanel from './TerminalActionPanel.vue';
-import TerminalSessionExplorer from './TerminalSessionExplorer.vue';
 import type { TerminalActionLayer } from './terminal-action-catalog';
-import type { TerminalSessionDescriptor } from './terminal-session-registry';
 
-type InspectorSectionKey = 'tools' | 'dependencies' | 'actions' | 'sessions';
+type TerminalInspectorMenuKey = 'profiles' | 'commands';
 const { text } = useLocalePreference();
 
-defineEmits<{
-  (e: 'toggleSummary'): void;
+const emit = defineEmits<{
   (e: 'refresh'): void;
-  (e: 'selectSection', section: InspectorSectionKey): void;
-  (e: 'launchCli', cli: TerminalLaunchCli): void;
+  (e: 'launchProfile', profileId: string): void;
   (e: 'openBinary', binaryId: TerminalBinaryId): void;
   (e: 'installBinary', binaryId: TerminalBinaryId): void;
   (e: 'triggerAction', actionKey: string): void;
-  (e: 'selectSession', sessionId: string): void;
-  (e: 'endSession', sessionId: string): void;
-  (e: 'deleteSession', sessionId: string): void;
 }>();
 
 function resolveBinaryCategoryLabel(category: TerminalBinaryStatus['category']): string {
@@ -282,19 +296,18 @@ function resolveBinaryCategoryLabel(category: TerminalBinaryStatus['category']):
   return 'Agent CLI';
 }
 
+function resolveProfileKindLabel(kind: TerminalProfileDescriptor['kind']): string {
+  if (kind === 'agent') return 'Agent';
+  if (kind === 'marketplace') return text('技能市场', 'Marketplace');
+  if (kind === 'remote') return text('远程', 'Remote');
+  if (kind === 'task') return text('任务', 'Task');
+  return 'Shell';
+}
+
 const props = defineProps<{
-  compactMode: boolean;
-  summaryExpanded: boolean;
   inspectorBusy: boolean;
-  activeSessionTitle: string;
-  sessionCount: number;
-  missingBinaryCount: number;
-  needsSetupCount: number;
-  blockedCount: number;
-  runtimeModelLabel: string;
-  launchableCliIds: TerminalLaunchCli[];
-  inspectorSections: Array<{ key: InspectorSectionKey; label: string; count: number }>;
-  inspectorSection: InspectorSectionKey;
+  terminalProfiles: TerminalProfileDescriptor[];
+  activeProfileId: string | null;
   visibleBinaries: TerminalBinaryStatus[];
   openableBinaryIds: TerminalBinaryId[];
   installableBinaryIds: TerminalBinaryId[];
@@ -310,13 +323,18 @@ const props = defineProps<{
     logs: string[];
   };
   actionLayers: TerminalActionLayer[];
-  openSessions: TerminalSessionDescriptor[];
-  recentSessions: TerminalSessionDescriptor[];
-  endedSessions: TerminalSessionDescriptor[];
-  activeSessionId: string | null;
 }>();
 
-const showExpandedSummary = computed(() => !props.compactMode || props.summaryExpanded);
+const launchableTerminalProfiles = computed(() =>
+  props.terminalProfiles.filter((profile) => profile.launchable),
+);
+const profileMenuRef = ref<HTMLDetailsElement | null>(null);
+const actionMenuRef = ref<HTMLDetailsElement | null>(null);
+const activeInspectorMenu = ref<TerminalInspectorMenuKey | null>(null);
+const profileItemCount = computed(() => launchableTerminalProfiles.value.length);
+const actionItemCount = computed(() =>
+  props.actionLayers.reduce((total, layer) => total + layer.items.length, 0),
+);
 const installOutputOpen = ref(false);
 const installOutputCopied = ref(false);
 const installOutputText = computed(() => stripAnsi(props.installFeedback.logs.join('\n')));
@@ -354,6 +372,72 @@ function closeInstallOutputSheet(): void {
   installOutputOpen.value = false;
 }
 
+function handleInspectorMenuToggle(menu: TerminalInspectorMenuKey): void {
+  const targetMenu = getInspectorMenuRef(menu);
+  if (!targetMenu) return;
+  if (!targetMenu.open) {
+    if (activeInspectorMenu.value === menu) {
+      activeInspectorMenu.value = null;
+    }
+    return;
+  }
+  activeInspectorMenu.value = menu;
+  closeOtherInspectorMenus(menu);
+}
+
+function toggleInspectorMenu(menu: TerminalInspectorMenuKey): void {
+  activeInspectorMenu.value = activeInspectorMenu.value === menu ? null : menu;
+}
+
+function closeOtherInspectorMenus(openMenu: TerminalInspectorMenuKey): void {
+  for (const menu of ['profiles', 'commands'] as const) {
+    if (menu === openMenu) continue;
+    const menuElement = getInspectorMenuRef(menu);
+    if (menuElement) {
+      menuElement.open = false;
+    }
+  }
+}
+
+function getInspectorMenuRef(menu: TerminalInspectorMenuKey): HTMLDetailsElement | null {
+  if (menu === 'profiles') return profileMenuRef.value;
+  return actionMenuRef.value;
+}
+
+function closeInspectorMenus(): void {
+  activeInspectorMenu.value = null;
+  for (const menu of ['profiles', 'commands'] as const) {
+    const menuElement = getInspectorMenuRef(menu);
+    if (menuElement) {
+      menuElement.open = false;
+    }
+  }
+}
+
+function handleInspectorPointerDown(event: PointerEvent): void {
+  const target = event.target instanceof Node ? event.target : null;
+  if (!target) return;
+  if (profileMenuRef.value?.contains(target) || actionMenuRef.value?.contains(target)) {
+    return;
+  }
+  closeInspectorMenus();
+}
+
+function refreshInspectorFromCommandbar(): void {
+  closeInspectorMenus();
+  emit('refresh');
+}
+
+function launchProfileFromMenu(profileId: string): void {
+  emit('launchProfile', profileId);
+  closeInspectorMenus();
+}
+
+function triggerActionFromMenu(actionKey: string): void {
+  emit('triggerAction', actionKey);
+  closeInspectorMenus();
+}
+
 async function copyInstallOutput(): Promise<void> {
   const copied = await copyTextToClipboard(installOutputText.value);
   if (!copied) return;
@@ -364,4 +448,14 @@ async function copyInstallOutput(): Promise<void> {
     }, 1400);
   }
 }
+
+onMounted(() => {
+  document.addEventListener('pointerdown', handleInspectorPointerDown);
+  window.addEventListener('resize', closeInspectorMenus);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleInspectorPointerDown);
+  window.removeEventListener('resize', closeInspectorMenus);
+});
 </script>

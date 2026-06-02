@@ -4,6 +4,12 @@
       <DialogOverlay :class="['chat-record-browser-mask', `theme-${theme}`]" />
       <DialogContent as-child @open-auto-focus.prevent @close-auto-focus.prevent>
         <section v-if="open" :class="['chat-record-browser', 'chat-record-browser--sheet', `theme-${theme}`]">
+          <DialogTitle as-child>
+            <span class="sr-only">{{ text('聊天记录', 'Chat records') }}</span>
+          </DialogTitle>
+          <DialogDescription as-child>
+            <span class="sr-only">{{ sessionSubtitle || text('搜索和浏览当前会话的聊天记录。', 'Search and browse records for the current chat session.') }}</span>
+          </DialogDescription>
           <header class="chat-record-browser__header">
             <div class="chat-record-browser__copy">
               <p class="chat-record-browser__eyebrow">{{ text('CHAT RECORDS', 'CHAT RECORDS') }}</p>
@@ -379,7 +385,7 @@
 <script setup lang="ts">
 import './chat-record-browser.css';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { Search, X } from '@lucide/vue';
 import type {
   ChatHistoryDateBucket,

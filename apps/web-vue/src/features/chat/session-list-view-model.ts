@@ -1,13 +1,16 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 import {
+  CHAT_SESSION_SEARCH_VISIBLE_LIMIT,
   CHAT_SESSION_VISIBLE_LIMITS,
   resolveSessionSectionWindow,
 } from '../../../../../lib/chat-session-catalog';
 import {
+  buildArchivedOrganizerEntry,
   deriveOrganizerChildFolders,
   type ChatBuiltInOrganizerEntry,
   deriveOrganizerFolderPath,
   deriveOrganizerFolderSessions,
+  isArchivedBuiltInFolderId,
   deriveOrganizerRootSessions,
   orderOrganizerFolders,
   pruneOrganizerStateSessionKeys,
@@ -43,6 +46,9 @@ export function useSessionListViewModel(params: {
     validOrganizerSessionKeys.value,
   ));
   const orderedFolders = computed(() => orderOrganizerFolders(prunedOrganizer.value));
+  const archivedEntry = computed<ChatBuiltInOrganizerEntry | null>(() => (
+    params.archivedSessions.value.length ? buildArchivedOrganizerEntry(params.archivedSessions.value) : null
+  ));
   const archiveViewOpen = computed(() => listScope.value === 'archived');
   const currentFolder = computed(() => (
     listScope.value === 'folders'
@@ -70,7 +76,7 @@ export function useSessionListViewModel(params: {
       return [];
     }
     if (listScope.value === 'folders') {
-      return currentFolder.value ? folderActiveSessions.value : [];
+      return currentFolder.value ? folderActiveSessions.value : rootActiveSessions.value;
     }
     return rootActiveSessions.value;
   });
@@ -118,6 +124,11 @@ export function useSessionListViewModel(params: {
   }
 
   function enterFolder(folderId: string): void {
+    if (isArchivedBuiltInFolderId(folderId)) {
+      currentFolderId.value = '';
+      listScope.value = 'archived';
+      return;
+    }
     currentFolderId.value = folderId;
   }
 
@@ -148,6 +159,7 @@ export function useSessionListViewModel(params: {
     allOrganizerSessions,
     prunedOrganizer,
     orderedFolders,
+    archivedEntry,
     archiveViewOpen,
     currentFolder,
     currentFolderPath,
@@ -185,9 +197,9 @@ export function useSessionListWindows(params: {
   loading: ReadonlyRef<boolean>;
   text: TextFn;
 }) {
-  const activeVisibleCount = ref(CHAT_SESSION_VISIBLE_LIMITS.active);
-  const archivedVisibleCount = ref(CHAT_SESSION_VISIBLE_LIMITS.archived);
-  const observedVisibleCount = ref(CHAT_SESSION_VISIBLE_LIMITS.observed);
+  const activeVisibleCount = ref<number>(CHAT_SESSION_VISIBLE_LIMITS.active);
+  const archivedVisibleCount = ref<number>(CHAT_SESSION_VISIBLE_LIMITS.archived);
+  const observedVisibleCount = ref<number>(CHAT_SESSION_VISIBLE_LIMITS.observed);
 
   const activeWindow = computed(() => resolveSessionSectionWindow(params.filteredActiveSessions.value, {
     visibleCount: activeVisibleCount.value,
@@ -245,16 +257,23 @@ export function useSessionListWindows(params: {
     );
   });
 
+  function nextVisibleCount(current: number, increment: number): number {
+    if (params.searchActive.value && current < CHAT_SESSION_SEARCH_VISIBLE_LIMIT) {
+      return CHAT_SESSION_SEARCH_VISIBLE_LIMIT + increment;
+    }
+    return current + increment;
+  }
+
   function showMore(section: 'active' | 'archived' | 'observed'): void {
     if (section === 'active') {
-      activeVisibleCount.value += CHAT_SESSION_VISIBLE_LIMITS.active;
+      activeVisibleCount.value = nextVisibleCount(activeVisibleCount.value, CHAT_SESSION_VISIBLE_LIMITS.active);
       return;
     }
     if (section === 'archived') {
-      archivedVisibleCount.value += CHAT_SESSION_VISIBLE_LIMITS.archived;
+      archivedVisibleCount.value = nextVisibleCount(archivedVisibleCount.value, CHAT_SESSION_VISIBLE_LIMITS.archived);
       return;
     }
-    observedVisibleCount.value += CHAT_SESSION_VISIBLE_LIMITS.observed;
+    observedVisibleCount.value = nextVisibleCount(observedVisibleCount.value, CHAT_SESSION_VISIBLE_LIMITS.observed);
   }
 
   function showMoreVisibleSections(): void {
@@ -270,6 +289,12 @@ export function useSessionListWindows(params: {
     if (params.showObserved.value && observedHiddenCount.value > 0) {
       showMore('observed');
     }
+  }
+
+  function resetVisibleCounts(): void {
+    activeVisibleCount.value = CHAT_SESSION_VISIBLE_LIMITS.active;
+    archivedVisibleCount.value = CHAT_SESSION_VISIBLE_LIMITS.archived;
+    observedVisibleCount.value = CHAT_SESSION_VISIBLE_LIMITS.observed;
   }
 
   return {
@@ -288,5 +313,6 @@ export function useSessionListWindows(params: {
     currentViewSummary,
     showMore,
     showMoreVisibleSections,
+    resetVisibleCounts,
   };
 }
