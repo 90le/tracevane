@@ -516,14 +516,23 @@ import {
   ChevronRight,
   ClipboardPaste,
   Copy,
+  Database,
   Download,
   Eye,
   EyeOff,
   FileArchive,
   FileAudio,
+  FileBadge,
   FileBox,
+  FileChartColumn,
   FileCode2,
   FileCog,
+  FileKey2,
+  FileLock2,
+  FileQuestion,
+  FileScan,
+  FileSpreadsheet,
+  FileType2,
   FileImage,
   FileJson,
   FilePlus,
@@ -591,6 +600,10 @@ import {
   serializeTerminalResourceExplorerSnapshot,
   type TerminalResourceExplorerSnapshot,
 } from './terminal-resource-explorer-state';
+import {
+  resolveTerminalFileKind,
+  type TerminalFileKind,
+} from './terminal-file-kind';
 
 interface ResourceTreeRow {
   entry: FileEntrySummary;
@@ -605,17 +618,7 @@ interface ResourceNavigationItem {
 }
 
 type ResourceOperationKind = 'create-file' | 'create-directory' | 'rename' | 'delete';
-type ResourceFileIconKind =
-  | 'archive'
-  | 'audio'
-  | 'code'
-  | 'config'
-  | 'data'
-  | 'image'
-  | 'package'
-  | 'script'
-  | 'text'
-  | 'video';
+type ResourceFileIconKind = TerminalFileKind;
 
 interface ResourceOperationState {
   kind: ResourceOperationKind;
@@ -1318,12 +1321,25 @@ function resolveResourceFileIcon(entry: FileEntrySummary) {
   const kind = resolveResourceFileIconKind(entry);
   if (kind === 'archive') return FileArchive;
   if (kind === 'audio') return FileAudio;
+  if (kind === 'binary') return FileQuestion;
   if (kind === 'code') return FileCode2;
   if (kind === 'config') return FileCog;
   if (kind === 'data') return FileJson;
+  if (kind === 'database') return Database;
+  if (kind === 'document') return FileText;
+  if (kind === 'font') return FileType2;
   if (kind === 'image') return FileImage;
+  if (kind === 'key') return FileKey2;
+  if (kind === 'lock') return FileLock2;
+  if (kind === 'log') return FileScan;
+  if (kind === 'markdown') return FileText;
   if (kind === 'package') return FileBox;
+  if (kind === 'pdf') return FileBadge;
+  if (kind === 'presentation') return FileChartColumn;
   if (kind === 'script') return FileTerminal;
+  if (kind === 'spreadsheet') return FileSpreadsheet;
+  if (kind === 'style') return FileCog;
+  if (kind === 'test') return FileScan;
   if (kind === 'video') return FileVideo;
   return FileText;
 }
@@ -1333,60 +1349,7 @@ function resolveResourceFileIconClass(entry: FileEntrySummary): string {
 }
 
 function resolveResourceFileIconKind(entry: FileEntrySummary): ResourceFileIconKind {
-  const name = entry.name.trim().toLocaleLowerCase();
-  const ext = normalizeResourceExtension(entry);
-
-  if (['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb', 'composer.json', 'go.mod', 'cargo.toml'].includes(name)) {
-    return 'package';
-  }
-  if (['dockerfile', 'makefile', 'justfile', '.bashrc', '.zshrc', '.profile'].includes(name)) {
-    return 'script';
-  }
-  if (['.env', '.env.local', '.gitignore', '.npmrc', '.editorconfig'].includes(name)) {
-    return 'config';
-  }
-  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'].includes(ext)) return 'image';
-  if (['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'].includes(ext)) return 'video';
-  if (['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac'].includes(ext)) return 'audio';
-  if (['zip', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'rar', '7z'].includes(ext)) return 'archive';
-  if (['json', 'jsonl', 'yaml', 'yml', 'toml', 'xml', 'csv', 'tsv'].includes(ext)) return 'data';
-  if (['env', 'ini', 'conf', 'config', 'lock'].includes(ext)) return 'config';
-  if (['sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd'].includes(ext)) return 'script';
-  if ([
-    'ts',
-    'tsx',
-    'js',
-    'jsx',
-    'mjs',
-    'cjs',
-    'vue',
-    'html',
-    'css',
-    'scss',
-    'less',
-    'py',
-    'go',
-    'rs',
-    'java',
-    'kt',
-    'swift',
-    'c',
-    'cpp',
-    'h',
-    'hpp',
-    'cs',
-    'php',
-    'rb',
-    'sql',
-  ].includes(ext)) return 'code';
-  return 'text';
-}
-
-function normalizeResourceExtension(entry: FileEntrySummary): string {
-  const rawExt = String(entry.ext || '').trim().replace(/^\./, '').toLocaleLowerCase();
-  if (rawExt) return rawExt;
-  const match = entry.name.trim().toLocaleLowerCase().match(/\.([^.]+)$/);
-  return match?.[1] || '';
+  return resolveTerminalFileKind(entry);
 }
 
 function sortEntries(entries: FileEntrySummary[]): FileEntrySummary[] {

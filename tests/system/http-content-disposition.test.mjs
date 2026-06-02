@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const httpSource = fs.readFileSync(path.join(rootDir, "apps/api/core/http.ts"), "utf8");
+const filesRoutesSource = fs.readFileSync(path.join(rootDir, "apps/api/modules/files/routes.ts"), "utf8");
 const { buildContentDisposition, sendBinary, sendJson, sendText } = await import("../../apps/api/core/http.ts");
 
 function createMockResponse() {
@@ -55,6 +56,11 @@ test("binary and file stream responses disable browser mime sniffing", () => {
     httpSource,
     /export function sendFileStream[\s\S]*setNoSniffHeader\(res\);/,
   );
+  assert.match(httpSource, /function parseSingleByteRange/);
+  assert.match(httpSource, /res\.setHeader\('Accept-Ranges', 'bytes'\)/);
+  assert.match(httpSource, /res\.setHeader\('Content-Range', `bytes \$\{range\.start\}-\$\{range\.end\}\/\$\{stat\.size\}`\)/);
+  assert.match(httpSource, /fs\.createReadStream\(options\.filePath, \{ start: range\.start, end: range\.end \}\)/);
+  assert.match(filesRoutesSource, /range: req\.headers\.range \|\| null/);
 });
 
 test("json and text responses also disable browser mime sniffing", () => {

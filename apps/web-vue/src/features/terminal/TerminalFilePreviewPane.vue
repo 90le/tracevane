@@ -37,12 +37,12 @@
               :title="filePreviewTabTitle(tab)"
               @click="selectPreviewTab(tab.id)"
             >
-              <ImageIcon
-                v-if="isImageTab(tab)"
+              <component
+                :is="resolvePreviewFileIcon(tab)"
                 class="terminal-file-preview__icon"
+                :class="resolvePreviewFileIconClass(tab)"
                 aria-hidden="true"
               />
-              <FileText v-else class="terminal-file-preview__icon" aria-hidden="true" />
               <span>{{ tab.name }}</span>
               <span
                 v-if="isTabDirty(tab.id)"
@@ -91,12 +91,12 @@
             @drop.prevent="dropPreviewTab($event, tab)"
             @dragend="endPreviewTabDrag"
           >
-            <ImageIcon
-              v-if="isImageTab(tab)"
+            <component
+              :is="resolvePreviewFileIcon(tab)"
               class="terminal-file-preview__icon"
+              :class="resolvePreviewFileIconClass(tab)"
               aria-hidden="true"
             />
-            <FileText v-else class="terminal-file-preview__icon" aria-hidden="true" />
             <span>{{ tab.name }}</span>
             <span class="terminal-file-preview__tab-state">
               <span
@@ -428,6 +428,95 @@
         </div>
       </figure>
       <section
+        v-else-if="activeInlineMediaKind === 'video' && downloadUrl"
+        class="terminal-file-preview__media terminal-file-preview__media--video"
+        :aria-label="text('视频预览', 'Video preview')"
+      >
+        <div class="terminal-file-preview__media-stage">
+          <video
+            class="terminal-file-preview__video"
+            :src="downloadUrl"
+            controls
+            preload="metadata"
+            playsinline
+          ></video>
+        </div>
+        <footer class="terminal-file-preview__media-footer">
+          <component
+            :is="activePreviewFileIcon"
+            class="terminal-file-preview__icon"
+            :class="activePreviewFileIconClass"
+            aria-hidden="true"
+          />
+          <span>{{ activeFileKindLabel }}</span>
+          <small>{{ activeMediaMetaLabel }}</small>
+          <a :href="downloadAttachmentUrl" :download="activePayload.name">{{ text('下载', 'Download') }}</a>
+        </footer>
+      </section>
+      <section
+        v-else-if="activeInlineMediaKind === 'audio' && downloadUrl"
+        class="terminal-file-preview__media terminal-file-preview__media--audio"
+        :aria-label="text('音频预览', 'Audio preview')"
+      >
+        <div class="terminal-file-preview__audio-card">
+          <FileAudio class="terminal-file-preview__audio-art" aria-hidden="true" />
+          <strong>{{ activePayload.name }}</strong>
+          <span>{{ activeMediaMetaLabel }}</span>
+          <audio
+            class="terminal-file-preview__audio"
+            :src="downloadUrl"
+            controls
+            preload="metadata"
+          ></audio>
+        </div>
+      </section>
+      <section
+        v-else-if="activeInlineMediaKind === 'pdf' && downloadUrl"
+        class="terminal-file-preview__embed terminal-file-preview__embed--pdf"
+        :aria-label="text('PDF 预览', 'PDF preview')"
+      >
+        <iframe
+          class="terminal-file-preview__embed-frame"
+          :title="text(`${activePayload.name} PDF 预览`, `${activePayload.name} PDF preview`)"
+          :src="downloadUrl"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </section>
+      <section
+        v-else-if="activeInlineMediaKind === 'font' && downloadUrl"
+        class="terminal-file-preview__embed terminal-file-preview__embed--font"
+        :aria-label="text('字体预览', 'Font preview')"
+      >
+        <iframe
+          class="terminal-file-preview__embed-frame"
+          :title="text(`${activePayload.name} 字体预览`, `${activePayload.name} font preview`)"
+          :srcdoc="fontPreviewSrcdoc"
+          sandbox=""
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </section>
+      <section
+        v-else-if="activeBinaryPreviewVisible && downloadUrl"
+        class="terminal-file-preview__media terminal-file-preview__media--binary"
+        :aria-label="text('文件信息', 'File information')"
+      >
+        <div class="terminal-file-preview__binary-card">
+          <component
+            :is="activePreviewFileIcon"
+            class="terminal-file-preview__binary-icon"
+            :class="activePreviewFileIconClass"
+            aria-hidden="true"
+          />
+          <strong>{{ activePayload.name }}</strong>
+          <span>{{ activeFileKindLabel }}</span>
+          <small>{{ activeMediaMetaLabel }}</small>
+          <div class="terminal-file-preview__binary-actions">
+            <a :href="downloadUrl" target="_blank" rel="noopener noreferrer">{{ text('打开', 'Open') }}</a>
+            <a :href="downloadAttachmentUrl" :download="activePayload.name">{{ text('下载', 'Download') }}</a>
+          </div>
+        </div>
+      </section>
+      <section
         v-else-if="activePayload?.content != null && activePreviewMode === 'preview' && activeRichPreviewKind === 'markdown'"
         class="terminal-file-preview__rendered terminal-file-preview__rendered--markdown"
         :aria-label="text('Markdown 富文本预览', 'Markdown rich preview')"
@@ -533,12 +622,28 @@ import {
   Code2,
   Columns,
   Copy,
+  Database,
   Download,
   Eye,
+  FileArchive,
+  FileAudio,
+  FileBadge,
+  FileBox,
+  FileChartColumn,
+  FileCode2,
+  FileCog,
+  FileImage,
+  FileJson,
+  FileKey2,
+  FileLock2,
+  FileQuestion,
+  FileScan,
+  FileSpreadsheet,
   FileText,
+  FileType2,
+  FileVideo,
   Files,
   FolderOpen,
-  ImageIcon,
   Maximize2,
   Minimize2,
   MoreHorizontal,
@@ -571,6 +676,11 @@ import {
   serializeTerminalResourceTransfer,
   type TerminalResourceTransferPayload,
 } from './terminal-resource-transfer';
+import {
+  isTerminalFileKindEmbeddable,
+  resolveTerminalFileKind,
+  type TerminalFileKind,
+} from './terminal-file-kind';
 
 const AsyncCodeFileEditor = defineAsyncComponent(() => import('../files/CodeFileEditor.vue'));
 const AsyncTerminalMarkdownPreview = defineAsyncComponent(() => import('./TerminalMarkdownPreview.vue'));
@@ -703,6 +813,52 @@ const downloadUrl = computed(() => {
   const tab = activeTab.value;
   return tab ? buildFileDownloadUrl(tab.rootId, tab.path) : '';
 });
+const downloadAttachmentUrl = computed(() => {
+  const tab = activeTab.value;
+  return tab ? buildFileDownloadUrl(tab.rootId, tab.path, { download: true }) : '';
+});
+const activeFileKind = computed<TerminalFileKind | null>(() => {
+  const payload = activePayload.value;
+  if (payload) return resolveTerminalFileKind(payload);
+  const tab = activeTab.value;
+  return tab ? resolveTerminalFileKind(tab) : null;
+});
+const activeInlineMediaKind = computed<TerminalFileKind | null>(() =>
+  isTerminalFileKindEmbeddable(activeFileKind.value) ? activeFileKind.value : null,
+);
+const activeBinaryPreviewVisible = computed(() =>
+  Boolean(
+    activePayload.value &&
+    activePayload.value.content == null &&
+    !activePayload.value.imageLike &&
+    !activeInlineMediaKind.value,
+  ),
+);
+const activePreviewFileIcon = computed(() =>
+  activeTab.value ? resolvePreviewFileIcon(activeTab.value) : FileText,
+);
+const activePreviewFileIconClass = computed(() =>
+  activeFileKind.value ? `terminal-file-preview__icon--${activeFileKind.value}` : '',
+);
+const activeFileKindLabel = computed(() =>
+  fileKindLabel(activeFileKind.value),
+);
+const activeMediaMetaLabel = computed(() => {
+  const payload = activePayload.value;
+  if (!payload) return '';
+  return [
+    payload.mimeType || fileKindLabel(activeFileKind.value),
+    formatFileSize(payload.size),
+    payload.modifiedAt ? formatModifiedTime(payload.modifiedAt) : '',
+  ].filter(Boolean).join(' · ');
+});
+const fontPreviewSrcdoc = computed(() =>
+  buildFontPreviewSrcdoc(
+    downloadUrl.value,
+    activePayload.value?.name || activeTab.value?.name || 'font',
+    resolvedTheme.value === 'dark',
+  ),
+);
 const previewMetaLabel = computed(() => {
   const payload = activePayload.value;
   if (!payload) return text('文件预览', 'File preview');
@@ -1598,10 +1754,74 @@ function previewTabIndex(tabId: string): number {
   return props.tabs.findIndex((tab) => tab.id === tabId);
 }
 
-function isImageTab(tab: TerminalFilePreviewTab): boolean {
+function resolvePreviewFileIcon(tab: TerminalFilePreviewTab) {
+  const kind = resolvePreviewFileKind(tab);
+  if (kind === 'archive') return FileArchive;
+  if (kind === 'audio') return FileAudio;
+  if (kind === 'binary') return FileQuestion;
+  if (kind === 'code') return FileCode2;
+  if (kind === 'config') return FileCog;
+  if (kind === 'data') return FileJson;
+  if (kind === 'database') return Database;
+  if (kind === 'document') return FileText;
+  if (kind === 'font') return FileType2;
+  if (kind === 'image') return FileImage;
+  if (kind === 'key') return FileKey2;
+  if (kind === 'lock') return FileLock2;
+  if (kind === 'log') return FileScan;
+  if (kind === 'markdown') return FileText;
+  if (kind === 'package') return FileBox;
+  if (kind === 'pdf') return FileBadge;
+  if (kind === 'presentation') return FileChartColumn;
+  if (kind === 'script') return TerminalSquare;
+  if (kind === 'spreadsheet') return FileSpreadsheet;
+  if (kind === 'style') return FileCog;
+  if (kind === 'test') return FileScan;
+  if (kind === 'video') return FileVideo;
+  return FileText;
+}
+
+function resolvePreviewFileIconClass(tab: TerminalFilePreviewTab): string {
+  return `terminal-file-preview__icon--${resolvePreviewFileKind(tab)}`;
+}
+
+function resolvePreviewFileKind(tab: TerminalFilePreviewTab): TerminalFileKind {
   const state = previewStates[tab.id];
-  if (state?.payload) return state.payload.imageLike;
-  return Boolean(tab.name.match(/\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i));
+  if (state?.payload) return resolveTerminalFileKind(state.payload);
+  return resolveTerminalFileKind(tab);
+}
+
+function fileKindLabel(kind: TerminalFileKind | null): string {
+  if (kind === 'archive') return text('压缩包', 'Archive');
+  if (kind === 'audio') return text('音频', 'Audio');
+  if (kind === 'binary') return text('二进制文件', 'Binary file');
+  if (kind === 'code') return text('代码', 'Code');
+  if (kind === 'config') return text('配置', 'Configuration');
+  if (kind === 'data') return text('数据', 'Data');
+  if (kind === 'database') return text('数据库', 'Database');
+  if (kind === 'document') return text('文档', 'Document');
+  if (kind === 'font') return text('字体', 'Font');
+  if (kind === 'image') return text('图片', 'Image');
+  if (kind === 'key') return text('证书/密钥', 'Certificate/key');
+  if (kind === 'lock') return text('锁定文件', 'Lock file');
+  if (kind === 'log') return text('日志', 'Log');
+  if (kind === 'markdown') return text('Markdown', 'Markdown');
+  if (kind === 'package') return text('包配置', 'Package metadata');
+  if (kind === 'pdf') return text('PDF', 'PDF');
+  if (kind === 'presentation') return text('演示文稿', 'Presentation');
+  if (kind === 'script') return text('脚本', 'Script');
+  if (kind === 'spreadsheet') return text('表格', 'Spreadsheet');
+  if (kind === 'style') return text('样式表', 'Stylesheet');
+  if (kind === 'test') return text('测试文件', 'Test file');
+  if (kind === 'text') return text('文本', 'Text');
+  if (kind === 'video') return text('视频', 'Video');
+  return text('文件', 'File');
+}
+
+function formatModifiedTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString();
 }
 
 function buildHtmlPreviewSrcdoc(
@@ -1764,6 +1984,61 @@ function buildHtmlPreviewViewportStyle(): string {
     'table{max-width:100%;}',
     '</style>',
   ].join('');
+}
+
+function buildFontPreviewSrcdoc(fontUrl: string, title: string, dark: boolean): string {
+  const paper = dark ? '#0d141d' : '#f7fbff';
+  const ink = dark ? '#e5eef9' : '#122033';
+  const muted = dark ? '#8ea0b8' : '#5d6b7c';
+  const line = dark ? '#263545' : '#d7e3ee';
+  const brand = dark ? '#38b8b0' : '#087d76';
+  const family = 'OpenClawPreviewFont';
+  return [
+    '<!doctype html>',
+    '<html>',
+    '<head>',
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    `<title>${escapeHtmlText(title)}</title>`,
+    '<style>',
+    `@font-face{font-family:"${family}";src:url("${escapeCssString(fontUrl)}");font-display:swap;}`,
+    '*{box-sizing:border-box;}',
+    `body{margin:0;min-height:100vh;background:${paper};color:${ink};font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}`,
+    '.wrap{display:grid;gap:22px;min-height:100vh;padding:34px;}',
+    `.meta{display:flex;gap:10px;align-items:center;color:${muted};font-size:12px;}`,
+    `.badge{border:1px solid ${line};border-radius:999px;padding:4px 10px;color:${brand};}`,
+    `.sample{font-family:"${family}",serif;border:1px solid ${line};border-radius:10px;padding:28px;background:rgba(255,255,255,.04);}`,
+    '.sample h1{margin:0 0 18px;font-size:48px;line-height:1.05;font-weight:700;}',
+    '.sample p{margin:0 0 14px;font-size:24px;line-height:1.45;}',
+    '.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}',
+    `.cell{font-family:"${family}",serif;border:1px solid ${line};border-radius:8px;padding:14px;font-size:26px;}`,
+    '</style>',
+    '</head>',
+    '<body>',
+    '<main class="wrap">',
+    `<div class="meta"><span class="badge">${escapeHtmlText(text('字体预览', 'Font preview'))}</span><strong>${escapeHtmlText(title)}</strong></div>`,
+    '<section class="sample">',
+    '<h1>OpenClaw Studio</h1>',
+    '<p>快速预览字体：Aa Bb Cc 0123456789</p>',
+    '<p>中文字体样张：资源管理器、终端、工作区、代码预览。</p>',
+    '<div class="grid">',
+    '<div class="cell">Regular 400</div>',
+    '<div class="cell" style="font-weight:700">Bold 700</div>',
+    '<div class="cell" style="font-style:italic">Italic</div>',
+    '<div class="cell">符号 !@#$%^&*</div>',
+    '</div>',
+    '</section>',
+    '</main>',
+    '</body>',
+    '</html>',
+  ].join('');
+}
+
+function escapeCssString(value: string): string {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/[\n\r\f]/g, ' ');
 }
 
 function escapeHtmlText(value: string): string {

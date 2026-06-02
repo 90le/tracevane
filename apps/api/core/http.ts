@@ -135,20 +135,40 @@ export function sendFileStream(
     statusCode?: number;
     contentType?: string;
     headers?: Record<string, string>;
+    range?: string | null;
   },
 ): void {
   if (res.writableEnded) return;
   const stat = fs.statSync(options.filePath);
+  const range = parseSingleByteRange(options.range, stat.size);
   setCorsHeaders(res);
-  res.statusCode = options.statusCode || 200;
+  if (options.range && !range) {
+    res.statusCode = 416;
+    res.setHeader('Content-Range', `bytes */${stat.size}`);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Length', '0');
+    setNoSniffHeader(res);
+    res.end();
+    return;
+  }
+
+  res.statusCode = range ? 206 : options.statusCode || 200;
   res.setHeader('Content-Type', options.contentType || 'application/octet-stream');
-  res.setHeader('Content-Length', String(stat.size));
+  res.setHeader('Accept-Ranges', 'bytes');
+  if (range) {
+    res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${stat.size}`);
+    res.setHeader('Content-Length', String(range.end - range.start + 1));
+  } else {
+    res.setHeader('Content-Length', String(stat.size));
+  }
   setNoSniffHeader(res);
   for (const [key, value] of Object.entries(options.headers || {})) {
     res.setHeader(key, value);
   }
 
-  const stream = fs.createReadStream(options.filePath);
+  const stream = range
+    ? fs.createReadStream(options.filePath, { start: range.start, end: range.end })
+    : fs.createReadStream(options.filePath);
   stream.on('error', () => {
     if (!res.writableEnded) {
       res.statusCode = 500;
@@ -156,6 +176,37 @@ export function sendFileStream(
     }
   });
   stream.pipe(res);
+}
+
+function parseSingleByteRange(
+  header: string | null | undefined,
+  size: number,
+): { start: number; end: number } | null {
+  const normalizedHeader = String(header || '').trim();
+  if (!normalizedHeader || !normalizedHeader.startsWith('bytes=')) return null;
+  if (!Number.isFinite(size) || size <= 0) return null;
+
+  const [rawRange] = normalizedHeader.slice('bytes='.length).split(',');
+  const [rawStart = '', rawEnd = ''] = String(rawRange || '').trim().split('-', 2);
+  if (!rawStart && !rawEnd) return null;
+
+  if (!rawStart) {
+    const suffixLength = Number.parseInt(rawEnd, 10);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) return null;
+    return {
+      start: Math.max(0, size - suffixLength),
+      end: size - 1,
+    };
+  }
+
+  const start = Number.parseInt(rawStart, 10);
+  const end = rawEnd ? Number.parseInt(rawEnd, 10) : size - 1;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start < 0 || start >= size || end < start) return null;
+  return {
+    start,
+    end: Math.min(end, size - 1),
+  };
 }
 
 export function sendNoContent(res: http.ServerResponse, statusCode = 204): void {

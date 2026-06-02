@@ -140,6 +140,10 @@ const terminalResourceDefaultDirectoryPath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/terminal-resource-default-directory.ts",
 );
+const terminalFileKindPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/terminal/terminal-file-kind.ts",
+);
 const terminalWorkspaceGroupsPath = path.join(
   rootDir,
   "apps/web-vue/src/features/terminal/terminal-workspace-groups.ts",
@@ -186,6 +190,7 @@ const terminalGitApi = fs.readFileSync(terminalGitApiPath, "utf8");
 const terminalResourceTransfer = fs.readFileSync(terminalResourceTransferPath, "utf8");
 const terminalResourceExplorerState = fs.readFileSync(terminalResourceExplorerStatePath, "utf8");
 const terminalResourceDefaultDirectory = fs.readFileSync(terminalResourceDefaultDirectoryPath, "utf8");
+const terminalFileKind = fs.readFileSync(terminalFileKindPath, "utf8");
 const terminalWorkspaceGroups = fs.readFileSync(terminalWorkspaceGroupsPath, "utf8");
 const terminalLaunchMetadata = fs.readFileSync(terminalLaunchMetadataPath, "utf8");
 const studioPluginSource = fs.readFileSync(studioPluginPath, "utf8");
@@ -491,6 +496,20 @@ test("terminal workspace page composes integrated shell sections and binds state
   assert.match(terminalResourceExplorer, /bumpResourceTreeDataRevision\(\)/);
   assert.match(terminalResourceExplorer, /bumpResourceTreeExpansionRevision\(\)/);
   assert.match(terminalResourceExplorer, /bumpResourceTreeLoadingRevision\(\)/);
+  assert.match(terminalFileKind, /export type TerminalFileKind/);
+  assert.match(terminalFileKind, /const VIDEO_EXTENSIONS = new Set/);
+  assert.match(terminalFileKind, /const AUDIO_EXTENSIONS = new Set/);
+  assert.match(terminalFileKind, /const FONT_EXTENSIONS = new Set/);
+  assert.match(terminalFileKind, /const DATABASE_EXTENSIONS = new Set/);
+  assert.match(terminalFileKind, /export function resolveTerminalFileKind/);
+  assert.match(terminalFileKind, /export function isTerminalFileKindEmbeddable/);
+  assert.match(terminalResourceExplorer, /import \{[\s\S]*resolveTerminalFileKind,[\s\S]*type TerminalFileKind,[\s\S]*\} from '\.\/terminal-file-kind';/);
+  assert.match(terminalResourceExplorer, /type ResourceFileIconKind = TerminalFileKind;/);
+  assert.match(terminalResourceExplorer, /if \(kind === 'pdf'\) return FileBadge;/);
+  assert.match(terminalResourceExplorer, /if \(kind === 'spreadsheet'\) return FileSpreadsheet;/);
+  assert.match(terminalResourceExplorer, /if \(kind === 'font'\) return FileType2;/);
+  assert.match(terminalResourceExplorer, /if \(kind === 'database'\) return Database;/);
+  assert.match(terminalResourceExplorer, /return resolveTerminalFileKind\(entry\);/);
   assert.match(terminalResourceExplorer, /flattenTree\(workspaceRootPath\.value, 0\)/);
   assert.match(terminalResourceExplorer, /flattenFilteredTree\(workspaceRootPath\.value, 0, resourceFilterNeedle\.value\)/);
   assert.match(terminalResourceExplorer, /await loadDirectory\(targetPath, \{ root: true \}\);[\s\S]*selectRoot\(\);/);
@@ -1237,6 +1256,8 @@ test("terminal resource explorer opens IDE-style editable file previews", () => 
   assert.match(terminalFilePreviewPane, /readFileContent/);
   assert.match(terminalFilePreviewPane, /saveFileContent/);
   assert.match(terminalFilePreviewPane, /buildFileDownloadUrl/);
+  assert.match(terminalFilePreviewPane, /resolveTerminalFileKind/);
+  assert.match(terminalFilePreviewPane, /isTerminalFileKindEmbeddable/);
   assert.match(terminalFilePreviewPane, /AsyncCodeFileEditor/);
   assert.match(terminalFilePreviewPane, /AsyncTerminalMarkdownPreview/);
   assert.match(terminalFilePreviewPane, /import\('\.\/TerminalMarkdownPreview\.vue'\)/);
@@ -1261,6 +1282,17 @@ test("terminal resource explorer opens IDE-style editable file previews", () => 
   assert.match(terminalFilePreviewPane, /:read-only="!activeCanEdit \|\| activeState\?\.saving"/);
   assert.match(terminalFilePreviewPane, /@save="saveActiveFile"/);
   assert.match(terminalFilePreviewPane, /开启所见即所得编辑/);
+  assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'video'/);
+  assert.match(terminalFilePreviewPane, /<video[\s\S]*:src="downloadUrl"[\s\S]*controls[\s\S]*preload="metadata"/);
+  assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'audio'/);
+  assert.match(terminalFilePreviewPane, /<audio[\s\S]*:src="downloadUrl"[\s\S]*controls[\s\S]*preload="metadata"/);
+  assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'pdf'/);
+  assert.match(terminalFilePreviewPane, /class="terminal-file-preview__embed-frame"[\s\S]*:src="downloadUrl"/);
+  assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'font'/);
+  assert.match(terminalFilePreviewPane, /function buildFontPreviewSrcdoc\(fontUrl: string, title: string, dark: boolean\): string/);
+  assert.match(terminalFilePreviewPane, /activeBinaryPreviewVisible/);
+  assert.match(terminalFilePreviewPane, /function resolvePreviewFileIcon\(tab: TerminalFilePreviewTab\)/);
+  assert.match(terminalFilePreviewPane, /function fileKindLabel\(kind: TerminalFileKind \| null\): string/);
   assert.doesNotMatch(terminalFilePreviewPane, /terminal-file-preview__split--markdown/);
   assert.doesNotMatch(terminalFilePreviewPane, /markdownSplitRef/);
   assert.doesNotMatch(terminalFilePreviewPane, /scheduleMarkdownSplitScrollBinding/);
@@ -1318,6 +1350,11 @@ test("terminal resource explorer opens IDE-style editable file previews", () => 
   assert.doesNotMatch(terminalMarkdownPreview, />Source</);
   assert.doesNotMatch(terminalMarkdownPreview, />Mermaid</);
   assert.doesNotMatch(workspaceCss, /\.terminal-file-preview__split\s*\{/);
+  assert.match(workspaceCss, /\.terminal-file-preview__media\s*\{/);
+  assert.match(workspaceCss, /\.terminal-file-preview__embed-frame\s*\{/);
+  assert.match(workspaceCss, /\.terminal-file-preview__binary-card\s*\{/);
+  assert.match(workspaceCss, /\.terminal-file-preview__icon--pdf/);
+  assert.match(workspaceCss, /\.terminal-resource-row__icon--spreadsheet/);
   assert.match(workspaceCss, /\.terminal-doc-preview\s*\{[\s\S]*--doc-ink:\s*#122033;[\s\S]*color-scheme:\s*light;[\s\S]*font-family:\s*-apple-system/);
   assert.match(workspaceCss, /\.terminal-doc-preview--dark\s*\{[\s\S]*--doc-paper:\s*#0d141d;[\s\S]*color-scheme:\s*dark;/);
   assert.match(workspaceCss, /\.terminal-doc-preview--editable\s*\{[\s\S]*cursor:\s*text;/);

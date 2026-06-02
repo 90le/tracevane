@@ -194,12 +194,20 @@ test("files service exposes tree nodes and download payloads", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
   writeFile(path.join(config.projectRoot, "src", "nested", "child.ts"), "export const child = true;\n");
+  fs.writeFileSync(path.join(config.projectRoot, "src", "clip.mp4"), Buffer.from([0, 0, 0, 24]));
+  fs.writeFileSync(path.join(config.projectRoot, "src", "track.mp3"), Buffer.from([0xff, 0xfb, 0x90, 0x64]));
+  fs.writeFileSync(path.join(config.projectRoot, "src", "manual.pdf"), Buffer.from("%PDF-1.4\n"));
+  fs.writeFileSync(path.join(config.projectRoot, "src", "display.woff2"), Buffer.from("wOF2"));
   fs.mkdirSync(path.join(config.projectRoot, "src", "nested", "deeper"), { recursive: true });
   const service = createFilesService(config);
 
   const browse = service.listDirectory("project-root", "src", true);
   const tree = service.listTree("project-root", "src", true);
   const download = service.getDownloadFile("project-root", "src/nested/child.ts");
+  const videoDownload = service.getDownloadFile("project-root", "src/clip.mp4");
+  const audioRead = service.readFile("project-root", "src/track.mp3");
+  const pdfRead = service.readFile("project-root", "src/manual.pdf");
+  const fontDownload = service.getDownloadFile("project-root", "src/display.woff2");
   const nestedBrowseEntry = browse.entries.find((item) => item.path === "src/nested");
   const nestedTreeEntry = tree.children.find((item) => item.path === "src/nested");
 
@@ -209,6 +217,12 @@ test("files service exposes tree nodes and download payloads", () => {
   assert.equal(Object.hasOwn(nestedTreeEntry ?? {}, "childDirectoryCount"), false);
   assert.equal(download.fileName, "child.ts");
   assert.match(download.mimeType, /text|typescript|javascript|application/);
+  assert.equal(videoDownload.mimeType, "video/mp4");
+  assert.equal(audioRead.mimeType, "audio/mpeg");
+  assert.equal(audioRead.content, null);
+  assert.equal(pdfRead.mimeType, "application/pdf");
+  assert.equal(pdfRead.textLike, false);
+  assert.equal(fontDownload.mimeType, "font/woff2");
 });
 
 test("files service can archive and unarchive zip bundles", () => {

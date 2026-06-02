@@ -91,6 +91,7 @@ export function registerFilesRoutes(router: StudioRouter, ctx: StudioApiContext)
     sendFileStream(res, {
       filePath: payload.absolutePath,
       contentType: payload.mimeType,
+      range: req.headers.range || null,
       headers: {
         "Cache-Control": "no-store",
         "Content-Disposition": buildContentDisposition(
