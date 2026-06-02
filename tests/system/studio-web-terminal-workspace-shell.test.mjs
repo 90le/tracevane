@@ -1287,7 +1287,9 @@ test("terminal resource explorer opens IDE-style editable file previews", () => 
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'audio'/);
   assert.match(terminalFilePreviewPane, /<audio[\s\S]*:src="downloadUrl"[\s\S]*controls[\s\S]*preload="metadata"/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'pdf'/);
-  assert.match(terminalFilePreviewPane, /class="terminal-file-preview__embed-frame"[\s\S]*:src="downloadUrl"/);
+  assert.match(terminalFilePreviewPane, /class="terminal-file-preview__pdf-card"/);
+  assert.match(terminalFilePreviewPane, /<a :href="downloadUrl" target="_blank" rel="noopener noreferrer">/);
+  assert.doesNotMatch(terminalFilePreviewPane, /activeInlineMediaKind === 'pdf'[\s\S]{0,700}:src="downloadUrl"/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'font'/);
   assert.match(terminalFilePreviewPane, /function buildFontPreviewSrcdoc\(fontUrl: string, title: string, dark: boolean\): string/);
   assert.match(terminalFilePreviewPane, /activeBinaryPreviewVisible/);
@@ -1352,7 +1354,9 @@ test("terminal resource explorer opens IDE-style editable file previews", () => 
   assert.doesNotMatch(workspaceCss, /\.terminal-file-preview__split\s*\{/);
   assert.match(workspaceCss, /\.terminal-file-preview__media\s*\{/);
   assert.match(workspaceCss, /\.terminal-file-preview__embed-frame\s*\{/);
+  assert.match(workspaceCss, /\.terminal-file-preview__pdf-card/);
   assert.match(workspaceCss, /\.terminal-file-preview__binary-card\s*\{/);
+  assert.match(workspaceCss, /\.terminal-file-preview__video\s*\{[\s\S]*position:\s*absolute;[\s\S]*inset:\s*18px;[\s\S]*width:\s*calc\(100% - 36px\);[\s\S]*height:\s*calc\(100% - 36px\);[\s\S]*object-fit:\s*contain;/);
   assert.match(workspaceCss, /\.terminal-file-preview__icon--pdf/);
   assert.match(workspaceCss, /\.terminal-resource-row__icon--spreadsheet/);
   assert.match(workspaceCss, /\.terminal-doc-preview\s*\{[\s\S]*--doc-ink:\s*#122033;[\s\S]*color-scheme:\s*light;[\s\S]*font-family:\s*-apple-system/);

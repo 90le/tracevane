@@ -472,15 +472,19 @@
       </section>
       <section
         v-else-if="activeInlineMediaKind === 'pdf' && downloadUrl"
-        class="terminal-file-preview__embed terminal-file-preview__embed--pdf"
-        :aria-label="text('PDF 预览', 'PDF preview')"
+        class="terminal-file-preview__media terminal-file-preview__media--pdf"
+        :aria-label="text('PDF 文件', 'PDF file')"
       >
-        <iframe
-          class="terminal-file-preview__embed-frame"
-          :title="text(`${activePayload.name} PDF 预览`, `${activePayload.name} PDF preview`)"
-          :src="downloadUrl"
-          referrerpolicy="no-referrer"
-        ></iframe>
+        <div class="terminal-file-preview__pdf-card">
+          <FileBadge class="terminal-file-preview__pdf-icon" aria-hidden="true" />
+          <strong>{{ activePayload.name }}</strong>
+          <span>{{ activeFileKindLabel }}</span>
+          <small>{{ activeMediaMetaLabel }}</small>
+          <div class="terminal-file-preview__binary-actions">
+            <a :href="downloadUrl" target="_blank" rel="noopener noreferrer">{{ text('打开预览', 'Open preview') }}</a>
+            <a :href="downloadAttachmentUrl" :download="activePayload.name">{{ text('下载', 'Download') }}</a>
+          </div>
+        </div>
       </section>
       <section
         v-else-if="activeInlineMediaKind === 'font' && downloadUrl"

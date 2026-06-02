@@ -3406,17 +3406,24 @@
 }
 
 .terminal-file-preview__media-stage {
+  position: relative;
   display: grid;
   place-items: center;
   min-width: 0;
   min-height: 0;
-  padding: 18px;
-  overflow: auto;
+  padding: 0;
+  overflow: hidden;
 }
 
 .terminal-file-preview__video {
-  width: min(100%, 1280px);
+  position: absolute;
+  inset: 18px;
+  display: block;
+  width: calc(100% - 36px);
+  height: calc(100% - 36px);
+  max-width: 100%;
   max-height: 100%;
+  object-fit: contain;
   border-radius: 8px;
   background: #000;
   box-shadow: var(--shadow-popover);
@@ -3457,12 +3464,15 @@
 }
 
 .terminal-file-preview__audio-card,
+.terminal-file-preview__pdf-card,
 .terminal-file-preview__binary-card {
   place-self: center;
   display: grid;
   justify-items: center;
   gap: 12px;
   width: min(520px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: auto;
   padding: 26px;
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
@@ -3472,6 +3482,7 @@
 }
 
 .terminal-file-preview__audio-art,
+.terminal-file-preview__pdf-icon,
 .terminal-file-preview__binary-icon {
   width: 42px;
   height: 42px;
@@ -3479,6 +3490,7 @@
 }
 
 .terminal-file-preview__audio-card strong,
+.terminal-file-preview__pdf-card strong,
 .terminal-file-preview__binary-card strong {
   max-width: 100%;
   overflow: hidden;
@@ -3489,6 +3501,8 @@
 }
 
 .terminal-file-preview__audio-card span,
+.terminal-file-preview__pdf-card span,
+.terminal-file-preview__pdf-card small,
 .terminal-file-preview__binary-card span,
 .terminal-file-preview__binary-card small {
   max-width: 100%;
