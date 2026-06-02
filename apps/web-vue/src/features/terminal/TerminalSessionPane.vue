@@ -45,9 +45,12 @@
         v-if="activePreviewTab && terminalCollapsed"
         type="button"
         class="terminal-session-terminal-restore"
-        @click="terminalCollapsed = false"
+        :title="text('显示终端', 'Show terminal')"
+        :aria-label="text('显示终端', 'Show terminal')"
+        @click="restoreTerminalPanel"
       >
-        {{ text('显示终端', 'Show terminal') }}
+        <PanelBottomOpen class="terminal-session-terminal-restore__icon" aria-hidden="true" />
+        <span>{{ text('显示终端', 'Show terminal') }}</span>
       </button>
 
       <div v-if="!terminalCollapsed" class="terminal-session-main">
@@ -93,6 +96,17 @@
               @create="createSessionInWorkspaceGroup"
             >
               <template #actions>
+                <button
+                  v-if="activePreviewTab"
+                  type="button"
+                  class="secondary-button compact-button terminal-stage-action terminal-stage-action--terminal-toggle"
+                  :title="text('收起终端面板', 'Collapse terminal panel')"
+                  :aria-label="text('收起终端面板', 'Collapse terminal panel')"
+                  @click="collapseTerminalPanel"
+                >
+                  <PanelBottomClose class="terminal-stage-action__icon" aria-hidden="true" />
+                  <span class="sr-only">{{ text('收起终端面板', 'Collapse terminal panel') }}</span>
+                </button>
                 <details
                   ref="stageMenuRef"
                   class="terminal-shortcut-menu terminal-stage-menu"
@@ -294,6 +308,8 @@ import {
   LayoutDashboard,
   MoreHorizontal,
   Palette,
+  PanelBottomClose,
+  PanelBottomOpen,
   PanelLeftOpen,
   PanelRightOpen,
   Rows2,
@@ -671,6 +687,17 @@ function focusActiveTerminal(): void {
 }
 
 function showTerminal(): void {
+  focusActiveTerminal();
+}
+
+function collapseTerminalPanel(): void {
+  if (!activePreviewTab.value) return;
+  terminalCollapsed.value = true;
+  previewMaximized.value = false;
+  closeStageMenu();
+}
+
+function restoreTerminalPanel(): void {
   focusActiveTerminal();
 }
 
@@ -1066,10 +1093,11 @@ function togglePreviewMaximize(): void {
 
 function toggleTerminalCollapsed(): void {
   if (!activePreviewTab.value) return;
-  terminalCollapsed.value = !terminalCollapsed.value;
   if (terminalCollapsed.value) {
-    previewMaximized.value = false;
+    restoreTerminalPanel();
+    return;
   }
+  collapseTerminalPanel();
 }
 
 function readStageLayoutPreference(): TerminalPreviewPlacement | null {

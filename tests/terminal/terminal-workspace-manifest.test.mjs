@@ -42,14 +42,15 @@ function runCoverageScript() {
   return JSON.parse(stdout);
 }
 
-test("terminal workspace manifest covers shell tabs actions profiles sessions transport sections", () => {
+test("terminal workspace manifest covers active shell tabs actions profiles transport sections", () => {
   const manifestSource = fs.readFileSync(manifestFile, "utf8");
 
   assert.match(manifestSource, /key:\s*["']shell["']/);
   assert.match(manifestSource, /key:\s*["']tabs["']/);
   assert.match(manifestSource, /key:\s*["']actions["']/);
   assert.match(manifestSource, /key:\s*["']profiles["']/);
-  assert.match(manifestSource, /key:\s*["']sessions["']/);
+  assert.doesNotMatch(manifestSource, /key:\s*["']sessions["']/);
+  assert.doesNotMatch(manifestSource, /workspaceSurface:\s*["']terminal-sessions["']/);
   assert.match(manifestSource, /key:\s*["']transport["']/);
   assert.match(manifestSource, /workspaceSurface/);
 });
@@ -72,6 +73,7 @@ test("terminal workspace coverage script matches committed baseline inventory", 
 
   assert.deepEqual(parsed, baseline);
   assert.ok(parsed.sections.includes("shell"));
+  assert.equal(parsed.sections.includes("sessions"), false);
   assert.ok(
     parsed.frontendFiles.includes(
       "apps/web-vue/src/features/terminal/TerminalWorkspacePage.vue",

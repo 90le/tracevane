@@ -21,37 +21,6 @@
             <span class="sr-only">{{ text('配置', 'Profiles') }}</span>
             <strong>{{ profileItemCount }}</strong>
           </summary>
-          <div class="terminal-inspector-profile-menu__panel" role="menu" @click.stop>
-            <header class="terminal-inspector-menu-head">
-              <strong>{{ text('配置', 'Profiles') }}</strong>
-              <button
-                type="button"
-                class="terminal-inspector-menu-head__close"
-                :aria-label="text('关闭菜单', 'Close menu')"
-                @click="closeInspectorMenus"
-              >
-                <X class="terminal-inspector-commandbar__icon" aria-hidden="true" />
-              </button>
-            </header>
-            <button
-              v-for="profile in launchableTerminalProfiles"
-              :key="profile.id"
-              type="button"
-              role="menuitem"
-              class="terminal-inspector-profile-item"
-              :class="{ active: profile.id === activeProfileId }"
-              :data-kind="profile.kind"
-              :data-color="profile.color"
-              :title="text(profile.descriptionZh || profile.description, profile.description)"
-              @click="launchProfileFromMenu(profile.id)"
-            >
-              <span class="terminal-inspector-profile-item__dot" aria-hidden="true"></span>
-              <span class="terminal-inspector-profile-item__copy">
-                <strong>{{ text(profile.labelZh || profile.label, profile.label) }}</strong>
-                <small>{{ resolveProfileKindLabel(profile.kind) }}</small>
-              </span>
-            </button>
-          </div>
         </details>
 
         <details
@@ -73,40 +42,6 @@
             <span class="sr-only">{{ text('命令', 'Commands') }}</span>
             <strong>{{ actionItemCount }}</strong>
           </summary>
-          <div class="terminal-inspector-command-menu__panel" role="menu" @click.stop>
-            <header class="terminal-inspector-menu-head">
-              <strong>{{ text('命令', 'Commands') }}</strong>
-              <button
-                type="button"
-                class="terminal-inspector-menu-head__close"
-                :aria-label="text('关闭菜单', 'Close menu')"
-                @click="closeInspectorMenus"
-              >
-                <X class="terminal-inspector-commandbar__icon" aria-hidden="true" />
-              </button>
-            </header>
-            <section
-              v-for="layer in actionLayers"
-              :key="layer.key"
-              class="terminal-inspector-command-group"
-            >
-              <p>{{ text(layer.titleZh, layer.titleEn) }}</p>
-              <button
-                v-for="item in layer.items"
-                :key="item.key"
-                type="button"
-                class="terminal-inspector-command-item"
-                role="menuitem"
-                @click="triggerActionFromMenu(item.key)"
-              >
-                <span class="terminal-inspector-command-item__copy">
-                  <strong>{{ text(item.labelZh, item.labelEn) }}</strong>
-                  <small>{{ text(item.descriptionZh, item.descriptionEn) }}</small>
-                </span>
-                <code>{{ item.command }}</code>
-              </button>
-            </section>
-          </div>
         </details>
 
         <button
@@ -122,6 +57,91 @@
         </button>
       </div>
     </div>
+
+    <Teleport v-if="activeInspectorMenu === 'profiles' && profileItemCount" to="body">
+      <div
+        ref="profilePanelRef"
+        class="terminal-inspector-profile-menu__panel terminal-inspector-menu-portal"
+        role="menu"
+        :style="inspectorMenuStyle"
+        @pointerdown.stop
+        @click.stop
+      >
+        <header class="terminal-inspector-menu-head">
+          <strong>{{ text('配置', 'Profiles') }}</strong>
+          <button
+            type="button"
+            class="terminal-inspector-menu-head__close"
+            :aria-label="text('关闭菜单', 'Close menu')"
+            @click="closeInspectorMenus"
+          >
+            <X class="terminal-inspector-commandbar__icon" aria-hidden="true" />
+          </button>
+        </header>
+        <button
+          v-for="profile in launchableTerminalProfiles"
+          :key="profile.id"
+          type="button"
+          role="menuitem"
+          class="terminal-inspector-profile-item"
+          :class="{ active: profile.id === activeProfileId }"
+          :data-kind="profile.kind"
+          :data-color="profile.color"
+          :title="text(profile.descriptionZh || profile.description, profile.description)"
+          @click="launchProfileFromMenu(profile.id)"
+        >
+          <span class="terminal-inspector-profile-item__dot" aria-hidden="true"></span>
+          <span class="terminal-inspector-profile-item__copy">
+            <strong>{{ text(profile.labelZh || profile.label, profile.label) }}</strong>
+            <small>{{ resolveProfileKindLabel(profile.kind) }}</small>
+          </span>
+        </button>
+      </div>
+    </Teleport>
+
+    <Teleport v-if="activeInspectorMenu === 'commands' && actionItemCount" to="body">
+      <div
+        ref="actionPanelRef"
+        class="terminal-inspector-command-menu__panel terminal-inspector-menu-portal"
+        role="menu"
+        :style="inspectorMenuStyle"
+        @pointerdown.stop
+        @click.stop
+      >
+        <header class="terminal-inspector-menu-head">
+          <strong>{{ text('命令', 'Commands') }}</strong>
+          <button
+            type="button"
+            class="terminal-inspector-menu-head__close"
+            :aria-label="text('关闭菜单', 'Close menu')"
+            @click="closeInspectorMenus"
+          >
+            <X class="terminal-inspector-commandbar__icon" aria-hidden="true" />
+          </button>
+        </header>
+        <section
+          v-for="layer in actionLayers"
+          :key="layer.key"
+          class="terminal-inspector-command-group"
+        >
+          <p>{{ text(layer.titleZh, layer.titleEn) }}</p>
+          <button
+            v-for="item in layer.items"
+            :key="item.key"
+            type="button"
+            class="terminal-inspector-command-item"
+            role="menuitem"
+            @click="triggerActionFromMenu(item.key)"
+          >
+            <span class="terminal-inspector-command-item__copy">
+              <strong>{{ text(item.labelZh, item.labelEn) }}</strong>
+              <small>{{ text(item.descriptionZh, item.descriptionEn) }}</small>
+            </span>
+            <code>{{ item.command }}</code>
+          </button>
+        </section>
+      </div>
+    </Teleport>
 
     <section class="terminal-inspector-tooling">
       <div v-if="visibleBinaries.length" class="terminal-binary-list">
@@ -261,7 +281,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   Command,
   Copy,
@@ -280,6 +300,11 @@ import { useLocalePreference } from '../../shared/locale';
 import type { TerminalActionLayer } from './terminal-action-catalog';
 
 type TerminalInspectorMenuKey = 'profiles' | 'commands';
+const INSPECTOR_MENU_VIEWPORT_MARGIN = 8;
+const INSPECTOR_MENU_MAX_WIDTH = 380;
+const INSPECTOR_MENU_MIN_WIDTH = 260;
+const INSPECTOR_MENU_MAX_HEIGHT = 560;
+const INSPECTOR_MENU_MIN_HEIGHT = 180;
 const { text } = useLocalePreference();
 
 const emit = defineEmits<{
@@ -330,13 +355,17 @@ const launchableTerminalProfiles = computed(() =>
 );
 const profileMenuRef = ref<HTMLDetailsElement | null>(null);
 const actionMenuRef = ref<HTMLDetailsElement | null>(null);
+const profilePanelRef = ref<HTMLElement | null>(null);
+const actionPanelRef = ref<HTMLElement | null>(null);
 const activeInspectorMenu = ref<TerminalInspectorMenuKey | null>(null);
+const inspectorMenuStyle = ref<Record<string, string>>({});
 const profileItemCount = computed(() => launchableTerminalProfiles.value.length);
 const actionItemCount = computed(() =>
   props.actionLayers.reduce((total, layer) => total + layer.items.length, 0),
 );
 const installOutputOpen = ref(false);
 const installOutputCopied = ref(false);
+let inspectorMenuPositionFrame: number | null = null;
 const installOutputText = computed(() => stripAnsi(props.installFeedback.logs.join('\n')));
 const installOutputMeta = computed(() => {
   const lineCount = props.installFeedback.logs.length;
@@ -379,24 +408,27 @@ function handleInspectorMenuToggle(menu: TerminalInspectorMenuKey): void {
     if (activeInspectorMenu.value === menu) {
       activeInspectorMenu.value = null;
     }
+    void syncInspectorMenuElements();
     return;
   }
   activeInspectorMenu.value = menu;
-  closeOtherInspectorMenus(menu);
+  void syncInspectorMenuElements();
 }
 
 function toggleInspectorMenu(menu: TerminalInspectorMenuKey): void {
   activeInspectorMenu.value = activeInspectorMenu.value === menu ? null : menu;
+  void syncInspectorMenuElements();
 }
 
-function closeOtherInspectorMenus(openMenu: TerminalInspectorMenuKey): void {
+async function syncInspectorMenuElements(): Promise<void> {
+  await nextTick();
   for (const menu of ['profiles', 'commands'] as const) {
-    if (menu === openMenu) continue;
     const menuElement = getInspectorMenuRef(menu);
     if (menuElement) {
-      menuElement.open = false;
+      menuElement.open = activeInspectorMenu.value === menu;
     }
   }
+  updateInspectorMenuPosition(activeInspectorMenu.value);
 }
 
 function getInspectorMenuRef(menu: TerminalInspectorMenuKey): HTMLDetailsElement | null {
@@ -406,6 +438,8 @@ function getInspectorMenuRef(menu: TerminalInspectorMenuKey): HTMLDetailsElement
 
 function closeInspectorMenus(): void {
   activeInspectorMenu.value = null;
+  inspectorMenuStyle.value = {};
+  cancelInspectorMenuPositionSync();
   for (const menu of ['profiles', 'commands'] as const) {
     const menuElement = getInspectorMenuRef(menu);
     if (menuElement) {
@@ -417,10 +451,98 @@ function closeInspectorMenus(): void {
 function handleInspectorPointerDown(event: PointerEvent): void {
   const target = event.target instanceof Node ? event.target : null;
   if (!target) return;
-  if (profileMenuRef.value?.contains(target) || actionMenuRef.value?.contains(target)) {
+  if (
+    profileMenuRef.value?.contains(target) ||
+    actionMenuRef.value?.contains(target) ||
+    profilePanelRef.value?.contains(target) ||
+    actionPanelRef.value?.contains(target)
+  ) {
     return;
   }
   closeInspectorMenus();
+}
+
+function clampInspectorNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function updateInspectorMenuPosition(
+  menu: TerminalInspectorMenuKey | null = activeInspectorMenu.value,
+): void {
+  inspectorMenuPositionFrame = null;
+  if (!menu || typeof window === 'undefined') {
+    inspectorMenuStyle.value = {};
+    return;
+  }
+
+  const anchor = getInspectorMenuRef(menu);
+  if (!anchor) {
+    inspectorMenuStyle.value = {};
+    return;
+  }
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const visualViewport = window.visualViewport;
+  const viewportWidth = visualViewport?.width || window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight = visualViewport?.height || window.innerHeight || document.documentElement.clientHeight;
+  if (!viewportWidth || !viewportHeight) {
+    inspectorMenuStyle.value = {};
+    return;
+  }
+
+  const viewportLeft = visualViewport?.offsetLeft || 0;
+  const viewportTop = visualViewport?.offsetTop || 0;
+  const availableWidth = Math.max(0, viewportWidth - INSPECTOR_MENU_VIEWPORT_MARGIN * 2);
+  const panelWidth =
+    availableWidth <= INSPECTOR_MENU_MIN_WIDTH
+      ? availableWidth
+      : Math.min(INSPECTOR_MENU_MAX_WIDTH, availableWidth);
+  const minLeft = viewportLeft + INSPECTOR_MENU_VIEWPORT_MARGIN;
+  const maxLeft = viewportLeft + viewportWidth - panelWidth - INSPECTOR_MENU_VIEWPORT_MARGIN;
+  const left = clampInspectorNumber(anchorRect.right - panelWidth, minLeft, Math.max(minLeft, maxLeft));
+
+  const availableBelow = viewportTop + viewportHeight - anchorRect.bottom - INSPECTOR_MENU_VIEWPORT_MARGIN;
+  const availableAbove = anchorRect.top - viewportTop - INSPECTOR_MENU_VIEWPORT_MARGIN;
+  const viewportMaxHeight = Math.max(0, viewportHeight - INSPECTOR_MENU_VIEWPORT_MARGIN * 2);
+  const preferAbove = availableBelow < 220 && availableAbove > availableBelow;
+  const preferredSpace = Math.max(0, preferAbove ? availableAbove : availableBelow);
+  const minimumHeight = Math.min(INSPECTOR_MENU_MIN_HEIGHT, viewportMaxHeight);
+  const panelMaxHeight = Math.min(
+    INSPECTOR_MENU_MAX_HEIGHT,
+    Math.max(minimumHeight, Math.min(preferredSpace || viewportMaxHeight, viewportMaxHeight)),
+  );
+  const preferredTop = preferAbove
+    ? anchorRect.top - panelMaxHeight - INSPECTOR_MENU_VIEWPORT_MARGIN
+    : anchorRect.bottom + INSPECTOR_MENU_VIEWPORT_MARGIN;
+  const minTop = viewportTop + INSPECTOR_MENU_VIEWPORT_MARGIN;
+  const maxTop = viewportTop + viewportHeight - panelMaxHeight - INSPECTOR_MENU_VIEWPORT_MARGIN;
+  const top = clampInspectorNumber(preferredTop, minTop, Math.max(minTop, maxTop));
+
+  inspectorMenuStyle.value = {
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`,
+    width: `${Math.round(panelWidth)}px`,
+    maxHeight: `${Math.round(panelMaxHeight)}px`,
+  };
+}
+
+function requestInspectorMenuPositionSync(): void {
+  if (!activeInspectorMenu.value || typeof window === 'undefined' || inspectorMenuPositionFrame !== null) {
+    return;
+  }
+  inspectorMenuPositionFrame = window.requestAnimationFrame(() => {
+    updateInspectorMenuPosition(activeInspectorMenu.value);
+  });
+}
+
+function cancelInspectorMenuPositionSync(): void {
+  if (typeof window === 'undefined' || inspectorMenuPositionFrame === null) return;
+  window.cancelAnimationFrame(inspectorMenuPositionFrame);
+  inspectorMenuPositionFrame = null;
+}
+
+function handleInspectorMenuViewportChange(): void {
+  requestInspectorMenuPositionSync();
 }
 
 function refreshInspectorFromCommandbar(): void {
@@ -451,11 +573,18 @@ async function copyInstallOutput(): Promise<void> {
 
 onMounted(() => {
   document.addEventListener('pointerdown', handleInspectorPointerDown);
-  window.addEventListener('resize', closeInspectorMenus);
+  window.addEventListener('resize', handleInspectorMenuViewportChange);
+  window.visualViewport?.addEventListener('resize', handleInspectorMenuViewportChange);
+  window.visualViewport?.addEventListener('scroll', handleInspectorMenuViewportChange);
+  document.addEventListener('scroll', handleInspectorMenuViewportChange, true);
 });
 
 onBeforeUnmount(() => {
+  cancelInspectorMenuPositionSync();
   document.removeEventListener('pointerdown', handleInspectorPointerDown);
-  window.removeEventListener('resize', closeInspectorMenus);
+  window.removeEventListener('resize', handleInspectorMenuViewportChange);
+  window.visualViewport?.removeEventListener('resize', handleInspectorMenuViewportChange);
+  window.visualViewport?.removeEventListener('scroll', handleInspectorMenuViewportChange);
+  document.removeEventListener('scroll', handleInspectorMenuViewportChange, true);
 });
 </script>

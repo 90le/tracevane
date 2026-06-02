@@ -3,7 +3,6 @@ export type TerminalWorkspaceSectionKey =
   | "tabs"
   | "actions"
   | "profiles"
-  | "sessions"
   | "transport";
 
 export interface TerminalWorkspaceSectionEntry {
@@ -65,16 +64,6 @@ export const TERMINAL_WORKSPACE_MANIFEST: ReadonlyArray<TerminalWorkspaceSection
         "apps/web-vue/src/features/terminal/TerminalInspectorContent.vue",
       backendFile: "apps/api/modules/terminal/routes.ts",
       testFile: "tests/terminal/terminal-profiles.test.mjs",
-    },
-    {
-      key: "sessions",
-      label: "会话管理",
-      routePath: "/terminal",
-      workspaceSurface: "terminal-sessions",
-      frontendFile:
-        "apps/web-vue/src/features/terminal/TerminalInspectorContent.vue",
-      backendFile: "apps/api/modules/terminal/service.ts",
-      testFile: "tests/terminal/terminal-workspace-state.test.mjs",
     },
     {
       key: "transport",
