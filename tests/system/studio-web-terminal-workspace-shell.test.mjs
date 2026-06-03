@@ -1645,6 +1645,10 @@ test("terminal resource explorer opens IDE-style editable file previews", () => 
   assert.match(terminalSessionPane, /previewPlacement/);
   assert.match(terminalSessionPane, /previewMaximized/);
   assert.match(terminalSessionPane, /terminalCollapsed/);
+  assert.match(terminalSessionPane, /const effectiveTerminalCollapsed = computed\(\(\) => Boolean\(activePreviewTab\.value && terminalCollapsed\.value\)\)/);
+  assert.match(terminalSessionPane, /:terminal-collapsed="effectiveTerminalCollapsed"/);
+  assert.match(terminalSessionPane, /v-if="!effectiveTerminalCollapsed" class="terminal-session-main"/);
+  assert.match(terminalSessionPane, /'terminal-session-body--terminal-collapsed': effectiveTerminalCollapsed\.value/);
   assert.match(terminalSessionPane, /function showEditor\(\): boolean/);
   assert.match(terminalSessionPane, /terminalCollapsed\.value = true;/);
   assert.match(terminalSessionPane, /function showTerminal\(\): void/);
@@ -1657,6 +1661,13 @@ test("terminal resource explorer opens IDE-style editable file previews", () => 
   assert.match(terminalSessionPane, /@click="restoreTerminalPanel"/);
   assert.match(terminalSessionPane, /TERMINAL_STAGE_LAYOUT_STORAGE_KEY/);
   assert.match(terminalSessionPane, /TERMINAL_PREVIEW_SIZE_STORAGE_KEY/);
+  assert.match(terminalSessionPane, /TERMINAL_PREVIEW_TERMINAL_COLLAPSED_STORAGE_KEY/);
+  assert.match(terminalSessionPane, /terminalCollapsed\.value = readPreviewTerminalCollapsedPreference\(\);/);
+  assert.match(terminalSessionPane, /writePreviewTerminalCollapsedPreference\(collapsed\);/);
+  assert.match(terminalSessionPane, /function readPreviewTerminalCollapsedPreference\(\): boolean/);
+  assert.match(terminalSessionPane, /function writePreviewTerminalCollapsedPreference\(collapsed: boolean\): void/);
+  assert.match(terminalSessionPane, /watch\(activePreviewTab, \(tab\) => \{\s+if \(!tab\) \{\s+previewMaximized\.value = false;\s+\}\s+\}\);/);
+  assert.match(terminalSessionPane, /function togglePreviewMaximize\(\): void \{\s+if \(!activePreviewTab\.value\) return;\s+previewMaximized\.value = !previewMaximized\.value;\s+\}/);
   assert.match(terminalSessionPane, /terminal-layout-resizer/);
   assert.match(terminalSessionPane, /startPreviewResize/);
   assert.match(terminalSessionPane, /resizePreviewFromKeyboard/);

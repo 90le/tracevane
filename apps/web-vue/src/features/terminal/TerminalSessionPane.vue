@@ -16,7 +16,7 @@
         :active-tab-id="props.activePreviewId"
         :placement="previewPlacement"
         :maximized="previewMaximized"
-        :terminal-collapsed="terminalCollapsed"
+        :terminal-collapsed="effectiveTerminalCollapsed"
         :workspace-fullscreen="Boolean(props.workspaceFullscreen)"
         @select="emit('selectPreview', $event)"
         @close="emit('closePreview', $event)"
@@ -30,7 +30,7 @@
       />
 
       <div
-        v-if="activePreviewTab && !previewMaximized && !terminalCollapsed"
+        v-if="activePreviewTab && !previewMaximized && !effectiveTerminalCollapsed"
         class="terminal-layout-resizer"
         :data-placement="previewPlacement"
         role="separator"
@@ -42,7 +42,7 @@
       ></div>
 
       <button
-        v-if="activePreviewTab && terminalCollapsed"
+        v-if="activePreviewTab && effectiveTerminalCollapsed"
         type="button"
         class="terminal-session-terminal-restore"
         :title="text('显示终端', 'Show terminal')"
@@ -53,7 +53,7 @@
         <span>{{ text('显示终端', 'Show terminal') }}</span>
       </button>
 
-      <div v-if="!terminalCollapsed" class="terminal-session-main">
+      <div v-if="!effectiveTerminalCollapsed" class="terminal-session-main">
         <header class="terminal-stage-header">
           <div class="terminal-stage-header-main">
             <div
@@ -394,6 +394,7 @@ const emit = defineEmits<{
 const { text } = useLocalePreference();
 const TERMINAL_STAGE_LAYOUT_STORAGE_KEY = 'openclaw-studio.terminal.stageLayout';
 const TERMINAL_PREVIEW_SIZE_STORAGE_KEY = 'openclaw-studio.terminal.previewSize';
+const TERMINAL_PREVIEW_TERMINAL_COLLAPSED_STORAGE_KEY = 'openclaw-studio.terminal.previewTerminalCollapsed';
 const TERMINAL_SPLIT_RATIO_STORAGE_KEY = 'openclaw-studio.terminal.splitPaneRatio';
 const TERMINAL_WORKSPACE_GROUP_STORAGE_KEY = 'openclaw-studio.terminal.workspaceGroup';
 const TERMINAL_SPLIT_RATIO_MIN = 24;
@@ -492,11 +493,12 @@ const previewSize = ref(42);
 const splitPaneRatio = ref(50);
 const previewMaximized = ref(false);
 const terminalCollapsed = ref(false);
+const effectiveTerminalCollapsed = computed(() => Boolean(activePreviewTab.value && terminalCollapsed.value));
 const sessionBodyClasses = computed(() => ({
   'terminal-session-body--with-preview': Boolean(activePreviewTab.value),
   [`terminal-session-body--preview-${previewPlacement.value}`]: Boolean(activePreviewTab.value),
   'terminal-session-body--preview-maximized': Boolean(activePreviewTab.value && previewMaximized.value),
-  'terminal-session-body--terminal-collapsed': Boolean(activePreviewTab.value && terminalCollapsed.value),
+  'terminal-session-body--terminal-collapsed': effectiveTerminalCollapsed.value,
 }));
 const sessionBodyStyle = computed(() => ({
   '--terminal-preview-size': `${previewSize.value}%`,
@@ -534,6 +536,7 @@ onMounted(() => {
   if (savedSize !== null) {
     previewSize.value = savedSize;
   }
+  terminalCollapsed.value = readPreviewTerminalCollapsedPreference();
   const savedSplitRatio = readSplitPaneRatioPreference();
   if (savedSplitRatio !== null) {
     splitPaneRatio.value = savedSplitRatio;
@@ -562,6 +565,10 @@ watch(previewSize, (size) => {
   writePreviewSizePreference(size);
 });
 
+watch(terminalCollapsed, (collapsed) => {
+  writePreviewTerminalCollapsedPreference(collapsed);
+});
+
 watch(splitPaneRatio, (ratio) => {
   writeSplitPaneRatioPreference(ratio);
 });
@@ -587,7 +594,6 @@ watch(
 watch(activePreviewTab, (tab) => {
   if (!tab) {
     previewMaximized.value = false;
-    terminalCollapsed.value = false;
   }
 });
 
@@ -1086,9 +1092,6 @@ function setPreviewPlacement(placement: TerminalPreviewPlacement): void {
 function togglePreviewMaximize(): void {
   if (!activePreviewTab.value) return;
   previewMaximized.value = !previewMaximized.value;
-  if (previewMaximized.value) {
-    terminalCollapsed.value = false;
-  }
 }
 
 function toggleTerminalCollapsed(): void {
@@ -1137,6 +1140,26 @@ function writePreviewSizePreference(size: number): void {
     globalThis.localStorage?.setItem(TERMINAL_PREVIEW_SIZE_STORAGE_KEY, String(size));
   } catch {
     // Layout preference is non-critical.
+  }
+}
+
+function readPreviewTerminalCollapsedPreference(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(TERMINAL_PREVIEW_TERMINAL_COLLAPSED_STORAGE_KEY) === 'true';
+  } catch {
+    // Terminal collapse preference is non-critical.
+  }
+  return false;
+}
+
+function writePreviewTerminalCollapsedPreference(collapsed: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(
+      TERMINAL_PREVIEW_TERMINAL_COLLAPSED_STORAGE_KEY,
+      collapsed ? 'true' : 'false',
+    );
+  } catch {
+    // Terminal collapse preference is non-critical.
   }
 }
 
