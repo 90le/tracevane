@@ -20,6 +20,7 @@ const managementManifest = read("apps/web-vue/src/features/management/management
 const filesView = read("apps/web-vue/src/views/FilesView.vue");
 const filesControlPage = read("apps/web-vue/src/features/files/FilesControlPage.vue");
 const terminalFilePreviewPane = read("apps/web-vue/src/features/terminal/TerminalFilePreviewPane.vue");
+const terminalMarkdownPreview = read("apps/web-vue/src/features/terminal/TerminalMarkdownPreview.vue");
 const codeFileEditor = read("apps/web-vue/src/features/files/CodeFileEditor.vue");
 const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.css");
 const filesApi = read("apps/web-vue/src/features/files/api.ts");
@@ -177,6 +178,8 @@ test("file previews and editor workspace reuse the terminal preview engine", () 
   assert.match(terminalFilePreviewPane, /AsyncTerminalMarkdownPreview/);
   assert.match(terminalFilePreviewPane, /surface\?: 'terminal' \| 'files'/);
   assert.match(terminalFilePreviewPane, /isFilesSurface/);
+  assert.match(terminalMarkdownPreview, /terminal-doc-codeblock/);
+  assert.match(terminalMarkdownPreview, /data-terminal-code-copy/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'pdf'/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'video'/);
   assert.match(terminalFilePreviewPane, /imageZoomByTab/);

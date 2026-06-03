@@ -16,6 +16,7 @@
       v-html="renderedHtml"
       @input="handleEditableInput"
       @blur="handleEditableBlur"
+      @click="handlePreviewClick"
       @keydown.meta.s.prevent="emit('save')"
       @keydown.ctrl.s.prevent="emit('save')"
     ></article>
@@ -35,6 +36,7 @@ import {
   sanitizeMermaidSvg,
   sanitizeSvgPreviewMarkup,
 } from '../chat/markdown';
+import { copyTextToClipboard } from '../../shared/clipboard';
 
 type MermaidRenderResult = {
   svg: string;
@@ -98,6 +100,8 @@ let markdownRenderIdleHandle: number | null = null;
 let markdownRenderSerial = 0;
 let enhanceSerial = 0;
 let lastEditableMarkdown = '';
+const copyStatusTimersByButton = new WeakMap<HTMLButtonElement, number>();
+const activeCopyStatusTimers = new Set<number>();
 
 watch(
   () => props.source,
@@ -187,6 +191,47 @@ function handleEditableBlur(): void {
   scheduleTerminalMarkdownRender();
 }
 
+function handlePreviewClick(event: MouseEvent): void {
+  const target = event.target instanceof Element ? event.target : null;
+  const button = target?.closest<HTMLButtonElement>('button[data-terminal-code-copy]');
+  const root = rootRef.value;
+  if (!button || !root || !root.contains(button)) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  void copyPreviewCodeBlock(button);
+}
+
+async function copyPreviewCodeBlock(button: HTMLButtonElement): Promise<void> {
+  const code = button
+    .closest<HTMLElement>('.terminal-doc-codeblock')
+    ?.querySelector<HTMLElement>('pre code')
+    ?.textContent || '';
+  const copied = await copyTextToClipboard(code);
+  setCodeCopyStatus(button, copied ? 'copied' : 'error');
+}
+
+function setCodeCopyStatus(button: HTMLButtonElement, state: 'copied' | 'error'): void {
+  button.dataset.copyState = state;
+  if (typeof window === 'undefined') return;
+  const existingHandle = copyStatusTimersByButton.get(button);
+  if (existingHandle != null) {
+    window.clearTimeout(existingHandle);
+    activeCopyStatusTimers.delete(existingHandle);
+  }
+  const handle = window.setTimeout(() => {
+    activeCopyStatusTimers.delete(handle);
+    if (copyStatusTimersByButton.get(button) === handle) {
+      copyStatusTimersByButton.delete(button);
+    }
+    if (button.isConnected && copyStatusTimersByButton.get(button) == null) {
+      delete button.dataset.copyState;
+    }
+  }, 1400);
+  copyStatusTimersByButton.set(button, handle);
+  activeCopyStatusTimers.add(handle);
+}
+
 function serializeEditableMarkdownDocument(root: HTMLElement): string {
   const blocks = Array.from(root.childNodes)
     .map((node) => serializeEditableMarkdownNode(node, 0).trimEnd())
@@ -209,6 +254,12 @@ function serializeEditableMarkdownNode(node: Node, depth: number): string {
   if (node.classList.contains('terminal-doc-svg')) {
     const source = node.querySelector('svg')?.outerHTML.trim() || '';
     return source ? `\`\`\`svg\n${source}\n\`\`\`` : '';
+  }
+  if (node.classList.contains('terminal-doc-codeblock')) {
+    const codeElement = node.querySelector<HTMLElement>('pre code');
+    const code = codeElement?.textContent || '';
+    const language = codeElement ? readCodeLanguage(codeElement) : '';
+    return `\`\`\`${language}\n${code.replace(/\n+$/, '')}\n\`\`\``;
   }
   if (node.classList.contains('terminal-doc-math')) {
     const source = node.dataset.mathSource?.trim() || normalizeEditableInline(node);
@@ -556,6 +607,58 @@ function renderTerminalSvgPlaceholder(source: string): string {
     : '<div class="terminal-doc-svg"></div>';
 }
 
+function renderTerminalCodeBlockHtml(source: string, language: string): string {
+  const label = formatTerminalCodeLanguageLabel(language);
+  return [
+    '<div class="terminal-doc-codeblock">',
+    '<div class="terminal-doc-codeblock__bar" contenteditable="false">',
+    `<span class="terminal-doc-codeblock__language">${escapeHtml(label)}</span>`,
+    '<button type="button" class="terminal-doc-codeblock__copy" data-terminal-code-copy contenteditable="false" aria-label="复制代码块">',
+    '<span class="terminal-doc-codeblock__copy-idle">复制</span>',
+    '<span class="terminal-doc-codeblock__copy-done">已复制</span>',
+    '<span class="terminal-doc-codeblock__copy-error">失败</span>',
+    '</button>',
+    '</div>',
+    renderHighlightedCodeHtml(source, language),
+    '</div>',
+  ].join('');
+}
+
+function formatTerminalCodeLanguageLabel(language: string): string {
+  const normalized = normalizeCodeLanguage(language);
+  if (!normalized) return 'Code';
+  const labels: Record<string, string> = {
+    bash: 'Shell',
+    sh: 'Shell',
+    shell: 'Shell',
+    zsh: 'Shell',
+    js: 'JavaScript',
+    jsx: 'JavaScript JSX',
+    ts: 'TypeScript',
+    tsx: 'TypeScript TSX',
+    py: 'Python',
+    rb: 'Ruby',
+    rs: 'Rust',
+    go: 'Go',
+    md: 'Markdown',
+    markdown: 'Markdown',
+    json: 'JSON',
+    yml: 'YAML',
+    yaml: 'YAML',
+    html: 'HTML',
+    css: 'CSS',
+    scss: 'SCSS',
+    vue: 'Vue',
+    plaintext: 'Text',
+    text: 'Text',
+  };
+  return labels[normalized] || normalized
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 function upgradeTerminalMarkdownDocumentHtml(html: string): string {
   if (typeof document === 'undefined') return html;
   const host = document.createElement('div');
@@ -566,7 +669,7 @@ function upgradeTerminalMarkdownDocumentHtml(html: string): string {
     if (!pre || pre.closest('.terminal-doc-mermaid, .terminal-doc-svg')) return;
     const language = readCodeLanguage(code);
     const wrapper = document.createElement('div');
-    wrapper.innerHTML = renderHighlightedCodeHtml(code.textContent || '', language);
+    wrapper.innerHTML = renderTerminalCodeBlockHtml(code.textContent || '', language);
     const nextNode = wrapper.firstElementChild;
     if (nextNode) pre.replaceWith(nextNode);
   });
@@ -740,6 +843,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearScheduledTerminalMarkdownRender();
+  if (typeof window !== 'undefined') {
+    activeCopyStatusTimers.forEach((handle) => window.clearTimeout(handle));
+  }
+  activeCopyStatusTimers.clear();
   markdownRenderSerial += 1;
   enhanceSerial += 1;
 });
