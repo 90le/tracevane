@@ -1,369 +1,379 @@
 # OpenClaw Studio Design Contract
 
-OpenClaw Studio is an operations IDE for terminals, files, agents, routing, repair, and system control. The visual target is the current Terminal and Files workbench direction: clean, line-based, direct, compact, readable, and fast. A user should understand what they can do by scanning the first screen, without reading explanatory cards.
+OpenClaw Studio is a light operations workbench for terminals, files, agents, routing, repair, and system control. It should feel clean, flat, fast, and obvious: users see the current object, current state, and next action without reading long explanations or scanning a wall of cards.
 
-This document replaces the older card-heavy design direction. Future UI work should treat the Terminal maintenance workbench and the Studio file manager as the product reference.
+Terminal and Files are the current reference examples because they are clear and tool-focused. They are not templates to copy everywhere. Other pages should translate the same discipline: fewer boxes, tighter hierarchy, real controls near the object they affect, and advanced detail folded until needed.
 
-## Core Position
+## Direction
 
-Studio is not a marketing dashboard, not a card gallery, and not a decorative admin panel.
+The product direction is **light operations workbench**.
 
-Studio is a workbench:
+Use:
 
-- A clear shell rail for global navigation.
-- A compact activity rail for local work modes.
-- A resizable explorer or object list when the task has hierarchy.
-- A primary stage for the actual work.
-- Optional inspectors, drawers, command sheets, and context menus.
-- Shared preview/edit engines for files, markdown, HTML, media, logs, and terminals.
-
-The product should feel like a web IDE crossed with an operations file manager: dense enough for repeated work, but calm enough that the next action is obvious.
-
-## Design Principles
-
-### 1. Row First
-
-Rows, trees, tables, split panes, command bars, and context menus are the default. Cards are the exception.
-
-Use rows for:
-
-- Files and folders.
-- Terminal sessions.
-- Search results.
-- Git changes and commits.
-- Agent, channel, route, process, task, and log entries.
-- Any object that users scan, compare, select, rename, open, stop, delete, stage, or move.
-
-Use cards only when the content is truly a repeated browsable object with independent media or summary content. Do not use cards to display normal settings, diagnostics, forms, action choices, or operational state.
-
-### 2. One Surface, One Job
-
-Every visible region must have one clear responsibility:
-
-- Rail: choose a product area.
-- Activity bar: switch local tools.
-- Explorer: browse hierarchy.
-- Workbench stage: edit, preview, run, inspect, or manage.
-- Inspector drawer: secondary detail.
-- Context menu: object-specific actions.
-- Floating sheet: temporary task, upload progress, confirmation, logs, or advanced output.
-
-Do not stack duplicate headers, duplicate tabs, duplicate metadata strips, or repeated button rows. If two controls explain the same state, remove one.
-
-### 3. Workbench Before Decoration
-
-The UI should use solid surfaces, crisp borders, clear typography, and local hover/active states. Avoid decorative gradients, glow layers, bokeh, hero panels, and ornamental card shadows.
-
-Depth should come from layout hierarchy:
-
-- shell rail
-- local rail
-- resizable pane
-- stage
-- drawer or sheet
-- menu
-
-Not from heavy shadows or nested cards.
-
-### 4. Tools Live Near the Thing They Affect
-
-Toolbar actions should sit in the same area as their target:
-
-- File actions near the file list.
-- Terminal actions near terminal tabs or the active session.
-- Preview actions in the preview header.
-- Search and replace controls in the editor/search panel.
-- Git actions near the selected repository or selected commit.
-
-Global top bars must stay small. Do not move page-local tools into a global header just because there is empty horizontal space.
-
-### 5. Context Menus Are Product UI
-
-Right-click menus are first-class Studio UI for file rows, tree rows, terminal tabs, preview tabs, git entries, and session rows.
-
-Rules:
-
-- Open on right click or keyboard context key.
-- Close on focus change, Escape, or another menu opening.
-- Do not close just because the page scrolls.
-- Keep browser-native media right-click behavior on real images, audio, video, PDF, and iframe content when the native menu is more useful.
-- Destructive actions must be visually separated and confirmed when needed.
-- Do not perform dangerous actions on a single accidental left click.
-
-### 6. Shared Engines, Not Feature Copies
-
-Terminal and Files must share the same preview/edit engine. If one surface can preview, edit, save, search, render markdown, render HTML, show media, or warn about unsaved files, the other surface should reuse the same behavior instead of rebuilding it.
-
-Shared engines should include:
-
-- Code editor.
-- Markdown preview and visual editing.
-- HTML preview.
-- Image preview with zoom, pan, lightbox, and native image right-click.
-- Video and audio preview with responsive sizing.
-- PDF inline preview.
-- Binary preview fallback.
-- Dirty-file confirmation.
-- Search and replace.
-- Drag/drop and paste insertion for markdown media.
-
-## Layout System
-
-### Studio Shell
-
-The shell should be flush, compact, and stable:
-
-- Left rail is the only global navigation.
-- Route pages should not introduce another route-level navigation bar.
-- Fullscreen workbench mode covers non-workbench chrome and uses the full viewport width.
-- Mobile mode converts side panes into sheets or bottom/side drawers instead of shrinking everything into unreadable columns.
-
-### Workbench Grid
-
-Preferred desktop layout:
-
-```text
-global rail | local activity rail | explorer/list pane | resizer | primary stage | optional inspector
-```
-
-Preferred mobile layout:
-
-```text
-compact top/local bar
-primary stage
-bottom drawer or slide sheet for explorer/actions/inspector
-```
-
-Rules:
-
-- Use `minmax(0, 1fr)` for the main stage.
-- Explorer panes are resizable and collapsible.
-- The stage must never leave dead blank regions.
-- Tabs must scroll, window, or collapse into a file/session switcher before they overflow.
-- Button clusters should wrap or collapse into overflow menus, not compress labels into unreadable text.
-
-### Terminal Workbench
-
-The terminal is the reference for the rest of Studio.
-
-Required shape:
-
-- Session tabs at the workbench edge, not buried below repeated headers.
-- Close buttons large enough to avoid accidental taps, especially on mobile.
-- Rename, duplicate, open in directory, close, close others, and delete/end are tab or context actions.
-- Splits and layout controls belong in a compact menu, not a permanent noisy row.
-- Resource explorer can drag paths into terminal and paste paths as quoted shell paths.
-- File preview/editor can appear beside, above, below, or in place of terminal depending on layout.
-- Fullscreen means the IDE workbench goes fullscreen, not only a child preview pane.
-
-Remove:
-
-- Duplicated metadata strips.
-- Placeholder inspector pages.
-- Permanent session/history panels that duplicate closed/deleted terminal tabs.
-- Controls that do not map to real backend behavior.
-- Random telemetry or resize JSON leaking into terminal output.
-
-### File Manager Workbench
-
-The file manager should feel like an ops file manager and a lightweight web IDE.
-
-Required shape:
-
-- Multi-tab directories.
-- Editable address trail: display as breadcrumb, turn into one input only while editing.
-- Address segments are clickable.
-- Any absolute path can be entered, not only preset roots.
-- Tree/sidebar shows useful roots and current directory context without taking over the page.
-- Main area is normally a row/table list.
-- Grid view is optional and must truncate names cleanly.
-- Toolbar is compact and grouped by frequency.
-- Upload uses a dedicated modal/sheet with batch progress.
-- Archive actions support common formats and allow extract to current or selected directory.
-- Pagination or backend windowing is required for large directories.
-- Status bar shows counts, selection, current path, and page state without becoming visual clutter.
-
-Columns:
-
-- Always useful: name, size, modified time, operation.
-- Optional/toggleable: permissions, owner, status, notes.
-- Hidden files are controlled by a clear toggle.
-
-### Resource Explorer
-
-The resource explorer is a tree, not a drill-down browser.
-
-Rules:
-
-- Folders expand and collapse in place.
-- Indentation is compact and predictable.
-- Folder names are not bold by default.
-- Do not show child-count text unless the user asks for diagnostics.
-- File icons should communicate type, not decoration.
-- Selection, hover, focus, default root, dirty state, and upload/change status must be visible but quiet.
-- Dragging a file or folder to terminal inserts a safe shell path.
-- Copy/paste and upload must work through real file operations, not placeholder UI.
-
-## Visual Language
-
-### Surfaces
-
-Use solid surfaces:
-
-- Light mode: clean white work surfaces on a very soft off-white canvas.
-- Dark mode: graphite work surfaces with clear borders and readable contrast.
+- compact rows, forms, tables, task rails, toolbars, sheets, drawers, and inspectors
+- solid surfaces with subtle borders and little or no shadow
+- one primary action per screen or active task
+- visible but quiet hover, focus, loading, empty, disabled, and error states
+- short labels and direct status copy
+- responsive layouts that prioritize the active work surface
 
 Avoid:
 
-- translucent glass panels for routine controls
-- one-off colored panels
-- nested cards
-- heavy shadows
-- large rounded rectangles everywhere
-- gray fields that look disabled
+- card walls
+- equal-weight two-column or three-column information dumps
+- repeated headers, metadata strips, ribbons, and action rows
+- long route introductions explaining implementation
+- first-screen diagnostics that are not the current task
+- decorative gradients, glow, glass, oversized radius, and heavy shadows
+- placeholder actions or menus that do not perform real work
 
-### Color
+The goal is not "everything must be rows." The goal is lower cognitive load.
 
-OpenClaw mint/teal is the action identity. Amber/peach, red, and green are semantic only.
+## Page Shapes
 
-Rules:
+Choose one shape before inventing a new layout.
 
-- Do not introduce a new primary color for one feature.
-- Do not make an entire page one hue.
-- Do not use gradients as the main layout language.
-- Active state should be clear through border, fill, icon, and text contrast.
-- Error/warning/success states must remain legible in both themes.
+### Workbench
 
-### Typography
+Use for Terminal, Files, Codex Stack, Git, logs, and live repair.
 
-Operational UI needs compact, readable text:
+```text
+local task rail or tabs | object list or step rail | primary stage | optional inspector/sheet
+```
 
-- Rows use normal-weight names.
-- Metadata uses smaller muted text.
-- Monospace is for terminal output, paths, code, command snippets, hashes, and size/time counters.
-- Hero-sized headings are not used inside workbenches.
-- Buttons and tabs must not overflow their containers.
+The workbench is for switching tools, selecting an object, running commands, previewing output, or repairing state.
 
-### Icons
+### List Detail
 
-Use familiar icons for tools, states, and file types.
+Use for Agents, Channels, Plugins, repositories, scheduled tasks, and model lists.
 
-Rules:
+```text
+search/filter row
+object rows
+selected detail drawer or stage
+```
 
-- Prefer icon buttons for frequent tools.
-- Add tooltips or accessible labels when the icon is not self-evident.
-- File type icons should be consistent between Terminal resource explorer and Files manager.
-- Do not use decorative icons inside rows unless they convey state or type.
+Rows beat cards for scan, sort, select, batch, and compare.
 
-## Interaction Rules
+### Settings
 
-### Tabs
+Use for configuration, credentials, provider settings, and model routing.
 
-Tabs are work objects, not decoration.
+```text
+section heading
+grouped form rows
+inline validation
+save/apply strip
+advanced section collapsed
+```
 
-Rules:
+Settings should not be one card per field.
 
-- Support rename where it matters.
-- Support context menu.
-- Support close, close others, close right, and close all when useful.
-- Use windowing, overflow count, or a switcher when there are many tabs.
-- Do not let tab labels cover action buttons.
-- On mobile, avoid tiny close targets.
+### Status Console
 
-### Split, Collapse, Fullscreen
+Use for diagnostics, install/repair, service health, gateway state, and runtime checks.
 
-Workbench layout must support:
+```text
+current status
+recommended next action
+compact facts
+checklist or service rows
+logs in sheet/drawer
+```
 
-- left/right split
-- top/bottom split
-- collapse explorer
-- collapse inspector
-- hide/show terminal panel
-- fullscreen workbench
+If the page is about fixing something, the repair path is more important than the chart.
 
-These actions should be available from one compact layout menu or nearby pane controls. Do not scatter them across unrelated headers.
+### Summary
 
-### Search And Replace
+Use only for the main dashboard.
 
-Search should behave like an IDE:
+```text
+readiness strip
+pending actions
+recent events
+important shortcuts
+```
 
-- Enter jumps to next match.
-- Shift+Enter jumps to previous match.
-- Replace is explicit and does not accidentally type into the file.
-- Workspace search results show filename, path, and match with enough spacing.
-- Search panels should not create unnecessary path browser packages or duplicate navigation.
+Summary cards must be few, thin, and actionable.
 
-### Preview And Editing
+## First-Screen Budget
 
-Preview mode and source/edit mode are persistent per file type when useful:
+Every page starts with a budget:
 
-- Markdown can open in preview or visual edit based on last preference.
-- HTML can open in source or preview based on last preference.
-- Media opens in preview.
-- Dirty files warn before close.
+- one title or selected object identity
+- one status summary
+- one primary action
+- one local navigation control when needed
+- one active work surface
 
-Markdown preview is not chat markdown. It is document rendering:
+Everything else must justify why it is visible before the user chooses a task.
 
-- no chat bubble chrome
-- no automatic source/tool blocks inside rendered content
-- supports headings, tables, task lists, code blocks, diagrams, formulas, HTML, SVG, and media
-- code blocks have copy actions
-- media supports resize/alignment in visual edit mode where feasible
+If two regions explain the same state, remove one. If an advanced detail is useful but not immediately actionable, collapse it. If a control is rare, move it to a menu, drawer, or advanced section.
 
-### Media
+## Card Policy
 
-Media preview must be useful:
+Cards are allowed only for true repeated browsable objects or small dashboard summaries. They are not the default layout primitive.
 
-- Images support zoom, pan, reset, fit, lightbox, drag positioning, and native browser media menu.
-- Videos fit inside the preview stage and preserve aspect ratio.
-- Audio uses a compact player with useful metadata.
-- PDF is viewed inline instead of downloaded by default.
-- Unknown binaries show a clear fallback with download/open actions.
+Replace:
 
-## Performance Rules
+- setting cards with sectioned form rows
+- status cards with compact status strips and row details
+- action cards with command rows
+- diagnostic cards with checklist rows and output sheets
+- feature grids with list-detail workbenches when the user selects one object and edits it
 
-Performance is part of design.
+Do not nest cards. Do not use cards to make a sparse page look full.
+
+## Codex Stack
+
+Codex Stack needs the most visual reduction. It is an operations console for route state, install/repair, Agent bridge, model routing, and logs. It must not feel like five dashboards merged into one page.
+
+Default first screen:
+
+- route health
+- one recommended next action
+- only the facts needed to trust that action
+- deep chain maps, service matrices, model catalogs, environment references, smoke details, and raw logs collapsed or in sheets
+
+Preferred structure:
+
+```text
+task rail
+current task status strip
+recommended action row
+task-specific stage
+advanced diagnostics collapsed
+floating output sheet
+```
+
+Dashboard:
+
+- single runtime strip
+- one next-action block
+- service state as rows, not big service cards
+- model source as a compact fact unless model state is the active problem
+- chain map, service grid, component health, network policy, smoke matrix, and diagnostics inside one advanced status section
+
+Install and repair:
+
+- start with the recommended action
+- keep reinstall, base install, force/skip flags, and component strategy behind advanced controls
+- show steps as a checklist or step rail
+- command output always opens in a floating output sheet
+
+Agent bridge:
+
+- project/provider rows plus one editor stage
+- presets as compact chips or rows, not a card gallery
+- raw config in source/advanced mode
+- save/finalize in a sticky local action strip
+
+Route models:
+
+- one primary model selector
+- one route ledger
+- environment references and catalog details collapsed
+- avoid four-column fact grids on first screen
+
+Logs:
+
+- one toolbar for service, line count, auto-refresh, copy, and open output
+- output is a console sheet, not permanent dashboard space
+
+Copy should be short: "Route healthy", "Repair recommended", "Model source", "Open logs", "Run check", "Save route".
+
+## Terminal
+
+Terminal remains the clearest workbench reference.
 
 Required:
 
-- Virtualize, paginate, or backend-window very large directories and search results.
-- Lazy-load heavy preview engines.
-- Do not mount hidden terminal instances unnecessarily.
-- Do not re-render terminal output on every layout drag.
-- Use CSS containment where appropriate for large panes.
-- Keep resize handlers throttled or requestAnimationFrame-based.
-- Prefer transform-based movement for image pan/zoom.
-- Avoid layout thrash from measuring many rows during drag or resize.
+- session tabs at the workbench edge
+- rename and context actions on tabs
+- close targets large enough for mobile
+- splits and fullscreen in one compact layout menu
+- resource explorer drag/paste paths into terminal safely
+- file preview/editor can sit beside, above, below, or in place of terminal
+- fullscreen means the whole workbench, not a child preview
 
-A UI that looks nice but stutters during pane resize, terminal output, large folder browsing, or mobile mode fails the design.
+Remove duplicate metadata strips, placeholder inspector pages, permanent panels duplicating closed sessions, and random telemetry leaking into terminal output.
+
+## Files
+
+Files is the reference for operations file management.
+
+Required:
+
+- multi-tab directories
+- editable address trail that becomes one input only while editing
+- clickable path segments
+- arbitrary absolute path entry
+- compact toolbar grouped by frequency
+- row/table list as the default view
+- optional grid view with reliable truncation
+- batch upload sheet with progress
+- archive/extract actions with current or target directory
+- backend pagination or windowing for large directories
+- status bar for counts, selection, path, and page state
+
+Columns should default to name, size, modified time, and operation. Permissions, owner, status, and notes are optional/toggleable.
+
+## Other Feature Directions
+
+Agent management:
+
+- searchable Agent rows
+- selected Agent workbench stage
+- persona, runtime, sessions, routing, and advanced JSON as local tasks or drawers
+- no agent card wall or nested side rails
+
+Channels:
+
+- provider/account rows
+- selected object owns the editor
+- credentials and advanced payloads in drawers
+- user-facing copy says route/routing, not binding
+
+Config:
+
+- quiet form rows
+- visible labels and helper text
+- inline validation
+- save/reset strip
+- advanced groups collapsed
+
+Diagnostics:
+
+- current status
+- recommended check
+- checklist rows
+- repair action
+- output sheet
+
+Plugins, tasks, and repositories:
+
+- rows by default
+- context menu for object actions when useful
+- detail drawer for changelog, config, history, branch, or advanced operations
+
+## Visual Rules
+
+Surfaces:
+
+- Light mode: clean white work surfaces on soft off-white canvas.
+- Dark mode: graphite work surfaces with visible borders.
+- Main work surfaces use subtle borders and little or no shadow.
+- Inner controls should not sit inside another framed box unless task context changes.
+- Section separators can be lines, spacing, or small headings.
+- Radius stays modest; large rounded blocks feel bulky.
+
+Color:
+
+- OpenClaw mint/teal is the action identity.
+- Amber/peach, red, and green are semantic only.
+- Do not introduce a new primary color for one feature.
+- Do not make an entire page one hue.
+- Do not use gradients as layout language.
+
+Typography:
+
+- Rows use normal-weight names.
+- Metadata uses smaller muted text.
+- Monospace is for terminal output, paths, code, command snippets, hashes, and counters.
+- Workbench headings stay compact.
+- Buttons and tabs must not overflow.
+
+Copy:
+
+- Prefer labels over explanation.
+- First-screen copy says what is true and what to do next.
+- Long explanations move to tooltip, help text, drawer, or docs.
+- Do not teach implementation unless the active task requires it.
+
+Icons:
+
+- Use familiar icons for tools, states, and file types.
+- Icon buttons need accessible labels and tooltips when unclear.
+- Icons communicate state or type; they are not decoration.
+
+## Interaction Rules
+
+Tabs:
+
+- support rename where useful
+- support context menu
+- support close, close others, close right, and close all when useful
+- use overflow/windowing/switcher before labels collide
+- avoid tiny close targets on mobile
+
+Context menus:
+
+- product rows, tree rows, terminal tabs, preview tabs, git entries, and session rows may use Studio context menus
+- close on focus change, Escape, or another menu opening
+- do not close just because the page scrolls
+- keep browser-native media right-click on real images, audio, video, PDF, and iframe content when native actions are more useful
+- destructive actions are separated and confirmed when needed
+
+Search:
+
+- Enter moves to next match
+- Shift+Enter moves to previous match
+- Replace is explicit and never accidentally types into the file
+- Workspace results show filename, path, and match without overlap
+
+Preview:
+
+- Terminal and Files share the same preview/edit engine
+- Markdown, HTML, image, audio, video, PDF, code, and binary fallback should behave consistently across both surfaces
+- Dirty files warn before close
+- Preview/source/visual preferences persist when useful
+
+Media:
+
+- images support zoom, pan, reset, fit, lightbox, and native image menu
+- videos fit inside the stage and preserve aspect ratio
+- audio uses a compact player
+- PDFs view inline by default
+
+## Performance Rules
+
+Performance is design.
+
+Required:
+
+- virtualize, paginate, or backend-window large directories and result lists
+- lazy-load heavy preview engines
+- avoid mounting hidden terminals and heavy panels
+- do not re-render terminal output on every resize/drag
+- throttle resize, scroll, and drag handlers
+- use transform-based movement for media pan/zoom
+- use containment where large panes can isolate layout work
+
+A UI that looks clean but stutters during resize, terminal output, large folder browsing, or mobile mode fails.
 
 ## Mobile Rules
 
-Mobile is a real target, not a squeezed desktop screenshot.
+Mobile is a real target.
 
-Rules:
+- primary stage gets most of the viewport
+- panels collapse into sheets or drawers
+- toolbars collapse into icon groups or overflow menus
+- terminal font size adapts to viewport and input density
+- terminal output remains visible after UA/device mode changes
+- tab close buttons are not easy to mis-tap
+- context menus become action sheets when needed
+- avoid automatic refresh/remount loops during viewport changes
 
-- Terminal font size must adapt to viewport and input density.
-- Terminal output must remain visible after UA/device mode switches.
-- Tab close buttons must not be easy to mis-tap.
-- Activity/explorer/inspector panels collapse into sheets.
-- Primary work stage gets most of the viewport.
-- Toolbars collapse into icon groups or overflow menus.
-- Context menus become action sheets where needed.
-- Avoid automatic refresh or remount loops during viewport changes.
+## CSS Rules
 
-## CSS And Naming Rules
-
-Class names should describe the work surface:
+Prefer names that describe the work surface:
 
 - `*-workbench`
 - `*-stage`
 - `*-rail`
-- `*-activity`
-- `*-explorer`
 - `*-row`
-- `*-tree`
 - `*-table`
+- `*-tree`
 - `*-toolbar`
 - `*-sheet`
 - `*-drawer`
@@ -373,43 +383,26 @@ Class names should describe the work surface:
 
 Avoid new `*-card` names unless the surface is truly a repeated content card.
 
-CSS should be feature-owned but primitive-aware:
+CSS rules:
 
-- Shared controls use shared primitives.
-- Feature CSS owns layout, density, and feature-specific states.
-- Do not solve the same control style in several feature files.
-- Do not keep old cascade patches after a layout is replaced.
-- Avoid raw color literals for visible chrome; use tokens.
-- Keep light and dark theme behavior together.
+- shared controls use shared primitives
+- feature CSS owns layout, density, and feature-specific state
+- do not solve the same control style in multiple feature files
+- remove old cascade patches after replacing a layout
+- avoid raw color literals for visible chrome; use tokens
+- check light and dark themes together
 
-## Deletion Rules
+## Release Gate
 
-When improving a page, delete these patterns:
+A UI change is acceptable only when:
 
-- repeated page headers
-- metadata strips that duplicate tabs or status bars
-- decorative cards around single controls
-- placeholder buttons that do not call real behavior
-- feature menus that open but do not switch content
-- hidden panels that still mount heavy components
-- duplicate tab systems
-- browser-default context menus on product rows
-- custom media context menus that remove useful browser media actions
-- action rows that exist only because there is empty space
-
-Prefer removing UI over adding another layer.
-
-## Release Gate For UI Changes
-
-A frontend change is acceptable only when:
-
-- The main workflow is visible without reading explanatory text.
-- The primary action is near the object it affects.
-- Rows/lists/tables are readable in light and dark themes.
-- Mobile mode is not a cramped version of desktop.
-- Context menus, keyboard focus, hover, disabled, loading, error, and empty states are handled.
-- Large lists and resize/drag interactions remain responsive.
-- Terminal and Files shared behavior stays consistent.
-- There is no new card wall, duplicate navigation, or dead placeholder function.
+- the main workflow is visible without explanatory text
+- primary action is near the affected object
+- light and dark themes are readable
+- mobile is not a cramped desktop
+- hover, focus, disabled, loading, empty, and error states are handled
+- large lists and resize/drag interactions remain responsive
+- Terminal and Files shared behavior stays consistent
+- no new card wall, duplicate navigation, or dead placeholder function appears
 
 The target is simple: clear workbench, obvious tools, real behavior, fast interaction.
