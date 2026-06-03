@@ -178,7 +178,10 @@ test("file previews and editor workspace reuse the terminal preview engine", () 
   assert.match(terminalFilePreviewPane, /AsyncTerminalMarkdownPreview/);
   assert.match(terminalFilePreviewPane, /surface\?: 'terminal' \| 'files'/);
   assert.match(terminalFilePreviewPane, /isFilesSurface/);
+  assert.match(terminalFilePreviewPane, /FILE_PREVIEW_MODE_PREFERENCE_STORAGE_KEY/);
+  assert.match(terminalFilePreviewPane, /resolveDefaultPreviewMode\(tab\)/);
   assert.match(terminalMarkdownPreview, /terminal-doc-codeblock/);
+  assert.match(terminalMarkdownPreview, /TERMINAL_MARKDOWN_RENDER_CACHE_LIMIT/);
   assert.match(terminalMarkdownPreview, /data-terminal-code-copy/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'pdf'/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'video'/);

@@ -693,6 +693,7 @@ const AsyncTerminalMarkdownPreview = defineAsyncComponent(() => import('./Termin
 
 type TerminalFilePreviewMode = 'edit' | 'preview' | 'visual';
 type TerminalRichPreviewKind = 'markdown' | 'html';
+type TerminalFilePreviewModePreference = Record<TerminalRichPreviewKind, TerminalFilePreviewMode>;
 
 const props = defineProps<{
   tabs: TerminalFilePreviewTab[];
@@ -743,7 +744,11 @@ const FILE_PREVIEW_CONTEXT_MENU_HEIGHT = 360;
 const IMAGE_ZOOM_MIN = 0.2;
 const IMAGE_ZOOM_MAX = 4;
 const IMAGE_ZOOM_STEP = 0.2;
+const FILE_PREVIEW_MODE_PREFERENCE_STORAGE_KEY = 'openclaw.terminal.filePreviewModePreference.v1';
 const isFilesSurface = computed(() => props.surface === 'files');
+const previewModePreference = reactive<TerminalFilePreviewModePreference>(
+  readFilePreviewModePreference(),
+);
 
 interface TerminalFilePreviewState {
   loading: boolean;
@@ -784,16 +789,8 @@ const activeCanEdit = computed(() =>
 );
 const activeRichPreviewKind = computed<TerminalRichPreviewKind | null>(() => {
   const payload = activePayload.value;
-  if (!payload || payload.content == null) return null;
-  const extension = (payload.ext || '').toLowerCase();
-  const name = (payload.name || activeTab.value?.name || '').toLowerCase();
-  if (extension === '.md' || extension === '.markdown' || extension === '.mdx' || name.endsWith('.md')) {
-    return 'markdown';
-  }
-  if (extension === '.html' || extension === '.htm' || extension === '.xhtml') {
-    return 'html';
-  }
-  return null;
+  if (payload && payload.content == null) return null;
+  return resolveRichPreviewKind(payload || activeTab.value);
 });
 const activeSupportsRichPreview = computed(() =>
   Boolean(activePayload.value?.content != null && activeRichPreviewKind.value),
@@ -802,6 +799,7 @@ const activePreviewMode = computed<TerminalFilePreviewMode>(() => {
   if (!activeSupportsRichPreview.value) return 'edit';
   const mode = activeState.value?.previewMode || 'edit';
   if (mode === 'visual' && activeRichPreviewKind.value !== 'markdown') return 'preview';
+  if (mode === 'visual' && !activeCanEdit.value) return 'preview';
   return mode;
 });
 const activeDirty = computed(() => {
@@ -1021,9 +1019,80 @@ watch(
   },
 );
 
-function ensurePreviewState(tabId: string): TerminalFilePreviewState {
-  if (!previewStates[tabId]) {
-    previewStates[tabId] = {
+function readFilePreviewModePreference(): TerminalFilePreviewModePreference {
+  const fallback: TerminalFilePreviewModePreference = {
+    markdown: 'edit',
+    html: 'edit',
+  };
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const parsed = JSON.parse(window.localStorage?.getItem(FILE_PREVIEW_MODE_PREFERENCE_STORAGE_KEY) || '{}') as Partial<TerminalFilePreviewModePreference>;
+    return {
+      markdown: normalizePreviewModeForKind(parsed.markdown, 'markdown'),
+      html: normalizePreviewModeForKind(parsed.html, 'html'),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function persistPreviewModePreference(kind: TerminalRichPreviewKind, mode: TerminalFilePreviewMode): void {
+  const normalizedMode = normalizePreviewModeForKind(mode, kind);
+  previewModePreference[kind] = normalizedMode;
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage?.setItem(
+      FILE_PREVIEW_MODE_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        markdown: previewModePreference.markdown,
+        html: previewModePreference.html,
+      }),
+    );
+  } catch {
+    // Preference persistence is optional; preview switching must still work.
+  }
+}
+
+function resolveDefaultPreviewMode(input: Partial<FilesReadPayload & TerminalFilePreviewTab> | null): TerminalFilePreviewMode {
+  const kind = resolveRichPreviewKind(input);
+  return normalizePreviewModeForKind(kind ? previewModePreference[kind] : 'edit', kind);
+}
+
+function normalizePreviewModeForKind(
+  mode: unknown,
+  kind: TerminalRichPreviewKind | null,
+): TerminalFilePreviewMode {
+  const normalizedMode = mode === 'preview' || mode === 'visual' || mode === 'edit' ? mode : 'edit';
+  if (!kind) return 'edit';
+  if (kind === 'html' && normalizedMode === 'visual') return 'preview';
+  return normalizedMode;
+}
+
+function resolveRichPreviewKind(
+  input: Partial<FilesReadPayload & TerminalFilePreviewTab> | null,
+): TerminalRichPreviewKind | null {
+  if (!input) return null;
+  const extension = String((input as Partial<FilesReadPayload>).ext || readFileExtension(input.name || input.path || '')).toLowerCase();
+  const name = String(input.name || input.path || '').toLowerCase();
+  if (extension === '.md' || extension === '.markdown' || extension === '.mdx' || name.endsWith('.md')) {
+    return 'markdown';
+  }
+  if (extension === '.html' || extension === '.htm' || extension === '.xhtml') {
+    return 'html';
+  }
+  return null;
+}
+
+function readFileExtension(value: string | undefined): string {
+  const normalized = String(value || '').toLowerCase();
+  const basename = normalized.split('/').pop() || normalized;
+  const dotIndex = basename.lastIndexOf('.');
+  return dotIndex > 0 ? basename.slice(dotIndex) : '';
+}
+
+function ensurePreviewState(tab: TerminalFilePreviewTab): TerminalFilePreviewState {
+  if (!previewStates[tab.id]) {
+    previewStates[tab.id] = {
       loading: false,
       saving: false,
       loaded: false,
@@ -1031,10 +1100,10 @@ function ensurePreviewState(tabId: string): TerminalFilePreviewState {
       payload: null,
       draft: '',
       savedContent: '',
-      previewMode: 'edit',
+      previewMode: resolveDefaultPreviewMode(tab),
     };
   }
-  return previewStates[tabId];
+  return previewStates[tab.id];
 }
 
 async function loadActivePreview(): Promise<void> {
@@ -1042,7 +1111,7 @@ async function loadActivePreview(): Promise<void> {
   if (!tab) {
     return;
   }
-  const state = ensurePreviewState(tab.id);
+  const state = ensurePreviewState(tab);
   if (state.loaded || state.loading) return;
   state.errorMessage = '';
   state.loading = true;
@@ -1051,6 +1120,10 @@ async function loadActivePreview(): Promise<void> {
     state.payload = payload;
     state.savedContent = payload.content || '';
     state.draft = payload.content || '';
+    state.previewMode = normalizePreviewModeForKind(
+      state.previewMode || resolveDefaultPreviewMode(payload || tab),
+      resolveRichPreviewKind(payload || tab),
+    );
     state.loaded = true;
   } catch (error) {
     state.errorMessage = error instanceof Error
@@ -1168,6 +1241,8 @@ function requestEditorSearchFromMenu(): void {
 function toggleActivePreviewMode(): void {
   const state = activeState.value;
   if (!state || !activeSupportsRichPreview.value) return;
+  const kind = activeRichPreviewKind.value;
+  if (!kind) return;
   if (state.previewMode === 'edit') {
     state.previewMode = 'preview';
   } else if (state.previewMode === 'preview' && activeRichPreviewKind.value === 'markdown' && activeCanEdit.value) {
@@ -1175,6 +1250,7 @@ function toggleActivePreviewMode(): void {
   } else {
     state.previewMode = 'edit';
   }
+  persistPreviewModePreference(kind, state.previewMode);
   closePreviewOverlays();
 }
 

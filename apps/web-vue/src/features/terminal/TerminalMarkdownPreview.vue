@@ -69,6 +69,16 @@ type TerminalMathPlaceholder = {
   source: string;
 };
 
+const TERMINAL_MARKDOWN_RENDER_CACHE_LIMIT = 18;
+const TERMINAL_MARKDOWN_RENDER_CACHE_MAX_SOURCE_LENGTH = 500_000;
+const terminalMarkdownProcessor = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRaw)
+  .use(rehypeStringify, { allowDangerousHtml: true });
+const terminalMarkdownRenderCache = new Map<string, string>();
+
 const props = withDefaults(
   defineProps<{
     source: string;
@@ -424,24 +434,46 @@ function normalizeEditableMarkdownSpacing(value: string): string {
 function renderTerminalMarkdownDocument(source: string): string {
   const normalized = String(source || '').trim();
   if (!normalized) return '<p></p>';
+  const cachedHtml = readTerminalMarkdownRenderCache(normalized);
+  if (cachedHtml != null) return cachedHtml;
 
   const previews = extractTerminalPreviewPlaceholders(normalized);
   const math = extractTerminalMathPlaceholders(previews.text);
   try {
-    const file = unified()
-      .use(remarkParse)
-      .use(remarkGfm)
-      .use(remarkRehype, { allowDangerousHtml: true })
-      .use(rehypeRaw)
-      .use(rehypeStringify, { allowDangerousHtml: true })
-      .processSync(math.text);
+    const file = terminalMarkdownProcessor.processSync(math.text);
     const withMath = restoreTerminalMathPlaceholders(String(file), math.placeholders);
     const withPreviews = restoreTerminalPreviewPlaceholders(withMath, previews.placeholders);
-    return upgradeTerminalMarkdownDocumentHtml(withPreviews);
+    const html = upgradeTerminalMarkdownDocumentHtml(withPreviews);
+    writeTerminalMarkdownRenderCache(normalized, html);
+    return html;
   } catch (error) {
     console.warn('[TerminalMarkdownPreview] markdown render failed:', error);
     return `<pre><code>${escapeHtml(normalized)}</code></pre>`;
   }
+}
+
+function readTerminalMarkdownRenderCache(source: string): string | null {
+  if (!canCacheTerminalMarkdownRender(source)) return null;
+  const cached = terminalMarkdownRenderCache.get(source);
+  if (cached == null) return null;
+  terminalMarkdownRenderCache.delete(source);
+  terminalMarkdownRenderCache.set(source, cached);
+  return cached;
+}
+
+function writeTerminalMarkdownRenderCache(source: string, html: string): void {
+  if (!canCacheTerminalMarkdownRender(source)) return;
+  terminalMarkdownRenderCache.set(source, html);
+  while (terminalMarkdownRenderCache.size > TERMINAL_MARKDOWN_RENDER_CACHE_LIMIT) {
+    const oldestKey = terminalMarkdownRenderCache.keys().next().value;
+    if (!oldestKey) break;
+    terminalMarkdownRenderCache.delete(oldestKey);
+  }
+}
+
+function canCacheTerminalMarkdownRender(source: string): boolean {
+  return typeof document !== 'undefined'
+    && source.length <= TERMINAL_MARKDOWN_RENDER_CACHE_MAX_SOURCE_LENGTH;
 }
 
 function extractTerminalPreviewPlaceholders(text: string): {
