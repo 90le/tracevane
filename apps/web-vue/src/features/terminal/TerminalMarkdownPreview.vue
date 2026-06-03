@@ -89,7 +89,7 @@ import {
   sanitizeSvgPreviewMarkup,
 } from '../chat/markdown';
 import { copyTextToClipboard } from '../../shared/clipboard';
-import { uploadFiles } from '../files/api';
+import { buildFileDownloadUrl, uploadFiles } from '../files/api';
 import {
   parseTerminalResourceTransfer,
   TERMINAL_RESOURCE_DRAG_MIME,
@@ -222,6 +222,14 @@ watch(
   () => {
     void enhancePreviewAfterRender(true);
   },
+);
+
+watch(
+  () => [props.assetRootId, props.assetFilePath] as const,
+  () => {
+    void enhancePreviewAfterRender();
+  },
+  { flush: 'post' },
 );
 
 type TerminalRequestIdleCallback = (
@@ -581,6 +589,103 @@ function detectMarkdownMediaKind(value: string): TerminalDocLightboxMediaKind | 
   if (/\.(?:mp4|webm|ogv|mov|m4v|mkv)$/i.test(normalized)) return 'video';
   if (/\.(?:mp3|wav|ogg|m4a|flac|aac|opus)$/i.test(normalized)) return 'audio';
   return null;
+}
+
+function rewriteMarkdownAssetUrls(root: HTMLElement): void {
+  const documentElement = root.querySelector<HTMLElement>('.terminal-doc-preview__document') || root;
+  documentElement.querySelectorAll<HTMLElement>('[src]').forEach((node) => {
+    rewriteMarkdownAssetAttribute(node, 'src', 'data-terminal-markdown-original-src');
+  });
+  documentElement.querySelectorAll<HTMLElement>('[href]').forEach((node) => {
+    rewriteMarkdownAssetAttribute(node, 'href', 'data-terminal-markdown-original-href');
+  });
+  documentElement.querySelectorAll<HTMLElement>('[poster]').forEach((node) => {
+    rewriteMarkdownAssetAttribute(node, 'poster', 'data-terminal-markdown-original-poster');
+  });
+  documentElement.querySelectorAll<HTMLElement>('[srcset]').forEach((node) => {
+    const original = node.getAttribute('data-terminal-markdown-original-srcset') || node.getAttribute('srcset') || '';
+    if (!original) return;
+    const rewritten = rewriteMarkdownAssetSrcset(original);
+    if (!rewritten) {
+      if (node.hasAttribute('data-terminal-markdown-original-srcset')) node.setAttribute('srcset', original);
+      return;
+    }
+    node.setAttribute('data-terminal-markdown-original-srcset', original);
+    node.setAttribute('srcset', rewritten);
+  });
+}
+
+function rewriteMarkdownAssetAttribute(node: HTMLElement, attribute: string, originalAttribute: string): void {
+  const original = node.getAttribute(originalAttribute) || node.getAttribute(attribute) || '';
+  if (!original) return;
+  const rewritten = resolveMarkdownAssetUrl(original);
+  if (!rewritten) {
+    if (node.hasAttribute(originalAttribute)) node.setAttribute(attribute, original);
+    return;
+  }
+  node.setAttribute(originalAttribute, original);
+  node.setAttribute(attribute, rewritten);
+}
+
+function rewriteMarkdownAssetSrcset(value: string): string {
+  return String(value || '')
+    .split(',')
+    .map((candidate) => {
+      const trimmed = candidate.trim();
+      if (!trimmed) return '';
+      const [url = '', ...descriptor] = trimmed.split(/\s+/);
+      const rewritten = resolveMarkdownAssetUrl(url) || url;
+      return [rewritten, ...descriptor].join(' ');
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
+function resolveMarkdownAssetUrl(rawUrl: string): string {
+  const normalizedUrl = String(rawUrl || '').trim();
+  if (!normalizedUrl || isExternalMarkdownAssetUrl(normalizedUrl) || !props.assetRootId) return '';
+  const resourcePath = markdownAssetUrlPath(normalizedUrl);
+  const normalizedPath = normalizeMarkdownAssetPath(resourcePath, props.assetFilePath);
+  return normalizedPath ? buildFileDownloadUrl(props.assetRootId, normalizedPath) : '';
+}
+
+function isExternalMarkdownAssetUrl(value: string): boolean {
+  return (
+    value.startsWith('#') ||
+    value.startsWith('//') ||
+    /^[a-z][a-z0-9+.-]*:/i.test(value)
+  );
+}
+
+function markdownAssetUrlPath(value: string): string {
+  return String(value || '').split('#', 1)[0]?.split('?', 1)[0] || '';
+}
+
+function normalizeMarkdownAssetPath(resourcePath: string, filePath: string): string {
+  const decodedPath = safeDecodeMarkdownAssetPath(resourcePath);
+  const normalizedResourcePath = decodedPath.replace(/\\/g, '/').trim();
+  if (!normalizedResourcePath) return '';
+  const baseSegments = normalizedResourcePath.startsWith('/')
+    ? []
+    : String(filePath || '').replace(/\\/g, '/').split('/').slice(0, -1);
+  const output: string[] = [];
+  for (const segment of [...baseSegments, ...normalizedResourcePath.split('/')]) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      output.pop();
+      continue;
+    }
+    output.push(segment);
+  }
+  return output.join('/');
+}
+
+function safeDecodeMarkdownAssetPath(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function markdownAssetDirectoryPath(): string {
@@ -1030,8 +1135,8 @@ function serializeEditableInlineNode(node: Node): string {
   if (tagName === 'em' || tagName === 'i') return `*${normalizeEditableInline(node)}*`;
   if (tagName === 's' || tagName === 'del') return `~~${normalizeEditableInline(node)}~~`;
   if (tagName === 'a') {
-    const label = normalizeEditableInline(node) || node.getAttribute('href') || '';
-    const href = node.getAttribute('href') || '';
+    const label = normalizeEditableInline(node) || readOriginalMarkdownAssetAttribute(node, 'href') || '';
+    const href = readOriginalMarkdownAssetAttribute(node, 'href');
     return href ? `[${label}](${href})` : label;
   }
   if (tagName === 'img') {
@@ -1058,7 +1163,7 @@ function serializeEditableMarkdownMediaElement(
   figure: HTMLElement | null,
 ): string {
   const tagName = media.tagName.toLowerCase();
-  const src = media.getAttribute('src') || '';
+  const src = readOriginalMarkdownAssetAttribute(media, 'src');
   if (!src) return '';
   const alt = tagName === 'img' ? media.getAttribute('alt') || '' : '';
   const customized = figure?.dataset.mediaCustomized === '1';
@@ -1074,6 +1179,10 @@ function serializeEditableMarkdownMediaElement(
   const controls = tagName === 'video' || tagName === 'audio' ? ' controls' : '';
   const playsInline = tagName === 'video' ? ' playsinline' : '';
   return `<${tagName} src="${escapeAttribute(src)}" style="${escapeAttribute(style)}"${controls}${playsInline}></${tagName}>`;
+}
+
+function readOriginalMarkdownAssetAttribute(node: HTMLElement, attribute: string): string {
+  return node.getAttribute(`data-terminal-markdown-original-${attribute}`) || node.getAttribute(attribute) || '';
 }
 
 function escapeMarkdownLabel(value: string): string {
@@ -1517,6 +1626,7 @@ async function enhancePreviewAfterRender(force = false): Promise<void> {
     });
   }
   syncEditableTaskControls(root);
+  rewriteMarkdownAssetUrls(root);
   enhanceMarkdownMediaBlocks(root);
   await renderMathBlocks(root);
   await renderMermaidBlocks(root);

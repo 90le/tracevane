@@ -1346,7 +1346,7 @@ test("terminal resource explorer opens IDE-style editable file previews", () => 
   assert.match(terminalMarkdownPreview, /@drop="handleMarkdownDrop"/);
   assert.match(terminalMarkdownPreview, /@paste="handleMarkdownPaste"/);
   assert.match(terminalMarkdownPreview, /import \{ copyTextToClipboard \} from '\.\.\/\.\.\/shared\/clipboard';/);
-  assert.match(terminalMarkdownPreview, /import \{ uploadFiles \} from '\.\.\/files\/api';/);
+  assert.match(terminalMarkdownPreview, /import \{ buildFileDownloadUrl, uploadFiles \} from '\.\.\/files\/api';/);
   assert.match(terminalMarkdownPreview, /TERMINAL_RESOURCE_DRAG_MIME/);
   assert.match(terminalMarkdownPreview, /defineEmits<\{/);
   assert.match(terminalMarkdownPreview, /\(e: 'update:source', value: string\): void;/);

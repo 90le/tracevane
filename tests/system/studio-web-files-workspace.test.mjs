@@ -188,6 +188,14 @@ test("file previews and editor workspace reuse the terminal preview engine", () 
   assert.match(terminalMarkdownPreview, /handleMarkdownDrop/);
   assert.match(terminalMarkdownPreview, /handleMarkdownPaste/);
   assert.match(terminalMarkdownPreview, /serializeEditableMarkdownMediaElement/);
+  assert.match(terminalMarkdownPreview, /buildFileDownloadUrl/);
+  assert.match(terminalMarkdownPreview, /function rewriteMarkdownAssetUrls\(root: HTMLElement\): void/);
+  assert.match(terminalMarkdownPreview, /function resolveMarkdownAssetUrl\(rawUrl: string\): string/);
+  assert.match(terminalMarkdownPreview, /normalizeMarkdownAssetPath\(resourcePath, props\.assetFilePath\)/);
+  assert.match(terminalMarkdownPreview, /buildFileDownloadUrl\(props\.assetRootId, normalizedPath\)/);
+  assert.match(terminalMarkdownPreview, /data-terminal-markdown-original-src/);
+  assert.match(terminalMarkdownPreview, /readOriginalMarkdownAssetAttribute\(media, 'src'\)/);
+  assert.match(terminalMarkdownPreview, /readOriginalMarkdownAssetAttribute\(node, 'href'\)/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'pdf'/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'video'/);
   assert.match(terminalFilePreviewPane, /imageZoomByTab/);
