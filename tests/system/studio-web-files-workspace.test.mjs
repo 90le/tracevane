@@ -133,6 +133,8 @@ test("native files workspace covers operations expected from an ops-oriented web
   assert.match(filesControlPage, /openTerminalHere/);
   assert.match(filesControlPage, /PAGE_SIZE_OPTIONS = \[50, 100, 200, 500\] as const/);
   assert.match(filesControlPage, /pagedDisplayEntries/);
+  assert.match(filesControlPage, /hasDirectoryPagination/);
+  assert.match(filesControlPage, /directoryPayload\.value\?\.pagination\?\.totalEntries/);
   assert.match(filesControlPage, /paginationTotalEntries/);
   assert.match(filesControlPage, /paginationRangeLabel/);
   assert.match(filesControlPage, /setCurrentPage/);
@@ -209,6 +211,8 @@ test("files workspace styles are native, responsive, and kept in feature CSS", (
   assert.match(filesWorkspaceCss, /\.studio-file-pagination\s*\{/);
   assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.studio-file-statusbar\s*\{/);
   assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.studio-file-pagination button/);
+  assert.match(filesWorkspaceCss, /@media \(max-width:\s*760px\)[\s\S]*\.studio-file-pathbar\s*\{[\s\S]*display:\s*grid;/);
+  assert.match(filesWorkspaceCss, /@media \(max-width:\s*760px\)[\s\S]*\.studio-file-statusbar\s*\{[\s\S]*flex-wrap:\s*wrap;/);
   assert.match(filesWorkspaceCss, /\.studio-file-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
   assert.match(filesWorkspaceCss, /\.studio-file-table\s*\{[\s\S]*table-layout:\s*fixed;/);
   assert.match(filesWorkspaceCss, /\.studio-file-grid\s*\{[\s\S]*repeat\(auto-fill,/);

@@ -975,28 +975,31 @@ const displayEntries = computed(() => {
     ? sortNativeFileItems([...filtered], sortKey.value, sortDirection.value)
     : filtered;
 });
+const hasDirectoryPagination = computed(() =>
+  Boolean(directoryPayload.value?.pagination),
+);
 const paginationTotalEntries = computed(() =>
   searchActive.value
     ? displayEntries.value.length
-    : directoryPayload.value?.pagination.totalEntries ?? displayEntries.value.length,
+    : directoryPayload.value?.pagination?.totalEntries ?? displayEntries.value.length,
 );
 const totalPages = computed(() =>
   searchActive.value
     ? Math.max(1, Math.ceil(displayEntries.value.length / pageSize.value))
-    : directoryPayload.value?.pagination.totalPages ?? Math.max(1, Math.ceil(displayEntries.value.length / pageSize.value)),
+    : directoryPayload.value?.pagination?.totalPages ?? Math.max(1, Math.ceil(displayEntries.value.length / pageSize.value)),
 );
 const pageStartIndex = computed(() =>
   searchActive.value
     ? Math.min(displayEntries.value.length, (currentPage.value - 1) * pageSize.value)
-    : directoryPayload.value?.pagination.startIndex ?? Math.min(displayEntries.value.length, (currentPage.value - 1) * pageSize.value),
+    : directoryPayload.value?.pagination?.startIndex ?? Math.min(displayEntries.value.length, (currentPage.value - 1) * pageSize.value),
 );
 const pageEndIndex = computed(() =>
   searchActive.value
     ? Math.min(displayEntries.value.length, pageStartIndex.value + pageSize.value)
-    : directoryPayload.value?.pagination.endIndex ?? Math.min(displayEntries.value.length, pageStartIndex.value + pageSize.value),
+    : directoryPayload.value?.pagination?.endIndex ?? Math.min(displayEntries.value.length, pageStartIndex.value + pageSize.value),
 );
 const pagedDisplayEntries = computed(() =>
-  searchActive.value
+  searchActive.value || !hasDirectoryPagination.value
     ? displayEntries.value.slice(pageStartIndex.value, pageEndIndex.value)
     : displayEntries.value,
 );
@@ -1403,7 +1406,7 @@ async function loadDirectory(
     directoryEntries.value = payload.entries.map((entry) =>
       toNativeFileItem(entry, payload.rootId, payload.directoryPath),
     );
-    currentPage.value = payload.pagination.page;
+    currentPage.value = payload.pagination?.page ?? requestedPage;
     selectedItemIds.value = new Set();
     detailsItem.value = null;
     syncAddressInput(payload.rootId, payload.directoryPath);
