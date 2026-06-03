@@ -183,9 +183,17 @@ test("file previews and editor workspace reuse the terminal preview engine", () 
   assert.match(terminalMarkdownPreview, /terminal-doc-codeblock/);
   assert.match(terminalMarkdownPreview, /TERMINAL_MARKDOWN_RENDER_CACHE_LIMIT/);
   assert.match(terminalMarkdownPreview, /data-terminal-code-copy/);
+  assert.match(terminalMarkdownPreview, /terminal-doc-lightbox/);
+  assert.match(terminalMarkdownPreview, /terminal-doc-media-block/);
+  assert.match(terminalMarkdownPreview, /handleMarkdownDrop/);
+  assert.match(terminalMarkdownPreview, /handleMarkdownPaste/);
+  assert.match(terminalMarkdownPreview, /serializeEditableMarkdownMediaElement/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'pdf'/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'video'/);
   assert.match(terminalFilePreviewPane, /imageZoomByTab/);
+  assert.match(terminalFilePreviewPane, /activeImagePannable/);
+  assert.match(terminalFilePreviewPane, /startImagePan/);
+  assert.match(terminalFilePreviewPane, /:asset-root-id="activeTab\?\.rootId \|\| ''"/);
   assert.match(terminalFilePreviewPane, /buildHtmlPreviewSrcdoc/);
   assert.match(codeFileEditor, /CodeMirror|EditorView|codemirror/);
   assert.match(codeFileEditor, /replaceAll/);

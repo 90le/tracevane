@@ -3330,6 +3330,16 @@
   scrollbar-width: thin;
 }
 
+.terminal-file-preview__image-stage--pannable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.terminal-file-preview__image-stage--dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .terminal-file-preview__image-toolbar {
   position: absolute;
   z-index: 2;
@@ -3803,6 +3813,28 @@
   cursor: text;
 }
 
+.terminal-doc-preview__media-status {
+  position: sticky;
+  z-index: 12;
+  inset-block-end: 12px;
+  width: max-content;
+  max-width: min(520px, calc(100% - 32px));
+  margin: -54px 16px 14px auto;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--doc-brand) 36%, var(--doc-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--doc-paper-elevated) 94%, transparent);
+  color: var(--doc-brand-ink);
+  box-shadow: var(--doc-card-shadow);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.terminal-doc-preview__media-status--error {
+  border-color: color-mix(in srgb, #ef4444 48%, var(--doc-line));
+  color: #b91c1c;
+}
+
 .terminal-doc-preview__document {
   box-sizing: border-box;
   min-width: 0;
@@ -3992,6 +4024,24 @@
   flex: 0 0 auto;
   margin: 0;
   margin-top: 0.48em;
+}
+
+.terminal-doc-preview--editable .terminal-doc-preview__document .task-list-item {
+  min-height: 28px;
+  border-radius: 7px;
+  padding: 2px 4px;
+}
+
+.terminal-doc-preview--editable .terminal-doc-preview__document .task-list-item:hover {
+  background: color-mix(in srgb, var(--doc-brand) 7%, transparent);
+}
+
+.terminal-doc-preview__document .terminal-doc-task-checkbox {
+  cursor: pointer;
+}
+
+.terminal-doc-preview__document .terminal-doc-task-checkbox:disabled {
+  cursor: default;
 }
 
 .terminal-doc-preview__document dl {
@@ -4324,6 +4374,178 @@
   object-fit: contain;
 }
 
+.terminal-doc-preview:not(.terminal-doc-preview--editable) .terminal-doc-preview__document :where(img, video, audio) {
+  cursor: zoom-in;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.terminal-doc-preview:not(.terminal-doc-preview--editable) .terminal-doc-preview__document :where(img, video):hover {
+  border-color: color-mix(in srgb, var(--doc-brand) 52%, var(--doc-line));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--doc-brand) 14%, transparent);
+  transform: translateY(-1px);
+}
+
+.terminal-doc-preview__document .terminal-doc-media-block {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  margin: 22px 0 28px;
+  padding: 34px 12px 12px;
+  border: 1px solid color-mix(in srgb, var(--doc-line) 88%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--doc-paper-elevated) 92%, var(--doc-soft));
+  box-shadow: var(--doc-card-shadow);
+}
+
+.terminal-doc-preview__document .terminal-doc-media-block :where(img, video, audio) {
+  max-height: min(72vh, 920px);
+  border: 1px solid color-mix(in srgb, var(--doc-line) 76%, transparent);
+  border-radius: 8px;
+  background: var(--doc-soft);
+  object-fit: contain;
+}
+
+.terminal-doc-preview__document .terminal-doc-media-block audio {
+  max-width: 100%;
+  min-height: 44px;
+}
+
+.terminal-doc-media-block__tools {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: 7px;
+  inset-inline-end: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 14px);
+  overflow-x: auto;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--doc-line) 84%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--doc-paper-elevated) 96%, transparent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--doc-ink) 9%, transparent);
+  scrollbar-width: none;
+}
+
+.terminal-doc-media-block__tools button {
+  appearance: none;
+  min-width: 30px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--doc-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.terminal-doc-media-block__tools button:hover,
+.terminal-doc-media-block__tools button:focus-visible,
+.terminal-doc-media-block__tools button.active {
+  background: color-mix(in srgb, var(--doc-brand) 14%, var(--doc-paper-elevated));
+  color: var(--doc-brand-ink);
+  outline: none;
+}
+
+.terminal-doc-media-block__tools button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.terminal-doc-lightbox {
+  position: fixed;
+  z-index: 2500;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: color-mix(in srgb, #020617 82%, transparent);
+}
+
+.terminal-doc-lightbox__panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(1180px, 100%);
+  max-height: min(92dvh, 920px);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, #ffffff 18%, transparent);
+  border-radius: 12px;
+  background: #070b12;
+  color: #e5edf7;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.46);
+}
+
+.terminal-doc-lightbox__bar,
+.terminal-doc-lightbox__foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.88);
+}
+
+.terminal-doc-lightbox__bar {
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.terminal-doc-lightbox__bar strong,
+.terminal-doc-lightbox__foot span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-doc-lightbox__bar button,
+.terminal-doc-lightbox__foot a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5edf7;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.terminal-doc-lightbox__image,
+.terminal-doc-lightbox__video {
+  place-self: center;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  object-fit: contain;
+}
+
+.terminal-doc-lightbox__audio {
+  place-self: center;
+  width: min(640px, calc(100% - 32px));
+}
+
+.terminal-doc-lightbox__foot {
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 12px;
+}
+
 .terminal-doc-preview__document svg {
   max-width: 100%;
   height: auto;
@@ -4496,6 +4718,8 @@
   max-width: none;
   max-height: none;
   object-fit: contain;
+  pointer-events: none;
+  user-select: none;
 }
 
 .terminal-file-preview__image-img--fit {

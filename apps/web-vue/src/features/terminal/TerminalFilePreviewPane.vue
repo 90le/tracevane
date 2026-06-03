@@ -419,7 +419,20 @@
             <RotateCcw class="terminal-file-preview__icon" aria-hidden="true" />
           </button>
         </div>
-        <div class="terminal-file-preview__image-stage" @wheel.ctrl.prevent="zoomActiveImageFromWheel">
+        <div
+          class="terminal-file-preview__image-stage"
+          :class="{
+            'terminal-file-preview__image-stage--pannable': activeImagePannable,
+            'terminal-file-preview__image-stage--dragging': imagePanDragging,
+          }"
+          @pointerdown="startImagePan"
+          @pointermove="moveImagePan"
+          @pointerup="endImagePan"
+          @pointercancel="endImagePan"
+          @pointerleave="endImagePan"
+          @dblclick="resetActiveImageZoom"
+          @wheel.ctrl.prevent="zoomActiveImageFromWheel"
+        >
           <img
             class="terminal-file-preview__image-img"
             :class="{ 'terminal-file-preview__image-img--fit': activeImageFit }"
@@ -534,6 +547,8 @@
           :dark="resolvedTheme === 'dark'"
           :editable="false"
           :read-only="true"
+          :asset-root-id="activeTab?.rootId || ''"
+          :asset-file-path="activePayload.path || activeTab?.path || ''"
         />
       </section>
       <section
@@ -548,6 +563,8 @@
           :dark="resolvedTheme === 'dark'"
           :editable="activeCanEdit"
           :read-only="!activeCanEdit || activeState?.saving"
+          :asset-root-id="activeTab?.rootId || ''"
+          :asset-file-path="activePayload.path || activeTab?.path || ''"
           @save="saveActiveFile"
         />
       </section>
@@ -764,6 +781,14 @@ interface TerminalFilePreviewState {
 const previewStates = reactive<Record<string, TerminalFilePreviewState>>({});
 const imageZoomByTab = reactive<Record<string, number>>({});
 const imageFitByTab = reactive<Record<string, boolean>>({});
+const imagePanDragging = ref(false);
+let imagePanState: {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  scrollLeft: number;
+  scrollTop: number;
+} | null = null;
 
 const placementOptions = computed(() => [
   { value: 'top' as const, label: text('预览在上方', 'Preview above'), icon: Rows },
@@ -922,6 +947,9 @@ const activeImageStyle = computed(() => ({
   transform: `scale(${activeImageZoom.value})`,
   transformOrigin: activeImageFit.value ? 'center center' : 'top left',
 }));
+const activeImagePannable = computed(() =>
+  Boolean(activeImageTabId.value && (!activeImageFit.value || activeImageZoom.value > 1)),
+);
 const activePreviewTitle = computed(() =>
   filePreviewTabTitle(activeTab.value),
 );
@@ -1275,6 +1303,40 @@ function resetActiveImageZoom(): void {
 
 function zoomActiveImageFromWheel(event: WheelEvent): void {
   zoomActiveImage(event.deltaY > 0 ? -IMAGE_ZOOM_STEP : IMAGE_ZOOM_STEP);
+}
+
+function startImagePan(event: PointerEvent): void {
+  if (!activeImagePannable.value || event.button !== 0) return;
+  const stage = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  if (!stage || event.target instanceof HTMLElement && event.target.closest('.terminal-file-preview__image-toolbar')) return;
+  imagePanState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    scrollLeft: stage.scrollLeft,
+    scrollTop: stage.scrollTop,
+  };
+  imagePanDragging.value = true;
+  stage.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+}
+
+function moveImagePan(event: PointerEvent): void {
+  const state = imagePanState;
+  const stage = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  if (!state || !stage || state.pointerId !== event.pointerId) return;
+  stage.scrollLeft = state.scrollLeft - (event.clientX - state.startX);
+  stage.scrollTop = state.scrollTop - (event.clientY - state.startY);
+  event.preventDefault();
+}
+
+function endImagePan(event: PointerEvent): void {
+  const state = imagePanState;
+  const stage = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  if (!state || state.pointerId !== event.pointerId) return;
+  stage?.releasePointerCapture?.(event.pointerId);
+  imagePanState = null;
+  imagePanDragging.value = false;
 }
 
 function selectPreviewTab(tabId: string): void {

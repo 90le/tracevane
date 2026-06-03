@@ -15,11 +15,63 @@
       :spellcheck="editable && !readOnly ? 'true' : undefined"
       v-html="renderedHtml"
       @input="handleEditableInput"
+      @change="handleEditableChange"
       @blur="handleEditableBlur"
       @click="handlePreviewClick"
+      @dragover="handleMarkdownDragOver"
+      @drop="handleMarkdownDrop"
+      @paste="handleMarkdownPaste"
       @keydown.meta.s.prevent="emit('save')"
       @keydown.ctrl.s.prevent="emit('save')"
     ></article>
+    <p
+      v-if="mediaStatusMessage"
+      class="terminal-doc-preview__media-status"
+      :class="{ 'terminal-doc-preview__media-status--error': mediaStatusKind === 'error' }"
+      role="status"
+    >
+      {{ mediaStatusMessage }}
+    </p>
+    <div
+      v-if="lightbox"
+      class="terminal-doc-lightbox"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="lightbox.title || props.title"
+      tabindex="-1"
+      @click.self="closeMarkdownLightbox"
+      @keydown.esc.stop.prevent="closeMarkdownLightbox"
+    >
+      <div class="terminal-doc-lightbox__panel">
+        <header class="terminal-doc-lightbox__bar">
+          <strong>{{ lightbox.title || props.title }}</strong>
+          <button type="button" @click="closeMarkdownLightbox">关闭</button>
+        </header>
+        <img
+          v-if="lightbox.kind === 'image'"
+          class="terminal-doc-lightbox__image"
+          :src="lightbox.src"
+          :alt="lightbox.alt || lightbox.title"
+        />
+        <video
+          v-else-if="lightbox.kind === 'video'"
+          class="terminal-doc-lightbox__video"
+          :src="lightbox.src"
+          controls
+          playsinline
+        ></video>
+        <audio
+          v-else
+          class="terminal-doc-lightbox__audio"
+          :src="lightbox.src"
+          controls
+        ></audio>
+        <footer class="terminal-doc-lightbox__foot">
+          <span>{{ lightbox.src }}</span>
+          <a :href="lightbox.src" target="_blank" rel="noopener noreferrer">打开原文件</a>
+        </footer>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -37,6 +89,12 @@ import {
   sanitizeSvgPreviewMarkup,
 } from '../chat/markdown';
 import { copyTextToClipboard } from '../../shared/clipboard';
+import { uploadFiles } from '../files/api';
+import {
+  parseTerminalResourceTransfer,
+  TERMINAL_RESOURCE_DRAG_MIME,
+  type TerminalResourceTransferPayload,
+} from './terminal-resource-transfer';
 
 type MermaidRenderResult = {
   svg: string;
@@ -69,8 +127,35 @@ type TerminalMathPlaceholder = {
   source: string;
 };
 
+type TerminalDocLightboxMediaKind = 'image' | 'video' | 'audio';
+
+type TerminalDocLightboxState = {
+  kind: TerminalDocLightboxMediaKind;
+  src: string;
+  title: string;
+  alt: string;
+};
+
+type TerminalDocMediaSize = 'small' | 'medium' | 'large' | 'full';
+type TerminalDocMediaAlign = 'left' | 'center' | 'right';
+
+type TerminalDocMediaFragment = {
+  kind: TerminalDocLightboxMediaKind | 'link';
+  src: string;
+  name: string;
+  alt: string;
+};
+
+type TerminalMarkdownUploadItem = {
+  fileName: string;
+  relativePath: string;
+  dataBase64: string;
+};
+
 const TERMINAL_MARKDOWN_RENDER_CACHE_LIMIT = 18;
 const TERMINAL_MARKDOWN_RENDER_CACHE_MAX_SOURCE_LENGTH = 500_000;
+const TERMINAL_MARKDOWN_UPLOAD_MAX_FILE_BYTES = 24 * 1024 * 1024;
+const TERMINAL_MARKDOWN_UPLOAD_MAX_BATCH_BYTES = 96 * 1024 * 1024;
 const terminalMarkdownProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
@@ -86,12 +171,16 @@ const props = withDefaults(
     dark?: boolean;
     editable?: boolean;
     readOnly?: boolean;
+    assetRootId?: string;
+    assetFilePath?: string;
   }>(),
   {
     title: 'Markdown Preview',
     dark: false,
     editable: false,
     readOnly: false,
+    assetRootId: '',
+    assetFilePath: '',
   },
 );
 
@@ -103,10 +192,14 @@ const emit = defineEmits<{
 const rootRef = ref<HTMLElement | null>(null);
 const documentRef = ref<HTMLElement | null>(null);
 const renderedHtml = ref(renderTerminalMarkdownDocument(props.source));
+const lightbox = ref<TerminalDocLightboxState | null>(null);
+const mediaStatusMessage = ref('');
+const mediaStatusKind = ref<'info' | 'error'>('info');
 let mermaidLoader: Promise<MermaidModule> | null = null;
 let katexLoader: Promise<KatexApi> | null = null;
 let markdownRenderTimer: number | null = null;
 let markdownRenderIdleHandle: number | null = null;
+let mediaStatusTimer: number | null = null;
 let markdownRenderSerial = 0;
 let enhanceSerial = 0;
 let lastEditableMarkdown = '';
@@ -196,6 +289,15 @@ function handleEditableInput(): void {
   emit('update:source', lastEditableMarkdown);
 }
 
+function handleEditableChange(event: Event): void {
+  if (!props.editable || props.readOnly) return;
+  const target = event.target instanceof HTMLInputElement ? event.target : null;
+  if (!target || target.type !== 'checkbox') return;
+  if (!documentRef.value?.contains(target)) return;
+  event.stopPropagation();
+  syncEditableSourceFromDocument();
+}
+
 function handleEditableBlur(): void {
   if (!props.editable || props.readOnly) return;
   scheduleTerminalMarkdownRender();
@@ -205,11 +307,53 @@ function handlePreviewClick(event: MouseEvent): void {
   const target = event.target instanceof Element ? event.target : null;
   const button = target?.closest<HTMLButtonElement>('button[data-terminal-code-copy]');
   const root = rootRef.value;
-  if (!button || !root || !root.contains(button)) return;
+  if (button && root?.contains(button)) {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyPreviewCodeBlock(button);
+    return;
+  }
 
+  const mediaAction = target?.closest<HTMLButtonElement>('button[data-terminal-media-action]');
+  if (mediaAction && root?.contains(mediaAction)) {
+    event.preventDefault();
+    event.stopPropagation();
+    applyMarkdownMediaAction(mediaAction);
+    return;
+  }
+
+  const media = target?.closest<HTMLImageElement | HTMLVideoElement | HTMLAudioElement>('img, video, audio');
+  if (!media || !root?.contains(media) || media.closest('.terminal-doc-codeblock')) return;
+  if (props.editable && !props.readOnly && !target?.closest('.terminal-doc-media-block__preview')) return;
   event.preventDefault();
   event.stopPropagation();
-  void copyPreviewCodeBlock(button);
+  openMarkdownMediaLightbox(media);
+}
+
+function handleMarkdownDragOver(event: DragEvent): void {
+  if (!canEditMarkdownDocument()) return;
+  if (!canAcceptMarkdownInsertion(event.dataTransfer)) return;
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy';
+  }
+}
+
+function handleMarkdownDrop(event: DragEvent): void {
+  if (!canEditMarkdownDocument()) return;
+  if (!canAcceptMarkdownInsertion(event.dataTransfer)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  void insertMarkdownMediaFromDrop(event);
+}
+
+function handleMarkdownPaste(event: ClipboardEvent): void {
+  if (!canEditMarkdownDocument()) return;
+  const files = Array.from(event.clipboardData?.files || []);
+  if (!files.length) return;
+  event.preventDefault();
+  event.stopPropagation();
+  void insertMarkdownUploadedFiles(files);
 }
 
 async function copyPreviewCodeBlock(button: HTMLButtonElement): Promise<void> {
@@ -240,6 +384,482 @@ function setCodeCopyStatus(button: HTMLButtonElement, state: 'copied' | 'error')
   }, 1400);
   copyStatusTimersByButton.set(button, handle);
   activeCopyStatusTimers.add(handle);
+}
+
+function canEditMarkdownDocument(): boolean {
+  return Boolean(props.editable && !props.readOnly);
+}
+
+function syncEditableSourceFromDocument(): void {
+  if (!canEditMarkdownDocument()) return;
+  const documentElement = documentRef.value;
+  if (!documentElement) return;
+  lastEditableMarkdown = serializeEditableMarkdownDocument(documentElement);
+  emit('update:source', lastEditableMarkdown);
+}
+
+function canAcceptMarkdownInsertion(dataTransfer: DataTransfer | null): boolean {
+  if (!dataTransfer) return false;
+  const types = Array.from(dataTransfer.types || []);
+  return dataTransfer.files.length > 0
+    || types.includes(TERMINAL_RESOURCE_DRAG_MIME)
+    || types.includes('text/uri-list')
+    || types.includes('text/plain');
+}
+
+async function insertMarkdownMediaFromDrop(event: DragEvent): Promise<void> {
+  const dataTransfer = event.dataTransfer;
+  if (!dataTransfer) return;
+  const files = Array.from(dataTransfer.files || []);
+  if (files.length) {
+    await insertMarkdownUploadedFiles(files);
+    return;
+  }
+  const payload = parseTerminalResourceTransfer(dataTransfer.getData(TERMINAL_RESOURCE_DRAG_MIME) || '');
+  if (payload) {
+    insertMarkdownMediaFragments(
+      collectMarkdownResourcePayloads(payload).map((item) => resourcePayloadToMarkdownFragment(item)),
+    );
+    return;
+  }
+  const pathText = dataTransfer.getData('text/uri-list') || dataTransfer.getData('text/plain') || '';
+  const fragments = pathText
+    .split(/\r?\n/)
+    .map((line) => normalizeMarkdownDroppedPath(line))
+    .filter(Boolean)
+    .map((path) => pathToMarkdownMediaFragment(path));
+  insertMarkdownMediaFragments(fragments);
+}
+
+async function insertMarkdownUploadedFiles(files: File[]): Promise<void> {
+  if (!files.length) return;
+  if (!props.assetRootId || !props.assetFilePath) {
+    setMarkdownMediaStatus('error', '当前文件缺少工作区路径，无法把外部文件上传为知识库资源。');
+    return;
+  }
+  const oversized = files.find((file) => file.size > TERMINAL_MARKDOWN_UPLOAD_MAX_FILE_BYTES);
+  if (oversized) {
+    setMarkdownMediaStatus('error', `${oversized.name || '文件'} 超过 24 MB，请先通过文件管理器上传。`);
+    return;
+  }
+  const batchSize = files.reduce((total, file) => total + file.size, 0);
+  if (batchSize > TERMINAL_MARKDOWN_UPLOAD_MAX_BATCH_BYTES) {
+    setMarkdownMediaStatus('error', '本次媒体超过 96 MB，请分批拖入。');
+    return;
+  }
+
+  try {
+    setMarkdownMediaStatus('info', `正在导入 ${files.length} 个媒体资源…`, 0);
+    const uploadItems: TerminalMarkdownUploadItem[] = [];
+    for (const [index, file] of files.entries()) {
+      const relativePath = createMarkdownUploadFileName(file, index);
+      uploadItems.push({
+        fileName: file.name || relativePath,
+        relativePath,
+        dataBase64: await readMarkdownFileAsDataUrl(file),
+      });
+    }
+    await uploadFiles({
+      rootId: props.assetRootId,
+      directoryPath: markdownAssetDirectoryPath(),
+      files: uploadItems.map((item) => ({
+        fileName: item.fileName,
+        relativePath: item.relativePath,
+        dataBase64: item.dataBase64,
+      })),
+    });
+    insertMarkdownMediaFragments(
+      uploadItems.map((item) => pathToMarkdownMediaFragment(item.relativePath)),
+    );
+    setMarkdownMediaStatus('info', files.length > 1 ? `已插入 ${files.length} 个媒体资源` : '媒体资源已插入');
+  } catch (error) {
+    setMarkdownMediaStatus('error', error instanceof Error ? error.message : '媒体导入失败');
+  }
+}
+
+function insertMarkdownMediaFragments(fragments: TerminalDocMediaFragment[]): void {
+  const documentElement = documentRef.value;
+  if (!canEditMarkdownDocument() || !documentElement || !fragments.length) return;
+  documentElement.focus();
+  const fragment = document.createDocumentFragment();
+  for (const entry of fragments) {
+    fragment.appendChild(createMarkdownMediaFragmentNode(entry));
+  }
+  insertNodeAtEditableSelection(documentElement, fragment);
+  void enhancePreviewAfterRender();
+  syncEditableSourceFromDocument();
+}
+
+function createMarkdownMediaFragmentNode(entry: TerminalDocMediaFragment): HTMLElement {
+  if (entry.kind === 'link') {
+    const paragraph = document.createElement('p');
+    const link = document.createElement('a');
+    link.href = entry.src;
+    link.textContent = entry.name || entry.src;
+    paragraph.appendChild(link);
+    return paragraph;
+  }
+
+  const figure = document.createElement('figure');
+  figure.className = `terminal-doc-media-block terminal-doc-media-block--${entry.kind}`;
+  figure.dataset.mediaKind = entry.kind;
+  figure.dataset.mediaAlign = 'center';
+  figure.dataset.mediaSize = 'medium';
+  figure.contentEditable = 'false';
+  const media = document.createElement(entry.kind === 'image' ? 'img' : entry.kind) as HTMLImageElement | HTMLVideoElement | HTMLAudioElement;
+  media.setAttribute('src', entry.src);
+  if (entry.kind === 'image') {
+    media.setAttribute('alt', entry.alt || entry.name);
+    media.setAttribute('loading', 'lazy');
+  } else {
+    media.setAttribute('controls', '');
+  }
+  figure.appendChild(media);
+  ensureMarkdownMediaToolbar(figure);
+  applyTerminalMediaFigurePresentation(figure);
+  return figure;
+}
+
+function insertNodeAtEditableSelection(root: HTMLElement, fragment: DocumentFragment): void {
+  const selection = window.getSelection();
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  if (range && root.contains(range.commonAncestorContainer)) {
+    range.deleteContents();
+    const lastNode = fragment.lastChild;
+    range.insertNode(fragment);
+    if (lastNode) {
+      range.setStartAfter(lastNode);
+      range.collapse(true);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    return;
+  }
+  root.appendChild(fragment);
+}
+
+function collectMarkdownResourcePayloads(
+  payload: TerminalResourceTransferPayload,
+): TerminalResourceTransferPayload[] {
+  return payload.items?.length ? payload.items : [payload];
+}
+
+function resourcePayloadToMarkdownFragment(payload: TerminalResourceTransferPayload): TerminalDocMediaFragment {
+  const targetPath = payload.rootId === props.assetRootId
+    ? relativeMarkdownPathFromCurrentFile(payload.path)
+    : (payload.absolutePath || payload.path);
+  return pathToMarkdownMediaFragment(targetPath, payload.name);
+}
+
+function pathToMarkdownMediaFragment(path: string, name = ''): TerminalDocMediaFragment {
+  const cleanPath = normalizeMarkdownDroppedPath(path);
+  const title = name || cleanPath.split('/').pop() || cleanPath;
+  const kind = detectMarkdownMediaKind(title || cleanPath);
+  return {
+    kind: kind || 'link',
+    src: cleanPath,
+    name: title,
+    alt: title.replace(/\.[^.]+$/, ''),
+  };
+}
+
+function normalizeMarkdownDroppedPath(path: string): string {
+  const trimmed = String(path || '').trim().replace(/^['"]|['"]$/g, '');
+  if (!trimmed || trimmed.startsWith('#')) return '';
+  if (!/^file:\/\//i.test(trimmed)) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    return decodeURIComponent(url.pathname || trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
+function detectMarkdownMediaKind(value: string): TerminalDocLightboxMediaKind | null {
+  const normalized = String(value || '').toLowerCase().split(/[?#]/)[0] || '';
+  if (/\.(?:png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i.test(normalized)) return 'image';
+  if (/\.(?:mp4|webm|ogv|mov|m4v|mkv)$/i.test(normalized)) return 'video';
+  if (/\.(?:mp3|wav|ogg|m4a|flac|aac|opus)$/i.test(normalized)) return 'audio';
+  return null;
+}
+
+function markdownAssetDirectoryPath(): string {
+  return String(props.assetFilePath || '').replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+}
+
+function relativeMarkdownPathFromCurrentFile(targetPath: string): string {
+  const fromSegments = markdownAssetDirectoryPath().split('/').filter(Boolean);
+  const toSegments = String(targetPath || '').replace(/\\/g, '/').split('/').filter(Boolean);
+  while (fromSegments.length && toSegments.length && fromSegments[0] === toSegments[0]) {
+    fromSegments.shift();
+    toSegments.shift();
+  }
+  return [...fromSegments.map(() => '..'), ...toSegments].join('/') || targetPath;
+}
+
+function createMarkdownUploadFileName(file: File, index: number): string {
+  const rawName = String(file.name || '').trim() || `media-${index + 1}${extensionForMarkdownMime(file.type)}`;
+  const safeName = rawName
+    .replace(/[\\/]+/g, '-')
+    .replace(/[^\w.\-\u4e00-\u9fff]+/g, '-')
+    .replace(/^-+|-+$/g, '') || `media-${index + 1}${extensionForMarkdownMime(file.type)}`;
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+  return `media/${stamp}-${index + 1}-${safeName}`;
+}
+
+function extensionForMarkdownMime(mime: string): string {
+  if (mime === 'image/jpeg') return '.jpg';
+  if (mime === 'image/png') return '.png';
+  if (mime === 'image/gif') return '.gif';
+  if (mime === 'image/webp') return '.webp';
+  if (mime === 'video/mp4') return '.mp4';
+  if (mime === 'audio/mpeg') return '.mp3';
+  return '';
+}
+
+function readMarkdownFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error || new Error('Failed to read media file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function setMarkdownMediaStatus(kind: 'info' | 'error', message: string, timeout = 2200): void {
+  mediaStatusKind.value = kind;
+  mediaStatusMessage.value = message;
+  if (typeof window === 'undefined') return;
+  if (mediaStatusTimer !== null) {
+    window.clearTimeout(mediaStatusTimer);
+    mediaStatusTimer = null;
+  }
+  if (!timeout) return;
+  mediaStatusTimer = window.setTimeout(() => {
+    mediaStatusTimer = null;
+    mediaStatusMessage.value = '';
+  }, timeout);
+}
+
+function applyMarkdownMediaAction(button: HTMLButtonElement): void {
+  const action = button.dataset.terminalMediaAction || '';
+  const figure = button.closest<HTMLElement>('.terminal-doc-media-block');
+  if (!figure) return;
+  if (action === 'open') {
+    const media = figure.querySelector<HTMLImageElement | HTMLVideoElement | HTMLAudioElement>('img, video, audio');
+    if (media) openMarkdownMediaLightbox(media);
+    return;
+  }
+  if (!canEditMarkdownDocument()) return;
+  if (action.startsWith('align-')) {
+    figure.dataset.mediaAlign = normalizeMediaAlign(action.replace('align-', ''));
+  } else if (action.startsWith('size-')) {
+    figure.dataset.mediaSize = normalizeMediaSize(action.replace('size-', ''));
+  } else {
+    return;
+  }
+  figure.dataset.mediaCustomized = '1';
+  applyTerminalMediaFigurePresentation(figure);
+  updateMarkdownMediaToolbarState(figure);
+  syncEditableSourceFromDocument();
+}
+
+function openMarkdownMediaLightbox(media: HTMLImageElement | HTMLVideoElement | HTMLAudioElement): void {
+  const tagName = media.tagName.toLowerCase();
+  const src = media.currentSrc || media.getAttribute('src') || '';
+  const kind: TerminalDocLightboxMediaKind = tagName === 'video'
+    ? 'video'
+    : tagName === 'audio'
+      ? 'audio'
+      : 'image';
+  if (!src) return;
+  lightbox.value = {
+    kind,
+    src,
+    title: media.getAttribute('title') || media.getAttribute('alt') || src.split('/').pop() || props.title,
+    alt: media.getAttribute('alt') || '',
+  };
+  void nextTick(() => rootRef.value?.querySelector<HTMLElement>('.terminal-doc-lightbox')?.focus());
+}
+
+function closeMarkdownLightbox(): void {
+  lightbox.value = null;
+}
+
+function syncEditableTaskControls(root: HTMLElement): void {
+  root.querySelectorAll<HTMLInputElement>('.terminal-doc-preview__document input[type="checkbox"]').forEach((checkbox) => {
+    if (checkbox.closest('.terminal-doc-codeblock')) return;
+    checkbox.classList.add('terminal-doc-task-checkbox');
+    checkbox.contentEditable = 'false';
+    checkbox.disabled = !canEditMarkdownDocument();
+    checkbox.setAttribute('aria-label', '切换任务状态');
+  });
+}
+
+function enhanceMarkdownMediaBlocks(root: HTMLElement): void {
+  if (canEditMarkdownDocument()) {
+    root.querySelectorAll<HTMLImageElement | HTMLVideoElement | HTMLAudioElement>(
+      '.terminal-doc-preview__document img, .terminal-doc-preview__document video, .terminal-doc-preview__document audio',
+    ).forEach((media) => {
+      if (media.closest('.terminal-doc-codeblock, .terminal-doc-lightbox, .terminal-doc-media-block')) return;
+      const figure = wrapMarkdownEditableMedia(media);
+      if (!figure) return;
+      ensureMarkdownMediaToolbar(figure);
+      applyTerminalMediaFigurePresentation(figure);
+    });
+    root.querySelectorAll<HTMLElement>('.terminal-doc-media-block').forEach((figure) => {
+      ensureMarkdownMediaToolbar(figure);
+      applyTerminalMediaFigurePresentation(figure);
+    });
+    return;
+  }
+
+  root.querySelectorAll<HTMLImageElement>('.terminal-doc-preview__document img').forEach((image) => {
+    if (!image.closest('.terminal-doc-codeblock, .terminal-doc-lightbox')) {
+      image.loading = 'lazy';
+    }
+  });
+}
+
+function wrapMarkdownEditableMedia(
+  media: HTMLImageElement | HTMLVideoElement | HTMLAudioElement,
+): HTMLElement | null {
+  const rawKind = media.tagName.toLowerCase();
+  const kind: TerminalDocLightboxMediaKind = rawKind === 'video'
+    ? 'video'
+    : rawKind === 'audio'
+      ? 'audio'
+      : 'image';
+  const paragraph = media.parentElement?.tagName.toLowerCase() === 'p'
+    && Array.from(media.parentElement.childNodes).every((node) =>
+      node === media || (node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()))
+    ? media.parentElement
+    : null;
+  const figure = document.createElement('figure');
+  figure.className = `terminal-doc-media-block terminal-doc-media-block--${kind}`;
+  figure.dataset.mediaKind = kind;
+  figure.dataset.mediaAlign = inferMediaAlign(media);
+  figure.dataset.mediaSize = inferMediaSize(media);
+  if (kind !== 'image' || media.hasAttribute('style') || media.hasAttribute('width')) {
+    figure.dataset.mediaCustomized = '1';
+  }
+  figure.contentEditable = 'false';
+  if (kind === 'image') {
+    media.setAttribute('loading', 'lazy');
+  } else {
+    media.setAttribute('controls', '');
+  }
+  if (paragraph) {
+    paragraph.replaceWith(figure);
+  } else {
+    media.replaceWith(figure);
+  }
+  figure.appendChild(media);
+  return figure;
+}
+
+function ensureMarkdownMediaToolbar(figure: HTMLElement): void {
+  if (figure.querySelector('.terminal-doc-media-block__tools')) {
+    updateMarkdownMediaToolbarState(figure);
+    return;
+  }
+  const toolbar = document.createElement('div');
+  toolbar.className = 'terminal-doc-media-block__tools';
+  toolbar.contentEditable = 'false';
+  toolbar.setAttribute('role', 'toolbar');
+  toolbar.setAttribute('aria-label', '媒体布局工具');
+  [
+    ['open', '预览'],
+    ['align-left', '左'],
+    ['align-center', '中'],
+    ['align-right', '右'],
+    ['size-small', '小'],
+    ['size-medium', '中'],
+    ['size-large', '大'],
+    ['size-full', '满'],
+  ].forEach(([action, label]) => {
+    const control = document.createElement('button');
+    control.type = 'button';
+    control.dataset.terminalMediaAction = action;
+    control.textContent = label;
+    control.title = action === 'open' ? '打开灯箱预览' : `设置媒体${label}`;
+    if (action !== 'open' && !canEditMarkdownDocument()) control.disabled = true;
+    toolbar.appendChild(control);
+  });
+  figure.prepend(toolbar);
+  updateMarkdownMediaToolbarState(figure);
+}
+
+function updateMarkdownMediaToolbarState(figure: HTMLElement): void {
+  const align = normalizeMediaAlign(figure.dataset.mediaAlign);
+  const size = normalizeMediaSize(figure.dataset.mediaSize);
+  figure.querySelectorAll<HTMLButtonElement>('button[data-terminal-media-action]').forEach((button) => {
+    const action = button.dataset.terminalMediaAction || '';
+    const selected = action === `align-${align}` || action === `size-${size}`;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    if (action !== 'open') button.disabled = !canEditMarkdownDocument();
+  });
+}
+
+function applyTerminalMediaFigurePresentation(figure: HTMLElement): void {
+  const align = normalizeMediaAlign(figure.dataset.mediaAlign);
+  const size = normalizeMediaSize(figure.dataset.mediaSize);
+  figure.dataset.mediaAlign = align;
+  figure.dataset.mediaSize = size;
+  figure.classList.toggle('terminal-doc-media-block--align-left', align === 'left');
+  figure.classList.toggle('terminal-doc-media-block--align-center', align === 'center');
+  figure.classList.toggle('terminal-doc-media-block--align-right', align === 'right');
+  figure.classList.toggle('terminal-doc-media-block--size-small', size === 'small');
+  figure.classList.toggle('terminal-doc-media-block--size-medium', size === 'medium');
+  figure.classList.toggle('terminal-doc-media-block--size-large', size === 'large');
+  figure.classList.toggle('terminal-doc-media-block--size-full', size === 'full');
+  const media = figure.querySelector<HTMLElement>('img, video, audio');
+  if (!media) return;
+  media.style.width = mediaWidthForSize(size);
+  media.style.maxWidth = '100%';
+  media.style.height = 'auto';
+  media.style.display = 'block';
+  media.style.marginLeft = align === 'right' || align === 'center' ? 'auto' : '0';
+  media.style.marginRight = align === 'left' || align === 'center' ? 'auto' : '0';
+}
+
+function normalizeMediaAlign(value: string | undefined): TerminalDocMediaAlign {
+  return value === 'left' || value === 'right' || value === 'center' ? value : 'center';
+}
+
+function normalizeMediaSize(value: string | undefined): TerminalDocMediaSize {
+  return value === 'small' || value === 'large' || value === 'full' || value === 'medium' ? value : 'medium';
+}
+
+function inferMediaSize(media: HTMLElement): TerminalDocMediaSize {
+  const width = media.style.width || media.getAttribute('width') || '';
+  if (/100%|full/i.test(width)) return 'full';
+  if (/8[0-9]%|9[0-9]%/.test(width)) return 'large';
+  if (/[1-4][0-9]%/.test(width)) return 'small';
+  return 'medium';
+}
+
+function inferMediaAlign(media: HTMLElement): TerminalDocMediaAlign {
+  const marginLeft = media.style.marginLeft;
+  const marginRight = media.style.marginRight;
+  const align = media.getAttribute('align') || '';
+  if (align === 'left' || (marginLeft === '0px' && marginRight === 'auto')) return 'left';
+  if (align === 'right' || (marginLeft === 'auto' && marginRight === '0px')) return 'right';
+  return 'center';
+}
+
+function mediaWidthForSize(size: TerminalDocMediaSize): string {
+  if (size === 'small') return '38%';
+  if (size === 'large') return '82%';
+  if (size === 'full') return '100%';
+  return '62%';
+}
+
+function mediaStyleForMarkdown(size: TerminalDocMediaSize, align: TerminalDocMediaAlign): string {
+  const marginLeft = align === 'right' || align === 'center' ? 'auto' : '0';
+  const marginRight = align === 'left' || align === 'center' ? 'auto' : '0';
+  return `display: block; width: ${mediaWidthForSize(size)}; max-width: 100%; height: auto; margin-left: ${marginLeft}; margin-right: ${marginRight};`;
 }
 
 function serializeEditableMarkdownDocument(root: HTMLElement): string {
@@ -276,6 +896,9 @@ function serializeEditableMarkdownNode(node: Node, depth: number): string {
     if (!source) return '';
     return node.dataset.mathDisplay === 'block' ? `$$\n${source}\n$$` : `$${source}$`;
   }
+  if (node.classList.contains('terminal-doc-media-block')) {
+    return serializeEditableMarkdownMediaBlock(node);
+  }
 
   if (/^h[1-6]$/.test(tagName)) {
     const level = Number(tagName.slice(1)) || 1;
@@ -311,6 +934,9 @@ function serializeEditableMarkdownNode(node: Node, depth: number): string {
   }
   if (tagName === 'figure') {
     return serializeEditableMarkdownChildren(node, depth).trim();
+  }
+  if (tagName === 'img' || tagName === 'video' || tagName === 'audio') {
+    return serializeEditableMarkdownMediaElement(node, null);
   }
   if (tagName === 'details') {
     const summary = normalizeEditableInline(node.querySelector('summary'));
@@ -409,15 +1035,53 @@ function serializeEditableInlineNode(node: Node): string {
     return href ? `[${label}](${href})` : label;
   }
   if (tagName === 'img') {
-    const alt = node.getAttribute('alt') || '';
-    const src = node.getAttribute('src') || '';
-    return src ? `![${alt}](${src})` : '';
+    return serializeEditableMarkdownMediaElement(node, null);
+  }
+  if (tagName === 'video' || tagName === 'audio') {
+    return serializeEditableMarkdownMediaElement(node, null);
   }
   if (node.classList.contains('terminal-doc-math')) {
     const source = node.dataset.mathSource?.trim() || normalizeEditableText(node.textContent || '');
     return source ? `$${source}$` : '';
   }
   return normalizeEditableInline(node);
+}
+
+function serializeEditableMarkdownMediaBlock(root: HTMLElement): string {
+  const media = root.querySelector<HTMLElement>('img, video, audio');
+  if (!media) return '';
+  return serializeEditableMarkdownMediaElement(media, root);
+}
+
+function serializeEditableMarkdownMediaElement(
+  media: HTMLElement,
+  figure: HTMLElement | null,
+): string {
+  const tagName = media.tagName.toLowerCase();
+  const src = media.getAttribute('src') || '';
+  if (!src) return '';
+  const alt = tagName === 'img' ? media.getAttribute('alt') || '' : '';
+  const customized = figure?.dataset.mediaCustomized === '1';
+  if (tagName === 'img' && !customized) {
+    return `![${escapeMarkdownLabel(alt)}](${escapeMarkdownDestination(src)})`;
+  }
+  const align = normalizeMediaAlign(figure?.dataset.mediaAlign);
+  const size = normalizeMediaSize(figure?.dataset.mediaSize);
+  const style = mediaStyleForMarkdown(size, align);
+  if (tagName === 'img') {
+    return `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(alt)}" style="${escapeAttribute(style)}" />`;
+  }
+  const controls = tagName === 'video' || tagName === 'audio' ? ' controls' : '';
+  const playsInline = tagName === 'video' ? ' playsinline' : '';
+  return `<${tagName} src="${escapeAttribute(src)}" style="${escapeAttribute(style)}"${controls}${playsInline}></${tagName}>`;
+}
+
+function escapeMarkdownLabel(value: string): string {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/]/g, '\\]');
+}
+
+function escapeMarkdownDestination(value: string): string {
+  return encodeURI(String(value || '').replace(/\)/g, '%29'));
 }
 
 function normalizeEditableText(value: string): string {
@@ -852,6 +1516,8 @@ async function enhancePreviewAfterRender(force = false): Promise<void> {
       target.textContent = target.dataset.mathSource || target.textContent || '';
     });
   }
+  syncEditableTaskControls(root);
+  enhanceMarkdownMediaBlocks(root);
   await renderMathBlocks(root);
   await renderMermaidBlocks(root);
 }
@@ -877,6 +1543,10 @@ onBeforeUnmount(() => {
   clearScheduledTerminalMarkdownRender();
   if (typeof window !== 'undefined') {
     activeCopyStatusTimers.forEach((handle) => window.clearTimeout(handle));
+    if (mediaStatusTimer !== null) {
+      window.clearTimeout(mediaStatusTimer);
+      mediaStatusTimer = null;
+    }
   }
   activeCopyStatusTimers.clear();
   markdownRenderSerial += 1;
