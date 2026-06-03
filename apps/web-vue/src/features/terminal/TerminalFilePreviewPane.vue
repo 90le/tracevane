@@ -1,6 +1,7 @@
 <template>
   <section
     class="terminal-file-preview"
+    :class="{ 'terminal-file-preview--files-surface': isFilesSurface }"
     data-testid="terminal-file-preview"
     aria-live="polite"
     @click="closePreviewOverlays"
@@ -213,6 +214,7 @@
               type="button"
               class="terminal-file-preview__menu-item terminal-file-preview__menu-item--reveal"
               role="menuitem"
+              v-if="!isFilesSurface"
               :disabled="!activeTab"
               @click="revealActiveFileFromMenu"
             >
@@ -265,8 +267,8 @@
               <X class="terminal-file-preview__icon" aria-hidden="true" />
               <span>{{ text('关闭所有文件', 'Close all files') }}</span>
             </button>
-            <span class="terminal-file-preview__menu-divider" aria-hidden="true"></span>
-            <div class="terminal-file-preview__menu-section" role="group" :aria-label="text('预览布局', 'Preview layout')">
+            <span v-if="!isFilesSurface" class="terminal-file-preview__menu-divider" aria-hidden="true"></span>
+            <div v-if="!isFilesSurface" class="terminal-file-preview__menu-section" role="group" :aria-label="text('预览布局', 'Preview layout')">
               <span>{{ text('布局', 'Layout') }}</span>
               <div class="terminal-file-preview__layout-switch">
                 <button
@@ -283,11 +285,11 @@
                 </button>
               </div>
             </div>
-            <button type="button" class="terminal-file-preview__menu-item" role="menuitem" @click="toggleTerminalFromMenu">
+            <button v-if="!isFilesSurface" type="button" class="terminal-file-preview__menu-item" role="menuitem" @click="toggleTerminalFromMenu">
               <TerminalSquare class="terminal-file-preview__icon" aria-hidden="true" />
               <span>{{ props.terminalCollapsed ? text('显示终端', 'Show Terminal') : text('收起终端', 'Hide Terminal') }}</span>
             </button>
-            <button type="button" class="terminal-file-preview__menu-item" role="menuitem" @click="toggleWorkspaceFullscreenFromMenu">
+            <button v-if="!isFilesSurface" type="button" class="terminal-file-preview__menu-item" role="menuitem" @click="toggleWorkspaceFullscreenFromMenu">
               <Minimize2 v-if="props.workspaceFullscreen" class="terminal-file-preview__icon" aria-hidden="true" />
               <Maximize2 v-else class="terminal-file-preview__icon" aria-hidden="true" />
               <span>{{ props.workspaceFullscreen ? text('退出全屏', 'Exit Fullscreen') : text('全屏IDE', 'IDE Fullscreen') }}</span>
@@ -318,11 +320,11 @@
         <Copy class="terminal-file-preview__icon" aria-hidden="true" />
         <span>{{ text('复制相对路径', 'Copy relative path') }}</span>
       </button>
-      <button type="button" role="menuitem" @click="insertContextTabPathInTerminal">
+      <button v-if="!isFilesSurface" type="button" role="menuitem" @click="insertContextTabPathInTerminal">
         <TerminalSquare class="terminal-file-preview__icon" aria-hidden="true" />
         <span>{{ text('插入路径到终端', 'Insert path in terminal') }}</span>
       </button>
-      <button type="button" role="menuitem" @click="revealContextTabInExplorer">
+      <button v-if="!isFilesSurface" type="button" role="menuitem" @click="revealContextTabInExplorer">
         <FolderOpen class="terminal-file-preview__icon" aria-hidden="true" />
         <span>{{ text('在资源管理器中定位', 'Reveal in Explorer') }}</span>
       </button>
@@ -699,6 +701,7 @@ const props = defineProps<{
   maximized: boolean;
   terminalCollapsed: boolean;
   workspaceFullscreen: boolean;
+  surface?: 'terminal' | 'files';
 }>();
 
 const emit = defineEmits<{
@@ -740,6 +743,7 @@ const FILE_PREVIEW_CONTEXT_MENU_HEIGHT = 360;
 const IMAGE_ZOOM_MIN = 0.2;
 const IMAGE_ZOOM_MAX = 4;
 const IMAGE_ZOOM_STEP = 0.2;
+const isFilesSurface = computed(() => props.surface === 'files');
 
 interface TerminalFilePreviewState {
   loading: boolean;

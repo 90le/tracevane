@@ -389,9 +389,9 @@
         <span>{{ text(`已选 ${selectedItems.length} 项`, `${selectedItems.length} selected`) }}</span>
         <span>{{ currentAbsolutePath }}</span>
         <span class="studio-file-statusbar__spacer"></span>
-        <span v-if="searchActive">{{ text(`搜索结果 ${displayEntries.length} 项`, `${displayEntries.length} search results`) }}</span>
+        <span v-if="searchActive">{{ text(`搜索结果 ${paginationTotalEntries} 项`, `${paginationTotalEntries} search results`) }}</span>
         <nav v-if="displayEntries.length" class="studio-file-pagination" :aria-label="text('文件分页', 'File pagination')">
-          <span>{{ text(`${pageStartIndex + 1}-${pageEndIndex} / ${displayEntries.length}`, `${pageStartIndex + 1}-${pageEndIndex} / ${displayEntries.length}`) }}</span>
+          <span>{{ paginationRangeLabel }}</span>
           <button type="button" :disabled="currentPage <= 1" @click.stop="setCurrentPage(currentPage - 1)">
             {{ text("上一页", "Prev") }}
           </button>
@@ -422,35 +422,6 @@
             <X class="studio-file-icon-button__icon" aria-hidden="true" />
           </button>
         </header>
-
-        <section v-if="detailsPreviewUrl && detailsItem.kind === 'file'" class="studio-file-preview">
-          <img
-            v-if="detailsItem.fileKind === 'image'"
-            :src="detailsPreviewUrl"
-            :alt="detailsItem.name"
-          />
-          <video
-            v-else-if="detailsItem.fileKind === 'video'"
-            :src="detailsPreviewUrl"
-            controls
-            preload="metadata"
-          ></video>
-          <audio
-            v-else-if="detailsItem.fileKind === 'audio'"
-            :src="detailsPreviewUrl"
-            controls
-            preload="metadata"
-          ></audio>
-          <div v-else-if="detailsItem.fileKind === 'pdf'" class="studio-file-preview__card">
-            <strong>{{ detailsItem.name }}</strong>
-            <span>PDF</span>
-            <a :href="detailsPreviewUrl" target="_blank" rel="noopener noreferrer">{{ text("打开预览", "Open preview") }}</a>
-          </div>
-          <div v-else class="studio-file-preview__card">
-            <strong>{{ fileKindLabel(detailsItem) }}</strong>
-            <span>{{ text("可在编辑器或浏览器中打开", "Open with the editor or browser") }}</span>
-          </div>
-        </section>
 
         <dl class="studio-file-details__grid">
           <div>
@@ -673,6 +644,7 @@
           :maximized="sharedFilePreviewMaximized"
           :terminal-collapsed="false"
           :workspace-fullscreen="sharedFilePreviewMaximized"
+          surface="files"
           @select="activeSharedFilePreviewId = $event"
           @close="closeSharedFilePreview"
           @reorder="reorderSharedFilePreview"
@@ -892,16 +864,22 @@ const TERMINAL_WORKSPACE_STORAGE_KEY = `${TERMINAL_DESCRIPTORS_STORAGE_KEY}.work
 const TERMINAL_PENDING_LAUNCH_STORAGE_KEY = "openclaw-studio.terminal.pendingLaunchMetadata";
 const MAX_UPLOAD_FILE_BYTES = 24 * 1024 * 1024;
 const MAX_UPLOAD_BATCH_BYTES = 96 * 1024 * 1024;
-const PAGE_SIZE_OPTIONS = [50, 100, 200] as const;
+const PAGE_SIZE_OPTIONS = [50, 100, 200, 500] as const;
 const EXTRACTABLE_ARCHIVE_EXTENSIONS = [
   ".zip",
   ".tar",
   ".tar.gz",
+  ".tar.gzip",
   ".tgz",
   ".tar.bz2",
+  ".tar.bzip2",
+  ".tbz",
   ".tbz2",
+  ".tb2",
   ".tar.xz",
+  ".tar.lzma",
   ".txz",
+  ".tlz",
 ];
 
 const router = useRouter();
@@ -993,20 +971,42 @@ const displayEntries = computed(() => {
         entry.path.toLowerCase().includes(query),
       )
     : source;
-  return sortNativeFileItems([...filtered], sortKey.value, sortDirection.value);
+  return searchResults.value
+    ? sortNativeFileItems([...filtered], sortKey.value, sortDirection.value)
+    : filtered;
 });
+const paginationTotalEntries = computed(() =>
+  searchActive.value
+    ? displayEntries.value.length
+    : directoryPayload.value?.pagination.totalEntries ?? displayEntries.value.length,
+);
 const totalPages = computed(() =>
-  Math.max(1, Math.ceil(displayEntries.value.length / pageSize.value)),
+  searchActive.value
+    ? Math.max(1, Math.ceil(displayEntries.value.length / pageSize.value))
+    : directoryPayload.value?.pagination.totalPages ?? Math.max(1, Math.ceil(displayEntries.value.length / pageSize.value)),
 );
 const pageStartIndex = computed(() =>
-  Math.min(displayEntries.value.length, (currentPage.value - 1) * pageSize.value),
+  searchActive.value
+    ? Math.min(displayEntries.value.length, (currentPage.value - 1) * pageSize.value)
+    : directoryPayload.value?.pagination.startIndex ?? Math.min(displayEntries.value.length, (currentPage.value - 1) * pageSize.value),
 );
 const pageEndIndex = computed(() =>
-  Math.min(displayEntries.value.length, pageStartIndex.value + pageSize.value),
+  searchActive.value
+    ? Math.min(displayEntries.value.length, pageStartIndex.value + pageSize.value)
+    : directoryPayload.value?.pagination.endIndex ?? Math.min(displayEntries.value.length, pageStartIndex.value + pageSize.value),
 );
 const pagedDisplayEntries = computed(() =>
-  displayEntries.value.slice(pageStartIndex.value, pageEndIndex.value),
+  searchActive.value
+    ? displayEntries.value.slice(pageStartIndex.value, pageEndIndex.value)
+    : displayEntries.value,
 );
+const paginationRangeLabel = computed(() => {
+  if (!paginationTotalEntries.value) return text("0 / 0", "0 / 0");
+  return text(
+    `${pageStartIndex.value + 1}-${pageEndIndex.value} / ${paginationTotalEntries.value}`,
+    `${pageStartIndex.value + 1}-${pageEndIndex.value} / ${paginationTotalEntries.value}`,
+  );
+});
 const selectedItems = computed(() =>
   displayEntries.value.filter((entry) => selectedItemIds.value.has(entry.id)),
 );
@@ -1025,11 +1025,6 @@ const canGoBack = computed(() => directoryHistoryIndex.value > 0);
 const canGoForward = computed(() =>
   directoryHistoryIndex.value >= 0 && directoryHistoryIndex.value < directoryHistory.value.length - 1,
 );
-const detailsPreviewUrl = computed(() => {
-  const item = detailsItem.value;
-  if (!item || item.kind !== "file") return "";
-  return buildFileDownloadUrl(item.rootId, item.path);
-});
 const activeEditorTab = computed(
   () =>
     editorTabs.value.find((tab) => tab.id === activeEditorId.value)
@@ -1389,20 +1384,26 @@ async function reloadSummary(): Promise<void> {
 async function loadDirectory(
   rootId: string,
   directoryPath = "",
-  options: { pushHistory?: boolean; preserveSearch?: boolean } = {},
+  options: { pushHistory?: boolean; preserveSearch?: boolean; page?: number } = {},
 ): Promise<void> {
   const normalizedPath = normalizePortableFilePath(directoryPath).replace(/^\/+|\/+$/g, "");
   directoryLoading.value = true;
   directoryError.value = "";
   try {
-    const payload = await browseDirectory(rootId, normalizedPath, showHiddenFiles.value);
+    const requestedPage = options.page ?? 1;
+    const payload = await browseDirectory(rootId, normalizedPath, showHiddenFiles.value, {
+      page: requestedPage,
+      pageSize: pageSize.value,
+      sortKey: sortKey.value,
+      sortDirection: sortDirection.value,
+    });
     directoryPayload.value = payload;
     activeRootId.value = payload.rootId;
     activeDirectoryPath.value = payload.directoryPath;
     directoryEntries.value = payload.entries.map((entry) =>
       toNativeFileItem(entry, payload.rootId, payload.directoryPath),
     );
-    currentPage.value = 1;
+    currentPage.value = payload.pagination.page;
     selectedItemIds.value = new Set();
     detailsItem.value = null;
     syncAddressInput(payload.rootId, payload.directoryPath);
@@ -1516,6 +1517,7 @@ function refreshCurrentDirectory(): void {
   void loadDirectory(activeRootId.value, activeDirectoryPath.value, {
     pushHistory: false,
     preserveSearch: true,
+    page: searchActive.value ? 1 : currentPage.value,
   });
 }
 
@@ -1577,12 +1579,18 @@ function closeDirectoryTab(tabId: string): void {
 function setSort(key: SortKey): void {
   if (sortKey.value === key) {
     sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
-    currentPage.value = 1;
-    return;
+  } else {
+    sortKey.value = key;
+    sortDirection.value = "asc";
   }
-  sortKey.value = key;
-  sortDirection.value = "asc";
   currentPage.value = 1;
+  if (!searchActive.value) {
+    void loadDirectory(activeRootId.value, activeDirectoryPath.value, {
+      pushHistory: false,
+      preserveSearch: true,
+      page: 1,
+    });
+  }
 }
 
 function sortGlyph(key: SortKey): string {
@@ -1615,7 +1623,16 @@ function toggleAllVisible(event: Event): void {
 
 function setCurrentPage(page: number): void {
   const normalizedPage = Math.floor(Number(page) || 1);
-  currentPage.value = Math.max(1, Math.min(totalPages.value, normalizedPage));
+  const nextPage = Math.max(1, Math.min(totalPages.value, normalizedPage));
+  if (nextPage === currentPage.value) return;
+  currentPage.value = nextPage;
+  if (!searchActive.value) {
+    void loadDirectory(activeRootId.value, activeDirectoryPath.value, {
+      pushHistory: false,
+      preserveSearch: true,
+      page: nextPage,
+    });
+  }
 }
 
 function changePageSize(event: Event): void {
@@ -1624,6 +1641,13 @@ function changePageSize(event: Event): void {
     ? (nextSize as (typeof PAGE_SIZE_OPTIONS)[number])
     : 100;
   currentPage.value = 1;
+  if (!searchActive.value) {
+    void loadDirectory(activeRootId.value, activeDirectoryPath.value, {
+      pushHistory: false,
+      preserveSearch: true,
+      page: 1,
+    });
+  }
 }
 
 function selectedOrSingle(item: NativeFileItem | null | undefined): NativeFileItem[] {

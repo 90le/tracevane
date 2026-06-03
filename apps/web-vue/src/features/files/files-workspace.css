@@ -1035,9 +1035,9 @@ html[data-theme="dark"] .file-manager-page {
   align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 0 9px;
+  padding: 0 10px;
   border-top: 1px solid var(--file-manager-border);
-  background: color-mix(in srgb, var(--file-manager-panel-strong) 88%, var(--file-manager-bg));
+  background: color-mix(in srgb, var(--file-manager-panel-strong) 92%, var(--file-manager-bg));
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
@@ -1050,19 +1050,24 @@ html[data-theme="dark"] .file-manager-page {
   align-items: center;
   gap: 6px;
   margin-left: auto;
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, var(--file-manager-border) 70%, transparent);
   min-width: max-content;
+  color: var(--muted);
 }
 
 .studio-file-pagination button,
 .studio-file-pagination select {
-  height: 22px;
+  height: 23px;
   min-width: 0;
-  padding: 0 7px;
+  padding: 0 8px;
   border: 1px solid var(--file-manager-border);
-  border-radius: 5px;
-  background: var(--file-manager-panel);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--file-manager-panel) 94%, var(--file-manager-bg));
   color: var(--text);
   font: inherit;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .studio-file-pagination button:disabled {
@@ -1070,9 +1075,18 @@ html[data-theme="dark"] .file-manager-page {
   cursor: not-allowed;
 }
 
+.studio-file-pagination button:not(:disabled):hover,
+.studio-file-pagination button:not(:disabled):focus-visible,
+.studio-file-pagination select:hover,
+.studio-file-pagination select:focus-visible {
+  border-color: color-mix(in srgb, var(--acc) 38%, var(--file-manager-border));
+  background: var(--file-manager-hover);
+}
+
 .studio-file-pagination strong {
   color: var(--text);
   font-weight: 750;
+  font-variant-numeric: tabular-nums;
 }
 
 .studio-file-context-menu {
@@ -1156,10 +1170,40 @@ html[data-theme="dark"] .file-manager-page {
   border: 0;
 }
 
+.studio-file-shared-preview .terminal-file-preview--files-surface {
+  --terminal-file-preview-actions-width: 92px;
+  background: var(--file-manager-panel);
+}
+
+.studio-file-shared-preview .terminal-file-preview--files-surface .terminal-file-preview__head {
+  background: color-mix(in srgb, var(--file-manager-panel-strong) 92%, var(--file-manager-panel));
+}
+
+.studio-file-shared-preview .terminal-file-preview--files-surface .terminal-file-preview__more-panel,
+.studio-file-shared-preview .terminal-file-preview--files-surface .terminal-file-preview__context-menu {
+  width: min(236px, calc(100vw - 16px));
+}
+
 .studio-file-shared-preview .terminal-file-preview__media,
 .studio-file-shared-preview .terminal-file-preview__embed,
 .studio-file-shared-preview .terminal-file-preview__body {
   min-height: 0;
+}
+
+html[data-theme="dark"] .studio-file-statusbar {
+  background: color-mix(in srgb, var(--surface-raised) 72%, var(--bg-app));
+  color: color-mix(in srgb, var(--text-secondary) 92%, var(--text-primary));
+}
+
+html[data-theme="dark"] .studio-file-pagination button,
+html[data-theme="dark"] .studio-file-pagination select {
+  background: color-mix(in srgb, var(--surface-overlay) 78%, var(--surface-base));
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .studio-file-shared-preview {
+  background: var(--surface-base);
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.42);
 }
 
 .studio-file-dialog {

@@ -104,7 +104,11 @@ test("native files workspace covers operations expected from an ops-oriented web
   assert.match(filesControlPage, /openUploadPanel/);
   assert.match(filesControlPage, /uploadQueueItems/);
   assert.match(filesControlPage, /uploadStatusLabel/);
-  assert.match(filesControlPage, /browseDirectory\(rootId, normalizedPath, showHiddenFiles\.value\)/);
+  assert.match(filesControlPage, /browseDirectory\(rootId, normalizedPath, showHiddenFiles\.value, \{/);
+  assert.match(filesControlPage, /page:\s*requestedPage/);
+  assert.match(filesControlPage, /pageSize:\s*pageSize\.value/);
+  assert.match(filesControlPage, /sortKey:\s*sortKey\.value/);
+  assert.match(filesControlPage, /sortDirection:\s*sortDirection\.value/);
   assert.match(filesControlPage, /handleUploadDirectoryInputChange/);
   assert.match(filesControlPage, /handleDropUpload/);
   assert.match(filesControlPage, /handleWorkbenchPaste/);
@@ -127,8 +131,10 @@ test("native files workspace covers operations expected from an ops-oriented web
   assert.match(filesControlPage, /copyContextRelativePath/);
   assert.match(filesControlPage, /copyContextStudioRef/);
   assert.match(filesControlPage, /openTerminalHere/);
-  assert.match(filesControlPage, /PAGE_SIZE_OPTIONS = \[50, 100, 200\] as const/);
+  assert.match(filesControlPage, /PAGE_SIZE_OPTIONS = \[50, 100, 200, 500\] as const/);
   assert.match(filesControlPage, /pagedDisplayEntries/);
+  assert.match(filesControlPage, /paginationTotalEntries/);
+  assert.match(filesControlPage, /paginationRangeLabel/);
   assert.match(filesControlPage, /setCurrentPage/);
   assert.match(filesControlPage, /changePageSize/);
   assert.match(filesControlPage, /TERMINAL_RESOURCE_DRAG_MIME/);
@@ -150,15 +156,16 @@ test("file previews and editor workspace reuse the terminal preview engine", () 
   assert.match(filesControlPage, /reorderSharedFilePreview/);
   assert.match(filesControlPage, /handleSharedPreviewRevealResource/);
   assert.match(filesControlPage, /handleSharedPreviewInsertTerminalPaths/);
+  assert.match(filesControlPage, /surface="files"/);
   assert.match(filesControlPage, /@toggle-workspace-fullscreen="sharedFilePreviewMaximized = !sharedFilePreviewMaximized"/);
   assert.doesNotMatch(filesControlPage, /<FileEditorWorkspace/);
   assert.match(filesControlPage, /beforeunload/);
   assert.match(filesControlPage, /recentEditorFiles/);
   assert.match(filesControlPage, /RECENT_EDITOR_FILES_STORAGE_KEY/);
-  assert.match(filesControlPage, /detailsItem\.fileKind === 'image'/);
-  assert.match(filesControlPage, /detailsItem\.fileKind === 'video'/);
-  assert.match(filesControlPage, /detailsItem\.fileKind === 'audio'/);
-  assert.match(filesControlPage, /detailsItem\.fileKind === 'pdf'/);
+  assert.doesNotMatch(filesControlPage, /detailsItem\.fileKind === 'image'/);
+  assert.doesNotMatch(filesControlPage, /detailsItem\.fileKind === 'video'/);
+  assert.doesNotMatch(filesControlPage, /detailsItem\.fileKind === 'audio'/);
+  assert.doesNotMatch(filesControlPage, /detailsItem\.fileKind === 'pdf'/);
   assert.match(filesControlPage, /resolveTerminalFileKind/);
   assert.match(filesControlPage, /fileKindLabel/);
   assert.match(filesControlPage, /fileIconKind/);
@@ -166,6 +173,8 @@ test("file previews and editor workspace reuse the terminal preview engine", () 
 
   assert.match(terminalFilePreviewPane, /AsyncCodeFileEditor/);
   assert.match(terminalFilePreviewPane, /AsyncTerminalMarkdownPreview/);
+  assert.match(terminalFilePreviewPane, /surface\?: 'terminal' \| 'files'/);
+  assert.match(terminalFilePreviewPane, /isFilesSurface/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'pdf'/);
   assert.match(terminalFilePreviewPane, /activeInlineMediaKind === 'video'/);
   assert.match(terminalFilePreviewPane, /imageZoomByTab/);
@@ -196,7 +205,10 @@ test("files workspace styles are native, responsive, and kept in feature CSS", (
   assert.match(filesWorkspaceCss, /\.studio-file-shared-preview\s*\{/);
   assert.match(filesWorkspaceCss, /\.studio-file-shared-preview--maximized\s*\{/);
   assert.match(filesWorkspaceCss, /\.studio-file-shared-preview \.terminal-file-preview\s*\{/);
+  assert.match(filesWorkspaceCss, /\.studio-file-shared-preview \.terminal-file-preview--files-surface\s*\{/);
   assert.match(filesWorkspaceCss, /\.studio-file-pagination\s*\{/);
+  assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.studio-file-statusbar\s*\{/);
+  assert.match(filesWorkspaceCss, /html\[data-theme="dark"\] \.studio-file-pagination button/);
   assert.match(filesWorkspaceCss, /\.studio-file-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
   assert.match(filesWorkspaceCss, /\.studio-file-table\s*\{[\s\S]*table-layout:\s*fixed;/);
   assert.match(filesWorkspaceCss, /\.studio-file-grid\s*\{[\s\S]*repeat\(auto-fill,/);
@@ -204,7 +216,6 @@ test("files workspace styles are native, responsive, and kept in feature CSS", (
   assert.match(filesWorkspaceCss, /\.studio-file-kind-icon--folder/);
   assert.match(filesWorkspaceCss, /\.studio-file-kind-icon--code/);
   assert.match(filesWorkspaceCss, /\.studio-file-kind-icon--image/);
-  assert.match(filesWorkspaceCss, /\.studio-file-preview img,\n\.studio-file-preview video\s*\{[\s\S]*object-fit:\s*contain;/);
   assert.match(filesWorkspaceCss, /\.studio-file-details\s*\{[\s\S]*position:\s*absolute;/);
   assert.match(filesWorkspaceCss, /\.studio-file-context-menu\s*\{[\s\S]*position:\s*fixed;[\s\S]*z-index:\s*1400;[\s\S]*max-height:/);
   assert.match(filesWorkspaceCss, /@media \(max-width:\s*760px\)/);
@@ -221,6 +232,10 @@ test("files workspace styles are native, responsive, and kept in feature CSS", (
 test("files api and server routes cover browse, tree, read, search, mutate, upload, archive, and inline preview", () => {
   assert.match(filesApi, /fetchFilesSummary/);
   assert.match(filesApi, /browseDirectory/);
+  assert.match(filesApi, /page:\s*options\.page/);
+  assert.match(filesApi, /pageSize:\s*options\.pageSize/);
+  assert.match(filesApi, /sortKey:\s*options\.sortKey/);
+  assert.match(filesApi, /sortDirection:\s*options\.sortDirection/);
   assert.match(filesApi, /fetchDirectoryTree/);
   assert.match(filesApi, /readFileContent/);
   assert.match(filesApi, /searchFiles/);
@@ -240,6 +255,8 @@ test("files api and server routes cover browse, tree, read, search, mutate, uplo
 
   assert.match(filesRoutes, /\/api\/files\/summary/);
   assert.match(filesRoutes, /\/api\/files\/browse/);
+  assert.match(filesRoutes, /readDirectorySortKey/);
+  assert.match(filesRoutes, /readDirectorySortDirection/);
   assert.match(filesRoutes, /\/api\/files\/tree/);
   assert.match(filesRoutes, /\/api\/files\/read/);
   assert.match(filesRoutes, /\/api\/files\/search/);
@@ -252,8 +269,11 @@ test("files api and server routes cover browse, tree, read, search, mutate, uplo
   assert.match(filesRoutes, /buildContentDisposition\(payload\.fileName, "attachment"\)/);
   assert.match(filesRoutes, /"Cache-Control": "no-store"/);
 
+  assert.match(read("types/files.ts"), /pagination:\s*\{/);
   assert.match(read("types/files.ts"), /matchKind\?: "name" \| "content"/);
   assert.match(filesService, /findContentSearchSnippet/);
+  assert.match(filesService, /normalizeDirectoryPageSize/);
+  assert.match(filesService, /totalEntries/);
   assert.match(filesService, /target\.relative_to\(destination\)/);
   assert.match(filesService, /unarchive/);
   assert.match(filesService, /SUPPORTED_ARCHIVE_FORMATS/);

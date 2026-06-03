@@ -44,6 +44,15 @@ type ResolvedPath = {
 };
 
 type ArchiveFormat = "zip" | "tar" | "gztar" | "bztar" | "xztar";
+type DirectorySortKey = "name" | "size" | "modifiedAt";
+type DirectorySortDirection = "asc" | "desc";
+
+interface DirectoryListOptions {
+  page?: number;
+  pageSize?: number;
+  sortKey?: DirectorySortKey;
+  sortDirection?: DirectorySortDirection;
+}
 
 const TEXT_FILE_EXTENSIONS = new Set([
   ".txt",
@@ -121,6 +130,9 @@ const NON_TEXT_FILE_EXTENSIONS = new Set([
   ".eot",
   ".flac",
   ".gz",
+  ".gzip",
+  ".bzip2",
+  ".lzma",
   ".m4a",
   ".m4v",
   ".mid",
@@ -143,8 +155,13 @@ const NON_TEXT_FILE_EXTENSIONS = new Set([
   ".sqlite",
   ".sqlite3",
   ".tar",
+  ".tb2",
+  ".tbz",
+  ".tbz2",
   ".tgz",
+  ".tlz",
   ".ttf",
+  ".txz",
   ".wav",
   ".weba",
   ".webm",
@@ -165,6 +182,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".avi": "video/x-msvideo",
   ".bmp": "image/bmp",
   ".bz2": "application/x-bzip2",
+  ".bzip2": "application/x-bzip2",
   ".css": "text/css; charset=utf-8",
   ".csv": "text/csv; charset=utf-8",
   ".doc": "application/msword",
@@ -173,6 +191,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".flac": "audio/flac",
   ".gif": "image/gif",
   ".gz": "application/gzip",
+  ".gzip": "application/gzip",
   ".heic": "image/heic",
   ".heif": "image/heif",
   ".html": "text/html; charset=utf-8",
@@ -181,6 +200,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".lzma": "application/x-xz",
   ".m4a": "audio/mp4",
   ".m4v": "video/mp4",
   ".md": "text/markdown; charset=utf-8",
@@ -205,10 +225,15 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".sqlite3": "application/vnd.sqlite3",
   ".svg": "image/svg+xml",
   ".tar": "application/x-tar",
+  ".tb2": "application/x-bzip2",
+  ".tbz": "application/x-bzip2",
+  ".tbz2": "application/x-bzip2",
   ".tgz": "application/gzip",
+  ".tlz": "application/x-xz",
   ".tif": "image/tiff",
   ".tiff": "image/tiff",
   ".ttf": "font/ttf",
+  ".txz": "application/x-xz",
   ".ts": "application/typescript; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
   ".vue": "text/plain; charset=utf-8",
@@ -230,18 +255,24 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 
 const SUPPORTED_ARCHIVE_FORMATS: Array<{ suffix: string; format: ArchiveFormat }> = [
   { suffix: ".tar.gz", format: "gztar" },
+  { suffix: ".tar.gzip", format: "gztar" },
   { suffix: ".tgz", format: "gztar" },
   { suffix: ".tar.bz2", format: "bztar" },
+  { suffix: ".tar.bzip2", format: "bztar" },
+  { suffix: ".tbz", format: "bztar" },
   { suffix: ".tbz2", format: "bztar" },
+  { suffix: ".tb2", format: "bztar" },
   { suffix: ".tar.xz", format: "xztar" },
+  { suffix: ".tar.lzma", format: "xztar" },
   { suffix: ".txz", format: "xztar" },
+  { suffix: ".tlz", format: "xztar" },
   { suffix: ".zip", format: "zip" },
   { suffix: ".tar", format: "tar" },
 ];
 
 export interface FilesService {
   getSummary(): FilesSummaryPayload;
-  listDirectory(rootId: string, directoryPath?: string, showHidden?: boolean): FilesDirectoryPayload;
+  listDirectory(rootId: string, directoryPath?: string, showHidden?: boolean, options?: DirectoryListOptions): FilesDirectoryPayload;
   listTree(rootId: string, directoryPath?: string, showHidden?: boolean): FilesTreePayload;
   readFile(rootId: string, filePath: string): FilesReadPayload;
   search(rootId: string, directoryPath: string | undefined, query: string, recursive?: boolean, showHidden?: boolean): FilesSearchPayload;
@@ -586,10 +617,44 @@ function summarizeEntry(
   };
 }
 
-function sortEntries<T extends FileEntrySummary>(entries: T[]): T[] {
+function normalizeDirectorySortKey(value: unknown): DirectorySortKey {
+  return value === "size" || value === "modifiedAt" ? value : "name";
+}
+
+function normalizeDirectorySortDirection(value: unknown): DirectorySortDirection {
+  return value === "desc" ? "desc" : "asc";
+}
+
+function normalizeDirectoryPage(value: unknown): number {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return 1;
+  return Math.max(1, Math.floor(numberValue));
+}
+
+function normalizeDirectoryPageSize(value: unknown): number {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return 100;
+  return Math.min(500, Math.max(1, Math.floor(numberValue)));
+}
+
+function sortEntries<T extends FileEntrySummary>(
+  entries: T[],
+  sortKey: DirectorySortKey = "name",
+  sortDirection: DirectorySortDirection = "asc",
+): T[] {
+  const direction = sortDirection === "desc" ? -1 : 1;
   return entries.sort((left, right) => {
     if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
-    return left.name.localeCompare(right.name, undefined, { numeric: true });
+    if (sortKey === "size") {
+      const sizeDelta = ((left.size ?? -1) - (right.size ?? -1)) * direction;
+      if (sizeDelta !== 0) return sizeDelta;
+    } else if (sortKey === "modifiedAt") {
+      const leftTime = left.modifiedAt ? Date.parse(left.modifiedAt) : 0;
+      const rightTime = right.modifiedAt ? Date.parse(right.modifiedAt) : 0;
+      const timeDelta = (leftTime - rightTime) * direction;
+      if (timeDelta !== 0) return timeDelta;
+    }
+    return left.name.localeCompare(right.name, undefined, { numeric: true }) * direction;
   });
 }
 
@@ -886,18 +951,32 @@ export function createFilesService(config: StudioServerConfig): FilesService {
       };
     },
 
-    listDirectory(rootId: string, directoryPath = "", showHidden = true): FilesDirectoryPayload {
+    listDirectory(
+      rootId: string,
+      directoryPath = "",
+      showHidden = true,
+      options: DirectoryListOptions = {},
+    ): FilesDirectoryPayload {
       const resolved = resolveExistingPath(config, rootId, directoryPath, {
         allowRoot: true,
         kind: "directory",
       });
+      const sortKey = normalizeDirectorySortKey(options.sortKey);
+      const sortDirection = normalizeDirectorySortDirection(options.sortDirection);
+      const pageSize = normalizeDirectoryPageSize(options.pageSize);
       const entries = fs
         .readdirSync(resolved.absolutePath, { withFileTypes: true })
         .map((dirent) => summarizeEntry(resolved.absolutePath, resolved.relativePath, dirent, showHidden))
         .filter((entry): entry is FileEntrySummary => Boolean(entry));
       const hiddenCount = entries.filter((entry) => entry.hidden).length;
       const visibleEntries = showHidden ? entries : entries.filter((entry) => !entry.hidden);
-      const sorted = sortEntries(visibleEntries);
+      const sorted = sortEntries(visibleEntries, sortKey, sortDirection);
+      const totalEntries = sorted.length;
+      const totalPages = Math.max(1, Math.ceil(totalEntries / pageSize));
+      const page = Math.min(normalizeDirectoryPage(options.page), totalPages);
+      const startIndex = Math.min(totalEntries, (page - 1) * pageSize);
+      const endIndex = Math.min(totalEntries, startIndex + pageSize);
+      const pagedEntries = sorted.slice(startIndex, endIndex);
       return {
         checkedAt: new Date().toISOString(),
         rootId: resolved.root.id,
@@ -920,9 +999,17 @@ export function createFilesService(config: StudioServerConfig): FilesService {
           directories: sorted.filter((entry) => entry.kind === "directory").length,
           files: sorted.filter((entry) => entry.kind === "file").length,
           hidden: hiddenCount,
-          total: sorted.length,
+          total: totalEntries,
         },
-        entries: sorted,
+        pagination: {
+          page,
+          pageSize,
+          totalPages,
+          totalEntries,
+          startIndex,
+          endIndex,
+        },
+        entries: pagedEntries,
       };
     },
 

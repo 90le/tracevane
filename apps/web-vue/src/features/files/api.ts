@@ -35,9 +35,23 @@ export function browseDirectory(
   rootId: string,
   directoryPath = "",
   showHidden = true,
+  options: {
+    page?: number;
+    pageSize?: number;
+    sortKey?: "name" | "size" | "modifiedAt";
+    sortDirection?: "asc" | "desc";
+  } = {},
 ): Promise<FilesDirectoryPayload> {
   return requestJson<FilesDirectoryPayload>(
-    `/api/files/browse${buildQuery({ rootId, path: directoryPath, hidden: showHidden })}`,
+    `/api/files/browse${buildQuery({
+      rootId,
+      path: directoryPath,
+      hidden: showHidden,
+      page: options.page,
+      pageSize: options.pageSize,
+      sortKey: options.sortKey,
+      sortDirection: options.sortDirection,
+    })}`,
   );
 }
 

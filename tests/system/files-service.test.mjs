@@ -70,12 +70,22 @@ test("files service discovers safe roots and browses directories", () => {
   const config = makeConfig(root);
   writeFile(path.join(config.projectRoot, "src", "main.ts"), "console.log('hi')\n");
   writeFile(path.join(config.projectRoot, "README.md"), "# Studio\n");
+  writeFile(path.join(config.projectRoot, "alpha.txt"), "alpha\n");
+  writeFile(path.join(config.projectRoot, "beta.txt"), "beta\n");
+  writeFile(path.join(config.projectRoot, "gamma.txt"), "gamma\n");
   fs.mkdirSync(path.join(config.projectRoot, "assets"), { recursive: true });
   writeFile(path.join(config.openclawRoot, "workspace", "notes.md"), "workspace notes\n");
 
   const service = createFilesService(config);
   const summary = service.getSummary();
   const projectListing = service.listDirectory("project-root", "", true);
+  const secondPage = service.listDirectory("project-root", "", true, {
+    page: 2,
+    pageSize: 2,
+    sortKey: "name",
+    sortDirection: "asc",
+  });
+  const clampedPageSize = service.listDirectory("project-root", "", true, { pageSize: 5000 });
 
   assert.equal(summary.defaultRootId, "openclaw-root");
   assert.equal(summary.roots.some((rootEntry) => rootEntry.id === "project-root"), true);
@@ -85,6 +95,12 @@ test("files service discovers safe roots and browses directories", () => {
   assert.equal(projectListing.entries.some((entry) => entry.name === "README.md"), true);
   assert.equal(projectListing.entries.some((entry) => entry.name === "src" && entry.kind === "directory"), true);
   assert.equal(projectListing.entries[0].kind, "directory");
+  assert.equal(projectListing.pagination.page, 1);
+  assert.equal(projectListing.pagination.totalEntries, projectListing.counts.total);
+  assert.equal(secondPage.pagination.page, 2);
+  assert.equal(secondPage.pagination.pageSize, 2);
+  assert.equal(secondPage.entries.length, 2);
+  assert.equal(clampedPageSize.pagination.pageSize, 500);
 });
 
 test("files service supports search, read, write, create, rename, copy, move, delete, and upload", () => {
@@ -310,6 +326,44 @@ test("files service can archive and unarchive zip and tar bundles", () => {
   });
   assert.match(
     fs.readFileSync(path.join(config.projectRoot, "restore-explicit", "bundle", "a.txt"), "utf8"),
+    /alpha/,
+  );
+
+  service.archivePaths({
+    rootId: "project-root",
+    directoryPath: "",
+    paths: ["bundle"],
+    name: "bundle-backup.tar.xz",
+  });
+  assert.equal(fs.existsSync(path.join(config.projectRoot, "bundle-backup.tar.xz")), true);
+
+  fs.mkdirSync(path.join(config.projectRoot, "restore-xz"), { recursive: true });
+  service.unarchiveFile({
+    rootId: "project-root",
+    archivePath: "bundle-backup.tar.xz",
+    directoryPath: "restore-xz",
+  });
+  assert.match(
+    fs.readFileSync(path.join(config.projectRoot, "restore-xz", "bundle", "nested", "b.txt"), "utf8"),
+    /beta/,
+  );
+
+  service.archivePaths({
+    rootId: "project-root",
+    directoryPath: "",
+    paths: ["bundle"],
+    name: "bundle-backup.tbz",
+  });
+  assert.equal(fs.existsSync(path.join(config.projectRoot, "bundle-backup.tbz")), true);
+
+  fs.mkdirSync(path.join(config.projectRoot, "restore-tbz"), { recursive: true });
+  service.unarchiveFile({
+    rootId: "project-root",
+    archivePath: "bundle-backup.tbz",
+    directoryPath: "restore-tbz",
+  });
+  assert.match(
+    fs.readFileSync(path.join(config.projectRoot, "restore-tbz", "bundle", "a.txt"), "utf8"),
     /alpha/,
   );
 });

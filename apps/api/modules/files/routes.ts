@@ -24,6 +24,20 @@ function readFlag(value: string | null, fallback = false): boolean {
   return value === "1" || value === "true" || value === "yes";
 }
 
+function readNumber(value: string | null): number | undefined {
+  if (value == null || value.trim() === "") return undefined;
+  const next = Number(value);
+  return Number.isFinite(next) ? next : undefined;
+}
+
+function readDirectorySortKey(value: string | null): "name" | "size" | "modifiedAt" {
+  return value === "size" || value === "modifiedAt" ? value : "name";
+}
+
+function readDirectorySortDirection(value: string | null): "asc" | "desc" {
+  return value === "desc" ? "desc" : "asc";
+}
+
 export function registerFilesRoutes(router: StudioRouter, ctx: StudioApiContext): void {
   router.get("/api/files/summary", (_req, res) => {
     sendJson(res, 200, ctx.services.files.getSummary());
@@ -38,6 +52,12 @@ export function registerFilesRoutes(router: StudioRouter, ctx: StudioApiContext)
         url.searchParams.get("rootId") || "",
         url.searchParams.get("path") || "",
         readFlag(url.searchParams.get("hidden"), true),
+        {
+          page: readNumber(url.searchParams.get("page")),
+          pageSize: readNumber(url.searchParams.get("pageSize")),
+          sortKey: readDirectorySortKey(url.searchParams.get("sortKey")),
+          sortDirection: readDirectorySortDirection(url.searchParams.get("sortDirection")),
+        },
       ),
     );
   });

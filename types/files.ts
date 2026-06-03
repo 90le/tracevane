@@ -47,6 +47,14 @@ export interface FilesDirectoryPayload {
     hidden: number;
     total: number;
   };
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    totalEntries: number;
+    startIndex: number;
+    endIndex: number;
+  };
   entries: FileEntrySummary[];
 }
 
