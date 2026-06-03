@@ -4,6 +4,7 @@ export type CodexStackComponentId =
   | "codex"
   | "cpa"
   | "compact-proxy"
+  | "agent-gateway"
   | "cc-connect"
   | "watchdog";
 
@@ -284,6 +285,73 @@ export interface CodexStackSummaryPayload {
     cpaTargetModel: string;
     officialModel: string;
   };
+  gateway: {
+    serviceName: string;
+    baseUrl: string;
+    statusEndpoint: string;
+    live: boolean;
+    protocols: {
+      openaiChatCompletions: boolean;
+      openaiResponses: boolean;
+      openaiResponsesCompact: boolean;
+      anthropicMessages: boolean;
+      anthropicMessagesStreaming: boolean;
+    };
+    protocolCatalog: Array<{
+      id: string;
+      label: string;
+      endpoint: string;
+      upstream: string;
+      adapter: "passthrough" | "chat-adapter" | "local-compact";
+      streaming: boolean;
+      clients: string[];
+    }>;
+    clientAdapters: Array<{
+      id: string;
+      label: string;
+      protocol: string;
+      baseUrl: string;
+      authEnv: string;
+      modelEnv: string;
+      notes: string[];
+    }>;
+    providerRoutes: Array<{
+      id: string;
+      label: string;
+      baseUrl: string;
+      model: string;
+      protocol: string;
+      source: "cc-connect" | "gateway-default";
+      agentTypes: string[];
+      modelCount: number;
+      channelCount: number;
+      codexWireApi: string | null;
+    }>;
+    modelRoutes: Array<{
+      id: string;
+      label: string;
+      provider: string;
+      protocol: string;
+      alias: string | null;
+    }>;
+    channelTemplates: Array<{
+      id: string;
+      label: string;
+      setupCommand: string | null;
+      requiredOptions: string[];
+      optionalOptions: string[];
+    }>;
+    integrations: {
+      codexCliBaseUrl: string;
+      claudeCliBaseUrl: string;
+      ccConnectProviderBaseUrl: string;
+      ccConnectSourcePath: string | null;
+      ccConnectSourceReady: boolean;
+      ccConnectSourceAgentTypes: string[];
+      ccConnectSourcePlatforms: string[];
+      channelSurfaces: string[];
+    };
+  };
   context: {
     mode: CodexStackContextMode;
     tokens: number | null;
@@ -400,6 +468,21 @@ export interface CcConnectProvider {
   apiKey: string;
   baseUrl: string;
   codexEnvKey: string;
+  model?: string;
+  models?: CcConnectProviderModel[];
+  agentTypes?: string[];
+  endpoints?: Record<string, string>;
+  agentModels?: Record<string, string>;
+  codex?: {
+    envKey?: string;
+    wireApi?: string;
+    httpHeaders?: Record<string, string>;
+  };
+}
+
+export interface CcConnectProviderModel {
+  model: string;
+  alias?: string;
 }
 
 export interface CcConnectAgentOptions {
@@ -417,6 +500,7 @@ export interface CcConnectProject {
   name: string;
   adminFrom: string;
   agentType: string;
+  providerRefs?: string[];
   agentOptions: CcConnectAgentOptions;
   platforms: CcConnectPlatform[];
 }

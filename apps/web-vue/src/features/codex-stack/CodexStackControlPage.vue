@@ -1,9 +1,8 @@
 <template>
   <section class="page-shell codex-stack-page">
     <CodexStackPageHeader
-      :eyebrow="text('CODEX STACK', 'CODEX STACK')"
-      :title="text('Codex Stack 链路管理', 'Codex Stack Route Management')"
-      :subtitle="text('先看运行状态，再按安装修复、模型上游、Agent 链路和日志诊断逐步处理。Studio 只做控制面，服务本身保持 systemd 独立运行。', 'Start with runtime status, then move through install/repair, model upstreams, agent routes, and diagnostics. Studio stays the control plane while services keep running independently under systemd.')"
+      :eyebrow="text('CPA / Gateway / cc-connect', 'CPA / Gateway / cc-connect')"
+      :title="text('Codex Stack', 'Codex Stack')"
       :refresh-label="loading ? text('刷新中...', 'Refreshing...') : text('刷新状态', 'Refresh')"
       :refresh-disabled="loading || ccConnectLoading"
       :refresh-disabled-help="refreshDisabledHelp"
@@ -64,7 +63,7 @@
       >
         <template #context>
           <CodexStackModelRibbon
-            v-if="activeSection !== 'dashboard'"
+            v-if="activeSection !== 'dashboard' && activeSection !== 'settings'"
             :current-model="summary.models.current || summary.profile.defaultModel || '--'"
             :source-help="modelSourceHelp"
             :source-tone="modelSourceTone"
@@ -140,7 +139,6 @@
           :recommended-disabled="installPlanRecommendedDisabled"
           :recommended-disabled-help="installPlanRecommendedDisabledHelp"
           :recommended-tone="installPlanRecommendedTone"
-          :shell-busy="Boolean(activeJob && isCodexStackJobRunning(activeJob))"
           :can-attach-codex-cpa="canAttachCodexCpa"
           :attach-codex-cpa-help="attachCodexCpaHelp"
           :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
@@ -230,8 +228,6 @@
           :loading="loading"
           :summary-refresh-disabled-help="summaryRefreshDisabledHelp"
           :default-model="configForm.defaultModel || summaryTargetModel(summary) || '--'"
-          :compact-proxy-base-url="compactProxyBaseUrl"
-          :canonical-provider="canonicalCcConnectProvider"
           :form="configForm"
           :context-tokens-disabled="configContextTokensDisabled"
           :context-tokens-disabled-help="configContextTokensDisabledHelp"
@@ -409,6 +405,7 @@ import CodexStackModelRibbon from "./CodexStackModelRibbon.vue";
 import CodexStackPageHeader from "./CodexStackPageHeader.vue";
 import type { CodexStackAttachPreflightItem } from "./CodexStackRepairBoard.vue";
 import CodexStackRouteModelsSection from "./CodexStackRouteModelsSection.vue";
+import type { CodexStackRouteModelChip } from "./CodexStackRouteModelsSection.vue";
 import type {
   CodexStackRuntimeConfigDraft,
   CodexStackRuntimeConfigField,
@@ -420,7 +417,6 @@ import type {
   CodexStackLogLineOption,
   CodexStackLogServiceOption,
 } from "./CodexStackLogConsole.vue";
-import type { CodexStackSectionIntroChip } from "./CodexStackSectionIntro.vue";
 import type { CodexStackSectionId, CodexStackSectionNavItem } from "./CodexStackSectionNav.vue";
 import type { CodexStackServiceCard } from "./CodexStackServiceGrid.vue";
 import CodexStackWorkspaceShell from "./CodexStackWorkspaceShell.vue";
@@ -485,7 +481,7 @@ const primaryServiceIdSet = new Set<CodexStackServiceId>(primaryServiceIds);
 const logServices = computed<CodexStackLogServiceOption[]>(() => {
   const services: CodexStackLogServiceOption[] = [
     { id: "cli-proxy-api.service", label: text("CPA", "CPA"), tone: "neutral", rawState: "--" },
-    { id: "cpa-compact-proxy.service", label: text("Compact", "Compact"), tone: "neutral", rawState: "--" },
+    { id: "cpa-compact-proxy.service", label: text("Gateway", "Gateway"), tone: "neutral", rawState: "--" },
     { id: "cc-connect.service", label: text("cc-connect", "cc-connect"), tone: "neutral", rawState: "--" },
     { id: "codex-stack-watchdog.timer", label: text("后台守护", "Background Watchdog"), tone: "neutral", rawState: "--" },
   ];
@@ -605,8 +601,8 @@ const serviceCatalog: Record<
     blurbKey: ["Codex Proxy API 服务", "Codex Proxy API service"],
   },
   "cpa-compact-proxy.service": {
-    labelKey: ["Compact", "Compact"],
-    blurbKey: ["Compact 代理转发服务", "Compact proxy forwarding service"],
+    labelKey: ["Gateway / Compact", "Gateway / Compact"],
+    blurbKey: ["Studio Agent Gateway 协议转发服务", "Studio Agent Gateway protocol forwarding service"],
   },
   "cc-connect.service": {
     labelKey: ["cc-connect", "cc-connect"],
@@ -720,7 +716,7 @@ const codexRouteLabel = computed(() => {
   if (status === "fail") return text("CPA 接入异常", "CPA route blocked");
   return text("官方 GPT 路径", "Official GPT route");
 });
-const settingsSectionIntroChips = computed<CodexStackSectionIntroChip[]>(() => [
+const settingsSectionIntroChips = computed<CodexStackRouteModelChip[]>(() => [
   { label: modelSourceLabel.value, variant: "status", tone: modelSourceTone.value },
   { label: summary.value?.models.endpoint || "--", variant: "info" },
 ]);
@@ -1004,7 +1000,10 @@ const ccConnectProjectDraftCount = computed(() => ccConnectProjectDrafts.value.l
 const primaryCcConnectProjectName = computed(
   () => ccConnectProjectDrafts.value[0]?.name || ccConnectProjects.value[0]?.name || summary.value?.ccConnect.project || "main",
 );
-const compactProxyBaseUrl = computed(() => `http://127.0.0.1:${configForm.compactPort || summary.value?.ports.compact || 18796}/v1`);
+const compactProxyBaseUrl = computed(() => (
+  summary.value?.gateway?.integrations.ccConnectProviderBaseUrl
+  || `http://127.0.0.1:${configForm.compactPort || summary.value?.ports.compact || 18796}/v1`
+));
 const contextTokensDisplay = computed(() => {
   if (summary.value?.context.mode === "default" && !summary.value.context.tokens) {
     return text("默认", "Default");
@@ -1143,8 +1142,15 @@ const runtimeSummaryRows = computed<CodexStackRuntimeSummaryRow[]>(() => {
     },
     {
       id: "compact",
-      label: "Compact",
+      label: "Gateway",
       value: portDisplay(current.ports.compact, current.ports.detectedCompact),
+    },
+    {
+      id: "gateway-protocols",
+      label: text("Gateway 协议", "Gateway Protocols"),
+      value: current.gateway?.protocols.anthropicMessages
+        ? text("Chat / Responses / Compact / Claude", "Chat / Responses / Compact / Claude")
+        : text("Chat / Responses / Compact", "Chat / Responses / Compact"),
     },
     {
       id: "watchdog",
@@ -1251,12 +1257,14 @@ const chainNodes = computed<CodexStackChainNode[]>(() => {
     },
     {
       id: "compact",
-      label: "Compact",
+      label: "Gateway",
       value: `:${current.ports.compact}`,
-      meta: current.models.live
-        ? text("模型目录来自 /v1/models", "Model catalog comes from /v1/models")
-        : text("模型目录使用本地回退", "Model catalog is using fallback data"),
-      tone: current.models.live ? "sage" : "accent",
+      meta: current.gateway?.protocols.anthropicMessages
+        ? text("OpenAI Chat/Responses + Claude Messages", "OpenAI Chat/Responses + Claude Messages")
+        : current.models.live
+          ? text("模型目录来自 /v1/models", "Model catalog comes from /v1/models")
+          : text("模型目录使用本地回退", "Model catalog is using fallback data"),
+      tone: current.gateway?.live ? "sage" : "accent",
     },
     {
       id: "codex",
@@ -1586,14 +1594,6 @@ const configImpactItems = computed<CodexStackRuntimeConfigImpactItem[]>(() => {
 
   return items;
 });
-const canonicalCcConnectProvider = computed(() => {
-  const provider = ccConnectProviderDrafts.value.find((item) => item.name === "cpa") || ccConnectProviderDrafts.value[0];
-  return {
-    name: provider?.name || "cpa",
-    baseUrl: provider?.baseUrl || compactProxyBaseUrl.value,
-    model: configForm.defaultModel || installForm.model || summaryTargetModel(summary.value) || "--",
-  };
-});
 const ccConnectSetupCommands = computed(() => {
   const commands = summary.value?.ccConnect.setupCommands || [];
   if (commands.length) return commands;
@@ -1636,7 +1636,11 @@ const serviceCards = computed<CodexStackServiceCard[]>(() => {
       blurb,
       tone: service.active ? "sage" : "danger",
       stateLabel: service.active ? text("服务运行正常", "Service is running") : text("服务当前未运行", "Service is currently stopped"),
-      enabledLabel: service.enabled ? text("已启用", "Enabled") : text("未启用", "Disabled"),
+      enabledLabel: service.enabled
+        ? text("自启动已启用", "Auto-start enabled")
+        : service.active
+          ? text("运行中，未设为自启动", "Running, not auto-started")
+          : text("自启动未启用", "Auto-start disabled"),
       rawState: `${service.rawActiveState} / ${service.rawEnabledState}`,
       ...serviceEndpointInfo(service.id, summary.value),
     };
@@ -1645,16 +1649,17 @@ const serviceCards = computed<CodexStackServiceCard[]>(() => {
 const serviceGridLabels = computed(() => ({
   running: text("运行中", "Running"),
   stopped: text("已停止", "Stopped"),
-  enabled: text("启用状态", "Enabled"),
+  enabled: text("自启动", "Auto-start"),
   systemd: text("systemd 状态", "Systemd"),
   start: text("启动", "Start"),
   stop: text("停止", "Stop"),
   restart: text("重启", "Restart"),
+  enableAutostart: text("启用自启动", "Enable auto-start"),
 }));
 const componentOptions = computed(() => [
   { id: "codex" as const, label: text("Codex CLI", "Codex CLI") },
   { id: "cpa" as const, label: text("CPA 代理", "CPA Proxy") },
-  { id: "compact-proxy" as const, label: text("Compact 代理", "Compact Proxy") },
+  { id: "compact-proxy" as const, label: text("Gateway 代理", "Gateway Proxy") },
   { id: "cc-connect" as const, label: "cc-connect" },
 ]);
 const installComponentStrategies = computed<CodexStackInstallComponentStrategy[]>(() => componentOptions.value.map((component) => ({
@@ -1746,13 +1751,6 @@ const logLineLimit = computed(() => logLineOptions.value.find((option) => option
 const logModeHelp = computed(() => logLineOptions.value.find((option) => option.id === logLineMode.value)?.help || "");
 const logFetchedAtLabel = computed(() => formatTimestamp(logMeta.value?.fetchedAt));
 const logConsoleLabels = computed(() => ({
-  guideLabel: text("日志查看流程", "Log reading flow"),
-  guideService: text("选服务", "Pick Service"),
-  guideServiceCopy: text("先看正在失败或刚执行任务的服务。", "Start with the service that failed or just ran a job."),
-  guideScope: text("定范围", "Choose Scope"),
-  guideScopeCopy: text("默认轻量；只有排查长错误时再用完整上下文。", "Use light by default; switch deeper only for long failures."),
-  guideRead: text("读输出", "Read Output"),
-  guideReadCopy: text("点击读取日志；任务执行中会持续展示最新尾部。", "Click Load Logs; running jobs show their latest tail."),
   targetService: text("目标服务", "Target Service"),
   readPerformance: text("读取性能", "Read Performance"),
   lines: text("行", "lines"),
@@ -1837,13 +1835,44 @@ function nextDraftId(prefix: string): string {
 }
 
 function createProviderDraft(provider?: Partial<CcConnectProvider>): CcConnectProviderDraft {
+  const endpoints = provider?.endpoints || {};
+  const codex = provider?.codex || {};
   return {
     id: nextDraftId("provider"),
     name: provider?.name || "cpa",
     apiKey: provider?.apiKey || "",
     baseUrl: provider?.baseUrl || compactProxyBaseUrl.value,
-    codexEnvKey: provider?.codexEnvKey || "OPENAI_API_KEY",
+    codexEnvKey: provider?.codexEnvKey || codex.envKey || "OPENAI_API_KEY",
+    model: provider?.model || "",
+    agentTypesText: (provider?.agentTypes || []).join(", "),
+    codexBaseUrl: endpoints.codex || "",
+    claudeBaseUrl: endpoints.claudecode || endpoints.claude || "",
+    codexWireApi: codex.wireApi || "",
+    modelListText: (provider?.models || [])
+      .map((model) => model.alias ? `${model.alias}=${model.model}` : model.model)
+      .join("\n"),
   };
+}
+
+function parseCommaList(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function parseProviderModelList(value: string): NonNullable<CcConnectProvider["models"]> {
+  return value.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const separatorIndex = line.indexOf("=");
+      if (separatorIndex > 0) {
+        return {
+          alias: line.slice(0, separatorIndex).trim(),
+          model: line.slice(separatorIndex + 1).trim(),
+        };
+      }
+      return { model: line };
+    })
+    .filter((entry) => entry.model);
 }
 
 function createPlatformOptionDraft(key = "", value = ""): CcConnectPlatformOptionDraft {
@@ -1892,6 +1921,7 @@ function createProjectDraft(project?: Partial<CcConnectProject>): CcConnectProje
     name: project?.name || "main",
     adminFrom: project?.adminFrom || "",
     agentType: project?.agentType || "codex",
+    providerRefsText: (project?.providerRefs || []).join(", "),
     agentOptions: {
       workDir: project?.agentOptions?.workDir || summary.value?.homeDir || "",
       mode: project?.agentOptions?.mode || "suggest",
@@ -1905,13 +1935,29 @@ function createProjectDraft(project?: Partial<CcConnectProject>): CcConnectProje
 
 function normalizeProviderDrafts(): CcConnectProvider[] {
   return ccConnectProviderDrafts.value
-    .map((provider) => ({
-      name: provider.name.trim(),
-      apiKey: provider.apiKey.trim(),
-      baseUrl: provider.baseUrl.trim(),
-      codexEnvKey: provider.codexEnvKey.trim(),
-    }))
-    .filter((provider) => provider.name || provider.baseUrl || provider.apiKey || provider.codexEnvKey);
+    .map((provider) => {
+      const endpoints: Record<string, string> = {};
+      if (provider.codexBaseUrl.trim()) endpoints.codex = provider.codexBaseUrl.trim();
+      if (provider.claudeBaseUrl.trim()) endpoints.claudecode = provider.claudeBaseUrl.trim();
+      const codex = {
+        envKey: provider.codexEnvKey.trim(),
+        wireApi: provider.codexWireApi.trim(),
+        httpHeaders: {},
+      };
+      return {
+        name: provider.name.trim(),
+        apiKey: provider.apiKey.trim(),
+        baseUrl: provider.baseUrl.trim(),
+        codexEnvKey: provider.codexEnvKey.trim(),
+        model: provider.model.trim(),
+        models: parseProviderModelList(provider.modelListText),
+        agentTypes: parseCommaList(provider.agentTypesText),
+        endpoints,
+        agentModels: {},
+        codex,
+      };
+    })
+    .filter((provider) => provider.name || provider.baseUrl || provider.apiKey || provider.codexEnvKey || provider.model || provider.models?.length);
 }
 
 function normalizePlatformDraft(platform: CcConnectPlatformDraft): CcConnectPlatform {
@@ -1933,6 +1979,7 @@ function normalizeProjectDrafts(): CcConnectProject[] {
       name: project.name.trim(),
       adminFrom: project.adminFrom.trim(),
       agentType: project.agentType.trim() || "codex",
+      providerRefs: parseCommaList(project.providerRefsText),
       agentOptions: {
         workDir: project.agentOptions.workDir.trim(),
         mode: project.agentOptions.mode.trim(),
@@ -2014,6 +2061,7 @@ function portDisplay(port: number, live: number | null): string {
 function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackSummaryPayload {
   const cpaAttached = next.codexRoute?.active === "cpa"
     || next.runReadiness?.checks.some((check) => check.id === "codex-provider" && check.status === "pass");
+  const gatewayBaseUrl = `http://127.0.0.1:${next.ports?.compact || 18796}`;
   return {
     ...next,
     codexRoute: next.codexRoute || {
@@ -2021,6 +2069,79 @@ function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackS
       currentModel: next.models.current || next.models.defaultModel || next.profile.defaultModel || "",
       cpaTargetModel: next.profile.defaultModel || next.models.current || next.models.defaultModel || "",
       officialModel: next.models.recommendedFrontier || "",
+    },
+    gateway: next.gateway || {
+      serviceName: "studio-agent-gateway",
+      baseUrl: gatewayBaseUrl,
+      statusEndpoint: `${gatewayBaseUrl}/gateway/status`,
+      live: next.models?.live === true,
+      protocols: {
+        openaiChatCompletions: true,
+        openaiResponses: true,
+        openaiResponsesCompact: true,
+        anthropicMessages: false,
+        anthropicMessagesStreaming: false,
+      },
+      protocolCatalog: [
+        {
+          id: "openai-responses",
+          label: "OpenAI Responses",
+          endpoint: "/v1/responses",
+          upstream: "OpenAI Chat Completions",
+          adapter: "chat-adapter",
+          streaming: true,
+          clients: ["Codex CLI"],
+        },
+      ],
+      clientAdapters: [
+        {
+          id: "codex-cli",
+          label: "Codex CLI",
+          protocol: "openai-responses",
+          baseUrl: `${gatewayBaseUrl}/v1`,
+          authEnv: "OPENAI_API_KEY",
+          modelEnv: "CODEX_MODEL",
+          notes: ["wire_api=responses"],
+        },
+      ],
+      providerRoutes: [{
+        id: "studio-gateway",
+        label: "studio-gateway",
+        baseUrl: `${gatewayBaseUrl}/v1`,
+        model: next.models?.current || next.models?.defaultModel || "",
+        protocol: "openai-responses",
+        source: "gateway-default",
+        agentTypes: ["codex"],
+        modelCount: next.models?.available?.length || 0,
+        channelCount: 0,
+        codexWireApi: "responses",
+      }],
+      modelRoutes: (next.models?.available || []).map((model) => ({
+        id: `studio-gateway:${model}`,
+        label: model,
+        provider: "studio-gateway",
+        protocol: "openai-responses",
+        alias: null,
+      })),
+      channelTemplates: [
+        {
+          id: "dmwork",
+          label: "DMWork",
+          setupCommand: null,
+          requiredOptions: ["bot_token", "api_url", "account_id"],
+          optionalOptions: ["route_tag"],
+        },
+      ],
+      integrations: {
+        codexCliBaseUrl: `${gatewayBaseUrl}/v1`,
+        claudeCliBaseUrl: gatewayBaseUrl,
+        ccConnectProviderBaseUrl: `${gatewayBaseUrl}/v1`,
+        ccConnectSourcePath: null,
+        ccConnectSourceReady: false,
+        ccConnectSourceAgentTypes: [],
+        ccConnectSourcePlatforms: [],
+        channelSurfaces: ["feishu", "weixin", "wecom", "bridge"],
+      },
     },
     proxyPolicy: normalizeProxyPolicy(next.proxyPolicy),
     runReadiness: next.runReadiness
@@ -2664,10 +2785,14 @@ async function startRepairWithActions(actions: CodexStackRepairAction[], success
 
 async function serviceAction(
   serviceId: CodexStackManualServiceId,
-  action: Extract<CodexStackServiceAction, "start" | "stop" | "restart">,
+  action: Extract<CodexStackServiceAction, "start" | "stop" | "restart" | "enable">,
 ): Promise<void> {
   if (!guardMutation()) return;
-  if ((action === "start" || action === "restart") && serviceId === "cpa-compact-proxy.service" && !isSummaryServiceActive("cli-proxy-api.service")) {
+  if (
+    (action === "start" || action === "restart" || action === "enable")
+    && serviceId === "cpa-compact-proxy.service"
+    && !isSummaryServiceActive("cli-proxy-api.service")
+  ) {
     await resumeStack();
     return;
   }
@@ -2816,6 +2941,7 @@ function addCcConnectProjectPreset(preset: AgentProjectPreset): void {
       mode: preset === "admin" ? "suggest" : "yolo",
       model: configForm.defaultModel || installForm.model || summaryTargetModel(summary.value),
     },
+    providerRefs: ["cpa"],
     platforms: [{ type: installForm.channel === "official" ? "dmwork" : (installForm.channel === "octo" ? "octo" : "dmwork"), options: { api_url: "https://im.deepminer.com.cn/api" } }],
   });
   ccConnectProjectDrafts.value.push(project);

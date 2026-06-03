@@ -1,30 +1,6 @@
 <template>
   <CodexStackSectionStack class="cs-route-models-section">
-    <CodexStackSectionIntro
-      :kicker="text('模型与上游', 'Models and Upstreams')"
-      :title="text('统一模型、端口与上游配置', 'Unified Model, Port, and Upstream Config')"
-      :copy="text('这里是所有模型选择器的来源。优先读取本地 Compact /v1/models；不可达时显示配置回退列表。cc-connect Provider 推荐统一指向本地 Compact。', 'This is the source for every model selector. It prefers local Compact /v1/models and falls back to parsed config when unavailable. cc-connect providers should point to local Compact.')"
-      :chips="introChips"
-    />
-
-    <CodexStackModelCatalogCard
-      :models="modelOptions"
-      :current-model="summary.models.current"
-      :source-help="modelSourceHelp"
-      :loading="loading"
-      :loading-disabled-help="summaryRefreshDisabledHelp"
-      @reload="emit('reload')"
-    />
-
-    <CodexStackUpstreamMap
-      :default-model="defaultModel"
-      :compact-proxy-base-url="compactProxyBaseUrl"
-      :provider-name="canonicalProvider.name"
-      :provider-base-url="canonicalProvider.baseUrl"
-      :provider-model="canonicalProvider.model"
-    />
-
-    <CodexStackResponsiveGrid>
+    <div class="cs-route-models-console-grid">
       <CodexStackRuntimeConfigCard
         :form="form"
         :model-options="modelOptions"
@@ -50,23 +26,44 @@
         @save-and-use-official="emit('save-and-use-official')"
       />
 
-      <CodexStackEnvironmentReferenceCard
-        :home-dir="summary.homeDir"
-        :profile-path="summary.profilePath"
-        :installer-root="summary.installer.root"
-        :installer-kind="summary.installer.kind"
-        :auto-setup-script="summary.installer.scripts.autoSetup"
-        :health-check-script="summary.installer.scripts.healthCheck"
-        :finalizer-script="summary.installer.scripts.ccConnectFinalizer"
-        :proxy-key-masked="summary.secrets.cpaProxyKey.masked"
-        :codex-auth-status="codexAuthStatus"
-        :context-mode="summary.context.mode"
-        :context-tokens-display="contextTokensDisplay"
-        :cpa-dashboard-enabled="summary.cpaManagement.controlPanelEnabled"
-        :cpa-dashboard-url="summary.cpaManagement.dashboardUrl"
-        :missing-files="summary.installer.missingFiles"
+      <CodexStackModelCatalogCard
+        :models="modelOptions"
+        :current-model="summary.models.current"
+        :source-help="modelSourceHelp"
+        :loading="loading"
+        :loading-disabled-help="summaryRefreshDisabledHelp"
       />
-    </CodexStackResponsiveGrid>
+    </div>
+
+    <details class="cs-route-advanced-panel">
+      <summary>
+        <span>{{ text("协议与环境详情", "Protocol and environment details") }}</span>
+        <small>{{ text("Gateway / 路径", "Gateway / paths") }}</small>
+      </summary>
+      <div class="cs-route-advanced-body">
+        <CodexStackGatewayRoutePanel
+          :summary="summary"
+          :default-model="defaultModel"
+        />
+
+        <CodexStackEnvironmentReferenceCard
+          :home-dir="summary.homeDir"
+          :profile-path="summary.profilePath"
+          :installer-root="summary.installer.root"
+          :installer-kind="summary.installer.kind"
+          :auto-setup-script="summary.installer.scripts.autoSetup"
+          :health-check-script="summary.installer.scripts.healthCheck"
+          :finalizer-script="summary.installer.scripts.ccConnectFinalizer"
+          :proxy-key-masked="summary.secrets.cpaProxyKey.masked"
+          :codex-auth-status="codexAuthStatus"
+          :context-mode="summary.context.mode"
+          :context-tokens-display="contextTokensDisplay"
+          :cpa-dashboard-enabled="summary.cpaManagement.controlPanelEnabled"
+          :cpa-dashboard-url="summary.cpaManagement.dashboardUrl"
+          :missing-files="summary.installer.missingFiles"
+        />
+      </div>
+    </details>
   </CodexStackSectionStack>
 </template>
 
@@ -75,34 +72,30 @@ import type { CodexStackSummaryPayload } from "../../../../../types/codex-stack"
 import { useLocalePreference } from "../../shared/locale";
 import CodexStackEnvironmentReferenceCard from "./CodexStackEnvironmentReferenceCard.vue";
 import CodexStackModelCatalogCard from "./CodexStackModelCatalogCard.vue";
-import CodexStackResponsiveGrid from "./CodexStackResponsiveGrid.vue";
 import CodexStackRuntimeConfigCard from "./CodexStackRuntimeConfigCard.vue";
 import type {
   CodexStackRuntimeConfigDraft,
   CodexStackRuntimeConfigField,
   CodexStackRuntimeConfigImpactItem,
 } from "./CodexStackRuntimeConfigCard.vue";
-import CodexStackSectionIntro from "./CodexStackSectionIntro.vue";
-import type { CodexStackSectionIntroChip } from "./CodexStackSectionIntro.vue";
 import CodexStackSectionStack from "./CodexStackSectionStack.vue";
-import CodexStackUpstreamMap from "./CodexStackUpstreamMap.vue";
+import CodexStackGatewayRoutePanel from "./CodexStackGatewayRoutePanel.vue";
 
-interface CodexStackCanonicalProvider {
-  name: string;
-  baseUrl: string;
-  model: string;
+export interface CodexStackRouteModelChip {
+  label: string;
+  value?: string;
+  variant?: "status" | "info";
+  tone?: string;
 }
 
 defineProps<{
   summary: CodexStackSummaryPayload;
-  introChips: CodexStackSectionIntroChip[];
+  introChips: CodexStackRouteModelChip[];
   modelOptions: string[];
   modelSourceHelp: string;
   loading: boolean;
   summaryRefreshDisabledHelp: string;
   defaultModel: string;
-  compactProxyBaseUrl: string;
-  canonicalProvider: CodexStackCanonicalProvider;
   form: CodexStackRuntimeConfigDraft;
   contextTokensDisabled: boolean;
   contextTokensDisabledHelp: string;

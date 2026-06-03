@@ -12,9 +12,6 @@
     <p v-if="busy && busyDisabledHelp" class="cs-disabled-help">
       {{ busyDisabledHelp }}
     </p>
-    <p class="cs-field-hint">
-      {{ text("检查结果会以悬浮窗口展示，不占用页面内容区。", "Health check results open in a floating dialog instead of taking over this page.") }}
-    </p>
 
     <div v-if="warnings.length" class="cs-warning-list">
       <div v-for="warning in warnings" :key="warning" class="cs-warning-row">

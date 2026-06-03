@@ -4,7 +4,6 @@
       <div>
         <p class="cs-section-kicker">{{ text("Codex 运行就绪", "Codex Run Readiness") }}</p>
         <h4>{{ readiness.title }}</h4>
-        <p>{{ readiness.summary }}</p>
       </div>
       <span class="cs-status-pill" :class="`tone-${tone}`">
         {{ runReadinessLevelLabel(readiness.level) }}
@@ -38,23 +37,29 @@
       </div>
     </section>
 
-    <div class="cs-run-mode-strip">
-      <button
-        v-for="mode in readiness.modes"
-        :key="mode.id"
-        type="button"
-        class="cs-run-mode"
-        :class="runReadinessModeTone(mode.ready, readiness.level)"
-        :disabled="isActionDisabled(mode.actionHint)"
-        @click="$emit('mode-action', mode)"
-      >
-        <div class="cs-run-mode-copy">
-          <strong>{{ mode.label }}</strong>
-          <em v-if="mode.actionHint">{{ isActionDisabled(mode.actionHint) ? disabledLabel : mode.actionHint.label }}</em>
-        </div>
-        <span>{{ runReadinessModeLabel(mode.ready, readiness.level) }}</span>
-      </button>
-    </div>
+    <details class="cs-run-mode-details">
+      <summary>
+        <span>{{ text("运行模式", "Run modes") }}</span>
+        <strong>{{ modeSummary }}</strong>
+      </summary>
+      <div class="cs-run-mode-strip">
+        <button
+          v-for="mode in readiness.modes"
+          :key="mode.id"
+          type="button"
+          class="cs-run-mode"
+          :class="runReadinessModeTone(mode.ready, readiness.level)"
+          :disabled="isActionDisabled(mode.actionHint)"
+          @click="$emit('mode-action', mode)"
+        >
+          <div class="cs-run-mode-copy">
+            <strong>{{ mode.label }}</strong>
+            <em v-if="mode.actionHint">{{ isActionDisabled(mode.actionHint) ? disabledLabel : mode.actionHint.label }}</em>
+          </div>
+          <span>{{ runReadinessModeLabel(mode.ready, readiness.level) }}</span>
+        </button>
+      </div>
+    </details>
     <details class="cs-run-check-details">
       <summary>
         <span>{{ text("技术检查", "Technical Checks") }}</span>
@@ -142,6 +147,11 @@ const checkSummary = computed(() => {
     : review
       ? text(`${review} 个关注 · ${passed} 个通过`, `${review} review · ${passed} passed`)
       : text(`${passed} 个通过`, `${passed} passed`);
+});
+const modeSummary = computed(() => {
+  const ready = props.readiness.modes.filter((mode) => mode.ready).length;
+  const total = props.readiness.modes.length;
+  return text(`${ready}/${total} 可用`, `${ready}/${total} ready`);
 });
 
 function runPrimaryAction(): void {

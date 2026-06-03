@@ -1,33 +1,143 @@
 .cs-model-catalog-card {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-base) 96%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
-    var(--surface-base);
+  align-self: start;
+  background: var(--cs-doc-paper);
 }
 
 .cs-route-models-section {
   container: cs-route-models / inline-size;
 }
 
-.cs-route-models-section .cs-responsive-grid,
+.cs-route-models-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 18px;
+  align-items: center;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 12px;
+  background: var(--cs-doc-paper);
+  box-shadow: var(--cs-doc-subtle-shadow);
+}
+
+.cs-route-models-toolbar h4 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cs-route-models-toolbar code {
+  display: inline-flex;
+  max-width: 100%;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 7px;
+  padding: 4px 8px;
+  background: var(--cs-terminal-bg);
+  color: var(--cs-terminal-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+.cs-route-models-toolbar .cs-chip-row {
+  justify-content: flex-start;
+  margin-top: 0;
+}
+
+.cs-route-models-console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 16px;
+  align-items: start;
+}
+
 .cs-route-models-section .cs-surface,
 .cs-runtime-config-card,
 .cs-environment-reference-card,
-.cs-upstream-map {
+.cs-gateway-route-panel {
   min-width: 0;
 }
 
-.cs-upstream-map {
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--success) 12%, transparent), transparent 34%),
-    linear-gradient(135deg, color-mix(in srgb, var(--surface-base) 92%, var(--code-bg) 8%), var(--surface-base));
+.cs-runtime-config-card,
+.cs-model-catalog-card,
+.cs-environment-reference-card {
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--cs-doc-paper);
+}
+
+.cs-route-config-console {
+  display: grid;
+  gap: 12px;
+}
+
+.cs-route-config-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cs-doc-line);
+}
+
+.cs-route-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cs-route-config-group {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--cs-doc-panel);
+}
+
+.cs-route-config-group .form-field {
+  padding: 0;
+}
+
+.cs-route-config-group .form-input {
+  min-height: 32px;
+  padding: 6px 9px;
+}
+
+.cs-route-config-group-wide {
+  grid-column: 1 / -1;
+}
+
+.cs-route-config-group-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cs-doc-line);
+}
+
+.cs-route-config-group-head span {
+  color: var(--cs-doc-muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.cs-route-config-group-head strong {
+  overflow: hidden;
+  color: var(--cs-doc-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-route-config-group .cs-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .cs-model-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-  max-height: 220px;
+  gap: 5px;
+  margin-top: 8px;
+  max-height: 250px;
   overflow: auto;
 }
 
@@ -35,89 +145,188 @@
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 7px 10px;
-  background: color-mix(in srgb, var(--code-bg) 42%, transparent);
-  color: var(--text);
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 7px;
+  padding: 3px 6px;
+  background: var(--cs-doc-panel);
+  color: var(--cs-doc-ink);
   font-size: 0.84rem;
   overflow-wrap: anywhere;
   white-space: normal;
 }
 
 .cs-model-list .cs-model-current {
-  border-color: color-mix(in srgb, var(--success) 48%, var(--line));
-  background: color-mix(in srgb, var(--success) 18%, var(--surface-base));
+  border-color: var(--cs-status-sage-border);
+  background: var(--cs-status-sage-bg);
   font-weight: 700;
 }
 
-.cs-upstream-grid {
+.cs-gateway-route-panel {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-}
-
-.cs-upstream-grid > div {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 12px;
   padding: 14px;
-  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+  background: var(--cs-doc-paper);
 }
 
-.cs-upstream-grid span {
-  display: block;
-  color: var(--muted);
+.cs-gateway-route-panel > .cs-card-header {
+  padding: 0;
+  border-bottom: 0;
+}
+
+.cs-gateway-route-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cs-gateway-route-head code {
+  overflow: hidden;
+  max-width: min(46vw, 420px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-gateway-route-ledger {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-width: 0;
+  border-radius: 0;
+  overflow: hidden;
+  background: transparent;
+  gap: 10px;
+}
+
+.cs-gateway-route-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  align-items: start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 8px;
+  background: var(--cs-doc-panel);
+}
+
+.cs-gateway-route-row span,
+.cs-gateway-mini-row span {
+  color: var(--cs-doc-muted);
   font-size: 0.8rem;
-  margin-bottom: 8px;
+  font-weight: 720;
 }
 
-.cs-upstream-grid strong {
-  display: block;
-  color: var(--text);
-  word-break: break-word;
+.cs-gateway-route-row strong {
+  color: var(--cs-doc-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.cs-upstream-grid p {
-  margin: 8px 0 0;
-  color: var(--text-soft);
-  font-size: 0.88rem;
+.cs-gateway-route-row code,
+.cs-gateway-mini-row code {
+  overflow: hidden;
+  color: var(--cs-doc-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-gateway-route-row small,
+.cs-gateway-mini-row small {
+  color: var(--cs-doc-muted);
+  overflow-wrap: anywhere;
+}
+
+.cs-gateway-route-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: var(--cs-doc-line);
+}
+
+.cs-gateway-route-grid > section {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--cs-doc-paper);
+}
+
+.cs-gateway-route-grid h5 {
+  margin: 0 0 10px;
+  color: var(--cs-doc-ink);
+  font-size: 0.92rem;
+}
+
+.cs-gateway-mini-table {
+  display: grid;
+  gap: 0;
+}
+
+.cs-gateway-mini-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.24fr) minmax(0, 1fr) minmax(180px, 0.38fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 0;
+  border-top: 1px solid var(--cs-doc-line);
+}
+
+.cs-gateway-mini-row:first-child {
+  border-top: 0;
 }
 
 .cs-kv-list {
   display: grid;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  border: 1px solid var(--cs-doc-line);
+  overflow: hidden;
 }
 
 .cs-kv-row {
   display: grid;
-  grid-template-columns: minmax(120px, 180px) 1fr;
-  gap: 12px;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
+  gap: 8px;
   align-items: start;
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 7px 10px;
+  background: var(--cs-doc-paper);
 }
 
 .cs-kv-row span {
-  color: var(--muted);
+  color: var(--cs-doc-muted);
   font-size: 0.9rem;
 }
 
 .cs-kv-row code {
-  color: var(--text);
-  background: color-mix(in srgb, var(--code-bg) 84%, transparent);
-  border-radius: 10px;
-  padding: 6px 10px;
+  color: var(--cs-doc-ink);
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
   word-break: break-word;
 }
 
 .cs-route-selector {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px 14px;
+  grid-template-columns: minmax(260px, 0.82fr) minmax(320px, 1fr);
+  gap: 12px 18px;
   align-items: center;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--cs-doc-line);
   border-radius: 8px;
   padding: 12px;
-  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--cs-doc-blue) 10%, var(--cs-doc-paper)) 0 4px, transparent 4px),
+    var(--cs-doc-panel);
 }
 
 .cs-route-selector > * {
@@ -127,26 +336,29 @@
 .cs-route-selector strong {
   display: block;
   margin: 2px 0 4px;
-  color: var(--text);
+  color: var(--cs-doc-ink);
 }
 
 .cs-route-facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 12px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  overflow: hidden;
+  border: 0;
+  margin: 9px 0 0;
 }
 
 .cs-route-facts div {
   min-width: 0;
-  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
-  border-radius: 8px;
-  padding: 9px 10px;
-  background: color-mix(in srgb, var(--code-bg) 28%, transparent);
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--cs-doc-paper);
+  flex: 1 1 170px;
 }
 
 .cs-route-facts dt {
-  color: var(--muted);
+  color: var(--cs-doc-muted);
   font-size: 0.76rem;
   font-weight: 720;
   letter-spacing: 0.04em;
@@ -154,19 +366,19 @@
 
 .cs-route-facts dd {
   margin: 4px 0 0;
-  color: var(--text);
+  color: var(--cs-doc-ink);
   font-size: 0.88rem;
   font-weight: 760;
 }
 
 .cs-route-facts .tone-sage {
-  border-color: color-mix(in srgb, var(--success) 34%, var(--line));
-  background: color-mix(in srgb, var(--success) 11%, transparent);
+  border-color: var(--cs-status-sage-border);
+  background: var(--cs-status-sage-bg);
 }
 
 .cs-route-facts .tone-warning {
-  border-color: color-mix(in srgb, var(--warning) 34%, var(--line));
-  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  border-color: var(--cs-status-accent-border);
+  background: var(--cs-status-accent-bg);
 }
 
 .cs-route-actions {
@@ -178,7 +390,7 @@
 }
 
 .cs-route-actions > button {
-  flex: 1 1 148px;
+  flex: 0 1 auto;
   min-width: 0;
   white-space: normal;
   text-align: center;
@@ -191,47 +403,135 @@
 .cs-restart-hint-block {
   align-items: flex-start;
   flex-direction: column;
-  border-radius: 8px;
+  border-radius: 0;
   width: 100%;
 }
 
 .cs-restart-hint-block small {
-  color: var(--text-muted);
+  color: var(--cs-doc-muted);
   line-height: 1.45;
 }
 
 .cs-impact-list {
   display: grid;
   gap: 8px;
+  overflow: hidden;
+  border: 0;
 }
 
 .cs-impact-item {
   display: grid;
   gap: 3px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--cs-doc-line);
   border-radius: 8px;
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--surface-base) 86%, transparent);
+  padding: 9px 10px;
+  background: var(--cs-doc-panel);
+}
+
+.cs-route-advanced-panel {
+  overflow: hidden;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 12px;
+  background: var(--cs-doc-paper);
+  box-shadow: var(--cs-doc-subtle-shadow);
+}
+
+.cs-route-advanced-panel summary {
+  display: flex;
+  gap: 8px 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: var(--cs-doc-ink);
+  font-weight: 700;
+}
+
+.cs-route-advanced-panel summary:hover {
+  background: color-mix(in srgb, var(--cs-doc-blue) 8%, var(--cs-doc-paper));
+}
+
+.cs-route-advanced-panel summary small {
+  color: var(--cs-doc-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.cs-route-advanced-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  border-top: 1px solid var(--cs-doc-line);
+  padding: 12px;
+}
+
+.cs-gateway-source-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.2fr) minmax(120px, 0.2fr) minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 8px;
+  background: var(--cs-doc-panel);
+}
+
+.cs-gateway-source-row span,
+.cs-gateway-source-row small {
+  color: var(--cs-doc-muted);
+  font-size: 0.8rem;
+}
+
+.cs-gateway-source-row code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-gateway-route-catalog {
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 8px;
+  background: var(--cs-doc-panel);
+  overflow: hidden;
+}
+
+.cs-gateway-route-catalog summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--cs-doc-line);
+  cursor: pointer;
+  color: var(--cs-doc-ink);
+  font-weight: 700;
+}
+
+.cs-gateway-route-catalog summary small {
+  color: var(--cs-doc-muted);
+  font-weight: 500;
 }
 
 .cs-impact-item strong {
-  color: var(--text);
+  color: var(--cs-doc-ink);
   font-size: 0.92rem;
 }
 
 .cs-impact-item span {
-  color: var(--text-soft);
+  color: var(--cs-doc-muted);
   font-size: 0.84rem;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 .cs-impact-item.tone-warning {
-  border-color: color-mix(in srgb, var(--warning) 42%, var(--line));
+  border-color: var(--cs-status-accent-border);
 }
 
 .cs-impact-item.tone-danger {
-  border-color: color-mix(in srgb, var(--danger) 46%, var(--line));
+  border-color: var(--cs-status-danger-border);
 }
 
 @media (max-width: 960px) {
@@ -241,12 +541,17 @@
     align-items: stretch;
   }
 
-  .cs-upstream-grid,
+  .cs-route-models-toolbar,
+  .cs-route-models-console-grid,
+  .cs-gateway-route-ledger,
+  .cs-gateway-route-grid,
+  .cs-route-config-grid,
+  .cs-route-config-group .cs-form-grid,
   .cs-runtime-config-card .cs-form-grid,
   .cs-route-facts,
   .cs-route-selector,
   .cs-kv-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .cs-route-actions {
@@ -255,12 +560,20 @@
 }
 
 @container cs-route-models (max-width: 1040px) {
-  .cs-route-models-section .cs-responsive-grid {
+  .cs-route-models-console-grid {
     grid-template-columns: 1fr;
   }
 
-  .cs-route-models-section .cs-upstream-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .cs-route-advanced-body {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-route-models-section .cs-gateway-route-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-route-models-section .cs-gateway-route-ledger {
+    grid-template-columns: 1fr;
   }
 
   .cs-route-models-section .cs-route-selector {
@@ -274,10 +587,13 @@
 }
 
 @container cs-route-models (max-width: 720px) {
-  .cs-route-models-section .cs-upstream-grid,
+  .cs-route-models-toolbar,
+  .cs-route-models-section .cs-route-config-grid,
+  .cs-route-models-section .cs-route-config-group .cs-form-grid,
+  .cs-route-models-section .cs-gateway-route-grid,
   .cs-route-models-section .cs-runtime-config-card .cs-form-grid,
   .cs-route-models-section .cs-route-facts,
   .cs-route-models-section .cs-kv-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }

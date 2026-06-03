@@ -3,7 +3,7 @@
   <TooltipProvider :delay-duration="140" :skip-delay-duration="80" :disable-hoverable-content="true">
     <div
       class="app-container"
-      :class="{ mobile: isMobile, 'sidebar-collapsed': !isMobile && sidebarCollapsed, 'chat-route-shell': isChatSurface, 'files-shell': isFilesSurface }"
+      :class="{ mobile: isMobile, 'sidebar-collapsed': !isMobile && sidebarCollapsed, 'chat-route-shell': isChatSurface, 'files-shell': isFilesSurface, 'codex-stack-shell': isCodexStackSurface }"
     >
       <DialogRoot v-if="isMobile" v-model:open="mobileSidebarOpen">
         <DialogPortal>
@@ -79,7 +79,8 @@
           'shell-main-chat': isChatSurface,
           'terminal-surface-route': isTerminalSurface,
           'file-surface-route': isFilesSurface,
-          'standard-scroll-route': !isChatSurface && !isTerminalSurface && !isFilesSurface,
+          'codex-stack-surface-route': isCodexStackSurface,
+          'standard-scroll-route': !isChatSurface && !isTerminalSurface && !isFilesSurface && !isCodexStackSurface,
         }"
       >
         <button
@@ -93,10 +94,10 @@
           <Menu class="mobile-nav-trigger__icon" aria-hidden="true" />
         </button>
 
-        <div class="shell-layout" :class="{ 'shell-layout-chat': isChatSurface, 'shell-layout-files': isFilesSurface }">
+        <div class="shell-layout" :class="{ 'shell-layout-chat': isChatSurface, 'shell-layout-files': isFilesSurface, 'shell-layout-codex-stack': isCodexStackSurface }">
           <section class="shell-main-stage">
             <StudioShellTopbar
-              v-if="!isChatSurface && !isFilesSurface && !isTerminalSurface"
+              v-if="!isChatSurface && !isFilesSurface && !isTerminalSurface && !isCodexStackSurface"
               :is-mobile="isMobile"
               :mobile-nav-open="mobileSidebarOpen"
               :current-title="activeNavItem?.label || text('工作台', 'Workspace')"
@@ -118,7 +119,7 @@
               <section
                 class="shell-route-stage"
                 :theme-mode="themeMode"
-                :class="{ 'shell-route-stage-chat': isChatSurface, 'shell-route-stage-files': isFilesSurface }"
+                :class="{ 'shell-route-stage-chat': isChatSurface, 'shell-route-stage-files': isFilesSurface, 'shell-route-stage-codex-stack': isCodexStackSurface }"
               >
                 <KeepAlive v-if="Component && shouldKeepRouteAlive(routedView)" :max="16">
                   <component :is="Component" @request-shell-navigation="toggleSidebar" />
@@ -192,6 +193,7 @@ const activeNavGroupTitle = computed(() => activeNavGroup.value?.title || text('
 const isChatSurface = computed(() => route.path === '/chat' || route.path.startsWith('/chat/'));
 const isTerminalSurface = computed(() => route.path === '/terminal' || route.path.startsWith('/terminal/'));
 const isFilesSurface = computed(() => route.path === '/files' || route.path.startsWith('/files/'));
+const isCodexStackSurface = computed(() => route.path === '/codex-stack' || route.path.startsWith('/codex-stack/'));
 
 const {
   sidebarCollapsed,

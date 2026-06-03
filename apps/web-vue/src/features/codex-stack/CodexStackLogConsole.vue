@@ -1,28 +1,7 @@
 <template>
   <section class="cs-log-console">
-    <header class="cs-log-guide-panel">
-      <div>
-        <p class="cs-section-kicker">{{ labels.guideLabel }}</p>
-        <h4>{{ labels.guideService }} → {{ labels.guideScope }} → {{ labels.guideRead }}</h4>
-      </div>
-      <ol class="cs-log-guide" :aria-label="labels.guideLabel">
-        <li>
-          <strong>{{ labels.guideService }}</strong>
-          <span>{{ labels.guideServiceCopy }}</span>
-        </li>
-        <li>
-          <strong>{{ labels.guideScope }}</strong>
-          <span>{{ labels.guideScopeCopy }}</span>
-        </li>
-        <li>
-          <strong>{{ labels.guideRead }}</strong>
-          <span>{{ labels.guideReadCopy }}</span>
-        </li>
-      </ol>
-    </header>
     <div class="cs-log-workbench">
-      <section class="cs-log-pane cs-log-service-pane">
-        <p class="cs-section-kicker">{{ labels.targetService }}</p>
+      <section class="cs-log-pane cs-log-service-pane" :aria-label="labels.targetService">
         <div class="cs-log-service-list">
           <button
             v-for="service in services"
@@ -38,8 +17,7 @@
           </button>
         </div>
       </section>
-      <section class="cs-log-pane cs-log-read-pane">
-        <p class="cs-section-kicker">{{ labels.readPerformance }}</p>
+      <section class="cs-log-pane cs-log-read-pane" :aria-label="labels.readPerformance">
         <div class="cs-log-mode-list">
           <button
             v-for="option in options"
@@ -53,7 +31,6 @@
             <span>{{ option.lines }} {{ labels.lines }}</span>
           </button>
         </div>
-        <p class="cs-field-hint">{{ modeHelp }}</p>
         <label class="cs-switch-row cs-log-auto">
           <input
             :checked="autoRefresh"
@@ -63,6 +40,7 @@
           {{ labels.autoRefresh }}
         </label>
         <div class="cs-log-toolbar">
+          <p class="cs-field-hint">{{ modeHelp }}</p>
           <div class="cs-chip-row">
             <span class="cs-info-chip">{{ labels.requested }} {{ requestedLines }}</span>
             <span v-if="meta" class="cs-info-chip">{{ labels.returned }} {{ meta.returnedLines }}</span>
@@ -142,13 +120,6 @@ export interface CodexStackLogLineOption {
 }
 
 export interface CodexStackLogConsoleLabels {
-  guideLabel: string;
-  guideService: string;
-  guideServiceCopy: string;
-  guideScope: string;
-  guideScopeCopy: string;
-  guideRead: string;
-  guideReadCopy: string;
   targetService: string;
   readPerformance: string;
   lines: string;

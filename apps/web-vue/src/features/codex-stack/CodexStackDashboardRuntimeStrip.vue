@@ -1,28 +1,48 @@
 <template>
   <section class="cs-runtime-strip">
-    <div class="cs-runtime-main">
-      <p class="cs-section-kicker">{{ text("控制台", "Console") }}</p>
-      <div class="cs-runtime-status-row">
-        <h3>{{ statusLabel }}</h3>
-        <span class="cs-status-pill" :class="`tone-${statusTone}`">{{ text("当前状态", "Current state") }}</span>
+    <div class="cs-runtime-toolbar">
+      <div class="cs-runtime-identity">
+        <span class="cs-runtime-dot" :class="`tone-${statusTone}`" aria-hidden="true"></span>
+        <div>
+          <h3>{{ statusLabel }}</h3>
+          <small>{{ currentModel || "--" }} · {{ codexRouteLabel }}</small>
+        </div>
       </div>
-      <p class="cs-runtime-copy">
-        {{ text("先看运行状态和推荐动作；健康检查、日志和高级链路保持在浮层或折叠区里。", "Review state and the suggested action first; health checks, logs, and deep chain details stay in floating or collapsed views.") }}
-      </p>
-
-      <div class="cs-runtime-facts" aria-label="Codex Stack facts">
-        <span>{{ text("服务", "Services") }} <strong>{{ activeServiceCount }}/{{ serviceCount }}</strong></span>
-        <span>{{ text("模型", "Model") }} <strong>{{ currentModel || "--" }}</strong></span>
-        <span>{{ text("路径", "Route") }} <strong>{{ codexRouteLabel }}</strong></span>
-        <span>{{ text("上下文", "Context") }} <strong>{{ contextTokensDisplay }}</strong></span>
-        <span>{{ text("渠道", "Channel") }} <strong>{{ channelLabel }}</strong></span>
-        <span>{{ text("检查", "Checked") }} <strong>{{ checkedAtLabel }}</strong></span>
+      <div class="cs-runtime-toolbar-actions">
+        <button type="button" class="primary-button" :disabled="nextActionPrimaryDisabled" @click="$emit('primary')">
+          {{ nextActionButton }}
+        </button>
+        <details class="cs-runtime-more">
+          <summary>{{ text("操作", "Actions") }}</summary>
+          <div class="cs-runtime-more-panel">
+            <button type="button" class="secondary-button" @click="$emit('open-section')">
+              {{ text("打开相关页", "Open related page") }}
+            </button>
+            <button type="button" class="secondary-button" :disabled="busy" @click="$emit('run-check')">
+              {{ text("健康检查", "Health Check") }}
+            </button>
+            <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('repair')">
+              {{ text("自动修复", "Auto Repair") }}
+            </button>
+            <button type="button" class="secondary-button" :disabled="syncDisabled" @click="$emit('sync')">
+              {{ text("同步状态", "Sync") }}
+            </button>
+          </div>
+        </details>
       </div>
     </div>
 
-    <div class="cs-runtime-side">
-      <div class="cs-readiness-strip">
-        <span>{{ text("就绪度", "Readiness") }}</span>
+    <div class="cs-runtime-metrics" aria-label="Codex Stack facts">
+      <span>{{ text("服务", "Services") }} <strong>{{ activeServiceCount }}/{{ serviceCount }}</strong></span>
+      <span>{{ text("上下文", "Context") }} <strong>{{ contextTokensDisplay }}</strong></span>
+      <span>{{ text("渠道", "Channel") }} <strong>{{ channelLabel }}</strong></span>
+      <span>{{ text("模型来源", "Model source") }} <strong>{{ modelSourceLabel }}</strong></span>
+      <span>{{ text("检查", "Checked") }} <strong>{{ checkedAtLabel }}</strong></span>
+    </div>
+
+    <div class="cs-next-action-pane">
+      <div class="cs-next-action-meter">
+        <span>{{ nextActionTitle }}</span>
         <strong>{{ readyComponentCount }}/{{ componentCount }}</strong>
         <progress
           class="cs-readiness-bar"
@@ -32,50 +52,9 @@
         >
           {{ readinessValue }}%
         </progress>
-        <small>
-          {{ issueCount ? text(`${issueCount} 个组件需要处理`, `${issueCount} components need attention`) : text("组件和服务稳定", "Components and services are stable") }}
-        </small>
       </div>
-
-      <div class="cs-next-action-pane">
-        <span class="cs-section-kicker">{{ text("下一步", "Next step") }}</span>
-        <h4>{{ nextActionTitle }}</h4>
-        <p>{{ nextActionCopy }}</p>
-        <div class="cs-runtime-actions">
-          <UButton type="button" color="primary" :disabled="nextActionPrimaryDisabled" @click="$emit('primary')">
-            {{ nextActionButton }}
-          </UButton>
-          <UButton type="button" color="neutral" variant="soft" @click="$emit('open-section')">
-            {{ text("打开页面", "Open Section") }}
-          </UButton>
-        </div>
-        <small v-if="nextActionDisabledHelp" class="cs-disabled-help">{{ nextActionDisabledHelp }}</small>
-      </div>
-    </div>
-
-    <div class="cs-runtime-footer">
-      <div>
-        <span>{{ text("模型来源", "Model source") }}</span>
-        <strong>{{ modelSourceLabel }}</strong>
-        <small>{{ modelSourceHelp }}</small>
-      </div>
-      <div class="cs-model-preview">
-        <span v-for="model in modelCatalogPreview" :key="model">{{ model }}</span>
-      </div>
-      <div class="cs-runtime-actions cs-runtime-actions-secondary">
-        <UButton type="button" color="neutral" variant="soft" :disabled="busy" @click="$emit('run-check')">
-          {{ text("健康检查", "Health Check") }}
-        </UButton>
-        <UButton type="button" color="neutral" variant="soft" :disabled="!canRunMutation" @click="$emit('repair')">
-          {{ text("自动修复", "Auto Repair") }}
-        </UButton>
-        <UButton type="button" color="neutral" variant="ghost" :disabled="syncDisabled" @click="$emit('sync')">
-          {{ text("同步", "Sync") }}
-        </UButton>
-      </div>
-      <small v-if="busy && busyDisabledHelp" class="cs-runtime-footer-help">{{ busyDisabledHelp }}</small>
-      <small v-else-if="!canRunMutation && mutationDisabledHelp" class="cs-runtime-footer-help">{{ mutationDisabledHelp }}</small>
-      <small v-else-if="syncDisabled && syncDisabledHelp" class="cs-runtime-footer-help">{{ syncDisabledHelp }}</small>
+      <p>{{ issueCount ? text(`${issueCount} 个组件待处理`, `${issueCount} components need attention`) : text("链路稳定", "Route stable") }}</p>
+      <small v-if="nextActionDisabledHelp" class="cs-disabled-help">{{ nextActionDisabledHelp }}</small>
     </div>
   </section>
 </template>

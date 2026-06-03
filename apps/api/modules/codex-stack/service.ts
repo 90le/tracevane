@@ -358,12 +358,23 @@ function parseTomlHeader(line: string): { name: string; array: boolean } | null 
   return null;
 }
 
-function parseTomlAssignment(line: string): { key: string; value: string } | null {
+function parseTomlStringArray(valueSource: string): string[] {
+  const trimmed = valueSource.trim();
+  if (!trimmed.startsWith("[") || !trimmed.includes("]")) return [];
+  const body = trimmed.slice(1, trimmed.indexOf("]"));
+  return body.split(",")
+    .map((entry) => parseTomlScalar(entry.trim()))
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseTomlAssignment(line: string): { key: string; value: string; rawValue: string } | null {
   const match = line.match(/^\s*([A-Za-z0-9_.-]+)\s*=\s*(.+?)\s*$/);
   if (!match?.[1] || !match[2]) return null;
   return {
     key: match[1].trim(),
     value: parseTomlScalar(match[2]),
+    rawValue: match[2],
   };
 }
 
@@ -373,6 +384,16 @@ function emptyCcConnectProvider(): CcConnectProvider {
     apiKey: "",
     baseUrl: "",
     codexEnvKey: "",
+    model: "",
+    models: [],
+    agentTypes: [],
+    endpoints: {},
+    agentModels: {},
+    codex: {
+      envKey: "",
+      wireApi: "",
+      httpHeaders: {},
+    },
   };
 }
 
@@ -381,6 +402,7 @@ function emptyCcConnectProject(): CcConnectProject {
     name: "",
     adminFrom: "",
     agentType: "",
+    providerRefs: [],
     agentOptions: {
       workDir: "",
       mode: "",
@@ -406,6 +428,7 @@ function parseCcConnectConfigSource(source: string): CcConnectConfig {
   };
   let currentSection = "";
   let currentProvider: CcConnectProvider | null = null;
+  let currentProviderModel: NonNullable<CcConnectProvider["models"]>[number] | null = null;
   let currentProject: CcConnectProject | null = null;
   let currentPlatform: CcConnectPlatform | null = null;
 
@@ -417,11 +440,21 @@ function parseCcConnectConfigSource(source: string): CcConnectConfig {
       currentSection = header.name;
       if (header.array && header.name === "providers") {
         currentProvider = emptyCcConnectProvider();
+        currentProviderModel = null;
         config.providers.push(currentProvider);
+      } else if (header.array && header.name === "providers.models") {
+        if (!currentProvider) {
+          currentProvider = emptyCcConnectProvider();
+          config.providers.push(currentProvider);
+        }
+        currentProvider.models ||= [];
+        currentProviderModel = { model: "", alias: "" };
+        currentProvider.models.push(currentProviderModel);
       } else if (header.array && header.name === "projects") {
         currentProject = emptyCcConnectProject();
         config.projects.push(currentProject);
         currentPlatform = null;
+        currentProviderModel = null;
       } else if (header.array && header.name === "projects.platforms") {
         if (!currentProject) {
           currentProject = emptyCcConnectProject();
@@ -429,13 +462,16 @@ function parseCcConnectConfigSource(source: string): CcConnectConfig {
         }
         currentPlatform = emptyCcConnectPlatform();
         currentProject.platforms.push(currentPlatform);
+        currentProviderModel = null;
+      } else {
+        currentProviderModel = null;
       }
       continue;
     }
 
     const assignment = parseTomlAssignment(trimmed);
     if (!assignment) continue;
-    const { key, value } = assignment;
+    const { key, value, rawValue } = assignment;
     if (!currentSection && key === "language") {
       config.language = value;
       continue;
@@ -444,7 +480,40 @@ function parseCcConnectConfigSource(source: string): CcConnectConfig {
       if (key === "name") currentProvider.name = value;
       if (key === "api_key") currentProvider.apiKey = value;
       if (key === "base_url") currentProvider.baseUrl = value;
+      if (key === "model") currentProvider.model = value;
+      if (key === "agent_types") currentProvider.agentTypes = parseTomlStringArray(rawValue);
       if (key === "codex_env_key" || key === "codex.env_key") currentProvider.codexEnvKey = value;
+      if (key === "codex.wire_api") {
+        currentProvider.codex ||= {};
+        currentProvider.codex.wireApi = value;
+      }
+      continue;
+    }
+    if (currentSection === "providers.models" && currentProviderModel) {
+      if (key === "model") currentProviderModel.model = value;
+      if (key === "alias") currentProviderModel.alias = value;
+      continue;
+    }
+    if (currentSection === "providers.endpoints" && currentProvider) {
+      currentProvider.endpoints ||= {};
+      currentProvider.endpoints[key] = value;
+      continue;
+    }
+    if (currentSection === "providers.agent_models" && currentProvider) {
+      currentProvider.agentModels ||= {};
+      currentProvider.agentModels[key] = value;
+      continue;
+    }
+    if (currentSection === "providers.codex" && currentProvider) {
+      currentProvider.codex ||= {};
+      if (key === "env_key") currentProvider.codex.envKey = value;
+      if (key === "wire_api") currentProvider.codex.wireApi = value;
+      continue;
+    }
+    if (currentSection === "providers.codex.http_headers" && currentProvider) {
+      currentProvider.codex ||= {};
+      currentProvider.codex.httpHeaders ||= {};
+      currentProvider.codex.httpHeaders[key] = value;
       continue;
     }
     if (currentSection === "projects" && currentProject) {
@@ -454,6 +523,7 @@ function parseCcConnectConfigSource(source: string): CcConnectConfig {
     }
     if (currentSection === "projects.agent" && currentProject) {
       if (key === "type") currentProject.agentType = value;
+      if (key === "provider_refs") currentProject.providerRefs = parseTomlStringArray(rawValue);
       continue;
     }
     if (currentSection === "projects.agent.options" && currentProject) {
@@ -477,14 +547,44 @@ function parseCcConnectConfigSource(source: string): CcConnectConfig {
 function serializeCcConnectProviders(providers: CcConnectProvider[]): string {
   const blocks = providers
     .map((provider) => {
+      const models = (provider.models || []).filter((model) => model.model || model.alias);
+      const agentTypes = (provider.agentTypes || []).map((item) => item.trim()).filter(Boolean);
+      const endpoints = Object.entries(provider.endpoints || {}).filter(([key, value]) => key.trim() && value.trim());
+      const agentModels = Object.entries(provider.agentModels || {}).filter(([key, value]) => key.trim() && value.trim());
+      const codex = provider.codex || {};
+      const codexEnvKey = provider.codexEnvKey || codex.envKey || "";
+      const codexWireApi = codex.wireApi || "";
       const lines = [
         "[[providers]]",
         `name = "${escapeTomlString(provider.name || "")}"`,
         `api_key = "${escapeTomlString(provider.apiKey || "")}"`,
         `base_url = "${escapeTomlString(provider.baseUrl || "")}"`,
-        `codex.env_key = "${escapeTomlString(provider.codexEnvKey || "")}"`,
+        provider.model ? `model = "${escapeTomlString(provider.model)}"` : "",
+        agentTypes.length ? `agent_types = [${agentTypes.map((item) => `"${escapeTomlString(item)}"`).join(", ")}]` : "",
+        `codex.env_key = "${escapeTomlString(codexEnvKey)}"`,
+        codexWireApi ? `codex.wire_api = "${escapeTomlString(codexWireApi)}"` : "",
       ];
-      return lines.join("\n");
+      if (endpoints.length) {
+        lines.push("", "[providers.endpoints]");
+        for (const [key, value] of endpoints) {
+          lines.push(`${key.trim()} = "${escapeTomlString(value.trim())}"`);
+        }
+      }
+      if (agentModels.length) {
+        lines.push("", "[providers.agent_models]");
+        for (const [key, value] of agentModels) {
+          lines.push(`${key.trim()} = "${escapeTomlString(value.trim())}"`);
+        }
+      }
+      for (const model of models) {
+        lines.push(
+          "",
+          "[[providers.models]]",
+          `model = "${escapeTomlString(model.model || "")}"`,
+          model.alias ? `alias = "${escapeTomlString(model.alias)}"` : "",
+        );
+      }
+      return lines.filter((line) => line !== "").join("\n");
     });
   return blocks.join("\n\n").trim();
 }
@@ -498,6 +598,9 @@ function serializeCcConnectProjects(projects: CcConnectProject[]): string {
       "",
       "[projects.agent]",
       `type = "${escapeTomlString(project.agentType || "")}"`,
+      (project.providerRefs || []).length
+        ? `provider_refs = [${(project.providerRefs || []).map((ref) => `"${escapeTomlString(ref)}"`).join(", ")}]`
+        : "",
       "",
       "[projects.agent.options]",
       `work_dir = "${escapeTomlString(project.agentOptions.workDir || "")}"`,
@@ -518,7 +621,7 @@ function serializeCcConnectProjects(projects: CcConnectProject[]): string {
       }
     }
 
-    return lines.join("\n");
+    return lines.filter((line, index, list) => line !== "" || (list[index - 1] !== "" && list[index + 1] !== "")).join("\n");
   });
   return blocks.join("\n\n").trim();
 }
@@ -1681,24 +1784,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const candidates: Array<{ kind: CodexStackInstallerSource["kind"]; root: string }> = [];
     if (configured) candidates.push({ kind: "configured", root: configured });
 
-    const subDir = isDmworkFamily(activeChannel) ? "codex-docs-dmwork" : "codex-docs";
+    const subDir = "codex-docs";
     candidates.push({ kind: "bundled", root: path.join(config.projectRoot, "resources", "codex-stack", subDir) });
     candidates.push({ kind: "development-fallback", root: path.join(config.openclawRoot, "codex-docs") });
 
-    const requiredOfficial = [
+    const required = [
       "resources/scripts/auto-setup.sh",
       "resources/scripts/health-check.sh",
       "resources/scripts/finish-cc-connect-setup.sh",
       "resources/bin/cli-proxy-api",
       "resources/cpa-config-templates/compact-proxy.mjs",
     ];
-    const requiredDmwork = [
-      "resources/scripts/auto-setup.sh",
-      "resources/scripts/health-check.sh",
-      "resources/bin/cli-proxy-api",
-      "resources/cpa-config-templates/compact-proxy.mjs",
-    ];
-    const required = isDmworkFamily(activeChannel) ? requiredDmwork : requiredOfficial;
 
     for (const candidate of candidates) {
       const missing = required.filter((relative) => !pathExists(path.join(candidate.root, relative)));
@@ -2189,6 +2285,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     compactHealthy: boolean;
     codexAuthOk: boolean;
     codexCpaActive: boolean;
+    gateway: CodexStackSummaryPayload["gateway"];
   }): CodexStackComponentSummary[] {
     const currentPaths = paths();
     const serviceById = new Map(params.services.map((service) => [service.id, service]));
@@ -2231,6 +2328,20 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         paths: { script: currentPaths.compactProxy },
       },
       {
+        id: "agent-gateway",
+        label: "Studio Agent Gateway",
+        status: pathExists(currentPaths.compactProxy) && serviceById.get("cpa-compact-proxy.service")?.active && params.gateway.live ? "ok" : "degraded",
+        installed: pathExists(currentPaths.compactProxy),
+        version: params.gateway.serviceName,
+        notes: [
+          params.gateway.protocols.openaiChatCompletions ? "OpenAI Chat" : "",
+          params.gateway.protocols.openaiResponses ? "OpenAI Responses" : "",
+          params.gateway.protocols.openaiResponsesCompact ? "Responses compact" : "",
+          params.gateway.protocols.anthropicMessages ? "Claude Messages" : "",
+        ].filter(Boolean),
+        paths: { status: params.gateway.statusEndpoint, script: currentPaths.compactProxy },
+      },
+      {
         id: "cc-connect",
         label: "cc-connect",
         status: ccConfigExists && detectCcConnectBinding(readText(currentPaths.ccConnectConfig))
@@ -2253,6 +2364,243 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         paths: { unit: "codex-stack-watchdog.timer" },
       },
     ];
+  }
+
+  function gatewayChannelTemplates(projectName = DEFAULT_CC_CONNECT_PROJECT): CodexStackSummaryPayload["gateway"]["channelTemplates"] {
+    return [
+      {
+        id: "dmwork",
+        label: "DMWork",
+        setupCommand: null,
+        requiredOptions: ["bot_token", "api_url", "account_id"],
+        optionalOptions: ["route_tag"],
+      },
+      {
+        id: "octo",
+        label: "Octo",
+        setupCommand: null,
+        requiredOptions: ["bot_token", "api_url", "account_id"],
+        optionalOptions: ["route_tag"],
+      },
+      {
+        id: "feishu",
+        label: "Feishu",
+        setupCommand: `cc-connect feishu setup --project ${projectName}`,
+        requiredOptions: ["app_id", "app_secret"],
+        optionalOptions: ["verification_token", "encrypt_key"],
+      },
+      {
+        id: "weixin",
+        label: "Weixin",
+        setupCommand: `cc-connect weixin setup --project ${projectName}`,
+        requiredOptions: ["app_id"],
+        optionalOptions: ["app_secret", "token", "base_url", "cdn_base_url"],
+      },
+      {
+        id: "wecom",
+        label: "WeCom",
+        setupCommand: null,
+        requiredOptions: ["corp_id", "agent_id", "secret"],
+        optionalOptions: ["api_base_url", "token", "aes_key"],
+      },
+      {
+        id: "telegram",
+        label: "Telegram",
+        setupCommand: null,
+        requiredOptions: ["token"],
+        optionalOptions: ["proxy_url", "allowed_chat_ids"],
+      },
+      {
+        id: "bridge",
+        label: "Bridge",
+        setupCommand: null,
+        requiredOptions: ["url"],
+        optionalOptions: ["token", "headers"],
+      },
+    ];
+  }
+
+  function providerAgentProtocols(provider: CcConnectProvider): string[] {
+    const agentTypes = (provider.agentTypes || []).map((item) => item.trim().toLowerCase()).filter(Boolean);
+    if (!agentTypes.length) return ["openai-responses", "anthropic-messages"];
+    const protocols = new Set<string>();
+    if (agentTypes.some((item) => item === "codex" || item === "opencode" || item === "openai")) protocols.add("openai-responses");
+    if (agentTypes.some((item) => item === "claudecode" || item === "claude" || item === "claude-code")) protocols.add("anthropic-messages");
+    if (!protocols.size) protocols.add("openai-responses");
+    return [...protocols];
+  }
+
+  function listCcConnectSourceDirs(relative: "agent" | "platform"): string[] {
+    const root = path.join(paths().ccConnectSource, relative);
+    try {
+      return fs.readdirSync(root, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+        .map((entry) => entry.name)
+        .sort((left, right) => left.localeCompare(right));
+    } catch {
+      return [];
+    }
+  }
+
+  function buildGatewaySummary(
+    compactPort: number,
+    live: boolean,
+    ccParsed: CcConnectConfig,
+    discoveredModels: string[],
+  ): CodexStackSummaryPayload["gateway"] {
+    const baseUrl = `http://127.0.0.1:${compactPort}`;
+    const projectName = ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT;
+    const channelTemplates = gatewayChannelTemplates(projectName);
+    const ccConnectSourcePath = paths().ccConnectSource;
+    const ccConnectSourceAgentTypes = listCcConnectSourceDirs("agent");
+    const ccConnectSourcePlatforms = listCcConnectSourceDirs("platform");
+    const ccConnectSourceReady = pathExists(ccConnectSourcePath)
+      && ccConnectSourceAgentTypes.includes("codex")
+      && ccConnectSourceAgentTypes.includes("claudecode");
+    const fallbackProvider: CcConnectProvider = {
+      name: "studio-gateway",
+      apiKey: "",
+      baseUrl: `${baseUrl}/v1`,
+      codexEnvKey: "OPENAI_API_KEY",
+      model: discoveredModels[0] || "",
+      models: discoveredModels.map((model) => ({ model })),
+      agentTypes: ["codex", "claudecode"],
+      endpoints: { codex: `${baseUrl}/v1`, claudecode: baseUrl },
+      agentModels: {},
+      codex: { envKey: "OPENAI_API_KEY", wireApi: "responses", httpHeaders: {} },
+    };
+    const routeProviders = ccParsed.providers.length ? ccParsed.providers : [fallbackProvider];
+    const providerRoutes = routeProviders.map((provider) => {
+      const agentTypes = (provider.agentTypes || []).filter(Boolean);
+      const providerModels = (provider.models || []).filter((model) => model.model);
+      const model = provider.model
+        || provider.agentModels?.codex
+        || provider.agentModels?.claudecode
+        || providerModels[0]?.model
+        || discoveredModels[0]
+        || "";
+      const protocols = providerAgentProtocols(provider);
+      return {
+        id: provider.name || "provider",
+        label: provider.name || "provider",
+        baseUrl: provider.endpoints?.codex || provider.baseUrl || `${baseUrl}/v1`,
+        model,
+        protocol: protocols.join(" + "),
+        source: ccParsed.providers.length ? "cc-connect" as const : "gateway-default" as const,
+        agentTypes: agentTypes.length ? agentTypes : ["codex", "claudecode"],
+        modelCount: providerModels.length || (model ? 1 : 0),
+        channelCount: ccParsed.projects.filter((project) => (
+          !project.providerRefs?.length || project.providerRefs.includes(provider.name)
+        )).reduce((total, project) => total + (project.platforms?.length || 0), 0),
+        codexWireApi: provider.codex?.wireApi || null,
+      };
+    });
+    const modelRoutes = routeProviders.flatMap((provider) => {
+      const explicitModels = (provider.models || []).filter((model) => model.model);
+      const models = explicitModels.length
+        ? explicitModels
+        : (provider.model ? [{ model: provider.model }] : discoveredModels.map((model) => ({ model })));
+      return models.map((model) => ({
+        id: `${provider.name || "provider"}:${model.model}`,
+        label: model.model,
+        provider: provider.name || "provider",
+        protocol: providerAgentProtocols(provider).join(" + "),
+        alias: model.alias || null,
+      }));
+    });
+    return {
+      serviceName: "studio-agent-gateway",
+      baseUrl,
+      statusEndpoint: `${baseUrl}/gateway/status`,
+      live,
+      protocols: {
+        openaiChatCompletions: true,
+        openaiResponses: true,
+        openaiResponsesCompact: true,
+        anthropicMessages: true,
+        anthropicMessagesStreaming: true,
+      },
+      protocolCatalog: [
+        {
+          id: "openai-chat-completions",
+          label: "OpenAI Chat Completions",
+          endpoint: "/v1/chat/completions",
+          upstream: "CPA /v1/chat/completions",
+          adapter: "passthrough",
+          streaming: true,
+          clients: ["cc-connect", "OpenAI SDK"],
+        },
+        {
+          id: "openai-responses",
+          label: "OpenAI Responses",
+          endpoint: "/v1/responses",
+          upstream: "OpenAI Chat Completions",
+          adapter: "chat-adapter",
+          streaming: true,
+          clients: ["Codex CLI"],
+        },
+        {
+          id: "openai-responses-compact",
+          label: "Responses Compact",
+          endpoint: "/v1/responses/compact",
+          upstream: "OpenAI Chat Completions",
+          adapter: "local-compact",
+          streaming: false,
+          clients: ["Codex CLI compaction"],
+        },
+        {
+          id: "anthropic-messages",
+          label: "Claude Messages",
+          endpoint: "/v1/messages",
+          upstream: "OpenAI Chat Completions",
+          adapter: "chat-adapter",
+          streaming: true,
+          clients: ["Claude CLI", "Claude Code"],
+        },
+      ],
+      clientAdapters: [
+        {
+          id: "codex-cli",
+          label: "Codex CLI",
+          protocol: "openai-responses",
+          baseUrl: `${baseUrl}/v1`,
+          authEnv: "OPENAI_API_KEY",
+          modelEnv: "CODEX_MODEL",
+          notes: ["wire_api=responses", "supports_websockets=false"],
+        },
+        {
+          id: "claude-cli",
+          label: "Claude CLI",
+          protocol: "anthropic-messages",
+          baseUrl,
+          authEnv: "ANTHROPIC_AUTH_TOKEN",
+          modelEnv: "ANTHROPIC_MODEL",
+          notes: ["uses /v1/messages", "streams Anthropic SSE events"],
+        },
+        {
+          id: "cc-connect",
+          label: "cc-connect",
+          protocol: "provider-router",
+          baseUrl: `${baseUrl}/v1`,
+          authEnv: "OPENAI_API_KEY",
+          modelEnv: "project.agent.options.model",
+          notes: ["supports provider refs", "supports multi-platform projects"],
+        },
+      ],
+      providerRoutes,
+      modelRoutes,
+      channelTemplates,
+      integrations: {
+        codexCliBaseUrl: `${baseUrl}/v1`,
+        claudeCliBaseUrl: baseUrl,
+        ccConnectProviderBaseUrl: `${baseUrl}/v1`,
+        ccConnectSourcePath: ccConnectSourceReady ? ccConnectSourcePath : (pathExists(ccConnectSourcePath) ? ccConnectSourcePath : null),
+        ccConnectSourceReady,
+        ccConnectSourceAgentTypes,
+        ccConnectSourcePlatforms,
+        channelSurfaces: channelTemplates.map((channel) => channel.id),
+      },
+    };
   }
 
   function classifyOverall(components: CodexStackComponentSummary[], jobs: CodexStackJob[], ccBindingPresent: boolean): CodexStackStatus {
@@ -2430,7 +2778,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const expectedCcProviderBaseUrl = `http://127.0.0.1:${params.compactPort}/v1`;
     const cpaProvider = params.ccParsed.providers.find((provider) => provider.name === "cpa");
     const cpaProviderBaseOk = normalizeCcConnectBaseUrl(cpaProvider?.baseUrl || "") === expectedCcProviderBaseUrl;
-    const cpaProviderEnvOk = !cpaProvider?.codexEnvKey || cpaProvider.codexEnvKey === "OPENAI_API_KEY";
+    const cpaProviderEnvKey = cpaProvider?.codexEnvKey || cpaProvider?.codex?.envKey || "";
+    const cpaProviderEnvOk = !cpaProviderEnvKey || cpaProviderEnvKey === "OPENAI_API_KEY";
     const smokeMatrix = params.profile.lastSmokeMatrix;
     const targetModel = normalizeString(params.targetModel);
     const smokeFresh = Boolean(targetModel) && isSmokeMatrixFreshAndComplete(smokeMatrix, targetModel);
@@ -2778,6 +3127,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ),
     ]);
     const compactHealthy = modelDiscovery.live;
+    const gateway = buildGatewaySummary(compactPort, compactHealthy, ccParsed, modelDiscovery.available);
     const selectedDefaultModel = chooseDefaultModel(modelDiscovery.available, configuredModel, openclawDefaultModel);
     const cpaTargetModel = chooseCpaAttachModel(currentModel, profile.defaultModel, openclawDefaultModel);
     const ccBindingPresent = detectCcConnectBinding(ccConfig);
@@ -2790,6 +3140,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       compactHealthy,
       codexAuthOk: pathExists(currentPaths.codexAuth) && codexAuthMatches === true,
       codexCpaActive,
+      gateway,
     });
     const warnings: string[] = [];
     const installer = resolveInstallerSource();
@@ -2814,8 +3165,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       if (cpaProvider?.baseUrl && normalizeCcConnectBaseUrl(cpaProvider.baseUrl) !== expectedCcProviderBaseUrl) {
         warnings.push(`cc-connect cpa provider base_url (${cpaProvider.baseUrl}) does not match local Compact ${expectedCcProviderBaseUrl}; cc-connect Codex agents may bypass the verified CPA/Compact chain.`);
       }
-      if (cpaProvider?.codexEnvKey && cpaProvider.codexEnvKey !== "OPENAI_API_KEY") {
-        warnings.push(`cc-connect cpa provider codex.env_key is ${cpaProvider.codexEnvKey}; Codex agents should receive OPENAI_API_KEY for the local Compact provider.`);
+      const cpaProviderEnvKey = cpaProvider?.codexEnvKey || cpaProvider?.codex?.envKey || "";
+      if (cpaProviderEnvKey && cpaProviderEnvKey !== "OPENAI_API_KEY") {
+        warnings.push(`cc-connect cpa provider codex.env_key is ${cpaProviderEnvKey}; Codex agents should receive OPENAI_API_KEY for the local Compact provider.`);
       }
     }
     {
@@ -2910,6 +3262,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         cpaTargetModel,
         officialModel: GPT_55_MODEL,
       },
+      gateway,
       context: {
         mode: context.mode,
         tokens: context.tokens,
@@ -3514,10 +3867,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       );
     }
     requireNoActiveJob();
-    if ((action === "start" || action === "restart") && serviceId === "cpa-compact-proxy.service") {
+    if ((action === "start" || action === "restart" || action === "enable") && serviceId === "cpa-compact-proxy.service") {
       await requireActiveUnitForServiceAction("cli-proxy-api.service", "Start or resume CPA before starting Compact Proxy.");
     }
-    const result = await execText("systemctl", ["--user", action, serviceId], { timeout: 30_000 });
+    const systemctlArgs = action === "enable"
+      ? ["--user", "enable", "--now", serviceId]
+      : ["--user", action, serviceId];
+    const result = await execText("systemctl", systemctlArgs, { timeout: 30_000 });
     if (!result.ok) {
       throw new CodexStackServiceError("codex_stack_service_action_failed", redact(result.output || `systemctl ${action} failed`), 500);
     }

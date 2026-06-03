@@ -1,58 +1,189 @@
 /* Migrated Codex Stack workspace rules from global style.css. Keep Codex Stack chrome in feature CSS. */
 
+.codex-stack-page {
+  --cs-doc-ink: #0f172a;
+  --cs-doc-muted: #475569;
+  --cs-doc-soft: #f8fafc;
+  --cs-doc-soft-2: #eef3f8;
+  --cs-doc-line: #d8e2ef;
+  --cs-doc-blue: #2563eb;
+  --cs-doc-blue-dark: #1d4ed8;
+  --cs-doc-paper: #ffffff;
+  --cs-doc-panel: #fbfdff;
+  --cs-doc-success: #0f766e;
+  --cs-doc-warm: #b45309;
+  --cs-doc-danger: #be123c;
+  --cs-status-sage-bg: #f0fdfa;
+  --cs-status-sage-border: #99f6e4;
+  --cs-status-sage-text: #0f766e;
+  --cs-status-accent-bg: #eff6ff;
+  --cs-status-accent-border: #bfdbfe;
+  --cs-status-accent-text: #1d4ed8;
+  --cs-status-danger-bg: #fff1f2;
+  --cs-status-danger-border: #fecdd3;
+  --cs-status-danger-text: #be123c;
+  --cs-status-neutral-bg: #f8fafc;
+  --cs-status-neutral-border: #d8e2ef;
+  --cs-status-neutral-text: #475569;
+  --cs-doc-hero-a: rgba(15, 23, 42, 0.98);
+  --cs-doc-hero-b: rgba(30, 64, 175, 0.9);
+  --cs-doc-hero-glow: rgba(94, 234, 212, 0.26);
+  --cs-doc-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+  --cs-doc-subtle-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  --cs-terminal-bg: #0c1220;
+  --cs-terminal-line: rgba(148, 163, 184, 0.22);
+  --cs-terminal-text: #dbeafe;
+}
+
+html[data-theme="dark"] .codex-stack-page {
+  --cs-doc-ink: #f8fafc;
+  --cs-doc-muted: #a7b3c5;
+  --cs-doc-soft: #101820;
+  --cs-doc-soft-2: #0b1117;
+  --cs-doc-line: rgba(226, 232, 240, 0.14);
+  --cs-doc-blue: #7dd3fc;
+  --cs-doc-blue-dark: #38bdf8;
+  --cs-doc-paper: #0f1720;
+  --cs-doc-panel: #121c26;
+  --cs-doc-success: #5eead4;
+  --cs-doc-warm: #f6c177;
+  --cs-doc-danger: #ff8f9a;
+  --cs-status-sage-bg: color-mix(in srgb, var(--cs-doc-success) 12%, var(--cs-doc-paper));
+  --cs-status-sage-border: color-mix(in srgb, var(--cs-doc-success) 42%, var(--cs-doc-line));
+  --cs-status-sage-text: var(--cs-doc-success);
+  --cs-status-accent-bg: color-mix(in srgb, var(--cs-doc-blue) 12%, var(--cs-doc-paper));
+  --cs-status-accent-border: color-mix(in srgb, var(--cs-doc-blue) 42%, var(--cs-doc-line));
+  --cs-status-accent-text: var(--cs-doc-blue);
+  --cs-status-danger-bg: color-mix(in srgb, var(--cs-doc-danger) 12%, var(--cs-doc-paper));
+  --cs-status-danger-border: color-mix(in srgb, var(--cs-doc-danger) 42%, var(--cs-doc-line));
+  --cs-status-danger-text: var(--cs-doc-danger);
+  --cs-status-neutral-bg: color-mix(in srgb, var(--cs-doc-panel) 74%, transparent);
+  --cs-status-neutral-border: var(--cs-doc-line);
+  --cs-status-neutral-text: var(--cs-doc-muted);
+  --cs-doc-hero-a: rgba(4, 9, 15, 0.98);
+  --cs-doc-hero-b: rgba(14, 36, 60, 0.94);
+  --cs-doc-hero-glow: rgba(125, 211, 252, 0.18);
+  --cs-doc-shadow: 0 18px 42px rgba(0, 0, 0, 0.3);
+  --cs-doc-subtle-shadow: none;
+  --cs-terminal-bg: #050914;
+  --cs-terminal-line: rgba(226, 232, 240, 0.14);
+  --cs-terminal-text: #d9e7ff;
+}
+
+.main-content.codex-stack-surface-route {
+  padding: 12px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, var(--cs-doc-soft-2) 0, var(--cs-doc-soft) 430px, var(--cs-doc-soft-2) 100%),
+    var(--cs-doc-soft-2);
+}
+
+.main-content.codex-stack-surface-route .shell-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+.main-content.codex-stack-surface-route .shell-main-stage {
+  grid-template-rows: minmax(0, 1fr);
+  align-content: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  gap: 0;
+}
+
+.main-content.codex-stack-surface-route .shell-route-stage {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  align-content: stretch;
+}
+
+.main-content.codex-stack-surface-route .shell-route-stage > * {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+
+body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-tooltip {
+  display: none;
+}
+
 .cs-surface {
   min-width: 0;
   padding: 18px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-raised) 42%, var(--surface-base));
-  box-shadow: none;
-}
-
-html[data-theme="light"] .cs-surface {
-  background: var(--surface-base);
-  border-color: var(--line);
-}
-
-.cs-dashboard-runtime-strip,
-.cs-install-command-pane,
-.cs-repair-board {
-  border: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  border-left: 2px solid color-mix(in srgb, var(--accent-primary) 65%, transparent);
-  border-radius: 0;
-  padding: 14px 16px 14px 18px;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--accent-primary) 9%, transparent), transparent 58%),
-    transparent;
-  box-shadow: none;
-  backdrop-filter: none;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 10px;
+  background: var(--cs-doc-paper);
+  box-shadow: var(--cs-doc-subtle-shadow);
 }
 
 .cs-repair-step,
 .cs-component-mode-row {
   border: 0;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--cs-doc-line);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
 .codex-stack-page {
-  gap: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+.main-content.codex-stack-surface-route .codex-stack-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .cs-workbench-frame {
   container: cs-workbench / inline-size;
-  border-top: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
-  padding-top: 14px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0 0 12px 12px;
+  background: var(--cs-doc-paper);
+  box-shadow: none;
 }
 
 .cs-workspace {
-  display: grid;
-  grid-template-columns: minmax(236px, 292px) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  align-items: stretch;
 }
 
 .cs-content {
@@ -60,20 +191,21 @@ html[data-theme="light"] .cs-surface {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  gap: 18px;
+  gap: 12px;
+  overflow: auto;
+  padding: 14px clamp(16px, 2.6vw, 34px) 34px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--cs-doc-soft) 68%, transparent), var(--cs-doc-paper) 180px),
+    var(--cs-doc-paper);
 }
 
 .cs-section-stack {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: 18px;
-}
-
-.cs-responsive-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 12px;
+  width: min(100%, 1480px);
+  margin: 0 auto;
 }
 
 .cs-loading-state {
@@ -83,13 +215,11 @@ html[data-theme="light"] .cs-surface {
   align-items: center;
   padding: 20px 22px 20px 54px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
-  border-radius: 16px;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--surface-raised) 62%, transparent), color-mix(in srgb, var(--surface-base) 24%, transparent)),
-    color-mix(in srgb, var(--surface-base) 52%, transparent);
-  color: var(--text-soft);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface-base) 12%, transparent);
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 8px;
+  background: var(--cs-doc-panel);
+  color: var(--cs-doc-muted);
+  box-shadow: none;
 }
 
 .cs-loading-state::before {
@@ -98,8 +228,8 @@ html[data-theme="light"] .cs-surface {
   left: 22px;
   width: 14px;
   height: 14px;
-  border: 2px solid color-mix(in srgb, var(--acc) 28%, transparent);
-  border-top-color: color-mix(in srgb, var(--acc) 82%, var(--surface-base) 4%);
+  border: 2px solid color-mix(in srgb, var(--cs-doc-blue) 28%, transparent);
+  border-top-color: var(--cs-doc-blue);
   border-radius: 999px;
   animation: csSpin 0.9s linear infinite;
 }
@@ -111,13 +241,11 @@ html[data-theme="light"] .cs-surface {
   gap: 18px;
   align-items: center;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--warning) 32%, var(--line));
-  border-radius: 18px;
-  padding: 18px 20px 18px 24px;
-  background:
-    radial-gradient(circle at 0% 50%, color-mix(in srgb, var(--warning) 12%, transparent), transparent 42%),
-    color-mix(in srgb, var(--surface-base) 58%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface-base) 12%, transparent);
+  border: 1px solid var(--cs-status-accent-border);
+  border-radius: 0;
+  padding: 12px 14px 12px 22px;
+  background: var(--cs-status-accent-bg);
+  box-shadow: none;
 }
 
 .cs-management-lock-rail::before {
@@ -126,7 +254,7 @@ html[data-theme="light"] .cs-surface {
   inset: 12px auto 12px 10px;
   width: 3px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--warning) 72%, var(--muted));
+  background: var(--cs-status-accent-text);
 }
 
 .cs-management-lock-rail h3 {
@@ -134,7 +262,7 @@ html[data-theme="light"] .cs-surface {
 }
 
 .cs-management-lock-rail p {
-  color: var(--text-soft);
+  color: var(--cs-doc-muted);
 }
 
 .cs-lock-actions {
@@ -152,11 +280,12 @@ html[data-theme="light"] .cs-surface {
   gap: 6px 16px;
   align-items: center;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  border-radius: 16px;
-  padding: 12px 14px 12px 18px;
-  background: var(--surface-base);
-  box-shadow: var(--mono-shadow-sm, none);
+  border: 1px solid var(--cs-doc-line);
+  border-width: 0 0 1px;
+  border-radius: 0;
+  padding: 8px 12px 8px 16px;
+  background: var(--cs-doc-paper);
+  box-shadow: none;
 }
 
 .cs-workspace-focus::before,
@@ -166,12 +295,12 @@ html[data-theme="light"] .cs-surface {
   inset: 10px auto 10px 8px;
   width: 3px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 44%, transparent);
+  background: var(--cs-status-neutral-text);
 }
 
 .cs-workspace-focus span,
 .cs-workspace-draft-guard span {
-  color: var(--muted);
+  color: var(--cs-doc-muted);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -180,7 +309,7 @@ html[data-theme="light"] .cs-surface {
 
 .cs-workspace-focus strong,
 .cs-workspace-draft-guard strong {
-  color: var(--text);
+  color: var(--cs-doc-ink);
   font-size: 0.98rem;
 }
 
@@ -188,46 +317,76 @@ html[data-theme="light"] .cs-surface {
 .cs-workspace-draft-guard p {
   grid-column: 2;
   margin: 0;
-  color: var(--text-soft);
+  color: var(--cs-doc-muted);
   line-height: 1.45;
   text-wrap: pretty;
 }
 
 .cs-workspace-focus.tone-sage,
 .cs-workspace-draft-guard.tone-sage {
-  border-color: color-mix(in srgb, var(--success) 38%, var(--line));
+  border-color: var(--cs-status-sage-border);
 }
 
 .cs-workspace-focus.tone-sage::before,
 .cs-workspace-draft-guard.tone-sage::before {
-  background: color-mix(in srgb, var(--success) 70%, var(--muted));
+  background: var(--cs-status-sage-text);
 }
 
 .cs-workspace-focus.tone-accent,
 .cs-workspace-draft-guard.tone-accent {
-  border-color: color-mix(in srgb, var(--acc) 38%, var(--line));
+  border-color: var(--cs-status-accent-border);
 }
 
 .cs-workspace-focus.tone-accent::before,
 .cs-workspace-draft-guard.tone-accent::before {
-  background: color-mix(in srgb, var(--acc) 70%, var(--muted));
+  background: var(--cs-status-accent-text);
 }
 
 .cs-workspace-focus.tone-danger,
 .cs-workspace-draft-guard.tone-danger {
-  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+  border-color: var(--cs-status-danger-border);
 }
 
 .cs-workspace-focus.tone-danger::before,
 .cs-workspace-draft-guard.tone-danger::before {
-  background: color-mix(in srgb, var(--danger) 70%, var(--muted));
+  background: var(--cs-status-danger-text);
 }
 
-.cs-page-subtitle {
-  max-width: 980px;
-  margin: 6px 0 0;
-  color: var(--text-soft);
-  text-wrap: pretty;
+.cs-page-header {
+  min-height: 0;
+  align-items: center;
+  border: 1px solid var(--cs-doc-line);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  padding: 14px clamp(18px, 3vw, 40px);
+  color: var(--cs-doc-ink);
+  background:
+    linear-gradient(135deg, var(--cs-doc-paper), color-mix(in srgb, var(--cs-doc-soft) 78%, var(--cs-doc-paper)));
+  box-shadow: none;
+}
+
+.cs-page-header::before {
+  display: none;
+}
+
+.cs-page-header .eyebrow {
+  display: inline-flex;
+  width: fit-content;
+  margin: 0 0 5px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--cs-doc-blue-dark);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  font-weight: 780;
+}
+
+.cs-page-header .page-title {
+  margin: 0;
+  color: var(--cs-doc-ink);
+  font-size: clamp(1.34rem, 1.9vw, 1.78rem);
+  line-height: 1.12;
 }
 
 .page-actions {
@@ -237,53 +396,73 @@ html[data-theme="light"] .cs-surface {
   gap: 8px;
 }
 
+.cs-page-header .secondary-button {
+  border-color: var(--cs-doc-line);
+  background: var(--cs-doc-paper);
+  color: var(--cs-doc-ink);
+}
+
+.cs-page-header .secondary-button:hover {
+  border-color: color-mix(in srgb, var(--cs-doc-blue) 48%, var(--cs-doc-line));
+  background: color-mix(in srgb, var(--cs-doc-blue) 10%, var(--cs-doc-paper));
+}
+
 .page-actions .cs-disabled-help {
   max-width: 280px;
   text-align: right;
 }
 
-.cs-stack-task-nav {
-  position: sticky;
-  top: 14px;
-  display: grid;
-  gap: 6px;
+.cs-stack-task-bar {
+  min-width: 0;
+  min-height: 48px;
   overflow: hidden;
-  scrollbar-width: thin;
-  padding: 6px;
-  border: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
-  border-radius: 12px;
-  background: var(--surface-raised);
-  box-shadow: var(--mono-shadow-sm, none);
-  backdrop-filter: none;
+  border-bottom: 1px solid var(--cs-doc-line);
+  background: linear-gradient(180deg, var(--cs-doc-soft), var(--cs-doc-soft-2));
 }
 
-.cs-stack-task-nav::before {
-  display: none;
+.cs-stack-task-nav {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 48px;
+  overflow-y: auto;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 7px clamp(18px, 3vw, 42px);
+  border: 0;
+  border-right: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .cs-stack-task-step {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, max-content) auto;
+  place-items: stretch;
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  gap: 6px;
+  width: auto;
+  height: 34px;
   min-width: 0;
   border: 1px solid transparent;
-  border-radius: 12px;
-  padding: 9px 10px;
+  border-radius: 7px;
+  padding: 0 11px;
   background: transparent;
-  color: var(--muted);
+  color: var(--cs-doc-muted);
   cursor: pointer;
   transition:
     background 180ms ease,
     border-color 180ms ease,
-    color 180ms ease,
-    transform 180ms ease;
+    color 180ms ease;
 }
 
 .cs-stack-task-step svg {
-  width: 19px;
-  height: 19px;
+  width: 15px;
+  height: 15px;
   fill: currentColor;
 }
 
@@ -294,9 +473,12 @@ html[data-theme="light"] .cs-surface {
 }
 
 .cs-task-copy {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: hidden;
+  clip: auto;
+  white-space: nowrap;
 }
 
 .cs-task-label-row {
@@ -314,34 +496,24 @@ html[data-theme="light"] .cs-surface {
 }
 
 .cs-task-copy small {
-  color: var(--text-soft);
-  font-size: 0.72rem;
+  display: none;
 }
 
 .cs-task-recommended {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 6px;
-  border-color: color-mix(in srgb, var(--acc) 38%, var(--line));
-  background: color-mix(in srgb, var(--acc) 9%, transparent);
-  color: var(--acc);
-  font-size: 0.68rem;
-  line-height: 1.15;
-  white-space: nowrap;
+  display: none;
 }
 
 .cs-task-badge {
+  position: static;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 6px;
-  color: var(--text-soft);
+  min-width: 18px;
+  height: 18px;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 6px;
+  padding: 0;
+  color: var(--cs-doc-muted);
   font-size: 0.68rem;
   line-height: 1.15;
   white-space: nowrap;
@@ -349,18 +521,13 @@ html[data-theme="light"] .cs-surface {
 
 .cs-stack-task-step:hover,
 .cs-stack-task-step-active {
-  border-color: color-mix(in srgb, var(--acc) 34%, var(--line));
-  background: color-mix(in srgb, var(--acc) 10%, var(--surface-base));
-  color: var(--text);
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--cs-doc-blue) 32%, var(--cs-doc-line));
+  background: color-mix(in srgb, var(--cs-doc-blue) 13%, var(--cs-doc-paper));
+  color: var(--cs-doc-ink);
 }
 
 .cs-log-console .cs-section-kicker {
   margin-bottom: 6px;
-}
-
-.cs-section-copy {
-  text-wrap: pretty;
 }
 
 .cs-chip-row {
@@ -370,10 +537,10 @@ html[data-theme="light"] .cs-surface {
 .cs-install-options-panel,
 .cs-dashboard-details-panel {
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: var(--radius-lg);
-  background: var(--surface-base);
-  box-shadow: var(--mono-shadow-sm, none);
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 12px;
+  background: var(--cs-doc-paper);
+  box-shadow: none;
 }
 
 .cs-install-options-panel summary,
@@ -382,9 +549,9 @@ html[data-theme="light"] .cs-surface {
   gap: 8px 14px;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: 10px 12px;
   cursor: pointer;
-  color: var(--text);
+  color: var(--cs-doc-ink);
   font-weight: 700;
   transition:
     background 180ms ease,
@@ -393,12 +560,12 @@ html[data-theme="light"] .cs-surface {
 
 .cs-install-options-panel summary:hover,
 .cs-dashboard-details-panel summary:hover {
-  background: color-mix(in srgb, var(--accent-soft) 26%, transparent);
+  background: color-mix(in srgb, var(--cs-doc-blue) 8%, var(--cs-doc-paper));
 }
 
 .cs-install-options-panel summary small,
 .cs-dashboard-details-panel summary small {
-  color: var(--text-soft);
+  color: var(--cs-doc-muted);
   font-size: 0.84rem;
   font-weight: 500;
   line-height: 1.4;
@@ -417,9 +584,9 @@ html[data-theme="light"] .cs-surface {
 .cs-dashboard-details-body {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  border-top: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  padding: 18px;
+  gap: 0;
+  border-top: 1px solid var(--cs-doc-line);
+  padding: 0;
 }
 
 .cs-job-banner {
@@ -427,31 +594,31 @@ html[data-theme="light"] .cs-surface {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+  border-color: var(--cs-doc-line);
 }
 
 .cs-job-banner-live {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 30%, transparent);
+  box-shadow: inset 0 0 0 1px var(--cs-status-accent-border);
 }
 
 .cs-job-banner-ok {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 34%, transparent);
+  box-shadow: inset 0 0 0 1px var(--cs-status-sage-border);
 }
 
 .cs-job-banner-fail {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 34%, transparent);
+  box-shadow: inset 0 0 0 1px var(--cs-status-danger-border);
 }
 
 .cs-job-eyebrow {
   margin: 0 0 6px;
-  color: var(--muted);
+  color: var(--cs-doc-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.72rem;
 }
 
 .cs-job-meta {
-  color: var(--text-soft);
+  color: var(--cs-doc-muted);
 }
 
 .cs-job-actions {
@@ -475,25 +642,18 @@ html[data-theme="light"] .cs-surface {
   display: grid;
   gap: 13px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  border-radius: 22px;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 8px;
   padding: 16px;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--surface-base) 78%, transparent), color-mix(in srgb, var(--code-bg) 22%, transparent)),
-    var(--surface-base);
-  box-shadow:
-    var(--mono-shadow-md, var(--shadow-soft)),
-    inset 0 1px 0 color-mix(in srgb, var(--surface-base) 15%, transparent);
+  background: var(--cs-doc-paper);
+  box-shadow: none;
   backdrop-filter: none;
 }
 
 .cs-job-progress-dock .cs-job-console {
   width: 100%;
   max-height: inherit;
-  box-shadow:
-    var(--mono-shadow-md, var(--shadow-soft)),
-    0 0 0 1px color-mix(in srgb, var(--acc) 10%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--surface-base) 16%, transparent);
+  box-shadow: none;
 }
 
 .cs-job-output-sheet {
@@ -516,11 +676,11 @@ html[data-theme="light"] .cs-surface {
   align-items: center;
   justify-content: center;
   min-height: 30px;
-  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border: 1px solid var(--cs-doc-line);
   border-radius: 999px;
   padding: 6px 12px;
-  color: var(--text);
-  background: color-mix(in srgb, var(--surface-base) 72%, transparent);
+  color: var(--cs-doc-ink);
+  background: var(--cs-doc-panel);
   font-size: 0.82rem;
   font-weight: 700;
   white-space: nowrap;
@@ -541,21 +701,21 @@ html[data-theme="light"] .cs-surface {
 }
 
 .cs-progress-running {
-  background: var(--acc);
-  color: var(--button-primary-text);
+  background: var(--cs-doc-blue);
+  color: #fff;
   border-color: transparent;
   animation: csPulse 1.5s infinite;
 }
 
 .cs-progress-ok {
-  background: var(--success);
-  color: var(--button-primary-text);
+  background: var(--cs-status-sage-text);
+  color: #fff;
   border-color: transparent;
 }
 
 .cs-progress-fail {
-  background: var(--danger);
-  color: var(--button-primary-text);
+  background: var(--cs-status-danger-text);
+  color: #fff;
   border-color: transparent;
 }
 
@@ -566,7 +726,7 @@ html[data-theme="light"] .cs-surface {
   padding: 12px 14px;
   border: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--cs-terminal-text);
   white-space: pre-wrap;
   line-height: 1.55;
   margin: 0;
@@ -574,11 +734,9 @@ html[data-theme="light"] .cs-surface {
 
 .cs-progress-log-shell {
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
-  border-radius: 16px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-base) 5%, transparent), transparent 22%),
-    var(--code-bg);
+  border: 1px solid var(--cs-terminal-line);
+  border-radius: 8px;
+  background: var(--cs-terminal-bg);
 }
 
 .cs-progress-log-bar {
@@ -586,9 +744,9 @@ html[data-theme="light"] .cs-surface {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-bottom: 1px solid var(--cs-terminal-line);
   padding: 9px 12px;
-  color: var(--muted);
+  color: var(--cs-terminal-text);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -602,8 +760,8 @@ html[data-theme="light"] .cs-surface {
   overflow: hidden;
   margin: 12px 0;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  background: color-mix(in srgb, var(--code-bg) 58%, transparent);
+  border: 1px solid var(--cs-terminal-line);
+  background: color-mix(in srgb, var(--cs-terminal-bg) 70%, transparent);
   appearance: none;
 }
 
@@ -614,66 +772,70 @@ html[data-theme="light"] .cs-surface {
 
 .cs-job-progress-track::-webkit-progress-value {
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--acc), color-mix(in srgb, var(--success) 72%, var(--acc)));
+  background: var(--cs-doc-blue);
   transition: inline-size 0.28s ease;
 }
 
 .cs-job-progress-track::-moz-progress-bar {
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--acc), color-mix(in srgb, var(--success) 72%, var(--acc)));
+  background: var(--cs-doc-blue);
 }
 
 .cs-job-step-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--cs-doc-line);
   margin-bottom: 12px;
 }
 
 .cs-job-step {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 8px 10px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+  border: 0;
+  border-radius: 0;
+  padding: 6px 8px;
+  color: var(--cs-doc-muted);
+  background: var(--cs-doc-paper);
   font-size: 0.82rem;
 }
 
 .cs-job-step-done {
-  color: color-mix(in srgb, var(--success) 72%, var(--text));
-  border-color: color-mix(in srgb, var(--success) 48%, var(--line));
-  background: color-mix(in srgb, var(--success) 14%, var(--surface-base));
+  color: var(--cs-status-sage-text);
+  border-color: var(--cs-status-sage-border);
+  background: var(--cs-status-sage-bg);
 }
 
 .cs-job-step-active {
-  color: color-mix(in srgb, var(--acc) 72%, var(--text));
-  border-color: color-mix(in srgb, var(--acc) 48%, var(--line));
-  background: color-mix(in srgb, var(--acc) 14%, var(--surface-base));
+  color: var(--cs-status-accent-text);
+  border-color: var(--cs-status-accent-border);
+  background: var(--cs-status-accent-bg);
   font-weight: 700;
 }
 
 .cs-job-step-failed {
-  color: color-mix(in srgb, var(--danger) 74%, var(--text));
-  border-color: color-mix(in srgb, var(--danger) 50%, var(--line));
-  background: color-mix(in srgb, var(--danger) 14%, var(--surface-base));
+  color: var(--cs-status-danger-text);
+  border-color: var(--cs-status-danger-border);
+  background: var(--cs-status-danger-bg);
   font-weight: 700;
 }
 
 .cs-result-ok {
-  border-color: color-mix(in srgb, var(--success) 38%, var(--line));
+  border-color: var(--cs-status-sage-border);
 }
 
 .cs-result-fail {
-  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+  border-color: var(--cs-status-danger-border);
 }
 
 .cs-diagnostics-panel {
   display: grid;
-  gap: 12px;
+  gap: 0;
+  padding: 10px 12px;
 }
 
 .cs-diagnostics-panel .cs-card-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -685,24 +847,26 @@ html[data-theme="light"] .cs-surface {
 
 .cs-diagnostics-panel .cs-field-hint {
   margin: 0;
-  color: var(--text-soft);
+  color: var(--cs-doc-muted);
   line-height: 1.45;
 }
 
 .cs-warning-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--cs-status-accent-border);
 }
 
 .cs-warning-row {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--line));
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 0;
+  background: var(--cs-status-accent-bg);
 }
 
 .cs-warning-icon {
@@ -711,9 +875,9 @@ html[data-theme="light"] .cs-surface {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--warning) 18%, transparent);
-  color: var(--warning);
+  border-radius: 4px;
+  background: var(--cs-status-accent-bg);
+  color: var(--cs-status-accent-text);
   font-weight: 700;
   flex: 0 0 auto;
 }
@@ -726,9 +890,7 @@ html[data-theme="light"] .cs-surface {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background:
-    radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--acc) 18%, transparent), transparent 28%),
-    var(--modal-backdrop);
+  background: rgba(15, 23, 42, 0.48);
   backdrop-filter: none;
 }
 
@@ -739,15 +901,11 @@ html[data-theme="light"] .cs-surface {
   flex-direction: column;
   gap: 14px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
-  border-radius: 24px;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 12px;
   padding: 18px;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--surface-base) 80%, transparent), color-mix(in srgb, var(--code-bg) 18%, transparent)),
-    var(--surface-base);
-  box-shadow:
-    var(--modal-shadow),
-    inset 0 1px 0 color-mix(in srgb, var(--surface-base) 14%, transparent);
+  background: var(--cs-doc-paper);
+  box-shadow: var(--cs-doc-shadow);
   backdrop-filter: none;
 }
 
@@ -772,7 +930,7 @@ html[data-theme="light"] .cs-surface {
 
 .cs-check-hint {
   margin: 0;
-  color: var(--text-soft);
+  color: var(--cs-doc-muted);
   font-size: 0.9rem;
   line-height: 1.45;
 }
@@ -780,11 +938,9 @@ html[data-theme="light"] .cs-surface {
 .cs-check-terminal {
   flex: 1 1 auto;
   overflow: auto;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-base) 5%, transparent), transparent 20%),
-    var(--code-bg);
+  border: 1px solid var(--cs-terminal-line);
+  border-radius: 8px;
+  background: var(--cs-terminal-bg);
 }
 
 .cs-check-terminal-bar {
@@ -792,9 +948,9 @@ html[data-theme="light"] .cs-surface {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-bottom: 1px solid var(--cs-terminal-line);
   padding: 10px 14px;
-  color: var(--muted);
+  color: var(--cs-terminal-text);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -814,16 +970,35 @@ html[data-theme="light"] .cs-surface {
   border: 0;
   padding: 14px 16px;
   background: transparent;
-  color: var(--text);
+  color: var(--cs-terminal-text);
   white-space: pre-wrap;
   line-height: 1.55;
   margin: 0;
 }
 
 @media (max-width: 760px) {
-  .cs-responsive-grid {
-    grid-template-columns: 1fr;
+  .main-content.codex-stack-surface-route {
+    padding: 0;
   }
+
+  .main-content.codex-stack-surface-route .shell-route-stage,
+  .cs-workbench-frame {
+    border-radius: 0;
+  }
+
+  .cs-workbench-frame {
+    border: 0;
+  }
+
+  .cs-workspace {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cs-content {
+    padding: 10px;
+  }
+
 
   .cs-management-lock-rail {
     grid-template-columns: 1fr;
@@ -861,14 +1036,17 @@ html[data-theme="light"] .cs-surface {
   .cs-stack-task-nav {
     position: static;
     display: flex;
-    gap: 8px;
+    gap: 6px;
+    min-height: 50px;
+    height: auto;
     overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
   }
 
   .cs-stack-task-step {
-    flex: 0 0 154px;
-    flex-basis: 154px;
-    min-width: 154px;
+    flex: 0 0 auto;
+    min-width: max-content;
   }
 
   .cs-install-options-panel summary,
@@ -883,33 +1061,49 @@ html[data-theme="light"] .cs-surface {
   }
 }
 
-@container cs-workbench (max-width: 1080px) {
-  .cs-workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .cs-stack-task-rail,
+@media (max-width: 720px) {
   .cs-stack-task-nav {
-    position: static;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+    min-height: 48px;
+    overflow: visible;
+    padding: 6px 8px;
   }
 
-  .cs-workbench-frame .cs-stack-task-rail > .cs-stack-task-nav {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
+  .cs-stack-task-step {
+    position: relative;
+    flex: initial;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    padding: 0;
   }
 
-  .cs-workbench-frame .cs-stack-task-rail > .cs-stack-task-nav .cs-stack-task-step {
-    flex: 0 0 168px;
-    min-width: 168px;
-    width: auto;
+  .cs-stack-task-step svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .cs-task-copy {
+    display: none;
   }
 
   .cs-task-badge {
-    justify-self: end;
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    min-width: 15px;
+    height: 15px;
+    border-radius: 5px;
+    padding: 0 3px;
+    font-size: 0.58rem;
   }
+}
+
+@container cs-workbench (max-width: 1080px) {
 }
 
 @media (max-width: 720px) {
@@ -966,107 +1160,63 @@ html[data-theme="light"] .cs-surface {
 /* CodexStackLogConsole.vue */
 .cs-log-console {
   display: grid;
-  gap: 16px;
-  padding: clamp(14px, 2vw, 20px);
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 24px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--surface-base) 82%, transparent), color-mix(in srgb, var(--code-bg) 12%, transparent)),
-    color-mix(in srgb, var(--surface-base) 88%, transparent);
-  box-shadow:
-    var(--mono-shadow, var(--shadow-soft)),
-    inset 0 1px 0 color-mix(in srgb, var(--surface-base) 12%, transparent);
-  backdrop-filter: none;
-}
-
-.cs-log-guide-panel {
-  display: grid;
-  grid-template-columns: minmax(210px, 0.42fr) minmax(0, 1fr);
-  gap: 14px;
-  align-items: stretch;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
-  padding: 0 0 14px;
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--acc) 8%, transparent), transparent 34%),
-    transparent;
-}
-
-.cs-log-guide-panel h4 {
-  margin: 0;
-  color: var(--text);
-}
-
-.cs-log-guide {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.cs-log-guide li {
-  display: grid;
-  gap: 4px;
-  border-left: 2px solid color-mix(in srgb, var(--acc) 42%, var(--line));
-  padding: 1px 10px;
-}
-
-.cs-log-guide strong {
-  color: var(--text);
-  font-size: 0.86rem;
-}
-
-.cs-log-guide span {
-  color: var(--text-soft);
-  font-size: 0.78rem;
-  line-height: 1.35;
+  padding: 12px;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 10px;
+  background: var(--cs-doc-paper);
+  box-shadow: var(--cs-doc-subtle-shadow);
+  backdrop-filter: none;
 }
 
 .cs-log-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 0.34fr) minmax(0, 1fr);
-  gap: 0;
+  grid-template-columns: minmax(280px, 0.36fr) minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface-base) 62%, transparent);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .cs-log-pane {
+  min-width: 0;
   min-height: 100%;
-  padding: 16px;
+  padding: 0;
   background: transparent;
 }
 
 .cs-log-service-pane {
-  border-right: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  background: color-mix(in srgb, var(--code-bg) 16%, transparent);
+  border-right: 0;
+  border-bottom: 0;
+  background: transparent;
 }
 
 .cs-log-service-list {
   display: grid;
-  gap: 8px;
   grid-template-columns: 1fr;
+  gap: 6px;
 }
 
 .cs-log-mode-list {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(3, minmax(90px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 6px;
 }
 
 .cs-log-service-button {
-  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  border-radius: 16px;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 7px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 6px 10px;
   align-items: center;
-  padding: 12px;
-  background: color-mix(in srgb, var(--surface-base) 58%, transparent);
-  color: var(--text-soft);
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  background: var(--cs-doc-panel);
+  color: var(--cs-doc-muted);
   text-align: left;
   cursor: pointer;
   transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
@@ -1074,14 +1224,15 @@ html[data-theme="light"] .cs-surface {
 
 .cs-log-mode-button {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  border-radius: 16px;
-  padding: 12px;
-  background: color-mix(in srgb, var(--surface-base) 58%, transparent);
-  color: var(--text-soft);
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 7px;
+  padding: 7px 9px;
+  background: var(--cs-doc-panel);
+  color: var(--cs-doc-muted);
   text-align: left;
   cursor: pointer;
   transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
@@ -1089,16 +1240,14 @@ html[data-theme="light"] .cs-surface {
 
 .cs-log-service-button-active,
 .cs-log-mode-button-active {
-  color: var(--text);
-  border-color: color-mix(in srgb, var(--acc) 44%, var(--line));
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--acc) 16%, transparent), color-mix(in srgb, var(--surface-base) 74%, transparent)),
-    var(--surface-base);
+  color: var(--cs-status-accent-text);
+  border-color: var(--cs-status-accent-border);
+  background: var(--cs-status-accent-bg);
 }
 
 .cs-log-service-button:hover,
 .cs-log-mode-button:hover {
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .cs-log-service-button .cs-dot {
@@ -1107,42 +1256,63 @@ html[data-theme="light"] .cs-surface {
 
 .cs-log-service-button small {
   grid-column: 2;
-  color: var(--muted);
+  color: var(--cs-doc-muted);
+  display: -webkit-box;
   overflow: hidden;
+  overflow-wrap: anywhere;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .cs-log-mode-button span {
-  color: var(--muted);
+  min-width: max-content;
+  color: var(--cs-doc-muted);
   font-size: 0.82rem;
 }
 
 .cs-log-auto {
-  margin-top: 12px;
+  margin-top: 7px;
+  width: fit-content;
 }
 
 .cs-log-toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  border-top: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  margin-top: 14px;
-  padding-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  border-top: 0;
+  margin-top: 9px;
+  padding: 10px;
+  border-radius: 7px;
+  background: var(--cs-doc-panel);
+}
+
+.cs-log-toolbar .cs-field-hint {
+  min-width: 0;
+  max-width: 68ch;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .cs-log-console .cs-chip-row,
 .cs-log-console .cs-actions {
   display: flex;
-  gap: 10px;
+  gap: 6px;
   align-items: center;
   flex-wrap: wrap;
+  min-width: 0;
+}
+
+.cs-log-console .cs-actions {
+  justify-content: flex-start;
 }
 
 .cs-log-console .cs-disabled-help {
   margin: 0;
-  color: var(--warning);
+  color: var(--cs-doc-warm);
   font-size: 0.84rem;
   line-height: 1.45;
 }
@@ -1151,24 +1321,28 @@ html[data-theme="light"] .cs-surface {
 .cs-log-console .cs-status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  border-radius: 999px;
-  padding: 6px 12px;
-  background: color-mix(in srgb, var(--surface-base) 62%, transparent);
-  color: var(--text-soft);
-  font-size: 0.85rem;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 6px;
+  padding: 3px 7px;
+  background: var(--cs-status-neutral-bg);
+  color: var(--cs-status-neutral-text);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .cs-log-console .cs-status-pill {
   font-weight: 600;
-  color: var(--text);
+  color: var(--cs-doc-ink);
 }
 
 .cs-log-console .cs-status-pill.tone-accent {
-  color: color-mix(in srgb, var(--acc) 72%, var(--text));
-  border-color: color-mix(in srgb, var(--acc) 34%, var(--line));
-  background: color-mix(in srgb, var(--acc) 11%, var(--surface-base));
+  color: var(--cs-status-accent-text);
+  border-color: var(--cs-status-accent-border);
+  background: var(--cs-status-accent-bg);
 }
 
 .cs-log {
@@ -1182,16 +1356,26 @@ html[data-theme="light"] .cs-surface {
 }
 
 .cs-log-output-shell {
-  --floating-output-radius: 16px;
+  --floating-output-radius: 8px;
 }
 
 .cs-log-output-bar {
   align-items: center;
-  color: var(--muted);
+  color: var(--cs-doc-muted);
+  min-width: 0;
+}
+
+.cs-log-output-bar > div:first-child {
+  min-width: 0;
 }
 
 .cs-log-output-actions {
   align-items: center;
+  min-width: 0;
+}
+
+.cs-log-output-actions span {
+  min-width: max-content;
 }
 
 .cs-log-output-dock .cs-log {
@@ -1204,7 +1388,8 @@ html[data-theme="light"] .cs-surface {
 }
 
 .cs-log-output-bar strong {
-  color: var(--text);
+  color: var(--cs-doc-ink);
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 980px) {
@@ -1212,8 +1397,6 @@ html[data-theme="light"] .cs-surface {
     grid-template-columns: 1fr;
   }
 
-  .cs-log-guide-panel,
-  .cs-log-guide,
   .cs-log-workbench,
   .cs-log-service-list,
   .cs-log-mode-list {
@@ -1221,13 +1404,13 @@ html[data-theme="light"] .cs-surface {
   }
 
   .cs-log-toolbar {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     align-items: stretch;
   }
 
   .cs-log-service-pane {
     border-right: 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+    border-bottom: 1px solid var(--cs-doc-line);
   }
 
   .cs-log-output-dock .cs-log {

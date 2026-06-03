@@ -3,9 +3,6 @@
     <div>
       <p class="eyebrow">{{ eyebrow }}</p>
       <h2 class="page-title">{{ title }}</h2>
-      <p class="cs-page-subtitle">
-        {{ subtitle }}
-      </p>
     </div>
     <div class="page-actions">
       <button type="button" class="secondary-button" :disabled="refreshDisabled" @click="$emit('refresh')">
@@ -24,7 +21,6 @@ import "./codex-stack-workspace.css";
 defineProps<{
   eyebrow: string;
   title: string;
-  subtitle: string;
   refreshLabel: string;
   refreshDisabled: boolean;
   refreshDisabledHelp: string;

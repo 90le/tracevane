@@ -4,7 +4,6 @@
       <div>
         <p class="cs-section-kicker">{{ labels.kicker }}</p>
         <h4>{{ labels.title }}</h4>
-        <p>{{ labels.copy }}</p>
       </div>
       <span class="cs-status-pill" :class="`tone-${overallTone}`">
         {{ labels.status }}

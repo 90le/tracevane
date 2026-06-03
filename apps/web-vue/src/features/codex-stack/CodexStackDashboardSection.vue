@@ -1,5 +1,5 @@
 <template>
-  <CodexStackSectionStack>
+  <CodexStackSectionStack class="cs-dashboard-home">
     <CodexStackDashboardRuntimeStrip
       :status-label="statusLabel"
       :status-tone="statusTone"
@@ -35,59 +35,62 @@
       @sync="emit('sync')"
     />
 
+    <div class="cs-dashboard-home-grid">
+      <CodexStackChainMap
+        :labels="chainMapLabels"
+        :overall-tone="statusTone"
+        :nodes="chainNodes"
+        :gates="chainGates"
+        :warnings="chainWarnings"
+      />
+
+      <CodexStackServiceGrid
+        :services="serviceCards"
+        :can-run-mutation="canRunMutation"
+        :mutation-disabled-help="mutationDisabledHelp"
+        :labels="serviceGridLabels"
+        @service-action="(serviceId, action) => emit('service-action', serviceId, action)"
+      />
+    </div>
+
     <details class="cs-dashboard-details-panel">
       <summary>
-        <span>{{ text("高级状态详情", "Advanced Status Details") }}</span>
-        <small>
-          {{
-            text(
-              "技术链路、服务单元、组件健康和健康检查入口默认收起；检查结果会用悬浮窗口展示。",
-              "Technical chain, service units, component health, and the health-check entry stay collapsed; check results open in a floating dialog.",
-            )
-          }}
-        </small>
+        <span>{{ text("高级诊断", "Advanced diagnostics") }}</span>
+        <small>{{ text("运行就绪 / Smoke / 告警", "Readiness / smoke / warnings") }}</small>
       </summary>
       <div class="cs-dashboard-details-body">
-        <CodexStackRunReadinessPanel
-          v-if="summary.runReadiness"
-          :readiness="summary.runReadiness"
-          :tone="runReadinessTone"
-          :actions-disabled="runReadinessActionsDisabled"
-          :disabled-label="runReadinessDisabledLabel"
-          @check-action="(check) => emit('readiness-check-action', check)"
-          @mode-action="(mode) => emit('readiness-mode-action', mode)"
-        />
+        <div class="cs-dashboard-diagnostic-grid">
+          <CodexStackRunReadinessPanel
+            v-if="summary.runReadiness"
+            :readiness="summary.runReadiness"
+            :tone="runReadinessTone"
+            :actions-disabled="runReadinessActionsDisabled"
+            :disabled-label="runReadinessDisabledLabel"
+            @check-action="(check) => emit('readiness-check-action', check)"
+            @mode-action="(mode) => emit('readiness-mode-action', mode)"
+          />
 
-        <CodexStackChainMap
-          :labels="chainMapLabels"
-          :overall-tone="statusTone"
-          :nodes="chainNodes"
-          :gates="chainGates"
-          :warnings="chainWarnings"
-        />
+          <CodexStackDiagnosticsPanel
+            :warnings="summary.warnings"
+            :busy="actionBusy"
+            :busy-disabled-help="actionBusyDisabledHelp"
+            @run-check="emit('run-check')"
+          />
+        </div>
 
-        <CodexStackServiceGrid
-          :services="serviceCards"
-          :can-run-mutation="canRunMutation"
-          :mutation-disabled-help="mutationDisabledHelp"
-          :labels="serviceGridLabels"
-          @service-action="(serviceId, action) => emit('service-action', serviceId, action)"
-        />
-
-        <CodexStackDashboardInsights
-          :labels="dashboardInsightsLabels"
-          :runtime-rows="runtimeSummaryRows"
-          :network-policy="networkPolicyCard"
-          :smoke-matrix="smokeMatrixCard"
-          :components="componentHealthCards"
-        />
-
-        <CodexStackDiagnosticsPanel
-          :warnings="summary.warnings"
-          :busy="actionBusy"
-          :busy-disabled-help="actionBusyDisabledHelp"
-          @run-check="emit('run-check')"
-        />
+        <details class="cs-dashboard-insights-panel">
+          <summary>
+            <span>{{ text("运行矩阵与组件明细", "Runtime matrix and component details") }}</span>
+            <small>{{ text("环境 / Smoke / 组件", "Environment / smoke / components") }}</small>
+          </summary>
+          <CodexStackDashboardInsights
+            :labels="dashboardInsightsLabels"
+            :runtime-rows="runtimeSummaryRows"
+            :network-policy="networkPolicyCard"
+            :smoke-matrix="smokeMatrixCard"
+            :components="componentHealthCards"
+          />
+        </details>
       </div>
     </details>
   </CodexStackSectionStack>
@@ -128,6 +131,7 @@ interface CodexStackServiceGridLabels {
   start: string;
   stop: string;
   restart: string;
+  enableAutostart: string;
 }
 
 defineProps<{
@@ -183,7 +187,7 @@ const emit = defineEmits<{
   "readiness-mode-action": [mode: CodexStackRunReadinessMode];
   "service-action": [
     serviceId: CodexStackManualServiceId,
-    action: Extract<CodexStackServiceAction, "start" | "stop" | "restart">,
+    action: Extract<CodexStackServiceAction, "start" | "stop" | "restart" | "enable">,
   ];
 }>();
 

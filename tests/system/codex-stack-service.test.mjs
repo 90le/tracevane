@@ -49,14 +49,11 @@ function createStudioConfig(root) {
 }
 
 function createBundledInstaller(config, channel) {
-  const subDir = channel === "dmwork" ? "codex-docs-dmwork" : "codex-docs";
-  const root = path.join(config.projectRoot, "resources/codex-stack", subDir);
-  writeFile(path.join(root, "VERSION"), channel === "dmwork" ? "dmwork-test-bundle\n" : "test-bundle\n");
+  const root = path.join(config.projectRoot, "resources/codex-stack", "codex-docs");
+  writeFile(path.join(root, "VERSION"), `${channel || "single"}-test-bundle\n`);
   writeFile(path.join(root, "resources/scripts/auto-setup.sh"), "#!/usr/bin/env bash\necho setup\n", 0o755);
   writeFile(path.join(root, "resources/scripts/health-check.sh"), "#!/usr/bin/env bash\necho '  OK fake check'\n", 0o755);
-  if (channel !== "dmwork") {
-    writeFile(path.join(root, "resources/scripts/finish-cc-connect-setup.sh"), "#!/usr/bin/env bash\necho finalize\n", 0o755);
-  }
+  writeFile(path.join(root, "resources/scripts/finish-cc-connect-setup.sh"), "#!/usr/bin/env bash\necho finalize\n", 0o755);
   writeFile(path.join(root, "resources/bin/cli-proxy-api"), "bin\n", 0o755);
   writeFile(path.join(root, "resources/cpa-config-templates/compact-proxy.mjs"), "process.stdout.write('proxy\\n')\n", 0o755);
 }
@@ -521,16 +518,10 @@ test("codex stack check runs bundled health script and redacts known secrets", a
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {});
-  createBundledInstaller(config, "official");
   createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
   writeFile(
     path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
-    "#!/usr/bin/env bash\necho '  OK secret-cpa-key-123456 is hidden'\n",
-    0o755,
-  );
-  writeFile(
-    path.join(config.projectRoot, "resources/codex-stack/codex-docs-dmwork/resources/scripts/health-check.sh"),
     "#!/usr/bin/env bash\necho '  OK secret-cpa-key-123456 is hidden'\n",
     0o755,
   );
@@ -570,6 +561,49 @@ test("codex stack rejects unknown service ids and actions before shell execution
   await assert.rejects(
     service.controlService(undefined, "cli-proxy-api.service", "reload-or-run-shell"),
     (error) => isCodexStackServiceError(error) && error.code === "codex_stack_invalid_service_action",
+  );
+});
+
+test("codex stack service enable keeps running state and autostart in one action", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+
+  await withScriptedSystemctl(
+    [
+      "case \"$*\" in",
+      "  \"--user enable --now cli-proxy-api.service\") echo \"enabled\"; exit 0 ;;",
+      "  \"--user list-unit-files\"*) echo \"${@: -1} enabled\"; exit 0 ;;",
+      "  \"--user is-enabled\"*) echo \"enabled\"; exit 0 ;;",
+      "  \"--user is-active\"*) echo \"active\"; exit 0 ;;",
+      "esac",
+      "exit 0",
+    ].join("\n"),
+    async ({ readCalls }) => {
+      const service = createCodexStackService(config);
+
+      const response = await service.controlService(undefined, "cli-proxy-api.service", "enable");
+      const calls = readCalls();
+
+      assert.equal(response.ok, true);
+      assert.ok(calls.includes("--user enable --now cli-proxy-api.service"));
+      assert.ok(!calls.includes("--user enable cli-proxy-api.service"));
+    },
   );
 });
 
@@ -661,6 +695,15 @@ test("codex stack summary exposes codex run readiness for chat long tasks and co
   createGeneratedStackFiles(root);
   writeFile(path.join(root, ".local/bin/cli-proxy-api"), "#!/usr/bin/env bash\necho cpa\n", 0o755);
   writeFile(path.join(root, ".local/bin/cpa-compact-proxy.mjs"), "#!/usr/bin/env node\nconsole.log('compact')\n", 0o755);
+  for (const dir of [
+    "resources/codex-stack/cc-connect-source/agent/codex",
+    "resources/codex-stack/cc-connect-source/agent/claudecode",
+    "resources/codex-stack/cc-connect-source/platform/feishu",
+    "resources/codex-stack/cc-connect-source/platform/weixin",
+    "resources/codex-stack/cc-connect-source/platform/dmwork",
+  ]) {
+    fs.mkdirSync(path.join(config.projectRoot, dir), { recursive: true });
+  }
   writeFile(path.join(root, ".cc-connect/config.toml"), `
 [[providers]]
 name = "cpa"
@@ -702,6 +745,36 @@ account_id = "test"
       }, async () => {
         const service = createCodexStackService(config);
         const summary = await service.getSummary();
+
+        assert.equal(summary.gateway.serviceName, "studio-agent-gateway");
+        assert.equal(summary.gateway.baseUrl, "http://127.0.0.1:18796");
+        assert.equal(summary.gateway.statusEndpoint, "http://127.0.0.1:18796/gateway/status");
+        assert.equal(summary.gateway.live, true);
+        assert.equal(summary.gateway.protocols.openaiChatCompletions, true);
+        assert.equal(summary.gateway.protocols.openaiResponses, true);
+        assert.equal(summary.gateway.protocols.openaiResponsesCompact, true);
+        assert.equal(summary.gateway.protocols.anthropicMessages, true);
+        assert.equal(summary.gateway.protocols.anthropicMessagesStreaming, true);
+        assert.equal(summary.gateway.integrations.codexCliBaseUrl, "http://127.0.0.1:18796/v1");
+        assert.equal(summary.gateway.integrations.claudeCliBaseUrl, "http://127.0.0.1:18796");
+        assert.equal(summary.gateway.integrations.ccConnectProviderBaseUrl, "http://127.0.0.1:18796/v1");
+        assert.equal(summary.gateway.integrations.ccConnectSourceReady, true);
+        assert.ok(summary.gateway.integrations.ccConnectSourcePath.endsWith("resources/codex-stack/cc-connect-source"));
+        assert.ok(summary.gateway.integrations.ccConnectSourceAgentTypes.includes("codex"));
+        assert.ok(summary.gateway.integrations.ccConnectSourceAgentTypes.includes("claudecode"));
+        assert.ok(summary.gateway.integrations.ccConnectSourcePlatforms.includes("feishu"));
+        assert.ok(summary.gateway.integrations.ccConnectSourcePlatforms.includes("weixin"));
+        assert.ok(summary.gateway.integrations.ccConnectSourcePlatforms.includes("dmwork"));
+        assert.ok(summary.gateway.integrations.channelSurfaces.includes("feishu"));
+        assert.ok(summary.gateway.protocolCatalog.some((protocol) => protocol.id === "anthropic-messages" && protocol.streaming));
+        assert.ok(summary.gateway.clientAdapters.some((adapter) => adapter.id === "codex-cli" && adapter.protocol === "openai-responses"));
+        assert.ok(summary.gateway.clientAdapters.some((adapter) => adapter.id === "claude-cli" && adapter.protocol === "anthropic-messages"));
+        assert.ok(summary.gateway.providerRoutes.some((provider) => provider.id === "cpa" && provider.agentTypes.includes("codex")));
+        assert.ok(summary.gateway.modelRoutes.some((model) => model.label === "glm-5.1"));
+        assert.ok(summary.gateway.channelTemplates.some((channel) => channel.id === "bridge"));
+        const gatewayComponent = summary.components.find((component) => component.id === "agent-gateway");
+        assert.equal(gatewayComponent?.status, "ok");
+        assert.ok(gatewayComponent?.notes.includes("Claude Messages"));
 
         assert.equal(summary.runReadiness.level, "ready");
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, true);
@@ -859,7 +932,7 @@ account_id = "test"
   }
 });
 
-test("codex stack blocks lifecycle-unsafe direct service starts", async () => {
+test("codex stack blocks lifecycle-unsafe direct service starts and enables", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -884,20 +957,24 @@ test("codex stack blocks lifecycle-unsafe direct service starts", async () => {
       "case \"$*\" in",
       "  \"--user is-active cli-proxy-api.service\") echo \"inactive\"; exit 3 ;;",
       "  \"--user start cpa-compact-proxy.service\") echo \"should not start compact\"; exit 0 ;;",
+      "  \"--user enable --now cpa-compact-proxy.service\") echo \"should not enable compact\"; exit 0 ;;",
       "esac",
       "exit 0",
     ].join("\n"),
     async ({ readCalls }) => {
       const service = createCodexStackService(config);
 
-      await assert.rejects(
-        service.controlService(undefined, "cpa-compact-proxy.service", "start"),
-        (error) => isCodexStackServiceError(error)
-          && error.code === "codex_stack_service_lifecycle_guard"
-          && error.statusCode === 409,
-      );
+      for (const action of ["start", "enable"]) {
+        await assert.rejects(
+          service.controlService(undefined, "cpa-compact-proxy.service", action),
+          (error) => isCodexStackServiceError(error)
+            && error.code === "codex_stack_service_lifecycle_guard"
+            && error.statusCode === 409,
+        );
+      }
       const calls = readCalls();
       assert.ok(!calls.includes("--user start cpa-compact-proxy.service"));
+      assert.ok(!calls.includes("--user enable --now cpa-compact-proxy.service"));
     },
   );
 });
@@ -1981,7 +2058,6 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
       "",
     ].join("\n");
   writeFile(path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"), setupScriptContent, 0o755);
-  writeFile(path.join(config.projectRoot, "resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"), setupScriptContent, 0o755);
 
   const service = createCodexStackService(config);
   const response = await service.startInstall(undefined, {
@@ -2198,7 +2274,7 @@ type = "weixin"
   );
 });
 
-test("codex stack summary hides finalizer when active channel has no finalizer script", async () => {
+test("codex stack summary exposes finalizer from the single bundled installer", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -2223,8 +2299,9 @@ test("codex stack summary hides finalizer when active channel has no finalizer s
 
   assert.equal(summary.installer.channel, "dmwork");
   assert.equal(summary.ccConnect.bindingPresent, true);
-  assert.equal(summary.ccConnect.finalizerAvailable, false);
-  assert.equal(summary.ccConnect.canFinalize, false);
+  assert.equal(summary.ccConnect.finalizerAvailable, true);
+  assert.equal(summary.ccConnect.canFinalize, true);
+  assert.ok(summary.installer.scripts.ccConnectFinalizer?.endsWith("finish-cc-connect-setup.sh"));
 });
 
 test("codex stack config patch writes backups and updates managed fields", async () => {
@@ -2382,6 +2459,100 @@ model = "glm-5.1"
   assert.match(patchedCc, /base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/);
   assert.match(patchedCc, /codex\.env_key = "OPENAI_API_KEY"/);
   assert.doesNotMatch(patchedCc, /codex_env_key/);
+});
+
+test("codex stack preserves cc-connect multi-provider model routing fields", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createGeneratedStackFiles(root);
+  const home = path.dirname(config.openclawRoot);
+  const ccConfig = path.join(home, ".cc-connect/config.toml");
+  writeFile(ccConfig, `
+language = "zh"
+
+[[providers]]
+name = "relay"
+api_key = "secret-relay"
+base_url = "https://relay.example/api"
+model = "claude-sonnet-4-6"
+agent_types = ["claudecode", "codex"]
+codex.env_key = "OPENAI_API_KEY"
+codex.wire_api = "responses"
+
+[providers.endpoints]
+codex = "https://relay.example/api/v1"
+claudecode = "https://relay.example/api"
+
+[providers.agent_models]
+codex = "openai/gpt-5.4"
+claudecode = "claude-sonnet-4-6"
+
+[[providers.models]]
+model = "claude-sonnet-4-6"
+alias = "sonnet"
+
+[[providers.models]]
+model = "openai/gpt-5.4"
+alias = "codex"
+
+[[projects]]
+name = "main"
+admin_from = "admin"
+[projects.agent]
+type = "codex"
+provider_refs = ["relay"]
+[projects.agent.options]
+model = "openai/gpt-5.4"
+work_dir = "/tmp/work"
+mode = "suggest"
+`);
+
+  const service = createCodexStackService(config);
+  const parsed = await service.getCcConnectConfig();
+  assert.equal(parsed.providers[0].model, "claude-sonnet-4-6");
+  assert.deepEqual(parsed.providers[0].agentTypes, ["claudecode", "codex"]);
+  assert.equal(parsed.providers[0].endpoints.codex, "https://relay.example/api/v1");
+  assert.equal(parsed.providers[0].agentModels.claudecode, "claude-sonnet-4-6");
+  assert.equal(parsed.providers[0].codex.wireApi, "responses");
+  assert.deepEqual(parsed.providers[0].models, [
+    { model: "claude-sonnet-4-6", alias: "sonnet" },
+    { model: "openai/gpt-5.4", alias: "codex" },
+  ]);
+  assert.deepEqual(parsed.projects[0].providerRefs, ["relay"]);
+
+  parsed.providers[0].models.push({ model: "openai/gpt-5.5", alias: "frontier" });
+  parsed.projects[0].providerRefs.push("fallback");
+
+  await withFakeSystemctl(async () => {
+    const response = await service.patchCcConnectConfig(undefined, {
+      providers: parsed.providers,
+      projects: parsed.projects,
+    });
+    assert.equal(response.ok, true);
+  });
+
+  const patched = fs.readFileSync(ccConfig, "utf8");
+  assert.match(patched, /model = "claude-sonnet-4-6"/);
+  assert.match(patched, /agent_types = \["claudecode", "codex"\]/);
+  assert.match(patched, /\[providers\.endpoints\][\s\S]*codex = "https:\/\/relay\.example\/api\/v1"/);
+  assert.match(patched, /\[providers\.agent_models\][\s\S]*claudecode = "claude-sonnet-4-6"/);
+  assert.match(patched, /codex\.wire_api = "responses"/);
+  assert.match(patched, /\[\[providers\.models\]\][\s\S]*alias = "frontier"/);
+  assert.match(patched, /provider_refs = \["relay", "fallback"\]/);
 });
 
 test("codex stack summary warns when cc-connect bypasses local Compact provider", async () => {
@@ -2971,15 +3142,14 @@ test("bundled health check treats skipped cc-connect as warning only", () => {
     path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
     "utf8",
   );
-  assert.match(script, /cc-connect not found; skip this if you intentionally installed Codex\/CPA\/Compact only/);
-  assert.doesNotMatch(script, /fail "cc-connect not found"/);
-  assert.match(script, /cc_connect_has_platform_binding/);
-  assert.doesNotMatch(script, /grep -q 'projects\\\.platforms'/);
+  assert.match(script, /cc-connect 未安装（可选，用于 IM 桥接）/);
+  assert.doesNotMatch(script, /fail .*cc-connect/);
+  assert.match(script, /关键检查通过，但存在提示项/);
 });
 
-test("bundled dmwork health check uses resolved Compact port consistently", () => {
+test("single bundled health check uses resolved Compact port consistently", () => {
   const script = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/health-check.sh"),
+    path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
     "utf8",
   );
 
@@ -2990,133 +3160,109 @@ test("bundled dmwork health check uses resolved Compact port consistently", () =
   assert.doesNotMatch(script, /Compact Proxy 监听在 127\.0\.0\.1:18796/);
 });
 
-test("bundled health checks present watchdog as ordered auto-managed recovery", () => {
-  const official = fs.readFileSync(
+test("single bundled health check uses Studio autostart wording for systemd services", () => {
+  const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
     "utf8",
   );
-  const dmwork = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/health-check.sh"),
-    "utf8",
-  );
 
-  assert.match(official, /watchdog_state\(\)/);
-  assert.match(official, /Use Studio Resume CPA Stack or Recommended Repair/);
-  assert.match(official, /do not start the timer directly/);
-  assert.match(official, /Install\/repair or Resume CPA Stack will enable it after the proxy chain is healthy/);
-
-  assert.match(dmwork, /后台守护未运行；请用 Studio 的“恢复 CPA 栈”或推荐修复按 CPA → Compact → 后台守护顺序恢复/);
-  assert.match(dmwork, /不要直接手动启动 timer/);
-  assert.match(dmwork, /后台守护未启用；安装\/修复或恢复 CPA 栈会在链路健康后自动启用/);
-  assert.match(dmwork, /关键检查通过，但存在提示项/);
-
-  for (const script of [official, dmwork]) {
-    assert.doesNotMatch(script, /启动: systemctl --user start codex-stack-watchdog\.timer/);
-    assert.doesNotMatch(script, /启用: systemctl --user enable codex-stack-watchdog\.timer/);
-    assert.doesNotMatch(script, /systemctl --user (?:start|enable) codex-stack-watchdog\.timer/);
-  }
+  assert.match(script, /systemd_is_persistently_enabled/);
+  assert.match(script, /自启动已启用/);
+  assert.match(script, /运行中，但自启动未启用 — 启用: systemctl --user enable --now \$unit/);
+  assert.match(script, /自启动未启用 — 启用: systemctl --user enable --now \$unit/);
+  assert.doesNotMatch(script, /systemctl --user enable \$svc/);
 });
 
-test("bundled codex stack installers keep Codex detached until smoke gate", () => {
-  const official = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-  const dmwork = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-  const dmworkCodexConfig = dmwork.match(/cat > "\$CODEX_CONFIG" << TOMLEOF\n([\s\S]*?)\nTOMLEOF/)?.[1] || "";
-
-  assert.doesNotMatch(official, /^codexToml = setKey\(codexToml, "model_provider", "cpa"/m);
-  assert.doesNotMatch(dmworkCodexConfig, /^model_provider = "cpa"$/m);
-  assert.doesNotMatch(dmworkCodexConfig, /^openai_base_url = "http:\/\/127\.0\.0\.1:\$\{COMPACT_PORT\}\/v1"$/m);
-  assert.match(official, /model_providers\.cpa/);
-  assert.match(dmworkCodexConfig, /\[model_providers\.cpa\]/);
-});
-
-test("bundled dmwork installer keeps glm and kimi out of claude provider aliases", () => {
-  const dmwork = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-
-  assert.doesNotMatch(dmwork, /claude-api-key:/);
-  assert.match(dmwork, /name: mlamp\/kimi-k2\.6[\s\S]*alias: kimi-k2\.6/);
-  assert.match(dmwork, /name: glm-5\.1/);
-});
-
-test("bundled installers use provider-specific proxy policy", () => {
-  const official = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-  const dmwork = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-
-  assert.match(official, /function isDomesticOrLocalUrl/);
-  assert.match(official, /function foreignProxyFor/);
-  assert.match(official, /proxy-url: \$\{q\(providerProxyUrl\)\}/);
-  assert.match(dmwork, /function isDomesticOrLocal/);
-  assert.match(dmwork, /MLAMP_PROXY_URL=.*providerProxy/);
-  assert.match(dmwork, /BIGMODEL_PROXY_URL=.*providerProxy/);
-  assert.match(dmwork, /proxy-url: "\$\{MLAMP_PROXY_URL:-direct\}"/);
-  assert.match(dmwork, /proxy-url: "\$\{BIGMODEL_PROXY_URL:-direct\}"/);
-});
-
-test("bundled installers propagate configured no-proxy into systemd units", () => {
-  const official = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-  const dmwork = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-
-  assert.match(official, /const noProxy = env\.OPENCLAW_NO_PROXY \|\| openclawEnv\(openclaw, \["NO_PROXY"\]\)/);
-  assert.match(official, /Environment=NO_PROXY=\$OPENCLAW_NO_PROXY/);
-  assert.match(official, /Environment=OPENCLAW_NO_PROXY=\$OPENCLAW_NO_PROXY/);
-  assert.doesNotMatch(official, /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1/);
-
-  assert.match(dmwork, /envVal\(\['OPENCLAW_NO_PROXY', 'NO_PROXY'\]\)/);
-  assert.match(dmwork, /Environment=NO_PROXY=\$\{NO_PROXY_VAL\}/);
-  assert.match(dmwork, /Environment=OPENCLAW_NO_PROXY=\$\{NO_PROXY_VAL\}/);
-  assert.equal((dmwork.match(/Environment=OPENCLAW_NO_PROXY=\$\{NO_PROXY_VAL\}/g) || []).length, 3);
-  assert.doesNotMatch(dmwork, /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1/);
-});
-
-test("bundled installers clean legacy CPA relaunch timers and avoid always-on CPA restarts", () => {
-  const official = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-  const dmwork = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-  const officialHealth = fs.readFileSync(
+test("single bundled health check presents watchdog as ordered auto-managed recovery", () => {
+  const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
     "utf8",
   );
-  const dmworkHealth = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs-dmwork/resources/scripts/health-check.sh"),
+
+  assert.match(script, /后台守护未运行；请用 Studio 的“恢复 CPA 栈”或推荐修复按 CPA → Compact → 后台守护顺序恢复/);
+  assert.match(script, /不要直接手动启动 timer/);
+  assert.match(script, /后台守护未启用；安装\/修复或恢复 CPA 栈会在链路健康后自动启用/);
+  assert.match(script, /关键检查通过，但存在提示项/);
+
+  assert.doesNotMatch(script, /启动: systemctl --user start codex-stack-watchdog\.timer/);
+  assert.doesNotMatch(script, /启用: systemctl --user enable codex-stack-watchdog\.timer/);
+  assert.doesNotMatch(script, /systemctl --user (?:start|enable) codex-stack-watchdog\.timer/);
+});
+
+test("single bundled codex stack installer keeps Codex detached until smoke gate", () => {
+  const script = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+  const codexConfig = script.match(/cat > "\$CODEX_CONFIG" << TOMLEOF\n([\s\S]*?)\nTOMLEOF/)?.[1] || "";
+
+  assert.doesNotMatch(codexConfig, /^model_provider = "cpa"$/m);
+  assert.doesNotMatch(codexConfig, /^openai_base_url = "http:\/\/127\.0\.0\.1:\$\{COMPACT_PORT\}\/v1"$/m);
+  assert.match(codexConfig, /\[model_providers\.cpa\]/);
+});
+
+test("single bundled installer keeps glm and kimi out of claude provider aliases", () => {
+  const script = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
     "utf8",
   );
 
-  for (const script of [official, dmwork]) {
-    assert.match(script, /disable --now cli-proxy-api-healthcheck\.timer/);
-    assert.match(script, /cli-proxy-api\.service\.d\/10-always-on\.conf/);
-    assert.match(script, /cpa-compact-proxy\.service\.d\/10-always-on\.conf/);
-  }
-  assert.doesNotMatch(official, /cat > "\$HOME\/\.config\/systemd\/user\/cpa-compact-proxy\.service\.d\/10-always-on\.conf"/);
-  assert.match(official, /Restart=on-failure/);
-  assert.match(dmwork, /Description=CPA cli-proxy-api[\s\S]*Restart=on-failure/);
-  assert.match(dmwork, /Description=CPA Compact Proxy[\s\S]*Restart=on-failure/);
-  assert.match(officialHealth, /codex_cpa_provider_value/);
-  assert.match(dmworkHealth, /codex_cpa_provider_value/);
+  assert.doesNotMatch(script, /claude-api-key:/);
+  assert.match(script, /name: mlamp\/kimi-k2\.6[\s\S]*alias: kimi-k2\.6/);
+  assert.match(script, /name: glm-5\.1/);
+});
+
+test("single bundled installer uses provider-specific proxy policy", () => {
+  const script = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+
+  assert.match(script, /function isDomesticOrLocal/);
+  assert.match(script, /MLAMP_PROXY_URL=.*providerProxy/);
+  assert.match(script, /BIGMODEL_PROXY_URL=.*providerProxy/);
+  assert.match(script, /proxy-url: "\$\{MLAMP_PROXY_URL:-direct\}"/);
+  assert.match(script, /proxy-url: "\$\{BIGMODEL_PROXY_URL:-direct\}"/);
+});
+
+test("single bundled installer propagates configured no-proxy into systemd units", () => {
+  const script = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+
+  assert.match(script, /envVal\(\['OPENCLAW_NO_PROXY', 'NO_PROXY'\]\)/);
+  assert.match(script, /Environment=NO_PROXY=\$\{NO_PROXY_VAL\}/);
+  assert.match(script, /Environment=OPENCLAW_NO_PROXY=\$\{NO_PROXY_VAL\}/);
+  assert.equal((script.match(/Environment=OPENCLAW_NO_PROXY=\$\{NO_PROXY_VAL\}/g) || []).length, 3);
+  assert.doesNotMatch(script, /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1/);
+});
+
+test("single bundled installer cleans legacy CPA relaunch timers and avoids always-on CPA restarts", () => {
+  const script = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+  const health = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
+    "utf8",
+  );
+
+  assert.match(script, /disable --now cli-proxy-api-healthcheck\.timer/);
+  assert.match(script, /cli-proxy-api\.service\.d\/10-always-on\.conf/);
+  assert.match(script, /cpa-compact-proxy\.service\.d\/10-always-on\.conf/);
+  assert.match(script, /Description=CPA cli-proxy-api[\s\S]*Restart=on-failure/);
+  assert.match(script, /Description=CPA Compact Proxy[\s\S]*Restart=on-failure/);
+  assert.match(health, /codex_cpa_provider_value/);
+});
+
+test("single bundled resources keep cc-connect finalizer and remove legacy dmwork folder", () => {
+  const finalizer = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/finish-cc-connect-setup.sh"),
+    "utf8",
+  );
+  assert.match(finalizer, /cc-connect daemon is ready/);
+  assert.equal(fs.existsSync(path.join("resources/codex-stack/codex-docs-dmwork")), false);
 });
 
 test("codex stack summary explains system proxy is ignored for direct domestic providers", async () => {

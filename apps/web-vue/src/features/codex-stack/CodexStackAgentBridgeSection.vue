@@ -1,5 +1,5 @@
 <template>
-  <CodexStackSectionStack>
+  <CodexStackSectionStack class="cs-agent-bridge-section">
     <CodexStackCcConnectCommandBar
       :installed="summary.ccConnect.installed"
       :configured="summary.ccConnect.configured"

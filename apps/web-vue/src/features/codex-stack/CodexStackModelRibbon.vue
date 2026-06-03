@@ -1,9 +1,9 @@
 <template>
   <article class="cs-surface cs-model-ribbon">
-    <div>
-      <p class="cs-section-kicker">{{ text("模型目录", "Model Catalog") }}</p>
-      <h3>{{ currentModel || "--" }}</h3>
-      <p>{{ sourceHelp }}</p>
+    <div class="cs-model-ribbon-main">
+      <span class="cs-section-kicker">{{ text("模型目录", "Model Catalog") }}</span>
+      <strong>{{ currentModel || "--" }}</strong>
+      <small>{{ sourceHelp }}</small>
     </div>
     <div class="cs-model-ribbon-side">
       <span class="cs-status-pill" :class="`tone-${sourceTone}`">{{ sourceLabel }}</span>

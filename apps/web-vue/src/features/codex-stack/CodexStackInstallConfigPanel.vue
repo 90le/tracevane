@@ -8,27 +8,21 @@
           <h4>{{ text("选择渠道", "Choose Channel") }}</h4>
         </div>
       </div>
-      <p class="cs-field-hint">
-        {{ text("DMWork / Octo 版本支持多渠道；官方版通过 npm 安装 cc-connect。", "DMWork / Octo supports multi-channel, while Official installs cc-connect from npm.") }}
-      </p>
       <div class="cs-channel-grid">
         <label class="cs-channel-choice" :class="{ 'cs-channel-choice-active': form.channel === 'dmwork' }">
           <input :checked="form.channel === 'dmwork'" type="radio" value="dmwork" @change="updateStringField('channel', $event)" />
           <strong>DMWork</strong>
           <span>{{ text("增强版", "Enhanced") }}</span>
-          <p>{{ text("自编译二进制，三渠道支持。", "Self-built binary with three-channel support.") }}</p>
         </label>
         <label class="cs-channel-choice" :class="{ 'cs-channel-choice-active': form.channel === 'octo' }">
           <input :checked="form.channel === 'octo'" type="radio" value="octo" @change="updateStringField('channel', $event)" />
           <strong>Octo</strong>
           <span>{{ text("增强版（推荐）", "Enhanced (Recommended)") }}</span>
-          <p>{{ text("DMWork 品牌升级版，后续主力维护。", "Rebranded DMWork, the primary channel going forward.") }}</p>
         </label>
         <label class="cs-channel-choice" :class="{ 'cs-channel-choice-active': form.channel === 'official' }">
           <input :checked="form.channel === 'official'" type="radio" value="official" @change="updateStringField('channel', $event)" />
           <strong>{{ text("官方版", "Official") }}</strong>
-          <span>{{ text("走 npm 分发，适合标准环境。", "Distributed via npm for standard environments.") }}</span>
-          <p>{{ text("支持飞书 / 微信。", "Supports Feishu / Weixin.") }}</p>
+          <span>npm</span>
         </label>
       </div>
     </section>
@@ -40,9 +34,6 @@
           <h4>{{ text("模型与上游链路", "Model and Upstream Chain") }}</h4>
         </div>
       </div>
-      <p class="cs-field-hint">
-        {{ text("默认优先使用当前配置或 openclaw.json 里的默认模型；用户仍可手动改成任何 CPA 支持的模型。上游 API 进入 CPA，再由 Compact 暴露给 Codex 和 cc-connect。", "The default follows the current configuration or the openclaw.json default model first, while users can still choose any model supported by CPA. Upstream API enters CPA, then Compact exposes it to Codex and cc-connect.") }}
-      </p>
       <div class="cs-install-chain-steps">
         <span>{{ text("上游 API", "Upstream API") }}</span>
         <span>CPA :{{ form.cpaPort }}</span>
@@ -65,7 +56,6 @@
           <select :value="form.model" class="form-input" @change="updateStringField('model', $event)">
             <option v-for="model in modelOptions" :key="`install-${model}`" :value="model">{{ model }}</option>
           </select>
-          <span class="form-help">{{ modelSourceLabel }}</span>
         </label>
         <label class="form-field">
           <span class="form-label">{{ text("CPA 端口", "CPA Port") }}</span>
@@ -87,7 +77,6 @@
             <option value="codex-1m">{{ text("1M 上下文", "1M context") }}</option>
             <option value="custom">{{ text("自定义 token", "Custom tokens") }}</option>
           </select>
-          <span class="form-help">{{ text("1M 适合支持大上下文的模型；默认模式不会写 model_context_window。", "1M is for large-context models; default mode does not write model_context_window.") }}</span>
         </label>
         <label class="form-field">
           <span class="form-label">{{ text("上下文 tokens", "Context tokens") }}</span>
@@ -146,7 +135,6 @@
           <label class="form-field">
             <span class="form-label">{{ text("海外上游代理", "Foreign Provider Proxy") }}</span>
             <input :value="form.providerProxyUrl" class="form-input" placeholder="http://127.0.0.1:7897" @input="updateStringField('providerProxyUrl', $event)" />
-            <span class="form-help">{{ text("留空则自动读取 OpenAI/海外上游代理；国内网关默认直连。", "Leave empty to auto-detect proxy for OpenAI/foreign providers; domestic gateways stay direct.") }}</span>
           </label>
           <label class="form-field">
             <span class="form-label">NO_PROXY</span>

@@ -1,13 +1,13 @@
 <template>
   <section class="studio-workbench studio-workbench--guided cs-workbench-frame">
     <div class="cs-workspace">
-      <aside class="cs-stack-task-rail studio-workbench-task-rail" aria-label="Codex Stack task rail">
+      <div class="cs-stack-task-bar" aria-label="Codex Stack task rail">
         <CodexStackSectionNav
           :sections="sections"
           :active-section="activeSection"
           @select="$emit('select', $event)"
         />
-      </aside>
+      </div>
 
       <main class="cs-content" aria-live="polite">
         <slot name="context" />

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Compact Proxy for Codex Responses API.
+ * Studio Agent Gateway for Codex Responses API.
  *
  * CPA's OpenAI-compatible provider path is reliable for /v1/chat/completions,
  * while Codex now talks to /v1/responses. This proxy keeps CPA as the local
@@ -9,6 +9,9 @@
  *
  * - POST /v1/responses -> translate to /v1/chat/completions and back
  * - POST /v1/responses/compact -> summarize through /v1/chat/completions
+ * - POST /v1/messages and /claude/v1/messages -> translate Claude Messages
+ *   through /v1/chat/completions and back
+ * - GET /gateway/status -> report gateway capabilities for Studio/cc-connect
  * - other HTTP/WebSocket traffic -> forward to CPA
  *
  * Set CPA_BASE_URL to use a non-default upstream, including https://... . The
@@ -63,6 +66,50 @@ const STREAM_KEEPALIVE_MS = Number(process.env.COMPACT_STREAM_KEEPALIVE_MS || 15
 const RESPONSES_MODE = (process.env.COMPACT_RESPONSES_MODE || "adapter").toLowerCase();
 const UPSTREAM_API_KEY = process.env.CPA_UPSTREAM_API_KEY || process.env.COMPACT_UPSTREAM_API_KEY || process.env.CPA_KEY || "";
 const COMPACT_ENABLE_WEBSOCKETS = /^(1|true|yes)$/i.test(process.env.COMPACT_ENABLE_WEBSOCKETS || "");
+const GATEWAY_NAME = "studio-agent-gateway";
+const GATEWAY_VERSION = "1";
+
+const DEFAULT_CHANNEL_CATALOG = [
+  { id: "dmwork", label: "DMWork", required_options: ["bot_token", "api_url", "account_id"], optional_options: ["route_tag"] },
+  { id: "octo", label: "Octo", required_options: ["bot_token", "api_url", "account_id"], optional_options: ["route_tag"] },
+  { id: "feishu", label: "Feishu", required_options: ["app_id", "app_secret"], optional_options: ["verification_token", "encrypt_key"] },
+  { id: "weixin", label: "Weixin", required_options: ["app_id"], optional_options: ["app_secret", "token", "base_url", "cdn_base_url"] },
+  { id: "wecom", label: "WeCom", required_options: ["corp_id", "agent_id", "secret"], optional_options: ["api_base_url", "token", "aes_key"] },
+  { id: "telegram", label: "Telegram", required_options: ["token"], optional_options: ["proxy_url", "allowed_chat_ids"] },
+  { id: "bridge", label: "Bridge", required_options: ["url"], optional_options: ["token", "headers"] },
+];
+
+function parseJsonArrayEnv(name, fallback) {
+  const raw = process.env[name];
+  if (!raw?.trim()) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch (error) {
+    log(`${name} ignored: ${error.message}`);
+    return fallback;
+  }
+}
+
+function normalizeCatalogRows(rows, defaults) {
+  const byId = new Map();
+  for (const row of [...defaults, ...rows]) {
+    if (!row || typeof row !== "object") continue;
+    const id = String(row.id || row.name || "").trim().toLowerCase();
+    if (!id) continue;
+    byId.set(id, { ...row, id });
+  }
+  return [...byId.values()];
+}
+
+const GATEWAY_CHANNEL_CATALOG = normalizeCatalogRows(
+  parseJsonArrayEnv("STUDIO_GATEWAY_CHANNELS", []),
+  DEFAULT_CHANNEL_CATALOG,
+);
+const GATEWAY_MODEL_CATALOG = normalizeCatalogRows(
+  parseJsonArrayEnv("STUDIO_GATEWAY_MODELS", DEFAULT_MODEL ? [{ id: DEFAULT_MODEL, label: DEFAULT_MODEL, provider: "default" }] : []),
+  [],
+);
 
 const upstreamBase = new URL(CPA_BASE_URL);
 if (!["http:", "https:"].includes(upstreamBase.protocol)) {
@@ -86,7 +133,7 @@ const COMPACT_SYSTEM = `You are a context compaction assistant. Summarize the co
 Return structured markdown. Be concrete and avoid generic filler.`;
 
 function log(message) {
-  process.stderr.write(`[compact-proxy] ${message}\n`);
+  process.stderr.write(`[studio-agent-gateway] ${message}\n`);
 }
 
 function nowSeconds() {
@@ -170,6 +217,114 @@ function json(res, status, obj) {
 
 function responseError(message, code = "api_error") {
   return { error: { message, code, type: code } };
+}
+
+function publicGatewayBaseUrl() {
+  const host = LISTEN_HOST === "0.0.0.0" ? "127.0.0.1" : LISTEN_HOST;
+  return `http://${host}:${LISTEN_PORT}`;
+}
+
+function gatewayStatus() {
+  const baseUrl = publicGatewayBaseUrl();
+  return {
+    service: GATEWAY_NAME,
+    version: GATEWAY_VERSION,
+    status: "ok",
+    upstream: {
+      base_url: upstreamBase.href.replace(/\/$/, ""),
+      responses_mode: RESPONSES_MODE,
+      websockets_enabled: COMPACT_ENABLE_WEBSOCKETS,
+    },
+    endpoints: {
+      status: ["/gateway/status", "/studio-agent-gateway/status"],
+      openai_chat_completions: ["/v1/chat/completions"],
+      openai_responses: ["/v1/responses"],
+      openai_responses_compact: ["/v1/responses/compact"],
+      anthropic_messages: ["/v1/messages", "/claude/v1/messages"],
+    },
+    protocols: {
+      openai_chat_completions: {
+        supported: true,
+        mode: "passthrough",
+      },
+      openai_responses: {
+        supported: true,
+        mode: RESPONSES_MODE === "native" ? "passthrough" : "chat_adapter",
+      },
+      openai_responses_compact: {
+        supported: true,
+        mode: "local_summarization",
+      },
+      anthropic_messages: {
+        supported: true,
+        mode: "chat_adapter",
+        streaming: true,
+      },
+    },
+    catalog: {
+      client_adapters: [
+        {
+          id: "codex-cli",
+          label: "Codex CLI",
+          protocol: "openai-responses",
+          base_url: `${baseUrl}/v1`,
+          auth_env: "OPENAI_API_KEY",
+          model_env: "CODEX_MODEL",
+          notes: ["wire_api=responses", "supports_websockets=false"],
+        },
+        {
+          id: "claude-cli",
+          label: "Claude CLI",
+          protocol: "anthropic-messages",
+          base_url: baseUrl,
+          auth_env: "ANTHROPIC_AUTH_TOKEN",
+          model_env: "ANTHROPIC_MODEL",
+          notes: ["uses /v1/messages", "streams Anthropic SSE events"],
+        },
+        {
+          id: "cc-connect",
+          label: "cc-connect",
+          protocol: "provider-router",
+          base_url: `${baseUrl}/v1`,
+          auth_env: "OPENAI_API_KEY",
+          model_env: "project.agent.options.model",
+          notes: ["supports provider refs", "supports multi-platform projects"],
+        },
+      ],
+      route_templates: [
+        {
+          id: "chat-upstream",
+          label: "OpenAI-compatible chat upstream",
+          upstream_protocol: "openai-chat-completions",
+          accepts: ["openai-chat-completions", "openai-responses", "anthropic-messages"],
+          model_passthrough: true,
+        },
+        {
+          id: "compact",
+          label: "Codex context compaction",
+          upstream_protocol: "openai-chat-completions",
+          accepts: ["openai-responses-compact"],
+          model_passthrough: true,
+        },
+      ],
+      channels: GATEWAY_CHANNEL_CATALOG,
+      models: GATEWAY_MODEL_CATALOG,
+    },
+    integrations: {
+      codex_cli: {
+        base_url: `${baseUrl}/v1`,
+        api_key_env: "OPENAI_API_KEY",
+      },
+      claude_cli: {
+        base_url: baseUrl,
+        api_key_env: "ANTHROPIC_AUTH_TOKEN",
+      },
+      cc_connect: {
+        provider_base_url: `${baseUrl}/v1`,
+        channel_surfaces: ["feishu", "weixin", "wecom", "bridge"],
+      },
+    },
+  };
 }
 
 async function readBody(req) {
@@ -429,6 +584,171 @@ function normalizeToolCalls(toolCalls) {
     name: toolCall.function?.name || toolCall.name || "tool",
     args: toolCall.function?.arguments || toolCall.arguments || "{}",
   }));
+}
+
+function extractAnthropicTextContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => {
+    if (!part || typeof part !== "object") return "";
+    if (part.type === "text") return part.text || "";
+    if (part.type === "image") return "[image input omitted by local Claude adapter]";
+    if (part.type === "tool_result") return typeof part.content === "string" ? part.content : extractAnthropicTextContent(part.content);
+    if (part.type === "thinking") return part.thinking || "";
+    return "";
+  }).filter(Boolean).join("\n");
+}
+
+function anthropicSystemToChatMessages(system) {
+  if (!system) return [];
+  if (typeof system === "string") return system.trim() ? [{ role: "system", content: system }] : [];
+  if (!Array.isArray(system)) return [];
+  return system.map((part) => {
+    if (typeof part === "string") return part;
+    if (part?.type === "text") return part.text || "";
+    return "";
+  }).filter((text) => text.trim()).map((content) => ({ role: "system", content }));
+}
+
+function anthropicToolsToChatTools(tools) {
+  if (!Array.isArray(tools)) return undefined;
+  const converted = tools.map((tool) => {
+    if (!tool || typeof tool !== "object" || !tool.name) return null;
+    return {
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description || "",
+        parameters: tool.input_schema || {},
+      },
+    };
+  }).filter(Boolean);
+  return converted.length ? converted : undefined;
+}
+
+function anthropicToolChoiceToChatToolChoice(toolChoice) {
+  if (!toolChoice || toolChoice.type === "auto" || toolChoice.type === "any") return "auto";
+  if (toolChoice.type === "none") return "none";
+  if (toolChoice.type === "tool" && toolChoice.name) {
+    return { type: "function", function: { name: toolChoice.name } };
+  }
+  return undefined;
+}
+
+function anthropicMessagesToChatBody(body) {
+  const chatBody = {
+    model: resolveRequestModel(body.model),
+    messages: anthropicSystemToChatMessages(body.system),
+    stream: Boolean(body.stream),
+  };
+
+  if (Array.isArray(body.messages)) {
+    for (const message of body.messages) {
+      if (!message || typeof message !== "object") continue;
+      const role = message.role === "assistant" ? "assistant" : "user";
+      const content = message.content;
+      if (Array.isArray(content)) {
+        const toolUses = content.filter((part) => part?.type === "tool_use");
+        const toolResults = content.filter((part) => part?.type === "tool_result");
+        const text = extractAnthropicTextContent(content.filter((part) => part?.type !== "tool_use" && part?.type !== "tool_result"));
+        if (toolUses.length) {
+          chatBody.messages.push({
+            role: "assistant",
+            content: text || null,
+            tool_calls: toolUses.map((toolUse) => ({
+              id: toolUse.id || shortId("call"),
+              type: "function",
+              function: {
+                name: toolUse.name || "tool",
+                arguments: JSON.stringify(toolUse.input || {}),
+              },
+            })),
+          });
+        } else if (text || role === "user") {
+          chatBody.messages.push({ role, content: text });
+        }
+        for (const toolResult of toolResults) {
+          chatBody.messages.push({
+            role: "tool",
+            tool_call_id: toolResult.tool_use_id || toolResult.id || shortId("call"),
+            content: extractAnthropicTextContent(toolResult.content),
+          });
+        }
+      } else {
+        chatBody.messages.push({ role, content: extractAnthropicTextContent(content) });
+      }
+    }
+  }
+
+  if (chatBody.messages.length === 0) {
+    chatBody.messages.push({ role: "user", content: "" });
+  }
+
+  if (Number.isFinite(body.max_tokens)) chatBody.max_tokens = body.max_tokens;
+  if (Number.isFinite(body.temperature)) chatBody.temperature = body.temperature;
+  if (Number.isFinite(body.top_p)) chatBody.top_p = body.top_p;
+  if (Array.isArray(body.stop_sequences) && body.stop_sequences.length) chatBody.stop = body.stop_sequences;
+
+  const tools = anthropicToolsToChatTools(body.tools);
+  if (tools) chatBody.tools = tools;
+  const toolChoice = anthropicToolChoiceToChatToolChoice(body.tool_choice);
+  if (toolChoice) chatBody.tool_choice = toolChoice;
+
+  return chatBody;
+}
+
+function parseToolArguments(args) {
+  if (!args || typeof args !== "string") return {};
+  try {
+    const parsed = JSON.parse(args);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function chatFinishReasonToAnthropic(finishReason, hasToolUse = false) {
+  if (hasToolUse || finishReason === "tool_calls") return "tool_use";
+  if (finishReason === "length") return "max_tokens";
+  if (finishReason === "content_filter") return "stop_sequence";
+  return "end_turn";
+}
+
+function chatMessageToAnthropicContent(message) {
+  const content = [];
+  const reasoning = message?.reasoning_content || message?.reasoning;
+  if (typeof reasoning === "string" && reasoning.trim()) {
+    content.push({ type: "thinking", thinking: reasoning });
+  }
+  const text = extractMessageText(message);
+  if (text) content.push({ type: "text", text });
+  for (const toolCall of normalizeToolCalls(message?.tool_calls)) {
+    content.push({
+      type: "tool_use",
+      id: toolCall.id,
+      name: toolCall.name,
+      input: parseToolArguments(toolCall.args),
+    });
+  }
+  if (!content.length) content.push({ type: "text", text: "" });
+  return content;
+}
+
+function chatCompletionToAnthropicMessage(chat, requestedModel) {
+  const choice = chat.choices?.[0] || {};
+  const message = choice.message || {};
+  const content = chatMessageToAnthropicContent(message);
+  const hasToolUse = content.some((part) => part.type === "tool_use");
+  return {
+    id: shortId("msg"),
+    type: "message",
+    role: "assistant",
+    model: chat.model || requestedModel || "",
+    content,
+    stop_reason: chatFinishReasonToAnthropic(choice.finish_reason, hasToolUse),
+    stop_sequence: null,
+    usage: normalizeUsage(chat.usage),
+  };
 }
 
 function writeSseHeaders(res) {
@@ -865,6 +1185,219 @@ async function handleCompact(req, res) {
   }
 }
 
+async function handleAnthropicMessagesNonStream(req, res, anthropicReq, chatBody) {
+  const body = Buffer.from(JSON.stringify({ ...chatBody, stream: false }));
+  try {
+    const upstream = await requestUpstream({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: {
+        "content-type": "application/json",
+        "authorization": upstreamAuthorization(req),
+        "content-length": body.length,
+      },
+      body,
+    });
+
+    if (upstream.statusCode < 200 || upstream.statusCode >= 300) {
+      return json(res, upstream.statusCode, {
+        type: "error",
+        error: {
+          type: "upstream_error",
+          message: `messages upstream failed with ${upstream.statusCode}: ${upstream.body.toString("utf8").slice(0, 2000)}`,
+        },
+      });
+    }
+
+    const chat = JSON.parse(upstream.body.toString("utf8"));
+    return json(res, 200, chatCompletionToAnthropicMessage(chat, anthropicReq.model || chatBody.model));
+  } catch (error) {
+    log(`messages adapter failed: ${error.message}`);
+    return json(res, 502, { type: "error", error: { type: "upstream_error", message: `messages adapter failed: ${error.message}` } });
+  }
+}
+
+function writeAnthropicSse(res, event, data) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+async function handleAnthropicMessagesStream(req, res, anthropicReq, chatBody) {
+  const messageId = shortId("msg");
+  const model = anthropicReq.model || chatBody.model;
+  const body = Buffer.from(JSON.stringify({ ...chatBody, stream: true }));
+  let finished = false;
+  let sawDone = false;
+  let textStarted = false;
+  let accumulatedText = "";
+  let finalUsage;
+  let stopReason = "end_turn";
+  let keepAliveTimer = null;
+
+  function stopKeepAlive() {
+    if (!keepAliveTimer) return;
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
+
+  function startKeepAlive() {
+    if (!Number.isFinite(STREAM_KEEPALIVE_MS) || STREAM_KEEPALIVE_MS <= 0) return;
+    keepAliveTimer = setInterval(() => {
+      if (finished) {
+        stopKeepAlive();
+        return;
+      }
+      res.write(": keepalive\n\n");
+    }, STREAM_KEEPALIVE_MS);
+    keepAliveTimer.unref?.();
+  }
+
+  function startTextIfNeeded() {
+    if (textStarted) return;
+    textStarted = true;
+    writeAnthropicSse(res, "content_block_start", {
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "text", text: "" },
+    });
+  }
+
+  function fail(message) {
+    if (finished) return;
+    finished = true;
+    stopKeepAlive();
+    writeAnthropicSse(res, "error", { type: "error", error: { type: "upstream_error", message } });
+    res.end();
+  }
+
+  function finalize() {
+    if (finished) return;
+    finished = true;
+    stopKeepAlive();
+    startTextIfNeeded();
+    writeAnthropicSse(res, "content_block_stop", { type: "content_block_stop", index: 0 });
+    writeAnthropicSse(res, "message_delta", {
+      type: "message_delta",
+      delta: {
+        stop_reason: stopReason,
+        stop_sequence: null,
+      },
+      usage: normalizeUsage(finalUsage),
+    });
+    writeAnthropicSse(res, "message_stop", { type: "message_stop" });
+    res.end();
+  }
+
+  writeSseHeaders(res);
+  writeAnthropicSse(res, "message_start", {
+    type: "message_start",
+    message: {
+      id: messageId,
+      type: "message",
+      role: "assistant",
+      model,
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    },
+  });
+  startKeepAlive();
+
+  const upstreamReq = requestModule().request({
+    protocol: upstreamBase.protocol,
+    hostname: upstreamBase.hostname,
+    port: upstreamBase.port || (upstreamBase.protocol === "https:" ? 443 : 80),
+    agent: upstreamAgent,
+    method: "POST",
+    path: resolveUpstreamPath("/v1/chat/completions"),
+    headers: {
+      "content-type": "application/json",
+      "authorization": upstreamAuthorization(req),
+      "content-length": body.length,
+      "accept": "text/event-stream",
+    },
+    timeout: REQUEST_TIMEOUT_MS,
+  }, (upstreamRes) => {
+    if ((upstreamRes.statusCode || 502) < 200 || (upstreamRes.statusCode || 502) >= 300) {
+      const chunks = [];
+      upstreamRes.on("data", (chunk) => chunks.push(chunk));
+      upstreamRes.on("end", () => {
+        fail(`messages upstream failed with ${upstreamRes.statusCode}: ${Buffer.concat(chunks).toString("utf8").slice(0, 2000)}`);
+      });
+      return;
+    }
+
+    const parserState = { text: "" };
+    upstreamRes.on("data", (chunk) => {
+      parseSseDataBlocks(parserState, chunk, (data) => {
+        if (data === "[DONE]") {
+          sawDone = true;
+          finalize();
+          return;
+        }
+        let parsed;
+        try {
+          parsed = JSON.parse(data);
+        } catch (error) {
+          log(`messages SSE parse skipped: ${error.message}`);
+          return;
+        }
+        if (parsed.usage) finalUsage = parsed.usage;
+        const choice = parsed.choices?.[0];
+        const delta = choice?.delta || {};
+        const textDelta = typeof delta.content === "string" ? delta.content : (typeof delta.reasoning_content === "string" ? delta.reasoning_content : "");
+        if (textDelta) {
+          accumulatedText += textDelta;
+          startTextIfNeeded();
+          writeAnthropicSse(res, "content_block_delta", {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "text_delta", text: textDelta },
+          });
+        }
+        if (choice?.finish_reason) {
+          stopReason = chatFinishReasonToAnthropic(choice.finish_reason, Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0);
+        }
+      });
+    });
+    upstreamRes.on("end", () => {
+      if (sawDone) finalize();
+      else fail(`upstream stream ended before [DONE]${accumulatedText ? ` after ${accumulatedText.length} chars` : ""}`);
+    });
+    upstreamRes.on("aborted", () => fail("upstream stream aborted before completion"));
+    upstreamRes.on("error", (error) => fail(`upstream stream failed: ${error.message}`));
+  });
+
+  upstreamReq.on("timeout", () => upstreamReq.destroy(new Error("upstream timeout")));
+  upstreamReq.on("error", (error) => fail(`messages adapter failed: ${error.message}`));
+  res.on("close", () => {
+    stopKeepAlive();
+    if (finished) return;
+    try { upstreamReq.destroy(); } catch {}
+  });
+  upstreamReq.end(body);
+}
+
+async function handleAnthropicMessages(req, res) {
+  let request;
+  try {
+    request = await readJsonRequest(req);
+  } catch (error) {
+    return json(res, 400, { type: "error", error: { type: "invalid_request_error", message: `invalid JSON: ${error.message}` } });
+  }
+
+  let chatBody;
+  try {
+    chatBody = anthropicMessagesToChatBody(request);
+  } catch (error) {
+    return json(res, 400, { type: "error", error: { type: "invalid_request_error", message: error.message } });
+  }
+
+  if (request.stream) return handleAnthropicMessagesStream(req, res, request, chatBody);
+  return handleAnthropicMessagesNonStream(req, res, request, chatBody);
+}
+
 async function forwardHttp(req, res) {
   const body = await readBody(req);
   const headers = applyUpstreamAuthorization(forwardHeaders(req), req);
@@ -923,10 +1456,20 @@ const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "authorization,content-type,openai-beta,x-codex-beta-features,x-codex-installation-id,x-codex-window-id",
+      "Access-Control-Allow-Headers": "authorization,content-type,openai-beta,x-api-key,anthropic-version,anthropic-beta,x-codex-beta-features,x-codex-installation-id,x-codex-window-id",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     });
     res.end();
+    return;
+  }
+
+  if (req.method === "GET" && (pathname === "/gateway/status" || pathname === "/studio-agent-gateway/status")) {
+    json(res, 200, gatewayStatus());
+    return;
+  }
+
+  if (req.method === "POST" && (pathname === "/v1/messages" || pathname === "/claude/v1/messages")) {
+    handleAnthropicMessages(req, res).catch((error) => json(res, 500, { type: "error", error: { type: "api_error", message: error.message } }));
     return;
   }
 

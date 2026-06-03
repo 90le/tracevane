@@ -1,5 +1,12 @@
 <template>
   <div class="cs-service-grid">
+    <div class="cs-service-grid-head">
+      <div>
+        <p class="cs-section-kicker">{{ text("服务", "Services") }}</p>
+        <h4>{{ text("服务控制", "Service Control") }}</h4>
+      </div>
+      <span class="cs-status-pill tone-neutral">{{ services.length }}</span>
+    </div>
     <article v-for="service in services" :key="service.id" class="cs-service-card">
       <div class="cs-service-card-head">
         <div class="cs-service-title">
@@ -13,7 +20,6 @@
           {{ service.active ? labels.running : labels.stopped }}
         </span>
       </div>
-      <p class="cs-service-blurb">{{ service.blurb }}</p>
       <dl class="cs-stat-list">
         <div>
           <dt>{{ service.endpointLabel }}</dt>
@@ -53,6 +59,14 @@
         >
           {{ labels.restart }}
         </button>
+        <button
+          type="button"
+          class="secondary-button"
+          :disabled="!canRunMutation || service.enabled"
+          @click="$emit('service-action', service.id, 'enable')"
+        >
+          {{ labels.enableAutostart }}
+        </button>
         <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
           {{ mutationDisabledHelp }}
         </p>
@@ -63,12 +77,14 @@
 
 <script setup lang="ts">
 import type { CodexStackManualServiceId, CodexStackServiceAction } from "../../../../../types/codex-stack";
+import { useLocalePreference } from "../../shared/locale";
 import type { CodexStackTone } from "./codex-stack-view-model";
 import "./codex-stack-dashboard.css";
 
 export interface CodexStackServiceCard {
   id: CodexStackManualServiceId;
   active: boolean;
+  enabled: boolean;
   label: string;
   blurb: string;
   tone: CodexStackTone;
@@ -91,10 +107,16 @@ defineProps<{
     start: string;
     stop: string;
     restart: string;
+    enableAutostart: string;
   };
 }>();
 
 defineEmits<{
-  "service-action": [serviceId: CodexStackManualServiceId, action: Extract<CodexStackServiceAction, "start" | "stop" | "restart">];
+  "service-action": [
+    serviceId: CodexStackManualServiceId,
+    action: Extract<CodexStackServiceAction, "start" | "stop" | "restart" | "enable">,
+  ];
 }>();
+
+const { text } = useLocalePreference();
 </script>

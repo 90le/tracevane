@@ -7,6 +7,8 @@
       class="cs-stack-task-step"
       :class="{ 'cs-stack-task-step-active': activeSection === section.id }"
       :aria-current="activeSection === section.id ? 'step' : undefined"
+      :aria-label="section.meta ? `${section.label}: ${section.meta}` : section.label"
+      :title="section.meta ? `${section.label}: ${section.meta}` : section.label"
       :data-tone="section.tone"
       :data-recommended="section.recommended ? 'true' : undefined"
       @click="$emit('select', section.id)"

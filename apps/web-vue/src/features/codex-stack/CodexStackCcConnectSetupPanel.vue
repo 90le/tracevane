@@ -6,9 +6,6 @@
         <h4>{{ text("快速绑定命令", "Quick Setup Commands") }}</h4>
       </div>
     </div>
-    <p class="cs-field-hint">
-      {{ text("保存 TOML 后，如果 cc-connect.service 正在运行会自动重启。绑定完成后可直接执行 finalizer。", "Saving TOML restarts cc-connect.service if it is running. After binding, you can immediately run the finalizer.") }}
-    </p>
     <div class="cs-actions cs-actions-wrap">
       <button type="button" class="secondary-button" :disabled="busy" @click="$emit('copy-setup', 'feishu')">
         {{ text("复制 Feishu Setup", "Copy Feishu Setup") }}
@@ -35,7 +32,6 @@
     <div class="cs-cc-command-summary">
       <div>
         <strong>{{ text("绑定命令已准备", "Setup commands ready") }}</strong>
-        <p>{{ text("页面只保留复制入口；完整命令放在浮动窗口，避免配置页变成命令墙。", "This page keeps copy actions here; full commands are in a floating window so the config page does not become a command wall.") }}</p>
         <span>{{ commandMeta }}</span>
       </div>
       <button type="button" class="secondary-button" :disabled="!commands.length" @click="openCommandSheet">

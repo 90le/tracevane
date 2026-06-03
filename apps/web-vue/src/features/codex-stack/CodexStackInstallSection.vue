@@ -1,11 +1,5 @@
 <template>
   <CodexStackSectionStack>
-    <CodexStackSectionIntro
-      :kicker="text('安装', 'Install')"
-      :title="text('一键安装与修复', 'One-click Install and Repair')"
-      :copy="text('第一次使用先走新手入口；日常异常只按“推荐修复 → 只验证 → 验证并切换”三步。安装参数和高级维护默认收起，只有需要改模型、端口或处理冲突时再打开。', 'First-time users start with the beginner entry. Daily recovery follows Recommended Repair, Verify Only, then Smoke & Attach. Install parameters and advanced maintenance stay collapsed until a model, port, or conflict needs manual handling.')"
-    />
-
     <CodexStackInstallPlanCard
       :highlights="highlights"
       :can-run-mutation="canRunMutation"
@@ -23,7 +17,7 @@
       @repair="emit('repair')"
     />
 
-    <CodexStackInstallShell :busy="shellBusy">
+    <CodexStackInstallShell>
       <CodexStackRepairBoard
         :can-run-mutation="canRunMutation"
         :mutation-disabled-help="mutationDisabledHelp"
@@ -44,7 +38,7 @@
       <details class="cs-install-options-panel">
         <summary>
           <span>{{ text("安装参数和高级安装策略", "Install Parameters and Advanced Strategy") }}</span>
-          <small>{{ text("一般不用改；需要换模型、端口、上游或强制重装时再打开。", "Usually leave this closed; open only for model, port, upstream, or reinstall changes.") }}</small>
+          <small>{{ text("模型 / 端口 / 上游 / 重装", "Model / ports / upstream / reinstall") }}</small>
         </summary>
         <div class="cs-install-options-body">
           <CodexStackInstallConfigPanel
@@ -89,7 +83,6 @@ import type {
 } from "./CodexStackInstallStrategyPanel.vue";
 import CodexStackRepairBoard from "./CodexStackRepairBoard.vue";
 import type { CodexStackAttachPreflightItem } from "./CodexStackRepairBoard.vue";
-import CodexStackSectionIntro from "./CodexStackSectionIntro.vue";
 import CodexStackSectionStack from "./CodexStackSectionStack.vue";
 import type { CodexStackTone } from "./codex-stack-view-model";
 
@@ -103,7 +96,6 @@ defineProps<{
   recommendedDisabled: boolean;
   recommendedDisabledHelp: string;
   recommendedTone: CodexStackTone;
-  shellBusy: boolean;
   canAttachCodexCpa: boolean;
   attachCodexCpaHelp: string;
   attachCodexCpaDisabledHelp: string;

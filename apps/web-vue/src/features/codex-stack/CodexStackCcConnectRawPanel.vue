@@ -4,9 +4,6 @@
       <div>
         <p class="cs-section-kicker">{{ text("原始配置", "Raw Config") }}</p>
         <h4>{{ text("TOML 编辑器", "TOML Editor") }}</h4>
-        <p class="cs-field-hint">
-          {{ text("用于保留可视化表单尚未覆盖的高级字段。保存会交回主控制页执行 TOML patch 和服务重启。", "Use this for advanced fields not yet covered by the visual form. Saving returns to the control page for TOML patching and service restart.") }}
-        </p>
       </div>
       <span class="cs-status-pill" :class="hasRawChanges ? 'tone-accent' : 'tone-neutral'">
         {{ hasRawChanges ? text("TOML 有修改", "TOML unsaved") : text("TOML 已同步", "TOML synced") }}
