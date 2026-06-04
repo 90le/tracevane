@@ -215,7 +215,10 @@ Phase 1 supervisor/install contract checkpoint（2026-06-04）：
 - daemon service response 已新增 `serviceManager` 摘要，解释命令结果为 `checked`、`reachable`、`active`、`enabled` 和 `lastError`，供 UI/安装流直接判断当前平台 service manager 状态。
 - `ensure-running` 已锁定 bootstrap contract：已有 service template 时优先运行 supervisor status/start/status；没有 service template 时默认阻断，只有 `apply: true` 且 `allowBootstrap: true` 才允许启动 detached daemon fallback。
 - detached bootstrap response 会标记 `bootstrap.mode: "detached"`、`temporary: true`、pid、endpoint 和提示信息；它是临时 fallback，不代表正式 supervisor restart policy 已生效。
-- 当前仍未完成 UI 接入、安装脚本接入、真实 `systemctl` / `launchctl` / `schtasks` 启停验证和 supervisor crash-restart 验证。
+- 已新增 `scripts/verify-model-gateway-service-manager.mjs`，用于验证真实当前平台 service manager contract。
+- 该脚本默认 probe 模式只做 service template preview、read-only status command 和 `ensure-running` dry-run；只有显式设置 `OPENCLAW_STUDIO_VERIFY_MODEL_GATEWAY_SERVICE_APPLY=1` 才执行 install/start/status/restart。
+- 当前 Linux probe 已确认 `systemd --user` 可达，但 `openclaw-studio-model-gateway.service` 尚未安装/启用；`ensure-running` dry-run 返回 blocked，未启动 detached bootstrap。
+- 当前仍未完成安装脚本接入、显式 apply 模式下的真实 `systemctl` / `launchctl` / `schtasks` 启停验证和 supervisor crash-restart 验证。
 
 Phase 1 Codex install/takeover preparation checkpoint（2026-06-04）：
 
@@ -458,9 +461,10 @@ Router 是新链路稳定性的核心：
 - 已新增 daemon supervisor 模板和管理 API contract，可预览/写入当前平台 service template，并列出 start/stop/restart/status 命令计划。
 - 已锁定 daemon service manager 命令执行 contract，可测试 `start`、`restart`、`status` 的 selected supervisor command execution 和结果回传。
 - 已新增 daemon service manager status summary，可把 `status runCommands:true` 的原始命令结果解释成 manager reachable、service active/enabled 和失败摘要。
+- 已新增安全的真实 service manager 验证脚本 `scripts/verify-model-gateway-service-manager.mjs`：默认只读 probe，不安装、不启动、不重启；显式 env gate 后才执行 apply install/start/status/restart。
 - Codex Stack 安装成功后已会写入 daemon service template，并为 Codex 准备 inactive `model_providers.studio`，默认 endpoint 为 daemon loopback。
 - Router 已能在 active provider circuit open 时选择同 app scope fallback provider，并在 route decision 中返回 `failoverReason`。
-- 尚未完成 supervisor 命令真实 OS 执行验证、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
+- 尚未完成 service manager apply 模式真实启停验证、安装脚本替换、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
 
 ### Phase 2: Gateway Runtime
 
