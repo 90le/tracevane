@@ -406,7 +406,7 @@ docs/codex-stack-model-gateway-goal.md
 
 - `npm run build:api`：通过。
 - `node --test tests/system/model-gateway-service.test.mjs`：通过，15 个 Model Gateway 用例全绿。
-- `node --test tests/system/codex-stack-service.test.mjs`：通过，69 个 Codex Stack 用例全绿。
+- `node --test tests/system/codex-stack-service.test.mjs`：通过，71 个 Codex Stack 用例全绿，新增 active Studio takeover smoke gate 成功/拒绝路径覆盖。
 - 上一轮 `npm run test:system` 未全绿。新增 gateway 用例通过；失败集中在当前工作树已有的 codex-stack job 超时和多项前端/UI design contract，完整复核日志为 `/tmp/openclaw-studio-system-after-model-gateway.log`。本轮未重复跑全量 system suite。
 
 ## 9. 风险和待定项
