@@ -448,7 +448,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
   });
 });
 
-test("model gateway protocol matrix forwards native anthropic messages and guards unfinished adapters", async () => {
+test("model gateway protocol matrix forwards native anthropic messages", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const ctx = createStudioContext({ config, logger: createLogger() });
@@ -521,24 +521,11 @@ test("model gateway protocol matrix forwards native anthropic messages and guard
       assert.equal(claudeMessages.body.content[0].text, "Native Anthropic 2");
       assert.equal(claudeMessages.headers["x-openclaw-model-gateway-provider"], "native-anthropic");
 
-      const responses = await requestJson(`${baseUrl}/v1/responses`, {
-        method: "POST",
-        body: {
-          model: "claude-native",
-          input: "responses please",
-        },
-      });
-      assert.equal(responses.status, 501);
-      assert.equal(responses.body.error.code, "model_gateway_adapter_required");
-      assert.equal(responses.body.error.decision.mode, "adapter-required");
-      assert.equal(responses.body.error.decision.routeId, "openai_responses");
-
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
         ["anthropic_messages", "/v1/messages", "success"],
         ["anthropic_messages", "/claude/v1/messages", "success"],
-        ["openai_responses", "/v1/responses", "adapter-required"],
       ]);
       assert.ok(!JSON.stringify(runtime.body).includes("sk-native-anthropic-secret"));
     });
@@ -563,6 +550,178 @@ test("model gateway protocol matrix forwards native anthropic messages and guard
     model: "claude-native",
     max_tokens: 64,
     messages: [{ role: "user", content: "hello via alias" }],
+  });
+});
+
+test("model gateway adapts codex responses through native anthropic messages providers", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-to-anthropic",
+      name: "Responses To Anthropic Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://responses-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-responses-anthropic-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    const isCompact = upstreamCalls.length === 2;
+    return new Response(JSON.stringify({
+      id: isCompact ? "msg_compact_anthropic" : "msg_responses_anthropic",
+      type: "message",
+      role: "assistant",
+      model: "claude-native",
+      content: isCompact
+        ? [{ type: "text", text: "Compact Anthropic summary." }]
+        : [
+          { type: "text", text: "Anthropic Responses text." },
+          { type: "tool_use", id: "call_lookup", name: "lookup", input: { query: "docs" } },
+        ],
+      stop_reason: isCompact ? "end_turn" : "tool_use",
+      usage: {
+        input_tokens: isCompact ? 31 : 17,
+        output_tokens: isCompact ? 9 : 5,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          instructions: "Use concise responses.",
+          input: [{ role: "user", content: "Plan the task." }],
+          tools: [{
+            type: "function",
+            name: "lookup",
+            description: "Look up docs",
+            parameters: {
+              type: "object",
+              properties: { query: { type: "string" } },
+              required: ["query"],
+            },
+          }],
+          tool_choice: { type: "function", name: "lookup" },
+          max_output_tokens: 256,
+          temperature: 0.1,
+        },
+      });
+      assert.equal(responses.status, 200);
+      assert.equal(responses.headers["x-openclaw-model-gateway-provider"], "responses-to-anthropic");
+      assert.equal(responses.body.id, "msg_responses_anthropic");
+      assert.equal(responses.body.object, "response");
+      assert.equal(responses.body.output[0].content[0].text, "Anthropic Responses text.");
+      assert.deepEqual(responses.body.output[1], {
+        type: "function_call",
+        id: "call_lookup",
+        call_id: "call_lookup",
+        status: "completed",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      });
+      assert.deepEqual(responses.body.usage, {
+        input_tokens: 17,
+        output_tokens: 5,
+        total_tokens: 22,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      });
+
+      const compact = await requestJson(`${baseUrl}/v1/responses/compact`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          instructions: "Summarize for handoff.",
+          input: "Current work is Model Gateway.",
+          max_output_tokens: 512,
+        },
+      });
+      assert.equal(compact.status, 200);
+      assert.equal(compact.body.id, "msg_compact_anthropic");
+      assert.equal(compact.body.output[0].content[0].text, "Compact Anthropic summary.");
+
+      const streaming = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          input: "stream please",
+          stream: true,
+        },
+      });
+      assert.equal(streaming.status, 501);
+      assert.equal(streaming.body.error.code, "model_gateway_adapter_required");
+      assert.equal(streaming.body.error.decision.mode, "adapter-required");
+      assert.equal(streaming.body.error.decision.routeId, "openai_responses");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
+        ["openai_responses", "/v1/responses", "success"],
+        ["openai_responses_compact", "/v1/responses/compact", "success"],
+        ["openai_responses", "/v1/responses", "adapter-required"],
+      ]);
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-responses-anthropic-secret"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].method, "POST");
+  assert.equal(upstreamCalls[0].authorization, null);
+  assert.equal(upstreamCalls[0].xApiKey, "sk-responses-anthropic-secret");
+  assert.equal(upstreamCalls[0].anthropicVersion, "2023-06-01");
+  assert.equal(upstreamCalls[0].contentType, "application/json");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "claude-native",
+    max_tokens: 256,
+    messages: [{ role: "user", content: "Plan the task." }],
+    system: "Use concise responses.",
+    temperature: 0.1,
+    tools: [{
+      name: "lookup",
+      description: "Look up docs",
+      input_schema: {
+        type: "object",
+        properties: { query: { type: "string" } },
+        required: ["query"],
+      },
+    }],
+    tool_choice: { type: "tool", name: "lookup" },
+  });
+  assert.equal(upstreamCalls[1].url, "https://responses-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].xApiKey, "sk-responses-anthropic-secret");
+  assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
+    model: "claude-native",
+    max_tokens: 512,
+    messages: [{ role: "user", content: "Current work is Model Gateway." }],
+    system: "Summarize for handoff.",
   });
 });
 

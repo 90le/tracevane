@@ -26,6 +26,16 @@ export function isChatToAnthropicMessagesAdapterTarget(decision: {
     && decision.provider?.apiFormat === "anthropic_messages";
 }
 
+export function isResponsesToAnthropicMessagesAdapterTarget(decision: {
+  routeId: string | null;
+  provider: { apiFormat: string } | null;
+}): boolean {
+  return (
+    decision.routeId === "openai_responses"
+    || decision.routeId === "openai_responses_compact"
+  ) && decision.provider?.apiFormat === "anthropic_messages";
+}
+
 export function ensureAnthropicMessagesHeaders(headers: Headers): void {
   if (!headers.has("anthropic-version")) {
     headers.set("anthropic-version", DEFAULT_ANTHROPIC_VERSION);
