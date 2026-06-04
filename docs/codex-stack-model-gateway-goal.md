@@ -1,103 +1,90 @@
-# Codex Stack Model Gateway 目标方案
+# Studio Gateway 目标方案
 
-> 状态：Phase 1 in progress
+> 状态：Phase C deletion completed; Phase D pending
 > 更新：2026-06-04
-> 文档规则：本文件只保留目标、边界、验收和阶段计划；每轮不要追加流水账，进度写到 `codex-stack-model-gateway-progress.md`。
+> 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `codex-stack-model-gateway-progress.md`。文件名暂时保留为迁移入口，正文不再把 Codex Stack 当新产品名。
 
 ## 1. 最终目标
 
-Codex Stack 不再依赖 CPA `18795`、Compact Proxy `18796` 或 `CPA Gateway` 代理链路。Studio 自建 **Studio Model Gateway daemon**，由它统一承接 Codex、Claude Code、OpenCode、OpenClaw 和其他 CLI / AI 工具的模型请求。
+`Codex Stack` 作为旧功能面终止演进。后续新建 **Studio Gateway** 管理页和后端逻辑，用通用模型网关接入 Codex、Claude / Claude Code、OpenCode、OpenClaw、CC / cc-connect 以及其他 CLI / AI 工具。
 
 ```text
-旧链路：Codex -> Compact Proxy -> CPA -> OpenClaw provider/upstream
-目标链路：Codex / Claude Code / OpenCode / OpenClaw -> Studio Gateway daemon -> provider router -> upstream
+旧目标：Codex Stack -> CPA / Compact / cc-connect 混合链路
+新目标：Clients -> Studio Gateway daemon -> provider router -> upstream
 ```
 
-`18796` 可以继续作为用户熟悉的本地模型端口，但端口归属必须从 `cpa-compact-proxy` 迁移为 `openclaw-studio-model-gateway.service`。`cc-connect` 只保留为可选 IM / project bridge，不再承担模型代理、模型路由或安装主链路职责。
+硬性前提：
+
+- 删除生产代码里的 `/api/codex-stack/*` 后端模块、`features/codex-stack` 前端页面和旧安装/修复/路由模型 UI。
+- 不再以 CPA `18795`、Compact Proxy `18796` 或 CPA Gateway 作为正式链路；`18796` 只可作为 Studio Gateway daemon 默认本地端口。
+- `cc-connect` / CC 只作为应用连接或渠道桥接接入 Studio Gateway，不承担模型 relay 主链路。
 
 ## 2. 协议目标
 
-用户配置 provider 时只需要说明 provider 的原生协议。Studio Gateway 必须把同一个 provider 暴露为三种主流客户端协议面：
+Studio Gateway 必须让任意 provider 无论原生协议是什么，都能对外暴露三类常见客户端协议：
 
-| Provider 原生协议 | 典型来源 | Studio 对外必须支持 |
+| Provider 原生协议 | 典型来源 | Studio Gateway 对外协议 |
 | --- | --- | --- |
-| Anthropic Messages | Claude 官方 API / Claude Code 原生协议 | Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions |
-| OpenAI Responses API | Codex 官方 API / Codex 原生协议 | Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions |
+| Anthropic Messages | Claude 官方 API / Claude Code | Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions |
+| OpenAI Responses API | Codex 官方 API | Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions |
 | OpenAI Chat Completions | 第三方模型最常见兼容协议 | Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions |
 
 规则：
 
 - 原生协议和客户端协议一致时 passthrough。
-- 不一致时走 Gateway adapter。
-- 未实现的组合必须返回明确 `model_gateway_adapter_required`，不能伪成功。
+- 不一致时走 adapter。
+- 未实现组合必须返回明确错误，不能伪成功。
+- 所有协议格子需要测试覆盖：非流式、流式、tool/history、compact 语义按阶段补齐。
 
-## 3. 生命周期前提
+## 3. 生命周期目标
 
-Studio 支持单口模式和非单口模式，但模型 relay 的正式生命线只能是独立 Local Gateway daemon。
+正式模型 relay 只能依赖独立 Local Gateway daemon。
 
-- **非单口模式**：CLI 直接访问 daemon loopback，例如 `http://127.0.0.1:18796/v1`。
-- **单口模式**：OpenClaw Gateway 只挂载 Studio UI / control API；模型请求仍默认写 daemon loopback，单口 endpoint 只能是可选 ingress/proxy。
+- 非单口模式：CLI 直接访问 daemon loopback，例如 `http://127.0.0.1:18796/v1`。
+- 单口模式：OpenClaw 只挂载 Studio UI / control API；模型请求默认仍写 daemon loopback，单口 endpoint 只作为可选 ingress/proxy。
+- OpenClaw Gateway、Studio API 或 Studio UI 崩溃时，daemon 继续服务已接管客户端。
+- daemon 由 OS/user supervisor 托管：Linux `systemd --user`、macOS launchd、Windows scheduled task/service。
 
-硬性要求：
+## 4. 新架构边界
 
-- OpenClaw Gateway 挂掉时，已接管 CLI 仍能通过 daemon 调模型。
-- Studio API / UI 崩溃时，daemon 仍继续服务 `/v1/chat/completions`、`/v1/responses`、`/v1/responses/compact`、`/v1/messages`。
-- daemon 由 OS/user service supervisor 托管：Linux `systemd --user`、macOS launchd、Windows scheduled task/service。
-- detached child process 只能作为开发或首次 bootstrap fallback，不能替代正式 restart policy。
-- status 必须区分 `controlPlane`、`openclawMount`、`localDaemon`，避免把 UI/mount 故障误判为模型 relay 不可用。
+| 模块 | 职责 |
+| --- | --- |
+| Studio Gateway Core | provider registry、secret store、active route、health、request log、adapter registry |
+| Studio Gateway daemon | loopback HTTP listener、协议 adapter、provider router、runtime metadata、supervisor contract |
+| App Connections | Codex、Claude Code、OpenCode、OpenClaw、CC / cc-connect 的配置检测、preview、apply、rollback |
+| Gateway UI | Provider Center、App Connections、Runtime、Diagnostics 的新页面；不复用旧 Codex Stack 页面结构 |
 
-## 4. 架构边界
+## 5. 删除范围
 
-| 层 | 职责 | 禁止事项 |
-| --- | --- | --- |
-| Studio Gateway Control Plane | provider registry、secret refs、route policy、health/smoke、request log、audit、UI | 不把单机 `HOME`、`systemctl --user`、Codex auth 文件当控制面真相；读取接口不得返回明文 upstream key |
-| Local Gateway Edge / daemon | loopback HTTP listener、协议 adapter、provider router、CLI takeover、本机 service、pid/lock/runtime metadata | 写本机客户端配置必须 preview、backup、rollback |
+需要删除或迁移后删除：
 
-## 5. 必需能力
+- 前端：`apps/web-vue/src/features/codex-stack/**`，包括状态页高级诊断、运行矩阵、运行模式、技术检查、安装修复、路由模型、日志子页和所有 CPA/Compact 说明。
+- 后端：`apps/api/modules/codex-stack/**`、`/api/codex-stack/*` routes、Codex Stack summary/profile/job/service schema。
+- 资源：`resources/codex-stack/**` 中旧 installer、CPA/Compact 模板、health/smoke 脚本。
+- 测试：旧 `codex-stack-*` 测试改为 Studio Gateway / App Connections 测试；不得再用 CPA/Compact 成功路径验收。
+- 文档：当前两份 `codex-stack-model-gateway-*` 文件仅作为迁移记录，后续新建正式 `studio-gateway-*` 文档。
 
-- Provider registry：provider CRUD、secret store、app scope、model catalog、默认模型、health、failover queue。
-- Runtime router：按 app scope 选择 active provider，记录 request log、health、latency、failover reason。
-- Protocol adapters：Responses <-> Chat、Anthropic Messages <-> Chat/Responses、compact route、streaming、tool-call/history。
-- App takeover：Codex、Claude Code、OpenCode、OpenClaw 配置接管；真实 key 留在 Studio，客户端只放 placeholder。
-- Diagnostics：provider test、Codex Responses/compact smoke、Claude Messages smoke、streaming timeout、最近错误。
-- Import：后续可从 cc-switch、cc-connect、Codex、Claude、OpenCode、OpenClaw 配置导入 provider。
+## 6. 新功能验收
 
-## 6. 旧链路删除目标
-
-需要删除或隔离的旧 surface：
-
-- 前端：不再提供 CPA attach、force CPA、CPA Gateway/proxy 操作面、CPA/Compact 核心链路图、可编辑 CPA/Compact 端口/key 表单。
-- 后端：不再公开旧 CPA/Compact install env、config patch 字段、service rows、log selector 或 service control allowlist；只保留显式 legacy cleanup / migration action。
-- 资源：默认 installer、service template、health/smoke 必须走 Studio Gateway；旧 `compact-proxy.mjs`、CPA templates、`cli-proxy-api` 打包资源不再保留。
-- 测试：不再用旧 CPA attach 或 compact-proxy 资源成功路径作为验收；改为 Studio Gateway daemon takeover。
+- Studio Gateway daemon 支持并测试通过：
+  - `/v1/chat/completions`
+  - `/v1/responses`
+  - `/v1/responses/compact`
+  - `/v1/messages`
+  - streaming 变体
+- Provider registry 支持 Anthropic Messages、OpenAI Responses、OpenAI Chat Completions 三类原生 provider。
+- Codex、Claude Code、OpenCode、OpenClaw、CC / cc-connect 可通过 App Connections 生成配置 preview，并在用户确认后 apply。
+- 客户端配置只保存 placeholder 或 local endpoint；真实 upstream key 留在 Studio secret store。
+- OpenClaw/Studio 崩溃隔离测试通过：daemon direct endpoint 继续可用。
+- 生产前后端无 `codex-stack` 命名入口，无 CPA/Compact 用户可见链路。
 
 ## 7. 阶段计划
 
 | 阶段 | 目标 |
 | --- | --- |
-| Phase 0 | 研究 cc-switch / cc-connect，固定目标和边界 |
-| Phase 1 | Model Gateway types/store/API、provider lifecycle、runtime log、基础 adapters、daemon lifecycle contract、Codex Studio takeover |
-| Phase 2 | 完整 Local Gateway daemon runtime、service manager apply 验证、crash restart 验证 |
-| Phase 3 | 完整 Codex Responses / Chat / compact adapter，包括 streaming、tool calls、history |
-| Phase 4 | Claude Messages adapter 和 Claude Code takeover |
-| Phase 5 | OpenCode / OpenClaw config 检测、生成、接管 |
-| Phase 6 | 重做 Codex Stack UI 为 Model Gateway / Provider Center |
-| Phase 7 | 删除剩余 CPA / compact 迁移残留和旧 profile/port 命名，打包新版本 |
-
-## 8. 验收标准
-
-- 无 `~/.openclaw/openclaw.json` 时也能完成 Codex + Studio Gateway 安装准备。
-- Codex takeover 默认写 daemon loopback endpoint，不默认写 OpenClaw 单口 mount endpoint。
-- OpenClaw Gateway 或 Studio API/UI 崩溃时，daemon direct endpoint 继续服务已接管 CLI。
-- 用户能添加 OpenAI Chat provider，并让 Codex 通过 `/v1/responses` 和 `/v1/responses/compact` 成功请求。
-- Claude Code 可通过同一 provider registry 使用 Anthropic native 或 OpenAI-compatible provider。
-- 旧 CPA / Compact Proxy 不再作为前端核心组件、公开接管 action 或默认打包安装项。
-- secret 读取 API 只返回 masked view；写 secret、takeover、rollback、service 操作都经过 management auth gate。
-- system tests 覆盖 provider CRUD、routing、adapter、daemon survivability、Codex takeover、UI 新入口。
-
-## 9. 主要风险
-
-- Codex Responses streaming、tool-call history 和 compact 语义复杂，必须测试先行。
-- Claude official auth 与第三方 provider key 不能混用。
-- 如果模型 relay 绑定到 Studio API 或 OpenClaw mount，崩溃隔离目标会失败。
-- 旧 Codex Stack 仍有 CPA/compact profile 字段、port 字段和 migration tests，删除或重命名必须分阶段保持 tests 可解释。
+| Phase A | 固定 Studio Gateway 命名、API contract、迁移删除清单 |
+| Phase B | 补齐协议矩阵测试，确保 Studio Gateway 当前 daemon routes 全部通过 |
+| Phase C | 删除 Codex Stack 前后端、资源和旧测试入口（已完成） |
+| Phase D | 新建 Studio Gateway 管理页：Provider Center、App Connections、Runtime、Diagnostics |
+| Phase E | 接入 Codex、Claude Code、OpenCode、OpenClaw、CC / cc-connect 配置 preview/apply |
+| Phase F | 删除迁移文档旧名，切到正式 Studio Gateway 文档 |

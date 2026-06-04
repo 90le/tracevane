@@ -169,12 +169,6 @@ const homeSituationMetrics = computed(() => {
 
 const dashboardWorkspaceActions = computed(() => [
   {
-    to: '/codex-stack',
-    eyebrow: 'Setup',
-    label: text('安装 / 修复', 'Install / Repair'),
-    copy: text('配置 Codex Stack、CPA 与健康检查', 'Configure Codex Stack, CPA, and health checks'),
-  },
-  {
     to: '/chat',
     eyebrow: 'Chat',
     label: text('会话工作台', 'Chat workspace'),

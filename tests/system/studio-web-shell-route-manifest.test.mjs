@@ -47,7 +47,6 @@ test("manifest exports shell route records without context panel policy", () => 
     "/skills",
     "/plugins",
     "/cron",
-    "/codex-stack",
     "/dreaming",
     "/config",
     "/system/events",
@@ -58,6 +57,7 @@ test("manifest exports shell route records without context panel policy", () => 
       new RegExp(`path:\\s*\"${routePath.replace(/\//g, "\\/")}\"`),
     );
   }
+
 });
 
 test("router and app consume shell route metadata instead of local mock navigation", () => {

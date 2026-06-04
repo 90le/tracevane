@@ -120,19 +120,6 @@ const studioPlugin = {
           },
         },
       },
-      codexStack: {
-        type: 'object',
-        properties: {
-          allowManagementActions: {
-            type: 'boolean',
-            default: false,
-          },
-          installerPath: {
-            type: 'string',
-            default: '',
-          },
-        },
-      },
     },
   },
   register(api: OpenClawPluginApi) {

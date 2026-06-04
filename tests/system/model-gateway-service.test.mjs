@@ -490,6 +490,8 @@ test("model gateway daemon service management exposes templates and guarded inst
     const serviceTemplate = fs.readFileSync(install.body.plan.selectedTemplate.configPath, "utf8");
     assert.match(serviceTemplate, /model-gateway-daemon\.js/);
     assert.match(serviceTemplate, new RegExp(config.openclawRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(serviceTemplate, new RegExp(`^WorkingDirectory=${config.projectRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
+    assert.doesNotMatch(serviceTemplate, /^WorkingDirectory="/m);
 
     const startPreview = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
       method: "POST",

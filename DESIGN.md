@@ -35,7 +35,7 @@ Choose one shape before inventing a new layout.
 
 ### Workbench
 
-Use for Terminal, Files, Codex Stack, Git, logs, and live repair.
+Use for Terminal, Files, Git, logs, and live repair.
 
 ```text
 local task rail or tabs | object list or step rail | primary stage | optional inspector/sheet
@@ -123,64 +123,6 @@ Replace:
 - feature grids with list-detail workbenches when the user selects one object and edits it
 
 Do not nest cards. Do not use cards to make a sparse page look full.
-
-## Codex Stack
-
-Codex Stack needs the most visual reduction. It is an operations console for route state, install/repair, Agent bridge, model routing, and logs. It must not feel like five dashboards merged into one page.
-
-Default first screen:
-
-- route health
-- one recommended next action
-- only the facts needed to trust that action
-- deep chain maps, service matrices, model catalogs, environment references, smoke details, and raw logs collapsed or in sheets
-
-Preferred structure:
-
-```text
-task rail
-current task status strip
-recommended action row
-task-specific stage
-advanced diagnostics collapsed
-floating output sheet
-```
-
-Dashboard:
-
-- single runtime strip
-- one next-action block
-- service state as rows, not big service cards
-- model source as a compact fact unless model state is the active problem
-- chain map, service grid, component health, network policy, smoke matrix, and diagnostics inside one advanced status section
-
-Install and repair:
-
-- start with the recommended action
-- keep reinstall, base install, force/skip flags, and component strategy behind advanced controls
-- show steps as a checklist or step rail
-- command output always opens in a floating output sheet
-
-Agent bridge:
-
-- project/provider rows plus one editor stage
-- presets as compact chips or rows, not a card gallery
-- raw config in source/advanced mode
-- save/finalize in a sticky local action strip
-
-Route models:
-
-- one primary model selector
-- one route ledger
-- environment references and catalog details collapsed
-- avoid four-column fact grids on first screen
-
-Logs:
-
-- one toolbar for service, line count, auto-refresh, copy, and open output
-- output is a console sheet, not permanent dashboard space
-
-Copy should be short: "Route healthy", "Repair recommended", "Model source", "Open logs", "Run check", "Save route".
 
 ## Terminal
 

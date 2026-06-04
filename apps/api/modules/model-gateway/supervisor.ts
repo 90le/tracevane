@@ -28,6 +28,10 @@ function quoteSystemdValue(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+function escapeSystemdPath(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/ /g, "\\x20");
+}
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -58,7 +62,7 @@ function buildSystemdTemplate(options: {
     "",
     "[Service]",
     "Type=simple",
-    `WorkingDirectory=${quoteSystemdValue(options.projectRoot)}`,
+    `WorkingDirectory=${escapeSystemdPath(options.projectRoot)}`,
     `Environment=${quoteSystemdValue(`OPENCLAW_STATE_DIR=${options.openclawRoot}`)}`,
     `ExecStart=${quoteSystemdValue(options.nodePath)} ${quoteSystemdValue(options.daemonEntry)}`,
     "Restart=always",

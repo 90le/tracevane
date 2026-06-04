@@ -1,63 +1,35 @@
-# Codex Stack Model Gateway 进度
+# Studio Gateway 迁移进度
 
-> 状态：Phase 1 in progress
+> 状态：Phase C completed
 > 更新：2026-06-04
-> 文档规则：本文件只记录当前状态、已完成 checkpoint、验证和下一步；不要追加研究长文，过期细节直接替换。
+> 文档规则：只保留当前状态、验证、下一步；过期细节直接替换。
 
-## 1. 当前基线
+## 当前状态
 
-- 正式模型 relay 是自建 Studio Gateway daemon；OpenClaw 单口 mount 只作为 UI/control ingress 或可选 proxy。
-- CLI takeover 默认写 daemon loopback，例如 `http://127.0.0.1:18796/v1`。
-- Provider 原生协议固定为 Anthropic Messages、OpenAI Responses API、OpenAI Chat Completions；Gateway 要把每类 provider 暴露成三类客户端协议。
-- 缺失 adapter 必须返回 `model_gateway_adapter_required`，不能伪成功。
-- 进度更新采用替换式短状态页，不追加流水账。
+- Studio Gateway 是后续唯一正式模型中转目标。
+- Codex Stack / CPA / Compact 旧功能面已停止演进。
+- 新 UI / API 需要重新以 Studio Gateway、Provider Center、App Connections、Runtime、Diagnostics 命名建设。
 
-## 2. 已完成
+## 本轮完成
 
-- Phase 0 研究和目标边界已固定；后续不继续修补 CPA / Compact Proxy 主链路。
-- 已新增 Model Gateway types、provider registry、secret store、runtime log、health/circuit foundation 和 API routes。
-- 已开放 CLI routes：`/v1/chat/completions`、`/v1/responses`、`/v1/responses/compact`、`/v1/messages`、`/claude/v1/messages`。
-- Adapter foundation 已覆盖 Chat passthrough、Responses passthrough、Anthropic passthrough，以及三类协议间的非流式基础转换；未完成格子继续 adapter-required。
-- 已新增 Local Gateway daemon entrypoint、runtime metadata、pid/port lock、survivability tests。
-- 已新增 systemd user / launchd / Windows scheduled task 模板与 `/api/model-gateway/daemon-service` API。
-- `ensure-running` 已锁定 supervisor-first；未安装 service 时默认 blocked，显式 `allowBootstrap` 才允许 detached fallback。
-- Codex Stack install 会写 daemon service template，并准备 inactive `[model_providers.studio]`。
-- Codex Studio takeover 需要先确认 local-daemon，并通过 `/v1/responses` 与 `/v1/responses/compact` smoke。
-- 公开 CPA/Compact 配置面已删除：install env、runtime patch 字段、Codex auth/key 写入、`.cli-proxy-api/config.yaml` 和 `cpa-compact-proxy.service` patch、前端 CPA/Compact 端口/key 表单。
-- Codex Stack service/UI 已改为 Studio Gateway daemon + cc-connect：summary components、service rows、log selector、service control allowlist 和安装组件策略不再暴露 CPA/Compact/watchdog。
-- route smoke 已改为 Studio Gateway daemon matrix：required check 常量和 check id 使用 `studio-gateway-*`，并且 `run-smoke-matrix` 只打 daemon `/gateway/status`、`/v1/chat/completions`、`/v1/responses`、stream 和 compact routes。
-- Codex Stack 页面 daemon-service 调用已改为 scoped `/api/codex-stack/model-gateway/daemon-service`，避免前端 dev server 访问旧 unscoped route 404。
-- 前端可见 CPA 残留已替换为 Studio Gateway：模型目录、provider editor、route status、network diagnostics、安装策略和 service summary 不再把 CPA/Compact 当当前 relay 展示。
-- 后端 summary 已移除旧 CPA management/dashboard 输出，密钥摘要改为 `studioGatewayProxyKey`；旧 `model_providers.cpa` 只作为迁移兼容读取。
-- 状态页 warning 已改为 Studio Gateway smoke matrix 文案，避免旧 CPA smoke / attach 语义再次出现在高级诊断。
-- proxy/upstream 状态读取以 OpenClaw env 为新优先来源；旧 CPA YAML 只作为 legacy fallback。
+- 删除旧后端：`apps/api/modules/codex-stack/**` 和 `/api/codex-stack/*` 注册入口。
+- 删除旧前端：`apps/web-vue/src/features/codex-stack/**`、`CodexStackView.vue`、导航和首页入口。
+- 删除旧资源：`resources/codex-stack/**`。
+- 删除旧测试/设计保护面：`codex-stack-*`、`studio-web-codex-stack-*`、旧 release/design/page-density 合约测试。
+- 刷新 `studio-domain-inventory.json`，基线不再包含 `/codex-stack`、`codex-stack` API module 或 web feature。
+- 保留并验证 Studio Gateway daemon/service contract；修复 systemd service template 的 `WorkingDirectory` 引号问题。
 
-## 3. 当前仍未完成
+## 验证
 
-- 真实 service manager apply 模式验证：install/start/status/restart 需要在 opt-in 环境执行。
-- service template apply UI：需要区分“只写模板”和“执行 service manager 命令”。
-- supervisor crash-restart test：daemon 崩溃后由真实 supervisor 拉起。
-- 旧 CPA/Compact 仍有内部 migration cleanup path、profile `cpaPort` / `compactPort` 持久化字段、legacy port 检测和部分 migration tests；这些只保留为迁移残留，不再是正式链路。
-- UI 重做：完整 Provider Center、Universal Provider、App Setup、Diagnostics 尚未完成。
-- Adapter 扩展：streaming tool calls、reasoning events、Anthropic streaming、Responses -> Anthropic。
-- Failover 扩展：request retry、真实 failover queue、half-open probe、circuit reset policy。
+- 通过：`node --test --test-reporter=dot tests/system/studio-web-shell-route-manifest.test.mjs tests/system/studio-domain-inventory.test.mjs tests/system/model-gateway-service.test.mjs`
+- 通过：`npm run build:api`
+- 通过：`npm run typecheck:web`
+- 通过：`npm run build:web`
+- 未全绿：`npm run test:system` 仍有 9 个非本轮相关旧 UI 形态断言失败，集中在 Agents / Channels / Chat / Config 测试。
 
-## 4. 验证记录
+## 下一步
 
-当前通过：
-
-- `npm run build:api`
-- `npm run typecheck:web`
-- `node --test tests/system/codex-stack-service.test.mjs`
-- `npx tsx --test tests/system/codex-stack-readiness-action.test.ts`
-- Codex Stack UI 相关静态 contract 子集：component strategy、repair board、provider editor、network diagnostics、Studio Gateway takeover、model catalog、runtime config、backend target model。
-- `git diff --check`
-
-近期仍有效：service manager 只读 probe、model-gateway service tests、installer/health-check shell syntax、`npm run build:web`。完整 `studio-web-codex-stack-workspace` 仍有既有前端 design/static contract 债务，本轮未要求全量修复。
-
-## 5. 下一步
-
-1. 在 opt-in 环境运行 `OPENCLAW_STUDIO_VERIFY_MODEL_GATEWAY_SERVICE_APPLY=1 node scripts/verify-model-gateway-service-manager.mjs`，锁定真实 service manager happy path。
-2. 实现 service template apply UI：只写模板、install/start/restart 三种状态明确分开。
-3. 清理 Codex Stack summary/profile 中剩余 `cpaPort` / `compactPort`、`chooseCpaAttachModel` 等内部 legacy 命名，替换为 Studio Gateway endpoint/legacy port view。
-4. 继续协议矩阵：优先补 `openai_responses` -> `anthropic_messages`，再补 streaming tool/reasoning。
+1. 新建 Studio Gateway 管理入口和 API 命名，不复用旧 Codex Stack 代码。
+2. 补 Studio Gateway 协议矩阵测试：Chat Completions、Responses、Anthropic Messages、streaming、compact、tool/history。
+3. 新建 App Connections：Codex、Claude Code、OpenCode、OpenClaw、CC / cc-connect 的 preview / apply / rollback。
+4. 处理剩余非相关旧 UI 测试，决定删除还是按当前页面真实结构重建。
