@@ -53,6 +53,15 @@ function createLogger() {
 }
 
 async function withServer(handler, task) {
+  const running = await startHttpServer(handler);
+  try {
+    await task(running.baseUrl);
+  } finally {
+    await running.close();
+  }
+}
+
+async function startHttpServer(handler) {
   const server = http.createServer(async (req, res) => {
     const handled = await handler(req, res);
     if (!handled && !res.writableEnded) {
@@ -66,13 +75,12 @@ async function withServer(handler, task) {
   });
   const address = server.address();
   assert.ok(address && typeof address === "object");
-  try {
-    await task(`http://127.0.0.1:${address.port}`);
-  } finally {
-    await new Promise((resolve, reject) => {
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    close: () => new Promise((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
-    });
-  }
+    }),
+  };
 }
 
 function requestJson(url, options = {}) {
@@ -136,6 +144,15 @@ function requestRaw(url, options = {}) {
   });
 }
 
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
 function parseSseEvents(raw) {
   return raw
     .trim()
@@ -152,6 +169,35 @@ function parseSseEvents(raw) {
         data: data === "[DONE]" ? "[DONE]" : JSON.parse(data),
       };
     });
+}
+
+async function waitFor(predicate, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const result = await predicate();
+      if (result) return result;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  if (lastError) throw lastError;
+  throw new Error("Timed out waiting for condition");
+}
+
+async function stopChild(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  child.kill("SIGTERM");
+  await Promise.race([
+    exited,
+    new Promise((resolve) => setTimeout(resolve, 2000)).then(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      return exited;
+    }),
+  ]);
 }
 
 test("model gateway registry stores provider secrets separately and masks views", () => {
@@ -666,6 +712,125 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
     model: "daemon-model",
     messages: [{ role: "user", content: "hello daemon" }],
+    stream: false,
+  });
+});
+
+test("model gateway child daemon keeps serving after Studio API listener shuts down", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const upstreamCalls = [];
+  const upstream = await startHttpServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    upstreamCalls.push({
+      url: req.url,
+      authorization: req.headers.authorization || null,
+      body,
+    });
+    if (req.url === "/v1/chat/completions") {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({
+        id: "chatcmpl_child_daemon",
+        object: "chat.completion",
+        choices: [{ index: 0, message: { role: "assistant", content: "child daemon ok" }, finish_reason: "stop" }],
+      }));
+      return true;
+    }
+    return false;
+  });
+
+  const service = createModelGatewayService(config);
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "child-daemon-chat",
+      name: "Child Daemon Chat",
+      appScopes: ["openclaw"],
+      baseUrl: `${upstream.baseUrl}/v1`,
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-child-daemon-secret-123456",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const api = await startHttpServer(handler);
+  let apiClosed = false;
+  const child = spawn(process.execPath, [path.join(process.cwd(), "dist/apps/api/model-gateway-daemon.js")], {
+    env: {
+      ...process.env,
+      OPENCLAW_STATE_DIR: config.openclawRoot,
+      MODEL_GATEWAY_PORT: "0",
+      MODEL_GATEWAY_SUPERVISOR: "none",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let childOutput = "";
+  child.stdout.on("data", (chunk) => {
+    childOutput += String(chunk);
+  });
+  child.stderr.on("data", (chunk) => {
+    childOutput += String(chunk);
+  });
+
+  try {
+    const metadata = await waitFor(() => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error(`daemon child exited early: ${childOutput}`);
+      }
+      if (!fs.existsSync(paths.daemonRuntime)) return null;
+      const parsed = JSON.parse(fs.readFileSync(paths.daemonRuntime, "utf8"));
+      return parsed.port > 0 ? parsed : null;
+    }, 5000);
+    assert.equal(metadata.pid, child.pid);
+    assert.equal(metadata.host, "127.0.0.1");
+    assert.ok(metadata.port > 0);
+
+    const apiStatus = await requestJson(`${api.baseUrl}/api/model-gateway/status`);
+    assert.equal(apiStatus.status, 200);
+    assert.equal(apiStatus.body.lifecycle.localDaemon.state, "running");
+    assert.equal(apiStatus.body.lifecycle.localDaemon.pid, child.pid);
+
+    await api.close();
+    apiClosed = true;
+    await assert.rejects(() => requestJson(`${api.baseUrl}/api/model-gateway/status`));
+
+    const daemonBaseUrl = `http://127.0.0.1:${metadata.port}`;
+    const daemonStatus = await requestJson(`${daemonBaseUrl}/gateway/status`);
+    assert.equal(daemonStatus.status, 200);
+    assert.equal(daemonStatus.body.lifecycle.controlPlane.state, "not-attached");
+    assert.equal(daemonStatus.body.lifecycle.localDaemon.runtimeMode, "local-daemon");
+    assert.equal(daemonStatus.body.lifecycle.localDaemon.survivesControlPlaneCrash, true);
+    assert.equal(daemonStatus.body.lifecycle.endpointPolicy.preferredCliEndpoint, `${daemonBaseUrl}/v1`);
+
+    const chat = await requestJson(`${daemonBaseUrl}/v1/chat/completions`, {
+      method: "POST",
+      body: {
+        model: "child-daemon-model",
+        messages: [{ role: "user", content: "hello after api shutdown" }],
+        stream: false,
+      },
+    });
+    assert.equal(chat.status, 200);
+    assert.equal(chat.headers["x-openclaw-model-gateway-provider"], "child-daemon-chat");
+    assert.equal(chat.body.choices[0].message.content, "child daemon ok");
+  } finally {
+    if (!apiClosed) await api.close().catch(() => {});
+    await stopChild(child);
+    await upstream.close();
+  }
+
+  await waitFor(() => !fs.existsSync(paths.daemonRuntime), 3000);
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-child-daemon-secret-123456");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "child-daemon-model",
+    messages: [{ role: "user", content: "hello after api shutdown" }],
     stream: false,
   });
 });

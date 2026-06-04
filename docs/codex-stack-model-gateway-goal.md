@@ -168,7 +168,7 @@ Phase 1 lifecycle contract checkpoint（2026-06-04）：
 - `lifecycle.openclawMount` 标识 OpenClaw 单口 mount 是否配置，并明确其角色是 `control-ui-ingress`，`ownsModelRelay: false`。
 - `lifecycle.localDaemon` 标识目标 daemon endpoint、service name、期望 supervisor、runtime/pid/lock 路径、当前 state 和是否能在 control plane 崩溃后继续服务。
 - `lifecycle.endpointPolicy` 固定 CLI 优先写 daemon loopback endpoint，OpenClaw single-port endpoint 只能作为可选入口，并要求 direct daemon fallback。
-- 当前实现仍是 contract foundation：未写入 daemon binary、service unit 或 restart supervisor；没有 `daemon-runtime.json` 时 status 会明确返回 `localDaemon.state: "not-installed"` 和 `runtimeMode: "studio-api-embedded"`。
+- 没有 `daemon-runtime.json` 时 status 会明确返回 `localDaemon.state: "not-installed"` 和 `runtimeMode: "studio-api-embedded"`；有 daemon runtime metadata 且 pid 存活时会显示 `runtimeMode: "local-daemon"` 和 `survivesControlPlaneCrash: true`。
 
 Phase 1 daemon entrypoint checkpoint（2026-06-04）：
 
@@ -176,7 +176,9 @@ Phase 1 daemon entrypoint checkpoint（2026-06-04）：
 - daemon 启动后写入 `daemon-runtime.json`、`daemon.pid` 和 `gateway-port.lock`，并在停止时清理这些 runtime 文件。
 - daemon 复用现有 Model Gateway route contract，可服务 `GET /gateway/status`、`GET /gateway/providers`、`GET /api/model-gateway/runtime` 和 `/v1/chat/completions` / `/v1/responses` / `/v1/messages` 等 CLI 模型入口。
 - 已新增 `apps/api/model-gateway-daemon.ts` 作为可直接执行入口，编译后路径为 `dist/apps/api/model-gateway-daemon.js`，后续 systemd/launchd/Windows service 模板应调用该入口。
-- 当前仍未完成真实 OS/user service manager 启停验证、restart policy 验证和真实 Studio/OpenClaw crash-survivability 验证。
+- daemon entrypoint 支持 `OPENCLAW_STATE_DIR`、`MODEL_GATEWAY_HOST`、`MODEL_GATEWAY_PORT` 和 `MODEL_GATEWAY_SUPERVISOR`，便于 service template、测试和 bootstrap 指定状态目录与监听端口。
+- 已新增 child-process survivability system test：Studio API listener 关闭后，child daemon direct loopback endpoint 仍可服务 `/v1/chat/completions` 并转发到 provider。
+- 当前仍未完成真实 OS/user service manager 启停验证、restart policy 验证和 OpenClaw single-port/mount 停止后的 direct daemon fallback 验证。
 
 Phase 1 supervisor/install contract checkpoint（2026-06-04）：
 

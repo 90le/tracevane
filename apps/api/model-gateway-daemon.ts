@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createStandaloneStudioConfig } from "./config.js";
 import { createModelGatewayDaemon } from "./modules/model-gateway/daemon.js";
+import type { ModelGatewaySupervisorKind } from "../../types/model-gateway.js";
 
 const logger = {
   info: (...args: unknown[]) => console.info(...args),
@@ -9,9 +10,33 @@ const logger = {
   error: (...args: unknown[]) => console.error(...args),
 };
 
+const SUPERVISORS = new Set<ModelGatewaySupervisorKind>([
+  "systemd-user",
+  "launchd-user",
+  "windows-service",
+  "scheduled-task",
+  "none",
+  "unknown",
+]);
+
+function parsePort(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 0 && port <= 65535 ? port : undefined;
+}
+
+function parseSupervisor(value: string | undefined): ModelGatewaySupervisorKind | undefined {
+  return SUPERVISORS.has(value as ModelGatewaySupervisorKind)
+    ? value as ModelGatewaySupervisorKind
+    : undefined;
+}
+
 async function main(): Promise<void> {
   const config = createStandaloneStudioConfig();
   const daemon = createModelGatewayDaemon(config, {
+    host: process.env.MODEL_GATEWAY_HOST,
+    port: parsePort(process.env.MODEL_GATEWAY_PORT),
+    supervisor: parseSupervisor(process.env.MODEL_GATEWAY_SUPERVISOR),
     logger,
   });
   await daemon.start();
