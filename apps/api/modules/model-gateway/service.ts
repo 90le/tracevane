@@ -348,7 +348,7 @@ function normalizeDaemonServiceAction(value: unknown): ModelGatewayDaemonService
     : "preview";
 }
 
-async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
+async function runDefaultDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
   try {
     const result = await execFileAsync(command.command, command.args, {
       timeout: 30_000,
@@ -378,6 +378,10 @@ async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand
     };
   }
 }
+
+export type ModelGatewayDaemonServiceCommandRunner = (
+  command: ModelGatewayDaemonServiceCommand,
+) => Promise<ModelGatewayDaemonServiceCommandResult> | ModelGatewayDaemonServiceCommandResult;
 
 function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLogEntry | null {
   if (!isRecord(value)) return null;
@@ -876,6 +880,7 @@ export interface ModelGatewayServiceOptions {
     host?: string;
     port?: number;
   };
+  daemonServiceCommandRunner?: ModelGatewayDaemonServiceCommandRunner;
 }
 
 export function createModelGatewayService(
@@ -887,6 +892,12 @@ export function createModelGatewayService(
   const runtimeHost = options.runtimeHost || "studio-api";
   const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
   const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
+
+  async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
+    return options.daemonServiceCommandRunner
+      ? await options.daemonServiceCommandRunner(command)
+      : await runDefaultDaemonServiceCommand(command);
+  }
 
   function readRegistry(): ModelGatewayRegistryState {
     const raw = readJsonFile<Partial<ModelGatewayRegistryState>>(paths.registry, createEmptyRegistry());

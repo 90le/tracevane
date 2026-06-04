@@ -176,7 +176,7 @@ Phase 1 daemon entrypoint checkpoint（2026-06-04）：
 - daemon 启动后写入 `daemon-runtime.json`、`daemon.pid` 和 `gateway-port.lock`，并在停止时清理这些 runtime 文件。
 - daemon 复用现有 Model Gateway route contract，可服务 `GET /gateway/status`、`GET /gateway/providers`、`GET /api/model-gateway/runtime` 和 `/v1/chat/completions` / `/v1/responses` / `/v1/messages` 等 CLI 模型入口。
 - 已新增 `apps/api/model-gateway-daemon.ts` 作为可直接执行入口，编译后路径为 `dist/apps/api/model-gateway-daemon.js`，后续 systemd/launchd/Windows service 模板应调用该入口。
-- 当前仍未完成 OS/user service unit、install/start/stop 管理 API、restart policy 和真实 Studio/OpenClaw crash-survivability 验证。
+- 当前仍未完成真实 OS/user service manager 启停验证、restart policy 验证和真实 Studio/OpenClaw crash-survivability 验证。
 
 Phase 1 supervisor/install contract checkpoint（2026-06-04）：
 
@@ -184,6 +184,7 @@ Phase 1 supervisor/install contract checkpoint（2026-06-04）：
 - 已支持生成 Linux `systemd --user` unit、macOS launchd plist 和 Windows scheduled task XML 模板。
 - 已新增 `POST /api/model-gateway/daemon-service` 管理入口，支持 `preview`、`install`、`start`、`stop`、`restart`、`status` action。
 - `install` 支持 `apply: true, runCommands: false` 只写当前平台模板；真实执行 service manager 命令必须显式传 `runCommands: true`。
+- 已锁定 `runCommands` 执行 contract：`start`、`restart`、`status` 会按当前平台 selected supervisor 命令执行，并返回每条命令的 `ok`、`exitCode`、`stdout`、`stderr` 和 `error`。
 - 当前仍未完成 UI 接入、安装脚本接入、真实 `systemctl` / `launchctl` / `schtasks` 启停验证和 supervisor crash-restart 验证。
 
 Phase 1 Codex install/takeover preparation checkpoint（2026-06-04）：
@@ -422,9 +423,10 @@ Router 是新链路稳定性的核心：
 - status 已暴露 `lifecycle.controlPlane`、`lifecycle.openclawMount`、`lifecycle.localDaemon` 和 `lifecycle.endpointPolicy`，用于后续 UI / install takeover 区分 control plane、single-port mount 和独立 daemon。
 - 已新增最小 Local Gateway daemon entrypoint，可写 runtime metadata/pid/port lock，并直接服务 Model Gateway status/provider/runtime 与 CLI 模型入口。
 - 已新增 daemon supervisor 模板和管理 API contract，可预览/写入当前平台 service template，并列出 start/stop/restart/status 命令计划。
+- 已锁定 daemon service manager 命令执行 contract，可测试 `start`、`restart`、`status` 的 selected supervisor command execution 和结果回传。
 - Codex Stack 安装成功后已会写入 daemon service template，并为 Codex 准备 inactive `model_providers.studio`，默认 endpoint 为 daemon loopback。
 - Router 已能在 active provider circuit open 时选择同 app scope fallback provider，并在 route decision 中返回 `failoverReason`。
-- 尚未完成 active Codex `studio` takeover smoke gate、supervisor 命令真实执行验证、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
+- 尚未完成 supervisor 命令真实 OS 执行验证、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
 
 ### Phase 2: Gateway Runtime
 

@@ -459,6 +459,65 @@ test("model gateway daemon service management exposes templates and guarded inst
   });
 });
 
+test("model gateway daemon service management executes selected supervisor commands when requested", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const calls = [];
+  const service = createModelGatewayService(config, {
+    daemonServiceCommandRunner: async (command) => {
+      calls.push(`${command.command} ${command.args.join(" ")}`);
+      return {
+        ...command,
+        ok: true,
+        exitCode: 0,
+        stdout: `ran ${command.label}`,
+        stderr: "",
+        error: null,
+      };
+    },
+  });
+
+  const start = await service.manageDaemonService(undefined, {
+    action: "start",
+    apply: true,
+  });
+  const expectedStart = start.plan.selectedTemplate.commands.start || [];
+  assert.equal(start.action, "start");
+  assert.equal(start.applied, true);
+  assert.equal(start.templateWritten, false);
+  assert.deepEqual(
+    calls.slice(0, expectedStart.length),
+    expectedStart.map((command) => `${command.command} ${command.args.join(" ")}`),
+  );
+  assert.deepEqual(start.commandsRun.map((result) => result.ok), expectedStart.map(() => true));
+  assert.match(start.commandsRun[0]?.stdout || "", /^ran /);
+
+  const restart = await service.manageDaemonService(undefined, {
+    action: "restart",
+    apply: true,
+  });
+  const expectedRestart = restart.plan.selectedTemplate.commands.restart || [];
+  assert.equal(restart.action, "restart");
+  assert.equal(restart.applied, true);
+  assert.deepEqual(
+    calls.slice(expectedStart.length, expectedStart.length + expectedRestart.length),
+    expectedRestart.map((command) => `${command.command} ${command.args.join(" ")}`),
+  );
+
+  const status = await service.manageDaemonService(undefined, {
+    action: "status",
+    runCommands: true,
+  });
+  const expectedStatus = status.plan.selectedTemplate.commands.status || [];
+  assert.equal(status.action, "status");
+  assert.equal(status.applied, expectedStatus.length > 0);
+  assert.deepEqual(
+    calls.slice(expectedStart.length + expectedRestart.length),
+    expectedStatus.map((command) => `${command.command} ${command.args.join(" ")}`),
+  );
+  assert.equal(status.commandsRun.length, expectedStatus.length);
+});
+
 test("model gateway daemon writes runtime metadata and serves cli routes", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
