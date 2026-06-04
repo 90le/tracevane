@@ -466,11 +466,16 @@ test("model gateway daemon service management executes selected supervisor comma
   const service = createModelGatewayService(config, {
     daemonServiceCommandRunner: async (command) => {
       calls.push(`${command.command} ${command.args.join(" ")}`);
+      let stdout = `ran ${command.label}`;
+      if (command.args.includes("is-active")) stdout = "active\n";
+      if (command.args.includes("is-enabled")) stdout = "enabled\n";
+      if (command.command === "launchctl" && command.args.includes("print")) stdout = "state = running\ndisabled = false\n";
+      if (command.command.toLowerCase().includes("schtasks")) stdout = "Status: Running\n";
       return {
         ...command,
         ok: true,
         exitCode: 0,
-        stdout: `ran ${command.label}`,
+        stdout,
         stderr: "",
         error: null,
       };
@@ -516,6 +521,48 @@ test("model gateway daemon service management executes selected supervisor comma
     expectedStatus.map((command) => `${command.command} ${command.args.join(" ")}`),
   );
   assert.equal(status.commandsRun.length, expectedStatus.length);
+  assert.equal(status.serviceManager.checked, true);
+  assert.equal(status.serviceManager.reachable, true);
+  assert.equal(status.serviceManager.active, true);
+  assert.equal(status.serviceManager.enabled, true);
+  assert.equal(status.serviceManager.lastError, null);
+});
+
+test("model gateway daemon service status summarizes supervisor command failures", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config, {
+    daemonServiceCommandRunner: async (command) => {
+      if (command.args.includes("is-active")) {
+        return {
+          ...command,
+          ok: false,
+          exitCode: 3,
+          stdout: "inactive\n",
+          stderr: "",
+          error: "Command failed.",
+        };
+      }
+      return {
+        ...command,
+        ok: false,
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        error: `spawn ${command.command} ENOENT`,
+      };
+    },
+  });
+
+  const status = await service.manageDaemonService(undefined, {
+    action: "status",
+    runCommands: true,
+  });
+  assert.equal(status.action, "status");
+  assert.equal(status.serviceManager.checked, true);
+  assert.equal(status.serviceManager.reachable, false);
+  assert.notEqual(status.serviceManager.active, true);
+  assert.match(status.serviceManager.lastError || "", /daemon|launchd|scheduled/i);
 });
 
 test("model gateway daemon writes runtime metadata and serves cli routes", async () => {

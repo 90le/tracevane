@@ -21,6 +21,7 @@ import {
   type ModelGatewayDaemonServiceAction,
   type ModelGatewayDaemonServiceCommand,
   type ModelGatewayDaemonServiceCommandResult,
+  type ModelGatewayDaemonServiceManagerStatus,
   type ModelGatewayDaemonServiceRequest,
   type ModelGatewayDaemonServiceResponse,
   type ModelGatewayProvider,
@@ -382,6 +383,80 @@ async function runDefaultDaemonServiceCommand(command: ModelGatewayDaemonService
 export type ModelGatewayDaemonServiceCommandRunner = (
   command: ModelGatewayDaemonServiceCommand,
 ) => Promise<ModelGatewayDaemonServiceCommandResult> | ModelGatewayDaemonServiceCommandResult;
+
+function compactCommandOutput(result: ModelGatewayDaemonServiceCommandResult): string {
+  return [result.stdout, result.stderr, result.error].filter(Boolean).join("\n").trim();
+}
+
+function commandReachedServiceManager(result: ModelGatewayDaemonServiceCommandResult): boolean {
+  if (result.exitCode !== null) return true;
+  if (result.stdout.trim() || result.stderr.trim()) return true;
+  return !/\bENOENT\b|not found|not recognized/i.test(result.error || "");
+}
+
+function firstCommandError(commandsRun: ModelGatewayDaemonServiceCommandResult[]): string | null {
+  const failed = commandsRun.find((result) => !result.ok);
+  if (!failed) return null;
+  const detail = compactCommandOutput(failed) || "Command failed.";
+  return `${failed.label}: ${detail.slice(0, 800)}`;
+}
+
+function serviceManagerText(result: ModelGatewayDaemonServiceCommandResult | undefined): string {
+  return `${result?.stdout || ""}\n${result?.stderr || ""}`.trim().toLowerCase();
+}
+
+function isTruthySystemdEnabledState(value: string): boolean {
+  return ["enabled", "static", "linked", "linked-runtime", "alias", "indirect", "generated", "transient"].includes(value);
+}
+
+function summarizeDaemonServiceManager(
+  supervisor: ModelGatewaySupervisorKind,
+  commandsRun: ModelGatewayDaemonServiceCommandResult[],
+): ModelGatewayDaemonServiceManagerStatus {
+  if (!commandsRun.length) {
+    return {
+      checked: false,
+      reachable: null,
+      active: null,
+      enabled: null,
+      lastError: null,
+    };
+  }
+
+  const reachable = commandsRun.every(commandReachedServiceManager);
+  let active: boolean | null = null;
+  let enabled: boolean | null = null;
+
+  if (supervisor === "systemd-user") {
+    const activeResult = commandsRun.find((result) => result.args.includes("is-active"));
+    const enabledResult = commandsRun.find((result) => result.args.includes("is-enabled"));
+    const activeState = serviceManagerText(activeResult).split(/\s+/).find(Boolean) || "";
+    const enabledState = serviceManagerText(enabledResult).split(/\s+/).find(Boolean) || "";
+    if (activeResult) active = activeState ? activeState === "active" || activeState === "activating" : activeResult.ok;
+    if (enabledResult) enabled = enabledState ? isTruthySystemdEnabledState(enabledState) : enabledResult.ok;
+  } else if (supervisor === "launchd-user") {
+    const printResult = commandsRun.find((result) => result.command === "launchctl" && result.args.includes("print"));
+    const text = serviceManagerText(printResult);
+    if (printResult) active = printResult.ok;
+    if (text.includes("disabled = true")) enabled = false;
+    else if (text.includes("disabled = false")) enabled = true;
+  } else if (supervisor === "scheduled-task") {
+    const queryResult = commandsRun.find((result) => result.command.toLowerCase().includes("schtasks"));
+    const text = serviceManagerText(queryResult);
+    if (queryResult) {
+      active = text.includes("running") ? true : queryResult.ok ? false : null;
+      enabled = text.includes("disabled") ? false : queryResult.ok ? true : null;
+    }
+  }
+
+  return {
+    checked: true,
+    reachable,
+    active,
+    enabled,
+    lastError: firstCommandError(commandsRun),
+  };
+}
 
 function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLogEntry | null {
   if (!isRecord(value)) return null;
@@ -1265,6 +1340,7 @@ export function createModelGatewayService(
     commandsRun?: ModelGatewayDaemonServiceCommandResult[];
   }): ModelGatewayDaemonServiceResponse {
     const plan = createModelGatewayDaemonServicePlan(config);
+    const commandsRun = options.commandsRun || [];
     return {
       ok: true,
       checkedAt: nowIso(),
@@ -1274,7 +1350,8 @@ export function createModelGatewayService(
       installed: fs.existsSync(plan.selectedTemplate.configPath),
       plan,
       lifecycle: getLifecycleStatus(),
-      commandsRun: options.commandsRun || [],
+      commandsRun,
+      serviceManager: summarizeDaemonServiceManager(plan.supervisor, commandsRun),
     };
   }
 

@@ -230,6 +230,14 @@ export interface ModelGatewayDaemonServiceCommandResult extends ModelGatewayDaem
   error: string | null;
 }
 
+export interface ModelGatewayDaemonServiceManagerStatus {
+  checked: boolean;
+  reachable: boolean | null;
+  active: boolean | null;
+  enabled: boolean | null;
+  lastError: string | null;
+}
+
 export interface ModelGatewayDaemonServiceTemplate {
   supervisor: ModelGatewaySupervisorKind;
   platform: "linux" | "macos" | "windows";
@@ -268,6 +276,7 @@ export interface ModelGatewayDaemonServiceResponse {
   plan: ModelGatewayDaemonServicePlan;
   lifecycle: ModelGatewayLifecycleStatus;
   commandsRun: ModelGatewayDaemonServiceCommandResult[];
+  serviceManager: ModelGatewayDaemonServiceManagerStatus;
 }
 
 export interface ModelGatewayDaemonRuntimeMetadata {
