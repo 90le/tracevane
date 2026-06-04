@@ -104,6 +104,54 @@ function requestJson(url, options = {}) {
   });
 }
 
+function requestRaw(url, options = {}) {
+  const body = options.body === undefined ? null : JSON.stringify(options.body);
+  const target = new URL(url);
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: target.hostname,
+      port: target.port,
+      path: `${target.pathname}${target.search}`,
+      method: options.method || "GET",
+      headers: {
+        ...(body ? { "content-type": "application/json", "content-length": Buffer.byteLength(body) } : {}),
+        ...(options.headers || {}),
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      res.on("end", () => {
+        resolve({
+          status: res.statusCode,
+          headers: res.headers,
+          body: Buffer.concat(chunks).toString("utf8"),
+        });
+      });
+    });
+    req.on("error", reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+function parseSseEvents(raw) {
+  return raw
+    .trim()
+    .split(/\n\n+/)
+    .map((block) => {
+      const event = block.split("\n").find((line) => line.startsWith("event: "))?.slice("event: ".length) || null;
+      const data = block
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => line.slice("data: ".length))
+        .join("\n");
+      return {
+        event,
+        data: data === "[DONE]" ? "[DONE]" : JSON.parse(data),
+      };
+    });
+}
+
 test("model gateway registry stores provider secrets separately and masks views", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -413,6 +461,119 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
       type: "function",
       function: { name: "lookup" },
     },
+  });
+});
+
+test("model gateway adapts streaming chat sse to codex responses sse", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-stream-adapter",
+      name: "Codex Stream Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-stream.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-stream-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    const upstreamSse = [
+      "data: {\"id\":\"chatcmpl_stream\",\"created\":1710000020,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_stream\",\"created\":1710000020,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_stream\",\"created\":1710000020,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":2,\"total_tokens\":9}}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const streamed = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          input: "Say hello.",
+          stream: true,
+        },
+      });
+
+      assert.equal(streamed.status, 200);
+      assert.equal(streamed.headers["x-openclaw-model-gateway-provider"], "codex-stream-adapter");
+      assert.match(streamed.headers["content-type"], /text\/event-stream/);
+      const events = parseSseEvents(streamed.body);
+      assert.deepEqual(events.map((item) => item.event), [
+        "response.created",
+        "response.in_progress",
+        "response.output_item.added",
+        "response.content_part.added",
+        "response.output_text.delta",
+        "response.output_text.delta",
+        "response.output_text.done",
+        "response.content_part.done",
+        "response.output_item.done",
+        "response.completed",
+        null,
+      ]);
+      assert.equal(events[0].data.response.id, "chatcmpl_stream");
+      assert.equal(events[4].data.delta, "Hel");
+      assert.equal(events[5].data.delta, "lo");
+      const completed = events.find((item) => item.event === "response.completed").data.response;
+      assert.equal(completed.status, "completed");
+      assert.equal(completed.output[0].content[0].text, "Hello");
+      assert.deepEqual(completed.usage, {
+        input_tokens: 7,
+        output_tokens: 2,
+        total_tokens: 9,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      });
+      assert.equal(events[10].data, "[DONE]");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog.length, 1);
+      assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_responses");
+      assert.equal(runtime.body.runtime.requestLog[0].model, "gpt-test");
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "success");
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-codex-stream-secret"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://codex-stream.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].method, "POST");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-codex-stream-secret");
+  assert.equal(upstreamCalls[0].contentType, "application/json");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "gpt-test",
+    messages: [{ role: "user", content: "Say hello." }],
+    stream: true,
   });
 });
 

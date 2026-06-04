@@ -47,8 +47,10 @@ import {
   adaptChatCompletionToCodexResponse,
   adaptCodexResponsesRequestToChat,
   isCodexResponsesToChatAdapterTarget,
+  isCodexResponsesStreamingRequest,
 } from "./codex-adapter.js";
 import { CodexChatHistoryStore } from "./codex-history.js";
+import { writeCodexResponsesSseFromChatSse } from "./codex-streaming.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
@@ -1461,6 +1463,7 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     const body = await readRequestBody(req);
     const bodyText = body.byteLength ? body.toString("utf8") : undefined;
     const requestModel = extractModelFromJsonText(bodyText);
+    const useCodexResponsesStreamingAdapter = useCodexResponsesChatAdapter && isCodexResponsesStreamingRequest(bodyText);
     if (provider.authStrategy !== "none" && !secret) {
       const errorMessage = `Provider '${provider.id}' requires a secret before requests can be forwarded.`;
       updateProviderHealth(provider.id, false, null, errorMessage);
@@ -1491,7 +1494,9 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     if (useCodexResponsesChatAdapter) {
       try {
         const enriched = codexHistory.enrichRequest(bodyText);
-        const adapted = adaptCodexResponsesRequestToChat(enriched.bodyText);
+        const adapted = adaptCodexResponsesRequestToChat(enriched.bodyText, {
+          allowStreaming: useCodexResponsesStreamingAdapter,
+        });
         upstreamBodyText = JSON.stringify(adapted.chatRequest);
         requestModelForLog = adapted.model || requestModel;
         headers.set("content-type", "application/json");
@@ -1530,11 +1535,81 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
         headers,
         body: upstreamBodyText,
       });
-      const responseText = await upstream.text();
-      const responseBody = Buffer.from(responseText);
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const healthSuccess = isProviderHealthSuccess(upstream.status, null);
       const errorMessage = healthSuccess ? null : `Upstream returned HTTP ${upstream.status}.`;
+      if (useCodexResponsesStreamingAdapter && upstream.status >= 200 && upstream.status < 300) {
+        if (!upstream.body) {
+          const message = "OpenAI Chat streaming upstream did not return a readable body.";
+          updateProviderHealth(provider.id, false, latencyMs, message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: 502,
+            outcome: "failure",
+            errorCode: "model_gateway_codex_streaming_body_missing",
+            errorMessage: message,
+          }));
+          sendJson(res, 502, {
+            error: {
+              code: "model_gateway_codex_streaming_body_missing",
+              message,
+              decision,
+            },
+          });
+          return;
+        }
+        setCorsHeaders(res);
+        res.statusCode = upstream.status;
+        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
+        try {
+          await writeCodexResponsesSseFromChatSse(upstream.body, res, requestModelForLog);
+          updateProviderHealth(provider.id, true, latencyMs, null);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: upstream.status,
+            outcome: "success",
+            errorCode: null,
+            errorMessage: null,
+          }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Codex Responses streaming adapter failed.";
+          updateProviderHealth(provider.id, false, latencyMs, message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: 502,
+            outcome: "failure",
+            errorCode: "model_gateway_codex_streaming_adapter_failed",
+            errorMessage: message,
+          }));
+          if (!res.headersSent) {
+            sendJson(res, 502, {
+              error: {
+                code: "model_gateway_codex_streaming_adapter_failed",
+                message,
+                decision,
+              },
+            });
+          }
+        } finally {
+          if (!res.writableEnded) res.end();
+        }
+        return;
+      }
+
+      const responseText = await upstream.text();
+      const responseBody = Buffer.from(responseText);
       if (useCodexResponsesChatAdapter && upstream.status >= 200 && upstream.status < 300) {
         let adaptedResponse: Record<string, unknown>;
         try {

@@ -14,6 +14,11 @@ export class CodexResponsesChatAdapterError extends Error {
 export interface CodexResponsesChatRequestAdapterResult {
   chatRequest: JsonRecord;
   model: string | null;
+  stream: boolean;
+}
+
+export interface CodexResponsesChatRequestAdapterOptions {
+  allowStreaming?: boolean;
 }
 
 export function isCodexResponsesToChatAdapterTarget(decision: {
@@ -23,9 +28,21 @@ export function isCodexResponsesToChatAdapterTarget(decision: {
   return decision.routeId === "openai_responses" && decision.provider?.apiFormat === "openai_chat";
 }
 
-export function adaptCodexResponsesRequestToChat(bodyText: string | undefined): CodexResponsesChatRequestAdapterResult {
+export function isCodexResponsesStreamingRequest(bodyText: string | undefined): boolean {
+  try {
+    return parseJsonObject(bodyText).stream === true;
+  } catch {
+    return false;
+  }
+}
+
+export function adaptCodexResponsesRequestToChat(
+  bodyText: string | undefined,
+  options: CodexResponsesChatRequestAdapterOptions = {},
+): CodexResponsesChatRequestAdapterResult {
   const request = parseJsonObject(bodyText);
-  if (request.stream === true) {
+  const stream = request.stream === true;
+  if (stream && !options.allowStreaming) {
     throw new CodexResponsesChatAdapterError(
       "model_gateway_codex_responses_streaming_adapter_required",
       "Codex Responses streaming to OpenAI Chat streaming is not implemented yet.",
@@ -45,7 +62,7 @@ export function adaptCodexResponsesRequestToChat(bodyText: string | undefined): 
 
   const chatRequest: JsonRecord = {
     messages,
-    stream: false,
+    stream,
   };
 
   const model = stringOrNull(request.model);
@@ -60,6 +77,7 @@ export function adaptCodexResponsesRequestToChat(bodyText: string | undefined): 
     "response_format",
     "seed",
     "stop",
+    "stream_options",
     "temperature",
     "top_p",
     "user",
@@ -80,6 +98,7 @@ export function adaptCodexResponsesRequestToChat(bodyText: string | undefined): 
   return {
     chatRequest,
     model,
+    stream,
   };
 }
 

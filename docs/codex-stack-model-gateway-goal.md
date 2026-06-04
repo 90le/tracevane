@@ -198,9 +198,10 @@ Phase 1 implementation note（2026-06-04）：
 - 已落地最小非流式 Responses -> Chat adapter 起点。
 - 已覆盖 `instructions`、`input` / `messages`、`model`、`stream: false`、function tools、`tool_choice`、`max_output_tokens` 和 Chat usage -> Responses usage 的转换。
 - `/v1/responses` 对 `openai_chat` provider 可执行。
+- 已落地 Chat SSE -> Responses SSE 文本 delta 最小状态机，支持 `response.created`、`response.in_progress`、message output item、`response.output_text.delta`、done events、`response.completed` 和 `[DONE]`。
 - 已新增 `codex-history.json`，用于保存 assistant function_call output items，并在后续 `previous_response_id + function_call_output` 请求中恢复 Chat 所需的 assistant `tool_calls` 消息。
-- `stream: true`、`/v1/responses/compact`、reasoning restore、provider-specific reasoning quirks 仍保持后续阶段任务。
-- 该实现只作为 Phase 1 contract foundation；完整 adapter 仍必须补 streaming 状态机、compact 语义、完整 history/reasoning store 和 provider-specific quirks。
+- `/v1/responses/compact`、streaming tool calls、streaming reasoning restore、provider-specific reasoning quirks 仍保持后续阶段任务。
+- 该实现只作为 Phase 1 contract foundation；完整 adapter 仍必须补 compact 语义、完整 streaming tool/reasoning 状态机、完整 history/reasoning store 和 provider-specific quirks。
 
 Claude adapter：
 
