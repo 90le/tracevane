@@ -165,6 +165,9 @@
           @run-smoke-matrix="runSmokeMatrix"
           @attach-codex-cpa="applyCodexCpaAfterSmoke"
           @attach-codex-studio="applyCodexStudioAfterSmoke"
+          @preview-model-gateway-daemon-service="previewModelGatewayDaemonService"
+          @status-model-gateway-daemon-service="statusModelGatewayDaemonService"
+          @ensure-model-gateway-daemon="ensureModelGatewayDaemon"
           @restore-official-chatgpt="restoreOfficialChatGpt"
           @update-field="updateInstallFormField"
           @set-component-mode="setComponentMode"
@@ -339,6 +342,7 @@ import {
   fetchCodexStackSummary,
   fetchModelGatewayDaemonService,
   finalizeCodexStackCcConnect,
+  manageModelGatewayDaemonService,
   patchCcConnectConfig,
   patchCodexStackConfig,
   runCodexStackCheck,
@@ -1173,6 +1177,18 @@ const studioGatewayPreflightItems = computed<CodexStackAttachPreflightItem[]>(()
         ? `${manager.active === true ? "active" : "inactive"} / ${manager.enabled === true ? "enabled" : manager.enabled === false ? "disabled" : "unknown"}`
         : text("未执行 status 命令", "Status command not run"),
       tone: manager?.active === true ? "sage" : manager?.checked ? "danger" : "accent",
+    },
+    {
+      id: "studio-bootstrap-mode",
+      label: text("Bootstrap", "Bootstrap"),
+      value: modelGatewayDaemonService.value?.bootstrap.mode
+        ? `${modelGatewayDaemonService.value.bootstrap.mode}${modelGatewayDaemonService.value.bootstrap.temporary ? " / temporary" : ""}`
+        : text("未执行", "Not run"),
+      tone: modelGatewayDaemonService.value?.bootstrap.mode === "detached"
+        ? "accent"
+        : modelGatewayDaemonService.value?.bootstrap.mode === "blocked"
+          ? "danger"
+          : "sage",
     },
   ];
 });
@@ -2837,6 +2853,43 @@ async function applyCodexStudioAfterSmoke(): Promise<void> {
   await startRepairWithActions(
     ["apply-codex-studio-after-smoke"],
     text("Studio Gateway 接管任务已启动；daemon 和 Responses/compact smoke 全部通过后才会切换 Codex。", "Studio Gateway takeover started; Codex will switch only after daemon and Responses/compact smoke pass."),
+  );
+}
+
+async function manageModelGatewayDaemon(
+  payload: Parameters<typeof manageModelGatewayDaemonService>[0],
+  successText: string,
+): Promise<void> {
+  if (!guardMutation()) return;
+  busy.value = true;
+  try {
+    modelGatewayDaemonService.value = await manageModelGatewayDaemonService(payload);
+    notice.value = { kind: "success", text: successText };
+  } catch (error) {
+    notice.value = { kind: "error", text: error instanceof Error ? error.message : text("Model Gateway daemon 操作失败", "Model Gateway daemon action failed") };
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function previewModelGatewayDaemonService(): Promise<void> {
+  await manageModelGatewayDaemon(
+    { action: "install", apply: false },
+    text("Studio Gateway service 模板预览已刷新。", "Studio Gateway service template preview refreshed."),
+  );
+}
+
+async function statusModelGatewayDaemonService(): Promise<void> {
+  await manageModelGatewayDaemon(
+    { action: "status", runCommands: true },
+    text("Studio Gateway service status 命令已执行。", "Studio Gateway service status commands ran."),
+  );
+}
+
+async function ensureModelGatewayDaemon(): Promise<void> {
+  await manageModelGatewayDaemon(
+    { action: "ensure-running", apply: true },
+    text("Studio Gateway daemon ensure-running 已执行。", "Studio Gateway daemon ensure-running completed."),
   );
 }
 

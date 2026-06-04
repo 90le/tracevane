@@ -232,7 +232,8 @@ Phase 1 Codex active takeover smoke gate checkpoint（2026-06-04）：
 - 只有 smoke gate 通过后才把 Codex top-level `model_provider` 切到 `studio`，并继续使用 `[model_providers.studio].experimental_bearer_token = "PROXY_MANAGED"`。
 - Codex Stack 安装/修复页已读取 `/api/model-gateway/daemon-service`，展示 Studio Gateway daemon runtime、CLI endpoint、service template 和 supervisor status。
 - 安装/修复页已新增 Studio Gateway 接管入口，触发 `apply-codex-studio-after-smoke`；按钮只有在 `localDaemon.runtimeMode === "local-daemon"` 且 `state === "running"` 时启用。
-- 当前仍未完成真实 service manager start/restart 执行验证、完整 daemon service 操作面板和真实 crash-survivability 测试。
+- 安装/修复页已新增 Studio Gateway daemon service 操作面板，支持 service template preview、supervisor status command 和 `ensure-running`，默认不会传 `allowBootstrap`，避免 UI 静默启动临时 detached daemon。
+- 当前仍未完成真实 service manager start/restart 执行验证、service template apply / explicit temporary bootstrap UI 策略和真实 crash-survivability 测试。
 
 ### 4.2 Provider Registry
 

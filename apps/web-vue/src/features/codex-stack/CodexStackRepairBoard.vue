@@ -95,6 +95,29 @@
         </article>
       </div>
     </details>
+    <details class="cs-daemon-service-panel cs-advanced-repair">
+      <summary>{{ text("Studio Gateway daemon", "Studio Gateway daemon") }}</summary>
+      <dl class="cs-attach-preflight-list">
+        <div v-for="item in studioGatewayPreflightItems" :key="`daemon-${item.id}`" class="cs-attach-preflight-row" :class="`tone-${item.tone}`">
+          <dt>{{ item.label }}</dt>
+          <dd>{{ item.value }}</dd>
+        </div>
+      </dl>
+      <div class="cs-attach-route-actions">
+        <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('preview-model-gateway-daemon-service')">
+          {{ text("预览 service", "Preview service") }}
+        </button>
+        <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('status-model-gateway-daemon-service')">
+          {{ text("运行 status", "Run status") }}
+        </button>
+        <button type="button" class="primary-button" :disabled="!canRunMutation" @click="$emit('ensure-model-gateway-daemon')">
+          {{ text("确保 daemon 运行", "Ensure daemon") }}
+        </button>
+      </div>
+      <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
+        {{ mutationDisabledHelp }}
+      </p>
+    </details>
   </section>
 </template>
 
@@ -131,6 +154,9 @@ defineEmits<{
   "run-smoke-matrix": [];
   "attach-codex-cpa": [];
   "attach-codex-studio": [];
+  "preview-model-gateway-daemon-service": [];
+  "status-model-gateway-daemon-service": [];
+  "ensure-model-gateway-daemon": [];
   "restore-official-chatgpt": [];
 }>();
 

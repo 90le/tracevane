@@ -36,6 +36,9 @@
         @run-smoke-matrix="emit('run-smoke-matrix')"
         @attach-codex-cpa="emit('attach-codex-cpa')"
         @attach-codex-studio="emit('attach-codex-studio')"
+        @preview-model-gateway-daemon-service="emit('preview-model-gateway-daemon-service')"
+        @status-model-gateway-daemon-service="emit('status-model-gateway-daemon-service')"
+        @ensure-model-gateway-daemon="emit('ensure-model-gateway-daemon')"
         @restore-official-chatgpt="emit('restore-official-chatgpt')"
       />
 
@@ -129,6 +132,9 @@ const emit = defineEmits<{
   "run-smoke-matrix": [];
   "attach-codex-cpa": [];
   "attach-codex-studio": [];
+  "preview-model-gateway-daemon-service": [];
+  "status-model-gateway-daemon-service": [];
+  "ensure-model-gateway-daemon": [];
   "restore-official-chatgpt": [];
   "update-field": [field: CodexStackInstallConfigField, value: string | number | boolean];
   "set-component-mode": [componentId: CodexStackComponentId, mode: CodexStackComponentInstallMode];

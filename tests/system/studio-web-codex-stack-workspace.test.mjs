@@ -1028,6 +1028,10 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(repairBoard, /:disabled="!canAttachCodexStudio"[\s\S]*@click="\$emit\('attach-codex-studio'\)"/);
   assert.match(repairBoard, /studioGatewayPreflightItems: CodexStackAttachPreflightItem\[\];/);
   assert.match(repairBoard, /v-for="item in studioGatewayPreflightItems"/);
+  assert.match(repairBoard, /class="cs-daemon-service-panel cs-advanced-repair"/);
+  assert.match(repairBoard, /@click="\$emit\('preview-model-gateway-daemon-service'\)"/);
+  assert.match(repairBoard, /@click="\$emit\('status-model-gateway-daemon-service'\)"/);
+  assert.match(repairBoard, /@click="\$emit\('ensure-model-gateway-daemon'\)"/);
   assert.match(repairBoard, /v-if="!canAttachCodexCpa && attachCodexCpaDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(repairBoard, /v-if="!canAttachCodexStudio && attachCodexStudioDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(controlPage, /async function restoreOfficialChatGpt\(\): Promise<void>/);
@@ -1036,8 +1040,17 @@ test("codex stack install page delegates repair board without weakening CPA atta
   assert.match(controlPage, /async function applyCodexStudioAfterSmoke\(\): Promise<void>/);
   assert.match(controlPage, /\["apply-codex-studio-after-smoke"\]/);
   assert.match(codexStackApi, /fetchModelGatewayDaemonService\(\): Promise<ModelGatewayDaemonServiceResponse>/);
+  assert.match(codexStackApi, /manageModelGatewayDaemonService\([\s\S]*payload: ModelGatewayDaemonServiceRequest/);
   assert.match(controlPage, /const modelGatewayDaemonService = ref<ModelGatewayDaemonServiceResponse \| null>\(null\);/);
   assert.match(controlPage, /loadModelGatewayDaemonService\(silent\)/);
+  assert.match(controlPage, /async function manageModelGatewayDaemon\(/);
+  assert.match(controlPage, /async function previewModelGatewayDaemonService\(\): Promise<void>/);
+  assert.match(controlPage, /\{ action: "install", apply: false \}/);
+  assert.match(controlPage, /async function statusModelGatewayDaemonService\(\): Promise<void>/);
+  assert.match(controlPage, /\{ action: "status", runCommands: true \}/);
+  assert.match(controlPage, /async function ensureModelGatewayDaemon\(\): Promise<void>/);
+  assert.match(controlPage, /\{ action: "ensure-running", apply: true \}/);
+  assert.doesNotMatch(controlPage, /allowBootstrap: true/);
 });
 
 test("codex stack cc-connect page delegates command bar without moving config writes", () => {
@@ -1421,12 +1434,13 @@ test("codex stack attach action requires a fresh passing smoke matrix in the UI"
   assert.match(controlPage, /matrix\.attachEligible && !smokeMatrixCoversTarget\(matrix, currentCpaTargetModel\.value\)/);
   assert.match(controlPage, /matrix\.attachEligible && !isSmokeMatrixComplete\(matrix, currentCpaTargetModel\.value\)/);
   assert.match(controlPage, /const canAttachCodexCpa = computed\(\(\) => canRunMutation\.value && isSmokeMatrixAttachReady\.value\);/);
-  assert.match(installSection, /<CodexStackRepairBoard[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:can-attach-codex-studio="canAttachCodexStudio"[\s\S]*:attach-codex-studio-disabled-help="attachCodexStudioDisabledHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"[\s\S]*:studio-gateway-preflight-items="studioGatewayPreflightItems"[\s\S]*@attach-codex-cpa="emit\('attach-codex-cpa'\)"[\s\S]*@attach-codex-studio="emit\('attach-codex-studio'\)"/);
-  assert.match(controlPage, /<CodexStackInstallSection[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"[\s\S]*@attach-codex-studio="applyCodexStudioAfterSmoke"/);
+  assert.match(installSection, /<CodexStackRepairBoard[\s\S]*:can-attach-codex-cpa="canAttachCodexCpa"[\s\S]*:attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"[\s\S]*:can-attach-codex-studio="canAttachCodexStudio"[\s\S]*:attach-codex-studio-disabled-help="attachCodexStudioDisabledHelp"[\s\S]*:attach-preflight-items="attachPreflightItems"[\s\S]*:studio-gateway-preflight-items="studioGatewayPreflightItems"[\s\S]*@attach-codex-cpa="emit\('attach-codex-cpa'\)"[\s\S]*@attach-codex-studio="emit\('attach-codex-studio'\)"[\s\S]*@preview-model-gateway-daemon-service="emit\('preview-model-gateway-daemon-service'\)"[\s\S]*@status-model-gateway-daemon-service="emit\('status-model-gateway-daemon-service'\)"[\s\S]*@ensure-model-gateway-daemon="emit\('ensure-model-gateway-daemon'\)"/);
+  assert.match(controlPage, /<CodexStackInstallSection[\s\S]*@attach-codex-cpa="applyCodexCpaAfterSmoke"[\s\S]*@attach-codex-studio="applyCodexStudioAfterSmoke"[\s\S]*@preview-model-gateway-daemon-service="previewModelGatewayDaemonService"[\s\S]*@status-model-gateway-daemon-service="statusModelGatewayDaemonService"[\s\S]*@ensure-model-gateway-daemon="ensureModelGatewayDaemon"/);
   assert.match(controlPage, /const canAttachCodexStudio = computed\(\(\) => \(/);
   assert.match(controlPage, /modelGatewayLocalDaemon\.value\?\.runtimeMode === "local-daemon"/);
   assert.match(controlPage, /modelGatewayLocalDaemon\.value\?\.state === "running"/);
   assert.match(controlPage, /const studioGatewayPreflightItems = computed<CodexStackAttachPreflightItem\[\]>/);
+  assert.match(controlPage, /id: "studio-bootstrap-mode"/);
   assert.match(controlPage, /const attachPreflightItems = computed<CodexStackAttachPreflightItem\[\]>/);
   assert.match(controlPage, /const attachCodexCpaDisabledHelp = computed\(\(\) => \{/);
   assert.match(controlPage, /const targetModel = currentCpaTargetModel\.value \|\| "--";/);
