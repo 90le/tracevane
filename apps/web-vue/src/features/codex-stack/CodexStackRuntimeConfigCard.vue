@@ -82,18 +82,10 @@
 
       <section class="cs-route-config-group">
         <div class="cs-route-config-group-head">
-          <span>{{ text("端口与项目", "Ports and project") }}</span>
-          <strong>{{ text("CPA", "CPA") }} :{{ form.cpaPort || "--" }} / {{ text("Compact", "Compact") }} :{{ form.compactPort || "--" }}</strong>
+          <span>{{ text("项目", "Project") }}</span>
+          <strong>{{ form.ccConnectProject || "main" }}</strong>
         </div>
         <div class="cs-form-grid">
-          <label class="form-field">
-            <span class="form-label">{{ text("CPA 端口", "CPA Port") }}</span>
-            <input :value="form.cpaPort" class="form-input" type="number" min="1" @input="updateNumberField('cpaPort', $event)" />
-          </label>
-          <label class="form-field">
-            <span class="form-label">{{ text("Compact 端口", "Compact Port") }}</span>
-            <input :value="form.compactPort" class="form-input" type="number" min="1" @input="updateNumberField('compactPort', $event)" />
-          </label>
           <label class="form-field cs-form-span-2">
             <span class="form-label">{{ text("cc-connect 项目", "cc-connect Project") }}</span>
             <input :value="form.ccConnectProject" class="form-input" @input="updateStringField('ccConnectProject', $event)" />
@@ -115,16 +107,6 @@
                 class="form-input"
                 placeholder="https://api.example.com/v1"
                 @input="updateStringField('upstreamBaseUrl', $event)"
-              />
-            </label>
-            <label class="form-field">
-              <span class="form-label">{{ text("代理密钥", "Proxy Key") }}</span>
-              <input
-                :value="form.cpaProxyKey"
-                class="form-input"
-                type="password"
-                :placeholder="text('留空不修改', 'Leave empty to keep current value')"
-                @input="updateStringField('cpaProxyKey', $event)"
               />
             </label>
             <label class="form-field">
@@ -198,14 +180,11 @@ export type CodexStackRuntimeContextMode = "default" | "codex-1m" | "custom";
 export type CodexStackRouteActive = "official-chatgpt" | "cpa";
 
 export interface CodexStackRuntimeConfigDraft {
-  defaultModel: string;
-  contextMode: CodexStackRuntimeContextMode;
-  contextWindowTokens: number;
-  cpaPort: number;
-  compactPort: number;
-  ccConnectProject: string;
-  cpaProxyKey: string;
-  upstreamBaseUrl: string;
+	  defaultModel: string;
+	  contextMode: CodexStackRuntimeContextMode;
+	  contextWindowTokens: number;
+	  ccConnectProject: string;
+	  upstreamBaseUrl: string;
   upstreamApiKey: string;
   providerProxyUrl: string;
   noProxy: string;

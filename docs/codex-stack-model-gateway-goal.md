@@ -48,17 +48,10 @@ Studio 支持单口模式和非单口模式，但模型 relay 的正式生命线
 
 ## 4. 架构边界
 
-**Studio Gateway Control Plane**
-
-- 管 provider registry、secret refs、route policy、health/smoke、request log、audit 和 UI。
-- 不把单机 `HOME`、`systemctl --user`、Codex auth 文件等作为控制面真相。
-- 读取接口不得返回明文 upstream key。
-
-**Local Gateway Edge / daemon**
-
-- 管 loopback HTTP listener、协议 adapter、provider router、CLI takeover、本机 service。
-- 可以写本机客户端配置，但必须 preview、backup、rollback。
-- 通过 pid/lock/runtime metadata 声明端口归属。
+| 层 | 职责 | 禁止事项 |
+| --- | --- | --- |
+| Studio Gateway Control Plane | provider registry、secret refs、route policy、health/smoke、request log、audit、UI | 不把单机 `HOME`、`systemctl --user`、Codex auth 文件当控制面真相；读取接口不得返回明文 upstream key |
+| Local Gateway Edge / daemon | loopback HTTP listener、协议 adapter、provider router、CLI takeover、本机 service、pid/lock/runtime metadata | 写本机客户端配置必须 preview、backup、rollback |
 
 ## 5. 必需能力
 
@@ -73,8 +66,8 @@ Studio 支持单口模式和非单口模式，但模型 relay 的正式生命线
 
 需要删除或隔离的旧 surface：
 
-- 前端：CPA attach、force CPA、CPA Gateway/proxy 操作面、CPA/Compact 核心链路图。
-- 后端：旧接管 action 和旧 CPA/compact lifecycle repair action 已删除；后续继续删除 config patch / service rows / summary legacy 管理代码。
+- 前端：CPA attach、force CPA、CPA Gateway/proxy 操作面、CPA/Compact 核心链路图、可编辑 CPA/Compact 端口/key 表单。
+- 后端：旧接管 action、旧 CPA/compact lifecycle repair action、公开 CPA/Compact install env 与 config patch 字段已删除；后续继续删除 service rows / summary legacy 管理代码。
 - 资源：默认 installer/health-check 必须走 Studio Gateway；旧 `compact-proxy.mjs`、CPA templates、`cli-proxy-api` 打包资源不再保留。
 - 测试：不再用旧 CPA attach 或 compact-proxy 资源成功路径作为验收；改为 Studio Gateway daemon takeover。
 

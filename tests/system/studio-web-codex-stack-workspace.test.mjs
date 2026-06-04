@@ -900,6 +900,8 @@ test("codex stack install page delegates install config without moving install p
   assert.match(installConfigPanel, /v-if="contextTokensDisabled && contextTokensDisabledHelp"[\s\S]*class="form-help"/);
   assert.match(installConfigPanel, /class="cs-install-advanced-drawer"/);
   assert.match(installConfigPanel, /class="cs-config-section-head"/);
+  assert.doesNotMatch(installConfigPanel, /cpaPort|compactPort|cpaKey|CPA 端口|Compact 端口|代理密钥/);
+  assert.doesNotMatch(controlPage, /CPA_PORT|COMPACT_PORT|CPA_PROXY_KEY/);
   assert.doesNotMatch(installConfigPanel, /cs-surface|cs-card-header|cs-channel-card|<style scoped>/);
   assert.match(codexStackInstallCss, /\.cs-install-advanced-drawer\s*\{/);
   assert.match(codexStackInstallCss, /\.cs-config-section-head\s*\{/);
@@ -1553,6 +1555,8 @@ test("codex stack settings page delegates runtime config form without moving pat
   assert.doesNotMatch(controlPage, /v-model(?:\.number)?="configForm\.(defaultModel|contextMode|contextWindowTokens|cpaPort|compactPort|ccConnectProject|cpaProxyKey|upstreamBaseUrl|upstreamApiKey|providerProxyUrl|noProxy)"/);
   assert.match(runtimeConfigCard, /export interface CodexStackRuntimeConfigDraft/);
   assert.match(runtimeConfigCard, /export interface CodexStackRuntimeConfigImpactItem/);
+  assert.doesNotMatch(runtimeConfigCard, /cpaPort|compactPort|cpaProxyKey|CPA 端口|Compact 端口|代理密钥/);
+  assert.doesNotMatch(controlPage, /payload\.cpaPort|payload\.compactPort|payload\.cpaProxyKey|configForm\.cpaProxyKey/);
   assert.match(runtimeConfigCard, /contextTokensDisabledHelp: string;/);
   assert.match(runtimeConfigCard, /v-if="contextTokensDisabled && contextTokensDisabledHelp"[\s\S]*class="form-help"/);
   assert.match(runtimeConfigCard, /Codex 使用路径/);
@@ -1585,14 +1589,16 @@ test("codex stack settings page delegates environment reference without moving s
   assert.match(routeModelsSection, /import CodexStackEnvironmentReferenceCard from "\.\/CodexStackEnvironmentReferenceCard\.vue";/);
   assert.match(
     routeModelsSection,
-    /<CodexStackEnvironmentReferenceCard[\s\S]*:home-dir="summary\.homeDir"[\s\S]*:profile-path="summary\.profilePath"[\s\S]*:installer-root="summary\.installer\.root"[\s\S]*:installer-kind="summary\.installer\.kind"[\s\S]*:auto-setup-script="summary\.installer\.scripts\.autoSetup"[\s\S]*:health-check-script="summary\.installer\.scripts\.healthCheck"[\s\S]*:finalizer-script="summary\.installer\.scripts\.ccConnectFinalizer"[\s\S]*:proxy-key-masked="summary\.secrets\.cpaProxyKey\.masked"[\s\S]*:codex-auth-status="codexAuthStatus"[\s\S]*:context-mode="summary\.context\.mode"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:cpa-dashboard-enabled="summary\.cpaManagement\.controlPanelEnabled"[\s\S]*:cpa-dashboard-url="summary\.cpaManagement\.dashboardUrl"[\s\S]*:missing-files="summary\.installer\.missingFiles"/,
+    /<CodexStackEnvironmentReferenceCard[\s\S]*:home-dir="summary\.homeDir"[\s\S]*:profile-path="summary\.profilePath"[\s\S]*:installer-root="summary\.installer\.root"[\s\S]*:installer-kind="summary\.installer\.kind"[\s\S]*:auto-setup-script="summary\.installer\.scripts\.autoSetup"[\s\S]*:health-check-script="summary\.installer\.scripts\.healthCheck"[\s\S]*:finalizer-script="summary\.installer\.scripts\.ccConnectFinalizer"[\s\S]*:codex-auth-status="codexAuthStatus"[\s\S]*:context-mode="summary\.context\.mode"[\s\S]*:context-tokens-display="contextTokensDisplay"[\s\S]*:missing-files="summary\.installer\.missingFiles"/,
   );
+  assert.doesNotMatch(routeModelsSection, /proxy-key-masked|cpa-dashboard-enabled|cpa-dashboard-url/);
   assert.match(controlPage, /<CodexStackRouteModelsSection[\s\S]*:codex-auth-status="codexAuthStatus"[\s\S]*:context-tokens-display="contextTokensDisplay"/);
   assert.match(controlPage, /const codexAuthStatus = computed\(\(\) => \{/);
   assert.match(controlPage, /const contextTokensDisplay = computed\(\(\) => \{/);
   assert.doesNotMatch(controlPage, /class="cs-kv-list"/);
   assert.doesNotMatch(controlPage, /class="cs-warning-row"/);
   assert.match(environmentReferenceCard, /defineProps<\{[\s\S]*homeDir: string;[\s\S]*profilePath: string;[\s\S]*installerRoot: string;[\s\S]*codexAuthStatus: string;[\s\S]*missingFiles: string\[\];[\s\S]*\}>/);
+  assert.doesNotMatch(environmentReferenceCard, /proxyKeyMasked|cpaDashboard|代理密钥|CPA 看板/);
   assert.match(environmentReferenceCard, /Home 目录/);
   assert.match(environmentReferenceCard, /Codex auth\.json/);
   assert.doesNotMatch(environmentReferenceCard, /summary\.|fetchCodexStackSummary|loadSummary|patchCodexStackConfig|saveConfigPatch/);
@@ -1618,12 +1624,11 @@ test("codex stack summary refresh preserves dirty install drafts", () => {
 test("codex stack install channel changes sync channel defaults conservatively", () => {
   assert.doesNotMatch(controlPage, /function installChannelDefaultModel\(channel: CodexStackChannel\): string \{/);
   assert.doesNotMatch(controlPage, /return channel === "official" \? "glm-5\.1" : "kimi-k2\.6";/);
-  assert.match(controlPage, /function installChannelDefaultCpaPort\(channel: CodexStackChannel\): number \{/);
-  assert.match(controlPage, /return channel === "official" \? 8317 : 18795;/);
-  assert.match(controlPage, /function syncInstallChannelDefaults\(nextChannel: CodexStackChannel, previousChannel: CodexStackChannel\): void \{/);
+  assert.doesNotMatch(controlPage, /function installChannelDefaultCpaPort/);
+  assert.doesNotMatch(controlPage, /installForm\.cpaPort|installForm\.compactPort/);
+  assert.match(controlPage, /function syncInstallChannelDefaults\(\): void \{/);
   assert.match(controlPage, /const currentTargetModel = summaryTargetModel\(summary\.value\);[\s\S]*if \(!installForm\.model && currentTargetModel\) \{[\s\S]*installForm\.model = currentTargetModel;/);
-  assert.match(controlPage, /Number\(installForm\.cpaPort\) === previousDefaultPort[\s\S]*installForm\.cpaPort = installChannelDefaultCpaPort\(nextChannel\);/);
-  assert.match(controlPage, /watch\(\(\) => installForm\.channel, \(nextChannel, previousChannel\) => \{[\s\S]*syncInstallChannelDefaults\(nextChannel, previousChannel\);/);
+  assert.match(controlPage, /watch\(\(\) => installForm\.channel, \(\) => \{[\s\S]*syncInstallChannelDefaults\(\);/);
   assert.match(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[[\s\S]*summary\.value\?\.models\.available[\s\S]*configForm\.defaultModel[\s\S]*installForm\.model/);
   assert.doesNotMatch(controlPage, /const modelOptions = computed\(\(\) => Array\.from\(new Set\(\[[\s\S]*"kimi-k2\.6"[\s\S]*"glm-5\.1"[\s\S]*"gpt-5\.5"/);
   assert.match(controlPage, /model: configForm\.defaultModel \|\| installForm\.model \|\| summaryTargetModel\(summary\.value\)/);

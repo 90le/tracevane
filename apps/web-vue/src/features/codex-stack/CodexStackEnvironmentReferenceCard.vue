@@ -36,20 +36,12 @@
         <code>{{ finalizerScript || "--" }}</code>
       </div>
       <div class="cs-kv-row">
-        <span>{{ text("代理密钥", "Proxy Key") }}</span>
-        <code>{{ proxyKeyMasked || text("未设置", "Not set") }}</code>
-      </div>
-      <div class="cs-kv-row">
         <span>{{ text("Codex auth.json", "Codex auth.json") }}</span>
         <code>{{ codexAuthStatus }}</code>
       </div>
       <div class="cs-kv-row">
         <span>{{ text("上下文", "Context") }}</span>
         <code>{{ contextMode }} · {{ contextTokensDisplay }}</code>
-      </div>
-      <div class="cs-kv-row">
-        <span>{{ text("CPA 看板", "CPA Dashboard") }}</span>
-        <code>{{ cpaDashboardEnabled ? cpaDashboardUrl : text("未启用", "Disabled") }}</code>
       </div>
     </div>
     <div v-if="missingFiles.length" class="cs-warning-list">
@@ -70,17 +62,14 @@ defineProps<{
   profilePath: string;
   installerRoot: string;
   installerKind: string;
-  autoSetupScript: string;
-  healthCheckScript: string;
-  finalizerScript: string;
-  proxyKeyMasked: string;
-  codexAuthStatus: string;
-  contextMode: string;
-  contextTokensDisplay: string;
-  cpaDashboardEnabled: boolean;
-  cpaDashboardUrl: string;
-  missingFiles: string[];
-}>();
+	  autoSetupScript: string;
+	  healthCheckScript: string;
+	  finalizerScript: string;
+	  codexAuthStatus: string;
+	  contextMode: string;
+	  contextTokensDisplay: string;
+	  missingFiles: string[];
+	}>();
 
 const { text } = useLocalePreference();
 </script>

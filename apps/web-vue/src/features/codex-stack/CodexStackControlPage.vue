@@ -515,9 +515,6 @@ const installForm = reactive<CodexStackInstallConfigDraft & { skipComponents: st
   model: "",
   contextMode: "default" as ContextMode,
   contextWindowTokens: 1050000,
-  cpaPort: 18795,
-  compactPort: 18796,
-  cpaKey: "",
   upstreamBaseUrl: "",
   upstreamApiKey: "",
   providerProxyUrl: "",
@@ -535,8 +532,6 @@ const installForm = reactive<CodexStackInstallConfigDraft & { skipComponents: st
 function updateInstallFormField(field: CodexStackInstallConfigField, value: string | number | boolean): void {
   switch (field) {
     case "contextWindowTokens":
-    case "cpaPort":
-    case "compactPort":
       installForm[field] = Number(value) || 0;
       return;
     case "skipNpm":
@@ -561,10 +556,7 @@ const configForm = reactive<CodexStackRuntimeConfigDraft>({
   defaultModel: "",
   contextMode: "default",
   contextWindowTokens: 1050000,
-  cpaPort: 18795,
-  compactPort: 18796,
   ccConnectProject: "main",
-  cpaProxyKey: "",
   upstreamBaseUrl: "",
   upstreamApiKey: "",
   providerProxyUrl: "",
@@ -574,8 +566,6 @@ const configForm = reactive<CodexStackRuntimeConfigDraft>({
 function updateConfigFormField(field: CodexStackRuntimeConfigField, value: string | number): void {
   switch (field) {
     case "contextWindowTokens":
-    case "cpaPort":
-    case "compactPort":
       configForm[field] = Number(value) || 0;
       return;
     case "contextMode":
@@ -837,16 +827,16 @@ const nextActionCopy = computed(() => {
     case "review-proxy":
       if (activeRecommendation.value?.reasonCodes.includes("no-proxy-loopback-missing")) {
         return text(
-          "先补齐 NO_PROXY 的 localhost、127.0.0.1 和 ::1，避免系统代理或 VPN 网卡/TUN 模式截获本机 CPA/Compact 请求。",
-          "First add localhost, 127.0.0.1, and ::1 to NO_PROXY so a system proxy or VPN TUN mode cannot capture local CPA/Compact calls.",
+          "先补齐 NO_PROXY 的 localhost、127.0.0.1 和 ::1，避免系统代理或 VPN 网卡/TUN 模式截获本机 Studio Gateway 请求。",
+          "First add localhost, 127.0.0.1, and ::1 to NO_PROXY so a system proxy or VPN TUN mode cannot capture local Studio Gateway calls.",
         );
       }
-      return text("检测到系统代理，但 CPA provider 仍是 direct。国内网关应直连；若 TUN 模式劫持流量，请在模型上游页检查代理和 NO_PROXY。", "A system proxy is present while CPA providers are direct. Domestic gateways should stay direct; if TUN mode hijacks traffic, review proxy and NO_PROXY in Models.");
+      return text("检测到系统代理，但 Studio provider 仍是 direct。国内网关应直连；若 TUN 模式劫持流量，请在模型上游页检查代理和 NO_PROXY。", "A system proxy is present while the Studio provider is direct. Domestic gateways should stay direct; if TUN mode hijacks traffic, review proxy and NO_PROXY in Models.");
     case "review-smoke":
       if (activeRecommendation.value?.reasonCodes.includes("smoke-matrix-stale")) {
         return text(
-          "上次目标模型矩阵已超过 24 小时；先重新只验证，避免把过期结果当成当前 CPA 可用状态。",
-          "The last target-model matrix is older than 24 hours. Run Verify Only again so stale results are not treated as current CPA readiness.",
+          "上次目标模型矩阵已超过 24 小时；先重新只验证，避免把过期结果当成当前 Studio Gateway 可用状态。",
+          "The last target-model matrix is older than 24 hours. Run Verify Only again so stale results are not treated as current Studio Gateway readiness.",
         );
       }
       return text("上次目标模型矩阵失败，Codex 不会自动接管 Studio Gateway。先在安装页重新跑 smoke gate。", "The last target-model matrix failed, so Codex will not attach Studio Gateway. Re-run the smoke gate from Install.");
@@ -1002,7 +992,7 @@ const primaryCcConnectProjectName = computed(
 );
 const compactProxyBaseUrl = computed(() => (
   summary.value?.gateway?.integrations.ccConnectProviderBaseUrl
-  || `http://127.0.0.1:${configForm.compactPort || summary.value?.ports.compact || 18796}/v1`
+  || `http://127.0.0.1:${summary.value?.ports.compact || 18796}/v1`
 ));
 const contextTokensDisplay = computed(() => {
   if (summary.value?.context.mode === "default" && !summary.value.context.tokens) {
@@ -1196,18 +1186,18 @@ const networkPolicyCard = computed<CodexStackNetworkPolicyCard | null>(() => {
         ? text("国内直连 + 系统代理提示", "Domestic direct + system proxy noticed")
         : text("国内网关直连", "Domestic gateway direct");
   const modeHelp = !policy.noProxyLoopbackReady
-    ? text("网卡/TUN 模式或系统代理可能截获 CPA/Compact 的本机请求，先补齐 NO_PROXY 再跑 Codex 对话、长任务和压缩上下文。", "TUN mode or a system proxy can capture local CPA/Compact calls; fix NO_PROXY before Codex chats, long jobs, and compaction.")
+    ? text("网卡/TUN 模式或系统代理可能截获 Studio Gateway 的本机请求，先补齐 NO_PROXY 再跑 Codex 对话、长任务和压缩上下文。", "TUN mode or a system proxy can capture local Studio Gateway calls; fix NO_PROXY before Codex chats, long jobs, and compaction.")
     : proxyMode
-      ? text(`CPA provider 使用 ${policy.providerProxyUrl}；仅海外/OpenAI 上游需要这样配置。`, `CPA providers use ${policy.providerProxyUrl}; keep this for foreign/OpenAI upstreams only.`)
+      ? text(`Studio provider 使用 ${policy.providerProxyUrl}；仅海外/OpenAI 上游需要这样配置。`, `Studio providers use ${policy.providerProxyUrl}; keep this for foreign/OpenAI upstreams only.`)
       : directWithSystemProxy
-        ? text("检测到系统代理，但 CPA provider 仍是 direct；国内网关不会继承系统代理，若 TUN 劫持流量请在 VPN 里为国内网关配置直连。", "A system proxy is present while CPA providers stay direct; domestic gateways will not inherit it, so configure direct routing for domestic gateways if TUN captures traffic.")
+        ? text("检测到系统代理，但 Studio provider 仍是 direct；国内网关不会继承系统代理，若 TUN 劫持流量请在 VPN 里为国内网关配置直连。", "A system proxy is present while Studio providers stay direct; domestic gateways will not inherit it, so configure direct routing for domestic gateways if TUN captures traffic.")
         : text("国内兼容网关保持直连；OpenAI 官方 Codex 访问仍由 Codex/系统代理路径处理。", "Domestic compatible gateways stay direct; official OpenAI Codex access still follows the Codex/system proxy path.");
   const loopbackValue = policy.noProxyLoopbackReady
     ? text("localhost / 127.0.0.1 / ::1 已绕过", "localhost / 127.0.0.1 / ::1 bypassed")
     : text(`缺少 ${policy.noProxyLoopbackMissing.join(", ")}`, `Missing ${policy.noProxyLoopbackMissing.join(", ")}`);
   const loopbackHelp = policy.noProxyLoopbackReady
     ? text(`NO_PROXY=${policy.noProxy}`, `NO_PROXY=${policy.noProxy}`)
-    : text("把 localhost,127.0.0.1,::1 写入 NO_PROXY，避免本机 CPA/Compact 请求被系统代理或 VPN 网卡模式转走。", "Add localhost,127.0.0.1,::1 to NO_PROXY so local CPA/Compact calls are not routed through a system proxy or VPN TUN mode.");
+    : text("把 localhost,127.0.0.1,::1 写入 NO_PROXY，避免本机 Studio Gateway 请求被系统代理或 VPN 网卡模式转走。", "Add localhost,127.0.0.1,::1 to NO_PROXY so local Studio Gateway calls are not routed through a system proxy or VPN TUN mode.");
   const upstreamValue = policy.upstreamBaseUrl
     ? `${policy.upstreamBaseUrl} · ${policy.upstreamApiKeyConfigured ? text("密钥已配置", "key configured") : text("缺少密钥", "key missing")}`
     : text("使用安装器默认上游", "Using installer default upstream");
@@ -1418,10 +1408,7 @@ const hasInstallDraftChanges = computed(() => {
   if ((installForm.model || "") !== currentModel) return true;
   if (installForm.contextMode !== (current.context.mode || "default")) return true;
   if (installForm.contextMode === "custom" && Number(installForm.contextWindowTokens) !== (current.context.tokens || current.context.recommendedTokens)) return true;
-  if (Number(installForm.cpaPort) !== current.ports.cpa) return true;
-  if (Number(installForm.compactPort) !== current.ports.compact) return true;
   if (installForm.channel !== current.installer.channel) return true;
-  if (installForm.cpaKey.trim()) return true;
   if (installForm.upstreamBaseUrl.trim() !== (policy.upstreamBaseUrl || "")) return true;
   if (installForm.upstreamApiKey.trim()) return true;
   if (installForm.providerProxyUrl.trim() !== (policy.providerProxyUrl || "")) return true;
@@ -1457,24 +1444,10 @@ const configPatchPayload = computed<CodexStackConfigPatchRequest>(() => {
     }
   }
 
-  const nextCpaPort = Number(configForm.cpaPort) || undefined;
-  if (nextCpaPort && nextCpaPort !== current.ports.cpa) {
-    payload.cpaPort = nextCpaPort;
-  }
-  const nextCompactPort = Number(configForm.compactPort) || undefined;
-  if (nextCompactPort && nextCompactPort !== current.ports.compact) {
-    payload.compactPort = nextCompactPort;
-  }
-
   const nextCcProject = configForm.ccConnectProject.trim();
   const currentCcProject = current.ccConnect.project || current.profile.ccConnectProject || "main";
   if (nextCcProject && nextCcProject !== currentCcProject) {
     payload.ccConnectProject = nextCcProject;
-  }
-
-  const nextCpaProxyKey = configForm.cpaProxyKey.trim();
-  if (nextCpaProxyKey) {
-    payload.cpaProxyKey = nextCpaProxyKey;
   }
 
   const nextUpstreamBaseUrl = configForm.upstreamBaseUrl.trim();
@@ -1505,9 +1478,6 @@ const configImpactItems = computed<CodexStackRuntimeConfigImpactItem[]>(() => {
   const items: CodexStackRuntimeConfigImpactItem[] = [];
   const hasServiceRouteChange = Boolean(
     payload.defaultModel
-    || payload.cpaPort
-    || payload.compactPort
-    || payload.cpaProxyKey
     || Object.prototype.hasOwnProperty.call(payload, "upstreamBaseUrl")
     || payload.upstreamApiKey
     || Object.prototype.hasOwnProperty.call(payload, "providerProxyUrl")
@@ -1519,34 +1489,22 @@ const configImpactItems = computed<CodexStackRuntimeConfigImpactItem[]>(() => {
       id: "smoke-invalidated",
       label: text("保存后需要重新 smoke", "Smoke recheck required after save"),
       detail: text(
-        "模型、端口、密钥、上游、代理或 NO_PROXY 变化会清空旧的目标模型 smoke 结果；重新验证前不会把 CPA 当作可接入状态。",
-        "Model, port, key, upstream, proxy, or NO_PROXY changes clear the old target-model smoke result; CPA will not be treated as attach-ready until rechecked.",
+        "模型、上游、代理或 NO_PROXY 变化会清空旧的目标模型 smoke 结果；重新验证前不会把旧本地路由当作可接入状态。",
+        "Model, upstream, proxy, or NO_PROXY changes clear the old target-model smoke result; the legacy local route will not be treated as attach-ready until rechecked.",
       ),
       tone: "warning",
     });
   }
 
-  if (payload.cpaPort || payload.compactPort || payload.defaultModel || payload.cpaProxyKey) {
+  if (payload.defaultModel) {
     items.push({
       id: "service-restart",
-      label: text("影响本地服务路由", "Local service route changes"),
+      label: text("影响 Studio Gateway 路由", "Studio Gateway route changes"),
       detail: text(
-        "保存会更新 CPA/Compact、Codex provider 或 cc-connect 配置；仅重启当前 active 的服务，已暂停的栈不会被自动拉起。",
-        "Saving updates CPA/Compact, the Codex provider, or cc-connect config; only currently active services restart, and a paused stack is not started automatically.",
+        "保存会更新 Codex Studio provider 和 cc-connect 项目配置；模型 relay 由 Studio Gateway daemon 接管。",
+        "Saving updates the Codex Studio provider and cc-connect project config; model relay is owned by the Studio Gateway daemon.",
       ),
       tone: "info",
-    });
-  }
-
-  if (payload.cpaProxyKey) {
-    items.push({
-      id: "auth-key",
-      label: text("会写入本地 CPA key", "Local CPA key will be written"),
-      detail: text(
-        "新的 proxy key 会同步到 Codex auth、旧本地配置和 cc-connect provider；官方 GPT 路径仍需显式 smoke gate 才会切到 Studio Gateway。",
-        "The new proxy key is synced to Codex auth, legacy local config, and the cc-connect provider; the official GPT route still switches to Studio Gateway only through the explicit smoke gate.",
-      ),
-      tone: "danger",
     });
   }
 
@@ -1567,8 +1525,8 @@ const configImpactItems = computed<CodexStackRuntimeConfigImpactItem[]>(() => {
       id: "network",
       label: text("影响系统代理和 TUN 绕过", "Affects proxy and TUN bypass"),
       detail: text(
-        "国内网关建议 direct；NO_PROXY 必须保留 localhost,127.0.0.1,::1，避免本机 CPA/Compact 请求被系统代理或 VPN 网卡模式截获。",
-        "Domestic gateways should stay direct; NO_PROXY must keep localhost,127.0.0.1,::1 so local CPA/Compact calls are not captured by a system proxy or VPN TUN mode.",
+        "国内网关建议 direct；NO_PROXY 必须保留 localhost,127.0.0.1,::1，避免本机 Studio Gateway 请求被系统代理或 VPN 网卡模式截获。",
+        "Domestic gateways should stay direct; NO_PROXY must keep localhost,127.0.0.1,::1 so local Studio Gateway calls are not captured by a system proxy or VPN TUN mode.",
       ),
       tone: "warning",
     });
@@ -1652,8 +1610,6 @@ const serviceGridLabels = computed(() => ({
 }));
 const componentOptions = computed(() => [
   { id: "codex" as const, label: text("Codex CLI", "Codex CLI") },
-  { id: "cpa" as const, label: text("CPA 代理", "CPA Proxy") },
-  { id: "compact-proxy" as const, label: text("Gateway 代理", "Gateway Proxy") },
   { id: "cc-connect" as const, label: "cc-connect" },
 ]);
 const installComponentStrategies = computed<CodexStackInstallComponentStrategy[]>(() => componentOptions.value.map((component) => ({
@@ -1730,7 +1686,7 @@ const installPlanHighlights = computed(() => {
     `${text("渠道", "Channel")}: ${channelLabel(installForm.channel)}`,
     `${text("模型", "Model")}: ${installForm.model || "--"}`,
     `${text("上下文", "Context")}: ${installForm.contextMode === "default" ? text("默认", "Default") : `${installForm.contextMode === "codex-1m" ? "1M" : installForm.contextWindowTokens} tokens`}`,
-    `${text("端口", "Ports")}: CPA ${installForm.cpaPort} / Compact ${installForm.compactPort}`,
+    `${text("网关", "Gateway")}: Studio Gateway :18796`,
     `${text("上游代理", "Upstream Proxy")}: ${installForm.providerProxyUrl ? installForm.providerProxyUrl : text("自动；国内直连", "Auto; domestic direct")}`,
     `${text("跳过", "Skip")}: ${skip.length ? skip.join(", ") : text("无", "None")}`,
     `${text("强制", "Force")}: ${force.length ? force.join(", ") : text("无", "None")}`,
@@ -2027,19 +1983,10 @@ function channelLabel(channel: CodexStackChannel): string {
   return text("官方版", "Official");
 }
 
-function installChannelDefaultCpaPort(channel: CodexStackChannel): number {
-  return channel === "official" ? 8317 : 18795;
-}
-
-function syncInstallChannelDefaults(nextChannel: CodexStackChannel, previousChannel: CodexStackChannel): void {
+function syncInstallChannelDefaults(): void {
   const currentTargetModel = summaryTargetModel(summary.value);
   if (!installForm.model && currentTargetModel) {
     installForm.model = currentTargetModel;
-  }
-
-  const previousDefaultPort = installChannelDefaultCpaPort(previousChannel);
-  if (!Number(installForm.cpaPort) || Number(installForm.cpaPort) === previousDefaultPort) {
-    installForm.cpaPort = installChannelDefaultCpaPort(nextChannel);
   }
 }
 
@@ -2388,8 +2335,6 @@ function hydrateConfigFormFromSummary(normalized: CodexStackSummaryPayload): voi
   configForm.defaultModel = summaryTargetModel(normalized);
   configForm.contextMode = normalized.context.mode || "default";
   configForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
-  configForm.cpaPort = normalized.ports.cpa;
-  configForm.compactPort = normalized.ports.compact;
   configForm.ccConnectProject = normalized.ccConnect.project || normalized.profile.ccConnectProject || "main";
   configForm.upstreamBaseUrl = normalized.proxyPolicy.upstreamBaseUrl || "";
   configForm.upstreamApiKey = "";
@@ -2401,10 +2346,7 @@ function hydrateInstallFormFromSummary(normalized: CodexStackSummaryPayload): vo
   installForm.model = summaryTargetModel(normalized);
   installForm.contextMode = normalized.context.mode || "default";
   installForm.contextWindowTokens = normalized.context.tokens || normalized.context.recommendedTokens;
-  installForm.cpaPort = normalized.ports.cpa;
-  installForm.compactPort = normalized.ports.compact;
   installForm.channel = normalized.installer.channel;
-  installForm.cpaKey = "";
   installForm.upstreamBaseUrl = normalized.proxyPolicy.upstreamBaseUrl || "";
   installForm.upstreamApiKey = "";
   installForm.providerProxyUrl = normalized.proxyPolicy.providerProxyUrl || "";
@@ -2520,9 +2462,6 @@ function buildInstallPayload(
       CODEX_MODEL: installForm.model || undefined,
       CODEX_CONTEXT_MODE: installForm.contextMode,
       CODEX_CONTEXT_WINDOW: installForm.contextMode === "custom" ? Number(installForm.contextWindowTokens) || undefined : undefined,
-      CPA_PORT: Number(installForm.cpaPort) || undefined,
-      COMPACT_PORT: Number(installForm.compactPort) || undefined,
-      CPA_PROXY_KEY: installForm.cpaKey || undefined,
       OPENCLAW_UPSTREAM_BASE_URL: installForm.upstreamBaseUrl || undefined,
       OPENCLAW_UPSTREAM_API_KEY: installForm.upstreamApiKey || undefined,
       OPENCLAW_PROVIDER_PROXY_URL: installForm.providerProxyUrl || undefined,
@@ -2626,12 +2565,7 @@ async function copyActiveJobOutput(): Promise<void> {
 
 async function installFullStack(): Promise<void> {
   if (!guardMutation()) return;
-  
-  if (installForm.cpaKey && installForm.cpaKey.length > 72) {
-    notice.value = { kind: "error", text: text("代理密钥长度不能超过 72 个字符。", "Proxy key length cannot exceed 72 characters.") };
-    return;
-  }
-  
+
   busy.value = true;
   try {
     const response = await startCodexStackInstall(buildInstallPayload(false));
@@ -2646,12 +2580,7 @@ async function installFullStack(): Promise<void> {
 
 async function installBaseOnly(): Promise<void> {
   if (!guardMutation()) return;
-  
-  if (installForm.cpaKey && installForm.cpaKey.length > 72) {
-    notice.value = { kind: "error", text: text("代理密钥长度不能超过 72 个字符。", "Proxy key length cannot exceed 72 characters.") };
-    return;
-  }
-  
+
   busy.value = true;
   try {
     const response = await startCodexStackInstall(buildInstallPayload(true));
@@ -2666,11 +2595,6 @@ async function installBaseOnly(): Promise<void> {
 
 async function reinstallFullStack(): Promise<void> {
   if (!guardMutation()) return;
-
-  if (installForm.cpaKey && installForm.cpaKey.length > 72) {
-    notice.value = { kind: "error", text: text("代理密钥长度不能超过 72 个字符。", "Proxy key length cannot exceed 72 characters.") };
-    return;
-  }
 
   busy.value = true;
   try {
@@ -2854,7 +2778,6 @@ async function saveConfigPatchInternal(): Promise<boolean> {
   try {
     const response = await patchCodexStackConfig(payload);
     restartRequiredUnits.value = response.restartRequiredUnits || [];
-    configForm.cpaProxyKey = "";
     configForm.upstreamApiKey = "";
     if (response.summary) applySummary(response.summary, { preserveDirtyConfigDraft: false });
     notice.value = { kind: "success", text: response.message };
@@ -3233,7 +3156,7 @@ watch([logAutoRefresh, logLineMode, selectedLogService, activeSection], () => {
   void loadLogs(selectedLogService.value, true);
 });
 
-watch(() => installForm.channel, (nextChannel, previousChannel) => {
-  syncInstallChannelDefaults(nextChannel, previousChannel);
+watch(() => installForm.channel, () => {
+  syncInstallChannelDefaults();
 });
 </script>

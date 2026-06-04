@@ -36,8 +36,7 @@
       </div>
       <div class="cs-install-chain-steps">
         <span>{{ text("上游 API", "Upstream API") }}</span>
-        <span>CPA :{{ form.cpaPort }}</span>
-        <span>Compact :{{ form.compactPort }}</span>
+        <span>Studio Gateway :18796</span>
         <span>{{ form.model || "--" }}</span>
         <span>cc-connect</span>
       </div>
@@ -56,19 +55,6 @@
           <select :value="form.model" class="form-input" @change="updateStringField('model', $event)">
             <option v-for="model in modelOptions" :key="`install-${model}`" :value="model">{{ model }}</option>
           </select>
-        </label>
-        <label class="form-field">
-          <span class="form-label">{{ text("CPA 端口", "CPA Port") }}</span>
-          <input :value="form.cpaPort" class="form-input" type="number" min="1" @input="updateNumberField('cpaPort', $event)" />
-        </label>
-        <label class="form-field">
-          <span class="form-label">{{ text("Compact 端口", "Compact Port") }}</span>
-          <input :value="form.compactPort" class="form-input" type="number" min="1" @input="updateNumberField('compactPort', $event)" />
-        </label>
-        <label class="form-field">
-          <span class="form-label">{{ text("代理密钥", "Proxy Key") }}</span>
-          <input :value="form.cpaKey" class="form-input" type="password" :maxlength="72" @input="updateStringField('cpaKey', $event)" />
-          <span class="form-hint">{{ text("建议使用 16-72 个字符", "Recommended 16-72 characters") }}</span>
         </label>
         <label class="form-field">
           <span class="form-label">{{ text("Codex 上下文", "Codex Context") }}</span>
@@ -153,13 +139,10 @@ import { useLocalePreference } from "../../shared/locale";
 import type { CodexStackRuntimeContextMode } from "./CodexStackRuntimeConfigCard.vue";
 
 export interface CodexStackInstallConfigDraft {
-  model: string;
-  contextMode: CodexStackRuntimeContextMode;
-  contextWindowTokens: number;
-  cpaPort: number;
-  compactPort: number;
-  cpaKey: string;
-  upstreamBaseUrl: string;
+	  model: string;
+	  contextMode: CodexStackRuntimeContextMode;
+	  contextWindowTokens: number;
+	  upstreamBaseUrl: string;
   upstreamApiKey: string;
   providerProxyUrl: string;
   noProxy: string;

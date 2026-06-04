@@ -1854,27 +1854,26 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   createBundledInstaller(config, "official");
   createBundledInstaller(config, "dmwork");
   const setupScriptContent = [
-      "#!/usr/bin/env bash",
-	      "set -euo pipefail",
-	      "echo model=$CODEX_MODEL",
-	      "echo context_mode=$CODEX_CONTEXT_MODE",
-	      "echo context_window=$CODEX_CONTEXT_WINDOW",
-	      "echo cpa_key=$CPA_PROXY_KEY",
-      "echo upstream_key=$OPENCLAW_UPSTREAM_API_KEY",
-      "echo upstream_url=$OPENCLAW_UPSTREAM_BASE_URL",
-      "echo provider_proxy=$OPENCLAW_PROVIDER_PROXY_URL",
-      "echo no_proxy=$OPENCLAW_NO_PROXY",
-      "",
-    ].join("\n");
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    "echo model=$CODEX_MODEL",
+    "echo context_mode=$CODEX_CONTEXT_MODE",
+    "echo context_window=$CODEX_CONTEXT_WINDOW",
+    "if [[ -n \"${CPA_PROXY_KEY:-}\" ]]; then echo unexpected_cpa_key=$CPA_PROXY_KEY; fi",
+    "echo upstream_key=$OPENCLAW_UPSTREAM_API_KEY",
+    "echo upstream_url=$OPENCLAW_UPSTREAM_BASE_URL",
+    "echo provider_proxy=$OPENCLAW_PROVIDER_PROXY_URL",
+    "echo no_proxy=$OPENCLAW_NO_PROXY",
+    "",
+  ].join("\n");
   writeFile(path.join(config.projectRoot, "resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"), setupScriptContent, 0o755);
 
   const service = createCodexStackService(config);
   const response = await service.startInstall(undefined, {
     env: {
-	      CODEX_MODEL: "glm-5.1",
-	      CODEX_CONTEXT_MODE: "custom",
-	      CODEX_CONTEXT_WINDOW: 320000,
-      CPA_PROXY_KEY: "secret-cpa-key-for-job",
+      CODEX_MODEL: "glm-5.1",
+      CODEX_CONTEXT_MODE: "custom",
+      CODEX_CONTEXT_WINDOW: 320000,
       OPENCLAW_UPSTREAM_BASE_URL: "https://upstream.example.test/v1",
       OPENCLAW_UPSTREAM_API_KEY: "secret-upstream-key-for-job",
       OPENCLAW_PROVIDER_PROXY_URL: "http://127.0.0.1:7897",
@@ -1895,7 +1894,7 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   assert.match(job.logTail, /upstream_url=https:\/\/upstream\.example\.test\/v1/);
   assert.match(job.logTail, /provider_proxy=http:\/\/127\.0\.0\.1:7897/);
   assert.match(job.logTail, /no_proxy=localhost,127\.0\.0\.1,::1/);
-  assert.doesNotMatch(job.logTail, /secret-cpa-key-for-job/);
+  assert.doesNotMatch(job.logTail, /unexpected_cpa_key=/);
   assert.doesNotMatch(job.logTail, /secret-upstream-key-for-job/);
 
   const summary = await service.getSummary();
@@ -1904,7 +1903,41 @@ test("codex stack install job allows upstream overrides and redacts submitted ke
   assert.equal(summary.profile.providerProxy?.mode, "proxy");
   assert.equal(summary.profile.providerProxy?.url, "http://127.0.0.1:7897");
   const authJson = JSON.parse(fs.readFileSync(path.join(root, ".codex/auth.json"), "utf8"));
-  assert.equal(authJson.OPENAI_API_KEY, "secret-cpa-key-for-job");
+  assert.equal(authJson.OPENAI_API_KEY, "PROXY_MANAGED");
+});
+
+test("codex stack install rejects legacy CPA env fields", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+
+  const service = createCodexStackService(config);
+  await assert.rejects(
+    () => service.startInstall(undefined, {
+      env: {
+        CPA_PORT: 18417,
+        COMPACT_PORT: 18777,
+        CPA_PROXY_KEY: "legacy-cpa-key-should-be-rejected",
+      },
+    }),
+    /Unsupported install env keys: CPA_PORT, COMPACT_PORT, CPA_PROXY_KEY/,
+  );
+  assert.equal(fs.existsSync(path.join(root, ".codex/auth.json")), false);
+  assert.equal(fs.existsSync(path.join(config.openclawRoot, "studio/codex-stack/profile.json")), false);
 });
 
 test("codex stack install keeps the selected target model when channel changes", async () => {
@@ -1949,7 +1982,7 @@ test("codex stack install keeps the selected target model when channel changes",
   const profile = JSON.parse(fs.readFileSync(path.join(config.openclawRoot, "studio/codex-stack/profile.json"), "utf8"));
   assert.equal(profile.channel, "official");
   assert.equal(profile.defaultModel, "kimi-k2.6");
-  assert.equal(profile.cpaPort, 8317);
+  assert.equal(profile.cpaPort, 18795);
 
   const serviceTemplatePath = path.join(root, ".config/systemd/user/openclaw-studio-model-gateway.service");
   assert.ok(fs.existsSync(serviceTemplatePath));
@@ -1997,9 +2030,6 @@ test("codex stack failed install does not persist optimistic profile state", asy
   const response = await service.startInstall(undefined, {
     env: {
       CODEX_MODEL: "kimi-k2.6",
-      CPA_PORT: 18417,
-      COMPACT_PORT: 18777,
-      CPA_PROXY_KEY: "failed-install-secret",
       OPENCLAW_PROVIDER_PROXY_URL: "http://127.0.0.1:7897",
     },
     flags: {
@@ -2011,7 +2041,6 @@ test("codex stack failed install does not persist optimistic profile state", asy
   assert.equal(job.status, "failed");
   assert.match(job.error || "", /Installer exited with code 17/);
   assert.match(job.logTail, /failing setup for kimi-k2\.6/);
-  assert.doesNotMatch(job.logTail, /failed-install-secret/);
   assert.equal(fs.existsSync(path.join(root, ".codex/auth.json")), false);
   assert.equal(fs.existsSync(path.join(config.openclawRoot, "studio/codex-stack/profile.json")), false);
 
@@ -2019,8 +2048,6 @@ test("codex stack failed install does not persist optimistic profile state", asy
   assert.equal(summary.profile.lastInstallAt, undefined);
   assert.equal(summary.profile.installerSource, undefined);
   assert.notEqual(summary.profile.defaultModel, "kimi-k2.6");
-  assert.notEqual(summary.profile.cpaPort, 18417);
-  assert.notEqual(summary.profile.compactPort, 18777);
   assert.notEqual(summary.profile.providerProxy?.source, "install-env");
 });
 
@@ -2124,7 +2151,7 @@ test("codex stack summary exposes finalizer from the single bundled installer", 
   assert.ok(summary.installer.scripts.ccConnectFinalizer?.endsWith("finish-cc-connect-setup.sh"));
 });
 
-test("codex stack config patch writes backups and updates managed fields", async () => {
+test("codex stack config patch writes Studio provider backups without touching legacy CPA files", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -2148,45 +2175,43 @@ test("codex stack config patch writes backups and updates managed fields", async
   const cpaConfig = path.join(home, ".cli-proxy-api/config.yaml");
   const ccConfig = path.join(home, ".cc-connect/config.toml");
   fs.writeFileSync(codexConfig, `model_provider = "cpa"\n${fs.readFileSync(codexConfig, "utf8")}`);
+  const originalCpaConfig = fs.readFileSync(cpaConfig, "utf8");
 
-  const service = createCodexStackService(config);
-	  const response = await service.patchConfig(undefined, {
-	    defaultModel: "gpt-5.4",
-	    contextMode: "codex-1m",
-	    cpaPort: 9317,
-    compactPort: 28796,
-    cpaProxyKey: "replacement-cpa-key-123",
-    ccConnectProject: "studio-main",
+  await withFakeSystemctl(async () => {
+    const service = createCodexStackService(config);
+    const response = await service.patchConfig(undefined, {
+      defaultModel: "gpt-5.4",
+      contextMode: "codex-1m",
+      ccConnectProject: "studio-main",
+    });
+
+    assert.equal(response.ok, true);
+    assert.ok(Array.isArray(response.restartRequiredUnits));
+    assert.equal(response.restartRequiredUnits.includes("cli-proxy-api.service"), false);
+    assert.equal(response.restartRequiredUnits.includes("cpa-compact-proxy.service"), false);
   });
 
-  assert.equal(response.ok, true);
-  assert.ok(Array.isArray(response.restartRequiredUnits));
-  assert.ok(response.message.includes("Restarted") || response.message.includes("Restart required") || response.message.includes("updated"));
   assert.match(fs.readFileSync(codexConfig, "utf8"), /model = "gpt-5\.4"/);
-  assert.match(fs.readFileSync(codexConfig, "utf8"), /28796/);
   assert.match(fs.readFileSync(codexConfig, "utf8"), /model_context_window = 1050000/);
   const patchedCodex = fs.readFileSync(codexConfig, "utf8");
   assert.match(patchedCodex, /responses_websockets = false/);
   assert.match(patchedCodex, /responses_websockets_v2 = false/);
   assert.match(patchedCodex, /enable_request_compression = false/);
-  assert.ok(patchedCodex.indexOf("responses_websockets = false") < patchedCodex.indexOf("[model_providers.cpa]"));
+  assert.ok(patchedCodex.indexOf("responses_websockets = false") < patchedCodex.indexOf("[model_providers.studio]"));
   assert.match(patchedCodex, /\[features\][\s\S]*enable_request_compression = false[\s\S]*responses_websockets_v2 = false[\s\S]*responses_websockets = false/);
-  assert.doesNotMatch(tomlTopLevel(patchedCodex), /^base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/m);
-  assert.doesNotMatch(tomlTopLevel(patchedCodex), /openai_base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/);
+  assert.doesNotMatch(tomlTopLevel(patchedCodex), /^base_url = "http:\/\/127\.0\.0\.1:\d+\/v1"/m);
+  assert.doesNotMatch(tomlTopLevel(patchedCodex), /openai_base_url = "http:\/\/127\.0\.0\.1:\d+\/v1"/);
   assert.match(tomlTopLevel(patchedCodex), /model_provider = "cpa"/);
-  assert.match(patchedCodex, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:28796\/v1"[\s\S]*wire_api = "responses"[\s\S]*supports_websockets = false[\s\S]*experimental_bearer_token = "replacement-cpa-key-123"/);
-  assert.match(fs.readFileSync(cpaConfig, "utf8"), /port: 9317/);
-  assert.match(fs.readFileSync(cpaConfig, "utf8"), /replacement-cpa-key-123/);
-  assert.match(fs.readFileSync(cpaConfig, "utf8"), /secret-key: "studio"/);
-  assert.doesNotMatch(fs.readFileSync(cpaConfig, "utf8"), /secret-key: "replacement-cpa-key-123"/);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(home, ".codex/auth.json"), "utf8")).OPENAI_API_KEY, "replacement-cpa-key-123");
+  assert.match(patchedCodex, /\[model_providers\.studio\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"[\s\S]*wire_api = "responses"[\s\S]*supports_websockets = false[\s\S]*experimental_bearer_token = "PROXY_MANAGED"/);
+  assert.equal(fs.readFileSync(cpaConfig, "utf8"), originalCpaConfig);
+  assert.equal(fs.existsSync(path.join(home, ".codex/auth.json")), false);
   assert.match(fs.readFileSync(ccConfig, "utf8"), /name = "studio-main"/);
   assert.ok(fs.readdirSync(path.dirname(codexConfig)).some((name) => name.startsWith("config.toml.bak.")));
-  assert.ok(fs.readdirSync(path.dirname(cpaConfig)).some((name) => name.startsWith("config.yaml.bak.")));
+  assert.equal(fs.readdirSync(path.dirname(cpaConfig)).some((name) => name.startsWith("config.yaml.bak.")), false);
   assert.ok(fs.readdirSync(path.dirname(ccConfig)).some((name) => name.startsWith("config.toml.bak.")));
 });
 
-test("codex stack config patch preserves active CPA and does not start paused services", async () => {
+test("codex stack config patch rejects legacy CPA and Compact fields", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -2207,78 +2232,26 @@ test("codex stack config patch preserves active CPA and does not start paused se
   createGeneratedStackFiles(root);
   const home = path.dirname(config.openclawRoot);
   const codexConfig = path.join(home, ".codex/config.toml");
-  fs.writeFileSync(codexConfig, `model_provider = "cpa"\n${fs.readFileSync(codexConfig, "utf8")}`);
-
-  await withFakeSystemctl(async ({ readCalls }) => {
-    const service = createCodexStackService(config);
-    const response = await service.patchConfig(undefined, {
-      defaultModel: "glm-5.1",
-      compactPort: 28796,
-    });
-
-    assert.equal(response.ok, true);
-    assert.ok(response.restartRequiredUnits.includes("cpa-compact-proxy.service"));
-    assert.ok(response.restartRequiredUnits.includes("cc-connect.service"));
-    assert.match(response.message, /Restart required/);
-    const calls = readCalls();
-    assert.ok(calls.includes("--user daemon-reload"));
-    assert.ok(!calls.includes("--user restart cpa-compact-proxy.service"));
-  });
-
-  const patchedCodex = fs.readFileSync(codexConfig, "utf8");
-  assert.match(tomlTopLevel(patchedCodex), /model_provider = "cpa"/);
-  assert.match(patchedCodex, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/);
-});
-
-test("codex stack config patch retargets existing cc-connect CPA provider on Compact port changes", async () => {
-  const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  writeJson(config.openclawConfigFile, {
-    plugins: {
-      entries: {
-        studio: {
-          config: {
-            codexStack: {
-              allowManagementActions: true,
-            },
-          },
-        },
-      },
-    },
-  });
-  createBundledInstaller(config, "official");
-  createBundledInstaller(config, "dmwork");
-  createGeneratedStackFiles(root);
-  const home = path.dirname(config.openclawRoot);
   const ccConfig = path.join(home, ".cc-connect/config.toml");
-  writeFile(ccConfig, `
-[[providers]]
-name = "cpa"
-api_key = "secret-cpa-key-123456"
-base_url = "http://127.0.0.1:18796/v1"
-codex.env_key = "OPENAI_API_KEY"
+  const cpaConfig = path.join(home, ".cli-proxy-api/config.yaml");
+  const originalCodex = fs.readFileSync(codexConfig, "utf8");
+  const originalCc = fs.readFileSync(ccConfig, "utf8");
+  const originalCpa = fs.readFileSync(cpaConfig, "utf8");
 
-[[projects]]
-name = "main"
-[projects.agent.options]
-model = "glm-5.1"
-`);
-
-  await withFakeSystemctl(async ({ readCalls }) => {
-    const service = createCodexStackService(config);
-    const response = await service.patchConfig(undefined, {
+  const service = createCodexStackService(config);
+  await assert.rejects(
+    () => service.patchConfig(undefined, {
+      cpaPort: 9317,
       compactPort: 28796,
-    });
+      cpaProxyKey: "replacement-cpa-key-123",
+    }),
+    /Unsupported config fields: cpaPort, compactPort, cpaProxyKey/,
+  );
 
-    assert.equal(response.ok, true);
-    assert.ok(response.restartRequiredUnits.includes("cc-connect.service"));
-    assert.ok(!readCalls().includes("--user restart cc-connect.service"));
-  });
-
-  const patchedCc = fs.readFileSync(ccConfig, "utf8");
-  assert.match(patchedCc, /base_url = "http:\/\/127\.0\.0\.1:28796\/v1"/);
-  assert.match(patchedCc, /codex\.env_key = "OPENAI_API_KEY"/);
-  assert.doesNotMatch(patchedCc, /codex_env_key/);
+  assert.equal(fs.readFileSync(codexConfig, "utf8"), originalCodex);
+  assert.equal(fs.readFileSync(ccConfig, "utf8"), originalCc);
+  assert.equal(fs.readFileSync(cpaConfig, "utf8"), originalCpa);
+  assert.equal(fs.existsSync(path.join(home, ".codex/auth.json")), false);
 });
 
 test("codex stack preserves cc-connect multi-provider model routing fields", async () => {
@@ -2414,7 +2387,7 @@ model = "glm-5.1"
   });
 });
 
-test("codex stack config patch updates upstream proxy policy and no-proxy service env", async () => {
+test("codex stack config patch updates upstream proxy policy through OpenClaw env", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -2461,6 +2434,8 @@ Environment=CPA_BASE_URL=http://127.0.0.1:8317
 Environment=LISTEN_PORT=18796
 Environment=NO_PROXY=localhost,127.0.0.1,::1
 `);
+  const originalCpa = fs.readFileSync(cpaConfig, "utf8");
+  const originalCompact = fs.readFileSync(compactService, "utf8");
 
   await withFakeSystemctl(async () => {
     const service = createCodexStackService(config);
@@ -2472,8 +2447,8 @@ Environment=NO_PROXY=localhost,127.0.0.1,::1
     });
 
     assert.equal(response.ok, true);
-    assert.ok(response.restartRequiredUnits.includes("cli-proxy-api.service"));
-    assert.ok(response.restartRequiredUnits.includes("cpa-compact-proxy.service"));
+    assert.equal(response.restartRequiredUnits.includes("cli-proxy-api.service"), false);
+    assert.equal(response.restartRequiredUnits.includes("cpa-compact-proxy.service"), false);
     assert.equal(response.summary.proxyPolicy.providerMode, "proxy");
     assert.equal(response.summary.proxyPolicy.providerProxyUrl, "http://127.0.0.1:7897");
     assert.equal(response.summary.proxyPolicy.upstreamBaseUrl, "https://new.example.test/v1");
@@ -2481,19 +2456,11 @@ Environment=NO_PROXY=localhost,127.0.0.1,::1
     assert.equal(response.summary.proxyPolicy.noProxy, "localhost,127.0.0.1,::1,.local");
   });
 
-  const patchedCpa = fs.readFileSync(cpaConfig, "utf8");
-  assert.match(patchedCpa, /upstream_base_url: "https:\/\/new\.example\.test\/v1"/);
-  assert.match(patchedCpa, /upstream_api_key: "new-upstream-key"/);
-  assert.match(patchedCpa, /- "secret-cpa-key-123456"/);
-  assert.match(patchedCpa, /- "new-upstream-key"/);
-  assert.match(patchedCpa, /base-url: "https:\/\/new\.example\.test\/v1"/);
-  assert.match(patchedCpa, /api-key: "new-upstream-key"/);
-  assert.match(patchedCpa, /proxy-url: "http:\/\/127\.0\.0\.1:7897"/);
-  const patchedCompact = fs.readFileSync(compactService, "utf8");
-  assert.match(patchedCompact, /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1,\.local/);
-  assert.match(patchedCompact, /Environment=OPENCLAW_NO_PROXY=localhost,127\.0\.0\.1,::1,\.local/);
+  assert.equal(fs.readFileSync(cpaConfig, "utf8"), originalCpa);
+  assert.equal(fs.readFileSync(compactService, "utf8"), originalCompact);
   const openclaw = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
   assert.equal(openclaw.env.OPENCLAW_UPSTREAM_BASE_URL, "https://new.example.test/v1");
+  assert.equal(openclaw.env.OPENCLAW_UPSTREAM_API_KEY, "new-upstream-key");
   assert.equal(openclaw.env.OPENCLAW_PROVIDER_PROXY_URL, "http://127.0.0.1:7897");
   assert.equal(openclaw.env.NO_PROXY, "localhost,127.0.0.1,::1,.local");
 
@@ -2508,12 +2475,12 @@ Environment=NO_PROXY=localhost,127.0.0.1,::1
     assert.equal(response.summary.proxyPolicy.providerMode, "direct");
     assert.ok(response.summary.proxyPolicy.cpaConfigProxyUrls.every((value) => value === "direct"));
     assert.equal(response.summary.proxyPolicy.upstreamBaseUrl, null);
+    assert.equal(response.restartRequiredUnits.includes("cli-proxy-api.service"), false);
+    assert.equal(response.restartRequiredUnits.includes("cpa-compact-proxy.service"), false);
   });
 
-  const clearedCpa = fs.readFileSync(cpaConfig, "utf8");
-  assert.match(clearedCpa, /upstream_base_url: ""/);
-  assert.match(clearedCpa, /base-url: ""/);
-  assert.match(clearedCpa, /proxy-url: "direct"/);
+  assert.equal(fs.readFileSync(cpaConfig, "utf8"), originalCpa);
+  assert.equal(fs.readFileSync(compactService, "utf8"), originalCompact);
 });
 
 test("codex stack config patch invalidates stale smoke matrix results", async () => {

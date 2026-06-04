@@ -62,7 +62,6 @@ const GPT_55_MODEL = "gpt-5.5";
 const GPT_55_CONTEXT_TOKENS = 1_050_000;
 const DEFAULT_CONTEXT_TOKENS = 20_000;
 const MAX_CONTEXT_TOKENS = GPT_55_CONTEXT_TOKENS;
-const CPA_MANAGEMENT_PANEL_REPOSITORY = "https://github.com/router-for-me/Cli-Proxy-API-Management-Center";
 const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
 const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
 const REQUIRED_CPA_SMOKE_CHECKS = CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS;
@@ -144,9 +143,6 @@ async function detectLivePort(patterns: string[]): Promise<number | null> {
 
 const INSTALL_ENV_KEYS = [
   "CODEX_MODEL",
-  "CPA_PORT",
-  "COMPACT_PORT",
-  "CPA_PROXY_KEY",
   "CODEX_CONTEXT_MODE",
   "CODEX_CONTEXT_WINDOW",
   "OPENCLAW_UPSTREAM_BASE_URL",
@@ -825,24 +821,6 @@ function upsertTomlSection(source: string, header: string, body: string): string
   return `${source.replace(/\s+$/g, "")}\n\n${rendered}`;
 }
 
-function applyCodexCpaProviderSection(source: string, baseUrl: string, proxyKey: string): string {
-  const managedKeys = new Set(["name", "base_url", "wire_api", "supports_websockets", "experimental_bearer_token"]);
-  const preserved = extractTomlSection(source, "model_providers.cpa")
-    .split(/\r?\n/)
-    .filter((line) => {
-      const key = line.match(/^\s*([A-Za-z0-9_-]+)\s*=/)?.[1];
-      return key ? !managedKeys.has(key) : Boolean(line.trim());
-    });
-  return upsertTomlSection(source, "model_providers.cpa", [
-    'name = "CPA"',
-    `base_url = ${JSON.stringify(baseUrl)}`,
-    'wire_api = "responses"',
-    "supports_websockets = false",
-    `experimental_bearer_token = ${JSON.stringify(proxyKey)}`,
-    ...preserved,
-  ].join("\n"));
-}
-
 function modelGatewayDaemonBaseUrl(): string {
   return `http://${MODEL_GATEWAY_DEFAULT_HOST}:${MODEL_GATEWAY_DEFAULT_PORT}/v1`;
 }
@@ -883,26 +861,9 @@ function isOfficialChatGptModel(model: string): boolean {
   return normalized.startsWith("gpt-") || normalized.startsWith("o1") || normalized.startsWith("o3") || normalized.startsWith("o4");
 }
 
-function replaceYamlNumber(source: string, key: string, value: number): string {
-  const pattern = new RegExp(`^(\\s*${key}:\\s*).*$`, "m");
-  return pattern.test(source) ? source.replace(pattern, `$1${value}`) : `${source.replace(/\s+$/g, "")}\n${key}: ${value}\n`;
-}
-
-function replaceFirstYamlListSecret(source: string, value: string): string {
-  const escaped = JSON.stringify(value);
-  const pattern = /^(\s*api-keys:\s*\n\s*-\s*).+$/m;
-  return pattern.test(source) ? source.replace(pattern, `$1${escaped}`) : source;
-}
-
 function replaceEnvLine(source: string, key: string, value: string | number): string {
   const pattern = new RegExp(`^(Environment=${key}=).*$`, "m");
   return pattern.test(source) ? source.replace(pattern, `$1${String(value)}`) : `${source.replace(/\s+$/g, "")}\nEnvironment=${key}=${String(value)}\n`;
-}
-
-function replaceOrAppendYamlString(source: string, key: string, value: string): string {
-  const escaped = JSON.stringify(value);
-  const pattern = new RegExp(`^(\\s*${key}:\\s*).*$`, "m");
-  return pattern.test(source) ? source.replace(pattern, `$1${escaped}`) : `${source.replace(/\s+$/g, "")}\n${key}: ${escaped}\n`;
 }
 
 function readYamlStringEntry(source: string, key: string): { present: boolean; value: string } {
@@ -953,114 +914,6 @@ function readFirstOpenaiCompatibilityApiKey(source: string): string {
     if (match?.[1]) return parseTomlScalar(match[1]);
   }
   return "";
-}
-
-function ensureYamlListEntry(source: string, key: string, value: string): string {
-  if (!value) return source;
-  const lines = source.replace(/\r\n/g, "\n").split("\n");
-  const header = lines.findIndex((line) => new RegExp(`^\\s*${key}:\\s*$`).test(line));
-  const escaped = JSON.stringify(value);
-  if (header < 0) return `${source.replace(/\s+$/g, "")}\n${key}:\n  - ${escaped}\n`;
-  let index = header + 1;
-  let lastItem = header;
-  let itemIndent = "  ";
-  while (index < lines.length) {
-    const line = lines[index] || "";
-    const item = line.match(/^(\s*)-\s*(.+?)\s*$/);
-    if (!item) break;
-    itemIndent = item[1] || itemIndent;
-    if (parseTomlScalar(item[2]) === value) return source;
-    lastItem = index;
-    index += 1;
-  }
-  lines.splice(lastItem + 1, 0, `${itemIndent}- ${escaped}`);
-  return lines.join("\n");
-}
-
-function replaceOrInsertProviderValue(lines: string[], key: string, value: string, afterIndex: number): void {
-  const bounds = firstOpenaiCompatibilityProviderBounds(lines);
-  if (!bounds) return;
-  const pattern = new RegExp(`^(\\s*${key}:\\s*).*$`);
-  for (let index = bounds.start; index < bounds.end; index += 1) {
-    if (pattern.test(lines[index] || "")) {
-      lines[index] = (lines[index] || "").replace(pattern, `$1${JSON.stringify(value)}`);
-      return;
-    }
-  }
-  lines.splice(Math.min(afterIndex, bounds.end), 0, `  ${key}: ${JSON.stringify(value)}`);
-}
-
-function ensureFirstProviderApiKeyEntry(lines: string[], apiKey: string | null, proxyUrl: string | null): void {
-  const bounds = firstOpenaiCompatibilityProviderBounds(lines);
-  if (!bounds) return;
-  let entriesIndex = -1;
-  let apiKeyIndex = -1;
-  for (let index = bounds.start; index < bounds.end; index += 1) {
-    const line = lines[index] || "";
-    if (/^\s*api-key-entries:\s*$/.test(line)) entriesIndex = index;
-    if (/^\s*-\s*api-key:\s*/.test(line) && apiKeyIndex < 0) apiKeyIndex = index;
-  }
-  if (entriesIndex < 0) {
-    const insertAt = bounds.start + 1;
-    lines.splice(insertAt, 0, "  api-key-entries:");
-    entriesIndex = insertAt;
-    if (apiKeyIndex >= insertAt) apiKeyIndex += 1;
-  }
-  if (apiKey && apiKeyIndex >= 0) {
-    lines[apiKeyIndex] = (lines[apiKeyIndex] || "").replace(/^(\s*-\s*api-key:\s*).*$/, `$1${JSON.stringify(apiKey)}`);
-  } else if (apiKey && apiKeyIndex < 0) {
-    lines.splice(entriesIndex + 1, 0, `  - api-key: ${JSON.stringify(apiKey)}`);
-    apiKeyIndex = entriesIndex + 1;
-  }
-  if (proxyUrl !== null) {
-    if (apiKeyIndex < 0) {
-      lines.splice(entriesIndex + 1, 0, `  - api-key: ""`);
-      apiKeyIndex = entriesIndex + 1;
-    }
-    let providerEnd = firstOpenaiCompatibilityProviderBounds(lines)?.end || lines.length;
-    let insertAt = apiKeyIndex + 1;
-    let proxyIndex = -1;
-    for (let index = apiKeyIndex + 1; index < providerEnd; index += 1) {
-      const line = lines[index] || "";
-      if (/^\s*-\s*api-key:\s*/.test(line) || /^\s*models:\s*$/.test(line)) break;
-      if (/^\s*proxy-url:\s*/.test(line)) {
-        proxyIndex = index;
-        break;
-      }
-      insertAt = index + 1;
-    }
-    if (proxyIndex >= 0) {
-      lines[proxyIndex] = (lines[proxyIndex] || "").replace(/^(\s*proxy-url:\s*).*$/, `$1${JSON.stringify(proxyUrl)}`);
-    } else {
-      providerEnd = firstOpenaiCompatibilityProviderBounds(lines)?.end || lines.length;
-      lines.splice(Math.min(insertAt, providerEnd), 0, `    proxy-url: ${JSON.stringify(proxyUrl)}`);
-    }
-  }
-}
-
-function patchFirstOpenaiCompatibilityProvider(
-  source: string,
-  patch: { baseUrl?: string | null; apiKey?: string | null; proxyUrl?: string | null },
-): string {
-  const lines = source.replace(/\r\n/g, "\n").split("\n");
-  const bounds = firstOpenaiCompatibilityProviderBounds(lines);
-  if (!bounds) return source;
-  if (Object.prototype.hasOwnProperty.call(patch, "baseUrl")) replaceOrInsertProviderValue(lines, "base-url", patch.baseUrl || "", bounds.start + 1);
-  if (patch.apiKey || patch.proxyUrl !== undefined) ensureFirstProviderApiKeyEntry(lines, patch.apiKey || null, patch.proxyUrl ?? null);
-  return lines.join("\n");
-}
-
-function ensureCpaRemoteManagementBlock(source: string, managementKey = DEFAULT_CPA_PROXY_KEY): string {
-  const block = [
-    "remote-management:",
-    "  allow-remote: false",
-    `  secret-key: ${JSON.stringify(managementKey)}`,
-    "  disable-control-panel: false",
-    `  panel-github-repository: ${JSON.stringify(CPA_MANAGEMENT_PANEL_REPOSITORY)}`,
-  ].join("\n");
-  const pattern = /^remote-management:\n(?:(?:[ \t].*|[ \t]*)\n?)*/m;
-  if (pattern.test(source)) return source.replace(pattern, `${block}\n`);
-  return `${source.replace(/\s+$/g, "")}\n\n${block}\n`;
 }
 
 function yamlBlock(source: string, key: string): string {
@@ -1219,17 +1072,6 @@ function applyCodexStableTransport(source: string): string {
   next = ensureFeaturesBoolean(next, "responses_websockets_v2", false);
   next = ensureFeaturesBoolean(next, "enable_request_compression", false);
   return next;
-}
-
-function hasLocalCompactBaseUrl(source: string): boolean {
-  return /^\s*(?:base_url|openai_base_url)\s*=\s*"http:\/\/127\.0\.0\.1:\d+\/v1"\s*$/m.test(source);
-}
-
-function replaceLocalCompactBaseUrls(source: string, baseUrl: string): string {
-  return source.replace(
-    /^(\s*(?:base_url|openai_base_url)\s*=\s*")http:\/\/127\.0\.0\.1:\d+\/v1("\s*)$/gm,
-    `$1${baseUrl}$2`,
-  );
 }
 
 function removeTopLevelLocalCompactBaseUrls(source: string): string {
@@ -1444,6 +1286,24 @@ function readOpenclawEnvValue(configPath: string, keys: string[]): { value: stri
   return { value: "", source: null };
 }
 
+function readOpenclawConfiguredEnvValue(configPath: string, keys: string[]): { present: boolean; value: string; source: string | null } {
+  const openclaw = readJsonFile<Record<string, unknown>>(configPath, {});
+  const env = isRecord(openclaw.env) ? openclaw.env : {};
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(openclaw, key)) {
+      return { present: true, value: normalizeString(openclaw[key]), source: `openclaw.${key}` };
+    }
+    if (Object.prototype.hasOwnProperty.call(env, key)) {
+      return { present: true, value: normalizeString(env[key]), source: `openclaw.env.${key}` };
+    }
+    const lowerKey = key.toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(env, lowerKey)) {
+      return { present: true, value: normalizeString(env[lowerKey]), source: `openclaw.env.${lowerKey}` };
+    }
+  }
+  return { present: false, value: "", source: null };
+}
+
 function patchOpenclawEnvValues(configPath: string, values: Record<string, string>): void {
   const openclaw = readJsonFile<Record<string, unknown>>(configPath, {});
   const env = isRecord(openclaw.env) ? { ...openclaw.env } : {};
@@ -1557,12 +1417,26 @@ function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSum
   const configuredProxy = cpaConfigProxyUrls.find((value) => value !== "direct") || "";
   const topLevelUpstreamBaseUrl = readYamlStringEntry(cpaConfig, "upstream_base_url");
   const topLevelUpstreamApiKey = readYamlStringEntry(cpaConfig, "upstream_api_key");
-  const upstreamBaseUrl = topLevelUpstreamBaseUrl.present
+  const configuredUpstreamBaseUrl = readOpenclawConfiguredEnvValue(openclawPath, ["OPENCLAW_UPSTREAM_BASE_URL"]);
+  const configuredUpstreamApiKey = readOpenclawConfiguredEnvValue(openclawPath, ["OPENCLAW_UPSTREAM_API_KEY"]);
+  const envUpstreamBaseUrl = readOpenclawEnvValue(openclawPath, ["OPENCLAW_UPSTREAM_BASE_URL"]);
+  const envUpstreamApiKey = readOpenclawEnvValue(openclawPath, ["OPENCLAW_UPSTREAM_API_KEY"]);
+  const legacyUpstreamBaseUrl = topLevelUpstreamBaseUrl.present
     ? topLevelUpstreamBaseUrl.value
     : readFirstOpenaiCompatibilityValue(cpaConfig, "base-url");
-  const upstreamApiKey = topLevelUpstreamApiKey.present
+  const legacyUpstreamApiKey = topLevelUpstreamApiKey.present
     ? topLevelUpstreamApiKey.value
     : readFirstOpenaiCompatibilityApiKey(cpaConfig);
+  const upstreamBaseUrl = configuredUpstreamBaseUrl.present
+    ? configuredUpstreamBaseUrl.value
+    : (envUpstreamBaseUrl.value || legacyUpstreamBaseUrl);
+  const upstreamApiKey = configuredUpstreamApiKey.present
+    ? configuredUpstreamApiKey.value
+    : (envUpstreamApiKey.value || legacyUpstreamApiKey);
+  const configuredProviderProxy = readOpenclawConfiguredEnvValue(openclawPath, ["OPENCLAW_PROVIDER_PROXY_URL"]);
+  const providerProxyOverride = configuredProviderProxy.present
+    ? configuredProviderProxy
+    : readOpenclawEnvValue(openclawPath, ["OPENCLAW_PROVIDER_PROXY_URL"]);
   const fallbackProxy = readOpenclawEnvValue(openclawPath, [
     "OPENAI_PROXY_URL",
     "OPENCLAW_FOREIGN_PROXY_URL",
@@ -1572,9 +1446,9 @@ function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSum
   const noProxy = readOpenclawEnvValue(openclawPath, ["NO_PROXY", "OPENCLAW_NO_PROXY"]).value || "localhost,127.0.0.1,::1";
   const missingLoopback = noProxyLoopbackMissing(noProxy);
   return {
-    providerMode: configuredProxy ? "proxy" : "direct",
-    providerProxyUrl: configuredProxy || fallbackProxy.value || null,
-    providerProxySource: configuredProxy ? "cpa-config" : fallbackProxy.source,
+    providerMode: (configuredProxy || providerProxyOverride.value) ? "proxy" : "direct",
+    providerProxyUrl: configuredProxy || providerProxyOverride.value || (configuredProviderProxy.present ? "" : fallbackProxy.value) || null,
+    providerProxySource: configuredProxy ? "cpa-config" : (providerProxyOverride.source || (configuredProviderProxy.present ? null : fallbackProxy.source)),
     noProxy,
     noProxyLoopbackReady: missingLoopback.length === 0,
     noProxyLoopbackMissing: missingLoopback,
@@ -3530,20 +3404,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (skipList) flags.push(`--skip=${skipList}`);
     const forceList = payload.flags?.forceReinstallComponents?.filter(Boolean).join(",");
     if (forceList) flags.push(`--force=${forceList}`);
-    return {
-      env,
-      flags,
-      secrets,
-      profilePatch: {
-        cpaPort: normalizePort(env.CPA_PORT, defaultCpaPort(channel)),
-        compactPort: normalizePort(env.COMPACT_PORT, DEFAULT_COMPACT_PORT),
-        defaultModel: installDefaultModel,
-        contextMode,
-        contextWindowTokens: contextTokens,
-        hasCpaProxyKey: true,
-        upstreamOverride: {
-          hasBaseUrl: Boolean(env.OPENCLAW_UPSTREAM_BASE_URL),
-          hasApiKey: Boolean(env.OPENCLAW_UPSTREAM_API_KEY),
+	    return {
+	      env,
+	      flags,
+	      secrets,
+	      profilePatch: {
+	        defaultModel: installDefaultModel,
+	        contextMode,
+	        contextWindowTokens: contextTokens,
+	        upstreamOverride: {
+	          hasBaseUrl: Boolean(env.OPENCLAW_UPSTREAM_BASE_URL),
+	          hasApiKey: Boolean(env.OPENCLAW_UPSTREAM_API_KEY),
         },
         providerProxy: {
           mode: env.OPENCLAW_PROVIDER_PROXY_URL ? "proxy" : "direct",
@@ -3589,24 +3460,23 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       appendJobLog(job, `\n[studio] ${error.message}\n`, normalized.secrets);
       writeJob(job);
     });
-    child.on("close", (code) => {
+	    child.on("close", (code) => {
       const finalStatus: CodexStackJobStatus = code === 0 ? "succeeded" : "failed";
       const finalError = code === 0 ? null : `Installer exited with code ${code ?? "unknown"}`;
       job.finishedAt = new Date().toISOString();
-      appendJobLog(job, `\n[studio] install ${finalStatus}\n`, normalized.secrets);
-      if (code === 0) {
-        const proxyKey = normalized.env.CPA_PROXY_KEY || extractTomlString(readText(currentPaths.codexConfig), "experimental_bearer_token") || DEFAULT_CPA_PROXY_KEY;
-        const daemonServicePath = writeModelGatewayDaemonServiceTemplate(config);
-        appendJobLog(job, `Prepared Studio Model Gateway daemon service template: ${daemonServicePath}\n`);
-        if (prepareCodexStudioGatewayProvider(currentPaths.codexConfig)) {
-          appendJobLog(job, `Prepared inactive Codex Studio provider at ${modelGatewayDaemonBaseUrl()}.\n`);
-        } else {
-          appendJobLog(job, "Codex Studio provider was already prepared or Codex config is not present yet.\n");
-        }
-        writeCodexAuth(currentPaths.codexAuth, proxyKey, currentPaths.codexOfficialAuthBackup);
-        const profile = readProfile();
-        writeProfile({
-          ...profile,
+	      appendJobLog(job, `\n[studio] install ${finalStatus}\n`, normalized.secrets);
+	      if (code === 0) {
+	        const daemonServicePath = writeModelGatewayDaemonServiceTemplate(config);
+	        appendJobLog(job, `Prepared Studio Model Gateway daemon service template: ${daemonServicePath}\n`);
+	        if (prepareCodexStudioGatewayProvider(currentPaths.codexConfig)) {
+	          appendJobLog(job, `Prepared inactive Codex Studio provider at ${modelGatewayDaemonBaseUrl()}.\n`);
+	        } else {
+	          appendJobLog(job, "Codex Studio provider was already prepared or Codex config is not present yet.\n");
+	        }
+	        writeCodexAuth(currentPaths.codexAuth, "PROXY_MANAGED", currentPaths.codexOfficialAuthBackup);
+	        const profile = readProfile();
+	        writeProfile({
+	          ...profile,
           ...normalized.profilePatch,
           installerSource: installer.root,
           ccConnectProject: profile.ccConnectProject || DEFAULT_CC_CONNECT_PROJECT,
@@ -3909,9 +3779,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       "defaultModel",
       "contextMode",
       "contextWindowTokens",
-      "cpaPort",
-      "compactPort",
-      "cpaProxyKey",
       "ccConnectProject",
       "upstreamBaseUrl",
       "upstreamApiKey",
@@ -3940,9 +3807,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ? (contextMode === "codex-1m" ? GPT_55_CONTEXT_TOKENS : normalizeContextTokens(patch.contextWindowTokens, DEFAULT_CONTEXT_TOKENS))
       : null;
     const ccProject = normalizeString(patch.ccConnectProject);
-    const cpaPort = patch.cpaPort === undefined ? null : normalizePort(patch.cpaPort, 0);
-    const compactPort = patch.compactPort === undefined ? null : normalizePort(patch.compactPort, 0);
-    const cpaKey = normalizeString(patch.cpaProxyKey);
     const hasUpstreamBasePatch = Object.prototype.hasOwnProperty.call(patch, "upstreamBaseUrl");
     const hasUpstreamKeyPatch = Object.prototype.hasOwnProperty.call(patch, "upstreamApiKey");
     const hasProviderProxyPatch = Object.prototype.hasOwnProperty.call(patch, "providerProxyUrl");
@@ -3950,17 +3814,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const upstreamBaseUrl = hasUpstreamBasePatch ? normalizeString(patch.upstreamBaseUrl) : "";
     const upstreamApiKey = hasUpstreamKeyPatch ? normalizeString(patch.upstreamApiKey) : "";
     const providerProxyUrl = hasProviderProxyPatch ? normalizeString(patch.providerProxyUrl) : "";
-    const providerProxyConfigValue = hasProviderProxyPatch ? (providerProxyUrl || "direct") : "";
     const noProxy = hasNoProxyPatch ? normalizeString(patch.noProxy, "localhost,127.0.0.1,::1") : "";
-    if (patch.cpaPort !== undefined && !cpaPort) throw new CodexStackServiceError("codex_stack_invalid_port", "cpaPort must be between 1 and 65535.");
-    if (patch.compactPort !== undefined && !compactPort) throw new CodexStackServiceError("codex_stack_invalid_port", "compactPort must be between 1 and 65535.");
     requireNoActiveJob();
     const invalidatesSmokeMatrix = Boolean(
       model
       || hasContextPatch
-      || cpaPort
-      || compactPort
-      || cpaKey
       || hasUpstreamBasePatch
       || upstreamApiKey
       || hasProviderProxyPatch
@@ -3972,25 +3830,12 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       let next = codex;
       if (model) {
         next = replaceTomlString(next, "model", model);
-        restartRequired.add("cpa-compact-proxy.service");
-      }
-      const effectiveCompactPort = compactPort || readProfile().compactPort || DEFAULT_COMPACT_PORT;
-      const hasExistingLocalCompactBaseUrl = hasLocalCompactBaseUrl(next);
-      if (hasExistingLocalCompactBaseUrl) {
-        next = replaceLocalCompactBaseUrls(next, `http://127.0.0.1:${effectiveCompactPort}/v1`);
-        restartRequired.add("cpa-compact-proxy.service");
-      }
-      if (cpaKey) {
-        next = replaceTomlString(next, "experimental_bearer_token", cpaKey);
-        restartRequired.add("cpa-compact-proxy.service");
       }
       if (hasContextPatch && contextMode) {
         next = applyCodexContext(next, contextMode, contextTokens);
       }
       next = removeTopLevelLocalCompactBaseUrls(applyCodexStableTransport(next));
-      const compactBaseUrl = `http://127.0.0.1:${effectiveCompactPort}/v1`;
-      const effectiveProxyKey = cpaKey || extractTomlString(next, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
-      next = applyCodexCpaProviderSection(next, compactBaseUrl, effectiveProxyKey);
+      next = applyCodexStudioProviderSection(next);
       if (next !== codex) backupAndWrite(currentPaths.codexConfig, next);
     }
 
@@ -4002,60 +3847,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       }
       if (model) parsedCc.projects[0].agentOptions.model = model;
       if (ccProject) parsedCc.projects[0].name = ccProject;
-      if (cpaKey || compactPort) {
-        // 更新 cc-connect 配置中的 cpa provider，使 Codex 与 Agent 走同一个 Compact 入口。
-        if (!parsedCc.providers) parsedCc.providers = [];
-        let cpaProvider = parsedCc.providers.find(p => p.name === "cpa");
-        const providerBaseUrl = `http://127.0.0.1:${compactPort || readProfile().compactPort || DEFAULT_COMPACT_PORT}/v1`;
-        if (!cpaProvider) {
-          cpaProvider = { name: "cpa", apiKey: cpaKey, baseUrl: providerBaseUrl, codexEnvKey: "OPENAI_API_KEY" };
-          parsedCc.providers.push(cpaProvider);
-        } else {
-          if (cpaKey) cpaProvider.apiKey = cpaKey;
-          if (compactPort) cpaProvider.baseUrl = providerBaseUrl;
-          cpaProvider.codexEnvKey = cpaProvider.codexEnvKey || "OPENAI_API_KEY";
-        }
-      }
       const next = patchCcConnectStructuredToml(cc, { projects: parsedCc.projects, providers: parsedCc.providers });
       if (next !== cc) {
         backupAndWrite(currentPaths.ccConnectConfig, next);
         restartRequired.add("cc-connect.service");
       }
-    }
-
-    const cpa = readText(currentPaths.cpaConfig);
-    if (cpa) {
-      let next = cpa;
-      if (cpaPort) {
-        next = replaceYamlNumber(next, "port", cpaPort);
-        restartRequired.add("cli-proxy-api.service");
-      }
-      if (cpaKey) {
-        next = replaceFirstYamlListSecret(next, cpaKey);
-        next = replaceOrAppendYamlString(next, "experimental_bearer_token", cpaKey);
-      }
-      if (hasUpstreamBasePatch) {
-        next = replaceOrAppendYamlString(next, "upstream_base_url", upstreamBaseUrl);
-        next = patchFirstOpenaiCompatibilityProvider(next, { baseUrl: upstreamBaseUrl });
-        restartRequired.add("cli-proxy-api.service");
-      }
-      if (upstreamApiKey) {
-        next = replaceOrAppendYamlString(next, "upstream_api_key", upstreamApiKey);
-        next = ensureYamlListEntry(next, "api-keys", upstreamApiKey);
-        next = patchFirstOpenaiCompatibilityProvider(next, { apiKey: upstreamApiKey });
-        restartRequired.add("cli-proxy-api.service");
-      }
-      if (hasProviderProxyPatch) {
-        next = replaceOrAppendYamlString(next, "proxy-url", providerProxyConfigValue);
-        next = patchFirstOpenaiCompatibilityProvider(next, { proxyUrl: providerProxyConfigValue });
-        restartRequired.add("cli-proxy-api.service");
-      }
-      next = ensureCpaRemoteManagementBlock(next, DEFAULT_CPA_PROXY_KEY);
-      if (next !== cpa) backupAndWrite(currentPaths.cpaConfig, next);
-    }
-
-    if (cpaKey) {
-      writeCodexAuth(currentPaths.codexAuth, cpaKey, currentPaths.codexOfficialAuthBackup);
     }
 
     const openclawEnvPatch: Record<string, string> = {};
@@ -4068,34 +3864,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     }
     if (Object.keys(openclawEnvPatch).length) patchOpenclawEnvValues(currentPaths.openclawJson, openclawEnvPatch);
 
-    const compactUnit = readText(currentPaths.compactService);
-    if (compactUnit) {
-      let next = compactUnit;
-      const effectiveCpaPort = cpaPort || readProfile().cpaPort || DMWORK_CPA_PORT;
-      next = replaceEnvLine(next, "CPA_PORT", effectiveCpaPort);
-      next = replaceEnvLine(next, "CPA_BASE_URL", `http://127.0.0.1:${effectiveCpaPort}`);
-      if (compactPort) next = replaceEnvLine(next, "LISTEN_PORT", compactPort);
-      if (model) next = replaceEnvLine(next, "COMPACT_DEFAULT_MODEL", model);
-      if (hasNoProxyPatch) {
-        next = replaceEnvLine(next, "NO_PROXY", noProxy);
-        next = replaceEnvLine(next, "OPENCLAW_NO_PROXY", noProxy);
-      }
-      if (next !== compactUnit) {
-        backupAndWrite(currentPaths.compactService, next);
-        restartRequired.add("cpa-compact-proxy.service");
-      }
-    }
-
     const profile = readProfile();
     writeProfile({
       ...profile,
-      cpaPort: cpaPort || profile.cpaPort,
-      compactPort: compactPort || profile.compactPort,
       defaultModel: model || profile.defaultModel,
       contextMode: contextMode || profile.contextMode,
       contextWindowTokens: hasContextPatch ? (contextMode === "default" ? null : contextTokens) : profile.contextWindowTokens,
       ccConnectProject: ccProject || profile.ccConnectProject,
-      hasCpaProxyKey: cpaKey ? true : profile.hasCpaProxyKey,
       upstreamOverride: {
         hasBaseUrl: hasUpstreamBasePatch ? Boolean(upstreamBaseUrl) : Boolean(profile.upstreamOverride?.hasBaseUrl),
         hasApiKey: upstreamApiKey ? true : Boolean(profile.upstreamOverride?.hasApiKey),

@@ -50,12 +50,9 @@
           :auto-setup-script="summary.installer.scripts.autoSetup"
           :health-check-script="summary.installer.scripts.healthCheck"
           :finalizer-script="summary.installer.scripts.ccConnectFinalizer"
-          :proxy-key-masked="summary.secrets.cpaProxyKey.masked"
           :codex-auth-status="codexAuthStatus"
           :context-mode="summary.context.mode"
           :context-tokens-display="contextTokensDisplay"
-          :cpa-dashboard-enabled="summary.cpaManagement.controlPanelEnabled"
-          :cpa-dashboard-url="summary.cpaManagement.dashboardUrl"
           :missing-files="summary.installer.missingFiles"
         />
       </div>

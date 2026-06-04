@@ -397,15 +397,12 @@ export interface CodexStackSummaryPayload {
 }
 
 export interface CodexStackInstallRequest {
-  env?: {
-    CODEX_MODEL?: string;
-    CPA_PORT?: number;
-    COMPACT_PORT?: number;
-    CPA_PROXY_KEY?: string;
-    CODEX_CONTEXT_MODE?: CodexStackContextMode;
-    CODEX_CONTEXT_WINDOW?: number;
-    OPENCLAW_UPSTREAM_BASE_URL?: string;
-    OPENCLAW_UPSTREAM_API_KEY?: string;
+	  env?: {
+	    CODEX_MODEL?: string;
+	    CODEX_CONTEXT_MODE?: CodexStackContextMode;
+	    CODEX_CONTEXT_WINDOW?: number;
+	    OPENCLAW_UPSTREAM_BASE_URL?: string;
+	    OPENCLAW_UPSTREAM_API_KEY?: string;
     OPENCLAW_PROVIDER_PROXY_URL?: string;
     OPENCLAW_NO_PROXY?: string;
   };
@@ -440,9 +437,6 @@ export interface CodexStackConfigPatchRequest {
   defaultModel?: string;
   contextMode?: CodexStackContextMode;
   contextWindowTokens?: number | null;
-  cpaPort?: number;
-  compactPort?: number;
-  cpaProxyKey?: string;
   ccConnectProject?: string;
   upstreamBaseUrl?: string | null;
   upstreamApiKey?: string | null;
