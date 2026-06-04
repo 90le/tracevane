@@ -320,5 +320,3 @@ docs/codex-stack-model-gateway-goal.md
 2. 扩展 Chat SSE -> Responses SSE：streaming tool calls、reasoning events、inline think block 和 finish_reason 细节。
 3. 扩展 Codex history：reasoning_content、custom tools、web search、ambiguous call_id fallback 和 provider-specific thinking quirks。
 4. 继续补 failover：把 open-circuit fallback 从 route decision 扩展到实际 request retry / failover 执行。
-3. 扩展 Codex history：reasoning_content、custom tools、web search、ambiguous call_id fallback 和 provider-specific thinking quirks。
-4. 继续补 failover：把 open-circuit fallback 从 route decision 扩展到实际 request retry / failover 执行。
