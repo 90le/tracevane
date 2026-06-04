@@ -422,15 +422,8 @@ export interface CodexStackInstallRequest {
 }
 
 export type CodexStackRepairAction =
-  | "pause-stack"
-  | "resume-stack"
-  | "restart-cpa"
-  | "restart-compact-proxy"
-  | "restart-watchdog"
   | "restart-cc-connect"
   | "repair-auth-json"
-  | "repair-cpa-management"
-  | "repair-codex-transport"
   | "repair-no-proxy-loopback"
   | "disable-legacy-healthcheck"
   | "run-smoke-matrix"

@@ -1002,8 +1002,10 @@ test("codex stack install page delegates repair board without exposing legacy CP
   assert.match(installSection, /<CodexStackRepairBoard[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:can-attach-codex-studio="canAttachCodexStudio"[\s\S]*:attach-codex-studio-disabled-help="attachCodexStudioDisabledHelp"[\s\S]*:studio-gateway-preflight-items="studioGatewayPreflightItems"/);
   assert.doesNotMatch(installSection, /attach-codex-cpa|attachPreflightItems|canAttachCodexCpa/);
   assert.match(controlPage, /<CodexStackInstallSection[\s\S]*@repair-recommended="repairRecommended"[\s\S]*@repair-conflicts="repairConflictingUnits"[\s\S]*@repair-config-only="repairConfigOnly"/);
-  assert.match(controlPage, /<CodexStackInstallSection[\s\S]*@pause-stack="pauseStack"[\s\S]*@resume-stack="resumeStack"[\s\S]*@run-smoke-matrix="runSmokeMatrix"[\s\S]*@attach-codex-studio="applyCodexStudioAfterSmoke"[\s\S]*@restore-official-chatgpt="restoreOfficialChatGpt"/);
+  assert.match(controlPage, /<CodexStackInstallSection[\s\S]*@run-smoke-matrix="runSmokeMatrix"[\s\S]*@attach-codex-studio="applyCodexStudioAfterSmoke"[\s\S]*@restore-official-chatgpt="restoreOfficialChatGpt"/);
   assert.doesNotMatch(controlPage, /<CodexStackInstallSection[\s\S]*@attach-codex-cpa=/);
+  assert.doesNotMatch(controlPage, /@pause-stack|@resume-stack|function pauseStack|function resumeStack/);
+  assert.doesNotMatch(repairBoard, /暂停 CPA 栈|恢复 CPA 栈|Pause CPA Stack|Resume CPA Stack/);
   assert.doesNotMatch(controlPage, /class="panel-card cs-repair-board"/);
   assert.match(repairBoard, /运行模型矩阵/);
   assert.match(repairBoard, /切到 Studio Gateway/);
@@ -1452,24 +1454,22 @@ test("codex stack attach action exposes only Studio Gateway takeover in the UI",
   assert.doesNotMatch(controlPage, /不等待 smoke 通过，直接把 Codex 切到 CPA/);
 });
 
-test("codex stack recommended repair resumes a deliberately paused stack in order", () => {
+test("codex stack recommended repair avoids removed CPA lifecycle actions", () => {
   assert.match(viewModel, /const services = new Map\(summary\.services\.map\(\(service\) => \[service\.id, service\]\)\);/);
   assert.match(viewModel, /const legacyHealthcheck = services\.get\("cli-proxy-api-healthcheck\.timer"\);/);
   assert.match(viewModel, /const shouldDisableLegacyHealthcheck = legacyHealthcheck\?\.active === true \|\| legacyHealthcheck\?\.enabled === true;/);
-  assert.match(viewModel, /const stackInstalled = cpa\?\.installed === true && compact\?\.installed === true && watchdog\?\.installed === true;/);
-  assert.match(viewModel, /if \(stackInstalled && !cpaActive && !compactActive && !watchdogActive\) \{[\s\S]*\["disable-legacy-healthcheck", "resume-stack"\][\s\S]*\["resume-stack"\];[\s\S]*\}/);
   assert.match(viewModel, /const codexAuthCheck = summary\.runReadiness\?\.checks\.find\(\(check\) => check\.id === "codex-auth"\);/);
   assert.match(viewModel, /codexAuthCheck\.status === "fail"/);
   assert.match(viewModel, /actions\.push\("disable-legacy-healthcheck"\);/);
   assert.match(viewModel, /actions\.push\("repair-no-proxy-loopback"\);/);
-  assert.match(viewModel, /actions\.push\("repair-codex-transport"\);/);
-  assert.doesNotMatch(viewModel, /if \(!serviceActive\.get\("cli-proxy-api\.service"\)\) actions\.push\("restart-cpa"\);/);
+  assert.match(viewModel, /actions\.push\("apply-codex-studio-after-smoke"\);/);
+  assert.doesNotMatch(viewModel, /resume-stack|pause-stack|restart-cpa|restart-compact-proxy|restart-watchdog|repair-cpa-management|repair-codex-transport/);
 });
 
-test("codex stack service grid routes compact unsafe starts through ordered resume without exposing watchdog controls", () => {
+test("codex stack service grid does not auto-resume legacy Compact Proxy", () => {
   assert.match(controlPage, /function isSummaryServiceActive\(serviceId: CodexStackServiceId\): boolean/);
-  assert.match(controlPage, /action === "start" \|\| action === "restart" \|\| action === "enable"[\s\S]*serviceId === "cpa-compact-proxy\.service"[\s\S]*!isSummaryServiceActive\("cli-proxy-api\.service"\)[\s\S]*await resumeStack\(\);/);
-  assert.doesNotMatch(controlPage, /serviceId === "codex-stack-watchdog\.timer"[\s\S]*await resumeStack\(\);/);
+  assert.match(controlPage, /serviceId === "cpa-compact-proxy\.service"[\s\S]*旧 Compact Proxy 不再通过 Studio 自动恢复/);
+  assert.doesNotMatch(controlPage, /await resumeStack\(\);/);
 });
 
 test("codex stack background jobs resync cc-connect drafts after completion", () => {

@@ -647,7 +647,7 @@ test("codex stack service status does not treat inactive as active", async () =>
       assert.equal(compact?.active, false);
       assert.equal(watchdog?.active, false);
       assert.equal(watchdogComponent?.label, "Background Watchdog");
-      assert.deepEqual(watchdogComponent?.notes, ["use Resume CPA Stack or Recommended Repair; do not start directly"]);
+      assert.deepEqual(watchdogComponent?.notes, ["legacy watchdog is not part of the Studio Gateway daemon path"]);
     },
   );
 });
@@ -1127,7 +1127,7 @@ test("codex stack recovers running startup jobs so stale locks do not block late
   assert.equal(response.summary?.models.current, "kimi-k2.6");
 });
 
-test("codex stack pause action disables watchdog before Compact and CPA", async () => {
+test("codex stack rejects removed CPA lifecycle repair actions", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -1147,23 +1147,21 @@ test("codex stack pause action disables watchdog before Compact and CPA", async 
   createBundledInstaller(config, "dmwork");
   createGeneratedStackFiles(root);
 
-  await withFakeSystemctl(async ({ readCalls }) => {
-    const service = createCodexStackService(config);
-    const response = await service.startRepair(undefined, { actions: ["pause-stack"] });
-    const job = await waitForJob(service, response.job.id);
-
-    assert.equal(job.status, "succeeded");
-    assert.deepEqual(readCalls(), [
-      "--user disable --now cli-proxy-api-healthcheck.timer",
-      "--user stop cli-proxy-api-healthcheck.service",
-      "--user disable --now codex-stack-watchdog.timer",
-      "--user disable --now cpa-compact-proxy.service",
-      "--user disable --now cli-proxy-api.service",
-      "--user stop cpa-compact-proxy.service",
-      "--user stop cli-proxy-api.service",
-    ]);
-    assert.match(job.logTail, /will not relaunch automatically/);
-  });
+  const service = createCodexStackService(config);
+  for (const action of [
+    "pause-stack",
+    "resume-stack",
+    "restart-cpa",
+    "restart-compact-proxy",
+    "restart-watchdog",
+    "repair-cpa-management",
+    "repair-codex-transport",
+  ]) {
+    await assert.rejects(
+      service.startRepair(undefined, { actions: [action] }),
+      new RegExp(`Unsupported repair actions: ${action}`),
+    );
+  }
 });
 
 test("codex stack repair removes legacy CPA healthcheck artifacts", async () => {
@@ -1209,101 +1207,7 @@ test("codex stack repair removes legacy CPA healthcheck artifacts", async () => 
   });
 });
 
-test("codex stack resume action starts CPA then Compact before watchdog", async () => {
-  const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  writeJson(config.openclawConfigFile, {
-    plugins: {
-      entries: {
-        studio: {
-          config: {
-            codexStack: {
-              allowManagementActions: true,
-            },
-          },
-        },
-      },
-    },
-  });
-  createBundledInstaller(config, "official");
-  createBundledInstaller(config, "dmwork");
-  createGeneratedStackFiles(root);
-
-  await withFakeSystemctl(async ({ readCalls }) => {
-    await withMockFetch(async (url) => {
-      const requestUrl = String(url);
-      if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
-      return new Response("not found", { status: 404 });
-    }, async () => {
-      const service = createCodexStackService(config);
-      const response = await service.startRepair(undefined, { actions: ["resume-stack"] });
-      const job = await waitForJob(service, response.job.id);
-
-      assert.equal(job.status, "succeeded");
-      assert.deepEqual(readCalls(), [
-        "--user disable --now cli-proxy-api-healthcheck.timer",
-        "--user enable --now cli-proxy-api.service",
-        "--user enable --now cpa-compact-proxy.service",
-        "--user enable --now codex-stack-watchdog.timer",
-      ]);
-      assert.match(job.logTail, /Resumed CPA stack/);
-    });
-  });
-});
-
-test("codex stack resume uses the CPA provider base_url instead of the first provider base_url", async () => {
-  const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  writeJson(config.openclawConfigFile, {
-    plugins: {
-      entries: {
-        studio: {
-          config: {
-            codexStack: {
-              allowManagementActions: true,
-            },
-          },
-        },
-      },
-    },
-  });
-  createBundledInstaller(config, "official");
-  createBundledInstaller(config, "dmwork");
-  createGeneratedStackFiles(root);
-  writeFile(path.join(root, ".codex/config.toml"), `
-model = "kimi-k2.6"
-model_provider = "cpa"
-
-[model_providers.openai]
-base_url = "https://api.openai.example/v1"
-
-[model_providers.cpa]
-name = "CPA"
-base_url = "http://127.0.0.1:28796/v1"
-wire_api = "responses"
-supports_websockets = false
-experimental_bearer_token = "secret-cpa-key-123456"
-`);
-
-  const seenUrls = [];
-  await withFakeSystemctl(async () => {
-    await withMockFetch(async (url) => {
-      seenUrls.push(String(url));
-      if (String(url).endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
-      return new Response("not found", { status: 404 });
-    }, async () => {
-      const service = createCodexStackService(config);
-      const response = await service.startRepair(undefined, { actions: ["resume-stack"] });
-      const job = await waitForJob(service, response.job.id);
-
-      assert.equal(job.status, "succeeded");
-      assert.ok(seenUrls.includes("http://127.0.0.1:28796/healthz"));
-      assert.ok(!seenUrls.includes("http://127.0.0.1:18796/healthz"));
-    });
-  });
-});
-
-test("codex stack detects and repairs slow WebSocket-first Codex transport for CPA", async () => {
+test("codex stack diagnoses legacy Codex transport but rejects removed CPA transport repair", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -1338,21 +1242,11 @@ enable_request_compression = true
   assert.ok(summary.warnings.some((warning) => warning.includes("Responses WebSocket transport is enabled")));
   assert.ok(summary.warnings.some((warning) => warning.includes("request compression is enabled")));
 
-  const response = await service.startRepair(undefined, {
-    actions: ["repair-codex-transport"],
-  });
-  const job = await waitForJob(service, response.job.id);
-  assert.equal(job.status, "succeeded");
-
-  const repaired = fs.readFileSync(codexConfig, "utf8");
-  assert.doesNotMatch(repaired, /responses_websockets(?:_v2)?\s*=\s*true/);
-  assert.match(repaired, /responses_websockets\s*=\s*false/);
-  assert.match(repaired, /responses_websockets_v2\s*=\s*false/);
-  assert.match(repaired, /enable_request_compression\s*=\s*false/);
-  assert.doesNotMatch(tomlTopLevel(repaired), /^base_url\s*=\s*"http:\/\/127\.0\.0\.1:18796\/v1"/m);
-  assert.doesNotMatch(tomlTopLevel(repaired), /^openai_base_url\s*=\s*"http:\/\/127\.0\.0\.1:18796\/v1"/m);
-  assert.doesNotMatch(tomlTopLevel(repaired), /model_provider\s*=\s*"cpa"/);
-  assert.match(repaired, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"[\s\S]*wire_api = "responses"[\s\S]*supports_websockets = false/);
+  await assert.rejects(
+    service.startRepair(undefined, { actions: ["repair-codex-transport"] }),
+    /Unsupported repair actions: repair-codex-transport/,
+  );
+  assert.match(fs.readFileSync(codexConfig, "utf8"), /model_provider = "cpa"/);
 });
 
 test("codex stack rejects removed CPA attach repair actions", async () => {

@@ -74,18 +74,8 @@ export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload):
 > {
   const actions: CodexStackRepairAction[] = [];
   const services = new Map(summary.services.map((service) => [service.id, service]));
-  const cpa = services.get("cli-proxy-api.service");
   const legacyHealthcheck = services.get("cli-proxy-api-healthcheck.timer");
-  const compact = services.get("cpa-compact-proxy.service");
-  const watchdog = services.get("codex-stack-watchdog.timer");
-  const cpaActive = cpa?.active === true;
-  const compactActive = compact?.active === true;
-  const watchdogActive = watchdog?.active === true;
   const shouldDisableLegacyHealthcheck = legacyHealthcheck?.active === true || legacyHealthcheck?.enabled === true;
-  const stackInstalled = cpa?.installed === true && compact?.installed === true && watchdog?.installed === true;
-  if (stackInstalled && !cpaActive && !compactActive && !watchdogActive) {
-    return shouldDisableLegacyHealthcheck ? ["disable-legacy-healthcheck", "resume-stack"] : ["resume-stack"];
-  }
   const codexAuthCheck = summary.runReadiness?.checks.find((check) => check.id === "codex-auth");
   const shouldRepairCodexAuth = codexAuthCheck
     ? codexAuthCheck.status === "fail"
@@ -100,14 +90,8 @@ export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload):
     actions.push("repair-no-proxy-loopback");
   }
   if (summary.warnings.some((warning) => warning.includes("WebSocket") || warning.includes("request compression"))) {
-    actions.push("repair-codex-transport");
+    actions.push("apply-codex-studio-after-smoke");
   }
-  if (!summary.cpaManagement.enabled || !summary.cpaManagement.controlPanelEnabled) {
-    actions.push("repair-cpa-management");
-  }
-  if (!cpaActive) actions.push("restart-cpa");
-  if (!compactActive) actions.push("restart-compact-proxy");
-  if (!watchdogActive) actions.push("restart-watchdog");
   if (summary.ccConnect.bindingPresent && services.get("cc-connect.service")?.active !== true) actions.push("restart-cc-connect");
-  return actions.length ? actions : ["restart-cpa", "restart-compact-proxy", "restart-watchdog"];
+  return actions.length ? Array.from(new Set(actions)) : ["apply-codex-studio-after-smoke"];
 }

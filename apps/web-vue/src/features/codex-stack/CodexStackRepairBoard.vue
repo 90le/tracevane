@@ -65,18 +65,6 @@
             {{ text("只修复配置", "Repair Config Only") }}
           </button>
         </article>
-        <article class="cs-repair-step">
-          <strong>{{ text("暂停 CPA 栈", "Pause CPA Stack") }}</strong>
-          <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('pause-stack')">
-            {{ text("暂停链路", "Pause Stack") }}
-          </button>
-        </article>
-        <article class="cs-repair-step">
-          <strong>{{ text("恢复 CPA 栈", "Resume CPA Stack") }}</strong>
-          <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('resume-stack')">
-            {{ text("恢复链路", "Resume Stack") }}
-          </button>
-        </article>
       </div>
     </details>
     <details class="cs-daemon-service-panel cs-advanced-repair">
@@ -129,8 +117,6 @@ defineEmits<{
   "repair-recommended": [];
   "repair-conflicts": [];
   "repair-config-only": [];
-  "pause-stack": [];
-  "resume-stack": [];
   "run-smoke-matrix": [];
   "attach-codex-studio": [];
   "preview-model-gateway-daemon-service": [];

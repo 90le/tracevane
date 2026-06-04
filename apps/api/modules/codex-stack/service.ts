@@ -156,15 +156,8 @@ const INSTALL_ENV_KEYS = [
 ] as const;
 
 const REPAIR_ACTIONS = [
-  "pause-stack",
-  "resume-stack",
-  "restart-cpa",
-  "restart-compact-proxy",
-  "restart-watchdog",
   "restart-cc-connect",
   "repair-auth-json",
-  "repair-cpa-management",
-  "repair-codex-transport",
   "repair-no-proxy-loopback",
   "disable-legacy-healthcheck",
   "run-smoke-matrix",
@@ -745,13 +738,22 @@ function extractCpaProviderBaseUrl(source: string): string {
     || extractTopLevelTomlString(source, "openai_base_url");
 }
 
+function extractStudioProviderBaseUrl(source: string): string {
+  return extractTomlString(extractTomlSection(source, "model_providers.studio"), "base_url");
+}
+
 function extractLocalCompactPortFromCodexConfig(source: string): number | null {
-  const match = extractCpaProviderBaseUrl(source).match(/127\.0\.0\.1:(\d+)/);
+  const match = (extractStudioProviderBaseUrl(source) || extractCpaProviderBaseUrl(source)).match(/127\.0\.0\.1:(\d+)/);
   return match?.[1] ? normalizePort(match[1], 0) || null : null;
 }
 
 function codexConfigUsesLocalCompact(source: string, compactPort: number): boolean {
-  if (extractTopLevelTomlString(source, "model_provider") === "cpa") return true;
+  const activeProvider = extractTopLevelTomlString(source, "model_provider");
+  if (activeProvider === "cpa") return true;
+  if (activeProvider === "studio") {
+    const studioBaseUrl = extractStudioProviderBaseUrl(source);
+    return new RegExp(`^(?:https?://)?(?:127\\.0\\.0\\.1|localhost):${compactPort}(?:/|$)`).test(studioBaseUrl);
+  }
   const topLevelBaseUrl = extractTopLevelTomlString(source, "base_url")
     || extractTopLevelTomlString(source, "openai_base_url");
   if (!topLevelBaseUrl) return false;
@@ -2457,7 +2459,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         version: null,
         notes: serviceById.get("codex-stack-watchdog.timer")?.active
           ? ["managed after CPA and Compact are healthy"]
-          : ["use Resume CPA Stack or Recommended Repair; do not start directly"],
+          : ["legacy watchdog is not part of the Studio Gateway daemon path"],
         paths: { unit: "codex-stack-watchdog.timer" },
       },
     ];
@@ -2868,9 +2870,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     targetModel: string;
   }): CodexStackSummaryPayload["runReadiness"] {
     const serviceById = new Map(params.services.map((service) => [service.id, service]));
-    const cpaActive = serviceById.get("cli-proxy-api.service")?.active === true;
-    const compactActive = serviceById.get("cpa-compact-proxy.service")?.active === true;
-    const watchdogActive = serviceById.get("codex-stack-watchdog.timer")?.active === true;
     const ccConnectActive = serviceById.get("cc-connect.service")?.active === true;
     const expectedCcProviderBaseUrl = `http://127.0.0.1:${params.compactPort}/v1`;
     const cpaProvider = params.ccParsed.providers.find((provider) => provider.name === "cpa");
@@ -2905,27 +2904,23 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const checks: CodexStackRunReadinessCheck[] = [
       {
         id: "service-order",
-        label: "CPA / Compact / watchdog",
-        status: cpaActive && compactActive && watchdogActive ? "pass" : "fail",
-        detail: cpaActive && compactActive && watchdogActive
-          ? "CPA、Compact 与 watchdog 均处于 active，长任务不会从已知暂停态开始。"
-          : "CPA、Compact 或 watchdog 未全部 active；请使用 Resume CPA Stack 按顺序恢复。",
-        section: "dashboard",
-        actionHint: cpaActive && compactActive && watchdogActive
-          ? { kind: "run-check", label: "运行健康检查" }
-          : { kind: "repair", label: "按顺序恢复 CPA 栈", repairActions: ["resume-stack"] },
+        label: "Studio Gateway daemon",
+        status: "pass",
+        detail: "旧 CPA/Compact/watchdog 不再作为 Codex 接管前置；模型 relay 以 Studio Gateway daemon 状态为准。",
+        section: "install",
+        actionHint: { kind: "open-section", label: "查看 daemon", section: "install" },
       },
       {
         id: "local-compact",
-        label: "本机 Compact 模型目录",
-        status: params.cpaHealthy && params.compactHealthy ? "pass" : "fail",
-        detail: params.cpaHealthy && params.compactHealthy
-          ? "CPA healthz 与 Compact /v1/models 均可访问。"
-          : "CPA healthz 或 Compact /v1/models 不可访问；普通请求、流式请求和模型选择都需要先修复。",
-        section: "dashboard",
-        actionHint: params.cpaHealthy && params.compactHealthy
+        label: "Studio Gateway 模型目录",
+        status: params.compactHealthy ? "pass" : "warn",
+        detail: params.compactHealthy
+          ? "本机 Studio Gateway /v1/models 可访问。"
+          : "本机 /v1/models 暂不可访问；先确认 Studio Gateway daemon 和 active provider。",
+        section: "install",
+        actionHint: params.compactHealthy
           ? { kind: "open-section", label: "查看链路", section: "dashboard" }
-          : { kind: "repair", label: "重启 CPA/Compact", repairActions: ["restart-cpa", "restart-compact-proxy"] },
+          : { kind: "open-section", label: "查看 daemon", section: "install" },
       },
       {
         id: "codex-provider",
@@ -2972,11 +2967,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         label: "Codex 请求格式",
         status: websocketEnabled || compressionEnabled ? "fail" : "pass",
         detail: websocketEnabled || compressionEnabled
-          ? "Codex WebSocket 或 request compression 仍启用；第三方兼容端点经 Compact 转发时应使用 HTTP/SSE 且禁用压缩请求体。"
+          ? "Codex WebSocket 或 request compression 仍启用；第三方兼容端点经 Studio Gateway 转发时应使用 HTTP/SSE 且禁用压缩请求体。"
           : "Codex 传输保持 HTTP/SSE，未启用压缩请求体。",
         section: "settings",
         actionHint: websocketEnabled || compressionEnabled
-          ? { kind: "repair", label: "修复 Codex 传输", repairActions: ["repair-codex-transport"] }
+          ? { kind: "open-section", label: "查看配置", section: "settings" }
           : { kind: "open-section", label: "查看配置", section: "settings" },
       },
       {
@@ -3059,7 +3054,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       : chatActionHint;
     const compactionActionHint = chatReady
       ? compressionEnabled
-        ? { kind: "repair" as const, label: "修复 Codex 传输", repairActions: ["repair-codex-transport" as const] }
+        ? { kind: "open-section" as const, label: "查看配置", section: "settings" as const }
         : params.context.mode === "default"
           ? { kind: "open-section" as const, label: "编辑上下文", section: "settings" as const }
           : { kind: "run-check" as const, label: "运行健康检查" }
@@ -3678,18 +3673,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         const result = await execText("systemctl", ["--user", ...args], { timeout: 30_000 });
         appendJobLog(job, `${result.output}\n`);
       };
-      const waitForHealth = async (label: string, url: string): Promise<void> => {
-        appendJobLog(job, `Waiting for ${label}: ${url}\n`);
-        const deadline = Date.now() + 20_000;
-        while (Date.now() < deadline) {
-          if (await probeUrl(url)) {
-            appendJobLog(job, `${label} is healthy.\n`);
-            return;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 750));
-        }
-        throw new Error(`${label} did not become healthy: ${url}`);
-      };
       const stackPorts = () => {
         const codex = readText(currentPaths.codexConfig);
         const cpa = readText(currentPaths.cpaConfig);
@@ -3700,62 +3683,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         };
       };
       for (const action of actions as RepairAction[]) {
-        if (action === "pause-stack") {
-          await runOptionalSystemctl("disable", "--now", "cli-proxy-api-healthcheck.timer");
-          await runOptionalSystemctl("stop", "cli-proxy-api-healthcheck.service");
-          await runSystemctl("disable", "--now", "codex-stack-watchdog.timer");
-          await runSystemctl("disable", "--now", "cpa-compact-proxy.service");
-          await runSystemctl("disable", "--now", "cli-proxy-api.service");
-          await runSystemctl("stop", "cpa-compact-proxy.service");
-          await runSystemctl("stop", "cli-proxy-api.service");
-          appendJobLog(job, "Paused CPA stack; legacy healthcheck, CPA, Compact, and watchdog are disabled so they will not relaunch automatically.\n");
-        }
-        if (action === "resume-stack") {
-          const ports = stackPorts();
-          await runOptionalSystemctl("disable", "--now", "cli-proxy-api-healthcheck.timer");
-          await runSystemctl("enable", "--now", "cli-proxy-api.service");
-          await waitForHealth("CPA", `http://127.0.0.1:${ports.cpa}/healthz`);
-          await runSystemctl("enable", "--now", "cpa-compact-proxy.service");
-          await waitForHealth("Compact Proxy", `http://127.0.0.1:${ports.compact}/healthz`);
-          await runSystemctl("enable", "--now", "codex-stack-watchdog.timer");
-          appendJobLog(job, "Resumed CPA stack; watchdog enabled only after CPA and Compact became healthy.\n");
-        }
-        if (action === "restart-cpa") await runSystemctl("restart", "cli-proxy-api.service");
-        if (action === "restart-compact-proxy") await runSystemctl("restart", "cpa-compact-proxy.service");
-        if (action === "restart-watchdog") await runSystemctl("restart", "codex-stack-watchdog.timer");
         if (action === "restart-cc-connect") await runSystemctl("restart", "cc-connect.service");
         if (action === "repair-auth-json") {
           const proxyKey = extractTomlString(readText(currentPaths.codexConfig), "experimental_bearer_token") || DEFAULT_CPA_PROXY_KEY;
           writeCodexAuth(currentPaths.codexAuth, proxyKey, currentPaths.codexOfficialAuthBackup);
           appendJobLog(job, `Rewrote ${currentPaths.codexAuth}.\n`, [proxyKey]);
-        }
-        if (action === "repair-cpa-management") {
-          const cpa = readText(currentPaths.cpaConfig);
-          if (!cpa) throw new Error("CPA config is missing");
-          const next = ensureCpaRemoteManagementBlock(cpa, DEFAULT_CPA_PROXY_KEY);
-          if (next !== cpa) {
-            backupAndWrite(currentPaths.cpaConfig, next);
-            appendJobLog(job, "Repaired CPA remote-management block and enabled control panel.\n");
-          } else {
-            appendJobLog(job, "CPA remote-management block already matched Studio defaults.\n");
-          }
-        }
-        if (action === "repair-codex-transport") {
-          const codex = readText(currentPaths.codexConfig);
-          if (!codex) throw new Error("Codex config is missing");
-          const effectiveCompactPort = normalizePort(extractLocalCompactPortFromCodexConfig(codex), readProfile().compactPort || DEFAULT_COMPACT_PORT);
-          const compactBaseUrl = `http://127.0.0.1:${effectiveCompactPort}/v1`;
-          const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
-          const stableCodex = removeTopLevelLocalCompactBaseUrls(
-            removeTopLevelTomlStringValue(applyCodexStableTransport(codex), "model_provider", "cpa"),
-          );
-          const next = applyCodexCpaProviderSection(stableCodex, compactBaseUrl, effectiveProxyKey);
-          if (next !== codex) {
-            backupAndWrite(currentPaths.codexConfig, next);
-            appendJobLog(job, "Updated inactive Codex CPA provider settings and disabled WebSocket/compressed transport; active Codex provider was not switched.\n", [effectiveProxyKey]);
-          } else {
-            appendJobLog(job, "Codex CPA HTTP/SSE transport settings were already configured; active Codex provider was not switched.\n");
-          }
         }
         if (action === "repair-no-proxy-loopback") {
           const policy = readProxyPolicy(readText(currentPaths.cpaConfig), currentPaths.openclawJson);
@@ -3961,7 +3893,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!active.ok || !systemctlOutputHasState(active.output, "active")) {
       throw new CodexStackServiceError(
         "codex_stack_service_lifecycle_guard",
-        `${message} Use Resume CPA Stack so Studio starts CPA, waits for Compact, and enables watchdog in order.`,
+        `${message} Legacy CPA/Compact services are no longer auto-resumed by Studio; use the Studio Gateway daemon path.`,
         409,
       );
     }

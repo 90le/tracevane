@@ -57,18 +57,18 @@
 ### 本轮完成
 
 - 文档继续保持短状态页：过期细节替换，不追加流水账。
-- 前端旧 CPA attach / force attach 操作面已删除；公开 repair contract 已拒绝旧 CPA attach action。
-- bundled `auto-setup.sh` 已替换为 Studio Gateway bootstrap：只准备 inactive `[model_providers.studio]` 和可选 `cc-connect` bridge。
-- bundled `health-check.sh` 已改为检查 Studio Gateway daemon、Codex studio provider 和旧 relay 端口冲突。
-- 已删除默认打包的 `cli-proxy-api` 二进制、`compact-proxy.mjs`、CPA config templates 和独立 compact-proxy 资源测试。
+- 公开 repair contract 继续收窄：旧 `pause/resume/restart-cpa/restart-compact/repair-cpa-management/repair-codex-transport` action 已移除并作为 unsupported legacy action 测试。
+- 前端推荐修复和高级操作不再发旧 CPA/Compact lifecycle action；冲突清理只保留 `disable-conflicting-units`。
+- readiness 不再把 CPA/Compact/watchdog active 当成 Studio Gateway takeover 的硬性前置。
+- Codex active provider 判定已识别 `[model_providers.studio]` loopback endpoint，不再只认 `cpa`。
 
 ## 3. 当前仍未完成
 
 - 真实 service manager apply 模式验证：install/start/status/restart 需要在 opt-in 环境执行。
 - service template apply UI：需要区分“只写模板”和“执行 service manager 命令”。
 - supervisor crash-restart test：daemon 崩溃后由真实 supervisor 拉起。
-- 后端 Codex Stack service 仍保留 CPA/Compact pause/resume/config/service 管理和 legacy migration tests。
-- service rows / runtime config 中剩余 CPA/Compact 管理语义仍需收敛到 Studio Gateway daemon。
+- 后端 Codex Stack service 仍保留 CPA/Compact config patch、service rows、summary components 和部分 legacy migration tests。
+- runtime config 中 `cpaPort`、`compactPort`、`cpaProxyKey` 仍需收敛到 Studio Gateway daemon/provider registry。
 - UI 重做：完整 Provider Center、Universal Provider、App Setup、Diagnostics 尚未完成。
 - Adapter 扩展：streaming tool calls、reasoning events、Anthropic streaming、Responses -> Anthropic。
 - Failover 扩展：request retry、真实 failover queue、half-open probe、circuit reset policy。
@@ -78,20 +78,16 @@
 本轮验证：
 
 - `npm run build:api`：通过。
-- `bash -n resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh`：通过。
-- `bash -n resources/codex-stack/codex-docs/resources/scripts/health-check.sh`：通过。
-- `node --test --test-name-pattern "bundled|installer" tests/system/codex-stack-service.test.mjs`：通过，9 个相关用例全绿。
-- `node --test tests/system/codex-stack-service.test.mjs`：通过，64 个用例全绿。
-- `git diff --check`：通过。
-
-上一轮仍有效：
-
 - `npm run typecheck:web`：通过。
-- `node --test --test-name-pattern "attach action|repair board|settings page delegates runtime config" tests/system/studio-web-codex-stack-workspace.test.mjs`：通过，3 个相关 UI 静态 contract 用例全绿。
+- `node --test --test-name-pattern "removed CPA lifecycle|legacy Codex transport|repair removes legacy" tests/system/codex-stack-service.test.mjs`：通过，3 个相关用例全绿。
+- `node --test --test-name-pattern "repair board|recommended repair avoids|service grid does not auto-resume" tests/system/studio-web-codex-stack-workspace.test.mjs`：通过，3 个相关 UI 静态 contract 用例全绿。
+- `node --test tests/system/codex-stack-service.test.mjs`：通过，62 个用例全绿。
 - `npx tsx --test tests/system/codex-stack-readiness-action.test.ts`：通过，9 个 readiness action 用例全绿。
 
 近期仍有效但本轮未重复：
 
+- `bash -n resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh`：上一轮通过。
+- `bash -n resources/codex-stack/codex-docs/resources/scripts/health-check.sh`：上一轮通过。
 - `npm run build:web`：上一轮通过，存在第三方 Rollup annotation 警告。
 - `node scripts/verify-model-gateway-service-manager.mjs`：上一轮通过只读 probe；当前 Linux `systemd --user` 可达，service 未安装/未启用，dry-run blocked。
 - `node --test tests/system/model-gateway-service.test.mjs`：上一轮通过。
@@ -100,7 +96,7 @@
 
 ## 5. 下一步
 
-1. 删除或替换后端 CPA/Compact pause/resume/restart/config patch 管理逻辑，改接 Studio Gateway daemon service manager。
+1. 删除或替换后端 CPA/Compact config patch、service rows 和 summary component 管理逻辑，改接 Studio Gateway daemon/provider registry。
 2. 在 opt-in 环境运行 `OPENCLAW_STUDIO_VERIFY_MODEL_GATEWAY_SERVICE_APPLY=1 node scripts/verify-model-gateway-service-manager.mjs`，锁定真实 service manager happy path。
 3. 实现 service template apply UI：只写模板、install/start/restart 三种状态明确分开。
 4. 继续协议矩阵：优先补 `openai_responses` -> `anthropic_messages`，再补 streaming tool/reasoning。

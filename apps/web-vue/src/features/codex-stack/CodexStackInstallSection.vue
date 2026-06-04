@@ -27,8 +27,6 @@
         @repair-recommended="emit('repair-recommended')"
         @repair-conflicts="emit('repair-conflicts')"
         @repair-config-only="emit('repair-config-only')"
-        @pause-stack="emit('pause-stack')"
-        @resume-stack="emit('resume-stack')"
         @run-smoke-matrix="emit('run-smoke-matrix')"
         @attach-codex-studio="emit('attach-codex-studio')"
         @preview-model-gateway-daemon-service="emit('preview-model-gateway-daemon-service')"
@@ -118,8 +116,6 @@ const emit = defineEmits<{
   "repair-recommended": [];
   "repair-conflicts": [];
   "repair-config-only": [];
-  "pause-stack": [];
-  "resume-stack": [];
   "run-smoke-matrix": [];
   "attach-codex-studio": [];
   "preview-model-gateway-daemon-service": [];

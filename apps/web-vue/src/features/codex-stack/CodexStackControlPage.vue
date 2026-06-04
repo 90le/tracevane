@@ -156,8 +156,6 @@
           @repair-recommended="repairRecommended"
           @repair-conflicts="repairConflictingUnits"
           @repair-config-only="repairConfigOnly"
-          @pause-stack="pauseStack"
-          @resume-stack="resumeStack"
           @run-smoke-matrix="runSmokeMatrix"
           @attach-codex-studio="applyCodexStudioAfterSmoke"
           @preview-model-gateway-daemon-service="previewModelGatewayDaemonService"
@@ -2728,7 +2726,7 @@ async function repairRecommended(): Promise<void> {
 
 async function repairConflictingUnits(): Promise<void> {
   await startRepairWithActions(
-    ["disable-conflicting-units", "restart-cpa", "restart-compact-proxy"],
+    ["disable-conflicting-units"],
     text("冲突服务清理任务已启动。", "Conflict cleanup repair job started."),
   );
 }
@@ -2737,20 +2735,6 @@ async function repairConfigOnly(): Promise<void> {
   await startRepairWithActions(
     ["rerun-install-no-start"],
     text("配置修复任务已启动。", "Config repair job started."),
-  );
-}
-
-async function pauseStack(): Promise<void> {
-  await startRepairWithActions(
-    ["pause-stack"],
-    text("CPA 栈暂停任务已启动。", "CPA stack pause job started."),
-  );
-}
-
-async function resumeStack(): Promise<void> {
-  await startRepairWithActions(
-    ["resume-stack"],
-    text("CPA 栈恢复任务已启动。", "CPA stack resume job started."),
   );
 }
 
@@ -2837,7 +2821,10 @@ async function serviceAction(
     && serviceId === "cpa-compact-proxy.service"
     && !isSummaryServiceActive("cli-proxy-api.service")
   ) {
-    await resumeStack();
+    notice.value = {
+      kind: "error",
+      text: text("旧 Compact Proxy 不再通过 Studio 自动恢复；请使用 Studio Gateway daemon。", "Legacy Compact Proxy is no longer auto-resumed by Studio; use the Studio Gateway daemon."),
+    };
     return;
   }
   busy.value = true;
