@@ -161,6 +161,30 @@ Studio 需要同时支持两种运行形态：
 
 方案决策：正式方案应使用独立守护进程 + OS/user service supervisor。自动启动子进程只能作为 bootstrap 便利性，用于检测 service 未安装时启动 detached daemon，并在随后提示或执行 service 安装；它不能替代 systemd/launchd/Windows service 的 restart policy、开机自启和父进程崩溃隔离能力。
 
+推荐启动和托管策略：
+
+1. **正式运行态**：安装 `studio-model-gateway-daemon` 为用户级 service，由当前 OS supervisor 托管。
+   - Linux：`systemd --user` unit，配置 `Restart=always`。
+   - macOS：launchd user agent，配置 `RunAtLoad` 和 `KeepAlive`。
+   - Windows：user scheduled task / service，配置登录启动和失败重启。
+2. **Studio / OpenClaw 控制态**：只执行 `ensureDaemonRunning`、配置下发、状态展示、启动/停止/重启命令和 smoke gate。
+   - 如果 service 已安装，优先调用 supervisor 的 start/status/restart。
+   - 如果 service 未安装，可临时启动 detached daemon 子进程，并立即引导安装用户级 service。
+   - detached 子进程必须断开父子生命周期依赖，例如独立进程组、`stdio: ignore`、`unref()`、runtime lock 和 pid metadata；父进程退出不能向 daemon 传播致命退出。
+3. **CLI takeover 态**：Codex / Claude Code / OpenCode / OpenClaw 等客户端默认写入 daemon loopback endpoint。
+   - 单口 endpoint 只能作为可选 ingress/proxy，不作为默认模型 endpoint。
+   - active takeover 必须验证 `localDaemon.runtimeMode === "local-daemon"` 和模型 smoke，通过后才写入客户端配置。
+
+故障场景要求：
+
+| 场景 | 期望结果 |
+| --- | --- |
+| OpenClaw Gateway 挂掉 | 已接管 CLI 继续通过 daemon loopback 调模型；单口 UI/control ingress 不可用但模型 relay 不受影响 |
+| Studio API / UI 崩溃 | daemon 继续服务 `/v1/chat/completions`、`/v1/responses`、`/v1/responses/compact`、`/v1/messages` |
+| Studio API 被 OpenClaw mount 带崩 | daemon 不跟随退出；runtime metadata 仍能声明端口归属 |
+| daemon 自身崩溃 | OS/user supervisor 自动重启；下一轮 health/status 能报告 restart 后的 runtime metadata |
+| service 未安装但用户触发安装/接管 | Studio 可临时启动 detached daemon，但 active takeover 仍应提示补齐正式 service 托管 |
+
 Phase 1 lifecycle contract checkpoint（2026-06-04）：
 
 - `GET /gateway/status` 和 `GET /api/model-gateway/status` 已新增 `lifecycle` contract。

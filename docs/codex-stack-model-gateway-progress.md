@@ -284,7 +284,7 @@ docs/codex-stack-model-gateway-goal.md
 - Chat/Responses streaming -> Anthropic Messages streaming、Chat streaming -> OpenAI Responses streaming、OpenAI Responses -> Anthropic Messages adapter 尚未实现。
 - provider CRUD 仍缺少 import/export、bulk reorder、preset creation 和 UI form。
 - 已有 runtime request log、health update、open-circuit fallback；尚未实现 request retry、真实 failover queue 执行、half-open probe 和 circuit reset policy。
-- 尚未改 UI、安装脚本、Codex takeover 或 CPA/compact 旧资源。
+- 尚未改 UI、安装脚本和 CPA/compact 旧资源；Codex takeover 仅完成 smoke-gated repair action，尚未接入 UI。
 
 协议互转矩阵进度：
 
@@ -308,6 +308,8 @@ docs/codex-stack-model-gateway-goal.md
 - 单口模式只作为 OpenClaw Gateway 挂载 Studio UI/control API 的入口；模型请求应优先写入 daemon loopback endpoint，并保留 direct daemon fallback。
 - OpenClaw Gateway 挂掉、Studio API/UI 崩溃或被 OpenClaw 带崩时，daemon 必须继续服务已接管的 Codex、Claude Code、OpenCode、OpenClaw 和其他 CLI。
 - 正式方案优先：Linux `systemd --user` service、macOS launchd user agent、Windows user service / scheduled task。detached child process 只允许用于首次 bootstrap、开发和未安装 service 时的临时 fallback。
+- 启动策略已定：Studio / OpenClaw 只做 `ensureDaemonRunning` 和 service 管理；service 已安装时走 supervisor start/status/restart，service 未安装时才可临时启动 detached daemon 子进程，并随后引导安装正式用户级 service。
+- detached 子进程不是长期方案，必须断开父子生命周期依赖，至少要有独立进程组、忽略 stdio、`unref()`、pid/lock/runtime metadata；它不能承担 crash restart、开机自启或父进程崩溃隔离的正式保证。
 - daemon 必须有端口归属 lock/pid/runtime metadata，避免与 Studio API/OpenClaw mount 争抢 `127.0.0.1:18796`。
 - status/diagnostics 需要拆分 `controlPlane`、`openclawMount`、`localDaemon`，避免 UI/mount 故障被误报为模型 relay 不可用。
 - 当前状态：目标、进度跟踪、shared type、status API contract、daemon entrypoint、supervisor template/API contract、service command execution/status summary contract、Studio API listener shutdown survivability test、OpenClaw single-port/mount fallback test、Codex Stack install 准备接入、active Codex `studio` takeover smoke gate 和 system tests 已补齐；真实 supervisor start/restart、UI health 和 supervisor crash-restart tests 尚未实现。
@@ -433,9 +435,10 @@ docs/codex-stack-model-gateway-goal.md
 下一轮继续 Phase 1：
 
 1. 在已有 service command execution contract 上验证真实 service manager start/restart：Linux `systemd --user`、macOS launchd、Windows scheduled task 至少先锁定当前平台的 install/start/status/restart happy path 和失败日志。
-2. 接入 Codex install/UI takeover contract：让界面和安装流开始指向 Studio Model Gateway daemon，并提供 `apply-codex-studio-after-smoke` 操作入口。
-3. 扩展 crash/restart survivability tests：daemon 进程崩溃后由真实 supervisor 拉起，并确认 direct endpoint 恢复服务 `/v1/responses` / `/v1/chat/completions`。
-4. 扩展 Chat SSE -> Responses SSE：streaming tool calls、reasoning events、inline think block、compact-specific streaming case 和 finish_reason 细节。
-5. 扩展 Codex history：reasoning_content、custom tools、web search、ambiguous call_id fallback 和 provider-specific thinking quirks。
-6. 扩展 Anthropic adapter：Chat/Responses streaming、image/file parts、response_format、provider-specific thinking / tool edge cases。
-7. 启动下一格协议 adapter：`openai_responses` -> `anthropic_messages`，让 Codex 官方 API provider 服务 Claude Messages clients。
+2. 实现并测试 `ensureDaemonRunning` bootstrap 策略：优先走已安装 supervisor；未安装时启动 detached daemon 子进程，并用 runtime metadata 明确其临时属性。
+3. 接入 Codex install/UI takeover contract：让界面和安装流开始指向 Studio Model Gateway daemon，并提供 `apply-codex-studio-after-smoke` 操作入口。
+4. 扩展 crash/restart survivability tests：daemon 进程崩溃后由真实 supervisor 拉起，并确认 direct endpoint 恢复服务 `/v1/responses` / `/v1/chat/completions`。
+5. 扩展 Chat SSE -> Responses SSE：streaming tool calls、reasoning events、inline think block、compact-specific streaming case 和 finish_reason 细节。
+6. 扩展 Codex history：reasoning_content、custom tools、web search、ambiguous call_id fallback 和 provider-specific thinking quirks。
+7. 扩展 Anthropic adapter：Chat/Responses streaming、image/file parts、response_format、provider-specific thinking / tool edge cases。
+8. 启动下一格协议 adapter：`openai_responses` -> `anthropic_messages`，让 Codex 官方 API provider 服务 Claude Messages clients。
