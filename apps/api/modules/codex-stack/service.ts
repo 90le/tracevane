@@ -1384,7 +1384,7 @@ function smokeMatrixTargetMismatchDetail(matrix: CodexStackSmokeMatrixResult | n
   const target = normalizeSmokeModel(targetModel);
   if (!target || !matrix?.attachEligible || smokeMatrixCoversTarget(matrix, target)) return null;
   const covered = matrix.requiredModels.map((model) => normalizeSmokeModel(model)).filter(Boolean).join("、") || "未记录模型";
-  return `上次 smoke matrix 覆盖 ${covered}，但当前目标模型是 ${target}；请重新运行目标模型 smoke matrix。`;
+  return `上次 Studio Gateway smoke matrix 覆盖 ${covered}，但当前目标模型是 ${target}；请重新运行目标模型矩阵。`;
 }
 
 function smokeMatrixFailureDetail(matrix: CodexStackSmokeMatrixResult | null | undefined): string | null {
@@ -1401,9 +1401,9 @@ function smokeMatrixFailureDetail(matrix: CodexStackSmokeMatrixResult | null | u
       ].filter(Boolean);
       return `${model.model}: ${parts.join("；") || "模型 smoke 未通过"}`;
     });
-  if (!failures.length && matrix.status === "failed") return "上次 smoke matrix 失败，但未记录具体失败检查；请重新运行当前默认目标模型 smoke matrix。";
+  if (!failures.length && matrix.status === "failed") return "上次 Studio Gateway smoke matrix 失败，但未记录具体失败检查；请重新运行当前默认目标模型矩阵。";
   if (!failures.length) return null;
-  return `上次 smoke matrix 失败：${failures.join("；")}。`;
+  return `上次 Studio Gateway smoke matrix 失败：${failures.join("；")}。`;
 }
 
 function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSummaryPayload["proxyPolicy"] {
@@ -3080,17 +3080,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!proxyPolicy.noProxyLoopbackReady) {
       warnings.push(`NO_PROXY 缺少 ${proxyPolicy.noProxyLoopbackMissing.join(", ")}；系统代理或 VPN 网卡/TUN 模式可能截获本地 Studio Gateway loopback 请求。运行 Codex 对话、长任务或压缩上下文前，请保留 localhost,127.0.0.1,::1。`);
     }
-    if (profile.lastSmokeMatrix?.status === "failed") warnings.push("Target-model smoke matrix failed last run; Codex will not switch until the selected target model passes.");
-    if (isSmokeMatrixStale(profile.lastSmokeMatrix)) warnings.push("Target-model smoke matrix is older than 24 hours; re-run the selected target model checks before treating Studio Gateway takeover as ready.");
+    if (profile.lastSmokeMatrix?.status === "failed") warnings.push("Studio Gateway smoke matrix failed last run; Codex will not attach until the selected target model passes.");
+    if (isSmokeMatrixStale(profile.lastSmokeMatrix)) warnings.push("Studio Gateway smoke matrix is older than 24 hours; re-run the selected target model checks before treating Studio Gateway takeover as ready.");
     if (
       profile.lastSmokeMatrix?.attachEligible
       && !isSmokeMatrixStale(profile.lastSmokeMatrix)
       && !isSmokeMatrixComplete(profile.lastSmokeMatrix, studioGatewayTargetModel)
     ) {
       if (!smokeMatrixCoversTarget(profile.lastSmokeMatrix, studioGatewayTargetModel)) {
-        warnings.push(`Target-model smoke matrix does not cover selected target model ${studioGatewayTargetModel}; re-run the selected target model checks before treating Studio Gateway takeover as ready.`);
+        warnings.push(`Studio Gateway smoke matrix does not cover selected target model ${studioGatewayTargetModel}; re-run the selected target model checks before treating Studio Gateway takeover as ready.`);
       } else {
-        warnings.push("Target-model smoke matrix is incomplete; re-run the selected target model checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
+        warnings.push("Studio Gateway smoke matrix is incomplete; re-run the selected target model checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
       }
     }
     const jobs = listJobs();

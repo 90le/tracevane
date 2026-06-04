@@ -2638,7 +2638,7 @@ account_id = "test"
         const summary = await service.getSummary();
 
         assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
-        assert.ok(summary.warnings.some((warning) => warning.includes("Target-model smoke matrix is older than 24 hours")));
+        assert.ok(summary.warnings.some((warning) => warning.includes("Studio Gateway smoke matrix is older than 24 hours")));
         assert.ok(summary.recommendation.reasonCodes.includes("smoke-matrix-stale"));
         assert.equal(summary.runReadiness.level, "attention");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "warn");
@@ -2732,7 +2732,7 @@ account_id = "test"
         const summary = await service.getSummary();
 
         assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
-        assert.ok(summary.warnings.some((warning) => warning.includes("Target-model smoke matrix is incomplete")));
+        assert.ok(summary.warnings.some((warning) => warning.includes("Studio Gateway smoke matrix is incomplete")));
         assert.equal(summary.recommendation.kind, "review-smoke");
         assert.ok(summary.recommendation.reasonCodes.includes("smoke-matrix-incomplete"));
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "warn");
@@ -2840,7 +2840,7 @@ account_id = "test"
         assert.equal(summary.profile.defaultModel, "gpt-5.5");
         assert.equal(summary.models.current, "gpt-5.5");
         assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
-        assert.ok(summary.warnings.some((warning) => warning.includes("does not cover selected target model gpt-5.5")));
+        assert.ok(summary.warnings.some((warning) => warning.includes("Studio Gateway smoke matrix does not cover selected target model gpt-5.5")));
         assert.equal(summary.recommendation.kind, "review-smoke");
         assert.ok(summary.recommendation.reasonCodes.includes("smoke-matrix-target-mismatch"));
         const smokeCheck = summary.runReadiness.checks.find((check) => check.id === "smoke-matrix");

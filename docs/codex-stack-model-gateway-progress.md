@@ -29,6 +29,7 @@
 - Codex Stack 页面 daemon-service 调用已改为 scoped `/api/codex-stack/model-gateway/daemon-service`，避免前端 dev server 访问旧 unscoped route 404。
 - 前端可见 CPA 残留已替换为 Studio Gateway：模型目录、provider editor、route status、network diagnostics、安装策略和 service summary 不再把 CPA/Compact 当当前 relay 展示。
 - 后端 summary 已移除旧 CPA management/dashboard 输出，密钥摘要改为 `studioGatewayProxyKey`；旧 `model_providers.cpa` 只作为迁移兼容读取。
+- 状态页 warning 已改为 Studio Gateway smoke matrix 文案，避免旧 CPA smoke / attach 语义再次出现在高级诊断。
 - proxy/upstream 状态读取以 OpenClaw env 为新优先来源；旧 CPA YAML 只作为 legacy fallback。
 
 ## 3. 当前仍未完成
