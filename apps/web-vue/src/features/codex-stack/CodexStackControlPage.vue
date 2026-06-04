@@ -1,7 +1,7 @@
 <template>
   <section class="page-shell codex-stack-page">
     <CodexStackPageHeader
-      :eyebrow="text('CPA / Gateway / cc-connect', 'CPA / Gateway / cc-connect')"
+      :eyebrow="text('Studio Model Gateway', 'Studio Model Gateway')"
       :title="text('Codex Stack', 'Codex Stack')"
       :refresh-label="loading ? text('刷新中...', 'Refreshing...') : text('刷新状态', 'Refresh')"
       :refresh-disabled="loading || ccConnectLoading"
@@ -139,12 +139,8 @@
           :recommended-disabled="installPlanRecommendedDisabled"
           :recommended-disabled-help="installPlanRecommendedDisabledHelp"
           :recommended-tone="installPlanRecommendedTone"
-          :can-attach-codex-cpa="canAttachCodexCpa"
-          :attach-codex-cpa-help="attachCodexCpaHelp"
-          :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
           :can-attach-codex-studio="canAttachCodexStudio"
           :attach-codex-studio-disabled-help="attachCodexStudioDisabledHelp"
-          :attach-preflight-items="attachPreflightItems"
           :studio-gateway-preflight-items="studioGatewayPreflightItems"
           :form="installForm"
           :model-options="modelOptions"
@@ -163,7 +159,6 @@
           @pause-stack="pauseStack"
           @resume-stack="resumeStack"
           @run-smoke-matrix="runSmokeMatrix"
-          @attach-codex-cpa="applyCodexCpaAfterSmoke"
           @attach-codex-studio="applyCodexStudioAfterSmoke"
           @preview-model-gateway-daemon-service="previewModelGatewayDaemonService"
           @status-model-gateway-daemon-service="statusModelGatewayDaemonService"
@@ -240,8 +235,6 @@
           :context-tokens-disabled-help="configContextTokensDisabledHelp"
           :restart-required-units="restartRequiredUnits"
           :impact-items="configImpactItems"
-          :can-attach-codex-cpa="canAttachCodexCpa"
-          :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
           :can-run-mutation="canRunMutation"
           :has-changes="hasConfigPatchChanges"
           :mutation-disabled-help="mutationDisabledHelp"
@@ -250,8 +243,6 @@
           @reload="loadSummary"
           @update-field="updateConfigFormField"
           @save="saveConfigPatch"
-          @save-and-attach-cpa="saveConfigThenAttachCpa"
-          @save-and-force-cpa="saveConfigThenForceCpa"
           @save-and-use-official="saveConfigThenUseOfficial"
         />
 
@@ -720,11 +711,11 @@ const codexProviderCheck = computed(() => (
 ));
 const codexRouteLabel = computed(() => {
   const route = summary.value?.codexRoute.active;
-  if (route === "cpa") return text("CPA 已接入", "CPA attached");
+  if (route === "cpa") return text("旧本地路由", "Legacy local route");
   if (route === "official-chatgpt") return text("官方 GPT 路径", "Official GPT route");
   const status = codexProviderCheck.value?.status;
-  if (status === "pass") return text("CPA 已接入", "CPA attached");
-  if (status === "fail") return text("CPA 接入异常", "CPA route blocked");
+  if (status === "pass") return text("Studio Gateway 已接管", "Studio Gateway attached");
+  if (status === "fail") return text("Studio Gateway 异常", "Studio Gateway blocked");
   return text("官方 GPT 路径", "Official GPT route");
 });
 const settingsSectionIntroChips = computed<CodexStackRouteModelChip[]>(() => [
@@ -860,7 +851,7 @@ const nextActionCopy = computed(() => {
           "The last target-model matrix is older than 24 hours. Run Verify Only again so stale results are not treated as current CPA readiness.",
         );
       }
-      return text("上次目标模型矩阵失败，Codex 不会自动切到 CPA。先在安装页重新跑 smoke gate。", "The last target-model matrix failed, so Codex will not attach to CPA. Re-run the smoke gate from Install.");
+      return text("上次目标模型矩阵失败，Codex 不会自动接管 Studio Gateway。先在安装页重新跑 smoke gate。", "The last target-model matrix failed, so Codex will not attach Studio Gateway. Re-run the smoke gate from Install.");
     default:
       return text("首次使用从 DMWork 增强版开始；已有环境可选择跳过或强制重装组件。", "Start with the DMWork enhanced channel; existing environments can skip or force reinstall components.");
   }
@@ -941,8 +932,8 @@ const installPlanRecommendedCopy = computed(() => {
   }
   if (activeRecommendation.value?.kind === "review-smoke") {
     return text(
-      "只验证当前目标模型，不切换 Codex。普通、非流式、流式和压缩上下文全部通过后，再考虑接入 CPA。",
-      "Verify the current target model without switching Codex. Only consider CPA attach after chat, non-stream, stream, and compaction all pass.",
+      "只验证当前目标模型，不切换 Codex。普通、非流式、流式和压缩上下文全部通过后，再接管 Studio Gateway。",
+      "Verify the current target model without switching Codex. Take over Studio Gateway only after chat, non-stream, stream, and compaction all pass.",
     );
   }
   return nextActionCopy.value;
@@ -1057,43 +1048,11 @@ const currentCpaTargetModel = computed(() => summaryTargetModel(summary.value));
 const modelGatewayLocalDaemon = computed(() => modelGatewayDaemonService.value?.lifecycle.localDaemon || null);
 const modelGatewayServiceManager = computed(() => modelGatewayDaemonService.value?.serviceManager || null);
 const modelGatewayInstalled = computed(() => modelGatewayDaemonService.value?.installed === true);
-const isSmokeMatrixAttachReady = computed(() => {
-  const matrix = summary.value?.profile.lastSmokeMatrix;
-  return isSmokeMatrixFreshAndComplete(matrix, currentCpaTargetModel.value);
-});
-const canAttachCodexCpa = computed(() => canRunMutation.value && isSmokeMatrixAttachReady.value);
 const canAttachCodexStudio = computed(() => (
   canRunMutation.value
   && modelGatewayLocalDaemon.value?.runtimeMode === "local-daemon"
   && modelGatewayLocalDaemon.value?.state === "running"
 ));
-const attachCodexCpaHelp = computed(() => {
-  const matrix = summary.value?.profile.lastSmokeMatrix;
-  if (!matrix) {
-    return text("先运行“只验证”，让当前默认 CPA 模型完成完整矩阵。", "Run Verify Only first so the current default CPA model completes the full matrix.");
-  }
-  if (isSmokeMatrixStale(matrix)) {
-    return text("上次矩阵已超过 24 小时，先重新只验证；切换动作仍会再次烟测。", "The last matrix is older than 24 hours; verify again first. The attach action will still rerun smoke checks.");
-  }
-  if (matrix.attachEligible && !smokeMatrixCoversTarget(matrix, currentCpaTargetModel.value)) {
-    return text(
-      `上次矩阵未覆盖当前目标模型 ${currentCpaTargetModel.value || "--"}，先重新只验证。`,
-      `The last matrix does not cover the current target model ${currentCpaTargetModel.value || "--"}; run Verify Only again.`,
-    );
-  }
-  if (matrix.attachEligible && !isSmokeMatrixComplete(matrix, currentCpaTargetModel.value)) {
-    return text("上次矩阵记录不完整，先重新只验证；必须覆盖目标模型、普通请求、流式、非流式和压缩上下文。", "The last matrix record is incomplete. Run Verify Only again; it must cover the target model, ordinary, streaming, non-streaming, and compaction checks.");
-  }
-  if (!matrix.attachEligible) {
-    return text("上次矩阵未全部通过，Codex 保持官方路径；修复后重新只验证。", "The last matrix did not fully pass, so Codex stays on the official path. Fix it and verify again.");
-  }
-  return text("已有新鲜通过矩阵；点击后仍会重新烟测，全部通过才写入 Codex。", "A fresh passing matrix exists; clicking still reruns smoke checks before writing Codex.");
-});
-const attachCodexCpaDisabledHelp = computed(() => {
-  if (canAttachCodexCpa.value) return "";
-  if (!canRunMutation.value) return mutationDisabledHelp.value;
-  return attachCodexCpaHelp.value;
-});
 const attachCodexStudioDisabledHelp = computed(() => {
   if (canAttachCodexStudio.value) return "";
   if (!canRunMutation.value) return mutationDisabledHelp.value;
@@ -1106,46 +1065,6 @@ const attachCodexStudioDisabledHelp = computed(() => {
     );
   }
   return "";
-});
-const attachPreflightItems = computed<CodexStackAttachPreflightItem[]>(() => {
-  const matrix = summary.value?.profile.lastSmokeMatrix;
-  const targetModel = currentCpaTargetModel.value || "--";
-  const requiredModels = matrix?.requiredModels.length ? matrix.requiredModels.join(", ") : targetModel;
-  const requiredChecks = REQUIRED_CPA_SMOKE_CHECKS.join(", ");
-  const matrixTone: CodexStackTone = isSmokeMatrixFreshAndComplete(matrix, targetModel)
-    ? "sage"
-    : matrix?.attachEligible ? "accent" : "danger";
-  const matrixValue = matrix
-    ? `${smokeMatrixLabel.value} · ${formatTimestamp(matrix.checkedAt)}`
-    : text(`尚未运行 ${targetModel} smoke matrix`, `${targetModel} smoke matrix has not run yet`);
-  return [
-    {
-      id: "required-models",
-      label: text("必测模型", "Required models"),
-      value: requiredModels,
-      tone: "sage",
-    },
-    {
-      id: "required-checks",
-      label: text("必测检查", "Required checks"),
-      value: requiredChecks,
-      tone: "sage",
-    },
-    {
-      id: "last-matrix",
-      label: text("上次矩阵", "Last matrix"),
-      value: matrixValue,
-      tone: matrixTone,
-    },
-    {
-      id: "attach-action",
-      label: text("切换动作", "Attach action"),
-      value: isSmokeMatrixFreshAndComplete(matrix, targetModel)
-        ? text("可点击；仍会重新烟测，全部通过才写 Codex。", "Enabled; still reruns smoke checks before writing Codex.")
-        : text("不可点击；先只验证，不会切换 Codex。", "Disabled; run Verify Only first without attaching Codex."),
-      tone: isSmokeMatrixFreshAndComplete(matrix, targetModel) ? "sage" : "accent",
-    },
-  ];
 });
 const studioGatewayPreflightItems = computed<CodexStackAttachPreflightItem[]>(() => {
   const daemon = modelGatewayLocalDaemon.value;
@@ -1626,8 +1545,8 @@ const configImpactItems = computed<CodexStackRuntimeConfigImpactItem[]>(() => {
       id: "auth-key",
       label: text("会写入本地 CPA key", "Local CPA key will be written"),
       detail: text(
-        "新的 proxy key 会同步到 Codex auth、CPA 配置和 cc-connect provider；官方 GPT 路径仍需显式 smoke gate 才会切到 CPA。",
-        "The new proxy key is synced to Codex auth, CPA config, and the cc-connect provider; the official GPT route still switches to CPA only through the explicit smoke gate.",
+        "新的 proxy key 会同步到 Codex auth、旧本地配置和 cc-connect provider；官方 GPT 路径仍需显式 smoke gate 才会切到 Studio Gateway。",
+        "The new proxy key is synced to Codex auth, legacy local config, and the cc-connect provider; the official GPT route still switches to Studio Gateway only through the explicit smoke gate.",
       ),
       tone: "danger",
     });
@@ -2838,14 +2757,7 @@ async function resumeStack(): Promise<void> {
 async function runSmokeMatrix(): Promise<void> {
   await startRepairWithActions(
     ["run-smoke-matrix"],
-    text("CPA 模型矩阵验证已启动；不会切换 Codex。", "CPA smoke matrix started; Codex will not be attached."),
-  );
-}
-
-async function applyCodexCpaAfterSmoke(): Promise<void> {
-  await startRepairWithActions(
-    ["apply-codex-cpa-after-smoke"],
-    text("CPA smoke matrix 任务已启动；全部通过后才会切换 Codex。", "CPA smoke matrix started; Codex will attach only if every check passes."),
+    text("目标模型矩阵验证已启动；不会切换 Codex。", "Target-model smoke matrix started; Codex will not be attached."),
   );
 }
 
@@ -2890,13 +2802,6 @@ async function ensureModelGatewayDaemon(): Promise<void> {
   await manageModelGatewayDaemon(
     { action: "ensure-running", apply: true },
     text("Studio Gateway daemon ensure-running 已执行。", "Studio Gateway daemon ensure-running completed."),
-  );
-}
-
-async function forceAttachCodexCpa(): Promise<void> {
-  await startRepairWithActions(
-    ["force-apply-codex-cpa"],
-    text("已启动强制 CPA 切换；未通过 smoke 时 Codex 请求可能失败。", "Forced CPA attach started; Codex requests may fail without a passing smoke gate."),
   );
 }
 
@@ -2975,61 +2880,22 @@ async function saveConfigPatchInternal(): Promise<boolean> {
   }
 }
 
-async function confirmRouteChange(kind: "official" | "cpa" | "force-cpa"): Promise<boolean> {
-  const targetModel = configForm.defaultModel || currentCpaTargetModel.value || "--";
-  if (kind === "official") {
-    return confirm({
-      title: text("保存并使用官方 ChatGPT", "Save and use Official ChatGPT"),
-      message: text(
-        "将先保存当前运行配置，然后把 Codex 切回官方 ChatGPT 登录路径。CPA 上游配置会保留，但不会作为当前 Codex 路径；如果之前备份过 ChatGPT 登录态，会自动恢复。",
-        "Studio will save the current runtime config, then switch Codex back to the official ChatGPT login route. CPA upstream config remains saved but inactive; a preserved ChatGPT login is restored when available.",
-      ),
-      confirmText: text("保存并切回官方", "Save and switch official"),
-      cancelText: text("取消", "Cancel"),
-      tone: "safe",
-    });
-  }
-  if (kind === "force-cpa") {
-    return confirm({
-      title: text("强制使用 CPA", "Force CPA"),
-      message: text(
-        `将先保存配置，然后不等待 smoke 通过，直接把 Codex 切到 CPA 目标模型 ${targetModel}。如果上游、代理、流式或压缩上下文不稳定，Codex 普通请求、长任务和压缩上下文可能失败。`,
-        `Studio will save config, then switch Codex directly to CPA target model ${targetModel} without waiting for smoke to pass. If upstream, proxy, streaming, or compaction is unstable, ordinary Codex requests, long tasks, and compaction may fail.`,
-      ),
-      confirmText: text("知道风险，强制切换", "Force switch"),
-      cancelText: text("取消", "Cancel"),
-      tone: "danger",
-    });
-  }
+async function confirmOfficialRouteRestore(): Promise<boolean> {
   return confirm({
-    title: text("保存并验证 CPA", "Save and verify CPA"),
+    title: text("保存并使用官方 ChatGPT", "Save and use Official ChatGPT"),
     message: text(
-      `将先保存模型/上游配置，然后用目标模型 ${targetModel} 运行 CPA smoke。只有普通请求、非流式、流式和压缩上下文全部通过，才会把 Codex 切到 CPA；失败时保持当前路径不变。`,
-      `Studio will save the model/upstream config, then run CPA smoke with target model ${targetModel}. Codex switches to CPA only if ordinary, non-streaming, streaming, and compaction checks all pass; failures leave the current route unchanged.`,
+      "将先保存当前运行配置，然后把 Codex 切回官方 ChatGPT 登录路径；Studio Gateway 接管请在安装页完成。",
+      "Studio will save the current runtime config, then switch Codex back to the official ChatGPT login route; use the Install page for Studio Gateway takeover.",
     ),
-    confirmText: text("保存并验证切换", "Save and verify"),
+    confirmText: text("保存并切回官方", "Save and switch official"),
     cancelText: text("取消", "Cancel"),
     tone: "safe",
   });
 }
 
-async function saveConfigThenAttachCpa(): Promise<void> {
-  if (!guardMutation()) return;
-  if (!await confirmRouteChange("cpa")) return;
-  if (!await saveConfigPatchInternal()) return;
-  await applyCodexCpaAfterSmoke();
-}
-
-async function saveConfigThenForceCpa(): Promise<void> {
-  if (!guardMutation()) return;
-  if (!await confirmRouteChange("force-cpa")) return;
-  if (!await saveConfigPatchInternal()) return;
-  await forceAttachCodexCpa();
-}
-
 async function saveConfigThenUseOfficial(): Promise<void> {
   if (!guardMutation()) return;
-  if (!await confirmRouteChange("official")) return;
+  if (!await confirmOfficialRouteRestore()) return;
   if (!await saveConfigPatchInternal()) return;
   await restoreOfficialChatGpt();
 }

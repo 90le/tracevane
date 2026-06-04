@@ -434,9 +434,7 @@ export type CodexStackRepairAction =
   | "repair-no-proxy-loopback"
   | "disable-legacy-healthcheck"
   | "run-smoke-matrix"
-  | "apply-codex-cpa-after-smoke"
   | "apply-codex-studio-after-smoke"
-  | "force-apply-codex-cpa"
   | "restore-official-chatgpt"
   | "disable-conflicting-units"
   | "rerun-install-no-start";

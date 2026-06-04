@@ -920,8 +920,8 @@ account_id = "test"
           assert.match(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.detail || "", /官方 GPT 路径/);
           assert.deepEqual(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.actionHint, {
             kind: "repair",
-            label: "验证后接入 CPA",
-            repairActions: ["apply-codex-cpa-after-smoke"],
+            label: "接管 Studio Gateway",
+            repairActions: ["apply-codex-studio-after-smoke"],
           });
         });
       },
@@ -1356,7 +1356,7 @@ enable_request_compression = true
   assert.match(repaired, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"[\s\S]*wire_api = "responses"[\s\S]*supports_websockets = false/);
 });
 
-test("codex stack refuses to attach Codex CPA when stream smoke emits response.failed", async () => {
+test("codex stack rejects removed CPA attach repair actions", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -1377,122 +1377,16 @@ test("codex stack refuses to attach Codex CPA when stream smoke emits response.f
   createGeneratedStackFiles(root);
   const codexConfig = path.join(root, ".codex/config.toml");
 
-  await withMockFetch(async (url, init = {}) => {
-    const requestUrl = String(url);
-    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
-    if (requestUrl.includes("/v1/chat/completions")) {
-      return new Response(JSON.stringify({
-        choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-    if (requestUrl.endsWith("/v1/responses")) {
-      const body = JSON.parse(String(init.body || "{}"));
-      if (body.stream) {
-        return new Response([
-          "event: response.created",
-          `data: ${JSON.stringify({ type: "response.created", response: { status: "in_progress" } })}`,
-          "",
-          "event: response.failed",
-          `data: ${JSON.stringify({ type: "response.failed", response: { status: "failed", error: { code: "upstream_error", message: "boom" } } })}`,
-          "",
-          "data: [DONE]",
-          "",
-        ].join("\n"), { status: 200, headers: { "Content-Type": "text/event-stream" } });
-      }
-      return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
-    }
-    if (requestUrl.endsWith("/v1/responses/compact")) {
-      const body = JSON.parse(String(init.body || "{}"));
-      return new Response(JSON.stringify(compactSmokeResponse(body)), { status: 200 });
-    }
-    return new Response("not found", { status: 404 });
-  }, async () => {
-    const service = createCodexStackService(config);
-    const response = await service.startRepair(undefined, { actions: ["apply-codex-cpa-after-smoke"] });
-    const job = await waitForJob(service, response.job.id);
-
-    assert.equal(job.status, "failed");
-    assert.match(job.error || "", /response\.failed/);
-    assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
-  });
-});
-
-test("codex stack attaches Codex CPA only after the full smoke gate passes", async () => {
-  const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  writeJson(config.openclawConfigFile, {
-    plugins: {
-      entries: {
-        studio: {
-          config: {
-            codexStack: {
-              allowManagementActions: true,
-            },
-          },
-        },
-      },
-    },
-  });
-  createBundledInstaller(config, "official");
-  createBundledInstaller(config, "dmwork");
-  createGeneratedStackFiles(root);
-  const codexConfig = path.join(root, ".codex/config.toml");
-  const codexAuth = path.join(root, ".codex/auth.json");
-  const officialAuthBackup = path.join(root, ".codex/auth.chatgpt.backup.json");
-  writeJson(codexAuth, {
-    auth_mode: "chatgpt",
-    refresh_token: "chatgpt-refresh-token",
-    account_id: "chatgpt-account",
-  });
-
-  await withMockFetch(async (url, init = {}) => {
-    const requestUrl = String(url);
-    const body = JSON.parse(String(init.body || "{}"));
-    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
-    if (requestUrl.includes("/v1/chat/completions")) {
-      return new Response(JSON.stringify({
-        choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-    if (requestUrl.endsWith("/v1/responses")) {
-      if (body.stream) {
-        return new Response([
-          "event: response.created",
-          `data: ${JSON.stringify({ type: "response.created", response: { status: "in_progress" } })}`,
-          "",
-          "event: response.completed",
-          `data: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
-          "",
-          "data: [DONE]",
-          "",
-        ].join("\n"), { status: 200, headers: { "Content-Type": "text/event-stream" } });
-      }
-      return new Response(JSON.stringify({ id: "resp_ok", status: "completed", output: [] }), { status: 200 });
-    }
-    if (requestUrl.endsWith("/v1/responses/compact")) {
-      return new Response(JSON.stringify(compactSmokeResponse(body)), { status: 200 });
-    }
-    return new Response("not found", { status: 404 });
-  }, async () => {
-    const service = createCodexStackService(config);
-    const response = await service.startRepair(undefined, { actions: ["apply-codex-cpa-after-smoke"] });
-    const job = await waitForJob(service, response.job.id);
-
-    assert.equal(job.status, "succeeded");
-    assert.match(job.logTail, /CPA smoke gate passed/);
-    const patched = fs.readFileSync(codexConfig, "utf8");
-    assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
-    assert.match(patched, /\[model_providers\.cpa\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
-    const cpaAuth = JSON.parse(fs.readFileSync(codexAuth, "utf8"));
-    assert.equal(cpaAuth.auth_mode, "apikey");
-    assert.equal(cpaAuth.OPENAI_API_KEY, "secret-cpa-key-123456");
-    assert.equal(cpaAuth.refresh_token, "chatgpt-refresh-token");
-    assert.equal(JSON.parse(fs.readFileSync(officialAuthBackup, "utf8")).auth_mode, "chatgpt");
-    const summary = await service.getSummary();
-    assert.equal(summary.codexRoute.active, "cpa");
-    assert.equal(summary.codexRoute.cpaTargetModel, "glm-5.1");
-  });
+  const service = createCodexStackService(config);
+  await assert.rejects(
+    () => service.startRepair(undefined, { actions: ["apply-codex-cpa-after-smoke"] }),
+    /Unsupported repair actions: apply-codex-cpa-after-smoke/,
+  );
+  await assert.rejects(
+    () => service.startRepair(undefined, { actions: ["force-apply-codex-cpa"] }),
+    /Unsupported repair actions: force-apply-codex-cpa/,
+  );
+  assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
 });
 
 test("codex stack switches Codex to Studio provider only after daemon smoke passes", async () => {
@@ -1664,99 +1558,6 @@ experimental_bearer_token = "secret-cpa-key-123456"
   assert.equal(summary.codexRoute.currentModel, "gpt-5.5");
 });
 
-test("codex stack can force attach CPA while warning and preserving ChatGPT auth", async () => {
-  const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  writeJson(config.openclawConfigFile, {
-    plugins: {
-      entries: {
-        studio: {
-          config: {
-            codexStack: {
-              allowManagementActions: true,
-            },
-          },
-        },
-      },
-    },
-  });
-  createBundledInstaller(config, "official");
-  createBundledInstaller(config, "dmwork");
-  createGeneratedStackFiles(root);
-  const codexConfig = path.join(root, ".codex/config.toml");
-  const codexAuth = path.join(root, ".codex/auth.json");
-  const officialAuthBackup = path.join(root, ".codex/auth.chatgpt.backup.json");
-  writeJson(codexAuth, {
-    auth_mode: "chatgpt",
-    refresh_token: "force-chatgpt-refresh",
-  });
-
-  const service = createCodexStackService(config);
-  const response = await service.startRepair(undefined, { actions: ["force-apply-codex-cpa"] });
-  const job = await waitForJob(service, response.job.id);
-
-  assert.equal(job.status, "succeeded");
-  assert.match(job.logTail, /WARNING: Forced CPA attach requested without a passing smoke gate/);
-  const patched = fs.readFileSync(codexConfig, "utf8");
-  assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
-  const cpaAuth = JSON.parse(fs.readFileSync(codexAuth, "utf8"));
-  assert.equal(cpaAuth.auth_mode, "apikey");
-  assert.equal(cpaAuth.OPENAI_API_KEY, "secret-cpa-key-123456");
-  assert.equal(JSON.parse(fs.readFileSync(officialAuthBackup, "utf8")).refresh_token, "force-chatgpt-refresh");
-  const summary = await service.getSummary();
-  assert.equal(summary.secrets.officialChatGptAuthBackup.restorable, true);
-  assert.equal(summary.secrets.officialChatGptAuthBackup.mode, "chatgpt");
-});
-
-test("codex stack refreshes stale ChatGPT auth backup before switching to CPA", async () => {
-  const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  writeJson(config.openclawConfigFile, {
-    plugins: {
-      entries: {
-        studio: {
-          config: {
-            codexStack: {
-              allowManagementActions: true,
-            },
-          },
-        },
-      },
-    },
-  });
-  createBundledInstaller(config, "official");
-  createBundledInstaller(config, "dmwork");
-  createGeneratedStackFiles(root);
-  const codexAuth = path.join(root, ".codex/auth.json");
-  const officialAuthBackup = path.join(root, ".codex/auth.chatgpt.backup.json");
-  writeJson(codexAuth, {
-    auth_mode: "chatgpt",
-    refresh_token: "current-chatgpt-refresh",
-    account_id: "current-chatgpt-account",
-  });
-  writeJson(officialAuthBackup, {
-    auth_mode: "chatgpt",
-    refresh_token: "stale-chatgpt-refresh",
-    account_id: "stale-chatgpt-account",
-  });
-
-  const service = createCodexStackService(config);
-  const response = await service.startRepair(undefined, { actions: ["force-apply-codex-cpa"] });
-  const job = await waitForJob(service, response.job.id);
-
-  assert.equal(job.status, "succeeded");
-  const refreshedBackup = JSON.parse(fs.readFileSync(officialAuthBackup, "utf8"));
-  assert.equal(refreshedBackup.auth_mode, "chatgpt");
-  assert.equal(refreshedBackup.refresh_token, "current-chatgpt-refresh");
-  assert.equal(refreshedBackup.account_id, "current-chatgpt-account");
-  const cpaAuth = JSON.parse(fs.readFileSync(codexAuth, "utf8"));
-  assert.equal(cpaAuth.auth_mode, "apikey");
-  assert.equal(cpaAuth.OPENAI_API_KEY, "secret-cpa-key-123456");
-  const summary = await service.getSummary();
-  assert.equal(summary.secrets.officialChatGptAuthBackup.restorable, true);
-  assert.equal(summary.secrets.officialChatGptAuthBackup.mode, "chatgpt");
-});
-
 test("codex stack refuses to restore non-ChatGPT auth backups as official login", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -1813,7 +1614,7 @@ experimental_bearer_token = "secret-cpa-key-123456"
   assert.equal(summary.secrets.officialChatGptAuthBackup.mode, "apikey");
 });
 
-test("codex stack can attach the user-selected GPT model through CPA", async () => {
+test("codex stack can attach the user-selected GPT model through Studio Gateway", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -1840,6 +1641,16 @@ test("codex stack can attach the user-selected GPT model through CPA", async () 
     const requestUrl = String(url);
     const body = init.body ? JSON.parse(String(init.body)) : {};
     if (body.model) requestedModels.push(body.model);
+    if (requestUrl.endsWith("/gateway/status")) {
+      return new Response(JSON.stringify({
+        ok: true,
+        lifecycle: {
+          localDaemon: {
+            runtimeMode: "local-daemon",
+          },
+        },
+      }), { status: 200 });
+    }
     if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
     if (requestUrl.includes("/v1/chat/completions")) {
       return new Response(JSON.stringify({
@@ -1864,13 +1675,13 @@ test("codex stack can attach the user-selected GPT model through CPA", async () 
     return new Response("not found", { status: 404 });
   }, async () => {
     const service = createCodexStackService(config);
-    const response = await service.startRepair(undefined, { actions: ["apply-codex-cpa-after-smoke"] });
+    const response = await service.startRepair(undefined, { actions: ["apply-codex-studio-after-smoke"] });
     const job = await waitForJob(service, response.job.id);
 
     assert.equal(job.status, "succeeded");
     assert.equal(requestedModels.includes("gpt-5.5"), true);
     const patched = fs.readFileSync(codexConfig, "utf8");
-    assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"cpa"/);
+    assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"studio"/);
     assert.match(tomlTopLevel(patched), /model\s*=\s*"gpt-5\.5"/);
   });
 });
@@ -2073,7 +1884,7 @@ test("codex stack smoke matrix records selected target failure and blocks Codex 
     return new Response("not found", { status: 404 });
   }, async () => {
     const service = createCodexStackService(config);
-    const response = await service.startRepair(undefined, { actions: ["apply-codex-cpa-after-smoke"] });
+    const response = await service.startRepair(undefined, { actions: ["run-smoke-matrix"] });
     const job = await waitForJob(service, response.job.id);
     const summary = await service.getSummary();
 
@@ -2926,7 +2737,7 @@ account_id = "test"
         const summary = await service.getSummary();
 
         assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
-        assert.ok(summary.warnings.some((warning) => warning.includes("CPA smoke matrix is older than 24 hours")));
+        assert.ok(summary.warnings.some((warning) => warning.includes("Target-model smoke matrix is older than 24 hours")));
         assert.ok(summary.recommendation.reasonCodes.includes("smoke-matrix-stale"));
         assert.equal(summary.runReadiness.level, "attention");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "warn");
@@ -3020,7 +2831,7 @@ account_id = "test"
         const summary = await service.getSummary();
 
         assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, true);
-        assert.ok(summary.warnings.some((warning) => warning.includes("CPA smoke matrix is incomplete")));
+        assert.ok(summary.warnings.some((warning) => warning.includes("Target-model smoke matrix is incomplete")));
         assert.equal(summary.recommendation.kind, "review-smoke");
         assert.ok(summary.recommendation.reasonCodes.includes("smoke-matrix-incomplete"));
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "warn");
@@ -3245,8 +3056,8 @@ account_id = "test"
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, false);
         assert.deepEqual(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.actionHint, {
           kind: "repair",
-          label: "验证后接入 CPA",
-          repairActions: ["apply-codex-cpa-after-smoke"],
+          label: "接管 Studio Gateway",
+          repairActions: ["apply-codex-studio-after-smoke"],
         });
       });
     },

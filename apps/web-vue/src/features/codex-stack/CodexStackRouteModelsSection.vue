@@ -14,15 +14,11 @@
         :codex-route-official-model="summary.codexRoute.officialModel"
         :codex-auth-mode="summary.secrets.codexAuth.mode"
         :official-auth-backup-ready="summary.secrets.officialChatGptAuthBackup?.restorable === true"
-        :can-attach-codex-cpa="canAttachCodexCpa"
-        :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
         :can-run-mutation="canRunMutation"
         :has-changes="hasChanges"
         :mutation-disabled-help="mutationDisabledHelp"
         @update-field="(field, value) => emit('update-field', field, value)"
         @save="emit('save')"
-        @save-and-attach-cpa="emit('save-and-attach-cpa')"
-        @save-and-force-cpa="emit('save-and-force-cpa')"
         @save-and-use-official="emit('save-and-use-official')"
       />
 
@@ -101,8 +97,6 @@ defineProps<{
   contextTokensDisabledHelp: string;
   restartRequiredUnits: string[];
   impactItems: CodexStackRuntimeConfigImpactItem[];
-  canAttachCodexCpa: boolean;
-  attachCodexCpaDisabledHelp: string;
   canRunMutation: boolean;
   hasChanges: boolean;
   mutationDisabledHelp: string;
@@ -114,8 +108,6 @@ const emit = defineEmits<{
   reload: [];
   "update-field": [field: CodexStackRuntimeConfigField, value: string | number];
   save: [];
-  "save-and-attach-cpa": [];
-  "save-and-force-cpa": [];
   "save-and-use-official": [];
 }>();
 

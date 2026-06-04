@@ -23,13 +23,6 @@
         </article>
         <article class="cs-repair-step cs-repair-step-primary">
           <span class="cs-step-number">3</span>
-          <strong>{{ text("验证并切换 Codex", "Smoke and Attach Codex") }}</strong>
-          <button type="button" class="primary-button" :disabled="!canAttachCodexCpa" @click="$emit('attach-codex-cpa')">
-            {{ text("切到 CPA", "Attach CPA") }}
-          </button>
-        </article>
-        <article class="cs-repair-step cs-repair-step-primary">
-          <span class="cs-step-number">4</span>
           <strong>{{ text("切到 Studio Gateway", "Attach Studio Gateway") }}</strong>
           <button type="button" class="primary-button" :disabled="!canAttachCodexStudio" @click="$emit('attach-codex-studio')">
             {{ text("切到 Studio", "Attach Studio") }}
@@ -41,15 +34,6 @@
       </div>
       <details class="cs-attach-summary">
         <summary>{{ text("切换前检查", "Before attach") }}</summary>
-        <dl class="cs-attach-preflight-list">
-          <div v-for="item in attachPreflightItems" :key="item.id" class="cs-attach-preflight-row" :class="`tone-${item.tone}`">
-            <dt>{{ item.label }}</dt>
-            <dd>{{ item.value }}</dd>
-          </div>
-        </dl>
-        <p v-if="!canAttachCodexCpa && attachCodexCpaDisabledHelp" class="cs-disabled-help">
-          {{ attachCodexCpaDisabledHelp }}
-        </p>
         <dl class="cs-attach-preflight-list">
           <div v-for="item in studioGatewayPreflightItems" :key="item.id" class="cs-attach-preflight-row" :class="`tone-${item.tone}`">
             <dt>{{ item.label }}</dt>
@@ -136,12 +120,8 @@ export interface CodexStackAttachPreflightItem {
 defineProps<{
   canRunMutation: boolean;
   mutationDisabledHelp: string;
-  canAttachCodexCpa: boolean;
-  attachCodexCpaHelp: string;
-  attachCodexCpaDisabledHelp: string;
   canAttachCodexStudio: boolean;
   attachCodexStudioDisabledHelp: string;
-  attachPreflightItems: CodexStackAttachPreflightItem[];
   studioGatewayPreflightItems: CodexStackAttachPreflightItem[];
 }>();
 
@@ -152,7 +132,6 @@ defineEmits<{
   "pause-stack": [];
   "resume-stack": [];
   "run-smoke-matrix": [];
-  "attach-codex-cpa": [];
   "attach-codex-studio": [];
   "preview-model-gateway-daemon-service": [];
   "status-model-gateway-daemon-service": [];

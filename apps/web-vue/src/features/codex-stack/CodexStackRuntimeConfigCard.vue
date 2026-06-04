@@ -5,8 +5,8 @@
         <p class="cs-section-kicker">{{ text("运行时", "Runtime") }}</p>
         <h4>{{ text("路由模型配置", "Route Model Config") }}</h4>
       </div>
-      <span class="cs-status-pill" :class="codexRouteActive === 'cpa' ? 'tone-sage' : 'tone-neutral'">
-        {{ codexRouteActive === "cpa" ? text("CPA 路由", "CPA route") : text("官方登录", "Official login") }}
+      <span class="cs-status-pill" :class="codexRouteActive === 'cpa' ? 'tone-accent' : 'tone-neutral'">
+        {{ codexRouteActive === "cpa" ? text("旧本地路由", "Legacy local route") : text("官方登录", "Official login") }}
       </span>
     </div>
 
@@ -28,12 +28,6 @@
       <div class="cs-route-actions">
         <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('save-and-use-official')">
           {{ hasChanges ? text("保存并用官方 ChatGPT", "Save and Use Official ChatGPT") : text("用官方 ChatGPT", "Use Official ChatGPT") }}
-        </button>
-        <button type="button" class="primary-button" :disabled="!canRunMutation" @click="$emit('save-and-attach-cpa')">
-          {{ hasChanges ? text("保存并验证 CPA", "Save and Verify CPA") : text("验证后用 CPA", "Verify and Use CPA") }}
-        </button>
-        <button type="button" class="primary-button is-danger" :disabled="!canRunMutation" @click="$emit('save-and-force-cpa')">
-          {{ hasChanges ? text("保存并强制 CPA", "Save and Force CPA") : text("强制用 CPA", "Force CPA") }}
         </button>
       </div>
       <p v-if="routeActionHelp" class="cs-disabled-help">
@@ -170,7 +164,7 @@
       <strong>{{ text("待应用重启", "Restart pending") }}</strong>
       <span>{{ restartRequiredUnits.join(", ") }}</span>
       <small>
-        {{ text("保存配置不会拉起已暂停的 CPA 栈；需要启用时用“恢复 CPA 栈”按顺序启动。", "Saving config will not start a paused CPA stack; use Resume CPA Stack when you want to bring it back up in order.") }}
+        {{ text("保存配置不会拉起旧本地代理；Codex 接管改由 Studio Gateway daemon 完成。", "Saving config will not start the legacy local proxy; Codex takeover is handled by Studio Gateway daemon.") }}
       </small>
     </div>
     <div v-if="impactItems.length" class="cs-impact-list">
@@ -239,8 +233,6 @@ const props = defineProps<{
   codexRouteOfficialModel: string;
   codexAuthMode: string | null;
   officialAuthBackupReady: boolean;
-  canAttachCodexCpa: boolean;
-  attachCodexCpaDisabledHelp: string;
   canRunMutation: boolean;
   hasChanges: boolean;
   mutationDisabledHelp: string;
@@ -249,8 +241,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   save: [];
   "update-field": [field: CodexStackRuntimeConfigField, value: string | number];
-  "save-and-attach-cpa": [];
-  "save-and-force-cpa": [];
   "save-and-use-official": [];
 }>();
 
@@ -263,12 +253,12 @@ const saveDisabledHelp = computed(() => {
 });
 
 const routeLabel = computed(() => props.codexRouteActive === "cpa"
-  ? text("当前使用 CPA / Compact 兼容端点", "Currently using CPA / Compact compatible endpoint")
+  ? text("当前仍是旧本地兼容端点", "Currently using the legacy local compatible endpoint")
   : text("当前使用官方 ChatGPT 登录", "Currently using official ChatGPT login"));
 
 const codexAuthModeLabel = computed(() => {
   if (!props.codexAuthMode) return text("未检测到认证文件", "No auth file detected");
-  if (props.codexAuthMode === "apikey") return text("CPA API Key", "CPA API key");
+  if (props.codexAuthMode === "apikey") return text("本地 API Key", "Local API key");
   if (props.codexAuthMode === "chatgpt") return text("ChatGPT 登录", "ChatGPT login");
   return props.codexAuthMode;
 });
@@ -283,12 +273,6 @@ const routeActionHelp = computed(() => {
     return text(
       "没有官方登录备份；切回官方后可能需要重新登录。",
       "No official login backup; switching back may require login.",
-    );
-  }
-  if (!props.canAttachCodexCpa) {
-    return text(
-      props.attachCodexCpaDisabledHelp,
-      props.attachCodexCpaDisabledHelp,
     );
   }
   return "";

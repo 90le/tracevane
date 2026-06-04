@@ -169,9 +169,7 @@ const REPAIR_ACTIONS = [
   "repair-no-proxy-loopback",
   "disable-legacy-healthcheck",
   "run-smoke-matrix",
-  "apply-codex-cpa-after-smoke",
   "apply-codex-studio-after-smoke",
-  "force-apply-codex-cpa",
   "restore-official-chatgpt",
   "disable-conflicting-units",
   "rerun-install-no-start",
@@ -869,13 +867,6 @@ function applyCodexStudioProviderSection(source: string, baseUrl = modelGatewayD
 function applyCodexStudioActiveProvider(source: string, model: string, baseUrl = modelGatewayDaemonBaseUrl()): string {
   let next = applyCodexStudioProviderSection(applyCodexStableTransport(source), baseUrl);
   next = upsertTopLevelTomlString(next, "model_provider", "studio");
-  next = upsertTopLevelTomlString(next, "model", model);
-  return removeTopLevelLocalCompactBaseUrls(next);
-}
-
-function applyCodexCpaActiveProvider(source: string, baseUrl: string, proxyKey: string, model: string): string {
-  let next = applyCodexCpaProviderSection(applyCodexStableTransport(source), baseUrl, proxyKey);
-  next = upsertTopLevelTomlString(next, "model_provider", "cpa");
   next = upsertTopLevelTomlString(next, "model", model);
   return removeTopLevelLocalCompactBaseUrls(next);
 }
@@ -2294,14 +2285,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     return matrix;
   }
 
-  async function runCodexCpaSmokeGate(job: CodexStackJob, ports: { cpa: number; compact: number }, token: string, attachModel: string): Promise<void> {
-    const matrix = await runCodexCpaSmokeMatrix(job, ports, token, [attachModel]);
-    if (!matrix.attachEligible) {
-      const failed = matrix.models.find((result) => result.status === "failed");
-      throw new Error(`CPA smoke matrix failed${failed ? ` for ${failed.model}: ${failed.error}` : ""}`);
-    }
-  }
-
   async function runCodexStudioSmokeGate(job: CodexStackJob, model: string): Promise<void> {
     const baseUrl = `http://${MODEL_GATEWAY_DEFAULT_HOST}:${MODEL_GATEWAY_DEFAULT_PORT}`;
     appendJobLog(job, `Running Studio Model Gateway smoke at ${baseUrl} using ${model}.\n`);
@@ -2740,10 +2723,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const warningReasons = params.warnings.map((warning) => {
       if (warning.includes("国内网关不会继承系统代理")) return "system-proxy-direct-provider";
       if (warning.includes("NO_PROXY")) return "no-proxy-loopback-missing";
-      if (warning.includes("CPA smoke matrix failed")) return "smoke-matrix-failed";
-      if (warning.includes("CPA smoke matrix is older")) return "smoke-matrix-stale";
+      if (warning.includes("smoke matrix failed")) return "smoke-matrix-failed";
+      if (warning.includes("smoke matrix is older")) return "smoke-matrix-stale";
       if (warning.includes("does not cover selected target model")) return "smoke-matrix-target-mismatch";
-      if (warning.includes("CPA smoke matrix is incomplete")) return "smoke-matrix-incomplete";
+      if (warning.includes("smoke matrix is incomplete")) return "smoke-matrix-incomplete";
       if (warning.includes("WebSocket")) return "codex-websocket-transport";
       if (warning.includes("request compression")) return "codex-request-compression";
       if (warning.includes("auth.json")) return "codex-auth-mismatch";
@@ -2953,11 +2936,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         status: params.codexCpaActive ? "pass" : "warn",
         detail: params.codexCpaActive
           ? "Codex 当前 active provider 指向本地 Compact/CPA 链路。"
-          : "Codex 当前保持官方 GPT 路径；只有通过 smoke gate 的接入动作才会切换到 CPA。",
+          : "Codex 当前保持官方 GPT 路径；通过 Studio Gateway smoke gate 后才会切换到自建 daemon。",
         section: params.codexCpaActive ? "settings" : "install",
         actionHint: params.codexCpaActive
           ? { kind: "open-section", label: "查看配置", section: "settings" }
-          : { kind: "repair", label: "验证后接入 CPA", repairActions: ["apply-codex-cpa-after-smoke"] },
+          : { kind: "repair", label: "接管 Studio Gateway", repairActions: ["apply-codex-studio-after-smoke"] },
       },
       {
         id: "codex-auth",
@@ -2967,13 +2950,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           ? "~/.codex/auth.json 与 CPA proxy key 匹配。"
           : params.codexCpaActive
             ? "~/.codex/auth.json 未写入或与 CPA proxy key 不一致；Codex CLI 可能绕过本地 Compact。"
-            : "当前 Codex 未接入 CPA；接入动作会在 smoke gate 通过后再写入本地 CPA key。",
+            : "当前 Codex 未接入 Studio Gateway；接管动作会在 daemon 和 smoke gate 通过后再写入本地 provider。",
         section: "settings",
         actionHint: codexAuthReady
           ? { kind: "open-section", label: "查看配置", section: "settings" }
           : params.codexCpaActive
             ? { kind: "repair", label: "修复 Codex auth", repairActions: ["repair-auth-json"] }
-            : { kind: "repair", label: "验证后接入 CPA", repairActions: ["apply-codex-cpa-after-smoke"] },
+            : { kind: "repair", label: "接管 Studio Gateway", repairActions: ["apply-codex-studio-after-smoke"] },
       },
       {
         id: "proxy-loopback",
@@ -3001,11 +2984,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       },
       {
         id: "smoke-matrix",
-        label: "CPA 目标模型 smoke",
+        label: "目标模型 smoke",
         status: smokeFresh ? "pass" : "warn",
         detail: smokeFresh
-          ? "最近一次目标 CPA 模型 smoke matrix 通过，允许考虑 CPA attach。"
-          : smokeFailureDetail || "尚无 24 小时内通过的目标 CPA 模型 smoke matrix；切换 Codex 前必须重新验证。",
+          ? "最近一次目标模型 smoke matrix 通过，允许接管 Studio Gateway。"
+          : smokeFailureDetail || "尚无 24 小时内通过的目标模型 smoke matrix；切换 Codex 前必须重新验证。",
         section: "install",
         actionHint: smokeFresh
           ? { kind: "open-section", label: "查看 smoke gate", section: "install" }
@@ -3055,7 +3038,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const longTaskReady = chatReady && !hasActiveJob && params.context.tokens !== null && params.context.tokens >= DEFAULT_CONTEXT_TOKENS;
     const compactionReady = chatReady && !compressionEnabled && params.context.mode !== "default";
     const chatBlockedDetail = !params.codexCpaActive
-      ? "当前 Codex 保持官方 GPT 路径；通过 smoke gate 接入 CPA 后再运行本地 Compact 对话。"
+      ? "当前 Codex 保持官方 GPT 路径；通过 Studio Gateway smoke gate 后再运行本地 daemon 对话。"
       : !codexAuthReady
         ? "先修复 Codex auth，确保 CLI 使用本地 CPA proxy key。"
         : baseChecksReady
@@ -3064,7 +3047,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const ccAgentModeReady = ccAgentTaskReady && chatReady;
     const firstFailedCheck = checks.find((check) => check.status === "fail");
     const chatActionHint = !params.codexCpaActive
-      ? { kind: "repair" as const, label: "验证后接入 CPA", repairActions: ["apply-codex-cpa-after-smoke" as const] }
+      ? { kind: "repair" as const, label: "接管 Studio Gateway", repairActions: ["apply-codex-studio-after-smoke" as const] }
       : !codexAuthReady
         ? { kind: "repair" as const, label: "修复 Codex auth", repairActions: ["repair-auth-json" as const] }
         : firstFailedCheck?.actionHint || (!smokeFresh
@@ -3275,7 +3258,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!managementSecret) warnings.push("CPA remote-management.secret-key is empty; the management dashboard/API is disabled.");
     if (!controlPanelEnabled) warnings.push("CPA management control panel is disabled; /management.html will not load.");
     if (!modelDiscovery.live && modelDiscovery.error) warnings.push(`模型列表未能从 /v1/models 读取，已使用本地配置回退：${modelDiscovery.error}`);
-    if (!cpaTargetModel) warnings.push("尚未选择 CPA 目标模型；请在运行配置里选择本机实际可用模型后再运行 smoke 或接入 CPA。");
+    if (!cpaTargetModel) warnings.push("尚未选择目标模型；请在运行配置里选择本机实际可用模型后再运行 smoke 或接管 Studio Gateway。");
     {
       const expectedCcProviderBaseUrl = `http://127.0.0.1:${compactPort}/v1`;
       const cpaProvider = ccParsed.providers.find((provider) => provider.name === "cpa");
@@ -3299,17 +3282,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!proxyPolicy.noProxyLoopbackReady) {
       warnings.push(`NO_PROXY 缺少 ${proxyPolicy.noProxyLoopbackMissing.join(", ")}；系统代理或 VPN 网卡/TUN 模式可能截获本地 CPA/Compact loopback 请求。运行 Codex 对话、长任务或压缩上下文前，请保留 localhost,127.0.0.1,::1。`);
     }
-    if (profile.lastSmokeMatrix?.status === "failed") warnings.push("CPA smoke matrix failed last run; Codex will not attach until the selected target model passes.");
-    if (isSmokeMatrixStale(profile.lastSmokeMatrix)) warnings.push("CPA smoke matrix is older than 24 hours; re-run the selected target model checks before treating Codex CPA attach as ready.");
+    if (profile.lastSmokeMatrix?.status === "failed") warnings.push("Target-model smoke matrix failed last run; Codex will not switch until the selected target model passes.");
+    if (isSmokeMatrixStale(profile.lastSmokeMatrix)) warnings.push("Target-model smoke matrix is older than 24 hours; re-run the selected target model checks before treating Studio Gateway takeover as ready.");
     if (
       profile.lastSmokeMatrix?.attachEligible
       && !isSmokeMatrixStale(profile.lastSmokeMatrix)
       && !isSmokeMatrixComplete(profile.lastSmokeMatrix, cpaTargetModel)
     ) {
       if (!smokeMatrixCoversTarget(profile.lastSmokeMatrix, cpaTargetModel)) {
-        warnings.push(`CPA smoke matrix does not cover selected target model ${cpaTargetModel}; re-run the selected target model checks before treating Codex CPA attach as ready.`);
+        warnings.push(`Target-model smoke matrix does not cover selected target model ${cpaTargetModel}; re-run the selected target model checks before treating Studio Gateway takeover as ready.`);
       } else {
-        warnings.push("CPA smoke matrix is incomplete; re-run the selected target model checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
+        warnings.push("Target-model smoke matrix is incomplete; re-run the selected target model checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
       }
     }
     const jobs = listJobs();
@@ -3829,33 +3812,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
               : "Legacy CPA healthcheck was already absent after systemd cleanup.\n",
           );
         }
-        if (action === "apply-codex-cpa-after-smoke") {
-          const codex = readText(currentPaths.codexConfig);
-          if (!codex) throw new Error("Codex config is missing");
-          const ports = stackPorts();
-          const compactBaseUrl = `http://127.0.0.1:${ports.compact}/v1`;
-          const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
-          const profile = readProfile();
-          const currentModel = extractTomlString(codex, "model");
-          const attachModel = requireCpaTargetModel(chooseCpaAttachModel(
-            currentModel,
-            profile.defaultModel,
-            readOpenclawDefaultModel(currentPaths.openclawJson),
-          ));
-          if (currentModel && currentModel !== attachModel) {
-            appendJobLog(job, `Current Codex model ${currentModel} is not CPA-safe for domestic routing; attach will switch Codex model to ${attachModel}.\n`);
-          }
-          await runCodexCpaSmokeGate(job, ports, effectiveProxyKey, attachModel);
-          const next = applyCodexCpaActiveProvider(codex, compactBaseUrl, effectiveProxyKey, attachModel);
-          if (next !== codex) {
-            backupAndWrite(currentPaths.codexConfig, next);
-            appendJobLog(job, `CPA smoke gate passed; Codex active provider switched to CPA using ${attachModel}.\n`, [effectiveProxyKey]);
-          } else {
-            appendJobLog(job, "CPA smoke gate passed; Codex active provider was already CPA.\n", [effectiveProxyKey]);
-          }
-          writeCodexAuth(currentPaths.codexAuth, effectiveProxyKey, currentPaths.codexOfficialAuthBackup);
-          appendJobLog(job, "Updated Codex auth.json for the local CPA proxy key and preserved any prior official ChatGPT auth backup.\n", [effectiveProxyKey]);
-        }
         if (action === "apply-codex-studio-after-smoke") {
           const codex = readText(currentPaths.codexConfig);
           if (!codex) throw new Error("Codex config is missing");
@@ -3874,30 +3830,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           } else {
             appendJobLog(job, "Studio Model Gateway smoke gate passed; Codex active provider was already studio.\n");
           }
-        }
-        if (action === "force-apply-codex-cpa") {
-          const codex = readText(currentPaths.codexConfig);
-          if (!codex) throw new Error("Codex config is missing");
-          const ports = stackPorts();
-          const compactBaseUrl = `http://127.0.0.1:${ports.compact}/v1`;
-          const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
-          const profile = readProfile();
-          const currentModel = extractTomlString(codex, "model");
-          const attachModel = requireCpaTargetModel(chooseCpaAttachModel(
-            currentModel,
-            profile.defaultModel,
-            readOpenclawDefaultModel(currentPaths.openclawJson),
-          ));
-          appendJobLog(job, "WARNING: Forced CPA attach requested without a passing smoke gate. Codex may fail ordinary, streaming, long-task, or compaction requests until the upstream model and network path are repaired.\n");
-          const next = applyCodexCpaActiveProvider(codex, compactBaseUrl, effectiveProxyKey, attachModel);
-          if (next !== codex) {
-            backupAndWrite(currentPaths.codexConfig, next);
-            appendJobLog(job, `Forced Codex active provider to CPA using ${attachModel}.\n`, [effectiveProxyKey]);
-          } else {
-            appendJobLog(job, "Codex active provider was already CPA; forced attach left config unchanged.\n", [effectiveProxyKey]);
-          }
-          writeCodexAuth(currentPaths.codexAuth, effectiveProxyKey, currentPaths.codexOfficialAuthBackup);
-          appendJobLog(job, "Updated Codex auth.json for the local CPA proxy key and preserved any prior official ChatGPT auth backup.\n", [effectiveProxyKey]);
         }
         if (action === "restore-official-chatgpt") {
           const codex = readText(currentPaths.codexConfig);
@@ -3928,7 +3860,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           const matrix = await runCodexCpaSmokeMatrix(job, ports, effectiveProxyKey, [attachModel]);
           if (!matrix.attachEligible) {
             const failed = matrix.models.find((result) => result.status === "failed");
-            throw new Error(`CPA smoke matrix failed${failed ? ` for ${failed.model}: ${failed.error}` : ""}`);
+            throw new Error(`Target-model smoke matrix failed${failed ? ` for ${failed.model}: ${failed.error}` : ""}`);
           }
         }
         if (action === "disable-conflicting-units") {

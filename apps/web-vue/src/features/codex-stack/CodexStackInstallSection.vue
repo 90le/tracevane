@@ -21,12 +21,8 @@
       <CodexStackRepairBoard
         :can-run-mutation="canRunMutation"
         :mutation-disabled-help="mutationDisabledHelp"
-        :can-attach-codex-cpa="canAttachCodexCpa"
-        :attach-codex-cpa-help="attachCodexCpaHelp"
-        :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
         :can-attach-codex-studio="canAttachCodexStudio"
         :attach-codex-studio-disabled-help="attachCodexStudioDisabledHelp"
-        :attach-preflight-items="attachPreflightItems"
         :studio-gateway-preflight-items="studioGatewayPreflightItems"
         @repair-recommended="emit('repair-recommended')"
         @repair-conflicts="emit('repair-conflicts')"
@@ -34,7 +30,6 @@
         @pause-stack="emit('pause-stack')"
         @resume-stack="emit('resume-stack')"
         @run-smoke-matrix="emit('run-smoke-matrix')"
-        @attach-codex-cpa="emit('attach-codex-cpa')"
         @attach-codex-studio="emit('attach-codex-studio')"
         @preview-model-gateway-daemon-service="emit('preview-model-gateway-daemon-service')"
         @status-model-gateway-daemon-service="emit('status-model-gateway-daemon-service')"
@@ -103,12 +98,8 @@ defineProps<{
   recommendedDisabled: boolean;
   recommendedDisabledHelp: string;
   recommendedTone: CodexStackTone;
-  canAttachCodexCpa: boolean;
-  attachCodexCpaHelp: string;
-  attachCodexCpaDisabledHelp: string;
   canAttachCodexStudio: boolean;
   attachCodexStudioDisabledHelp: string;
-  attachPreflightItems: CodexStackAttachPreflightItem[];
   studioGatewayPreflightItems: CodexStackAttachPreflightItem[];
   form: CodexStackInstallConfigDraft;
   modelOptions: string[];
@@ -130,7 +121,6 @@ const emit = defineEmits<{
   "pause-stack": [];
   "resume-stack": [];
   "run-smoke-matrix": [];
-  "attach-codex-cpa": [];
   "attach-codex-studio": [];
   "preview-model-gateway-daemon-service": [];
   "status-model-gateway-daemon-service": [];

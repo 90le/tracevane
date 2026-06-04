@@ -109,13 +109,13 @@ test("codex stack readiness action resolver dispatches run mode repair hints", (
   const command = resolveCodexStackRunReadinessModeAction(
     modeWithAction({
       kind: "repair",
-      label: "Attach CPA after smoke",
-      repairActions: ["apply-codex-cpa-after-smoke"],
+      label: "Attach Studio Gateway after smoke",
+      repairActions: ["apply-codex-studio-after-smoke"],
     }),
     "View details",
   );
 
-  assert.deepEqual(command, { type: "repair", actions: ["apply-codex-cpa-after-smoke"] });
+  assert.deepEqual(command, { type: "repair", actions: ["apply-codex-studio-after-smoke"] });
 });
 
 test("codex stack readiness action resolver opens legacy run modes on the dashboard", () => {
