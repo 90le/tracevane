@@ -2,20 +2,14 @@ export type CodexStackChannel = "official" | "dmwork" | "octo";
 
 export type CodexStackComponentId =
   | "codex"
-  | "cpa"
-  | "compact-proxy"
-  | "agent-gateway"
-  | "cc-connect"
-  | "watchdog";
+  | "studio-gateway"
+  | "cc-connect";
 
 export type CodexStackManualServiceId =
-  | "cli-proxy-api.service"
-  | "cpa-compact-proxy.service"
+  | "openclaw-studio-model-gateway.service"
   | "cc-connect.service";
 
-export type CodexStackManagedServiceId =
-  | "cli-proxy-api-healthcheck.timer"
-  | "codex-stack-watchdog.timer";
+export type CodexStackManagedServiceId = never;
 
 export type CodexStackServiceId = CodexStackManualServiceId | CodexStackManagedServiceId;
 
@@ -397,12 +391,12 @@ export interface CodexStackSummaryPayload {
 }
 
 export interface CodexStackInstallRequest {
-	  env?: {
-	    CODEX_MODEL?: string;
-	    CODEX_CONTEXT_MODE?: CodexStackContextMode;
-	    CODEX_CONTEXT_WINDOW?: number;
-	    OPENCLAW_UPSTREAM_BASE_URL?: string;
-	    OPENCLAW_UPSTREAM_API_KEY?: string;
+  env?: {
+    CODEX_MODEL?: string;
+    CODEX_CONTEXT_MODE?: CodexStackContextMode;
+    CODEX_CONTEXT_WINDOW?: number;
+    OPENCLAW_UPSTREAM_BASE_URL?: string;
+    OPENCLAW_UPSTREAM_API_KEY?: string;
     OPENCLAW_PROVIDER_PROXY_URL?: string;
     OPENCLAW_NO_PROXY?: string;
   };

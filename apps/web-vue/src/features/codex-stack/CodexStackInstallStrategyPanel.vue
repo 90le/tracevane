@@ -11,7 +11,7 @@
         {{ text("小白用户保持默认即可。只有组件损坏、版本不一致或需要保留现状时，再改跳过或强制。", "New users can keep defaults. Change skip or force only for damaged components, version mismatch, or preserving the current state.") }}
       </p>
       <p class="cs-install-managed-note">
-        {{ text("后台守护由安装、暂停和推荐修复流程自动托管，不在这里手动跳过或强制。", "The background watchdog is managed by install, pause, and recommended repair flows, so it is not skipped or forced manually here.") }}
+        {{ text("Studio Gateway daemon 由独立 service supervisor 托管；组件策略只影响安装准备，不替代 service manager 操作。", "The Studio Gateway daemon is owned by an independent service supervisor; component strategy only affects install preparation and does not replace service manager actions.") }}
       </p>
       <div class="cs-component-mode-list">
         <article v-for="component in components" :key="component.id" class="cs-component-mode-row">
@@ -57,7 +57,7 @@
         </div>
       </div>
       <p class="cs-field-hint">
-        {{ text("完整安装会同时部署 cc-connect；基础安装保留 Codex、CPA、Compact，并自动配置后台守护。", "Full install includes cc-connect; base install keeps Codex, CPA, Compact, and automatically configures the background watchdog.") }}
+        {{ text("完整安装会同时准备 cc-connect；基础安装保留 Codex 与 Studio Gateway daemon，模型 relay 不再依赖 CPA/Compact。", "Full install also prepares cc-connect; base install keeps Codex and the Studio Gateway daemon, and model relay no longer depends on CPA/Compact.") }}
       </p>
       <div class="cs-install-run-actions">
         <button type="button" class="primary-button cs-big-button" :disabled="!canRunMutation" @click="$emit('install-full')">

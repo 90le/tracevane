@@ -705,7 +705,8 @@ test("codex stack dashboard delegates hero actions without moving service comman
   assert.match(controlPage, /@run-check="runCheck"/);
   assert.match(controlPage, /@repair="repairRecommended"/);
   assert.match(controlPage, /@sync="loadAll"/);
-  assert.match(controlPage, /const primaryServiceIds = \[[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"[\s\S]*"cc-connect\.service"[\s\S]*\] as const satisfies readonly CodexStackManualServiceId\[\];/);
+  assert.match(controlPage, /const primaryServiceIds = \[[\s\S]*MODEL_GATEWAY_DAEMON_SERVICE_NAME[\s\S]*"cc-connect\.service"[\s\S]*\] as const satisfies readonly CodexStackManualServiceId\[\];/);
+  assert.doesNotMatch(controlPage, /const primaryServiceIds = \[[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"/);
   assert.match(controlPage, /const activeServiceCount = computed\(\(\) => countActiveServices\(primaryServices\.value\)\);/);
   assert.match(controlPage, /const serviceCount = computed\(\(\) => primaryServices\.value\.length\);/);
   assert.match(controlPage, /const codexProviderCheck = computed\(\(\) => \(/);
@@ -732,7 +733,8 @@ test("codex stack dashboard delegates hero actions without moving service comman
 test("codex stack service grid explains global mutation locks without moving service actions", () => {
   assert.match(dashboardSection, /<CodexStackServiceGrid[\s\S]*:services="serviceCards"[\s\S]*:can-run-mutation="canRunMutation"[\s\S]*:mutation-disabled-help="mutationDisabledHelp"[\s\S]*:labels="serviceGridLabels"[\s\S]*@service-action="\(serviceId, action\) => emit\('service-action', serviceId, action\)"/);
   assert.match(controlPage, /<CodexStackDashboardSection[\s\S]*:service-cards="serviceCards"[\s\S]*:service-grid-labels="serviceGridLabels"[\s\S]*@service-action="serviceAction"/);
-  assert.match(controlPage, /const primaryServiceIds = \[[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"[\s\S]*"cc-connect\.service"[\s\S]*\] as const satisfies readonly CodexStackManualServiceId\[\];/);
+  assert.match(controlPage, /const primaryServiceIds = \[[\s\S]*MODEL_GATEWAY_DAEMON_SERVICE_NAME[\s\S]*"cc-connect\.service"[\s\S]*\] as const satisfies readonly CodexStackManualServiceId\[\];/);
+  assert.doesNotMatch(controlPage, /"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"/);
   assert.match(controlPage, /type PrimaryCodexStackServiceId = \(typeof primaryServiceIds\)\[number\];/);
   assert.match(controlPage, /const primaryServiceIdSet = new Set<CodexStackServiceId>\(primaryServiceIds\);/);
   assert.match(controlPage, /function isPrimaryServiceStatus\(service: CodexStackServiceStatus\): service is PrimaryCodexStackServiceStatus/);
@@ -765,8 +767,9 @@ test("codex stack service grid explains global mutation locks without moving ser
 test("codex stack service-control helper accepts only manual service ids", () => {
   const api = read("apps/web-vue/src/features/codex-stack/api.ts");
 
-  assert.match(codexStackTypes, /export type CodexStackManualServiceId =[\s\S]*"cli-proxy-api\.service"[\s\S]*"cpa-compact-proxy\.service"[\s\S]*"cc-connect\.service";/);
-  assert.match(codexStackTypes, /export type CodexStackManagedServiceId =[\s\S]*"cli-proxy-api-healthcheck\.timer"[\s\S]*"codex-stack-watchdog\.timer";/);
+  assert.match(codexStackTypes, /export type CodexStackManualServiceId =[\s\S]*"openclaw-studio-model-gateway\.service"[\s\S]*"cc-connect\.service";/);
+  assert.match(codexStackTypes, /export type CodexStackManagedServiceId = never;/);
+  assert.doesNotMatch(codexStackTypes, /"cli-proxy-api\.service"|"cpa-compact-proxy\.service"|"cli-proxy-api-healthcheck\.timer"|"codex-stack-watchdog\.timer"/);
   assert.match(codexStackTypes, /export type CodexStackServiceId = CodexStackManualServiceId \| CodexStackManagedServiceId;/);
   assert.match(codexStackTypes, /restartRequiredUnits\?: CodexStackManualServiceId\[\];/);
   assert.match(api, /CodexStackManualServiceId/);
@@ -922,6 +925,8 @@ test("codex stack install page delegates component strategy and CTA without movi
   assert.match(controlPage, /function setComponentMode\(componentId: CodexStackComponentId, mode: ComponentInstallMode\): void/);
   assert.match(controlPage, /function isEditableInstallComponent\(componentId: CodexStackComponentId\): boolean/);
   assert.match(controlPage, /function filterEditableInstallComponents\(componentIds: string\[\]\): CodexStackComponentId\[\]/);
+  assert.match(controlPage, /id: "studio-gateway" as const, label: text\("Studio Gateway daemon", "Studio Gateway daemon"\)/);
+  assert.doesNotMatch(controlPage, /id: "cpa" as const|id: "compact-proxy" as const/);
   assert.doesNotMatch(controlPage, /id: "watchdog" as const, label: text\("后台守护", "Background Watchdog"\)/);
   assert.match(controlPage, /const skipComponents = filterEditableInstallComponents\(installForm\.skipComponents\);/);
   assert.match(controlPage, /const forceReinstallComponents = filterEditableInstallComponents\(installForm\.forceComponents\);/);
@@ -937,7 +942,8 @@ test("codex stack install page delegates component strategy and CTA without movi
   assert.match(installStrategyPanel, /mutationDisabledHelp: string;/);
   assert.match(installStrategyPanel, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(installStrategyPanel, /class="cs-install-managed-note"/);
-  assert.match(installStrategyPanel, /后台守护由安装、暂停和推荐修复流程自动托管/);
+  assert.match(installStrategyPanel, /Studio Gateway daemon 由独立 service supervisor 托管/);
+  assert.match(installStrategyPanel, /模型 relay 不再依赖 CPA\/Compact/);
   assert.match(installStrategyPanel, /class="cs-install-run-actions"/);
   assert.doesNotMatch(installStrategyPanel, /cs-install-command-pane|cs-install-cta-card|cs-card-header|<style scoped>/);
   assert.match(codexStackInstallCss, /\.cs-install-strategy-workbench\s*\{/);
@@ -1266,10 +1272,11 @@ test("codex stack dashboard exposes a request chain safety map", () => {
   assert.match(controlPage, /matrixFresh \? text\("可切 Codex", "Attach ready"\)/);
   assert.match(controlPage, /id: "job-lock"/);
   assert.match(controlPage, /id: "smoke"/);
-  assert.match(controlPage, /id: "watchdog"[\s\S]*label: text\("后台守护", "Background Watchdog"\)/);
+  assert.match(controlPage, /id: "daemon-service"[\s\S]*MODEL_GATEWAY_DAEMON_SERVICE_NAME/);
+  assert.match(controlPage, /id: "studio-gateway"[\s\S]*label: "Studio Gateway"/);
   assert.doesNotMatch(controlPage, /"codex-stack-watchdog\.timer": \{[\s\S]*labelKey: \["后台守护", "Background Watchdog"\]/);
   assert.doesNotMatch(controlPage, /"cli-proxy-api-healthcheck\.timer": \{[\s\S]*labelKey: \["旧巡检", "Legacy Healthcheck"\]/);
-  assert.doesNotMatch(controlPage, /id: "watchdog" as const, label: text\("后台守护", "Background Watchdog"\)/);
+  assert.doesNotMatch(controlPage, /id: "watchdog"[\s\S]*label: text\("后台守护", "Background Watchdog"\)/);
   assert.doesNotMatch(controlPage, /labelKey: \["Watchdog", "Watchdog"\]/);
   assert.doesNotMatch(controlPage, /label: text\("看门狗", "Watchdog"\)/);
   assert.doesNotMatch(controlPage, /label: "Watchdog"[\s\S]*暂停链路时应先停 watchdog/);
@@ -1458,19 +1465,20 @@ test("codex stack attach action exposes only Studio Gateway takeover in the UI",
 
 test("codex stack recommended repair avoids removed CPA lifecycle actions", () => {
   assert.match(viewModel, /const services = new Map\(summary\.services\.map\(\(service\) => \[service\.id, service\]\)\);/);
-  assert.match(viewModel, /const legacyHealthcheck = services\.get\("cli-proxy-api-healthcheck\.timer"\);/);
-  assert.match(viewModel, /const shouldDisableLegacyHealthcheck = legacyHealthcheck\?\.active === true \|\| legacyHealthcheck\?\.enabled === true;/);
+  assert.doesNotMatch(viewModel, /legacyHealthcheck|cli-proxy-api-healthcheck\.timer|shouldDisableLegacyHealthcheck/);
   assert.match(viewModel, /const codexAuthCheck = summary\.runReadiness\?\.checks\.find\(\(check\) => check\.id === "codex-auth"\);/);
   assert.match(viewModel, /codexAuthCheck\.status === "fail"/);
-  assert.match(viewModel, /actions\.push\("disable-legacy-healthcheck"\);/);
+  assert.doesNotMatch(viewModel, /actions\.push\("disable-legacy-healthcheck"\);/);
   assert.match(viewModel, /actions\.push\("repair-no-proxy-loopback"\);/);
   assert.match(viewModel, /actions\.push\("apply-codex-studio-after-smoke"\);/);
   assert.doesNotMatch(viewModel, /resume-stack|pause-stack|restart-cpa|restart-compact-proxy|restart-watchdog|repair-cpa-management|repair-codex-transport/);
 });
 
-test("codex stack service grid does not auto-resume legacy Compact Proxy", () => {
-  assert.match(controlPage, /function isSummaryServiceActive\(serviceId: CodexStackServiceId\): boolean/);
-  assert.match(controlPage, /serviceId === "cpa-compact-proxy\.service"[\s\S]*旧 Compact Proxy 不再通过 Studio 自动恢复/);
+test("codex stack service grid routes model relay control to Studio Gateway daemon", () => {
+  assert.match(controlPage, /MODEL_GATEWAY_DAEMON_SERVICE_NAME/);
+  assert.match(controlPage, /labelKey: \["Studio Gateway", "Studio Gateway"\]/);
+  assert.doesNotMatch(controlPage, /function isSummaryServiceActive\(serviceId: CodexStackServiceId\): boolean/);
+  assert.doesNotMatch(controlPage, /serviceId === "cpa-compact-proxy\.service"|旧 Compact Proxy 不再通过 Studio 自动恢复/);
   assert.doesNotMatch(controlPage, /await resumeStack\(\);/);
 });
 

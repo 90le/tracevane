@@ -74,17 +74,12 @@ export function buildCodexStackRepairActions(summary: CodexStackSummaryPayload):
 > {
   const actions: CodexStackRepairAction[] = [];
   const services = new Map(summary.services.map((service) => [service.id, service]));
-  const legacyHealthcheck = services.get("cli-proxy-api-healthcheck.timer");
-  const shouldDisableLegacyHealthcheck = legacyHealthcheck?.active === true || legacyHealthcheck?.enabled === true;
   const codexAuthCheck = summary.runReadiness?.checks.find((check) => check.id === "codex-auth");
   const shouldRepairCodexAuth = codexAuthCheck
     ? codexAuthCheck.status === "fail"
     : (!summary.secrets.codexAuth.hasSecret || summary.secrets.codexAuth.matchesProxyKey === false);
   if (shouldRepairCodexAuth) {
     actions.push("repair-auth-json");
-  }
-  if (shouldDisableLegacyHealthcheck) {
-    actions.push("disable-legacy-healthcheck");
   }
   if (!normalizeProxyPolicy(summary.proxyPolicy).noProxyLoopbackReady) {
     actions.push("repair-no-proxy-loopback");

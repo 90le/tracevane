@@ -321,7 +321,10 @@ import type {
   CodexStackSmokeMatrixResult,
   CodexStackSummaryPayload,
 } from "../../../../../types/codex-stack";
-import type { ModelGatewayDaemonServiceResponse } from "../../../../../types/model-gateway";
+import {
+  MODEL_GATEWAY_DAEMON_SERVICE_NAME,
+  type ModelGatewayDaemonServiceResponse,
+} from "../../../../../types/model-gateway";
 import {
   controlCodexStackService,
   enableCodexStackManagement,
@@ -469,10 +472,9 @@ const activeSection = ref<SectionId>("dashboard");
 const workspaceFocusHint = ref<CodexStackWorkspaceFocusHint | null>(null);
 const activeAgentPane = ref<AgentPaneId>("projects");
 const selectedProjectDraftId = ref("");
-const selectedLogService = ref<CodexStackServiceId>("cli-proxy-api.service");
+const selectedLogService = ref<CodexStackServiceId>(MODEL_GATEWAY_DAEMON_SERVICE_NAME);
 const primaryServiceIds = [
-  "cli-proxy-api.service",
-  "cpa-compact-proxy.service",
+  MODEL_GATEWAY_DAEMON_SERVICE_NAME,
   "cc-connect.service",
 ] as const satisfies readonly CodexStackManualServiceId[];
 type PrimaryCodexStackServiceId = (typeof primaryServiceIds)[number];
@@ -480,10 +482,8 @@ type PrimaryCodexStackServiceStatus = CodexStackServiceStatus & { id: PrimaryCod
 const primaryServiceIdSet = new Set<CodexStackServiceId>(primaryServiceIds);
 const logServices = computed<CodexStackLogServiceOption[]>(() => {
   const services: CodexStackLogServiceOption[] = [
-    { id: "cli-proxy-api.service", label: text("CPA", "CPA"), tone: "neutral", rawState: "--" },
-    { id: "cpa-compact-proxy.service", label: text("Gateway", "Gateway"), tone: "neutral", rawState: "--" },
+    { id: MODEL_GATEWAY_DAEMON_SERVICE_NAME, label: text("Studio Gateway", "Studio Gateway"), tone: "neutral", rawState: "--" },
     { id: "cc-connect.service", label: text("cc-connect", "cc-connect"), tone: "neutral", rawState: "--" },
-    { id: "codex-stack-watchdog.timer", label: text("后台守护", "Background Watchdog"), tone: "neutral", rawState: "--" },
   ];
   
   if (summary.value) {
@@ -586,13 +586,9 @@ const serviceCatalog: Record<
     blurbKey: [string, string];
   }
 > = {
-  "cli-proxy-api.service": {
-    labelKey: ["CPA", "CPA"],
-    blurbKey: ["Codex Proxy API 服务", "Codex Proxy API service"],
-  },
-  "cpa-compact-proxy.service": {
-    labelKey: ["Gateway / Compact", "Gateway / Compact"],
-    blurbKey: ["Studio Agent Gateway 协议转发服务", "Studio Agent Gateway protocol forwarding service"],
+  [MODEL_GATEWAY_DAEMON_SERVICE_NAME]: {
+    labelKey: ["Studio Gateway", "Studio Gateway"],
+    blurbKey: ["本地模型中转 daemon", "Local model relay daemon"],
   },
   "cc-connect.service": {
     labelKey: ["cc-connect", "cc-connect"],
@@ -663,7 +659,7 @@ const modelSourceTone = computed<CodexStackTone>(() => {
 });
 const modelSourceLabel = computed(() => {
   const source = summary.value?.models.source || "fallback";
-  if (source === "live") return text("来自 CPA /v1/models", "From CPA /v1/models");
+  if (source === "live") return text("来自 Studio Gateway /v1/models", "From Studio Gateway /v1/models");
   if (source === "config") return text("使用本地配置回退", "Using config fallback");
   return text("使用默认回退", "Using default fallback");
 });
@@ -672,8 +668,8 @@ const modelSourceHelp = computed(() => {
   if (!models) return text("正在读取模型列表。", "Loading model catalog.");
   if (models.live) {
     return text(
-      `已连接 ${models.endpoint}，模型选择器会跟随 CPA 实际可用列表。`,
-      `Connected to ${models.endpoint}; selectors follow the actual CPA model catalog.`,
+      `已连接 ${models.endpoint}，模型选择器会跟随 Studio Gateway 实际可用列表。`,
+      `Connected to ${models.endpoint}; selectors follow the actual Studio Gateway model catalog.`,
     );
   }
   return text(
@@ -914,8 +910,8 @@ const installPlanRecommendedTitle = computed(() => {
 const installPlanRecommendedCopy = computed(() => {
   if (activeRecommendation.value?.kind === "install") {
     return text(
-      "Studio 会按当前模型、端口和直连策略安装 CPA、Compact、cc-connect 与必要守护；日志会在浮层里输出。",
-      "Studio installs CPA, Compact, cc-connect, and required guards with the current model, ports, and direct-access policy; logs open in the floating output panel.",
+      "Studio 会按当前模型和直连策略准备 Codex、Studio Gateway daemon 与可选 cc-connect；日志会在浮层里输出。",
+      "Studio prepares Codex, the Studio Gateway daemon, and optional cc-connect with the current model and direct-access policy; logs open in the floating output panel.",
     );
   }
   if (activeRecommendation.value?.kind === "review-smoke") {
@@ -1120,14 +1116,9 @@ const runtimeSummaryRows = computed<CodexStackRuntimeSummaryRow[]>(() => {
       value: channelLabel(current.installer.channel),
     },
     {
-      id: "cpa",
-      label: "CPA",
-      value: portDisplay(current.ports.cpa, current.ports.detectedCpa),
-    },
-    {
-      id: "compact",
-      label: "Gateway",
-      value: portDisplay(current.ports.compact, current.ports.detectedCompact),
+      id: "studio-gateway",
+      label: "Studio Gateway",
+      value: current.gateway.baseUrl || portDisplay(current.ports.compact, current.ports.detectedCompact),
     },
     {
       id: "gateway-protocols",
@@ -1137,14 +1128,14 @@ const runtimeSummaryRows = computed<CodexStackRuntimeSummaryRow[]>(() => {
         : text("Chat / Responses / Compact", "Chat / Responses / Compact"),
     },
     {
-      id: "watchdog",
-      label: text("后台守护", "Background Watchdog"),
+      id: "daemon-service",
+      label: text("Daemon service", "Daemon service"),
       value: (() => {
-        const watchdog = current.services.find((service) => service.id === "codex-stack-watchdog.timer");
-        if (!watchdog?.installed) return text("未安装；安装/修复会补齐", "Not installed; install/repair will add it");
-        return watchdog.active
-          ? text("已启用；异常自动恢复", "Enabled; auto-recovers issues")
-          : text("已暂停；推荐修复会恢复", "Paused; Recommended Repair will resume it");
+        const daemon = current.services.find((service) => service.id === MODEL_GATEWAY_DAEMON_SERVICE_NAME);
+        if (!daemon?.installed) return text("未安装 service 模板", "Service template not installed");
+        if (daemon.active && daemon.enabled) return text("运行中 / 自启动", "Running / auto-start");
+        if (daemon.active) return text("运行中 / 未自启动", "Running / not auto-started");
+        return text("未运行", "Stopped");
       })(),
     },
     {
@@ -1216,7 +1207,7 @@ const networkPolicyCard = computed<CodexStackNetworkPolicyCard | null>(() => {
 });
 const chainMapLabels = computed(() => ({
   kicker: text("链路", "Chain"),
-  title: text("CPA / Compact / Codex 请求链路", "CPA / Compact / Codex Request Chain"),
+  title: text("Studio Gateway / Codex 请求链路", "Studio Gateway / Codex Request Chain"),
   copy: text(
     "把运行链路、代理策略、上下文和 smoke gate 放到同一张图里，避免安装、修改或长任务时误判当前 Codex 状态。",
     "The runtime chain, proxy policy, context, and smoke gate stay in one view so install, edits, and long jobs do not hide the current Codex state.",
@@ -1231,24 +1222,15 @@ const chainNodes = computed<CodexStackChainNode[]>(() => {
   if (!current) return [];
   return [
     {
-      id: "cpa",
-      label: "CPA",
-      value: portDisplay(current.ports.cpa, current.ports.detectedCpa),
-      meta: current.services.find((service) => service.id === "cli-proxy-api.service")?.active
-        ? text("OpenAI 兼容入口运行中", "OpenAI-compatible ingress is running")
-        : text("入口未运行或未安装", "Ingress is stopped or missing"),
-      tone: current.components.find((component) => component.id === "cpa")?.status === "ok" ? "sage" : "danger",
-    },
-    {
-      id: "compact",
-      label: "Gateway",
-      value: `:${current.ports.compact}`,
+      id: "studio-gateway",
+      label: "Studio Gateway",
+      value: current.gateway.baseUrl || `:${current.ports.compact}`,
       meta: current.gateway?.protocols.anthropicMessages
         ? text("OpenAI Chat/Responses + Claude Messages", "OpenAI Chat/Responses + Claude Messages")
         : current.models.live
           ? text("模型目录来自 /v1/models", "Model catalog comes from /v1/models")
           : text("模型目录使用本地回退", "Model catalog is using fallback data"),
-      tone: current.gateway?.live ? "sage" : "accent",
+      tone: current.components.find((component) => component.id === "studio-gateway")?.status === "ok" ? "sage" : "accent",
     },
     {
       id: "codex",
@@ -1610,6 +1592,7 @@ const serviceGridLabels = computed(() => ({
 }));
 const componentOptions = computed(() => [
   { id: "codex" as const, label: text("Codex CLI", "Codex CLI") },
+  { id: "studio-gateway" as const, label: text("Studio Gateway daemon", "Studio Gateway daemon") },
   { id: "cc-connect" as const, label: "cc-connect" },
 ]);
 const installComponentStrategies = computed<CodexStackInstallComponentStrategy[]>(() => componentOptions.value.map((component) => ({
@@ -1741,7 +1724,7 @@ const jobProgressDefinitions = computed(() => {
     { label: text("预检环境", "Preflight"), patterns: ["node.js", "npm", "openclaw.json", "step 1/8"] },
     { label: text("安装 CLI", "Install CLI"), patterns: ["step 2/8", "codex cli", "oh-my-codex"] },
     { label: text("部署 cc-connect", "Deploy cc-connect"), patterns: ["step 3/8", "cc-connect"] },
-    { label: text("部署 CPA / Compact", "Deploy CPA / Compact"), patterns: ["step 4/8", "compact proxy"] },
+    { label: text("准备 Studio Gateway", "Prepare Studio Gateway"), patterns: ["step 4/8", "studio gateway", "model-gateway"] },
     { label: text("写入配置", "Write configs"), patterns: ["step 5/8", "step 6/8"] },
     { label: text("创建守护", "Create daemons"), patterns: ["step 7/8", "systemd"] },
     { label: text("启动与验证", "Start and verify"), patterns: ["step 8/8", "安装完成", "install succeeded"] },
@@ -2139,16 +2122,10 @@ function isSmokeMatrixFreshAndComplete(matrix: CodexStackSmokeMatrixResult | nul
 }
 
 function serviceEndpointInfo(serviceId: CodexStackServiceId, currentSummary: CodexStackSummaryPayload) {
-  if (serviceId === "cli-proxy-api.service") {
+  if (serviceId === MODEL_GATEWAY_DAEMON_SERVICE_NAME) {
     return {
-      endpointLabel: text("端口", "Port"),
-      endpointValue: portDisplay(currentSummary.ports.cpa, currentSummary.ports.detectedCpa),
-    };
-  }
-  if (serviceId === "cpa-compact-proxy.service") {
-    return {
-      endpointLabel: text("端口", "Port"),
-      endpointValue: portDisplay(currentSummary.ports.compact, currentSummary.ports.detectedCompact),
+      endpointLabel: text("Endpoint", "Endpoint"),
+      endpointValue: currentSummary.gateway.baseUrl || `http://127.0.0.1:${currentSummary.ports.compact}/v1`,
     };
   }
   if (serviceId === "cc-connect.service") {
@@ -2161,10 +2138,6 @@ function serviceEndpointInfo(serviceId: CodexStackServiceId, currentSummary: Cod
     endpointLabel: text("类型", "Type"),
     endpointValue: text("systemd 定时器", "systemd timer"),
   };
-}
-
-function isSummaryServiceActive(serviceId: CodexStackServiceId): boolean {
-  return summary.value?.services.find((service) => service.id === serviceId)?.active === true;
 }
 
 function componentStatusLabel(component: CodexStackComponentSummary): string {
@@ -2740,17 +2713,6 @@ async function serviceAction(
   action: Extract<CodexStackServiceAction, "start" | "stop" | "restart" | "enable">,
 ): Promise<void> {
   if (!guardMutation()) return;
-  if (
-    (action === "start" || action === "restart" || action === "enable")
-    && serviceId === "cpa-compact-proxy.service"
-    && !isSummaryServiceActive("cli-proxy-api.service")
-  ) {
-    notice.value = {
-      kind: "error",
-      text: text("旧 Compact Proxy 不再通过 Studio 自动恢复；请使用 Studio Gateway daemon。", "Legacy Compact Proxy is no longer auto-resumed by Studio; use the Studio Gateway daemon."),
-    };
-    return;
-  }
   busy.value = true;
   try {
     const response = await controlCodexStackService(serviceId, action);

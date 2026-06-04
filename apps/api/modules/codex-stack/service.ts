@@ -10,6 +10,7 @@ import {
   CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS,
 } from "../../../../types/codex-stack.js";
 import {
+  MODEL_GATEWAY_DAEMON_SERVICE_NAME,
   MODEL_GATEWAY_DEFAULT_HOST,
   MODEL_GATEWAY_DEFAULT_PORT,
 } from "../../../../types/model-gateway.js";
@@ -78,27 +79,20 @@ const DEFAULT_CC_CONNECT_PROJECT = "main";
 const JOB_TAIL_CHARS = 12_000;
 
 const SERVICE_IDS = [
-  "cli-proxy-api.service",
-  "cli-proxy-api-healthcheck.timer",
-  "cpa-compact-proxy.service",
+  MODEL_GATEWAY_DAEMON_SERVICE_NAME,
   "cc-connect.service",
-  "codex-stack-watchdog.timer",
 ] as const satisfies readonly CodexStackServiceId[];
 
 const MANUAL_SERVICE_IDS = [
-  "cli-proxy-api.service",
-  "cpa-compact-proxy.service",
+  MODEL_GATEWAY_DAEMON_SERVICE_NAME,
   "cc-connect.service",
 ] as const satisfies readonly CodexStackManualServiceId[];
 
 const SERVICE_ACTIONS = ["restart", "start", "stop", "enable"] as const satisfies readonly CodexStackServiceAction[];
 
 const FALLBACK_LOG_FILES: Record<CodexStackServiceId, string[]> = {
-  "cli-proxy-api.service": ["/tmp/cpa.log"],
-  "cli-proxy-api-healthcheck.timer": [],
-  "cpa-compact-proxy.service": ["/tmp/cpa-compact-proxy.log"],
+  [MODEL_GATEWAY_DAEMON_SERVICE_NAME]: [],
   "cc-connect.service": ["/tmp/cc-connect.log"],
-  "codex-stack-watchdog.timer": [],
 };
 
 interface CodexStackModelDiscovery {
@@ -1407,7 +1401,7 @@ function smokeMatrixFailureDetail(matrix: CodexStackSmokeMatrixResult | null | u
       ].filter(Boolean);
       return `${model.model}: ${parts.join("；") || "模型 smoke 未通过"}`;
     });
-  if (!failures.length && matrix.status === "failed") return "上次 smoke matrix 失败，但未记录具体失败检查；请重新运行当前默认 CPA 模型 smoke matrix。";
+  if (!failures.length && matrix.status === "failed") return "上次 smoke matrix 失败，但未记录具体失败检查；请重新运行当前默认目标模型 smoke matrix。";
   if (!failures.length) return null;
   return `上次 smoke matrix 失败：${failures.join("；")}。`;
 }
@@ -2115,7 +2109,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (target) return target;
     throw new CodexStackServiceError(
       "codex_stack_target_model_required",
-      "请先在运行配置里选择 CPA 目标模型。Studio 不再把历史默认模型当作所有机器的必测兜底模型。",
+      "请先在运行配置里选择目标模型。Studio 不再把历史默认模型当作所有机器的必测兜底模型。",
       400,
     );
   }
@@ -2133,7 +2127,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!requiredModels.some(Boolean)) {
       throw new CodexStackServiceError(
         "codex_stack_target_model_required",
-        "请先在运行配置里选择 CPA 目标模型，再运行 smoke matrix。",
+        "请先在运行配置里选择目标模型，再运行 smoke matrix。",
         400,
       );
     }
@@ -2254,8 +2248,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     omxVersion: string | null;
     ccVersion: string | null;
     services: CodexStackServiceStatus[];
-    cpaHealthy: boolean;
-    compactHealthy: boolean;
     codexAuthOk: boolean;
     codexCpaActive: boolean;
     gateway: CodexStackSummaryPayload["gateway"];
@@ -2263,8 +2255,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const currentPaths = paths();
     const serviceById = new Map(params.services.map((service) => [service.id, service]));
     const codexConfigExists = pathExists(currentPaths.codexConfig);
-    const cpaConfigExists = pathExists(currentPaths.cpaConfig);
     const ccConfigExists = pathExists(currentPaths.ccConnectConfig);
+    const studioGatewayService = serviceById.get(MODEL_GATEWAY_DAEMON_SERVICE_NAME);
+    const studioGatewayInstalled = studioGatewayService?.installed === true || params.gateway.live;
+    const studioGatewayActive = studioGatewayService?.active === true || params.gateway.live;
     return [
       {
         id: "codex",
@@ -2278,41 +2272,24 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           params.omxVersion ? `omx ${params.omxVersion}` : "omx not detected",
           params.codexCpaActive
             ? (params.codexAuthOk ? "auth.json ok" : "auth.json missing or mismatched")
-            : "official provider active; CPA auth checked before attach",
+            : "official provider active; Studio Gateway auth checked before takeover",
         ].filter(Boolean),
         paths: { config: currentPaths.codexConfig, auth: currentPaths.codexAuth },
       },
       {
-        id: "cpa",
-        label: "CPA",
-        status: pathExists(currentPaths.cliProxyApi) && cpaConfigExists && serviceById.get("cli-proxy-api.service")?.active && params.cpaHealthy ? "ok" : "degraded",
-        installed: pathExists(currentPaths.cliProxyApi) || cpaConfigExists,
-        version: null,
-        notes: params.cpaHealthy ? ["healthz ok"] : ["healthz not reachable"],
-        paths: { binary: currentPaths.cliProxyApi, config: currentPaths.cpaConfig },
-      },
-      {
-        id: "compact-proxy",
-        label: "Compact Proxy",
-        status: pathExists(currentPaths.compactProxy) && serviceById.get("cpa-compact-proxy.service")?.active && params.compactHealthy ? "ok" : "degraded",
-        installed: pathExists(currentPaths.compactProxy),
-        version: null,
-        notes: params.compactHealthy ? ["healthz ok"] : ["healthz not reachable"],
-        paths: { script: currentPaths.compactProxy },
-      },
-      {
-        id: "agent-gateway",
-        label: "Studio Agent Gateway",
-        status: pathExists(currentPaths.compactProxy) && serviceById.get("cpa-compact-proxy.service")?.active && params.gateway.live ? "ok" : "degraded",
-        installed: pathExists(currentPaths.compactProxy),
+        id: "studio-gateway",
+        label: "Studio Gateway daemon",
+        status: studioGatewayActive && params.gateway.live ? "ok" : (studioGatewayInstalled ? "degraded" : "missing"),
+        installed: studioGatewayInstalled,
         version: params.gateway.serviceName,
         notes: [
+          studioGatewayService?.enabled ? "supervisor enabled" : "supervisor not enabled",
           params.gateway.protocols.openaiChatCompletions ? "OpenAI Chat" : "",
           params.gateway.protocols.openaiResponses ? "OpenAI Responses" : "",
           params.gateway.protocols.openaiResponsesCompact ? "Responses compact" : "",
           params.gateway.protocols.anthropicMessages ? "Claude Messages" : "",
         ].filter(Boolean),
-        paths: { status: params.gateway.statusEndpoint, script: currentPaths.compactProxy },
+        paths: { status: params.gateway.statusEndpoint, unit: MODEL_GATEWAY_DAEMON_SERVICE_NAME },
       },
       {
         id: "cc-connect",
@@ -2324,17 +2301,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         version: params.ccVersion,
         notes: ccConfigExists && !detectCcConnectBinding(readText(currentPaths.ccConnectConfig)) ? ["binding required"] : [],
         paths: { config: currentPaths.ccConnectConfig, socket: currentPaths.ccConnectSocket },
-      },
-      {
-        id: "watchdog",
-        label: "Background Watchdog",
-        status: serviceById.get("codex-stack-watchdog.timer")?.active ? "ok" : "degraded",
-        installed: serviceById.get("codex-stack-watchdog.timer")?.installed === true,
-        version: null,
-        notes: serviceById.get("codex-stack-watchdog.timer")?.active
-          ? ["managed after CPA and Compact are healthy"]
-          : ["legacy watchdog is not part of the Studio Gateway daemon path"],
-        paths: { unit: "codex-stack-watchdog.timer" },
       },
     ];
   }
@@ -2728,7 +2694,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
   function buildRunReadiness(params: {
     services: CodexStackServiceStatus[];
     jobs: CodexStackJob[];
-    cpaHealthy: boolean;
     compactHealthy: boolean;
     codexAuthMatches: boolean | null;
     codexCpaActive: boolean;
@@ -2755,7 +2720,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const smokeFresh = Boolean(targetModel) && isSmokeMatrixFreshAndComplete(smokeMatrix, targetModel);
     const smokeFailureDetail = targetModel
       ? smokeMatrixTargetMismatchDetail(smokeMatrix, targetModel) || smokeMatrixFailureDetail(smokeMatrix)
-      : "尚未选择 CPA 目标模型；请先在运行配置中选择本机实际可用的模型。";
+      : "尚未选择目标模型；请先在运行配置中选择本机实际可用的模型。";
     const hasActiveJob = params.jobs.some((job) => job.status === "queued" || job.status === "running");
     const websocketEnabled = hasCodexResponsesWebSocketsEnabled(params.codexConfig);
     const compressionEnabled = hasCodexRequestCompressionEnabled(params.codexConfig);
@@ -2767,13 +2732,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       && cpaProviderBaseOk
       && cpaProviderEnvOk;
     const ccAgentDetail = (() => {
-      if (ccAgentTaskReady) return "cc-connect 已安装、已绑定、服务 active，并且 cpa provider 指向本地 Compact。";
+      if (ccAgentTaskReady) return "cc-connect 已安装、已绑定、服务 active，并且 provider 指向本地 Studio Gateway。";
       if (!params.ccConnectInstalled) return "cc-connect 未安装；IM/CC Agent 任务不可用，可执行完整安装或在安装页启用 cc-connect。";
       if (!params.ccConnectConfigured) return "cc-connect 配置缺失；请在 Agent 面板生成 provider/project 配置。";
       if (!params.ccBindingPresent) return "cc-connect 尚未完成 Feishu/Weixin QR 绑定；绑定后再运行 finalizer。";
       if (!ccConnectActive) return "cc-connect.service 未 active；请按顺序恢复或重启 cc-connect。";
-      if (!cpaProviderBaseOk) return `cc-connect cpa provider 未指向本地 Compact ${expectedCcProviderBaseUrl}，Agent 任务可能绕过已验证链路。`;
-      return "cc-connect cpa provider 的 codex.env_key 不是 OPENAI_API_KEY，Codex Agent 可能拿不到本地 CPA key。";
+      if (!cpaProviderBaseOk) return `cc-connect provider 未指向本地 Studio Gateway ${expectedCcProviderBaseUrl}，Agent 任务可能绕过已验证链路。`;
+      return "cc-connect provider 的 codex.env_key 不是 OPENAI_API_KEY，Codex Agent 可能拿不到 Studio Gateway placeholder key。";
     })();
     const checks: CodexStackRunReadinessCheck[] = [
       {
@@ -2801,7 +2766,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         label: "Codex active provider",
         status: params.codexCpaActive ? "pass" : "warn",
         detail: params.codexCpaActive
-          ? "Codex 当前 active provider 指向本地 Compact/CPA 链路。"
+          ? "Codex 当前 active provider 指向本地 Studio Gateway daemon。"
           : "Codex 当前保持官方 GPT 路径；通过 Studio Gateway smoke gate 后才会切换到自建 daemon。",
         section: params.codexCpaActive ? "settings" : "install",
         actionHint: params.codexCpaActive
@@ -2813,9 +2778,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         label: "Codex CLI 密钥",
         status: codexAuthReady ? "pass" : (params.codexCpaActive ? "fail" : "warn"),
         detail: codexAuthReady
-          ? "~/.codex/auth.json 与 CPA proxy key 匹配。"
+          ? "~/.codex/auth.json 与 Studio Gateway placeholder key 匹配。"
           : params.codexCpaActive
-            ? "~/.codex/auth.json 未写入或与 CPA proxy key 不一致；Codex CLI 可能绕过本地 Compact。"
+            ? "~/.codex/auth.json 未写入或与 Studio Gateway placeholder key 不一致；Codex CLI 可能绕过本地 daemon。"
             : "当前 Codex 未接入 Studio Gateway；接管动作会在 daemon 和 smoke gate 通过后再写入本地 provider。",
         section: "settings",
         actionHint: codexAuthReady
@@ -2830,7 +2795,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         status: params.proxyPolicy.noProxyLoopbackReady ? "pass" : "fail",
         detail: params.proxyPolicy.noProxyLoopbackReady
           ? "localhost、127.0.0.1 与 ::1 已绕过系统代理。"
-          : `NO_PROXY 缺少 ${params.proxyPolicy.noProxyLoopbackMissing.join(", ")}；VPN 网卡/TUN 模式可能截获本机 CPA/Compact 请求。`,
+          : `NO_PROXY 缺少 ${params.proxyPolicy.noProxyLoopbackMissing.join(", ")}；VPN 网卡/TUN 模式可能截获本机 Studio Gateway 请求。`,
         section: "settings",
         actionHint: params.proxyPolicy.noProxyLoopbackReady
           ? { kind: "open-section", label: "查看网络策略", section: "settings" }
@@ -2906,9 +2871,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const chatBlockedDetail = !params.codexCpaActive
       ? "当前 Codex 保持官方 GPT 路径；通过 Studio Gateway smoke gate 后再运行本地 daemon 对话。"
       : !codexAuthReady
-        ? "先修复 Codex auth，确保 CLI 使用本地 CPA proxy key。"
+        ? "先修复 Codex auth，确保 CLI 使用本地 Studio Gateway placeholder key。"
         : baseChecksReady
-          ? "先重新运行目标 CPA 模型 smoke matrix，确认 CPA 普通和流式链路仍新鲜可用。"
+          ? "先重新运行目标模型 smoke matrix，确认 Studio Gateway 普通和流式链路仍新鲜可用。"
           : "先修复失败检查项。";
     const ccAgentModeReady = ccAgentTaskReady && chatReady;
     const firstFailedCheck = checks.find((check) => check.status === "fail");
@@ -2953,22 +2918,22 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     return {
       level,
       title: level === "ready"
-        ? "Codex CPA 链路可运行"
+        ? "Codex Studio Gateway 链路可运行"
         : level === "attention"
-          ? "Codex CPA 链路需要复验"
-          : "Codex CPA 链路暂不应接入",
+          ? "Codex Studio Gateway 链路需要复验"
+          : "Codex Studio Gateway 链路暂不应接入",
       summary: level === "ready"
         ? "普通请求、流式请求、长任务和压缩上下文具备同一套已验证前置条件。"
         : level === "attention"
           ? "基础链路可用，但 smoke、上下文或后台任务状态需要处理后再执行长任务。"
-          : "存在会影响 Codex CLI、Compact 转发或 loopback 访问的阻断项，保持官方 Codex 路径直到修复。",
+        : "存在会影响 Codex CLI、Studio Gateway 转发或 loopback 访问的阻断项，保持官方 Codex 路径直到修复。",
       checks,
       modes: [
         {
           id: "chat",
           label: "普通/流式对话",
           ready: chatReady,
-          detail: chatReady ? "基础 CPA/Compact 请求链路可用。" : chatBlockedDetail,
+          detail: chatReady ? "基础 Studio Gateway 请求链路可用。" : chatBlockedDetail,
           actionHint: chatReady ? { kind: "run-check", label: "运行健康检查" } : chatActionHint,
           dependencies: dependenciesFor(baseModeDependencies),
         },
@@ -2993,7 +2958,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           label: "CC/IM Agent 任务",
           ready: ccAgentModeReady,
           detail: ccAgentModeReady
-            ? "cc-connect 任务会走本地 Compact/CPA 链路。"
+            ? "cc-connect 任务会走本地 Studio Gateway 链路。"
             : ccAgentTaskReady && !chatReady ? chatBlockedDetail : ccAgentDetail,
           actionHint: ccAgentModeReady ? { kind: "open-section", label: "查看 Agent 配置", section: "cc-connect" } : ccAgentActionHint,
           dependencies: dependenciesFor([...baseModeDependencies, "cc-agent-route"]),
@@ -3040,7 +3005,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const configCompactPort = normalizePort(extractLocalCompactPortFromCodexConfig(codexConfig), DEFAULT_COMPACT_PORT);
     const [liveCpaPort, liveCompactPort] = await Promise.all([
       detectLivePort(["cli-proxy-api", "cpa"]),
-      detectLivePort(["compact-proxy", "cpa-compact"]),
+      detectLivePort(["model-gateway-daemon", "openclaw-studio-model-gateway"]),
     ]);
     const cpaPort = liveCpaPort ?? configCpaPort;
     const compactPort = liveCompactPort ?? configCompactPort;
@@ -3080,11 +3045,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     );
     const modelsEndpoint = `http://127.0.0.1:${compactPort}/v1/models`;
     const services = await Promise.all(SERVICE_IDS.map((id) => readServiceStatus(id)));
-    const [codexVersion, omxVersion, ccVersion, cpaHealthy, modelDiscovery] = await Promise.all([
+    const [codexVersion, omxVersion, ccVersion, modelDiscovery] = await Promise.all([
       versionOf("codex"),
       versionOf("omx"),
       versionOf("cc-connect"),
-      probeUrl(`http://127.0.0.1:${cpaPort}/healthz`),
       discoverModelsFromCompact(
         modelsEndpoint,
         cpaProxyKey || DEFAULT_CPA_PROXY_KEY,
@@ -3102,8 +3066,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       omxVersion,
       ccVersion,
       services,
-      cpaHealthy,
-      compactHealthy,
       codexAuthOk: pathExists(currentPaths.codexAuth) && codexAuthMatches === true,
       codexCpaActive,
       gateway,
@@ -3117,8 +3079,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (!codexCpaActive && currentModel && !isOfficialChatGptModel(currentModel)) {
       warnings.push(`Codex is using the official ChatGPT route with unsupported model ${currentModel}; switch to official GPT or attach CPA before running Codex.`);
     }
-    if (codexCpaActive && !pathExists(currentPaths.codexAuth)) warnings.push("~/.codex/auth.json is missing; Codex CLI may not read the local CPA key.");
-    if (codexCpaActive && codexAuthMatches === false) warnings.push("~/.codex/auth.json OPENAI_API_KEY does not match the configured CPA proxy key.");
+    if (codexCpaActive && !pathExists(currentPaths.codexAuth)) warnings.push("~/.codex/auth.json is missing; Codex CLI may not read the Studio Gateway placeholder key.");
+    if (codexCpaActive && codexAuthMatches === false) warnings.push("~/.codex/auth.json OPENAI_API_KEY does not match the configured Studio Gateway placeholder key.");
     if (hasCodexResponsesWebSocketsEnabled(codexConfig)) warnings.push("Codex Responses WebSocket transport is enabled; CPA-compatible providers should use HTTP/SSE to avoid slow reconnect fallback.");
     if (hasCodexRequestCompressionEnabled(codexConfig)) warnings.push("Codex request compression is enabled; CPA-compatible providers should disable it unless the local proxy decodes compressed request bodies.");
     if (!managementSecret) warnings.push("CPA remote-management.secret-key is empty; the management dashboard/API is disabled.");
@@ -3129,24 +3091,18 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       const expectedCcProviderBaseUrl = `http://127.0.0.1:${compactPort}/v1`;
       const cpaProvider = ccParsed.providers.find((provider) => provider.name === "cpa");
       if (cpaProvider?.baseUrl && normalizeCcConnectBaseUrl(cpaProvider.baseUrl) !== expectedCcProviderBaseUrl) {
-        warnings.push(`cc-connect cpa provider base_url (${cpaProvider.baseUrl}) does not match local Compact ${expectedCcProviderBaseUrl}; cc-connect Codex agents may bypass the verified CPA/Compact chain.`);
+        warnings.push(`cc-connect provider base_url (${cpaProvider.baseUrl}) does not match local Studio Gateway ${expectedCcProviderBaseUrl}; cc-connect Codex agents may bypass the verified daemon chain.`);
       }
       const cpaProviderEnvKey = cpaProvider?.codexEnvKey || cpaProvider?.codex?.envKey || "";
       if (cpaProviderEnvKey && cpaProviderEnvKey !== "OPENAI_API_KEY") {
-        warnings.push(`cc-connect cpa provider codex.env_key is ${cpaProviderEnvKey}; Codex agents should receive OPENAI_API_KEY for the local Compact provider.`);
-      }
-    }
-    {
-      const legacyHealthcheck = services.find((service) => service.id === "cli-proxy-api-healthcheck.timer");
-      if (legacyHealthcheck?.active || legacyHealthcheck?.enabled) {
-        warnings.push("检测到旧 cli-proxy-api-healthcheck.timer；它会按旧端口巡检并重启 CPA，可能抵消暂停操作。推荐修复会自动停用并删除旧巡检。");
+        warnings.push(`cc-connect provider codex.env_key is ${cpaProviderEnvKey}; Codex agents should receive OPENAI_API_KEY for the local Studio Gateway provider.`);
       }
     }
     if (proxyPolicy.providerMode === "direct" && proxyPolicy.providerProxyUrl) {
-      warnings.push("系统代理已设置，但 CPA provider proxy-url 全部为 direct；国内网关不会继承系统代理。若 direct smoke 出现 EOF/SSL_ERROR_SYSCALL，请关闭 VPN 网卡/TUN 模式或为国内网关配置 split tunnel 绕过。");
+      warnings.push("系统代理已设置，但 Studio Gateway provider proxy-url 为 direct；国内网关不会继承系统代理。若 direct smoke 出现 EOF/SSL_ERROR_SYSCALL，请关闭 VPN 网卡/TUN 模式或为国内网关配置 split tunnel 绕过。");
     }
     if (!proxyPolicy.noProxyLoopbackReady) {
-      warnings.push(`NO_PROXY 缺少 ${proxyPolicy.noProxyLoopbackMissing.join(", ")}；系统代理或 VPN 网卡/TUN 模式可能截获本地 CPA/Compact loopback 请求。运行 Codex 对话、长任务或压缩上下文前，请保留 localhost,127.0.0.1,::1。`);
+      warnings.push(`NO_PROXY 缺少 ${proxyPolicy.noProxyLoopbackMissing.join(", ")}；系统代理或 VPN 网卡/TUN 模式可能截获本地 Studio Gateway loopback 请求。运行 Codex 对话、长任务或压缩上下文前，请保留 localhost,127.0.0.1,::1。`);
     }
     if (profile.lastSmokeMatrix?.status === "failed") warnings.push("Target-model smoke matrix failed last run; Codex will not switch until the selected target model passes.");
     if (isSmokeMatrixStale(profile.lastSmokeMatrix)) warnings.push("Target-model smoke matrix is older than 24 hours; re-run the selected target model checks before treating Studio Gateway takeover as ready.");
@@ -3169,7 +3125,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const runReadiness = buildRunReadiness({
       services,
       jobs,
-      cpaHealthy,
       compactHealthy,
       codexAuthMatches,
       codexCpaActive,
@@ -3581,7 +3536,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
                 changedUnits.push(unitName);
               }
             }
-            appendJobLog(job, `Updated NO_PROXY loopback bypass to ${noProxy}; VPN 网卡/TUN 模式不应再截获本机 CPA/Compact 请求。\n`);
+            appendJobLog(job, `Updated NO_PROXY loopback bypass to ${noProxy}; VPN 网卡/TUN 模式不应再截获本机 Studio Gateway 请求。\n`);
             if (changedUnits.length) {
               await runSystemctl("daemon-reload");
               for (const unitName of changedUnits) {
@@ -3741,9 +3696,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       );
     }
     requireNoActiveJob();
-    if ((action === "start" || action === "restart" || action === "enable") && serviceId === "cpa-compact-proxy.service") {
-      await requireActiveUnitForServiceAction("cli-proxy-api.service", "Start or resume CPA before starting Compact Proxy.");
-    }
     const systemctlArgs = action === "enable"
       ? ["--user", "enable", "--now", serviceId]
       : ["--user", action, serviceId];
@@ -3756,17 +3708,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       message: `${serviceId} ${action} requested.`,
       summary: await getSummary(req),
     };
-  }
-
-  async function requireActiveUnitForServiceAction(unit: CodexStackServiceId, message: string): Promise<void> {
-    const active = await execText("systemctl", ["--user", "is-active", unit], { timeout: 4_000 });
-    if (!active.ok || !systemctlOutputHasState(active.output, "active")) {
-      throw new CodexStackServiceError(
-        "codex_stack_service_lifecycle_guard",
-        `${message} Legacy CPA/Compact services are no longer auto-resumed by Studio; use the Studio Gateway daemon path.`,
-        409,
-      );
-    }
   }
 
   async function patchConfig(

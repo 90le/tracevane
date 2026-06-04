@@ -143,7 +143,7 @@ function summaryForRepairAction(
   return {
     services: [
       {
-        id: "cli-proxy-api.service",
+        id: "openclaw-studio-model-gateway.service",
         installed: true,
         enabled: true,
         active: true,
@@ -151,15 +151,7 @@ function summaryForRepairAction(
         rawEnabledState: "enabled",
       },
       {
-        id: "cpa-compact-proxy.service",
-        installed: true,
-        enabled: true,
-        active: true,
-        rawActiveState: "active",
-        rawEnabledState: "enabled",
-      },
-      {
-        id: "codex-stack-watchdog.timer",
+        id: "cc-connect.service",
         installed: true,
         enabled: true,
         active: true,

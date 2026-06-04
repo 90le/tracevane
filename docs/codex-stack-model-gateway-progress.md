@@ -23,7 +23,8 @@
 - `ensure-running` 已锁定 supervisor-first；未安装 service 时默认 blocked，显式 `allowBootstrap` 才允许 detached fallback。
 - Codex Stack install 会写 daemon service template，并准备 inactive `[model_providers.studio]`。
 - Codex Studio takeover 需要先确认 local-daemon，并通过 `/v1/responses` 与 `/v1/responses/compact` smoke。
-- 本轮删除公开 CPA/Compact 配置面：install env、runtime patch 字段、Codex auth/key 写入、`.cli-proxy-api/config.yaml` 和 `cpa-compact-proxy.service` patch、前端 CPA/Compact 端口/key 表单。
+- 公开 CPA/Compact 配置面已删除：install env、runtime patch 字段、Codex auth/key 写入、`.cli-proxy-api/config.yaml` 和 `cpa-compact-proxy.service` patch、前端 CPA/Compact 端口/key 表单。
+- Codex Stack service/UI 已改为 Studio Gateway daemon + cc-connect：summary components、service rows、log selector、service control allowlist 和安装组件策略不再暴露 CPA/Compact/watchdog。
 - proxy/upstream 状态读取以 OpenClaw env 为新优先来源；旧 CPA YAML 只作为 legacy fallback。
 
 ## 3. 当前仍未完成
@@ -31,27 +32,27 @@
 - 真实 service manager apply 模式验证：install/start/status/restart 需要在 opt-in 环境执行。
 - service template apply UI：需要区分“只写模板”和“执行 service manager 命令”。
 - supervisor crash-restart test：daemon 崩溃后由真实 supervisor 拉起。
-- 后端 Codex Stack service 仍保留 CPA/Compact service rows、summary components、logs/service control allowlist 和部分 legacy migration tests。
+- 旧 CPA/Compact 仍有 migration cleanup path、smoke 常量命名和部分 resource/migration tests；这些只保留为迁移残留，不再是正式链路。
 - UI 重做：完整 Provider Center、Universal Provider、App Setup、Diagnostics 尚未完成。
 - Adapter 扩展：streaming tool calls、reasoning events、Anthropic streaming、Responses -> Anthropic。
 - Failover 扩展：request retry、真实 failover queue、half-open probe、circuit reset policy。
 
 ## 4. 验证记录
 
-本轮通过：
+当前通过：
 
 - `npm run build:api`
 - `npm run typecheck:web`
 - `node --test tests/system/codex-stack-service.test.mjs`
 - `npx tsx --test tests/system/codex-stack-readiness-action.test.ts`
-- Codex Stack UI 相关静态 contract 子集：install/runtime/env reference/channel sync。
+- Codex Stack UI 相关静态 contract 子集：install/runtime/env reference/channel sync/service grid/log selector。
 - `git diff --check`
 
 近期仍有效：service manager 只读 probe、model-gateway service tests、installer/health-check shell syntax、`npm run build:web`。完整 `studio-web-codex-stack-workspace` 仍有既有前端 design/static contract 债务，本轮未要求全量修复。
 
 ## 5. 下一步
 
-1. 删除或替换 Codex Stack 的 CPA/Compact service rows、log selector、service control allowlist 和 summary component 管理逻辑，改接 Studio Gateway daemon/service status。
+1. 重命名 `CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS`、相关 smoke id/test 文案为 Studio Gateway route smoke，避免新链路继续带 CPA 命名。
 2. 在 opt-in 环境运行 `OPENCLAW_STUDIO_VERIFY_MODEL_GATEWAY_SERVICE_APPLY=1 node scripts/verify-model-gateway-service-manager.mjs`，锁定真实 service manager happy path。
 3. 实现 service template apply UI：只写模板、install/start/restart 三种状态明确分开。
 4. 继续协议矩阵：优先补 `openai_responses` -> `anthropic_messages`，再补 streaming tool/reasoning。

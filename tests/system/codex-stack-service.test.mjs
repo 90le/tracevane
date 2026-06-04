@@ -442,7 +442,7 @@ test("codex stack management guard blocks mutations until explicitly enabled", a
 
   const service = createCodexStackService(config);
   await assert.rejects(
-    service.controlService(undefined, "cli-proxy-api.service", "restart"),
+    service.controlService(undefined, "openclaw-studio-model-gateway.service", "restart"),
     (error) => isCodexStackServiceError(error) && error.statusCode === 403,
   );
 
@@ -476,7 +476,7 @@ test("codex stack refuses smoke matrix when no target model is selected", async 
   const job = await waitForJob(service, response.job.id);
 
   assert.equal(job.status, "failed");
-  assert.match(job.error || "", /选择 CPA 目标模型/);
+  assert.match(job.error || "", /选择目标模型/);
   assert.doesNotMatch(job.logTail, /glm-5\.1|kimi-k2\.6/);
 });
 
@@ -558,7 +558,7 @@ test("codex stack rejects unknown service ids and actions before shell execution
     (error) => isCodexStackServiceError(error) && error.code === "codex_stack_invalid_service",
   );
   await assert.rejects(
-    service.controlService(undefined, "cli-proxy-api.service", "reload-or-run-shell"),
+    service.controlService(undefined, "openclaw-studio-model-gateway.service", "reload-or-run-shell"),
     (error) => isCodexStackServiceError(error) && error.code === "codex_stack_invalid_service_action",
   );
 });
@@ -586,7 +586,7 @@ test("codex stack service enable keeps running state and autostart in one action
   await withScriptedSystemctl(
     [
       "case \"$*\" in",
-      "  \"--user enable --now cli-proxy-api.service\") echo \"enabled\"; exit 0 ;;",
+      "  \"--user enable --now openclaw-studio-model-gateway.service\") echo \"enabled\"; exit 0 ;;",
       "  \"--user list-unit-files\"*) echo \"${@: -1} enabled\"; exit 0 ;;",
       "  \"--user is-enabled\"*) echo \"enabled\"; exit 0 ;;",
       "  \"--user is-active\"*) echo \"active\"; exit 0 ;;",
@@ -596,12 +596,12 @@ test("codex stack service enable keeps running state and autostart in one action
     async ({ readCalls }) => {
       const service = createCodexStackService(config);
 
-      const response = await service.controlService(undefined, "cli-proxy-api.service", "enable");
+      const response = await service.controlService(undefined, "openclaw-studio-model-gateway.service", "enable");
       const calls = readCalls();
 
       assert.equal(response.ok, true);
-      assert.ok(calls.includes("--user enable --now cli-proxy-api.service"));
-      assert.ok(!calls.includes("--user enable cli-proxy-api.service"));
+      assert.ok(calls.includes("--user enable --now openclaw-studio-model-gateway.service"));
+      assert.ok(!calls.includes("--user enable openclaw-studio-model-gateway.service"));
     },
   );
 });
@@ -629,7 +629,7 @@ test("codex stack service status does not treat inactive as active", async () =>
   await withScriptedSystemctl(
     [
       "case \"$*\" in",
-      "  \"--user list-unit-files\"*) echo \"cli-proxy-api.service enabled\"; exit 0 ;;",
+      "  \"--user list-unit-files\"*) echo \"openclaw-studio-model-gateway.service enabled\"; exit 0 ;;",
       "  \"--user is-enabled\"*) echo \"enabled\"; exit 0 ;;",
       "  \"--user is-active\"*) echo \"inactive\"; exit 3 ;;",
       "esac",
@@ -638,16 +638,12 @@ test("codex stack service status does not treat inactive as active", async () =>
     async () => {
       const service = createCodexStackService(config);
       const summary = await service.getSummary();
-      const cpa = summary.services.find((item) => item.id === "cli-proxy-api.service");
-      const compact = summary.services.find((item) => item.id === "cpa-compact-proxy.service");
-      const watchdog = summary.services.find((item) => item.id === "codex-stack-watchdog.timer");
-      const watchdogComponent = summary.components.find((item) => item.id === "watchdog");
+      const gateway = summary.services.find((item) => item.id === "openclaw-studio-model-gateway.service");
+      const gatewayComponent = summary.components.find((item) => item.id === "studio-gateway");
 
-      assert.equal(cpa?.active, false);
-      assert.equal(compact?.active, false);
-      assert.equal(watchdog?.active, false);
-      assert.equal(watchdogComponent?.label, "Background Watchdog");
-      assert.deepEqual(watchdogComponent?.notes, ["legacy watchdog is not part of the Studio Gateway daemon path"]);
+      assert.equal(gateway?.active, false);
+      assert.equal(gatewayComponent?.label, "Studio Gateway daemon");
+      assert.deepEqual(gatewayComponent?.notes.includes("supervisor enabled"), true);
     },
   );
 });
@@ -771,7 +767,7 @@ account_id = "test"
         assert.ok(summary.gateway.providerRoutes.some((provider) => provider.id === "cpa" && provider.agentTypes.includes("codex")));
         assert.ok(summary.gateway.modelRoutes.some((model) => model.label === "glm-5.1"));
         assert.ok(summary.gateway.channelTemplates.some((channel) => channel.id === "bridge"));
-        const gatewayComponent = summary.components.find((component) => component.id === "agent-gateway");
+        const gatewayComponent = summary.components.find((component) => component.id === "studio-gateway");
         assert.equal(gatewayComponent?.status, "ok");
         assert.ok(gatewayComponent?.notes.includes("Claude Messages"));
 
@@ -931,7 +927,7 @@ account_id = "test"
   }
 });
 
-test("codex stack blocks lifecycle-unsafe direct service starts and enables", async () => {
+test("codex stack rejects legacy CPA and Compact units before shell execution", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -954,31 +950,34 @@ test("codex stack blocks lifecycle-unsafe direct service starts and enables", as
   await withScriptedSystemctl(
     [
       "case \"$*\" in",
-      "  \"--user is-active cli-proxy-api.service\") echo \"inactive\"; exit 3 ;;",
+      "  \"--user start cli-proxy-api.service\") echo \"should not start cpa\"; exit 0 ;;",
       "  \"--user start cpa-compact-proxy.service\") echo \"should not start compact\"; exit 0 ;;",
-      "  \"--user enable --now cpa-compact-proxy.service\") echo \"should not enable compact\"; exit 0 ;;",
       "esac",
       "exit 0",
     ].join("\n"),
     async ({ readCalls }) => {
       const service = createCodexStackService(config);
 
-      for (const action of ["start", "enable"]) {
-        await assert.rejects(
-          service.controlService(undefined, "cpa-compact-proxy.service", action),
-          (error) => isCodexStackServiceError(error)
-            && error.code === "codex_stack_service_lifecycle_guard"
-            && error.statusCode === 409,
-        );
-      }
+      await assert.rejects(
+        service.controlService(undefined, "cli-proxy-api.service", "start"),
+        (error) => isCodexStackServiceError(error)
+          && error.code === "codex_stack_invalid_service"
+          && error.statusCode === 400,
+      );
+      await assert.rejects(
+        service.controlService(undefined, "cpa-compact-proxy.service", "start"),
+        (error) => isCodexStackServiceError(error)
+          && error.code === "codex_stack_invalid_service"
+          && error.statusCode === 400,
+      );
       const calls = readCalls();
+      assert.ok(!calls.includes("--user start cli-proxy-api.service"));
       assert.ok(!calls.includes("--user start cpa-compact-proxy.service"));
-      assert.ok(!calls.includes("--user enable --now cpa-compact-proxy.service"));
     },
   );
 });
 
-test("codex stack blocks auto-managed units from generic service control", async () => {
+test("codex stack rejects removed managed units from generic service control", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -1011,8 +1010,8 @@ test("codex stack blocks auto-managed units from generic service control", async
           await assert.rejects(
             service.controlService(undefined, unitId, action),
             (error) => isCodexStackServiceError(error)
-              && error.code === "codex_stack_managed_service_control_blocked"
-              && error.statusCode === 409,
+              && error.code === "codex_stack_invalid_service"
+              && error.statusCode === 400,
           );
         }
       }
@@ -1049,7 +1048,7 @@ test("codex stack rejects concurrent mutating actions while a job is active", as
     () => service.startInstall(undefined, { flags: { channel: "official" } }),
     () => service.startRepair(undefined, { actions: ["run-smoke-matrix"] }),
     () => service.finalizeCcConnect(undefined, { project: "main" }),
-    () => service.controlService(undefined, "cli-proxy-api.service", "restart"),
+    () => service.controlService(undefined, "openclaw-studio-model-gateway.service", "restart"),
     () => service.patchConfig(undefined, { defaultModel: "kimi-k2.6" }),
     () => service.patchCcConnectConfig(undefined, { raw: "language = \"zh\"\n" }),
   ]) {
@@ -1801,9 +1800,9 @@ test("codex stack logs expose bounded preview metadata for UI performance contro
   createBundledInstaller(config, "dmwork");
 
   const service = createCodexStackService(config);
-  const logs = await service.readLogs("cli-proxy-api.service", 9999);
+  const logs = await service.readLogs("openclaw-studio-model-gateway.service", 9999);
 
-  assert.equal(logs.unitId, "cli-proxy-api.service");
+  assert.equal(logs.unitId, "openclaw-studio-model-gateway.service");
   assert.equal(logs.requestedLines, 500);
   assert.equal(typeof logs.output, "string");
   assert.ok(logs.sources.some((source) => source.kind === "journal"));
@@ -2348,7 +2347,7 @@ mode = "suggest"
   assert.match(patched, /provider_refs = \["relay", "fallback"\]/);
 });
 
-test("codex stack summary warns when cc-connect bypasses local Compact provider", async () => {
+test("codex stack summary warns when cc-connect bypasses local Studio Gateway provider", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {});
@@ -2382,8 +2381,8 @@ model = "glm-5.1"
     const service = createCodexStackService(config);
     const summary = await service.getSummary();
 
-    assert.ok(summary.warnings.some((warning) => warning.includes("cc-connect cpa provider base_url")));
-    assert.ok(summary.warnings.some((warning) => warning.includes("cc-connect cpa provider codex.env_key")));
+    assert.ok(summary.warnings.some((warning) => warning.includes("cc-connect provider base_url")));
+    assert.ok(summary.warnings.some((warning) => warning.includes("cc-connect provider codex.env_key")));
   });
 });
 
@@ -2602,7 +2601,7 @@ account_id = "test"
         assert.equal(summary.runReadiness.level, "attention");
         assert.equal(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.status, "warn");
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.ready, false);
-        assert.match(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.detail || "", /重新运行目标 CPA 模型 smoke matrix/);
+        assert.match(summary.runReadiness.modes.find((mode) => mode.id === "chat")?.detail || "", /重新运行目标模型 smoke matrix/);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "long-task")?.ready, false);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "compaction")?.ready, false);
         assert.equal(summary.runReadiness.modes.find((mode) => mode.id === "cc-agent-task")?.ready, false);
@@ -2814,7 +2813,7 @@ account_id = "test"
   );
 });
 
-test("codex stack summary accepts a fresh smoke matrix for the selected CPA target while official Codex stays on GPT", async () => {
+test("codex stack summary accepts a fresh smoke matrix for the selected target while official Codex stays on GPT", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const checkedAt = new Date().toISOString();
