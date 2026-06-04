@@ -149,12 +149,25 @@ function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): v
     messages.push({ role: "user", content: input });
     return;
   }
-  if (!Array.isArray(input)) return;
+  const items = Array.isArray(input)
+    ? input
+    : isRecord(input)
+      ? [input]
+      : [];
+  if (!items.length) return;
 
-  for (const item of input) {
+  const pendingToolCalls: JsonRecord[] = [];
+  for (const item of items) {
+    if (isRecord(item) && item.type === "function_call") {
+      const toolCall = mapResponsesFunctionCallToChatToolCall(item);
+      if (toolCall) pendingToolCalls.push(toolCall);
+      continue;
+    }
+    flushPendingToolCalls(messages, pendingToolCalls);
     const message = mapResponsesInputItemToChatMessage(item);
     if (message) messages.push(message);
   }
+  flushPendingToolCalls(messages, pendingToolCalls);
 }
 
 function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
@@ -189,6 +202,29 @@ function mapResponsesRoleToChat(role: unknown): string {
   if (role === "assistant" || role === "tool") return role;
   if (role === "system" || role === "developer") return "system";
   return "user";
+}
+
+function mapResponsesFunctionCallToChatToolCall(item: JsonRecord): JsonRecord | null {
+  const callId = stringOrNull(item.call_id) || stringOrNull(item.id);
+  const name = stringOrNull(item.name);
+  if (!callId || !name) return null;
+  return {
+    id: callId,
+    type: "function",
+    function: {
+      name,
+      arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}),
+    },
+  };
+}
+
+function flushPendingToolCalls(messages: JsonRecord[], pendingToolCalls: JsonRecord[]): void {
+  if (!pendingToolCalls.length) return;
+  messages.push({
+    role: "assistant",
+    content: null,
+    tool_calls: pendingToolCalls.splice(0),
+  });
 }
 
 function contentToText(content: unknown): string {

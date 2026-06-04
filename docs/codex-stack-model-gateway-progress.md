@@ -2,7 +2,7 @@
 
 > 状态：Phase 1 in progress
 > 更新：2026-06-04
-> 当前阶段：Phase 1 - provider management、runtime request log、health update、routing fallback foundation 和 Codex Responses 非流式 Chat adapter 起点已落地
+> 当前阶段：Phase 1 - provider management、runtime request log、health update、routing fallback foundation、Codex Responses 非流式 Chat adapter 和最小 tool-call history foundation 已落地
 
 ## 1. 当前决定
 
@@ -186,12 +186,19 @@ docs/codex-stack-model-gateway-goal.md
   - Chat upstream 的非流式 JSON 成功响应会转换回 Responses-like JSON，包含 `object: "response"`、`status`、`output_text` 和 usage token 映射。
   - `stream: true` 仍返回 adapter-required；`/v1/responses/compact` 仍保持 adapter-required contract。
   - adapter path 会继续写 runtime request log、provider health，并继续屏蔽 secret。
+- 新增 Codex tool-call history foundation。
+  - 新增 `apps/api/modules/model-gateway/codex-history.ts`。
+  - `~/.openclaw/studio/model-gateway/codex-history.json` 使用原子写和 `0600` 保存最近 assistant function_call output items，不写入 secret。
+  - Chat upstream 返回 tool calls 时，Gateway 会把转换后的 Responses `function_call` output item 记录到 history store。
+  - 后续 Codex 请求只带 `previous_response_id + function_call_output` 时，Gateway 会在转换为 Chat 前恢复缺失的 assistant `tool_calls` 消息，避免 Chat provider 只收到孤立 tool output。
+  - 当前只覆盖 function_call / tool_calls 的最小恢复；reasoning_content、custom tools、web search 和 provider-specific thinking 仍待后续扩展。
 
 当前边界：
 
 - 已有的是 Model Gateway control/API foundation，不是完整长期 edge service。
 - OpenAI Chat passthrough 可用；Codex Responses -> OpenAI Chat 非流式最小适配可用。
-- Codex Responses streaming、`/v1/responses/compact`、`previous_response_id` / tool history restore、Claude Messages adapter 尚未实现。
+- Codex `previous_response_id` / `function_call_output` 的最小 tool-call history restore 可用。
+- Codex Responses streaming、`/v1/responses/compact`、reasoning history restore、Claude Messages adapter 尚未实现。
 - provider CRUD 仍缺少 import/export、bulk reorder、preset creation 和 UI form。
 - 已有 runtime request log、health update、open-circuit fallback；尚未实现 request retry、真实 failover queue 执行、half-open probe 和 circuit reset policy。
 - 尚未改 UI、安装脚本、Codex takeover 或 CPA/compact 旧资源。
@@ -201,7 +208,7 @@ docs/codex-stack-model-gateway-goal.md
 | 阶段 | 状态 | 任务 |
 | --- | --- | --- |
 | Phase 0 | 已完成 | 研究、目标方案、进度文档 |
-| Phase 1 | 进行中 | 新增 model gateway shared types、store、API、provider lifecycle、runtime log、health fallback、Codex Responses -> Chat 非流式 adapter 起点；下一步扩 adapter/history 或进入 install/UI takeover contract |
+| Phase 1 | 进行中 | 新增 model gateway shared types、store、API、provider lifecycle、runtime log、health fallback、Codex Responses -> Chat 非流式 adapter 起点和 tool-call history foundation；下一步扩 streaming/compact 或进入 install/UI takeover contract |
 | Phase 2 | 未开始 | 实现 Studio Model Gateway runtime |
 | Phase 3 | 未开始 | 实现完整 Codex Responses / Chat / compact adapter，包括 streaming、compact 和 history restore |
 | Phase 4 | 未开始 | 实现 Claude Messages adapter 和 Claude Code takeover |
@@ -237,8 +244,8 @@ docs/codex-stack-model-gateway-goal.md
 ### 测试
 
 - `tests/system/studio-web-codex-stack-workspace.test.mjs`
-- `tests/system/model-gateway-service.test.mjs`（已新增 provider registry / routing contract foundation，并扩展 provider lifecycle / runtime log / health / open-circuit fallback / Codex Responses 非流式 adapter）
-- 扩展 gateway adapter tests 到 streaming、compact、tool history 和 provider quirks。
+- `tests/system/model-gateway-service.test.mjs`（已新增 provider registry / routing contract foundation，并扩展 provider lifecycle / runtime log / health / open-circuit fallback / Codex Responses 非流式 adapter / tool-call history restore）
+- 扩展 gateway adapter tests 到 streaming、compact、reasoning history 和 provider quirks。
 - 新增 install/takeover tests。
 
 ## 7. 验证计划
@@ -283,7 +290,7 @@ docs/codex-stack-model-gateway-goal.md
 ## 8. 本轮验证
 
 - `npm run build:api`：通过。
-- `node --test tests/system/model-gateway-service.test.mjs`：通过，5 个 Model Gateway 用例全绿。
+- `node --test tests/system/model-gateway-service.test.mjs`：通过，6 个 Model Gateway 用例全绿。
 - 上一轮 `npm run test:system` 未全绿。新增 gateway 用例通过；失败集中在当前工作树已有的 codex-stack job 超时和多项前端/UI design contract，完整复核日志为 `/tmp/openclaw-studio-system-after-model-gateway.log`。本轮未重复跑全量 system suite。
 
 ## 9. 风险和待定项
@@ -293,7 +300,7 @@ docs/codex-stack-model-gateway-goal.md
 - **Secret 存储**：v1 文件存储必须用 `0600`、masked API 和日志脱敏；后续可评估 OS keychain。
 - **管理授权**：所有 secret、takeover、rollback、service 操作必须经过 management auth gate。
 - **Codex streaming**：SSE event sequence 必须贴近 Codex client 预期，不能只做 JSON 转换。
-- **Tool history**：没有 Codex chat history store 时，tool result 会在 chat provider 上下文中丢失来源。
+- **Tool history**：已有最小 function_call history store；reasoning_content、custom tools、web search 和跨进程并发策略仍未完整覆盖。
 - **Claude official auth**：official account、Anthropic API key、OpenRouter、OpenAI-compatible key 不能混用。
 - **License**：若复制 cc-switch 代码，需要保留 MIT license notice。
 - **旧 UI 迁移**：现有 codex-stack 前端已大量绑定 CPA/compact 文案和状态，不能只替换标题。
@@ -303,7 +310,7 @@ docs/codex-stack-model-gateway-goal.md
 
 下一轮继续 Phase 1：
 
-1. 扩展 Codex adapter：补 `previous_response_id`、`function_call_output`、assistant tool calls 的 history contract。
-2. 实现或明确设计 Chat SSE -> Responses SSE 状态机，并给 `stream: true` 加测试。
-3. 给 `/v1/responses/compact` 设计最小 adapter contract，但保持未完整实现时继续明确返回 `adapter-required`。
+1. 实现或明确设计 Chat SSE -> Responses SSE 状态机，并给 `stream: true` 加测试。
+2. 给 `/v1/responses/compact` 设计最小 adapter contract，但保持未完整实现时继续明确返回 `adapter-required`。
+3. 扩展 Codex history：reasoning_content、custom tools、web search、ambiguous call_id fallback 和 provider-specific thinking quirks。
 4. 继续补 failover：把 open-circuit fallback 从 route decision 扩展到实际 request retry / failover 执行。

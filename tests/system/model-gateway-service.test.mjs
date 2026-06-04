@@ -416,6 +416,170 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
   });
 });
 
+test("model gateway restores codex tool-call history for follow-up chat adapter requests", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-history-adapter",
+      name: "Codex History Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-history.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-history-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const callIndex = upstreamCalls.length;
+    const body = String(init.body || "");
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body,
+    });
+
+    if (callIndex === 0) {
+      return new Response(JSON.stringify({
+        id: "chatcmpl_tool_turn",
+        created: 1_710_000_010,
+        model: "gpt-test",
+        choices: [{
+          index: 0,
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [{
+              id: "call_lookup",
+              type: "function",
+              function: {
+                name: "lookup",
+                arguments: "{\"query\":\"weather\"}",
+              },
+            }],
+          },
+          finish_reason: "tool_calls",
+        }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      id: "chatcmpl_final_turn",
+      created: 1_710_000_011,
+      model: "gpt-test",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "The weather is sunny.",
+        },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const first = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          input: "Check the weather.",
+          tools: [{
+            type: "function",
+            name: "lookup",
+            parameters: { type: "object" },
+          }],
+          tool_choice: "auto",
+          stream: false,
+        },
+      });
+      assert.equal(first.status, 200);
+      assert.equal(first.body.id, "chatcmpl_tool_turn");
+      assert.deepEqual(first.body.output, [{
+        type: "function_call",
+        id: "call_lookup",
+        call_id: "call_lookup",
+        status: "completed",
+        name: "lookup",
+        arguments: "{\"query\":\"weather\"}",
+      }]);
+      assert.ok(fs.existsSync(paths.codexHistory));
+      assert.equal(fs.statSync(paths.codexHistory).mode & 0o777, 0o600);
+      assert.ok(!fs.readFileSync(paths.codexHistory, "utf8").includes("sk-codex-history-secret"));
+
+      const second = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          previous_response_id: first.body.id,
+          input: [
+            {
+              type: "function_call_output",
+              call_id: "call_lookup",
+              output: "Sunny",
+            },
+            {
+              role: "user",
+              content: "Summarize the result.",
+            },
+          ],
+          stream: false,
+        },
+      });
+      assert.equal(second.status, 200);
+      assert.equal(second.body.id, "chatcmpl_final_turn");
+      assert.deepEqual(second.body.output[0].content, [{ type: "output_text", text: "The weather is sunny." }]);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-codex-history-secret");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-codex-history-secret");
+  const secondChatBody = JSON.parse(upstreamCalls[1].body);
+  assert.deepEqual(secondChatBody.messages, [
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [{
+        id: "call_lookup",
+        type: "function",
+        function: {
+          name: "lookup",
+          arguments: "{\"query\":\"weather\"}",
+        },
+      }],
+    },
+    {
+      role: "tool",
+      content: "Sunny",
+      tool_call_id: "call_lookup",
+    },
+    {
+      role: "user",
+      content: "Summarize the result.",
+    },
+  ]);
+});
+
 test("model gateway routes expose status/providers and forward chat passthrough", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

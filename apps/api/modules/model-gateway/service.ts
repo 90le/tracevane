@@ -48,6 +48,7 @@ import {
   adaptCodexResponsesRequestToChat,
   isCodexResponsesToChatAdapterTarget,
 } from "./codex-adapter.js";
+import { CodexChatHistoryStore } from "./codex-history.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
@@ -89,6 +90,7 @@ export interface ModelGatewayPaths {
   registry: string;
   secrets: string;
   runtime: string;
+  codexHistory: string;
   backups: string;
   logs: string;
 }
@@ -123,6 +125,7 @@ export function resolveModelGatewayPaths(config: StudioServerConfig): ModelGatew
     registry: path.join(root, "providers.json"),
     secrets: path.join(root, "secrets.json"),
     runtime: path.join(root, "runtime.json"),
+    codexHistory: path.join(root, "codex-history.json"),
     backups: path.join(root, "backups"),
     logs: path.join(root, "logs"),
   };
@@ -723,6 +726,7 @@ export interface ModelGatewayService {
 
 export function createModelGatewayService(config: StudioServerConfig): ModelGatewayService {
   const paths = resolveModelGatewayPaths(config);
+  const codexHistory = new CodexChatHistoryStore(paths.codexHistory);
 
   function readRegistry(): ModelGatewayRegistryState {
     const raw = readJsonFile<Partial<ModelGatewayRegistryState>>(paths.registry, createEmptyRegistry());
@@ -1486,7 +1490,8 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     let requestModelForLog = requestModel;
     if (useCodexResponsesChatAdapter) {
       try {
-        const adapted = adaptCodexResponsesRequestToChat(bodyText);
+        const enriched = codexHistory.enrichRequest(bodyText);
+        const adapted = adaptCodexResponsesRequestToChat(enriched.bodyText);
         upstreamBodyText = JSON.stringify(adapted.chatRequest);
         requestModelForLog = adapted.model || requestModel;
         headers.set("content-type", "application/json");
@@ -1563,6 +1568,7 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
           return;
         }
         updateProviderHealth(provider.id, true, latencyMs, null);
+        codexHistory.recordResponse(adaptedResponse);
         appendRequestLog(requestLogEntry({
           kind: "gateway-request",
           startedAt,
