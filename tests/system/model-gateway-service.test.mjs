@@ -315,6 +315,270 @@ test("model gateway management supports active provider selection, delete, and o
   assert.equal(providers.activeProviders.codex, undefined);
 });
 
+test("model gateway protocol matrix forwards native openai responses and guards unfinished adapters", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "native-responses",
+      name: "Native Responses Provider",
+      appScopes: ["codex", "openclaw", "claude-code"],
+      baseUrl: "https://responses-native.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-native-responses-secret",
+    },
+    setActiveScopes: ["codex", "openclaw", "claude-code"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: String(url).includes("/compact") ? "resp_native_compact" : "resp_native",
+      object: "response",
+      status: "completed",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{
+          type: "output_text",
+          text: String(url).includes("/compact") ? "Native compact summary" : "Native response text",
+        }],
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          input: "Use native Responses.",
+          stream: false,
+        },
+      });
+      assert.equal(responses.status, 200);
+      assert.equal(responses.body.id, "resp_native");
+      assert.equal(responses.body.output[0].content[0].text, "Native response text");
+      assert.equal(responses.headers["x-openclaw-model-gateway-provider"], "native-responses");
+
+      const compact = await requestJson(`${baseUrl}/v1/responses/compact`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          input: "Summarize for compaction.",
+          stream: false,
+        },
+      });
+      assert.equal(compact.status, 200);
+      assert.equal(compact.body.id, "resp_native_compact");
+      assert.equal(compact.body.output[0].content[0].text, "Native compact summary");
+      assert.equal(compact.headers["x-openclaw-model-gateway-provider"], "native-responses");
+
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          messages: [{ role: "user", content: "chat please" }],
+        },
+      });
+      assert.equal(chat.status, 501);
+      assert.equal(chat.body.error.code, "model_gateway_adapter_required");
+      assert.equal(chat.body.error.decision.mode, "adapter-required");
+      assert.equal(chat.body.error.decision.routeId, "openai_chat_completions");
+
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          max_tokens: 32,
+          messages: [{ role: "user", content: "anthropic please" }],
+        },
+      });
+      assert.equal(messages.status, 501);
+      assert.equal(messages.body.error.code, "model_gateway_adapter_required");
+      assert.equal(messages.body.error.decision.mode, "adapter-required");
+      assert.equal(messages.body.error.decision.routeId, "anthropic_messages");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.outcome]), [
+        ["openai_responses", "success"],
+        ["openai_responses_compact", "success"],
+        ["openai_chat_completions", "adapter-required"],
+        ["anthropic_messages", "adapter-required"],
+      ]);
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-native-responses-secret"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-native.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-native-responses-secret");
+  assert.equal(upstreamCalls[0].contentType, "application/json");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "gpt-native-responses",
+    input: "Use native Responses.",
+    stream: false,
+  });
+  assert.equal(upstreamCalls[1].url, "https://responses-native.example.test/v1/responses/compact");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-native-responses-secret");
+  assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
+    model: "gpt-native-responses",
+    input: "Summarize for compaction.",
+    stream: false,
+  });
+});
+
+test("model gateway protocol matrix forwards native anthropic messages and guards unfinished adapters", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "native-anthropic",
+      name: "Native Anthropic Provider",
+      appScopes: ["claude-code", "codex", "openclaw"],
+      baseUrl: "https://anthropic-native.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-native-anthropic-secret",
+    },
+    setActiveScopes: ["claude-code", "codex", "openclaw"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: `msg_native_${upstreamCalls.length}`,
+      type: "message",
+      role: "assistant",
+      content: [{ type: "text", text: `Native Anthropic ${upstreamCalls.length}` }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "claude-native",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+      assert.equal(messages.status, 200);
+      assert.equal(messages.body.id, "msg_native_1");
+      assert.equal(messages.body.content[0].text, "Native Anthropic 1");
+      assert.equal(messages.headers["x-openclaw-model-gateway-provider"], "native-anthropic");
+
+      const claudeMessages = await requestJson(`${baseUrl}/claude/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "claude-native",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hello via alias" }],
+        },
+      });
+      assert.equal(claudeMessages.status, 200);
+      assert.equal(claudeMessages.body.id, "msg_native_2");
+      assert.equal(claudeMessages.body.content[0].text, "Native Anthropic 2");
+      assert.equal(claudeMessages.headers["x-openclaw-model-gateway-provider"], "native-anthropic");
+
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          input: "responses please",
+        },
+      });
+      assert.equal(responses.status, 501);
+      assert.equal(responses.body.error.code, "model_gateway_adapter_required");
+      assert.equal(responses.body.error.decision.mode, "adapter-required");
+      assert.equal(responses.body.error.decision.routeId, "openai_responses");
+
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          messages: [{ role: "user", content: "chat please" }],
+        },
+      });
+      assert.equal(chat.status, 501);
+      assert.equal(chat.body.error.code, "model_gateway_adapter_required");
+      assert.equal(chat.body.error.decision.mode, "adapter-required");
+      assert.equal(chat.body.error.decision.routeId, "openai_chat_completions");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
+        ["anthropic_messages", "/v1/messages", "success"],
+        ["anthropic_messages", "/claude/v1/messages", "success"],
+        ["openai_responses", "/v1/responses", "adapter-required"],
+        ["openai_chat_completions", "/v1/chat/completions", "adapter-required"],
+      ]);
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-native-anthropic-secret"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-native.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].authorization, null);
+  assert.equal(upstreamCalls[0].xApiKey, "sk-native-anthropic-secret");
+  assert.equal(upstreamCalls[0].anthropicVersion, "2023-06-01");
+  assert.equal(upstreamCalls[0].contentType, "application/json");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "claude-native",
+    max_tokens: 64,
+    messages: [{ role: "user", content: "hello" }],
+  });
+  assert.equal(upstreamCalls[1].url, "https://anthropic-native.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].xApiKey, "sk-native-anthropic-secret");
+  assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
+    model: "claude-native",
+    max_tokens: 64,
+    messages: [{ role: "user", content: "hello via alias" }],
+  });
+});
+
 test("model gateway adapts non-streaming codex responses requests to openai chat providers", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

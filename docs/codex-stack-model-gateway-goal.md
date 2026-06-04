@@ -220,6 +220,8 @@ Phase 1 implementation note（2026-06-04）：
 - 已新增 `codex-history.json`，用于保存 assistant function_call output items，并在后续 `previous_response_id + function_call_output` 请求中恢复 Chat 所需的 assistant `tool_calls` 消息。
 - `/v1/responses/compact` 对 `openai_chat` provider 已复用 Responses -> Chat adapter，可执行最小非流式 compact contract；native `openai_responses` provider 的 compact route 可 passthrough。
 - compact `stream: true` 会进入同一 Chat SSE -> Responses SSE adapter，但尚未用 compact-specific streaming 用例单独锁定。
+- 已用 system tests 锁定 native `openai_responses` provider 的 `/v1/responses` 和 `/v1/responses/compact` passthrough，以及 native `anthropic_messages` provider 的 `/v1/messages` / `/claude/v1/messages` passthrough。
+- 同一批 matrix tests 会确认未实现的跨协议格子继续返回 `model_gateway_adapter_required`，避免伪成功。
 - streaming tool calls、streaming reasoning restore、provider-specific reasoning quirks 仍保持后续阶段任务。
 - 该实现只作为 Phase 1 contract foundation；完整 adapter 仍必须补 compact 专用语义、完整 streaming tool/reasoning 状态机、完整 history/reasoning store 和 provider-specific quirks。
 
@@ -338,6 +340,7 @@ Router 是新链路稳定性的核心：
 - 已开放 `GET /gateway/status`、`GET /gateway/providers`、`GET/POST/PUT /api/model-gateway/providers`、`POST /api/model-gateway/providers/:providerId/secret`。
 - 已开放 CLI 入口 `POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/messages`、`POST /claude/v1/messages`。
 - 当前 `openai_chat` provider 的 `/v1/chat/completions` 是 passthrough；Codex `/v1/responses` 和 `/v1/responses/compact` 对 `openai_chat` provider 已经通过 Chat adapter 可执行。
+- native `openai_responses` 和 native `anthropic_messages` 的 passthrough paths 已有 system tests 覆盖。
 - Claude Messages 和未支持的协议组合仍返回 `model_gateway_adapter_required`。
 - 已补齐 provider delete、active provider 设置、provider test endpoint、runtime request log 和 provider health 更新。
 - `runtime.json` 已记录 gateway request / provider test 的有界日志，status 返回 request log size/latest timestamp。
