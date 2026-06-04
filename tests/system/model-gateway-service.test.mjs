@@ -345,6 +345,37 @@ test("model gateway protocol matrix forwards native openai responses and guards 
       contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
       body: String(init.body || ""),
     });
+    if (upstreamCalls.length === 3) {
+      return new Response(JSON.stringify({
+        id: "resp_chat_adapter",
+        object: "response",
+        status: "completed",
+        model: "gpt-native-responses",
+        output: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "Chat through Responses." }],
+          },
+          {
+            type: "function_call",
+            id: "call_save",
+            call_id: "call_save",
+            name: "save_note",
+            arguments: "{\"note\":\"done\"}",
+          },
+        ],
+        usage: {
+          input_tokens: 13,
+          output_tokens: 8,
+          total_tokens: 21,
+          input_tokens_details: { cached_tokens: 4 },
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify({
       id: String(url).includes("/compact") ? "resp_native_compact" : "resp_native",
       object: "response",
@@ -395,13 +426,76 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         method: "POST",
         body: {
           model: "gpt-native-responses",
-          messages: [{ role: "user", content: "chat please" }],
+          messages: [
+            { role: "system", content: "Stay concise." },
+            { role: "user", content: "chat please" },
+            {
+              role: "assistant",
+              content: "I will save a note.",
+              tool_calls: [{
+                id: "call_note",
+                type: "function",
+                function: {
+                  name: "save_note",
+                  arguments: "{\"note\":\"draft\"}",
+                },
+              }],
+            },
+            { role: "tool", tool_call_id: "call_note", content: "saved" },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "save_note",
+              description: "Save a note",
+              parameters: {
+                type: "object",
+                properties: { note: { type: "string" } },
+                required: ["note"],
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "save_note" } },
+          max_tokens: 128,
+          temperature: 0.3,
         },
       });
-      assert.equal(chat.status, 501);
-      assert.equal(chat.body.error.code, "model_gateway_adapter_required");
-      assert.equal(chat.body.error.decision.mode, "adapter-required");
-      assert.equal(chat.body.error.decision.routeId, "openai_chat_completions");
+      assert.equal(chat.status, 200);
+      assert.equal(chat.headers["x-openclaw-model-gateway-provider"], "native-responses");
+      assert.equal(chat.body.id, "resp_chat_adapter");
+      assert.equal(chat.body.object, "chat.completion");
+      assert.equal(chat.body.choices[0].finish_reason, "tool_calls");
+      assert.deepEqual(chat.body.choices[0].message, {
+        role: "assistant",
+        content: "Chat through Responses.",
+        tool_calls: [{
+          id: "call_save",
+          type: "function",
+          function: {
+            name: "save_note",
+            arguments: "{\"note\":\"done\"}",
+          },
+        }],
+      });
+      assert.deepEqual(chat.body.usage, {
+        prompt_tokens: 13,
+        completion_tokens: 8,
+        total_tokens: 21,
+        prompt_tokens_details: { cached_tokens: 4 },
+      });
+
+      const streaming = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          stream: true,
+          messages: [{ role: "user", content: "stream please" }],
+        },
+      });
+      assert.equal(streaming.status, 501);
+      assert.equal(streaming.body.error.code, "model_gateway_adapter_required");
+      assert.equal(streaming.body.error.decision.mode, "adapter-required");
+      assert.equal(streaming.body.error.decision.routeId, "openai_chat_completions");
 
       const messages = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -421,6 +515,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.outcome]), [
         ["openai_responses", "success"],
         ["openai_responses_compact", "success"],
+        ["openai_chat_completions", "success"],
         ["openai_chat_completions", "adapter-required"],
         ["anthropic_messages", "adapter-required"],
       ]);
@@ -430,7 +525,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls.length, 3);
   assert.equal(upstreamCalls[0].url, "https://responses-native.example.test/v1/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-native-responses-secret");
   assert.equal(upstreamCalls[0].contentType, "application/json");
@@ -445,6 +540,43 @@ test("model gateway protocol matrix forwards native openai responses and guards 
     model: "gpt-native-responses",
     input: "Summarize for compaction.",
     stream: false,
+  });
+  assert.equal(upstreamCalls[2].url, "https://responses-native.example.test/v1/responses");
+  assert.equal(upstreamCalls[2].authorization, "Bearer sk-native-responses-secret");
+  assert.deepEqual(JSON.parse(upstreamCalls[2].body), {
+    model: "gpt-native-responses",
+    input: [
+      { role: "user", content: "chat please" },
+      { role: "assistant", content: "I will save a note." },
+      {
+        type: "function_call",
+        id: "call_note",
+        call_id: "call_note",
+        status: "completed",
+        name: "save_note",
+        arguments: "{\"note\":\"draft\"}",
+      },
+      {
+        type: "function_call_output",
+        call_id: "call_note",
+        output: "saved",
+      },
+    ],
+    stream: false,
+    instructions: "Stay concise.",
+    temperature: 0.3,
+    max_output_tokens: 128,
+    tools: [{
+      type: "function",
+      name: "save_note",
+      description: "Save a note",
+      parameters: {
+        type: "object",
+        properties: { note: { type: "string" } },
+        required: ["note"],
+      },
+    }],
+    tool_choice: { type: "function", name: "save_note" },
   });
 });
 

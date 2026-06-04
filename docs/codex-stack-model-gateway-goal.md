@@ -132,8 +132,27 @@ Gateway 需要提供：
 
 Local Gateway Edge 需要运行在 Studio 后端可控制的生命周期里。因为 Codex / Claude Code 可能在 Studio UI 关闭后继续使用，最终应支持：
 
-- Studio API 内嵌启动，用于开发和 OpenClaw Gateway 模式。
-- user-level service `openclaw-studio-model-gateway.service`，用于 CLI 长期可用。
+- 独立 Local Gateway daemon，默认由 OS/user service supervisor 托管，例如 Linux `systemd --user` unit `openclaw-studio-model-gateway.service`，macOS launchd user agent，Windows user service / scheduled task。
+- Studio API 内嵌启动只用于开发、测试和临时 fallback，不能作为正式 CLI 中转链路的唯一生命周期。
+- Studio / OpenClaw 可以负责安装、启动、停止、健康检查、配置下发和 UI 展示，但不能成为模型 relay 的父进程或唯一入口。
+
+### 4.1.1 单口模式、非单口模式和守护存活前提
+
+Studio 需要同时支持两种运行形态：
+
+- **非单口模式**：CLI / AI 工具直接访问 Local Gateway daemon 的 loopback 地址，例如 `http://127.0.0.1:18796/v1`。
+- **单口模式**：OpenClaw Gateway 挂载 Studio UI / control API，并可把部分 Gateway control path proxy 到 Studio；但模型 relay 仍由独立 Local Gateway daemon 承担。
+
+硬性目标：
+
+- OpenClaw Gateway 挂掉时，Local Gateway daemon 不能随之退出。
+- Studio API / UI 被 OpenClaw 带崩或自身崩溃时，Local Gateway daemon 仍要继续服务 Codex、Claude Code、OpenCode、OpenClaw 和其他 CLI 的模型请求。
+- 单口模式只能是 control/UI ingress 和可选 proxy 入口，不能是模型中转的唯一生命线。
+- CLI takeover 默认应写入稳定的 daemon loopback endpoint；如果产品需要暴露单口入口，也必须保留 direct daemon fallback。
+- daemon 通过 pid/lock/runtime metadata 声明端口归属，避免 Studio API、OpenClaw Gateway 和 daemon 争抢 `18796`。
+- health/status 必须区分 `controlPlane`、`openclawMount` 和 `localDaemon`，避免把 UI 或 mount 崩溃误判成模型 relay 已不可用。
+
+结论：正式方案应使用独立守护进程 + OS/user service supervisor。自动启动子进程只能作为 bootstrap 便利性，用于检测 service 未安装时启动 detached daemon，并在随后提示或执行 service 安装；它不能替代 systemd/launchd/Windows service 的 restart policy、开机自启和父进程崩溃隔离能力。
 
 ### 4.2 Provider Registry
 
@@ -226,6 +245,8 @@ Phase 1 implementation note（2026-06-04）：
 - Chat streaming -> Anthropic Messages streaming 尚未实现，`stream: true` 仍明确返回 `model_gateway_adapter_required`。
 - 已落地 Codex `/v1/responses` 和 `/v1/responses/compact` client -> native `anthropic_messages` provider 的最小非流式链式 adapter，复用 Responses -> Chat -> Anthropic 与 Anthropic -> Chat -> Responses 两段转换，并覆盖 tools/tool_choice、compact、runtime route log 和 secret 脱敏。
 - Responses/compact streaming -> Anthropic Messages streaming 尚未实现，`stream: true` 仍明确返回 `model_gateway_adapter_required`。
+- 已落地 `openai_chat_completions` client -> native `openai_responses` provider 的最小非流式 adapter，覆盖 Chat messages、system/developer instructions、tools、tool_choice、tool outputs、Responses output -> Chat response 和 usage 映射。
+- Chat streaming -> OpenAI Responses streaming 尚未实现，`stream: true` 仍明确返回 `model_gateway_adapter_required`。
 - streaming tool calls、streaming reasoning restore、provider-specific reasoning quirks 仍保持后续阶段任务。
 - 该实现只作为 Phase 1 contract foundation；完整 adapter 仍必须补 compact 专用语义、完整 streaming tool/reasoning 状态机、完整 history/reasoning store 和 provider-specific quirks。
 
@@ -263,7 +284,7 @@ Router 是新链路稳定性的核心：
 建议页面：
 
 1. **Gateway Overview**
-   - Gateway service 状态。
+   - Local Gateway daemon、Studio control plane、OpenClaw mount 的分层状态。
    - 当前 Codex / Claude Code / OpenCode / OpenClaw 接入状态。
    - active provider、当前模型、最近错误、failover 状态。
 
@@ -307,10 +328,10 @@ Router 是新链路稳定性的核心：
 
 1. 检查 Node.js / npm。
 2. 安装或验证 Codex CLI。
-3. 安装或启动 Studio Model Gateway service。
+3. 安装或启动独立 Studio Model Gateway daemon / user service。
 4. 创建 Studio provider registry。
 5. 如果没有 provider，引导用户添加 provider，或写入 disabled placeholder。
-6. 写 Codex takeover config，指向本地 Gateway。
+6. 写 Codex takeover config，默认指向 daemon loopback endpoint。
 7. 运行 Codex Responses smoke。
 
 可选路径：
@@ -347,6 +368,7 @@ Router 是新链路稳定性的核心：
 - native `openai_responses` 和 native `anthropic_messages` 的 passthrough paths 已有 system tests 覆盖。
 - native `anthropic_messages` provider 的 `/v1/chat/completions` 非流式 adapter 已有 system tests 覆盖。
 - native `anthropic_messages` provider 的 `/v1/responses` 和 `/v1/responses/compact` 非流式 adapter 已有 system tests 覆盖。
+- native `openai_responses` provider 的 `/v1/chat/completions` 非流式 adapter 已有 system tests 覆盖。
 - 未支持的协议组合仍返回 `model_gateway_adapter_required`。
 - 已补齐 provider delete、active provider 设置、provider test endpoint、runtime request log 和 provider health 更新。
 - `runtime.json` 已记录 gateway request / provider test 的有界日志，status 返回 request log size/latest timestamp。
@@ -355,10 +377,13 @@ Router 是新链路稳定性的核心：
 
 ### Phase 2: Gateway Runtime
 
-- 实现 Studio Model Gateway HTTP server。
+- 实现独立 Studio Model Gateway daemon HTTP server。
 - 提供 status、chat、responses、messages 基础入口。
 - 接入 provider router、timeout、request log。
-- 支持 Studio API 内嵌和 user-level service。
+- 支持 OS/user service supervisor 托管，具备 restart policy、开机/登录启动和父进程崩溃隔离。
+- 支持 Studio API 内嵌 fallback，但仅用于开发、测试和 bootstrap。
+- 实现端口 lock/pid/runtime metadata，避免与 Studio API / OpenClaw mount 争抢 listener。
+- status schema 拆分 `controlPlane`、`openclawMount`、`localDaemon`。
 
 ### Phase 3: Codex 支持
 
@@ -399,6 +424,8 @@ Router 是新链路稳定性的核心：
 必须全部满足后，才能认为旧链路已被替换：
 
 - 无 `openclaw.json` 时，Studio 可以完成 Codex 一键安装并生成可用本地 Gateway 配置。
+- Local Gateway daemon 由 user-level service 托管；OpenClaw Gateway 挂掉或 Studio API/UI 崩溃时，已接管 CLI 仍可通过 daemon loopback endpoint 发起模型请求。
+- 单口模式下 OpenClaw mount 只作为 control/UI ingress 或可选 proxy；CLI takeover 不能只依赖单口 mount endpoint，必须保留 direct daemon fallback。
 - 用户可在 UI 添加一个 OpenAI-compatible provider，并用 Codex 通过 `/v1/responses` 成功请求。
 - `glm-5.1` 这类 OpenAI Chat provider 可被 Codex 使用，不依赖 CPA。
 - `/v1/responses/compact` 通过同一 provider router 成功执行，不再调用 compact proxy。
@@ -419,7 +446,8 @@ Router 是新链路稳定性的核心：
 - Codex Responses streaming 和 tool-call history 的兼容成本高，必须先补单元测试再替换 UI。
 - Claude Code official auth 与第三方 provider 的策略不同，不能用同一 token 写法处理。
 - 将真实 secret 放入 Studio state 时，必须保证文件权限、masked return 和日志脱敏。
-- 如果 Gateway 只跟随 Studio UI 进程，CLI 会在 UI 关闭后失效；必须设计长期 service。
+- 如果 Gateway 只跟随 Studio UI、Studio API 或 OpenClaw Gateway mount 进程，CLI 会在 UI 关闭、Studio 崩溃或 OpenClaw 挂掉后失效；必须设计独立 daemon + user-level service。
+- 如果单口模式把模型 relay 绑定到 OpenClaw mount endpoint，OpenClaw 崩溃仍会切断模型请求；takeover 默认 endpoint 必须指向 daemon loopback，并把单口入口视为可选 proxy。
 - 如果控制面继续依赖单机 `HOME` 路径或 `systemd --user`，后续多节点、远程管理和权限审计会被锁死。
 - 如果普通读取接口继续返回明文 `api_key`，Model Gateway 会扩大现有配置泄漏风险。
 - 直接复制 cc-switch 代码需要保留 MIT license notice，并处理 Rust/Tauri 到 Node/TypeScript 的语义差异。

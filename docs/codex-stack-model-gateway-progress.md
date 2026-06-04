@@ -2,13 +2,15 @@
 
 > 状态：Phase 1 in progress
 > 更新：2026-06-04
-> 当前阶段：Phase 1 - provider management、runtime request log、health update、routing fallback foundation、协议互转矩阵 passthrough tests、Anthropic Messages -> Chat/Responses 非流式 adapters、Codex Responses/compact Chat adapter、文本 SSE streaming 和最小 tool-call history foundation 已落地
+> 当前阶段：Phase 1 - provider management、runtime request log、health update、routing fallback foundation、协议互转矩阵 passthrough tests、OpenAI Responses -> Chat 非流式 adapter、Anthropic Messages -> Chat/Responses 非流式 adapters、Codex Responses/compact Chat adapter、文本 SSE streaming、最小 tool-call history foundation 已落地；独立 Local Gateway daemon survivability 目标已补入方案，尚未实现
 
 ## 1. 当前决定
 
 - 不做短期 CPA / compact timeout 止血。
 - 不继续把 CPA / Gateway / cc-connect 作为模型代理链路。
 - Studio 自建 Model Gateway，并由 Studio 持有 provider registry、app takeover、router、failover、diagnostics。
+- Studio 支持单口和非单口运行，但模型 relay 的正式生命周期必须属于独立 Local Gateway daemon，而不是 OpenClaw Gateway mount 或 Studio API 进程。
+- 正式运行态使用 OS/user service supervisor 托管 daemon；Studio 自动启动 detached 子进程只能作为 bootstrap / dev fallback，不能替代 service restart policy 和父进程崩溃隔离。
 - cc-switch 作为架构和实现参考，不作为运行时依赖直接嵌入。
 - v1 存储优先使用 Studio state JSON + 原子写 + `0600` secret 文件，避免立即引入新数据库；schema 要保留迁移 SQLite 的空间。
 - `cc-connect` 后续只保留为可选 IM / project bridge。
@@ -220,10 +222,17 @@ docs/codex-stack-model-gateway-goal.md
   - response path 复用 Anthropic -> Chat -> Responses 两段转换，覆盖 text、tool_use -> Responses `function_call`、usage 和 `codex-history` 记录。
   - runtime log 保留原始 routeId：`openai_responses` 或 `openai_responses_compact`。
   - 当前只覆盖非流式；Responses/compact `stream: true` -> Anthropic streaming 仍返回 `model_gateway_adapter_required`。
+- 新增 `openai_responses` -> `openai_chat` 最小非流式 adapter foundation。
+  - 新增 `apps/api/modules/model-gateway/responses-chat-adapter.ts`。
+  - `/v1/chat/completions` 在选中 native `openai_responses` provider 时，会转到 provider `/v1/responses`。
+  - Chat request 会映射为 Responses request，覆盖 system/developer instructions、user/assistant/tool messages、function tools、tool_choice、tool outputs、`max_tokens`、`temperature` 和 `stream: false`。
+  - Responses output 会映射回 Chat Completions response，覆盖 text、Responses `function_call` -> Chat `tool_calls`、finish_reason 和 usage。
+  - 当前只覆盖非流式；Chat `stream: true` -> Responses streaming 仍返回 `model_gateway_adapter_required`。
 
 当前边界：
 
 - 已有的是 Model Gateway control/API foundation，不是完整长期 edge service。
+- 已补入 daemon survivability 目标，但当前实现仍运行在 Studio API 进程内，尚不能抵抗 Studio/OpenClaw 进程崩溃。
 - OpenAI Chat passthrough 可用；Codex Responses -> OpenAI Chat 非流式最小适配可用。
 - Codex Responses streaming text delta -> Responses SSE 最小适配可用。
 - Codex `/v1/responses/compact` -> OpenAI Chat 非流式最小适配可用，且保留独立 runtime route 诊断。
@@ -231,8 +240,9 @@ docs/codex-stack-model-gateway-goal.md
 - native `openai_responses` 和 native `anthropic_messages` passthrough 已有 system tests 锁定。
 - native `anthropic_messages` provider 服务 OpenAI Chat Completions 非流式请求的最小 adapter 可用。
 - native `anthropic_messages` provider 服务 OpenAI Responses / compact 非流式请求的最小链式 adapter 可用。
+- native `openai_responses` provider 服务 OpenAI Chat Completions 非流式请求的最小 adapter 可用。
 - Codex compact 专用 prompt shaping、compact-specific streaming 测试、streaming tool calls、streaming reasoning、reasoning history restore、Claude Messages adapter 尚未实现。
-- Chat/Responses streaming -> Anthropic Messages streaming、OpenAI Responses -> Chat adapter 尚未实现。
+- Chat/Responses streaming -> Anthropic Messages streaming、Chat streaming -> OpenAI Responses streaming、OpenAI Responses -> Anthropic Messages adapter 尚未实现。
 - provider CRUD 仍缺少 import/export、bulk reorder、preset creation 和 UI form。
 - 已有 runtime request log、health update、open-circuit fallback；尚未实现 request retry、真实 failover queue 执行、half-open probe 和 circuit reset policy。
 - 尚未改 UI、安装脚本、Codex takeover 或 CPA/compact 旧资源。
@@ -244,7 +254,7 @@ docs/codex-stack-model-gateway-goal.md
 | 用户配置的 provider 原生协议 | 典型来源 | 对外 Chat Completions | 对外 Responses / compact | 对外 Anthropic Messages |
 | --- | --- | --- | --- | --- |
 | `openai_chat` | 第三方模型最常见兼容协议 | 已有 passthrough | Phase 1 foundation：Responses 非流式、文本 SSE、compact 非流式、最小 tool-call history | 未开始 |
-| `openai_responses` | Codex 官方 API 原生协议 | 未开始，已确认 adapter-required | passthrough system tests 已锁定，含 compact native passthrough | 未开始，已确认 adapter-required |
+| `openai_responses` | Codex 官方 API 原生协议 | Phase 1 foundation：非流式 Chat adapter 已锁定；streaming 仍 adapter-required | passthrough system tests 已锁定，含 compact native passthrough | 未开始，已确认 adapter-required |
 | `anthropic_messages` | Claude 官方 API 原生协议 | Phase 1 foundation：非流式 Chat adapter 已锁定；streaming 仍 adapter-required | Phase 1 foundation：非流式 Responses / compact adapter 已锁定；streaming 仍 adapter-required | passthrough system tests 已锁定，含 `/v1/messages` 和 `/claude/v1/messages` |
 
 进度跟踪要求：
@@ -253,13 +263,23 @@ docs/codex-stack-model-gateway-goal.md
 - passthrough 也需要保留测试；不能只在 adapter-required contract 中间接证明。
 - 未完成格子继续返回 `model_gateway_adapter_required`，避免伪成功。
 
+运行形态 / daemon survivability 跟踪：
+
+- 目标已锁定：单口模式和非单口模式都必须依赖独立 Local Gateway daemon 承担模型 relay，而不是让 OpenClaw Gateway 或 Studio API 成为 relay 的父进程。
+- 单口模式只作为 OpenClaw Gateway 挂载 Studio UI/control API 的入口；模型请求应优先写入 daemon loopback endpoint，并保留 direct daemon fallback。
+- OpenClaw Gateway 挂掉、Studio API/UI 崩溃或被 OpenClaw 带崩时，daemon 必须继续服务已接管的 Codex、Claude Code、OpenCode、OpenClaw 和其他 CLI。
+- 正式方案优先：Linux `systemd --user` service、macOS launchd user agent、Windows user service / scheduled task。detached child process 只允许用于首次 bootstrap、开发和未安装 service 时的临时 fallback。
+- daemon 必须有端口归属 lock/pid/runtime metadata，避免与 Studio API/OpenClaw mount 争抢 `127.0.0.1:18796`。
+- status/diagnostics 需要拆分 `controlPlane`、`openclawMount`、`localDaemon`，避免 UI/mount 故障被误报为模型 relay 不可用。
+- 当前状态：仅文档目标和进度跟踪已补齐；daemon binary/service unit、supervisor install/start/restart、control API/IPC、UI health 和 crash-survivability tests 尚未实现。
+
 ## 5. 后续任务清单
 
 | 阶段 | 状态 | 任务 |
 | --- | --- | --- |
 | Phase 0 | 已完成 | 研究、目标方案、进度文档 |
-| Phase 1 | 进行中 | 新增 model gateway shared types、store、API、provider lifecycle、runtime log、health fallback、协议互转矩阵跟踪和 native passthrough tests、Anthropic Messages -> Chat/Responses 非流式 adapters、Codex Responses/compact -> Chat adapter、文本 streaming foundation 和 tool-call history foundation；下一步扩 streaming tool/reasoning/history 或进入 install/UI takeover contract |
-| Phase 2 | 未开始 | 实现 Studio Model Gateway runtime |
+| Phase 1 | 进行中 | 新增 model gateway shared types、store、API、provider lifecycle、runtime log、health fallback、协议互转矩阵跟踪和 native passthrough tests、OpenAI Responses -> Chat 非流式 adapter、Anthropic Messages -> Chat/Responses 非流式 adapters、Codex Responses/compact -> Chat adapter、文本 streaming foundation、tool-call history foundation 和独立 daemon survivability 目标跟踪；下一步扩 streaming tool/reasoning/history，或定义 daemon/service contract，再进入 install/UI takeover contract |
+| Phase 2 | 未开始 | 实现 Studio Model Gateway runtime，并拆出独立 Local Gateway daemon / user service |
 | Phase 3 | 未开始 | 实现完整 Codex Responses / Chat / compact adapter，包括 streaming、compact 和 history restore |
 | Phase 4 | 未开始 | 实现 Claude Messages adapter 和 Claude Code takeover |
 | Phase 5 | 未开始 | 实现 OpenCode / OpenClaw config 检测、生成、接管 |
@@ -294,7 +314,7 @@ docs/codex-stack-model-gateway-goal.md
 ### 测试
 
 - `tests/system/studio-web-codex-stack-workspace.test.mjs`
-- `tests/system/model-gateway-service.test.mjs`（已新增 provider registry / routing contract foundation，并扩展 provider lifecycle / runtime log / health / open-circuit fallback / native Responses passthrough / native Anthropic Messages passthrough / Anthropic Messages -> Chat 非流式 adapter / Anthropic Messages -> Responses 非流式 adapter / Codex Responses 非流式 adapter / text streaming adapter / compact adapter / tool-call history restore）
+- `tests/system/model-gateway-service.test.mjs`（已新增 provider registry / routing contract foundation，并扩展 provider lifecycle / runtime log / health / open-circuit fallback / native Responses passthrough / native Anthropic Messages passthrough / OpenAI Responses -> Chat 非流式 adapter / Anthropic Messages -> Chat 非流式 adapter / Anthropic Messages -> Responses 非流式 adapter / Codex Responses 非流式 adapter / text streaming adapter / compact adapter / tool-call history restore）
 - 扩展 gateway adapter tests 到 compact streaming、streaming tool calls、streaming reasoning、reasoning history 和 provider quirks。
 - 新增 install/takeover tests。
 
@@ -320,7 +340,14 @@ docs/codex-stack-model-gateway-goal.md
    - Gateway status。
    - request log and health update。
 
-3. **System**
+3. **Daemon / Service**
+   - daemon direct loopback smoke。
+   - Studio API down 时 daemon 仍可处理 `/v1/responses` / `/v1/chat/completions`。
+   - OpenClaw Gateway/mount down 时 daemon direct endpoint 仍可用。
+   - service restart policy 生效。
+   - port lock 防止 Studio API 与 daemon 双重监听。
+
+4. **System**
    - no `openclaw.json` install path。
    - Codex one-click install。
    - Codex `/v1/responses` smoke。
@@ -329,7 +356,7 @@ docs/codex-stack-model-gateway-goal.md
    - OpenCode/OpenClaw config generation。
    - failover with mocked timeout / 5xx。
 
-4. **Browser UI**
+5. **Browser UI**
    - add provider。
    - select active provider。
    - sync universal provider。
@@ -345,7 +372,8 @@ docs/codex-stack-model-gateway-goal.md
 
 ## 9. 风险和待定项
 
-- **Gateway 生命周期**：仅运行在 Studio API 进程会导致 CLI 在 UI 关闭后不可用；需要 user-level service。
+- **Gateway 生命周期**：仅运行在 Studio API 进程会导致 CLI 在 UI 关闭、Studio 崩溃或 OpenClaw Gateway 挂掉时不可用；需要独立 Local Gateway daemon + user-level service supervisor。
+- **单口模式耦合**：OpenClaw Gateway mount 只能作为 control/UI ingress。如果 CLI takeover 只写单口 mount endpoint，OpenClaw 崩溃仍会切断模型请求；默认 takeover 应写 daemon loopback endpoint，并把 mount 当可选 proxy。
 - **控制面边界**：Control Plane 不能绑定单机 `HOME` 和 systemd；这些只能留在 Local Edge。
 - **Secret 存储**：v1 文件存储必须用 `0600`、masked API 和日志脱敏；后续可评估 OS keychain。
 - **管理授权**：所有 secret、takeover、rollback、service 操作必须经过 management auth gate。
@@ -360,9 +388,10 @@ docs/codex-stack-model-gateway-goal.md
 
 下一轮继续 Phase 1：
 
-1. 扩展 Chat SSE -> Responses SSE：streaming tool calls、reasoning events、inline think block、compact-specific streaming case 和 finish_reason 细节。
-2. 扩展 Codex history：reasoning_content、custom tools、web search、ambiguous call_id fallback 和 provider-specific thinking quirks。
-3. 扩展 Anthropic adapter：Chat/Responses streaming、image/file parts、response_format、provider-specific thinking / tool edge cases。
-4. 启动下一格协议 adapter：`openai_responses` -> `openai_chat` 或 `openai_responses` -> `anthropic_messages`，让 Codex 官方 API provider 服务更多客户端协议。
-5. 继续补 failover：把 open-circuit fallback 从 route decision 扩展到实际 request retry / failover 执行。
-6. 进入 Codex install/UI takeover contract：让界面和安装流开始指向 Studio Model Gateway，而不是 CPA/compact proxy。
+1. 定义 Local Gateway daemon/service contract：daemon entrypoint、port lock/runtime metadata、health schema、Studio control API/IPC、systemd/launchd/Windows service 模板和 crash-survivability tests。
+2. 扩展 Chat SSE -> Responses SSE：streaming tool calls、reasoning events、inline think block、compact-specific streaming case 和 finish_reason 细节。
+3. 扩展 Codex history：reasoning_content、custom tools、web search、ambiguous call_id fallback 和 provider-specific thinking quirks。
+4. 扩展 Anthropic adapter：Chat/Responses streaming、image/file parts、response_format、provider-specific thinking / tool edge cases。
+5. 启动下一格协议 adapter：`openai_responses` -> `anthropic_messages`，让 Codex 官方 API provider 服务 Claude Messages clients。
+6. 继续补 failover：把 open-circuit fallback 从 route decision 扩展到实际 request retry / failover 执行。
+7. 进入 Codex install/UI takeover contract：让界面和安装流开始指向 Studio Model Gateway daemon，而不是 CPA/compact proxy。

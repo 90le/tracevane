@@ -59,6 +59,12 @@ import {
 } from "./codex-adapter.js";
 import { CodexChatHistoryStore } from "./codex-history.js";
 import { writeCodexResponsesSseFromChatSse } from "./codex-streaming.js";
+import {
+  OpenAIResponsesChatAdapterError,
+  adaptChatCompletionRequestToResponses,
+  adaptResponsesToChatCompletion,
+  isChatToOpenAIResponsesAdapterTarget,
+} from "./responses-chat-adapter.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
@@ -452,6 +458,7 @@ function endpointForRoute(routeId: ModelGatewayRouteId, provider: ModelGatewayPr
 
   if (routeId === "openai_chat_completions") {
     if (provider.apiFormat === "anthropic_messages") return "/v1/messages";
+    if (provider.apiFormat === "openai_responses") return "/v1/responses";
     return "/v1/chat/completions";
   }
   if (routeId === "openai_responses") {
@@ -1453,11 +1460,13 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     const useCodexResponsesChatAdapter = isCodexResponsesToChatAdapterTarget(decision);
     const useAnthropicMessagesChatAdapter = isChatToAnthropicMessagesAdapterTarget(decision);
     const useCodexResponsesAnthropicAdapter = isResponsesToAnthropicMessagesAdapterTarget(decision);
+    const useChatResponsesAdapter = isChatToOpenAIResponsesAdapterTarget(decision);
     if (
       decision.mode === "adapter-required"
       && !useCodexResponsesChatAdapter
       && !useAnthropicMessagesChatAdapter
       && !useCodexResponsesAnthropicAdapter
+      && !useChatResponsesAdapter
     ) {
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
@@ -1511,7 +1520,40 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     applyProviderAuth(headers, provider, secret);
     let upstreamBodyText = bodyText;
     let requestModelForLog = requestModel;
-    if (useAnthropicMessagesChatAdapter || useCodexResponsesAnthropicAdapter) {
+    if (useChatResponsesAdapter) {
+      try {
+        const adapted = adaptChatCompletionRequestToResponses(bodyText);
+        upstreamBodyText = JSON.stringify(adapted.responsesRequest);
+        requestModelForLog = adapted.model || requestModel;
+        headers.set("content-type", "application/json");
+      } catch (error) {
+        const adapterError = error instanceof OpenAIResponsesChatAdapterError
+          ? error
+          : new OpenAIResponsesChatAdapterError(
+            "model_gateway_chat_responses_adapter_failed",
+            error instanceof Error ? error.message : "OpenAI Chat to Responses adapter failed.",
+            500,
+          );
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModel,
+          statusCode: adapterError.statusCode,
+          outcome: adapterError.statusCode === 501 ? "adapter-required" : "failure",
+          errorCode: adapterError.statusCode === 501 ? "model_gateway_adapter_required" : adapterError.code,
+          errorMessage: adapterError.message,
+        }));
+        sendJson(res, adapterError.statusCode, {
+          error: {
+            code: adapterError.statusCode === 501 ? "model_gateway_adapter_required" : adapterError.code,
+            message: adapterError.message,
+            decision,
+          },
+        });
+        return;
+      }
+    } else if (useAnthropicMessagesChatAdapter || useCodexResponsesAnthropicAdapter) {
       try {
         const chatRequestBodyText = useCodexResponsesAnthropicAdapter
           ? JSON.stringify(adaptCodexResponsesRequestToChat(codexHistory.enrichRequest(bodyText).bodyText).chatRequest)
@@ -1673,6 +1715,53 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
 
       const responseText = await upstream.text();
       const responseBody = Buffer.from(responseText);
+      if (useChatResponsesAdapter && upstream.status >= 200 && upstream.status < 300) {
+        let adaptedResponse: Record<string, unknown>;
+        try {
+          adaptedResponse = adaptResponsesToChatCompletion(JSON.parse(responseText) as unknown, requestModelForLog);
+        } catch (error) {
+          const adapterError = error instanceof OpenAIResponsesChatAdapterError
+            ? error
+            : new OpenAIResponsesChatAdapterError(
+              "model_gateway_responses_chat_response_invalid",
+              error instanceof Error ? error.message : "OpenAI Chat adapter could not parse the Responses response.",
+              502,
+            );
+          updateProviderHealth(provider.id, false, latencyMs, adapterError.message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: adapterError.statusCode,
+            outcome: "failure",
+            errorCode: adapterError.code,
+            errorMessage: adapterError.message,
+          }));
+          sendJson(res, adapterError.statusCode, {
+            error: {
+              code: adapterError.code,
+              message: adapterError.message,
+              decision,
+            },
+          });
+          return;
+        }
+        updateProviderHealth(provider.id, true, latencyMs, null);
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModelForLog,
+          statusCode: upstream.status,
+          outcome: "success",
+          errorCode: null,
+          errorMessage: null,
+        }));
+        res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
+        sendJson(res, upstream.status, adaptedResponse);
+        return;
+      }
       if ((useAnthropicMessagesChatAdapter || useCodexResponsesAnthropicAdapter) && upstream.status >= 200 && upstream.status < 300) {
         let adaptedResponse: Record<string, unknown>;
         try {
