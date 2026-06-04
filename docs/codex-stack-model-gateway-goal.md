@@ -179,6 +179,13 @@ Phase 1 supervisor/install contract checkpoint（2026-06-04）：
 - `install` 支持 `apply: true, runCommands: false` 只写当前平台模板；真实执行 service manager 命令必须显式传 `runCommands: true`。
 - 当前仍未完成 UI 接入、安装脚本接入、真实 `systemctl` / `launchctl` / `schtasks` 启停验证和 supervisor crash-restart 验证。
 
+Phase 1 Codex install/takeover preparation checkpoint（2026-06-04）：
+
+- Codex Stack 安装成功后会写入当前平台的 Studio Model Gateway daemon service template。
+- 如果 `~/.codex/config.toml` 已存在，安装成功后会写入 inactive `[model_providers.studio]`，指向 `http://127.0.0.1:18796/v1`，`wire_api = "responses"`，`supports_websockets = false`。
+- `model_providers.studio.experimental_bearer_token` 使用 `PROXY_MANAGED` placeholder，避免把真实 upstream key 写入 Codex 客户端配置。
+- 该准备步骤不会把 top-level `model_provider` 切到 `studio`；active takeover 仍需后续 smoke gate / management action 落地。
+
 ### 4.2 Provider Registry
 
 Studio 需要自己的 provider registry。v1 可以使用 Studio state JSON + 原子写 + `0600` secret 文件，不先引入新数据库依赖；schema 要保持将来迁移 SQLite 的可能。
@@ -400,8 +407,9 @@ Router 是新链路稳定性的核心：
 - status 已暴露 `lifecycle.controlPlane`、`lifecycle.openclawMount`、`lifecycle.localDaemon` 和 `lifecycle.endpointPolicy`，用于后续 UI / install takeover 区分 control plane、single-port mount 和独立 daemon。
 - 已新增最小 Local Gateway daemon entrypoint，可写 runtime metadata/pid/port lock，并直接服务 Model Gateway status/provider/runtime 与 CLI 模型入口。
 - 已新增 daemon supervisor 模板和管理 API contract，可预览/写入当前平台 service template，并列出 start/stop/restart/status 命令计划。
+- Codex Stack 安装成功后已会写入 daemon service template，并为 Codex 准备 inactive `model_providers.studio`，默认 endpoint 为 daemon loopback。
 - Router 已能在 active provider circuit open 时选择同 app scope fallback provider，并在 route decision 中返回 `failoverReason`。
-- 尚未完成 supervisor 命令真实执行验证、app takeover preview/apply、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
+- 尚未完成 active Codex `studio` takeover smoke gate、supervisor 命令真实执行验证、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
 
 ### Phase 2: Gateway Runtime
 

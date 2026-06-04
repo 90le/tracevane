@@ -9,6 +9,10 @@ import type { StudioServerConfig } from "../../../../types/api.js";
 import {
   CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS,
 } from "../../../../types/codex-stack.js";
+import {
+  MODEL_GATEWAY_DEFAULT_HOST,
+  MODEL_GATEWAY_DEFAULT_PORT,
+} from "../../../../types/model-gateway.js";
 import type {
   CcConnectConfig,
   CcConnectPlatform,
@@ -47,6 +51,7 @@ import type {
 } from "../../../../types/codex-stack.js";
 import { isStudioGatewayHttpAuthorized } from "../../gateway-http-auth.js";
 import { readJsonFile } from "../../core/state.js";
+import { createModelGatewayDaemonServicePlan } from "../model-gateway/supervisor.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -303,6 +308,18 @@ function backupAndWrite(filePath: string, content: string): void {
   const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tempPath, content, { mode: 0o600 });
   fs.renameSync(tempPath, filePath);
+}
+
+function writeTextAtomic(filePath: string, content: string, mode = 0o644): void {
+  ensureDir(path.dirname(filePath));
+  const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  fs.writeFileSync(tempPath, content, { mode });
+  fs.renameSync(tempPath, filePath);
+  try {
+    fs.chmodSync(filePath, mode);
+  } catch {
+    // Best effort for filesystems that do not support chmod.
+  }
 }
 
 function maskSecret(value: string): { masked: string; length: number } {
@@ -826,6 +843,28 @@ function applyCodexCpaProviderSection(source: string, baseUrl: string, proxyKey:
   ].join("\n"));
 }
 
+function modelGatewayDaemonBaseUrl(): string {
+  return `http://${MODEL_GATEWAY_DEFAULT_HOST}:${MODEL_GATEWAY_DEFAULT_PORT}/v1`;
+}
+
+function applyCodexStudioProviderSection(source: string, baseUrl = modelGatewayDaemonBaseUrl()): string {
+  const managedKeys = new Set(["name", "base_url", "wire_api", "supports_websockets", "experimental_bearer_token"]);
+  const preserved = extractTomlSection(source, "model_providers.studio")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const key = line.match(/^\s*([A-Za-z0-9_-]+)\s*=/)?.[1];
+      return key ? !managedKeys.has(key) : Boolean(line.trim());
+    });
+  return upsertTomlSection(source, "model_providers.studio", [
+    'name = "OpenClaw Studio Model Gateway"',
+    `base_url = ${JSON.stringify(baseUrl)}`,
+    'wire_api = "responses"',
+    "supports_websockets = false",
+    'experimental_bearer_token = "PROXY_MANAGED"',
+    ...preserved,
+  ].join("\n"));
+}
+
 function applyCodexCpaActiveProvider(source: string, baseUrl: string, proxyKey: string, model: string): string {
   let next = applyCodexCpaProviderSection(applyCodexStableTransport(source), baseUrl, proxyKey);
   next = upsertTopLevelTomlString(next, "model_provider", "cpa");
@@ -1233,6 +1272,21 @@ function resolvePaths(config: StudioServerConfig) {
     profile: path.join(config.openclawRoot, "studio", "codex-stack", "profile.json"),
     jobsDir: path.join(config.openclawRoot, "studio", "codex-stack", "jobs"),
   };
+}
+
+function writeModelGatewayDaemonServiceTemplate(config: StudioServerConfig): string {
+  const plan = createModelGatewayDaemonServicePlan(config);
+  writeTextAtomic(plan.selectedTemplate.configPath, plan.selectedTemplate.template);
+  return plan.selectedTemplate.configPath;
+}
+
+function prepareCodexStudioGatewayProvider(codexConfigPath: string): boolean {
+  const current = readText(codexConfigPath);
+  if (!current) return false;
+  const next = applyCodexStudioProviderSection(applyCodexStableTransport(current));
+  if (next === current) return false;
+  backupAndWrite(codexConfigPath, next);
+  return true;
 }
 
 function readStudioCodexStackConfig(config: StudioServerConfig): Record<string, unknown> {
@@ -3504,6 +3558,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       appendJobLog(job, `\n[studio] install ${finalStatus}\n`, normalized.secrets);
       if (code === 0) {
         const proxyKey = normalized.env.CPA_PROXY_KEY || extractTomlString(readText(currentPaths.codexConfig), "experimental_bearer_token") || DEFAULT_CPA_PROXY_KEY;
+        const daemonServicePath = writeModelGatewayDaemonServiceTemplate(config);
+        appendJobLog(job, `Prepared Studio Model Gateway daemon service template: ${daemonServicePath}\n`);
+        if (prepareCodexStudioGatewayProvider(currentPaths.codexConfig)) {
+          appendJobLog(job, `Prepared inactive Codex Studio provider at ${modelGatewayDaemonBaseUrl()}.\n`);
+        } else {
+          appendJobLog(job, "Codex Studio provider was already prepared or Codex config is not present yet.\n");
+        }
         writeCodexAuth(currentPaths.codexAuth, proxyKey, currentPaths.codexOfficialAuthBackup);
         const profile = readProfile();
         writeProfile({

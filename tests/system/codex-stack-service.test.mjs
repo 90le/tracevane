@@ -2141,6 +2141,17 @@ test("codex stack install keeps the selected target model when channel changes",
   assert.equal(profile.channel, "official");
   assert.equal(profile.defaultModel, "kimi-k2.6");
   assert.equal(profile.cpaPort, 8317);
+
+  const serviceTemplatePath = path.join(root, ".config/systemd/user/openclaw-studio-model-gateway.service");
+  assert.ok(fs.existsSync(serviceTemplatePath));
+  const serviceTemplate = fs.readFileSync(serviceTemplatePath, "utf8");
+  assert.match(serviceTemplate, /model-gateway-daemon\.js/);
+  assert.match(serviceTemplate, /Restart=always/);
+  assert.match(serviceTemplate, new RegExp(config.openclawRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  const codexConfig = fs.readFileSync(path.join(root, ".codex/config.toml"), "utf8");
+  assert.doesNotMatch(tomlTopLevel(codexConfig), /model_provider\s*=\s*"studio"/);
+  assert.match(codexConfig, /\[model_providers\.studio\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"[\s\S]*wire_api = "responses"[\s\S]*experimental_bearer_token = "PROXY_MANAGED"/);
 });
 
 test("codex stack failed install does not persist optimistic profile state", async () => {
