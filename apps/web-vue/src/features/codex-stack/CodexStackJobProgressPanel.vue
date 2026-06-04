@@ -35,21 +35,29 @@
           {{ text("安装或修复脚本正在后台执行，日志会持续刷新；隐藏窗口不会停止任务。", "The install or repair job is running in the background; hiding this sheet does not stop the job.") }}
         </p>
 
-        <progress
-          class="cs-job-progress-track"
-          :value="progressValue"
-          max="100"
-          :aria-label="text('任务执行进度', 'Task progress')"
-        >
-          {{ progressValue }}%
-        </progress>
+        <div class="cs-job-progress-meter">
+          <div class="cs-job-progress-meta">
+            <span>{{ text("任务进度", "Task Progress") }}</span>
+            <strong>{{ progressValue }}%</strong>
+          </div>
+          <progress
+            class="cs-job-progress-track"
+            :value="progressValue"
+            max="100"
+            :aria-label="text('任务执行进度', 'Task progress')"
+          >
+            {{ progressValue }}%
+          </progress>
+        </div>
         <div class="cs-job-step-list">
           <span
             v-for="step in steps"
             :key="step.label"
             class="cs-job-step"
             :class="`cs-job-step-${step.state}`"
+            :aria-current="step.state === 'active' ? 'step' : undefined"
           >
+            <component :is="stepIcon(step.state)" :size="14" aria-hidden="true" />
             {{ step.label }}
           </span>
         </div>
@@ -73,8 +81,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { Copy, X } from "@lucide/vue";
+import { computed, type Component } from "vue";
+import { CheckCircle2, Circle, Copy, LoaderCircle, X, XCircle } from "@lucide/vue";
 import type { CodexStackJob } from "../../../../../types/codex-stack";
 import { useLocalePreference } from "../../shared/locale";
 import "./codex-stack-workspace.css";
@@ -104,4 +112,11 @@ const props = defineProps<{
 const progressOutput = computed(() => (
   props.running ? props.job.logTail || props.emptyLog : props.job.error || props.job.logTail || props.emptyLog
 ));
+
+function stepIcon(state: CodexStackJobProgressStep["state"]): Component {
+  if (state === "done") return CheckCircle2;
+  if (state === "active") return LoaderCircle;
+  if (state === "failed") return XCircle;
+  return Circle;
+}
 </script>

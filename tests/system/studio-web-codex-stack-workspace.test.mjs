@@ -95,7 +95,7 @@ test("codex stack feature css keeps visible chrome on DuoYuan tokens", () => {
   }
 
   assert.match(codexStackSharedPrimitivesCss, /html\[data-theme="light"\] \.cs-status-pill\.tone-accent,[\s\S]*var\(--acc\)/);
-  assert.match(codexStackWorkspaceCss, /\.cs-job-console\s*\{[\s\S]*box-shadow:\s*none;/);
+  assert.match(codexStackWorkspaceCss, /\.cs-job-console\s*\{[\s\S]*box-shadow:\s*var\(--cs-overlay-shadow\);/);
   assert.match(codexStackSettingsCss, /\.cs-impact-item\.tone-warning\s*\{[\s\S]*var\(--warning\)/);
   assert.match(codexStackCcConnectCss, /\.cs-config-action-strip\s*\{[\s\S]*var\(--surface-base\)/);
   assert.match(designContract, /OpenClaw Studio is a light operations workbench/);
@@ -235,10 +235,10 @@ test("codex stack remaining domain components use feature css instead of vue sty
   assert.doesNotMatch(logConsole, /<style/);
   assert.match(codexStackWorkspaceCss, /\.cs-log-console\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-log-output-dock\s*\{[\s\S]*--floating-output-width:\s*780px;/);
-  assert.match(codexStackWorkspaceCss, /\.cs-log-output-shell\s*\{[\s\S]*--floating-output-radius:\s*16px;/);
-  assert.match(codexStackWorkspaceCss, /\.cs-log-output-dock \.cs-log\s*\{[\s\S]*--floating-output-log-min-height:\s*260px;/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-shell\s*\{[\s\S]*--floating-output-radius:\s*8px;/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-shell\s*\{[\s\S]*background:\s*\n\s*linear-gradient[\s\S]*var\(--cs-doc-paper\);[\s\S]*box-shadow:\s*var\(--cs-overlay-shadow\);/);
+  assert.match(codexStackWorkspaceCss, /\.cs-log-output-dock \.cs-log\s*\{[\s\S]*--floating-output-log-min-height:\s*260px;[\s\S]*background:\s*var\(--cs-terminal-bg\);/);
   assert.match(styleCss, /\.floating-output-sheet\s*\{[\s\S]*background:\s*var\(--modal-panel-bg\);/);
-  assert.doesNotMatch(codexStackWorkspaceCss, /\.cs-log-output-sheet\s*\{[\s\S]*(?:background|box-shadow|backdrop-filter):/);
 });
 
 test("codex stack extracted panels own their scoped display styles", () => {
@@ -290,6 +290,8 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(checkOutputDialog, /import "\.\/codex-stack-workspace\.css";/);
   assert.doesNotMatch(checkOutputDialog, /<style scoped>/);
   assert.match(codexStackWorkspaceCss, /\.cs-check-dialog-backdrop\s*\{/);
+  assert.match(codexStackWorkspaceCss, /\.cs-check-dialog-backdrop\s*\{[\s\S]*background:\s*\n\s*radial-gradient[\s\S]*var\(--cs-overlay-backdrop\);/);
+  assert.match(codexStackWorkspaceCss, /\.cs-check-dialog\s*\{[\s\S]*background:\s*\n\s*linear-gradient[\s\S]*var\(--cs-doc-paper\);[\s\S]*box-shadow:\s*var\(--cs-overlay-shadow\);/);
   assert.match(codexStackWorkspaceCss, /\.cs-check-output\s*\{/);
   assert.match(environmentReferenceCard, /class="[^\"]*cs-environment-reference-card"/);
   assert.match(environmentReferenceCard, /import "\.\/codex-stack-settings\.css";/);
@@ -467,6 +469,8 @@ test("codex stack extracted panels own their scoped display styles", () => {
   assert.match(ccConnectSetupPanel, /import "\.\/codex-stack-cc-connect\.css";/);
   assert.match(codexStackCcConnectCss, /\.cs-cc-command-summary\s*\{/);
   assert.match(codexStackCcConnectCss, /\.cs-cc-command-sheet-dock\s*\{[\s\S]*--floating-output-width:\s*780px;/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-command-sheet\s*\{[\s\S]*background:\s*\n\s*linear-gradient[\s\S]*var\(--cs-doc-paper\);[\s\S]*box-shadow:\s*var\(--cs-overlay-shadow\);/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-command-sheet-log\s*\{[\s\S]*background:\s*var\(--cs-terminal-bg\);/);
   assert.doesNotMatch(codexStackCcConnectCss, /\.cs-code\s*\{/);
   assert.match(ccConnectStage, /class="cs-agent-workbench"/);
   assert.match(ccConnectStage, /class="[^\"]*cs-agent-stage"/);
@@ -965,7 +969,13 @@ test("codex stack install page delegates long job progress without losing pollin
   assert.match(jobProgressPanel, /aria-live="polite"/);
   assert.match(jobProgressPanel, /cs-job-progress-dock/);
   assert.match(jobProgressPanel, /cs-job-output-sheet/);
+  assert.match(jobProgressPanel, /cs-job-progress-meta/);
+  assert.match(jobProgressPanel, /stepIcon\(step\.state\)/);
   assert.match(codexStackWorkspaceCss, /\.cs-job-progress-dock\s*\{/);
+  assert.match(codexStackWorkspaceCss, /:root,\s*\n\.codex-stack-page\s*\{[\s\S]*--cs-doc-paper:\s*#ffffff;[\s\S]*--cs-overlay-shadow:/);
+  assert.match(codexStackWorkspaceCss, /html\[data-theme="dark"\],\s*\nhtml\[data-theme="dark"\] \.codex-stack-page\s*\{[\s\S]*--cs-doc-paper:\s*#0f1720;[\s\S]*--cs-overlay-shadow:/);
+  assert.match(codexStackWorkspaceCss, /\.cs-job-console\s*\{[\s\S]*background:\s*\n\s*linear-gradient[\s\S]*var\(--cs-doc-paper\);[\s\S]*box-shadow:\s*var\(--cs-overlay-shadow\);/);
+  assert.match(codexStackWorkspaceCss, /\.cs-job-progress-meter\s*\{/);
   assert.match(codexStackWorkspaceCss, /\.cs-job-sheet-actions\s*\{/);
   assert.match(jobProgressPanel, /隐藏窗口不会停止任务/);
   assert.match(jobProgressPanel, /复制输出/);
@@ -1213,7 +1223,8 @@ test("codex stack cc-connect page delegates setup actions without moving finaliz
   assert.match(ccConnectSetupPanel, /页面只保留复制入口/);
   assert.doesNotMatch(ccConnectSetupPanel, /<pre class="cs-code"/);
   assert.match(codexStackCcConnectCss, /\.cs-cc-command-sheet-log\s*\{[\s\S]*--floating-output-log-min-height:\s*220px;/);
-  assert.doesNotMatch(codexStackCcConnectCss, /\.cs-cc-command-sheet\s*\{[\s\S]*(?:background|box-shadow|backdrop-filter):/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-command-sheet\s*\{[\s\S]*background:\s*\n\s*linear-gradient[\s\S]*var\(--cs-doc-paper\);[\s\S]*box-shadow:\s*var\(--cs-overlay-shadow\);/);
+  assert.match(codexStackCcConnectCss, /\.cs-cc-command-sheet-log\s*\{[\s\S]*background:\s*var\(--cs-terminal-bg\);/);
   assert.doesNotMatch(codexStackCcConnectCss, /\.cs-code\s*\{/);
   assert.doesNotMatch(ccConnectSetupPanel, /copySetupCommand|finalizeCcConnect|finalizeCodexStackCcConnect|patchCcConnectConfig|saveCcConnect/);
 });

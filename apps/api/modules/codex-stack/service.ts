@@ -170,6 +170,7 @@ const REPAIR_ACTIONS = [
   "disable-legacy-healthcheck",
   "run-smoke-matrix",
   "apply-codex-cpa-after-smoke",
+  "apply-codex-studio-after-smoke",
   "force-apply-codex-cpa",
   "restore-official-chatgpt",
   "disable-conflicting-units",
@@ -863,6 +864,13 @@ function applyCodexStudioProviderSection(source: string, baseUrl = modelGatewayD
     'experimental_bearer_token = "PROXY_MANAGED"',
     ...preserved,
   ].join("\n"));
+}
+
+function applyCodexStudioActiveProvider(source: string, model: string, baseUrl = modelGatewayDaemonBaseUrl()): string {
+  let next = applyCodexStudioProviderSection(applyCodexStableTransport(source), baseUrl);
+  next = upsertTopLevelTomlString(next, "model_provider", "studio");
+  next = upsertTopLevelTomlString(next, "model", model);
+  return removeTopLevelLocalCompactBaseUrls(next);
 }
 
 function applyCodexCpaActiveProvider(source: string, baseUrl: string, proxyKey: string, model: string): string {
@@ -2292,6 +2300,61 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       const failed = matrix.models.find((result) => result.status === "failed");
       throw new Error(`CPA smoke matrix failed${failed ? ` for ${failed.model}: ${failed.error}` : ""}`);
     }
+  }
+
+  async function runCodexStudioSmokeGate(job: CodexStackJob, model: string): Promise<void> {
+    const baseUrl = `http://${MODEL_GATEWAY_DEFAULT_HOST}:${MODEL_GATEWAY_DEFAULT_PORT}`;
+    appendJobLog(job, `Running Studio Model Gateway smoke at ${baseUrl} using ${model}.\n`);
+
+    const statusResponse = await fetchWithTimeout(`${baseUrl}/gateway/status`, {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+    }, 10_000);
+    const statusText = await statusResponse.text();
+    if (!statusResponse.ok) {
+      throw new Error(`Studio gateway status failed with HTTP ${statusResponse.status}: ${statusText.slice(0, 800)}`);
+    }
+    let status: unknown;
+    try {
+      status = JSON.parse(statusText) as unknown;
+    } catch {
+      throw new Error(`Studio gateway status returned invalid JSON: ${statusText.slice(0, 800)}`);
+    }
+    if (!isRecord(status) || !isRecord(status.lifecycle) || !isRecord(status.lifecycle.localDaemon)) {
+      throw new Error(`Studio gateway status did not include localDaemon lifecycle: ${JSON.stringify(status).slice(0, 800)}`);
+    }
+    if (status.lifecycle.localDaemon.runtimeMode !== "local-daemon") {
+      throw new Error(`Studio gateway localDaemon is not active: ${JSON.stringify(status.lifecycle.localDaemon).slice(0, 800)}`);
+    }
+
+    const response = await postSmokeJson("Studio gateway responses", `${baseUrl}/v1/responses`, "", {
+      model,
+      input: "ping",
+      max_output_tokens: 8,
+      stream: false,
+    });
+    if (!isRecord(response) || response.status === "failed") {
+      throw new Error(`Studio gateway responses smoke returned failed response: ${JSON.stringify(response).slice(0, 800)}`);
+    }
+
+    const sentinel = compactSmokeSentinel(model);
+    const compact = await postSmokeJson("Studio gateway compact", `${baseUrl}/v1/responses/compact`, "", {
+      model,
+      input: buildCompactSmokeInput(model),
+      thread_id: "studio-gateway-smoke",
+    });
+    if (!isRecord(compact) || compact.status === "failed") {
+      throw new Error(`Studio gateway compact smoke returned failed response: ${JSON.stringify(compact).slice(0, 800)}`);
+    }
+    const outputText = extractResponseOutputText(compact);
+    if (!outputText.trim()) {
+      throw new Error("Studio gateway compact smoke returned an empty summary");
+    }
+    if (!outputText.includes(sentinel)) {
+      throw new Error(`Studio gateway compact smoke did not preserve sentinel ${sentinel}`);
+    }
+
+    appendJobLog(job, "Studio Model Gateway smoke gate passed.\n");
   }
 
   function recoverJobs(): void {
@@ -3792,6 +3855,25 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           }
           writeCodexAuth(currentPaths.codexAuth, effectiveProxyKey, currentPaths.codexOfficialAuthBackup);
           appendJobLog(job, "Updated Codex auth.json for the local CPA proxy key and preserved any prior official ChatGPT auth backup.\n", [effectiveProxyKey]);
+        }
+        if (action === "apply-codex-studio-after-smoke") {
+          const codex = readText(currentPaths.codexConfig);
+          if (!codex) throw new Error("Codex config is missing");
+          const profile = readProfile();
+          const currentModel = extractTomlString(codex, "model");
+          const attachModel = requireCpaTargetModel(chooseCpaAttachModel(
+            currentModel,
+            profile.defaultModel,
+            readOpenclawDefaultModel(currentPaths.openclawJson),
+          ));
+          await runCodexStudioSmokeGate(job, attachModel);
+          const next = applyCodexStudioActiveProvider(codex, attachModel);
+          if (next !== codex) {
+            backupAndWrite(currentPaths.codexConfig, next);
+            appendJobLog(job, `Studio Model Gateway smoke gate passed; Codex active provider switched to studio using ${attachModel}.\n`);
+          } else {
+            appendJobLog(job, "Studio Model Gateway smoke gate passed; Codex active provider was already studio.\n");
+          }
         }
         if (action === "force-apply-codex-cpa") {
           const codex = readText(currentPaths.codexConfig);

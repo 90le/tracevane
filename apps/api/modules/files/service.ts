@@ -29,7 +29,6 @@ import type {
 
 const MAX_TEXT_FILE_BYTES = 1024 * 1024;
 const MAX_SEARCH_TEXT_BYTES = 256 * 1024;
-const MAX_UPLOAD_FILE_BYTES = 24 * 1024 * 1024;
 const SEARCH_LIMIT = 250;
 
 type FileRootContext = FileRootSummary & {
@@ -687,11 +686,6 @@ function decodeUploadFile(input: FilesUploadItemPayload): Buffer {
   const buffer = Buffer.from(rawBase64, "base64");
   if (!buffer.length) {
     throw new Error(`Uploaded file ${fileName} could not be decoded`);
-  }
-  if (buffer.length > MAX_UPLOAD_FILE_BYTES) {
-    throw new Error(
-      `Uploaded file ${fileName} is too large; limit is ${MAX_UPLOAD_FILE_BYTES / 1024 / 1024} MiB`,
-    );
   }
   return buffer;
 }

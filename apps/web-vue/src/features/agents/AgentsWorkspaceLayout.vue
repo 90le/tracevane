@@ -428,6 +428,7 @@ const saveBusy = ref(false);
 const createBusy = ref(false);
 const errorMessage = ref('');
 const noticeMessage = ref<NoticeMessage | null>(null);
+let summaryRequestSequence = 0;
 let detailRequestSequence = 0;
 
 const routeAgentId = computed(() => {
@@ -850,6 +851,7 @@ async function loadSelectedDetail(agentId: string): Promise<void> {
 
 async function refreshSummary(preferredAgentId = ''): Promise<void> {
   if (!isAgentsRouteActive.value) return;
+  const requestSequence = ++summaryRequestSequence;
   summaryLoading.value = true;
   errorMessage.value = '';
 
@@ -858,7 +860,7 @@ async function refreshSummary(preferredAgentId = ''): Promise<void> {
       fetchAgentsSummary(),
       fetchConfigSummary().catch(() => null),
     ]);
-    if (!isAgentsRouteActive.value) return;
+    if (requestSequence !== summaryRequestSequence || !isAgentsRouteActive.value) return;
     summary.value = nextSummary;
     configSummary.value = nextConfigSummary;
 
@@ -887,8 +889,11 @@ async function refreshSummary(preferredAgentId = ''): Promise<void> {
 
     await loadSelectedDetail(nextAgentId);
   } catch (error) {
+    if (requestSequence !== summaryRequestSequence) return;
+    if (!isAgentsRouteActive.value) return;
     errorMessage.value = error instanceof Error ? error.message : text('无法读取 Agent 列表。', 'Failed to load agents.');
   } finally {
+    if (requestSequence !== summaryRequestSequence) return;
     summaryLoading.value = false;
   }
 }

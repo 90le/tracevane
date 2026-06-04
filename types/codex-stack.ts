@@ -435,6 +435,7 @@ export type CodexStackRepairAction =
   | "disable-legacy-healthcheck"
   | "run-smoke-matrix"
   | "apply-codex-cpa-after-smoke"
+  | "apply-codex-studio-after-smoke"
   | "force-apply-codex-cpa"
   | "restore-official-chatgpt"
   | "disable-conflicting-units"

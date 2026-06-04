@@ -1,5 +1,6 @@
 /* Migrated Codex Stack workspace rules from global style.css. Keep Codex Stack chrome in feature CSS. */
 
+:root,
 .codex-stack-page {
   --cs-doc-ink: #0f172a;
   --cs-doc-muted: #475569;
@@ -30,11 +31,14 @@
   --cs-doc-hero-glow: rgba(94, 234, 212, 0.26);
   --cs-doc-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
   --cs-doc-subtle-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  --cs-overlay-backdrop: color-mix(in srgb, var(--cs-doc-ink) 48%, transparent);
+  --cs-overlay-shadow: 0 24px 70px color-mix(in srgb, var(--cs-doc-ink) 22%, transparent);
   --cs-terminal-bg: #0c1220;
   --cs-terminal-line: rgba(148, 163, 184, 0.22);
   --cs-terminal-text: #dbeafe;
 }
 
+html[data-theme="dark"],
 html[data-theme="dark"] .codex-stack-page {
   --cs-doc-ink: #f8fafc;
   --cs-doc-muted: #a7b3c5;
@@ -65,6 +69,8 @@ html[data-theme="dark"] .codex-stack-page {
   --cs-doc-hero-glow: rgba(125, 211, 252, 0.18);
   --cs-doc-shadow: 0 18px 42px rgba(0, 0, 0, 0.3);
   --cs-doc-subtle-shadow: none;
+  --cs-overlay-backdrop: color-mix(in srgb, var(--cs-doc-soft-2) 72%, transparent);
+  --cs-overlay-shadow: 0 26px 78px color-mix(in srgb, var(--cs-doc-soft-2) 64%, transparent);
   --cs-terminal-bg: #050914;
   --cs-terminal-line: rgba(226, 232, 240, 0.14);
   --cs-terminal-text: #d9e7ff;
@@ -635,6 +641,7 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   z-index: 70;
   width: min(680px, calc(100vw - 32px));
   max-height: min(720px, calc(100vh - 32px));
+  pointer-events: none;
 }
 
 .cs-job-console {
@@ -642,22 +649,33 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   display: grid;
   gap: 13px;
   overflow: hidden;
-  border: 1px solid var(--cs-doc-line);
-  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--cs-doc-line) 82%, var(--cs-doc-blue) 18%);
+  border-radius: 12px;
   padding: 16px;
-  background: var(--cs-doc-paper);
-  box-shadow: none;
+  color: var(--cs-doc-ink);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cs-doc-panel) 92%, var(--cs-doc-blue) 8%) 0, var(--cs-doc-paper) 42%),
+    var(--cs-doc-paper);
+  box-shadow: var(--cs-overlay-shadow);
   backdrop-filter: none;
 }
 
 .cs-job-progress-dock .cs-job-console {
   width: 100%;
   max-height: inherit;
-  box-shadow: none;
 }
 
 .cs-job-output-sheet {
+  position: relative;
   pointer-events: auto;
+}
+
+.cs-job-output-sheet::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--cs-doc-blue);
 }
 
 .cs-console-header {
@@ -701,31 +719,31 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
 }
 
 .cs-progress-running {
-  background: var(--cs-doc-blue);
-  color: #fff;
+  background: linear-gradient(135deg, var(--cs-doc-blue-dark), var(--cs-doc-blue));
+  color: var(--button-primary-text, var(--cs-doc-paper));
   border-color: transparent;
   animation: csPulse 1.5s infinite;
 }
 
 .cs-progress-ok {
   background: var(--cs-status-sage-text);
-  color: #fff;
+  color: var(--button-primary-text, var(--cs-doc-paper));
   border-color: transparent;
 }
 
 .cs-progress-fail {
   background: var(--cs-status-danger-text);
-  color: #fff;
+  color: var(--button-primary-text, var(--cs-doc-paper));
   border-color: transparent;
 }
 
 .cs-progress-log {
   width: 100%;
-  max-height: min(360px, 42vh);
+  max-height: min(340px, 40vh);
   overflow: auto;
   padding: 12px 14px;
   border: 0;
-  background: transparent;
+  background: var(--cs-terminal-bg);
   color: var(--cs-terminal-text);
   white-space: pre-wrap;
   line-height: 1.55;
@@ -735,8 +753,9 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
 .cs-progress-log-shell {
   overflow: hidden;
   border: 1px solid var(--cs-terminal-line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--cs-terminal-bg);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--cs-terminal-text) 4%, transparent);
 }
 
 .cs-progress-log-bar {
@@ -746,6 +765,7 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   gap: 10px;
   border-bottom: 1px solid var(--cs-terminal-line);
   padding: 9px 12px;
+  background: color-mix(in srgb, var(--cs-terminal-bg) 82%, var(--cs-doc-blue) 18%);
   color: var(--cs-terminal-text);
   font-size: 0.78rem;
   font-weight: 700;
@@ -753,50 +773,86 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   text-transform: uppercase;
 }
 
+.cs-job-progress-meter {
+  display: grid;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--cs-doc-line) 84%, var(--cs-doc-blue) 16%);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--cs-doc-blue) 8%, transparent), transparent 58%),
+    var(--cs-doc-panel);
+}
+
+.cs-job-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--cs-doc-muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.cs-job-progress-meta strong {
+  color: var(--cs-doc-ink);
+  font-size: 0.92rem;
+}
+
 .cs-job-progress-track {
   display: block;
   width: 100%;
-  height: 10px;
+  height: 12px;
   overflow: hidden;
-  margin: 12px 0;
+  margin: 0;
   border-radius: 999px;
   border: 1px solid var(--cs-terminal-line);
-  background: color-mix(in srgb, var(--cs-terminal-bg) 70%, transparent);
+  background: color-mix(in srgb, var(--cs-terminal-bg) 12%, var(--cs-doc-panel));
+  accent-color: var(--cs-doc-blue);
   appearance: none;
 }
 
 .cs-job-progress-track::-webkit-progress-bar {
   border-radius: inherit;
-  background: transparent;
+  background: color-mix(in srgb, var(--cs-terminal-bg) 12%, var(--cs-doc-panel));
 }
 
 .cs-job-progress-track::-webkit-progress-value {
   border-radius: inherit;
-  background: var(--cs-doc-blue);
+  background: linear-gradient(90deg, var(--cs-doc-blue-dark), var(--cs-doc-blue));
   transition: inline-size 0.28s ease;
 }
 
 .cs-job-progress-track::-moz-progress-bar {
   border-radius: inherit;
-  background: var(--cs-doc-blue);
+  background: linear-gradient(90deg, var(--cs-doc-blue-dark), var(--cs-doc-blue));
 }
 
 .cs-job-step-list {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--cs-doc-line);
-  margin-bottom: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  gap: 6px;
+  margin-bottom: 2px;
 }
 
 .cs-job-step {
-  border: 0;
-  border-radius: 0;
-  padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--cs-doc-line);
+  border-radius: 8px;
+  padding: 7px 9px;
   color: var(--cs-doc-muted);
-  background: var(--cs-doc-paper);
+  background: var(--cs-doc-panel);
   font-size: 0.82rem;
+  font-weight: 620;
+}
+
+.cs-job-step svg {
+  flex: 0 0 auto;
+  color: currentColor;
 }
 
 .cs-job-step-done {
@@ -812,6 +868,10 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   font-weight: 700;
 }
 
+.cs-job-step-active svg {
+  animation: csSpin 1.1s linear infinite;
+}
+
 .cs-job-step-failed {
   color: var(--cs-status-danger-text);
   border-color: var(--cs-status-danger-border);
@@ -823,8 +883,16 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   border-color: var(--cs-status-sage-border);
 }
 
+.cs-result-ok::before {
+  background: var(--cs-status-sage-text);
+}
+
 .cs-result-fail {
   border-color: var(--cs-status-danger-border);
+}
+
+.cs-result-fail::before {
+  background: var(--cs-status-danger-text);
 }
 
 .cs-diagnostics-panel {
@@ -890,7 +958,9 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(15, 23, 42, 0.48);
+  background:
+    radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--cs-doc-blue) 18%, transparent), transparent 36%),
+    var(--cs-overlay-backdrop);
   backdrop-filter: none;
 }
 
@@ -901,11 +971,14 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   flex-direction: column;
   gap: 14px;
   overflow: hidden;
-  border: 1px solid var(--cs-doc-line);
-  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--cs-doc-line) 82%, var(--cs-doc-blue) 18%);
+  border-radius: 14px;
   padding: 18px;
-  background: var(--cs-doc-paper);
-  box-shadow: var(--cs-doc-shadow);
+  color: var(--cs-doc-ink);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cs-doc-panel) 92%, var(--cs-doc-blue) 8%) 0, var(--cs-doc-paper) 46%),
+    var(--cs-doc-paper);
+  box-shadow: var(--cs-overlay-shadow);
   backdrop-filter: none;
 }
 
@@ -939,8 +1012,9 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   flex: 1 1 auto;
   overflow: auto;
   border: 1px solid var(--cs-terminal-line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--cs-terminal-bg);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--cs-terminal-text) 4%, transparent);
 }
 
 .cs-check-terminal-bar {
@@ -950,6 +1024,7 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   gap: 10px;
   border-bottom: 1px solid var(--cs-terminal-line);
   padding: 10px 14px;
+  background: color-mix(in srgb, var(--cs-terminal-bg) 82%, var(--cs-doc-blue) 18%);
   color: var(--cs-terminal-text);
   font-size: 0.8rem;
   font-weight: 700;
@@ -969,7 +1044,7 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
   overflow: auto;
   border: 0;
   padding: 14px 16px;
-  background: transparent;
+  background: var(--cs-terminal-bg);
   color: var(--cs-terminal-text);
   white-space: pre-wrap;
   line-height: 1.55;
@@ -1357,12 +1432,19 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
 
 .cs-log-output-shell {
   --floating-output-radius: 8px;
+  border-color: color-mix(in srgb, var(--cs-doc-line) 82%, var(--cs-doc-blue) 18%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cs-doc-panel) 92%, var(--cs-doc-blue) 8%) 0, var(--cs-doc-paper) 42%),
+    var(--cs-doc-paper);
+  box-shadow: var(--cs-overlay-shadow);
 }
 
 .cs-log-output-bar {
   align-items: center;
   color: var(--cs-doc-muted);
   min-width: 0;
+  border-bottom-color: var(--cs-doc-line);
+  background: color-mix(in srgb, var(--cs-doc-panel) 88%, var(--cs-doc-blue) 12%);
 }
 
 .cs-log-output-bar > div:first-child {
@@ -1381,6 +1463,8 @@ body:has(.app-container.codex-stack-shell.sidebar-collapsed) .sidebar-rail-toolt
 .cs-log-output-dock .cs-log {
   --floating-output-log-min-height: 260px;
   --floating-output-log-max-height: 560px;
+  background: var(--cs-terminal-bg);
+  color: var(--cs-terminal-text);
 }
 
 .cs-log-output-bar p {

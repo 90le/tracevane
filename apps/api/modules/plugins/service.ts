@@ -31,7 +31,6 @@ import type {
 import { readOpenClawConfig, writeJsonFile } from "../../core/state.js";
 
 const execFileAsync = promisify(execFile);
-const UPLOAD_PLUGIN_ARCHIVE_MAX_BYTES = 32 * 1024 * 1024;
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -504,9 +503,6 @@ function decodeUploadedPluginArchive(payload: PluginUploadArchivePayload): Buffe
   if (!rawBase64) throw new Error("Uploaded plugin archive is empty");
   const buffer = Buffer.from(rawBase64, "base64");
   if (!buffer.length) throw new Error("Uploaded plugin archive could not be decoded");
-  if (buffer.length > UPLOAD_PLUGIN_ARCHIVE_MAX_BYTES) {
-    throw new Error(`Uploaded plugin archive is too large; limit is ${UPLOAD_PLUGIN_ARCHIVE_MAX_BYTES / 1024 / 1024} MiB`);
-  }
   return buffer;
 }
 

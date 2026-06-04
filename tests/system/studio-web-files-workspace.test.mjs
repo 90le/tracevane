@@ -26,6 +26,8 @@ const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.
 const filesApi = read("apps/web-vue/src/features/files/api.ts");
 const filesRoutes = read("apps/api/modules/files/routes.ts");
 const filesService = read("apps/api/modules/files/service.ts");
+const pluginsService = read("apps/api/modules/plugins/service.ts");
+const skillsService = read("apps/api/modules/skills/service.ts");
 const webPackage = JSON.parse(read("apps/web-vue/package.json"));
 const main = read("apps/web-vue/src/main.ts");
 
@@ -115,8 +117,7 @@ test("native files workspace covers operations expected from an ops-oriented web
   assert.match(filesControlPage, /handleWorkbenchPaste/);
   assert.match(filesControlPage, /collectUploadCandidatesFromDataTransfer/);
   assert.match(filesControlPage, /collectUploadCandidatesFromEntry/);
-  assert.match(filesControlPage, /MAX_UPLOAD_FILE_BYTES/);
-  assert.match(filesControlPage, /MAX_UPLOAD_BATCH_BYTES/);
+  assert.doesNotMatch(filesControlPage, /MAX_UPLOAD_FILE_BYTES|MAX_UPLOAD_BATCH_BYTES/);
   assert.match(filesControlPage, /archivePaths/);
   assert.match(filesControlPage, /unarchiveFile/);
   assert.match(filesControlPage, /EXTRACTABLE_ARCHIVE_EXTENSIONS/);
@@ -187,6 +188,8 @@ test("file previews and editor workspace reuse the terminal preview engine", () 
   assert.match(terminalMarkdownPreview, /terminal-doc-media-block/);
   assert.match(terminalMarkdownPreview, /handleMarkdownDrop/);
   assert.match(terminalMarkdownPreview, /handleMarkdownPaste/);
+  assert.doesNotMatch(terminalMarkdownPreview, /TERMINAL_MARKDOWN_UPLOAD_MAX_FILE_BYTES|TERMINAL_MARKDOWN_UPLOAD_MAX_BATCH_BYTES/);
+  assert.doesNotMatch(terminalMarkdownPreview, /超过 24 MB|超过 96 MB/);
   assert.match(terminalMarkdownPreview, /serializeEditableMarkdownMediaElement/);
   assert.match(terminalMarkdownPreview, /buildFileDownloadUrl/);
   assert.match(terminalMarkdownPreview, /function rewriteMarkdownAssetUrls\(root: HTMLElement\): void/);
@@ -306,4 +309,7 @@ test("files api and server routes cover browse, tree, read, search, mutate, uplo
   assert.match(filesService, /runPythonTarArchive/);
   assert.match(filesService, /runPythonTarExtract/);
   assert.match(filesService, /unsupported archive entry/);
+  assert.doesNotMatch(filesService, /MAX_UPLOAD_FILE_BYTES|is too large; limit is/);
+  assert.doesNotMatch(pluginsService, /UPLOAD_PLUGIN_ARCHIVE_MAX_BYTES|is too large; limit is/);
+  assert.doesNotMatch(skillsService, /UPLOAD_ARCHIVE_MAX_BYTES|is too large; limit is/);
 });

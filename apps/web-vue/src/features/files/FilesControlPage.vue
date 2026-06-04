@@ -862,8 +862,6 @@ const RECENT_EDITOR_FILES_STORAGE_KEY = "openclaw-studio.files.recent-editor";
 const TERMINAL_DESCRIPTORS_STORAGE_KEY = "openclaw-studio.terminal.descriptors";
 const TERMINAL_WORKSPACE_STORAGE_KEY = `${TERMINAL_DESCRIPTORS_STORAGE_KEY}.workspace`;
 const TERMINAL_PENDING_LAUNCH_STORAGE_KEY = "openclaw-studio.terminal.pendingLaunchMetadata";
-const MAX_UPLOAD_FILE_BYTES = 24 * 1024 * 1024;
-const MAX_UPLOAD_BATCH_BYTES = 96 * 1024 * 1024;
 const PAGE_SIZE_OPTIONS = [50, 100, 200, 500] as const;
 const EXTRACTABLE_ARCHIVE_EXTENSIONS = [
   ".zip",
@@ -2278,18 +2276,6 @@ function updateUploadQueueItem(id: string, patch: Partial<UploadQueueItem>): voi
   );
 }
 
-function markUploadQueueError(candidates: UploadFileCandidate[], message: string, targetFileName?: string): void {
-  const queue = buildUploadQueue(candidates);
-  uploadQueueItems.value = queue.map((item) => {
-    const isTarget = !targetFileName || item.name === targetFileName;
-    return isTarget
-      ? { ...item, status: "error", progress: 100, error: message }
-      : item;
-  });
-  uploadPanelOpen.value = true;
-  uploadBusy.value = false;
-}
-
 function uploadStatusLabel(status: UploadQueueStatus): string {
   if (status === "queued") return text("等待", "Queued");
   if (status === "reading") return text("读取中", "Reading");
@@ -2303,26 +2289,6 @@ async function uploadFileCandidates(candidates: UploadFileCandidate[]): Promise<
   const queue = buildUploadQueue(candidates);
   uploadQueueItems.value = queue;
   uploadPanelOpen.value = true;
-  const oversized = candidates.find((candidate) => candidate.file.size > MAX_UPLOAD_FILE_BYTES);
-  if (oversized) {
-    const message = text(
-      `${oversized.file.name} 超过 ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}，请使用终端或分批上传。`,
-      `${oversized.file.name} exceeds ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}. Use terminal upload or split the batch.`,
-    );
-    markUploadQueueError(candidates, message, oversized.file.name);
-    setNotice("error", message);
-    return;
-  }
-  const batchSize = candidates.reduce((total, candidate) => total + candidate.file.size, 0);
-  if (batchSize > MAX_UPLOAD_BATCH_BYTES) {
-    const message = text(
-      `本次上传约 ${formatFileSize(batchSize)}，请分批上传。`,
-      `This upload is about ${formatFileSize(batchSize)}. Split it into smaller batches.`,
-    );
-    markUploadQueueError(candidates, message);
-    setNotice("error", message);
-    return;
-  }
   uploadBusy.value = true;
   try {
     const payloadFiles = [];

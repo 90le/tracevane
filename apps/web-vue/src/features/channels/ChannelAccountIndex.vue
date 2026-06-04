@@ -15,10 +15,16 @@
       <section v-if="defaultAccounts.length" class="channel-account-index__group">
         <div class="channel-account-index__group-head">
           <strong>{{ text('默认账号', 'Default account') }}</strong>
-          <span>{{ text('Provider 的默认入口。顶部快捷权限和配对也会优先指向这里。', 'The provider default entrypoint. Header access and pairing shortcuts point here first.') }}</span>
+          <span>{{ text('Provider 的默认入口，优先用于普通收发和快捷操作。', 'The provider default entrypoint for normal send/receive and shortcuts.') }}</span>
         </div>
 
         <div class="channel-account-index__list">
+          <div class="channel-account-index__table-head" aria-hidden="true">
+            <span>{{ text('账号', 'Account') }}</span>
+            <span>{{ text('配置状态', 'Config state') }}</span>
+            <span>{{ text('策略', 'Policy') }}</span>
+            <span>{{ text('操作', 'Actions') }}</span>
+          </div>
           <ChannelAccountEntry
             v-for="account in defaultAccounts"
             :key="account.id"
@@ -43,6 +49,12 @@
         </div>
 
         <div class="channel-account-index__list">
+          <div class="channel-account-index__table-head" aria-hidden="true">
+            <span>{{ text('账号', 'Account') }}</span>
+            <span>{{ text('配置状态', 'Config state') }}</span>
+            <span>{{ text('策略', 'Policy') }}</span>
+            <span>{{ text('操作', 'Actions') }}</span>
+          </div>
           <ChannelAccountEntry
             v-for="account in namedAccounts"
             :key="account.id"

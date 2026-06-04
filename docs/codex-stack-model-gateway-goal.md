@@ -143,6 +143,13 @@ Studio 需要同时支持两种运行形态：
 - **非单口模式**：CLI / AI 工具直接访问 Local Gateway daemon 的 loopback 地址，例如 `http://127.0.0.1:18796/v1`。
 - **单口模式**：OpenClaw Gateway 挂载 Studio UI / control API，并可把部分 Gateway control path proxy 到 Studio；但模型 relay 仍由独立 Local Gateway daemon 承担。
 
+设计前提：
+
+- 这个功能的首要目的就是避免 OpenClaw Gateway、Studio API 或 Studio UI 崩溃时把模型中转链路一起带挂。
+- 单口模式只解决入口聚合和 UI/control mount，不解决 relay 进程存活；不能把 OpenClaw Gateway 作为模型 relay 的父进程或唯一入口。
+- 非单口模式也不能退回到 Studio API 内嵌 relay；否则 Studio 后端崩溃仍会切断 Codex / Claude Code / OpenCode 等客户端请求。
+- CLI takeover 必须默认写 daemon loopback endpoint；单口 endpoint 只能作为可选 proxy/ingress，并且必须保留 direct daemon fallback。
+
 硬性目标：
 
 - OpenClaw Gateway 挂掉时，Local Gateway daemon 不能随之退出。
@@ -152,7 +159,7 @@ Studio 需要同时支持两种运行形态：
 - daemon 通过 pid/lock/runtime metadata 声明端口归属，避免 Studio API、OpenClaw Gateway 和 daemon 争抢 `18796`。
 - health/status 必须区分 `controlPlane`、`openclawMount` 和 `localDaemon`，避免把 UI 或 mount 崩溃误判成模型 relay 已不可用。
 
-结论：正式方案应使用独立守护进程 + OS/user service supervisor。自动启动子进程只能作为 bootstrap 便利性，用于检测 service 未安装时启动 detached daemon，并在随后提示或执行 service 安装；它不能替代 systemd/launchd/Windows service 的 restart policy、开机自启和父进程崩溃隔离能力。
+方案决策：正式方案应使用独立守护进程 + OS/user service supervisor。自动启动子进程只能作为 bootstrap 便利性，用于检测 service 未安装时启动 detached daemon，并在随后提示或执行 service 安装；它不能替代 systemd/launchd/Windows service 的 restart policy、开机自启和父进程崩溃隔离能力。
 
 Phase 1 lifecycle contract checkpoint（2026-06-04）：
 
@@ -184,7 +191,15 @@ Phase 1 Codex install/takeover preparation checkpoint（2026-06-04）：
 - Codex Stack 安装成功后会写入当前平台的 Studio Model Gateway daemon service template。
 - 如果 `~/.codex/config.toml` 已存在，安装成功后会写入 inactive `[model_providers.studio]`，指向 `http://127.0.0.1:18796/v1`，`wire_api = "responses"`，`supports_websockets = false`。
 - `model_providers.studio.experimental_bearer_token` 使用 `PROXY_MANAGED` placeholder，避免把真实 upstream key 写入 Codex 客户端配置。
-- 该准备步骤不会把 top-level `model_provider` 切到 `studio`；active takeover 仍需后续 smoke gate / management action 落地。
+- 该准备步骤不会把 top-level `model_provider` 切到 `studio`；active takeover 必须先通过 daemon lifecycle 和模型 smoke gate。
+
+Phase 1 Codex active takeover smoke gate checkpoint（2026-06-04）：
+
+- 已新增 `apply-codex-studio-after-smoke` repair action。
+- 接管前必须先请求 daemon `GET /gateway/status`，确认 `lifecycle.localDaemon.runtimeMode === "local-daemon"`；embedded fallback 或单口 mount 状态不能触发 active takeover。
+- 接管前必须通过 daemon `/v1/responses` 和 `/v1/responses/compact` smoke，并验证 compact sentinel 被保留。
+- 只有 smoke gate 通过后才把 Codex top-level `model_provider` 切到 `studio`，并继续使用 `[model_providers.studio].experimental_bearer_token = "PROXY_MANAGED"`。
+- 当前仍未完成真实 service manager start/restart 执行验证、UI 接入和真实 crash-survivability 测试。
 
 ### 4.2 Provider Registry
 

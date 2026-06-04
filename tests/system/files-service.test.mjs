@@ -199,6 +199,23 @@ test("files service supports search, read, write, create, rename, copy, move, de
     fs.readFileSync(path.join(config.projectRoot, "folder-upload", "src", "nested.txt"), "utf8"),
     /nested upload/,
   );
+
+  const largerThanPreviousUploadLimit = Buffer.alloc((24 * 1024 * 1024) + 1, "a");
+  service.uploadFiles({
+    rootId: "project-root",
+    directoryPath: "",
+    files: [
+      {
+        fileName: "larger-than-previous-limit.bin",
+        dataBase64: largerThanPreviousUploadLimit.toString("base64"),
+      },
+    ],
+  });
+  assert.equal(
+    fs.statSync(path.join(config.projectRoot, "larger-than-previous-limit.bin")).size,
+    largerThanPreviousUploadLimit.length,
+  );
+
   assert.throws(() =>
     service.uploadFiles({
       rootId: "project-root",

@@ -1,4 +1,4 @@
-import { computed, inject, onActivated, onMounted, provide, reactive, ref, type ComputedRef, type Ref } from 'vue';
+import { computed, inject, onActivated, onMounted, provide, reactive, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type {
   ChannelAgentOption,
@@ -66,6 +66,7 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
     type: '',
     enabled: true,
   });
+  let refreshRequestSequence = 0;
   const isChannelsRouteActive = computed(() => route.path === '/channels' || route.path.startsWith('/channels/'));
 
   const selectedChannelType = computed(() => {
@@ -162,15 +163,18 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
 
   async function refreshSummary(preferredChannelType?: string): Promise<void> {
     if (!isChannelsRouteActive.value) return;
+    const requestSequence = ++refreshRequestSequence;
     loading.value = true;
     try {
       const nextSummary = await fetchChannelsSummary();
-      if (!isChannelsRouteActive.value) return;
+      if (requestSequence !== refreshRequestSequence || !isChannelsRouteActive.value) return;
       summary.value = nextSummary;
       await ensureRouteAfterSummary(preferredChannelType);
     } catch (error) {
+      if (requestSequence !== refreshRequestSequence || !isChannelsRouteActive.value) return;
       setErrorMessage(error instanceof Error ? error.message : text('未知错误', 'Unknown error'));
     } finally {
+      if (requestSequence !== refreshRequestSequence) return;
       loading.value = false;
     }
   }
@@ -258,9 +262,22 @@ export function provideChannelsWorkspace(): ChannelsWorkspaceState {
 
   provide(ChannelsWorkspaceKey, state);
 
+  watch(
+    selectedChannelType,
+    (nextChannelType, previousChannelType) => {
+      if (!isChannelsRouteActive.value) return;
+      if (previousChannelType && previousChannelType !== nextChannelType) clearMessages();
+      if (!summary.value) {
+        void refreshSummary(nextChannelType);
+        return;
+      }
+      void ensureRouteAfterSummary(nextChannelType);
+    },
+  );
+
   onMounted(() => {
     if (!isChannelsRouteActive.value) return;
-    void refreshSummary();
+    void refreshSummary(selectedChannelType.value);
   });
 
   onActivated(() => {

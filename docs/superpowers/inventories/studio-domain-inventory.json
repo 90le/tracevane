@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-03T03:22:56.663Z",
+  "generatedAt": "2026-06-04T02:54:45.562Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -28,6 +28,7 @@
     "dashboard",
     "files",
     "git",
+    "model-gateway",
     "plugins",
     "skills",
     "system",
@@ -136,6 +137,7 @@
     "tests/system/files-service.test.mjs",
     "tests/system/http-content-disposition.test.mjs",
     "tests/system/install-script-release-metadata.test.mjs",
+    "tests/system/model-gateway-service.test.mjs",
     "tests/system/plugins-service.test.mjs",
     "tests/system/skills-service-lifecycle.test.mjs",
     "tests/system/studio-domain-inventory.test.mjs",

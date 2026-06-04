@@ -364,3 +364,73 @@
     flex: 1 1 0;
   }
 }
+
+/* Management redesign: calmer provider summary above account inventory. */
+.channel-provider-strip {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.channel-provider-strip::before {
+  display: none;
+}
+
+.channel-provider-strip__main,
+.channel-provider-strip__edit {
+  padding: 16px 18px;
+}
+
+.channel-provider-strip__edit {
+  background: color-mix(in srgb, var(--surface-raised) 54%, var(--surface-base));
+}
+
+.channel-provider-overview__quick-head h3 {
+  font-size: 22px;
+  letter-spacing: 0;
+}
+
+.channel-provider-facts {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 14px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface-raised) 52%, transparent);
+}
+
+.channel-provider-fact {
+  min-height: 68px;
+  padding: 11px 12px;
+}
+
+.channel-provider-overview__quick-grid {
+  gap: 10px;
+}
+
+.channel-provider-toggle {
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  background: var(--surface-base);
+}
+
+@media (max-width: 1180px) {
+  .channel-provider-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .channel-provider-strip > .channel-provider-strip__edit {
+    border-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  }
+
+  .channel-provider-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .channel-provider-fact {
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  }
+}
+
+@media (max-width: 640px) {
+  .channel-provider-facts {
+    grid-template-columns: 1fr;
+  }
+}

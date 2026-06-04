@@ -2,7 +2,7 @@
 
 > 状态：Phase 1 in progress
 > 更新：2026-06-04
-> 当前阶段：Phase 1 - provider management、runtime request log、health update、routing fallback foundation、协议互转矩阵 passthrough tests、OpenAI Responses -> Chat 非流式 adapter、Anthropic Messages -> Chat/Responses 非流式 adapters、Codex Responses/compact Chat adapter、文本 SSE streaming、最小 tool-call history foundation 已落地；独立 Local Gateway daemon survivability 目标、status lifecycle contract、最小 daemon entrypoint、supervisor/install API contract 和 Codex install 准备接入已落地，真实 active takeover / service 启停验证尚未完成
+> 当前阶段：Phase 1 - provider management、runtime request log、health update、routing fallback foundation、协议互转矩阵 passthrough tests、OpenAI Responses -> Chat 非流式 adapter、Anthropic Messages -> Chat/Responses 非流式 adapters、Codex Responses/compact Chat adapter、文本 SSE streaming、最小 tool-call history foundation 已落地；独立 Local Gateway daemon survivability 目标、status lifecycle contract、最小 daemon entrypoint、supervisor/install API contract、Codex install 准备接入和 active Codex `studio` takeover smoke gate 已落地，真实 service 启停验证和 crash-survivability 验证尚未完成
 
 ## 1. 当前决定
 
@@ -11,6 +11,7 @@
 - Studio 自建 Model Gateway，并由 Studio 持有 provider registry、app takeover、router、failover、diagnostics。
 - Studio 支持单口和非单口运行，但模型 relay 的正式生命周期必须属于独立 Local Gateway daemon，而不是 OpenClaw Gateway mount 或 Studio API 进程。
 - 正式运行态使用 OS/user service supervisor 托管 daemon；Studio 自动启动 detached 子进程只能作为 bootstrap / dev fallback，不能替代 service restart policy 和父进程崩溃隔离。
+- Codex / Claude Code / OpenCode 等 CLI 的默认接管 endpoint 必须是 daemon loopback；OpenClaw 单口 endpoint 只能作为 UI/control ingress 或可选 proxy，不能成为模型 relay 唯一生命线。
 - cc-switch 作为架构和实现参考，不作为运行时依赖直接嵌入。
 - v1 存储优先使用 Studio state JSON + 原子写 + `0600` secret 文件，避免立即引入新数据库；schema 要保留迁移 SQLite 的空间。
 - `cc-connect` 后续只保留为可选 IM / project bridge。
@@ -255,11 +256,17 @@ docs/codex-stack-model-gateway-goal.md
   - `model_providers.studio.experimental_bearer_token` 使用 `PROXY_MANAGED` placeholder，不把真实 upstream key 写入 Codex 客户端配置。
   - 当前只准备 inactive provider，不会把 top-level `model_provider` 切到 `studio`；active takeover 仍待 smoke gate / management action。
   - `tests/system/codex-stack-service.test.mjs` 已锁定 install 后 daemon service template 与 inactive Studio provider 写入。
+- 新增 active Codex `studio` takeover smoke gate。
+  - 新增 `apply-codex-studio-after-smoke` repair action。
+  - 接管前先验证 daemon `GET /gateway/status` 返回 `lifecycle.localDaemon.runtimeMode: "local-daemon"`，阻断 Studio API embedded fallback 或 OpenClaw 单口 mount 冒充正式 relay。
+  - 接管前继续跑 daemon `/v1/responses` 与 `/v1/responses/compact` smoke，并验证 compact sentinel。
+  - smoke 通过后才写 Codex top-level `model_provider = "studio"` 和当前模型，`[model_providers.studio]` 继续使用 daemon loopback endpoint 与 `PROXY_MANAGED` placeholder。
+  - 新增 system tests 锁定成功接管和 daemon lifecycle 不满足时拒绝接管。
 
 当前边界：
 
 - 已有的是 Model Gateway control/API foundation，不是完整长期 edge service。
-- 已补入 daemon survivability 目标、status lifecycle contract、最小 daemon entrypoint、supervisor/install API contract 和 Codex Stack install 准备接入；当前仍缺 active Codex `studio` takeover、真实 service manager 启停验证、UI 接入和真实崩溃恢复测试。
+- 已补入 daemon survivability 目标、status lifecycle contract、最小 daemon entrypoint、supervisor/install API contract、Codex Stack install 准备接入和 active Codex `studio` takeover smoke gate；当前仍缺真实 service manager 启停验证、UI 接入和真实崩溃恢复测试。
 - OpenAI Chat passthrough 可用；Codex Responses -> OpenAI Chat 非流式最小适配可用。
 - Codex Responses streaming text delta -> Responses SSE 最小适配可用。
 - Codex `/v1/responses/compact` -> OpenAI Chat 非流式最小适配可用，且保留独立 runtime route 诊断。
@@ -298,14 +305,14 @@ docs/codex-stack-model-gateway-goal.md
 - 正式方案优先：Linux `systemd --user` service、macOS launchd user agent、Windows user service / scheduled task。detached child process 只允许用于首次 bootstrap、开发和未安装 service 时的临时 fallback。
 - daemon 必须有端口归属 lock/pid/runtime metadata，避免与 Studio API/OpenClaw mount 争抢 `127.0.0.1:18796`。
 - status/diagnostics 需要拆分 `controlPlane`、`openclawMount`、`localDaemon`，避免 UI/mount 故障被误报为模型 relay 不可用。
-- 当前状态：目标、进度跟踪、shared type、status API contract、daemon entrypoint、supervisor template/API contract、Codex Stack install 准备接入和 system tests 已补齐；active Codex `studio` takeover、真实 supervisor start/restart、UI health 和真实 crash-survivability tests 尚未实现。
+- 当前状态：目标、进度跟踪、shared type、status API contract、daemon entrypoint、supervisor template/API contract、Codex Stack install 准备接入、active Codex `studio` takeover smoke gate 和 system tests 已补齐；真实 supervisor start/restart、UI health 和真实 crash-survivability tests 尚未实现。
 
 ## 5. 后续任务清单
 
 | 阶段 | 状态 | 任务 |
 | --- | --- | --- |
 | Phase 0 | 已完成 | 研究、目标方案、进度文档 |
-| Phase 1 | 进行中 | 新增 model gateway shared types、store、API、provider lifecycle、runtime log、health fallback、协议互转矩阵跟踪和 native passthrough tests、OpenAI Responses -> Chat 非流式 adapter、Anthropic Messages -> Chat/Responses 非流式 adapters、Codex Responses/compact -> Chat adapter、文本 streaming foundation、tool-call history foundation、独立 daemon survivability 目标跟踪、status lifecycle contract、daemon entrypoint、supervisor/install API contract 和 Codex Stack install 准备接入；下一步实现 active Codex `studio` takeover smoke gate，或验证真实 service manager start/restart，再扩 streaming tool/reasoning/history |
+| Phase 1 | 进行中 | 新增 model gateway shared types、store、API、provider lifecycle、runtime log、health fallback、协议互转矩阵跟踪和 native passthrough tests、OpenAI Responses -> Chat 非流式 adapter、Anthropic Messages -> Chat/Responses 非流式 adapters、Codex Responses/compact -> Chat adapter、文本 streaming foundation、tool-call history foundation、独立 daemon survivability 目标跟踪、status lifecycle contract、daemon entrypoint、supervisor/install API contract、Codex Stack install 准备接入和 active Codex `studio` takeover smoke gate；下一步验证真实 service manager start/restart，接入 UI，再扩 streaming tool/reasoning/history |
 | Phase 2 | 未开始 | 实现 Studio Model Gateway runtime，并拆出独立 Local Gateway daemon / user service |
 | Phase 3 | 未开始 | 实现完整 Codex Responses / Chat / compact adapter，包括 streaming、compact 和 history restore |
 | Phase 4 | 未开始 | 实现 Claude Messages adapter 和 Claude Code takeover |
@@ -344,7 +351,7 @@ docs/codex-stack-model-gateway-goal.md
 ### 测试
 
 - `tests/system/studio-web-codex-stack-workspace.test.mjs`
-- `tests/system/codex-stack-service.test.mjs`（已扩展 install job，锁定 daemon service template 与 inactive `[model_providers.studio]`）
+- `tests/system/codex-stack-service.test.mjs`（已扩展 install job，锁定 daemon service template、inactive `[model_providers.studio]`、active Studio takeover smoke gate 和 lifecycle 不满足时拒绝接管）
 - `tests/system/model-gateway-service.test.mjs`（已新增 provider registry / routing contract foundation，并扩展 provider lifecycle / runtime log / health / open-circuit fallback / daemon lifecycle status contract / daemon supervisor template/API contract / daemon entrypoint smoke / native Responses passthrough / native Anthropic Messages passthrough / OpenAI Responses -> Chat 非流式 adapter / Anthropic Messages -> Chat 非流式 adapter / Anthropic Messages -> Responses 非流式 adapter / Codex Responses 非流式 adapter / text streaming adapter / compact adapter / tool-call history restore）
 - 扩展 gateway adapter tests 到 compact streaming、streaming tool calls、streaming reasoning、reasoning history 和 provider quirks。
 - 新增 install/takeover tests。
@@ -420,10 +427,10 @@ docs/codex-stack-model-gateway-goal.md
 
 下一轮继续 Phase 1：
 
-1. 实现 active Codex `studio` takeover smoke gate：在 daemon `/v1/responses` 和 `/v1/responses/compact` smoke 通过后，把 top-level `model_provider` 切到 `studio`，并继续使用 `PROXY_MANAGED` placeholder。
-2. 扩展 Chat SSE -> Responses SSE：streaming tool calls、reasoning events、inline think block、compact-specific streaming case 和 finish_reason 细节。
-3. 扩展 Codex history：reasoning_content、custom tools、web search、ambiguous call_id fallback 和 provider-specific thinking quirks。
-4. 扩展 Anthropic adapter：Chat/Responses streaming、image/file parts、response_format、provider-specific thinking / tool edge cases。
-5. 启动下一格协议 adapter：`openai_responses` -> `anthropic_messages`，让 Codex 官方 API provider 服务 Claude Messages clients。
-6. 继续补 failover：把 open-circuit fallback 从 route decision 扩展到实际 request retry / failover 执行。
-7. 进入 Codex install/UI takeover contract：让界面和安装流开始指向 Studio Model Gateway daemon，而不是 CPA/compact proxy。
+1. 验证真实 service manager start/restart：Linux `systemd --user`、macOS launchd、Windows scheduled task 至少先锁定当前平台的 install/start/status/restart happy path 和失败日志。
+2. 接入 Codex install/UI takeover contract：让界面和安装流开始指向 Studio Model Gateway daemon，并提供 `apply-codex-studio-after-smoke` 操作入口。
+3. 增加真实 crash-survivability tests：Studio API/UI 停止、OpenClaw Gateway/mount 停止后，daemon direct endpoint 仍可服务 `/v1/responses` / `/v1/chat/completions`。
+4. 扩展 Chat SSE -> Responses SSE：streaming tool calls、reasoning events、inline think block、compact-specific streaming case 和 finish_reason 细节。
+5. 扩展 Codex history：reasoning_content、custom tools、web search、ambiguous call_id fallback 和 provider-specific thinking quirks。
+6. 扩展 Anthropic adapter：Chat/Responses streaming、image/file parts、response_format、provider-specific thinking / tool edge cases。
+7. 启动下一格协议 adapter：`openai_responses` -> `anthropic_messages`，让 Codex 官方 API provider 服务 Claude Messages clients。

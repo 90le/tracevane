@@ -267,6 +267,7 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/agents",
     component: AgentsView,
+    meta: { keepAlive: false },
     children: [
       { path: "", component: AgentsControlPage },
       { path: ":agentId", component: AgentsControlPage },
@@ -309,6 +310,7 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/channels",
     component: ChannelsView,
+    meta: { keepAlive: false },
     children: [
       { path: "", component: ChannelsControlPage },
       { path: ":type", component: ChannelsControlPage },

@@ -154,8 +154,6 @@ type TerminalMarkdownUploadItem = {
 
 const TERMINAL_MARKDOWN_RENDER_CACHE_LIMIT = 18;
 const TERMINAL_MARKDOWN_RENDER_CACHE_MAX_SOURCE_LENGTH = 500_000;
-const TERMINAL_MARKDOWN_UPLOAD_MAX_FILE_BYTES = 24 * 1024 * 1024;
-const TERMINAL_MARKDOWN_UPLOAD_MAX_BATCH_BYTES = 96 * 1024 * 1024;
 const terminalMarkdownProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
@@ -443,16 +441,6 @@ async function insertMarkdownUploadedFiles(files: File[]): Promise<void> {
   if (!files.length) return;
   if (!props.assetRootId || !props.assetFilePath) {
     setMarkdownMediaStatus('error', '当前文件缺少工作区路径，无法把外部文件上传为知识库资源。');
-    return;
-  }
-  const oversized = files.find((file) => file.size > TERMINAL_MARKDOWN_UPLOAD_MAX_FILE_BYTES);
-  if (oversized) {
-    setMarkdownMediaStatus('error', `${oversized.name || '文件'} 超过 24 MB，请先通过文件管理器上传。`);
-    return;
-  }
-  const batchSize = files.reduce((total, file) => total + file.size, 0);
-  if (batchSize > TERMINAL_MARKDOWN_UPLOAD_MAX_BATCH_BYTES) {
-    setMarkdownMediaStatus('error', '本次媒体超过 96 MB，请分批拖入。');
     return;
   }
 

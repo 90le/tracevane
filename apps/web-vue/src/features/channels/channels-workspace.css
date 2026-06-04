@@ -102,23 +102,18 @@
 
 .channels-stage-actions {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 10px;
-  background: var(--surface-raised);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
 }
 
 .channels-stage-task {
   display: grid;
   gap: 5px;
-  min-height: 0;
-  padding: 13px 14px;
-  border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  border-radius: 0;
-  background: transparent;
+  min-height: 74px;
+  padding: 12px 13px;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface-raised) 56%, transparent);
   box-shadow: none;
   color: var(--text);
   text-align: left;
@@ -128,12 +123,13 @@
 
 .channels-stage-task:hover {
   transform: none;
-  background: var(--button-secondary-bg);
+  border-color: color-mix(in srgb, var(--acc) 30%, var(--line));
+  background: color-mix(in srgb, var(--acc) 8%, var(--surface-base));
   box-shadow: none;
 }
 
 .channels-stage-task:last-child {
-  border-bottom: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
 }
 
 .channels-stage-task:disabled {

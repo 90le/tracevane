@@ -62,7 +62,6 @@ const SKILLS_SNAPSHOT_STALE_MS = 15 * 60_000;
 const MARKETPLACE_TTL_MS = 5 * 60_000;
 const DEFAULT_WORKSPACE_DIRNAME = "workspace";
 const TEXT_SCAN_MAX_BYTES = 200_000;
-const UPLOAD_ARCHIVE_MAX_BYTES = 16 * 1024 * 1024;
 
 const SKILLHUB_INSTALL_DOC_URL =
   "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/skillhub.md";
@@ -1381,9 +1380,6 @@ function decodeUploadArchive(payload: SkillsUploadArchivePayload): Buffer {
   if (!rawBase64) throw new Error("Uploaded archive is empty");
   const buffer = Buffer.from(rawBase64, "base64");
   if (!buffer.length) throw new Error("Uploaded archive could not be decoded");
-  if (buffer.length > UPLOAD_ARCHIVE_MAX_BYTES) {
-    throw new Error(`Uploaded archive is too large; limit is ${UPLOAD_ARCHIVE_MAX_BYTES / 1024 / 1024} MiB`);
-  }
   return buffer;
 }
 

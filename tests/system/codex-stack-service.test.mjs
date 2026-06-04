@@ -1495,6 +1495,111 @@ test("codex stack attaches Codex CPA only after the full smoke gate passes", asy
   });
 });
 
+test("codex stack switches Codex to Studio provider only after daemon smoke passes", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+
+  await withMockFetch(async (url, init = {}) => {
+    const requestUrl = String(url);
+    const body = init.body ? JSON.parse(String(init.body)) : {};
+    if (requestUrl.endsWith("/gateway/status")) {
+      return new Response(JSON.stringify({
+        ok: true,
+        lifecycle: {
+          localDaemon: {
+            runtimeMode: "local-daemon",
+          },
+        },
+      }), { status: 200 });
+    }
+    if (requestUrl.endsWith("/v1/responses/compact")) {
+      return new Response(JSON.stringify(compactSmokeResponse(body)), { status: 200 });
+    }
+    if (requestUrl.endsWith("/v1/responses")) {
+      return new Response(JSON.stringify({
+        id: "studio_resp_ok",
+        status: "completed",
+        output: [],
+      }), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["apply-codex-studio-after-smoke"] });
+    const job = await waitForJob(service, response.job.id);
+
+    assert.equal(job.status, "succeeded");
+    assert.match(job.logTail, /Studio Model Gateway smoke gate passed/);
+    const patched = fs.readFileSync(codexConfig, "utf8");
+    assert.match(tomlTopLevel(patched), /model_provider\s*=\s*"studio"/);
+    assert.doesNotMatch(tomlTopLevel(patched), /^base_url\s*=\s*"http:\/\/127\.0\.0\.1:18796\/v1"/m);
+    assert.match(patched, /\[model_providers\.studio\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:18796\/v1"[\s\S]*wire_api = "responses"[\s\S]*experimental_bearer_token = "PROXY_MANAGED"/);
+  });
+});
+
+test("codex stack refuses Studio provider switch when daemon lifecycle is not local-daemon", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    plugins: {
+      entries: {
+        studio: {
+          config: {
+            codexStack: {
+              allowManagementActions: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  createBundledInstaller(config, "official");
+  createBundledInstaller(config, "dmwork");
+  createGeneratedStackFiles(root);
+  const codexConfig = path.join(root, ".codex/config.toml");
+
+  await withMockFetch(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/gateway/status")) {
+      return new Response(JSON.stringify({
+        ok: true,
+        lifecycle: {
+          localDaemon: {
+            runtimeMode: "studio-api-embedded",
+          },
+        },
+      }), { status: 200 });
+    }
+    return new Response("should not reach model smoke", { status: 500 });
+  }, async () => {
+    const service = createCodexStackService(config);
+    const response = await service.startRepair(undefined, { actions: ["apply-codex-studio-after-smoke"] });
+    const job = await waitForJob(service, response.job.id);
+
+    assert.equal(job.status, "failed");
+    assert.match(job.error || "", /localDaemon is not active/);
+    const patched = fs.readFileSync(codexConfig, "utf8");
+    assert.doesNotMatch(tomlTopLevel(patched), /model_provider\s*=\s*"studio"/);
+  });
+});
+
 test("codex stack can restore official ChatGPT route from a third-party model", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
