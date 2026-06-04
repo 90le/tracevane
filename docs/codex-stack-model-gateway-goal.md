@@ -192,6 +192,13 @@ Codex adapter：
 - reasoning 参数映射，包括 GLM/Zhipu/Z.ai、Qwen/DashScope、DeepSeek、Kimi 等 provider quirks。
 - `/v1/responses/compact` 走统一 router；compact 失败应携带 provider、model、endpoint、timeout 类型。
 
+Phase 1 implementation note（2026-06-04）：
+
+- 已落地最小非流式 Responses -> Chat adapter 起点。
+- 已覆盖 `instructions`、`input` / `messages`、`model`、`stream: false`、function tools、`tool_choice`、`max_output_tokens` 和 Chat usage -> Responses usage 的转换。
+- `/v1/responses` 对 `openai_chat` provider 可执行；`stream: true`、`/v1/responses/compact`、`previous_response_id` / tool history restore 仍保持后续阶段任务。
+- 该实现只作为 Phase 1 contract foundation；完整 adapter 仍必须补 streaming 状态机、compact 语义、history store 和 provider-specific reasoning quirks。
+
 Claude adapter：
 
 - Anthropic Messages native passthrough。

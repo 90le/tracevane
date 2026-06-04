@@ -267,6 +267,155 @@ test("model gateway management supports active provider selection, delete, and o
   assert.equal(providers.activeProviders.codex, undefined);
 });
 
+test("model gateway adapts non-streaming codex responses requests to openai chat providers", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-chat-adapter",
+      name: "Codex Chat Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-chat.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-adapter-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = String(init.body || "");
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body,
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_codex_adapter",
+      created: 1_710_000_000,
+      model: "gpt-test",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "Adapted answer.",
+        },
+        finish_reason: "stop",
+      }],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 4,
+        total_tokens: 14,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          instructions: "You are concise.",
+          input: [
+            { type: "message", role: "user", content: [{ type: "input_text", text: "Hello" }] },
+            { type: "message", role: "assistant", content: [{ type: "output_text", text: "Earlier" }] },
+            { role: "user", content: "Next" },
+          ],
+          tools: [{
+            type: "function",
+            name: "lookup",
+            description: "Lookup records.",
+            parameters: {
+              type: "object",
+              properties: { query: { type: "string" } },
+              required: ["query"],
+            },
+          }],
+          tool_choice: { type: "function", name: "lookup" },
+          stream: false,
+          max_output_tokens: 64,
+        },
+      });
+
+      assert.equal(responses.status, 200);
+      assert.equal(responses.headers["x-openclaw-model-gateway-provider"], "codex-chat-adapter");
+      assert.equal(responses.body.id, "chatcmpl_codex_adapter");
+      assert.equal(responses.body.object, "response");
+      assert.equal(responses.body.created_at, 1_710_000_000);
+      assert.equal(responses.body.model, "gpt-test");
+      assert.equal(responses.body.status, "completed");
+      assert.equal(responses.body.output[0].type, "message");
+      assert.equal(responses.body.output[0].role, "assistant");
+      assert.deepEqual(responses.body.output[0].content, [{ type: "output_text", text: "Adapted answer." }]);
+      assert.deepEqual(responses.body.usage, {
+        input_tokens: 10,
+        output_tokens: 4,
+        total_tokens: 14,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      });
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog.length, 1);
+      assert.equal(runtime.body.runtime.requestLog[0].kind, "gateway-request");
+      assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_responses");
+      assert.equal(runtime.body.runtime.requestLog[0].requestedPath, "/v1/responses");
+      assert.equal(runtime.body.runtime.requestLog[0].upstreamUrl, "https://codex-chat.example.test/v1/chat/completions");
+      assert.equal(runtime.body.runtime.requestLog[0].model, "gpt-test");
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "success");
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-codex-adapter-secret"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://codex-chat.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].method, "POST");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-codex-adapter-secret");
+  assert.equal(upstreamCalls[0].contentType, "application/json");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "gpt-test",
+    messages: [
+      { role: "system", content: "You are concise." },
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Earlier" },
+      { role: "user", content: "Next" },
+    ],
+    stream: false,
+    max_tokens: 64,
+    tools: [{
+      type: "function",
+      function: {
+        name: "lookup",
+        description: "Lookup records.",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+      },
+    }],
+    tool_choice: {
+      type: "function",
+      function: { name: "lookup" },
+    },
+  });
+});
+
 test("model gateway routes expose status/providers and forward chat passthrough", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

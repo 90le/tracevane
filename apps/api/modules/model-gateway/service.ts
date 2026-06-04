@@ -42,6 +42,12 @@ import {
 import { sendJson, setCorsHeaders } from "../../core/http.js";
 import { readJsonFile } from "../../core/state.js";
 import { isStudioGatewayHttpAuthorized } from "../../gateway-http-auth.js";
+import {
+  CodexResponsesChatAdapterError,
+  adaptChatCompletionToCodexResponse,
+  adaptCodexResponsesRequestToChat,
+  isCodexResponsesToChatAdapterTarget,
+} from "./codex-adapter.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
@@ -1401,26 +1407,6 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
       });
       return;
     }
-    if (decision.mode === "adapter-required") {
-      appendRequestLog(requestLogEntry({
-        kind: "gateway-request",
-        startedAt,
-        route: decision,
-        model: null,
-        statusCode: 501,
-        outcome: "adapter-required",
-        errorCode: "model_gateway_adapter_required",
-        errorMessage: decision.reason,
-      }));
-      sendJson(res, 501, {
-        error: {
-          code: "model_gateway_adapter_required",
-          message: decision.reason,
-          decision,
-        },
-      });
-      return;
-    }
 
     const registry = readRegistry();
     const provider = findProvider(registry, decision.provider.id);
@@ -1439,6 +1425,28 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
         error: {
           code: "model_gateway_provider_missing",
           message: "The selected Model Gateway provider is no longer available.",
+          decision,
+        },
+      });
+      return;
+    }
+
+    const useCodexResponsesChatAdapter = isCodexResponsesToChatAdapterTarget(decision);
+    if (decision.mode === "adapter-required" && !useCodexResponsesChatAdapter) {
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: null,
+        statusCode: 501,
+        outcome: "adapter-required",
+        errorCode: "model_gateway_adapter_required",
+        errorMessage: decision.reason,
+      }));
+      sendJson(res, 501, {
+        error: {
+          code: "model_gateway_adapter_required",
+          message: decision.reason,
           decision,
         },
       });
@@ -1474,22 +1482,108 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
 
     const headers = copyUpstreamRequestHeaders(req);
     applyProviderAuth(headers, provider, secret);
+    let upstreamBodyText = bodyText;
+    let requestModelForLog = requestModel;
+    if (useCodexResponsesChatAdapter) {
+      try {
+        const adapted = adaptCodexResponsesRequestToChat(bodyText);
+        upstreamBodyText = JSON.stringify(adapted.chatRequest);
+        requestModelForLog = adapted.model || requestModel;
+        headers.set("content-type", "application/json");
+      } catch (error) {
+        const adapterError = error instanceof CodexResponsesChatAdapterError
+          ? error
+          : new CodexResponsesChatAdapterError(
+            "model_gateway_codex_responses_adapter_failed",
+            error instanceof Error ? error.message : "Codex Responses adapter failed.",
+            500,
+          );
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModel,
+          statusCode: adapterError.statusCode,
+          outcome: adapterError.statusCode === 501 ? "adapter-required" : "failure",
+          errorCode: adapterError.statusCode === 501 ? "model_gateway_adapter_required" : adapterError.code,
+          errorMessage: adapterError.message,
+        }));
+        sendJson(res, adapterError.statusCode, {
+          error: {
+            code: adapterError.statusCode === 501 ? "model_gateway_adapter_required" : adapterError.code,
+            message: adapterError.message,
+            decision,
+          },
+        });
+        return;
+      }
+    }
+
     try {
       const upstream = await fetch(decision.upstreamUrl, {
         method: req.method || "POST",
         headers,
-        body: bodyText,
+        body: upstreamBodyText,
       });
-      const responseBody = Buffer.from(await upstream.arrayBuffer());
+      const responseText = await upstream.text();
+      const responseBody = Buffer.from(responseText);
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const healthSuccess = isProviderHealthSuccess(upstream.status, null);
       const errorMessage = healthSuccess ? null : `Upstream returned HTTP ${upstream.status}.`;
+      if (useCodexResponsesChatAdapter && upstream.status >= 200 && upstream.status < 300) {
+        let adaptedResponse: Record<string, unknown>;
+        try {
+          adaptedResponse = adaptChatCompletionToCodexResponse(JSON.parse(responseText) as unknown, requestModelForLog);
+        } catch (error) {
+          const adapterError = error instanceof CodexResponsesChatAdapterError
+            ? error
+            : new CodexResponsesChatAdapterError(
+              "model_gateway_codex_chat_response_invalid",
+              error instanceof Error ? error.message : "Codex Responses adapter could not parse the Chat response.",
+              502,
+            );
+          updateProviderHealth(provider.id, false, latencyMs, adapterError.message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: adapterError.statusCode,
+            outcome: "failure",
+            errorCode: adapterError.code,
+            errorMessage: adapterError.message,
+          }));
+          sendJson(res, adapterError.statusCode, {
+            error: {
+              code: adapterError.code,
+              message: adapterError.message,
+              decision,
+            },
+          });
+          return;
+        }
+        updateProviderHealth(provider.id, true, latencyMs, null);
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModelForLog,
+          statusCode: upstream.status,
+          outcome: "success",
+          errorCode: null,
+          errorMessage: null,
+        }));
+        res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
+        sendJson(res, upstream.status, adaptedResponse);
+        return;
+      }
+
       updateProviderHealth(provider.id, healthSuccess, latencyMs, errorMessage);
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
         startedAt,
         route: decision,
-        model: requestModel,
+        model: requestModelForLog,
         statusCode: upstream.status,
         outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
         errorCode: healthSuccess ? null : "model_gateway_upstream_status",
@@ -1513,7 +1607,7 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
         kind: "gateway-request",
         startedAt,
         route: decision,
-        model: requestModel,
+        model: requestModelForLog,
         statusCode: 502,
         outcome: "failure",
         errorCode: "model_gateway_upstream_failed",
