@@ -230,7 +230,9 @@ Phase 1 Codex active takeover smoke gate checkpoint（2026-06-04）：
 - 接管前必须先请求 daemon `GET /gateway/status`，确认 `lifecycle.localDaemon.runtimeMode === "local-daemon"`；embedded fallback 或单口 mount 状态不能触发 active takeover。
 - 接管前必须通过 daemon `/v1/responses` 和 `/v1/responses/compact` smoke，并验证 compact sentinel 被保留。
 - 只有 smoke gate 通过后才把 Codex top-level `model_provider` 切到 `studio`，并继续使用 `[model_providers.studio].experimental_bearer_token = "PROXY_MANAGED"`。
-- 当前仍未完成真实 service manager start/restart 执行验证、UI 接入和真实 crash-survivability 测试。
+- Codex Stack 安装/修复页已读取 `/api/model-gateway/daemon-service`，展示 Studio Gateway daemon runtime、CLI endpoint、service template 和 supervisor status。
+- 安装/修复页已新增 Studio Gateway 接管入口，触发 `apply-codex-studio-after-smoke`；按钮只有在 `localDaemon.runtimeMode === "local-daemon"` 且 `state === "running"` 时启用。
+- 当前仍未完成真实 service manager start/restart 执行验证、完整 daemon service 操作面板和真实 crash-survivability 测试。
 
 ### 4.2 Provider Registry
 

@@ -25,7 +25,14 @@
           <span class="cs-step-number">3</span>
           <strong>{{ text("验证并切换 Codex", "Smoke and Attach Codex") }}</strong>
           <button type="button" class="primary-button" :disabled="!canAttachCodexCpa" @click="$emit('attach-codex-cpa')">
-            {{ text("验证并切换", "Smoke & Attach") }}
+            {{ text("切到 CPA", "Attach CPA") }}
+          </button>
+        </article>
+        <article class="cs-repair-step cs-repair-step-primary">
+          <span class="cs-step-number">4</span>
+          <strong>{{ text("切到 Studio Gateway", "Attach Studio Gateway") }}</strong>
+          <button type="button" class="primary-button" :disabled="!canAttachCodexStudio" @click="$emit('attach-codex-studio')">
+            {{ text("切到 Studio", "Attach Studio") }}
           </button>
         </article>
         <p v-if="!canRunMutation && mutationDisabledHelp" class="cs-disabled-help">
@@ -42,6 +49,15 @@
         </dl>
         <p v-if="!canAttachCodexCpa && attachCodexCpaDisabledHelp" class="cs-disabled-help">
           {{ attachCodexCpaDisabledHelp }}
+        </p>
+        <dl class="cs-attach-preflight-list">
+          <div v-for="item in studioGatewayPreflightItems" :key="item.id" class="cs-attach-preflight-row" :class="`tone-${item.tone}`">
+            <dt>{{ item.label }}</dt>
+            <dd>{{ item.value }}</dd>
+          </div>
+        </dl>
+        <p v-if="!canAttachCodexStudio && attachCodexStudioDisabledHelp" class="cs-disabled-help">
+          {{ attachCodexStudioDisabledHelp }}
         </p>
         <div class="cs-attach-route-actions">
           <button type="button" class="secondary-button" :disabled="!canRunMutation" @click="$emit('restore-official-chatgpt')">
@@ -100,7 +116,10 @@ defineProps<{
   canAttachCodexCpa: boolean;
   attachCodexCpaHelp: string;
   attachCodexCpaDisabledHelp: string;
+  canAttachCodexStudio: boolean;
+  attachCodexStudioDisabledHelp: string;
   attachPreflightItems: CodexStackAttachPreflightItem[];
+  studioGatewayPreflightItems: CodexStackAttachPreflightItem[];
 }>();
 
 defineEmits<{
@@ -111,6 +130,7 @@ defineEmits<{
   "resume-stack": [];
   "run-smoke-matrix": [];
   "attach-codex-cpa": [];
+  "attach-codex-studio": [];
   "restore-official-chatgpt": [];
 }>();
 

@@ -24,7 +24,10 @@
         :can-attach-codex-cpa="canAttachCodexCpa"
         :attach-codex-cpa-help="attachCodexCpaHelp"
         :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
+        :can-attach-codex-studio="canAttachCodexStudio"
+        :attach-codex-studio-disabled-help="attachCodexStudioDisabledHelp"
         :attach-preflight-items="attachPreflightItems"
+        :studio-gateway-preflight-items="studioGatewayPreflightItems"
         @repair-recommended="emit('repair-recommended')"
         @repair-conflicts="emit('repair-conflicts')"
         @repair-config-only="emit('repair-config-only')"
@@ -32,6 +35,7 @@
         @resume-stack="emit('resume-stack')"
         @run-smoke-matrix="emit('run-smoke-matrix')"
         @attach-codex-cpa="emit('attach-codex-cpa')"
+        @attach-codex-studio="emit('attach-codex-studio')"
         @restore-official-chatgpt="emit('restore-official-chatgpt')"
       />
 
@@ -99,7 +103,10 @@ defineProps<{
   canAttachCodexCpa: boolean;
   attachCodexCpaHelp: string;
   attachCodexCpaDisabledHelp: string;
+  canAttachCodexStudio: boolean;
+  attachCodexStudioDisabledHelp: string;
   attachPreflightItems: CodexStackAttachPreflightItem[];
+  studioGatewayPreflightItems: CodexStackAttachPreflightItem[];
   form: CodexStackInstallConfigDraft;
   modelOptions: string[];
   modelSourceLabel: string;
@@ -121,6 +128,7 @@ const emit = defineEmits<{
   "resume-stack": [];
   "run-smoke-matrix": [];
   "attach-codex-cpa": [];
+  "attach-codex-studio": [];
   "restore-official-chatgpt": [];
   "update-field": [field: CodexStackInstallConfigField, value: string | number | boolean];
   "set-component-mode": [componentId: CodexStackComponentId, mode: CodexStackComponentInstallMode];

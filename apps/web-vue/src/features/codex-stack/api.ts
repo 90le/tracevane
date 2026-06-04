@@ -15,6 +15,10 @@ import type {
   CodexStackServiceId,
   CodexStackSummaryPayload,
 } from "../../../../../types/codex-stack";
+import type {
+  ModelGatewayDaemonServiceRequest,
+  ModelGatewayDaemonServiceResponse,
+} from "../../../../../types/model-gateway";
 
 export function fetchCodexStackSummary(): Promise<CodexStackSummaryPayload> {
   return requestJson<CodexStackSummaryPayload>("/api/codex-stack/summary");
@@ -42,6 +46,20 @@ export function startCodexStackInstall(payload: CodexStackInstallRequest): Promi
 
 export function startCodexStackRepair(payload: CodexStackRepairRequest): Promise<CodexStackJobResponse> {
   return requestJson<CodexStackJobResponse>("/api/codex-stack/repair", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchModelGatewayDaemonService(): Promise<ModelGatewayDaemonServiceResponse> {
+  return requestJson<ModelGatewayDaemonServiceResponse>("/api/model-gateway/daemon-service");
+}
+
+export function manageModelGatewayDaemonService(
+  payload: ModelGatewayDaemonServiceRequest,
+): Promise<ModelGatewayDaemonServiceResponse> {
+  return requestJson<ModelGatewayDaemonServiceResponse>("/api/model-gateway/daemon-service", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

@@ -142,7 +142,10 @@
           :can-attach-codex-cpa="canAttachCodexCpa"
           :attach-codex-cpa-help="attachCodexCpaHelp"
           :attach-codex-cpa-disabled-help="attachCodexCpaDisabledHelp"
+          :can-attach-codex-studio="canAttachCodexStudio"
+          :attach-codex-studio-disabled-help="attachCodexStudioDisabledHelp"
           :attach-preflight-items="attachPreflightItems"
+          :studio-gateway-preflight-items="studioGatewayPreflightItems"
           :form="installForm"
           :model-options="modelOptions"
           :model-source-label="modelSourceLabel"
@@ -161,6 +164,7 @@
           @resume-stack="resumeStack"
           @run-smoke-matrix="runSmokeMatrix"
           @attach-codex-cpa="applyCodexCpaAfterSmoke"
+          @attach-codex-studio="applyCodexStudioAfterSmoke"
           @restore-official-chatgpt="restoreOfficialChatGpt"
           @update-field="updateInstallFormField"
           @set-component-mode="setComponentMode"
@@ -325,6 +329,7 @@ import type {
   CodexStackSmokeMatrixResult,
   CodexStackSummaryPayload,
 } from "../../../../../types/codex-stack";
+import type { ModelGatewayDaemonServiceResponse } from "../../../../../types/model-gateway";
 import {
   controlCodexStackService,
   enableCodexStackManagement,
@@ -332,6 +337,7 @@ import {
   fetchCodexStackJob,
   fetchCodexStackLogs,
   fetchCodexStackSummary,
+  fetchModelGatewayDaemonService,
   finalizeCodexStackCcConnect,
   patchCcConnectConfig,
   patchCodexStackConfig,
@@ -448,6 +454,7 @@ type CcConnectLoadOptions = {
 };
 
 const summary = ref<CodexStackSummaryPayload | null>(null);
+const modelGatewayDaemonService = ref<ModelGatewayDaemonServiceResponse | null>(null);
 const ccConnectConfig = ref<CcConnectConfig | null>(null);
 const ccConnectRawDraft = ref("");
 const ccConnectLanguageDraft = ref("zh");
@@ -1043,11 +1050,19 @@ const smokeMatrixLabel = computed(() => {
     : text(`失败 ${models}`, `Failed ${models}`);
 });
 const currentCpaTargetModel = computed(() => summaryTargetModel(summary.value));
+const modelGatewayLocalDaemon = computed(() => modelGatewayDaemonService.value?.lifecycle.localDaemon || null);
+const modelGatewayServiceManager = computed(() => modelGatewayDaemonService.value?.serviceManager || null);
+const modelGatewayInstalled = computed(() => modelGatewayDaemonService.value?.installed === true);
 const isSmokeMatrixAttachReady = computed(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
   return isSmokeMatrixFreshAndComplete(matrix, currentCpaTargetModel.value);
 });
 const canAttachCodexCpa = computed(() => canRunMutation.value && isSmokeMatrixAttachReady.value);
+const canAttachCodexStudio = computed(() => (
+  canRunMutation.value
+  && modelGatewayLocalDaemon.value?.runtimeMode === "local-daemon"
+  && modelGatewayLocalDaemon.value?.state === "running"
+));
 const attachCodexCpaHelp = computed(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
   if (!matrix) {
@@ -1074,6 +1089,19 @@ const attachCodexCpaDisabledHelp = computed(() => {
   if (canAttachCodexCpa.value) return "";
   if (!canRunMutation.value) return mutationDisabledHelp.value;
   return attachCodexCpaHelp.value;
+});
+const attachCodexStudioDisabledHelp = computed(() => {
+  if (canAttachCodexStudio.value) return "";
+  if (!canRunMutation.value) return mutationDisabledHelp.value;
+  const daemon = modelGatewayLocalDaemon.value;
+  if (!daemon) return text("正在读取 Studio Gateway daemon 状态。", "Loading Studio Gateway daemon status.");
+  if (daemon.runtimeMode !== "local-daemon" || daemon.state !== "running") {
+    return text(
+      "先启动独立 Local Gateway daemon；接管动作只允许写入能脱离 Studio/OpenClaw 存活的 loopback endpoint。",
+      "Start the independent Local Gateway daemon first; takeover only writes a loopback endpoint that survives Studio/OpenClaw failure.",
+    );
+  }
+  return "";
 });
 const attachPreflightItems = computed<CodexStackAttachPreflightItem[]>(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
@@ -1112,6 +1140,39 @@ const attachPreflightItems = computed<CodexStackAttachPreflightItem[]>(() => {
         ? text("可点击；仍会重新烟测，全部通过才写 Codex。", "Enabled; still reruns smoke checks before writing Codex.")
         : text("不可点击；先只验证，不会切换 Codex。", "Disabled; run Verify Only first without attaching Codex."),
       tone: isSmokeMatrixFreshAndComplete(matrix, targetModel) ? "sage" : "accent",
+    },
+  ];
+});
+const studioGatewayPreflightItems = computed<CodexStackAttachPreflightItem[]>(() => {
+  const daemon = modelGatewayLocalDaemon.value;
+  const manager = modelGatewayServiceManager.value;
+  const runtimeReady = daemon?.runtimeMode === "local-daemon" && daemon.state === "running";
+  return [
+    {
+      id: "studio-daemon-runtime",
+      label: text("Studio daemon", "Studio daemon"),
+      value: daemon ? `${daemon.state} · ${daemon.runtimeMode}` : text("读取中", "Loading"),
+      tone: runtimeReady ? "sage" : "danger",
+    },
+    {
+      id: "studio-daemon-endpoint",
+      label: text("CLI endpoint", "CLI endpoint"),
+      value: daemon?.endpoint || "http://127.0.0.1:18796/v1",
+      tone: runtimeReady ? "sage" : "accent",
+    },
+    {
+      id: "studio-daemon-service",
+      label: text("Service template", "Service template"),
+      value: modelGatewayInstalled.value ? text("已写入", "Installed") : text("未安装", "Not installed"),
+      tone: modelGatewayInstalled.value ? "sage" : "accent",
+    },
+    {
+      id: "studio-service-manager",
+      label: text("Supervisor", "Supervisor"),
+      value: manager?.checked
+        ? `${manager.active === true ? "active" : "inactive"} / ${manager.enabled === true ? "enabled" : manager.enabled === false ? "disabled" : "unknown"}`
+        : text("未执行 status 命令", "Status command not run"),
+      tone: manager?.active === true ? "sage" : manager?.checked ? "danger" : "accent",
     },
   ];
 });
@@ -2451,6 +2512,20 @@ async function loadSummary(): Promise<void> {
   }
 }
 
+async function loadModelGatewayDaemonService(silent = false): Promise<void> {
+  try {
+    modelGatewayDaemonService.value = await fetchModelGatewayDaemonService();
+  } catch (error) {
+    modelGatewayDaemonService.value = null;
+    if (!silent) {
+      notice.value = {
+        kind: "error",
+        text: error instanceof Error ? error.message : text("读取 Model Gateway daemon 状态失败", "Failed to load Model Gateway daemon status"),
+      };
+    }
+  }
+}
+
 async function loadCcConnectConfig(silent = false, options: CcConnectLoadOptions = {}): Promise<void> {
   const preserveDirtyDrafts = options.preserveDirtyDrafts ?? true;
   const keepRawDraft = preserveDirtyDrafts
@@ -2478,7 +2553,11 @@ async function loadCcConnectConfig(silent = false, options: CcConnectLoadOptions
 }
 
 async function loadAll(silent = false, ccConnectOptions: CcConnectLoadOptions = {}): Promise<void> {
-  await Promise.all([loadSummary(), loadCcConnectConfig(silent, ccConnectOptions)]);
+  await Promise.all([
+    loadSummary(),
+    loadModelGatewayDaemonService(silent),
+    loadCcConnectConfig(silent, ccConnectOptions),
+  ]);
 }
 
 async function enableManagement(): Promise<void> {
@@ -2751,6 +2830,13 @@ async function applyCodexCpaAfterSmoke(): Promise<void> {
   await startRepairWithActions(
     ["apply-codex-cpa-after-smoke"],
     text("CPA smoke matrix 任务已启动；全部通过后才会切换 Codex。", "CPA smoke matrix started; Codex will attach only if every check passes."),
+  );
+}
+
+async function applyCodexStudioAfterSmoke(): Promise<void> {
+  await startRepairWithActions(
+    ["apply-codex-studio-after-smoke"],
+    text("Studio Gateway 接管任务已启动；daemon 和 Responses/compact smoke 全部通过后才会切换 Codex。", "Studio Gateway takeover started; Codex will switch only after daemon and Responses/compact smoke pass."),
   );
 }
 
