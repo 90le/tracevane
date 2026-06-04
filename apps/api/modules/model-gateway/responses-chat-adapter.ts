@@ -14,6 +14,11 @@ export class OpenAIResponsesChatAdapterError extends Error {
 export interface ChatResponsesRequestAdapterResult {
   responsesRequest: JsonRecord;
   model: string | null;
+  stream: boolean;
+}
+
+export interface ChatResponsesRequestAdapterOptions {
+  allowStreaming?: boolean;
 }
 
 export function isChatToOpenAIResponsesAdapterTarget(decision: {
@@ -24,9 +29,13 @@ export function isChatToOpenAIResponsesAdapterTarget(decision: {
     && decision.provider?.apiFormat === "openai_responses";
 }
 
-export function adaptChatCompletionRequestToResponses(bodyText: string | undefined): ChatResponsesRequestAdapterResult {
+export function adaptChatCompletionRequestToResponses(
+  bodyText: string | undefined,
+  options: ChatResponsesRequestAdapterOptions = {},
+): ChatResponsesRequestAdapterResult {
   const request = parseJsonObject(bodyText);
-  if (request.stream === true) {
+  const stream = request.stream === true;
+  if (stream && !options.allowStreaming) {
     throw new OpenAIResponsesChatAdapterError(
       "model_gateway_chat_responses_streaming_adapter_required",
       "OpenAI Chat streaming to OpenAI Responses streaming is not implemented yet.",
@@ -46,7 +55,7 @@ export function adaptChatCompletionRequestToResponses(bodyText: string | undefin
   const responsesRequest: JsonRecord = {
     model,
     input: mapChatMessagesToResponsesInput(request.messages),
-    stream: false,
+    stream,
   };
 
   const instructions = extractInstructions(request.messages);
@@ -77,7 +86,7 @@ export function adaptChatCompletionRequestToResponses(bodyText: string | undefin
   const toolChoice = mapChatToolChoiceToResponses(request.tool_choice);
   if (toolChoice !== undefined) responsesRequest.tool_choice = toolChoice;
 
-  return { responsesRequest, model };
+  return { responsesRequest, model, stream };
 }
 
 export function adaptResponsesToChatCompletion(response: unknown, fallbackModel: string | null): JsonRecord {

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { execFile, spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
@@ -58,8 +59,12 @@ import { isStudioGatewayHttpAuthorized } from "../../gateway-http-auth.js";
 import {
   AnthropicMessagesChatAdapterError,
   adaptAnthropicMessagesResponseToChatCompletion,
+  adaptAnthropicMessagesRequestToChatCompletion,
+  adaptChatCompletionResponseToAnthropicMessages,
   adaptChatCompletionRequestToAnthropicMessages,
   ensureAnthropicMessagesHeaders,
+  isAnthropicMessagesToChatAdapterTarget,
+  isAnthropicMessagesToOpenAIResponsesAdapterTarget,
   isChatToAnthropicMessagesAdapterTarget,
   isResponsesToAnthropicMessagesAdapterTarget,
 } from "./anthropic-chat-adapter.js";
@@ -72,6 +77,13 @@ import {
 } from "./codex-adapter.js";
 import { CodexChatHistoryStore } from "./codex-history.js";
 import { writeCodexResponsesSseFromChatSse } from "./codex-streaming.js";
+import {
+  writeAnthropicMessagesSseFromChatSse,
+  writeAnthropicMessagesSseFromResponsesSse,
+  writeChatCompletionsSseFromAnthropicMessagesSse,
+  writeChatCompletionsSseFromResponsesSse,
+  writeCodexResponsesSseFromAnthropicMessagesSse,
+} from "./protocol-streaming.js";
 import {
   OpenAIResponsesChatAdapterError,
   adaptChatCompletionRequestToResponses,
@@ -86,9 +98,11 @@ const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
 const execFileAsync = promisify(execFile);
+const require = createRequire(import.meta.url);
 const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start", "stop", "restart", "status"] as const;
 
 type HeaderMap = http.IncomingHttpHeaders | Record<string, string | string[] | undefined> | Headers;
+type FetchInitWithDispatcher = RequestInit & { dispatcher?: unknown };
 
 const ROUTES: Record<ModelGatewayRouteId, {
   paths: string[];
@@ -659,6 +673,10 @@ function maskSecret(value: string): { masked: string; length: number } {
   };
 }
 
+function isManagedProxyPlaceholderSecret(value: string | null): boolean {
+  return value?.trim() === "PROXY_MANAGED";
+}
+
 function readHeader(headers: HeaderMap | undefined, key: string): string {
   if (!headers) return "";
   if (headers instanceof Headers) return headers.get(key) || "";
@@ -939,6 +957,37 @@ function applyProviderAuth(headers: Headers, provider: ModelGatewayProvider, sec
   }
 
   headers.set("authorization", `Bearer ${secret}`);
+}
+
+function withProviderNetwork(provider: ModelGatewayProvider, init: RequestInit): FetchInitWithDispatcher {
+  const proxyUrl = provider.network.proxyUrl;
+  if (!proxyUrl) return init;
+
+  const undici = require("undici") as {
+    ProxyAgent?: new (uri: string) => unknown;
+    Socks5ProxyAgent?: new (uri: string) => unknown;
+  };
+  const scheme = (() => {
+    try {
+      return new URL(proxyUrl).protocol.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  const Agent = scheme.startsWith("socks")
+    ? undici.Socks5ProxyAgent
+    : undici.ProxyAgent;
+  if (!Agent) {
+    throw new ModelGatewayServiceError(
+      "model_gateway_proxy_agent_unavailable",
+      `No proxy agent is available for provider '${provider.id}'.`,
+      500,
+    );
+  }
+  return {
+    ...init,
+    dispatcher: new Agent(proxyUrl),
+  };
 }
 
 function safeResponseHeaders(upstreamHeaders: Headers): Record<string, string> {
@@ -1799,8 +1848,14 @@ export function createModelGatewayService(
     }
 
     const secret = readProviderSecret(provider);
-    if (provider.authStrategy !== "none" && !secret) {
-      const errorMessage = `Provider '${provider.id}' requires a secret before it can be tested.`;
+    if (provider.authStrategy !== "none" && (!secret || isManagedProxyPlaceholderSecret(secret))) {
+      const placeholder = isManagedProxyPlaceholderSecret(secret);
+      const errorCode = placeholder
+        ? "model_gateway_provider_secret_placeholder"
+        : "model_gateway_provider_secret_missing";
+      const errorMessage = placeholder
+        ? `Provider '${provider.id}' has a managed auth placeholder; configure a real upstream secret before testing.`
+        : `Provider '${provider.id}' requires a secret before it can be tested.`;
       appendRequestLog(requestLogEntry({
         kind: "provider-test",
         startedAt,
@@ -1808,7 +1863,7 @@ export function createModelGatewayService(
         model,
         statusCode: null,
         outcome: "failure",
-        errorCode: "model_gateway_provider_secret_missing",
+        errorCode,
         errorMessage,
       }));
       updateProviderHealth(provider.id, false, null, errorMessage);
@@ -1821,7 +1876,7 @@ export function createModelGatewayService(
         route,
         responsePreview: null,
         error: {
-          code: "model_gateway_provider_secret_missing",
+          code: errorCode,
           message: errorMessage,
         },
       };
@@ -1840,12 +1895,12 @@ export function createModelGatewayService(
       normalizeString(payload.input, "Return the word ok."),
     ));
     try {
-      const response = await fetch(route.upstreamUrl || provider.baseUrl, {
+      const response = await fetch(route.upstreamUrl || provider.baseUrl, withProviderNetwork(provider, {
         method: "POST",
         headers,
         body: requestBody,
         signal: controller.signal,
-      });
+      }));
       const responseText = await response.text();
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const success = isProviderTestSuccess(response.status, null);
@@ -2039,12 +2094,16 @@ export function createModelGatewayService(
     const useAnthropicMessagesChatAdapter = isChatToAnthropicMessagesAdapterTarget(decision);
     const useCodexResponsesAnthropicAdapter = isResponsesToAnthropicMessagesAdapterTarget(decision);
     const useChatResponsesAdapter = isChatToOpenAIResponsesAdapterTarget(decision);
+    const useAnthropicMessagesChatProviderAdapter = isAnthropicMessagesToChatAdapterTarget(decision);
+    const useAnthropicMessagesResponsesProviderAdapter = isAnthropicMessagesToOpenAIResponsesAdapterTarget(decision);
     if (
       decision.mode === "adapter-required"
       && !useCodexResponsesChatAdapter
       && !useAnthropicMessagesChatAdapter
       && !useCodexResponsesAnthropicAdapter
       && !useChatResponsesAdapter
+      && !useAnthropicMessagesChatProviderAdapter
+      && !useAnthropicMessagesResponsesProviderAdapter
     ) {
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
@@ -2071,8 +2130,19 @@ export function createModelGatewayService(
     const bodyText = body.byteLength ? body.toString("utf8") : undefined;
     const requestModel = extractModelFromJsonText(bodyText);
     const useCodexResponsesStreamingAdapter = useCodexResponsesChatAdapter && isCodexResponsesStreamingRequest(bodyText);
-    if (provider.authStrategy !== "none" && !secret) {
-      const errorMessage = `Provider '${provider.id}' requires a secret before requests can be forwarded.`;
+    let useChatResponsesStreamingAdapter = false;
+    let useAnthropicMessagesChatStreamingAdapter = false;
+    let useCodexResponsesAnthropicStreamingAdapter = false;
+    let useAnthropicMessagesChatProviderStreamingAdapter = false;
+    let useAnthropicMessagesResponsesProviderStreamingAdapter = false;
+    if (provider.authStrategy !== "none" && (!secret || isManagedProxyPlaceholderSecret(secret))) {
+      const placeholder = isManagedProxyPlaceholderSecret(secret);
+      const errorCode = placeholder
+        ? "model_gateway_provider_secret_placeholder"
+        : "model_gateway_provider_secret_missing";
+      const errorMessage = placeholder
+        ? `Provider '${provider.id}' has a managed auth placeholder; configure a real upstream secret before forwarding requests.`
+        : `Provider '${provider.id}' requires a secret before requests can be forwarded.`;
       updateProviderHealth(provider.id, false, null, errorMessage);
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
@@ -2081,12 +2151,12 @@ export function createModelGatewayService(
         model: requestModel,
         statusCode: 401,
         outcome: "failure",
-        errorCode: "model_gateway_provider_secret_missing",
+        errorCode,
         errorMessage,
       }));
       sendJson(res, 401, {
         error: {
-          code: "model_gateway_provider_secret_missing",
+          code: errorCode,
           message: errorMessage,
           decision,
         },
@@ -2100,9 +2170,10 @@ export function createModelGatewayService(
     let requestModelForLog = requestModel;
     if (useChatResponsesAdapter) {
       try {
-        const adapted = adaptChatCompletionRequestToResponses(bodyText);
+        const adapted = adaptChatCompletionRequestToResponses(bodyText, { allowStreaming: true });
         upstreamBodyText = JSON.stringify(adapted.responsesRequest);
         requestModelForLog = adapted.model || requestModel;
+        useChatResponsesStreamingAdapter = adapted.stream;
         headers.set("content-type", "application/json");
       } catch (error) {
         const adapterError = error instanceof OpenAIResponsesChatAdapterError
@@ -2133,12 +2204,17 @@ export function createModelGatewayService(
       }
     } else if (useAnthropicMessagesChatAdapter || useCodexResponsesAnthropicAdapter) {
       try {
-        const chatRequestBodyText = useCodexResponsesAnthropicAdapter
-          ? JSON.stringify(adaptCodexResponsesRequestToChat(codexHistory.enrichRequest(bodyText).bodyText).chatRequest)
+        const codexToChat = useCodexResponsesAnthropicAdapter
+          ? adaptCodexResponsesRequestToChat(codexHistory.enrichRequest(bodyText).bodyText, { allowStreaming: true })
+          : null;
+        const chatRequestBodyText = codexToChat
+          ? JSON.stringify(codexToChat.chatRequest)
           : bodyText;
-        const adapted = adaptChatCompletionRequestToAnthropicMessages(chatRequestBodyText);
+        const adapted = adaptChatCompletionRequestToAnthropicMessages(chatRequestBodyText, { allowStreaming: true });
         upstreamBodyText = JSON.stringify(adapted.anthropicRequest);
         requestModelForLog = adapted.model || requestModel;
+        useAnthropicMessagesChatStreamingAdapter = useAnthropicMessagesChatAdapter && adapted.stream;
+        useCodexResponsesAnthropicStreamingAdapter = useCodexResponsesAnthropicAdapter && adapted.stream;
         headers.set("content-type", "application/json");
         ensureAnthropicMessagesHeaders(headers);
       } catch (error) {
@@ -2153,6 +2229,81 @@ export function createModelGatewayService(
               : useCodexResponsesAnthropicAdapter
                 ? "Codex Responses to Anthropic Messages adapter failed."
                 : "OpenAI Chat to Anthropic Messages adapter failed.",
+            500,
+          );
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModel,
+          statusCode: adapterError.statusCode,
+          outcome: adapterError.statusCode === 501 ? "adapter-required" : "failure",
+          errorCode: adapterError.statusCode === 501 ? "model_gateway_adapter_required" : adapterError.code,
+          errorMessage: adapterError.message,
+        }));
+        sendJson(res, adapterError.statusCode, {
+          error: {
+            code: adapterError.statusCode === 501 ? "model_gateway_adapter_required" : adapterError.code,
+            message: adapterError.message,
+            decision,
+          },
+        });
+        return;
+      }
+    } else if (useAnthropicMessagesChatProviderAdapter) {
+      try {
+        const adapted = adaptAnthropicMessagesRequestToChatCompletion(bodyText);
+        upstreamBodyText = JSON.stringify(adapted.chatRequest);
+        requestModelForLog = adapted.model || requestModel;
+        useAnthropicMessagesChatProviderStreamingAdapter = adapted.stream;
+        headers.set("content-type", "application/json");
+        headers.delete("anthropic-version");
+        headers.delete("anthropic-beta");
+      } catch (error) {
+        const adapterError = error instanceof AnthropicMessagesChatAdapterError
+          ? error
+          : new AnthropicMessagesChatAdapterError(
+            "model_gateway_anthropic_chat_adapter_failed",
+            error instanceof Error ? error.message : "Anthropic Messages to OpenAI Chat adapter failed.",
+            500,
+          );
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModel,
+          statusCode: adapterError.statusCode,
+          outcome: adapterError.statusCode === 501 ? "adapter-required" : "failure",
+          errorCode: adapterError.statusCode === 501 ? "model_gateway_adapter_required" : adapterError.code,
+          errorMessage: adapterError.message,
+        }));
+        sendJson(res, adapterError.statusCode, {
+          error: {
+            code: adapterError.statusCode === 501 ? "model_gateway_adapter_required" : adapterError.code,
+            message: adapterError.message,
+            decision,
+          },
+        });
+        return;
+      }
+    } else if (useAnthropicMessagesResponsesProviderAdapter) {
+      try {
+        const chatAdapted = adaptAnthropicMessagesRequestToChatCompletion(bodyText);
+        const responsesAdapted = adaptChatCompletionRequestToResponses(JSON.stringify(chatAdapted.chatRequest), {
+          allowStreaming: true,
+        });
+        upstreamBodyText = JSON.stringify(responsesAdapted.responsesRequest);
+        requestModelForLog = responsesAdapted.model || chatAdapted.model || requestModel;
+        useAnthropicMessagesResponsesProviderStreamingAdapter = responsesAdapted.stream;
+        headers.set("content-type", "application/json");
+        headers.delete("anthropic-version");
+        headers.delete("anthropic-beta");
+      } catch (error) {
+        const adapterError = error instanceof AnthropicMessagesChatAdapterError || error instanceof OpenAIResponsesChatAdapterError
+          ? error
+          : new AnthropicMessagesChatAdapterError(
+            "model_gateway_anthropic_responses_adapter_failed",
+            error instanceof Error ? error.message : "Anthropic Messages to OpenAI Responses adapter failed.",
             500,
           );
         appendRequestLog(requestLogEntry({
@@ -2213,17 +2364,66 @@ export function createModelGatewayService(
     }
 
     try {
-      const upstream = await fetch(decision.upstreamUrl, {
+      const upstream = await fetch(decision.upstreamUrl, withProviderNetwork(provider, {
         method: req.method || "POST",
         headers,
         body: upstreamBodyText,
-      });
+      }));
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const healthSuccess = isProviderHealthSuccess(upstream.status, null);
       const errorMessage = healthSuccess ? null : `Upstream returned HTTP ${upstream.status}.`;
-      if (useCodexResponsesStreamingAdapter && upstream.status >= 200 && upstream.status < 300) {
+      const streamingAdapter = useCodexResponsesStreamingAdapter
+        ? {
+          bodyMissingCode: "model_gateway_codex_streaming_body_missing",
+          adapterFailedCode: "model_gateway_codex_streaming_adapter_failed",
+          bodyMissingMessage: "OpenAI Chat streaming upstream did not return a readable body.",
+          adapterFailedMessage: "Codex Responses streaming adapter failed.",
+          write: writeCodexResponsesSseFromChatSse,
+        }
+        : useChatResponsesStreamingAdapter
+          ? {
+            bodyMissingCode: "model_gateway_chat_responses_streaming_body_missing",
+            adapterFailedCode: "model_gateway_chat_responses_streaming_adapter_failed",
+            bodyMissingMessage: "OpenAI Responses streaming upstream did not return a readable body.",
+            adapterFailedMessage: "OpenAI Responses to Chat streaming adapter failed.",
+            write: writeChatCompletionsSseFromResponsesSse,
+          }
+          : useAnthropicMessagesChatStreamingAdapter
+            ? {
+              bodyMissingCode: "model_gateway_chat_anthropic_streaming_body_missing",
+              adapterFailedCode: "model_gateway_chat_anthropic_streaming_adapter_failed",
+              bodyMissingMessage: "Anthropic Messages streaming upstream did not return a readable body.",
+              adapterFailedMessage: "Anthropic Messages to Chat streaming adapter failed.",
+              write: writeChatCompletionsSseFromAnthropicMessagesSse,
+            }
+            : useCodexResponsesAnthropicStreamingAdapter
+              ? {
+                bodyMissingCode: "model_gateway_codex_anthropic_streaming_body_missing",
+                adapterFailedCode: "model_gateway_codex_anthropic_streaming_adapter_failed",
+                bodyMissingMessage: "Anthropic Messages streaming upstream did not return a readable body.",
+                adapterFailedMessage: "Anthropic Messages to Responses streaming adapter failed.",
+                write: writeCodexResponsesSseFromAnthropicMessagesSse,
+              }
+              : useAnthropicMessagesChatProviderStreamingAdapter
+                ? {
+                  bodyMissingCode: "model_gateway_anthropic_chat_streaming_body_missing",
+                  adapterFailedCode: "model_gateway_anthropic_chat_streaming_adapter_failed",
+                  bodyMissingMessage: "OpenAI Chat streaming upstream did not return a readable body.",
+                  adapterFailedMessage: "OpenAI Chat to Anthropic Messages streaming adapter failed.",
+                  write: writeAnthropicMessagesSseFromChatSse,
+                }
+                : useAnthropicMessagesResponsesProviderStreamingAdapter
+                  ? {
+                    bodyMissingCode: "model_gateway_anthropic_responses_streaming_body_missing",
+                    adapterFailedCode: "model_gateway_anthropic_responses_streaming_adapter_failed",
+                    bodyMissingMessage: "OpenAI Responses streaming upstream did not return a readable body.",
+                    adapterFailedMessage: "OpenAI Responses to Anthropic Messages streaming adapter failed.",
+                    write: writeAnthropicMessagesSseFromResponsesSse,
+                  }
+                  : null;
+      if (streamingAdapter && upstream.status >= 200 && upstream.status < 300) {
         if (!upstream.body) {
-          const message = "OpenAI Chat streaming upstream did not return a readable body.";
+          const message = streamingAdapter.bodyMissingMessage;
           updateProviderHealth(provider.id, false, latencyMs, message);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
@@ -2232,12 +2432,12 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: 502,
             outcome: "failure",
-            errorCode: "model_gateway_codex_streaming_body_missing",
+            errorCode: streamingAdapter.bodyMissingCode,
             errorMessage: message,
           }));
           sendJson(res, 502, {
             error: {
-              code: "model_gateway_codex_streaming_body_missing",
+              code: streamingAdapter.bodyMissingCode,
               message,
               decision,
             },
@@ -2251,7 +2451,7 @@ export function createModelGatewayService(
         res.setHeader("Connection", "keep-alive");
         res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
         try {
-          await writeCodexResponsesSseFromChatSse(upstream.body, res, requestModelForLog);
+          await streamingAdapter.write(upstream.body, res, requestModelForLog);
           updateProviderHealth(provider.id, true, latencyMs, null);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
@@ -2264,7 +2464,7 @@ export function createModelGatewayService(
             errorMessage: null,
           }));
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Codex Responses streaming adapter failed.";
+          const message = error instanceof Error ? error.message : streamingAdapter.adapterFailedMessage;
           updateProviderHealth(provider.id, false, latencyMs, message);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
@@ -2273,13 +2473,13 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: 502,
             outcome: "failure",
-            errorCode: "model_gateway_codex_streaming_adapter_failed",
+            errorCode: streamingAdapter.adapterFailedCode,
             errorMessage: message,
           }));
           if (!res.headersSent) {
             sendJson(res, 502, {
               error: {
-                code: "model_gateway_codex_streaming_adapter_failed",
+                code: streamingAdapter.adapterFailedCode,
                 message,
                 decision,
               },
@@ -2379,6 +2579,65 @@ export function createModelGatewayService(
         if (useCodexResponsesAnthropicAdapter) {
           codexHistory.recordResponse(adaptedResponse);
         }
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModelForLog,
+          statusCode: upstream.status,
+          outcome: "success",
+          errorCode: null,
+          errorMessage: null,
+        }));
+        res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
+        sendJson(res, upstream.status, adaptedResponse);
+        return;
+      }
+      if (
+        (useAnthropicMessagesChatProviderAdapter || useAnthropicMessagesResponsesProviderAdapter)
+        && upstream.status >= 200
+        && upstream.status < 300
+      ) {
+        let adaptedResponse: Record<string, unknown>;
+        try {
+          const upstreamJson = JSON.parse(responseText) as unknown;
+          const chatCompletion = useAnthropicMessagesResponsesProviderAdapter
+            ? adaptResponsesToChatCompletion(upstreamJson, requestModelForLog)
+            : upstreamJson;
+          adaptedResponse = adaptChatCompletionResponseToAnthropicMessages(chatCompletion, requestModelForLog);
+        } catch (error) {
+          const adapterError = error instanceof AnthropicMessagesChatAdapterError || error instanceof OpenAIResponsesChatAdapterError
+            ? error
+            : new AnthropicMessagesChatAdapterError(
+              useAnthropicMessagesResponsesProviderAdapter
+                ? "model_gateway_responses_anthropic_response_invalid"
+                : "model_gateway_chat_anthropic_response_invalid",
+              error instanceof Error
+                ? error.message
+                : "Model Gateway adapter could not parse the upstream response as Anthropic Messages.",
+              502,
+            );
+          updateProviderHealth(provider.id, false, latencyMs, adapterError.message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: adapterError.statusCode,
+            outcome: "failure",
+            errorCode: adapterError.code,
+            errorMessage: adapterError.message,
+          }));
+          sendJson(res, adapterError.statusCode, {
+            error: {
+              code: adapterError.code,
+              message: adapterError.message,
+              decision,
+            },
+          });
+          return;
+        }
+        updateProviderHealth(provider.id, true, latencyMs, null);
         appendRequestLog(requestLogEntry({
           kind: "gateway-request",
           startedAt,

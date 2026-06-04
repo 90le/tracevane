@@ -244,6 +244,59 @@ test("model gateway registry stores provider secrets separately and masks views"
   assert.equal(listed.activeProviders.openclaw, "openai-main");
 });
 
+test("model gateway refuses managed auth placeholders before upstream forwarding", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "placeholder-openai",
+      name: "Placeholder OpenAI",
+      appScopes: ["codex"],
+      baseUrl: "https://api.openai.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "PROXY_MANAGED",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({ url: String(url), body: String(init.body || "") });
+    return new Response("should not be called", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          input: "hello",
+        },
+      });
+      assert.equal(response.status, 401);
+      assert.equal(response.body.error.code, "model_gateway_provider_secret_placeholder");
+      assert.equal(response.body.error.decision.provider.id, "placeholder-openai");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog.length, 1);
+      assert.equal(runtime.body.runtime.requestLog[0].errorCode, "model_gateway_provider_secret_placeholder");
+      assert.ok(!JSON.stringify(runtime.body).includes("PROXY_MANAGED"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 0);
+});
+
 test("model gateway routing contract selects app-scoped providers and normalizes v1 URLs", () => {
   const root = makeTempRoot();
   const service = createModelGatewayService(createStudioConfig(root));
@@ -1199,6 +1252,71 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         headers: { "content-type": "application/json" },
       });
     }
+    if (upstreamCalls.length === 4) {
+      const upstreamSse = [
+        "event: response.created",
+        "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_chat_stream\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-native-responses\",\"output\":[],\"usage\":null}}",
+        "",
+        "event: response.output_text.delta",
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Str\"}",
+        "",
+        "event: response.output_text.delta",
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"eam\"}",
+        "",
+        "event: response.completed",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_chat_stream\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-native-responses\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Stream\"}]}],\"usage\":{\"input_tokens\":5,\"output_tokens\":2,\"total_tokens\":7}}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    if (upstreamCalls.length === 5) {
+      return new Response(JSON.stringify({
+        id: "resp_anthropic_adapter",
+        object: "response",
+        status: "completed",
+        model: "gpt-native-responses",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "Anthropic through Responses." }],
+        }],
+        usage: {
+          input_tokens: 9,
+          output_tokens: 4,
+          total_tokens: 13,
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (upstreamCalls.length === 6) {
+      const upstreamSse = [
+        "event: response.created",
+        "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_anthropic_stream\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-native-responses\",\"output\":[],\"usage\":null}}",
+        "",
+        "event: response.output_text.delta",
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Anthropic \"}",
+        "",
+        "event: response.output_text.delta",
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"stream\"}",
+        "",
+        "event: response.completed",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_anthropic_stream\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-native-responses\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Anthropic stream\"}]}],\"usage\":{\"input_tokens\":6,\"output_tokens\":2,\"total_tokens\":8}}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
     return new Response(JSON.stringify({
       id: String(url).includes("/compact") ? "resp_native_compact" : "resp_native",
       object: "response",
@@ -1307,7 +1425,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         prompt_tokens_details: { cached_tokens: 4 },
       });
 
-      const streaming = await requestJson(`${baseUrl}/v1/chat/completions`, {
+      const streaming = await requestRaw(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
         body: {
           model: "gpt-native-responses",
@@ -1315,10 +1433,20 @@ test("model gateway protocol matrix forwards native openai responses and guards 
           messages: [{ role: "user", content: "stream please" }],
         },
       });
-      assert.equal(streaming.status, 501);
-      assert.equal(streaming.body.error.code, "model_gateway_adapter_required");
-      assert.equal(streaming.body.error.decision.mode, "adapter-required");
-      assert.equal(streaming.body.error.decision.routeId, "openai_chat_completions");
+      assert.equal(streaming.status, 200);
+      assert.match(streaming.headers["content-type"], /text\/event-stream/);
+      const streamingEvents = parseSseEvents(streaming.body);
+      assert.equal(streamingEvents[0].data.object, "chat.completion.chunk");
+      assert.equal(streamingEvents[0].data.choices[0].delta.role, "assistant");
+      assert.equal(streamingEvents[1].data.choices[0].delta.content, "Str");
+      assert.equal(streamingEvents[2].data.choices[0].delta.content, "eam");
+      assert.equal(streamingEvents[3].data.choices[0].finish_reason, "stop");
+      assert.deepEqual(streamingEvents[3].data.usage, {
+        prompt_tokens: 5,
+        completion_tokens: 2,
+        total_tokens: 7,
+      });
+      assert.equal(streamingEvents[4].data, "[DONE]");
 
       const messages = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -1328,10 +1456,48 @@ test("model gateway protocol matrix forwards native openai responses and guards 
           messages: [{ role: "user", content: "anthropic please" }],
         },
       });
-      assert.equal(messages.status, 501);
-      assert.equal(messages.body.error.code, "model_gateway_adapter_required");
-      assert.equal(messages.body.error.decision.mode, "adapter-required");
-      assert.equal(messages.body.error.decision.routeId, "anthropic_messages");
+      assert.equal(messages.status, 200);
+      assert.equal(messages.headers["x-openclaw-model-gateway-provider"], "native-responses");
+      assert.equal(messages.body.id, "resp_anthropic_adapter");
+      assert.equal(messages.body.type, "message");
+      assert.equal(messages.body.role, "assistant");
+      assert.deepEqual(messages.body.content, [{
+        type: "text",
+        text: "Anthropic through Responses.",
+      }]);
+      assert.equal(messages.body.stop_reason, "end_turn");
+      assert.deepEqual(messages.body.usage, {
+        input_tokens: 9,
+        output_tokens: 4,
+        cache_read_input_tokens: 0,
+      });
+
+      const messageStream = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          max_tokens: 32,
+          stream: true,
+          messages: [{ role: "user", content: "anthropic stream please" }],
+        },
+      });
+      assert.equal(messageStream.status, 200);
+      assert.match(messageStream.headers["content-type"], /text\/event-stream/);
+      const messageStreamEvents = parseSseEvents(messageStream.body);
+      assert.deepEqual(messageStreamEvents.map((item) => item.event), [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop",
+      ]);
+      assert.equal(messageStreamEvents[0].data.message.id, "msg_resp_anthropic_stream");
+      assert.equal(messageStreamEvents[2].data.delta.text, "Anthropic ");
+      assert.equal(messageStreamEvents[3].data.delta.text, "stream");
+      assert.equal(messageStreamEvents[5].data.delta.stop_reason, "end_turn");
+      assert.deepEqual(messageStreamEvents[5].data.usage, { output_tokens: 2 });
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
@@ -1339,8 +1505,9 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         ["openai_responses", "success"],
         ["openai_responses_compact", "success"],
         ["openai_chat_completions", "success"],
-        ["openai_chat_completions", "adapter-required"],
-        ["anthropic_messages", "adapter-required"],
+        ["openai_chat_completions", "success"],
+        ["anthropic_messages", "success"],
+        ["anthropic_messages", "success"],
       ]);
       assert.ok(!JSON.stringify(runtime.body).includes("sk-native-responses-secret"));
     });
@@ -1348,7 +1515,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls.length, 6);
   assert.equal(upstreamCalls[0].url, "https://responses-native.example.test/v1/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-native-responses-secret");
   assert.equal(upstreamCalls[0].contentType, "application/json");
@@ -1400,6 +1567,29 @@ test("model gateway protocol matrix forwards native openai responses and guards 
       },
     }],
     tool_choice: { type: "function", name: "save_note" },
+  });
+  assert.equal(upstreamCalls[3].url, "https://responses-native.example.test/v1/responses");
+  assert.equal(upstreamCalls[3].authorization, "Bearer sk-native-responses-secret");
+  assert.deepEqual(JSON.parse(upstreamCalls[3].body), {
+    model: "gpt-native-responses",
+    input: [{ role: "user", content: "stream please" }],
+    stream: true,
+  });
+  assert.equal(upstreamCalls[4].url, "https://responses-native.example.test/v1/responses");
+  assert.equal(upstreamCalls[4].authorization, "Bearer sk-native-responses-secret");
+  assert.deepEqual(JSON.parse(upstreamCalls[4].body), {
+    model: "gpt-native-responses",
+    input: [{ role: "user", content: "anthropic please" }],
+    stream: false,
+    max_output_tokens: 32,
+  });
+  assert.equal(upstreamCalls[5].url, "https://responses-native.example.test/v1/responses");
+  assert.equal(upstreamCalls[5].authorization, "Bearer sk-native-responses-secret");
+  assert.deepEqual(JSON.parse(upstreamCalls[5].body), {
+    model: "gpt-native-responses",
+    input: [{ role: "user", content: "anthropic stream please" }],
+    stream: true,
+    max_output_tokens: 32,
   });
 });
 
@@ -1508,6 +1698,228 @@ test("model gateway protocol matrix forwards native anthropic messages", async (
   });
 });
 
+test("model gateway adapts anthropic messages through openai chat providers", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-to-chat",
+      name: "Anthropic To Chat Provider",
+      appScopes: ["claude-code"],
+      baseUrl: "https://anthropic-chat.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-anthropic-chat-secret",
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    if (upstreamCalls.length === 2) {
+      const upstreamSse = [
+        "data: {\"id\":\"chatcmpl_anthropic_stream\",\"created\":1710000040,\"model\":\"gpt-chat\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_anthropic_stream\",\"created\":1710000040,\"model\":\"gpt-chat\",\"choices\":[{\"delta\":{\"content\":\"Claude \"}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_anthropic_stream\",\"created\":1710000040,\"model\":\"gpt-chat\",\"choices\":[{\"delta\":{\"content\":\"stream\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":6,\"completion_tokens\":2,\"total_tokens\":8}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_anthropic_adapter",
+      created: 1_710_000_040,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "Chat provider answer.",
+          tool_calls: [{
+            id: "call_save",
+            type: "function",
+            function: {
+              name: "save_note",
+              arguments: "{\"note\":\"ok\"}",
+            },
+          }],
+        },
+        finish_reason: "tool_calls",
+      }],
+      usage: {
+        prompt_tokens: 12,
+        completion_tokens: 5,
+        total_tokens: 17,
+        prompt_tokens_details: { cached_tokens: 2 },
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-chat",
+          system: "Be direct.",
+          max_tokens: 128,
+          messages: [
+            { role: "user", content: [{ type: "text", text: "hello" }] },
+            {
+              role: "assistant",
+              content: [
+                { type: "text", text: "I will call." },
+                { type: "tool_use", id: "call_lookup", name: "lookup", input: { query: "docs" } },
+              ],
+            },
+            {
+              role: "user",
+              content: [{ type: "tool_result", tool_use_id: "call_lookup", content: "done" }],
+            },
+          ],
+          tools: [{
+            name: "lookup",
+            description: "Lookup docs",
+            input_schema: { type: "object", properties: { query: { type: "string" } } },
+          }],
+          tool_choice: { type: "tool", name: "lookup" },
+          temperature: 0.1,
+        },
+      });
+
+      assert.equal(messages.status, 200);
+      assert.equal(messages.headers["x-openclaw-model-gateway-provider"], "anthropic-to-chat");
+      assert.equal(messages.body.id, "chatcmpl_anthropic_adapter");
+      assert.equal(messages.body.type, "message");
+      assert.equal(messages.body.role, "assistant");
+      assert.deepEqual(messages.body.content, [
+        { type: "text", text: "Chat provider answer." },
+        { type: "tool_use", id: "call_save", name: "save_note", input: { note: "ok" } },
+      ]);
+      assert.equal(messages.body.stop_reason, "tool_use");
+      assert.deepEqual(messages.body.usage, {
+        input_tokens: 12,
+        output_tokens: 5,
+        cache_read_input_tokens: 2,
+      });
+
+      const stream = await requestRaw(`${baseUrl}/claude/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-chat",
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "stream please" }],
+        },
+      });
+      assert.equal(stream.status, 200);
+      assert.match(stream.headers["content-type"], /text\/event-stream/);
+      const events = parseSseEvents(stream.body);
+      assert.deepEqual(events.map((item) => item.event), [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop",
+      ]);
+      assert.equal(events[0].data.message.id, "msg_chatcmpl_anthropic_stream");
+      assert.equal(events[2].data.delta.text, "Claude ");
+      assert.equal(events[3].data.delta.text, "stream");
+      assert.equal(events[5].data.delta.stop_reason, "end_turn");
+      assert.deepEqual(events[5].data.usage, { output_tokens: 2 });
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
+        ["anthropic_messages", "/v1/messages", "success"],
+        ["anthropic_messages", "/claude/v1/messages", "success"],
+      ]);
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-anthropic-chat-secret"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-chat.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-anthropic-chat-secret");
+  assert.equal(upstreamCalls[0].anthropicVersion, null);
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "gpt-chat",
+    messages: [
+      { role: "system", content: "Be direct." },
+      { role: "user", content: "hello" },
+      {
+        role: "assistant",
+        content: "I will call.",
+        tool_calls: [{
+          id: "call_lookup",
+          type: "function",
+          function: {
+            name: "lookup",
+            arguments: "{\"query\":\"docs\"}",
+          },
+        }],
+      },
+      {
+        role: "tool",
+        tool_call_id: "call_lookup",
+        content: "done",
+      },
+    ],
+    stream: false,
+    max_tokens: 128,
+    temperature: 0.1,
+    tools: [{
+      type: "function",
+      function: {
+        name: "lookup",
+        description: "Lookup docs",
+        parameters: { type: "object", properties: { query: { type: "string" } } },
+      },
+    }],
+    tool_choice: {
+      type: "function",
+      function: { name: "lookup" },
+    },
+  });
+  assert.equal(upstreamCalls[1].url, "https://anthropic-chat.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-anthropic-chat-secret");
+  assert.equal(upstreamCalls[1].anthropicVersion, null);
+  assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
+    model: "gpt-chat",
+    messages: [{ role: "user", content: "stream please" }],
+    stream: true,
+    max_tokens: 64,
+  });
+});
+
 test("model gateway adapts codex responses through native anthropic messages providers", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -1540,6 +1952,35 @@ test("model gateway adapts codex responses through native anthropic messages pro
       contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
       body: String(init.body || ""),
     });
+    if (upstreamCalls.length === 3) {
+      const upstreamSse = [
+        "event: message_start",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_anthropic\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":6,\"output_tokens\":0}}}",
+        "",
+        "event: content_block_start",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}",
+        "",
+        "event: content_block_delta",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Anth\"}}",
+        "",
+        "event: content_block_delta",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ropic stream\"}}",
+        "",
+        "event: content_block_stop",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}",
+        "",
+        "event: message_delta",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}",
+        "",
+        "event: message_stop",
+        "data: {\"type\":\"message_stop\"}",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
     const isCompact = upstreamCalls.length === 2;
     return new Response(JSON.stringify({
       id: isCompact ? "msg_compact_anthropic" : "msg_responses_anthropic",
@@ -1620,7 +2061,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
       assert.equal(compact.body.id, "msg_compact_anthropic");
       assert.equal(compact.body.output[0].content[0].text, "Compact Anthropic summary.");
 
-      const streaming = await requestJson(`${baseUrl}/v1/responses`, {
+      const streaming = await requestRaw(`${baseUrl}/v1/responses`, {
         method: "POST",
         body: {
           model: "claude-native",
@@ -1628,17 +2069,33 @@ test("model gateway adapts codex responses through native anthropic messages pro
           stream: true,
         },
       });
-      assert.equal(streaming.status, 501);
-      assert.equal(streaming.body.error.code, "model_gateway_adapter_required");
-      assert.equal(streaming.body.error.decision.mode, "adapter-required");
-      assert.equal(streaming.body.error.decision.routeId, "openai_responses");
+      assert.equal(streaming.status, 200);
+      assert.match(streaming.headers["content-type"], /text\/event-stream/);
+      const streamEvents = parseSseEvents(streaming.body);
+      assert.deepEqual(streamEvents.map((item) => item.event), [
+        "response.created",
+        "response.in_progress",
+        "response.output_item.added",
+        "response.content_part.added",
+        "response.output_text.delta",
+        "response.output_text.delta",
+        "response.output_text.done",
+        "response.content_part.done",
+        "response.output_item.done",
+        "response.completed",
+        null,
+      ]);
+      assert.equal(streamEvents[4].data.delta, "Anth");
+      assert.equal(streamEvents[5].data.delta, "ropic stream");
+      assert.equal(streamEvents[9].data.response.output[0].content[0].text, "Anthropic stream");
+      assert.equal(streamEvents[10].data, "[DONE]");
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
         ["openai_responses", "/v1/responses", "success"],
         ["openai_responses_compact", "/v1/responses/compact", "success"],
-        ["openai_responses", "/v1/responses", "adapter-required"],
+        ["openai_responses", "/v1/responses", "success"],
       ]);
       assert.ok(!JSON.stringify(runtime.body).includes("sk-responses-anthropic-secret"));
     });
@@ -1646,7 +2103,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls.length, 3);
   assert.equal(upstreamCalls[0].url, "https://responses-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[0].method, "POST");
   assert.equal(upstreamCalls[0].authorization, null);
@@ -1677,6 +2134,15 @@ test("model gateway adapts codex responses through native anthropic messages pro
     max_tokens: 512,
     messages: [{ role: "user", content: "Current work is Model Gateway." }],
     system: "Summarize for handoff.",
+  });
+  assert.equal(upstreamCalls[2].url, "https://responses-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[2].xApiKey, "sk-responses-anthropic-secret");
+  assert.equal(upstreamCalls[2].anthropicVersion, "2023-06-01");
+  assert.deepEqual(JSON.parse(upstreamCalls[2].body), {
+    model: "claude-native",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: "stream please" }],
+    stream: true,
   });
 });
 
@@ -1712,6 +2178,35 @@ test("model gateway adapts chat completions through native anthropic messages pr
       contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
       body: String(init.body || ""),
     });
+    if (upstreamCalls.length === 2) {
+      const upstreamSse = [
+        "event: message_start",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_chat_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":8,\"output_tokens\":0}}}",
+        "",
+        "event: content_block_start",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}",
+        "",
+        "event: content_block_delta",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Chat \"}}",
+        "",
+        "event: content_block_delta",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"stream\"}}",
+        "",
+        "event: content_block_stop",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}",
+        "",
+        "event: message_delta",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}",
+        "",
+        "event: message_stop",
+        "data: {\"type\":\"message_stop\"}",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
     return new Response(JSON.stringify({
       id: "msg_chat_adapter",
       type: "message",
@@ -1805,7 +2300,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
         prompt_tokens_details: { cached_tokens: 3 },
       });
 
-      const stream = await requestJson(`${baseUrl}/v1/chat/completions`, {
+      const stream = await requestRaw(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
         body: {
           model: "claude-native",
@@ -1813,16 +2308,25 @@ test("model gateway adapts chat completions through native anthropic messages pr
           messages: [{ role: "user", content: "stream please" }],
         },
       });
-      assert.equal(stream.status, 501);
-      assert.equal(stream.body.error.code, "model_gateway_adapter_required");
-      assert.equal(stream.body.error.decision.mode, "adapter-required");
-      assert.equal(stream.body.error.decision.routeId, "openai_chat_completions");
+      assert.equal(stream.status, 200);
+      assert.match(stream.headers["content-type"], /text\/event-stream/);
+      const streamEvents = parseSseEvents(stream.body);
+      assert.equal(streamEvents[0].data.choices[0].delta.role, "assistant");
+      assert.equal(streamEvents[1].data.choices[0].delta.content, "Chat ");
+      assert.equal(streamEvents[2].data.choices[0].delta.content, "stream");
+      assert.equal(streamEvents[3].data.choices[0].finish_reason, "stop");
+      assert.deepEqual(streamEvents[3].data.usage, {
+        prompt_tokens: 8,
+        completion_tokens: 3,
+        total_tokens: 11,
+      });
+      assert.equal(streamEvents[4].data, "[DONE]");
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
         ["openai_chat_completions", "/v1/chat/completions", "success"],
-        ["openai_chat_completions", "/v1/chat/completions", "adapter-required"],
+        ["openai_chat_completions", "/v1/chat/completions", "success"],
       ]);
       assert.ok(!JSON.stringify(runtime.body).includes("sk-chat-anthropic-secret"));
     });
@@ -1830,7 +2334,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls.length, 2);
   assert.equal(upstreamCalls[0].url, "https://chat-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[0].method, "POST");
   assert.equal(upstreamCalls[0].authorization, null);
@@ -1868,6 +2372,16 @@ test("model gateway adapts chat completions through native anthropic messages pr
       },
     }],
     tool_choice: { type: "tool", name: "get_weather" },
+  });
+  assert.equal(upstreamCalls[1].url, "https://chat-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].method, "POST");
+  assert.equal(upstreamCalls[1].xApiKey, "sk-chat-anthropic-secret");
+  assert.equal(upstreamCalls[1].anthropicVersion, "2023-06-01");
+  assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
+    model: "claude-native",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: "stream please" }],
+    stream: true,
   });
 });
 

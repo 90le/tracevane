@@ -16,6 +16,17 @@ export class AnthropicMessagesChatAdapterError extends Error {
 export interface ChatAnthropicRequestAdapterResult {
   anthropicRequest: JsonRecord;
   model: string | null;
+  stream: boolean;
+}
+
+export interface AnthropicChatRequestAdapterResult {
+  chatRequest: JsonRecord;
+  model: string | null;
+  stream: boolean;
+}
+
+export interface ChatAnthropicRequestAdapterOptions {
+  allowStreaming?: boolean;
 }
 
 export function isChatToAnthropicMessagesAdapterTarget(decision: {
@@ -36,15 +47,51 @@ export function isResponsesToAnthropicMessagesAdapterTarget(decision: {
   ) && decision.provider?.apiFormat === "anthropic_messages";
 }
 
+export function isAnthropicMessagesToChatAdapterTarget(decision: {
+  routeId: string | null;
+  provider: { apiFormat: string } | null;
+}): boolean {
+  return decision.routeId === "anthropic_messages"
+    && decision.provider?.apiFormat === "openai_chat";
+}
+
+export function isAnthropicMessagesToOpenAIResponsesAdapterTarget(decision: {
+  routeId: string | null;
+  provider: { apiFormat: string } | null;
+}): boolean {
+  return decision.routeId === "anthropic_messages"
+    && decision.provider?.apiFormat === "openai_responses";
+}
+
+export function isAnthropicMessagesStreamingRequest(bodyText: string | undefined): boolean {
+  try {
+    return parseJsonObject(
+      bodyText,
+      "model_gateway_anthropic_chat",
+      "Anthropic Messages to OpenAI Chat adapter",
+    ).stream === true;
+  } catch {
+    return false;
+  }
+}
+
 export function ensureAnthropicMessagesHeaders(headers: Headers): void {
   if (!headers.has("anthropic-version")) {
     headers.set("anthropic-version", DEFAULT_ANTHROPIC_VERSION);
   }
 }
 
-export function adaptChatCompletionRequestToAnthropicMessages(bodyText: string | undefined): ChatAnthropicRequestAdapterResult {
-  const request = parseJsonObject(bodyText);
-  if (request.stream === true) {
+export function adaptChatCompletionRequestToAnthropicMessages(
+  bodyText: string | undefined,
+  options: ChatAnthropicRequestAdapterOptions = {},
+): ChatAnthropicRequestAdapterResult {
+  const request = parseJsonObject(
+    bodyText,
+    "model_gateway_chat_anthropic",
+    "OpenAI Chat to Anthropic Messages adapter",
+  );
+  const stream = request.stream === true;
+  if (stream && !options.allowStreaming) {
     throw new AnthropicMessagesChatAdapterError(
       "model_gateway_chat_anthropic_streaming_adapter_required",
       "OpenAI Chat streaming to Anthropic Messages streaming is not implemented yet.",
@@ -68,6 +115,7 @@ export function adaptChatCompletionRequestToAnthropicMessages(bodyText: string |
       ?? 1024,
     messages: mapChatMessagesToAnthropic(request.messages),
   };
+  if (stream) anthropicRequest.stream = true;
 
   const system = extractSystemPrompt(request.messages);
   if (system) anthropicRequest.system = system;
@@ -86,7 +134,51 @@ export function adaptChatCompletionRequestToAnthropicMessages(bodyText: string |
   const toolChoice = mapChatToolChoiceToAnthropic(request.tool_choice);
   if (toolChoice !== undefined) anthropicRequest.tool_choice = toolChoice;
 
-  return { anthropicRequest, model };
+  return { anthropicRequest, model, stream };
+}
+
+export function adaptAnthropicMessagesRequestToChatCompletion(bodyText: string | undefined): AnthropicChatRequestAdapterResult {
+  const request = parseJsonObject(
+    bodyText,
+    "model_gateway_anthropic_chat",
+    "Anthropic Messages to OpenAI Chat adapter",
+  );
+  const model = stringOrNull(request.model);
+  if (!model) {
+    throw new AnthropicMessagesChatAdapterError(
+      "model_gateway_anthropic_chat_model_required",
+      "Anthropic Messages to OpenAI Chat adapter requires a model.",
+      400,
+    );
+  }
+
+  const messages = mapAnthropicMessagesToChat(request);
+  const chatRequest: JsonRecord = {
+    model,
+    messages,
+    stream: request.stream === true,
+  };
+
+  if (request.max_tokens !== undefined) chatRequest.max_tokens = request.max_tokens;
+  if (request.stop_sequences !== undefined) chatRequest.stop = request.stop_sequences;
+
+  copyScalarFields(request, chatRequest, [
+    "temperature",
+    "top_p",
+    "metadata",
+  ]);
+
+  const tools = mapAnthropicToolsToChat(request.tools);
+  if (tools.length) chatRequest.tools = tools;
+
+  const toolChoice = mapAnthropicToolChoiceToChat(request.tool_choice);
+  if (toolChoice !== undefined) chatRequest.tool_choice = toolChoice;
+
+  return {
+    chatRequest,
+    model,
+    stream: request.stream === true,
+  };
 }
 
 export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown, fallbackModel: string | null): JsonRecord {
@@ -128,11 +220,44 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
   };
 }
 
-function parseJsonObject(bodyText: string | undefined): JsonRecord {
+export function adaptChatCompletionResponseToAnthropicMessages(response: unknown, fallbackModel: string | null): JsonRecord {
+  if (!isRecord(response)) {
+    throw new AnthropicMessagesChatAdapterError(
+      "model_gateway_chat_anthropic_response_invalid",
+      "OpenAI Chat upstream returned a non-object response.",
+      502,
+    );
+  }
+
+  const choice = firstChoice(response);
+  const message = isRecord(choice?.message) ? choice.message : {};
+  const text = chatContentToText(message.content);
+  const toolUses = Array.isArray(message.tool_calls)
+    ? message.tool_calls
+      .map(mapChatToolCallToAnthropicToolUse)
+      .filter((toolUse): toolUse is JsonRecord => Boolean(toolUse))
+    : [];
+  const content: JsonRecord[] = [];
+  if (text || !toolUses.length) content.push({ type: "text", text });
+  content.push(...toolUses);
+
+  return {
+    id: stringOrNull(response.id) || `msg_${Date.now().toString(36)}`,
+    type: "message",
+    role: "assistant",
+    model: stringOrNull(response.model) || fallbackModel,
+    content,
+    stop_reason: mapChatFinishReasonToAnthropic(choice?.finish_reason, toolUses.length > 0),
+    stop_sequence: null,
+    usage: mapChatUsageToAnthropic(response.usage),
+  };
+}
+
+function parseJsonObject(bodyText: string | undefined, codePrefix: string, context: string): JsonRecord {
   if (!bodyText || !bodyText.trim()) {
     throw new AnthropicMessagesChatAdapterError(
-      "model_gateway_chat_anthropic_body_required",
-      "OpenAI Chat to Anthropic Messages adapter requires a JSON request body.",
+      `${codePrefix}_body_required`,
+      `${context} requires a JSON request body.`,
       400,
     );
   }
@@ -143,8 +268,8 @@ function parseJsonObject(bodyText: string | undefined): JsonRecord {
     // Fall through to the shared error below.
   }
   throw new AnthropicMessagesChatAdapterError(
-    "model_gateway_chat_anthropic_body_invalid",
-    "OpenAI Chat to Anthropic Messages adapter requires a JSON object request body.",
+    `${codePrefix}_body_invalid`,
+    `${context} requires a JSON object request body.`,
     400,
   );
 }
@@ -282,6 +407,156 @@ function mapChatToolChoiceToAnthropic(toolChoice: unknown): unknown {
   return toolChoice;
 }
 
+function mapAnthropicMessagesToChat(request: JsonRecord): JsonRecord[] {
+  const messages: JsonRecord[] = [];
+  const system = anthropicSystemToText(request.system);
+  if (system) messages.push({ role: "system", content: system });
+
+  if (!Array.isArray(request.messages)) {
+    throw new AnthropicMessagesChatAdapterError(
+      "model_gateway_anthropic_chat_messages_required",
+      "Anthropic Messages to OpenAI Chat adapter requires a messages array.",
+      400,
+    );
+  }
+
+  for (const message of request.messages) {
+    messages.push(...mapAnthropicMessageToChat(message));
+  }
+
+  return messages.length ? messages : [{ role: "user", content: "" }];
+}
+
+function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
+  if (!isRecord(message)) return [];
+  const role = message.role === "assistant" ? "assistant" : "user";
+  const blocks = anthropicContentBlocks(message.content);
+  if (role === "assistant") {
+    const text = blocks
+      .filter((block) => block.type === "text")
+      .map((block) => stringOrNull(block.text) || "")
+      .filter(Boolean)
+      .join("");
+    const toolCalls = blocks
+      .filter((block) => block.type === "tool_use")
+      .map(mapAnthropicToolUseToChatToolCall)
+      .filter((toolCall): toolCall is JsonRecord => Boolean(toolCall));
+    const chatMessage: JsonRecord = {
+      role,
+      content: text || (toolCalls.length ? null : ""),
+    };
+    if (toolCalls.length) chatMessage.tool_calls = toolCalls;
+    return [chatMessage];
+  }
+
+  const chatMessages: JsonRecord[] = [];
+  const userContentBlocks = blocks.filter((block) => block.type !== "tool_result");
+  if (userContentBlocks.length) {
+    chatMessages.push({
+      role: "user",
+      content: anthropicBlocksToChatContent(userContentBlocks),
+    });
+  }
+  const toolMessages = blocks
+    .filter((block) => block.type === "tool_result")
+    .map((block) => ({
+      role: "tool",
+      tool_call_id: stringOrNull(block.tool_use_id) || "",
+      content: anthropicContentToText(block.content),
+    }));
+  chatMessages.push(...toolMessages);
+  if (!chatMessages.length) chatMessages.push({ role: "user", content: "" });
+  return chatMessages;
+}
+
+function anthropicSystemToText(system: unknown): string {
+  if (typeof system === "string") return system;
+  return anthropicContentToText(system);
+}
+
+function anthropicContentBlocks(content: unknown): JsonRecord[] {
+  if (typeof content === "string") return content ? [{ type: "text", text: content }] : [];
+  if (!Array.isArray(content)) return [];
+  return content.filter(isRecord);
+}
+
+function anthropicBlocksToChatContent(blocks: JsonRecord[]): unknown {
+  const parts: JsonRecord[] = blocks.flatMap((block): JsonRecord[] => {
+    if (block.type === "text") {
+      const text = stringOrNull(block.text);
+      return text ? [{ type: "text", text }] : [];
+    }
+    if (block.type === "image") {
+      const imageUrl = anthropicImageSourceToChatImageUrl(block.source);
+      return imageUrl ? [{ type: "image_url", image_url: { url: imageUrl } }] : [];
+    }
+    const text = anthropicContentToText(block);
+    return text ? [{ type: "text", text }] : [];
+  });
+  if (!parts.length) return "";
+  if (parts.every((part) => part.type === "text")) {
+    return parts.map((part) => stringOrNull(part.text) || "").join("");
+  }
+  return parts;
+}
+
+function anthropicImageSourceToChatImageUrl(source: unknown): string | null {
+  if (!isRecord(source)) return null;
+  if (source.type === "url") return stringOrNull(source.url);
+  if (source.type === "base64") {
+    const mediaType = stringOrNull(source.media_type);
+    const data = stringOrNull(source.data);
+    return mediaType && data ? `data:${mediaType};base64,${data}` : null;
+  }
+  return null;
+}
+
+function anthropicContentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content === null || content === undefined) return "";
+  if (Array.isArray(content)) {
+    return content.map(anthropicContentPartToText).filter(Boolean).join("");
+  }
+  return anthropicContentPartToText(content);
+}
+
+function anthropicContentPartToText(part: unknown): string {
+  if (typeof part === "string") return part;
+  if (!isRecord(part)) return "";
+  if (part.type === "text") return stringOrNull(part.text) || "";
+  return stringOrNull(part.text)
+    || stringOrNull(part.content)
+    || "";
+}
+
+function mapAnthropicToolsToChat(tools: unknown): JsonRecord[] {
+  if (!Array.isArray(tools)) return [];
+  return tools.flatMap((tool) => {
+    if (!isRecord(tool)) return [];
+    const name = stringOrNull(tool.name);
+    if (!name) return [];
+    const fn: JsonRecord = {
+      name,
+      parameters: isRecord(tool.input_schema) ? tool.input_schema : {},
+    };
+    if (typeof tool.description === "string") fn.description = tool.description;
+    return [{ type: "function", function: fn }];
+  });
+}
+
+function mapAnthropicToolChoiceToChat(toolChoice: unknown): unknown {
+  if (toolChoice === undefined) return undefined;
+  if (toolChoice === "auto" || toolChoice === "none") return toolChoice;
+  if (!isRecord(toolChoice)) return toolChoice;
+  if (toolChoice.type === "auto" || toolChoice.type === "none") return toolChoice.type;
+  if (toolChoice.type === "any") return "required";
+  if (toolChoice.type === "tool") {
+    const name = stringOrNull(toolChoice.name);
+    return name ? { type: "function", function: { name } } : toolChoice;
+  }
+  return toolChoice;
+}
+
 function mapChatToolCallToAnthropicToolUse(toolCall: unknown): JsonRecord | null {
   if (!isRecord(toolCall)) return null;
   const fn = isRecord(toolCall.function) ? toolCall.function : {};
@@ -294,6 +569,12 @@ function mapChatToolCallToAnthropicToolUse(toolCall: unknown): JsonRecord | null
     name,
     input: parseToolArguments(fn.arguments),
   };
+}
+
+function firstChoice(response: JsonRecord): JsonRecord | null {
+  if (!Array.isArray(response.choices)) return null;
+  const [choice] = response.choices;
+  return isRecord(choice) ? choice : null;
 }
 
 function mapAnthropicToolUseToChatToolCall(part: unknown): JsonRecord | null {
@@ -310,11 +591,32 @@ function mapAnthropicToolUseToChatToolCall(part: unknown): JsonRecord | null {
   };
 }
 
+function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: boolean): string {
+  if (finishReason === "tool_calls" || hasToolUses) return "tool_use";
+  if (finishReason === "length") return "max_tokens";
+  if (finishReason === "stop" || finishReason === "content_filter") return "end_turn";
+  return "end_turn";
+}
+
 function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean): string {
   if (stopReason === "tool_use" || hasToolCalls) return "tool_calls";
   if (stopReason === "max_tokens") return "length";
   if (stopReason === "end_turn" || stopReason === "stop_sequence") return "stop";
   return "stop";
+}
+
+function mapChatUsageToAnthropic(usage: unknown): JsonRecord {
+  if (!isRecord(usage)) return { input_tokens: 0, output_tokens: 0 };
+  const inputTokens = numberOrNull(usage.prompt_tokens) ?? 0;
+  const outputTokens = numberOrNull(usage.completion_tokens) ?? 0;
+  const promptDetails = isRecord(usage.prompt_tokens_details) ? usage.prompt_tokens_details : {};
+  const mapped: JsonRecord = {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+  };
+  const cachedTokens = numberOrNull(promptDetails.cached_tokens);
+  if (cachedTokens !== null) mapped.cache_read_input_tokens = cachedTokens;
+  return mapped;
 }
 
 function mapAnthropicUsageToChat(usage: unknown): JsonRecord | null {
