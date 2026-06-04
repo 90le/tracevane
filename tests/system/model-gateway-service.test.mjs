@@ -574,6 +574,189 @@ test("model gateway daemon service management executes selected supervisor comma
   assert.equal(status.serviceManager.lastError, null);
 });
 
+test("model gateway ensure-running prefers installed supervisor over detached bootstrap", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const calls = [];
+  let startSeen = false;
+  const service = createModelGatewayService(config, {
+    daemonServiceCommandRunner: async (command) => {
+      calls.push(`${command.command} ${command.args.join(" ")}`);
+      const lowerLabel = command.label.toLowerCase();
+      if (lowerLabel.includes("start") || lowerLabel.includes("kickstart") || lowerLabel.includes("run scheduled task")) {
+        startSeen = true;
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: `ran ${command.label}`,
+          stderr: "",
+          error: null,
+        };
+      }
+      if (command.args.includes("is-active")) {
+        return {
+          ...command,
+          ok: startSeen,
+          exitCode: startSeen ? 0 : 3,
+          stdout: startSeen ? "active\n" : "inactive\n",
+          stderr: "",
+          error: startSeen ? null : "Command failed.",
+        };
+      }
+      if (command.args.includes("is-enabled")) {
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: "enabled\n",
+          stderr: "",
+          error: null,
+        };
+      }
+      if (command.command === "launchctl" && command.args.includes("print")) {
+        return {
+          ...command,
+          ok: startSeen,
+          exitCode: startSeen ? 0 : 3,
+          stdout: startSeen ? "state = running\ndisabled = false\n" : "",
+          stderr: "",
+          error: startSeen ? null : "launchd agent is not running",
+        };
+      }
+      if (command.command.toLowerCase().includes("schtasks")) {
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: startSeen ? "Status: Running\n" : "Status: Ready\n",
+          stderr: "",
+          error: null,
+        };
+      }
+      return {
+        ...command,
+        ok: true,
+        exitCode: 0,
+        stdout: `ran ${command.label}`,
+        stderr: "",
+        error: null,
+      };
+    },
+  });
+
+  const install = await service.manageDaemonService(undefined, {
+    action: "install",
+    apply: true,
+    runCommands: false,
+  });
+  assert.equal(install.installed, true);
+  assert.equal(calls.length, 0);
+
+  const ensure = await service.manageDaemonService(undefined, {
+    action: "ensure-running",
+    apply: true,
+  });
+  const statusCommands = ensure.plan.selectedTemplate.commands.status || [];
+  const startCommands = ensure.plan.selectedTemplate.commands.start || [];
+  const expectedCalls = [
+    ...statusCommands,
+    ...startCommands,
+    ...statusCommands,
+  ].map((command) => `${command.command} ${command.args.join(" ")}`);
+  assert.equal(ensure.action, "ensure-running");
+  assert.equal(ensure.applied, true);
+  assert.equal(ensure.bootstrap.mode, "supervisor");
+  assert.equal(ensure.bootstrap.attempted, true);
+  assert.equal(ensure.bootstrap.started, true);
+  assert.equal(ensure.bootstrap.temporary, false);
+  assert.deepEqual(calls, expectedCalls);
+  assert.equal(ensure.commandsRun.length, expectedCalls.length);
+  assert.equal(ensure.serviceManager.checked, true);
+  assert.equal(ensure.serviceManager.active, true);
+});
+
+test("model gateway ensure-running uses detached bootstrap only when explicitly allowed", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const bootstraps = [];
+  let daemonProcess = null;
+  const service = createModelGatewayService(config, {
+    daemonBootstrapRunner: async (request) => {
+      bootstraps.push(request);
+      daemonProcess = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], {
+        stdio: "ignore",
+      });
+      assert.ok(daemonProcess.pid);
+      fs.mkdirSync(path.dirname(request.paths.daemonRuntime), { recursive: true });
+      fs.writeFileSync(request.paths.daemonRuntime, `${JSON.stringify({
+        version: 1,
+        updatedAt: "2026-06-04T00:00:00.000Z",
+        pid: daemonProcess.pid,
+        startedAt: "2026-06-04T00:00:00.000Z",
+        host: request.host,
+        port: request.port,
+        endpoint: request.endpoint,
+        supervisor: "none",
+        serviceName: "openclaw-studio-model-gateway.service",
+        lockFile: request.paths.portLock,
+      }, null, 2)}\n`);
+      return {
+        mode: "detached",
+        allowed: true,
+        attempted: true,
+        started: true,
+        temporary: true,
+        pid: daemonProcess.pid,
+        endpoint: request.endpoint,
+        error: null,
+        notes: [
+          "Started detached daemon for bootstrap test.",
+        ],
+      };
+    },
+  });
+
+  try {
+    assert.equal(fs.existsSync(paths.daemonRuntime), false);
+    const blocked = await service.manageDaemonService(undefined, {
+      action: "ensure-running",
+      apply: true,
+    });
+    assert.equal(blocked.action, "ensure-running");
+    assert.equal(blocked.applied, false);
+    assert.equal(blocked.bootstrap.mode, "blocked");
+    assert.equal(blocked.bootstrap.attempted, false);
+    assert.equal(blocked.bootstrap.started, false);
+    assert.equal(blocked.bootstrap.temporary, false);
+    assert.equal(bootstraps.length, 0);
+
+    const started = await service.manageDaemonService(undefined, {
+      action: "ensure-running",
+      apply: true,
+      allowBootstrap: true,
+    });
+    assert.equal(started.action, "ensure-running");
+    assert.equal(started.applied, true);
+    assert.equal(started.bootstrap.mode, "detached");
+    assert.equal(started.bootstrap.attempted, true);
+    assert.equal(started.bootstrap.started, true);
+    assert.equal(started.bootstrap.temporary, true);
+    assert.equal(started.bootstrap.pid, daemonProcess.pid);
+    assert.equal(started.lifecycle.localDaemon.runtimeMode, "local-daemon");
+    assert.equal(started.lifecycle.localDaemon.supervisor.active, "none");
+    assert.equal(started.lifecycle.localDaemon.survivesControlPlaneCrash, true);
+    assert.equal(bootstraps.length, 1);
+  } finally {
+    if (daemonProcess) {
+      const exited = new Promise((resolve) => daemonProcess.once("exit", resolve));
+      daemonProcess.kill();
+      await exited;
+    }
+  }
+});
+
 test("model gateway daemon service status summarizes supervisor command failures", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

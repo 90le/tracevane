@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
@@ -17,11 +17,13 @@ import {
   type ModelGatewayApiFormat,
   type ModelGatewayAppScope,
   type ModelGatewayAuthStrategy,
+  type ModelGatewayDaemonBootstrapStatus,
   type ModelGatewayDaemonRuntimeMetadata,
   type ModelGatewayDaemonServiceAction,
   type ModelGatewayDaemonServiceCommand,
   type ModelGatewayDaemonServiceCommandResult,
   type ModelGatewayDaemonServiceManagerStatus,
+  type ModelGatewayDaemonServicePlan,
   type ModelGatewayDaemonServiceRequest,
   type ModelGatewayDaemonServiceResponse,
   type ModelGatewayProvider,
@@ -84,7 +86,7 @@ const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
 const execFileAsync = promisify(execFile);
-const DAEMON_SERVICE_ACTIONS = ["preview", "install", "start", "stop", "restart", "status"] as const;
+const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start", "stop", "restart", "status"] as const;
 
 type HeaderMap = http.IncomingHttpHeaders | Record<string, string | string[] | undefined> | Headers;
 
@@ -384,6 +386,94 @@ export type ModelGatewayDaemonServiceCommandRunner = (
   command: ModelGatewayDaemonServiceCommand,
 ) => Promise<ModelGatewayDaemonServiceCommandResult> | ModelGatewayDaemonServiceCommandResult;
 
+export interface ModelGatewayDaemonBootstrapRequest {
+  plan: ModelGatewayDaemonServicePlan;
+  paths: ModelGatewayPaths;
+  projectRoot: string;
+  host: string;
+  port: number;
+  endpoint: string;
+}
+
+export type ModelGatewayDaemonBootstrapRunner = (
+  request: ModelGatewayDaemonBootstrapRequest,
+) => Promise<ModelGatewayDaemonBootstrapStatus> | ModelGatewayDaemonBootstrapStatus;
+
+function daemonBootstrapStatus(
+  options: Partial<ModelGatewayDaemonBootstrapStatus> = {},
+): ModelGatewayDaemonBootstrapStatus {
+  return {
+    mode: options.mode || "not-needed",
+    allowed: options.allowed === true,
+    attempted: options.attempted === true,
+    started: options.started === true,
+    temporary: options.temporary === true,
+    pid: typeof options.pid === "number" ? options.pid : null,
+    endpoint: options.endpoint || null,
+    error: options.error || null,
+    notes: options.notes || [],
+  };
+}
+
+function runDefaultDaemonBootstrap(request: ModelGatewayDaemonBootstrapRequest): ModelGatewayDaemonBootstrapStatus {
+  if (!fs.existsSync(request.plan.daemonEntry)) {
+    return daemonBootstrapStatus({
+      mode: "detached",
+      allowed: true,
+      attempted: true,
+      started: false,
+      temporary: true,
+      endpoint: request.endpoint,
+      error: `Model Gateway daemon entry was not found at ${request.plan.daemonEntry}. Run the API build before detached bootstrap.`,
+      notes: [
+        "Detached bootstrap is a temporary fallback and does not replace the OS/user supervisor restart policy.",
+      ],
+    });
+  }
+
+  try {
+    const child = spawn(request.plan.nodePath, [request.plan.daemonEntry], {
+      cwd: request.projectRoot,
+      detached: true,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        OPENCLAW_STATE_DIR: request.plan.stateDir,
+        MODEL_GATEWAY_HOST: request.host,
+        MODEL_GATEWAY_PORT: String(request.port),
+        MODEL_GATEWAY_SUPERVISOR: "none",
+      },
+    });
+    child.unref();
+    return daemonBootstrapStatus({
+      mode: "detached",
+      allowed: true,
+      attempted: true,
+      started: true,
+      temporary: true,
+      pid: child.pid || null,
+      endpoint: request.endpoint,
+      notes: [
+        "Started a detached daemon because no user-service template is installed.",
+        "Install and enable the OS/user supervisor for crash restart and login startup guarantees.",
+      ],
+    });
+  } catch (error) {
+    return daemonBootstrapStatus({
+      mode: "detached",
+      allowed: true,
+      attempted: true,
+      started: false,
+      temporary: true,
+      endpoint: request.endpoint,
+      error: error instanceof Error ? error.message : "Unable to start detached Model Gateway daemon.",
+      notes: [
+        "Detached bootstrap is a temporary fallback and does not replace the OS/user supervisor restart policy.",
+      ],
+    });
+  }
+}
+
 function compactCommandOutput(result: ModelGatewayDaemonServiceCommandResult): string {
   return [result.stdout, result.stderr, result.error].filter(Boolean).join("\n").trim();
 }
@@ -403,6 +493,17 @@ function firstCommandError(commandsRun: ModelGatewayDaemonServiceCommandResult[]
 
 function serviceManagerText(result: ModelGatewayDaemonServiceCommandResult | undefined): string {
   return `${result?.stdout || ""}\n${result?.stderr || ""}`.trim().toLowerCase();
+}
+
+function findLastCommandResult(
+  commandsRun: ModelGatewayDaemonServiceCommandResult[],
+  predicate: (result: ModelGatewayDaemonServiceCommandResult) => boolean,
+): ModelGatewayDaemonServiceCommandResult | undefined {
+  for (let index = commandsRun.length - 1; index >= 0; index -= 1) {
+    const result = commandsRun[index];
+    if (result && predicate(result)) return result;
+  }
+  return undefined;
 }
 
 function isTruthySystemdEnabledState(value: string): boolean {
@@ -428,20 +529,20 @@ function summarizeDaemonServiceManager(
   let enabled: boolean | null = null;
 
   if (supervisor === "systemd-user") {
-    const activeResult = commandsRun.find((result) => result.args.includes("is-active"));
-    const enabledResult = commandsRun.find((result) => result.args.includes("is-enabled"));
+    const activeResult = findLastCommandResult(commandsRun, (result) => result.args.includes("is-active"));
+    const enabledResult = findLastCommandResult(commandsRun, (result) => result.args.includes("is-enabled"));
     const activeState = serviceManagerText(activeResult).split(/\s+/).find(Boolean) || "";
     const enabledState = serviceManagerText(enabledResult).split(/\s+/).find(Boolean) || "";
     if (activeResult) active = activeState ? activeState === "active" || activeState === "activating" : activeResult.ok;
     if (enabledResult) enabled = enabledState ? isTruthySystemdEnabledState(enabledState) : enabledResult.ok;
   } else if (supervisor === "launchd-user") {
-    const printResult = commandsRun.find((result) => result.command === "launchctl" && result.args.includes("print"));
+    const printResult = findLastCommandResult(commandsRun, (result) => result.command === "launchctl" && result.args.includes("print"));
     const text = serviceManagerText(printResult);
     if (printResult) active = printResult.ok;
     if (text.includes("disabled = true")) enabled = false;
     else if (text.includes("disabled = false")) enabled = true;
   } else if (supervisor === "scheduled-task") {
-    const queryResult = commandsRun.find((result) => result.command.toLowerCase().includes("schtasks"));
+    const queryResult = findLastCommandResult(commandsRun, (result) => result.command.toLowerCase().includes("schtasks"));
     const text = serviceManagerText(queryResult);
     if (queryResult) {
       active = text.includes("running") ? true : queryResult.ok ? false : null;
@@ -956,6 +1057,7 @@ export interface ModelGatewayServiceOptions {
     port?: number;
   };
   daemonServiceCommandRunner?: ModelGatewayDaemonServiceCommandRunner;
+  daemonBootstrapRunner?: ModelGatewayDaemonBootstrapRunner;
 }
 
 export function createModelGatewayService(
@@ -972,6 +1074,12 @@ export function createModelGatewayService(
     return options.daemonServiceCommandRunner
       ? await options.daemonServiceCommandRunner(command)
       : await runDefaultDaemonServiceCommand(command);
+  }
+
+  async function runDaemonBootstrap(request: ModelGatewayDaemonBootstrapRequest): Promise<ModelGatewayDaemonBootstrapStatus> {
+    return options.daemonBootstrapRunner
+      ? await options.daemonBootstrapRunner(request)
+      : await runDefaultDaemonBootstrap(request);
   }
 
   function readRegistry(): ModelGatewayRegistryState {
@@ -1338,6 +1446,7 @@ export function createModelGatewayService(
     applied?: boolean;
     templateWritten?: boolean;
     commandsRun?: ModelGatewayDaemonServiceCommandResult[];
+    bootstrap?: ModelGatewayDaemonBootstrapStatus;
   }): ModelGatewayDaemonServiceResponse {
     const plan = createModelGatewayDaemonServicePlan(config);
     const commandsRun = options.commandsRun || [];
@@ -1352,6 +1461,7 @@ export function createModelGatewayService(
       lifecycle: getLifecycleStatus(),
       commandsRun,
       serviceManager: summarizeDaemonServiceManager(plan.supervisor, commandsRun),
+      bootstrap: options.bootstrap || daemonBootstrapStatus(),
     };
   }
 
@@ -1367,6 +1477,9 @@ export function createModelGatewayService(
   ): Promise<ModelGatewayDaemonServiceResponse> {
     requireManagement(req);
     const action = normalizeDaemonServiceAction(payload?.action);
+    if (action === "ensure-running") {
+      return ensureDaemonRunning(payload);
+    }
     if (action === "preview" || action === "status") {
       const plan = createModelGatewayDaemonServicePlan(config);
       const commands = payload.runCommands === true ? plan.selectedTemplate.commands.status || [] : [];
@@ -1400,6 +1513,98 @@ export function createModelGatewayService(
       applied: templateWritten || commandsRun.length > 0,
       templateWritten,
       commandsRun,
+    });
+  }
+
+  async function ensureDaemonRunning(
+    payload: ModelGatewayDaemonServiceRequest = {},
+  ): Promise<ModelGatewayDaemonServiceResponse> {
+    const lifecycle = getLifecycleStatus();
+    if (lifecycle.localDaemon.runtimeMode === "local-daemon" && lifecycle.localDaemon.state === "running") {
+      return daemonServiceResponse({
+        action: "ensure-running",
+        bootstrap: daemonBootstrapStatus({
+          mode: "not-needed",
+          allowed: true,
+          endpoint: lifecycle.localDaemon.endpoint,
+          pid: lifecycle.localDaemon.pid,
+          notes: [
+            "Local Gateway daemon runtime metadata is already present and alive.",
+          ],
+        }),
+      });
+    }
+
+    const plan = createModelGatewayDaemonServicePlan(config);
+    const installed = fs.existsSync(plan.selectedTemplate.configPath);
+    const apply = payload.apply === true;
+    const commandsRun: ModelGatewayDaemonServiceCommandResult[] = [];
+
+    if (installed) {
+      if (apply && payload.runCommands !== false) {
+        const statusCommands = plan.selectedTemplate.commands.status || [];
+        for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
+        const beforeStart = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
+        if (beforeStart.active !== true) {
+          const startCommands = plan.selectedTemplate.commands.start || [];
+          for (const item of startCommands) commandsRun.push(await runDaemonServiceCommand(item));
+          for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
+        }
+      }
+
+      const manager = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
+      return daemonServiceResponse({
+        action: "ensure-running",
+        applied: commandsRun.length > 0,
+        commandsRun,
+        bootstrap: daemonBootstrapStatus({
+          mode: "supervisor",
+          allowed: true,
+          attempted: commandsRun.length > 0,
+          started: manager.active === true,
+          temporary: false,
+          endpoint: lifecycle.localDaemon.endpoint,
+          error: manager.lastError,
+          notes: commandsRun.length
+            ? [
+              "User-service template is installed; ensure-running used the selected OS/user supervisor.",
+              "Restart guarantees depend on the selected supervisor remaining enabled.",
+            ]
+            : [
+              "User-service template is installed. Pass apply: true to run supervisor status/start commands.",
+            ],
+        }),
+      });
+    }
+
+    if (!apply || payload.allowBootstrap !== true) {
+      return daemonServiceResponse({
+        action: "ensure-running",
+        bootstrap: daemonBootstrapStatus({
+          mode: "blocked",
+          allowed: payload.allowBootstrap === true,
+          endpoint: lifecycle.localDaemon.endpoint,
+          error: "No user-service template is installed. Detached bootstrap requires apply: true and allowBootstrap: true.",
+          notes: [
+            "Install the OS/user supervisor for the formal daemon lifecycle.",
+            "Detached bootstrap is only a temporary fallback when the user-service is not installed.",
+          ],
+        }),
+      });
+    }
+
+    const bootstrap = await runDaemonBootstrap({
+      plan,
+      paths,
+      projectRoot: config.projectRoot,
+      host: listenerHost,
+      port: listenerPort,
+      endpoint: lifecycle.localDaemon.endpoint,
+    });
+    return daemonServiceResponse({
+      action: "ensure-running",
+      applied: bootstrap.started,
+      bootstrap,
     });
   }
 

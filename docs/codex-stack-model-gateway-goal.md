@@ -209,10 +209,12 @@ Phase 1 supervisor/install contract checkpoint（2026-06-04）：
 
 - 已新增 daemon supervisor plan contract，`GET /api/model-gateway/daemon-service` 可返回当前平台的 selected template、三平台模板清单和 install/start/stop/restart/status 命令计划。
 - 已支持生成 Linux `systemd --user` unit、macOS launchd plist 和 Windows scheduled task XML 模板。
-- 已新增 `POST /api/model-gateway/daemon-service` 管理入口，支持 `preview`、`install`、`start`、`stop`、`restart`、`status` action。
+- 已新增 `POST /api/model-gateway/daemon-service` 管理入口，支持 `preview`、`install`、`ensure-running`、`start`、`stop`、`restart`、`status` action。
 - `install` 支持 `apply: true, runCommands: false` 只写当前平台模板；真实执行 service manager 命令必须显式传 `runCommands: true`。
 - 已锁定 `runCommands` 执行 contract：`start`、`restart`、`status` 会按当前平台 selected supervisor 命令执行，并返回每条命令的 `ok`、`exitCode`、`stdout`、`stderr` 和 `error`。
 - daemon service response 已新增 `serviceManager` 摘要，解释命令结果为 `checked`、`reachable`、`active`、`enabled` 和 `lastError`，供 UI/安装流直接判断当前平台 service manager 状态。
+- `ensure-running` 已锁定 bootstrap contract：已有 service template 时优先运行 supervisor status/start/status；没有 service template 时默认阻断，只有 `apply: true` 且 `allowBootstrap: true` 才允许启动 detached daemon fallback。
+- detached bootstrap response 会标记 `bootstrap.mode: "detached"`、`temporary: true`、pid、endpoint 和提示信息；它是临时 fallback，不代表正式 supervisor restart policy 已生效。
 - 当前仍未完成 UI 接入、安装脚本接入、真实 `systemctl` / `launchctl` / `schtasks` 启停验证和 supervisor crash-restart 验证。
 
 Phase 1 Codex install/takeover preparation checkpoint（2026-06-04）：

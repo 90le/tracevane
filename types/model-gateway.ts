@@ -211,6 +211,7 @@ export type ModelGatewayDaemonImplementationStatus = "contract-only" | "availabl
 export type ModelGatewayDaemonServiceAction =
   | "preview"
   | "install"
+  | "ensure-running"
   | "start"
   | "stop"
   | "restart"
@@ -236,6 +237,24 @@ export interface ModelGatewayDaemonServiceManagerStatus {
   active: boolean | null;
   enabled: boolean | null;
   lastError: string | null;
+}
+
+export type ModelGatewayDaemonBootstrapMode =
+  | "not-needed"
+  | "supervisor"
+  | "detached"
+  | "blocked";
+
+export interface ModelGatewayDaemonBootstrapStatus {
+  mode: ModelGatewayDaemonBootstrapMode;
+  allowed: boolean;
+  attempted: boolean;
+  started: boolean;
+  temporary: boolean;
+  pid: number | null;
+  endpoint: string | null;
+  error: string | null;
+  notes: string[];
 }
 
 export interface ModelGatewayDaemonServiceTemplate {
@@ -264,6 +283,7 @@ export interface ModelGatewayDaemonServiceRequest {
   action?: ModelGatewayDaemonServiceAction;
   apply?: boolean;
   runCommands?: boolean;
+  allowBootstrap?: boolean;
 }
 
 export interface ModelGatewayDaemonServiceResponse {
@@ -277,6 +297,7 @@ export interface ModelGatewayDaemonServiceResponse {
   lifecycle: ModelGatewayLifecycleStatus;
   commandsRun: ModelGatewayDaemonServiceCommandResult[];
   serviceManager: ModelGatewayDaemonServiceManagerStatus;
+  bootstrap: ModelGatewayDaemonBootstrapStatus;
 }
 
 export interface ModelGatewayDaemonRuntimeMetadata {
