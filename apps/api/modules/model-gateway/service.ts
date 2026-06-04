@@ -7,6 +7,7 @@ import {
   MODEL_GATEWAY_API_FORMATS,
   MODEL_GATEWAY_APP_SCOPES,
   MODEL_GATEWAY_AUTH_STRATEGIES,
+  MODEL_GATEWAY_DAEMON_SERVICE_NAME,
   MODEL_GATEWAY_DEFAULT_HOST,
   MODEL_GATEWAY_DEFAULT_PORT,
   MODEL_GATEWAY_PROVIDER_CATEGORIES,
@@ -14,6 +15,7 @@ import {
   type ModelGatewayApiFormat,
   type ModelGatewayAppScope,
   type ModelGatewayAuthStrategy,
+  type ModelGatewayDaemonRuntimeMetadata,
   type ModelGatewayProvider,
   type ModelGatewayProviderCategory,
   type ModelGatewayProviderHealth,
@@ -37,6 +39,7 @@ import {
   type ModelGatewaySetActiveProviderRequest,
   type ModelGatewaySetProviderSecretRequest,
   type ModelGatewayStatusResponse,
+  type ModelGatewaySupervisorKind,
   type ModelGatewayUpsertProviderRequest,
 } from "../../../../types/model-gateway.js";
 import { sendJson, setCorsHeaders } from "../../core/http.js";
@@ -106,6 +109,9 @@ export interface ModelGatewayPaths {
   registry: string;
   secrets: string;
   runtime: string;
+  daemonRuntime: string;
+  daemonPid: string;
+  portLock: string;
   codexHistory: string;
   backups: string;
   logs: string;
@@ -141,6 +147,9 @@ export function resolveModelGatewayPaths(config: StudioServerConfig): ModelGatew
     registry: path.join(root, "providers.json"),
     secrets: path.join(root, "secrets.json"),
     runtime: path.join(root, "runtime.json"),
+    daemonRuntime: path.join(root, "daemon-runtime.json"),
+    daemonPid: path.join(root, "daemon.pid"),
+    portLock: path.join(root, "gateway-port.lock"),
     codexHistory: path.join(root, "codex-history.json"),
     backups: path.join(root, "backups"),
     logs: path.join(root, "logs"),
@@ -574,6 +583,60 @@ function joinBaseUrl(baseUrl: string, endpointPath: string): string {
   return base.toString();
 }
 
+function buildLoopbackHttpEndpoint(host: string, port: number, endpointPath = ""): string {
+  const normalizedPath = endpointPath
+    ? `/${endpointPath.split("/").filter(Boolean).join("/")}`
+    : "";
+  return `http://${host}:${port}${normalizedPath}`;
+}
+
+function expectedDaemonSupervisor(): ModelGatewaySupervisorKind {
+  if (process.platform === "darwin") return "launchd-user";
+  if (process.platform === "win32") return "windows-service";
+  return "systemd-user";
+}
+
+function normalizeSupervisorKind(value: unknown): ModelGatewaySupervisorKind {
+  if (value === "systemd-user"
+    || value === "launchd-user"
+    || value === "windows-service"
+    || value === "scheduled-task"
+    || value === "none") {
+    return value;
+  }
+  return "unknown";
+}
+
+function readDaemonRuntimeMetadata(filePath: string): ModelGatewayDaemonRuntimeMetadata | null {
+  const raw = readJsonFile<Partial<ModelGatewayDaemonRuntimeMetadata>>(filePath, {});
+  if (!isRecord(raw) || raw.version !== 1) return null;
+  const host = normalizeString(raw.host, MODEL_GATEWAY_DEFAULT_HOST);
+  const port = typeof raw.port === "number" ? Math.floor(raw.port) : MODEL_GATEWAY_DEFAULT_PORT;
+  const endpoint = normalizeString(raw.endpoint, buildLoopbackHttpEndpoint(host, port, "/v1"));
+  return {
+    version: 1,
+    updatedAt: normalizeString(raw.updatedAt, nowIso()),
+    pid: typeof raw.pid === "number" && raw.pid > 0 ? Math.floor(raw.pid) : null,
+    startedAt: normalizeString(raw.startedAt) || null,
+    host,
+    port,
+    endpoint,
+    supervisor: normalizeSupervisorKind(raw.supervisor),
+    serviceName: normalizeString(raw.serviceName, MODEL_GATEWAY_DAEMON_SERVICE_NAME),
+    lockFile: normalizeString(raw.lockFile) || null,
+  };
+}
+
+function isPidAlive(pid: number | null): boolean {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return isRecord(error) && error.code === "EPERM";
+  }
+}
+
 function isLoopbackRequest(req?: http.IncomingMessage): boolean {
   const remoteAddress = req?.socket?.remoteAddress || "";
   return remoteAddress === "127.0.0.1"
@@ -977,6 +1040,80 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     writeSecrets(secrets);
   }
 
+  function getLifecycleStatus(): ModelGatewayStatusResponse["lifecycle"] {
+    const daemonRuntime = readDaemonRuntimeMetadata(paths.daemonRuntime);
+    const daemonState = !daemonRuntime
+      ? "not-installed"
+      : isPidAlive(daemonRuntime.pid)
+        ? "running"
+        : daemonRuntime.pid
+          ? "stale"
+          : "unknown";
+    const daemonRunning = daemonState === "running" && daemonRuntime?.pid !== process.pid;
+    const daemonEndpoint = daemonRuntime?.endpoint || buildLoopbackHttpEndpoint(
+      MODEL_GATEWAY_DEFAULT_HOST,
+      MODEL_GATEWAY_DEFAULT_PORT,
+      "/v1",
+    );
+    const gatewayBasePath = config.transport.gateway.basePath || config.gatewayControlUiBasePath || "";
+    const openclawSinglePortEndpoint = config.transport.gateway.enabled
+      ? buildLoopbackHttpEndpoint(MODEL_GATEWAY_DEFAULT_HOST, config.gatewayPort, gatewayBasePath)
+      : null;
+
+    return {
+      controlPlane: {
+        state: "running",
+        mode: "studio-api",
+        pid: process.pid,
+        endpoint: buildLoopbackHttpEndpoint(MODEL_GATEWAY_DEFAULT_HOST, config.port),
+        embeddedGatewayActive: !daemonRunning,
+      },
+      openclawMount: {
+        state: config.transport.gateway.enabled ? "configured" : "disabled",
+        basePath: config.transport.gateway.enabled ? gatewayBasePath || null : null,
+        endpoint: openclawSinglePortEndpoint,
+        role: "control-ui-ingress",
+        ownsModelRelay: false,
+      },
+      localDaemon: {
+        required: true,
+        implementationStatus: daemonRunning ? "available" : "contract-only",
+        state: daemonState,
+        runtimeMode: daemonRunning ? "local-daemon" : "studio-api-embedded",
+        endpoint: daemonEndpoint,
+        pid: daemonRuntime?.pid || null,
+        startedAt: daemonRuntime?.startedAt || null,
+        supervisor: {
+          expected: expectedDaemonSupervisor(),
+          active: daemonRunning ? daemonRuntime?.supervisor || null : null,
+          serviceName: daemonRuntime?.serviceName || MODEL_GATEWAY_DAEMON_SERVICE_NAME,
+          restartPolicyRequired: true,
+        },
+        paths: {
+          runtime: paths.daemonRuntime,
+          pid: paths.daemonPid,
+          lock: paths.portLock,
+        },
+        survivesControlPlaneCrash: daemonRunning,
+        notes: daemonRunning
+          ? [
+            "Local Gateway daemon metadata is present and the recorded pid is alive.",
+            "CLI takeover should prefer the daemon loopback endpoint.",
+          ]
+          : [
+            "Local Gateway daemon service is not active; Studio API is serving the embedded fallback.",
+            "Embedded fallback does not survive Studio API or OpenClaw process crashes.",
+          ],
+      },
+      endpointPolicy: {
+        preferredCliEndpoint: daemonEndpoint,
+        openclawSinglePortEndpoint,
+        directDaemonFallbackRequired: true,
+        targetModelRelayOwner: "local-daemon",
+      },
+    };
+  }
+
   function getStatus(): ModelGatewayStatusResponse {
     const registry = readRegistry();
     const runtime = readRuntime();
@@ -1011,6 +1148,7 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
         requestLogSize: runtime.requestLog.length,
         latestRequestAt,
       },
+      lifecycle: getLifecycleStatus(),
       healthSummary: {
         okProviders: registry.providers.filter((provider) => provider.enabled && provider.health.circuitState === "closed").length,
         degradedProviders: registry.providers.filter((provider) => provider.health.lastFailureAt || provider.health.circuitState !== "closed").length,

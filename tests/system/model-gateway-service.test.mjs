@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -313,6 +314,81 @@ test("model gateway management supports active provider selection, delete, and o
     providerId: null,
   });
   assert.equal(providers.activeProviders.codex, undefined);
+});
+
+test("model gateway status separates embedded fallback from daemon lifecycle", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const service = createModelGatewayService(config);
+  const expectedSupervisor = process.platform === "darwin"
+    ? "launchd-user"
+    : process.platform === "win32"
+      ? "windows-service"
+      : "systemd-user";
+
+  const embeddedStatus = service.getStatus();
+  assert.equal(embeddedStatus.listener.host, "127.0.0.1");
+  assert.equal(embeddedStatus.listener.port, 18796);
+  assert.equal(embeddedStatus.lifecycle.controlPlane.state, "running");
+  assert.equal(embeddedStatus.lifecycle.controlPlane.mode, "studio-api");
+  assert.equal(embeddedStatus.lifecycle.controlPlane.embeddedGatewayActive, true);
+  assert.equal(embeddedStatus.lifecycle.openclawMount.state, "configured");
+  assert.equal(embeddedStatus.lifecycle.openclawMount.basePath, "/studio");
+  assert.equal(embeddedStatus.lifecycle.openclawMount.endpoint, "http://127.0.0.1:31879/studio");
+  assert.equal(embeddedStatus.lifecycle.openclawMount.ownsModelRelay, false);
+  assert.equal(embeddedStatus.lifecycle.localDaemon.required, true);
+  assert.equal(embeddedStatus.lifecycle.localDaemon.implementationStatus, "contract-only");
+  assert.equal(embeddedStatus.lifecycle.localDaemon.state, "not-installed");
+  assert.equal(embeddedStatus.lifecycle.localDaemon.runtimeMode, "studio-api-embedded");
+  assert.equal(embeddedStatus.lifecycle.localDaemon.endpoint, "http://127.0.0.1:18796/v1");
+  assert.equal(embeddedStatus.lifecycle.localDaemon.survivesControlPlaneCrash, false);
+  assert.equal(embeddedStatus.lifecycle.localDaemon.supervisor.expected, expectedSupervisor);
+  assert.equal(embeddedStatus.lifecycle.localDaemon.supervisor.active, null);
+  assert.equal(embeddedStatus.lifecycle.localDaemon.supervisor.serviceName, "openclaw-studio-model-gateway.service");
+  assert.equal(embeddedStatus.lifecycle.localDaemon.paths.runtime, paths.daemonRuntime);
+  assert.equal(embeddedStatus.lifecycle.localDaemon.paths.pid, paths.daemonPid);
+  assert.equal(embeddedStatus.lifecycle.localDaemon.paths.lock, paths.portLock);
+  assert.deepEqual(embeddedStatus.lifecycle.endpointPolicy, {
+    preferredCliEndpoint: "http://127.0.0.1:18796/v1",
+    openclawSinglePortEndpoint: "http://127.0.0.1:31879/studio",
+    directDaemonFallbackRequired: true,
+    targetModelRelayOwner: "local-daemon",
+  });
+
+  const daemonProcess = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], {
+    stdio: "ignore",
+  });
+  assert.ok(daemonProcess.pid);
+
+  try {
+    fs.mkdirSync(path.dirname(paths.daemonRuntime), { recursive: true });
+    fs.writeFileSync(paths.daemonRuntime, `${JSON.stringify({
+      version: 1,
+      updatedAt: "2026-06-04T00:00:00.000Z",
+      pid: daemonProcess.pid,
+      startedAt: "2026-06-04T00:00:00.000Z",
+      host: "127.0.0.1",
+      port: 18796,
+      endpoint: "http://127.0.0.1:18796/v1",
+      supervisor: expectedSupervisor,
+      serviceName: "openclaw-studio-model-gateway.service",
+      lockFile: paths.portLock,
+    }, null, 2)}\n`);
+
+    const daemonStatus = service.getStatus();
+    assert.equal(daemonStatus.lifecycle.controlPlane.embeddedGatewayActive, false);
+    assert.equal(daemonStatus.lifecycle.localDaemon.implementationStatus, "available");
+    assert.equal(daemonStatus.lifecycle.localDaemon.state, "running");
+    assert.equal(daemonStatus.lifecycle.localDaemon.runtimeMode, "local-daemon");
+    assert.equal(daemonStatus.lifecycle.localDaemon.pid, daemonProcess.pid);
+    assert.equal(daemonStatus.lifecycle.localDaemon.supervisor.active, expectedSupervisor);
+    assert.equal(daemonStatus.lifecycle.localDaemon.survivesControlPlaneCrash, true);
+  } finally {
+    const exited = new Promise((resolve) => daemonProcess.once("exit", resolve));
+    daemonProcess.kill();
+    await exited;
+  }
 });
 
 test("model gateway protocol matrix forwards native openai responses and guards unfinished adapters", async () => {

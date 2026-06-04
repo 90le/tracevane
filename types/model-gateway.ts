@@ -1,5 +1,6 @@
 export const MODEL_GATEWAY_DEFAULT_HOST = "127.0.0.1";
 export const MODEL_GATEWAY_DEFAULT_PORT = 18796;
+export const MODEL_GATEWAY_DAEMON_SERVICE_NAME = "openclaw-studio-model-gateway.service";
 
 export const MODEL_GATEWAY_APP_SCOPES = [
   "codex",
@@ -189,6 +190,82 @@ export interface ModelGatewayRuntimeState {
   requestLog: ModelGatewayRuntimeRequestLogEntry[];
 }
 
+export type ModelGatewaySupervisorKind =
+  | "systemd-user"
+  | "launchd-user"
+  | "windows-service"
+  | "scheduled-task"
+  | "none"
+  | "unknown";
+
+export type ModelGatewayLocalDaemonState =
+  | "not-installed"
+  | "running"
+  | "stale"
+  | "stopped"
+  | "unknown";
+
+export type ModelGatewayRuntimeHostMode = "studio-api-embedded" | "local-daemon";
+export type ModelGatewayDaemonImplementationStatus = "contract-only" | "available";
+
+export interface ModelGatewayDaemonRuntimeMetadata {
+  version: 1;
+  updatedAt: string;
+  pid: number | null;
+  startedAt: string | null;
+  host: string;
+  port: number;
+  endpoint: string;
+  supervisor: ModelGatewaySupervisorKind;
+  serviceName: string;
+  lockFile: string | null;
+}
+
+export interface ModelGatewayLifecycleStatus {
+  controlPlane: {
+    state: "running";
+    mode: "studio-api";
+    pid: number;
+    endpoint: string;
+    embeddedGatewayActive: boolean;
+  };
+  openclawMount: {
+    state: "configured" | "disabled";
+    basePath: string | null;
+    endpoint: string | null;
+    role: "control-ui-ingress";
+    ownsModelRelay: false;
+  };
+  localDaemon: {
+    required: true;
+    implementationStatus: ModelGatewayDaemonImplementationStatus;
+    state: ModelGatewayLocalDaemonState;
+    runtimeMode: ModelGatewayRuntimeHostMode;
+    endpoint: string;
+    pid: number | null;
+    startedAt: string | null;
+    supervisor: {
+      expected: ModelGatewaySupervisorKind;
+      active: ModelGatewaySupervisorKind | null;
+      serviceName: string;
+      restartPolicyRequired: true;
+    };
+    paths: {
+      runtime: string;
+      pid: string;
+      lock: string;
+    };
+    survivesControlPlaneCrash: boolean;
+    notes: string[];
+  };
+  endpointPolicy: {
+    preferredCliEndpoint: string;
+    openclawSinglePortEndpoint: string | null;
+    directDaemonFallbackRequired: true;
+    targetModelRelayOwner: "local-daemon";
+  };
+}
+
 export interface ModelGatewayProviderInput {
   id?: string;
   name?: string;
@@ -288,6 +365,7 @@ export interface ModelGatewayStatusResponse {
     requestLogSize: number;
     latestRequestAt: string | null;
   };
+  lifecycle: ModelGatewayLifecycleStatus;
   healthSummary: {
     okProviders: number;
     degradedProviders: number;

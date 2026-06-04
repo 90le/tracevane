@@ -154,6 +154,15 @@ Studio 需要同时支持两种运行形态：
 
 结论：正式方案应使用独立守护进程 + OS/user service supervisor。自动启动子进程只能作为 bootstrap 便利性，用于检测 service 未安装时启动 detached daemon，并在随后提示或执行 service 安装；它不能替代 systemd/launchd/Windows service 的 restart policy、开机自启和父进程崩溃隔离能力。
 
+Phase 1 lifecycle contract checkpoint（2026-06-04）：
+
+- `GET /gateway/status` 和 `GET /api/model-gateway/status` 已新增 `lifecycle` contract。
+- `lifecycle.controlPlane` 标识当前 Studio API control plane 是否运行以及 embedded fallback 是否接管模型入口。
+- `lifecycle.openclawMount` 标识 OpenClaw 单口 mount 是否配置，并明确其角色是 `control-ui-ingress`，`ownsModelRelay: false`。
+- `lifecycle.localDaemon` 标识目标 daemon endpoint、service name、期望 supervisor、runtime/pid/lock 路径、当前 state 和是否能在 control plane 崩溃后继续服务。
+- `lifecycle.endpointPolicy` 固定 CLI 优先写 daemon loopback endpoint，OpenClaw single-port endpoint 只能作为可选入口，并要求 direct daemon fallback。
+- 当前实现仍是 contract foundation：未写入 daemon binary、service unit 或 restart supervisor；没有 `daemon-runtime.json` 时 status 会明确返回 `localDaemon.state: "not-installed"` 和 `runtimeMode: "studio-api-embedded"`。
+
 ### 4.2 Provider Registry
 
 Studio 需要自己的 provider registry。v1 可以使用 Studio state JSON + 原子写 + `0600` secret 文件，不先引入新数据库依赖；schema 要保持将来迁移 SQLite 的可能。
@@ -372,8 +381,9 @@ Router 是新链路稳定性的核心：
 - 未支持的协议组合仍返回 `model_gateway_adapter_required`。
 - 已补齐 provider delete、active provider 设置、provider test endpoint、runtime request log 和 provider health 更新。
 - `runtime.json` 已记录 gateway request / provider test 的有界日志，status 返回 request log size/latest timestamp。
+- status 已暴露 `lifecycle.controlPlane`、`lifecycle.openclawMount`、`lifecycle.localDaemon` 和 `lifecycle.endpointPolicy`，用于后续 UI / install takeover 区分 control plane、single-port mount 和独立 daemon。
 - Router 已能在 active provider circuit open 时选择同 app scope fallback provider，并在 route decision 中返回 `failoverReason`。
-- 尚未完成 app takeover preview/apply、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
+- 尚未完成独立 daemon binary/service unit、app takeover preview/apply、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
 
 ### Phase 2: Gateway Runtime
 
