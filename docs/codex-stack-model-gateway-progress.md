@@ -2,7 +2,7 @@
 
 > 状态：Phase 1 in progress
 > 更新：2026-06-04
-> 当前阶段：Phase 1 - shared contract、provider store、secret store、API routes 和 routing contract foundation 已落地
+> 当前阶段：Phase 1 - provider management、runtime request log、health update 和 routing fallback foundation 已落地
 
 ## 1. 当前决定
 
@@ -160,12 +160,33 @@ docs/codex-stack-model-gateway-goal.md
   - Codex Responses / compact 使用 codex app scope，并在缺少 adapter 时返回 `adapter-required` contract。
   - OpenAI Chat passthrough 会向 upstream 注入 provider secret。
 
+2026-06-04 后续推进：
+
+- 补齐 provider lifecycle foundation。
+  - `DELETE /api/model-gateway/providers/:providerId` 可删除 provider，并清理不再被引用的 secret。
+  - `POST /api/model-gateway/active-provider` 可设置或清除 app scope 的 active provider。
+  - active provider 需要 enabled 且支持目标 app scope。
+- 新增 provider test foundation。
+  - `POST /api/model-gateway/providers/:providerId/test` 会根据 provider `apiFormat` 构造最小 Chat / Responses / Anthropic Messages 测试请求。
+  - 未实现 adapter 的组合不会假成功，而是返回 `model_gateway_adapter_required`。
+  - provider test 会写入 runtime request log，并更新 provider health。
+- 新增 runtime store foundation。
+  - `~/.openclaw/studio/model-gateway/runtime.json` 保存最近 200 条 gateway request / provider test 日志。
+  - runtime log 不记录请求正文或 secret，只记录 provider、route、model、status、latency、outcome、错误摘要。
+  - `GET /api/model-gateway/runtime` 返回 runtime view。
+  - `GET /api/model-gateway/status` 返回 `runtime.requestLogSize` 和 `runtime.latestRequestAt`。
+- 新增 health / circuit foundation。
+  - passthrough 和 provider test 成功会更新 `lastSuccessAt`、`lastLatencyMs`，清空连续失败。
+  - 失败会更新 `lastFailureAt`、`lastError`、`consecutiveFailures`。
+  - 连续 3 次失败会把 provider circuit 置为 `open`。
+  - route decision 会避开 open circuit 的 active provider，选择同 scope fallback，并返回 `failoverReason`。
+
 当前边界：
 
 - 已有的是 Model Gateway control/API foundation，不是完整长期 edge service。
 - OpenAI Chat passthrough 可用；Codex Responses、compact、Claude Messages adapter 尚未实现。
-- provider CRUD 仍缺少 delete、active-provider 独立 endpoint、provider test 和导入能力。
-- 尚未接入 runtime request log、health update、failover queue、circuit breaker。
+- provider CRUD 仍缺少 import/export、bulk reorder、preset creation 和 UI form。
+- 已有 runtime request log、health update、open-circuit fallback；尚未实现 request retry、真实 failover queue 执行、half-open probe 和 circuit reset policy。
 - 尚未改 UI、安装脚本、Codex takeover 或 CPA/compact 旧资源。
 
 ## 5. 后续任务清单
@@ -173,7 +194,7 @@ docs/codex-stack-model-gateway-goal.md
 | 阶段 | 状态 | 任务 |
 | --- | --- | --- |
 | Phase 0 | 已完成 | 研究、目标方案、进度文档 |
-| Phase 1 | 进行中 | 新增 model gateway shared types、store、API；下一步补 provider management/test/runtime log |
+| Phase 1 | 进行中 | 新增 model gateway shared types、store、API；下一步补 Codex Responses -> Chat adapter 起点 |
 | Phase 2 | 未开始 | 实现 Studio Model Gateway runtime |
 | Phase 3 | 未开始 | 实现 Codex Responses / Chat / compact adapter |
 | Phase 4 | 未开始 | 实现 Claude Messages adapter 和 Claude Code takeover |
@@ -209,7 +230,7 @@ docs/codex-stack-model-gateway-goal.md
 ### 测试
 
 - `tests/system/studio-web-codex-stack-workspace.test.mjs`
-- `tests/system/model-gateway-service.test.mjs`（已新增 provider registry / routing contract foundation）
+- `tests/system/model-gateway-service.test.mjs`（已新增 provider registry / routing contract foundation，并扩展 provider lifecycle / runtime log / health / open-circuit fallback）
 - 新增 gateway adapter tests。
 - 新增 install/takeover tests。
 
@@ -255,8 +276,8 @@ docs/codex-stack-model-gateway-goal.md
 ## 8. 本轮验证
 
 - `npm run build:api`：通过。
-- `node --test tests/system/model-gateway-service.test.mjs`：通过，3 个新增用例全绿。
-- `npm run test:system`：未全绿。新增 gateway 用例通过；失败集中在当前工作树已有的 codex-stack job 超时和多项前端/UI design contract，完整复核日志为 `/tmp/openclaw-studio-system-after-model-gateway.log`。
+- `node --test tests/system/model-gateway-service.test.mjs`：通过，4 个 Model Gateway 用例全绿。
+- 上一轮 `npm run test:system` 未全绿。新增 gateway 用例通过；失败集中在当前工作树已有的 codex-stack job 超时和多项前端/UI design contract，完整复核日志为 `/tmp/openclaw-studio-system-after-model-gateway.log`。本轮未重复跑全量 system suite。
 
 ## 9. 风险和待定项
 
@@ -275,7 +296,7 @@ docs/codex-stack-model-gateway-goal.md
 
 下一轮继续 Phase 1：
 
-1. 补齐 provider management API：delete、set-active-provider、provider validation/test endpoint。
-2. 新增 runtime store / request log / health update，把 passthrough 成功失败写入 provider health。
-3. 为 routing contract 增加 failover queue / retry decision 的纯函数测试。
-4. 进入 Codex adapter 起点：实现 Responses -> Chat non-streaming 最小转换，让 `/v1/responses` 不再只返回 `adapter-required`。
+1. 进入 Codex adapter 起点：实现 Responses -> Chat non-streaming 最小转换，让 `/v1/responses` 对 `openai_chat` provider 可执行。
+2. 新增 adapter tests：instructions/input/messages、model、stream=false、basic tool passthrough 的转换 contract。
+3. 给 `/v1/responses/compact` 设计最小 adapter contract，但保持未实现时继续明确返回 `adapter-required`。
+4. 继续补 failover：把 open-circuit fallback 从 route decision 扩展到实际 request retry / failover 执行。

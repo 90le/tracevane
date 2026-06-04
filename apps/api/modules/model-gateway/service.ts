@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
   MODEL_GATEWAY_API_FORMATS,
@@ -19,14 +20,21 @@ import {
   type ModelGatewayProviderInput,
   type ModelGatewayProviderModelCatalog,
   type ModelGatewayProviderNetwork,
+  type ModelGatewayProviderTestRequest,
+  type ModelGatewayProviderTestResponse,
   type ModelGatewayProviderView,
   type ModelGatewayProvidersResponse,
   type ModelGatewayRegistryState,
+  type ModelGatewayRuntimeRequestLogEntry,
+  type ModelGatewayRuntimeRequestOutcome,
+  type ModelGatewayRuntimeResponse,
+  type ModelGatewayRuntimeState,
   type ModelGatewayRouteDecision,
   type ModelGatewayRouteId,
   type ModelGatewayRouteMode,
   type ModelGatewaySecretState,
   type ModelGatewaySecretSummary,
+  type ModelGatewaySetActiveProviderRequest,
   type ModelGatewaySetProviderSecretRequest,
   type ModelGatewayStatusResponse,
   type ModelGatewayUpsertProviderRequest,
@@ -38,6 +46,8 @@ import { isStudioGatewayHttpAuthorized } from "../../gateway-http-auth.js";
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
+const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
+const REQUEST_LOG_PREVIEW_CHARS = 1_000;
 
 type HeaderMap = http.IncomingHttpHeaders | Record<string, string | string[] | undefined> | Headers;
 
@@ -256,6 +266,14 @@ function createEmptySecrets(updatedAt = nowIso()): ModelGatewaySecretState {
   };
 }
 
+function createEmptyRuntime(updatedAt = nowIso()): ModelGatewayRuntimeState {
+  return {
+    version: 1,
+    updatedAt,
+    requestLog: [],
+  };
+}
+
 function writeJsonSecureAtomic(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
@@ -266,6 +284,44 @@ function writeJsonSecureAtomic(filePath: string, value: unknown): void {
   } catch {
     // Best effort for filesystems that do not support chmod.
   }
+}
+
+function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLogEntry | null {
+  if (!isRecord(value)) return null;
+  const startedAt = normalizeString(value.startedAt);
+  const finishedAt = normalizeString(value.finishedAt);
+  if (!startedAt || !finishedAt) return null;
+  const outcome = value.outcome === "success"
+    || value.outcome === "failure"
+    || value.outcome === "adapter-required"
+    || value.outcome === "missing-provider"
+    ? value.outcome
+    : "failure";
+  const routeId = MODEL_GATEWAY_ROUTE_IDS.includes(value.routeId as ModelGatewayRouteId)
+    ? value.routeId as ModelGatewayRouteId
+    : null;
+  const appScope = MODEL_GATEWAY_APP_SCOPES.includes(value.appScope as ModelGatewayAppScope)
+    ? value.appScope as ModelGatewayAppScope
+    : null;
+  return {
+    id: normalizeString(value.id, randomUUID()),
+    kind: value.kind === "provider-test" ? "provider-test" : "gateway-request",
+    startedAt,
+    finishedAt,
+    durationMs: typeof value.durationMs === "number" ? Math.max(0, Math.floor(value.durationMs)) : 0,
+    routeId,
+    appScope,
+    providerId: normalizeString(value.providerId) || null,
+    providerName: normalizeString(value.providerName) || null,
+    model: normalizeString(value.model) || null,
+    method: normalizeString(value.method, "POST").toUpperCase(),
+    requestedPath: normalizeString(value.requestedPath, "/"),
+    upstreamUrl: normalizeString(value.upstreamUrl) || null,
+    statusCode: typeof value.statusCode === "number" ? Math.floor(value.statusCode) : null,
+    outcome,
+    errorCode: normalizeString(value.errorCode) || null,
+    errorMessage: normalizeString(value.errorMessage) || null,
+  };
 }
 
 function normalizeProvider(input: ModelGatewayProviderInput, fallback?: ModelGatewayProvider): ModelGatewayProvider {
@@ -406,6 +462,69 @@ function routeMode(routeId: ModelGatewayRouteId, provider: ModelGatewayProvider)
   return "unsupported";
 }
 
+function defaultTestRouteId(provider: ModelGatewayProvider): ModelGatewayRouteId | null {
+  if (provider.apiFormat === "openai_chat") return "openai_chat_completions";
+  if (provider.apiFormat === "openai_responses") return "openai_responses";
+  if (provider.apiFormat === "anthropic_messages") return "anthropic_messages";
+  return null;
+}
+
+function buildProviderRouteDecision(
+  provider: ModelGatewayProvider,
+  routeId: ModelGatewayRouteId,
+  appScope: ModelGatewayAppScope,
+): ModelGatewayRouteDecision {
+  const route = ROUTES[routeId];
+  const upstreamPath = endpointForRoute(routeId, provider);
+  const mode = routeMode(routeId, provider);
+  return {
+    routeId,
+    method: "POST",
+    requestedPath: route.paths[0] || "/",
+    appScope,
+    mode,
+    provider: {
+      id: provider.id,
+      name: provider.name,
+      apiFormat: provider.apiFormat,
+      authStrategy: provider.authStrategy,
+      baseUrl: provider.baseUrl,
+    },
+    upstreamPath,
+    upstreamUrl: joinBaseUrl(provider.baseUrl, upstreamPath),
+    reason: mode === "adapter-required"
+      ? `Provider '${provider.id}' uses ${provider.apiFormat}; ${routeId} needs a protocol adapter before passthrough.`
+      : null,
+    failoverReason: null,
+  };
+}
+
+function buildProviderTestPayload(
+  provider: ModelGatewayProvider,
+  model: string,
+  input: string,
+): unknown {
+  if (provider.apiFormat === "openai_responses") {
+    return {
+      model,
+      input,
+      stream: false,
+    };
+  }
+  if (provider.apiFormat === "anthropic_messages") {
+    return {
+      model,
+      max_tokens: 32,
+      messages: [{ role: "user", content: input }],
+    };
+  }
+  return {
+    model,
+    messages: [{ role: "user", content: input }],
+    stream: false,
+  };
+}
+
 function joinBaseUrl(baseUrl: string, endpointPath: string): string {
   const base = new URL(baseUrl);
   const basePath = base.pathname.replace(/\/+$/g, "");
@@ -509,11 +628,89 @@ function safeResponseHeaders(upstreamHeaders: Headers): Record<string, string> {
   return headers;
 }
 
+function previewText(value: string): string | null {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  return normalized.length > REQUEST_LOG_PREVIEW_CHARS
+    ? `${normalized.slice(0, REQUEST_LOG_PREVIEW_CHARS)}...`
+    : normalized;
+}
+
+function extractModelFromJsonText(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as { model?: unknown };
+    return normalizeString(parsed.model) || null;
+  } catch {
+    return null;
+  }
+}
+
+function isProviderHealthSuccess(statusCode: number | null, errorCode: string | null): boolean {
+  if (errorCode) return false;
+  if (statusCode === null) return false;
+  return statusCode < 500 && statusCode !== 429;
+}
+
+function isProviderTestSuccess(statusCode: number | null, errorCode: string | null): boolean {
+  if (errorCode) return false;
+  if (statusCode === null) return false;
+  return statusCode >= 200 && statusCode < 300;
+}
+
+function requestOutcomeFromStatus(
+  statusCode: number | null,
+  errorCode: string | null,
+  success: boolean,
+): ModelGatewayRuntimeRequestOutcome {
+  if (success) return "success";
+  if (errorCode === "model_gateway_adapter_required") return "adapter-required";
+  if (errorCode === "model_gateway_provider_missing") return "missing-provider";
+  return "failure";
+}
+
+function requestLogEntry(options: {
+  kind: ModelGatewayRuntimeRequestLogEntry["kind"];
+  startedAt: string;
+  route: ModelGatewayRouteDecision;
+  model: string | null;
+  statusCode: number | null;
+  outcome: ModelGatewayRuntimeRequestOutcome;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}): ModelGatewayRuntimeRequestLogEntry {
+  const finishedAt = nowIso();
+  const durationMs = Math.max(0, Date.parse(finishedAt) - Date.parse(options.startedAt));
+  return {
+    id: randomUUID(),
+    kind: options.kind,
+    startedAt: options.startedAt,
+    finishedAt,
+    durationMs,
+    routeId: options.route.routeId,
+    appScope: options.route.appScope,
+    providerId: options.route.provider?.id || null,
+    providerName: options.route.provider?.name || null,
+    model: options.model,
+    method: options.route.method,
+    requestedPath: options.route.requestedPath,
+    upstreamUrl: options.route.upstreamUrl,
+    statusCode: options.statusCode,
+    outcome: options.outcome,
+    errorCode: options.errorCode || null,
+    errorMessage: options.errorMessage || null,
+  };
+}
+
 export interface ModelGatewayService {
   getStatus(): ModelGatewayStatusResponse;
   listProviders(): ModelGatewayProvidersResponse;
+  getRuntime(): ModelGatewayRuntimeResponse;
   upsertProvider(req: http.IncomingMessage | undefined, payload: ModelGatewayUpsertProviderRequest): ModelGatewayProviderView;
+  deleteProvider(req: http.IncomingMessage | undefined, providerId: string): ModelGatewayProvidersResponse;
+  setActiveProvider(req: http.IncomingMessage | undefined, payload: ModelGatewaySetActiveProviderRequest): ModelGatewayProvidersResponse;
   setProviderSecret(req: http.IncomingMessage | undefined, providerId: string, payload: ModelGatewaySetProviderSecretRequest): ModelGatewayProviderView;
+  testProvider(req: http.IncomingMessage | undefined, providerId: string, payload?: ModelGatewayProviderTestRequest): Promise<ModelGatewayProviderTestResponse>;
   resolveRouteDecision(method: string, requestedPath: string, headers?: HeaderMap): ModelGatewayRouteDecision;
   handleGatewayRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void>;
 }
@@ -592,6 +789,62 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     });
   }
 
+  function readRuntime(): ModelGatewayRuntimeState {
+    const raw = readJsonFile<Partial<ModelGatewayRuntimeState>>(paths.runtime, createEmptyRuntime());
+    const requestLog = Array.isArray(raw.requestLog)
+      ? raw.requestLog
+        .map(normalizeRuntimeLogEntry)
+        .filter((entry): entry is ModelGatewayRuntimeRequestLogEntry => Boolean(entry))
+        .slice(-MAX_RUNTIME_REQUEST_LOG_ENTRIES)
+      : [];
+    return {
+      version: 1,
+      updatedAt: normalizeString(raw.updatedAt, nowIso()),
+      requestLog,
+    };
+  }
+
+  function writeRuntime(runtime: ModelGatewayRuntimeState): void {
+    writeJsonSecureAtomic(paths.runtime, {
+      version: 1,
+      updatedAt: nowIso(),
+      requestLog: runtime.requestLog.slice(-MAX_RUNTIME_REQUEST_LOG_ENTRIES),
+    });
+  }
+
+  function appendRequestLog(entry: ModelGatewayRuntimeRequestLogEntry): void {
+    const runtime = readRuntime();
+    runtime.requestLog.push(entry);
+    writeRuntime(runtime);
+  }
+
+  function updateProviderHealth(
+    providerId: string,
+    success: boolean,
+    latencyMs: number | null,
+    errorMessage: string | null,
+  ): void {
+    const registry = readRegistry();
+    const provider = findProvider(registry, providerId);
+    if (!provider) return;
+    const stamp = nowIso();
+    provider.health = {
+      ...provider.health,
+      lastLatencyMs: latencyMs,
+      lastSuccessAt: success ? stamp : provider.health.lastSuccessAt,
+      lastFailureAt: success ? provider.health.lastFailureAt : stamp,
+      lastError: success ? null : errorMessage,
+      consecutiveFailures: success ? 0 : provider.health.consecutiveFailures + 1,
+      circuitState: success
+        ? "closed"
+        : provider.health.consecutiveFailures + 1 >= 3
+          ? "open"
+          : provider.health.circuitState,
+    };
+    provider.updatedAt = stamp;
+    writeRegistry(registry);
+  }
+
   function secretSummary(ref: string | null): ModelGatewaySecretSummary | null {
     if (!ref) return null;
     const secret = readSecrets().secrets[ref];
@@ -634,18 +887,38 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     return registry.providers.find((provider) => provider.id === providerId) || null;
   }
 
-  function resolveProvider(registry: ModelGatewayRegistryState, appScope: ModelGatewayAppScope): ModelGatewayProvider | null {
-    const activeId = registry.activeProviders[appScope];
-    if (activeId) {
-      const active = findProvider(registry, activeId);
-      if (active?.enabled && active.appScopes.includes(appScope)) return active;
-    }
-
+  function candidateProviders(registry: ModelGatewayRegistryState, appScope: ModelGatewayAppScope): ModelGatewayProvider[] {
     return registry.providers
       .filter((provider) => provider.enabled)
       .filter((provider) => provider.appScopes.includes(appScope))
-      .sort((left, right) => left.failover.priority - right.failover.priority || left.name.localeCompare(right.name))
-      [0] || null;
+      .sort((left, right) => left.failover.priority - right.failover.priority || left.name.localeCompare(right.name));
+  }
+
+  function resolveProviderSelection(
+    registry: ModelGatewayRegistryState,
+    appScope: ModelGatewayAppScope,
+  ): { provider: ModelGatewayProvider | null; failoverReason: string | null } {
+    const activeId = registry.activeProviders[appScope];
+    if (activeId) {
+      const active = findProvider(registry, activeId);
+      if (active?.enabled && active.appScopes.includes(appScope) && active.health.circuitState !== "open") {
+        return { provider: active, failoverReason: null };
+      }
+      if (active?.enabled && active.appScopes.includes(appScope) && active.health.circuitState === "open") {
+        const fallback = candidateProviders(registry, appScope)
+          .find((provider) => provider.id !== active.id && provider.health.circuitState !== "open") || null;
+        return {
+          provider: fallback,
+          failoverReason: fallback
+            ? `Active provider '${active.id}' circuit is open; selected fallback '${fallback.id}'.`
+            : `Active provider '${active.id}' circuit is open and no fallback provider is available.`,
+        };
+      }
+    }
+
+    const provider = candidateProviders(registry, appScope)
+      .find((candidate) => candidate.health.circuitState !== "open") || null;
+    return { provider, failoverReason: null };
   }
 
   function readProviderSecret(provider: ModelGatewayProvider): string | null {
@@ -674,7 +947,9 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
 
   function getStatus(): ModelGatewayStatusResponse {
     const registry = readRegistry();
+    const runtime = readRuntime();
     const openCircuits = registry.providers.filter((provider) => provider.health.circuitState === "open").length;
+    const latestRequestAt = runtime.requestLog[runtime.requestLog.length - 1]?.finishedAt || null;
     return {
       ok: true,
       checkedAt: nowIso(),
@@ -700,10 +975,25 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
           runtime: paths.runtime,
         },
       },
+      runtime: {
+        requestLogSize: runtime.requestLog.length,
+        latestRequestAt,
+      },
       healthSummary: {
         okProviders: registry.providers.filter((provider) => provider.enabled && provider.health.circuitState === "closed").length,
         degradedProviders: registry.providers.filter((provider) => provider.health.lastFailureAt || provider.health.circuitState !== "closed").length,
         openCircuits,
+      },
+    };
+  }
+
+  function getRuntime(): ModelGatewayRuntimeResponse {
+    return {
+      ok: true,
+      runtime: readRuntime(),
+      paths: {
+        runtime: paths.runtime,
+        logs: paths.logs,
       },
     };
   }
@@ -755,6 +1045,67 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     return toProviderView(next);
   }
 
+  function deleteProvider(req: http.IncomingMessage | undefined, providerId: string): ModelGatewayProvidersResponse {
+    requireManagement(req);
+    const registry = readRegistry();
+    const index = registry.providers.findIndex((provider) => provider.id === providerId);
+    if (index < 0) {
+      throw new ModelGatewayServiceError("model_gateway_provider_not_found", `Model Gateway provider '${providerId}' was not found.`, 404);
+    }
+    const [removed] = registry.providers.splice(index, 1);
+    for (const scope of MODEL_GATEWAY_APP_SCOPES) {
+      if (registry.activeProviders[scope] === providerId) {
+        delete registry.activeProviders[scope];
+      }
+    }
+    writeRegistry(registry);
+
+    if (removed?.apiKeyRef && !registry.providers.some((provider) => provider.apiKeyRef === removed.apiKeyRef)) {
+      setSecretValue(removed.apiKeyRef, null);
+    }
+    return listProviders();
+  }
+
+  function setActiveProvider(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewaySetActiveProviderRequest,
+  ): ModelGatewayProvidersResponse {
+    requireManagement(req);
+    const scope = MODEL_GATEWAY_APP_SCOPES.includes(payload?.scope as ModelGatewayAppScope)
+      ? payload.scope as ModelGatewayAppScope
+      : null;
+    if (!scope) {
+      throw new ModelGatewayServiceError("model_gateway_scope_invalid", "A valid app scope is required.", 400);
+    }
+
+    const registry = readRegistry();
+    const providerId = normalizeString(payload.providerId);
+    if (!providerId) {
+      delete registry.activeProviders[scope];
+      writeRegistry(registry);
+      return listProviders();
+    }
+
+    const provider = findProvider(registry, providerId);
+    if (!provider) {
+      throw new ModelGatewayServiceError("model_gateway_provider_not_found", `Model Gateway provider '${providerId}' was not found.`, 404);
+    }
+    if (!provider.enabled) {
+      throw new ModelGatewayServiceError("model_gateway_provider_disabled", `Model Gateway provider '${providerId}' is disabled.`, 400);
+    }
+    if (!provider.appScopes.includes(scope)) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_provider_scope_mismatch",
+        `Model Gateway provider '${providerId}' is not available for ${scope}.`,
+        400,
+      );
+    }
+
+    registry.activeProviders[scope] = providerId;
+    writeRegistry(registry);
+    return listProviders();
+  }
+
   function setProviderSecret(
     req: http.IncomingMessage | undefined,
     providerId: string,
@@ -774,6 +1125,177 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     return toProviderView(provider);
   }
 
+  async function testProvider(
+    req: http.IncomingMessage | undefined,
+    providerId: string,
+    payload: ModelGatewayProviderTestRequest = {},
+  ): Promise<ModelGatewayProviderTestResponse> {
+    requireManagement(req);
+    const registry = readRegistry();
+    const provider = findProvider(registry, providerId);
+    if (!provider) {
+      throw new ModelGatewayServiceError("model_gateway_provider_not_found", `Model Gateway provider '${providerId}' was not found.`, 404);
+    }
+
+    const routeId = MODEL_GATEWAY_ROUTE_IDS.includes(payload.routeId as ModelGatewayRouteId)
+      ? payload.routeId as ModelGatewayRouteId
+      : defaultTestRouteId(provider);
+    if (!routeId) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_provider_test_unsupported",
+        `Provider '${providerId}' uses ${provider.apiFormat}, which does not yet have a Phase 1 test route.`,
+        400,
+      );
+    }
+    const requestedScope = MODEL_GATEWAY_APP_SCOPES.includes(payload.appScope as ModelGatewayAppScope)
+      ? payload.appScope as ModelGatewayAppScope
+      : ROUTES[routeId].appScope;
+    if (!provider.appScopes.includes(requestedScope)) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_provider_scope_mismatch",
+        `Model Gateway provider '${providerId}' is not available for ${requestedScope}.`,
+        400,
+      );
+    }
+
+    const route = buildProviderRouteDecision(provider, routeId, requestedScope);
+    const startedAt = nowIso();
+    const model = normalizeString(payload.model, provider.models.defaultModel || provider.models.models[0]?.id || "test-model");
+    if (route.mode === "adapter-required") {
+      const errorMessage = route.reason || "Provider test requires an adapter that is not implemented yet.";
+      appendRequestLog(requestLogEntry({
+        kind: "provider-test",
+        startedAt,
+        route,
+        model,
+        statusCode: null,
+        outcome: "adapter-required",
+        errorCode: "model_gateway_adapter_required",
+        errorMessage,
+      }));
+      return {
+        ok: false,
+        providerId,
+        checkedAt: nowIso(),
+        statusCode: null,
+        latencyMs: 0,
+        route,
+        responsePreview: null,
+        error: {
+          code: "model_gateway_adapter_required",
+          message: errorMessage,
+        },
+      };
+    }
+
+    const secret = readProviderSecret(provider);
+    if (provider.authStrategy !== "none" && !secret) {
+      const errorMessage = `Provider '${provider.id}' requires a secret before it can be tested.`;
+      appendRequestLog(requestLogEntry({
+        kind: "provider-test",
+        startedAt,
+        route,
+        model,
+        statusCode: null,
+        outcome: "failure",
+        errorCode: "model_gateway_provider_secret_missing",
+        errorMessage,
+      }));
+      updateProviderHealth(provider.id, false, null, errorMessage);
+      return {
+        ok: false,
+        providerId,
+        checkedAt: nowIso(),
+        statusCode: null,
+        latencyMs: 0,
+        route,
+        responsePreview: null,
+        error: {
+          code: "model_gateway_provider_secret_missing",
+          message: errorMessage,
+        },
+      };
+    }
+
+    const controller = new AbortController();
+    const timeoutMs = typeof payload.timeoutMs === "number"
+      ? Math.max(1_000, Math.floor(payload.timeoutMs))
+      : provider.network.timeoutMs;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const headers = new Headers({ "content-type": "application/json" });
+    applyProviderAuth(headers, provider, secret);
+    const requestBody = JSON.stringify(buildProviderTestPayload(
+      provider,
+      model,
+      normalizeString(payload.input, "Return the word ok."),
+    ));
+    try {
+      const response = await fetch(route.upstreamUrl || provider.baseUrl, {
+        method: "POST",
+        headers,
+        body: requestBody,
+        signal: controller.signal,
+      });
+      const responseText = await response.text();
+      const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      const success = isProviderTestSuccess(response.status, null);
+      const errorMessage = success ? null : `Provider test returned HTTP ${response.status}.`;
+      updateProviderHealth(provider.id, success, latencyMs, errorMessage);
+      appendRequestLog(requestLogEntry({
+        kind: "provider-test",
+        startedAt,
+        route,
+        model,
+        statusCode: response.status,
+        outcome: requestOutcomeFromStatus(response.status, null, success),
+        errorCode: success ? null : "model_gateway_provider_test_failed",
+        errorMessage,
+      }));
+      return {
+        ok: success,
+        providerId,
+        checkedAt: nowIso(),
+        statusCode: response.status,
+        latencyMs,
+        route,
+        responsePreview: previewText(responseText),
+        error: success ? null : {
+          code: "model_gateway_provider_test_failed",
+          message: errorMessage || "Provider test failed.",
+        },
+      };
+    } catch (error) {
+      const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      const message = error instanceof Error ? error.message : "Provider test request failed.";
+      updateProviderHealth(provider.id, false, latencyMs, message);
+      appendRequestLog(requestLogEntry({
+        kind: "provider-test",
+        startedAt,
+        route,
+        model,
+        statusCode: null,
+        outcome: "failure",
+        errorCode: "model_gateway_provider_test_failed",
+        errorMessage: message,
+      }));
+      return {
+        ok: false,
+        providerId,
+        checkedAt: nowIso(),
+        statusCode: null,
+        latencyMs,
+        route,
+        responsePreview: null,
+        error: {
+          code: "model_gateway_provider_test_failed",
+          message,
+        },
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   function resolveRouteDecision(method: string, requestedPath: string, headers?: HeaderMap): ModelGatewayRouteDecision {
     const normalizedMethod = (method || "GET").toUpperCase();
     const pathname = normalizePathname(requestedPath);
@@ -789,12 +1311,14 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
         upstreamPath: null,
         upstreamUrl: null,
         reason: "No Model Gateway route matched this request.",
+        failoverReason: null,
       };
     }
 
     const appScope = normalizeRequestAppScope(headers, route.appScope);
     const registry = readRegistry();
-    const provider = resolveProvider(registry, appScope);
+    const selection = resolveProviderSelection(registry, appScope);
+    const provider = selection.provider;
     if (!provider) {
       return {
         routeId: route.routeId,
@@ -805,7 +1329,8 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
         provider: null,
         upstreamPath: null,
         upstreamUrl: null,
-        reason: `No active Model Gateway provider is configured for ${appScope}.`,
+        reason: selection.failoverReason || `No active Model Gateway provider is configured for ${appScope}.`,
+        failoverReason: selection.failoverReason,
       };
     }
 
@@ -829,12 +1354,24 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
       reason: mode === "adapter-required"
         ? `Provider '${provider.id}' uses ${provider.apiFormat}; ${route.routeId} needs a protocol adapter before passthrough.`
         : null,
+      failoverReason: selection.failoverReason,
     };
   }
 
   async function handleGatewayRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const startedAt = nowIso();
     const decision = resolveRouteDecision(req.method || "GET", req.url || "/", req.headers);
     if (decision.mode === "unsupported") {
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: null,
+        statusCode: 404,
+        outcome: "failure",
+        errorCode: "model_gateway_route_not_found",
+        errorMessage: decision.reason,
+      }));
       sendJson(res, 404, {
         error: {
           code: "model_gateway_route_not_found",
@@ -845,6 +1382,16 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
       return;
     }
     if (decision.mode === "missing-provider" || !decision.provider || !decision.routeId) {
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: null,
+        statusCode: 503,
+        outcome: "missing-provider",
+        errorCode: "model_gateway_provider_missing",
+        errorMessage: decision.reason,
+      }));
       sendJson(res, 503, {
         error: {
           code: "model_gateway_provider_missing",
@@ -855,6 +1402,16 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
       return;
     }
     if (decision.mode === "adapter-required") {
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: null,
+        statusCode: 501,
+        outcome: "adapter-required",
+        errorCode: "model_gateway_adapter_required",
+        errorMessage: decision.reason,
+      }));
       sendJson(res, 501, {
         error: {
           code: "model_gateway_adapter_required",
@@ -868,6 +1425,16 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     const registry = readRegistry();
     const provider = findProvider(registry, decision.provider.id);
     if (!provider || !decision.upstreamUrl) {
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: null,
+        statusCode: 503,
+        outcome: "missing-provider",
+        errorCode: "model_gateway_provider_missing",
+        errorMessage: "The selected Model Gateway provider is no longer available.",
+      }));
       sendJson(res, 503, {
         error: {
           code: "model_gateway_provider_missing",
@@ -879,19 +1446,32 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
     }
 
     const secret = readProviderSecret(provider);
+    const body = await readRequestBody(req);
+    const bodyText = body.byteLength ? body.toString("utf8") : undefined;
+    const requestModel = extractModelFromJsonText(bodyText);
     if (provider.authStrategy !== "none" && !secret) {
+      const errorMessage = `Provider '${provider.id}' requires a secret before requests can be forwarded.`;
+      updateProviderHealth(provider.id, false, null, errorMessage);
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: requestModel,
+        statusCode: 401,
+        outcome: "failure",
+        errorCode: "model_gateway_provider_secret_missing",
+        errorMessage,
+      }));
       sendJson(res, 401, {
         error: {
           code: "model_gateway_provider_secret_missing",
-          message: `Provider '${provider.id}' requires a secret before requests can be forwarded.`,
+          message: errorMessage,
           decision,
         },
       });
       return;
     }
 
-    const body = await readRequestBody(req);
-    const bodyText = body.byteLength ? body.toString("utf8") : undefined;
     const headers = copyUpstreamRequestHeaders(req);
     applyProviderAuth(headers, provider, secret);
     try {
@@ -901,6 +1481,20 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
         body: bodyText,
       });
       const responseBody = Buffer.from(await upstream.arrayBuffer());
+      const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      const healthSuccess = isProviderHealthSuccess(upstream.status, null);
+      const errorMessage = healthSuccess ? null : `Upstream returned HTTP ${upstream.status}.`;
+      updateProviderHealth(provider.id, healthSuccess, latencyMs, errorMessage);
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: requestModel,
+        statusCode: upstream.status,
+        outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+        errorCode: healthSuccess ? null : "model_gateway_upstream_status",
+        errorMessage,
+      }));
       setCorsHeaders(res);
       res.statusCode = upstream.status;
       for (const [key, value] of Object.entries(safeResponseHeaders(upstream.headers))) {
@@ -912,10 +1506,23 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
       res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
       res.end(responseBody);
     } catch (error) {
+      const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      const message = error instanceof Error ? error.message : "Model Gateway upstream request failed.";
+      updateProviderHealth(provider.id, false, latencyMs, message);
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: requestModel,
+        statusCode: 502,
+        outcome: "failure",
+        errorCode: "model_gateway_upstream_failed",
+        errorMessage: message,
+      }));
       sendJson(res, 502, {
         error: {
           code: "model_gateway_upstream_failed",
-          message: error instanceof Error ? error.message : "Model Gateway upstream request failed.",
+          message,
           decision,
         },
       });
@@ -925,8 +1532,12 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
   return {
     getStatus,
     listProviders,
+    getRuntime,
     upsertProvider,
+    deleteProvider,
+    setActiveProvider,
     setProviderSecret,
+    testProvider,
     resolveRouteDecision,
     handleGatewayRequest,
   };

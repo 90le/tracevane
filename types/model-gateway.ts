@@ -160,6 +160,35 @@ export interface ModelGatewaySecretState {
   }>;
 }
 
+export type ModelGatewayRuntimeRequestKind = "gateway-request" | "provider-test";
+export type ModelGatewayRuntimeRequestOutcome = "success" | "failure" | "adapter-required" | "missing-provider";
+
+export interface ModelGatewayRuntimeRequestLogEntry {
+  id: string;
+  kind: ModelGatewayRuntimeRequestKind;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  routeId: ModelGatewayRouteId | null;
+  appScope: ModelGatewayAppScope | null;
+  providerId: string | null;
+  providerName: string | null;
+  model: string | null;
+  method: string;
+  requestedPath: string;
+  upstreamUrl: string | null;
+  statusCode: number | null;
+  outcome: ModelGatewayRuntimeRequestOutcome;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+export interface ModelGatewayRuntimeState {
+  version: 1;
+  updatedAt: string;
+  requestLog: ModelGatewayRuntimeRequestLogEntry[];
+}
+
 export interface ModelGatewayProviderInput {
   id?: string;
   name?: string;
@@ -190,6 +219,33 @@ export interface ModelGatewayUpsertProviderRequest {
 
 export interface ModelGatewaySetProviderSecretRequest {
   apiKey: string | null;
+}
+
+export interface ModelGatewaySetActiveProviderRequest {
+  scope: ModelGatewayAppScope;
+  providerId: string | null;
+}
+
+export interface ModelGatewayProviderTestRequest {
+  routeId?: ModelGatewayRouteId;
+  appScope?: ModelGatewayAppScope;
+  model?: string;
+  input?: string;
+  timeoutMs?: number;
+}
+
+export interface ModelGatewayProviderTestResponse {
+  ok: boolean;
+  providerId: string;
+  checkedAt: string;
+  statusCode: number | null;
+  latencyMs: number;
+  route: ModelGatewayRouteDecision;
+  responsePreview: string | null;
+  error: {
+    code: string;
+    message: string;
+  } | null;
 }
 
 export interface ModelGatewayProvidersResponse {
@@ -228,10 +284,23 @@ export interface ModelGatewayStatusResponse {
       runtime: string;
     };
   };
+  runtime: {
+    requestLogSize: number;
+    latestRequestAt: string | null;
+  };
   healthSummary: {
     okProviders: number;
     degradedProviders: number;
     openCircuits: number;
+  };
+}
+
+export interface ModelGatewayRuntimeResponse {
+  ok: true;
+  runtime: ModelGatewayRuntimeState;
+  paths: {
+    runtime: string;
+    logs: string;
   };
 }
 
@@ -245,4 +314,5 @@ export interface ModelGatewayRouteDecision {
   upstreamPath: string | null;
   upstreamUrl: string | null;
   reason: string | null;
+  failoverReason: string | null;
 }

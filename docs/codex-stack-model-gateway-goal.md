@@ -307,7 +307,10 @@ Router 是新链路稳定性的核心：
 - 已开放 `GET /gateway/status`、`GET /gateway/providers`、`GET/POST/PUT /api/model-gateway/providers`、`POST /api/model-gateway/providers/:providerId/secret`。
 - 已开放 CLI 入口 `POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/messages`、`POST /claude/v1/messages`。
 - 当前仅 `openai_chat` provider 的 `/v1/chat/completions` 是 passthrough；Codex Responses / compact 和 Claude Messages 在 provider 协议不匹配时返回 `model_gateway_adapter_required`，等待后续 adapter。
-- 尚未完成 runtime store、provider test、request log/health update、app takeover preview/apply、UI。
+- 已补齐 provider delete、active provider 设置、provider test endpoint、runtime request log 和 provider health 更新。
+- `runtime.json` 已记录 gateway request / provider test 的有界日志，status 返回 request log size/latest timestamp。
+- Router 已能在 active provider circuit open 时选择同 app scope fallback provider，并在 route decision 中返回 `failoverReason`。
+- 尚未完成 app takeover preview/apply、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
 
 ### Phase 2: Gateway Runtime
 

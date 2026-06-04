@@ -206,6 +206,67 @@ test("model gateway routing contract selects app-scoped providers and normalizes
   assert.equal(codexChatOverride.provider?.id, "codex-chat");
 });
 
+test("model gateway management supports active provider selection, delete, and open-circuit fallback", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const service = createModelGatewayService(config);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "codex-primary",
+      name: "Codex Primary",
+      appScopes: ["codex"],
+      baseUrl: "https://primary.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      health: {
+        circuitState: "open",
+        lastFailureAt: "2026-06-04T00:00:00.000Z",
+        lastError: "timeout",
+        consecutiveFailures: 3,
+      },
+      failover: { priority: 1 },
+    },
+    secret: { apiKey: "sk-primary-secret-1234" },
+    setActiveScopes: ["codex"],
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "codex-backup",
+      name: "Codex Backup",
+      appScopes: ["codex"],
+      baseUrl: "https://backup.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      failover: { priority: 2 },
+    },
+    secret: { apiKey: "sk-backup-secret-5678" },
+  });
+
+  const decision = service.resolveRouteDecision("POST", "/v1/responses");
+  assert.equal(decision.provider?.id, "codex-backup");
+  assert.equal(decision.mode, "passthrough");
+  assert.match(decision.failoverReason || "", /codex-primary.*circuit is open/);
+
+  let providers = service.setActiveProvider(undefined, {
+    scope: "codex",
+    providerId: "codex-backup",
+  });
+  assert.equal(providers.activeProviders.codex, "codex-backup");
+
+  providers = service.deleteProvider(undefined, "codex-primary");
+  assert.equal(providers.providers.some((provider) => provider.id === "codex-primary"), false);
+  assert.equal(providers.activeProviders.codex, "codex-backup");
+  assert.ok(!fs.readFileSync(paths.secrets, "utf8").includes("sk-primary-secret-1234"));
+
+  providers = service.setActiveProvider(undefined, {
+    scope: "codex",
+    providerId: null,
+  });
+  assert.equal(providers.activeProviders.codex, undefined);
+});
+
 test("model gateway routes expose status/providers and forward chat passthrough", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -258,6 +319,18 @@ test("model gateway routes expose status/providers and forward chat passthrough"
       assert.equal(providers.body.providers[0].secret.masked, "sk-r...cdef");
       assert.ok(!JSON.stringify(providers.body).includes("sk-route-secret-abcdef"));
 
+      const providerTest = await requestJson(`${baseUrl}/api/model-gateway/providers/route-chat/test`, {
+        method: "POST",
+        body: {
+          model: "route-test-model",
+          input: "Return ok",
+        },
+      });
+      assert.equal(providerTest.status, 200);
+      assert.equal(providerTest.body.ok, true);
+      assert.equal(providerTest.body.route.provider.id, "route-chat");
+      assert.equal(providerTest.body.route.mode, "passthrough");
+
       const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
         body: {
@@ -268,17 +341,51 @@ test("model gateway routes expose status/providers and forward chat passthrough"
       assert.equal(chat.status, 200);
       assert.deepEqual(chat.body, { id: "chatcmpl_route_test", ok: true });
       assert.equal(chat.headers["x-openclaw-model-gateway-provider"], "route-chat");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog.length, 2);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => entry.kind), [
+        "provider-test",
+        "gateway-request",
+      ]);
+      assert.equal(runtime.body.runtime.requestLog[1].model, "route-test-model");
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-route-secret-abcdef"));
+
+      const afterStatus = await requestJson(`${baseUrl}/api/model-gateway/status`);
+      assert.equal(afterStatus.status, 200);
+      assert.equal(afterStatus.body.runtime.requestLogSize, 2);
+      assert.equal(afterStatus.body.healthSummary.okProviders, 1);
+
+      const afterProviders = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      assert.equal(afterProviders.body.providers[0].health.consecutiveFailures, 0);
+      assert.equal(afterProviders.body.providers[0].health.circuitState, "closed");
+      assert.ok(afterProviders.body.providers[0].health.lastSuccessAt);
+
+      const deleteProvider = await requestJson(`${baseUrl}/api/model-gateway/providers/route-chat`, {
+        method: "DELETE",
+      });
+      assert.equal(deleteProvider.status, 200);
+      assert.deepEqual(deleteProvider.body.providers, []);
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls.length, 2);
   assert.equal(upstreamCalls[0].url, "https://upstream.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].method, "POST");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-route-secret-abcdef");
   assert.equal(upstreamCalls[0].contentType, "application/json");
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "route-test-model",
+    messages: [{ role: "user", content: "Return ok" }],
+    stream: false,
+  });
+  assert.equal(upstreamCalls[1].url, "https://upstream.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[1].method, "POST");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-route-secret-abcdef");
+  assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
     model: "route-test-model",
     messages: [{ role: "user", content: "hello" }],
   });
