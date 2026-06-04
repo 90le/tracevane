@@ -74,9 +74,9 @@ Studio 支持单口模式和非单口模式，但模型 relay 的正式生命线
 需要删除或隔离的旧 surface：
 
 - 前端：CPA attach、force CPA、CPA Gateway/proxy 操作面、CPA/Compact 核心链路图。
-- 后端：`apply-codex-cpa-after-smoke`、`force-apply-codex-cpa` 等旧接管 action；后续继续删除 CPA/compact 安装与 service 管理代码。
-- 资源：`auto-setup.sh` 中 CPA + Compact Proxy 安装逻辑、`compact-proxy.mjs`、CPA config templates。
-- 测试：不再用旧 CPA attach 成功路径作为验收；改为 Studio Gateway daemon takeover。
+- 后端：旧接管 action 已删除；后续继续删除 CPA/compact pause/resume/config/service 管理代码。
+- 资源：默认 installer/health-check 必须走 Studio Gateway；旧 `compact-proxy.mjs`、CPA templates、`cli-proxy-api` 打包资源不再保留。
+- 测试：不再用旧 CPA attach 或 compact-proxy 资源成功路径作为验收；改为 Studio Gateway daemon takeover。
 
 ## 7. 阶段计划
 
@@ -89,7 +89,7 @@ Studio 支持单口模式和非单口模式，但模型 relay 的正式生命线
 | Phase 4 | Claude Messages adapter 和 Claude Code takeover |
 | Phase 5 | OpenCode / OpenClaw config 检测、生成、接管 |
 | Phase 6 | 重做 Codex Stack UI 为 Model Gateway / Provider Center |
-| Phase 7 | 删除 CPA / compact 旧资源和旧 tests，打包新版本 |
+| Phase 7 | 删除剩余 CPA / compact 后端 legacy 管理和旧 tests，打包新版本 |
 
 ## 8. 验收标准
 
@@ -107,4 +107,4 @@ Studio 支持单口模式和非单口模式，但模型 relay 的正式生命线
 - Codex Responses streaming、tool-call history 和 compact 语义复杂，必须测试先行。
 - Claude official auth 与第三方 provider key 不能混用。
 - 如果模型 relay 绑定到 Studio API 或 OpenClaw mount，崩溃隔离目标会失败。
-- 旧 Codex Stack service 和 installer 仍有 CPA/compact 假设，删除必须分阶段保持 tests 可解释。
+- 旧 Codex Stack service 仍有 CPA/compact pause/resume/config 假设，删除必须分阶段保持 tests 可解释。

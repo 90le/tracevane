@@ -1,239 +1,159 @@
 #!/bin/bash
 # =============================================================================
-# 全环境健康检查脚本
-# 检查 Codex + CPA + Compact Proxy + cc-connect 运行状态
+# Codex Studio Gateway health check
 # =============================================================================
-set -e
+set -euo pipefail
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-ok() { echo -e "  ${GREEN}✅ $1${NC}"; }
-fail() { echo -e "  ${RED}❌ $1${NC}"; FAIL=1; }
-warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; WARN=1; }
+ok() { echo -e "  ${GREEN}OK${NC} $1"; }
+fail() { echo -e "  ${RED}FAIL${NC} $1"; FAIL=1; }
+warn() { echo -e "  ${YELLOW}WARN${NC} $1"; WARN=1; }
 FAIL=0
 WARN=0
 
-codex_value() {
-  awk -F '"' -v key="$1" '/^[[:space:]]*\[/{ exit } $0 ~ key"[[:space:]]*=" { print $2; exit }' "$HOME/.codex/config.toml" 2>/dev/null
+CODEX_CONFIG="$HOME/.codex/config.toml"
+GATEWAY_SERVICE="openclaw-studio-model-gateway.service"
+
+codex_top_value() {
+  awk -F '"' -v key="$1" '/^[[:space:]]*\[/{ exit } $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { print $2; exit }' "$CODEX_CONFIG" 2>/dev/null
 }
 
-codex_cpa_provider_value() {
-  awk -F '"' -v key="$1" '
-    /^[[:space:]]*\[model_providers\.cpa\][[:space:]]*$/ { inside=1; next }
+codex_provider_value() {
+  local provider="$1"
+  local key="$2"
+  awk -F '"' -v section="model_providers\\.${provider}" -v key="$key" '
+    $0 ~ "^[[:space:]]*\\[" section "\\][[:space:]]*$" { inside=1; next }
     /^[[:space:]]*\[/ { inside=0 }
-    inside && $0 ~ key"[[:space:]]*=" { print $2; exit }
-  ' "$HOME/.codex/config.toml" 2>/dev/null
+    inside && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { print $2; exit }
+  ' "$CODEX_CONFIG" 2>/dev/null
 }
 
-codex_cpa_base_url() {
-  local value
-  value="$(codex_cpa_provider_value base_url)"
-  if [[ -n "$value" ]]; then
-    printf '%s\n' "$value"
-    return 0
-  fi
-  value="$(codex_value base_url)"
-  if [[ -n "$value" ]]; then
-    printf '%s\n' "$value"
-    return 0
-  fi
-  codex_value openai_base_url
+strip_v1_suffix() {
+  local value="${1%/}"
+  printf '%s\n' "${value%/v1}"
 }
 
-systemd_enabled_state() {
-  systemctl --user is-enabled "$1" 2>/dev/null | head -n 1 | tr -d '\r'
+is_service_active() {
+  systemctl --user is-active --quiet "$1" >/dev/null 2>&1
 }
 
-systemd_is_persistently_enabled() {
-  [[ "$(systemd_enabled_state "$1")" == "enabled" ]]
-}
-
-echo "=== 环境健康检查 ==="
+echo "=== Studio Gateway health check ==="
 echo ""
 
-# ── Node.js ──
-echo "--- Node.js ---"
-if command -v node &>/dev/null; then
+echo "--- Runtime prerequisites ---"
+if command -v node >/dev/null 2>&1; then
   ok "Node.js $(node --version)"
 else
   fail "Node.js 未安装"
 fi
 
-# ── Codex CLI ──
-echo "--- Codex CLI ---"
-if command -v codex &>/dev/null; then
-  ok "Codex CLI $(codex --version 2>/dev/null || echo 'installed')"
+if command -v codex >/dev/null 2>&1; then
+  ok "Codex CLI $(codex --version 2>/dev/null || echo installed)"
 else
-  fail "Codex CLI 未安装"
+  warn "Codex CLI 未安装"
 fi
 
-# ── oh-my-codex ──
-echo "--- oh-my-codex ---"
-if command -v omx &>/dev/null; then
-  ok "OMX $(omx --version 2>/dev/null || echo 'installed')"
+if command -v omx >/dev/null 2>&1; then
+  ok "oh-my-codex $(omx --version 2>/dev/null || echo installed)"
 else
-  warn "omx 命令未找到（OMX 可能未在 PATH 中）"
+  warn "omx 命令未找到"
 fi
 
-# ── CPA ──
-echo "--- CPA (cli-proxy-api) ---"
-if [[ -x "$HOME/.local/bin/cli-proxy-api" ]] || command -v cli-proxy-api &>/dev/null; then
-  ok "CPA 已安装"
-  CPA_PORT=$(awk -F: '/^port:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null)
-  CPA_PORT=${CPA_PORT:-18795}
-  if ss -tlnp 2>/dev/null | grep -q ":${CPA_PORT}"; then
-    ok "CPA 监听在 127.0.0.1:${CPA_PORT}"
-  else
-    fail "CPA 未在监听 (port ${CPA_PORT}) — 启动: systemctl --user start cli-proxy-api.service"
-  fi
-else
-  fail "CPA 未安装 — 检查 ~/.local/bin/cli-proxy-api"
-fi
-
-COMPACT_PORT=$(codex_cpa_base_url | sed -nE 's#.*127\.0\.0\.1:([0-9]+)/.*#\1#p' | head -1)
-[[ -n "$COMPACT_PORT" ]] || COMPACT_PORT=18796
-
-# ── Compact Proxy ──
-echo "--- Compact Proxy v5 ---"
-if [[ -f "$HOME/.local/bin/cpa-compact-proxy.mjs" ]]; then
-  ok "Compact Proxy 脚本已安装"
-  if ss -tlnp 2>/dev/null | grep -q ":${COMPACT_PORT}"; then
-    ok "Compact Proxy 监听在 127.0.0.1:${COMPACT_PORT}"
-  else
-    fail "Compact Proxy 未在监听 (port ${COMPACT_PORT}) — 启动: systemctl --user start cpa-compact-proxy.service"
-  fi
-else
-  fail "Compact Proxy 脚本未找到 — 检查 ~/.local/bin/cpa-compact-proxy.mjs"
-fi
-
-# ── cc-connect ──
-echo "--- cc-connect ---"
-if [[ -x "$HOME/.local/bin/cc-connect" ]] || command -v cc-connect &>/dev/null; then
-  ok "cc-connect 二进制已安装"
-  if systemctl --user is-active cc-connect.service &>/dev/null; then
-    ok "cc-connect 服务运行中 (systemd)"
-  else
-    warn "cc-connect 服务未运行 — 启动: systemctl --user start cc-connect"
-  fi
-else
-  warn "cc-connect 未安装（可选，用于 IM 桥接）"
-fi
-
-# ── systemd services ──
-echo "--- systemd user services ---"
-for svc in cli-proxy-api cpa-compact-proxy cc-connect; do
-  unit="$svc.service"
-  if systemd_is_persistently_enabled "$unit"; then
-    ok "$svc 自启动已启用"
-  elif systemctl --user is-active "$unit" &>/dev/null; then
-    warn "$svc 运行中，但自启动未启用 — 启用: systemctl --user enable --now $unit"
-  else
-    warn "$svc 自启动未启用 — 启用: systemctl --user enable --now $unit"
-  fi
-done
-
-# ── Watchdog ──
-echo "--- Codex Stack Watchdog ---"
-if systemctl --user list-unit-files codex-stack-watchdog.timer &>/dev/null; then
-  if systemctl --user is-active codex-stack-watchdog.timer &>/dev/null; then
-    ok "后台守护运行中（由 Resume/修复流程在 CPA 与 Compact 健康后管理）"
-  else
-    warn "后台守护未运行；请用 Studio 的“恢复 CPA 栈”或推荐修复按 CPA → Compact → 后台守护顺序恢复，不要直接手动启动 timer"
-  fi
-  if systemctl --user is-enabled codex-stack-watchdog.timer &>/dev/null; then
-    ok "后台守护已启用"
-  else
-    warn "后台守护未启用；安装/修复或恢复 CPA 栈会在链路健康后自动启用，不要直接手动 enable"
-  fi
-else
-  warn "后台守护未安装；需要保持 CPA/Compact 后台稳定时，安装/修复会自动补齐"
-fi
-
-# ── openclaw.json ──
-echo "--- OpenClaw 配置 ---"
-OPENCLAW_JSON="$HOME/.openclaw/openclaw.json"
-if [[ -f "$OPENCLAW_JSON" ]]; then
-  ok "openclaw.json 存在"
-  if command -v jq &>/dev/null; then
-    GW=$(jq -r '.models.providers | to_entries[0].value.baseUrl' "$OPENCLAW_JSON" 2>/dev/null)
-    if [[ -n "$GW" && "$GW" != "null" ]]; then
-      ok "网关: $GW"
-    else
-      warn "无法提取网关地址"
-    fi
-  fi
-else
-  fail "openclaw.json 不存在 — OpenClaw 未安装？"
-fi
-
-# ── Codex config ──
-echo "--- Codex 配置 ---"
-CODEX_CONFIG="$HOME/.codex/config.toml"
+echo "--- Codex config ---"
 if [[ -f "$CODEX_CONFIG" ]]; then
   ok "config.toml 存在"
-  MODEL=$(codex_value model)
-  ok "默认模型: ${MODEL:-未设置}"
-
+  MODEL="$(codex_top_value model)"
+  PROVIDER="$(codex_top_value model_provider)"
+  STUDIO_BASE="$(codex_provider_value studio base_url)"
+  [[ -n "$MODEL" ]] && ok "默认模型: $MODEL" || warn "默认模型未设置"
+  if [[ -n "$STUDIO_BASE" ]]; then
+    ok "studio provider: $STUDIO_BASE"
+  else
+    fail "缺少 [model_providers.studio]"
+  fi
   if grep -Eq 'responses_websockets[[:space:]]*=[[:space:]]*false' "$CODEX_CONFIG"; then
-    ok "Codex Responses WebSocket 已关闭，CPA 链路使用稳定 SSE/HTTPS"
+    ok "Responses WebSocket 已关闭"
   else
-    warn "responses_websockets 未关闭，Codex 可能先重连 WebSocket 再回退到 HTTPS/SSE"
+    warn "responses_websockets 未关闭，Codex 可能先尝试 WebSocket"
   fi
-
-  MODEL_PROVIDER=$(codex_value model_provider)
-  BASE=$(codex_cpa_base_url)
-  if [[ "$MODEL_PROVIDER" == "cpa" ]]; then
-    if [[ "$BASE" == http://127.0.0.1:*/v1 ]]; then
-      ok "Codex 当前已指向本地 Compact Proxy"
-    else
-      fail "Codex model_provider=cpa 但 base_url 未指向本地 Compact Proxy"
-    fi
+  if [[ "$PROVIDER" == "studio" ]]; then
+    ok "Codex 当前已接管到 studio provider"
   else
-    warn "Codex 当前未切换到 CPA；这是 smoke gate 通过前的预期状态"
+    warn "Codex 当前 provider: ${PROVIDER:-official/default}；smoke gate 通过前保持未接管是预期状态"
   fi
-
-  # 读取 CPA key
-  CPA_KEY=$(codex_value experimental_bearer_token)
-  if [[ -z "$CPA_KEY" ]]; then
-    CPA_KEY="studio"
-  fi
-  [[ -f "$HOME/.codex/auth.json" ]] && ok "auth.json 存在" || fail "auth.json 不存在"
 else
   fail "config.toml 不存在"
+  STUDIO_BASE=""
 fi
 
-CPA_PORT=$(grep '^port:' "$HOME/.cli-proxy-api/config.yaml" 2>/dev/null | head -1 | sed 's/[^0-9]//g')
-[[ -n "$CPA_PORT" ]] || CPA_PORT=18795
-if [[ -f "$HOME/.cli-proxy-api/config.yaml" ]]; then
-  grep -q 'remote-management:' "$HOME/.cli-proxy-api/config.yaml" && ok "CPA remote-management 已配置" || fail "CPA remote-management 缺失"
-  grep -q 'disable-control-panel: false' "$HOME/.cli-proxy-api/config.yaml" && ok "CPA 管理看板已启用" || warn "CPA 管理看板未启用"
+GATEWAY_BASE="${MODEL_GATEWAY_BASE_URL:-}"
+if [[ -z "$GATEWAY_BASE" && -n "${STUDIO_BASE:-}" ]]; then
+  GATEWAY_BASE="$(strip_v1_suffix "$STUDIO_BASE")"
+fi
+GATEWAY_BASE="${GATEWAY_BASE:-http://127.0.0.1:18796}"
+GATEWAY_BASE="${GATEWAY_BASE%/}"
+
+echo "--- Studio Gateway daemon ---"
+if is_service_active "$GATEWAY_SERVICE"; then
+  ok "$GATEWAY_SERVICE 运行中"
+else
+  warn "$GATEWAY_SERVICE 未运行；Studio API 应负责启动/恢复"
 fi
 
-# ── 连通性测试 ──
-echo "--- 连通性测试 ---"
-if ss -tlnp 2>/dev/null | grep -q ":${COMPACT_PORT}"; then
-  RESP=$(curl -s --max-time 5 -H "Authorization: Bearer ${CPA_KEY}" "http://127.0.0.1:${COMPACT_PORT}/v1/models" 2>/dev/null | head -c 200)
-  if [[ -n "$RESP" && "$RESP" != *"error"* ]]; then
-    ok "Compact Proxy → CPA → 网关 链路正常"
+if command -v curl >/dev/null 2>&1; then
+  STATUS_BODY="$(curl -fsS --max-time 5 "${GATEWAY_BASE}/gateway/status" 2>/dev/null || true)"
+  if [[ -n "$STATUS_BODY" ]]; then
+    ok "gateway status: ${GATEWAY_BASE}/gateway/status"
   else
-    warn "链路返回异常: ${RESP:0:100}"
+    fail "无法访问 ${GATEWAY_BASE}/gateway/status"
+  fi
+  MODELS_BODY="$(curl -fsS --max-time 8 "${GATEWAY_BASE}/v1/models" 2>/dev/null | head -c 200 || true)"
+  if [[ -n "$MODELS_BODY" ]]; then
+    ok "OpenAI-compatible /v1/models 可访问"
+  else
+    warn "/v1/models 暂不可访问；请检查 active provider 和 secret"
   fi
 else
-  warn "Compact Proxy 未运行，跳过连通性测试"
+  warn "curl 未安装，跳过 HTTP 连通性"
+fi
+
+echo "--- Optional cc-connect ---"
+if [[ -x "$HOME/.local/bin/cc-connect" ]] || command -v cc-connect >/dev/null 2>&1; then
+  ok "cc-connect 二进制已安装"
+  if is_service_active "cc-connect.service"; then
+    ok "cc-connect.service 运行中"
+  else
+    warn "cc-connect.service 未运行；它只是可选 IM bridge"
+  fi
+else
+  warn "cc-connect 未安装（可选 IM bridge）"
+fi
+
+echo "--- Legacy relay conflicts ---"
+legacy_active=false
+for unit in cli-proxy-api.service cpa-compact-proxy.service; do
+  if is_service_active "$unit"; then
+    warn "检测到旧 relay unit 正在运行: $unit，可能占用 Studio Gateway 端口"
+    legacy_active=true
+  fi
+done
+if [[ "$legacy_active" == false ]]; then
+  ok "未检测到旧 relay unit 运行"
 fi
 
 echo ""
 if [[ $FAIL -eq 0 ]]; then
   if [[ $WARN -eq 0 ]]; then
-    echo -e "${GREEN}═══ 所有检查通过 ═══${NC}"
+    echo -e "${GREEN}=== All checks passed ===${NC}"
   else
-    echo -e "${YELLOW}═══ 关键检查通过，但存在提示项 ═══${NC}"
+    echo -e "${YELLOW}=== Critical checks passed with warnings ===${NC}"
   fi
 else
-  echo -e "${RED}═══ 存在问题，请根据上述提示修复 ═══${NC}"
+  echo -e "${RED}=== Problems found ===${NC}"
 fi
 
-exit $FAIL
+exit "$FAIL"

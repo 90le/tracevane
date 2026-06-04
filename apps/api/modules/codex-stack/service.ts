@@ -62,7 +62,6 @@ const GPT_55_MODEL = "gpt-5.5";
 const GPT_55_CONTEXT_TOKENS = 1_050_000;
 const DEFAULT_CONTEXT_TOKENS = 20_000;
 const MAX_CONTEXT_TOKENS = GPT_55_CONTEXT_TOKENS;
-const CPA_LATEST_VERSION = "v7.1.17";
 const CPA_MANAGEMENT_PANEL_REPOSITORY = "https://github.com/router-for-me/Cli-Proxy-API-Management-Center";
 const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
 const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
@@ -1845,22 +1844,20 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       "resources/scripts/auto-setup.sh",
       "resources/scripts/health-check.sh",
       "resources/scripts/finish-cc-connect-setup.sh",
-      "resources/bin/cli-proxy-api",
-      "resources/cpa-config-templates/compact-proxy.mjs",
+      "resources/bin/cc-connect",
     ];
 
     for (const candidate of candidates) {
       const missing = required.filter((relative) => !pathExists(path.join(candidate.root, relative)));
       if (missing.length === 0) {
         const scriptsDir = path.join(candidate.root, "resources", "scripts");
-        const cpaBinary = path.join(candidate.root, "resources", "bin", "cli-proxy-api");
         return {
           channel: activeChannel,
           kind: candidate.kind,
           root: candidate.root,
           version: readText(path.join(candidate.root, "VERSION")).trim() || null,
-          cpaVersion: pathExists(cpaBinary) ? CPA_LATEST_VERSION : null,
-          cpaLatestVersion: CPA_LATEST_VERSION,
+          cpaVersion: null,
+          cpaLatestVersion: null,
           ccConnectSource: pathExists(paths().ccConnectSource) ? paths().ccConnectSource : null,
           scripts: {
             autoSetup: path.join(scriptsDir, "auto-setup.sh"),
@@ -1881,7 +1878,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       root: fallbackRoot,
       version: null,
       cpaVersion: null,
-      cpaLatestVersion: CPA_LATEST_VERSION,
+      cpaLatestVersion: null,
       ccConnectSource: pathExists(paths().ccConnectSource) ? paths().ccConnectSource : null,
       scripts: { autoSetup: null, healthCheck: null, ccConnectFinalizer: null },
       requiredFilesPresent: false,

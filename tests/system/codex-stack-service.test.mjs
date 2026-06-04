@@ -54,8 +54,7 @@ function createBundledInstaller(config, channel) {
   writeFile(path.join(root, "resources/scripts/auto-setup.sh"), "#!/usr/bin/env bash\necho setup\n", 0o755);
   writeFile(path.join(root, "resources/scripts/health-check.sh"), "#!/usr/bin/env bash\necho '  OK fake check'\n", 0o755);
   writeFile(path.join(root, "resources/scripts/finish-cc-connect-setup.sh"), "#!/usr/bin/env bash\necho finalize\n", 0o755);
-  writeFile(path.join(root, "resources/bin/cli-proxy-api"), "bin\n", 0o755);
-  writeFile(path.join(root, "resources/cpa-config-templates/compact-proxy.mjs"), "process.stdout.write('proxy\\n')\n", 0o755);
+  writeFile(path.join(root, "resources/bin/cc-connect"), "bin\n", 0o755);
 }
 
 async function waitForJob(service, jobId, timeoutMs = 3000) {
@@ -263,7 +262,7 @@ test("codex stack summary resolves bundled installer and masks secrets", async (
   assert.equal(summary.context.codexOneMillionEnabled, true);
   assert.equal(summary.models.defaultModel, "glm-5.1");
   assert.equal(summary.models.recommendedFrontier, "gpt-5.5");
-  assert.equal(summary.installer.cpaLatestVersion, "v7.1.17");
+  assert.equal(summary.installer.cpaLatestVersion, null);
   assert.notEqual(summary.secrets.cpaProxyKey.masked, "secret-cpa-key-123456");
   assert.ok(summary.models.available.includes("glm-5.1"));
 });
@@ -3064,123 +3063,71 @@ account_id = "test"
   );
 });
 
-test("bundled health check treats skipped cc-connect as warning only", () => {
+test("bundled health check validates Studio Gateway daemon and keeps cc-connect optional", () => {
   const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
     "utf8",
   );
-  assert.match(script, /cc-connect 未安装（可选，用于 IM 桥接）/);
+
+  assert.match(script, /openclaw-studio-model-gateway\.service/);
+  assert.match(script, /\/gateway\/status/);
+  assert.match(script, /\/v1\/models/);
+  assert.match(script, /cc-connect 未安装（可选 IM bridge）/);
   assert.doesNotMatch(script, /fail .*cc-connect/);
-  assert.match(script, /关键检查通过，但存在提示项/);
+  assert.match(script, /Critical checks passed with warnings/);
 });
 
-test("single bundled health check uses resolved Compact port consistently", () => {
+test("bundled health check reports old relay only as a port conflict", () => {
   const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
     "utf8",
   );
 
-  assert.match(script, /COMPACT_PORT=\$\(codex_cpa_base_url/);
-  assert.match(script, /grep -q ":\$\{COMPACT_PORT\}"/);
-  assert.match(script, /Compact Proxy 监听在 127\.0\.0\.1:\$\{COMPACT_PORT\}/);
-  assert.doesNotMatch(script, /grep -q ':18796'/);
-  assert.doesNotMatch(script, /Compact Proxy 监听在 127\.0\.0\.1:18796/);
+  assert.match(script, /Legacy relay conflicts/);
+  assert.match(script, /cli-proxy-api\.service cpa-compact-proxy\.service/);
+  assert.match(script, /可能占用 Studio Gateway 端口/);
+  assert.doesNotMatch(script, /恢复 CPA 栈|CPA → Compact|codex-stack-watchdog/);
+  assert.doesNotMatch(script, /systemctl --user start (?:cli-proxy-api|cpa-compact-proxy)/);
 });
 
-test("single bundled health check uses Studio autostart wording for systemd services", () => {
-  const script = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
-    "utf8",
-  );
-
-  assert.match(script, /systemd_is_persistently_enabled/);
-  assert.match(script, /自启动已启用/);
-  assert.match(script, /运行中，但自启动未启用 — 启用: systemctl --user enable --now \$unit/);
-  assert.match(script, /自启动未启用 — 启用: systemctl --user enable --now \$unit/);
-  assert.doesNotMatch(script, /systemctl --user enable \$svc/);
-});
-
-test("single bundled health check presents watchdog as ordered auto-managed recovery", () => {
-  const script = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
-    "utf8",
-  );
-
-  assert.match(script, /后台守护未运行；请用 Studio 的“恢复 CPA 栈”或推荐修复按 CPA → Compact → 后台守护顺序恢复/);
-  assert.match(script, /不要直接手动启动 timer/);
-  assert.match(script, /后台守护未启用；安装\/修复或恢复 CPA 栈会在链路健康后自动启用/);
-  assert.match(script, /关键检查通过，但存在提示项/);
-
-  assert.doesNotMatch(script, /启动: systemctl --user start codex-stack-watchdog\.timer/);
-  assert.doesNotMatch(script, /启用: systemctl --user enable codex-stack-watchdog\.timer/);
-  assert.doesNotMatch(script, /systemctl --user (?:start|enable) codex-stack-watchdog\.timer/);
-});
-
-test("single bundled codex stack installer keeps Codex detached until smoke gate", () => {
+test("single bundled codex stack installer prepares inactive Studio provider until smoke gate", () => {
   const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
     "utf8",
   );
-  const codexConfig = script.match(/cat > "\$CODEX_CONFIG" << TOMLEOF\n([\s\S]*?)\nTOMLEOF/)?.[1] || "";
+  const codexConfig = script.match(/cat > "\$config_file" << TOMLEOF\n([\s\S]*?)\nTOMLEOF/)?.[1] || "";
 
-  assert.doesNotMatch(codexConfig, /^model_provider = "cpa"$/m);
-  assert.doesNotMatch(codexConfig, /^openai_base_url = "http:\/\/127\.0\.0\.1:\$\{COMPACT_PORT\}\/v1"$/m);
-  assert.match(codexConfig, /\[model_providers\.cpa\]/);
+  assert.doesNotMatch(codexConfig, /^model_provider = "studio"$/m);
+  assert.doesNotMatch(codexConfig, /\[model_providers\.cpa\]/);
+  assert.match(codexConfig, /\[model_providers\.studio\][\s\S]*base_url = "\$\{STUDIO_GATEWAY_V1_BASE_URL\}"[\s\S]*wire_api = "responses"[\s\S]*experimental_bearer_token = "PROXY_MANAGED"/);
+  assert.match(codexConfig, /responses_websockets = false/);
 });
 
-test("single bundled installer keeps glm and kimi out of claude provider aliases", () => {
+test("single bundled installer no longer installs CPA or Compact relay resources", () => {
+  const script = fs.readFileSync(
+    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
+    "utf8",
+  );
+  const resourcesRoot = path.join("resources/codex-stack/codex-docs/resources");
+
+  assert.equal(fs.existsSync(path.join(resourcesRoot, "bin/cli-proxy-api")), false);
+  assert.equal(fs.existsSync(path.join(resourcesRoot, "cpa-config-templates/compact-proxy.mjs")), false);
+  assert.doesNotMatch(script, /cli-proxy-api --config|cpa-compact-proxy\.mjs|cpa-config-templates|\.cli-proxy-api\/config\.yaml/);
+  assert.doesNotMatch(script, /\[model_providers\.cpa\]/);
+  assert.match(script, /openclaw-studio-model-gateway\.service/);
+});
+
+test("single bundled installer propagates configured no-proxy into Studio cc-connect unit", () => {
   const script = fs.readFileSync(
     path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
     "utf8",
   );
 
-  assert.doesNotMatch(script, /claude-api-key:/);
-  assert.match(script, /name: mlamp\/kimi-k2\.6[\s\S]*alias: kimi-k2\.6/);
-  assert.match(script, /name: glm-5\.1/);
-});
-
-test("single bundled installer uses provider-specific proxy policy", () => {
-  const script = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-
-  assert.match(script, /function isDomesticOrLocal/);
-  assert.match(script, /MLAMP_PROXY_URL=.*providerProxy/);
-  assert.match(script, /BIGMODEL_PROXY_URL=.*providerProxy/);
-  assert.match(script, /proxy-url: "\$\{MLAMP_PROXY_URL:-direct\}"/);
-  assert.match(script, /proxy-url: "\$\{BIGMODEL_PROXY_URL:-direct\}"/);
-});
-
-test("single bundled installer propagates configured no-proxy into systemd units", () => {
-  const script = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-
-  assert.match(script, /envVal\(\['OPENCLAW_NO_PROXY', 'NO_PROXY'\]\)/);
-  assert.match(script, /Environment=NO_PROXY=\$\{NO_PROXY_VAL\}/);
-  assert.match(script, /Environment=OPENCLAW_NO_PROXY=\$\{NO_PROXY_VAL\}/);
-  assert.equal((script.match(/Environment=OPENCLAW_NO_PROXY=\$\{NO_PROXY_VAL\}/g) || []).length, 3);
+  assert.match(script, /no_proxy_value/);
+  assert.match(script, /Environment=NO_PROXY=\$\{no_proxy\}/);
+  assert.match(script, /Environment=OPENCLAW_NO_PROXY=\$\{no_proxy\}/);
+  assert.equal((script.match(/Environment=OPENCLAW_NO_PROXY=\$\{no_proxy\}/g) || []).length, 1);
   assert.doesNotMatch(script, /Environment=NO_PROXY=localhost,127\.0\.0\.1,::1/);
-});
-
-test("single bundled installer cleans legacy CPA relaunch timers and avoids always-on CPA restarts", () => {
-  const script = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/auto-setup.sh"),
-    "utf8",
-  );
-  const health = fs.readFileSync(
-    path.join("resources/codex-stack/codex-docs/resources/scripts/health-check.sh"),
-    "utf8",
-  );
-
-  assert.match(script, /disable --now cli-proxy-api-healthcheck\.timer/);
-  assert.match(script, /cli-proxy-api\.service\.d\/10-always-on\.conf/);
-  assert.match(script, /cpa-compact-proxy\.service\.d\/10-always-on\.conf/);
-  assert.match(script, /Description=CPA cli-proxy-api[\s\S]*Restart=on-failure/);
-  assert.match(script, /Description=CPA Compact Proxy[\s\S]*Restart=on-failure/);
-  assert.match(health, /codex_cpa_provider_value/);
 });
 
 test("single bundled resources keep cc-connect finalizer and remove legacy dmwork folder", () => {
