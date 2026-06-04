@@ -200,7 +200,7 @@ OpenCode / OpenClaw takeover：
 
 必须把协议转换从 `compact-proxy.mjs` 的单文件 shim 升级为可测试 adapter。
 
-Adapter backlog 按三协议矩阵推进：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 三种输入协议最终都要能输出另外两种客户端协议。Phase 1 先锁定 `openai_chat` -> Codex Responses / compact，因为这覆盖最多第三方模型接入 Codex 的现实场景。
+Adapter backlog 按三协议矩阵推进：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 三种输入协议最终都要能输出另外两种客户端协议。Phase 1 先锁定 `openai_chat` -> Codex Responses / compact，因为这覆盖最多第三方模型接入 Codex 的现实场景；随后补 `anthropic_messages` -> OpenAI Chat，让 Claude 官方 API provider 也能服务 Chat Completions 客户端。
 
 Codex adapter：
 
@@ -222,6 +222,8 @@ Phase 1 implementation note（2026-06-04）：
 - compact `stream: true` 会进入同一 Chat SSE -> Responses SSE adapter，但尚未用 compact-specific streaming 用例单独锁定。
 - 已用 system tests 锁定 native `openai_responses` provider 的 `/v1/responses` 和 `/v1/responses/compact` passthrough，以及 native `anthropic_messages` provider 的 `/v1/messages` / `/claude/v1/messages` passthrough。
 - 同一批 matrix tests 会确认未实现的跨协议格子继续返回 `model_gateway_adapter_required`，避免伪成功。
+- 已落地 `openai_chat_completions` client -> native `anthropic_messages` provider 的最小非流式 adapter，覆盖 system prompt、messages、tools、tool_choice、tool results、default `anthropic-version`、Anthropic response -> Chat response 和 usage 映射。
+- Chat streaming -> Anthropic Messages streaming 尚未实现，`stream: true` 仍明确返回 `model_gateway_adapter_required`。
 - streaming tool calls、streaming reasoning restore、provider-specific reasoning quirks 仍保持后续阶段任务。
 - 该实现只作为 Phase 1 contract foundation；完整 adapter 仍必须补 compact 专用语义、完整 streaming tool/reasoning 状态机、完整 history/reasoning store 和 provider-specific quirks。
 
@@ -341,7 +343,8 @@ Router 是新链路稳定性的核心：
 - 已开放 CLI 入口 `POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/messages`、`POST /claude/v1/messages`。
 - 当前 `openai_chat` provider 的 `/v1/chat/completions` 是 passthrough；Codex `/v1/responses` 和 `/v1/responses/compact` 对 `openai_chat` provider 已经通过 Chat adapter 可执行。
 - native `openai_responses` 和 native `anthropic_messages` 的 passthrough paths 已有 system tests 覆盖。
-- Claude Messages 和未支持的协议组合仍返回 `model_gateway_adapter_required`。
+- native `anthropic_messages` provider 的 `/v1/chat/completions` 非流式 adapter 已有 system tests 覆盖。
+- 未支持的协议组合仍返回 `model_gateway_adapter_required`。
 - 已补齐 provider delete、active provider 设置、provider test endpoint、runtime request log 和 provider health 更新。
 - `runtime.json` 已记录 gateway request / provider test 的有界日志，status 返回 request log size/latest timestamp。
 - Router 已能在 active provider circuit open 时选择同 app scope fallback provider，并在 route decision 中返回 `failoverReason`。

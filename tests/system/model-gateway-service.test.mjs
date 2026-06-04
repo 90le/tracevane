@@ -533,25 +533,12 @@ test("model gateway protocol matrix forwards native anthropic messages and guard
       assert.equal(responses.body.error.decision.mode, "adapter-required");
       assert.equal(responses.body.error.decision.routeId, "openai_responses");
 
-      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
-        method: "POST",
-        body: {
-          model: "claude-native",
-          messages: [{ role: "user", content: "chat please" }],
-        },
-      });
-      assert.equal(chat.status, 501);
-      assert.equal(chat.body.error.code, "model_gateway_adapter_required");
-      assert.equal(chat.body.error.decision.mode, "adapter-required");
-      assert.equal(chat.body.error.decision.routeId, "openai_chat_completions");
-
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
         ["anthropic_messages", "/v1/messages", "success"],
         ["anthropic_messages", "/claude/v1/messages", "success"],
         ["openai_responses", "/v1/responses", "adapter-required"],
-        ["openai_chat_completions", "/v1/chat/completions", "adapter-required"],
       ]);
       assert.ok(!JSON.stringify(runtime.body).includes("sk-native-anthropic-secret"));
     });
@@ -576,6 +563,197 @@ test("model gateway protocol matrix forwards native anthropic messages and guard
     model: "claude-native",
     max_tokens: 64,
     messages: [{ role: "user", content: "hello via alias" }],
+  });
+});
+
+test("model gateway adapts chat completions through native anthropic messages providers", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-to-anthropic",
+      name: "Chat To Anthropic Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://chat-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-chat-anthropic-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "msg_chat_adapter",
+      type: "message",
+      role: "assistant",
+      model: "claude-native",
+      content: [
+        { type: "text", text: "Sunny in Tokyo." },
+        { type: "tool_use", id: "call_save", name: "save_weather", input: { city: "Tokyo" } },
+      ],
+      stop_reason: "tool_use",
+      usage: {
+        input_tokens: 11,
+        output_tokens: 7,
+        cache_read_input_tokens: 3,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          messages: [
+            { role: "system", content: "Use metric units." },
+            { role: "user", content: "Weather?" },
+            {
+              role: "assistant",
+              content: "I will check.",
+              tool_calls: [{
+                id: "call_weather",
+                type: "function",
+                function: {
+                  name: "get_weather",
+                  arguments: "{\"city\":\"Tokyo\"}",
+                },
+              }],
+            },
+            {
+              role: "tool",
+              tool_call_id: "call_weather",
+              content: "Sunny",
+            },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "get_weather",
+              description: "Get weather info",
+              parameters: {
+                type: "object",
+                properties: { city: { type: "string" } },
+                required: ["city"],
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "get_weather" } },
+          max_tokens: 128,
+          temperature: 0.2,
+          top_p: 0.9,
+          stop: ["END"],
+        },
+      });
+
+      assert.equal(chat.status, 200);
+      assert.equal(chat.headers["x-openclaw-model-gateway-provider"], "chat-to-anthropic");
+      assert.equal(chat.body.id, "msg_chat_adapter");
+      assert.equal(chat.body.object, "chat.completion");
+      assert.equal(chat.body.model, "claude-native");
+      assert.equal(chat.body.choices[0].finish_reason, "tool_calls");
+      assert.deepEqual(chat.body.choices[0].message, {
+        role: "assistant",
+        content: "Sunny in Tokyo.",
+        tool_calls: [{
+          id: "call_save",
+          type: "function",
+          function: {
+            name: "save_weather",
+            arguments: "{\"city\":\"Tokyo\"}",
+          },
+        }],
+      });
+      assert.deepEqual(chat.body.usage, {
+        prompt_tokens: 11,
+        completion_tokens: 7,
+        total_tokens: 18,
+        prompt_tokens_details: { cached_tokens: 3 },
+      });
+
+      const stream = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          stream: true,
+          messages: [{ role: "user", content: "stream please" }],
+        },
+      });
+      assert.equal(stream.status, 501);
+      assert.equal(stream.body.error.code, "model_gateway_adapter_required");
+      assert.equal(stream.body.error.decision.mode, "adapter-required");
+      assert.equal(stream.body.error.decision.routeId, "openai_chat_completions");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
+        ["openai_chat_completions", "/v1/chat/completions", "success"],
+        ["openai_chat_completions", "/v1/chat/completions", "adapter-required"],
+      ]);
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-chat-anthropic-secret"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].method, "POST");
+  assert.equal(upstreamCalls[0].authorization, null);
+  assert.equal(upstreamCalls[0].xApiKey, "sk-chat-anthropic-secret");
+  assert.equal(upstreamCalls[0].anthropicVersion, "2023-06-01");
+  assert.equal(upstreamCalls[0].contentType, "application/json");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "claude-native",
+    max_tokens: 128,
+    messages: [
+      { role: "user", content: "Weather?" },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "I will check." },
+          { type: "tool_use", id: "call_weather", name: "get_weather", input: { city: "Tokyo" } },
+        ],
+      },
+      {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "call_weather", content: "Sunny" }],
+      },
+    ],
+    system: "Use metric units.",
+    temperature: 0.2,
+    top_p: 0.9,
+    stop_sequences: ["END"],
+    tools: [{
+      name: "get_weather",
+      description: "Get weather info",
+      input_schema: {
+        type: "object",
+        properties: { city: { type: "string" } },
+        required: ["city"],
+      },
+    }],
+    tool_choice: { type: "tool", name: "get_weather" },
   });
 });
 
