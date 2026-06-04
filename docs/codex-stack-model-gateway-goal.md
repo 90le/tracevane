@@ -114,6 +114,22 @@ Gateway 需要提供：
 - `POST /v1/messages` 和 `/claude/v1/messages`：Anthropic Messages 入口。
 - 其他 OpenAI-compatible path 的有限 forward，必须有 allowlist 和日志。
 
+最终协议兼容目标：
+
+用户配置 provider 时只需要说明该 provider 的原生协议；Studio 必须把这个 provider 暴露成三种主流客户端协议，让 Claude Code、Codex、OpenClaw、OpenCode 和其他 AI CLI / IDE 工具都能接入同一个 provider pool。
+
+| Provider 原生协议 | 市场含义 | 目标客户端协议面 |
+| --- | --- | --- |
+| Anthropic Messages | Claude 官方 API / Claude Code 原生协议 | Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions |
+| OpenAI Responses API | Codex 官方 API / Codex 原生协议 | Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions |
+| OpenAI Chat Completions | 第三方模型最常见兼容协议 | Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions |
+
+原则：
+
+- provider 原生协议和客户端协议相同时走 passthrough。
+- provider 原生协议和客户端协议不同时走 Gateway adapter，不能把用户退回到“只能使用原生支持的 CLI”。
+- 未实现的组合必须返回明确 `model_gateway_adapter_required`，直到对应 adapter 和测试补齐。
+
 Local Gateway Edge 需要运行在 Studio 后端可控制的生命周期里。因为 Codex / Claude Code 可能在 Studio UI 关闭后继续使用，最终应支持：
 
 - Studio API 内嵌启动，用于开发和 OpenClaw Gateway 模式。
@@ -184,6 +200,8 @@ OpenCode / OpenClaw takeover：
 
 必须把协议转换从 `compact-proxy.mjs` 的单文件 shim 升级为可测试 adapter。
 
+Adapter backlog 按三协议矩阵推进：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 三种输入协议最终都要能输出另外两种客户端协议。Phase 1 先锁定 `openai_chat` -> Codex Responses / compact，因为这覆盖最多第三方模型接入 Codex 的现实场景。
+
 Codex adapter：
 
 - Responses -> Chat request conversion。
@@ -200,8 +218,10 @@ Phase 1 implementation note（2026-06-04）：
 - `/v1/responses` 对 `openai_chat` provider 可执行。
 - 已落地 Chat SSE -> Responses SSE 文本 delta 最小状态机，支持 `response.created`、`response.in_progress`、message output item、`response.output_text.delta`、done events、`response.completed` 和 `[DONE]`。
 - 已新增 `codex-history.json`，用于保存 assistant function_call output items，并在后续 `previous_response_id + function_call_output` 请求中恢复 Chat 所需的 assistant `tool_calls` 消息。
-- `/v1/responses/compact`、streaming tool calls、streaming reasoning restore、provider-specific reasoning quirks 仍保持后续阶段任务。
-- 该实现只作为 Phase 1 contract foundation；完整 adapter 仍必须补 compact 语义、完整 streaming tool/reasoning 状态机、完整 history/reasoning store 和 provider-specific quirks。
+- `/v1/responses/compact` 对 `openai_chat` provider 已复用 Responses -> Chat adapter，可执行最小非流式 compact contract；native `openai_responses` provider 的 compact route 可 passthrough。
+- compact `stream: true` 会进入同一 Chat SSE -> Responses SSE adapter，但尚未用 compact-specific streaming 用例单独锁定。
+- streaming tool calls、streaming reasoning restore、provider-specific reasoning quirks 仍保持后续阶段任务。
+- 该实现只作为 Phase 1 contract foundation；完整 adapter 仍必须补 compact 专用语义、完整 streaming tool/reasoning 状态机、完整 history/reasoning store 和 provider-specific quirks。
 
 Claude adapter：
 
@@ -317,7 +337,8 @@ Router 是新链路稳定性的核心：
 - 已实现 provider registry + secret store 的 v1 文件存储，路径位于 `~/.openclaw/studio/model-gateway/`，secret 文件使用 `0600` 和 masked view。
 - 已开放 `GET /gateway/status`、`GET /gateway/providers`、`GET/POST/PUT /api/model-gateway/providers`、`POST /api/model-gateway/providers/:providerId/secret`。
 - 已开放 CLI 入口 `POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/messages`、`POST /claude/v1/messages`。
-- 当前仅 `openai_chat` provider 的 `/v1/chat/completions` 是 passthrough；Codex Responses / compact 和 Claude Messages 在 provider 协议不匹配时返回 `model_gateway_adapter_required`，等待后续 adapter。
+- 当前 `openai_chat` provider 的 `/v1/chat/completions` 是 passthrough；Codex `/v1/responses` 和 `/v1/responses/compact` 对 `openai_chat` provider 已经通过 Chat adapter 可执行。
+- Claude Messages 和未支持的协议组合仍返回 `model_gateway_adapter_required`。
 - 已补齐 provider delete、active provider 设置、provider test endpoint、runtime request log 和 provider health 更新。
 - `runtime.json` 已记录 gateway request / provider test 的有界日志，status 返回 request log size/latest timestamp。
 - Router 已能在 active provider circuit open 时选择同 app scope fallback provider，并在 route decision 中返回 `failoverReason`。

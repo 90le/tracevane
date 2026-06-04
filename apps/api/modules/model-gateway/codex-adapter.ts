@@ -25,7 +25,10 @@ export function isCodexResponsesToChatAdapterTarget(decision: {
   routeId: string | null;
   provider: { apiFormat: string } | null;
 }): boolean {
-  return decision.routeId === "openai_responses" && decision.provider?.apiFormat === "openai_chat";
+  return (
+    decision.routeId === "openai_responses"
+    || decision.routeId === "openai_responses_compact"
+  ) && decision.provider?.apiFormat === "openai_chat";
 }
 
 export function isCodexResponsesStreamingRequest(bodyText: string | undefined): boolean {

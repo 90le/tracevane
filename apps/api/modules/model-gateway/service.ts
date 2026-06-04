@@ -465,7 +465,7 @@ function routeMode(routeId: ModelGatewayRouteId, provider: ModelGatewayProvider)
     return provider.apiFormat === "openai_responses" ? "passthrough" : "adapter-required";
   }
   if (routeId === "openai_responses_compact") {
-    return "adapter-required";
+    return provider.apiFormat === "openai_responses" ? "passthrough" : "adapter-required";
   }
   if (routeId === "anthropic_messages") {
     return provider.apiFormat === "anthropic_messages" ? "passthrough" : "adapter-required";

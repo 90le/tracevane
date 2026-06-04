@@ -577,6 +577,118 @@ test("model gateway adapts streaming chat sse to codex responses sse", async () 
   });
 });
 
+test("model gateway adapts codex compact requests through openai chat providers", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-compact-adapter",
+      name: "Codex Compact Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-compact.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-compact-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_compact",
+      created: 1_710_000_030,
+      model: "gpt-test",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "## Compact summary\n- Current task is model gateway.",
+        },
+        finish_reason: "stop",
+      }],
+      usage: {
+        prompt_tokens: 50,
+        completion_tokens: 12,
+        total_tokens: 62,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const compact = await requestJson(`${baseUrl}/v1/responses/compact`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          instructions: "Summarize the conversation for handoff.",
+          input: [
+            { role: "user", content: "We are building Model Gateway." },
+            { role: "assistant", content: "Provider registry and adapter are implemented." },
+          ],
+          stream: false,
+          max_output_tokens: 2048,
+        },
+      });
+
+      assert.equal(compact.status, 200);
+      assert.equal(compact.headers["x-openclaw-model-gateway-provider"], "codex-compact-adapter");
+      assert.equal(compact.body.id, "chatcmpl_compact");
+      assert.equal(compact.body.object, "response");
+      assert.equal(compact.body.output[0].content[0].text, "## Compact summary\n- Current task is model gateway.");
+      assert.deepEqual(compact.body.usage, {
+        input_tokens: 50,
+        output_tokens: 12,
+        total_tokens: 62,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      });
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog.length, 1);
+      assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_responses_compact");
+      assert.equal(runtime.body.runtime.requestLog[0].requestedPath, "/v1/responses/compact");
+      assert.equal(runtime.body.runtime.requestLog[0].upstreamUrl, "https://codex-compact.example.test/v1/chat/completions");
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "success");
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-codex-compact-secret"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://codex-compact.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].method, "POST");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-codex-compact-secret");
+  assert.equal(upstreamCalls[0].contentType, "application/json");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "gpt-test",
+    messages: [
+      { role: "system", content: "Summarize the conversation for handoff." },
+      { role: "user", content: "We are building Model Gateway." },
+      { role: "assistant", content: "Provider registry and adapter are implemented." },
+    ],
+    stream: false,
+    max_tokens: 2048,
+  });
+});
+
 test("model gateway restores codex tool-call history for follow-up chat adapter requests", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
