@@ -56,13 +56,13 @@
         <CodexStackCcConnectProviderPanel
           :language="language"
           :providers="providers"
-          :compact-proxy-base-url="compactProxyBaseUrl"
+          :studio-gateway-provider-base-url="studioGatewayProviderBaseUrl"
           :loading="loading"
           :busy="busy"
           :busy-disabled-help="busyDisabledHelp"
           @update-language="(nextLanguage) => emit('update-language', nextLanguage)"
           @update-provider-field="(providerId, field, value) => emit('update-provider-field', providerId, field, value)"
-          @ensure-cpa-provider="emit('ensure-cpa-provider')"
+          @ensure-studio-gateway-provider="emit('ensure-studio-gateway-provider')"
           @add-provider="emit('add-provider')"
           @remove-provider="(providerId) => emit('remove-provider', providerId)"
         />
@@ -148,7 +148,7 @@ defineProps<{
   loading: boolean;
   language: string;
   providers: CodexStackCcConnectProviderDraft[];
-  compactProxyBaseUrl: string;
+  studioGatewayProviderBaseUrl: string;
   commands: string[];
   rawDraft: string;
 }>();
@@ -172,7 +172,7 @@ const emit = defineEmits<{
   "remove-platform-option": [platformId: string, optionId: string];
   "update-language": [language: string];
   "update-provider-field": [providerId: string, field: CodexStackCcConnectProviderField, value: string];
-  "ensure-cpa-provider": [];
+  "ensure-studio-gateway-provider": [];
   "add-provider": [];
   "remove-provider": [providerId: string];
   "copy-setup": [platform: CodexStackCcConnectSetupPlatform];

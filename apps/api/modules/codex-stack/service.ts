@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
-  CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS,
+  CODEX_STACK_REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS,
 } from "../../../../types/codex-stack.js";
 import {
   MODEL_GATEWAY_DAEMON_SERVICE_NAME,
@@ -65,7 +65,7 @@ const DEFAULT_CONTEXT_TOKENS = 20_000;
 const MAX_CONTEXT_TOKENS = GPT_55_CONTEXT_TOKENS;
 const OFFICIAL_DEFAULT_MODEL = "glm-5.1";
 const DMWORK_DEFAULT_MODEL = "kimi-k2.6";
-const REQUIRED_CPA_SMOKE_CHECKS = CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS;
+const REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS = CODEX_STACK_REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS;
 const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function isDmworkFamily(channel?: CodexStackChannel): boolean {
@@ -1372,7 +1372,7 @@ function isSmokeMatrixComplete(matrix: CodexStackSmokeMatrixResult | null | unde
     const result = results.get(model);
     if (result?.status !== "passed") return false;
     const passedChecks = new Set(result.checks.filter((check) => check.status === "passed").map((check) => check.id));
-    return REQUIRED_CPA_SMOKE_CHECKS.every((checkId) => passedChecks.has(checkId));
+      return REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS.every((checkId) => passedChecks.has(checkId));
   });
 }
 
@@ -1407,8 +1407,8 @@ function smokeMatrixFailureDetail(matrix: CodexStackSmokeMatrixResult | null | u
 }
 
 function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSummaryPayload["proxyPolicy"] {
-  const cpaConfigProxyUrls = collectCpaProxyUrls(cpaConfig);
-  const configuredProxy = cpaConfigProxyUrls.find((value) => value !== "direct") || "";
+  const providerConfigProxyUrls = collectCpaProxyUrls(cpaConfig);
+  const configuredProxy = providerConfigProxyUrls.find((value) => value !== "direct") || "";
   const topLevelUpstreamBaseUrl = readYamlStringEntry(cpaConfig, "upstream_base_url");
   const topLevelUpstreamApiKey = readYamlStringEntry(cpaConfig, "upstream_api_key");
   const configuredUpstreamBaseUrl = readOpenclawConfiguredEnvValue(openclawPath, ["OPENCLAW_UPSTREAM_BASE_URL"]);
@@ -1442,11 +1442,11 @@ function readProxyPolicy(cpaConfig: string, openclawPath: string): CodexStackSum
   return {
     providerMode: (configuredProxy || providerProxyOverride.value) ? "proxy" : "direct",
     providerProxyUrl: configuredProxy || providerProxyOverride.value || (configuredProviderProxy.present ? "" : fallbackProxy.value) || null,
-    providerProxySource: configuredProxy ? "cpa-config" : (providerProxyOverride.source || (configuredProviderProxy.present ? null : fallbackProxy.source)),
+    providerProxySource: configuredProxy ? "provider-config" : (providerProxyOverride.source || (configuredProviderProxy.present ? null : fallbackProxy.source)),
     noProxy,
     noProxyLoopbackReady: missingLoopback.length === 0,
     noProxyLoopbackMissing: missingLoopback,
-    cpaConfigProxyUrls,
+    providerConfigProxyUrls,
     upstreamBaseUrl: upstreamBaseUrl || null,
     upstreamApiKeyConfigured: Boolean(upstreamApiKey),
   };
@@ -1585,21 +1585,6 @@ async function execText(
   }
 }
 
-async function probeUrl(url: string, token = ""): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 1500);
-  try {
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const response = await fetch(url, { headers, signal: controller.signal });
-    return response.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 10_000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -1658,7 +1643,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const context = readCodexContext(codex);
     const proxyPolicy = readProxyPolicy(cpa, currentPaths.openclawJson);
     const storedProfile = readJsonFile<Partial<CodexStackProfile>>(profilePath(), {});
-    const hasExplicitProxyPolicy = proxyPolicy.cpaConfigProxyUrls.length > 0
+    const hasExplicitProxyPolicy = proxyPolicy.providerConfigProxyUrls.length > 0
       || Boolean(proxyPolicy.providerProxySource && !proxyPolicy.providerProxySource.startsWith("process.env."));
     const hasExplicitUpstreamPolicy = /(?:^|\n)\s*(?:upstream_base_url|upstream_api_key|openai-compatibility):/m.test(cpa);
     return {
@@ -1882,103 +1867,118 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     }
   }
 
-  function smokeChecks(ports: { cpa: number; compact: number }, token: string, model: string): Array<{
+  function studioGatewayBaseUrl(): string {
+    return `http://${MODEL_GATEWAY_DEFAULT_HOST}:${MODEL_GATEWAY_DEFAULT_PORT}`;
+  }
+
+  async function assertStudioGatewayLocalDaemon(baseUrl: string): Promise<void> {
+    const statusResponse = await fetchWithTimeout(`${baseUrl}/gateway/status`, {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+    }, 10_000);
+    const statusText = await statusResponse.text();
+    if (!statusResponse.ok) {
+      throw new Error(`Studio gateway status failed with HTTP ${statusResponse.status}: ${statusText.slice(0, 800)}`);
+    }
+    let status: unknown;
+    try {
+      status = JSON.parse(statusText) as unknown;
+    } catch {
+      throw new Error(`Studio gateway status returned invalid JSON: ${statusText.slice(0, 800)}`);
+    }
+    if (!isRecord(status) || !isRecord(status.lifecycle) || !isRecord(status.lifecycle.localDaemon)) {
+      throw new Error(`Studio gateway status did not include localDaemon lifecycle: ${JSON.stringify(status).slice(0, 800)}`);
+    }
+    if (status.lifecycle.localDaemon.runtimeMode !== "local-daemon") {
+      throw new Error(`Studio gateway localDaemon is not active: ${JSON.stringify(status.lifecycle.localDaemon).slice(0, 800)}`);
+    }
+  }
+
+  function smokeChecks(baseUrl: string, model: string): Array<{
     id: CodexStackSmokeCheckId;
     label: string;
     run: () => Promise<void>;
   }> {
-    const cpaBase = `http://127.0.0.1:${ports.cpa}`;
-    const compactBase = `http://127.0.0.1:${ports.compact}`;
     return [
       {
-        id: "cpa-health",
-        label: "CPA health",
+        id: "studio-gateway-health",
+        label: "Studio Gateway local-daemon status",
         run: async () => {
-        if (!await probeUrl(`${cpaBase}/healthz`)) throw new Error("CPA /healthz is not reachable");
+          await assertStudioGatewayLocalDaemon(baseUrl);
         },
       },
       {
-        id: "compact-health",
-        label: "Compact health",
+        id: "studio-gateway-chat",
+        label: "Studio Gateway chat completions",
         run: async () => {
-        if (!await probeUrl(`${compactBase}/healthz`)) throw new Error("Compact /healthz is not reachable");
+          await postSmokeJson("Studio Gateway chat completions", `${baseUrl}/v1/chat/completions`, "", {
+            model,
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 8,
+            stream: false,
+          });
         },
       },
       {
-        id: "cpa-chat",
-        label: "CPA chat",
+        id: "studio-gateway-responses",
+        label: "Studio Gateway responses non-stream",
         run: async () => {
-        await postSmokeJson("CPA chat", `${cpaBase}/v1/chat/completions`, token, {
-          model,
-          messages: [{ role: "user", content: "ping" }],
-          max_tokens: 8,
-          stream: false,
-        });
-        },
-      },
-      {
-        id: "compact-non-stream",
-        label: "Compact responses non-stream",
-        run: async () => {
-        const payload = await postSmokeJson("Compact responses non-stream", `${compactBase}/v1/responses`, token, {
-          model,
-          input: "ping",
-          max_output_tokens: 8,
-          stream: false,
-        });
-        if (!isRecord(payload) || payload.status === "failed") {
-          throw new Error(`Compact non-stream returned failed response: ${JSON.stringify(payload).slice(0, 800)}`);
-        }
-        },
-      },
-      {
-        id: "compact-stream",
-        label: "Compact responses stream",
-        run: async () => {
-        const response = await fetchWithTimeout(`${compactBase}/v1/responses`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
+          const payload = await postSmokeJson("Studio Gateway responses non-stream", `${baseUrl}/v1/responses`, "", {
             model,
             input: "ping",
             max_output_tokens: 8,
-            stream: true,
-          }),
-        }, 30_000);
-        const text = await response.text();
-        if (!response.ok) throw new Error(`Compact stream failed with HTTP ${response.status}: ${text.slice(0, 800)}`);
-        const events = parseSseEvents(text);
-        const failed = events.find((event) => event.event === "response.failed");
-        if (failed) throw new Error(`Compact stream emitted response.failed: ${failed.data.slice(0, 800)}`);
-        if (!events.some((event) => event.event === "response.completed")) {
-          throw new Error(`Compact stream did not emit response.completed: ${text.slice(0, 800)}`);
-        }
-        if (events.at(-1)?.data !== "[DONE]") throw new Error("Compact stream did not finish with [DONE]");
+            stream: false,
+          });
+          if (!isRecord(payload) || payload.status === "failed") {
+            throw new Error(`Studio Gateway responses non-stream returned failed response: ${JSON.stringify(payload).slice(0, 800)}`);
+          }
         },
       },
       {
-        id: "compact-compact",
-        label: "Compact compaction",
+        id: "studio-gateway-responses-stream",
+        label: "Studio Gateway responses stream",
         run: async () => {
-        const sentinel = compactSmokeSentinel(model);
-        const payload = await postSmokeJson("Compact compaction", `${compactBase}/v1/responses/compact`, token, {
-          model,
-          input: buildCompactSmokeInput(model),
-          thread_id: "studio-smoke",
-        });
-        if (!isRecord(payload) || payload.status === "failed") {
-          throw new Error(`Compact compaction returned failed response: ${JSON.stringify(payload).slice(0, 800)}`);
-        }
-        const outputText = extractResponseOutputText(payload);
-        if (!outputText.trim()) {
-          throw new Error("Compact compaction returned an empty summary");
-        }
-        if (!outputText.includes(sentinel)) {
-          throw new Error(`Compact compaction did not preserve sentinel ${sentinel}`);
-        }
+          const response = await fetchWithTimeout(`${baseUrl}/v1/responses`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model,
+              input: "ping",
+              max_output_tokens: 8,
+              stream: true,
+            }),
+          }, 30_000);
+          const text = await response.text();
+          if (!response.ok) throw new Error(`Studio Gateway responses stream failed with HTTP ${response.status}: ${text.slice(0, 800)}`);
+          const events = parseSseEvents(text);
+          const failed = events.find((event) => event.event === "response.failed");
+          if (failed) throw new Error(`Studio Gateway responses stream emitted response.failed: ${failed.data.slice(0, 800)}`);
+          if (!events.some((event) => event.event === "response.completed")) {
+            throw new Error(`Studio Gateway responses stream did not emit response.completed: ${text.slice(0, 800)}`);
+          }
+          if (events.at(-1)?.data !== "[DONE]") throw new Error("Studio Gateway responses stream did not finish with [DONE]");
+        },
+      },
+      {
+        id: "studio-gateway-responses-compact",
+        label: "Studio Gateway responses compact",
+        run: async () => {
+          const sentinel = compactSmokeSentinel(model);
+          const payload = await postSmokeJson("Studio Gateway responses compact", `${baseUrl}/v1/responses/compact`, "", {
+            model,
+            input: buildCompactSmokeInput(model),
+            thread_id: "studio-gateway-smoke",
+          });
+          if (!isRecord(payload) || payload.status === "failed") {
+            throw new Error(`Studio Gateway responses compact returned failed response: ${JSON.stringify(payload).slice(0, 800)}`);
+          }
+          const outputText = extractResponseOutputText(payload);
+          if (!outputText.trim()) {
+            throw new Error("Studio Gateway responses compact returned an empty summary");
+          }
+          if (!outputText.includes(sentinel)) {
+            throw new Error(`Studio Gateway responses compact did not preserve sentinel ${sentinel}`);
+          }
         },
       },
     ];
@@ -2015,9 +2015,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         role: "user",
         content: [
           `Model under test: ${model}.`,
-          "CPA routes OpenAI-compatible requests.",
-          "Compact adapts /v1/responses and /v1/responses/compact for Codex.",
-          "watchdog must not restart a deliberately paused stack.",
+          "Studio Gateway routes OpenAI Chat Completions requests.",
+          "Studio Gateway adapts /v1/responses and /v1/responses/compact for Codex.",
+          "The supervised local daemon must keep serving model relay when Studio API/UI or OpenClaw mount stops.",
         ].join(" "),
       },
       {
@@ -2033,8 +2033,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
 
   async function runSmokeChecksForModel(
     job: CodexStackJob,
-    ports: { cpa: number; compact: number },
-    token: string,
+    baseUrl: string,
     model: string,
   ): Promise<CodexStackSmokeModelResult> {
     const modelStartedMs = Date.now();
@@ -2042,10 +2041,10 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const checks: CodexStackSmokeCheckResult[] = [];
     const errors: string[] = [];
 
-    for (const check of smokeChecks(ports, token, model)) {
+    for (const check of smokeChecks(baseUrl, model)) {
       const checkStartedMs = Date.now();
       const checkStartedAt = new Date().toISOString();
-      appendJobLog(job, `Smoke gate (${model}): ${check.label}...\n`, [token]);
+      appendJobLog(job, `Smoke gate (${model}): ${check.label}...\n`);
       try {
         await check.run();
         const checkFinishedMs = Date.now();
@@ -2058,7 +2057,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           durationMs: Math.max(0, checkFinishedMs - checkStartedMs),
           error: null,
         });
-        appendJobLog(job, `Smoke gate (${model}): ${check.label} passed.\n`, [token]);
+        appendJobLog(job, `Smoke gate (${model}): ${check.label} passed.\n`);
       } catch (error) {
         const checkFinishedMs = Date.now();
         const message = error instanceof Error ? error.message : String(error);
@@ -2072,7 +2071,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           durationMs: Math.max(0, checkFinishedMs - checkStartedMs),
           error: message,
         });
-        appendJobLog(job, `Smoke gate (${model}): ${check.label} failed: ${message}\n`, [token]);
+        appendJobLog(job, `Smoke gate (${model}): ${check.label} failed: ${message}\n`);
       }
     }
 
@@ -2114,10 +2113,8 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     );
   }
 
-  async function runCodexCpaSmokeMatrix(
+  async function runCodexStudioGatewaySmokeMatrix(
     job: CodexStackJob,
-    ports: { cpa: number; compact: number },
-    token: string,
     models: string[],
   ): Promise<CodexStackSmokeMatrixResult> {
     const matrixStartedMs = Date.now();
@@ -2131,10 +2128,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         400,
       );
     }
-    appendJobLog(job, `Smoke matrix: validating ${requiredModels.join(", ")} without switching Codex.\n`, [token]);
+    const baseUrl = studioGatewayBaseUrl();
+    appendJobLog(job, `Studio Gateway route smoke matrix: validating ${requiredModels.join(", ")} at ${baseUrl} without switching Codex.\n`);
     const results: CodexStackSmokeModelResult[] = [];
     for (const model of requiredModels) {
-      results.push(await runSmokeChecksForModel(job, ports, token, model));
+      results.push(await runSmokeChecksForModel(job, baseUrl, model));
     }
     const matrixFinishedMs = Date.now();
     const status = results.every((result) => result.status === "passed") ? "passed" : "failed";
@@ -2148,34 +2146,15 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     };
     const profile = readProfile();
     writeProfile({ ...profile, lastSmokeMatrix: matrix });
-    appendJobLog(job, `Smoke matrix ${status}; attachEligible=${matrix.attachEligible ? "true" : "false"}.\n`, [token]);
+    appendJobLog(job, `Studio Gateway route smoke matrix ${status}; attachEligible=${matrix.attachEligible ? "true" : "false"}.\n`);
     return matrix;
   }
 
   async function runCodexStudioSmokeGate(job: CodexStackJob, model: string): Promise<void> {
-    const baseUrl = `http://${MODEL_GATEWAY_DEFAULT_HOST}:${MODEL_GATEWAY_DEFAULT_PORT}`;
+    const baseUrl = studioGatewayBaseUrl();
     appendJobLog(job, `Running Studio Model Gateway smoke at ${baseUrl} using ${model}.\n`);
 
-    const statusResponse = await fetchWithTimeout(`${baseUrl}/gateway/status`, {
-      method: "GET",
-      headers: { "Accept": "application/json" },
-    }, 10_000);
-    const statusText = await statusResponse.text();
-    if (!statusResponse.ok) {
-      throw new Error(`Studio gateway status failed with HTTP ${statusResponse.status}: ${statusText.slice(0, 800)}`);
-    }
-    let status: unknown;
-    try {
-      status = JSON.parse(statusText) as unknown;
-    } catch {
-      throw new Error(`Studio gateway status returned invalid JSON: ${statusText.slice(0, 800)}`);
-    }
-    if (!isRecord(status) || !isRecord(status.lifecycle) || !isRecord(status.lifecycle.localDaemon)) {
-      throw new Error(`Studio gateway status did not include localDaemon lifecycle: ${JSON.stringify(status).slice(0, 800)}`);
-    }
-    if (status.lifecycle.localDaemon.runtimeMode !== "local-daemon") {
-      throw new Error(`Studio gateway localDaemon is not active: ${JSON.stringify(status.lifecycle.localDaemon).slice(0, 800)}`);
-    }
+    await assertStudioGatewayLocalDaemon(baseUrl);
 
     const response = await postSmokeJson("Studio gateway responses", `${baseUrl}/v1/responses`, "", {
       model,
@@ -2464,7 +2443,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           id: "openai-chat-completions",
           label: "OpenAI Chat Completions",
           endpoint: "/v1/chat/completions",
-          upstream: "CPA /v1/chat/completions",
+          upstream: "Studio Gateway /v1/chat/completions",
           adapter: "passthrough",
           streaming: true,
           clients: ["cc-connect", "OpenAI SDK"],
@@ -2711,10 +2690,11 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const serviceById = new Map(params.services.map((service) => [service.id, service]));
     const ccConnectActive = serviceById.get("cc-connect.service")?.active === true;
     const expectedCcProviderBaseUrl = `http://127.0.0.1:${params.compactPort}/v1`;
-    const cpaProvider = params.ccParsed.providers.find((provider) => provider.name === "cpa");
-    const cpaProviderBaseOk = normalizeCcConnectBaseUrl(cpaProvider?.baseUrl || "") === expectedCcProviderBaseUrl;
-    const cpaProviderEnvKey = cpaProvider?.codexEnvKey || cpaProvider?.codex?.envKey || "";
-    const cpaProviderEnvOk = !cpaProviderEnvKey || cpaProviderEnvKey === "OPENAI_API_KEY";
+    const gatewayProvider = params.ccParsed.providers.find((provider) => provider.name === "studio-gateway")
+      || params.ccParsed.providers.find((provider) => provider.name === "cpa");
+    const gatewayProviderBaseOk = normalizeCcConnectBaseUrl(gatewayProvider?.baseUrl || "") === expectedCcProviderBaseUrl;
+    const gatewayProviderEnvKey = gatewayProvider?.codexEnvKey || gatewayProvider?.codex?.envKey || "";
+    const gatewayProviderEnvOk = !gatewayProviderEnvKey || gatewayProviderEnvKey === "OPENAI_API_KEY";
     const smokeMatrix = params.profile.lastSmokeMatrix;
     const targetModel = normalizeString(params.targetModel);
     const smokeFresh = Boolean(targetModel) && isSmokeMatrixFreshAndComplete(smokeMatrix, targetModel);
@@ -2729,15 +2709,15 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       && params.ccConnectConfigured
       && params.ccBindingPresent
       && ccConnectActive
-      && cpaProviderBaseOk
-      && cpaProviderEnvOk;
+      && gatewayProviderBaseOk
+      && gatewayProviderEnvOk;
     const ccAgentDetail = (() => {
       if (ccAgentTaskReady) return "cc-connect 已安装、已绑定、服务 active，并且 provider 指向本地 Studio Gateway。";
       if (!params.ccConnectInstalled) return "cc-connect 未安装；IM/CC Agent 任务不可用，可执行完整安装或在安装页启用 cc-connect。";
       if (!params.ccConnectConfigured) return "cc-connect 配置缺失；请在 Agent 面板生成 provider/project 配置。";
       if (!params.ccBindingPresent) return "cc-connect 尚未完成 Feishu/Weixin QR 绑定；绑定后再运行 finalizer。";
       if (!ccConnectActive) return "cc-connect.service 未 active；请按顺序恢复或重启 cc-connect。";
-      if (!cpaProviderBaseOk) return `cc-connect provider 未指向本地 Studio Gateway ${expectedCcProviderBaseUrl}，Agent 任务可能绕过已验证链路。`;
+      if (!gatewayProviderBaseOk) return `cc-connect provider 未指向本地 Studio Gateway ${expectedCcProviderBaseUrl}，Agent 任务可能绕过已验证链路。`;
       return "cc-connect provider 的 codex.env_key 不是 OPENAI_API_KEY，Codex Agent 可能拿不到 Studio Gateway placeholder key。";
     })();
     const checks: CodexStackRunReadinessCheck[] = [
@@ -2745,7 +2725,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         id: "service-order",
         label: "Studio Gateway daemon",
         status: "pass",
-        detail: "旧 CPA/Compact/watchdog 不再作为 Codex 接管前置；模型 relay 以 Studio Gateway daemon 状态为准。",
+        detail: "旧本地代理和旧 watchdog 不再作为 Codex 接管前置；模型 relay 以 Studio Gateway daemon 状态为准。",
         section: "install",
         actionHint: { kind: "open-section", label: "查看 daemon", section: "install" },
       },
@@ -3021,9 +3001,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const context = readCodexContext(codexConfig);
     const openclawDefaultModel = readOpenclawDefaultModel(currentPaths.openclawJson);
     const openclawPreferredModels = readOpenclawPreferredModels(currentPaths.openclawJson);
-    const managementSecret = yamlBlockString(cpaConfig, "remote-management", "secret-key");
-    const remoteAllowed = yamlBlockBoolean(cpaConfig, "remote-management", "allow-remote", false);
-    const controlPanelEnabled = !yamlBlockBoolean(cpaConfig, "remote-management", "disable-control-panel", true);
     const parsedModels = parseModels(`${cpaConfig}\n${codexConfig}\n${ccConfig}`);
     const profile = readProfile();
     const proxyPolicy = readProxyPolicy(cpaConfig, currentPaths.openclawJson);
@@ -3059,7 +3036,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     const compactHealthy = modelDiscovery.live;
     const gateway = buildGatewaySummary(compactPort, compactHealthy, ccParsed, modelDiscovery.available);
     const selectedDefaultModel = chooseDefaultModel(modelDiscovery.available, configuredModel, openclawDefaultModel);
-    const cpaTargetModel = chooseCpaAttachModel(currentModel, profile.defaultModel, openclawDefaultModel);
+    const studioGatewayTargetModel = chooseCpaAttachModel(currentModel, profile.defaultModel, openclawDefaultModel);
     const ccBindingPresent = detectCcConnectBinding(ccConfig);
     const components = buildComponents({
       codexVersion,
@@ -3077,25 +3054,24 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (installer.kind === "missing") warnings.push("Bundled Codex Stack installer assets are missing.");
     if (ccConfig && !ccBindingPresent) warnings.push("cc-connect is installed/configured but still needs Feishu or Weixin QR binding.");
     if (!codexCpaActive && currentModel && !isOfficialChatGptModel(currentModel)) {
-      warnings.push(`Codex is using the official ChatGPT route with unsupported model ${currentModel}; switch to official GPT or attach CPA before running Codex.`);
+      warnings.push(`Codex is using the official ChatGPT route with unsupported model ${currentModel}; switch to official GPT or attach Studio Gateway before running Codex.`);
     }
     if (codexCpaActive && !pathExists(currentPaths.codexAuth)) warnings.push("~/.codex/auth.json is missing; Codex CLI may not read the Studio Gateway placeholder key.");
     if (codexCpaActive && codexAuthMatches === false) warnings.push("~/.codex/auth.json OPENAI_API_KEY does not match the configured Studio Gateway placeholder key.");
-    if (hasCodexResponsesWebSocketsEnabled(codexConfig)) warnings.push("Codex Responses WebSocket transport is enabled; CPA-compatible providers should use HTTP/SSE to avoid slow reconnect fallback.");
-    if (hasCodexRequestCompressionEnabled(codexConfig)) warnings.push("Codex request compression is enabled; CPA-compatible providers should disable it unless the local proxy decodes compressed request bodies.");
-    if (!managementSecret) warnings.push("CPA remote-management.secret-key is empty; the management dashboard/API is disabled.");
-    if (!controlPanelEnabled) warnings.push("CPA management control panel is disabled; /management.html will not load.");
+    if (hasCodexResponsesWebSocketsEnabled(codexConfig)) warnings.push("Codex Responses WebSocket transport is enabled; Studio Gateway providers should use HTTP/SSE to avoid slow reconnect fallback.");
+    if (hasCodexRequestCompressionEnabled(codexConfig)) warnings.push("Codex request compression is enabled; Studio Gateway providers should disable it unless the local daemon decodes compressed request bodies.");
     if (!modelDiscovery.live && modelDiscovery.error) warnings.push(`模型列表未能从 /v1/models 读取，已使用本地配置回退：${modelDiscovery.error}`);
-    if (!cpaTargetModel) warnings.push("尚未选择目标模型；请在运行配置里选择本机实际可用模型后再运行 smoke 或接管 Studio Gateway。");
+    if (!studioGatewayTargetModel) warnings.push("尚未选择目标模型；请在运行配置里选择本机实际可用模型后再运行 smoke 或接管 Studio Gateway。");
     {
       const expectedCcProviderBaseUrl = `http://127.0.0.1:${compactPort}/v1`;
-      const cpaProvider = ccParsed.providers.find((provider) => provider.name === "cpa");
-      if (cpaProvider?.baseUrl && normalizeCcConnectBaseUrl(cpaProvider.baseUrl) !== expectedCcProviderBaseUrl) {
-        warnings.push(`cc-connect provider base_url (${cpaProvider.baseUrl}) does not match local Studio Gateway ${expectedCcProviderBaseUrl}; cc-connect Codex agents may bypass the verified daemon chain.`);
+      const gatewayProvider = ccParsed.providers.find((provider) => provider.name === "studio-gateway")
+        || ccParsed.providers.find((provider) => provider.name === "cpa");
+      if (gatewayProvider?.baseUrl && normalizeCcConnectBaseUrl(gatewayProvider.baseUrl) !== expectedCcProviderBaseUrl) {
+        warnings.push(`cc-connect provider base_url (${gatewayProvider.baseUrl}) does not match local Studio Gateway ${expectedCcProviderBaseUrl}; cc-connect Codex agents may bypass the verified daemon chain.`);
       }
-      const cpaProviderEnvKey = cpaProvider?.codexEnvKey || cpaProvider?.codex?.envKey || "";
-      if (cpaProviderEnvKey && cpaProviderEnvKey !== "OPENAI_API_KEY") {
-        warnings.push(`cc-connect provider codex.env_key is ${cpaProviderEnvKey}; Codex agents should receive OPENAI_API_KEY for the local Studio Gateway provider.`);
+      const gatewayProviderEnvKey = gatewayProvider?.codexEnvKey || gatewayProvider?.codex?.envKey || "";
+      if (gatewayProviderEnvKey && gatewayProviderEnvKey !== "OPENAI_API_KEY") {
+        warnings.push(`cc-connect provider codex.env_key is ${gatewayProviderEnvKey}; Codex agents should receive OPENAI_API_KEY for the local Studio Gateway provider.`);
       }
     }
     if (proxyPolicy.providerMode === "direct" && proxyPolicy.providerProxyUrl) {
@@ -3109,17 +3085,17 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
     if (
       profile.lastSmokeMatrix?.attachEligible
       && !isSmokeMatrixStale(profile.lastSmokeMatrix)
-      && !isSmokeMatrixComplete(profile.lastSmokeMatrix, cpaTargetModel)
+      && !isSmokeMatrixComplete(profile.lastSmokeMatrix, studioGatewayTargetModel)
     ) {
-      if (!smokeMatrixCoversTarget(profile.lastSmokeMatrix, cpaTargetModel)) {
-        warnings.push(`Target-model smoke matrix does not cover selected target model ${cpaTargetModel}; re-run the selected target model checks before treating Studio Gateway takeover as ready.`);
+      if (!smokeMatrixCoversTarget(profile.lastSmokeMatrix, studioGatewayTargetModel)) {
+        warnings.push(`Target-model smoke matrix does not cover selected target model ${studioGatewayTargetModel}; re-run the selected target model checks before treating Studio Gateway takeover as ready.`);
       } else {
         warnings.push("Target-model smoke matrix is incomplete; re-run the selected target model checks so ordinary, streaming, non-streaming, and compaction probes are all current.");
       }
     }
     const jobs = listJobs();
     const overallStatus = classifyOverall(components, jobs, ccBindingPresent);
-    const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy, targetModel: cpaTargetModel });
+    const recommendation = buildRecommendation({ overallStatus, warnings, profile, proxyPolicy, targetModel: studioGatewayTargetModel });
     const ccConnectInstalled = Boolean(ccVersion) || pathExists(currentPaths.ccConnectConfig);
     const ccConnectConfigured = pathExists(currentPaths.ccConnectConfig);
     const runReadiness = buildRunReadiness({
@@ -3137,7 +3113,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
       ccConnectInstalled,
       ccConnectConfigured,
       compactPort,
-      targetModel: cpaTargetModel,
+      targetModel: studioGatewayTargetModel,
     });
     return {
       checkedAt: new Date().toISOString(),
@@ -3148,7 +3124,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         ...profile,
         cpaPort,
         compactPort,
-        defaultModel: cpaTargetModel,
+        defaultModel: studioGatewayTargetModel,
         contextMode: context.mode,
         contextWindowTokens: context.tokens,
         ccConnectProject: ccParsed.projects[0]?.name || DEFAULT_CC_CONNECT_PROJECT,
@@ -3165,7 +3141,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         defaultModel: selectedDefaultModel,
         recommendedFrontier: GPT_55_MODEL,
         available: Array.from(new Set([
-          cpaTargetModel,
+          studioGatewayTargetModel,
           currentModel,
           selectedDefaultModel,
           openclawDefaultModel,
@@ -3178,9 +3154,9 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         error: modelDiscovery.error,
       },
       codexRoute: {
-        active: codexCpaActive ? "cpa" : "official-chatgpt",
+        active: codexCpaActive ? "studio-gateway" : "official-chatgpt",
         currentModel: currentModel || selectedDefaultModel,
-        cpaTargetModel,
+        studioGatewayTargetModel,
         officialModel: GPT_55_MODEL,
       },
       gateway,
@@ -3193,7 +3169,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         source: context.tokens ? currentPaths.codexConfig : null,
       },
       secrets: {
-        cpaProxyKey: cpaProxyKey
+        studioGatewayProxyKey: cpaProxyKey
           ? { hasSecret: true, ...maskSecret(cpaProxyKey), source: codexToken ? currentPaths.codexConfig : currentPaths.codexAuth }
           : { hasSecret: false, masked: null, source: null, length: null },
         codexAuth: codexAuth.key
@@ -3215,9 +3191,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
             mode: authRecordMode(officialAuthBackup),
             restorable: false,
           },
-        cpaManagementKey: managementSecret
-          ? { hasSecret: true, ...maskSecret(managementSecret), source: currentPaths.cpaConfig }
-          : { hasSecret: false, masked: null, source: pathExists(currentPaths.cpaConfig) ? currentPaths.cpaConfig : null, length: null },
         upstreamKeys: collectGenericSecrets(cpaConfig).map((secret) => ({
           hasSecret: true,
           ...maskSecret(secret),
@@ -3237,13 +3210,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         ],
         finalizerAvailable: ccConnectFinalizerAvailable,
         canFinalize: ccBindingPresent && ccConnectFinalizerAvailable,
-      },
-      cpaManagement: {
-        dashboardUrl: `http://127.0.0.1:${cpaPort}/management.html`,
-        enabled: Boolean(managementSecret),
-        controlPanelEnabled,
-        remoteAllowed,
-        secretConfigured: Boolean(managementSecret),
       },
       runReadiness,
       recommendation,
@@ -3498,15 +3464,6 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         const result = await execText("systemctl", ["--user", ...args], { timeout: 30_000 });
         appendJobLog(job, `${result.output}\n`);
       };
-      const stackPorts = () => {
-        const codex = readText(currentPaths.codexConfig);
-        const cpa = readText(currentPaths.cpaConfig);
-        const profile = readProfile();
-        return {
-          cpa: parseCpaPort(cpa, profile.cpaPort || defaultCpaPort(resolveChannel())),
-          compact: normalizePort(extractLocalCompactPortFromCodexConfig(codex), profile.compactPort || DEFAULT_COMPACT_PORT),
-        };
-      };
       for (const action of actions as RepairAction[]) {
         if (action === "restart-cc-connect") await runSystemctl("restart", "cc-connect.service");
         if (action === "repair-auth-json") {
@@ -3591,7 +3548,7 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
           const next = applyOfficialChatGptRoute(codex);
           if (next !== codex) {
             backupAndWrite(currentPaths.codexConfig, next);
-            appendJobLog(job, `Restored official ChatGPT Codex route using ${GPT_55_MODEL}; CPA provider remains configured but inactive.\n`);
+            appendJobLog(job, `Restored official ChatGPT Codex route using ${GPT_55_MODEL}; Studio Gateway provider remains configured but inactive.\n`);
           } else {
             appendJobLog(job, `Official ChatGPT Codex route already uses ${GPT_55_MODEL}.\n`);
           }
@@ -3603,15 +3560,13 @@ export function createCodexStackService(config: StudioServerConfig): CodexStackS
         }
         if (action === "run-smoke-matrix") {
           const codex = readText(currentPaths.codexConfig);
-          const ports = stackPorts();
-          const effectiveProxyKey = extractTomlString(codex, "experimental_bearer_token") || readCodexAuth(currentPaths.codexAuth).key || DEFAULT_CPA_PROXY_KEY;
           const profile = readProfile();
           const attachModel = requireCpaTargetModel(chooseCpaAttachModel(
             extractTomlString(codex, "model"),
             profile.defaultModel,
             readOpenclawDefaultModel(currentPaths.openclawJson),
           ));
-          const matrix = await runCodexCpaSmokeMatrix(job, ports, effectiveProxyKey, [attachModel]);
+          const matrix = await runCodexStudioGatewaySmokeMatrix(job, [attachModel]);
           if (!matrix.attachEligible) {
             const failed = matrix.models.find((result) => result.status === "failed");
             throw new Error(`Target-model smoke matrix failed${failed ? ` for ${failed.model}: ${failed.error}` : ""}`);

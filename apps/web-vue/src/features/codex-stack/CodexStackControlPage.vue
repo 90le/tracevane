@@ -190,7 +190,7 @@
           :loading="ccConnectLoading && !ccConnectConfig"
           :language="ccConnectLanguageDraft"
           :providers="ccConnectProviderDrafts"
-          :compact-proxy-base-url="compactProxyBaseUrl"
+          :studio-gateway-provider-base-url="studioGatewayProviderBaseUrl"
           :commands="ccConnectSetupCommands"
           :raw-draft="ccConnectRawDraft"
           @save-structured="saveCcConnectStructured"
@@ -211,7 +211,7 @@
           @remove-platform-option="removeCcConnectPlatformOptionById"
           @update-language="updateCcConnectLanguage"
           @update-provider-field="updateCcConnectProviderField"
-          @ensure-cpa-provider="ensureCpaProviderDraft"
+          @ensure-studio-gateway-provider="ensureStudioGatewayProviderDraft"
           @add-provider="addCcConnectProvider"
           @remove-provider="removeCcConnectProvider"
           @copy-setup="copySetupCommand"
@@ -296,7 +296,7 @@ import { confirm } from "../../composables/useConfirmDialog";
 import { copyTextToClipboard } from "../../shared/clipboard";
 import { useLocalePreference } from "../../shared/locale";
 import {
-  CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS,
+  CODEX_STACK_REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS,
 } from "../../../../../types/codex-stack";
 import type {
   CcConnectConfig,
@@ -577,7 +577,7 @@ function updateConfigFormField(field: CodexStackRuntimeConfigField, value: strin
 }
 
 const SMOKE_MATRIX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const REQUIRED_CPA_SMOKE_CHECKS = CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS;
+const REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS = CODEX_STACK_REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS;
 
 const serviceCatalog: Record<
   PrimaryCodexStackServiceId,
@@ -695,7 +695,7 @@ const codexProviderCheck = computed(() => (
 ));
 const codexRouteLabel = computed(() => {
   const route = summary.value?.codexRoute.active;
-  if (route === "cpa") return text("旧本地路由", "Legacy local route");
+  if (route === "studio-gateway") return text("Studio Gateway 已接管", "Studio Gateway attached");
   if (route === "official-chatgpt") return text("官方 GPT 路径", "Official GPT route");
   const status = codexProviderCheck.value?.status;
   if (status === "pass") return text("Studio Gateway 已接管", "Studio Gateway attached");
@@ -986,7 +986,7 @@ const ccConnectProjectDraftCount = computed(() => ccConnectProjectDrafts.value.l
 const primaryCcConnectProjectName = computed(
   () => ccConnectProjectDrafts.value[0]?.name || ccConnectProjects.value[0]?.name || summary.value?.ccConnect.project || "main",
 );
-const compactProxyBaseUrl = computed(() => (
+const studioGatewayProviderBaseUrl = computed(() => (
   summary.value?.gateway?.integrations.ccConnectProviderBaseUrl
   || `http://127.0.0.1:${summary.value?.ports.compact || 18796}/v1`
 ));
@@ -1021,14 +1021,14 @@ const smokeMatrixLabel = computed(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
   if (!matrix) return text("未验证", "Not verified");
   const models = matrix.models.map((item) => `${item.model}:${item.status}`).join(" ");
-  if (matrix.attachEligible && !isSmokeMatrixFreshAndComplete(matrix, currentCpaTargetModel.value)) {
+  if (matrix.attachEligible && !isSmokeMatrixFreshAndComplete(matrix, currentStudioGatewayTargetModel.value)) {
     return text(`需复验 ${models}`, `Recheck ${models}`);
   }
   return matrix.attachEligible
     ? text(`通过 ${models}`, `Passed ${models}`)
     : text(`失败 ${models}`, `Failed ${models}`);
 });
-const currentCpaTargetModel = computed(() => summaryTargetModel(summary.value));
+const currentStudioGatewayTargetModel = computed(() => summaryTargetModel(summary.value));
 const modelGatewayLocalDaemon = computed(() => modelGatewayDaemonService.value?.lifecycle.localDaemon || null);
 const modelGatewayServiceManager = computed(() => modelGatewayDaemonService.value?.serviceManager || null);
 const modelGatewayInstalled = computed(() => modelGatewayDaemonService.value?.installed === true);
@@ -1292,7 +1292,7 @@ const chainGates = computed<CodexStackChainGate[]>(() => {
 const smokeMatrixCard = computed<CodexStackSmokeMatrixCard | null>(() => {
   const matrix = summary.value?.profile.lastSmokeMatrix;
   if (!matrix) return null;
-  const targetModel = currentCpaTargetModel.value;
+  const targetModel = currentStudioGatewayTargetModel.value;
   const smokeFresh = isSmokeMatrixFreshAndComplete(matrix, targetModel);
   const smokeComplete = isSmokeMatrixComplete(matrix, targetModel);
   const smokeStale = isSmokeMatrixStale(matrix);
@@ -1772,9 +1772,9 @@ function createProviderDraft(provider?: Partial<CcConnectProvider>): CcConnectPr
   const codex = provider?.codex || {};
   return {
     id: nextDraftId("provider"),
-    name: provider?.name || "cpa",
+    name: provider?.name || "studio-gateway",
     apiKey: provider?.apiKey || "",
-    baseUrl: provider?.baseUrl || compactProxyBaseUrl.value,
+    baseUrl: provider?.baseUrl || studioGatewayProviderBaseUrl.value,
     codexEnvKey: provider?.codexEnvKey || codex.envKey || "OPENAI_API_KEY",
     model: provider?.model || "",
     agentTypesText: (provider?.agentTypes || []).join(", "),
@@ -1983,17 +1983,28 @@ function portDisplay(port: number, live: number | null): string {
 }
 
 function normalizeCodexStackSummary(next: CodexStackSummaryPayload): CodexStackSummaryPayload {
-  const cpaAttached = next.codexRoute?.active === "cpa"
+  const rawCodexRoute = next.codexRoute as (CodexStackSummaryPayload["codexRoute"] & {
+    active?: string;
+    cpaTargetModel?: string;
+  }) | undefined;
+  const studioGatewayAttached = rawCodexRoute?.active === "studio-gateway"
+    || rawCodexRoute?.active === "cpa"
     || next.runReadiness?.checks.some((check) => check.id === "codex-provider" && check.status === "pass");
   const gatewayBaseUrl = `http://127.0.0.1:${next.ports?.compact || 18796}`;
+  const codexRoute = {
+    active: studioGatewayAttached ? "studio-gateway" as const : "official-chatgpt" as const,
+    currentModel: rawCodexRoute?.currentModel || next.models.current || next.models.defaultModel || next.profile.defaultModel || "",
+    studioGatewayTargetModel: rawCodexRoute?.studioGatewayTargetModel
+      || rawCodexRoute?.cpaTargetModel
+      || next.profile.defaultModel
+      || next.models.current
+      || next.models.defaultModel
+      || "",
+    officialModel: rawCodexRoute?.officialModel || next.models.recommendedFrontier || "",
+  };
   return {
     ...next,
-    codexRoute: next.codexRoute || {
-      active: cpaAttached ? "cpa" : "official-chatgpt",
-      currentModel: next.models.current || next.models.defaultModel || next.profile.defaultModel || "",
-      cpaTargetModel: next.profile.defaultModel || next.models.current || next.models.defaultModel || "",
-      officialModel: next.models.recommendedFrontier || "",
-    },
+    codexRoute,
     gateway: next.gateway || {
       serviceName: "studio-agent-gateway",
       baseUrl: gatewayBaseUrl,
@@ -2113,7 +2124,7 @@ function isSmokeMatrixComplete(matrix: CodexStackSmokeMatrixResult | null | unde
     const result = results.get(model);
     if (result?.status !== "passed") return false;
     const passedChecks = new Set(result.checks.filter((check) => check.status === "passed").map((check) => check.id));
-    return REQUIRED_CPA_SMOKE_CHECKS.every((checkId) => passedChecks.has(checkId));
+    return REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS.every((checkId) => passedChecks.has(checkId));
   });
 }
 
@@ -2774,9 +2785,9 @@ async function saveConfigThenUseOfficial(): Promise<void> {
 
 function addCcConnectProvider(): void {
   ccConnectProviderDrafts.value.push(createProviderDraft({
-    name: ccConnectProviderDrafts.value.some((provider) => provider.name === "cpa")
+    name: ccConnectProviderDrafts.value.some((provider) => provider.name === "studio-gateway")
       ? `provider-${ccConnectProviderDrafts.value.length + 1}`
-      : "cpa",
+      : "studio-gateway",
   }));
 }
 
@@ -2818,7 +2829,7 @@ function addCcConnectProjectPreset(preset: AgentProjectPreset): void {
       mode: preset === "admin" ? "suggest" : "yolo",
       model: configForm.defaultModel || installForm.model || summaryTargetModel(summary.value),
     },
-    providerRefs: ["cpa"],
+    providerRefs: ["studio-gateway"],
     platforms: [{ type: installForm.channel === "official" ? "dmwork" : (installForm.channel === "octo" ? "octo" : "dmwork"), options: { api_url: "https://im.deepminer.com.cn/api" } }],
   });
   ccConnectProjectDrafts.value.push(project);
@@ -2924,14 +2935,17 @@ function applyDefaultModelToCcConnectProjects(): void {
   }
 }
 
-function ensureCpaProviderDraft(): void {
-  const existing = ccConnectProviderDrafts.value.find((provider) => provider.name === "cpa");
+function ensureStudioGatewayProviderDraft(): void {
+  const existing = ccConnectProviderDrafts.value.find((provider) => provider.name === "studio-gateway");
   if (existing) {
-    existing.baseUrl = existing.baseUrl || compactProxyBaseUrl.value;
+    existing.baseUrl = existing.baseUrl || studioGatewayProviderBaseUrl.value;
     existing.codexEnvKey = existing.codexEnvKey || "OPENAI_API_KEY";
     return;
   }
-  ccConnectProviderDrafts.value.unshift(createProviderDraft({ name: "cpa", baseUrl: compactProxyBaseUrl.value }));
+  ccConnectProviderDrafts.value.unshift(createProviderDraft({
+    name: "studio-gateway",
+    baseUrl: studioGatewayProviderBaseUrl.value,
+  }));
 }
 
 async function saveCcConnectStructured(): Promise<void> {

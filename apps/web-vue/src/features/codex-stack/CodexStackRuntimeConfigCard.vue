@@ -5,8 +5,8 @@
         <p class="cs-section-kicker">{{ text("运行时", "Runtime") }}</p>
         <h4>{{ text("路由模型配置", "Route Model Config") }}</h4>
       </div>
-      <span class="cs-status-pill" :class="codexRouteActive === 'cpa' ? 'tone-accent' : 'tone-neutral'">
-        {{ codexRouteActive === "cpa" ? text("旧本地路由", "Legacy local route") : text("官方登录", "Official login") }}
+      <span class="cs-status-pill" :class="codexRouteActive === 'studio-gateway' ? 'tone-accent' : 'tone-neutral'">
+        {{ codexRouteActive === "studio-gateway" ? text("Studio Gateway", "Studio Gateway") : text("官方登录", "Official login") }}
       </span>
     </div>
 
@@ -177,7 +177,7 @@ import { useLocalePreference } from "../../shared/locale";
 import "./codex-stack-settings.css";
 
 export type CodexStackRuntimeContextMode = "default" | "codex-1m" | "custom";
-export type CodexStackRouteActive = "official-chatgpt" | "cpa";
+export type CodexStackRouteActive = "official-chatgpt" | "studio-gateway";
 
 export interface CodexStackRuntimeConfigDraft {
 	  defaultModel: string;
@@ -208,7 +208,7 @@ const props = defineProps<{
   impactItems: CodexStackRuntimeConfigImpactItem[];
   codexRouteActive: CodexStackRouteActive;
   codexRouteCurrentModel: string;
-  codexRouteCpaTargetModel: string;
+  codexRouteStudioGatewayTargetModel: string;
   codexRouteOfficialModel: string;
   codexAuthMode: string | null;
   officialAuthBackupReady: boolean;
@@ -231,8 +231,8 @@ const saveDisabledHelp = computed(() => {
   return "";
 });
 
-const routeLabel = computed(() => props.codexRouteActive === "cpa"
-  ? text("当前仍是旧本地兼容端点", "Currently using the legacy local compatible endpoint")
+const routeLabel = computed(() => props.codexRouteActive === "studio-gateway"
+  ? text("当前使用 Studio Gateway daemon", "Currently using Studio Gateway daemon")
   : text("当前使用官方 ChatGPT 登录", "Currently using official ChatGPT login"));
 
 const codexAuthModeLabel = computed(() => {
@@ -248,7 +248,7 @@ const officialBackupLabel = computed(() => props.officialAuthBackupReady
 
 const routeActionHelp = computed(() => {
   if (!props.canRunMutation) return props.mutationDisabledHelp;
-  if (props.codexRouteActive === "cpa" && !props.officialAuthBackupReady) {
+  if (props.codexRouteActive === "studio-gateway" && !props.officialAuthBackupReady) {
     return text(
       "没有官方登录备份；切回官方后可能需要重新登录。",
       "No official login backup; switching back may require login.",

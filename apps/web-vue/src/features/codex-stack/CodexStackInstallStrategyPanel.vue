@@ -57,7 +57,7 @@
         </div>
       </div>
       <p class="cs-field-hint">
-        {{ text("完整安装会同时准备 cc-connect；基础安装保留 Codex 与 Studio Gateway daemon，模型 relay 不再依赖 CPA/Compact。", "Full install also prepares cc-connect; base install keeps Codex and the Studio Gateway daemon, and model relay no longer depends on CPA/Compact.") }}
+        {{ text("完整安装会同时准备 cc-connect；基础安装保留 Codex 与 Studio Gateway daemon，模型 relay 只依赖自建 daemon。", "Full install also prepares cc-connect; base install keeps Codex and the Studio Gateway daemon, and model relay only depends on the self-hosted daemon.") }}
       </p>
       <div class="cs-install-run-actions">
         <button type="button" class="primary-button cs-big-button" :disabled="!canRunMutation" @click="$emit('install-full')">

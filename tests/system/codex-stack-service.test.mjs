@@ -147,7 +147,13 @@ function compactSmokeResponse(body) {
 }
 
 function passedSmokeChecks(checkedAt) {
-  return ["cpa-health", "compact-health", "cpa-chat", "compact-non-stream", "compact-stream", "compact-compact"].map((id) => ({
+  return [
+    "studio-gateway-health",
+    "studio-gateway-chat",
+    "studio-gateway-responses",
+    "studio-gateway-responses-stream",
+    "studio-gateway-responses-compact",
+  ].map((id) => ({
     id,
     label: id,
     status: "passed",
@@ -257,13 +263,13 @@ test("codex stack summary resolves bundled installer and masks secrets", async (
   assert.equal(summary.installer.kind, "bundled");
   assert.equal(summary.installer.requiredFilesPresent, true);
   assert.equal(summary.management.enabled, false);
-  assert.equal(summary.secrets.cpaProxyKey.hasSecret, true);
+  assert.equal(summary.secrets.studioGatewayProxyKey.hasSecret, true);
   assert.equal(summary.secrets.codexAuth.hasSecret, false);
   assert.equal(summary.context.codexOneMillionEnabled, true);
   assert.equal(summary.models.defaultModel, "glm-5.1");
   assert.equal(summary.models.recommendedFrontier, "gpt-5.5");
   assert.equal(summary.installer.cpaLatestVersion, null);
-  assert.notEqual(summary.secrets.cpaProxyKey.masked, "secret-cpa-key-123456");
+  assert.notEqual(summary.secrets.studioGatewayProxyKey.masked, "secret-cpa-key-123456");
   assert.ok(summary.models.available.includes("glm-5.1"));
 });
 
@@ -1543,7 +1549,16 @@ test("codex stack can attach the user-selected GPT model through Studio Gateway"
         },
       }), { status: 200 });
     }
-    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (requestUrl.endsWith("/gateway/status")) {
+      return new Response(JSON.stringify({
+        ok: true,
+        lifecycle: {
+          localDaemon: {
+            runtimeMode: "local-daemon",
+          },
+        },
+      }), { status: 200 });
+    }
     if (requestUrl.includes("/v1/chat/completions")) {
       return new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
@@ -1603,7 +1618,16 @@ test("codex stack smoke matrix validates the selected default model without atta
   await withMockFetch(async (url, init = {}) => {
     const requestUrl = String(url);
     const body = init.body ? JSON.parse(String(init.body)) : {};
-    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (requestUrl.endsWith("/gateway/status")) {
+      return new Response(JSON.stringify({
+        ok: true,
+        lifecycle: {
+          localDaemon: {
+            runtimeMode: "local-daemon",
+          },
+        },
+      }), { status: 200 });
+    }
     if (requestUrl.includes("/v1/chat/completions")) {
       return new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
@@ -1651,11 +1675,11 @@ test("codex stack smoke matrix validates the selected default model without atta
     assert.equal(compactBodies.length, 1);
     assert.deepEqual(compactBodies.map((body) => body.model), ["glm-5.1"]);
     for (const body of compactBodies) {
-      assert.equal(body.thread_id, "studio-smoke");
+      assert.equal(body.thread_id, "studio-gateway-smoke");
       assert.equal(Array.isArray(body.input), true);
       assert.ok(body.input.length >= 4);
       assert.match(JSON.stringify(body.input), new RegExp(`studio-compact-smoke-${body.model.replace(".", "\\.")}`));
-      assert.match(JSON.stringify(body.input), /watchdog must not restart/);
+      assert.match(JSON.stringify(body.input), /Studio API\/UI or OpenClaw mount stops/);
     }
     assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
   });
@@ -1684,7 +1708,16 @@ test("codex stack smoke matrix rejects empty compact summaries", async () => {
   await withMockFetch(async (url, init = {}) => {
     const requestUrl = String(url);
     const body = init.body ? JSON.parse(String(init.body)) : {};
-    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (requestUrl.endsWith("/gateway/status")) {
+      return new Response(JSON.stringify({
+        ok: true,
+        lifecycle: {
+          localDaemon: {
+            runtimeMode: "local-daemon",
+          },
+        },
+      }), { status: 200 });
+    }
     if (requestUrl.includes("/v1/chat/completions")) {
       return new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
@@ -1716,7 +1749,7 @@ test("codex stack smoke matrix rejects empty compact summaries", async () => {
     assert.match(job.error || "", /empty summary/);
     assert.equal(summary.profile.lastSmokeMatrix?.attachEligible, false);
     assert.equal(
-      summary.profile.lastSmokeMatrix?.models[0]?.checks.find((check) => check.id === "compact-compact")?.status,
+      summary.profile.lastSmokeMatrix?.models[0]?.checks.find((check) => check.id === "studio-gateway-responses-compact")?.status,
       "failed",
     );
   });
@@ -1746,7 +1779,16 @@ test("codex stack smoke matrix records selected target failure and blocks Codex 
   await withMockFetch(async (url, init = {}) => {
     const requestUrl = String(url);
     const body = init.body ? JSON.parse(String(init.body)) : {};
-    if (requestUrl.endsWith("/healthz")) return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    if (requestUrl.endsWith("/gateway/status")) {
+      return new Response(JSON.stringify({
+        ok: true,
+        lifecycle: {
+          localDaemon: {
+            runtimeMode: "local-daemon",
+          },
+        },
+      }), { status: 200 });
+    }
     if (body.model === "glm-5.1" && requestUrl.includes("/v1/chat/completions")) {
       return new Response(JSON.stringify({ error: { message: "target unavailable" } }), { status: 500 });
     }
@@ -1786,7 +1828,7 @@ test("codex stack smoke matrix records selected target failure and blocks Codex 
     assert.deepEqual(summary.profile.lastSmokeMatrix?.requiredModels, ["glm-5.1"]);
     assert.equal(summary.profile.lastSmokeMatrix?.models.find((item) => item.model === "glm-5.1")?.status, "failed");
     assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /glm-5\.1/);
-    assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /CPA chat/);
+    assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /Studio Gateway chat completions/);
     assert.match(summary.runReadiness.checks.find((check) => check.id === "smoke-matrix")?.detail || "", /target unavailable/);
     assert.doesNotMatch(tomlTopLevel(fs.readFileSync(codexConfig, "utf8")), /model_provider\s*=\s*"cpa"/);
   });
@@ -2472,7 +2514,7 @@ Environment=NO_PROXY=localhost,127.0.0.1,::1
 
     assert.equal(response.ok, true);
     assert.equal(response.summary.proxyPolicy.providerMode, "direct");
-    assert.ok(response.summary.proxyPolicy.cpaConfigProxyUrls.every((value) => value === "direct"));
+    assert.ok(response.summary.proxyPolicy.providerConfigProxyUrls.every((value) => value === "direct"));
     assert.equal(response.summary.proxyPolicy.upstreamBaseUrl, null);
     assert.equal(response.restartRequiredUnits.includes("cli-proxy-api.service"), false);
     assert.equal(response.restartRequiredUnits.includes("cpa-compact-proxy.service"), false);

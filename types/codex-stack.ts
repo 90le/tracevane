@@ -188,20 +188,18 @@ export interface CodexStackProfile {
 }
 
 export type CodexStackSmokeCheckId =
-  | "cpa-health"
-  | "compact-health"
-  | "cpa-chat"
-  | "compact-non-stream"
-  | "compact-stream"
-  | "compact-compact";
+  | "studio-gateway-health"
+  | "studio-gateway-chat"
+  | "studio-gateway-responses"
+  | "studio-gateway-responses-stream"
+  | "studio-gateway-responses-compact";
 
-export const CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS = [
-  "cpa-health",
-  "compact-health",
-  "cpa-chat",
-  "compact-non-stream",
-  "compact-stream",
-  "compact-compact",
+export const CODEX_STACK_REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS = [
+  "studio-gateway-health",
+  "studio-gateway-chat",
+  "studio-gateway-responses",
+  "studio-gateway-responses-stream",
+  "studio-gateway-responses-compact",
 ] as const satisfies readonly CodexStackSmokeCheckId[];
 
 export type CodexStackSmokeStatus = "passed" | "failed";
@@ -258,7 +256,7 @@ export interface CodexStackSummaryPayload {
     noProxy: string;
     noProxyLoopbackReady: boolean;
     noProxyLoopbackMissing: string[];
-    cpaConfigProxyUrls: string[];
+    providerConfigProxyUrls: string[];
     upstreamBaseUrl: string | null;
     upstreamApiKeyConfigured: boolean;
   };
@@ -274,9 +272,9 @@ export interface CodexStackSummaryPayload {
     error: string | null;
   };
   codexRoute: {
-    active: "official-chatgpt" | "cpa";
+    active: "official-chatgpt" | "studio-gateway";
     currentModel: string;
-    cpaTargetModel: string;
+    studioGatewayTargetModel: string;
     officialModel: string;
   };
   gateway: {
@@ -355,7 +353,7 @@ export interface CodexStackSummaryPayload {
     source: string | null;
   };
   secrets: {
-    cpaProxyKey: CodexStackMaskedSecret;
+    studioGatewayProxyKey: CodexStackMaskedSecret;
     codexAuth: CodexStackMaskedSecret & {
       mode: string | null;
       matchesProxyKey: boolean | null;
@@ -364,7 +362,6 @@ export interface CodexStackSummaryPayload {
       mode: string | null;
       restorable: boolean;
     };
-    cpaManagementKey: CodexStackMaskedSecret;
     upstreamKeys: CodexStackMaskedSecret[];
   };
   ccConnect: {
@@ -377,13 +374,6 @@ export interface CodexStackSummaryPayload {
     setupCommands: string[];
     finalizerAvailable: boolean;
     canFinalize: boolean;
-  };
-  cpaManagement: {
-    dashboardUrl: string;
-    enabled: boolean;
-    controlPanelEnabled: boolean;
-    remoteAllowed: boolean;
-    secretConfigured: boolean;
   };
   runReadiness: CodexStackRunReadiness;
   recommendation: CodexStackRecommendation;

@@ -82,7 +82,7 @@
               <input
                 :value="project.providerRefsText"
                 class="form-input"
-                placeholder="cpa, claude-relay"
+                placeholder="studio-gateway, claude-relay"
                 @input="$emit('update-project-field', project.id, 'providerRefsText', inputValue($event))"
               />
             </label>

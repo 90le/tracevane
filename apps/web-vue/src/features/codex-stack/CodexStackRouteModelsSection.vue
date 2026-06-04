@@ -10,7 +10,7 @@
         :impact-items="impactItems"
         :codex-route-active="summary.codexRoute.active"
         :codex-route-current-model="summary.codexRoute.currentModel"
-        :codex-route-cpa-target-model="summary.codexRoute.cpaTargetModel"
+        :codex-route-studio-gateway-target-model="summary.codexRoute.studioGatewayTargetModel"
         :codex-route-official-model="summary.codexRoute.officialModel"
         :codex-auth-mode="summary.secrets.codexAuth.mode"
         :official-auth-backup-ready="summary.secrets.officialChatGptAuthBackup?.restorable === true"
@@ -28,6 +28,7 @@
         :source-help="modelSourceHelp"
         :loading="loading"
         :loading-disabled-help="summaryRefreshDisabledHelp"
+        @reload="emit('reload')"
       />
     </div>
 

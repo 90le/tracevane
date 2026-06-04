@@ -133,7 +133,7 @@ const primaryActionCopy = computed(() => {
   if (blockingChecks.value.length) {
     return text(`先处理 ${blockingChecks.value[0].label}，其余检查保留在下方技术详情。`, `Resolve ${blockingChecks.value[0].label} first; the remaining checks stay in technical details below.`);
   }
-  return text("没有硬阻断；如要接入 CPA，先重新运行目标模型矩阵。", "No hard block; rerun the target-model matrix before attaching CPA.");
+  return text("没有硬阻断；如要接入 Studio Gateway，先重新运行目标模型矩阵。", "No hard block; rerun the target-model matrix before attaching Studio Gateway.");
 });
 const primaryActionDisabled = computed(() => (
   primaryActionTarget.value?.actionHint ? isActionDisabled(primaryActionTarget.value.actionHint) : true

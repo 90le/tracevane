@@ -53,13 +53,13 @@ export function startCodexStackRepair(payload: CodexStackRepairRequest): Promise
 }
 
 export function fetchModelGatewayDaemonService(): Promise<ModelGatewayDaemonServiceResponse> {
-  return requestJson<ModelGatewayDaemonServiceResponse>("/api/model-gateway/daemon-service");
+  return requestJson<ModelGatewayDaemonServiceResponse>("/api/codex-stack/model-gateway/daemon-service");
 }
 
 export function manageModelGatewayDaemonService(
   payload: ModelGatewayDaemonServiceRequest,
 ): Promise<ModelGatewayDaemonServiceResponse> {
-  return requestJson<ModelGatewayDaemonServiceResponse>("/api/model-gateway/daemon-service", {
+  return requestJson<ModelGatewayDaemonServiceResponse>("/api/codex-stack/model-gateway/daemon-service", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

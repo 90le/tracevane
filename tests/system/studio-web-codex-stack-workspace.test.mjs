@@ -60,6 +60,7 @@ const viewModel = read("apps/web-vue/src/features/codex-stack/codex-stack-view-m
 const readinessAction = read("apps/web-vue/src/features/codex-stack/readiness-action.ts");
 const codexStackApi = read("apps/web-vue/src/features/codex-stack/api.ts");
 const codexStackService = read("apps/api/modules/codex-stack/service.ts");
+const codexStackRoutes = read("apps/api/modules/codex-stack/routes.ts");
 const codexStackTypes = read("types/codex-stack.ts");
 const rawVisibleColorPattern = /#[0-9a-fA-F]{3,8}|rgba\(|color-mix\([^;{}]*\b(?:white|black)\b|:\s*(?:white|black)\b/;
 const legacySurfaceTokenPattern = /var\(--surface\)|--shell-(?:panel|stage|highlight)/;
@@ -943,7 +944,7 @@ test("codex stack install page delegates component strategy and CTA without movi
   assert.match(installStrategyPanel, /v-if="!canRunMutation && mutationDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(installStrategyPanel, /class="cs-install-managed-note"/);
   assert.match(installStrategyPanel, /Studio Gateway daemon 由独立 service supervisor 托管/);
-  assert.match(installStrategyPanel, /模型 relay 不再依赖 CPA\/Compact/);
+  assert.match(installStrategyPanel, /模型 relay 只依赖自建 daemon/);
   assert.match(installStrategyPanel, /class="cs-install-run-actions"/);
   assert.doesNotMatch(installStrategyPanel, /cs-install-command-pane|cs-install-cta-card|cs-card-header|<style scoped>/);
   assert.match(codexStackInstallCss, /\.cs-install-strategy-workbench\s*\{/);
@@ -1048,6 +1049,9 @@ test("codex stack install page delegates repair board without exposing legacy CP
   assert.match(controlPage, /\["apply-codex-studio-after-smoke"\]/);
   assert.match(codexStackApi, /fetchModelGatewayDaemonService\(\): Promise<ModelGatewayDaemonServiceResponse>/);
   assert.match(codexStackApi, /manageModelGatewayDaemonService\([\s\S]*payload: ModelGatewayDaemonServiceRequest/);
+  assert.match(codexStackApi, /\/api\/codex-stack\/model-gateway\/daemon-service/);
+  assert.doesNotMatch(codexStackApi, /\/api\/model-gateway\/daemon-service/);
+  assert.match(codexStackRoutes, /\/api\/codex-stack\/model-gateway\/daemon-service/);
   assert.match(controlPage, /const modelGatewayDaemonService = ref<ModelGatewayDaemonServiceResponse \| null>\(null\);/);
   assert.match(controlPage, /loadModelGatewayDaemonService\(silent\)/);
   assert.match(controlPage, /async function manageModelGatewayDaemon\(/);
@@ -1087,14 +1091,14 @@ test("codex stack cc-connect page delegates provider editor without moving provi
   assert.match(agentBridgeSection, /import CodexStackCcConnectProviderPanel from "\.\/CodexStackCcConnectProviderPanel\.vue";/);
   assert.match(
     agentBridgeSection,
-    /<CodexStackCcConnectProviderPanel[\s\S]*:language="language"[\s\S]*:providers="providers"[\s\S]*:compact-proxy-base-url="compactProxyBaseUrl"[\s\S]*:loading="loading"[\s\S]*:busy="busy"[\s\S]*:busy-disabled-help="busyDisabledHelp"[\s\S]*@update-language="\(nextLanguage\) => emit\('update-language', nextLanguage\)"[\s\S]*@update-provider-field="\(providerId, field, value\) => emit\('update-provider-field', providerId, field, value\)"[\s\S]*@ensure-cpa-provider="emit\('ensure-cpa-provider'\)"[\s\S]*@add-provider="emit\('add-provider'\)"[\s\S]*@remove-provider="\(providerId\) => emit\('remove-provider', providerId\)"/,
+    /<CodexStackCcConnectProviderPanel[\s\S]*:language="language"[\s\S]*:providers="providers"[\s\S]*:studio-gateway-provider-base-url="studioGatewayProviderBaseUrl"[\s\S]*:loading="loading"[\s\S]*:busy="busy"[\s\S]*:busy-disabled-help="busyDisabledHelp"[\s\S]*@update-language="\(nextLanguage\) => emit\('update-language', nextLanguage\)"[\s\S]*@update-provider-field="\(providerId, field, value\) => emit\('update-provider-field', providerId, field, value\)"[\s\S]*@ensure-studio-gateway-provider="emit\('ensure-studio-gateway-provider'\)"[\s\S]*@add-provider="emit\('add-provider'\)"[\s\S]*@remove-provider="\(providerId\) => emit\('remove-provider', providerId\)"/,
   );
   assert.match(controlPage, /<CodexStackAgentBridgeSection[\s\S]*:loading="ccConnectLoading && !ccConnectConfig"/);
-  assert.match(controlPage, /<CodexStackAgentBridgeSection[\s\S]*:language="ccConnectLanguageDraft"[\s\S]*:providers="ccConnectProviderDrafts"[\s\S]*:compact-proxy-base-url="compactProxyBaseUrl"/);
-  assert.match(controlPage, /<CodexStackAgentBridgeSection[\s\S]*@update-language="updateCcConnectLanguage"[\s\S]*@update-provider-field="updateCcConnectProviderField"[\s\S]*@ensure-cpa-provider="ensureCpaProviderDraft"[\s\S]*@add-provider="addCcConnectProvider"[\s\S]*@remove-provider="removeCcConnectProvider"/);
+  assert.match(controlPage, /<CodexStackAgentBridgeSection[\s\S]*:language="ccConnectLanguageDraft"[\s\S]*:providers="ccConnectProviderDrafts"[\s\S]*:studio-gateway-provider-base-url="studioGatewayProviderBaseUrl"/);
+  assert.match(controlPage, /<CodexStackAgentBridgeSection[\s\S]*@update-language="updateCcConnectLanguage"[\s\S]*@update-provider-field="updateCcConnectProviderField"[\s\S]*@ensure-studio-gateway-provider="ensureStudioGatewayProviderDraft"[\s\S]*@add-provider="addCcConnectProvider"[\s\S]*@remove-provider="removeCcConnectProvider"/);
   assert.match(controlPage, /function updateCcConnectLanguage\(language: string\): void/);
   assert.match(controlPage, /function updateCcConnectProviderField\(providerId: string, field: CodexStackCcConnectProviderField, value: string\): void/);
-  assert.match(controlPage, /function ensureCpaProviderDraft\(\): void/);
+  assert.match(controlPage, /function ensureStudioGatewayProviderDraft\(\): void/);
   assert.match(controlPage, /function addCcConnectProvider\(\): void/);
   assert.match(controlPage, /function removeCcConnectProvider\(providerId: string\): void/);
   assert.match(controlPage, /function normalizeProviderDrafts\(\): CcConnectProvider\[\]/);
@@ -1104,9 +1108,11 @@ test("codex stack cc-connect page delegates provider editor without moving provi
   assert.match(ccConnectProviderPanel, /export interface CodexStackCcConnectProviderDraft/);
   assert.match(ccConnectProviderPanel, /busyDisabledHelp: string;/);
   assert.match(ccConnectProviderPanel, /v-if="busy && busyDisabledHelp"[\s\S]*class="cs-disabled-help"/);
-  assert.match(ccConnectProviderPanel, /defineEmits<[\s\S]*"update-language": \[language: string\][\s\S]*"update-provider-field": \[providerId: string, field: CodexStackCcConnectProviderField, value: string\][\s\S]*"ensure-cpa-provider": \[\][\s\S]*"add-provider": \[\][\s\S]*"remove-provider": \[providerId: string\]/);
+  assert.match(ccConnectProviderPanel, /defineEmits<[\s\S]*"update-language": \[language: string\][\s\S]*"update-provider-field": \[providerId: string, field: CodexStackCcConnectProviderField, value: string\][\s\S]*"ensure-studio-gateway-provider": \[\][\s\S]*"add-provider": \[\][\s\S]*"remove-provider": \[providerId: string\]/);
   assert.match(ccConnectProviderPanel, /@input="\$emit\('update-provider-field', provider\.id, 'baseUrl', inputValue\(\$event\)\)"/);
-  assert.match(ccConnectProviderPanel, /@click="\$emit\('ensure-cpa-provider'\)"/);
+  assert.match(ccConnectProviderPanel, /@click="\$emit\('ensure-studio-gateway-provider'\)"/);
+  assert.match(ccConnectProviderPanel, /补齐 Studio Gateway Provider/);
+  assert.doesNotMatch(ccConnectProviderPanel, /补齐 CPA Provider|Add CPA Provider|placeholder="cpa"/);
   assert.match(ccConnectProviderPanel, /@click="\$emit\('remove-provider', provider\.id\)"/);
   assert.doesNotMatch(ccConnectProviderPanel, /ccConnectProviderDrafts|normalizeProviderDrafts|patchCcConnectConfig|saveCcConnectStructured|saveCcConnectRaw/);
 });
@@ -1307,7 +1313,7 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(controlPage, /const networkPolicyCard = computed<CodexStackNetworkPolicyCard \| null>/);
   assert.match(controlPage, /国内网关直连/);
   assert.match(controlPage, /国内直连 \+ 系统代理提示/);
-  assert.match(controlPage, /网卡\/TUN 模式或系统代理可能截获 CPA\/Compact 的本机请求/);
+  assert.match(controlPage, /网卡\/TUN 模式或系统代理可能截获 Studio Gateway 的本机请求/);
   assert.match(controlPage, /activeRecommendation\.value\?\.reasonCodes\.includes\("no-proxy-loopback-missing"\)/);
   assert.match(controlPage, /先补齐 NO_PROXY 的 localhost、127\.0\.0\.1 和 ::1/);
   assert.match(controlPage, /OpenAI 官方 Codex 访问仍由 Codex\/系统代理路径处理/);
@@ -1322,7 +1328,7 @@ test("codex stack dashboard exposes explicit network mode diagnostics", () => {
   assert.match(controlPage, /耗时未记录/);
   assert.match(controlPage, /durationLabel: text\("矩阵耗时", "Matrix Duration"\)/);
   assert.match(controlPage, /失败检查/);
-  assert.match(controlPage, /const targetModel = currentCpaTargetModel\.value;/);
+  assert.match(controlPage, /const targetModel = currentStudioGatewayTargetModel\.value;/);
   assert.match(controlPage, /const smokeFresh = isSmokeMatrixFreshAndComplete\(matrix, targetModel\);/);
   assert.match(controlPage, /const smokeStale = isSmokeMatrixStale\(matrix\);/);
   assert.match(controlPage, /checkedAt: formatTimestamp\(matrix\.checkedAt\)/);
@@ -1418,13 +1424,14 @@ test("codex stack dashboard exposes codex run readiness as a first-screen contra
 });
 
 test("codex stack attach action exposes only Studio Gateway takeover in the UI", () => {
-  assert.match(controlPage, /const currentCpaTargetModel = computed\(\(\) => summaryTargetModel\(summary\.value\)\);/);
+  assert.match(controlPage, /const currentStudioGatewayTargetModel = computed\(\(\) => summaryTargetModel\(summary\.value\)\);/);
   assert.doesNotMatch(codexStackTypes, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS/);
-  assert.match(codexStackTypes, /export const CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS = \[[\s\S]*"compact-non-stream"[\s\S]*"compact-stream"[\s\S]*"compact-compact"[\s\S]*\] as const satisfies readonly CodexStackSmokeCheckId\[\];/);
-  assert.doesNotMatch(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS/);
-  assert.match(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
-  assert.doesNotMatch(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS/);
-  assert.match(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS/);
+  assert.match(codexStackTypes, /export const CODEX_STACK_REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS = \[[\s\S]*"studio-gateway-health"[\s\S]*"studio-gateway-chat"[\s\S]*"studio-gateway-responses"[\s\S]*"studio-gateway-responses-stream"[\s\S]*"studio-gateway-responses-compact"[\s\S]*\] as const satisfies readonly CodexStackSmokeCheckId\[\];/);
+  assert.doesNotMatch(codexStackTypes, /CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS|"cpa-health"|"compact-health"|"cpa-chat"|"compact-non-stream"|"compact-stream"|"compact-compact"/);
+  assert.doesNotMatch(controlPage, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS|CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS|REQUIRED_CPA_SMOKE_CHECKS/);
+  assert.match(controlPage, /CODEX_STACK_REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS/);
+  assert.doesNotMatch(codexStackService, /CODEX_STACK_REQUIRED_CPA_SMOKE_MODELS|REQUIRED_CPA_SMOKE_MODELS|CODEX_STACK_REQUIRED_CPA_SMOKE_CHECKS|REQUIRED_CPA_SMOKE_CHECKS/);
+  assert.match(codexStackService, /CODEX_STACK_REQUIRED_STUDIO_GATEWAY_SMOKE_CHECKS/);
   assert.match(codexStackTypes, /"restore-official-chatgpt"/);
   assert.doesNotMatch(codexStackTypes, /"force-apply-codex-cpa"|"apply-codex-cpa-after-smoke"/);
   assert.match(codexStackTypes, /"apply-codex-studio-after-smoke"/);
@@ -1437,7 +1444,7 @@ test("codex stack attach action exposes only Studio Gateway takeover in the UI",
   assert.match(codexStackService, /officialChatGptAuthBackup: officialAuthBackupRestorable/);
   assert.match(controlPage, /function smokeMatrixCoversTarget\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
   assert.match(controlPage, /function isSmokeMatrixComplete\(matrix: CodexStackSmokeMatrixResult \| null \| undefined, targetModel = ""\): boolean/);
-  assert.match(controlPage, /matrix\.attachEligible && !isSmokeMatrixFreshAndComplete\(matrix, currentCpaTargetModel\.value\)/);
+  assert.match(controlPage, /matrix\.attachEligible && !isSmokeMatrixFreshAndComplete\(matrix, currentStudioGatewayTargetModel\.value\)/);
   assert.match(controlPage, /matrix\.attachEligible && !smokeMatrixCoversTarget\(matrix, targetModel\)/);
   assert.match(controlPage, /const smokeComplete = isSmokeMatrixComplete\(matrix, targetModel\);/);
   assert.match(controlPage, /matrix\.attachEligible && !smokeComplete/);
@@ -1535,6 +1542,8 @@ test("codex stack settings page delegates model catalog without moving summary r
   assert.doesNotMatch(controlPage, /class="panel-card cs-model-catalog-card"/);
   assert.doesNotMatch(controlPage, /class="cs-model-list"/);
   assert.match(modelCatalogCard, /defineProps<\{[\s\S]*models: string\[\];[\s\S]*currentModel: string;[\s\S]*sourceHelp: string;[\s\S]*loading: boolean;[\s\S]*loadingDisabledHelp: string;[\s\S]*\}>/);
+  assert.match(modelCatalogCard, /Studio Gateway 模型列表/);
+  assert.doesNotMatch(modelCatalogCard, /CPA 模型列表|CPA Model List/);
   assert.match(modelCatalogCard, /v-if="loading && loadingDisabledHelp"[\s\S]*class="cs-disabled-help"/);
   assert.match(modelCatalogCard, /defineEmits<\{[\s\S]*reload: \[\];[\s\S]*\}>/);
   assert.match(modelCatalogCard, /@click="\$emit\('reload'\)"/);
@@ -1654,7 +1663,7 @@ test("codex stack backend requires user configured target models instead of chan
   assert.match(codexStackService, /function chooseCpaAttachModel\(currentModel: unknown, profileDefault: unknown, openclawDefault: unknown = ""\): string \{/);
   assert.match(codexStackService, /return normalizeString\(profileDefault\) \|\| normalizeString\(currentModel\) \|\| normalizeString\(openclawDefault\);/);
   assert.match(codexStackService, /function requireCpaTargetModel\(model: string\): string \{/);
-  assert.match(codexStackService, /const cpaTargetModel = chooseCpaAttachModel\(currentModel, profile\.defaultModel, openclawDefaultModel\);/);
+  assert.match(codexStackService, /const studioGatewayTargetModel = chooseCpaAttachModel\(currentModel, profile\.defaultModel, openclawDefaultModel\);/);
   assert.match(codexStackService, /requireCpaTargetModel\(chooseCpaAttachModel\(/);
   assert.match(codexStackService, /const fallbackModel = readOpenclawDefaultModel\(paths\(\)\.openclawJson\) \|\| readOpenclawPreferredModels\(paths\(\)\.openclawJson\)\[0\] \|\| "";/);
   assert.doesNotMatch(codexStackService, /const requiredModels = Array\.from\(new Set\(\[\s*"glm-5\.1",\s*"kimi-k2\.6"/);

@@ -7,10 +7,20 @@ import type {
   CodexStackInstallRequest,
   CodexStackRepairRequest,
 } from "../../../../types/codex-stack.js";
+import type { ModelGatewayDaemonServiceRequest } from "../../../../types/model-gateway.js";
+import { isModelGatewayServiceError } from "../model-gateway/service.js";
 import { isCodexStackServiceError } from "./service.js";
 
 function sendCodexStackError(res: Parameters<typeof sendJson>[0], error: unknown): void {
   if (isCodexStackServiceError(error)) {
+    const shape = error.toShape();
+    sendJson(res, shape.statusCode, {
+      error: shape.code,
+      message: shape.message,
+    });
+    return;
+  }
+  if (isModelGatewayServiceError(error)) {
     const shape = error.toShape();
     sendJson(res, shape.statusCode, {
       error: shape.code,
@@ -64,6 +74,23 @@ export function registerCodexStackRoutes(router: StudioRouter): void {
     try {
       const payload = await parseJsonBody<CodexStackRepairRequest>(req);
       sendJson(res, 202, await routeCtx.services.codexStack.startRepair(req, payload));
+    } catch (error) {
+      sendCodexStackError(res, error);
+    }
+  });
+
+  router.get("/api/codex-stack/model-gateway/daemon-service", (_req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.getDaemonService());
+    } catch (error) {
+      sendCodexStackError(res, error);
+    }
+  });
+
+  router.post("/api/codex-stack/model-gateway/daemon-service", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayDaemonServiceRequest>(req);
+      sendJson(res, 200, await routeCtx.services.modelGateway.manageDaemonService(req, payload));
     } catch (error) {
       sendCodexStackError(res, error);
     }

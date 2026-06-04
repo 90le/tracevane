@@ -160,6 +160,12 @@ function summaryForRepairAction(
       },
     ],
     secrets: {
+      studioGatewayProxyKey: {
+        hasSecret: true,
+        masked: "stu...",
+        source: "/tmp/config.toml",
+        length: 12,
+      },
       codexAuth: {
         hasSecret: true,
         masked: "off...",
@@ -177,10 +183,6 @@ function summaryForRepairAction(
         restorable: false,
       },
     },
-    cpaManagement: {
-      enabled: true,
-      controlPanelEnabled: true,
-    },
     proxyPolicy: {
       providerMode: "direct",
       providerProxyUrl: null,
@@ -188,7 +190,7 @@ function summaryForRepairAction(
       noProxy: "localhost,127.0.0.1,::1",
       noProxyLoopbackReady: true,
       noProxyLoopbackMissing: [],
-      cpaConfigProxyUrls: [],
+      providerConfigProxyUrls: [],
       upstreamBaseUrl: null,
       upstreamApiKeyConfigured: false,
     },

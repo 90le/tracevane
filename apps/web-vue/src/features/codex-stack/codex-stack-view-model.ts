@@ -50,6 +50,10 @@ export function findMissingNoProxyLoopback(noProxy: string): string[] {
 export function normalizeProxyPolicy(
   policy: Partial<CodexStackSummaryPayload["proxyPolicy"]> | undefined,
 ): CodexStackSummaryPayload["proxyPolicy"] {
+  const legacyPolicy = policy as ({ cpaConfigProxyUrls?: unknown } & Partial<CodexStackSummaryPayload["proxyPolicy"]>) | undefined;
+  const providerConfigProxyUrls = Array.isArray(policy?.providerConfigProxyUrls)
+    ? policy.providerConfigProxyUrls
+    : (Array.isArray(legacyPolicy?.cpaConfigProxyUrls) ? legacyPolicy.cpaConfigProxyUrls : []);
   const noProxy = policy?.noProxy || DEFAULT_NO_PROXY;
   const missing = Array.isArray(policy?.noProxyLoopbackMissing)
     ? policy.noProxyLoopbackMissing
@@ -63,7 +67,7 @@ export function normalizeProxyPolicy(
       ? policy.noProxyLoopbackReady
       : missing.length === 0,
     noProxyLoopbackMissing: missing,
-    cpaConfigProxyUrls: Array.isArray(policy?.cpaConfigProxyUrls) ? policy.cpaConfigProxyUrls : [],
+    providerConfigProxyUrls,
     upstreamBaseUrl: policy?.upstreamBaseUrl || null,
     upstreamApiKeyConfigured: Boolean(policy?.upstreamApiKeyConfigured),
   };

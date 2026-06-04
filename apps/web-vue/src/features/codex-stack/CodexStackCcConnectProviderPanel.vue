@@ -15,8 +15,8 @@
             @input="$emit('update-language', inputValue($event))"
           />
         </label>
-        <button type="button" class="secondary-button" :disabled="busy" @click="$emit('ensure-cpa-provider')">
-          {{ text("补齐 CPA Provider", "Add CPA Provider") }}
+        <button type="button" class="secondary-button" :disabled="busy" @click="$emit('ensure-studio-gateway-provider')">
+          {{ text("补齐 Studio Gateway Provider", "Add Studio Gateway Provider") }}
         </button>
         <button type="button" class="secondary-button" :disabled="busy" @click="$emit('add-provider')">
           {{ text("新增 Provider", "Add Provider") }}
@@ -31,8 +31,8 @@
       {{ text("正在读取 cc-connect 配置...", "Loading cc-connect config...") }}
     </div>
     <div v-else-if="!providers.length" class="cs-empty-lite">
-      <button type="button" class="secondary-button" :disabled="busy" @click="$emit('ensure-cpa-provider')">
-        {{ text("创建推荐 Provider", "Create Recommended Provider") }}
+      <button type="button" class="secondary-button" :disabled="busy" @click="$emit('ensure-studio-gateway-provider')">
+        {{ text("创建 Studio Gateway Provider", "Create Studio Gateway Provider") }}
       </button>
     </div>
     <div v-else class="cs-provider-grid cs-provider-grid-roomy">
@@ -53,7 +53,7 @@
             <input
               :value="provider.name"
               class="form-input"
-              placeholder="cpa"
+              placeholder="studio-gateway"
               @input="$emit('update-provider-field', provider.id, 'name', inputValue($event))"
             />
           </label>
@@ -89,7 +89,7 @@
             <input
               :value="provider.baseUrl"
               class="form-input"
-              :placeholder="compactProxyBaseUrl"
+              :placeholder="studioGatewayProviderBaseUrl"
               @input="$emit('update-provider-field', provider.id, 'baseUrl', inputValue($event))"
             />
           </label>
@@ -98,7 +98,7 @@
             <input
               :value="provider.codexBaseUrl"
               class="form-input"
-              :placeholder="compactProxyBaseUrl"
+              :placeholder="studioGatewayProviderBaseUrl"
               @input="$emit('update-provider-field', provider.id, 'codexBaseUrl', inputValue($event))"
             />
           </label>
@@ -107,7 +107,7 @@
             <input
               :value="provider.claudeBaseUrl"
               class="form-input"
-              :placeholder="compactProxyBaseUrl.replace(/\/v1$/, '')"
+              :placeholder="studioGatewayProviderBaseUrl.replace(/\/v1$/, '')"
               @input="$emit('update-provider-field', provider.id, 'claudeBaseUrl', inputValue($event))"
             />
           </label>
@@ -181,7 +181,7 @@ export interface CodexStackCcConnectProviderDraft {
 defineProps<{
   language: string;
   providers: CodexStackCcConnectProviderDraft[];
-  compactProxyBaseUrl: string;
+  studioGatewayProviderBaseUrl: string;
   loading: boolean;
   busy: boolean;
   busyDisabledHelp: string;
@@ -190,7 +190,7 @@ defineProps<{
 defineEmits<{
   "update-language": [language: string];
   "update-provider-field": [providerId: string, field: CodexStackCcConnectProviderField, value: string];
-  "ensure-cpa-provider": [];
+  "ensure-studio-gateway-provider": [];
   "add-provider": [];
   "remove-provider": [providerId: string];
 }>();
