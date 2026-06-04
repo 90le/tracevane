@@ -835,6 +835,124 @@ test("model gateway child daemon keeps serving after Studio API listener shuts d
   });
 });
 
+test("model gateway direct daemon endpoint survives OpenClaw single-port mount shutdown", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const upstreamCalls = [];
+  const upstream = await startHttpServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    upstreamCalls.push({
+      url: req.url,
+      authorization: req.headers.authorization || null,
+      body,
+    });
+    if (req.url === "/v1/chat/completions") {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({
+        id: "chatcmpl_mount_fallback",
+        object: "chat.completion",
+        choices: [{ index: 0, message: { role: "assistant", content: "mount fallback ok" }, finish_reason: "stop" }],
+      }));
+      return true;
+    }
+    return false;
+  });
+
+  const service = createModelGatewayService(config);
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "mount-fallback-chat",
+      name: "Mount Fallback Chat",
+      appScopes: ["openclaw"],
+      baseUrl: `${upstream.baseUrl}/v1`,
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-mount-fallback-secret-123456",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const mountHandler = createStudioRequestHandler(ctx, { stripBasePath: "/studio" });
+  const mount = await startHttpServer(mountHandler);
+  let mountClosed = false;
+  const child = spawn(process.execPath, [path.join(process.cwd(), "dist/apps/api/model-gateway-daemon.js")], {
+    env: {
+      ...process.env,
+      OPENCLAW_STATE_DIR: config.openclawRoot,
+      MODEL_GATEWAY_PORT: "0",
+      MODEL_GATEWAY_SUPERVISOR: "none",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let childOutput = "";
+  child.stdout.on("data", (chunk) => {
+    childOutput += String(chunk);
+  });
+  child.stderr.on("data", (chunk) => {
+    childOutput += String(chunk);
+  });
+
+  try {
+    const metadata = await waitFor(() => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error(`daemon child exited early: ${childOutput}`);
+      }
+      if (!fs.existsSync(paths.daemonRuntime)) return null;
+      const parsed = JSON.parse(fs.readFileSync(paths.daemonRuntime, "utf8"));
+      return parsed.port > 0 ? parsed : null;
+    }, 5000);
+
+    const mountedStatus = await requestJson(`${mount.baseUrl}/studio/api/model-gateway/status`);
+    assert.equal(mountedStatus.status, 200);
+    assert.equal(mountedStatus.body.lifecycle.openclawMount.state, "configured");
+    assert.equal(mountedStatus.body.lifecycle.openclawMount.basePath, "/studio");
+    assert.equal(mountedStatus.body.lifecycle.openclawMount.ownsModelRelay, false);
+    assert.equal(mountedStatus.body.lifecycle.endpointPolicy.directDaemonFallbackRequired, true);
+    assert.equal(mountedStatus.body.lifecycle.endpointPolicy.targetModelRelayOwner, "local-daemon");
+
+    await mount.close();
+    mountClosed = true;
+    await assert.rejects(() => requestJson(`${mount.baseUrl}/studio/api/model-gateway/status`));
+
+    const daemonBaseUrl = `http://127.0.0.1:${metadata.port}`;
+    const daemonStatus = await requestJson(`${daemonBaseUrl}/gateway/status`);
+    assert.equal(daemonStatus.status, 200);
+    assert.equal(daemonStatus.body.lifecycle.localDaemon.runtimeMode, "local-daemon");
+    assert.equal(daemonStatus.body.lifecycle.localDaemon.survivesControlPlaneCrash, true);
+    assert.equal(daemonStatus.body.lifecycle.endpointPolicy.preferredCliEndpoint, `${daemonBaseUrl}/v1`);
+
+    const chat = await requestJson(`${daemonBaseUrl}/v1/chat/completions`, {
+      method: "POST",
+      body: {
+        model: "mount-fallback-model",
+        messages: [{ role: "user", content: "hello after mount shutdown" }],
+        stream: false,
+      },
+    });
+    assert.equal(chat.status, 200);
+    assert.equal(chat.headers["x-openclaw-model-gateway-provider"], "mount-fallback-chat");
+    assert.equal(chat.body.choices[0].message.content, "mount fallback ok");
+  } finally {
+    if (!mountClosed) await mount.close().catch(() => {});
+    await stopChild(child);
+    await upstream.close();
+  }
+
+  await waitFor(() => !fs.existsSync(paths.daemonRuntime), 3000);
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-mount-fallback-secret-123456");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "mount-fallback-model",
+    messages: [{ role: "user", content: "hello after mount shutdown" }],
+    stream: false,
+  });
+});
+
 test("model gateway protocol matrix forwards native openai responses and guards unfinished adapters", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

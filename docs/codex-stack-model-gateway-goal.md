@@ -178,7 +178,8 @@ Phase 1 daemon entrypoint checkpoint（2026-06-04）：
 - 已新增 `apps/api/model-gateway-daemon.ts` 作为可直接执行入口，编译后路径为 `dist/apps/api/model-gateway-daemon.js`，后续 systemd/launchd/Windows service 模板应调用该入口。
 - daemon entrypoint 支持 `OPENCLAW_STATE_DIR`、`MODEL_GATEWAY_HOST`、`MODEL_GATEWAY_PORT` 和 `MODEL_GATEWAY_SUPERVISOR`，便于 service template、测试和 bootstrap 指定状态目录与监听端口。
 - 已新增 child-process survivability system test：Studio API listener 关闭后，child daemon direct loopback endpoint 仍可服务 `/v1/chat/completions` 并转发到 provider。
-- 当前仍未完成真实 OS/user service manager 启停验证、restart policy 验证和 OpenClaw single-port/mount 停止后的 direct daemon fallback 验证。
+- 已新增 OpenClaw single-port/mount fallback system test：`/studio` mount 关闭后，daemon direct loopback endpoint 仍可服务 `/v1/chat/completions`。
+- 当前仍未完成真实 OS/user service manager 启停验证、restart policy 验证和 supervisor crash-restart 验证。
 
 Phase 1 supervisor/install contract checkpoint（2026-06-04）：
 
