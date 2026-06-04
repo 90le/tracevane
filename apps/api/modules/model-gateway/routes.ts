@@ -1,6 +1,7 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
+  ModelGatewayDaemonServiceRequest,
   ModelGatewayProviderTestRequest,
   ModelGatewaySetActiveProviderRequest,
   ModelGatewaySetProviderSecretRequest,
@@ -45,6 +46,23 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
   router.get("/api/model-gateway/runtime", (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, routeCtx.services.modelGateway.getRuntime());
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.get("/api/model-gateway/daemon-service", (_req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.getDaemonService());
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/daemon-service", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayDaemonServiceRequest>(req);
+      sendJson(res, 200, await routeCtx.services.modelGateway.manageDaemonService(req, payload));
     } catch (error) {
       sendModelGatewayError(res, error);
     }

@@ -392,6 +392,73 @@ test("model gateway status separates embedded fallback from daemon lifecycle", a
   }
 });
 
+test("model gateway daemon service management exposes templates and guarded install", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+
+  await withServer(handler, async (baseUrl) => {
+    const status = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`);
+    assert.equal(status.status, 200);
+    assert.equal(status.body.action, "status");
+    assert.equal(status.body.applied, false);
+    assert.equal(status.body.installed, false);
+    assert.equal(status.body.plan.daemonEntry.endsWith("dist/apps/api/model-gateway-daemon.js"), true);
+    assert.deepEqual(
+      status.body.plan.templates.map((item) => item.supervisor).sort(),
+      ["launchd-user", "scheduled-task", "systemd-user"],
+    );
+    assert.ok(status.body.plan.templates.find((item) => item.supervisor === "systemd-user").template.includes("Restart=always"));
+    assert.ok(status.body.plan.templates.find((item) => item.supervisor === "launchd-user").template.includes("<key>KeepAlive</key>"));
+    assert.ok(status.body.plan.templates.find((item) => item.supervisor === "scheduled-task").template.includes("<RestartOnFailure>"));
+
+    const preview = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
+      method: "POST",
+      body: {
+        action: "install",
+        apply: false,
+      },
+    });
+    assert.equal(preview.status, 200);
+    assert.equal(preview.body.action, "install");
+    assert.equal(preview.body.applied, false);
+    assert.equal(preview.body.templateWritten, false);
+    assert.equal(preview.body.commandsRun.length, 0);
+    assert.equal(fs.existsSync(preview.body.plan.selectedTemplate.configPath), false);
+
+    const install = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
+      method: "POST",
+      body: {
+        action: "install",
+        apply: true,
+        runCommands: false,
+      },
+    });
+    assert.equal(install.status, 200);
+    assert.equal(install.body.action, "install");
+    assert.equal(install.body.applied, true);
+    assert.equal(install.body.templateWritten, true);
+    assert.equal(install.body.installed, true);
+    assert.equal(install.body.commandsRun.length, 0);
+    const serviceTemplate = fs.readFileSync(install.body.plan.selectedTemplate.configPath, "utf8");
+    assert.match(serviceTemplate, /model-gateway-daemon\.js/);
+    assert.match(serviceTemplate, new RegExp(config.openclawRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+    const startPreview = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
+      method: "POST",
+      body: {
+        action: "start",
+        apply: false,
+      },
+    });
+    assert.equal(startPreview.status, 200);
+    assert.equal(startPreview.body.applied, false);
+    assert.equal(startPreview.body.commandsRun.length, 0);
+    assert.ok(startPreview.body.plan.selectedTemplate.commands.start.length >= 1);
+  });
+});
+
 test("model gateway daemon writes runtime metadata and serves cli routes", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
@@ -16,6 +18,11 @@ import {
   type ModelGatewayAppScope,
   type ModelGatewayAuthStrategy,
   type ModelGatewayDaemonRuntimeMetadata,
+  type ModelGatewayDaemonServiceAction,
+  type ModelGatewayDaemonServiceCommand,
+  type ModelGatewayDaemonServiceCommandResult,
+  type ModelGatewayDaemonServiceRequest,
+  type ModelGatewayDaemonServiceResponse,
   type ModelGatewayProvider,
   type ModelGatewayProviderCategory,
   type ModelGatewayProviderHealth,
@@ -68,12 +75,15 @@ import {
   adaptResponsesToChatCompletion,
   isChatToOpenAIResponsesAdapterTarget,
 } from "./responses-chat-adapter.js";
+import { createModelGatewayDaemonServicePlan } from "./supervisor.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
+const execFileAsync = promisify(execFile);
+const DAEMON_SERVICE_ACTIONS = ["preview", "install", "start", "stop", "restart", "status"] as const;
 
 type HeaderMap = http.IncomingHttpHeaders | Record<string, string | string[] | undefined> | Headers;
 
@@ -317,6 +327,55 @@ function writeJsonSecureAtomic(filePath: string, value: unknown): void {
     fs.chmodSync(filePath, 0o600);
   } catch {
     // Best effort for filesystems that do not support chmod.
+  }
+}
+
+function writeTextAtomic(filePath: string, value: string, mode = 0o644): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  fs.writeFileSync(tmpPath, value, { mode });
+  fs.renameSync(tmpPath, filePath);
+  try {
+    fs.chmodSync(filePath, mode);
+  } catch {
+    // Best effort for filesystems that do not support chmod.
+  }
+}
+
+function normalizeDaemonServiceAction(value: unknown): ModelGatewayDaemonServiceAction {
+  return DAEMON_SERVICE_ACTIONS.includes(value as ModelGatewayDaemonServiceAction)
+    ? value as ModelGatewayDaemonServiceAction
+    : "preview";
+}
+
+async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
+  try {
+    const result = await execFileAsync(command.command, command.args, {
+      timeout: 30_000,
+      encoding: "utf8",
+    });
+    return {
+      ...command,
+      ok: true,
+      exitCode: 0,
+      stdout: result.stdout || "",
+      stderr: result.stderr || "",
+      error: null,
+    };
+  } catch (error) {
+    const shaped = error as Error & {
+      code?: string | number;
+      stdout?: string;
+      stderr?: string;
+    };
+    return {
+      ...command,
+      ok: false,
+      exitCode: typeof shaped.code === "number" ? shaped.code : null,
+      stdout: shaped.stdout || "",
+      stderr: shaped.stderr || "",
+      error: shaped.message || "Command failed.",
+    };
   }
 }
 
@@ -800,6 +859,8 @@ export interface ModelGatewayService {
   getStatus(): ModelGatewayStatusResponse;
   listProviders(): ModelGatewayProvidersResponse;
   getRuntime(): ModelGatewayRuntimeResponse;
+  getDaemonService(): ModelGatewayDaemonServiceResponse;
+  manageDaemonService(req: http.IncomingMessage | undefined, payload?: ModelGatewayDaemonServiceRequest): Promise<ModelGatewayDaemonServiceResponse>;
   upsertProvider(req: http.IncomingMessage | undefined, payload: ModelGatewayUpsertProviderRequest): ModelGatewayProviderView;
   deleteProvider(req: http.IncomingMessage | undefined, providerId: string): ModelGatewayProvidersResponse;
   setActiveProvider(req: http.IncomingMessage | undefined, payload: ModelGatewaySetActiveProviderRequest): ModelGatewayProvidersResponse;
@@ -1184,6 +1245,74 @@ export function createModelGatewayService(
         logs: paths.logs,
       },
     };
+  }
+
+  function daemonServiceResponse(options: {
+    action: ModelGatewayDaemonServiceAction;
+    applied?: boolean;
+    templateWritten?: boolean;
+    commandsRun?: ModelGatewayDaemonServiceCommandResult[];
+  }): ModelGatewayDaemonServiceResponse {
+    const plan = createModelGatewayDaemonServicePlan(config);
+    return {
+      ok: true,
+      checkedAt: nowIso(),
+      action: options.action,
+      applied: options.applied === true,
+      templateWritten: options.templateWritten === true,
+      installed: fs.existsSync(plan.selectedTemplate.configPath),
+      plan,
+      lifecycle: getLifecycleStatus(),
+      commandsRun: options.commandsRun || [],
+    };
+  }
+
+  function getDaemonService(): ModelGatewayDaemonServiceResponse {
+    return daemonServiceResponse({
+      action: "status",
+    });
+  }
+
+  async function manageDaemonService(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayDaemonServiceRequest = {},
+  ): Promise<ModelGatewayDaemonServiceResponse> {
+    requireManagement(req);
+    const action = normalizeDaemonServiceAction(payload?.action);
+    if (action === "preview" || action === "status") {
+      const plan = createModelGatewayDaemonServicePlan(config);
+      const commands = payload.runCommands === true ? plan.selectedTemplate.commands.status || [] : [];
+      const commandsRun = [];
+      for (const item of commands) commandsRun.push(await runDaemonServiceCommand(item));
+      return daemonServiceResponse({
+        action,
+        applied: commandsRun.length > 0,
+        commandsRun,
+      });
+    }
+
+    const plan = createModelGatewayDaemonServicePlan(config);
+    const apply = payload.apply === true;
+    let templateWritten = false;
+    if (action === "install" && apply) {
+      writeTextAtomic(plan.selectedTemplate.configPath, plan.selectedTemplate.template);
+      templateWritten = true;
+    }
+
+    const shouldRunCommands = payload.runCommands === true
+      || (payload.runCommands !== false && apply && (action === "start" || action === "stop" || action === "restart"));
+    const commandsRun = [];
+    if (shouldRunCommands) {
+      const commands = plan.selectedTemplate.commands[action] || [];
+      for (const item of commands) commandsRun.push(await runDaemonServiceCommand(item));
+    }
+
+    return daemonServiceResponse({
+      action,
+      applied: templateWritten || commandsRun.length > 0,
+      templateWritten,
+      commandsRun,
+    });
   }
 
   function listProviders(): ModelGatewayProvidersResponse {
@@ -2069,6 +2198,8 @@ export function createModelGatewayService(
     getStatus,
     listProviders,
     getRuntime,
+    getDaemonService,
+    manageDaemonService,
     upsertProvider,
     deleteProvider,
     setActiveProvider,

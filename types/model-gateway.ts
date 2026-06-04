@@ -208,6 +208,68 @@ export type ModelGatewayLocalDaemonState =
 export type ModelGatewayRuntimeHostMode = "studio-api-embedded" | "local-daemon";
 export type ModelGatewayDaemonImplementationStatus = "contract-only" | "available";
 
+export type ModelGatewayDaemonServiceAction =
+  | "preview"
+  | "install"
+  | "start"
+  | "stop"
+  | "restart"
+  | "status";
+
+export interface ModelGatewayDaemonServiceCommand {
+  label: string;
+  command: string;
+  args: string[];
+}
+
+export interface ModelGatewayDaemonServiceCommandResult extends ModelGatewayDaemonServiceCommand {
+  ok: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  error: string | null;
+}
+
+export interface ModelGatewayDaemonServiceTemplate {
+  supervisor: ModelGatewaySupervisorKind;
+  platform: "linux" | "macos" | "windows";
+  serviceName: string;
+  configPath: string;
+  template: string;
+  commands: Partial<Record<ModelGatewayDaemonServiceAction, ModelGatewayDaemonServiceCommand[]>>;
+}
+
+export interface ModelGatewayDaemonServicePlan {
+  platform: string;
+  supported: boolean;
+  supervisor: ModelGatewaySupervisorKind;
+  serviceName: string;
+  nodePath: string;
+  daemonEntry: string;
+  stateDir: string;
+  selectedTemplate: ModelGatewayDaemonServiceTemplate;
+  templates: ModelGatewayDaemonServiceTemplate[];
+  notes: string[];
+}
+
+export interface ModelGatewayDaemonServiceRequest {
+  action?: ModelGatewayDaemonServiceAction;
+  apply?: boolean;
+  runCommands?: boolean;
+}
+
+export interface ModelGatewayDaemonServiceResponse {
+  ok: true;
+  checkedAt: string;
+  action: ModelGatewayDaemonServiceAction;
+  applied: boolean;
+  templateWritten: boolean;
+  installed: boolean;
+  plan: ModelGatewayDaemonServicePlan;
+  lifecycle: ModelGatewayLifecycleStatus;
+  commandsRun: ModelGatewayDaemonServiceCommandResult[];
+}
+
 export interface ModelGatewayDaemonRuntimeMetadata {
   version: 1;
   updatedAt: string;
