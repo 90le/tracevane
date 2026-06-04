@@ -809,9 +809,23 @@ export interface ModelGatewayService {
   handleGatewayRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void>;
 }
 
-export function createModelGatewayService(config: StudioServerConfig): ModelGatewayService {
+export interface ModelGatewayServiceOptions {
+  runtimeHost?: "studio-api" | "local-daemon";
+  listener?: {
+    host?: string;
+    port?: number;
+  };
+}
+
+export function createModelGatewayService(
+  config: StudioServerConfig,
+  options: ModelGatewayServiceOptions = {},
+): ModelGatewayService {
   const paths = resolveModelGatewayPaths(config);
   const codexHistory = new CodexChatHistoryStore(paths.codexHistory);
+  const runtimeHost = options.runtimeHost || "studio-api";
+  const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
+  const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
 
   function readRegistry(): ModelGatewayRegistryState {
     const raw = readJsonFile<Partial<ModelGatewayRegistryState>>(paths.registry, createEmptyRegistry());
@@ -1049,10 +1063,12 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
         : daemonRuntime.pid
           ? "stale"
           : "unknown";
-    const daemonRunning = daemonState === "running" && daemonRuntime?.pid !== process.pid;
+    const daemonRunning = daemonState === "running" && (
+      runtimeHost === "local-daemon" || daemonRuntime?.pid !== process.pid
+    );
     const daemonEndpoint = daemonRuntime?.endpoint || buildLoopbackHttpEndpoint(
-      MODEL_GATEWAY_DEFAULT_HOST,
-      MODEL_GATEWAY_DEFAULT_PORT,
+      listenerHost,
+      listenerPort,
       "/v1",
     );
     const gatewayBasePath = config.transport.gateway.basePath || config.gatewayControlUiBasePath || "";
@@ -1062,11 +1078,13 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
 
     return {
       controlPlane: {
-        state: "running",
-        mode: "studio-api",
-        pid: process.pid,
-        endpoint: buildLoopbackHttpEndpoint(MODEL_GATEWAY_DEFAULT_HOST, config.port),
-        embeddedGatewayActive: !daemonRunning,
+        state: runtimeHost === "local-daemon" ? "not-attached" : "running",
+        mode: runtimeHost === "local-daemon" ? "daemon-local-control" : "studio-api",
+        pid: runtimeHost === "local-daemon" ? null : process.pid,
+        endpoint: runtimeHost === "local-daemon"
+          ? null
+          : buildLoopbackHttpEndpoint(MODEL_GATEWAY_DEFAULT_HOST, config.port),
+        embeddedGatewayActive: runtimeHost !== "local-daemon" && !daemonRunning,
       },
       openclawMount: {
         state: config.transport.gateway.enabled ? "configured" : "disabled",
@@ -1124,8 +1142,8 @@ export function createModelGatewayService(config: StudioServerConfig): ModelGate
       checkedAt: nowIso(),
       phase: "phase-1-control-plane",
       listener: {
-        host: MODEL_GATEWAY_DEFAULT_HOST,
-        port: MODEL_GATEWAY_DEFAULT_PORT,
+        host: listenerHost,
+        port: listenerPort,
       },
       capabilities: {
         status: ["/gateway/status", "/api/model-gateway/status"],

@@ -14,6 +14,7 @@ import {
   createModelGatewayService,
   resolveModelGatewayPaths,
 } from "../../dist/apps/api/modules/model-gateway/service.js";
+import { createModelGatewayDaemon } from "../../dist/apps/api/modules/model-gateway/daemon.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-model-gateway-"));
@@ -389,6 +390,111 @@ test("model gateway status separates embedded fallback from daemon lifecycle", a
     daemonProcess.kill();
     await exited;
   }
+});
+
+test("model gateway daemon writes runtime metadata and serves cli routes", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const service = createModelGatewayService(config);
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "daemon-chat",
+      name: "Daemon Chat",
+      appScopes: ["openclaw"],
+      baseUrl: "https://daemon-chat.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-daemon-secret-123456",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const daemon = createModelGatewayDaemon(config, {
+    port: 0,
+    supervisor: "none",
+    logger: createLogger(),
+  });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_daemon",
+      object: "chat.completion",
+      choices: [{ index: 0, message: { role: "assistant", content: "daemon ok" }, finish_reason: "stop" }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const metadata = await daemon.start();
+    assert.equal(metadata.pid, process.pid);
+    assert.equal(metadata.host, "127.0.0.1");
+    assert.ok(metadata.port > 0);
+    assert.equal(metadata.endpoint, `http://127.0.0.1:${metadata.port}/v1`);
+    assert.equal(metadata.lockFile, paths.portLock);
+    assert.equal(fs.readFileSync(paths.daemonPid, "utf8").trim(), String(process.pid));
+    assert.equal(JSON.parse(fs.readFileSync(paths.daemonRuntime, "utf8")).pid, process.pid);
+    assert.equal(JSON.parse(fs.readFileSync(paths.portLock, "utf8")).port, metadata.port);
+
+    const status = await requestJson(`${daemon.getBaseUrl()}/gateway/status`);
+    assert.equal(status.status, 200);
+    assert.equal(status.body.listener.port, metadata.port);
+    assert.equal(status.body.lifecycle.controlPlane.state, "not-attached");
+    assert.equal(status.body.lifecycle.controlPlane.mode, "daemon-local-control");
+    assert.equal(status.body.lifecycle.controlPlane.embeddedGatewayActive, false);
+    assert.equal(status.body.lifecycle.localDaemon.implementationStatus, "available");
+    assert.equal(status.body.lifecycle.localDaemon.state, "running");
+    assert.equal(status.body.lifecycle.localDaemon.runtimeMode, "local-daemon");
+    assert.equal(status.body.lifecycle.localDaemon.pid, process.pid);
+    assert.equal(status.body.lifecycle.localDaemon.survivesControlPlaneCrash, true);
+    assert.equal(status.body.lifecycle.localDaemon.endpoint, `http://127.0.0.1:${metadata.port}/v1`);
+    assert.equal(status.body.lifecycle.endpointPolicy.preferredCliEndpoint, `http://127.0.0.1:${metadata.port}/v1`);
+
+    const chat = await requestJson(`${daemon.getBaseUrl()}/v1/chat/completions`, {
+      method: "POST",
+      body: {
+        model: "daemon-model",
+        messages: [{ role: "user", content: "hello daemon" }],
+        stream: false,
+      },
+    });
+    assert.equal(chat.status, 200);
+    assert.equal(chat.headers["x-openclaw-model-gateway-provider"], "daemon-chat");
+    assert.equal(chat.body.choices[0].message.content, "daemon ok");
+
+    const runtime = await requestJson(`${daemon.getBaseUrl()}/api/model-gateway/runtime`);
+    assert.equal(runtime.status, 200);
+    assert.equal(runtime.body.runtime.requestLog.length, 1);
+    assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_chat_completions");
+    assert.equal(runtime.body.runtime.requestLog[0].outcome, "success");
+    assert.ok(!JSON.stringify(runtime.body).includes("sk-daemon-secret-123456"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    await daemon.stop();
+  }
+
+  assert.equal(daemon.isRunning(), false);
+  assert.equal(fs.existsSync(paths.daemonRuntime), false);
+  assert.equal(fs.existsSync(paths.daemonPid), false);
+  assert.equal(fs.existsSync(paths.portLock), false);
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://daemon-chat.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-daemon-secret-123456");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "daemon-model",
+    messages: [{ role: "user", content: "hello daemon" }],
+    stream: false,
+  });
 });
 
 test("model gateway protocol matrix forwards native openai responses and guards unfinished adapters", async () => {

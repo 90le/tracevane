@@ -223,10 +223,10 @@ export interface ModelGatewayDaemonRuntimeMetadata {
 
 export interface ModelGatewayLifecycleStatus {
   controlPlane: {
-    state: "running";
-    mode: "studio-api";
-    pid: number;
-    endpoint: string;
+    state: "running" | "not-attached";
+    mode: "studio-api" | "daemon-local-control";
+    pid: number | null;
+    endpoint: string | null;
     embeddedGatewayActive: boolean;
   };
   openclawMount: {

@@ -163,6 +163,14 @@ Phase 1 lifecycle contract checkpoint（2026-06-04）：
 - `lifecycle.endpointPolicy` 固定 CLI 优先写 daemon loopback endpoint，OpenClaw single-port endpoint 只能作为可选入口，并要求 direct daemon fallback。
 - 当前实现仍是 contract foundation：未写入 daemon binary、service unit 或 restart supervisor；没有 `daemon-runtime.json` 时 status 会明确返回 `localDaemon.state: "not-installed"` 和 `runtimeMode: "studio-api-embedded"`。
 
+Phase 1 daemon entrypoint checkpoint（2026-06-04）：
+
+- 已新增 `apps/api/modules/model-gateway/daemon.ts`，提供最小 Local Gateway daemon HTTP server。
+- daemon 启动后写入 `daemon-runtime.json`、`daemon.pid` 和 `gateway-port.lock`，并在停止时清理这些 runtime 文件。
+- daemon 复用现有 Model Gateway route contract，可服务 `GET /gateway/status`、`GET /gateway/providers`、`GET /api/model-gateway/runtime` 和 `/v1/chat/completions` / `/v1/responses` / `/v1/messages` 等 CLI 模型入口。
+- 已新增 `apps/api/model-gateway-daemon.ts` 作为可直接执行入口，编译后路径为 `dist/apps/api/model-gateway-daemon.js`，后续 systemd/launchd/Windows service 模板应调用该入口。
+- 当前仍未完成 OS/user service unit、install/start/stop 管理 API、restart policy 和真实 Studio/OpenClaw crash-survivability 验证。
+
 ### 4.2 Provider Registry
 
 Studio 需要自己的 provider registry。v1 可以使用 Studio state JSON + 原子写 + `0600` secret 文件，不先引入新数据库依赖；schema 要保持将来迁移 SQLite 的可能。
@@ -382,8 +390,9 @@ Router 是新链路稳定性的核心：
 - 已补齐 provider delete、active provider 设置、provider test endpoint、runtime request log 和 provider health 更新。
 - `runtime.json` 已记录 gateway request / provider test 的有界日志，status 返回 request log size/latest timestamp。
 - status 已暴露 `lifecycle.controlPlane`、`lifecycle.openclawMount`、`lifecycle.localDaemon` 和 `lifecycle.endpointPolicy`，用于后续 UI / install takeover 区分 control plane、single-port mount 和独立 daemon。
+- 已新增最小 Local Gateway daemon entrypoint，可写 runtime metadata/pid/port lock，并直接服务 Model Gateway status/provider/runtime 与 CLI 模型入口。
 - Router 已能在 active provider circuit open 时选择同 app scope fallback provider，并在 route decision 中返回 `failoverReason`。
-- 尚未完成独立 daemon binary/service unit、app takeover preview/apply、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
+- 尚未完成独立 daemon service unit / supervisor install、app takeover preview/apply、UI、request retry、完整 failover queue 执行、Codex/Claude protocol adapters。
 
 ### Phase 2: Gateway Runtime
 
