@@ -53,6 +53,9 @@ export type OpenClawRecoveryEventKind =
   | "gateway_service_repair_succeeded"
   | "gateway_service_repair_skipped"
   | "gateway_service_repair_failed"
+  | "studio_web_bundle_rebuild_succeeded"
+  | "studio_web_bundle_rebuild_skipped"
+  | "studio_web_bundle_rebuild_failed"
   | (string & {});
 
 export type OpenClawRecoveryTrigger = "auto" | "manual";
@@ -84,6 +87,8 @@ export interface OpenClawRecoveryPolicy {
   gatewayServiceRepairTimeoutMs: number;
   allowGatewayProcessTakeover: boolean;
   gatewayProcessTakeoverTimeoutMs: number;
+  allowStudioWebRebuild: boolean;
+  studioWebRebuildTimeoutMs: number;
 }
 
 export interface OpenClawRecoveryDaemonRuntime {

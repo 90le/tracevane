@@ -188,6 +188,14 @@
                 <span>{{ text('服务修复超时', 'Service Repair Timeout') }}</span>
                 <strong>{{ formatDuration(recovery.policy.gatewayServiceRepairTimeoutMs) }}</strong>
               </div>
+              <div class="system-overview-item">
+                <span>{{ text('Studio 静态包重建', 'Studio Bundle Rebuild') }}</span>
+                <strong>{{ recovery.policy.allowStudioWebRebuild ? text('允许', 'Allowed') : text('禁用', 'Disabled') }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('重建超时', 'Rebuild Timeout') }}</span>
+                <strong>{{ formatDuration(recovery.policy.studioWebRebuildTimeoutMs) }}</strong>
+              </div>
             </div>
           </section>
 
@@ -367,6 +375,8 @@ function normalizeRecovery(payload: Record<string, any>): OpenClawRecoveryStatus
       gatewayServiceRepairTimeoutMs: Number(payload.policy?.gatewayServiceRepairTimeoutMs || 30000),
       allowGatewayProcessTakeover: payload.policy?.allowGatewayProcessTakeover !== false,
       gatewayProcessTakeoverTimeoutMs: Number(payload.policy?.gatewayProcessTakeoverTimeoutMs || 5000),
+      allowStudioWebRebuild: payload.policy?.allowStudioWebRebuild !== false,
+      studioWebRebuildTimeoutMs: Number(payload.policy?.studioWebRebuildTimeoutMs || 180000),
     },
     lastRepair: payload.lastRepair || null,
     service: {

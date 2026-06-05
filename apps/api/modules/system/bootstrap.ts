@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { StudioServerConfig } from '../../../../types/api.js';
 import type {
@@ -36,6 +38,29 @@ function normalizeStringList(value: unknown): string[] {
   return items;
 }
 
+function normalizePathKey(value: string): string {
+  return path.resolve(value).replace(/\\/g, '/');
+}
+
+function isOldStudioPath(value: string): boolean {
+  return /\/openclaw-studio\.(prev|bak|old)(\/|$)/.test(value);
+}
+
+function isBadStudioInstallRecord(
+  config: StudioServerConfig,
+  record: unknown,
+): boolean {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
+  const installPath = normalizeString((record as Record<string, unknown>).installPath);
+  if (!installPath) return false;
+  const installPathKey = normalizePathKey(installPath);
+  const projectRootKey = normalizePathKey(config.projectRoot);
+  if (installPathKey === projectRootKey) return false;
+  if (isOldStudioPath(installPathKey)) return true;
+  if (!fs.existsSync(installPath)) return true;
+  return false;
+}
+
 function hasDockerCommand(): boolean {
   const result = spawnSync('docker', ['--version'], { stdio: 'ignore' });
   return !result.error && result.status === 0;
@@ -66,6 +91,9 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
   const pluginEntries = openclawConfig.plugins?.entries && typeof openclawConfig.plugins.entries === 'object'
     ? openclawConfig.plugins.entries as Record<string, Record<string, unknown>>
     : {};
+  const pluginInstalls = openclawConfig.plugins?.installs && typeof openclawConfig.plugins.installs === 'object'
+    ? openclawConfig.plugins.installs as Record<string, unknown>
+    : {};
   const pluginAllow = normalizeStringList(openclawConfig.plugins?.allow);
   const pluginLoadPaths = normalizeStringList(openclawConfig.plugins?.load?.paths);
   const gateway = openclawConfig.gateway && typeof openclawConfig.gateway === 'object'
@@ -85,9 +113,11 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
   const missingOrigins = expectedOrigins.filter((origin) => !allowedOrigins.includes(origin));
   const hasGatewayToken = authMode !== 'token' || Boolean(normalizeString(gatewayAuth.token));
   const pluginEntryEnabled = pluginEntries.studio?.enabled !== false;
+  const studioInstallRecordOk = !isBadStudioInstallRecord(config, pluginInstalls.studio);
   const allowlistSatisfied = pluginAllow.length === 0 || pluginAllow.includes('studio');
   const loadPathSatisfied = pluginLoadPaths.includes(config.projectRoot);
   const bindSupported = !bindMode || SUPPORTED_BINDS.has(bindMode);
+  const controlUiEnabled = gatewayControlUi.enabled !== false;
   const dockerAvailable = hasDockerCommand();
   const defaultSandbox = openclawConfig.agents?.defaults?.sandbox && typeof openclawConfig.agents.defaults.sandbox === 'object'
     ? openclawConfig.agents.defaults.sandbox as Record<string, unknown>
@@ -134,6 +164,19 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
       fixable: true,
     },
     {
+      id: 'studio-install-record',
+      label: 'Studio install record',
+      level: studioInstallRecordOk ? 'ok' : 'warn',
+      summary: studioInstallRecordOk
+        ? 'Studio install record 未指向旧目录'
+        : 'plugins.installs.studio 指向旧目录或缺失目录',
+      detail: studioInstallRecordOk
+        ? 'OpenClaw 可以按当前 plugins.load.paths 重新识别 Studio。'
+        : '会删除过期 install record，避免重启后继续加载 .prev/.bak/.old 或已不存在的 Studio 目录。',
+      detected: true,
+      fixable: true,
+    },
+    {
       id: 'gateway-auth-token',
       label: 'Gateway auth',
       level: hasGatewayToken ? 'ok' : 'error',
@@ -143,6 +186,19 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
       detail: hasGatewayToken
         ? 'Studio backend bridge 需要宿主当前的网关鉴权信息来完成本地桥接。'
         : '如果是新环境，Studio 可以补一个随机 token，避免 chat/system bridge 因缺少 token 直接不可用。',
+      detected: true,
+      fixable: true,
+    },
+    {
+      id: 'gateway-control-ui',
+      label: 'Gateway control UI',
+      level: controlUiEnabled ? 'ok' : 'error',
+      summary: controlUiEnabled
+        ? 'gateway.controlUi 未被禁用'
+        : 'gateway.controlUi.enabled=false',
+      detail: controlUiEnabled
+        ? '单口入口可继续承载 Studio 控制面。'
+        : '单口模式下显式关闭 controlUi 会导致 Studio 无法通过 gateway 打开。',
       detected: true,
       fixable: true,
     },
@@ -235,6 +291,19 @@ function applyBootstrapFixes(config: StudioServerConfig): { changed: boolean; ch
     }
   }
 
+  if (
+    openclawConfig.plugins.installs &&
+    typeof openclawConfig.plugins.installs === 'object' &&
+    !Array.isArray(openclawConfig.plugins.installs) &&
+    isBadStudioInstallRecord(config, openclawConfig.plugins.installs.studio)
+  ) {
+    delete openclawConfig.plugins.installs.studio;
+    if (Object.keys(openclawConfig.plugins.installs).length === 0) {
+      delete openclawConfig.plugins.installs;
+    }
+    changedKeys.push('plugins.installs.studio');
+  }
+
   openclawConfig.plugins.load = openclawConfig.plugins.load && typeof openclawConfig.plugins.load === 'object'
     ? openclawConfig.plugins.load
     : {};
@@ -260,6 +329,10 @@ function applyBootstrapFixes(config: StudioServerConfig): { changed: boolean; ch
   openclawConfig.gateway.controlUi = openclawConfig.gateway.controlUi && typeof openclawConfig.gateway.controlUi === 'object'
     ? openclawConfig.gateway.controlUi
     : {};
+  if (openclawConfig.gateway.controlUi.enabled === false) {
+    openclawConfig.gateway.controlUi.enabled = true;
+    changedKeys.push('gateway.controlUi.enabled');
+  }
   const expectedOrigins = buildExpectedLocalOrigins(Number(openclawConfig.gateway.port) || config.gatewayPort);
   const allowedOrigins = normalizeStringList(openclawConfig.gateway.controlUi.allowedOrigins);
   let allowedOriginsChanged = false;

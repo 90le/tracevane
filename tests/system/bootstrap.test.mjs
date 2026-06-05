@@ -62,11 +62,17 @@ test('bootstrap repair writes safe defaults without clobbering existing config',
         mode: 'token',
       },
       controlUi: {
+        enabled: false,
         allowedOrigins: ['http://127.0.0.1:31879'],
       },
     },
     plugins: {
       allow: ['discord'],
+      installs: {
+        studio: {
+          installPath: '/tmp/openclaw-studio.prev',
+        },
+      },
       load: {
         paths: ['/tmp/another-extension'],
       },
@@ -85,13 +91,17 @@ test('bootstrap repair writes safe defaults without clobbering existing config',
   assert.equal(repaired.changed, true);
   assert.ok(repaired.changedKeys.includes('plugins.entries.studio.enabled'));
   assert.ok(repaired.changedKeys.includes('plugins.allow'));
+  assert.ok(repaired.changedKeys.includes('plugins.installs.studio'));
   assert.ok(repaired.changedKeys.includes('plugins.load.paths'));
   assert.ok(repaired.changedKeys.includes('gateway.bind'));
+  assert.ok(repaired.changedKeys.includes('gateway.controlUi.enabled'));
   assert.ok(repaired.changedKeys.includes('gateway.auth.token'));
   assert.equal(nextConfig.plugins.entries.studio.enabled, true);
   assert.ok(nextConfig.plugins.allow.includes('studio'));
+  assert.equal(nextConfig.plugins.installs, undefined);
   assert.ok(nextConfig.plugins.load.paths.includes(config.projectRoot));
   assert.equal(nextConfig.gateway.bind, 'loopback');
+  assert.equal(nextConfig.gateway.controlUi.enabled, true);
   assert.ok(typeof nextConfig.gateway.auth.token === 'string' && nextConfig.gateway.auth.token.length > 10);
   assert.ok(nextConfig.gateway.controlUi.allowedOrigins.includes('http://localhost:31879'));
   assert.equal(repaired.snapshot.ready, true);

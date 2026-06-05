@@ -47,6 +47,15 @@ interface OpenClawDoctorFinding extends OpenClawConfigValidationIssue {
   id?: unknown;
 }
 
+export interface StudioWebBundleInspection {
+  ok: boolean;
+  webDistDir: string;
+  indexPath: string;
+  assetsDir: string;
+  assetCount: number;
+  missing: string[];
+}
+
 export function createOpenClawConfigBackup(config: StudioServerConfig): string | null {
   if (!fs.existsSync(config.openclawConfigFile)) return null;
   const paths = resolveOpenClawRecoveryPaths(config);
@@ -285,15 +294,45 @@ export function pruneInvalidOpenClawConfigFromValidation(
   return [...new Set(changedKeys)];
 }
 
+export function inspectStudioWebBundle(
+  config: StudioServerConfig,
+): StudioWebBundleInspection {
+  const indexPath = path.join(config.webDistDir, "index.html");
+  const assetsDir = path.join(config.webDistDir, "assets");
+  const missing: string[] = [];
+  if (!fs.existsSync(config.webDistDir)) missing.push("webDistDir");
+  if (!fs.existsSync(indexPath)) missing.push("index.html");
+  if (!fs.existsSync(assetsDir)) missing.push("assets");
+  const assetCount = fs.existsSync(assetsDir)
+    ? fs
+        .readdirSync(assetsDir)
+        .filter((fileName) => /\.(js|css)$/i.test(fileName)).length
+    : 0;
+  if (fs.existsSync(assetsDir) && assetCount === 0) {
+    missing.push("assets.js-css");
+  }
+
+  return {
+    ok: missing.length === 0,
+    webDistDir: config.webDistDir,
+    indexPath,
+    assetsDir,
+    assetCount,
+    missing,
+  };
+}
+
 function runCommand(
   command: string,
   args: string[],
   timeoutMs: number,
+  cwd?: string,
 ): Promise<OpenClawRecoveryCommandSnapshot> {
   const startedAt = Date.now();
   const label = `${command} ${args.join(" ")}`.trim();
   return new Promise((resolve) => {
     const child = spawn(command, args, {
+      cwd,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout: Buffer[] = [];
@@ -459,6 +498,94 @@ async function runPluginRepairLayer(
   );
 
   return [...new Set(changedKeys)];
+}
+
+async function runStudioWebBundleRepairLayer(
+  config: StudioServerConfig,
+  policy: OpenClawRecoveryPolicy,
+  commands: OpenClawRecoveryCommandSnapshot[],
+): Promise<{ changedKeys: string[]; error: string; repaired: boolean }> {
+  const inspection = inspectStudioWebBundle(config);
+  if (inspection.ok) {
+    return { changedKeys: [], error: "", repaired: false };
+  }
+
+  const details = {
+    inspection,
+    projectRoot: config.projectRoot,
+  };
+  if (!policy.allowStudioWebRebuild) {
+    appendRecoveryEvent(
+      config,
+      createRecoveryEvent({
+        kind: "studio_web_bundle_rebuild_skipped",
+        severity: "warning",
+        title: "Studio 静态包重建已跳过",
+        summary: `Studio web bundle is incomplete: ${inspection.missing.join(", ")}.`,
+        status: "skipped",
+        details,
+      }),
+    );
+    return { changedKeys: [], error: "", repaired: false };
+  }
+
+  const packagePath = path.join(config.projectRoot, "package.json");
+  const webPackagePath = path.join(config.projectRoot, "apps", "web-vue", "package.json");
+  if (!fs.existsSync(packagePath) || !fs.existsSync(webPackagePath)) {
+    const error = "Studio source package is missing; web bundle cannot be rebuilt automatically";
+    appendRecoveryEvent(
+      config,
+      createRecoveryEvent({
+        kind: "studio_web_bundle_rebuild_failed",
+        severity: "error",
+        title: "Studio 静态包重建失败",
+        summary: error,
+        status: "failed",
+        details,
+      }),
+    );
+    return { changedKeys: [], error, repaired: false };
+  }
+
+  const rebuild = await runCommand(
+    "npm",
+    ["run", "build:web"],
+    policy.studioWebRebuildTimeoutMs,
+    config.projectRoot,
+  );
+  commands.push(rebuild);
+  const nextInspection = inspectStudioWebBundle(config);
+  if (!rebuild.ok || !nextInspection.ok) {
+    const error =
+      commandErrorSummary(rebuild) ||
+      `Studio web bundle is still incomplete: ${nextInspection.missing.join(", ")}.`;
+    appendRecoveryEvent(
+      config,
+      createRecoveryEvent({
+        kind: "studio_web_bundle_rebuild_failed",
+        severity: "error",
+        title: "Studio 静态包重建失败",
+        summary: error,
+        status: "failed",
+        details: { ...details, nextInspection },
+      }),
+    );
+    return { changedKeys: [], error, repaired: false };
+  }
+
+  const changedKeys = ["studio.webDist.rebuild"];
+  appendRecoveryEvent(
+    config,
+    createRecoveryEvent({
+      kind: "studio_web_bundle_rebuild_succeeded",
+      severity: "success",
+      title: "Studio 静态包已重建",
+      summary: `Rebuilt Studio web bundle with ${nextInspection.assetCount} JS/CSS asset(s).`,
+      status: "succeeded",
+      details: { ...details, nextInspection },
+    }),
+  );
+  return { changedKeys, error: "", repaired: true };
 }
 
 function commandErrorSummary(commandResult: OpenClawRecoveryCommandSnapshot): string {
@@ -759,6 +886,15 @@ export async function runOpenClawRecoveryRepair(
     const bootstrap = repairSystemBootstrap(config);
     if (bootstrap.changed) changedKeys.push(...bootstrap.changedKeys);
     changedKeys.push(...await runPluginRepairLayer(config, commands));
+    const studioWebBundle = await runStudioWebBundleRepairLayer(
+      config,
+      options.policy,
+      commands,
+    );
+    changedKeys.push(...studioWebBundle.changedKeys);
+    if (studioWebBundle.error) {
+      error = studioWebBundle.error;
+    }
 
     commands.push(await runCommand("openclaw", ["doctor", "--non-interactive"], 20_000));
     if (options.policy.runDoctorFix) {

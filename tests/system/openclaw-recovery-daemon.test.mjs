@@ -25,6 +25,7 @@ import {
 } from "../../dist/apps/api/modules/openclaw-recovery/probe.js";
 import {
   createOpenClawConfigBackup,
+  inspectStudioWebBundle,
   pruneMissingOpenClawPluginLoadPaths,
   pruneInvalidOpenClawConfigFromValidation,
   repairOpenClawPluginConfigFromFindings,
@@ -290,6 +291,24 @@ test("gateway service status parser detects service hosting repair cases", () =>
   assert.ok(assessment.reasons.includes("service_not_loaded"));
   assert.ok(assessment.reasons.includes("service_command_missing_gateway"));
   assert.ok(assessment.reasons.includes("gateway_port_mismatch"));
+});
+
+test("studio web bundle inspection detects missing and rebuilt static assets", () => {
+  const config = makeConfig();
+
+  const missing = inspectStudioWebBundle(config);
+  assert.equal(missing.ok, false);
+  assert.deepEqual(missing.missing, ["webDistDir", "index.html", "assets"]);
+
+  const assetsDir = path.join(config.webDistDir, "assets");
+  fs.mkdirSync(assetsDir, { recursive: true });
+  fs.writeFileSync(path.join(config.webDistDir, "index.html"), "<div id=\"app\"></div>\n", "utf8");
+  fs.writeFileSync(path.join(assetsDir, "index-test.js"), "console.log('ok');\n", "utf8");
+
+  const ready = inspectStudioWebBundle(config);
+  assert.equal(ready.ok, true);
+  assert.equal(ready.assetCount, 1);
+  assert.deepEqual(ready.missing, []);
 });
 
 test("recovery history and config backup lists are paginated", () => {

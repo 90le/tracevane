@@ -28,6 +28,8 @@ export const DEFAULT_RECOVERY_POLICY: OpenClawRecoveryPolicy = {
   gatewayServiceRepairTimeoutMs: 30_000,
   allowGatewayProcessTakeover: true,
   gatewayProcessTakeoverTimeoutMs: 5_000,
+  allowStudioWebRebuild: true,
+  studioWebRebuildTimeoutMs: 180_000,
 };
 
 function nowIso(): string {

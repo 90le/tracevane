@@ -22,6 +22,7 @@
 - Gateway restart 后仍不可达时，允许发现端口监听者；只有确认监听进程是 OpenClaw gateway 时才自动接管，非 OpenClaw 进程只记录并跳过。
 - Gateway 修复后必须做深探测：不只确认端口有响应，还要确认 Studio 控制 UI 路径不是 404/5xx。
 - Gateway 服务托管修复优先使用 `openclaw gateway status --json` 的状态判断，再调用 OpenClaw 自己的 `gateway install/start/restart`，不在 Studio 里硬编码 systemd/launchd/schtasks 细节。
+- Studio 控制面打不开时，自愈要覆盖静态 bundle 缺失和旧安装记录残留：可重建 `apps/web-vue/dist`，并清理指向 `.prev/.bak/.old` 或缺失目录的 `plugins.installs.studio`。
 
 ## 2. 边界
 
@@ -57,6 +58,9 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 - 修复前创建配置备份。
 - 配置 prune 从 OpenClaw validation issue 动态获取路径，并保留插件/provider/channel 扩展域。
 - 插件层优先禁用有问题的 `plugins.entries.<id>`，或移除明显不存在的绝对 `plugins.load.paths`，不删除插件源码目录。
+- 插件层清理坏的 `plugins.installs.studio` 记录，避免 OpenClaw 继续加载旧 Studio 目录。
+- 控制面配置层会打开被显式禁用的 `gateway.controlUi.enabled=false`，但不盲目改写已有 `controlUi.basePath/root`。
+- Studio web bundle 层检查 `webDistDir/index.html/assets`；缺失时在 repair 管线里执行受控 `npm run build:web` 重建。
 - 安装层先做 CLI/update 状态检查；CLI 缺失时只根据 recovery manifest 恢复 shim 或重装同一记录包。
 - Gateway 复验使用深探测：端口不可达才进入进程接管；端口可达但控制 UI 路径失败时归类为服务/路由问题。
 - Gateway 服务托管层读取 `openclaw gateway status --json`，在服务未加载、失败、路径缺失、端口不匹配或 config audit 失败时使用 OpenClaw CLI 重建/启动服务。
@@ -71,4 +75,5 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 - 在目标 Linux/macOS/Windows 环境做 supervisor install/start runtime smoke。
 - 根据真实故障样本继续扩展非端口类启动冲突和服务托管异常。
 - 用真实 CLI 缺失、包损坏和系统服务损坏样本验证受控重装/服务重建兜底。
+- 用真实 dist 损坏样本验证 `npm run build:web` 自动重建路径。
 - 若本机 fallback 控制面变成正式用户工作流，再补发现入口和 token 展示 UX。
