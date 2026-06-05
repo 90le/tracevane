@@ -68,6 +68,9 @@ test('recovery page owns daemon controls, events, and backups', () => {
   assert.match(systemRecoveryPage, /立即修复配置/);
   assert.match(systemRecoveryPage, /runManualConfigRepair/);
   assert.match(systemRecoveryPage, /action: 'config-repair'/);
+  assert.match(systemRecoveryPage, /activeRecoveryAction/);
+  assert.match(systemRecoveryPage, /system-action-row--busy/);
+  assert.match(systemRecoveryPage, /已有修复任务正在运行/);
   assert.match(systemRecoveryPage, /runManualRecovery/);
   assert.doesNotMatch(systemRecoveryPage, /fetchSystemDiagnostics|loadDeepDiagnostics/);
 });
@@ -79,6 +82,8 @@ test('system feature CSS keeps the shared workbench styling local', () => {
   assert.doesNotMatch(systemRecoveryPage, /<style scoped>/);
   assert.match(systemWorkspaceCss, /\.system-action-list\s*\{/);
   assert.match(systemWorkspaceCss, /\.system-action-row\s*\{/);
+  assert.match(systemWorkspaceCss, /\.system-action-row--busy\s*\{/);
+  assert.match(systemWorkspaceCss, /\.system-action-row:disabled\s*\{/);
   assert.match(systemWorkspaceCss, /\.system-control-grid\s*\{[\s\S]*background:\s*var\(--surface-base\);/);
   assert.match(systemWorkspaceCss, /\.system-sidebar-panel\s*\{[\s\S]*background:\s*var\(--surface-raised\);/);
   assert.match(systemWorkspaceCss, /\.system-overview-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit, minmax\(220px, 1fr\)\);/);

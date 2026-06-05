@@ -19,6 +19,7 @@
 - 自愈能力要逐步覆盖配置、进程、端口、服务托管、依赖完整性和安装损坏，优先复用 OpenClaw CLI 的 status/doctor/validate/fix 结果。
 - 修复历史和配置备份必须支持多条记录与分页浏览。
 - `/system/recovery` 需要提供“立即修复配置”手动动作，绕过自动阈值，专门处理 OpenClaw JSON schema 字段错误并尝试重启 gateway。
+- 手动恢复动作必须有明确 pending/disabled 反馈，并把 repair lock 冲突提示成人可读的状态说明。
 - daemon 安装/启动时记录 CLI install manifest；当 `openclaw` 命令缺失时，可先恢复本地 shim，再按 manifest 受控执行 npm 全局重装。
 - Gateway restart 后仍不可达时，允许发现端口监听者；只有确认监听进程是 OpenClaw gateway 时才自动接管，非 OpenClaw 进程只记录并跳过。
 - Gateway 修复后必须做深探测：不只确认端口有响应，还要确认 Studio 控制 UI 路径不是 404/5xx。
@@ -56,6 +57,7 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 - daemon 健康循环只做 loopback probe。
 - 连续失败未超过 180 秒不触发修复。
 - 修复流程有单飞锁和 cooldown。
+- repair lock 需要识别 stale lock，避免 daemon 或 Studio 异常退出后永久误报已有修复任务。
 - 修复前创建配置备份。
 - 配置 prune 从 OpenClaw validation issue 动态获取路径，并保留插件/provider/channel 扩展域。
 - 手动 `config-repair` action 会先备份配置，只执行配置 validation prune、Studio/gateway bootstrap 修复和 `openclaw gateway restart`，不进入完整重修复管线。

@@ -171,6 +171,25 @@
   background: color-mix(in srgb, var(--accent-primary) 10%, var(--surface-raised));
 }
 
+.system-action-row:disabled {
+  cursor: wait;
+  color: var(--text-soft);
+}
+
+.system-action-row:disabled:not(.system-action-row--busy) {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.system-action-row--busy {
+  background: color-mix(in srgb, var(--accent-primary) 12%, var(--surface-raised));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent-primary) 78%, var(--text) 8%);
+}
+
+.system-action-row--busy .system-action-row__verb {
+  color: var(--accent-primary);
+}
+
 .system-action-row__index,
 .system-action-row__verb {
   color: var(--text-soft);

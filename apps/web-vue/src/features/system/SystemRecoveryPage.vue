@@ -58,29 +58,50 @@
           </div>
 
           <nav class="system-action-list" :aria-label="text('恢复动作', 'Recovery actions')">
-            <button type="button" class="system-action-row" :disabled="actionBusy" @click="runManualProbe">
+            <button
+              type="button"
+              class="system-action-row"
+              :class="{ 'system-action-row--busy': activeRecoveryAction === 'probe' }"
+              :disabled="actionBusy"
+              :aria-busy="activeRecoveryAction === 'probe'"
+              @click="runManualProbe"
+            >
               <span class="system-action-row__index">01</span>
               <span class="system-action-row__copy">
                 <strong>{{ text('运行轻量探测', 'Run light probe') }}</strong>
                 <span>{{ text('只检查 loopback Gateway，不进入修复管线。', 'Checks loopback Gateway without entering the repair pipeline.') }}</span>
               </span>
-              <span class="system-action-row__verb">{{ text('运行', 'Run') }}</span>
+              <span class="system-action-row__verb">{{ activeRecoveryAction === 'probe' ? text('探测中...', 'Probing...') : text('运行', 'Run') }}</span>
             </button>
-            <button type="button" class="system-action-row" :disabled="actionBusy" @click="runManualConfigRepair">
+            <button
+              type="button"
+              class="system-action-row"
+              :class="{ 'system-action-row--busy': activeRecoveryAction === 'config-repair' }"
+              :disabled="actionBusy"
+              :aria-busy="activeRecoveryAction === 'config-repair'"
+              @click="runManualConfigRepair"
+            >
               <span class="system-action-row__index">02</span>
               <span class="system-action-row__copy">
                 <strong>{{ text('立即修复配置', 'Repair config now') }}</strong>
                 <span>{{ text('立即备份并修复 OpenClaw JSON 字段错误，然后尝试重启 Gateway。', 'Backs up and repairs OpenClaw JSON field errors immediately, then tries to restart Gateway.') }}</span>
               </span>
-              <span class="system-action-row__verb">{{ text('修复', 'Repair') }}</span>
+              <span class="system-action-row__verb">{{ activeRecoveryAction === 'config-repair' ? text('修复中...', 'Repairing...') : text('修复', 'Repair') }}</span>
             </button>
-            <button type="button" class="system-action-row" :disabled="actionBusy" @click="runManualRecovery">
+            <button
+              type="button"
+              class="system-action-row"
+              :class="{ 'system-action-row--busy': activeRecoveryAction === 'repair' }"
+              :disabled="actionBusy"
+              :aria-busy="activeRecoveryAction === 'repair'"
+              @click="runManualRecovery"
+            >
               <span class="system-action-row__index">03</span>
               <span class="system-action-row__copy">
                 <strong>{{ text('运行恢复修复', 'Run recovery repair') }}</strong>
                 <span>{{ text('先备份配置，再执行保守恢复管线。', 'Backs up config before the conservative repair pipeline.') }}</span>
               </span>
-              <span class="system-action-row__verb">{{ text('运行', 'Run') }}</span>
+              <span class="system-action-row__verb">{{ activeRecoveryAction === 'repair' ? text('恢复中...', 'Recovering...') : text('运行', 'Run') }}</span>
             </button>
           </nav>
         </article>
@@ -300,18 +321,19 @@ import {
 import './system-workspace.css';
 
 interface Notice {
-  kind: 'success' | 'error';
+  kind: 'success' | 'error' | 'info';
   text: string;
 }
 
 type StatusPillTone = 'neutral' | 'accent' | 'sage' | 'danger';
+type RecoveryActionKind = 'probe' | 'config-repair' | 'repair';
 
 const RECOVERY_PAGE_SIZE = 8;
 const router = useRouter();
 const { text } = useLocalePreference();
 const loading = ref(false);
 const serviceBusy = ref(false);
-const actionBusy = ref(false);
+const activeRecoveryAction = ref<RecoveryActionKind | ''>('');
 const restoreBusy = ref('');
 const errorMessage = ref('');
 const notice = ref<Notice | null>(null);
@@ -333,6 +355,8 @@ const recoveryLabel = computed(() => {
 const recoveryTone = computed<StatusPillTone>(() =>
   recovery.value.status === 'healthy' ? 'sage' : recovery.value.status === 'unknown' ? 'neutral' : 'accent',
 );
+
+const actionBusy = computed(() => Boolean(activeRecoveryAction.value));
 
 const serviceRunning = computed(() =>
   ['active', 'running'].includes(recovery.value.service.activeState),
@@ -448,6 +472,13 @@ function paginationRangeLabel(pagination: OpenClawRecoveryPagination): string {
   return `${pagination.startIndex + 1}-${pagination.endIndex} / ${pagination.totalEntries}`;
 }
 
+function recoveryActionErrorText(value: string | undefined, fallback: string): string {
+  if (value && /Recovery repair is already running/i.test(value)) {
+    return text('已有修复任务正在运行，请稍后刷新查看状态。', 'A recovery repair is already running. Refresh in a moment.');
+  }
+  return value || fallback;
+}
+
 async function refreshAll(): Promise<void> {
   loading.value = true;
   errorMessage.value = '';
@@ -506,8 +537,11 @@ async function applyServiceAction(action: OpenClawRecoveryDaemonServiceAction): 
 }
 
 async function runManualProbe(): Promise<void> {
-  actionBusy.value = true;
-  notice.value = null;
+  activeRecoveryAction.value = 'probe';
+  notice.value = {
+    kind: 'info',
+    text: text('轻量探测正在执行。', 'Light probe is running.'),
+  };
   try {
     const response = await runOpenClawRecovery({ action: 'probe', trigger: 'manual' });
     notice.value = {
@@ -521,47 +555,57 @@ async function runManualProbe(): Promise<void> {
       text: error instanceof Error ? error.message : text('轻量探测失败。', 'Light probe failed.'),
     };
   } finally {
-    actionBusy.value = false;
+    activeRecoveryAction.value = '';
   }
 }
 
 async function runManualConfigRepair(): Promise<void> {
-  actionBusy.value = true;
-  notice.value = null;
+  activeRecoveryAction.value = 'config-repair';
+  notice.value = {
+    kind: 'info',
+    text: text('配置立即修复正在执行，请等待结果。', 'Immediate config repair is running.'),
+  };
   try {
     const response = await runOpenClawRecovery({ action: 'config-repair', trigger: 'manual' });
     notice.value = {
       kind: response.ok ? 'success' : 'error',
-      text: response.ok ? text('配置立即修复已完成。', 'Immediate config repair completed.') : response.repair?.error || text('配置立即修复失败。', 'Immediate config repair failed.'),
+      text: response.ok
+        ? text('配置立即修复已完成。', 'Immediate config repair completed.')
+        : recoveryActionErrorText(response.repair?.error, text('配置立即修复失败。', 'Immediate config repair failed.')),
     };
     await refreshAll();
   } catch (error) {
     notice.value = {
       kind: 'error',
-      text: error instanceof Error ? error.message : text('配置立即修复失败。', 'Immediate config repair failed.'),
+      text: recoveryActionErrorText(error instanceof Error ? error.message : '', text('配置立即修复失败。', 'Immediate config repair failed.')),
     };
   } finally {
-    actionBusy.value = false;
+    activeRecoveryAction.value = '';
   }
 }
 
 async function runManualRecovery(): Promise<void> {
-  actionBusy.value = true;
-  notice.value = null;
+  activeRecoveryAction.value = 'repair';
+  notice.value = {
+    kind: 'info',
+    text: text('恢复修复正在执行，可能需要几十秒。', 'Recovery repair is running and may take several seconds.'),
+  };
   try {
     const response = await runOpenClawRecovery({ action: 'repair', trigger: 'manual' });
     notice.value = {
       kind: response.ok ? 'success' : 'error',
-      text: response.ok ? text('手动修复已完成。', 'Manual repair completed.') : response.repair?.error || text('手动修复失败。', 'Manual repair failed.'),
+      text: response.ok
+        ? text('手动修复已完成。', 'Manual repair completed.')
+        : recoveryActionErrorText(response.repair?.error, text('手动修复失败。', 'Manual repair failed.')),
     };
     await refreshAll();
   } catch (error) {
     notice.value = {
       kind: 'error',
-      text: error instanceof Error ? error.message : text('手动修复失败。', 'Manual repair failed.'),
+      text: recoveryActionErrorText(error instanceof Error ? error.message : '', text('手动修复失败。', 'Manual repair failed.')),
     };
   } finally {
-    actionBusy.value = false;
+    activeRecoveryAction.value = '';
   }
 }
 

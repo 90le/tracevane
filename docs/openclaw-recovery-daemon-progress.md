@@ -13,6 +13,8 @@
 - Recovery status 会保留最近一次 service action 的 active/enabled 快照，避免“启动成功后按钮状态被轻量刷新覆盖”。
 - 修复历史和配置备份支持分页读取与前端翻页。
 - `/system/recovery` 已提供“立即修复配置”动作，调用 `config-repair`，用于用户主动修复 OpenClaw JSON 字段错误并尝试重启 gateway。
+- 手动恢复动作已改为按动作显示 pending 状态；lock 冲突提示会显示为“已有修复任务正在运行”，不再直接暴露英文错误。
+- repair lock 会清理进程不存在或超过 30 分钟的 stale lock，避免异常退出后永久卡住。
 - 修复管线已拆出配置层、插件层、Studio web bundle 重建层、CLI bootstrap/安装检查层、gateway 深探测、gateway 服务托管修复、gateway 端口/进程发现层和失败回滚层。
 - 配置/bootstrap 修复会打开被禁用的 gateway control UI，并清理指向旧目录或缺失目录的 `plugins.installs.studio`。
 - Studio web bundle 检查覆盖 `webDistDir/index.html/assets`，缺失时可在 repair 管线中执行 `npm run build:web` 重建。
@@ -34,7 +36,7 @@
 | fallback 控制面 | 完成 | loopback status/events/backups/run/restore 已实现 | 需要正式 UX 时补 discovery/token 展示 |
 | 事件/备份分页 | 完成 | `/api/openclaw-recovery/events|backups?page=&pageSize=` 返回分页 payload；前端上一页/下一页 | 发布前做浏览器视觉 QA |
 | 修复策略 | 完成 | 配置动态 prune；插件隔离和旧 install record 清理；Studio web bundle 检查/重建；CLI manifest/shim/npm 重装；gateway 深探测；gateway service status/install/start/restart；gateway 残留进程安全接管；配置失败回滚；`doctor --fix` opt-in | 根据真实故障样本扩展 |
-| 前端 | 完成 | `/system` 轻量化；`/system/recovery` lazy route、立即配置修复、service 状态按钮切换、动作后刷新保护、历史/备份分页、CLI 自动修复、Studio bundle 重建、gateway 服务托管和进程接管策略展示完成 | 发布前做浏览器视觉 QA |
+| 前端 | 完成 | `/system` 轻量化；`/system/recovery` lazy route、立即配置修复、动作 pending 反馈、service 状态按钮切换、动作后刷新保护、历史/备份分页、CLI 自动修复、Studio bundle 重建、gateway 服务托管和进程接管策略展示完成 | 发布前做浏览器视觉 QA |
 | 验证 | 部分完成 | 本轮 recovery/system 隔离编译、合约/前端文本测试和 `git diff --check` 通过；全局 build 被 model-gateway 脏改阻塞 | model-gateway 收敛后重跑全量 build/typecheck |
 
 ## 验证

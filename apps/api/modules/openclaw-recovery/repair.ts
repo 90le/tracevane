@@ -47,6 +47,9 @@ interface OpenClawDoctorFinding extends OpenClawConfigValidationIssue {
   id?: unknown;
 }
 
+const REPAIR_ALREADY_RUNNING_ERROR = "Recovery repair is already running";
+const REPAIR_LOCK_STALE_MS = 30 * 60 * 1000;
+
 export interface StudioWebBundleInspection {
   ok: boolean;
   webDistDir: string;
@@ -788,16 +791,60 @@ function gatewayListenerSummary(input: {
   return "No gateway port listener was discovered for takeover.";
 }
 
+function processExists(pid: number): boolean {
+  if (!Number.isFinite(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === "EPERM";
+  }
+}
+
+function parseRepairLock(raw: string): { pid: number | null; lockedAt: string | null } {
+  const [pidLine = "", lockedAtLine = ""] = raw.split(/\r?\n/);
+  const pid = Number(pidLine.trim());
+  return {
+    pid: Number.isFinite(pid) && pid > 0 ? Math.floor(pid) : null,
+    lockedAt: lockedAtLine.trim() || null,
+  };
+}
+
+function repairLockLooksStale(lockPath: string): boolean {
+  try {
+    const parsed = parseRepairLock(fs.readFileSync(lockPath, "utf8"));
+    if (!parsed.pid || !processExists(parsed.pid)) return true;
+    const lockedAtMs = parsed.lockedAt ? Date.parse(parsed.lockedAt) : Number.NaN;
+    if (!Number.isNaN(lockedAtMs) && Date.now() - lockedAtMs > REPAIR_LOCK_STALE_MS) {
+      return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 function acquireRepairLock(config: StudioServerConfig): number | null {
   const paths = resolveOpenClawRecoveryPaths(config);
   fs.mkdirSync(paths.rootDir, { recursive: true });
-  try {
-    const fd = fs.openSync(paths.lockPath, "wx");
-    fs.writeFileSync(fd, `${process.pid}\n${new Date().toISOString()}\n`, "utf8");
-    return fd;
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const fd = fs.openSync(paths.lockPath, "wx");
+      fs.writeFileSync(fd, `${process.pid}\n${new Date().toISOString()}\n`, "utf8");
+      return fd;
+    } catch {
+      if (attempt > 0 || !repairLockLooksStale(paths.lockPath)) {
+        return null;
+      }
+      try {
+        fs.unlinkSync(paths.lockPath);
+      } catch {
+        return null;
+      }
+    }
   }
+  return null;
 }
 
 function releaseRepairLock(config: StudioServerConfig, fd: number): void {
@@ -833,7 +880,7 @@ export async function runOpenClawRecoveryRepair(
       backupPath: null,
       changedKeys: [],
       commands: [],
-      error: "Recovery repair is already running",
+      error: REPAIR_ALREADY_RUNNING_ERROR,
     };
   }
 
@@ -1099,7 +1146,7 @@ export async function runOpenClawRecoveryConfigRepair(
       backupPath: null,
       changedKeys: [],
       commands: [],
-      error: "Recovery repair is already running",
+      error: REPAIR_ALREADY_RUNNING_ERROR,
     };
   }
 
