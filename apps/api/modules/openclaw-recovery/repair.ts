@@ -1080,6 +1080,166 @@ export async function runOpenClawRecoveryRepair(
   return repair;
 }
 
+export async function runOpenClawRecoveryConfigRepair(
+  config: StudioServerConfig,
+  options: {
+    trigger: OpenClawRecoveryTrigger;
+    policy: OpenClawRecoveryPolicy;
+  },
+): Promise<OpenClawRecoveryLastRepair> {
+  const lockFd = acquireRepairLock(config);
+  const startedAt = new Date().toISOString();
+  if (lockFd === null) {
+    return {
+      ok: false,
+      trigger: options.trigger,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: 0,
+      backupPath: null,
+      changedKeys: [],
+      commands: [],
+      error: "Recovery repair is already running",
+    };
+  }
+
+  appendRecoveryEvent(
+    config,
+    createRecoveryEvent({
+      kind: "config_repair_started",
+      severity: "info",
+      title: "OpenClaw 配置立即修复已开始",
+      summary: `Recovery started a ${options.trigger} config repair attempt.`,
+      status: "running",
+      details: { trigger: options.trigger },
+    }),
+  );
+
+  const commands: OpenClawRecoveryCommandSnapshot[] = [];
+  let backupPath: string | null = null;
+  const changedKeys: string[] = [];
+  let error = "";
+  let ok = false;
+  let finalConfigValid = true;
+  let rollbackReason = "";
+
+  try {
+    backupPath = createOpenClawConfigBackup(config);
+    if (backupPath) {
+      appendRecoveryEvent(
+        config,
+        createRecoveryEvent({
+          kind: "config_backup_created",
+          severity: "success",
+          title: "OpenClaw 配置备份已创建",
+          summary: path.basename(backupPath),
+          status: "succeeded",
+          details: { backupPath, action: "config-repair" },
+        }),
+      );
+    }
+
+    changedKeys.push(...await runDynamicConfigValidationRepair(config, commands));
+    const bootstrap = repairSystemBootstrap(config);
+    if (bootstrap.changed) changedKeys.push(...bootstrap.changedKeys);
+
+    const finalValidation = await runCommand(
+      "openclaw",
+      ["config", "validate", "--json"],
+      10_000,
+    );
+    commands.push(finalValidation);
+    finalConfigValid = finalValidation.ok;
+    if (!finalConfigValid) {
+      error = commandErrorSummary(finalValidation) || "OpenClaw config is still invalid after config repair";
+      rollbackReason = "config_validation_failed";
+    } else {
+      const restart = await runCommand("openclaw", ["gateway", "restart"], 20_000);
+      commands.push(restart);
+      ok = restart.ok;
+      if (!ok) {
+        error = commandErrorSummary(restart) || "OpenClaw config is valid but gateway restart failed";
+      }
+    }
+  } catch (repairError) {
+    error =
+      repairError instanceof Error
+        ? repairError.message
+        : "OpenClaw config repair failed";
+    finalConfigValid = false;
+    rollbackReason = rollbackReason || "config_repair_exception";
+  } finally {
+    if (!finalConfigValid && backupPath && changedKeys.length > 0) {
+      try {
+        restoreOpenClawRecoveryBackup(config, backupPath);
+        changedKeys.push("rollback.openclawConfig");
+        appendRecoveryEvent(
+          config,
+          createRecoveryEvent({
+            kind: "backup_restored",
+            severity: "warning",
+            title: "OpenClaw 配置已自动回滚",
+            summary: rollbackReason || "Config repair failed before config became valid.",
+            status: "succeeded",
+            details: { backupPath, reason: rollbackReason || "config_repair_failed" },
+          }),
+        );
+      } catch (rollbackError) {
+        error = [
+          error,
+          rollbackError instanceof Error
+            ? `Rollback failed: ${rollbackError.message}`
+            : "Rollback failed",
+        ].filter(Boolean).join("\n");
+      }
+    }
+    releaseRepairLock(config, lockFd);
+  }
+
+  const finishedAt = new Date().toISOString();
+  const repair: OpenClawRecoveryLastRepair = {
+    ok,
+    trigger: options.trigger,
+    startedAt,
+    finishedAt,
+    durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+    backupPath,
+    changedKeys: [...new Set(changedKeys)],
+    commands,
+    error,
+  };
+
+  const state = readRecoveryState(config);
+  writeRecoveryState(config, {
+    ...state,
+    status: ok ? "healthy" : "failed",
+    lastRepair: repair,
+    notes: ok
+      ? ["Immediate config repair completed and gateway restart succeeded."]
+      : [error || "Immediate config repair completed but gateway did not restart."],
+  });
+
+  appendRecoveryEvent(
+    config,
+    createRecoveryEvent({
+      kind: ok ? "config_repair_succeeded" : "config_repair_failed",
+      severity: ok ? "success" : "error",
+      title: ok ? "OpenClaw 配置立即修复成功" : "OpenClaw 配置立即修复失败",
+      summary: ok
+        ? "Config validation passed and gateway restart command completed."
+        : error || "Config repair did not restore a restartable gateway.",
+      status: ok ? "succeeded" : "failed",
+      details: {
+        trigger: options.trigger,
+        backupPath,
+        changedKeys: repair.changedKeys,
+      },
+    }),
+  );
+
+  return repair;
+}
+
 export function restoreOpenClawRecoveryBackup(
   config: StudioServerConfig,
   backupPath: string,

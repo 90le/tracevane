@@ -25,6 +25,7 @@ import {
 } from "./store.js";
 import {
   restoreOpenClawRecoveryBackup,
+  runOpenClawRecoveryConfigRepair,
   runOpenClawRecoveryRepair,
 } from "./repair.js";
 import {
@@ -206,17 +207,23 @@ export function createOpenClawRecoveryService(
       payload: OpenClawRecoveryRunRequest = {},
     ): Promise<OpenClawRecoveryRunResponse> {
       const state = readRecoveryState(config);
-      if ((payload.action || "repair") === "probe") {
+      const action = payload.action || "repair";
+      if (action === "probe") {
         return runManualProbe(config, state);
       }
       const policy = {
         ...state.policy,
         runDoctorFix: payload.runDoctorFix ?? state.policy.runDoctorFix,
       };
-      const repair = await runOpenClawRecoveryRepair(config, {
-        trigger: payload.trigger || "manual",
-        policy,
-      });
+      const repair = action === "config-repair"
+        ? await runOpenClawRecoveryConfigRepair(config, {
+            trigger: payload.trigger || "manual",
+            policy,
+          })
+        : await runOpenClawRecoveryRepair(config, {
+            trigger: payload.trigger || "manual",
+            policy,
+          });
       return {
         ok: repair.ok,
         state: readRecoveryState(config),

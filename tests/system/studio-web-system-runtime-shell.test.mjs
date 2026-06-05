@@ -65,6 +65,9 @@ test('recovery page owns daemon controls, events, and backups', () => {
   assert.match(systemRecoveryPage, /Repair History/);
   assert.match(systemRecoveryPage, /Config Backups/);
   assert.match(systemRecoveryPage, /runManualProbe/);
+  assert.match(systemRecoveryPage, /立即修复配置/);
+  assert.match(systemRecoveryPage, /runManualConfigRepair/);
+  assert.match(systemRecoveryPage, /action: 'config-repair'/);
   assert.match(systemRecoveryPage, /runManualRecovery/);
   assert.doesNotMatch(systemRecoveryPage, /fetchSystemDiagnostics|loadDeepDiagnostics/);
 });

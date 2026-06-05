@@ -48,6 +48,8 @@ test("recovery daemon separates lightweight probes from heavy repair commands", 
   assert.match(daemonSource, /runOpenClawRecoveryRepair/);
   assert.match(serviceSource, /getRecoveryDaemonServiceSnapshot/);
   assert.match(serviceSource, /applyRecoveryDaemonServiceAction/);
+  assert.match(serviceSource, /action === "config-repair"/);
+  assert.match(serviceSource, /runOpenClawRecoveryConfigRepair/);
   assert.match(cliBootstrapSource, /ensureOpenClawCliAvailable/);
   assert.match(cliBootstrapSource, /\["install", "-g", manifest\.packageSpec/);
   assert.match(gatewayRuntimeSource, /takeoverOpenClawGatewayListeners/);

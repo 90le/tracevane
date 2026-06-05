@@ -39,6 +39,9 @@ export type OpenClawRecoveryEventKind =
   | "repair_started"
   | "repair_succeeded"
   | "repair_failed"
+  | "config_repair_started"
+  | "config_repair_succeeded"
+  | "config_repair_failed"
   | "config_backup_created"
   | "backup_restored"
   | "backup_restore_requested"
@@ -62,6 +65,7 @@ export type OpenClawRecoveryTrigger = "auto" | "manual";
 
 export type OpenClawRecoveryRunAction =
   | "probe"
+  | "config-repair"
   | "repair"
   | "diagnostics";
 

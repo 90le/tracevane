@@ -18,6 +18,7 @@
 - 默认救援路径是静默自动修复，不要求单口远程用户打开第二个维护端口、SSH 或终端。
 - 自愈能力要逐步覆盖配置、进程、端口、服务托管、依赖完整性和安装损坏，优先复用 OpenClaw CLI 的 status/doctor/validate/fix 结果。
 - 修复历史和配置备份必须支持多条记录与分页浏览。
+- `/system/recovery` 需要提供“立即修复配置”手动动作，绕过自动阈值，专门处理 OpenClaw JSON schema 字段错误并尝试重启 gateway。
 - daemon 安装/启动时记录 CLI install manifest；当 `openclaw` 命令缺失时，可先恢复本地 shim，再按 manifest 受控执行 npm 全局重装。
 - Gateway restart 后仍不可达时，允许发现端口监听者；只有确认监听进程是 OpenClaw gateway 时才自动接管，非 OpenClaw 进程只记录并跳过。
 - Gateway 修复后必须做深探测：不只确认端口有响应，还要确认 Studio 控制 UI 路径不是 404/5xx。
@@ -57,6 +58,7 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 - 修复流程有单飞锁和 cooldown。
 - 修复前创建配置备份。
 - 配置 prune 从 OpenClaw validation issue 动态获取路径，并保留插件/provider/channel 扩展域。
+- 手动 `config-repair` action 会先备份配置，只执行配置 validation prune、Studio/gateway bootstrap 修复和 `openclaw gateway restart`，不进入完整重修复管线。
 - 插件层优先禁用有问题的 `plugins.entries.<id>`，或移除明显不存在的绝对 `plugins.load.paths`，不删除插件源码目录。
 - 插件层清理坏的 `plugins.installs.studio` 记录，避免 OpenClaw 继续加载旧 Studio 目录。
 - 控制面配置层会打开被显式禁用的 `gateway.controlUi.enabled=false`，但不盲目改写已有 `controlUi.basePath/root`。

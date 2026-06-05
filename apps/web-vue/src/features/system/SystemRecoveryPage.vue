@@ -66,8 +66,16 @@
               </span>
               <span class="system-action-row__verb">{{ text('运行', 'Run') }}</span>
             </button>
-            <button type="button" class="system-action-row" :disabled="actionBusy" @click="runManualRecovery">
+            <button type="button" class="system-action-row" :disabled="actionBusy" @click="runManualConfigRepair">
               <span class="system-action-row__index">02</span>
+              <span class="system-action-row__copy">
+                <strong>{{ text('立即修复配置', 'Repair config now') }}</strong>
+                <span>{{ text('立即备份并修复 OpenClaw JSON 字段错误，然后尝试重启 Gateway。', 'Backs up and repairs OpenClaw JSON field errors immediately, then tries to restart Gateway.') }}</span>
+              </span>
+              <span class="system-action-row__verb">{{ text('修复', 'Repair') }}</span>
+            </button>
+            <button type="button" class="system-action-row" :disabled="actionBusy" @click="runManualRecovery">
+              <span class="system-action-row__index">03</span>
               <span class="system-action-row__copy">
                 <strong>{{ text('运行恢复修复', 'Run recovery repair') }}</strong>
                 <span>{{ text('先备份配置，再执行保守恢复管线。', 'Backs up config before the conservative repair pipeline.') }}</span>
@@ -511,6 +519,26 @@ async function runManualProbe(): Promise<void> {
     notice.value = {
       kind: 'error',
       text: error instanceof Error ? error.message : text('轻量探测失败。', 'Light probe failed.'),
+    };
+  } finally {
+    actionBusy.value = false;
+  }
+}
+
+async function runManualConfigRepair(): Promise<void> {
+  actionBusy.value = true;
+  notice.value = null;
+  try {
+    const response = await runOpenClawRecovery({ action: 'config-repair', trigger: 'manual' });
+    notice.value = {
+      kind: response.ok ? 'success' : 'error',
+      text: response.ok ? text('配置立即修复已完成。', 'Immediate config repair completed.') : response.repair?.error || text('配置立即修复失败。', 'Immediate config repair failed.'),
+    };
+    await refreshAll();
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      text: error instanceof Error ? error.message : text('配置立即修复失败。', 'Immediate config repair failed.'),
     };
   } finally {
     actionBusy.value = false;
