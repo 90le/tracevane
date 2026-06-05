@@ -394,8 +394,11 @@ export async function applyRecoveryDaemonServiceAction(
   }
 
   const actionCommands = plan.selectedTemplate.commands[action] || [];
+  const actionResults: OpenClawRecoveryCommandSnapshot[] = [];
   for (const item of actionCommands) {
-    commands.push(await runOpenClawRecoveryServiceCommand(item, 10_000));
+    const result = await runOpenClawRecoveryServiceCommand(item, 10_000);
+    actionResults.push(result);
+    commands.push(result);
   }
 
   const statusCommands = await runStatusCommands(plan);
@@ -414,6 +417,6 @@ export async function applyRecoveryDaemonServiceAction(
   return {
     service,
     commands,
-    error: commandFailure(commands),
+    error: commandFailure(actionResults),
   };
 }

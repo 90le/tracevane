@@ -43,9 +43,12 @@ test('recovery page owns daemon controls, events, and backups', () => {
   assert.match(systemRecoveryPage, /fetchOpenClawRecoveryBackups/);
   assert.match(systemRecoveryPage, /runOpenClawRecovery/);
   assert.match(systemRecoveryPage, /restoreOpenClawRecoveryBackup/);
-  assert.match(systemRecoveryPage, /applyServiceAction\('install'\)/);
-  assert.match(systemRecoveryPage, /applyServiceAction\('start'\)/);
-  assert.match(systemRecoveryPage, /applyServiceAction\('restart'\)/);
+  assert.match(systemRecoveryPage, /servicePrimaryAction/);
+  assert.match(systemRecoveryPage, /servicePrimaryLabel/);
+  assert.match(systemRecoveryPage, /return 'install'/);
+  assert.match(systemRecoveryPage, /return 'start'/);
+  assert.match(systemRecoveryPage, /return 'restart'/);
+  assert.match(systemRecoveryPage, /applyServiceAction\('stop'\)/);
   assert.match(systemRecoveryPage, /Repair History/);
   assert.match(systemRecoveryPage, /Config Backups/);
   assert.match(systemRecoveryPage, /runManualProbe/);

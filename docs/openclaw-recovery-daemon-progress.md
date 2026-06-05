@@ -23,7 +23,7 @@
 | Recovery API | 完成 | `types/openclaw-recovery.ts`、`apps/api/modules/openclaw-recovery/*`、`/api/openclaw-recovery/*` | 增加策略配置时扩展 |
 | daemon | 完成 | `apps/api/openclaw-recovery-daemon.ts` 编译通过；daemon loop 使用 `probeOpenClawGateway` | 目标 OS 上做 supervisor smoke |
 | fallback 控制面 | 完成 | loopback status/events/backups/run/restore 已实现 | 需要正式 UX 时补 discovery/token 展示 |
-| 修复策略 | 完成 | 备份优先、只 prune `agents.defaults.llm`、`doctor --fix` opt-in | 根据真实故障样本扩展 |
+| 修复策略 | 完成 | 备份优先；从 `openclaw config validate --json` issue path 动态 prune 安全违规字段；`doctor --fix` opt-in | 根据真实故障样本扩展 |
 | 前端 | 完成 | `/system` 轻量化；`/system/recovery` lazy route 与页面完成 | 发布前做浏览器视觉 QA |
 | 验证 | 完成 | API build、Web typecheck、Recovery/System focused tests 通过 | unrelated dirty domains 清理后重跑全量 |
 

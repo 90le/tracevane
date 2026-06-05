@@ -23,6 +23,13 @@ function compactTimestamp(): string {
   return new Date().toISOString().replace(/[-:.]/g, "");
 }
 
+interface OpenClawConfigValidationIssue {
+  path?: unknown;
+  message?: unknown;
+  keyword?: unknown;
+  params?: unknown;
+}
+
 export function createOpenClawConfigBackup(config: StudioServerConfig): string | null {
   if (!fs.existsSync(config.openclawConfigFile)) return null;
   const paths = resolveOpenClawRecoveryPaths(config);
@@ -35,22 +42,93 @@ export function createOpenClawConfigBackup(config: StudioServerConfig): string |
   return backupPath;
 }
 
-export function pruneKnownBadOpenClawConfig(config: StudioServerConfig): string[] {
+function normalizeIssuePath(issue: OpenClawConfigValidationIssue): string {
+  const rawPath = typeof issue.path === "string" ? issue.path.trim() : "";
+  const params =
+    issue.params && typeof issue.params === "object" && !Array.isArray(issue.params)
+      ? issue.params as Record<string, unknown>
+      : {};
+  const additionalProperty =
+    typeof params.additionalProperty === "string"
+      ? params.additionalProperty
+      : "";
+  if (additionalProperty && rawPath && !rawPath.endsWith(`.${additionalProperty}`)) {
+    return `${rawPath}.${additionalProperty}`;
+  }
+  return additionalProperty || rawPath;
+}
+
+function issueLooksRepairable(issue: OpenClawConfigValidationIssue): boolean {
+  const message = String(issue.message || "");
+  const keyword = String(issue.keyword || "");
+  return (
+    keyword === "additionalProperties" ||
+    /additional propert|unknown|unrecognized|not allowed|cannot be combined|unsupported/i.test(message)
+  );
+}
+
+function pathSegments(dotPath: string): string[] {
+  return dotPath
+    .split(".")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function isProtectedExtensionPath(segments: string[]): boolean {
+  if (segments[0] === "channels") return true;
+  if (segments[0] === "env" && segments[1] === "vars") return true;
+  if (segments[0] === "plugins" && segments[1] === "providerParams") return true;
+  if (segments[0] === "plugins" && segments[1] === "entries" && segments[3] === "config") {
+    return true;
+  }
+  return false;
+}
+
+function deleteConfigPath(target: Record<string, unknown>, segments: string[]): boolean {
+  if (!segments.length) return false;
+  let cursor: unknown = target;
+  for (const segment of segments.slice(0, -1)) {
+    if (!cursor || typeof cursor !== "object" || Array.isArray(cursor)) return false;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  if (!cursor || typeof cursor !== "object" || Array.isArray(cursor)) return false;
+  const last = segments[segments.length - 1];
+  if (!Object.prototype.hasOwnProperty.call(cursor, last)) return false;
+  delete (cursor as Record<string, unknown>)[last];
+  return true;
+}
+
+function parseValidationIssues(
+  commandResult: OpenClawRecoveryCommandSnapshot,
+): OpenClawConfigValidationIssue[] {
+  try {
+    const parsed = JSON.parse(commandResult.stdout || "{}") as {
+      issues?: OpenClawConfigValidationIssue[];
+    };
+    return Array.isArray(parsed.issues) ? parsed.issues : [];
+  } catch {
+    return [];
+  }
+}
+
+export function pruneInvalidOpenClawConfigFromValidation(
+  config: StudioServerConfig,
+  issues: OpenClawConfigValidationIssue[],
+): string[] {
   const openclawConfig = readOpenClawConfig(config);
   const changedKeys: string[] = [];
-  const defaults = openclawConfig.agents?.defaults;
-  if (
-    defaults &&
-    typeof defaults === "object" &&
-    Object.prototype.hasOwnProperty.call(defaults, "llm")
-  ) {
-    delete defaults.llm;
-    changedKeys.push("agents.defaults.llm");
+  for (const issue of issues) {
+    if (!issueLooksRepairable(issue)) continue;
+    const segments = pathSegments(normalizeIssuePath(issue));
+    if (!segments.length || isProtectedExtensionPath(segments)) continue;
+    if (deleteConfigPath(openclawConfig as Record<string, unknown>, segments)) {
+      changedKeys.push(segments.join("."));
+    }
   }
   if (changedKeys.length > 0) {
     writeJsonFile(config.openclawConfigFile, openclawConfig);
   }
-  return changedKeys;
+  return [...new Set(changedKeys)];
 }
 
 function runCommand(
@@ -121,6 +199,27 @@ function runCommand(
       });
     });
   });
+}
+
+async function runDynamicConfigValidationRepair(
+  config: StudioServerConfig,
+  commands: OpenClawRecoveryCommandSnapshot[],
+): Promise<string[]> {
+  const changedKeys: string[] = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const validation = await runCommand(
+      "openclaw",
+      ["config", "validate", "--json"],
+      10_000,
+    );
+    commands.push(validation);
+    const issues = parseValidationIssues(validation);
+    if (validation.ok || !issues.length) break;
+    const pruned = pruneInvalidOpenClawConfigFromValidation(config, issues);
+    if (!pruned.length) break;
+    changedKeys.push(...pruned);
+  }
+  return [...new Set(changedKeys)];
 }
 
 function acquireRepairLock(config: StudioServerConfig): number | null {
@@ -206,11 +305,11 @@ export async function runOpenClawRecoveryRepair(
       );
     }
 
-    changedKeys.push(...pruneKnownBadOpenClawConfig(config));
+    changedKeys.push(...await runDynamicConfigValidationRepair(config, commands));
     const bootstrap = repairSystemBootstrap(config);
     if (bootstrap.changed) changedKeys.push(...bootstrap.changedKeys);
 
-    commands.push(await runCommand("openclaw", ["config", "validate"], 10_000));
+    commands.push(await runCommand("openclaw", ["config", "validate", "--json"], 10_000));
     commands.push(await runCommand("openclaw", ["doctor", "--non-interactive"], 20_000));
     if (options.policy.runDoctorFix) {
       commands.push(

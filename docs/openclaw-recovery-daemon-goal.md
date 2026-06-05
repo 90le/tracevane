@@ -13,7 +13,7 @@
 - 健康循环只做本机轻量探测，不频繁 spawn OpenClaw CLI。
 - 持续失败超过阈值后才进入保守修复流程。
 - 修复前备份 `openclaw.json`。
-- 只删除已知破坏当前 OpenClaw 的字段，例如 `agents.defaults.llm`。
+- 根据 `openclaw config validate --json` 返回的 issue path 动态删除安全域里的违规字段。
 - 保留插件 config、provider params、channel 扩展字段和用户插件源码目录。
 - 默认救援路径是静默自动修复，不要求单口远程用户打开第二个维护端口、SSH 或终端。
 
@@ -48,7 +48,7 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 - 连续失败未超过 180 秒不触发修复。
 - 修复流程有单飞锁和 cooldown。
 - 修复前创建配置备份。
-- 配置 prune 只删除已知坏字段，并保留插件/provider/channel 扩展域。
+- 配置 prune 从 OpenClaw validation issue 动态获取路径，并保留插件/provider/channel 扩展域。
 - recovery 事件写入 recovery jsonl，并同步进入 system event center。
 - Studio 可以管理 daemon 服务，但 daemon 修复不依赖 Studio 存活。
 

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   createOpenClawConfigBackup,
-  pruneKnownBadOpenClawConfig,
+  pruneInvalidOpenClawConfigFromValidation,
 } from "../../dist/apps/api/modules/openclaw-recovery/repair.js";
 import { createOpenClawRecoveryService } from "../../dist/apps/api/modules/openclaw-recovery/service.js";
 
@@ -29,6 +29,13 @@ function makeConfig() {
           defaults: {
             llm: "legacy-bad-key",
             sandbox: { mode: "off" },
+          },
+        },
+        tools: {
+          exec: {
+            mode: "legacy",
+            security: "default",
+            ask: "never",
           },
         },
         plugins: {
@@ -76,18 +83,38 @@ function makeConfig() {
   };
 }
 
-test("recovery repair creates backups before pruning only known-bad config keys", () => {
+test("recovery repair creates backups before pruning dynamic validation paths", () => {
   const config = makeConfig();
 
   const backupPath = createOpenClawConfigBackup(config);
-  const changedKeys = pruneKnownBadOpenClawConfig(config);
+  const changedKeys = pruneInvalidOpenClawConfigFromValidation(config, [
+    {
+      path: "agents.defaults.llm",
+      message: "agents.defaults.llm is not allowed",
+    },
+    {
+      path: "tools.exec.mode",
+      message: "tools.exec.mode cannot be combined with tools.exec.security or tools.exec.ask",
+    },
+    {
+      path: "plugins.entries.studio.config.keep",
+      message: "unsupported plugin config field",
+    },
+    {
+      path: "channels.customProvider.extensionField",
+      message: "unsupported channel field",
+    },
+  ]);
 
   assert.ok(backupPath);
   assert.equal(fs.existsSync(backupPath), true);
-  assert.deepEqual(changedKeys, ["agents.defaults.llm"]);
+  assert.deepEqual(changedKeys, ["agents.defaults.llm", "tools.exec.mode"]);
 
   const repaired = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
   assert.equal("llm" in repaired.agents.defaults, false);
+  assert.equal("mode" in repaired.tools.exec, false);
+  assert.equal(repaired.tools.exec.security, "default");
+  assert.equal(repaired.tools.exec.ask, "never");
   assert.equal(repaired.plugins.entries.studio.config.keep, "plugin-config");
   assert.equal(repaired.plugins.providerParams.keep, true);
   assert.equal(repaired.channels.customProvider.extensionField, "preserve");

@@ -97,9 +97,15 @@
                 <p>{{ text('Studio 负责安装和启停，恢复循环由独立用户服务持有。', 'Studio installs and controls it; the independent user service owns the recovery loop.') }}</p>
               </div>
               <div class="system-inline-actions">
-                <button type="button" class="secondary-button compact-button" :disabled="serviceBusy" @click="applyServiceAction('install')">{{ text('安装/更新', 'Install') }}</button>
-                <button type="button" class="secondary-button compact-button" :disabled="serviceBusy" @click="applyServiceAction('start')">{{ text('启动', 'Start') }}</button>
-                <button type="button" class="secondary-button compact-button" :disabled="serviceBusy" @click="applyServiceAction('restart')">{{ text('重启', 'Restart') }}</button>
+                <button type="button" class="secondary-button compact-button" :disabled="serviceBusy" @click="applyServiceAction(servicePrimaryAction)">
+                  {{ servicePrimaryLabel }}
+                </button>
+                <button v-if="recovery.service.installed" type="button" class="secondary-button compact-button" :disabled="serviceBusy" @click="applyServiceAction('install')">
+                  {{ text('更新模板', 'Update template') }}
+                </button>
+                <button v-if="serviceRunning" type="button" class="secondary-button compact-button" :disabled="serviceBusy" @click="applyServiceAction('stop')">
+                  {{ text('停止', 'Stop') }}
+                </button>
               </div>
             </div>
 
@@ -271,6 +277,22 @@ const recoveryLabel = computed(() => {
 const recoveryTone = computed<StatusPillTone>(() =>
   recovery.value.status === 'healthy' ? 'sage' : recovery.value.status === 'unknown' ? 'neutral' : 'accent',
 );
+
+const serviceRunning = computed(() =>
+  ['active', 'running'].includes(recovery.value.service.activeState),
+);
+
+const servicePrimaryAction = computed<OpenClawRecoveryDaemonServiceAction>(() => {
+  if (!recovery.value.service.installed) return 'install';
+  if (serviceRunning.value) return 'restart';
+  return 'start';
+});
+
+const servicePrimaryLabel = computed(() => {
+  if (!recovery.value.service.installed) return text('安装', 'Install');
+  if (serviceRunning.value) return text('重启', 'Restart');
+  return text('启动', 'Start');
+});
 
 function normalizeRecovery(payload: Record<string, any>): OpenClawRecoveryStatusPayload {
   return {
