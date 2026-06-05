@@ -44,7 +44,7 @@ function printHelp() {
 Runs isolated Studio Gateway CLI startup smoke checks plus Gateway HTTP maturity probes.
 
 Options:
-  --apps <ids>                 Comma-separated app ids: codex,claude-code,opencode,openclaw,gateway
+  --apps <ids>                 Comma-separated app ids: codex,claude-code,claude-code-tool,claude-code-summary,opencode,openclaw,gateway
   --strict                     Exit non-zero when an installed CLI smoke fails
   --include-openclaw-agent     Also try openclaw agent --local, not only config startup
   --keep-temp                  Keep the temporary HOME/state directory
@@ -307,7 +307,70 @@ function openAiResponseBody(model, options = {}) {
 
 function respondAnthropicMessages(res, body) {
   const model = typeof body.model === "string" ? body.model : DEFAULT_MODEL;
+  const requestText = collectRequestText(body);
+  const hasToolResult = requestText.includes("tool_result");
+  const shouldCallBash = Array.isArray(body.tools)
+    && requestText.includes("CLAUDE_TOOL_SMOKE")
+    && !hasToolResult;
+  const responseText = requestText.includes("CLAUDE_SUMMARY_SMOKE")
+    ? "GATEWAY_OK compact summary"
+    : "GATEWAY_OK";
   if (body.stream) {
+    if (shouldCallBash) {
+      sendSse(res, [
+        {
+          event: "message_start",
+          data: {
+            type: "message_start",
+            message: {
+              id: "msg_cli_tool_smoke",
+              type: "message",
+              role: "assistant",
+              model,
+              content: [],
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: 8, output_tokens: 0 },
+            },
+          },
+        },
+        {
+          event: "content_block_start",
+          data: {
+            type: "content_block_start",
+            index: 0,
+            content_block: {
+              type: "tool_use",
+              id: "toolu_cli_smoke",
+              name: "Bash",
+              input: {},
+            },
+          },
+        },
+        {
+          event: "content_block_delta",
+          data: {
+            type: "content_block_delta",
+            index: 0,
+            delta: {
+              type: "input_json_delta",
+              partial_json: "{\"command\":\"printf GATEWAY_OK\",\"description\":\"Print gateway marker\"}",
+            },
+          },
+        },
+        { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
+        {
+          event: "message_delta",
+          data: {
+            type: "message_delta",
+            delta: { stop_reason: "tool_use", stop_sequence: null },
+            usage: { output_tokens: 4 },
+          },
+        },
+        { event: "message_stop", data: { type: "message_stop" } },
+      ]);
+      return;
+    }
     sendSse(res, [
       {
         event: "message_start",
@@ -326,7 +389,7 @@ function respondAnthropicMessages(res, body) {
         },
       },
       { event: "content_block_start", data: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } },
-      { event: "content_block_delta", data: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "GATEWAY_OK" } } },
+      { event: "content_block_delta", data: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: responseText } } },
       { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
       { event: "message_delta", data: { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 2 } } },
       { event: "message_stop", data: { type: "message_stop" } },
@@ -338,7 +401,7 @@ function respondAnthropicMessages(res, body) {
     type: "message",
     role: "assistant",
     model,
-    content: [{ type: "text", text: "GATEWAY_OK" }],
+    content: [{ type: "text", text: responseText }],
     stop_reason: "end_turn",
     stop_sequence: null,
     usage: { input_tokens: 8, output_tokens: 2 },
@@ -556,6 +619,49 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       expectedPaths: ["/v1/messages"],
     },
     {
+      id: "claude-code-tool",
+      command: "claude",
+      args: [
+        "--bare",
+        "--print",
+        "--output-format",
+        "json",
+        "--model",
+        DEFAULT_MODEL,
+        "--settings",
+        path.join(homeDir, ".claude", "settings.json"),
+        "--no-session-persistence",
+        "--tools",
+        "Bash",
+        "--allowedTools",
+        "Bash",
+        "--permission-mode",
+        "bypassPermissions",
+        "CLAUDE_TOOL_SMOKE: Use Bash to echo GATEWAY_OK.",
+      ],
+      env,
+      expectedPaths: ["/v1/messages"],
+      minRequestCount: 2,
+    },
+    {
+      id: "claude-code-summary",
+      command: "claude",
+      args: [
+        "--bare",
+        "--print",
+        "--output-format",
+        "json",
+        "--model",
+        DEFAULT_MODEL,
+        "--settings",
+        path.join(homeDir, ".claude", "settings.json"),
+        "--no-session-persistence",
+        "CLAUDE_SUMMARY_SMOKE: Summarize this compact handoff and include GATEWAY_OK.",
+      ],
+      env,
+      expectedPaths: ["/v1/messages"],
+    },
+    {
       id: "opencode",
       command: "opencode",
       args: [
@@ -620,11 +726,16 @@ async function runCommand(definition, requestStore) {
   clearTimeout(timeout);
   const requests = requestStore.slice(beforeCount);
   const hitPaths = [...new Set(requests.map((request) => request.path))];
+  const minRequestCount = definition.minRequestCount ?? (definition.expectedPaths.length ? 1 : 0);
   const expectedHit = !definition.expectedPaths.length
     || definition.expectedPaths.some((expectedPath) => hitPaths.includes(expectedPath));
   const outputContainsOk = `${stdout}\n${stderr}`.includes("GATEWAY_OK");
   const durationMs = Math.max(0, Date.now() - startedAt);
-  const passed = !timedOut && exit.code === 0 && expectedHit && (definition.expectedPaths.length ? outputContainsOk || requests.length > 0 : true);
+  const passed = !timedOut
+    && exit.code === 0
+    && expectedHit
+    && requests.length >= minRequestCount
+    && (definition.expectedPaths.length ? outputContainsOk || requests.length > 0 : true);
   return {
     id: definition.id,
     status: passed ? "passed" : "failed",
@@ -635,6 +746,7 @@ async function runCommand(definition, requestStore) {
     durationMs,
     expectedPaths: definition.expectedPaths,
     hitPaths,
+    minRequestCount,
     requestCount: requests.length,
     outputContainsOk,
     stdoutPreview: preview(stdout),
