@@ -32,6 +32,7 @@ const props = defineProps<{
     | "agents"
     | "chat"
     | "channels"
+    | "gateway"
     | "cron"
     | "dreaming"
     | "skills"
@@ -47,6 +48,7 @@ const iconByName = {
   agents: Users,
   chat: MessageSquareText,
   channels: Bot,
+  gateway: PlugZap,
   cron: CalendarClock,
   dreaming: MoonStar,
   skills: Compass,

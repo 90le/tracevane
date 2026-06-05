@@ -44,6 +44,7 @@ test("manifest exports shell route records without context panel policy", () => 
     "/dashboard",
     "/agents",
     "/channels",
+    "/model-gateway",
     "/skills",
     "/plugins",
     "/cron",

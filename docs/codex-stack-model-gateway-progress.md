@@ -1,6 +1,6 @@
 # Studio Gateway 迁移进度
 
-> 状态：Phase C completed; Phase B core matrix completed; Phase B2 maturity hardening in progress
+> 状态：Phase C completed; Phase B core matrix completed; Phase D service/config UI MVP added; Phase B2 maturity hardening remains open
 > 更新：2026-06-05
 > 文档规则：只保留当前状态、验证、下一步；过期细节直接替换。
 
@@ -10,6 +10,7 @@
 - Codex Stack / CPA / Compact 旧功能面已停止演进。
 - 新 UI / API 先做 Studio Gateway 服务与配置：daemon 状态/启停、provider 配置、secret、BigModel/GMN preset、smoke。
 - Gateway UI 参考旧 CPA 管理页的运行态布局和 cc-switch 的 Provider/preset 管理体验；不恢复旧 Codex Stack / CPA / Compact 文案、诊断矩阵、安装修复复杂度或多子页拆分。
+- `/model-gateway` 管理页 MVP 已接入 shell：覆盖 daemon 状态/预览/status/ensure-running、Provider Center、active routing、protocol smoke 和最近请求。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
 - Channel Connectors 后置；当前不实现 CC Bridge / Octo。
 - Gateway daemon 与 Channel daemon / CC Bridge 都必须独立守护；Studio / OpenClaw 挂掉后，CLI 模型请求和 IM 到 Codex/Gateway 的对话链路仍应保持运行。
@@ -42,6 +43,12 @@
   - Responses `response.failed` SSE 转 adapter error；Chat upstream 非 2xx 转 Responses error envelope，不裸透传 `base_resp` 等上游私有结构。
   - Claude Code `metadata` 不再透传到 OpenAI Chat provider，避免 MLAMP/OpenAI Chat 报 `metadata`/`store` 不兼容。
   - Provider 上游 endpoint 默认不再隐式追加 `/v1`；`baseUrl` 作为 API 前缀，版本号由 `baseUrl` 或 `endpoints` 明确表达。
+- Phase D UI MVP：
+  - 新增 `/model-gateway` shell route 和导航入口“模型网关”。
+  - 新增单页式 Studio Gateway 管理页，借鉴旧 CPA 的运行态布局和 cc-switch 的 provider/preset 表单。
+  - 接入现有 `/api/model-gateway/*`：status、runtime、daemon-service、providers、active-provider、provider test。
+  - 内置 BigModel Chat、BigModel Anthropic、GMN Responses provider presets；不写入任何 API key。
+  - 新增静态页面测试，防止恢复旧 Codex Stack / CPA UI 词汇和旧 `/api/codex-stack/*`。
 
 ## 验证
 
@@ -49,6 +56,9 @@
 - 通过：`node --test --test-reporter=spec tests/system/model-gateway-service.test.mjs`
 - 通过：`node --test --test-reporter=dot tests/system/studio-web-shell-route-manifest.test.mjs tests/system/studio-domain-inventory.test.mjs tests/system/model-gateway-service.test.mjs`
 - 通过：`git diff --check`
+- 通过：`npm run typecheck:web`
+- 通过：`node --test --test-reporter=spec tests/system/studio-web-shell-route-manifest.test.mjs tests/system/studio-web-model-gateway-page.test.mjs tests/system/studio-domain-inventory.test.mjs`
+- Phase D UI dev 重启通过：frontend `http://127.0.0.1:5176/` 与 `/model-gateway` 返回 200；same-origin `/api/model-gateway/daemon-service` 返回 200；backend `http://127.0.0.1:3762/api/system/health` 返回 `gateway: online`。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "protocol matrix forwards native openai responses|anthropic messages through openai chat providers|codex compact|chat reasoning|streamed codex tool-call history|upstream responses stream fails|normalizes upstream chat errors" tests/system/model-gateway-service.test.mjs`，8/8 通过。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "routing contract selects|records streamed codex tool-call history|adapts streaming chat tool calls|adapts codex responses through native anthropic|protocol matrix forwards" tests/system/model-gateway-service.test.mjs`，7/7 通过。
 - Dev 进程已重启：frontend `http://127.0.0.1:5176` 返回 200；backend `http://127.0.0.1:3762/api/system/health` 返回 `gateway: online`。
@@ -93,6 +103,6 @@
 
 ## 下一步
 
-1. 新建 Studio Gateway 服务与配置页面，覆盖 daemon 状态/启停、provider 配置、active provider、secret 写入、BigModel/GMN preset 和 smoke；布局参考旧 CPA 管理页，Provider 管理参考 cc-switch。
+1. 在新 `/model-gateway` 页面做 dev 联调：保存 provider、设置 active provider、运行 smoke，并根据实际错误收敛 UI。
 2. 再做 App Connections：Codex / Claude Code / OpenCode / OpenClaw 配置 preview 与 apply。
 3. Channel Connectors / CC Bridge / Octo 等网关配置稳定后再启动。

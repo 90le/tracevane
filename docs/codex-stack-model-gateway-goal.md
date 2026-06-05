@@ -1,6 +1,6 @@
 # Studio Gateway 目标方案
 
-> 状态：Phase C deletion completed; Phase B core matrix completed; Phase B2 maturity hardening in progress
+> 状态：Phase C deletion completed; Phase B core matrix completed; Phase D service/config UI MVP added; Phase B2 maturity hardening remains open
 > 更新：2026-06-05
 > 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `codex-stack-model-gateway-progress.md`。文件名暂时保留为迁移入口，正文不再把 Codex Stack 当新产品名。
 

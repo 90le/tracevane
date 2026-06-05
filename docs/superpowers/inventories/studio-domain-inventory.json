@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-05T03:39:49.576Z",
+  "generatedAt": "2026-06-05T07:39:56.845Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -10,6 +10,7 @@
     "/dashboard",
     "/dreaming",
     "/files",
+    "/model-gateway",
     "/plugins",
     "/skills",
     "/system",
@@ -44,6 +45,7 @@
     "dreaming",
     "files",
     "management",
+    "model-gateway",
     "operate",
     "plugins",
     "shell",
@@ -213,6 +215,7 @@
     "tests/system/studio-web-home-layout-redesign.test.mjs",
     "tests/system/studio-web-mobile-layout-guardrails.test.mjs",
     "tests/system/studio-web-mobile-navigation.test.mjs",
+    "tests/system/studio-web-model-gateway-page.test.mjs",
     "tests/system/studio-web-operate-layout-redesign.test.mjs",
     "tests/system/studio-web-performance-foundation.test.mjs",
     "tests/system/studio-web-plugins-workspace.test.mjs",

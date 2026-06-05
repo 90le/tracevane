@@ -163,6 +163,7 @@ type ShellNavIconName =
   | 'agents'
   | 'chat'
   | 'channels'
+  | 'gateway'
   | 'cron'
   | 'dreaming'
   | 'skills'
