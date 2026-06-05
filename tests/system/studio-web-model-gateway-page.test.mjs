@@ -74,6 +74,7 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Auto-detect protocol and models",
     "detectProviderConfig",
     "applyDetectedProtocol",
+    "model-a,Model A",
     "modelListText",
     "normalizedDraftModels",
     "formatModelLine",

@@ -207,7 +207,7 @@
                     class="form-textarea mgw-model-list-input"
                     :placeholder="modelListPlaceholder"
                   ></textarea>
-                  <span class="field-hint">{{ text('格式：模型ID | 显示名 | 别名1,别名2。只填模型ID也可以。默认模型不在列表中时会自动加入。', 'Format: model id | display name | alias1,alias2. A single model id also works. The default model is added automatically if it is not already listed.') }}</span>
+                  <span class="field-hint">{{ text('格式：模型ID,显示名称。显示名称可省略；只填模型ID也可以。默认模型不在列表中时会自动加入。', 'Format: model id,display name. Display name is optional; a single model id also works. The default model is added automatically if it is not already listed.') }}</span>
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('Anthropic endpoint override', 'Anthropic endpoint override') }}</span>
@@ -573,8 +573,8 @@ const supervisorLabel = computed(() =>
 );
 
 const modelListPlaceholder = computed(() => text(
-  '每行一个模型，例如：\nmodel-a | 模型 A | a,fast-a\nmodel-b',
-  'One model per line, for example:\nmodel-a | Model A | a,fast-a\nmodel-b',
+  '每行一个模型，例如：\nmodel-a,模型 A\nmodel-b',
+  'One model per line, for example:\nmodel-a,Model A\nmodel-b',
 ));
 
 const daemonActionTitle = computed(() => {
@@ -752,17 +752,15 @@ function parseModelLines(value: string): ModelGatewayProviderModel[] {
   for (const line of value.split(/\n+/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const [rawId, rawLabel, rawAliases] = trimmed.split('|').map((part) => part.trim());
+    const [rawId, rawLabel] = trimmed.includes('|')
+      ? trimmed.split('|').map((part) => part.trim())
+      : trimmed.split(',').map((part) => part.trim());
     const id = rawId || '';
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    const aliases = rawAliases
-      ? rawAliases.split(',').map((alias) => alias.trim()).filter(Boolean)
-      : [];
     models.push({
       id,
       ...(rawLabel ? { label: rawLabel } : {}),
-      ...(aliases.length ? { aliases } : {}),
     });
   }
   return models;
@@ -773,13 +771,7 @@ function parseModelList(value: string): string[] {
 }
 
 function formatModelLine(model: ModelGatewayProviderModel): string {
-  const parts = [
-    model.id,
-    model.label || '',
-    model.aliases?.length ? model.aliases.join(',') : '',
-  ];
-  while (parts.length > 1 && !parts[parts.length - 1]) parts.pop();
-  return parts.join(' | ');
+  return model.label ? `${model.id},${model.label}` : model.id;
 }
 
 function normalizedDraftModels(): { defaultModel: string | null; models: ModelGatewayProviderModel[] } {

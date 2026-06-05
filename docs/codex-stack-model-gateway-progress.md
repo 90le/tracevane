@@ -50,7 +50,7 @@
   - 接入现有 `/api/model-gateway/*`：status、runtime、daemon-service、providers、active-provider、provider test。
   - 移除具体 vendor 预设；只保留原生协议模板，由用户自行填写 Base URL、模型列表、默认模型和 API key。
   - daemon service 操作增加可见结果面板，展示 action、service manager、bootstrap 和命令输出。
-  - Provider 表单支持多模型列表和默认模型下拉；模型行格式支持 `模型ID | 显示名 | 别名1,别名2`，保存时写入 provider model catalog。
+  - Provider 表单支持多模型列表和默认模型下拉；模型行格式简化为 `模型ID,显示名称`，显示名称可省略，保存时写入 provider model catalog。
   - 新增 `/api/model-gateway/detect-provider` 临时探测接口；不保存 provider 或 secret，自动识别三种原生协议和模型列表，多协议通过时让用户选择应用。
   - 新增静态页面测试，防止恢复旧 Codex Stack / CPA UI 词汇和旧 `/api/codex-stack/*`。
 
