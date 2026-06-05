@@ -16,6 +16,10 @@ import {
   MODEL_GATEWAY_DEFAULT_HOST,
   MODEL_GATEWAY_DEFAULT_PORT,
   MODEL_GATEWAY_PROVIDER_CATEGORIES,
+  MODEL_GATEWAY_REASONING_EFFORT_PARAMS,
+  MODEL_GATEWAY_REASONING_EFFORT_VALUE_MODES,
+  MODEL_GATEWAY_REASONING_OUTPUT_FORMATS,
+  MODEL_GATEWAY_REASONING_THINKING_PARAMS,
   MODEL_GATEWAY_ROUTE_IDS,
   type ModelGatewayApiFormat,
   type ModelGatewayActiveRouteStatus,
@@ -54,6 +58,7 @@ import {
   type ModelGatewayProviderModel,
   type ModelGatewayProviderModelCatalog,
   type ModelGatewayProviderNetwork,
+  type ModelGatewayProviderReasoning,
   type ModelGatewayProviderTestRequest,
   type ModelGatewayProviderTestResponse,
   type ModelGatewayProviderView,
@@ -241,6 +246,11 @@ function memberOrDefault<T extends string>(value: unknown, allowed: readonly T[]
   return allowed.includes(value as T) ? value as T : fallback;
 }
 
+function normalizedMember<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+  const normalized = normalizeString(value).toLowerCase();
+  return allowed.includes(normalized as T) ? normalized as T : undefined;
+}
+
 function normalizeAppScopes(value: unknown): ModelGatewayAppScope[] {
   const requested = Array.isArray(value) ? value : [];
   const scopes = requested
@@ -395,6 +405,70 @@ function normalizeNetwork(value: unknown, fallback?: ModelGatewayProviderNetwork
       ? Math.max(1_000, Math.floor(source.streamingIdleTimeoutMs))
       : fallback?.streamingIdleTimeoutMs || DEFAULT_STREAMING_IDLE_TIMEOUT_MS,
   };
+}
+
+function normalizeProviderReasoning(value: unknown, fallback?: ModelGatewayProviderReasoning): ModelGatewayProviderReasoning {
+  const source = isRecord(value) ? value : {};
+  const pick = (camelKey: string, snakeKey: string): unknown => (
+    source[camelKey] !== undefined ? source[camelKey] : source[snakeKey]
+  );
+  const reasoning: ModelGatewayProviderReasoning = {};
+
+  const supportsThinking = pick("supportsThinking", "supports_thinking");
+  if (typeof supportsThinking === "boolean") {
+    reasoning.supportsThinking = supportsThinking;
+  } else if (fallback?.supportsThinking !== undefined) {
+    reasoning.supportsThinking = fallback.supportsThinking;
+  }
+
+  const supportsEffort = pick("supportsEffort", "supports_effort");
+  if (typeof supportsEffort === "boolean") {
+    reasoning.supportsEffort = supportsEffort;
+  } else if (fallback?.supportsEffort !== undefined) {
+    reasoning.supportsEffort = fallback.supportsEffort;
+  }
+
+  const thinkingParam = normalizedMember(
+    pick("thinkingParam", "thinking_param"),
+    MODEL_GATEWAY_REASONING_THINKING_PARAMS,
+  );
+  if (thinkingParam) {
+    reasoning.thinkingParam = thinkingParam;
+  } else if (fallback?.thinkingParam) {
+    reasoning.thinkingParam = fallback.thinkingParam;
+  }
+
+  const effortParam = normalizedMember(
+    pick("effortParam", "effort_param"),
+    MODEL_GATEWAY_REASONING_EFFORT_PARAMS,
+  );
+  if (effortParam) {
+    reasoning.effortParam = effortParam;
+  } else if (fallback?.effortParam) {
+    reasoning.effortParam = fallback.effortParam;
+  }
+
+  const effortValueMode = normalizedMember(
+    pick("effortValueMode", "effort_value_mode"),
+    MODEL_GATEWAY_REASONING_EFFORT_VALUE_MODES,
+  );
+  if (effortValueMode) {
+    reasoning.effortValueMode = effortValueMode;
+  } else if (fallback?.effortValueMode) {
+    reasoning.effortValueMode = fallback.effortValueMode;
+  }
+
+  const outputFormat = normalizedMember(
+    pick("outputFormat", "output_format"),
+    MODEL_GATEWAY_REASONING_OUTPUT_FORMATS,
+  );
+  if (outputFormat) {
+    reasoning.outputFormat = outputFormat;
+  } else if (fallback?.outputFormat) {
+    reasoning.outputFormat = fallback.outputFormat;
+  }
+
+  return reasoning;
 }
 
 function normalizeClientAuthConfig(value: unknown, fallback?: ModelGatewayClientAuthConfig): ModelGatewayClientAuthConfig {
@@ -1004,7 +1078,7 @@ function normalizeProvider(input: ModelGatewayProviderInput, fallback?: ModelGat
       fallback?.authStrategy || "bearer",
     ),
     models,
-    reasoning: isRecord(input.reasoning) ? input.reasoning : fallback?.reasoning || {},
+    reasoning: normalizeProviderReasoning(input.reasoning, fallback?.reasoning),
     endpoints: normalizeEndpointMap(input.endpoints || fallback?.endpoints),
     network: normalizeNetwork(input.network, fallback?.network),
     health: normalizeHealth(input.health, fallback?.health),
@@ -4485,7 +4559,10 @@ export function createModelGatewayService(
           : null;
         if (enriched?.bodyText) codexHistoryRecordBodyText = enriched.bodyText;
         const codexToChat = useCodexResponsesAnthropicAdapter
-          ? adaptCodexResponsesRequestToChat(enriched?.bodyText, { allowStreaming: true })
+          ? adaptCodexResponsesRequestToChat(enriched?.bodyText, {
+            allowStreaming: true,
+            reasoning: provider.reasoning,
+          })
           : null;
         const chatRequestBodyText = codexToChat
           ? JSON.stringify(codexToChat.chatRequest)
@@ -4611,6 +4688,7 @@ export function createModelGatewayService(
         if (enriched.bodyText) codexHistoryRecordBodyText = enriched.bodyText;
         const adapted = adaptCodexResponsesRequestToChat(enriched.bodyText, {
           allowStreaming: useCodexResponsesStreamingAdapter,
+          reasoning: provider.reasoning,
         });
         upstreamBodyText = JSON.stringify(adapted.chatRequest);
         requestModelForLog = adapted.model || requestModel;

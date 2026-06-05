@@ -3794,6 +3794,142 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
   });
 });
 
+test("model gateway maps codex reasoning options to openai chat provider parameters", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-deepseek-reasoning",
+      name: "Codex DeepSeek Reasoning",
+      appScopes: ["codex"],
+      baseUrl: "https://deepseek-reasoning.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      reasoning: {
+        supportsThinking: true,
+        supportsEffort: true,
+        thinkingParam: "thinking",
+        effortParam: "reasoning_effort",
+        effortValueMode: "deepseek",
+      },
+    },
+    secret: {
+      apiKey: "sk-deepseek-reasoning-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: `chatcmpl_reasoning_${upstreamCalls.length}`,
+      created: 1_710_000_031,
+      model: "reasoning-model",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "ok",
+        },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const topLevel = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "deepseek-reasoner",
+          input: "Think.",
+          reasoning: { effort: "xhigh" },
+          stream: false,
+        },
+      });
+      assert.equal(topLevel.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "codex-openrouter-reasoning",
+          name: "Codex OpenRouter Reasoning",
+          appScopes: ["codex"],
+          baseUrl: "https://openrouter-reasoning.example.test/v1",
+          apiFormat: "openai_chat",
+          authStrategy: "bearer",
+          reasoning: {
+            supportsEffort: true,
+            thinkingParam: "none",
+            effortParam: "reasoning.effort",
+            effortValueMode: "openrouter",
+          },
+        },
+        secret: {
+          apiKey: "sk-openrouter-reasoning-secret",
+        },
+        setActiveScopes: ["codex"],
+      });
+
+      const nested = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "router-reasoner",
+          input: "Think.",
+          reasoning: { effort: "max" },
+          stream: false,
+        },
+      });
+      assert.equal(nested.status, 200);
+
+      const explicitOff = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "router-reasoner",
+          input: "Do not think.",
+          reasoning: { effort: "none" },
+          stream: false,
+        },
+      });
+      assert.equal(explicitOff.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 3);
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "deepseek-reasoner",
+    messages: [{ role: "user", content: "Think." }],
+    stream: false,
+    thinking: { type: "enabled" },
+    reasoning_effort: "max",
+  });
+  assert.equal(upstreamCalls[0].url, "https://deepseek-reasoning.example.test/v1/chat/completions");
+  assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
+    model: "router-reasoner",
+    messages: [{ role: "user", content: "Think." }],
+    stream: false,
+    reasoning: { effort: "xhigh" },
+  });
+  assert.equal(upstreamCalls[1].url, "https://openrouter-reasoning.example.test/v1/chat/completions");
+  assert.deepEqual(JSON.parse(upstreamCalls[2].body), {
+    model: "router-reasoner",
+    messages: [{ role: "user", content: "Do not think." }],
+    stream: false,
+    reasoning: { effort: "none" },
+  });
+});
+
 test("model gateway maps chat reasoning content to codex responses output items", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

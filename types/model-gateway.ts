@@ -49,6 +49,39 @@ export const MODEL_GATEWAY_AUTH_STRATEGIES = [
 
 export type ModelGatewayAuthStrategy = (typeof MODEL_GATEWAY_AUTH_STRATEGIES)[number];
 
+export const MODEL_GATEWAY_REASONING_THINKING_PARAMS = [
+  "none",
+  "thinking",
+  "enable_thinking",
+  "reasoning_split",
+] as const;
+
+export type ModelGatewayReasoningThinkingParam = (typeof MODEL_GATEWAY_REASONING_THINKING_PARAMS)[number];
+
+export const MODEL_GATEWAY_REASONING_EFFORT_PARAMS = [
+  "none",
+  "reasoning_effort",
+  "reasoning.effort",
+] as const;
+
+export type ModelGatewayReasoningEffortParam = (typeof MODEL_GATEWAY_REASONING_EFFORT_PARAMS)[number];
+
+export const MODEL_GATEWAY_REASONING_EFFORT_VALUE_MODES = [
+  "passthrough",
+  "deepseek",
+  "low_high",
+  "openrouter",
+] as const;
+
+export type ModelGatewayReasoningEffortValueMode = (typeof MODEL_GATEWAY_REASONING_EFFORT_VALUE_MODES)[number];
+
+export const MODEL_GATEWAY_REASONING_OUTPUT_FORMATS = [
+  "auto",
+  "reasoning_content",
+] as const;
+
+export type ModelGatewayReasoningOutputFormat = (typeof MODEL_GATEWAY_REASONING_OUTPUT_FORMATS)[number];
+
 export const MODEL_GATEWAY_ROUTE_IDS = [
   "openai_chat_completions",
   "openai_responses",
@@ -119,6 +152,15 @@ export interface ModelGatewayProviderMetadata {
   importedFrom?: string;
 }
 
+export interface ModelGatewayProviderReasoning {
+  supportsThinking?: boolean;
+  supportsEffort?: boolean;
+  thinkingParam?: ModelGatewayReasoningThinkingParam;
+  effortParam?: ModelGatewayReasoningEffortParam;
+  effortValueMode?: ModelGatewayReasoningEffortValueMode;
+  outputFormat?: ModelGatewayReasoningOutputFormat;
+}
+
 export interface ModelGatewayProvider {
   id: string;
   name: string;
@@ -130,7 +172,7 @@ export interface ModelGatewayProvider {
   apiFormat: ModelGatewayApiFormat;
   authStrategy: ModelGatewayAuthStrategy;
   models: ModelGatewayProviderModelCatalog;
-  reasoning: Record<string, unknown>;
+  reasoning: ModelGatewayProviderReasoning;
   endpoints: Partial<Record<ModelGatewayRouteId, string>>;
   network: ModelGatewayProviderNetwork;
   health: ModelGatewayProviderHealth;
@@ -408,7 +450,7 @@ export interface ModelGatewayProviderInput {
   apiFormat?: ModelGatewayApiFormat;
   authStrategy?: ModelGatewayAuthStrategy;
   models?: Partial<ModelGatewayProviderModelCatalog>;
-  reasoning?: Record<string, unknown>;
+  reasoning?: ModelGatewayProviderReasoning | Record<string, unknown>;
   endpoints?: Partial<Record<ModelGatewayRouteId, string>>;
   network?: Partial<ModelGatewayProviderNetwork>;
   health?: Partial<ModelGatewayProviderHealth>;

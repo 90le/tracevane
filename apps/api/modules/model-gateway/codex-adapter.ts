@@ -1,3 +1,5 @@
+import type { ModelGatewayProviderReasoning } from "../../../../types/model-gateway.js";
+
 type JsonRecord = Record<string, unknown>;
 
 export class CodexResponsesChatAdapterError extends Error {
@@ -19,6 +21,7 @@ export interface CodexResponsesChatRequestAdapterResult {
 
 export interface CodexResponsesChatRequestAdapterOptions {
   allowStreaming?: boolean;
+  reasoning?: ModelGatewayProviderReasoning | null;
 }
 
 export function isCodexResponsesToChatAdapterTarget(decision: {
@@ -97,6 +100,8 @@ export function adaptCodexResponsesRequestToChat(
 
   const toolChoice = mapResponsesToolChoiceToChat(request.tool_choice);
   if (toolChoice !== undefined) chatRequest.tool_choice = toolChoice;
+
+  applyReasoningOptions(chatRequest, request, options.reasoning || null);
 
   if (stream) ensureStreamUsageOption(chatRequest);
 
@@ -312,6 +317,84 @@ function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {
     return name ? { type: "function", function: { name } } : toolChoice;
   }
   return toolChoice;
+}
+
+function applyReasoningOptions(
+  chatRequest: JsonRecord,
+  request: JsonRecord,
+  config: ModelGatewayProviderReasoning | null,
+): void {
+  if (!config) return;
+  const reasoningEnabled = reasoningRequested(request);
+  if (reasoningEnabled === null) return;
+
+  const supportsEffort = config.supportsEffort === true;
+  const supportsThinking = config.supportsThinking === true || supportsEffort;
+  if (supportsThinking) {
+    const thinkingParam = config.thinkingParam || "thinking";
+    if (thinkingParam === "thinking") {
+      chatRequest.thinking = { type: reasoningEnabled ? "enabled" : "disabled" };
+    } else if (thinkingParam === "enable_thinking") {
+      chatRequest.enable_thinking = reasoningEnabled;
+    } else if (thinkingParam === "reasoning_split") {
+      chatRequest.reasoning_split = reasoningEnabled;
+    }
+  }
+
+  const effortParam = config.effortParam || "reasoning_effort";
+  if (!reasoningEnabled) {
+    if (effortParam === "reasoning.effort") {
+      chatRequest.reasoning = { effort: "none" };
+    }
+    return;
+  }
+
+  if (!supportsEffort) return;
+  const effort = reasoningEffort(request);
+  if (!effort) return;
+  const mapped = mapReasoningEffort(effort, config.effortValueMode || "passthrough");
+  if (!mapped) return;
+
+  if (effortParam === "reasoning_effort") {
+    chatRequest.reasoning_effort = mapped;
+  } else if (effortParam === "reasoning.effort") {
+    chatRequest.reasoning = { effort: mapped };
+  }
+}
+
+function reasoningRequested(request: JsonRecord): boolean | null {
+  const effort = reasoningEffort(request);
+  if (effort) {
+    return !["none", "off", "disabled"].includes(effort.trim().toLowerCase());
+  }
+  if (Object.prototype.hasOwnProperty.call(request, "reasoning")) {
+    return request.reasoning !== null && request.reasoning !== undefined;
+  }
+  return null;
+}
+
+function reasoningEffort(request: JsonRecord): string | null {
+  const reasoning = isRecord(request.reasoning) ? request.reasoning : null;
+  return reasoning ? stringOrNull(reasoning.effort) : null;
+}
+
+function mapReasoningEffort(effort: string, mode: string): string | null {
+  const normalized = effort.trim().toLowerCase();
+  if (["none", "off", "disabled"].includes(normalized)) return null;
+
+  if (mode === "deepseek") {
+    return normalized === "max" || normalized === "xhigh" ? "max" : "high";
+  }
+  if (mode === "low_high") {
+    return normalized === "minimal" || normalized === "low" ? "low" : "high";
+  }
+  if (mode === "openrouter") {
+    if (normalized === "max" || normalized === "xhigh") return "xhigh";
+    return ["high", "medium", "low", "minimal"].includes(normalized) ? normalized : null;
+  }
+  return ["minimal", "low", "medium", "high", "xhigh", "max"].includes(normalized)
+    ? normalized
+    : null;
 }
 
 function mapChatToolCallToResponses(toolCall: unknown, reasoningText: string | null): JsonRecord | null {

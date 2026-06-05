@@ -1,6 +1,6 @@
 # Studio Gateway 迁移进度
 
-> 状态：Phase C completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP completed; Phase E App Connections profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness completed; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage aligned; BigModel Chat/Anthropic live maturity passed; OpenAI Responses-native live proof remains open
+> 状态：Phase C completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP completed; Phase E App Connections profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness completed; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage and provider-declared reasoning/thinking mapping aligned; BigModel Chat/Anthropic live maturity passed; OpenAI Responses-native live proof remains open
 > 更新：2026-06-05
 > 文档规则：只保留当前状态、最近完成、验证和下一步；旧流水已压缩。
 
@@ -15,17 +15,18 @@
 - App Connections profile 是两层模型选择：全局默认模型 + 每个 App 单独模型覆盖；模型输入从 Gateway 可用模型列表提供 datalist，仍允许手动输入 alias。
 - Codex 低频兼容参数（WebSocket、WebSocket v2、请求压缩）已收进 `Codex advanced` 折叠，避免普通用户误触。
 - Channel Connectors / CC Bridge / Octo(dmwork) 后置；不放进 Studio Gateway App Connections。
-- Phase B2 仍需持续按 `/tmp/cc-switch-src` 对齐 usage/cache、reasoning/thinking、OpenAI Responses-native compact；strict smoke 已覆盖 CLI 启动、Claude tool/summary、OpenClaw agent provider/model/usage、Gateway HTTP compact/tool-history/error envelope、Responses->Chat streaming `include_usage`，以及 BigModel Chat/Anthropic live provider matrix。
+- Phase B2 仍需持续按 `/tmp/cc-switch-src` 对齐并发 tool-call、error envelope 边缘行为和 OpenAI Responses-native compact；strict smoke 已覆盖 CLI 启动、Claude tool/summary、OpenClaw agent provider/model/usage、Gateway HTTP compact/tool-history/error envelope、Responses->Chat streaming `include_usage`、provider-declared reasoning/thinking 映射，以及 BigModel Chat/Anthropic live provider matrix。
 
 ## 本轮完成
 
 - OpenClaw agent `--local` 可选 smoke 已绑定隔离 `main` agent，并解析 `--json` 输出断言 provider/model/usage/cache 字段。
 - Responses->Chat streaming adapter 已按 cc-switch 对齐：`stream:true` 时向 Chat upstream 注入 `stream_options.include_usage=true`，避免 Kimi/MiniMax 类上游尾部 usage/cache 丢失。
+- Responses->Chat adapter 已支持 provider 显式声明的 reasoning/thinking 参数映射：`thinking`、`enable_thinking`、`reasoning_split`、顶层 `reasoning_effort`、嵌套 `reasoning.effort`，并覆盖 DeepSeek/OpenRouter 风格 effort 枚举和显式关闭。
 - 全量 CLI strict 可带 `--include-openclaw-agent` 覆盖 Codex、Claude Code、Claude tool、Claude summary、OpenCode、OpenClaw agent 和 Gateway maturity probes。
 
 ## 验证
 
-- 通过：`node --test tests/system/model-gateway-service.test.mjs`，44/44。
+- 通过：`node --test tests/system/model-gateway-service.test.mjs`，45/45。
 - 通过：`npm run build:api`。
 - 通过：`npm run smoke:model-gateway:cli:strict -- --apps openclaw --include-openclaw-agent`，OpenClaw agent 命中 Gateway 并保留 provider/model/usage/cache。
 - 通过：`npm run smoke:model-gateway:cli:strict -- --include-openclaw-agent`，6 个 CLI smoke passed，Gateway probes passed。
@@ -40,5 +41,5 @@
 ## 下一步
 
 1. 等待 OpenAI Responses-native base/key 后，验收 `/v1/responses` 与原生 `/v1/responses/compact`。
-2. 继续按 `/tmp/cc-switch-src` 做 reasoning/thinking 参数自动映射、并发 tool-call 和 error envelope 边缘行为对齐。
+2. 继续按 `/tmp/cc-switch-src` 做并发 tool-call 和 error envelope 边缘行为对齐。
 3. Gateway 稳定后再启动 Channel Connectors / CC Bridge / Octo(dmwork)。
