@@ -39,6 +39,7 @@ test("Studio Gateway page uses the new model-gateway API contract", () => {
     "/api/model-gateway/status",
     "/api/model-gateway/runtime",
     "/api/model-gateway/daemon-service",
+    "/api/model-gateway/detect-provider",
     "/api/model-gateway/providers",
     "/api/model-gateway/active-provider",
   ]) {
@@ -70,8 +71,12 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Provider Center",
     "Active routing",
     "Protocol smoke",
+    "Auto-detect protocol and models",
+    "detectProviderConfig",
+    "applyDetectedProtocol",
     "modelListText",
     "normalizedDraftModels",
+    "formatModelLine",
     "daemonActionResult",
   ]) {
     assert.match(page, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -94,4 +99,5 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.doesNotMatch(page, new RegExp(legacyProxyName));
   assert.doesNotMatch(page, /运行矩阵与组件明细/);
   assert.doesNotMatch(page, /安装修复/);
+  assert.doesNotMatch(page, /label:\s*'Custom'/);
 });

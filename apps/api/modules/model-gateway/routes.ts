@@ -2,6 +2,7 @@ import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
   ModelGatewayDaemonServiceRequest,
+  ModelGatewayProviderDetectRequest,
   ModelGatewayProviderTestRequest,
   ModelGatewaySetActiveProviderRequest,
   ModelGatewaySetProviderSecretRequest,
@@ -79,6 +80,15 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
   router.get("/api/model-gateway/providers", (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, routeCtx.services.modelGateway.listProviders());
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/detect-provider", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayProviderDetectRequest>(req);
+      sendJson(res, 200, await routeCtx.services.modelGateway.detectProvider(req, payload));
     } catch (error) {
       sendModelGatewayError(res, error);
     }

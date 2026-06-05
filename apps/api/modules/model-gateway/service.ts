@@ -29,8 +29,13 @@ import {
   type ModelGatewayDaemonServiceResponse,
   type ModelGatewayProvider,
   type ModelGatewayProviderCategory,
+  type ModelGatewayProviderDetectModelResult,
+  type ModelGatewayProviderDetectProtocolResult,
+  type ModelGatewayProviderDetectRequest,
+  type ModelGatewayProviderDetectResponse,
   type ModelGatewayProviderHealth,
   type ModelGatewayProviderInput,
+  type ModelGatewayProviderModel,
   type ModelGatewayProviderModelCatalog,
   type ModelGatewayProviderNetwork,
   type ModelGatewayProviderTestRequest,
@@ -822,6 +827,258 @@ function buildProviderTestPayload(
   };
 }
 
+function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
+  const source = (() => {
+    if (Array.isArray(value)) return value;
+    if (!isRecord(value)) return [];
+    if (Array.isArray(value.data)) return value.data;
+    if (Array.isArray(value.models)) return value.models;
+    return [];
+  })();
+
+  const models = source
+    .map((item) => {
+      if (typeof item === "string") return { id: item };
+      if (!isRecord(item)) return null;
+      const id = normalizeString(item.id)
+        || normalizeString(item.name)
+        || normalizeString(item.model)
+        || normalizeString(item.value);
+      if (!id) return null;
+      const label = normalizeString(item.display_name)
+        || normalizeString(item.displayName)
+        || normalizeString(item.label)
+        || normalizeString(item.name);
+      return {
+        id,
+        ...(label && label !== id ? { label } : {}),
+      } satisfies ModelGatewayProviderModel;
+    })
+    .filter((item): item is ModelGatewayProviderModel => Boolean(item));
+
+  const seen = new Set<string>();
+  return models.filter((model) => {
+    if (seen.has(model.id)) return false;
+    seen.add(model.id);
+    return true;
+  });
+}
+
+function parseModelsResponseText(value: string): ModelGatewayProviderModel[] {
+  try {
+    return extractModelItems(JSON.parse(value) as unknown);
+  } catch {
+    return [];
+  }
+}
+
+function providerForDetection(options: {
+  baseUrl: string;
+  apiFormat: ModelGatewayApiFormat;
+  authStrategy: ModelGatewayAuthStrategy;
+  model: string | null;
+  timeoutMs: number;
+}): ModelGatewayProvider {
+  return normalizeProvider({
+    id: `detect-${options.apiFormat}-${options.authStrategy}`,
+    name: "Detection candidate",
+    enabled: true,
+    category: "custom",
+    appScopes: [...MODEL_GATEWAY_APP_SCOPES],
+    baseUrl: options.baseUrl,
+    apiFormat: options.apiFormat,
+    authStrategy: options.authStrategy,
+    models: {
+      defaultModel: options.model,
+      models: options.model ? [{ id: options.model }] : [],
+      aliases: {},
+    },
+    network: {
+      timeoutMs: options.timeoutMs,
+    },
+    failover: {
+      enabled: false,
+      priority: 100,
+      maxRetries: 0,
+    },
+  });
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: FetchInitWithDispatcher,
+  timeoutMs: number,
+): Promise<{ response: Response; latencyMs: number }> {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+    return {
+      response,
+      latencyMs: Math.max(0, Date.now() - startedAt),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function detectionAuthStrategies(apiKey: string): ModelGatewayAuthStrategy[] {
+  return apiKey
+    ? ["bearer", "anthropic_api_key"]
+    : ["none"];
+}
+
+async function detectModelList(
+  baseUrl: string,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<ModelGatewayProviderDetectModelResult[]> {
+  const results: ModelGatewayProviderDetectModelResult[] = [];
+  for (const authStrategy of detectionAuthStrategies(apiKey)) {
+    const provider = providerForDetection({
+      baseUrl,
+      apiFormat: "openai_chat",
+      authStrategy,
+      model: null,
+      timeoutMs,
+    });
+    const endpoint = joinBaseUrl(baseUrl, "/models");
+    const headers = new Headers();
+    applyProviderAuth(headers, provider, apiKey || null);
+    try {
+      const { response, latencyMs } = await fetchWithTimeout(
+        endpoint,
+        withProviderNetwork(provider, {
+          method: "GET",
+          headers,
+        }),
+        timeoutMs,
+      );
+      const responseText = await response.text();
+      const models = response.ok ? parseModelsResponseText(responseText) : [];
+      results.push({
+        ok: response.ok && models.length > 0,
+        authStrategy,
+        endpoint,
+        statusCode: response.status,
+        latencyMs,
+        models,
+        error: response.ok && models.length > 0 ? null : {
+          code: response.ok ? "model_gateway_detect_models_empty" : "model_gateway_detect_models_failed",
+          message: response.ok
+            ? "Model list endpoint returned no recognizable model ids."
+            : `Model list endpoint returned HTTP ${response.status}.`,
+        },
+      });
+    } catch (error) {
+      results.push({
+        ok: false,
+        authStrategy,
+        endpoint,
+        statusCode: null,
+        latencyMs: 0,
+        models: [],
+        error: {
+          code: "model_gateway_detect_models_failed",
+          message: error instanceof Error ? error.message : "Model list detection failed.",
+        },
+      });
+    }
+  }
+  return results;
+}
+
+async function detectProtocolCandidate(options: {
+  baseUrl: string;
+  apiKey: string;
+  timeoutMs: number;
+  model: string | null;
+  apiFormat: ModelGatewayApiFormat;
+  authStrategy: ModelGatewayAuthStrategy;
+  routeId: ModelGatewayRouteId;
+}): Promise<ModelGatewayProviderDetectProtocolResult> {
+  const provider = providerForDetection(options);
+  const appScope = ROUTES[options.routeId].appScope;
+  const route = buildProviderRouteDecision(provider, options.routeId, appScope);
+  if (!options.model) {
+    return {
+      ok: false,
+      skipped: true,
+      apiFormat: options.apiFormat,
+      authStrategy: options.authStrategy,
+      routeId: options.routeId,
+      statusCode: null,
+      latencyMs: 0,
+      model: null,
+      upstreamUrl: route.upstreamUrl,
+      responsePreview: null,
+      error: {
+        code: "model_gateway_detect_model_required",
+        message: "A model name is required because model list detection did not find one.",
+      },
+    };
+  }
+
+  const headers = new Headers({ "content-type": "application/json" });
+  applyProviderAuth(headers, provider, options.apiKey || null);
+  const requestBody = JSON.stringify(buildProviderTestPayload(
+    provider,
+    options.model,
+    "Return only GATEWAY_OK.",
+  ));
+
+  try {
+    const { response, latencyMs } = await fetchWithTimeout(
+      route.upstreamUrl || provider.baseUrl,
+      withProviderNetwork(provider, {
+        method: "POST",
+        headers,
+        body: requestBody,
+      }),
+      options.timeoutMs,
+    );
+    const responseText = await response.text();
+    const ok = isProviderTestSuccess(response.status, null);
+    return {
+      ok,
+      skipped: false,
+      apiFormat: options.apiFormat,
+      authStrategy: options.authStrategy,
+      routeId: options.routeId,
+      statusCode: response.status,
+      latencyMs,
+      model: options.model,
+      upstreamUrl: route.upstreamUrl,
+      responsePreview: previewText(responseText),
+      error: ok ? null : {
+        code: "model_gateway_detect_protocol_failed",
+        message: `Protocol probe returned HTTP ${response.status}.`,
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      skipped: false,
+      apiFormat: options.apiFormat,
+      authStrategy: options.authStrategy,
+      routeId: options.routeId,
+      statusCode: null,
+      latencyMs: 0,
+      model: options.model,
+      upstreamUrl: route.upstreamUrl,
+      responsePreview: null,
+      error: {
+        code: "model_gateway_detect_protocol_failed",
+        message: error instanceof Error ? error.message : "Protocol probe failed.",
+      },
+    };
+  }
+}
+
 function joinBaseUrl(baseUrl: string, endpointPath: string): string {
   const base = new URL(baseUrl);
   const basePath = base.pathname.replace(/\/+$/g, "");
@@ -1149,6 +1406,7 @@ export interface ModelGatewayService {
   getRuntime(): ModelGatewayRuntimeResponse;
   getDaemonService(): ModelGatewayDaemonServiceResponse;
   manageDaemonService(req: http.IncomingMessage | undefined, payload?: ModelGatewayDaemonServiceRequest): Promise<ModelGatewayDaemonServiceResponse>;
+  detectProvider(req: http.IncomingMessage | undefined, payload?: ModelGatewayProviderDetectRequest): Promise<ModelGatewayProviderDetectResponse>;
   upsertProvider(req: http.IncomingMessage | undefined, payload: ModelGatewayUpsertProviderRequest): ModelGatewayProviderView;
   deleteProvider(req: http.IncomingMessage | undefined, providerId: string): ModelGatewayProvidersResponse;
   setActiveProvider(req: http.IncomingMessage | undefined, payload: ModelGatewaySetActiveProviderRequest): ModelGatewayProvidersResponse;
@@ -1714,6 +1972,96 @@ export function createModelGatewayService(
       applied: bootstrap.started,
       bootstrap,
     });
+  }
+
+  async function detectProvider(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayProviderDetectRequest = {},
+  ): Promise<ModelGatewayProviderDetectResponse> {
+    requireManagement(req);
+    const baseUrl = normalizeString(payload.baseUrl);
+    if (!baseUrl) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_detect_base_url_required",
+        "Provider baseUrl is required before detection.",
+        400,
+      );
+    }
+    try {
+      new URL(baseUrl);
+    } catch {
+      throw new ModelGatewayServiceError(
+        "model_gateway_detect_base_url_invalid",
+        "Provider baseUrl must be a valid absolute URL.",
+        400,
+      );
+    }
+
+    const apiKey = normalizeString(payload.apiKey);
+    const timeoutMs = typeof payload.timeoutMs === "number"
+      ? Math.max(1_000, Math.floor(payload.timeoutMs))
+      : 20_000;
+    const modelProbes = await detectModelList(baseUrl, apiKey, timeoutMs);
+    const seenModels = new Set<string>();
+    const models: ModelGatewayProviderModel[] = [];
+    for (const probe of modelProbes) {
+      for (const model of probe.models) {
+        if (seenModels.has(model.id)) continue;
+        seenModels.add(model.id);
+        models.push(model);
+      }
+    }
+
+    const selectedModel = normalizeString(payload.model)
+      || models[0]?.id
+      || null;
+    const protocols = await Promise.all([
+      detectProtocolCandidate({
+        baseUrl,
+        apiKey,
+        timeoutMs,
+        model: selectedModel,
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        routeId: "openai_chat_completions",
+      }),
+      detectProtocolCandidate({
+        baseUrl,
+        apiKey,
+        timeoutMs,
+        model: selectedModel,
+        apiFormat: "openai_responses",
+        authStrategy: "bearer",
+        routeId: "openai_responses",
+      }),
+      detectProtocolCandidate({
+        baseUrl,
+        apiKey,
+        timeoutMs,
+        model: selectedModel,
+        apiFormat: "anthropic_messages",
+        authStrategy: "anthropic_api_key",
+        routeId: "anthropic_messages",
+      }),
+    ]);
+
+    return {
+      ok: true,
+      checkedAt: nowIso(),
+      baseUrl,
+      selectedModel,
+      models,
+      modelProbes,
+      protocols,
+      recommendations: protocols
+        .filter((protocol) => protocol.ok)
+        .map((protocol) => ({
+          apiFormat: protocol.apiFormat,
+          authStrategy: protocol.authStrategy,
+          routeId: protocol.routeId,
+          defaultModel: selectedModel,
+        })),
+    };
   }
 
   function listProviders(): ModelGatewayProvidersResponse {
@@ -2841,6 +3189,7 @@ export function createModelGatewayService(
     getRuntime,
     getDaemonService,
     manageDaemonService,
+    detectProvider,
     upsertProvider,
     deleteProvider,
     setActiveProvider,

@@ -2,6 +2,8 @@ import type {
   ModelGatewayDaemonServiceAction,
   ModelGatewayDaemonServiceRequest,
   ModelGatewayDaemonServiceResponse,
+  ModelGatewayProviderDetectRequest,
+  ModelGatewayProviderDetectResponse,
   ModelGatewayProviderView,
   ModelGatewayProviderTestRequest,
   ModelGatewayProviderTestResponse,
@@ -62,6 +64,10 @@ export function manageModelGatewayDaemonService(
 
 export function fetchModelGatewayProviders(): Promise<ModelGatewayProvidersResponse> {
   return requestJson<ModelGatewayProvidersResponse>('/api/model-gateway/providers');
+}
+
+export function detectModelGatewayProvider(payload: ModelGatewayProviderDetectRequest): Promise<ModelGatewayProviderDetectResponse> {
+  return requestJson<ModelGatewayProviderDetectResponse>('/api/model-gateway/detect-provider', jsonBody(payload));
 }
 
 export function upsertModelGatewayProvider(payload: ModelGatewayUpsertProviderRequest): Promise<{

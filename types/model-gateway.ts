@@ -417,6 +417,61 @@ export interface ModelGatewayProviderTestResponse {
   } | null;
 }
 
+export interface ModelGatewayProviderDetectRequest {
+  baseUrl?: string;
+  apiKey?: string | null;
+  model?: string;
+  timeoutMs?: number;
+}
+
+export interface ModelGatewayProviderDetectModelResult {
+  ok: boolean;
+  authStrategy: ModelGatewayAuthStrategy;
+  endpoint: string;
+  statusCode: number | null;
+  latencyMs: number;
+  models: ModelGatewayProviderModel[];
+  error: {
+    code: string;
+    message: string;
+  } | null;
+}
+
+export interface ModelGatewayProviderDetectProtocolResult {
+  ok: boolean;
+  skipped: boolean;
+  apiFormat: ModelGatewayApiFormat;
+  authStrategy: ModelGatewayAuthStrategy;
+  routeId: ModelGatewayRouteId;
+  statusCode: number | null;
+  latencyMs: number;
+  model: string | null;
+  upstreamUrl: string | null;
+  responsePreview: string | null;
+  error: {
+    code: string;
+    message: string;
+  } | null;
+}
+
+export interface ModelGatewayProviderDetectRecommendation {
+  apiFormat: ModelGatewayApiFormat;
+  authStrategy: ModelGatewayAuthStrategy;
+  routeId: ModelGatewayRouteId;
+  defaultModel: string | null;
+}
+
+export interface ModelGatewayProviderDetectResponse {
+  ok: true;
+  checkedAt: string;
+  baseUrl: string;
+  selectedModel: string | null;
+  models: ModelGatewayProviderModel[];
+  modelProbes: ModelGatewayProviderDetectModelResult[];
+  protocols: ModelGatewayProviderDetectProtocolResult[];
+  recommendations: ModelGatewayProviderDetectRecommendation[];
+}
+
 export interface ModelGatewayProvidersResponse {
   ok: true;
   providers: ModelGatewayProviderView[];

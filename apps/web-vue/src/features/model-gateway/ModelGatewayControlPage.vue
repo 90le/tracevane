@@ -133,6 +133,9 @@
               {{ template.label }}
             </button>
           </div>
+          <p class="mgw-note mgw-template-note">
+            {{ text('这里只选择上游原生协议。自定义服务商也是三种协议之一；不确定时先填 Base URL 和 API Key，再点自动识别。', 'Choose the upstream native protocol here. Custom providers still use one of the three protocols; if unsure, enter Base URL and API key, then run auto-detect.') }}
+          </p>
 
           <div class="mgw-provider-grid">
             <section class="mgw-provider-list" :aria-label="text('Provider 列表', 'Provider list')">
@@ -186,6 +189,10 @@
                   <span class="field-hint">{{ text('这里是上游 API 前缀，Gateway 不会自动追加 /v1。', 'This is the upstream API prefix; Gateway will not append /v1 automatically.') }}</span>
                 </label>
                 <label class="form-field">
+                  <span class="form-label">API Key</span>
+                  <input v-model="draft.apiKey" class="form-input" type="password" :placeholder="secretPlaceholder" />
+                </label>
+                <label class="form-field">
                   <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
                   <select v-if="draftDefaultModelOptions.length" v-model="draft.defaultModel" class="form-input">
                     <option value="">{{ text('选择默认模型', 'Select default model') }}</option>
@@ -198,13 +205,9 @@
                   <textarea
                     v-model="draft.modelListText"
                     class="form-textarea mgw-model-list-input"
-                    :placeholder="text('每行一个模型，例如：\\nmodel-a\\nmodel-b', 'One model per line, for example:\\nmodel-a\\nmodel-b')"
+                    :placeholder="modelListPlaceholder"
                   ></textarea>
-                  <span class="field-hint">{{ text('保存时会写入 provider model catalog；默认模型不在列表中时会自动加入。', 'Saved into the provider model catalog; the default model is added automatically if it is not already listed.') }}</span>
-                </label>
-                <label class="form-field">
-                  <span class="form-label">API Key</span>
-                  <input v-model="draft.apiKey" class="form-input" type="password" :placeholder="secretPlaceholder" />
+                  <span class="field-hint">{{ text('格式：模型ID | 显示名 | 别名1,别名2。只填模型ID也可以。默认模型不在列表中时会自动加入。', 'Format: model id | display name | alias1,alias2. A single model id also works. The default model is added automatically if it is not already listed.') }}</span>
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('Anthropic endpoint override', 'Anthropic endpoint override') }}</span>
@@ -222,6 +225,50 @@
                   <span class="form-label">NO_PROXY</span>
                   <input v-model.trim="draft.noProxy" class="form-input" placeholder="localhost,127.0.0.1" />
                 </label>
+              </div>
+
+              <div class="mgw-button-row mgw-detect-actions">
+                <button type="button" class="secondary-button" :disabled="detectBusy || !draft.baseUrl.trim()" @click="detectProviderConfig">
+                  {{ detectBusy ? text('识别中...', 'Detecting...') : text('自动识别协议和模型', 'Auto-detect protocol and models') }}
+                </button>
+                <span class="field-hint">
+                  {{ text('不会保存 provider 或密钥，只用本地后端临时探测。', 'Does not save the provider or key; the local backend probes temporarily.') }}
+                </span>
+              </div>
+
+              <div v-if="detectResult" class="mgw-detect-result">
+                <div class="mgw-detect-result__head">
+                  <strong>{{ text('识别结果', 'Detection result') }}</strong>
+                  <span>{{ formatTimestamp(detectResult.checkedAt) }}</span>
+                </div>
+                <p v-if="detectResult.models.length" class="mgw-detect-summary">
+                  {{ text(`已读取 ${detectResult.models.length} 个模型。`, `Read ${detectResult.models.length} models.`) }}
+                </p>
+                <p v-else class="mgw-detect-summary">
+                  {{ text('未读取到模型列表；请手动填写至少一个模型名称后再次识别。', 'No model list was found; enter at least one model name and detect again.') }}
+                </p>
+                <div class="mgw-detect-protocols">
+                  <div
+                    v-for="protocol in detectResult.protocols"
+                    :key="`${protocol.apiFormat}-${protocol.authStrategy}`"
+                    class="mgw-detect-protocol"
+                    :class="{ success: protocol.ok, skipped: protocol.skipped }"
+                  >
+                    <div>
+                      <strong>{{ apiFormatLabel(protocol.apiFormat) }}</strong>
+                      <small>{{ protocol.authStrategy }} · {{ protocol.statusCode || '-' }} · {{ protocol.latencyMs }} ms</small>
+                    </div>
+                    <button
+                      v-if="protocol.ok"
+                      type="button"
+                      class="primary-button compact-button"
+                      @click="applyDetectedProtocol(protocol)"
+                    >
+                      {{ text('应用', 'Apply') }}
+                    </button>
+                    <span v-else>{{ protocol.error?.message || '-' }}</span>
+                  </div>
+                </div>
               </div>
 
               <div class="mgw-scope-picker">
@@ -317,8 +364,11 @@ import type {
   ModelGatewayAuthStrategy,
   ModelGatewayDaemonServiceAction,
   ModelGatewayDaemonServiceResponse,
+  ModelGatewayProviderDetectProtocolResult,
+  ModelGatewayProviderDetectResponse,
   ModelGatewayProviderCategory,
   ModelGatewayProviderInput,
+  ModelGatewayProviderModel,
   ModelGatewayProviderTestResponse,
   ModelGatewayProviderView,
   ModelGatewayRouteId,
@@ -331,6 +381,7 @@ import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   deleteModelGatewayProvider,
+  detectModelGatewayProvider,
   fetchModelGatewayDaemonService,
   fetchModelGatewayProviders,
   fetchModelGatewayRuntime,
@@ -442,18 +493,6 @@ const protocolTemplates: ProtocolTemplate[] = [
       compactEndpoint: '',
     },
   },
-  {
-    id: 'manual',
-    label: 'Custom',
-    draft: {
-      category: 'custom',
-      apiFormat: 'openai_chat',
-      authStrategy: 'bearer',
-      baseUrl: '',
-      defaultModel: '',
-      modelListText: '',
-    },
-  },
 ];
 
 const loading = ref(false);
@@ -461,6 +500,7 @@ const loaded = ref(false);
 const busy = ref(false);
 const daemonBusy = ref(false);
 const smokeBusy = ref(false);
+const detectBusy = ref(false);
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
 const status = ref<ModelGatewayStatusResponse | null>(null);
 const runtime = ref<ModelGatewayRuntimeResponse | null>(null);
@@ -473,6 +513,7 @@ const smokeRouteId = ref<ModelGatewayRouteId>('openai_responses');
 const smokeModel = ref('');
 const smokeInput = ref('Reply with GATEWAY_OK');
 const smokeResult = ref<ModelGatewayProviderTestResponse | null>(null);
+const detectResult = ref<ModelGatewayProviderDetectResponse | null>(null);
 
 const draft = reactive<ProviderDraft>(createEmptyDraft());
 
@@ -530,6 +571,11 @@ const supervisorLabel = computed(() =>
   || status.value?.lifecycle.localDaemon.supervisor.expected
   || 'unknown',
 );
+
+const modelListPlaceholder = computed(() => text(
+  '每行一个模型，例如：\nmodel-a | 模型 A | a,fast-a\nmodel-b',
+  'One model per line, for example:\nmodel-a | Model A | a,fast-a\nmodel-b',
+));
 
 const daemonActionTitle = computed(() => {
   if (!daemonActionResult.value) return '';
@@ -652,7 +698,7 @@ function editProvider(provider: ModelGatewayProviderView): void {
     baseUrl: provider.baseUrl,
     defaultModel: provider.models.defaultModel || provider.models.models[0]?.id || '',
     modelListText: provider.models.models.length
-      ? provider.models.models.map((model) => model.id).join('\n')
+      ? provider.models.models.map(formatModelLine).join('\n')
       : provider.models.defaultModel || '',
     apiKey: '',
     anthropicEndpoint: provider.endpoints.anthropic_messages || '',
@@ -700,17 +746,57 @@ function uniqueStrings(values: string[]): string[] {
     .filter((value, index, list) => list.indexOf(value) === index);
 }
 
-function parseModelList(value: string): string[] {
-  return uniqueStrings(value.split(/[\n,]+/));
+function parseModelLines(value: string): ModelGatewayProviderModel[] {
+  const models: ModelGatewayProviderModel[] = [];
+  const seen = new Set<string>();
+  for (const line of value.split(/\n+/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const [rawId, rawLabel, rawAliases] = trimmed.split('|').map((part) => part.trim());
+    const id = rawId || '';
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const aliases = rawAliases
+      ? rawAliases.split(',').map((alias) => alias.trim()).filter(Boolean)
+      : [];
+    models.push({
+      id,
+      ...(rawLabel ? { label: rawLabel } : {}),
+      ...(aliases.length ? { aliases } : {}),
+    });
+  }
+  return models;
 }
 
-function normalizedDraftModels(): { defaultModel: string | null; models: Array<{ id: string }> } {
-  const listed = parseModelList(draft.modelListText);
-  const fallbackDefault = draft.defaultModel.trim() || listed[0] || '';
-  const models = uniqueStrings([fallbackDefault, ...listed]);
+function parseModelList(value: string): string[] {
+  return parseModelLines(value).map((model) => model.id);
+}
+
+function formatModelLine(model: ModelGatewayProviderModel): string {
+  const parts = [
+    model.id,
+    model.label || '',
+    model.aliases?.length ? model.aliases.join(',') : '',
+  ];
+  while (parts.length > 1 && !parts[parts.length - 1]) parts.pop();
+  return parts.join(' | ');
+}
+
+function normalizedDraftModels(): { defaultModel: string | null; models: ModelGatewayProviderModel[] } {
+  const listed = parseModelLines(draft.modelListText);
+  const fallbackDefault = draft.defaultModel.trim() || listed[0]?.id || '';
+  const seen = new Set<string>();
+  const models = [
+    ...(fallbackDefault ? [{ id: fallbackDefault }] : []),
+    ...listed,
+  ].filter((model) => {
+    if (!model.id || seen.has(model.id)) return false;
+    seen.add(model.id);
+    return true;
+  });
   return {
     defaultModel: fallbackDefault || null,
-    models: models.map((id) => ({ id })),
+    models,
   };
 }
 
@@ -718,6 +804,78 @@ function syncDefaultModelWithList(): void {
   const models = parseModelList(draft.modelListText);
   if (!draft.defaultModel.trim() && models[0]) {
     draft.defaultModel = models[0];
+  }
+}
+
+function applyDetectedModels(models: ModelGatewayProviderModel[]): void {
+  if (!models.length) return;
+  draft.modelListText = models.map(formatModelLine).join('\n');
+  if (!draft.defaultModel.trim()) {
+    draft.defaultModel = models[0]?.id || '';
+  }
+  if (!smokeModel.value) {
+    smokeModel.value = draft.defaultModel;
+  }
+}
+
+function applyDetectedProtocol(protocol: ModelGatewayProviderDetectProtocolResult, showNotice = true): void {
+  draft.apiFormat = protocol.apiFormat;
+  draft.authStrategy = protocol.authStrategy;
+  smokeRouteId.value = protocol.routeId;
+  if (protocol.model) {
+    draft.defaultModel = protocol.model;
+    smokeModel.value = protocol.model;
+  }
+  if (showNotice) {
+    notice.value = {
+      kind: 'success',
+      message: text('已应用识别出的协议配置。', 'Detected protocol configuration applied.'),
+    };
+  }
+}
+
+async function detectProviderConfig(): Promise<void> {
+  detectBusy.value = true;
+  detectResult.value = null;
+  notice.value = null;
+  try {
+    const response = await detectModelGatewayProvider({
+      baseUrl: draft.baseUrl.trim(),
+      apiKey: draft.apiKey.trim() || null,
+      model: draft.defaultModel.trim() || draftModelIds.value[0] || undefined,
+      timeoutMs: 20000,
+    });
+    detectResult.value = response;
+    if (response.models.length) {
+      applyDetectedModels(response.models);
+    }
+    const supported = response.protocols.filter((protocol) => protocol.ok);
+    if (supported.length === 1) {
+      applyDetectedProtocol(supported[0], false);
+      notice.value = {
+        kind: 'success',
+        message: text('已识别并应用唯一可用协议。', 'Detected and applied the only supported protocol.'),
+      };
+    } else if (supported.length > 1) {
+      notice.value = {
+        kind: 'success',
+        message: text('检测到多个可用协议，请在识别结果中选择一个应用。', 'Multiple supported protocols detected; choose one in the result panel.'),
+      };
+    } else {
+      notice.value = {
+        kind: 'error',
+        message: response.models.length
+          ? text('未识别出可用协议，请检查 Base URL、Key 或模型权限。', 'No supported protocol was detected; check Base URL, key, or model access.')
+          : text('未读取到模型列表。请手动填写模型名称后再次识别。', 'No model list was found. Enter a model name and detect again.'),
+      };
+    }
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('自动识别失败', 'Auto-detect failed'),
+    };
+  } finally {
+    detectBusy.value = false;
   }
 }
 

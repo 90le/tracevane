@@ -297,6 +297,120 @@ test("model gateway refuses managed auth placeholders before upstream forwarding
   assert.equal(upstreamCalls.length, 0);
 });
 
+test("model gateway detects provider protocols without persisting probe secrets", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    const headers = init.headers instanceof Headers
+      ? init.headers
+      : new Headers(init.headers || {});
+    upstreamCalls.push({
+      path: target.pathname,
+      authorization: headers.get("authorization"),
+      apiKey: headers.get("x-api-key"),
+      body: String(init.body || ""),
+    });
+
+    if (target.pathname.endsWith("/models")) {
+      return new Response(JSON.stringify({
+        data: [
+          { id: "model-a", display_name: "Model A" },
+          { id: "model-b" },
+        ],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (target.pathname.endsWith("/chat/completions")) {
+      return new Response(JSON.stringify({
+        id: "chatcmpl-detect",
+        object: "chat.completion",
+        choices: [{ message: { role: "assistant", content: "GATEWAY_OK" } }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (target.pathname.endsWith("/responses")) {
+      return new Response(JSON.stringify({
+        id: "resp-detect",
+        object: "response",
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "GATEWAY_OK" }],
+          },
+        ],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (target.pathname.endsWith("/messages")) {
+      return new Response(JSON.stringify({
+        id: "msg-detect",
+        type: "message",
+        role: "assistant",
+        content: [{ type: "text", text: "GATEWAY_OK" }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response("not found", { status: 404 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/api/model-gateway/detect-provider`, {
+        method: "POST",
+        body: {
+          baseUrl: "https://provider.example/v1",
+          apiKey: "sk-detect-secret",
+        },
+      });
+
+      assert.equal(response.status, 200);
+      assert.equal(response.body.ok, true);
+      assert.equal(response.body.models.length, 2);
+      assert.deepEqual(response.body.models.map((model) => model.id), ["model-a", "model-b"]);
+      assert.equal(response.body.selectedModel, "model-a");
+      assert.deepEqual(
+        response.body.protocols.map((protocol) => [protocol.apiFormat, protocol.ok, protocol.authStrategy]),
+        [
+          ["openai_chat", true, "bearer"],
+          ["openai_responses", true, "bearer"],
+          ["anthropic_messages", true, "anthropic_api_key"],
+        ],
+      );
+      assert.deepEqual(
+        response.body.recommendations.map((item) => item.apiFormat),
+        ["openai_chat", "openai_responses", "anthropic_messages"],
+      );
+
+      assert.equal(upstreamCalls.some((call) => call.authorization === "Bearer sk-detect-secret"), true);
+      assert.equal(upstreamCalls.some((call) => call.apiKey === "sk-detect-secret"), true);
+      assert.equal(fs.existsSync(paths.registry), false);
+      assert.equal(fs.existsSync(paths.secrets), false);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway routing contract selects app-scoped providers and preserves provider URL prefixes", () => {
   const root = makeTempRoot();
   const service = createModelGatewayService(createStudioConfig(root));
