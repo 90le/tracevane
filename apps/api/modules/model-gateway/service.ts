@@ -2005,10 +2005,6 @@ function buildClaudeSettingsConfig(source: string | null, targetPath: string, op
         ANTHROPIC_AUTH_TOKEN: options.key,
         ...modelEnv,
       },
-      studioGateway: {
-        ...(isRecord(parsed.value.studioGateway) ? parsed.value.studioGateway : {}),
-        profile: options.profile,
-      },
     }),
   };
 }
@@ -2022,7 +2018,11 @@ function buildOpenCodeConfig(source: string | null, targetPath: string, options:
   const parsed = parseJsonObjectForConnection(targetPath, source);
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
   const provider = isRecord(parsed.value.provider) ? parsed.value.provider : {};
-  const models = Object.fromEntries(options.modelIds.map((id) => [id, {
+  const modelCatalogIds = Array.from(new Set([
+    ...options.modelIds,
+    ...(options.profile.model ? [options.profile.model] : []),
+  ]));
+  const models = Object.fromEntries(modelCatalogIds.map((id) => [id, {
     name: id,
     ...(options.profile.contextWindow ? { contextWindow: options.profile.contextWindow } : {}),
     ...(options.profile.maxOutputTokens ? { maxOutputTokens: options.profile.maxOutputTokens } : {}),
@@ -2035,17 +2035,15 @@ function buildOpenCodeConfig(source: string | null, targetPath: string, options:
       provider: {
         ...provider,
         "studio-gateway": {
-          npm: "@ai-sdk/openai",
+          npm: "@ai-sdk/openai-compatible",
+          name: "OpenClaw Studio Gateway",
           options: {
             apiKey: options.key,
             baseURL: options.endpoint,
+            setCacheKey: true,
           },
           models,
         },
-      },
-      studioGateway: {
-        ...(isRecord(parsed.value.studioGateway) ? parsed.value.studioGateway : {}),
-        profile: options.profile,
       },
     }),
   };
@@ -2061,7 +2059,11 @@ function buildOpenClawConfig(source: string | null, targetPath: string, options:
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
   const modelsRoot = isRecord(parsed.value.models) ? parsed.value.models : {};
   const providers = isRecord(modelsRoot.providers) ? modelsRoot.providers : {};
-  const modelItems = options.modelIds.map((id) => ({
+  const modelCatalogIds = Array.from(new Set([
+    ...options.modelIds,
+    ...(options.profile.model ? [options.profile.model] : []),
+  ]));
+  const modelItems = modelCatalogIds.map((id) => ({
     id,
     name: id,
     input: ["text"],
@@ -2093,10 +2095,6 @@ function buildOpenClawConfig(source: string | null, targetPath: string, options:
       ...(options.profile.model ? {
         agents: mergeOpenClawAgentDefaultModel(parsed.value.agents, options.profile),
       } : {}),
-      studioGateway: {
-        ...(isRecord(parsed.value.studioGateway) ? parsed.value.studioGateway : {}),
-        profile: options.profile,
-      },
     }),
   };
 }

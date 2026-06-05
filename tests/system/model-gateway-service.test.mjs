@@ -942,19 +942,22 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(claudeConfig.env.ANTHROPIC_API_KEY, "sk-local-app-connection");
   assert.equal(claudeConfig.env.ANTHROPIC_AUTH_TOKEN, "sk-local-app-connection");
   assert.equal(claudeConfig.env.ANTHROPIC_MODEL, "gpt-main");
-  assert.equal(claudeConfig.studioGateway.profile.reasoningEffort, "high");
+  assert.equal(claudeConfig.studioGateway, undefined);
   assert.deepEqual(claudeConfig.hooks.Stop, []);
 
   service.applyAppConnection(undefined, { appId: "opencode" });
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
   assert.equal(opencodeConfig.model, "studio-gateway/gpt-alt");
   assert.equal(opencodeConfig.provider.existing.options.apiKey, "sk-existing-opencode-secret");
-  assert.equal(opencodeConfig.provider["studio-gateway"].npm, "@ai-sdk/openai");
+  assert.equal(opencodeConfig.provider["studio-gateway"].npm, "@ai-sdk/openai-compatible");
+  assert.equal(opencodeConfig.provider["studio-gateway"].name, "OpenClaw Studio Gateway");
   assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, "http://127.0.0.1:18796/v1");
   assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local-app-connection");
+  assert.equal(opencodeConfig.provider["studio-gateway"].options.setCacheKey, true);
   assert.deepEqual(Object.keys(opencodeConfig.provider["studio-gateway"].models).sort(), ["gpt-alt", "gpt-main"]);
   assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].contextWindow, 200000);
   assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].maxOutputTokens, 8192);
+  assert.equal(opencodeConfig.studioGateway, undefined);
 
   service.applyAppConnection(undefined, { appId: "openclaw" });
   const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
@@ -968,6 +971,7 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(openclawConfig.models.providers["studio-gateway"].models[0].maxTokens, 8192);
   assert.equal(openclawConfig.agents.defaults.model.primary, "studio-gateway/gpt-main");
   assert.equal(openclawConfig.agents.defaults.thinkingDefault, "high");
+  assert.equal(openclawConfig.studioGateway, undefined);
 
   const applyAll = service.applyAppConnections(undefined);
   assert.equal(applyAll.applied.length, 4);
@@ -1091,7 +1095,7 @@ test("model gateway app connections apply through HTTP routes against an isolate
     assert.equal(opencodeConfig.provider.keep.options.apiKey, "sk-keep-opencode");
     assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, "http://127.0.0.1:18796/v1");
     assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local-isolated");
-    assert.deepEqual(Object.keys(opencodeConfig.provider["studio-gateway"].models).sort(), ["model-a", "model-b"]);
+    assert.deepEqual(Object.keys(opencodeConfig.provider["studio-gateway"].models).sort(), ["alias-b", "model-a", "model-b"]);
 
     const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
     assert.equal(openclawConfig.gateway.auth.token, "keep-openclaw");
