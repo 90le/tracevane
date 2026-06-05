@@ -10,7 +10,7 @@
 - Codex Stack / CPA / Compact 旧功能面已停止演进。
 - 新 UI / API 需要重新以 Studio Gateway、Provider Center、App Connections、Runtime、Diagnostics 命名建设。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
-- Gateway daemon 与 Channel daemon / CC Bridge 都必须独立守护；Studio / OpenClaw 挂掉后，CLI 模型请求和 IM 对话链路仍应可继续服务或可靠排队。
+- Gateway daemon 与 Channel daemon / CC Bridge 都必须独立守护；Studio / OpenClaw 挂掉后，CLI 模型请求和 IM 到 Codex/Gateway 的对话链路仍应保持运行。
 - 协议矩阵目标已固定：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 任意原生 provider 都必须对外暴露三类客户端协议。
 - 本地参考源码固定为 `/tmp/cc-switch-src`；只参考代理转换、SSE、tool/history、usage 映射。
 - Channel Connectors 参考源为 release 副本 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；其中 `platform/dmwork` 即 Octo，不恢复旧 `resources/codex-stack` 生产路径。
@@ -87,7 +87,7 @@
   - App Connections 只覆盖本地 CLI/AI 工具：Codex、Claude Code、OpenCode、OpenClaw。
   - Channel Connectors 单独覆盖 IM 渠道：CC Bridge、Octo(dmwork)、飞书、微信/企业微信等。
   - 短期托管 cc-connect 配置/进程/日志/事件接入；中期定义 Studio Channel Connector contract；长期优先 native 化 Octo(dmwork)。
-  - CC Bridge 需要 OS/user supervisor；Studio/OpenClaw 崩溃时可继续对话或排队，并用于触发修复动作。
+  - CC Bridge 需要 OS/user supervisor；Studio/OpenClaw 崩溃时保持服务在线，不内置额外修复流程。
 
 ## 下一步
 
