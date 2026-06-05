@@ -315,6 +315,79 @@
   min-width: 0;
 }
 
+.mgw-connection-profile {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--mono-accent) 24%, var(--mono-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mono-accent) 4%, var(--surface-base));
+  padding: 12px;
+}
+
+.mgw-connection-profile__head,
+.mgw-connection-profile__actions,
+.mgw-profile-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mgw-connection-profile__head {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.mgw-connection-profile__head > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mgw-connection-profile__head strong,
+.mgw-connection-profile__head small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-connection-profile__head small {
+  color: var(--mono-ink-2);
+}
+
+.mgw-connection-profile__actions {
+  justify-content: flex-end;
+}
+
+.mgw-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.mgw-profile-toggles {
+  align-items: center;
+}
+
+.mgw-profile-advanced {
+  min-width: 0;
+  border-top: 1px solid var(--mono-line);
+  padding-top: 10px;
+}
+
+.mgw-profile-advanced > summary {
+  width: max-content;
+  max-width: 100%;
+  min-height: 30px;
+  color: var(--mono-ink-2);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.mgw-profile-advanced .mgw-profile-toggles {
+  margin-top: 8px;
+}
+
 .mgw-app-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -384,6 +457,10 @@
   font-size: 0.84rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+.mgw-app-model-field {
+  min-width: 0;
 }
 
 .mgw-app-preview {
@@ -818,6 +895,7 @@
 
 @media (max-width: 760px) {
   .mgw-form-grid,
+  .mgw-profile-grid,
   .mgw-smoke-grid,
   .mgw-workspace-tabs,
   .mgw-route-row,

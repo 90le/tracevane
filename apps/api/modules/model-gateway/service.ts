@@ -20,8 +20,10 @@ import {
   type ModelGatewayApiFormat,
   type ModelGatewayAppConnection,
   type ModelGatewayAppConnectionId,
+  type ModelGatewayAppConnectionProfile,
   type ModelGatewayAppConnectionsResponse,
   type ModelGatewayAppScope,
+  type ModelGatewayApplyAppConnectionsResponse,
   type ModelGatewayApplyAppConnectionRequest,
   type ModelGatewayApplyAppConnectionResponse,
   type ModelGatewayAuthStrategy,
@@ -55,6 +57,8 @@ import {
   type ModelGatewayProviderView,
   type ModelGatewayProvidersResponse,
   type ModelGatewayRegistryState,
+  type ModelGatewayRollbackAppConnectionRequest,
+  type ModelGatewayRollbackAppConnectionResponse,
   type ModelGatewayRuntimeRequestLogEntry,
   type ModelGatewayRuntimeRequestOutcome,
   type ModelGatewayRuntimeResponse,
@@ -68,6 +72,8 @@ import {
   type ModelGatewaySetProviderSecretRequest,
   type ModelGatewayStatusResponse,
   type ModelGatewaySupervisorKind,
+  type ModelGatewayUpdateAppConnectionProfileRequest,
+  type ModelGatewayUpdateAppConnectionProfileResponse,
   type ModelGatewayUpsertProviderRequest,
 } from "../../../../types/model-gateway.js";
 import { sendJson, setCorsHeaders } from "../../core/http.js";
@@ -398,6 +404,125 @@ function normalizeClientAuthConfig(value: unknown, fallback?: ModelGatewayClient
   };
 }
 
+function normalizePositiveInteger(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.floor(numeric);
+}
+
+function createDefaultAppConnectionProfile(): ModelGatewayAppConnectionProfile {
+  return {
+    model: null,
+    appModels: {},
+    contextWindow: null,
+    autoCompactTokenLimit: null,
+    maxOutputTokens: null,
+    reasoningEffort: null,
+    protocolOptions: {
+      codexResponsesWebsockets: false,
+      codexResponsesWebsocketsV2: false,
+      codexRequestCompression: false,
+    },
+  };
+}
+
+function hasOwnRecordValue(source: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(source, key);
+}
+
+function normalizeNullableProfileString(
+  source: Record<string, unknown>,
+  key: string,
+  fallback: string | null,
+): string | null {
+  if (!hasOwnRecordValue(source, key)) return fallback || null;
+  return normalizeString(source[key]) || null;
+}
+
+function normalizeNullableProfileInteger(
+  source: Record<string, unknown>,
+  key: string,
+  fallback: number | null,
+): number | null {
+  if (!hasOwnRecordValue(source, key)) return fallback ?? null;
+  return normalizePositiveInteger(source[key]);
+}
+
+function normalizeAppConnectionProfileModels(
+  value: unknown,
+  fallback: Partial<Record<ModelGatewayAppConnectionId, string | null>> = {},
+): Partial<Record<ModelGatewayAppConnectionId, string | null>> {
+  const source = isRecord(value) ? value : {};
+  const next: Partial<Record<ModelGatewayAppConnectionId, string | null>> = { ...fallback };
+  for (const appId of MODEL_GATEWAY_APP_CONNECTION_IDS) {
+    if (hasOwnRecordValue(source, appId)) {
+      next[appId] = normalizeString(source[appId]) || null;
+    }
+  }
+  return next;
+}
+
+function normalizeAppConnectionProfile(
+  value: unknown,
+  fallback: ModelGatewayAppConnectionProfile = createDefaultAppConnectionProfile(),
+): ModelGatewayAppConnectionProfile {
+  const source = isRecord(value) ? value : {};
+  const protocolOptions = isRecord(source.protocolOptions) ? source.protocolOptions : {};
+  const fallbackOptions = fallback.protocolOptions || createDefaultAppConnectionProfile().protocolOptions;
+  return {
+    model: normalizeNullableProfileString(source, "model", fallback.model),
+    appModels: normalizeAppConnectionProfileModels(source.appModels, fallback.appModels),
+    contextWindow: normalizeNullableProfileInteger(source, "contextWindow", fallback.contextWindow),
+    autoCompactTokenLimit: normalizeNullableProfileInteger(source, "autoCompactTokenLimit", fallback.autoCompactTokenLimit),
+    maxOutputTokens: normalizeNullableProfileInteger(source, "maxOutputTokens", fallback.maxOutputTokens),
+    reasoningEffort: normalizeNullableProfileString(source, "reasoningEffort", fallback.reasoningEffort),
+    protocolOptions: {
+      codexResponsesWebsockets: typeof protocolOptions.codexResponsesWebsockets === "boolean"
+        ? protocolOptions.codexResponsesWebsockets
+        : fallbackOptions.codexResponsesWebsockets,
+      codexResponsesWebsocketsV2: typeof protocolOptions.codexResponsesWebsocketsV2 === "boolean"
+        ? protocolOptions.codexResponsesWebsocketsV2
+        : fallbackOptions.codexResponsesWebsocketsV2,
+      codexRequestCompression: typeof protocolOptions.codexRequestCompression === "boolean"
+        ? protocolOptions.codexRequestCompression
+        : fallbackOptions.codexRequestCompression,
+    },
+  };
+}
+
+function mergeAppConnectionProfilePatch(
+  current: ModelGatewayAppConnectionProfile,
+  patch: Partial<ModelGatewayAppConnectionProfile> | undefined,
+): ModelGatewayAppConnectionProfile {
+  const normalizedCurrent = normalizeAppConnectionProfile(current);
+  if (!isRecord(patch)) return normalizedCurrent;
+  const patchOptions: Record<string, unknown> = isRecord(patch.protocolOptions) ? patch.protocolOptions : {};
+  return {
+    model: normalizeNullableProfileString(patch, "model", normalizedCurrent.model),
+    appModels: normalizeAppConnectionProfileModels(patch.appModels, normalizedCurrent.appModels),
+    contextWindow: normalizeNullableProfileInteger(patch, "contextWindow", normalizedCurrent.contextWindow),
+    autoCompactTokenLimit: normalizeNullableProfileInteger(
+      patch,
+      "autoCompactTokenLimit",
+      normalizedCurrent.autoCompactTokenLimit,
+    ),
+    maxOutputTokens: normalizeNullableProfileInteger(patch, "maxOutputTokens", normalizedCurrent.maxOutputTokens),
+    reasoningEffort: normalizeNullableProfileString(patch, "reasoningEffort", normalizedCurrent.reasoningEffort),
+    protocolOptions: {
+      codexResponsesWebsockets: typeof patchOptions.codexResponsesWebsockets === "boolean"
+        ? patchOptions.codexResponsesWebsockets
+        : normalizedCurrent.protocolOptions.codexResponsesWebsockets,
+      codexResponsesWebsocketsV2: typeof patchOptions.codexResponsesWebsocketsV2 === "boolean"
+        ? patchOptions.codexResponsesWebsocketsV2
+        : normalizedCurrent.protocolOptions.codexResponsesWebsocketsV2,
+      codexRequestCompression: typeof patchOptions.codexRequestCompression === "boolean"
+        ? patchOptions.codexRequestCompression
+        : normalizedCurrent.protocolOptions.codexRequestCompression,
+    },
+  };
+}
+
 function generateGatewayClientKey(): string {
   return `sk-studio-${randomUUID().replaceAll("-", "")}`;
 }
@@ -431,6 +556,7 @@ function createEmptyRegistry(updatedAt = nowIso()): ModelGatewayRegistryState {
       apiKeyRef: CLIENT_AUTH_SECRET_REF,
       updatedAt: null,
     },
+    appConnectionProfile: createDefaultAppConnectionProfile(),
     activeProviders: {},
     providers: [],
   };
@@ -1676,6 +1802,10 @@ function tomlString(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
 }
 
+function tomlBoolean(value: boolean): string {
+  return value ? "true" : "false";
+}
+
 function stripCodexManagedBlock(source: string): string {
   const start = CODEX_APP_CONNECTION_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const end = CODEX_APP_CONNECTION_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1685,13 +1815,13 @@ function stripCodexManagedBlock(source: string): string {
     .trimEnd();
 }
 
-function upsertTopLevelTomlString(source: string, key: string, value: string | null): string {
-  if (!value) return source;
+function upsertTopLevelTomlScalar(source: string, key: string, value: string | null): string {
+  if (value === null) return source;
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
   const lines = source ? source.split(/\r?\n/) : [];
   const firstTableIndex = lines.findIndex((line) => /^\s*\[/.test(line));
   const topLevelEnd = firstTableIndex >= 0 ? firstTableIndex : lines.length;
-  const nextLine = `${key} = ${tomlString(value)}`;
+  const nextLine = `${key} = ${value}`;
   for (let index = 0; index < topLevelEnd; index += 1) {
     if (new RegExp(`^\\s*${key}\\s*=`).test(lines[index] || "")) {
       lines[index] = nextLine;
@@ -1702,22 +1832,70 @@ function upsertTopLevelTomlString(source: string, key: string, value: string | n
   return lines.join(newline).replace(new RegExp(`${newline}{3,}`, "g"), `${newline}${newline}`);
 }
 
+function upsertTopLevelTomlString(source: string, key: string, value: string | null): string {
+  return value ? upsertTopLevelTomlScalar(source, key, tomlString(value)) : source;
+}
+
+function upsertTopLevelTomlNumber(source: string, key: string, value: number | null): string {
+  return value ? upsertTopLevelTomlScalar(source, key, String(value)) : source;
+}
+
+function upsertTomlTableScalar(source: string, tableName: string, key: string, value: string | null): string {
+  if (value === null) return source;
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source ? source.split(/\r?\n/) : [];
+  const header = `[${tableName}]`;
+  let tableStart = lines.findIndex((line) => line.trim() === header);
+  if (tableStart < 0) {
+    const trimmed = source.trimEnd();
+    return `${trimmed}${trimmed ? `${newline}${newline}` : ""}${header}${newline}${key} = ${value}${newline}`;
+  }
+  let tableEnd = lines.length;
+  for (let index = tableStart + 1; index < lines.length; index += 1) {
+    if (/^\s*\[/.test(lines[index] || "")) {
+      tableEnd = index;
+      break;
+    }
+  }
+  for (let index = tableStart + 1; index < tableEnd; index += 1) {
+    if (new RegExp(`^\\s*${key}\\s*=`).test(lines[index] || "")) {
+      lines[index] = `${key} = ${value}`;
+      return lines.join(newline);
+    }
+  }
+  lines.splice(tableEnd, 0, `${key} = ${value}`);
+  return lines.join(newline).replace(new RegExp(`${newline}{3,}`, "g"), `${newline}${newline}`);
+}
+
 function buildCodexConfig(source: string, options: {
   endpoint: string;
   key: string;
-  model: string | null;
+  profile: ModelGatewayAppConnectionProfile;
 }): string {
   let next = stripCodexManagedBlock(source);
   next = upsertTopLevelTomlString(next, "model_provider", "studio_gateway");
-  if (options.model) next = upsertTopLevelTomlString(next, "model", options.model);
+  if (options.profile.model) next = upsertTopLevelTomlString(next, "model", options.profile.model);
+  if (options.profile.reasoningEffort) {
+    next = upsertTopLevelTomlString(next, "model_reasoning_effort", options.profile.reasoningEffort);
+  }
+  next = upsertTopLevelTomlNumber(next, "model_context_window", options.profile.contextWindow);
+  next = upsertTopLevelTomlNumber(next, "model_auto_compact_token_limit", options.profile.autoCompactTokenLimit);
+  next = upsertTomlTableScalar(
+    next,
+    "features",
+    "enable_request_compression",
+    tomlBoolean(options.profile.protocolOptions.codexRequestCompression),
+  );
   const block = [
     CODEX_APP_CONNECTION_START,
     "[model_providers.studio_gateway]",
     "name = \"OpenClaw Studio Gateway\"",
     `base_url = ${tomlString(options.endpoint)}`,
     "wire_api = \"responses\"",
-    "supports_websockets = false",
+    `supports_websockets = ${tomlBoolean(options.profile.protocolOptions.codexResponsesWebsockets)}`,
+    `requires_openai_auth = true`,
     `experimental_bearer_token = ${tomlString(options.key)}`,
+    `responses_websockets_v2 = ${tomlBoolean(options.profile.protocolOptions.codexResponsesWebsocketsV2)}`,
     CODEX_APP_CONNECTION_END,
   ].join("\n");
   return `${next.trimEnd()}\n\n${block}\n`;
@@ -1800,18 +1978,18 @@ function redactConnectionPreviewContent(format: ModelGatewayAppConnectionFormat,
 function buildClaudeSettingsConfig(source: string | null, targetPath: string, options: {
   endpoint: string;
   key: string;
-  model: string | null;
+  profile: ModelGatewayAppConnectionProfile;
 }): { content: string; error: string | null } {
   const parsed = parseJsonObjectForConnection(targetPath, source);
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
   const env = isRecord(parsed.value.env) ? parsed.value.env : {};
-  const modelEnv = options.model
+  const modelEnv = options.profile.model
     ? {
-      ANTHROPIC_MODEL: options.model,
-      ANTHROPIC_REASONING_MODEL: options.model,
-      ANTHROPIC_DEFAULT_OPUS_MODEL: options.model,
-      ANTHROPIC_DEFAULT_SONNET_MODEL: options.model,
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: options.model,
+      ANTHROPIC_MODEL: options.profile.model,
+      ANTHROPIC_REASONING_MODEL: options.profile.model,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: options.profile.model,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: options.profile.model,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: options.profile.model,
     }
     : {};
   return {
@@ -1825,6 +2003,10 @@ function buildClaudeSettingsConfig(source: string | null, targetPath: string, op
         ANTHROPIC_AUTH_TOKEN: options.key,
         ...modelEnv,
       },
+      studioGateway: {
+        ...(isRecord(parsed.value.studioGateway) ? parsed.value.studioGateway : {}),
+        profile: options.profile,
+      },
     }),
   };
 }
@@ -1832,18 +2014,22 @@ function buildClaudeSettingsConfig(source: string | null, targetPath: string, op
 function buildOpenCodeConfig(source: string | null, targetPath: string, options: {
   endpoint: string;
   key: string;
-  model: string | null;
+  profile: ModelGatewayAppConnectionProfile;
   modelIds: string[];
 }): { content: string; error: string | null } {
   const parsed = parseJsonObjectForConnection(targetPath, source);
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
   const provider = isRecord(parsed.value.provider) ? parsed.value.provider : {};
-  const models = Object.fromEntries(options.modelIds.map((id) => [id, { name: id }]));
+  const models = Object.fromEntries(options.modelIds.map((id) => [id, {
+    name: id,
+    ...(options.profile.contextWindow ? { contextWindow: options.profile.contextWindow } : {}),
+    ...(options.profile.maxOutputTokens ? { maxOutputTokens: options.profile.maxOutputTokens } : {}),
+  }]));
   return {
     error: null,
     content: stringifyConnectionJson({
       ...parsed.value,
-      ...(options.model ? { model: `studio-gateway/${options.model}` } : {}),
+      ...(options.profile.model ? { model: `studio-gateway/${options.profile.model}` } : {}),
       provider: {
         ...provider,
         "studio-gateway": {
@@ -1855,6 +2041,10 @@ function buildOpenCodeConfig(source: string | null, targetPath: string, options:
           models,
         },
       },
+      studioGateway: {
+        ...(isRecord(parsed.value.studioGateway) ? parsed.value.studioGateway : {}),
+        profile: options.profile,
+      },
     }),
   };
 }
@@ -1862,7 +2052,7 @@ function buildOpenCodeConfig(source: string | null, targetPath: string, options:
 function buildOpenClawConfig(source: string | null, targetPath: string, options: {
   endpoint: string;
   key: string;
-  model: string | null;
+  profile: ModelGatewayAppConnectionProfile;
   modelIds: string[];
 }): { content: string; error: string | null } {
   const parsed = parseJsonObjectForConnection(targetPath, source);
@@ -1874,6 +2064,8 @@ function buildOpenClawConfig(source: string | null, targetPath: string, options:
     name: id,
     input: ["text"],
     reasoning: true,
+    ...(options.profile.contextWindow ? { contextWindow: options.profile.contextWindow } : {}),
+    ...(options.profile.maxOutputTokens ? { maxTokens: options.profile.maxOutputTokens } : {}),
   }));
   return {
     error: null,
@@ -1896,14 +2088,21 @@ function buildOpenClawConfig(source: string | null, targetPath: string, options:
           },
         },
       },
-      ...(options.model ? {
-        agents: mergeOpenClawAgentDefaultModel(parsed.value.agents, options.model),
+      ...(options.profile.model ? {
+        agents: mergeOpenClawAgentDefaultModel(parsed.value.agents, options.profile),
       } : {}),
+      studioGateway: {
+        ...(isRecord(parsed.value.studioGateway) ? parsed.value.studioGateway : {}),
+        profile: options.profile,
+      },
     }),
   };
 }
 
-function mergeOpenClawAgentDefaultModel(agentsValue: unknown, model: string): Record<string, unknown> {
+function mergeOpenClawAgentDefaultModel(
+  agentsValue: unknown,
+  profile: ModelGatewayAppConnectionProfile,
+): Record<string, unknown> {
   const agents = isRecord(agentsValue) ? agentsValue : {};
   const defaults = isRecord(agents.defaults) ? agents.defaults : {};
   return {
@@ -1912,8 +2111,9 @@ function mergeOpenClawAgentDefaultModel(agentsValue: unknown, model: string): Re
       ...defaults,
       model: {
         ...(isRecord(defaults.model) ? defaults.model : {}),
-        primary: `studio-gateway/${model}`,
+        ...(profile.model ? { primary: `studio-gateway/${profile.model}` } : {}),
       },
+      ...(profile.reasoningEffort ? { thinkingDefault: profile.reasoningEffort } : {}),
     },
   };
 }
@@ -1933,13 +2133,35 @@ function backupFileIfExists(sourcePath: string, backupsRoot: string, appId: Mode
   return backupPath;
 }
 
+function latestAppConnectionBackupPath(backupsRoot: string, appId: ModelGatewayAppConnectionId): string | null {
+  const backupDir = path.join(backupsRoot, "app-connections");
+  if (!fs.existsSync(backupDir)) return null;
+  const prefix = `${appId}-`;
+  const candidates = fs.readdirSync(backupDir)
+    .filter((fileName) => fileName.startsWith(prefix) && fileName.endsWith(".bak"))
+    .map((fileName) => path.join(backupDir, fileName))
+    .map((filePath) => {
+      try {
+        return { filePath, mtimeMs: fs.statSync(filePath).mtimeMs };
+      } catch {
+        return null;
+      }
+    })
+    .filter((item): item is { filePath: string; mtimeMs: number } => item !== null)
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+  return candidates[0]?.filePath || null;
+}
+
 export interface ModelGatewayService {
   getStatus(): ModelGatewayStatusResponse;
   listProviders(): ModelGatewayProvidersResponse;
   getClientAuth(): ModelGatewayClientAuthResponse;
   updateClientAuth(req: http.IncomingMessage | undefined, payload?: ModelGatewayClientAuthUpdateRequest): ModelGatewayClientAuthResponse;
   listAppConnections(): ModelGatewayAppConnectionsResponse;
+  updateAppConnectionProfile(req: http.IncomingMessage | undefined, payload?: ModelGatewayUpdateAppConnectionProfileRequest): ModelGatewayUpdateAppConnectionProfileResponse;
   applyAppConnection(req: http.IncomingMessage | undefined, payload?: ModelGatewayApplyAppConnectionRequest): ModelGatewayApplyAppConnectionResponse;
+  applyAppConnections(req: http.IncomingMessage | undefined, payload?: ModelGatewayApplyAppConnectionRequest): ModelGatewayApplyAppConnectionsResponse;
+  rollbackAppConnection(req: http.IncomingMessage | undefined, payload?: ModelGatewayRollbackAppConnectionRequest): ModelGatewayRollbackAppConnectionResponse;
   listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse;
   getRuntime(): ModelGatewayRuntimeResponse;
   getDaemonService(): ModelGatewayDaemonServiceResponse;
@@ -2027,6 +2249,7 @@ export function createModelGatewayService(
       version: 1,
       updatedAt,
       clientAuth: normalizeClientAuthConfig(raw.clientAuth),
+      appConnectionProfile: normalizeAppConnectionProfile(raw.appConnectionProfile),
       providers,
       activeProviders,
     };
@@ -3085,9 +3308,43 @@ export function createModelGatewayService(
     }
   }
 
+  function defaultAppConnectionProfileForSpec(
+    spec: ModelGatewayAppConnectionSpec,
+    sourceProfile: ModelGatewayAppConnectionProfile = readRegistry().appConnectionProfile,
+  ): ModelGatewayAppConnectionProfile {
+    const normalized = normalizeAppConnectionProfile(sourceProfile);
+    return normalizeAppConnectionProfile({
+      ...normalized,
+      model: normalized.appModels[spec.id] || normalized.model || defaultModelForConnection(spec.appScope),
+    });
+  }
+
+  function updateStoredAppConnectionProfile(
+    payload: ModelGatewayUpdateAppConnectionProfileRequest | ModelGatewayApplyAppConnectionRequest | undefined,
+  ): ModelGatewayAppConnectionProfile {
+    const registry = readRegistry();
+    const profile = mergeAppConnectionProfilePatch(registry.appConnectionProfile, payload?.profile);
+    if (payload?.profile) {
+      writeRegistry({
+        ...registry,
+        updatedAt: nowIso(),
+        appConnectionProfile: profile,
+      });
+    }
+    return profile;
+  }
+
+  function listAvailableAppConnectionModels(modelIds: string[], profile: ModelGatewayAppConnectionProfile): string[] {
+    return [
+      profile.model || "",
+      ...Object.values(profile.appModels || {}).map((item) => item || ""),
+      ...modelIds,
+    ].filter((item, index, list) => item && list.indexOf(item) === index);
+  }
+
   function buildAppConnectionContent(spec: ModelGatewayAppConnectionSpec, options: {
     key: string;
-    model: string | null;
+    profile: ModelGatewayAppConnectionProfile;
     modelIds: string[];
     source: string | null;
   }): { content: string; error: string | null } {
@@ -3097,7 +3354,7 @@ export function createModelGatewayService(
         content: buildCodexConfig(options.source || "", {
           endpoint: spec.endpoint,
           key: options.key,
-          model: options.model,
+          profile: options.profile,
         }),
       };
     }
@@ -3105,21 +3362,21 @@ export function createModelGatewayService(
       return buildClaudeSettingsConfig(options.source, spec.targetPath, {
         endpoint: spec.endpoint,
         key: options.key,
-        model: options.model,
+        profile: options.profile,
       });
     }
     if (spec.id === "opencode") {
       return buildOpenCodeConfig(options.source, spec.targetPath, {
         endpoint: spec.endpoint,
         key: options.key,
-        model: options.model,
+        profile: options.profile,
         modelIds: options.modelIds,
       });
     }
     return buildOpenClawConfig(options.source, spec.targetPath, {
       endpoint: spec.endpoint,
       key: options.key,
-      model: options.model,
+      profile: options.profile,
       modelIds: options.modelIds,
     });
   }
@@ -3152,20 +3409,21 @@ export function createModelGatewayService(
 
   function buildAppConnection(spec: ModelGatewayAppConnectionSpec, options: {
     key: string | null;
+    profile: ModelGatewayAppConnectionProfile;
     source: string | null;
     sourceError: string | null;
     modelIds: string[];
   }): ModelGatewayAppConnection {
-    const registry = readRegistry();
-    const model = defaultModelForConnection(spec.appScope);
+    const model = options.profile.model;
     const content = buildAppConnectionContent(spec, {
       key: APP_CONNECTION_REDACTED_KEY,
-      model,
+      profile: options.profile,
       modelIds: options.modelIds,
       source: options.source,
     });
+    const lastBackupPath = latestAppConnectionBackupPath(paths.backups, spec.id);
     const issues = [
-      ...(registry.clientAuth.enabled && options.key
+      ...(readRegistry().clientAuth.enabled && options.key
         ? []
         : ["Gateway client key is not enabled or missing; generate or save a local Gateway key before applying app connections."]),
       ...(options.modelIds.length ? [] : ["No enabled provider models are available through /v1/models. Configure at least one enabled provider model first."]),
@@ -3186,6 +3444,8 @@ export function createModelGatewayService(
       },
       configured: appConnectionConfigured(spec, options.source),
       canApply: issues.length === 0,
+      canRollback: Boolean(lastBackupPath),
+      lastBackupPath,
       issues,
       launchHint: spec.launchHint,
       preview: {
@@ -3200,13 +3460,18 @@ export function createModelGatewayService(
   function listAppConnections(): ModelGatewayAppConnectionsResponse {
     const key = readGatewayClientSecret();
     const modelIds = gatewayModelIds();
+    const storedProfile = readRegistry().appConnectionProfile;
     return {
       ok: true,
       checkedAt: nowIso(),
+      profile: normalizeAppConnectionProfile(storedProfile),
+      availableModels: listAvailableAppConnectionModels(modelIds, storedProfile),
       connections: appConnectionSpecs().map((spec) => {
         const source = readConnectionSource(spec.targetPath);
+        const profile = defaultAppConnectionProfileForSpec(spec, storedProfile);
         return buildAppConnection(spec, {
           key,
+          profile,
           source: source.source,
           sourceError: source.error,
           modelIds,
@@ -3260,10 +3525,11 @@ export function createModelGatewayService(
         500,
       );
     }
-    const model = defaultModelForConnection(spec.appScope);
+    const storedProfile = updateStoredAppConnectionProfile(payload);
+    const profile = defaultAppConnectionProfileForSpec(spec, storedProfile);
     const next = buildAppConnectionContent(spec, {
       key,
-      model,
+      profile,
       modelIds,
       source: source.source,
     });
@@ -3282,11 +3548,109 @@ export function createModelGatewayService(
       checkedAt: nowIso(),
       connection: buildAppConnection(spec, {
         key,
+        profile,
         source: updatedSource.source,
         sourceError: updatedSource.error,
         modelIds,
       }),
       applied: true,
+      backupPath,
+    };
+  }
+
+  function updateAppConnectionProfile(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayUpdateAppConnectionProfileRequest = {},
+  ): ModelGatewayUpdateAppConnectionProfileResponse {
+    requireManagement(req);
+    const profile = updateStoredAppConnectionProfile(payload);
+    const key = readGatewayClientSecret();
+    const modelIds = gatewayModelIds();
+    return {
+      ok: true,
+      checkedAt: nowIso(),
+      profile,
+      connections: appConnectionSpecs().map((spec) => {
+        const source = readConnectionSource(spec.targetPath);
+        return buildAppConnection(spec, {
+          key,
+          profile: defaultAppConnectionProfileForSpec(spec, profile),
+          source: source.source,
+          sourceError: source.error,
+          modelIds,
+        });
+      }),
+    };
+  }
+
+  function applyAppConnections(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayApplyAppConnectionRequest = {},
+  ): ModelGatewayApplyAppConnectionsResponse {
+    requireManagement(req);
+    const profile = updateStoredAppConnectionProfile(payload);
+    const applied = appConnectionSpecs().map((spec) => applyAppConnection(req, {
+      appId: spec.id,
+      profile,
+    }));
+    return {
+      ok: true,
+      checkedAt: nowIso(),
+      applied,
+    };
+  }
+
+  function rollbackAppConnection(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayRollbackAppConnectionRequest = {},
+  ): ModelGatewayRollbackAppConnectionResponse {
+    requireManagement(req);
+    const appId = normalizeAppConnectionId(payload.appId);
+    if (!appId) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_invalid",
+        "A valid app connection id is required.",
+        400,
+      );
+    }
+    const spec = appConnectionSpecs().find((item) => item.id === appId);
+    if (!spec) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_not_found",
+        `App connection '${appId}' was not found.`,
+        404,
+      );
+    }
+    const restoredFrom = latestAppConnectionBackupPath(paths.backups, appId);
+    if (!restoredFrom) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_backup_missing",
+        `No backup is available for '${appId}'.`,
+        404,
+      );
+    }
+    const backupPath = backupFileIfExists(spec.targetPath, paths.backups, appId);
+    fs.mkdirSync(path.dirname(spec.targetPath), { recursive: true });
+    fs.copyFileSync(restoredFrom, spec.targetPath);
+    try {
+      fs.chmodSync(spec.targetPath, 0o600);
+    } catch {
+      // Best effort for filesystems that do not support chmod.
+    }
+    const source = readConnectionSource(spec.targetPath);
+    const modelIds = gatewayModelIds();
+    return {
+      ok: true,
+      checkedAt: nowIso(),
+      connection: buildAppConnection(spec, {
+        key: readGatewayClientSecret(),
+        profile: defaultAppConnectionProfileForSpec(spec),
+        source: source.source,
+        sourceError: source.error,
+        modelIds,
+      }),
+      rolledBack: true,
+      restoredFrom,
       backupPath,
     };
   }
@@ -4465,7 +4829,10 @@ export function createModelGatewayService(
     getClientAuth,
     updateClientAuth,
     listAppConnections,
+    updateAppConnectionProfile,
     applyAppConnection,
+    applyAppConnections,
+    rollbackAppConnection,
     listGatewayModels,
     getRuntime,
     getDaemonService,

@@ -4,10 +4,12 @@ import type {
   ModelGatewayClientAuthUpdateRequest,
   ModelGatewayDaemonServiceRequest,
   ModelGatewayApplyAppConnectionRequest,
+  ModelGatewayRollbackAppConnectionRequest,
   ModelGatewayProviderDetectRequest,
   ModelGatewayProviderTestRequest,
   ModelGatewaySetActiveProviderRequest,
   ModelGatewaySetProviderSecretRequest,
+  ModelGatewayUpdateAppConnectionProfileRequest,
   ModelGatewayUpsertProviderRequest,
 } from "../../../../types/model-gateway.js";
 import { isModelGatewayServiceError } from "./service.js";
@@ -82,12 +84,42 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     }
   });
 
+  router.post("/api/model-gateway/app-connections/profile", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayUpdateAppConnectionProfileRequest>(req);
+      sendJson(res, 200, routeCtx.services.modelGateway.updateAppConnectionProfile(req, payload));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/app-connections/apply", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayApplyAppConnectionRequest>(req);
+      sendJson(res, 200, routeCtx.services.modelGateway.applyAppConnections(req, payload));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
   router.post("/api/model-gateway/app-connections/:appId/apply", async (req, res, routeCtx, params) => {
     try {
       const payload = await parseJsonBody<ModelGatewayApplyAppConnectionRequest>(req);
       sendJson(res, 200, routeCtx.services.modelGateway.applyAppConnection(req, {
         ...payload,
         appId: params.appId as ModelGatewayApplyAppConnectionRequest["appId"],
+      }));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/app-connections/:appId/rollback", async (req, res, routeCtx, params) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayRollbackAppConnectionRequest>(req);
+      sendJson(res, 200, routeCtx.services.modelGateway.rollbackAppConnection(req, {
+        ...payload,
+        appId: params.appId as ModelGatewayRollbackAppConnectionRequest["appId"],
       }));
     } catch (error) {
       sendModelGatewayError(res, error);

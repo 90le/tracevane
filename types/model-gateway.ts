@@ -184,6 +184,7 @@ export interface ModelGatewayRegistryState {
   version: 1;
   updatedAt: string;
   clientAuth: ModelGatewayClientAuthConfig;
+  appConnectionProfile: ModelGatewayAppConnectionProfile;
   activeProviders: Partial<Record<ModelGatewayAppScope, string>>;
   providers: ModelGatewayProvider[];
 }
@@ -442,9 +443,16 @@ export interface ModelGatewayClientAuthResponse {
 
 export interface ModelGatewayAppConnectionProfile {
   model: string | null;
+  appModels: Partial<Record<ModelGatewayAppConnectionId, string | null>>;
   contextWindow: number | null;
+  autoCompactTokenLimit: number | null;
   maxOutputTokens: number | null;
   reasoningEffort: string | null;
+  protocolOptions: {
+    codexResponsesWebsockets: boolean;
+    codexResponsesWebsocketsV2: boolean;
+    codexRequestCompression: boolean;
+  };
 }
 
 export interface ModelGatewayAppConnectionTarget {
@@ -470,6 +478,8 @@ export interface ModelGatewayAppConnection {
   target: ModelGatewayAppConnectionTarget;
   configured: boolean;
   canApply: boolean;
+  canRollback: boolean;
+  lastBackupPath: string | null;
   issues: string[];
   launchHint: string | null;
   preview: ModelGatewayAppConnectionPreview;
@@ -478,11 +488,25 @@ export interface ModelGatewayAppConnection {
 export interface ModelGatewayAppConnectionsResponse {
   ok: true;
   checkedAt: string;
+  profile: ModelGatewayAppConnectionProfile;
+  availableModels: string[];
+  connections: ModelGatewayAppConnection[];
+}
+
+export interface ModelGatewayUpdateAppConnectionProfileRequest {
+  profile?: Partial<ModelGatewayAppConnectionProfile>;
+}
+
+export interface ModelGatewayUpdateAppConnectionProfileResponse {
+  ok: true;
+  checkedAt: string;
+  profile: ModelGatewayAppConnectionProfile;
   connections: ModelGatewayAppConnection[];
 }
 
 export interface ModelGatewayApplyAppConnectionRequest {
   appId?: ModelGatewayAppConnectionId;
+  profile?: Partial<ModelGatewayAppConnectionProfile>;
 }
 
 export interface ModelGatewayApplyAppConnectionResponse {
@@ -490,6 +514,25 @@ export interface ModelGatewayApplyAppConnectionResponse {
   checkedAt: string;
   connection: ModelGatewayAppConnection;
   applied: boolean;
+  backupPath: string | null;
+}
+
+export interface ModelGatewayApplyAppConnectionsResponse {
+  ok: true;
+  checkedAt: string;
+  applied: ModelGatewayApplyAppConnectionResponse[];
+}
+
+export interface ModelGatewayRollbackAppConnectionRequest {
+  appId?: ModelGatewayAppConnectionId;
+}
+
+export interface ModelGatewayRollbackAppConnectionResponse {
+  ok: true;
+  checkedAt: string;
+  connection: ModelGatewayAppConnection;
+  rolledBack: boolean;
+  restoredFrom: string | null;
   backupPath: string | null;
 }
 

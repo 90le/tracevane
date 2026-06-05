@@ -851,26 +851,89 @@ test("model gateway app connections preview and apply client config files with r
 
   const preview = service.listAppConnections();
   assert.equal(preview.ok, true);
+  assert.equal(preview.profile.model, null);
+  assert.deepEqual(preview.availableModels, ["gpt-main", "gpt-alt"]);
   assert.deepEqual(preview.connections.map((connection) => connection.id), ["codex", "claude-code", "opencode", "openclaw"]);
   assert.equal(preview.connections.every((connection) => connection.canApply), true);
+  assert.equal(preview.connections.every((connection) => connection.canRollback), false);
+  assert.equal(preview.connections.find((connection) => connection.id === "codex")?.model, "gpt-main");
   assert.equal(JSON.stringify(preview).includes("sk-local-app-connection"), false);
   assert.equal(JSON.stringify(preview).includes("sk-existing-opencode-secret"), false);
   assert.equal(JSON.stringify(preview).includes("existing-openclaw-token"), false);
   assert.equal(JSON.stringify(preview).includes("<STUDIO_GATEWAY_KEY>"), true);
   assert.equal(preview.connections.find((connection) => connection.id === "claude-code")?.endpoint, "http://127.0.0.1:18796");
 
+  const profileUpdate = service.updateAppConnectionProfile(undefined, {
+    profile: {
+      model: "gpt-main",
+      appModels: {
+        codex: "gpt-alt",
+        "claude-code": "gpt-main",
+        opencode: "gpt-alt",
+        openclaw: "gpt-main",
+      },
+      contextWindow: 200000,
+      autoCompactTokenLimit: 150000,
+      maxOutputTokens: 8192,
+      reasoningEffort: "high",
+      protocolOptions: {
+        codexResponsesWebsockets: true,
+        codexResponsesWebsocketsV2: true,
+        codexRequestCompression: true,
+      },
+    },
+  });
+  assert.equal(profileUpdate.profile.model, "gpt-main");
+  assert.equal(profileUpdate.connections.find((connection) => connection.id === "codex")?.model, "gpt-alt");
+  assert.equal(profileUpdate.connections.find((connection) => connection.id === "claude-code")?.model, "gpt-main");
+  const profileClear = service.updateAppConnectionProfile(undefined, {
+    profile: {
+      appModels: {
+        codex: null,
+      },
+      contextWindow: null,
+      maxOutputTokens: null,
+    },
+  });
+  assert.equal(profileClear.profile.appModels.codex, null);
+  assert.equal(profileClear.connections.find((connection) => connection.id === "codex")?.model, "gpt-main");
+  assert.equal(profileClear.profile.contextWindow, null);
+  assert.equal(profileClear.profile.maxOutputTokens, null);
+  service.updateAppConnectionProfile(undefined, {
+    profile: {
+      appModels: {
+        codex: "gpt-alt",
+      },
+      contextWindow: 200000,
+      maxOutputTokens: 8192,
+    },
+  });
+
   const codex = service.applyAppConnection(undefined, { appId: "codex" });
   assert.equal(codex.applied, true);
   assert.equal(codex.connection.configured, true);
+  assert.equal(codex.connection.canRollback, true);
   assert.ok(codex.backupPath && fs.existsSync(codex.backupPath));
   const codexConfig = fs.readFileSync(codexPath, "utf8");
   assert.match(codexConfig, /model_provider = "studio_gateway"/);
-  assert.match(codexConfig, /model = "gpt-main"/);
+  assert.match(codexConfig, /model = "gpt-alt"/);
+  assert.match(codexConfig, /model_reasoning_effort = "high"/);
+  assert.match(codexConfig, /model_context_window = 200000/);
+  assert.match(codexConfig, /model_auto_compact_token_limit = 150000/);
+  assert.match(codexConfig, /enable_request_compression = true/);
   assert.match(codexConfig, /\[model_providers\.studio_gateway\]/);
   assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
+  assert.match(codexConfig, /supports_websockets = true/);
+  assert.match(codexConfig, /responses_websockets_v2 = true/);
   assert.match(codexConfig, /experimental_bearer_token = "sk-local-app-connection"/);
   assert.match(codexConfig, /\[profiles\.keep\]/);
   assert.equal(codex.connection.preview.content.includes("sk-local-app-connection"), false);
+
+  const rollback = service.rollbackAppConnection(undefined, { appId: "codex" });
+  assert.equal(rollback.rolledBack, true);
+  assert.ok(rollback.restoredFrom && fs.existsSync(rollback.restoredFrom));
+  assert.match(fs.readFileSync(codexPath, "utf8"), /model = "old-model"/);
+  service.applyAppConnection(undefined, { appId: "codex" });
 
   service.applyAppConnection(undefined, { appId: "claude-code" });
   const claudeConfig = JSON.parse(fs.readFileSync(claudePath, "utf8"));
@@ -879,16 +942,19 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(claudeConfig.env.ANTHROPIC_API_KEY, "sk-local-app-connection");
   assert.equal(claudeConfig.env.ANTHROPIC_AUTH_TOKEN, "sk-local-app-connection");
   assert.equal(claudeConfig.env.ANTHROPIC_MODEL, "gpt-main");
+  assert.equal(claudeConfig.studioGateway.profile.reasoningEffort, "high");
   assert.deepEqual(claudeConfig.hooks.Stop, []);
 
   service.applyAppConnection(undefined, { appId: "opencode" });
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
-  assert.equal(opencodeConfig.model, "studio-gateway/gpt-main");
+  assert.equal(opencodeConfig.model, "studio-gateway/gpt-alt");
   assert.equal(opencodeConfig.provider.existing.options.apiKey, "sk-existing-opencode-secret");
   assert.equal(opencodeConfig.provider["studio-gateway"].npm, "@ai-sdk/openai");
   assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, "http://127.0.0.1:18796/v1");
   assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local-app-connection");
   assert.deepEqual(Object.keys(opencodeConfig.provider["studio-gateway"].models).sort(), ["gpt-alt", "gpt-main"]);
+  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].contextWindow, 200000);
+  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].maxOutputTokens, 8192);
 
   service.applyAppConnection(undefined, { appId: "openclaw" });
   const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
@@ -898,10 +964,18 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(openclawConfig.models.providers["studio-gateway"].baseUrl, "http://127.0.0.1:18796/v1");
   assert.equal(openclawConfig.models.providers["studio-gateway"].apiKey, "sk-local-app-connection");
   assert.deepEqual(openclawConfig.models.providers["studio-gateway"].models.map((model) => model.id), ["gpt-main", "gpt-alt"]);
+  assert.equal(openclawConfig.models.providers["studio-gateway"].models[0].contextWindow, 200000);
+  assert.equal(openclawConfig.models.providers["studio-gateway"].models[0].maxTokens, 8192);
   assert.equal(openclawConfig.agents.defaults.model.primary, "studio-gateway/gpt-main");
+  assert.equal(openclawConfig.agents.defaults.thinkingDefault, "high");
+
+  const applyAll = service.applyAppConnections(undefined);
+  assert.equal(applyAll.applied.length, 4);
+  assert.equal(applyAll.applied.every((item) => item.applied), true);
 
   const appliedPreview = service.listAppConnections();
   assert.equal(appliedPreview.connections.every((connection) => connection.configured), true);
+  assert.equal(appliedPreview.connections.every((connection) => connection.canRollback), true);
   assert.equal(JSON.stringify(appliedPreview).includes("sk-local-app-connection"), false);
 });
 

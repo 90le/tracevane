@@ -5,8 +5,12 @@ import type {
   ModelGatewayDaemonServiceRequest,
   ModelGatewayDaemonServiceResponse,
   ModelGatewayAppConnectionId,
+  ModelGatewayAppConnectionProfile,
   ModelGatewayAppConnectionsResponse,
+  ModelGatewayApplyAppConnectionsResponse,
   ModelGatewayApplyAppConnectionResponse,
+  ModelGatewayRollbackAppConnectionResponse,
+  ModelGatewayUpdateAppConnectionProfileResponse,
   ModelGatewayProviderDetectRequest,
   ModelGatewayProviderDetectResponse,
   ModelGatewayProviderView,
@@ -65,9 +69,33 @@ export function fetchModelGatewayAppConnections(): Promise<ModelGatewayAppConnec
   return requestJson<ModelGatewayAppConnectionsResponse>('/api/model-gateway/app-connections');
 }
 
-export function applyModelGatewayAppConnection(appId: ModelGatewayAppConnectionId): Promise<ModelGatewayApplyAppConnectionResponse> {
+export function updateModelGatewayAppConnectionProfile(profile: Partial<ModelGatewayAppConnectionProfile>): Promise<ModelGatewayUpdateAppConnectionProfileResponse> {
+  return requestJson<ModelGatewayUpdateAppConnectionProfileResponse>(
+    '/api/model-gateway/app-connections/profile',
+    jsonBody({ profile }),
+  );
+}
+
+export function applyModelGatewayAppConnection(
+  appId: ModelGatewayAppConnectionId,
+  profile?: Partial<ModelGatewayAppConnectionProfile>,
+): Promise<ModelGatewayApplyAppConnectionResponse> {
   return requestJson<ModelGatewayApplyAppConnectionResponse>(
     `/api/model-gateway/app-connections/${encodeURIComponent(appId)}/apply`,
+    jsonBody({ appId, profile }),
+  );
+}
+
+export function applyAllModelGatewayAppConnections(profile?: Partial<ModelGatewayAppConnectionProfile>): Promise<ModelGatewayApplyAppConnectionsResponse> {
+  return requestJson<ModelGatewayApplyAppConnectionsResponse>(
+    '/api/model-gateway/app-connections/apply',
+    jsonBody({ profile }),
+  );
+}
+
+export function rollbackModelGatewayAppConnection(appId: ModelGatewayAppConnectionId): Promise<ModelGatewayRollbackAppConnectionResponse> {
+  return requestJson<ModelGatewayRollbackAppConnectionResponse>(
+    `/api/model-gateway/app-connections/${encodeURIComponent(appId)}/rollback`,
     jsonBody({ appId }),
   );
 }

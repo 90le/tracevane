@@ -210,6 +210,82 @@
             </button>
           </div>
 
+          <section class="mgw-connection-profile">
+            <div class="mgw-connection-profile__head">
+              <div>
+                <strong>{{ text('连接 Profile', 'Connection profile') }}</strong>
+                <small>{{ text('统一写入 Codex、Claude Code、OpenCode、OpenClaw 的模型和运行偏好。', 'Write the same model and runtime preferences into Codex, Claude Code, OpenCode, and OpenClaw.') }}</small>
+              </div>
+              <div class="mgw-connection-profile__actions">
+                <button
+                  type="button"
+                  class="secondary-button compact-button"
+                  :disabled="appConnectionProfileBusy"
+                  @click="saveAppConnectionProfile"
+                >
+                  {{ appConnectionProfileBusy ? text('保存中...', 'Saving...') : text('保存 Profile', 'Save profile') }}
+                </button>
+                <button
+                  type="button"
+                  class="primary-button compact-button"
+                  :disabled="!canApplyAllAppConnections || appConnectionApplyAllBusy"
+                  @click="applyAllAppConnectionConfigs"
+                >
+                  {{ appConnectionApplyAllBusy ? text('应用中...', 'Applying...') : text('应用到全部', 'Apply all') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="mgw-profile-grid">
+              <label class="form-field form-field-full">
+                <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
+                <input
+                  v-model.trim="appConnectionProfile.model"
+                  class="form-input"
+                  list="mgw-app-connection-models"
+                  :placeholder="text('从可用模型列表选择', 'Choose from available models')"
+                />
+                <datalist id="mgw-app-connection-models">
+                  <option v-for="model in appConnectionAvailableModels" :key="model" :value="model" />
+                </datalist>
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('上下文大小', 'Context window') }}</span>
+                <input v-model.trim="appConnectionProfile.contextWindow" class="form-input" inputmode="numeric" placeholder="128000" />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('Compact 阈值', 'Compact limit') }}</span>
+                <input v-model.trim="appConnectionProfile.autoCompactTokenLimit" class="form-input" inputmode="numeric" placeholder="100000" />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('最大输出', 'Max output') }}</span>
+                <input v-model.trim="appConnectionProfile.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('推理强度', 'Reasoning') }}</span>
+                <input v-model.trim="appConnectionProfile.reasoningEffort" class="form-input" placeholder="high" />
+              </label>
+            </div>
+
+            <details class="mgw-profile-advanced">
+              <summary>{{ text('Codex 高级', 'Codex advanced') }}</summary>
+              <div class="mgw-profile-toggles">
+                <label class="mgw-check">
+                  <input v-model="appConnectionProfile.codexResponsesWebsockets" type="checkbox" />
+                  <span>WebSocket</span>
+                </label>
+                <label class="mgw-check">
+                  <input v-model="appConnectionProfile.codexResponsesWebsocketsV2" type="checkbox" />
+                  <span>WebSocket v2</span>
+                </label>
+                <label class="mgw-check">
+                  <input v-model="appConnectionProfile.codexRequestCompression" type="checkbox" />
+                  <span>{{ text('请求压缩', 'Request compression') }}</span>
+                </label>
+              </div>
+            </details>
+          </section>
+
           <div class="mgw-app-grid">
             <section v-for="connection in appConnections" :key="connection.id" class="mgw-app-card">
               <div class="mgw-app-card__head">
@@ -230,14 +306,28 @@
                   <strong>{{ connection.target.path }}</strong>
                 </div>
                 <div>
-                  <span>{{ text('默认模型', 'Default model') }}</span>
+                  <span>{{ text('Profile 模型', 'Profile model') }}</span>
                   <strong>{{ connection.model || '-' }}</strong>
+                </div>
+                <div>
+                  <span>{{ text('最近备份', 'Latest backup') }}</span>
+                  <strong>{{ connection.lastBackupPath || '-' }}</strong>
                 </div>
               </div>
 
               <div v-if="connection.issues.length" class="mgw-app-issues">
                 <span v-for="issue in connection.issues" :key="issue">{{ issue }}</span>
               </div>
+
+              <label class="form-field mgw-app-model-field">
+                <span class="form-label">{{ text('App 模型', 'App model') }}</span>
+                <input
+                  v-model.trim="appConnectionProfile.appModels[connection.id]"
+                  class="form-input"
+                  list="mgw-app-connection-models"
+                  :placeholder="text('留空使用默认模型', 'Use default model')"
+                />
+              </label>
 
               <details class="mgw-app-preview">
                 <summary>{{ text('预览配置', 'Preview config') }}</summary>
@@ -252,6 +342,14 @@
                   @click="applyAppConnectionConfig(connection.id)"
                 >
                   {{ isAppConnectionBusy(connection.id) ? text('应用中...', 'Applying...') : text('应用配置', 'Apply config') }}
+                </button>
+                <button
+                  type="button"
+                  class="secondary-button compact-button"
+                  :disabled="!connection.canRollback || isAppConnectionBusy(connection.id)"
+                  @click="rollbackAppConnectionConfig(connection.id)"
+                >
+                  {{ text('回滚', 'Rollback') }}
                 </button>
                 <span v-if="connection.launchHint">{{ connection.launchHint }}</span>
               </div>
@@ -581,10 +679,12 @@
 <script setup lang="ts">
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
 import { X } from '@lucide/vue';
+import { MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
 import type {
   ModelGatewayApiFormat,
   ModelGatewayAppConnection,
   ModelGatewayAppConnectionId,
+  ModelGatewayAppConnectionProfile,
   ModelGatewayAppScope,
   ModelGatewayAuthStrategy,
   ModelGatewayClientAuthView,
@@ -606,6 +706,7 @@ import type {
 import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
+  applyAllModelGatewayAppConnections,
   applyModelGatewayAppConnection,
   deleteModelGatewayProvider,
   detectModelGatewayProvider,
@@ -616,8 +717,10 @@ import {
   fetchModelGatewayRuntime,
   fetchModelGatewayStatus,
   manageModelGatewayDaemonService,
+  rollbackModelGatewayAppConnection,
   setModelGatewayActiveProvider,
   testModelGatewayProvider,
+  updateModelGatewayAppConnectionProfile,
   updateModelGatewayClientAuth,
   upsertModelGatewayProvider,
 } from './api';
@@ -661,6 +764,18 @@ type DetectStep = {
 };
 
 type WorkspaceTabId = 'connections' | 'providers' | 'smoke';
+
+type AppConnectionProfileDraft = {
+  model: string;
+  appModels: Record<ModelGatewayAppConnectionId, string>;
+  contextWindow: string;
+  autoCompactTokenLimit: string;
+  maxOutputTokens: string;
+  reasoningEffort: string;
+  codexResponsesWebsockets: boolean;
+  codexResponsesWebsocketsV2: boolean;
+  codexRequestCompression: boolean;
+};
 
 const { text } = useLocalePreference();
 
@@ -762,6 +877,10 @@ const clientKeyDraft = ref('');
 const clientAuthReveal = ref('');
 const appConnections = ref<ModelGatewayAppConnection[]>([]);
 const appConnectionBusy = ref<Partial<Record<ModelGatewayAppConnectionId, boolean>>>({});
+const appConnectionProfile = reactive<AppConnectionProfileDraft>(createEmptyAppConnectionProfileDraft());
+const appConnectionAvailableModels = ref<string[]>([]);
+const appConnectionProfileBusy = ref(false);
+const appConnectionApplyAllBusy = ref(false);
 const providers = ref<ModelGatewayProviderView[]>([]);
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
 const smokeProviderId = ref('');
@@ -1023,6 +1142,9 @@ const daemonActionOutput = computed(() => {
 });
 
 const canSaveProvider = computed(() => Boolean(draft.id.trim() && draft.name.trim() && draft.baseUrl.trim()));
+const canApplyAllAppConnections = computed(() =>
+  appConnections.value.length > 0 && appConnections.value.every((connection) => connection.canApply),
+);
 const secretPlaceholder = computed(() => {
   const provider = providers.value.find((entry) => entry.id === draft.id);
   return provider?.secret?.hasSecret
@@ -1044,6 +1166,66 @@ function appConnectionStateTone(connection: ModelGatewayAppConnection): 'neutral
 
 function isAppConnectionBusy(appId: ModelGatewayAppConnectionId): boolean {
   return appConnectionBusy.value[appId] === true;
+}
+
+function createEmptyAppConnectionProfileDraft(): AppConnectionProfileDraft {
+  return {
+    model: '',
+    appModels: {
+      codex: '',
+      'claude-code': '',
+      opencode: '',
+      openclaw: '',
+    },
+    contextWindow: '',
+    autoCompactTokenLimit: '',
+    maxOutputTokens: '',
+    reasoningEffort: '',
+    codexResponsesWebsockets: false,
+    codexResponsesWebsocketsV2: false,
+    codexRequestCompression: false,
+  };
+}
+
+function assignAppConnectionProfile(profile: ModelGatewayAppConnectionProfile): void {
+  appConnectionProfile.model = profile.model || '';
+  for (const appId of MODEL_GATEWAY_APP_CONNECTION_IDS) {
+    appConnectionProfile.appModels[appId] = profile.appModels?.[appId] || '';
+  }
+  appConnectionProfile.contextWindow = profile.contextWindow ? String(profile.contextWindow) : '';
+  appConnectionProfile.autoCompactTokenLimit = profile.autoCompactTokenLimit ? String(profile.autoCompactTokenLimit) : '';
+  appConnectionProfile.maxOutputTokens = profile.maxOutputTokens ? String(profile.maxOutputTokens) : '';
+  appConnectionProfile.reasoningEffort = profile.reasoningEffort || '';
+  appConnectionProfile.codexResponsesWebsockets = profile.protocolOptions.codexResponsesWebsockets;
+  appConnectionProfile.codexResponsesWebsocketsV2 = profile.protocolOptions.codexResponsesWebsocketsV2;
+  appConnectionProfile.codexRequestCompression = profile.protocolOptions.codexRequestCompression;
+}
+
+function parsePositiveDraftInteger(value: string): number | null {
+  const numeric = Number(value.trim());
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.floor(numeric);
+}
+
+function appConnectionProfilePayload(): ModelGatewayAppConnectionProfile {
+  return {
+    model: appConnectionProfile.model.trim() || null,
+    appModels: Object.fromEntries(
+      MODEL_GATEWAY_APP_CONNECTION_IDS.map((appId) => [
+        appId,
+        appConnectionProfile.appModels[appId].trim() || null,
+      ]),
+    ) as Partial<Record<ModelGatewayAppConnectionId, string | null>>,
+    contextWindow: parsePositiveDraftInteger(appConnectionProfile.contextWindow),
+    autoCompactTokenLimit: parsePositiveDraftInteger(appConnectionProfile.autoCompactTokenLimit),
+    maxOutputTokens: parsePositiveDraftInteger(appConnectionProfile.maxOutputTokens),
+    reasoningEffort: appConnectionProfile.reasoningEffort.trim() || null,
+    protocolOptions: {
+      codexResponsesWebsockets: appConnectionProfile.codexResponsesWebsockets,
+      codexResponsesWebsocketsV2: appConnectionProfile.codexResponsesWebsocketsV2,
+      codexRequestCompression: appConnectionProfile.codexRequestCompression,
+    },
+  };
 }
 
 function createEmptyScopes(enabled = true): Record<ModelGatewayAppScope, boolean> {
@@ -1326,6 +1508,8 @@ async function loadAll(): Promise<void> {
     daemonService.value = nextDaemon;
     applyClientAuthView(nextClientAuth.clientAuth);
     appConnections.value = nextAppConnections.connections;
+    assignAppConnectionProfile(nextAppConnections.profile);
+    appConnectionAvailableModels.value = nextAppConnections.availableModels;
     providers.value = nextProviders.providers;
     activeProviders.value = nextProviders.activeProviders;
     ensureSelectedProvider();
@@ -1344,11 +1528,54 @@ async function refreshAppConnections(): Promise<void> {
   try {
     const response = await fetchModelGatewayAppConnections();
     appConnections.value = response.connections;
+    assignAppConnectionProfile(response.profile);
+    appConnectionAvailableModels.value = response.availableModels;
   } catch (error) {
     notice.value = {
       kind: 'error',
       message: error instanceof Error ? error.message : text('客户端连接刷新失败', 'Failed to refresh client connections'),
     };
+  }
+}
+
+async function saveAppConnectionProfile(): Promise<void> {
+  appConnectionProfileBusy.value = true;
+  notice.value = null;
+  try {
+    const response = await updateModelGatewayAppConnectionProfile(appConnectionProfilePayload());
+    assignAppConnectionProfile(response.profile);
+    appConnections.value = response.connections;
+    notice.value = {
+      kind: 'success',
+      message: text('连接 Profile 已保存，预览已更新。', 'Connection profile saved; previews were updated.'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('连接 Profile 保存失败', 'Failed to save connection profile'),
+    };
+  } finally {
+    appConnectionProfileBusy.value = false;
+  }
+}
+
+async function applyAllAppConnectionConfigs(): Promise<void> {
+  appConnectionApplyAllBusy.value = true;
+  notice.value = null;
+  try {
+    const result = await applyAllModelGatewayAppConnections(appConnectionProfilePayload());
+    await refreshAppConnections();
+    notice.value = {
+      kind: 'success',
+      message: text(`已应用 ${result.applied.length} 个客户端配置。`, `${result.applied.length} client configs applied.`),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('全部客户端配置应用失败', 'Failed to apply all client configs'),
+    };
+  } finally {
+    appConnectionApplyAllBusy.value = false;
   }
 }
 
@@ -1359,7 +1586,7 @@ async function applyAppConnectionConfig(appId: ModelGatewayAppConnectionId): Pro
   };
   notice.value = null;
   try {
-    const result = await applyModelGatewayAppConnection(appId);
+    const result = await applyModelGatewayAppConnection(appId, appConnectionProfilePayload());
     await refreshAppConnections();
     notice.value = {
       kind: 'success',
@@ -1371,6 +1598,34 @@ async function applyAppConnectionConfig(appId: ModelGatewayAppConnectionId): Pro
     notice.value = {
       kind: 'error',
       message: error instanceof Error ? error.message : text('客户端连接应用失败', 'Failed to apply client connection'),
+    };
+  } finally {
+    appConnectionBusy.value = {
+      ...appConnectionBusy.value,
+      [appId]: false,
+    };
+  }
+}
+
+async function rollbackAppConnectionConfig(appId: ModelGatewayAppConnectionId): Promise<void> {
+  appConnectionBusy.value = {
+    ...appConnectionBusy.value,
+    [appId]: true,
+  };
+  notice.value = null;
+  try {
+    const result = await rollbackModelGatewayAppConnection(appId);
+    await refreshAppConnections();
+    notice.value = {
+      kind: 'success',
+      message: result.restoredFrom
+        ? text('已回滚到最近备份。', 'Rolled back to the latest backup.')
+        : text('回滚完成。', 'Rollback complete.'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('客户端配置回滚失败', 'Failed to roll back client config'),
     };
   } finally {
     appConnectionBusy.value = {
