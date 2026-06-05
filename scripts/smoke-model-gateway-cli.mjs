@@ -41,10 +41,10 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/smoke-model-gateway-cli.mjs [options]
 
-Runs isolated Studio Gateway CLI startup smoke checks against a local mock Gateway.
+Runs isolated Studio Gateway CLI startup smoke checks plus Gateway HTTP maturity probes.
 
 Options:
-  --apps <ids>                 Comma-separated app ids: codex,claude-code,opencode,openclaw
+  --apps <ids>                 Comma-separated app ids: codex,claude-code,opencode,openclaw,gateway
   --strict                     Exit non-zero when an installed CLI smoke fails
   --include-openclaw-agent     Also try openclaw agent --local, not only config startup
   --keep-temp                  Keep the temporary HOME/state directory
@@ -347,6 +347,18 @@ function respondAnthropicMessages(res, body) {
 
 function respondChatCompletions(res, body) {
   const model = typeof body.model === "string" ? body.model : DEFAULT_MODEL;
+  const requestText = collectRequestText(body);
+  if (requestText.includes("FORCE_UPSTREAM_ERROR")) {
+    sendJson(res, 429, {
+      error: {
+        message: "Mock upstream rate limit for error envelope probe.",
+        type: "rate_limit_error",
+        code: "rate_limit_exceeded",
+        param: "messages",
+      },
+    });
+    return;
+  }
   if (body.stream) {
     const created = Math.floor(Date.now() / 1000);
     sendSse(res, [
@@ -382,18 +394,47 @@ function respondChatCompletions(res, body) {
     ]);
     return;
   }
+  const hasToolResult = Array.isArray(body.messages)
+    && body.messages.some((message) => message?.role === "tool");
+  const shouldCallTool = Array.isArray(body.tools)
+    && requestText.includes("Please call lookup");
+  const message = shouldCallTool
+    ? {
+      role: "assistant",
+      content: null,
+      tool_calls: [{
+        id: "call_lookup",
+        type: "function",
+        function: {
+          name: "lookup",
+          arguments: "{\"query\":\"docs\"}",
+        },
+      }],
+    }
+    : {
+      role: "assistant",
+      content: hasToolResult ? "TOOL_HISTORY_OK" : "GATEWAY_OK",
+    };
   sendJson(res, 200, {
-    id: "chatcmpl_cli_smoke",
+    id: shouldCallTool ? "chatcmpl_cli_tool_smoke" : "chatcmpl_cli_smoke",
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
     model,
     choices: [{
       index: 0,
-      message: { role: "assistant", content: "GATEWAY_OK" },
-      finish_reason: "stop",
+      message,
+      finish_reason: shouldCallTool ? "tool_calls" : "stop",
     }],
     usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 },
   });
+}
+
+function collectRequestText(value) {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) return value.map(collectRequestText).join("\n");
+  if (typeof value !== "object") return "";
+  return Object.values(value).map(collectRequestText).join("\n");
 }
 
 async function prepareIsolatedConfig(root, mockGateway) {
@@ -445,7 +486,7 @@ async function prepareIsolatedConfig(root, mockGateway) {
   if (!applied.applied.every((item) => item.applied)) {
     throw new Error("Failed to apply all isolated app connections.");
   }
-  return { config, homeDir };
+  return { config, homeDir, context };
 }
 
 function baseSmokeEnv(homeDir, config, mockGateway) {
@@ -607,6 +648,236 @@ function preview(value) {
     .slice(0, 2000);
 }
 
+async function startStudioGatewayServer(context) {
+  const { createStudioRequestHandler } = await import("../dist/apps/api/index.js");
+  const handler = createStudioRequestHandler(context, { stripBasePath: "" });
+  return startHttpServer(async (req, res) => {
+    const handled = await handler(req, res);
+    if (!handled && !res.writableEnded) {
+      res.statusCode = 404;
+      res.end("not found");
+    }
+  });
+}
+
+async function startHttpServer(handler) {
+  const server = http.createServer((req, res) => {
+    Promise.resolve(handler(req, res)).catch((error) => {
+      if (!res.headersSent) {
+        sendJson(res, 500, {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            type: "server_error",
+          },
+        });
+      } else if (!res.writableEnded) {
+        res.end();
+      }
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address !== "object") throw new Error("Studio Gateway smoke server did not bind to a TCP port.");
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+  };
+}
+
+async function runGatewayMaturityProbes(context, mockGateway) {
+  const server = await startStudioGatewayServer(context);
+  const startedAt = Date.now();
+  const beforeCount = mockGateway.requests.length;
+  try {
+    const headers = gatewayHeaders();
+    const compact = await requestJson(`${server.baseUrl}/v1/responses/compact`, {
+      method: "POST",
+      headers,
+      body: {
+        model: ALT_MODEL,
+        input: "Summarize compact maturity.",
+        stream: false,
+      },
+    });
+    assertProbe(compact.status === 200, `compact probe returned HTTP ${compact.status}: ${compact.raw}`);
+    assertProbe(collectResponsesOutputText(compact.body).includes("GATEWAY_OK"), "compact probe did not return adapted Responses text.");
+
+    const toolStartIndex = mockGateway.requests.length;
+    const firstTool = await requestJson(`${server.baseUrl}/v1/responses`, {
+      method: "POST",
+      headers,
+      body: {
+        model: ALT_MODEL,
+        input: [{ role: "user", content: "Please call lookup." }],
+        tools: [{
+          type: "function",
+          name: "lookup",
+          description: "Lookup docs",
+          parameters: {
+            type: "object",
+            properties: { query: { type: "string" } },
+            required: ["query"],
+          },
+        }],
+        tool_choice: { type: "function", name: "lookup" },
+        stream: false,
+      },
+    });
+    assertProbe(firstTool.status === 200, `tool probe returned HTTP ${firstTool.status}: ${firstTool.raw}`);
+    const functionCall = findResponsesFunctionCall(firstTool.body);
+    assertProbe(Boolean(functionCall), "tool probe did not return a Responses function_call item.");
+    const callId = stringOrNull(functionCall.call_id) || stringOrNull(functionCall.id);
+    assertProbe(Boolean(callId), "tool probe function_call was missing call_id.");
+
+    const followUp = await requestJson(`${server.baseUrl}/v1/responses`, {
+      method: "POST",
+      headers,
+      body: {
+        model: ALT_MODEL,
+        previous_response_id: firstTool.body.id,
+        input: [{
+          type: "function_call_output",
+          call_id: callId,
+          output: "lookup done",
+        }],
+        stream: false,
+      },
+    });
+    assertProbe(followUp.status === 200, `tool history probe returned HTTP ${followUp.status}: ${followUp.raw}`);
+    assertProbe(
+      collectResponsesOutputText(followUp.body).includes("TOOL_HISTORY_OK"),
+      "tool history probe did not return the follow-up text.",
+    );
+    const toolRequests = mockGateway.requests.slice(toolStartIndex);
+    const followUpUpstream = toolRequests.at(-1);
+    assertProbe(hasRestoredAssistantToolCall(followUpUpstream?.body, callId), "Codex history did not restore the prior assistant tool call before tool output.");
+
+    const upstreamError = await requestJson(`${server.baseUrl}/v1/responses`, {
+      method: "POST",
+      headers,
+      body: {
+        model: ALT_MODEL,
+        input: "FORCE_UPSTREAM_ERROR",
+        stream: false,
+      },
+    });
+    assertProbe(upstreamError.status === 429, `error envelope probe returned HTTP ${upstreamError.status}: ${upstreamError.raw}`);
+    assertProbe(upstreamError.body?.error?.code === "rate_limit_exceeded", "error envelope probe did not preserve upstream error code.");
+    assertProbe(upstreamError.body?.error?.type === "rate_limit_error", "error envelope probe did not preserve upstream error type.");
+    assertProbe(upstreamError.body?.error?.param === "messages", "error envelope probe did not preserve upstream error param.");
+
+    const runtime = await requestJson(`${server.baseUrl}/api/model-gateway/runtime`);
+    assertProbe(runtime.status === 200, `runtime probe returned HTTP ${runtime.status}: ${runtime.raw}`);
+    const outcomes = Array.isArray(runtime.body?.runtime?.requestLog)
+      ? runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.outcome, entry.errorCode || null])
+      : [];
+    assertProbe(
+      outcomes.some(([routeId, outcome]) => routeId === "openai_responses_compact" && outcome === "success"),
+      "runtime log did not record compact success.",
+    );
+    assertProbe(
+      outcomes.some(([routeId, outcome, errorCode]) => routeId === "openai_responses" && outcome === "failure" && errorCode === "rate_limit_exceeded"),
+      "runtime log did not record normalized upstream rate-limit failure.",
+    );
+
+    const requests = mockGateway.requests.slice(beforeCount);
+    return {
+      id: "gateway",
+      status: "passed",
+      durationMs: Math.max(0, Date.now() - startedAt),
+      baseUrl: server.baseUrl,
+      probes: ["responses-compact", "tool-history", "error-envelope", "runtime-log"],
+      requestCount: requests.length,
+      hitPaths: [...new Set(requests.map((request) => request.path))],
+      compactResponseId: compact.body?.id || null,
+      toolResponseId: firstTool.body?.id || null,
+      followUpResponseId: followUp.body?.id || null,
+    };
+  } catch (error) {
+    return {
+      id: "gateway",
+      status: "failed",
+      durationMs: Math.max(0, Date.now() - startedAt),
+      baseUrl: server.baseUrl,
+      error: error instanceof Error ? error.message : String(error),
+      requestCount: mockGateway.requests.length - beforeCount,
+      hitPaths: [...new Set(mockGateway.requests.slice(beforeCount).map((request) => request.path))],
+    };
+  } finally {
+    await server.close();
+  }
+}
+
+function gatewayHeaders() {
+  return {
+    authorization: `Bearer ${LOCAL_GATEWAY_KEY}`,
+    "x-studio-app-scope": "codex",
+  };
+}
+
+async function requestJson(url, options = {}) {
+  const headers = {
+    ...(options.body === undefined ? {} : { "content-type": "application/json" }),
+    ...(options.headers || {}),
+  };
+  const response = await fetch(url, {
+    method: options.method || "GET",
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  const raw = await response.text();
+  let body = null;
+  try {
+    body = raw ? JSON.parse(raw) : null;
+  } catch {
+    body = null;
+  }
+  return {
+    status: response.status,
+    headers: Object.fromEntries(response.headers.entries()),
+    body,
+    raw,
+  };
+}
+
+function assertProbe(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function collectResponsesOutputText(response) {
+  const output = Array.isArray(response?.output) ? response.output : [];
+  return output.flatMap((item) => {
+    const content = Array.isArray(item?.content) ? item.content : [];
+    return content.map((part) => part?.text).filter((text) => typeof text === "string");
+  }).join("");
+}
+
+function findResponsesFunctionCall(response) {
+  const output = Array.isArray(response?.output) ? response.output : [];
+  return output.find((item) => item?.type === "function_call") || null;
+}
+
+function hasRestoredAssistantToolCall(body, callId) {
+  if (!callId || !Array.isArray(body?.messages)) return false;
+  const assistantIndex = body.messages.findIndex((message) => (
+    message?.role === "assistant"
+    && Array.isArray(message.tool_calls)
+    && message.tool_calls.some((toolCall) => toolCall?.id === callId)
+  ));
+  const toolIndex = body.messages.findIndex((message) => (
+    message?.role === "tool"
+    && message.tool_call_id === callId
+  ));
+  return assistantIndex >= 0 && toolIndex > assistantIndex;
+}
+
+function stringOrNull(value) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const tempParent = path.join(process.cwd(), ".tmp");
@@ -633,12 +904,22 @@ async function main() {
     for (const definition of definitions) {
       results.push(await runCommand(definition, mockGateway.requests));
     }
+    const gatewayMaturity = !options.apps || options.apps.includes("gateway")
+      ? await runGatewayMaturityProbes(prepared.context, mockGateway)
+      : {
+        id: "gateway",
+        status: "skipped",
+        reason: "Gateway HTTP maturity probes were excluded by --apps.",
+      };
     const summary = {
-      ok: results.every((result) => result.status === "passed" || result.status === "skipped"),
+      ok: results.every((result) => result.status === "passed" || result.status === "skipped")
+        && (gatewayMaturity.status === "passed" || gatewayMaturity.status === "skipped"),
       strict: options.strict,
       tempRoot: root,
       mockGatewayEndpoint: mockGateway.endpoint,
+      studioGatewayEndpoint: gatewayMaturity.baseUrl ? `${gatewayMaturity.baseUrl}/v1` : null,
       results,
+      gatewayMaturity,
       requestLog: mockGateway.requests.map((request) => ({
         method: request.method,
         path: request.path,
