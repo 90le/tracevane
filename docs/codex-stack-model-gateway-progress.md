@@ -1,7 +1,7 @@
 # Studio Gateway 迁移进度
 
-> 状态：Phase C completed; Phase B adapter matrix mostly completed
-> 更新：2026-06-04
+> 状态：Phase C completed; Phase B core matrix completed; Phase B2 maturity hardening requested
+> 更新：2026-06-05
 > 文档规则：只保留当前状态、验证、下一步；过期细节直接替换。
 
 ## 当前状态
@@ -12,6 +12,7 @@
 - 协议矩阵目标已固定：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 任意原生 provider 都必须对外暴露三类客户端协议。
 - 本地参考源码固定为 `/tmp/cc-switch-src`；只参考代理转换、SSE、tool/history、usage 映射。
 - OpenAI 官方 API smoke 需要真实 OpenAI Platform key；本机 Codex 登录态当前是 `PROXY_MANAGED` 占位符，不可直接用于官方 API。
+- 当前新增 Phase B2：先把 Anthropic-compatible 与 OpenAI Chat-compatible provider 做到真实 CLI 成熟度；OpenAI Responses 官方 provider 等用户后续提供 key/base 后补测。
 
 ## 本轮完成
 
@@ -25,6 +26,7 @@
 - 新增 SSE 重建模块，覆盖 Chat/Responses/Anthropic 之间的 `message_start`、`content_block_delta`、`message_delta`、Chat chunk、Responses output_text 事件转换。
 - 新增 provider `network.proxyUrl` upstream 支持；OpenAI 这类需代理的 provider 可显式走 HTTP/SOCKS proxy。
 - 新增 `PROXY_MANAGED` placeholder guard，避免把本地 managed-account 占位符作为真实 upstream key 发出。
+- 更新目标与进度文档：把“绝对成熟度”写为 Phase B2 验收门槛，要求参考 cc-switch 并用真实 provider/CLI smoke 证明。
 
 ## 验证
 
@@ -41,7 +43,8 @@
 
 ## 下一步
 
-1. 跑真实 Claude Code / Claude CLI 与 Codex CLI：对话、流式、compact/summary；需要先新增 App Connections preview/apply 或手动临时配置。
-2. 继续对齐 `/tmp/cc-switch-src`：reasoning/custom-tool streaming、tool_call argument 增量、usage/cache 字段容错。
-3. 新建 Studio Gateway 管理入口和 App Connections，不复用旧 Codex Stack 代码。
-4. 处理剩余非相关旧 UI 测试，决定删除还是按当前页面真实结构重建。
+1. Phase B2 test-first：从 `/tmp/cc-switch-src` 对照整理严格 fixture，覆盖 SSE 状态机、tool/history、usage/cache、error envelope、reasoning/thinking、并发 tool call 和增量参数。
+2. 修补 Gateway adapter 缺口后，先用 BigModel Anthropic 与 BigModel Chat bases 跑真实 smoke。
+3. 跑真实 Claude CLI / Claude Code：普通对话、stream、tool-use、summary/compact；必要时先用临时配置，不等新 UI。
+4. 跑 Codex CLI Responses/compact smoke；OpenAI 官方 provider 等用户提供真实 OpenAI Platform key/base 后补测。
+5. Phase B2 通过后再进入新 Studio Gateway 管理页和 App Connections。
