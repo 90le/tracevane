@@ -165,7 +165,6 @@ export function adaptAnthropicMessagesRequestToChatCompletion(bodyText: string |
   copyScalarFields(request, chatRequest, [
     "temperature",
     "top_p",
-    "metadata",
   ]);
 
   const tools = mapAnthropicToolsToChat(request.tools);

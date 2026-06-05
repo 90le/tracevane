@@ -1,6 +1,6 @@
 # Studio Gateway 迁移进度
 
-> 状态：Phase C completed; Phase B core matrix completed; Phase B2 maturity hardening requested
+> 状态：Phase C completed; Phase B core matrix completed; Phase B2 maturity hardening in progress
 > 更新：2026-06-05
 > 文档规则：只保留当前状态、验证、下一步；过期细节直接替换。
 
@@ -12,7 +12,7 @@
 - 协议矩阵目标已固定：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 任意原生 provider 都必须对外暴露三类客户端协议。
 - 本地参考源码固定为 `/tmp/cc-switch-src`；只参考代理转换、SSE、tool/history、usage 映射。
 - OpenAI 官方 API smoke 需要真实 OpenAI Platform key；本机 Codex 登录态当前是 `PROXY_MANAGED` 占位符，不可直接用于官方 API。
-- 当前新增 Phase B2：先把 Anthropic-compatible、OpenAI Chat-compatible、OpenAI Responses-compatible 三类 provider 做到真实 CLI 成熟度；OpenAI 官方 provider 等用户后续提供真实 Platform key/base 后补测。
+- 当前 Phase B2：按 cc-switch 补齐真实 CLI 需要的 history / reasoning / error envelope；OpenAI 官方 Responses/compact provider 等用户后续提供真实 Platform key/base 后补测。
 
 ## 本轮完成
 
@@ -31,6 +31,10 @@
   - Chat/Anthropic → Responses 请求改为 typed content（`input_text` / `output_text`），对齐 cc-switch，避免部分 Responses provider 200 但无最终文本。
   - Chat streaming `tool_calls` 转 Responses `function_call` SSE：`output_item.added`、`function_call_arguments.delta/done`、`output_item.done`、completed usage。
   - Responses streaming `function_call` 转 Chat `tool_calls` delta 和 Anthropic `tool_use` / `input_json_delta`。
+  - Chat reasoning / `reasoning_content` 转 Responses reasoning item 与 reasoning summary SSE；`<think>` 前缀流拆分为 reasoning，不泄露标签。
+  - Codex streamed tool call 写入 history，后续 `previous_response_id + function_call_output` 可恢复原 function call。
+  - Responses `response.failed` SSE 转 adapter error；Chat upstream 非 2xx 转 Responses error envelope，不裸透传 `base_resp` 等上游私有结构。
+  - Claude Code `metadata` 不再透传到 OpenAI Chat provider，避免 MLAMP/OpenAI Chat 报 `metadata`/`store` 不兼容。
 
 ## 验证
 
@@ -47,17 +51,23 @@
 - MLAMP Responses-compatible live classification：
   - Base `https://llm-gateway.mlamp.cn/v1`，model `gpt-5`：`/responses` 非流式通过，返回 `object: response`、`status: completed`、`output_text`、Responses usage 字段。
   - `/responses` streaming 通过，返回 `response.created`、`response.in_progress`、`response.output_item.*` SSE 事件。
-  - `/chat/completions` 也通过，返回 `object: chat.completion`；因此该 base 是 dual-compatible，但 Phase B2 优先把它当 Responses 原生 provider 样本。
+  - `/chat/completions` 也通过，返回 `object: chat.completion`；因此该 base 是 dual-compatible，当前只作为历史/可选参考，不作为 official compact 门槛。
   - 测试 key 只用于临时 smoke，未写入仓库。
 - MLAMP via Studio Gateway live smoke：
-  - 临时 provider `apiFormat=openai_responses`，base `https://llm-gateway.mlamp.cn/v1`，model `gpt-5`。
+  - 临时 provider `apiFormat=openai_responses`，base `https://llm-gateway.mlamp.cn/v1`，model `gpt-5`；当前只保留为历史/可选参考。
   - 非流式 `/v1/responses`、`/v1/chat/completions`、`/v1/messages` 均 200，均产出可读文本和 usage；`gpt-5` 需 `max_output_tokens/max_tokens/max_completion_tokens=512` 才稳定越过 reasoning 输出。
   - 流式 `/v1/responses`、`/v1/chat/completions`、`/v1/messages` 均 200，均完成并产出文本 delta；测试 key 只用于临时 smoke，未写入仓库。
+- Claude Code takeover smoke：
+  - 通过：Claude Code `2.1.86`，临时 Gateway `/v1/messages`，MLAMP Chat-compatible upstream，返回 `CLAUDE_CODE_GATEWAY_OK`。
+  - 注意：用户级 `~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL=http://127.0.0.1:8317` 会覆盖 shell env；接管 smoke 需用 `--setting-sources local` 或后续 App Connections 生成隔离配置。
+- Codex CLI takeover smoke：
+  - 通过：Codex CLI `0.137.0`，临时 `CODEX_HOME`，`wire_api="responses"` 指向 Studio Gateway `/v1`，`codex exec` 返回 `CODEX_GATEWAY_OK`。
+- Compact 说明：
+  - MLAMP 当前不作为 `/v1/responses/compact` 原生能力证明。
+  - OpenAI 官方 Responses provider 后续必须使用原生 `/v1/responses/compact` 单独 smoke；等用户提供真实 official base/key 后执行。
 
 ## 下一步
 
-1. 继续 Phase B2：对齐 cc-switch 的 history/reasoning/error envelope，尤其 `previous_response_id + function_call_output`、reasoning summary/encrypted-content、upstream error normalization。
-2. 用 BigModel Anthropic、BigModel Chat、MLAMP Responses 三个 bases 重跑完整 smoke matrix。
-3. 跑真实 Claude CLI / Claude Code：普通对话、stream、tool-use、summary/compact；必要时先用临时配置，不等新 UI。
-4. 跑 Codex CLI Responses/compact smoke；OpenAI 官方 provider 等用户提供真实 OpenAI Platform key/base 后补测。
-5. Phase B2 通过后再进入新 Studio Gateway 管理页和 App Connections。
+1. 用 BigModel Anthropic 与 BigModel Chat 两个 bases 重跑完整 smoke matrix，覆盖 stream/tool/history/error。
+2. 补 Claude Code tool-use、summary/compact 类请求和 Codex compact takeover；官方 `/v1/responses/compact` 等用户提供 official base/key 后作为 OpenAI Responses 原生 compact 验收。
+3. Phase B2 通过后进入新 Studio Gateway 管理页和 App Connections。

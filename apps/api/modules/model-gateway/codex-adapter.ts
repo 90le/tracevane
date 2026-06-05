@@ -117,8 +117,17 @@ export function adaptChatCompletionToCodexResponse(chatCompletion: unknown, fall
   const choice = firstChoice(chatCompletion);
   const message = isRecord(choice?.message) ? choice.message : {};
   const text = contentToText(message.content);
+  const reasoningText = extractReasoningText(message);
   const generatedSuffix = Date.now().toString(36);
   const output: JsonRecord[] = [];
+  if (reasoningText) {
+    output.push({
+      type: "reasoning",
+      id: `reasoning_${generatedSuffix}`,
+      status: "completed",
+      summary: [{ type: "summary_text", text: reasoningText }],
+    });
+  }
   if (text || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
     output.push({
       type: "message",
@@ -130,7 +139,7 @@ export function adaptChatCompletionToCodexResponse(chatCompletion: unknown, fall
   }
 
   for (const toolCall of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
-    const mapped = mapChatToolCallToResponses(toolCall);
+    const mapped = mapChatToolCallToResponses(toolCall, reasoningText);
     if (mapped) output.push(mapped);
   }
 
@@ -303,13 +312,13 @@ function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {
   return toolChoice;
 }
 
-function mapChatToolCallToResponses(toolCall: unknown): JsonRecord | null {
+function mapChatToolCallToResponses(toolCall: unknown, reasoningText: string | null): JsonRecord | null {
   if (!isRecord(toolCall)) return null;
   const fn = isRecord(toolCall.function) ? toolCall.function : {};
   const name = stringOrNull(fn.name);
   if (!name) return null;
   const id = stringOrNull(toolCall.id) || `call_${Date.now().toString(36)}`;
-  return {
+  const item: JsonRecord = {
     type: "function_call",
     id,
     call_id: id,
@@ -317,6 +326,8 @@ function mapChatToolCallToResponses(toolCall: unknown): JsonRecord | null {
     name,
     arguments: stringOrNull(fn.arguments) || "{}",
   };
+  if (reasoningText) item.reasoning_content = reasoningText;
+  return item;
 }
 
 function mapChatUsageToResponses(usage: unknown): JsonRecord | null {
@@ -340,6 +351,42 @@ function mapChatUsageToResponses(usage: unknown): JsonRecord | null {
       ? usage.output_tokens_details
       : { reasoning_tokens: numberOrNull(completionDetails.reasoning_tokens) || 0 },
   };
+}
+
+function extractReasoningText(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  for (const key of ["reasoning_content", "reasoning"] as const) {
+    const direct = stringOrNull(value[key]);
+    if (direct) return direct;
+  }
+
+  const reasoning = isRecord(value.reasoning) ? value.reasoning : null;
+  if (reasoning) {
+    for (const key of ["content", "text", "summary"] as const) {
+      const text = stringOrNull(reasoning[key]);
+      if (text) return text;
+    }
+  }
+
+  const detailsText = extractReasoningDetailsText(value.reasoning_details);
+  return detailsText || null;
+}
+
+function extractReasoningDetailsText(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value;
+  if (Array.isArray(value)) {
+    const text = value
+      .map(extractReasoningDetailsText)
+      .filter((item): item is string => Boolean(item))
+      .join("\n\n");
+    return text || null;
+  }
+  if (!isRecord(value)) return null;
+  for (const key of ["text", "content", "summary"] as const) {
+    const text = stringOrNull(value[key]);
+    if (text) return text;
+  }
+  return extractReasoningDetailsText(value.parts);
 }
 
 function firstChoice(chatCompletion: JsonRecord): JsonRecord | null {

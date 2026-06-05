@@ -160,6 +160,9 @@ export async function writeChatCompletionsSseFromResponsesSse(
       return;
     }
     if (!event.json) return;
+    if (event.event === "response.failed") {
+      throw new Error(extractResponsesFailedMessage(event.json));
+    }
     const response = isRecord(event.json.response) ? event.json.response : event.json;
     const id = stringOrNull(response.id);
     if (id) state.id = id;
@@ -257,6 +260,9 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
       return;
     }
     if (!event.json) return;
+    if (event.event === "response.failed") {
+      throw new Error(extractResponsesFailedMessage(event.json));
+    }
     const response = isRecord(event.json.response) ? event.json.response : event.json;
     const id = stringOrNull(response.id);
     if (id && !state.started) state.messageId = id.startsWith("msg_") ? id : `msg_${id}`;
@@ -442,6 +448,15 @@ function parseSseBlock(block: string): ParsedSseEvent | null {
   } catch {
     return { event, data, json: null, done: false };
   }
+}
+
+function extractResponsesFailedMessage(payload: JsonRecord): string {
+  const response = isRecord(payload.response) ? payload.response : payload;
+  const error = isRecord(response.error) ? response.error : isRecord(payload.error) ? payload.error : null;
+  return stringOrNull(error?.message)
+    || stringOrNull(response.error)
+    || stringOrNull(payload.message)
+    || "response.failed event received";
 }
 
 function ensureAnthropicMessageStart(

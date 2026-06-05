@@ -1214,12 +1214,13 @@ test("model gateway protocol matrix forwards native openai responses and guards 
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
+    const body = String(init.body || "");
     upstreamCalls.push({
       url: String(url),
       method: init.method,
       authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
       contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
-      body: String(init.body || ""),
+      body,
     });
     if (upstreamCalls.length === 3) {
       return new Response(JSON.stringify({
@@ -1317,8 +1318,10 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         headers: { "content-type": "text/event-stream" },
       });
     }
+    const requestBody = JSON.parse(body);
+    const isCompact = requestBody.input === "Summarize for compaction.";
     return new Response(JSON.stringify({
-      id: String(url).includes("/compact") ? "resp_native_compact" : "resp_native",
+      id: isCompact ? "resp_native_compact" : "resp_native",
       object: "response",
       status: "completed",
       output: [{
@@ -1326,7 +1329,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         role: "assistant",
         content: [{
           type: "output_text",
-          text: String(url).includes("/compact") ? "Native compact summary" : "Native response text",
+          text: isCompact ? "Native compact summary" : "Native response text",
         }],
       }],
     }), {
@@ -1807,6 +1810,9 @@ test("model gateway adapts anthropic messages through openai chat providers", as
           }],
           tool_choice: { type: "tool", name: "lookup" },
           temperature: 0.1,
+          metadata: {
+            user_id: "claude-code-session",
+          },
         },
       });
 
@@ -2534,6 +2540,96 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
   });
 });
 
+test("model gateway maps chat reasoning content to codex responses output items", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-reasoning-adapter",
+      name: "Codex Reasoning Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-reasoning.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-reasoning-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "chatcmpl_reasoning",
+    created: 1_710_000_021,
+    model: "deepseek-reasoner",
+    choices: [{
+      index: 0,
+      message: {
+        role: "assistant",
+        reasoning_content: "Need context before answering.",
+        content: "Done.",
+        tool_calls: [{
+          id: "call_lookup",
+          type: "function",
+          function: {
+            name: "lookup",
+            arguments: "{\"query\":\"docs\"}",
+          },
+        }],
+      },
+      finish_reason: "tool_calls",
+    }],
+    usage: {
+      prompt_tokens: 9,
+      completion_tokens: 6,
+      total_tokens: 15,
+      completion_tokens_details: { reasoning_tokens: 4 },
+    },
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "deepseek-reasoner",
+          input: "Think then call.",
+          stream: false,
+        },
+      });
+
+      assert.equal(responses.status, 200);
+      assert.equal(responses.body.output[0].type, "reasoning");
+      assert.match(responses.body.output[0].id, /^reasoning_/);
+      assert.equal(responses.body.output[0].status, "completed");
+      assert.deepEqual(responses.body.output[0].summary, [{ type: "summary_text", text: "Need context before answering." }]);
+      assert.equal(responses.body.output[1].type, "message");
+      assert.match(responses.body.output[1].id, /^msg_/);
+      assert.equal(responses.body.output[1].status, "completed");
+      assert.equal(responses.body.output[1].role, "assistant");
+      assert.deepEqual(responses.body.output[1].content, [{ type: "output_text", text: "Done." }]);
+      assert.deepEqual(responses.body.output[2], {
+        type: "function_call",
+        id: "call_lookup",
+        call_id: "call_lookup",
+        status: "completed",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+        reasoning_content: "Need context before answering.",
+      });
+      assert.deepEqual(responses.body.usage.output_tokens_details, { reasoning_tokens: 4 });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway adapts streaming chat sse to codex responses sse", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -2647,6 +2743,92 @@ test("model gateway adapts streaming chat sse to codex responses sse", async () 
   });
 });
 
+test("model gateway adapts streaming chat reasoning to codex responses sse", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-reasoning-stream-adapter",
+      name: "Codex Reasoning Stream Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-reasoning-stream.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-reasoning-stream-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const upstreamSse = [
+      "data: {\"id\":\"chatcmpl_reason_stream\",\"created\":1710000023,\"model\":\"deepseek-reasoner\",\"choices\":[{\"delta\":{\"reasoning_content\":\"Need context. \"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_reason_stream\",\"created\":1710000023,\"model\":\"deepseek-reasoner\",\"choices\":[{\"delta\":{\"reasoning\":\"Now answer. \"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_reason_stream\",\"created\":1710000023,\"model\":\"deepseek-reasoner\",\"choices\":[{\"delta\":{\"content\":\"Done\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":6,\"total_tokens\":10,\"completion_tokens_details\":{\"reasoning_tokens\":3}}}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const streamed = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "deepseek-reasoner",
+          input: "Reason then answer.",
+          stream: true,
+        },
+      });
+
+      assert.equal(streamed.status, 200);
+      const events = parseSseEvents(streamed.body);
+      assert.deepEqual(events.map((item) => item.event), [
+        "response.created",
+        "response.in_progress",
+        "response.output_item.added",
+        "response.reasoning_summary_part.added",
+        "response.reasoning_summary_text.delta",
+        "response.reasoning_summary_text.delta",
+        "response.output_item.added",
+        "response.content_part.added",
+        "response.output_text.delta",
+        "response.reasoning_summary_text.done",
+        "response.reasoning_summary_part.done",
+        "response.output_item.done",
+        "response.output_text.done",
+        "response.content_part.done",
+        "response.output_item.done",
+        "response.completed",
+        null,
+      ]);
+      assert.equal(events[4].data.delta, "Need context. ");
+      assert.equal(events[5].data.delta, "Now answer. ");
+      assert.equal(events[11].data.item.type, "reasoning");
+      assert.equal(events[11].data.item.summary[0].text, "Need context. Now answer. ");
+      assert.equal(events[14].data.item.type, "message");
+      const completed = events.find((item) => item.event === "response.completed").data.response;
+      assert.equal(completed.output[0].type, "reasoning");
+      assert.equal(completed.output[1].type, "message");
+      assert.equal(completed.output[1].content[0].text, "Done");
+      assert.deepEqual(completed.usage.output_tokens_details, { reasoning_tokens: 3 });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway adapts streaming chat tool calls to codex responses sse", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -2758,6 +2940,142 @@ test("model gateway adapts streaming chat tool calls to codex responses sse", as
   assert.equal(upstreamCalls.length, 1);
   assert.equal(upstreamCalls[0].url, "https://codex-tool-stream.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-codex-tool-stream-secret");
+});
+
+test("model gateway records streamed codex tool-call history for follow-up chat adapter requests", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-stream-history-adapter",
+      name: "Codex Stream History Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-stream-history.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-stream-history-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const callIndex = upstreamCalls.length;
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+
+    if (callIndex === 0) {
+      const upstreamSse = [
+        "data: {\"id\":\"chatcmpl_stream_history\",\"created\":1710000024,\"model\":\"deepseek-reasoner\",\"choices\":[{\"delta\":{\"reasoning_content\":\"Need lookup.\"}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_stream_history\",\"created\":1710000024,\"model\":\"deepseek-reasoner\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_lookup\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"query\\\":\\\"docs\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      id: "chatcmpl_stream_history_final",
+      created: 1_710_000_025,
+      model: "deepseek-reasoner",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "Lookup complete.",
+        },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const first = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "deepseek-reasoner",
+          input: "Use lookup.",
+          stream: true,
+        },
+      });
+      assert.equal(first.status, 200);
+      const firstEvents = parseSseEvents(first.body);
+      const firstCompleted = firstEvents.find((item) => item.event === "response.completed").data.response;
+      assert.equal(firstCompleted.id, "chatcmpl_stream_history");
+      assert.equal(firstCompleted.output[1].reasoning_content, "Need lookup.");
+      assert.ok(fs.existsSync(paths.codexHistory));
+      assert.ok(!fs.readFileSync(paths.codexHistory, "utf8").includes("sk-codex-stream-history-secret"));
+
+      const second = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "deepseek-reasoner",
+          previous_response_id: firstCompleted.id,
+          input: [
+            {
+              type: "function_call_output",
+              call_id: "call_lookup",
+              output: "Docs",
+            },
+            {
+              role: "user",
+              content: "Summarize.",
+            },
+          ],
+          stream: false,
+        },
+      });
+      assert.equal(second.status, 200);
+      assert.equal(second.body.output[0].content[0].text, "Lookup complete.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  const secondChatBody = JSON.parse(upstreamCalls[1].body);
+  assert.deepEqual(secondChatBody.messages, [
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [{
+        id: "call_lookup",
+        type: "function",
+        function: {
+          name: "lookup",
+          arguments: "{\"query\":\"docs\"}",
+        },
+      }],
+    },
+    {
+      role: "tool",
+      content: "Docs",
+      tool_call_id: "call_lookup",
+    },
+    {
+      role: "user",
+      content: "Summarize.",
+    },
+  ]);
 });
 
 test("model gateway adapts streaming responses tool calls to chat and anthropic sse", async () => {
@@ -2899,6 +3217,60 @@ test("model gateway adapts streaming responses tool calls to chat and anthropic 
   assert.equal(upstreamCalls[1].url, "https://responses-tool-stream.example.test/v1/responses");
 });
 
+test("model gateway returns adapter error when upstream responses stream fails", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-failed-stream-adapter",
+      name: "Responses Failed Stream Adapter",
+      appScopes: ["openclaw"],
+      baseUrl: "https://responses-failed-stream.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-failed-stream-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const upstreamSse = [
+      "event: response.failed",
+      "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_failed\",\"error\":{\"message\":\"quota exceeded\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit\"}}}",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-responses",
+          stream: true,
+          messages: [{ role: "user", content: "fail please" }],
+        },
+      });
+
+      assert.equal(chat.status, 502);
+      assert.equal(chat.body.error.code, "model_gateway_chat_responses_streaming_adapter_failed");
+      assert.equal(chat.body.error.message, "quota exceeded");
+      assert.equal(chat.body.error.decision.provider.id, "responses-failed-stream-adapter");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway adapts codex compact requests through openai chat providers", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -3009,6 +3381,70 @@ test("model gateway adapts codex compact requests through openai chat providers"
     stream: false,
     max_tokens: 2048,
   });
+});
+
+test("model gateway normalizes upstream chat errors for codex responses clients", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-error-adapter",
+      name: "Codex Error Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-error.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-error-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    base_resp: {
+      status_code: 2013,
+      status_msg: "quota exceeded",
+    },
+  }), {
+    status: 429,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          input: "Hello",
+          stream: false,
+        },
+      });
+
+      assert.equal(responses.status, 429);
+      assert.equal(responses.headers["x-openclaw-model-gateway-provider"], "codex-error-adapter");
+      assert.deepEqual(responses.body, {
+        error: {
+          message: "quota exceeded",
+          type: "upstream_error",
+          code: "2013",
+        },
+      });
+      assert.ok(!JSON.stringify(responses.body).includes("base_resp"));
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "failure");
+      assert.equal(runtime.body.runtime.requestLog[0].errorCode, "2013");
+      assert.equal(runtime.body.runtime.requestLog[0].errorMessage, "quota exceeded");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("model gateway restores codex tool-call history for follow-up chat adapter requests", async () => {

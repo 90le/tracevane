@@ -1010,6 +1010,65 @@ function safeResponseHeaders(upstreamHeaders: Headers): Record<string, string> {
   return headers;
 }
 
+function normalizeAdaptedUpstreamError(
+  responseText: string,
+  statusCode: number,
+  fallbackMessage: string,
+): { error: { message: string; type: string; code: string; param?: string } } {
+  const fallbackCode = `upstream_http_${statusCode}`;
+  const parsed = parseJsonObjectOrNull(responseText);
+  if (!parsed) {
+    return {
+      error: {
+        message: previewText(responseText) || fallbackMessage,
+        type: "upstream_error",
+        code: fallbackCode,
+      },
+    };
+  }
+
+  const error = isRecord(parsed.error) ? parsed.error : null;
+  const baseResp = isRecord(parsed.base_resp) ? parsed.base_resp : null;
+  const message = normalizeErrorScalar(error?.message)
+    || normalizeErrorScalar(parsed.message)
+    || normalizeErrorScalar(parsed.msg)
+    || normalizeErrorScalar(parsed.error)
+    || normalizeErrorScalar(baseResp?.status_msg)
+    || fallbackMessage;
+  const type = normalizeErrorScalar(error?.type)
+    || normalizeErrorScalar(parsed.type)
+    || "upstream_error";
+  const code = normalizeErrorScalar(error?.code)
+    || normalizeErrorScalar(parsed.code)
+    || normalizeErrorScalar(baseResp?.status_code)
+    || fallbackCode;
+  const param = normalizeErrorScalar(error?.param);
+  return {
+    error: {
+      message,
+      type,
+      code,
+      ...(param ? { param } : {}),
+    },
+  };
+}
+
+function normalizeErrorScalar(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+function parseJsonObjectOrNull(value: string): Record<string, unknown> | null {
+  if (!value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function previewText(value: string): string | null {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) return null;
@@ -2451,7 +2510,13 @@ export function createModelGatewayService(
         res.setHeader("Connection", "keep-alive");
         res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
         try {
-          await streamingAdapter.write(upstream.body, res, requestModelForLog);
+          const streamingResult = await streamingAdapter.write(upstream.body, res, requestModelForLog);
+          if (useCodexResponsesStreamingAdapter && isRecord(streamingResult)) {
+            codexHistory.recordResponse({
+              id: streamingResult.responseId,
+              output: streamingResult.output,
+            });
+          }
           updateProviderHealth(provider.id, true, latencyMs, null);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
@@ -2493,6 +2558,29 @@ export function createModelGatewayService(
 
       const responseText = await upstream.text();
       const responseBody = Buffer.from(responseText);
+      if (upstream.status < 200 || upstream.status >= 300) {
+        const normalizedError = normalizeAdaptedUpstreamError(
+          responseText,
+          upstream.status,
+          errorMessage || `Upstream returned HTTP ${upstream.status}.`,
+        );
+        if (useCodexResponsesChatAdapter || useCodexResponsesAnthropicAdapter) {
+          updateProviderHealth(provider.id, healthSuccess, latencyMs, normalizedError.error.message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: upstream.status,
+            outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+            errorCode: String(normalizedError.error.code || "model_gateway_upstream_status"),
+            errorMessage: normalizedError.error.message,
+          }));
+          res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
+          sendJson(res, upstream.status, normalizedError);
+          return;
+        }
+      }
       if (useChatResponsesAdapter && upstream.status >= 200 && upstream.status < 300) {
         let adaptedResponse: Record<string, unknown>;
         try {

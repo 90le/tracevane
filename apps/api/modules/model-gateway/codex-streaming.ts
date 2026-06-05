@@ -6,6 +6,7 @@ export interface CodexStreamingAdapterResult {
   responseId: string;
   model: string | null;
   outputText: string;
+  output: JsonRecord[];
 }
 
 interface TextState {
@@ -24,6 +25,15 @@ interface FunctionCallState {
   callId: string;
   name: string;
   arguments: string;
+  reasoningContent: string | null;
+}
+
+interface ReasoningState {
+  added: boolean;
+  done: boolean;
+  itemId: string;
+  outputIndex: number | null;
+  text: string;
 }
 
 interface StreamingState {
@@ -35,6 +45,9 @@ interface StreamingState {
   finishReason: string | null;
   usage: JsonRecord | null;
   nextOutputIndex: number;
+  inlineThinkActive: boolean;
+  completedOutput: JsonRecord[];
+  reasoning: ReasoningState;
   text: TextState;
   functionCalls: Map<number, FunctionCallState>;
 }
@@ -67,6 +80,7 @@ export async function writeCodexResponsesSseFromChatSse(
     responseId: state.responseId,
     model: state.model,
     outputText: state.text.text,
+    output: state.completedOutput,
   };
 }
 
@@ -81,6 +95,15 @@ function createStreamingState(fallbackModel: string | null): StreamingState {
     finishReason: null,
     usage: null,
     nextOutputIndex: 0,
+    inlineThinkActive: false,
+    completedOutput: [],
+    reasoning: {
+      added: false,
+      done: false,
+      itemId: `${responseId}_reasoning`,
+      outputIndex: null,
+      text: "",
+    },
     text: {
       added: false,
       done: false,
@@ -134,6 +157,7 @@ function handleChatChunk(chunk: JsonRecord, state: StreamingState, res: http.Ser
   if (id) {
     state.responseId = id;
     if (!state.text.added) state.text.itemId = `${id}_msg`;
+    if (!state.reasoning.added) state.reasoning.itemId = `${id}_reasoning`;
   }
   const model = stringOrNull(chunk.model);
   if (model) state.model = model;
@@ -145,8 +169,14 @@ function handleChatChunk(chunk: JsonRecord, state: StreamingState, res: http.Ser
   const choice = firstChoice(chunk);
   if (!choice) return;
   const delta = isRecord(choice.delta) ? choice.delta : {};
+  const reasoningDelta = extractReasoningDelta(delta);
+  if (reasoningDelta) pushReasoningDelta(reasoningDelta, state, res);
   const content = stringOrNull(delta.content);
-  if (content) pushTextDelta(content, state, res);
+  if (content) {
+    const parts = splitContentAndInlineReasoning(content, state);
+    if (parts.reasoning) pushReasoningDelta(parts.reasoning, state, res);
+    if (parts.text) pushTextDelta(parts.text, state, res);
+  }
   if (Array.isArray(delta.tool_calls)) {
     for (const toolCallDelta of delta.tool_calls) {
       pushFunctionCallDelta(toolCallDelta, state, res);
@@ -166,6 +196,38 @@ function ensureResponseStarted(state: StreamingState, res: http.ServerResponse):
   writeSseEvent(res, "response.in_progress", {
     type: "response.in_progress",
     response: baseResponse(state, "in_progress", []),
+  });
+}
+
+function pushReasoningDelta(delta: string, state: StreamingState, res: http.ServerResponse): void {
+  if (!state.reasoning.added) {
+    state.reasoning.added = true;
+    state.reasoning.outputIndex = state.nextOutputIndex;
+    state.nextOutputIndex += 1;
+    writeSseEvent(res, "response.output_item.added", {
+      type: "response.output_item.added",
+      output_index: state.reasoning.outputIndex,
+      item: reasoningItem(state, "in_progress"),
+    });
+    writeSseEvent(res, "response.reasoning_summary_part.added", {
+      type: "response.reasoning_summary_part.added",
+      item_id: state.reasoning.itemId,
+      output_index: state.reasoning.outputIndex,
+      summary_index: 0,
+      part: {
+        type: "summary_text",
+        text: "",
+      },
+    });
+  }
+
+  state.reasoning.text += delta;
+  writeSseEvent(res, "response.reasoning_summary_text.delta", {
+    type: "response.reasoning_summary_text.delta",
+    item_id: state.reasoning.itemId,
+    output_index: state.reasoning.outputIndex,
+    summary_index: 0,
+    delta,
   });
 }
 
@@ -216,6 +278,9 @@ function pushFunctionCallDelta(toolCallDelta: unknown, state: StreamingState, re
     id: stringOrNull(toolCallDelta.id) || undefined,
     name: stringOrNull(fn.name) || undefined,
   });
+  if (state.reasoning.text.trim() && !tool.reasoningContent) {
+    tool.reasoningContent = state.reasoning.text.trim();
+  }
   ensureFunctionCallAdded(tool, res);
 
   const argumentsDelta = typeof fn.arguments === "string" ? fn.arguments : "";
@@ -246,6 +311,7 @@ function ensureFunctionCall(
       callId,
       name: patch.name || "tool",
       arguments: "",
+      reasoningContent: null,
     };
     state.nextOutputIndex += 1;
     state.functionCalls.set(sourceIndex, tool);
@@ -273,6 +339,36 @@ function finalizeResponse(state: StreamingState, res: http.ServerResponse): void
   if (state.completed) return;
   ensureResponseStarted(state, res);
   const output: JsonRecord[] = [];
+
+  if (state.reasoning.added && !state.reasoning.done) {
+    const outputIndex = state.reasoning.outputIndex ?? state.nextOutputIndex;
+    state.reasoning.outputIndex = outputIndex;
+    const item = reasoningItem(state, "completed");
+    output.push(item);
+    state.reasoning.done = true;
+    writeSseEvent(res, "response.reasoning_summary_text.done", {
+      type: "response.reasoning_summary_text.done",
+      item_id: state.reasoning.itemId,
+      output_index: outputIndex,
+      summary_index: 0,
+      text: state.reasoning.text,
+    });
+    writeSseEvent(res, "response.reasoning_summary_part.done", {
+      type: "response.reasoning_summary_part.done",
+      item_id: state.reasoning.itemId,
+      output_index: outputIndex,
+      summary_index: 0,
+      part: {
+        type: "summary_text",
+        text: state.reasoning.text,
+      },
+    });
+    writeSseEvent(res, "response.output_item.done", {
+      type: "response.output_item.done",
+      output_index: outputIndex,
+      item,
+    });
+  }
 
   if (state.text.added && !state.text.done) {
     const outputIndex = state.text.outputIndex ?? state.nextOutputIndex;
@@ -331,15 +427,10 @@ function finalizeResponse(state: StreamingState, res: http.ServerResponse): void
   }
 
   output.sort((a, b) => {
-    const aIndex = a.type === "function_call"
-      ? [...state.functionCalls.values()].find((tool) => tool.itemId === a.id)?.outputIndex ?? 0
-      : state.text.outputIndex ?? 0;
-    const bIndex = b.type === "function_call"
-      ? [...state.functionCalls.values()].find((tool) => tool.itemId === b.id)?.outputIndex ?? 0
-      : state.text.outputIndex ?? 0;
-    return aIndex - bIndex;
+    return outputIndexForItem(a, state) - outputIndexForItem(b, state);
   });
 
+  state.completedOutput = output;
   const status = state.finishReason === "length" ? "incomplete" : "completed";
   const response = baseResponse(state, status, output);
   if (status === "incomplete") response.incomplete_details = { reason: "max_output_tokens" };
@@ -353,7 +444,7 @@ function finalizeResponse(state: StreamingState, res: http.ServerResponse): void
 }
 
 function functionCallItem(tool: FunctionCallState, status: string): JsonRecord {
-  return {
+  const item: JsonRecord = {
     id: tool.itemId,
     type: "function_call",
     status,
@@ -361,6 +452,29 @@ function functionCallItem(tool: FunctionCallState, status: string): JsonRecord {
     name: tool.name,
     arguments: tool.arguments || "{}",
   };
+  if (tool.reasoningContent) item.reasoning_content = tool.reasoningContent;
+  return item;
+}
+
+function reasoningItem(state: StreamingState, status: string): JsonRecord {
+  return {
+    id: state.reasoning.itemId,
+    type: "reasoning",
+    status,
+    summary: [{
+      type: "summary_text",
+      text: state.reasoning.text,
+    }],
+  };
+}
+
+function outputIndexForItem(item: JsonRecord, state: StreamingState): number {
+  if (item.id === state.reasoning.itemId) return state.reasoning.outputIndex ?? 0;
+  if (item.id === state.text.itemId) return state.text.outputIndex ?? 0;
+  for (const tool of state.functionCalls.values()) {
+    if (item.id === tool.itemId) return tool.outputIndex;
+  }
+  return 0;
 }
 
 function baseResponse(state: StreamingState, status: string, output: JsonRecord[]): JsonRecord {
@@ -384,6 +498,78 @@ function firstChoice(chunk: JsonRecord): JsonRecord | null {
   if (!Array.isArray(chunk.choices)) return null;
   const [choice] = chunk.choices;
   return isRecord(choice) ? choice : null;
+}
+
+function extractReasoningDelta(delta: JsonRecord): string | null {
+  for (const key of ["reasoning_content", "reasoning"] as const) {
+    const direct = stringOrNull(delta[key]);
+    if (direct) return direct;
+  }
+
+  const reasoning = isRecord(delta.reasoning) ? delta.reasoning : null;
+  if (reasoning) {
+    for (const key of ["content", "text", "summary"] as const) {
+      const text = stringOrNull(reasoning[key]);
+      if (text) return text;
+    }
+  }
+
+  return extractReasoningDetailsText(delta.reasoning_details);
+}
+
+function extractReasoningDetailsText(value: unknown): string | null {
+  if (typeof value === "string" && value.length) return value;
+  if (Array.isArray(value)) {
+    const text = value
+      .map(extractReasoningDetailsText)
+      .filter((item): item is string => Boolean(item))
+      .join("\n\n");
+    return text || null;
+  }
+  if (!isRecord(value)) return null;
+  for (const key of ["text", "content", "summary"] as const) {
+    const text = stringOrNull(value[key]);
+    if (text) return text;
+  }
+  return extractReasoningDetailsText(value.parts);
+}
+
+function splitContentAndInlineReasoning(
+  content: string,
+  state: StreamingState,
+): { reasoning: string; text: string } {
+  const openTag = "<think>";
+  const closeTag = "</think>";
+  if (state.inlineThinkActive) {
+    const closeIndex = content.indexOf(closeTag);
+    if (closeIndex < 0) {
+      return { reasoning: content, text: "" };
+    }
+    state.inlineThinkActive = false;
+    return {
+      reasoning: content.slice(0, closeIndex),
+      text: content.slice(closeIndex + closeTag.length).replace(/^\s+/, ""),
+    };
+  }
+
+  const openIndex = content.indexOf(openTag);
+  if (openIndex < 0) return { reasoning: "", text: content };
+
+  const before = content.slice(0, openIndex);
+  const afterOpen = content.slice(openIndex + openTag.length);
+  const closeIndex = afterOpen.indexOf(closeTag);
+  if (closeIndex < 0) {
+    state.inlineThinkActive = true;
+    return {
+      reasoning: afterOpen.replace(/^\s+/, ""),
+      text: before,
+    };
+  }
+
+  return {
+    reasoning: afterOpen.slice(0, closeIndex).replace(/^\s+/, ""),
+    text: `${before}${afterOpen.slice(closeIndex + closeTag.length)}`.replace(/^\s+/, ""),
+  };
 }
 
 function mapChatUsageToResponses(usage: JsonRecord): JsonRecord {
