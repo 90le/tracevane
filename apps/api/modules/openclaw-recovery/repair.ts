@@ -11,9 +11,17 @@ import type {
 import { readOpenClawConfig, writeJsonFile } from "../../core/state.js";
 import { repairSystemBootstrap } from "../system/bootstrap.js";
 import { ensureOpenClawCliAvailable } from "./cli-bootstrap.js";
+import {
+  assessOpenClawGatewayServiceStatus,
+  parseOpenClawGatewayStatus,
+  type OpenClawGatewayServiceRepairAssessment,
+} from "./gateway-service.js";
 import { takeoverOpenClawGatewayListeners } from "./gateway-runtime.js";
 import { resolveOpenClawRecoveryPaths } from "./paths.js";
-import { probeOpenClawGateway } from "./probe.js";
+import {
+  probeOpenClawGatewayDeep,
+  type OpenClawGatewayDeepProbeResult,
+} from "./probe.js";
 import {
   appendRecoveryEvent,
   createRecoveryEvent,
@@ -461,6 +469,184 @@ function commandErrorSummary(commandResult: OpenClawRecoveryCommandSnapshot): st
   ].filter(Boolean).join("\n").trim().slice(0, 800);
 }
 
+function gatewayDeepProbeSummary(
+  probe: OpenClawGatewayDeepProbeResult,
+): string {
+  return probe.error
+    ? `Gateway deep probe failed: ${probe.error}`
+    : "Gateway deep probe failed after repair";
+}
+
+async function probeGatewayControlPlane(
+  config: StudioServerConfig,
+  policy: OpenClawRecoveryPolicy,
+): Promise<OpenClawGatewayDeepProbeResult> {
+  return probeOpenClawGatewayDeep({
+    port: config.gatewayPort,
+    timeoutMs: policy.probeTimeoutMs,
+    controlUiBasePath: config.gatewayControlUiBasePath,
+  });
+}
+
+function appendGatewayDeepProbeFailedEvent(
+  config: StudioServerConfig,
+  probe: OpenClawGatewayDeepProbeResult,
+): void {
+  appendRecoveryEvent(
+    config,
+    createRecoveryEvent({
+      kind: "gateway_deep_probe_failed",
+      severity: probe.connected ? "warning" : "error",
+      title: "OpenClaw gateway 深探测失败",
+      summary: gatewayDeepProbeSummary(probe),
+      status: "failed",
+      details: {
+        port: config.gatewayPort,
+        controlUiBasePath: config.gatewayControlUiBasePath,
+        connected: probe.connected,
+        checks: probe.checks,
+      },
+    }),
+  );
+}
+
+async function runGatewayServiceRepairLayer(
+  config: StudioServerConfig,
+  policy: OpenClawRecoveryPolicy,
+  commands: OpenClawRecoveryCommandSnapshot[],
+): Promise<{
+  changedKeys: string[];
+  repaired: boolean;
+  error: string;
+  assessment: OpenClawGatewayServiceRepairAssessment;
+}> {
+  const statusCommand = await runCommand(
+    "openclaw",
+    ["gateway", "status", "--json"],
+    policy.gatewayServiceRepairTimeoutMs,
+  );
+  commands.push(statusCommand);
+  const status = parseOpenClawGatewayStatus(statusCommand.stdout);
+  const assessment = assessOpenClawGatewayServiceStatus(status, {
+    expectedPort: config.gatewayPort,
+    sourcePathExists: status?.serviceSourcePath
+      ? fs.existsSync(status.serviceSourcePath)
+      : null,
+  });
+
+  if (!assessment.needsRepair) {
+    return { changedKeys: [], repaired: false, error: "", assessment };
+  }
+
+  const details = {
+    port: config.gatewayPort,
+    statusCommandOk: statusCommand.ok,
+    assessment,
+    status: status
+      ? {
+          loaded: status.loaded,
+          runtimeStatus: status.runtimeStatus,
+          runtimeState: status.runtimeState,
+          runtimeSubState: status.runtimeSubState,
+          runtimePid: status.runtimePid,
+          serviceSourcePath: status.serviceSourcePath,
+          configAuditOk: status.configAuditOk,
+          configAuditIssues: status.configAuditIssues,
+          rpcOk: status.rpcOk,
+          gatewayPort: status.gatewayPort,
+        }
+      : null,
+  };
+
+  if (!policy.allowGatewayServiceRepair) {
+    appendRecoveryEvent(
+      config,
+      createRecoveryEvent({
+        kind: "gateway_service_repair_skipped",
+        severity: "warning",
+        title: "OpenClaw gateway 服务修复已跳过",
+        summary: assessment.summary,
+        status: "skipped",
+        details,
+      }),
+    );
+    return { changedKeys: [], repaired: false, error: "", assessment };
+  }
+
+  const changedKeys: string[] = [];
+  if (assessment.shouldInstall) {
+    const install = await runCommand(
+      "openclaw",
+      ["gateway", "install", "--force", "--port", String(config.gatewayPort), "--json"],
+      policy.gatewayServiceRepairTimeoutMs,
+    );
+    commands.push(install);
+    if (!install.ok) {
+      const error = commandErrorSummary(install) || "OpenClaw gateway service install failed";
+      appendRecoveryEvent(
+        config,
+        createRecoveryEvent({
+          kind: "gateway_service_repair_failed",
+          severity: "error",
+          title: "OpenClaw gateway 服务安装失败",
+          summary: error,
+          status: "failed",
+          details,
+        }),
+      );
+      return { changedKeys, repaired: false, error, assessment };
+    }
+    changedKeys.push("gateway.service.install");
+  }
+
+  if (assessment.shouldStart) {
+    const serviceAction =
+      assessment.reasons.includes("gateway_rpc_failed") && !assessment.shouldInstall
+        ? "restart"
+        : "start";
+    const start = await runCommand(
+      "openclaw",
+      ["gateway", serviceAction],
+      policy.gatewayServiceRepairTimeoutMs,
+    );
+    commands.push(start);
+    if (!start.ok) {
+      const error = commandErrorSummary(start) || `OpenClaw gateway service ${serviceAction} failed`;
+      appendRecoveryEvent(
+        config,
+        createRecoveryEvent({
+          kind: "gateway_service_repair_failed",
+          severity: "error",
+          title: "OpenClaw gateway 服务启动失败",
+          summary: error,
+          status: "failed",
+          details: { ...details, serviceAction },
+        }),
+      );
+      return { changedKeys, repaired: false, error, assessment };
+    }
+    changedKeys.push(`gateway.service.${serviceAction}`);
+  }
+
+  appendRecoveryEvent(
+    config,
+    createRecoveryEvent({
+      kind: "gateway_service_repair_succeeded",
+      severity: "warning",
+      title: "OpenClaw gateway 服务托管已修复",
+      summary: assessment.summary,
+      status: "succeeded",
+      details: { ...details, changedKeys },
+    }),
+  );
+  return {
+    changedKeys: [...new Set(changedKeys)],
+    repaired: changedKeys.length > 0,
+    error: "",
+    assessment,
+  };
+}
+
 function gatewayListenerSummary(input: {
   snapshot: { listeners: Array<{ pid: number; command: string; reason: string }> };
   terminatedPids: number[];
@@ -597,8 +783,25 @@ export async function runOpenClawRecoveryRepair(
       rollbackReason = "config_validation_failed";
     } else {
       commands.push(await runCommand("openclaw", ["gateway", "restart"], 20_000));
-      ok = await probeOpenClawGateway(config.gatewayPort, options.policy.probeTimeoutMs);
+      let deepProbe = await probeGatewayControlPlane(config, options.policy);
+      ok = deepProbe.ok;
       if (!ok) {
+        appendGatewayDeepProbeFailedEvent(config, deepProbe);
+        const serviceRepair = await runGatewayServiceRepairLayer(
+          config,
+          options.policy,
+          commands,
+        );
+        changedKeys.push(...serviceRepair.changedKeys);
+        if (serviceRepair.error) {
+          error = serviceRepair.error;
+        }
+        if (serviceRepair.repaired) {
+          deepProbe = await probeGatewayControlPlane(config, options.policy);
+          ok = deepProbe.ok;
+        }
+      }
+      if (!ok && !deepProbe.connected) {
         const takeover = await takeoverOpenClawGatewayListeners(
           config.gatewayPort,
           {
@@ -625,7 +828,8 @@ export async function runOpenClawRecoveryRepair(
             }),
           );
           commands.push(await runCommand("openclaw", ["gateway", "restart"], 20_000));
-          ok = await probeOpenClawGateway(config.gatewayPort, options.policy.probeTimeoutMs);
+          deepProbe = await probeGatewayControlPlane(config, options.policy);
+          ok = deepProbe.ok;
         } else if (takeover.snapshot.listeners.length > 0 || takeover.error) {
           appendRecoveryEvent(
             config,
@@ -649,7 +853,9 @@ export async function runOpenClawRecoveryRepair(
         }
       }
       if (!ok) {
-        error = "Gateway probe still failed after repair";
+        error = error || gatewayDeepProbeSummary(deepProbe);
+      } else {
+        error = "";
       }
     }
   } catch (repairError) {

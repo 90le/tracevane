@@ -24,6 +24,8 @@ export const DEFAULT_RECOVERY_POLICY: OpenClawRecoveryPolicy = {
   maxBackups: 20,
   allowCliReinstall: true,
   cliReinstallTimeoutMs: 300_000,
+  allowGatewayServiceRepair: true,
+  gatewayServiceRepairTimeoutMs: 30_000,
   allowGatewayProcessTakeover: true,
   gatewayProcessTakeoverTimeoutMs: 5_000,
 };

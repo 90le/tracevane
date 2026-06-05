@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +15,14 @@ import {
   parseLsofListeners,
   parseSsListeners,
 } from "../../dist/apps/api/modules/openclaw-recovery/gateway-runtime.js";
+import {
+  assessOpenClawGatewayServiceStatus,
+  parseOpenClawGatewayStatus,
+} from "../../dist/apps/api/modules/openclaw-recovery/gateway-service.js";
+import {
+  probeOpenClawGateway,
+  probeOpenClawGatewayDeep,
+} from "../../dist/apps/api/modules/openclaw-recovery/probe.js";
 import {
   createOpenClawConfigBackup,
   pruneMissingOpenClawPluginLoadPaths,
@@ -112,6 +121,23 @@ function makeConfig() {
   };
 }
 
+function listenProbeServer(handler) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(handler);
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      resolve({ server, port: address.port });
+    });
+  });
+}
+
+function closeServer(server) {
+  return new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
 test("recovery repair creates backups before pruning dynamic validation paths", () => {
   const config = makeConfig();
 
@@ -151,6 +177,119 @@ test("recovery repair creates backups before pruning dynamic validation paths", 
 
   const backup = JSON.parse(fs.readFileSync(backupPath, "utf8"));
   assert.equal(backup.agents.defaults.llm, "legacy-bad-key");
+});
+
+test("gateway deep probe validates the Studio control route without breaking light probe", async () => {
+  const { server, port } = await listenProbeServer((request, response) => {
+    if (request.url === "/studio") {
+      response.writeHead(401);
+      response.end("auth required");
+      return;
+    }
+    response.writeHead(404);
+    response.end("root not found");
+  });
+
+  try {
+    const light = await probeOpenClawGateway(port, 500);
+    const deep = await probeOpenClawGatewayDeep({
+      port,
+      timeoutMs: 500,
+      controlUiBasePath: "/studio",
+    });
+
+    assert.equal(light, true);
+    assert.equal(deep.ok, true);
+    assert.equal(deep.connected, true);
+    assert.deepEqual(
+      deep.checks.map((check) => [check.path, check.ok, check.statusCode]),
+      [["/", true, 404], ["/studio", true, 401]],
+    );
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("gateway deep probe reports connected route failures without forcing process takeover", async () => {
+  const { server, port } = await listenProbeServer((request, response) => {
+    response.writeHead(request.url === "/studio" ? 404 : 200);
+    response.end("ok");
+  });
+
+  try {
+    const deep = await probeOpenClawGatewayDeep({
+      port,
+      timeoutMs: 500,
+      controlUiBasePath: "/studio",
+    });
+
+    assert.equal(deep.ok, false);
+    assert.equal(deep.connected, true);
+    assert.match(deep.error, /\/studio returned HTTP 404/);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("gateway service status parser detects service hosting repair cases", () => {
+  const healthy = parseOpenClawGatewayStatus(JSON.stringify({
+    service: {
+      loaded: true,
+      command: {
+        sourcePath: "/tmp/openclaw-gateway.service",
+        programArguments: ["node", "openclaw", "gateway", "--port", "31879"],
+      },
+      runtime: {
+        status: "running",
+        state: "active",
+        subState: "running",
+        pid: 1234,
+      },
+      configAudit: { ok: true, issues: [] },
+    },
+    gateway: { port: 31879 },
+    rpc: { ok: true },
+  }));
+  const failed = parseOpenClawGatewayStatus(JSON.stringify({
+    service: {
+      loaded: false,
+      command: {
+        sourcePath: "/tmp/missing-openclaw-gateway.service",
+        programArguments: ["node", "openclaw", "status"],
+      },
+      runtime: {
+        status: "failed",
+        state: "failed",
+        subState: "dead",
+        pid: null,
+      },
+      configAudit: {
+        ok: false,
+        issues: [{ message: "service args do not match config" }],
+      },
+    },
+    gateway: { port: 9999 },
+    rpc: { ok: false },
+  }));
+
+  assert.equal(
+    assessOpenClawGatewayServiceStatus(healthy, {
+      expectedPort: 31879,
+      sourcePathExists: true,
+    }).needsRepair,
+    false,
+  );
+
+  const assessment = assessOpenClawGatewayServiceStatus(failed, {
+    expectedPort: 31879,
+    sourcePathExists: false,
+  });
+  assert.equal(assessment.needsRepair, true);
+  assert.equal(assessment.shouldInstall, true);
+  assert.equal(assessment.shouldStart, true);
+  assert.ok(assessment.reasons.includes("service_not_loaded"));
+  assert.ok(assessment.reasons.includes("service_command_missing_gateway"));
+  assert.ok(assessment.reasons.includes("gateway_port_mismatch"));
 });
 
 test("recovery history and config backup lists are paginated", () => {

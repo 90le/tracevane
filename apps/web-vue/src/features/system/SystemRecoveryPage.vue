@@ -180,6 +180,14 @@
                 <span>{{ text('Gateway 进程接管', 'Gateway Takeover') }}</span>
                 <strong>{{ recovery.policy.allowGatewayProcessTakeover ? text('允许', 'Allowed') : text('禁用', 'Disabled') }}</strong>
               </div>
+              <div class="system-overview-item">
+                <span>{{ text('Gateway 服务托管', 'Gateway Service Repair') }}</span>
+                <strong>{{ recovery.policy.allowGatewayServiceRepair ? text('允许', 'Allowed') : text('禁用', 'Disabled') }}</strong>
+              </div>
+              <div class="system-overview-item">
+                <span>{{ text('服务修复超时', 'Service Repair Timeout') }}</span>
+                <strong>{{ formatDuration(recovery.policy.gatewayServiceRepairTimeoutMs) }}</strong>
+              </div>
             </div>
           </section>
 
@@ -355,6 +363,8 @@ function normalizeRecovery(payload: Record<string, any>): OpenClawRecoveryStatus
       maxBackups: Number(payload.policy?.maxBackups || 20),
       allowCliReinstall: payload.policy?.allowCliReinstall !== false,
       cliReinstallTimeoutMs: Number(payload.policy?.cliReinstallTimeoutMs || 300000),
+      allowGatewayServiceRepair: payload.policy?.allowGatewayServiceRepair !== false,
+      gatewayServiceRepairTimeoutMs: Number(payload.policy?.gatewayServiceRepairTimeoutMs || 30000),
       allowGatewayProcessTakeover: payload.policy?.allowGatewayProcessTakeover !== false,
       gatewayProcessTakeoverTimeoutMs: Number(payload.policy?.gatewayProcessTakeoverTimeoutMs || 5000),
     },

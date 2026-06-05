@@ -20,6 +20,8 @@
 - 修复历史和配置备份必须支持多条记录与分页浏览。
 - daemon 安装/启动时记录 CLI install manifest；当 `openclaw` 命令缺失时，可先恢复本地 shim，再按 manifest 受控执行 npm 全局重装。
 - Gateway restart 后仍不可达时，允许发现端口监听者；只有确认监听进程是 OpenClaw gateway 时才自动接管，非 OpenClaw 进程只记录并跳过。
+- Gateway 修复后必须做深探测：不只确认端口有响应，还要确认 Studio 控制 UI 路径不是 404/5xx。
+- Gateway 服务托管修复优先使用 `openclaw gateway status --json` 的状态判断，再调用 OpenClaw 自己的 `gateway install/start/restart`，不在 Studio 里硬编码 systemd/launchd/schtasks 细节。
 
 ## 2. 边界
 
@@ -28,7 +30,7 @@
 - `/api/system/diagnostics` 可保留为手动深诊断端点，但不能进入默认渲染、轮询或事件热路径。
 - System event 存储继续作为审计底座；事件视图只读持久事件，不合成 live diagnostics。
 - Dreaming API 暂不迁移，避免破坏现有页面。
-- npm 更新/重装只作为显式策略或人工动作，不作为默认静默修复。
+- npm 重装只按 recovery install manifest 受控恢复同一记录包，不做盲目 latest 更新。
 
 ## 3. 架构
 
@@ -56,6 +58,8 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 - 配置 prune 从 OpenClaw validation issue 动态获取路径，并保留插件/provider/channel 扩展域。
 - 插件层优先禁用有问题的 `plugins.entries.<id>`，或移除明显不存在的绝对 `plugins.load.paths`，不删除插件源码目录。
 - 安装层先做 CLI/update 状态检查；CLI 缺失时只根据 recovery manifest 恢复 shim 或重装同一记录包。
+- Gateway 复验使用深探测：端口不可达才进入进程接管；端口可达但控制 UI 路径失败时归类为服务/路由问题。
+- Gateway 服务托管层读取 `openclaw gateway status --json`，在服务未加载、失败、路径缺失、端口不匹配或 config audit 失败时使用 OpenClaw CLI 重建/启动服务。
 - 运行时发现层识别 gateway 端口监听者和进程命令行；接管仅限 `openclaw gateway` 残留进程。
 - 回滚层在修复后配置仍无效或修复流程异常时恢复本次修复前备份。
 - Recovery events/backups 支持分页 payload，同时保留旧数组响应兼容无分页调用。
@@ -65,6 +69,6 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 ## 5. 剩余工作
 
 - 在目标 Linux/macOS/Windows 环境做 supervisor install/start runtime smoke。
-- 增强运行时发现层：继续识别 OpenClaw gateway 启动方式、托管服务状态和非端口类启动冲突。
-- 根据真实故障样本扩展修复策略，继续强化安装损坏后的可控重装/更新兜底。
+- 根据真实故障样本继续扩展非端口类启动冲突和服务托管异常。
+- 用真实 CLI 缺失、包损坏和系统服务损坏样本验证受控重装/服务重建兜底。
 - 若本机 fallback 控制面变成正式用户工作流，再补发现入口和 token 展示 UX。

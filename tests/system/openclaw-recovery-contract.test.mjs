@@ -21,6 +21,8 @@ const serviceSource = read("apps/api/modules/openclaw-recovery/service.ts");
 const daemonSource = read("apps/api/modules/openclaw-recovery/daemon.ts");
 const cliBootstrapSource = read("apps/api/modules/openclaw-recovery/cli-bootstrap.ts");
 const gatewayRuntimeSource = read("apps/api/modules/openclaw-recovery/gateway-runtime.ts");
+const gatewayServiceSource = read("apps/api/modules/openclaw-recovery/gateway-service.ts");
+const probeSource = read("apps/api/modules/openclaw-recovery/probe.ts");
 const systemServiceSource = read("apps/api/modules/system/service.ts");
 const systemRoutesSource = read("apps/api/modules/system/routes.ts");
 const typesIndexSource = read("types/index.ts");
@@ -49,6 +51,9 @@ test("recovery daemon separates lightweight probes from heavy repair commands", 
   assert.match(cliBootstrapSource, /\["install", "-g", manifest\.packageSpec/);
   assert.match(gatewayRuntimeSource, /takeoverOpenClawGatewayListeners/);
   assert.match(gatewayRuntimeSource, /isOpenClawGatewayProcess/);
+  assert.match(gatewayServiceSource, /parseOpenClawGatewayStatus/);
+  assert.match(gatewayServiceSource, /assessOpenClawGatewayServiceStatus/);
+  assert.match(probeSource, /probeOpenClawGatewayDeep/);
   assert.match(daemonSource, /\/backups/);
   assert.match(daemonSource, /\/restore-backup/);
   assert.doesNotMatch(daemonSource, /openclaw", \["doctor"/);

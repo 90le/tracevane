@@ -56,6 +56,8 @@ test('recovery page owns daemon controls, events, and backups', () => {
   assert.match(systemRecoveryPage, /await refreshAll\(\);\s*recovery\.value = normalizeRecovery\(\{\s*\.\.\.recovery\.value,\s*service: response\.service,/);
   assert.match(systemRecoveryPage, /CLI 自动修复/);
   assert.match(systemRecoveryPage, /allowCliReinstall/);
+  assert.match(systemRecoveryPage, /Gateway 服务托管/);
+  assert.match(systemRecoveryPage, /allowGatewayServiceRepair/);
   assert.match(systemRecoveryPage, /Gateway 进程接管/);
   assert.match(systemRecoveryPage, /allowGatewayProcessTakeover/);
   assert.match(systemRecoveryPage, /Repair History/);
