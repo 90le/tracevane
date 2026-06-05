@@ -1,28 +1,22 @@
 {
   "sections": [
     "overview",
-    "release",
-    "gateway",
-    "bootstrap",
-    "diagnostics",
-    "environment"
+    "recovery",
+    "events"
   ],
   "frontendFiles": [
-    "apps/web-vue/src/features/system/SystemControlPage.vue"
+    "apps/web-vue/src/features/system/SystemControlPage.vue",
+    "apps/web-vue/src/features/system/SystemEventCenterPage.vue",
+    "apps/web-vue/src/features/system/SystemRecoveryPage.vue"
   ],
   "backendFiles": [
-    "apps/api/modules/system/bootstrap.ts",
-    "apps/api/modules/system/device-trust.ts",
-    "apps/api/modules/system/dreaming-shared.ts",
-    "apps/api/modules/system/routes.ts",
+    "apps/api/modules/openclaw-recovery/service.ts",
+    "apps/api/modules/system/event-summary.ts",
     "apps/api/modules/system/service.ts"
   ],
   "tests": [
-    "tests/system/bootstrap.test.mjs",
-    "tests/system/dashboard-service.test.mjs",
-    "tests/system/device-trust.test.mjs",
-    "tests/system/dreaming-config.test.mjs",
-    "tests/system/install-script-release-metadata.test.mjs",
+    "tests/system/openclaw-recovery-daemon.test.mjs",
+    "tests/system/system-event-summary.test.mjs",
     "tests/system/system-runtime-summary.test.mjs"
   ]
 }

@@ -8,6 +8,7 @@ export * from './dashboard.js';
 export * from './dreaming.js';
 export * from './files.js';
 export * from './model-gateway.js';
+export * from './openclaw-recovery.js';
 export * from './plugins.js';
 export * from './skills.js';
 export * from './system.js';

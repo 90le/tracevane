@@ -116,13 +116,16 @@ test("cached cron page does not apply stale summary or detail responses after le
   assert.match(cronControlPage, /onActivated\(activateCronPage\)/);
 });
 
-test("cached system page gates multi-panel refreshes to the active system route", () => {
-  assert.match(systemControlPage, /const isSystemRouteActive = computed/);
-  assert.match(systemControlPage, /route\.path === '\/system'/);
-  assert.match(systemControlPage, /async function refreshStudioReleasePanel[\s\S]*?if \(!isSystemRouteActive\.value\) return;[\s\S]*?fetchStudioRelease/);
-  assert.match(systemControlPage, /fetchSystemHealth\(\)[\s\S]*?if \(!isSystemRouteActive\.value\) return;[\s\S]*?health\.value = normalizeHealth/);
-  assert.match(systemControlPage, /fetchSystemDiagnostics\(\)[\s\S]*?if \(!isSystemRouteActive\.value\) return;[\s\S]*?diagnostics\.value = normalizeDiagnostics/);
-  assert.match(systemControlPage, /onActivated\(activateSystemPage\)/);
+test("system status page stays lightweight and avoids default diagnostics", () => {
+  assert.match(systemControlPage, /fetchSystemHealth/);
+  assert.match(systemControlPage, /fetchOpenClawRecoveryStatus/);
+  assert.match(systemControlPage, /fetchStudioUpgradeStatus/);
+  assert.match(systemControlPage, /router\.push\('\/system\/recovery'\)/);
+  assert.doesNotMatch(systemControlPage, /fetchStudioRelease/);
+  assert.doesNotMatch(systemControlPage, /fetchSystemDiagnostics/);
+  assert.doesNotMatch(systemControlPage, /normalizeDiagnostics/);
+  assert.doesNotMatch(systemControlPage, /diagnosticCommandItems/);
+  assert.doesNotMatch(systemControlPage, /openclaw doctor|openclaw status|gateway status/);
 });
 
 test("cached config page does not hydrate stale config summary after route changes", () => {

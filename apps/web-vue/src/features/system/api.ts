@@ -1,5 +1,15 @@
 import { requestJson } from "../../shared/api";
 import type {
+  OpenClawRecoveryBackupRecord,
+  OpenClawRecoveryDaemonServiceAction,
+  OpenClawRecoveryDaemonServiceResponse,
+  OpenClawRecoveryEventRecord,
+  OpenClawRecoveryRestoreBackupResponse,
+  OpenClawRecoveryRunRequest,
+  OpenClawRecoveryRunResponse,
+  OpenClawRecoveryStatusPayload,
+} from "../../../../../types/openclaw-recovery";
+import type {
   SystemBootstrapPayload,
   SystemBootstrapRepairResponse,
   SystemDiagnosticsPayload,
@@ -24,6 +34,60 @@ export function fetchSystemHealth(): Promise<SystemHealthPayload> {
 
 export function fetchSystemDiagnostics(): Promise<SystemDiagnosticsPayload> {
   return requestJson<SystemDiagnosticsPayload>("/api/system/diagnostics");
+}
+
+export function fetchOpenClawRecoveryStatus(): Promise<OpenClawRecoveryStatusPayload> {
+  return requestJson<OpenClawRecoveryStatusPayload>("/api/openclaw-recovery/status");
+}
+
+export function fetchOpenClawRecoveryEvents(): Promise<OpenClawRecoveryEventRecord[]> {
+  return requestJson<OpenClawRecoveryEventRecord[]>("/api/openclaw-recovery/events");
+}
+
+export function fetchOpenClawRecoveryBackups(): Promise<OpenClawRecoveryBackupRecord[]> {
+  return requestJson<OpenClawRecoveryBackupRecord[]>("/api/openclaw-recovery/backups");
+}
+
+export function runOpenClawRecovery(
+  payload: OpenClawRecoveryRunRequest = {},
+): Promise<OpenClawRecoveryRunResponse> {
+  return requestJson<OpenClawRecoveryRunResponse>("/api/openclaw-recovery/run", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function restoreOpenClawRecoveryBackup(
+  backupId: string,
+): Promise<OpenClawRecoveryRestoreBackupResponse> {
+  return requestJson<OpenClawRecoveryRestoreBackupResponse>(
+    "/api/openclaw-recovery/restore-backup",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ backupId }),
+    },
+  );
+}
+
+export function applyOpenClawRecoveryDaemonServiceAction(
+  action: OpenClawRecoveryDaemonServiceAction,
+): Promise<OpenClawRecoveryDaemonServiceResponse> {
+  return requestJson<OpenClawRecoveryDaemonServiceResponse>(
+    "/api/openclaw-recovery/daemon-service",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action, apply: true, runCommands: true }),
+    },
+  );
 }
 
 export function fetchSystemBootstrap(): Promise<SystemBootstrapPayload> {

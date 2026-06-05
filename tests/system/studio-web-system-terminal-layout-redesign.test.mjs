@@ -34,31 +34,24 @@ test("system and terminal pages keep dedicated surface contracts", () => {
   assert.match(systemControlPage, /system-health-strip/);
   assert.match(systemControlPage, /system-control-grid/);
   assert.match(systemControlPage, /system-main-stage/);
-  assert.match(systemControlPage, /system-raw-inspector/);
-  assert.match(systemControlPage, /class="system-stage-nav mobile-task-nav"/);
-  assert.match(systemControlPage, /taskNavItems/);
-  assert.match(systemControlPage, /activeTaskId/);
-  assert.match(systemControlPage, /\{\{ text\('系统诊断', 'System Diagnostics'\) \}\}/);
+  assert.match(systemControlPage, /fetchOpenClawRecoveryStatus/);
+  assert.match(systemControlPage, /\{\{ text\('系统状态', 'System Status'\) \}\}/);
   assert.doesNotMatch(systemControlPage, /system-stage-tabs|mobile-stage-tabs/);
   assert.doesNotMatch(systemControlPage, /诊断指挥台|Diagnostics Command|指挥台/);
   assert.doesNotMatch(systemControlPage, /const tabs|activeTab|SystemTab|tab\./);
   assert.match(systemControlPage, /system-action-list/);
   assert.match(systemControlPage, /system-action-row/);
-  assert.doesNotMatch(systemControlPage, /system-command-list|system-command-row|system-overview-command-panel/);
+  assert.doesNotMatch(systemControlPage, /system-command-list|system-command-row|system-overview-command-panel|system-raw-inspector/);
   assert.match(systemControlPage, /import '\.\/system-workspace\.css';/);
   assert.doesNotMatch(systemControlPage, /<style scoped>/);
-  assert.match(systemControlPage, /router\.push\('\/system\/events'\)/);
+  assert.match(systemControlPage, /router\.push\('\/system\/recovery'\)/);
   assert.match(
     systemControlPage,
-    /\{\{ text\('事件中心', 'Event Center'\) \}\}/,
+    /\{\{ text\('自愈守护进程', 'Recovery Daemon'\) \}\}/,
   );
   assert.match(
     systemControlPage,
-    /\{\{ text\('去终端', 'Open Terminal'\) \}\}/,
-  );
-  assert.match(
-    systemControlPage,
-    /\{\{ text\('去定时任务', 'Open Cron'\) \}\}/,
+    /\{\{ text\('维护终端', 'Terminal'\) \}\}/,
   );
   assert.match(
     systemWorkspaceCss,
@@ -106,8 +99,8 @@ test("system and terminal pages keep dedicated surface contracts", () => {
   assert.doesNotMatch(terminalConsolePage, /<style scoped>/);
 });
 
-test("system control tower and terminal workspace expressions stay explicit", () => {
-  assert.match(systemControlPage, /system-control-tower-surface/);
+test("system status and terminal workspace expressions stay explicit", () => {
+  assert.doesNotMatch(systemControlPage, /system-control-tower-surface/);
   assert.match(systemControlPage, /system-control-tower-rail/);
   assert.doesNotMatch(
     systemWorkspaceCss,
@@ -122,20 +115,13 @@ test("system control tower and terminal workspace expressions stay explicit", ()
   assert.doesNotMatch(terminalConsolePage, /terminal-workspace-glow/);
 });
 
-test("system refresh preserves action notices", () => {
+test("system refresh avoids diagnostics and recovery page handles actions", () => {
   assert.doesNotMatch(
     systemControlPage,
     /fetchSystemDiagnostics\(\)[\s\S]*notice\.value\s*=\s*null/,
   );
-  assert.match(systemControlPage, /interface RefreshAllOptions/);
-  assert.match(
-    systemControlPage,
-    /await refreshAll\(\{ preserveNotice: true \}\);/,
-  );
-  assert.match(
-    systemControlPage,
-    /async function refreshAll\(options: RefreshAllOptions = \{\}\): Promise<void> \{[\s\S]*if \(!options\.preserveNotice\) \{[\s\S]*errorMessage\.value = '';/,
-  );
+  assert.doesNotMatch(systemControlPage, /fetchSystemDiagnostics/);
+  assert.match(systemControlPage, /fetchOpenClawRecoveryStatus/);
 });
 
 test("terminal workspace uses integrated IDE shell with resource explorer", () => {

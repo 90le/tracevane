@@ -16,6 +16,7 @@ import { createDashboardService } from './modules/dashboard/service.js';
 import { createFilesService } from './modules/files/service.js';
 import { createGitService } from './modules/git/service.js';
 import { createModelGatewayService } from './modules/model-gateway/service.js';
+import { createOpenClawRecoveryService } from './modules/openclaw-recovery/service.js';
 import { createPluginsService } from './modules/plugins/service.js';
 import { createSkillsService } from './modules/skills/service.js';
 import { createSystemService } from './modules/system/service.js';
@@ -59,6 +60,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
   const files = createFilesService(options.config);
   const git = createGitService(options.config);
   const modelGateway = createModelGatewayService(options.config);
+  const openclawRecovery = createOpenClawRecoveryService(options.config);
 
   const services: StudioServices = {
     agents,
@@ -70,6 +72,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
     files,
     git,
     modelGateway,
+    openclawRecovery,
     plugins,
     skills,
     system,

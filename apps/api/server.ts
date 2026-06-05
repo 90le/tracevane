@@ -23,6 +23,7 @@ import { registerDashboardRoutes } from './modules/dashboard/routes.js';
 import { registerFilesRoutes } from './modules/files/routes.js';
 import { registerGitRoutes } from './modules/git/routes.js';
 import { registerModelGatewayRoutes } from './modules/model-gateway/routes.js';
+import { registerOpenClawRecoveryRoutes } from './modules/openclaw-recovery/routes.js';
 import { registerPluginsRoutes } from './modules/plugins/routes.js';
 import { registerSkillsRoutes } from './modules/skills/routes.js';
 import { registerSystemRoutes } from './modules/system/routes.js';
@@ -45,6 +46,7 @@ export function createStudioRouter(ctx: StudioApiContext): StudioRouter {
   registerChatRoutes(router, ctx);
   registerChannelsRoutes(router, ctx);
   registerModelGatewayRoutes(router);
+  registerOpenClawRecoveryRoutes(router);
   registerConfigRoutes(router, ctx);
   registerCronRoutes(router, ctx);
   registerPluginsRoutes(router, ctx);

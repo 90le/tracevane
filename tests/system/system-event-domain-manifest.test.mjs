@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const rootDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -19,11 +19,6 @@ const manifestFile = path.join(
   "system",
   "system-event-domain-manifest.ts",
 );
-const coverageScriptFile = path.join(
-  rootDir,
-  "scripts",
-  "studio-system-event-coverage.mjs",
-);
 const baselineFile = path.join(
   rootDir,
   "docs",
@@ -35,12 +30,34 @@ const packageJson = JSON.parse(
   fs.readFileSync(path.join(rootDir, "package.json"), "utf8"),
 );
 
-function runCoverageScript() {
-  const stdout = execFileSync(process.execPath, [coverageScriptFile], {
-    cwd: rootDir,
-    encoding: "utf8",
+function uniqueSorted(values) {
+  return [...new Set(values)].sort();
+}
+
+async function runCoverageScript() {
+  const manifestModuleSource = fs.readFileSync(manifestFile, "utf8");
+  const transpiledManifest = ts.transpileModule(manifestModuleSource, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: manifestFile,
   });
-  return JSON.parse(stdout);
+  const manifestModuleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(transpiledManifest.outputText)}`;
+  const manifestModule = await import(manifestModuleUrl);
+  const coverageSeed = manifestModule.SYSTEM_EVENT_COVERAGE_SEED;
+
+  assert.ok(Array.isArray(coverageSeed));
+  return {
+    sections: coverageSeed.map((entry) => entry.sectionKey),
+    eventSurfaces: uniqueSorted(coverageSeed.map((entry) => entry.eventSurface)),
+    frontendFiles: uniqueSorted(coverageSeed.map((entry) => entry.frontendFile)),
+    backendFiles: uniqueSorted(coverageSeed.map((entry) => entry.backendFile)),
+    tests: coverageSeed.map((entry) => ({
+      sectionKey: entry.sectionKey,
+      testFile: entry.testFile,
+    })),
+  };
 }
 
 test("system event manifest covers required sections", () => {
@@ -62,9 +79,9 @@ test("package scripts include studio system event coverage command", () => {
   );
 });
 
-test("system event coverage baseline matches generated inventory", () => {
+test("system event coverage baseline matches generated inventory", async () => {
   const baseline = JSON.parse(fs.readFileSync(baselineFile, "utf8"));
-  const payload = runCoverageScript();
+  const payload = await runCoverageScript();
 
   assert.deepEqual(payload, baseline);
   assert.ok(payload.sections.includes("summary"));

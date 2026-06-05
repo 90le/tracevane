@@ -1,10 +1,7 @@
 export type SystemRuntimeSectionKey =
   | "overview"
-  | "release"
-  | "gateway"
-  | "bootstrap"
-  | "diagnostics"
-  | "environment";
+  | "recovery"
+  | "events";
 
 export interface SystemRuntimeSectionEntry {
   key: SystemRuntimeSectionKey;
@@ -37,49 +34,22 @@ export const SYSTEM_RUNTIME_DOMAIN_MANIFEST: ReadonlyArray<SystemRuntimeSectionE
       testFile: "tests/system/system-runtime-summary.test.mjs",
     },
     {
-      key: "release",
-      label: "发布信息",
-      routePath: "/system",
-      runtimeSurface: "runtime-release",
-      frontendFile: "apps/web-vue/src/features/system/SystemControlPage.vue",
-      backendFile: "apps/api/modules/system/service.ts",
-      testFile: "tests/system/install-script-release-metadata.test.mjs",
+      key: "recovery",
+      label: "自愈",
+      routePath: "/system/recovery",
+      runtimeSurface: "runtime-recovery",
+      frontendFile: "apps/web-vue/src/features/system/SystemRecoveryPage.vue",
+      backendFile: "apps/api/modules/openclaw-recovery/service.ts",
+      testFile: "tests/system/openclaw-recovery-daemon.test.mjs",
     },
     {
-      key: "gateway",
-      label: "网关状态",
-      routePath: "/system",
-      runtimeSurface: "runtime-gateway",
-      frontendFile: "apps/web-vue/src/features/system/SystemControlPage.vue",
-      backendFile: "apps/api/modules/system/routes.ts",
-      testFile: "tests/system/dashboard-service.test.mjs",
-    },
-    {
-      key: "bootstrap",
-      label: "启动状态",
-      routePath: "/system",
-      runtimeSurface: "runtime-bootstrap",
-      frontendFile: "apps/web-vue/src/features/system/SystemControlPage.vue",
-      backendFile: "apps/api/modules/system/bootstrap.ts",
-      testFile: "tests/system/bootstrap.test.mjs",
-    },
-    {
-      key: "diagnostics",
-      label: "诊断",
-      routePath: "/system",
-      runtimeSurface: "runtime-diagnostics",
-      frontendFile: "apps/web-vue/src/features/system/SystemControlPage.vue",
-      backendFile: "apps/api/modules/system/device-trust.ts",
-      testFile: "tests/system/device-trust.test.mjs",
-    },
-    {
-      key: "environment",
-      label: "运行环境",
-      routePath: "/system",
-      runtimeSurface: "runtime-environment",
-      frontendFile: "apps/web-vue/src/features/system/SystemControlPage.vue",
-      backendFile: "apps/api/modules/system/dreaming-shared.ts",
-      testFile: "tests/system/dreaming-config.test.mjs",
+      key: "events",
+      label: "事件历史",
+      routePath: "/system/events",
+      runtimeSurface: "runtime-events",
+      frontendFile: "apps/web-vue/src/features/system/SystemEventCenterPage.vue",
+      backendFile: "apps/api/modules/system/event-summary.ts",
+      testFile: "tests/system/system-event-summary.test.mjs",
     },
   ];
 

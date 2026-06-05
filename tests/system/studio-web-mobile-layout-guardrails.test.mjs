@@ -46,11 +46,12 @@ test("mobile operate and system side areas use sheet, task-nav, drawer, or accor
   assert.match(agentsWorkspaceLayout, mobileDownshiftContract);
   assert.match(channelsWorkspaceLayout, mobileDownshiftContract);
   assert.match(cronControlPage, mobileDownshiftContract);
-  assert.match(systemControlPage, mobileDownshiftContract);
+  assert.match(systemControlPage, /system-control-grid/);
   assert.match(
     systemWorkspaceCss,
-    /@media \(max-width: 880px\) \{[\s\S]*\.system-stage-nav\.mobile-task-nav \{[\s\S]*overflow-x:\s*auto/,
+    /@media \(max-width: 1180px\) \{[\s\S]*\.system-control-grid \{[\s\S]*grid-template-columns:\s*1fr;/,
   );
+  assert.match(systemWorkspaceCss, /@media \(max-width: 880px\) \{[\s\S]*\.system-action-row \{[\s\S]*grid-template-columns:\s*28px minmax\(0, 1fr\);/);
 });
 
 test("operate mobile layouts keep drawer and tabs contracts", () => {

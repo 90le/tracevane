@@ -141,7 +141,8 @@ test("route manifest exposes /system/events shell route", () => {
   assert.match(manifest, /path:\s*"\/system\/events"/);
 });
 
-test("system control page has CTA entry to event center", () => {
+test("system control page demotes event center behind recovery", () => {
   const systemControlPage = fs.readFileSync(systemControlPagePath, "utf8");
-  assert.match(systemControlPage, /\/system\/events/);
+  assert.match(systemControlPage, /\/system\/recovery/);
+  assert.doesNotMatch(systemControlPage, /\/system\/events/);
 });

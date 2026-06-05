@@ -69,10 +69,8 @@ import {
 } from "./device-trust.js";
 import {
   buildSystemActionEvents,
-  buildSystemSnapshotDerivedEvents,
 } from "./event-normalizer.js";
-import { mergeSystemEventHistory } from "./event-reader.js";
-import { buildSystemEventSummaryCardsFromHistory } from "./event-summary.js";
+import { buildSystemEventSummaryCards } from "./event-summary.js";
 import { createSystemEventWriter } from "./event-writer.js";
 import { buildSystemRuntimeSummary } from "./runtime-summary.js";
 import { buildSystemTerminalActionSuggestions } from "./terminal-handoff.js";
@@ -1025,45 +1023,6 @@ export function createSystemService(
     systemEventWriter.persistActionEvent(event as any);
   }
 
-  function buildMergedEventList(params: {
-    limit: number;
-    diagnostics: Pick<
-      SystemDiagnosticsPayload,
-      "checkedAt" | "gateway" | "status"
-    >;
-    bootstrap: Pick<SystemBootstrapPayload, "checkedAt" | "ready">;
-    deviceTrust: Pick<SystemDeviceTrustPayload, "checkedAt" | "pending">;
-    studioRelease: Pick<
-      SystemStudioReleasePayload,
-      "checkedAt" | "currentVersion" | "latestVersion" | "updateAvailable"
-    >;
-  }): {
-    merged: SystemEventRecord[];
-    persistedEvents: SystemEventRecord[];
-    liveSnapshotEvents: SystemEventRecord[];
-  } {
-    const liveSnapshotEvents = buildSystemSnapshotDerivedEvents({
-      diagnostics: params.diagnostics,
-      bootstrap: params.bootstrap,
-      deviceTrust: params.deviceTrust,
-      studioRelease: params.studioRelease,
-    });
-
-    systemEventWriter.persistStateChanges(liveSnapshotEvents as any);
-    const persistedEvents = systemEventWriter.listPersistedEvents(params.limit);
-    const merged = mergeSystemEventHistory({
-      persistedEvents,
-      liveSnapshotEvents,
-      limit: params.limit,
-    });
-
-    return {
-      merged,
-      persistedEvents,
-      liveSnapshotEvents,
-    };
-  }
-
   return {
     async getDreaming(): Promise<DreamingSnapshotPayload> {
       return fetchDreamingSnapshot(config);
@@ -1266,21 +1225,22 @@ export function createSystemService(
 
     async getRuntimeSummary(): Promise<SystemRuntimeSummaryPayload> {
       const checkedAt = new Date().toISOString();
-      const [health, diagnostics, release, upgradeStatus, deviceTrust] =
+      const [health, bootstrap, upgradeStatus, deviceTrust] =
         await Promise.all([
           this.getHealth(),
-          this.getDiagnostics(),
-          this.getStudioRelease(),
+          this.getBootstrap(),
           this.getStudioUpgradeStatus(),
           this.getDeviceTrust(),
         ]);
+      const bootstrapPendingCount = bootstrap.checks.filter(
+        (check) => check.level !== "ok",
+      ).length;
       return buildSystemRuntimeSummary({
         checkedAt,
         gatewayConnected: health.gatewayConnected,
-        bootstrapPendingCount: diagnostics.status.bootstrapPendingCount,
-        updateLatestVersion:
-          release.latestVersion || diagnostics.status.updateLatestVersion,
-        updateAvailable: release.updateAvailable,
+        bootstrapPendingCount,
+        updateLatestVersion: "",
+        updateAvailable: false,
         studioUpgradeRunning: upgradeStatus.running,
         helperRepairPending: deviceTrust.helper.metadataRepairPending,
       });
@@ -1326,73 +1286,13 @@ export function createSystemService(
     },
 
     async listEvents(limit = 100): Promise<SystemEventRecord[]> {
-      const [diagnostics, bootstrap, deviceTrust, studioRelease] =
-        await Promise.all([
-          this.getDiagnostics(),
-          this.getBootstrap(),
-          this.getDeviceTrust(),
-          this.getStudioRelease(),
-        ]);
-      const { merged } = buildMergedEventList({
-        limit,
-        diagnostics: {
-          checkedAt: diagnostics.checkedAt,
-          gateway: diagnostics.gateway,
-          status: diagnostics.status,
-        },
-        bootstrap: {
-          checkedAt: bootstrap.checkedAt,
-          ready: bootstrap.ready,
-        },
-        deviceTrust: {
-          checkedAt: deviceTrust.checkedAt,
-          pending: deviceTrust.pending,
-        },
-        studioRelease: {
-          checkedAt: studioRelease.checkedAt,
-          currentVersion: studioRelease.currentVersion,
-          latestVersion: studioRelease.latestVersion,
-          updateAvailable: studioRelease.updateAvailable,
-        },
-      });
-      return merged;
+      return systemEventWriter.listPersistedEvents(limit);
     },
 
     async getEventSummary(limit = 100): Promise<SystemEventSummaryPayload> {
-      const [diagnostics, bootstrap, deviceTrust, studioRelease] =
-        await Promise.all([
-          this.getDiagnostics(),
-          this.getBootstrap(),
-          this.getDeviceTrust(),
-          this.getStudioRelease(),
-        ]);
-      const { persistedEvents, liveSnapshotEvents } = buildMergedEventList({
-        limit,
-        diagnostics: {
-          checkedAt: diagnostics.checkedAt,
-          gateway: diagnostics.gateway,
-          status: diagnostics.status,
-        },
-        bootstrap: {
-          checkedAt: bootstrap.checkedAt,
-          ready: bootstrap.ready,
-        },
-        deviceTrust: {
-          checkedAt: deviceTrust.checkedAt,
-          pending: deviceTrust.pending,
-        },
-        studioRelease: {
-          checkedAt: studioRelease.checkedAt,
-          currentVersion: studioRelease.currentVersion,
-          latestVersion: studioRelease.latestVersion,
-          updateAvailable: studioRelease.updateAvailable,
-        },
-      });
-      return buildSystemEventSummaryCardsFromHistory({
-        persistedEvents,
-        liveSnapshotEvents,
-        limit,
-      });
+      return buildSystemEventSummaryCards(
+        systemEventWriter.listPersistedEvents(limit),
+      );
     },
   };
 }

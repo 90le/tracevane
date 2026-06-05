@@ -49,6 +49,7 @@ test("manifest exports shell route records without context panel policy", () => 
     "/cron",
     "/dreaming",
     "/config",
+    "/system/recovery",
     "/system/events",
     "/system",
   ]) {

@@ -30,6 +30,8 @@ const ChannelPairingPage = () => import("../channels/ChannelPairingPage.vue");
 const ChannelBindingsPage = () => import("../channels/ChannelBindingsPage.vue");
 const SystemEventCenterPage = () =>
   import("../system/SystemEventCenterPage.vue");
+const SystemRecoveryPage = () =>
+  import("../system/SystemRecoveryPage.vue");
 
 export type ShellRouteMeta = {
   keepAlive?: boolean;
@@ -134,7 +136,7 @@ export const shellNavGroups: ShellNavGroup[] = [
         key: "system",
         to: "/system",
         icon: "system",
-        labelZh: "系统诊断",
+        labelZh: "系统",
         labelEn: "System",
       },
     ],
@@ -217,6 +219,7 @@ const coreRouteChunkLoaders: RouteChunkLoader[] = [
   CronView,
   ConfigView,
   SystemView,
+  SystemRecoveryPage,
   SystemEventCenterPage,
   DreamingView,
 ];
@@ -356,6 +359,10 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/system/events",
     component: SystemEventCenterPage,
+  },
+  {
+    path: "/system/recovery",
+    component: SystemRecoveryPage,
   },
   {
     path: "/system",

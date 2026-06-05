@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-04T10:21:42.312Z",
+  "generatedAt": "2026-06-05T03:39:49.576Z",
   "webRoutes": [
     "/",
     "/agents",
@@ -14,6 +14,7 @@
     "/skills",
     "/system",
     "/system/events",
+    "/system/recovery",
     "/terminal",
     "/terminal/:sessionId"
   ],
@@ -27,6 +28,7 @@
     "files",
     "git",
     "model-gateway",
+    "openclaw-recovery",
     "plugins",
     "skills",
     "system",
@@ -132,6 +134,8 @@
     "tests/system/http-content-disposition.test.mjs",
     "tests/system/install-script-release-metadata.test.mjs",
     "tests/system/model-gateway-service.test.mjs",
+    "tests/system/openclaw-recovery-contract.test.mjs",
+    "tests/system/openclaw-recovery-daemon.test.mjs",
     "tests/system/plugins-service.test.mjs",
     "tests/system/skills-service-lifecycle.test.mjs",
     "tests/system/studio-domain-inventory.test.mjs",
