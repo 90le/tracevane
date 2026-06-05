@@ -8,8 +8,9 @@
 
 - Studio Gateway 是后续唯一正式模型中转目标。
 - Codex Stack / CPA / Compact 旧功能面已停止演进。
-- 新 UI / API 需要重新以 Studio Gateway、Provider Center、App Connections、Runtime、Diagnostics 命名建设。
+- 新 UI / API 先做 Studio Gateway 服务与配置：daemon 状态/启停、provider 配置、secret、BigModel/GMN preset、smoke。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
+- Channel Connectors 后置；当前不实现 CC Bridge / Octo。
 - Gateway daemon 与 Channel daemon / CC Bridge 都必须独立守护；Studio / OpenClaw 挂掉后，CLI 模型请求和 IM 到 Codex/Gateway 的对话链路仍应保持运行。
 - 协议矩阵目标已固定：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 任意原生 provider 都必须对外暴露三类客户端协议。
 - 本地参考源码固定为 `/tmp/cc-switch-src`；只参考代理转换、SSE、tool/history、usage 映射。
@@ -91,6 +92,6 @@
 
 ## 下一步
 
-1. 先确认 Channel Connectors 的最小需求：Octo(dmwork) 优先级、CC Bridge supervisor 托管范围、Studio Chat/Agent 路由规则、会话映射和凭据模型。
-2. 新建 Studio Gateway 管理页和 App Connections，生成 Codex / Claude Code / OpenCode / OpenClaw 配置 preview 与 apply。
-3. 把 BigModel 与 GMN endpoint preset 写入后续 Provider Center，不靠 Gateway 默认猜版本号。
+1. 新建 Studio Gateway 服务与配置页面，覆盖 daemon 状态/启停、provider 配置、active provider、secret 写入、BigModel/GMN preset 和 smoke。
+2. 再做 App Connections：Codex / Claude Code / OpenCode / OpenClaw 配置 preview 与 apply。
+3. Channel Connectors / CC Bridge / Octo 等网关配置稳定后再启动。
