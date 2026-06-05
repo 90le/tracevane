@@ -151,6 +151,8 @@ export async function writeChatCompletionsSseFromResponsesSse(
   fallbackModel: string | null,
 ): Promise<StreamResult> {
   const state = createChatStreamState(fallbackModel);
+  const toolBlocks = new Map<number, ToolStreamBlock>();
+  const toolIndexByItemId = new Map<string, number>();
 
   await readSseEvents(upstreamBody, (event) => {
     if (event.done) {
@@ -171,9 +173,56 @@ export async function writeChatCompletionsSseFromResponsesSse(
       }
       return;
     }
+    if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
+      if (event.json.item.type === "function_call") {
+        const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
+        ensureChatStreamStart(state, res);
+        writeChatToolCallStart(state, res, tool);
+        state.finishReason = "tool_calls";
+      }
+      return;
+    }
+    if (event.event === "response.function_call_arguments.delta") {
+      const tool = ensureResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId);
+      const delta = stringOrNull(event.json.delta) || "";
+      if (delta) {
+        tool.inputJson += delta;
+        ensureChatStreamStart(state, res);
+        writeChatToolCallArguments(state, res, tool, delta);
+      }
+      state.finishReason = "tool_calls";
+      return;
+    }
+    if (event.event === "response.function_call_arguments.done") {
+      const tool = ensureResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId);
+      const remaining = remainingToolArgumentsDelta(tool, event.json.arguments);
+      if (remaining) {
+        tool.inputJson += remaining;
+        ensureChatStreamStart(state, res);
+        writeChatToolCallArguments(state, res, tool, remaining);
+      }
+      state.finishReason = "tool_calls";
+      return;
+    }
+    if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
+      if (event.json.item.type === "function_call") {
+        const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
+        const remaining = remainingToolArgumentsDelta(tool, event.json.item.arguments);
+        ensureChatStreamStart(state, res);
+        writeChatToolCallStart(state, res, tool);
+        if (remaining) {
+          tool.inputJson += remaining;
+          writeChatToolCallArguments(state, res, tool, remaining);
+        }
+        state.finishReason = "tool_calls";
+      }
+      return;
+    }
     if (event.event === "response.completed") {
       if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
+      emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
       state.finishReason = response.status === "incomplete" ? "length" : "stop";
+      if (toolBlocks.size > 0 && state.finishReason === "stop") state.finishReason = "tool_calls";
       finalizeChatStream(state, res);
     }
   });
@@ -197,6 +246,8 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     textBlockIndex: null as number | null,
     textBlockStopped: false,
     nextContentIndex: 0,
+    tools: new Map<number, ToolStreamBlock>(),
+    toolIndexByItemId: new Map<string, number>(),
     usage: { input_tokens: 0, output_tokens: 0 } as JsonRecord,
   };
 
@@ -219,9 +270,56 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
       }
       return;
     }
+    if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
+      if (event.json.item.type === "function_call") {
+        closeAnthropicTextBlock(state, res);
+        ensureAnthropicTextMessageStart(state, res);
+        const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
+        pushAnthropicToolDeltaFromResponses(state, res, tool, "");
+        state.stopReason = "tool_use";
+      }
+      return;
+    }
+    if (event.event === "response.function_call_arguments.delta") {
+      const tool = ensureResponsesToolBlock(event.json, null, state.tools, state.toolIndexByItemId);
+      const delta = stringOrNull(event.json.delta) || "";
+      if (delta) {
+        closeAnthropicTextBlock(state, res);
+        ensureAnthropicTextMessageStart(state, res);
+        pushAnthropicToolDeltaFromResponses(state, res, tool, delta);
+      }
+      state.stopReason = "tool_use";
+      return;
+    }
+    if (event.event === "response.function_call_arguments.done") {
+      const tool = ensureResponsesToolBlock(event.json, null, state.tools, state.toolIndexByItemId);
+      const remaining = remainingToolArgumentsDelta(tool, event.json.arguments);
+      if (remaining) {
+        closeAnthropicTextBlock(state, res);
+        ensureAnthropicTextMessageStart(state, res);
+        pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
+      }
+      stopAnthropicToolBlock(res, tool);
+      state.stopReason = "tool_use";
+      return;
+    }
+    if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
+      if (event.json.item.type === "function_call") {
+        closeAnthropicTextBlock(state, res);
+        ensureAnthropicTextMessageStart(state, res);
+        const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
+        const remaining = remainingToolArgumentsDelta(tool, event.json.item.arguments);
+        pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
+        stopAnthropicToolBlock(res, tool);
+        state.stopReason = "tool_use";
+      }
+      return;
+    }
     if (event.event === "response.completed") {
       if (isRecord(response.usage)) state.usage = mapResponsesUsageToAnthropic(response.usage);
+      emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
       state.stopReason = response.status === "incomplete" ? "max_tokens" : "end_turn";
+      if (state.tools.size > 0 && state.stopReason === "end_turn") state.stopReason = "tool_use";
       finalizeAnthropicTextStream(state, res);
     }
   });
@@ -830,6 +928,140 @@ function ensureToolBlock(
   if (patch.id) block.id = patch.id;
   if (patch.name) block.name = patch.name;
   return block;
+}
+
+function ensureResponsesToolBlock(
+  payload: JsonRecord,
+  item: JsonRecord | null,
+  blocks: Map<number, ToolStreamBlock>,
+  itemIdToIndex: Map<string, number>,
+): ToolStreamBlock {
+  const itemId = stringOrNull(item?.id) || stringOrNull(payload.item_id);
+  const sourceIndex = itemId && itemIdToIndex.has(itemId)
+    ? itemIdToIndex.get(itemId)!
+    : numberOrNull(payload.output_index) ?? blocks.size;
+  const callId = stringOrNull(item?.call_id) || stringOrNull(item?.id) || stringOrNull(payload.call_id) || itemId || undefined;
+  const name = stringOrNull(item?.name) || stringOrNull(payload.name) || undefined;
+  const tool = ensureToolBlock(blocks, sourceIndex, { id: callId, name });
+  if (itemId) itemIdToIndex.set(itemId, sourceIndex);
+  return tool;
+}
+
+function remainingToolArgumentsDelta(tool: ToolStreamBlock, argumentsValue: unknown): string {
+  if (typeof argumentsValue !== "string" || !argumentsValue) return "";
+  if (!tool.inputJson) return argumentsValue;
+  if (argumentsValue.startsWith(tool.inputJson)) return argumentsValue.slice(tool.inputJson.length);
+  if (tool.inputJson === argumentsValue) return "";
+  return "";
+}
+
+function emitMissingChatToolCallsFromResponsesOutput(
+  state: ReturnType<typeof createChatStreamState>,
+  res: http.ServerResponse,
+  output: unknown,
+  blocks: Map<number, ToolStreamBlock>,
+  itemIdToIndex: Map<string, number>,
+): void {
+  if (!Array.isArray(output)) return;
+  for (let index = 0; index < output.length; index += 1) {
+    const item = output[index];
+    if (!isRecord(item) || item.type !== "function_call") continue;
+    const tool = ensureResponsesToolBlock({ output_index: index }, item, blocks, itemIdToIndex);
+    const remaining = remainingToolArgumentsDelta(tool, item.arguments);
+    ensureChatStreamStart(state, res);
+    writeChatToolCallStart(state, res, tool);
+    if (remaining) {
+      tool.inputJson += remaining;
+      writeChatToolCallArguments(state, res, tool, remaining);
+    }
+  }
+}
+
+function emitMissingAnthropicToolUsesFromResponsesOutput(
+  state: {
+    nextContentIndex: number;
+    tools: Map<number, ToolStreamBlock>;
+    toolIndexByItemId: Map<string, number>;
+    stopReason: string;
+    textBlockIndex: number | null;
+    textBlockStopped: boolean;
+  },
+  res: http.ServerResponse,
+  output: unknown,
+): void {
+  if (!Array.isArray(output)) return;
+  for (let index = 0; index < output.length; index += 1) {
+    const item = output[index];
+    if (!isRecord(item) || item.type !== "function_call") continue;
+    closeAnthropicTextBlock(state, res);
+    const tool = ensureResponsesToolBlock({ output_index: index }, item, state.tools, state.toolIndexByItemId);
+    const remaining = remainingToolArgumentsDelta(tool, item.arguments);
+    pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
+    stopAnthropicToolBlock(res, tool);
+    state.stopReason = "tool_use";
+  }
+}
+
+function pushAnthropicToolDeltaFromResponses(
+  state: {
+    nextContentIndex: number;
+    tools: Map<number, ToolStreamBlock>;
+  },
+  res: http.ServerResponse,
+  tool: ToolStreamBlock,
+  argumentsDelta: string,
+): void {
+  if (!tool.started) {
+    tool.index = state.nextContentIndex;
+    state.nextContentIndex += 1;
+    tool.started = true;
+    writeSseEvent(res, "content_block_start", {
+      type: "content_block_start",
+      index: tool.index,
+      content_block: {
+        type: "tool_use",
+        id: tool.id,
+        name: tool.name,
+        input: {},
+      },
+    });
+  }
+  if (argumentsDelta) {
+    tool.inputJson += argumentsDelta;
+    writeSseEvent(res, "content_block_delta", {
+      type: "content_block_delta",
+      index: tool.index,
+      delta: {
+        type: "input_json_delta",
+        partial_json: argumentsDelta,
+      },
+    });
+  }
+}
+
+function closeAnthropicTextBlock(
+  state: {
+    textBlockIndex: number | null;
+    textBlockStopped: boolean;
+  },
+  res: http.ServerResponse,
+): void {
+  if (state.textBlockIndex === null || state.textBlockStopped) return;
+  writeSseEvent(res, "content_block_stop", {
+    type: "content_block_stop",
+    index: state.textBlockIndex,
+  });
+  state.textBlockIndex = null;
+  state.textBlockStopped = false;
+}
+
+function stopAnthropicToolBlock(res: http.ServerResponse, tool: ToolStreamBlock): void {
+  if (!tool.started || tool.stopped) return;
+  writeSseEvent(res, "content_block_stop", {
+    type: "content_block_stop",
+    index: tool.index,
+  });
+  tool.stopped = true;
 }
 
 function writeSseEvent(res: http.ServerResponse, event: string, payload: JsonRecord): void {

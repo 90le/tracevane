@@ -180,10 +180,11 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
   }
 
   const items: JsonRecord[] = [];
-  const content = chatContentToText(message.content);
-  if (content || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
+  const role = message.role === "assistant" ? "assistant" : "user";
+  const content = chatContentToResponsesContent(message.content, role);
+  if (content.length || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
     items.push({
-      role: message.role === "assistant" ? "assistant" : "user",
+      role,
       content,
     });
   }
@@ -195,6 +196,37 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
     }
   }
   return items;
+}
+
+function chatContentToResponsesContent(content: unknown, role: string): JsonRecord[] {
+  const textType = role === "assistant" ? "output_text" : "input_text";
+  if (typeof content === "string") return [{ type: textType, text: content }];
+  if (content === null || content === undefined) return [];
+  if (!Array.isArray(content)) {
+    const text = chatContentToText(content);
+    return text ? [{ type: textType, text }] : [];
+  }
+
+  const parts: JsonRecord[] = [];
+  for (const part of content) {
+    if (typeof part === "string") {
+      parts.push({ type: textType, text: part });
+      continue;
+    }
+    if (!isRecord(part)) continue;
+    const type = stringOrNull(part.type);
+    if (type === "image_url" && role !== "assistant" && isRecord(part.image_url)) {
+      const imageUrl = stringOrNull(part.image_url.url);
+      if (imageUrl) parts.push({ type: "input_image", image_url: imageUrl });
+      continue;
+    }
+    const text = stringOrNull(part.text)
+      || stringOrNull(part.input_text)
+      || stringOrNull(part.output_text)
+      || stringOrNull(part.refusal);
+    if (text) parts.push({ type: textType, text });
+  }
+  return parts;
 }
 
 function mapChatToolsToResponses(tools: unknown): JsonRecord[] {

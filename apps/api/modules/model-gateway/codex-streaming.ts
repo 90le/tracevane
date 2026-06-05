@@ -12,8 +12,18 @@ interface TextState {
   added: boolean;
   done: boolean;
   itemId: string;
-  outputIndex: number;
+  outputIndex: number | null;
   text: string;
+}
+
+interface FunctionCallState {
+  added: boolean;
+  done: boolean;
+  itemId: string;
+  outputIndex: number;
+  callId: string;
+  name: string;
+  arguments: string;
 }
 
 interface StreamingState {
@@ -24,7 +34,9 @@ interface StreamingState {
   createdAt: number;
   finishReason: string | null;
   usage: JsonRecord | null;
+  nextOutputIndex: number;
   text: TextState;
+  functionCalls: Map<number, FunctionCallState>;
 }
 
 export async function writeCodexResponsesSseFromChatSse(
@@ -68,13 +80,15 @@ function createStreamingState(fallbackModel: string | null): StreamingState {
     createdAt: Math.floor(Date.now() / 1_000),
     finishReason: null,
     usage: null,
+    nextOutputIndex: 0,
     text: {
       added: false,
       done: false,
       itemId: `${responseId}_msg`,
-      outputIndex: 0,
+      outputIndex: null,
       text: "",
     },
+    functionCalls: new Map(),
   };
 }
 
@@ -133,6 +147,11 @@ function handleChatChunk(chunk: JsonRecord, state: StreamingState, res: http.Ser
   const delta = isRecord(choice.delta) ? choice.delta : {};
   const content = stringOrNull(delta.content);
   if (content) pushTextDelta(content, state, res);
+  if (Array.isArray(delta.tool_calls)) {
+    for (const toolCallDelta of delta.tool_calls) {
+      pushFunctionCallDelta(toolCallDelta, state, res);
+    }
+  }
   const finishReason = stringOrNull(choice.finish_reason);
   if (finishReason) state.finishReason = finishReason;
 }
@@ -153,6 +172,8 @@ function ensureResponseStarted(state: StreamingState, res: http.ServerResponse):
 function pushTextDelta(delta: string, state: StreamingState, res: http.ServerResponse): void {
   if (!state.text.added) {
     state.text.added = true;
+    state.text.outputIndex = state.nextOutputIndex;
+    state.nextOutputIndex += 1;
     writeSseEvent(res, "response.output_item.added", {
       type: "response.output_item.added",
       output_index: state.text.outputIndex,
@@ -187,12 +208,75 @@ function pushTextDelta(delta: string, state: StreamingState, res: http.ServerRes
   });
 }
 
+function pushFunctionCallDelta(toolCallDelta: unknown, state: StreamingState, res: http.ServerResponse): void {
+  if (!isRecord(toolCallDelta)) return;
+  const sourceIndex = numberOrNull(toolCallDelta.index) ?? state.functionCalls.size;
+  const fn = isRecord(toolCallDelta.function) ? toolCallDelta.function : {};
+  const tool = ensureFunctionCall(sourceIndex, state, {
+    id: stringOrNull(toolCallDelta.id) || undefined,
+    name: stringOrNull(fn.name) || undefined,
+  });
+  ensureFunctionCallAdded(tool, res);
+
+  const argumentsDelta = typeof fn.arguments === "string" ? fn.arguments : "";
+  if (argumentsDelta) {
+    tool.arguments += argumentsDelta;
+    writeSseEvent(res, "response.function_call_arguments.delta", {
+      type: "response.function_call_arguments.delta",
+      item_id: tool.itemId,
+      output_index: tool.outputIndex,
+      delta: argumentsDelta,
+    });
+  }
+}
+
+function ensureFunctionCall(
+  sourceIndex: number,
+  state: StreamingState,
+  patch: { id?: string; name?: string },
+): FunctionCallState {
+  let tool = state.functionCalls.get(sourceIndex);
+  if (!tool) {
+    const callId = patch.id || `call_${Date.now().toString(36)}_${sourceIndex}`;
+    tool = {
+      added: false,
+      done: false,
+      itemId: `fc_${callId}`,
+      outputIndex: state.nextOutputIndex,
+      callId,
+      name: patch.name || "tool",
+      arguments: "",
+    };
+    state.nextOutputIndex += 1;
+    state.functionCalls.set(sourceIndex, tool);
+    return tool;
+  }
+  if (patch.id) {
+    tool.callId = patch.id;
+    tool.itemId = `fc_${patch.id}`;
+  }
+  if (patch.name) tool.name = patch.name;
+  return tool;
+}
+
+function ensureFunctionCallAdded(tool: FunctionCallState, res: http.ServerResponse): void {
+  if (tool.added) return;
+  tool.added = true;
+  writeSseEvent(res, "response.output_item.added", {
+    type: "response.output_item.added",
+    output_index: tool.outputIndex,
+    item: functionCallItem(tool, "in_progress"),
+  });
+}
+
 function finalizeResponse(state: StreamingState, res: http.ServerResponse): void {
   if (state.completed) return;
   ensureResponseStarted(state, res);
   const output: JsonRecord[] = [];
 
   if (state.text.added && !state.text.done) {
+    const outputIndex = state.text.outputIndex ?? state.nextOutputIndex;
+    state.text.outputIndex = outputIndex;
     const item = {
       id: state.text.itemId,
       type: "message",
@@ -209,33 +293,74 @@ function finalizeResponse(state: StreamingState, res: http.ServerResponse): void
     writeSseEvent(res, "response.output_text.done", {
       type: "response.output_text.done",
       item_id: state.text.itemId,
-      output_index: state.text.outputIndex,
+      output_index: outputIndex,
       content_index: 0,
       text: state.text.text,
     });
     writeSseEvent(res, "response.content_part.done", {
       type: "response.content_part.done",
       item_id: state.text.itemId,
-      output_index: state.text.outputIndex,
+      output_index: outputIndex,
       content_index: 0,
       part: item.content[0],
     });
     writeSseEvent(res, "response.output_item.done", {
       type: "response.output_item.done",
-      output_index: state.text.outputIndex,
+      output_index: outputIndex,
       item,
     });
   }
 
+  for (const tool of [...state.functionCalls.values()].sort((a, b) => a.outputIndex - b.outputIndex)) {
+    ensureFunctionCallAdded(tool, res);
+    if (!tool.done) {
+      writeSseEvent(res, "response.function_call_arguments.done", {
+        type: "response.function_call_arguments.done",
+        item_id: tool.itemId,
+        output_index: tool.outputIndex,
+        arguments: tool.arguments || "{}",
+      });
+      writeSseEvent(res, "response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: tool.outputIndex,
+        item: functionCallItem(tool, "completed"),
+      });
+      tool.done = true;
+    }
+    output.push(functionCallItem(tool, "completed"));
+  }
+
+  output.sort((a, b) => {
+    const aIndex = a.type === "function_call"
+      ? [...state.functionCalls.values()].find((tool) => tool.itemId === a.id)?.outputIndex ?? 0
+      : state.text.outputIndex ?? 0;
+    const bIndex = b.type === "function_call"
+      ? [...state.functionCalls.values()].find((tool) => tool.itemId === b.id)?.outputIndex ?? 0
+      : state.text.outputIndex ?? 0;
+    return aIndex - bIndex;
+  });
+
   const status = state.finishReason === "length" ? "incomplete" : "completed";
   const response = baseResponse(state, status, output);
   if (status === "incomplete") response.incomplete_details = { reason: "max_output_tokens" };
+  response.usage = normalizeResponsesUsage(state.usage);
   writeSseEvent(res, "response.completed", {
     type: "response.completed",
     response,
   });
   res.write("data: [DONE]\n\n");
   state.completed = true;
+}
+
+function functionCallItem(tool: FunctionCallState, status: string): JsonRecord {
+  return {
+    id: tool.itemId,
+    type: "function_call",
+    status,
+    call_id: tool.callId,
+    name: tool.name,
+    arguments: tool.arguments || "{}",
+  };
 }
 
 function baseResponse(state: StreamingState, status: string, output: JsonRecord[]): JsonRecord {
@@ -278,6 +403,22 @@ function mapChatUsageToResponses(usage: JsonRecord): JsonRecord {
     output_tokens_details: isRecord(usage.output_tokens_details)
       ? usage.output_tokens_details
       : { reasoning_tokens: numberOrNull(completionDetails.reasoning_tokens) || 0 },
+  };
+}
+
+function normalizeResponsesUsage(usage: JsonRecord | null): JsonRecord {
+  const inputTokens = numberOrNull(usage?.input_tokens) ?? 0;
+  const outputTokens = numberOrNull(usage?.output_tokens) ?? 0;
+  return {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: numberOrNull(usage?.total_tokens) ?? inputTokens + outputTokens,
+    input_tokens_details: isRecord(usage?.input_tokens_details)
+      ? usage.input_tokens_details
+      : { cached_tokens: 0 },
+    output_tokens_details: isRecord(usage?.output_tokens_details)
+      ? usage.output_tokens_details
+      : { reasoning_tokens: 0 },
   };
 }
 

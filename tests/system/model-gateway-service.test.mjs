@@ -1536,8 +1536,8 @@ test("model gateway protocol matrix forwards native openai responses and guards 
   assert.deepEqual(JSON.parse(upstreamCalls[2].body), {
     model: "gpt-native-responses",
     input: [
-      { role: "user", content: "chat please" },
-      { role: "assistant", content: "I will save a note." },
+      { role: "user", content: [{ type: "input_text", text: "chat please" }] },
+      { role: "assistant", content: [{ type: "output_text", text: "I will save a note." }] },
       {
         type: "function_call",
         id: "call_note",
@@ -1572,14 +1572,14 @@ test("model gateway protocol matrix forwards native openai responses and guards 
   assert.equal(upstreamCalls[3].authorization, "Bearer sk-native-responses-secret");
   assert.deepEqual(JSON.parse(upstreamCalls[3].body), {
     model: "gpt-native-responses",
-    input: [{ role: "user", content: "stream please" }],
+    input: [{ role: "user", content: [{ type: "input_text", text: "stream please" }] }],
     stream: true,
   });
   assert.equal(upstreamCalls[4].url, "https://responses-native.example.test/v1/responses");
   assert.equal(upstreamCalls[4].authorization, "Bearer sk-native-responses-secret");
   assert.deepEqual(JSON.parse(upstreamCalls[4].body), {
     model: "gpt-native-responses",
-    input: [{ role: "user", content: "anthropic please" }],
+    input: [{ role: "user", content: [{ type: "input_text", text: "anthropic please" }] }],
     stream: false,
     max_output_tokens: 32,
   });
@@ -1587,7 +1587,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
   assert.equal(upstreamCalls[5].authorization, "Bearer sk-native-responses-secret");
   assert.deepEqual(JSON.parse(upstreamCalls[5].body), {
     model: "gpt-native-responses",
-    input: [{ role: "user", content: "anthropic stream please" }],
+    input: [{ role: "user", content: [{ type: "input_text", text: "anthropic stream please" }] }],
     stream: true,
     max_output_tokens: 32,
   });
@@ -2645,6 +2645,258 @@ test("model gateway adapts streaming chat sse to codex responses sse", async () 
     messages: [{ role: "user", content: "Say hello." }],
     stream: true,
   });
+});
+
+test("model gateway adapts streaming chat tool calls to codex responses sse", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-tool-stream-adapter",
+      name: "Codex Tool Stream Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-tool-stream.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-tool-stream-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    const upstreamSse = [
+      "data: {\"id\":\"chatcmpl_tool_stream\",\"created\":1710000022,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_tool_stream\",\"created\":1710000022,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_lookup\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"query\\\":\"}}]}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_tool_stream\",\"created\":1710000022,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"docs\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":3,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":2}}}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const streamed = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          input: "Use a tool.",
+          stream: true,
+        },
+      });
+
+      assert.equal(streamed.status, 200);
+      assert.match(streamed.headers["content-type"], /text\/event-stream/);
+      const events = parseSseEvents(streamed.body);
+      assert.deepEqual(events.map((item) => item.event), [
+        "response.created",
+        "response.in_progress",
+        "response.output_item.added",
+        "response.function_call_arguments.delta",
+        "response.function_call_arguments.delta",
+        "response.function_call_arguments.done",
+        "response.output_item.done",
+        "response.completed",
+        null,
+      ]);
+      assert.equal(events[2].data.item.type, "function_call");
+      assert.equal(events[2].data.item.call_id, "call_lookup");
+      assert.equal(events[2].data.item.name, "lookup");
+      assert.equal(events[3].data.delta, "{\"query\":");
+      assert.equal(events[4].data.delta, "\"docs\"}");
+      assert.equal(events[5].data.arguments, "{\"query\":\"docs\"}");
+      assert.deepEqual(events[6].data.item, {
+        id: "fc_call_lookup",
+        type: "function_call",
+        status: "completed",
+        call_id: "call_lookup",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      });
+      const completed = events.find((item) => item.event === "response.completed").data.response;
+      assert.equal(completed.status, "completed");
+      assert.deepEqual(completed.output, [{
+        id: "fc_call_lookup",
+        type: "function_call",
+        status: "completed",
+        call_id: "call_lookup",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      }]);
+      assert.deepEqual(completed.usage, {
+        input_tokens: 8,
+        output_tokens: 3,
+        total_tokens: 11,
+        input_tokens_details: { cached_tokens: 2 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      });
+      assert.equal(events[8].data, "[DONE]");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://codex-tool-stream.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-codex-tool-stream-secret");
+});
+
+test("model gateway adapts streaming responses tool calls to chat and anthropic sse", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-tool-stream-adapter",
+      name: "Responses Tool Stream Adapter",
+      appScopes: ["openclaw", "claude-code"],
+      baseUrl: "https://responses-tool-stream.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-tool-stream-secret",
+    },
+    setActiveScopes: ["openclaw", "claude-code"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    const responseId = upstreamCalls.length === 1 ? "resp_tool_chat" : "resp_tool_anthropic";
+    const upstreamSse = [
+      "event: response.created",
+      `data: {"type":"response.created","response":{"id":"${responseId}","object":"response","status":"in_progress","model":"gpt-responses","output":[],"usage":{"input_tokens":6,"output_tokens":0}}}`,
+      "",
+      "event: response.output_item.added",
+      "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc_call_lookup\",\"type\":\"function_call\",\"status\":\"in_progress\",\"call_id\":\"call_lookup\",\"name\":\"lookup\",\"arguments\":\"\"}}",
+      "",
+      "event: response.function_call_arguments.delta",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_call_lookup\",\"output_index\":0,\"delta\":\"{\\\"query\\\":\"}",
+      "",
+      "event: response.function_call_arguments.delta",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_call_lookup\",\"output_index\":0,\"delta\":\"\\\"docs\\\"}\"}",
+      "",
+      "event: response.function_call_arguments.done",
+      "data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_call_lookup\",\"output_index\":0,\"arguments\":\"{\\\"query\\\":\\\"docs\\\"}\"}",
+      "",
+      "event: response.output_item.done",
+      "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"fc_call_lookup\",\"type\":\"function_call\",\"status\":\"completed\",\"call_id\":\"call_lookup\",\"name\":\"lookup\",\"arguments\":\"{\\\"query\\\":\\\"docs\\\"}\"}}",
+      "",
+      "event: response.completed",
+      `data: {"type":"response.completed","response":{"id":"${responseId}","object":"response","status":"completed","model":"gpt-responses","output":[{"id":"fc_call_lookup","type":"function_call","status":"completed","call_id":"call_lookup","name":"lookup","arguments":"{\\\"query\\\":\\\"docs\\\"}"}],"usage":{"input_tokens":6,"output_tokens":2,"total_tokens":8,"input_tokens_details":{"cached_tokens":1}}}}`,
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-responses",
+          stream: true,
+          messages: [{ role: "user", content: "tool please" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      const chatEvents = parseSseEvents(chat.body);
+      assert.equal(chatEvents[0].data.choices[0].delta.role, "assistant");
+      assert.deepEqual(chatEvents[1].data.choices[0].delta.tool_calls, [{
+        index: 0,
+        id: "call_lookup",
+        type: "function",
+        function: { name: "lookup", arguments: "" },
+      }]);
+      assert.deepEqual(chatEvents[2].data.choices[0].delta.tool_calls, [{
+        index: 0,
+        function: { arguments: "{\"query\":" },
+      }]);
+      assert.deepEqual(chatEvents[3].data.choices[0].delta.tool_calls, [{
+        index: 0,
+        function: { arguments: "\"docs\"}" },
+      }]);
+      assert.equal(chatEvents[4].data.choices[0].finish_reason, "tool_calls");
+      assert.deepEqual(chatEvents[4].data.usage, {
+        prompt_tokens: 6,
+        completion_tokens: 2,
+        total_tokens: 8,
+      });
+      assert.equal(chatEvents[5].data, "[DONE]");
+
+      const anthropic = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-responses",
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "tool please" }],
+        },
+      });
+      assert.equal(anthropic.status, 200);
+      const anthropicEvents = parseSseEvents(anthropic.body);
+      assert.deepEqual(anthropicEvents.map((item) => item.event), [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop",
+      ]);
+      assert.deepEqual(anthropicEvents[1].data.content_block, {
+        type: "tool_use",
+        id: "call_lookup",
+        name: "lookup",
+        input: {},
+      });
+      assert.equal(anthropicEvents[2].data.delta.partial_json, "{\"query\":");
+      assert.equal(anthropicEvents[3].data.delta.partial_json, "\"docs\"}");
+      assert.equal(anthropicEvents[5].data.delta.stop_reason, "tool_use");
+      assert.deepEqual(anthropicEvents[5].data.usage, { output_tokens: 2 });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-tool-stream.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-tool-stream-secret");
+  assert.equal(upstreamCalls[1].url, "https://responses-tool-stream.example.test/v1/responses");
 });
 
 test("model gateway adapts codex compact requests through openai chat providers", async () => {
