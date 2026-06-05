@@ -17,6 +17,7 @@
 - 保留插件 config、provider params、channel 扩展字段和用户插件源码目录。
 - 默认救援路径是静默自动修复，不要求单口远程用户打开第二个维护端口、SSH 或终端。
 - 自愈能力要逐步覆盖配置、进程、端口、服务托管、依赖完整性和安装损坏，优先复用 OpenClaw CLI 的 status/doctor/validate/fix 结果。
+- 修复历史和配置备份必须支持多条记录与分页浏览。
 
 ## 2. 边界
 
@@ -51,6 +52,10 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 - 修复流程有单飞锁和 cooldown。
 - 修复前创建配置备份。
 - 配置 prune 从 OpenClaw validation issue 动态获取路径，并保留插件/provider/channel 扩展域。
+- 插件层优先禁用有问题的 `plugins.entries.<id>`，或移除明显不存在的绝对 `plugins.load.paths`，不删除插件源码目录。
+- 安装层做只读 CLI/update 状态检查；默认不静默升级或重装。
+- 回滚层在修复后配置仍无效或修复流程异常时恢复本次修复前备份。
+- Recovery events/backups 支持分页 payload，同时保留旧数组响应兼容无分页调用。
 - recovery 事件写入 recovery jsonl，并同步进入 system event center。
 - Studio 可以管理 daemon 服务，但 daemon 修复不依赖 Studio 存活。
 
@@ -58,5 +63,5 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 
 - 在目标 Linux/macOS/Windows 环境做 supervisor install/start runtime smoke。
 - 增加运行时发现层：识别 OpenClaw gateway 启动方式、托管服务、端口占用、残留进程和冲突进程。
-- 根据真实故障样本扩展修复策略，覆盖配置以外的启动、依赖和安装损坏场景。
+- 根据真实故障样本扩展修复策略，继续强化安装损坏后的可控重装/更新兜底。
 - 若本机 fallback 控制面变成正式用户工作流，再补发现入口和 token 展示 UX。

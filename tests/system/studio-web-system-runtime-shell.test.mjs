@@ -39,8 +39,12 @@ test('recovery page owns daemon controls, events, and backups', () => {
   assert.match(systemRecoveryPage, /OpenClaw 自愈/);
   assert.match(systemRecoveryPage, /applyOpenClawRecoveryDaemonServiceAction/);
   assert.match(systemRecoveryPage, /fetchOpenClawRecoveryStatus/);
-  assert.match(systemRecoveryPage, /fetchOpenClawRecoveryEvents/);
-  assert.match(systemRecoveryPage, /fetchOpenClawRecoveryBackups/);
+  assert.match(systemRecoveryPage, /fetchOpenClawRecoveryEventsPage/);
+  assert.match(systemRecoveryPage, /fetchOpenClawRecoveryBackupsPage/);
+  assert.match(systemRecoveryPage, /eventsPagination/);
+  assert.match(systemRecoveryPage, /backupsPagination/);
+  assert.match(systemRecoveryPage, /changeEventsPage/);
+  assert.match(systemRecoveryPage, /changeBackupsPage/);
   assert.match(systemRecoveryPage, /runOpenClawRecovery/);
   assert.match(systemRecoveryPage, /restoreOpenClawRecoveryBackup/);
   assert.match(systemRecoveryPage, /servicePrimaryAction/);
@@ -67,6 +71,7 @@ test('system feature CSS keeps the shared workbench styling local', () => {
   assert.match(systemWorkspaceCss, /\.system-control-grid\s*\{[\s\S]*background:\s*var\(--surface-base\);/);
   assert.match(systemWorkspaceCss, /\.system-sidebar-panel\s*\{[\s\S]*background:\s*var\(--surface-raised\);/);
   assert.match(systemWorkspaceCss, /\.system-overview-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit, minmax\(220px, 1fr\)\);/);
+  assert.match(systemWorkspaceCss, /\.system-pagination\s*\{/);
   assert.doesNotMatch(systemWorkspaceCss, /system-control-tower-surface::before|radial-gradient|linear-gradient|backdrop-filter:\s*blur/);
   assert.doesNotMatch(systemWorkspaceCss, /system-command-list|system-command-row|system-overview-command-panel/);
 });
@@ -79,6 +84,8 @@ test('system routes and api expose overview, recovery, and event history separat
   assert.match(systemApi, /fetchOpenClawRecoveryStatus/);
   assert.match(systemApi, /fetchOpenClawRecoveryEvents/);
   assert.match(systemApi, /fetchOpenClawRecoveryBackups/);
+  assert.match(systemApi, /fetchOpenClawRecoveryEventsPage/);
+  assert.match(systemApi, /fetchOpenClawRecoveryBackupsPage/);
   assert.match(systemApi, /applyOpenClawRecoveryDaemonServiceAction/);
   assert.doesNotMatch(systemApi, /fetchSystemRecoveryStatus/);
 });

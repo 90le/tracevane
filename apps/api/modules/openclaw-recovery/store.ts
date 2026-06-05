@@ -6,6 +6,7 @@ import type {
   OpenClawRecoveryBackupSummary,
   OpenClawRecoveryDaemonServiceSnapshot,
   OpenClawRecoveryEvent,
+  OpenClawRecoveryPagination,
   OpenClawRecoveryPolicy,
   OpenClawRecoveryState,
 } from "../../../../types/openclaw-recovery.js";
@@ -177,6 +178,48 @@ function safeParseEvent(line: string): OpenClawRecoveryEvent | null {
   }
 }
 
+function normalizePage(value: number | undefined): number {
+  return Number.isFinite(value) && Number(value) > 0
+    ? Math.floor(Number(value))
+    : 1;
+}
+
+function normalizePageSize(value: number | undefined): number {
+  const pageSize = Number.isFinite(value) && Number(value) > 0
+    ? Math.floor(Number(value))
+    : 10;
+  return Math.max(1, Math.min(100, pageSize));
+}
+
+function paginateList<T>(
+  items: T[],
+  page: number | undefined,
+  pageSize: number | undefined,
+): { items: T[]; pagination: OpenClawRecoveryPagination } {
+  const normalizedPageSize = normalizePageSize(pageSize);
+  const totalEntries = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalEntries / normalizedPageSize));
+  const normalizedPage = Math.min(normalizePage(page), totalPages);
+  const startIndex = Math.min(
+    totalEntries,
+    (normalizedPage - 1) * normalizedPageSize,
+  );
+  const endIndex = Math.min(totalEntries, startIndex + normalizedPageSize);
+  return {
+    items: items.slice(startIndex, endIndex),
+    pagination: {
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      totalEntries,
+      totalPages,
+      startIndex,
+      endIndex,
+      hasPreviousPage: normalizedPage > 1,
+      hasNextPage: normalizedPage < totalPages,
+    },
+  };
+}
+
 export function listRecoveryEvents(
   config: StudioServerConfig,
   limit = 100,
@@ -196,6 +239,19 @@ export function listRecoveryEvents(
         Date.parse(left.occurredAt || ""),
     )
     .slice(0, normalizedLimit);
+}
+
+export function listRecoveryEventsPage(
+  config: StudioServerConfig,
+  page = 1,
+  pageSize = 10,
+): { events: OpenClawRecoveryEvent[]; pagination: OpenClawRecoveryPagination } {
+  const events = listRecoveryEvents(config, Number.MAX_SAFE_INTEGER);
+  const paged = paginateList(events, page, pageSize);
+  return {
+    events: paged.items,
+    pagination: paged.pagination,
+  };
 }
 
 function backupCreatedAt(fileName: string, stat: fs.Stats): string {
@@ -232,6 +288,18 @@ export function listRecoveryBackups(
   } catch {
     return [];
   }
+}
+
+export function listRecoveryBackupsPage(
+  config: StudioServerConfig,
+  page = 1,
+  pageSize = 10,
+): { backups: OpenClawRecoveryBackupSummary[]; pagination: OpenClawRecoveryPagination } {
+  const paged = paginateList(listRecoveryBackups(config), page, pageSize);
+  return {
+    backups: paged.items,
+    pagination: paged.pagination,
+  };
 }
 
 export function ensureRecoveryToken(config: StudioServerConfig): string {

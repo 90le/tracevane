@@ -174,6 +174,17 @@ export interface OpenClawRecoveryBackupSummary {
 
 export type OpenClawRecoveryBackupRecord = OpenClawRecoveryBackupSummary;
 
+export interface OpenClawRecoveryPagination {
+  page: number;
+  pageSize: number;
+  totalEntries: number;
+  totalPages: number;
+  startIndex: number;
+  endIndex: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
 export interface OpenClawRecoveryDaemonServiceTemplate {
   supervisor: OpenClawRecoverySupervisorKind;
   platform: NodeJS.Platform;
@@ -239,12 +250,14 @@ export interface OpenClawRecoveryEventsPayload {
   ok: true;
   checkedAt: string;
   events: OpenClawRecoveryEvent[];
+  pagination: OpenClawRecoveryPagination;
 }
 
 export interface OpenClawRecoveryBackupsPayload {
   ok: true;
   checkedAt: string;
   backups: OpenClawRecoveryBackupSummary[];
+  pagination: OpenClawRecoveryPagination;
 }
 
 export interface OpenClawRecoveryRunRequest {

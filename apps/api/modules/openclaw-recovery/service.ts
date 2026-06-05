@@ -16,7 +16,9 @@ import type {
 import {
   appendRecoveryEvent,
   createRecoveryEvent,
+  listRecoveryBackupsPage,
   listRecoveryBackups,
+  listRecoveryEventsPage,
   listRecoveryEvents,
   readRecoveryState,
   writeRecoveryState,
@@ -34,7 +36,19 @@ import { probeOpenClawGateway } from "./probe.js";
 export interface OpenClawRecoveryService {
   getStatus(): Promise<OpenClawRecoveryState>;
   listEvents(limit?: number): Promise<OpenClawRecoveryEvent[]>;
+  listEventsPage(page?: number, pageSize?: number): Promise<{
+    ok: true;
+    checkedAt: string;
+    events: OpenClawRecoveryEvent[];
+    pagination: ReturnType<typeof listRecoveryEventsPage>["pagination"];
+  }>;
   listBackups(): Promise<OpenClawRecoveryBackupSummary[]>;
+  listBackupsPage(page?: number, pageSize?: number): Promise<{
+    ok: true;
+    checkedAt: string;
+    backups: OpenClawRecoveryBackupSummary[];
+    pagination: ReturnType<typeof listRecoveryBackupsPage>["pagination"];
+  }>;
   runRecovery(payload?: OpenClawRecoveryRunRequest): Promise<OpenClawRecoveryRunResponse>;
   restoreBackup(payload: OpenClawRecoveryRestoreBackupRequest): Promise<OpenClawRecoveryRestoreBackupResponse>;
   getDaemonService(): Promise<OpenClawRecoveryState["service"]>;
@@ -166,8 +180,26 @@ export function createOpenClawRecoveryService(
       return listRecoveryEvents(config, limit);
     },
 
+    async listEventsPage(page = 1, pageSize = 10) {
+      const paged = listRecoveryEventsPage(config, page, pageSize);
+      return {
+        ok: true,
+        checkedAt: new Date().toISOString(),
+        ...paged,
+      };
+    },
+
     async listBackups(): Promise<OpenClawRecoveryBackupSummary[]> {
       return listRecoveryBackups(config);
+    },
+
+    async listBackupsPage(page = 1, pageSize = 10) {
+      const paged = listRecoveryBackupsPage(config, page, pageSize);
+      return {
+        ok: true,
+        checkedAt: new Date().toISOString(),
+        ...paged,
+      };
     },
 
     async runRecovery(

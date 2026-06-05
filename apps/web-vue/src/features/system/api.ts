@@ -1,9 +1,11 @@
 import { requestJson } from "../../shared/api";
 import type {
   OpenClawRecoveryBackupRecord,
+  OpenClawRecoveryBackupsPayload,
   OpenClawRecoveryDaemonServiceAction,
   OpenClawRecoveryDaemonServiceResponse,
   OpenClawRecoveryEventRecord,
+  OpenClawRecoveryEventsPayload,
   OpenClawRecoveryRestoreBackupResponse,
   OpenClawRecoveryRunRequest,
   OpenClawRecoveryRunResponse,
@@ -44,8 +46,26 @@ export function fetchOpenClawRecoveryEvents(): Promise<OpenClawRecoveryEventReco
   return requestJson<OpenClawRecoveryEventRecord[]>("/api/openclaw-recovery/events");
 }
 
+export function fetchOpenClawRecoveryEventsPage(
+  page = 1,
+  pageSize = 10,
+): Promise<OpenClawRecoveryEventsPayload> {
+  return requestJson<OpenClawRecoveryEventsPayload>(
+    `/api/openclaw-recovery/events?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`,
+  );
+}
+
 export function fetchOpenClawRecoveryBackups(): Promise<OpenClawRecoveryBackupRecord[]> {
   return requestJson<OpenClawRecoveryBackupRecord[]>("/api/openclaw-recovery/backups");
+}
+
+export function fetchOpenClawRecoveryBackupsPage(
+  page = 1,
+  pageSize = 10,
+): Promise<OpenClawRecoveryBackupsPayload> {
+  return requestJson<OpenClawRecoveryBackupsPayload>(
+    `/api/openclaw-recovery/backups?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`,
+  );
 }
 
 export function runOpenClawRecovery(

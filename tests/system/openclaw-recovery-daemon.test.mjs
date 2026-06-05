@@ -7,11 +7,17 @@ import { fileURLToPath } from "node:url";
 
 import {
   createOpenClawConfigBackup,
+  pruneMissingOpenClawPluginLoadPaths,
   pruneInvalidOpenClawConfigFromValidation,
+  repairOpenClawPluginConfigFromFindings,
 } from "../../dist/apps/api/modules/openclaw-recovery/repair.js";
 import { createOpenClawRecoveryService } from "../../dist/apps/api/modules/openclaw-recovery/service.js";
 import {
+  appendRecoveryEvent,
   buildDefaultRecoveryState,
+  createRecoveryEvent,
+  listRecoveryBackupsPage,
+  listRecoveryEventsPage,
   writeRecoveryState,
 } from "../../dist/apps/api/modules/openclaw-recovery/store.js";
 
@@ -24,6 +30,9 @@ function makeConfig() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-recovery-"));
   const openclawRoot = path.join(root, ".openclaw");
   fs.mkdirSync(openclawRoot, { recursive: true });
+  const projectRoot = path.join(root, "studio");
+  fs.mkdirSync(projectRoot, { recursive: true });
+  const missingPluginPath = path.join(root, "missing-plugin-path");
   const openclawConfigFile = path.join(openclawRoot, "openclaw.json");
   fs.writeFileSync(
     openclawConfigFile,
@@ -43,12 +52,19 @@ function makeConfig() {
           },
         },
         plugins: {
+          load: {
+            paths: [projectRoot, missingPluginPath],
+          },
           entries: {
             studio: {
               enabled: true,
               config: {
                 keep: "plugin-config",
               },
+            },
+            alpha: {
+              enabled: true,
+              config: {},
             },
           },
           providerParams: {
@@ -74,7 +90,7 @@ function makeConfig() {
     autoStart: false,
     openclawRoot,
     openclawConfigFile,
-    projectRoot: path.join(root, "studio"),
+    projectRoot,
     webDistDir: path.join(root, "studio/apps/web-vue/dist"),
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
@@ -120,11 +136,79 @@ test("recovery repair creates backups before pruning dynamic validation paths", 
   assert.equal(repaired.tools.exec.security, "default");
   assert.equal(repaired.tools.exec.ask, "never");
   assert.equal(repaired.plugins.entries.studio.config.keep, "plugin-config");
+  assert.equal(repaired.plugins.entries.alpha.enabled, true);
   assert.equal(repaired.plugins.providerParams.keep, true);
   assert.equal(repaired.channels.customProvider.extensionField, "preserve");
 
   const backup = JSON.parse(fs.readFileSync(backupPath, "utf8"));
   assert.equal(backup.agents.defaults.llm, "legacy-bad-key");
+});
+
+test("recovery history and config backup lists are paginated", () => {
+  const config = makeConfig();
+  const backupsDir = path.join(config.openclawRoot, "studio", "recovery", "backups");
+  fs.mkdirSync(backupsDir, { recursive: true });
+
+  for (let index = 0; index < 15; index += 1) {
+    appendRecoveryEvent(
+      config,
+      createRecoveryEvent({
+        kind: "repair_started",
+        severity: "info",
+        title: `event ${index}`,
+        summary: "test event",
+        status: "succeeded",
+        occurredAt: `2026-06-05T00:00:${String(index).padStart(2, "0")}.000Z`,
+      }),
+    );
+  }
+  for (let index = 0; index < 12; index += 1) {
+    fs.writeFileSync(
+      path.join(
+        backupsDir,
+        `openclaw-20260605T0000${String(index).padStart(2, "0")}000Z.json`,
+      ),
+      "{}\n",
+      "utf8",
+    );
+  }
+
+  const eventPage = listRecoveryEventsPage(config, 2, 5);
+  const backupPage = listRecoveryBackupsPage(config, 2, 5);
+
+  assert.equal(eventPage.events.length, 5);
+  assert.equal(eventPage.pagination.page, 2);
+  assert.equal(eventPage.pagination.totalEntries, 15);
+  assert.equal(eventPage.pagination.hasPreviousPage, true);
+  assert.equal(eventPage.pagination.hasNextPage, true);
+  assert.equal(backupPage.backups.length, 5);
+  assert.equal(backupPage.pagination.page, 2);
+  assert.equal(backupPage.pagination.totalEntries, 12);
+});
+
+test("plugin repair disables bad entries and removes missing absolute load paths", () => {
+  const config = makeConfig();
+  const changedKeys = [
+    ...pruneMissingOpenClawPluginLoadPaths(config),
+    ...repairOpenClawPluginConfigFromFindings(config, [
+      {
+        path: "plugins.entries.alpha",
+        message: "plugin alpha failed to load",
+      },
+      {
+        path: "plugins.entries.studio",
+        message: "plugin studio failed to load",
+      },
+    ]),
+  ];
+
+  const repaired = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+
+  assert.ok(changedKeys.includes("plugins.load.paths"));
+  assert.ok(changedKeys.includes("plugins.entries.alpha.enabled"));
+  assert.equal(repaired.plugins.entries.alpha.enabled, false);
+  assert.equal(repaired.plugins.entries.studio.enabled, true);
+  assert.deepEqual(repaired.plugins.load.paths, [config.projectRoot]);
 });
 
 test("recovery status is read-only and returns default daemon state without CLI output", async () => {

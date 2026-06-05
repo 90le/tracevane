@@ -25,12 +25,47 @@ function readLimit(
   return Math.floor(raw);
 }
 
+function readPagination(
+  req: Parameters<StudioRouter["get"]>[1] extends (
+    req: infer R,
+    ...args: any[]
+  ) => any
+    ? R
+    : any,
+): { page: number; pageSize: number; paged: boolean } {
+  const requestUrl = new URL(
+    req.url || "/",
+    `http://${req.headers.host || "127.0.0.1"}`,
+  );
+  const rawPage = requestUrl.searchParams.get("page");
+  const rawPageSize = requestUrl.searchParams.get("pageSize");
+  const page = Number(rawPage || 1);
+  const pageSize = Number(rawPageSize || 10);
+  return {
+    page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1,
+    pageSize: Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : 10,
+    paged: rawPage !== null || rawPageSize !== null,
+  };
+}
+
 export function registerOpenClawRecoveryRoutes(router: StudioRouter): void {
   router.get("/api/openclaw-recovery/status", async (_req, res, routeCtx) => {
     sendJson(res, 200, await routeCtx.services.openclawRecovery.getStatus());
   });
 
   router.get("/api/openclaw-recovery/events", async (req, res, routeCtx) => {
+    const pagination = readPagination(req);
+    if (pagination.paged) {
+      sendJson(
+        res,
+        200,
+        await routeCtx.services.openclawRecovery.listEventsPage(
+          pagination.page,
+          pagination.pageSize,
+        ),
+      );
+      return;
+    }
     sendJson(
       res,
       200,
@@ -38,8 +73,18 @@ export function registerOpenClawRecoveryRoutes(router: StudioRouter): void {
     );
   });
 
-  router.get("/api/openclaw-recovery/backups", async (_req, res, routeCtx) => {
-    sendJson(res, 200, await routeCtx.services.openclawRecovery.listBackups());
+  router.get("/api/openclaw-recovery/backups", async (req, res, routeCtx) => {
+    const pagination = readPagination(req);
+    sendJson(
+      res,
+      200,
+      pagination.paged
+        ? await routeCtx.services.openclawRecovery.listBackupsPage(
+            pagination.page,
+            pagination.pageSize,
+          )
+        : await routeCtx.services.openclawRecovery.listBackups(),
+    );
   });
 
   router.post("/api/openclaw-recovery/run", async (req, res, routeCtx) => {

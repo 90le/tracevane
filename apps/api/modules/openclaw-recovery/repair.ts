@@ -30,6 +30,13 @@ interface OpenClawConfigValidationIssue {
   params?: unknown;
 }
 
+interface OpenClawDoctorFinding extends OpenClawConfigValidationIssue {
+  checkId?: unknown;
+  severity?: unknown;
+  pluginId?: unknown;
+  id?: unknown;
+}
+
 export function createOpenClawConfigBackup(config: StudioServerConfig): string | null {
   if (!fs.existsSync(config.openclawConfigFile)) return null;
   const paths = resolveOpenClawRecoveryPaths(config);
@@ -106,6 +113,143 @@ function parseValidationIssues(
       issues?: OpenClawConfigValidationIssue[];
     };
     return Array.isArray(parsed.issues) ? parsed.issues : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseDoctorFindings(
+  commandResult: OpenClawRecoveryCommandSnapshot,
+): OpenClawDoctorFinding[] {
+  try {
+    const parsed = JSON.parse(commandResult.stdout || "{}") as {
+      findings?: OpenClawDoctorFinding[];
+    };
+    return Array.isArray(parsed.findings) ? parsed.findings : [];
+  } catch {
+    return [];
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+}
+
+function pluginIdFromFinding(finding: OpenClawDoctorFinding): string {
+  const direct =
+    typeof finding.pluginId === "string"
+      ? finding.pluginId
+      : typeof finding.id === "string"
+        ? finding.id
+        : "";
+  if (direct) return direct.trim();
+
+  const segments = pathSegments(normalizeIssuePath(finding));
+  if (segments[0] === "plugins" && segments[1] === "entries" && segments[2]) {
+    return segments[2];
+  }
+
+  const text = `${String(finding.checkId || "")}\n${String(finding.message || "")}`;
+  const pathMatch = text.match(/plugins\.entries\.([A-Za-z0-9_-]+)/);
+  if (pathMatch?.[1]) return pathMatch[1];
+  const pluginMatch = text.match(/plugin\s+["'`]([A-Za-z0-9_-]+)["'`]/i);
+  return pluginMatch?.[1] || "";
+}
+
+function findingLooksPluginRelated(finding: OpenClawDoctorFinding): boolean {
+  const pathText = normalizeIssuePath(finding);
+  const checkText = String(finding.checkId || "");
+  const message = String(finding.message || "");
+  return (
+    pathText.startsWith("plugins.") ||
+    /plugin/i.test(checkText) ||
+    /plugin/i.test(message)
+  );
+}
+
+export function repairOpenClawPluginConfigFromFindings(
+  config: StudioServerConfig,
+  findings: OpenClawDoctorFinding[],
+): string[] {
+  const openclawConfig = readOpenClawConfig(config);
+  const plugins = isRecord(openclawConfig.plugins) ? openclawConfig.plugins : {};
+  const entries = isRecord(plugins.entries) ? plugins.entries : {};
+  const changedKeys: string[] = [];
+
+  for (const finding of findings) {
+    if (!findingLooksPluginRelated(finding)) continue;
+    const pluginId = pluginIdFromFinding(finding);
+    if (!pluginId || pluginId === "studio") continue;
+    const entry = isRecord(entries[pluginId]) ? entries[pluginId] : null;
+    if (!entry || entry.enabled === false) continue;
+    entry.enabled = false;
+    changedKeys.push(`plugins.entries.${pluginId}.enabled`);
+  }
+
+  if (changedKeys.length > 0) {
+    writeJsonFile(config.openclawConfigFile, openclawConfig);
+  }
+  return [...new Set(changedKeys)];
+}
+
+export function pruneMissingOpenClawPluginLoadPaths(
+  config: StudioServerConfig,
+): string[] {
+  const openclawConfig = readOpenClawConfig(config);
+  const plugins = isRecord(openclawConfig.plugins) ? openclawConfig.plugins : {};
+  const load = isRecord(plugins.load) ? plugins.load : {};
+  const loadPaths = normalizeStringList(load.paths);
+  if (!loadPaths.length) return [];
+
+  const kept = loadPaths.filter((loadPath) => {
+    if (!path.isAbsolute(loadPath)) return true;
+    return fs.existsSync(loadPath);
+  });
+  if (kept.length === loadPaths.length) return [];
+
+  load.paths = kept;
+  plugins.load = load;
+  openclawConfig.plugins = plugins;
+  writeJsonFile(config.openclawConfigFile, openclawConfig);
+  return ["plugins.load.paths"];
+}
+
+function parsePluginListFindings(
+  commandResult: OpenClawRecoveryCommandSnapshot,
+): OpenClawDoctorFinding[] {
+  try {
+    const parsed = JSON.parse(commandResult.stdout || "{}") as unknown;
+    const rows = Array.isArray(parsed)
+      ? parsed
+      : isRecord(parsed) && Array.isArray(parsed.entries)
+        ? parsed.entries
+        : isRecord(parsed) && Array.isArray(parsed.plugins)
+          ? parsed.plugins
+          : [];
+    return rows
+      .filter(isRecord)
+      .filter((row) =>
+        row.ok === false ||
+        row.valid === false ||
+        row.status === "error" ||
+        typeof row.error === "string" ||
+        typeof row.loadError === "string",
+      )
+      .map((row) => ({
+        pluginId:
+          typeof row.id === "string"
+            ? row.id
+            : typeof row.pluginId === "string"
+              ? row.pluginId
+              : "",
+        message: String(row.error || row.loadError || row.status || "plugin load failed"),
+      }));
   } catch {
     return [];
   }
@@ -222,6 +366,71 @@ async function runDynamicConfigValidationRepair(
   return [...new Set(changedKeys)];
 }
 
+async function runInstallIntegrityChecks(
+  commands: OpenClawRecoveryCommandSnapshot[],
+): Promise<string> {
+  const version = await runCommand("openclaw", ["--version"], 5_000);
+  commands.push(version);
+  if (!version.ok) {
+    return [
+      "OpenClaw CLI is not available or cannot start.",
+      version.error,
+      version.stderr,
+      version.stdout,
+    ].filter(Boolean).join("\n").trim();
+  }
+
+  commands.push(
+    await runCommand("openclaw", ["update", "status", "--json"], 15_000),
+  );
+  return "";
+}
+
+async function runPluginRepairLayer(
+  config: StudioServerConfig,
+  commands: OpenClawRecoveryCommandSnapshot[],
+): Promise<string[]> {
+  const changedKeys: string[] = [];
+  changedKeys.push(...pruneMissingOpenClawPluginLoadPaths(config));
+
+  const doctorLint = await runCommand(
+    "openclaw",
+    ["doctor", "--lint", "--json", "--severity-min", "warning"],
+    20_000,
+  );
+  commands.push(doctorLint);
+  changedKeys.push(
+    ...repairOpenClawPluginConfigFromFindings(
+      config,
+      parseDoctorFindings(doctorLint),
+    ),
+  );
+
+  commands.push(await runCommand("openclaw", ["plugins", "doctor"], 20_000));
+  const pluginList = await runCommand(
+    "openclaw",
+    ["plugins", "list", "--json", "--verbose"],
+    20_000,
+  );
+  commands.push(pluginList);
+  changedKeys.push(
+    ...repairOpenClawPluginConfigFromFindings(
+      config,
+      parsePluginListFindings(pluginList),
+    ),
+  );
+
+  return [...new Set(changedKeys)];
+}
+
+function commandErrorSummary(commandResult: OpenClawRecoveryCommandSnapshot): string {
+  return [
+    commandResult.error,
+    commandResult.stderr,
+    commandResult.stdout,
+  ].filter(Boolean).join("\n").trim().slice(0, 800);
+}
+
 function acquireRepairLock(config: StudioServerConfig): number | null {
   const paths = resolveOpenClawRecoveryPaths(config);
   fs.mkdirSync(paths.rootDir, { recursive: true });
@@ -288,8 +497,18 @@ export async function runOpenClawRecoveryRepair(
   const changedKeys: string[] = [];
   let error = "";
   let ok = false;
+  let finalConfigValid = true;
+  let rollbackReason = "";
 
   try {
+    const installError = await runInstallIntegrityChecks(commands);
+    if (installError) {
+      error = installError;
+      finalConfigValid = false;
+      rollbackReason = "install_check_failed";
+      throw new Error(error);
+    }
+
     backupPath = createOpenClawConfigBackup(config);
     if (backupPath) {
       appendRecoveryEvent(
@@ -308,8 +527,8 @@ export async function runOpenClawRecoveryRepair(
     changedKeys.push(...await runDynamicConfigValidationRepair(config, commands));
     const bootstrap = repairSystemBootstrap(config);
     if (bootstrap.changed) changedKeys.push(...bootstrap.changedKeys);
+    changedKeys.push(...await runPluginRepairLayer(config, commands));
 
-    commands.push(await runCommand("openclaw", ["config", "validate", "--json"], 10_000));
     commands.push(await runCommand("openclaw", ["doctor", "--non-interactive"], 20_000));
     if (options.policy.runDoctorFix) {
       commands.push(
@@ -320,18 +539,56 @@ export async function runOpenClawRecoveryRepair(
         ),
       );
     }
-    commands.push(await runCommand("openclaw", ["gateway", "restart"], 20_000));
 
-    ok = await probeOpenClawGateway(config.gatewayPort, options.policy.probeTimeoutMs);
-    if (!ok) {
-      error = "Gateway probe still failed after repair";
+    const finalValidation = await runCommand(
+      "openclaw",
+      ["config", "validate", "--json"],
+      10_000,
+    );
+    commands.push(finalValidation);
+    finalConfigValid = finalValidation.ok;
+    if (!finalConfigValid) {
+      error = commandErrorSummary(finalValidation) || "OpenClaw config is still invalid after repair";
+      rollbackReason = "config_validation_failed";
+    } else {
+      commands.push(await runCommand("openclaw", ["gateway", "restart"], 20_000));
+      ok = await probeOpenClawGateway(config.gatewayPort, options.policy.probeTimeoutMs);
+      if (!ok) {
+        error = "Gateway probe still failed after repair";
+      }
     }
   } catch (repairError) {
     error =
       repairError instanceof Error
         ? repairError.message
         : "Recovery repair failed";
+    finalConfigValid = false;
+    rollbackReason = rollbackReason || "repair_exception";
   } finally {
+    if (!ok && backupPath && changedKeys.length > 0 && !finalConfigValid) {
+      try {
+        restoreOpenClawRecoveryBackup(config, backupPath);
+        changedKeys.push("rollback.openclawConfig");
+        appendRecoveryEvent(
+          config,
+          createRecoveryEvent({
+            kind: "backup_restored",
+            severity: "warning",
+            title: "OpenClaw 配置已自动回滚",
+            summary: rollbackReason || "Recovery repair failed before config became valid.",
+            status: "succeeded",
+            details: { backupPath, reason: rollbackReason || "repair_failed" },
+          }),
+        );
+      } catch (rollbackError) {
+        error = [
+          error,
+          rollbackError instanceof Error
+            ? `Rollback failed: ${rollbackError.message}`
+            : "Rollback failed",
+        ].filter(Boolean).join("\n");
+      }
+    }
     releaseRepairLock(config, lockFd);
   }
 

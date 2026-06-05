@@ -373,6 +373,21 @@
   font-size: 12px;
 }
 
+.system-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.system-pagination span {
+  min-width: 84px;
+  text-align: center;
+}
+
 /* SystemActionHandoffPanel.vue */
 .system-handoff-panel {
   padding: 14px;

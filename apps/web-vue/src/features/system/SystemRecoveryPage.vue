@@ -195,6 +195,15 @@
             <div v-else class="system-callout">
               <strong>{{ text('暂无修复事件', 'No recovery events yet') }}</strong>
             </div>
+            <nav v-if="eventsPagination.totalEntries > eventsPagination.pageSize" class="system-pagination" :aria-label="text('修复历史分页', 'Repair history pagination')">
+              <button type="button" class="secondary-button compact-button" :disabled="loading || !eventsPagination.hasPreviousPage" @click="changeEventsPage(eventsPagination.page - 1)">
+                {{ text('上一页', 'Previous') }}
+              </button>
+              <span>{{ paginationRangeLabel(eventsPagination) }}</span>
+              <button type="button" class="secondary-button compact-button" :disabled="loading || !eventsPagination.hasNextPage" @click="changeEventsPage(eventsPagination.page + 1)">
+                {{ text('下一页', 'Next') }}
+              </button>
+            </nav>
           </section>
 
           <section class="system-section">
@@ -219,6 +228,15 @@
             <div v-else class="system-callout">
               <strong>{{ text('暂无备份', 'No backups yet') }}</strong>
             </div>
+            <nav v-if="backupsPagination.totalEntries > backupsPagination.pageSize" class="system-pagination" :aria-label="text('配置备份分页', 'Config backup pagination')">
+              <button type="button" class="secondary-button compact-button" :disabled="loading || !backupsPagination.hasPreviousPage" @click="changeBackupsPage(backupsPagination.page - 1)">
+                {{ text('上一页', 'Previous') }}
+              </button>
+              <span>{{ paginationRangeLabel(backupsPagination) }}</span>
+              <button type="button" class="secondary-button compact-button" :disabled="loading || !backupsPagination.hasNextPage" @click="changeBackupsPage(backupsPagination.page + 1)">
+                {{ text('下一页', 'Next') }}
+              </button>
+            </nav>
           </section>
         </article>
       </section>
@@ -234,14 +252,15 @@ import type {
   OpenClawRecoveryDaemonServiceAction,
   OpenClawRecoveryEventRecord,
   OpenClawRecoveryEventSeverity,
+  OpenClawRecoveryPagination,
   OpenClawRecoveryStatusPayload,
 } from '../../../../../types/openclaw-recovery';
 import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   applyOpenClawRecoveryDaemonServiceAction,
-  fetchOpenClawRecoveryBackups,
-  fetchOpenClawRecoveryEvents,
+  fetchOpenClawRecoveryBackupsPage,
+  fetchOpenClawRecoveryEventsPage,
   fetchOpenClawRecoveryStatus,
   restoreOpenClawRecoveryBackup,
   runOpenClawRecovery,
@@ -255,6 +274,7 @@ interface Notice {
 
 type StatusPillTone = 'neutral' | 'accent' | 'sage' | 'danger';
 
+const RECOVERY_PAGE_SIZE = 8;
 const router = useRouter();
 const { text } = useLocalePreference();
 const loading = ref(false);
@@ -266,6 +286,10 @@ const notice = ref<Notice | null>(null);
 const recovery = ref<OpenClawRecoveryStatusPayload>(normalizeRecovery({}));
 const events = ref<OpenClawRecoveryEventRecord[]>([]);
 const backups = ref<OpenClawRecoveryBackupRecord[]>([]);
+const eventsPage = ref(1);
+const backupsPage = ref(1);
+const eventsPagination = ref<OpenClawRecoveryPagination>(defaultPagination());
+const backupsPagination = ref<OpenClawRecoveryPagination>(defaultPagination());
 
 const recoveryLabel = computed(() => {
   if (recovery.value.status === 'healthy') return text('Recovery 正常', 'Recovery Healthy');
@@ -366,23 +390,55 @@ function formatDate(value: string | null): string {
   return new Date(parsed).toLocaleString();
 }
 
+function defaultPagination(page = 1): OpenClawRecoveryPagination {
+  return {
+    page,
+    pageSize: RECOVERY_PAGE_SIZE,
+    totalEntries: 0,
+    totalPages: 1,
+    startIndex: 0,
+    endIndex: 0,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  };
+}
+
+function paginationRangeLabel(pagination: OpenClawRecoveryPagination): string {
+  if (!pagination.totalEntries) return '0 / 0';
+  return `${pagination.startIndex + 1}-${pagination.endIndex} / ${pagination.totalEntries}`;
+}
+
 async function refreshAll(): Promise<void> {
   loading.value = true;
   errorMessage.value = '';
   try {
     const [nextRecovery, nextEvents, nextBackups] = await Promise.all([
       fetchOpenClawRecoveryStatus(),
-      fetchOpenClawRecoveryEvents(),
-      fetchOpenClawRecoveryBackups(),
+      fetchOpenClawRecoveryEventsPage(eventsPage.value, RECOVERY_PAGE_SIZE),
+      fetchOpenClawRecoveryBackupsPage(backupsPage.value, RECOVERY_PAGE_SIZE),
     ]);
     recovery.value = normalizeRecovery(nextRecovery as unknown as Record<string, any>);
-    events.value = Array.isArray(nextEvents) ? nextEvents : [];
-    backups.value = Array.isArray(nextBackups) ? nextBackups : [];
+    events.value = Array.isArray(nextEvents.events) ? nextEvents.events : [];
+    backups.value = Array.isArray(nextBackups.backups) ? nextBackups.backups : [];
+    eventsPagination.value = nextEvents.pagination || defaultPagination(eventsPage.value);
+    backupsPagination.value = nextBackups.pagination || defaultPagination(backupsPage.value);
+    eventsPage.value = eventsPagination.value.page;
+    backupsPage.value = backupsPagination.value.page;
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : text('无法读取恢复状态。', 'Failed to load recovery status.');
   } finally {
     loading.value = false;
   }
+}
+
+async function changeEventsPage(page: number): Promise<void> {
+  eventsPage.value = Math.max(1, page);
+  await refreshAll();
+}
+
+async function changeBackupsPage(page: number): Promise<void> {
+  backupsPage.value = Math.max(1, page);
+  await refreshAll();
 }
 
 async function applyServiceAction(action: OpenClawRecoveryDaemonServiceAction): Promise<void> {
