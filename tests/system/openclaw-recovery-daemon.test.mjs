@@ -10,6 +10,11 @@ import {
   writeOpenClawRecoveryInstallManifest,
 } from "../../dist/apps/api/modules/openclaw-recovery/cli-bootstrap.js";
 import {
+  isOpenClawGatewayProcess,
+  parseLsofListeners,
+  parseSsListeners,
+} from "../../dist/apps/api/modules/openclaw-recovery/gateway-runtime.js";
+import {
   createOpenClawConfigBackup,
   pruneMissingOpenClawPluginLoadPaths,
   pruneInvalidOpenClawConfigFromValidation,
@@ -256,6 +261,53 @@ test("CLI bootstrap restores openclaw from install manifest when PATH entry is m
   } finally {
     process.env.PATH = originalPath;
   }
+});
+
+test("gateway runtime discovery parses listeners and only trusts OpenClaw gateway processes", () => {
+  const lsof = [
+    "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME",
+    "node 1234 binbin 23u IPv4 1 0t0 TCP 127.0.0.1:31879 (LISTEN)",
+    "nginx 4321 root 6u IPv4 2 0t0 TCP *:31879 (LISTEN)",
+  ].join("\n");
+  const ss = [
+    "State Recv-Q Send-Q Local Address:Port Peer Address:Port Process",
+    "LISTEN 0 511 127.0.0.1:31879 0.0.0.0:* users:((\"node\",pid=1234,fd=23))",
+  ].join("\n");
+
+  assert.deepEqual(
+    parseLsofListeners(lsof, 31879).map((listener) => listener.pid),
+    [1234, 4321],
+  );
+  assert.deepEqual(
+    parseSsListeners(ss, 31879).map((listener) => listener.pid),
+    [1234],
+  );
+  assert.deepEqual(
+    isOpenClawGatewayProcess({
+      pid: 1234,
+      command: "node",
+      process: {
+        pid: 1234,
+        ppid: 1,
+        command: "node",
+        args: "/opt/openclaw/dist/index.js gateway --port 31879",
+      },
+    }),
+    { safe: true, reason: "openclaw-gateway" },
+  );
+  assert.equal(
+    isOpenClawGatewayProcess({
+      pid: 4321,
+      command: "nginx",
+      process: {
+        pid: 4321,
+        ppid: 1,
+        command: "nginx",
+        args: "nginx: master process",
+      },
+    }).safe,
+    false,
+  );
 });
 
 test("recovery status is read-only and returns default daemon state without CLI output", async () => {

@@ -176,6 +176,10 @@
                 <span>{{ text('CLI 自动修复', 'CLI Auto Repair') }}</span>
                 <strong>{{ recovery.policy.allowCliReinstall ? text('允许', 'Allowed') : text('禁用', 'Disabled') }}</strong>
               </div>
+              <div class="system-overview-item">
+                <span>{{ text('Gateway 进程接管', 'Gateway Takeover') }}</span>
+                <strong>{{ recovery.policy.allowGatewayProcessTakeover ? text('允许', 'Allowed') : text('禁用', 'Disabled') }}</strong>
+              </div>
             </div>
           </section>
 
@@ -351,6 +355,8 @@ function normalizeRecovery(payload: Record<string, any>): OpenClawRecoveryStatus
       maxBackups: Number(payload.policy?.maxBackups || 20),
       allowCliReinstall: payload.policy?.allowCliReinstall !== false,
       cliReinstallTimeoutMs: Number(payload.policy?.cliReinstallTimeoutMs || 300000),
+      allowGatewayProcessTakeover: payload.policy?.allowGatewayProcessTakeover !== false,
+      gatewayProcessTakeoverTimeoutMs: Number(payload.policy?.gatewayProcessTakeoverTimeoutMs || 5000),
     },
     lastRepair: payload.lastRepair || null,
     service: {

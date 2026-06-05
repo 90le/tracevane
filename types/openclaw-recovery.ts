@@ -46,6 +46,9 @@ export type OpenClawRecoveryEventKind =
   | "cli_reinstall_started"
   | "cli_reinstall_succeeded"
   | "cli_reinstall_failed"
+  | "gateway_runtime_discovered"
+  | "gateway_process_takeover_succeeded"
+  | "gateway_process_takeover_skipped"
   | (string & {});
 
 export type OpenClawRecoveryTrigger = "auto" | "manual";
@@ -73,6 +76,8 @@ export interface OpenClawRecoveryPolicy {
   maxBackups: number;
   allowCliReinstall: boolean;
   cliReinstallTimeoutMs: number;
+  allowGatewayProcessTakeover: boolean;
+  gatewayProcessTakeoverTimeoutMs: number;
 }
 
 export interface OpenClawRecoveryDaemonRuntime {

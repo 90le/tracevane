@@ -19,6 +19,7 @@
 - 自愈能力要逐步覆盖配置、进程、端口、服务托管、依赖完整性和安装损坏，优先复用 OpenClaw CLI 的 status/doctor/validate/fix 结果。
 - 修复历史和配置备份必须支持多条记录与分页浏览。
 - daemon 安装/启动时记录 CLI install manifest；当 `openclaw` 命令缺失时，可先恢复本地 shim，再按 manifest 受控执行 npm 全局重装。
+- Gateway restart 后仍不可达时，允许发现端口监听者；只有确认监听进程是 OpenClaw gateway 时才自动接管，非 OpenClaw 进程只记录并跳过。
 
 ## 2. 边界
 
@@ -55,6 +56,7 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 - 配置 prune 从 OpenClaw validation issue 动态获取路径，并保留插件/provider/channel 扩展域。
 - 插件层优先禁用有问题的 `plugins.entries.<id>`，或移除明显不存在的绝对 `plugins.load.paths`，不删除插件源码目录。
 - 安装层先做 CLI/update 状态检查；CLI 缺失时只根据 recovery manifest 恢复 shim 或重装同一记录包。
+- 运行时发现层识别 gateway 端口监听者和进程命令行；接管仅限 `openclaw gateway` 残留进程。
 - 回滚层在修复后配置仍无效或修复流程异常时恢复本次修复前备份。
 - Recovery events/backups 支持分页 payload，同时保留旧数组响应兼容无分页调用。
 - recovery 事件写入 recovery jsonl，并同步进入 system event center。
@@ -63,6 +65,6 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 ## 5. 剩余工作
 
 - 在目标 Linux/macOS/Windows 环境做 supervisor install/start runtime smoke。
-- 增加运行时发现层：识别 OpenClaw gateway 启动方式、托管服务、端口占用、残留进程和冲突进程。
+- 增强运行时发现层：继续识别 OpenClaw gateway 启动方式、托管服务状态和非端口类启动冲突。
 - 根据真实故障样本扩展修复策略，继续强化安装损坏后的可控重装/更新兜底。
 - 若本机 fallback 控制面变成正式用户工作流，再补发现入口和 token 展示 UX。

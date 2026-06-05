@@ -11,6 +11,7 @@ import type {
 import { readOpenClawConfig, writeJsonFile } from "../../core/state.js";
 import { repairSystemBootstrap } from "../system/bootstrap.js";
 import { ensureOpenClawCliAvailable } from "./cli-bootstrap.js";
+import { takeoverOpenClawGatewayListeners } from "./gateway-runtime.js";
 import { resolveOpenClawRecoveryPaths } from "./paths.js";
 import { probeOpenClawGateway } from "./probe.js";
 import {
@@ -460,6 +461,20 @@ function commandErrorSummary(commandResult: OpenClawRecoveryCommandSnapshot): st
   ].filter(Boolean).join("\n").trim().slice(0, 800);
 }
 
+function gatewayListenerSummary(input: {
+  snapshot: { listeners: Array<{ pid: number; command: string; reason: string }> };
+  terminatedPids: number[];
+  skippedPids: number[];
+}): string {
+  if (input.terminatedPids.length > 0) {
+    return `Terminated OpenClaw gateway listener pid(s): ${input.terminatedPids.join(", ")}.`;
+  }
+  if (input.snapshot.listeners.length > 0) {
+    return `Gateway port listener(s) were discovered but not eligible for takeover: ${input.skippedPids.join(", ") || "none"}.`;
+  }
+  return "No gateway port listener was discovered for takeover.";
+}
+
 function acquireRepairLock(config: StudioServerConfig): number | null {
   const paths = resolveOpenClawRecoveryPaths(config);
   fs.mkdirSync(paths.rootDir, { recursive: true });
@@ -583,6 +598,56 @@ export async function runOpenClawRecoveryRepair(
     } else {
       commands.push(await runCommand("openclaw", ["gateway", "restart"], 20_000));
       ok = await probeOpenClawGateway(config.gatewayPort, options.policy.probeTimeoutMs);
+      if (!ok) {
+        const takeover = await takeoverOpenClawGatewayListeners(
+          config.gatewayPort,
+          {
+            allow: options.policy.allowGatewayProcessTakeover,
+            timeoutMs: options.policy.gatewayProcessTakeoverTimeoutMs,
+          },
+          commands,
+        );
+        if (takeover.terminatedPids.length > 0) {
+          changedKeys.push("gateway.process.takeover");
+          appendRecoveryEvent(
+            config,
+            createRecoveryEvent({
+              kind: "gateway_process_takeover_succeeded",
+              severity: "warning",
+              title: "OpenClaw gateway 残留进程已接管",
+              summary: gatewayListenerSummary(takeover),
+              status: "succeeded",
+              details: {
+                port: config.gatewayPort,
+                terminatedPids: takeover.terminatedPids,
+                skippedPids: takeover.skippedPids,
+              },
+            }),
+          );
+          commands.push(await runCommand("openclaw", ["gateway", "restart"], 20_000));
+          ok = await probeOpenClawGateway(config.gatewayPort, options.policy.probeTimeoutMs);
+        } else if (takeover.snapshot.listeners.length > 0 || takeover.error) {
+          appendRecoveryEvent(
+            config,
+            createRecoveryEvent({
+              kind: "gateway_process_takeover_skipped",
+              severity: "warning",
+              title: "OpenClaw gateway 进程接管已跳过",
+              summary: takeover.error || gatewayListenerSummary(takeover),
+              status: "skipped",
+              details: {
+                port: config.gatewayPort,
+                skippedPids: takeover.skippedPids,
+                listeners: takeover.snapshot.listeners.map((listener) => ({
+                  pid: listener.pid,
+                  command: listener.command,
+                  reason: listener.reason,
+                })),
+              },
+            }),
+          );
+        }
+      }
       if (!ok) {
         error = "Gateway probe still failed after repair";
       }
