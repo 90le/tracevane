@@ -42,6 +42,9 @@
 - 通过：`node --test --test-reporter=spec tests/system/model-gateway-service.test.mjs`
 - 通过：`node --test --test-reporter=dot tests/system/studio-web-shell-route-manifest.test.mjs tests/system/studio-domain-inventory.test.mjs tests/system/model-gateway-service.test.mjs`
 - 通过：`git diff --check`
+- 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "protocol matrix forwards native openai responses|anthropic messages through openai chat providers|codex compact|chat reasoning|streamed codex tool-call history|upstream responses stream fails|normalizes upstream chat errors" tests/system/model-gateway-service.test.mjs`，8/8 通过。
+- Dev 进程已重启：frontend `http://127.0.0.1:5176` 返回 200；backend `http://127.0.0.1:3762/api/system/health` 返回 `gateway: online`。
+- 工作树中存在其它 AI 进程处理中的 system/recovery 改动；本轮只验证 Studio Gateway 范围，不处理该并行任务冲突。
 - 未全量重跑：前端未改；上轮 `npm run test:system` 仍有 9 个非本轮相关旧 UI 形态断言失败，集中在 Agents / Channels / Chat / Config 测试。
 - BigModel live smoke：
   - Anthropic-compatible base `https://open.bigmodel.cn/api/anthropic`，model `glm-4.6`：`/v1/messages`、`/v1/chat/completions`、`/v1/responses/compact`、Chat streaming 均通过。
