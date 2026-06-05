@@ -10,6 +10,7 @@ import type {
 } from "../../../../types/openclaw-recovery.js";
 import { readOpenClawConfig, writeJsonFile } from "../../core/state.js";
 import { repairSystemBootstrap } from "../system/bootstrap.js";
+import { ensureOpenClawCliAvailable } from "./cli-bootstrap.js";
 import { resolveOpenClawRecoveryPaths } from "./paths.js";
 import { probeOpenClawGateway } from "./probe.js";
 import {
@@ -367,23 +368,51 @@ async function runDynamicConfigValidationRepair(
 }
 
 async function runInstallIntegrityChecks(
+  config: StudioServerConfig,
+  policy: OpenClawRecoveryPolicy,
   commands: OpenClawRecoveryCommandSnapshot[],
-): Promise<string> {
-  const version = await runCommand("openclaw", ["--version"], 5_000);
-  commands.push(version);
-  if (!version.ok) {
-    return [
-      "OpenClaw CLI is not available or cannot start.",
-      version.error,
-      version.stderr,
-      version.stdout,
-    ].filter(Boolean).join("\n").trim();
+): Promise<{ error: string; changedKeys: string[] }> {
+  const cli = await ensureOpenClawCliAvailable(config, policy, commands);
+  if (!cli.ok) {
+    appendRecoveryEvent(
+      config,
+      createRecoveryEvent({
+        kind: "cli_reinstall_failed",
+        severity: "error",
+        title: "OpenClaw CLI 自愈失败",
+        summary: cli.error || "OpenClaw CLI could not be restored.",
+        status: "failed",
+        details: { action: cli.action },
+      }),
+    );
+    return { error: cli.error, changedKeys: [] };
+  }
+
+  const changedKeys: string[] = [];
+  if (cli.action === "shim" || cli.action === "reinstall") {
+    changedKeys.push(`cli.${cli.action}`);
+    appendRecoveryEvent(
+      config,
+      createRecoveryEvent({
+        kind: "cli_reinstall_succeeded",
+        severity: "success",
+        title: cli.action === "shim" ? "OpenClaw CLI shim 已恢复" : "OpenClaw CLI 已重装",
+        summary: cli.action === "shim"
+          ? "Recovery daemon restored a local OpenClaw CLI shim from the install manifest."
+          : "Recovery daemon reinstalled OpenClaw CLI from the recorded package manifest.",
+        status: "succeeded",
+        details: {
+          action: cli.action,
+          packageSpec: cli.manifest?.packageSpec || "",
+        },
+      }),
+    );
   }
 
   commands.push(
     await runCommand("openclaw", ["update", "status", "--json"], 15_000),
   );
-  return "";
+  return { error: "", changedKeys };
 }
 
 async function runPluginRepairLayer(
@@ -501,9 +530,10 @@ export async function runOpenClawRecoveryRepair(
   let rollbackReason = "";
 
   try {
-    const installError = await runInstallIntegrityChecks(commands);
-    if (installError) {
-      error = installError;
+    const installCheck = await runInstallIntegrityChecks(config, options.policy, commands);
+    changedKeys.push(...installCheck.changedKeys);
+    if (installCheck.error) {
+      error = installCheck.error;
       finalConfigValid = false;
       rollbackReason = "install_check_failed";
       throw new Error(error);

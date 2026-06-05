@@ -22,6 +22,8 @@ export const DEFAULT_RECOVERY_POLICY: OpenClawRecoveryPolicy = {
   repairCooldownMs: 300_000,
   runDoctorFix: false,
   maxBackups: 20,
+  allowCliReinstall: true,
+  cliReinstallTimeoutMs: 300_000,
 };
 
 function nowIso(): string {

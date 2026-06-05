@@ -2,6 +2,7 @@ import http from "node:http";
 import path from "node:path";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import type { OpenClawRecoveryPolicy } from "../../../../types/openclaw-recovery.js";
+import { captureOpenClawRecoveryInstallManifest } from "./cli-bootstrap.js";
 import { probeOpenClawGateway } from "./probe.js";
 import {
   restoreOpenClawRecoveryBackup,
@@ -251,6 +252,9 @@ export function createOpenClawRecoveryDaemon(
     async start(): Promise<void> {
       if (interval) return;
       startedAt = new Date().toISOString();
+      captureOpenClawRecoveryInstallManifest(config).catch((error) => {
+        logger.warn("openclaw-recovery-daemon: CLI install manifest capture failed", error);
+      });
       appendRecoveryEvent(
         config,
         createRecoveryEvent({

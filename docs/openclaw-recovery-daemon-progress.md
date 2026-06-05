@@ -12,7 +12,8 @@
 - 本机 loopback fallback 控制面提供 status、events、backups、manual run、backup restore，并使用本地 token。
 - Recovery status 会保留最近一次 service action 的 active/enabled 快照，避免“启动成功后按钮状态被轻量刷新覆盖”。
 - 修复历史和配置备份支持分页读取与前端翻页。
-- 修复管线已拆出配置层、插件层、安装检查层和失败回滚层。
+- 修复管线已拆出配置层、插件层、CLI bootstrap/安装检查层和失败回滚层。
+- 已用真实坏配置做烟测：`tools.exec.mode` 冲突被动态删除，`openclaw config validate --json` 恢复 valid；最终 gateway probe 因烟测脚本端口写错未通过。
 - `/system` 已改成轻量概览，只读取 health、recovery status、upgrade status。
 - `/system/recovery` 已新增为自愈管理页，承载 daemon service、轻量探测、手动修复、事件和备份。
 - `/system/events` 保留为持久事件历史，不再作为默认 System 入口，也不触发 live diagnostics。
@@ -27,8 +28,8 @@
 | daemon | 完成 | `apps/api/openclaw-recovery-daemon.ts` 编译通过；daemon loop 使用 `probeOpenClawGateway` | 目标 OS 上做 supervisor smoke |
 | fallback 控制面 | 完成 | loopback status/events/backups/run/restore 已实现 | 需要正式 UX 时补 discovery/token 展示 |
 | 事件/备份分页 | 完成 | `/api/openclaw-recovery/events|backups?page=&pageSize=` 返回分页 payload；前端上一页/下一页 | 发布前做浏览器视觉 QA |
-| 修复策略 | 完成 | 配置动态 prune；插件 entry 隔离与缺失 load path 清理；CLI/update 只读检查；配置失败回滚；`doctor --fix` opt-in | 根据真实故障样本扩展 |
-| 前端 | 完成 | `/system` 轻量化；`/system/recovery` lazy route、service 状态按钮切换、动作后刷新保护、历史/备份分页完成 | 发布前做浏览器视觉 QA |
+| 修复策略 | 完成 | 配置动态 prune；插件 entry 隔离与缺失 load path 清理；CLI manifest、shim 恢复与 npm 重装兜底；配置失败回滚；`doctor --fix` opt-in | 根据真实故障样本扩展 |
+| 前端 | 完成 | `/system` 轻量化；`/system/recovery` lazy route、service 状态按钮切换、动作后刷新保护、历史/备份分页、CLI 自动修复策略展示完成 | 发布前做浏览器视觉 QA |
 | 验证 | 完成 | API build、Web typecheck、Recovery/System focused tests 通过 | unrelated dirty domains 清理后重跑全量 |
 
 ## 验证
@@ -43,5 +44,5 @@
 
 1. 在 Linux `systemd --user`、macOS launchd 和 Windows scheduled task 上做安装/启动/重启 smoke。
 2. 增加运行时发现层，识别 OpenClaw gateway 的启动方式、服务托管状态、端口占用、残留进程和冲突进程。
-3. 用真实 OpenClaw 故障样本扩展 repair policy，补可控的 npm 更新/重装兜底。
+3. 用真实 CLI 缺失/包损坏样本验证 npm 重装兜底。
 4. unrelated dirty domains 合并或清理后重跑全量 system suite。

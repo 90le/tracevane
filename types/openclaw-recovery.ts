@@ -42,6 +42,10 @@ export type OpenClawRecoveryEventKind =
   | "config_backup_created"
   | "backup_restored"
   | "backup_restore_requested"
+  | "cli_manifest_updated"
+  | "cli_reinstall_started"
+  | "cli_reinstall_succeeded"
+  | "cli_reinstall_failed"
   | (string & {});
 
 export type OpenClawRecoveryTrigger = "auto" | "manual";
@@ -67,6 +71,8 @@ export interface OpenClawRecoveryPolicy {
   repairCooldownMs: number;
   runDoctorFix: boolean;
   maxBackups: number;
+  allowCliReinstall: boolean;
+  cliReinstallTimeoutMs: number;
 }
 
 export interface OpenClawRecoveryDaemonRuntime {
@@ -183,6 +189,26 @@ export interface OpenClawRecoveryPagination {
   endIndex: number;
   hasPreviousPage: boolean;
   hasNextPage: boolean;
+}
+
+export type OpenClawRecoveryCliInstallKind =
+  | "npm-global"
+  | "path"
+  | "unknown";
+
+export interface OpenClawRecoveryInstallManifest {
+  version: 1;
+  updatedAt: string;
+  cliPath: string;
+  cliRealPath: string;
+  cliVersion: string;
+  nodePath: string;
+  packageManager: "npm" | "unknown";
+  packageName: string;
+  packageSpec: string;
+  npmPrefix: string;
+  installKind: OpenClawRecoveryCliInstallKind;
+  projectRoot: string;
 }
 
 export interface OpenClawRecoveryDaemonServiceTemplate {

@@ -6,6 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  ensureOpenClawCliAvailable,
+  writeOpenClawRecoveryInstallManifest,
+} from "../../dist/apps/api/modules/openclaw-recovery/cli-bootstrap.js";
+import {
   createOpenClawConfigBackup,
   pruneMissingOpenClawPluginLoadPaths,
   pruneInvalidOpenClawConfigFromValidation,
@@ -209,6 +213,49 @@ test("plugin repair disables bad entries and removes missing absolute load paths
   assert.equal(repaired.plugins.entries.alpha.enabled, false);
   assert.equal(repaired.plugins.entries.studio.enabled, true);
   assert.deepEqual(repaired.plugins.load.paths, [config.projectRoot]);
+});
+
+test("CLI bootstrap restores openclaw from install manifest when PATH entry is missing", async () => {
+  if (process.platform === "win32") return;
+  const config = makeConfig();
+  const fakeCli = path.join(config.projectRoot, "fake-openclaw.mjs");
+  fs.writeFileSync(
+    fakeCli,
+    "console.log('OpenClaw 2099.1.1 (fake)');\n",
+    "utf8",
+  );
+  writeOpenClawRecoveryInstallManifest(config, {
+    version: 1,
+    updatedAt: "2026-06-05T00:00:00.000Z",
+    cliPath: path.join(config.projectRoot, "missing-openclaw"),
+    cliRealPath: fakeCli,
+    cliVersion: "2099.1.1",
+    nodePath: process.execPath,
+    packageManager: "unknown",
+    packageName: "openclaw",
+    packageSpec: "openclaw@2099.1.1",
+    npmPrefix: "",
+    installKind: "npm-global",
+    projectRoot: config.projectRoot,
+  });
+
+  const commands = [];
+  const originalPath = process.env.PATH;
+  process.env.PATH = path.join(config.projectRoot, "empty-bin");
+  try {
+    const result = await ensureOpenClawCliAvailable(
+      config,
+      { allowCliReinstall: false, cliReinstallTimeoutMs: 1 },
+      commands,
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.action, "shim");
+    assert.equal(commands.at(-1).ok, true);
+    assert.equal(commands.some((command) => command.error.includes("ENOENT")), true);
+  } finally {
+    process.env.PATH = originalPath;
+  }
 });
 
 test("recovery status is read-only and returns default daemon state without CLI output", async () => {

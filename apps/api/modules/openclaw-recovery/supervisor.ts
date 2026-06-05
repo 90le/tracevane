@@ -12,6 +12,7 @@ import {
   type OpenClawRecoveryDaemonServiceTemplate,
   type OpenClawRecoverySupervisorKind,
 } from "../../../../types/openclaw-recovery.js";
+import { captureOpenClawRecoveryInstallManifest } from "./cli-bootstrap.js";
 import { runOpenClawRecoveryServiceCommand } from "./supervisor-command.js";
 
 const LAUNCHD_LABEL = "dev.openclaw.studio.recovery";
@@ -391,6 +392,7 @@ export async function applyRecoveryDaemonServiceAction(
   if (action === "install") {
     fs.mkdirSync(path.dirname(plan.selectedTemplate.configPath), { recursive: true });
     fs.writeFileSync(plan.selectedTemplate.configPath, plan.selectedTemplate.content, "utf8");
+    await captureOpenClawRecoveryInstallManifest(config, commands);
   }
 
   const actionCommands = plan.selectedTemplate.commands[action] || [];
