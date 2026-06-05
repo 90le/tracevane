@@ -1,6 +1,7 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
+  ModelGatewayClientAuthUpdateRequest,
   ModelGatewayDaemonServiceRequest,
   ModelGatewayProviderDetectRequest,
   ModelGatewayProviderTestRequest,
@@ -13,6 +14,9 @@ import { isModelGatewayServiceError } from "./service.js";
 function sendModelGatewayError(res: Parameters<typeof sendJson>[0], error: unknown): void {
   if (isModelGatewayServiceError(error)) {
     const shape = error.toShape();
+    if (shape.statusCode === 401) {
+      res.setHeader("WWW-Authenticate", "Bearer realm=\"Studio Gateway\"");
+    }
     sendJson(res, shape.statusCode, {
       error: shape.code,
       message: shape.message,
@@ -47,6 +51,23 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
   router.get("/api/model-gateway/runtime", (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, routeCtx.services.modelGateway.getRuntime());
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.get("/api/model-gateway/client-auth", (_req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.getClientAuth());
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/client-auth", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayClientAuthUpdateRequest>(req);
+      sendJson(res, 200, routeCtx.services.modelGateway.updateClientAuth(req, payload));
     } catch (error) {
       sendModelGatewayError(res, error);
     }
@@ -168,9 +189,9 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     }
   });
 
-  router.get("/v1/models", (_req, res, routeCtx) => {
+  router.get("/v1/models", (req, res, routeCtx) => {
     try {
-      sendJson(res, 200, routeCtx.services.modelGateway.listGatewayModels());
+      sendJson(res, 200, routeCtx.services.modelGateway.listGatewayModels(req));
     } catch (error) {
       sendModelGatewayError(res, error);
     }

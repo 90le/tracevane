@@ -1,4 +1,6 @@
 import type {
+  ModelGatewayClientAuthResponse,
+  ModelGatewayClientAuthUpdateRequest,
   ModelGatewayDaemonServiceAction,
   ModelGatewayDaemonServiceRequest,
   ModelGatewayDaemonServiceResponse,
@@ -46,6 +48,14 @@ export function fetchModelGatewayStatus(): Promise<ModelGatewayStatusResponse> {
 
 export function fetchModelGatewayRuntime(): Promise<ModelGatewayRuntimeResponse> {
   return requestJson<ModelGatewayRuntimeResponse>('/api/model-gateway/runtime');
+}
+
+export function fetchModelGatewayClientAuth(): Promise<ModelGatewayClientAuthResponse> {
+  return requestJson<ModelGatewayClientAuthResponse>('/api/model-gateway/client-auth');
+}
+
+export function updateModelGatewayClientAuth(payload: ModelGatewayClientAuthUpdateRequest): Promise<ModelGatewayClientAuthResponse> {
+  return requestJson<ModelGatewayClientAuthResponse>('/api/model-gateway/client-auth', jsonBody(payload));
 }
 
 export function fetchModelGatewayDaemonService(): Promise<ModelGatewayDaemonServiceResponse> {

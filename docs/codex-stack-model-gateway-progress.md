@@ -15,6 +15,7 @@
 - Provider 自动识别入口已贴近 Base URL / API Key；识别过程、三类协议结果和应用动作在弹层中完成，表单只保留紧凑状态。
 - Provider registry 已有 `enabled` 字段、App scope、active provider、priority、model alias 和 `/api/model-gateway/active-provider`；UI 可编辑 provider 启用状态、路由优先级、模型列表/别名和 Active routing。
 - `GET /v1/models` 已聚合所有启用 provider 的模型。同名模型跨 provider 合法，会形成模型池；active provider 优先，Auto 按 priority/健康状态选择，open circuit 后切换到下一个同名模型 provider。同 provider 内重复 model ID 或 alias 会被拒绝。
+- Gateway client key 已实现为用户可编辑/可生成的本地鉴权：设置并启用后，`/v1/models`、`/v1/chat/completions`、`/v1/responses`、`/v1/responses/compact`、`/v1/messages` 和 `/claude/v1/messages` 都接受 `Authorization: Bearer` 或 `x-api-key`，并会替换为 provider upstream key 后再转发。
 - Gateway daemon service 已覆盖新设备首次安装、systemd/launchd/scheduled-task 自启动启用、启动、停止、重启、status 与 ensure-running；旧坏模板会自动重写并 reload/start/restart，已安装时 install 按重装/重新启用处理。
 - `start`、`restart`、`ensure-running` 已改为等待 daemon HTTP status ready 后才标记 started；stop 后 inactive 视为预期结果，不再误报失败。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
@@ -59,6 +60,8 @@
   - Provider 保存时拒绝同 provider 内重复 model ID/alias；不同 provider 可暴露同名模型，Gateway 将其作为同名模型池。
   - Gateway daemon 新增 `GET /v1/models`，只返回启用 provider 的聚合模型目录，并包含 `providerIds`、显示名和别名。
   - 请求路由会按 requested `model` 解析 provider/model：active provider 优先，Auto 按 priority/健康状态，显式 `provider/model-or-alias` 可直达指定 provider，并在上游请求中恢复真实 model ID。
+  - 新增 `/api/model-gateway/client-auth`，管理本地 Gateway client key；手动保存不回显明文，生成新 key 时只在本次响应显示一次。
+  - 前端 Runtime rail 新增 Gateway key 卡片，可保存、生成、停用 client key，并显示 masked 状态。
   - 新增 `/api/model-gateway/detect-provider` 临时探测接口；不保存 provider 或 secret，自动识别三种原生协议和模型列表，多协议通过时让用户选择应用。
   - 优化自动识别 UX：检测按钮移到连接字段旁，新增识别进度/结果弹层、三类协议状态、可用协议应用反馈和紧凑结果入口。
   - 修复 daemon service 生命周期：`ensure-running` 会修复 stale/bad user service，新设备缺失模板时会写入并 enable/start；`start`/`restart` 也会先同步模板；模板更新且服务已 active 时会 restart。
@@ -86,6 +89,8 @@
 - 本轮浏览器验证通过：Playwright 打开 `/model-gateway` 并真实点击 Status、More actions、Preview、Reinstall/enable、Start、Restart、Stop、Ensure running；结果面板无 failure，截图 `/tmp/model-gateway-runtime-buttons.png`。
 - 本轮构建验证通过：`npm run build:api`、`node --test --test-reporter=spec --test-name-pattern "daemon service management|ensure-running|stop treats inactive|start reports bootstrap" tests/system/model-gateway-service.test.mjs`、`npm run typecheck:web`、`node --test --test-reporter=spec tests/system/studio-web-model-gateway-page.test.mjs`、`npm run build --workspace=apps/web-vue`。
 - 本轮模型池验证通过：`npm run build:api && node --test --test-reporter=spec tests/system/model-gateway-service.test.mjs && npm run typecheck:web && npm run build --workspace=apps/web-vue && node --test --test-reporter=spec tests/system/studio-web-model-gateway-page.test.mjs`。
+- 本轮 Gateway key 验证通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "client key protects" tests/system/model-gateway-service.test.mjs`；覆盖无 key/错 key 401、Bearer/x-api-key 通过、生成 key、停用鉴权和 upstream key 隔离。
+- 本轮 Gateway key live smoke 通过：dev 和 daemon 重启后，临时 key 启用时 `GET 18796/v1/models` 无 key 返回 401，带 `x-api-key` 返回 200；测试后已清除临时 key，当前本机 client auth 为 disabled/no secret。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "protocol matrix forwards native openai responses|anthropic messages through openai chat providers|codex compact|chat reasoning|streamed codex tool-call history|upstream responses stream fails|normalizes upstream chat errors" tests/system/model-gateway-service.test.mjs`，8/8 通过。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "routing contract selects|records streamed codex tool-call history|adapts streaming chat tool calls|adapts codex responses through native anthropic|protocol matrix forwards" tests/system/model-gateway-service.test.mjs`，7/7 通过。
 - Dev 进程已重启：frontend `http://127.0.0.1:5176` 返回 200；backend `http://127.0.0.1:3762/api/system/health` 返回 `gateway: online`。
@@ -130,7 +135,7 @@
 
 ## 下一步
 
-1. 补统一本地 Gateway key：客户端只拿本地 key，真实 upstream key 留在 Studio secret store，并覆盖 `/v1/models` 与三类协议端点的鉴权。
-2. 补 Provider Center 可用性闭环：Active routing 选择后即时 smoke 验证、停用当前 active provider 时给出明确回退提示。
-3. 做 App Connections：Codex / Claude Code / OpenCode / OpenClaw 配置 preview/apply，并支持一键切换 app profile、模型、上下文窗口、max output、reasoning/effort 等参数。
+1. 补 Provider Center 可用性闭环：Active routing 选择后即时 smoke 验证、停用当前 active provider 时给出明确回退提示。
+2. 做 App Connections：Codex / Claude Code / OpenCode / OpenClaw 配置 preview/apply，并使用本地 Gateway key 生成客户端配置。
+3. App Connections 支持一键切换 app profile、模型、上下文窗口、max output、reasoning/effort 等参数。
 4. Channel Connectors / CC Bridge / Octo 等网关配置稳定后再启动。

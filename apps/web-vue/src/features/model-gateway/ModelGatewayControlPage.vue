@@ -106,6 +106,52 @@
         <article class="mgw-panel">
           <div class="mgw-panel-head">
             <div>
+              <p class="eyebrow">Client auth</p>
+              <h3>{{ text('Gateway key', 'Gateway key') }}</h3>
+            </div>
+            <StatusPill :label="clientAuthStateLabel" :tone="clientAuthStateTone" />
+          </div>
+
+          <div class="mgw-client-key-state">
+            <span>{{ text('当前 key', 'Current key') }}</span>
+            <strong>{{ clientAuth?.secret.hasSecret ? clientAuth.secret.masked : text('未设置', 'Not set') }}</strong>
+            <small>{{ text('客户端可用 Authorization Bearer 或 x-api-key；该 key 不会转发给上游。', 'Clients may use Authorization Bearer or x-api-key; this key is never forwarded upstream.') }}</small>
+          </div>
+
+          <form class="mgw-client-key-form" @submit.prevent="saveClientKey">
+            <label class="form-field mgw-switch-field">
+              <span>
+                <span class="form-label">{{ text('鉴权状态', 'Auth state') }}</span>
+                <strong>{{ clientAuthEnabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</strong>
+              </span>
+              <input v-model="clientAuthEnabled" type="checkbox" />
+            </label>
+            <label class="form-field">
+              <span class="form-label">{{ text('新 Gateway key', 'New Gateway key') }}</span>
+              <input v-model="clientKeyDraft" class="form-input" type="password" :placeholder="clientKeyPlaceholder" />
+            </label>
+            <div class="mgw-client-key-actions">
+              <button type="submit" class="primary-button compact-button" :disabled="clientAuthBusy">
+                {{ clientAuthBusy ? text('保存中...', 'Saving...') : text('保存 key', 'Save key') }}
+              </button>
+              <button type="button" class="secondary-button compact-button" :disabled="clientAuthBusy" @click="generateClientKey">
+                {{ text('生成新 key', 'Generate key') }}
+              </button>
+              <button type="button" class="secondary-button compact-button" :disabled="clientAuthBusy || !clientAuth?.enabled" @click="disableClientKey">
+                {{ text('停用鉴权', 'Disable auth') }}
+              </button>
+            </div>
+          </form>
+
+          <div v-if="clientAuthReveal" class="mgw-secret-output">
+            <span>{{ text('本次返回的新 key', 'New key returned this time') }}</span>
+            <code>{{ clientAuthReveal }}</code>
+          </div>
+        </article>
+
+        <article class="mgw-panel">
+          <div class="mgw-panel-head">
+            <div>
               <p class="eyebrow">Routes</p>
               <h3>{{ text('Active routing', 'Active routing') }}</h3>
             </div>
@@ -440,6 +486,7 @@ import type {
   ModelGatewayApiFormat,
   ModelGatewayAppScope,
   ModelGatewayAuthStrategy,
+  ModelGatewayClientAuthView,
   ModelGatewayDaemonServiceAction,
   ModelGatewayDaemonServiceResponse,
   ModelGatewayProviderDetectProtocolResult,
@@ -460,6 +507,7 @@ import { useLocalePreference } from '../../shared/locale';
 import {
   deleteModelGatewayProvider,
   detectModelGatewayProvider,
+  fetchModelGatewayClientAuth,
   fetchModelGatewayDaemonService,
   fetchModelGatewayProviders,
   fetchModelGatewayRuntime,
@@ -467,6 +515,7 @@ import {
   manageModelGatewayDaemonService,
   setModelGatewayActiveProvider,
   testModelGatewayProvider,
+  updateModelGatewayClientAuth,
   upsertModelGatewayProvider,
 } from './api';
 import './model-gateway-workspace.css';
@@ -594,6 +643,11 @@ const status = ref<ModelGatewayStatusResponse | null>(null);
 const runtime = ref<ModelGatewayRuntimeResponse | null>(null);
 const daemonService = ref<ModelGatewayDaemonServiceResponse | null>(null);
 const daemonActionResult = ref<ModelGatewayDaemonServiceResponse | null>(null);
+const clientAuth = ref<ModelGatewayClientAuthView | null>(null);
+const clientAuthBusy = ref(false);
+const clientAuthEnabled = ref(false);
+const clientKeyDraft = ref('');
+const clientAuthReveal = ref('');
 const providers = ref<ModelGatewayProviderView[]>([]);
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
 const smokeProviderId = ref('');
@@ -771,6 +825,23 @@ const supervisorLabel = computed(() =>
   daemonService.value?.plan.supervisor
   || status.value?.lifecycle.localDaemon.supervisor.expected
   || 'unknown',
+);
+
+const clientAuthStateLabel = computed(() => {
+  if (!clientAuth.value?.enabled) return text('停用', 'Disabled');
+  if (!clientAuth.value.secret.hasSecret) return text('缺少 key', 'Missing key');
+  return text('已启用', 'Enabled');
+});
+
+const clientAuthStateTone = computed<'neutral' | 'accent' | 'sage' | 'danger'>(() => {
+  if (!clientAuth.value?.enabled) return 'neutral';
+  return clientAuth.value.secret.hasSecret ? 'sage' : 'danger';
+});
+
+const clientKeyPlaceholder = computed(() =>
+  clientAuth.value?.secret.hasSecret
+    ? text('留空保留现有本地 key', 'Leave empty to keep current local key')
+    : text('输入本地 Gateway key', 'Enter local Gateway key'),
 );
 
 const modelListPlaceholder = computed(() => text(
@@ -1112,15 +1183,17 @@ async function loadAll(): Promise<void> {
   loading.value = true;
   notice.value = null;
   try {
-    const [nextStatus, nextProviders, nextRuntime, nextDaemon] = await Promise.all([
+    const [nextStatus, nextProviders, nextRuntime, nextDaemon, nextClientAuth] = await Promise.all([
       fetchModelGatewayStatus(),
       fetchModelGatewayProviders(),
       fetchModelGatewayRuntime(),
       fetchModelGatewayDaemonService(),
+      fetchModelGatewayClientAuth(),
     ]);
     status.value = nextStatus;
     runtime.value = nextRuntime;
     daemonService.value = nextDaemon;
+    applyClientAuthView(nextClientAuth.clientAuth);
     providers.value = nextProviders.providers;
     activeProviders.value = nextProviders.activeProviders;
     ensureSelectedProvider();
@@ -1135,6 +1208,12 @@ async function loadAll(): Promise<void> {
   }
 }
 
+function applyClientAuthView(next: ModelGatewayClientAuthView): void {
+  clientAuth.value = next;
+  clientAuthEnabled.value = next.enabled;
+  clientKeyDraft.value = '';
+}
+
 function ensureSelectedProvider(): void {
   if (!providers.value.length) return;
   if (!smokeProviderId.value || !providers.value.some((provider) => provider.id === smokeProviderId.value)) {
@@ -1144,6 +1223,74 @@ function ensureSelectedProvider(): void {
   const provider = selectedSmokeProvider.value;
   if (provider && !smokeModel.value) {
     smokeModel.value = provider.models.defaultModel || provider.models.models[0]?.id || '';
+  }
+}
+
+async function saveClientKey(): Promise<void> {
+  clientAuthBusy.value = true;
+  notice.value = null;
+  clientAuthReveal.value = '';
+  try {
+    const result = await updateModelGatewayClientAuth({
+      enabled: clientAuthEnabled.value,
+      ...(clientKeyDraft.value.trim() ? { apiKey: clientKeyDraft.value.trim() } : {}),
+    });
+    applyClientAuthView(result.clientAuth);
+    clientAuthReveal.value = result.revealedKey || '';
+    notice.value = {
+      kind: 'success',
+      message: text('Gateway key 已更新', 'Gateway key updated'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('Gateway key 更新失败', 'Failed to update Gateway key'),
+    };
+  } finally {
+    clientAuthBusy.value = false;
+  }
+}
+
+async function generateClientKey(): Promise<void> {
+  clientAuthBusy.value = true;
+  notice.value = null;
+  clientAuthReveal.value = '';
+  try {
+    const result = await updateModelGatewayClientAuth({ enabled: true, generate: true });
+    applyClientAuthView(result.clientAuth);
+    clientAuthReveal.value = result.revealedKey || '';
+    notice.value = {
+      kind: 'success',
+      message: text('已生成新的 Gateway key', 'Generated a new Gateway key'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('Gateway key 生成失败', 'Failed to generate Gateway key'),
+    };
+  } finally {
+    clientAuthBusy.value = false;
+  }
+}
+
+async function disableClientKey(): Promise<void> {
+  clientAuthBusy.value = true;
+  notice.value = null;
+  clientAuthReveal.value = '';
+  try {
+    const result = await updateModelGatewayClientAuth({ enabled: false });
+    applyClientAuthView(result.clientAuth);
+    notice.value = {
+      kind: 'success',
+      message: text('Gateway client 鉴权已停用', 'Gateway client auth disabled'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('Gateway key 停用失败', 'Failed to disable Gateway key'),
+    };
+  } finally {
+    clientAuthBusy.value = false;
   }
 }
 

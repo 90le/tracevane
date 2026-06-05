@@ -216,6 +216,58 @@
   gap: 8px;
 }
 
+.mgw-client-key-state {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 84%, var(--surface-soft));
+  padding: 10px 12px;
+}
+
+.mgw-client-key-state span,
+.mgw-client-key-state small {
+  color: var(--mono-ink-2);
+}
+
+.mgw-client-key-state strong {
+  overflow-wrap: anywhere;
+}
+
+.mgw-client-key-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.mgw-client-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mgw-secret-output {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--mono-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-base));
+  padding: 10px 12px;
+}
+
+.mgw-secret-output span {
+  color: var(--mono-ink-2);
+  font-size: 0.82rem;
+}
+
+.mgw-secret-output code {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .mgw-route-row {
   display: grid;
   grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);

@@ -676,6 +676,132 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
   });
 });
 
+test("model gateway client key protects client endpoints and stays separate from upstream secrets", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "client-auth-chat",
+      name: "Client Auth Chat",
+      appScopes: ["openclaw"],
+      baseUrl: "https://client-auth.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "auth-model",
+        models: [{ id: "auth-model" }],
+      },
+    },
+    secret: { apiKey: "sk-upstream-client-auth" },
+    setActiveScopes: ["openclaw"],
+  });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      apiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({ id: "chatcmpl_client_auth", ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const saveKey = await requestJson(`${baseUrl}/api/model-gateway/client-auth`, {
+        method: "POST",
+        body: { apiKey: "sk-local-client-one" },
+      });
+      assert.equal(saveKey.status, 200);
+      assert.equal(saveKey.body.clientAuth.enabled, true);
+      assert.equal(saveKey.body.clientAuth.secret.masked, "sk-l...-one");
+      assert.equal(saveKey.body.revealedKey, null);
+
+      const status = await requestJson(`${baseUrl}/api/model-gateway/status`);
+      assert.equal(status.body.registry.clientAuth.enabled, true);
+      assert.equal(status.body.registry.clientAuth.secret.hasSecret, true);
+      assert.ok(!JSON.stringify(status.body).includes("sk-local-client-one"));
+
+      const missingAuth = await requestJson(`${baseUrl}/v1/models`);
+      assert.equal(missingAuth.status, 401);
+      assert.equal(missingAuth.body.error, "model_gateway_client_auth_required");
+
+      const wrongAuth = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { authorization: "Bearer sk-wrong-local" },
+        body: { model: "auth-model", messages: [{ role: "user", content: "hello" }] },
+      });
+      assert.equal(wrongAuth.status, 401);
+
+      const models = await requestJson(`${baseUrl}/v1/models`, {
+        headers: { "x-api-key": "sk-local-client-one" },
+      });
+      assert.equal(models.status, 200);
+      assert.equal(models.body.object, "list");
+      assert.deepEqual(models.body.data.map((model) => model.id), ["auth-model"]);
+
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { authorization: "Bearer sk-local-client-one" },
+        body: { model: "auth-model", messages: [{ role: "user", content: "hello" }] },
+      });
+      assert.equal(chat.status, 200);
+      assert.deepEqual(chat.body, { id: "chatcmpl_client_auth", ok: true });
+
+      const rotateKey = await requestJson(`${baseUrl}/api/model-gateway/client-auth`, {
+        method: "POST",
+        body: { apiKey: "sk-local-client-two" },
+      });
+      assert.equal(rotateKey.status, 200);
+      assert.equal(rotateKey.body.clientAuth.secret.masked, "sk-l...-two");
+
+      const oldKey = await requestJson(`${baseUrl}/v1/models`, {
+        headers: { "x-api-key": "sk-local-client-one" },
+      });
+      assert.equal(oldKey.status, 401);
+
+      const newKey = await requestJson(`${baseUrl}/v1/models`, {
+        headers: { "x-api-key": "sk-local-client-two" },
+      });
+      assert.equal(newKey.status, 200);
+
+      const generated = await requestJson(`${baseUrl}/api/model-gateway/client-auth`, {
+        method: "POST",
+        body: { generate: true },
+      });
+      assert.equal(generated.status, 200);
+      assert.match(generated.body.revealedKey, /^sk-studio-/);
+      const generatedKey = await requestJson(`${baseUrl}/v1/models`, {
+        headers: { "x-api-key": generated.body.revealedKey },
+      });
+      assert.equal(generatedKey.status, 200);
+
+      const clearKey = await requestJson(`${baseUrl}/api/model-gateway/client-auth`, {
+        method: "POST",
+        body: { apiKey: null },
+      });
+      assert.equal(clearKey.status, 200);
+      assert.equal(clearKey.body.clientAuth.enabled, false);
+      const unprotectedModels = await requestJson(`${baseUrl}/v1/models`);
+      assert.equal(unprotectedModels.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://client-auth.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-upstream-client-auth");
+  assert.equal(upstreamCalls[0].apiKey, null);
+  assert.ok(!upstreamCalls[0].body.includes("sk-local-client-one"));
+});
+
 test("model gateway management supports active provider selection, delete, and open-circuit fallback", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

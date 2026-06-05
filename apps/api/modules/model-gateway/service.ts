@@ -4,7 +4,7 @@ import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
   MODEL_GATEWAY_API_FORMATS,
@@ -18,6 +18,10 @@ import {
   type ModelGatewayApiFormat,
   type ModelGatewayAppScope,
   type ModelGatewayAuthStrategy,
+  type ModelGatewayClientAuthConfig,
+  type ModelGatewayClientAuthResponse,
+  type ModelGatewayClientAuthUpdateRequest,
+  type ModelGatewayClientAuthView,
   type ModelGatewayDaemonBootstrapStatus,
   type ModelGatewayDaemonRuntimeMetadata,
   type ModelGatewayDaemonServiceAction,
@@ -103,6 +107,7 @@ const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
+const CLIENT_AUTH_SECRET_REF = "gateway:client-api-key";
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start", "stop", "restart", "status"] as const;
@@ -377,10 +382,48 @@ function normalizeNetwork(value: unknown, fallback?: ModelGatewayProviderNetwork
   };
 }
 
+function normalizeClientAuthConfig(value: unknown, fallback?: ModelGatewayClientAuthConfig): ModelGatewayClientAuthConfig {
+  const source = isRecord(value) ? value : {};
+  return {
+    enabled: typeof source.enabled === "boolean" ? source.enabled : fallback?.enabled ?? false,
+    apiKeyRef: normalizeString(source.apiKeyRef, fallback?.apiKeyRef || CLIENT_AUTH_SECRET_REF) || CLIENT_AUTH_SECRET_REF,
+    updatedAt: normalizeString(source.updatedAt, fallback?.updatedAt || "") || null,
+  };
+}
+
+function generateGatewayClientKey(): string {
+  return `sk-studio-${randomUUID().replaceAll("-", "")}`;
+}
+
+function constantTimeEquals(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.byteLength !== rightBuffer.byteLength) return false;
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function readHeaderValue(headers: http.IncomingHttpHeaders, name: string): string | null {
+  const value = headers[name.toLowerCase()];
+  if (Array.isArray(value)) return normalizeString(value[0]) || null;
+  return normalizeString(value) || null;
+}
+
+function clientAuthCandidates(req: http.IncomingMessage): string[] {
+  const authorization = readHeaderValue(req.headers, "authorization");
+  const bearer = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+  const apiKey = readHeaderValue(req.headers, "x-api-key");
+  return [bearer || "", apiKey || ""].filter(Boolean);
+}
+
 function createEmptyRegistry(updatedAt = nowIso()): ModelGatewayRegistryState {
   return {
     version: 1,
     updatedAt,
+    clientAuth: {
+      enabled: false,
+      apiKeyRef: CLIENT_AUTH_SECRET_REF,
+      updatedAt: null,
+    },
     activeProviders: {},
     providers: [],
   };
@@ -1598,7 +1641,9 @@ function requestLogEntry(options: {
 export interface ModelGatewayService {
   getStatus(): ModelGatewayStatusResponse;
   listProviders(): ModelGatewayProvidersResponse;
-  listGatewayModels(): ModelGatewayModelListResponse;
+  getClientAuth(): ModelGatewayClientAuthResponse;
+  updateClientAuth(req: http.IncomingMessage | undefined, payload?: ModelGatewayClientAuthUpdateRequest): ModelGatewayClientAuthResponse;
+  listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse;
   getRuntime(): ModelGatewayRuntimeResponse;
   getDaemonService(): ModelGatewayDaemonServiceResponse;
   manageDaemonService(req: http.IncomingMessage | undefined, payload?: ModelGatewayDaemonServiceRequest): Promise<ModelGatewayDaemonServiceResponse>;
@@ -1682,6 +1727,7 @@ export function createModelGatewayService(
     return {
       version: 1,
       updatedAt,
+      clientAuth: normalizeClientAuthConfig(raw.clientAuth),
       providers,
       activeProviders,
     };
@@ -1804,6 +1850,46 @@ export function createModelGatewayService(
       ...provider,
       secret: secretSummary(provider.apiKeyRef),
     };
+  }
+
+  function clientAuthView(clientAuth = readRegistry().clientAuth): ModelGatewayClientAuthView {
+    return {
+      ...clientAuth,
+      secret: secretSummary(clientAuth.apiKeyRef) || {
+        ref: clientAuth.apiKeyRef,
+        hasSecret: false,
+        masked: null,
+        length: null,
+        updatedAt: null,
+      },
+      acceptedHeaders: ["Authorization: Bearer <gateway-key>", "x-api-key: <gateway-key>"],
+      protectedRoutes: [
+        "/v1/models",
+        ...ROUTES.openai_chat_completions.paths,
+        ...ROUTES.openai_responses.paths,
+        ...ROUTES.openai_responses_compact.paths,
+        ...ROUTES.anthropic_messages.paths,
+      ],
+    };
+  }
+
+  function isGatewayClientAuthorized(req: http.IncomingMessage): boolean {
+    const registry = readRegistry();
+    const auth = registry.clientAuth;
+    if (!auth.enabled) return true;
+    const secret = readSecrets().secrets[auth.apiKeyRef]?.value || "";
+    if (!secret) return false;
+    return clientAuthCandidates(req).some((candidate) => constantTimeEquals(candidate, secret));
+  }
+
+  function requireGatewayClient(req?: http.IncomingMessage): void {
+    if (!req) return;
+    if (isGatewayClientAuthorized(req)) return;
+    throw new ModelGatewayServiceError(
+      "model_gateway_client_auth_required",
+      "Studio Gateway client requests require the configured local Gateway key.",
+      401,
+    );
   }
 
   function requireManagement(req?: http.IncomingMessage): void {
@@ -2033,6 +2119,7 @@ export function createModelGatewayService(
       registry: {
         providerCount: registry.providers.length,
         activeProviders: registry.activeProviders,
+        clientAuth: clientAuthView(registry.clientAuth),
         paths: {
           registry: paths.registry,
           secrets: paths.secrets,
@@ -2495,7 +2582,64 @@ export function createModelGatewayService(
     };
   }
 
-  function listGatewayModels(): ModelGatewayModelListResponse {
+  function getClientAuth(): ModelGatewayClientAuthResponse {
+    return {
+      ok: true,
+      clientAuth: clientAuthView(),
+      revealedKey: null,
+    };
+  }
+
+  function updateClientAuth(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayClientAuthUpdateRequest = {},
+  ): ModelGatewayClientAuthResponse {
+    requireManagement(req);
+    const registry = readRegistry();
+    const next = {
+      ...registry.clientAuth,
+      enabled: typeof payload.enabled === "boolean" ? payload.enabled : registry.clientAuth.enabled,
+      apiKeyRef: registry.clientAuth.apiKeyRef || CLIENT_AUTH_SECRET_REF,
+      updatedAt: nowIso(),
+    };
+    const shouldGenerate = Boolean(payload.generate);
+    const requestedKey = shouldGenerate ? generateGatewayClientKey() : normalizeString(payload.apiKey || "");
+    const secrets = readSecrets();
+
+    if (requestedKey) {
+      const existing = secrets.secrets[next.apiKeyRef];
+      secrets.secrets[next.apiKeyRef] = {
+        value: requestedKey,
+        createdAt: existing?.createdAt || nowIso(),
+        updatedAt: nowIso(),
+      };
+      writeSecrets(secrets);
+      next.enabled = true;
+    } else if (payload.apiKey === null && next.apiKeyRef) {
+      delete secrets.secrets[next.apiKeyRef];
+      writeSecrets(secrets);
+      next.enabled = false;
+    }
+
+    if (next.enabled && !readSecrets().secrets[next.apiKeyRef]?.value) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_client_key_required",
+        "A Gateway client key is required before client authentication can be enabled.",
+        400,
+      );
+    }
+
+    registry.clientAuth = next;
+    writeRegistry(registry);
+    return {
+      ok: true,
+      clientAuth: clientAuthView(next),
+      revealedKey: shouldGenerate ? requestedKey || null : null,
+    };
+  }
+
+  function listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse {
+    requireGatewayClient(req);
     const registry = readRegistry();
     const byModelId = new Map<string, {
       id: string;
@@ -2928,6 +3072,43 @@ export function createModelGatewayService(
 
   async function handleGatewayRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const startedAt = nowIso();
+    try {
+      requireGatewayClient(req);
+    } catch (error) {
+      const authError = isModelGatewayServiceError(error)
+        ? error
+        : new ModelGatewayServiceError("model_gateway_client_auth_failed", "Studio Gateway client authentication failed.", 401);
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: {
+          routeId: null,
+          method: req.method || "GET",
+          requestedPath: req.url || "/",
+          appScope: null,
+          mode: "unsupported",
+          provider: null,
+          model: null,
+          upstreamPath: null,
+          upstreamUrl: null,
+          reason: authError.message,
+          failoverReason: null,
+        },
+        model: null,
+        statusCode: authError.statusCode,
+        outcome: "failure",
+        errorCode: authError.code,
+        errorMessage: authError.message,
+      }));
+      res.setHeader("WWW-Authenticate", "Bearer realm=\"Studio Gateway\"");
+      sendJson(res, authError.statusCode, {
+        error: {
+          code: authError.code,
+          message: authError.message,
+        },
+      });
+      return;
+    }
     const body = await readRequestBody(req);
     let bodyText = body.byteLength ? body.toString("utf8") : undefined;
     const requestModel = extractModelFromJsonText(bodyText);
@@ -3686,6 +3867,8 @@ export function createModelGatewayService(
   return {
     getStatus,
     listProviders,
+    getClientAuth,
+    updateClientAuth,
     listGatewayModels,
     getRuntime,
     getDaemonService,

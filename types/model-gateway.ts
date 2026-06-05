@@ -140,6 +140,18 @@ export interface ModelGatewaySecretSummary {
   updatedAt: string | null;
 }
 
+export interface ModelGatewayClientAuthConfig {
+  enabled: boolean;
+  apiKeyRef: string;
+  updatedAt: string | null;
+}
+
+export interface ModelGatewayClientAuthView extends ModelGatewayClientAuthConfig {
+  secret: ModelGatewaySecretSummary;
+  acceptedHeaders: string[];
+  protectedRoutes: string[];
+}
+
 export interface ModelGatewayProviderView extends ModelGatewayProvider {
   secret: ModelGatewaySecretSummary | null;
 }
@@ -162,6 +174,7 @@ export interface ModelGatewayModelListResponse {
 export interface ModelGatewayRegistryState {
   version: 1;
   updatedAt: string;
+  clientAuth: ModelGatewayClientAuthConfig;
   activeProviders: Partial<Record<ModelGatewayAppScope, string>>;
   providers: ModelGatewayProvider[];
 }
@@ -406,6 +419,18 @@ export interface ModelGatewaySetProviderSecretRequest {
   apiKey: string | null;
 }
 
+export interface ModelGatewayClientAuthUpdateRequest {
+  enabled?: boolean;
+  apiKey?: string | null;
+  generate?: boolean;
+}
+
+export interface ModelGatewayClientAuthResponse {
+  ok: true;
+  clientAuth: ModelGatewayClientAuthView;
+  revealedKey: string | null;
+}
+
 export interface ModelGatewaySetActiveProviderRequest {
   scope: ModelGatewayAppScope;
   providerId: string | null;
@@ -519,6 +544,7 @@ export interface ModelGatewayStatusResponse {
   registry: {
     providerCount: number;
     activeProviders: Partial<Record<ModelGatewayAppScope, string>>;
+    clientAuth: ModelGatewayClientAuthView;
     paths: {
       registry: string;
       secrets: string;

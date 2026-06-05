@@ -45,7 +45,7 @@ Provider / model routing 目标：
 - Provider 可新增多个，并支持启用、停用、删除；停用 provider 不参与 active routing、模型目录和自动 failover。
 - Active routing 按 App scope 选择 provider：Codex、Claude Code、OpenCode、OpenClaw 可各自固定 provider，也可保持 Auto 按启用 provider 和健康状态选择。
 - Studio Gateway 对外提供统一模型目录，例如 `GET /v1/models`，聚合所有已启用 provider 的模型；模型 ID 必须能映射回 provider，可支持显示名和别名。
-- 客户端只配置 daemon endpoint 和一个本地 Gateway key；真实 upstream key 留在 Studio secret store。一个 Gateway key 应可访问所有已启用且授权范围允许的 provider/model。
+- 客户端只配置 daemon endpoint 和一个本地 Gateway key；真实 upstream key 留在 Studio secret store。Gateway key 必须可由用户编辑或生成；设置并启用后，`/v1/models` 和三类客户端协议端点都必须校验该 key，且不会把本地 key 透传上游。
 - 不同 provider 暴露同名 model ID 是合法模型池：优先 active routing 所属 provider；Auto 按 provider priority 和健康状态选择；open circuit 自动切换到下一个同名模型 provider；也支持 `provider/model` 或 alias 显式选择。
 - 同一个 provider 内不允许重复 model ID 或重复 alias，重复判定大小写不敏感，保存时必须拒绝。
 
@@ -137,7 +137,7 @@ Provider / model routing 目标：
 | Phase B | 补齐核心协议矩阵 adapter 与测试，确保 Studio Gateway daemon routes 全部通过（核心已完成） |
 | Phase B2 | 按 cc-switch 成熟度补齐真实 SSE / tool / history / usage / reasoning 行为，并跑真实 Claude/Codex CLI smoke |
 | Phase C | 删除 Codex Stack 前后端、资源和旧测试入口（已完成） |
-| Phase D | 先新建 Studio Gateway 服务与配置面：daemon 状态/启停、provider 配置、provider 启停、active routing、聚合 `/v1/models`、模型池/别名/优先级、统一 Gateway key、协议/模型自动识别、secret、模型列表/默认模型、smoke；UI 借鉴旧 CPA 的运维入口和 cc-switch 的 Provider 管理体验，检测入口贴近 Base URL / API Key，daemon Runtime 只暴露主操作并把低频运维动作收进更多菜单，启停动作以 HTTP readiness 为最终成功条件 |
+| Phase D | 先新建 Studio Gateway 服务与配置面：daemon 状态/启停、provider 配置、provider 启停、active routing、聚合 `/v1/models`、模型池/别名/优先级、可编辑统一 Gateway key、协议/模型自动识别、secret、模型列表/默认模型、smoke；UI 借鉴旧 CPA 的运维入口和 cc-switch 的 Provider 管理体验，检测入口贴近 Base URL / API Key，daemon Runtime 只暴露主操作并把低频运维动作收进更多菜单，启停动作以 HTTP readiness 为最终成功条件 |
 | Phase E | 接入 Codex、Claude Code、OpenCode、OpenClaw 配置 preview/apply，并支持一键切换 app profile、模型和上下文/推理参数 |
 | Phase F | 后置 Channel Connectors：CC Bridge、Octo(dmwork)、飞书、微信的 contract 与管理面 |
 | Phase G | 删除迁移文档旧名，切到正式 Studio Gateway / Channel Connectors 文档 |

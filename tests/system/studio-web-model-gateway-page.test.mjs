@@ -42,6 +42,7 @@ test("Studio Gateway page uses the new model-gateway API contract", () => {
   for (const requiredPath of [
     "/api/model-gateway/status",
     "/api/model-gateway/runtime",
+    "/api/model-gateway/client-auth",
     "/api/model-gateway/daemon-service",
     "/api/model-gateway/detect-provider",
     "/api/model-gateway/providers",
@@ -78,6 +79,14 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Protocol smoke",
     "Ensure running",
     "More actions",
+    "Gateway key",
+    "Client auth",
+    "Save key",
+    "Generate key",
+    "Disable auth",
+    "clientAuthReveal",
+    "updateModelGatewayClientAuth",
+    "fetchModelGatewayClientAuth",
     "Reinstall / enable autostart",
     "Restart supervised service",
     "Stop supervised service",
@@ -125,4 +134,5 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-detect-card\s*\{[^}]*grid-column:\s*1 \/ -1/s);
   assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*overflow-wrap:\s*break-word/s);
   assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*word-break:\s*normal/s);
+  assert.match(css, /\.mgw-secret-output code\s*\{[^}]*overflow-wrap:\s*anywhere/s);
 });
