@@ -979,6 +979,155 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(JSON.stringify(appliedPreview).includes("sk-local-app-connection"), false);
 });
 
+test("model gateway app connections apply through HTTP routes against an isolated home", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const homeDir = path.join(root, "isolated-home");
+  const ctx = createStudioContext({
+    config,
+    logger: createLogger(),
+    modelGatewayOptions: { homeDir },
+  });
+
+  const codexPath = path.join(homeDir, ".codex", "config.toml");
+  const claudePath = path.join(homeDir, ".claude", "settings.json");
+  const opencodePath = path.join(homeDir, ".config", "opencode", "opencode.json");
+  fs.mkdirSync(path.dirname(codexPath), { recursive: true });
+  fs.mkdirSync(path.dirname(claudePath), { recursive: true });
+  fs.mkdirSync(path.dirname(opencodePath), { recursive: true });
+  fs.mkdirSync(path.dirname(config.openclawConfigFile), { recursive: true });
+  fs.writeFileSync(codexPath, "model = \"before-codex\"\n", "utf8");
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { KEEP: "claude" } }, null, 2)}\n`, "utf8");
+  fs.writeFileSync(opencodePath, `${JSON.stringify({ provider: { keep: { options: { apiKey: "sk-keep-opencode" } } } }, null, 2)}\n`, "utf8");
+  fs.writeFileSync(config.openclawConfigFile, `${JSON.stringify({
+    models: { providers: { keep: { api: "openai-completions" } } },
+    gateway: { auth: { token: "keep-openclaw" } },
+  }, null, 2)}\n`, "utf8");
+
+  await withServer(createStudioRequestHandler(ctx), async (baseUrl) => {
+    const provider = await requestJson(`${baseUrl}/api/model-gateway/providers`, {
+      method: "POST",
+      body: {
+        provider: {
+          id: "isolated-provider",
+          name: "Isolated Provider",
+          appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+          baseUrl: "https://isolated.example.test/v1",
+          apiFormat: "openai_chat",
+          authStrategy: "bearer",
+          models: {
+            defaultModel: "model-a",
+            models: [{ id: "model-a" }, { id: "model-b", aliases: ["alias-b"] }],
+          },
+        },
+        secret: { apiKey: "sk-upstream-isolated" },
+      },
+    });
+    assert.equal(provider.status, 200);
+
+    const auth = await requestJson(`${baseUrl}/api/model-gateway/client-auth`, {
+      method: "POST",
+      body: { apiKey: "sk-local-isolated" },
+    });
+    assert.equal(auth.status, 200);
+    assert.equal(auth.body.clientAuth.enabled, true);
+
+    const profile = await requestJson(`${baseUrl}/api/model-gateway/app-connections/profile`, {
+      method: "POST",
+      body: {
+        profile: {
+          model: "model-a",
+          appModels: {
+            codex: "model-b",
+            "claude-code": "model-a",
+            opencode: "alias-b",
+            openclaw: "model-a",
+          },
+          contextWindow: 128000,
+          autoCompactTokenLimit: 100000,
+          maxOutputTokens: 8192,
+          reasoningEffort: "medium",
+        },
+      },
+    });
+    assert.equal(profile.status, 200);
+
+    const preview = await requestJson(`${baseUrl}/api/model-gateway/app-connections`);
+    assert.equal(preview.status, 200);
+    assert.equal(preview.body.connections.length, 4);
+    assert.equal(preview.body.connections.every((connection) => connection.canApply), true);
+    assert.equal(preview.body.connections.find((connection) => connection.id === "codex").target.path, codexPath);
+    assert.equal(preview.body.connections.find((connection) => connection.id === "claude-code").target.path, claudePath);
+    assert.equal(preview.body.connections.find((connection) => connection.id === "opencode").target.path, opencodePath);
+    assert.equal(preview.body.connections.find((connection) => connection.id === "openclaw").target.path, config.openclawConfigFile);
+    assert.equal(JSON.stringify(preview.body).includes("sk-local-isolated"), false);
+    assert.equal(JSON.stringify(preview.body).includes("sk-upstream-isolated"), false);
+    assert.equal(JSON.stringify(preview.body).includes("sk-keep-opencode"), false);
+    assert.equal(JSON.stringify(preview.body).includes("keep-openclaw"), false);
+    assert.equal(JSON.stringify(preview.body).includes("<STUDIO_GATEWAY_KEY>"), true);
+
+    const applyAll = await requestJson(`${baseUrl}/api/model-gateway/app-connections/apply`, {
+      method: "POST",
+      body: {},
+    });
+    assert.equal(applyAll.status, 200);
+    assert.equal(applyAll.body.applied.length, 4);
+    assert.equal(applyAll.body.applied.every((item) => item.applied), true);
+
+    const codexConfig = fs.readFileSync(codexPath, "utf8");
+    assert.match(codexConfig, /model = "model-b"/);
+    assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
+    assert.match(codexConfig, /experimental_bearer_token = "sk-local-isolated"/);
+    assert.match(codexConfig, /model_auto_compact_token_limit = 100000/);
+
+    const claudeConfig = JSON.parse(fs.readFileSync(claudePath, "utf8"));
+    assert.equal(claudeConfig.env.KEEP, "claude");
+    assert.equal(claudeConfig.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
+    assert.equal(claudeConfig.env.ANTHROPIC_API_KEY, "sk-local-isolated");
+    assert.equal(claudeConfig.env.ANTHROPIC_MODEL, "model-a");
+
+    const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
+    assert.equal(opencodeConfig.model, "studio-gateway/alias-b");
+    assert.equal(opencodeConfig.provider.keep.options.apiKey, "sk-keep-opencode");
+    assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, "http://127.0.0.1:18796/v1");
+    assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local-isolated");
+    assert.deepEqual(Object.keys(opencodeConfig.provider["studio-gateway"].models).sort(), ["model-a", "model-b"]);
+
+    const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+    assert.equal(openclawConfig.gateway.auth.token, "keep-openclaw");
+    assert.equal(openclawConfig.models.providers.keep.api, "openai-completions");
+    assert.equal(openclawConfig.models.providers["studio-gateway"].baseUrl, "http://127.0.0.1:18796/v1");
+    assert.equal(openclawConfig.models.providers["studio-gateway"].apiKey, "sk-local-isolated");
+    assert.equal(openclawConfig.agents.defaults.model.primary, "studio-gateway/model-a");
+
+    const configured = await requestJson(`${baseUrl}/api/model-gateway/app-connections`);
+    assert.equal(configured.status, 200);
+    assert.equal(configured.body.connections.every((connection) => connection.configured), true);
+    assert.equal(JSON.stringify(configured.body).includes("sk-local-isolated"), false);
+
+    for (const appId of ["codex", "claude-code", "opencode", "openclaw"]) {
+      const rollback = await requestJson(`${baseUrl}/api/model-gateway/app-connections/${appId}/rollback`, {
+        method: "POST",
+        body: {},
+      });
+      assert.equal(rollback.status, 200);
+      assert.equal(rollback.body.rolledBack, true);
+      assert.ok(rollback.body.restoredFrom);
+      assert.ok(rollback.body.backupPath);
+    }
+
+    assert.equal(fs.readFileSync(codexPath, "utf8"), "model = \"before-codex\"\n");
+    assert.deepEqual(JSON.parse(fs.readFileSync(claudePath, "utf8")), { env: { KEEP: "claude" } });
+    assert.deepEqual(JSON.parse(fs.readFileSync(opencodePath, "utf8")), {
+      provider: { keep: { options: { apiKey: "sk-keep-opencode" } } },
+    });
+    const restoredOpenClawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+    assert.equal(restoredOpenClawConfig.gateway.auth.token, "keep-openclaw");
+    assert.equal(restoredOpenClawConfig.models.providers.keep.api, "openai-completions");
+    assert.equal(restoredOpenClawConfig.models.providers["studio-gateway"], undefined);
+  });
+});
+
 test("model gateway app connections require a local client key before apply", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
