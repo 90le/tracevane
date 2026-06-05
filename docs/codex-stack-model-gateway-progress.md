@@ -9,6 +9,7 @@
 - Studio Gateway 是后续唯一正式模型中转目标。
 - Codex Stack / CPA / Compact 旧功能面已停止演进。
 - 新 UI / API 先做 Studio Gateway 服务与配置：daemon 状态/启停、provider 配置、secret、BigModel/GMN preset、smoke。
+- Gateway UI 参考旧 CPA 管理页的运行态布局和 cc-switch 的 Provider/preset 管理体验；不恢复旧 Codex Stack / CPA / Compact 文案、诊断矩阵、安装修复复杂度或多子页拆分。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
 - Channel Connectors 后置；当前不实现 CC Bridge / Octo。
 - Gateway daemon 与 Channel daemon / CC Bridge 都必须独立守护；Studio / OpenClaw 挂掉后，CLI 模型请求和 IM 到 Codex/Gateway 的对话链路仍应保持运行。
@@ -92,6 +93,6 @@
 
 ## 下一步
 
-1. 新建 Studio Gateway 服务与配置页面，覆盖 daemon 状态/启停、provider 配置、active provider、secret 写入、BigModel/GMN preset 和 smoke。
+1. 新建 Studio Gateway 服务与配置页面，覆盖 daemon 状态/启停、provider 配置、active provider、secret 写入、BigModel/GMN preset 和 smoke；布局参考旧 CPA 管理页，Provider 管理参考 cc-switch。
 2. 再做 App Connections：Codex / Claude Code / OpenCode / OpenClaw 配置 preview 与 apply。
 3. Channel Connectors / CC Bridge / Octo 等网关配置稳定后再启动。
