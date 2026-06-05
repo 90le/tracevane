@@ -9,8 +9,10 @@
 - Studio Gateway 是后续唯一正式模型中转目标。
 - Codex Stack / CPA / Compact 旧功能面已停止演进。
 - 新 UI / API 需要重新以 Studio Gateway、Provider Center、App Connections、Runtime、Diagnostics 命名建设。
+- CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
 - 协议矩阵目标已固定：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 任意原生 provider 都必须对外暴露三类客户端协议。
 - 本地参考源码固定为 `/tmp/cc-switch-src`；只参考代理转换、SSE、tool/history、usage 映射。
+- Channel Connectors 参考源为 release 副本 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；其中 `platform/dmwork` 即 Octo，不恢复旧 `resources/codex-stack` 生产路径。
 - OpenAI 官方 API smoke 需要真实 OpenAI Platform key；本机 Codex 登录态当前是 `PROXY_MANAGED` 占位符，不可直接用于官方 API。
 - 当前 Phase B2：BigModel Anthropic/Chat、GMN Responses-native、Claude/Codex takeover smoke 已通过；OpenAI Platform official smoke 仅作为后续额外 vendor proof。
 
@@ -80,9 +82,13 @@
 - Compact 说明：
   - MLAMP 当前不作为 `/v1/responses/compact` 原生能力证明。
   - GMN 已覆盖 Responses-native `/v1/responses/compact` 替代 smoke；OpenAI Platform official smoke 仅在需要官方 vendor proof 时单独执行。
+- Channel decision：
+  - App Connections 只覆盖本地 CLI/AI 工具：Codex、Claude Code、OpenCode、OpenClaw。
+  - Channel Connectors 单独覆盖 IM 渠道：CC Bridge、Octo(dmwork)、飞书、微信/企业微信等。
+  - 短期托管 cc-connect 配置/进程/日志/事件接入；中期定义 Studio Channel Connector contract；长期优先 native 化 Octo(dmwork)。
 
 ## 下一步
 
-1. 新建 Studio Gateway 管理页和 App Connections，生成 Codex / Claude Code / OpenCode / OpenClaw / CC 配置 preview 与 apply。
-2. 把 BigModel 与 GMN endpoint preset 写入后续 Provider Center，不靠 Gateway 默认猜版本号。
-3. 如仍需 OpenAI Platform 官方证明，再用真实 Platform key/base 单独跑 `/v1/responses` 与 `/v1/responses/compact`。
+1. 先确认 Channel Connectors 的最小需求：Octo(dmwork) 优先级、CC Bridge 托管范围、Studio Chat/Agent 路由规则、会话映射和凭据模型。
+2. 新建 Studio Gateway 管理页和 App Connections，生成 Codex / Claude Code / OpenCode / OpenClaw 配置 preview 与 apply。
+3. 把 BigModel 与 GMN endpoint preset 写入后续 Provider Center，不靠 Gateway 默认猜版本号。
