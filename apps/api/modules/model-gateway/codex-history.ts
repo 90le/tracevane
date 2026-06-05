@@ -9,6 +9,7 @@ interface CodexHistoryResponseEntry {
   responseId: string;
   createdAt: string;
   updatedAt: string;
+  input: JsonRecord[];
   output: JsonRecord[];
 }
 
@@ -23,6 +24,15 @@ export interface CodexHistoryEnrichmentResult {
   bodyText: string | undefined;
   previousResponseId: string | null;
   restoredCalls: number;
+}
+
+interface CodexHistoryRecordOptions {
+  requestBodyText?: string;
+}
+
+interface RestoredCodexCall {
+  input: JsonRecord[];
+  output: JsonRecord;
 }
 
 export class CodexChatHistoryStore {
@@ -62,6 +72,7 @@ export class CodexChatHistoryStore {
 
     const restoredOnce = new Set<string>();
     const nextInput: JsonRecord[] = [];
+    let restoredInputInserted = false;
     let restoredCalls = 0;
     for (const item of inputItems) {
       const callId = item.type === "function_call_output" ? responseItemCallId(item) : null;
@@ -69,7 +80,13 @@ export class CodexChatHistoryStore {
         ? restoredByCallId.get(callId)
         : null;
       if (callId && restored) {
-        nextInput.push(cloneRecord(restored));
+        if (!restoredInputInserted && nextInput.length === 0) {
+          for (const inputItem of restored.input) {
+            nextInput.push(cloneRecord(inputItem));
+          }
+          restoredInputInserted = true;
+        }
+        nextInput.push(cloneRecord(restored.output));
         restoredOnce.add(callId);
         restoredCalls += 1;
       }
@@ -87,7 +104,7 @@ export class CodexChatHistoryStore {
     };
   }
 
-  recordResponse(response: unknown): number {
+  recordResponse(response: unknown, options: CodexHistoryRecordOptions = {}): number {
     if (!isRecord(response)) return 0;
     const responseId = stringOrNull(response.id);
     if (!responseId) return 0;
@@ -100,12 +117,14 @@ export class CodexChatHistoryStore {
       : [];
     if (!output.length) return 0;
 
+    const input = replayInputFromRequestBody(options.requestBodyText);
     const state = this.readState();
     const stamp = nowIso();
     state.responses[responseId] = {
       responseId,
       createdAt: state.responses[responseId]?.createdAt || stamp,
       updatedAt: stamp,
+      input,
       output,
     };
     state.order = [
@@ -124,13 +143,16 @@ export class CodexChatHistoryStore {
     state: CodexHistoryState,
     previousResponseId: string | null,
     callIds: string[],
-  ): Map<string, JsonRecord> {
-    const selected = new Map<string, JsonRecord>();
+  ): Map<string, RestoredCodexCall> {
+    const selected = new Map<string, RestoredCodexCall>();
     const previous = previousResponseId ? state.responses[previousResponseId] : null;
     for (const callId of callIds) {
       const direct = previous?.output.find((item) => responseItemCallId(item) === callId);
       if (direct) {
-        selected.set(callId, direct);
+        selected.set(callId, {
+          input: previous?.input.map(cloneRecord) || [],
+          output: direct,
+        });
         continue;
       }
       const fallback = uniqueFallbackCall(state, callId);
@@ -156,6 +178,9 @@ export class CodexChatHistoryStore {
           responseId,
           createdAt: stringOrNull(entry.createdAt) || nowIso(),
           updatedAt: stringOrNull(entry.updatedAt) || nowIso(),
+          input: Array.isArray(entry.input)
+            ? entry.input.filter(isRecord).map(cloneRecord)
+            : [],
           output: output.map(cloneRecord),
         };
       }
@@ -201,18 +226,31 @@ function createEmptyState(): CodexHistoryState {
 }
 
 function normalizeInputItems(input: unknown): JsonRecord[] {
+  if (typeof input === "string") return [{ role: "user", content: input }];
   if (Array.isArray(input)) return input.filter(isRecord).map(cloneRecord);
   if (isRecord(input)) return [cloneRecord(input)];
   return [];
 }
 
-function uniqueFallbackCall(state: CodexHistoryState, callId: string): JsonRecord | null {
-  let found: JsonRecord | null = null;
+function replayInputFromRequestBody(bodyText: string | undefined): JsonRecord[] {
+  const request = parseJsonObject(bodyText);
+  if (!request) return [];
+  return normalizeInputItems(request.input)
+    .filter((item) => item.type !== "function_call_output")
+    .map(cloneRecord);
+}
+
+function uniqueFallbackCall(state: CodexHistoryState, callId: string): RestoredCodexCall | null {
+  let found: RestoredCodexCall | null = null;
   for (const responseId of state.order) {
-    const candidate = state.responses[responseId]?.output.find((item) => responseItemCallId(item) === callId);
+    const entry = state.responses[responseId];
+    const candidate = entry?.output.find((item) => responseItemCallId(item) === callId);
     if (!candidate) continue;
     if (found) return null;
-    found = candidate;
+    found = {
+      input: entry?.input.map(cloneRecord) || [],
+      output: candidate,
+    };
   }
   return found;
 }

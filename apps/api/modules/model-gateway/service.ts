@@ -4442,6 +4442,7 @@ export function createModelGatewayService(
     const headers = copyUpstreamRequestHeaders(req);
     applyProviderAuth(headers, provider, secret);
     let upstreamBodyText = bodyText;
+    let codexHistoryRecordBodyText = bodyText;
     let requestModelForLog = resolvedModel || requestModel;
     if (useChatResponsesAdapter) {
       try {
@@ -4479,8 +4480,12 @@ export function createModelGatewayService(
       }
     } else if (useAnthropicMessagesChatAdapter || useCodexResponsesAnthropicAdapter) {
       try {
+        const enriched = useCodexResponsesAnthropicAdapter
+          ? codexHistory.enrichRequest(bodyText)
+          : null;
+        if (enriched?.bodyText) codexHistoryRecordBodyText = enriched.bodyText;
         const codexToChat = useCodexResponsesAnthropicAdapter
-          ? adaptCodexResponsesRequestToChat(codexHistory.enrichRequest(bodyText).bodyText, { allowStreaming: true })
+          ? adaptCodexResponsesRequestToChat(enriched?.bodyText, { allowStreaming: true })
           : null;
         const chatRequestBodyText = codexToChat
           ? JSON.stringify(codexToChat.chatRequest)
@@ -4603,6 +4608,7 @@ export function createModelGatewayService(
     } else if (useCodexResponsesChatAdapter) {
       try {
         const enriched = codexHistory.enrichRequest(bodyText);
+        if (enriched.bodyText) codexHistoryRecordBodyText = enriched.bodyText;
         const adapted = adaptCodexResponsesRequestToChat(enriched.bodyText, {
           allowStreaming: useCodexResponsesStreamingAdapter,
         });
@@ -4732,6 +4738,8 @@ export function createModelGatewayService(
             codexHistory.recordResponse({
               id: responseId,
               output: streamingResult.output,
+            }, {
+              requestBodyText: codexHistoryRecordBodyText,
             });
           }
           updateProviderHealth(provider.id, true, latencyMs, null);
@@ -4882,7 +4890,9 @@ export function createModelGatewayService(
         }
         updateProviderHealth(provider.id, true, latencyMs, null);
         if (useCodexResponsesAnthropicAdapter) {
-          codexHistory.recordResponse(adaptedResponse);
+          codexHistory.recordResponse(adaptedResponse, {
+            requestBodyText: codexHistoryRecordBodyText,
+          });
         }
         appendRequestLog(requestLogEntry({
           kind: "gateway-request",
@@ -4990,7 +5000,9 @@ export function createModelGatewayService(
           return;
         }
         updateProviderHealth(provider.id, true, latencyMs, null);
-        codexHistory.recordResponse(adaptedResponse);
+        codexHistory.recordResponse(adaptedResponse, {
+          requestBodyText: codexHistoryRecordBodyText,
+        });
         appendRequestLog(requestLogEntry({
           kind: "gateway-request",
           startedAt,

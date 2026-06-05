@@ -9,8 +9,10 @@ const LOCAL_GATEWAY_KEY = "sk-local-live-smoke";
 const DEFAULT_BIGMODEL_CHAT_BASE_URL = "https://open.bigmodel.cn/api/coding/paas/v4";
 const DEFAULT_BIGMODEL_ANTHROPIC_BASE_URL = "https://open.bigmodel.cn/api/anthropic";
 const DEFAULT_BIGMODEL_MODEL = "glm-4.6";
-const DEFAULT_TIMEOUT_MS = 90_000;
+const DEFAULT_TIMEOUT_MS = 240_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 75_000;
 const INVALID_MODEL = "studio-gateway-live-invalid-model";
+let activeRequestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS;
 
 function parseArgs(argv) {
   const options = {
@@ -18,6 +20,7 @@ function parseArgs(argv) {
     keepTemp: false,
     providers: ["bigmodel-chat", "bigmodel-anthropic"],
     timeoutMs: DEFAULT_TIMEOUT_MS,
+    requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -27,6 +30,10 @@ function parseArgs(argv) {
     else if (arg.startsWith("--providers=")) options.providers = parseCsv(arg.slice("--providers=".length));
     else if (arg === "--timeout-ms") options.timeoutMs = positiveInt(argv[++index], DEFAULT_TIMEOUT_MS);
     else if (arg.startsWith("--timeout-ms=")) options.timeoutMs = positiveInt(arg.slice("--timeout-ms=".length), DEFAULT_TIMEOUT_MS);
+    else if (arg === "--request-timeout-ms") options.requestTimeoutMs = positiveInt(argv[++index], DEFAULT_REQUEST_TIMEOUT_MS);
+    else if (arg.startsWith("--request-timeout-ms=")) {
+      options.requestTimeoutMs = positiveInt(arg.slice("--request-timeout-ms=".length), DEFAULT_REQUEST_TIMEOUT_MS);
+    }
     else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -56,6 +63,8 @@ Options:
   --providers <ids>  Comma-separated ids: bigmodel-chat,bigmodel-anthropic
   --strict           Exit non-zero when any requested provider fails or is skipped
   --timeout-ms <n>   Per-process deadline
+  --request-timeout-ms <n>
+                    Per-request deadline
   --keep-temp        Keep the temporary state directory
   -h, --help         Show this help
 
@@ -370,16 +379,20 @@ async function requestResponsesToolProbe(server, model) {
   ];
   const failures = [];
   for (const variant of variants) {
-    const response = await requestJson(`${server.baseUrl}/v1/responses`, {
-      method: "POST",
-      headers: gatewayHeaders("codex"),
-      body: variant.body,
-    });
-    if (response.status >= 200 && response.status < 300 && findResponsesFunctionCall(response.body)) {
-      response.toolChoiceVariant = variant.label;
-      return response;
+    try {
+      const response = await requestJson(`${server.baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: gatewayHeaders("codex"),
+        body: variant.body,
+      });
+      if (response.status >= 200 && response.status < 300 && findResponsesFunctionCall(response.body)) {
+        response.toolChoiceVariant = variant.label;
+        return response;
+      }
+      failures.push(`${variant.label}: HTTP ${response.status} ${preview(response.raw)}`);
+    } catch (error) {
+      failures.push(`${variant.label}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    failures.push(`${variant.label}: HTTP ${response.status} ${preview(response.raw)}`);
   }
   throw new Error(`bigmodel-chat tool call failed across tool_choice variants: ${failures.join(" | ")}`);
 }
@@ -492,7 +505,11 @@ async function requestJson(url, options = {}) {
 
 async function requestRaw(url, options = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, activeRequestTimeoutMs);
   try {
     const headers = {
       ...(options.body === undefined ? {} : { "content-type": "application/json" }),
@@ -509,6 +526,11 @@ async function requestRaw(url, options = {}) {
       headers: Object.fromEntries(response.headers.entries()),
       raw: await response.text(),
     };
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`request timed out after ${activeRequestTimeoutMs}ms`);
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -622,6 +644,7 @@ function redact(value) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  activeRequestTimeoutMs = options.requestTimeoutMs;
   const deadline = setTimeout(() => {
     console.error("Live smoke timed out.");
     process.exit(2);

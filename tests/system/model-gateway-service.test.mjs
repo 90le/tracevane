@@ -4309,6 +4309,10 @@ test("model gateway records streamed codex tool-call history for follow-up chat 
   const secondChatBody = JSON.parse(upstreamCalls[1].body);
   assert.deepEqual(secondChatBody.messages, [
     {
+      role: "user",
+      content: "Use lookup.",
+    },
+    {
       role: "assistant",
       content: null,
       tool_calls: [{
@@ -4485,6 +4489,10 @@ test("model gateway records streamed codex tool-call history for follow-up anthr
   assert.equal(upstreamCalls[1].url, "https://codex-stream-anthropic-history.example.test/v1/messages");
   const secondAnthropicBody = JSON.parse(upstreamCalls[1].body);
   assert.deepEqual(secondAnthropicBody.messages, [
+    {
+      role: "user",
+      content: "Use lookup.",
+    },
     {
       role: "assistant",
       content: [{
@@ -5018,6 +5026,10 @@ test("model gateway restores codex tool-call history for follow-up chat adapter 
   assert.equal(upstreamCalls[1].authorization, "Bearer sk-codex-history-secret");
   const secondChatBody = JSON.parse(upstreamCalls[1].body);
   assert.deepEqual(secondChatBody.messages, [
+    {
+      role: "user",
+      content: "Check the weather.",
+    },
     {
       role: "assistant",
       content: null,

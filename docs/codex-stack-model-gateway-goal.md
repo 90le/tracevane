@@ -1,6 +1,6 @@
 # Studio Gateway 目标方案
 
-> 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP added; Phase E app connection profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness added; Phase B2 protocol maturity remains open
+> 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP added; Phase E app connection profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness added; Phase B2 BigModel Chat/Anthropic live maturity passed; OpenAI Responses-native live proof remains open
 > 更新：2026-06-05
 > 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `codex-stack-model-gateway-progress.md`。文件名暂时保留为迁移入口，正文不再把 Codex Stack 当新产品名。
 
@@ -59,8 +59,8 @@ Provider / model routing 目标：
 参考源码与 live smoke：
 
 - 本地参考源码：`/tmp/cc-switch-src`，重点参考协议转换、SSE 重建、tool/history 和 usage 映射，不迁移旧 UI。
-- BigModel Chat Completions smoke base：`https://open.bigmodel.cn/api/coding/paas/v4`
-- BigModel Anthropic smoke base：`https://open.bigmodel.cn/api/anthropic`，该 provider 需 endpoint override 到 `/v1/messages`。
+- BigModel Chat Completions smoke base：`https://open.bigmodel.cn/api/coding/paas/v4`，已覆盖 Responses basic/stream/tool-call/tool-history/error-envelope。
+- BigModel Anthropic smoke base：`https://open.bigmodel.cn/api/anthropic`，该 provider 需 endpoint override 到 `/v1/messages`，已覆盖 Messages basic/stream/tool-use/error-envelope。
 - MLAMP OpenAI-compatible smoke base：`https://llm-gateway.mlamp.cn/v1`，model `gpt-5`；该 base 只保留为历史/可选参考，不作为当前 OpenAI 官方 compact 验收门槛。
 - GMN Responses-native substitute smoke base：`https://gmn.chuangzuoli.com/v1`，优先 model `gpt-5.4`；可用于替代 OpenAI 官方原生端点验证 `/v1/responses` 与 `/v1/responses/compact`，但不等同于 OpenAI Platform vendor proof。
 - OpenAI Platform official smoke：如仍需官方平台证明，后续用真实 Platform base/key 单独验证；凭据不得写入文档、测试 fixture 或 git。
@@ -135,7 +135,7 @@ Provider / model routing 目标：
 | --- | --- |
 | Phase A | 固定 Studio Gateway 命名、API contract、迁移删除清单 |
 | Phase B | 补齐核心协议矩阵 adapter 与测试，确保 Studio Gateway daemon routes 全部通过（核心已完成） |
-| Phase B2 | 按 cc-switch 成熟度补齐真实 SSE / tool / history / usage / reasoning 行为；strict smoke 已覆盖真实 CLI 启动、Gateway HTTP compact/tool-history/error-envelope probes 和 BigModel live provider harness；继续补 summary/compact 客户端触发、OpenAI Responses-native live key 和失败 provider 方言 |
+| Phase B2 | 按 cc-switch 成熟度补齐真实 SSE / tool / history / usage / reasoning 行为；strict smoke 已覆盖真实 CLI 启动、Gateway HTTP compact/tool-history/error-envelope probes、BigModel Chat/Anthropic live provider matrix；继续补 summary/compact 客户端触发和 OpenAI Responses-native live key |
 | Phase C | 删除 Codex Stack 前后端、资源和旧测试入口（已完成） |
 | Phase D | 先新建 Studio Gateway 服务与配置面：daemon 状态/启停、provider 配置、provider 启停、active routing、resolved route 状态、聚合 `/v1/models`、模型池/别名/优先级、可编辑统一 Gateway key、协议/模型自动识别、secret、模型列表/默认模型、provider-native smoke、client-protocol active-route smoke；UI 借鉴旧 CPA 的运维入口和 cc-switch 的 Provider 管理体验，检测入口贴近 Base URL / API Key，daemon Runtime 只暴露主操作并把低频运维动作收进更多菜单，启停动作以 HTTP readiness 为最终成功条件 |
 | Phase E | Codex、Claude Code、OpenCode、OpenClaw 配置 preview/apply/profile/rollback 与隔离 HOME HTTP 验收已完成；继续做真实 CLI 启动 smoke 和细节兼容 |
