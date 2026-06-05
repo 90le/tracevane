@@ -682,13 +682,64 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       id: "openclaw",
       command: "openclaw",
       args: includeOpenClawAgent
-        ? ["agent", "--local", "--json", "--message", "Reply exactly GATEWAY_OK.", "--model", `studio-gateway/${DEFAULT_MODEL}`, "--timeout", "30"]
+        ? ["agent", "--agent", "main", "--local", "--json", "--message", "Reply exactly GATEWAY_OK.", "--model", `studio-gateway/${DEFAULT_MODEL}`, "--timeout", "30"]
         : ["models", "status", "--json"],
       env,
       expectedPaths: includeOpenClawAgent ? ["/v1/chat/completions"] : [],
+      validateOutput: includeOpenClawAgent ? validateOpenClawAgentOutput : undefined,
     },
   ];
   return definitions;
+}
+
+function validateOpenClawAgentOutput({ stdout }) {
+  const parsed = parseJsonFromOutput(stdout);
+  const agentMeta = parsed?.meta?.agentMeta;
+  const usage = agentMeta?.usage;
+  const lastCallUsage = agentMeta?.lastCallUsage;
+  const errors = [];
+  const payloadText = Array.isArray(parsed?.payloads)
+    ? parsed.payloads.map((payload) => payload?.text).filter((text) => typeof text === "string").join("\n")
+    : "";
+  if (!payloadText.includes("GATEWAY_OK")) errors.push("OpenClaw JSON payload did not include GATEWAY_OK.");
+  if (agentMeta?.provider !== "studio-gateway") errors.push(`OpenClaw agent provider was ${String(agentMeta?.provider || "<missing>")}.`);
+  if (agentMeta?.model !== DEFAULT_MODEL) errors.push(`OpenClaw agent model was ${String(agentMeta?.model || "<missing>")}.`);
+  if (usage?.input !== 8 || usage?.output !== 2 || usage?.total !== 10) {
+    errors.push("OpenClaw usage summary did not preserve input/output/total tokens.");
+  }
+  if (lastCallUsage?.cacheRead !== 0 || lastCallUsage?.cacheWrite !== 0) {
+    errors.push("OpenClaw last-call usage did not preserve cache read/write fields.");
+  }
+  return {
+    ok: errors.length === 0,
+    errors,
+    facts: {
+      provider: agentMeta?.provider || null,
+      model: agentMeta?.model || null,
+      usage: usage && typeof usage === "object" ? usage : null,
+      lastCallUsage: lastCallUsage && typeof lastCallUsage === "object" ? {
+        input: lastCallUsage.input ?? null,
+        output: lastCallUsage.output ?? null,
+        cacheRead: lastCallUsage.cacheRead ?? null,
+        cacheWrite: lastCallUsage.cacheWrite ?? null,
+        total: lastCallUsage.total ?? null,
+      } : null,
+      contextTokens: agentMeta?.contextTokens ?? null,
+    },
+  };
+}
+
+function parseJsonFromOutput(output) {
+  const trimmed = output.trim();
+  if (!trimmed) throw new Error("Command stdout was empty.");
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("Command stdout did not contain a JSON object.");
+    return JSON.parse(trimmed.slice(start, end + 1));
+  }
 }
 
 async function runCommand(definition, requestStore) {
@@ -730,11 +781,15 @@ async function runCommand(definition, requestStore) {
   const expectedHit = !definition.expectedPaths.length
     || definition.expectedPaths.some((expectedPath) => hitPaths.includes(expectedPath));
   const outputContainsOk = `${stdout}\n${stderr}`.includes("GATEWAY_OK");
+  const outputValidation = typeof definition.validateOutput === "function"
+    ? validateCommandOutput(definition.validateOutput, { stdout, stderr, requests })
+    : null;
   const durationMs = Math.max(0, Date.now() - startedAt);
   const passed = !timedOut
     && exit.code === 0
     && expectedHit
     && requests.length >= minRequestCount
+    && (!outputValidation || outputValidation.ok)
     && (definition.expectedPaths.length ? outputContainsOk || requests.length > 0 : true);
   return {
     id: definition.id,
@@ -749,8 +804,29 @@ async function runCommand(definition, requestStore) {
     minRequestCount,
     requestCount: requests.length,
     outputContainsOk,
+    ...(outputValidation ? { outputValidation } : {}),
     stdoutPreview: preview(stdout),
     stderrPreview: preview(stderr),
+  };
+}
+
+function validateCommandOutput(validateOutput, context) {
+  try {
+    return normalizeValidationResult(validateOutput(context));
+  } catch (error) {
+    return {
+      ok: false,
+      errors: [error instanceof Error ? error.message : String(error)],
+    };
+  }
+}
+
+function normalizeValidationResult(result) {
+  if (!result || typeof result !== "object") return { ok: false, errors: ["Output validation did not return a result."] };
+  return {
+    ok: result.ok === true,
+    ...(Array.isArray(result.errors) && result.errors.length ? { errors: result.errors } : {}),
+    ...(result.facts && typeof result.facts === "object" ? { facts: result.facts } : {}),
   };
 }
 
