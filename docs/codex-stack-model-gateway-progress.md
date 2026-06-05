@@ -12,7 +12,7 @@
 - 协议矩阵目标已固定：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 任意原生 provider 都必须对外暴露三类客户端协议。
 - 本地参考源码固定为 `/tmp/cc-switch-src`；只参考代理转换、SSE、tool/history、usage 映射。
 - OpenAI 官方 API smoke 需要真实 OpenAI Platform key；本机 Codex 登录态当前是 `PROXY_MANAGED` 占位符，不可直接用于官方 API。
-- 当前新增 Phase B2：先把 Anthropic-compatible 与 OpenAI Chat-compatible provider 做到真实 CLI 成熟度；OpenAI Responses 官方 provider 等用户后续提供 key/base 后补测。
+- 当前新增 Phase B2：先把 Anthropic-compatible、OpenAI Chat-compatible、OpenAI Responses-compatible 三类 provider 做到真实 CLI 成熟度；OpenAI 官方 provider 等用户后续提供真实 Platform key/base 后补测。
 
 ## 本轮完成
 
@@ -40,11 +40,16 @@
   - Chat-compatible base `https://open.bigmodel.cn/api/coding/paas/v4`，model `glm-4.6`：需 endpoint override 到 `/chat/completions`；`/v1/chat/completions`、`/v1/messages`、`/v1/responses/compact`、Anthropic streaming 均通过。
   - 测试 key 只用于临时 smoke，未写入仓库。
 - OpenAI official smoke：代理链路可达，但本机可读 key 是 `PROXY_MANAGED` placeholder；Gateway 已本地拒绝该 placeholder，需真实 OpenAI Platform key 后重测。
+- MLAMP Responses-compatible live classification：
+  - Base `https://llm-gateway.mlamp.cn/v1`，model `gpt-5`：`/responses` 非流式通过，返回 `object: response`、`status: completed`、`output_text`、Responses usage 字段。
+  - `/responses` streaming 通过，返回 `response.created`、`response.in_progress`、`response.output_item.*` SSE 事件。
+  - `/chat/completions` 也通过，返回 `object: chat.completion`；因此该 base 是 dual-compatible，但 Phase B2 优先把它当 Responses 原生 provider 样本。
+  - 测试 key 只用于临时 smoke，未写入仓库。
 
 ## 下一步
 
 1. Phase B2 test-first：从 `/tmp/cc-switch-src` 对照整理严格 fixture，覆盖 SSE 状态机、tool/history、usage/cache、error envelope、reasoning/thinking、并发 tool call 和增量参数。
-2. 修补 Gateway adapter 缺口后，先用 BigModel Anthropic 与 BigModel Chat bases 跑真实 smoke。
+2. 修补 Gateway adapter 缺口后，先用 BigModel Anthropic、BigModel Chat、MLAMP Responses bases 跑真实 smoke。
 3. 跑真实 Claude CLI / Claude Code：普通对话、stream、tool-use、summary/compact；必要时先用临时配置，不等新 UI。
-4. 跑 Codex CLI Responses/compact smoke；OpenAI 官方 provider 等用户提供真实 OpenAI Platform key/base 后补测。
+4. 跑 Codex CLI Responses/compact smoke；MLAMP 先作为 Responses-compatible 样本，OpenAI 官方 provider 等用户提供真实 OpenAI Platform key/base 后补测。
 5. Phase B2 通过后再进入新 Studio Gateway 管理页和 App Connections。
