@@ -175,7 +175,100 @@
       </aside>
 
       <main class="mgw-main">
-        <article class="mgw-panel">
+        <nav class="mgw-workspace-tabs" role="tablist" aria-label="Model Gateway workspace">
+          <button
+            v-for="tab in workspaceTabs"
+            :id="`mgw-tab-${tab.id}`"
+            :key="tab.id"
+            type="button"
+            role="tab"
+            class="surface-tab mgw-workspace-tab"
+            :class="{ active: activeWorkspaceTab === tab.id }"
+            :aria-selected="activeWorkspaceTab === tab.id"
+            :aria-controls="`mgw-panel-${tab.id}`"
+            :tabindex="activeWorkspaceTab === tab.id ? 0 : -1"
+            @click="activeWorkspaceTab = tab.id"
+          >
+            {{ text(tab.zh, tab.en) }}
+          </button>
+        </nav>
+
+        <article
+          v-show="activeWorkspaceTab === 'connections'"
+          id="mgw-panel-connections"
+          class="mgw-panel mgw-workspace-panel"
+          role="tabpanel"
+          aria-labelledby="mgw-tab-connections"
+        >
+          <div class="mgw-panel-head">
+            <div>
+              <p class="eyebrow">App Connections</p>
+              <h3>{{ text('客户端接入', 'Client connections') }}</h3>
+            </div>
+            <button type="button" class="secondary-button compact-button" :disabled="loading" @click="refreshAppConnections">
+              {{ text('刷新', 'Refresh') }}
+            </button>
+          </div>
+
+          <div class="mgw-app-grid">
+            <section v-for="connection in appConnections" :key="connection.id" class="mgw-app-card">
+              <div class="mgw-app-card__head">
+                <div>
+                  <strong>{{ connection.label }}</strong>
+                  <small>{{ apiFormatLabel(connection.protocol) }} · {{ connection.appScope }}</small>
+                </div>
+                <StatusPill :label="appConnectionStateLabel(connection)" :tone="appConnectionStateTone(connection)" />
+              </div>
+
+              <div class="mgw-app-facts">
+                <div>
+                  <span>Endpoint</span>
+                  <strong>{{ connection.endpoint }}</strong>
+                </div>
+                <div>
+                  <span>{{ text('配置文件', 'Config file') }}</span>
+                  <strong>{{ connection.target.path }}</strong>
+                </div>
+                <div>
+                  <span>{{ text('默认模型', 'Default model') }}</span>
+                  <strong>{{ connection.model || '-' }}</strong>
+                </div>
+              </div>
+
+              <div v-if="connection.issues.length" class="mgw-app-issues">
+                <span v-for="issue in connection.issues" :key="issue">{{ issue }}</span>
+              </div>
+
+              <details class="mgw-app-preview">
+                <summary>{{ text('预览配置', 'Preview config') }}</summary>
+                <pre>{{ connection.preview.content }}</pre>
+              </details>
+
+              <div class="mgw-app-actions">
+                <button
+                  type="button"
+                  class="primary-button compact-button"
+                  :disabled="!connection.canApply || isAppConnectionBusy(connection.id)"
+                  @click="applyAppConnectionConfig(connection.id)"
+                >
+                  {{ isAppConnectionBusy(connection.id) ? text('应用中...', 'Applying...') : text('应用配置', 'Apply config') }}
+                </button>
+                <span v-if="connection.launchHint">{{ connection.launchHint }}</span>
+              </div>
+            </section>
+            <div v-if="loaded && !appConnections.length" class="mgw-empty">
+              {{ text('还没有可管理的客户端连接。', 'No manageable client connections yet.') }}
+            </div>
+          </div>
+        </article>
+
+        <article
+          v-show="activeWorkspaceTab === 'providers'"
+          id="mgw-panel-providers"
+          class="mgw-panel mgw-workspace-panel"
+          role="tabpanel"
+          aria-labelledby="mgw-tab-providers"
+        >
           <div class="mgw-panel-head">
             <div>
               <p class="eyebrow">Provider Center</p>
@@ -339,7 +432,13 @@
           </div>
         </article>
 
-        <article class="mgw-panel">
+        <article
+          v-show="activeWorkspaceTab === 'smoke'"
+          id="mgw-panel-smoke"
+          class="mgw-panel mgw-workspace-panel"
+          role="tabpanel"
+          aria-labelledby="mgw-tab-smoke"
+        >
           <div class="mgw-panel-head">
             <div>
               <p class="eyebrow">Smoke</p>
@@ -484,6 +583,8 @@ import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
 import { X } from '@lucide/vue';
 import type {
   ModelGatewayApiFormat,
+  ModelGatewayAppConnection,
+  ModelGatewayAppConnectionId,
   ModelGatewayAppScope,
   ModelGatewayAuthStrategy,
   ModelGatewayClientAuthView,
@@ -505,8 +606,10 @@ import type {
 import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
+  applyModelGatewayAppConnection,
   deleteModelGatewayProvider,
   detectModelGatewayProvider,
+  fetchModelGatewayAppConnections,
   fetchModelGatewayClientAuth,
   fetchModelGatewayDaemonService,
   fetchModelGatewayProviders,
@@ -557,6 +660,8 @@ type DetectStep = {
   status: DetectStepStatus;
 };
 
+type WorkspaceTabId = 'connections' | 'providers' | 'smoke';
+
 const { text } = useLocalePreference();
 
 const appScopeOptions: Array<{ id: ModelGatewayAppScope; zh: string; en: string }> = [
@@ -585,6 +690,12 @@ const routeOptions: Array<{ id: ModelGatewayRouteId; label: string }> = [
   { id: 'openai_responses', label: 'OpenAI Responses' },
   { id: 'openai_responses_compact', label: 'OpenAI Responses compact' },
   { id: 'anthropic_messages', label: 'Anthropic Messages' },
+];
+
+const workspaceTabs: Array<{ id: WorkspaceTabId; zh: string; en: string }> = [
+  { id: 'connections', zh: '客户端接入', en: 'Client connections' },
+  { id: 'providers', zh: 'Provider 配置', en: 'Provider configuration' },
+  { id: 'smoke', zh: 'Smoke / 日志', en: 'Smoke / Logs' },
 ];
 
 const protocolTemplates: ProtocolTemplate[] = [
@@ -638,6 +749,7 @@ const busy = ref(false);
 const daemonBusy = ref(false);
 const smokeBusy = ref(false);
 const detectBusy = ref(false);
+const activeWorkspaceTab = ref<WorkspaceTabId>('connections');
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
 const status = ref<ModelGatewayStatusResponse | null>(null);
 const runtime = ref<ModelGatewayRuntimeResponse | null>(null);
@@ -648,6 +760,8 @@ const clientAuthBusy = ref(false);
 const clientAuthEnabled = ref(false);
 const clientKeyDraft = ref('');
 const clientAuthReveal = ref('');
+const appConnections = ref<ModelGatewayAppConnection[]>([]);
+const appConnectionBusy = ref<Partial<Record<ModelGatewayAppConnectionId, boolean>>>({});
 const providers = ref<ModelGatewayProviderView[]>([]);
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
 const smokeProviderId = ref('');
@@ -916,6 +1030,22 @@ const secretPlaceholder = computed(() => {
     : text('粘贴 API Key', 'Paste API key');
 });
 
+function appConnectionStateLabel(connection: ModelGatewayAppConnection): string {
+  if (connection.configured) return text('已配置', 'Configured');
+  if (!connection.canApply) return text('待处理', 'Blocked');
+  return text('可应用', 'Ready');
+}
+
+function appConnectionStateTone(connection: ModelGatewayAppConnection): 'neutral' | 'accent' | 'sage' | 'danger' {
+  if (connection.configured) return 'sage';
+  if (!connection.canApply) return 'danger';
+  return 'accent';
+}
+
+function isAppConnectionBusy(appId: ModelGatewayAppConnectionId): boolean {
+  return appConnectionBusy.value[appId] === true;
+}
+
 function createEmptyScopes(enabled = true): Record<ModelGatewayAppScope, boolean> {
   return {
     codex: enabled,
@@ -1183,17 +1313,19 @@ async function loadAll(): Promise<void> {
   loading.value = true;
   notice.value = null;
   try {
-    const [nextStatus, nextProviders, nextRuntime, nextDaemon, nextClientAuth] = await Promise.all([
+    const [nextStatus, nextProviders, nextRuntime, nextDaemon, nextClientAuth, nextAppConnections] = await Promise.all([
       fetchModelGatewayStatus(),
       fetchModelGatewayProviders(),
       fetchModelGatewayRuntime(),
       fetchModelGatewayDaemonService(),
       fetchModelGatewayClientAuth(),
+      fetchModelGatewayAppConnections(),
     ]);
     status.value = nextStatus;
     runtime.value = nextRuntime;
     daemonService.value = nextDaemon;
     applyClientAuthView(nextClientAuth.clientAuth);
+    appConnections.value = nextAppConnections.connections;
     providers.value = nextProviders.providers;
     activeProviders.value = nextProviders.activeProviders;
     ensureSelectedProvider();
@@ -1205,6 +1337,46 @@ async function loadAll(): Promise<void> {
     };
   } finally {
     loading.value = false;
+  }
+}
+
+async function refreshAppConnections(): Promise<void> {
+  try {
+    const response = await fetchModelGatewayAppConnections();
+    appConnections.value = response.connections;
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('客户端连接刷新失败', 'Failed to refresh client connections'),
+    };
+  }
+}
+
+async function applyAppConnectionConfig(appId: ModelGatewayAppConnectionId): Promise<void> {
+  appConnectionBusy.value = {
+    ...appConnectionBusy.value,
+    [appId]: true,
+  };
+  notice.value = null;
+  try {
+    const result = await applyModelGatewayAppConnection(appId);
+    await refreshAppConnections();
+    notice.value = {
+      kind: 'success',
+      message: result.backupPath
+        ? text('配置已应用，原文件已备份。', 'Config applied; existing file was backed up.')
+        : text('配置已应用。', 'Config applied.'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('客户端连接应用失败', 'Failed to apply client connection'),
+    };
+  } finally {
+    appConnectionBusy.value = {
+      ...appConnectionBusy.value,
+      [appId]: false,
+    };
   }
 }
 
@@ -1237,6 +1409,7 @@ async function saveClientKey(): Promise<void> {
     });
     applyClientAuthView(result.clientAuth);
     clientAuthReveal.value = result.revealedKey || '';
+    await refreshAppConnections();
     notice.value = {
       kind: 'success',
       message: text('Gateway key 已更新', 'Gateway key updated'),
@@ -1259,6 +1432,7 @@ async function generateClientKey(): Promise<void> {
     const result = await updateModelGatewayClientAuth({ enabled: true, generate: true });
     applyClientAuthView(result.clientAuth);
     clientAuthReveal.value = result.revealedKey || '';
+    await refreshAppConnections();
     notice.value = {
       kind: 'success',
       message: text('已生成新的 Gateway key', 'Generated a new Gateway key'),
@@ -1280,6 +1454,7 @@ async function disableClientKey(): Promise<void> {
   try {
     const result = await updateModelGatewayClientAuth({ enabled: false });
     applyClientAuthView(result.clientAuth);
+    await refreshAppConnections();
     notice.value = {
       kind: 'success',
       message: text('Gateway client 鉴权已停用', 'Gateway client auth disabled'),
@@ -1369,6 +1544,7 @@ async function saveProvider(): Promise<void> {
     smokeProviderId.value = provider.id || smokeProviderId.value;
     smokeModel.value = models.defaultModel || smokeModel.value;
     draft.apiKey = '';
+    await refreshAppConnections();
     notice.value = {
       kind: 'success',
       message: text('Provider 已保存', 'Provider saved'),
@@ -1393,6 +1569,7 @@ async function removeProvider(providerId: string): Promise<void> {
     activeProviders.value = response.activeProviders;
     resetDraft();
     ensureSelectedProvider();
+    await refreshAppConnections();
     notice.value = {
       kind: 'success',
       message: text('Provider 已删除', 'Provider deleted'),
@@ -1423,6 +1600,7 @@ async function updateActiveProvider(scope: ModelGatewayAppScope, event: Event): 
     const response = await setModelGatewayActiveProvider({ scope, providerId });
     providers.value = response.providers;
     activeProviders.value = response.activeProviders;
+    await refreshAppConnections();
     notice.value = {
       kind: 'success',
       message: text('路由已更新', 'Route updated'),

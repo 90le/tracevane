@@ -43,6 +43,7 @@ test("Studio Gateway page uses the new model-gateway API contract", () => {
     "/api/model-gateway/status",
     "/api/model-gateway/runtime",
     "/api/model-gateway/client-auth",
+    "/api/model-gateway/app-connections",
     "/api/model-gateway/daemon-service",
     "/api/model-gateway/detect-provider",
     "/api/model-gateway/providers",
@@ -80,6 +81,23 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Ensure running",
     "More actions",
     "Gateway key",
+    "App Connections",
+    "Client connections",
+    "Provider configuration",
+    "Smoke / Logs",
+    "workspaceTabs",
+    "activeWorkspaceTab",
+    "mgw-workspace-tabs",
+    "mgw-workspace-panel",
+    "Apply config",
+    "Preview config",
+    "appConnections",
+    "applyModelGatewayAppConnection",
+    "fetchModelGatewayAppConnections",
+    "refreshAppConnections",
+    "applyAppConnectionConfig",
+    "mgw-app-card",
+    "mgw-app-preview",
     "Client auth",
     "Save key",
     "Generate key",
@@ -135,4 +153,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*overflow-wrap:\s*break-word/s);
   assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*word-break:\s*normal/s);
   assert.match(css, /\.mgw-secret-output code\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.mgw-workspace-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-workspace-tab\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-app-preview pre\s*\{[^}]*overflow-wrap:\s*anywhere/s);
 });

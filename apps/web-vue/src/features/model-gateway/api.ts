@@ -4,6 +4,9 @@ import type {
   ModelGatewayDaemonServiceAction,
   ModelGatewayDaemonServiceRequest,
   ModelGatewayDaemonServiceResponse,
+  ModelGatewayAppConnectionId,
+  ModelGatewayAppConnectionsResponse,
+  ModelGatewayApplyAppConnectionResponse,
   ModelGatewayProviderDetectRequest,
   ModelGatewayProviderDetectResponse,
   ModelGatewayProviderView,
@@ -56,6 +59,17 @@ export function fetchModelGatewayClientAuth(): Promise<ModelGatewayClientAuthRes
 
 export function updateModelGatewayClientAuth(payload: ModelGatewayClientAuthUpdateRequest): Promise<ModelGatewayClientAuthResponse> {
   return requestJson<ModelGatewayClientAuthResponse>('/api/model-gateway/client-auth', jsonBody(payload));
+}
+
+export function fetchModelGatewayAppConnections(): Promise<ModelGatewayAppConnectionsResponse> {
+  return requestJson<ModelGatewayAppConnectionsResponse>('/api/model-gateway/app-connections');
+}
+
+export function applyModelGatewayAppConnection(appId: ModelGatewayAppConnectionId): Promise<ModelGatewayApplyAppConnectionResponse> {
+  return requestJson<ModelGatewayApplyAppConnectionResponse>(
+    `/api/model-gateway/app-connections/${encodeURIComponent(appId)}/apply`,
+    jsonBody({ appId }),
+  );
 }
 
 export function fetchModelGatewayDaemonService(): Promise<ModelGatewayDaemonServiceResponse> {

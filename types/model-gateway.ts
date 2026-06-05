@@ -11,6 +11,15 @@ export const MODEL_GATEWAY_APP_SCOPES = [
 
 export type ModelGatewayAppScope = (typeof MODEL_GATEWAY_APP_SCOPES)[number];
 
+export const MODEL_GATEWAY_APP_CONNECTION_IDS = [
+  "codex",
+  "claude-code",
+  "opencode",
+  "openclaw",
+] as const;
+
+export type ModelGatewayAppConnectionId = (typeof MODEL_GATEWAY_APP_CONNECTION_IDS)[number];
+
 export const MODEL_GATEWAY_PROVIDER_CATEGORIES = [
   "official",
   "openai-compatible",
@@ -429,6 +438,59 @@ export interface ModelGatewayClientAuthResponse {
   ok: true;
   clientAuth: ModelGatewayClientAuthView;
   revealedKey: string | null;
+}
+
+export interface ModelGatewayAppConnectionProfile {
+  model: string | null;
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  reasoningEffort: string | null;
+}
+
+export interface ModelGatewayAppConnectionTarget {
+  path: string;
+  exists: boolean;
+  format: "json" | "toml";
+}
+
+export interface ModelGatewayAppConnectionPreview {
+  targetPath: string;
+  format: "json" | "toml";
+  content: string;
+  redacted: true;
+}
+
+export interface ModelGatewayAppConnection {
+  id: ModelGatewayAppConnectionId;
+  label: string;
+  appScope: ModelGatewayAppScope;
+  protocol: ModelGatewayApiFormat;
+  endpoint: string;
+  model: string | null;
+  target: ModelGatewayAppConnectionTarget;
+  configured: boolean;
+  canApply: boolean;
+  issues: string[];
+  launchHint: string | null;
+  preview: ModelGatewayAppConnectionPreview;
+}
+
+export interface ModelGatewayAppConnectionsResponse {
+  ok: true;
+  checkedAt: string;
+  connections: ModelGatewayAppConnection[];
+}
+
+export interface ModelGatewayApplyAppConnectionRequest {
+  appId?: ModelGatewayAppConnectionId;
+}
+
+export interface ModelGatewayApplyAppConnectionResponse {
+  ok: true;
+  checkedAt: string;
+  connection: ModelGatewayAppConnection;
+  applied: boolean;
+  backupPath: string | null;
 }
 
 export interface ModelGatewaySetActiveProviderRequest {

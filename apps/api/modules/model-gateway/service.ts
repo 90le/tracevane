@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { createRequire } from "node:module";
@@ -8,6 +9,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
   MODEL_GATEWAY_API_FORMATS,
+  MODEL_GATEWAY_APP_CONNECTION_IDS,
   MODEL_GATEWAY_APP_SCOPES,
   MODEL_GATEWAY_AUTH_STRATEGIES,
   MODEL_GATEWAY_DAEMON_SERVICE_NAME,
@@ -16,7 +18,12 @@ import {
   MODEL_GATEWAY_PROVIDER_CATEGORIES,
   MODEL_GATEWAY_ROUTE_IDS,
   type ModelGatewayApiFormat,
+  type ModelGatewayAppConnection,
+  type ModelGatewayAppConnectionId,
+  type ModelGatewayAppConnectionsResponse,
   type ModelGatewayAppScope,
+  type ModelGatewayApplyAppConnectionRequest,
+  type ModelGatewayApplyAppConnectionResponse,
   type ModelGatewayAuthStrategy,
   type ModelGatewayClientAuthConfig,
   type ModelGatewayClientAuthResponse,
@@ -1638,11 +1645,301 @@ function requestLogEntry(options: {
   };
 }
 
+type ModelGatewayAppConnectionFormat = "json" | "toml";
+
+interface ModelGatewayAppConnectionSpec {
+  id: ModelGatewayAppConnectionId;
+  label: string;
+  appScope: ModelGatewayAppScope;
+  protocol: ModelGatewayApiFormat;
+  format: ModelGatewayAppConnectionFormat;
+  targetPath: string;
+  endpoint: string;
+  launchHint: string | null;
+}
+
+const APP_CONNECTION_REDACTED_KEY = "<STUDIO_GATEWAY_KEY>";
+const CODEX_APP_CONNECTION_START = "# >>> OpenClaw Studio Gateway app connection >>>";
+const CODEX_APP_CONNECTION_END = "# <<< OpenClaw Studio Gateway app connection <<<";
+
+function normalizeAppConnectionId(value: unknown): ModelGatewayAppConnectionId | null {
+  return MODEL_GATEWAY_APP_CONNECTION_IDS.includes(value as ModelGatewayAppConnectionId)
+    ? value as ModelGatewayAppConnectionId
+    : null;
+}
+
+function stripTrailingV1(endpoint: string): string {
+  return endpoint.replace(/\/v1\/?$/i, "");
+}
+
+function tomlString(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
+}
+
+function stripCodexManagedBlock(source: string): string {
+  const start = CODEX_APP_CONNECTION_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const end = CODEX_APP_CONNECTION_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return source
+    .replace(new RegExp(`\\n?${start}[\\s\\S]*?${end}\\n?`, "g"), "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd();
+}
+
+function upsertTopLevelTomlString(source: string, key: string, value: string | null): string {
+  if (!value) return source;
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source ? source.split(/\r?\n/) : [];
+  const firstTableIndex = lines.findIndex((line) => /^\s*\[/.test(line));
+  const topLevelEnd = firstTableIndex >= 0 ? firstTableIndex : lines.length;
+  const nextLine = `${key} = ${tomlString(value)}`;
+  for (let index = 0; index < topLevelEnd; index += 1) {
+    if (new RegExp(`^\\s*${key}\\s*=`).test(lines[index] || "")) {
+      lines[index] = nextLine;
+      return lines.join(newline);
+    }
+  }
+  lines.splice(topLevelEnd, 0, nextLine);
+  return lines.join(newline).replace(new RegExp(`${newline}{3,}`, "g"), `${newline}${newline}`);
+}
+
+function buildCodexConfig(source: string, options: {
+  endpoint: string;
+  key: string;
+  model: string | null;
+}): string {
+  let next = stripCodexManagedBlock(source);
+  next = upsertTopLevelTomlString(next, "model_provider", "studio_gateway");
+  if (options.model) next = upsertTopLevelTomlString(next, "model", options.model);
+  const block = [
+    CODEX_APP_CONNECTION_START,
+    "[model_providers.studio_gateway]",
+    "name = \"OpenClaw Studio Gateway\"",
+    `base_url = ${tomlString(options.endpoint)}`,
+    "wire_api = \"responses\"",
+    "supports_websockets = false",
+    `experimental_bearer_token = ${tomlString(options.key)}`,
+    CODEX_APP_CONNECTION_END,
+  ].join("\n");
+  return `${next.trimEnd()}\n\n${block}\n`;
+}
+
+function parseJsonObjectForConnection(filePath: string, source: string | null): {
+  value: Record<string, unknown>;
+  error: string | null;
+} {
+  if (!source || !source.trim()) return { value: {}, error: null };
+  try {
+    const parsed = JSON.parse(source) as unknown;
+    if (isRecord(parsed)) return { value: parsed, error: null };
+    return {
+      value: {},
+      error: `${filePath} does not contain a JSON object.`,
+    };
+  } catch (error) {
+    return {
+      value: {},
+      error: error instanceof Error ? error.message : `${filePath} is not valid JSON.`,
+    };
+  }
+}
+
+function stringifyConnectionJson(value: Record<string, unknown>): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function isSecretPreviewKey(key: string): boolean {
+  return /(?:api[_-]?key|apikey|auth[_-]?token|token|secret|password|credential|authorization|bearer)/i.test(key);
+}
+
+function isPreviewPlaceholder(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed === APP_CONNECTION_REDACTED_KEY
+    || trimmed === "<REDACTED>"
+    || /^\$\{[A-Z0-9_]+\}$/.test(trimmed);
+}
+
+function redactJsonPreviewSecrets(value: unknown, key = ""): unknown {
+  if (typeof value === "string") {
+    return isSecretPreviewKey(key) && !isPreviewPlaceholder(value) ? "<REDACTED>" : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactJsonPreviewSecrets(item, key));
+  }
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([entryKey, entryValue]) => [
+      entryKey,
+      redactJsonPreviewSecrets(entryValue, entryKey),
+    ]),
+  );
+}
+
+function redactTomlPreviewSecrets(content: string): string {
+  return content.replace(
+    /^(\s*[^#\n=]*(?:api[_-]?key|apikey|auth[_-]?token|token|secret|password|credential|authorization|bearer)[^=\n]*=\s*)("[^"\n]*"|'[^'\n]*'|[^\n#]+)/gim,
+    (line, prefix: string, rawValue: string) => {
+      if (rawValue.includes(APP_CONNECTION_REDACTED_KEY) || rawValue.includes("<REDACTED>")) return line;
+      if (/^\s*["']?\$\{[A-Z0-9_]+\}["']?\s*$/.test(rawValue)) return line;
+      return `${prefix}"<REDACTED>"`;
+    },
+  );
+}
+
+function redactConnectionPreviewContent(format: ModelGatewayAppConnectionFormat, content: string): string {
+  if (format === "json") {
+    try {
+      const parsed = JSON.parse(content) as unknown;
+      return `${JSON.stringify(redactJsonPreviewSecrets(parsed), null, 2)}\n`;
+    } catch {
+      return content;
+    }
+  }
+  return redactTomlPreviewSecrets(content);
+}
+
+function buildClaudeSettingsConfig(source: string | null, targetPath: string, options: {
+  endpoint: string;
+  key: string;
+  model: string | null;
+}): { content: string; error: string | null } {
+  const parsed = parseJsonObjectForConnection(targetPath, source);
+  if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
+  const env = isRecord(parsed.value.env) ? parsed.value.env : {};
+  const modelEnv = options.model
+    ? {
+      ANTHROPIC_MODEL: options.model,
+      ANTHROPIC_REASONING_MODEL: options.model,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: options.model,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: options.model,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: options.model,
+    }
+    : {};
+  return {
+    error: null,
+    content: stringifyConnectionJson({
+      ...parsed.value,
+      env: {
+        ...env,
+        ANTHROPIC_BASE_URL: options.endpoint,
+        ANTHROPIC_API_KEY: options.key,
+        ANTHROPIC_AUTH_TOKEN: options.key,
+        ...modelEnv,
+      },
+    }),
+  };
+}
+
+function buildOpenCodeConfig(source: string | null, targetPath: string, options: {
+  endpoint: string;
+  key: string;
+  model: string | null;
+  modelIds: string[];
+}): { content: string; error: string | null } {
+  const parsed = parseJsonObjectForConnection(targetPath, source);
+  if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
+  const provider = isRecord(parsed.value.provider) ? parsed.value.provider : {};
+  const models = Object.fromEntries(options.modelIds.map((id) => [id, { name: id }]));
+  return {
+    error: null,
+    content: stringifyConnectionJson({
+      ...parsed.value,
+      ...(options.model ? { model: `studio-gateway/${options.model}` } : {}),
+      provider: {
+        ...provider,
+        "studio-gateway": {
+          npm: "@ai-sdk/openai",
+          options: {
+            apiKey: options.key,
+            baseURL: options.endpoint,
+          },
+          models,
+        },
+      },
+    }),
+  };
+}
+
+function buildOpenClawConfig(source: string | null, targetPath: string, options: {
+  endpoint: string;
+  key: string;
+  model: string | null;
+  modelIds: string[];
+}): { content: string; error: string | null } {
+  const parsed = parseJsonObjectForConnection(targetPath, source);
+  if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
+  const modelsRoot = isRecord(parsed.value.models) ? parsed.value.models : {};
+  const providers = isRecord(modelsRoot.providers) ? modelsRoot.providers : {};
+  const modelItems = options.modelIds.map((id) => ({
+    id,
+    name: id,
+    input: ["text"],
+    reasoning: true,
+  }));
+  return {
+    error: null,
+    content: stringifyConnectionJson({
+      ...parsed.value,
+      models: {
+        ...modelsRoot,
+        mode: normalizeString(modelsRoot.mode, "merge"),
+        providers: {
+          ...providers,
+          "studio-gateway": {
+            auth: "api-key",
+            request: {
+              allowPrivateNetwork: true,
+            },
+            api: "openai-completions",
+            baseUrl: options.endpoint,
+            apiKey: options.key,
+            models: modelItems,
+          },
+        },
+      },
+      ...(options.model ? {
+        agents: mergeOpenClawAgentDefaultModel(parsed.value.agents, options.model),
+      } : {}),
+    }),
+  };
+}
+
+function mergeOpenClawAgentDefaultModel(agentsValue: unknown, model: string): Record<string, unknown> {
+  const agents = isRecord(agentsValue) ? agentsValue : {};
+  const defaults = isRecord(agents.defaults) ? agents.defaults : {};
+  return {
+    ...agents,
+    defaults: {
+      ...defaults,
+      model: {
+        ...(isRecord(defaults.model) ? defaults.model : {}),
+        primary: `studio-gateway/${model}`,
+      },
+    },
+  };
+}
+
+function backupFileIfExists(sourcePath: string, backupsRoot: string, appId: ModelGatewayAppConnectionId): string | null {
+  if (!fs.existsSync(sourcePath)) return null;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const ext = path.extname(sourcePath) || ".bak";
+  const backupPath = path.join(backupsRoot, "app-connections", `${appId}-${stamp}${ext}.bak`);
+  fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+  fs.copyFileSync(sourcePath, backupPath);
+  try {
+    fs.chmodSync(backupPath, 0o600);
+  } catch {
+    // Best effort for filesystems that do not support chmod.
+  }
+  return backupPath;
+}
+
 export interface ModelGatewayService {
   getStatus(): ModelGatewayStatusResponse;
   listProviders(): ModelGatewayProvidersResponse;
   getClientAuth(): ModelGatewayClientAuthResponse;
   updateClientAuth(req: http.IncomingMessage | undefined, payload?: ModelGatewayClientAuthUpdateRequest): ModelGatewayClientAuthResponse;
+  listAppConnections(): ModelGatewayAppConnectionsResponse;
+  applyAppConnection(req: http.IncomingMessage | undefined, payload?: ModelGatewayApplyAppConnectionRequest): ModelGatewayApplyAppConnectionResponse;
   listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse;
   getRuntime(): ModelGatewayRuntimeResponse;
   getDaemonService(): ModelGatewayDaemonServiceResponse;
@@ -1659,6 +1956,7 @@ export interface ModelGatewayService {
 
 export interface ModelGatewayServiceOptions {
   runtimeHost?: "studio-api" | "local-daemon";
+  homeDir?: string;
   listener?: {
     host?: string;
     port?: number;
@@ -1675,6 +1973,7 @@ export function createModelGatewayService(
   const paths = resolveModelGatewayPaths(config);
   const codexHistory = new CodexChatHistoryStore(paths.codexHistory);
   const runtimeHost = options.runtimeHost || "studio-api";
+  const homeDir = options.homeDir || os.homedir();
   const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
   const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
 
@@ -2693,6 +2992,302 @@ export function createModelGatewayService(
           aliases: [...item.aliases].sort(),
           providerIds: [...item.providerIds].sort(),
         })),
+    };
+  }
+
+  function readGatewayClientSecret(): string | null {
+    const registry = readRegistry();
+    const auth = registry.clientAuth;
+    if (!auth.enabled) return null;
+    return readSecrets().secrets[auth.apiKeyRef]?.value || null;
+  }
+
+  function gatewayModelIds(): string[] {
+    const registry = readRegistry();
+    const defaultIds = registry.providers
+      .filter((provider) => provider.enabled)
+      .sort((left, right) => left.failover.priority - right.failover.priority || left.name.localeCompare(right.name))
+      .map((provider) => normalizeString(provider.models.defaultModel || provider.models.models[0]?.id || ""))
+      .filter(Boolean);
+    return [
+      ...defaultIds,
+      ...listGatewayModels().data.map((model) => model.id),
+    ].filter((model, index, list) => list.indexOf(model) === index);
+  }
+
+  function defaultModelForConnection(scope: ModelGatewayAppScope): string | null {
+    const registry = readRegistry();
+    const selection = resolveProviderSelection(registry, scope, null);
+    return selection.resolvedModel
+      || selection.provider?.models.defaultModel
+      || selection.provider?.models.models[0]?.id
+      || gatewayModelIds()[0]
+      || null;
+  }
+
+  function appConnectionSpecs(): ModelGatewayAppConnectionSpec[] {
+    const endpoint = getLifecycleStatus().endpointPolicy.preferredCliEndpoint;
+    return [
+      {
+        id: "codex",
+        label: "Codex CLI",
+        appScope: "codex",
+        protocol: "openai_responses",
+        format: "toml",
+        targetPath: path.join(homeDir, ".codex", "config.toml"),
+        endpoint,
+        launchHint: "codex --model <model-id>",
+      },
+      {
+        id: "claude-code",
+        label: "Claude Code",
+        appScope: "claude-code",
+        protocol: "anthropic_messages",
+        format: "json",
+        targetPath: path.join(homeDir, ".claude", "settings.json"),
+        endpoint: stripTrailingV1(endpoint),
+        launchHint: "claude --model <model-id>",
+      },
+      {
+        id: "opencode",
+        label: "OpenCode",
+        appScope: "opencode",
+        protocol: "openai_chat",
+        format: "json",
+        targetPath: path.join(homeDir, ".config", "opencode", "opencode.json"),
+        endpoint,
+        launchHint: "opencode",
+      },
+      {
+        id: "openclaw",
+        label: "OpenClaw",
+        appScope: "openclaw",
+        protocol: "openai_chat",
+        format: "json",
+        targetPath: config.openclawConfigFile,
+        endpoint,
+        launchHint: "openclaw",
+      },
+    ];
+  }
+
+  function readConnectionSource(targetPath: string): { source: string | null; error: string | null } {
+    try {
+      return {
+        source: readTextIfExists(targetPath),
+        error: null,
+      };
+    } catch (error) {
+      return {
+        source: null,
+        error: error instanceof Error ? error.message : `Unable to read ${targetPath}.`,
+      };
+    }
+  }
+
+  function buildAppConnectionContent(spec: ModelGatewayAppConnectionSpec, options: {
+    key: string;
+    model: string | null;
+    modelIds: string[];
+    source: string | null;
+  }): { content: string; error: string | null } {
+    if (spec.id === "codex") {
+      return {
+        error: null,
+        content: buildCodexConfig(options.source || "", {
+          endpoint: spec.endpoint,
+          key: options.key,
+          model: options.model,
+        }),
+      };
+    }
+    if (spec.id === "claude-code") {
+      return buildClaudeSettingsConfig(options.source, spec.targetPath, {
+        endpoint: spec.endpoint,
+        key: options.key,
+        model: options.model,
+      });
+    }
+    if (spec.id === "opencode") {
+      return buildOpenCodeConfig(options.source, spec.targetPath, {
+        endpoint: spec.endpoint,
+        key: options.key,
+        model: options.model,
+        modelIds: options.modelIds,
+      });
+    }
+    return buildOpenClawConfig(options.source, spec.targetPath, {
+      endpoint: spec.endpoint,
+      key: options.key,
+      model: options.model,
+      modelIds: options.modelIds,
+    });
+  }
+
+  function appConnectionConfigured(spec: ModelGatewayAppConnectionSpec, source: string | null): boolean {
+    if (!source) return false;
+    if (spec.id === "codex") {
+      return source.includes("[model_providers.studio_gateway]")
+        && source.includes("model_provider = \"studio_gateway\"")
+        && source.includes(`base_url = ${tomlString(spec.endpoint)}`);
+    }
+    const parsed = parseJsonObjectForConnection(spec.targetPath, source);
+    if (parsed.error) return false;
+    if (spec.id === "claude-code") {
+      const env = isRecord(parsed.value.env) ? parsed.value.env : {};
+      return normalizeString(env.ANTHROPIC_BASE_URL) === spec.endpoint
+        && Boolean(normalizeString(env.ANTHROPIC_API_KEY) || normalizeString(env.ANTHROPIC_AUTH_TOKEN));
+    }
+    if (spec.id === "opencode") {
+      const provider = isRecord(parsed.value.provider) ? parsed.value.provider : {};
+      const studio = isRecord(provider["studio-gateway"]) ? provider["studio-gateway"] : {};
+      const optionsValue = isRecord(studio.options) ? studio.options : {};
+      return normalizeString(optionsValue.baseURL) === spec.endpoint && Boolean(normalizeString(optionsValue.apiKey));
+    }
+    const models = isRecord(parsed.value.models) ? parsed.value.models : {};
+    const providers = isRecord(models.providers) ? models.providers : {};
+    const studio = isRecord(providers["studio-gateway"]) ? providers["studio-gateway"] : {};
+    return normalizeString(studio.baseUrl) === spec.endpoint && Boolean(normalizeString(studio.apiKey));
+  }
+
+  function buildAppConnection(spec: ModelGatewayAppConnectionSpec, options: {
+    key: string | null;
+    source: string | null;
+    sourceError: string | null;
+    modelIds: string[];
+  }): ModelGatewayAppConnection {
+    const registry = readRegistry();
+    const model = defaultModelForConnection(spec.appScope);
+    const content = buildAppConnectionContent(spec, {
+      key: APP_CONNECTION_REDACTED_KEY,
+      model,
+      modelIds: options.modelIds,
+      source: options.source,
+    });
+    const issues = [
+      ...(registry.clientAuth.enabled && options.key
+        ? []
+        : ["Gateway client key is not enabled or missing; generate or save a local Gateway key before applying app connections."]),
+      ...(options.modelIds.length ? [] : ["No enabled provider models are available through /v1/models. Configure at least one enabled provider model first."]),
+      ...(options.sourceError ? [`Unable to read target config: ${options.sourceError}`] : []),
+      ...(content.error ? [`Target config is not valid for merge: ${content.error}`] : []),
+    ];
+    return {
+      id: spec.id,
+      label: spec.label,
+      appScope: spec.appScope,
+      protocol: spec.protocol,
+      endpoint: spec.endpoint,
+      model,
+      target: {
+        path: spec.targetPath,
+        exists: fs.existsSync(spec.targetPath),
+        format: spec.format,
+      },
+      configured: appConnectionConfigured(spec, options.source),
+      canApply: issues.length === 0,
+      issues,
+      launchHint: spec.launchHint,
+      preview: {
+        targetPath: spec.targetPath,
+        format: spec.format,
+        content: redactConnectionPreviewContent(spec.format, content.content),
+        redacted: true,
+      },
+    };
+  }
+
+  function listAppConnections(): ModelGatewayAppConnectionsResponse {
+    const key = readGatewayClientSecret();
+    const modelIds = gatewayModelIds();
+    return {
+      ok: true,
+      checkedAt: nowIso(),
+      connections: appConnectionSpecs().map((spec) => {
+        const source = readConnectionSource(spec.targetPath);
+        return buildAppConnection(spec, {
+          key,
+          source: source.source,
+          sourceError: source.error,
+          modelIds,
+        });
+      }),
+    };
+  }
+
+  function applyAppConnection(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayApplyAppConnectionRequest = {},
+  ): ModelGatewayApplyAppConnectionResponse {
+    requireManagement(req);
+    const appId = normalizeAppConnectionId(payload.appId);
+    if (!appId) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_invalid",
+        "A valid app connection id is required.",
+        400,
+      );
+    }
+    const key = readGatewayClientSecret();
+    if (!key) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_key_required",
+        "Enable and save a local Gateway client key before applying app connections.",
+        400,
+      );
+    }
+    const modelIds = gatewayModelIds();
+    if (!modelIds.length) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_models_required",
+        "Configure at least one enabled provider model before applying app connections.",
+        400,
+      );
+    }
+    const spec = appConnectionSpecs().find((item) => item.id === appId);
+    if (!spec) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_not_found",
+        `App connection '${appId}' was not found.`,
+        404,
+      );
+    }
+    const source = readConnectionSource(spec.targetPath);
+    if (source.error) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_read_failed",
+        source.error,
+        500,
+      );
+    }
+    const model = defaultModelForConnection(spec.appScope);
+    const next = buildAppConnectionContent(spec, {
+      key,
+      model,
+      modelIds,
+      source: source.source,
+    });
+    if (next.error) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_target_invalid",
+        next.error,
+        400,
+      );
+    }
+    const backupPath = backupFileIfExists(spec.targetPath, paths.backups, appId);
+    writeTextAtomic(spec.targetPath, next.content, 0o600);
+    const updatedSource = readConnectionSource(spec.targetPath);
+    return {
+      ok: true,
+      checkedAt: nowIso(),
+      connection: buildAppConnection(spec, {
+        key,
+        source: updatedSource.source,
+        sourceError: updatedSource.error,
+        modelIds,
+      }),
+      applied: true,
+      backupPath,
     };
   }
 
@@ -3869,6 +4464,8 @@ export function createModelGatewayService(
     listProviders,
     getClientAuth,
     updateClientAuth,
+    listAppConnections,
+    applyAppConnection,
     listGatewayModels,
     getRuntime,
     getDaemonService,

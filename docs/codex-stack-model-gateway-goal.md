@@ -1,6 +1,6 @@
 # Studio Gateway 目标方案
 
-> 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog MVP added; Phase B2 maturity hardening remains open
+> 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog MVP added; Phase E app connection preview/apply MVP added; Phase B2 maturity hardening remains open
 > 更新：2026-06-05
 > 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `codex-stack-model-gateway-progress.md`。文件名暂时保留为迁移入口，正文不再把 Codex Stack 当新产品名。
 
@@ -97,9 +97,9 @@ Provider / model routing 目标：
 | Studio Gateway Core | provider registry、secret store、active route、health、request log、adapter registry |
 | Studio Gateway daemon | loopback HTTP listener、协议 adapter、provider router、runtime metadata、supervisor contract |
 | Gateway Service & Config | daemon 安装/启用自启动/启动/停止/重启/状态、用户自定义 provider 配置、provider 启停、协议/模型自动识别弹层、secret 写入、聚合模型目录、模型别名、默认模型、active provider、smoke |
-| App Connections | Codex、Claude Code、OpenCode、OpenClaw 的配置检测、preview、apply、rollback、一键切换模型/上下文/推理强度等 app profile |
+| App Connections | Codex、Claude Code、OpenCode、OpenClaw 的配置检测、脱敏 preview、确认后 apply、备份；下一步扩展 rollback 和一键切换模型/上下文/推理强度等 app profile |
 | Channel Connectors | CC Bridge、Octo(dmwork)、飞书、微信等 IM 渠道配置、事件接入、会话映射和消息路由 |
-| Gateway UI | Provider Center、App Connections、Runtime、Smoke 的新页面；参考旧 CPA 管理页的运行态布局和 cc-switch 的 provider 表单，但不内置具体 vendor 预设，也不复用旧 Codex Stack / CPA / Compact 文案、诊断矩阵、安装修复复杂度；Provider 原生协议只展示三类常见协议 |
+| Gateway UI | Runtime/Gateway key/Active routing 左侧常驻，右侧用 tabs 分开 App Connections、Provider Center、Smoke；参考旧 CPA 管理页的运行态布局和 cc-switch 的 provider 表单，但不内置具体 vendor 预设，也不复用旧 Codex Stack / CPA / Compact 文案、诊断矩阵、安装修复复杂度；Provider 原生协议只展示三类常见协议 |
 
 ## 6. 删除范围
 
@@ -122,8 +122,8 @@ Provider / model routing 目标：
 - Provider registry 支持 Anthropic Messages、OpenAI Responses、OpenAI Chat Completions 三类原生 provider。
 - `GET /v1/models` 返回已启用 provider 的聚合模型目录；一个本地 Gateway key 可用于所有授权模型，且不会暴露 upstream key。
 - Active routing 可把 provider 应用到 Codex、Claude Code、OpenCode、OpenClaw；停用 provider 不可被选中，已被选中的 provider 停用后必须回退或提示。
-- Codex、Claude Code、OpenCode、OpenClaw 可通过 App Connections 生成配置 preview，并在用户确认后 apply。
-- App Connections 支持一键切换 app profile：endpoint/key、模型、上下文窗口、max output、reasoning/effort、协议模式和必要的兼容参数。
+- Codex、Claude Code、OpenCode、OpenClaw 可通过 App Connections 生成脱敏配置 preview，并在用户确认后 apply；apply 前必须有本地 Gateway key 和可用 provider 模型，写入前备份原文件。
+- App Connections 下一步支持一键切换 app profile：endpoint/key、模型、上下文窗口、max output、reasoning/effort、协议模式和必要的兼容参数。
 - CC Bridge / Octo(dmwork) 通过 Channel Connectors 独立配置；其消息进入 Studio Chat / Agent，再由 Studio Gateway 调模型。
 - 客户端配置只保存 placeholder 或 local endpoint；真实 upstream key 留在 Studio secret store。
 - OpenClaw/Studio 崩溃隔离测试通过：daemon direct endpoint 继续可用。
@@ -138,6 +138,6 @@ Provider / model routing 目标：
 | Phase B2 | 按 cc-switch 成熟度补齐真实 SSE / tool / history / usage / reasoning 行为，并跑真实 Claude/Codex CLI smoke |
 | Phase C | 删除 Codex Stack 前后端、资源和旧测试入口（已完成） |
 | Phase D | 先新建 Studio Gateway 服务与配置面：daemon 状态/启停、provider 配置、provider 启停、active routing、聚合 `/v1/models`、模型池/别名/优先级、可编辑统一 Gateway key、协议/模型自动识别、secret、模型列表/默认模型、smoke；UI 借鉴旧 CPA 的运维入口和 cc-switch 的 Provider 管理体验，检测入口贴近 Base URL / API Key，daemon Runtime 只暴露主操作并把低频运维动作收进更多菜单，启停动作以 HTTP readiness 为最终成功条件 |
-| Phase E | 接入 Codex、Claude Code、OpenCode、OpenClaw 配置 preview/apply，并支持一键切换 app profile、模型和上下文/推理参数 |
+| Phase E | Codex、Claude Code、OpenCode、OpenClaw 配置 preview/apply MVP 已完成；继续补一键切换 app profile、模型和上下文/推理参数 |
 | Phase F | 后置 Channel Connectors：CC Bridge、Octo(dmwork)、飞书、微信的 contract 与管理面 |
 | Phase G | 删除迁移文档旧名，切到正式 Studio Gateway / Channel Connectors 文档 |

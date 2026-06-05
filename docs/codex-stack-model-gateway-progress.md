@@ -1,6 +1,6 @@
 # Studio Gateway 迁移进度
 
-> 状态：Phase C completed; Phase B core matrix completed; Phase D provider routing/model catalog MVP added; Phase B2 maturity hardening remains open
+> 状态：Phase C completed; Phase B core matrix completed; Phase D provider routing/model catalog MVP added; Phase E app connection preview/apply MVP added; Phase B2 maturity hardening remains open
 > 更新：2026-06-05
 > 文档规则：只保留当前状态、验证、下一步；过期细节直接替换。
 
@@ -16,6 +16,7 @@
 - Provider registry 已有 `enabled` 字段、App scope、active provider、priority、model alias 和 `/api/model-gateway/active-provider`；UI 可编辑 provider 启用状态、路由优先级、模型列表/别名和 Active routing。
 - `GET /v1/models` 已聚合所有启用 provider 的模型。同名模型跨 provider 合法，会形成模型池；active provider 优先，Auto 按 priority/健康状态选择，open circuit 后切换到下一个同名模型 provider。同 provider 内重复 model ID 或 alias 会被拒绝。
 - Gateway client key 已实现为用户可编辑/可生成的本地鉴权：设置并启用后，`/v1/models`、`/v1/chat/completions`、`/v1/responses`、`/v1/responses/compact`、`/v1/messages` 和 `/claude/v1/messages` 都接受 `Authorization: Bearer` 或 `x-api-key`，并会替换为 provider upstream key 后再转发。
+- App Connections MVP 已实现：Codex CLI、Claude Code、OpenCode、OpenClaw 可生成脱敏配置 preview，并在用户确认后 apply；apply 要求本地 Gateway key 和可用 provider 模型，写入前备份原文件，预览/响应不回显真实 key。
 - Gateway daemon service 已覆盖新设备首次安装、systemd/launchd/scheduled-task 自启动启用、启动、停止、重启、status 与 ensure-running；旧坏模板会自动重写并 reload/start/restart，已安装时 install 按重装/重新启用处理。
 - `start`、`restart`、`ensure-running` 已改为等待 daemon HTTP status ready 后才标记 started；stop 后 inactive 视为预期结果，不再误报失败。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
@@ -29,6 +30,16 @@
 
 ## 本轮完成
 
+- Phase E App Connections MVP：
+  - 新增 `MODEL_GATEWAY_APP_CONNECTION_IDS` 和 App Connection response/apply 类型。
+  - 新增 `/api/model-gateway/app-connections` 与 `/api/model-gateway/app-connections/:appId/apply`。
+  - Codex CLI 生成受控 TOML block，设置 `model_provider="studio_gateway"`、Responses base URL 和本地 Gateway key。
+  - Claude Code 合并 `~/.claude/settings.json` 的 `env`，写入 `ANTHROPIC_BASE_URL`、`ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` 和默认模型。
+  - OpenCode 合并 `provider["studio-gateway"]`，写入 OpenAI Chat-compatible endpoint/key 和聚合模型列表。
+  - OpenClaw 合并 `models.providers["studio-gateway"]`，写入本地 Gateway provider、聚合模型列表和默认 agent model。
+  - `/model-gateway` 新增 App Connections 卡片，显示 endpoint、目标配置文件、默认模型、阻断原因、脱敏预览和 apply 操作。
+  - 右侧主工作区改为 tab 分页：客户端接入、Provider 配置、Smoke / 日志分开呈现，避免 App Connections 和 Provider 表单堆积在同一长页面。
+  - App Connections preview 递归脱敏已有配置里的 `apiKey`、`token`、`secret`、`password`、`authorization` 等字段；真实 key 只在 apply 写入目标文件。
 - 删除旧后端：`apps/api/modules/codex-stack/**` 和 `/api/codex-stack/*` 注册入口。
 - 删除旧前端：`apps/web-vue/src/features/codex-stack/**`、`CodexStackView.vue`、导航和首页入口。
 - 删除旧资源：`resources/codex-stack/**`。
@@ -90,6 +101,11 @@
 - 本轮构建验证通过：`npm run build:api`、`node --test --test-reporter=spec --test-name-pattern "daemon service management|ensure-running|stop treats inactive|start reports bootstrap" tests/system/model-gateway-service.test.mjs`、`npm run typecheck:web`、`node --test --test-reporter=spec tests/system/studio-web-model-gateway-page.test.mjs`、`npm run build --workspace=apps/web-vue`。
 - 本轮模型池验证通过：`npm run build:api && node --test --test-reporter=spec tests/system/model-gateway-service.test.mjs && npm run typecheck:web && npm run build --workspace=apps/web-vue && node --test --test-reporter=spec tests/system/studio-web-model-gateway-page.test.mjs`。
 - 本轮 Gateway key 验证通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "client key protects" tests/system/model-gateway-service.test.mjs`；覆盖无 key/错 key 401、Bearer/x-api-key 通过、生成 key、停用鉴权和 upstream key 隔离。
+- 本轮 App Connections 验证通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "app connections|client key protects" tests/system/model-gateway-service.test.mjs`；覆盖脱敏预览、四类客户端 apply、备份、真实写入 key、无 Gateway key 阻断。
+- 本轮完整 Gateway 验证通过：`node --test --test-reporter=spec tests/system/model-gateway-service.test.mjs`，41/41 通过。
+- 本轮前端验证通过：`npm run typecheck:web && npm run build --workspace=apps/web-vue && node --test --test-reporter=spec tests/system/studio-web-model-gateway-page.test.mjs`。
+- 本轮 tab UI 与脱敏修正验证通过：`npm run build:api && node --test --test-reporter=spec tests/system/model-gateway-service.test.mjs && npm run typecheck:web && npm run build --workspace=apps/web-vue && node --test --test-reporter=spec tests/system/studio-web-model-gateway-page.test.mjs`；页面静态测试锁定 `mgw-workspace-tabs`、三个 tab 和预览脱敏。
+- 本轮 dev/live smoke 通过：`npm run dev:restart` 后 frontend `http://127.0.0.1:5176/model-gateway` 返回 200，backend health `gateway=online`，daemon restart 返回 `active=true/started=true`，`/api/model-gateway/app-connections` 返回 4 个连接且不包含已知旧配置 key/token。
 - 本轮 Gateway key live smoke 通过：dev 和 daemon 重启后，临时 key 启用时 `GET 18796/v1/models` 无 key 返回 401，带 `x-api-key` 返回 200；测试后已清除临时 key，当前本机 client auth 为 disabled/no secret。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "protocol matrix forwards native openai responses|anthropic messages through openai chat providers|codex compact|chat reasoning|streamed codex tool-call history|upstream responses stream fails|normalizes upstream chat errors" tests/system/model-gateway-service.test.mjs`，8/8 通过。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "routing contract selects|records streamed codex tool-call history|adapts streaming chat tool calls|adapts codex responses through native anthropic|protocol matrix forwards" tests/system/model-gateway-service.test.mjs`，7/7 通过。
@@ -135,7 +151,7 @@
 
 ## 下一步
 
-1. 补 Provider Center 可用性闭环：Active routing 选择后即时 smoke 验证、停用当前 active provider 时给出明确回退提示。
-2. 做 App Connections：Codex / Claude Code / OpenCode / OpenClaw 配置 preview/apply，并使用本地 Gateway key 生成客户端配置。
-3. App Connections 支持一键切换 app profile、模型、上下文窗口、max output、reasoning/effort 等参数。
+1. 补 App Connections profile 切换：模型、上下文窗口、max output、reasoning/effort、协议兼容参数和 rollback。
+2. 补 Provider Center 可用性闭环：Active routing 选择后即时 smoke 验证、停用当前 active provider 时给出明确回退提示。
+3. 做真实客户端配置 apply 的人工验收：用测试 HOME/临时配置跑 Codex、Claude Code、OpenCode、OpenClaw。
 4. Channel Connectors / CC Bridge / Octo 等网关配置稳定后再启动。

@@ -3,6 +3,7 @@ import type { StudioRouter } from "../../core/router.js";
 import type {
   ModelGatewayClientAuthUpdateRequest,
   ModelGatewayDaemonServiceRequest,
+  ModelGatewayApplyAppConnectionRequest,
   ModelGatewayProviderDetectRequest,
   ModelGatewayProviderTestRequest,
   ModelGatewaySetActiveProviderRequest,
@@ -68,6 +69,26 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     try {
       const payload = await parseJsonBody<ModelGatewayClientAuthUpdateRequest>(req);
       sendJson(res, 200, routeCtx.services.modelGateway.updateClientAuth(req, payload));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.get("/api/model-gateway/app-connections", (_req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.listAppConnections());
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/app-connections/:appId/apply", async (req, res, routeCtx, params) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayApplyAppConnectionRequest>(req);
+      sendJson(res, 200, routeCtx.services.modelGateway.applyAppConnection(req, {
+        ...payload,
+        appId: params.appId as ModelGatewayApplyAppConnectionRequest["appId"],
+      }));
     } catch (error) {
       sendModelGatewayError(res, error);
     }

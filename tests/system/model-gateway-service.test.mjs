@@ -802,6 +802,142 @@ test("model gateway client key protects client endpoints and stays separate from
   assert.ok(!upstreamCalls[0].body.includes("sk-local-client-one"));
 });
 
+test("model gateway app connections preview and apply client config files with redacted keys", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const homeDir = path.join(root, "home");
+  const service = createModelGatewayService(config, { homeDir });
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "gateway-main",
+      name: "Gateway Main",
+      appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+      baseUrl: "https://provider.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-main",
+        models: [{ id: "gpt-main" }, { id: "gpt-alt" }],
+      },
+    },
+    secret: { apiKey: "sk-upstream-app-connection" },
+  });
+  service.updateClientAuth(undefined, { apiKey: "sk-local-app-connection" });
+
+  const codexPath = path.join(homeDir, ".codex", "config.toml");
+  const claudePath = path.join(homeDir, ".claude", "settings.json");
+  const opencodePath = path.join(homeDir, ".config", "opencode", "opencode.json");
+  fs.mkdirSync(path.dirname(codexPath), { recursive: true });
+  fs.mkdirSync(path.dirname(claudePath), { recursive: true });
+  fs.mkdirSync(path.dirname(opencodePath), { recursive: true });
+  fs.mkdirSync(path.dirname(config.openclawConfigFile), { recursive: true });
+  fs.writeFileSync(codexPath, "model = \"old-model\"\n\n[profiles.keep]\nmodel = \"keep-model\"\n", "utf8");
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { EXISTING: "1" }, hooks: { Stop: [] } }, null, 2)}\n`, "utf8");
+  fs.writeFileSync(opencodePath, `${JSON.stringify({
+    $schema: "https://opencode.ai/config.json",
+    provider: {
+      existing: {
+        models: {},
+        options: { apiKey: "sk-existing-opencode-secret" },
+      },
+    },
+  }, null, 2)}\n`, "utf8");
+  fs.writeFileSync(config.openclawConfigFile, `${JSON.stringify({
+    models: { mode: "merge", providers: { existing: { api: "openai-completions" } } },
+    agents: { defaults: { model: { primary: "existing/model" } } },
+    gateway: { auth: { token: "existing-openclaw-token" } },
+  }, null, 2)}\n`, "utf8");
+
+  const preview = service.listAppConnections();
+  assert.equal(preview.ok, true);
+  assert.deepEqual(preview.connections.map((connection) => connection.id), ["codex", "claude-code", "opencode", "openclaw"]);
+  assert.equal(preview.connections.every((connection) => connection.canApply), true);
+  assert.equal(JSON.stringify(preview).includes("sk-local-app-connection"), false);
+  assert.equal(JSON.stringify(preview).includes("sk-existing-opencode-secret"), false);
+  assert.equal(JSON.stringify(preview).includes("existing-openclaw-token"), false);
+  assert.equal(JSON.stringify(preview).includes("<STUDIO_GATEWAY_KEY>"), true);
+  assert.equal(preview.connections.find((connection) => connection.id === "claude-code")?.endpoint, "http://127.0.0.1:18796");
+
+  const codex = service.applyAppConnection(undefined, { appId: "codex" });
+  assert.equal(codex.applied, true);
+  assert.equal(codex.connection.configured, true);
+  assert.ok(codex.backupPath && fs.existsSync(codex.backupPath));
+  const codexConfig = fs.readFileSync(codexPath, "utf8");
+  assert.match(codexConfig, /model_provider = "studio_gateway"/);
+  assert.match(codexConfig, /model = "gpt-main"/);
+  assert.match(codexConfig, /\[model_providers\.studio_gateway\]/);
+  assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
+  assert.match(codexConfig, /experimental_bearer_token = "sk-local-app-connection"/);
+  assert.match(codexConfig, /\[profiles\.keep\]/);
+  assert.equal(codex.connection.preview.content.includes("sk-local-app-connection"), false);
+
+  service.applyAppConnection(undefined, { appId: "claude-code" });
+  const claudeConfig = JSON.parse(fs.readFileSync(claudePath, "utf8"));
+  assert.equal(claudeConfig.env.EXISTING, "1");
+  assert.equal(claudeConfig.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
+  assert.equal(claudeConfig.env.ANTHROPIC_API_KEY, "sk-local-app-connection");
+  assert.equal(claudeConfig.env.ANTHROPIC_AUTH_TOKEN, "sk-local-app-connection");
+  assert.equal(claudeConfig.env.ANTHROPIC_MODEL, "gpt-main");
+  assert.deepEqual(claudeConfig.hooks.Stop, []);
+
+  service.applyAppConnection(undefined, { appId: "opencode" });
+  const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
+  assert.equal(opencodeConfig.model, "studio-gateway/gpt-main");
+  assert.equal(opencodeConfig.provider.existing.options.apiKey, "sk-existing-opencode-secret");
+  assert.equal(opencodeConfig.provider["studio-gateway"].npm, "@ai-sdk/openai");
+  assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, "http://127.0.0.1:18796/v1");
+  assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local-app-connection");
+  assert.deepEqual(Object.keys(opencodeConfig.provider["studio-gateway"].models).sort(), ["gpt-alt", "gpt-main"]);
+
+  service.applyAppConnection(undefined, { appId: "openclaw" });
+  const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  assert.equal(openclawConfig.models.providers.existing.api, "openai-completions");
+  assert.equal(openclawConfig.gateway.auth.token, "existing-openclaw-token");
+  assert.equal(openclawConfig.models.providers["studio-gateway"].api, "openai-completions");
+  assert.equal(openclawConfig.models.providers["studio-gateway"].baseUrl, "http://127.0.0.1:18796/v1");
+  assert.equal(openclawConfig.models.providers["studio-gateway"].apiKey, "sk-local-app-connection");
+  assert.deepEqual(openclawConfig.models.providers["studio-gateway"].models.map((model) => model.id), ["gpt-main", "gpt-alt"]);
+  assert.equal(openclawConfig.agents.defaults.model.primary, "studio-gateway/gpt-main");
+
+  const appliedPreview = service.listAppConnections();
+  assert.equal(appliedPreview.connections.every((connection) => connection.configured), true);
+  assert.equal(JSON.stringify(appliedPreview).includes("sk-local-app-connection"), false);
+});
+
+test("model gateway app connections require a local client key before apply", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const homeDir = path.join(root, "home");
+  const service = createModelGatewayService(config, { homeDir });
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "gateway-main",
+      name: "Gateway Main",
+      appScopes: ["codex"],
+      baseUrl: "https://provider.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-main",
+        models: [{ id: "gpt-main" }],
+      },
+    },
+  });
+
+  const preview = service.listAppConnections();
+  assert.equal(preview.connections.find((connection) => connection.id === "codex")?.canApply, false);
+  assert.match(
+    preview.connections.find((connection) => connection.id === "codex")?.issues.join("\n") || "",
+    /Gateway client key/,
+  );
+  assert.throws(
+    () => service.applyAppConnection(undefined, { appId: "codex" }),
+    /Enable and save a local Gateway client key/,
+  );
+});
+
 test("model gateway management supports active provider selection, delete, and open-circuit fallback", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
