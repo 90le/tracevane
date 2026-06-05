@@ -549,6 +549,13 @@ export interface ModelGatewayProviderTestRequest {
   timeoutMs?: number;
 }
 
+export interface ModelGatewayActiveRouteSmokeRequest {
+  scope?: ModelGatewayAppScope;
+  model?: string;
+  input?: string;
+  timeoutMs?: number;
+}
+
 export interface ModelGatewayProviderTestResponse {
   ok: boolean;
   providerId: string;
@@ -618,10 +625,30 @@ export interface ModelGatewayProviderDetectResponse {
   recommendations: ModelGatewayProviderDetectRecommendation[];
 }
 
+export type ModelGatewayActiveRouteState =
+  | "fixed"
+  | "auto"
+  | "fallback"
+  | "missing";
+
+export interface ModelGatewayActiveRouteStatus {
+  scope: ModelGatewayAppScope;
+  selectedProviderId: string | null;
+  resolvedProviderId: string | null;
+  resolvedProviderName: string | null;
+  resolvedModel: string | null;
+  routeId: ModelGatewayRouteId;
+  state: ModelGatewayActiveRouteState;
+  message: string;
+  warning: string | null;
+}
+
 export interface ModelGatewayProvidersResponse {
   ok: true;
   providers: ModelGatewayProviderView[];
   activeProviders: Partial<Record<ModelGatewayAppScope, string>>;
+  activeRoutes: ModelGatewayActiveRouteStatus[];
+  activeRouteAlerts: string[];
   paths: {
     registry: string;
     secrets: string;

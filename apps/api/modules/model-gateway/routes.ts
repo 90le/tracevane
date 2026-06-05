@@ -1,6 +1,7 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
+  ModelGatewayActiveRouteSmokeRequest,
   ModelGatewayClientAuthUpdateRequest,
   ModelGatewayDaemonServiceRequest,
   ModelGatewayApplyAppConnectionRequest,
@@ -210,6 +211,16 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     try {
       const payload = await parseJsonBody<ModelGatewaySetActiveProviderRequest>(req);
       sendJson(res, 200, routeCtx.services.modelGateway.setActiveProvider(req, payload));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/active-route-smoke", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayActiveRouteSmokeRequest>(req);
+      const result = await routeCtx.services.modelGateway.testActiveRoute(req, payload);
+      sendJson(res, result.ok ? 200 : 502, result);
     } catch (error) {
       sendModelGatewayError(res, error);
     }

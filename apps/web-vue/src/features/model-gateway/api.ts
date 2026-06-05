@@ -1,4 +1,5 @@
 import type {
+  ModelGatewayActiveRouteSmokeRequest,
   ModelGatewayClientAuthResponse,
   ModelGatewayClientAuthUpdateRequest,
   ModelGatewayDaemonServiceAction,
@@ -138,6 +139,14 @@ export function deleteModelGatewayProvider(providerId: string): Promise<ModelGat
 
 export function setModelGatewayActiveProvider(payload: ModelGatewaySetActiveProviderRequest): Promise<ModelGatewayProvidersResponse> {
   return requestJson<ModelGatewayProvidersResponse>('/api/model-gateway/active-provider', jsonBody(payload));
+}
+
+export function smokeModelGatewayActiveRoute(payload: ModelGatewayActiveRouteSmokeRequest): Promise<ModelGatewayProviderTestResponse> {
+  return requestModelGatewayJson<ModelGatewayProviderTestResponse>(
+    '/api/model-gateway/active-route-smoke',
+    jsonBody(payload),
+    { allowErrorBody: true },
+  );
 }
 
 export function testModelGatewayProvider(

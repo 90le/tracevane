@@ -281,6 +281,54 @@
   gap: 3px;
 }
 
+.mgw-route-control,
+.mgw-route-state,
+.mgw-route-smoke,
+.mgw-route-alerts {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mgw-route-state {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.mgw-route-state small,
+.mgw-route-smoke small,
+.mgw-route-alerts span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-route-smoke {
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  padding: 7px 8px;
+}
+
+.mgw-route-smoke.success {
+  border-color: color-mix(in srgb, var(--success) 34%, var(--mono-line));
+  background: color-mix(in srgb, var(--success) 5%, var(--surface-base));
+}
+
+.mgw-route-smoke.failure {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--mono-line));
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface-base));
+}
+
+.mgw-route-alerts {
+  margin-top: 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 36%, var(--mono-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface-base));
+  color: var(--danger);
+  padding: 9px 10px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
 .mgw-template-strip {
   display: flex;
   flex-wrap: wrap;

@@ -50,6 +50,7 @@ test("Studio Gateway page uses the new model-gateway API contract", () => {
     "/api/model-gateway/detect-provider",
     "/api/model-gateway/providers",
     "/api/model-gateway/active-provider",
+    "/api/model-gateway/active-route-smoke",
   ]) {
     assert.match(source, new RegExp(requiredPath.replace(/\//g, "\\/")));
   }
@@ -79,6 +80,12 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "OpenAI Responses",
     "Provider Center",
     "Active routing",
+    "activeRouteStatuses",
+    "activeRouteAlerts",
+    "runActiveRouteSmoke",
+    "smokeModelGatewayActiveRoute",
+    "Route smoke passed",
+    "Route smoke failed",
     "Protocol smoke",
     "Ensure running",
     "More actions",

@@ -1073,6 +1073,139 @@ test("model gateway management supports active provider selection, delete, and o
   assert.equal(providers.activeProviders.codex, undefined);
 });
 
+test("model gateway provider list reports active route fallback and disabled active removal", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "route-primary",
+      name: "Route Primary",
+      appScopes: ["codex"],
+      baseUrl: "https://primary.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      health: {
+        circuitState: "open",
+        lastFailureAt: "2026-06-05T00:00:00.000Z",
+        lastError: "timeout",
+        consecutiveFailures: 4,
+      },
+      failover: { priority: 1 },
+    },
+    secret: { apiKey: "sk-route-primary" },
+    setActiveScopes: ["codex"],
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "route-backup",
+      name: "Route Backup",
+      appScopes: ["codex"],
+      baseUrl: "https://backup.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      failover: { priority: 2 },
+    },
+    secret: { apiKey: "sk-route-backup" },
+  });
+
+  let listed = service.listProviders();
+  let codexRoute = listed.activeRoutes.find((route) => route.scope === "codex");
+  assert.equal(codexRoute?.state, "fallback");
+  assert.equal(codexRoute?.selectedProviderId, "route-primary");
+  assert.equal(codexRoute?.resolvedProviderId, "route-backup");
+  assert.match(codexRoute?.warning || "", /route-primary.*circuit is open/);
+  assert.ok(listed.activeRouteAlerts.some((alert) => /route-primary.*circuit is open/.test(alert)));
+
+  service.setActiveProvider(undefined, {
+    scope: "codex",
+    providerId: "route-backup",
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "route-backup",
+      name: "Route Backup",
+      enabled: false,
+      appScopes: ["codex"],
+      baseUrl: "https://backup.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+  });
+
+  listed = service.listProviders();
+  codexRoute = listed.activeRoutes.find((route) => route.scope === "codex");
+  assert.equal(listed.activeProviders.codex, undefined);
+  assert.equal(codexRoute?.state, "missing");
+  assert.equal(codexRoute?.resolvedProviderId, null);
+  assert.match(listed.activeRouteAlerts.join("\n"), /No available Model Gateway provider.*codex/);
+});
+
+test("model gateway active route smoke uses the client protocol endpoint", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config);
+  service.updateClientAuth(undefined, { apiKey: "sk-local-route-smoke" });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "route-chat",
+      name: "Route Chat",
+      appScopes: ["codex"],
+      baseUrl: "https://chat.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-route",
+        models: [{ id: "gpt-route" }],
+      },
+    },
+    secret: { apiKey: "sk-upstream-route-smoke" },
+    setActiveScopes: ["codex"],
+  });
+
+  const originalFetch = globalThis.fetch;
+  let seenUrl = "";
+  let seenHeaders = {};
+  let seenBody = {};
+  globalThis.fetch = async (url, init = {}) => {
+    seenUrl = String(url);
+    seenHeaders = Object.fromEntries(new Headers(init.headers).entries());
+    seenBody = JSON.parse(String(init.body || "{}"));
+    return new Response(JSON.stringify({
+      id: "resp-route-smoke",
+      object: "response",
+      status: "completed",
+      output_text: "GATEWAY_OK",
+    }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-openclaw-model-gateway-provider": "route-chat",
+      },
+    });
+  };
+
+  try {
+    const result = await service.testActiveRoute(undefined, {
+      scope: "codex",
+      input: "Reply with GATEWAY_OK",
+      model: "gpt-route",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.providerId, "route-chat");
+    assert.equal(result.route.mode, "adapter-required");
+    assert.match(seenUrl, /\/v1\/responses$/);
+    assert.equal(seenHeaders.authorization, "Bearer sk-local-route-smoke");
+    assert.equal(seenHeaders["x-studio-app-scope"], "codex");
+    assert.equal(seenBody.model, "gpt-route");
+    assert.equal(seenBody.input, "Reply with GATEWAY_OK");
+    assert.equal(seenBody.max_output_tokens, 96);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway status separates embedded fallback from daemon lifecycle", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

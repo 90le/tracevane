@@ -18,6 +18,8 @@ import {
   MODEL_GATEWAY_PROVIDER_CATEGORIES,
   MODEL_GATEWAY_ROUTE_IDS,
   type ModelGatewayApiFormat,
+  type ModelGatewayActiveRouteStatus,
+  type ModelGatewayActiveRouteSmokeRequest,
   type ModelGatewayAppConnection,
   type ModelGatewayAppConnectionId,
   type ModelGatewayAppConnectionProfile,
@@ -2171,6 +2173,7 @@ export interface ModelGatewayService {
   deleteProvider(req: http.IncomingMessage | undefined, providerId: string): ModelGatewayProvidersResponse;
   setActiveProvider(req: http.IncomingMessage | undefined, payload: ModelGatewaySetActiveProviderRequest): ModelGatewayProvidersResponse;
   setProviderSecret(req: http.IncomingMessage | undefined, providerId: string, payload: ModelGatewaySetProviderSecretRequest): ModelGatewayProviderView;
+  testActiveRoute(req: http.IncomingMessage | undefined, payload?: ModelGatewayActiveRouteSmokeRequest): Promise<ModelGatewayProviderTestResponse>;
   testProvider(req: http.IncomingMessage | undefined, providerId: string, payload?: ModelGatewayProviderTestRequest): Promise<ModelGatewayProviderTestResponse>;
   resolveRouteDecision(method: string, requestedPath: string, headers?: HeaderMap, requestedModel?: string | null): ModelGatewayRouteDecision;
   handleGatewayRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void>;
@@ -3092,16 +3095,92 @@ export function createModelGatewayService(
 
   function listProviders(): ModelGatewayProvidersResponse {
     const registry = readRegistry();
+    const activeRoutes = buildActiveRouteStatuses(registry);
     return {
       ok: true,
       providers: registry.providers.map(toProviderView),
       activeProviders: registry.activeProviders,
+      activeRoutes,
+      activeRouteAlerts: activeRoutes
+        .filter((route) => route.warning || route.state === "missing")
+        .map((route) => route.warning || route.message),
       paths: {
         registry: paths.registry,
         secrets: paths.secrets,
         runtime: paths.runtime,
       },
     };
+  }
+
+  function defaultRouteIdForScope(scope: ModelGatewayAppScope): ModelGatewayRouteId {
+    if (scope === "codex") return "openai_responses";
+    if (scope === "claude-code") return "anthropic_messages";
+    return "openai_chat_completions";
+  }
+
+  function buildActiveRouteStatuses(registry: ModelGatewayRegistryState): ModelGatewayActiveRouteStatus[] {
+    return MODEL_GATEWAY_APP_SCOPES.map((scope) => {
+      const selectedProviderId = registry.activeProviders[scope] || null;
+      const selection = resolveProviderSelection(registry, scope, null);
+      const resolvedProvider = selection.provider;
+      const resolvedModel = selection.resolvedModel
+        || resolvedProvider?.models.defaultModel
+        || resolvedProvider?.models.models[0]?.id
+        || null;
+      const routeId = defaultRouteIdForScope(scope);
+      if (!resolvedProvider) {
+        return {
+          scope,
+          selectedProviderId,
+          resolvedProviderId: null,
+          resolvedProviderName: null,
+          resolvedModel,
+          routeId,
+          state: "missing",
+          message: `No available Model Gateway provider is available for ${scope}.`,
+          warning: `No available Model Gateway provider is available for ${scope}.`,
+        };
+      }
+      if (selection.failoverReason || (selectedProviderId && selectedProviderId !== resolvedProvider.id)) {
+        const warning = selection.failoverReason
+          || `Selected provider '${selectedProviderId}' is unavailable for ${scope}; resolved '${resolvedProvider.id}' by fallback.`;
+        return {
+          scope,
+          selectedProviderId,
+          resolvedProviderId: resolvedProvider.id,
+          resolvedProviderName: resolvedProvider.name,
+          resolvedModel,
+          routeId,
+          state: "fallback",
+          message: warning,
+          warning,
+        };
+      }
+      if (selectedProviderId) {
+        return {
+          scope,
+          selectedProviderId,
+          resolvedProviderId: resolvedProvider.id,
+          resolvedProviderName: resolvedProvider.name,
+          resolvedModel,
+          routeId,
+          state: "fixed",
+          message: `Fixed to '${resolvedProvider.name}'.`,
+          warning: null,
+        };
+      }
+      return {
+        scope,
+        selectedProviderId,
+        resolvedProviderId: resolvedProvider.id,
+        resolvedProviderName: resolvedProvider.name,
+        resolvedModel,
+        routeId,
+        state: "auto",
+        message: `Auto resolves to '${resolvedProvider.name}'.`,
+        warning: null,
+      };
+    });
   }
 
   function getClientAuth(): ModelGatewayClientAuthResponse {
@@ -3774,6 +3853,157 @@ export function createModelGatewayService(
     writeRegistry(registry);
     setSecretValue(ref, normalizeString(payload.apiKey) || null);
     return toProviderView(provider);
+  }
+
+  function buildGatewayRouteSmokePayload(routeId: ModelGatewayRouteId, model: string, input: string): Record<string, unknown> {
+    if (routeId === "anthropic_messages") {
+      return {
+        model,
+        max_tokens: 96,
+        stream: false,
+        messages: [{ role: "user", content: input }],
+      };
+    }
+    if (routeId === "openai_chat_completions") {
+      return {
+        model,
+        max_tokens: 96,
+        stream: false,
+        messages: [{ role: "user", content: input }],
+      };
+    }
+    if (routeId === "openai_responses_compact") {
+      return {
+        model,
+        input: [
+          {
+            role: "user",
+            content: [{ type: "input_text", text: input }],
+          },
+        ],
+        stream: false,
+        max_output_tokens: 96,
+      };
+    }
+    return {
+      model,
+      input,
+      stream: false,
+      max_output_tokens: 96,
+    };
+  }
+
+  async function testActiveRoute(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayActiveRouteSmokeRequest = {},
+  ): Promise<ModelGatewayProviderTestResponse> {
+    requireManagement(req);
+    const scope = MODEL_GATEWAY_APP_SCOPES.includes(payload.scope as ModelGatewayAppScope)
+      ? payload.scope as ModelGatewayAppScope
+      : "codex";
+    const routeId = defaultRouteIdForScope(scope);
+    const routePath = ROUTES[routeId].paths[0] || "/v1/responses";
+    const model = normalizeString(payload.model);
+    const headersForDecision = {
+      "x-studio-app-scope": scope,
+    };
+    const decision = resolveRouteDecision("POST", routePath, headersForDecision, model || null);
+    const providerId = decision.provider?.id || "";
+    const effectiveModel = model
+      || decision.model?.resolved
+      || decision.model?.requested
+      || "test-model";
+    if (!decision.provider || decision.mode === "missing-provider") {
+      return {
+        ok: false,
+        providerId,
+        checkedAt: nowIso(),
+        statusCode: null,
+        latencyMs: 0,
+        route: decision,
+        responsePreview: null,
+        error: {
+          code: "model_gateway_active_route_missing",
+          message: decision.reason || `No active route provider is available for ${scope}.`,
+        },
+      };
+    }
+    const registry = readRegistry();
+    const key = readGatewayClientSecret();
+    if (registry.clientAuth.enabled && !key) {
+      return {
+        ok: false,
+        providerId,
+        checkedAt: nowIso(),
+        statusCode: null,
+        latencyMs: 0,
+        route: decision,
+        responsePreview: null,
+        error: {
+          code: "model_gateway_client_key_missing",
+          message: "Gateway client auth is enabled but no local Gateway key is available for route smoke.",
+        },
+      };
+    }
+
+    const endpoint = getLifecycleStatus().endpointPolicy.preferredCliEndpoint;
+    const targetUrl = new URL(routePath, `${stripTrailingV1(endpoint)}/`).toString();
+    const headers = new Headers({
+      "content-type": "application/json",
+      "x-studio-app-scope": scope,
+    });
+    if (key) headers.set("authorization", `Bearer ${key}`);
+    const startedAt = nowIso();
+    const controller = new AbortController();
+    const timeoutMs = typeof payload.timeoutMs === "number"
+      ? Math.max(1_000, Math.floor(payload.timeoutMs))
+      : DEFAULT_TIMEOUT_MS;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(targetUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(buildGatewayRouteSmokePayload(
+          routeId,
+          effectiveModel,
+          normalizeString(payload.input, "Reply with GATEWAY_OK"),
+        )),
+        signal: controller.signal,
+      });
+      const responseText = await response.text();
+      const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      const success = response.status >= 200 && response.status < 300;
+      const responseProviderId = normalizeString(response.headers.get("x-openclaw-model-gateway-provider")) || providerId;
+      return {
+        ok: success,
+        providerId: responseProviderId,
+        checkedAt: nowIso(),
+        statusCode: response.status,
+        latencyMs,
+        route: decision,
+        responsePreview: previewText(responseText),
+        error: success ? null : {
+          code: "model_gateway_active_route_smoke_failed",
+          message: `Active route smoke returned HTTP ${response.status}.`,
+        },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        providerId,
+        checkedAt: nowIso(),
+        statusCode: null,
+        latencyMs: Math.max(0, Date.now() - Date.parse(startedAt)),
+        route: decision,
+        responsePreview: null,
+        error: {
+          code: "model_gateway_active_route_smoke_failed",
+          message: error instanceof Error ? error.message : "Active route smoke request failed.",
+        },
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async function testProvider(
@@ -4842,6 +5072,7 @@ export function createModelGatewayService(
     deleteProvider,
     setActiveProvider,
     setProviderSecret,
+    testActiveRoute,
     testProvider,
     resolveRouteDecision,
     handleGatewayRequest,

@@ -158,18 +158,45 @@
           </div>
 
           <div class="mgw-route-list">
-            <label v-for="scope in appScopeOptions" :key="scope.id" class="mgw-route-row">
+            <section v-for="scope in appScopeOptions" :key="scope.id" class="mgw-route-row">
               <span>
                 <strong>{{ text(scope.zh, scope.en) }}</strong>
                 <small>{{ scopeHint(scope.id) }}</small>
               </span>
-              <select class="form-input" :value="activeProviderForScope(scope.id)" :disabled="busy" @change="updateActiveProvider(scope.id, $event)">
-                <option value="">{{ text('自动选择 / 未设置', 'Auto / unset') }}</option>
-                <option v-for="provider in providersForScope(scope.id)" :key="provider.id" :value="provider.id">
-                  {{ provider.name }}
-                </option>
-              </select>
-            </label>
+              <div class="mgw-route-control">
+                <select class="form-input" :value="activeProviderForScope(scope.id)" :disabled="busy" @change="updateActiveProvider(scope.id, $event)">
+                  <option value="">{{ text('自动选择 / 未设置', 'Auto / unset') }}</option>
+                  <option v-for="provider in providersForScope(scope.id)" :key="provider.id" :value="provider.id">
+                    {{ provider.name }}
+                  </option>
+                </select>
+                <div class="mgw-route-state">
+                  <StatusPill
+                    :label="activeRouteStateLabel(activeRouteStatusForScope(scope.id))"
+                    :tone="activeRouteStateTone(activeRouteStatusForScope(scope.id))"
+                  />
+                  <small>{{ activeRouteStatusForScope(scope.id)?.message || '-' }}</small>
+                </div>
+                <div v-if="activeRouteSmokeResultForScope(scope.id)" class="mgw-route-smoke" :class="activeRouteSmokeResultForScope(scope.id)?.ok ? 'success' : 'failure'">
+                  <small>
+                    {{ activeRouteSmokeResultForScope(scope.id)?.ok ? text('Smoke 通过', 'Smoke passed') : text('Smoke 失败', 'Smoke failed') }}
+                    · {{ activeRouteSmokeResultForScope(scope.id)?.latencyMs }} ms
+                  </small>
+                </div>
+                <button
+                  type="button"
+                  class="secondary-button compact-button"
+                  :disabled="isActiveRouteSmokeBusy(scope.id) || !activeRouteStatusForScope(scope.id)?.resolvedProviderId"
+                  @click="runActiveRouteSmoke(scope.id)"
+                >
+                  {{ isActiveRouteSmokeBusy(scope.id) ? text('验证中...', 'Checking...') : text('验证', 'Smoke') }}
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div v-if="activeRouteAlerts.length" class="mgw-route-alerts">
+            <span v-for="alert in activeRouteAlerts" :key="alert">{{ alert }}</span>
           </div>
         </article>
       </aside>
@@ -682,6 +709,7 @@ import { X } from '@lucide/vue';
 import { MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
 import type {
   ModelGatewayApiFormat,
+  ModelGatewayActiveRouteStatus,
   ModelGatewayAppConnection,
   ModelGatewayAppConnectionId,
   ModelGatewayAppConnectionProfile,
@@ -697,6 +725,7 @@ import type {
   ModelGatewayProviderModel,
   ModelGatewayProviderTestResponse,
   ModelGatewayProviderView,
+  ModelGatewayProvidersResponse,
   ModelGatewayRouteId,
   ModelGatewayRuntimeRequestLogEntry,
   ModelGatewayRuntimeResponse,
@@ -719,6 +748,7 @@ import {
   manageModelGatewayDaemonService,
   rollbackModelGatewayAppConnection,
   setModelGatewayActiveProvider,
+  smokeModelGatewayActiveRoute,
   testModelGatewayProvider,
   updateModelGatewayAppConnectionProfile,
   updateModelGatewayClientAuth,
@@ -883,6 +913,10 @@ const appConnectionProfileBusy = ref(false);
 const appConnectionApplyAllBusy = ref(false);
 const providers = ref<ModelGatewayProviderView[]>([]);
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
+const activeRouteStatuses = ref<ModelGatewayActiveRouteStatus[]>([]);
+const activeRouteAlerts = ref<string[]>([]);
+const activeRouteSmokeBusy = ref<Partial<Record<ModelGatewayAppScope, boolean>>>({});
+const activeRouteSmokeResults = ref<Partial<Record<ModelGatewayAppScope, ModelGatewayProviderTestResponse | null>>>({});
 const smokeProviderId = ref('');
 const smokeRouteId = ref<ModelGatewayRouteId>('openai_responses');
 const smokeModel = ref('');
@@ -1166,6 +1200,41 @@ function appConnectionStateTone(connection: ModelGatewayAppConnection): 'neutral
 
 function isAppConnectionBusy(appId: ModelGatewayAppConnectionId): boolean {
   return appConnectionBusy.value[appId] === true;
+}
+
+function applyProviderResponse(response: ModelGatewayProvidersResponse): void {
+  providers.value = response.providers;
+  activeProviders.value = response.activeProviders;
+  activeRouteStatuses.value = response.activeRoutes;
+  activeRouteAlerts.value = response.activeRouteAlerts;
+}
+
+function activeRouteStatusForScope(scope: ModelGatewayAppScope): ModelGatewayActiveRouteStatus | null {
+  return activeRouteStatuses.value.find((route) => route.scope === scope) || null;
+}
+
+function activeRouteStateLabel(route: ModelGatewayActiveRouteStatus | null): string {
+  if (!route) return text('未知', 'Unknown');
+  if (route.state === 'fixed') return text('固定', 'Fixed');
+  if (route.state === 'auto') return text('自动', 'Auto');
+  if (route.state === 'fallback') return text('回退', 'Fallback');
+  return text('缺失', 'Missing');
+}
+
+function activeRouteStateTone(route: ModelGatewayActiveRouteStatus | null): 'neutral' | 'accent' | 'sage' | 'danger' {
+  if (!route) return 'neutral';
+  if (route.state === 'fixed') return 'sage';
+  if (route.state === 'auto') return 'accent';
+  if (route.state === 'fallback') return 'neutral';
+  return 'danger';
+}
+
+function activeRouteSmokeResultForScope(scope: ModelGatewayAppScope): ModelGatewayProviderTestResponse | null {
+  return activeRouteSmokeResults.value[scope] || null;
+}
+
+function isActiveRouteSmokeBusy(scope: ModelGatewayAppScope): boolean {
+  return activeRouteSmokeBusy.value[scope] === true;
 }
 
 function createEmptyAppConnectionProfileDraft(): AppConnectionProfileDraft {
@@ -1510,8 +1579,7 @@ async function loadAll(): Promise<void> {
     appConnections.value = nextAppConnections.connections;
     assignAppConnectionProfile(nextAppConnections.profile);
     appConnectionAvailableModels.value = nextAppConnections.availableModels;
-    providers.value = nextProviders.providers;
-    activeProviders.value = nextProviders.activeProviders;
+    applyProviderResponse(nextProviders);
     ensureSelectedProvider();
     loaded.value = true;
   } catch (error) {
@@ -1794,15 +1862,23 @@ async function saveProvider(): Promise<void> {
   try {
     await upsertModelGatewayProvider(payload);
     const response = await fetchModelGatewayProviders();
-    providers.value = response.providers;
-    activeProviders.value = response.activeProviders;
+    const previousActiveProviders = { ...activeProviders.value };
+    applyProviderResponse(response);
     smokeProviderId.value = provider.id || smokeProviderId.value;
     smokeModel.value = models.defaultModel || smokeModel.value;
     draft.apiKey = '';
     await refreshAppConnections();
+    const clearedScopes = appScopeOptions
+      .map((scope) => scope.id)
+      .filter((scope) => previousActiveProviders[scope] === provider.id && activeProviders.value[scope] !== provider.id);
     notice.value = {
       kind: 'success',
-      message: text('Provider 已保存', 'Provider saved'),
+      message: clearedScopes.length
+        ? text(
+          `Provider 已保存；已从 ${clearedScopes.join(', ')} 的固定路由移除并回到自动选择。`,
+          `Provider saved; fixed routing was removed for ${clearedScopes.join(', ')} and now uses Auto.`,
+        )
+        : text('Provider 已保存', 'Provider saved'),
     };
   } catch (error) {
     notice.value = {
@@ -1820,8 +1896,7 @@ async function removeProvider(providerId: string): Promise<void> {
   busy.value = true;
   try {
     const response = await deleteModelGatewayProvider(providerId);
-    providers.value = response.providers;
-    activeProviders.value = response.activeProviders;
+    applyProviderResponse(response);
     resetDraft();
     ensureSelectedProvider();
     await refreshAppConnections();
@@ -1853,13 +1928,13 @@ async function updateActiveProvider(scope: ModelGatewayAppScope, event: Event): 
   notice.value = null;
   try {
     const response = await setModelGatewayActiveProvider({ scope, providerId });
-    providers.value = response.providers;
-    activeProviders.value = response.activeProviders;
+    applyProviderResponse(response);
     await refreshAppConnections();
     notice.value = {
       kind: 'success',
       message: text('路由已更新', 'Route updated'),
     };
+    await runActiveRouteSmoke(scope, { quiet: true });
   } catch (error) {
     notice.value = {
       kind: 'error',
@@ -1867,6 +1942,62 @@ async function updateActiveProvider(scope: ModelGatewayAppScope, event: Event): 
     };
   } finally {
     busy.value = false;
+  }
+}
+
+async function runActiveRouteSmoke(
+  scope: ModelGatewayAppScope,
+  options: { quiet?: boolean } = {},
+): Promise<void> {
+  const route = activeRouteStatusForScope(scope);
+  if (!route?.resolvedProviderId) return;
+  activeRouteSmokeBusy.value = {
+    ...activeRouteSmokeBusy.value,
+    [scope]: true,
+  };
+  activeRouteSmokeResults.value = {
+    ...activeRouteSmokeResults.value,
+    [scope]: null,
+  };
+  if (!options.quiet) notice.value = null;
+  try {
+    const response = await smokeModelGatewayActiveRoute({
+      scope,
+      model: route.resolvedModel || undefined,
+      input: 'Reply with GATEWAY_OK',
+      timeoutMs: 60000,
+    });
+    activeRouteSmokeResults.value = {
+      ...activeRouteSmokeResults.value,
+      [scope]: response,
+    };
+    smokeProviderId.value = route.resolvedProviderId;
+    smokeRouteId.value = route.routeId;
+    smokeModel.value = route.resolvedModel || smokeModel.value;
+    smokeResult.value = response;
+    await loadRuntimeOnly();
+    if (!options.quiet) {
+      notice.value = {
+        kind: response.ok ? 'success' : 'error',
+        message: response.ok ? text('路由 smoke 通过', 'Route smoke passed') : text('路由 smoke 失败', 'Route smoke failed'),
+      };
+    }
+  } catch (error) {
+    activeRouteSmokeResults.value = {
+      ...activeRouteSmokeResults.value,
+      [scope]: null,
+    };
+    if (!options.quiet) {
+      notice.value = {
+        kind: 'error',
+        message: error instanceof Error ? error.message : text('路由 smoke 失败', 'Route smoke failed'),
+      };
+    }
+  } finally {
+    activeRouteSmokeBusy.value = {
+      ...activeRouteSmokeBusy.value,
+      [scope]: false,
+    };
   }
 }
 
