@@ -390,15 +390,15 @@ async function applyServiceAction(action: OpenClawRecoveryDaemonServiceAction): 
   notice.value = null;
   try {
     const response = await applyOpenClawRecoveryDaemonServiceAction(action);
-    recovery.value = normalizeRecovery({
-      ...recovery.value,
-      service: response.service,
-    });
     notice.value = {
       kind: response.ok ? 'success' : 'error',
       text: response.ok ? text('服务动作已执行。', 'Service action completed.') : response.error || text('服务动作失败。', 'Service action failed.'),
     };
     await refreshAll();
+    recovery.value = normalizeRecovery({
+      ...recovery.value,
+      service: response.service,
+    });
   } catch (error) {
     notice.value = {
       kind: 'error',

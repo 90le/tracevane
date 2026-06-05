@@ -49,6 +49,7 @@ test('recovery page owns daemon controls, events, and backups', () => {
   assert.match(systemRecoveryPage, /return 'start'/);
   assert.match(systemRecoveryPage, /return 'restart'/);
   assert.match(systemRecoveryPage, /applyServiceAction\('stop'\)/);
+  assert.match(systemRecoveryPage, /await refreshAll\(\);\s*recovery\.value = normalizeRecovery\(\{\s*\.\.\.recovery\.value,\s*service: response\.service,/);
   assert.match(systemRecoveryPage, /Repair History/);
   assert.match(systemRecoveryPage, /Config Backups/);
   assert.match(systemRecoveryPage, /runManualProbe/);

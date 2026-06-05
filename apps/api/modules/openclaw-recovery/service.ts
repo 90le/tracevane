@@ -3,6 +3,7 @@ import path from "node:path";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import type {
   OpenClawRecoveryBackupSummary,
+  OpenClawRecoveryDaemonServiceSnapshot,
   OpenClawRecoveryDaemonServiceRequest,
   OpenClawRecoveryDaemonServiceResponse,
   OpenClawRecoveryEvent,
@@ -67,6 +68,27 @@ function msSince(value: string | null): number {
   if (!value) return 0;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : Math.max(0, Date.now() - parsed);
+}
+
+function mergeStoredServiceSnapshot(
+  snapshot: OpenClawRecoveryDaemonServiceSnapshot,
+  stored: OpenClawRecoveryDaemonServiceSnapshot,
+): OpenClawRecoveryDaemonServiceSnapshot {
+  const sameSupervisor = stored.supervisor === snapshot.supervisor;
+  const sameService = stored.serviceName === snapshot.serviceName;
+  const sameConfig = !stored.configPath || stored.configPath === snapshot.configPath;
+  const hasStoredState = Boolean(stored.lastCheckedAt);
+
+  if (!sameSupervisor || !sameService || !sameConfig || !hasStoredState) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    activeState: stored.activeState || snapshot.activeState,
+    enabledState: stored.enabledState || snapshot.enabledState,
+    lastCheckedAt: stored.lastCheckedAt || snapshot.lastCheckedAt,
+  };
 }
 
 async function runManualProbe(
@@ -136,7 +158,7 @@ export function createOpenClawRecoveryService(
       });
       return {
         ...state,
-        service,
+        service: mergeStoredServiceSnapshot(service, state.service),
       };
     },
 

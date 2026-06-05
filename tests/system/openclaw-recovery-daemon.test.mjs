@@ -10,6 +10,10 @@ import {
   pruneInvalidOpenClawConfigFromValidation,
 } from "../../dist/apps/api/modules/openclaw-recovery/repair.js";
 import { createOpenClawRecoveryService } from "../../dist/apps/api/modules/openclaw-recovery/service.js";
+import {
+  buildDefaultRecoveryState,
+  writeRecoveryState,
+} from "../../dist/apps/api/modules/openclaw-recovery/store.js";
 
 const rootDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -135,6 +139,30 @@ test("recovery status is read-only and returns default daemon state without CLI 
   assert.equal(status.service.serviceName.length > 0, true);
   assert.equal(status.probe.gatewayReachable, null);
   assert.equal(status.lastRepair, null);
+});
+
+test("recovery status preserves the latest daemon service action snapshot", async () => {
+  const config = makeConfig();
+  const service = createOpenClawRecoveryService(config);
+  const state = buildDefaultRecoveryState(config);
+
+  const initialStatus = await service.getStatus();
+  writeRecoveryState(config, {
+    ...state,
+    service: {
+      ...initialStatus.service,
+      installed: true,
+      activeState: "active",
+      enabledState: "enabled",
+      lastCheckedAt: "2026-06-05T00:00:00.000Z",
+    },
+  });
+
+  const status = await service.getStatus();
+
+  assert.equal(status.service.activeState, "active");
+  assert.equal(status.service.enabledState, "enabled");
+  assert.equal(status.service.lastCheckedAt, "2026-06-05T00:00:00.000Z");
 });
 
 test("system and event hot paths no longer call diagnostics by default", () => {

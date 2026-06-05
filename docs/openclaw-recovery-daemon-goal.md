@@ -16,6 +16,7 @@
 - 根据 `openclaw config validate --json` 返回的 issue path 动态删除安全域里的违规字段。
 - 保留插件 config、provider params、channel 扩展字段和用户插件源码目录。
 - 默认救援路径是静默自动修复，不要求单口远程用户打开第二个维护端口、SSH 或终端。
+- 自愈能力要逐步覆盖配置、进程、端口、服务托管、依赖完整性和安装损坏，优先复用 OpenClaw CLI 的 status/doctor/validate/fix 结果。
 
 ## 2. 边界
 
@@ -44,6 +45,7 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 - System 首屏不加载旧 diagnostics tab、原始命令输出或宽泛诊断面板。
 - System runtime summary、event list、event summary 不调用 `getDiagnostics()`。
 - Recovery status 读取状态文件和 service 快照，不执行 OpenClaw CLI。
+- Recovery status 复用最近一次 service action 的 active/enabled 快照，避免按钮状态被轻量刷新覆盖。
 - daemon 健康循环只做 loopback probe。
 - 连续失败未超过 180 秒不触发修复。
 - 修复流程有单飞锁和 cooldown。
@@ -55,5 +57,6 @@ daemon 本地 loopback fallback 控制面只给本机操作者使用，使用本
 ## 5. 剩余工作
 
 - 在目标 Linux/macOS/Windows 环境做 supervisor install/start runtime smoke。
-- 根据真实故障样本扩展修复策略。
+- 增加运行时发现层：识别 OpenClaw gateway 启动方式、托管服务、端口占用、残留进程和冲突进程。
+- 根据真实故障样本扩展修复策略，覆盖配置以外的启动、依赖和安装损坏场景。
 - 若本机 fallback 控制面变成正式用户工作流，再补发现入口和 token 展示 UX。
