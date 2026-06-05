@@ -219,6 +219,41 @@
   resize: vertical;
 }
 
+.mgw-detect-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 92px;
+  border: 1px solid color-mix(in srgb, var(--mono-accent) 24%, var(--mono-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mono-accent) 5%, var(--surface-base));
+  padding: 12px;
+}
+
+.mgw-detect-card__main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.mgw-detect-card__main strong,
+.mgw-detect-card__main small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-detect-card__main small {
+  color: var(--mono-ink-2);
+}
+
+.mgw-detect-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .mgw-scope-picker {
   display: flex;
   flex-wrap: wrap;
@@ -312,6 +347,203 @@
   color: var(--mono-ink-2);
 }
 
+.mgw-detect-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: start center;
+  padding: min(8vh, 72px) 18px 24px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--bg-app) 72%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.mgw-detect-popover {
+  display: grid;
+  gap: 14px;
+  width: min(680px, 100%);
+  border: 1px solid var(--mono-line);
+  border-radius: 10px;
+  background: var(--surface-base);
+  padding: 16px;
+  box-shadow: 0 22px 70px color-mix(in srgb, #000 28%, transparent);
+}
+
+.mgw-detect-popover__head,
+.mgw-detect-popover__foot,
+.mgw-detect-result__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mgw-detect-popover__head {
+  align-items: flex-start;
+}
+
+.mgw-detect-popover__head h3 {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+}
+
+.mgw-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--mono-ink);
+  cursor: pointer;
+}
+
+.mgw-icon-button:hover {
+  border-color: var(--control-border-hover);
+  background: var(--control-bg-hover);
+}
+
+.mgw-icon-button__icon {
+  width: 16px;
+  height: 16px;
+}
+
+.mgw-detect-target {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 84%, var(--surface-soft));
+  padding: 10px 12px;
+}
+
+.mgw-detect-target span,
+.mgw-detect-target small,
+.mgw-detect-step small,
+.mgw-detect-protocol small,
+.mgw-detect-protocol > span,
+.mgw-detect-result__head span {
+  color: var(--mono-ink-2);
+}
+
+.mgw-detect-target strong,
+.mgw-detect-step strong,
+.mgw-detect-protocol strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-detect-steps,
+.mgw-detect-result,
+.mgw-detect-protocols {
+  display: grid;
+  gap: 8px;
+}
+
+.mgw-detect-step,
+.mgw-detect-protocol {
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: var(--control-bg);
+}
+
+.mgw-detect-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+}
+
+.mgw-detect-step__mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--mono-line);
+}
+
+.mgw-detect-step.is-running .mgw-detect-step__mark {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, var(--mono-accent) 24%, var(--mono-line));
+  border-top-color: var(--mono-accent);
+  background: transparent;
+  animation: mgw-detect-spin 900ms linear infinite;
+}
+
+.mgw-detect-step.is-success {
+  border-color: color-mix(in srgb, var(--success) 34%, var(--mono-line));
+  background: color-mix(in srgb, var(--success) 5%, var(--control-bg));
+}
+
+.mgw-detect-step.is-success .mgw-detect-step__mark,
+.mgw-detect-protocol.success {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--mono-line));
+}
+
+.mgw-detect-step.is-success .mgw-detect-step__mark {
+  background: var(--success);
+}
+
+.mgw-detect-step.is-warning {
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--mono-line));
+  background: color-mix(in srgb, var(--warning) 6%, var(--control-bg));
+}
+
+.mgw-detect-step.is-warning .mgw-detect-step__mark {
+  background: var(--warning);
+}
+
+.mgw-detect-step.is-failure {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--mono-line));
+  background: color-mix(in srgb, var(--danger) 6%, var(--control-bg));
+}
+
+.mgw-detect-step.is-failure .mgw-detect-step__mark {
+  background: var(--danger);
+}
+
+.mgw-detect-result {
+  border-top: 1px solid var(--mono-line);
+  padding-top: 12px;
+}
+
+.mgw-detect-protocol {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+}
+
+.mgw-detect-protocol.skipped {
+  border-style: dashed;
+}
+
+.mgw-detect-protocol > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mgw-detect-popover__foot {
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid var(--mono-line);
+  padding-top: 12px;
+}
+
+@keyframes mgw-detect-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 1060px) {
   .mgw-layout,
   .mgw-provider-grid {
@@ -334,5 +566,16 @@
   .mgw-provider-card__meta {
     justify-items: start;
     text-align: left;
+  }
+
+  .mgw-detect-card,
+  .mgw-detect-target,
+  .mgw-detect-protocol {
+    grid-template-columns: 1fr;
+  }
+
+  .mgw-detect-card__actions,
+  .mgw-detect-popover__foot {
+    justify-content: flex-start;
   }
 }

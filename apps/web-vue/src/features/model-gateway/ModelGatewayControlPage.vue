@@ -134,7 +134,7 @@
             </button>
           </div>
           <p class="mgw-note mgw-template-note">
-            {{ text('这里只选择上游原生协议。自定义服务商也是三种协议之一；不确定时先填 Base URL 和 API Key，再点自动识别。', 'Choose the upstream native protocol here. Custom providers still use one of the three protocols; if unsure, enter Base URL and API key, then run auto-detect.') }}
+            {{ text('这里只选择上游原生协议。自定义服务商也是三种协议之一；不确定时先填 Base URL 和 API Key，再点识别配置。', 'Choose the upstream native protocol here. Custom providers still use one of the three protocols; if unsure, enter Base URL and API key, then detect the configuration.') }}
           </p>
 
           <div class="mgw-provider-grid">
@@ -192,6 +192,21 @@
                   <span class="form-label">API Key</span>
                   <input v-model="draft.apiKey" class="form-input" type="password" :placeholder="secretPlaceholder" />
                 </label>
+                <div class="mgw-detect-card">
+                  <div class="mgw-detect-card__main">
+                    <span class="form-label">{{ text('连接检测', 'Connection check') }}</span>
+                    <strong>{{ detectStatusTitle }}</strong>
+                    <small>{{ detectStatusDetail }}</small>
+                  </div>
+                  <div class="mgw-detect-card__actions">
+                    <button type="button" class="primary-button compact-button" :disabled="detectBusy || !draft.baseUrl.trim()" @click="detectProviderConfig">
+                      {{ detectBusy ? text('识别中...', 'Detecting...') : text('识别配置', 'Detect config') }}
+                    </button>
+                    <button v-if="detectResult" type="button" class="secondary-button compact-button" @click="openDetectOverlay">
+                      {{ text('查看结果', 'View result') }}
+                    </button>
+                  </div>
+                </div>
                 <label class="form-field">
                   <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
                   <select v-if="draftDefaultModelOptions.length" v-model="draft.defaultModel" class="form-input">
@@ -225,50 +240,6 @@
                   <span class="form-label">NO_PROXY</span>
                   <input v-model.trim="draft.noProxy" class="form-input" placeholder="localhost,127.0.0.1" />
                 </label>
-              </div>
-
-              <div class="mgw-button-row mgw-detect-actions">
-                <button type="button" class="secondary-button" :disabled="detectBusy || !draft.baseUrl.trim()" @click="detectProviderConfig">
-                  {{ detectBusy ? text('识别中...', 'Detecting...') : text('自动识别协议和模型', 'Auto-detect protocol and models') }}
-                </button>
-                <span class="field-hint">
-                  {{ text('不会保存 provider 或密钥，只用本地后端临时探测。', 'Does not save the provider or key; the local backend probes temporarily.') }}
-                </span>
-              </div>
-
-              <div v-if="detectResult" class="mgw-detect-result">
-                <div class="mgw-detect-result__head">
-                  <strong>{{ text('识别结果', 'Detection result') }}</strong>
-                  <span>{{ formatTimestamp(detectResult.checkedAt) }}</span>
-                </div>
-                <p v-if="detectResult.models.length" class="mgw-detect-summary">
-                  {{ text(`已读取 ${detectResult.models.length} 个模型。`, `Read ${detectResult.models.length} models.`) }}
-                </p>
-                <p v-else class="mgw-detect-summary">
-                  {{ text('未读取到模型列表；请手动填写至少一个模型名称后再次识别。', 'No model list was found; enter at least one model name and detect again.') }}
-                </p>
-                <div class="mgw-detect-protocols">
-                  <div
-                    v-for="protocol in detectResult.protocols"
-                    :key="`${protocol.apiFormat}-${protocol.authStrategy}`"
-                    class="mgw-detect-protocol"
-                    :class="{ success: protocol.ok, skipped: protocol.skipped }"
-                  >
-                    <div>
-                      <strong>{{ apiFormatLabel(protocol.apiFormat) }}</strong>
-                      <small>{{ protocol.authStrategy }} · {{ protocol.statusCode || '-' }} · {{ protocol.latencyMs }} ms</small>
-                    </div>
-                    <button
-                      v-if="protocol.ok"
-                      type="button"
-                      class="primary-button compact-button"
-                      @click="applyDetectedProtocol(protocol)"
-                    >
-                      {{ text('应用', 'Apply') }}
-                    </button>
-                    <span v-else>{{ protocol.error?.message || '-' }}</span>
-                  </div>
-                </div>
               </div>
 
               <div class="mgw-scope-picker">
@@ -353,11 +324,87 @@
         </article>
       </main>
     </section>
+
+    <Teleport to="body">
+      <div v-if="detectOverlayOpen" class="mgw-detect-overlay" @click.self="closeDetectOverlay">
+        <section class="mgw-detect-popover" role="dialog" aria-modal="true" aria-labelledby="mgw-detect-title">
+          <header class="mgw-detect-popover__head">
+            <div>
+              <p class="eyebrow">{{ text('Provider Detect', 'Provider Detect') }}</p>
+              <h3 id="mgw-detect-title">{{ text('识别协议与模型', 'Detect protocol and models') }}</h3>
+            </div>
+            <button type="button" class="mgw-icon-button" :aria-label="text('关闭', 'Close')" @click="closeDetectOverlay">
+              <X class="mgw-icon-button__icon" aria-hidden="true" />
+            </button>
+          </header>
+
+          <div class="mgw-detect-target">
+            <span>Base URL</span>
+            <strong>{{ draft.baseUrl.trim() || '-' }}</strong>
+            <small>{{ detectResult?.checkedAt ? formatTimestamp(detectResult.checkedAt) : text('等待检测', 'Waiting') }}</small>
+          </div>
+
+          <div class="mgw-detect-steps" aria-live="polite">
+            <div
+              v-for="step in detectSteps"
+              :key="step.id"
+              class="mgw-detect-step"
+              :class="`is-${step.status}`"
+            >
+              <span class="mgw-detect-step__mark" aria-hidden="true"></span>
+              <div>
+                <strong>{{ step.label }}</strong>
+                <small>{{ step.detail }}</small>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="detectResult" class="mgw-detect-result">
+            <div class="mgw-detect-result__head">
+              <strong>{{ text('可用协议', 'Supported protocols') }}</strong>
+              <span>{{ detectSupportedProtocols.length }}/3</span>
+            </div>
+            <div class="mgw-detect-protocols">
+              <div
+                v-for="protocol in detectResult.protocols"
+                :key="`${protocol.apiFormat}-${protocol.authStrategy}`"
+                class="mgw-detect-protocol"
+                :class="{ success: protocol.ok, skipped: protocol.skipped }"
+              >
+                <div>
+                  <strong>{{ apiFormatLabel(protocol.apiFormat) }}</strong>
+                  <small>{{ protocolDetail(protocol) }}</small>
+                </div>
+                <button
+                  v-if="protocol.ok"
+                  type="button"
+                  class="primary-button compact-button"
+                  @click="applyDetectedProtocol(protocol)"
+                >
+                  {{ appliedProtocolKey === protocolKey(protocol) ? text('已应用', 'Applied') : text('应用', 'Apply') }}
+                </button>
+                <span v-else>{{ protocol.error?.message || '-' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <footer class="mgw-detect-popover__foot">
+            <button type="button" class="secondary-button compact-button" :disabled="detectBusy" @click="closeDetectOverlay">
+              {{ text('关闭', 'Close') }}
+            </button>
+            <button type="button" class="primary-button compact-button" :disabled="detectBusy || !draft.baseUrl.trim()" @click="detectProviderConfig">
+              {{ detectBusy ? text('识别中...', 'Detecting...') : text('重新识别', 'Detect again') }}
+            </button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
+import { X } from '@lucide/vue';
 import type {
   ModelGatewayApiFormat,
   ModelGatewayAppScope,
@@ -418,6 +465,15 @@ type ProtocolTemplate = {
   id: string;
   label: string;
   draft: Partial<ProviderDraft>;
+};
+
+type DetectStepStatus = 'idle' | 'running' | 'success' | 'warning' | 'failure';
+
+type DetectStep = {
+  id: string;
+  label: string;
+  detail: string;
+  status: DetectStepStatus;
 };
 
 const { text } = useLocalePreference();
@@ -514,6 +570,9 @@ const smokeModel = ref('');
 const smokeInput = ref('Reply with GATEWAY_OK');
 const smokeResult = ref<ModelGatewayProviderTestResponse | null>(null);
 const detectResult = ref<ModelGatewayProviderDetectResponse | null>(null);
+const detectOverlayOpen = ref(false);
+const detectError = ref<string | null>(null);
+const appliedProtocolKey = ref('');
 
 const draft = reactive<ProviderDraft>(createEmptyDraft());
 
@@ -537,6 +596,116 @@ const selectedSmokeProviderModelIds = computed(() => {
   const listed = provider.models.models.map((model) => model.id).filter(Boolean);
   const fallback = provider.models.defaultModel ? [provider.models.defaultModel] : [];
   return uniqueStrings([...fallback, ...listed]);
+});
+
+const detectSupportedProtocols = computed(() =>
+  detectResult.value?.protocols.filter((protocol) => protocol.ok) || [],
+);
+
+const detectStatusTitle = computed(() => {
+  if (detectBusy.value) return text('正在识别配置', 'Detecting configuration');
+  if (detectError.value) return text('识别失败', 'Detection failed');
+  if (!draft.baseUrl.trim()) return text('先填写 Base URL', 'Enter Base URL first');
+  if (!detectResult.value) return text('尚未识别', 'Not detected yet');
+  const supported = detectSupportedProtocols.value.length;
+  if (supported === 0) return text('未识别出可用协议', 'No supported protocol detected');
+  if (supported === 1) return text(`已识别 ${apiFormatLabel(detectSupportedProtocols.value[0].apiFormat)}`, `Detected ${apiFormatLabel(detectSupportedProtocols.value[0].apiFormat)}`);
+  return text(`发现 ${supported} 个可用协议`, `${supported} supported protocols found`);
+});
+
+const detectStatusDetail = computed(() => {
+  if (detectBusy.value) return text('读取模型列表并探测三种原生协议。', 'Reading models and probing the three native protocols.');
+  if (detectError.value) return detectError.value;
+  if (!draft.baseUrl.trim()) return text('Gateway 不会自动追加 /v1。', 'Gateway will not append /v1 automatically.');
+  if (!detectResult.value) {
+    return draft.apiKey.trim()
+      ? text('Key 已填写，可以开始识别。', 'Key is present; ready to detect.')
+      : text('未填写 Key 时只能探测公开或无鉴权接口。', 'Without a key, only public or unauthenticated endpoints can be probed.');
+  }
+  const modelText = detectResult.value.models.length
+    ? text(`${detectResult.value.models.length} 个模型`, `${detectResult.value.models.length} models`)
+    : text('模型需手动填写', 'Model needs manual entry');
+  return `${modelText} · ${formatTimestamp(detectResult.value.checkedAt)}`;
+});
+
+const detectSteps = computed<DetectStep[]>(() => {
+  if (detectError.value && !detectResult.value) {
+    return [
+      {
+        id: 'detect-error',
+        label: text('请求失败', 'Request failed'),
+        detail: detectError.value,
+        status: 'failure',
+      },
+    ];
+  }
+
+  if (detectBusy.value && !detectResult.value) {
+    return [
+      {
+        id: 'models',
+        label: text('模型列表', 'Model list'),
+        detail: text('读取 /models 与候选认证。', 'Reading /models with candidate auth.'),
+        status: 'running',
+      },
+      ...apiFormatOptions.map((format) => ({
+        id: format.id,
+        label: format.label,
+        detail: text('等待探测返回。', 'Waiting for probe result.'),
+        status: 'idle' as DetectStepStatus,
+      })),
+    ];
+  }
+
+  const result = detectResult.value;
+  if (!result) {
+    return [
+      {
+        id: 'models',
+        label: text('模型列表', 'Model list'),
+        detail: text('尚未开始。', 'Not started.'),
+        status: 'idle',
+      },
+      ...apiFormatOptions.map((format) => ({
+        id: format.id,
+        label: format.label,
+        detail: text('尚未开始。', 'Not started.'),
+        status: 'idle' as DetectStepStatus,
+      })),
+    ];
+  }
+
+  const bestModelProbe = [...result.modelProbes]
+    .sort((left, right) => Number(right.ok) - Number(left.ok) || left.latencyMs - right.latencyMs)[0];
+  const modelStep: DetectStep = {
+    id: 'models',
+    label: text('模型列表', 'Model list'),
+    detail: result.models.length
+      ? text(`${result.models.length} 个模型 · ${bestModelProbe?.authStrategy || '-'}`, `${result.models.length} models · ${bestModelProbe?.authStrategy || '-'}`)
+      : bestModelProbe?.error?.message || text('未读取到模型列表。', 'No model list found.'),
+    status: result.models.length ? 'success' : 'warning',
+  };
+
+  return [
+    modelStep,
+    ...apiFormatOptions.map<DetectStep>((format) => {
+      const protocol = result.protocols.find((entry) => entry.apiFormat === format.id);
+      if (!protocol) {
+        return {
+          id: format.id,
+          label: format.label,
+          detail: text('未探测。', 'Not probed.'),
+          status: 'idle',
+        };
+      }
+      return {
+        id: format.id,
+        label: format.label,
+        detail: protocolDetail(protocol),
+        status: protocol.ok ? 'success' : protocol.skipped ? 'warning' : 'failure',
+      };
+    }),
+  ];
 });
 
 const preferredEndpoint = computed(() =>
@@ -810,10 +979,34 @@ function applyDetectedModels(models: ModelGatewayProviderModel[]): void {
   }
 }
 
+function protocolKey(protocol: ModelGatewayProviderDetectProtocolResult): string {
+  return `${protocol.apiFormat}:${protocol.authStrategy}:${protocol.routeId}`;
+}
+
+function protocolDetail(protocol: ModelGatewayProviderDetectProtocolResult): string {
+  const status = protocol.statusCode || '-';
+  const latency = `${protocol.latencyMs} ms`;
+  const model = protocol.model ? ` · ${protocol.model}` : '';
+  if (protocol.ok) {
+    return `${protocol.authStrategy} · ${status} · ${latency}${model}`;
+  }
+  const reason = protocol.error?.message || (protocol.skipped ? text('已跳过', 'Skipped') : text('失败', 'Failed'));
+  return `${protocol.authStrategy} · ${status} · ${latency} · ${reason}`;
+}
+
+function openDetectOverlay(): void {
+  detectOverlayOpen.value = true;
+}
+
+function closeDetectOverlay(): void {
+  detectOverlayOpen.value = false;
+}
+
 function applyDetectedProtocol(protocol: ModelGatewayProviderDetectProtocolResult, showNotice = true): void {
   draft.apiFormat = protocol.apiFormat;
   draft.authStrategy = protocol.authStrategy;
   smokeRouteId.value = protocol.routeId;
+  appliedProtocolKey.value = protocolKey(protocol);
   if (protocol.model) {
     draft.defaultModel = protocol.model;
     smokeModel.value = protocol.model;
@@ -829,6 +1022,9 @@ function applyDetectedProtocol(protocol: ModelGatewayProviderDetectProtocolResul
 async function detectProviderConfig(): Promise<void> {
   detectBusy.value = true;
   detectResult.value = null;
+  detectError.value = null;
+  appliedProtocolKey.value = '';
+  detectOverlayOpen.value = true;
   notice.value = null;
   try {
     const response = await detectModelGatewayProvider({
@@ -862,9 +1058,10 @@ async function detectProviderConfig(): Promise<void> {
       };
     }
   } catch (error) {
+    detectError.value = error instanceof Error ? error.message : text('自动识别失败', 'Auto-detect failed');
     notice.value = {
       kind: 'error',
-      message: error instanceof Error ? error.message : text('自动识别失败', 'Auto-detect failed'),
+      message: detectError.value,
     };
   } finally {
     detectBusy.value = false;
