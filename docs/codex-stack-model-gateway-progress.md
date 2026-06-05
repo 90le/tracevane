@@ -13,6 +13,7 @@
 - `/model-gateway` 管理页 MVP 已接入 shell：覆盖 daemon 状态/预览/status/ensure-running、Provider Center、active routing、protocol smoke 和最近请求。
 - Provider 配置不内置具体 vendor；只给三种原生协议模板，用户可只填 Base URL + API key 后自动识别协议和模型列表，必要时再手动填模型名称。
 - Provider 自动识别入口已贴近 Base URL / API Key；识别过程、三类协议结果和应用动作在弹层中完成，表单只保留紧凑状态。
+- Gateway daemon service 已覆盖新设备首次安装、systemd/launchd/scheduled-task 自启动启用、启动、停止、重启、status 与 ensure-running；旧坏模板会自动重写并 reload/start/restart。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
 - Channel Connectors 后置；当前不实现 CC Bridge / Octo。
 - Gateway daemon 与 Channel daemon / CC Bridge 都必须独立守护；Studio / OpenClaw 挂掉后，CLI 模型请求和 IM 到 Codex/Gateway 的对话链路仍应保持运行。
@@ -54,6 +55,9 @@
   - Provider 表单支持多模型列表和默认模型下拉；模型行格式简化为 `模型ID,显示名称`，显示名称可省略，保存时写入 provider model catalog。
   - 新增 `/api/model-gateway/detect-provider` 临时探测接口；不保存 provider 或 secret，自动识别三种原生协议和模型列表，多协议通过时让用户选择应用。
   - 优化自动识别 UX：检测按钮移到连接字段旁，新增识别进度/结果弹层、三类协议状态、可用协议应用反馈和紧凑结果入口。
+  - 修复 daemon service 生命周期：`ensure-running` 会修复 stale/bad user service，新设备缺失模板时会写入并 enable/start；`start`/`restart` 也会先同步模板；模板更新且服务已 active 时会 restart。
+  - systemd 模板补充 `MODEL_GATEWAY_SUPERVISOR=systemd-user`，daemon runtime metadata 可显示真实 supervisor。
+  - Runtime 前端补齐安装/启用、启动、停止、重启操作，保留单页紧凑布局。
   - 新增静态页面测试，防止恢复旧 Codex Stack / CPA UI 词汇和旧 `/api/codex-stack/*`。
 
 ## 验证
@@ -70,6 +74,7 @@
 - 本轮 UI 修正验证通过：same-origin daemon `preview` 返回 `ok/action/template`，daemon `status` 返回 `serviceManager.checked=true/reachable=true/active=false/enabled=true`；页面已增加 action result 面板。
 - 本轮自动识别验证通过：dev 重启后 `/model-gateway` 返回 200，same-origin `/api/model-gateway/detect-provider` 对空 Base URL 返回 `model_gateway_detect_base_url_required` 400，确认 route 已接入。
 - 本轮自动识别 UX 验证通过：`npm run typecheck:web`；`node --test --test-reporter=spec tests/system/studio-web-model-gateway-page.test.mjs`。
+- 本轮 daemon service 修复验证通过：`npm run build:api`；`node --test --test-reporter=spec --test-name-pattern "daemon service management|ensure-running" tests/system/model-gateway-service.test.mjs`；本机 systemd user service 已 `active/enabled`，`/api/model-gateway/status` direct daemon 返回 200。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "protocol matrix forwards native openai responses|anthropic messages through openai chat providers|codex compact|chat reasoning|streamed codex tool-call history|upstream responses stream fails|normalizes upstream chat errors" tests/system/model-gateway-service.test.mjs`，8/8 通过。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "routing contract selects|records streamed codex tool-call history|adapts streaming chat tool calls|adapts codex responses through native anthropic|protocol matrix forwards" tests/system/model-gateway-service.test.mjs`，7/7 通过。
 - Dev 进程已重启：frontend `http://127.0.0.1:5176` 返回 200；backend `http://127.0.0.1:3762/api/system/health` 返回 `gateway: online`。

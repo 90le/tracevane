@@ -364,6 +364,25 @@ function writeTextAtomic(filePath: string, value: string, mode = 0o644): void {
   }
 }
 
+function readTextIfExists(filePath: string): string | null {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function isDaemonServiceTemplateCurrent(plan: ModelGatewayDaemonServicePlan): boolean {
+  return readTextIfExists(plan.selectedTemplate.configPath) === plan.selectedTemplate.template;
+}
+
+function writeDaemonServiceTemplateIfNeeded(plan: ModelGatewayDaemonServicePlan): boolean {
+  if (isDaemonServiceTemplateCurrent(plan)) return false;
+  writeTextAtomic(plan.selectedTemplate.configPath, plan.selectedTemplate.template);
+  return true;
+}
+
 function normalizeDaemonServiceAction(value: unknown): ModelGatewayDaemonServiceAction {
   return DAEMON_SERVICE_ACTIONS.includes(value as ModelGatewayDaemonServiceAction)
     ? value as ModelGatewayDaemonServiceAction
@@ -569,12 +588,13 @@ function summarizeDaemonServiceManager(
     }
   }
 
+  const finalHealthy = reachable && active === true && enabled !== false;
   return {
     checked: true,
     reachable,
     active,
     enabled,
-    lastError: firstCommandError(commandsRun),
+    lastError: finalHealthy ? null : firstCommandError(commandsRun),
   };
 }
 
@@ -1816,13 +1836,16 @@ export function createModelGatewayService(
   }): ModelGatewayDaemonServiceResponse {
     const plan = createModelGatewayDaemonServicePlan(config);
     const commandsRun = options.commandsRun || [];
+    const installed = fs.existsSync(plan.selectedTemplate.configPath);
+    const templateCurrent = installed && isDaemonServiceTemplateCurrent(plan);
     return {
       ok: true,
       checkedAt: nowIso(),
       action: options.action,
       applied: options.applied === true,
       templateWritten: options.templateWritten === true,
-      installed: fs.existsSync(plan.selectedTemplate.configPath),
+      templateCurrent,
+      installed,
       plan,
       lifecycle: getLifecycleStatus(),
       commandsRun,
@@ -1861,15 +1884,19 @@ export function createModelGatewayService(
     const plan = createModelGatewayDaemonServicePlan(config);
     const apply = payload.apply === true;
     let templateWritten = false;
-    if (action === "install" && apply) {
-      writeTextAtomic(plan.selectedTemplate.configPath, plan.selectedTemplate.template);
-      templateWritten = true;
+    const actionNeedsTemplate = action === "install" || action === "start" || action === "restart";
+    if (actionNeedsTemplate && apply) {
+      templateWritten = writeDaemonServiceTemplateIfNeeded(plan);
     }
 
     const shouldRunCommands = payload.runCommands === true
       || (payload.runCommands !== false && apply && (action === "start" || action === "stop" || action === "restart"));
     const commandsRun = [];
     if (shouldRunCommands) {
+      if (templateWritten && (action === "start" || action === "restart")) {
+        const installCommands = plan.selectedTemplate.commands.install || [];
+        for (const item of installCommands) commandsRun.push(await runDaemonServiceCommand(item));
+      }
       const commands = plan.selectedTemplate.commands[action] || [];
       for (const item of commands) commandsRun.push(await runDaemonServiceCommand(item));
     }
@@ -1886,7 +1913,14 @@ export function createModelGatewayService(
     payload: ModelGatewayDaemonServiceRequest = {},
   ): Promise<ModelGatewayDaemonServiceResponse> {
     const lifecycle = getLifecycleStatus();
-    if (lifecycle.localDaemon.runtimeMode === "local-daemon" && lifecycle.localDaemon.state === "running") {
+    const plan = createModelGatewayDaemonServicePlan(config);
+    const installed = fs.existsSync(plan.selectedTemplate.configPath);
+    const templateCurrentAtStart = installed && isDaemonServiceTemplateCurrent(plan);
+    if (
+      lifecycle.localDaemon.runtimeMode === "local-daemon"
+      && lifecycle.localDaemon.state === "running"
+      && templateCurrentAtStart
+    ) {
       return daemonServiceResponse({
         action: "ensure-running",
         bootstrap: daemonBootstrapStatus({
@@ -1901,17 +1935,27 @@ export function createModelGatewayService(
       });
     }
 
-    const plan = createModelGatewayDaemonServicePlan(config);
-    const installed = fs.existsSync(plan.selectedTemplate.configPath);
     const apply = payload.apply === true;
+    let templateWritten = false;
     const commandsRun: ModelGatewayDaemonServiceCommandResult[] = [];
 
     if (installed) {
+      if (apply) {
+        templateWritten = writeDaemonServiceTemplateIfNeeded(plan);
+      }
       if (apply && payload.runCommands !== false) {
+        if (templateWritten) {
+          const installCommands = plan.selectedTemplate.commands.install || [];
+          for (const item of installCommands) commandsRun.push(await runDaemonServiceCommand(item));
+        }
         const statusCommands = plan.selectedTemplate.commands.status || [];
         for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
         const beforeStart = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
-        if (beforeStart.active !== true) {
+        if (templateWritten && beforeStart.active === true) {
+          const restartCommands = plan.selectedTemplate.commands.restart || plan.selectedTemplate.commands.start || [];
+          for (const item of restartCommands) commandsRun.push(await runDaemonServiceCommand(item));
+          for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
+        } else if (beforeStart.active !== true) {
           const startCommands = plan.selectedTemplate.commands.start || [];
           for (const item of startCommands) commandsRun.push(await runDaemonServiceCommand(item));
           for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
@@ -1921,7 +1965,8 @@ export function createModelGatewayService(
       const manager = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
       return daemonServiceResponse({
         action: "ensure-running",
-        applied: commandsRun.length > 0,
+        applied: templateWritten || commandsRun.length > 0,
+        templateWritten,
         commandsRun,
         bootstrap: daemonBootstrapStatus({
           mode: "supervisor",
@@ -1934,43 +1979,104 @@ export function createModelGatewayService(
           notes: commandsRun.length
             ? [
               "User-service template is installed; ensure-running used the selected OS/user supervisor.",
+              ...(templateWritten ? ["User-service template was updated before supervisor start."] : []),
               "Restart guarantees depend on the selected supervisor remaining enabled.",
             ]
             : [
-              "User-service template is installed. Pass apply: true to run supervisor status/start commands.",
+              templateWritten
+                ? "User-service template was updated. Pass runCommands: true to run supervisor status/start commands."
+                : "User-service template is installed. Pass apply: true to run supervisor status/start commands.",
             ],
         }),
       });
     }
 
-    if (!apply || payload.allowBootstrap !== true) {
+    if (!apply) {
       return daemonServiceResponse({
         action: "ensure-running",
         bootstrap: daemonBootstrapStatus({
           mode: "blocked",
-          allowed: payload.allowBootstrap === true,
+          allowed: false,
           endpoint: lifecycle.localDaemon.endpoint,
-          error: "No user-service template is installed. Detached bootstrap requires apply: true and allowBootstrap: true.",
+          error: "No user-service template is installed. Pass apply: true to install and start the OS/user supervisor.",
           notes: [
             "Install the OS/user supervisor for the formal daemon lifecycle.",
-            "Detached bootstrap is only a temporary fallback when the user-service is not installed.",
           ],
         }),
       });
     }
 
-    const bootstrap = await runDaemonBootstrap({
-      plan,
-      paths,
-      projectRoot: config.projectRoot,
-      host: listenerHost,
-      port: listenerPort,
-      endpoint: lifecycle.localDaemon.endpoint,
-    });
+    const canUseSupervisor = Boolean(
+      (plan.selectedTemplate.commands.install || []).length
+      && (plan.selectedTemplate.commands.start || []).length,
+    );
+    if (!canUseSupervisor) {
+      if (payload.allowBootstrap === true) {
+        const bootstrap = await runDaemonBootstrap({
+          plan,
+          paths,
+          projectRoot: config.projectRoot,
+          host: listenerHost,
+          port: listenerPort,
+          endpoint: lifecycle.localDaemon.endpoint,
+        });
+        return daemonServiceResponse({
+          action: "ensure-running",
+          applied: bootstrap.started,
+          bootstrap,
+        });
+      }
+      return daemonServiceResponse({
+        action: "ensure-running",
+        bootstrap: daemonBootstrapStatus({
+          mode: "blocked",
+          allowed: false,
+          endpoint: lifecycle.localDaemon.endpoint,
+          error: "No supported OS/user supervisor commands are available for this platform.",
+          notes: [
+            "Detached bootstrap is only available when explicitly allowed and no supervisor install/start path exists.",
+          ],
+        }),
+      });
+    }
+
+    templateWritten = writeDaemonServiceTemplateIfNeeded(plan);
+    if (payload.runCommands !== false) {
+      const installCommands = plan.selectedTemplate.commands.install || [];
+      for (const item of installCommands) commandsRun.push(await runDaemonServiceCommand(item));
+      const statusCommands = plan.selectedTemplate.commands.status || [];
+      for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
+      const beforeStart = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
+      if (beforeStart.active !== true) {
+        const startCommands = plan.selectedTemplate.commands.start || [];
+        for (const item of startCommands) commandsRun.push(await runDaemonServiceCommand(item));
+        for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
+      }
+    }
+
+    const manager = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
     return daemonServiceResponse({
       action: "ensure-running",
-      applied: bootstrap.started,
-      bootstrap,
+      applied: templateWritten || commandsRun.length > 0,
+      templateWritten,
+      commandsRun,
+      bootstrap: daemonBootstrapStatus({
+        mode: "supervisor",
+        allowed: true,
+        attempted: commandsRun.length > 0,
+        started: manager.active === true,
+        temporary: false,
+        endpoint: lifecycle.localDaemon.endpoint,
+        error: manager.lastError,
+        notes: commandsRun.length
+          ? [
+            "User-service template was installed; ensure-running used the selected OS/user supervisor.",
+            "Restart guarantees depend on the selected supervisor remaining enabled.",
+          ]
+          : [
+            "User-service template was installed. Pass runCommands: true to run supervisor status/start commands.",
+        ],
+      }),
     });
   }
 

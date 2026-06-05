@@ -208,6 +208,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  align-items: start;
 }
 
 .form-field-full {
@@ -221,10 +222,10 @@
 
 .mgw-detect-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  gap: 12px;
   align-items: center;
-  min-height: 92px;
   border: 1px solid color-mix(in srgb, var(--mono-accent) 24%, var(--mono-line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--mono-accent) 5%, var(--surface-base));
@@ -240,7 +241,9 @@
 .mgw-detect-card__main strong,
 .mgw-detect-card__main small {
   min-width: 0;
-  overflow-wrap: anywhere;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .mgw-detect-card__main small {

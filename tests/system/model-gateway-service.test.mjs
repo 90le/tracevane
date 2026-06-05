@@ -668,6 +668,7 @@ test("model gateway daemon service management exposes templates and guarded inst
     assert.equal(install.body.action, "install");
     assert.equal(install.body.applied, true);
     assert.equal(install.body.templateWritten, true);
+    assert.equal(install.body.templateCurrent, true);
     assert.equal(install.body.installed, true);
     assert.equal(install.body.commandsRun.length, 0);
     const serviceTemplate = fs.readFileSync(install.body.plan.selectedTemplate.configPath, "utf8");
@@ -675,6 +676,7 @@ test("model gateway daemon service management exposes templates and guarded inst
     assert.match(serviceTemplate, new RegExp(config.openclawRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(serviceTemplate, new RegExp(`^WorkingDirectory=${config.projectRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
     assert.doesNotMatch(serviceTemplate, /^WorkingDirectory="/m);
+    assert.match(serviceTemplate, /^Environment="MODEL_GATEWAY_SUPERVISOR=systemd-user"$/m);
 
     const startPreview = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
       method: "POST",
@@ -717,15 +719,16 @@ test("model gateway daemon service management executes selected supervisor comma
     action: "start",
     apply: true,
   });
+  const expectedInstall = start.plan.selectedTemplate.commands.install || [];
   const expectedStart = start.plan.selectedTemplate.commands.start || [];
   assert.equal(start.action, "start");
   assert.equal(start.applied, true);
-  assert.equal(start.templateWritten, false);
+  assert.equal(start.templateWritten, true);
   assert.deepEqual(
-    calls.slice(0, expectedStart.length),
-    expectedStart.map((command) => `${command.command} ${command.args.join(" ")}`),
+    calls.slice(0, expectedInstall.length + expectedStart.length),
+    [...expectedInstall, ...expectedStart].map((command) => `${command.command} ${command.args.join(" ")}`),
   );
-  assert.deepEqual(start.commandsRun.map((result) => result.ok), expectedStart.map(() => true));
+  assert.deepEqual(start.commandsRun.map((result) => result.ok), [...expectedInstall, ...expectedStart].map(() => true));
   assert.match(start.commandsRun[0]?.stdout || "", /^ran /);
 
   const restart = await service.manageDaemonService(undefined, {
@@ -735,8 +738,9 @@ test("model gateway daemon service management executes selected supervisor comma
   const expectedRestart = restart.plan.selectedTemplate.commands.restart || [];
   assert.equal(restart.action, "restart");
   assert.equal(restart.applied, true);
+  assert.equal(restart.templateWritten, false);
   assert.deepEqual(
-    calls.slice(expectedStart.length, expectedStart.length + expectedRestart.length),
+    calls.slice(expectedInstall.length + expectedStart.length, expectedInstall.length + expectedStart.length + expectedRestart.length),
     expectedRestart.map((command) => `${command.command} ${command.args.join(" ")}`),
   );
 
@@ -748,7 +752,7 @@ test("model gateway daemon service management executes selected supervisor comma
   assert.equal(status.action, "status");
   assert.equal(status.applied, expectedStatus.length > 0);
   assert.deepEqual(
-    calls.slice(expectedStart.length + expectedRestart.length),
+    calls.slice(expectedInstall.length + expectedStart.length + expectedRestart.length),
     expectedStatus.map((command) => `${command.command} ${command.args.join(" ")}`),
   );
   assert.equal(status.commandsRun.length, expectedStatus.length);
@@ -855,91 +859,256 @@ test("model gateway ensure-running prefers installed supervisor over detached bo
   assert.equal(ensure.bootstrap.attempted, true);
   assert.equal(ensure.bootstrap.started, true);
   assert.equal(ensure.bootstrap.temporary, false);
+  assert.equal(ensure.templateWritten, false);
+  assert.equal(ensure.templateCurrent, true);
   assert.deepEqual(calls, expectedCalls);
   assert.equal(ensure.commandsRun.length, expectedCalls.length);
   assert.equal(ensure.serviceManager.checked, true);
   assert.equal(ensure.serviceManager.active, true);
+  assert.equal(ensure.serviceManager.lastError, null);
 });
 
-test("model gateway ensure-running uses detached bootstrap only when explicitly allowed", async () => {
+test("model gateway ensure-running repairs stale installed supervisor templates", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
-  const paths = resolveModelGatewayPaths(config);
-  const bootstraps = [];
-  let daemonProcess = null;
+  const calls = [];
+  let startSeen = false;
   const service = createModelGatewayService(config, {
-    daemonBootstrapRunner: async (request) => {
-      bootstraps.push(request);
-      daemonProcess = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], {
-        stdio: "ignore",
-      });
-      assert.ok(daemonProcess.pid);
-      fs.mkdirSync(path.dirname(request.paths.daemonRuntime), { recursive: true });
-      fs.writeFileSync(request.paths.daemonRuntime, `${JSON.stringify({
-        version: 1,
-        updatedAt: "2026-06-04T00:00:00.000Z",
-        pid: daemonProcess.pid,
-        startedAt: "2026-06-04T00:00:00.000Z",
-        host: request.host,
-        port: request.port,
-        endpoint: request.endpoint,
-        supervisor: "none",
-        serviceName: "openclaw-studio-model-gateway.service",
-        lockFile: request.paths.portLock,
-      }, null, 2)}\n`);
+    daemonServiceCommandRunner: async (command) => {
+      calls.push(`${command.command} ${command.args.join(" ")}`);
+      const lowerLabel = command.label.toLowerCase();
+      if (lowerLabel.includes("start") || lowerLabel.includes("kickstart") || lowerLabel.includes("run scheduled task")) {
+        startSeen = true;
+      }
+      if (command.args.includes("is-active")) {
+        return {
+          ...command,
+          ok: startSeen,
+          exitCode: startSeen ? 0 : 3,
+          stdout: startSeen ? "active\n" : "inactive\n",
+          stderr: "",
+          error: startSeen ? null : "Command failed.",
+        };
+      }
+      if (command.args.includes("is-enabled")) {
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: "enabled\n",
+          stderr: "",
+          error: null,
+        };
+      }
       return {
-        mode: "detached",
-        allowed: true,
-        attempted: true,
-        started: true,
-        temporary: true,
-        pid: daemonProcess.pid,
-        endpoint: request.endpoint,
+        ...command,
+        ok: true,
+        exitCode: 0,
+        stdout: `ran ${command.label}`,
+        stderr: "",
         error: null,
-        notes: [
-          "Started detached daemon for bootstrap test.",
-        ],
       };
     },
   });
 
-  try {
-    assert.equal(fs.existsSync(paths.daemonRuntime), false);
-    const blocked = await service.manageDaemonService(undefined, {
-      action: "ensure-running",
-      apply: true,
-    });
-    assert.equal(blocked.action, "ensure-running");
-    assert.equal(blocked.applied, false);
-    assert.equal(blocked.bootstrap.mode, "blocked");
-    assert.equal(blocked.bootstrap.attempted, false);
-    assert.equal(blocked.bootstrap.started, false);
-    assert.equal(blocked.bootstrap.temporary, false);
-    assert.equal(bootstraps.length, 0);
+  const install = await service.manageDaemonService(undefined, {
+    action: "install",
+    apply: true,
+    runCommands: false,
+  });
+  const configPath = install.plan.selectedTemplate.configPath;
+  fs.writeFileSync(
+    configPath,
+    fs.readFileSync(configPath, "utf8").replace(/^WorkingDirectory=(.+)$/m, 'WorkingDirectory="$1"'),
+    "utf8",
+  );
 
-    const started = await service.manageDaemonService(undefined, {
-      action: "ensure-running",
-      apply: true,
-      allowBootstrap: true,
-    });
-    assert.equal(started.action, "ensure-running");
-    assert.equal(started.applied, true);
-    assert.equal(started.bootstrap.mode, "detached");
-    assert.equal(started.bootstrap.attempted, true);
-    assert.equal(started.bootstrap.started, true);
-    assert.equal(started.bootstrap.temporary, true);
-    assert.equal(started.bootstrap.pid, daemonProcess.pid);
-    assert.equal(started.lifecycle.localDaemon.runtimeMode, "local-daemon");
-    assert.equal(started.lifecycle.localDaemon.supervisor.active, "none");
-    assert.equal(started.lifecycle.localDaemon.survivesControlPlaneCrash, true);
-    assert.equal(bootstraps.length, 1);
-  } finally {
-    if (daemonProcess) {
-      const exited = new Promise((resolve) => daemonProcess.once("exit", resolve));
-      daemonProcess.kill();
-      await exited;
-    }
-  }
+  const ensure = await service.manageDaemonService(undefined, {
+    action: "ensure-running",
+    apply: true,
+  });
+  const installCommands = ensure.plan.selectedTemplate.commands.install || [];
+  const statusCommands = ensure.plan.selectedTemplate.commands.status || [];
+  const startCommands = ensure.plan.selectedTemplate.commands.start || [];
+  const expectedCalls = [
+    ...installCommands,
+    ...statusCommands,
+    ...startCommands,
+    ...statusCommands,
+  ].map((command) => `${command.command} ${command.args.join(" ")}`);
+
+  assert.equal(ensure.action, "ensure-running");
+  assert.equal(ensure.applied, true);
+  assert.equal(ensure.templateWritten, true);
+  assert.equal(ensure.templateCurrent, true);
+  assert.equal(ensure.bootstrap.mode, "supervisor");
+  assert.equal(ensure.bootstrap.started, true);
+  assert.equal(ensure.serviceManager.lastError, null);
+  assert.deepEqual(calls, expectedCalls);
+  const repairedTemplate = fs.readFileSync(configPath, "utf8");
+  assert.doesNotMatch(repairedTemplate, /^WorkingDirectory="/m);
+});
+
+test("model gateway ensure-running restarts active supervisor after template repair", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const calls = [];
+  const service = createModelGatewayService(config, {
+    daemonServiceCommandRunner: async (command) => {
+      calls.push(`${command.command} ${command.args.join(" ")}`);
+      if (command.args.includes("is-active")) {
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: "active\n",
+          stderr: "",
+          error: null,
+        };
+      }
+      if (command.args.includes("is-enabled")) {
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: "enabled\n",
+          stderr: "",
+          error: null,
+        };
+      }
+      return {
+        ...command,
+        ok: true,
+        exitCode: 0,
+        stdout: `ran ${command.label}`,
+        stderr: "",
+        error: null,
+      };
+    },
+  });
+
+  const install = await service.manageDaemonService(undefined, {
+    action: "install",
+    apply: true,
+    runCommands: false,
+  });
+  const configPath = install.plan.selectedTemplate.configPath;
+  fs.writeFileSync(
+    configPath,
+    fs.readFileSync(configPath, "utf8").replace(/^Environment="MODEL_GATEWAY_SUPERVISOR=systemd-user"$/m, ""),
+    "utf8",
+  );
+  fs.mkdirSync(path.dirname(paths.daemonRuntime), { recursive: true });
+  fs.writeFileSync(paths.daemonRuntime, `${JSON.stringify({
+    version: 1,
+    updatedAt: "2026-06-04T00:00:00.000Z",
+    pid: process.pid,
+    startedAt: "2026-06-04T00:00:00.000Z",
+    host: "127.0.0.1",
+    port: 18796,
+    endpoint: "http://127.0.0.1:18796/v1",
+    supervisor: "systemd-user",
+    serviceName: "openclaw-studio-model-gateway.service",
+    lockFile: paths.portLock,
+  }, null, 2)}\n`);
+
+  const ensure = await service.manageDaemonService(undefined, {
+    action: "ensure-running",
+    apply: true,
+  });
+  const installCommands = ensure.plan.selectedTemplate.commands.install || [];
+  const statusCommands = ensure.plan.selectedTemplate.commands.status || [];
+  const restartCommands = ensure.plan.selectedTemplate.commands.restart || [];
+  const expectedCalls = [
+    ...installCommands,
+    ...statusCommands,
+    ...restartCommands,
+    ...statusCommands,
+  ].map((command) => `${command.command} ${command.args.join(" ")}`);
+
+  assert.equal(ensure.templateWritten, true);
+  assert.equal(ensure.templateCurrent, true);
+  assert.equal(ensure.bootstrap.started, true);
+  assert.equal(ensure.serviceManager.lastError, null);
+  assert.deepEqual(calls, expectedCalls);
+  assert.match(fs.readFileSync(configPath, "utf8"), /^Environment="MODEL_GATEWAY_SUPERVISOR=systemd-user"$/m);
+});
+
+test("model gateway ensure-running installs supervisor template before starting when missing", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const calls = [];
+  let startSeen = false;
+  const service = createModelGatewayService(config, {
+    daemonServiceCommandRunner: async (command) => {
+      calls.push(`${command.command} ${command.args.join(" ")}`);
+      const lowerLabel = command.label.toLowerCase();
+      if (lowerLabel.includes("start") || lowerLabel.includes("kickstart") || lowerLabel.includes("run scheduled task")) {
+        startSeen = true;
+      }
+      if (command.args.includes("is-active")) {
+        return {
+          ...command,
+          ok: startSeen,
+          exitCode: startSeen ? 0 : 3,
+          stdout: startSeen ? "active\n" : "inactive\n",
+          stderr: "",
+          error: startSeen ? null : "Command failed.",
+        };
+      }
+      if (command.args.includes("is-enabled")) {
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: "enabled\n",
+          stderr: "",
+          error: null,
+        };
+      }
+      return {
+        ...command,
+        ok: true,
+        exitCode: 0,
+        stdout: `ran ${command.label}`,
+        stderr: "",
+        error: null,
+      };
+    },
+  });
+
+  const preview = await service.manageDaemonService(undefined, {
+    action: "ensure-running",
+  });
+  assert.equal(preview.action, "ensure-running");
+  assert.equal(preview.applied, false);
+  assert.equal(preview.installed, false);
+  assert.equal(preview.bootstrap.mode, "blocked");
+
+  const ensure = await service.manageDaemonService(undefined, {
+    action: "ensure-running",
+    apply: true,
+  });
+  const installCommands = ensure.plan.selectedTemplate.commands.install || [];
+  const statusCommands = ensure.plan.selectedTemplate.commands.status || [];
+  const startCommands = ensure.plan.selectedTemplate.commands.start || [];
+  const expectedCalls = [
+    ...installCommands,
+    ...statusCommands,
+    ...startCommands,
+    ...statusCommands,
+  ].map((command) => `${command.command} ${command.args.join(" ")}`);
+
+  assert.equal(ensure.action, "ensure-running");
+  assert.equal(ensure.applied, true);
+  assert.equal(ensure.templateWritten, true);
+  assert.equal(ensure.templateCurrent, true);
+  assert.equal(ensure.installed, true);
+  assert.equal(ensure.bootstrap.mode, "supervisor");
+  assert.equal(ensure.bootstrap.started, true);
+  assert.equal(ensure.serviceManager.lastError, null);
+  assert.deepEqual(calls, expectedCalls);
 });
 
 test("model gateway daemon service status summarizes supervisor command failures", async () => {

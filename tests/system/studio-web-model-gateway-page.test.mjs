@@ -15,6 +15,10 @@ const apiPath = path.join(
   rootDir,
   "apps/web-vue/src/features/model-gateway/api.ts",
 );
+const cssPath = path.join(
+  rootDir,
+  "apps/web-vue/src/features/model-gateway/model-gateway-workspace.css",
+);
 const routeManifestPath = path.join(
   rootDir,
   "apps/web-vue/src/features/shell/route-manifest.ts",
@@ -53,6 +57,7 @@ test("Studio Gateway page uses the new model-gateway API contract", () => {
 
 test("Studio Gateway page keeps provider configuration user-owned", () => {
   const page = fs.readFileSync(pagePath, "utf8");
+  const css = fs.readFileSync(cssPath, "utf8");
   const legacyInitialism = ["C", "P", "A"].join("");
   const legacyProxyName = ["Compact", "Proxy"].join(" ");
   const legacyApiPath = `/api/${["codex", "stack"].join("-")}`;
@@ -71,6 +76,9 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Provider Center",
     "Active routing",
     "Protocol smoke",
+    "Install / enable",
+    "Restart",
+    "Stop",
     "Connection check",
     "Detect config",
     "Detect protocol and models",
@@ -107,4 +115,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.doesNotMatch(page, /运行矩阵与组件明细/);
   assert.doesNotMatch(page, /安装修复/);
   assert.doesNotMatch(page, /label:\s*'Custom'/);
+
+  assert.match(css, /\.mgw-detect-card\s*\{[^}]*grid-column:\s*1 \/ -1/s);
+  assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*overflow-wrap:\s*break-word/s);
+  assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*word-break:\s*normal/s);
 });

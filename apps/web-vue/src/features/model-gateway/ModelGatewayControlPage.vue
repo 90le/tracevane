@@ -44,7 +44,7 @@
             </div>
             <div>
               <span>{{ text('服务模板', 'Service template') }}</span>
-              <strong>{{ daemonService?.templateWritten ? text('已写入', 'Written') : text('未写入', 'Not written') }}</strong>
+              <strong>{{ daemonTemplateStateLabel(daemonService) }}</strong>
             </div>
             <div>
               <span>{{ text('请求日志', 'Request log') }}</span>
@@ -59,6 +59,18 @@
             <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('status')">
               {{ daemonBusy ? text('执行中...', 'Running...') : text('运行 status', 'Run status') }}
             </button>
+            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('install')">
+              {{ daemonBusy ? text('执行中...', 'Running...') : text('安装/启用', 'Install / enable') }}
+            </button>
+            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('start')">
+              {{ daemonBusy ? text('执行中...', 'Running...') : text('启动', 'Start') }}
+            </button>
+            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('restart')">
+              {{ daemonBusy ? text('执行中...', 'Running...') : text('重启', 'Restart') }}
+            </button>
+            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('stop')">
+              {{ daemonBusy ? text('执行中...', 'Running...') : text('停止', 'Stop') }}
+            </button>
             <button type="button" class="primary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('ensure-running')">
               {{ daemonBusy ? text('执行中...', 'Running...') : text('确保 daemon 运行', 'Ensure daemon') }}
             </button>
@@ -70,7 +82,7 @@
               <span>{{ formatTimestamp(daemonActionResult.checkedAt) }}</span>
             </div>
             <div class="mgw-daemon-output__grid">
-              <span>{{ text('模板', 'Template') }}: {{ daemonActionResult.templateWritten ? text('已写入', 'Written') : text('未写入', 'Not written') }}</span>
+              <span>{{ text('模板', 'Template') }}: {{ daemonTemplateStateLabel(daemonActionResult) }}</span>
               <span>{{ text('服务', 'Service') }}: {{ daemonActionResult.installed ? text('已安装', 'Installed') : text('未安装', 'Not installed') }}</span>
               <span>{{ text('Supervisor', 'Supervisor') }}: {{ daemonActionResult.serviceManager.checked ? serviceManagerLabel : text('未执行命令', 'No command run') }}</span>
               <span>{{ text('Bootstrap', 'Bootstrap') }}: {{ bootstrapLabel }}</span>
@@ -783,6 +795,13 @@ const bootstrapLabel = computed(() => {
   return `${bootstrap.mode} / ${bootstrap.started ? 'started' : 'not-started'}`;
 });
 
+function daemonTemplateStateLabel(result: ModelGatewayDaemonServiceResponse | null | undefined): string {
+  if (!result?.installed) return text('未写入', 'Not written');
+  if (result.templateCurrent) return text('已同步', 'Current');
+  if (result.templateWritten) return text('已更新', 'Updated');
+  return text('需更新', 'Needs update');
+}
+
 const daemonActionOutput = computed(() => {
   const result = daemonActionResult.value;
   if (!result) return '';
@@ -1110,9 +1129,13 @@ function ensureSelectedProvider(): void {
 async function runDaemonAction(action: ModelGatewayDaemonServiceAction): Promise<void> {
   daemonBusy.value = true;
   notice.value = null;
+  const shouldApply = action === 'install'
+    || action === 'ensure-running'
+    || action === 'start'
+    || action === 'restart';
   try {
     const result = await manageModelGatewayDaemonService(action, {
-      apply: action === 'install' || action === 'ensure-running',
+      apply: shouldApply,
       runCommands: action !== 'preview',
       allowBootstrap: action === 'ensure-running',
     });

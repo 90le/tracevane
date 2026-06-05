@@ -64,6 +64,7 @@ function buildSystemdTemplate(options: {
     "Type=simple",
     `WorkingDirectory=${escapeSystemdPath(options.projectRoot)}`,
     `Environment=${quoteSystemdValue(`OPENCLAW_STATE_DIR=${options.openclawRoot}`)}`,
+    `Environment=${quoteSystemdValue("MODEL_GATEWAY_SUPERVISOR=systemd-user")}`,
     `ExecStart=${quoteSystemdValue(options.nodePath)} ${quoteSystemdValue(options.daemonEntry)}`,
     "Restart=always",
     "RestartSec=2",

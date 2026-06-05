@@ -292,6 +292,7 @@ export interface ModelGatewayDaemonServiceResponse {
   action: ModelGatewayDaemonServiceAction;
   applied: boolean;
   templateWritten: boolean;
+  templateCurrent: boolean;
   installed: boolean;
   plan: ModelGatewayDaemonServicePlan;
   lifecycle: ModelGatewayLifecycleStatus;
