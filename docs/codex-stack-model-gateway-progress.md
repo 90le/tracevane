@@ -13,6 +13,7 @@
 - `/model-gateway` 管理页 MVP 已接入 shell：覆盖 daemon 状态/预览/status/ensure-running、Provider Center、active routing、protocol smoke 和最近请求。
 - Provider 配置不内置具体 vendor；只给三种原生协议模板，用户可只填 Base URL + API key 后自动识别协议和模型列表，必要时再手动填模型名称。
 - Provider 自动识别入口已贴近 Base URL / API Key；识别过程、三类协议结果和应用动作在弹层中完成，表单只保留紧凑状态。
+- Provider registry 已有 `enabled` 字段、App scope、active provider 数据结构和 `/api/model-gateway/active-provider`；当前 UI 已显示启用/停用状态和 Active routing 下拉，但还缺明显的启用/停用操作、聚合 `/v1/models`、统一 Gateway key、模型别名解析和 App Connections 一键应用。
 - Gateway daemon service 已覆盖新设备首次安装、systemd/launchd/scheduled-task 自启动启用、启动、停止、重启、status 与 ensure-running；旧坏模板会自动重写并 reload/start/restart，已安装时 install 按重装/重新启用处理。
 - `start`、`restart`、`ensure-running` 已改为等待 daemon HTTP status ready 后才标记 started；stop 后 inactive 视为预期结果，不再误报失败。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
@@ -124,6 +125,7 @@
 
 ## 下一步
 
-1. 在新 `/model-gateway` 页面做 dev 联调：保存 provider、设置 active provider、运行 smoke，并检查识别弹层在真实 provider 下的结果呈现。
-2. 再做 App Connections：Codex / Claude Code / OpenCode / OpenClaw 配置 preview 与 apply。
-3. Channel Connectors / CC Bridge / Octo 等网关配置稳定后再启动。
+1. 补 Provider Center 可用性闭环：启用/停用按钮、停用时 active routing 回退/提示、Active routing 选择后即时 smoke 验证。
+2. 补 daemon 客户端面：`GET /v1/models` 聚合所有启用 provider 模型；实现统一本地 Gateway key；模型 ID/显示名/别名与 `provider/model` 显式选择规则。
+3. 做 App Connections：Codex / Claude Code / OpenCode / OpenClaw 配置 preview/apply，并支持一键切换 app profile、模型、上下文窗口、max output、reasoning/effort 等参数。
+4. Channel Connectors / CC Bridge / Octo 等网关配置稳定后再启动。
