@@ -13,6 +13,7 @@ interface StreamResult {
   id: string;
   model: string | null;
   outputText: string;
+  output?: JsonRecord[];
 }
 
 interface ToolStreamBlock {
@@ -24,6 +25,7 @@ interface ToolStreamBlock {
   stopped: boolean;
   sentChatStart: boolean;
   chatIndex: number;
+  outputIndex: number | null;
 }
 
 export async function writeAnthropicMessagesSseFromChatSse(
@@ -349,6 +351,10 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
     textItemId: "",
     textAdded: false,
     textDone: false,
+    textOutputIndex: null as number | null,
+    nextOutputIndex: 0,
+    tools: new Map<number, ToolStreamBlock>(),
+    completedOutput: [] as JsonRecord[],
     usage: null as JsonRecord | null,
     status: "completed",
   };
@@ -369,12 +375,40 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
       ensureResponsesStreamStart(state, res);
       return;
     }
+    if (event.event === "content_block_start" && isRecord(event.json.content_block)) {
+      ensureResponsesStreamStart(state, res);
+      const block = event.json.content_block;
+      if (block.type === "tool_use") {
+        const sourceIndex = numberOrNull(event.json.index) ?? state.tools.size;
+        const tool = ensureToolBlock(state.tools, sourceIndex, {
+          id: stringOrNull(block.id) || undefined,
+          name: stringOrNull(block.name) || undefined,
+        });
+        ensureResponsesToolAdded(state, res, tool);
+        const inputJson = serializeToolInput(block.input);
+        if (inputJson) pushResponsesToolArgumentsDelta(res, tool, inputJson);
+      }
+      return;
+    }
     if (event.event === "content_block_delta" && isRecord(event.json.delta)) {
       const delta = event.json.delta;
       if (delta.type === "text_delta") {
         const text = stringOrNull(delta.text);
         if (text) pushResponsesTextDelta(state, res, text);
+        return;
       }
+      if (delta.type === "input_json_delta") {
+        const sourceIndex = numberOrNull(event.json.index) ?? state.tools.size;
+        const tool = ensureToolBlock(state.tools, sourceIndex, {});
+        ensureResponsesToolAdded(state, res, tool);
+        pushResponsesToolArgumentsDelta(res, tool, stringOrNull(delta.partial_json) || "");
+      }
+      return;
+    }
+    if (event.event === "content_block_stop") {
+      const sourceIndex = numberOrNull(event.json.index);
+      const tool = sourceIndex === null ? null : state.tools.get(sourceIndex);
+      if (tool) stopResponsesToolBlock(state, res, tool);
       return;
     }
     if (event.event === "message_delta") {
@@ -391,7 +425,12 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
   });
 
   finalizeResponsesStream(state, res);
-  return { id: state.responseId, model: state.model, outputText: state.outputText };
+  return {
+    id: state.responseId,
+    model: state.model,
+    outputText: state.outputText,
+    output: state.completedOutput,
+  };
 }
 
 async function readSseEvents(
@@ -804,6 +843,8 @@ function pushResponsesTextDelta(
     outputText: string;
     textItemId: string;
     textAdded: boolean;
+    textOutputIndex: number | null;
+    nextOutputIndex: number;
   },
   res: http.ServerResponse,
   delta: string,
@@ -811,9 +852,11 @@ function pushResponsesTextDelta(
   ensureResponsesStreamStart(state, res);
   if (!state.textAdded) {
     state.textAdded = true;
+    state.textOutputIndex = state.nextOutputIndex;
+    state.nextOutputIndex += 1;
     writeSseEvent(res, "response.output_item.added", {
       type: "response.output_item.added",
-      output_index: 0,
+      output_index: state.textOutputIndex,
       item: {
         id: state.textItemId,
         type: "message",
@@ -825,7 +868,7 @@ function pushResponsesTextDelta(
     writeSseEvent(res, "response.content_part.added", {
       type: "response.content_part.added",
       item_id: state.textItemId,
-      output_index: 0,
+      output_index: state.textOutputIndex,
       content_index: 0,
       part: { type: "output_text", text: "", annotations: [] },
     });
@@ -834,10 +877,97 @@ function pushResponsesTextDelta(
   writeSseEvent(res, "response.output_text.delta", {
     type: "response.output_text.delta",
     item_id: state.textItemId,
-    output_index: 0,
+    output_index: state.textOutputIndex,
     content_index: 0,
     delta,
   });
+}
+
+function ensureResponsesToolAdded(
+  state: {
+    responseStarted: boolean;
+    responseId: string;
+    model: string | null;
+    createdAt: number;
+    nextOutputIndex: number;
+  },
+  res: http.ServerResponse,
+  tool: ToolStreamBlock,
+): void {
+  ensureResponsesStreamStart(state, res);
+  if (tool.started) return;
+  tool.started = true;
+  tool.outputIndex = state.nextOutputIndex;
+  state.nextOutputIndex += 1;
+  writeSseEvent(res, "response.output_item.added", {
+    type: "response.output_item.added",
+    output_index: tool.outputIndex,
+    item: responsesFunctionCallItem(tool, "in_progress"),
+  });
+}
+
+function pushResponsesToolArgumentsDelta(
+  res: http.ServerResponse,
+  tool: ToolStreamBlock,
+  delta: string,
+): void {
+  if (!delta) return;
+  tool.inputJson += delta;
+  writeSseEvent(res, "response.function_call_arguments.delta", {
+    type: "response.function_call_arguments.delta",
+    item_id: responsesFunctionCallItemId(tool),
+    output_index: tool.outputIndex,
+    delta,
+  });
+}
+
+function stopResponsesToolBlock(
+  state: {
+    completedOutput: JsonRecord[];
+  },
+  res: http.ServerResponse,
+  tool: ToolStreamBlock,
+): void {
+  if (tool.stopped) return;
+  const item = responsesFunctionCallItem(tool, "completed");
+  writeSseEvent(res, "response.function_call_arguments.done", {
+    type: "response.function_call_arguments.done",
+    item_id: responsesFunctionCallItemId(tool),
+    output_index: tool.outputIndex,
+    arguments: tool.inputJson || "{}",
+  });
+  writeSseEvent(res, "response.output_item.done", {
+    type: "response.output_item.done",
+    output_index: tool.outputIndex,
+    item,
+  });
+  state.completedOutput.push(item);
+  tool.stopped = true;
+}
+
+function responsesFunctionCallItem(tool: ToolStreamBlock, status: string): JsonRecord {
+  return {
+    id: responsesFunctionCallItemId(tool),
+    type: "function_call",
+    status,
+    call_id: tool.id,
+    name: tool.name,
+    arguments: tool.inputJson || "{}",
+  };
+}
+
+function responsesFunctionCallItemId(tool: ToolStreamBlock): string {
+  return `fc_${tool.id}`;
+}
+
+function serializeToolInput(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (isRecord(value) && Object.keys(value).length === 0) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
 }
 
 function finalizeResponsesStream(
@@ -851,6 +981,9 @@ function finalizeResponsesStream(
     textItemId: string;
     textAdded: boolean;
     textDone: boolean;
+    textOutputIndex: number | null;
+    tools: Map<number, ToolStreamBlock>;
+    completedOutput: JsonRecord[];
     usage: JsonRecord | null;
     status: string;
   },
@@ -858,8 +991,9 @@ function finalizeResponsesStream(
 ): void {
   if (state.completed) return;
   ensureResponsesStreamStart(state, res);
-  const output: JsonRecord[] = [];
+  const output: JsonRecord[] = [...state.completedOutput];
   if (state.textAdded && !state.textDone) {
+    const outputIndex = state.textOutputIndex ?? 0;
     const item = {
       id: state.textItemId,
       type: "message",
@@ -871,24 +1005,32 @@ function finalizeResponsesStream(
     writeSseEvent(res, "response.output_text.done", {
       type: "response.output_text.done",
       item_id: state.textItemId,
-      output_index: 0,
+      output_index: outputIndex,
       content_index: 0,
       text: state.outputText,
     });
     writeSseEvent(res, "response.content_part.done", {
       type: "response.content_part.done",
       item_id: state.textItemId,
-      output_index: 0,
+      output_index: outputIndex,
       content_index: 0,
       part: item.content[0],
     });
     writeSseEvent(res, "response.output_item.done", {
       type: "response.output_item.done",
-      output_index: 0,
+      output_index: outputIndex,
       item,
     });
     state.textDone = true;
   }
+  for (const tool of [...state.tools.values()].sort((a, b) => (a.outputIndex ?? 0) - (b.outputIndex ?? 0))) {
+    if (tool.started && !tool.stopped) {
+      stopResponsesToolBlock(state, res, tool);
+      output.push(state.completedOutput[state.completedOutput.length - 1]);
+    }
+  }
+  output.sort((a, b) => responsesOutputIndex(a, state) - responsesOutputIndex(b, state));
+  state.completedOutput = output;
   writeSseEvent(res, "response.completed", {
     type: "response.completed",
     response: {
@@ -898,6 +1040,21 @@ function finalizeResponsesStream(
   });
   res.write("data: [DONE]\n\n");
   state.completed = true;
+}
+
+function responsesOutputIndex(
+  item: JsonRecord,
+  state: {
+    textItemId: string;
+    textOutputIndex: number | null;
+    tools: Map<number, ToolStreamBlock>;
+  },
+): number {
+  if (item.id === state.textItemId) return state.textOutputIndex ?? 0;
+  for (const tool of state.tools.values()) {
+    if (item.id === responsesFunctionCallItemId(tool)) return tool.outputIndex ?? 0;
+  }
+  return 0;
 }
 
 function baseResponse(
@@ -936,6 +1093,7 @@ function ensureToolBlock(
       stopped: false,
       sentChatStart: false,
       chatIndex: blocks.size,
+      outputIndex: null,
     };
     blocks.set(sourceIndex, block);
     return block;

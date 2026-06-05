@@ -723,22 +723,22 @@ function endpointForRoute(routeId: ModelGatewayRouteId, provider: ModelGatewayPr
   if (override) return override;
 
   if (routeId === "openai_chat_completions") {
-    if (provider.apiFormat === "anthropic_messages") return "/v1/messages";
-    if (provider.apiFormat === "openai_responses") return "/v1/responses";
-    return "/v1/chat/completions";
+    if (provider.apiFormat === "anthropic_messages") return "/messages";
+    if (provider.apiFormat === "openai_responses") return "/responses";
+    return "/chat/completions";
   }
   if (routeId === "openai_responses") {
-    if (provider.apiFormat === "anthropic_messages") return "/v1/messages";
-    return provider.apiFormat === "openai_chat" ? "/v1/chat/completions" : "/v1/responses";
+    if (provider.apiFormat === "anthropic_messages") return "/messages";
+    return provider.apiFormat === "openai_chat" ? "/chat/completions" : "/responses";
   }
   if (routeId === "openai_responses_compact") {
-    if (provider.apiFormat === "anthropic_messages") return "/v1/messages";
-    return provider.apiFormat === "openai_chat" ? "/v1/chat/completions" : "/v1/responses/compact";
+    if (provider.apiFormat === "anthropic_messages") return "/messages";
+    return provider.apiFormat === "openai_chat" ? "/chat/completions" : "/responses/compact";
   }
   if (routeId === "anthropic_messages") {
-    if (provider.apiFormat === "openai_chat") return "/v1/chat/completions";
-    if (provider.apiFormat === "openai_responses") return "/v1/responses";
-    return "/v1/messages";
+    if (provider.apiFormat === "openai_chat") return "/chat/completions";
+    if (provider.apiFormat === "openai_responses") return "/responses";
+    return "/messages";
   }
   return "/";
 }
@@ -2511,9 +2511,10 @@ export function createModelGatewayService(
         res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
         try {
           const streamingResult = await streamingAdapter.write(upstream.body, res, requestModelForLog);
-          if (useCodexResponsesStreamingAdapter && isRecord(streamingResult)) {
+          if ((useCodexResponsesStreamingAdapter || useCodexResponsesAnthropicStreamingAdapter) && isRecord(streamingResult)) {
+            const responseId = normalizeString(streamingResult.responseId) || normalizeString(streamingResult.id);
             codexHistory.recordResponse({
-              id: streamingResult.responseId,
+              id: responseId,
               output: streamingResult.output,
             });
           }

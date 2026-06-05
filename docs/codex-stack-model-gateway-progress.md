@@ -12,7 +12,7 @@
 - 协议矩阵目标已固定：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 任意原生 provider 都必须对外暴露三类客户端协议。
 - 本地参考源码固定为 `/tmp/cc-switch-src`；只参考代理转换、SSE、tool/history、usage 映射。
 - OpenAI 官方 API smoke 需要真实 OpenAI Platform key；本机 Codex 登录态当前是 `PROXY_MANAGED` 占位符，不可直接用于官方 API。
-- 当前 Phase B2：按 cc-switch 补齐真实 CLI 需要的 history / reasoning / error envelope；OpenAI 官方 Responses/compact provider 等用户后续提供真实 Platform key/base 后补测。
+- 当前 Phase B2：BigModel Anthropic/Chat 与 Claude/Codex takeover smoke 已通过；OpenAI 官方 Responses/compact provider 等用户后续提供真实 Platform key/base 后补测。
 
 ## 本轮完成
 
@@ -33,8 +33,10 @@
   - Responses streaming `function_call` 转 Chat `tool_calls` delta 和 Anthropic `tool_use` / `input_json_delta`。
   - Chat reasoning / `reasoning_content` 转 Responses reasoning item 与 reasoning summary SSE；`<think>` 前缀流拆分为 reasoning，不泄露标签。
   - Codex streamed tool call 写入 history，后续 `previous_response_id + function_call_output` 可恢复原 function call。
+  - Anthropic streaming `tool_use` 转 Responses `function_call` SSE，并写入 Codex history。
   - Responses `response.failed` SSE 转 adapter error；Chat upstream 非 2xx 转 Responses error envelope，不裸透传 `base_resp` 等上游私有结构。
   - Claude Code `metadata` 不再透传到 OpenAI Chat provider，避免 MLAMP/OpenAI Chat 报 `metadata`/`store` 不兼容。
+  - Provider 上游 endpoint 默认不再隐式追加 `/v1`；`baseUrl` 作为 API 前缀，版本号由 `baseUrl` 或 `endpoints` 明确表达。
 
 ## 验证
 
@@ -43,12 +45,13 @@
 - 通过：`node --test --test-reporter=dot tests/system/studio-web-shell-route-manifest.test.mjs tests/system/studio-domain-inventory.test.mjs tests/system/model-gateway-service.test.mjs`
 - 通过：`git diff --check`
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "protocol matrix forwards native openai responses|anthropic messages through openai chat providers|codex compact|chat reasoning|streamed codex tool-call history|upstream responses stream fails|normalizes upstream chat errors" tests/system/model-gateway-service.test.mjs`，8/8 通过。
+- 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "routing contract selects|records streamed codex tool-call history|adapts streaming chat tool calls|adapts codex responses through native anthropic|protocol matrix forwards" tests/system/model-gateway-service.test.mjs`，7/7 通过。
 - Dev 进程已重启：frontend `http://127.0.0.1:5176` 返回 200；backend `http://127.0.0.1:3762/api/system/health` 返回 `gateway: online`。
 - 工作树中存在其它 AI 进程处理中的 system/recovery 改动；本轮只验证 Studio Gateway 范围，不处理该并行任务冲突。
 - 未全量重跑：前端未改；上轮 `npm run test:system` 仍有 9 个非本轮相关旧 UI 形态断言失败，集中在 Agents / Channels / Chat / Config 测试。
 - BigModel live smoke：
-  - Anthropic-compatible base `https://open.bigmodel.cn/api/anthropic`，model `glm-4.6`：`/v1/messages`、`/v1/chat/completions`、`/v1/responses/compact`、Chat streaming 均通过。
-  - Chat-compatible base `https://open.bigmodel.cn/api/coding/paas/v4`，model `glm-4.6`：需 endpoint override 到 `/chat/completions`；`/v1/chat/completions`、`/v1/messages`、`/v1/responses/compact`、Anthropic streaming 均通过。
+  - Anthropic-compatible base `https://open.bigmodel.cn/api/anthropic`，model `glm-4.6`：10/10 通过，覆盖 Chat、Anthropic、Responses、compact、stream、tool/history、error；该 provider 需 endpoint override `/v1/messages`。
+  - Chat-compatible base `https://open.bigmodel.cn/api/coding/paas/v4`，model `glm-4.6`：10/10 通过，覆盖 Chat、Anthropic、Responses、compact、stream、tool/history、error；forced object `tool_choice` 会被 BigModel 400，live smoke 使用 `tool_choice:"auto"`。
   - 测试 key 只用于临时 smoke，未写入仓库。
 - OpenAI official smoke：代理链路可达，但本机可读 key 是 `PROXY_MANAGED` placeholder；Gateway 已本地拒绝该 placeholder，需真实 OpenAI Platform key 后重测。
 - MLAMP Responses-compatible live classification：
@@ -62,15 +65,17 @@
   - 流式 `/v1/responses`、`/v1/chat/completions`、`/v1/messages` 均 200，均完成并产出文本 delta；测试 key 只用于临时 smoke，未写入仓库。
 - Claude Code takeover smoke：
   - 通过：Claude Code `2.1.86`，临时 Gateway `/v1/messages`，MLAMP Chat-compatible upstream，返回 `CLAUDE_CODE_GATEWAY_OK`。
+  - 通过：Claude Code `2.1.86`，临时 Gateway + BigModel Chat upstream，basic 返回 `CLAUDE_GATEWAY_OK`，Bash tool-use 返回 `CLAUDE_TOOL_OK` 且 Gateway request log 增加 8，summary 类请求返回 `CLAUDE_SUMMARY_OK`。
   - 注意：用户级 `~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL=http://127.0.0.1:8317` 会覆盖 shell env；接管 smoke 需用 `--setting-sources local` 或后续 App Connections 生成隔离配置。
 - Codex CLI takeover smoke：
   - 通过：Codex CLI `0.137.0`，临时 `CODEX_HOME`，`wire_api="responses"` 指向 Studio Gateway `/v1`，`codex exec` 返回 `CODEX_GATEWAY_OK`。
+  - 通过：同一临时 Gateway direct `/v1/responses/compact` 返回 `CODEX_COMPACT_OK`，runtime log 命中 `openai_responses_compact`。
 - Compact 说明：
   - MLAMP 当前不作为 `/v1/responses/compact` 原生能力证明。
   - OpenAI 官方 Responses provider 后续必须使用原生 `/v1/responses/compact` 单独 smoke；等用户提供真实 official base/key 后执行。
 
 ## 下一步
 
-1. 用 BigModel Anthropic 与 BigModel Chat 两个 bases 重跑完整 smoke matrix，覆盖 stream/tool/history/error。
-2. 补 Claude Code tool-use、summary/compact 类请求和 Codex compact takeover；官方 `/v1/responses/compact` 等用户提供 official base/key 后作为 OpenAI Responses 原生 compact 验收。
-3. Phase B2 通过后进入新 Studio Gateway 管理页和 App Connections。
+1. 等用户提供 official OpenAI Platform base/key 后，验收 `/v1/responses` 与原生 `/v1/responses/compact`。
+2. 新建 Studio Gateway 管理页和 App Connections，生成 Codex / Claude Code / OpenCode / OpenClaw / CC 配置 preview 与 apply。
+3. 把 BigModel endpoint preset 写入后续 Provider Center，不靠 Gateway 默认猜版本号。

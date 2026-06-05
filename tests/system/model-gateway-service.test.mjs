@@ -297,7 +297,7 @@ test("model gateway refuses managed auth placeholders before upstream forwarding
   assert.equal(upstreamCalls.length, 0);
 });
 
-test("model gateway routing contract selects app-scoped providers and normalizes v1 URLs", () => {
+test("model gateway routing contract selects app-scoped providers and preserves provider URL prefixes", () => {
   const root = makeTempRoot();
   const service = createModelGatewayService(createStudioConfig(root));
 
@@ -329,7 +329,7 @@ test("model gateway routing contract selects app-scoped providers and normalizes
   assert.equal(responses.appScope, "codex");
   assert.equal(responses.provider?.id, "codex-chat");
   assert.equal(responses.mode, "adapter-required");
-  assert.equal(responses.upstreamPath, "/v1/chat/completions");
+  assert.equal(responses.upstreamPath, "/chat/completions");
   assert.equal(responses.upstreamUrl, "https://codex.example.test/v1/chat/completions");
 
   const compact = service.resolveRouteDecision("POST", "/v1/responses/compact");
@@ -345,6 +345,22 @@ test("model gateway routing contract selects app-scoped providers and normalizes
   assert.equal(chat.provider?.id, "openclaw-chat");
   assert.equal(chat.mode, "passthrough");
   assert.equal(chat.upstreamUrl, "https://chat.example.test/openai/v1/chat/completions");
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "v4-chat",
+      name: "V4 Chat",
+      appScopes: ["openclaw"],
+      baseUrl: "https://chat.example.test/openai/v4",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+  const v4Chat = service.resolveRouteDecision("POST", "/v1/chat/completions");
+  assert.equal(v4Chat.provider?.id, "v4-chat");
+  assert.equal(v4Chat.upstreamPath, "/chat/completions");
+  assert.equal(v4Chat.upstreamUrl, "https://chat.example.test/openai/v4/chat/completions");
 
   const codexChatOverride = service.resolveRouteDecision(
     "POST",
@@ -3070,6 +3086,183 @@ test("model gateway records streamed codex tool-call history for follow-up chat 
       role: "tool",
       content: "Docs",
       tool_call_id: "call_lookup",
+    },
+    {
+      role: "user",
+      content: "Summarize.",
+    },
+  ]);
+});
+
+test("model gateway records streamed codex tool-call history for follow-up anthropic adapter requests", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-stream-anthropic-history-adapter",
+      name: "Codex Stream Anthropic History Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-stream-anthropic-history.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-codex-stream-anthropic-history-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const callIndex = upstreamCalls.length;
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: String(init.body || ""),
+    });
+
+    if (callIndex === 0) {
+      const upstreamSse = [
+        "event: message_start",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_anthropic_history\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":0}}}",
+        "",
+        "event: content_block_start",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_lookup\",\"name\":\"lookup\",\"input\":{}}}",
+        "",
+        "event: content_block_delta",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\"}}",
+        "",
+        "event: content_block_delta",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"docs\\\"}\"}}",
+        "",
+        "event: content_block_stop",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}",
+        "",
+        "event: message_delta",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}",
+        "",
+        "event: message_stop",
+        "data: {\"type\":\"message_stop\"}",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      id: "msg_stream_anthropic_history_final",
+      type: "message",
+      role: "assistant",
+      model: "claude-native",
+      content: [{ type: "text", text: "Lookup complete." }],
+      stop_reason: "end_turn",
+      usage: {
+        input_tokens: 12,
+        output_tokens: 4,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const first = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          input: "Use lookup.",
+          tools: [{
+            type: "function",
+            name: "lookup",
+            parameters: { type: "object" },
+          }],
+          tool_choice: { type: "function", name: "lookup" },
+          stream: true,
+        },
+      });
+      assert.equal(first.status, 200);
+      const firstEvents = parseSseEvents(first.body);
+      assert.deepEqual(firstEvents.map((item) => item.event), [
+        "response.created",
+        "response.in_progress",
+        "response.output_item.added",
+        "response.function_call_arguments.delta",
+        "response.function_call_arguments.delta",
+        "response.function_call_arguments.done",
+        "response.output_item.done",
+        "response.completed",
+        null,
+      ]);
+      const firstCompleted = firstEvents.find((item) => item.event === "response.completed").data.response;
+      assert.equal(firstCompleted.id, "msg_stream_anthropic_history");
+      assert.deepEqual(firstCompleted.output, [{
+        id: "fc_call_lookup",
+        type: "function_call",
+        status: "completed",
+        call_id: "call_lookup",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      }]);
+      assert.ok(fs.existsSync(paths.codexHistory));
+      assert.ok(!fs.readFileSync(paths.codexHistory, "utf8").includes("sk-codex-stream-anthropic-history-secret"));
+
+      const second = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          previous_response_id: firstCompleted.id,
+          input: [
+            {
+              type: "function_call_output",
+              call_id: "call_lookup",
+              output: "Docs",
+            },
+            {
+              role: "user",
+              content: "Summarize.",
+            },
+          ],
+          stream: false,
+        },
+      });
+      assert.equal(second.status, 200);
+      assert.equal(second.body.output[0].content[0].text, "Lookup complete.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://codex-stream-anthropic-history.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].xApiKey, "sk-codex-stream-anthropic-history-secret");
+  assert.equal(upstreamCalls[1].url, "https://codex-stream-anthropic-history.example.test/v1/messages");
+  const secondAnthropicBody = JSON.parse(upstreamCalls[1].body);
+  assert.deepEqual(secondAnthropicBody.messages, [
+    {
+      role: "assistant",
+      content: [{
+        type: "tool_use",
+        id: "call_lookup",
+        name: "lookup",
+        input: { query: "docs" },
+      }],
+    },
+    {
+      role: "user",
+      content: [{
+        type: "tool_result",
+        tool_use_id: "call_lookup",
+        content: "Docs",
+      }],
     },
     {
       role: "user",
