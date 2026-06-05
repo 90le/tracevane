@@ -8,9 +8,10 @@
 
 - Studio Gateway 是后续唯一正式模型中转目标。
 - Codex Stack / CPA / Compact 旧功能面已停止演进。
-- 新 UI / API 先做 Studio Gateway 服务与配置：daemon 状态/启停、provider 配置、secret、BigModel/GMN preset、smoke。
-- Gateway UI 参考旧 CPA 管理页的运行态布局和 cc-switch 的 Provider/preset 管理体验；不恢复旧 Codex Stack / CPA / Compact 文案、诊断矩阵、安装修复复杂度或多子页拆分。
+- 新 UI / API 先做 Studio Gateway 服务与配置：daemon 状态/启停、用户自定义 provider 配置、secret、模型列表/默认模型、active routing、smoke。
+- Gateway UI 参考旧 CPA 管理页的运行态布局和 cc-switch 的 Provider 表单体验；不内置具体 vendor 预设，不恢复旧 Codex Stack / CPA / Compact 文案、诊断矩阵、安装修复复杂度或多子页拆分。
 - `/model-gateway` 管理页 MVP 已接入 shell：覆盖 daemon 状态/预览/status/ensure-running、Provider Center、active routing、protocol smoke 和最近请求。
+- Provider 配置不内置具体 vendor；只给原生协议模板，用户自行填写 Base URL、API key、模型列表和默认模型。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
 - Channel Connectors 后置；当前不实现 CC Bridge / Octo。
 - Gateway daemon 与 Channel daemon / CC Bridge 都必须独立守护；Studio / OpenClaw 挂掉后，CLI 模型请求和 IM 到 Codex/Gateway 的对话链路仍应保持运行。
@@ -45,9 +46,11 @@
   - Provider 上游 endpoint 默认不再隐式追加 `/v1`；`baseUrl` 作为 API 前缀，版本号由 `baseUrl` 或 `endpoints` 明确表达。
 - Phase D UI MVP：
   - 新增 `/model-gateway` shell route 和导航入口“模型网关”。
-  - 新增单页式 Studio Gateway 管理页，借鉴旧 CPA 的运行态布局和 cc-switch 的 provider/preset 表单。
+  - 新增单页式 Studio Gateway 管理页，借鉴旧 CPA 的运行态布局和 cc-switch 的 provider 表单。
   - 接入现有 `/api/model-gateway/*`：status、runtime、daemon-service、providers、active-provider、provider test。
-  - 内置 BigModel Chat、BigModel Anthropic、GMN Responses provider presets；不写入任何 API key。
+  - 移除具体 vendor 预设；只保留原生协议模板，由用户自行填写 Base URL、模型列表、默认模型和 API key。
+  - daemon service 操作增加可见结果面板，展示 action、service manager、bootstrap 和命令输出。
+  - Provider 表单支持多模型列表和默认模型下拉，保存时写入 provider model catalog。
   - 新增静态页面测试，防止恢复旧 Codex Stack / CPA UI 词汇和旧 `/api/codex-stack/*`。
 
 ## 验证
@@ -59,6 +62,7 @@
 - 通过：`npm run typecheck:web`
 - 通过：`node --test --test-reporter=spec tests/system/studio-web-shell-route-manifest.test.mjs tests/system/studio-web-model-gateway-page.test.mjs tests/system/studio-domain-inventory.test.mjs`
 - Phase D UI dev 重启通过：frontend `http://127.0.0.1:5176/` 与 `/model-gateway` 返回 200；same-origin `/api/model-gateway/daemon-service` 返回 200；backend `http://127.0.0.1:3762/api/system/health` 返回 `gateway: online`。
+- 本轮 UI 修正验证通过：same-origin daemon `preview` 返回 `ok/action/template`，daemon `status` 返回 `serviceManager.checked=true/reachable=true/active=false/enabled=true`；页面已增加 action result 面板。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "protocol matrix forwards native openai responses|anthropic messages through openai chat providers|codex compact|chat reasoning|streamed codex tool-call history|upstream responses stream fails|normalizes upstream chat errors" tests/system/model-gateway-service.test.mjs`，8/8 通过。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "routing contract selects|records streamed codex tool-call history|adapts streaming chat tool calls|adapts codex responses through native anthropic|protocol matrix forwards" tests/system/model-gateway-service.test.mjs`，7/7 通过。
 - Dev 进程已重启：frontend `http://127.0.0.1:5176` 返回 200；backend `http://127.0.0.1:3762/api/system/health` 返回 `gateway: online`。

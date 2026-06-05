@@ -50,25 +50,42 @@ test("Studio Gateway page uses the new model-gateway API contract", () => {
   assert.match(source, /Gateway will not append \/v1 automatically/);
 });
 
-test("Studio Gateway page includes provider presets without reviving legacy proxy UI", () => {
+test("Studio Gateway page keeps provider configuration user-owned", () => {
   const page = fs.readFileSync(pagePath, "utf8");
   const legacyInitialism = ["C", "P", "A"].join("");
   const legacyProxyName = ["Compact", "Proxy"].join(" ");
   const legacyApiPath = `/api/${["codex", "stack"].join("-")}`;
   const legacyComponentPrefix = ["Codex", "Stack"].join("");
+  const vendorA = [["Big", "Model"].join(""), "Chat"].join(" ");
+  const vendorB = [["Big", "Model"].join(""), "Anthropic"].join(" ");
+  const vendorC = ["GMN", "Responses"].join(" ");
+  const vendorHostA = `https://${["open", "bigmodel", "cn"].join(".")}/api/coding/paas/v4`;
+  const vendorHostB = `https://${["open", "bigmodel", "cn"].join(".")}/api/anthropic`;
+  const vendorHostC = `https://${["gmn", "chuangzuoli", "com"].join(".")}/v1`;
 
   for (const expected of [
-    "BigModel Chat",
-    "https://open.bigmodel.cn/api/coding/paas/v4",
-    "BigModel Anthropic",
-    "https://open.bigmodel.cn/api/anthropic",
-    "GMN Responses",
-    "https://gmn.chuangzuoli.com/v1",
+    "OpenAI Chat Completions",
+    "Anthropic Messages",
+    "OpenAI Responses",
     "Provider Center",
     "Active routing",
     "Protocol smoke",
+    "modelListText",
+    "normalizedDraftModels",
+    "daemonActionResult",
   ]) {
     assert.match(page, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  for (const forbidden of [
+    vendorA,
+    vendorB,
+    vendorC,
+    vendorHostA,
+    vendorHostB,
+    vendorHostC,
+  ]) {
+    assert.doesNotMatch(page, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 
   assert.doesNotMatch(page, new RegExp(legacyComponentPrefix));

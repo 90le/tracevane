@@ -81,6 +81,46 @@
   line-height: 1.6;
 }
 
+.mgw-daemon-output {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid color-mix(in srgb, var(--success) 34%, var(--mono-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--success) 6%, var(--surface-base));
+  padding: 12px;
+}
+
+.mgw-daemon-output.failure {
+  border-color: color-mix(in srgb, var(--danger) 44%, var(--mono-line));
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface-base));
+}
+
+.mgw-daemon-output__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mgw-daemon-output__head span,
+.mgw-daemon-output__grid {
+  color: var(--mono-ink-2);
+}
+
+.mgw-daemon-output__grid {
+  display: grid;
+  gap: 6px;
+  font-size: 0.82rem;
+}
+
+.mgw-daemon-output pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .mgw-button-row {
   display: flex;
   flex-wrap: wrap;
@@ -106,7 +146,7 @@
   gap: 3px;
 }
 
-.mgw-preset-strip {
+.mgw-template-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -172,6 +212,11 @@
 
 .form-field-full {
   grid-column: 1 / -1;
+}
+
+.mgw-model-list-input {
+  min-height: 104px;
+  resize: vertical;
 }
 
 .mgw-scope-picker {

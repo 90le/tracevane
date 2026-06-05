@@ -54,14 +54,29 @@
 
           <div class="mgw-button-row">
             <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('preview')">
-              {{ text('预览 service', 'Preview service') }}
+              {{ daemonBusy ? text('执行中...', 'Running...') : text('预览 service', 'Preview service') }}
             </button>
             <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('status')">
-              {{ text('运行 status', 'Run status') }}
+              {{ daemonBusy ? text('执行中...', 'Running...') : text('运行 status', 'Run status') }}
             </button>
             <button type="button" class="primary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('ensure-running')">
-              {{ text('确保 daemon 运行', 'Ensure daemon') }}
+              {{ daemonBusy ? text('执行中...', 'Running...') : text('确保 daemon 运行', 'Ensure daemon') }}
             </button>
+          </div>
+
+          <div v-if="daemonActionResult" class="mgw-daemon-output" :class="{ failure: daemonActionHasFailure }">
+            <div class="mgw-daemon-output__head">
+              <strong>{{ daemonActionTitle }}</strong>
+              <span>{{ formatTimestamp(daemonActionResult.checkedAt) }}</span>
+            </div>
+            <div class="mgw-daemon-output__grid">
+              <span>{{ text('模板', 'Template') }}: {{ daemonActionResult.templateWritten ? text('已写入', 'Written') : text('未写入', 'Not written') }}</span>
+              <span>{{ text('服务', 'Service') }}: {{ daemonActionResult.installed ? text('已安装', 'Installed') : text('未安装', 'Not installed') }}</span>
+              <span>{{ text('Supervisor', 'Supervisor') }}: {{ daemonActionResult.serviceManager.checked ? serviceManagerLabel : text('未执行命令', 'No command run') }}</span>
+              <span>{{ text('Bootstrap', 'Bootstrap') }}: {{ bootstrapLabel }}</span>
+            </div>
+            <pre v-if="daemonActionOutput">{{ daemonActionOutput }}</pre>
+            <pre v-else-if="daemonActionResult.action === 'preview'">{{ daemonActionResult.plan.selectedTemplate.configPath }}</pre>
           </div>
 
           <p class="mgw-note">
@@ -106,16 +121,16 @@
             </button>
           </div>
 
-          <div class="mgw-preset-strip" aria-label="Provider presets">
+          <div class="mgw-template-strip" aria-label="Native protocol templates">
             <button
-              v-for="preset in providerPresets"
-              :key="preset.id"
+              v-for="template in protocolTemplates"
+              :key="template.id"
               type="button"
               class="surface-tab"
-              :class="{ active: draft.presetId === preset.id }"
-              @click="applyPreset(preset)"
+              :class="{ active: draft.templateId === template.id }"
+              @click="applyProtocolTemplate(template)"
             >
-              {{ preset.label }}
+              {{ template.label }}
             </button>
           </div>
 
@@ -139,7 +154,7 @@
                 </span>
               </button>
               <div v-if="!providers.length" class="mgw-empty">
-                {{ text('还没有 provider。选择预设后保存即可创建。', 'No provider yet. Pick a preset and save it to create one.') }}
+                {{ text('还没有 provider。选择原生协议模板，填入自己的 Base URL、模型和密钥后保存。', 'No provider yet. Pick a native protocol template, enter your own base URL, models, and key, then save.') }}
               </div>
             </section>
 
@@ -147,11 +162,11 @@
               <div class="mgw-form-grid">
                 <label class="form-field">
                   <span class="form-label">{{ text('Provider ID', 'Provider ID') }}</span>
-                  <input v-model.trim="draft.id" class="form-input" placeholder="bigmodel-chat" />
+                  <input v-model.trim="draft.id" class="form-input" placeholder="my-provider" />
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('名称', 'Name') }}</span>
-                  <input v-model.trim="draft.name" class="form-input" placeholder="BigModel Chat" />
+                  <input v-model.trim="draft.name" class="form-input" placeholder="My Provider" />
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('原生协议', 'Native protocol') }}</span>
@@ -172,7 +187,20 @@
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
-                  <input v-model.trim="draft.defaultModel" class="form-input" placeholder="gpt-5.4" />
+                  <select v-if="draftDefaultModelOptions.length" v-model="draft.defaultModel" class="form-input">
+                    <option value="">{{ text('选择默认模型', 'Select default model') }}</option>
+                    <option v-for="model in draftDefaultModelOptions" :key="model" :value="model">{{ model }}</option>
+                  </select>
+                  <input v-else v-model.trim="draft.defaultModel" class="form-input" placeholder="model-id" />
+                </label>
+                <label class="form-field form-field-full">
+                  <span class="form-label">{{ text('模型列表', 'Model list') }}</span>
+                  <textarea
+                    v-model="draft.modelListText"
+                    class="form-textarea mgw-model-list-input"
+                    :placeholder="text('每行一个模型，例如：\\nmodel-a\\nmodel-b', 'One model per line, for example:\\nmodel-a\\nmodel-b')"
+                  ></textarea>
+                  <span class="field-hint">{{ text('保存时会写入 provider model catalog；默认模型不在列表中时会自动加入。', 'Saved into the provider model catalog; the default model is added automatically if it is not already listed.') }}</span>
                 </label>
                 <label class="form-field">
                   <span class="form-label">API Key</span>
@@ -242,7 +270,10 @@
             </label>
             <label class="form-field">
               <span class="form-label">{{ text('模型', 'Model') }}</span>
-              <input v-model.trim="smokeModel" class="form-input" :placeholder="selectedSmokeProvider?.models.defaultModel || 'gpt-5.4'" />
+              <select v-if="selectedSmokeProviderModelIds.length" v-model="smokeModel" class="form-input">
+                <option v-for="model in selectedSmokeProviderModelIds" :key="model" :value="model">{{ model }}</option>
+              </select>
+              <input v-else v-model.trim="smokeModel" class="form-input" :placeholder="selectedSmokeProvider?.models.defaultModel || 'model-id'" />
             </label>
             <label class="form-field">
               <span class="form-label">{{ text('输入', 'Input') }}</span>
@@ -314,7 +345,7 @@ import './model-gateway-workspace.css';
 defineOptions({ name: 'ModelGatewayControlPage' });
 
 type ProviderDraft = {
-  presetId: string;
+  templateId: string;
   id: string;
   name: string;
   enabled: boolean;
@@ -323,6 +354,7 @@ type ProviderDraft = {
   authStrategy: ModelGatewayAuthStrategy;
   baseUrl: string;
   defaultModel: string;
+  modelListText: string;
   apiKey: string;
   anthropicEndpoint: string;
   compactEndpoint: string;
@@ -331,7 +363,7 @@ type ProviderDraft = {
   appScopes: Record<ModelGatewayAppScope, boolean>;
 };
 
-type ProviderPreset = {
+type ProtocolTemplate = {
   id: string;
   label: string;
   draft: Partial<ProviderDraft>;
@@ -367,63 +399,59 @@ const routeOptions: Array<{ id: ModelGatewayRouteId; label: string }> = [
   { id: 'anthropic_messages', label: 'Anthropic Messages' },
 ];
 
-const providerPresets: ProviderPreset[] = [
+const protocolTemplates: ProtocolTemplate[] = [
   {
-    id: 'bigmodel-chat',
-    label: 'BigModel Chat',
+    id: 'openai-chat',
+    label: 'OpenAI Chat Completions',
     draft: {
-      id: 'bigmodel-chat',
-      name: 'BigModel Chat',
       category: 'openai-compatible',
       apiFormat: 'openai_chat',
       authStrategy: 'bearer',
-      baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
-      defaultModel: 'glm-4.6',
+      baseUrl: '',
+      defaultModel: '',
+      modelListText: '',
       anthropicEndpoint: '',
       compactEndpoint: '',
     },
   },
   {
-    id: 'bigmodel-anthropic',
-    label: 'BigModel Anthropic',
+    id: 'anthropic-messages',
+    label: 'Anthropic Messages',
     draft: {
-      id: 'bigmodel-anthropic',
-      name: 'BigModel Anthropic',
       category: 'openai-compatible',
       apiFormat: 'anthropic_messages',
       authStrategy: 'anthropic_api_key',
-      baseUrl: 'https://open.bigmodel.cn/api/anthropic',
-      defaultModel: 'glm-4.6',
-      anthropicEndpoint: '/v1/messages',
+      baseUrl: '',
+      defaultModel: '',
+      modelListText: '',
+      anthropicEndpoint: '',
       compactEndpoint: '',
     },
   },
   {
-    id: 'gmn-responses',
-    label: 'GMN Responses',
+    id: 'openai-responses',
+    label: 'OpenAI Responses',
     draft: {
-      id: 'gmn-responses',
-      name: 'GMN Responses',
-      category: 'aggregator',
+      category: 'openai-compatible',
       apiFormat: 'openai_responses',
       authStrategy: 'bearer',
-      baseUrl: 'https://gmn.chuangzuoli.com/v1',
-      defaultModel: 'gpt-5.4',
+      baseUrl: '',
+      defaultModel: '',
+      modelListText: '',
       anthropicEndpoint: '',
-      compactEndpoint: '/responses/compact',
+      compactEndpoint: '',
     },
   },
   {
-    id: 'custom',
+    id: 'manual',
     label: 'Custom',
     draft: {
-      id: 'custom-provider',
-      name: 'Custom Provider',
       category: 'custom',
       apiFormat: 'openai_chat',
       authStrategy: 'bearer',
       baseUrl: '',
       defaultModel: '',
+      modelListText: '',
     },
   },
 ];
@@ -437,6 +465,7 @@ const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
 const status = ref<ModelGatewayStatusResponse | null>(null);
 const runtime = ref<ModelGatewayRuntimeResponse | null>(null);
 const daemonService = ref<ModelGatewayDaemonServiceResponse | null>(null);
+const daemonActionResult = ref<ModelGatewayDaemonServiceResponse | null>(null);
 const providers = ref<ModelGatewayProviderView[]>([]);
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
 const smokeProviderId = ref('');
@@ -454,6 +483,20 @@ const runtimeEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
 const selectedSmokeProvider = computed(() =>
   providers.value.find((provider) => provider.id === smokeProviderId.value) || null,
 );
+
+const draftModelIds = computed(() => parseModelList(draft.modelListText));
+const draftDefaultModelOptions = computed(() => uniqueStrings([
+  draft.defaultModel,
+  ...draftModelIds.value,
+]));
+
+const selectedSmokeProviderModelIds = computed(() => {
+  const provider = selectedSmokeProvider.value;
+  if (!provider) return [];
+  const listed = provider.models.models.map((model) => model.id).filter(Boolean);
+  const fallback = provider.models.defaultModel ? [provider.models.defaultModel] : [];
+  return uniqueStrings([...fallback, ...listed]);
+});
 
 const preferredEndpoint = computed(() =>
   status.value?.lifecycle.endpointPolicy.preferredCliEndpoint
@@ -488,6 +531,58 @@ const supervisorLabel = computed(() =>
   || 'unknown',
 );
 
+const daemonActionTitle = computed(() => {
+  if (!daemonActionResult.value) return '';
+  const labels: Record<ModelGatewayDaemonServiceAction, string> = {
+    preview: text('service 预览结果', 'Service preview result'),
+    install: text('service 安装结果', 'Service install result'),
+    'ensure-running': text('daemon 确保运行结果', 'Ensure daemon result'),
+    start: text('daemon start 结果', 'Daemon start result'),
+    stop: text('daemon stop 结果', 'Daemon stop result'),
+    restart: text('daemon restart 结果', 'Daemon restart result'),
+    status: text('daemon status 结果', 'Daemon status result'),
+  };
+  return labels[daemonActionResult.value.action] || daemonActionResult.value.action;
+});
+
+const daemonActionHasFailure = computed(() => {
+  const result = daemonActionResult.value;
+  if (!result) return false;
+  return result.commandsRun.some((command) => !command.ok) || Boolean(result.bootstrap.error);
+});
+
+const serviceManagerLabel = computed(() => {
+  const manager = daemonActionResult.value?.serviceManager;
+  if (!manager?.checked) return text('未执行命令', 'No command run');
+  return [
+    manager.reachable === null ? 'reachable:?' : `reachable:${manager.reachable ? 'yes' : 'no'}`,
+    manager.active === null ? 'active:?' : `active:${manager.active ? 'yes' : 'no'}`,
+    manager.enabled === null ? 'enabled:?' : `enabled:${manager.enabled ? 'yes' : 'no'}`,
+  ].join(' / ');
+});
+
+const bootstrapLabel = computed(() => {
+  const bootstrap = daemonActionResult.value?.bootstrap;
+  if (!bootstrap) return '-';
+  if (!bootstrap.attempted) return bootstrap.mode;
+  return `${bootstrap.mode} / ${bootstrap.started ? 'started' : 'not-started'}`;
+});
+
+const daemonActionOutput = computed(() => {
+  const result = daemonActionResult.value;
+  if (!result) return '';
+  const commandOutput = result.commandsRun
+    .map((command) => {
+      const output = [command.stdout, command.stderr, command.error].filter(Boolean).join('\n').trim();
+      return `${command.ok ? 'OK' : 'FAIL'} ${command.label}${output ? `\n${output}` : ''}`;
+    })
+    .join('\n\n');
+  const bootstrapOutput = result.bootstrap.error
+    ? `Bootstrap error\n${result.bootstrap.error}`
+    : result.bootstrap.notes.join('\n');
+  return [commandOutput, bootstrapOutput].filter(Boolean).join('\n\n').trim();
+});
+
 const canSaveProvider = computed(() => Boolean(draft.id.trim() && draft.name.trim() && draft.baseUrl.trim()));
 const secretPlaceholder = computed(() => {
   const provider = providers.value.find((entry) => entry.id === draft.id);
@@ -507,7 +602,7 @@ function createEmptyScopes(enabled = true): Record<ModelGatewayAppScope, boolean
 
 function createEmptyDraft(): ProviderDraft {
   return {
-    presetId: '',
+    templateId: '',
     id: '',
     name: '',
     enabled: true,
@@ -516,6 +611,7 @@ function createEmptyDraft(): ProviderDraft {
     authStrategy: 'bearer',
     baseUrl: '',
     defaultModel: '',
+    modelListText: '',
     apiKey: '',
     anthropicEndpoint: '',
     compactEndpoint: '',
@@ -529,24 +625,24 @@ function resetDraft(): void {
   Object.assign(draft, createEmptyDraft());
 }
 
-function applyPreset(preset: ProviderPreset): void {
-  Object.assign(draft, createEmptyDraft(), preset.draft, {
-    presetId: preset.id,
+function applyProtocolTemplate(template: ProtocolTemplate): void {
+  Object.assign(draft, createEmptyDraft(), template.draft, {
+    templateId: template.id,
     enabled: true,
     apiKey: '',
     appScopes: createEmptyScopes(true),
   });
-  smokeModel.value = draft.defaultModel;
   smokeRouteId.value = draft.apiFormat === 'anthropic_messages'
     ? 'anthropic_messages'
     : draft.apiFormat === 'openai_responses'
       ? 'openai_responses'
       : 'openai_chat_completions';
+  syncDefaultModelWithList();
 }
 
 function editProvider(provider: ModelGatewayProviderView): void {
   Object.assign(draft, createEmptyDraft(), {
-    presetId: '',
+    templateId: '',
     id: provider.id,
     name: provider.name,
     enabled: provider.enabled,
@@ -555,6 +651,9 @@ function editProvider(provider: ModelGatewayProviderView): void {
     authStrategy: provider.authStrategy,
     baseUrl: provider.baseUrl,
     defaultModel: provider.models.defaultModel || provider.models.models[0]?.id || '',
+    modelListText: provider.models.models.length
+      ? provider.models.models.map((model) => model.id).join('\n')
+      : provider.models.defaultModel || '',
     apiKey: '',
     anthropicEndpoint: provider.endpoints.anthropic_messages || '',
     compactEndpoint: provider.endpoints.openai_responses_compact || '',
@@ -592,6 +691,34 @@ function parseNoProxy(value: string): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
     .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value, index, list) => list.indexOf(value) === index);
+}
+
+function parseModelList(value: string): string[] {
+  return uniqueStrings(value.split(/[\n,]+/));
+}
+
+function normalizedDraftModels(): { defaultModel: string | null; models: Array<{ id: string }> } {
+  const listed = parseModelList(draft.modelListText);
+  const fallbackDefault = draft.defaultModel.trim() || listed[0] || '';
+  const models = uniqueStrings([fallbackDefault, ...listed]);
+  return {
+    defaultModel: fallbackDefault || null,
+    models: models.map((id) => ({ id })),
+  };
+}
+
+function syncDefaultModelWithList(): void {
+  const models = parseModelList(draft.modelListText);
+  if (!draft.defaultModel.trim() && models[0]) {
+    draft.defaultModel = models[0];
+  }
 }
 
 async function loadAll(): Promise<void> {
@@ -637,15 +764,17 @@ async function runDaemonAction(action: ModelGatewayDaemonServiceAction): Promise
   daemonBusy.value = true;
   notice.value = null;
   try {
-    daemonService.value = await manageModelGatewayDaemonService(action, {
+    const result = await manageModelGatewayDaemonService(action, {
       apply: action === 'install' || action === 'ensure-running',
       runCommands: action !== 'preview',
       allowBootstrap: action === 'ensure-running',
     });
+    daemonActionResult.value = result;
+    daemonService.value = result;
     await loadAll();
     notice.value = {
       kind: 'success',
-      message: text('daemon service 操作完成', 'Daemon service action completed'),
+      message: text('daemon service 操作已返回结果', 'Daemon service action returned a result'),
     };
   } catch (error) {
     notice.value = {
@@ -661,7 +790,7 @@ async function saveProvider(): Promise<void> {
   if (!canSaveProvider.value) return;
   busy.value = true;
   notice.value = null;
-  const model = draft.defaultModel.trim();
+  const models = normalizedDraftModels();
   const provider: ModelGatewayProviderInput = {
     id: draft.id.trim(),
     name: draft.name.trim(),
@@ -672,8 +801,8 @@ async function saveProvider(): Promise<void> {
     apiFormat: draft.apiFormat,
     authStrategy: draft.authStrategy,
     models: {
-      defaultModel: model || null,
-      models: model ? [{ id: model }] : [],
+      defaultModel: models.defaultModel,
+      models: models.models,
       aliases: {},
     },
     endpoints: buildEndpointOverrides(),
@@ -682,7 +811,7 @@ async function saveProvider(): Promise<void> {
       noProxy: parseNoProxy(draft.noProxy),
     },
     metadata: {
-      importedFrom: draft.presetId || undefined,
+      importedFrom: draft.templateId || undefined,
     },
   };
   const payload: ModelGatewayUpsertProviderRequest = {
@@ -695,7 +824,7 @@ async function saveProvider(): Promise<void> {
     providers.value = response.providers;
     activeProviders.value = response.activeProviders;
     smokeProviderId.value = provider.id || smokeProviderId.value;
-    smokeModel.value = model || smokeModel.value;
+    smokeModel.value = models.defaultModel || smokeModel.value;
     draft.apiKey = '';
     notice.value = {
       kind: 'success',
