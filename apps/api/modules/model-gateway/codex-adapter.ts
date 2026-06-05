@@ -98,6 +98,8 @@ export function adaptCodexResponsesRequestToChat(
   const toolChoice = mapResponsesToolChoiceToChat(request.tool_choice);
   if (toolChoice !== undefined) chatRequest.tool_choice = toolChoice;
 
+  if (stream) ensureStreamUsageOption(chatRequest);
+
   return {
     chatRequest,
     model,
@@ -399,6 +401,14 @@ function copyScalarFields(source: JsonRecord, target: JsonRecord, fields: string
   for (const field of fields) {
     if (source[field] !== undefined) target[field] = source[field];
   }
+}
+
+function ensureStreamUsageOption(chatRequest: JsonRecord): void {
+  const streamOptions = isRecord(chatRequest.stream_options) ? chatRequest.stream_options : {};
+  chatRequest.stream_options = {
+    ...streamOptions,
+    include_usage: true,
+  };
 }
 
 function stringOrNull(value: unknown): string | null {

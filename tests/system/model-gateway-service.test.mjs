@@ -3994,6 +3994,7 @@ test("model gateway adapts streaming chat sse to codex responses sse", async () 
     model: "gpt-test",
     messages: [{ role: "user", content: "Say hello." }],
     stream: true,
+    stream_options: { include_usage: true },
   });
 });
 
