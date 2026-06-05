@@ -12,7 +12,7 @@
 - 协议矩阵目标已固定：Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions 任意原生 provider 都必须对外暴露三类客户端协议。
 - 本地参考源码固定为 `/tmp/cc-switch-src`；只参考代理转换、SSE、tool/history、usage 映射。
 - OpenAI 官方 API smoke 需要真实 OpenAI Platform key；本机 Codex 登录态当前是 `PROXY_MANAGED` 占位符，不可直接用于官方 API。
-- 当前 Phase B2：BigModel Anthropic/Chat 与 Claude/Codex takeover smoke 已通过；OpenAI 官方 Responses/compact provider 等用户后续提供真实 Platform key/base 后补测。
+- 当前 Phase B2：BigModel Anthropic/Chat、GMN Responses-native、Claude/Codex takeover smoke 已通过；OpenAI Platform official smoke 仅作为后续额外 vendor proof。
 
 ## 本轮完成
 
@@ -63,19 +63,26 @@
   - 临时 provider `apiFormat=openai_responses`，base `https://llm-gateway.mlamp.cn/v1`，model `gpt-5`；当前只保留为历史/可选参考。
   - 非流式 `/v1/responses`、`/v1/chat/completions`、`/v1/messages` 均 200，均产出可读文本和 usage；`gpt-5` 需 `max_output_tokens/max_tokens/max_completion_tokens=512` 才稳定越过 reasoning 输出。
   - 流式 `/v1/responses`、`/v1/chat/completions`、`/v1/messages` 均 200，均完成并产出文本 delta；测试 key 只用于临时 smoke，未写入仓库。
+- GMN Responses-native substitute smoke：
+  - Base `https://gmn.chuangzuoli.com/v1`；`/v1/models` 可读，`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.5`、`codex-auto-review` 可用，`gpt-5.2` 当前返回上游 503。
+  - 直接上游通过：`/v1/responses`、`/v1/responses/compact`、`/v1/chat/completions`；compact 返回 `response.compaction` 或 `response`，均为 200。
+  - Studio Gateway 临时 provider `apiFormat=openai_responses` 通过：`/v1/responses`、`/v1/responses/compact`、`/v1/chat/completions`、`/v1/messages`、Responses stream，runtime 全部 success。
+  - Tool smoke 通过：Chat Completions 客户端 tool request 经 Gateway 转上游 Responses，返回标准 `tool_calls`。
+  - 测试 key 只用于临时 smoke，未写入仓库。
 - Claude Code takeover smoke：
   - 通过：Claude Code `2.1.86`，临时 Gateway `/v1/messages`，MLAMP Chat-compatible upstream，返回 `CLAUDE_CODE_GATEWAY_OK`。
   - 通过：Claude Code `2.1.86`，临时 Gateway + BigModel Chat upstream，basic 返回 `CLAUDE_GATEWAY_OK`，Bash tool-use 返回 `CLAUDE_TOOL_OK` 且 Gateway request log 增加 8，summary 类请求返回 `CLAUDE_SUMMARY_OK`。
   - 注意：用户级 `~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL=http://127.0.0.1:8317` 会覆盖 shell env；接管 smoke 需用 `--setting-sources local` 或后续 App Connections 生成隔离配置。
 - Codex CLI takeover smoke：
   - 通过：Codex CLI `0.137.0`，临时 `CODEX_HOME`，`wire_api="responses"` 指向 Studio Gateway `/v1`，`codex exec` 返回 `CODEX_GATEWAY_OK`。
+  - 通过：Codex CLI `0.137.0`，GMN Responses-native 临时 Gateway，`codex exec` 返回 `CODEX_GMN_NATIVE_OK`，runtime 命中 `/v1/responses`。
   - 通过：同一临时 Gateway direct `/v1/responses/compact` 返回 `CODEX_COMPACT_OK`，runtime log 命中 `openai_responses_compact`。
 - Compact 说明：
   - MLAMP 当前不作为 `/v1/responses/compact` 原生能力证明。
-  - OpenAI 官方 Responses provider 后续必须使用原生 `/v1/responses/compact` 单独 smoke；等用户提供真实 official base/key 后执行。
+  - GMN 已覆盖 Responses-native `/v1/responses/compact` 替代 smoke；OpenAI Platform official smoke 仅在需要官方 vendor proof 时单独执行。
 
 ## 下一步
 
-1. 等用户提供 official OpenAI Platform base/key 后，验收 `/v1/responses` 与原生 `/v1/responses/compact`。
-2. 新建 Studio Gateway 管理页和 App Connections，生成 Codex / Claude Code / OpenCode / OpenClaw / CC 配置 preview 与 apply。
-3. 把 BigModel endpoint preset 写入后续 Provider Center，不靠 Gateway 默认猜版本号。
+1. 新建 Studio Gateway 管理页和 App Connections，生成 Codex / Claude Code / OpenCode / OpenClaw / CC 配置 preview 与 apply。
+2. 把 BigModel 与 GMN endpoint preset 写入后续 Provider Center，不靠 Gateway 默认猜版本号。
+3. 如仍需 OpenAI Platform 官方证明，再用真实 Platform key/base 单独跑 `/v1/responses` 与 `/v1/responses/compact`。
