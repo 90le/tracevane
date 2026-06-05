@@ -168,6 +168,14 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     }
   });
 
+  router.get("/v1/models", (_req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.listGatewayModels());
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
   router.post("/v1/chat/completions", async (req, res, routeCtx) => {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });

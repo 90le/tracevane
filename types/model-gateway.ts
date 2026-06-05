@@ -144,6 +144,21 @@ export interface ModelGatewayProviderView extends ModelGatewayProvider {
   secret: ModelGatewaySecretSummary | null;
 }
 
+export interface ModelGatewayModelListItem {
+  id: string;
+  object: "model";
+  created: number;
+  owned_by: string;
+  label: string | null;
+  aliases: string[];
+  providerIds: string[];
+}
+
+export interface ModelGatewayModelListResponse {
+  object: "list";
+  data: ModelGatewayModelListItem[];
+}
+
 export interface ModelGatewayRegistryState {
   version: 1;
   updatedAt: string;
@@ -495,6 +510,7 @@ export interface ModelGatewayStatusResponse {
   capabilities: {
     status: string[];
     providers: string[];
+    models: string[];
     openaiChatCompletions: string[];
     openaiResponses: string[];
     openaiResponsesCompact: string[];
@@ -537,6 +553,10 @@ export interface ModelGatewayRouteDecision {
   appScope: ModelGatewayAppScope | null;
   mode: ModelGatewayRouteMode;
   provider: Pick<ModelGatewayProvider, "id" | "name" | "apiFormat" | "authStrategy" | "baseUrl"> | null;
+  model: {
+    requested: string | null;
+    resolved: string | null;
+  } | null;
   upstreamPath: string | null;
   upstreamUrl: string | null;
   reason: string | null;

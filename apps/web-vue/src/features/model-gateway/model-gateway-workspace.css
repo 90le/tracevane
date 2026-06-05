@@ -128,6 +128,28 @@
   margin-top: 12px;
 }
 
+.mgw-switch-field {
+  display: flex;
+  min-height: 76px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mgw-switch-field strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: break-word;
+}
+
+.mgw-switch-field input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
 .mgw-runtime-actions {
   position: relative;
   display: flex;

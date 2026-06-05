@@ -202,6 +202,18 @@
                     <option v-for="strategy in authStrategyOptions" :key="strategy.id" :value="strategy.id">{{ strategy.label }}</option>
                   </select>
                 </label>
+                <label class="form-field mgw-switch-field">
+                  <span>
+                    <span class="form-label">{{ text('Provider 状态', 'Provider status') }}</span>
+                    <strong>{{ draft.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</strong>
+                  </span>
+                  <input v-model="draft.enabled" type="checkbox" />
+                </label>
+                <label class="form-field">
+                  <span class="form-label">{{ text('路由优先级', 'Routing priority') }}</span>
+                  <input v-model.number="draft.priority" class="form-input" type="number" min="0" step="1" />
+                  <span class="field-hint">{{ text('数字越小越优先；同模型跨 Provider 时按优先级自动选择和切换。', 'Lower numbers win; providers sharing the same model are selected and switched by priority.') }}</span>
+                </label>
                 <label class="form-field form-field-full">
                   <span class="form-label">Base URL</span>
                   <input v-model.trim="draft.baseUrl" class="form-input" placeholder="https://api.example.com/v1" />
@@ -241,7 +253,7 @@
                     class="form-textarea mgw-model-list-input"
                     :placeholder="modelListPlaceholder"
                   ></textarea>
-                  <span class="field-hint">{{ text('格式：模型ID,显示名称。显示名称可省略；只填模型ID也可以。默认模型不在列表中时会自动加入。', 'Format: model id,display name. Display name is optional; a single model id also works. The default model is added automatically if it is not already listed.') }}</span>
+                  <span class="field-hint">{{ text('格式：模型ID | 显示名称 | 别名1,别名2。显示名称和别名可省略；同一 Provider 内模型名/别名不能重复。', 'Format: model id | display name | alias1,alias2. Display name and aliases are optional; model names and aliases must be unique inside one provider.') }}</span>
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('Anthropic endpoint override', 'Anthropic endpoint override') }}</span>
@@ -469,6 +481,7 @@ type ProviderDraft = {
   category: ModelGatewayProviderCategory;
   apiFormat: ModelGatewayApiFormat;
   authStrategy: ModelGatewayAuthStrategy;
+  priority: number;
   baseUrl: string;
   defaultModel: string;
   modelListText: string;
@@ -761,8 +774,8 @@ const supervisorLabel = computed(() =>
 );
 
 const modelListPlaceholder = computed(() => text(
-  '每行一个模型，例如：\nmodel-a,模型 A\nmodel-b',
-  'One model per line, for example:\nmodel-a,Model A\nmodel-b',
+  '每行一个模型，例如：\nmodel-a | 模型 A | a-fast,a-main\nmodel-b',
+  'One model per line, for example:\nmodel-a | Model A | a-fast,a-main\nmodel-b',
 ));
 
 const daemonActionTitle = computed(() => {
@@ -850,6 +863,7 @@ function createEmptyDraft(): ProviderDraft {
     category: 'custom',
     apiFormat: 'openai_chat',
     authStrategy: 'bearer',
+    priority: 100,
     baseUrl: '',
     defaultModel: '',
     modelListText: '',
@@ -890,6 +904,7 @@ function editProvider(provider: ModelGatewayProviderView): void {
     category: provider.category,
     apiFormat: provider.apiFormat,
     authStrategy: provider.authStrategy,
+    priority: provider.failover.priority,
     baseUrl: provider.baseUrl,
     defaultModel: provider.models.defaultModel || provider.models.models[0]?.id || '',
     modelListText: provider.models.models.length
@@ -943,19 +958,20 @@ function uniqueStrings(values: string[]): string[] {
 
 function parseModelLines(value: string): ModelGatewayProviderModel[] {
   const models: ModelGatewayProviderModel[] = [];
-  const seen = new Set<string>();
   for (const line of value.split(/\n+/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const [rawId, rawLabel] = trimmed.includes('|')
+    const parts = trimmed.includes('|')
       ? trimmed.split('|').map((part) => part.trim())
       : trimmed.split(',').map((part) => part.trim());
+    const [rawId, rawLabel, ...aliasParts] = parts;
+    const rawAliases = aliasParts.join(',');
     const id = rawId || '';
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
+    if (!id) continue;
     models.push({
       id,
       ...(rawLabel ? { label: rawLabel } : {}),
+      ...(rawAliases ? { aliases: parseNoProxy(rawAliases) } : {}),
     });
   }
   return models;
@@ -966,21 +982,19 @@ function parseModelList(value: string): string[] {
 }
 
 function formatModelLine(model: ModelGatewayProviderModel): string {
-  return model.label ? `${model.id},${model.label}` : model.id;
+  const aliases = model.aliases?.length ? model.aliases.join(',') : '';
+  if (aliases) return `${model.id} | ${model.label || ''} | ${aliases}`;
+  if (model.label) return `${model.id} | ${model.label}`;
+  return model.id;
 }
 
 function normalizedDraftModels(): { defaultModel: string | null; models: ModelGatewayProviderModel[] } {
   const listed = parseModelLines(draft.modelListText);
   const fallbackDefault = draft.defaultModel.trim() || listed[0]?.id || '';
-  const seen = new Set<string>();
-  const models = [
-    ...(fallbackDefault ? [{ id: fallbackDefault }] : []),
-    ...listed,
-  ].filter((model) => {
-    if (!model.id || seen.has(model.id)) return false;
-    seen.add(model.id);
-    return true;
-  });
+  const models = [...listed];
+  if (fallbackDefault && !models.some((model) => model.id === fallbackDefault)) {
+    models.unshift({ id: fallbackDefault });
+  }
   return {
     defaultModel: fallbackDefault || null,
     models,
@@ -1177,6 +1191,11 @@ async function saveProvider(): Promise<void> {
     baseUrl: draft.baseUrl.trim(),
     apiFormat: draft.apiFormat,
     authStrategy: draft.authStrategy,
+    failover: {
+      enabled: true,
+      priority: Number.isFinite(draft.priority) ? Math.max(0, Math.floor(draft.priority)) : 100,
+      maxRetries: 1,
+    },
     models: {
       defaultModel: models.defaultModel,
       models: models.models,
@@ -1246,7 +1265,7 @@ function activeProviderForScope(scope: ModelGatewayAppScope): string {
 }
 
 function providersForScope(scope: ModelGatewayAppScope): ModelGatewayProviderView[] {
-  return providers.value.filter((provider) => provider.appScopes.includes(scope));
+  return providers.value.filter((provider) => provider.enabled && provider.appScopes.includes(scope));
 }
 
 async function updateActiveProvider(scope: ModelGatewayAppScope, event: Event): Promise<void> {

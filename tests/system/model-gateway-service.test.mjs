@@ -494,6 +494,188 @@ test("model gateway routing contract selects app-scoped providers and preserves 
   assert.equal(codexChatOverride.provider?.id, "codex-chat");
 });
 
+test("model gateway model pools allow cross-provider duplicates but reject provider-local duplicates", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config);
+
+  assert.throws(
+    () => service.upsertProvider(undefined, {
+      provider: {
+        id: "duplicate-local",
+        name: "Duplicate Local",
+        appScopes: ["openclaw"],
+        baseUrl: "https://duplicate.example.test/v1",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        models: {
+          defaultModel: "same-model",
+          models: [{ id: "same-model" }, { id: "same-model" }],
+        },
+      },
+    }),
+    /duplicate model name 'same-model'/,
+  );
+  assert.throws(
+    () => service.upsertProvider(undefined, {
+      provider: {
+        id: "duplicate-alias",
+        name: "Duplicate Alias",
+        appScopes: ["openclaw"],
+        baseUrl: "https://duplicate-alias.example.test/v1",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        models: {
+          defaultModel: "same-model",
+          models: [],
+          aliases: { "same-model": "upstream-model" },
+        },
+      },
+    }),
+    /duplicate model name 'same-model'/,
+  );
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "provider-a",
+      name: "Provider A",
+      appScopes: ["openclaw"],
+      baseUrl: "https://a.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "shared-model",
+        models: [{ id: "shared-model", aliases: ["shared-alias"] }, { id: "a-only" }],
+      },
+      failover: { priority: 20 },
+    },
+    setActiveScopes: ["openclaw"],
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "provider-b",
+      name: "Provider B",
+      appScopes: ["openclaw"],
+      baseUrl: "https://b.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "shared-model",
+        models: [{ id: "shared-model" }, { id: "b-only" }],
+      },
+      failover: { priority: 5 },
+    },
+  });
+
+  let decision = service.resolveRouteDecision("POST", "/v1/chat/completions", {}, "shared-model");
+  assert.equal(decision.provider?.id, "provider-a");
+  assert.equal(decision.model?.resolved, "shared-model");
+
+  service.setActiveProvider(undefined, { scope: "openclaw", providerId: null });
+  decision = service.resolveRouteDecision("POST", "/v1/chat/completions", {}, "shared-model");
+  assert.equal(decision.provider?.id, "provider-b");
+  assert.equal(decision.model?.resolved, "shared-model");
+
+  decision = service.resolveRouteDecision("POST", "/v1/chat/completions", {}, "provider-a/shared-alias");
+  assert.equal(decision.provider?.id, "provider-a");
+  assert.equal(decision.model?.requested, "provider-a/shared-alias");
+  assert.equal(decision.model?.resolved, "shared-model");
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "provider-b",
+      name: "Provider B",
+      appScopes: ["openclaw"],
+      baseUrl: "https://b.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "shared-model",
+        models: [{ id: "shared-model" }, { id: "b-only" }],
+      },
+      health: {
+        circuitState: "open",
+        lastFailureAt: "2026-06-05T00:00:00.000Z",
+        lastError: "timeout",
+        consecutiveFailures: 3,
+      },
+      failover: { priority: 5 },
+    },
+  });
+  decision = service.resolveRouteDecision("POST", "/v1/chat/completions", {}, "shared-model");
+  assert.equal(decision.provider?.id, "provider-a");
+  assert.equal(decision.model?.resolved, "shared-model");
+
+  decision = service.resolveRouteDecision("POST", "/v1/chat/completions", {}, "missing-model");
+  assert.equal(decision.mode, "missing-provider");
+  assert.match(decision.reason || "", /missing-model/);
+});
+
+test("model gateway exposes enabled provider model pool through OpenAI models endpoint", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "models-a",
+      name: "Models A",
+      appScopes: ["openclaw"],
+      baseUrl: "https://models-a.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "shared-model",
+        models: [{ id: "shared-model", label: "Shared", aliases: ["shared-a"] }, { id: "a-only" }],
+      },
+      failover: { priority: 10 },
+    },
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "models-b",
+      name: "Models B",
+      appScopes: ["codex"],
+      baseUrl: "https://models-b.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "shared-model",
+        models: [{ id: "shared-model" }, { id: "b-only" }],
+      },
+      failover: { priority: 5 },
+    },
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "disabled-models",
+      name: "Disabled Models",
+      enabled: false,
+      appScopes: ["openclaw"],
+      baseUrl: "https://disabled.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "disabled-only",
+        models: [{ id: "disabled-only" }],
+      },
+    },
+  });
+
+  const direct = ctx.services.modelGateway.listGatewayModels();
+  assert.deepEqual(direct.data.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
+  const shared = direct.data.find((model) => model.id === "shared-model");
+  assert.deepEqual(shared?.providerIds, ["models-a", "models-b"]);
+  assert.equal(direct.data.some((model) => model.id === "disabled-only"), false);
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  await withServer(handler, async (baseUrl) => {
+    const response = await requestJson(`${baseUrl}/v1/models`);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.object, "list");
+    assert.deepEqual(response.body.data.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
+  });
+});
+
 test("model gateway management supports active provider selection, delete, and open-circuit fallback", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

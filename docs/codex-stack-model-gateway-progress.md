@@ -1,6 +1,6 @@
 # Studio Gateway 迁移进度
 
-> 状态：Phase C completed; Phase B core matrix completed; Phase D service/config UI MVP added; Phase B2 maturity hardening remains open
+> 状态：Phase C completed; Phase B core matrix completed; Phase D provider routing/model catalog MVP added; Phase B2 maturity hardening remains open
 > 更新：2026-06-05
 > 文档规则：只保留当前状态、验证、下一步；过期细节直接替换。
 
@@ -13,7 +13,8 @@
 - `/model-gateway` 管理页 MVP 已接入 shell：覆盖 daemon 状态/预览/status/ensure-running、Provider Center、active routing、protocol smoke 和最近请求。
 - Provider 配置不内置具体 vendor；只给三种原生协议模板，用户可只填 Base URL + API key 后自动识别协议和模型列表，必要时再手动填模型名称。
 - Provider 自动识别入口已贴近 Base URL / API Key；识别过程、三类协议结果和应用动作在弹层中完成，表单只保留紧凑状态。
-- Provider registry 已有 `enabled` 字段、App scope、active provider 数据结构和 `/api/model-gateway/active-provider`；当前 UI 已显示启用/停用状态和 Active routing 下拉，但还缺明显的启用/停用操作、聚合 `/v1/models`、统一 Gateway key、模型别名解析和 App Connections 一键应用。
+- Provider registry 已有 `enabled` 字段、App scope、active provider、priority、model alias 和 `/api/model-gateway/active-provider`；UI 可编辑 provider 启用状态、路由优先级、模型列表/别名和 Active routing。
+- `GET /v1/models` 已聚合所有启用 provider 的模型。同名模型跨 provider 合法，会形成模型池；active provider 优先，Auto 按 priority/健康状态选择，open circuit 后切换到下一个同名模型 provider。同 provider 内重复 model ID 或 alias 会被拒绝。
 - Gateway daemon service 已覆盖新设备首次安装、systemd/launchd/scheduled-task 自启动启用、启动、停止、重启、status 与 ensure-running；旧坏模板会自动重写并 reload/start/restart，已安装时 install 按重装/重新启用处理。
 - `start`、`restart`、`ensure-running` 已改为等待 daemon HTTP status ready 后才标记 started；stop 后 inactive 视为预期结果，不再误报失败。
 - CC / cc-connect / Octo(dmwork) 已从 App Connections 拆出，归入独立 Channel Connectors；短期用 CC Bridge，长期逐步 native 化。
@@ -54,7 +55,10 @@
   - 接入现有 `/api/model-gateway/*`：status、runtime、daemon-service、providers、active-provider、provider test。
   - 移除具体 vendor 预设；只保留原生协议模板，由用户自行填写 Base URL、模型列表、默认模型和 API key。
   - daemon service 操作增加可见结果面板，展示 action、service manager、bootstrap 和命令输出。
-  - Provider 表单支持多模型列表和默认模型下拉；模型行格式简化为 `模型ID,显示名称`，显示名称可省略，保存时写入 provider model catalog。
+  - Provider 表单支持多模型列表、默认模型下拉、启用状态和路由优先级；模型行格式为 `模型ID | 显示名 | 别名1,别名2`，兼容旧逗号格式。
+  - Provider 保存时拒绝同 provider 内重复 model ID/alias；不同 provider 可暴露同名模型，Gateway 将其作为同名模型池。
+  - Gateway daemon 新增 `GET /v1/models`，只返回启用 provider 的聚合模型目录，并包含 `providerIds`、显示名和别名。
+  - 请求路由会按 requested `model` 解析 provider/model：active provider 优先，Auto 按 priority/健康状态，显式 `provider/model-or-alias` 可直达指定 provider，并在上游请求中恢复真实 model ID。
   - 新增 `/api/model-gateway/detect-provider` 临时探测接口；不保存 provider 或 secret，自动识别三种原生协议和模型列表，多协议通过时让用户选择应用。
   - 优化自动识别 UX：检测按钮移到连接字段旁，新增识别进度/结果弹层、三类协议状态、可用协议应用反馈和紧凑结果入口。
   - 修复 daemon service 生命周期：`ensure-running` 会修复 stale/bad user service，新设备缺失模板时会写入并 enable/start；`start`/`restart` 也会先同步模板；模板更新且服务已 active 时会 restart。
@@ -81,6 +85,7 @@
 - 本轮 Runtime 按钮验证通过：`preview`、`status`、`install/reinstall+enable`、`start`、`restart`、`stop`、`ensure-running` 全部走 same-origin API 实测；stop 后 daemon HTTP 为 0，ensure-running 后恢复 200，且成功结果无失败命令残留。
 - 本轮浏览器验证通过：Playwright 打开 `/model-gateway` 并真实点击 Status、More actions、Preview、Reinstall/enable、Start、Restart、Stop、Ensure running；结果面板无 failure，截图 `/tmp/model-gateway-runtime-buttons.png`。
 - 本轮构建验证通过：`npm run build:api`、`node --test --test-reporter=spec --test-name-pattern "daemon service management|ensure-running|stop treats inactive|start reports bootstrap" tests/system/model-gateway-service.test.mjs`、`npm run typecheck:web`、`node --test --test-reporter=spec tests/system/studio-web-model-gateway-page.test.mjs`、`npm run build --workspace=apps/web-vue`。
+- 本轮模型池验证通过：`npm run build:api && node --test --test-reporter=spec tests/system/model-gateway-service.test.mjs && npm run typecheck:web && npm run build --workspace=apps/web-vue && node --test --test-reporter=spec tests/system/studio-web-model-gateway-page.test.mjs`。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "protocol matrix forwards native openai responses|anthropic messages through openai chat providers|codex compact|chat reasoning|streamed codex tool-call history|upstream responses stream fails|normalizes upstream chat errors" tests/system/model-gateway-service.test.mjs`，8/8 通过。
 - 本轮补测通过：`npm run build:api && node --test --test-reporter=spec --test-name-pattern "routing contract selects|records streamed codex tool-call history|adapts streaming chat tool calls|adapts codex responses through native anthropic|protocol matrix forwards" tests/system/model-gateway-service.test.mjs`，7/7 通过。
 - Dev 进程已重启：frontend `http://127.0.0.1:5176` 返回 200；backend `http://127.0.0.1:3762/api/system/health` 返回 `gateway: online`。
@@ -125,7 +130,7 @@
 
 ## 下一步
 
-1. 补 Provider Center 可用性闭环：启用/停用按钮、停用时 active routing 回退/提示、Active routing 选择后即时 smoke 验证。
-2. 补 daemon 客户端面：`GET /v1/models` 聚合所有启用 provider 模型；实现统一本地 Gateway key；模型 ID/显示名/别名与 `provider/model` 显式选择规则。
+1. 补统一本地 Gateway key：客户端只拿本地 key，真实 upstream key 留在 Studio secret store，并覆盖 `/v1/models` 与三类协议端点的鉴权。
+2. 补 Provider Center 可用性闭环：Active routing 选择后即时 smoke 验证、停用当前 active provider 时给出明确回退提示。
 3. 做 App Connections：Codex / Claude Code / OpenCode / OpenClaw 配置 preview/apply，并支持一键切换 app profile、模型、上下文窗口、max output、reasoning/effort 等参数。
 4. Channel Connectors / CC Bridge / Octo 等网关配置稳定后再启动。
