@@ -437,6 +437,17 @@ export type ModelGatewayDaemonBootstrapRunner = (
   request: ModelGatewayDaemonBootstrapRequest,
 ) => Promise<ModelGatewayDaemonBootstrapStatus> | ModelGatewayDaemonBootstrapStatus;
 
+export interface ModelGatewayDaemonReadinessResult {
+  endpoint: string;
+  ready: boolean;
+  statusCode: number | null;
+  error: string | null;
+}
+
+export type ModelGatewayDaemonReadinessChecker = (
+  endpoint: string,
+) => Promise<ModelGatewayDaemonReadinessResult | boolean> | ModelGatewayDaemonReadinessResult | boolean;
+
 function daemonBootstrapStatus(
   options: Partial<ModelGatewayDaemonBootstrapStatus> = {},
 ): ModelGatewayDaemonBootstrapStatus {
@@ -512,6 +523,66 @@ function runDefaultDaemonBootstrap(request: ModelGatewayDaemonBootstrapRequest):
   }
 }
 
+function normalizeDaemonReadinessResult(
+  endpoint: string,
+  value: ModelGatewayDaemonReadinessResult | boolean,
+): ModelGatewayDaemonReadinessResult {
+  if (typeof value === "boolean") {
+    return {
+      endpoint,
+      ready: value,
+      statusCode: value ? 200 : null,
+      error: value ? null : `Daemon HTTP readiness check did not pass at ${endpoint}.`,
+    };
+  }
+  return {
+    endpoint: value.endpoint || endpoint,
+    ready: value.ready === true,
+    statusCode: typeof value.statusCode === "number" ? value.statusCode : null,
+    error: value.error || (value.ready ? null : `Daemon HTTP readiness check did not pass at ${endpoint}.`),
+  };
+}
+
+async function runDefaultDaemonReadinessChecker(endpoint: string): Promise<ModelGatewayDaemonReadinessResult> {
+  const deadline = Date.now() + 8_000;
+  let lastStatusCode: number | null = null;
+  let lastError: string | null = null;
+
+  while (Date.now() < deadline) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1_000);
+    try {
+      const response = await fetch(endpoint, {
+        headers: { accept: "application/json" },
+        signal: controller.signal,
+      });
+      lastStatusCode = response.status;
+      lastError = response.ok ? null : `HTTP ${response.status}`;
+      if (response.ok) {
+        return {
+          endpoint,
+          ready: true,
+          statusCode: response.status,
+          error: null,
+        };
+      }
+    } catch (error) {
+      lastStatusCode = null;
+      lastError = error instanceof Error ? error.message : "Unable to reach daemon HTTP status endpoint.";
+    } finally {
+      clearTimeout(timer);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+
+  return {
+    endpoint,
+    ready: false,
+    statusCode: lastStatusCode,
+    error: `Daemon HTTP readiness check failed at ${endpoint}${lastError ? `: ${lastError}` : ""}.`,
+  };
+}
+
 function compactCommandOutput(result: ModelGatewayDaemonServiceCommandResult): string {
   return [result.stdout, result.stderr, result.error].filter(Boolean).join("\n").trim();
 }
@@ -531,6 +602,29 @@ function firstCommandError(commandsRun: ModelGatewayDaemonServiceCommandResult[]
 
 function serviceManagerText(result: ModelGatewayDaemonServiceCommandResult | undefined): string {
   return `${result?.stdout || ""}\n${result?.stderr || ""}`.trim().toLowerCase();
+}
+
+function normalizeDaemonServiceCommandResults(
+  action: ModelGatewayDaemonServiceAction,
+  commandsRun: ModelGatewayDaemonServiceCommandResult[],
+): ModelGatewayDaemonServiceCommandResult[] {
+  if (action !== "stop" && action !== "ensure-running") return commandsRun;
+  if (action === "ensure-running") {
+    const finalActiveResult = findLastCommandResult(commandsRun, (result) => result.args.includes("is-active"));
+    const finalActiveState = serviceManagerText(finalActiveResult).split(/\s+/).find(Boolean) || "";
+    if (finalActiveState !== "active" && finalActiveState !== "activating") return commandsRun;
+  }
+  return commandsRun.map((result) => {
+    if (!result.args.includes("is-active")) return result;
+    const activeState = serviceManagerText(result).split(/\s+/).find(Boolean) || "";
+    if (activeState !== "inactive") return result;
+    return {
+      ...result,
+      ok: true,
+      exitCode: 0,
+      error: null,
+    };
+  });
 }
 
 function findLastCommandResult(
@@ -1444,6 +1538,7 @@ export interface ModelGatewayServiceOptions {
   };
   daemonServiceCommandRunner?: ModelGatewayDaemonServiceCommandRunner;
   daemonBootstrapRunner?: ModelGatewayDaemonBootstrapRunner;
+  daemonReadinessChecker?: ModelGatewayDaemonReadinessChecker;
 }
 
 export function createModelGatewayService(
@@ -1466,6 +1561,13 @@ export function createModelGatewayService(
     return options.daemonBootstrapRunner
       ? await options.daemonBootstrapRunner(request)
       : await runDefaultDaemonBootstrap(request);
+  }
+
+  async function runDaemonReadinessChecker(endpoint: string): Promise<ModelGatewayDaemonReadinessResult> {
+    const result = options.daemonReadinessChecker
+      ? await options.daemonReadinessChecker(endpoint)
+      : await runDefaultDaemonReadinessChecker(endpoint);
+    return normalizeDaemonReadinessResult(endpoint, result);
   }
 
   function readRegistry(): ModelGatewayRegistryState {
@@ -1854,6 +1956,49 @@ export function createModelGatewayService(
     };
   }
 
+  function getDaemonHttpStatusEndpoint(): string {
+    return buildLoopbackHttpEndpoint(listenerHost, listenerPort, "/api/model-gateway/status");
+  }
+
+  async function waitForDaemonSupervisorReadiness(
+    manager: ModelGatewayDaemonServiceManagerStatus,
+  ): Promise<ModelGatewayDaemonReadinessResult> {
+    const endpoint = getDaemonHttpStatusEndpoint();
+    if (manager.active !== true) {
+      return {
+        endpoint,
+        ready: false,
+        statusCode: null,
+        error: manager.lastError || "Supervisor did not report the daemon as active.",
+      };
+    }
+    return runDaemonReadinessChecker(endpoint);
+  }
+
+  function daemonSupervisorBootstrapStatus(options: {
+    lifecycle: ReturnType<typeof getLifecycleStatus>;
+    manager: ModelGatewayDaemonServiceManagerStatus;
+    readiness: ModelGatewayDaemonReadinessResult;
+    attempted: boolean;
+    notes: string[];
+  }): ModelGatewayDaemonBootstrapStatus {
+    return daemonBootstrapStatus({
+      mode: "supervisor",
+      allowed: true,
+      attempted: options.attempted,
+      started: options.manager.active === true && options.readiness.ready,
+      temporary: false,
+      endpoint: options.lifecycle.localDaemon.endpoint,
+      error: options.manager.lastError || (options.readiness.ready ? null : options.readiness.error),
+      notes: [
+        ...options.notes,
+        options.readiness.ready
+          ? `Daemon HTTP status endpoint is ready: ${options.readiness.endpoint}.`
+          : `Daemon HTTP status endpoint is not ready: ${options.readiness.endpoint}.`,
+      ],
+    });
+  }
+
   function getDaemonService(): ModelGatewayDaemonServiceResponse {
     return daemonServiceResponse({
       action: "status",
@@ -1886,26 +2031,54 @@ export function createModelGatewayService(
     let templateWritten = false;
     const actionNeedsTemplate = action === "install" || action === "start" || action === "restart";
     if (actionNeedsTemplate && apply) {
-      templateWritten = writeDaemonServiceTemplateIfNeeded(plan);
+      if (action === "install") {
+        writeTextAtomic(plan.selectedTemplate.configPath, plan.selectedTemplate.template);
+        templateWritten = true;
+      } else {
+        templateWritten = writeDaemonServiceTemplateIfNeeded(plan);
+      }
     }
 
+    const lifecycleActions = new Set<ModelGatewayDaemonServiceAction>(["install", "start", "stop", "restart"]);
     const shouldRunCommands = payload.runCommands === true
-      || (payload.runCommands !== false && apply && (action === "start" || action === "stop" || action === "restart"));
+      || (payload.runCommands !== false && apply && lifecycleActions.has(action));
     const commandsRun = [];
     if (shouldRunCommands) {
-      if (templateWritten && (action === "start" || action === "restart")) {
+      if (apply && (action === "start" || action === "restart")) {
         const installCommands = plan.selectedTemplate.commands.install || [];
         for (const item of installCommands) commandsRun.push(await runDaemonServiceCommand(item));
       }
       const commands = plan.selectedTemplate.commands[action] || [];
       for (const item of commands) commandsRun.push(await runDaemonServiceCommand(item));
+      if (lifecycleActions.has(action)) {
+        const statusCommands = plan.selectedTemplate.commands.status || [];
+        for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
+      }
+    }
+    const normalizedCommandsRun = normalizeDaemonServiceCommandResults(action, commandsRun);
+    let bootstrap: ModelGatewayDaemonBootstrapStatus | undefined;
+    if ((action === "start" || action === "restart") && normalizedCommandsRun.length > 0) {
+      const lifecycle = getLifecycleStatus();
+      const manager = summarizeDaemonServiceManager(plan.supervisor, normalizedCommandsRun);
+      const readiness = await waitForDaemonSupervisorReadiness(manager);
+      bootstrap = daemonSupervisorBootstrapStatus({
+        lifecycle,
+        manager,
+        readiness,
+        attempted: normalizedCommandsRun.length > 0,
+        notes: [
+          `Supervisor ${action} command path was used.`,
+          "Restart guarantees depend on the selected supervisor remaining enabled.",
+        ],
+      });
     }
 
     return daemonServiceResponse({
       action,
       applied: templateWritten || commandsRun.length > 0,
       templateWritten,
-      commandsRun,
+      commandsRun: normalizedCommandsRun,
+      bootstrap,
     });
   }
 
@@ -1950,7 +2123,13 @@ export function createModelGatewayService(
         }
         const statusCommands = plan.selectedTemplate.commands.status || [];
         for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
-        const beforeStart = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
+        let beforeStart = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
+        if (!templateWritten && beforeStart.enabled !== true) {
+          const installCommands = plan.selectedTemplate.commands.install || [];
+          for (const item of installCommands) commandsRun.push(await runDaemonServiceCommand(item));
+          for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
+          beforeStart = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
+        }
         if (templateWritten && beforeStart.active === true) {
           const restartCommands = plan.selectedTemplate.commands.restart || plan.selectedTemplate.commands.start || [];
           for (const item of restartCommands) commandsRun.push(await runDaemonServiceCommand(item));
@@ -1962,21 +2141,20 @@ export function createModelGatewayService(
         }
       }
 
-      const manager = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
+      const normalizedCommandsRun = normalizeDaemonServiceCommandResults("ensure-running", commandsRun);
+      const manager = summarizeDaemonServiceManager(plan.supervisor, normalizedCommandsRun);
+      const readiness = await waitForDaemonSupervisorReadiness(manager);
       return daemonServiceResponse({
         action: "ensure-running",
-        applied: templateWritten || commandsRun.length > 0,
+        applied: templateWritten || normalizedCommandsRun.length > 0,
         templateWritten,
-        commandsRun,
-        bootstrap: daemonBootstrapStatus({
-          mode: "supervisor",
-          allowed: true,
-          attempted: commandsRun.length > 0,
-          started: manager.active === true,
-          temporary: false,
-          endpoint: lifecycle.localDaemon.endpoint,
-          error: manager.lastError,
-          notes: commandsRun.length
+        commandsRun: normalizedCommandsRun,
+        bootstrap: daemonSupervisorBootstrapStatus({
+          lifecycle,
+          manager,
+          readiness,
+          attempted: normalizedCommandsRun.length > 0,
+          notes: normalizedCommandsRun.length
             ? [
               "User-service template is installed; ensure-running used the selected OS/user supervisor.",
               ...(templateWritten ? ["User-service template was updated before supervisor start."] : []),
@@ -2054,21 +2232,20 @@ export function createModelGatewayService(
       }
     }
 
-    const manager = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
+    const normalizedCommandsRun = normalizeDaemonServiceCommandResults("ensure-running", commandsRun);
+    const manager = summarizeDaemonServiceManager(plan.supervisor, normalizedCommandsRun);
+    const readiness = await waitForDaemonSupervisorReadiness(manager);
     return daemonServiceResponse({
       action: "ensure-running",
-      applied: templateWritten || commandsRun.length > 0,
+      applied: templateWritten || normalizedCommandsRun.length > 0,
       templateWritten,
-      commandsRun,
-      bootstrap: daemonBootstrapStatus({
-        mode: "supervisor",
-        allowed: true,
-        attempted: commandsRun.length > 0,
-        started: manager.active === true,
-        temporary: false,
-        endpoint: lifecycle.localDaemon.endpoint,
-        error: manager.lastError,
-        notes: commandsRun.length
+      commandsRun: normalizedCommandsRun,
+      bootstrap: daemonSupervisorBootstrapStatus({
+        lifecycle,
+        manager,
+        readiness,
+        attempted: normalizedCommandsRun.length > 0,
+        notes: normalizedCommandsRun.length
           ? [
             "User-service template was installed; ensure-running used the selected OS/user supervisor.",
             "Restart guarantees depend on the selected supervisor remaining enabled.",

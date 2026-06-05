@@ -177,7 +177,17 @@ export function createModelGatewayDaemon(
       server = null;
       if (currentServer.listening) {
         await new Promise<void>((resolve, reject) => {
+          const serverWithConnectionControls = currentServer as http.Server & {
+            closeAllConnections?: () => void;
+            closeIdleConnections?: () => void;
+          };
+          serverWithConnectionControls.closeIdleConnections?.();
+          const forceCloseTimer = setTimeout(() => {
+            serverWithConnectionControls.closeAllConnections?.();
+          }, 500);
+          forceCloseTimer.unref?.();
           currentServer.close((error) => {
+            clearTimeout(forceCloseTimer);
             if (error) reject(error);
             else resolve();
           });

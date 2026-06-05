@@ -52,28 +52,35 @@
             </div>
           </div>
 
-          <div class="mgw-button-row">
-            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('preview')">
-              {{ daemonBusy ? text('执行中...', 'Running...') : text('预览 service', 'Preview service') }}
+          <div class="mgw-runtime-actions">
+            <button type="button" class="primary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('ensure-running')">
+              {{ daemonBusy ? text('执行中...', 'Running...') : text('确保运行', 'Ensure running') }}
             </button>
             <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('status')">
-              {{ daemonBusy ? text('执行中...', 'Running...') : text('运行 status', 'Run status') }}
+              {{ daemonBusy ? text('执行中...', 'Running...') : text('状态', 'Status') }}
             </button>
-            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('install')">
-              {{ daemonBusy ? text('执行中...', 'Running...') : text('安装/启用', 'Install / enable') }}
-            </button>
-            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('start')">
-              {{ daemonBusy ? text('执行中...', 'Running...') : text('启动', 'Start') }}
-            </button>
-            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('restart')">
-              {{ daemonBusy ? text('执行中...', 'Running...') : text('重启', 'Restart') }}
-            </button>
-            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('stop')">
-              {{ daemonBusy ? text('执行中...', 'Running...') : text('停止', 'Stop') }}
-            </button>
-            <button type="button" class="primary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('ensure-running')">
-              {{ daemonBusy ? text('执行中...', 'Running...') : text('确保 daemon 运行', 'Ensure daemon') }}
-            </button>
+            <details class="mgw-runtime-more">
+              <summary class="secondary-button compact-button">
+                {{ text('更多操作', 'More actions') }}
+              </summary>
+              <div class="mgw-runtime-menu">
+                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('preview')">
+                  {{ text('预览 service', 'Preview service') }}
+                </button>
+                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('install')">
+                  {{ text('重新安装/启用自启动', 'Reinstall / enable autostart') }}
+                </button>
+                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('start')">
+                  {{ text('启动守护服务', 'Start supervised service') }}
+                </button>
+                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('restart')">
+                  {{ text('重启守护服务', 'Restart supervised service') }}
+                </button>
+                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('stop')">
+                  {{ text('停止守护服务', 'Stop supervised service') }}
+                </button>
+              </div>
+            </details>
           </div>
 
           <div v-if="daemonActionResult" class="mgw-daemon-output" :class="{ failure: daemonActionHasFailure }">

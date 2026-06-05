@@ -187,6 +187,15 @@ async function waitFor(predicate, timeoutMs = 3000) {
   throw new Error("Timed out waiting for condition");
 }
 
+async function daemonReady(endpoint) {
+  return {
+    endpoint,
+    ready: true,
+    statusCode: 200,
+    error: null,
+  };
+}
+
 async function stopChild(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const exited = new Promise((resolve) => child.once("exit", resolve));
@@ -678,6 +687,28 @@ test("model gateway daemon service management exposes templates and guarded inst
     assert.doesNotMatch(serviceTemplate, /^WorkingDirectory="/m);
     assert.match(serviceTemplate, /^Environment="MODEL_GATEWAY_SUPERVISOR=systemd-user"$/m);
 
+    fs.writeFileSync(
+      install.body.plan.selectedTemplate.configPath,
+      serviceTemplate.replace(/^WorkingDirectory=(.+)$/m, 'WorkingDirectory="$1"'),
+      "utf8",
+    );
+    const reinstall = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
+      method: "POST",
+      body: {
+        action: "install",
+        apply: true,
+        runCommands: false,
+      },
+    });
+    assert.equal(reinstall.status, 200);
+    assert.equal(reinstall.body.action, "install");
+    assert.equal(reinstall.body.templateWritten, true);
+    assert.equal(reinstall.body.templateCurrent, true);
+    assert.doesNotMatch(
+      fs.readFileSync(reinstall.body.plan.selectedTemplate.configPath, "utf8"),
+      /^WorkingDirectory="/m,
+    );
+
     const startPreview = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
       method: "POST",
       body: {
@@ -696,7 +727,12 @@ test("model gateway daemon service management executes selected supervisor comma
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const calls = [];
+  const readinessCalls = [];
   const service = createModelGatewayService(config, {
+    daemonReadinessChecker: async (endpoint) => {
+      readinessCalls.push(endpoint);
+      return daemonReady(endpoint);
+    },
     daemonServiceCommandRunner: async (command) => {
       calls.push(`${command.command} ${command.args.join(" ")}`);
       let stdout = `ran ${command.label}`;
@@ -721,28 +757,41 @@ test("model gateway daemon service management executes selected supervisor comma
   });
   const expectedInstall = start.plan.selectedTemplate.commands.install || [];
   const expectedStart = start.plan.selectedTemplate.commands.start || [];
+  const expectedStartStatus = start.plan.selectedTemplate.commands.status || [];
+  const expectedStartCalls = [...expectedInstall, ...expectedStart, ...expectedStartStatus];
   assert.equal(start.action, "start");
   assert.equal(start.applied, true);
   assert.equal(start.templateWritten, true);
   assert.deepEqual(
-    calls.slice(0, expectedInstall.length + expectedStart.length),
-    [...expectedInstall, ...expectedStart].map((command) => `${command.command} ${command.args.join(" ")}`),
+    calls.slice(0, expectedStartCalls.length),
+    expectedStartCalls.map((command) => `${command.command} ${command.args.join(" ")}`),
   );
-  assert.deepEqual(start.commandsRun.map((result) => result.ok), [...expectedInstall, ...expectedStart].map(() => true));
+  assert.deepEqual(start.commandsRun.map((result) => result.ok), expectedStartCalls.map(() => true));
   assert.match(start.commandsRun[0]?.stdout || "", /^ran /);
+  assert.equal(start.bootstrap.mode, "supervisor");
+  assert.equal(start.bootstrap.started, true);
 
   const restart = await service.manageDaemonService(undefined, {
     action: "restart",
     apply: true,
   });
+  const expectedRestartInstall = restart.plan.selectedTemplate.commands.install || [];
   const expectedRestart = restart.plan.selectedTemplate.commands.restart || [];
+  const expectedRestartStatus = restart.plan.selectedTemplate.commands.status || [];
+  const expectedRestartCalls = [...expectedRestartInstall, ...expectedRestart, ...expectedRestartStatus];
   assert.equal(restart.action, "restart");
   assert.equal(restart.applied, true);
   assert.equal(restart.templateWritten, false);
+  assert.equal(restart.bootstrap.mode, "supervisor");
+  assert.equal(restart.bootstrap.started, true);
   assert.deepEqual(
-    calls.slice(expectedInstall.length + expectedStart.length, expectedInstall.length + expectedStart.length + expectedRestart.length),
-    expectedRestart.map((command) => `${command.command} ${command.args.join(" ")}`),
+    calls.slice(expectedStartCalls.length, expectedStartCalls.length + expectedRestartCalls.length),
+    expectedRestartCalls.map((command) => `${command.command} ${command.args.join(" ")}`),
   );
+  assert.deepEqual(readinessCalls, [
+    "http://127.0.0.1:18796/api/model-gateway/status",
+    "http://127.0.0.1:18796/api/model-gateway/status",
+  ]);
 
   const status = await service.manageDaemonService(undefined, {
     action: "status",
@@ -752,7 +801,7 @@ test("model gateway daemon service management executes selected supervisor comma
   assert.equal(status.action, "status");
   assert.equal(status.applied, expectedStatus.length > 0);
   assert.deepEqual(
-    calls.slice(expectedInstall.length + expectedStart.length + expectedRestart.length),
+    calls.slice(expectedStartCalls.length + expectedRestartCalls.length),
     expectedStatus.map((command) => `${command.command} ${command.args.join(" ")}`),
   );
   assert.equal(status.commandsRun.length, expectedStatus.length);
@@ -769,6 +818,7 @@ test("model gateway ensure-running prefers installed supervisor over detached bo
   const calls = [];
   let startSeen = false;
   const service = createModelGatewayService(config, {
+    daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
       calls.push(`${command.command} ${command.args.join(" ")}`);
       const lowerLabel = command.label.toLowerCase();
@@ -863,9 +913,106 @@ test("model gateway ensure-running prefers installed supervisor over detached bo
   assert.equal(ensure.templateCurrent, true);
   assert.deepEqual(calls, expectedCalls);
   assert.equal(ensure.commandsRun.length, expectedCalls.length);
+  assert.equal(ensure.commandsRun.some((command) => !command.ok), false);
   assert.equal(ensure.serviceManager.checked, true);
   assert.equal(ensure.serviceManager.active, true);
   assert.equal(ensure.serviceManager.lastError, null);
+});
+
+test("model gateway stop treats inactive supervised service as expected", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  let stopped = false;
+  const service = createModelGatewayService(config, {
+    daemonReadinessChecker: daemonReady,
+    daemonServiceCommandRunner: async (command) => {
+      const lowerLabel = command.label.toLowerCase();
+      if (lowerLabel.includes("stop") || lowerLabel.includes("bootout") || lowerLabel.includes("end")) {
+        stopped = true;
+      }
+      if (command.args.includes("is-active")) {
+        return {
+          ...command,
+          ok: !stopped,
+          exitCode: stopped ? 3 : 0,
+          stdout: stopped ? "inactive\n" : "active\n",
+          stderr: "",
+          error: stopped ? "Command failed." : null,
+        };
+      }
+      if (command.args.includes("is-enabled")) {
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: "enabled\n",
+          stderr: "",
+          error: null,
+        };
+      }
+      return {
+        ...command,
+        ok: true,
+        exitCode: 0,
+        stdout: `ran ${command.label}`,
+        stderr: "",
+        error: null,
+      };
+    },
+  });
+
+  const stoppedResult = await service.manageDaemonService(undefined, {
+    action: "stop",
+    runCommands: true,
+  });
+
+  assert.equal(stoppedResult.action, "stop");
+  assert.equal(stoppedResult.applied, true);
+  assert.equal(stoppedResult.serviceManager.checked, true);
+  assert.equal(stoppedResult.serviceManager.reachable, true);
+  assert.equal(stoppedResult.serviceManager.active, false);
+  assert.equal(stoppedResult.serviceManager.enabled, true);
+  assert.equal(stoppedResult.serviceManager.lastError, null);
+  assert.equal(stoppedResult.commandsRun.some((command) => !command.ok), false);
+});
+
+test("model gateway start reports bootstrap failure until daemon HTTP is ready", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config, {
+    daemonReadinessChecker: async (endpoint) => ({
+      endpoint,
+      ready: false,
+      statusCode: null,
+      error: "connection refused",
+    }),
+    daemonServiceCommandRunner: async (command) => {
+      let stdout = `ran ${command.label}`;
+      if (command.args.includes("is-active")) stdout = "active\n";
+      if (command.args.includes("is-enabled")) stdout = "enabled\n";
+      return {
+        ...command,
+        ok: true,
+        exitCode: 0,
+        stdout,
+        stderr: "",
+        error: null,
+      };
+    },
+  });
+
+  const result = await service.manageDaemonService(undefined, {
+    action: "start",
+    apply: true,
+  });
+
+  assert.equal(result.action, "start");
+  assert.equal(result.serviceManager.active, true);
+  assert.equal(result.serviceManager.enabled, true);
+  assert.equal(result.serviceManager.lastError, null);
+  assert.equal(result.bootstrap.mode, "supervisor");
+  assert.equal(result.bootstrap.started, false);
+  assert.equal(result.bootstrap.error, "connection refused");
 });
 
 test("model gateway ensure-running repairs stale installed supervisor templates", async () => {
@@ -874,6 +1021,7 @@ test("model gateway ensure-running repairs stale installed supervisor templates"
   const calls = [];
   let startSeen = false;
   const service = createModelGatewayService(config, {
+    daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
       calls.push(`${command.command} ${command.args.join(" ")}`);
       const lowerLabel = command.label.toLowerCase();
@@ -955,6 +1103,7 @@ test("model gateway ensure-running restarts active supervisor after template rep
   const paths = resolveModelGatewayPaths(config);
   const calls = [];
   const service = createModelGatewayService(config, {
+    daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
       calls.push(`${command.command} ${command.args.join(" ")}`);
       if (command.args.includes("is-active")) {
@@ -1041,6 +1190,7 @@ test("model gateway ensure-running installs supervisor template before starting 
   const calls = [];
   let startSeen = false;
   const service = createModelGatewayService(config, {
+    daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
       calls.push(`${command.command} ${command.args.join(" ")}`);
       const lowerLabel = command.label.toLowerCase();
@@ -1115,6 +1265,7 @@ test("model gateway daemon service status summarizes supervisor command failures
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createModelGatewayService(config, {
+    daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
       if (command.args.includes("is-active")) {
         return {
