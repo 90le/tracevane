@@ -3,6 +3,7 @@ import type { StudioRouter } from "../../core/router.js";
 import type {
   ChannelConnectorsDaemonRequest,
   ChannelConnectorCommandActionRequest,
+  ChannelConnectorFeishuWebhookRequest,
   ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorsSaveNativeConfigRequest,
   ChannelConnectorOctoInboundRequest,
@@ -74,6 +75,16 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
     try {
       const payload = await parseJsonBody<ChannelConnectorCommandActionRequest>(req);
       sendJson(res, 200, await routeCtx.services.channelConnectors.handleCommandAction(payload));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/adapters/feishu/webhook", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorFeishuWebhookRequest>(req);
+      const response = await routeCtx.services.channelConnectors.dispatchFeishuWebhook(payload);
+      sendJson(res, 200, response.feishuResponse || response);
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

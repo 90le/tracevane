@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3f command action callbacks completed; OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3f Feishu webhook ingress completed; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：只保留当前状态、最近完成、验证和下一步；旧流水已压缩。
 
@@ -14,7 +14,7 @@
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview、apply、备份、rollback、profile 切换、隔离 HOME HTTP 验收和真实 CLI 启动 smoke harness。
 - App Connections profile 是两层模型选择：全局默认模型 + 每个 App 单独模型覆盖；模型输入从 Gateway 可用模型列表提供 datalist，仍允许手动输入 alias。
 - Codex 低频兼容参数（WebSocket、WebSocket v2、请求压缩）已收进 `Codex advanced` 折叠，避免普通用户误触。
-- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F3f 已完成文本命令、原生 Agent slash 透传、平台无关 command surface 和 Feishu action callback 合同。
+- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F3f 已完成文本命令、原生 Agent slash 透传、平台无关 command surface、Feishu action callback 合同和 Feishu webhook ingress。
 - Phase B2 已按 `/tmp/cc-switch-src` 覆盖核心协议成熟度：CLI 启动、Claude tool/summary、OpenClaw agent provider/model/usage、Gateway HTTP compact/tool-history/error envelope、Responses->Chat streaming `include_usage`、provider-declared reasoning/thinking 映射、parallel tool-call index grouping、Chat SSE error -> Responses `response.failed`、started upstream stream failure -> target protocol error event、BigModel Chat/Anthropic live provider matrix，以及 GMN Responses-native substitute `/v1/responses` + `/v1/responses/compact` live proof。
 
 ## 本轮完成
@@ -31,6 +31,7 @@
 - Session override 按 IM session 持久化，不污染全局 Studio Provider/App config；`/model` 保持 Codex thread 续接，`/cd` 和 `/new` 会断开旧 Agent 续接。
 - 新增 `/api/channel-connectors/commands/surface`：输出平台无关 command surface、text fallback 和 Feishu interactive card 结构；普通 IM、Feishu 卡片、未来自研 IM 客户端都复用同一 command contract。
 - 新增 `/api/channel-connectors/commands/action` 与 Feishu `card-action` / `bot-menu` aliases：从 action value / event key 解析命令并回到 command-router；Agent 原生命令仍只标记 passthrough，不在 Studio API 内直接启动 CLI。
+- 新增 Feishu live webhook ingress：`/api/channel-connectors/adapters/feishu/webhook` 支持 URL verification、`card.action.trigger`、bot menu、`im.message.receive_v1`，按 binding metadata `verificationToken` 校验后复用 command-router，并返回 Feishu 兼容 `challenge` / toast / card 响应。
 
 ## 验证
 
@@ -43,10 +44,10 @@
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Channel Connectors 已用真实 Octo 凭据验证 register、WuKongIM WebSocket、用户消息入站、Codex CLI Agent、Studio Gateway、Octo sendMessage 和同一 IM session 的 Codex thread 续接。尚未补真实 Feishu webhook/tenant token、审批回传、图片/文件/历史上下文；高风险全局配置/系统服务命令暂不通过 IM 直接开放。
+- Channel Connectors 已用真实 Octo 凭据验证 register、WuKongIM WebSocket、用户消息入站、Codex CLI Agent、Studio Gateway、Octo sendMessage 和同一 IM session 的 Codex thread 续接。Feishu webhook ingress 已有本地 contract 测试；尚未补 tenant access token 出站写回、真实飞书回调联调、审批回传、图片/文件/历史上下文；高风险全局配置/系统服务命令暂不通过 IM 直接开放。
 
 ## 下一步
 
-1. 完成 F3f live adapter：接真实 Feishu webhook/tenant token，把 callback result 写回 Feishu card 或 toast。
+1. 完成 F3f 出站写回：接 Feishu tenant access token cache / message API，把 callback result 真实写回 Feishu card 或 toast，并用真实 callback URL 联调。
 2. 进入 F3g：补 CLI Agent 权限审批回传。
 3. 进入 F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。

@@ -110,9 +110,10 @@ Studio 增强点：
 - Channel daemon 已支持 Agent 原生命令透传：未知 `/xxx` 直接转给当前 Agent，`/native <命令>` 用于透传与 Studio 命令同名的原生命令。
 - Channel Connectors 已支持 command surface preview：text fallback、平台无关 action sections、Feishu card JSON、action payload -> command 解析。
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
+- Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 
 ## 6. 下一步
 
-1. F3f：接真实 Feishu webhook/tenant token，把 callback result 写回 Feishu card 或 toast。
+1. F3f：补 Feishu tenant access token cache / message API，把 callback result 真实写回 Feishu card 或 toast，并做真实 callback URL 联调。
 2. F3g：补 CLI Agent 权限审批回传。
 3. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。

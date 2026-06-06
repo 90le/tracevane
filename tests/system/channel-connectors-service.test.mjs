@@ -32,6 +32,9 @@ import {
   renderChannelConnectorCommandSurfaceFeishu,
 } from "../../dist/apps/api/modules/channel-connectors/command-surface.js";
 import {
+  parseChannelConnectorFeishuWebhook,
+} from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
+import {
   handleChannelConnectorCommand,
   resolveChannelConnectorEffectiveProject,
 } from "../../dist/apps/api/modules/channel-connectors/command-router.js";
@@ -1239,6 +1242,149 @@ test("native Channel Connectors command surface renders text and Feishu card act
   });
 });
 
+test("native Channel Connectors Feishu webhook parses live envelopes and reuses command router", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const initial = service.getNativeConfig().config;
+  service.saveNativeConfig({
+    config: {
+      ...initial,
+      agentProfiles: [
+        {
+          id: "feishu-codex",
+          name: "Feishu Codex",
+          agent: "codex",
+          model: "gpt-5",
+          workDir: root,
+          permissionMode: "suggest",
+          gatewayEndpoint: "http://127.0.0.1:18796/v1",
+          gatewayKeyRef: "studio-gateway-client-key",
+          appProfileRef: "codex",
+        },
+      ],
+      defaultAgentProfileId: "feishu-codex",
+      platformBindings: [
+        {
+          id: "feishu-main",
+          platform: "feishu",
+          accountId: "cli_test",
+          botId: "bot_test",
+          displayName: "Feishu Main",
+          agentProfileId: "feishu-codex",
+          enabled: true,
+          allowlist: [],
+          adminUsers: ["ou_admin"],
+          metadata: {
+            verificationToken: "verify-token",
+          },
+        },
+      ],
+    },
+  });
+
+  const parsed = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card" },
+      action: {
+        value: {
+          action: "/status",
+          binding_id: "feishu-main",
+          session_key: "feishu:oc_chat:ou_admin",
+        },
+      },
+    },
+  });
+  assert.equal(parsed.kind, "card-action");
+  assert.equal(parsed.fromUid, "ou_admin");
+  assert.equal(parsed.channelId, "oc_chat");
+  assert.equal(parsed.messageId, "om_card");
+
+  const challenge = await service.dispatchFeishuWebhook({
+    type: "url_verification",
+    app_id: "cli_test",
+    token: "verify-token",
+    challenge: "challenge-value",
+  });
+  assert.equal(challenge.accepted, true);
+  assert.equal(challenge.verification.ok, true);
+  assert.deepEqual(challenge.feishuResponse, { challenge: "challenge-value" });
+  assert.equal(challenge.eventStored.written, true);
+
+  const badToken = await service.dispatchFeishuWebhook({
+    type: "url_verification",
+    app_id: "cli_test",
+    token: "wrong-token",
+    challenge: "challenge-value",
+  });
+  assert.equal(badToken.accepted, false);
+  assert.equal(badToken.skippedReason, "feishu_verification_token_mismatch");
+  assert.equal(badToken.feishuResponse, null);
+
+  const slashMessage = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_msg",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_msg",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "text",
+        content: JSON.stringify({ text: "/mode yolo" }),
+      },
+    },
+  });
+  assert.equal(slashMessage.accepted, true);
+  assert.equal(slashMessage.eventKind, "message");
+  assert.equal(slashMessage.sessionKey, "feishu:oc_chat:ou_admin");
+  assert.equal(slashMessage.incoming.content, "/mode yolo");
+  assert.equal(slashMessage.commandAction.command, "/mode yolo");
+  assert.equal(slashMessage.commandAction.commandResult.ok, true);
+  assert.equal(slashMessage.commandAction.surface.current.permissionMode, "yolo");
+  assert.match(slashMessage.feishuResponse.toast.content, /已切换本会话权限模式/);
+
+  const cardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_2",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_2" },
+      action: {
+        value: {
+          action: "cmd:/native /help",
+        },
+      },
+    },
+  });
+  assert.equal(cardAction.accepted, true);
+  assert.equal(cardAction.eventKind, "card-action");
+  assert.equal(cardAction.commandAction.command, "/native /help");
+  assert.equal(cardAction.commandAction.commandResult.handled, false);
+  assert.equal(cardAction.commandAction.commandResult.passthroughText, "/help");
+  assert.match(cardAction.feishuResponse.toast.content, /\/help/);
+});
+
 test("native Channel Connectors process runner streams progress events from agent JSONL", async () => {
   const root = makeTempRoot();
   const progress = [];
@@ -1342,6 +1488,20 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
               allowlist: [],
               adminUsers: [],
             },
+            {
+              id: "feishu-route",
+              platform: "feishu",
+              accountId: "cli_route",
+              botId: "feishu-route-bot",
+              displayName: "Feishu Route Bot",
+              agentProfileId: "opencode-main",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                verificationToken: "route-token",
+              },
+            },
           ],
         },
       },
@@ -1418,6 +1578,18 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(botMenu.body.accepted, true);
     assert.equal(botMenu.body.command, "/status");
     assert.match(botMenu.body.commandResult.replyText, /Studio Channel Status/);
+
+    const feishuWebhook = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/webhook`, {
+      method: "POST",
+      body: {
+        type: "url_verification",
+        app_id: "cli_route",
+        token: "route-token",
+        challenge: "route-challenge",
+      },
+    });
+    assert.equal(feishuWebhook.status, 200);
+    assert.deepEqual(feishuWebhook.body, { challenge: "route-challenge" });
 
     const octoSmoke = await requestJson(`${baseUrl}/api/channel-connectors/adapters/octo/incoming`, {
       method: "POST",

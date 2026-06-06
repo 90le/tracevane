@@ -26,6 +26,8 @@ import {
   type ChannelConnectorCommandActionResponse,
   type ChannelConnectorCommandSurfaceRequest,
   type ChannelConnectorCommandSurfaceResponse,
+  type ChannelConnectorFeishuWebhookRequest,
+  type ChannelConnectorFeishuWebhookResponse,
   type ChannelConnectorsSaveNativeConfigRequest,
   type ChannelConnectorsStatusResponse,
   type ChannelConnectorOctoDispatchResponse,
@@ -58,6 +60,10 @@ import {
   extractChannelConnectorSurfaceActionPayload,
   renderChannelConnectorCommandSurfaceFeishu,
 } from "./command-surface.js";
+import {
+  parseChannelConnectorFeishuWebhook,
+  safeEqualFeishuWebhookToken,
+} from "./feishu-adapter.js";
 import { handleChannelConnectorCommand } from "./command-router.js";
 import { getChannelConnectorSessionControl } from "./session-control-store.js";
 
@@ -97,6 +103,7 @@ export interface ChannelConnectorsService {
   saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
   getCommandSurface(payload?: ChannelConnectorCommandSurfaceRequest): ChannelConnectorCommandSurfaceResponse;
   handleCommandAction(payload?: ChannelConnectorCommandActionRequest): Promise<ChannelConnectorCommandActionResponse>;
+  dispatchFeishuWebhook(payload?: ChannelConnectorFeishuWebhookRequest): Promise<ChannelConnectorFeishuWebhookResponse>;
   dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): Promise<ChannelConnectorOctoDispatchResponse>;
   runOctoTransportSmoke(payload?: ChannelConnectorOctoTransportSmokeRequest): Promise<ChannelConnectorOctoTransportSmokeResponse>;
   getDaemonConfig(): ChannelConnectorsDaemonConfigResponse;
@@ -115,6 +122,7 @@ interface ChannelConnectorsPaths {
   logFile: string;
   runtimeFile: string;
   octoEventLogFile: string;
+  feishuEventLogFile: string;
 }
 
 function normalizeHomeDir(value: string | undefined): string {
@@ -166,6 +174,7 @@ export function resolveChannelConnectorsPaths(
     logFile: path.join(logDir, "channel-connectors.log"),
     runtimeFile: path.join(rootDir, "runtime.json"),
     octoEventLogFile: path.join(rootDir, "state", "octo-events.jsonl"),
+    feishuEventLogFile: path.join(rootDir, "state", "feishu-events.jsonl"),
   };
 }
 
@@ -445,6 +454,7 @@ function buildRuntimeConfig(
       log: paths.logFile,
       runtime: paths.runtimeFile,
       octoEvents: paths.octoEventLogFile,
+      feishuEvents: paths.feishuEventLogFile,
     },
     gateway: {
       endpoint: gatewayEndpoint(),
@@ -931,6 +941,69 @@ function resolveRuntimeBindingById(
   return { binding, agentProfile, project, runtimeBinding };
 }
 
+function bindingMetadataString(
+  binding: ChannelConnectorsNativeConfig["platformBindings"][number],
+  keys: string[],
+): string {
+  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
+  for (const key of keys) {
+    const value = normalizeString(metadata[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function resolveRuntimeBindingForPlatform(
+  nativeConfig: ChannelConnectorsNativeConfig,
+  runtimeConfig: ChannelConnectorsDaemonRuntimeConfig,
+  platform: ChannelConnectorPlatformId,
+  bindingId: string | null | undefined,
+  accountId: string | null | undefined,
+): {
+  binding: ChannelConnectorsNativeConfig["platformBindings"][number];
+  agentProfile: ChannelConnectorsNativeConfig["agentProfiles"][number];
+  project: ChannelConnectorsDaemonRuntimeConfig["projects"][number];
+  runtimeBinding: ChannelConnectorsDaemonRuntimeConfig["projects"][number]["platformBindings"][number];
+} | null {
+  const platformBindings = nativeConfig.platformBindings.filter((binding) => binding.enabled && binding.platform === platform);
+  const normalizedAccountId = normalizeString(accountId);
+  const binding = bindingId
+    ? platformBindings.find((candidate) => candidate.id === bindingId)
+    : normalizedAccountId
+      ? platformBindings.find((candidate) =>
+        candidate.accountId === normalizedAccountId
+        || bindingMetadataString(candidate, ["appId", "app_id"]) === normalizedAccountId
+      )
+      : platformBindings.length === 1
+        ? platformBindings[0]
+        : null;
+  if (!binding) return null;
+  const agentProfile = nativeConfig.agentProfiles.find((profile) => profile.id === binding.agentProfileId);
+  const project = runtimeConfig.projects.find((candidate) => candidate.id === binding.agentProfileId);
+  const runtimeBinding = project?.platformBindings.find((candidate) => candidate.id === binding.id);
+  if (!agentProfile || !project || !runtimeBinding) return null;
+  return { binding, agentProfile, project, runtimeBinding };
+}
+
+function verifyFeishuWebhookToken(
+  binding: ChannelConnectorsNativeConfig["platformBindings"][number] | null,
+  token: string | null | undefined,
+): ChannelConnectorFeishuWebhookResponse["verification"] {
+  if (!binding) return { configured: false, checked: false, ok: null };
+  const expected = bindingMetadataString(binding, [
+    "verificationToken",
+    "verification_token",
+    "feishuVerificationToken",
+    "feishu_verification_token",
+  ]);
+  if (!expected) return { configured: false, checked: false, ok: null };
+  return {
+    configured: true,
+    checked: true,
+    ok: safeEqualFeishuWebhookToken(token, expected),
+  };
+}
+
 function commandSurfaceControlsPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(runtimeConfig.paths.state, "channel-session-controls.json");
 }
@@ -1167,6 +1240,237 @@ export function createChannelConnectorsService(
       textFallback: surface.textFallback,
       feishuCard: request.renderer === "text" ? null : renderChannelConnectorCommandSurfaceFeishu(surface),
     };
+  }
+
+  async function dispatchFeishuWebhook(payload: ChannelConnectorFeishuWebhookRequest = {}): Promise<ChannelConnectorFeishuWebhookResponse> {
+    const request = isRecord(payload) ? payload : {};
+    const parsed = parseChannelConnectorFeishuWebhook(payload);
+    const checkedAt = now().toISOString();
+    const resolvedPaths = paths();
+    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
+    const resolved = resolveRuntimeBindingForPlatform(
+      nativeConfig,
+      runtimeConfig,
+      "feishu",
+      parsed.bindingId || normalizeString(request.bindingId) || null,
+      parsed.appId,
+    );
+    const verification = verifyFeishuWebhookToken(resolved?.binding || null, parsed.token);
+    const tokenRejected = verification.ok === false;
+    const eventPath = resolvedPaths.feishuEventLogFile;
+    const renderer = request.renderer === "text" || request.renderer === "feishu" || request.renderer === "all"
+      ? request.renderer
+      : "all";
+    const models = stringList(request.models);
+
+    const baseAgentDispatch = {
+      status: "skipped" as const,
+      agent: resolved?.agentProfile.agent || null,
+      model: resolved?.agentProfile.model || null,
+      workDir: resolved?.agentProfile.workDir || null,
+      gatewayEndpoint: resolved?.agentProfile.gatewayEndpoint || null,
+      gatewayKeyRef: resolved?.agentProfile.gatewayKeyRef || null,
+    };
+    const finish = (response: ChannelConnectorFeishuWebhookResponse): ChannelConnectorFeishuWebhookResponse => {
+      writeJsonLine(eventPath, {
+        checkedAt,
+        adapter: "feishu",
+        eventKind: response.eventKind,
+        eventType: response.eventType,
+        eventId: response.eventId,
+        accepted: response.accepted,
+        skippedReason: response.skippedReason,
+        bindingId: response.binding?.id || null,
+        agentProfileId: response.agentProfile?.id || null,
+        sessionKey: response.sessionKey,
+        messageId: response.incoming?.messageId || parsed.messageId || null,
+        channelId: response.incoming?.channelId || parsed.channelId || null,
+        fromUid: response.incoming?.fromUid || parsed.fromUid || null,
+        command: response.commandAction?.command || null,
+      });
+      response.eventStored.written = true;
+      return response;
+    };
+    const skipped = (skippedReason: string): ChannelConnectorFeishuWebhookResponse => finish({
+      ok: true,
+      checkedAt,
+      adapter: "feishu",
+      eventKind: parsed.kind,
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason,
+      verification,
+      challenge: parsed.challenge,
+      binding: resolved?.binding || null,
+      agentProfile: resolved?.agentProfile || null,
+      sessionKey: null,
+      incoming: null,
+      commandAction: null,
+      agentDispatch: baseAgentDispatch,
+      feishuResponse: null,
+      eventStored: {
+        path: eventPath,
+        written: false,
+      },
+    });
+
+    if (!resolved) return skipped("feishu_binding_not_found");
+    if (tokenRejected) return skipped("feishu_verification_token_mismatch");
+
+    if (parsed.kind === "url-verification") {
+      if (!parsed.challenge) return skipped("feishu_challenge_missing");
+      return finish({
+        ok: true,
+        checkedAt,
+        adapter: "feishu",
+        eventKind: parsed.kind,
+        eventType: parsed.eventType,
+        eventId: parsed.eventId,
+        accepted: true,
+        skippedReason: null,
+        verification,
+        challenge: parsed.challenge,
+        binding: resolved.binding,
+        agentProfile: resolved.agentProfile,
+        sessionKey: null,
+        incoming: null,
+        commandAction: null,
+        agentDispatch: baseAgentDispatch,
+        feishuResponse: { challenge: parsed.challenge },
+        eventStored: {
+          path: eventPath,
+          written: false,
+        },
+      });
+    }
+
+    if (parsed.kind === "card-action" || parsed.kind === "bot-menu") {
+      const action = await handleCommandAction({
+        bindingId: resolved.binding.id,
+        sessionKey: null,
+        fromUid: parsed.fromUid,
+        channelId: parsed.channelId,
+        messageId: parsed.messageId,
+        actionValue: parsed.actionValue,
+        eventKey: parsed.eventKey,
+        renderer,
+        models,
+      });
+      const toastContent = action.commandResult?.replyText
+        || action.commandResult?.passthroughText
+        || action.skippedReason
+        || "Studio command accepted.";
+      const feishuResponse: Record<string, unknown> = {
+        toast: {
+          type: action.commandResult?.ok === false || !action.accepted ? "warning" : "info",
+          content: toastContent,
+        },
+      };
+      if (action.feishuCard) feishuResponse.card = { type: "raw", data: action.feishuCard };
+      return finish({
+        ok: true,
+        checkedAt,
+        adapter: "feishu",
+        eventKind: parsed.kind,
+        eventType: parsed.eventType,
+        eventId: parsed.eventId,
+        accepted: action.accepted,
+        skippedReason: action.skippedReason,
+        verification,
+        challenge: null,
+        binding: resolved.binding,
+        agentProfile: resolved.agentProfile,
+        sessionKey: action.sessionKey,
+        incoming: null,
+        commandAction: action,
+        agentDispatch: baseAgentDispatch,
+        feishuResponse,
+        eventStored: {
+          path: eventPath,
+          written: false,
+        },
+      });
+    }
+
+    if (parsed.kind !== "message") return skipped("feishu_event_unsupported");
+    if (!parsed.messageId || !parsed.fromUid || !parsed.channelId) return skipped("feishu_message_identity_missing");
+    if (!parsed.text) return skipped("feishu_message_text_missing");
+    if (!parsed.directed) return skipped("feishu_group_message_not_directed");
+
+    const sessionKey = derivedCommandActionSessionKey({
+      sessionKey: null,
+      platform: "feishu",
+      channelId: parsed.channelId,
+      fromUid: parsed.fromUid,
+    });
+    if (!sessionKey) return skipped("session_key_missing");
+
+    let commandAction: ChannelConnectorCommandActionResponse | null = null;
+    let accepted = request.dryRun === true;
+    let skippedReason: string | null = request.dryRun === true ? null : "agent_dispatch_not_ready";
+    let agentStatus: "dry-run" | "not-ready" | "skipped" = request.dryRun === true ? "dry-run" : "not-ready";
+    let feishuResponse: Record<string, unknown> | null = null;
+    if (parsed.text.startsWith("/")) {
+      commandAction = await handleCommandAction({
+        bindingId: resolved.binding.id,
+        sessionKey,
+        fromUid: parsed.fromUid,
+        channelId: parsed.channelId,
+        messageId: parsed.messageId,
+        eventKey: parsed.text,
+        renderer,
+        models,
+      });
+      accepted = commandAction.accepted;
+      skippedReason = commandAction.skippedReason;
+      agentStatus = "skipped";
+      const content = commandAction.commandResult?.replyText || commandAction.commandResult?.passthroughText || skippedReason || "";
+      if (content) {
+        feishuResponse = {
+          toast: {
+            type: commandAction.commandResult?.ok === false || !commandAction.accepted ? "warning" : "info",
+            content,
+          },
+        };
+      }
+    }
+
+    return finish({
+      ok: true,
+      checkedAt,
+      adapter: "feishu",
+      eventKind: parsed.kind,
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted,
+      skippedReason,
+      verification,
+      challenge: null,
+      binding: resolved.binding,
+      agentProfile: resolved.agentProfile,
+      sessionKey,
+      incoming: {
+        messageId: parsed.messageId,
+        platform: "feishu",
+        channelId: parsed.channelId,
+        chatType: parsed.chatType,
+        fromUid: parsed.fromUid,
+        content: parsed.text,
+        directed: parsed.directed,
+      },
+      commandAction,
+      agentDispatch: {
+        ...baseAgentDispatch,
+        status: agentStatus,
+      },
+      feishuResponse,
+      eventStored: {
+        path: eventPath,
+        written: false,
+      },
+    });
   }
 
   async function dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): Promise<ChannelConnectorOctoDispatchResponse> {
@@ -1494,6 +1798,7 @@ export function createChannelConnectorsService(
     saveNativeConfig,
     getCommandSurface,
     handleCommandAction,
+    dispatchFeishuWebhook,
     dispatchOctoIncoming,
     runOctoTransportSmoke,
     getDaemonConfig: currentConfig,

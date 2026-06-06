@@ -279,6 +279,72 @@ export interface ChannelConnectorCommandActionResponse {
   feishuCard: ChannelConnectorFeishuInteractiveCard | null;
 }
 
+export type ChannelConnectorFeishuWebhookEventKind =
+  | "url-verification"
+  | "card-action"
+  | "bot-menu"
+  | "message"
+  | "unsupported";
+
+export interface ChannelConnectorFeishuWebhookRequest {
+  bindingId?: string | null;
+  renderer?: ChannelConnectorCommandSurfaceRenderer;
+  models?: string[];
+  dryRun?: boolean;
+  sendReply?: boolean;
+  token?: string | null;
+  challenge?: string | null;
+  type?: string | null;
+  schema?: string | null;
+  header?: Record<string, unknown>;
+  event?: Record<string, unknown>;
+  actionValue?: unknown;
+  eventKey?: string | null;
+}
+
+export interface ChannelConnectorFeishuWebhookResponse {
+  ok: true;
+  checkedAt: string;
+  adapter: "feishu";
+  eventKind: ChannelConnectorFeishuWebhookEventKind;
+  eventType: string | null;
+  eventId: string | null;
+  accepted: boolean;
+  skippedReason: string | null;
+  verification: {
+    configured: boolean;
+    checked: boolean;
+    ok: boolean | null;
+  };
+  challenge: string | null;
+  binding: ChannelConnectorPlatformBinding | null;
+  agentProfile: ChannelConnectorAgentProfile | null;
+  sessionKey: string | null;
+  incoming: {
+    messageId: string;
+    platform: "feishu";
+    channelId: string;
+    chatType: string | null;
+    fromUid: string;
+    content: string;
+    directed: boolean;
+  } | null;
+  commandAction: ChannelConnectorCommandActionResponse | null;
+  agentDispatch: {
+    status: "dry-run" | "not-ready" | "skipped";
+    agent: ChannelConnectorAgentId | null;
+    model: string | null;
+    workDir: string | null;
+    gatewayEndpoint: string | null;
+    gatewayKeyRef: "studio-gateway-client-key" | null;
+  };
+  feishuResponse: Record<string, unknown> | null;
+  eventStored: {
+    path: string;
+    written: boolean;
+  };
+}
+
 export type ChannelConnectorsSupervisorKind =
   | "systemd-user"
   | "launchd-user"
@@ -330,6 +396,7 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
     log: string;
     runtime: string;
     octoEvents: string;
+    feishuEvents: string;
   };
   gateway: {
     endpoint: string;
