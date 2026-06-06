@@ -47,6 +47,7 @@ import {
   parseChannelConnectorByteSize,
   prepareChannelConnectorAttachmentStagingTarget,
   stageChannelConnectorAttachmentData,
+  stageChannelConnectorAttachmentUrl,
 } from "../../dist/apps/api/modules/channel-connectors/attachment-staging.js";
 import {
   splitChannelConnectorTextChunks,
@@ -553,7 +554,7 @@ test("native Channel Connectors governance policy enforces allowlist, banned wor
   assert.equal(fs.statSync(statePath).mode & 0o777, 0o600);
 });
 
-test("native Channel Connectors stages attachments under sanitized local paths", () => {
+test("native Channel Connectors stages attachments under sanitized local paths", async () => {
   assert.equal(parseChannelConnectorByteSize("512mb", 1), 512 * 1024 * 1024);
   assert.equal(parseChannelConnectorByteSize("2gb", 1), 2 * 1024 * 1024 * 1024);
   assert.equal(parseChannelConnectorByteSize("0", 1), Number.POSITIVE_INFINITY);
@@ -597,6 +598,82 @@ test("native Channel Connectors stages attachments under sanitized local paths",
     mimeType: "image/png",
     maxBytes: 2,
   }), /Attachment exceeds size limit/);
+
+  await withServer(async (req, res) => {
+    if (req.url === "/artifact.bin") {
+      const body = Buffer.from("downloaded octo attachment", "utf8");
+      res.setHeader("content-type", "application/octet-stream");
+      res.setHeader("content-length", String(body.length));
+      res.end(body);
+      return true;
+    }
+    if (req.url === "/too-large.bin") {
+      const body = Buffer.from("larger than limit", "utf8");
+      res.setHeader("content-type", "application/octet-stream");
+      res.setHeader("content-length", String(body.length));
+      res.end(body);
+      return true;
+    }
+    return false;
+  }, async (baseUrl) => {
+    const privateRejected = await stageChannelConnectorAttachmentUrl({
+      attachment: {
+        kind: "file",
+        platform: "octo",
+        url: `${baseUrl}/artifact.bin`,
+        fileName: "artifact.bin",
+      },
+      url: `${baseUrl}/artifact.bin`,
+      rootDir: root,
+      messageId: "octo-private-default",
+      index: 0,
+      maxBytes: 1024,
+    });
+    assert.equal(privateRejected.ok, false);
+    assert.match(privateRejected.error, /private network/);
+
+    const urlStaged = await stageChannelConnectorAttachmentUrl({
+      attachment: {
+        kind: "file",
+        platform: "octo",
+        url: `${baseUrl}/artifact.bin`,
+        fileName: "../../artifact final?.bin",
+      },
+      url: `${baseUrl}/artifact.bin`,
+      rootDir: root,
+      messageId: "octo-url/../../message",
+      index: 1,
+      maxBytes: 1024,
+      allowPrivateNetwork: true,
+      now: new Date("2026-06-06T08:01:00.000Z"),
+    });
+    assert.equal(urlStaged.ok, true);
+    assert.equal(urlStaged.attachment.platform, "octo");
+    assert.equal(urlStaged.attachment.size, Buffer.byteLength("downloaded octo attachment"));
+    assert.equal(urlStaged.attachment.stagedAt, "2026-06-06T08:01:00.000Z");
+    assert.ok(urlStaged.attachment.localPath);
+    assert.doesNotMatch(urlStaged.attachment.localPath, /\.\./);
+    assert.equal(fs.readFileSync(urlStaged.attachment.localPath, "utf8"), "downloaded octo attachment");
+
+    const tooLarge = await stageChannelConnectorAttachmentUrl({
+      attachment: {
+        kind: "file",
+        platform: "octo",
+        url: `${baseUrl}/too-large.bin`,
+        fileName: "too-large.bin",
+      },
+      url: `${baseUrl}/too-large.bin`,
+      rootDir: root,
+      messageId: "octo-too-large",
+      index: 2,
+      maxBytes: 4,
+      allowPrivateNetwork: true,
+    });
+    assert.equal(tooLarge.ok, false);
+    assert.match(tooLarge.error, /exceeds size limit/);
+    assert.equal(tooLarge.localPath, null);
+    assert.equal(tooLarge.attachment.localPath, undefined);
+  });
 });
 
 test("native Channel Connectors config preview targets Studio Gateway without cc-connect TOML", () => {

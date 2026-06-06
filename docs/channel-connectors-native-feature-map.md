@@ -45,10 +45,11 @@
 - 已完成：F4 Feishu thread/reply session：daemon/service 共用 CC 风格 session key，群线程默认 root 隔离、私聊仍按用户隔离，日志和 webhook 返回保留 root/parent/thread。
 - 已完成：F4 attachment metadata：Feishu `image/file/audio/media/sticker` 与 Octo 图片/文件/语音/视频映射到统一 attachment contract；Agent 只收到脱敏摘要，平台 key 留在本地结构化数据中。
 - 已完成：F4 Feishu attachment staging：Feishu resource streaming 下载到 `agent-runtime/attachments`，路径清洗；daemon 默认 128MB 安全阀，binding metadata 可覆盖或关闭上限；失败降级为 `stagingError`，Agent prompt 使用本地路径。
+- 已完成：F4 Octo URL attachment staging：Octo URL 型图片/文件/语音/视频在进入 Agent 前 streaming 落盘，默认拒绝私网 URL，大小上限复用 attachment metadata；失败只写 `stagingError`。
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/new` / `/reset` 清理 history。
 - 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。
 - 已完成：F4 长回复 group buffer：群聊长回复保存到本地 buffer，只发送短预览和 buffer id；私聊保持原拆分。
 - 已完成：F4 reply buffer 查看：`/buffer` / `/buffer <id|前缀|latest>` 和 Feishu Reply Buffer 子卡片，按当前 binding + session 隔离读取。
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
 - 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
-- 下一步：继续迁移 CC/OpenClaw 文件/图片和多平台 adapter；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
+- 下一步：继续迁移 CC/OpenClaw 语音/STT/TTS、文件出站和多平台 adapter；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。

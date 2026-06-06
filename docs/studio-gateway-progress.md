@@ -27,6 +27,7 @@
 - F4 Feishu thread/reply 会话隔离已对齐 CC：群线程默认按 `root_id/message_id` 生成独立 session，metadata 可关闭；私聊保持每用户 session；daemon/service 共用同一 session helper，事件日志和 webhook 返回保留 `rootId/parentId/threadId`。
 - F4 附件基础合同已落地：Feishu `image/file/audio/media/sticker` 解析为统一 attachment metadata，Octo 也补齐同一结构；Agent prompt 只接收无平台 key 的附件摘要，API/日志记录 `messageType/attachmentCount/attachmentKinds`。
 - F4 Feishu 附件下载/staging 已落地：长连接进入 Agent 前以 streaming 方式下载 Feishu resource 到 `agent-runtime/attachments/<messageId>`，文件名和 messageId 做路径清洗；daemon 仅设置可配置安全阀，默认 128MB，binding metadata 可用 `attachmentMaxBytes` / `attachment_max_bytes` 覆盖，`0` / `unlimited` 可关闭 daemon 侧上限；失败只写 `stagingError` 不阻断会话；Agent prompt 引用本地路径，不泄露平台 key。
+- F4 Octo URL 附件 staging 已落地：Octo URL 型图片/文件/语音/视频进入 Agent 前 streaming 落盘到同一 attachment 合同，默认拒绝私网 URL；失败只记录 `stagingError`，文本对话继续执行。
 - F4 IM history context 已落地：按 `bindingId + sessionKey` 保存最近 user/assistant 脱敏摘要，Agent 调用前注入同一 IM session 的短上下文；`/new` 与 `/reset` 会同步清理 history。
 - F4 群聊 context 已落地：Agent prompt 会注入当前群聊 channel、sender、bot id、reply message、mention 和入站可用成员列表；Feishu 当前先注入已解析 chat/root/thread/from 信息，不拉取完整群成员。
 - F4 长回复 group buffer 已落地：群聊成功回复超过阈值时保存完整内容到本地 `channel-reply-buffers.json`，群里只发送短预览和 buffer id；私聊、错误回执仍按原逻辑发送。
@@ -49,15 +50,18 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "buffers long group replies|IM commands switch agent|command surface renders text and Feishu card actions|Feishu webhook parses|Feishu transport sends replies"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "governance policy|Octo incoming can send rendered reply|Feishu webhook parses|Feishu transport sends replies|daemon owns Feishu long-connection ingress|buffers long group replies|IM commands switch agent"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Feishu transport lists chat members|agent runner builds gateway-backed Codex turns|Feishu webhook parses|Feishu transport sends replies|daemon owns Feishu long-connection ingress|Feishu transport downloads message resources"`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "stages attachments|Octo adapter dry-run|agent runner builds gateway-backed Codex turns|Feishu transport downloads message resources|daemon owns Feishu long-connection ingress"`。
+- 通过：`npm run typecheck:api`。
 - 通过：隔离 `CODEX_HOME` 真实 Codex CLI smoke，`glm-5` 经 Studio Gateway 调用 shell 读取 `probe.txt` 后返回 `ok`；Gateway requestLog 显示两次 `/v1/responses` 均为 200，修复前同路径曾返回 400/1213。
 - 通过：隔离 `CODEX_HOME` 三工具调用 smoke，`glm-5` 连续 3 次 `command_execution` 后返回 `ok`，退出码 0。
 - 通过：真实飞书客户端复测 `调用三次阅读工具回复我ok`；长连接入站、processing reaction、Progress card send/patch、3 次工具步骤、最终 `agentStatus=completed` / `agentError=null`。Gateway 最新 4 次 `/v1/responses` 均为 200，无 1213。
 - 已重启：`openclaw-studio-model-gateway.service`、`openclaw-studio-channel-connectors.service`、dev backend/frontend。
+- 本轮已重启并确认：`openclaw-studio-channel-connectors.service` active，daemon `http://127.0.0.1:18797/status` 正常，dev backend `:3762` 与 frontend `:5176` 正常监听。
 
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Feishu progress card 已替代文本进度；附件 staging 已具备 streaming 落盘、安全本地路径和可配置大小安全阀；真实 Feishu 大文件/压缩包客户端 smoke、真实群聊成员拉取 smoke 尚未执行。
+- Feishu progress card 已替代文本进度；附件 staging 已具备 streaming 落盘、安全本地路径和可配置大小安全阀；真实 Feishu 大文件/压缩包、真实 Octo 文件/图片、真实群聊成员拉取 smoke 尚未执行。
 
 ## 下一步
 

@@ -90,6 +90,7 @@ import {
   finalizeChannelConnectorAttachmentStaging,
   parseChannelConnectorByteSize,
   prepareChannelConnectorAttachmentStagingTarget,
+  stageChannelConnectorAttachmentUrl,
 } from "./attachment-staging.js";
 import {
   buildChannelConnectorCommandSurface,
@@ -980,6 +981,77 @@ async function stageFeishuMessageAttachments(input: {
   };
 }
 
+async function stageOctoMessageAttachments(input: {
+  message: ChannelConnectorOctoInboundMessage;
+  rootDir: string;
+  maxBytes: number;
+  allowPrivateNetwork: boolean;
+}): Promise<{
+  message: ChannelConnectorOctoInboundMessage;
+  stagedCount: number;
+  failedCount: number;
+  localPaths: string[];
+}> {
+  const attachments = input.message.attachments || [];
+  if (!attachments.length) {
+    return {
+      message: input.message,
+      stagedCount: 0,
+      failedCount: 0,
+      localPaths: [],
+    };
+  }
+
+  const stagedAttachments: ChannelConnectorInboundAttachment[] = [];
+  const localPaths: string[] = [];
+  let stagedCount = 0;
+  let failedCount = 0;
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
+    const existingLocalPath = normalizeString(attachment.localPath);
+    if (existingLocalPath) {
+      localPaths.push(existingLocalPath);
+      stagedAttachments.push(attachment);
+      continue;
+    }
+    const url = normalizeString(attachment.url);
+    if (!url) {
+      failedCount += 1;
+      stagedAttachments.push({
+        ...attachment,
+        stagingError: "octo_attachment_url_missing",
+      });
+      continue;
+    }
+    const staged = await stageChannelConnectorAttachmentUrl({
+      attachment,
+      url,
+      rootDir: input.rootDir,
+      messageId: input.message.messageId,
+      index,
+      maxBytes: input.maxBytes,
+      allowPrivateNetwork: input.allowPrivateNetwork,
+    });
+    if (staged.ok) {
+      stagedCount += 1;
+      if (staged.localPath) localPaths.push(staged.localPath);
+    } else {
+      failedCount += 1;
+    }
+    stagedAttachments.push(staged.attachment);
+  }
+
+  return {
+    message: {
+      ...input.message,
+      attachments: stagedAttachments,
+    },
+    stagedCount,
+    failedCount,
+    localPaths,
+  };
+}
+
 function feishuCardsEnabled(binding: ChannelConnectorRuntimeBinding): boolean {
   return metadataBoolean(binding, [
     "enableFeishuCard",
@@ -1522,7 +1594,7 @@ async function dispatchOctoMessage(input: {
     writeRuntime(config, state);
     return;
   }
-  const agentMessage = command.passthroughText
+  let agentMessage = command.passthroughText
     ? {
       ...message,
       payload: {
@@ -1610,6 +1682,47 @@ async function dispatchOctoMessage(input: {
     codexThreadId: currentSession?.codexThreadId || null,
   });
 
+  const runtimeDir = agentRuntimeDir(config, effectiveProject, binding);
+  if ((agentMessage.attachments || []).length > 0 && metadataBoolean(binding, [
+    "stageOctoUrlAttachments",
+    "stage_octo_url_attachments",
+    "stageUrlAttachments",
+    "stage_url_attachments",
+  ], true)) {
+    const attachmentMaxBytes = metadataByteSize(binding, [
+      "attachmentMaxBytes",
+      "attachment_max_bytes",
+      "maxAttachmentBytes",
+      "max_attachment_bytes",
+      "octoAttachmentMaxBytes",
+      "octo_attachment_max_bytes",
+    ], DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES);
+    const staged = await stageOctoMessageAttachments({
+      message: agentMessage,
+      rootDir: runtimeDir,
+      maxBytes: attachmentMaxBytes,
+      allowPrivateNetwork: metadataBoolean(binding, [
+        "allowPrivateAttachmentUrls",
+        "allow_private_attachment_urls",
+        "allowOctoPrivateAttachmentUrls",
+        "allow_octo_private_attachment_urls",
+      ], false),
+    });
+    agentMessage = staged.message;
+    writeJsonLine(config.paths.octoEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "agent.attachments.staged",
+      adapter: "octo",
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      attachmentMaxBytes: describeByteSizeLimit(attachmentMaxBytes),
+      stagedCount: staged.stagedCount,
+      failedCount: staged.failedCount,
+      localPaths: staged.localPaths,
+    });
+  }
+
   const stopTypingPulse = startOctoTypingPulse(transport, message);
   let agent: ChannelConnectorAgentTurnResult;
   try {
@@ -1620,7 +1733,7 @@ async function dispatchOctoMessage(input: {
       sessionKey,
       gatewayEndpoint: effectiveProject.gatewayEndpoint || config.gateway.endpoint,
       gatewayClientKey: key,
-      agentRuntimeDir: agentRuntimeDir(config, effectiveProject, binding),
+      agentRuntimeDir: runtimeDir,
       historyContext,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,

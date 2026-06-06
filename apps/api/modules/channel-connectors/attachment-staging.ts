@@ -1,10 +1,14 @@
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type {
   ChannelConnectorInboundAttachment,
 } from "../../../../types/channel-connectors.js";
 
 export const DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES = 128 * 1024 * 1024;
+const DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_URL_TIMEOUT_MS = 30_000;
 
 export interface ChannelConnectorAttachmentStagingTarget {
   localPath: string;
@@ -12,8 +16,24 @@ export interface ChannelConnectorAttachmentStagingTarget {
   mimeType: string | null;
 }
 
+export interface ChannelConnectorAttachmentUrlStagingResult {
+  attempted: boolean;
+  ok: boolean;
+  statusCode: number | null;
+  attachment: ChannelConnectorInboundAttachment;
+  localPath: string | null;
+  size: number | null;
+  mimeType: string | null;
+  error: string | null;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return "Attachment URL staging failed.";
 }
 
 export function parseChannelConnectorByteSize(value: unknown, fallback: number): number {
@@ -70,6 +90,47 @@ function extensionFor(input: {
   if (mime === "video/mp4") return ".mp4";
   if (input.kind === "image") return ".bin";
   return "";
+}
+
+function isPrivateIpAddress(hostname: string): boolean {
+  const version = net.isIP(hostname);
+  if (version === 4) {
+    const parts = hostname.split(".").map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) return false;
+    const [first, second] = parts;
+    return first === 10
+      || first === 127
+      || (first === 169 && second === 254)
+      || (first === 172 && second >= 16 && second <= 31)
+      || (first === 192 && second === 168);
+  }
+  if (version === 6) {
+    const lower = hostname.toLowerCase();
+    return lower === "::1"
+      || lower.startsWith("fc")
+      || lower.startsWith("fd")
+      || lower.startsWith("fe80:");
+  }
+  return false;
+}
+
+function validateAttachmentHttpUrl(inputUrl: string, allowPrivateNetwork = false): URL {
+  const raw = normalizeString(inputUrl);
+  if (!raw) throw new Error("Attachment URL is required.");
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("Attachment URL is invalid.");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Attachment URL must use http or https.");
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  if (!allowPrivateNetwork && (hostname === "localhost" || hostname.endsWith(".localhost") || isPrivateIpAddress(hostname))) {
+    throw new Error("Attachment URL points to a private network host.");
+  }
+  return parsed;
 }
 
 function defaultAttachmentFileName(attachment: ChannelConnectorInboundAttachment, index: number): string {
@@ -153,4 +214,116 @@ export function stageChannelConnectorAttachmentData(input: {
     mimeType: target.mimeType,
     now: input.now,
   });
+}
+
+export async function stageChannelConnectorAttachmentUrl(input: {
+  attachment: ChannelConnectorInboundAttachment;
+  url: string;
+  rootDir: string;
+  messageId: string;
+  index: number;
+  mimeType?: string | null;
+  maxBytes?: number;
+  timeoutMs?: number;
+  allowPrivateNetwork?: boolean;
+  now?: Date;
+}): Promise<ChannelConnectorAttachmentUrlStagingResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    input.timeoutMs ?? DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_URL_TIMEOUT_MS,
+  );
+  let tempPath: string | null = null;
+  try {
+    const parsedUrl = validateAttachmentHttpUrl(input.url, input.allowPrivateNetwork === true);
+    const response = await fetch(parsedUrl, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const raw = await response.text().catch(() => "");
+      throw Object.assign(new Error(raw || `Attachment URL request failed with HTTP ${response.status}`), {
+        statusCode: response.status,
+      });
+    }
+    if (!response.body) {
+      throw Object.assign(new Error("Attachment URL response did not include a body."), {
+        statusCode: response.status,
+      });
+    }
+
+    const maxBytes = input.maxBytes ?? DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES;
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(maxBytes) && Number.isFinite(contentLength) && contentLength > maxBytes) {
+      throw Object.assign(new Error(`Attachment exceeds size limit: ${contentLength} > ${maxBytes}`), {
+        statusCode: response.status,
+      });
+    }
+    const responseMimeType = normalizeString(response.headers.get("content-type")).split(";")[0].trim() || null;
+    const target = prepareChannelConnectorAttachmentStagingTarget({
+      attachment: input.attachment,
+      rootDir: input.rootDir,
+      messageId: input.messageId,
+      index: input.index,
+      mimeType: input.mimeType || responseMimeType,
+    });
+    tempPath = target.tempPath;
+    let size = 0;
+    const limiter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        size += chunk.length;
+        if (Number.isFinite(maxBytes) && size > maxBytes) {
+          callback(Object.assign(new Error(`Attachment exceeds size limit: ${size} > ${maxBytes}`), {
+            statusCode: response.status,
+          }));
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+    await pipeline(
+      Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
+      limiter,
+      fs.createWriteStream(target.tempPath, { mode: 0o600 }),
+    );
+    fs.renameSync(target.tempPath, target.localPath);
+    tempPath = null;
+    const staged = finalizeChannelConnectorAttachmentStaging({
+      attachment: input.attachment,
+      localPath: target.localPath,
+      size,
+      mimeType: target.mimeType,
+      now: input.now,
+    });
+    return {
+      attempted: true,
+      ok: true,
+      statusCode: response.status,
+      attachment: staged,
+      localPath: staged.localPath || null,
+      size,
+      mimeType: staged.mimeType || null,
+      error: null,
+    };
+  } catch (error) {
+    if (tempPath) fs.rmSync(tempPath, { force: true });
+    const statusCode = typeof error === "object" && error !== null && "statusCode" in error
+      ? Number((error as { statusCode?: unknown }).statusCode)
+      : NaN;
+    return {
+      attempted: true,
+      ok: false,
+      statusCode: Number.isFinite(statusCode) ? statusCode : null,
+      attachment: {
+        ...input.attachment,
+        stagingError: errorMessage(error),
+      },
+      localPath: null,
+      size: null,
+      mimeType: normalizeString(input.mimeType) || normalizeString(input.attachment.mimeType) || null,
+      error: errorMessage(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
