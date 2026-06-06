@@ -179,11 +179,13 @@ export interface ChannelConnectorOctoDispatchResponse {
 
 export type ChannelConnectorCommandSurfaceRenderer = "text" | "feishu" | "all";
 export type ChannelConnectorCommandSurfaceTone = "default" | "primary" | "danger";
+export type ChannelConnectorCommandSurfaceActionKind = "nav" | "act";
 
 export interface ChannelConnectorCommandSurfaceAction {
   id: string;
   label: string;
   command: string;
+  actionKind: ChannelConnectorCommandSurfaceActionKind;
   tone: ChannelConnectorCommandSurfaceTone;
   description: string | null;
   requiresAdmin: boolean;
@@ -201,6 +203,7 @@ export interface ChannelConnectorCommandSurface {
   version: 1;
   title: string;
   selectedSectionId: string | null;
+  selectedViewId: string | null;
   current: {
     bindingId: string;
     sessionKey: string | null;
@@ -232,6 +235,7 @@ export interface ChannelConnectorCommandSurfaceRequest {
   bindingId?: string | null;
   sessionKey?: string | null;
   section?: string | null;
+  view?: string | null;
   renderer?: ChannelConnectorCommandSurfaceRenderer;
   models?: string[];
 }
@@ -255,6 +259,7 @@ export interface ChannelConnectorCommandActionRequest {
   messageId?: string | null;
   actionValue?: unknown;
   eventKey?: string | null;
+  view?: string | null;
   renderer?: ChannelConnectorCommandSurfaceRenderer;
   models?: string[];
 }

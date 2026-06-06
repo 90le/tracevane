@@ -61,8 +61,10 @@ import {
 import {
   buildChannelConnectorCommandSurface,
   channelConnectorCommandSurfaceSectionFromCommand,
+  channelConnectorCommandSurfaceViewFromCommand,
   extractChannelConnectorSurfaceActionPayload,
   normalizeChannelConnectorCommandSurfaceSection,
+  normalizeChannelConnectorCommandSurfaceView,
   renderChannelConnectorCommandSurfaceFeishu,
 } from "./command-surface.js";
 import {
@@ -939,6 +941,7 @@ function normalizeCommandSurfaceRequest(payload: ChannelConnectorCommandSurfaceR
     bindingId: normalizeString(payload.bindingId) || null,
     sessionKey: normalizeString(payload.sessionKey) || null,
     section: normalizeChannelConnectorCommandSurfaceSection(payload.section) || null,
+    view: normalizeChannelConnectorCommandSurfaceView(payload.view) || null,
     renderer,
     models: stringList(payload.models),
   };
@@ -957,6 +960,7 @@ function normalizeCommandActionRequest(payload: ChannelConnectorCommandActionReq
     messageId: normalizeString(payload.messageId) || null,
     actionValue: payload.actionValue,
     eventKey: normalizeString(payload.eventKey) || null,
+    view: normalizeChannelConnectorCommandSurfaceView(payload.view) || null,
     renderer,
     models: stringList(payload.models),
   };
@@ -1194,6 +1198,7 @@ export function createChannelConnectorsService(
       sessionKey: request.sessionKey,
       models: request.models,
       selectedSectionId: request.section,
+      selectedViewId: request.view,
     });
     return {
       ok: true,
@@ -1300,6 +1305,11 @@ export function createChannelConnectorsService(
       || channelConnectorCommandSurfaceSectionFromCommand(command)
       || normalizeChannelConnectorCommandSurfaceSection(request.eventKey)
       || null;
+    const selectedViewId = parsedAction.targetViewId
+      || channelConnectorCommandSurfaceViewFromCommand(command, parsedAction.actionKind)
+      || normalizeChannelConnectorCommandSurfaceView(request.view)
+      || normalizeChannelConnectorCommandSurfaceView(request.eventKey)
+      || null;
     const control = getChannelConnectorSessionControl(controlsPath, {
       bindingId: resolved.binding.id,
       sessionKey,
@@ -1312,6 +1322,7 @@ export function createChannelConnectorsService(
       sessionKey,
       models: request.models,
       selectedSectionId,
+      selectedViewId,
     });
 
     return {

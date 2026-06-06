@@ -22,6 +22,24 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
   "yolo",
 ];
 
+const PERMISSION_MODE_LABELS: Record<ChannelConnectorPermissionMode, string> = {
+  suggest: "建议确认",
+  "read-only": "只读",
+  "auto-edit": "自动编辑",
+  "full-auto": "全自动",
+  plan: "规划",
+  yolo: "YOLO",
+};
+
+const PERMISSION_MODE_DESCRIPTIONS: Record<ChannelConnectorPermissionMode, string> = {
+  suggest: "执行前询问",
+  "read-only": "只允许读取",
+  "auto-edit": "可编辑，关键动作确认",
+  "full-auto": "可编辑并自动执行",
+  plan: "只规划不执行",
+  yolo: "高权限直通",
+};
+
 const FEISHU_MENU_SECTIONS = [
   "session",
   "agent",
@@ -32,6 +50,14 @@ const FEISHU_MENU_SECTIONS = [
 ] as const;
 
 type FeishuMenuSectionId = typeof FEISHU_MENU_SECTIONS[number];
+
+const FEISHU_MENU_VIEWS = [
+  "help",
+  "model",
+  "mode",
+] as const;
+
+type FeishuMenuViewId = typeof FEISHU_MENU_VIEWS[number];
 
 const FEISHU_MENU_SECTION_LABELS: Record<FeishuMenuSectionId, string> = {
   session: "会话",
@@ -68,6 +94,22 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   pass: "native",
 };
 
+const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
+  help: "help",
+  menu: "help",
+  commands: "help",
+  command: "help",
+  cmd: "help",
+  start: "help",
+  model: "model",
+  models: "model",
+  "model-picker": "model",
+  mode: "mode",
+  permission: "mode",
+  permissions: "mode",
+  "mode-picker": "mode",
+};
+
 export interface ChannelConnectorCommandSurfaceInput {
   config: ChannelConnectorsDaemonRuntimeConfig;
   project: ChannelConnectorRuntimeProject;
@@ -76,6 +118,7 @@ export interface ChannelConnectorCommandSurfaceInput {
   sessionKey?: string | null;
   models?: string[];
   selectedSectionId?: string | null;
+  selectedViewId?: string | null;
 }
 
 function normalizeString(value: unknown): string {
@@ -100,6 +143,12 @@ export function normalizeChannelConnectorCommandSurfaceSection(value: unknown): 
   return FEISHU_MENU_SECTION_ALIASES[normalized] || null;
 }
 
+export function normalizeChannelConnectorCommandSurfaceView(value: unknown): FeishuMenuViewId | null {
+  const normalized = normalizeString(value).replace(/^\/+/, "").toLowerCase();
+  if (!normalized) return null;
+  return FEISHU_MENU_VIEW_ALIASES[normalized] || null;
+}
+
 export function channelConnectorCommandSurfaceSectionFromCommand(command: string | null | undefined): FeishuMenuSectionId | null {
   const normalized = normalizeString(command);
   if (!normalized) return null;
@@ -112,6 +161,21 @@ export function channelConnectorCommandSurfaceSectionFromCommand(command: string
   return normalizeChannelConnectorCommandSurfaceSection(name);
 }
 
+export function channelConnectorCommandSurfaceViewFromCommand(
+  command: string | null | undefined,
+  _actionKind: "nav" | "act" | "cmd" | null = null,
+): FeishuMenuViewId | null {
+  const normalized = normalizeString(command);
+  if (!normalized) return null;
+  const parts = normalized.replace(/^\/+/, "").split(/\s+/).filter(Boolean);
+  if (!parts.length) return null;
+  const name = parts[0]?.toLowerCase() || "";
+  if (["help", "menu", "commands", "command", "cmd", "start"].includes(name)) return "help";
+  if (name === "model" || name === "models") return "model";
+  if (["mode", "permission", "permissions", "yolo"].includes(name)) return "mode";
+  return null;
+}
+
 function action(
   id: string,
   label: string,
@@ -122,6 +186,7 @@ function action(
     id,
     label,
     command,
+    actionKind: options.actionKind || "act",
     tone: options.tone || "default",
     description: options.description || null,
     requiresAdmin: options.requiresAdmin === true,
@@ -207,10 +272,11 @@ export function buildChannelConnectorCommandSurface(
       summary: "权限只作用于当前 IM session；yolo 始终保持显式动作。",
       actions: PERMISSION_MODES.map((mode) => action(
         `mode-${mode}`,
-        mode,
+        PERMISSION_MODE_LABELS[mode],
         `/mode ${mode}`,
         {
           tone: mode === current.permissionMode ? "primary" : mode === "yolo" ? "danger" : "default",
+          description: PERMISSION_MODE_DESCRIPTIONS[mode],
           requiresAdmin: true,
         },
       )),
@@ -241,6 +307,7 @@ export function buildChannelConnectorCommandSurface(
     version: 1,
     title: "Studio Channel Menu",
     selectedSectionId: normalizeChannelConnectorCommandSurfaceSection(input.selectedSectionId) || null,
+    selectedViewId: normalizeChannelConnectorCommandSurfaceView(input.selectedViewId) || null,
     current: {
       bindingId: input.binding.id,
       sessionKey: normalizeString(input.sessionKey) || null,
@@ -272,8 +339,9 @@ function actionValue(
   item: ChannelConnectorCommandSurfaceAction,
   surface: ChannelConnectorCommandSurface,
 ): Record<string, string> {
-  const actionKind = item.id.startsWith("menu-") ? "nav" : "act";
+  const actionKind = item.actionKind;
   const sectionId = channelConnectorCommandSurfaceSectionFromCommand(item.command);
+  const viewId = channelConnectorCommandSurfaceViewFromCommand(item.command, actionKind);
   const value: Record<string, string> = {
     action: `${actionKind}:${item.command}`,
     command: item.command,
@@ -282,8 +350,13 @@ function actionValue(
     binding_id: surface.current.bindingId,
   };
   if (sectionId) value.surface_section_id = sectionId;
+  if (viewId) value.surface_view_id = viewId;
   if (surface.current.sessionKey) value.session_key = surface.current.sessionKey;
   return value;
+}
+
+function actionCommandValue(item: ChannelConnectorCommandSurfaceAction): string {
+  return `${item.actionKind}:${item.command}`;
 }
 
 function buttonElement(
@@ -520,11 +593,176 @@ function menuTabActions(
     `menu-${sectionId}`,
     FEISHU_MENU_SECTION_LABELS[sectionId],
     `/help ${sectionId}`,
-    { tone: sectionId === selectedSectionId ? "primary" : "default" },
+    {
+      actionKind: "nav",
+      tone: sectionId === selectedSectionId ? "primary" : "default",
+    },
   ));
 }
 
-export function renderChannelConnectorCommandSurfaceFeishu(
+function helpSectionActions(
+  section: ChannelConnectorCommandSurfaceSection,
+  surface: ChannelConnectorCommandSurface,
+): ChannelConnectorCommandSurfaceAction[] {
+  if (section.id === "model") {
+    const modelCount = section.actions.filter((item) => item.id.startsWith("model-") && item.id !== "model-default").length;
+    const currentModel = surface.current.model || "default";
+    const reset = section.actions.find((item) => item.id === "model-default");
+    return [
+      action("model-picker", "模型选择器", "/model", {
+        actionKind: "nav",
+        tone: "primary",
+        description: `${modelCount} 个可选模型 · 当前 ${currentModel}`,
+        requiresAdmin: true,
+      }),
+      ...(reset ? [reset] : []),
+    ];
+  }
+  if (section.id === "mode") {
+    const currentMode = surface.current.permissionMode;
+    return [
+      action("mode-picker", "权限模式", "/mode", {
+        actionKind: "nav",
+        tone: "primary",
+        description: `${PERMISSION_MODE_LABELS[currentMode]} · ${PERMISSION_MODE_DESCRIPTIONS[currentMode]}`,
+        requiresAdmin: true,
+      }),
+    ];
+  }
+  return section.actions;
+}
+
+function selectStaticElement(input: {
+  placeholder: string;
+  options: Array<{ label: string; value: string }>;
+  initialValue: string | null;
+  surface: ChannelConnectorCommandSurface;
+  sectionId: FeishuMenuSectionId;
+  viewId: FeishuMenuViewId;
+}): Record<string, unknown> {
+  const selectElement: Record<string, unknown> = {
+    tag: "select_static",
+    placeholder: plainText(input.placeholder),
+    options: input.options.map((option) => ({
+      text: plainText(option.label),
+      value: option.value,
+    })),
+    value: {
+      binding_id: input.surface.current.bindingId,
+      surface_section_id: input.sectionId,
+      surface_view_id: input.viewId,
+      surface_action_kind: "act",
+      ...(input.surface.current.sessionKey ? { session_key: input.surface.current.sessionKey } : {}),
+    },
+  };
+  if (input.initialValue) selectElement.initial_option = input.initialValue;
+  return {
+    tag: "action",
+    actions: [selectElement],
+  };
+}
+
+function backToHelpAction(sectionId: FeishuMenuSectionId): ChannelConnectorCommandSurfaceAction {
+  return action(`back-help-${sectionId}`, "返回菜单", `/help ${sectionId}`, {
+    actionKind: "nav",
+  });
+}
+
+function renderModelPickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const section = sectionById(surface, "model");
+  const actions = section?.actions || [];
+  const resetAction = actions.find((item) => item.id === "model-default")
+    || action("model-default", "Default Model", "/model default", { requiresAdmin: true });
+  const modelActions = actions.filter((item) => item.id.startsWith("model-") && item.id !== "model-default");
+  const options = [
+    { label: "Profile 默认模型", value: actionCommandValue(resetAction) },
+    ...modelActions.map((item) => ({
+      label: stripListPrefix(item.label),
+      value: actionCommandValue(item),
+    })),
+  ];
+  const current = surface.current.model || "default";
+  const currentModelAction = surface.current.model
+    ? modelActions.find((item) => item.command === `/model ${surface.current.model}`)
+    : null;
+  const initialValue = currentModelAction ? actionCommandValue(currentModelAction) : actionCommandValue(resetAction);
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: `**当前模型**\n${current}\n\n**可选模型**\n${modelActions.length || 0} 个`,
+    },
+    selectStaticElement({
+      placeholder: "选择模型",
+      options,
+      initialValue,
+      surface,
+      sectionId: "model",
+      viewId: "model",
+    }),
+  ];
+  pushActionRows(elements, [backToHelpAction("model")], surface, 1);
+  elements.push({
+    tag: "note",
+    elements: [plainText("选择只作用于当前 IM session；Profile 默认值不会被改写。")],
+  });
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Model"),
+      template: "indigo",
+    },
+    elements,
+  };
+}
+
+function renderModePickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const section = sectionById(surface, "mode");
+  const modeActions = section?.actions || [];
+  const current = surface.current.permissionMode;
+  const options = modeActions.map((item) => ({
+    label: stripListPrefix(item.label),
+    value: actionCommandValue(item),
+  }));
+  const currentModeAction = modeActions.find((item) => item.command === `/mode ${current}`);
+  const initialValue = currentModeAction ? actionCommandValue(currentModeAction) : null;
+  const modeLines = modeActions.map((item) => {
+    const active = item.command === `/mode ${current}`;
+    return `${active ? "▶" : "◻"} **${stripListPrefix(item.label)}** — ${item.description || ""}`;
+  });
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: modeLines.join("\n"),
+    },
+    selectStaticElement({
+      placeholder: "选择权限模式",
+      options,
+      initialValue,
+      surface,
+      sectionId: "mode",
+      viewId: "mode",
+    }),
+  ];
+  pushActionRows(elements, [backToHelpAction("mode")], surface, 1);
+  elements.push({
+    tag: "note",
+    elements: [plainText("权限只作用于当前 IM session；YOLO 代表高权限直通。")],
+  });
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Permission"),
+      template: "violet",
+    },
+    elements,
+  };
+}
+
+function renderHelpMenuCard(
   surface: ChannelConnectorCommandSurface,
 ): ChannelConnectorFeishuInteractiveCard {
   const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId) || "session";
@@ -536,9 +774,9 @@ export function renderChannelConnectorCommandSurfaceFeishu(
   if (section) {
     elements.push({ tag: "hr" });
     pushSectionHeading(elements, section);
-    for (const item of section.actions) {
+    for (const item of helpSectionActions(section, surface)) {
       elements.push(commandSurfaceListItemElement(item, surface, {
-        showCurrent: selectedSectionId === "agent" || selectedSectionId === "model" || selectedSectionId === "mode",
+        showCurrent: selectedSectionId === "agent",
       }));
     }
   }
@@ -560,6 +798,15 @@ export function renderChannelConnectorCommandSurfaceFeishu(
   };
 }
 
+export function renderChannelConnectorCommandSurfaceFeishu(
+  surface: ChannelConnectorCommandSurface,
+): ChannelConnectorFeishuInteractiveCard {
+  const selectedViewId = normalizeChannelConnectorCommandSurfaceView(surface.selectedViewId) || "help";
+  if (selectedViewId === "model") return renderModelPickerCard(surface);
+  if (selectedViewId === "mode") return renderModePickerCard(surface);
+  return renderHelpMenuCard(surface);
+}
+
 export interface ChannelConnectorSurfaceActionPayload {
   command: string | null;
   rawAction: string | null;
@@ -568,6 +815,7 @@ export interface ChannelConnectorSurfaceActionPayload {
   sessionKey: string | null;
   actionId: string | null;
   targetSectionId: string | null;
+  targetViewId: string | null;
 }
 
 function parseSurfaceAction(raw: string): {
@@ -596,6 +844,7 @@ export function extractChannelConnectorSurfaceActionPayload(value: unknown): Cha
       sessionKey: null,
       actionId: null,
       targetSectionId: channelConnectorCommandSurfaceSectionFromCommand(parsed.command),
+      targetViewId: channelConnectorCommandSurfaceViewFromCommand(parsed.command, parsed.actionKind),
     };
   }
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -607,25 +856,31 @@ export function extractChannelConnectorSurfaceActionPayload(value: unknown): Cha
       sessionKey: null,
       actionId: null,
       targetSectionId: null,
+      targetViewId: null,
     };
   }
   const record = value as Record<string, unknown>;
   const rawAction = normalizeString(record.action) || normalizeString(record.command) || null;
   const parsed = parseSurfaceAction(rawAction || "");
-  const command = normalizeString(record.command) || parsed.command;
+  const command = parsed.command || normalizeString(record.command);
   const explicitActionKind = normalizeString(record.surface_action_kind).toLowerCase();
   const sectionId = normalizeChannelConnectorCommandSurfaceSection(record.surface_section_id)
     || channelConnectorCommandSurfaceSectionFromCommand(command);
+  const actionKind = explicitActionKind === "nav" || explicitActionKind === "act" || explicitActionKind === "cmd"
+    ? explicitActionKind
+    : parsed.actionKind;
+  const viewId = normalizeChannelConnectorCommandSurfaceView(record.surface_view_id)
+    || normalizeChannelConnectorCommandSurfaceView(record.surfaceViewId)
+    || channelConnectorCommandSurfaceViewFromCommand(command, actionKind);
   return {
     command: command || null,
     rawAction,
-    actionKind: explicitActionKind === "nav" || explicitActionKind === "act" || explicitActionKind === "cmd"
-      ? explicitActionKind
-      : parsed.actionKind,
+    actionKind,
     bindingId: normalizeString(record.binding_id) || normalizeString(record.bindingId) || null,
     sessionKey: normalizeString(record.session_key) || normalizeString(record.sessionKey) || null,
     actionId: normalizeString(record.surface_action_id) || normalizeString(record.surfaceActionId) || null,
     targetSectionId: sectionId,
+    targetViewId: viewId,
   };
 }
 

@@ -1308,12 +1308,44 @@ test("native Channel Connectors command surface renders text and Feishu card act
     models: ["gpt-5", "gpt-5.5"],
     selectedSectionId: "model",
   });
-  const modelCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(modelSurface));
+  const modelHelpRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(modelSurface));
+  assert.match(modelHelpRaw, /nav:\/model/);
+  assert.match(modelHelpRaw, /模型选择器/);
+  assert.doesNotMatch(modelHelpRaw, /act:\/model gpt-5\.5/);
+  assert.match(modelHelpRaw, /act:\/model default/);
+  assert.doesNotMatch(modelHelpRaw, /\/mode yolo/);
+
+  const modelPickerSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    models: ["gpt-5", "gpt-5.5"],
+    selectedSectionId: "model",
+    selectedViewId: "model",
+  });
+  const modelCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(modelPickerSurface));
+  assert.match(modelCardRaw, /Studio Model/);
+  assert.match(modelCardRaw, /select_static/);
   assert.match(modelCardRaw, /act:\/model gpt-5\.5/);
-  assert.match(modelCardRaw, /\/model gpt-5\.5/);
-  assert.match(modelCardRaw, /\"content\":\"当前\"/);
-  assert.match(modelCardRaw, /\"content\":\"▶\"/);
+  assert.match(modelCardRaw, /Profile 默认模型/);
+  assert.match(modelCardRaw, /nav:\/help model/);
+  assert.match(modelCardRaw, /initial_option/);
   assert.doesNotMatch(modelCardRaw, /\/mode yolo/);
+
+  const modePickerSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "mode",
+    selectedViewId: "mode",
+  });
+  const modeCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(modePickerSurface));
+  assert.match(modeCardRaw, /Studio Permission/);
+  assert.match(modeCardRaw, /select_static/);
+  assert.match(modeCardRaw, /act:\/mode yolo/);
+  assert.match(modeCardRaw, /nav:\/help mode/);
 
   const parsed = extractChannelConnectorCommandFromActionValue({
     action: "act:/agent claude-main",
@@ -1338,11 +1370,37 @@ test("native Channel Connectors command surface renders text and Feishu card act
     sessionKey: "dmwork:dm:admin-1",
     actionId: "model-gpt-5.5",
     targetSectionId: "model",
+    targetViewId: "model",
   });
   const navPayload = extractChannelConnectorSurfaceActionPayload("nav:/help session");
   assert.equal(navPayload.command, "/help session");
   assert.equal(navPayload.actionKind, "nav");
   assert.equal(navPayload.targetSectionId, "session");
+  assert.equal(navPayload.targetViewId, "help");
+  const selectPayload = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      event_id: "evt_select",
+    },
+    event: {
+      action: {
+        option: "act:/mode yolo",
+        value: {
+          binding_id: "octo-codex",
+          session_key: "dmwork:dm:admin-1",
+          surface_view_id: "mode",
+        },
+      },
+    },
+  });
+  assert.deepEqual(selectPayload.actionValue, {
+    binding_id: "octo-codex",
+    session_key: "dmwork:dm:admin-1",
+    surface_view_id: "mode",
+    action: "act:/mode yolo",
+    command: "act:/mode yolo",
+  });
 });
 
 test("native Channel Connectors Feishu webhook parses live envelopes and reuses command router", async () => {
@@ -1570,12 +1628,64 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.match(JSON.stringify(menuCardAction.feishuResponse.card.data), /\/model default/);
   assert.doesNotMatch(JSON.stringify(menuCardAction.feishuResponse.card.data), /\/mode yolo/);
 
-  const backToSessionCardAction = await service.dispatchFeishuWebhook({
+  const modelPickerCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
     header: {
       event_type: "card.action.trigger",
       app_id: "cli_test",
       event_id: "evt_card_4",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_3" },
+      action: {
+        value: {
+          action: "nav:/model",
+          command: "/model",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(modelPickerCardAction.accepted, true);
+  assert.equal(modelPickerCardAction.commandAction.command, "/model");
+  assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /Studio Model/);
+  assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /select_static/);
+  assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /act:\/model gpt-5/);
+
+  const modeSelectCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_5",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_3" },
+      action: {
+        option: "act:/mode yolo",
+        value: {
+          binding_id: "feishu-main",
+          surface_view_id: "mode",
+        },
+      },
+    },
+  });
+  assert.equal(modeSelectCardAction.accepted, true);
+  assert.equal(modeSelectCardAction.commandAction.command, "/mode yolo");
+  assert.equal(modeSelectCardAction.commandAction.surface.current.permissionMode, "yolo");
+  assert.match(JSON.stringify(modeSelectCardAction.feishuResponse.card.data), /Studio Permission/);
+  assert.match(JSON.stringify(modeSelectCardAction.feishuResponse.card.data), /select_static/);
+
+  const backToSessionCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_6",
       token: "verify-token",
     },
     event: {
@@ -1879,6 +1989,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
         bindingId: "octo-route",
         sessionKey: "dmwork:dm:route-user",
         section: "model",
+        view: "model",
         renderer: "all",
         models: ["gpt-5", "gpt-5.5"],
       },
@@ -1888,6 +1999,8 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(commandSurface.body.agentProfile.agent, "opencode");
     assert.equal(commandSurface.body.surface.current.projectId, "opencode-main");
     assert.match(commandSurface.body.textFallback, /\/native \/help/);
+    assert.equal(commandSurface.body.surface.selectedViewId, "model");
+    assert.match(JSON.stringify(commandSurface.body.feishuCard), /select_static/);
     assert.match(JSON.stringify(commandSurface.body.feishuCard), /\/model gpt-5\.5/);
 
     const action = await requestJson(`${baseUrl}/api/channel-connectors/commands/action`, {
@@ -1910,7 +2023,8 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(action.body.command, "/mode yolo");
     assert.equal(action.body.commandResult.ok, true);
     assert.equal(action.body.surface.current.permissionMode, "yolo");
-    assert.match(JSON.stringify(action.body.feishuCard), /mode-yolo/);
+    assert.match(JSON.stringify(action.body.feishuCard), /Studio Permission/);
+    assert.match(JSON.stringify(action.body.feishuCard), /act:\/mode yolo/);
 
     const cardAction = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/card-action`, {
       method: "POST",

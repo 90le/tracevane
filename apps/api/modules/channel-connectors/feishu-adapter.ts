@@ -104,9 +104,19 @@ function isMessageEvent(eventType: string): boolean {
 function extractActionValue(payload: Record<string, unknown>, event: Record<string, unknown>): unknown {
   if (payload.actionValue !== undefined) return payload.actionValue;
   const action = recordValue(event.action || payload.action);
-  if (action.value !== undefined) return action.value;
   const option = normalizeString(action.option);
-  if (option) return { action: option, command: option };
+  if (option) {
+    const valueRecord = recordValue(action.value);
+    if (Object.keys(valueRecord).length > 0) {
+      return {
+        ...valueRecord,
+        action: option,
+        command: option,
+      };
+    }
+    return { action: option, command: option };
+  }
+  if (action.value !== undefined) return action.value;
   const name = normalizeString(action.name);
   if (name) return { action: name, command: name };
   return null;

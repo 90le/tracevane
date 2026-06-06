@@ -63,9 +63,11 @@ import {
 import {
   buildChannelConnectorCommandSurface,
   channelConnectorCommandSurfaceSectionFromCommand,
+  channelConnectorCommandSurfaceViewFromCommand,
   extractChannelConnectorCommandFromActionValue,
   extractChannelConnectorSurfaceActionPayload,
   normalizeChannelConnectorCommandSurfaceSection,
+  normalizeChannelConnectorCommandSurfaceView,
   renderChannelConnectorCommandSurfaceFeishu,
 } from "./command-surface.js";
 import {
@@ -592,6 +594,7 @@ function buildFeishuCommandCard(input: {
   binding: ChannelConnectorRuntimeBinding;
   sessionKey: string;
   selectedSectionId?: string | null;
+  selectedViewId?: string | null;
 }) {
   const control = getChannelConnectorSessionControl(sessionControlsPath(input.config), {
     bindingId: input.binding.id,
@@ -604,16 +607,26 @@ function buildFeishuCommandCard(input: {
     control,
     sessionKey: input.sessionKey,
     selectedSectionId: input.selectedSectionId,
+    selectedViewId: input.selectedViewId,
   }));
 }
 
-function feishuMenuSectionFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): string | null {
+function feishuMenuSelectionFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): {
+  selectedSectionId: string | null;
+  selectedViewId: string | null;
+} {
   const actionPayload = extractChannelConnectorSurfaceActionPayload(parsed.actionValue);
-  return actionPayload.targetSectionId
+  const selectedSectionId = actionPayload.targetSectionId
     || channelConnectorCommandSurfaceSectionFromCommand(actionPayload.command)
     || channelConnectorCommandSurfaceSectionFromCommand(parsed.text)
     || normalizeChannelConnectorCommandSurfaceSection(parsed.eventKey)
     || null;
+  const selectedViewId = actionPayload.targetViewId
+    || channelConnectorCommandSurfaceViewFromCommand(actionPayload.command, actionPayload.actionKind)
+    || channelConnectorCommandSurfaceViewFromCommand(parsed.text)
+    || normalizeChannelConnectorCommandSurfaceView(parsed.eventKey)
+    || null;
+  return { selectedSectionId, selectedViewId };
 }
 
 async function sendOrPatchFeishuCommandCard(input: {
@@ -624,9 +637,10 @@ async function sendOrPatchFeishuCommandCard(input: {
   parsed: ChannelConnectorFeishuParsedWebhook;
   sessionKey: string;
 }): Promise<ChannelConnectorFeishuTransportResult & { card: ReturnType<typeof buildFeishuCommandCard> }> {
+  const selection = feishuMenuSelectionFromParsed(input.parsed);
   const card = buildFeishuCommandCard({
     ...input,
-    selectedSectionId: feishuMenuSectionFromParsed(input.parsed),
+    ...selection,
   });
   const cachePath = feishuTokenCachePath(input.config);
   const cardMessageId = normalizeString(input.parsed.messageId);
