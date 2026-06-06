@@ -1364,6 +1364,7 @@ export function createChannelConnectorsService(
       sessionKey,
       controlsPath,
       agentSessionsPath: path.join(runtimeConfig.paths.state, "channel-sessions.json"),
+      conversationHistoryPath: path.join(runtimeConfig.paths.state, "channel-history.json"),
       gatewayClientKey: null,
       listModels: async () => commandModels,
       message: {

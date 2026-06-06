@@ -43,6 +43,11 @@ import {
   type ChannelConnectorSessionControlRecord,
 } from "./session-control-store.js";
 import {
+  appendChannelConnectorConversationHistory,
+  getChannelConnectorConversationHistory,
+  renderChannelConnectorConversationHistoryContext,
+} from "./conversation-history-store.js";
+import {
   resolveChannelConnectorGatewayClientKey,
 } from "./gateway-secret.js";
 import {
@@ -540,6 +545,10 @@ function agentSessionsPath(config: ChannelConnectorsDaemonRuntimeConfig): string
 
 function sessionControlsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "channel-session-controls.json");
+}
+
+function conversationHistoryPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "channel-history.json");
 }
 
 function safePathSegment(value: string): string {
@@ -1368,6 +1377,7 @@ async function dispatchOctoMessage(input: {
     sessionKey,
     controlsPath: sessionControlsPath(config),
     agentSessionsPath: agentSessionsPath(config),
+    conversationHistoryPath: conversationHistoryPath(config),
     gatewayClientKey: key,
   });
   if (command.handled) {
@@ -1450,6 +1460,12 @@ async function dispatchOctoMessage(input: {
   }
   const activeRunId = `${binding.id}:${message.messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+  const historyContext = renderChannelConnectorConversationHistoryContext(
+    getChannelConnectorConversationHistory(conversationHistoryPath(config), {
+      bindingId: binding.id,
+      sessionKey,
+    }),
+  );
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
   state.activeRuns.unshift({
@@ -1493,6 +1509,7 @@ async function dispatchOctoMessage(input: {
       gatewayEndpoint: effectiveProject.gatewayEndpoint || config.gateway.endpoint,
       gatewayClientKey: key,
       agentRuntimeDir: agentRuntimeDir(config, effectiveProject, binding),
+      historyContext,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,
       },
@@ -1557,6 +1574,23 @@ async function dispatchOctoMessage(input: {
     progressEventCount = agent.progress.eventCount;
     latestProgress = agent.progress.latest;
   }
+  appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
+    bindingId: binding.id,
+    sessionKey,
+    messageId: message.messageId,
+    role: "user",
+    text: extractOctoContent(agentMessage),
+    attachments: agentMessage.attachments || [],
+    status: agent.status,
+  });
+  appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
+    bindingId: binding.id,
+    sessionKey,
+    messageId: message.messageId,
+    role: "assistant",
+    text: agent.replyText || agent.error || "",
+    status: agent.status,
+  });
   let nextSession: ChannelConnectorAgentSessionRecord | null = null;
   if (agent.session.codexThreadId || currentSession?.codexThreadId) {
     nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
@@ -1760,6 +1794,7 @@ async function dispatchFeishuParsedEvent(input: {
     sessionKey,
     controlsPath: sessionControlsPath(config),
     agentSessionsPath: agentSessionsPath(config),
+    conversationHistoryPath: conversationHistoryPath(config),
     gatewayClientKey: key,
   });
 
@@ -1877,6 +1912,12 @@ async function dispatchFeishuParsedEvent(input: {
   };
   const activeRunId = `${binding.id}:${messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+  const historyContext = renderChannelConnectorConversationHistoryContext(
+    getChannelConnectorConversationHistory(conversationHistoryPath(config), {
+      bindingId: binding.id,
+      sessionKey,
+    }),
+  );
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
   const progressCardState = createFeishuProgressCardState();
@@ -2017,6 +2058,7 @@ async function dispatchFeishuParsedEvent(input: {
       gatewayEndpoint: effectiveProject.gatewayEndpoint || config.gateway.endpoint,
       gatewayClientKey: key,
       agentRuntimeDir: runtimeDir,
+      historyContext,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,
       },
@@ -2096,6 +2138,23 @@ async function dispatchFeishuParsedEvent(input: {
     queueFeishuProgressFlush(true, "final");
     await feishuProgressFlush;
   }
+  appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
+    bindingId: binding.id,
+    sessionKey,
+    messageId,
+    role: "user",
+    text: extractOctoContent(agentMessage),
+    attachments: agentMessage.attachments || [],
+    status: agent.status,
+  });
+  appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
+    bindingId: binding.id,
+    sessionKey,
+    messageId,
+    role: "assistant",
+    text: agent.replyText || agent.error || "",
+    status: agent.status,
+  });
   let nextSession: ChannelConnectorAgentSessionRecord | null = null;
   if (agent.session.codexThreadId || currentSession?.codexThreadId) {
     nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {

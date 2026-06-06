@@ -62,6 +62,7 @@ export interface ChannelConnectorAgentTurnRequest {
   session?: {
     codexThreadId?: string | null;
   } | null;
+  historyContext?: string | null;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
   timeoutMs?: number;
   processRunner?: ChannelConnectorAgentProcessRunner;
@@ -122,10 +123,11 @@ function attachmentSummaryLabel(attachment: ChannelConnectorInboundAttachment): 
   return detail ? `${attachment.kind}: ${detail}` : attachment.kind;
 }
 
-function buildAgentInputContent(message: ChannelConnectorOctoInboundMessage): string {
+function buildAgentInputContent(message: ChannelConnectorOctoInboundMessage, historyContext?: string | null): string {
   const content = extractOctoContent(message);
   const attachments = extractOctoAttachments(message);
-  if (!attachments.length) return content;
+  const history = normalizeString(historyContext);
+  if (!attachments.length) return [history, content].filter(Boolean).join("\n\n");
   const summary = attachments
     .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)
     .join("\n");
@@ -137,7 +139,7 @@ function buildAgentInputContent(message: ChannelConnectorOctoInboundMessage): st
       ? "Staged files are available locally; use the local paths above when the task needs file contents."
       : "Binary download/staging is not enabled yet; use the metadata above only.",
   ].join("\n");
-  return [content, attachmentText].filter(Boolean).join("\n\n");
+  return [history, content, attachmentText].filter(Boolean).join("\n\n");
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -356,7 +358,7 @@ function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): R
 export function buildChannelConnectorAgentProcessRequest(
   request: ChannelConnectorAgentTurnRequest,
 ): ChannelConnectorAgentProcessRequest | null {
-  const content = buildAgentInputContent(request.message);
+  const content = buildAgentInputContent(request.message, request.historyContext);
   if (!content) return null;
   const project = request.project;
   const cwd = ensureWorkDir(project.workDir);

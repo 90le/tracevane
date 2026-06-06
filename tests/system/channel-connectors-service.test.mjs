@@ -63,6 +63,12 @@ import {
   getChannelConnectorSessionControl,
 } from "../../dist/apps/api/modules/channel-connectors/session-control-store.js";
 import {
+  appendChannelConnectorConversationHistory,
+  clearChannelConnectorConversationHistory,
+  getChannelConnectorConversationHistory,
+  renderChannelConnectorConversationHistoryContext,
+} from "../../dist/apps/api/modules/channel-connectors/conversation-history-store.js";
+import {
   createOctoX25519KeyPair,
   decodeOctoConnectPacket,
   encodeOctoConnackPacket,
@@ -981,6 +987,25 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(fs.statSync(codexConfigPath).mode & 0o777, 0o600);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const historyRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    historyContext: [
+      "[Studio IM history context]",
+      "1. user: earlier question",
+      "2. assistant: earlier answer",
+    ].join("\n"),
+  });
+  assert.ok(historyRequest);
+  assert.match(historyRequest.stdin, /^\[Studio IM history context\]/);
+  assert.match(historyRequest.stdin, /earlier question/);
+  assert.match(historyRequest.stdin, /\n\nhi codex$/);
+  for (const cleanupPath of historyRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   const missingKeyRequest = buildChannelConnectorAgentProcessRequest({
     project,
     binding,
@@ -1268,11 +1293,69 @@ test("native Channel Connectors session store persists Codex thread ids by IM se
   assert.equal(getChannelConnectorAgentSession(storePath, lookup), null);
 });
 
+test("native Channel Connectors conversation history stores sanitized session context", () => {
+  const root = makeTempRoot();
+  const historyPath = path.join(root, "state", "channel-history.json");
+  const lookup = {
+    bindingId: "octo-codex",
+    sessionKey: "dmwork:dm:user-1",
+  };
+
+  appendChannelConnectorConversationHistory(historyPath, {
+    ...lookup,
+    messageId: "m-1",
+    role: "user",
+    text: "请记住这个编号 A-123",
+    attachments: [{
+      kind: "file",
+      platform: "feishu",
+      fileName: "payload.zip",
+      fileKey: "private-file-key",
+      localPath: path.join(root, "payload.zip"),
+      size: 42,
+    }],
+    status: "completed",
+    now: new Date("2026-06-06T08:00:00.000Z"),
+  });
+  appendChannelConnectorConversationHistory(historyPath, {
+    ...lookup,
+    messageId: "m-1",
+    role: "assistant",
+    text: "我记住了 A-123",
+    status: "completed",
+    now: new Date("2026-06-06T08:00:01.000Z"),
+  });
+  appendChannelConnectorConversationHistory(historyPath, {
+    ...lookup,
+    messageId: "m-2",
+    role: "user",
+    text: "新问题",
+    status: "completed",
+    maxEntriesPerConversation: 3,
+    now: new Date("2026-06-06T08:00:02.000Z"),
+  });
+
+  const entries = getChannelConnectorConversationHistory(historyPath, lookup, 10);
+  assert.equal(entries.length, 3);
+  const context = renderChannelConnectorConversationHistoryContext(entries);
+  assert.match(context, /Studio IM history context/);
+  assert.match(context, /我记住了 A-123/);
+  assert.match(context, /新问题/);
+  assert.match(context, /payload\.zip|A-123/);
+  assert.doesNotMatch(context, /private-file-key/);
+  assert.equal(fs.statSync(historyPath).mode & 0o777, 0o600);
+
+  const cleared = clearChannelConnectorConversationHistory(historyPath, lookup);
+  assert.equal(cleared, 3);
+  assert.deepEqual(getChannelConnectorConversationHistory(historyPath, lookup), []);
+});
+
 test("native Channel Connectors IM commands switch agent, model, and permission per session", async () => {
   const root = makeTempRoot();
   const stateDir = path.join(root, "state");
   const controlsPath = path.join(stateDir, "channel-session-controls.json");
   const agentSessionsPath = path.join(stateDir, "channel-sessions.json");
+  const conversationHistoryPath = path.join(stateDir, "channel-history.json");
   const codexProject = {
     id: "codex-main",
     name: "Codex main",
@@ -1334,6 +1417,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     sessionKey: "dmwork:dm:admin-1",
     controlsPath,
     agentSessionsPath,
+    conversationHistoryPath,
     gatewayClientKey: "sk-local",
     listModels: async () => ["gpt-5", "gpt-5.5", "claude-sonnet"],
   };
@@ -1514,6 +1598,13 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     messageId: "m-before-reset",
     status: "completed",
   });
+  appendChannelConnectorConversationHistory(conversationHistoryPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+    messageId: "m-history-before-new",
+    role: "user",
+    text: "old context before new",
+  });
   const next = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/new"),
@@ -1531,6 +1622,10 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     model: effective.model,
     workDir: effective.workDir,
   }), null);
+  assert.deepEqual(getChannelConnectorConversationHistory(conversationHistoryPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+  }), []);
 
   upsertChannelConnectorAgentSession(agentSessionsPath, {
     bindingId: binding.id,
@@ -1542,6 +1637,13 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     codexThreadId: "thread-before-reset",
     messageId: "m-before-reset",
     status: "completed",
+  });
+  appendChannelConnectorConversationHistory(conversationHistoryPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+    messageId: "m-history-before-reset",
+    role: "assistant",
+    text: "old context before reset",
   });
   const reset = await handleChannelConnectorCommand({
     ...baseContext,
@@ -1560,6 +1662,10 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     model: effective.model,
     workDir: effective.workDir,
   }), null);
+  assert.deepEqual(getChannelConnectorConversationHistory(conversationHistoryPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+  }), []);
 });
 
 test("native Channel Connectors model menus can read live Gateway model lists", async () => {

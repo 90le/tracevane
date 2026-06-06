@@ -17,6 +17,9 @@ import {
   upsertChannelConnectorSessionControl,
   type ChannelConnectorSessionControlRecord,
 } from "./session-control-store.js";
+import {
+  clearChannelConnectorConversationHistory,
+} from "./conversation-history-store.js";
 import type {
   ChannelConnectorRuntimeBinding,
   ChannelConnectorRuntimeProject,
@@ -39,6 +42,7 @@ export interface ChannelConnectorCommandContext {
   sessionKey: string;
   controlsPath: string;
   agentSessionsPath: string;
+  conversationHistoryPath?: string | null;
   gatewayClientKey: string | null;
   listModels?: (endpoint: string, clientKey: string | null) => Promise<string[]>;
 }
@@ -718,13 +722,16 @@ export async function handleChannelConnectorCommand(
 
   if (name === "new") {
     const sessionsCleared = clearChannelConnectorAgentSessionsForConversation(context.agentSessionsPath, lookup);
+    const historyCleared = context.conversationHistoryPath
+      ? clearChannelConnectorConversationHistory(context.conversationHistoryPath, lookup)
+      : 0;
     return {
       handled: true,
       command: name,
       action: "new",
       ok: true,
       control: currentControl,
-      replyText: `已开启新的 Agent 会话，保留当前 IM 会话配置。清理 Agent sessions=${sessionsCleared}。`,
+      replyText: `已开启新的 Agent 会话，保留当前 IM 会话配置。清理 Agent sessions=${sessionsCleared}，history=${historyCleared}。`,
       passthroughText: null,
     };
   }
@@ -732,13 +739,16 @@ export async function handleChannelConnectorCommand(
   if (name === "reset") {
     const controlsCleared = clearChannelConnectorSessionControl(context.controlsPath, lookup);
     const sessionsCleared = clearChannelConnectorAgentSessionsForConversation(context.agentSessionsPath, lookup);
+    const historyCleared = context.conversationHistoryPath
+      ? clearChannelConnectorConversationHistory(context.conversationHistoryPath, lookup)
+      : 0;
     return {
       handled: true,
       command: name,
       action: "reset",
       ok: true,
       control: null,
-      replyText: `已重置本 IM 会话：清理 override=${controlsCleared ? "yes" : "no"}，Agent sessions=${sessionsCleared}。`,
+      replyText: `已重置本 IM 会话：清理 override=${controlsCleared ? "yes" : "no"}，Agent sessions=${sessionsCleared}，history=${historyCleared}。`,
       passthroughText: null,
     };
   }
