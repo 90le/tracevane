@@ -124,6 +124,97 @@ function attachmentSummaryLabel(attachment: ChannelConnectorInboundAttachment): 
   return detail ? `${attachment.kind}: ${detail}` : attachment.kind;
 }
 
+function isVisualAttachment(attachment: ChannelConnectorInboundAttachment): boolean {
+  return attachment.kind === "image" || attachment.kind === "video" || attachment.kind === "sticker";
+}
+
+function metadataBooleanOverride(metadata: Record<string, unknown> | undefined, keys: string[]): boolean | null {
+  for (const key of keys) {
+    const value = metadata?.[key];
+    if (typeof value === "boolean") return value;
+    const normalized = normalizeString(value).toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+  return null;
+}
+
+function channelConnectorModelSupportsVision(
+  model: string | null,
+  binding: ChannelConnectorRuntimeBinding,
+): boolean {
+  const explicit = metadataBooleanOverride(binding.metadata, [
+    "modelVision",
+    "model_vision",
+    "supportsVision",
+    "supports_vision",
+    "vision",
+    "visionEnabled",
+    "vision_enabled",
+  ]);
+  if (explicit !== null) return explicit;
+
+  const normalized = normalizeString(model).toLowerCase();
+  if (!normalized) return false;
+  if (/(^|[\/:_\-\s])glm-5($|[\/:_\-\s.])/.test(normalized)) return false;
+
+  return [
+    /(^|[\/:_\-\s])gpt-4o($|[\/:_\-\s.])/,
+    /(^|[\/:_\-\s])gpt-4\.1($|[\/:_\-\s.])/,
+    /(^|[\/:_\-\s])gpt-5($|[\/:_\-\s.])/,
+    /(^|[\/:_\-\s])o3($|[\/:_\-\s.])/,
+    /(^|[\/:_\-\s])o4-mini($|[\/:_\-\s.])/,
+    /claude-(3|sonnet|opus|haiku)/,
+    /gemini/,
+    /qwen.*vl|qwen-vl|vl-/,
+    /glm-4v/,
+    /vision|multimodal|omni/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function unsupportedVisualAttachmentReply(model: string | null, attachments: ChannelConnectorInboundAttachment[]): string | null {
+  const visualCount = attachments.filter(isVisualAttachment).length;
+  if (!visualCount) return null;
+  const modelLabel = normalizeString(model) || "当前模型";
+  const visualLabel = visualCount === 1 ? "图片/视觉附件" : `${visualCount} 个图片/视觉附件`;
+  return [
+    `已接收${visualLabel}，但当前会话模型 ${modelLabel} 未标记为支持图片/视觉理解。`,
+    "为避免误判，本次不会让 Agent 根据文件名或本地路径描述图片内容。",
+    "请切换到支持视觉的模型后重发，或把图片里的关键信息用文字发给我。",
+  ].join("\n");
+}
+
+function buildUnsupportedVisualTurnResult(
+  request: ChannelConnectorAgentTurnRequest,
+  replyText: string,
+): ChannelConnectorAgentTurnResult {
+  return {
+    attempted: false,
+    ok: true,
+    status: "completed",
+    agent: request.project.agent,
+    model: request.project.model,
+    command: null,
+    args: [],
+    cwd: null,
+    replyText,
+    stdout: "",
+    stderr: "",
+    exitCode: null,
+    durationMs: 0,
+    error: null,
+    progress: {
+      eventCount: 0,
+      latest: null,
+      summary: replyText,
+    },
+    session: {
+      resumed: Boolean(request.session?.codexThreadId),
+      codexThreadId: request.session?.codexThreadId || null,
+    },
+  };
+}
+
 function memberSummaryLabel(member: ChannelConnectorOctoGroupMember): string {
   const uid = normalizeString(member.uid);
   const name = normalizeString(member.name);
@@ -180,13 +271,17 @@ function buildAgentInputContent(
     .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)
     .join("\n");
   const hasLocalPath = attachments.some((attachment) => normalizeString(attachment.localPath));
+  const hasVisualAttachment = attachments.some(isVisualAttachment);
   const attachmentText = [
     "[Studio attachment summary]",
     summary,
     hasLocalPath
       ? "Staged files are available locally; use the local paths above when the task needs file contents."
       : "Binary download/staging is not enabled yet; use the metadata above only.",
-  ].join("\n");
+    hasVisualAttachment
+      ? "Do not infer visual contents from attachment metadata, file names, or local paths; only describe images/videos if the active Agent runtime can actually inspect the file."
+      : "",
+  ].filter(Boolean).join("\n");
   return [history, groupContext, content, attachmentText].filter(Boolean).join("\n\n");
 }
 
@@ -844,6 +939,12 @@ export async function runChannelConnectorAgentTurn(
         codexThreadId: request.session?.codexThreadId || null,
       },
     };
+  }
+
+  const attachments = extractOctoAttachments(request.message);
+  if (attachments.some(isVisualAttachment) && !channelConnectorModelSupportsVision(request.project.model, request.binding)) {
+    const replyText = unsupportedVisualAttachmentReply(request.project.model, attachments);
+    if (replyText) return buildUnsupportedVisualTurnResult(request, replyText);
   }
 
   const processRequest = buildChannelConnectorAgentProcessRequest(request);

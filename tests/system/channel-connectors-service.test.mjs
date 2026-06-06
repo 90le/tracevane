@@ -1640,6 +1640,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(attachmentRequest.stdin, /\[image\]/);
   assert.match(attachmentRequest.stdin, /Studio attachment summary/);
   assert.match(attachmentRequest.stdin, /image: diagram\.png/);
+  assert.match(attachmentRequest.stdin, /Do not infer visual contents/);
   assert.doesNotMatch(attachmentRequest.stdin, /feishu-private-image-key/);
   for (const cleanupPath of attachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -1670,6 +1671,40 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(stagedAttachmentRequest.stdin, /Staged files are available locally/);
   assert.doesNotMatch(stagedAttachmentRequest.stdin, /Binary download\/staging is not enabled/);
   for (const cleanupPath of stagedAttachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  let nonVisionRunnerCalled = false;
+  const nonVisionImageResult = await runChannelConnectorAgentTurn({
+    project: { ...project, model: "glm-5" },
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-non-vision-image",
+      payload: { type: 2, content: "", name: "photo.jpg", url: "https://example.invalid/photo.jpg" },
+      attachments: [{
+        kind: "image",
+        platform: "octo",
+        fileName: "photo.jpg",
+        localPath: path.join(workDir, ".studio-agent-attachments", "photo.jpg"),
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    processRunner: async () => {
+      nonVisionRunnerCalled = true;
+      throw new Error("non-vision image turns should not start an Agent process");
+    },
+  });
+  assert.equal(nonVisionRunnerCalled, false);
+  assert.equal(nonVisionImageResult.attempted, false);
+  assert.equal(nonVisionImageResult.ok, true);
+  assert.equal(nonVisionImageResult.status, "completed");
+  assert.match(nonVisionImageResult.replyText, /已接收图片\/视觉附件/);
+  assert.match(nonVisionImageResult.replyText, /glm-5/);
+  assert.match(nonVisionImageResult.replyText, /不会让 Agent 根据文件名或本地路径描述图片内容/);
+  assert.equal(nonVisionImageResult.command, null);
+  assert.equal(nonVisionImageResult.progress.summary, nonVisionImageResult.replyText);
 
   const failed = await runChannelConnectorAgentTurn({
     project,

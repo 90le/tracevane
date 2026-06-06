@@ -1,7 +1,7 @@
 # Studio Gateway / Channel Connectors 进度
 
 > 状态：Studio Gateway core、Provider Center、App Connections、Channel Connectors 平台配置与 Octo/Feishu live 基础闭环已完成；OpenAI Platform official proof optional
-> 更新：2026-06-06
+> 更新：2026-06-07
 > 文档规则：只保留当前状态、最新证据、边界和下一步；不追加流水日志。
 
 ## 当前状态
@@ -20,6 +20,7 @@
 - Octo 出站媒体基础合同已迁移并真实验证：参考 CC dmwork 小文件 multipart 上传路径，新增 `upload-file` / `upload-and-send-media` transport smoke；图片会发送 Octo image payload，普通文件发送 file payload。
 - Octo 入站附件 URL 兼容已扩展：除 `url` 外，也识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，payload-only 附件会先补回 `attachments` 再进入 staging。
 - Octo 入站协议参考已补齐：已安装 OpenClaw Octo 插件 `~/.openclaw/extensions/octo`（1.0.14）作为 Octo 专属参考源；本次按插件协议补 GIF=3 与 RichText=14 图文混排、多图 `mediaUrls` 入站归一化。
+- Feishu/Octo 图片入站已确认可接收并 staging；新增非视觉模型保护，`glm-5` 等未标记 vision 的模型会直接回复“已接收但当前模型不支持视觉理解”，不启动 Agent，避免根据文件名或本地路径猜图。
 - Channel daemon status API 已确认 Octo 与 Feishu connected，`platformBindings=2`；运行中任务可通过 `activeRuns` 观测。
 
 ## 最近验证
@@ -33,17 +34,18 @@
 - 通过：真实 Octo `studio-cc` `upload-and-send-media` smoke，小文本文件上传与发送均返回 200，`requestCount=2`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Octo adapter|stages attachments"`，覆盖 Octo 入站 URL 变体归一化和 URL staging。
 - 通过：同一 Octo adapter/staging 测试覆盖 payload-only 附件补回、GIF=3、RichText=14 图文混排和多图 `mediaUrls`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "native Channel Connectors agent runner"`，覆盖 `glm-5` 图片附件短路、不启动 Agent 进程。
 - 通过：Playwright 打开 `/channel-connectors`，检查 Feishu/Octo 平台配置表单无 console error、无横向溢出。
 
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Feishu 与 Octo 文本 live 已通过，Octo 图片入站基础摘要链路已通过；若 Octo live payload 不包含任何 URL 字段，继续优先查 OpenClaw Octo 插件的媒体下载/COS 合同，再对照 CC Go 通用经验。
+- Feishu 与 Octo 文本 live 已通过，图片入站/staging 已通过；非视觉模型会拒绝看图。真正视觉理解仍需后续接入可验证的视觉模型输入链路或 OCR/解析工具，不能只把本地路径交给文本模型。
 - Octo 出站媒体当前覆盖小文件 multipart upload；CC 的大文件 COS STS 直传尚未迁移，避免引入新依赖前先保持显式边界。
 - Feishu card/menu 已可用，但后续视觉和交互仍需继续参考 CC 成熟卡片结构做 Studio 化精修。
 
 ## 下一步
 
-1. 让用户再发一张 Octo 图片或文件，确认 payload-only 附件补回后是否出现 `agent.attachments.staged`；若仍无 URL，按 OpenClaw Octo 插件实现继续接 Octo/COS 媒体下载接口。
+1. 设计视觉附件正式链路：模型能力标注、视觉模型输入/OCR fallback、IM 回复策略和 UI 配置。
 2. 继续迁移 CC/OpenClaw 的语音/STT/TTS、大文件 COS 直传和多平台 adapter。
 3. 精修 Feishu card/menu 与 Octo 弱富交互，保持 IM 命令和 Studio UI 同一 typed 状态。
