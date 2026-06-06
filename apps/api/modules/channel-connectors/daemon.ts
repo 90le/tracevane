@@ -643,6 +643,59 @@ function isFeishuMenuCommand(command: ReturnType<typeof handleChannelConnectorCo
     || ["start", "help", "menu", "commands", "command", "cmd"].includes(normalizeString(command.command).toLowerCase());
 }
 
+function feishuCommandNotice(input: {
+  command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never;
+  actionKind: "nav" | "act" | "cmd" | null;
+}): { title: string; text: string; ok: boolean | null } | null {
+  if (input.actionKind === "nav") return null;
+  const text = normalizeString(input.command.replyText || input.command.passthroughText);
+  if (!text) return null;
+  const action = input.command.action;
+  const title = action === "status" ? "当前状态"
+    : action === "set" ? "设置已应用"
+      : action === "new" ? "新会话已开启"
+        : action === "reset" ? "会话已重置"
+          : action === "list" ? "可选项"
+            : action === "passthrough" ? "已发送给 Agent"
+              : "执行结果";
+  return {
+    title,
+    text,
+    ok: input.command.ok,
+  };
+}
+
+function feishuCommandToast(input: {
+  command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never;
+  actionKind: "nav" | "act" | "cmd" | null;
+  transportOk: boolean;
+  transportError: string | null;
+}): { type: "info" | "warning"; content: string } {
+  if (!input.transportOk) {
+    return {
+      type: "warning",
+      content: input.transportError || "菜单更新失败",
+    };
+  }
+  if (input.actionKind === "nav") {
+    return {
+      type: "info",
+      content: "菜单已更新",
+    };
+  }
+  const command = normalizeString(input.command.command);
+  if (input.command.ok === false) {
+    return {
+      type: "warning",
+      content: "命令执行失败，结果已显示在卡片中",
+    };
+  }
+  return {
+    type: "info",
+    content: command ? `已执行 ${command}` : "命令已执行",
+  };
+}
+
 function buildFeishuCommandCard(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   project: ChannelConnectorRuntimeProject;
@@ -650,12 +703,17 @@ function buildFeishuCommandCard(input: {
   sessionKey: string;
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
+  notice?: {
+    title: string;
+    text: string;
+    ok?: boolean | null;
+  } | null;
 }) {
   const control = getChannelConnectorSessionControl(sessionControlsPath(input.config), {
     bindingId: input.binding.id,
     sessionKey: input.sessionKey,
   });
-  return renderChannelConnectorCommandSurfaceFeishu(buildChannelConnectorCommandSurface({
+  const surface = buildChannelConnectorCommandSurface({
     config: input.config,
     project: input.project,
     binding: input.binding,
@@ -663,7 +721,8 @@ function buildFeishuCommandCard(input: {
     sessionKey: input.sessionKey,
     selectedSectionId: input.selectedSectionId,
     selectedViewId: input.selectedViewId,
-  }));
+  });
+  return renderChannelConnectorCommandSurfaceFeishu(surface, input.notice || null);
 }
 
 function feishuMenuSelectionFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): {
@@ -691,11 +750,17 @@ async function sendOrPatchFeishuCommandCard(input: {
   transport: ChannelConnectorFeishuTransportConfig;
   parsed: ChannelConnectorFeishuParsedWebhook;
   sessionKey: string;
+  notice?: {
+    title: string;
+    text: string;
+    ok?: boolean | null;
+  } | null;
 }): Promise<ChannelConnectorFeishuTransportResult & { card: ReturnType<typeof buildFeishuCommandCard> }> {
   const selection = feishuMenuSelectionFromParsed(input.parsed);
   const card = buildFeishuCommandCard({
     ...input,
     ...selection,
+    notice: input.notice || null,
   });
   const cachePath = feishuTokenCachePath(input.config);
   const cardMessageId = normalizeString(input.parsed.messageId);
@@ -1198,6 +1263,11 @@ async function dispatchFeishuParsedEvent(input: {
     let replyError: string | null = null;
     let replyTransportAction: string | null = null;
     let feishuResponse: Record<string, unknown> | null = null;
+    const actionPayload = extractChannelConnectorSurfaceActionPayload(parsed.actionValue);
+    const notice = feishuCommandNotice({
+      command,
+      actionKind: actionPayload.actionKind,
+    });
     const shouldSendCard = feishuCardsEnabled(binding)
       && (parsed.kind === "card-action" || parsed.kind === "bot-menu" || isFeishuMenuCommand(command));
     if (shouldSendCard) {
@@ -1208,16 +1278,20 @@ async function dispatchFeishuParsedEvent(input: {
         transport,
         parsed,
         sessionKey,
+        notice,
       });
       replySent = result.ok === true;
       replyError = result.error;
       replyTransportAction = result.action;
       if (parsed.kind === "card-action") {
+        const toast = feishuCommandToast({
+          command,
+          actionKind: actionPayload.actionKind,
+          transportOk: result.ok === true,
+          transportError: result.error,
+        });
         feishuResponse = {
-          toast: {
-            type: result.ok === true ? "info" : "warning",
-            content: result.ok === true ? "已更新菜单" : result.error || "菜单更新失败",
-          },
+          toast,
           card: {
             type: "raw",
             data: result.card,

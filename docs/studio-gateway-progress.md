@@ -42,6 +42,7 @@
 - Feishu Agent 运行链路已补齐 CC 风格 processing reaction：普通消息进入 Agent 前给原消息加 `OnIt` reaction，结束后删除；reaction API 失败只写事件日志，不阻断 Agent。
 - Agent 失败回执已优先使用 Codex/Agent JSONL 里的 `error` / `turn.failed` 文本，不再把网关 503、模型未启用等真实原因退化成 `Agent process exited with 1`。
 - Feishu card action 解析已对飞书下拉/按钮混合 payload 做防御，只要 `action` / `command` / `value` / `option` 任一字段带 `nav:` / `act:` / `cmd:` 前缀，就按真实 Studio 命令处理，避免菜单动作误透传给 Agent。
+- Feishu 菜单交互已区分 `nav:` 和 `act:`：导航动作只更新菜单；执行动作会把命令结果渲染到卡片顶部，并保留更新后的当前状态/子页面。`/status`、`/new`、`/reset`、`/agent`、`/model`、`/mode`、`/cd` 不再只 toast “菜单已更新”。
 
 ## 验证
 
@@ -59,6 +60,7 @@
 - 通过：重启 dev backend/frontend 与 `openclaw-studio-channel-connectors.service`；daemon `/status` Feishu `connected`；本地 card-action replay 同一 messageId 可在会话页/模型页往返；`/api/channel-connectors/daemon/config` 返回 `[redacted]` 且未匹配本地 secret 值。
 - 通过：真实 Feishu reaction proof（secret redacted）：对近期入站消息执行 `add-reaction OnIt` 与 `remove-reaction` 均 HTTP 200。
 - 通过：本机 Codex/Studio Gateway live proof：Channel Connector 当前 Profile 切到 Gateway 已启用 `glm-5`，清理旧 Codex thread 后，隔离 Codex runner 经 `http://127.0.0.1:18796/v1` 返回 `studio-ok`。
+- 通过：Feishu command result card contract：`node --test tests/system/channel-connectors-service.test.mjs` 覆盖 `act:/status` 卡片顶部展示 `Studio Channel Status`，且不再返回“菜单已更新”作为唯一反馈。
 
 ## 已知边界
 

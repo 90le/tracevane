@@ -1753,6 +1753,36 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(slashMessage.commandAction.surface.current.permissionMode, "yolo");
   assert.match(slashMessage.feishuResponse.toast.content, /已切换本会话权限模式/);
 
+  const statusCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_status",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_status" },
+      action: {
+        value: {
+          action: "act:/status",
+          command: "/status",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(statusCardAction.accepted, true);
+  assert.equal(statusCardAction.commandAction.command, "/status");
+  assert.equal(statusCardAction.commandAction.commandResult.ok, true);
+  assert.match(statusCardAction.feishuResponse.toast.content, /Studio Channel Status/);
+  const statusCardRaw = JSON.stringify(statusCardAction.feishuResponse.card.data);
+  assert.match(statusCardRaw, /当前状态/);
+  assert.match(statusCardRaw, /Studio Channel Status/);
+  assert.match(statusCardRaw, /Agent:/);
+  assert.doesNotMatch(statusCardAction.feishuResponse.toast.content, /菜单已更新/);
+
   const cardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
     header: {

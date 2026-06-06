@@ -977,6 +977,27 @@ function normalizeCommandActionText(value: string | null | undefined): string | 
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
 }
 
+function commandActionNotice(
+  commandResult: Awaited<ReturnType<typeof handleChannelConnectorCommand>>,
+  actionKind: "nav" | "act" | "cmd" | null,
+): { title: string; text: string; ok: boolean | null } | null {
+  if (actionKind === "nav") return null;
+  const text = normalizeString(commandResult.replyText || commandResult.passthroughText);
+  if (!text) return null;
+  const title = commandResult.action === "status" ? "当前状态"
+    : commandResult.action === "set" ? "设置已应用"
+      : commandResult.action === "new" ? "新会话已开启"
+        : commandResult.action === "reset" ? "会话已重置"
+          : commandResult.action === "list" ? "可选项"
+            : commandResult.action === "passthrough" ? "已发送给 Agent"
+              : "执行结果";
+  return {
+    title,
+    text,
+    ok: commandResult.ok,
+  };
+}
+
 function derivedCommandActionSessionKey(input: {
   sessionKey?: string | null;
   platform: string;
@@ -1344,7 +1365,9 @@ export function createChannelConnectorsService(
       },
       surface,
       textFallback: surface.textFallback,
-      feishuCard: request.renderer === "text" ? null : renderChannelConnectorCommandSurfaceFeishu(surface),
+      feishuCard: request.renderer === "text"
+        ? null
+        : renderChannelConnectorCommandSurfaceFeishu(surface, commandActionNotice(commandResult, parsedAction.actionKind)),
     };
   }
 

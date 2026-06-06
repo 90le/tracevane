@@ -957,13 +957,61 @@ function renderHelpMenuCard(
 
 export function renderChannelConnectorCommandSurfaceFeishu(
   surface: ChannelConnectorCommandSurface,
+  notice?: {
+    title: string;
+    text: string;
+    ok?: boolean | null;
+  } | null,
 ): ChannelConnectorFeishuInteractiveCard {
   const selectedViewId = normalizeChannelConnectorCommandSurfaceView(surface.selectedViewId) || "help";
-  if (selectedViewId === "agent") return renderAgentPickerCard(surface);
-  if (selectedViewId === "model") return renderModelPickerCard(surface);
-  if (selectedViewId === "mode") return renderModePickerCard(surface);
-  if (selectedViewId === "workdir") return renderWorkdirPickerCard(surface);
-  return renderHelpMenuCard(surface);
+  const card = selectedViewId === "agent"
+    ? renderAgentPickerCard(surface)
+    : selectedViewId === "model"
+      ? renderModelPickerCard(surface)
+      : selectedViewId === "mode"
+        ? renderModePickerCard(surface)
+        : selectedViewId === "workdir"
+          ? renderWorkdirPickerCard(surface)
+          : renderHelpMenuCard(surface);
+  return notice?.text ? withCommandNotice(card, notice) : card;
+}
+
+function truncateNoticeText(value: string, maxLength = 1800): string {
+  const normalized = normalizeString(value);
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
+}
+
+function withCommandNotice(
+  card: ChannelConnectorFeishuInteractiveCard,
+  notice: {
+    title: string;
+    text: string;
+    ok?: boolean | null;
+  },
+): ChannelConnectorFeishuInteractiveCard {
+  const title = normalizeString(notice.title) || "执行结果";
+  const text = truncateNoticeText(notice.text);
+  const template = notice.ok === false ? "red" : notice.ok === null ? "yellow" : "green";
+  const header = card.header || {
+    title: plainText("Studio Channel Menu"),
+    template: "blue",
+  };
+  return {
+    ...card,
+    header: {
+      ...header,
+      title: header.title,
+      template,
+    },
+    elements: [
+      {
+        tag: "markdown",
+        content: `**${title}**\n${text}`,
+      },
+      { tag: "hr" },
+      ...card.elements,
+    ],
+  };
 }
 
 export interface ChannelConnectorSurfaceActionPayload {
