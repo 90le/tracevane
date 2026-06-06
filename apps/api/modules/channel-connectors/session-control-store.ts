@@ -9,6 +9,7 @@ export interface ChannelConnectorSessionControlRecord {
   activeProjectId: string | null;
   model: string | null;
   permissionMode: ChannelConnectorPermissionMode | null;
+  workDir: string | null;
   createdAt: string;
   updatedAt: string;
   lastCommand: string | null;
@@ -29,6 +30,7 @@ export interface ChannelConnectorSessionControlUpdate extends ChannelConnectorSe
   activeProjectId?: string | null;
   model?: string | null;
   permissionMode?: ChannelConnectorPermissionMode | null;
+  workDir?: string | null;
   lastCommand?: string | null;
   now?: Date;
 }
@@ -79,6 +81,7 @@ export function readChannelConnectorSessionControls(filePath: string): ChannelCo
         activeProjectId: normalizeString(value.activeProjectId) || null,
         model: normalizeString(value.model) || null,
         permissionMode: normalizeString(value.permissionMode) as ChannelConnectorPermissionMode || null,
+        workDir: normalizeString(value.workDir) || null,
         createdAt: normalizeString(value.createdAt) || nowIso(),
         updatedAt: normalizeString(value.updatedAt) || nowIso(),
         lastCommand: normalizeString(value.lastCommand) || null,
@@ -137,6 +140,7 @@ export function upsertChannelConnectorSessionControl(
     permissionMode: update.permissionMode === undefined
       ? current?.permissionMode || null
       : update.permissionMode || null,
+    workDir: update.workDir === undefined ? current?.workDir || null : normalizeString(update.workDir) || null,
     createdAt: current?.createdAt || now,
     updatedAt: now,
     lastCommand: normalizeString(update.lastCommand) || current?.lastCommand || null,

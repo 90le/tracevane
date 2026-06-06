@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3e IM command control core completed; OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3e IM command control + native passthrough completed; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：只保留当前状态、最近完成、验证和下一步；旧流水已压缩。
 
@@ -14,7 +14,7 @@
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview、apply、备份、rollback、profile 切换、隔离 HOME HTTP 验收和真实 CLI 启动 smoke harness。
 - App Connections profile 是两层模型选择：全局默认模型 + 每个 App 单独模型覆盖；模型输入从 Gateway 可用模型列表提供 datalist，仍允许手动输入 alias。
 - Codex 低频兼容参数（WebSocket、WebSocket v2、请求压缩）已收进 `Codex advanced` 折叠，避免普通用户误触。
-- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F3e 已完成 Octo 文本命令内核，Feishu 卡片/菜单后续复用同一 command contract。
+- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F3e 已完成 Octo 文本命令内核和原生 Agent slash 透传，Feishu 卡片/菜单后续复用同一 command contract。
 - Phase B2 已按 `/tmp/cc-switch-src` 覆盖核心协议成熟度：CLI 启动、Claude tool/summary、OpenClaw agent provider/model/usage、Gateway HTTP compact/tool-history/error envelope、Responses->Chat streaming `include_usage`、provider-declared reasoning/thinking 映射、parallel tool-call index grouping、Chat SSE error -> Responses `response.failed`、started upstream stream failure -> target protocol error event、BigModel Chat/Anthropic live provider matrix，以及 GMN Responses-native substitute `/v1/responses` + `/v1/responses/compact` live proof。
 
 ## 本轮完成
@@ -27,7 +27,8 @@
 - 新增 Octo REST transport：binding metadata `apiUrl/botToken/wsUrl`、register、typing、sendMessage、`/api/channel-connectors/adapters/octo/transport-smoke`；incoming `sendReply:true` 可按 replyPlan 真实发送文本。
 - Channel daemon 已接 Octo register credential cache、WuKongIM WebSocket CONNECT/CONNACK/heartbeat/RECVACK/AES 解密、runtime status、Codex/Claude Code/OpenCode 一次性 CLI runner 合同；入站消息可进入 runner 并通过 REST sendMessage 回复。
 - Channel daemon 已接 runner JSONL progress、`activeRuns` status、Octo event start/progress/finish、typing pulse 和失败短回执。
-- Channel daemon 已接 IM slash command control core：`/help`、`/status`、`/agent`、`/model`、`/mode`、`/reset`；override 按 IM session 持久化，不污染全局 Studio Provider/App config，模型切换保持 Codex thread 续接。
+- Channel daemon 已接 IM slash command control core：`/help`、`/status`、`/agent`、`/model`、`/mode`、`/dir`、`/cd`、`/new`、`/reset`；未知 `/xxx` 默认透传给当前 Agent，冲突命令可用 `/native <命令>` 强制透传。
+- Session override 按 IM session 持久化，不污染全局 Studio Provider/App config；`/model` 保持 Codex thread 续接，`/cd` 和 `/new` 会断开旧 Agent 续接。
 
 ## 验证
 
@@ -40,7 +41,7 @@
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Channel Connectors 已用真实 Octo 凭据验证 register、WuKongIM WebSocket、用户消息入站、Codex CLI Agent、Studio Gateway、Octo sendMessage 和同一 IM session 的 Codex thread 续接。尚未补 Feishu 卡片菜单、审批回传、图片/文件/历史上下文。
+- Channel Connectors 已用真实 Octo 凭据验证 register、WuKongIM WebSocket、用户消息入站、Codex CLI Agent、Studio Gateway、Octo sendMessage 和同一 IM session 的 Codex thread 续接。尚未补 Feishu 卡片菜单、审批回传、图片/文件/历史上下文；高风险全局配置/系统服务命令暂不通过 IM 直接开放。
 
 ## 下一步
 

@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type {
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorPermissionMode,
@@ -43,10 +46,11 @@ export interface ChannelConnectorCommandContext {
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
-  action: "help" | "status" | "list" | "set" | "reset" | "unknown" | null;
+  action: "help" | "status" | "list" | "set" | "reset" | "new" | "passthrough" | null;
   ok: boolean | null;
   replyText: string | null;
   control: ChannelConnectorSessionControlRecord | null;
+  passthroughText?: string | null;
 }
 
 interface ParsedCommand {
@@ -104,6 +108,7 @@ export function resolveChannelConnectorEffectiveProject(
     ...base,
     model: control?.model || base.model,
     permissionMode: control?.permissionMode || base.permissionMode,
+    workDir: control?.workDir || base.workDir,
   };
 }
 
@@ -140,6 +145,37 @@ function canManageSession(binding: ChannelConnectorRuntimeBinding, message: Chan
   return binding.adminUsers.includes(message.fromUid);
 }
 
+function isStudioCommand(name: string): boolean {
+  return [
+    "start",
+    "help",
+    "menu",
+    "commands",
+    "command",
+    "cmd",
+    "status",
+    "current",
+    "agent",
+    "agents",
+    "model",
+    "models",
+    "mode",
+    "permission",
+    "permissions",
+    "yolo",
+    "dir",
+    "cd",
+    "chdir",
+    "workdir",
+    "pwd",
+    "new",
+    "reset",
+    "native",
+    "raw",
+    "pass",
+  ].includes(name);
+}
+
 function commandHelpText(): string {
   return [
     "Studio Channel Commands",
@@ -150,7 +186,12 @@ function commandHelpText(): string {
     "/model <序号|模型ID|default> - 切换本会话模型",
     "/mode - 列出权限模式",
     "/mode <suggest|read-only|auto-edit|full-auto|plan|yolo|default> - 切换本会话权限",
+    "/dir - 查看当前工作目录和子目录",
+    "/cd <路径|default> - 切换本会话工作目录",
+    "/new - 开启新 Agent 会话，保留本会话配置",
     "/reset - 清空本 IM 会话 override 和 Agent 续接状态",
+    "/native <原生命令> - 强制透传给当前 Agent，例如 /native /help",
+    "未被 Studio 拥有的 /xxx 会自动透传给当前 Agent。",
   ].join("\n");
 }
 
@@ -174,6 +215,42 @@ function modeListText(currentMode: ChannelConnectorPermissionMode): string {
     lines.push(`${marker} ${mode}`);
   }
   lines.push("用法：/mode <mode>，例如 /mode yolo；/mode default 恢复 Agent Profile 默认值。");
+  return lines.join("\n");
+}
+
+function resolveWorkDirTarget(input: string, currentWorkDir: string): string | null {
+  const target = normalizeString(input);
+  if (!target) return null;
+  if (["default", "reset", "profile"].includes(target.toLowerCase())) return "";
+  let next = target;
+  if (next === "~" || next.startsWith("~/")) {
+    next = path.join(os.homedir(), next.slice(2));
+  } else if (!path.isAbsolute(next)) {
+    next = path.join(currentWorkDir || process.cwd(), next);
+  }
+  return path.resolve(next);
+}
+
+function listChildDirectories(workDir: string): string[] {
+  try {
+    return fs.readdirSync(workDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+function directoryInfoText(project: ChannelConnectorRuntimeProject): string {
+  const children = listChildDirectories(project.workDir);
+  const lines = [`当前工作目录：${project.workDir}`];
+  if (children.length) {
+    lines.push("", "子目录：");
+    children.forEach((name, index) => lines.push(`${index + 1}. ${name}`));
+  }
+  lines.push("", "用法：/cd <路径>；/cd default 恢复 Agent Profile 默认目录。");
   return lines.join("\n");
 }
 
@@ -252,6 +329,7 @@ export async function handleChannelConnectorCommand(
       ok: null,
       replyText: null,
       control: getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context)),
+      passthroughText: null,
     };
   }
 
@@ -261,8 +339,8 @@ export async function handleChannelConnectorCommand(
   const name = parsed.name;
   const args = parsed.args;
   const mutating = (
-    ["agent", "model", "mode", "permission", "permissions", "reset", "new", "yolo"].includes(name)
-    && !(["agent", "model", "mode", "permission", "permissions"].includes(name) && args.length === 0)
+    ["agent", "model", "mode", "permission", "permissions", "reset", "new", "yolo", "dir", "cd", "chdir", "workdir"].includes(name)
+    && !(["agent", "model", "mode", "permission", "permissions", "dir"].includes(name) && args.length === 0)
   );
 
   if (mutating && !canManageSession(context.binding, context.message)) {
@@ -273,6 +351,43 @@ export async function handleChannelConnectorCommand(
       ok: false,
       control: currentControl,
       replyText: "当前用户没有管理该 Channel session 的权限。",
+      passthroughText: null,
+    };
+  }
+
+  if (!isStudioCommand(name)) {
+    return {
+      handled: false,
+      command: name,
+      action: "passthrough",
+      ok: null,
+      control: currentControl,
+      replyText: null,
+      passthroughText: parsed.raw,
+    };
+  }
+
+  if (name === "native" || name === "raw" || name === "pass") {
+    const target = normalizeString(args.join(" "));
+    if (!target) {
+      return {
+        handled: true,
+        command: name,
+        action: "passthrough",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：/native <要发送给 Agent 的原生命令>",
+        passthroughText: null,
+      };
+    }
+    return {
+      handled: false,
+      command: name,
+      action: "passthrough",
+      ok: null,
+      control: currentControl,
+      replyText: null,
+      passthroughText: target,
     };
   }
 
@@ -284,6 +399,7 @@ export async function handleChannelConnectorCommand(
       ok: true,
       control: currentControl,
       replyText: commandHelpText(),
+      passthroughText: null,
     };
   }
 
@@ -298,6 +414,7 @@ export async function handleChannelConnectorCommand(
         ok: true,
         control: currentControl,
         replyText: projectListText(context.config, currentProject),
+        passthroughText: null,
       };
     }
     const target = resolveProjectTarget(context.config, args.join(" "));
@@ -309,6 +426,7 @@ export async function handleChannelConnectorCommand(
         ok: false,
         control: currentControl,
         replyText: "未找到 Agent Profile。用 /agent 查看可选项。",
+        passthroughText: null,
       };
     }
     const control = upsertChannelConnectorSessionControl(context.controlsPath, {
@@ -316,6 +434,7 @@ export async function handleChannelConnectorCommand(
       activeProjectId: target.id,
       model: null,
       permissionMode: null,
+      workDir: null,
       lastCommand: parsed.raw,
     });
     return {
@@ -325,6 +444,7 @@ export async function handleChannelConnectorCommand(
       ok: true,
       control,
       replyText: `已切换本会话 Agent：${target.id} (${target.agent})。模型和权限已恢复该 Agent Profile 默认值。`,
+      passthroughText: null,
     };
   }
 
@@ -344,6 +464,7 @@ export async function handleChannelConnectorCommand(
         ok: true,
         control: currentControl,
         replyText: lines.join("\n"),
+        passthroughText: null,
       };
     }
     const requested = args.join(" ");
@@ -357,6 +478,7 @@ export async function handleChannelConnectorCommand(
         ok: false,
         control: currentControl,
         replyText: "模型参数为空。用 /model 查看可选项。",
+        passthroughText: null,
       };
     }
     const control = upsertChannelConnectorSessionControl(context.controlsPath, {
@@ -371,6 +493,7 @@ export async function handleChannelConnectorCommand(
       ok: true,
       control,
       replyText: shouldReset ? "已恢复本会话默认模型。" : `已切换本会话模型：${target}`,
+      passthroughText: null,
     };
   }
 
@@ -384,6 +507,7 @@ export async function handleChannelConnectorCommand(
         ok: true,
         control: currentControl,
         replyText: modeListText(currentProject.permissionMode),
+        passthroughText: null,
       };
     }
     const requested = args[0] || "";
@@ -397,6 +521,7 @@ export async function handleChannelConnectorCommand(
         ok: false,
         control: currentControl,
         replyText: "不支持的权限模式。用 /mode 查看可选项。",
+        passthroughText: null,
       };
     }
     const control = upsertChannelConnectorSessionControl(context.controlsPath, {
@@ -411,10 +536,83 @@ export async function handleChannelConnectorCommand(
       ok: true,
       control,
       replyText: shouldReset ? "已恢复本会话默认权限模式。" : `已切换本会话权限模式：${target}`,
+      passthroughText: null,
     };
   }
 
-  if (name === "reset" || name === "new") {
+  if (name === "dir" || name === "pwd" || name === "cd" || name === "chdir" || name === "workdir") {
+    if ((name === "dir" || name === "pwd") && args.length === 0) {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: true,
+        control: currentControl,
+        replyText: directoryInfoText(currentProject),
+        passthroughText: null,
+      };
+    }
+    const target = resolveWorkDirTarget(args.join(" "), currentProject.workDir);
+    if (target === null) {
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "目录参数为空。用 /dir 查看当前目录和用法。",
+        passthroughText: null,
+      };
+    }
+    if (target !== "") {
+      try {
+        const stat = fs.statSync(target);
+        if (!stat.isDirectory()) throw new Error("not_directory");
+      } catch {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: `目录不存在或不可访问：${target}`,
+          passthroughText: null,
+        };
+      }
+    }
+    const sessionsCleared = clearChannelConnectorAgentSessionsForConversation(context.agentSessionsPath, lookup);
+    const control = upsertChannelConnectorSessionControl(context.controlsPath, {
+      ...lookup,
+      workDir: target || null,
+      lastCommand: parsed.raw,
+    });
+    return {
+      handled: true,
+      command: name,
+      action: "set",
+      ok: true,
+      control,
+      replyText: target
+        ? `已切换本会话工作目录：${target}\n已断开旧 Agent 续接：${sessionsCleared}`
+        : `已恢复本会话默认工作目录。\n已断开旧 Agent 续接：${sessionsCleared}`,
+      passthroughText: null,
+    };
+  }
+
+  if (name === "new") {
+    const sessionsCleared = clearChannelConnectorAgentSessionsForConversation(context.agentSessionsPath, lookup);
+    return {
+      handled: true,
+      command: name,
+      action: "new",
+      ok: true,
+      control: currentControl,
+      replyText: `已开启新的 Agent 会话，保留当前 IM 会话配置。清理 Agent sessions=${sessionsCleared}。`,
+      passthroughText: null,
+    };
+  }
+
+  if (name === "reset") {
     const controlsCleared = clearChannelConnectorSessionControl(context.controlsPath, lookup);
     const sessionsCleared = clearChannelConnectorAgentSessionsForConversation(context.agentSessionsPath, lookup);
     return {
@@ -424,15 +622,17 @@ export async function handleChannelConnectorCommand(
       ok: true,
       control: null,
       replyText: `已重置本 IM 会话：清理 override=${controlsCleared ? "yes" : "no"}，Agent sessions=${sessionsCleared}。`,
+      passthroughText: null,
     };
   }
 
   return {
-    handled: true,
+    handled: false,
     command: name,
-    action: "unknown",
-    ok: false,
+    action: "passthrough",
+    ok: null,
     control: currentControl,
-    replyText: `未知命令：/${name}\n发送 /help 查看可用命令。`,
+    replyText: null,
+    passthroughText: parsed.raw,
   };
 }

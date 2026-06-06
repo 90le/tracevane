@@ -442,6 +442,30 @@ async function dispatchOctoMessage(input: {
     writeRuntime(config, state);
     return;
   }
+  const agentMessage = command.passthroughText
+    ? {
+      ...message,
+      payload: {
+        ...message.payload,
+        content: command.passthroughText,
+      },
+    }
+    : message;
+  if (command.passthroughText) {
+    writeJsonLine(config.paths.octoEvents, {
+      checkedAt,
+      eventKind: "channel.command.passthrough",
+      adapter: "octo",
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      channelId: message.channelId,
+      channelType: message.channelType,
+      fromUid: message.fromUid,
+      command: command.command,
+      passthroughText: command.passthroughText,
+    });
+  }
 
   const control = getChannelConnectorSessionControl(sessionControlsPath(config), {
     bindingId: binding.id,
@@ -503,7 +527,7 @@ async function dispatchOctoMessage(input: {
     agent = await runChannelConnectorAgentTurn({
       project: effectiveProject,
       binding,
-      message,
+      message: agentMessage,
       sessionKey,
       gatewayEndpoint: effectiveProject.gatewayEndpoint || config.gateway.endpoint,
       gatewayClientKey: key,

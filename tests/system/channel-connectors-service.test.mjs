@@ -937,6 +937,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     appProfileRef: "claude",
     platformBindings: [],
   };
+  fs.mkdirSync(path.join(codexProject.workDir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(claudeProject.workDir, "src"), { recursive: true });
   const binding = {
     id: "octo-codex",
     platform: "octo",
@@ -1013,6 +1015,29 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(model.ok, true);
   assert.equal(model.control.model, "gpt-5.5");
 
+  const passthrough = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/compact"),
+  });
+  assert.equal(passthrough.handled, false);
+  assert.equal(passthrough.action, "passthrough");
+  assert.equal(passthrough.passthroughText, "/compact");
+
+  const nativePassthrough = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/native /help"),
+  });
+  assert.equal(nativePassthrough.handled, false);
+  assert.equal(nativePassthrough.passthroughText, "/help");
+
+  const badNative = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/native"),
+  });
+  assert.equal(badNative.handled, true);
+  assert.equal(badNative.ok, false);
+  assert.match(badNative.replyText, /\/native/);
+
   const agent = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/agent claude-code"),
@@ -1021,6 +1046,20 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(agent.control.activeProjectId, "claude-main");
   assert.equal(agent.control.model, null);
   assert.equal(agent.control.permissionMode, null);
+
+  const cd = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/cd src"),
+  });
+  assert.equal(cd.ok, true);
+  assert.equal(cd.control.workDir, path.join(claudeProject.workDir, "src"));
+
+  const dir = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/dir"),
+  });
+  assert.equal(dir.ok, true);
+  assert.match(dir.replyText, /当前工作目录/);
 
   const control = getChannelConnectorSessionControl(controlsPath, {
     bindingId: binding.id,
@@ -1031,6 +1070,36 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(effective.agent, "claude-code");
   assert.equal(effective.model, "claude-sonnet");
   assert.equal(effective.permissionMode, "plan");
+  assert.equal(effective.workDir, path.join(claudeProject.workDir, "src"));
+
+  upsertChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: effective.id,
+    sessionKey: baseContext.sessionKey,
+    agent: effective.agent,
+    model: effective.model,
+    workDir: effective.workDir,
+    codexThreadId: "thread-before-reset",
+    messageId: "m-before-reset",
+    status: "completed",
+  });
+  const next = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/new"),
+  });
+  assert.equal(next.ok, true);
+  assert.equal(getChannelConnectorSessionControl(controlsPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+  })?.workDir, path.join(claudeProject.workDir, "src"));
+  assert.equal(getChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: effective.id,
+    sessionKey: baseContext.sessionKey,
+    agent: effective.agent,
+    model: effective.model,
+    workDir: effective.workDir,
+  }), null);
 
   upsertChannelConnectorAgentSession(agentSessionsPath, {
     bindingId: binding.id,
