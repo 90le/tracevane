@@ -114,8 +114,10 @@ function extractActionValue(payload: Record<string, unknown>, event: Record<stri
 
 function extractSenderOpenId(event: Record<string, unknown>): string {
   return normalizeString(event.open_id)
+    || normalizeString(event.openId)
     || normalizeString(event.operator_open_id)
     || nestedString(event, ["operator", "open_id"])
+    || nestedString(event, ["operator", "openId"])
     || nestedString(event, ["operator", "operator_id", "open_id"])
     || nestedString(event, ["sender", "sender_id", "open_id"])
     || nestedString(event, ["sender", "sender_id", "user_id"]);
@@ -123,14 +125,20 @@ function extractSenderOpenId(event: Record<string, unknown>): string {
 
 function extractChatId(event: Record<string, unknown>): string {
   return normalizeString(event.open_chat_id)
+    || normalizeString(event.openChatId)
+    || normalizeString(event.chatId)
     || nestedString(event, ["context", "open_chat_id"])
+    || nestedString(event, ["context", "openChatId"])
     || nestedString(event, ["message", "chat_id"])
     || normalizeString(event.chat_id);
 }
 
 function extractMessageId(event: Record<string, unknown>): string {
   return normalizeString(event.open_message_id)
+    || normalizeString(event.openMessageId)
+    || normalizeString(event.messageId)
     || nestedString(event, ["context", "open_message_id"])
+    || nestedString(event, ["context", "openMessageId"])
     || nestedString(event, ["message", "message_id"])
     || normalizeString(event.message_id);
 }

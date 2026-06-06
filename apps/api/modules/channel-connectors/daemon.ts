@@ -11,6 +11,7 @@ import {
 } from "@larksuiteoapi/node-sdk";
 import type {
   ChannelConnectorFeishuTransportConfig,
+  ChannelConnectorFeishuTransportResult,
   ChannelConnectorAgentProfile,
   ChannelConnectorOctoTransportConfig,
   ChannelConnectorOctoInboundMessage,
@@ -61,7 +62,10 @@ import {
 } from "./feishu-transport.js";
 import {
   buildChannelConnectorCommandSurface,
+  channelConnectorCommandSurfaceSectionFromCommand,
   extractChannelConnectorCommandFromActionValue,
+  extractChannelConnectorSurfaceActionPayload,
+  normalizeChannelConnectorCommandSurfaceSection,
   renderChannelConnectorCommandSurfaceFeishu,
 } from "./command-surface.js";
 import {
@@ -587,6 +591,7 @@ function buildFeishuCommandCard(input: {
   project: ChannelConnectorRuntimeProject;
   binding: ChannelConnectorRuntimeBinding;
   sessionKey: string;
+  selectedSectionId?: string | null;
 }) {
   const control = getChannelConnectorSessionControl(sessionControlsPath(input.config), {
     bindingId: input.binding.id,
@@ -598,7 +603,17 @@ function buildFeishuCommandCard(input: {
     binding: input.binding,
     control,
     sessionKey: input.sessionKey,
+    selectedSectionId: input.selectedSectionId,
   }));
+}
+
+function feishuMenuSectionFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): string | null {
+  const actionPayload = extractChannelConnectorSurfaceActionPayload(parsed.actionValue);
+  return actionPayload.targetSectionId
+    || channelConnectorCommandSurfaceSectionFromCommand(actionPayload.command)
+    || channelConnectorCommandSurfaceSectionFromCommand(parsed.text)
+    || normalizeChannelConnectorCommandSurfaceSection(parsed.eventKey)
+    || null;
 }
 
 async function sendOrPatchFeishuCommandCard(input: {
@@ -608,8 +623,11 @@ async function sendOrPatchFeishuCommandCard(input: {
   transport: ChannelConnectorFeishuTransportConfig;
   parsed: ChannelConnectorFeishuParsedWebhook;
   sessionKey: string;
-}) {
-  const card = buildFeishuCommandCard(input);
+}): Promise<ChannelConnectorFeishuTransportResult & { card: ReturnType<typeof buildFeishuCommandCard> }> {
+  const card = buildFeishuCommandCard({
+    ...input,
+    selectedSectionId: feishuMenuSectionFromParsed(input.parsed),
+  });
   const cachePath = feishuTokenCachePath(input.config);
   const cardMessageId = normalizeString(input.parsed.messageId);
   if (input.parsed.kind === "card-action" && cardMessageId) {
@@ -617,12 +635,13 @@ async function sendOrPatchFeishuCommandCard(input: {
       messageId: cardMessageId,
       card,
     }, cachePath);
-    if (patched.ok === true) return patched;
+    if (patched.ok === true) return { ...patched, card };
   }
-  return sendFeishuCardMessage(input.transport, {
+  const sent = await sendFeishuCardMessage(input.transport, {
     chatId: normalizeString(input.parsed.channelId),
     card,
   }, cachePath);
+  return { ...sent, card };
 }
 
 async function resolveOctoCredentials(
@@ -664,6 +683,18 @@ function shouldSkipSeenMessage(seenMessages: Map<string, number>, messageId: str
   if (seenMessages.has(messageId)) return true;
   seenMessages.set(messageId, Date.now());
   return false;
+}
+
+function feishuDedupeKey(
+  group: ChannelDaemonFeishuGroup,
+  parsed: ChannelConnectorFeishuParsedWebhook,
+  binding: ChannelConnectorRuntimeBinding,
+  messageId: string,
+): string | null {
+  const eventId = normalizeString(parsed.eventId);
+  if (eventId) return `feishu:${group.key}:event:${eventId}:${binding.id}`;
+  if (parsed.kind === "message") return `feishu:${group.key}:message:${messageId}:${binding.id}`;
+  return null;
 }
 
 async function dispatchOctoMessage(input: {
@@ -981,7 +1012,7 @@ async function dispatchFeishuParsedEvent(input: {
   parsed: ChannelConnectorFeishuParsedWebhook;
   rawEvent: unknown;
   seenMessages: Map<string, number>;
-}): Promise<void> {
+}): Promise<Record<string, unknown> | null> {
   const { config, state, group, parsed, rawEvent, seenMessages } = input;
   const checkedAt = new Date().toISOString();
   const content = feishuContentFromParsed(parsed);
@@ -1000,15 +1031,15 @@ async function dispatchFeishuParsedEvent(input: {
       fromUid: parsed.fromUid,
       messageId: parsed.messageId,
     });
-    return;
+    return null;
   }
 
   const ref = refs[0];
   const { project, binding, transport } = ref;
   const sessionKey = feishuSessionKey(binding, parsed);
   const messageId = normalizeString(parsed.messageId) || `${parsed.kind}:${parsed.eventId || Date.now()}`;
-  const dedupeKey = `feishu:${group.key}:${messageId}:${binding.id}`;
-  if (shouldSkipSeenMessage(seenMessages, dedupeKey)) return;
+  const dedupeKey = feishuDedupeKey(group, parsed, binding, messageId);
+  if (dedupeKey && shouldSkipSeenMessage(seenMessages, dedupeKey)) return null;
 
   if (parsed.kind !== "message" && parsed.kind !== "card-action" && parsed.kind !== "bot-menu") {
     writeJsonLine(config.paths.feishuEvents, {
@@ -1023,7 +1054,7 @@ async function dispatchFeishuParsedEvent(input: {
       sessionKey,
       messageId,
     });
-    return;
+    return null;
   }
 
   if (!sessionKey || !parsed.fromUid || !parsed.channelId) {
@@ -1041,7 +1072,7 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       fromUid: parsed.fromUid,
     });
-    return;
+    return null;
   }
 
   if (!content) {
@@ -1059,7 +1090,7 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       fromUid: parsed.fromUid,
     });
-    return;
+    return null;
   }
 
   if (parsed.kind === "message" && !parsed.directed) {
@@ -1077,7 +1108,7 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       fromUid: parsed.fromUid,
     });
-    return;
+    return null;
   }
 
   const message = feishuMessageFromParsed(parsed, content);
@@ -1097,6 +1128,7 @@ async function dispatchFeishuParsedEvent(input: {
     let replySent = false;
     let replyError: string | null = null;
     let replyTransportAction: string | null = null;
+    let feishuResponse: Record<string, unknown> | null = null;
     const shouldSendCard = feishuCardsEnabled(binding)
       && (parsed.kind === "card-action" || parsed.kind === "bot-menu" || isFeishuMenuCommand(command));
     if (shouldSendCard) {
@@ -1111,6 +1143,18 @@ async function dispatchFeishuParsedEvent(input: {
       replySent = result.ok === true;
       replyError = result.error;
       replyTransportAction = result.action;
+      if (parsed.kind === "card-action") {
+        feishuResponse = {
+          toast: {
+            type: result.ok === true ? "info" : "warning",
+            content: result.ok === true ? "已更新菜单" : result.error || "菜单更新失败",
+          },
+          card: {
+            type: "raw",
+            data: result.card,
+          },
+        };
+      }
     }
     if (!replySent && command.replyText) {
       const result = await sendFeishuTextMessage(transport, {
@@ -1140,7 +1184,7 @@ async function dispatchFeishuParsedEvent(input: {
       replyError,
     });
     writeRuntime(config, state);
-    return;
+    return feishuResponse;
   }
 
   const agentMessage = command.passthroughText
@@ -1355,6 +1399,7 @@ async function dispatchFeishuParsedEvent(input: {
     rawEventShape: isRecord(rawEvent) ? Object.keys(rawEvent).slice(0, 12) : [],
   });
   writeRuntime(config, state);
+  return null;
 }
 
 async function startOctoConnection(input: {
@@ -1579,7 +1624,7 @@ function createFeishuDispatcher(input: {
       group.receivedMessages += 1;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "card.action.trigger", data));
       updateFeishuRuntime(config, state, group);
-      await dispatchFeishuParsedEvent({
+      const response = await dispatchFeishuParsedEvent({
         config,
         state,
         group,
@@ -1587,7 +1632,12 @@ function createFeishuDispatcher(input: {
         rawEvent: data,
         seenMessages,
       });
-      return {};
+      return response || {
+        toast: {
+          type: "info",
+          content: "Studio 已收到操作",
+        },
+      };
     },
     "application.bot.menu_v6": async (data: unknown) => {
       group.receivedMessages += 1;

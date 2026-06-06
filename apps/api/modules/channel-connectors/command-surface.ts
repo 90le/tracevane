@@ -22,6 +22,52 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
   "yolo",
 ];
 
+const FEISHU_MENU_SECTIONS = [
+  "session",
+  "agent",
+  "model",
+  "mode",
+  "workdir",
+  "native",
+] as const;
+
+type FeishuMenuSectionId = typeof FEISHU_MENU_SECTIONS[number];
+
+const FEISHU_MENU_SECTION_LABELS: Record<FeishuMenuSectionId, string> = {
+  session: "会话",
+  agent: "Agent",
+  model: "模型",
+  mode: "权限",
+  workdir: "目录",
+  native: "原生",
+};
+
+const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
+  session: "session",
+  status: "session",
+  current: "session",
+  new: "session",
+  reset: "session",
+  agent: "agent",
+  agents: "agent",
+  project: "agent",
+  profile: "agent",
+  model: "model",
+  models: "model",
+  mode: "mode",
+  permission: "mode",
+  permissions: "mode",
+  yolo: "mode",
+  workdir: "workdir",
+  dir: "workdir",
+  pwd: "workdir",
+  cd: "workdir",
+  chdir: "workdir",
+  native: "native",
+  raw: "native",
+  pass: "native",
+};
+
 export interface ChannelConnectorCommandSurfaceInput {
   config: ChannelConnectorsDaemonRuntimeConfig;
   project: ChannelConnectorRuntimeProject;
@@ -29,6 +75,7 @@ export interface ChannelConnectorCommandSurfaceInput {
   control?: ChannelConnectorSessionControlRecord | null;
   sessionKey?: string | null;
   models?: string[];
+  selectedSectionId?: string | null;
 }
 
 function normalizeString(value: unknown): string {
@@ -45,6 +92,24 @@ function uniqueStrings(values: string[]): string[] {
     output.push(normalized);
   }
   return output;
+}
+
+export function normalizeChannelConnectorCommandSurfaceSection(value: unknown): FeishuMenuSectionId | null {
+  const normalized = normalizeString(value).replace(/^\/+/, "").toLowerCase();
+  if (!normalized) return null;
+  return FEISHU_MENU_SECTION_ALIASES[normalized] || null;
+}
+
+export function channelConnectorCommandSurfaceSectionFromCommand(command: string | null | undefined): FeishuMenuSectionId | null {
+  const normalized = normalizeString(command);
+  if (!normalized) return null;
+  const parts = normalized.replace(/^\/+/, "").split(/\s+/).filter(Boolean);
+  if (!parts.length) return null;
+  const name = parts[0] || "";
+  if (["help", "menu", "commands", "command", "cmd", "start"].includes(name.toLowerCase())) {
+    return normalizeChannelConnectorCommandSurfaceSection(parts[1]) || "session";
+  }
+  return normalizeChannelConnectorCommandSurfaceSection(name);
 }
 
 function action(
@@ -175,6 +240,7 @@ export function buildChannelConnectorCommandSurface(
   const withoutFallback: Omit<ChannelConnectorCommandSurface, "textFallback"> = {
     version: 1,
     title: "Studio Channel Menu",
+    selectedSectionId: normalizeChannelConnectorCommandSurfaceSection(input.selectedSectionId) || null,
     current: {
       bindingId: input.binding.id,
       sessionKey: normalizeString(input.sessionKey) || null,
@@ -206,12 +272,16 @@ function actionValue(
   item: ChannelConnectorCommandSurfaceAction,
   surface: ChannelConnectorCommandSurface,
 ): Record<string, string> {
+  const actionKind = item.id.startsWith("menu-") ? "nav" : "act";
+  const sectionId = channelConnectorCommandSurfaceSectionFromCommand(item.command);
   const value: Record<string, string> = {
-    action: item.command,
+    action: `${actionKind}:${item.command}`,
     command: item.command,
+    surface_action_kind: actionKind,
     surface_action_id: item.id,
     binding_id: surface.current.bindingId,
   };
+  if (sectionId) value.surface_section_id = sectionId;
   if (surface.current.sessionKey) value.session_key = surface.current.sessionKey;
   return value;
 }
@@ -396,6 +466,43 @@ function listItemElement(
   };
 }
 
+function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceAction): string | null {
+  if (item.description) return item.description;
+  switch (item.id) {
+    case "status":
+      return "查看当前 Agent、模型、权限和 session 状态";
+    case "new":
+      return "开启新的 Agent 会话，保留本 IM 会话配置";
+    case "reset":
+      return "清空本 IM 会话 override 和 Agent 续接";
+    case "dir":
+      return "查看当前目录和可用子目录";
+    case "cd-default":
+      return "恢复 Agent Profile 默认目录";
+    case "native-help":
+      return "打开当前 CLI Agent 的原生帮助或 skills 命令";
+    case "model-default":
+      return "恢复 Agent Profile 默认模型";
+    default:
+      return null;
+  }
+}
+
+function commandSurfaceListItemElement(
+  item: ChannelConnectorCommandSurfaceAction,
+  surface: ChannelConnectorCommandSurface,
+  options: { showCurrent?: boolean } = {},
+): Record<string, unknown> {
+  const description = commandSurfaceItemDescription(item);
+  return listItemElement({
+    ...item,
+    description,
+  }, surface, {
+    actionLabel: "▶",
+    primaryLabel: options.showCurrent === false ? "▶" : "当前",
+  });
+}
+
 function pushSectionHeading(
   elements: Array<Record<string, unknown>>,
   section: ChannelConnectorCommandSurfaceSection,
@@ -406,46 +513,39 @@ function pushSectionHeading(
   });
 }
 
+function menuTabActions(
+  selectedSectionId: FeishuMenuSectionId,
+): ChannelConnectorCommandSurfaceAction[] {
+  return FEISHU_MENU_SECTIONS.map((sectionId) => action(
+    `menu-${sectionId}`,
+    FEISHU_MENU_SECTION_LABELS[sectionId],
+    `/help ${sectionId}`,
+    { tone: sectionId === selectedSectionId ? "primary" : "default" },
+  ));
+}
+
 export function renderChannelConnectorCommandSurfaceFeishu(
   surface: ChannelConnectorCommandSurface,
 ): ChannelConnectorFeishuInteractiveCard {
+  const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId) || "session";
   const elements: Array<Record<string, unknown>> = [statusBlock(surface)];
 
-  const session = sectionById(surface, "session");
-  if (session) {
-    elements.push({ tag: "hr" });
-    pushSectionHeading(elements, session);
-    pushActionRows(elements, session.actions, surface, 3, true);
-  }
+  pushActionRows(elements, menuTabActions(selectedSectionId), surface, 2, true);
 
-  for (const id of ["agent", "model"]) {
-    const section = sectionById(surface, id);
-    if (!section) continue;
+  const section = sectionById(surface, selectedSectionId);
+  if (section) {
     elements.push({ tag: "hr" });
     pushSectionHeading(elements, section);
     for (const item of section.actions) {
-      elements.push(listItemElement(item, surface));
+      elements.push(commandSurfaceListItemElement(item, surface, {
+        showCurrent: selectedSectionId === "agent" || selectedSectionId === "model" || selectedSectionId === "mode",
+      }));
     }
-  }
-
-  const mode = sectionById(surface, "mode");
-  if (mode) {
-    elements.push({ tag: "hr" });
-    pushSectionHeading(elements, mode);
-    pushActionRows(elements, mode.actions, surface, 3, true);
-  }
-
-  for (const id of ["workdir", "native"]) {
-    const section = sectionById(surface, id);
-    if (!section) continue;
-    elements.push({ tag: "hr" });
-    pushSectionHeading(elements, section);
-    pushActionRows(elements, section.actions, surface, 2, true);
   }
 
   elements.push({
     tag: "note",
-    elements: [plainText("未知 /xxx 直接透传给 Agent；高风险全局配置请在 Studio UI 内处理。")],
+    elements: [plainText("未列出的 /xxx 默认透传给 Agent；需要原生冲突命令时用 /native。")],
   });
 
   return {
@@ -462,34 +562,70 @@ export function renderChannelConnectorCommandSurfaceFeishu(
 
 export interface ChannelConnectorSurfaceActionPayload {
   command: string | null;
+  rawAction: string | null;
+  actionKind: "nav" | "act" | "cmd" | null;
   bindingId: string | null;
   sessionKey: string | null;
   actionId: string | null;
+  targetSectionId: string | null;
+}
+
+function parseSurfaceAction(raw: string): {
+  command: string | null;
+  actionKind: ChannelConnectorSurfaceActionPayload["actionKind"];
+} {
+  const normalized = normalizeString(raw);
+  if (!normalized) return { command: null, actionKind: null };
+  const match = normalized.match(/^(nav|act|cmd):(.+)$/i);
+  if (!match) return { command: normalized, actionKind: "cmd" };
+  const command = normalizeString(match[2]);
+  return {
+    command: command || null,
+    actionKind: match[1].toLowerCase() as "nav" | "act" | "cmd",
+  };
 }
 
 export function extractChannelConnectorSurfaceActionPayload(value: unknown): ChannelConnectorSurfaceActionPayload {
   if (typeof value === "string") {
+    const parsed = parseSurfaceAction(value);
     return {
-      command: normalizeString(value) || null,
+      command: parsed.command,
+      rawAction: normalizeString(value) || null,
+      actionKind: parsed.actionKind,
       bindingId: null,
       sessionKey: null,
       actionId: null,
+      targetSectionId: channelConnectorCommandSurfaceSectionFromCommand(parsed.command),
     };
   }
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return {
       command: null,
+      rawAction: null,
+      actionKind: null,
       bindingId: null,
       sessionKey: null,
       actionId: null,
+      targetSectionId: null,
     };
   }
   const record = value as Record<string, unknown>;
+  const rawAction = normalizeString(record.action) || normalizeString(record.command) || null;
+  const parsed = parseSurfaceAction(rawAction || "");
+  const command = normalizeString(record.command) || parsed.command;
+  const explicitActionKind = normalizeString(record.surface_action_kind).toLowerCase();
+  const sectionId = normalizeChannelConnectorCommandSurfaceSection(record.surface_section_id)
+    || channelConnectorCommandSurfaceSectionFromCommand(command);
   return {
-    command: normalizeString(record.action) || normalizeString(record.command) || null,
+    command: command || null,
+    rawAction,
+    actionKind: explicitActionKind === "nav" || explicitActionKind === "act" || explicitActionKind === "cmd"
+      ? explicitActionKind
+      : parsed.actionKind,
     bindingId: normalizeString(record.binding_id) || normalizeString(record.bindingId) || null,
     sessionKey: normalizeString(record.session_key) || normalizeString(record.sessionKey) || null,
     actionId: normalizeString(record.surface_action_id) || normalizeString(record.surfaceActionId) || null,
+    targetSectionId: sectionId,
   };
 }
 

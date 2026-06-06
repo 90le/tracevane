@@ -200,6 +200,7 @@ export interface ChannelConnectorCommandSurfaceSection {
 export interface ChannelConnectorCommandSurface {
   version: 1;
   title: string;
+  selectedSectionId: string | null;
   current: {
     bindingId: string;
     sessionKey: string | null;
@@ -230,6 +231,7 @@ export interface ChannelConnectorFeishuInteractiveCard {
 export interface ChannelConnectorCommandSurfaceRequest {
   bindingId?: string | null;
   sessionKey?: string | null;
+  section?: string | null;
   renderer?: ChannelConnectorCommandSurfaceRenderer;
   models?: string[];
 }

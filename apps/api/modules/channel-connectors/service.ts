@@ -60,7 +60,9 @@ import {
 } from "./octo-transport.js";
 import {
   buildChannelConnectorCommandSurface,
+  channelConnectorCommandSurfaceSectionFromCommand,
   extractChannelConnectorSurfaceActionPayload,
+  normalizeChannelConnectorCommandSurfaceSection,
   renderChannelConnectorCommandSurfaceFeishu,
 } from "./command-surface.js";
 import {
@@ -508,6 +510,56 @@ function buildRuntimeConfig(
   };
 }
 
+function isSensitiveMetadataKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase().replace(/[-_\s]/g, "");
+  return normalized === "apikey"
+    || normalized === "appsecret"
+    || normalized === "botsecret"
+    || normalized === "bottoken"
+    || normalized === "clientsecret"
+    || normalized === "imtoken"
+    || normalized === "secret"
+    || normalized === "tenantaccesstoken"
+    || normalized === "token"
+    || normalized === "verificationtoken"
+    || normalized.endsWith("secret")
+    || normalized.endsWith("token");
+}
+
+function redactSensitiveMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => redactSensitiveMetadata(item));
+  if (!isRecord(value)) return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    output[key] = isSensitiveMetadataKey(key) && normalizeString(item)
+      ? "[redacted]"
+      : redactSensitiveMetadata(item);
+  }
+  return output;
+}
+
+function redactRuntimeConfig(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): ChannelConnectorsDaemonRuntimeConfig {
+  return {
+    ...runtimeConfig,
+    projects: runtimeConfig.projects.map((project) => ({
+      ...project,
+      platformBindings: project.platformBindings.map((binding) => ({
+        ...binding,
+        metadata: redactSensitiveMetadata(binding.metadata) as Record<string, unknown> | undefined,
+      })),
+    })),
+  };
+}
+
+function redactConfigResponse(response: ChannelConnectorsDaemonConfigResponse): ChannelConnectorsDaemonConfigResponse {
+  const config = redactRuntimeConfig(response.config);
+  return {
+    ...response,
+    config,
+    preview: `${JSON.stringify(config, null, 2)}\n`,
+  };
+}
+
 function buildConfigResponse(config: StudioServerConfig, paths: ChannelConnectorsPaths, now: Date): ChannelConnectorsDaemonConfigResponse {
   const nativeConfig = readNativeConfig(config, paths, now);
   const runtimeConfig = buildRuntimeConfig(nativeConfig, paths);
@@ -886,6 +938,7 @@ function normalizeCommandSurfaceRequest(payload: ChannelConnectorCommandSurfaceR
   return {
     bindingId: normalizeString(payload.bindingId) || null,
     sessionKey: normalizeString(payload.sessionKey) || null,
+    section: normalizeChannelConnectorCommandSurfaceSection(payload.section) || null,
     renderer,
     models: stringList(payload.models),
   };
@@ -1080,8 +1133,12 @@ export function createChannelConnectorsService(
   const runCommand = (command: ChannelConnectorsDaemonCommand) =>
     options.commandRunner ? options.commandRunner(command) : runDefaultCommand(command);
 
-  function currentConfig(): ChannelConnectorsDaemonConfigResponse {
+  function currentConfigFull(): ChannelConnectorsDaemonConfigResponse {
     return buildConfigResponse(config, paths(), now());
+  }
+
+  function currentConfig(): ChannelConnectorsDaemonConfigResponse {
+    return redactConfigResponse(currentConfigFull());
   }
 
   function currentNativeConfig(): ChannelConnectorsNativeConfigResponse {
@@ -1136,6 +1193,7 @@ export function createChannelConnectorsService(
       control,
       sessionKey: request.sessionKey,
       models: request.models,
+      selectedSectionId: request.section,
     });
     return {
       ok: true,
@@ -1238,6 +1296,10 @@ export function createChannelConnectorsService(
         members: [],
       },
     });
+    const selectedSectionId = parsedAction.targetSectionId
+      || channelConnectorCommandSurfaceSectionFromCommand(command)
+      || normalizeChannelConnectorCommandSurfaceSection(request.eventKey)
+      || null;
     const control = getChannelConnectorSessionControl(controlsPath, {
       bindingId: resolved.binding.id,
       sessionKey,
@@ -1249,6 +1311,7 @@ export function createChannelConnectorsService(
       control,
       sessionKey,
       models: request.models,
+      selectedSectionId,
     });
 
     return {
@@ -1789,7 +1852,7 @@ export function createChannelConnectorsService(
     },
   ): Promise<ChannelConnectorsDaemonResponse> {
     const plan = createChannelConnectorsDaemonPlan(config, options);
-    const configPreview = currentConfig();
+    const configPreview = currentConfigFull();
     const commandsRun = input.commandsRun || [];
     const installed = fs.existsSync(plan.selectedTemplate.servicePath);
     const serviceManager = summarizeManager(plan, commandsRun);
@@ -1805,7 +1868,7 @@ export function createChannelConnectorsService(
       installed,
       skippedReason: input.skippedReason || null,
       plan,
-      config: configPreview,
+      config: redactConfigResponse(configPreview),
       commandsRun,
       serviceManager,
       diagnostics: input.diagnostics || [],
@@ -1848,7 +1911,7 @@ export function createChannelConnectorsService(
     }
 
     const apply = payload.apply === true;
-    const configPreview = currentConfig();
+    const configPreview = currentConfigFull();
     let templateWritten = false;
     let configWritten = false;
     if (apply && actionWritesFiles(action)) {

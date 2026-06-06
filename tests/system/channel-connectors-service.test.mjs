@@ -359,6 +359,10 @@ test("native Channel Connectors store persists agent profiles and derives daemon
           enabled: true,
           allowlist: ["user-a", "user-b"],
           adminUsers: ["admin-a"],
+          metadata: {
+            apiUrl: "https://im.example.test/api",
+            botToken: "test-token",
+          },
         },
       ],
     },
@@ -375,6 +379,10 @@ test("native Channel Connectors store persists agent profiles and derives daemon
   assert.equal(preview.config.projects[0].platformBindings[0].platform, "octo");
   assert.equal(preview.config.projects[0].platformBindings[0].agent, "claude-code");
   assert.deepEqual(preview.config.projects[0].platformBindings[0].allowlist, ["user-a", "user-b"]);
+  assert.equal(saved.config.platformBindings[0].metadata.botToken, "test-token");
+  assert.equal(preview.config.projects[0].platformBindings[0].metadata.botToken, "[redacted]");
+  assert.match(preview.preview, /"botToken": "\[redacted\]"/);
+  assert.doesNotMatch(preview.preview, /test-token/);
 });
 
 test("native Channel Connectors store rejects duplicate personal WeChat agent bindings", () => {
@@ -1283,30 +1291,58 @@ test("native Channel Connectors command surface renders text and Feishu card act
   const raw = JSON.stringify(feishu);
   assert.match(raw, /column_set/);
   assert.match(raw, /surface_action_id/);
+  assert.match(raw, /surface_action_kind/);
+  assert.match(raw, /nav:\/help model/);
   assert.match(raw, /session_key/);
-  assert.match(raw, /\/mode yolo/);
   assert.match(raw, /当前 Agent/);
-  assert.match(raw, /\"content\":\"当前\"/);
-  assert.match(raw, /\"content\":\"选择\"/);
+  assert.match(raw, /\/help model/);
+  assert.match(raw, /New Session/);
+  assert.doesNotMatch(raw, /\/mode yolo/);
   assert.ok(feishu.elements.some((element) => element.tag === "column_set" && element.flex_mode === "bisect"));
 
+  const modelSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    models: ["gpt-5", "gpt-5.5"],
+    selectedSectionId: "model",
+  });
+  const modelCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(modelSurface));
+  assert.match(modelCardRaw, /act:\/model gpt-5\.5/);
+  assert.match(modelCardRaw, /\/model gpt-5\.5/);
+  assert.match(modelCardRaw, /\"content\":\"当前\"/);
+  assert.match(modelCardRaw, /\"content\":\"▶\"/);
+  assert.doesNotMatch(modelCardRaw, /\/mode yolo/);
+
   const parsed = extractChannelConnectorCommandFromActionValue({
-    action: "/agent claude-main",
+    action: "act:/agent claude-main",
+    command: "/agent claude-main",
     session_key: "dmwork:dm:admin-1",
   });
   assert.equal(parsed, "/agent claude-main");
   const payload = extractChannelConnectorSurfaceActionPayload({
-    action: "/model gpt-5.5",
+    action: "act:/model gpt-5.5",
+    command: "/model gpt-5.5",
     binding_id: "octo-codex",
     session_key: "dmwork:dm:admin-1",
     surface_action_id: "model-gpt-5.5",
+    surface_action_kind: "act",
+    surface_section_id: "model",
   });
   assert.deepEqual(payload, {
     command: "/model gpt-5.5",
+    rawAction: "act:/model gpt-5.5",
+    actionKind: "act",
     bindingId: "octo-codex",
     sessionKey: "dmwork:dm:admin-1",
     actionId: "model-gpt-5.5",
+    targetSectionId: "model",
   });
+  const navPayload = extractChannelConnectorSurfaceActionPayload("nav:/help session");
+  assert.equal(navPayload.command, "/help session");
+  assert.equal(navPayload.actionKind, "nav");
+  assert.equal(navPayload.targetSectionId, "session");
 });
 
 test("native Channel Connectors Feishu webhook parses live envelopes and reuses command router", async () => {
@@ -1376,6 +1412,33 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(parsed.fromUid, "ou_admin");
   assert.equal(parsed.channelId, "oc_chat");
   assert.equal(parsed.messageId, "om_card");
+
+  const parsedNormalizedWsCard = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_ws_card",
+      token: "verify-token",
+    },
+    event: {
+      operator: { openId: "ou_admin" },
+      chatId: "oc_chat",
+      messageId: "om_card_ws",
+      action: {
+        value: {
+          action: "nav:/help model",
+          command: "/help model",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(parsedNormalizedWsCard.kind, "card-action");
+  assert.equal(parsedNormalizedWsCard.fromUid, "ou_admin");
+  assert.equal(parsedNormalizedWsCard.channelId, "oc_chat");
+  assert.equal(parsedNormalizedWsCard.messageId, "om_card_ws");
+  assert.equal(extractChannelConnectorCommandFromActionValue(parsedNormalizedWsCard.actionValue), "/help model");
 
   const challenge = await service.dispatchFeishuWebhook({
     type: "url_verification",
@@ -1468,7 +1531,8 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
       context: { open_chat_id: "oc_chat", open_message_id: "om_card_2" },
       action: {
         value: {
-          action: "cmd:/native /help",
+          action: "act:/native /help",
+          command: "/native /help",
         },
       },
     },
@@ -1479,6 +1543,58 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(cardAction.commandAction.commandResult.handled, false);
   assert.equal(cardAction.commandAction.commandResult.passthroughText, "/help");
   assert.match(cardAction.feishuResponse.toast.content, /\/help/);
+
+  const menuCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_3",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_3" },
+      action: {
+        value: {
+          action: "nav:/help model",
+          command: "/help model",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(menuCardAction.accepted, true);
+  assert.equal(menuCardAction.commandAction.command, "/help model");
+  assert.equal(menuCardAction.feishuResponse.card.type, "raw");
+  assert.match(JSON.stringify(menuCardAction.feishuResponse.card.data), /\/model default/);
+  assert.doesNotMatch(JSON.stringify(menuCardAction.feishuResponse.card.data), /\/mode yolo/);
+
+  const backToSessionCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_4",
+      token: "verify-token",
+    },
+    event: {
+      operator: { openId: "ou_admin" },
+      chatId: "oc_chat",
+      messageId: "om_card_3",
+      action: {
+        value: {
+          action: "nav:/help session",
+          command: "/help session",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(backToSessionCardAction.accepted, true);
+  assert.equal(backToSessionCardAction.commandAction.command, "/help session");
+  assert.match(JSON.stringify(backToSessionCardAction.feishuResponse.card.data), /New Session/);
+  assert.doesNotMatch(JSON.stringify(backToSessionCardAction.feishuResponse.card.data), /\/model default/);
 });
 
 test("native Channel Connectors Feishu transport sends replies and reuses tenant token cache", async () => {
@@ -1682,6 +1798,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
+  assert.match(daemonSource, /function feishuDedupeKey/);
+  assert.match(daemonSource, /parsed\.kind === "message"/);
+  assert.doesNotMatch(daemonSource, /`feishu:\$\{group\.key\}:\$\{messageId\}:\$\{binding\.id\}`/);
 });
 
 test("Channel Connectors routes are registered under /api/channel-connectors", async () => {
@@ -1759,6 +1878,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
       body: {
         bindingId: "octo-route",
         sessionKey: "dmwork:dm:route-user",
+        section: "model",
         renderer: "all",
         models: ["gpt-5", "gpt-5.5"],
       },
