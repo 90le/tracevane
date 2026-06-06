@@ -18,6 +18,7 @@
 - 本机 Octo `studio-cc` 真实 live inbound 已验证：Octo DM -> WuKongIM WebSocket -> Channel daemon -> Codex CLI Agent -> Studio Gateway -> Octo sendMessage，最近 4 条 run 均 `agentOk=true` / `replySent=true`。
 - 同一 Octo IM session 已验证 Codex thread resume 与进度记录：工具调用请求记录 15 个 progress events，图片入站按附件摘要进入 Agent 后正常完成。
 - Octo 出站媒体基础合同已迁移并真实验证：参考 CC dmwork 小文件 multipart 上传路径，新增 `upload-file` / `upload-and-send-media` transport smoke；图片会发送 Octo image payload，普通文件发送 file payload。
+- Octo 入站附件 URL 兼容已扩展：除 `url` 外，也识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，有 URL 时继续走既有 staging 安全阀落盘给 Agent。
 - Channel daemon status API 已确认 Octo 与 Feishu connected，`platformBindings=2`；运行中任务可通过 `activeRuns` 观测。
 
 ## 最近验证
@@ -29,17 +30,18 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Octo transport smoke registers bot|Feishu transport sends replies|Channel Connectors routes|daemon registers Octo|stages attachments"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Octo transport smoke"`，覆盖 Octo register、multipart upload、media send payload。
 - 通过：真实 Octo `studio-cc` `upload-and-send-media` smoke，小文本文件上传与发送均返回 200，`requestCount=2`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Octo adapter|stages attachments"`，覆盖 Octo 入站 URL 变体归一化和 URL staging。
 - 通过：Playwright 打开 `/channel-connectors`，检查 Feishu/Octo 平台配置表单无 console error、无横向溢出。
 
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Feishu 与 Octo 文本 live 已通过，Octo 图片入站基础摘要链路已通过；真实大文件/压缩包、真实 Octo 文件下载、语音 STT/TTS、多平台 adapter 仍待迁移。
+- Feishu 与 Octo 文本 live 已通过，Octo 图片入站基础摘要链路已通过；若 Octo live payload 不包含任何 URL 字段，仍需继续查平台原始媒体下载/COS 合同。
 - Octo 出站媒体当前覆盖小文件 multipart upload；CC 的大文件 COS STS 直传尚未迁移，避免引入新依赖前先保持显式边界。
 - Feishu card/menu 已可用，但后续视觉和交互仍需继续参考 CC 成熟卡片结构做 Studio 化精修。
 
 ## 下一步
 
-1. 补真实附件 live smoke：Octo `upload-and-send-media` 真实图片/文件、Feishu 大文件/压缩包、Octo 文件 URL staging。
+1. 让用户再发一张 Octo 图片或文件，确认 live payload 是否包含可 staging 的 URL 变体；若没有，继续接 Octo/COS 媒体下载接口。
 2. 继续迁移 CC/OpenClaw 的语音/STT/TTS、大文件 COS 直传和多平台 adapter。
 3. 精修 Feishu card/menu 与 Octo 弱富交互，保持 IM 命令和 Studio UI 同一 typed 状态。

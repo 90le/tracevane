@@ -939,6 +939,53 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
   assert.equal(fs.existsSync(result.eventStored.path), true);
   assert.match(fs.readFileSync(result.eventStored.path, "utf8"), /"sessionKey":"dmwork:dm:user-1"/);
 
+  const mediaUrlMessage = await service.dispatchOctoIncoming({
+    bindingId: "octo-default",
+    dryRun: true,
+    message: {
+      messageId: "m-image-media-url",
+      fromUid: "user-1",
+      channelId: "user-1",
+      channelType: 1,
+      payload: {
+        type: 2,
+        mediaUrl: "https://cdn.example.test/inbound-image.png",
+        name: "inbound-image.png",
+        size: 123,
+      },
+    },
+  });
+  assert.equal(mediaUrlMessage.accepted, true);
+  assert.equal(mediaUrlMessage.incoming.content, "[image]");
+  assert.equal(mediaUrlMessage.incoming.attachments.length, 1);
+  assert.equal(mediaUrlMessage.incoming.attachments[0].kind, "image");
+  assert.equal(mediaUrlMessage.incoming.attachments[0].url, "https://cdn.example.test/inbound-image.png");
+  assert.equal(mediaUrlMessage.incoming.attachments[0].fileName, "inbound-image.png");
+
+  const rawAttachmentMessage = await service.dispatchOctoIncoming({
+    bindingId: "octo-default",
+    dryRun: true,
+    message: {
+      messageId: "m-file-raw-url",
+      fromUid: "user-1",
+      channelId: "user-1",
+      channelType: 1,
+      payload: {
+        type: 8,
+        name: "report.pdf",
+      },
+      attachments: [{
+        kind: "file",
+        platform: "octo",
+        fileName: "report.pdf",
+        download_url: "https://cdn.example.test/report.pdf",
+      }],
+    },
+  });
+  assert.equal(rawAttachmentMessage.accepted, true);
+  assert.equal(rawAttachmentMessage.incoming.attachments.length, 1);
+  assert.equal(rawAttachmentMessage.incoming.attachments[0].url, "https://cdn.example.test/report.pdf");
+
   const denied = await service.dispatchOctoIncoming({
     bindingId: "octo-default",
     dryRun: true,

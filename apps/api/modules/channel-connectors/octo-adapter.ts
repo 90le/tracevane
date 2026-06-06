@@ -31,6 +31,41 @@ function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function recordFrom(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function looksLikeHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+function extractOctoUrlFromRecord(value: unknown): string {
+  const record = recordFrom(value);
+  const directKeys = [
+    "url",
+    "file_url",
+    "fileUrl",
+    "media_url",
+    "mediaUrl",
+    "download_url",
+    "downloadUrl",
+    "cdn_url",
+    "cdnUrl",
+    "origin_url",
+    "originUrl",
+    "src",
+    "href",
+  ];
+  for (const key of directKeys) {
+    const candidate = normalizeString(record[key]);
+    if (candidate) return candidate;
+  }
+  const content = normalizeString(record.content);
+  return looksLikeHttpUrl(content) ? content : "";
+}
+
 function uniqueStrings(values: string[]): string[] {
   const seen = new Set<string>();
   const output: string[] = [];
@@ -112,16 +147,22 @@ export function extractOctoContent(message: ChannelConnectorOctoInboundMessage):
 }
 
 export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessage): ChannelConnectorInboundAttachment[] {
-  if (Array.isArray(message.attachments) && message.attachments.length > 0) return message.attachments;
+  if (Array.isArray(message.attachments) && message.attachments.length > 0) {
+    return message.attachments.map((attachment) => ({
+      ...attachment,
+      url: normalizeString(attachment.url) || extractOctoUrlFromRecord(attachment) || null,
+    }));
+  }
   const payload = message.payload || {};
-  const key = normalizeString(payload.url) || normalizeString(payload.name) || null;
+  const url = extractOctoUrlFromRecord(payload);
+  const key = url || normalizeString(payload.name) || null;
   switch (payload.type) {
     case OCTO_MESSAGE_TYPE_IMAGE:
       return [{
         kind: "image",
         platform: "octo",
         key,
-        url: normalizeString(payload.url) || null,
+        url: url || null,
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];
@@ -130,7 +171,7 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
         kind: "file",
         platform: "octo",
         key,
-        url: normalizeString(payload.url) || null,
+        url: url || null,
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];
@@ -139,7 +180,7 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
         kind: "audio",
         platform: "octo",
         key,
-        url: normalizeString(payload.url) || null,
+        url: url || null,
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];
@@ -148,7 +189,7 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
         kind: "video",
         platform: "octo",
         key,
-        url: normalizeString(payload.url) || null,
+        url: url || null,
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];

@@ -31,6 +31,7 @@ import {
   type ChannelConnectorFeishuTransportResult,
   type ChannelConnectorFeishuTransportSmokeRequest,
   type ChannelConnectorFeishuTransportSmokeResponse,
+  type ChannelConnectorInboundAttachment,
   type ChannelConnectorsSaveNativeConfigRequest,
   type ChannelConnectorsStatusResponse,
   type ChannelConnectorOctoDispatchResponse,
@@ -878,6 +879,50 @@ function writeJsonLine(filePath: string, value: unknown): void {
   fs.appendFileSync(filePath, `${JSON.stringify(value)}\n`, "utf8");
 }
 
+function normalizeOctoInboundAttachment(value: unknown): ChannelConnectorInboundAttachment | null {
+  if (!isRecord(value)) return null;
+  const rawKind = normalizeString(value.kind);
+  const kind = rawKind === "image"
+    || rawKind === "file"
+    || rawKind === "audio"
+    || rawKind === "video"
+    || rawKind === "sticker"
+    || rawKind === "unknown"
+    ? rawKind
+    : "unknown";
+  return {
+    kind,
+    platform: "octo",
+    key: normalizeString(value.key) || null,
+    imageKey: normalizeString(value.imageKey || value.image_key) || null,
+    fileKey: normalizeString(value.fileKey || value.file_key) || null,
+    fileName: normalizeString(value.fileName || value.file_name || value.name) || null,
+    mimeType: normalizeString(value.mimeType || value.mime_type || value.contentType || value.content_type) || null,
+    size: typeof value.size === "number" && Number.isFinite(value.size) ? value.size : null,
+    durationMs: typeof value.durationMs === "number" && Number.isFinite(value.durationMs)
+      ? value.durationMs
+      : typeof value.duration === "number" && Number.isFinite(value.duration)
+        ? value.duration
+        : null,
+    url: normalizeString(value.url) || null,
+    file_url: normalizeString(value.file_url) || null,
+    fileUrl: normalizeString(value.fileUrl) || null,
+    media_url: normalizeString(value.media_url) || null,
+    mediaUrl: normalizeString(value.mediaUrl) || null,
+    download_url: normalizeString(value.download_url) || null,
+    downloadUrl: normalizeString(value.downloadUrl) || null,
+    cdn_url: normalizeString(value.cdn_url) || null,
+    cdnUrl: normalizeString(value.cdnUrl) || null,
+    origin_url: normalizeString(value.origin_url) || null,
+    originUrl: normalizeString(value.originUrl) || null,
+    src: normalizeString(value.src) || null,
+    href: normalizeString(value.href) || null,
+    localPath: normalizeString(value.localPath || value.local_path) || null,
+    stagedAt: normalizeString(value.stagedAt || value.staged_at) || null,
+    stagingError: normalizeString(value.stagingError || value.staging_error) || null,
+  };
+}
+
 function validateOctoInboundRequest(payload: ChannelConnectorOctoInboundRequest | undefined): ChannelConnectorOctoInboundRequest {
   if (!payload || !isRecord(payload)) throw new Error("Octo inbound payload is required.");
   if (!isRecord(payload.message)) throw new Error("Octo inbound message is required.");
@@ -904,6 +949,9 @@ function validateOctoInboundRequest(payload: ChannelConnectorOctoInboundRequest 
       channelType,
       timestamp: typeof message.timestamp === "number" && Number.isFinite(message.timestamp) ? message.timestamp : null,
       payload: isRecord(message.payload) ? message.payload : {},
+      attachments: Array.isArray(message.attachments)
+        ? message.attachments.map(normalizeOctoInboundAttachment).filter((attachment) => attachment !== null)
+        : [],
       members: Array.isArray(message.members)
         ? message.members
           .filter((member) => isRecord(member))
