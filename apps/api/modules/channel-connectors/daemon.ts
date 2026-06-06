@@ -57,6 +57,7 @@ import {
   shouldSkipOctoMessage,
 } from "./octo-adapter.js";
 import {
+  buildFeishuSessionKey,
   parseChannelConnectorFeishuWebhook,
   type ChannelConnectorFeishuParsedWebhook,
 } from "./feishu-adapter.js";
@@ -703,20 +704,22 @@ function feishuSessionKey(
   binding: ChannelConnectorRuntimeBinding,
   parsed: ChannelConnectorFeishuParsedWebhook,
 ): string | null {
-  const channelId = normalizeString(parsed.channelId);
-  const fromUid = normalizeString(parsed.fromUid);
-  if (!channelId && !fromUid) return null;
-  const threadIsolation = metadataBoolean(binding, ["threadIsolation", "thread_isolation"], false);
-  const isGroup = normalizeString(parsed.chatType).toLowerCase() === "group";
-  if (threadIsolation && isGroup) {
-    const threadId = normalizeString(parsed.threadId)
-      || normalizeString(parsed.rootId)
-      || normalizeString(parsed.parentId)
-      || normalizeString(parsed.messageId)
-      || channelId;
-    return `feishu:${channelId || "unknown"}:thread:${threadId}`;
-  }
-  return `feishu:${channelId || fromUid}:${fromUid || channelId}`;
+  return buildFeishuSessionKey(parsed, {
+    threadIsolation: metadataBoolean(binding, ["threadIsolation", "thread_isolation"], true),
+    shareSessionInChannel: metadataBoolean(binding, ["shareSessionInChannel", "share_session_in_channel"], false),
+  });
+}
+
+function feishuThreadLogFields(parsed: ChannelConnectorFeishuParsedWebhook): {
+  rootId: string | null;
+  parentId: string | null;
+  threadId: string | null;
+} {
+  return {
+    rootId: parsed.rootId,
+    parentId: parsed.parentId,
+    threadId: parsed.threadId,
+  };
 }
 
 function feishuMessageFromParsed(
@@ -1505,6 +1508,7 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       fromUid: parsed.fromUid,
       messageId: parsed.messageId,
+      ...feishuThreadLogFields(parsed),
     });
     return null;
   }
@@ -1528,6 +1532,7 @@ async function dispatchFeishuParsedEvent(input: {
       bindingId: binding.id,
       sessionKey,
       messageId,
+      ...feishuThreadLogFields(parsed),
     });
     return null;
   }
@@ -1546,6 +1551,7 @@ async function dispatchFeishuParsedEvent(input: {
       messageId,
       channelId: parsed.channelId,
       fromUid: parsed.fromUid,
+      ...feishuThreadLogFields(parsed),
     });
     return null;
   }
@@ -1564,6 +1570,7 @@ async function dispatchFeishuParsedEvent(input: {
       messageId,
       channelId: parsed.channelId,
       fromUid: parsed.fromUid,
+      ...feishuThreadLogFields(parsed),
     });
     return null;
   }
@@ -1582,6 +1589,7 @@ async function dispatchFeishuParsedEvent(input: {
       messageId,
       channelId: parsed.channelId,
       fromUid: parsed.fromUid,
+      ...feishuThreadLogFields(parsed),
     });
     return null;
   }
@@ -1660,6 +1668,7 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       chatType: parsed.chatType,
       fromUid: parsed.fromUid,
+      ...feishuThreadLogFields(parsed),
       command: command.command,
       commandAction: command.action,
       commandOk: command.ok,
@@ -1691,6 +1700,7 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       chatType: parsed.chatType,
       fromUid: parsed.fromUid,
+      ...feishuThreadLogFields(parsed),
       command: command.command,
       passthroughText: command.passthroughText,
     });
@@ -1746,6 +1756,7 @@ async function dispatchFeishuParsedEvent(input: {
         bindingId: binding.id,
         sessionKey,
         messageId,
+        ...feishuThreadLogFields(parsed),
         progressCardMessageId: progressCardState.messageId,
         progressStatus: progressCardState.status,
         reason,
@@ -1761,6 +1772,7 @@ async function dispatchFeishuParsedEvent(input: {
         bindingId: binding.id,
         sessionKey,
         messageId,
+        ...feishuThreadLogFields(parsed),
         progressCardMessageId: progressCardState.messageId,
         progressStatus: progressCardState.status,
         reason,
@@ -1776,6 +1788,7 @@ async function dispatchFeishuParsedEvent(input: {
     bindingId: binding.id,
     sessionKey,
     messageId,
+    ...feishuThreadLogFields(parsed),
     agent: effectiveProject.agent,
     model: effectiveProject.model,
     status: "running",
@@ -1835,6 +1848,7 @@ async function dispatchFeishuParsedEvent(input: {
           bindingId: binding.id,
           sessionKey,
           messageId,
+          ...feishuThreadLogFields(parsed),
           agent: effectiveProject.agent,
           progressType: event.type,
           rawType: event.rawType,
@@ -1946,6 +1960,7 @@ async function dispatchFeishuParsedEvent(input: {
     channelId: parsed.channelId,
     chatType: parsed.chatType,
     fromUid: parsed.fromUid,
+    ...feishuThreadLogFields(parsed),
     content,
     rawEventKind: parsed.kind,
     agentStatus: agent.status,

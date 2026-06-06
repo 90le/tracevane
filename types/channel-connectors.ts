@@ -372,6 +372,9 @@ export interface ChannelConnectorFeishuWebhookResponse {
     channelId: string;
     chatType: string | null;
     fromUid: string;
+    rootId: string | null;
+    parentId: string | null;
+    threadId: string | null;
     content: string;
     directed: boolean;
   } | null;

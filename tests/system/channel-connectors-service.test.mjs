@@ -32,6 +32,7 @@ import {
   renderChannelConnectorCommandSurfaceFeishu,
 } from "../../dist/apps/api/modules/channel-connectors/command-surface.js";
 import {
+  buildFeishuSessionKey,
   parseChannelConnectorFeishuWebhook,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
 import {
@@ -1936,6 +1937,9 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(parsedMessage.rootId, "om_root");
   assert.equal(parsedMessage.parentId, "om_parent");
   assert.equal(parsedMessage.threadId, "om_thread");
+  assert.equal(buildFeishuSessionKey(parsedMessage), "feishu:oc_chat:root:om_root");
+  assert.equal(buildFeishuSessionKey({ ...parsedMessage, rootId: null }), "feishu:oc_chat:root:om_msg_parse");
+  assert.equal(buildFeishuSessionKey(parsedMessage, { threadIsolation: false }), "feishu:oc_chat:ou_admin");
 
   const slashMessage = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -1963,11 +1967,47 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(slashMessage.eventKind, "message");
   assert.equal(slashMessage.sessionKey, "feishu:oc_chat:ou_admin");
   assert.equal(slashMessage.incoming.content, "/mode yolo");
+  assert.equal(slashMessage.incoming.rootId, "om_root");
+  assert.equal(slashMessage.incoming.parentId, "om_parent");
+  assert.equal(slashMessage.incoming.threadId, "om_thread");
   assert.equal(slashMessage.commandAction.command, "/mode yolo");
   assert.equal(slashMessage.commandAction.commandResult.ok, true);
   assert.equal(slashMessage.commandAction.surface.current.permissionMode, "yolo");
   assert.match(slashMessage.feishuResponse.toast.content, /已切换本会话权限模式/);
   assert.match(JSON.stringify(slashMessage.feishuResponse.card.data), /Studio Permission/);
+
+  const slashThreadMessage = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_msg_thread_status",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_msg_thread_status",
+        chat_id: "oc_chat",
+        chat_type: "group",
+        root_id: "om_thread_root",
+        parent_id: "om_thread_parent",
+        thread_id: "om_thread_id",
+        message_type: "text",
+        content: JSON.stringify({ text: "/status" }),
+      },
+    },
+  });
+  assert.equal(slashThreadMessage.accepted, true);
+  assert.equal(slashThreadMessage.sessionKey, "feishu:oc_chat:root:om_thread_root");
+  assert.equal(slashThreadMessage.commandAction.command, "/status");
+  assert.equal(slashThreadMessage.incoming.rootId, "om_thread_root");
+  assert.equal(slashThreadMessage.incoming.parentId, "om_thread_parent");
+  assert.equal(slashThreadMessage.incoming.threadId, "om_thread_id");
+  assert.match(JSON.stringify(slashThreadMessage.feishuResponse.card.data), /feishu:oc_chat:root:om_thread_root/);
+  const feishuLog = fs.readFileSync(slashThreadMessage.eventStored.path, "utf8");
+  assert.match(feishuLog, /"rootId":"om_thread_root"/);
+  assert.match(feishuLog, /"threadId":"om_thread_id"/);
 
   const slashModelMessage = await service.dispatchFeishuWebhook({
     schema: "2.0",

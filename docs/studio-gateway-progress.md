@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F4 long-reply split started；OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F4 thread/reply slice completed；OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：本文件只保留当前状态、最近完成、验证、边界和下一步；流水细节不继续追加。
 
@@ -24,11 +24,13 @@
 - Gateway Responses -> Chat 工具历史转换已按 `cc-switch` 对齐：system/developer 合并到 head、function_call/function_call_output 顺序映射、tool args/output JSON canonical、tool-call reasoning placeholder、reasoning_content 保留。
 - Codex resume 参数顺序已按 CC Go runner 对齐为 `codex exec resume <thread_id> --json -`，避免 resume 模式下 CLI 参数被误读。
 - F4 长回复拆分已落地：共享文本 chunk helper 按 CC `splitMessage` 规则实现 Unicode 安全切分，优先换行边界；Feishu text 发送会自动拆成多条消息并返回 `chunkCount/messageIds`；Octo 回复拆分也复用同一规则。
+- F4 Feishu thread/reply 会话隔离已对齐 CC：群线程默认按 `root_id/message_id` 生成独立 session，metadata 可关闭；私聊保持每用户 session；daemon/service 共用同一 session helper，事件日志和 webhook 返回保留 `rootId/parentId/threadId`。
 
 ## 验证
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "text chunking|Feishu transport sends replies|Feishu transport splits long text|Feishu transport manages processing reactions|Octo adapter dry-run"`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Feishu webhook parses|Feishu transport sends replies|Feishu transport splits long text|Feishu transport manages processing reactions|command surface"`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs --test-name-pattern "streamed codex tool-call history|inline codex tool-result|restores codex tool-call history"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "agent runner builds gateway-backed Codex turns|process runner maps Codex command execution progress"`。
 - 通过：隔离 `CODEX_HOME` 真实 Codex CLI smoke，`glm-5` 经 Studio Gateway 调用 shell 读取 `probe.txt` 后返回 `ok`；Gateway requestLog 显示两次 `/v1/responses` 均为 200，修复前同路径曾返回 400/1213。

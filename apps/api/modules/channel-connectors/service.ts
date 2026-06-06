@@ -40,6 +40,7 @@ import {
   type ChannelConnectorOctoTransportSmokeResponse,
   type ChannelConnectorAgentId,
   type ChannelConnectorPermissionMode,
+  type ChannelConnectorPlatformBinding,
   type ChannelConnectorPlatformId,
 } from "../../../../types/channel-connectors.js";
 import {
@@ -68,6 +69,7 @@ import {
   renderChannelConnectorCommandSurfaceFeishu,
 } from "./command-surface.js";
 import {
+  buildFeishuSessionKey,
   parseChannelConnectorFeishuWebhook,
   safeEqualFeishuWebhookToken,
 } from "./feishu-adapter.js";
@@ -1035,6 +1037,27 @@ function derivedCommandActionSessionKey(input: {
   return `${input.platform}:${channelId || fromUid}:${fromUid || channelId}`;
 }
 
+function metadataBooleanValue(metadata: Record<string, unknown> | undefined, keys: string[], fallback: boolean): boolean {
+  for (const key of keys) {
+    const value = metadata?.[key];
+    if (typeof value === "boolean") return value;
+    const normalized = normalizeString(value).toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function feishuSessionKeyForWebhook(
+  binding: ChannelConnectorPlatformBinding,
+  parsed: ReturnType<typeof parseChannelConnectorFeishuWebhook>,
+): string | null {
+  return buildFeishuSessionKey(parsed, {
+    threadIsolation: metadataBooleanValue(binding.metadata, ["threadIsolation", "thread_isolation"], true),
+    shareSessionInChannel: metadataBooleanValue(binding.metadata, ["shareSessionInChannel", "share_session_in_channel"], false),
+  });
+}
+
 function resolveOctoBindingById(
   nativeConfig: ChannelConnectorsNativeConfig,
   bindingId: string | null | undefined,
@@ -1449,7 +1472,11 @@ export function createChannelConnectorsService(
         sessionKey: response.sessionKey,
         messageId: response.incoming?.messageId || parsed.messageId || null,
         channelId: response.incoming?.channelId || parsed.channelId || null,
+        chatType: response.incoming?.chatType || parsed.chatType || null,
         fromUid: response.incoming?.fromUid || parsed.fromUid || null,
+        rootId: response.incoming?.rootId || parsed.rootId || null,
+        parentId: response.incoming?.parentId || parsed.parentId || null,
+        threadId: response.incoming?.threadId || parsed.threadId || null,
         command: response.commandAction?.command || null,
       });
       response.eventStored.written = true;
@@ -1565,12 +1592,7 @@ export function createChannelConnectorsService(
     if (!parsed.text) return skipped("feishu_message_text_missing");
     if (!parsed.directed) return skipped("feishu_group_message_not_directed");
 
-    const sessionKey = derivedCommandActionSessionKey({
-      sessionKey: null,
-      platform: "feishu",
-      channelId: parsed.channelId,
-      fromUid: parsed.fromUid,
-    });
+    const sessionKey = feishuSessionKeyForWebhook(resolved.binding, parsed);
     if (!sessionKey) return skipped("session_key_missing");
 
     let commandAction: ChannelConnectorCommandActionResponse | null = null;
@@ -1654,6 +1676,9 @@ export function createChannelConnectorsService(
         channelId: parsed.channelId,
         chatType: parsed.chatType,
         fromUid: parsed.fromUid,
+        rootId: parsed.rootId,
+        parentId: parsed.parentId,
+        threadId: parsed.threadId,
         content: parsed.text,
         directed: parsed.directed,
       },

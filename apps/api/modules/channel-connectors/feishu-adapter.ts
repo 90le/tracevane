@@ -25,12 +25,48 @@ export interface ChannelConnectorFeishuParsedWebhook {
   directed: boolean;
 }
 
+export interface ChannelConnectorFeishuSessionKeyOptions {
+  threadIsolation?: boolean;
+  shareSessionInChannel?: boolean;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export function buildFeishuSessionKey(
+  input: {
+    channelId?: string | null;
+    fromUid?: string | null;
+    chatType?: string | null;
+    messageId?: string | null;
+    rootId?: string | null;
+    parentId?: string | null;
+    threadId?: string | null;
+  },
+  options: ChannelConnectorFeishuSessionKeyOptions = {},
+): string | null {
+  const channelId = normalizeString(input.channelId);
+  const fromUid = normalizeString(input.fromUid);
+  if (!channelId && !fromUid) return null;
+
+  const threadIsolation = options.threadIsolation !== false;
+  const isGroup = normalizeString(input.chatType).toLowerCase() === "group";
+  if (threadIsolation && isGroup) {
+    const rootId = normalizeString(input.rootId) || normalizeString(input.messageId);
+    if (rootId) return `feishu:${channelId || "unknown"}:root:${rootId}`;
+    const threadId = normalizeString(input.threadId);
+    if (threadId) return `feishu:${channelId || "unknown"}:thread:${threadId}`;
+    const parentId = normalizeString(input.parentId);
+    if (parentId) return `feishu:${channelId || "unknown"}:reply:${parentId}`;
+  }
+
+  if (options.shareSessionInChannel && channelId) return `feishu:${channelId}`;
+  return `feishu:${channelId || fromUid}:${fromUid || channelId}`;
 }
 
 function recordValue(value: unknown): Record<string, unknown> {

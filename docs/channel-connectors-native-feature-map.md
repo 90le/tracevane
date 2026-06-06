@@ -42,4 +42,5 @@
 - 已完成：Codex 工具调用链路按 CC/cc-switch 对齐：resume 参数顺序、Responses -> Chat 工具历史、reasoning/tool placeholder、JSON canonical；隔离 `CODEX_HOME` 真实 smoke 验证 `glm-5` 工具调用返回 200，不再触发 BigModel 1213。
 - 已完成：真实 Feishu 客户端三工具调用复测：长连接入站、reaction、Progress card send/patch、工具步骤和最终回复成功；Gateway 最新 `/v1/responses` 请求无 1213。
 - 已完成：F4 长回复拆分基础能力：共享 Unicode-safe text chunk helper，Feishu text 自动多条发送并记录 `chunkCount/messageIds`，Octo 回复复用同一拆分规则。
+- 已完成：F4 Feishu thread/reply session：daemon/service 共用 CC 风格 session key，群线程默认 root 隔离、私聊仍按用户隔离，日志和 webhook 返回保留 root/parent/thread。
 - 下一步：F4 图片/文件、history context、长回复 group buffer、治理策略；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
