@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type {
   ChannelConnectorFeishuInteractiveCard,
   ChannelConnectorFeishuTransportConfig,
@@ -37,6 +39,22 @@ export interface ChannelConnectorFeishuResourceDownloadResult {
   fileKey: string | null;
   resourceType: "image" | "file";
   data: Buffer | null;
+  mimeType: string | null;
+  error: string | null;
+}
+
+export interface ChannelConnectorFeishuResourceFileDownloadResult {
+  attempted: boolean;
+  ok: boolean;
+  apiUrl: string;
+  statusCode: number | null;
+  requestCount: number;
+  tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
+  messageId: string | null;
+  fileKey: string | null;
+  resourceType: "image" | "file";
+  localPath: string | null;
+  size: number | null;
   mimeType: string | null;
   error: string | null;
 }
@@ -241,6 +259,91 @@ async function feishuBinaryRequest(
   }
 }
 
+async function feishuBinaryToFileRequest(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    path: string;
+    token: string;
+    maxBytes?: number;
+    target: (mimeType: string | null) => { localPath: string; tempPath: string };
+  },
+): Promise<{ statusCode: number; localPath: string; size: number; mimeType: string | null }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  let tempPath: string | null = null;
+  try {
+    const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${input.path}`, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${input.token}`,
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const raw = await response.text().catch(() => "");
+      let message = raw || `Feishu API ${input.path} failed`;
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        message = normalizeString(parsed.msg) || normalizeString(parsed.message) || message;
+      } catch {
+        // Keep raw response as the diagnostic when Feishu returns non-JSON.
+      }
+      throw Object.assign(new Error(message), {
+        statusCode: response.status,
+      });
+    }
+
+    const contentLength = Number(response.headers.get("content-length"));
+    const maxBytes = input.maxBytes ?? DEFAULT_FEISHU_RESOURCE_MAX_BYTES;
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      throw Object.assign(new Error(`Feishu resource exceeds size limit: ${contentLength} > ${maxBytes}`), {
+        statusCode: response.status,
+      });
+    }
+    if (!response.body) {
+      throw Object.assign(new Error("Feishu resource response did not include a body."), {
+        statusCode: response.status,
+      });
+    }
+
+    const mimeType = normalizeString(response.headers.get("content-type")) || null;
+    const target = input.target(mimeType);
+    tempPath = target.tempPath;
+    fs.mkdirSync(path.dirname(target.localPath), { recursive: true });
+    let size = 0;
+    const limiter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        size += chunk.length;
+        if (Number.isFinite(maxBytes) && size > maxBytes) {
+          callback(Object.assign(new Error(`Feishu resource exceeds size limit: ${size} > ${maxBytes}`), {
+            statusCode: response.status,
+          }));
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+    await pipeline(
+      Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
+      limiter,
+      fs.createWriteStream(target.tempPath, { mode: 0o600 }),
+    );
+    fs.renameSync(target.tempPath, target.localPath);
+    tempPath = null;
+    return {
+      statusCode: response.status,
+      localPath: target.localPath,
+      size,
+      mimeType,
+    };
+  } catch (error) {
+    if (tempPath) fs.rmSync(tempPath, { force: true });
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "Feishu transport request failed.";
@@ -378,6 +481,68 @@ export async function downloadFeishuMessageResource(
       fileKey: fileKey || null,
       resourceType: input.resourceType,
       data: null,
+      mimeType: null,
+      error: errorMessage(error),
+    };
+  }
+}
+
+export async function downloadFeishuMessageResourceToFile(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    messageId: string;
+    fileKey: string;
+    resourceType: "image" | "file";
+    target: (mimeType: string | null) => { localPath: string; tempPath: string };
+    maxBytes?: number;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuResourceFileDownloadResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const messageId = normalizeString(input.messageId);
+  const fileKey = normalizeString(input.fileKey);
+  try {
+    if (!messageId) throw new Error("Feishu messageId is required.");
+    if (!fileKey) throw new Error("Feishu fileKey is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    requestCount += 1;
+    const response = await feishuBinaryToFileRequest(config, {
+      token: token.token,
+      path: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/resources/${encodeURIComponent(fileKey)}?type=${encodeURIComponent(input.resourceType)}`,
+      maxBytes: input.maxBytes,
+      target: input.target,
+    });
+    return {
+      attempted: true,
+      ok: true,
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      messageId,
+      fileKey,
+      resourceType: input.resourceType,
+      localPath: response.localPath,
+      size: response.size,
+      mimeType: response.mimeType,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      ok: false,
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      requestCount: Math.max(requestCount, 1),
+      tokenCache,
+      messageId: messageId || null,
+      fileKey: fileKey || null,
+      resourceType: input.resourceType,
+      localPath: null,
+      size: null,
       mimeType: null,
       error: errorMessage(error),
     };

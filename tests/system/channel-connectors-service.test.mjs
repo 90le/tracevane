@@ -38,11 +38,13 @@ import {
 import {
   addFeishuMessageReaction,
   downloadFeishuMessageResource,
+  downloadFeishuMessageResourceToFile,
   removeFeishuMessageReaction,
   sendFeishuTextMessage,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
 import {
   parseChannelConnectorByteSize,
+  prepareChannelConnectorAttachmentStagingTarget,
   stageChannelConnectorAttachmentData,
 } from "../../dist/apps/api/modules/channel-connectors/attachment-staging.js";
 import {
@@ -300,8 +302,10 @@ async function withMockFeishuServer(task) {
         return;
       }
       if (/^\/open-apis\/im\/v1\/messages\/[^/]+\/resources\/[^?]+/.test(req.url || "") && req.method === "GET") {
+        const body = Buffer.from(req.url?.includes("type=image") ? "mock-image-bytes" : "mock-file-bytes");
         res.setHeader("content-type", req.url?.includes("type=image") ? "image/png" : "application/octet-stream");
-        res.end(Buffer.from(req.url?.includes("type=image") ? "mock-image-bytes" : "mock-file-bytes"));
+        res.setHeader("content-length", String(body.length));
+        res.end(body);
         return;
       }
       if (req.url?.startsWith("/open-apis/im/v1/messages/") && req.method === "PATCH") {
@@ -2745,6 +2749,46 @@ test("native Channel Connectors Feishu transport downloads message resources", a
     assert.equal(file.mimeType, "application/octet-stream");
     assert.equal(file.data.toString("utf8"), "mock-file-bytes");
     assert.equal(requests[2].path, "/open-apis/im/v1/messages/om_resource/resources/file-key?type=file");
+
+    const streamed = await downloadFeishuMessageResourceToFile(transport, {
+      messageId: "om_stream",
+      fileKey: "img-stream",
+      resourceType: "image",
+      maxBytes: 1024,
+      target: (mimeType) => prepareChannelConnectorAttachmentStagingTarget({
+        attachment: {
+          kind: "image",
+          platform: "feishu",
+          imageKey: "img-stream",
+        },
+        rootDir: path.join(root, "streamed"),
+        messageId: "om_stream",
+        index: 0,
+        mimeType,
+      }),
+    }, cachePath);
+    assert.equal(streamed.ok, true);
+    assert.equal(streamed.requestCount, 1);
+    assert.equal(streamed.tokenCache, "hit");
+    assert.equal(streamed.mimeType, "image/png");
+    assert.ok(streamed.localPath.endsWith(".png"));
+    assert.equal(fs.readFileSync(streamed.localPath, "utf8"), "mock-image-bytes");
+    assert.equal(requests[3].path, "/open-apis/im/v1/messages/om_stream/resources/img-stream?type=image");
+
+    const tooLarge = await downloadFeishuMessageResourceToFile(transport, {
+      messageId: "om_stream_large",
+      fileKey: "file-large",
+      resourceType: "file",
+      maxBytes: 2,
+      target: () => ({
+        localPath: path.join(root, "too-large.bin"),
+        tempPath: path.join(root, "too-large.bin.tmp"),
+      }),
+    }, cachePath);
+    assert.equal(tooLarge.ok, false);
+    assert.match(tooLarge.error || "", /exceeds size limit/);
+    assert.equal(fs.existsSync(path.join(root, "too-large.bin")), false);
+    assert.equal(fs.existsSync(path.join(root, "too-large.bin.tmp")), false);
   });
 });
 

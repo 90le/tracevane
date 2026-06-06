@@ -26,7 +26,7 @@
 - F4 长回复拆分已落地：共享文本 chunk helper 按 CC `splitMessage` 规则实现 Unicode 安全切分，优先换行边界；Feishu text 发送会自动拆成多条消息并返回 `chunkCount/messageIds`；Octo 回复拆分也复用同一规则。
 - F4 Feishu thread/reply 会话隔离已对齐 CC：群线程默认按 `root_id/message_id` 生成独立 session，metadata 可关闭；私聊保持每用户 session；daemon/service 共用同一 session helper，事件日志和 webhook 返回保留 `rootId/parentId/threadId`。
 - F4 附件基础合同已落地：Feishu `image/file/audio/media/sticker` 解析为统一 attachment metadata，Octo 也补齐同一结构；Agent prompt 只接收无平台 key 的附件摘要，API/日志记录 `messageType/attachmentCount/attachmentKinds`。
-- F4 Feishu 附件下载/staging 已落地：长连接进入 Agent 前下载 Feishu resource 到 `agent-runtime/attachments/<messageId>`，文件名和 messageId 做路径清洗；daemon 仅设置可配置安全阀，默认 128MB，binding metadata 可用 `attachmentMaxBytes` / `attachment_max_bytes` 覆盖，`0` / `unlimited` 可关闭 daemon 侧上限；失败只写 `stagingError` 不阻断会话；Agent prompt 引用本地路径，不泄露平台 key。
+- F4 Feishu 附件下载/staging 已落地：长连接进入 Agent 前以 streaming 方式下载 Feishu resource 到 `agent-runtime/attachments/<messageId>`，文件名和 messageId 做路径清洗；daemon 仅设置可配置安全阀，默认 128MB，binding metadata 可用 `attachmentMaxBytes` / `attachment_max_bytes` 覆盖，`0` / `unlimited` 可关闭 daemon 侧上限；失败只写 `stagingError` 不阻断会话；Agent prompt 引用本地路径，不泄露平台 key。
 
 ## 验证
 
@@ -45,7 +45,7 @@
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Feishu progress card 已替代文本进度；附件 staging 已具备安全本地路径和可配置大小安全阀，真正超大文件仍需补流式下载/落盘；长回复预览冻结、群聊成员/history context、长回复 buffer 和治理策略仍属于 F4/F5。
+- Feishu progress card 已替代文本进度；附件 staging 已具备 streaming 落盘、安全本地路径和可配置大小安全阀；真实 Feishu 大文件/压缩包客户端 smoke 尚未执行；长回复预览冻结、群聊成员/history context、长回复 buffer 和治理策略仍属于 F4/F5。
 
 ## 下一步
 

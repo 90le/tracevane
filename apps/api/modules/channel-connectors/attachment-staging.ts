@@ -6,6 +6,12 @@ import type {
 
 export const DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES = 128 * 1024 * 1024;
 
+export interface ChannelConnectorAttachmentStagingTarget {
+  localPath: string;
+  tempPath: string;
+  mimeType: string | null;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -73,6 +79,50 @@ function defaultAttachmentFileName(attachment: ChannelConnectorInboundAttachment
   return suffix ? `${attachment.kind}-${suffix}` : `${attachment.kind}-${index + 1}`;
 }
 
+export function prepareChannelConnectorAttachmentStagingTarget(input: {
+  attachment: ChannelConnectorInboundAttachment;
+  rootDir: string;
+  messageId: string;
+  index: number;
+  mimeType?: string | null;
+}): ChannelConnectorAttachmentStagingTarget {
+  const mimeType = normalizeString(input.mimeType) || normalizeString(input.attachment.mimeType) || null;
+  const safeMessageId = safeSegment(input.messageId, "message");
+  const baseName = safeSegment(defaultAttachmentFileName(input.attachment, input.index), `${input.attachment.kind}-${input.index + 1}`);
+  const fileName = `${input.index + 1}-${baseName}${extensionFor({
+    fileName: baseName,
+    mimeType,
+    kind: input.attachment.kind,
+  })}`;
+  const directory = path.join(input.rootDir, "attachments", safeMessageId);
+  fs.mkdirSync(directory, { recursive: true });
+  const localPath = path.join(directory, fileName);
+  const tempPath = `${localPath}.tmp-${process.pid}-${Date.now()}`;
+  return {
+    localPath,
+    tempPath,
+    mimeType,
+  };
+}
+
+export function finalizeChannelConnectorAttachmentStaging(input: {
+  attachment: ChannelConnectorInboundAttachment;
+  localPath: string;
+  size: number;
+  mimeType?: string | null;
+  now?: Date;
+}): ChannelConnectorInboundAttachment {
+  const mimeType = normalizeString(input.mimeType) || normalizeString(input.attachment.mimeType) || null;
+  return {
+    ...input.attachment,
+    mimeType,
+    size: input.size,
+    localPath: input.localPath,
+    stagedAt: (input.now || new Date()).toISOString(),
+    stagingError: null,
+  };
+}
+
 export function stageChannelConnectorAttachmentData(input: {
   attachment: ChannelConnectorInboundAttachment;
   data: Buffer;
@@ -87,26 +137,20 @@ export function stageChannelConnectorAttachmentData(input: {
   if (input.data.length > maxBytes) {
     throw new Error(`Attachment exceeds size limit: ${input.data.length} > ${maxBytes}`);
   }
-  const mimeType = normalizeString(input.mimeType) || normalizeString(input.attachment.mimeType) || null;
-  const safeMessageId = safeSegment(input.messageId, "message");
-  const baseName = safeSegment(defaultAttachmentFileName(input.attachment, input.index), `${input.attachment.kind}-${input.index + 1}`);
-  const fileName = `${input.index + 1}-${baseName}${extensionFor({
-    fileName: baseName,
-    mimeType,
-    kind: input.attachment.kind,
-  })}`;
-  const directory = path.join(input.rootDir, "attachments", safeMessageId);
-  fs.mkdirSync(directory, { recursive: true });
-  const localPath = path.join(directory, fileName);
-  const tempPath = `${localPath}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tempPath, input.data, { mode: 0o600 });
-  fs.renameSync(tempPath, localPath);
-  return {
-    ...input.attachment,
-    mimeType,
+  const target = prepareChannelConnectorAttachmentStagingTarget({
+    attachment: input.attachment,
+    rootDir: input.rootDir,
+    messageId: input.messageId,
+    index: input.index,
+    mimeType: input.mimeType,
+  });
+  fs.writeFileSync(target.tempPath, input.data, { mode: 0o600 });
+  fs.renameSync(target.tempPath, target.localPath);
+  return finalizeChannelConnectorAttachmentStaging({
+    attachment: input.attachment,
+    localPath: target.localPath,
     size: input.data.length,
-    localPath,
-    stagedAt: (input.now || new Date()).toISOString(),
-    stagingError: null,
-  };
+    mimeType: target.mimeType,
+    now: input.now,
+  });
 }

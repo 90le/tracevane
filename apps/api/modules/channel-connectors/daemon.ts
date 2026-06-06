@@ -65,7 +65,7 @@ import {
 } from "./feishu-adapter.js";
 import {
   addFeishuMessageReaction,
-  downloadFeishuMessageResource,
+  downloadFeishuMessageResourceToFile,
   feishuTransportFromMetadata,
   patchFeishuCardMessage,
   removeFeishuMessageReaction,
@@ -74,8 +74,9 @@ import {
 } from "./feishu-transport.js";
 import {
   DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES,
+  finalizeChannelConnectorAttachmentStaging,
   parseChannelConnectorByteSize,
-  stageChannelConnectorAttachmentData,
+  prepareChannelConnectorAttachmentStagingTarget,
 } from "./attachment-staging.js";
 import {
   buildChannelConnectorCommandSurface,
@@ -837,13 +838,20 @@ async function stageFeishuMessageAttachments(input: {
       });
       continue;
     }
-    const download = await downloadFeishuMessageResource(input.transport, {
+    const download = await downloadFeishuMessageResourceToFile(input.transport, {
       messageId: input.message.messageId,
       fileKey: resource.fileKey,
       resourceType: resource.resourceType,
       maxBytes: input.maxBytes,
+      target: (mimeType) => prepareChannelConnectorAttachmentStagingTarget({
+        attachment,
+        rootDir: input.rootDir,
+        messageId: input.message.messageId,
+        index,
+        mimeType,
+      }),
     }, feishuTokenCachePath(input.config));
-    if (!download.ok || !download.data) {
+    if (!download.ok || !download.localPath || typeof download.size !== "number") {
       failedCount += 1;
       stagedAttachments.push({
         ...attachment,
@@ -852,14 +860,11 @@ async function stageFeishuMessageAttachments(input: {
       continue;
     }
     try {
-      const staged = stageChannelConnectorAttachmentData({
+      const staged = finalizeChannelConnectorAttachmentStaging({
         attachment,
-        data: download.data,
-        rootDir: input.rootDir,
-        messageId: input.message.messageId,
-        index,
+        localPath: download.localPath,
+        size: download.size,
         mimeType: download.mimeType,
-        maxBytes: input.maxBytes,
       });
       stagedCount += 1;
       if (staged.localPath) localPaths.push(staged.localPath);
